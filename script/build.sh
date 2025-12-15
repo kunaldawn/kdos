@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Check if bzImage does not exist, build kernel
 if [ ! -f build/bzImage ]; then
@@ -36,10 +37,41 @@ if [ ! -f build/init.cpio ]; then
     mv toybox-0.8.13 toybox
     cp src/config/.config.toybox toybox/.config
     cd toybox
-    make -j8
+    make
     PREFIX=../fs make install
     cd ..
     rm -rf toybox
+
+    # Build bash
+    tar -xvf src/bash-5.3.tar.gz
+    cd bash-5.3
+    ./configure --prefix=/ --without-bash-malloc --enable-static-link
+    make -j8
+    make install DESTDIR=$(pwd)/../fs
+    cd ..
+    rm -rf bash-5.3
+
+    # Build ncurses
+    tar -xvf src/ncurses-6.5.tar.gz
+    mv ncurses-6.5 ncurses
+    cd ncurses
+    ./configure --prefix=/ --without-shared --without-debug --enable-widec --without-ada --without-manpages --without-tests
+    make -j8
+    make install DESTDIR=$(pwd)/../fs
+    cd ..
+    rm -rf ncurses
+
+    # Build nano
+    tar -xvf src/nano-8.7.tar.xz
+    mv nano-8.7 nano
+    cd nano
+    CPPFLAGS="-I$(pwd)/../fs/include -I$(pwd)/../fs/include/ncursesw" \
+    LDFLAGS="-L$(pwd)/../fs/lib -static" \
+    ./configure --prefix=/ --enable-utf8 --enable-tiny --disable-libmagic --disable-extra --disable-mouse --disable-help --disable-browser --disable-speller
+    make -j8
+    make install DESTDIR=$(pwd)/../fs
+    cd ..
+    rm -rf nano
 
     # Create fs directory
     mkdir -p fs/dev
