@@ -1,0 +1,3 @@
+::sysinit:/etc/init.d/rcS
+ttyS0::respawn:-/bin/bash
+::restart:/sbin/init
