@@ -28,15 +28,9 @@ RUN apk update && apk add --no-cache \
 
 WORKDIR /workspace
 
-COPY src/linux-6.18.1.tar.xz /workspace/src/linux-6.18.1.tar.xz
-COPY src/toybox-0.8.13.tar.gz /workspace/src/toybox-0.8.13.tar.gz
-COPY src/musl-1.2.5.tar.gz /workspace/src/musl-1.2.5.tar.gz
-COPY src/config/.config.linux /workspace/src/config/.config.linux
-COPY src/config/.config.toybox /workspace/src/config/.config.toybox
-
-COPY fs/etc/init.d/rcS /workspace/fs/etc/init.d/rcS
-
-COPY script/build.sh /workspace/script/build.sh
+COPY src /workspace/src
+COPY fs /workspace/fs
+COPY script /workspace/script
 
 RUN chmod 777 /workspace /workspace/fs
 RUN chmod +x /workspace/script/build.sh
