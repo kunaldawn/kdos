@@ -1,0 +1,21 @@
+# /etc/profile
+
+export PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export TERM=linux
+export HOME=/root
+export USER=root
+
+# Aliases
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+
+# Prompt
+if [ "$PS1" ]; then
+    PS1='\u@\h:\w λ '
+fi
+
+clear
+echo ""
+cat /etc/motd
+echo ""
