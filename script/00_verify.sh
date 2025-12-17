@@ -32,6 +32,20 @@ REQUIRED=(
     "vim-$VIM_VER.tar.gz"
     "tmux-$TMUX_VER.tar.gz"
     "nano-$NANO_VER.tar.xz"
+    "gawk-$GAWK_VER.tar.xz"
+    "diffutils-$DIFFUTILS_VER.tar.xz"
+    "gzip-$GZIP_VER.tar.xz"
+    "file-$FILE_VER.tar.gz"
+    "util-linux-$UTIL_LINUX_VER.tar.xz"
+    "e2fsprogs-$E2FSPROGS_VER.tar.xz"
+    "dosfstools-$DOSFSTOOLS_VER.tar.gz"
+    "tree-$TREE_VER.tar.gz"
+    "libffi-$LIBFFI_VER.tar.gz"
+    "libnl-$LIBNL_VER.tar.gz"
+    "iproute2-$IPROUTE2_VER.tar.xz"
+    "wpa_supplicant-$WPA_SUPPLICANT_VER.tar.gz"
+    "git-$GIT_VER.tar.xz"
+    "Python-$PYTHON_VER.tar.xz"
 )
 
 MISSING=0
