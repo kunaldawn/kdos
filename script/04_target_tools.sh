@@ -214,4 +214,17 @@ if [ ! -f "$SYSROOT/usr/bin/tmux" ]; then
     rm -rf tmux-$TMUX_VER
 fi
 
+# 13. Nano
+if [ ! -f "$SYSROOT/bin/nano" ]; then
+    echo ">>> Building Nano $NANO_VER..."
+    tar -xf $SRC_DIR/nano-$NANO_VER.tar.xz
+    cd nano-$NANO_VER
+    ./configure --host=$TARGET --prefix=/ --enable-static --disable-shared --enable-utf8 \
+        --enable-color --enable-nanorc --enable-multibuffer
+    make
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf nano-$NANO_VER
+fi
+
 echo ">>> Target Tools Built."
