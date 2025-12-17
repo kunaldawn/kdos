@@ -59,6 +59,12 @@ echo ">>> Building Toybox $TOYBOX_VER..."
     fi
 
 # 2. Bash
+# Toybox may have created a symlink for bash (if configured to do so).
+# We want the REAL bash, so remove the symlink if it exists.
+if [ -L "$SYSROOT/bin/bash" ]; then
+    rm -f "$SYSROOT/bin/bash"
+fi
+
 if [ ! -f "$SYSROOT/bin/bash" ]; then
     echo ">>> Building Bash $BASH_VER..."
     tar -xf $SRC_DIR/bash-$BASH_VER.tar.gz

@@ -17,13 +17,7 @@ if [ ! -f "init" ]; then
     ln -s bin/toybox init
 fi
 
-# 2. Copy Source Tarballs (For Self-Sufficiency)
-# This allows rebuilding the OS from within the OS.
-mkdir -p src
-echo ">>> Copying sources to /src (This increases image size)..."
-cp $SRC_DIR/* src/ || true
-
-# 3. Create Initramfs
+# 2. Create Initramfs
 echo ">>> Creating init.cpio..."
 find . -print0 | cpio --null -o -H newc --owner=0:0 > $BUILD_DIR/init.cpio
 
