@@ -1,5 +1,6 @@
 FROM alpine:3.23
 
+# Add deps for GCC build: gmp-dev mpfr-dev mpc1-dev
 RUN apk update && apk add --no-cache \
     nano \
     git \
@@ -10,6 +11,7 @@ RUN apk update && apk add --no-cache \
     texinfo \
     make \
     gcc gcc-doc \
+    g++ \
     musl-dev \
     man-pages \
     gdb \
@@ -24,7 +26,21 @@ RUN apk update && apk add --no-cache \
     findutils \
     openssl-dev \
     syslinux syslinux-doc \
-    cdrkit cdrkit-doc
+    cdrkit cdrkit-doc \
+    pkgconf \
+    rsync \
+    gmp-dev \
+    mpfr-dev \
+    mpc1-dev \
+    mpfr-dev \
+    mpc1-dev \
+    perl \
+    xz \
+    autoconf \
+    automake \
+    libtool \
+    python3 \
+    ncurses
 
 WORKDIR /workspace
 
@@ -33,6 +49,6 @@ COPY fs /workspace/fs
 COPY script /workspace/script
 
 RUN chmod 777 /workspace /workspace/fs
-RUN chmod +x /workspace/script/build.sh
+RUN chmod +x /workspace/script/*.sh
 
 CMD ["/workspace/script/build.sh"]
