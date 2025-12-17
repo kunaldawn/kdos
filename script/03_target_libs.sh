@@ -18,6 +18,7 @@ if [ ! -f "$SYSROOT/usr/lib/libz.a" ]; then
     echo ">>> Building Zlib $ZLIB_VER..."
     tar -xf $SRC_DIR/zlib-$ZLIB_VER.tar.gz
     cd zlib-$ZLIB_VER
+    export CFLAGS="-fPIC"
     ./configure --prefix=/usr --static
     make
     make install DESTDIR=$SYSROOT
@@ -63,7 +64,7 @@ if [ ! -f "$SYSROOT/usr/lib/libssl.a" ]; then
     unset CROSS_COMPILE
     
     ./Configure linux-x86_64 \
-        --prefix=/usr --openssldir=/etc/ssl no-shared
+        --prefix=/usr --openssldir=/etc/ssl no-shared -fPIC
     make
     make install DESTDIR=$SYSROOT
     
@@ -126,6 +127,33 @@ if [ ! -f "$SYSROOT/usr/lib/libpcap.a" ]; then
     make install DESTDIR=$SYSROOT
     cd ..
     rm -rf libpcap-$LIBPCAP_VER
+fi
+
+# 7. Libffi
+if [ ! -f "$SYSROOT/usr/lib/libffi.a" ]; then
+    echo ">>> Building Libffi $LIBFFI_VER..."
+    tar -xf $SRC_DIR/libffi-$LIBFFI_VER.tar.gz
+    cd libffi-$LIBFFI_VER
+    ./configure --host=$TARGET --prefix=/usr --disable-shared CFLAGS="-fPIC"
+    make
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf libffi-$LIBFFI_VER
+fi
+
+# 8. Libnl
+if [ ! -f "$SYSROOT/usr/lib/libnl-3.a" ]; then
+    echo ">>> Building Libnl $LIBNL_VER..."
+    tar -xf $SRC_DIR/libnl-$LIBNL_VER.tar.gz
+    cd libnl-$LIBNL_VER
+    # Libnl 3.x uses cmake or autotools. Check if configure exists, usually does for release tarballs.
+    # Musl note: might need -D_GNU_SOURCE to find some symbols
+    ./configure --host=$TARGET --prefix=/usr --sysconfdir=/etc --disable-shared \
+        CFLAGS="-O2 -pipe --sysroot=$SYSROOT -D_GNU_SOURCE -fPIC"
+    make
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf libnl-$LIBNL_VER
 fi
 
 echo ">>> Target Libraries Built."

@@ -227,4 +227,179 @@ if [ ! -f "$SYSROOT/bin/nano" ]; then
     rm -rf nano-$NANO_VER
 fi
 
+# 14. Gawk
+if [ ! -f "$SYSROOT/usr/bin/gawk" ]; then
+    echo ">>> Building Gawk $GAWK_VER..."
+    tar -xf $SRC_DIR/gawk-$GAWK_VER.tar.xz
+    cd gawk-$GAWK_VER
+    ./configure --host=$TARGET --prefix=/usr
+    make
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf gawk-$GAWK_VER
+fi
+
+# 15. Diffutils
+if [ ! -f "$SYSROOT/usr/bin/diff" ]; then
+    echo ">>> Building Diffutils $DIFFUTILS_VER..."
+    tar -xf $SRC_DIR/diffutils-$DIFFUTILS_VER.tar.xz
+    cd diffutils-$DIFFUTILS_VER
+    ./configure --host=$TARGET --prefix=/usr
+    make
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf diffutils-$DIFFUTILS_VER
+fi
+
+# 16. Gzip
+if [ ! -f "$SYSROOT/bin/gzip" ]; then
+    echo ">>> Building Gzip $GZIP_VER..."
+    tar -xf $SRC_DIR/gzip-$GZIP_VER.tar.xz
+    cd gzip-$GZIP_VER
+    ./configure --host=$TARGET --prefix=/
+    make
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf gzip-$GZIP_VER
+fi
+
+# 17. File
+if [ ! -f "$SYSROOT/usr/bin/file" ]; then
+    echo ">>> Building File $FILE_VER..."
+    tar -xf $SRC_DIR/file-$FILE_VER.tar.gz
+    cd file-$FILE_VER
+    ./configure --host=$TARGET --prefix=/usr
+    make
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf file-$FILE_VER
+fi
+
+# 18. Util-linux
+if [ ! -f "$SYSROOT/usr/bin/lsblk" ]; then
+    echo ">>> Building Util-linux $UTIL_LINUX_VER..."
+    tar -xf $SRC_DIR/util-linux-$UTIL_LINUX_VER.tar.xz
+    cd util-linux-$UTIL_LINUX_VER
+    mkdir -p $SYSROOT/var/lib/hwclock
+    ./configure --host=$TARGET --prefix=/usr \
+        --disable-chfn-chsh --disable-login --disable-nologin \
+        --disable-su --disable-setpriv --disable-runuser \
+        --disable-pylibmount --disable-static --without-python \
+        --without-systemd --without-systemdsystemunitdir \
+        --disable-liblastlog2 --disable-makeinstall-chown --disable-makeinstall-setuid
+    make
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf util-linux-$UTIL_LINUX_VER
+fi
+
+# 19. E2fsprogs
+if [ ! -f "$SYSROOT/sbin/mkfs.ext4" ]; then
+    echo ">>> Building E2fsprogs $E2FSPROGS_VER..."
+    tar -xf $SRC_DIR/e2fsprogs-$E2FSPROGS_VER.tar.xz
+    cd e2fsprogs-$E2FSPROGS_VER
+    mkdir build && cd build
+    ../configure --host=$TARGET --prefix=/usr --with-root-prefix="" --enable-elf-shlibs --disable-libblkid --disable-libuuid --disable-uuidd --disable-fsck
+    make
+    make install DESTDIR=$SYSROOT
+    cd ../..
+    rm -rf e2fsprogs-$E2FSPROGS_VER
+fi
+
+# 20. Dosfstools
+if [ ! -f "$SYSROOT/sbin/mkfs.vfat" ]; then
+    echo ">>> Building Dosfstools $DOSFSTOOLS_VER..."
+    tar -xf $SRC_DIR/dosfstools-$DOSFSTOOLS_VER.tar.gz
+    cd dosfstools-$DOSFSTOOLS_VER
+    ./configure --host=$TARGET --prefix= --enable-compat-symlinks --mandir=/usr/share/man --docdir=/usr/share/doc/dosfstools-$DOSFSTOOLS_VER
+    make
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf dosfstools-$DOSFSTOOLS_VER
+fi
+
+# 21. Tree
+if [ ! -f "$SYSROOT/usr/bin/tree" ]; then
+    echo ">>> Building Tree $TREE_VER..."
+    tar -xf $SRC_DIR/tree-$TREE_VER.tar.gz
+    cd unix-tree-$TREE_VER
+    # Tree typically has no configure script
+    make CC=$TARGET-gcc
+    make install PREFIX=$SYSROOT/usr
+    cd ..
+    rm -rf unix-tree-$TREE_VER
+fi
+
+# 22. Iproute2
+if [ ! -f "$SYSROOT/sbin/ip" ]; then
+    echo ">>> Building Iproute2 $IPROUTE2_VER..."
+    tar -xf $SRC_DIR/iproute2-$IPROUTE2_VER.tar.xz
+    cd iproute2-$IPROUTE2_VER
+    # Point to kernel headers if needed, typically in $SYSROOT/usr/include
+    # Musl fixes: -D_GNU_SOURCE
+    make CC=$TARGET-gcc AR=$TARGET-ar CCOPTS="-O2 -pipe -I$SYSROOT/usr/include -D_GNU_SOURCE -DHAVE_SETNS -DHAVE_HANDLE_AT -include endian.h -include limits.h"
+    make install DESTDIR=$SYSROOT
+    cd ..
+    rm -rf iproute2-$IPROUTE2_VER
+fi
+
+# 23. Wpa_supplicant
+if [ ! -f "$SYSROOT/usr/sbin/wpa_supplicant" ]; then
+    echo ">>> Building Wpa_supplicant $WPA_SUPPLICANT_VER..."
+    tar -xf $SRC_DIR/wpa_supplicant-$WPA_SUPPLICANT_VER.tar.gz
+    cd wpa_supplicant-$WPA_SUPPLICANT_VER/wpa_supplicant
+    # Create .config by filtering out DBus and appending Libnl
+    cp defconfig .config
+    # Enable openssl and libnl, disable DBus
+    sed -i 's/^CONFIG_CTRL_IFACE_DBUS=y/#CONFIG_CTRL_IFACE_DBUS=y/' .config
+    sed -i 's/^CONFIG_CTRL_IFACE_DBUS_NEW=y/#CONFIG_CTRL_IFACE_DBUS_NEW=y/' .config
+    sed -i 's/^CONFIG_CTRL_IFACE_DBUS_INTRO=y/#CONFIG_CTRL_IFACE_DBUS_INTRO=y/' .config
+    sed -i 's/^#CONFIG_LIBNL32=y/CONFIG_LIBNL32=y/' .config
+
+    make CC=$TARGET-gcc EXTRA_CFLAGS="-I$SYSROOT/usr/include -I$SYSROOT/usr/include/libnl3" \
+        LIBS="-L$SYSROOT/usr/lib -lssl -lcrypto -lnl-3 -lnl-genl-3 -lnl-route-3" \
+        BINDIR=/usr/sbin
+    make install DESTDIR=$SYSROOT BINDIR=/usr/sbin
+    cd ../..
+    rm -rf wpa_supplicant-$WPA_SUPPLICANT_VER
+fi
+
+# 24. Python
+if [ ! -f "$SYSROOT/usr/bin/python3" ]; then
+    echo ">>> Building Python $PYTHON_VER..."
+    tar -xf $SRC_DIR/Python-$PYTHON_VER.tar.xz
+    cd Python-$PYTHON_VER
+    
+    # 1. Host Build (for cross-compilation tools)
+    mkdir -p host-build
+    cd host-build
+    ../configure
+    make
+    cd ..
+
+    # 2. Target Build (using host python)
+    mkdir -p target-build
+    cd target-build
+    export ac_cv_file__dev_ptmx=yes
+    export ac_cv_file__dev_ptc=no
+    ../configure --host=$TARGET --build=x86_64-linux-gnu --prefix=/usr --disable-ipv6 --with-build-python=$(pwd)/../host-build/python
+    make
+    make install DESTDIR=$SYSROOT
+    cd ../..
+    rm -rf Python-$PYTHON_VER
+fi
+
+# 25. Git
+if [ ! -f "$SYSROOT/usr/bin/git" ]; then
+    echo ">>> Building Git $GIT_VER..."
+    tar -xf $SRC_DIR/git-$GIT_VER.tar.xz
+    cd git-$GIT_VER
+    make configure
+    ./configure --host=$TARGET --prefix=/usr --with-openssl --with-curl --with-zlib --without-tcltk
+    make NO_GETTEXT=YesPlease NO_TCLTK=YesPlease
+    make install DESTDIR=$SYSROOT NO_GETTEXT=YesPlease NO_TCLTK=YesPlease
+    cd ..
+    rm -rf git-$GIT_VER
+fi
+
 echo ">>> Target Tools Built."

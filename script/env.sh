@@ -45,6 +45,20 @@ export JQ_VER=1.8.1
 export VIM_VER=9.1
 export TMUX_VER=3.6a
 export NANO_VER=8.7
+export GAWK_VER=5.3.2
+export DIFFUTILS_VER=3.12
+export GZIP_VER=1.14
+export FILE_VER=5.45
+export E2FSPROGS_VER=1.47.3
+export DOSFSTOOLS_VER=4.2
+export UTIL_LINUX_VER=2.41.3
+export TREE_VER=2.2.1
+export IPROUTE2_VER=6.12.0
+export LIBNL_VER=3.11.0
+export WPA_SUPPLICANT_VER=2.11
+export GIT_VER=2.52.0
+export LIBFFI_VER=3.4.7
+export PYTHON_VER=3.13.1
 
 # Mirrors
 export GNU_MIRROR="https://mirrors.hopbox.net/gnu"
