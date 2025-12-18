@@ -44,7 +44,8 @@ RUN apk update && apk add --no-cache \
     mtools \
     dosfstools \
     util-linux-dev \
-    squashfs-tools
+    squashfs-tools \
+    go
 
 WORKDIR /workspace
 
