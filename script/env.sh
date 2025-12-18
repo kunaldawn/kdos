@@ -61,6 +61,7 @@ export LIBFFI_VER=3.4.7
 export PYTHON_VER=3.13.1
 export REFIND_VER=0.14.2
 export GNU_EFI_VER=3.0.18
+export GO_VER=1.24.0
 
 # Mirrors
 export GNU_MIRROR="https://mirrors.hopbox.net/gnu"

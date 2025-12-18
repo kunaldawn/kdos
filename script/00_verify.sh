@@ -46,6 +46,7 @@ REQUIRED=(
     "wpa_supplicant-$WPA_SUPPLICANT_VER.tar.gz"
     "git-$GIT_VER.tar.xz"
     "Python-$PYTHON_VER.tar.xz"
+    "go$GO_VER.src.tar.gz"
 )
 
 MISSING=0
