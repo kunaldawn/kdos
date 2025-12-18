@@ -66,4 +66,8 @@ download "https://w1.fi/releases/wpa_supplicant-$WPA_SUPPLICANT_VER.tar.gz" "wpa
 download "https://www.kernel.org/pub/software/scm/git/git-$GIT_VER.tar.xz" "git-$GIT_VER.tar.xz"
 download "https://www.python.org/ftp/python/$PYTHON_VER/Python-$PYTHON_VER.tar.xz" "Python-$PYTHON_VER.tar.xz"
 
+# --- Bootloaders ---
+download "https://downloads.sourceforge.net/project/gnu-efi/gnu-efi-$GNU_EFI_VER.tar.bz2" "gnu-efi-$GNU_EFI_VER.tar.bz2"
+download "https://downloads.sourceforge.net/project/refind/$REFIND_VER/refind-src-$REFIND_VER.tar.gz" "refind-src-$REFIND_VER.tar.gz"
+
 echo "All sources fetched."

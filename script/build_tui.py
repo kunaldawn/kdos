@@ -15,6 +15,7 @@ STEPS = [
     ("04_target_tools.sh", "Target Tools"),
     ("05_native_toolchain.sh", "Native Toolchain"),
     ("06_kernel.sh", "Linux Kernel"),
+    ("06_bootloaders.sh", "Bootloader"),
     ("07_package.sh", "Packaging (ISO/Initrd)"),
 ]
 
@@ -57,7 +58,7 @@ def draw_box(win, y, x, h, w, title=""):
     except curses.error:
         pass
 
-def draw_status(stdscr, current_idx, step_data, start_time, spinner_idx):
+def draw_status(stdscr, current_idx, step_data, start_time, step_start_time, spinner_idx):
     h, w = stdscr.getmaxyx()
     
     # Calculate panel dimensions
@@ -92,7 +93,18 @@ def draw_status(stdscr, current_idx, step_data, start_time, spinner_idx):
         
         icon = "  "
         attr = curses.A_NORMAL
-        time_str = format_time(duration if duration else (time.time() - start_time if status == "RUNNING" else 0))
+        
+        # Calculate time for this step
+        if duration is not None:
+             # Finished step
+             time_val = duration
+        elif status == "RUNNING":
+             # Running step
+             time_val = time.time() - step_start_time
+        else:
+             time_val = None
+
+        time_str = format_time(time_val)
         
         if status == "PENDING":
              icon = "○ "
@@ -232,7 +244,7 @@ def main(stdscr):
                 spinner_idx = (spinner_idx + 1) % len(SPINNER_CHARS)
                 
                 # Draw Everything
-                log_y, log_h = draw_status(stdscr, i, step_data, start_time, spinner_idx)
+                log_y, log_h = draw_status(stdscr, i, step_data, start_time, step_data_start, spinner_idx)
                 
                 # Draw Logs Window (Clipping)
                 if log_h > 0:
@@ -267,7 +279,7 @@ def main(stdscr):
         else:
             step_data[i][0] = "FAIL"
             # Draw failure state and wait
-            draw_status(stdscr, i, step_data, start_time, spinner_idx)
+            draw_status(stdscr, i, step_data, start_time, step_data_start, spinner_idx)
             # Logs are already there
             # Add message
             h, w = stdscr.getmaxyx()
@@ -283,7 +295,7 @@ def main(stdscr):
 
     # All Done
     h, w = stdscr.getmaxyx()
-    draw_status(stdscr, len(STEPS)-1, step_data, start_time, spinner_idx)
+    draw_status(stdscr, len(STEPS)-1, step_data, start_time, start_time, spinner_idx)
     msg = f" Build Complete Successfully! ({format_time(time.time() - start_time)}) Press any key. "
     stdscr.attron(curses.color_pair(4) | curses.A_BOLD)
     stdscr.addstr(h//2, (w-len(msg))//2, msg)

@@ -1,0 +1,9 @@
+PRETTY_NAME="KDOS Linux"
+NAME="KDOS"
+ID=kdos
+id_like=kdos
+VERSION_ID="0.1"
+VERSION="0.1 (Rolling)"
+HOME_URL="https://github.com/kunaldawn/kdos"
+SUPPORT_URL="https://github.com/kunaldawn/kdos/issues"
+BUG_REPORT_URL="https://github.com/kunaldawn/kdos/issues"

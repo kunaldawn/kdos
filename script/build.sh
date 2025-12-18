@@ -15,6 +15,7 @@ else
     bash -e script/04_target_tools.sh
     bash -e script/05_native_toolchain.sh
     bash -e script/06_kernel.sh
+    bash -e script/06_bootloaders.sh
     bash -e script/07_package.sh
     echo ">>> Build pipeline finished."
 fi

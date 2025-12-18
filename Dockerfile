@@ -26,7 +26,6 @@ RUN apk update && apk add --no-cache \
     findutils \
     openssl-dev \
     syslinux syslinux-doc \
-    cdrkit cdrkit-doc \
     pkgconf \
     rsync \
     gmp-dev \
@@ -40,7 +39,12 @@ RUN apk update && apk add --no-cache \
     automake \
     libtool \
     python3 \
-    ncurses
+    ncurses \
+    xorriso \
+    mtools \
+    dosfstools \
+    util-linux-dev \
+    squashfs-tools
 
 WORKDIR /workspace
 
