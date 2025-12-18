@@ -65,6 +65,7 @@ download "https://mirrors.edge.kernel.org/pub/linux/utils/net/iproute2/iproute2-
 download "https://w1.fi/releases/wpa_supplicant-$WPA_SUPPLICANT_VER.tar.gz" "wpa_supplicant-$WPA_SUPPLICANT_VER.tar.gz"
 download "https://www.kernel.org/pub/software/scm/git/git-$GIT_VER.tar.xz" "git-$GIT_VER.tar.xz"
 download "https://www.python.org/ftp/python/$PYTHON_VER/Python-$PYTHON_VER.tar.xz" "Python-$PYTHON_VER.tar.xz"
+download "https://go.dev/dl/go$GO_VER.src.tar.gz" "go$GO_VER.src.tar.gz"
 
 # --- Bootloaders ---
 download "https://downloads.sourceforge.net/project/gnu-efi/gnu-efi-$GNU_EFI_VER.tar.bz2" "gnu-efi-$GNU_EFI_VER.tar.bz2"
