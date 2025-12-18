@@ -1,0 +1,76 @@
+#!/bin/sh
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+# Mount essential pseudo-filesystems
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t devtmpfs dev /dev
+mkdir -p /dev/pts
+mount -t devpts devpts /dev/pts
+
+echo ">>> KDOS Initramfs Booting..." > /dev/console
+
+# Find Boot Media
+echo ">>> Searching for boot media..." > /dev/console
+FOUND_MEDIA=""
+MAX_RETRIES=10
+for i in $(seq 1 $MAX_RETRIES); do
+    for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do
+        [ -b "$dev" ] || continue
+        # Try finding rootfs.squashfs
+        mount -o ro -t iso9660 "$dev" /mnt 2>/dev/null
+        if [ "$?" -eq 0 ]; then
+            if [ -f "/mnt/rootfs.squashfs" ]; then
+                echo "Found media at $dev" > /dev/console
+                FOUND_MEDIA=$dev
+                umount /mnt
+                break 2
+            fi
+            umount /mnt
+        fi
+    done
+    sleep 1
+done
+
+if [ -z "$FOUND_MEDIA" ]; then
+    echo "CRITICAL: Boot media not found! Dropping to shell." > /dev/console
+    exec /bin/sh
+fi
+
+# Setup OverlayFS
+
+echo ">>> Setting up live system..." > /dev/console
+mkdir -p /cdrom
+mount -t iso9660 -o ro "$FOUND_MEDIA" /cdrom
+
+mkdir -p /ro_root
+mount -t squashfs -o loop,ro /cdrom/rootfs.squashfs /ro_root || {
+    echo "Failed to mount squashfs. Check kernel config." > /dev/console
+    exec /bin/sh
+}
+
+mkdir -p /rw_root
+mount -t tmpfs tmpfs /rw_root
+
+mkdir -p /rw_root/upper /rw_root/work /new_root
+
+mount -t overlay overlay -o lowerdir=/ro_root,upperdir=/rw_root/upper,workdir=/rw_root/work /new_root || {
+    echo "Failed to mount overlay. Check kernel config." > /dev/console
+    exec /bin/sh
+}
+
+# Create mount points in new root for move
+mkdir -p /new_root/cdrom /new_root/ro_root /new_root/rw_root
+
+# Move mounts to new root to keep them accessible
+mount --move /cdrom /new_root/cdrom
+mount --move /ro_root /new_root/ro_root
+mount --move /rw_root /new_root/rw_root
+
+# Move system mounts
+mount --move /proc /new_root/proc
+mount --move /sys /new_root/sys
+mount --move /dev /new_root/dev
+
+echo ">>> Switching root..." > /dev/console
+exec switch_root /new_root /sbin/init

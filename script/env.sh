@@ -59,6 +59,8 @@ export WPA_SUPPLICANT_VER=2.11
 export GIT_VER=2.52.0
 export LIBFFI_VER=3.4.7
 export PYTHON_VER=3.13.1
+export REFIND_VER=0.14.2
+export GNU_EFI_VER=3.0.18
 
 # Mirrors
 export GNU_MIRROR="https://mirrors.hopbox.net/gnu"
@@ -87,10 +89,10 @@ export CFLAGS="-O2 -pipe --sysroot=$SYSROOT"
 export CXXFLAGS="-O2 -pipe --sysroot=$SYSROOT"
 export LDFLAGS="--sysroot=$SYSROOT"
 
-# Use nproc - 2 to allow responsiveness, min 1
+# Use nproc - 4 to allow responsiveness, min 1
 CORES=$(nproc)
-if [ "$CORES" -gt 2 ]; then
-    CORES=$((CORES - 2))
+if [ "$CORES" -gt 4 ]; then
+    CORES=$((CORES - 4))
 else
     CORES=1
 fi

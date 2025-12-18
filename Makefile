@@ -9,7 +9,7 @@ build:
 	docker run --rm -u $$(id -u):$$(id -g) -v $$(pwd)/build:/workspace/build -it os-dev bash script/build.sh
 
 run:
-	qemu-system-x86_64 -m 4G -kernel build/bzImage -initrd build/init.cpio -append "root=/dev/ram0 console=ttyS0" -nographic
+	qemu-system-x86_64 -enable-kvm -cpu host -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/kdos.iso -nographic
 
 clean:
 	rm -rf build
