@@ -1,3 +1,13 @@
 ::sysinit:/etc/init.d/rcS
+
+# Serial Console
 ttyS0::askfirst:/bin/bash -l
+
+# Local Console (QEMU Window / Physical)
+tty1::respawn:/sbin/getty 38400 tty1
+
+# Restart
 ::restart:/sbin/init
+::ctrlaltdel:/sbin/reboot
+::shutdown:/sbin/swapoff -a
+::shutdown:/bin/umount -a -r
