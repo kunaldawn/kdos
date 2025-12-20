@@ -1,4 +1,5 @@
 #!/bin/bash
+# Title: Verify Assets
 set -e
 source script/env.sh
 

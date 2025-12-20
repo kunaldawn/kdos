@@ -1,313 +1,700 @@
 #!/usr/bin/env python3
 import curses
-import subprocess
-import os
 import sys
+import os
 import time
+import subprocess
+import threading
+import queue
+import re
 import select
-import math
 
-STEPS = [
-    ("00_verify.sh", "Asset Verification"),
-    ("01_cross_toolchain.sh", "Cross-Toolchain"),
-    ("02_target_base.sh", "Target Core/FS"),
-    ("03_target_libs.sh", "Target Libraries"),
-    ("04_target_tools.sh", "Target Tools"),
-    ("05_native_toolchain.sh", "Native Toolchain"),
-    ("06_kernel.sh", "Linux Kernel"),
-    ("06_bootloaders.sh", "Bootloader"),
-    ("07_package.sh", "Packaging (ISO/Initrd)"),
-]
+# --- Constants & Configuration ---
+# Color pairs
+CP_BG = 1       # Blue/White (Default)
+CP_HL = 2       # Grey/Black (Selection)
+CP_RUN = 3      # Yellow/Blue (Running)
+CP_DONE = 4     # Green/Blue (Done)
+CP_FAIL = 5     # Red/Blue (Fail)
+CP_TITLE = 6    # Cyan/Blue (Box/Title)
+CP_BAR = 7      # White/Cyan (Progress Bar)
+CP_LOG = 8      # White/Black (Log View)
+CP_TIME = 9     # Cyan/Blue (for timestamps)
+CP_KEY = 10     # Yellow/Blue (for Footer keys)
+CP_DONE_REV = 11 # White/Green (Badge for OK)
+CP_TRACK = 12   # White/Black (Progress Bar Track)
 
-SPINNER_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+RE_TITLE = re.compile(r'^#\s*Title:\s*(.+)$', re.IGNORECASE)
 
-def format_time(seconds):
-    if seconds is None:
-        return "--:--"
-    m = int(seconds // 60)
-    s = int(seconds % 60)
-    return f"{m:02d}:{s:02d}"
+class BuildStep:
+    def __init__(self, path, is_group=False, level=0):
+        self.path = path
+        self.is_group = is_group
+        self.level = level
+        self.children = []
+        self.parent = None
+        self.status = "PENDING"  # PENDING, RUNNING, DONE, FAIL
+        self.logs = []
+        self.start_time = None
+        self.end_time = None
+        self.return_code = 0
+        self.title = self._derive_title()
+        self.expanded = True 
 
-def draw_box(win, y, x, h, w, title=""):
-    """Draw a box with a title"""
-    try:
-        win.attron(curses.color_pair(7)) # Border color
-        # Draw corners
-        win.addch(y, x, curses.ACS_ULCORNER)
-        win.addch(y, x + w - 1, curses.ACS_URCORNER)
-        win.addch(y + h - 1, x, curses.ACS_LLCORNER)
-        win.addch(y + h - 1, x + w - 1, curses.ACS_LRCORNER)
+    def _derive_title(self):
+        if not self.is_group:
+            try:
+                with open(self.path, 'r', encoding='utf-8', errors='ignore') as f:
+                    for _ in range(5):
+                        line = f.readline()
+                        if not line: break
+                        m = RE_TITLE.match(line.strip())
+                        if m: return m.group(1)
+            except: pass
         
-        # Draw horizontal lines
-        for i in range(1, w - 1):
-            win.addch(y, x + i, curses.ACS_HLINE)
-            win.addch(y + h - 1, x + i, curses.ACS_HLINE)
+        name = os.path.basename(self.path)
+        name = os.path.splitext(name)[0]
+        name = re.sub(r'^[0-9]+_', '', name)
+        return name.replace('_', ' ').replace('-', ' ').title()
+
+    def add_log(self, line):
+        self.logs.append(line)
+        if len(self.logs) > 2000: 
+            self.logs = self.logs[-2000:]
+
+    def duration(self):
+        if self.is_group:
+            return sum(c.duration() for c in self.children)
             
-        # Draw vertical lines
-        for i in range(1, h - 1):
-            win.addch(y + i, x, curses.ACS_VLINE)
-            win.addch(y + i, x + w - 1, curses.ACS_VLINE)
-            
-        # Draw Title
-        if title:
-            title = f" {title} "
-            if len(title) < w - 2:
-                win.addstr(y, x + 2, title, curses.A_BOLD | curses.color_pair(8)) # Title color
-        
-        win.attroff(curses.color_pair(7))
-    except curses.error:
-        pass
+        if self.start_time is None: return 0
+        end = self.end_time if self.end_time else time.time()
+        return end - self.start_time
 
-def draw_status(stdscr, current_idx, step_data, start_time, step_start_time, spinner_idx):
-    h, w = stdscr.getmaxyx()
-    
-    # Calculate panel dimensions
-    # Header: 3 lines
-    # Footer: 1 line
-    # Steps: fixed height (len(STEPS) + 4 padding)
-    # Logs: Remaining
-    
-    steps_panel_h = len(STEPS) + 4
-    if steps_panel_h > h - 5: # Min logs
-        steps_panel_h = h - 5
+class BuildManager:
+    def __init__(self, root_dir):
+        self.root_dir = root_dir
+        self.roots = []
+        self.execution_order = [] # Flattened list of steps to run
+        self.current_step = None  # actively running step
+        self.is_running = False
+        self.stop_requested = False
+        self.error_step = None
+        self.start_time = None
         
-    # Draw Background
-    stdscr.bkgd(' ', curses.color_pair(1))
-    stdscr.erase()
-    
-    # 1. HEADER
-    header_text = " KDOS BUILD SYSTEM "
-    stdscr.attron(curses.color_pair(2) | curses.A_BOLD)
-    stdscr.addstr(0, 0, " " * w)
-    stdscr.addstr(0, (w - len(header_text)) // 2, header_text)
-    stdscr.attroff(curses.color_pair(2) | curses.A_BOLD)
-    
-    # 2. STEPS PANEL (Top)
-    draw_box(stdscr, 1, 0, steps_panel_h, w, "Build Progress")
-    
-    for i, (script, name) in enumerate(STEPS):
-        y_pos = 3 + i
-        if y_pos >= steps_panel_h: break
-        
-        status, duration = step_data[i]
-        
-        icon = "  "
-        attr = curses.A_NORMAL
-        
-        # Calculate time for this step
-        if duration is not None:
-             # Finished step
-             time_val = duration
-        elif status == "RUNNING":
-             # Running step
-             time_val = time.time() - step_start_time
-        else:
-             time_val = None
+        self._discover()
 
-        time_str = format_time(time_val)
+    def _discover(self, parent_dir=None, parent_node=None, level=0):
+        scan_dir = parent_dir if parent_dir else self.root_dir
         
-        if status == "PENDING":
-             icon = "○ "
-             attr = curses.color_pair(9) # Grey/Dim
-             time_str = "--:--"
-        elif status == "RUNNING":
-             icon = f"{SPINNER_CHARS[spinner_idx]} "
-             attr = curses.color_pair(3) | curses.A_BOLD # Yellow/Blue
-        elif status == "DONE":
-             icon = "✔ " # or ●
-             attr = curses.color_pair(4) | curses.A_BOLD # Green
-        elif status == "FAIL":
-             icon = "✖ "
-             attr = curses.color_pair(5) | curses.A_BOLD # Red
-            
-        # Highlight current row background
-        if i == current_idx:
-            # Draw highlight bar
-            stdscr.attron(curses.color_pair(10))
-            stdscr.addstr(y_pos, 2, " " * (w - 4))
-            stdscr.attroff(curses.color_pair(10))
-            
-        # Draw items
-        item_str = f"{icon}{name}"
-        stdscr.addstr(y_pos, 4, item_str, attr)
-        
-        # Draw Time (Right aligned in box)
-        stdscr.addstr(y_pos, w - 10, time_str, attr)
+        try:
+            entries = sorted(os.listdir(scan_dir))
+        except OSError: return
 
-    # 3. LOGS PANEL (Bottom)
-    log_y = steps_panel_h + 1
-    log_h = h - log_y - 1
-    
-    if log_h > 2:
-        draw_box(stdscr, log_y, 0, log_h, w, "Live Logs")
+        for entry in entries:
+            full_path = os.path.join(scan_dir, entry)
+            
+            if os.path.isdir(full_path):
+                # Directory / Group
+                node = BuildStep(full_path, is_group=True, level=level)
+                if parent_node:
+                    parent_node.children.append(node)
+                    node.parent = parent_node
+                else:
+                    self.roots.append(node)
+                
+                self._discover(full_path, node, level + 1)
+                
+            elif entry.endswith(".sh") and re.match(r'^[0-9]+_', entry):
+                # Script
+                # Check if it is a runner
+                base = os.path.splitext(entry)[0]
+                if os.path.isdir(os.path.join(scan_dir, base)):
+                    continue
+
+                node = BuildStep(full_path, is_group=False, level=level)
+                if parent_node:
+                    parent_node.children.append(node)
+                    node.parent = parent_node
+                    self.execution_order.append(node)
+                else:
+                    self.roots.append(node)
+                    self.execution_order.append(node)
+
+    def start_build(self):
+        self.start_time = time.time()
+        self.is_running = True
+        t = threading.Thread(target=self._run_loop, daemon=True)
+        t.start()
+        return t
+
+    def _run_loop(self):
+        os.makedirs("build/logs", exist_ok=True)
         
-    # 4. FOOTER
-    total_elapsed = time.time() - start_time
-    footer_text = f" Total Time: {format_time(total_elapsed)} | Press 'q' to abort "
-    stdscr.attron(curses.color_pair(2))
-    stdscr.addstr(h - 1, 0, footer_text.ljust(w)[:w-1])
-    stdscr.attroff(curses.color_pair(2))
-    
-    return log_y + 1, log_h - 2
+        for i, step in enumerate(self.execution_order):
+            if self.stop_requested: break
+            
+            self.current_step = step
+            self._update_family_status(step, "RUNNING")
+            step.start_time = time.time()
+            
+            log_file_path = os.path.join("build/logs", os.path.basename(step.path) + ".log")
+            
+            with open(log_file_path, 'w') as lf:
+                try:
+                    proc = subprocess.Popen(
+                        ["bash", step.path],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT, 
+                        text=True,
+                        bufsize=1
+                    )
+                    
+                    # Robust output reading
+                    while True:
+                        if self.stop_requested:
+                            proc.terminate()
+                            break
+
+                        # Check for data
+                        reads = [proc.stdout.fileno()]
+                        ret = select.select(reads, [], [], 0.05)
+                        
+                        if ret[0]:
+                            line = proc.stdout.readline()
+                            if line:
+                                clean = line.rstrip()
+                                step.add_log(clean)
+                                lf.write(clean + "\n")
+                            else:
+                                # EOF
+                                break
+                        elif proc.poll() is not None:
+                            # Process finished AND no data ready in select?
+                            # Double check if any remaining data
+                            rest = proc.stdout.read()
+                            if rest:
+                                for l in rest.splitlines():
+                                    step.add_log(l)
+                                    lf.write(l + "\n")
+                            break
+                    
+                    step.return_code = proc.wait()
+                except Exception as e:
+                    step.add_log(f"INTERNAL ERROR: {e}")
+                    step.return_code = 999
+            
+            step.end_time = time.time()
+            
+            if step.return_code == 0:
+                self._update_family_status(step, "DONE")
+            else:
+                self._update_family_status(step, "FAIL")
+                self.error_step = step
+                self.stop_requested = True
+                self.is_running = False
+                return
+
+        self.is_running = False
+
+    def _update_family_status(self, step, status):
+        step.status = status
+        # Bubble up
+        curr = step.parent
+        while curr:
+            has_running = any(c.status == "RUNNING" for c in curr.children)
+            has_fail = any(c.status == "FAIL" for c in curr.children)
+            all_done = all(c.status == "DONE" for c in curr.children)
+            has_started = any(c.status != "PENDING" for c in curr.children)
+            
+            if has_fail: 
+                curr.status = "FAIL"
+            elif has_running: 
+                curr.status = "RUNNING"
+            elif all_done: 
+                curr.status = "DONE"
+            elif has_started:
+                curr.status = "RUNNING"
+            else: 
+                curr.status = "PENDING"
+            
+            curr = curr.parent
+
+class TUI:
+    def __init__(self, stdscr, manager):
+        self.stdscr = stdscr
+        self.manager = manager
+        self.selected_node = None
+        self.visible_nodes = []
+        self.scroll_offset = 0
+        self.auto_follow = True
+        self.h, self.w = 0, 0
+        self._init_colors()
+        self.stdscr.nodelay(True)
+        self.stdscr.keypad(True)
+        curses.curs_set(0)
+
+    def _init_colors(self):
+        try:
+            curses.start_color()
+            # Note: We do NOT call use_default_colors() because we want to enforce the Blue theme.
+            
+            # Theme: High Contrast Retro BIOS
+            # Color 1: BG - White on Blue
+            curses.init_pair(CP_BG, curses.COLOR_WHITE, curses.COLOR_BLUE)
+            
+            # Color 2: HL - Black on Cyan (Classic Selection)
+            curses.init_pair(CP_HL, curses.COLOR_BLACK, curses.COLOR_CYAN)
+            
+            # Color 3: RUN - Yellow on Blue (Bright Warning)
+            curses.init_pair(CP_RUN, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+            
+            # Color 4: DONE - Green on Blue (Soft Success)
+            curses.init_pair(CP_DONE, curses.COLOR_GREEN, curses.COLOR_BLUE)
+            
+            # Color 5: FAIL - Red on Blue
+            curses.init_pair(CP_FAIL, curses.COLOR_RED, curses.COLOR_BLUE)
+            
+            # Color 6: TITLE - Cyan on Blue (for borders/titles)
+            curses.init_pair(CP_TITLE, curses.COLOR_CYAN, curses.COLOR_BLUE)
+            
+            # Color 7: BAR - Blue on Cyan (Progress Bar Fill)
+            curses.init_pair(CP_BAR, curses.COLOR_BLUE, curses.COLOR_CYAN)
+            
+            # Color 12: CP_TRACK - Grey on Black (for Progress Bar Track)
+            curses.init_pair(CP_TRACK, curses.COLOR_WHITE, curses.COLOR_BLACK)
+            
+            # Color 8: LOG - Grey on Black (Console view)
+            curses.init_pair(CP_LOG, curses.COLOR_WHITE, curses.COLOR_BLACK)
+            
+            # Color 9: TIME - Cyan on Blue (for timestamps)
+            curses.init_pair(CP_TIME, curses.COLOR_CYAN, curses.COLOR_BLUE)
+            
+            # Color 10: KEY - Yellow on Blue (for Footer keys)
+            curses.init_pair(CP_KEY, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+            
+            # Color 11: DONE_REV - White on Green (Badge for OK)
+            curses.init_pair(CP_DONE_REV, curses.COLOR_WHITE, curses.COLOR_GREEN)
+
+        except: pass
+
+    def _flatten(self, nodes):
+        out = []
+        for node in nodes:
+            out.append(node)
+            if node.is_group and node.expanded:
+                out.extend(self._flatten(node.children))
+        return out
+
+    def update(self):
+        self.h, self.w = self.stdscr.getmaxyx()
+        self.visible_nodes = self._flatten(self.manager.roots)
+        
+        # Auto-Follow
+        if self.auto_follow and self.manager.current_step:
+            self.selected_node = self.manager.current_step
+            
+        if not self.selected_node and self.visible_nodes:
+            self.selected_node = self.visible_nodes[0]
+            
+        # Scroll logic
+        try:
+            sel_idx = self.visible_nodes.index(self.selected_node)
+        except ValueError:
+            sel_idx = 0
+            self.selected_node = self.visible_nodes[0]
+            
+        list_h = self.h - 4 # Borders
+        if sel_idx < self.scroll_offset:
+            self.scroll_offset = sel_idx
+        elif sel_idx >= self.scroll_offset + list_h:
+            self.scroll_offset = sel_idx - list_h + 1
+
+    def draw_screen(self):
+        # Force Background Color
+        self.stdscr.bkgd(' ', curses.color_pair(CP_BG))
+        self.stdscr.erase()
+        
+        try:
+            # Main Border
+            self.stdscr.attron(curses.color_pair(CP_TITLE) | curses.A_BOLD)
+            self.stdscr.border()
+            self.stdscr.attroff(curses.color_pair(CP_TITLE) | curses.A_BOLD)
+            
+            # Title with consistent background
+            title = " KDOS BUILD SYSTEM "
+            if len(title) < self.w:
+                self.stdscr.attron(curses.color_pair(CP_RUN) | curses.A_BOLD) # Yellow Title
+                self.stdscr.addstr(0, (self.w - len(title))//2, title)
+                self.stdscr.attroff(curses.color_pair(CP_RUN) | curses.A_BOLD)
+            
+            # Dynamic Layout Calculation
+            # Find max text width in visible nodes
+            max_text = 20
+            for node in self.visible_nodes:
+                # indentation (2 * level) + icon (2 chars) + space (1) + title + space(1) + time (~8 chars)
+                # Estimation for time: "(999m59s)" = ~9 chars
+                w = (node.level * 2) + 2 + 1 + len(node.title) + 1 + 9
+                if w > max_text: max_text = w
+            
+            # Add padding
+            tree_w = max_text + 4
+            
+            # Clamp width
+            min_w = 25
+            max_w = int(self.w * 0.45) # Increase max slightly to allow for time
+            
+            if tree_w < min_w: tree_w = min_w
+            if tree_w > max_w: tree_w = max_w
+                
+            detail_x = tree_w + 1
+            detail_w = self.w - tree_w - 2
+            
+            if detail_w < 5: return # Too small
+            
+            # Vertical Divider
+            self.stdscr.attron(curses.color_pair(CP_TITLE) | curses.A_BOLD)
+            for y in range(1, self.h - 1):
+                self.stdscr.addch(y, tree_w, curses.ACS_VLINE)
+            
+            # Join top/bottom
+            self.stdscr.addch(0, tree_w, curses.ACS_TTEE)
+            self.stdscr.addch(self.h-1, tree_w, curses.ACS_BTEE)
+            self.stdscr.attroff(curses.color_pair(CP_TITLE) | curses.A_BOLD)
+                
+            self._draw_tree(tree_w)
+            self._draw_detail(detail_x, detail_w)
+            self._draw_footer()
+            
+        except curses.error: pass
+        self.stdscr.refresh()
+
+    def _draw_tree(self, width):
+        max_y = self.h - 2
+        
+        for i in range(max_y):
+            idx = self.scroll_offset + i
+            if idx >= len(self.visible_nodes): break
+            
+            node = self.visible_nodes[idx]
+            y = 1 + i
+            
+            # Prepare Components
+            indent = "  " * node.level
+            
+            # Standardize Icon Width to 4
+            icon_str = "    "
+            icon_attr = curses.color_pair(CP_BG)
+            text_attr = curses.color_pair(CP_BG) | curses.A_BOLD # Default Bold White
+            
+            if node.is_group:
+                icon_str = " [-]" if node.expanded else " [+]"
+                icon_attr = curses.color_pair(CP_TITLE) | curses.A_BOLD
+                text_attr = curses.color_pair(CP_TITLE) | curses.A_BOLD
+            else:
+                if node.status == "PENDING":
+                    icon_str = "    "
+                    text_attr = curses.color_pair(CP_BG) # Pending is dim/normal
+                elif node.status == "RUNNING":
+                    icon_str = " >> "
+                    icon_attr = curses.color_pair(CP_RUN) | curses.A_BOLD
+                    text_attr = curses.color_pair(CP_RUN) | curses.A_BOLD
+                elif node.status == "DONE":
+                    icon_str = " OK " 
+                    # Using badge style: White on Green (Centered)
+                    icon_attr = curses.color_pair(CP_DONE_REV) | curses.A_BOLD 
+                    text_attr = curses.color_pair(CP_BG) | curses.A_BOLD # White Bold
+                elif node.status == "FAIL":
+                    icon_str = " !! "
+                    icon_attr = curses.color_pair(CP_FAIL) | curses.A_BOLD
+                    text_attr = curses.color_pair(CP_FAIL) | curses.A_BOLD
+            
+            # Time String
+            dur = node.duration()
+            t_str = ""
+            if dur > 0 or node.status == "RUNNING":
+                if dur < 60: t_str = f"({int(dur)}s)"
+                else: t_str = f"({int(dur)//60}m{int(dur)%60}s)"
+
+            # Construct display logic
+            # Format: INDENT + ICON + " " + TITLE + ... + TIME
+            
+            # Available width for content
+            avail_w = width - 1
+            
+            # Calc lengths
+            len_pre = len(indent) + len(icon_str) + 1 # +1 for space after icon
+            len_time = len(t_str)
+            len_title = len(node.title)
+            
+            # Check fit
+            # We need: len_pre + len_title + 1 (space) + len_time <= avail_w
+            # Space for title
+            space_for_title = avail_w - len_pre - 1 - len_time
+            
+            disp_title = node.title
+            if space_for_title < len(disp_title):
+                # Truncate
+                if space_for_title < 3: disp_title = "…" # Should not happen with reasonable width
+                else: disp_title = disp_title[:space_for_title-1] + "…"
+            
+            # Pad length calculation for background fill
+            used_len = len_pre + len(disp_title) + len_time
+            pad_len = avail_w - used_len
+            if pad_len < 0: pad_len = 0 # Safety
+            
+            # DRAW
+            if node == self.selected_node:
+                # Selected: Draw full line with HL
+                full_line = f"{indent}{icon_str} {disp_title}{' '*pad_len}{t_str}"
+                self.stdscr.attron(curses.color_pair(CP_HL))
+                self.stdscr.addstr(y, 1, full_line)
+                self.stdscr.attroff(curses.color_pair(CP_HL))
+            else:
+                # Unselected: Draw components
+                result_x = 1
+                try:
+                    # Indent
+                    self.stdscr.addstr(y, result_x, indent, curses.color_pair(CP_BG))
+                    result_x += len(indent)
+                    
+                    # Icon
+                    if node.status == "DONE" and not node.is_group:
+                         self.stdscr.addstr(y, result_x, icon_str, icon_attr) 
+                         # Note: ICON len is 4 (" OK ")
+                    else:
+                        self.stdscr.addstr(y, result_x, icon_str, icon_attr)
+                    result_x += len(icon_str)
+                    
+                    # Space
+                    self.stdscr.addstr(y, result_x, " ", curses.color_pair(CP_BG))
+                    result_x += 1
+                    
+                    # Title
+                    self.stdscr.addstr(y, result_x, disp_title, text_attr)
+                    result_x += len(disp_title)
+                    
+                    # Padding (Background)
+                    self.stdscr.addstr(y, result_x, " " * pad_len, curses.color_pair(CP_BG))
+                    result_x += pad_len
+                    
+                    # Time (Cyan for distinct visibility)
+                    self.stdscr.addstr(y, result_x, t_str, curses.color_pair(CP_TIME) | curses.A_BOLD)
+                    
+                except curses.error: pass
+
+    def _draw_detail(self, x, w):
+        if not self.selected_node: return
+        node = self.selected_node
+        
+        # 1. INFO BOX
+        header_attr = curses.color_pair(CP_BG) | curses.A_BOLD
+        if node.status == "RUNNING": header_attr = curses.color_pair(CP_RUN) | curses.A_BOLD
+        elif node.status == "DONE": header_attr = curses.color_pair(CP_DONE) | curses.A_BOLD
+        elif node.status == "FAIL": header_attr = curses.color_pair(CP_FAIL) | curses.A_BOLD
+        
+        try:
+            self.stdscr.addstr(1, x, f" STEP: {node.title} ".ljust(w), header_attr)
+            
+            status_s = f" STATUS: {node.status} "
+            if node.status == "RUNNING":
+                t_run = time.time() - node.start_time
+                status_s += f"({int(t_run)}s)"
+            elif node.duration() > 0:
+                status_s += f"({node.duration():.1f}s)"
+                
+            self.stdscr.addstr(2, x, status_s.ljust(w), curses.color_pair(CP_BG) | curses.A_BOLD)
+            
+            # Separator Line
+            self.stdscr.attron(curses.color_pair(CP_TITLE) | curses.A_BOLD)
+            self.stdscr.addch(3, x - 1, curses.ACS_LTEE) # Connect to vline
+            for i in range(0, w): 
+                self.stdscr.addch(3, x + i, curses.ACS_HLINE)
+            # Right side connection?
+            # self.stdscr.addch(3, x + w, curses.ACS_RTEE) # If we want to connect to right border
+            self.stdscr.attroff(curses.color_pair(CP_TITLE) | curses.A_BOLD)
+
+            # 2. LOG WINDOW
+            log_y = 4
+            # Extend to bottom of screen (h-1 is border, so h-2 is last content line)
+            # Range is 4, 5, ..., h-2
+            # Height = (h-2) - 4 + 1 = h - 5
+            log_h = self.h - 5
+            
+            if log_h <= 0: return
+            
+            # Fill Log Background with Black
+            self.stdscr.attron(curses.color_pair(CP_LOG))
+            for i in range(log_h):
+                self.stdscr.addstr(log_y + i, x, " " * w)
+            self.stdscr.attroff(curses.color_pair(CP_LOG))
+            
+            logs = node.logs
+            if not logs:
+                msg = ""
+                if node.is_group: msg = f"Group: {len(node.children)} items."
+                elif node.status == "PENDING": msg = "Pending..."
+                elif node.status == "RUNNING": msg = "Starting..."
+                else: msg = "No logs."
+                
+                self.stdscr.attron(curses.color_pair(CP_LOG) | curses.A_DIM)
+                self.stdscr.addstr(log_y + i, x, msg[:w])
+                self.stdscr.attroff(curses.color_pair(CP_LOG) | curses.A_DIM)
+                return
+                
+            visible_logs = logs[-log_h:]
+            for i, line in enumerate(visible_logs):
+                # Clean and ensure visibility
+                clean = line.replace('\t', '    ')
+                
+                # Use Bold White for visibility
+                self.stdscr.addstr(log_y + i, x, clean[:w].ljust(w), curses.color_pair(CP_LOG) | curses.A_BOLD)
+                
+        except curses.error: pass
+
+    def _draw_footer(self):
+        y = self.h - 1
+        x = 2
+        
+        # Calculate Progress
+        nodes = self.manager.execution_order
+        total = len(nodes)
+        done = sum(1 for n in nodes if n.status in ("DONE", "FAIL"))
+        pct = done / total if total > 0 else 0
+        
+        # Helper to draw parts
+        cx = x
+        self.stdscr.addstr(y, cx, " ", curses.color_pair(CP_BG)); cx+=1
+        
+        # Keys
+        mode = "AUTO" if self.auto_follow else "MANUAL"
+        self.stdscr.addstr(y, cx, "[F]", curses.color_pair(CP_KEY) | curses.A_BOLD); cx+=3
+        self.stdscr.addstr(y, cx, f":{mode} ", curses.color_pair(CP_BG)); cx += len(f":{mode} ")
+        
+        self.stdscr.addstr(y, cx, "[ARROWS]", curses.color_pair(CP_KEY) | curses.A_BOLD); cx+=8
+        self.stdscr.addstr(y, cx, ":Scroll ", curses.color_pair(CP_BG)); cx += len(":Scroll ")
+        
+        self.stdscr.addstr(y, cx, "[Q]", curses.color_pair(CP_KEY) | curses.A_BOLD); cx+=3
+        self.stdscr.addstr(y, cx, ":Quit  ", curses.color_pair(CP_BG)); cx += len(":Quit  ")
+        
+        # Time
+        elapsed = time.time() - (self.manager.start_time or time.time())
+        t_str = f"{int(elapsed)//60}m{int(elapsed)%60}s"
+        self.stdscr.addstr(y, cx, f"Time: {t_str} ", curses.color_pair(CP_BG)); cx += len(f"Time: {t_str} ")
+        
+        # Progress Label
+        self.stdscr.addstr(y, cx, "Prog: ", curses.color_pair(CP_BG)); cx += len("Prog: ")
+        
+        # Progress Info: "50% (5/10) "
+        info_txt = f"{int(pct*100)}% ({done}/{total}) "
+        self.stdscr.addstr(y, cx, info_txt, curses.color_pair(CP_BG) | curses.A_BOLD); cx += len(info_txt)
+
+        # Draw Smart Progress Bar
+        # Layout: [==============      ]
+        bar_x = cx
+        bar_w = (self.w - 2) - cx
+        
+        if bar_w < 5: return
+
+        # Draw Brackets
+        self.stdscr.addstr(y, bar_x, "[", curses.color_pair(CP_BG) | curses.A_BOLD)
+        self.stdscr.addstr(y, bar_x + bar_w - 1, "]", curses.color_pair(CP_BG) | curses.A_BOLD)
+        
+        inner_x = bar_x + 1
+        inner_w = bar_w - 2
+        fill_w = int(inner_w * pct)
+        
+        # Render Bar
+        if fill_w > 0:
+            # Filled Section (Green)
+            # Use DONE_REV (White on Green) for filled area (using space char)
+            self.stdscr.attron(curses.color_pair(CP_DONE_REV))
+            self.stdscr.addstr(y, inner_x, " " * fill_w)
+            self.stdscr.attroff(curses.color_pair(CP_DONE_REV))
+            
+        remaining = inner_w - fill_w
+        if remaining > 0:
+            # Empty Section (Black)
+            # Use TRACK (White on Black) with CKBOARD
+            self.stdscr.attron(curses.color_pair(CP_TRACK))
+            for i in range(remaining):
+                self.stdscr.addch(y, inner_x + fill_w + i, curses.ACS_CKBOARD)
+            self.stdscr.attroff(curses.color_pair(CP_TRACK))
+
+    def input(self):
+        k = self.stdscr.getch()
+        if k == -1: return
+
+        if k == ord('q') or k == ord('Q'):
+            self.manager.stop_requested = True
+        elif k == ord('f') or k == ord('F'):
+            self.auto_follow = True
+        elif k == curses.KEY_UP:
+            self.auto_follow = False
+            try:
+                idx = self.visible_nodes.index(self.selected_node)
+                if idx > 0: self.selected_node = self.visible_nodes[idx-1]
+            except: pass
+        elif k == curses.KEY_DOWN:
+            self.auto_follow = False
+            try:
+                idx = self.visible_nodes.index(self.selected_node)
+                if idx < len(self.visible_nodes) - 1: self.selected_node = self.visible_nodes[idx+1]
+            except: pass
+        elif k == curses.KEY_PPAGE: # Page Up
+            self.auto_follow = False
+            try:
+                idx = self.visible_nodes.index(self.selected_node)
+                new_idx = max(0, idx - 10)
+                self.selected_node = self.visible_nodes[new_idx]
+            except: pass
+        elif k == curses.KEY_NPAGE: # Page Down
+            self.auto_follow = False
+            try:
+                idx = self.visible_nodes.index(self.selected_node)
+                new_idx = min(len(self.visible_nodes)-1, idx + 10)
+                self.selected_node = self.visible_nodes[new_idx]
+            except: pass
 
 def main(stdscr):
-    # Setup Colors
-    curses.start_color()
-    curses.use_default_colors()
+    manager = BuildManager("script")
+    tui = TUI(stdscr, manager)
     
-    # Pairs: ID, FG, BG
-    curses.init_pair(1, curses.COLOR_WHITE, -1)                 # Default: White on Transp
-    curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLUE)  # Header/Footer: White on Blue
-    curses.init_pair(3, curses.COLOR_CYAN, -1)                  # Running: Cyan
-    curses.init_pair(4, curses.COLOR_GREEN, -1)                 # Done: Green
-    curses.init_pair(5, curses.COLOR_RED, -1)                   # Fail: Red
-    curses.init_pair(6, curses.COLOR_WHITE, -1)                 # Logs: White
-    curses.init_pair(7, curses.COLOR_BLUE, -1)                  # Borders: Blue
-    curses.init_pair(8, curses.COLOR_YELLOW, -1)                # Box Titles: Yellow
-    curses.init_pair(9, curses.COLOR_BLACK, -1)                 # Pending: Black/Grey
+    manager.start_build()
+    
     try:
-        if curses.can_change_color():
-             curses.init_pair(9, 8, -1) # Grey
-    except:
-        pass
-
-    curses.init_pair(10, -1, curses.COLOR_BLACK)
-    curses.curs_set(0)
-    stdscr.nodelay(True)
-    
-    # State
-    # List of (Status, Duration)
-    # Status: PENDING, RUNNING, DONE, FAIL
-    step_data = [["PENDING", None] for _ in STEPS]
-    
-    log_lines = []
-    max_log_lines = 1000
-    
-    start_time = time.time()
-    
-    # Logs directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    log_dir = "build/logs"
-    os.makedirs(log_dir, exist_ok=True)
-    
-    spinner_idx = 0
-    last_ui_update = 0
-    
-    # Main Loop
-    for i, (script_name, disp_name) in enumerate(STEPS):
-        step_data_start = time.time()
-        step_data[i][0] = "RUNNING"
-        
-        # Log File
-        log_file_path = os.path.join(log_dir, f"{script_name}.log")
-        try:
-             log_file = open(log_file_path, "w")
-        except:
-             log_file = None
-             
-        cmd = ["bash", os.path.join(script_dir, script_name)]
-        
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
-        
         while True:
-            current_time = time.time()
+            # Update & Draw
+            tui.update()
+            tui.draw_screen()
             
-            # Read Output
-            # We use select for non-blocking check
-            reads = [process.stdout.fileno()]
-            ret = select.select(reads, [], [], 0.05) # 50ms timeout for UI responsiveness
+            # Input
+            tui.input()
             
-            if ret[0]:
-                line = process.stdout.readline()
-                if line:
-                    line = line.rstrip()
-                    log_lines.append(line)
-                    if len(log_lines) > max_log_lines:
-                        log_lines.pop(0)
-                    if log_file:
-                        log_file.write(line + "\n")
-                        log_file.flush()
+            # Check exit
+            if not manager.is_running:
+                if manager.stop_requested or manager.error_step:
+                    # If error, stay open until Q
+                    if manager.error_step:
+                        tui.auto_follow = False
+                        tui.selected_node = manager.error_step
+                        # Wait for Q
+                        continue 
+                    break
                 else:
-                    break # EOF
-            else:
-                if process.poll() is not None:
+                    # Done successfully
+                    msg = " BUILD COMPLETE - PRESS Q TO EXIT "
+                    h, w = stdscr.getmaxyx()
+                    stdscr.attron(curses.color_pair(CP_DONE) | curses.A_BOLD)
+                    stdscr.addstr(h//2, (w-len(msg))//2, msg)
+                    stdscr.refresh()
+                    while stdscr.getch() not in (ord('q'), ord('Q')): pass
                     break
             
-            # Update UI (limit FPS to ~10-20 to save CPU)
-            if current_time - last_ui_update > 0.1:
-                spinner_idx = (spinner_idx + 1) % len(SPINNER_CHARS)
-                
-                # Draw Everything
-                log_y, log_h = draw_status(stdscr, i, step_data, start_time, step_data_start, spinner_idx)
-                
-                # Draw Logs Window (Clipping)
-                if log_h > 0:
-                    # Create a subwindow or just addstr?
-                    # addstr with clipping is easier than managing subwin refresh artifacts
-                    # Draw last N lines
-                    to_draw = log_lines[-log_h:]
-                    for idx, ln in enumerate(to_draw):
-                        try:
-                            # Truncate line to width - 4
-                            max_w = stdscr.getmaxyx()[1] - 4
-                            if len(ln) > max_w: ln = ln[:max_w]
-                            stdscr.addstr(log_y + idx, 2, ln, curses.color_pair(6))
-                        except curses.error:
-                            pass
-                
-                stdscr.refresh()
-                last_ui_update = current_time
-                
-            # Check Input
-            k = stdscr.getch()
-            if k == ord('q'):
-                process.terminate()
-                sys.exit(1)
-                
-        if log_file: log_file.close()
-        rc = process.wait()
-        step_data[i][1] = time.time() - step_data_start
-        
-        if rc == 0:
-            step_data[i][0] = "DONE"
-        else:
-            step_data[i][0] = "FAIL"
-            # Draw failure state and wait
-            draw_status(stdscr, i, step_data, start_time, step_data_start, spinner_idx)
-            # Logs are already there
-            # Add message
-            h, w = stdscr.getmaxyx()
-            msg = f" Build FAILED at {disp_name}. Press 'q' to exit. "
-            stdscr.attron(curses.color_pair(5) | curses.A_BOLD)
-            stdscr.addstr(h//2, (w-len(msg))//2, msg)
-            stdscr.attroff(curses.color_pair(5) | curses.A_BOLD)
-            stdscr.refresh()
-            while True:
-                if stdscr.getch() == ord('q'): break
-                time.sleep(0.1)
-            sys.exit(1)
-
-    # All Done
-    h, w = stdscr.getmaxyx()
-    draw_status(stdscr, len(STEPS)-1, step_data, start_time, start_time, spinner_idx)
-    msg = f" Build Complete Successfully! ({format_time(time.time() - start_time)}) Press any key. "
-    stdscr.attron(curses.color_pair(4) | curses.A_BOLD)
-    stdscr.addstr(h//2, (w-len(msg))//2, msg)
-    stdscr.attroff(curses.color_pair(4) | curses.A_BOLD)
-    stdscr.refresh()
-    stdscr.nodelay(False)
-    stdscr.getch()
+            curses.napms(30)
+            
+    except KeyboardInterrupt:
+        manager.stop_requested = True
 
 if __name__ == "__main__":
-    # Ensure correct encoding (important for box drawing chars)
     os.environ.setdefault('ESCDELAY', '25')
-    try:
-        curses.wrapper(main)
-    except KeyboardInterrupt:
-        sys.exit(1)
+    curses.wrapper(main)

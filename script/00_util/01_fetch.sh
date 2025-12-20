@@ -1,4 +1,5 @@
 #!/bin/bash
+# Title: Fetch Assets
 set -e
 source script/env.sh
 
