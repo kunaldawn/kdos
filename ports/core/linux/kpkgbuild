@@ -1,0 +1,24 @@
+# description: Linux kernel
+
+name=linux
+version=6.18.1
+release=1
+source="https://cdn.kernel.org/pub/linux/kernel/v6.x/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	make mrproper
+	make defconfig
+	
+	# Build kernel and modules
+	make bzImage modules
+	make INSTALL_MOD_PATH=$PKG modules_install
+
+	# Install kernel
+	mkdir -p $PKG/boot
+	cp arch/x86/boot/bzImage $PKG/boot/vmlinuz-kdos
+	
+	# Install headers for development
+	make INSTALL_HDR_PATH=$PKG/usr headers_install
+}

@@ -1,0 +1,16 @@
+# description: GNU make utility
+
+name=make
+version=4.4.1
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+	# Fix for GCC 15 strictness (C23 default)
+	# Pass CFLAGS to configure to ensure it's used
+	./configure --host=$TARGET --prefix=/usr CFLAGS="$CFLAGS -std=gnu99"
+	make
+	make DESTDIR=$PKG install
+}

@@ -1,0 +1,17 @@
+# description	: utilities and libraries for handling ELF files
+# depends	: curl zlib xz bzip2 argp-standalone musl-fts musl-obstack musl-rpmatch
+
+name=elfutils
+version=0.190
+release=1
+source="https://sourceware.org/ftp/$name/$version/$name-$version.tar.bz2"
+
+build() {
+	cd $name-$version
+
+	CFLAGS="$CFLAGS -Wno-error -include libgen.h -include rpmatch.h -DFNM_EXTMATCH=0" \
+    LDFLAGS="$LDFLAGS -lrpmatch" \
+        ./configure --prefix=/usr --program-prefix="eu-" --disable-debuginfod --disable-werror
+	make
+	make DESTDIR=$PKG install
+}

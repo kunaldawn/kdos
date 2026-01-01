@@ -1,0 +1,86 @@
+#!/bin/bash
+# Minimal pkgdepends - Resolve package dependencies
+# For KDOS - Simple and offline only
+
+set -e
+
+KPKG_CONF="${KPKG_CONF:-/etc/kpkg.conf}"
+[ -f "$KPKG_CONF" ] && . "$KPKG_CONF"
+
+KPKG_ROOT="${KPKG_ROOT:-}"
+
+# Parse args
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+	case $1 in
+		--root)
+			KPKG_ROOT="$2"
+			shift 2
+			;;
+		*)
+			POSITIONAL_ARGS+=("$1")
+			shift
+			;;
+	esac
+done
+
+set -- "${POSITIONAL_ARGS[@]}"
+
+get_depends() {
+	local port=$1
+	local portdir
+	
+	for repo in $PORT_REPO; do
+		if [ -f "$repo/$port/kpkgbuild" ]; then
+			portdir="$repo/$port"
+			break
+		fi
+	done
+	
+	[ -z "$portdir" ] && return 1
+	
+	grep "^# depends[[:blank:]]*:" "$portdir/kpkgbuild" \
+		| sed 's/^# depends[[:blank:]]*:[[:blank:]]*//' \
+		| tr ' ' '\n' \
+		| grep -v '^$'
+}
+
+is_installed() {
+	local db="$PKGDB_DIR"
+	[ -n "$KPKG_ROOT" ] && db="$KPKG_ROOT/$PKGDB_DIR"
+	[ -f "$db/$1" ]
+}
+
+resolve_deps() {
+	local pkg=$1
+	local dep
+	
+	# Get dependencies
+	for dep in $(get_depends "$pkg"); do
+		# Skip if already processed or installed
+		echo "$PROCESSED" | grep -qw "$dep" && continue
+		is_installed "$dep" && continue
+		
+		# Recursively resolve dependencies
+		PROCESSED="$PROCESSED $dep"
+		resolve_deps "$dep"
+		
+		# Add to install list
+		echo "$INSTALL_ORDER" | grep -qw "$dep" || INSTALL_ORDER="$INSTALL_ORDER $dep"
+	done
+}
+
+# Main
+INSTALL_ORDER=""
+PROCESSED=""
+
+for pkg in "$@"; do
+	echo "$PROCESSED" | grep -qw "$pkg" && continue
+	is_installed "$pkg" && continue
+	
+	PROCESSED="$PROCESSED $pkg"
+	resolve_deps "$pkg"
+	echo "$INSTALL_ORDER" | grep -qw "$pkg" || INSTALL_ORDER="$INSTALL_ORDER $pkg"
+done
+
+echo $INSTALL_ORDER

@@ -8,6 +8,7 @@ import threading
 import queue
 import re
 import select
+import glob
 
 # --- Constants & Configuration ---
 # Color pairs
@@ -39,6 +40,7 @@ class BuildStep:
         self.end_time = None
         self.return_code = 0
         self.title = self._derive_title()
+        self.step_type = "HOST" # HOST, CHROOT
         self.expanded = True 
 
     def _derive_title(self):
@@ -84,41 +86,60 @@ class BuildManager:
         self._discover()
 
     def _discover(self, parent_dir=None, parent_node=None, level=0):
-        scan_dir = parent_dir if parent_dir else self.root_dir
-        
-        try:
-            entries = sorted(os.listdir(scan_dir))
-        except OSError: return
-
-        for entry in entries:
-            full_path = os.path.join(scan_dir, entry)
+        # Helper to add a group of scripts
+        def add_group_from_dir(name, dir_path, use_chroot=False):
+            if not os.path.isdir(dir_path): return
             
-            if os.path.isdir(full_path):
-                # Directory / Group
-                node = BuildStep(full_path, is_group=True, level=level)
-                if parent_node:
-                    parent_node.children.append(node)
-                    node.parent = parent_node
-                else:
-                    self.roots.append(node)
-                
-                self._discover(full_path, node, level + 1)
-                
-            elif entry.endswith(".sh") and re.match(r'^[0-9]+_', entry):
-                # Script
-                # Check if it is a runner
-                base = os.path.splitext(entry)[0]
-                if os.path.isdir(os.path.join(scan_dir, base)):
-                    continue
+            # Create Group Node
+            group = BuildStep(name, is_group=True, level=0)
+            self.roots.append(group)
+            
+            # Find scripts
+            files = sorted(glob.glob(os.path.join(dir_path, "*.sh")))
+            for f in files:
+                node = BuildStep(f, is_group=False, level=1)
+                node.parent = group
+                node.step_type = "CHROOT" if use_chroot else "HOST"
+                group.children.append(node)
+                self.execution_order.append(node)
 
-                node = BuildStep(full_path, is_group=False, level=level)
-                if parent_node:
-                    parent_node.children.append(node)
-                    node.parent = parent_node
-                    self.execution_order.append(node)
-                else:
-                    self.roots.append(node)
-                    self.execution_order.append(node)
+        # Dynamic Discovery
+        try:
+            entries = os.listdir(self.root_dir)
+        except OSError:
+            return
+
+        sorted_entries = sorted(entries)
+        
+        for entry in sorted_entries:
+            full_path = os.path.join(self.root_dir, entry)
+            
+            if not os.path.isdir(full_path): continue
+            if entry.startswith(".") or entry == "util" or entry == "__pycache__": continue
+            
+            # Determine Phase Name and Env
+            # Example: 03_phase2 -> phase2
+            parts = entry.split('_', 1)
+            phase_name = parts[1] if len(parts) > 1 else entry
+            env_file = os.path.join(self.root_dir, f"{phase_name}.env.sh")
+            
+            # Check Chroot
+            use_chroot = False
+            if os.path.isfile(env_file):
+                try:
+                    with open(env_file, 'r') as f:
+                        if "export CHROOT=1" in f.read():
+                            use_chroot = True
+                except: pass
+
+            # Nice Name
+            nice_name = re.sub(r'^[0-9]+_', '', entry)
+            nice_name = nice_name.replace('_', ' ').replace('-', ' ').title()
+            if use_chroot: nice_name += " (Chroot)"
+            
+            fullname = f"{nice_name}"
+            
+            add_group_from_dir(fullname, full_path, use_chroot)
 
     def start_build(self):
         self.start_time = time.time()
@@ -137,12 +158,26 @@ class BuildManager:
             self._update_family_status(step, "RUNNING")
             step.start_time = time.time()
             
-            log_file_path = os.path.join("build/logs", os.path.basename(step.path) + ".log")
+            # Calculate relative path to preserve structure
+            rel_path = os.path.relpath(step.path, self.root_dir) 
+            log_file_path = os.path.join("build/logs", rel_path + ".log")
+            
+            # Ensure parent dir exists
+            os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+            
+            # Default to bash execution on host
+            cmd = ["bash", step.path]
+            
+            if step.step_type == "CHROOT":
+                # Use absolute path for safety or relative if cwd is correct
+                # We assume running from repo root
+                wrapper = os.path.abspath("script/chroot_exec.sh")
+                cmd = [wrapper, "bash", step.path]
             
             with open(log_file_path, 'w') as lf:
                 try:
                     proc = subprocess.Popen(
-                        ["bash", step.path],
+                        cmd,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT, 
                         text=True,
@@ -169,8 +204,7 @@ class BuildManager:
                                 # EOF
                                 break
                         elif proc.poll() is not None:
-                            # Process finished AND no data ready in select?
-                            # Double check if any remaining data
+                            # Process finished
                             rest = proc.stdout.read()
                             if rest:
                                 for l in rest.splitlines():
@@ -238,27 +272,27 @@ class TUI:
             curses.start_color()
             # Note: We do NOT call use_default_colors() because we want to enforce the Blue theme.
             
-            # Theme: High Contrast Retro BIOS
-            # Color 1: BG - White on Blue
-            curses.init_pair(CP_BG, curses.COLOR_WHITE, curses.COLOR_BLUE)
+            # Theme: Modern Dark
+            # Color 1: BG - White on Black
+            curses.init_pair(CP_BG, curses.COLOR_WHITE, curses.COLOR_BLACK)
             
-            # Color 2: HL - Black on Cyan (Classic Selection)
-            curses.init_pair(CP_HL, curses.COLOR_BLACK, curses.COLOR_CYAN)
+            # Color 2: HL - White on Blue (Selection) for better contrast
+            curses.init_pair(CP_HL, curses.COLOR_WHITE, curses.COLOR_BLUE)
             
-            # Color 3: RUN - Yellow on Blue (Bright Warning)
-            curses.init_pair(CP_RUN, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+            # Color 3: RUN - Yellow on Black
+            curses.init_pair(CP_RUN, curses.COLOR_YELLOW, curses.COLOR_BLACK)
             
-            # Color 4: DONE - Green on Blue (Soft Success)
-            curses.init_pair(CP_DONE, curses.COLOR_GREEN, curses.COLOR_BLUE)
+            # Color 4: DONE - Green on Black
+            curses.init_pair(CP_DONE, curses.COLOR_GREEN, curses.COLOR_BLACK)
             
-            # Color 5: FAIL - Red on Blue
-            curses.init_pair(CP_FAIL, curses.COLOR_RED, curses.COLOR_BLUE)
+            # Color 5: FAIL - Red on Black
+            curses.init_pair(CP_FAIL, curses.COLOR_RED, curses.COLOR_BLACK)
             
-            # Color 6: TITLE - Cyan on Blue (for borders/titles)
-            curses.init_pair(CP_TITLE, curses.COLOR_CYAN, curses.COLOR_BLUE)
+            # Color 6: TITLE - Cyan on Black (for borders/titles)
+            curses.init_pair(CP_TITLE, curses.COLOR_CYAN, curses.COLOR_BLACK)
             
-            # Color 7: BAR - Blue on Cyan (Progress Bar Fill)
-            curses.init_pair(CP_BAR, curses.COLOR_BLUE, curses.COLOR_CYAN)
+            # Color 7: BAR - Blue on Black (Progress Bar Fill)
+            curses.init_pair(CP_BAR, curses.COLOR_BLUE, curses.COLOR_BLACK)
             
             # Color 12: CP_TRACK - Grey on Black (for Progress Bar Track)
             curses.init_pair(CP_TRACK, curses.COLOR_WHITE, curses.COLOR_BLACK)
@@ -266,14 +300,17 @@ class TUI:
             # Color 8: LOG - Grey on Black (Console view)
             curses.init_pair(CP_LOG, curses.COLOR_WHITE, curses.COLOR_BLACK)
             
-            # Color 9: TIME - Cyan on Blue (for timestamps)
-            curses.init_pair(CP_TIME, curses.COLOR_CYAN, curses.COLOR_BLUE)
+            # Color 9: TIME - Cyan on Black (for timestamps)
+            curses.init_pair(CP_TIME, curses.COLOR_CYAN, curses.COLOR_BLACK)
             
-            # Color 10: KEY - Yellow on Blue (for Footer keys)
-            curses.init_pair(CP_KEY, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+            # Color 10: KEY - Yellow on Black (for Footer keys)
+            curses.init_pair(CP_KEY, curses.COLOR_YELLOW, curses.COLOR_BLACK)
             
-            # Color 11: DONE_REV - White on Green (Badge for OK)
-            curses.init_pair(CP_DONE_REV, curses.COLOR_WHITE, curses.COLOR_GREEN)
+            # Color 11: DONE_REV - Black on Green (Badge for OK)
+            curses.init_pair(CP_DONE_REV, curses.COLOR_BLACK, curses.COLOR_GREEN)
+
+            # Color 13: CP_RUN_SEL - Yellow on Blue (Selected Running Icon)
+            curses.init_pair(13, curses.COLOR_YELLOW, curses.COLOR_BLUE)
 
         except: pass
 
@@ -370,6 +407,7 @@ class TUI:
 
     def _draw_tree(self, width):
         max_y = self.h - 2
+        CP_RUN_SEL = 13
         
         for i in range(max_y):
             idx = self.scroll_offset + i
@@ -395,9 +433,16 @@ class TUI:
                     icon_str = "    "
                     text_attr = curses.color_pair(CP_BG) # Pending is dim/normal
                 elif node.status == "RUNNING":
-                    icon_str = " >> "
+                    # Dots Spinner (Braille)
+                    frames = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
+                    # frame change every 0.1s
+                    idx = int(time.time() * 10) % 8
+                    # Ensure width is 4 to match other icons ("    " or " OK ")
+                    # Space + char + 2 spaces = 4 chars
+                    icon_str = f" {frames[idx]}  "
                     icon_attr = curses.color_pair(CP_RUN) | curses.A_BOLD
-                    text_attr = curses.color_pair(CP_RUN) | curses.A_BOLD
+                    # User requested Pure White and Bold for the text
+                    text_attr = curses.color_pair(CP_BG) | curses.A_BOLD
                 elif node.status == "DONE":
                     icon_str = " OK " 
                     # Using badge style: White on Green (Centered)
@@ -444,11 +489,34 @@ class TUI:
             
             # DRAW
             if node == self.selected_node:
-                # Selected: Draw full line with HL
-                full_line = f"{indent}{icon_str} {disp_title}{' '*pad_len}{t_str}"
-                self.stdscr.attron(curses.color_pair(CP_HL))
-                self.stdscr.addstr(y, 1, full_line)
-                self.stdscr.attroff(curses.color_pair(CP_HL))
+                # Selected: Granular drawing for better control
+                curr_x = 1
+                
+                # 1. Indent (Selection Blue)
+                self.stdscr.addstr(y, curr_x, indent, curses.color_pair(CP_HL)); curr_x += len(indent)
+                
+                # 2. Icon 
+                if node.status == "RUNNING" and not node.is_group:
+                    # Specific style for Running Selected: Yellow on Blue
+                    self.stdscr.addstr(y, curr_x, icon_str, curses.color_pair(CP_RUN_SEL) | curses.A_BOLD)
+                else:
+                    # Inherit selection style (White on Blue)
+                    self.stdscr.addstr(y, curr_x, icon_str, curses.color_pair(CP_HL) | curses.A_BOLD)
+                curr_x += len(icon_str)
+                
+                # 3. Spacer
+                self.stdscr.addstr(y, curr_x, " ", curses.color_pair(CP_HL)); curr_x += 1
+                
+                # 4. Text (Force White Bold on Blue)
+                self.stdscr.addstr(y, curr_x, disp_title, curses.color_pair(CP_HL) | curses.A_BOLD); curr_x += len(disp_title)
+                
+                # 5. Padding (Selection Blue)
+                self.stdscr.addstr(y, curr_x, " " * pad_len, curses.color_pair(CP_HL)); curr_x += pad_len
+                
+                # 6. Time (White Bold on Blue, or Cyan on Blue if we had pair)
+                # Using White Bold on Blue for visibility
+                self.stdscr.addstr(y, curr_x, t_str, curses.color_pair(CP_HL) | curses.A_BOLD)
+                
             else:
                 # Unselected: Draw components
                 result_x = 1
@@ -497,8 +565,11 @@ class TUI:
             
             status_s = f" STATUS: {node.status} "
             if node.status == "RUNNING":
-                t_run = time.time() - node.start_time
-                status_s += f"({int(t_run)}s)"
+                 if node.start_time:
+                     t_run = time.time() - node.start_time
+                     status_s += f"({int(t_run)}s)"
+                 else:
+                     status_s += "(Group)"
             elif node.duration() > 0:
                 status_s += f"({node.duration():.1f}s)"
                 
@@ -521,13 +592,7 @@ class TUI:
             log_h = self.h - 5
             
             if log_h <= 0: return
-            
-            # Fill Log Background with Black
-            self.stdscr.attron(curses.color_pair(CP_LOG))
-            for i in range(log_h):
-                self.stdscr.addstr(log_y + i, x, " " * w)
-            self.stdscr.attroff(curses.color_pair(CP_LOG))
-            
+
             logs = node.logs
             if not logs:
                 msg = ""
