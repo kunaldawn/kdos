@@ -3,7 +3,7 @@
 
 export CHROOT=1
 
-export CFLAGS="-O2 -pipe -std=gnu99 -fPIC"
+export CFLAGS="-O2 -pipe -std=gnu11 -fPIC"
 export CXXFLAGS="-O2 -pipe -fPIC"
 export LDFLAGS=""
 export MAKEFLAGS="-j12"
