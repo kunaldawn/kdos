@@ -1,0 +1,15 @@
+# description: The GNU Bison parser generator
+# depends: m4
+
+name=bison
+version=3.8.2
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	./configure --prefix=/usr
+	make
+	make DESTDIR=$PKG install
+}

@@ -1,0 +1,35 @@
+# description: Toybox - all-in-one Linux command line utility
+
+name=toybox
+version=0.8.13
+release=1
+source="http://landley.net/toybox/downloads/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+	# Use defconfig for full build
+	make defconfig
+	
+	# Enable required features
+	sed -i 's/# CONFIG_XZ is not set/CONFIG_XZ=y/' .config
+	sed -i 's/# CONFIG_XZCAT is not set/CONFIG_XZCAT=y/' .config
+	sed -i 's/# CONFIG_EXPR is not set/CONFIG_EXPR=y/' .config
+	sed -i 's/# CONFIG_TR is not set/CONFIG_TR=y/' .config
+	sed -i 's/# CONFIG_AWK is not set/CONFIG_AWK=y/' .config
+	sed -i 's/# CONFIG_DIFF is not set/CONFIG_DIFF=y/' .config
+	sed -i 's/# CONFIG_CMP is not set/CONFIG_CMP=y/' .config
+	sed -i 's/# CONFIG_SED is not set/CONFIG_SED=y/' .config
+
+	# Fix double prefix: CROSS_COMPILE is set to $TARGET-, and CC is set to $TARGET-gcc
+	# Toybox prepends CROSS_COMPILE to CC if CC is just a name, but if CC is full path...
+	# Simpler: just set CC=gcc so $(CROSS_COMPILE)$(CC) works out to $TARGET-gcc
+	CC=gcc make
+	make PREFIX=$PKG install
+	
+	# Create symlinks for all commands
+	cd $PKG
+	for cmd in $(./bin/toybox); do
+		[ "$cmd" != "toybox" ] && ln -sf toybox bin/$cmd
+	done
+}

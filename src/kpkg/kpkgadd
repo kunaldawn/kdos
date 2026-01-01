@@ -1,0 +1,172 @@
+#!/bin/bash
+# Minimal pkgadd - Install package tarballs
+# For KDOS - Simple and offline only
+
+set -e
+
+msg() {
+	echo "==> $1"
+}
+
+msgerr() {
+	echo "ERROR: $1" >&2
+}
+
+# Check root
+# Moved to after processing args/env
+
+KPKG_CONF="${KPKG_CONF:-/etc/kpkg.conf}"
+[ -f "$KPKG_CONF" ] && . "$KPKG_CONF"
+
+FORCE=0
+PKGFILE=""
+KPKG_ROOT="${KPKG_ROOT:-}"
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-f|--force) FORCE=1; shift ;;
+		--root) shift; KPKG_ROOT="$1"; shift ;;
+		*) PKGFILE="$1"; shift ;;
+	esac
+done
+
+# Check root/permissions
+if [ -z "$KPKG_ROOT" ]; then
+	[ "$(id -u)" = 0 ] || {
+		msgerr "Installing requires root access!"
+		exit 1
+	}
+fi
+
+[ -z "$PKGFILE" ] && {
+	echo "Usage: kpkgadd [--force] <package.tar.xz>"
+	exit 1
+}
+
+# Check package exists
+[ -f "$PKGFILE" ] || {
+	msgerr "Package file not found: $PKGFILE"
+	exit 1
+}
+
+# Resolve absolute path
+PKGFILE=$(readlink -f "$PKGFILE")
+
+# Extract package name/version from filename
+# Format: name-version-release.tar.xz
+BASENAME=$(basename "$PKGFILE" .tar.xz)
+RELEASE=${BASENAME##*-}
+BASENAME=${BASENAME%-*}
+VERSION=${BASENAME##*-}
+NAME=${BASENAME%-*}
+
+# Adjust paths for root
+INSTALL_ROOT="${KPKG_ROOT:-/}"
+[ -n "$KPKG_ROOT" ] && PKGDB_DIR="$KPKG_ROOT/$PKGDB_DIR"
+
+# Check if installed
+if [ -f "$PKGDB_DIR/$NAME" ]; then
+	IVERSION=$(head -n1 "$PKGDB_DIR/$NAME" | awk '{print $1}')
+	IRELEASE=$(head -n1 "$PKGDB_DIR/$NAME" | awk '{print $2}')
+	msg "Upgrading $NAME ($IVERSION-$IRELEASE => $VERSION-$RELEASE)"
+	UPGRADE=1
+else
+	msg "Installing $NAME-$VERSION-$RELEASE"
+fi
+
+# Extract package
+# Use temp dir on the same filesystem to allow atomic 'mv' (rename)
+# This is crucial for updating critical libs like libc.so without breaking active processes
+# We try /var/tmp or fallback to current dir context if needed
+STAGING_DIR="$INSTALL_ROOT/var/tmp"
+mkdir -p "$STAGING_DIR" 2>/dev/null || STAGING_DIR="$INSTALL_ROOT/tmp"
+mkdir -p "$STAGING_DIR" 2>/dev/null
+
+TMP_EXTRACT=$(mktemp -d -p "$STAGING_DIR") || {
+	# Fallback if mktemp -p fails
+	TMP_EXTRACT=$(mktemp -d)
+}
+
+tar -xf "$PKGFILE" -C "$TMP_EXTRACT" || {
+	msgerr "Failed to extract package"
+	rm -rf "$TMP_EXTRACT"
+	exit 1
+}
+
+# Copy files preserving structure and respecting symlinks in root
+cd "$TMP_EXTRACT"
+
+# Check for file conflicts (only on new install)
+# Now that we extracted, we can do a smarter check
+if [ -z "$UPGRADE" ] && [ "$FORCE" -eq 0 ]; then
+	CONFLICT=""
+	# We use find to iterate everything in the package
+	# ! -type d includes files, symlinks, pipes
+	for file in $(find . ! -type d); do
+		DEST="$INSTALL_ROOT/$file"
+		
+		# Check if DEST exists
+		if [ -e "$DEST" ] || [ -L "$DEST" ]; then
+			# Found a potential conflict.
+			
+			# EXCEPTION 1: Symlink Splice
+			# If package file is a symlink to directory, AND host file is symlink to directory
+			# We consider this safe (we will skip it later)
+			if [ -L "$file" ] && [ -d "$file" ] && [ -L "$DEST" ] && [ -d "$DEST" ]; then
+				continue
+			fi
+			
+			CONFLICT="$CONFLICT\n$file"
+		fi
+	done
+	
+	if [ -n "$CONFLICT" ]; then
+		msgerr "File conflict detected:$CONFLICT"
+		rm -rf "$TMP_EXTRACT"
+		exit 1
+	fi
+fi
+
+# 1. Create directories
+find . -type d ! -name "." | while read -r dir; do
+	mkdir -p "$INSTALL_ROOT/$dir"
+done
+
+# 2. Install files (Atomic Replace)
+find . ! -type d | while read -r file; do
+	DEST="$INSTALL_ROOT/$file"
+
+	if [ -L "$DEST" ] && [ -d "$DEST" ]; then
+		msg "Skipping $file (structure mismatch with host $DEST)"
+		continue
+	fi
+
+	# Conflict: destination is a real directory?
+	if [ -d "$DEST" ] && [ ! -L "$DEST" ]; then
+		msgerr "Conflict: $file is a file in package but a directory on system"
+		continue
+	fi
+
+	clean_dest=$(realpath -m "$DEST")
+	msg "Installing $file -> $clean_dest"
+	mv -f "$file" "$DEST" || {
+		msgerr "Failed to install $file"
+		rm -rf "$TMP_EXTRACT"
+		exit 1
+	}
+done
+
+# Exit temp dir before cleanup to avoid 'tar: xgetcwd' error
+cd "$INSTALL_ROOT" || cd /
+
+rm -rf "$TMP_EXTRACT"
+
+# Get list of installed files
+FILELIST=$(tar -tf "$PKGFILE")
+
+# Update database
+mkdir -p "$PKGDB_DIR"
+echo "$VERSION $RELEASE" > "$PKGDB_DIR/$NAME"
+echo "$FILELIST" >> "$PKGDB_DIR/$NAME"
+
+msg "Package '$NAME' installed successfully"

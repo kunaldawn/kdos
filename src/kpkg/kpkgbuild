@@ -1,0 +1,112 @@
+#!/bin/bash
+# Minimal pkgbuild - Build packages from kpkgbuild
+# For KDOS - Simple and offline only
+
+set -e
+
+msg() {
+	echo "==> $1"
+}
+
+msgerr() {
+	echo "ERROR: $1" >&2
+	exit 1
+}
+
+KPKG_CONF="${KPKG_CONF:-/etc/kpkg.conf}"
+. "$KPKG_CONF"
+
+# Source the kpkgbuild
+[ -f "./kpkgbuild" ] || msgerr "kpkgbuild not found in current directory"
+. ./kpkgbuild
+
+# Validate required fields
+[ -z "$name" ] && msgerr "'name' is not set"
+[ -z "$version" ] && msgerr "'version' is not set"
+[ -z "$release" ] && msgerr "'release' is not set"
+[ "$(type -t build)" != "function" ] && msgerr "'build' function not found"
+
+PKGNAME="$name-$version-$release.tar.xz"
+
+SRC="$WORK_DIR/$name/src"
+PKG="$WORK_DIR/$name/pkg"
+
+#Create work directories
+msg "Preparing..."
+rm -rf "$WORK_DIR/$name"
+mkdir -p "$SRC" "$PKG"
+
+# Extract sources (must be in port dir or SOURCE_DIR)
+msg "Extracting sources..."
+for src in $source; do
+	# Remove URL part if present (format: file::url or just url)
+	case $src in
+		*::*) srcfile="${src%%::*}" ;;
+		http://*|https://*|ftp://*) srcfile=$(basename "$src") ;;
+		*) srcfile="$src" ;;
+	esac
+	
+	# Try port directory first, then SOURCE_DIR
+	if [ -f "./$srcfile" ]; then
+		srcpath="./$srcfile"
+	elif [ -f "$SOURCE_DIR/$srcfile" ]; then
+		srcpath="$SOURCE_DIR/$srcfile"
+	else
+		msgerr "Source not found: $srcfile (checked ./ and $SOURCE_DIR)"
+	fi
+	
+	[ -f "$srcpath" ] || msgerr "Source not found: $srcpath"
+	
+	case $srcpath in
+		*.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.tar)
+			tar -xf "$srcpath" -C "$SRC" || msgerr "Failed to extract $srcfile"
+			;;
+		*)
+			cp "$srcpath" "$SRC/" || msgerr "Failed to copy $srcfile"
+			;;
+	esac
+done
+
+# Build
+msg "Building $name-$version-$release..."
+cd "$SRC" || msgerr "Failed to enter $SRC"
+
+set +e
+(
+	set -e
+	build
+)
+ret=$?
+set -e
+[ $ret -eq 0 ] || msgerr "Build failed"
+
+cd - >/dev/null
+
+# Package
+msg "Creating package..."
+[ -d "$PKG" ] || msgerr "PKG directory is empty"
+
+cd "$PKG" || msgerr "Failed to enter $PKG"
+
+# Remove libtool .la files (conflicts with cross-compile)
+find . -name "*.la" -delete
+
+# Create tarball
+mkdir -p "$PACKAGE_DIR"
+tar -cJf "$PACKAGE_DIR/$PKGNAME" ./* || msgerr "Failed to create package"
+
+cd - >/dev/null
+
+# Cleanup
+msg "Cleaning up..."
+rm -rf "$WORK_DIR/$name"
+
+msg "Package created: $PACKAGE_DIR/$PKGNAME"
+
+# Install if requested
+case "$1" in
+	-i|--install)
+		msg "Installing package..."
+		pkgadd "$PACKAGE_DIR/$PKGNAME"
+		;;
+esac

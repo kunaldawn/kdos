@@ -1,0 +1,15 @@
+# description	: Programs for reading, writing, and converting info pages
+# depends	: ncurses perl
+
+name=texinfo
+version=7.1
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	./configure --prefix=/usr --disable-static
+	make
+	make DESTDIR=$PKG install
+}

@@ -1,0 +1,91 @@
+#!/bin/bash
+# Smart fetch - Download sources to ports directories
+# Reads kpkgbuild files to determine what to download
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PORT_REPO="$SCRIPT_DIR/core"
+
+echo "==> Fetching sources for all ports..."
+
+fetch_port() {
+    local portdir=$1
+    local portname=$(basename "$portdir")
+    
+    cd "$portdir" || return 1
+    
+    # Check if kpkgbuild exists
+    if [ ! -f "./kpkgbuild" ]; then
+        echo "⚠  $portname: No kpkgbuild found"
+        return 0
+    fi
+    
+    # Source the kpkgbuild to get source URLs
+    unset name version source
+    . ./kpkgbuild 2>/dev/null || {
+        echo "⚠  $portname: Failed to source kpkgbuild"
+        return 0
+    }
+    
+    [ -z "$source" ] && {
+        echo "⚠  $portname: No source defined"
+        return 0
+    }
+    
+    # Download each source
+    for src in $source; do
+        case $src in
+            *::*)
+                # Format: filename::url
+                filename="${src%%::*}"
+                url="${src#*::}"
+                ;;
+            http://*|https://*|ftp://*)
+                # Just a URL, extract filename
+                filename=$(basename "$src")
+                url="$src"
+                ;;
+            *)
+                # Local file or plain filename, skip download
+                echo "⊙  $portname: $src (local file, skipping)"
+                continue
+                ;;
+        esac
+        
+        if [ -f "./$filename" ]; then
+            echo "✓  $portname: $filename exists"
+        else
+            echo "⬇  $portname: Downloading $filename..."
+            wget -q --show-progress -O "./$filename" "$url" || {
+                echo "✗  $portname: Failed to download $filename"
+                rm -f "./$filename"
+                return 1
+            }
+            echo "✓  $portname: Downloaded $filename"
+        fi
+    done
+    
+    return 0
+}
+
+# Fetch all ports
+total=0
+success=0
+failed=0
+
+for portdir in "$PORT_REPO"/*; do
+    [ -d "$portdir" ] || continue
+    total=$((total + 1))
+    
+    if fetch_port "$portdir"; then
+        success=$((success + 1))
+    else
+        failed=$((failed + 1))
+    fi
+done
+
+echo ""
+echo "==> Summary: $success/$total successful, $failed failed"
+[ $failed -eq 0 ] || exit 1
+

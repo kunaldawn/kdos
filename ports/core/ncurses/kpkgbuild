@@ -1,0 +1,29 @@
+# description: System V Release 4.0 curses emulation library
+
+name=ncurses
+version=6.5
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+	./configure --host=$TARGET --prefix=/usr \
+	            --mandir=/usr/share/man \
+	            --with-shared \
+	            --without-debug \
+	            --without-normal \
+	            --with-cxx-shared \
+	            --enable-pc-files \
+	            --enable-widec \
+	            --with-pkg-config-libdir=/usr/lib/pkgconfig
+	make
+	make DESTDIR=$PKG install
+
+	# Create non-wide compatibility links
+	for lib in ncurses form panel menu; do
+		ln -sf lib${lib}w.so $PKG/usr/lib/lib${lib}.so
+		ln -sf ${lib}w.pc $PKG/usr/lib/pkgconfig/${lib}.pc
+	done
+	ln -sf libncurses.so $PKG/usr/lib/libcurses.so
+}
