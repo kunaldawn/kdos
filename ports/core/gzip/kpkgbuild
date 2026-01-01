@@ -1,0 +1,14 @@
+# description: Tar utility
+
+name=gzip
+version=1.13
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+	./configure --prefix=/usr
+	make
+	make DESTDIR=$PKG install
+}

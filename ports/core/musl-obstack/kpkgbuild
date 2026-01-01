@@ -1,0 +1,18 @@
+# description	: Obstack standalone library
+# url		: https://github.com/void-linux/musl-obstack
+
+name=musl-obstack
+version=1.2.3
+release=1
+source="https://github.com/void-linux/musl-obstack/archive/v$version.tar.gz"
+
+build() {
+	cd $name-$version
+	./bootstrap.sh
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc
+
+	make
+	make DESTDIR=$PKG install
+}

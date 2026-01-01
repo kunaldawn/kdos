@@ -1,0 +1,83 @@
+#!/bin/bash
+# Minimal pkgdel - Remove installed packages
+# For KDOS - Simple and offline only
+
+set -e
+
+msg() {
+	echo "==> $1"
+}
+
+msgerr() {
+	echo "ERROR: $1" >&2
+}
+
+KPKG_CONF="${KPKG_CONF:-/etc/kpkg.conf}"
+[ -f "$KPKG_CONF" ] && . "$KPKG_CONF"
+
+KPKG_ROOT="${KPKG_ROOT:-}"
+PACKAGES=""
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--root)
+			shift
+			KPKG_ROOT="$1"
+			shift
+			;;
+		*)
+			PACKAGES="$PACKAGES $1"
+			shift
+			;;
+	esac
+done
+
+# Check root/permissions
+# If no custom root is set, we must be root.
+if [ -z "$KPKG_ROOT" ]; then
+	[ "$(id -u)" = 0 ] || {
+		msgerr "Remove requires root access!"
+		exit 1
+	}
+fi
+
+[ -z "$PACKAGES" ] && {
+	echo "Usage: kpkgdel [--root <path>] <package>..."
+	exit 1
+}
+
+# Adjust paths for root
+INSTALL_ROOT="${KPKG_ROOT:-/}"
+[ -n "$KPKG_ROOT" ] && PKGDB_DIR="$KPKG_ROOT/$PKGDB_DIR"
+
+for PKG in $PACKAGES; do
+	# Check if installed
+	[ -f "$PKGDB_DIR/$PKG" ] || {
+		msgerr "Package '$PKG' not installed"
+		exit 1
+	}
+
+	msg "Removing $PKG..."
+
+	# Remove files (in reverse order)
+	tail -n+2 "$PKGDB_DIR/$PKG" | tac | while read -r file; do
+		# Prepend root
+		full_path="${INSTALL_ROOT%/}/$file"
+		
+		case $file in
+			*/) 
+				# Directory - try to remove if empty
+				rmdir "$full_path" 2>/dev/null || true
+				;;
+			*)
+				# File - remove it
+				rm -f "$full_path"
+				;;
+		esac
+	done
+
+	# Remove from database
+	rm -f "$PKGDB_DIR/$PKG"
+
+	msg "Package '$PKG' removed"
+done

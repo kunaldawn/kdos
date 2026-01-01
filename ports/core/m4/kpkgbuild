@@ -1,0 +1,15 @@
+# description: GNU implementation of the traditional Unix macro processor
+
+name=m4
+version=1.4.19
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	export CFLAGS="-O2 -pipe -std=gnu17 -D_GL_ATTRIBUTE_NODISCARD=\"\""
+	./configure --prefix=/usr
+	make
+	make DESTDIR=$PKG install
+}

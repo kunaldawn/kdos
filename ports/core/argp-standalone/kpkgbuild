@@ -1,0 +1,21 @@
+# description	: Standalone version of arguments parsing functions from GLIBC
+# url		: https://github.com/ericonr/argp-standalone
+
+name=argp-standalone
+version=1.4.1
+release=1
+source="https://github.com/ericonr/argp-standalone/archive/$version.tar.gz"
+
+build() {
+	cd $name-$version
+    autoreconf -fi
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc
+
+	make
+
+	mkdir -p $PKG/usr/{include,lib}
+	install -Dm644 argp.h $PKG/usr/include/argp.h
+	install -Dm644 libargp.a $PKG/usr/lib/libargp.a
+}
