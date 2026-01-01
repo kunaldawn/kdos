@@ -1,0 +1,14 @@
+# description: Boot loader for the Linux operating system
+
+name=syslinux
+version=6.03
+release=1
+source="https://www.kernel.org/pub/linux/utils/boot/syslinux/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	# Syslinux doesn't use configure, just make and install
+	make bios
+	make INSTALLROOT=$PKG AUXDIR=/usr/lib/syslinux install
+}

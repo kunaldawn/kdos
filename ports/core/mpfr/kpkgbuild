@@ -1,0 +1,17 @@
+# description: Functions for multiple precision math
+# depends: gmp
+
+name=mpfr
+version=4.2.2
+release=1
+source="https://www.mpfr.org/mpfr-$version/mpfr-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	./configure --host=$TARGET --prefix=/usr        \
+	            --disable-static     \
+	            --enable-thread-safe
+	make
+	make DESTDIR=$PKG install
+}

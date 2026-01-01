@@ -1,0 +1,23 @@
+# description: rEFInd Boot Manager
+
+name=refind
+version=0.14.2
+release=1
+source="https://downloads.sourceforge.net/project/refind/$version/refind-src-$version.tar.gz"
+
+build() {
+	cd refind-$version
+
+	# Build rEFInd
+	make
+
+	# Install to package directory
+	mkdir -p $PKG/boot/efi/EFI/refind
+	cp -r refind/* $PKG/boot/efi/EFI/refind/
+	
+	# Install tools
+	mkdir -p $PKG/usr/bin
+	install -m755 refind-install $PKG/usr/bin/
+	install -m755 mkrlconf $PKG/usr/bin/refind-mkrlconf
+	install -m755 mvrefind $PKG/usr/bin/refind-mvrefind
+}
