@@ -1,0 +1,15 @@
+# description: Contains math libraries with useful functions for arbitrary precision arithmetic
+
+name=gmp
+version=6.3.0
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/gmp/gmp-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	./configure --prefix=/usr \
+	            --disable-static
+	make
+	make DESTDIR=$PKG install
+}

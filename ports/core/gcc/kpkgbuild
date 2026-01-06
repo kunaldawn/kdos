@@ -1,0 +1,33 @@
+# description: The GNU compiler collection
+# depends: mpc mpfr gmp zlib
+
+name=gcc
+version=15.2.0
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	mkdir -v build
+	cd       build
+
+	../configure \
+		--prefix=/usr \
+		--libexecdir=/usr/lib \
+		--enable-languages=c,c++,lto \
+		--disable-bootstrap \
+		--with-system-zlib \
+		--disable-nls \
+		--disable-multilib \
+		--enable-threads=posix \
+		--enable-__cxa_atexit \
+		--enable-default-pie \
+		--enable-default-ssp \
+		-with-pkgversion="KDOS"
+	make
+	make DESTDIR=$PKG install
+
+	cd $PKG/usr/bin
+	ln -sv gcc cc
+}

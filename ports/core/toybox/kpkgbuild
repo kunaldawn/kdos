@@ -1,0 +1,23 @@
+# description: Toybox - all-in-one Linux command line utility
+
+name=toybox
+version=0.8.13
+release=1
+source="http://landley.net/toybox/downloads/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+make defconfig -j1
+cat >> .config <<EOF
+CONFIG_EXPR=y
+CONFIG_GETTY=y
+CONFIG_INIT=y
+CONFIG_TR=y
+CONFIG_AWK=y
+CONFIG_MDEV=y
+CONFIG_MOUNT=y
+EOF
+make PREFIX=$PKG install -j1
+
+}

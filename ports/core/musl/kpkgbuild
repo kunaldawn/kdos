@@ -1,0 +1,15 @@
+# description: Musl C library
+
+name=musl
+version=1.2.5
+release=1
+source="https://musl.libc.org/releases/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+	./configure \
+		--prefix=/usr
+	make
+	make DESTDIR=$PKG install
+}

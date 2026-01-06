@@ -13,45 +13,20 @@ RUN apk update && apk add --no-cache \
     gcc gcc-doc \
     g++ \
     musl-dev \
-    man-pages \
-    gdb \
-    ctags \
-    ncurses-dev \
-    flex \
     bison \
+    flex \
     linux-headers \
-    diffutils \
-    elfutils-dev \
-    cpio cpio-doc \
-    findutils \
-    openssl-dev \
-    syslinux syslinux-doc \
-    pkgconf \
     rsync \
-    gmp-dev \
-    mpfr-dev \
-    mpc1-dev \
-    mpfr-dev \
-    mpc1-dev \
-    perl \
     xz \
-    autoconf \
-    automake \
-    libtool \
-    python3 \
-    ncurses \
-    xorriso \
-    mtools \
-    dosfstools \
-    util-linux-dev \
-    squashfs-tools \
-    go
+    python3
 
 WORKDIR /workspace
 
 COPY src /workspace/src
 COPY fs /workspace/fs
 COPY script /workspace/script
+COPY ports /workspace/ports
+
 
 RUN chmod 777 /workspace /workspace/fs
 RUN chmod +x /workspace/script/*.sh
