@@ -1,0 +1,17 @@
+# description   : Utilities for synchronizing large file archives over a network
+# depends       : zlib zstd
+
+name=rsync
+version=3.2.7
+release=1
+source="https://www.samba.org/ftp/rsync/src/$name-$version.tar.gz"
+
+build() {
+        cd $name-$version
+        ./configure \
+                --prefix=/usr \
+                --with-included-zlib=no \
+                --disable-xxhash
+        make
+        make DESTDIR=$PKG install
+}

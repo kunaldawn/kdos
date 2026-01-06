@@ -1,0 +1,19 @@
+# description: Tools to create and extract squashfs filesystems
+# depends: zlib xz
+
+name=squashfs-tools
+version=4.6.1
+release=1
+source="https://github.com/plougher/squashfs-tools/archive/refs/tags/$version.tar.gz"
+
+build() {
+	cd $name-$version/squashfs-tools
+
+	make \
+		XZ_SUPPORT=1 \
+		LZMA_XZ_SUPPORT=1 \
+		ZLIB_SUPPORT=1 \
+		LZ4_SUPPORT=0 \
+		ZSTD_SUPPORT=0
+	make INSTALL_DIR=$PKG/usr/bin install
+}
