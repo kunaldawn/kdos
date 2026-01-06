@@ -21,8 +21,9 @@ Most distros give you a house. KDOS gives you a pile of bricks, a trowel, and a 
 
 1.  **LFS Roots**: We believe in understanding every single byte that goes into the OS. If we didn't compile it, we don't trust it.
 2.  **Musl Libc**: Glibc is a metropolitan city. Musl is a Zen garden. We choose the garden.
-3.  **Toybox**: Why have 100 core utilities when you can have *one* statically linked binary that rules them all?
+3.  **Toybox**: Why have 100 core utilities when you can have *one* binary that rules them all?
 4.  **No SystemD**: We init like our ancestors did. Simple serial execution.
+5.  **KPKG**: We build our own package manager for fun.
 
 ---
 
