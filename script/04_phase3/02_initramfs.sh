@@ -34,13 +34,16 @@ ln -sf bash bin/sh
 # Create Init Script
 cat > init <<EOF
 #!/bin/bash
-set -x
 export PATH=/bin
 
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
-/bin/mdev -s
+
+# Check for loop device (create if missing)
+if [ ! -e /dev/loop0 ]; then
+    mknod /dev/loop0 b 7 0
+fi
 
 echo "Welcome to KDOS"
 
@@ -62,11 +65,17 @@ if [ "\$FOUND" == "1" ]; then
     
     # Mount System SquashFS
     mkdir -p /mnt/system
-    mount -t squashfs /mnt/iso/system.sfs /mnt/system
+    mount -t squashfs -o ro,loop /mnt/iso/system.sfs /mnt/system
     
     # Setup OverlayFS
+    # Mount tmpfs for overlay storage to ensure support for OverlayFS requirements
+    mkdir -p /mnt/overlay
+    mount -t tmpfs tmpfs /mnt/overlay
     mkdir -p /mnt/overlay/upper /mnt/overlay/work /newroot
     mount -t overlay overlay -o lowerdir=/mnt/system,upperdir=/mnt/overlay/upper,workdir=/mnt/overlay/work /newroot
+    
+    # Create missing mountpoints in newroot (since they might be excluded in squashfs)
+    mkdir -p /newroot/dev /newroot/proc /newroot/sys /newroot/run /newroot/tmp
     
     # Move Mountpoints
     mount --move /dev /newroot/dev
