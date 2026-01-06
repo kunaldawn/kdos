@@ -1,0 +1,320 @@
+#!/bin/bash
+# Minimal kpkg - Package manager for KDOS
+# Simple offline package manager with dependency support
+set -e
+
+VERSION="1.0-kdos"
+
+msg() {
+	echo "==> $1"
+}
+
+msgerr() {
+	echo "ERROR: $1" >&2
+}
+
+KPKG_CONF="${KPKG_CONF:-/etc/kpkg.conf}"
+export KPKG_CONF
+
+if [ -f "$KPKG_CONF" ]; then
+	. "$KPKG_CONF"
+else
+	msgerr "Config file not found: $KPKG_CONF"
+	exit 1
+fi
+
+check_root_access() {
+	if [ -z "$KPKG_ROOT" ]; then
+		[ "$(id -u)" = 0 ] || {
+			msgerr "Operation requires root access!"
+			exit 1
+		}
+	fi
+}
+
+get_pkgdb() {
+	if [ -n "$KPKG_ROOT" ]; then
+		echo "$KPKG_ROOT/$PKGDB_DIR"
+	else
+		echo "$PKGDB_DIR"
+	fi
+}
+
+is_installed() {
+	DB="$(get_pkgdb)"
+	[ -f "$DB/$1" ]
+}
+
+get_portpath() {
+	for repo in $PORT_REPO; do
+		if [ -f "$repo/$1/kpkgbuild" ]; then
+			echo "$repo/$1"
+			return 0
+		fi
+	done
+	return 1
+}
+
+parse_common_args() {
+	# Helper to parse common args like --root
+	# Returns the remaining args in global ARGS array
+	ARGS=()
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--root)
+				shift
+				KPKG_ROOT="$1"
+				export KPKG_ROOT
+				shift
+				;;
+			*)
+				ARGS+=("$1")
+				shift
+				;;
+		esac
+	done
+}
+
+cmd_install() {
+	# Custom parsing for install to handle -f/--force
+	FORCE=0
+	PACKAGES=""
+	
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			-f|--force) FORCE=1; shift ;;
+			--root)
+				shift
+				KPKG_ROOT="$1"
+				export KPKG_ROOT
+				shift
+				;;
+			*) 
+				PACKAGES="$PACKAGES $1" 
+				shift
+				;;
+		esac
+	done
+	
+	check_root_access
+	
+	[ -z "$PACKAGES" ] && {
+		echo "Usage: kpkg install <package>..."
+		exit 1
+	}
+	
+	# Resolve dependencies
+	msg "Resolving dependencies..."
+	# kpkgdepends uses KPKG_ROOT env var
+	if ! DEPS=$(kpkgdepends $PACKAGES); then
+		msgerr "Dependency resolution failed"
+		exit 1
+	fi
+	
+	if [ -z "$DEPS" ]; then
+		msg "Nothing to install"
+		return 0
+	fi
+	
+	msg "Packages to install: $DEPS"
+	
+	# Build and install each package
+	for pkg in $DEPS; do
+		if is_installed "$pkg"; then
+			if [ "$FORCE" -eq 1 ]; then
+				msg "Reinstalling $pkg (forced)..."
+			else
+				msg "Skipping $pkg (already installed)"
+				continue
+			fi
+		fi
+		
+		portpath=$(get_portpath "$pkg") || {
+			msgerr "Port not found: $pkg"
+			exit 1
+		}
+		
+		# Build package
+		msg "Building $pkg..."
+		cd "$portpath" || exit 1
+		kpkgbuild || {
+			msgerr "Failed to build $pkg"
+			exit 1
+		}
+		cd - >/dev/null
+		
+		# Install package
+		. "$portpath/kpkgbuild"
+		PKGFILE="$PACKAGE_DIR/$name-$version-$release.tar.xz"
+		
+		ADD_OPTS=""
+		[ "$FORCE" -eq 1 ] && ADD_OPTS="--force"
+		[ -n "$KPKG_ROOT" ] && ADD_OPTS="$ADD_OPTS --root $KPKG_ROOT"
+		
+		kpkgadd $ADD_OPTS "$PKGFILE" || {
+			msgerr "Failed to install $pkg"
+			exit 1
+		}
+	done
+	
+	msg "Installation complete"
+}
+
+cmd_remove() {
+	parse_common_args "$@"
+	set -- "${ARGS[@]}"
+	
+	check_root_access
+	
+	[ -z "$1" ] && {
+		echo "Usage: kpkg remove <package>..."
+		exit 1
+	}
+	
+	ADD_OPTS=""
+	[ -n "$KPKG_ROOT" ] && ADD_OPTS="--root $KPKG_ROOT"
+	
+	for pkg in $@; do
+		kpkgdel $ADD_OPTS "$pkg" || exit 1
+	done
+}
+
+cmd_list() {
+	parse_common_args "$@"
+	
+	DB="$(get_pkgdb)"
+	if [ -d "$DB" ]; then
+		for pkg in "$DB"/*; do
+			[ -f "$pkg" ] || continue
+			name=$(basename "$pkg")
+			ver=$(head -n1 "$pkg" | awk '{print $1"-"$2}')
+			echo "$name $ver"
+		done | column -t
+	fi
+}
+
+cmd_info() {
+	parse_common_args "$@"
+	set -- "${ARGS[@]}"
+	
+	[ -z "$1" ] && {
+		echo "Usage: kpkg info <package>"
+		exit 1
+	}
+	
+	pkg=$1
+	DB="$(get_pkgdb)"
+	
+	if is_installed "$pkg"; then
+		echo "Package: $pkg"
+		echo "Version: $(head -n1 "$DB/$pkg" | awk '{print $1"-"$2}')"
+		echo "Files: $(tail -n+2 "$DB/$pkg" | wc -l)"
+	else
+		portpath=$(get_portpath "$pkg") || {
+			msgerr "Package not found or not installed: $pkg"
+			exit 1
+		}
+		
+		. "$portpath/kpkgbuild"
+		echo "Package: $name"
+		echo "Version: $version-$release"
+		[ -n "$1" ] && echo "Description: $1"
+		[ -n "$(grep '^# depends' "$portpath/kpkgbuild")" ] && {
+			echo "Depends: $(grep '^# depends' "$portpath/kpkgbuild" | sed 's/^# depends[[:blank:]]*:[[:blank:]]*//')"
+		}
+		echo "Status: not installed"
+	fi
+}
+
+cmd_update() {
+	parse_common_args "$@"
+	check_root_access
+	
+	msg "Checking for updates..."
+	
+	# Get list of installed packages
+	# We pass existing KPKG_ROOT by export
+	INSTALLED=$(cmd_list | awk '{print $1}')
+	DB="$(get_pkgdb)"
+	
+	TOUPDATE=""
+	for pkg in $INSTALLED; do
+		portpath=$(get_portpath "$pkg") || continue
+		
+		. "$portpath/kpkgbuild"
+		NEWVER="$version-$release"
+		OLDVER=$(head -n1 "$DB/$pkg" | awk '{print $1"-"$2}')
+		
+		if [ "$NEWVER" != "$OLDVER" ]; then
+			TOUPDATE="$TOUPDATE $pkg"
+			msg "Update available: $pkg $OLDVER => $NEWVER"
+		fi
+	done
+	
+	[ -z "$TOUPDATE" ] && {
+		msg "All packages are up to date"
+		return 0
+	}
+	
+	# Rebuild and reinstall
+	for pkg in $TOUPDATE; do
+		portpath=$(get_portpath "$pkg")
+		msg "Updating $pkg..."
+		
+		cd "$portpath" || exit 1
+		kpkgbuild || {
+			msgerr "Failed to build $pkg"
+			exit 1
+		}
+		cd - >/dev/null
+		
+		. "$portpath/kpkgbuild"
+		PKGFILE="$PACKAGE_DIR/$name-$version-$release.tar.xz"
+		
+		ADD_OPTS=""
+		[ -n "$KPKG_ROOT" ] && ADD_OPTS="--root $KPKG_ROOT"
+		
+		kpkgadd $ADD_OPTS "$PKGFILE" || {
+			msgerr "Failed to install $pkg"
+			exit 1
+		}
+	done
+	
+	msg "Update complete"
+}
+
+show_help() {
+	cat <<EOF
+kpkg version $VERSION - Minimal package manager for KDOS
+
+Usage: kpkg <command> [options]
+
+Options:
+  --root <path>      Operate on a different root directory
+
+Commands:
+  install <pkg>...   Install package(s) with dependencies
+  remove <pkg>...    Remove package(s)
+  update             Update all installed packages
+  list               List installed packages
+  info <pkg>         Show package information
+  help               Show this help message
+
+Examples:
+  kpkg install bash
+  kpkg install --root /mnt/target bash
+  kpkg remove bash
+  kpkg list
+EOF
+}
+
+# Main
+case "$1" in
+	install|i) shift; cmd_install $@ ;;
+	remove|r) shift; cmd_remove $@ ;;
+	update|u) shift; cmd_update $@ ;;
+	list|l) shift; cmd_list $@ ;;
+	info) shift; cmd_info $@ ;;
+	help|--help|-h) show_help ;;
+	*) show_help; exit 1 ;;
+esac

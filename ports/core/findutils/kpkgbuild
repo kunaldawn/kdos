@@ -1,0 +1,15 @@
+# description: GNU utilities to locate files
+
+name=findutils
+version=4.10.0
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	./configure --prefix=/usr \
+	            --localstatedir=/var/lib/locate
+	make
+	make DESTDIR=$PKG install
+}
