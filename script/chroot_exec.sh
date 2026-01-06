@@ -34,11 +34,13 @@ mountpoint -q "$CHROOT_DIR/run" || mount -t tmpfs tmpfs "$CHROOT_DIR/run"
 
 # Mount repository and ports
 mountpoint -q "$CHROOT_DIR/kdos" || mount --bind "$REPO_ROOT" "$CHROOT_DIR/kdos"
+mountpoint -q "$CHROOT_DIR/kdos/build" || mount --bind "$REPO_ROOT/build" "$CHROOT_DIR/kdos/build"
 mountpoint -q "$CHROOT_DIR/ports" || mount --bind "$REPO_ROOT/ports" "$CHROOT_DIR/ports"
 
 # Cleanup function (Unmount on exit)
 cleanup() {
     umount "$CHROOT_DIR/ports" 2>/dev/null || true
+    umount "$CHROOT_DIR/kdos/build" 2>/dev/null || true
     umount "$CHROOT_DIR/kdos" 2>/dev/null || true
     umount "$CHROOT_DIR/run" 2>/dev/null || true
     umount "$CHROOT_DIR/tmp" 2>/dev/null || true
