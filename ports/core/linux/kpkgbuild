@@ -11,6 +11,134 @@ build() {
 	make mrproper
 	make defconfig
 	
+	# Enable support for KDOS Live System (SquashFS + OverlayFS)
+	./scripts/config --enable CONFIG_SQUASHFS
+	./scripts/config --enable CONFIG_SQUASHFS_XZ
+	./scripts/config --enable CONFIG_OVERLAY_FS
+	./scripts/config --enable CONFIG_ISO9660_FS
+	./scripts/config --enable CONFIG_BLK_DEV_LOOP
+	./scripts/config --enable CONFIG_DEVTMPFS
+	./scripts/config --enable CONFIG_DEVTMPFS_MOUNT
+
+	# Modern PC Hardware Support
+	./scripts/config --enable CONFIG_BLK_DEV_NVME
+	./scripts/config --enable CONFIG_SATA_AHCI
+	./scripts/config --enable CONFIG_AHCI
+	./scripts/config --enable CONFIG_USB_XHCI_HCD
+	./scripts/config --enable CONFIG_USB_STORAGE
+	./scripts/config --enable CONFIG_E1000E
+	
+	# EFI Support
+	./scripts/config --enable CONFIG_EFI_STUB
+	./scripts/config --enable CONFIG_FB_EFI
+	
+	# Docker / Container Support
+	./scripts/config --enable CONFIG_NAMESPACES
+	./scripts/config --enable CONFIG_NET_NS
+	./scripts/config --enable CONFIG_PID_NS
+	./scripts/config --enable CONFIG_IPC_NS
+	./scripts/config --enable CONFIG_UTS_NS
+	./scripts/config --enable CONFIG_CGROUPS
+	./scripts/config --enable CONFIG_CGROUP_CPUACCT
+	./scripts/config --enable CONFIG_CGROUP_DEVICE
+	./scripts/config --enable CONFIG_CGROUP_FREEZER
+	./scripts/config --enable CONFIG_CGROUP_SCHED
+	./scripts/config --enable CONFIG_CPUSETS
+	./scripts/config --enable CONFIG_MEMCG
+	./scripts/config --enable CONFIG_KEYS
+	./scripts/config --enable CONFIG_VETH
+	./scripts/config --enable CONFIG_BRIDGE
+	./scripts/config --enable CONFIG_BRIDGE_NETFILTER
+	./scripts/config --enable CONFIG_IP_NF_FILTER
+	./scripts/config --enable CONFIG_IP_NF_TARGET_MASQUERADE
+	./scripts/config --enable CONFIG_NETFILTER_XT_MATCH_ADDRTYPE
+	./scripts/config --enable CONFIG_NETFILTER_XT_MATCH_CONNTRACK
+	./scripts/config --enable CONFIG_NETFILTER_XT_MATCH_IPVS
+	./scripts/config --enable CONFIG_IP_VS
+	./scripts/config --enable CONFIG_IP_VS_RR
+	./scripts/config --enable CONFIG_IP_VS_NFCT
+	./scripts/config --enable CONFIG_IP_VS_PROTO_TCP
+	./scripts/config --enable CONFIG_IP_VS_PROTO_UDP
+	./scripts/config --enable CONFIG_VXLAN
+	./scripts/config --enable CONFIG_IPVLAN
+	./scripts/config --enable CONFIG_MACVLAN
+	./scripts/config --enable CONFIG_DUMMY
+	./scripts/config --enable CONFIG_NF_NAT
+	
+	# K8s / K3s Support
+	./scripts/config --enable CONFIG_POSIX_MQUEUE
+	./scripts/config --enable CONFIG_BPF_SYSCALL
+	./scripts/config --enable CONFIG_CGROUP_BPF
+	
+	# WiFi / Laptop Support
+	./scripts/config --enable CONFIG_WIRELESS
+	./scripts/config --enable CONFIG_CFG80211
+	./scripts/config --enable CONFIG_MAC80211
+	./scripts/config --enable CONFIG_WLAN
+	./scripts/config --enable CONFIG_ACPI_BATTERY
+	./scripts/config --enable CONFIG_ACPI_THERMAL
+	./scripts/config --enable CONFIG_CPU_FREQ
+	
+	# Wireless Drivers (Common)
+	./scripts/config --enable CONFIG_IWLWIFI
+	./scripts/config --enable CONFIG_IWLDVM
+	./scripts/config --enable CONFIG_IWLMVM
+	./scripts/config --enable CONFIG_RT2X00
+	./scripts/config --enable CONFIG_RTL8180
+	./scripts/config --enable CONFIG_RTL8187
+	./scripts/config --enable CONFIG_RTL_CARDS
+	./scripts/config --enable CONFIG_RTL8192CU
+	
+	# QEMU / KVM Guest Support
+	./scripts/config --enable CONFIG_VIRTIO_PCI
+	./scripts/config --enable CONFIG_VIRTIO_BLK
+	./scripts/config --enable CONFIG_VIRTIO_NET
+	./scripts/config --enable CONFIG_VIRTIO_CONSOLE
+	./scripts/config --enable CONFIG_VIRTIO_BALLOON
+	./scripts/config --enable CONFIG_SCSI_VIRTIO
+
+	# Developer Experience / Desktop Use
+	## Graphics (DRM)
+	./scripts/config --enable CONFIG_DRM
+	./scripts/config --module CONFIG_DRM_I915
+	./scripts/config --module CONFIG_DRM_AMDGPU
+	./scripts/config --module CONFIG_DRM_NOUVEAU
+	./scripts/config --enable CONFIG_FB_EFI
+	
+	## Sound
+	./scripts/config --enable CONFIG_SOUND
+	./scripts/config --enable CONFIG_SND
+	./scripts/config --module CONFIG_SND_HDA_INTEL
+	
+	## Input / Multimedia
+	./scripts/config --module CONFIG_USB_VIDEO_CLASS
+	./scripts/config --enable CONFIG_INPUT_EVDEV
+	
+	## Bluetooth
+	./scripts/config --module CONFIG_BT
+	./scripts/config --module CONFIG_BT_HCIBTUSB
+	
+	## Networking / VPN
+	./scripts/config --module CONFIG_TUN
+	./scripts/config --module CONFIG_WIREGUARD
+	
+	## Cryptography / Disk Encryption
+	./scripts/config --enable CONFIG_DM_CRYPT
+	./scripts/config --enable CONFIG_CRYPTO_AES
+	./scripts/config --enable CONFIG_CRYPTO_XTS
+	
+	## Filesystems
+	./scripts/config --enable CONFIG_NTFS3_FS
+	./scripts/config --enable CONFIG_FUSE_FS
+	
+	## Virtualization Host (KVM)
+	./scripts/config --module CONFIG_KVM
+	./scripts/config --module CONFIG_KVM_INTEL
+	./scripts/config --module CONFIG_KVM_AMD
+	
+	# Resolve any missing dependencies
+	make olddefconfig
+	
 	# Build kernel and modules
 	make bzImage modules
 	make INSTALL_MOD_PATH=$PKG modules_install
