@@ -30,6 +30,13 @@ echo "Squashing Root Filesystem..."
 # Exclude pseudo filesystems, build artifacts, and caches
 mksquashfs / $ISO_ROOT/system.sfs \
     -e proc sys dev tmp run mnt media var/cache var/log build kdos ports \
+    -p "proc d 555 0 0" \
+    -p "sys d 555 0 0" \
+    -p "dev d 755 0 0" \
+    -p "tmp d 1777 0 0" \
+    -p "run d 755 0 0" \
+    -p "mnt d 755 0 0" \
+    -p "media d 755 0 0" \
     -noappend -comp xz
 
 # 3. Setup Bootloaders
