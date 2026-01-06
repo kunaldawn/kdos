@@ -22,7 +22,5 @@ build() {
         unalias grep 2>/dev/null || true
 
         make
-
-        make
         make PREFIX=/usr DESTDIR=$PKG install
 }
