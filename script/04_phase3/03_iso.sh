@@ -60,7 +60,7 @@ showtools reboot, shutdown, firmware
 menuentry "KDOS Live" {
     loader /EFI/BOOT/vmlinuz
     initrd /EFI/BOOT/initramfs.cpio.gz
-    options "root=/dev/ram0 rw console=ttyS0 earlyprintk=serial,ttyS0"
+    options "root=/dev/ram0 rw console=ttyS0 loglevel=3 quiet earlyprintk=serial,ttyS0"
     icon /EFI/BOOT/icons/os_linux.png
 }
 EOF
