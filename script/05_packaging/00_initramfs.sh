@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-source script/phase3.env.sh
+source script/packaging.env.sh
 
 echo "Building Initramfs..."
 
