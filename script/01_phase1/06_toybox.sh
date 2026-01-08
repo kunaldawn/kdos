@@ -15,13 +15,12 @@ TOYBOX_SRC=$(extract_port_source toybox)
 cd "$TOYBOX_SRC"
 
 make defconfig -j1
-cat >> .config <<EOF
-CONFIG_EXPR=y
-CONFIG_GETTY=y
-CONFIG_INIT=y
-CONFIG_TR=y
-CONFIG_AWK=y
-EOF
+sed -i 's/# CONFIG_EXPR is not set/CONFIG_EXPR=y/' .config
+sed -i 's/# CONFIG_GETTY is not set/CONFIG_GETTY=y/' .config
+sed -i 's/# CONFIG_INIT is not set/CONFIG_INIT=y/' .config
+sed -i 's/# CONFIG_TR is not set/CONFIG_TR=y/' .config
+sed -i 's/# CONFIG_AWK is not set/CONFIG_AWK=y/' .config
+sed -i 's/# CONFIG_MDEV is not set/CONFIG_MDEV=y/' .config
 CC=$KDOS_TARGET-gcc make PREFIX=$SYSROOT install -j1
 
 rm -rf "$TOYBOX_SRC"
