@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
+# description	: A stream oriented C library for parsing XML
+# homepage	: https://libexpat.github.io
+
+name=expat
+version=2.7.3
+release=1
+source="https://github.com/libexpat/libexpat/releases/download/R_2_7_3/expat-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+	./buildconf.sh
+	./configure --prefix=/usr --disable-static
+        make
+        make DESTDIR=$PKG install
+}

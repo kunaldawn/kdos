@@ -1,0 +1,47 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
+gzip
+toybox
+xz
+readline
+ncurses
+bash
+make
+flex
+bison
+pkgconf
+autoconf
+automake
+libtool
+texinfo
+bc
+elfutils
+rsync
+refind
+libburn
+libisofs
+libisoburn
+squashfs-tools
+mtools
+dosfstools
+util-linux
+sqlite
+dhcpcd
+python3
+gettext
+git
+nano
+tree
+htop
+tmux
+byobu
+btop

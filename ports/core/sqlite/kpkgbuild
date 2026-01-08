@@ -1,0 +1,42 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
+# description	: Software library that implements a self-contained, serverless, zero-configuration, transactional SQL database engine
+# depends	: zlib readline ncurses
+
+name=sqlite
+version=3510100
+release=1
+source="https://sqlite.org/2025/$name-autoconf-$version.tar.gz"
+
+build() {
+	export CPPFLAGS="$CPPFLAGS \
+		-DSQLITE_ENABLE_COLUMN_METADATA=1 \
+		-DSQLITE_ENABLE_UNLOCK_NOTIFY \
+		-DSQLITE_ENABLE_DBSTAT_VTAB=1 \
+		-DSQLITE_ENABLE_FTS3_TOKENIZER=1 \
+		-DSQLITE_ENABLE_FTS3_PARENTHESIS \
+		-DSQLITE_SECURE_DELETE \
+		-DSQLITE_ENABLE_STMTVTAB \
+		-DSQLITE_MAX_VARIABLE_NUMBER=250000 \
+		-DSQLITE_MAX_EXPR_DEPTH=10000 \
+		-DSQLITE_ENABLE_MATH_FUNCTIONS"
+
+	cd $name-autoconf-$version
+
+  	./configure --prefix=/usr \
+		--disable-static \
+		--enable-fts3 \
+		--enable-fts4 \
+		--enable-fts5 
+	make
+	make DESTDIR=$PKG install
+}

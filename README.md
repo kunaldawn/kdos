@@ -1,12 +1,15 @@
 # KDOS : KD's Homebrew Linux Distro
 ```
-     .--.
-    |o_o |
-    |:_/ |
-   //   \ \
-  (| KDOS |)
- /'\_   _/`\
- \___)=(___/
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
  ```
 
 **KDOS** is a handmade, artisan-crafted Linux distribution built from the absolute ground up, following the sacred texts of **Linux From Scratch (LFS)**.
