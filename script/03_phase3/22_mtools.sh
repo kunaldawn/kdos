@@ -2,4 +2,4 @@
 set -e
 source script/phase3.env.sh
 
-kpkg install -f rsync
+kpkg install -f mtools
