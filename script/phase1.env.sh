@@ -1,4 +1,16 @@
 #!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
 # Environment configuration for KDOS build
 
 export KDOS_TARGET=x86_64-kdos-linux-musl
@@ -24,5 +36,3 @@ export CFLAGS="-O2 -pipe -std=gnu99"
 export CXXFLAGS="-O2 -pipe"
 export LDFLAGS=""
 export MAKEFLAGS="-j12"
-
-echo "Phase 1 ENV is active..."

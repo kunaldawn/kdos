@@ -1,4 +1,16 @@
 #!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
 # Environment configuration for KDOS build
 
 export CHROOT=1
@@ -10,5 +22,3 @@ export MAKEFLAGS="-j12"
 export TERM=dumb
 
 rm -rf /var/cache/kpkg/work
-
-echo "Phase 2 ENV is active..."

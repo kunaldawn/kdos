@@ -1,4 +1,16 @@
 #!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
 set -e
 source script/phase1.env.sh
 source script/util/port.sh
@@ -15,10 +27,10 @@ chmod 1777 $SYSROOT/tmp
 cd $SYSROOT
 
 # merged /usr
-ln -sv usr/bin bin
-ln -sv usr/sbin sbin
-ln -sv usr/lib lib
-ln -sv usr/lib64 lib64
+ln -svf usr/bin bin
+ln -svf usr/sbin sbin
+ln -svf usr/lib lib
+ln -svf usr/lib64 lib64
 
 cd $WORKSPACE
 

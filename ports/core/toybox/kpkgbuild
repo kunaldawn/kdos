@@ -1,3 +1,14 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
 # description: Toybox - all-in-one Linux command line utility
 
 name=toybox
@@ -15,5 +26,6 @@ build() {
 	sed -i 's/# CONFIG_TR is not set/CONFIG_TR=y/' .config
 	sed -i 's/# CONFIG_AWK is not set/CONFIG_AWK=y/' .config
 	sed -i 's/# CONFIG_MDEV is not set/CONFIG_MDEV=y/' .config
+	sed -i 's/# CONFIG_STTY is not set/CONFIG_STTY=y/' .config
 	make PREFIX=$PKG install -j1
 }
