@@ -210,8 +210,11 @@ class BuildManager:
                         resolved_pkgs = output.split()
                         
                         new_nodes = []
-                        for pkg in resolved_pkgs:
-                            node = BuildStep(f"Install {pkg}", is_group=False, level=1)
+                        for i, pkg in enumerate(resolved_pkgs):
+                            # Use parent dir to ensure logs go to build/logs/path/to/script/
+                            parent_dir = os.path.dirname(step.packages_file) if step.packages_file else self.root_dir
+                            node_name = f"{i:02d}_{pkg}.install"
+                            node = BuildStep(os.path.join(parent_dir, node_name), is_group=False, level=1)
                             node.parent = step
                             node.title = pkg.title()
                             node.step_type = "CUSTOM"
