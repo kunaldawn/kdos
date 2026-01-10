@@ -108,6 +108,27 @@ build() {
 	./scripts/config --enable CONFIG_VIRTIO_BALLOON
 	./scripts/config --enable CONFIG_SCSI_VIRTIO
 
+	## Console / Virtual Terminal
+	./scripts/config --enable CONFIG_VT
+	./scripts/config --enable CONFIG_VT_CONSOLE
+	./scripts/config --enable CONFIG_UNIX98_PTYS
+	./scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE
+	./scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY
+	./scripts/config --enable CONFIG_DRM_FBDEV_EMULATION
+
+	## Console Fonts
+	./scripts/config --enable CONFIG_FONTS
+	./scripts/config --enable CONFIG_FONT_8x16
+	./scripts/config --enable CONFIG_FONT_8x8
+	./scripts/config --enable CONFIG_FONT_10x18
+	./scripts/config --enable CONFIG_FONT_SUN12x22
+
+	## QEMU Graphics Drivers
+	./scripts/config --enable CONFIG_DRM_BOCHS
+	./scripts/config --enable CONFIG_DRM_VIRTIO_GPU
+	./scripts/config --enable CONFIG_DRM_QXL
+	./scripts/config --enable CONFIG_FB_SIMPLE
+
 	# Developer Experience / Desktop Use
 	## Graphics (DRM)
 	./scripts/config --enable CONFIG_DRM
