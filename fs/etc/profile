@@ -1,19 +1,41 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
 # /etc/profile
 
 export PATH=/usr/bin:/usr/sbin:/bin:/sbin
-export TERM=linux
+export TERM=xterm-256color
+export LINES=${LINES:-24}
+export COLUMNS=${COLUMNS:-80}
 export HOME=/root
 export USER=root
+
+# Colors
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
 
 # Aliases
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
+alias cp='cp -i'
+alias mv='mv -i'
+alias rm='rm -i'
+alias btop='btop --utf-force'
 
 # Prompt
 if [ "$PS1" ]; then
-    PS1='\u@\h:\w λ '
+    PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\] λ '
 fi
+
 
 clear
 echo ""
