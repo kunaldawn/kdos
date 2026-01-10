@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
+# description	: tmux - Terminal multiplexer
+# depends	: libevent ncurses
+
+name=tmux
+version=3.6a
+release=1
+source="https://github.com/tmux/tmux/releases/download/${version}/${name}-${version}.tar.gz"
+
+build() {
+	cd ${name}-${version}
+	./configure --prefix=/usr 
+	make
+	make DESTDIR=$PKG install
+}

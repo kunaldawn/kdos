@@ -1,3 +1,14 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
 # description: The GNU compiler collection
 # depends: mpc mpfr gmp zlib
 
@@ -28,6 +39,7 @@ build() {
 	make
 	make DESTDIR=$PKG install
 
-	cd $PKG/usr/bin
-	ln -sv gcc cc
+	ln -sv /usr/bin/gcc $PKG/usr/bin/cc
+	ln -sv /usr/lib64/libstdc++.so.6 $PKG/usr/lib/libstdc++.so.6
+	ln -sv /usr/lib64/libgcc_s.so.1  $PKG/usr/lib/libgcc_s.so.1
 }

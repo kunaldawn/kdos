@@ -1,0 +1,38 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
+# description	: Utilities for internationalization and localization
+# depends	: ncurses
+
+name=gettext
+version=0.26
+release=1
+source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	./configure \
+		--prefix=/usr \
+		--disable-static \
+		--disable-nls \
+		--disable-java \
+		--disable-csharp \
+		--without-git \
+		--without-emacs \
+		--with-included-libxml \
+		--with-included-libcroco \
+		--with-included-glib
+	make
+	make DESTDIR=$PKG install
+
+}
+
