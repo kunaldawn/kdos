@@ -1,3 +1,14 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
 # description: Toybox - all-in-one Linux command line utility
 
 name=toybox
@@ -8,16 +19,13 @@ source="http://landley.net/toybox/downloads/$name-$version.tar.gz"
 build() {
 	cd $name-$version
 
-make defconfig -j1
-cat >> .config <<EOF
-CONFIG_EXPR=y
-CONFIG_GETTY=y
-CONFIG_INIT=y
-CONFIG_TR=y
-CONFIG_AWK=y
-CONFIG_MDEV=y
-CONFIG_MOUNT=y
-EOF
-make PREFIX=$PKG install -j1
-
+	make defconfig -j1
+	sed -i 's/# CONFIG_EXPR is not set/CONFIG_EXPR=y/' .config
+	sed -i 's/# CONFIG_GETTY is not set/CONFIG_GETTY=y/' .config
+	sed -i 's/# CONFIG_INIT is not set/CONFIG_INIT=y/' .config
+	sed -i 's/# CONFIG_TR is not set/CONFIG_TR=y/' .config
+	sed -i 's/# CONFIG_AWK is not set/CONFIG_AWK=y/' .config
+	sed -i 's/# CONFIG_MDEV is not set/CONFIG_MDEV=y/' .config
+	sed -i 's/# CONFIG_STTY is not set/CONFIG_STTY=y/' .config
+	make PREFIX=$PKG install -j1
 }

@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
+# description	: Version control system designed to handle everything from small to very large projects with speed and efficiency
+# depends	: curl openssl perl python3
+
+name=git
+version=2.52.0
+release=1
+source="https://www.kernel.org/pub/software/scm/$name/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	make CFLAGS="$CFLAGS" \
+		prefix=/usr \
+		gitexecdir=/usr/lib/git-core \
+		perllibdir="$(/usr/bin/perl -MConfig -wle 'print $Config{installvendorlib}')" \
+		NO_REGEX=NeedsStartEnd \
+		NO_TCLTK=Yes \
+		DESTDIR=$PKG install
+}

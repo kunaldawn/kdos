@@ -1,0 +1,38 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
+# description	: Next generation of the python high-level scripting language
+# depends	: libffi sqlite expat
+
+name=python3
+version=3.14.2
+release=1
+source="https://www.python.org/ftp/python/$version/Python-$version.tar.xz"
+
+build() {
+	cd Python-$version
+
+	./configure \
+		--prefix=/usr \
+		--enable-computed-gotos \
+		--enable-dbmliborder=gdm:ndbm \
+		--enable-ipv6 \
+		--enable-loadable-sqlite-extensions \
+		--enable-optimizations \
+		--enable-shared \
+		--with-lto \
+		--with-system-expat \
+		--with-system-ffi \
+		--with-system-libmpdec \
+		--with-tzpath=/usr/share/zoneinfo
+	make EXTRA_CFLAGS="$CFLAGS"
+	make EXTRA_CFLAGS="$CFLAGS" DESTDIR=$PKG install maninstall
+}

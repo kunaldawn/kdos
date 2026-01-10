@@ -1,4 +1,16 @@
 #!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
 # Helper function to extract source from port directory
 # Usage: extract_port_source <port_name>
 # Returns: Path to extracted source directory

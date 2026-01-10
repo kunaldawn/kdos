@@ -1,6 +1,19 @@
 #!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#    KDOS – forged by hand.
+#    KD's Homebrew OS
+# ---------------------------------
+
 # Minimal kpkg - Package manager for KDOS
 # Simple offline package manager with dependency support
+
 set -e
 
 VERSION="1.0-kdos"
