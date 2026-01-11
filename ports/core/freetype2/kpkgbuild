@@ -9,41 +9,18 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-dosfstools
-util-linux
-sqlite
-dhcpcd
-python3
-gettext
-git
-nano
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
+# description	: Font rasterization library
+# depends	: libpng
+
+name=freetype2
+version=2.13.2
+release=1
+source="https://downloads.sourceforge.net/freetype/freetype-$version.tar.xz"
+
+build() {
+	cd freetype-$version
+
+	./configure --prefix=/usr --enable-freetype-config
+	make
+	make DESTDIR=$PKG install
+}

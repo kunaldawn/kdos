@@ -9,41 +9,18 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-dosfstools
-util-linux
-sqlite
-dhcpcd
-python3
-gettext
-git
-nano
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
+# description	: Easily download, build, install, upgrade, and uninstall Python packages
+# depends	: python3
+
+name=python3-setuptools
+version=80.9.0
+release=1
+source="$name-$version.tar.gz::https://files.pythonhosted.org/packages/source/s/${name#*-}/${name#*-}-$version.tar.gz"
+
+build() {
+	cd setuptools-$version
+
+	export SETUPTOOLS_INSTALL_WINDOWS_SPECIFIC_FILES=0
+	python3 setup.py build
+	python3 setup.py install --prefix=/usr --root="$PKG" --skip-build
+}

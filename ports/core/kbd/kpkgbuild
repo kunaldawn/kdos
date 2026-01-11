@@ -9,41 +9,17 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-dosfstools
-util-linux
-sqlite
-dhcpcd
-python3
-gettext
-git
-nano
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
+# description: Key-table files, console fonts, and keyboard utilities
+
+name=kbd
+version=2.6.4
+release=1
+source="https://www.kernel.org/pub/linux/utils/$name/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	./configure --prefix=/usr --disable-vlock --disable-nls
+	make
+	make DESTDIR=$PKG install
+}

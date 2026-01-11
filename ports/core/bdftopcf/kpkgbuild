@@ -9,41 +9,23 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-dosfstools
-util-linux
-sqlite
-dhcpcd
-python3
-gettext
-git
-nano
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
+# description	: Convert X font from Bitmap Distribution Format to Portable Compiled Format
+# depends	: util-macros xorgproto
+
+name=bdftopcf
+version=1.1
+release=1
+source="https://www.x.org/pub/individual/app/$name-$version.tar.bz2"
+
+build() {
+	cd $name-$version
+
+	./configure \
+		--prefix=/usr \
+                --sysconfdir=/etc \
+                --localstatedir=/var \
+                --disable-static \
+		--disable-devel-docs
+	make
+	make DESTDIR=$PKG install
+}

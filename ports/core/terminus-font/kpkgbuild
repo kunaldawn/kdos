@@ -9,41 +9,21 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-dosfstools
-util-linux
-sqlite
-dhcpcd
-python3
-gettext
-git
-nano
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
+# description: Monospace bitmap font (for X11 and console)
+# depends	: fontconfig encodings mkfontscale bdftopcf python3
+
+name=terminus-font
+version=4.49.1
+release=1
+source="https://downloads.sourceforge.net/project/$name/$name-${version%.1}/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+	./configure \
+		--prefix=/usr \
+		--x11dir=/usr/share/fonts/misc \
+		--psfdir=/usr/share/consolefonts
+	make
+	make DESTDIR=$PKG install
+}

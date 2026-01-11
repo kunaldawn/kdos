@@ -9,41 +9,25 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-dosfstools
-util-linux
-sqlite
-dhcpcd
-python3
-gettext
-git
-nano
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
+# description	: X.Org font utilities
+# depends	: util-macros
+
+name=font-util
+version=1.4.1
+release=1
+source="https://gitlab.freedesktop.org/xorg/font/util/-/archive/$name-$version/util-$name-$version.tar.gz"
+
+build() {
+	cd util-$name-$version
+
+	NOCONFIGURE=1 ./autogen.sh
+  	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--localstatedir=/var \
+		--disable-static \
+		--with-mapdir=/usr/share/fonts/util \
+		--with-fontrootdir=/usr/share/fonts
+	make
+	make DESTDIR=$PKG install
+}

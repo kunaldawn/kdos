@@ -9,41 +9,22 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-dosfstools
-util-linux
-sqlite
-dhcpcd
-python3
-gettext
-git
-nano
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
+# description	: X.org font encoding files
+# depends	: util-macros mkfontscale
+
+name=encodings
+version=1.0.7
+release=1
+source="https://gitlab.freedesktop.org/xorg/font/$name/-/archive/$name-$version/$name-$name-$version.tar.gz"
+
+build() {
+	cd $name-$name-$version
+	NOCONFIGURE=1 ./autogen.sh
+  	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--localstatedir=/var \
+		--disable-static
+	make
+	make DESTDIR=$PKG install
+}
