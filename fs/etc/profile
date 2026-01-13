@@ -5,14 +5,14 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#    KDOS – forged by hand.
-#    KD's Homebrew OS
+#   KD's Homebrew Linux Distro
 # ---------------------------------
 
 # /etc/profile
 
 export PATH=/usr/bin:/usr/sbin:/bin:/sbin
 export TERM=xterm-256color
+export LANG=C.UTF-8
 export LINES=${LINES:-24}
 export COLUMNS=${COLUMNS:-80}
 export HOME=/root
@@ -36,6 +36,10 @@ if [ "$PS1" ]; then
     PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\] λ '
 fi
 
+# Load custom font if available
+if [ -x /usr/bin/setfont ]; then
+    setfont ter-v32n
+fi
 
 clear
 echo ""

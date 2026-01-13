@@ -7,8 +7,7 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#    KDOS – forged by hand.
-#    KD's Homebrew OS
+#   KD's Homebrew Linux Distro
 # ---------------------------------
 
 set -e
@@ -43,6 +42,11 @@ cp /usr/lib/libhistory.so.8 lib/libhistory.so.8
 cp /usr/lib/libncursesw.so.6 lib/libncursesw.so.6
 ln -sf bash bin/sh
 
+# Install blkid and dependencies
+cp /usr/bin/blkid bin/blkid
+cp /usr/lib/libblkid.so.1 lib/libblkid.so.1
+cp /usr/lib/libuuid.so.1 lib/libuuid.so.1
+
 # Create Init Script
 cat > init <<EOF
 #!/bin/bash
@@ -61,7 +65,53 @@ fi
 
 echo "Welcome to KDOS"
 
-# Find Boot Media
+# Parse Boot Parameters
+for i in \$(cat /proc/cmdline); do
+    case "\$i" in
+        root=UUID=*)
+            ROOT_UUID="\${i#root=UUID=}"
+            ;;
+    esac
+done
+
+if [ -n "\$ROOT_UUID" ]; then
+    # Disk Boot Mode
+    echo "Waiting for root device \$ROOT_UUID..."
+    
+    # Wait for device to appear (timeout 10s)
+    for i in \$(seq 1 10); do
+        ROOT_DEV=\$(blkid -U "\$ROOT_UUID")
+        if [ -n "\$ROOT_DEV" ]; then
+            break
+        fi
+        sleep 1
+    done
+    
+    if [ -n "\$ROOT_DEV" ]; then
+        echo "Found root device: \$ROOT_DEV"
+        mount "\$ROOT_DEV" /newroot
+        
+        if [ -x /newroot/sbin/init ]; then
+            # Move Mountpoints
+            mount --move /dev /newroot/dev
+            mount --move /proc /newroot/proc
+            mount --move /sys /newroot/sys
+            
+            # Switch Root
+            exec switch_root /newroot /sbin/init
+        else
+            echo "Error: /sbin/init not found on root device!"
+        fi
+    else
+        echo "Error: Root device with UUID=\$ROOT_UUID not found!"
+    fi
+    
+    # Fallback to shell if disk boot fails
+    echo "Dropping to specific shell..."
+    exec /bin/sh
+fi
+
+# Live ISO Boot Mode (Fallback)
 mkdir -p /mnt/iso
 # Try to mount CDROM/ISO
 for dev in /dev/sr* /dev/sd*; do
