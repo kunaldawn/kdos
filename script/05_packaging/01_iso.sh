@@ -32,6 +32,8 @@ fi
 
 if [ -f /kdos/build/initramfs.cpio.gz ]; then
     cp /kdos/build/initramfs.cpio.gz $ISO_ROOT/EFI/BOOT/initramfs.cpio.gz
+    # Also copy to /boot so it is included in system.sfs (and thus installed)
+    cp /kdos/build/initramfs.cpio.gz /boot/initramfs.cpio.gz
 else
     echo "Error: /kdos/build/initramfs.cpio.gz not found!"
     exit 1
@@ -72,7 +74,7 @@ showtools reboot, shutdown, firmware
 menuentry "KDOS Live" {
     loader /EFI/BOOT/vmlinuz
     initrd /EFI/BOOT/initramfs.cpio.gz
-    options "root=/dev/ram0 rw console=ttyS0 console=tty0 loglevel=3 quiet earlyprintk=serial,ttyS0"
+    options "root=/dev/ram0 rw console=ttyS0 console=tty0"
     icon /EFI/BOOT/icons/os_linux.png
 }
 EOF

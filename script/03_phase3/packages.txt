@@ -32,8 +32,11 @@ libisofs
 libisoburn
 squashfs-tools
 mtools
+eudev
 dosfstools
+e2fsprogs
 util-linux
+gptfdisk
 sqlite
 dhcpcd
 python3

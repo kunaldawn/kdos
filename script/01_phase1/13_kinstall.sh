@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -9,22 +11,14 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-# description   : Utilities for synchronizing large file archives over a network
-# depends       : zlib zstd acl attr
+set -e
+source script/phase1.env.sh
+source script/util/port.sh
 
-name=rsync
-version=3.2.7
-release=1
-source="https://www.samba.org/ftp/rsync/src/$name-$version.tar.gz"
+if [ -f "$MARK/kinstall" ]; then
+    exit 0
+fi
 
-build() {
-        cd $name-$version
-        ./configure \
-                --prefix=/usr \
-                --with-included-zlib=no \
-                --disable-xxhash \
-                --enable-acl \
-                --enable-xattr
-        make
-        make DESTDIR=$PKG install
-}
+cp $WORKSPACE/src/kinstall/kinstall $SYSROOT/usr/bin/kinstall
+
+touch "$MARK/kinstall"

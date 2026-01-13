@@ -9,22 +9,29 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-# description   : Utilities for synchronizing large file archives over a network
-# depends       : zlib zstd acl attr
+# description	: utilities for handling the ext2, ext3 and ext4 file system
+# depends	: util-linux
 
-name=rsync
-version=3.2.7
+name=e2fsprogs
+version=1.47.3
 release=1
-source="https://www.samba.org/ftp/rsync/src/$name-$version.tar.gz"
+source="https://mirrors.edge.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v$version/e2fsprogs-$version.tar.xz"
 
 build() {
-        cd $name-$version
-        ./configure \
-                --prefix=/usr \
-                --with-included-zlib=no \
-                --disable-xxhash \
-                --enable-acl \
-                --enable-xattr
-        make
-        make DESTDIR=$PKG install
+	cd $name-$version
+
+	mkdir -v build
+	cd build
+
+	../configure --prefix=/usr           \
+	             --bindir=/bin           \
+	             --with-root-prefix=""   \
+	             --enable-elf-shlibs     \
+	             --disable-libblkid      \
+	             --disable-libuuid       \
+	             --disable-uuidd         \
+	             --disable-fsck
+	make
+	make DESTDIR=$PKG install
+	make DESTDIR=$PKG install-libs
 }
