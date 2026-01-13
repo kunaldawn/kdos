@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Utilities to administer Access Control Lists, which are used to define more fine-grained discretionary access rights for files and directories
+# depends	: attr
+
+name=acl
+version=2.3.2
+release=1
+source="https://download.savannah.gnu.org/releases/$name/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+	./configure --prefix=/usr    \
+	            --bindir=/bin    \
+	            --disable-static \
+	            --disable-nls    \
+	            --libexecdir=/usr/lib
+	make
+	make DESTDIR=$PKG install
+}
