@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Keyboard configuration database for the X Window System
+# depends	: xorgproto libx11 xkbcomp
+
+name=xkeyboard-config
+version=2.40
+release=1
+source="http://xorg.freedesktop.org/archive/individual/data/xkeyboard-config/xkeyboard-config-$version.tar.xz"
+
+build() {
+    meson $name-$version build \
+		-Dcompat-rules=true \
+		-Dxorg-rules-symlinks=true
+    meson compile -C build
+    DESTDIR=$PKG meson install --no-rebuild -C build
+}

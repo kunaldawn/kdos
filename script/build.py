@@ -74,7 +74,7 @@ class BuildStep:
         name = os.path.basename(self.path)
         name = os.path.splitext(name)[0]
         name = re.sub(r'^[0-9]+_', '', name)
-        return name.replace('_', ' ').replace('-', ' ').title()
+        return name.replace('_', ' ').replace('-', ' ')
 
     def add_log(self, line):
         self.logs.append(line)
@@ -158,7 +158,7 @@ class BuildManager:
 
             # Nice Name
             nice_name = re.sub(r'^[0-9]+_', '', entry)
-            nice_name = nice_name.replace('_', ' ').replace('-', ' ').title()
+            nice_name = nice_name.replace('_', ' ').replace('-', ' ')
             if use_chroot: nice_name += " (Chroot)"
             
             fullname = f"{nice_name}"
@@ -215,7 +215,7 @@ class BuildManager:
                             node_name = f"{i:02d}_{pkg}.install"
                             node = BuildStep(os.path.join(parent_dir, node_name), is_group=False, level=1)
                             node.parent = step
-                            node.title = pkg.title()
+                            node.title = pkg
                             node.step_type = "CUSTOM"
                             
                             # Command

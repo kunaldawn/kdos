@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: X11 miscellaneous micro-utility library
+# depends	: libx11 libxt libxext 
+
+name=libxmu
+version=1.1.4
+release=1
+source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXmu-$version.tar.xz"
+
+build() {
+	cd libXmu-$version
+
+	./configure \
+		--prefix=/usr \
+        --sysconfdir=/etc \
+        --localstatedir=/var \
+        --disable-static
+	make
+	make DESTDIR=$PKG install
+}

@@ -1,0 +1,37 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Provides useful functions commonly found on BSD systems like strlcpy()
+# homepage	: https://libbsd.freedesktop.org
+# depends	: libmd
+
+name=libbsd
+version=0.11.7
+release=1
+source="https://libbsd.freedesktop.org/releases/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+	# musl does not have off64_t, but off_t is 64-bit
+	export CFLAGS="$CFLAGS -Doff64_t=off_t"
+	./configure --prefix=/usr
+	make
+	make DESTDIR=$PKG install
+
+	# for musl libc extensions
+	mkdir -p $PKG/usr/include/sys
+	cp $PKG/usr/include/bsd/sys/cdefs.h $PKG/usr/include/sys/
+	cp $PKG/usr/include/bsd/sys/queue.h $PKG/usr/include/sys/
+	cp $PKG/usr/include/bsd/sys/tree.h  $PKG/usr/include/sys/
+
+	# Fix recursion in cdefs.h (since it is now the system cdefs.h)
+	sed -i 's|#include <sys/cdefs.h>|/* #include <sys/cdefs.h> */|g' $PKG/usr/include/sys/cdefs.h
+}

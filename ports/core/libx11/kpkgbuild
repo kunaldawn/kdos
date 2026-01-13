@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: X11 client-side library
+# depends	: libxcb xtrans
+
+name=libx11
+version=1.8.12
+release=1
+source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libX11-$version.tar.xz"
+
+build() {
+	cd libX11-$version
+
+	./configure              \
+		--prefix=/usr        \
+		--sysconfdir=/etc    \
+		--localstatedir=/var \
+		--disable-static     \
+		--disable-specs      \
+		--disable-thread-safety-constructor
+	make
+	make DESTDIR=$PKG install
+}
