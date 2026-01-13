@@ -9,3 +9,34 @@
 # ---------------------------------
 
 root:x:0:
+bin:x:1:
+sys:x:2:
+kmem:x:3:
+tty:x:5:
+tape:x:6:
+daemon:x:7:
+floppy:x:8:
+disk:x:9:
+lp:x:10:
+dialout:x:11:
+audio:x:12:
+video:x:13:
+utmp:x:14:
+at:x:15:
+cdrom:x:16:
+man:x:17:
+dial:x:18:
+floppy:x:19:
+games:x:20:
+tape:x:26:
+video:x:27:
+render:x:28:
+input:x:29:
+sgx:x:30:
+kvm:x:32:
+utmp:x:43:
+lock:x:54:
+audio:x:63:
+nobody:x:99:
+users:x:100:
+network:x:101:

@@ -13,6 +13,14 @@
 # Mount all filesystems in fstab
 mount -a
 
+# Start udevd if it exists
+if [ -x /usr/sbin/udevd ]; then
+    echo "Starting udevd..."
+    /usr/sbin/udevd --daemon
+    /usr/sbin/udevadm trigger
+    /usr/sbin/udevadm settle
+fi
+
 # Set hostname
 hostname -F /etc/hostname
 
