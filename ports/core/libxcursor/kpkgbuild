@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: X cursor management library
+# depends	: libxrender libxfixes libx11 
+
+name=libxcursor
+version=1.2.1
+release=1
+source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXcursor-$version.tar.xz"
+
+build() {
+	cd libXcursor-$version
+
+	./configure \
+		--prefix=/usr \
+        --sysconfdir=/etc \
+        --localstatedir=/var \
+        --disable-static
+	make
+	make DESTDIR=$PKG install
+}

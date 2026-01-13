@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: X11 pixmap library
+# depends	: libxt libxext libx11 
+
+name=libxpm
+version=3.5.17
+release=1
+source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXpm-$version.tar.xz"
+
+build() {
+	cd libXpm-$version
+
+	./configure \
+		--prefix=/usr \
+        --sysconfdir=/etc \
+        --localstatedir=/var \
+		--disable-open-zfile \
+        --disable-static
+	make
+	make DESTDIR=$PKG install
+}

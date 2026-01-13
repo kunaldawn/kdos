@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: X11 damaged region extension library
+# depends	: libxfixes libx11 
+
+name=libxdamage
+version=1.1.6
+release=1
+source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXdamage-$version.tar.xz"
+
+build() {
+	cd libXdamage-$version
+
+	./configure \
+		--prefix=/usr \
+        --sysconfdir=/etc \
+        --localstatedir=/var \
+        --disable-static
+	make
+	make DESTDIR=$PKG install
+}

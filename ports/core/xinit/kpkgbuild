@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Script to start the xserver
+# depends	: libx11 xauth
+
+name=xinit
+version=1.4.2
+release=1
+source="http://ftp.x.org/pub/individual/app/xinit-$version.tar.xz"
+
+build() {
+	cd xinit-$version
+
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--localstatedir=/var \
+		--disable-static \
+		--with-xinitdir=/etc/X11/app-defaults
+	make
+	make DESTDIR=$PKG install
+}

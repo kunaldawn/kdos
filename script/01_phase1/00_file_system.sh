@@ -21,6 +21,8 @@ fi
 
 mkdir -pv $SYSROOT/{etc,var,tmp,root,home,run,dev,proc,sys}
 mkdir -pv $SYSROOT/usr/{bin,lib,sbin,include,share,local}
+mkdir -pv $SYSROOT/var/{lib,log,local}
+mkdir -pv $SYSROOT/var/local/log
 chmod 1777 $SYSROOT/tmp
 
 cd $SYSROOT
