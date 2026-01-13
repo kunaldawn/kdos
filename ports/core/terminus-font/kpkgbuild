@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description: Monospace bitmap font (for X11 and console)
+# depends	: fontconfig encodings mkfontscale bdftopcf python3
+
+name=terminus-font
+version=4.49.1
+release=1
+source="https://downloads.sourceforge.net/project/$name/$name-${version%.1}/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+	./configure \
+		--prefix=/usr \
+		--x11dir=/usr/share/fonts/misc \
+		--psfdir=/usr/share/consolefonts
+	make
+	make DESTDIR=$PKG install
+}

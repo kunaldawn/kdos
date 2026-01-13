@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: A text-mode partitioning tool that works on GUID Partition Table (GPT) disks
+# depends	: popt
+
+name=gptfdisk
+version=1.0.9
+release=1
+source="https://downloads.sourceforge.net/$name/$name/$version/$name-$version.tar.gz"
+
+build() {
+	cd $name-$version
+
+	export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE"
+	make gdisk sgdisk fixparts
+	install -d $PKG/usr/bin $PKG/usr/share/man/man8
+	install -t $PKG/usr/bin gdisk sgdisk fixparts
+	install -m644 -t $PKG/usr/share/man/man8 gdisk.8 sgdisk.8 fixparts.8
+}

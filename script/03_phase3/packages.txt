@@ -5,8 +5,7 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#    KDOS – forged by hand.
-#    KD's Homebrew OS
+#   KD's Homebrew Linux Distro
 # ---------------------------------
 
 gzip
@@ -32,8 +31,11 @@ libisofs
 libisoburn
 squashfs-tools
 mtools
+eudev
 dosfstools
+e2fsprogs
 util-linux
+gptfdisk
 sqlite
 dhcpcd
 python3
@@ -45,3 +47,5 @@ htop
 tmux
 byobu
 btop
+kbd
+terminus-font

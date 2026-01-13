@@ -1,0 +1,38 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Libraries and utilities for loading kernel modules
+# depends	: xz zlib
+
+name=kmod
+version=31
+release=1
+source="https://www.kernel.org/pub/linux/utils/kernel/$name/$name-$version.tar.xz"
+
+build() {
+	cd $name-$version
+ 
+	CFLAGS="$CFLAGS -include libgen.h" \
+	./configure --prefix=/usr          \
+	            --bindir=/bin          \
+	            --sysconfdir=/etc      \
+	            --with-rootlibdir=/lib \
+	            --with-xz              \
+	            --with-zlib
+	make
+	make DESTDIR=$PKG install
+
+	mkdir -p $PKG/sbin
+	for target in depmod insmod lsmod modinfo modprobe rmmod; do
+	  ln -sfv ../bin/kmod $PKG/sbin/$target
+	done
+
+	ln -sfv kmod $PKG/bin/lsmod
+}

@@ -5,12 +5,11 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#    KDOS – forged by hand.
-#    KD's Homebrew OS
+#   KD's Homebrew Linux Distro
 # ---------------------------------
 
 # description   : Utilities for synchronizing large file archives over a network
-# depends       : zlib zstd
+# depends       : zlib zstd acl attr
 
 name=rsync
 version=3.2.7
@@ -22,7 +21,9 @@ build() {
         ./configure \
                 --prefix=/usr \
                 --with-included-zlib=no \
-                --disable-xxhash
+                --disable-xxhash \
+                --enable-acl \
+                --enable-xattr
         make
         make DESTDIR=$PKG install
 }
