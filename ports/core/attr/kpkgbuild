@@ -9,22 +9,22 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-# description   : Utilities for synchronizing large file archives over a network
-# depends       : zlib zstd acl attr
+# description	: Utilities to administer the extended attributes on filesystem objects
 
-name=rsync
-version=3.2.7
+name=attr
+version=2.5.2
 release=1
-source="https://www.samba.org/ftp/rsync/src/$name-$version.tar.gz"
+source="https://download.savannah.gnu.org/releases/$name/$name-$version.tar.gz"
 
 build() {
-        cd $name-$version
-        ./configure \
-                --prefix=/usr \
-                --with-included-zlib=no \
-                --disable-xxhash \
-                --enable-acl \
-                --enable-xattr
-        make
-        make DESTDIR=$PKG install
+	cd $name-$version
+
+	export CFLAGS="$CFLAGS -include libgen.h"
+	./configure --prefix=/usr     	\
+	            --bindir=/bin     	\
+	            --disable-static    \
+	            --sysconfdir=/etc   \
+	            --disable-nls
+	make
+	make DESTDIR=$PKG install
 }

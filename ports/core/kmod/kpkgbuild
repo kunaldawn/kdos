@@ -9,22 +9,31 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-# description   : Utilities for synchronizing large file archives over a network
-# depends       : zlib zstd acl attr
+# description	: Libraries and utilities for loading kernel modules
+# depends	: xz zlib
 
-name=rsync
-version=3.2.7
+name=kmod
+version=31
 release=1
-source="https://www.samba.org/ftp/rsync/src/$name-$version.tar.gz"
+source="https://www.kernel.org/pub/linux/utils/kernel/$name/$name-$version.tar.xz"
 
 build() {
-        cd $name-$version
-        ./configure \
-                --prefix=/usr \
-                --with-included-zlib=no \
-                --disable-xxhash \
-                --enable-acl \
-                --enable-xattr
-        make
-        make DESTDIR=$PKG install
+	cd $name-$version
+ 
+	CFLAGS="$CFLAGS -include libgen.h" \
+	./configure --prefix=/usr          \
+	            --bindir=/bin          \
+	            --sysconfdir=/etc      \
+	            --with-rootlibdir=/lib \
+	            --with-xz              \
+	            --with-zlib
+	make
+	make DESTDIR=$PKG install
+
+	mkdir -p $PKG/sbin
+	for target in depmod insmod lsmod modinfo modprobe rmmod; do
+	  ln -sfv ../bin/kmod $PKG/sbin/$target
+	done
+
+	ln -sfv kmod $PKG/bin/lsmod
 }
