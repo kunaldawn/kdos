@@ -5,8 +5,7 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#    KDOS – forged by hand.
-#    KD's Homebrew OS
+#   KD's Homebrew Linux Distro
 # ---------------------------------
 
 # description	: Software library that implements a self-contained, serverless, zero-configuration, transactional SQL database engine

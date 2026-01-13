@@ -5,8 +5,7 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#    KDOS – forged by hand.
-#    KD's Homebrew OS
+#   KD's Homebrew Linux Distro
 # ---------------------------------
 
 # description	: Utilities to administer Access Control Lists, which are used to define more fine-grained discretionary access rights for files and directories
