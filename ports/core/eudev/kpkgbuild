@@ -9,22 +9,34 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-# description   : Utilities for synchronizing large file archives over a network
-# depends       : zlib zstd acl attr
+# description	: Programs for dynamic creation of device nodes
+# depends	: util-linux kmod
 
-name=rsync
-version=3.2.7
+name=eudev
+version=3.2.14
 release=1
-source="https://www.samba.org/ftp/rsync/src/$name-$version.tar.gz"
+source="$name-$version.tar.gz::https://github.com/eudev-project/eudev/archive/v$version.tar.gz"
 
 build() {
-        cd $name-$version
-        ./configure \
-                --prefix=/usr \
-                --with-included-zlib=no \
-                --disable-xxhash \
-                --enable-acl \
-                --enable-xattr
-        make
-        make DESTDIR=$PKG install
+	cd $name-$version
+
+	scratch isinstalled libxslt && OPTS="--enable-manpages"
+
+	autoreconf -f -i -s
+	./configure $OPTS \
+		--prefix=/usr \
+		--bindir=/sbin \
+		--sbindir=/sbin \
+		--libdir=/usr/lib \
+		--sysconfdir=/etc \
+		--libexecdir=/lib \
+		--with-rootprefix= \
+		--with-rootlibdir=/lib \
+		--disable-static 
+	make
+
+	mkdir -pv $PKG/lib/udev/rules.d
+	mkdir -pv $PKG/etc/udev/rules.d
+
+	make DESTDIR=$PKG install
 }

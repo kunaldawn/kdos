@@ -9,22 +9,20 @@
 #    KD's Homebrew OS
 # ---------------------------------
 
-# description   : Utilities for synchronizing large file archives over a network
-# depends       : zlib zstd acl attr
+# description	: A text-mode partitioning tool that works on GUID Partition Table (GPT) disks
+# depends	: popt
 
-name=rsync
-version=3.2.7
+name=gptfdisk
+version=1.0.9
 release=1
-source="https://www.samba.org/ftp/rsync/src/$name-$version.tar.gz"
+source="https://downloads.sourceforge.net/$name/$name/$version/$name-$version.tar.gz"
 
 build() {
-        cd $name-$version
-        ./configure \
-                --prefix=/usr \
-                --with-included-zlib=no \
-                --disable-xxhash \
-                --enable-acl \
-                --enable-xattr
-        make
-        make DESTDIR=$PKG install
+	cd $name-$version
+
+	export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE"
+	make gdisk sgdisk fixparts
+	install -d $PKG/usr/bin $PKG/usr/share/man/man8
+	install -t $PKG/usr/bin gdisk sgdisk fixparts
+	install -m644 -t $PKG/usr/share/man/man8 gdisk.8 sgdisk.8 fixparts.8
 }
