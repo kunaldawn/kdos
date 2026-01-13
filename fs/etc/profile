@@ -10,7 +10,8 @@
 
 # /etc/profile
 
-export PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+export LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/lib:/usr/lib:/lib
 export TERM=xterm-256color
 export LANG=C.UTF-8
 export LINES=${LINES:-24}

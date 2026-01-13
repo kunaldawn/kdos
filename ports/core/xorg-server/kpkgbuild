@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: The core of the X Window system
+# depends	: pixman libdrm libx11 libglvnd libxkbfile libxfont2 mesa libepoxy libxdmcp eudev xkeyboard-config libxcvt libtirpc
+
+name=xorg-server
+version=21.1.10
+release=1
+source="http://ftp.x.org/pub/individual/xserver/$name-$version.tar.xz"
+
+build() {
+    meson $name-$version build \
+		-D xkb_dir=/usr/local/share/X11/xkb \
+		-D xkb_output_dir=/var/lib/xkb \
+		-D suid_wrapper=true \
+		-D systemd_logind=false \
+		-D xorg=true
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+
+	mkdir -p $PKG/root
+	echo "exec /usr/local/bin/Xorg -modulepath /usr/local/lib64/xorg/modules,/usr/lib/xorg/modules \"\$@\"" > $PKG/root/.xserverrc
+}

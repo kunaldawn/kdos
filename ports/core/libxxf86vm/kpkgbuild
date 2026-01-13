@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: X11 XFree86 video mode extension library
+# depends	: libx11 libxext 
+
+name=libxxf86vm
+version=1.1.5
+release=1
+source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXxf86vm-$version.tar.xz"
+
+build() {
+	cd libXxf86vm-$version
+
+	./configure \
+		--prefix=/usr \
+        --sysconfdir=/etc \
+        --localstatedir=/var \
+        --disable-static
+	make
+	make DESTDIR=$PKG install
+}
+

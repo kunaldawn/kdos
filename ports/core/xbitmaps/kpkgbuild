@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: X.org Bitmap files
+
+name=xbitmaps
+version=1.1.3
+release=1
+source="http://ftp.x.org/pub/individual/data/xbitmaps-$version.tar.xz"
+
+build() {
+	cd $name-$version
+
+  	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--localstatedir=/var \
+		--disable-static
+
+	make DESTDIR=$PKG install
+}
+

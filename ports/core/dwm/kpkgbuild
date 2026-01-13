@@ -1,0 +1,39 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: A dynamic window manager for X
+# homepage	: https://dwm.suckless.org/
+# depends	: libxinerama libxft freetype2
+
+name=dwm
+version=6.7
+release=1
+source="https://dl.suckless.org/dwm/dwm-$version.tar.gz"
+
+_portdir=$PWD
+
+build() {
+	cd $name-$version
+
+	if [ -f $_portdir/config.h ]; then
+		cp $_portdir/config.h .
+	fi
+
+	for p in $_portdir/*.patch $_portdir/*.diff; do
+		[ -f $p ] || continue
+		patch -Np1 -i $p
+	done
+
+	make PREFIX=/usr
+	make PREFIX=/usr DESTDIR=$PKG install
+
+	mkdir -p $PKG/root
+	echo "exec dwm" > $PKG/root/.xinitrc
+}
