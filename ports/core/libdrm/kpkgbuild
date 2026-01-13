@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Provides a user space library for accessing the DRM, direct rendering manager, on operating systems that support the ioctl interface
+# depends	: libpciaccess meson
+# optdepends	: cairo docbook-xml docbook-xml libxslt valgrind cunit
+
+name=libdrm
+version=2.4.119
+release=1
+source="https://dri.freedesktop.org/$name/$name-$version.tar.xz"
+
+build() {
+	meson $name-$version build \
+		-D man-pages=disabled \
+		-D valgrind=disabled \
+		-D cairo-tests=disabled \
+		-D intel=enabled
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

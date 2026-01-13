@@ -14,13 +14,10 @@ set -e
 source script/phase1.env.sh
 source script/util/port.sh
 
-if [ -f "$MARK/fs" ]; then
-    exit 0
-fi
-
-
 mkdir -pv $SYSROOT/{etc,var,tmp,root,home,run,dev,proc,sys}
 mkdir -pv $SYSROOT/usr/{bin,lib,sbin,include,share,local}
+mkdir -pv $SYSROOT/var/{lib,log,local}
+mkdir -pv $SYSROOT/var/local/log
 chmod 1777 $SYSROOT/tmp
 
 cd $SYSROOT
@@ -33,6 +30,5 @@ ln -svf usr/lib64 lib64
 
 cd $WORKSPACE
 
+# copy files from fs
 cp -r $WORKSPACE/fs/* $SYSROOT/
-
-touch "$MARK/fs"

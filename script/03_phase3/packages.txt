@@ -49,3 +49,7 @@ byobu
 btop
 kbd
 terminus-font
+dwm
+st
+llvm
+xorg
