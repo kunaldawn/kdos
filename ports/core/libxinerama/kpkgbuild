@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: X11 Xinerama extension library
+# depends	: libx11 libxext 
+
+name=libxinerama
+version=1.1.5
+release=1
+source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXinerama-$version.tar.xz"
+
+build() {
+	cd libXinerama-$version
+
+	./configure              \
+		--prefix=/usr        \
+        --sysconfdir=/etc    \
+        --localstatedir=/var \
+        --disable-static
+	make
+	make DESTDIR=$PKG install
+}
