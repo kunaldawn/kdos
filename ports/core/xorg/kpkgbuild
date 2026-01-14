@@ -13,7 +13,7 @@
 # depends	: xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm
 # depends	: xcb-util-cursor mesa xbitmaps xorg-applications xcursor-themes
 # depends	: xorg-fonts xkeyboard-config xorg-server xf86-input-evdev libinput
-# depends	: twm xterm xclock xinit ttf-dejavu
+# depends	: twm xterm xclock xinit ttf-dejavu xf86-input-libinput
 
 name=xorg
 version=1.0

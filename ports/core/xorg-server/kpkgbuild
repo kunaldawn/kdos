@@ -27,5 +27,5 @@ build() {
 	DESTDIR=$PKG meson install --no-rebuild -C build
 
 	mkdir -p $PKG/root
-	echo "exec /usr/local/bin/Xorg -modulepath /usr/local/lib64/xorg/modules,/usr/lib/xorg/modules \"\$@\"" > $PKG/root/.xserverrc
+	echo "exec /usr/local/bin/Xorg -configdir /usr/share/X11/xorg.conf.d -modulepath /usr/local/lib64/xorg/modules,/usr/lib/xorg/modules \"\$@\"" > $PKG/root/.xserverrc
 }

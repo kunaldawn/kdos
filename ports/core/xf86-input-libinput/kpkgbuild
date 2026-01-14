@@ -8,22 +8,21 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: Toybox - all-in-one Linux command line utility
+# description	: Wrapper around libinput and allows for libinput to be used for input devices in X
+# depends	: libinput xorg-server xorgproto
 
-name=toybox
-version=0.8.13
+name=xf86-input-libinput
+version=1.4.0
 release=1
-source="http://landley.net/toybox/downloads/$name-$version.tar.gz"
+source="https://www.x.org/pub/individual/driver/$name-$version.tar.xz"
 
 build() {
 	cd $name-$version
-
-	make defconfig -j1
-	sed -i 's/# CONFIG_EXPR is not set/CONFIG_EXPR=y/' .config
-	sed -i 's/# CONFIG_GETTY is not set/CONFIG_GETTY=y/' .config
-	sed -i 's/# CONFIG_INIT is not set/CONFIG_INIT=y/' .config
-	sed -i 's/# CONFIG_TR is not set/CONFIG_TR=y/' .config
-	sed -i 's/# CONFIG_AWK is not set/CONFIG_AWK=y/' .config
-	sed -i 's/# CONFIG_STTY is not set/CONFIG_STTY=y/' .config
-	make PREFIX=$PKG install -j1
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--localstatedir=/var \
+		--disable-static
+	make
+	make DESTDIR=$PKG install
 }
