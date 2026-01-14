@@ -16,6 +16,11 @@ mount -a
 # Start udevd if it exists
 if [ -x /usr/sbin/udevd ]; then
     echo "Starting udevd..."
+    mkdir -pv /run/udev
+    chmod 755 /run/udev
+    if [ ! -d /run/udev ]; then
+        echo "CRITICAL: Failed to create /run/udev"
+    fi
     /usr/sbin/udevd --daemon
     /usr/sbin/udevadm trigger
     /usr/sbin/udevadm settle
@@ -24,4 +29,8 @@ fi
 # Set hostname
 hostname -F /etc/hostname
 
+# Suppress kernel messages on console
+dmesg -n 1
+
 echo "KDOS Initialized."
+sleep 1

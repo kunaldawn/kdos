@@ -27,23 +27,15 @@ build() {
 	./scripts/config --enable CONFIG_SQUASHFS
 	./scripts/config --enable CONFIG_SQUASHFS_XZ
 	./scripts/config --enable CONFIG_OVERLAY_FS
-	./scripts/config --enable CONFIG_ISO9660_FS
 	./scripts/config --enable CONFIG_BLK_DEV_LOOP
-	./scripts/config --enable CONFIG_DEVTMPFS
-	./scripts/config --enable CONFIG_DEVTMPFS_MOUNT
 
 	# Modern PC Hardware Support
 	./scripts/config --enable CONFIG_BLK_DEV_NVME
 	./scripts/config --enable CONFIG_SATA_AHCI
 	./scripts/config --enable CONFIG_AHCI
 	./scripts/config --enable CONFIG_USB_XHCI_HCD
-	./scripts/config --enable CONFIG_USB_STORAGE
 	./scripts/config --enable CONFIG_E1000E
 	./scripts/config --enable CONFIG_R8169
-	
-	# EFI Support
-	./scripts/config --enable CONFIG_EFI_STUB
-	./scripts/config --enable CONFIG_FB_EFI
 	
 	# Docker / Container Support
 	./scripts/config --enable CONFIG_NAMESPACES
@@ -84,9 +76,6 @@ build() {
 	./scripts/config --enable CONFIG_CGROUP_BPF
 	
 	# WiFi / Laptop Support
-	./scripts/config --enable CONFIG_WIRELESS
-	./scripts/config --enable CONFIG_CFG80211
-	./scripts/config --enable CONFIG_MAC80211
 	./scripts/config --enable CONFIG_WLAN
 	./scripts/config --enable CONFIG_ACPI_BATTERY
 	./scripts/config --enable CONFIG_ACPI_THERMAL
@@ -105,14 +94,12 @@ build() {
 	./scripts/config --enable CONFIG_CPU_FREQ_GOV_SCHEDUTIL
 	
 	# Wireless Drivers (Common)
-	./scripts/config --enable CONFIG_IWLWIFI
 	./scripts/config --enable CONFIG_IWLDVM
 	./scripts/config --enable CONFIG_IWLMVM
 	./scripts/config --enable CONFIG_RT2X00
 	./scripts/config --enable CONFIG_RTL8180
 	./scripts/config --enable CONFIG_RTL8187
 	./scripts/config --enable CONFIG_RTL_CARDS
-	./scripts/config --enable CONFIG_RTL8192CU
 	
 	# QEMU / KVM Guest Support
 	./scripts/config --enable CONFIG_VIRTIO_PCI
@@ -122,92 +109,221 @@ build() {
 	./scripts/config --enable CONFIG_VIRTIO_BALLOON
 	./scripts/config --enable CONFIG_SCSI_VIRTIO
 
-	## Console / Virtual Terminal
+	# Console / Virtual Terminal
 	./scripts/config --enable CONFIG_VT
 	./scripts/config --enable CONFIG_VT_CONSOLE
 	./scripts/config --enable CONFIG_UNIX98_PTYS
-	./scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE
 	./scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY
-	./scripts/config --enable CONFIG_DRM_FBDEV_EMULATION
 
-	## Console Fonts
+	# Console Fonts
 	./scripts/config --enable CONFIG_FONTS
 	./scripts/config --enable CONFIG_FONT_8x16
 	./scripts/config --enable CONFIG_FONT_8x8
 	./scripts/config --enable CONFIG_FONT_10x18
 	./scripts/config --enable CONFIG_FONT_SUN12x22
 
-	## QEMU Graphics Drivers
+	# QEMU Graphics Drivers
 	./scripts/config --enable CONFIG_DRM_BOCHS
-	./scripts/config --enable CONFIG_DRM_VIRTIO_GPU
-	./scripts/config --enable CONFIG_DRM_QXL
-	./scripts/config --enable CONFIG_FB_SIMPLE
 
 	# Developer Experience / Desktop Use
-	## Graphics (DRM)
-	./scripts/config --enable CONFIG_DRM
-	./scripts/config --module CONFIG_DRM_I915
-	./scripts/config --module CONFIG_DRM_AMDGPU
-	./scripts/config --module CONFIG_DRM_NOUVEAU
+	# Graphics (DRM)
 	./scripts/config --enable CONFIG_FB_EFI
 	./scripts/config --enable CONFIG_BACKLIGHT_CLASS_DEVICE
 	
-	## Sound
-	./scripts/config --enable CONFIG_SOUND
-	./scripts/config --enable CONFIG_SND
-	./scripts/config --module CONFIG_SND_HDA_INTEL
+	# Sound
 	./scripts/config --module CONFIG_SND_HDA_CODEC_REALTEK
 	./scripts/config --module CONFIG_SND_HDA_CODEC_HDMI
-	./scripts/config --module CONFIG_SND_USB_AUDIO
 	
-	## Input / Multimedia
+	# Input / Multimedia
 	./scripts/config --module CONFIG_MEDIA_SUPPORT
 	./scripts/config --module CONFIG_MEDIA_CAMERA_SUPPORT
 	./scripts/config --module CONFIG_USB_VIDEO_CLASS
 	./scripts/config --enable CONFIG_INPUT_EVDEV
-	./scripts/config --enable CONFIG_INPUT_MOUSE
-	./scripts/config --enable CONFIG_MOUSE_PS2
 	./scripts/config --enable CONFIG_USB_HID
-	./scripts/config --enable CONFIG_HID_GENERIC
+	./scripts/config --enable CONFIG_VIRTIO_INPUT
+	./scripts/config --enable CONFIG_INPUT_VMMOUSE
+	./scripts/config --enable CONFIG_MOUSE_PS2_VMMOUSE
 	./scripts/config --module CONFIG_INPUT_JOYDEV
 	./scripts/config --module CONFIG_JOYSTICK_XPAD
 	./scripts/config --module CONFIG_USB_ACM
 	./scripts/config --module CONFIG_USB_PRINTER
-	./scripts/config --module CONFIG_USB_SERIAL
 	
-	## Bluetooth
-	./scripts/config --module CONFIG_BT
-	./scripts/config --module CONFIG_BT_RFCOMM
+	# Bluetooth
 	./scripts/config --module CONFIG_BT_BNEP
-	./scripts/config --module CONFIG_BT_HCIBTUSB
 	
-	## Networking / VPN
+	# Networking / VPN
 	./scripts/config --module CONFIG_TUN
 	./scripts/config --module CONFIG_WIREGUARD
 	
-	## Cryptography / Disk Encryption
+	# Cryptography / Disk Encryption
 	./scripts/config --enable CONFIG_DM_CRYPT
 	./scripts/config --enable CONFIG_CRYPTO_AES
 	./scripts/config --enable CONFIG_CRYPTO_XTS
 	
-	## Filesystems
+	# Filesystems
+	
+	# Virtualization Host (KVM)
+	
+	# Early Boot / Initramfs (ABSOLUTELY REQUIRED)
+	./scripts/config --enable CONFIG_BLK_DEV_INITRD
+	./scripts/config --enable CONFIG_RD_GZIP
+	./scripts/config --enable CONFIG_RD_XZ
+	./scripts/config --enable CONFIG_RD_LZ4
+	./scripts/config --enable CONFIG_DEVTMPFS
+	./scripts/config --enable CONFIG_DEVTMPFS_MOUNT
+	
+	# Architecture & CPU (MAXIMUM PORTABILITY)
+	./scripts/config --enable CONFIG_X86_64
+	./scripts/config --enable CONFIG_GENERIC_CPU
+	./scripts/config --enable CONFIG_SMP
+	./scripts/config --enable CONFIG_X86_MSR
+	./scripts/config --enable CONFIG_X86_CPUID
+	
+	# Firmware, BIOS, EFI, DMI
+	./scripts/config --enable CONFIG_FW_LOADER
+	./scripts/config --enable CONFIG_DMI
+	./scripts/config --enable CONFIG_DMIID
+	./scripts/config --enable CONFIG_EFI
+	./scripts/config --enable CONFIG_EFI_STUB
+	./scripts/config --enable CONFIG_EFI_MIXED
+	
+	# PCI / Bus / DMA (CRITICAL FOR HARDWARE ENUMERATION)
+	./scripts/config --enable CONFIG_PCI
+	./scripts/config --enable CONFIG_PCI_MSI
+	./scripts/config --enable CONFIG_PCI_MSI_IRQ_DOMAIN
+	./scripts/config --enable CONFIG_PCI_MMCONFIG
+	./scripts/config --enable CONFIG_PCI_IOV
+	./scripts/config --enable CONFIG_DMA_SHARED_BUFFER
+	
+	# ACPI, Power, Suspend, Hibernate (LAPTOP CRITICAL)
+	./scripts/config --enable CONFIG_ACPI
+	./scripts/config --enable CONFIG_ACPI_AC
+	./scripts/config --enable CONFIG_ACPI_BUTTON
+	./scripts/config --enable CONFIG_ACPI_VIDEO
+	./scripts/config --enable CONFIG_ACPI_FAN
+	./scripts/config --enable CONFIG_ACPI_PROCESSOR
+	./scripts/config --enable CONFIG_ACPI_HOTPLUG_CPU
+	./scripts/config --enable CONFIG_ACPI_THERMAL_REL
+	./scripts/config --enable CONFIG_PM
+	./scripts/config --enable CONFIG_PM_SLEEP
+	./scripts/config --enable CONFIG_SUSPEND
+	./scripts/config --enable CONFIG_HIBERNATION
+	./scripts/config --enable CONFIG_PM_AUTOSLEEP
+	
+	# CPU Microcode (STABILITY, SECURITY, OEM FIXES)
+	./scripts/config --enable CONFIG_MICROCODE
+	./scripts/config --enable CONFIG_MICROCODE_INTEL
+	./scripts/config --enable CONFIG_MICROCODE_AMD
+	
+	# Memory & NUMA Safety (WORKSTATIONS / SERVERS)
+	./scripts/config --enable CONFIG_NUMA
+	./scripts/config --enable CONFIG_TRANSPARENT_HUGEPAGE
+	./scripts/config --enable CONFIG_CMA
+	
+	# Storage Stack
+	./scripts/config --enable CONFIG_SCSI
+	./scripts/config --enable CONFIG_BLK_DEV_SD
+	./scripts/config --enable CONFIG_BLK_DEV_SR
+	./scripts/config --enable CONFIG_ATA
+	./scripts/config --enable CONFIG_ATA_GENERIC
+	./scripts/config --enable CONFIG_ATA_PIIX
+	./scripts/config --enable CONFIG_SATA_AHCI_PLATFORM
+	./scripts/config --enable CONFIG_NVME_CORE
+	./scripts/config --enable CONFIG_NVME_MULTIPATH
+	
+	# USB (EVERYTHING USERS EXPECT TO WORK)
+	./scripts/config --enable CONFIG_USB
+	./scripts/config --enable CONFIG_USB_EHCI_HCD
+	./scripts/config --enable CONFIG_USB_OHCI_HCD
+	./scripts/config --enable CONFIG_USB_UHCI_HCD
+	./scripts/config --enable CONFIG_USB_HUB_USB251XB
+	./scripts/config --enable CONFIG_USB_STORAGE
+	./scripts/config --enable CONFIG_USB_USBNET
+	./scripts/config --enable CONFIG_USB_NET_DRIVERS
+	./scripts/config --enable CONFIG_USB_SERIAL
+	./scripts/config --enable CONFIG_USB_SERIAL_GENERIC
+	
+	# Input (KEYBOARD, TOUCHPAD, GAMEPADS)
+	./scripts/config --enable CONFIG_INPUT_KEYBOARD
+	./scripts/config --enable CONFIG_KEYBOARD_ATKBD
+	./scripts/config --enable CONFIG_INPUT_MOUSE
+	./scripts/config --enable CONFIG_MOUSE_PS2
+	./scripts/config --enable CONFIG_HID
+	./scripts/config --enable CONFIG_HID_GENERIC
+	./scripts/config --enable CONFIG_HID_MULTITOUCH
+	./scripts/config --enable CONFIG_INPUT_JOYSTICK
+	
+	# Laptop Vendor & OEM Quirks
+	./scripts/config --enable CONFIG_X86_PLATFORM_DEVICES
+	./scripts/config --module CONFIG_ACPI_WMI
+	./scripts/config --module CONFIG_WMI_BMOF
+	./scripts/config --module CONFIG_ACPI_ASUS
+	./scripts/config --module CONFIG_ACPI_LENOVO
+	./scripts/config --module CONFIG_DELL_LAPTOP
+	./scripts/config --module CONFIG_HP_WMI
+	./scripts/config --module CONFIG_THINKPAD_ACPI
+	
+	# Graphics (BOOT SAFE → DESKTOP READY)
+	./scripts/config --enable CONFIG_DRM
+	./scripts/config --enable CONFIG_FB_SIMPLE
+	./scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE
+	./scripts/config --enable CONFIG_DRM_FBDEV_EMULATION
+	./scripts/config --module CONFIG_DRM_I915
+	./scripts/config --module CONFIG_DRM_AMDGPU
+	./scripts/config --module CONFIG_DRM_NOUVEAU
+	./scripts/config --module CONFIG_DRM_VIRTIO_GPU
+	./scripts/config --module CONFIG_DRM_QXL
+	
+	# Audio (DESKTOP & LAPTOP)
+	./scripts/config --enable CONFIG_SOUND
+	./scripts/config --enable CONFIG_SND
+	./scripts/config --module CONFIG_SND_HDA_INTEL
+	./scripts/config --module CONFIG_SND_USB_AUDIO
+	
+	# Networking (WIRED + WIRELESS BASELINE)
+	./scripts/config --enable CONFIG_NET
+	./scripts/config --enable CONFIG_PACKET
+	./scripts/config --enable CONFIG_UNIX
+	./scripts/config --enable CONFIG_WIRELESS
+	./scripts/config --enable CONFIG_CFG80211
+	./scripts/config --enable CONFIG_MAC80211
+	./scripts/config --module CONFIG_IWLWIFI
+	./scripts/config --module CONFIG_ATH9K
+	./scripts/config --module CONFIG_RTL8192CU
+
+	# Bluetooth (MODERN LAPTOPS)
+	./scripts/config --module CONFIG_BT
+	./scripts/config --module CONFIG_BT_RFCOMM
+	./scripts/config --module CONFIG_BT_HCIBTUSB
+
+	# Filesystems (EVERYTHING USERS PLUG IN)
+	./scripts/config --enable CONFIG_TMPFS
+	./scripts/config --enable CONFIG_TMPFS_POSIX_ACL
+	./scripts/config --enable CONFIG_EXT4_FS
+	./scripts/config --enable CONFIG_XFS_FS
+	./scripts/config --enable CONFIG_BTRFS_FS
 	./scripts/config --enable CONFIG_FAT_FS
 	./scripts/config --enable CONFIG_MSDOS_FS
 	./scripts/config --enable CONFIG_VFAT_FS
 	./scripts/config --enable CONFIG_EXFAT_FS
 	./scripts/config --enable CONFIG_NTFS3_FS
+	./scripts/config --enable CONFIG_UDF_FS
+	./scripts/config --enable CONFIG_ISO9660_FS
 	./scripts/config --enable CONFIG_FUSE_FS
-	./scripts/config --enable CONFIG_EXT4_FS
-	./scripts/config --enable CONFIG_XFS_FS
-	./scripts/config --enable CONFIG_BTRFS_FS
 	
-	## Virtualization Host (KVM)
+	# Virtualization & Hypervisors (KVM, QEMU, VBOX)
 	./scripts/config --module CONFIG_KVM
 	./scripts/config --module CONFIG_KVM_INTEL
 	./scripts/config --module CONFIG_KVM_AMD
+	./scripts/config --enable CONFIG_PARAVIRT
+	./scripts/config --enable CONFIG_KVM_GUEST
 	
-	## KDOS extensions (enable if needed)
-	# cat $_portdir/kdos.config >> .config
+	# Watchdogs & Reliability (PREVENT RANDOM HANGS)
+	./scripts/config --enable CONFIG_WATCHDOG
+	./scripts/config --module CONFIG_SOFT_WATCHDOG
+
+	# KDOS extensions
+	cat $_portdir/kdos.config >> .config
 
 	# Resolve any missing dependencies
 	make olddefconfig
