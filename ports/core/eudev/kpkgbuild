@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Programs for dynamic creation of device nodes
-# depends	: util-linux kmod
+# depends	: util-linux kmod gperf
 
 name=eudev
 version=3.2.14
