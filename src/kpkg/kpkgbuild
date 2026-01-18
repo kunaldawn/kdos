@@ -30,6 +30,7 @@ KPKG_CONF="${KPKG_CONF:-/etc/kpkg.conf}"
 # Source the kpkgbuild
 [ -f "./kpkgbuild" ] || msgerr "kpkgbuild not found in current directory"
 . ./kpkgbuild
+export PORT_SRC="$PWD"
 
 # Validate required fields
 [ -z "$name" ] && msgerr "'name' is not set"
