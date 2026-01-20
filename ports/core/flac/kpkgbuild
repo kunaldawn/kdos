@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Audio CODEC similar to MP3, but lossless
+# depends	: libogg
+
+name=flac
+version=1.5.0
+release=1
+source="$name-$version.tar.gz::https://github.com/xiph/flac/archive/$version.tar.gz"
+
+build() {
+	NOCONFIGURE=1 ./autogen.sh
+	./configure \
+		--prefix=/usr \
+		--mandir=/usr/share/man \
+		--disable-rpath \
+		--disable-thorough-tests \
+		--enable-ogg \
+		--enable-shared \
+		--enable-sse
+	make 
+	make DESTDIR=$PKG install
+}

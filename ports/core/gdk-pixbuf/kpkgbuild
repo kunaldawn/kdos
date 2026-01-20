@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Toolkit for image loading and pixel buffer manipulation
+# depends	: glib libpng libtiff libjpeg-turbo shared-mime-info libx11 libxcb libxau jasper gobject-introspection
+
+name=gdk-pixbuf
+version=2.44.4
+release=1
+source="https://ftp.gnome.org/pub/gnome/sources/$name/${version%.*}/$name-$version.tar.xz"
+
+build() {
+	meson $name-$version build \
+		--libexecdir=/usr/lib/$name \
+		-Dinstalled_tests=false \
+		-Dman=false
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+	
+	# fix conflict with libjpeg-turbo
+	for i in jconfig.h jerror.h jmorecfg.h jpeglib.h; do
+		rm -fr $PKG/usr/include/$i
+	done
+}

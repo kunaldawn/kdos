@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Perl that module implements the URI class
+# depends	: perl
+
+name=perl-uri
+version=5.34
+release=1
+source="$name-$version.tar.gz::https://cpan.metacpan.org/authors/id/O/OA/OALDERS/URI-$version.tar.gz"
+
+build() {
+	perl Makefile.PL
+	make
+	make DESTDIR=$PKG install
+}
+

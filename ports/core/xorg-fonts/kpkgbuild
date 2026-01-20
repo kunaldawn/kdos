@@ -14,7 +14,7 @@
 
 name=xorg-fonts
 version=1.0
-release=2
+release=1
 
 build() {
 	mkdir -pv $PKG/etc

@@ -11,18 +11,15 @@
 # description	: X.Org Autotools macros
 
 name=util-macros
-version=1.20.0
+version=1.20.2
 release=1
 source="http://ftp.x.org/pub/individual/util/util-macros-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
 	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make DESTDIR=$PKG install
 }
 

@@ -17,13 +17,10 @@ release=1
 source="https://xorg.freedesktop.org/archive/individual/xcb/xcb-util-wm-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

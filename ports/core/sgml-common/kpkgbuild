@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Creating and maintaining centralized SGML catalogs
+
+name=sgml-common
+version=0.6.3
+release=1
+source="https://sourceware.org/ftp/docbook-tools/new-trials/SOURCES/$name-$version.tgz"
+
+build() {
+	cp -f /usr/share/automake-*/install-sh .
+	cp -f /usr/share/automake-*/missing .
+	cp -f /usr/share/automake-*/mkinstalldirs .
+	./configure --prefix=/usr --sysconfdir=/etc
+	make
+	make docdir=/usr/share/doc DESTDIR=$PKG install
+}

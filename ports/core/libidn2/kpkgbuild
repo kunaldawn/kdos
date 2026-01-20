@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Free software implementation of IDNA2008, Punycode and TR46
+# depends	: libunistring
+
+name=libidn2
+version=2.3.8
+release=1
+source="https://ftp.gnu.org/gnu/libidn/libidn2-$version.tar.gz"
+
+build() {
+	./configure --prefix=/usr --disable-doc
+	make
+	make DESTDIR=$PKG install
+}

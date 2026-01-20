@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Library for accessing and resolving information from the Public Suffix List
+# depends	: libidn2 libunistring python3
+
+name=libpsl
+version=0.21.5
+release=1
+source="https://github.com/rockdaboot/libpsl/releases/download/$version/libpsl-$version.tar.gz"
+
+build() {
+	./configure --prefix=/usr
+	make
+	make DESTDIR=$PKG install
+}

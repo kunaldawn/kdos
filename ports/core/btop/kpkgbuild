@@ -12,12 +12,11 @@
 # homepage	: https://github.com/aristocratos/btop
 
 name=btop
-version=1.2.13
-release=2
+version=1.4.6
+release=1
 source="https://github.com/aristocratos/${name}/archive/refs/tags/v${version}.tar.gz"
 
 build() {
-	cd $name-$version
 	make CXXFLAGS="-Dstatvfs64=statvfs" QUIET=true PREFIX=/usr
 	make DESTDIR=$PKG PREFIX=/usr QUIET=true install
 }

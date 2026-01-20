@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Contains math libraries that useful functions for arbitrary precision arithmetic
+
+name=libgmp
+version=6.3.0
+release=1
+source="https://ftp.gnu.org/gnu/gmp/gmp-$version.tar.xz"
+
+build() {
+	./configure --prefix=/usr \
+	            --enable-cxx \
+	            --build=${XHOST:-x86_64-unknown-linux-musl}
+	make
+	make DESTDIR=$PKG install
+}

@@ -16,8 +16,6 @@ release=1
 source="https://gitlab.com/OldManProgrammer/unix-tree/-/archive/$version/unix-tree-$version.tar.bz2"
 
 build() {
-	cd unix-tree-$version
-
-  	make
+	make
 	make PREFIX=$PKG/usr MANDIR=$PKG/usr/share/man/man1 install
 }

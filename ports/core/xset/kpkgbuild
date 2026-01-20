@@ -17,13 +17,10 @@ release=1
 source="http://ftp.x.org/pub/individual/app/xset-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }
