@@ -13,9 +13,6 @@ all: build
 fetch:
 	bash ports/fetch
 
-cleanfetch:
-	find ports/core/ -type f | grep -v "kpkg" | xargs rm
-
 build:
 	mkdir -p build
 	docker build -t os-dev .
@@ -34,4 +31,4 @@ cleandisk:
 clean:
 	rm -rf build
 
-.PHONY: all build run rundisk cleandisk clean fetch cleanfetch
+.PHONY: all build run rundisk cleandisk clean fetch
