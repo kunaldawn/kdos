@@ -18,7 +18,7 @@ source="https://gitlab.freedesktop.org/$name/$name/-/archive/v$version/$name-v$v
 
 build() {
 	export XML_CATALOG_FILES=/etc/xml/catalog 
-	meson $name-v$version build \
+	meson build \
 		-D gtk-doc=false \
 		-D systemdsystemunitdir=no 
 	meson compile -C build

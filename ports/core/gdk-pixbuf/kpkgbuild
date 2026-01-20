@@ -17,7 +17,7 @@ release=1
 source="https://ftp.gnome.org/pub/gnome/sources/$name/${version%.*}/$name-$version.tar.xz"
 
 build() {
-	meson $name-$version build \
+	meson build \
 		--libexecdir=/usr/lib/$name \
 		-Dinstalled_tests=false \
 		-Dman=false

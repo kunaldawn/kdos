@@ -17,7 +17,7 @@ release=1
 source="https://gstreamer.freedesktop.org/src/gst-libav/$name-$version.tar.xz"
 
 build() {
-	meson $name-$version build \
+	meson build \
 		-Ddoc=disabled \
 		-Dpackage-name="GStreamer FFmpeg Plugins $version (Venom Linux)"
 	meson compile -C build
