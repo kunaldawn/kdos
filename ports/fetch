@@ -45,6 +45,7 @@ fetch_port() {
     }
     
     # Download each source
+    src_idx=0
     for src in $source; do
         case $src in
             *::*)
@@ -53,14 +54,44 @@ fetch_port() {
                 url="${src#*::}"
                 ;;
             http://*|https://*|ftp://*)
-                # Just a URL, extract filename
-                filename=$(basename "$src")
+                # Automatic renaming to name-version.ext
                 url="$src"
+                
+                # Default filename to basename
+                filename=$(basename "$url")
+
+                # Detect extension
+                if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then
+                    ext="tar.gz"
+                elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then
+                    ext="tar.bz2"
+                elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then
+                    ext="tar.xz"
+                elif [[ "$url" =~ \.tar\.zst$ ]]; then
+                    ext="tar.zst"
+                elif [[ "$url" =~ \.zip$ ]]; then
+                    ext="zip"
+                else
+                    ext=""
+                fi
+                
+                if [ -n "$ext" ] && [ $src_idx -eq 0 ]; then
+                    filename="$name-$version.$ext"
+                fi
                 ;;
             *)
-                # Local file or plain filename, skip download
-                echo "⊙  $portname: $src (local file, skipping)"
-                continue
+                # Local file or plain filename
+                filename="$src"
+                
+                # If it's just a filename (no path separators), checks if it exists
+                if [[ "$filename" != */* ]]; then
+                    echo "⊙  $portname: $src (local file)"
+                    continue
+                else
+                    # It might be a path relative to port dir? 
+                    echo "⊙  $portname: $src (local file path)"
+                    continue
+                fi
                 ;;
         esac
         
@@ -75,6 +106,8 @@ fetch_port() {
             }
             echo "✓  $portname: Downloaded $filename"
         fi
+
+        src_idx=$((src_idx + 1))
     done
     
     # Handle vendoring if requested
@@ -92,7 +125,22 @@ fetch_port() {
             first_src=$(echo $source | cut -d' ' -f1)
             case $first_src in
                 *::*) filename="${first_src%%::*}" ;;
-                *) filename=$(basename "$first_src") ;;
+                http://*|https://*|ftp://*)
+                     url="$first_src"
+                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                     else ext=""; fi
+                     
+                     if [ -n "$ext" ]; then
+                         filename="$name-$version.$ext"
+                     else
+                         filename=$(basename "$url")
+                     fi
+                     ;;
+                *) filename="$first_src" ;;
             esac
             
             tar xf "$filename" -C "$tmp_dir" --strip-components=1
@@ -120,7 +168,22 @@ fetch_port() {
             first_src=$(echo $source | cut -d' ' -f1)
             case $first_src in
                 *::*) filename="${first_src%%::*}" ;;
-                *) filename=$(basename "$first_src") ;;
+                http://*|https://*|ftp://*)
+                     url="$first_src"
+                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                     else ext=""; fi
+                     
+                     if [ -n "$ext" ]; then
+                         filename="$name-$version.$ext"
+                     else
+                         filename=$(basename "$url")
+                     fi
+                     ;;
+                *) filename="$first_src" ;;
             esac
             
             tar xf "$filename" -C "$tmp_dir" --strip-components=1
@@ -143,7 +206,22 @@ fetch_port() {
             first_src=$(echo $source | cut -d' ' -f1)
             case $first_src in
                 *::*) filename="${first_src%%::*}" ;;
-                *) filename=$(basename "$first_src") ;;
+                http://*|https://*|ftp://*)
+                     url="$first_src"
+                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                     else ext=""; fi
+                     
+                     if [ -n "$ext" ]; then
+                         filename="$name-$version.$ext"
+                     else
+                         filename=$(basename "$url")
+                     fi
+                     ;;
+                *) filename="$first_src" ;;
             esac
             
             tar xf "$filename" -C "$tmp_dir" --strip-components=1
