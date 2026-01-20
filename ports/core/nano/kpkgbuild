@@ -17,8 +17,6 @@ release=1
 source="https://www.nano-editor.org/dist/v${version%%.*}/$name-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
 	./configure --prefix=/usr     \
   	            --sysconfdir=/etc \
   	            --enable-utf8     \

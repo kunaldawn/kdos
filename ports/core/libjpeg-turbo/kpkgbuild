@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: A fork of the original IJG libjpeg which uses SIMD to accelerate baseline JPEG compression and decompression
+# depends	: cmake ninja yasm
+
+name=libjpeg-turbo
+version=3.0.1
+release=1
+source="https://downloads.sourceforge.net/$name/$name-$version.tar.gz"
+
+build() {
+	cmake -S $name-$version -B build -G Ninja \
+	        -DCMAKE_INSTALL_PREFIX=/usr \
+	        -DCMAKE_INSTALL_LIBDIR=/usr/lib \
+	        -DCMAKE_INSTALL_LIBEXECDIR=/usr/lib \
+	        -DCMAKE_BUILD_TYPE=Release \
+	        -DCMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+	        -DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+	        -DWITH_JPEG8=ON \
+	        -Wno-dev 
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}

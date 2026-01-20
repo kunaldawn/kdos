@@ -12,18 +12,16 @@
 # depends	: util-macros mkfontscale
 
 name=encodings
-version=1.0.7
+version=1.1.0
 release=1
 source="https://gitlab.freedesktop.org/xorg/font/$name/-/archive/$name-$version/$name-$name-$version.tar.gz"
 
 build() {
-	cd $name-$name-$version
 	NOCONFIGURE=1 ./autogen.sh
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

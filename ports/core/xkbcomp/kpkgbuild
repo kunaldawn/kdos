@@ -12,18 +12,15 @@
 # depends	: libx11 libxkbfile 
 
 name=xkbcomp
-version=1.4.6
+version=1.5.0
 release=1
 source="http://ftp.x.org/pub/individual/app/xkbcomp-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

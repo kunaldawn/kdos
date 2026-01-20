@@ -2,18 +2,12 @@
 # depends	: libfontenc freetype2 zlib 
 
 name=mkfontscale
-version=1.2.2
+version=1.2.3
 release=1
 source="http://ftp.x.org/pub/individual/app/mkfontscale-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
-		--prefix=/usr \
-		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+	./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

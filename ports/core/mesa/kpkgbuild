@@ -9,24 +9,52 @@
 # ---------------------------------
 
 # description	: OpenGL compatible 3D graphics library
-# depends	: llvm python3-mako elfutils bison flex libxext libxdamage libxshmfence libxxf86vm libxrandr libdrm libglvnd glslang 
+# depends	: llvm python3-mako elfutils bison flex libxext libxdamage libxshmfence libxxf86vm libxrandr libdrm libglvnd glslang expat rust bindgen libclc python3-yaml spirv-llvm-translator cbindgen
 # optional	: libva libvdpau wayland-protocols
 
 name=mesa
-version=23.3.2
+version=25.3.3
 release=1
-source="https://mesa.freedesktop.org/archive/$name-$version.tar.xz"
+source="https://mesa.freedesktop.org/archive/$name-$version.tar.xz
+	https://crates.io/api/v1/crates/syn/2.0.87/download#/syn-2.0.87.tar.gz
+	https://crates.io/api/v1/crates/unicode-ident/1.0.12/download#/unicode-ident-1.0.12.tar.gz
+	https://crates.io/api/v1/crates/quote/1.0.35/download#/quote-1.0.35.tar.gz
+	https://crates.io/api/v1/crates/proc-macro2/1.0.86/download#/proc-macro2-1.0.86.tar.gz
+	https://crates.io/api/v1/crates/paste/1.0.14/download#/paste-1.0.14.tar.gz
+	https://crates.io/api/v1/crates/rustc-hash/2.1.1/download#/rustc-hash-2.1.1.tar.gz"
+
+
 
 build() {
-	cd $name-$version
+	# Vendor rust crates
+	ln -sf "$SRC_ROOT/syn-2.0.87" subprojects/syn-2.0.87
+	cp -r subprojects/packagefiles/syn-2-rs/* subprojects/syn-2.0.87/
+	
+	ln -sf "$SRC_ROOT/unicode-ident-1.0.12" subprojects/unicode-ident-1.0.12
+	cp -r subprojects/packagefiles/unicode-ident-1-rs/* subprojects/unicode-ident-1.0.12/
+	
+	ln -sf "$SRC_ROOT/quote-1.0.35" subprojects/quote-1.0.35
+	cp -r subprojects/packagefiles/quote-1-rs/* subprojects/quote-1.0.35/
+	
+	ln -sf "$SRC_ROOT/proc-macro2-1.0.86" subprojects/proc-macro2-1.0.86
+	cp -r subprojects/packagefiles/proc-macro2-1-rs/* subprojects/proc-macro2-1.0.86/
+	
+	ln -sf "$SRC_ROOT/paste-1.0.14" subprojects/paste-1.0.14
+	cp -r subprojects/packagefiles/paste-1-rs/* subprojects/paste-1.0.14/
+	
+	ln -sf "$SRC_ROOT/rustc-hash-2.1.1" subprojects/rustc-hash-2.1.1
+	cp -r subprojects/packagefiles/rustc-hash-2-rs/* subprojects/rustc-hash-2.1.1/
 
-	scratch isinstalled vulkan-icd-loader && OPT_MESA_GALLIUM='zink,'
-	scratch isinstalled libvdpau && OPT_MESA_VDPAU='-D gallium-vdpau=enabled' || OPT_MESA_VDPAU='-D gallium-vdpau=disabled'
-	scratch isinstalled libva && OPT_MESA_VAAPI='-D gallium-va=enabled' || OPT_MESA_VAAPI='-D gallium-va=disabled'
-	scratch isinstalled wayland-protocols && OPT_MESA_PLATFORMS='wayland,x11' || OPT_MESA_PLATFORMS='x11'
+	pkg-config --exists vulkan-icd-loader && OPT_MESA_GALLIUM='zink,'
+	pkg-config --exists libva && OPT_MESA_VAAPI='-D gallium-va=enabled' || OPT_MESA_VAAPI='-D gallium-va=disabled'
+	pkg-config --exists wayland-protocols && OPT_MESA_PLATFORMS='wayland,x11' || OPT_MESA_PLATFORMS='x11'
+	export RUSTFLAGS="-C prefer-dynamic"
 
 	meson build \
-		-D dri3=enabled \
+		-D b_ndebug=true \
+		-D opengl=true \
+		-D gallium-extra-hud=true \
+		-D xmlconfig=enabled \
 		-D egl=enabled \
 		-D llvm=enabled \
 		-D shared-llvm=enabled \
@@ -34,15 +62,14 @@ build() {
 		-D gles1=disabled \
 		-D gles2=enabled \
 		-D glx=dri \
-		-D osmesa=true \
-		-D gallium-xa=enabled \
-		-D gallium-drivers=${OPT_MESA_GALLIUM}crocus,iris,nouveau,r300,r600,radeonsi,svga,swrast,virgl,i915 \
+		-D gallium-drivers=${OPT_MESA_GALLIUM}crocus,iris,nouveau,r300,r600,radeonsi,svga,llvmpipe,softpipe,virgl,i915 \
 		-D platforms=${OPT_MESA_PLATFORMS} \
 		-D shared-glapi=enabled \
-		-D vulkan-drivers=amd,intel \
+		-D vulkan-drivers=amd,intel,intel_hasvk,nouveau,swrast,virtio \
 		-D vulkan-layers=device-select,intel-nullhw,overlay \
 		-D video-codecs=vc1dec,h264dec,h264enc,h265dec,h265enc \
-		$OPT_MESA_VDPAU $OPT_MESA_VAAPI -D glvnd=true
+		$OPT_MESA_VAAPI -D glvnd=true
+
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }

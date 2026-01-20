@@ -12,18 +12,15 @@
 # depends	: libxrandr libx11 
 
 name=xev
-version=1.2.5
+version=1.2.6
 release=1
 source="http://ftp.x.org/pub/individual/app/xev-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

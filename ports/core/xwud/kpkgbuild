@@ -12,19 +12,15 @@
 # depends	: libx11 
 
 name=xwud
-version=1.0.6
+version=1.0.7
 release=1
 source="http://ftp.x.org/pub/individual/app/xwud-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }
-

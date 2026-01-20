@@ -17,8 +17,6 @@ release=1
 source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
 	./configure --host=$TARGET \
 		--prefix=/usr \
 		--with-curses \

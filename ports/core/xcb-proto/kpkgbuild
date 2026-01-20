@@ -11,20 +11,16 @@
 # description	: XML-XCB protocol descriptions
 
 name=xcb-proto
-version=1.16.0
+version=1.17.0
 release=1
 source="https://xorg.freedesktop.org/archive/individual/proto/xcb-proto-$version.tar.xz"
 
 build() {
 	export PYTHON=/usr/bin/python3
-
-	cd $name-$version
-
 	./configure              \
 		--prefix=/usr        \
 		--sysconfdir=/etc    \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make DESTDIR=$PKG install
 }
 

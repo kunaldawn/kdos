@@ -9,21 +9,26 @@
 # ---------------------------------
 
 # description: Tools to create and extract squashfs filesystems
-# depends: zlib xz
+# depends: zlib xz lzo zstd lz4
 
 name=squashfs-tools
-version=4.6.1
+version=4.7.4
 release=1
 source="https://github.com/plougher/squashfs-tools/archive/refs/tags/$version.tar.gz"
 
 build() {
-	cd $name-$version/squashfs-tools
+	cd squashfs-tools
+	# Patch to bypass strict GNU sed check as we are using toybox sed
+	sed -i 's/if ! check_sed "${SED}"; then/if false; then/' generate-manpages/functions.sh
 
-	make \
+	SED=/usr/bin/sed make \
 		XZ_SUPPORT=1 \
 		LZMA_XZ_SUPPORT=1 \
 		ZLIB_SUPPORT=1 \
-		LZ4_SUPPORT=0 \
-		ZSTD_SUPPORT=0
-	make INSTALL_DIR=$PKG/usr/bin install
+		LZ4_SUPPORT=1 \
+		ZSTD_SUPPORT=1 \
+		USE_PREBUILT_MANPAGES=y \
+		INSTALL_DIR=$PKG/usr/bin \
+		INSTALL_MANPAGES_DIR=$PKG/usr/share/man/man1 \
+		install
 }

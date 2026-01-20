@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Encoding files for use with Poppler, to render CJK and Cyrillic properly
+
+name=poppler-data
+version=0.4.12
+release=1
+source="https://poppler.freedesktop.org/$name-$version.tar.gz"
+
+build() {
+	make prefix=$PKG/usr install
+}
+

@@ -16,8 +16,6 @@ release=1
 source="https://www.sourceware.org/pub/bzip2/$name-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
 	make CFLAGS="$CFLAGS"
 	make PREFIX=$PKG/usr install
 }

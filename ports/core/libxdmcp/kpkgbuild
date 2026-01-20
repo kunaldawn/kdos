@@ -17,13 +17,10 @@ release=1
 source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXdmcp-$version.tar.xz"
 
 build() {
-	cd libXdmcp-$version
-
-  	./configure              \
+	./configure              \
 		--prefix=/usr        \
 		--sysconfdir=/etc    \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 

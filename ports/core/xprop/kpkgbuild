@@ -12,18 +12,15 @@
 # depends	: libx11 
 
 name=xprop
-version=1.2.6
+version=1.2.8
 release=1
 source="http://ftp.x.org/pub/individual/app/xprop-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }
