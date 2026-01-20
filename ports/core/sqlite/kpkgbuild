@@ -12,9 +12,9 @@
 # depends	: zlib readline ncurses
 
 name=sqlite
-version=3510100
+version=3510200
 release=1
-source="https://sqlite.org/2025/$name-autoconf-$version.tar.gz"
+source="https://sqlite.org/2026/$name-autoconf-$version.tar.gz"
 
 build() {
 	export CPPFLAGS="$CPPFLAGS \
@@ -28,11 +28,7 @@ build() {
 		-DSQLITE_MAX_VARIABLE_NUMBER=250000 \
 		-DSQLITE_MAX_EXPR_DEPTH=10000 \
 		-DSQLITE_ENABLE_MATH_FUNCTIONS"
-
-	cd $name-autoconf-$version
-
-  	./configure --prefix=/usr \
-		--disable-static \
+	./configure --prefix=/usr \
 		--enable-fts3 \
 		--enable-fts4 \
 		--enable-fts5 

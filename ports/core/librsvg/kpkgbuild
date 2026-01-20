@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Library and tools used to manipulate, convert and view Scalable Vector Graphic (SVG) images
+# depends	: gdk-pixbuf gobject-introspection pango rust vala 
+
+name=librsvg
+version=2.59.91
+release=1
+source="https://ftp.gnome.org/pub/gnome/sources/$name/${version%.*}/$name-$version.tar.xz"
+
+build() {
+	# reduce size by 50%
+	export LDFLAGS="$LDFLAGS -Wl,--gc-sections"
+	./configure \
+		--prefix=/usr    \
+		--enable-pixbuf-loader \
+		--enable-vala    \
+		--disable-gtk-doc \
+		--disable-debug \
+		--disable-nls
+	make
+	make DESTDIR=$PKG install
+}

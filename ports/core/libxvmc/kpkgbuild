@@ -12,18 +12,15 @@
 # depends	: libx11 libxext libxv 
 
 name=libxvmc
-version=1.0.13
+version=1.0.14
 release=1
 source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXvMC-$version.tar.xz"
 
 build() {
-	cd libXvMC-$version
-
 	./configure \
 		--prefix=/usr \
         --sysconfdir=/etc \
-        --localstatedir=/var \
-        --disable-static
+        --localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

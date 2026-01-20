@@ -16,7 +16,6 @@ release=1
 source="http://ftp.x.org/pub/individual/lib/libpciaccess-$version.tar.xz"
 
 build() {
-	cd libpciaccess-$version
 	meson build
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build

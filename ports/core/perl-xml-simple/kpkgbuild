@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Perl extension that provides an easy API to read and write XML (especially config files)
+# depends	: perl
+
+name=perl-xml-simple
+version=2.25
+release=1
+source="$name-$version.tar.gz::http://cpan.org/authors/id/G/GR/GRANTM/XML-Simple-$version.tar.gz"
+
+build() {
+	perl Makefile.PL
+	make
+	make DESTDIR=$PKG install
+}
+

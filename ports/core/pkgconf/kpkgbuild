@@ -11,21 +11,19 @@
 # description	: Package compiler and linker metadata toolkit
 
 name=pkgconf
-version=2.1.0
+version=2.5.1
 release=1
 source="https://distfiles.ariadne.space/pkgconf/$name-$version.tar.xz"
 
 build() {
-cd $name-$version
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--with-pkg-config-dir="/usr/lib/pkgconfig:/usr/share/pkgconfig" \
+		--with-system-libdir="/lib:/usr/lib" \
+		--with-system-includedir="/usr/include"
+	make
+	make DESTDIR=$PKG install
 
-./configure \
-	--prefix=/usr \
-	--sysconfdir=/etc \
-	--with-pkg-config-dir="/usr/lib/pkgconfig:/usr/share/pkgconfig" \
-	--with-system-libdir="/lib:/usr/lib" \
-	--with-system-includedir="/usr/include"
-make
-make DESTDIR=$PKG install
-
-ln -sf pkgconf "$PKG"/usr/bin/pkg-config
+	ln -sf pkgconf "$PKG"/usr/bin/pkg-config
 }

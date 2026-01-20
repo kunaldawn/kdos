@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: C-Extensions for Python3
+# depends	: python3
+
+name=cython3
+version=3.2.4
+release=1
+source="$name-$version.tar.gz::https://github.com/cython/cython/archive/$version.tar.gz"
+
+build() {
+	python3 setup.py build
+	python3 setup.py install --root=$PKG --optimize=1
+}

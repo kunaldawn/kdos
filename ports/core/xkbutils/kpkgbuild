@@ -12,19 +12,16 @@
 # depends	: libxaw libxt libx11 
 
 name=xkbutils
-version=1.0.5
+version=1.0.6
 release=1
 source="http://ftp.x.org/pub/individual/app/xkbutils-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
 	export CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types"
   	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

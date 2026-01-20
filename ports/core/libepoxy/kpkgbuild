@@ -17,7 +17,6 @@ release=1
 source="https://github.com/anholt/libepoxy/archive/$version/$name-$version.tar.gz"
 
 build() {
-	cd $name-$version
 	meson build
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build

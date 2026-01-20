@@ -12,13 +12,12 @@
 # depends	: freetype2 gperf
 
 name=fontconfig
-version=2.15.0
+version=2.17.1
 release=1
-source="https://www.freedesktop.org/software/fontconfig/release/$name-$version.tar.xz"
+source="https://gitlab.freedesktop.org/$name/$name/-/archive/$version/$name-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
+	NOCONFIGURE=1 ./autogen.sh
 	./configure --prefix=/usr        \
 	            --sysconfdir=/etc    \
 	            --localstatedir=/var \

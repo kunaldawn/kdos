@@ -16,8 +16,6 @@ release=1
 source="https://www.cpan.org/src/5.0/$name-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
 	./Configure -des \
 		-Dprefix=/usr \
 		-Dvendorprefix=/usr \

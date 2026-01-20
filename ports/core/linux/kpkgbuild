@@ -11,15 +11,11 @@
 # description: Linux kernel
 
 name=linux
-version=6.18.1
+version=6.18.5
 release=1
 source="https://cdn.kernel.org/pub/linux/kernel/v6.x/$name-$version.tar.xz"
 
-_portdir=$PWD
-
 build() {
-	cd $name-$version
-
 	make mrproper
 	make defconfig
 	
@@ -159,10 +155,6 @@ build() {
 	./scripts/config --enable CONFIG_DM_CRYPT
 	./scripts/config --enable CONFIG_CRYPTO_AES
 	./scripts/config --enable CONFIG_CRYPTO_XTS
-	
-	# Filesystems
-	
-	# Virtualization Host (KVM)
 	
 	# Early Boot / Initramfs (ABSOLUTELY REQUIRED)
 	./scripts/config --enable CONFIG_BLK_DEV_INITRD
@@ -323,7 +315,7 @@ build() {
 	./scripts/config --module CONFIG_SOFT_WATCHDOG
 
 	# KDOS extensions
-	cat $_portdir/kdos.config >> .config
+	cat $SRC/kdos.config >> .config
 
 	# Resolve any missing dependencies
 	make olddefconfig

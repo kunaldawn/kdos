@@ -16,9 +16,7 @@ release=1
 source="https://ftp.osuosl.org/pub/rpm/$name/releases/popt-1.x/$name-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
-	./configure --prefix=/usr --disable-static --disable-nls
+	./configure --prefix=/usr --disable-nls
 	make
 	make DESTDIR=$PKG install
 }

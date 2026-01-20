@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Session manager for Xfce
+# depends	: libwnck3 libxfce4ui consolekit2 desktop-file-utils shared-mime-info polkit-gnome xfdesktop libsm iceauth xinit xrdb
+
+name=xfce4-session
+version=4.21.1
+release=1
+source="https://archive.xfce.org/src/xfce/xfce4-session/${version%.*}/$name-$version.tar.xz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--disable-legacy-sm \
+		--disable-nls
+	make
+	make DESTDIR=$PKG install
+}

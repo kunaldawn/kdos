@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Desktop manager for the Xfce Desktop Environment
+# depends	: exo libwnck3 libxfce4ui libnotify startup-notification thunar
+
+name=xfdesktop
+version=4.20.1
+release=1
+source="https://archive.xfce.org/src/xfce/xfdesktop/${version%.*}/$name-$version.tar.bz2"
+
+build() {
+	./configure --prefix=/usr --disable-nls
+	make
+	make DESTDIR=$PKG install
+}

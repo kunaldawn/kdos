@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: A project for generating C bindings from Rust code
+# depends	: rust zstd
+
+name=bindgen
+version=0.72.1
+release=1
+source="https://github.com/rust-lang/rust-bindgen/archive/refs/tags/v$version.tar.gz"
+vendoring=rust
+
+build() {
+	export LIBCLANG_PATH=/usr/lib/
+	export LIBCLANG_STATIC_PATH=/usr/lib/
+
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+
+	export RUSTFLAGS="-C link-arg=-lzstd"
+	cargo build --release --frozen --offline -p bindgen-cli --no-default-features --features logging,static
+	install -Dm755 target/release/bindgen $PKG/usr/bin/
+}
