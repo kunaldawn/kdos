@@ -18,7 +18,7 @@ release=1
 source="https://github.com/KhronosGroup/SPIRV-Headers/archive/vulkan-sdk-$version/SPIRV-Headers-vulkan-sdk-$name-$version.tar.gz"
 
 build() {
-	cmake -S SPIRV-Headers-vulkan-sdk-$version -B build -G Ninja \
+	cmake -S . -B build -G Ninja \
 	    -DCMAKE_INSTALL_PREFIX=/usr \
         -DCMAKE_INSTALL_LIBDIR=lib \
 		-DCMAKE_INSTALL_LIBEXECDIR=lib \
