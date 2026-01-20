@@ -18,7 +18,7 @@ release=1
 source="https://dri.freedesktop.org/$name/$name-$version.tar.xz"
 
 build() {
-	meson $name-$version build \
+	meson build \
 		-D man-pages=disabled \
 		-D valgrind=disabled \
 		-D cairo-tests=disabled \

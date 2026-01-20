@@ -17,7 +17,7 @@ release=1
 source="http://xorg.freedesktop.org/archive/individual/data/xkeyboard-config/xkeyboard-config-$version.tar.xz"
 
 build() {
-    meson $name-$version build \
+    meson build \
 		-Dcompat-rules=true \
 		-Dxorg-rules-symlinks=true
     meson compile -C build
