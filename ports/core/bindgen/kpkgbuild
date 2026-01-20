@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: A project for generating C bindings from Rust code
-# depends	: rust zstd
+# depends	: rust zstd clang
 
 name=bindgen
 version=0.72.1

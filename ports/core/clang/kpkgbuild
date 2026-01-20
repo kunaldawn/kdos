@@ -18,7 +18,7 @@ source="https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/
 	https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/cmake-${version}.src.tar.xz"
 
 build() {
-	mv cmake-${version}.src cmake
+	mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
 
 
 	cmake -B build -G Ninja \
@@ -34,7 +34,7 @@ build() {
 	    -D CLANG_INCLUDE_DOCS=OFF \
 	    -D CLANG_INCLUDE_TESTS=OFF \
 	    -D LIBCLANG_BUILD_STATIC=ON \
-	    -D CLANG_LINK_CLANG_DYLIB=ON \
+	    -D CLANG_LINK_CLANG_DYLIB=OFF \
 	    -D CLANG_BUILT_STANDALONE=ON \
 	    -D LLVM_TARGETS_TO_BUILD="AMDGPU;BPF;NVPTX;WebAssembly;X86" \
 	    -Wno-dev
