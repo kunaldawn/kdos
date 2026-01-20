@@ -17,7 +17,7 @@ release=1
 source="http://ftp.x.org/pub/individual/xserver/$name-$version.tar.xz"
 
 build() {
-    meson $name-$version build \
+    meson build \
 		-D xkb_dir=/usr/local/share/X11/xkb \
 		-D xkb_output_dir=/var/lib/xkb \
 		-D suid_wrapper=true \
