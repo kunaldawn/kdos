@@ -16,7 +16,13 @@ fetch:
 build:
 	mkdir -p build
 	docker build -t os-dev .
-	docker run --network none --cpus="12" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) -v $$(pwd)/build:/workspace/build -it os-dev python3 script/build.py
+	docker run --network none --cpus="12" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
+		-v $$(pwd)/build:/workspace/build \
+		-v $$(pwd)/src:/workspace/src:ro \
+		-v $$(pwd)/fs:/workspace/fs:ro \
+		-v $$(pwd)/script:/workspace/script:ro \
+		-v $$(pwd)/ports:/workspace/ports:ro \
+		-it os-dev python3 script/build.py
 
 run:
 	test -f build/kdos.qcow2 || qemu-img create -f qcow2 build/kdos.qcow2 20G
