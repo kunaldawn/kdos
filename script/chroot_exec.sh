@@ -49,8 +49,16 @@ mkdir -p "$CHROOT_DIR/kdos/build"
 mountpoint -q "$CHROOT_DIR/kdos/build" || mount --bind "$REPO_ROOT/build" "$CHROOT_DIR/kdos/build"
 mountpoint -q "$CHROOT_DIR/ports" || mount --bind "$REPO_ROOT/ports" "$CHROOT_DIR/ports"
 
+# Explicitly mount sub-mounts that might be hidden by the main bind mount
+mkdir -p "$CHROOT_DIR/kdos/script"
+mountpoint -q "$CHROOT_DIR/kdos/script" || mount --bind "$REPO_ROOT/script" "$CHROOT_DIR/kdos/script"
+mkdir -p "$CHROOT_DIR/kdos/src"
+mountpoint -q "$CHROOT_DIR/kdos/src" || mount --bind "$REPO_ROOT/src" "$CHROOT_DIR/kdos/src"
+
 # Cleanup function (Unmount on exit)
 cleanup() {
+    umount "$CHROOT_DIR/kdos/src" 2>/dev/null || true
+    umount "$CHROOT_DIR/kdos/script" 2>/dev/null || true
     umount "$CHROOT_DIR/ports" 2>/dev/null || true
     umount "$CHROOT_DIR/kdos/build" 2>/dev/null || true
     umount "$CHROOT_DIR/kdos" 2>/dev/null || true
