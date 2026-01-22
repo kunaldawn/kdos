@@ -17,19 +17,11 @@ release=1
 source="https://github.com/p11-glue/p11-kit/releases/download/$version/$name-$version.tar.xz"
 
 build() {
-	cat >> trust/trust-extract-compat << "EOF"
-# Copy existing anchor modifications to /etc/ssl/local
-/usr/lib/make-ca/copy-trust-modifications
-# Generate a new trust store
-/usr/sbin/make-ca -f -g
-EOF
 	meson build \
 		-D trust_paths=/etc/pki/anchors \
 		-D module_path=/usr/lib/pkcs11 \
 		-D nls=false
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
-
-	ln -s /usr/lib/p11-kit/trust-extract-compat $PKG/usr/bin/update-ca-trust
 }
 

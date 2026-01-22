@@ -8,16 +8,18 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Basic utility library for the Xfce desktop environment
-# depends	: glib-gir gobject-introspection intltool vala
+# description	: Cargo subcommand to build and install C-ABI compatibile dynamic and static libraries
+# depends	: rust openssl
 
-name=libxfce4util
-version=4.20.1
+name=cargo-c
+version=0.10.19
 release=1
-source="http://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$version.tar.bz2"
+source="https://github.com/lu-zero/cargo-c/archive/refs/tags/v$version.tar.gz"
+vendoring="rust"
 
 build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+	cargo install --frozen --offline --path . --root=$PKG/usr
+	rm -f $PKG/usr/.crates.toml
+	rm -f $PKG/usr/.crates2.json
 }

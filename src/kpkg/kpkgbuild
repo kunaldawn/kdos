@@ -41,7 +41,7 @@ KPKG_CONF="${KPKG_CONF:-/etc/kpkg.conf}"
 PKGNAME="$name-$version-$release.tar.xz" # Package name (final package name)
 PORT_SRC="$PWD" # Port source directory (where kpkgbuild is located)
 SRC_ROOT="$WORK_DIR/$name" # Source root directory where all tarballs are extracted
-SRC="$WORK_DIR/$name/$name-$version" # Source directory of the primary tarball
+SRC="$WORK_DIR/$name/$name-$version" # Source directory of the primary tarball extract
 PKG="$WORK_DIR/$name/pkg" # Package directory where the final package is created
 
 #Create work directories

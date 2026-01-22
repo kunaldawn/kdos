@@ -8,16 +8,24 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Basic utility library for the Xfce desktop environment
-# depends	: glib-gir gobject-introspection intltool vala
+# description	: Windowing concept abstraction library for X11 and Wayland
+# depends	: glib gtk3 libxfce4util libdisplay-info
+# homepage	: https://gitlab.xfce.org/xfce/libxfce4windowing
 
-name=libxfce4util
-version=4.20.1
+name=libxfce4windowing
+version=4.20.5
 release=1
-source="http://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$version.tar.bz2"
+source="https://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$version.tar.bz2"
 
 build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
+	# Try meson build, fallback to configure if needed, but 4.20+ should favor meson
+	if [ -f meson.build ]; then
+		meson build --prefix=/usr --sysconfdir=/etc
+		meson compile -C build
+		DESTDIR=$PKG meson install --no-rebuild -C build
+	else
+		./configure --prefix=/usr --sysconfdir=/etc --disable-static
+		make
+		make DESTDIR=$PKG install
+	fi
 }

@@ -17,7 +17,7 @@ release=1
 source="https://downloads.sourceforge.net/$name/$name-$version.tar.gz"
 
 build() {
-	cmake -S $name-$version -B build -G Ninja \
+	cmake -S . -B build -G Ninja \
 	        -DCMAKE_INSTALL_PREFIX=/usr \
 	        -DCMAKE_INSTALL_LIBDIR=/usr/lib \
 	        -DCMAKE_INSTALL_LIBEXECDIR=/usr/lib \
@@ -25,6 +25,7 @@ build() {
 	        -DCMAKE_C_FLAGS_RELEASE="$CFLAGS" \
 	        -DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
 	        -DWITH_JPEG8=ON \
+			-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	        -Wno-dev 
 	cmake --build build
 	DESTDIR=$PKG cmake --install build
