@@ -20,7 +20,9 @@ build() {
 	meson build \
 		--libexecdir=/usr/lib/$name \
 		-Dinstalled_tests=false \
-		-Dman=false
+		-Dman=false \
+		-Dglycin=disabled \
+		-Dtests=false
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 	

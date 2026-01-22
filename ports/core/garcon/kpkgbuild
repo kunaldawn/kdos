@@ -16,7 +16,7 @@ version=4.21.0
 release=1
 source="https://gitlab.xfce.org/xfce/$name/-/archive/$name-$version/$name-$name-$version.tar.bz2"
 build() {
-	./configure --prefix=/usr --sysconfdir=/etc --disable-nls
-	make
-	make DESTDIR=$PKG install
+	meson build --prefix=/usr --sysconfdir=/etc
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
 }
