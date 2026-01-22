@@ -17,7 +17,7 @@ release=1
 source="$name-$version.tar.gz::https://download.osgeo.org/$name/tiff-$version.tar.gz"
 
 build() {
-	cmake -S tiff-$version -B build -G Ninja \
+	cmake -S . -B build -G Ninja \
 			-DCMAKE_INSTALL_PREFIX=/usr \
 			-DCMAKE_INSTALL_LIBDIR=lib \
 			-DCMAKE_INSTALL_LIBEXECDIR=lib \

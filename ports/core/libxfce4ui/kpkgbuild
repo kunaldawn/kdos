@@ -19,7 +19,7 @@ source="http://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$version.tar.
 
 
 build() {
-	./configure --prefix=/usr --sysconfdir=/etc
-	make
-	make DESTDIR=$PKG install
+	meson build --prefix=/usr --sysconfdir=/etc
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
 }

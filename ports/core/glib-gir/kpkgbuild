@@ -8,16 +8,25 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Basic utility library for the Xfce desktop environment
-# depends	: glib-gir gobject-introspection intltool vala
+# description	: Low-level libraries useful for providing data structure handling for C, portability wrappers and interfaces
+# depends	: docbook-xsl meson pcre2 libffi zlib gobject-introspection
 
-name=libxfce4util
-version=4.20.1
+name=glib-gir
+version=2.87.1
 release=1
-source="http://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$version.tar.bz2"
+source="https://download.gnome.org/sources/glib/${version%.*}/glib-$version.tar.xz"
 
 build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
+	meson setup build \
+		--prefix=/usr \
+		--buildtype=release \
+		-D documentation=false \
+		-D nls=disabled \
+		-D selinux=disabled \
+		-D tests=false \
+		-D wrap_mode=nodownload \
+		-D libmount=disabled \
+		-D introspection=enabled
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
 }

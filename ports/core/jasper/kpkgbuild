@@ -17,7 +17,7 @@ release=1
 source="https://github.com/jasper-software/jasper/releases/download/version-$version/$name-$version.tar.gz"
 
 build() {
-	cmake -S $name-$version -B build -G Ninja \
+	cmake -S . -B kbuild -G Ninja \
 		-DCMAKE_INSTALL_PREFIX=/usr \
 		-DCMAKE_INSTALL_LIBDIR=lib \
 		-DCMAKE_INSTALL_LIBEXECDIR=lib \
@@ -29,7 +29,8 @@ build() {
 		-DJAS_ENABLE_AUTOMATIC_DEPENDENCIES=OFF \
 		-DCMAKE_SKIP_RPATH=ON \
 		-DJAS_ENABLE_SHARED=ON \
+		-DALLOW_IN_SOURCE_BUILD=ON \
 		-Wno-dev
-	cmake --build build
-	DESTDIR=$PKG cmake --install build
+	cmake --build kbuild
+	DESTDIR=$PKG cmake --install kbuild
 }
