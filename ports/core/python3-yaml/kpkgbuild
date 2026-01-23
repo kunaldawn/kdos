@@ -15,7 +15,6 @@ name=python3-yaml
 version=6.0.3
 release=1
 source="pyyaml-$version.tar.gz::https://files.pythonhosted.org/packages/source/p/pyyaml/pyyaml-$version.tar.gz"
-vendoring=python
 
 build() {
 	python3 setup.py build

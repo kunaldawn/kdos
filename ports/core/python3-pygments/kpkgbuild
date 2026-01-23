@@ -1,0 +1,14 @@
+# description	: Python syntax highlighter
+# depends	: python3 python3-setuptools
+
+name=python3-pygments
+version=2.19.2
+release=1
+source="https://files.pythonhosted.org/packages/b0/77/a5b8c569bf593b0140bde72ea885a803b82086995367bf2037de0159d924/pygments-$version.tar.gz"
+vendoring=python
+
+build() {
+    mkdir -p vendor
+    tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
+	pip3 install --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
+}

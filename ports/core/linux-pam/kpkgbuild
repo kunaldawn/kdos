@@ -9,26 +9,26 @@
 # ---------------------------------
 
 # description	: Pluggable Authentication Modules used to enable the local system administrator to choose how applications authenticate users
-
+# depends	: meson ninja
 name=linux-pam
 version=1.7.1
 release=1
 source="$name-$version.tar.xz::https://github.com/linux-pam/linux-pam/releases/download/v$version/Linux-PAM-$version.tar.xz"
 
 build() {
-	autoreconf
-	./configure \
+	meson setup build \
 		--prefix=/usr \
 		--libdir=/usr/lib \
 		--sysconfdir=/etc \
-		--disable-regenerate-docu \
-		--disable-nls \
-		--disable-selinux \
-		--enable-securedir=/lib/security
-	make
-	make DESTDIR=$PKG install
+		--buildtype=release \
+		-Di18n=disabled \
+		-Dselinux=disabled \
+		-Dsecuredir=/lib/security \
+		-Ddocs=disabled
+	ninja -C build
+	DESTDIR=$PKG ninja -C build install
 
-	chmod -v 4755 $PKG/sbin/unix_chkpwd
+	chmod -v 4755 $PKG/usr/sbin/unix_chkpwd
 
 
 	# Create PAM configuration files
