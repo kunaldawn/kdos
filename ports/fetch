@@ -268,8 +268,8 @@ fetch_port() {
             mkdir -p vendor
             
             # Download runtime dependencies
-            echo "   Downloading runtime dependencies..."
-            pip3 download --dest vendor . || echo "⚠  Runtime dependency download failed/empty"
+            echo "   Downloading runtime dependencies (source only)..."
+            pip3 download --no-binary :all: --dest vendor . || echo "⚠  Runtime dependency download failed/empty"
 
             # Attempt to download build backend dependencies (PEP 517)
             if [ -f "pyproject.toml" ]; then
@@ -288,8 +288,8 @@ fetch_port() {
                 fi
 
                 if [ -n "$build_reqs" ]; then
-                    echo "   Downloading build dependencies: $build_reqs"
-                    pip3 download --dest vendor $build_reqs || echo "⚠  Build dependency download failed"
+                    echo "   Downloading build dependencies: $build_reqs (source only)"
+                    pip3 download --no-binary :all: --dest vendor $build_reqs || echo "⚠  Build dependency download failed"
                 fi
             fi
 
