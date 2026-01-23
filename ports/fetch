@@ -267,31 +267,85 @@ fetch_port() {
             pushd "$tmp_dir" >/dev/null
             mkdir -p vendor
             
-            # Download runtime dependencies
             echo "   Downloading runtime dependencies (source only)..."
             pip3 download --no-binary :all: --dest vendor . || echo "⚠  Runtime dependency download failed/empty"
+            
+            if [ -f "requirements.txt" ]; then
+                echo "   Found requirements.txt, downloading dependencies..."
+                pip3 download --no-binary :all: --dest vendor -r requirements.txt || echo "⚠  requirements.txt dependency download failed"
+            fi
 
-            # Attempt to download build backend dependencies (PEP 517)
+            # Check main package build dependencies
             if [ -f "pyproject.toml" ]; then
                 echo "   Checking pyproject.toml for build-system requires..."
-                # Try using python tomllib (3.11+)
-                build_reqs=$(python3 -c "import sys; import tomllib; print(' '.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < pyproject.toml 2>/dev/null || true)
-                
-                # Fallback to crude grep
-                if [ -z "$build_reqs" ]; then
-                     # Very crude check: look for list inside [build-system] requires = [...]
-                     # simplified: just grep for common backends if they appear in file
-                     if grep -q "hatchling" pyproject.toml; then build_reqs="$build_reqs hatchling"; fi
-                     if grep -q "setuptools" pyproject.toml; then build_reqs="$build_reqs setuptools wheel"; fi
-                     if grep -q "flit" pyproject.toml; then build_reqs="$build_reqs flit"; fi
-                     if grep -q "poetry" pyproject.toml; then build_reqs="$build_reqs poetry-core"; fi
-                fi
+                build_reqs=$(python3 -c "import sys; import tomllib; print('\n'.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < pyproject.toml 2>/dev/null || true)
 
                 if [ -n "$build_reqs" ]; then
-                    echo "   Downloading build dependencies: $build_reqs (source only)"
-                    pip3 download --no-binary :all: --dest vendor $build_reqs || echo "⚠  Build dependency download failed"
+                    echo "   Downloading build dependencies (source only)..."
+                    echo "$build_reqs" > requirements.txt
+                    pip3 download --no-binary :all: --dest vendor -r requirements.txt || echo "⚠  Build dependency download failed"
+                    rm requirements.txt
                 fi
             fi
+
+            # Recursive build dependency fetching
+            echo "   Recursively fetching build dependencies..."
+            touch processed.txt
+            while true; do
+                initial_count=$(ls vendor | wc -l)
+                found_new=false
+                rm -f batch_requirements.txt
+                touch batch_requirements.txt
+                
+                # Iterate over all tarballs in vendor
+                for tarball in vendor/*.tar.gz vendor/*.tar.bz2 vendor/*.tar.xz vendor/*.zip; do
+                    [ -f "$tarball" ] || continue
+                    basename=$(basename "$tarball")
+                    
+                    # Skip if already processed
+                    if grep -Fxq "$basename" processed.txt; then
+                        continue
+                    fi
+                    
+                    found_new=true
+                    
+                    # Extract pyproject.toml to a temp location
+                    if tar -tf "$tarball" | grep -q "pyproject.toml"; then
+                        sub_tmp=$(mktemp -d)
+                        tar -xf "$tarball" -C "$sub_tmp" --wildcards "*/pyproject.toml" --strip-components=1 2>/dev/null || tar -xf "$tarball" -C "$sub_tmp" --wildcards "*/pyproject.toml" 2>/dev/null
+                        
+                        if [ -f "$sub_tmp/pyproject.toml" ]; then
+                            # Parse build-system.requires
+                            build_reqs=$(python3 -c "import sys; import tomllib; print('\n'.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < "$sub_tmp/pyproject.toml" 2>/dev/null || true)
+                            
+                            if [ -n "$build_reqs" ]; then
+                                echo "$build_reqs" >> batch_requirements.txt
+                                echo "     Found dependencies in $tarball: $build_reqs"
+                            fi
+                        fi
+                        rm -rf "$sub_tmp"
+                    fi
+                    
+                    # Mark as processed
+                    echo "$basename" >> processed.txt
+                done
+                
+                # If we collected any requirements in this batch, download them all at once
+                if [ -s "batch_requirements.txt" ]; then
+                    echo "   Downloading batched build dependencies..."
+                    pip3 download --no-binary :all: --dest vendor -r batch_requirements.txt || echo "⚠  Batched build dependency download failed"
+                    rm batch_requirements.txt
+                fi
+
+                # If we didn't find any new tarballs to process, break
+                if [ "$found_new" = false ]; then
+                    break
+                fi
+                
+                final_count=$(ls vendor | wc -l)
+                echo "   Fetched new build dependencies (total: $final_count)..."
+            done
+            rm processed.txt
 
             tar -cJf "$portdir/$vendor_file" vendor
             popd >/dev/null
