@@ -21,9 +21,9 @@ build() {
 
 	addopt() {
 		if [ "$_opt" = "" ]; then
-			scratch isinstalled $1 && _opt="--enable-$2" || _opt="--disable-$2"
+			pkg-config --exists $1 && _opt="--enable-$2" || _opt="--disable-$2"
 		elif [ ! "$_opt" = "" ]; then
-			scratch isinstalled $1 && _opt="$_opt --enable-$2" || _opt="$_opt --disable-$2"
+			pkg-config --exists $1 && _opt="$_opt --enable-$2" || _opt="$_opt --disable-$2"
 		fi
 	}
 
@@ -52,7 +52,6 @@ build() {
 	            --enable-swresample  \
 	            --enable-avfilter    \
 	            --enable-pic         \
-	            --enable-postproc    \
 	            --enable-pthreads    \
 	            --enable-libass      \
 	            --enable-libfdk-aac  \

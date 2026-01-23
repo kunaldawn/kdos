@@ -20,7 +20,7 @@ source="https://poppler.freedesktop.org/$name-$version.tar.xz"
 
 build() {
 
-	cmake -S $name-$version -B build -G Ninja \
+	cmake -S . -B build -G Ninja \
 	        -DCMAKE_INSTALL_PREFIX=/usr \
 	        -DCMAKE_INSTALL_LIBDIR=lib \
 	        -DCMAKE_INSTALL_LIBEXECDIR=lib \
@@ -32,17 +32,17 @@ build() {
 			-D ENABLE_CPP=ON \
 			-D BUILD_CPP_TESTS=OFF \
 			-D BUILD_MANUAL_TESTS=OFF \
-			-D ENABLE_QT5=$(scratch isinstalled qt5 && echo ON || echo OFF) \
+			-D ENABLE_QT5=$(pkg-config --exists qt5 && echo ON || echo OFF) \
 			-D BUILD_QT5_TESTS=OFF \
-			-D ENABLE_QT6=$(scratch isinstalled qt6-base && echo ON || echo OFF) \
+			-D ENABLE_QT6=$(pkg-config --exists qt6-base && echo ON || echo OFF) \
 			-D BUILD_QT6_TESTS=OFF \
-			-D ENABLE_BOOST=$(scratch isinstalled boost && echo ON || echo OFF) \
-			-D ENABLE_GLIB=$(scratch isinstalled gobject-introspection && echo ON || echo OFF) \
-			-D ENABLE_GPGME=$(scratch isinstalled gpgme && echo ON || echo OFF) \
-			-D ENABLE_LCMS=$(scratch isinstalled lcms2 && echo ON || echo OFF) \
-			-D ENABLE_LIBTIFF=$(scratch isinstalled libtiff && echo ON || echo OFF) \
-			-D ENABLE_NSS3=$(scratch isinstalled nss && echo ON || echo OFF) \
-			-D ENABLE_LIBOPENJPEG=$(scratch isinstalled openjpeg2 && echo openjpeg2 || echo none ) \
+			-D ENABLE_BOOST=$(pkg-config --exists boost && echo ON || echo OFF) \
+			-D ENABLE_GLIB=$(pkg-config --exists gobject-introspection && echo ON || echo OFF) \
+			-D ENABLE_GPGME=$(pkg-config --exists gpgme && echo ON || echo OFF) \
+			-D ENABLE_LCMS=$(pkg-config --exists lcms2 && echo ON || echo OFF) \
+			-D ENABLE_LIBTIFF=$(pkg-config --exists libtiff && echo ON || echo OFF) \
+			-D ENABLE_NSS3=$(pkg-config --exists nss && echo ON || echo OFF) \
+			-D ENABLE_LIBOPENJPEG=$(pkg-config --exists openjpeg2 && echo openjpeg2 || echo none ) \
 			-Wno-dev 
 	cmake --build build
 	DESTDIR=$PKG cmake --install build
