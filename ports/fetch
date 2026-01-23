@@ -234,6 +234,71 @@ fetch_port() {
             rm -rf "$tmp_dir"
             echo "✓  $portname: Created $vendor_file"
         fi
+    elif [ "$vendoring" = "python" ]; then
+        vendor_file="${name}-vendor-${version}.tar.xz"
+        if [ -f "./$vendor_file" ]; then
+             echo "✓  $portname: Vendor file $vendor_file exists"
+        else
+            echo "⚙  $portname: Generating vendor tarball (Python)..."
+            tmp_dir=$(mktemp -d)
+            first_src=$(echo $source | cut -d' ' -f1)
+            case $first_src in
+                *::*) filename="${first_src%%::*}" ;;
+                http://*|https://*|ftp://*)
+                     url="$first_src"
+                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                     else ext=""; fi
+                     
+                     if [ -n "$ext" ]; then
+                         filename="$name-$version.$ext"
+                     else
+                         filename=$(basename "$url")
+                     fi
+                     ;;
+                *) filename="$first_src" ;;
+            esac
+            
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1
+            
+            pushd "$tmp_dir" >/dev/null
+            mkdir -p vendor
+            
+            # Download runtime dependencies
+            echo "   Downloading runtime dependencies..."
+            pip3 download --dest vendor . || echo "⚠  Runtime dependency download failed/empty"
+
+            # Attempt to download build backend dependencies (PEP 517)
+            if [ -f "pyproject.toml" ]; then
+                echo "   Checking pyproject.toml for build-system requires..."
+                # Try using python tomllib (3.11+)
+                build_reqs=$(python3 -c "import sys; import tomllib; print(' '.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < pyproject.toml 2>/dev/null || true)
+                
+                # Fallback to crude grep
+                if [ -z "$build_reqs" ]; then
+                     # Very crude check: look for list inside [build-system] requires = [...]
+                     # simplified: just grep for common backends if they appear in file
+                     if grep -q "hatchling" pyproject.toml; then build_reqs="$build_reqs hatchling"; fi
+                     if grep -q "setuptools" pyproject.toml; then build_reqs="$build_reqs setuptools wheel"; fi
+                     if grep -q "flit" pyproject.toml; then build_reqs="$build_reqs flit"; fi
+                     if grep -q "poetry" pyproject.toml; then build_reqs="$build_reqs poetry-core"; fi
+                fi
+
+                if [ -n "$build_reqs" ]; then
+                    echo "   Downloading build dependencies: $build_reqs"
+                    pip3 download --dest vendor $build_reqs || echo "⚠  Build dependency download failed"
+                fi
+            fi
+
+            tar -cJf "$portdir/$vendor_file" vendor
+            popd >/dev/null
+            
+            rm -rf "$tmp_dir"
+            echo "✓  $portname: Created $vendor_file"
+        fi
     fi
     
     return 0
