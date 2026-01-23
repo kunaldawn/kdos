@@ -18,12 +18,12 @@ release=1
 source="$name-$version.tar.gz::https://storage.googleapis.com/aom-releases/libaom-$version.tar.gz"
 
 build() {
-	cmake -S libaom-$version -B build -G Ninja \
+	cmake -S . -B build -G Ninja \
 		-DCMAKE_INSTALL_PREFIX=/usr \
 	    -DCMAKE_INSTALL_LIBDIR=lib \
 	    -DCMAKE_INSTALL_LIBEXECDIR=lib \
 		-D CMAKE_BUILD_TYPE=Release \
-		-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+		-D CMAKE_C_FLAGS_RELEASE="$CFLAGS -D_POSIX_C_SOURCE=200809L" \
 		-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
 		-DBUILD_SHARED_LIBS=1 \
 		-DENABLE_TESTS=0 \

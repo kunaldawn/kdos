@@ -18,7 +18,7 @@ release=1
 source="$name-$version.tar.gz::https://gitlab.gnome.org/GNOME/gtk/-/archive/$version/gtk-$version.tar.gz"
 
 build() {
-	meson build \
+	meson build --prefix=/usr \
 		-Dbroadway_backend=true \
 		-Dcolord=$(pkg-config --exists colord && echo yes || echo no) \
 		-Dwayland_backend=$(pkg-config --exists libxkbcommon wayland-protocols && echo true || echo false) \
