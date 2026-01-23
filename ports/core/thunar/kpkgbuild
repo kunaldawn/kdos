@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Xfce file manager, a GTK+ 3 GUI to organise the files on your computer
-# depends	: exo libxfce4ui gnome-icon-theme libgudev libnotify libexif
+# depends	: exo libxfce4ui gnome-icon-theme libgudev libnotify libexif vte3 docbook-xsl
 
 name=thunar
 version=4.21.3
@@ -17,8 +17,8 @@ release=1
 source="http://archive.xfce.org/src/xfce/$name/${version%.*}/thunar-$version.tar.xz"
 
 build() {
-	./configure --prefix=/usr \
-	            --sysconfdir=/etc
-	make
-	make DESTDIR=$PKG install
+	export XML_CATALOG_FILES=/etc/xml/catalog
+	meson build --prefix=/usr --sysconfdir=/etc
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
 }

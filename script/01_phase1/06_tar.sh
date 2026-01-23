@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,18 +10,24 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Network related gio modules for GLib
-# depends	: glib gnutls gsettings-desktop-schemas ca-certificates p11-kit meson
+set -e
+source script/phase1.env.sh
+source script/util/port.sh
 
-name=glib-networking
-version=2.80.1
-release=1
-source="https://ftp.gnome.org/pub/gnome/sources/$name/${version%.*}/$name-$version.tar.xz"
+if [ -f "$MARK/tar" ]; then
+    exit 0
+fi
 
-build() {
-	meson build --prefix=/usr \
-		-Dlibproxy=disabled \
-		-Dgnutls=enabled
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+echo ">>> Building tar..."
+
+# Extract tar and dependencies from ports
+TAR_SRC=$(extract_port_source tar)
+
+cd "$TAR_SRC"
+
+FORCE_UNSAFE_CONFIGURE=1 ./configure --prefix=/usr --disable-nls
+make
+make DESTDIR=$SYSROOT install
+
+rm -rf "$TAR_SRC"
+touch "$MARK/tar"

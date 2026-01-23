@@ -98,8 +98,8 @@ for src in $source; do
 	case $srcpath in
 		*.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.tar)
             if [ $src_idx -eq 0 ]; then
-			    msg "Extracting $srcfile with stripping..."
-			    tar -xf "$srcpath" -C "$SRC" --strip-components=1 || msgerr "Failed to extract $srcfile"
+    			msg "Extracting $srcfile with stripping..."
+	    		tar -xf "$srcpath" -C "$SRC" --strip-components=1 || msgerr "Failed to extract $srcfile"
             else
                 msg "Extracting $srcfile without stripping..."
                 tar -xf "$srcpath" -C "$SRC_ROOT" || msgerr "Failed to extract $srcfile"
