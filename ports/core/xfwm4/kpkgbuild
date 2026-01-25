@@ -17,7 +17,7 @@ release=1
 source="http://archive.xfce.org/src/xfce/xfwm4/${version%.*}/$name-$version.tar.bz2"
 
 build() {
-	./configure \
+	LIBS="-lxfce4util" ./configure \
 		--prefix=/usr \
 		--enable-randr \
 		--enable-compositor \

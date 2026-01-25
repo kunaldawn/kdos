@@ -1,0 +1,22 @@
+# description	: Documentation system for C++, C, Java, Objective-C, Python, IDL, PHP, C#
+# homepage	: https://www.doxygen.nl/
+# depends	: cmake flex bison python3
+
+name=doxygen
+version=1.16.1
+_version=${version//./_}
+release=1
+source="https://github.com/doxygen/doxygen/archive/refs/tags/Release_${_version}.tar.gz"
+
+build() {
+    mkdir -p build
+    cd build
+    cmake .. \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_BUILD_TYPE=Release \
+        -Dbuild_wizard=OFF \
+        -Dbuild_xmlparser=ON \
+        -Dbuild_search=OFF
+    make
+    make DESTDIR=$PKG install
+}

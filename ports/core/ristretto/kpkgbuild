@@ -17,7 +17,8 @@ release=1
 source="http://archive.xfce.org/src/apps/ristretto/${version%.*}/$name-$version.tar.xz"
 
 build() {
-	./configure --prefix=/usr --disable-nls
-	make
-	make DESTDIR=$PKG install
+	meson setup build \
+		--prefix=/usr
+	meson compile -C build
+	meson install -C build --destdir "$PKG"
 }

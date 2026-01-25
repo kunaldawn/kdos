@@ -17,11 +17,16 @@ release=1
 source="https://archive.xfce.org/src/xfce/xfce4-session/${version%.*}/$name-$version.tar.xz"
 
 build() {
-	./configure \
+	update-mime-database /usr/share/mime
+	gdk-pixbuf-query-loaders --update-cache
+	
+	mkdir -p build
+	cd build
+	meson setup .. \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--disable-legacy-sm \
-		--disable-nls
-	make
-	make DESTDIR=$PKG install
+		--buildtype=release \
+		-Dlegacy-session-management=false
+	ninja
+	DESTDIR=$PKG ninja install
 }

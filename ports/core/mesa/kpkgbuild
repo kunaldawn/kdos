@@ -45,6 +45,9 @@ build() {
 	ln -sf "$SRC_ROOT/rustc-hash-2.1.1" subprojects/rustc-hash-2.1.1
 	cp -r subprojects/packagefiles/rustc-hash-2-rs/* subprojects/rustc-hash-2.1.1/
 
+	export LIBCLANG_PATH=/usr/lib/
+	export LIBCLANG_STATIC_PATH=/usr/lib/
+	export RUST_BACKTRACE=1
 	pkg-config --exists vulkan-icd-loader && OPT_MESA_GALLIUM='zink,'
 	pkg-config --exists libva && OPT_MESA_VAAPI='-D gallium-va=enabled' || OPT_MESA_VAAPI='-D gallium-va=disabled'
 	pkg-config --exists wayland-protocols && OPT_MESA_PLATFORMS='wayland,x11' || OPT_MESA_PLATFORMS='x11'

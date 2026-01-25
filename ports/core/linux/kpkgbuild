@@ -315,7 +315,7 @@ build() {
 	./scripts/config --module CONFIG_SOFT_WATCHDOG
 
 	# KDOS extensions
-	cat $SRC/kdos.config >> .config
+	cat $PORT_SRC/kdos.config >> .config
 
 	# Resolve any missing dependencies
 	make olddefconfig
