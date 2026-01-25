@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Reference implementation of the Theora video compression format
+# depends	: libogg libvorbis
+
+name=libtheora
+version=1.2.0
+release=1
+source="https://downloads.xiph.org/releases/theora/$name-$version.tar.xz"
+
+build() {
+	./configure --prefix=/usr
+	make
+	make DESTDIR=$PKG install
+}

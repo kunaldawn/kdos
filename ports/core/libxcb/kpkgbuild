@@ -12,24 +12,17 @@
 # depends	: libxau libxdmcp xcb-proto
 
 name=libxcb
-version=1.16
+version=1.17.0
 release=1
 source="https://xorg.freedesktop.org/archive/individual/lib/$name-$version.tar.xz"
 
 build() {
-	cd $name-$version
-	
-	# removes dependency on libpthread-stubs package which is useless on Linux
-	# sed -i "s/pthread-stubs//" configure
-
 	./configure              \
 		--prefix=/usr        \
 		--sysconfdir=/etc    \
 		--localstatedir=/var \
-		--disable-static     \
 		--without-doxygen    \
 		--docdir='${datadir}'/doc/libxcb
 	make
 	make DESTDIR=$PKG install
-
 }

@@ -12,21 +12,14 @@
 # homepage	: https://icu.unicode.org
 
 name=icu
-version=74.2
-vrsn=$(echo $version | sed 's/\./-/g')
+version=78.2
 release=1
-source="$name-$version.tar.gz::https://github.com/unicode-org/icu/archive/release-$vrsn.tar.gz"
-
+source="$name-$version.tar.gz::https://github.com/unicode-org/icu/archive/refs/tags/release-$version.tar.gz"
 build() {
 	# icu tries to use clang by default
 	export CC=gcc CXX=g++
-
-	cd $name-release-$vrsn/icu4c/source
-
-	./configure \
-		--prefix=/usr \
-		--disable-samples \
-		--disable-tests
+	cd icu4c/source
+	./configure --prefix=/usr --disable-samples --disable-tests
 	make
 	make DESTDIR=$PKG install
 }

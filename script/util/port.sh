@@ -32,21 +32,42 @@ extract_port_source() {
     
     # Find the tarball in port directory
     local tarball=""
+
+    local src_idx=0
     for src in $source; do
         case $src in
             *::*) tarball="${src%%::*}" ;;
-            http://*|https://*|ftp://*) tarball=$(basename "$src") ;;
+            http://*|https://*|ftp://*) 
+                # Default to basename
+                tarball=$(basename "$src")
+                
+                # If first source, check for extension match to use standardized name
+                if [ $src_idx -eq 0 ]; then
+                    url="$src"
+                    if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                    elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                    elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                    elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                    elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                    else ext=""; fi
+                    
+                    if [ -n "$ext" ]; then
+                        tarball="$name-$version.$ext"
+                    fi
+                fi
+                ;;
             *) tarball="$src" ;;
         esac
         
         # Check if it's a tarball and exists
         case $tarball in
-            *.tar.*|*.tgz|*.tbz2|*.txz)
+            *.tar.*|*.tgz|*.tbz2|*.txz|*.zip)
                 if [ -f "$portdir/$tarball" ]; then
                     break
                 fi
                 ;;
         esac
+        src_idx=$((src_idx + 1))
     done
     
     if [ -z "$tarball" ] || [ ! -f "$portdir/$tarball" ]; then

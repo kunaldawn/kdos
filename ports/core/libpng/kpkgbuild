@@ -12,14 +12,12 @@
 # depends	: zlib
 
 name=libpng
-version=1.6.53
+version=1.6.54
 release=1
 source="https://downloads.sourceforge.net/$name/$name-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-	LIBS=-lpthread ./configure --prefix=/usr --disable-static
+	LIBS=-lpthread ./configure --prefix=/usr
 	make
 	make DESTDIR=$PKG install
 }

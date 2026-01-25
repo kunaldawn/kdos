@@ -12,18 +12,15 @@
 # depends	: libxext libxtst libx11 libxcb libxxf86vm libxi libxrender libxcomposite libxinerama 
 
 name=xdpyinfo
-version=1.3.4
+version=1.4.0
 release=1
 source="http://ftp.x.org/pub/individual/app/xdpyinfo-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

@@ -17,15 +17,12 @@ release=1
 source="http://ftp.x.org/pub/individual/app/luit-$version.tar.bz2"
 
 build() {
-	cd $name-$version
-
 	sed -i -e "/D_XOPEN/s/5/6/" configure
 
 	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

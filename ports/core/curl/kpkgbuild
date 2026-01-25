@@ -12,16 +12,13 @@
 # depends	: ca-certificates openssl zlib
 
 name=curl
-version=8.5.0
-release=2
+version=8.17.0
+release=1
 source="https://curl.haxx.se/download/$name-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
 	./configure \
 		--prefix=/usr \
-		--disable-static \
 		--disable-ldap \
 		--disable-ldaps \
 		--enable-threaded-resolver \

@@ -16,9 +16,7 @@ release=1
 source="https://github.com/NetworkConfiguration/dhcpcd/releases/download/v${version}/${name}-${version}.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure --libexecdir=/lib/dhcpcd \
+	./configure --libexecdir=/lib/dhcpcd \
 	            --dbdir=/var/lib/dhcpcd
 	make
 	make DESTDIR=$PKG install

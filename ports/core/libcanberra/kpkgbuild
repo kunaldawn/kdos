@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Implementation of the XDG Sound Theme and Name Specifications, for generating event sounds on free desktops
+# depends	: libvorbis alsa-lib gstreamer gtk3 libtool automake autoconf gtk-doc lynx
+
+name=libcanberra
+version=0.30
+release=1
+source="https://github.com/Distrotech/$name/archive/refs/tags/v$version.tar.gz"
+
+build() {
+	[ -x ./configure ] || NOCONFIGURE=1 ./autogen.sh
+	./configure --prefix=/usr --disable-oss
+	make
+	make -j1 DESTDIR=$PKG install
+}

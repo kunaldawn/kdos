@@ -12,18 +12,15 @@
 # depends	: libxaw libxt libx11 
 
 name=xmessage
-version=1.0.6
+version=1.0.7
 release=1
 source="http://ftp.x.org/pub/individual/app/xmessage-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

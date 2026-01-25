@@ -31,6 +31,7 @@ sed -i 's/# CONFIG_GETTY is not set/CONFIG_GETTY=y/' .config
 sed -i 's/# CONFIG_INIT is not set/CONFIG_INIT=y/' .config
 sed -i 's/# CONFIG_TR is not set/CONFIG_TR=y/' .config
 sed -i 's/# CONFIG_AWK is not set/CONFIG_AWK=y/' .config
+sed -i 's/CONFIG_TAR=y/# CONFIG_TAR is not set/' .config
 CC=$KDOS_TARGET-gcc make PREFIX=$SYSROOT install -j1
 
 rm -rf "$TOYBOX_SRC"

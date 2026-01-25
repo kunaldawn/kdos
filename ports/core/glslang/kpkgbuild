@@ -13,13 +13,11 @@
 # depends	: cmake ninja spirv-tools
 
 name=glslang
-version=14.0.0
+version=16.1.0
 release=1
 source="https://github.com/KhronosGroup/glslang/archive/$version/$name-$version.tar.gz"
        
 build() {
-	cd $name-$version
-	
 	export CXXFLAGS="$CXXFLAGS -ffat-lto-objects -include cstdint"
 
 	cmake -B build-shared -G Ninja \

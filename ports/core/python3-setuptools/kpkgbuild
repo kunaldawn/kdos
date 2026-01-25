@@ -17,8 +17,6 @@ release=1
 source="$name-$version.tar.gz::https://files.pythonhosted.org/packages/source/s/${name#*-}/${name#*-}-$version.tar.gz"
 
 build() {
-	cd setuptools-$version
-
 	export SETUPTOOLS_INSTALL_WINDOWS_SPECIFIC_FILES=0
 	python3 setup.py build
 	python3 setup.py install --prefix=/usr --root="$PKG" --skip-build

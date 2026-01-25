@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Widgets library for the Xfce desktop environment
+# homepage	: https://www.xfce.org/
+# depends	: gtk3 libxfce4util startup-notification xfconf
+
+name=libxfce4ui
+version=4.21.3
+release=1
+source="http://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$version.tar.xz"
+
+
+build() {
+	meson build --prefix=/usr --sysconfdir=/etc
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

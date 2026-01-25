@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Fast and exact implementation of the C++ from_chars library for float and double
+# depends	: cmake
+
+name=fastfloat
+version=8.2.2
+release=1
+source="https://github.com/fastfloat/fast_float/archive/refs/tags/v$version.tar.gz"
+
+build() {
+	cmake -B build \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DFASTFLOAT_TEST=OFF
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}

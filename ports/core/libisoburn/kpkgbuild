@@ -17,10 +17,7 @@ release=1
 source="http://files.libburnia-project.org/releases/libisoburn-$version.tar.gz"
 
 build() {
-	cd libisoburn-$version
-
-	./configure --prefix=/usr \
-	            --disable-static
+	./configure --prefix=/usr
 	make
 	make DESTDIR=$PKG install
 }

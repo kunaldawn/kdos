@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Session manager for Xfce
+# depends	: libwnck3 libxfce4ui consolekit2 desktop-file-utils shared-mime-info polkit-gnome xfdesktop libsm iceauth xinit xrdb
+
+name=xfce4-session
+version=4.21.1
+release=1
+source="https://archive.xfce.org/src/xfce/xfce4-session/${version%.*}/$name-$version.tar.xz"
+
+build() {
+	update-mime-database /usr/share/mime
+	gdk-pixbuf-query-loaders --update-cache
+	
+	mkdir -p build
+	cd build
+	meson setup .. \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--buildtype=release \
+		-Dlegacy-session-management=false
+	ninja
+	DESTDIR=$PKG ninja install
+}

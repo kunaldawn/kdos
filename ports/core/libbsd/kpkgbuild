@@ -13,13 +13,11 @@
 # depends	: libmd
 
 name=libbsd
-version=0.11.7
+version=0.12.2
 release=1
 source="https://libbsd.freedesktop.org/releases/$name-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
 	# musl does not have off64_t, but off_t is 64-bit
 	export CFLAGS="$CFLAGS -Doff64_t=off_t"
 	./configure --prefix=/usr

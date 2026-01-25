@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Implementation of the Unicode Bidirectional Algorithm (BIDI)
+# depends	: glib meson
+
+name=fribidi
+version=1.0.16
+release=1
+source="https://github.com/fribidi/fribidi/releases/download/v$version/$name-$version.tar.xz"
+
+build() {
+	meson build
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

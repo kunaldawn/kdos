@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: GStreamer plugins for Libav (a fork of FFmpeg)
+# depends	: gst-plugins-base ffmpeg yasm meson
+
+name=gst-libav
+version=1.27.90
+release=1
+source="https://gstreamer.freedesktop.org/src/gst-libav/$name-$version.tar.xz"
+
+build() {
+	meson setup build \
+		-Ddoc=disabled \
+		-Dpackage-name="GStreamer FFmpeg Plugins $version (Venom Linux)"
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

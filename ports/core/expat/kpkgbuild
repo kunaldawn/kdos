@@ -17,10 +17,8 @@ release=1
 source="https://github.com/libexpat/libexpat/releases/download/R_2_7_3/expat-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
 	./buildconf.sh
-	./configure --prefix=/usr --disable-static
-        make
-        make DESTDIR=$PKG install
+	./configure --prefix=/usr
+	make
+	make DESTDIR=$PKG install
 }

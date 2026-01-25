@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Library that defines common error values for all GnuPG components
+
+name=libgpg-error
+version=1.58
+release=1
+source="https://www.gnupg.org/ftp/gcrypt/$name/$name-$version.tar.bz2"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--disable-nls \
+		--enable-install-gpg-error-config
+	make
+	make DESTDIR=$PKG install
+}

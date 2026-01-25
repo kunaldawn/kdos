@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: SIMD-accelerated UTF-8 validation and transcoding
+# depends	: cmake
+
+name=simdutf
+version=8.0.0
+release=1
+source="https://github.com/simdutf/simdutf/archive/refs/tags/v$version.tar.gz"
+
+build() {
+	cmake -B build \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DSIMDUTF_BENCHMARKS=OFF \
+		-DSIMDUTF_TESTS=OFF \
+		-DSIMDUTF_TOOLS=OFF
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}

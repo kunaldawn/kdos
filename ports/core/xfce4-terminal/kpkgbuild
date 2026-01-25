@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: GTK+3 terminal emulator for xfce desktop
+# depends	: libxfce4ui vte3 docbook-xsl
+
+name=xfce4-terminal
+version=1.1.5
+release=1
+
+case $version in
+	*.*.*.*) _ver=${version%.*}; _ver=${_ver%.*};;
+	*.*.*) _ver=${version%.*};;
+esac
+
+source="http://archive.xfce.org/src/apps/xfce4-terminal/${_ver}/$name-$version.tar.xz"
+
+build() {
+	export XML_CATALOG_FILES=/etc/xml/catalog
+	meson setup build \
+		--prefix=/usr
+	meson compile -C build
+	meson install -C build --destdir "$PKG"
+}

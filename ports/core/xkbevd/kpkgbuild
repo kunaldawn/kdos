@@ -12,18 +12,15 @@
 # depends	: libxkbfile libx11 
 
 name=xkbevd
-version=1.1.5
+version=1.1.6
 release=1
 source="http://ftp.x.org/pub/individual/app/xkbevd-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

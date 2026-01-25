@@ -32,13 +32,4 @@ RUN apk update && apk add --no-cache \
 
 WORKDIR /workspace
 
-COPY src /workspace/src
-COPY fs /workspace/fs
-COPY script /workspace/script
-COPY ports /workspace/ports
-
-
-RUN chmod 777 /workspace /workspace/fs
-RUN chmod +x /workspace/script/*.sh
-
 CMD ["/workspace/script/build.py"]
