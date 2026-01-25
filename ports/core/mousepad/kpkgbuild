@@ -17,7 +17,9 @@ release=1
 source="http://archive.xfce.org/src/apps/mousepad/${version%.*}/$name-$version.tar.xz"
 
 build() {
-	./configure --prefix=/usr --enable-keyfile-settings --disable-nls
-	make
-	make DESTDIR=$PKG install
+	meson setup build \
+		--prefix=/usr \
+		-Dkeyfile-settings=true
+	meson compile -C build
+	meson install -C build --destdir "$PKG"
 }

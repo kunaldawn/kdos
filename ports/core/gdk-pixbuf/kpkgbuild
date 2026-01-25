@@ -18,10 +18,17 @@ source="https://ftp.gnome.org/pub/gnome/sources/$name/${version%.*}/$name-$versi
 
 build() {
 	meson build \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--libdir=lib \
 		--libexecdir=/usr/lib/$name \
 		-Dinstalled_tests=false \
 		-Dman=false \
 		-Dglycin=disabled \
+		-Dpng=enabled \
+		-Djpeg=enabled \
+		-Dtiff=enabled \
+		-Dbuiltin_loaders=none \
 		-Dtests=false
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
