@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Implementation of the XDG Sound Theme and Name Specifications, for generating event sounds on free desktops
-# depends	: libvorbis alsa-lib gstreamer gtk3 libtool automake autoconf gtk-doc
+# depends	: libvorbis alsa-lib gstreamer gtk3 libtool automake autoconf gtk-doc lynx
 
 name=libcanberra
 version=0.30

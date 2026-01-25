@@ -1,5 +1,5 @@
 # description	: API documentation generator for GTK+ and GNOME
-# depends	: glib python3 meson ninja python3-pygments
+# depends	: glib python3 meson ninja python3-pygments itstool
 
 name=gtk-doc
 version=1.35.1

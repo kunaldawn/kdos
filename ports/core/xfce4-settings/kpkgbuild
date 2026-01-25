@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Collection of programs that are useful for adjusting your Xfce preferences
-# depends	: exo garcon libxfce4ui libcanberra libnotify libxklavier gnome-icon-theme libinput
+# depends	: exo garcon libxfce4ui libcanberra libnotify libxklavier gnome-icon-theme libinput meson ninja
 
 name=xfce4-settings
 version=4.21.1
@@ -17,12 +17,11 @@ release=1
 source="https://archive.xfce.org/src/xfce/xfce4-settings/${version%.*}/$name-$version.tar.xz"
 
 build() {
-	./configure \
+	meson setup build \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--enable-sound-settings \
-		--enable-pluggable-dialogs \
-		--disable-nls
-	make
-	make DESTDIR=$PKG install
+		--buildtype=release \
+		-Dsound-settings=true 
+	ninja -C build
+	DESTDIR=$PKG ninja -C build install
 }
