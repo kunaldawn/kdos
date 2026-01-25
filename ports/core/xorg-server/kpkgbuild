@@ -12,12 +12,12 @@
 # depends	: pixman libdrm libx11 libglvnd libxkbfile libxfont2 mesa libepoxy libxdmcp eudev xkeyboard-config libxcvt libtirpc
 
 name=xorg-server
-version=21.1.10
+version=21.1.21
 release=1
 source="http://ftp.x.org/pub/individual/xserver/$name-$version.tar.xz"
 
 build() {
-    meson $name-$version build \
+    meson build \
 		-D xkb_dir=/usr/local/share/X11/xkb \
 		-D xkb_output_dir=/var/lib/xkb \
 		-D suid_wrapper=true \

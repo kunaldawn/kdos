@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Interface to enumerating power devices, listening to device events and querying history and statistics
+# depends	: dbus-glib libgudev libusb polkit gobject-introspection meson
+
+name=upower
+version=1.91.0
+release=1
+source="https://gitlab.freedesktop.org/$name/$name/-/archive/v$version/$name-v$version.tar.gz"
+
+build() {
+	export XML_CATALOG_FILES=/etc/xml/catalog 
+	meson build \
+		-D gtk-doc=false \
+		-D systemdsystemunitdir=no 
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

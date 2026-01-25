@@ -17,7 +17,7 @@ release=1
 source="https://github.com/NVIDIA/libglvnd/archive/v$version/$name-v$version.tar.gz"
 
 build() {
-	meson $name-$version build \
+	meson build \
 		-D x11=enabled \
 		-D glx=enabled \
 		-D gles1=false \

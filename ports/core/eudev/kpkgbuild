@@ -17,8 +17,6 @@ release=1
 source="$name-$version.tar.gz::https://github.com/eudev-project/eudev/archive/v$version.tar.gz"
 
 build() {
-	cd $name-$version
-
 	scratch isinstalled libxslt && OPTS="--enable-manpages"
 
 	autoreconf -f -i -s
@@ -30,8 +28,7 @@ build() {
 		--sysconfdir=/etc \
 		--libexecdir=/lib \
 		--with-rootprefix= \
-		--with-rootlibdir=/lib \
-		--disable-static 
+		--with-rootlibdir=/lib
 	make
 
 	mkdir -pv $PKG/lib/udev/rules.d

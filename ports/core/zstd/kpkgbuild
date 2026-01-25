@@ -17,8 +17,6 @@ release=1
 source="https://github.com/facebook/zstd/releases/download/v$version/$name-$version.tar.gz"
 
 build() {
-        cd $name-$version
-
         # Patch makefile to prevent color output from ls/grep
         # Replace the fragile ls | grep pipeline with find
         # Patch makefile to prevent color output from ls/grep

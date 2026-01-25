@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Tool and library for translation between LLVM IR and SPIR-V
+# depends	: llvm spirv-headers
+
+name=spirv-llvm-translator
+version=21.1.3
+release=1
+source="https://github.com/KhronosGroup/SPIRV-LLVM-Translator/archive/refs/tags/v$version.tar.gz"
+
+build() {
+	cmake -B build -G Ninja \
+		-D CMAKE_INSTALL_PREFIX=/usr \
+		-D CMAKE_BUILD_TYPE=Release \
+		-D LLVM_EXTERNAL_SPIRV_HEADERS_SOURCE_DIR=/usr/include/spirv \
+		-D LLVM_SPIRV_INCLUDE_TESTS=OFF \
+		-Wno-dev
+
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}

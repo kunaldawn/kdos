@@ -12,19 +12,16 @@
 # depends	: libxft fontconfig freetype2 libxext libxaw libxmu libxinerama libxpm libice libxt libx11 ncurses
 
 name=xterm
-version=389
+version=406
 release=1
 source="http://invisible-mirror.net/archives/$name/$name-$version.tgz"
 
 build() {
-	cd $name-$version
-
 	TERMINFO=/usr/share/terminfo \
 	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
 		--localstatedir=/var \
-		--disable-static \
 		--enable-256-color \
 		--enable-wide-chars \
 		--with-app-defaults=/etc/X11/app-defaults

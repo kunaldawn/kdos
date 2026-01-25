@@ -17,8 +17,6 @@ release=1
 source="https://downloads.sourceforge.net/project/$name/$version/$name-src-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
 	export CFLAGS="-g -O2 -Wall -Wextra -Wno-error \
     -funsigned-char -fshort-wchar -fno-strict-aliasing \
     -ffreestanding -fno-stack-protector -fno-stack-check \

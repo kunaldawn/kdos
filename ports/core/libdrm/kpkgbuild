@@ -13,12 +13,12 @@
 # optdepends	: cairo docbook-xml docbook-xml libxslt valgrind cunit
 
 name=libdrm
-version=2.4.119
+version=2.4.131
 release=1
 source="https://dri.freedesktop.org/$name/$name-$version.tar.xz"
 
 build() {
-	meson $name-$version build \
+	meson build \
 		-D man-pages=disabled \
 		-D valgrind=disabled \
 		-D cairo-tests=disabled \

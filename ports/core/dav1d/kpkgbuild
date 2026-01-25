@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: dav1d is an AV1 decoder
+# depends	: meson nasm
+
+name=dav1d
+version=1.4.0
+release=1
+source="https://code.videolan.org/videolan/dav1d/-/archive/$version/$name-$version.tar.gz"
+
+build() {
+	meson -Denable_tests=false build
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

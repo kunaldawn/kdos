@@ -12,18 +12,15 @@
 # depends	: mtdev eudev libevdev xorg-server xorgproto
 
 name=xf86-input-evdev
-version=2.10.6
+version=2.11.0
 release=1
-source="http://ftp.x.org/pub/individual/driver/xf86-input-evdev-$version.tar.bz2"
+source="http://ftp.x.org/pub/individual/driver/xf86-input-evdev-$version.tar.xz"
 
 build() {
-	cd xf86-input-evdev-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

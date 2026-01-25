@@ -12,18 +12,15 @@
 # depends	: zlib libfontenc freetype2 xtrans
 
 name=libxfont2
-version=2.0.6
+version=2.0.7
 release=1
 source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXfont2-$version.tar.xz"
 
 build() {
-	cd libXfont2-$version
-
 	./configure \
 		--prefix=/usr \
         --sysconfdir=/etc \
         --localstatedir=/var \
-        --disable-static \
 		--disable-devel-docs
 	make
 	make DESTDIR=$PKG install

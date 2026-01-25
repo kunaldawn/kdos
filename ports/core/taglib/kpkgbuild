@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Library used for reading, writing and manipulating audio file tags
+# depends	: cmake ninja
+
+name=taglib
+version=2.1.1
+release=1
+source="https://taglib.github.io/releases/$name-$version.tar.gz"
+
+build() {
+	cmake -S . -B build -G Ninja \
+			-DCMAKE_INSTALL_PREFIX=/usr \
+			-DCMAKE_INSTALL_LIBDIR=lib \
+			-DCMAKE_INSTALL_LIBEXECDIR=lib \
+			-DCMAKE_BUILD_TYPE=Release \
+			-DCMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+			-DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+			-DBUILD_SHARED_LIBS=ON \
+			-Wno-dev 
+	cmake --build build
+	DESTDIR=$PKG cmake --install build 
+}

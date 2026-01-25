@@ -37,6 +37,7 @@ CP_DONE_REV = 11 # White/Green (Badge for OK)
 CP_TRACK = 12   # White/Black (Progress Bar Track)
 
 RE_TITLE = re.compile(r'^#\s*Title:\s*(.+)$', re.IGNORECASE)
+RE_ANSI = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 class BuildStep:
     def __init__(self, path, is_group=False, level=0):
@@ -50,7 +51,8 @@ class BuildStep:
         self.start_time = None
         self.end_time = None
         self.return_code = 0
-        self.title = self._derive_title()
+        self.step_number = 0
+        self.raw_title = self._derive_title()
         self.step_type = "HOST" # HOST, CHROOT
         self.custom_cmd = None
         self.custom_cmd = None
@@ -59,6 +61,12 @@ class BuildStep:
         self.env_file = None
         self.env_vars = {}
         self.expanded = True 
+
+    @property
+    def title(self):
+        if not self.is_group:
+            return f"{self.step_number:>4} {self.raw_title}"
+        return self.raw_title
 
     def _derive_title(self):
         if not self.is_group:
@@ -77,6 +85,16 @@ class BuildStep:
         return name.replace('_', ' ').replace('-', ' ')
 
     def add_log(self, line):
+        # Sanitize for TUI
+        # 1. Strip ANSI codes
+        line = RE_ANSI.sub('', line)
+        # 2. Replace tabs
+        line = line.replace('\t', '    ')
+        # 3. Strip other control characters (keep newlines? usually add_log receives rstripped lines)
+        # We keep printable chars (>=32) and maybe basic symbols. 
+        # But utf-8 is fine. Just filter low ascii control codes.
+        line = "".join(ch for ch in line if ord(ch) >= 32)
+        
         self.logs.append(line)
         if len(self.logs) > 2000: 
             self.logs = self.logs[-2000:]
@@ -164,6 +182,14 @@ class BuildManager:
             fullname = f"{nice_name}"
             
             add_group_from_dir(fullname, full_path, use_chroot, env_file)
+        
+        self._renumber_steps()
+
+    def _renumber_steps(self):
+        for i, root in enumerate(self.roots):
+            root.step_number = i + 1
+            for j, child in enumerate(root.children):
+                child.step_number = j
 
     def start_build(self):
         self.start_time = time.time()
@@ -215,7 +241,7 @@ class BuildManager:
                             node_name = f"{i:02d}_{pkg}.install"
                             node = BuildStep(os.path.join(parent_dir, node_name), is_group=False, level=1)
                             node.parent = step
-                            node.title = pkg
+                            node.raw_title = pkg
                             node.step_type = "CUSTOM"
                             
                             # Command
@@ -226,6 +252,7 @@ class BuildManager:
                             
                         step.children.extend(new_nodes)
                         self.execution_order[idx+1:idx+1] = new_nodes
+                        self._renumber_steps()
                         step.status = "DONE" 
                         
                 except Exception as e:
@@ -253,6 +280,7 @@ class BuildManager:
                         
                         step.children.extend(new_nodes)
                         self.execution_order[idx+1:idx+1] = new_nodes
+                        self._renumber_steps()
                         step.status = "DONE"
                 except Exception as e:
                      step.status = "FAIL"
@@ -272,8 +300,11 @@ class BuildManager:
             step.start_time = time.time()
             
             # Calculate relative path to preserve structure
-            rel_path = os.path.relpath(step.path, self.root_dir) 
-            log_file_path = os.path.join("build/logs", rel_path + ".log")
+            rel_dir = os.path.dirname(os.path.relpath(step.path, self.root_dir))
+            clean_name = os.path.basename(step.path)
+            clean_name = re.sub(r'^[0-9]+_', '', clean_name)
+            log_name = f"{step.step_number:04d}_{clean_name}.log"
+            log_file_path = os.path.join("build/logs", rel_dir, log_name)
             
             # Ensure parent dir exists
             os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
