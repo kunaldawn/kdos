@@ -12,18 +12,15 @@
 # depends	: fontconfig freetype2 libxrender libx11 
 
 name=libxft
-version=2.3.8
+version=2.3.9
 release=1
 source="$name-$version.tar.xz::http://ftp.x.org/pub/individual/lib/libXft-$version.tar.xz"
 
 build() {
-	cd libXft-$version
-
 	./configure              \
 		--prefix=/usr        \
 		--sysconfdir=/etc    \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

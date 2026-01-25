@@ -17,7 +17,6 @@ release=1
 source="https://xorg.freedesktop.org/archive/individual/proto/$name-$version.tar.xz"
 
 build() {
-	cd $name-$version
 	meson setup build --prefix=/usr
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build

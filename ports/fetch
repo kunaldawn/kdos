@@ -33,7 +33,7 @@ fetch_port() {
     fi
     
     # Source the kpkgbuild to get source URLs
-    unset name version source
+    unset name version source vendoring
     . ./kpkgbuild 2>/dev/null || {
         echo "⚠  $portname: Failed to source kpkgbuild"
         return 0
@@ -45,6 +45,7 @@ fetch_port() {
     }
     
     # Download each source
+    src_idx=0
     for src in $source; do
         case $src in
             *::*)
@@ -53,14 +54,44 @@ fetch_port() {
                 url="${src#*::}"
                 ;;
             http://*|https://*|ftp://*)
-                # Just a URL, extract filename
-                filename=$(basename "$src")
+                # Automatic renaming to name-version.ext
                 url="$src"
+                
+                # Default filename to basename
+                filename=$(basename "$url")
+
+                # Detect extension
+                if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then
+                    ext="tar.gz"
+                elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then
+                    ext="tar.bz2"
+                elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then
+                    ext="tar.xz"
+                elif [[ "$url" =~ \.tar\.zst$ ]]; then
+                    ext="tar.zst"
+                elif [[ "$url" =~ \.zip$ ]]; then
+                    ext="zip"
+                else
+                    ext=""
+                fi
+                
+                if [ -n "$ext" ] && [ $src_idx -eq 0 ]; then
+                    filename="$name-$version.$ext"
+                fi
                 ;;
             *)
-                # Local file or plain filename, skip download
-                echo "⊙  $portname: $src (local file, skipping)"
-                continue
+                # Local file or plain filename
+                filename="$src"
+                
+                # If it's just a filename (no path separators), checks if it exists
+                if [[ "$filename" != */* ]]; then
+                    echo "⊙  $portname: $src (local file)"
+                    continue
+                else
+                    # It might be a path relative to port dir? 
+                    echo "⊙  $portname: $src (local file path)"
+                    continue
+                fi
                 ;;
         esac
         
@@ -75,7 +106,254 @@ fetch_port() {
             }
             echo "✓  $portname: Downloaded $filename"
         fi
+
+        src_idx=$((src_idx + 1))
     done
+    
+    # Handle vendoring if requested
+    if [ "$vendoring" = "rust" ]; then
+        vendor_file="${name}-vendor-${version}.tar.xz"
+        if [ -f "./$vendor_file" ]; then
+             echo "✓  $portname: Vendor file $vendor_file exists"
+        else
+            echo "⚙  $portname: Generating vendor tarball..."
+            
+            # Create temp dir
+            tmp_dir=$(mktemp -d)
+            
+            # Extract main source (assume first source is main)
+            first_src=$(echo $source | cut -d' ' -f1)
+            case $first_src in
+                *::*) filename="${first_src%%::*}" ;;
+                http://*|https://*|ftp://*)
+                     url="$first_src"
+                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                     else ext=""; fi
+                     
+                     if [ -n "$ext" ]; then
+                         filename="$name-$version.$ext"
+                     else
+                         filename=$(basename "$url")
+                     fi
+                     ;;
+                *) filename="$first_src" ;;
+            esac
+            
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1
+            
+            # Vendor dependencies
+            pushd "$tmp_dir" >/dev/null
+            mkdir -p .cargo
+            cargo vendor > .cargo/config.toml
+            
+            # Create vendor tarball
+            tar -cJf "$portdir/$vendor_file" vendor .cargo
+            popd >/dev/null
+            
+            # Cleanup
+            rm -rf "$tmp_dir"
+            echo "✓  $portname: Created $vendor_file"
+        fi
+    elif [ "$vendoring" = "go" ]; then
+        vendor_file="${name}-vendor-${version}.tar.xz"
+        if [ -f "./$vendor_file" ]; then
+             echo "✓  $portname: Vendor file $vendor_file exists"
+        else
+            echo "⚙  $portname: Generating vendor tarball (Go)..."
+            tmp_dir=$(mktemp -d)
+            first_src=$(echo $source | cut -d' ' -f1)
+            case $first_src in
+                *::*) filename="${first_src%%::*}" ;;
+                http://*|https://*|ftp://*)
+                     url="$first_src"
+                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                     else ext=""; fi
+                     
+                     if [ -n "$ext" ]; then
+                         filename="$name-$version.$ext"
+                     else
+                         filename=$(basename "$url")
+                     fi
+                     ;;
+                *) filename="$first_src" ;;
+            esac
+            
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1
+            
+            pushd "$tmp_dir" >/dev/null
+            go mod vendor
+            tar -cJf "$portdir/$vendor_file" vendor
+            popd >/dev/null
+            
+            rm -rf "$tmp_dir"
+            echo "✓  $portname: Created $vendor_file"
+        fi
+    elif [ "$vendoring" = "node" ]; then
+        vendor_file="${name}-vendor-${version}.tar.xz"
+        if [ -f "./$vendor_file" ]; then
+             echo "✓  $portname: Vendor file $vendor_file exists"
+        else
+            echo "⚙  $portname: Generating vendor tarball (Node)..."
+            tmp_dir=$(mktemp -d)
+            first_src=$(echo $source | cut -d' ' -f1)
+            case $first_src in
+                *::*) filename="${first_src%%::*}" ;;
+                http://*|https://*|ftp://*)
+                     url="$first_src"
+                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                     else ext=""; fi
+                     
+                     if [ -n "$ext" ]; then
+                         filename="$name-$version.$ext"
+                     else
+                         filename=$(basename "$url")
+                     fi
+                     ;;
+                *) filename="$first_src" ;;
+            esac
+            
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1
+            
+            pushd "$tmp_dir" >/dev/null
+            npm install --ignore-scripts --no-audit --no-fund
+            tar -cJf "$portdir/$vendor_file" node_modules
+            popd >/dev/null
+            
+            rm -rf "$tmp_dir"
+            echo "✓  $portname: Created $vendor_file"
+        fi
+    elif [ "$vendoring" = "python" ]; then
+        vendor_file="${name}-vendor-${version}.tar.xz"
+        if [ -f "./$vendor_file" ]; then
+             echo "✓  $portname: Vendor file $vendor_file exists"
+        else
+            echo "⚙  $portname: Generating vendor tarball (Python)..."
+            tmp_dir=$(mktemp -d)
+            first_src=$(echo $source | cut -d' ' -f1)
+            case $first_src in
+                *::*) filename="${first_src%%::*}" ;;
+                http://*|https://*|ftp://*)
+                     url="$first_src"
+                     if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                     elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                     elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                     elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                     elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                     else ext=""; fi
+                     
+                     if [ -n "$ext" ]; then
+                         filename="$name-$version.$ext"
+                     else
+                         filename=$(basename "$url")
+                     fi
+                     ;;
+                *) filename="$first_src" ;;
+            esac
+            
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1
+            
+            pushd "$tmp_dir" >/dev/null
+            mkdir -p vendor
+            
+            echo "   Downloading runtime dependencies (source only)..."
+            pip3 download --no-binary :all: --dest vendor . || echo "⚠  Runtime dependency download failed/empty"
+            
+            if [ -f "requirements.txt" ]; then
+                echo "   Found requirements.txt, downloading dependencies..."
+                pip3 download --no-binary :all: --dest vendor -r requirements.txt || echo "⚠  requirements.txt dependency download failed"
+            fi
+
+            # Check main package build dependencies
+            if [ -f "pyproject.toml" ]; then
+                echo "   Checking pyproject.toml for build-system requires..."
+                build_reqs=$(python3 -c "import sys; import tomllib; print('\n'.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < pyproject.toml 2>/dev/null || true)
+
+                if [ -n "$build_reqs" ]; then
+                    echo "   Downloading build dependencies (source only)..."
+                    echo "$build_reqs" > requirements.txt
+                    pip3 download --no-binary :all: --dest vendor -r requirements.txt || echo "⚠  Build dependency download failed"
+                    rm requirements.txt
+                fi
+            fi
+
+            # Recursive build dependency fetching
+            echo "   Recursively fetching build dependencies..."
+            touch processed.txt
+            while true; do
+                initial_count=$(ls vendor | wc -l)
+                found_new=false
+                rm -f batch_requirements.txt
+                touch batch_requirements.txt
+                
+                # Iterate over all tarballs in vendor
+                for tarball in vendor/*.tar.gz vendor/*.tar.bz2 vendor/*.tar.xz vendor/*.zip; do
+                    [ -f "$tarball" ] || continue
+                    basename=$(basename "$tarball")
+                    
+                    # Skip if already processed
+                    if grep -Fxq "$basename" processed.txt; then
+                        continue
+                    fi
+                    
+                    found_new=true
+                    
+                    # Extract pyproject.toml to a temp location
+                    if tar -tf "$tarball" | grep -q "pyproject.toml"; then
+                        sub_tmp=$(mktemp -d)
+                        tar -xf "$tarball" -C "$sub_tmp" --wildcards "*/pyproject.toml" --strip-components=1 2>/dev/null || tar -xf "$tarball" -C "$sub_tmp" --wildcards "*/pyproject.toml" 2>/dev/null
+                        
+                        if [ -f "$sub_tmp/pyproject.toml" ]; then
+                            # Parse build-system.requires
+                            build_reqs=$(python3 -c "import sys; import tomllib; print('\n'.join(tomllib.load(sys.stdin.buffer).get('build-system', {}).get('requires', [])))" < "$sub_tmp/pyproject.toml" 2>/dev/null || true)
+                            
+                            if [ -n "$build_reqs" ]; then
+                                echo "$build_reqs" >> batch_requirements.txt
+                                echo "     Found dependencies in $tarball: $build_reqs"
+                            fi
+                        fi
+                        rm -rf "$sub_tmp"
+                    fi
+                    
+                    # Mark as processed
+                    echo "$basename" >> processed.txt
+                done
+                
+                # If we collected any requirements in this batch, download them all at once
+                if [ -s "batch_requirements.txt" ]; then
+                    echo "   Downloading batched build dependencies..."
+                    pip3 download --no-binary :all: --dest vendor -r batch_requirements.txt || echo "⚠  Batched build dependency download failed"
+                    rm batch_requirements.txt
+                fi
+
+                # If we didn't find any new tarballs to process, break
+                if [ "$found_new" = false ]; then
+                    break
+                fi
+                
+                final_count=$(ls vendor | wc -l)
+                echo "   Fetched new build dependencies (total: $final_count)..."
+            done
+            rm processed.txt
+
+            tar -cJf "$portdir/$vendor_file" vendor
+            popd >/dev/null
+            
+            rm -rf "$tmp_dir"
+            echo "✓  $portname: Created $vendor_file"
+        fi
+    fi
     
     return 0
 }

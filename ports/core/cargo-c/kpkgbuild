@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Cargo subcommand to build and install C-ABI compatibile dynamic and static libraries
+# depends	: rust openssl
+
+name=cargo-c
+version=0.10.19
+release=1
+source="https://github.com/lu-zero/cargo-c/archive/refs/tags/v$version.tar.gz"
+vendoring="rust"
+
+build() {
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+	cargo install --frozen --offline --path . --root=$PKG/usr
+	rm -f $PKG/usr/.crates.toml
+	rm -f $PKG/usr/.crates2.json
+}

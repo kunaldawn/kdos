@@ -11,13 +11,11 @@
 # description: Collection of utilities for DOS disks in Unix
 
 name=mtools
-version=4.0.44
+version=4.0.49
 release=1
 source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.bz2"
 
 build() {
-	cd $name-$version
-
 	./configure --prefix=/usr \
 	            --sysconfdir=/etc/default
 	make

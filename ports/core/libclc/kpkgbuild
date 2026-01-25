@@ -1,0 +1,18 @@
+# description   : Library requirements of the OpenCL C programming language
+# depends       : llvm clang python3
+
+name=libclc
+version=21.1.8
+release=1
+source="https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/libclc-${version}.src.tar.xz"
+
+build() {
+    cmake -B build -G Ninja \
+        -D CMAKE_INSTALL_PREFIX=/usr \
+        -D CMAKE_BUILD_TYPE=Release \
+        -D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+        -D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" 
+    
+    cmake --build build
+    DESTDIR=$PKG cmake --install build
+}

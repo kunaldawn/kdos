@@ -11,13 +11,11 @@
 # description	: GNU EFI library
 
 name=gnu-efi
-version=3.0.17
+version=3.0.18
 release=1
 source="http://downloads.sourceforge.net/$name/$name-$version.tar.bz2"
 
 build() {
-	cd $name-$version
-
 	export CFLAGS="$CFLAGS -D__DEFINED_wchar_t -Dwchar_t=uint16_t"
 	make
 	make INSTALLROOT=$PKG PREFIX=/usr install

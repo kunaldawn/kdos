@@ -16,12 +16,9 @@ release=1
 source="https://download.savannah.gnu.org/releases/$name/$name-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
 	export CFLAGS="$CFLAGS -include libgen.h"
 	./configure --prefix=/usr     	\
 	            --bindir=/bin     	\
-	            --disable-static    \
 	            --sysconfdir=/etc   \
 	            --disable-nls
 	make

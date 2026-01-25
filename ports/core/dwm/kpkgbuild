@@ -17,16 +17,12 @@ version=6.7
 release=1
 source="https://dl.suckless.org/dwm/dwm-$version.tar.gz"
 
-_portdir=$PWD
-
 build() {
-	cd $name-$version
-
-	if [ -f $_portdir/config.h ]; then
-		cp $_portdir/config.h .
+	if [ -f $PORT_SRC/config.h ]; then
+		cp $PORT_SRC/config.h .
 	fi
 
-	for p in $_portdir/*.patch $_portdir/*.diff; do
+	for p in $PORT_SRC/*.patch $PORT_SRC/*.diff; do
 		[ -f $p ] || continue
 		patch -Np1 -i $p
 	done

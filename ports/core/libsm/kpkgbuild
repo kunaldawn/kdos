@@ -12,18 +12,15 @@
 # depends	: libice util-linux 
 
 name=libsm
-version=1.2.4
+version=1.2.6
 release=1
 source="$name-$version.tar.bz2::http://ftp.x.org/pub/individual/lib/libSM-$version.tar.xz"
 
 build() {
-	cd libSM-$version
-
 	./configure \
 		--prefix=/usr \
         --sysconfdir=/etc \
-        --localstatedir=/var \
-        --disable-static
+        --localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

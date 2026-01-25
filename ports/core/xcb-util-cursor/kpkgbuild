@@ -12,18 +12,15 @@
 # depends	: xcb-util-renderutil libxcb xcb-util-image 
 
 name=xcb-util-cursor
-version=0.1.5
+version=0.1.6
 release=1
 source="https://xorg.freedesktop.org/archive/individual/lib/$name-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
-  	./configure \
+	./configure \
 		--prefix=/usr \
 		--sysconfdir=/etc \
-		--localstatedir=/var \
-		--disable-static
+		--localstatedir=/var
 	make
 	make DESTDIR=$PKG install
 }

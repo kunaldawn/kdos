@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Windowing concept abstraction library for X11 and Wayland
+# depends	: glib gtk3 libxfce4util libdisplay-info
+# homepage	: https://gitlab.xfce.org/xfce/libxfce4windowing
+
+name=libxfce4windowing
+version=4.20.5
+release=1
+source="https://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$version.tar.bz2"
+
+build() {
+	# Try meson build, fallback to configure if needed, but 4.20+ should favor meson
+	if [ -f meson.build ]; then
+		meson build --prefix=/usr --sysconfdir=/etc
+		meson compile -C build
+		DESTDIR=$PKG meson install --no-rebuild -C build
+	else
+		./configure --prefix=/usr --sysconfdir=/etc --disable-static
+		make
+		make DESTDIR=$PKG install
+	fi
+}

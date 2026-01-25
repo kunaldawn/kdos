@@ -17,8 +17,6 @@ release=1
 source="https://mirrors.edge.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v$version/e2fsprogs-$version.tar.xz"
 
 build() {
-	cd $name-$version
-
 	mkdir -v build
 	cd build
 

@@ -37,10 +37,12 @@ KPKG_CONF="${KPKG_CONF:-/etc/kpkg.conf}"
 [ -z "$release" ] && msgerr "'release' is not set"
 [ "$(type -t build)" != "function" ] && msgerr "'build' function not found"
 
-PKGNAME="$name-$version-$release.tar.xz"
-
-SRC="$WORK_DIR/$name/src"
-PKG="$WORK_DIR/$name/pkg"
+# define variables that can be used within the build function
+PKGNAME="$name-$version-$release.tar.xz" # Package name (final package name)
+PORT_SRC="$PWD" # Port source directory (where kpkgbuild is located)
+SRC_ROOT="$WORK_DIR/$name" # Source root directory where all tarballs are extracted
+SRC="$WORK_DIR/$name/$name-$version" # Source directory of the primary tarball extract
+PKG="$WORK_DIR/$name/pkg" # Package directory where the final package is created
 
 #Create work directories
 msg "Preparing..."
@@ -49,11 +51,36 @@ mkdir -p "$SRC" "$PKG"
 
 # Extract sources (must be in port dir or SOURCE_DIR)
 msg "Extracting sources..."
+src_idx=0
 for src in $source; do
 	# Remove URL part if present (format: file::url or just url)
 	case $src in
-		*::*) srcfile="${src%%::*}" ;;
-		http://*|https://*|ftp://*) srcfile=$(basename "$src") ;;
+		*::*) 
+			srcfile="${src%%::*}" 
+			;;
+		http://*|https://*|ftp://*) 
+			# Try to determine the filename as kpkg fetch would have saved it
+			url="$src"
+            srcfile=$(basename "$src")
+
+            if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then
+                ext="tar.gz"
+            elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then
+                ext="tar.bz2"
+            elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then
+                ext="tar.xz"
+            elif [[ "$url" =~ \.tar\.zst$ ]]; then
+                ext="tar.zst"
+            elif [[ "$url" =~ \.zip$ ]]; then
+                ext="zip"
+            else
+                ext=""
+            fi
+            
+            if [ -n "$ext" ] && [ $src_idx -eq 0 ]; then
+                srcfile="$name-$version.$ext"
+            fi
+			;;
 		*) srcfile="$src" ;;
 	esac
 	
@@ -70,12 +97,19 @@ for src in $source; do
 	
 	case $srcpath in
 		*.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.tar)
-			tar -xf "$srcpath" -C "$SRC" || msgerr "Failed to extract $srcfile"
+            if [ $src_idx -eq 0 ]; then
+    			msg "Extracting $srcfile with stripping..."
+	    		tar -xf "$srcpath" -C "$SRC" --strip-components=1 || msgerr "Failed to extract $srcfile"
+            else
+                msg "Extracting $srcfile without stripping..."
+                tar -xf "$srcpath" -C "$SRC_ROOT" || msgerr "Failed to extract $srcfile"
+            fi
 			;;
 		*)
 			cp "$srcpath" "$SRC/" || msgerr "Failed to copy $srcfile"
 			;;
 	esac
+    src_idx=$((src_idx + 1))
 done
 
 # Build

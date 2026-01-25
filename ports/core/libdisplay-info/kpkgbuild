@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: EDID and DisplayID library
+# homepage	: https://gitlab.freedesktop.org/emersion/libdisplay-info
+# depends	: hwdata meson
+
+name=libdisplay-info
+version=0.3.0
+release=1
+source="https://gitlab.freedesktop.org/emersion/libdisplay-info/-/releases/$version/downloads/$name-$version.tar.xz"
+
+build() {
+	meson build --prefix=/usr --buildtype=release
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

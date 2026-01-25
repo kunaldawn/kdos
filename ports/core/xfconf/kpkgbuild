@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: The configuration storage system for Xfce
+# depends	: dbus-glib libxfce4util meson
+
+name=xfconf
+version=4.21.0
+release=1
+source="http://archive.xfce.org/src/xfce/$name/${version%.*}/$name-$version.tar.xz"
+
+build() {
+	meson setup build \
+		--prefix=/usr \
+		--buildtype=release \
+		-D gtk-doc=false \
+		-D tests=false
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

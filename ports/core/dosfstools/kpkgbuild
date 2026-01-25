@@ -16,8 +16,6 @@ release=1
 source="https://github.com/dosfstools/dosfstools/releases/download/v$version/dosfstools-$version.tar.gz"
 
 build() {
-	cd $name-$version
-
 	./configure --prefix=/               \
 	            --enable-compat-symlinks \
 	            --mandir=/usr/share/man  \

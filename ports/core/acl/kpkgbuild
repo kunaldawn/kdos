@@ -17,10 +17,8 @@ release=1
 source="https://download.savannah.gnu.org/releases/$name/$name-$version.tar.gz"
 
 build() {
-	cd $name-$version
 	./configure --prefix=/usr    \
 	            --bindir=/bin    \
-	            --disable-static \
 	            --disable-nls    \
 	            --libexecdir=/usr/lib
 	make

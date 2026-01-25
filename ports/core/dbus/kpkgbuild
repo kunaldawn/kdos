@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Message bus system, a simple way for applications to talk to one another
+# depends	: expat libx11 libsm libice meson
+
+name=dbus
+version=1.16.2
+release=1
+source="https://gitlab.freedesktop.org/$name/$name/-/archive/$name-$version/$name-$version.tar.gz"
+
+build() {
+	meson setup build \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--libexecdir=/usr/lib/$name \
+		--localstatedir=/var \
+		-D doxygen_docs=disabled \
+		-D xml_docs=disabled \
+		-D system_pid_file=/run/dbus/pid \
+		-D system_socket=/run/dbus/system_bus_socket
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

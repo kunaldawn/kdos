@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Hardware identification and configuration data
+# homepage	: https://github.com/vcrhonek/hwdata
+# depends	: 
+
+name=hwdata
+version=0.403
+release=1
+source="https://github.com/vcrhonek/hwdata/archive/v$version/$name-$version.tar.gz"
+
+build() {
+	./configure --prefix=/usr --sysconfdir=/etc
+	
+	# Remove unsupported -T flag from install command
+	sed -i 's/install -m 644 -T/install -m 644/g' Makefile
+	
+	make
+	make DESTDIR=$PKG install
+}

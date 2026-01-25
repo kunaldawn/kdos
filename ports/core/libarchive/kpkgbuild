@@ -12,13 +12,11 @@
 # depends	: acl xz bzip2
 
 name=libarchive
-version=3.7.2
+version=3.8.5
 release=1
 source="https://libarchive.org/downloads/$name-$version.tar.xz"
 
 build() {
-	cd $name-$version
-	
 	./configure \
 		--prefix=/usr \
 		--disable-bsdcat \
@@ -26,8 +24,7 @@ build() {
 		--without-zstd \
 		--without-lzma \
 		--without-nettle \
-		--without-xml2 \
-		--disable-static
+		--without-xml2
 	make
 	make DESTDIR=$PKG install
 }
