@@ -22,7 +22,11 @@ mkdir -p $INITRAMFS
 cd $INITRAMFS
 
 # Create Directory Structure
-mkdir -p bin dev proc sys run mnt/iso newroot etc lib
+mkdir -p bin dev proc sys run mnt/iso newroot etc lib boot
+
+# Install Basic Config
+cp /etc/passwd etc/passwd
+cp /etc/group etc/group
 
 # Install Toybox
 cp /usr/bin/toybox bin/toybox
@@ -56,14 +60,25 @@ cp /usr/lib/liblzma.so.5 lib/liblzma.so.5
 cp /usr/lib/libz.so.1 lib/libz.so.1
 cp /usr/lib/libzstd.so.1 lib/libzstd.so.1
 
+# Install udev rules and helpers
+mkdir -p lib/udev/rules.d etc/udev/rules.d
+cp -r /usr/lib/udev/rules.d/* lib/udev/rules.d/ 2>/dev/null || true
+cp -r /etc/udev/rules.d/* etc/udev/rules.d/ 2>/dev/null || true
+cp -r /usr/lib/udev/* lib/udev/ 2>/dev/null || true
+
 # Install kmod and overlay module
 cp /usr/bin/kmod bin/kmod
 ln -sf kmod bin/modprobe
 ln -sf kmod bin/insmod
 ln -sf kmod bin/depmod
 
-# Kernel Version
-KERNEL_VER=$(ls /lib/modules | head -n 1)
+# Detect Kernel Version & Copy necessary modules
+KERNEL_VER=$(ls /lib/modules | sort -V | tail -n 1)
+if [ -z "$KERNEL_VER" ]; then
+    echo "Error: No kernel modules found in /lib/modules!"
+    exit 1
+fi
+echo "Using Kernel Version: $KERNEL_VER"
 MOD_DIR=lib/modules/$KERNEL_VER
 mkdir -p $MOD_DIR
 
@@ -130,7 +145,7 @@ copy_module() {
 }
 
 # Core Modules for Booting (Storage, FS, Input, etc.)
-MODULES="overlay squashfs isofs cdrom sr_mod loop sd_mod ahci libahci virtio virtio_blk virtio_pci virtio_scsi xhci-pci xhci-hcd ehci-pci ehci-hcd ohci-pci ohci-hcd usb-storage uas"
+MODULES="overlay squashfs isofs cdrom sr_mod loop sd_mod ata_piix ahci libahci virtio virtio_blk virtio_pci virtio_scsi xhci-pci xhci-hcd ehci-pci ehci-hcd ohci-pci ohci-hcd usb-storage uas"
 
 for MOD in $MODULES; do
     copy_module $MOD
@@ -138,11 +153,24 @@ done
 
 # Copy modules.order and modules.builtin for depmod
 cp /lib/modules/$KERNEL_VER/modules.order $MOD_DIR/
+cp /lib/modules/$KERNEL_VER/modules.order $MOD_DIR/
 cp /lib/modules/$KERNEL_VER/modules.builtin $MOD_DIR/
+if [ -f /lib/modules/$KERNEL_VER/modules.builtin.modinfo ]; then
+    cp /lib/modules/$KERNEL_VER/modules.builtin.modinfo $MOD_DIR/
+fi
+
+# Copy System.map for depmod
+if [ -f /boot/System.map-$KERNEL_VER ]; then
+    cp /boot/System.map-$KERNEL_VER $INITRAMFS/boot/System.map-$KERNEL_VER
+fi
 
 # Regenerate module dependencies for the initramfs
 echo "Generating dependency map..."
-depmod -b . $KERNEL_VER
+if [ -f boot/System.map-$KERNEL_VER ]; then
+    depmod -b . -F boot/System.map-$KERNEL_VER $KERNEL_VER
+else
+    depmod -b . $KERNEL_VER
+fi
 
 # Create Init Script
 cat > init <<EOF
@@ -163,8 +191,16 @@ mount -t devpts devpts /dev/pts
 # Populate /dev
 echo "Populating /dev..."
 udevd --daemon
-udevadm trigger
+echo "Triggering udev events..."
+udevadm trigger --type=subsystems --action=add
+udevadm trigger --type=devices --action=add
 udevadm settle
+
+echo "Loading essential filesystem modules..."
+modprobe -v loop || echo "Modprobe loop failed"
+modprobe -v isofs || echo "Modprobe isofs failed"
+modprobe -v squashfs || echo "Modprobe squashfs failed"
+modprobe -v overlay || echo "Modprobe overlay failed"
 
 # Check for loop device (create if missing)
 if [ ! -e /dev/loop0 ]; then
@@ -204,7 +240,7 @@ if [ -n "\$ROOT_UUID" ]; then
             mount --move /dev /newroot/dev
             mount --move /proc /newroot/proc
             mount --move /sys /newroot/sys
-            
+
             # Switch Root
             echo "Switching root..."
             exec switch_root /newroot /sbin/init
@@ -229,7 +265,7 @@ echo "Searching for KDOS boot media..."
 sleep 2
 
 FOUND=0
-for dev in /dev/sr* /dev/sd*; do
+for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do
     [ -e "\$dev" ] || continue
     echo "Checking \$dev..."
     if mount -t iso9660 "\$dev" /mnt/iso; then
