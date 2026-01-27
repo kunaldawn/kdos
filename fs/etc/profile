@@ -31,7 +31,6 @@ alias l='ls -CF'
 alias cp='cp -i'
 alias mv='mv -i'
 alias rm='rm -i'
-alias btop='btop --utf-force'
 
 # Prompt
 if [ "$PS1" ]; then
