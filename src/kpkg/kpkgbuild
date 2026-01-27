@@ -44,6 +44,21 @@ SRC_ROOT="$WORK_DIR/$name" # Source root directory where all tarballs are extrac
 SRC="$WORK_DIR/$name/$name-$version" # Source directory of the primary tarball extract
 PKG="$WORK_DIR/$name/pkg" # Package directory where the final package is created
 
+# Export postinstall hook if defined
+if [ "$(type -t postinstall)" = "function" ]; then
+    mkdir -p "$PKG"
+    {
+        echo "#!/bin/bash"
+        echo "version=\"$version\""
+        echo "release=\"$release\""
+        echo "name=\"$name\""
+        declare -f postinstall
+        echo "postinstall"
+    } > "$PKG/.POSTINSTALL"
+    chmod +x "$PKG/.POSTINSTALL"
+    msg "Added postinstall hook"
+fi
+
 #Create work directories
 msg "Preparing..."
 rm -rf "$WORK_DIR/$name"
