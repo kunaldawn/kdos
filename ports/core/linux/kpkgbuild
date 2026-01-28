@@ -163,7 +163,11 @@ build() {
 	./scripts/config --enable CONFIG_RD_LZ4
 	./scripts/config --enable CONFIG_DEVTMPFS
 	./scripts/config --enable CONFIG_DEVTMPFS_MOUNT
-	
+	./scripts/config --enable CONFIG_UEVENT_HELPER
+	./scripts/config --set-str CONFIG_UEVENT_HELPER_PATH ""
+	./scripts/config --enable CONFIG_BINFMT_ELF
+	./scripts/config --enable CONFIG_BINFMT_SCRIPT
+
 	# Architecture & CPU (MAXIMUM PORTABILITY)
 	./scripts/config --enable CONFIG_X86_64
 	./scripts/config --enable CONFIG_GENERIC_CPU
@@ -327,7 +331,18 @@ build() {
 	# Install kernel
 	mkdir -p $PKG/boot
 	cp arch/x86/boot/bzImage $PKG/boot/vmlinuz-kdos
+	cp System.map $PKG/boot/System.map-$version
 	
 	# Install headers for development
 	make INSTALL_HDR_PATH=$PKG/usr headers_install
+}
+
+postinstall() {
+	# Regenerate module dependencies
+	echo "Generating modules.dep for $version..."
+	if command -v depmod >/dev/null; then
+		depmod -a "$version"
+	else
+		echo "Warning: depmod not found, skipping."
+	fi
 }

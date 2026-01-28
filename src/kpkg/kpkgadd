@@ -104,6 +104,15 @@ tar -xf "$PKGFILE" -C "$TMP_EXTRACT" || {
 	exit 1
 }
 
+# Check for postinstall hook
+POST_SCRIPT=""
+if [ -f "$TMP_EXTRACT/.POSTINSTALL" ]; then
+	msg "Found postinstall hook"
+	# Move it out of the extraction dir so it doesn't get installed as a file
+	mv "$TMP_EXTRACT/.POSTINSTALL" "$STAGING_DIR/kpkg_postinstall.$$"
+	POST_SCRIPT="$STAGING_DIR/kpkg_postinstall.$$"
+fi
+
 # Copy files preserving structure and respecting symlinks in root
 cd "$TMP_EXTRACT"
 
@@ -179,5 +188,13 @@ FILELIST=$(tar -tf "$PKGFILE")
 mkdir -p "$PKGDB_DIR"
 echo "$VERSION $RELEASE" > "$PKGDB_DIR/$NAME"
 echo "$FILELIST" >> "$PKGDB_DIR/$NAME"
+
+# Run Postinstall
+if [ -n "$POST_SCRIPT" ]; then
+	msg "Running postinstall hook..."
+	# Execute with PKG_ROOT set so script knows target
+	PKG_ROOT="$INSTALL_ROOT" "$POST_SCRIPT" || msg "Warning: Postinstall hook failed"
+	rm -f "$POST_SCRIPT"
+fi
 
 msg "Package '$NAME' installed successfully"
