@@ -31,6 +31,13 @@ run:
 rundisk:
 	qemu-system-x86_64 -enable-kvm -cpu host -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2
 
+debug-boot:
+	qemu-system-x86_64 -m 4G -serial stdio \
+		-kernel build/fs/boot/vmlinuz-kdos \
+		-initrd build/fs/boot/initramfs.cpio.gz \
+		-cdrom build/iso-build/kdos.iso \
+		-append "root=/dev/ram0 rw console=tty0 console=ttyS0"
+
 cleandisk:
 	qemu-img create -f qcow2 build/kdos.qcow2 20G
 
