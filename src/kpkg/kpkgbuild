@@ -133,12 +133,26 @@ msg "Creating package..."
 
 cd "$PKG" || msgerr "Failed to enter $PKG"
 
+# Export postinstall hook if defined
+if [ "$(type -t postinstall)" = "function" ]; then
+    {
+        echo "#!/bin/bash"
+        echo "version=\"$version\""
+        echo "release=\"$release\""
+        echo "name=\"$name\""
+        declare -f postinstall
+        echo "postinstall"
+    } > ".POSTINSTALL"
+    chmod +x ".POSTINSTALL"
+    msg "Added postinstall hook"
+fi
+
 # Remove libtool .la files (conflicts with cross-compile)
 find . -name "*.la" -delete
 
 # Create tarball
 mkdir -p "$PACKAGE_DIR"
-tar -cJf "$PACKAGE_DIR/$PKGNAME" ./* || msgerr "Failed to create package"
+tar -cJf "$PACKAGE_DIR/$PKGNAME" . || msgerr "Failed to create package"
 
 cd - >/dev/null
 
