@@ -20,26 +20,23 @@ import threading
 import queue
 import re
 import shutil
+import math
+import traceback
 
 # --- Configuration ---
-VERSION = "2.0-dashboard"
+VERSION = "3.0"
 MOUNT_POINT = "/mnt"
 
-# Colors (Global constants to match build.py)
-CP_BG = 1       
-CP_HL = 2       
-CP_RUN = 3      
-CP_DONE = 4     
-CP_FAIL = 5     
-CP_TITLE = 6    
-CP_BAR = 7      
-CP_LOG = 8      
-CP_TIME = 9     
-CP_KEY = 10     
-CP_DONE_REV = 11
-CP_TRACK = 12   
-CP_RUN_SEL = 13
-CP_INPUT = 14 # New for input box
+# --- Colors & Styles ---
+CP_BASE = 1
+CP_HL   = 2
+CP_ACCENT = 3
+CP_WARN = 4
+CP_OK   = 5
+CP_ERR  = 6
+CP_BOX  = 7
+CP_INPUT = 8
+CP_MATRIX = 9
 
 class InputRequest:
     def __init__(self, kind, prompt, options=None, secret=False):
@@ -51,20 +48,23 @@ class InputRequest:
         self.event = threading.Event()
 
 class InstallerStep:
-    def __init__(self, title, func):
+    def __init__(self, title, func, step_type='executing'):
         self.title = title
         self.func = func
+        self.step_type = step_type # 'interactive' or 'executing'
         self.status = "PENDING" # PENDING, RUNNING, DONE, FAIL
         self.logs = []
         self.start_time = None
         self.end_time = None
         self.return_code = 0
-        
+        self.progress = None # 0-100 or None
+        self.detail = "" 
+
     def add_log(self, line):
         self.logs.append(line)
-        if len(self.logs) > 2000:
-            self.logs = self.logs[-2000:]
-            
+        if len(self.logs) > 500: # Smaller buffer for retro feel
+            self.logs = self.logs[-500:]
+
     def duration(self):
         if self.start_time is None: return 0
         end = self.end_time if self.end_time else time.time()
@@ -73,20 +73,24 @@ class InstallerStep:
 class InstallerManager:
     def __init__(self, tui_queue):
         self.steps = []
-        self.current_step = None
+        self.current_step_idx = -1
         self.stop_requested = False
-        self.tui_queue = tui_queue # Queue to send requests to TUI
-        self.context = {} # Shared state between steps
+        self.tui_queue = tui_queue
+        self.context = {}
         self.log_file = None
         
         try:
             self.log_file = open("/var/log/install.log", "w")
-        except:
-            # Fallback if not root or filtered, though script requires root
-            pass
+        except: pass
 
-    def add_step(self, title, func):
-        self.steps.append(InstallerStep(title, func))
+    @property
+    def current_step(self):
+        if 0 <= self.current_step_idx < len(self.steps):
+            return self.steps[self.current_step_idx]
+        return None
+
+    def add_step(self, title, func, step_type='executing'):
+        self.steps.append(InstallerStep(title, func, step_type))
 
     def start(self):
         t = threading.Thread(target=self._run, daemon=True)
@@ -94,34 +98,44 @@ class InstallerManager:
         return t
 
     def _run(self):
-        for step in self.steps:
+        for idx, step in enumerate(self.steps):
             if self.stop_requested: break
             
-            self.current_step = step
+            self.current_step_idx = idx
             step.status = "RUNNING"
             step.start_time = time.time()
             
             try:
-                # Execute the step function, passing self as context provider
                 step.func(self, step)
                 step.status = "DONE"
                 step.return_code = 0
+                step.progress = 100
+                step.detail = "Completed."
             except Exception as e:
                 step.status = "FAIL"
-                step.add_log(f"ERROR: {e}")
+                tb = traceback.format_exc()
+                step.add_log(f"CRITICAL ERROR: {e}")
+                for line in tb.splitlines():
+                     step.add_log(line)
+                
+                step.detail = f"FAILED: {e}"
                 step.return_code = 1
                 self.stop_requested = True
             
             step.end_time = time.time()
+            time.sleep(0.5) # Pace it a bit for visuals
             
         if self.log_file:
             self.log_file.close()
-            
-    # --- Helper methods for steps to interact with UI/System ---
+
     def log(self, text):
-        msg = str(text)
+        msg = str(text).strip()
+        if not msg: return
         if self.current_step:
             self.current_step.add_log(msg)
+            # Boot sequence style log to detail if no progress
+            if self.current_step.progress is None:
+                self.current_step.detail = msg
         if self.log_file:
             try:
                 self.log_file.write(f"[{time.strftime('%X')}] {msg}\n")
@@ -129,10 +143,7 @@ class InstallerManager:
             except: pass
 
     def run_cmd(self, cmd, shell=False):
-        if self.current_step:
-            self.current_step.add_log(f"$ {' '.join(cmd) if isinstance(cmd, list) else cmd}")
-        
-        # We want to capture output and stream it to logs
+        self.log(f"$ {' '.join(cmd) if isinstance(cmd, list) else cmd}")
         process = subprocess.Popen(
             cmd, 
             stdout=subprocess.PIPE, 
@@ -141,406 +152,495 @@ class InstallerManager:
             text=True, 
             bufsize=1
         )
-        
         while True:
             line = process.stdout.readline()
-            if not line and process.poll() is not None:
-                break
-            if line:
-                self.log(line.strip())
-                
+            if not line and process.poll() is not None: break
+            if line: self.log(line)
         if process.returncode != 0:
-            raise Exception(f"Command failed with code {process.returncode}")
+            raise Exception(f"Command failed code {process.returncode}")
 
-    # --- Interaction Requests ---
-    def _request_input(self, req):
+    def run_with_progress(self, cmd, parser_callback, allowed_codes=[0]):
+        self.log(f"EXEC: {' '.join(cmd) if isinstance(cmd, list) else cmd}")
+        
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            shell=False,
+            text=False, # Binary mode to prevent buffering issues
+            bufsize=0
+        )
+
+        buffer = b""
+        while True:
+            # Read larger chunks to drain pipe faster
+            chunk = process.stdout.read(1024)
+            if not chunk and process.poll() is not None:
+                break
+            if chunk:
+                buffer += chunk
+                while b'\n' in buffer or b'\r' in buffer:
+                    # Find first separator
+                    nl = buffer.find(b'\n')
+                    cr = buffer.find(b'\r')
+                    
+                    split_idx = -1
+                    if nl != -1 and cr != -1: split_idx = min(nl, cr)
+                    elif nl != -1: split_idx = nl
+                    elif cr != -1: split_idx = cr
+                    
+                    if split_idx != -1:
+                        line_bytes = buffer[:split_idx]
+                        buffer = buffer[split_idx+1:]
+                        if line_bytes.strip():
+                            try:
+                                line_str = line_bytes.decode('utf-8', errors='replace')
+                                parser_callback(line_str)
+                            except: pass
+        
+        if process.returncode not in allowed_codes:
+             raise Exception(f"Process failed code {process.returncode}")
+
+    # --- Interaction ---
+    def _req(self, req):
         self.tui_queue.put(req)
         req.event.wait()
         return req.result
 
-    def alert(self, msg):
-        self._request_input(InputRequest('alert', msg))
+    def alert(self, msg): self._req(InputRequest('alert', msg))
+    def ask_text(self, prompt, secret=False): return self._req(InputRequest('text', prompt, secret=secret))
+    def ask_confirm(self, prompt): return self._req(InputRequest('confirm', prompt))
+    def ask_choice(self, prompt, options): return self._req(InputRequest('choice', prompt, options=options))
 
-    def ask_text(self, prompt, secret=False):
-        return self._request_input(InputRequest('text', prompt, secret=secret))
 
-    def ask_confirm(self, prompt):
-        return self._request_input(InputRequest('confirm', prompt))
-
-    def ask_choice(self, prompt, options):
-        return self._request_input(InputRequest('choice', prompt, options=options))
+def s_install_base(mgr, step):
+    if not shutil.which('rsync'): raise Exception("rsync missing")
+    
+    excludes = ["/dev/*", "/proc/*", "/sys/*", "/tmp/*", "/run/*", "/mnt/*", "/media/*", "/lost+found"]
+    
+    # -aAXh for human readable
+    # -W: whole file (faster for new install)
+    # -x: one-file-system (prevent recursion into /sys /proc /dev if excludes fail)
+    cmd = ['rsync', '-aAXhxW', '--info=progress2', '--no-inc-recursive']
+    for e in excludes: cmd.append(f'--exclude={e}')
+    cmd.extend(['/', f'{MOUNT_POINT}/'])
+    
+    def rsync_parser(line):
+        # 1.23G  45%  45.67MB/s    0:00:12 (xfr#1234, ...
+        parts = line.split()
+        if len(parts) >= 3 and '%' in parts[1]:
+            # parts[0] = Size, parts[1] = %, parts[2] = Speed
+            try: step.progress = int(parts[1].strip('%'))
+            except: pass
+            
+            step.detail = f"Transferred: {parts[0]}  |  Speed: {parts[2]}"
+            
+    # Allow code 24 (Vanished files) which is common on live systems
+    mgr.run_with_progress(cmd, rsync_parser, allowed_codes=[0, 24])
+    
+    # Restore dirs
+    for d in ['dev', 'proc', 'sys', 'tmp', 'run', 'mnt', 'media']:
+        os.makedirs(os.path.join(MOUNT_POINT, d), exist_ok=True)
+    os.chmod(os.path.join(MOUNT_POINT, 'tmp'), 0o1777)
 
 
 class TUI:
     def __init__(self, stdscr, manager, req_queue):
         self.stdscr = stdscr
-        self.manager = manager
-        self.req_queue = req_queue
-        self.current_input_req = None
-        self.input_buffer = ""
-        self.choice_index = 0
-        
-        self.selected_step_index = 0
-        self.scroll_offset = 0
-        self.auto_follow = True
-        
+        self.mgr = manager
+        self.q = req_queue
+        self.cur_req = None
+        self.last_req = None
+        self.inp_buf = ""
+        self.choice_idx = 0
         self.h, self.w = 0, 0
-        self._init_colors()
+        self.tree_w = 30
+        self.main_x = 0
+        self.main_w = 0
         
-        # Setup input
+        self._init_colors()
         self.stdscr.nodelay(True)
-        self.stdscr.keypad(True)
         curses.curs_set(0)
 
     def _init_colors(self):
+        curses.start_color()
+        curses.init_pair(CP_BASE, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(CP_HL, curses.COLOR_BLACK, curses.COLOR_GREEN)
+        curses.init_pair(CP_ACCENT, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        curses.init_pair(CP_WARN, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+        curses.init_pair(CP_OK, curses.COLOR_WHITE, curses.COLOR_GREEN)
+        curses.init_pair(CP_ERR, curses.COLOR_WHITE, curses.COLOR_RED)
+        curses.init_pair(CP_BOX, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(CP_INPUT, curses.COLOR_WHITE, curses.COLOR_BLUE)
+        curses.init_pair(CP_MATRIX, curses.COLOR_GREEN, curses.COLOR_BLACK)
+
+    def safe_addstr(self, y, x, text, attr=0, max_w=None):
+        if y >= self.h or x >= self.w: return
+        
+        limit = self.w - x
+        if max_w: limit = min(limit, max_w)
+        
+        # Truncate
+        if len(text) > limit:
+            text = text[:limit]
+            
+        # Avoid writing to very last char of screen (fixes scroll error)
+        if y == self.h - 1 and x + len(text) == self.w:
+            text = text[:-1]
+            
         try:
-            curses.start_color()
-            curses.init_pair(CP_BG, curses.COLOR_WHITE, curses.COLOR_BLACK)
-            curses.init_pair(CP_HL, curses.COLOR_WHITE, curses.COLOR_BLUE)
-            curses.init_pair(CP_RUN, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-            curses.init_pair(CP_DONE, curses.COLOR_GREEN, curses.COLOR_BLACK)
-            curses.init_pair(CP_FAIL, curses.COLOR_RED, curses.COLOR_BLACK)
-            curses.init_pair(CP_TITLE, curses.COLOR_CYAN, curses.COLOR_BLACK)
-            curses.init_pair(CP_BAR, curses.COLOR_BLUE, curses.COLOR_BLACK)
-            curses.init_pair(CP_LOG, curses.COLOR_WHITE, curses.COLOR_BLACK)
-            curses.init_pair(CP_TIME, curses.COLOR_CYAN, curses.COLOR_BLACK)
-            curses.init_pair(CP_KEY, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-            curses.init_pair(CP_DONE_REV, curses.COLOR_BLACK, curses.COLOR_GREEN)
-            curses.init_pair(CP_TRACK, curses.COLOR_WHITE, curses.COLOR_BLACK)
-            curses.init_pair(CP_RUN_SEL, curses.COLOR_YELLOW, curses.COLOR_BLUE)
-            curses.init_pair(CP_INPUT, curses.COLOR_WHITE, curses.COLOR_BLUE) # Input box style
+            self.stdscr.addstr(y, x, text, attr)
         except: pass
 
-    def update_dims(self):
-        self.h, self.w = self.stdscr.getmaxyx()
-
-    def process_input(self):
+    def draw_box(self, y, x, h, w, title=""):
+        if h < 2 or w < 2: return
         try:
-            key = self.stdscr.getch()
-        except: key = -1
-        
-        if key == -1: return
+            self.stdscr.attron(curses.color_pair(CP_BOX))
+            # Top
+            self.safe_addstr(y, x, "╔" + "═" * (w-2) + "╗")
+            # Bottom
+            self.safe_addstr(y+h-1, x, "╚" + "═" * (w-2) + "╝")
+            # Sides & Fill
+            for i in range(1, h-1):
+                 # Construct line manually to avoid multiple addstrs causing issues
+                 line = "║" + " " * (w-2) + "║"
+                 self.safe_addstr(y+i, x, line)
+            
+            if title:
+                trunc_title = title[:w-4]
+                self.safe_addstr(y, x+2, f" {trunc_title} ", curses.color_pair(CP_ACCENT) | curses.A_BOLD)
+            self.stdscr.attroff(curses.color_pair(CP_BOX))
+        except: pass
 
-        # Check for input request first
-        if self.current_input_req:
-            self._handle_input_req(key)
-            return
+    def handle_input(self):
+        try: k = self.stdscr.getch()
+        except: k = -1
+        if k == -1: return
 
-        # Normal navigation
-        if key == ord('q'):
-            if self.manager.current_step is None or self.manager.stop_requested: # If idle or done
-                sys.exit(0)
-            # else ignore or confirm cancel? For now ignore.
-        
-        elif key == curses.KEY_UP:
-            self.selected_step_index = max(0, self.selected_step_index - 1)
-            self.auto_follow = False
-        elif key == curses.KEY_DOWN:
-            self.selected_step_index = min(len(self.manager.steps) - 1, self.selected_step_index + 1)
-            self.auto_follow = False
-        elif key == ord('f'):
-            self.auto_follow = not self.auto_follow
+        if self.cur_req:
+            r = self.cur_req
+            if r.kind == 'alert' and k in [10, 32]:
+                r.result = True; r.event.set(); self.cur_req = None
+            elif r.kind == 'confirm':
+                if k in [ord('y'), ord('Y'), 10]: 
+                    r.result = True; r.event.set(); self.cur_req = None
+                elif k in [ord('n'), ord('N'), 27]:
+                    r.result = False; r.event.set(); self.cur_req = None
+            elif r.kind == 'text':
+                if k == 10:
+                    r.result = self.inp_buf; r.event.set(); self.cur_req = None; self.inp_buf = ""
+                elif k in [127, curses.KEY_BACKSPACE]: self.inp_buf = self.inp_buf[:-1]
+                elif 32 <= k <= 126: self.inp_buf += chr(k)
+            elif r.kind == 'choice':
+                if k == curses.KEY_UP: self.choice_idx = max(0, self.choice_idx - 1)
+                elif k == curses.KEY_DOWN: self.choice_idx = min(len(r.options)-1, self.choice_idx + 1)
+                elif k == 10:
+                    r.result = r.options[self.choice_idx]; r.event.set(); self.cur_req = None; self.choice_idx = 0
+        else:
+            if k == ord('q'): return 
 
-    def _handle_input_req(self, key):
-        req = self.current_input_req
-        
-        if req.kind == 'alert':
-            if key == 10 or key == 32: # Enter or Space
-                req.result = True
-                req.event.set()
-                self.current_input_req = None
-        
-        elif req.kind == 'confirm':
-            # y/n logic
-            if key in [ord('y'), ord('Y')]:
-                req.result = True
-                req.event.set()
-                self.current_input_req = None
-            elif key in [ord('n'), ord('N')]:
-                req.result = False
-                req.event.set()
-                self.current_input_req = None
-        
-        elif req.kind == 'text':
-            if key == 10: # Enter
-                req.result = self.input_buffer
-                req.event.set()
-                self.current_input_req = None
-                self.input_buffer = ""
-            elif key == 27: # Esc (Empty)
-                req.result = ""
-                req.event.set()
-                self.current_input_req = None
-                self.input_buffer = ""
-            elif key == curses.KEY_BACKSPACE or key == 127:
-                self.input_buffer = self.input_buffer[:-1]
-            elif 32 <= key <= 126:
-                self.input_buffer += chr(key)
-        
-        elif req.kind == 'choice':
-            if key == curses.KEY_UP:
-                self.choice_index = max(0, self.choice_index - 1)
-            elif key == curses.KEY_DOWN:
-                self.choice_index = min(len(req.options) - 1, self.choice_index + 1)
-            elif key == 10: # Enter
-                req.result = req.options[self.choice_index]
-                req.event.set()
-                self.current_input_req = None
-                self.choice_index = 0
+    def recalc_layout(self):
+        # Adaptive Widths
+        # If screen is small (< 80), shrink tree
+        if self.w < 80:
+             self.tree_w = max(20, int(self.w * 0.3))
+        else:
+             self.tree_w = 30
+             
+        self.main_x = self.tree_w + 1 # Reduced gap
+        self.main_w = max(10, self.w - self.main_x - 1)
 
     def loop(self):
         while True:
-            # Check for new input requests
-            try:
-                if not self.current_input_req:
-                    req = self.req_queue.get_nowait()
-                    self.current_input_req = req
-                    self.input_buffer = ""
-                    self.choice_index = 0
-            except queue.Empty: pass
+            if not self.cur_req:
+                try: 
+                    self.cur_req = self.q.get_nowait()
+                    self.inp_buf = ""
+                    self.choice_idx = 0
+                except: pass
             
-            self.update_dims()
-            self.process_input()
+            # Check resize
+            nh, nw = self.stdscr.getmaxyx()
+            if nh != self.h or nw != self.w or (self.last_req and not self.cur_req):
+                 self.stdscr.erase()
             
-            if self.auto_follow and self.manager.current_step:
-                for i, s in enumerate(self.manager.steps):
-                    if s == self.manager.current_step:
-                        self.selected_step_index = i
-                        break
+            self.h, self.w = nh, nw
+            self.recalc_layout()
+            self.last_req = self.cur_req
             
-            self.draw_screen()
-            time.sleep(0.05)
+            self.handle_input()
+            self.draw_ui()
+            self.stdscr.refresh()
+            curses.napms(50) 
 
-    def draw_screen(self):
-        self.stdscr.bkgd(' ', curses.color_pair(CP_BG))
-        self.stdscr.erase()
-        
-        try:
-            # -- DRAW TREE (LEFT) --
-            tree_w = int(self.w * 0.35)
-            tree_w = max(25, min(tree_w, 40))
-            
-            # Border
-            for y in range(self.h):
-                self.stdscr.addch(y, tree_w, curses.ACS_VLINE, curses.color_pair(CP_TITLE))
-            
-            self.draw_tree(tree_w)
-            
-            # -- DRAW DETAIL (RIGHT) --
-            detail_x = tree_w + 1
-            detail_w = self.w - detail_x
-            
-            self.draw_detail(detail_x, detail_w)
-            
-            # -- DRAW OVERLAYS --
-            if self.current_input_req:
-                self.draw_overlay(self.current_input_req)
-
-        except curses.error: pass
-        self.stdscr.refresh()
-
-    def draw_tree(self, w):
+    def draw_ui(self):
         # Header
-        self.stdscr.addstr(0, 0, " KDOS INSTALLER ".center(w), curses.color_pair(CP_RUN) | curses.A_BOLD)
-        
-        start_y = 2
-        
-        # Scroll logic
-        # simple window
-        list_h = self.h - 4
-        if self.selected_step_index < self.scroll_offset:
-            self.scroll_offset = self.selected_step_index
-        elif self.selected_step_index >= self.scroll_offset + list_h:
-            self.scroll_offset = self.selected_step_index - list_h + 1
-            
-        for i in range(list_h):
-            idx = self.scroll_offset + i
-            if idx >= len(self.manager.steps): break
-            
-            step = self.manager.steps[idx]
-            y = start_y + i
-            
-            # Icon
-            icon = "    "
-            attr = curses.color_pair(CP_BG)
-            if step.status == "RUNNING":
-                frames = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
-                f = frames[int(time.time() * 10) % 8]
-                icon = f" {f}  "
-                attr = curses.color_pair(CP_RUN) | curses.A_BOLD
-            elif step.status == "DONE":
-                icon = " OK "
-                attr = curses.color_pair(CP_DONE_REV) | curses.A_BOLD
-            elif step.status == "FAIL":
-                icon = " !! "
-                attr = curses.color_pair(CP_FAIL) | curses.A_BOLD
-            
-            # Draw Line
-            is_sel = (idx == self.selected_step_index)
-            line_attr = curses.color_pair(CP_HL) if is_sel else curses.color_pair(CP_BG)
-            if is_sel and step.status == "RUNNING": 
-                # Icon background fix for running selected
-                pass
-            
-            # Draw full line background if selected
-            self.stdscr.addstr(y, 0, " " * w, line_attr)
-            
-            # Icon
-            self.stdscr.addstr(y, 1, icon, attr)
-            
-            # Text
-            title = step.title[:w-6]
-            self.stdscr.addstr(y, 6, title, line_attr | curses.A_BOLD)
+        header = f" KDOS INSTALLER v{VERSION} "
+        self.stdscr.move(0, 0)
+        self.stdscr.clrtoeol()
+        self.safe_addstr(0, (self.w - len(header))//2, header, curses.color_pair(CP_HL) | curses.A_BOLD)
 
-    def draw_detail(self, x, w):
-        if not self.manager.steps: return
-        step = self.manager.steps[self.selected_step_index]
+        # Status Bar
+        self.stdscr.move(self.h-1, 0)
+        self.stdscr.clrtoeol()
+        status = " [Running] " if self.mgr.current_step else " [Idle] "
+        if self.cur_req: status = " [Input Required] "
         
-        # Header Box
-        header_attr = curses.color_pair(CP_TITLE) | curses.A_BOLD
-        if step.status == "RUNNING": header_attr = curses.color_pair(CP_RUN) | curses.A_BOLD
-        elif step.status == "FAIL": header_attr = curses.color_pair(CP_FAIL) | curses.A_BOLD
+        self.safe_addstr(self.h-1, 0, status.center(self.w), curses.color_pair(CP_ACCENT) | curses.A_REVERSE)
+
+        # Draw Boxes
+        self.draw_box(2, 0, self.h-4, self.tree_w, "SEQUENCE")
+        self.draw_box(2, self.main_x, self.h-4, self.main_w, "OUTPUT")
         
-        self.stdscr.addstr(1, x + 2, f" STEP: {step.title} ".ljust(w-4), header_attr)
-        
-        status_line = f" STATUS: {step.status} "
-        if step.duration() > 0: status_line += f"({step.duration():.1f}s)"
-        self.stdscr.addstr(2, x + 2, status_line.ljust(w-4), curses.color_pair(CP_BG) | curses.A_BOLD)
-        
-        # Separator
-        self.stdscr.addstr(3, x, " " * w, curses.color_pair(CP_BG) | curses.A_UNDERLINE)
-        
-        # Logs
-        log_y = 4
-        log_h = self.h - 5
-        visible_logs = step.logs[-log_h:]
-        
-        for i, line in enumerate(visible_logs):
-            clean = line.replace('\t', '    ')
-            self.stdscr.addstr(log_y + i, x + 2, clean[:w-4], curses.color_pair(CP_LOG))
+        # Left Panel Content
+        content_w = self.tree_w - 2
+        for i, step in enumerate(self.mgr.steps):
+            y = 3 + i
+            if y >= self.h - 3: break
+            
+            marker = "[ ]"
+            attr = curses.color_pair(CP_BASE)
+            if step.status == "DONE": marker = "[X]"; attr = curses.color_pair(CP_BASE)
+            elif step.status == "RUNNING": marker = "[>]"; attr = curses.color_pair(CP_WARN) | curses.A_BOLD
+            elif step.status == "FAIL": marker = "[!]"; attr = curses.color_pair(CP_ERR) | curses.A_BOLD
+            
+            # Fill Background
+            self.safe_addstr(y, 1, " " * content_w, curses.color_pair(CP_BOX))
+            
+            text = f"{marker} {step.title}"
+            if len(text) > content_w: text = text[:content_w] # Strict chop
+            
+            # Selected Highlight
+            line_attr = attr
+            if i == self.mgr.current_step_idx:
+                line_attr = curses.color_pair(CP_HL)
+                text = text.ljust(content_w) # Ensure highlight fills line
+            
+            self.safe_addstr(y, 2, text, line_attr)
+
+        # Right Panel Content
+        step = self.mgr.current_step
+        if step:
+            content_mw = self.main_w - 4 # Padding for borders
+            mx = self.main_x + 2         # Padding for left border + space
+            
+            # Step Title
+            title_str = f">> {step.title.upper()} <<"
+            self.safe_addstr(3, mx + (content_mw - len(title_str))//2, title_str, curses.color_pair(CP_ACCENT) | curses.A_BOLD)
+            
+            # Progress Bar
+            pct = step.progress if step.progress is not None else 0
+            bar_w = content_mw - 2
+            filled = int(bar_w * (pct / 100))
+            bar = "▓" * filled + "░" * (bar_w - filled)
+            
+            pct_str = f" {pct}% " if step.progress is not None else " BUSY "
+            
+            self.safe_addstr(5, mx + 1, bar, curses.color_pair(CP_BASE))
+            self.safe_addstr(5, mx + 1 + (bar_w - len(pct_str))//2, pct_str, curses.color_pair(CP_HL))
+
+            # Detail Line
+            detail_trunc = (step.detail or "")
+            if len(detail_trunc) > content_mw: detail_trunc = detail_trunc[:content_mw]
+            
+            self.safe_addstr(7, mx, " " * content_mw, curses.color_pair(CP_BOX)) # Clear
+            self.safe_addstr(7, mx, detail_trunc, curses.color_pair(CP_ACCENT))
+
+            # Logs
+            log_h = self.h - 14
+            logs = step.logs[-log_h:]
+            for i, l in enumerate(logs):
+                # Clear line
+                self.safe_addstr(9+i, mx, " " * content_mw, curses.color_pair(CP_BOX))
+                if len(l) > content_mw: l = l[:content_mw]
+                self.safe_addstr(9+i, mx, l, curses.color_pair(CP_BASE))
+
+        # Overlay Input (Centered)
+        if self.cur_req:
+            self.draw_overlay(self.cur_req)
 
     def draw_overlay(self, req):
-        # Calculate height based on prompt lines
-        # Default prompt width 60
+        bw = min(60, self.w - 4)
+        prompt_lines = req.prompt.split('\n')
+        bh = len(prompt_lines) + 6
+        if req.kind == 'choice': bh += len(req.options)
+        
+        bx = (self.w - bw)//2
+        by = (self.h - bh)//2
+        
+        # Draw Box manually with safe_addstr
+        self.stdscr.attron(curses.color_pair(CP_INPUT))
+        self.safe_addstr(by, bx, "╔" + "═"*(bw-2) + "╗")
+        self.safe_addstr(by+bh-1, bx, "╚" + "═"*(bw-2) + "╝")
+        for i in range(1, bh-1):
+            self.safe_addstr(by+i, bx, "║" + " "*(bw-2) + "║")
+        
+        self.safe_addstr(by, bx+2, " REQUEST ", curses.A_REVERSE | curses.A_BOLD)
+        
+        for i, l in enumerate(prompt_lines):
+            self.safe_addstr(by+2+i, bx+3, l[:bw-4])
+            
+        cy = by + 3 + len(prompt_lines)
+        
+        if req.kind == 'text':
+            self.safe_addstr(cy, bx+3, ("> " + self.inp_buf + "_")[:bw-4], curses.A_BOLD)
+        elif req.kind == 'confirm':
+             msg = "[ Y / N ]"
+             self.safe_addstr(cy, bx+(bw-len(msg))//2, msg, curses.A_REVERSE)
+        elif req.kind == 'choice':
+            for i, o in enumerate(req.options):
+                prefix = "[x]" if i == self.choice_idx else "[ ]"
+                style = curses.A_REVERSE if i == self.choice_idx else curses.A_NORMAL
+                text = f"{prefix} {o}"
+                self.safe_addstr(cy+i, bx+5, text[:bw-6], style)
+        elif req.kind == 'alert':
+             msg = "[ OK ]"
+             self.safe_addstr(cy, bx+(bw-len(msg))//2, msg, curses.A_REVERSE)
+        
+        self.stdscr.attroff(curses.color_pair(CP_INPUT))
+
+    def draw_overlay(self, req):
         bw = 60
         prompt_lines = req.prompt.split('\n')
+        bh = len(prompt_lines) + 6
+        if req.kind == 'choice': bh += len(req.options)
         
-        # Calculate dynamic height: 
-        # Base padding: 2 (top) + 1 (spacing) + 2 (bottom/buttons) + 2 (borders) = 7?
-        # Let's count rows:
-        # 0: Border
-        # 1: Padding
-        # 2..N: Text
-        # N+1: Spacing
-        # N+2..M: Controls
-        # M+1: Padding
-        # M+2: Border
+        bx = (self.w - bw)//2
+        by = (self.h - bh)//2
         
-        text_h = len(prompt_lines)
-        controls_h = 1
-        if req.kind == 'choice':
-            controls_h = len(req.options)
-            
-        bh = 2 + 1 + text_h + 1 + controls_h + 1 # Borders(2) + PadTop(1) + Text + Gap(1) + Controls + PadBot(1)
-            
-        bx = (self.w - bw) // 2
-        by = (self.h - bh) // 2
-        
-        # Box Loop
-        self.stdscr.attron(curses.color_pair(CP_INPUT))
+        # Background
         for i in range(bh):
-            self.stdscr.addstr(by + i, bx, " " * bw)
+            self.stdscr.addstr(by+i, bx, " " * bw, curses.color_pair(CP_INPUT))
             
-        # Draw border manually
-        self.stdscr.addstr(by, bx, "+" + "-" * (bw-2) + "+")
-        self.stdscr.addstr(by + bh - 1, bx, "+" + "-" * (bw-2) + "+")
-        for i in range(1, bh - 1):
-            self.stdscr.addstr(by + i, bx, "|")
-            self.stdscr.addstr(by + i, bx + bw - 1, "|")
-        self.stdscr.attroff(curses.color_pair(CP_INPUT))
+        self.stdscr.attron(curses.color_pair(CP_INPUT))
+        self.stdscr.addstr(by, bx, "╔" + "═"*(bw-2) + "╗")
+        self.stdscr.addstr(by+bh-1, bx, "╚" + "═"*(bw-2) + "╝")
+        for i in range(1, bh-1):
+            self.stdscr.addstr(by+i, bx, "║"); self.stdscr.addstr(by+i, bx+bw-1, "║")
         
-        # Title/Prompt (Multi-line)
-        for i, line in enumerate(prompt_lines):
-            self.stdscr.addstr(by + 2 + i, bx + 2, line[:bw-4], curses.color_pair(CP_INPUT) | curses.A_BOLD)
+        self.stdscr.addstr(by, bx+2, " REQUEST ", curses.A_REVERSE | curses.A_BOLD)
         
-        # Controls Position
-        cy = by + 2 + text_h + 1
-        
-        if req.kind == 'alert':
-            self.stdscr.addstr(cy, bx + (bw - 8)//2, "[ OK ]", curses.color_pair(CP_INPUT) | curses.A_REVERSE)
+        for i, l in enumerate(prompt_lines):
+            self.stdscr.addstr(by+2+i, bx+3, l)
             
+        cy = by + 3 + len(prompt_lines)
+        
+        if req.kind == 'text':
+            self.stdscr.addstr(cy, bx+3, "> " + self.inp_buf + "_", curses.A_BOLD)
         elif req.kind == 'confirm':
-            self.stdscr.addstr(cy, bx + (bw - 17)//2, "[Y] Yes   [N] No", curses.color_pair(CP_INPUT))
-            
-        elif req.kind == 'text':
-            self.stdscr.addstr(cy, bx + 4, "> " + self.input_buffer + "_", curses.color_pair(CP_LOG))
-            
+             self.stdscr.addstr(cy, bx+(bw-10)//2, "[ Y / N ]", curses.A_REVERSE)
         elif req.kind == 'choice':
-            for i, opt in enumerate(req.options):
-                prefix = "(*)" if i == self.choice_index else "( )"
-                style = curses.A_REVERSE if i == self.choice_index else curses.A_NORMAL
-                self.stdscr.addstr(cy + i, bx + 4, f"{prefix} {opt}", curses.color_pair(CP_INPUT) | style)
+            for i, o in enumerate(req.options):
+                prefix = "[x]" if i == self.choice_idx else "[ ]"
+                style = curses.A_REVERSE if i == self.choice_idx else curses.A_NORMAL
+                self.stdscr.addstr(cy+i, bx+5, f"{prefix} {o}", style)
+        elif req.kind == 'alert':
+             self.stdscr.addstr(cy, bx+(bw-6)//2, "[ OK ]", curses.A_REVERSE)
+        
+        self.stdscr.attroff(curses.color_pair(CP_INPUT))
 
-
-# --- Step Functions ---
-
-def s_welcome(mgr, step):
-    mgr.log("Initializing installer...")
-    time.sleep(1)
-    
-    mgr.alert("Welcome to the KDOS Installer.\nWARNING: This process is destructive!")
-    if not mgr.ask_confirm("Do you want to proceed?"):
-        mgr.log("User cancelled.")
-        raise Exception("Cancelled by user")
-
-def s_select_disk(mgr, step):
-    mgr.log("Scanning for disks...")
-    
-    # Mock scan or real scan
+# --- Utils ---
+def unmount_disk(mgr, disk):
+    """Force unmount partitions on disk."""
+    mgr.log(f"Unmounting partitions on {disk}...")
     try:
-        output = subprocess.check_output(['lsblk', '-d', '-n', '-p', '-o', 'NAME,SIZE,MODEL'], text=True)
+        # Read mounts
+        parts = []
+        with open("/proc/mounts", "r") as f:
+            for line in f:
+                if disk in line:
+                    parts.append(line.split()[1])
+        
+        for p in parts:
+            mgr.log(f"Unmounting {p}...")
+            # Use run_cmd to capture output
+            try: mgr.run_cmd(['umount', '-l', p])
+            except: pass
+            
+        try: mgr.run_cmd(['swapoff', '-a'])
+        except: pass
+    except Exception as e:
+        mgr.log(f"Unmount warning: {e}")
+
+def get_disk_info(disk):
+    try:
+        # stderr to DEVNULL to avoid leaks
+        out = subprocess.check_output(['lsblk', disk, '-n', '-o', 'NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT'], text=True, stderr=subprocess.DEVNULL)
+        return out.strip()
+    except: return "Unknown"
+
+# --- Steps ---
+
+def s_init(mgr, step):
+    mgr.log("Initializing core systems...")
+    time.sleep(1)
+    if os.geteuid() != 0:
+        mgr.alert("ROOT PRIVILEGES REQUIRED. ABORTING.")
+        raise Exception("Not Root")
+
+def s_gather_info(mgr, step):
+    # Welcome
+    if not mgr.ask_confirm("Welcome to KDOS Installer.\nWARNING: DISK WILL BE WIPED.\nProceed?"):
+        raise Exception("User Cancelled")
+        
+    # Disk Select
+    mgr.log("Scanning bus...")
+    try:
+        output = subprocess.check_output(['lsblk', '-d', '-n', '-p', '-o', 'NAME,SIZE,MODEL'], text=True, stderr=subprocess.DEVNULL)
         lines = [l for l in output.splitlines() if l.strip()]
         disks = []
         for line in lines:
             if 'loop' in line or 'sr' in line: continue
-            parts = line.split(None, 2)
-            if len(parts) >= 2:
-                model = parts[2] if len(parts) > 2 else "Unknown"
-                disks.append(f"{parts[0]} ({parts[1]}) - {model}")
-                
-        if not disks:
-            raise Exception("No suitable disks found!")
+            disks.append(line.strip())
             
-        choice = mgr.ask_choice("Select Installation Disk:", disks)
-        mgr.context['disk'] = choice.split()[0]
-        mgr.log(f"Selected disk: {mgr.context['disk']}")
+        if not disks: raise Exception("No disks found")
         
-        if not mgr.ask_confirm(f"ALL DATA on {mgr.context['disk']} will be ERASED. Confirm?"):
-            raise Exception("User rejected disk wipe")
+        choice = mgr.ask_choice("Select Target Disk:", disks)
+        disk = choice.split()[0]
+        mgr.context['disk'] = disk
+        
+        # Disk layout preview
+        curr_info = get_disk_info(disk)
+        preview = (
+            f"TARGET: {disk}\n\n"
+            f"--- CURRENT LAYOUT ---\n{curr_info}\n\n"
+            f"--- NEW LAYOUT ---\n"
+            f"1. EFI System (512MB, FAT32)\n"
+            f"2. Linux Root (Rest, EXT4)"
+        )
+        if not mgr.ask_confirm(f"{preview}\n\nACCEPT LAYOUT AND DESTROY DATA?"):
+            raise Exception("Layout Rejected")
             
+        # Hostname
+        hostname = mgr.ask_text("Hostname:")
+        if not hostname: hostname = "kdos"
+        mgr.context['hostname'] = hostname
+        
     except Exception as e:
-        mgr.log(f"Disk selection failed: {e}")
         raise e
 
 def s_partition(mgr, step):
-    disk = mgr.context.get('disk')
+    disk = mgr.context['disk']
+    unmount_disk(mgr, disk)
+    
     mgr.log(f"Wiping {disk}...")
     mgr.run_cmd(['wipefs', '-a', disk])
     
-    mgr.log("Partitioning (GPT)...")
-    sfdisk_input = "label: gpt\n,512M,U\n,,L"
+    mgr.log("Partitioning...")
+    # Scripted sfdisk
+    layout = "label: gpt\n,512M,U\n,,L"
+    p = subprocess.Popen(['sfdisk', disk], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    o, e = p.communicate(input=layout)
     
-    proc = subprocess.Popen(['sfdisk', disk], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    out, err = proc.communicate(input=sfdisk_input)
-    if proc.returncode != 0:
-        mgr.log(f"sfdisk error: {err}")
-        raise Exception("sfdisk failed")
-        
-    mgr.log(out)
-    mgr.log("Waiting for block devices...")
-    time.sleep(2)
+    # Log the output to TUI
+    if o:
+        for line in o.splitlines():
+            mgr.log(line)
+            
+    if p.returncode != 0: raise Exception(f"sfdisk failed: {o}")
     
-    # Identify parts
+    time.sleep(1)
+    # Detect partitions
     if re.search(r'\d$', disk):
         mgr.context['efi'] = f"{disk}p1"
         mgr.context['root'] = f"{disk}p2"
@@ -549,37 +649,38 @@ def s_partition(mgr, step):
         mgr.context['root'] = f"{disk}2"
 
 def s_format(mgr, step):
-    mgr.log(f"Formatting ROOT: {mgr.context['root']} (ext4)")
     mgr.run_cmd(['mkfs.ext4', '-F', mgr.context['root']])
-    
-    mgr.log(f"Formatting EFI: {mgr.context['efi']} (vfat)")
     mgr.run_cmd(['mkfs.vfat', '-F', '32', mgr.context['efi']])
 
 def s_mount(mgr, step):
-    mgr.log(f"Mounting ROOT to {MOUNT_POINT}")
     os.makedirs(MOUNT_POINT, exist_ok=True)
     mgr.run_cmd(['mount', mgr.context['root'], MOUNT_POINT])
-    
-    mgr.log(f"Mounting EFI to {MOUNT_POINT}/boot/efi")
     os.makedirs(os.path.join(MOUNT_POINT, "boot/efi"), exist_ok=True)
     mgr.run_cmd(['mount', mgr.context['efi'], os.path.join(MOUNT_POINT, "boot/efi")])
 
 def s_install_base(mgr, step):
-    if not shutil.which('rsync'):
-        raise Exception("rsync not found")
-        
+    if not shutil.which('rsync'): raise Exception("rsync missing")
+    
     excludes = ["/dev/*", "/proc/*", "/sys/*", "/tmp/*", "/run/*", "/mnt/*", "/media/*", "/lost+found"]
-    cmd = ['rsync', '-aAX', '--info=progress2']
-    for exc in excludes:
-        cmd.append(f'--exclude={exc}')
+    
+    # -aAXh for human readable. --no-inc-recursive for better progress stats
+    cmd = ['rsync', '-aAXh', '--info=progress2', '--no-inc-recursive']
+    for e in excludes: cmd.append(f'--exclude={e}')
     cmd.extend(['/', f'{MOUNT_POINT}/'])
     
-    mgr.log("Starting rsync (this will take time)...")
-    # Note: run_cmd captures output so progress might be verbose or buffered. 
-    # For better TUI, we just let it run.
-    mgr.run_cmd(cmd)
+    def rsync_parser(line):
+        # 1.23G  45%  45.67MB/s    0:00:12 (xfr#1234, ...
+        parts = line.split()
+        if len(parts) >= 3 and '%' in parts[1]:
+            # parts[0] = Size, parts[1] = %, parts[2] = Speed
+            try: step.progress = int(parts[1].strip('%'))
+            except: pass
+            
+            step.detail = f"Transferred: {parts[0]}  |  Speed: {parts[2]}"
+
+    mgr.run_with_progress(cmd, rsync_parser)
     
-    # dirs
+    # Restore dirs
     for d in ['dev', 'proc', 'sys', 'tmp', 'run', 'mnt', 'media']:
         os.makedirs(os.path.join(MOUNT_POINT, d), exist_ok=True)
     os.chmod(os.path.join(MOUNT_POINT, 'tmp'), 0o1777)
@@ -587,110 +688,50 @@ def s_install_base(mgr, step):
 def s_configure(mgr, step):
     # Fstab
     mgr.log("Generating fstab...")
-    root_uuid = subprocess.check_output(['blkid', '-s', 'UUID', '-o', 'value', mgr.context['root']], text=True).strip()
-    efi_uuid = subprocess.check_output(['blkid', '-s', 'UUID', '-o', 'value', mgr.context['efi']], text=True).strip()
+    r_uuid = subprocess.check_output(['blkid', '-s', 'UUID', '-o', 'value', mgr.context['root']], text=True).strip()
+    e_uuid = subprocess.check_output(['blkid', '-s', 'UUID', '-o', 'value', mgr.context['efi']], text=True).strip()
     
-    with open(os.path.join(MOUNT_POINT, "etc/fstab"), 'w') as f:
-        f.write(f"UUID={root_uuid}  /          ext4    defaults,noatime 0 1\n")
-        f.write(f"UUID={efi_uuid}   /boot/efi  vfat    defaults         0 2\n")
+    with open(f"{MOUNT_POINT}/etc/fstab", 'w') as f:
+        f.write(f"UUID={r_uuid} / ext4 defaults,noatime 0 1\n")
+        f.write(f"UUID={e_uuid} /boot/efi vfat defaults 0 2\n")
         
     # Hostname
-    hostname = mgr.ask_text("Enter Hostname:")
-    if not hostname: hostname = "kdos"
-    with open(os.path.join(MOUNT_POINT, "etc/hostname"), 'w') as f:
-        f.write(hostname + "\n")
+    with open(f"{MOUNT_POINT}/etc/hostname", 'w') as f:
+        f.write(mgr.context['hostname'] + "\n")
         
     if os.path.exists("/etc/resolv.conf"):
-        shutil.copy("/etc/resolv.conf", os.path.join(MOUNT_POINT, "etc/resolv.conf"))
-
-    # boot config
-    mgr.log("Generating refind_linux.conf...")
-    refind_conf = os.path.join(MOUNT_POINT, "boot/refind_linux.conf")
-    with open(refind_conf, 'w') as f:
-        f.write(f'"Boot with standard options" "ro root=UUID={root_uuid} initrd=boot/initramfs.cpio.gz loglevel=3 quiet"\n')
-        f.write(f'"Boot to console" "ro root=UUID={root_uuid} initrd=boot/initramfs.cpio.gz loglevel=3 quiet systemd.unit=multi-user.target"\n')
+        shutil.copy("/etc/resolv.conf", f"{MOUNT_POINT}/etc/resolv.conf")
+        
+    # Boot config
+    with open(f"{MOUNT_POINT}/boot/refind_linux.conf", 'w') as f:
+         f.write(f'"Standard" "ro root=UUID={r_uuid} initrd=boot/initramfs.cpio.gz quiet"\n')
 
 def s_bootloader(mgr, step):
-    mgr.log("Installing Bootloader (rEFInd - Manual Mode)...")
+    # Same logic as before roughly
+    src = "/usr/share/refind"
+    if not os.path.exists(src): src = f"{MOUNT_POINT}/usr/share/refind"
     
-    # Define paths
-    # Source: we assume rEFInd is installed in the live environment at /usr/share/refind
-    src_refind = "/usr/share/refind"
-    if not os.path.exists(src_refind):
-        # Trying chroot path as fallback if live env is different
-        src_refind = os.path.join(MOUNT_POINT, "usr/share/refind")
+    target = f"{MOUNT_POINT}/boot/efi/EFI/refind"
+    if os.path.exists(target): shutil.rmtree(target)
+    shutil.copytree(src, target)
+    
+    # Fallback
+    boot = f"{MOUNT_POINT}/boot/efi/EFI/BOOT"
+    if os.path.exists(boot): shutil.rmtree(boot)
+    shutil.copytree(target, boot)
+    
+    if os.path.exists(f"{boot}/refind_x64.efi"):
+        shutil.move(f"{boot}/refind_x64.efi", f"{boot}/bootx64.efi")
         
-    if not os.path.exists(src_refind):
-        raise Exception(f"Could not locate rEFInd source files at {src_refind}!")
+    # sample configs
+    for d in [target, boot]:
+        if os.path.exists(f"{d}/refind.conf-sample"):
+             shutil.copy(f"{d}/refind.conf-sample", f"{d}/refind.conf")
 
-    mgr.log(f"Found rEFInd source: {src_refind}")
+    mgr.log("Bootloader files installed.")
 
-    # Destinations
-    efi_dir = os.path.join(MOUNT_POINT, "boot/efi/EFI")
-    dest_refind = os.path.join(efi_dir, "refind")
-    dest_boot = os.path.join(efi_dir, "BOOT")
-    
-    # 1. Install to EFI/refind
-    mgr.log(f"Installing to {dest_refind}...")
-    if os.path.exists(dest_refind):
-        shutil.rmtree(dest_refind)
-    shutil.copytree(src_refind, dest_refind)
-    
-    # 2. Copy binary to correct name if needed
-    # rEFInd package usually has refind_x64.efi
-    bin_path = os.path.join(dest_refind, "refind_x64.efi")
-    if not os.path.exists(bin_path):
-        mgr.log("Warning: refind_x64.efi not found in dest!")
-        
-    # 3. Setup Fallback (EFI/BOOT/bootx64.efi)
-    mgr.log(f"Setting up fallback boot at {dest_boot}...")
-    if os.path.exists(dest_boot):
-        shutil.rmtree(dest_boot)
-    shutil.copytree(dest_refind, dest_boot)
-    
-    # Rename for fallback
-    fallback_bin = os.path.join(dest_boot, "bootx64.efi")
-    start_bin = os.path.join(dest_boot, "refind_x64.efi")
-    if os.path.exists(start_bin):
-        shutil.move(start_bin, fallback_bin)
-    else:
-        mgr.log("Warning: Could not create bootx64.efi (source missing)")
-        
-    # 4. Copy icons/drivers/config if they are in subdirs of share
-    # Usually /usr/share/refind contains: refind_x64.efi, refind.conf-sample, icons/, drivers_x64/
-    # We copied the whole tree, so it should be there.
-    # Just need to rename sample config
-    
-    for d in [dest_refind, dest_boot]:
-        conf_sample = os.path.join(d, "refind.conf-sample")
-        conf_target = os.path.join(d, "refind.conf")
-        if os.path.exists(conf_sample) and not os.path.exists(conf_target):
-            shutil.copy(conf_sample, conf_target)
-            mgr.log(f"Created refind.conf in {os.path.basename(d)}")
-
-    # 5. Attempt efibootmgr (Optional)
-    mgr.log("Registering NVRAM entry (efibootmgr)...")
-    try:
-        # Determine disk and partition
-        # Context has 'disk' e.g. /dev/sda
-        disk = mgr.context.get('disk', '/dev/sda')
-        # We assume partition 1 for EFI based on s_partition logic
-        part_num = 1 
-        
-        # efibootmgr -c -d /dev/sda -p 1 -L "KDOS" -l "\EFI\refind\refind_x64.efi"
-        cmd = [
-            'efibootmgr', '-c',
-            '-d', disk,
-            '-p', str(part_num),
-            '-L', 'KDOS',
-            '-l', '\\EFI\\refind\\refind_x64.efi'
-        ]
-        mgr.run_cmd(cmd)
-    except Exception as e:
-        mgr.log(f"Warning: efibootmgr failed: {e}. System should still boot via fallback.")
-
-def s_finish(mgr, step):
-    mgr.alert("Installation Complete!\nLog saved to /var/log/install.log\nYou can now reboot.")
+def s_reboot(mgr, step):
+    mgr.alert("INSTALLATION COMPLETE.\nREMOVE MEDIA AND REBOOT.")
     if mgr.ask_confirm("Reboot now?"):
         curses.endwin()
         os.system("reboot")
@@ -698,33 +739,26 @@ def s_finish(mgr, step):
         sys.exit(0)
 
 # --- Main ---
-
 def main(stdscr):
     q = queue.Queue()
     mgr = InstallerManager(q)
     
-    # Define Steps
-    mgr.add_step("Welcome", s_welcome)
-    mgr.add_step("Select Disk", s_select_disk)
+    mgr.add_step("Initialization", s_init)
+    mgr.add_step("Configuration", s_gather_info, step_type='interactive')
     mgr.add_step("Partition Disk", s_partition)
-    mgr.add_step("Format Partitions", s_format)
-    mgr.add_step("Mount Filesystems", s_mount)
-    mgr.add_step("Install Base System", s_install_base)
-    mgr.add_step("Configure System", s_configure)
-    mgr.add_step("Install Bootloader", s_bootloader)
-    mgr.add_step("Finish", s_finish)
+    mgr.add_step("Format Filesystem", s_format)
+    mgr.add_step("Mount Target", s_mount)
+    mgr.add_step("Install System", s_install_base)
+    mgr.add_step("System Config", s_configure)
+    mgr.add_step("Bootloader", s_bootloader)
+    mgr.add_step("Finalize", s_reboot, step_type='interactive')
     
     tui = TUI(stdscr, mgr, q)
-    
     mgr.start()
     tui.loop()
 
 if __name__ == "__main__":
     try:
-        # Check root
-        if os.geteuid() != 0:
-            print("Error: Must run as root")
-            sys.exit(1)
         curses.wrapper(main)
     except KeyboardInterrupt:
         sys.exit(1)
