@@ -326,7 +326,11 @@ build() {
 	
 	# Build kernel and modules
 	make bzImage modules
-	make INSTALL_MOD_PATH=$PKG modules_install
+	make INSTALL_MOD_PATH=$PKG DEPMOD=/bin/true modules_install
+	
+	# Remove build and source symlinks to prevent recursion and invalid paths
+	rm -f "$PKG/lib/modules/$version/build"
+	rm -f "$PKG/lib/modules/$version/source"
 
 	# Install kernel
 	mkdir -p $PKG/boot
