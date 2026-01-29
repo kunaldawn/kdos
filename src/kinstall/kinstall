@@ -639,6 +639,12 @@ def s_partition(mgr, step):
             
     if p.returncode != 0: raise Exception(f"sfdisk failed: {o}")
     
+    mgr.log("Syncing partition table...")
+    try: mgr.run_cmd(['partprobe', disk])
+    except: pass
+    try: mgr.run_cmd(['udevadm', 'settle'])
+    except: pass
+    
     time.sleep(1)
     # Detect partitions
     if re.search(r'\d$', disk):
