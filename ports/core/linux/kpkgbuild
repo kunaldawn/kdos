@@ -19,6 +19,9 @@ build() {
 	make mrproper
 	make defconfig
 	
+	# KDOS extensions
+	cat $PORT_SRC/kdos.config >> .config
+
 	# Enable support for KDOS Live System (SquashFS + OverlayFS)
 	./scripts/config --enable CONFIG_SQUASHFS
 	./scripts/config --enable CONFIG_SQUASHFS_XZ
@@ -318,8 +321,10 @@ build() {
 	./scripts/config --enable CONFIG_WATCHDOG
 	./scripts/config --module CONFIG_SOFT_WATCHDOG
 
-	# KDOS extensions
-	cat $PORT_SRC/kdos.config >> .config
+	# Override NLS to ensure they are built-in (REQUIRED FOR INSTALLER)
+	./scripts/config --enable CONFIG_NLS_CODEPAGE_437
+	./scripts/config --enable CONFIG_NLS_ISO8859_1
+	./scripts/config --enable CONFIG_NLS_UTF8
 
 	# Resolve any missing dependencies
 	make olddefconfig
