@@ -8,62 +8,31 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-dhcpcd
-rpcsvc-proto
-libtirpc
-iana-etc
-libmnl
-libcap
-iproute2
-python3
-gettext
-git
-nano
-shadow
-less
-procps-ng
-psmisc
-sudo
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
+# description: Programs for handling passwords in a secure way
+# homepage: https://github.com/shadow-maint/shadow
+# depends: acl
+
+name=shadow
+version=4.19.3
+release=1
+source="https://github.com/shadow-maint/$name/releases/download/$version/$name-$version.tar.xz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--disable-logind \
+		--disable-nsl \
+		--disable-static \
+		--enable-lastlog \
+		--with-yescrypt \
+		--without-libbsd \
+		--without-libpam \
+		--with-group-name-max-length=32 
+
+	make
+	make DESTDIR=$PKG install
+
+	mkdir -p $PKG/bin $PKG/etc/cron/daily
+	install -m 755 $PORT_SRC/pwck $PKG/etc/cron/daily
+}

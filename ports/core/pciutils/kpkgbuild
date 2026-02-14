@@ -8,62 +8,27 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-dhcpcd
-rpcsvc-proto
-libtirpc
-iana-etc
-libmnl
-libcap
-iproute2
-python3
-gettext
-git
-nano
-shadow
-less
-procps-ng
-psmisc
-sudo
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
+# description: Set of programs for listing PCI devices
+# depends: zlib eudev kmod
+
+name=pciutils
+version=3.14.0
+release=1
+source="https://www.kernel.org/pub/software/utils/$name/$name-$version.tar.xz"
+
+build() {
+     make OPT="${CFLAGS} -fPIC -DPIC" \
+          PREFIX=/usr                \
+          SHAREDIR=/usr/share/hwdata \
+          MANDIR=/usr/share/man\
+          SHARED=yes
+
+     make PREFIX=/usr                \
+          SHAREDIR=/usr/share/hwdata \
+          MANDIR=/usr/share/man\
+          SHARED=yes                 \
+          DESTDIR=$PKG\
+          install install-lib
+
+     chmod -v 755 $PKG/usr/lib/libpci.so
+}
