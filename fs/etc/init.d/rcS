@@ -32,4 +32,23 @@ hostname -F /etc/hostname
 # Suppress kernel messages on console
 dmesg -n 1
 
+# Apply sysctl settings if configuration file exists
+if [ -f /etc/sysctl.conf ]; then
+    sysctl -p /etc/sysctl.conf
+fi
+
+# Start dhcpcd if it exists
+if [ -x /usr/sbin/dhcpcd ]; then
+    echo "Starting dhcpcd..."
+    mkdir -p /run/dhcpcd
+    /usr/sbin/dhcpcd -b
+fi
+
+# Start dbus if it exists
+if [ -x /usr/bin/dbus-daemon ]; then
+    echo "Starting dbus..."
+    mkdir -p /run/dbus
+    /usr/bin/dbus-daemon --system
+fi
+
 echo "KDOS Initialized."
