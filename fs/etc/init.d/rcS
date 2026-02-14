@@ -33,4 +33,3 @@ hostname -F /etc/hostname
 dmesg -n 1
 
 echo "KDOS Initialized."
-sleep 1
