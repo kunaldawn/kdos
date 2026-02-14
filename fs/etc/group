@@ -30,3 +30,4 @@ audio:x:63:
 nobody:x:99:
 users:x:100:
 network:x:101:
+polkitd:x:998:
