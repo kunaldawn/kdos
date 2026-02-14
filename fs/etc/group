@@ -31,3 +31,4 @@ nobody:x:99:
 users:x:100:
 network:x:101:
 polkitd:x:998:
+messagebus:x:997:
