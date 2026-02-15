@@ -29,3 +29,9 @@ build() {
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }
+
+postinstall() {
+	if [ ! -f /var/lib/dbus/machine-id ]; then
+		dbus-uuidgen --ensure
+	fi
+}

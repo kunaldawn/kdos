@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description: A minimalistic user-space library oriented to Netlink developers
+
+name=libmnl
+version=1.0.5
+release=1
+source="https://www.netfilter.org/projects/$name/files/$name-$version.tar.bz2"
+
+build() {
+    ./configure --prefix=/usr --without-doxygen
+    make
+    make DESTDIR=$PKG install
+}

@@ -13,6 +13,7 @@
 
 name=python3
 version=3.14.2
+_version=${version%.*}
 release=1
 source="https://www.python.org/ftp/python/$version/Python-$version.tar.xz"
 
@@ -32,4 +33,7 @@ build() {
 		--with-tzpath=/usr/share/zoneinfo
 	make EXTRA_CFLAGS="$CFLAGS"
 	make EXTRA_CFLAGS="$CFLAGS" DESTDIR=$PKG install maninstall
+
+	# Remove test files
+	rm -rf $PKG/usr/lib/python${_version}/test
 }

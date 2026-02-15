@@ -1,0 +1,35 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Set of tools that manage logical partitions
+# depends	: libaio
+
+name=lvm2
+version=2.03.38
+release=1
+source="$name-$version.tgz::https://sourceware.org/pub/lvm2/LVM2.$version.tgz"
+
+build() {
+	# Fix assignment of read-only std* variables (musl)
+	sed -i 's/stdin = fopen(_PATH_DEVNULL, "r")/freopen(_PATH_DEVNULL, "r", stdin)/g' tools/lvmcmdline.c
+	sed -i 's/stdout = fopen(_PATH_DEVNULL, "w")/freopen(_PATH_DEVNULL, "w", stdout)/g' tools/lvmcmdline.c
+	sed -i 's/stderr = fopen(_PATH_DEVNULL, "w")/freopen(_PATH_DEVNULL, "w", stderr)/g' tools/lvmcmdline.c
+
+	CONFIG_SHELL=/bin/bash  \
+	./configure --prefix=/usr \
+		--libdir=/usr/lib \
+		--libexecdir=/usr/lib \
+		--exec-prefix= \
+		--enable-cmdlib \
+		--enable-pkgconfig \
+		--enable-udev_sync
+	make 
+	make DESTDIR=$PKG install_lvm2 install_device-mapper
+}

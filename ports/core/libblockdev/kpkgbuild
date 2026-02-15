@@ -1,0 +1,36 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: C library supporting GObject introspection for manipulation of block devices
+# homepage	: https://github.com/storaged-project/libblockdev/
+# depends	: cryptsetup gobject-introspection keyutils libbytesize libnvme parted volume_key yaml json-glib
+
+name=libblockdev
+version=3.4.0
+release=1
+source="https://github.com/storaged-project/libblockdev/releases/download/$version/$name-$version.tar.gz"
+
+build() {
+	export CFLAGS="${CFLAGS} -Wno-deprecated-declarations"
+
+	# Fix mktemp compatibility issues by replacing it with a simple filename assignment
+	sed -i 's/temp_file=$(mktemp --tmpdir XXXXX.c)/temp_file=conftest_$$.c/' configure
+
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--with-python3 \
+		--without-gtk-doc \
+		--without-nvdimm \
+		--without-dm
+	make
+	make DESTDIR=$PKG install
+}
+
