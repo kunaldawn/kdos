@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description: Utilities used to display information about USB devices
+# depends: libusb hwdata
+
+name=usbutils
+version=019
+release=1
+source="https://www.kernel.org/pub/linux/utils/usb/usbutils/$name-$version.tar.xz
+http://www.linux-usb.org/usb.ids"
+
+build() {
+    meson setup build \
+        --prefix=/usr \
+        --datadir=/usr/share/hwdata \
+        --buildtype=release
+    meson compile -C build
+    meson install -C build --destdir=$PKG
+
+    # Install usb.ids manually as it is not part of the source tarball
+    install -Dm644 $PORT_SRC/usb.ids $PKG/usr/share/hwdata/usb.ids
+}

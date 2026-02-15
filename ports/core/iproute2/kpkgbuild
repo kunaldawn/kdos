@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description: Programs for basic and advanced IPV4-based networking
+# depends: elfutils libcap libmnl libtirpc
+
+name=iproute2
+version=6.18.0
+release=1
+source="$name-$version.tar.xz::https://www.kernel.org/pub/linux/utils/net/$name/$name-$version.tar.xz"
+
+build() {
+    ./configure --prefix=/usr
+    
+    # Fix missing UINT_MAX by adding limits.h via compiler flags
+    export CFLAGS="$CFLAGS -include limits.h"    
+    make
+    make DESTDIR=$PKG install
+}
