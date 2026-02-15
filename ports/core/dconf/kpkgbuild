@@ -8,65 +8,18 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-dhcpcd
-rpcsvc-proto
-libtirpc
-iana-etc
-libmnl
-libcap
-iproute2
-python3
-gettext
-git
-nano
-shadow
-less
-procps-ng
-psmisc
-sudo
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
-dconf
-gvfs
-gnome-keyring
+# description	: Configuration database system
+# depends	: meson vala bash-completion libxslt dbus
+
+name=dconf
+version=0.49.0
+release=1
+source="http://ftp.gnome.org/pub/gnome/sources/dconf/${version%.*}/$name-$version.tar.xz"
+
+build() {
+	export XML_CATALOG_FILES=/etc/xml/catalog
+	meson build \
+		--libexecdir=/usr/lib/$name
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

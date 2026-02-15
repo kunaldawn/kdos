@@ -8,65 +8,20 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-dhcpcd
-rpcsvc-proto
-libtirpc
-iana-etc
-libmnl
-libcap
-iproute2
-python3
-gettext
-git
-nano
-shadow
-less
-procps-ng
-psmisc
-sudo
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
-dconf
-gvfs
-gnome-keyring
+# description	: Libraries used for displaying certificates and accessing key stores
+# depends	: glib libgcrypt libsecret libxslt p11-kit gtk3 gobject-introspection vala meson gnupg openssh
+
+name=gcr
+version=3.41.1
+release=1
+source="https://download.gnome.org/sources/gcr/${version%.*}/$name-$version.tar.xz"
+
+build() {
+	export CFLAGS="$CFLAGS -D_GNU_SOURCE"
+	meson setup build \
+		-Dgtk_doc=false \
+		-Dintrospection=true \
+		-Dgtk=true
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

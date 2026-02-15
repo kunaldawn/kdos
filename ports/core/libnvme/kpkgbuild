@@ -8,65 +8,17 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-dhcpcd
-rpcsvc-proto
-libtirpc
-iana-etc
-libmnl
-libcap
-iproute2
-python3
-gettext
-git
-nano
-shadow
-less
-procps-ng
-psmisc
-sudo
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
-dconf
-gvfs
-gnome-keyring
+# description	    : C library for NVM Express on Linux
+# homepage	    : https://github.com/linux-nvme/libnvme
+# depends	    : meson ninja json-c
+
+name=libnvme
+version=1.16.1
+release=1
+source="https://github.com/linux-nvme/$name/archive/v$version/$name-$version.tar.gz"
+
+build() {
+	meson build 
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}
