@@ -8,65 +8,20 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-dhcpcd
-rpcsvc-proto
-libtirpc
-iana-etc
-libmnl
-libcap
-iproute2
-python3
-gettext
-git
-nano
-shadow
-less
-procps-ng
-psmisc
-sudo
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
-dconf
-gvfs
-gnome-keyring
+# description	: Stores passwords and encryption keys
+# depends	: gcr glib libgcrypt libtasn1 libxslt openssh linux-pam dbus
+
+name=gnome-keyring
+version=48.0
+release=1
+source="https://download.gnome.org/sources/$name/${version%.*}/$name-$version.tar.xz"
+
+build() {
+	meson setup build \
+		--prefix=/usr \
+		--buildtype=release \
+		-D systemd=disabled \
+		-D manpage=false
+	ninja -C build
+	DESTDIR=$PKG ninja -C build install
+}
