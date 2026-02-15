@@ -67,3 +67,6 @@ st
 llvm
 xorg
 xfce4
+dconf
+gvfs
+gnome-keyring
