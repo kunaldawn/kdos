@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Used to set up transparent encryption of block devices using the kernel crypto API
+# depends	: libgcrypt nettle nss openssl popt json-c lvm2
+
+name=cryptsetup
+version=2.8.4
+release=1
+source="https://www.kernel.org/pub/linux/utils/cryptsetup/v${version%.*}/$name-$version.tar.xz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--with-crypto_backend=openssl \
+		--disable-asciidoc \
+		--disable-ssh-token
+	make
+	make DESTDIR=$PKG install
+}

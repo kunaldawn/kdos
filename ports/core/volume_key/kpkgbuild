@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Library for manipulating storage volume encryption keys and storing them separately from volumes to handle forgotten passphrases
+# depends	: cryptsetup glib gpgme python3 swig
+
+name=volume_key
+version=0.3.12
+release=1
+source="https://releases.pagure.org/volume_key/$name-$version.tar.xz"
+
+build() {
+	autoreconf -vfi
+
+	./configure --prefix=/usr \
+		--disable-nls \
+		--without-python \
+		--with-python3
+	make
+	make DESTDIR=$PKG install
+}

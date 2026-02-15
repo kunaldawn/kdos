@@ -90,11 +90,13 @@ parse_common_args() {
 cmd_install() {
 	# Custom parsing for install to handle -f/--force
 	FORCE=0
+	KEEP_CACHE=0
 	PACKAGES=""
 	
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			-f|--force) FORCE=1; shift ;;
+			--keep-cache) KEEP_CACHE=1; shift ;;
 			--root)
 				shift
 				KPKG_ROOT="$1"
@@ -167,6 +169,11 @@ cmd_install() {
 			msgerr "Failed to install $pkg"
 			exit 1
 		}
+
+		if [ "$KEEP_CACHE" -eq 0 ]; then
+			msg "Removing cached package $PKGFILE..."
+			rm -f "$PKGFILE"
+		fi
 	done
 	
 	msg "Installation complete"
@@ -303,6 +310,7 @@ Usage: kpkg <command> [options]
 
 Options:
   --root <path>      Operate on a different root directory
+  --keep-cache       Keep cached packages after installation
 
 Commands:
   install <pkg>...   Install package(s) with dependencies

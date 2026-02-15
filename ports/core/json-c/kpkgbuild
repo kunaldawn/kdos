@@ -1,0 +1,34 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: JSON implementation in C
+# depends	: cmake ninja
+
+name=json-c
+version=0.18
+release=1
+source="https://s3.amazonaws.com/json-c_releases/releases/$name-$version.tar.gz"
+
+build() {
+	sed -i 's/^cmake_minimum_required.*)/cmake_minimum_required(VERSION 3.5)/g' apps/CMakeLists.txt
+	cmake -S . -B build -G Ninja \
+	    -DCMAKE_INSTALL_PREFIX=/usr \
+	    -DCMAKE_INSTALL_LIBDIR=lib \
+	    -DCMAKE_INSTALL_LIBEXECDIR=lib \
+	    -DCMAKE_BUILD_TYPE=Release \
+	    -DCMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+	    -DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+	    -DBUILD_TESTING=OFF \
+	    -DBUILD_SHARED_LIBS=ON \
+	    -Wno-dev
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}
+

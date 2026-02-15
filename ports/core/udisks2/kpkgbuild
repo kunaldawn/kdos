@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Daemon, tools and libraries to access and manipulate disks and storage devices
+# depends	: libatasmart libblockdev libgudev libxslt polkit gobject-introspection
+
+name=udisks2
+version=2.11.0
+release=1
+source="https://github.com/storaged-project/udisks/releases/download/udisks-$version/udisks-$version.tar.bz2"
+
+build() {
+	./configure --prefix=/usr \
+	            --sysconfdir=/etc \
+				--libexecdir=/usr/lib \
+	            --localstatedir=/var \
+	            --disable-static \
+				--disable-man
+	make
+	make DESTDIR=$PKG install
+}

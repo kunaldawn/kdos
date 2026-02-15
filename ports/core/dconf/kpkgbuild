@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Configuration database system
+# depends	: meson vala bash-completion libxslt dbus
+
+name=dconf
+version=0.49.0
+release=1
+source="http://ftp.gnome.org/pub/gnome/sources/dconf/${version%.*}/$name-$version.tar.xz"
+
+build() {
+	export XML_CATALOG_FILES=/etc/xml/catalog
+	meson build \
+		--libexecdir=/usr/lib/$name
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

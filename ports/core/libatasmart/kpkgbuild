@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Disk reporting library. It only supports a subset of the ATA S.M.A.R.T. functionality
+# depends	: eudev
+
+name=libatasmart
+version=0.19
+release=1
+source="http://0pointer.de/public/$name-$version.tar.xz"
+
+build() {
+	./configure --prefix=/usr --disable-static
+	make
+	make DESTDIR=$PKG install
+}

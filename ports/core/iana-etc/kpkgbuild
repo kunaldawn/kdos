@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description: Provides data for network services and protocols
+
+name=iana-etc
+version=20260213
+release=1
+source="services protocols rpc update.sh"
+
+build() {
+	install -d -m 755 $PKG/etc
+	install -m 644 $PORT_SRC/services $PKG/etc
+	install -m 644 $PORT_SRC/protocols $PKG/etc
+	install -m 644 $PORT_SRC/rpc $PKG/etc
+}
