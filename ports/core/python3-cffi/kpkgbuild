@@ -8,17 +8,16 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Python module that implements a XML/HTML/XHTML Markup safe string
-# depends	: python3-setuptools
+# depends: python3-setuptools python3-pycparser libffi
 
-name=python3-markupsafe
-version=3.0.3
+name=python3-cffi
+version=1.17.1
 release=1
-source="https://files.pythonhosted.org/packages/source/m/markupsafe/markupsafe-$version.tar.gz"
+source="https://files.pythonhosted.org/packages/source/c/cffi/cffi-$version.tar.gz"
 vendoring=python
 
 build() {
-	mkdir -p vendor
-	tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
-	pip3 install --no-build-isolation --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
+  mkdir -p vendor
+  tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
+  pip3 install --no-build-isolation --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
 }

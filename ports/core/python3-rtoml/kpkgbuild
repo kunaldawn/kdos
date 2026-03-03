@@ -1,0 +1,38 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description: Fast TOML parsing in Rust, with Python bindings
+# homepage: https://github.com/tamasfe/rtoml
+# depends: python3 python3-maturin rust
+
+name=python3-rtoml
+version=0.13.0
+release=1
+source="https://files.pythonhosted.org/packages/e9/11/2655729f675411fc82588d6cf598758a2339d56c5a2fa6eb89f3302ec484/rtoml-$version.tar.gz"
+vendoring="rust"
+
+build() {
+  export RUSTFLAGS="-C target-feature=-crt-static"
+  export CARGO_HOME="$SRC/cargo"
+  mkdir -p "$CARGO_HOME"
+  tar xf "$PORT_SRC/${name}-vendor-${version}.tar.xz"
+  
+  # Workaround for offline cargo metadata resolution on Linux:
+  # Maturin unconditionally injects `pyo3/generate-import-lib` which activates the Windows-specific
+  # `python3-dll-a` crate. Since cargo vendor doesn't fetch it, we neuter the feature in pyo3.
+  sed -i 's/^generate-import-lib = .*/generate-import-lib = []/' vendor/pyo3/Cargo.toml
+  NEW_CHKSUM=$(sha256sum vendor/pyo3/Cargo.toml | cut -d' ' -f1)
+  sed -i "s/\"Cargo.toml\":\"[^\"]*\"/\"Cargo.toml\":\"$NEW_CHKSUM\"/" vendor/pyo3/.cargo-checksum.json
+  
+  export PYO3_CROSS_LIB_DIR="/usr/lib"
+  maturin build --release --strip --offline --skip-auditwheel
+  
+  pip3 install --force-reinstall --ignore-installed --no-deps --no-index target/wheels/rtoml-*.whl --prefix=/usr --root="$PKG"
+}

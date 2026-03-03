@@ -1,0 +1,224 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Standalone web browser from mozilla.org
+# homepage	: https://www.mozilla.org/firefox/
+# depends	: autoconf cbindgen clang dbus-glib ffmpeg hicolor-icon-theme libevent libffi libnotify
+# depends	: libxrender libxt libxdamage libxscrnsaver libwebp lld nodejs nspr nss pkgconf rust unzip python3-maturin python3-orjson python3-rtoml python3-glean-sdk
+# depends	: python3-psutil python3-cffi python3-pycparser python3-pyyaml python3-zstandard python3-semver
+
+name=firefox
+version=147.0.3
+release=1
+source="$name-$version.tar.xz::https://archive.mozilla.org/pub/firefox/releases/$version/source/firefox-$version.source.tar.xz"
+
+build() {
+  cat << 'EOF' > "$SRC/rustc-wrapper.sh"
+#!/bin/bash
+exec "$@" -C target-feature=-crt-static
+EOF
+  chmod +x "$SRC/rustc-wrapper.sh"
+  export RUSTC_WRAPPER="$SRC/rustc-wrapper.sh"
+
+cat <<- EOF > .mozconfig
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj
+unset MOZ_TELEMETRY_REPORTING
+ac_add_options --prefix=/usr
+ac_add_options --libdir=/usr/lib
+ac_add_options --disable-bootstrap
+ac_add_options --disable-crashreporter
+ac_add_options --disable-debug
+ac_add_options --disable-debug-symbols
+ac_add_options --disable-elf-hack
+ac_add_options --disable-install-strip
+ac_add_options --disable-necko-wifi
+ac_add_options --disable-parental-controls
+ac_add_options --disable-strip
+ac_add_options --disable-tests
+ac_add_options --disable-updater
+ac_add_options --enable-application=browser
+ac_add_options --enable-audio-backends=alsa
+ac_add_options --enable-av1
+ac_add_options --enable-dbus
+ac_add_options --enable-ffmpeg
+ac_add_options --enable-hardening
+ac_add_options --enable-install-strip
+ac_add_options --enable-linker=lld
+ac_add_options --disable-lto
+ac_add_options --enable-official-branding
+ac_add_options --enable-optimize="-O2"
+ac_add_options --enable-release
+ac_add_options --enable-update-channel=release
+ac_add_options --enable-rust-simd
+ac_add_options --enable-sandbox
+ac_add_options --enable-strip
+ac_add_options --enable-system-pixman
+ac_add_options --with-distribution-id=org.kdos
+ac_add_options --with-system-ffi
+ac_add_options --with-system-icu
+ac_add_options --with-system-jpeg
+ac_add_options --with-system-libevent
+ac_add_options --with-system-libvpx
+ac_add_options --with-system-webp
+ac_add_options --with-system-zlib
+ac_add_options --without-wasm-sandboxed-libraries
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=-crt-static"
+EOF
+
+  # audio
+  kpkg info alsa-lib >/dev/null 2>&1 && echo 'ac_add_options --enable-alsa' >> .mozconfig
+  kpkg info jack >/dev/null 2>&1 && echo 'ac_add_options --enable-jack' >> .mozconfig
+  kpkg info pulseaudio >/dev/null 2>&1 && echo 'ac_add_options --enable-pulseaudio' >> .mozconfig
+
+  # wayland
+  kpkg info wayland-protocols >/dev/null 2>&1 && \
+    echo 'ac_add_options --enable-default-toolkit=cairo-gtk3-wayland' >> .mozconfig || \
+    echo 'ac_add_options --enable-default-toolkit=cairo-gtk3' >> .mozconfig
+
+  # Musl compatibility: fake-headers for missing glibc internals
+  mkdir -p fake-headers/sys
+  cat <<'H_EOF' > fake-headers/sys/single_threaded.h
+#ifndef _FAKE_SINGLE_THREADED_H
+#define _FAKE_SINGLE_THREADED_H
+#ifdef __cplusplus
+extern "C" {
+#endif
+static char __libc_single_threaded = 0;
+#ifdef __cplusplus
+}
+#endif
+#endif
+H_EOF
+
+  export CPLUS_INCLUDE_PATH="/usr/include/c++/15.2.0:/usr/include/c++/15.2.0/x86_64-pc-linux-musl:/usr/include/c++/15.2.0/x86_64-kdos-linux-musl"
+  export CC="clang --target=x86_64-pc-linux-musl -fuse-ld=lld"
+  export CXX="clang++ --target=x86_64-pc-linux-musl -fuse-ld=lld -isystem $SRC/fake-headers -DPTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP=PTHREAD_MUTEX_INITIALIZER -DPTHREAD_MUTEX_ADAPTIVE_NP=PTHREAD_MUTEX_NORMAL"
+  export HOST_CC="clang --target=x86_64-pc-linux-musl -fuse-ld=lld"
+  export HOST_CXX="clang++ --target=x86_64-pc-linux-musl -fuse-ld=lld -isystem $SRC/fake-headers -DPTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP=PTHREAD_MUTEX_INITIALIZER -DPTHREAD_MUTEX_ADAPTIVE_NP=PTHREAD_MUTEX_NORMAL"
+  export AR=llvm-ar NM=llvm-nm RANLIB=llvm-ranlib
+  export CFLAGS="$CFLAGS -w"
+  export CXXFLAGS="$CXXFLAGS -isystem $SRC/fake-headers -DPTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP=PTHREAD_MUTEX_INITIALIZER -DPTHREAD_MUTEX_ADAPTIVE_NP=PTHREAD_MUTEX_NORMAL -w"
+  export RUSTFLAGS="-C target-feature=-crt-static"
+  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=-crt-static"
+
+  # bindgen uses libclang.so via dlopen (runtime feature) - point it to our clang
+  export LIBCLANG_PATH="/usr/lib"
+  export LIBCLANG_STATIC_PATH="/usr/lib"
+  export BINDGEN_EXTRA_CLANG_ARGS="-isystem /usr/lib/clang/21/include"
+
+  export MOZ_NOSPAM=1
+  export BUILD_OFFICIAL=1
+  export MOZILLA_OFFICIAL=1
+  export MOZ_APP_REMOTINGNAME=firefox
+  export MOZBUILD_STATE_PATH="$SRC/mozbuild"
+
+  # Python / pip offline
+  export SHELL='/bin/bash'
+  export PIP_NETWORK_INSTALL_RESTRICTED_VIRTUALENVS=mach
+  export MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=system
+  export PIP_FIND_LINKS="file://$SRC/vendor"
+  export PIP_NO_INDEX=1
+
+  # Firefox configure doesn't know our musl triplet alias for rustc
+  sed -i "s/die(\"Don't know how to translate {} for rustc\".format(host_or_target.alias))/return \"x86_64-unknown-linux-musl\"/" build/moz.configure/rust.configure
+
+  # Firefox's rust.mk forcefully resets RUSTFLAGS for host recipes, dropping our crt-static fix.
+  sed -i 's/^rustflags_override =.*/& -C target-feature=-crt-static/' config/makefiles/rust.mk
+
+  # Fix C++ exception specification mismatch between Firefox memory wrappers and musl libc
+  sed -i 's/noexcept(true)//' memory/build/mozjemalloc.cpp
+  sed -i 's/noexcept(true)//' memory/build/mozmemory_wrap.cpp
+  sed -i 's/noexcept(true)//' memory/mozalloc/mozalloc.h
+
+  # Fix musl vs linux kernel header conflict in WebRTC
+  sed -i 's/#include <linux\/prctl.h>//g' third_party/libwebrtc/rtc_base/platform_thread_types.cc
+
+  echo "==> Building firefox-$version..."
+  ./mach build
+  DESTDIR=$PKG ./mach install
+
+  unset MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE MOZBUILD_STATE_PATH
+
+  # Vendor preferences
+  local vendorjs="$PKG/usr/lib/$name/browser/defaults/preferences/vendor.js"
+  install -Dvm644 /dev/stdin "$vendorjs" <<END
+// Use LANG environment variable to choose locale
+pref("intl.locale.requested", "");
+
+// Disable default browser checking.
+pref("browser.shell.checkDefaultBrowser", false);
+
+// Don't disable extensions in the application directory
+pref("extensions.autoDisableScopes", 11);
+END
+
+  # Distribution
+  local distini="$PKG/usr/lib/$name/distribution/distribution.ini"
+  install -Dvm644 /dev/stdin "$distini" <<END
+[Global]
+id=kdos
+version=rolling
+about=Mozilla Firefox for KDOS Linux
+
+[Preferences]
+app.distributor=kdos
+app.distributor.channel=$name
+app.partner.kdos=kdos
+END
+
+  # Icons
+  for i in 16 22 24 32 48 64 128 256; do
+    install -Dm644 browser/branding/official/default$i.png \
+      $PKG/usr/share/icons/hicolor/${i}x${i}/apps/$name.png
+  done
+
+  # Desktop Entry
+  cat <<- EOF > "$name.desktop"
+[Desktop Entry]
+Encoding=UTF-8
+Version=1.0
+Name=Firefox
+GenericName=Web Browser
+Comment=Browse the World Wide Web
+Exec=firefox %u
+Icon=firefox
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;application/vnd.mozilla.xul+xml;text/mml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;
+EOF
+
+  install -Dm644 $name.desktop \
+      $PKG/usr/share/applications/$name.desktop
+
+  # Wrapper script to fix missing RPATH for bundled libraries
+  rm -f $PKG/usr/bin/firefox
+  cat <<- EOF > $PKG/usr/bin/firefox
+#!/bin/sh
+export LD_LIBRARY_PATH="/usr/lib/firefox\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+exec /usr/lib/firefox/firefox "\$@"
+EOF
+  chmod +x $PKG/usr/bin/firefox
+
+  # Exclude library for revdep
+  install -d $PKG/etc/revdep.d
+  echo "/usr/lib/firefox/" > $PKG/etc/revdep.d/$name.conf
+}
+
+postinstall() {
+  if [ -f /etc/ld-musl-x86_64.path ]; then
+    if ! grep -q "/usr/lib/firefox" /etc/ld-musl-x86_64.path; then
+      echo "/usr/lib/firefox" >> /etc/ld-musl-x86_64.path
+    fi
+  else
+    mkdir -p /etc
+    echo "/usr/lib/firefox" > /etc/ld-musl-x86_64.path
+  fi
+}

@@ -1,0 +1,46 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description: Mozilla's data collection library for Rust and Python
+# homepage: https://github.com/mozilla/glean
+# depends: python3 python3-maturin rust python3-semver
+
+name=python3-glean-sdk
+version=66.2.0
+release=1
+source="https://files.pythonhosted.org/packages/8f/27/35082ac42214d48e74e21ea5c488e8e8edb955a59d9eadc8b92fdfd4ce87/glean_sdk-$version.tar.gz"
+vendoring="rust"
+
+build() {
+  export RUSTFLAGS="-C target-feature=-crt-static"
+  export CARGO_HOME="$SRC/cargo"
+  mkdir -p "$CARGO_HOME"
+  
+  tar xf "$PORT_SRC/${name}-vendor-${version}.tar.xz"
+  
+  # Workaround for offline cargo metadata resolution on Linux:
+  # Maturin unconditionally injects `pyo3/generate-import-lib` which activates the Windows-specific
+  # `python3-dll-a` crate. Since cargo vendor doesn't fetch it, we neuter the feature in pyo3.
+  if [ -d vendor/pyo3 ]; then
+      sed -i 's/^generate-import-lib = .*/generate-import-lib = []/' vendor/pyo3/Cargo.toml
+      NEW_CHKSUM=$(sha256sum vendor/pyo3/Cargo.toml | cut -d' ' -f1)
+      sed -i "s/\"Cargo.toml\":\"[^\"]*\"/\"Cargo.toml\":\"$NEW_CHKSUM\"/" vendor/pyo3/.cargo-checksum.json
+  fi
+  
+  # The pypi tarball omits the benches/ directory, which breaks Cargo's manifest parsing
+  # for glean-core since it defines a [[bench]] target. Strip the section using awk.
+  awk '/^\[\[bench\]\]/{c=3} c>0{c--; next} 1' glean-core/Cargo.toml > glean-core/Cargo.toml.tmp
+  mv glean-core/Cargo.toml.tmp glean-core/Cargo.toml
+  
+  export PYO3_CROSS_LIB_DIR="/usr/lib"
+  maturin build --release --offline --skip-auditwheel
+  
+  pip3 install --force-reinstall --ignore-installed --no-deps --no-index target/wheels/glean_sdk-*.whl --prefix=/usr --root="$PKG"
+}
