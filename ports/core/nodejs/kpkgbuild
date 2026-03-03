@@ -8,17 +8,21 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Python module that implements a XML/HTML/XHTML Markup safe string
-# depends	: python3-setuptools
+# description	: JavaScript runtime built on Chrome's V8 JavaScript engine
+# depends	: c-ares icu python3 libuv zlib
 
-name=python3-markupsafe
-version=3.0.3
+name=nodejs
+version=25.6.1
 release=1
-source="https://files.pythonhosted.org/packages/source/m/markupsafe/markupsafe-$version.tar.gz"
-vendoring=python
+source="https://nodejs.org/dist/v$version/node-v$version.tar.xz"
 
 build() {
-	mkdir -p vendor
-	tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
-	pip3 install --no-build-isolation --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
+	./configure \
+		--prefix=/usr \
+		--shared-cares \
+		--shared-zlib \
+		--shared-libuv \
+		--with-intl=system-icu
+	make
+	make DESTDIR=$PKG install
 }
