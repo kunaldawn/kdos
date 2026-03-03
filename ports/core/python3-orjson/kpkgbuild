@@ -1,0 +1,41 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description: Fast, safe, correct JSON library for Python
+# homepage: https://github.com/ijl/orjson
+# depends: python3 python3-maturin rust
+
+name=python3-orjson
+version=3.11.7
+release=1
+source="https://files.pythonhosted.org/packages/53/45/b268004f745ede84e5798b48ee12b05129d19235d0e15267aa57dcdb400b/orjson-$version.tar.gz"
+vendoring="rust"
+
+build() {
+  export RUSTFLAGS="-C target-feature=-crt-static"
+  export CARGO_HOME="$SRC/cargo"
+  mkdir -p "$CARGO_HOME"
+  
+  tar xf "$PORT_SRC/${name}-vendor-${version}.tar.xz"
+  
+  # Workaround for offline cargo metadata resolution on Linux:
+  # Maturin unconditionally injects `pyo3/generate-import-lib` which activates the Windows-specific
+  # `python3-dll-a` crate. Since cargo vendor doesn't fetch it, we neuter the feature in pyo3.
+  if [ -d vendor/pyo3 ]; then
+      sed -i 's/^generate-import-lib = .*/generate-import-lib = []/' vendor/pyo3/Cargo.toml
+      NEW_CHKSUM=$(sha256sum vendor/pyo3/Cargo.toml | cut -d' ' -f1)
+      sed -i "s/\"Cargo.toml\":\"[^\"]*\"/\"Cargo.toml\":\"$NEW_CHKSUM\"/" vendor/pyo3/.cargo-checksum.json
+  fi
+  
+  export PYO3_CROSS_LIB_DIR="/usr/lib"
+  maturin build --release --strip --offline --skip-auditwheel
+  
+  pip3 install --force-reinstall --ignore-installed --no-deps --no-index target/wheels/orjson-*.whl --prefix=/usr --root="$PKG"
+}

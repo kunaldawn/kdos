@@ -14,9 +14,12 @@
 name=python3-setuptools
 version=80.9.0
 release=1
-source="$name-$version.tar.gz::https://files.pythonhosted.org/packages/source/s/${name#*-}/${name#*-}-$version.tar.gz"
+source="https://files.pythonhosted.org/packages/source/s/${name#*-}/${name#*-}-$version.tar.gz"
+vendoring=python
 
 build() {
+	mkdir -p vendor
+	tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 	export SETUPTOOLS_INSTALL_WINDOWS_SPECIFIC_FILES=0
 	python3 setup.py build
 	python3 setup.py install --prefix=/usr --root="$PKG" --skip-build

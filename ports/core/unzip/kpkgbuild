@@ -8,17 +8,19 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Python module that implements a XML/HTML/XHTML Markup safe string
-# depends	: python3-setuptools
+# description	: ZIP extraction utilities
 
-name=python3-markupsafe
-version=3.0.3
+name=unzip
+version=6.0
+_version=$(echo $version | sed 's/\.//')
 release=1
-source="https://files.pythonhosted.org/packages/source/m/markupsafe/markupsafe-$version.tar.gz"
-vendoring=python
+source="https://downloads.sourceforge.net/infozip/${name}${_version}.tar.gz"
 
 build() {
-	mkdir -p vendor
-	tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
-	pip3 install --no-build-isolation --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
+	make -f unix/Makefile linux_noasm \
+		LOCAL_UNZIP="-DBSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -include time.h" \
+		prefix=$PKG/usr
+
+	make prefix=$PKG/usr MANDIR=$PKG/usr/share/man/man1 -f unix/Makefile install
 }
+

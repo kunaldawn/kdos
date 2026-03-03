@@ -8,17 +8,17 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Python module that implements a XML/HTML/XHTML Markup safe string
-# depends	: python3-setuptools
+# description: A small utility to modify the ELF executable files.
+# depends: gcc make
+# homepage: https://github.com/NixOS/patchelf
 
-name=python3-markupsafe
-version=3.0.3
+name=patchelf
+version=0.18.0
 release=1
-source="https://files.pythonhosted.org/packages/source/m/markupsafe/markupsafe-$version.tar.gz"
-vendoring=python
+source="https://github.com/NixOS/patchelf/releases/download/$version/patchelf-$version.tar.bz2"
 
 build() {
-	mkdir -p vendor
-	tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
-	pip3 install --no-build-isolation --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
+  ./configure --prefix=/usr
+  make
+  DESTDIR=$PKG make install
 }

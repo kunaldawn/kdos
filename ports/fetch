@@ -151,7 +151,11 @@ fetch_port() {
             cargo vendor > .cargo/config.toml
             
             # Create vendor tarball
-            tar -cJf "$portdir/$vendor_file" vendor .cargo
+            if [ -f Cargo.lock ]; then
+                tar -cJf "$portdir/$vendor_file" vendor .cargo Cargo.lock
+            else
+                tar -cJf "$portdir/$vendor_file" vendor .cargo
+            fi
             popd >/dev/null
             
             # Cleanup
