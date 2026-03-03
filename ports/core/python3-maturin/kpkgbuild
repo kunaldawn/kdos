@@ -1,0 +1,43 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description: Build and publish Python packages with Rust
+# homepage: https://github.com/PyO3/maturin
+# depends: python3 rust patchelf
+
+name=python3-maturin
+version=1.12.3
+release=1
+source="https://files.pythonhosted.org/packages/91/a8/dd85d167a12d3fb65e80fb95172ddd1e8ac9cbb57b1c84a13bfba965e3dd/maturin-$version.tar.gz"
+vendoring="rust"
+
+build() {
+  export RUSTFLAGS="-C target-feature=-crt-static"
+  export CARGO_HOME="$SRC/cargo"
+  mkdir -p "$CARGO_HOME"
+  
+  tar xf "$PORT_SRC/${name}-vendor-${version}.tar.xz"
+  
+  # Build the maturin binary natively
+  cargo build --release --locked --offline
+  
+  # Use the built binary to construct the python wheel
+  export PYO3_CROSS_LIB_DIR="/usr/lib"
+  ./target/release/maturin build --release --strip --offline --skip-auditwheel
+  
+  # Install the wheel into the package directory
+  pip3 install --force-reinstall --ignore-installed --no-deps --no-index target/wheels/maturin-*.whl --prefix=/usr --root="$PKG"
+  
+  # Maturin's wheel builder bundles system libraries and sets an RPATH.
+  # For a system package, we don't want bundled libraries. We remove the RPATH
+  # and the bundled libs, forcing the binary to use the KDOS /usr/lib files.
+  patchelf --remove-rpath "$PKG/usr/bin/maturin"
+  rm -rf "$PKG/usr/lib/python3.14/site-packages/maturin.libs"
+}
