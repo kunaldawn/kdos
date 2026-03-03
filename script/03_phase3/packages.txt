@@ -70,3 +70,5 @@ xfce4
 dconf
 gvfs
 gnome-keyring
+firefox
+nodejs
