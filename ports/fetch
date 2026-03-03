@@ -33,14 +33,14 @@ fetch_port() {
     fi
     
     # Source the kpkgbuild to get source URLs
-    unset name version source vendoring
+    unset name version source vendoring pypackages
     . ./kpkgbuild 2>/dev/null || {
         echo "⚠  $portname: Failed to source kpkgbuild"
         return 0
     }
     
-    [ -z "$source" ] && {
-        echo "⚠  $portname: No source defined"
+    [ -z "$source" ] && [ -z "$pypackages" ] && {
+        echo "⚠  $portname: No source or pypackages defined"
         return 0
     }
     
@@ -151,7 +151,11 @@ fetch_port() {
             cargo vendor > .cargo/config.toml
             
             # Create vendor tarball
-            tar -cJf "$portdir/$vendor_file" vendor .cargo
+            if [ -f Cargo.lock ]; then
+                tar -cJf "$portdir/$vendor_file" vendor .cargo Cargo.lock
+            else
+                tar -cJf "$portdir/$vendor_file" vendor .cargo
+            fi
             popd >/dev/null
             
             # Cleanup
@@ -234,14 +238,41 @@ fetch_port() {
             rm -rf "$tmp_dir"
             echo "✓  $portname: Created $vendor_file"
         fi
-    elif [ "$vendoring" = "python" ]; then
+    elif [ "$vendoring" = "python" ] || [ -n "$pypackages" ]; then
         vendor_file="${name}-vendor-${version}.tar.xz"
         if [ -f "./$vendor_file" ]; then
              echo "✓  $portname: Vendor file $vendor_file exists"
         else
             echo "⚙  $portname: Generating vendor tarball (Python)..."
             tmp_dir=$(mktemp -d)
-            first_src=$(echo $source | cut -d' ' -f1)
+            
+            # Extract main source if it exists
+            if [ -n "$source" ]; then
+                first_src=$(echo $source | cut -d' ' -f1)
+                case $first_src in
+                    *::*) filename="${first_src%%::*}" ;;
+                    http://*|https://*|ftp://*)
+                         url="$first_src"
+                         if [[ "$url" =~ \.tar\.gz$ || "$url" =~ \.tgz$ ]]; then ext="tar.gz"
+                         elif [[ "$url" =~ \.tar\.bz2$ || "$url" =~ \.tbz2$ ]]; then ext="tar.bz2"
+                         elif [[ "$url" =~ \.tar\.xz$ || "$url" =~ \.txz$ ]]; then ext="tar.xz"
+                         elif [[ "$url" =~ \.tar\.zst$ ]]; then ext="tar.zst"
+                         elif [[ "$url" =~ \.zip$ ]]; then ext="zip"
+                         else ext=""; fi
+                         
+                         if [ -n "$ext" ]; then
+                             filename="$name-$version.$ext"
+                         else
+                             filename=$(basename "$url")
+                         fi
+                         ;;
+                    *) filename="$first_src" ;;
+                esac
+                
+                if [ -f "$filename" ]; then
+                    tar xf "$filename" -C "$tmp_dir" --strip-components=1
+                fi
+            fi
             case $first_src in
                 *::*) filename="${first_src%%::*}" ;;
                 http://*|https://*|ftp://*)
@@ -262,13 +293,23 @@ fetch_port() {
                 *) filename="$first_src" ;;
             esac
             
-            tar xf "$filename" -C "$tmp_dir" --strip-components=1
-            
             pushd "$tmp_dir" >/dev/null
             mkdir -p vendor
             
-            echo "   Downloading runtime dependencies (source only)..."
-            pip3 download --no-binary :all: --dest vendor . || echo "⚠  Runtime dependency download failed/empty"
+            # Download pypackages if defined
+            if [ -n "$pypackages" ]; then
+                echo "   Downloading requested pypackages..."
+                # Convert pkg:ver -> pkg==ver
+                reqs=""
+                for pkg in $pypackages; do
+                    req=$(echo "$pkg" | sed 's/:/==/g' | sed 's/=/==/g' | sed 's/====/==/g')
+                    reqs="$reqs $req"
+                done
+                pip3 download --no-binary :all: --dest vendor $reqs || echo "⚠  pypackages download failed"
+            elif [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
+                echo "   Downloading runtime dependencies (source only)..."
+                pip3 download --no-binary :all: --dest vendor . || echo "⚠  Runtime dependency download failed/empty"
+            fi
             
             if [ -f "requirements.txt" ]; then
                 echo "   Found requirements.txt, downloading dependencies..."
