@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: A GObject library to create cabinet files
+# depends	: glib gobject-introspection vala meson
+
+name=gcab
+version=1.6
+release=1
+source="https://ftp.gnome.org/pub/GNOME/sources/gcab/$version/$name-$version.tar.xz"
+
+build() {
+	meson -Ddocs=false -Dtests=false build
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

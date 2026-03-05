@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Brushes used by packages which use libmypaint
+# depends	: libmypaint
+
+name=mypaint-brushes
+version=2.0.2
+release=1
+source="https://github.com/mypaint/mypaint-brushes/archive/v${version}/${name}-${version}.tar.gz"
+
+build() {
+	AUTOMAKE=automake ACLOCAL=aclocal ./autogen.sh
+	./configure --prefix=/usr
+	make
+	make DESTDIR=$PKG install
+}
