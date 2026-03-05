@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	    : Brotli compression library
+# homepage	    : https://github.com/google/brotli
+# depends	    : cmake ninja
+
+name=brotli
+version=1.2.0
+release=1
+source="https://github.com/google/$name/archive/v$version/$name-v$version.tar.gz"
+
+build() {
+	cmake -S . -B build -G Ninja \
+		-D CMAKE_BUILD_TYPE=Release \
+		-D CMAKE_INSTALL_PREFIX=/usr \
+		-D CMAKE_INSTALL_LIBDIR=lib \
+		-D BUILD_SHARED_LIBS=True
+
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+
+	/usr/bin/python3 setup.py build
+	/usr/bin/python3 setup.py install --prefix=/usr --root=$PKG --optimize=1
+}

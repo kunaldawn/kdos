@@ -18,9 +18,10 @@ source="https://gitlab.freedesktop.org/$name/$name/-/archive/v$version/$name-v$v
 
 build() {
 	export XML_CATALOG_FILES=/etc/xml/catalog 
-	meson build \
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib \
 		-D gtk-doc=false \
-		-D systemdsystemunitdir=no 
+		-D systemdsystemunitdir=no
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }
