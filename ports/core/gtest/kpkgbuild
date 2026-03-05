@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	    : Google C++ test utility
+# homepage	    : https://github.com/google/googletest
+# depends	    : cmake ninja python3
+
+name=gtest
+version=1.17.0
+release=1
+source="$name-$version.tar.gz::https://github.com/google/googletest/archive/v$version.tar.gz"
+
+build(){
+	cmake -S . -B build -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DBUILD_SHARED_LIBS=On \
+		-DPYTHON_EXECUTABLE=python3 \
+		-Dgtest_build_tests=ON \
+		-DBUILD_GMOCK=ON
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}

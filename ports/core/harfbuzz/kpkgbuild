@@ -17,11 +17,12 @@ release=1
 source="https://github.com/harfbuzz/harfbuzz/releases/download/$version/harfbuzz-$version.tar.xz"
 
 build() {
-	meson build \
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib \
 		-D docs=disabled \
 		-D graphite=auto \
 		-D benchmark=disabled \
-		-D icu=disabled 
+		-D icu=disabled
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }

@@ -17,7 +17,7 @@ release=1
 source="https://github.com/fribidi/fribidi/releases/download/v$version/$name-$version.tar.xz"
 
 build() {
-	meson build
+	meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }
