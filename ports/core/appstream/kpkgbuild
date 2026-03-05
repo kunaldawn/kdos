@@ -1,0 +1,14 @@
+# description	: Tools and libraries to work with AppStream metadata
+# depends	: glib meson libxmlb yaml curl gperf libarchive gobject-introspection vala libfyaml
+
+name=appstream
+version=1.1.2
+release=1
+source="$name-$version.tar.xz::https://freedesktop.org/software/appstream/releases/AppStream-${version}.tar.xz"
+
+build() {
+	cd AppStream-${version}
+	meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib -Ddocs=false -Dapidocs=false -Dinstall-docs=false -Dman=false -Dstemming=false -Dsystemd=false -Dgir=true -Dvapi=true
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

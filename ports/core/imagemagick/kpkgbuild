@@ -1,0 +1,44 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: ImageMagick is a collection of tools and libraries to read, write, and manipulate an image in various image formats
+# homepage	: https://imagemagick.org/ 
+# depends	: fontconfig lcms2 libtool libxext libxt perl libxml2 librsvg libjpeg-turbo libpng libtiff libwebp openjpeg2 pango zlib bzip2 xz
+
+name=imagemagick
+version=7.1.2.15
+vrsn=${version%.*}-${version##*.}
+release=1
+source="$name-$version.tar.xz::https://imagemagick.org/archive/releases/ImageMagick-${vrsn}.tar.xz"
+KEEP_LIBTOOL="yes"
+
+build() {	
+	./configure --prefix=/usr     \
+	            --sysconfdir=/etc \
+	            --enable-hdri     \
+	            --without-modules \
+	            --with-perl       \
+	            --disable-static  \
+	            --with-lzma       \
+	            --with-bzlib      \
+	            --with-zlib       \
+	            --with-openjp2    \
+	            --with-pango      \
+	            --with-rsvg       \
+	            --with-webp       \
+	            --with-xml        \
+	            --with-fontconfig \
+	            --with-freetype   \
+	            --with-x          \
+	            --with-lcms       \
+				--without-openexr
+	make
+	make DESTDIR=$PKG install
+}

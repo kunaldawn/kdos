@@ -1,0 +1,37 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: GObject-based multi-platform GUI toolkit (legacy)
+# depends	: at-spi2-core gdk-pixbuf pango hicolor-icon-theme adwaita-icon-theme libx11 libxrender libxinerama libxrandr libxcursor libxext
+
+name=gtk2
+version=2.24.33
+release=1
+source="https://ftp.gnome.org/pub/gnome/sources/gtk+/${version%.*}/gtk+-$version.tar.xz"
+
+build() {
+	export CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types -Wno-error=implicit-int -Wno-error=implicit-function-declaration"
+	sed -e 's#l \(gtk-.*\).sgml#& -o \1#' \
+	    -i docs/faq/Makefile.in
+
+	sed -e 's#l \(gtk-.*\).sgml#& -o \1#' \
+	    -i docs/tutorial/Makefile.in
+
+	./configure --prefix=/usr --sysconfdir=/etc
+	make
+	make DESTDIR=$PKG install
+
+	cat > $PKG/etc/gtk-2.0/gtkrc << "EOF"
+gtk-icon-theme-name = "Adwaita"
+gtk-theme-name = "Adwaita"
+gtk-font-name = "Cantarell 10"
+EOF
+
+}

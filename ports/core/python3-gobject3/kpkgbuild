@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Python3 bindings for PyGObject3
+# depends	: python3-cairo gobject-introspection
+
+name=python3-gobject3
+version=3.56.0
+release=1
+source="$name-$version.tar.gz::https://ftp.gnome.org/pub/gnome/sources/pygobject/${version%.*}/pygobject-$version.tar.gz"
+
+build() {
+	meson setup build --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib -Dpython=python3
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

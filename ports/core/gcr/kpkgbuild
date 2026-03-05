@@ -18,7 +18,7 @@ source="https://download.gnome.org/sources/gcr/${version%.*}/$name-$version.tar.
 
 build() {
 	export CFLAGS="$CFLAGS -D_GNU_SOURCE"
-	meson setup build \
+	meson setup build --prefix=/usr \
 		-Dgtk_doc=false \
 		-Dintrospection=true \
 		-Dgtk=true
