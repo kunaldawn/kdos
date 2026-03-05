@@ -1,0 +1,21 @@
+<?xml version="1.1" encoding="UTF-8"?>
+
+<channel name="xsettings" version="1.0">
+  <property name="Net" type="empty">
+    <property name="ThemeName" type="string" value="Adwaita-dark"/>
+    <property name="IconThemeName" type="string" value="Adwaita"/>
+    <property name="EnableInputFeedbackSounds" type="bool" value="false"/>
+    <property name="EnableEventSounds" type="bool" value="false"/>
+  </property>
+  <property name="Gtk" type="empty">
+    <property name="CursorThemeName" type="string" value="Adwaita"/>
+    <property name="DecorationLayout" type="string" value="icon,menu:minimize,maximize,close"/>
+    <property name="ButtonImages" type="bool" value="true"/>
+    <property name="MenuImages" type="bool" value="true"/>
+    <property name="CanChangeAccels" type="bool" value="false"/>
+    <property name="DialogsUseHeader" type="bool" value="false"/>
+  </property>
+  <property name="Xfce" type="empty">
+    <property name="SyncThemes" type="bool" value="false"/>
+  </property>
+</channel>
