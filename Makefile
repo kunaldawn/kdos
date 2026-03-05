@@ -36,7 +36,7 @@ debug-boot:
 		-kernel build/fs/boot/vmlinuz-kdos \
 		-initrd build/fs/boot/initramfs.cpio.gz \
 		-cdrom build/iso-build/kdos.iso \
-		-append "root=/dev/ram0 rw console=tty0 console=ttyS0"
+		-append "root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3"
 
 cleandisk:
 	qemu-img create -f qcow2 build/kdos.qcow2 20G

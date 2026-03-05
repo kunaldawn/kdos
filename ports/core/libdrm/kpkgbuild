@@ -18,7 +18,8 @@ release=1
 source="https://dri.freedesktop.org/$name/$name-$version.tar.xz"
 
 build() {
-	meson build \
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib \
 		-D man-pages=disabled \
 		-D valgrind=disabled \
 		-D cairo-tests=disabled \

@@ -18,7 +18,8 @@ source="http://ftp.gnome.org/pub/gnome/sources/dconf/${version%.*}/$name-$versio
 
 build() {
 	export XML_CATALOG_FILES=/etc/xml/catalog
-	meson build \
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib \
 		--libexecdir=/usr/lib/$name
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build

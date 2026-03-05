@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Python3 bindings to Cairo
+# depends	: python3 cairo meson
+
+name=python3-cairo
+version=1.29.0
+release=1
+source="$name-$version.tar.gz::https://github.com/pygobject/pycairo/releases/download/v$version/pycairo-$version.tar.gz"
+
+build() {
+	meson setup build \
+		--prefix=/usr \
+		--buildtype=release \
+		-Dpython=$(which python3)
+		
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

@@ -19,7 +19,8 @@ source="https://gitlab.freedesktop.org/cairo/cairo/-/archive/$version/$name-$ver
 build() {
 	export XML_CATALOG_FILES=/etc/xml/catalog
 
-	meson build \
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib \
 		-D dwrite=disabled \
 		-D spectre=disabled \
 		-D symbol-lookup=disabled \

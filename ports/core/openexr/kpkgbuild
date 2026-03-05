@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: OpenEXR is a high dynamic-range (HDR) image file format originally developed by Industrial Light & Magic for use in computer imaging applications.
+# depends	: cmake ninja zlib imath
+
+name=openexr
+version=3.4.6
+release=1
+source="https://github.com/AcademySoftwareFoundation/$name/archive/v$version/$name-$version.tar.gz"
+
+build() {
+	cmake -S . -B build -G Ninja \
+	    -DCMAKE_INSTALL_PREFIX=/usr \
+	    -DCMAKE_INSTALL_LIBDIR=lib \
+	    -DCMAKE_INSTALL_LIBEXECDIR=lib \
+	    -DCMAKE_BUILD_TYPE=Release \
+	    -DCMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+	    -DCMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+	    -Wno-dev
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}

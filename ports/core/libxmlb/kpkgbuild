@@ -1,0 +1,13 @@
+# description	: Library to help create and query binary XML blobs
+# depends	: glib meson zstd xz gobject-introspection
+
+name=libxmlb
+version=0.3.25
+release=1
+source="https://github.com/hughsie/libxmlb/releases/download/${version}/libxmlb-${version}.tar.xz"
+
+build() {
+	meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib -Dgtkdoc=false -Dtests=false -Dintrospection=true
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}
