@@ -16,7 +16,7 @@ fetch:
 build:
 	mkdir -p build
 	docker build -t os-dev .
-	docker run --network none --cpus="12" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
+	docker run --network none --cpus="8" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
 		-v $$(pwd)/build:/workspace/build \
 		-v $$(pwd)/src:/workspace/src:ro \
 		-v $$(pwd)/fs:/workspace/fs:ro \

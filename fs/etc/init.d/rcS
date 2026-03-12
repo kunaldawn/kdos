@@ -13,42 +13,25 @@
 # Mount all filesystems in fstab
 mount -a
 
-# Start udevd if it exists
-if [ -x /usr/sbin/udevd ]; then
-    echo "Starting udevd..."
-    mkdir -pv /run/udev
-    chmod 755 /run/udev
-    if [ ! -d /run/udev ]; then
-        echo "CRITICAL: Failed to create /run/udev"
+# ── Auto-run all numbered service scripts ─────────────────────────────────────
+# Scripts must match the pattern:  /etc/init.d/NN_name.sh
+# They are executed in numeric order with the argument 'start'.
+# Each script is responsible for checking if its daemon exists before running.
+
+INIT_DIR="/etc/init.d"
+DISABLED_DIR="/etc/service.disabled"
+
+for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
+    [ -x "$_script" ] || continue
+    _name=$(basename "$_script" | sed 's/^[0-9][0-9]_//;s/\.sh$//')
+    if [ -f "${DISABLED_DIR}/${_name}" ]; then
+        echo "[KDOS] Skipping disabled service: ${_name}"
+        continue
     fi
-    /usr/sbin/udevd --daemon
-    /usr/sbin/udevadm trigger
-    /usr/sbin/udevadm settle
-fi
+    echo "[KDOS] Running: $(basename $_script) start"
+    "$_script" start
+done
 
-# Set hostname
-hostname -F /etc/hostname
-
-# Suppress kernel messages on console
-dmesg -n 1
-
-# Apply sysctl settings if configuration file exists
-if [ -f /etc/sysctl.conf ]; then
-    sysctl -p /etc/sysctl.conf
-fi
-
-# Start dhcpcd if it exists
-if [ -x /usr/sbin/dhcpcd ]; then
-    echo "Starting dhcpcd..."
-    mkdir -p /run/dhcpcd
-    /usr/sbin/dhcpcd -b
-fi
-
-# Start dbus if it exists
-if [ -x /usr/bin/dbus-daemon ]; then
-    echo "Starting dbus..."
-    mkdir -p /run/dbus
-    /usr/bin/dbus-daemon --system
-fi
+unset _script
 
 echo "KDOS Initialized."
