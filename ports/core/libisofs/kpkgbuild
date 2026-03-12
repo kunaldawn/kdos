@@ -20,5 +20,5 @@ build() {
 	export CFLAGS="$CFLAGS -Wno-unterminated-string-initialization"
 	./configure --prefix=/usr
 	make
-	make DESTDIR=$PKG install
+	make -j1 DESTDIR=$PKG install
 }
