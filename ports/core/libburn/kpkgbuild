@@ -18,5 +18,5 @@ source="http://files.libburnia-project.org/releases/$name-$version.tar.gz"
 build() {
 	./configure --prefix=/usr
 	make
-	make DESTDIR=$PKG install
+	make -j1 DESTDIR=$PKG install
 }

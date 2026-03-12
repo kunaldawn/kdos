@@ -8,88 +8,19 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# Core Build Utilities
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-iana-etc
-libmnl
-libcap
-iproute2
-shadow
-sudo
-glib
-dbus
+# description	: Various utilities for controlling sound card
+# depends	: alsa-lib
 
-# Service Infrastructure
-libgudev
-consolekit2
-polkit
-udisks2
-upower
-bluez
-openssh
-cups
+name=alsa-utils
+version=1.2.15.2
+release=1
+source="https://www.alsa-project.org/files/pub/utils/$name-$version.tar.bz2"
 
-# Core Services
-dhcpcd
-alsa-utils
-
-# High-level libraries & Tools
-python3
-gettext
-git
-nano
-less
-procps-ng
-psmisc
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
-dconf
-gvfs
-gnome-keyring
-firefox
-nodejs
-gimp
-obs-studio
-vlc
-rpcsvc-proto
-libtirpc
+build() {
+	./configure --disable-alsaconf \
+	            --disable-bat   \
+	            --disable-xmlto \
+	            --with-curses=ncursesw
+	make
+	make DESTDIR=$PKG install
+}

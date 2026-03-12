@@ -21,6 +21,7 @@ build() {
 		--prefix=/usr \
 		--sysconfdir=/etc \
 		--libexecdir=/usr/lib/$name \
+		--libdir=/usr/lib \
 		--localstatedir=/var \
 		-D doxygen_docs=disabled \
 		-D xml_docs=disabled \
