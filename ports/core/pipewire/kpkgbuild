@@ -1,0 +1,79 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Server and user space API to deal with multimedia
+# depends	: meson alsa-lib gstreamer ffmpeg dbus gst-plugins-base bluez sbc jack
+
+name=pipewire
+version=1.6.0
+release=1
+source="https://github.com/PipeWire/pipewire/archive/$version/$name-$version.tar.gz"
+
+build() {
+	meson . build \
+		-D prefix=/usr \
+		-D libdir=lib \
+		-D systemd-system-service=disabled \
+		-D systemd-user-service=disabled \
+		-D docs=disabled \
+	    -D vulkan=disabled \
+	    -D examples=disabled \
+		-D session-managers=[]
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+
+	# enable alsa by default
+	install -Dm644 /dev/null $PKG/usr/share/pipewire/media-session.d/with-alsa
+	mkdir -p $PKG/etc/alsa/conf.d
+	ln -st $PKG/etc/alsa/conf.d /usr/share/alsa/alsa.conf.d/99-pipewire-default.conf
+	ln -st $PKG/etc/alsa/conf.d /usr/share/alsa/alsa.conf.d/50-pipewire.conf
+
+	# install pipewire launcher
+	mkdir -p $PKG/usr/bin
+	cat << EOF > $PKG/usr/bin/pipewire-launcher
+#!/bin/sh
+
+# Kill any existing pipewire instance to restore sound
+pkill -u "${USER}" -fx /usr/bin/pipewire-pulse 1>/dev/null 2>&1
+pkill -u "${USER}" -fx /usr/bin/wireplumber 1>/dev/null 2>&1
+pkill -u "${USER}" -fx /usr/bin/pipewire 1>/dev/null 2>&1
+
+# Start pipewire
+exec /usr/bin/pipewire &
+
+# Wait for pipewire to start before attempting to start related daemons
+while [ "$(pgrep -f /usr/bin/pipewire)" = "" ]; do
+        sleep 1
+done
+
+# Start wireplumber, replacement for pipewire-media-session 
+[ -x /usr/bin/wireplumber ] && exec /usr/bin/wireplumber &
+
+# Start pipewire-pulse, replacement for the PulseAudio daemon
+[ -f "/usr/share/pipewire/pipewire-pulse.conf" ] && exec /usr/bin/pipewire-pulse &
+EOF
+
+	# install desktop file
+	mkdir -p $PKG/etc/xdg/autostart
+	cat << EOF > $PKG/etc/xdg/autostart/pipewire-launcher.desktop
+[Desktop Entry]
+Version=$version
+Name=Pipewire
+Comment=Start Pipewire
+Exec=/usr/bin/pipewire-launcher
+Terminal=false
+Type=Application
+X-KDE-autostart-phase=1
+EOF
+	
+	# remove leftovers
+	rm -rf $PKG/usr/share/locale
+}
+

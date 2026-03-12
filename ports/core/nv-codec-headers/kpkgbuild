@@ -8,70 +8,15 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-dhcpcd
-rpcsvc-proto
-libtirpc
-iana-etc
-libmnl
-libcap
-iproute2
-python3
-gettext
-git
-nano
-shadow
-less
-procps-ng
-psmisc
-sudo
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
-dconf
-gvfs
-gnome-keyring
-firefox
-nodejs
-gimp
-obs-studio
-vlc
+# description	: FFmpeg version of Nvidia codec headers
+# homepage	: https://git.videolan.org/?p=ffmpeg/nv-codec-headers.git
+
+name=nv-codec-headers
+version=13.0.19.0
+release=1
+source="$name-$version.tar.gz::https://github.com/FFmpeg/nv-codec-headers/archive/n$version.tar.gz"
+
+build() {
+	make PREFIX=/usr
+	make PREFIX=/usr DESTDIR=$PKG install
+}
