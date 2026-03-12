@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Intel Video Processing Library
+# homepage	: https://intel.github.io/libvpl/
+# depends	: libva
+
+name=libvpl
+version=2.16.0
+release=1
+source="$name-$version.tar.gz::https://github.com/intel/libvpl/archive/v$version.tar.gz"
+
+build() {
+	cmake -S . -B build -G Ninja \
+		-D CMAKE_INSTALL_PREFIX=/usr \
+		-D CMAKE_INSTALL_LIBDIR=lib \
+		-D BUILD_TESTING=OFF
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}

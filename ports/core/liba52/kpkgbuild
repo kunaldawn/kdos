@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Free library for decoding ATSC A/52 (also known as AC-3) streams
+
+name=liba52
+version=0.8.0
+release=1
+source="https://distfiles.adelielinux.org/source/a52dec/a52dec-$version.tar.gz"
+
+build() {
+	./configure --prefix=/usr \
+		    --mandir=/usr/share/man \
+		    --enable-shared \
+		    --disable-static \
+		    CFLAGS="-g -O2 -fPIC -std=gnu89"
+	make
+	make DESTDIR=$PKG install
+
+	cp liba52/a52_internal.h $PKG/usr/include/a52dec
+}

@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: SIMD Everywhere (header-only library)
+# homepage	: https://github.com/simd-everywhere/simde
+# depends	: meson
+
+name=simde
+version=0.8.2
+release=1
+source="$name-$version.tar.gz::https://github.com/simd-everywhere/simde/archive/v$version.tar.gz"
+
+build() {
+	meson . build \
+		-D prefix=/usr \
+		-D tests=false
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

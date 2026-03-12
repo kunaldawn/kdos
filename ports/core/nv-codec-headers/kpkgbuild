@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: FFmpeg version of Nvidia codec headers
+# homepage	: https://git.videolan.org/?p=ffmpeg/nv-codec-headers.git
+
+name=nv-codec-headers
+version=13.0.19.0
+release=1
+source="$name-$version.tar.gz::https://github.com/FFmpeg/nv-codec-headers/archive/n$version.tar.gz"
+
+build() {
+	make PREFIX=/usr
+	make PREFIX=/usr DESTDIR=$PKG install
+}

@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: JSON for Modern C++ (header-only)
+# homepage	: https://nlohmann.github.io/json/
+
+name=nlohmann-json
+version=3.12.0
+release=1
+source="json-$version.tar.gz::https://github.com/nlohmann/json/archive/v$version.tar.gz"
+
+build() {
+	mkdir -p $PKG/usr/include/nlohmann
+	install -m644 single_include/nlohmann/*.hpp $PKG/usr/include/nlohmann/
+}

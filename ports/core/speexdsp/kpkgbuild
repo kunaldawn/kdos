@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Speech processing library that goes along with the Speex codec
+
+name=speexdsp
+version=1.2.1
+release=1
+source="$name-$version.tar.gz::https://github.com/xiph/speexdsp/archive/refs/tags/SpeexDSP-1.2.1.tar.gz"
+
+build() {
+	./autogen.sh
+	./configure --prefix=/usr --disable-static
+	make
+	make DESTDIR=$PKG install
+	rm -r $PKG/usr/share
+}
