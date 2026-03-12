@@ -8,70 +8,17 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-dhcpcd
-rpcsvc-proto
-libtirpc
-iana-etc
-libmnl
-libcap
-iproute2
-python3
-gettext
-git
-nano
-shadow
-less
-procps-ng
-psmisc
-sudo
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
-dconf
-gvfs
-gnome-keyring
-firefox
-nodejs
-gimp
-obs-studio
-vlc
+# description: Just-in-time compiler and drop-in replacement for Lua.
+
+name=luajit
+version=20250826
+vrsn=2.1
+release=1
+source="$name-$version.tar.gz::https://github.com/openresty/luajit2/archive/v${vrsn}-$version.tar.gz"
+
+build() {
+	# These flags are recommended by OpenResty.
+	local xcflags="-DLUAJIT_ENABLE_LUA52COMPAT -DLUAJIT_NUMMODE=2"
+	make amalg PREFIX=/usr XCFLAGS="$xcflags"
+	make PREFIX=/usr DESTDIR=$PKG install
+}

@@ -1,0 +1,62 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	    : A cross-platform application and UI framework
+# homepage	    : https://www.qt.io/
+# depends	    : ccache cups double-conversion gst-plugins-base libinput libxkbcommon shared-mime-info vulkan-headers libxi xcb-util-cursor xcb-util-keysyms xcb-util-wm
+# optional	    : gtk3 mariadb postgresql unixodbc pulseaudio pipewire md4c tslib xmlstarlet xdg-utils libproxy
+
+name=qt6-base
+version=6.10.2
+release=1
+source="$name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/qtbase-everywhere-src-$version.tar.xz"
+
+build() {
+	cmake -S . -B build -G Ninja \
+		-D QT_USE_CCACHE=$(scratch isinstalled ccache && echo ON || echo OFF) \
+		-D QT_AVOID_CMAKE_ARCHIVING_API=ON \
+		-D CMAKE_INSTALL_PREFIX=/usr \
+		-D INSTALL_BINDIR=lib/qt6/bin \
+		-D INSTALL_PUBLICBINDIR=usr/bin \
+		-D INSTALL_LIBEXECDIR=lib/qt6 \
+		-D INSTALL_DOCDIR=share/doc/qt6 \
+		-D INSTALL_ARCHDATADIR=lib/qt6 \
+		-D INSTALL_DATADIR=share/qt6 \
+		-D INSTALL_INCLUDEDIR=include/qt6 \
+		-D INSTALL_MKSPECSDIR=lib/qt6/mkspecs \
+		-D INSTALL_EXAMPLESDIR=share/doc/qt6/examples \
+		-D CMAKE_BUILD_TYPE=Release \
+		-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+		-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+		-D QT_DISABLE_RPATH=TRUE \
+		-D QT_FEATURE_openssl_linked=ON \
+		-D QT_FEATURE_system_sqlite=ON \
+		-D QT_FEATURE_no_direct_extern_access=ON \
+		-D QT_FEATURE_vulkan=ON \
+		-D QT_FEATURE_xcb=ON \
+		-D QT_FEATURE_xkbcommon_x11=ON \
+		-D QT_BUILD_TESTS_BY_DEFAULT=OFF \
+		-D QT_FEATURE_reduce_relocations=OFF \
+		-D QT_FEATURE_androiddeployqt=OFF \
+		-D QT_FEATURE_rpath=OFF \
+		-Wno-dev
+
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+
+	rm -r $PKG/usr/share/doc
+
+	# Install useful symlinks
+	install -d $PKG/usr/bin
+	for file in $PKG/usr/lib/qt6/bin/*; do
+		ln -s ../lib/qt6/bin/$(basename $file) $PKG/usr/bin/$(basename $file)-qt6
+		ln -s ../lib/qt6/bin/$(basename $file) $PKG/usr/bin/$(basename $file)
+	done
+}
