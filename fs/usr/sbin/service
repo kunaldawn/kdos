@@ -1,0 +1,130 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+INIT_DIR="/etc/init.d"
+DISABLED_DIR="/etc/service.disabled"
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+list_services() {
+    for script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
+        [ -x "$script" ] || continue
+        echo "$script"
+    done
+}
+
+find_service() {
+    local name="$1"
+    # Exact filename first (e.g. 70_sshd.sh)
+    for script in "${INIT_DIR}"/[0-9][0-9]_"${name}".sh; do
+        [ -x "$script" ] && { echo "$script"; return; }
+    done
+    # Then try partial suffix match
+    for script in "${INIT_DIR}"/[0-9][0-9]_*"${name}"*.sh; do
+        [ -x "$script" ] && { echo "$script"; return; }
+    done
+}
+
+usage() {
+    cat <<EOF
+Usage: service <command> [service-name]
+
+Commands:
+  list              List all available services and their status
+  status <name>     Show status of a specific service
+  start  <name>     Start a service
+  stop   <name>     Stop a service
+  restart <name>    Restart a service (stop then start)
+  enable <name>     Enable a service to start at boot
+  disable <name>    Disable a service from starting at boot
+  help              Show this help message
+
+Examples:
+  service list
+  service status sshd
+  service disable bluetooth
+  service enable network
+EOF
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+case "$1" in
+    list)
+        echo ""
+        echo "KDOS Services"
+        echo "─────────────────────────────────────────────────────────"
+        printf "  %-20s %-12s %s\n" "SERVICE" "AUTOSTART" "STATUS"
+        echo "─────────────────────────────────────────────────────────"
+        for script in $(list_services); do
+            name=$(basename "$script" | sed 's/^[0-9][0-9]_//;s/\.sh$//')
+            autostart="ENABLED"
+            [ -f "${DISABLED_DIR}/${name}" ] && autostart="DISABLED"
+            
+            printf "  %-20s %-12s " "$name" "[$autostart]"
+            "$script" status 2>/dev/null || echo "[UNKN] $name"
+        done
+        echo ""
+        ;;
+
+    status|start|stop|restart)
+        [ -z "$2" ] && { echo "Usage: service $1 <name>"; exit 1; }
+        action="$1"
+        name="$2"
+        script=$(find_service "$name")
+        if [ -z "$script" ]; then
+            echo "Error: Service '$name' not found"
+            exit 1
+        fi
+        [ "$action" == "restart" ] && { echo "Restarting $name..."; "$script" stop; sleep 1; "$script" start; } || "$script" "$action"
+        ;;
+
+    enable)
+        [ -z "$2" ] && { echo "Usage: service enable <name>"; exit 1; }
+        name="$2"
+        script=$(find_service "$name")
+        if [ -z "$script" ]; then
+            echo "Error: Service '$name' not found"
+            exit 1
+        fi
+        rm -f "${DISABLED_DIR}/${name}"
+        echo "Service '$name' enabled."
+        ;;
+
+    disable)
+        [ -z "$2" ] && { echo "Usage: service disable <name>"; exit 1; }
+        name="$2"
+        script=$(find_service "$name")
+        if [ -z "$script" ]; then
+            echo "Error: Service '$name' not found"
+            exit 1
+        fi
+        mkdir -p "$DISABLED_DIR"
+        touch "${DISABLED_DIR}/${name}"
+        echo "Service '$name' disabled."
+        ;;
+
+    help|--help|-h)
+        usage
+        ;;
+
+    "")
+        usage
+        exit 1
+        ;;
+
+    *)
+        echo "Error: Unknown command '$1'"
+        usage
+        exit 1
+        ;;
+esac

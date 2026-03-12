@@ -20,7 +20,9 @@ source="https://gitlab.freedesktop.org/polkit/polkit/-/archive/$version/polkit-$
 build() {
 	export XML_CATALOG_FILES=/etc/xml/catalog
 
-  	meson build \
+  	meson setup build \
+		--prefix=/usr \
+		--libdir=/usr/lib \
 		-Dsystemdsystemunitdir=/trash \
 		-Dsession_tracking="ConsoleKit" \
 		-Dman=false \
