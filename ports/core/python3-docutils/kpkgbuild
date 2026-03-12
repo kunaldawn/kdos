@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Set of tools for processing plaintext docs into formats such as HTML, XML, or LaTeX
+# homepage	: https://docutils.sourceforge.io/
+# depends	: python3-setuptools
+
+name=python3-docutils
+version=0.22.4
+release=1
+source="$name-$version.tar.gz::https://files.pythonhosted.org/packages/source/d/docutils/docutils-$version.tar.gz"
+vendoring=python
+
+build() {
+	mkdir -p vendor
+	tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
+	pip3 install . --ignore-installed --no-deps --find-links=vendor --no-index --root="$PKG" --prefix=/usr
+	for i in $PKG/usr/bin/*.py; do
+		[ -e "$i" ] || continue
+		i=${i##*/}
+		ln -sf $i $PKG/usr/bin/${i%.*}
+	done
+}

@@ -1,0 +1,34 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	    : Cryptographic library for embedded systems
+# homepage	    : https://tls.mbed.org/
+# depends	    : cmake ninja python3
+
+name=mbedtls
+version=4.0.0
+release=1
+source="https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-$version/mbedtls-$version.tar.bz2"
+
+build() {
+	cmake -S . -B build -G Ninja \
+		-D CMAKE_INSTALL_PREFIX=/usr \
+		-D CMAKE_BUILD_TYPE=Release \
+		-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+		-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+		-D ENABLE_ZLIB_SUPPORT=ON \
+		-D USE_SHARED_MBEDTLS_LIBRARY=ON \
+		-D USE_STATIC_MBEDTLS_LIBRARY=ON \
+		-D INSTALL_MBEDTLS_HEADERS=ON \
+		-D MBEDTLS_FATAL_WARNINGS=OFF \
+		-Wno-dev
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}
