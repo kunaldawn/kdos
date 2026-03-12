@@ -8,70 +8,16 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-gzip
-toybox
-xz
-readline
-ncurses
-bash
-make
-flex
-bison
-pkgconf
-autoconf
-automake
-libtool
-texinfo
-bc
-elfutils
-rsync
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-dhcpcd
-rpcsvc-proto
-libtirpc
-iana-etc
-libmnl
-libcap
-iproute2
-python3
-gettext
-git
-nano
-shadow
-less
-procps-ng
-psmisc
-sudo
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
-dconf
-gvfs
-gnome-keyring
-firefox
-nodejs
-gimp
-obs-studio
-vlc
+# description	: C library for encoding, decoding and manipulating JSON data
+
+name=jansson
+version=2.15.0
+release=1
+source="https://github.com/akheron/jansson/releases/download/v$version/$name-$version.tar.bz2"
+
+build() {
+	./configure --prefix=/usr
+	make
+	make DESTDIR=$PKG install
+}
+

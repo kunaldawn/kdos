@@ -1,0 +1,37 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	    : Classes for displaying the contents of SVG files
+# homepage	    : https://www.qt.io/
+# depends	    : qt6-base
+
+name=qt6-svg
+version=6.10.2
+release=1
+source="$name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/qtsvg-everywhere-src-$version.tar.xz"
+
+build() {
+
+	cmake -S . -B build -G Ninja \
+		-D CMAKE_INSTALL_PREFIX=/usr \
+		-D INSTALL_BINDIR=lib/qt6/bin \
+		-D INSTALL_PUBLICBINDIR=usr/bin \
+		-D INSTALL_LIBEXECDIR=lib/qt6 \
+		-D INSTALL_DATADIR=share/qt6 \
+		-D INSTALL_ARCHDATADIR=lib/qt6 \
+		-D INSTALL_INCLUDEDIR=include/qt6 \
+		-D INSTALL_MKSPECSDIR=lib/qt6/mkspecs \
+		-D QT_USE_CCACHE=$(scratch isinstalled ccache && echo ON || echo OFF) \
+		-D CMAKE_BUILD_TYPE=Release \
+		-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+		-D CMAKE_C_FLAGS_RELEASE="$CFLAGS"
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}

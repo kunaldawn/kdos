@@ -1,0 +1,57 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Light-weight programming language designed for extending applications
+
+name=lua
+version=5.5.0
+_majorver=${version%.*}
+release=1
+source="https://www.lua.org/ftp/$name-$version.tar.gz"
+
+build() {
+	sed -i '/#define LUA_ROOT/s:/usr/local/:/usr/:' src/luaconf.h
+	make CC=cc MYCFLAGS="-DLUA_COMPAT_5_2 -DLUA_COMPAT_5_1 -fPIC" linux
+	
+	cd src
+	cc -shared -ldl -Wl,-soname,liblua.so.${_majorver} -o liblua.so.$version -Wl,-whole-archive liblua.a -Wl,-no-whole-archive
+	ln -s liblua.so.$version liblua.so.${_majorver}
+	ln -s liblua.so.$version liblua.so
+	cd ..
+
+	make INSTALL_TOP=$PKG/usr \
+	     TO_LIB="liblua.so liblua.so.$_majorver liblua.so.$version" \
+	     INSTALL_DATA="cp -d" \
+	     INSTALL_MAN=$PKG/usr/share/man/man1 install
+
+	install -d $PKG/usr/lib/pkgconfig
+	cat > $PKG/usr/lib/pkgconfig/lua.pc << "EOF"
+V=$_majorver
+R=$version
+
+prefix=/usr
+INSTALL_BIN=${prefix}/bin
+INSTALL_INC=${prefix}/include
+INSTALL_LIB=${prefix}/lib
+INSTALL_MAN=${prefix}/share/man/man1
+INSTALL_LMOD=${prefix}/share/lua/${V}
+INSTALL_CMOD=${prefix}/lib/lua/${V}
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: Lua
+Description: An Extensible Extension Language
+Version: ${R}
+Requires:
+Libs: -L${libdir} -llua -lm -ldl
+Cflags: -I${includedir}
+EOF
+}

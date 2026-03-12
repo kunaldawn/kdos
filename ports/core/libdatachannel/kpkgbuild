@@ -1,0 +1,43 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: WebRTC Data Channels, WebRTC Media Transport, and WebSockets setup
+# homepage	: https://github.com/paullouisageneau/libdatachannel
+# depends	: openssl
+
+name=libdatachannel
+version=0.24.1
+release=1
+source="libdatachannel-$version.tar.gz::https://github.com/paullouisageneau/libdatachannel/archive/v$version.tar.gz
+	plog-1.1.11.tar.gz::https://github.com/SergiusTheBest/plog/archive/1.1.11.tar.gz
+	usrsctp-0.9.5.0.tar.gz::https://github.com/sctplab/usrsctp/archive/0.9.5.0.tar.gz
+	libsrtp-2.7.0.tar.gz::https://github.com/cisco/libsrtp/archive/v2.7.0.tar.gz
+	libjuice-1.7.0.tar.gz::https://github.com/paullouisageneau/libjuice/archive/v1.7.0.tar.gz
+	json-3.12.0.tar.gz::https://github.com/nlohmann/json/archive/v3.12.0.tar.gz"
+
+build() {
+	rm -rf deps/plog deps/usrsctp deps/libsrtp deps/libjuice deps/json
+	mv ../plog-1.1.11 deps/plog
+	mv ../usrsctp-0.9.5.0 deps/usrsctp
+	mv ../libsrtp-2.7.0 deps/libsrtp
+	mv ../libjuice-1.7.0 deps/libjuice
+	mv ../json-3.12.0 deps/json
+
+	cmake -S . -B build -G Ninja \
+		-D CMAKE_INSTALL_PREFIX=/usr \
+		-D CMAKE_INSTALL_LIBDIR=lib \
+		-D CMAKE_BUILD_TYPE=Release \
+		-D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		-D USE_SYSTEM_OPENSSL=ON \
+		-D NO_EXAMPLES=ON \
+		-D NO_TESTS=ON
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}
