@@ -73,3 +73,5 @@ gnome-keyring
 firefox
 nodejs
 gimp
+obs-studio
+vlc

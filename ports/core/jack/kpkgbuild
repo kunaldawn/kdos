@@ -1,0 +1,45 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: A low-latency audio server
+# depends	: libsamplerate celt
+
+name=jack
+version=1.9.22
+release=1
+source="https://github.com/jackaudio/jack2/archive/v$version/$name-$version.tar.gz
+	waf-2.1.9::https://waf.io/waf-2.1.9"
+
+build() {
+	# Replace bundled waf + waflib with waf-2.1.9 (Python 3.12 compatible)
+	# Removing the local waflib/ forces waf to use its own internal waflib bundle
+	install -m755 ./waf-2.1.9 ./waf
+	rm -rf waflib
+	# Remove macOS-only xcode6 tool load (not available in waf 2.1.9 on Linux)
+	sed -i "/opt.load('xcode6')/d" wscript
+	./waf configure \
+		--prefix=/usr \
+		--alsa
+	./waf build
+	./waf install --destdir=$PKG
+
+	mkdir -p $PKG/etc/security/limits.d
+	cat << EOF > $PKG/etc/security/limits.d/99-audio.conf
+@audio 	- rtprio 	99
+@audio 	- memlock 	unlimited
+EOF
+
+	mkdir -p $PKG/lib/udev/rules.d
+	cat << EOF > $PKG/lib/udev/rules.d/40-hpet-permissions.rules
+KERNEL=="rtc0", GROUP="audio"
+KERNEL=="hpet", GROUP="audio"
+EOF
+}
+

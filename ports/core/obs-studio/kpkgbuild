@@ -1,0 +1,92 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	    : Open Broadcaster Software Studio
+# homepage	    : https://obsproject.com/
+# depends	    : vlc libdatachannel libvpl nv-codec-headers extra-cmake-modules simde uthash fdk-aac ffmpeg jansson libgmp mbedtls qt6-base qt6-svg speexdsp swig x264 luajit v4l-utils jack pipewire pciutils libva nlohmann-json
+# optional	    : pulseaudio wayland-protocols x265
+
+name=obs-studio
+version=32.0.4
+release=1
+source="https://github.com/obsproject/$name/archive/$version/$name-$version.tar.gz"
+
+build() {
+	kpkg info ccache >/dev/null 2>&1 && PATH="$(echo ${PATH} | awk -v RS=: \
+		-v ORS=: '/ccache/ {next} {print}' | sed 's/:*$//')"
+
+	# Stub out unused plugin CMakeLists to prevent cmake errors (BUILD_BROWSER=OFF)
+	mkdir -p plugins/obs-browser plugins/obs-websocket
+	touch plugins/obs-browser/CMakeLists.txt
+	touch plugins/obs-websocket/CMakeLists.txt
+
+	# Fix missing Qt::GuiPrivate module in KDOS qt6-base
+	find . -type f -name 'CMakeLists.txt' -o -name '*.cmake' | xargs sed -i 's/Qt::GuiPrivate//g'
+	find . -type f -name 'CMakeLists.txt' -o -name '*.cmake' | xargs sed -i 's/.*GuiPrivate.*//g'
+
+	export QT_QPA_PLATFORMTHEME="qt6ct"
+
+	# Workaround for Mbed TLS 4.0.0 private headers and removed APIs
+	mkdir -p compat/mbedtls
+	ln -sf /usr/include/mbedtls/private/*.h compat/mbedtls/
+	cat <<EOF > compat/mbedtls_fix.h
+#ifndef MBEDTLS_FIX_H
+#define MBEDTLS_FIX_H
+#include <mbedtls/ssl.h>
+#include <psa/crypto.h>
+#ifndef mbedtls_ssl_conf_rng
+#define mbedtls_ssl_conf_rng(conf, f_rng, p_rng) ((void)0)
+#endif
+#undef mbedtls_ssl_init
+#define mbedtls_ssl_init(ssl) do { psa_crypto_init(); (mbedtls_ssl_init)(ssl); } while(0)
+#endif
+EOF
+	export CFLAGS="$CFLAGS -I$PWD/compat -DMBEDTLS_ALLOW_PRIVATE_ACCESS -include $PWD/compat/mbedtls_fix.h"
+	export CXXFLAGS="$CXXFLAGS -I$PWD/compat -DMBEDTLS_ALLOW_PRIVATE_ACCESS -include $PWD/compat/mbedtls_fix.h"
+
+	rm -rf build
+	cmake -S . -B build -G Ninja \
+		-D CMAKE_INSTALL_PREFIX=/usr \
+		-D CMAKE_INSTALL_LIBDIR=lib \
+		-D CMAKE_INSTALL_LIBEXECDIR=lib \
+		-D CMAKE_BUILD_TYPE=Release \
+		-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS" \
+		-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+		-D OBS_VERSION_OVERRIDE="$version" \
+		-D UNIX_STRUCTURE=ON \
+		-D ENABLE_VLC=ON \
+		-D ENABLE_AJA=OFF \
+		-D ENABLE_VST=ON \
+		-D ENABLE_JACK=ON \
+		-D ENABLE_NEW_MPEGTS_OUTPUT=OFF \
+		-D ENABLE_WEBRTC=ON \
+		-D BUILD_BROWSER=OFF \
+		-D ENABLE_LIBFDK=ON \
+		-D ENABLE_PIPEWIRE=ON \
+		-D ENABLE_PULSEAUDIO=$(kpkg info pulseaudio >/dev/null 2>&1 && echo ON || echo OFF) \
+		-D ENABLE_WAYLAND=$(kpkg info wayland-protocols >/dev/null 2>&1 && echo ON || echo OFF) \
+		-D ENABLE_QSV11=ON \
+		-D ENABLE_DECKLINK=OFF \
+		-D CALM_DEPRECATION=ON \
+		-D CMAKE_COMPILE_WARNING_AS_ERROR=OFF \
+		-D ENABLE_LTO=OFF \
+		-Wno-dev
+
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+
+	find $PKG -type d -exec chmod g-w '{}' \;
+
+	find $PKG/usr/share/obs \
+		-iname '*ini' \
+		! -iname 'en-*.ini' \
+		! -iname 'locale.ini' \
+		-exec rm '{}' \+
+}

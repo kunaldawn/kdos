@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Video Acceleration (VA) API for Linux
+# homepage	: https://01.org/linuxmedia/vaapi
+# depends	: libdrm xorgproto libxext libxfixes
+# optional	: wayland-protocols wayland
+
+name=libva
+version=2.23.0
+release=1
+source="$name-$version.tar.gz::https://github.com/intel/libva/archive/$version.tar.gz"
+
+build() {
+	kpkg info wayland-protocols >/dev/null 2>&1 && WAYLAND="yes" || WAYLAND="no"
+
+	meson . build \
+		-D prefix=/usr \
+		-D libdir=lib \
+		-D sysconfdir=/etc \
+		-D with_wayland=$WAYLAND
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}
