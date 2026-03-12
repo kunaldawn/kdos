@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#
+# service_helper - Shared service management functions
+# Source this file from individual service scripts via:
+#   . /etc/init.d/service_helper
+
+# ── Directories ──────────────────────────────────────────────────────────────
+RUNDIR="/run"
+
+# ── supervise ─────────────────────────────────────────────────────────────────
+# Launch a daemon under a supervision loop that automatically restarts it if it
+# exits, writing the supervisor PID to /run/<name>.pid.
+#
+# Usage: supervise <name> <command> [args...]
+#   name    - Service name (used for PID file and log messages)
+#   command - Full command to run (must run in foreground / not daemonise)
+supervise() {
+    local name="$1"
+    shift
+    local command="$@"
+
+    (
+        while true; do
+            echo "[KDOS] ($name) Starting: $command"
+            $command
+            local rc=$?
+            echo "[KDOS] ($name) Exited with code $rc. Restarting in 5s..."
+            sleep 5
+        done
+    ) &
+
+    local superpid=$!
+    echo "$superpid" > "${RUNDIR}/${name}.pid"
+    echo "[KDOS] ($name) Supervisor started (pid $superpid)"
+}
+
+# ── stop_service ──────────────────────────────────────────────────────────────
+# Stop a supervised service by killing its supervisor process group.
+#
+# Usage: stop_service <name>
+stop_service() {
+    local name="$1"
+    local pidfile="${RUNDIR}/${name}.pid"
+
+    if [ ! -f "$pidfile" ]; then
+        echo "[KDOS] ($name) Not running (no PID file)"
+        return 1
+    fi
+
+    local pid
+    pid=$(cat "$pidfile")
+
+    # Kill the entire process group so the supervised child dies too
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "[KDOS] ($name) Stopping (pid $pid)..."
+        kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null
+        sleep 1
+        kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+        rm -f "$pidfile"
+        echo "[KDOS] ($name) Stopped"
+    else
+        echo "[KDOS] ($name) Process $pid not found, removing stale PID file"
+        rm -f "$pidfile"
+        return 1
+    fi
+}
+
+# ── check_status ──────────────────────────────────────────────────────────────
+# Report whether a service is running.
+#
+# Usage: check_status <name>
+check_status() {
+    local name="$1"
+    local pidfile="${RUNDIR}/${name}.pid"
+
+    if [ -f "$pidfile" ]; then
+        local pid
+        pid=$(cat "$pidfile")
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "[ OK ] $name  (pid $pid)"
+            return 0
+        fi
+    fi
+    echo "[DOWN] $name"
+    return 1
+}
