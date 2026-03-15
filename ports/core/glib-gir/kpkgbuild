@@ -19,6 +19,7 @@ source="https://download.gnome.org/sources/glib/${version%.*}/glib-$version.tar.
 build() {
 	meson setup build \
 		--prefix=/usr \
+		--libdir=/usr/lib \
 		--buildtype=release \
 		-D documentation=false \
 		-D nls=disabled \

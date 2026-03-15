@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Interface to enumerating power devices, listening to device events and querying history and statistics
-# depends	: dbus-glib libgudev libusb polkit gobject-introspection meson
+# depends	: dbus-glib libgudev libusb polkit glib-gir gobject-introspection meson
 
 name=upower
 version=1.91.0

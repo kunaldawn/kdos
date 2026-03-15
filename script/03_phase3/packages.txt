@@ -19,6 +19,8 @@ make
 flex
 bison
 pkgconf
+gettext
+intltool
 autoconf
 automake
 libtool
@@ -26,6 +28,7 @@ texinfo
 bc
 elfutils
 rsync
+python3
 refind
 libburn
 libisofs
@@ -45,6 +48,8 @@ iproute2
 shadow
 sudo
 glib
+gobject-introspection
+glib-gir
 dbus
 
 # Service Infrastructure
@@ -62,8 +67,6 @@ dhcpcd
 alsa-utils
 
 # High-level libraries & Tools
-python3
-gettext
 git
 nano
 less
