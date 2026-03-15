@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: GLib interfaces to the D-Bus API
-# depends	: dbus glib
+# depends	: dbus glib glib-gir gobject-introspection
 
 name=dbus-glib
 version=0.114

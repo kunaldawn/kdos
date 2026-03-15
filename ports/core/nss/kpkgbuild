@@ -36,6 +36,11 @@ build() {
 	install -v -m644 Linux*/lib/*.chk $PKG/usr/lib
 	install -v -m644 Linux*/lib/*.a $PKG/usr/lib
 
+	# Remove conflicting libssl.a (NSS's version conflicts with OpenSSL)
+	# NSS uses libssl3.so/libssl3.a (via pkg-config) so this generic name 
+	# is only produced internally and shouldn't be installed globally.
+	rm -v -f $PKG/usr/lib/libssl.a
+
 	install -m755 -d $PKG/usr/include/nss
 	cp -v -RL public/nss/* $PKG/usr/include/nss
 	cp -v -RL private/nss/* $PKG/usr/include/nss

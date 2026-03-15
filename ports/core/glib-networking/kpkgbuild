@@ -18,8 +18,16 @@ source="https://ftp.gnome.org/pub/gnome/sources/$name/${version%.*}/$name-$versi
 
 build() {
 	meson build --prefix=/usr \
+		--libdir=/usr/lib \
 		-Dlibproxy=disabled \
 		-Dgnutls=enabled
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
+}
+
+postinstall() {
+	if [ -d /usr/lib/gio/modules ]; then
+		echo "Updating GIO module cache..."
+		/usr/bin/gio-querymodules /usr/lib/gio/modules
+	fi
 }

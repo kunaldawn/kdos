@@ -21,6 +21,7 @@ build() {
 
 	./configure \
 		--prefix=/usr \
+		--libdir=/usr/lib \
 		--disable-linux-getdents \
 		--disable-static
 
