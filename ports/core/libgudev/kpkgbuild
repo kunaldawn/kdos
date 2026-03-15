@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: GObject bindings for libudev
-# depends	: glib
+# depends	: glib glib-gir gobject-introspection
 
 name=libgudev
 version=238

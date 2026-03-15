@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Framework for keeping track of the various users, sessions, and seats present on a system
-# depends	: dbus-glib linux-pam polkit libx11
+# depends	: dbus-glib linux-pam polkit libx11 glib-gir gobject-introspection
 
 name=consolekit2
 version=1.2.6

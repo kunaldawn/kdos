@@ -10,6 +10,7 @@
 
 # description	: A stream oriented C library for parsing XML
 # homepage	: https://libexpat.github.io
+# depends	: autoconf automake libtool
 
 name=expat
 version=2.7.3

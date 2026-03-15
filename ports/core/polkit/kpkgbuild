@@ -10,7 +10,7 @@
 
 # description	    : Toolkit for defining and handling authorizations
 # homepage	    : https://freedesktop.org/software/polkit
-# depends	    : glib duktape linux-pam gobject-introspection intltool
+# depends	    : glib glib-gir duktape linux-pam gobject-introspection intltool gettext
 
 name=polkit
 version=124

@@ -19,6 +19,7 @@ source="https://ftp.gnome.org/pub/gnome/sources/$name/${version%.*}/$name-$versi
 build() {
 	meson setup build \
 		--prefix=/usr \
+		--libdir=/usr/lib \
 		--buildtype=release
 		
 	meson compile -C build
