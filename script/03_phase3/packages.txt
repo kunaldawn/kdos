@@ -7,92 +7,127 @@
 # ---------------------------------
 #   KD's Homebrew Linux Distro
 # ---------------------------------
+#   Phase 3: Developer Toolchain
+# ---------------------------------
+#
+# This is the heart of KDOS. The system is self-hosting: Phase 3
+# provides every compiler, build system, language runtime, and
+# spec-tooling needed to rebuild KDOS from KDOS.
 
-# Core Build Utilities
-gzip
-toybox
-xz
-readline
-ncurses
-bash
+# ---------------------------------
+# Build Toolchain
+# ---------------------------------
+musl
+gcc
+binutils
 make
-flex
-bison
 pkgconf
-gettext
-intltool
+libtool
 autoconf
 automake
-libtool
-texinfo
+m4
+bison
+flex
+
+# ---------------------------------
+# Modern Build Systems
+# ---------------------------------
+cmake
+meson
+ninja
+
+# ---------------------------------
+# Languages & Runtimes
+# ---------------------------------
+python3
+perl
+lua
+nodejs
+rust
+cargo-c
+cbindgen
+bindgen
+yasm
+nasm
+swig
+cython3
+# Additional languages (kpkgbuild scaffolds — verify build in chroot):
+go
+zig
+
+# ---------------------------------
+# Alternative compilers / linkers
+# ---------------------------------
+# clang and llvm are kept as developer tools (not strictly needed
+# for self-hosting). Useful for projects that prefer LLVM, and
+# `lldb` debugger ships with llvm.
+clang
+llvm
+lld
+
+# ---------------------------------
+# Essential Utilities
+# ---------------------------------
+bash
+toybox
+diffutils
+patch
+findutils
+gawk
+tar
+xz
+gzip
+bzip2
+zstd
+lzo
+lz4
+libarchive
+
+# ---------------------------------
+# Network & Security
+# ---------------------------------
+curl
+git
+ca-certificates
+openssl
+
+# ---------------------------------
+# Base Libraries & Database
+# ---------------------------------
+zlib
+expat
+libffi
+libxml2
+libxslt
+sqlite
+ncurses
+readline
+
+# ---------------------------------
+# System Infrastructure
+# ---------------------------------
+util-linux
+shadow
+linux-pam
+kmod
+eudev
+attr
+acl
+libcap
 bc
 elfutils
-rsync
-python3
-refind
-libburn
-libisofs
-libisoburn
-squashfs-tools
-mtools
-eudev
-dosfstools
-e2fsprogs
-util-linux
-gptfdisk
-sqlite
-iana-etc
-libmnl
-libcap
-iproute2
-shadow
-sudo
-glib
-gobject-introspection
-glib-gir
-dbus
+gperf
+intltool
+itstool
+gettext
+patchelf
+ccache
 
-# Service Infrastructure
-libgudev
-consolekit2
-polkit
-udisks2
-upower
-bluez
-openssh
-cups
-
-# Core Services
-dhcpcd
-alsa-utils
-
-# High-level libraries & Tools
-git
-nano
-less
-procps-ng
-psmisc
-pciutils
-usbutils
-tree
-htop
-tmux
-byobu
-btop
-kbd
-terminus-font
-dwm
-st
-llvm
-xorg
-xfce4
-dconf
-gvfs
-gnome-keyring
-firefox
-nodejs
-gimp
-obs-studio
-vlc
-rpcsvc-proto
-libtirpc
+# ---------------------------------
+# Documentation & Spec Tooling
+# ---------------------------------
+asciidoc
+xmlto
+docbook-xml
+docbook-xsl
+scdoc

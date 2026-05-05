@@ -1,0 +1,44 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: The Go programming language toolchain (with bootstrap)
+# homepage	: https://go.dev/
+# depends	: bash gcc
+
+name=go
+version=1.26.2
+release=1
+_bootstrap=1.25.9
+_arch=linux-amd64
+
+# Go bootstraps from a prior Go toolchain. We download the official
+# upstream prebuilt linux-amd64 tarball; it's glibc-linked so it
+# needs the gcompat shim to run on musl. The src tarball is built
+# with GOROOT_BOOTSTRAP pointed at the extracted bootstrap tree.
+source="https://go.dev/dl/go$version.src.tar.gz
+	https://go.dev/dl/go$_bootstrap.$_arch.tar.gz"
+
+build() {
+	cd src
+	export GOROOT_BOOTSTRAP="$SRC_ROOT/go"
+	export GOROOT_FINAL=/usr/lib/go
+	export GOOS=linux GOARCH=amd64
+	export CGO_ENABLED=1
+
+	./make.bash
+
+	cd ..
+	install -d $PKG/usr/lib/go
+	cp -a bin pkg src lib api $PKG/usr/lib/go/
+	[ -d misc ] && cp -a misc $PKG/usr/lib/go/
+	install -d $PKG/usr/bin
+	ln -s /usr/lib/go/bin/go $PKG/usr/bin/go
+	ln -s /usr/lib/go/bin/gofmt $PKG/usr/bin/gofmt
+}

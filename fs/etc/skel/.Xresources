@@ -1,0 +1,43 @@
+! KDOS Xresources — NeXT-leaning palette for st and other Xlib apps.
+! Loaded by ~/.xinitrc via `xrdb -merge`.
+
+! ----- st (suckless terminal) -----
+st.font:           Terminus:size=12
+st.font2:          DejaVu Sans Mono:size=11
+st.alpha:          1.0
+st.borderpx:       4
+
+! NeXTSTEP-ish dark gray palette
+st.background:     #1a1a1a
+st.foreground:     #d8d8d8
+st.cursorColor:    #d8d8d8
+
+! 16-color base
+st.color0:         #1a1a1a
+st.color1:         #b56565
+st.color2:         #8aae5e
+st.color3:         #c19a4b
+st.color4:         #6585a3
+st.color5:         #9b6b9e
+st.color6:         #6ea0a0
+st.color7:         #b5b5b5
+st.color8:         #4a4a4a
+st.color9:         #d27a7a
+st.color10:        #a4ce71
+st.color11:        #dcb461
+st.color12:        #84a3c4
+st.color13:        #b988b9
+st.color14:        #8cc0c0
+st.color15:        #e6e6e6
+
+! ----- Xft general -----
+Xft.dpi:           96
+Xft.antialias:     true
+Xft.hinting:       true
+Xft.hintstyle:     hintslight
+Xft.rgba:          rgb
+Xft.lcdfilter:     lcddefault
+
+! ----- xterm fallback (only if installed) -----
+XTerm*faceName:    DejaVu Sans Mono
+XTerm*faceSize:    11
