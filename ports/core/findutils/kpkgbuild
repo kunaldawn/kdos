@@ -16,6 +16,8 @@ release=1
 source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
 
 build() {
+	sed -i 's/updatedb.sh \\/updatedb.sh | \\/' locate/Makefile.am
+	sed -i 's/updatedb.sh \\/updatedb.sh | \\/' locate/Makefile.in
 	./configure --prefix=/usr \
 	            --localstatedir=/var/lib/locate
 	make

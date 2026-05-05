@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: wireguard-tools — userspace tooling (wg, wg-quick) for WireGuard VPN
+# homepage	: https://www.wireguard.com/
+
+name=wireguard-tools
+version=1.0.20260223
+release=1
+source="https://git.zx2c4.com/wireguard-tools/snapshot/wireguard-tools-$version.tar.xz"
+
+build() {
+	cd src
+	make WITH_WGQUICK=yes WITH_BASHCOMPLETION=yes WITH_SYSTEMDUNITS=no
+	make WITH_WGQUICK=yes WITH_BASHCOMPLETION=yes WITH_SYSTEMDUNITS=no \
+	     DESTDIR=$PKG PREFIX=/usr SYSCONFDIR=/etc install
+}

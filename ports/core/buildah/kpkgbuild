@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Build OCI / Docker container images
+# homepage	: https://buildah.io/
+# depends	: go libseccomp libgpgme
+
+name=buildah
+version=1.43.1
+release=1
+source="https://github.com/containers/buildah/archive/v$version.tar.gz"
+
+build() {
+	# Buildah's Makefile has no install.bin target; install chains docs which
+	# would need go-md2man. Build the binary, then install it by hand.
+	export BUILDTAGS="seccomp exclude_graphdriver_btrfs exclude_graphdriver_devicemapper"
+
+	make BUILDTAGS="$BUILDTAGS" PREFIX=/usr buildah
+	install -Dm755 bin/buildah $PKG/usr/bin/buildah
+
+	make BUILDTAGS="$BUILDTAGS" DESTDIR=$PKG PREFIX=/usr install.completions
+}

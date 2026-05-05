@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Text document format for short documents, articles, books and UNIX man pages
-# depends	: docbook-xml python3-pip libxslt python3-setuptools
+# depends	: docbook-xml python3-pip libxslt python3-setuptools docbook-xsl
 
 name=asciidoc
 version=10.2.1

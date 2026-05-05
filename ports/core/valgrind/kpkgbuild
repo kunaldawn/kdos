@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: valgrind — instrumentation framework for memory tools
+# homepage	: https://valgrind.org/
+# depends	: gcc
+
+# NOTE: valgrind has a long history of musl compatibility issues. Several
+# patches from upstream / musl-distros are typically needed. This is a
+# best-effort scaffold; expect to iterate.
+
+name=valgrind
+version=3.27.0
+release=1
+source="https://sourceware.org/pub/valgrind/valgrind-$version.tar.bz2"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--mandir=/usr/share/man
+	make
+	make DESTDIR=$PKG install
+}

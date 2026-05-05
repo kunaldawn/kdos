@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: iftop — display bandwidth usage on a network interface
+# homepage	: https://www.ex-parrot.com/pdw/iftop/
+# depends	: libpcap ncurses
+
+name=iftop
+version=1.0pre4
+release=1
+source="https://www.ex-parrot.com/pdw/iftop/download/iftop-$version.tar.gz"
+
+build() {
+	./configure --prefix=/usr --mandir=/usr/share/man CFLAGS="$CFLAGS -fcommon"
+	make
+	make DESTDIR=$PKG install
+}
