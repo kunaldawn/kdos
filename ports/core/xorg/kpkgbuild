@@ -8,18 +8,20 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Meta port for Xorg
-# depends	: util-macros xorgproto libxau libxdmcp xorg-libraries xcb-util
-# depends	: xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm
-# depends	: xcb-util-cursor mesa xbitmaps xorg-applications xcursor-themes
-# depends	: xorg-fonts xkeyboard-config xorg-server xf86-input-evdev libinput
-# depends	: twm xterm xclock xinit ttf-dejavu xf86-input-libinput
+# description	: Slim Xorg meta — server + libinput + KMS modesetting + minimal utils.
+# description	: No xf86-video-* (modesetting is built into the server),
+# description	: no legacy bitmap fonts, no demo apps, no xterm, no xclock.
+# depends	: util-macros xorgproto libxau libxdmcp xorg-libraries
+# depends	: xcb-util xcb-util-image xcb-util-keysyms xcb-util-renderutil
+# depends	: xcb-util-wm xcb-util-cursor mesa
+# depends	: xkeyboard-config xorg-server xf86-input-libinput libinput
+# depends	: xinit xauth xkbcomp ttf-dejavu xcursor-themes
+# depends	: xrandr xrdb xset xsetroot setxkbmap xprop
 
 name=xorg
 version=1.0
-release=1
+release=2
 
 build() {
 	mkdir -pv $PKG/etc
 }
-

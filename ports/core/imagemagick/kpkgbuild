@@ -8,37 +8,52 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: ImageMagick is a collection of tools and libraries to read, write, and manipulate an image in various image formats
-# homepage	: https://imagemagick.org/ 
-# depends	: fontconfig lcms2 libtool libxext libxt perl libxml2 librsvg libjpeg-turbo libpng libtiff libwebp openjpeg2 pango zlib bzip2 xz
+# description	: ImageMagick — convert, edit, and compose raster images (provides `convert`)
+# homepage	: https://imagemagick.org/
+# depends	: libpng libjpeg-turbo libtiff libwebp giflib freetype2 fontconfig libxml2 zlib pango libx11 libxext
 
 name=imagemagick
-version=7.1.2.15
-vrsn=${version%.*}-${version##*.}
+version=7.1.2.21
 release=1
-source="$name-$version.tar.xz::https://imagemagick.org/archive/releases/ImageMagick-${vrsn}.tar.xz"
-KEEP_LIBTOOL="yes"
+# Upstream tags use a hyphen (7.1.2-21); kpkg's package-name parser
+# treats hyphens as version separators, so we keep the dotted form
+# internally and reconstruct the hyphen for the download URL only.
+_imver=${version%.*}-${version##*.}
+source="https://imagemagick.org/archive/releases/ImageMagick-$_imver.tar.xz"
 
-build() {	
-	./configure --prefix=/usr     \
-	            --sysconfdir=/etc \
-	            --enable-hdri     \
-	            --without-modules \
-	            --with-perl       \
-	            --disable-static  \
-	            --with-lzma       \
-	            --with-bzlib      \
-	            --with-zlib       \
-	            --with-openjp2    \
-	            --with-pango      \
-	            --with-rsvg       \
-	            --with-webp       \
-	            --with-xml        \
-	            --with-fontconfig \
-	            --with-freetype   \
-	            --with-x          \
-	            --with-lcms       \
-				--without-openexr
+build() {
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--mandir=/usr/share/man \
+		--with-modules \
+		--with-threads \
+		--with-png \
+		--with-jpeg \
+		--with-tiff \
+		--with-webp \
+		--with-zlib \
+		--with-xml \
+		--with-freetype \
+		--with-fontconfig \
+		--with-pango \
+		--with-x \
+		--without-perl \
+		--without-fftw \
+		--without-djvu \
+		--without-fpx \
+		--without-gslib \
+		--without-gvc \
+		--without-heic \
+		--without-jxl \
+		--without-lcms \
+		--without-lqr \
+		--without-openexr \
+		--without-openjp2 \
+		--without-raqm \
+		--without-raw \
+		--without-rsvg \
+		--without-wmf
 	make
 	make DESTDIR=$PKG install
 }

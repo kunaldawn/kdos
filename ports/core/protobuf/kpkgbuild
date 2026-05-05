@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Protocol Buffers — Google's language-neutral data interchange format
+# homepage	: https://protobuf.dev/
+# depends	: zlib
+
+name=protobuf
+version=34.1
+release=1
+source="https://github.com/protocolbuffers/protobuf/archive/v$version.tar.gz
+	https://github.com/abseil/abseil-cpp/archive/refs/tags/20250512.1.tar.gz#/abseil-cpp-20250512.1.tar.gz"
+
+build() {
+	mkdir build
+	cd build
+	cmake .. \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_BUILD_TYPE=Release \
+		-Dprotobuf_BUILD_TESTS=OFF \
+		-Dprotobuf_BUILD_SHARED_LIBS=ON \
+		-DFETCHCONTENT_SOURCE_DIR_ABSL="$SRC_ROOT/abseil-cpp-20250512.1"
+	make
+	make DESTDIR=$PKG install
+}

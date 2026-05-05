@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: xh — friendly and fast tool for sending HTTP requests (httpie alt)
+# homepage	: https://github.com/ducaale/xh
+# depends	: rust
+
+name=xh
+version=0.25.3
+release=1
+source="https://github.com/ducaale/xh/archive/v$version.tar.gz"
+vendoring=rust
+
+build() {
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+
+	cargo build --release --frozen --offline
+	install -Dm755 target/release/xh $PKG/usr/bin/xh
+	ln -s xh $PKG/usr/bin/xhs
+}
