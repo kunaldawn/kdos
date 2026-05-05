@@ -1,0 +1,23 @@
+#!/bin/sh
+# Window Maker autostart — run on session start.
+# Add background apps and dockapps here.
+
+# Set a wallpaper if hsetroot or feh is available
+if command -v hsetroot >/dev/null; then
+	hsetroot -solid '#1a1a1a' &
+elif command -v feh >/dev/null && [ -f "$HOME/.config/wallpaper.png" ]; then
+	feh --bg-fill "$HOME/.config/wallpaper.png" &
+fi
+
+# NeXT-style dockapps (uncomment what you have installed)
+# wmclock &
+# wmcpuload &
+# wmmemload &
+# wmnet &
+# wmix &
+# wmbattery &
+
+# Optional: start an ssh-agent into the session
+if [ -z "$SSH_AUTH_SOCK" ] && command -v ssh-agent >/dev/null; then
+	eval "$(ssh-agent -s)"
+fi

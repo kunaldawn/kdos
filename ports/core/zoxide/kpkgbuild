@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: zoxide — a smarter cd command for your terminal
+# homepage	: https://github.com/ajeetdsouza/zoxide
+# depends	: rust
+
+name=zoxide
+version=0.9.9
+release=1
+source="https://github.com/ajeetdsouza/zoxide/archive/v$version.tar.gz"
+vendoring=rust
+
+build() {
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+
+	cargo build --release --frozen --offline
+	install -Dm755 target/release/zoxide $PKG/usr/bin/zoxide
+}

@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Version control system designed to handle everything from small to very large projects with speed and efficiency
-# depends	: curl openssl perl python3
+# depends	: curl openssl perl python3 gettext
 
 name=git
 version=2.52.0

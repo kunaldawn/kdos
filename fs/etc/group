@@ -30,7 +30,6 @@ audio:x:63:
 nobody:x:99:
 users:x:100:
 network:x:101:
-polkitd:x:998:
 messagebus:x:997:
 sshd:x:996:
 lpadmin:x:995:

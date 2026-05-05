@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Wrapper around podman/docker to spawn dev-friendly mutable containers
+# homepage	: https://distrobox.it/
+# depends	: bash podman
+
+name=distrobox
+version=1.8.2.5
+release=1
+source="https://github.com/89luca89/distrobox/archive/$version.tar.gz"
+
+build() {
+	./install --prefix /usr -D $PKG
+}

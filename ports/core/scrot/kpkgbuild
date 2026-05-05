@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Command-line screenshot tool (Xlib + imlib2)
+# homepage	: https://github.com/resurrecting-open-source-projects/scrot
+# depends	: imlib2 libx11 libxcomposite libxfixes
+
+name=scrot
+version=2.0.0
+release=1
+source="https://github.com/resurrecting-open-source-projects/scrot/releases/download/$version/scrot-$version.tar.gz"
+
+build() {
+	./configure --prefix=/usr --mandir=/usr/share/man
+	make
+	make DESTDIR=$PKG install
+}

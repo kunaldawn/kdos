@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: nsxiv — Neo Simple X Image Viewer (sxiv fork)
+# homepage	: https://codeberg.org/nsxiv/nsxiv
+# depends	: imlib2 libx11 libxft libexif
+
+name=nsxiv
+version=34
+release=1
+source="https://codeberg.org/nsxiv/nsxiv/archive/v$version.tar.gz"
+
+build() {
+	make PREFIX=/usr CC=cc
+	make PREFIX=/usr DESTDIR=$PKG install
+}

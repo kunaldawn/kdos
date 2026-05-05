@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: dust — a more intuitive du in Rust
+# homepage	: https://github.com/bootandy/dust
+# depends	: rust
+
+name=dust
+version=1.2.4
+release=1
+source="https://github.com/bootandy/dust/archive/v$version.tar.gz"
+vendoring=rust
+
+build() {
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+
+	cargo build --release --frozen --offline
+	install -Dm755 target/release/dust $PKG/usr/bin/dust
+}

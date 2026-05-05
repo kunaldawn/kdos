@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: tcpdump — command-line packet analyzer
+# homepage	: https://www.tcpdump.org/
+# depends	: libpcap openssl
+
+name=tcpdump
+version=4.99.6
+release=1
+source="https://www.tcpdump.org/release/tcpdump-$version.tar.xz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--mandir=/usr/share/man \
+		--with-crypto
+	make
+	make DESTDIR=$PKG install
+}

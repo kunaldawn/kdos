@@ -1,0 +1,33 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: GNU Debugger
+# homepage	: https://www.gnu.org/software/gdb/
+# depends	: ncurses readline expat python3 mpfr gmp
+
+name=gdb
+version=17.1
+release=1
+source="https://ftp.gnu.org/gnu/gdb/gdb-$version.tar.xz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--mandir=/usr/share/man \
+		--infodir=/usr/share/info \
+		--with-system-readline \
+		--with-python=/usr/bin/python3 \
+		--enable-tui \
+		--disable-nls \
+		--disable-werror
+	make CPPFLAGS="-DHAVE_ASM_TERMIOS_H=1 -DTCGETS2=0x802c542a -DTCSETS2=0x402c542b"
+	make DESTDIR=$PKG install
+}
