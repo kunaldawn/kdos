@@ -9,6 +9,11 @@
 # ---------------------------------
 
 build/
+build_test/
 __pycache__/
 ports-archived/
 port-archive.sh
+
+# Testing runtime artifacts
+testing/logs/
+testing/test_results.json

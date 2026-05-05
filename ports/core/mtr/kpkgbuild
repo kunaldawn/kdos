@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: mtr — combined ping and traceroute
+# homepage	: https://www.bitwizard.nl/mtr/
+# depends	: ncurses libcap
+
+name=mtr
+version=0.96
+release=1
+source="https://www.bitwizard.nl/mtr/files/mtr-$version.tar.gz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--mandir=/usr/share/man \
+		--without-gtk \
+		--with-ipinfo
+	make
+	make DESTDIR=$PKG install
+}

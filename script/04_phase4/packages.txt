@@ -7,5 +7,190 @@
 # ---------------------------------
 #   KD's Homebrew Linux Distro
 # ---------------------------------
+#   Phase 4: User-space + GUI sliver
+# ---------------------------------
+#
+# This phase installs the rest of the user-space:
+#   - core build/runtime utilities and ISO tooling
+#   - infrastructure for service management (dbus only — polkit/udisks/etc. archived)
+#   - power-user CLI tools (the actual workspace)
+#   - container layer (podman + distrobox) for fat alien apps
+#   - slim Xorg + Window Maker for the rare GUI session
+#
+# See plan.md for the architecture rationale.
 
-linux
+# ---------------------------------
+# Core Build Utilities (host-side)
+# ---------------------------------
+gzip
+toybox
+xz
+readline
+ncurses
+bash
+make
+flex
+bison
+pkgconf
+gettext
+intltool
+autoconf
+automake
+libtool
+texinfo
+bc
+elfutils
+rsync
+python3
+refind
+libburn
+libisofs
+libisoburn
+squashfs-tools
+mtools
+eudev
+dosfstools
+e2fsprogs
+util-linux
+gptfdisk
+sqlite
+iana-etc
+libcap
+iproute2
+shadow
+sudo
+glib
+
+# ---------------------------------
+# Core Services
+# ---------------------------------
+dbus
+
+# ---------------------------------
+# Network / SSH / Audio / Bluetooth / Print
+# ---------------------------------
+dhcpcd
+openssh
+alsa-utils
+bluez
+cups
+
+# ---------------------------------
+# Power-User CLI base
+# ---------------------------------
+git
+nano
+less
+procps-ng
+psmisc
+pciutils
+usbutils
+tree
+htop
+btop
+tmux
+byobu
+kbd
+terminus-font
+
+# ---------------------------------
+# Modern CLI tools (Rust / Go)
+# ---------------------------------
+ripgrep
+fd
+fzf
+bat
+eza
+jq
+yq
+delta
+lazygit
+gh
+just
+direnv
+starship
+zoxide
+dust
+duf
+procs
+bottom
+xh
+ncdu
+
+# ---------------------------------
+# Editors / TUI
+# ---------------------------------
+neovim
+micro
+mc
+lf
+
+# ---------------------------------
+# Debug / trace / profile
+# ---------------------------------
+gdb
+valgrind
+strace
+ltrace
+lsof
+iotop
+iftop
+
+# ---------------------------------
+# Network tools
+# ---------------------------------
+mosh
+nmap
+tcpdump
+iperf3
+wireguard-tools
+socat
+netcat
+mtr
+
+# ---------------------------------
+# Slim Xorg + Window Maker (GUI sliver)
+# ---------------------------------
+# Window Maker (NeXTSTEP-style stacking WM, no GTK/Qt linkage)
+# is the entire GUI. Apps below are pure-Xlib utilities.
+xorg
+wmaker
+wmaker-extra
+wmclock
+wmcpuload
+wmmemload
+wmnet
+wmix
+wmbattery
+nsxiv
+mupdf
+scrot
+dunst
+xclip
+xdotool
+imlib2
+
+# Suckless tooling (st = primary terminal; dwm available as alt WM)
+st
+dwm
+
+# ---------------------------------
+# Media & Imaging
+# ---------------------------------
+imagemagick
+ffmpeg
+
+# ---------------------------------
+# Container Layer (Podman + distrobox)
+# ---------------------------------
+# Replaces Flatpak. Daemonless, rootless. See plan.md §6.
+podman
+buildah
+skopeo
+conmon
+crun
+libslirp
+slirp4netns
+fuse-overlayfs
+distrobox
+fuse3

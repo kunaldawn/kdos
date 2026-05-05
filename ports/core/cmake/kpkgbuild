@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Modern toolset used for generating Makefiles
-# depends	: curl libarchive libuv
+# depends	: curl libarchive libuv expat
 
 name=cmake
 version=4.2.1

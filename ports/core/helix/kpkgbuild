@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: helix — a post-modern modal text editor (Rust)
+# homepage	: https://helix-editor.com/
+# depends	: rust
+
+name=helix
+version=25.01
+release=1
+source="https://github.com/helix-editor/helix/archive/$version.tar.gz"
+
+build() {
+	cd $name-$version
+	cargo build --release --locked
+	install -Dm755 target/release/hx $PKG/usr/bin/hx
+	install -d $PKG/usr/lib/helix
+	cp -r runtime $PKG/usr/lib/helix/
+}

@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: mosh — mobile shell, robust replacement for SSH over flaky networks
+# homepage	: https://mosh.org/
+# depends	: openssl protobuf ncurses zlib openssh perl
+
+name=mosh
+version=1.4.0
+release=1
+source="https://github.com/mobile-shell/mosh/releases/download/mosh-$version/mosh-$version.tar.gz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--mandir=/usr/share/man \
+		CXXFLAGS="$CXXFLAGS -std=gnu++17"
+	make
+	make DESTDIR=$PKG install
+}

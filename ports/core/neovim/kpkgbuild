@@ -1,0 +1,65 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: neovim — hyperextensible Vim-based text editor
+# homepage	: https://neovim.io/
+# depends	: cmake gettext
+# Bundled deps (libuv, luajit, luv, lpeg, lua_compat53, unibilium, utf8proc,
+# tree-sitter + grammars) are vendored as tarballs in the port directory and
+# pre-staged into CMake's ExternalProject DOWNLOAD_DIR so the build is fully
+# offline. Versions/SHAs match cmake.deps/deps.txt in the neovim source.
+
+name=neovim
+version=0.12.2
+release=1
+source="https://github.com/neovim/neovim/archive/v$version.tar.gz
+	https://github.com/libuv/libuv/archive/v1.52.1.tar.gz#/libuv-v1.52.1.tar.gz
+	https://github.com/luajit/luajit/archive/fbb36bb6bfa88716a47c58bcf9ce9f2ef752abac.tar.gz#/luajit-fbb36bb6.tar.gz
+	https://github.com/neovim/unibilium/archive/v2.1.2.tar.gz#/unibilium-v2.1.2.tar.gz
+	https://github.com/luvit/luv/archive/1.52.1-0.tar.gz#/luv-1.52.1-0.tar.gz
+	https://github.com/neovim/deps/raw/d495ee6f79e7962a53ad79670cb92488abe0b9b4/opt/lpeg-1.1.0.tar.gz#/lpeg-1.1.0.tar.gz
+	https://github.com/lunarmodules/lua-compat-5.3/archive/v0.13.tar.gz#/lua-compat-5.3-v0.13.tar.gz
+	https://github.com/juliastrings/utf8proc/archive/v2.11.3.tar.gz#/utf8proc-v2.11.3.tar.gz
+	https://github.com/tree-sitter/tree-sitter/archive/v0.26.7.tar.gz#/tree-sitter-v0.26.7.tar.gz
+	https://github.com/tree-sitter/tree-sitter-c/archive/v0.24.1.tar.gz#/tree-sitter-c-v0.24.1.tar.gz
+	https://github.com/tree-sitter-grammars/tree-sitter-lua/archive/v0.5.0.tar.gz#/tree-sitter-lua-v0.5.0.tar.gz
+	https://github.com/tree-sitter-grammars/tree-sitter-vim/archive/v0.8.1.tar.gz#/tree-sitter-vim-v0.8.1.tar.gz
+	https://github.com/neovim/tree-sitter-vimdoc/archive/v4.1.0.tar.gz#/tree-sitter-vimdoc-v4.1.0.tar.gz
+	https://github.com/tree-sitter-grammars/tree-sitter-query/archive/v0.8.0.tar.gz#/tree-sitter-query-v0.8.0.tar.gz
+	https://github.com/tree-sitter-grammars/tree-sitter-markdown/archive/v0.5.3.tar.gz#/tree-sitter-markdown-v0.5.3.tar.gz"
+
+build() {
+	# Pre-stage vendored dep tarballs into CMake's ExternalProject DOWNLOAD_DIR.
+	# CMake URL_HASH-checks each file before fetching, so when a tarball is
+	# already present with a matching SHA256 it skips the network entirely.
+	local dl=".deps/build/downloads"
+	mkdir -p "$dl"/{libuv,luajit,unibilium,luv,lpeg,lua_compat53,utf8proc,treesitter} \
+	         "$dl"/{treesitter_c,treesitter_lua,treesitter_vim,treesitter_vimdoc,treesitter_query,treesitter_markdown}
+
+	cp "$PORT_SRC/libuv-v1.52.1.tar.gz"               "$dl/libuv/v1.52.1.tar.gz"
+	cp "$PORT_SRC/luajit-fbb36bb6.tar.gz"             "$dl/luajit/fbb36bb6bfa88716a47c58bcf9ce9f2ef752abac.tar.gz"
+	cp "$PORT_SRC/unibilium-v2.1.2.tar.gz"            "$dl/unibilium/v2.1.2.tar.gz"
+	cp "$PORT_SRC/luv-1.52.1-0.tar.gz"                "$dl/luv/1.52.1-0.tar.gz"
+	cp "$PORT_SRC/lpeg-1.1.0.tar.gz"                  "$dl/lpeg/lpeg-1.1.0.tar.gz"
+	cp "$PORT_SRC/lua-compat-5.3-v0.13.tar.gz"        "$dl/lua_compat53/v0.13.tar.gz"
+	cp "$PORT_SRC/utf8proc-v2.11.3.tar.gz"            "$dl/utf8proc/v2.11.3.tar.gz"
+	cp "$PORT_SRC/tree-sitter-v0.26.7.tar.gz"         "$dl/treesitter/v0.26.7.tar.gz"
+	cp "$PORT_SRC/tree-sitter-c-v0.24.1.tar.gz"       "$dl/treesitter_c/v0.24.1.tar.gz"
+	cp "$PORT_SRC/tree-sitter-lua-v0.5.0.tar.gz"      "$dl/treesitter_lua/v0.5.0.tar.gz"
+	cp "$PORT_SRC/tree-sitter-vim-v0.8.1.tar.gz"      "$dl/treesitter_vim/v0.8.1.tar.gz"
+	cp "$PORT_SRC/tree-sitter-vimdoc-v4.1.0.tar.gz"   "$dl/treesitter_vimdoc/v4.1.0.tar.gz"
+	cp "$PORT_SRC/tree-sitter-query-v0.8.0.tar.gz"    "$dl/treesitter_query/v0.8.0.tar.gz"
+	cp "$PORT_SRC/tree-sitter-markdown-v0.5.3.tar.gz" "$dl/treesitter_markdown/v0.5.3.tar.gz"
+
+	make CMAKE_BUILD_TYPE=Release \
+		CMAKE_INSTALL_PREFIX=/usr \
+		CMAKE_EXTRA_FLAGS="-DCMAKE_INSTALL_LIBDIR=lib"
+	make DESTDIR=$PKG install
+}

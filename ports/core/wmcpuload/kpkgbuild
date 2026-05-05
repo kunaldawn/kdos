@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: wmcpuload — Window Maker dock applet displaying CPU usage
+# homepage	: https://www.dockapps.net/wmcpuload
+# depends	: libx11 libxext libxpm
+
+name=wmcpuload
+version=1.1.1
+release=1
+source="https://www.dockapps.net/download/wmcpuload-$version.tar.gz"
+
+build() {
+	./configure --prefix=/usr --mandir=/usr/share/man
+	make
+	make DESTDIR=$PKG install
+}

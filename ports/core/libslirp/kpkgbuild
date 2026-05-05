@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: libslirp — user-mode networking library (TCP/IP emulator) used by slirp4netns/qemu
+# homepage	: https://gitlab.freedesktop.org/slirp/libslirp
+# depends	: glib meson
+
+name=libslirp
+version=4.9.1
+release=1
+source="https://gitlab.freedesktop.org/slirp/libslirp/-/archive/v$version/libslirp-v$version.tar.gz"
+
+build() {
+	meson setup build \
+		--prefix=/usr --libdir=lib \
+		--buildtype=release \
+		-D default_library=shared
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

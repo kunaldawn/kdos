@@ -1,0 +1,3 @@
+FROM scratch
+ADD kdos_fs.tar.gz /
+CMD ["/bin/bash"]

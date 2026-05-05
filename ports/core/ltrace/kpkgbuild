@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: ltrace — library call tracer
+# homepage	: https://gitlab.com/cespedes/ltrace
+# depends	: elfutils
+
+# NOTE: Upstream ltrace is somewhat dormant; musl support has historically
+# needed patches. Verify build in chroot.
+
+name=ltrace
+version=0.8.1
+release=1
+source="https://gitlab.com/cespedes/ltrace/-/archive/$version/ltrace-$version.tar.gz"
+
+build() {
+	./autogen.sh
+	./configure --prefix=/usr --mandir=/usr/share/man --without-libunwind CPPFLAGS="-D__PRI64_PREFIX=__PRI64"
+	make
+	make DESTDIR=$PKG install
+}

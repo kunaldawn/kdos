@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: bottom (btm) — yet another cross-platform graphical process/system monitor
+# homepage	: https://github.com/ClementTsang/bottom
+# depends	: rust
+
+name=bottom
+version=0.12.3
+release=1
+source="https://github.com/ClementTsang/bottom/archive/refs/tags/$version.tar.gz"
+vendoring=rust
+
+build() {
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+
+	cargo build --release --frozen --offline
+	install -Dm755 target/release/btm $PKG/usr/bin/btm
+}

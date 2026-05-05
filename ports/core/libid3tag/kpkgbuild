@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: ID3 tag manipulation library (optional dep of imlib2 image audio metadata)
+# homepage	: https://www.underbit.com/products/mad/
+
+name=libid3tag
+version=0.15.1b
+release=1
+source="https://downloads.sourceforge.net/mad/libid3tag-$version.tar.gz"
+
+build() {
+	./configure --prefix=/usr --disable-static
+	make
+	make DESTDIR=$PKG install
+}
