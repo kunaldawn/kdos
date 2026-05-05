@@ -29,7 +29,4 @@ build() {
 
 	make PREFIX=/usr
 	make PREFIX=/usr DESTDIR=$PKG install
-
-	mkdir -p $PKG/root
-	echo "exec dwm" > $PKG/root/.xinitrc
 }

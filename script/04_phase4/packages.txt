@@ -179,6 +179,7 @@ dwm
 # ---------------------------------
 imagemagick
 ffmpeg
+fastfetch
 
 # ---------------------------------
 # Container Layer (Podman + distrobox)
