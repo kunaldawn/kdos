@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: GNU Midnight Commander — Norton-style TUI file manager
+# homepage	: https://midnight-commander.org/
+# depends	: glib ncurses libssh2
+
+name=mc
+version=4.8.33
+release=1
+source="http://ftp.midnight-commander.org/mc-$version.tar.xz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--mandir=/usr/share/man \
+		--with-screen=ncurses \
+		--without-x \
+		--enable-vfs-smb=no \
+		--enable-vfs-sftp=yes \
+		--disable-doxygen-doc
+	make
+	make DESTDIR=$PKG install
+}

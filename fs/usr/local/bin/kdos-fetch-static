@@ -1,0 +1,87 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   kdos-fetch-static
+#
+# Drop a single static binary into /usr/local/bin with sha256 verification.
+# Useful for tools that ship a single statically linked release tarball or
+# raw binary (zig, many Go tools, single-binary Rust apps).
+#
+# Usage:
+#   kdos-fetch-static <name> <url> <sha256>
+#
+# Examples:
+#   kdos-fetch-static zig \
+#     https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz \
+#     abcdef...
+#
+#   kdos-fetch-static lf \
+#     https://github.com/gokcehan/lf/releases/download/r33/lf-linux-amd64.tar.gz \
+#     abcdef...
+
+set -e
+
+DEST="/usr/local/bin"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+err() { echo "kdos-fetch-static: $*" >&2; exit 1; }
+
+usage() {
+	cat <<EOF
+Usage: kdos-fetch-static <name> <url> <sha256>
+
+Downloads <url>, verifies its sha256, and installs the resulting binary
+(or extracts <name> from a tarball) into $DEST/<name>.
+
+Tarball detection by extension: .tar, .tar.gz, .tgz, .tar.xz, .tar.bz2, .tar.zst
+Plain binary: anything else.
+EOF
+	exit 1
+}
+
+[ $# -eq 3 ] || usage
+
+NAME="$1"
+URL="$2"
+EXPECT_SHA="$3"
+
+[ "$(id -u)" -eq 0 ] || err "must run as root (writes to $DEST)"
+
+ARCHIVE="$TMP/$(basename "$URL")"
+
+echo "==> Downloading $URL"
+curl -fL -o "$ARCHIVE" "$URL"
+
+echo "==> Verifying sha256"
+ACTUAL_SHA=$(sha256sum "$ARCHIVE" | awk '{print $1}')
+if [ "$ACTUAL_SHA" != "$EXPECT_SHA" ]; then
+	err "sha256 mismatch
+  expected: $EXPECT_SHA
+  actual:   $ACTUAL_SHA"
+fi
+
+case "$ARCHIVE" in
+	*.tar.gz|*.tgz)    tar -xzf "$ARCHIVE" -C "$TMP" ;;
+	*.tar.xz)          tar -xJf "$ARCHIVE" -C "$TMP" ;;
+	*.tar.bz2)         tar -xjf "$ARCHIVE" -C "$TMP" ;;
+	*.tar.zst)         tar --zstd -xf "$ARCHIVE" -C "$TMP" ;;
+	*.tar)             tar -xf "$ARCHIVE" -C "$TMP" ;;
+	*)
+		install -Dm755 "$ARCHIVE" "$DEST/$NAME"
+		echo "==> Installed $DEST/$NAME"
+		exit 0
+		;;
+esac
+
+# Tarball path: locate <name> binary anywhere under the extraction dir
+BIN=$(find "$TMP" -type f -name "$NAME" -executable | head -1)
+[ -n "$BIN" ] || err "could not find binary '$NAME' inside the tarball"
+
+install -Dm755 "$BIN" "$DEST/$NAME"
+echo "==> Installed $DEST/$NAME"
