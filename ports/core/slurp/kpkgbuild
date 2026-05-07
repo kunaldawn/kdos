@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Region selector for Wayland compositors (pairs with grim for area screenshots)
+# homepage	: https://sr.ht/~emersion/slurp
+# depends	: meson scdoc wayland wayland-protocols cairo libxkbcommon
+
+name=slurp
+version=1.5.0
+release=1
+source="https://git.sr.ht/~emersion/slurp/archive/v$version.tar.gz"
+
+build() {
+	meson setup build --prefix=/usr --libdir=lib
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

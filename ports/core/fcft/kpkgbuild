@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Small library for font loading and glyph rasterization (foot/fuzzel dep)
+# homepage	: https://codeberg.org/dnkl/fcft
+# depends	: meson freetype2 fontconfig harfbuzz pixman tllist utf8proc scdoc
+
+name=fcft
+version=3.3.1
+release=1
+source="https://codeberg.org/dnkl/fcft/archive/$version.tar.gz"
+
+build() {
+	meson setup build \
+		--prefix=/usr --libdir=lib \
+		-Dgrapheme-clustering=enabled \
+		-Drun-shaping=enabled \
+		-Dtest-text-shaping=false
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

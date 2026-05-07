@@ -10,7 +10,7 @@
 
 # description	: ImageMagick — convert, edit, and compose raster images (provides `convert`)
 # homepage	: https://imagemagick.org/
-# depends	: libpng libjpeg-turbo libtiff libwebp giflib freetype2 fontconfig libxml2 zlib pango libx11 libxext
+# depends	: libpng libjpeg-turbo libtiff libwebp giflib freetype2 fontconfig libxml2 zlib pango
 
 name=imagemagick
 version=7.1.2.21
@@ -37,7 +37,7 @@ build() {
 		--with-freetype \
 		--with-fontconfig \
 		--with-pango \
-		--with-x \
+		--without-x \
 		--without-perl \
 		--without-fftw \
 		--without-djvu \

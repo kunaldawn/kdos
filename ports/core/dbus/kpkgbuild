@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Message bus system, a simple way for applications to talk to one another
-# depends	: expat libx11 libsm libice meson
+# depends	: expat meson
 
 name=dbus
 version=1.16.2
@@ -23,6 +23,7 @@ build() {
 		--libexecdir=/usr/lib/$name \
 		--libdir=/usr/lib \
 		--localstatedir=/var \
+		-D x11_autolaunch=disabled \
 		-D doxygen_docs=disabled \
 		-D xml_docs=disabled \
 		-D system_pid_file=/run/dbus/pid \

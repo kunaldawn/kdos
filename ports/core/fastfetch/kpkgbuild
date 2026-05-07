@@ -10,7 +10,7 @@
 
 # description	: fastfetch — system information tool, ships KDOS ASCII branding
 # homepage	: https://github.com/fastfetch-cli/fastfetch
-# depends	: cmake pciutils dbus libdrm libxcb libxrandr glib sqlite
+# depends	: cmake pciutils dbus libdrm wayland glib sqlite
 
 name=fastfetch
 version=2.62.1
@@ -25,6 +25,11 @@ build() {
 	cmake .. \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DENABLE_X11=OFF \
+		-DENABLE_XCB=OFF \
+		-DENABLE_XCB_RANDR=OFF \
+		-DENABLE_XRANDR=OFF \
+		-DENABLE_WAYLAND=ON \
 		-DENABLE_SYSTEM_YYJSON=OFF \
 		-DBUILD_TESTS=OFF
 	make

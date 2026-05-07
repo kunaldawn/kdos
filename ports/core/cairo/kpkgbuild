@@ -8,8 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: 2D graphics library with support for multiple output devices
-# depends	: pixman fontconfig freetype2 libpng libxcb libxrender libx11 libxext lzo zlib glib
+# description	: 2D graphics library (Wayland-only build, no X11)
+# depends	: pixman fontconfig freetype2 libpng lzo zlib glib
 
 name=cairo
 version=1.18.4
@@ -21,6 +21,9 @@ build() {
 
 	meson setup build \
 		--prefix=/usr --sysconfdir=/etc --libdir=lib \
+		-D xlib=disabled \
+		-D xcb=disabled \
+		-D xlib-xcb=disabled \
 		-D dwrite=disabled \
 		-D spectre=disabled \
 		-D symbol-lookup=disabled \

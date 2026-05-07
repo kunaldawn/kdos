@@ -102,5 +102,5 @@ echo "==> Exporting '$APP' as a host launcher"
 distrobox enter "$BOX" -- distrobox-export --app "$APP"
 
 echo
-echo "Done. '$APP' should now appear in your Window Maker root menu and"
-echo "as a .desktop launcher in ~/.local/share/applications/."
+echo "Done. '$APP' is exported as a .desktop launcher in"
+echo "~/.local/share/applications/ — fuzzel and noctalia will pick it up."

@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Lightweight Wayland notification daemon
+# homepage	: https://github.com/emersion/mako
+# depends	: meson scdoc wayland wayland-protocols cairo pango gdk-pixbuf dbus libxkbcommon
+
+name=mako
+version=1.10.0
+release=1
+source="https://github.com/emersion/mako/archive/refs/tags/v$version.tar.gz"
+
+build() {
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib \
+		-Dsd-bus-provider=libelogind=disabled \
+		-Dzsh-completions=false
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

@@ -17,3 +17,7 @@ port-archive.sh
 # Testing runtime artifacts
 testing/logs/
 testing/test_results.json
+
+# Claude Code local settings and notes
+.claude/
+docs/
