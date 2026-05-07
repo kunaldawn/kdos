@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Screenshot tool for wlroots-based Wayland compositors
+# homepage	: https://sr.ht/~emersion/grim
+# depends	: meson scdoc wayland cairo libpng libjpeg-turbo
+
+name=grim
+version=1.4.1
+release=1
+source="https://git.sr.ht/~emersion/grim/archive/v$version.tar.gz"
+
+build() {
+	meson setup build \
+		--prefix=/usr --libdir=lib \
+		-Djpeg=enabled
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

@@ -1,0 +1,33 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Qt 6 QtQuick / QML — declarative UI framework (Quickshell core dep)
+# homepage	: https://www.qt.io/
+# depends	: cmake ninja qt6-base qt6-shadertools
+
+name=qt6-declarative
+version=6.8.3
+release=1
+source="https://download.qt.io/archive/qt/${version%.*}/${version}/submodules/qtdeclarative-everywhere-src-${version}.tar.xz"
+
+build() {
+	mkdir -p build
+	cd build
+	cmake .. \
+		-GNinja \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DBUILD_SHARED_LIBS=ON \
+		-DQT_BUILD_TESTS=OFF \
+		-DQT_BUILD_EXAMPLES=OFF
+	ninja
+	DESTDIR=$PKG ninja install
+}
