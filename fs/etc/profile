@@ -37,6 +37,13 @@ if [ "$PS1" ]; then
     PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\] λ '
 fi
 
+# Source drop-ins
+if [ -d /etc/profile.d ]; then
+    for f in /etc/profile.d/*.sh; do
+        [ -r "$f" ] && . "$f"
+    done
+fi
+
 # Load custom font if available
 if [ -x /usr/bin/setfont ]; then
     setfont ter-v32n

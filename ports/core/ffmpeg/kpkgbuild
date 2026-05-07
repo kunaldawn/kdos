@@ -10,7 +10,7 @@
 
 # description	: FFmpeg — record, convert, and stream audio/video
 # homepage	: https://ffmpeg.org/
-# depends	: alsa-lib zlib bzip2 xz gnutls libdrm libxcb libxml2 freetype2 fontconfig harfbuzz fribidi libwebp
+# depends	: alsa-lib zlib bzip2 xz gnutls libdrm libxml2 freetype2 fontconfig harfbuzz fribidi libwebp
 
 name=ffmpeg
 version=8.1.1
@@ -34,7 +34,6 @@ build() {
 		--enable-libfribidi \
 		--enable-libharfbuzz \
 		--enable-libwebp \
-		--enable-libxcb \
 		--enable-libxml2
 	make
 	make DESTDIR=$PKG install

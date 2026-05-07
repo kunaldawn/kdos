@@ -16,7 +16,7 @@ Most distros give you a house. KDOS gives you a pile of bricks, a trowel, and a 
 2.  **Musl Libc** — Glibc is a metropolitan city. Musl is a Zen garden. We choose the garden.
 3.  **Toybox** — one binary that rules them all.
 4.  **No SystemD** — we init like our ancestors did. Inittab, serial `init.d`, simple service helpers.
-5.  **No GTK / Qt / GNOME / KDE / XFCE on the host** — fat GUI apps live in a Podman container alongside their glibc.
+5.  **No GTK / GNOME / KDE / XFCE on the host** — fat GUI apps live in a Podman container alongside their glibc. *Qt 6 is the single carved-out exception, present only because the shell layer (Quickshell + noctalia) is QML.*
 6.  **KPKG** — our own package manager. For fun, and because we earned it.
 
 ---
@@ -33,7 +33,7 @@ kdos-fetch-app gimp           # same for gimp
 kdos-fetch-app --remove gimp  # remove the export and uninstall in the box
 ```
 
-A `.desktop` file lands in `~/.local/share/applications/` and the app appears in the Window Maker root menu. The host musl tree never sees a single glibc dep.
+A `.desktop` file lands in `~/.local/share/applications/` and is picked up by the niri launcher (`fuzzel`). The host musl tree never sees a single glibc dep.
 
 For single-binary tools (zig, Go binaries, single-binary Rust apps), there's also:
 
@@ -45,19 +45,19 @@ kdos-fetch-static <name> <url> <sha256>
 
 ---
 
-## The GUI Sliver: Window Maker
+## The GUI Sliver: niri + noctalia (Wayland)
 
-When a GUI is genuinely needed, `startx` brings up **Window Maker** — the NeXTSTEP-style stacking WM. Dock on the right edge, Clip in the top-left, root-click for the app menu. The default theme is from `wmaker-extra` (NeXTSTEP / NeXTSTEP-orig / Sehnsucht).
+When a GUI is genuinely needed, run `niri-session` from your tty login — it `dbus-run-session`s niri with `--session`, and the autostart line in the skel config spawns noctalia.
+
+**niri** is the compositor — Smithay-based, scrollable-tiling, no Xorg. **Noctalia** (QML on a Quickshell fork) is the shell layer: top bar, panels, notifications, lock screen, widgets. KDOS runs Wayland-only: no X server, no XWayland by default. Session/seat handled by `seatd` (auto-started at boot via `45_seatd.sh`). Portals via `xdg-desktop-portal-wlr`. Wayland env (XDG_RUNTIME_DIR, QT_QPA_PLATFORM, etc.) set on every login by `/etc/profile.d/10-wayland.sh`.
 
 The GUI inventory is intentionally small:
 
-- `st` — terminal (Suckless-style; primary daily driver)
-- `nsxiv` — image viewer
-- `mupdf` — PDF reader (its own X frontend, no GTK)
-- `scrot` — screenshot
-- `dunst` — notifications
-- `xclip` — clipboard
-- `xdotool` — automation
+- `foot` — terminal (Wayland-native, fast; primary daily driver)
+- `fuzzel` — keyboard launcher (`Mod+D`; complements noctalia's UI launcher)
+- `grim` + `slurp` — screenshot + region selector
+- `wl-clipboard` — clipboard (`wl-copy` / `wl-paste`)
+- `imv` — image viewer
 
 Anything else (file manager, editor, calculator) is done in a terminal — `lf`, `nvim`, `bc`. Anything fatter than that is a `kdos-fetch-app` away.
 

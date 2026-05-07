@@ -1,0 +1,37 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Quickshell fork shipped with Noctalia (Qt/QML desktop shell toolkit, binary `qs`)
+# homepage	: https://github.com/noctalia-dev/noctalia-qs
+# depends	: cmake ninja pkgconf qt6-base qt6-declarative qt6-wayland qt6-svg qt6-shadertools libdrm wayland wayland-protocols mesa cli11
+
+name=noctalia-qs
+version=0.0.12
+release=1
+source="https://github.com/noctalia-dev/noctalia-qs/archive/refs/tags/v$version.tar.gz"
+
+build() {
+	cmake -GNinja -B build \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DCRASH_REPORTER=OFF \
+		-DUSE_JEMALLOC=OFF \
+		-DSOCKETS=ON \
+		-DWAYLAND=ON \
+		-DSCREENCOPY=ON \
+		-DI3=OFF \
+		-DX11=OFF \
+		-DPIPEWIRE=OFF \
+		-DPAM=OFF \
+		-DBUILD_TESTING=OFF
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}
