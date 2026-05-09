@@ -8,23 +8,28 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Desktop portal D-Bus framework (for Wayland sandbox/screencast/file-picker integration)
+# description	: Desktop portal D-Bus framework (Wayland screencast / file-picker integration)
 # homepage	: https://github.com/flatpak/xdg-desktop-portal
-# depends	: meson glib dbus fuse pipewire flatpak-info-stub
+# depends	: meson glib dbus pipewire fuse json-glib gst-plugins-base
 
 name=xdg-desktop-portal
-version=1.18.4
+version=1.20.4
 release=1
 source="https://github.com/flatpak/xdg-desktop-portal/releases/download/$version/xdg-desktop-portal-$version.tar.xz"
 
 build() {
 	meson setup build \
 		--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
-		-Ddocbook-docs=disabled \
+		-Ddocumentation=disabled \
+		-Dman-pages=disabled \
 		-Dgeoclue=disabled \
+		-Dgudev=disabled \
 		-Dsystemd=disabled \
+		-Dflatpak-interfaces=disabled \
+		-Dtests=disabled \
 		-Dinstalled-tests=false \
-		-Dinstall-rpm-macros=false
+		-Dsandboxed-image-validation=disabled \
+		-Dsandboxed-sound-validation=disabled
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }

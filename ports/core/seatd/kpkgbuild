@@ -13,11 +13,12 @@
 # depends	: meson scdoc
 
 name=seatd
-version=0.9.1
+version=0.9.2
 release=1
 source="https://git.sr.ht/~kennylevinsen/seatd/archive/$version.tar.gz"
 
 build() {
+	export CFLAGS="$CFLAGS -Uunix"
 	meson setup build \
 		--prefix=/usr --sysconfdir=/etc --libdir=lib \
 		-Dlibseat-builtin=enabled \

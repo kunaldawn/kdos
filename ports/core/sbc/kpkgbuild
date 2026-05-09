@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Bluetooth Sub-Band Codec library (mandatory codec for A2DP audio)
+# homepage	: https://www.kernel.org/pub/linux/bluetooth/
+# depends	: libsndfile
+
+name=sbc
+version=2.0
+release=1
+source="https://www.kernel.org/pub/linux/bluetooth/sbc-$version.tar.xz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--mandir=/usr/share/man \
+		--disable-static
+	make
+	make DESTDIR=$PKG install
+}

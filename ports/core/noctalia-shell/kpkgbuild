@@ -22,7 +22,7 @@ build() {
 	# Layout follows the upstream `nix` recipe: shell tree under
 	# /usr/share/noctalia-shell, launcher wrapper at /usr/bin/noctalia.
 	install -dm755 "$PKG/usr/share/noctalia-shell"
-	cp -a Assets Bar Commons Modules Services Widgets shell.qml \
+	cp -a Assets Commons Helpers Modules Scripts Services Shaders Widgets shell.qml \
 		"$PKG/usr/share/noctalia-shell/"
 	# Wrapper that points qs at the installed shell tree
 	install -dm755 "$PKG/usr/bin"

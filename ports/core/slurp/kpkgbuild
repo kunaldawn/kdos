@@ -9,13 +9,13 @@
 # ---------------------------------
 
 # description	: Region selector for Wayland compositors (pairs with grim for area screenshots)
-# homepage	: https://sr.ht/~emersion/slurp
+# homepage	: https://github.com/emersion/slurp
 # depends	: meson scdoc wayland wayland-protocols cairo libxkbcommon
 
 name=slurp
 version=1.5.0
 release=1
-source="https://git.sr.ht/~emersion/slurp/archive/v$version.tar.gz"
+source="https://github.com/emersion/slurp/archive/refs/tags/v$version.tar.gz"
 
 build() {
 	meson setup build --prefix=/usr --libdir=lib
