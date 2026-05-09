@@ -1,0 +1,41 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Authorization framework for unprivileged processes (NetworkManager + noctalia auth)
+# homepage	: https://github.com/polkit-org/polkit
+# depends	: meson glib expat duktape dbus
+
+name=polkit
+version=127
+release=1
+source="https://github.com/polkit-org/polkit/archive/refs/tags/$version.tar.gz"
+
+build() {
+	# polkitd needs a polkitd user/group at runtime; create on first install
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib --localstatedir=/var \
+		--buildtype=release \
+		-Dauthfw=shadow \
+		-Dsession_tracking=ConsoleKit \
+		-Dintrospection=false \
+		-Dgtk_doc=false \
+		-Dman=false \
+		-Dgettext=false \
+		-Dexamples=false \
+		-Dtests=false \
+		-Dos_type=lfs
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}
+
+postinstall() {
+	getent group polkitd >/dev/null 2>&1 || groupadd -r polkitd
+	getent passwd polkitd >/dev/null 2>&1 || useradd -r -g polkitd -d /nonexistent -s /sbin/nologin polkitd
+}

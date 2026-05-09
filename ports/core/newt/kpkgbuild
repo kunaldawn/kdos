@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Programming library for color text-mode widget UIs (provides libnewt for nmtui)
+# homepage	: https://pagure.io/newt
+# depends	: slang popt
+
+name=newt
+version=0.52.25
+release=1
+source="https://releases.pagure.org/newt/newt-$version.tar.gz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--libdir=/usr/lib \
+		--without-python \
+		--without-tcl
+	make -j1
+	make DESTDIR=$PKG install
+}

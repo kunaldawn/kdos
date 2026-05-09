@@ -20,7 +20,7 @@ source="https://codeberg.org/dnkl/fcft/archive/$version.tar.gz"
 build() {
 	meson setup build \
 		--prefix=/usr --libdir=lib \
-		-Dgrapheme-clustering=enabled \
+		-Dgrapheme-shaping=enabled \
 		-Drun-shaping=enabled \
 		-Dtest-text-shaping=false
 	meson compile -C build

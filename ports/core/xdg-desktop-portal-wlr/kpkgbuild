@@ -10,7 +10,7 @@
 
 # description	: wlroots-compatible portal backend (screencast, file-picker — no GTK)
 # homepage	: https://github.com/emersion/xdg-desktop-portal-wlr
-# depends	: meson scdoc xdg-desktop-portal wayland wayland-protocols pipewire libdrm libgbm dbus inih
+# depends	: meson scdoc xdg-desktop-portal wayland wayland-protocols pipewire libdrm mesa dbus inih basu
 
 name=xdg-desktop-portal-wlr
 version=0.7.1

@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Modern netfilter packet filtering and classification framework (replaces iptables)
+# homepage	: https://netfilter.org/projects/nftables/
+# depends	: libmnl libnftnl gmp readline jansson bison flex
+
+name=nftables
+version=1.1.5
+release=1
+source="https://www.netfilter.org/pub/nftables/nftables-$version.tar.xz"
+
+build() {
+	./configure \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--libdir=/usr/lib \
+		--with-cli=readline \
+		--with-json \
+		--disable-python \
+		--disable-static
+	make
+	make DESTDIR=$PKG install
+}

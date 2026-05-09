@@ -157,8 +157,24 @@ wayland
 wayland-protocols
 seatd
 libdisplay-info
+gstreamer
+gst-plugins-base
+gst-plugins-good
+gst-plugins-bad
+gst-plugins-ugly
+gst-libav
 xdg-desktop-portal
 xdg-desktop-portal-wlr
+
+# Networking + auth (NetworkManager + polkit + Wi-Fi + firewall + VPN)
+duktape
+polkit
+wpa_supplicant
+libnftnl
+nftables
+dnsmasq
+openvpn
+networkmanager-openvpn
 niri
 foot
 fuzzel

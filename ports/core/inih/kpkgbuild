@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Tiny C library for parsing INI files (used by xdg-desktop-portal-wlr config)
+# homepage	: https://github.com/benhoyt/inih
+# depends	: meson ninja
+
+name=inih
+version=r62
+release=1
+source="https://github.com/benhoyt/inih/archive/refs/tags/$version.tar.gz"
+
+build() {
+	meson setup build \
+		--prefix=/usr --libdir=lib \
+		--buildtype=release \
+		-Ddefault_library=shared \
+		-Dwith_INIReader=false \
+		-Ddistro_install=true
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

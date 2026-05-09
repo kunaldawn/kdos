@@ -52,7 +52,9 @@ build() {
 	pkg-config --exists libva && OPT_MESA_VAAPI='-D gallium-va=enabled' || OPT_MESA_VAAPI='-D gallium-va=disabled'
 	export RUSTFLAGS="-C prefer-dynamic"
 
-	meson build \
+	meson setup build \
+		--prefix=/usr --libdir=lib --sysconfdir=/etc \
+		--buildtype=release \
 		-D b_ndebug=true \
 		-D opengl=true \
 		-D gallium-extra-hud=true \

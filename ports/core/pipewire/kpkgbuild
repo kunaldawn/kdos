@@ -1,0 +1,59 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Modern audio + video stream router (replaces PulseAudio, powers Wayland screencast)
+# homepage	: https://pipewire.org/
+# depends	: meson ninja eudev alsa-lib dbus glib libusb readline ffmpeg bluez sbc
+
+name=pipewire
+version=1.6.2
+release=1
+source="https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/$version/pipewire-$version.tar.bz2"
+
+build() {
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
+		-Dbuildtype=release \
+		-Ddocs=disabled \
+		-Dman=disabled \
+		-Dtests=disabled \
+		-Dexamples=disabled \
+		-Dffmpeg=enabled \
+		-Dbluez5=enabled \
+		-Dreadline=enabled \
+		-Dlibpulse=disabled \
+		-Dfftw=disabled \
+		-Dopus=disabled \
+		-Dgstreamer=disabled \
+		-Djack=disabled \
+		-Dpipewire-jack=disabled \
+		-Dpipewire-v4l2=disabled \
+		-Dv4l2=disabled \
+		-Dvulkan=disabled \
+		-Droc=disabled \
+		-Dlibcamera=disabled \
+		-Dlv2=disabled \
+		-Dsndfile=disabled \
+		-Davahi=disabled \
+		-Dlibsystemd=disabled \
+		-Dlogind=disabled \
+		-Dsystemd-system-service=disabled \
+		-Dsystemd-user-service=disabled \
+		-Dsdl2=disabled \
+		-Dx11=disabled \
+		-Dx11-xfixes=disabled \
+		-Dlibcanberra=disabled \
+		-Dflatpak=disabled \
+		-Dgsettings=disabled \
+		-Dsnap=disabled \
+		-Dsession-managers=[]
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}
