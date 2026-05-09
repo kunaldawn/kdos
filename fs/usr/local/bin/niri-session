@@ -1,0 +1,4 @@
+#!/bin/sh
+# niri-session — launch niri with a fresh DBus user session.
+# Run from a tty after login. Wayland env vars are set by /etc/profile.d/10-wayland.sh.
+exec dbus-run-session -- niri --session

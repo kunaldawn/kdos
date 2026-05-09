@@ -1,0 +1,34 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Noctalia desktop shell — bars, panels, notifications, lock screen (QML on Quickshell)
+# homepage	: https://github.com/noctalia-dev/noctalia-shell
+# depends	: noctalia-qs
+
+name=noctalia-shell
+version=4.7.6
+release=1
+source="https://github.com/noctalia-dev/noctalia-shell/archive/refs/tags/v$version.tar.gz"
+
+build() {
+	# Noctalia is QML; the install is a tree of .qml files plus assets.
+	# Layout follows the upstream `nix` recipe: shell tree under
+	# /usr/share/noctalia-shell, launcher wrapper at /usr/bin/noctalia.
+	install -dm755 "$PKG/usr/share/noctalia-shell"
+	cp -a Assets Commons Helpers Modules Scripts Services Shaders Widgets shell.qml \
+		"$PKG/usr/share/noctalia-shell/"
+	# Wrapper that points qs at the installed shell tree
+	install -dm755 "$PKG/usr/bin"
+	cat > "$PKG/usr/bin/noctalia" <<'EOF'
+#!/bin/sh
+exec qs --path /usr/share/noctalia-shell "$@"
+EOF
+	chmod 755 "$PKG/usr/bin/noctalia"
+}

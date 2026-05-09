@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Fast, lightweight, minimalistic Wayland terminal emulator
+# homepage	: https://codeberg.org/dnkl/foot
+# depends	: meson scdoc fcft tllist wayland wayland-protocols libxkbcommon fontconfig pixman freetype2
+
+name=foot
+version=1.26.1
+release=1
+source="https://codeberg.org/dnkl/foot/archive/$version.tar.gz"
+
+build() {
+	export CFLAGS="${CFLAGS:--O3 -pipe} -fno-strict-aliasing"
+	meson setup build \
+		--prefix=/usr --libdir=lib \
+		--buildtype=release \
+		-Dgrapheme-clustering=enabled \
+		-Dterminfo=enabled \
+		-Dime=true
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

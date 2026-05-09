@@ -114,7 +114,6 @@ dust
 duf
 procs
 bottom
-xh
 ncdu
 
 # ---------------------------------
@@ -149,36 +148,61 @@ netcat
 mtr
 
 # ---------------------------------
-# Slim Xorg + Window Maker (GUI sliver)
+# Wayland + niri + noctalia (GUI sliver)
 # ---------------------------------
-# Window Maker (NeXTSTEP-style stacking WM, no GTK/Qt linkage)
-# is the entire GUI. Apps below are pure-Xlib utilities.
-xorg
-wmaker
-wmaker-extra
-wmclock
-wmcpuload
-wmmemload
-wmnet
-wmix
-wmbattery
-nsxiv
-mupdf
-scrot
-dunst
-xclip
-xdotool
-imlib2
+# Compositor: niri. Shell layer: noctalia-shell (panels, bars, notifs,
+# lock screen) running on noctalia-qs (Quickshell fork, Qt/QML).
+# Companion CLI apps: terminal, screenshot, clipboard, image viewer.
+wayland
+wayland-protocols
+seatd
+libdisplay-info
+gstreamer
+gst-plugins-base
+gst-plugins-good
+gst-plugins-bad
+gst-plugins-ugly
+gst-libav
+xdg-desktop-portal
+xdg-desktop-portal-wlr
 
-# Suckless tooling (st = primary terminal; dwm available as alt WM)
-st
-dwm
+# Networking + auth (NetworkManager + polkit + Wi-Fi + firewall + VPN)
+duktape
+polkit
+wpa_supplicant
+libnftnl
+nftables
+dnsmasq
+openvpn
+networkmanager-openvpn
+niri
+foot
+fuzzel
+grim
+slurp
+wl-clipboard
+imv
+
+# Qt6 stack (host-side exception to the no-Qt rule, for the shell layer)
+double-conversion
+cli11
+qt6-base
+qt6-shadertools
+qt6-declarative
+qt6-svg
+qt6-5compat
+qt6-wayland
+
+# Noctalia: shell on Quickshell fork
+noctalia-qs
+noctalia-shell
 
 # ---------------------------------
 # Media & Imaging
 # ---------------------------------
 imagemagick
 ffmpeg
+fastfetch
 
 # ---------------------------------
 # Container Layer (Podman + distrobox)

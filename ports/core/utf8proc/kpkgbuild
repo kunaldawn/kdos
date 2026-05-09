@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Unicode normalization, casefolding, etc. (fcft dep)
+# homepage	: https://github.com/JuliaStrings/utf8proc
+# depends	: cmake
+
+name=utf8proc
+version=2.10.0
+release=1
+source="https://github.com/JuliaStrings/utf8proc/archive/refs/tags/v$version.tar.gz"
+
+build() {
+	mkdir -p build
+	cd build
+	cmake .. \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DBUILD_SHARED_LIBS=ON
+	make
+	make DESTDIR=$PKG install
+}
