@@ -61,7 +61,7 @@ niri-session
 
 That wraps `niri --session` in `dbus-run-session`. The skel config (`~/.config/niri/config.kdl`) auto-spawns the shell on session start.
 
-**The stack:**
+**The compositor stack:**
 
 | Layer | What it is |
 |-------|-----------|
@@ -70,6 +70,7 @@ That wraps `niri --session` in `dbus-run-session`. The skel config (`~/.config/n
 | `noctalia-qs` | Quickshell fork that runs noctalia's QML (Qt 6) |
 | `seatd` | Seat manager — auto-started by `/etc/init.d/45_seatd.sh` |
 | `xdg-desktop-portal` + `-wlr` | Portal layer — screencast, file picker, no GTK |
+| `basu` | sd-bus library extracted from systemd (no-systemd D-Bus glue for portals) |
 | `/etc/profile.d/10-wayland.sh` | Sets `XDG_RUNTIME_DIR`, `QT_QPA_PLATFORM=wayland`, etc. on every login |
 
 **Companion CLI utils** (kept tiny, all Wayland-native):
@@ -78,7 +79,11 @@ That wraps `niri --session` in `dbus-run-session`. The skel config (`~/.config/n
 - `fuzzel` — keyboard launcher (`Mod+D`)
 - `grim` + `slurp` — screenshot + region selector
 - `wl-clipboard` — `wl-copy` / `wl-paste`
-- `imv` — image viewer
+- `imv` — image viewer with SVG and animated GIF support
+
+**Multimedia:** PipeWire 1.6 with Bluetooth (`bluez5`) and ffmpeg-backed file playback; PulseAudio compat shim built-in (apps that link against libpulse work transparently). Full GStreamer 1.28 stack (base/good/bad/ugly/libav).
+
+**Networking + auth:** NetworkManager 1.56 + `wpa_supplicant` for Wi-Fi, `polkit` for non-root connection management, `nftables` for firewall, `dnsmasq` for hotspot mode, `openvpn` + NM-openvpn plugin for VPN. UPower for battery/power widgets.
 
 Anything else (file manager, editor, calculator) is done in a terminal — `lf`, `nvim`, `bc`. Anything fatter is one `kdos-fetch-app` away.
 
@@ -125,7 +130,7 @@ make clean    # nuke the build/ tree
 - `build/fs/` — the populated rootfs (chroot-able for inspection)
 - `build/kdos.qcow2` — persistent disk image used by `make rundisk`
 
-A clean build takes 1–3 hours depending on hardware (Qt 6 alone is ~30 min on 8 cores). Incremental rebuilds are fast — the build system marks completion of each phase and skips re-doing finished work.
+A clean build takes 2–4 hours depending on hardware (Qt 6 alone is ~30 min on 8 cores; gstreamer adds ~15 min). Incremental rebuilds are fast — the build system marks completion of each phase and skips re-doing finished work.
 
 ---
 
@@ -150,8 +155,8 @@ kdos/
 ## Hardware
 
 - **CPU:** x86_64 with KVM virtualization for `make run`
-- **RAM:** 4 GB minimum to build comfortably
-- **Disk:** ~30 GB free for build artifacts; final ISO is ~1.5 GB
+- **RAM:** 4 GB minimum to build comfortably (8 GB recommended for parallel cargo)
+- **Disk:** ~30 GB free for build artifacts; final ISO is ~2 GB
 
 QEMU virtio-vga is the default tested guest target — KDOS boots cleanly under QEMU/KVM with `make run` straight from the ISO. Bare-metal install is supported via the `kinstall` curses installer, but the QEMU path is the well-trodden one.
 

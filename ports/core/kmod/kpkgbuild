@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Libraries and utilities for loading kernel modules
-# depends	: xz zlib scdoc
+# depends	: xz zlib zstd scdoc
 
 name=kmod
 version=34.2
@@ -17,8 +17,6 @@ release=1
 source="https://www.kernel.org/pub/linux/utils/kernel/$name/$name-$version.tar.xz"
 
 build() {
-	# Fix ln command flags: --force -> -f, remove --relative (not supported by toybox/busybox)
-	# and use manual relative path ../../bin/kmod. Escape $ for Makefile variables.
 	sed -i 's|\$(LN_S) --force --relative .*kmod|ln -sf ../../bin/kmod|' Makefile.in
 
 	CFLAGS="$CFLAGS -include libgen.h" \
@@ -27,6 +25,7 @@ build() {
 	            --sysconfdir=/etc      \
 	            --with-rootlibdir=/lib \
 	            --with-xz              \
+	            --with-zstd            \
 	            --with-zlib
 	make
 	make DESTDIR=$PKG install

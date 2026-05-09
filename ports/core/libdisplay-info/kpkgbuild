@@ -13,9 +13,9 @@
 # depends	: meson hwdata
 
 name=libdisplay-info
-version=0.2.0
+version=0.3.0
 release=1
-source="https://gitlab.freedesktop.org/emersion/libdisplay-info/-/releases/$version/downloads/libdisplay-info-$version.tar.bz2"
+source="https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/$version/libdisplay-info-$version.tar.bz2"
 
 build() {
 	meson setup build \

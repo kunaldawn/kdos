@@ -18,6 +18,7 @@ source="https://github.com/xkbcommon/libxkbcommon/archive/refs/tags/xkbcommon-$v
 
 build() {
 	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib \
 		-Denable-wayland=true \
 		-Denable-x11=false \
 		-Denable-docs=false
