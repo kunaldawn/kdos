@@ -1,0 +1,53 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Qt 6 base libraries — Core, Gui, Widgets, Network, DBus, Sql (no GTK/GLib)
+# homepage	: https://www.qt.io/
+# depends	: cmake ninja perl python3 dbus zlib zstd openssl libpng libjpeg-turbo double-conversion icu pcre2 fontconfig freetype2 harfbuzz libdrm wayland mesa libxkbcommon vulkan-headers
+
+name=qt6-base
+version=6.8.3
+release=1
+_qtmajor=${version%.*.*}.${version%.*}
+_qtmajor=${version%.*}
+source="https://download.qt.io/archive/qt/${_qtmajor%.*}.${_qtmajor##*.}/${version}/submodules/qtbase-everywhere-src-${version}.tar.xz"
+
+build() {
+	mkdir -p build
+	cd build
+	cmake .. \
+		-GNinja \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DQT_AVOID_CMAKE_ARCHIVING_API=ON \
+		-DQT_GENERATE_SBOM=OFF \
+		-DINSTALL_MKSPECSDIR=lib/cmake/mkspecs \
+		-DBUILD_SHARED_LIBS=ON \
+		-DQT_BUILD_TESTS=OFF \
+		-DQT_BUILD_EXAMPLES=OFF \
+		-DFEATURE_glib=OFF \
+		-DFEATURE_gtk3=OFF \
+		-DFEATURE_cups=OFF \
+		-DFEATURE_journald=OFF \
+		-DFEATURE_system_zlib=ON \
+		-DFEATURE_system_libpng=ON \
+		-DFEATURE_system_libjpeg=ON \
+		-DFEATURE_system_doubleconversion=ON \
+		-DFEATURE_system_pcre2=ON \
+		-DFEATURE_dbus_linked=ON \
+		-DFEATURE_openssl_linked=ON \
+		-DFEATURE_xcb=OFF \
+		-DINPUT_opengl=es2 \
+		-DFEATURE_kms=ON \
+		-DFEATURE_egl=ON \
+		-DFEATURE_vulkan=ON
+	ninja
+	DESTDIR=$PKG ninja install
+}

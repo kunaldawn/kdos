@@ -1,0 +1,33 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: D-Bus daemon for power-related stats and policy (battery, AC, suspend hints)
+# homepage	: https://upower.freedesktop.org/
+# depends	: meson glib dbus libgudev
+
+name=upower
+version=1.91.1
+release=1
+source="https://gitlab.freedesktop.org/upower/upower/-/archive/v$version/upower-v$version.tar.bz2"
+
+build() {
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
+		-Dintrospection=disabled \
+		-Dgtk-doc=false \
+		-Dman=false \
+		-Dinstalled_tests=false \
+		-Didevice=disabled \
+		-Dpolkit=enabled \
+		-Dsystemdsystemunitdir=no \
+		-Dudevrulesdir=/usr/lib/udev/rules.d
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

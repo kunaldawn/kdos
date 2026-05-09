@@ -13,6 +13,7 @@
 # Environment configuration for KDOS build
 
 export CHROOT=1
+export PORT_REPO="/ports/core /kdos/src/packages"
 
 export PKG_CONFIG_PATH="/usr/local/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig:/usr/lib64/pkgconfig"${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 export CFLAGS="-O2 -pipe -std=gnu11 -fPIC"

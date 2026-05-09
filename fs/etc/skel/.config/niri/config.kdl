@@ -1,0 +1,38 @@
+// niri config — KDOS default. See https://github.com/YaLTeR/niri/wiki/Configuration:-Overview
+
+spawn-at-startup "noctalia"
+
+input {
+    keyboard {
+        xkb {
+            layout "us"
+        }
+    }
+    touchpad {
+        tap
+        natural-scroll
+    }
+}
+
+layout {
+    gaps 8
+    center-focused-column "never"
+    default-column-width { proportion 0.5; }
+}
+
+binds {
+    Mod+Return    { spawn "foot"; }
+    Mod+D         { spawn "fuzzel"; }
+    Mod+Q         { close-window; }
+    Mod+Shift+E   { quit; }
+    Mod+H         { focus-column-left; }
+    Mod+L         { focus-column-right; }
+    Mod+J         { focus-window-down; }
+    Mod+K         { focus-window-up; }
+    Mod+1         { focus-workspace 1; }
+    Mod+2         { focus-workspace 2; }
+    Mod+3         { focus-workspace 3; }
+    Mod+4         { focus-workspace 4; }
+}
+
+prefer-no-csd
