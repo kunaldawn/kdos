@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Scrollable-tiling Wayland compositor (Smithay-based, Rust)
+# homepage	: https://github.com/YaLTeR/niri
+# depends	: rust cargo-c clang wayland wayland-protocols libxkbcommon libinput libdrm mesa pixman pango glib seatd libdisplay-info eudev
+
+name=niri
+version=26.04
+release=1
+source="https://github.com/YaLTeR/niri/archive/refs/tags/v$version.tar.gz"
+vendoring=rust
+
+build() {
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+	export CARGO_HOME="$SRC_ROOT/.cargo"
+	export RUSTFLAGS="-C target-feature=-crt-static"
+	export LIBCLANG_PATH=/usr/lib
+	cargo build --release --frozen --offline
+	install -Dm755 target/release/niri "$PKG/usr/bin/niri"
+	install -Dm644 resources/niri.desktop "$PKG/usr/share/wayland-sessions/niri.desktop"
+	install -Dm644 resources/niri-portals.conf "$PKG/usr/share/xdg-desktop-portal/niri-portals.conf"
+}

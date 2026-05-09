@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: EDID and DisplayID parser used by Wayland compositors
+# homepage	: https://gitlab.freedesktop.org/emersion/libdisplay-info
+# depends	: meson hwdata
+
+name=libdisplay-info
+version=0.3.0
+release=1
+source="https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/$version/libdisplay-info-$version.tar.bz2"
+
+build() {
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

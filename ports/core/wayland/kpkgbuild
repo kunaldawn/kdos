@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Core Wayland protocol library (libwayland-server / libwayland-client)
+# homepage	: https://wayland.freedesktop.org/
+# depends	: libffi libxml2 expat meson
+
+name=wayland
+version=1.24.0
+release=1
+source="https://gitlab.freedesktop.org/wayland/wayland/-/releases/$version/downloads/wayland-$version.tar.xz"
+
+build() {
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib \
+		-Ddocumentation=false \
+		-Dtests=false
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

@@ -1,0 +1,39 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Image viewer for Wayland (Wayland-only build, meson)
+# homepage	: https://sr.ht/~exec64/imv
+# depends	: meson pkgconf wayland wayland-protocols libxkbcommon mesa fontconfig pango cairo libpng libjpeg-turbo libtiff icu librsvg libnsgif
+
+name=imv
+version=4.5.0
+release=1
+source="https://git.sr.ht/~exec64/imv/archive/v$version.tar.gz"
+
+build() {
+	export LDFLAGS="$LDFLAGS -licuuc -Wl,--allow-shlib-undefined"
+	meson setup build \
+		--prefix=/usr --sysconfdir=/etc --libdir=lib \
+		--buildtype=release \
+		-Dwindows=wayland \
+		-Dunicode=icu \
+		-Dman=disabled \
+		-Dtest=disabled \
+		-Dlibpng=enabled \
+		-Dlibjpeg=enabled \
+		-Dlibtiff=enabled \
+		-Dlibrsvg=enabled \
+		-Dlibnsgif=enabled \
+		-Dfreeimage=disabled \
+		-Dlibheif=disabled \
+		-Dlibjxl=disabled
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}

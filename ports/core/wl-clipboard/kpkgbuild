@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Wayland clipboard utilities (wl-copy, wl-paste)
+# homepage	: https://github.com/bugaevc/wl-clipboard
+# depends	: meson scdoc wayland wayland-protocols
+
+name=wl-clipboard
+version=2.2.1
+release=1
+source="https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v$version.tar.gz"
+
+build() {
+	meson setup build --prefix=/usr --libdir=lib
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}
