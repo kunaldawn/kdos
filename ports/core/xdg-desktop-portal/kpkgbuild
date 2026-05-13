@@ -10,7 +10,7 @@
 
 # description	: Desktop portal D-Bus framework (Wayland screencast / file-picker integration)
 # homepage	: https://github.com/flatpak/xdg-desktop-portal
-# depends	: meson glib dbus pipewire fuse json-glib gst-plugins-base
+# depends	: meson glib dbus pipewire fuse json-glib gst-plugins-base gdk-pixbuf
 
 name=xdg-desktop-portal
 version=1.20.4
