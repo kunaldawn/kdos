@@ -1,0 +1,7 @@
+# PAM service for the noctalia lock screen (NOCTALIA_PAM_SERVICE=noctalia).
+# Authenticates the calling user against /etc/shadow via pam_unix — consistent
+# with KDOS's shadow-based auth (no NSS/LDAP/SSSD backends).
+auth      required  pam_unix.so
+account   required  pam_unix.so
+password  required  pam_unix.so
+session   required  pam_unix.so
