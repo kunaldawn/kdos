@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Free version of the SSH connectivity tools
-# depends	: openssl xauth
+# depends	: openssl
 
 name=openssh
 version=10.2p1

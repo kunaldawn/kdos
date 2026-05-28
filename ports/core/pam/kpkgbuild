@@ -8,28 +8,31 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Desktop portal D-Bus framework (Wayland screencast / file-picker integration)
-# homepage	: https://github.com/flatpak/xdg-desktop-portal
-# depends	: meson glib dbus pipewire fuse json-glib gst-plugins-base gdk-pixbuf
+# description	: Linux Pluggable Authentication Modules (libpam + pam_unix against /etc/shadow)
+# homepage	: https://github.com/linux-pam/linux-pam
+# depends	: meson ninja pkgconf flex
 
-name=xdg-desktop-portal
-version=1.20.4
+name=pam
+version=1.7.2
 release=1
-source="https://github.com/flatpak/xdg-desktop-portal/releases/download/$version/xdg-desktop-portal-$version.tar.xz"
+source="https://github.com/linux-pam/linux-pam/releases/download/v$version/Linux-PAM-$version.tar.xz"
 
 build() {
 	meson setup build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
-		-Ddocumentation=disabled \
-		-Dman-pages=disabled \
-		-Dgeoclue=disabled \
-		-Dgudev=disabled \
-		-Dsystemd=disabled \
-		-Dflatpak-interfaces=disabled \
-		-Dtests=disabled \
-		-Dinstalled-tests=false \
-		-Dsandboxed-image-validation=disabled \
-		-Dsandboxed-sound-validation=disabled
+		--prefix=/usr --libdir=lib --sysconfdir=/etc \
+		--buildtype=release \
+		-D i18n=disabled \
+		-D docs=disabled \
+		-D audit=disabled \
+		-D econf=disabled \
+		-D logind=disabled \
+		-D elogind=disabled \
+		-D selinux=disabled \
+		-D nis=disabled \
+		-D pam_userdb=disabled \
+		-D examples=false \
+		-D xtests=false \
+		-D pam_unix=enabled
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }
