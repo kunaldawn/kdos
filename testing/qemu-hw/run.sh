@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run KDOS under a containerized QEMU 10 (virgl+blob) rendering on the host
-# NVIDIA GPU, with the GTK window on the host's XWayland display.
+# NVIDIA GPU, presenting as a native Wayland window (or X11 on an X11 host).
 #
 # The host's packaged QEMU is 8.2.2 (no blob+virgl, no venus); this sidesteps it
 # entirely. `make run` / `make rundisk` still use the host QEMU + software-GL shell.
