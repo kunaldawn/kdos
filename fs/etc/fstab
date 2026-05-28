@@ -4,3 +4,4 @@ sysfs           /sys            sysfs   defaults        0       0
 devtmpfs        /dev            devtmpfs defaults       0       0
 tmpfs           /tmp            tmpfs   defaults        0       0
 tmpfs           /run            tmpfs   defaults        0       0
+cgroup2         /sys/fs/cgroup  cgroup2 nsdelegate      0       0
