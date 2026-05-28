@@ -21,6 +21,14 @@ build() {
 	# Noctalia is QML; the install is a tree of .qml files plus assets.
 	# Layout follows the upstream `nix` recipe: shell tree under
 	# /usr/share/noctalia-shell, launcher wrapper at /usr/bin/noctalia.
+	# Drop the Sway backend: its Quickshell.I3 module is X11-only and cannot build on
+	# a Wayland-only host. niri is detected first (NIRI_SOCKET), so Sway never runs;
+	# neutralizing the type reference lets the shell compile without Quickshell.I3.
+	sed -i 's/SwayService {/Item {/' Services/Compositor/CompositorService.qml
+	if grep -q 'SwayService {' Services/Compositor/CompositorService.qml; then
+		echo "ERROR: noctalia Sway-drop patch did not apply"; exit 1
+	fi
+
 	install -dm755 "$PKG/usr/share/noctalia-shell"
 	cp -a Assets Commons Helpers Modules Scripts Services Shaders Widgets shell.qml \
 		"$PKG/usr/share/noctalia-shell/"
@@ -28,6 +36,16 @@ build() {
 	install -dm755 "$PKG/usr/bin"
 	cat > "$PKG/usr/bin/noctalia" <<'EOF'
 #!/bin/sh
+export QS_CONFIG_PATH=/usr/share/noctalia-shell
+export NOCTALIA_PAM_SERVICE=noctalia
+# virgl WITHOUT blob resources can't share Qt's GPU dmabufs with the compositor,
+# so QtQuick surfaces render blank -> force software GL there. When the host
+# exposes blob (+resource_blob, e.g. QEMU >=9 blob=true), dmabuf sharing works
+# and we keep native HW GL + the threaded loop. Real GPUs have no virtio_gpu.
+if [ -d /sys/module/virtio_gpu ] && ! dmesg 2>/dev/null | grep -q '+resource_blob'; then
+	export LIBGL_ALWAYS_SOFTWARE=1
+	export QSG_RENDER_LOOP=basic
+fi
 exec qs --path /usr/share/noctalia-shell "$@"
 EOF
 	chmod 755 "$PKG/usr/bin/noctalia"

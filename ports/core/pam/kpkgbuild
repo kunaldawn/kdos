@@ -8,22 +8,31 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Provides a way to load and enumerate PKCS #11 (a Cryptographic Token Interface Standard) modules
-# depends	: libtasn1 libffi meson ninja
+# description	: Linux Pluggable Authentication Modules (libpam + pam_unix against /etc/shadow)
+# homepage	: https://github.com/linux-pam/linux-pam
+# depends	: meson ninja pkgconf flex
 
-name=p11-kit
-version=0.26.0
+name=pam
+version=1.7.2
 release=1
-source="https://github.com/p11-glue/p11-kit/releases/download/$version/$name-$version.tar.xz"
+source="https://github.com/linux-pam/linux-pam/releases/download/v$version/Linux-PAM-$version.tar.xz"
 
 build() {
 	meson setup build \
 		--prefix=/usr --libdir=lib --sysconfdir=/etc \
 		--buildtype=release \
-		-D trust_paths=/etc/pki/anchors \
-		-D module_path=/usr/lib/pkcs11 \
-		-D nls=false
+		-D i18n=disabled \
+		-D docs=disabled \
+		-D audit=disabled \
+		-D econf=disabled \
+		-D logind=disabled \
+		-D elogind=disabled \
+		-D selinux=disabled \
+		-D nis=disabled \
+		-D pam_userdb=disabled \
+		-D examples=false \
+		-D xtests=false \
+		-D pam_unix=enabled
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }
-
