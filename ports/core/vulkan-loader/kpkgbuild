@@ -1,0 +1,35 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Khronos Vulkan ICD loader (libvulkan.so.1) — dispatches to Mesa venus/lavapipe ICDs
+# homepage	: https://github.com/KhronosGroup/Vulkan-Loader
+# depends	: cmake ninja pkgconf vulkan-headers wayland
+
+name=vulkan-loader
+version=1.4.345
+release=1
+source="https://github.com/KhronosGroup/Vulkan-Loader/archive/v$version/$name-$version.tar.gz"
+
+build() {
+	cmake -GNinja -B build \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DCMAKE_INSTALL_SYSCONFDIR=/etc \
+		-DCMAKE_INSTALL_DATADIR=/usr/share \
+		-DCMAKE_PREFIX_PATH=/usr \
+		-DVULKAN_HEADERS_INSTALL_DIR=/usr \
+		-DBUILD_WSI_WAYLAND_SUPPORT=ON \
+		-DBUILD_WSI_XCB_SUPPORT=OFF \
+		-DBUILD_WSI_XLIB_SUPPORT=OFF \
+		-DBUILD_TESTS=OFF
+	cmake --build build
+	DESTDIR=$PKG cmake --install build
+}
