@@ -8,8 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: Monospace bitmap font (for X11 and console)
-# depends	: fontconfig encodings mkfontscale bdftopcf python3
+# description	: Monospace bitmap console font
+# depends	: python3
 
 name=terminus-font
 version=4.49.1
@@ -19,8 +19,7 @@ source="https://downloads.sourceforge.net/project/$name/$name-${version%.1}/$nam
 build() {
 	./configure \
 		--prefix=/usr \
-		--x11dir=/usr/share/fonts/misc \
 		--psfdir=/usr/share/consolefonts
-	make
-	make DESTDIR=$PKG install
+	make psf
+	make DESTDIR=$PKG install-psf
 }

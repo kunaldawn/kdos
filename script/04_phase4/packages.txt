@@ -92,6 +92,10 @@ tmux
 byobu
 kbd
 terminus-font
+# Scalable GUI fonts (Sans/Mono/Serif) — terminus is console-only (PSF). Without
+# this, fontconfig has no fonts: foot fails ("failed to load primary fonts") and
+# noctalia's bar renders no text/icons (blank/shadow-only).
+ttf-dejavu
 
 # ---------------------------------
 # Modern CLI tools (Rust / Go)
@@ -169,6 +173,7 @@ xdg-desktop-portal-wlr
 # Networking + auth (NetworkManager + polkit + Wi-Fi + firewall + VPN)
 duktape
 polkit
+pam
 wpa_supplicant
 libnftnl
 nftables
@@ -186,6 +191,9 @@ imv
 # Qt6 stack (host-side exception to the no-Qt rule, for the shell layer)
 double-conversion
 cli11
+# Vulkan ICD loader (libvulkan.so.1) — completes the guest Vulkan stack so Qt's
+# Vulkan RHI can dispatch to Mesa's venus driver (HW accel via QEMU venus=true).
+vulkan-loader
 qt6-base
 qt6-shadertools
 qt6-declarative

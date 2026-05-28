@@ -26,10 +26,10 @@ build:
 
 run:
 	test -f build/kdos.qcow2 || qemu-img create -f qcow2 build/kdos.qcow2 20G
-	qemu-system-x86_64 -enable-kvm -cpu host -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga,xres=2560,yres=1440 -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+	qemu-system-x86_64 -enable-kvm -cpu host -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga-gl,xres=2560,yres=1440 -display gtk,gl=on -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 rundisk:
-	qemu-system-x86_64 -enable-kvm -cpu host -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -vga none -device virtio-vga,xres=2560,yres=1440 -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+	qemu-system-x86_64 -enable-kvm -cpu host -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -vga none -device virtio-vga-gl,xres=2560,yres=1440 -display gtk,gl=on -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 debug-boot:
 	qemu-system-x86_64 -m 4G -serial stdio \
@@ -38,10 +38,20 @@ debug-boot:
 		-cdrom build/iso-build/kdos.iso \
 		-append "root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3"
 
+# HW-accelerated run via a containerized QEMU 10 (virgl+blob on the host GPU).
+# The host's packaged QEMU is 8.2.2 (no blob+virgl) so `run`/`rundisk` above stay
+# software-GL for the shell; these render the Qt shell on the real GPU. See
+# testing/qemu-hw/. Needs Docker + NVIDIA Container Toolkit.
+run-hw:
+	testing/qemu-hw/run.sh iso
+
+rundisk-hw:
+	testing/qemu-hw/run.sh disk
+
 cleandisk:
 	qemu-img create -f qcow2 build/kdos.qcow2 20G
 
 clean:
 	rm -rf build
 
-.PHONY: all build run rundisk cleandisk clean fetch
+.PHONY: all build run rundisk run-hw rundisk-hw debug-boot cleandisk clean fetch
