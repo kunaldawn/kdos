@@ -18,6 +18,8 @@ mount -t sysfs sys /sys
 mount -t devtmpfs dev /dev
 mkdir -p /dev/pts
 mount -t devpts devpts /dev/pts
+mkdir -p /dev/shm
+mount -t tmpfs -o nosuid,nodev tmpfs /dev/shm
 
 echo ">>> KDOS Initramfs Booting..." > /dev/console
 
