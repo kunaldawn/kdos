@@ -10,7 +10,7 @@
 
 # description	: A daemonless container engine for OCI containers (Docker alternative)
 # homepage	: https://podman.io/
-# depends	: go conmon crun slirp4netns fuse-overlayfs libseccomp libgpgme
+# depends	: go conmon crun netavark aardvark-dns slirp4netns fuse-overlayfs libseccomp libgpgme
 
 name=podman
 version=5.8.2
@@ -46,6 +46,8 @@ events_logger = "file"
 runtime = "crun"
 
 [network]
+network_backend = "netavark"
+firewall_driver = "nftables"
 default_rootless_network_cmd = "slirp4netns"
 EOF
 

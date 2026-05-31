@@ -187,6 +187,8 @@ mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 mkdir -p /dev/pts
 mount -t devpts devpts /dev/pts
+mkdir -p /dev/shm
+mount -t tmpfs -o nosuid,nodev tmpfs /dev/shm
 
 # Populate /dev
 echo "Populating /dev..."
