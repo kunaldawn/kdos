@@ -270,7 +270,7 @@ build() {
 	./scripts/config --module CONFIG_DRM_I915
 	./scripts/config --module CONFIG_DRM_AMDGPU
 	./scripts/config --module CONFIG_DRM_NOUVEAU
-	./scripts/config --module CONFIG_DRM_VIRTIO_GPU
+	./scripts/config --enable CONFIG_DRM_VIRTIO_GPU
 	./scripts/config --module CONFIG_DRM_QXL
 	
 	# Audio (DESKTOP & LAPTOP)
@@ -351,6 +351,14 @@ build() {
 }
 
 postinstall() {
+	# Remove stale kernel modules from previous kernel versions
+	for d in /lib/modules/*/; do
+		ver=$(basename "$d")
+		[ "$ver" = "$version" ] && continue
+		echo "Removing stale kernel modules: $ver"
+		rm -rf "$d"
+	done
+
 	# Regenerate module dependencies
 	echo "Generating modules.dep for $version..."
 	if command -v depmod >/dev/null; then

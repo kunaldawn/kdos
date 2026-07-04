@@ -15,9 +15,13 @@
 name=pipewire
 version=1.6.2
 release=1
-source="https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/$version/pipewire-$version.tar.bz2"
+source="https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/$version/pipewire-$version.tar.bz2
+	https://gitlab.freedesktop.org/pipewire/media-session/-/archive/master/media-session-master.tar.gz"
 
 build() {
+	# Vendor media-session subproject for offline build (wrap-git → directory)
+	ln -sf "$SRC_ROOT/media-session-master" subprojects/media-session
+
 	meson setup build \
 		--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
 		-Dbuildtype=release \
@@ -53,7 +57,7 @@ build() {
 		-Dflatpak=disabled \
 		-Dgsettings=disabled \
 		-Dsnap=disabled \
-		-Dsession-managers=[]
+		"-Dsession-managers=['media-session']"
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }

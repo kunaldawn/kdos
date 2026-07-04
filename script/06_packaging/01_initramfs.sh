@@ -317,18 +317,19 @@ if [ "\$FOUND" == "1" ]; then
 
             # Create missing mountpoints in newroot
             mkdir -p /newroot/dev /newroot/proc /newroot/sys /newroot/run /newroot/tmp
-            mkdir -p /newroot/mnt/iso /newroot/mnt/system /newroot/mnt/overlay
 
-            # Move Mountpoints
+            # Move pseudo-filesystems under the new root (standard; Alpine mkinitfs does this)
             mount --move /dev /newroot/dev
             mount --move /proc /newroot/proc
             mount --move /sys /newroot/sys
-            
-            # Move Backing Mounts
-            mount --move /mnt/iso /newroot/mnt/iso
-            mount --move /mnt/system /newroot/mnt/system
-            mount --move /mnt/overlay /newroot/mnt/overlay
-            
+
+            # Backing mounts (squashfs /mnt/system, overlay tmpfs /mnt/overlay, ISO
+            # /mnt/iso) are deliberately NOT moved under /newroot. switch_root orphans
+            # them, so they never sit UNDER the running / -> they cannot become
+            # MNT_LOCKED submounts inherited into a container mount namespace (which is
+            # what broke crun/podman exec: umount2(old_root, MNT_DETACH) -> EINVAL).
+            # The overlay keeps an internal kernel ref to the squashfs, so / stays valid.
+
             # Switch Root
             echo "Switching to new root..."
             if [ -x /newroot/sbin/init ]; then
