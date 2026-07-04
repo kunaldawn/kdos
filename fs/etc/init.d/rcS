@@ -13,6 +13,11 @@
 # Mount all filesystems in fstab
 mount -a
 
+# Make / recursively shared. systemd does this at PID1; OpenRC/Alpine document the
+# same. Rootless podman/crun require a shared root for mount propagation, otherwise
+# they warn "/ is not a shared mount" and container mount/exec breaks.
+mount --make-rshared /
+
 # ── Auto-run all numbered service scripts ─────────────────────────────────────
 # Scripts must match the pattern:  /etc/init.d/NN_name.sh
 # They are executed in numeric order with the argument 'start'.

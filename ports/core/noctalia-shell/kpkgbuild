@@ -40,11 +40,29 @@ export QS_CONFIG_PATH=/usr/share/noctalia-shell
 export NOCTALIA_PAM_SERVICE=noctalia
 # virgl WITHOUT blob resources can't share Qt's GPU dmabufs with the compositor,
 # so QtQuick surfaces render blank -> force software GL there. When the host
-# exposes blob (+resource_blob, e.g. QEMU >=9 blob=true), dmabuf sharing works
-# and we keep native HW GL + the threaded loop. Real GPUs have no virtio_gpu.
-if [ -d /sys/module/virtio_gpu ] && ! dmesg 2>/dev/null | grep -q '+resource_blob'; then
-	export LIBGL_ALWAYS_SOFTWARE=1
-	export QSG_RENDER_LOOP=basic
+# exposes blob (VIRTIO_GPU_F_RESOURCE_BLOB, e.g. QEMU >=9 blob=true), dmabuf
+# sharing works and we keep native HW GL + the threaded loop.
+# Real GPUs have no virtio_gpu module.
+if [ -d /sys/module/virtio_gpu ]; then
+	# Detect blob support via dmesg (root, CAP_SYSLOG) or sysfs (non-root).
+	# VIRTIO_GPU_F_RESOURCE_BLOB = virtio feature bit 2 (value 4).
+	blob=0
+	dmesg 2>/dev/null | grep -q '+resource_blob' && blob=1
+	if [ "$blob" = 0 ] && [ -d /sys/bus/virtio/devices ]; then
+		for f in /sys/bus/virtio/devices/*/features; do
+			[ -r "$f" ] || continue
+			fval=$(head -1 "$f" 2>/dev/null)
+			fval="${fval#0x}"
+			fval="${fval%%[$'\t ']*}"
+			case "$fval" in *[!0-9a-fA-F]*|'') continue;; esac
+			hex=$((16#$fval)) 2>/dev/null || continue
+			[ $((hex & 4)) -eq 0 ] 2>/dev/null || { blob=1; break; }
+		done
+	fi
+	if [ "$blob" = 0 ]; then
+		export LIBGL_ALWAYS_SOFTWARE=1
+		export QSG_RENDER_LOOP=basic
+	fi
 fi
 exec qs --path /usr/share/noctalia-shell "$@"
 EOF
