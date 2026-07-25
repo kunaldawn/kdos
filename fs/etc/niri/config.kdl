@@ -48,7 +48,4 @@ binds {
     Mod+4         { focus-workspace 4; }
 }
 
-// software cursor avoids invisible cursor with virgl in QEMU
-cursor-engine "software"
-
 prefer-no-csd
