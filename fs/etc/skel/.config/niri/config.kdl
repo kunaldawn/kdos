@@ -46,6 +46,4 @@ binds {
     Mod+4         { focus-workspace 4; }
 }
 
-cursor-engine "software"
-
 prefer-no-csd
