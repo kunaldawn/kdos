@@ -28,7 +28,12 @@ RUN apk update && apk add --no-cache \
     linux-headers \
     rsync \
     xz \
+    tar \
+    zstd \
     python3
+
+# Snapshot archives and the build TUI both assume UTF-8.
+ENV LANG=C.UTF-8
 
 WORKDIR /workspace
 
