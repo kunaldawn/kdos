@@ -126,7 +126,16 @@ file counts) and `timings.json` feeding the ETA.
 **Restoring.** `make build` opens a picker listing the snapshots; pick one and the build
 restores it and continues at the *next* phase. Restore is layered — each path is taken
 from the newest snapshot at or below the chosen phase, so restoring phase3 pulls `fs`
-from phase3 and `cross`/`mark` from phase1.
+from phase3 and `cross`/`mark` from phase1. Restoring a phase that has no snapshot of its
+own is refused rather than silently falling back to an older one.
+
+`[S]` during a build takes a *partial* snapshot of the running phase. Restoring one of
+those re-runs that phase instead of skipping it (kpkg skips already-installed packages),
+and the picker marks the row `done/total!`.
+
+If a restore is interrupted, `build/.restore-in-progress` remains and both snapshotting
+and the next build refuse to run until you restore again or `make cleanbuild`. Snapshot
+outcomes — including failures — are appended to `build/logs/snapshots.log`.
 
 Non-interactive equivalents:
 

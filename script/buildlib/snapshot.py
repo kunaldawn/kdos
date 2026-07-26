@@ -22,8 +22,12 @@ import subprocess
 import threading
 import time
 
-SCHEMA = 2
+SCHEMA = 3
 MANIFEST = "manifest.json"
+# Written at the build/ root (not under snapshots/) while a restore is
+# rewriting the tree, so `make cleanbuild` discards the marker together with
+# the truncated tree it describes.
+RESTORE_MARKER = ".restore-in-progress"
 
 # Flags we would like tar to have; probed against `tar --help` because Alpine's
 # GNU tar may be built without acl/xattr support and busybox tar has almost none
@@ -184,6 +188,8 @@ class SnapshotStore:
             return None
         if not isinstance(manifest, dict) or "entries" not in manifest:
             return None
+        # Snapshots written before schema 3 are always whole-phase snapshots.
+        manifest.setdefault("complete", True)
         for entry in manifest["entries"]:
             archive = os.path.join(self.phase_dir(dir_name), entry.get("archive", ""))
             if not os.path.isfile(archive):
@@ -229,6 +235,27 @@ class SnapshotStore:
             pass
         return found
 
+    def marker_path(self):
+        return os.path.join(self.build_dir, RESTORE_MARKER)
+
+    def interrupted_restore(self):
+        """Details of a restore that never finished, or None."""
+        try:
+            with open(self.marker_path(), 'r') as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return None
+
+    def _write_marker(self, target, paths):
+        try:
+            with open(self.marker_path(), 'w') as f:
+                json.dump({"target": target, "paths": paths, "started": time.time()}, f)
+        except OSError:
+            pass
+
+    def clear_marker(self):
+        _unlink(self.marker_path())
+
     def free_bytes(self):
         try:
             st = os.statvfs(self.build_dir)
@@ -238,8 +265,19 @@ class SnapshotStore:
 
     # ----- create ---------------------------------------------------------
 
-    def create(self, meta, steps=0, duration=0.0, on_progress=None, should_stop=None):
-        """Snapshot one phase. Returns the manifest, or None when skipped."""
+    def create(self, meta, steps=0, duration=0.0, on_progress=None, should_stop=None,
+               complete=True, total_steps=None, done_steps=None):
+        """Snapshot one phase. Returns the manifest, or None when skipped.
+
+        `complete` is False for a snapshot taken part-way through a phase (the
+        [S] hotkey). Restoring one of those resumes inside the phase instead of
+        skipping it, so the remaining steps still run.
+        """
+        interrupted = self.interrupted_restore()
+        if interrupted:
+            raise RuntimeError("build/ is mid-restore of %s; refusing to snapshot it"
+                               % interrupted.get("target", "?"))
+
         unsafe = [p for p in meta.snapshot_paths if not is_safe_relpath(p)]
         if unsafe:
             raise RuntimeError("refusing unsafe snapshot path(s): %s" % " ".join(unsafe))
@@ -315,6 +353,9 @@ class SnapshotStore:
             "duration_s": round(duration, 1),
             "snapshot_s": round(time.time() - started, 1),
             "steps": steps,
+            "complete": bool(complete),
+            "total_steps": total_steps if total_steps is not None else steps,
+            "done_steps": list(done_steps or [])[-200:],
             "codec": self.codec,
             "entries": entries,
         }
@@ -401,12 +442,22 @@ class SnapshotStore:
                 }
         return [chosen[k] for k in sorted(chosen)]
 
-    def restore(self, plan, on_progress=None, should_stop=None):
+    def restore(self, plan, on_progress=None, should_stop=None, target=None):
+        # Validate everything before touching the tree, so a rejected plan
+        # leaves build/ exactly as it was — and unmarked.
+        for item in plan:
+            if not is_safe_relpath(item["path"]):
+                raise RuntimeError("refusing unsafe restore path: %r" % item["path"])
+            if not os.path.isfile(item["archive"]):
+                raise RuntimeError("missing archive: %s" % item["archive"])
+
+        # From the first rmtree until the last member is extracted the tree is
+        # inconsistent; the marker is what lets the next run know that.
+        self._write_marker(target or (plan[0]["source"] if plan else "?"),
+                           [i["path"] for i in plan])
         for item in plan:
             if should_stop and should_stop():
                 raise RuntimeError("aborted")
-            if not is_safe_relpath(item["path"]):
-                raise RuntimeError("refusing unsafe restore path: %r" % item["path"])
 
             target = os.path.join(self.build_dir, item["path"])
             if os.path.isdir(target) and not os.path.islink(target):
@@ -438,28 +489,46 @@ class SnapshotStore:
             decomp = self.decompressor_for(item["manifest"]) + [item["archive"]]
             tar_cmd = ["tar"] + self._extract_flags() + ["-C", self.build_dir, "-xvf", "-"]
             self._pipe(decomp, tar_cmd, None, state, on_progress, should_stop,
-                       read_names_from="second", input_size=_size(item["archive"]))
+                       names_from="second-stdout", input_size=_size(item["archive"]))
+
+        self.clear_marker()
 
     # ----- plumbing -------------------------------------------------------
 
     def _pipe(self, first_cmd, second_cmd, out_path, state, on_progress,
-              should_stop, read_names_from="first", input_size=None):
+              should_stop, names_from="first-stderr", input_size=None):
         """Run `first | second`, optionally to a file, reporting progress.
 
-        Verbose member names come from whichever stage is tar; byte progress
-        comes from the output file size when writing an archive, or from how
-        much of the input archive has been consumed when extracting.
+        Which stream carries tar's member names depends on the direction:
+        creating an archive puts the archive itself on stdout so `-v` names go
+        to stderr, while extracting puts the names on stdout. Getting this
+        backwards costs both the file counter and, worse, tar's diagnostics —
+        so the name stream is named explicitly and every other stream is
+        collected as error output.
+
+        Byte progress is the output file's size when writing an archive, and
+        how much of the input archive the decompressor has read when
+        extracting. Rendering happens on the caller's thread: the ticker only
+        updates `state`, so a curses on_progress can never run concurrently
+        with the caller's own drawing.
         """
-        counter = {"files": 0, "current": "", "err": []}
-        out_fh = open(out_path, 'wb') if out_path else subprocess.DEVNULL
+        counter = {"files": 0, "current": "", "err": [], "names": []}
+        names_from_stdout = names_from == "second-stdout"
+        if out_path and names_from_stdout:
+            raise ValueError("cannot read names from stdout while writing it to a file")
+
+        out_fh = open(out_path, 'wb') if out_path else None
         stop_ticker = threading.Event()
+        threads = []
+        tick = None
 
         try:
             first = subprocess.Popen(first_cmd, stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE)
+            second_stdout = out_fh if out_path else (
+                subprocess.PIPE if names_from_stdout else subprocess.DEVNULL)
             second = subprocess.Popen(second_cmd, stdin=first.stdout,
-                                      stdout=(out_fh if out_path else subprocess.DEVNULL),
-                                      stderr=subprocess.PIPE)
+                                      stdout=second_stdout, stderr=subprocess.PIPE)
             first.stdout.close()
 
             def drain(stream, collect_names):
@@ -470,25 +539,31 @@ class SnapshotStore:
                     if collect_names:
                         counter["files"] += 1
                         counter["current"] = line
+                        # tar interleaves its own errors with -v names on the
+                        # same stream, so keep a tail for diagnostics.
+                        counter["names"].append(line)
+                        del counter["names"][:-5]
                     else:
                         counter["err"].append(line)
                         del counter["err"][:-20]
                 stream.close()
 
-            t1 = threading.Thread(target=drain,
-                                  args=(first.stderr, read_names_from == "first"),
-                                  daemon=True)
-            t2 = threading.Thread(target=drain,
-                                  args=(second.stderr, read_names_from == "second"),
-                                  daemon=True)
-            t1.start()
-            t2.start()
+            threads.append(threading.Thread(
+                target=drain, args=(first.stderr, names_from == "first-stderr"),
+                daemon=True))
+            threads.append(threading.Thread(
+                target=drain, args=(second.stderr, False), daemon=True))
+            if names_from_stdout:
+                threads.append(threading.Thread(
+                    target=drain, args=(second.stdout, True), daemon=True))
+            for t in threads:
+                t.start()
 
             def ticker():
                 last_bytes, last_t = 0, time.time()
                 while not stop_ticker.wait(0.25):
                     if out_path:
-                        done = _size(out_path + "") or 0
+                        done = _size(out_path)
                     elif input_size:
                         done = _consumed(first.pid, input_size)
                     else:
@@ -500,8 +575,6 @@ class SnapshotStore:
                     state["bytes"] = done
                     state["files"] = counter["files"]
                     state["current"] = counter["current"]
-                    if on_progress:
-                        on_progress(dict(state))
 
             tick = threading.Thread(target=ticker, daemon=True)
             tick.start()
@@ -511,17 +584,21 @@ class SnapshotStore:
                     second.wait(timeout=0.25)
                     break
                 except subprocess.TimeoutExpired:
+                    if on_progress:
+                        on_progress(dict(state))
                     if should_stop and should_stop():
                         second.terminate()
                         first.terminate()
                         raise RuntimeError("aborted")
 
             first.wait()
-            t1.join(timeout=5)
-            t2.join(timeout=5)
         finally:
             stop_ticker.set()
-            if out_path:
+            if tick is not None:
+                tick.join()
+            for t in threads:
+                t.join(timeout=5)
+            if out_fh is not None:
                 out_fh.close()
 
         # GNU tar exits 1 for warnings ("file changed as we read it"); the
@@ -529,10 +606,13 @@ class SnapshotStore:
         for proc, name in ((first, first_cmd[0]), (second, second_cmd[0])):
             rc = proc.returncode
             if rc not in (0, None) and not (name == "tar" and rc == 1):
-                tail = "; ".join(counter["err"][-3:])
+                tail = "; ".join((counter["err"] + counter["names"])[-3:])
                 raise RuntimeError("%s exited %s%s" % (name, rc, ": " + tail if tail else ""))
 
+        # The ticker may never have run for a short path, so publish the final
+        # counts here rather than leaving the last sample empty.
         state["files"] = counter["files"]
+        state["current"] = counter["current"]
         if on_progress:
             state["bytes"] = state.get("est_bytes") or state["bytes"]
             on_progress(dict(state))

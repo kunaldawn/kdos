@@ -242,13 +242,18 @@ class StartupMenu(Screen):
                 manifest = row["manifest"]
                 stale = manifest_stale(manifest, self.commit)
                 commit = (manifest.get("git_commit") or "-") + ("*" if stale else "")
+                if manifest.get("complete", True):
+                    steps = str(manifest.get("steps", "-"))
+                else:
+                    steps = "%s/%s!" % (manifest.get("steps", "?"),
+                                        manifest.get("total_steps", "?"))
                 text = "%2d %-16s %-17s %8s %10s %7s %9s" % (
                     idx,
                     row["phase"].dir_name,
                     format_when(manifest.get("created", 0)),
                     human_bytes(manifest_size(manifest)),
                     commit,
-                    str(manifest.get("steps", "-")),
+                    steps,
                     human_time(manifest.get("duration_s")),
                 )
             self.put(y, 2, text.ljust(min(self.w - 4, max(len(header), len(text)))), attr)
@@ -264,6 +269,19 @@ class StartupMenu(Screen):
                for r in self.rows):
             self.put(y, 2, "* snapshot taken from a different or dirty commit",
                      curses.color_pair(CP_WARN))
+            y += 1
+        if any(r["kind"] == "snap" and not r["manifest"].get("complete", True)
+               for r in self.rows):
+            self.put(y, 2, "! partial snapshot — restoring it re-runs that phase",
+                     curses.color_pair(CP_WARN))
+            y += 1
+
+        stale_restore = self.store.interrupted_restore()
+        if stale_restore:
+            self.put(y, 2, "INTERRUPTED RESTORE of %s — build/ is inconsistent; "
+                           "restore again or 'make cleanbuild'"
+                     % stale_restore.get("target", "?"),
+                     curses.color_pair(CP_FAIL) | curses.A_BOLD)
             y += 1
 
         selected_row = self.rows[self.selected] if self.rows else None
@@ -305,11 +323,21 @@ class ProgressScreen(Screen):
         self.title = title
         self.state = None
         self.lines = []
+        self._cancelled = False
+        self.stdscr.nodelay(True)
 
     def log(self, text):
         self.lines.append(text)
         del self.lines[:-8]
         self.draw()
+
+    def cancelled(self):
+        """Poll for a cancel key. Called from the thread driving the restore."""
+        if not self._cancelled:
+            key = self.stdscr.getch()
+            if key in (ord('q'), ord('Q'), 27):
+                self._cancelled = True
+        return self._cancelled
 
     def on_progress(self, state):
         self.state = state
@@ -632,6 +660,13 @@ class TUI(Screen):
             return
 
         if node.is_group:
+            # A group only has logs when its expansion failed — show those
+            # instead of the metadata, or the failure is invisible.
+            if node.logs and node.status == STATUS_FAIL:
+                for i, line in enumerate(node.logs[-log_h:]):
+                    self.put(log_y + i, x, line[:w].ljust(w),
+                             curses.color_pair(CP_FAIL) | curses.A_BOLD)
+                return
             self._draw_group_detail(node, x, w, log_y, log_h)
             return
 
@@ -702,26 +737,42 @@ class TUI(Screen):
         if layout["hud_h"] < 2:
             return
 
-        snap_note = "-"
+        snap_note, snap_attr = "-", curses.color_pair(CP_DIM)
         if self.manager.snapshot_activity:
             act = self.manager.snapshot_activity
             snap_note = "%s %s %s" % (act["action"], act["path"], human_bytes(act["bytes"]))
-        else:
-            latest = None
-            for group in self.manager.roots:
-                if group.note and group.note.startswith("snap"):
-                    latest = (group.meta.dir_name, group.note)
-            if latest:
-                snap_note = "%s %s %s" % (latest[0], GLYPH_OK, latest[1][5:])
+            snap_attr = curses.color_pair(CP_SNAP) | curses.A_BOLD
+        elif self.manager.last_snapshot:
+            name, state, detail, _when = self.manager.last_snapshot
+            mark = {"ok": GLYPH_OK, "partial": "!", "failed": "!!",
+                    "aborted": "-", "skipped": "-"}.get(state, "?")
+            snap_note = "%s %s %s" % (name, mark, detail or state)
+            snap_attr = {
+                "ok": curses.color_pair(CP_DONE),
+                "partial": curses.color_pair(CP_WARN) | curses.A_BOLD,
+                "failed": curses.color_pair(CP_FAIL) | curses.A_BOLD,
+            }.get(state, curses.color_pair(CP_DIM))
 
-        second = " sys %s %.2f load  %s/%s mem  %s free  %s snap %s" % (
+        second = " sys %s %.2f load  %s/%s mem  %s free  %s snap " % (
             GLYPH_SEP,
             sampler.load1 if sampler else 0.0,
             human_bytes(sampler.mem_used if sampler else 0),
             human_bytes(sampler.mem_total if sampler else 0),
             human_bytes(sampler.disk_free if sampler else 0),
-            GLYPH_SEP, snap_note)
-        self.put(y + 1, 1, second.ljust(self.w - 2)[:self.w - 2], curses.color_pair(CP_DIM))
+            GLYPH_SEP)
+        self.put(y + 1, 1, second, curses.color_pair(CP_DIM))
+        self.put(y + 1, 1 + len(second), snap_note, snap_attr)
+        used = 1 + len(second) + len(snap_note)
+
+        # Most recent build-level notice (snapshot failures land here).
+        if self.manager.messages and used + 12 < self.w:
+            when, text = self.manager.messages[-1]
+            if time.time() - when < 120:
+                attr = curses.color_pair(CP_WARN) | curses.A_BOLD \
+                    if ("FAIL" in text or "PARTIAL" in text or "unsafe" in text) \
+                    else curses.color_pair(CP_DIM)
+                self.put(y + 1, used + 2, ("%s %s" % (GLYPH_SEP, text))[:self.w - used - 3],
+                         attr)
 
     def _draw_footer(self, layout):
         y = layout["footer_y"]
@@ -729,6 +780,11 @@ class TUI(Screen):
         countable = [n for n in nodes if not n.is_group and n.status != STATUS_SKIPPED]
         total = len(countable)
         done = sum(1 for n in countable if n.status in (STATUS_DONE, STATUS_FAIL))
+        # A phase that has not been expanded yet contributes no steps, which
+        # would otherwise read as 100% while whole phases are still pending.
+        unexpanded = sum(1 for g in self.manager.roots
+                         if not g.children and g.status in (STATUS_PENDING, STATUS_RUNNING))
+        total += unexpanded
         pct = done / total if total else 0.0
 
         x = 2

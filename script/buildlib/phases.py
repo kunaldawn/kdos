@@ -163,6 +163,8 @@ class BuildStep:
         self.env_file = None
         self.meta = None                 # PhaseMeta, on group nodes
         self.note = ""                   # short UI annotation (snapshot state)
+        self.snap_state = None           # ok | partial | failed | aborted | skipped
+        self.snap_detail = ""
         self.expanded = True
 
     @property
@@ -215,9 +217,14 @@ class BuildManager:
     """Owns the execution order and runs it on a worker thread."""
 
     def __init__(self, root_dir, build_dir="build", snapshots=None, timings=None,
-                 snapshot_enabled=True):
+                 snapshot_enabled=True, repo_root=None):
         self.root_dir = root_dir
         self.build_dir = build_dir
+        # chroot_exec.sh bind-mounts the repo root at /kdos and cds there, so
+        # anything handed to a chroot command must be repo-relative: a host
+        # path like /workspace/script/phase2.env.sh does not exist inside.
+        self.repo_root = os.path.abspath(
+            repo_root if repo_root else os.path.dirname(os.path.abspath(root_dir)))
         self.snapshots = snapshots
         self.timings = timings
         self.snapshot_enabled = snapshot_enabled
@@ -231,8 +238,10 @@ class BuildManager:
         self.error_step = None
         self.start_time = None
         self.restored_from = None        # PhaseMeta the build was resumed from
+        self.resumed_inside = None       # PhaseMeta being re-run after a partial restore
         self.total_lines = 0
         self.messages = []               # build-level notices for the UI
+        self.last_snapshot = None        # (dir_name, state, detail, when)
 
         # Live snapshot progress, read by the TUI.
         self.snapshot_activity = None
@@ -270,13 +279,30 @@ class BuildManager:
         self.messages.append((time.time(), text))
         if len(self.messages) > 50:
             self.messages = self.messages[-50:]
+        # The in-process list dies with curses, so keep a durable copy: a
+        # snapshot that failed on the last phase must still be discoverable.
+        try:
+            log_dir = os.path.join(self.build_dir, "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            with open(os.path.join(log_dir, "snapshots.log"), 'a') as f:
+                f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), text))
+        except OSError:
+            pass
 
-    def mark_restored(self, phase_index):
-        """Skip every phase up to and including `phase_index`."""
+    def mark_restored(self, phase_index, resume_inside=False):
+        """Skip the phases covered by a restored snapshot.
+
+        `resume_inside` is for a partial snapshot: the phase it was taken from
+        still has steps left, so it is left PENDING and re-runs. kpkg skips
+        packages that are already installed, so re-running is cheap.
+        """
+        ceiling = phase_index - 1 if resume_inside else phase_index
         for group in self.roots:
-            if group.meta.index <= phase_index:
+            if group.meta.index <= ceiling:
                 group.status = STATUS_SKIPPED
                 self.restored_from = group.meta
+            elif resume_inside and group.meta.index == phase_index:
+                self.resumed_inside = group.meta
 
     # ----- helpers --------------------------------------------------------
 
@@ -284,6 +310,19 @@ class BuildManager:
         if step_type == "CHROOT":
             return [os.path.abspath(os.path.join(self.root_dir, "chroot_exec.sh")), "bash", "-c"]
         return ["bash", "-c"]
+
+    def _path_for(self, path, step_type):
+        """Path as the executing context sees it: repo-relative inside a chroot."""
+        if not path:
+            return path
+        if step_type == "CHROOT":
+            return os.path.relpath(os.path.abspath(path), self.repo_root)
+        return path
+
+    def _env_source(self, step):
+        if not step.env_file:
+            return ""
+        return "source %s && " % self._path_for(step.env_file, step.step_type)
 
     def phase_of(self, step):
         if step is None:
@@ -382,7 +421,7 @@ class BuildManager:
 
             if pkgs:
                 cmd_prefix = self._cmd_prefix(step.step_type)
-                env_src = "source %s && " % step.env_file if step.env_file else ""
+                env_src = self._env_source(step)
                 resolve_cmd = "%sexport PKGDB_DIR=/dev/null && kpkgdepends %s" % (
                     env_src, ' '.join(pkgs))
                 output = subprocess.check_output(cmd_prefix + [resolve_cmd],
@@ -407,12 +446,28 @@ class BuildManager:
             step.status = STATUS_DONE
             return True
         except Exception as exc:
-            step.status = STATUS_FAIL
-            step.add_log("Expansion Failed: %s" % exc)
-            self.error_step = step
-            self.stop_requested = True
-            self.is_running = False
+            self._fail_expansion(step, "package resolution", exc)
             return False
+
+    def _fail_expansion(self, step, what, exc):
+        """Record an expansion failure where the user can actually see it."""
+        step.status = STATUS_FAIL
+        step.add_log("%s failed for %s:" % (what, step.raw_title))
+        for line in str(exc).splitlines():
+            step.add_log(line)
+        try:
+            log_dir = os.path.join(self.build_dir, "logs",
+                                   os.path.basename(step.meta.dir_path) if step.meta else "")
+            os.makedirs(log_dir, exist_ok=True)
+            with open(os.path.join(log_dir, "expansion.log"), 'w') as f:
+                f.write("%s failed\n%s\n" % (what, exc))
+        except OSError:
+            pass
+        self.notice("%s: %s failed - see build/logs/.../expansion.log" %
+                    (step.meta.dir_name if step.meta else step.raw_title, what))
+        self.error_step = step
+        self.stop_requested = True
+        self.is_running = False
 
     def _expand_scripts(self, step, idx):
         step.status = STATUS_RUNNING
@@ -431,11 +486,7 @@ class BuildManager:
             step.status = STATUS_DONE
             return True
         except Exception as exc:
-            step.status = STATUS_FAIL
-            step.add_log("Script Expansion Failed: %s" % exc)
-            self.error_step = step
-            self.stop_requested = True
-            self.is_running = False
+            self._fail_expansion(step, "script discovery", exc)
             return False
 
     def _log_path(self, step):
@@ -456,7 +507,7 @@ class BuildManager:
             cmd = step.custom_cmd
         elif step.step_type == "CHROOT":
             wrapper = os.path.abspath(os.path.join(self.root_dir, "chroot_exec.sh"))
-            cmd = [wrapper, "bash", step.path]
+            cmd = [wrapper, "bash", self._path_for(step.path, step.step_type)]
 
         with open(log_file_path, 'w') as lf:
             try:
@@ -502,6 +553,13 @@ class BuildManager:
             self.timings.save()
         self._snapshot(group)
 
+    def _set_snap_state(self, group, state, detail=""):
+        group.snap_state = state
+        group.snap_detail = detail
+        group.note = detail or state
+        self.last_snapshot = (group.meta.dir_name if group.meta else "?",
+                              state, detail, time.time())
+
     def _snapshot(self, group, forced=False):
         if not self.snapshots or not (self.snapshot_enabled or forced):
             return
@@ -511,8 +569,12 @@ class BuildManager:
                         (meta.dir_name, " ".join(meta.rejected_paths)))
         if not meta or not meta.snapshottable:
             if meta:
-                group.note = "no snapshot paths"
+                self._set_snap_state(group, "skipped", "no snapshot paths")
             return
+
+        done = [c.raw_title for c in group.children if c.status == STATUS_DONE]
+        # A phase that resolved to no work is complete, not partial.
+        complete = not group.children or len(done) == len(group.children)
 
         def progress(state):
             self.snapshot_activity = state
@@ -520,25 +582,38 @@ class BuildManager:
         try:
             manifest = self.snapshots.create(
                 meta,
-                steps=len([c for c in group.children if c.status == STATUS_DONE]),
+                steps=len(done),
                 duration=group.duration(),
                 on_progress=progress,
                 should_stop=lambda: self.stop_requested,
+                complete=complete,
+                total_steps=len(group.children),
+                done_steps=done,
             )
         except Exception as exc:
-            self.notice("snapshot %s failed: %s" % (meta.dir_name, exc))
-            group.note = "snapshot failed"
+            aborted = "abort" in str(exc).lower()
+            self.notice("snapshot %s %s: %s" %
+                        (meta.dir_name, "aborted" if aborted else "FAILED", exc))
+            self._set_snap_state(group, "aborted" if aborted else "failed", str(exc)[:60])
             self.snapshot_activity = None
             return
 
         self.snapshot_activity = None
         if manifest is None:
-            group.note = "snapshot skipped"
+            self.notice("snapshot %s skipped: declared paths do not exist" % meta.dir_name)
+            self._set_snap_state(group, "skipped", "nothing to archive")
             return
 
         total = sum(e["bytes_compressed"] for e in manifest["entries"])
-        group.note = "snap %s" % human_bytes(total)
-        self.notice("snapshot %s -> %s" % (meta.dir_name, human_bytes(total)))
+        if complete:
+            self._set_snap_state(group, "ok", human_bytes(total))
+            self.notice("snapshot %s -> %s" % (meta.dir_name, human_bytes(total)))
+        else:
+            self._set_snap_state(group, "partial", "%s @ %d/%d" %
+                                 (human_bytes(total), len(done), len(group.children)))
+            self.notice("PARTIAL snapshot %s at step %d/%d -> %s (restoring it re-runs "
+                        "the phase)" % (meta.dir_name, len(done), len(group.children),
+                                        human_bytes(total)))
 
     def _update_family_status(self, step, status):
         step.status = status
