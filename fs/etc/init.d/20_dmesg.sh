@@ -6,7 +6,7 @@ NAME="dmesg"
 case "$1" in
     start)
         echo "[KDOS] Suppressing kernel messages on console..."
-        dmesg -n 1
+        dmesg -n 3
         ;;
     stop)
         # Restore default log level

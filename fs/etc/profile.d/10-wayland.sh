@@ -16,7 +16,7 @@ fi
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=niri
 export QT_QPA_PLATFORM=wayland
-export GDK_BACKEND=wayland,x11
+export GDK_BACKEND=wayland
 export MOZ_ENABLE_WAYLAND=1
 export _JAVA_AWT_WM_NONREPARENTING=1
 export SDL_VIDEODRIVER=wayland

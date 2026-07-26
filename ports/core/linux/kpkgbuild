@@ -11,9 +11,9 @@
 # description: Linux kernel
 
 name=linux
-version=6.18.5
+version=7.0.10
 release=1
-source="https://cdn.kernel.org/pub/linux/kernel/v6.x/$name-$version.tar.xz"
+source="https://cdn.kernel.org/pub/linux/kernel/v${version:0:1}.x/$name-$version.tar.xz"
 
 build() {
 	make mrproper
@@ -270,7 +270,7 @@ build() {
 	./scripts/config --module CONFIG_DRM_I915
 	./scripts/config --module CONFIG_DRM_AMDGPU
 	./scripts/config --module CONFIG_DRM_NOUVEAU
-	./scripts/config --module CONFIG_DRM_VIRTIO_GPU
+	./scripts/config --enable CONFIG_DRM_VIRTIO_GPU
 	./scripts/config --module CONFIG_DRM_QXL
 	
 	# Audio (DESKTOP & LAPTOP)
@@ -330,7 +330,11 @@ build() {
 	make olddefconfig
 	
 	# Build kernel and modules
-	make bzImage modules
+	# musl host-tool fix (kernel >=5.12): host progs (insn_sanity, etc.) compile the
+	# kernel's own uapi swab.h, but musl lacks glibc's implicit __always_inline /
+	# __attribute_const__ from sys/cdefs.h. Define them for host compiles to match
+	# tools/include/linux/compiler.h.
+	make HOSTCFLAGS="-D__attribute_const__= -D__always_inline=inline" bzImage modules
 	make INSTALL_MOD_PATH=$PKG DEPMOD=/bin/true modules_install
 	
 	# Remove build and source symlinks to prevent recursion and invalid paths
@@ -347,6 +351,14 @@ build() {
 }
 
 postinstall() {
+	# Remove stale kernel modules from previous kernel versions
+	for d in /lib/modules/*/; do
+		ver=$(basename "$d")
+		[ "$ver" = "$version" ] && continue
+		echo "Removing stale kernel modules: $ver"
+		rm -rf "$d"
+	done
+
 	# Regenerate module dependencies
 	echo "Generating modules.dep for $version..."
 	if command -v depmod >/dev/null; then

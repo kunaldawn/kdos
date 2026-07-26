@@ -12,6 +12,12 @@
 
 # Environment configuration for KDOS build
 
+# --- build-system metadata (parsed by script/build.py, never sourced) ---
+export KDOS_PHASE_TITLE="Toolchain & Core Libraries"
+export KDOS_PHASE_DESC="compilers, build systems, interpreters, base libraries"
+export KDOS_SNAPSHOT_PATHS="fs"
+export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/var/cache/kpkg/work/* fs/dev/* fs/proc/* fs/sys/* fs/run/* fs/kdos/* fs/ports/*"
+
 export CHROOT=1
 
 export LD_LIBRARY_PATH="/usr/lib:/usr/local/lib:/usr/lib64:/usr/local/lib64"${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}

@@ -221,6 +221,8 @@ buildah
 skopeo
 conmon
 crun
+netavark
+aardvark-dns
 libslirp
 slirp4netns
 fuse-overlayfs
