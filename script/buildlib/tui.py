@@ -534,6 +534,8 @@ class TUI(Screen):
         right = ""
         if self.manager.restored_from:
             right = "restored <- %s " % self.manager.restored_from.dir_name
+        elif self.manager.continued_from:
+            right = "continued past %s " % self.manager.continued_from.dir_name
         if right and len(right) + len(left) + 4 < self.w:
             self.put(1, self.w - 1 - len(right), right,
                      curses.color_pair(CP_SNAP) | curses.A_BOLD)
