@@ -1,4 +1,8 @@
 #!/bin/sh
 # niri-session — launch niri with a fresh DBus user session.
 # Run from a tty after login. Wayland env vars are set by /etc/profile.d/10-wayland.sh.
-exec dbus-run-session -- niri --session
+# No --session: KDOS uses seatd, not logind/elogind.
+# Force sw rendering: plain virtio-vga (no virgl) can't do 3D, and virgl gallium
+# driver hangs during EGL init. llvmpipe renders on CPU, gbm+DRM does the display.
+export GALLIUM_DRIVER=llvmpipe
+exec dbus-run-session -- niri

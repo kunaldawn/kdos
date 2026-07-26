@@ -8,22 +8,21 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: A fast and low-memory footprint OCI Container Runtime fully written in C
-# homepage	: https://github.com/containers/crun
-# depends	: json-c libcap libseccomp argp-standalone
+# description	: Authoritative DNS server for container networks (Rust)
+# homepage	: https://github.com/containers/aardvark-dns
+# depends	: rust
 
-name=crun
-version=1.28
+name=aardvark-dns
+version=1.17.1
 release=1
-source="https://github.com/containers/crun/releases/download/$version/crun-$version.tar.gz"
+source="https://github.com/containers/aardvark-dns/archive/refs/tags/v$version.tar.gz"
+vendoring=rust
 
 build() {
-	./autogen.sh
-	./configure \
-		--prefix=/usr \
-		--disable-systemd \
-		--disable-shared \
-		--enable-static
-	make
-	make DESTDIR=$PKG install
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+	export CARGO_HOME="$SRC_ROOT/.cargo"
+	export RUSTFLAGS="-C target-feature=-crt-static"
+	export LIBCLANG_PATH=/usr/lib
+	cargo build --release --frozen --offline
+	install -Dm755 target/release/aardvark-dns "$PKG/usr/libexec/podman/aardvark-dns"
 }

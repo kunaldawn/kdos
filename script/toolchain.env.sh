@@ -12,6 +12,12 @@
 
 # Environment configuration for KDOS build
 
+# --- build-system metadata (parsed by script/build.py, never sourced) ---
+export KDOS_PHASE_TITLE="Cross Toolchain"
+export KDOS_PHASE_DESC="cross binutils + gcc targeting x86_64-kdos-linux-musl"
+export KDOS_SNAPSHOT_PATHS="cross fs mark"
+export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/dev/* fs/proc/* fs/sys/* fs/run/* fs/kdos/* fs/ports/*"
+
 export KDOS_TARGET=x86_64-kdos-linux-musl
 
 export WORKSPACE=/workspace

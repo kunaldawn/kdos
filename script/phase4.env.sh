@@ -12,6 +12,12 @@
 
 # Environment configuration for KDOS build
 
+# --- build-system metadata (parsed by script/build.py, never sourced) ---
+export KDOS_PHASE_TITLE="Userland & GUI Sliver"
+export KDOS_PHASE_DESC="system tools, network stack, wayland, niri, noctalia"
+export KDOS_SNAPSHOT_PATHS="fs"
+export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/var/cache/kpkg/work/* fs/dev/* fs/proc/* fs/sys/* fs/run/* fs/kdos/* fs/ports/*"
+
 export CHROOT=1
 export PORT_REPO="/ports/core /kdos/src/packages"
 

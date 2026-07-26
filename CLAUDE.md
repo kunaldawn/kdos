@@ -97,6 +97,52 @@ kdos/
 
 ---
 
+## Phase snapshots (restore + continue)
+
+Every phase that completes is snapshotted to `build/snapshots/<phase-dir>/`, so a later
+build can be resumed from a clean earlier state instead of re-running everything or
+building on top of a polluted rootfs.
+
+**What gets snapshotted is declared by the phase, not by build.py.** Each
+`script/<phase>.env.sh` carries a metadata block that build.py *parses* (never sources —
+sourcing would run those files' `rm -rf /var/cache/kpkg/work` on the build container):
+
+```bash
+# --- build-system metadata (parsed by script/build.py, never sourced) ---
+export KDOS_PHASE_TITLE="Toolchain & Core Libraries"
+export KDOS_PHASE_DESC="compilers, build systems, interpreters, base libraries"
+export KDOS_SNAPSHOT_PATHS="fs"                 # relative to build/, dirs or files
+export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* ..."     # glob patterns, tar --exclude
+```
+
+Values must be literal (no `$VAR`). Paths that are absolute, empty, or contain `..` are
+refused. A phase with no `KDOS_SNAPSHOT_PATHS` is never snapshotted. Adding a new phase
+means adding its env metadata — nothing in build.py needs to change.
+
+Layout: one directory per phase, overwritten in place (one snapshot per phase), one
+`<path>.tar.zst` per declared path, plus `manifest.json` (git commit, duration, sizes,
+file counts) and `timings.json` feeding the ETA.
+
+**Restoring.** `make build` opens a picker listing the snapshots; pick one and the build
+restores it and continues at the *next* phase. Restore is layered — each path is taken
+from the newest snapshot at or below the chosen phase, so restoring phase3 pulls `fs`
+from phase3 and `cross`/`mark` from phase1.
+
+Non-interactive equivalents:
+
+```bash
+make build BUILD_ARGS="--restore phase2"   # restore phase2, continue at phase3
+make build BUILD_ARGS=--fresh              # skip the picker, run everything
+make build BUILD_ARGS=--no-snapshot        # throwaway run, write no snapshots
+make snapshots                             # list them (build.py --list)
+make cleanbuild                            # wipe build/ but KEEP build/snapshots
+```
+
+`make clean` deletes snapshots along with everything else. Snapshots need `zstd` and GNU
+`tar` in the build image (both in the Dockerfile). Budget ~2-4G per phase.
+
+---
+
 ## kpkgbuild conventions
 
 ```bash
