@@ -10,6 +10,12 @@
 
 all: build
 
+# Extra flags for script/build.py, e.g.
+#   make build BUILD_ARGS="--restore phase2"
+#   make build BUILD_ARGS=--fresh
+#   make build BUILD_ARGS=--no-snapshot
+BUILD_ARGS ?=
+
 fetch:
 	bash ports/fetch
 
@@ -17,12 +23,17 @@ build:
 	mkdir -p build
 	docker build -t os-dev .
 	docker run --network none --cpus="10" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
+		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
+		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-v $$(pwd)/build:/workspace/build \
 		-v $$(pwd)/src:/workspace/src:ro \
 		-v $$(pwd)/fs:/workspace/fs:ro \
 		-v $$(pwd)/script:/workspace/script:ro \
 		-v $$(pwd)/ports:/workspace/ports:ro \
-		-it os-dev python3 script/build.py
+		-it os-dev python3 script/build.py $(BUILD_ARGS)
+
+snapshots:
+	python3 script/build.py --list
 
 run:
 	test -f build/iso-build/kdos.iso || { echo "ERROR: ISO not found at build/iso-build/kdos.iso — run 'make build' first"; exit 1; }
@@ -59,7 +70,12 @@ rundisk-hw:
 cleandisk:
 	qemu-img create -f qcow2 build/kdos.qcow2 20G
 
+# Wipe the build tree but keep build/snapshots, so a phase can still be restored.
+cleanbuild:
+	test -d build && find build -mindepth 1 -maxdepth 1 ! -name snapshots -exec rm -rf {} + || true
+
+# Removes build/snapshots along with everything else.
 clean:
 	rm -rf build
 
-.PHONY: all build run rundisk run-hw rundisk-hw debug-boot cleandisk clean fetch
+.PHONY: all build snapshots run rundisk run-hw rundisk-hw debug-boot cleandisk cleanbuild clean fetch
