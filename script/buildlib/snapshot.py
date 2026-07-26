@@ -256,6 +256,28 @@ class SnapshotStore:
     def clear_marker(self):
         _unlink(self.marker_path())
 
+    def release_mounts(self, path):
+        """Unmount leftovers under `path`, returning whatever survives.
+
+        These are chroot_exec.sh's own bind mounts, and the phase's steps have
+        all finished by the time this runs, so releasing them is what the
+        wrapper intended anyway — one transient EBUSY at wrapper exit should
+        not cost the phase its snapshot.
+        """
+        released = []
+        for flags in ([], ["-l"]):
+            for mnt in sorted(self.mounts_under(path), key=len, reverse=True):
+                try:
+                    done = subprocess.run(["umount"] + flags + [mnt],
+                                          capture_output=True, timeout=30)
+                except Exception:
+                    continue
+                if done.returncode == 0:
+                    released.append(mnt + (" (lazy)" if flags else ""))
+            if not self.mounts_under(path):
+                break
+        return released, self.mounts_under(path)
+
     def free_bytes(self):
         try:
             st = os.statvfs(self.build_dir)
@@ -266,7 +288,7 @@ class SnapshotStore:
     # ----- create ---------------------------------------------------------
 
     def create(self, meta, steps=0, duration=0.0, on_progress=None, should_stop=None,
-               complete=True, total_steps=None, done_steps=None):
+               complete=True, total_steps=None, done_steps=None, log=None):
         """Snapshot one phase. Returns the manifest, or None when skipped.
 
         `complete` is False for a snapshot taken part-way through a phase (the
@@ -287,9 +309,14 @@ class SnapshotStore:
         if not paths:
             return None
 
-        blockers = self.mounts_under(os.path.join(self.build_dir, "fs"))
-        if blockers:
-            raise RuntimeError("mounts still active under build/fs: %s" % ", ".join(blockers[:3]))
+        fs_dir = os.path.join(self.build_dir, "fs")
+        if self.mounts_under(fs_dir):
+            released, blockers = self.release_mounts(fs_dir)
+            if released and log:
+                log("released stale chroot mount(s): %s" % ", ".join(released))
+            if blockers:
+                raise RuntimeError("mounts still active under build/fs: %s"
+                                   % ", ".join(blockers[:3]))
 
         previous = self.load(meta.dir_name) or {}
         prev_entries = {e["path"]: e for e in previous.get("entries", [])}

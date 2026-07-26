@@ -37,6 +37,9 @@ def parse_args(argv=None):
     p.add_argument("--restore", metavar="PHASE",
                    help="restore a snapshot and continue after it "
                         "(phase name, directory name, 1-based index, or 'latest')")
+    p.add_argument("--continue-from", metavar="PHASE",
+                   help="resume at PHASE on the existing build tree without restoring "
+                        "anything; earlier phases are skipped and left alone")
     p.add_argument("--no-snapshot", action="store_true",
                    help="do not write snapshots during this build")
     p.add_argument("--list", action="store_true", help="list snapshots and exit")
@@ -181,13 +184,20 @@ def _bail(stdscr, message):
     return 1
 
 
-def run_curses(stdscr, args, phases, store, timings, preselected=None):
+def run_curses(stdscr, args, phases, store, timings, preselected=None, continue_at=None):
     tui_mod.init_colors()
     stdscr.keypad(True)
 
     manager = BuildManager(args.script_dir, build_dir=args.build_dir,
                            snapshots=store, timings=timings,
                            snapshot_enabled=not args.no_snapshot)
+
+    if continue_at is not None:
+        manager.mark_continued(continue_at.index)
+        manager.notice("continuing at %s on the existing tree (no restore)"
+                       % continue_at.dir_name)
+        sampler = Sampler(manager, args.build_dir)
+        return _run_build(stdscr, manager, sampler, timings, store, args)
 
     target = preselected
     if target is None and not args.fresh and store.list() and sys.stdin.isatty():
@@ -212,6 +222,10 @@ def run_curses(stdscr, args, phases, store, timings, preselected=None):
                              % stale.get("target", "?"))
 
     sampler = Sampler(manager, args.build_dir)
+    return _run_build(stdscr, manager, sampler, timings, store, args)
+
+
+def _run_build(stdscr, manager, sampler, timings, store, args):
     screen = tui_mod.TUI(stdscr, manager, sampler=sampler, timings=timings, store=store)
 
     manager.start_build()
@@ -281,7 +295,18 @@ def main():
 
     # Resolve and validate --restore out here: an error message is far more
     # useful on a normal terminal than flashed through curses.wrapper.
-    preselected = None
+    preselected = continue_at = None
+    if args.restore and args.continue_from:
+        print("--restore and --continue-from are mutually exclusive", file=sys.stderr)
+        return 2
+
+    if args.continue_from:
+        continue_at = resolve_phase(phases, store, args.continue_from)
+        if continue_at is None:
+            print("unknown phase for --continue-from: %s" % args.continue_from,
+                  file=sys.stderr)
+            return 2
+
     if args.restore:
         preselected = resolve_phase(phases, store, args.restore)
         if preselected is None:
@@ -294,7 +319,8 @@ def main():
             return 2
 
     timings = TimingStore(os.path.join(store.root, "timings.json"))
-    return curses.wrapper(run_curses, args, phases, store, timings, preselected)
+    return curses.wrapper(run_curses, args, phases, store, timings, preselected,
+                          continue_at)
 
 
 if __name__ == "__main__":

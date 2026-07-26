@@ -24,6 +24,9 @@ RE_TITLE = re.compile(r'^#\s*Title:\s*(.+)$', re.IGNORECASE)
 RE_ANSI = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 RE_PHASE_DIR = re.compile(r'^[0-9]+_')
 RE_EXPORT = re.compile(r'^[ \t]*export[ \t]+([A-Za-z_][A-Za-z0-9_]*)=(.*)$')
+# Every port under ports/core matches this; anything else on kpkgdepends'
+# stdout is noise, not a package.
+RE_PORT_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]*$')
 
 # Keys build.py cares about. CHROOT decides the execution wrapper; the KDOS_*
 # keys carry the snapshot contract and the UI labels.
@@ -239,6 +242,7 @@ class BuildManager:
         self.start_time = None
         self.restored_from = None        # PhaseMeta the build was resumed from
         self.resumed_inside = None       # PhaseMeta being re-run after a partial restore
+        self.continued_from = None       # set by --continue-from (no restore)
         self.total_lines = 0
         self.messages = []               # build-level notices for the UI
         self.last_snapshot = None        # (dir_name, state, detail, when)
@@ -288,6 +292,18 @@ class BuildManager:
                 f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), text))
         except OSError:
             pass
+
+    def mark_continued(self, phase_index):
+        """Resume at `phase_index` on the existing tree, without restoring.
+
+        Earlier phases are skipped, so they are not re-run and — importantly —
+        not re-snapshotted: snapshotting phase 2 again from a tree that already
+        holds phase 3 packages would file a mislabelled archive.
+        """
+        for group in self.roots:
+            if group.meta.index < phase_index:
+                group.status = STATUS_SKIPPED
+                self.continued_from = group.meta
 
     def mark_restored(self, phase_index, resume_inside=False):
         """Skip the phases covered by a restored snapshot.
@@ -412,6 +428,34 @@ class BuildManager:
 
         self.is_running = False
 
+    def _resolve_packages(self, cmd):
+        """Run kpkgdepends and return the install order.
+
+        kpkgdepends prints the resolved order on stdout and nothing else, so
+        stderr is kept separate — merging it means any diagnostic written by
+        the chroot wrapper (or by a sourced env file) gets split on whitespace
+        and installed as a package. Tokens are validated for the same reason.
+        """
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        stdout = (proc.stdout or "").strip()
+        stderr = (proc.stderr or "").strip()
+
+        if proc.returncode != 0:
+            raise RuntimeError("kpkgdepends exited %d\n%s" %
+                               (proc.returncode, (stderr or stdout)[-2000:]))
+
+        resolved = stdout.split()
+        bad = [t for t in resolved if not RE_PORT_NAME.match(t)]
+        if bad:
+            raise RuntimeError(
+                "kpkgdepends returned %d token(s) that are not package names: %s\n"
+                "full stdout:\n%s%s" % (len(bad), " ".join(bad[:5]), stdout[:1500],
+                                        "\nstderr:\n" + stderr[:500] if stderr else ""))
+        if not resolved:
+            raise RuntimeError("kpkgdepends returned nothing%s" %
+                               ("\nstderr:\n" + stderr[:500] if stderr else ""))
+        return resolved
+
     def _expand_packages(self, step, idx):
         step.status = STATUS_RUNNING
         try:
@@ -424,10 +468,7 @@ class BuildManager:
                 env_src = self._env_source(step)
                 resolve_cmd = "%sexport PKGDB_DIR=/dev/null && kpkgdepends %s" % (
                     env_src, ' '.join(pkgs))
-                output = subprocess.check_output(cmd_prefix + [resolve_cmd],
-                                                 text=True,
-                                                 stderr=subprocess.STDOUT).strip()
-                resolved = output.split()
+                resolved = self._resolve_packages(cmd_prefix + [resolve_cmd])
 
                 parent_dir = os.path.dirname(step.packages_file)
                 new_nodes = []
@@ -589,6 +630,7 @@ class BuildManager:
                 complete=complete,
                 total_steps=len(group.children),
                 done_steps=done,
+                log=self.notice,
             )
         except Exception as exc:
             aborted = "abort" in str(exc).lower()
