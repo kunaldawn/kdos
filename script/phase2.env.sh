@@ -12,6 +12,12 @@
 
 # Environment configuration for KDOS build
 
+# --- build-system metadata (parsed by script/build.py, never sourced) ---
+export KDOS_PHASE_TITLE="Self-Hosting Bootstrap"
+export KDOS_PHASE_DESC="rebuild tar musl zlib binutils gcc inside the chroot"
+export KDOS_SNAPSHOT_PATHS="fs"
+export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/var/cache/kpkg/work/* fs/dev/* fs/proc/* fs/sys/* fs/run/* fs/kdos/* fs/ports/*"
+
 export CHROOT=1
 
 export PKG_CONFIG_PATH="/usr/local/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig:/usr/lib64/pkgconfig"${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}

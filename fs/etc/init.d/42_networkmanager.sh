@@ -1,8 +1,8 @@
 #!/bin/bash
 . /etc/init.d/service_helper
 
-NAME="seatd"
-DAEMON="/usr/bin/seatd"
+NAME="NetworkManager"
+DAEMON="/usr/sbin/NetworkManager"
 
 case "$1" in
     start)
@@ -11,12 +11,7 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
-        # -g seat: members of the 'seat' group can take seats without root.
-        # Group is created on first install if missing.
-        getent group seat >/dev/null 2>&1 || groupadd -r seat
-        # seatd allows root by default, but being explicit is clearer
-        usermod -aG seat root 2>/dev/null || true
-        supervise "$NAME" "$DAEMON -g seat"
+        supervise "$NAME" "$DAEMON --no-daemon"
         ;;
     stop)
         stop_service "$NAME"

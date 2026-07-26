@@ -1,6 +1,16 @@
 // niri config — KDOS default. See https://github.com/YaLTeR/niri/wiki/Configuration:-Overview
 
+spawn-at-startup "pipewire"
+spawn-at-startup "pipewire-pulse"
+spawn-at-startup "xdg-desktop-portal"
 spawn-at-startup "noctalia"
+
+// QEMU/virtio-gpu: the EDID's preferred mode is 640x480, so force a usable one.
+// virtio-vga exposes "VGA-1"; pure virtio-gpu exposes "Virtual-1".
+// The wildcard catches both without affecting real-hardware outputs.
+output "*" {
+    mode "1920x1080"
+}
 
 input {
     keyboard {
@@ -24,6 +34,7 @@ binds {
     Mod+Return    { spawn "foot"; }
     Mod+D         { spawn "fuzzel"; }
     Mod+Q         { close-window; }
+    Mod+Shift+Q   { spawn "sh" "-c" "niri msg window | grep -q '^Window' && niri msg action close-window || true"; }
     Mod+Shift+E   { quit; }
     Mod+H         { focus-column-left; }
     Mod+L         { focus-column-right; }
