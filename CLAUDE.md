@@ -141,6 +141,9 @@ Non-interactive equivalents:
 
 ```bash
 make build BUILD_ARGS="--restore phase2"   # restore phase2, continue at phase3
+make build BUILD_ARGS="--continue-from phase3"  # resume at phase3 on the CURRENT tree,
+                                           # no restore; earlier phases are skipped and
+                                           # their snapshots left untouched
 make build BUILD_ARGS=--fresh              # skip the picker, run everything
 make build BUILD_ARGS=--no-snapshot        # throwaway run, write no snapshots
 make snapshots                             # list them (build.py --list)
@@ -149,6 +152,17 @@ make cleanbuild                            # wipe build/ but KEEP build/snapshot
 
 `make clean` deletes snapshots along with everything else. Snapshots need `zstd` and GNU
 `tar` in the build image (both in the Dockerfile). Budget ~2-4G per phase.
+
+**Don't re-run an early phase on a tree that is already ahead of it** — its snapshot would
+be overwritten with a tree containing later phases' packages, under the earlier phase's
+name. That is what `--continue-from` exists for: it resumes mid-build without re-running
+(and therefore without re-snapshotting) anything behind it.
+
+**Anything a chroot command prints is parsed.** `kpkgdepends` writes the install order to
+stdout and nothing else, so `chroot_exec.sh` logs its diagnostics to `build/logs/chroot.log`
+rather than stdout/stderr. build.py reads stdout only and validates every token against
+`^[A-Za-z0-9][A-Za-z0-9._+-]*$`; noise fails expansion loudly instead of being installed
+as a package.
 
 ---
 
