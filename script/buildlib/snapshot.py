@@ -15,6 +15,7 @@ path, plus a manifest. Retention is one snapshot per phase: re-running a phase
 overwrites its snapshot.
 """
 
+import collections
 import json
 import os
 import shutil
@@ -88,26 +89,69 @@ def git_info(repo_root):
     return commit, dirty
 
 
-def dir_usage(path):
-    """(bytes, files) for `path`, staying on one filesystem."""
+MAX_WALK_DEPTH = 64
+SIZE_ESTIMATE_BUDGET = 120.0      # seconds spent measuring a tree before snapshotting
+
+
+Usage = collections.namedtuple("Usage", "bytes files complete")
+
+
+def dir_usage(path, deadline=None, on_tick=None):
+    """(bytes, files) for `path`, staying on one filesystem.
+
+    Cycle-safe. `build/fs/kdos` is a bind mount of the repo root, which
+    contains `build/fs` again — and because a bind mount of the same
+    filesystem keeps the same st_dev, a device check alone walks that loop
+    forever. Directories are therefore tracked by (st_dev, st_ino), live
+    mountpoints are skipped outright, and depth is capped. A lazily-detached
+    mount is gone from /proc/mounts but still traversable from inside, so the
+    inode check — not the mount list — is what actually closes the loop.
+
+    `deadline` (a time.monotonic() value) bounds the walk; `complete` is then
+    False and the counts are partial, which is fine for a size estimate and a
+    HUD counter. `on_tick(files, bytes)` is called periodically so a slow walk
+    can be shown progressing rather than looking hung.
+    """
     if not os.path.exists(path):
-        return 0, 0
+        return Usage(0, 0, True)
     if not os.path.isdir(path) or os.path.islink(path):
         try:
-            return os.lstat(path).st_size, 1
+            return Usage(os.lstat(path).st_size, 1, True)
         except OSError:
-            return 0, 0
+            return Usage(0, 0, True)
 
     try:
-        root_dev = os.lstat(path).st_dev
+        root_st = os.lstat(path)
     except OSError:
-        return 0, 0
+        return Usage(0, 0, True)
+    root_dev = root_st.st_dev
+
+    mountpoints = set()
+    try:
+        with open("/proc/mounts", 'r') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) > 1:
+                    mountpoints.add(parts[1].replace("\\040", " "))
+    except OSError:
+        pass
 
     total = 0
     files = 0
-    stack = [path]
+    visited = {(root_st.st_dev, root_st.st_ino)}
+    stack = [(path, 0)]
+    complete = True
+    next_tick = time.monotonic() + 0.25
+
     while stack:
-        current = stack.pop()
+        current, depth = stack.pop()
+        now = time.monotonic()
+        if deadline is not None and now > deadline:
+            complete = False
+            break
+        if on_tick and now >= next_tick:
+            next_tick = now + 0.25
+            on_tick(files, total)
         try:
             with os.scandir(current) as it:
                 for entry in it:
@@ -116,15 +160,21 @@ def dir_usage(path):
                     except OSError:
                         continue
                     if st.st_dev != root_dev:
-                        continue          # separate mount, not ours to count
-                    if entry.is_dir(follow_symlinks=False):
-                        stack.append(entry.path)
-                    else:
+                        continue          # separate filesystem, not ours to count
+                    if not entry.is_dir(follow_symlinks=False):
                         files += 1
                         total += st.st_size
+                        continue
+                    if depth >= MAX_WALK_DEPTH or entry.path in mountpoints:
+                        continue
+                    key = (st.st_dev, st.st_ino)
+                    if key in visited:
+                        continue          # bind-mount loop back into the tree
+                    visited.add(key)
+                    stack.append((entry.path, depth + 1))
         except OSError:
             continue
-    return total, files
+    return Usage(total, files, complete)
 
 
 class SnapshotStore:
@@ -309,6 +359,11 @@ class SnapshotStore:
         if not paths:
             return None
 
+        if on_progress:
+            on_progress({"action": "preparing", "phase": meta.dir_name, "path": "",
+                         "bytes": 0, "est_bytes": 0, "files": 0, "rate": 0.0,
+                         "current": "checking mounts…", "started": time.time()})
+
         fs_dir = os.path.join(self.build_dir, "fs")
         if self.mounts_under(fs_dir):
             released, blockers = self.release_mounts(fs_dir)
@@ -322,9 +377,30 @@ class SnapshotStore:
         prev_entries = {e["path"]: e for e in previous.get("entries", [])}
         prev_total = sum(e.get("bytes_compressed", 0) for e in prev_entries.values())
 
+        # Measuring an 8GB tree costs tens of seconds on a cold cache, and it
+        # only feeds the disk guard and an informational manifest field. Walk
+        # it only when there is no previous figure to reuse, bound it, and
+        # stream progress so it cannot look like a hang.
+        raw_deadline = time.monotonic() + SIZE_ESTIMATE_BUDGET
         raw_sizes = {}
         for path in paths:
-            raw_sizes[path] = dir_usage(os.path.join(self.build_dir, path))[0]
+            known = prev_entries.get(path, {}).get("bytes_raw")
+            if known:
+                raw_sizes[path] = known
+                continue
+
+            def tick(files, done_bytes, _path=path):
+                if on_progress:
+                    on_progress({"action": "measuring", "phase": meta.dir_name,
+                                 "path": _path, "bytes": done_bytes, "est_bytes": 0,
+                                 "files": files, "rate": 0.0,
+                                 "current": "sizing %s…" % _path,
+                                 "started": time.time()})
+
+            tick(0, 0)
+            usage = dir_usage(os.path.join(self.build_dir, path),
+                              deadline=raw_deadline, on_tick=tick)
+            raw_sizes[path] = usage.bytes
         # No history to go on for the first snapshot of a phase: zstd -3 on a
         # rootfs lands near 3x, so a third of the raw size is the estimate.
         needed = prev_total or int(sum(raw_sizes.values()) / 3)

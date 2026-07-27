@@ -732,8 +732,11 @@ class TUI(Screen):
         left = " out %s %s  %s ln  %d ln/s" % (
             GLYPH_SEP, spark, _short_count(lines), int(rate))
         if sampler and sampler.fs_files:
-            left += "  %s fs %s files %s" % (GLYPH_SEP, "{:,}".format(sampler.fs_files),
-                                             human_bytes(sampler.fs_bytes))
+            # "≥" when the walk hit its time budget: the counts are a floor.
+            mark = ("≥" if UNICODE_OK else ">=") if sampler.fs_partial else ""
+            left += "  %s fs %s%s files %s%s" % (
+                GLYPH_SEP, mark, "{:,}".format(sampler.fs_files),
+                mark, human_bytes(sampler.fs_bytes))
         self.put(y, 1, left.ljust(self.w - 2)[:self.w - 2], curses.color_pair(CP_BG))
 
         if layout["hud_h"] < 2:
