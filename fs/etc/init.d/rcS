@@ -13,6 +13,16 @@
 # Mount all filesystems in fstab
 mount -a
 
+# Console font. Set here rather than in /etc/profile: KDFONTOP needs root, so a
+# non-root login shell only ever printed an error. -C names the VT explicitly
+# because rcS itself may be running on the serial console.
+if [ -x /usr/bin/setfont ]; then
+    for _tty in /dev/tty1 /dev/tty2; do
+        [ -c "$_tty" ] && setfont -C "$_tty" ter-v32n 2>/dev/null
+    done
+    unset _tty
+fi
+
 # Make / recursively shared. systemd does this at PID1; OpenRC/Alpine document the
 # same. Rootless podman/crun require a shared root for mount propagation, otherwise
 # they warn "/ is not a shared mount" and container mount/exec breaks.
