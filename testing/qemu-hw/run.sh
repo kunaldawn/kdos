@@ -55,6 +55,11 @@ fi
 # shell render instead of blanking). RAM via memfd (share=on) so blob resources
 # aren't capped by the host's udmabuf size_limit_mb. venus= is intentionally NOT
 # set: it SIGABRTs the host EGL path and isn't needed — blob alone fixes Qt.
+#
+# gl=es, NOT gl=on: gl=on makes QEMU's gtk-egl path ask for a desktop-GL (core)
+# context, which presents a BLACK window on this host (NVIDIA + Xorg) — the guest
+# is fine, only the host blit is lost. gl=es asks for a GLES context and presents
+# correctly, with virgl+blob still HW-accelerated (noctalia renders).
 GPU_ARGS=(
     -object memory-backend-memfd,id=mem,size="$MEM",share=on
     -machine pc,memory-backend=mem,accel=kvm
@@ -62,7 +67,7 @@ GPU_ARGS=(
     -cpu host
     -vga none
     -device virtio-vga-gl,blob=true,hostmem=4G,xres=1920,yres=1080
-    -display gtk,gl=on
+    -display gtk,gl=es
 )
 
 case "$MODE" in
