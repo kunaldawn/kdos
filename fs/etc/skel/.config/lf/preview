@@ -1,0 +1,35 @@
+#!/bin/bash
+# KDOS lf previewer. Text through bat (syntax-highlighted, no pager), archives
+# and binaries summarised rather than dumped into the pane.
+
+f="$1"
+
+case "$(file --mime-type -Lb "$f")" in
+    text/*|application/json|application/javascript|application/xml|application/x-shellscript)
+        if command -v bat >/dev/null 2>&1; then
+            bat --color=always --style=plain --paging=never --terminal-width "${2:-80}" -- "$f"
+        else
+            head -200 -- "$f"
+        fi
+        ;;
+    inode/directory)
+        if command -v eza >/dev/null 2>&1; then
+            eza -l --color=always --group-directories-first -- "$f"
+        else
+            ls -la --color=always -- "$f"
+        fi
+        ;;
+    image/*)
+        echo "-- image --"
+        file -Lb "$f"
+        ;;
+    application/gzip|application/x-xz|application/x-tar|application/zip|application/zstd)
+        echo "-- archive --"
+        tar tf "$f" 2>/dev/null | head -60 || unzip -l "$f" 2>/dev/null | head -60
+        ;;
+    *)
+        file -Lb "$f"
+        echo
+        head -c 2048 -- "$f" | tr -c '[:print:]\n\t' '.'
+        ;;
+esac

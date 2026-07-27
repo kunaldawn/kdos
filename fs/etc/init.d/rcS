@@ -23,6 +23,15 @@ if [ -x /usr/bin/setfont ]; then
     unset _tty
 fi
 
+# Console palette. PIO_CMAP sets the default colour map for the whole VT
+# subsystem, so the text console is phosphor green from the first login prompt
+# on — before anything Wayland exists. setvtrgb has no -C, and rcS may be
+# running on the serial console, so stdin is redirected from a real VT to give
+# it a console fd to ioctl.
+if [ -x /usr/bin/setvtrgb ] && [ -r /etc/vtrgb ] && [ -c /dev/tty0 ]; then
+    setvtrgb /etc/vtrgb < /dev/tty0 > /dev/tty0 2>/dev/null
+fi
+
 # Make / recursively shared. systemd does this at PID1; OpenRC/Alpine document the
 # same. Rootless podman/crun require a shared root for mount propagation, otherwise
 # they warn "/ is not a shared mount" and container mount/exec breaks.

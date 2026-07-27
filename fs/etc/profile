@@ -38,7 +38,14 @@ if [ -d /etc/profile.d ]; then
     done
 fi
 
-clear
-echo ""
-cat /etc/motd
-echo ""
+# Banner. /etc/bash.bashrc draws it — fastfetch when present, /etc/motd
+# otherwise — for every interactive bash, including the terminals that never
+# read this file. Only a non-bash login shell still needs it here. Doing it in
+# both places does not merely duplicate the banner: this block runs AFTER
+# bash.bashrc is sourced above, so its `clear` wiped the one already drawn.
+if [ -z "$BASH" ] && [ -t 1 ]; then
+    clear
+    echo ""
+    cat /etc/motd
+    echo ""
+fi

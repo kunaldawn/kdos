@@ -67,16 +67,41 @@ niri-session
 
 That wraps `niri --session` in `dbus-run-session`. The skel config (`~/.config/niri/config.kdl`) auto-spawns the shell on session start.
 
-**The session has a look: "PHOSPHOR".** A 1983 green-screen terminal that happens to run a scrollable-tiling compositor — sharp 2px phosphor frames, a green CRT glow around the focused window, translucent terminals over the KDOS penguin, and workspaces named `main` `code` `net` `media` `sys` instead of 1–9. One palette (`#39ff14` phosphor, `#ffb000` amber, `#000a03` deep) is shared by four configs seeded from `/etc/skel`:
+**The session has a look: "PHOSPHOR".** A 1983 green-screen terminal that happens to run a scrollable-tiling compositor — sharp 2px phosphor frames, a green CRT glow around the focused window, a bitmap font in the terminal, and workspaces named `main` `code` `net` `media` `sys` instead of 1–9. The console is green too: `setvtrgb` loads the palette in `rcS`, so tty1 is phosphor before anything Wayland exists.
 
-| Config | What it themes |
-|---|---|
-| `.config/niri/config.kdl` | frames, glow, workspaces, every keybind |
-| `.config/foot/foot.ini` | terminal palette + CRT translucency |
-| `.config/fuzzel/fuzzel.ini` | launcher |
-| `.config/noctalia/settings.json` | bar/panels, via the `KDOS-Phosphor` colour scheme |
+**Windows switch on and off like a CRT.** niri lets an animation be a fragment shader, so KDOS ships three:
 
-Keys worth knowing: `Mod+Return` terminal, `Mod+D` fuzzel, `Mod+Space` shell launcher, `Mod+E` files, `Mod+O` overview, `Mod+1..5` named workspaces, `Mod+Shift+Slash` for the full cheat sheet. Volume/brightness/media keys route through noctalia's IPC, so its OSD stays in sync.
+- **open** — the picture unfolds vertically from a hairline while the deflection settles, scanline banding and a green wash burning off as the tube warms up
+- **close** — the inverse, in the order real hardware did it: collapse to a hairline, pinch horizontally to a dot, decay
+- **resize** — an interlaced crossfade, odd scanlines switching to the new geometry before the even ones
+
+A shader that fails to compile is not fatal — niri warns and falls back — so this degrades to a normal animation on hardware that dislikes it.
+
+**One palette, four accents, every app.** `kdos theme phosphor|amber|ice|bone` repaints the desktop live. niri picks it up by watching an included `accent.kdl`; noctalia's template processor regenerates foot, starship, btop, GTK and Qt from the matching colour scheme. Because distrobox bind-mounts `$HOME`, **the GTK and Qt files it writes are the ones alien apps read** — a GIMP running in a Debian box comes up in the same green as the compositor around it. The compositor and shell repaint immediately; terminals that are already open keep their palette until they are closed, because foot has no config-reload signal.
+
+| Config | Owner | What it themes |
+|---|---|---|
+| `.config/niri/config.kdl` | you | structure, binds, shaders |
+| `.config/niri/accent.kdl` | `kdos theme` | frames, glow, overview, bar shadow |
+| `.config/foot/themes/noctalia` | noctalia | terminal palette (foot.ini includes it) |
+| `.config/starship.toml` | mixed | prompt hand-written, palette regenerated |
+| `.config/btop/themes/noctalia.theme` | noctalia | system monitor |
+| `~/.config/gtk-{3,4}.0`, `qt6ct` | noctalia | **alien apps in distrobox** |
+| `.config/fuzzel/fuzzel.ini` | `kdos theme` | launcher (no include directive, rewritten in place) |
+| `.config/noctalia/settings.json` | you | bar layout, desktop widgets, hooks, idle |
+
+Keys worth knowing: `Mod+Return` terminal, `Mod+D` fuzzel, `Mod+Space` shell launcher, `Mod+E` files, `Mod+O` overview, `Alt+Tab` MRU switcher with live previews, `Mod+1..5` named workspaces, `Mod+T` next accent, `Mod+Print` region screenshot to clipboard, `Mod+Shift+Slash` for the overlay and `Mod+Slash` for the full cheat sheet. Volume/brightness/media keys route through noctalia's IPC, so its OSD stays in sync.
+
+**The `kdos` command** is the front door:
+
+```sh
+kdos help          # cheat sheet, parsed out of the live niri config so it can't go stale
+kdos theme amber   # repaint niri, foot, fuzzel, btop, starship, GTK, Qt
+kdos app gimp      # install an alien app into a container
+kdos status        # packages, containers, exported apps  (--bar feeds the bar widget)
+kdos doctor        # check the session for the things that actually break here
+kdos-shot region   # screenshot to the clipboard and ~/Pictures/Screenshots
+```
 
 **The compositor stack:**
 

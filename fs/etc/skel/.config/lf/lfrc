@@ -1,0 +1,97 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# KDOS file manager (Mod+E). Three panes, box-drawn, previews through bat.
+
+set shell bash
+set shellopts '-eu'
+set ifs "\n"
+set scrolloff 5
+set icons false
+set drawbox true
+set hidden true
+set ignorecase true
+set incsearch true
+set wrapscan true
+set period 1
+set ratios 1:2:3
+set info size:time
+set timefmt '2006-01-02 15:04'
+set promptfmt "\033[1;32m%u@%h\033[0m \033[2;32m::\033[0m \033[1;36m%d\033[0m\033[1m%f\033[0m"
+set cursorpreviewfmt "\033[7m"
+set previewer ~/.config/lf/preview
+
+# ── Open ─────────────────────────────────────────────────────────────
+cmd open ${{
+    case $(file --mime-type -Lb "$f") in
+        text/*|application/json|application/javascript|inode/x-empty)
+            $EDITOR "$f" ;;
+        image/*)
+            imv "$f" >/dev/null 2>&1 & ;;
+        *)
+            xdg-open "$f" >/dev/null 2>&1 & ;;
+    esac
+}}
+
+cmd mkdir %{{
+    printf "Directory name: "
+    read ans
+    mkdir -p -- "$ans"
+}}
+
+cmd mkfile %{{
+    printf "File name: "
+    read ans
+    $EDITOR -- "$ans"
+}}
+
+# Trash is a directory, not a syscall: nothing here is unrecoverable by accident.
+cmd trash %{{
+    mkdir -p ~/.local/share/Trash/files
+    mv -- $fx ~/.local/share/Trash/files/
+}}
+
+cmd delete ${{
+    printf "%s\n" "$fx"
+    printf "delete? [y/N] "
+    read ans
+    [ "$ans" = "y" ] && rm -rf -- $fx
+}}
+
+cmd extract ${{
+    case "$f" in
+        *.tar.gz|*.tgz)  tar xzf "$f" ;;
+        *.tar.xz|*.txz)  tar xJf "$f" ;;
+        *.tar.bz2|*.tbz) tar xjf "$f" ;;
+        *.tar.zst)       tar --zstd -xf "$f" ;;
+        *.tar)           tar xf  "$f" ;;
+        *.zip)           unzip   "$f" ;;
+        *) echo "no rule for $f" ;;
+    esac
+}}
+
+# ── Keys ─────────────────────────────────────────────────────────────
+map <enter> open
+map . set hidden!
+map D trash
+map <delete> trash
+map X delete
+map E extract
+map a mkfile
+map A mkdir
+map e $$EDITOR "$f"
+map o open
+map gh cd ~
+map gc cd ~/.config
+map gp cd /ports/core
+map gk cd /var/lib/kpkg/db
+map R reload
+map U :unselect; clear
+map <c-f> $lf -remote "send $id select \"$(fzf)\""
