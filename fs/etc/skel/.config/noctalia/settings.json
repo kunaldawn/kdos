@@ -1,0 +1,18 @@
+{
+  "general": {
+    "showChangelogOnStartup": false,
+    "telemetryEnabled": false
+  },
+  "colorSchemes": {
+    "predefinedScheme": "KDOS-Phosphor",
+    "useWallpaperColors": false,
+    "darkMode": true
+  },
+  "wallpaper": {
+    "enabled": true,
+    "directory": "/usr/share/backgrounds/kdos",
+    "fillMode": "crop",
+    "fillColor": "#000a03",
+    "setWallpaperOnAllMonitors": true
+  }
+}

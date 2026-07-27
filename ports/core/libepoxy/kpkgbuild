@@ -9,7 +9,7 @@
 # ---------------------------------
 
 # description	: Library for handling OpenGL function pointer management
-# depends	: mesa meson
+# depends	: mesa meson libX11
 
 name=libepoxy
 version=1.5.10
@@ -17,7 +17,10 @@ release=1
 source="https://github.com/anholt/libepoxy/archive/$version/$name-$version.tar.gz"
 
 build() {
-	meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib
+	# tests link against libGL's legacy immediate-mode symbols, which mesa
+	# does not export here; the library itself builds fine.
+	meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
+		-Dtests=false
 	meson compile -C build
 	DESTDIR=$PKG meson install --no-rebuild -C build
 }

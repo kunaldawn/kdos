@@ -1,16 +1,28 @@
-# description	: X11 font encoding library
-# depends	: zlib font-util xorgproto
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Font encoding library
+# homepage	: https://gitlab.freedesktop.org/xorg/lib/libfontenc
+# depends	: xorgproto zlib
 
 name=libfontenc
-version=1.1.8
+version=1.1.9
 release=1
-source="http://ftp.x.org/pub/individual/lib/$name-$version.tar.xz"
+source="https://www.x.org/releases/individual/lib/$name-$version.tar.xz"
 
 build() {
 	./configure \
 		--prefix=/usr \
-                --sysconfdir=/etc \
-                --localstatedir=/var
+		--sysconfdir=/etc \
+		--libdir=/usr/lib \
+		--disable-static
 	make
 	make DESTDIR=$PKG install
 }

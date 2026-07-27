@@ -12,10 +12,9 @@ case "$1" in
         fi
         echo "[KDOS] Starting $NAME..."
         # -g seat: members of the 'seat' group can take seats without root.
-        # Group is created on first install if missing.
-        getent group seat >/dev/null 2>&1 || groupadd -r seat
-        # seatd allows root by default, but being explicit is clearer
-        usermod -aG seat root 2>/dev/null || true
+        # The group ships in /etc/group (with the desktop user in it); this is
+        # only a fallback for a tree that predates it. No getent on musl.
+        grep -q '^seat:' /etc/group 2>/dev/null || groupadd -r seat
         supervise "$NAME" "$DAEMON -g seat"
         ;;
     stop)

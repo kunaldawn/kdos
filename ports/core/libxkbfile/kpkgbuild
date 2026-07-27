@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: XKB file handling library
+# homepage	: https://gitlab.freedesktop.org/xorg/lib/libxkbfile
+# depends	: libX11 meson
+
+name=libxkbfile
+version=1.2.0
+release=1
+source="https://www.x.org/releases/individual/lib/$name-$version.tar.xz"
+
+build() {
+	meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}
