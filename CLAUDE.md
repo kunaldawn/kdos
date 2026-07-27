@@ -345,6 +345,94 @@ The "PHOSPHOR" look is four seeded configs (`fs/etc/skel/.config/{niri,foot,fuzz
 
 Config schemas drift: verify against the shipped version before writing (`niri validate` catches KDL errors; foot 1.26 moved the palette to `[colors-dark]` and the cursor colour into it).
 
+### Who owns which colour — the PHOSPHOR pipeline
+
+The desktop has **one** source of truth per consumer, and two generators. Editing the
+wrong file gets silently overwritten on the next theme switch.
+
+| File | Owner | Notes |
+|---|---|---|
+| `fs/etc/skel/.config/niri/config.kdl` | hand-written | structure, binds, shaders. Colours here are the phosphor default only |
+| `fs/etc/skel/.config/niri/accent.kdl` | **`kdos theme`** | included at the END of config.kdl; niri includes are positional and merge per-field, so it carries colour keys only. niri watches it and live-reloads |
+| `fs/etc/skel/.config/foot/themes/noctalia` | **noctalia templates** | `foot.ini` includes it at the top; anything foot-specific the template does not write (alpha, cursor, urls) goes in `foot.ini` AFTER the include, where it wins |
+| `fs/etc/skel/.config/starship.toml` | mixed | modules hand-written, palette between `# >>> NOCTALIA STARSHIP PALETTE >>>` markers regenerated. Never define `[palettes.noctalia]` outside the markers — two tables is invalid TOML and starship dies |
+| `fs/etc/skel/.config/btop/{btop.conf,themes/noctalia.theme}` | noctalia templates | `btop.conf` must exist or the apply step warns and gives up |
+| `~/.config/gtk-3.0`, `gtk-4.0`, `qt6ct` | noctalia templates | **this is how alien apps get themed** — distrobox bind-mounts `$HOME`, so a GTK app in a Debian box reads the CSS noctalia generated on the host |
+| `fs/etc/skel/.config/fuzzel/fuzzel.ini` | **`kdos theme`** | fuzzel has no include directive, so `kdos` rewrites the `[colors]` block in place with awk. Do NOT enable noctalia's `fuzzel` template — it overwrites the whole file |
+
+`settings.json` enables exactly five templates (`foot starship btop gtk qt`) plus
+`enableUserTheming`. Adding `niri` or `fuzzel` to that list is the mistake to avoid.
+
+**Two traps cost a full debug cycle each — do not rediscover them:**
+
+- **A colour scheme needs `terminal.foreground` / `background` / `selectionFg` /
+  `selectionBg` / `cursorText` / `cursor`.** With a predefined scheme selected, noctalia
+  renders the `*-predefined` template variants, which dereference
+  `colors.terminal_foreground` and friends — flattened from those keys by
+  `inject_terminal_colors()`. A scheme carrying only `terminal.normal` / `terminal.bright`
+  (which is what the KDOS schemes originally had) makes every terminal template die with
+  `Unknown color 'terminal_foreground'`, silently, in the shell's log — foot simply never
+  gets repainted while GTK and btop do. Compare against a bundled scheme (`Gruvbox`) when
+  adding one.
+- **Quickshell finds a running instance by matching `WAYLAND_DISPLAY`, not just the config
+  path.** With it unset, `noctalia ipc call ...` prints *"No running instances for
+  /usr/share/noctalia-shell/shell.qml"* while the shell is plainly on screen — so IPC from
+  a tty, an ssh session, a cron job or any detached script fails. niri's own `spawn-sh`
+  binds inherit the variable and are fine. `kdos theme` recovers it from
+  `$XDG_RUNTIME_DIR/wayland-*` when the caller has none; do the same in anything new.
+
+Layer and window rules are **appended**, not merged, so `accent.kdl` re-states the same
+matches and wins by being later in the file. That is why it can repaint the bar glow and
+the Xwayland border without touching `config.kdl`.
+
+`kdos-hook colors` (wired to noctalia's `colorGeneration` hook) handles what is left over
+after a scheme change. Regenerating a file does not repaint a running process, and what
+can be repainted varies:
+
+| Consumer | On a live theme switch |
+|---|---|
+| niri | repaints itself — it watches `accent.kdl` |
+| noctalia | repaints itself |
+| tmux | `tmux source-file` from the hook |
+| btop, GTK/Qt apps | next start |
+| **foot** | **never** — see below |
+
+**foot has no config-reload signal.** In 1.26 `SIGUSR1`/`SIGUSR2` select the
+`[colors-dark]` / `[colors-light]` section that was parsed *at startup*; they do not
+re-read the file. An already-open terminal therefore keeps its palette until it is closed,
+and no amount of signalling changes that. The hook toasts to say so instead of pretending.
+
+**KDOS's `pkill` also has no `-x`/`--exact`.** The procps-ng port is built without it, so
+`pkill -USR1 -x foot` exits 1 and signals nothing — which reads as "the theme did not
+apply" even when the real problem is elsewhere. This also silently no-ops the
+`pkill -SIGUSR2 -x btop` inside noctalia's vendored `Scripts/bash/template-apply.sh`; btop
+picks the new theme up on restart. Not worth patching an upstream script over.
+
+### niri custom shaders — the CRT
+
+`window-open`, `window-close` and `window-resize` take a `custom-shader r"..."` block of
+GLSL defining `open_color` / `close_color` / `resize_color`. KDOS uses all three for the
+power-on / power-off / interlace effects. Notes that cost time to rediscover:
+
+- It is a **KDL raw string**, so the GLSL may not contain a double quote anywhere.
+- Sample with `vec3 coords_tex = niri_geo_to_tex * coords_geo; texture2D(niri_tex, coords_tex.st)`.
+  Colour is **premultiplied** — multiply the whole vec4, never just RGB.
+- Useful uniforms: `niri_progress` (may overshoot), `niri_clamped_progress`, `niri_scale`,
+  `niri_random_seed`, `niri_size`. Resize gets `niri_tex_prev`/`_next` and matching matrices.
+- A shader that fails to compile is **not fatal**: niri logs a warning and falls back to
+  the built-in animation. So a broken shader looks like "my animation did nothing".
+- No backwards-compatibility guarantee across niri releases — re-check on upgrade.
+
+### The `kdos` command
+
+`fs/usr/local/bin/kdos` is the front door: `help` (cheat sheet **parsed out of the live
+niri config**, so it cannot go stale), `theme`, `status` (`--bar` feeds the noctalia
+CustomButton widget), `doctor`, `app`, `version`. `kdos-shot`, `kdos-hook` and the older
+`kdos-fetch-app` / `kdos-fetch-static` sit alongside it.
+
+`kdos doctor` checks the things that have actually broken on this distro before —
+including `readlink /proc/self/root`, the switch_root trap below.
+
 ### initramfs must use util-linux `switch_root`, never toybox's
 
 toybox `switch_root` wipes the initramfs and `chroot()`s — it never does `mount(newroot, "/", MS_MOVE)`. The mount-namespace root then stays the *emptied* rootfs with the real root parked at `/newroot`, and anything that JOINS a mount namespace via `setns(CLONE_NEWNS)` (`podman exec`, `distrobox enter`, `nsenter -m`) gets that empty rootfs as `/` → every path ENOENT (`crun: executable file 'echo' not found`). `podman run` still works, because it CREATES the namespace. Tell-tale: `readlink /proc/<container-pid>/root` prints `/newroot` instead of `/`. `script/06_packaging/01_initramfs.sh` installs `/usr/sbin/switch_root` over the toybox symlink — keep it that way.

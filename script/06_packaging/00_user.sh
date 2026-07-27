@@ -36,6 +36,16 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     if [ -d /etc/skel ]; then
         cp -r /etc/skel/. "$home"/ 2>/dev/null || true
     fi
+
+    # XDG user dirs. ~/.config/user-dirs.dirs names them, but git cannot carry
+    # an empty directory through /etc/skel, so they are created here. niri's
+    # screenshot-path points into Pictures/Screenshots and will not create the
+    # tree itself.
+    for _d in Desktop Downloads Documents Music Pictures Pictures/Screenshots \
+              Videos Public Templates .local/bin .local/share/applications; do
+        mkdir -p "$home/$_d"
+    done
+
     chown -R "$uid:$gid" "$home"
     chmod 0700 "$home"
 done < /etc/passwd
