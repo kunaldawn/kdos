@@ -65,15 +65,33 @@ else
     echo "Warning: rEFInd files not found at $REFIND_DIR"
 fi
 
+# The boot menu is the first pixel of KDOS, so it gets the phosphor treatment
+# too. A banner needs graphics mode, which is why `textonly` is gone.
+if [ -f /usr/share/kdos/boot/kdos-banner.png ]; then
+    cp /usr/share/kdos/boot/kdos-banner.png $ISO_ROOT/EFI/BOOT/kdos-banner.png
+else
+    echo "Warning: KDOS boot banner not found — rEFInd will use its own"
+fi
+
 cat > $ISO_ROOT/EFI/BOOT/refind.conf <<EOF
 timeout 5
-textonly
+banner /EFI/BOOT/kdos-banner.png
+banner_scale noscale
+hideui hints,badges
 showtools reboot, shutdown, firmware
+use_graphics_for linux
 
 menuentry "KDOS Live" {
     loader /EFI/BOOT/vmlinuz
     initrd /EFI/BOOT/initramfs.cpio.gz
     options "root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3"
+    icon /EFI/BOOT/icons/os_linux.png
+}
+
+menuentry "KDOS Live (verbose)" {
+    loader /EFI/BOOT/vmlinuz
+    initrd /EFI/BOOT/initramfs.cpio.gz
+    options "root=/dev/ram0 rw console=tty0 console=ttyS0 loglevel=7"
     icon /EFI/BOOT/icons/os_linux.png
 }
 EOF
