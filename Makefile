@@ -19,7 +19,21 @@ BUILD_ARGS ?=
 fetch:
 	bash ports/fetch
 
-build:
+# Rewriting the ISO while a VM boots from it corrupts that VM: QEMU reads the
+# image lazily, so every block the guest has not cached yet turns into an I/O
+# error (bash reports it as "<binary>: I/O error" on the next exec). Refuse,
+# unless the developer insists.
+check-iso-free:
+	@if [ -f build/iso-build/kdos.iso ] && command -v fuser >/dev/null 2>&1 && \
+	    fuser build/iso-build/kdos.iso >/dev/null 2>&1; then \
+		echo "ERROR: build/iso-build/kdos.iso is open by another process — a running VM?"; \
+		echo "       Rebuilding it now would give that guest I/O errors on anything it"; \
+		echo "       has not already cached. Shut the VM down first, or override with:"; \
+		echo "           make build ALLOW_ISO_IN_USE=1"; \
+		test -n "$(ALLOW_ISO_IN_USE)" || exit 1; \
+	fi
+
+build: check-iso-free
 	mkdir -p build
 	docker build -t os-dev .
 	docker run --network none --cpus="10" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
@@ -84,4 +98,4 @@ cleanbuild:
 clean:
 	rm -rf build
 
-.PHONY: all build snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch
+.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch

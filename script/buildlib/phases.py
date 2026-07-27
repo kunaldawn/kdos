@@ -220,9 +220,10 @@ class BuildManager:
     """Owns the execution order and runs it on a worker thread."""
 
     def __init__(self, root_dir, build_dir="build", snapshots=None, timings=None,
-                 snapshot_enabled=True, repo_root=None):
+                 snapshot_enabled=True, repo_root=None, plan=None):
         self.root_dir = root_dir
         self.build_dir = build_dir
+        self.plan = plan
         # chroot_exec.sh bind-mounts the repo root at /kdos and cds there, so
         # anything handed to a chroot command must be repo-relative: a host
         # path like /workspace/script/phase2.env.sh does not exist inside.
@@ -250,6 +251,7 @@ class BuildManager:
         # Live snapshot progress, read by the TUI.
         self.snapshot_activity = None
         self.snapshot_request = None     # set by the TUI to force a snapshot
+        self.forced_seen = set()         # plan rebuilds that actually matched
 
         self.phases = discover_phases(root_dir)
         self._build_tree()
@@ -268,6 +270,12 @@ class BuildManager:
                 group.packages_file = packages_file
             else:
                 group.script_dir = meta.dir_path
+
+            # A plan deselects whole phases up front; mark_continued and
+            # mark_restored only ever add more skips on top of this.
+            if self.plan and not self.plan.phase_selected(meta.dir_name):
+                group.status = STATUS_SKIPPED
+                group.note = "not in plan"
 
             self.roots.append(group)
             self.execution_order.append(group)
@@ -426,6 +434,14 @@ class BuildManager:
 
             idx += 1
 
+        # A rebuild the user asked for that never showed up is a silent no-op
+        # otherwise: the port is not in any selected phase's dependency closure.
+        if self.plan and self.plan.rebuild:
+            missed = sorted(self.plan.rebuild - self.forced_seen)
+            if missed:
+                self.notice("NOT rebuilt (not reached by the selected phases): %s"
+                            % " ".join(missed))
+
         self.is_running = False
 
     def _resolve_packages(self, cmd):
@@ -478,7 +494,15 @@ class BuildManager:
                     node.parent = step
                     node.raw_title = pkg
                     node.step_type = "CUSTOM"
-                    node.custom_cmd = cmd_prefix + ["%skpkg install -f %s" % (env_src, pkg)]
+                    # -f only for ports the plan asked to rebuild: kpkg's -f
+                    # really does force now, so passing it blanketly would
+                    # rebuild the entire tree on every run.
+                    forced = bool(self.plan and self.plan.forced(pkg))
+                    if forced:
+                        self.forced_seen.add(pkg)
+                        node.note = "rebuild"
+                    node.custom_cmd = cmd_prefix + ["%skpkg install%s %s" % (
+                        env_src, " -f" if forced else "", pkg)]
                     new_nodes.append(node)
 
                 step.children.extend(new_nodes)
@@ -514,6 +538,10 @@ class BuildManager:
         step.status = STATUS_RUNNING
         try:
             files = sorted(glob.glob(os.path.join(step.script_dir, "*.sh")))
+            if self.plan and step.meta:
+                files = [f for f in files
+                         if self.plan.step_selected(step.meta.dir_name,
+                                                    os.path.basename(f))]
             if files:
                 new_nodes = []
                 for f in files:
@@ -529,6 +557,13 @@ class BuildManager:
         except Exception as exc:
             self._fail_expansion(step, "script discovery", exc)
             return False
+
+    def _explicitly_selected(self, step):
+        """True when the plan named this exact script (not just its phase)."""
+        if not self.plan or step.is_group or not step.parent or not step.parent.meta:
+            return False
+        chosen = self.plan.steps.get(step.parent.meta.dir_name)
+        return bool(chosen) and os.path.basename(step.path) in chosen
 
     def _log_path(self, step):
         rel_dir = os.path.dirname(os.path.relpath(step.path, self.root_dir))
@@ -550,11 +585,16 @@ class BuildManager:
             wrapper = os.path.abspath(os.path.join(self.root_dir, "chroot_exec.sh"))
             cmd = [wrapper, "bash", self._path_for(step.path, step.step_type)]
 
+        # A step the plan named explicitly must actually run: many steps guard
+        # themselves with a mark file and exit 0 on a second pass.
+        env = os.environ.copy()
+        env["KDOS_REPLAY"] = "1" if self._explicitly_selected(step) else "0"
+
         with open(log_file_path, 'w') as lf:
             try:
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT,
-                                        text=True, bufsize=1)
+                                        text=True, bufsize=1, env=env)
                 while True:
                     if self.stop_requested:
                         proc.terminate()

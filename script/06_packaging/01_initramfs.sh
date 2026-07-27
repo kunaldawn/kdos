@@ -35,6 +35,15 @@ for cmd in $(./bin/toybox); do
     [ "$cmd" != "toybox" ] && ln -sf toybox bin/$cmd
 done
 
+# Install util-linux switch_root, replacing toybox's.
+# toybox switch_root only wipes the initramfs and chroot()s -- it never does
+# mount(newroot, "/", MS_MOVE). That leaves the mount-namespace root as the
+# (now empty) initramfs rootfs with the real root parked at /newroot, so any
+# process that JOINS a mount namespace via setns() -- podman exec, distrobox
+# enter, nsenter -m -- gets the empty rootfs as "/" and every path is ENOENT.
+rm -f bin/switch_root
+cp /usr/sbin/switch_root bin/switch_root
+
 # Install Libc
 cp /usr/lib/libc.so lib/libc.so
 ln -sf libc.so lib/ld-musl-x86_64.so.1
@@ -324,11 +333,9 @@ if [ "\$FOUND" == "1" ]; then
             mount --move /sys /newroot/sys
 
             # Backing mounts (squashfs /mnt/system, overlay tmpfs /mnt/overlay, ISO
-            # /mnt/iso) are deliberately NOT moved under /newroot. switch_root orphans
-            # them, so they never sit UNDER the running / -> they cannot become
-            # MNT_LOCKED submounts inherited into a container mount namespace (which is
-            # what broke crun/podman exec: umount2(old_root, MNT_DETACH) -> EINVAL).
-            # The overlay keeps an internal kernel ref to the squashfs, so / stays valid.
+            # /mnt/iso) stay in the old rootfs; switch_root leaves them alone (its
+            # wipe skips anything on another device) and the overlay keeps an
+            # internal kernel ref to the squashfs, so / stays valid.
 
             # Switch Root
             echo "Switching to new root..."

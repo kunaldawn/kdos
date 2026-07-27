@@ -14,7 +14,7 @@ set -e
 source script/phase1.env.sh
 source script/util/port.sh
 
-if [ -f "$MARK/tar" ]; then
+if [ -f "$MARK/tar" ] && [ "${KDOS_REPLAY:-0}" != "1" ]; then
     exit 0
 fi
 

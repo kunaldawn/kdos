@@ -10,11 +10,15 @@
 
 ::sysinit:/etc/init.d/rcS
 
-# Serial Console
+# Serial Console (root, for debugging)
 ttyS0::askfirst:/bin/bash -l
 
-# Local Console (QEMU Window / Physical)
-tty1::respawn:/sbin/getty 38400 tty1
+# Local Console (QEMU Window / Physical) — autologin as kdos.
+# agetty, not toybox getty: only agetty implements --autologin.
+tty1::respawn:/sbin/agetty --autologin kdos --noclear tty1 38400 linux
+
+# Second console, root login prompt
+tty2::respawn:/sbin/getty 38400 tty2
 
 # Restart
 ::restart:/sbin/init

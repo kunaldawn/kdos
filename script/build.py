@@ -20,6 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from buildlib import plan as plan_mod                                  # noqa: E402
 from buildlib import tui as tui_mod                                    # noqa: E402
 from buildlib.phases import BuildManager, discover_phases, human_bytes  # noqa: E402
 from buildlib.snapshot import SnapshotStore, git_info                   # noqa: E402
@@ -42,6 +43,21 @@ def parse_args(argv=None):
                         "anything; earlier phases are skipped and left alone")
     p.add_argument("--no-snapshot", action="store_true",
                    help="do not write snapshots during this build")
+    p.add_argument("--plan", action="store_true",
+                   help="open the build-plan picker (phases, steps, ports to rebuild) "
+                        "and run it on the existing tree without restoring")
+    p.add_argument("--phases", metavar="LIST",
+                   help="only run these phases, comma separated "
+                        "(e.g. --phases 01_phase1,06_packaging)")
+    p.add_argument("--steps", metavar="LIST",
+                   help="only run these scripts, PHASE:script.sh, comma separated "
+                        "(e.g. --steps 01_phase1:00_file_system.sh)")
+    p.add_argument("--rebuild", metavar="LIST",
+                   help="force-rebuild these ports even though they are installed "
+                        "(e.g. --rebuild niri,noctalia-shell)")
+    p.add_argument("--snapshot", action="store_true",
+                   help="write snapshots even for a partial plan (off by default: "
+                        "a partial re-run would be filed under a phase it no longer is)")
     p.add_argument("--list", action="store_true", help="list snapshots and exit")
     p.add_argument("--delete", metavar="PHASE", help="delete one snapshot and exit")
     return p.parse_args(argv)
@@ -184,31 +200,59 @@ def _bail(stdscr, message):
     return 1
 
 
-def run_curses(stdscr, args, phases, store, timings, preselected=None, continue_at=None):
+def make_manager(args, store, timings, plan):
+    """BuildManager for `plan`, with snapshots suppressed when it narrows work."""
+    enabled = not args.no_snapshot
+    if plan is not None and plan.narrows_execution() and not args.snapshot:
+        enabled = False
+    return BuildManager(args.script_dir, build_dir=args.build_dir,
+                        snapshots=store, timings=timings,
+                        snapshot_enabled=enabled, plan=plan)
+
+
+def run_curses(stdscr, args, phases, store, timings, preselected=None,
+               continue_at=None, plan=None):
     tui_mod.init_colors()
     stdscr.keypad(True)
 
-    manager = BuildManager(args.script_dir, build_dir=args.build_dir,
-                           snapshots=store, timings=timings,
-                           snapshot_enabled=not args.no_snapshot)
-
-    if continue_at is not None:
-        manager.mark_continued(continue_at.index)
-        manager.notice("continuing at %s on the existing tree (no restore)"
-                       % continue_at.dir_name)
-        sampler = Sampler(manager, args.build_dir)
-        return _run_build(stdscr, manager, sampler, timings, store, args)
-
+    repo_root = os.path.dirname(os.path.abspath(args.script_dir))
     target = preselected
-    if target is None and not args.fresh and store.list() and sys.stdin.isatty():
+
+    def pick_plan():
+        return tui_mod.PlanMenu(stdscr, phases, repo_root,
+                                preset=plan_mod.BuildPlan.load(args.build_dir)).run()
+
+    # Interactive entry points. A plan given on the command line wins outright.
+    if plan is None and args.plan:
+        plan = pick_plan()
+        if plan is None:
+            return 130
+    elif plan is None and target is None and continue_at is None and not args.fresh \
+            and store.list() and sys.stdin.isatty():
         commit, _ = git_info(".")
         choice, index = tui_mod.StartupMenu(stdscr, store, phases, commit).run()
         if choice == "quit":
             return 130
         if choice == "restore":
             target = phases[index]
+        elif choice == "plan":
+            plan = pick_plan()
+            if plan is None:
+                return 130
 
-    if target is not None:
+    manager = make_manager(args, store, timings, plan)
+
+    if plan is not None and plan.is_custom():
+        plan.save(args.build_dir)
+        manager.notice("plan: %s" % (plan.summary() or "everything"))
+        if plan.narrows_execution() and not args.snapshot:
+            manager.notice("snapshots disabled for this partial run")
+
+    if continue_at is not None:
+        manager.mark_continued(continue_at.index)
+        manager.notice("continuing at %s on the existing tree (no restore)"
+                       % continue_at.dir_name)
+    elif target is not None:
         error = check_restorable(store, phases, target) or \
             do_restore(stdscr, store, phases, target, manager)
         if error:
@@ -318,9 +362,26 @@ def main():
             print(problem, file=sys.stderr)
             return 2
 
+    plan = None
+    if args.phases or args.steps or args.rebuild:
+        plan, problem = plan_mod.BuildPlan.from_cli(args.phases, args.steps,
+                                                    args.rebuild, phases)
+        if problem:
+            print(problem, file=sys.stderr)
+            return 2
+        if plan.narrows_execution() and (args.restore or args.continue_from):
+            print("--phases/--steps select what runs; combine with neither "
+                  "--restore nor --continue-from", file=sys.stderr)
+            return 2
+
+    if args.plan and not sys.stdin.isatty():
+        print("--plan needs a terminal; use --phases/--steps/--rebuild instead",
+              file=sys.stderr)
+        return 2
+
     timings = TimingStore(os.path.join(store.root, "timings.json"))
     return curses.wrapper(run_curses, args, phases, store, timings, preselected,
-                          continue_at)
+                          continue_at, plan)
 
 
 if __name__ == "__main__":

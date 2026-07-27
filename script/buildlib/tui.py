@@ -15,6 +15,7 @@ import locale
 import os
 import time
 
+from . import plan as plan_mod
 from .phases import (STATUS_DONE, STATUS_FAIL, STATUS_PENDING, STATUS_RUNNING,
                      STATUS_SKIPPED, human_bytes, human_time)
 
@@ -188,6 +189,8 @@ class StartupMenu(Screen):
                 return self._activate(self.selected)
             elif key in (ord('f'), ord('F')):
                 return ("fresh", None)
+            elif key in (ord('p'), ord('P')):
+                return ("plan", None)
             elif key in (ord('d'), ord('D')):
                 self._delete(self.selected)
             elif ord('1') <= key <= ord('9'):
@@ -237,7 +240,8 @@ class StartupMenu(Screen):
             attr = curses.color_pair(CP_HL) | curses.A_BOLD if idx == self.selected \
                 else curses.color_pair(CP_BG)
             if row["kind"] == "fresh":
-                text = "   %-16s %s" % ("start fresh", "run every phase from scratch")
+                text = "   %-16s %s" % ("start fresh", "run every phase from scratch"
+                                        "   ([P]: pick phases/ports instead)")
             else:
                 manifest = row["manifest"]
                 stale = manifest_stale(manifest, self.commit)
@@ -300,7 +304,8 @@ class StartupMenu(Screen):
         if self.status:
             self.put(y + 1, 2, self.status, curses.color_pair(CP_WARN))
 
-        keys = [("↑↓", "select"), ("ENTER", "start"), ("D", "delete"), ("Q", "quit")]
+        keys = [("↑↓", "select"), ("ENTER", "start"), ("P", "plan"),
+                ("D", "delete"), ("Q", "quit")]
         x = 2
         fy = self.h - 2
         for key, label in keys:
@@ -312,6 +317,318 @@ class StartupMenu(Screen):
         self.put(self.h - 1, 2,
                  "codec: %s   snapshots: %s" % (self.store.codec, self.store.root),
                  curses.color_pair(CP_DIM))
+        self.stdscr.refresh()
+
+
+class PlanMenu(Screen):
+    """Pick which phases/steps re-run and which ports get force-rebuilt.
+
+    Works on the existing build/ tree — nothing is restored. Returns a
+    BuildPlan, or None if the user backed out.
+    """
+
+    def __init__(self, stdscr, phases, repo_root, preset=None):
+        super().__init__(stdscr)
+        self.phases = phases
+        self.repo_root = repo_root
+        self.status = ""
+        self.scroll = 0
+        self.selected = 0
+
+        self.phase_on = {}
+        self.step_on = {}                  # dir_name -> {basename: bool}
+        self.expanded = set()
+        self.steps = {p.dir_name: plan_mod.discover_steps(p) for p in phases}
+        self.pkg_index = plan_mod.package_index(phases, repo_root)
+        self.rebuild = set()
+
+        for phase in phases:
+            self.phase_on[phase.dir_name] = True
+            self.step_on[phase.dir_name] = {s: True for s in self.steps[phase.dir_name]}
+
+        if preset is not None:
+            self._apply(preset)
+        self._rebuild_rows()
+
+    # ----- state ----------------------------------------------------------
+
+    def _apply(self, preset):
+        if preset.phases is not None:
+            for dir_name in self.phase_on:
+                self.phase_on[dir_name] = dir_name in preset.phases
+        for dir_name, chosen in preset.steps.items():
+            if dir_name not in self.step_on:
+                continue
+            for name in self.step_on[dir_name]:
+                self.step_on[dir_name][name] = name in chosen
+            self.expanded.add(dir_name)
+        self.rebuild = {p for p in preset.rebuild if p in self.pkg_index}
+
+    def _rebuild_rows(self):
+        self.rows = []
+        for phase in self.phases:
+            self.rows.append({"kind": "phase", "phase": phase})
+            if phase.dir_name in self.expanded:
+                for name in self.steps[phase.dir_name]:
+                    self.rows.append({"kind": "step", "phase": phase, "name": name})
+        self.selected = max(0, min(self.selected, len(self.rows) - 1))
+
+    def result(self):
+        selected = {d for d, on in self.phase_on.items() if on}
+        phases = None if len(selected) == len(self.phases) else selected
+        steps = {}
+        for dir_name, flags in self.step_on.items():
+            if flags and not all(flags.values()):
+                steps[dir_name] = {n for n, on in flags.items() if on}
+        return plan_mod.BuildPlan(phases=phases, steps=steps, rebuild=self.rebuild)
+
+    # ----- interaction ----------------------------------------------------
+
+    def run(self):
+        self.stdscr.nodelay(False)
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
+        while True:
+            self.h, self.w = self.stdscr.getmaxyx()
+            self.draw()
+            key = self.stdscr.getch()
+
+            if key in (ord('q'), ord('Q'), 27):
+                return None
+            elif key in (curses.KEY_UP, ord('k')):
+                self.selected = max(0, self.selected - 1)
+            elif key in (curses.KEY_DOWN, ord('j')):
+                self.selected = min(len(self.rows) - 1, self.selected + 1)
+            elif key in (ord(' '),):
+                self._toggle(self.selected)
+            elif key in (curses.KEY_RIGHT, ord('l')):
+                self._expand(self.selected, True)
+            elif key in (curses.KEY_LEFT, ord('h')):
+                self._expand(self.selected, False)
+            elif key in (ord('a'), ord('A')):
+                self._set_all(True)
+            elif key in (ord('n'), ord('N')):
+                self._set_all(False)
+            elif key == ord('/'):
+                PackagePicker(self.stdscr, self.pkg_index, self.rebuild).run()
+            elif key in (curses.KEY_ENTER, 10, 13):
+                if not any(self.phase_on.values()):
+                    self.status = "nothing selected — pick at least one phase"
+                    continue
+                return self.result()
+            elif key == curses.KEY_RESIZE:
+                continue
+
+    def _toggle(self, idx):
+        if not self.rows:
+            return
+        row = self.rows[idx]
+        dir_name = row["phase"].dir_name
+        if row["kind"] == "phase":
+            new = not self.phase_on[dir_name]
+            self.phase_on[dir_name] = new
+            for name in self.step_on[dir_name]:
+                self.step_on[dir_name][name] = new
+        else:
+            flags = self.step_on[dir_name]
+            flags[row["name"]] = not flags[row["name"]]
+            self.phase_on[dir_name] = any(flags.values())
+
+    def _expand(self, idx, want):
+        if not self.rows:
+            return
+        dir_name = self.rows[idx]["phase"].dir_name
+        if want and self.steps[dir_name]:
+            self.expanded.add(dir_name)
+        else:
+            self.expanded.discard(dir_name)
+        self._rebuild_rows()
+
+    def _set_all(self, value):
+        for dir_name in self.phase_on:
+            self.phase_on[dir_name] = value
+            for name in self.step_on[dir_name]:
+                self.step_on[dir_name][name] = value
+
+    # ----- drawing --------------------------------------------------------
+
+    def draw(self):
+        self.stdscr.bkgd(' ', curses.color_pair(CP_BG))
+        self.stdscr.erase()
+        y = 1
+
+        title = "BUILD PLAN — existing tree, nothing restored"
+        self.put(y, max(2, (self.w - len(title)) // 2), title,
+                 curses.color_pair(CP_RUN) | curses.A_BOLD)
+        y += 2
+
+        header = "    %-18s %-38s %s" % ("PHASE", "WHAT RUNS", "REBUILD")
+        self.put(y, 2, header, curses.color_pair(CP_TITLE) | curses.A_BOLD)
+        y += 1
+        self.hline(y, 2, max(0, min(self.w - 4, len(header))))
+        y += 1
+
+        body_h = max(3, self.h - y - 5)
+        if self.selected < self.scroll:
+            self.scroll = self.selected
+        elif self.selected >= self.scroll + body_h:
+            self.scroll = self.selected - body_h + 1
+
+        for idx in range(self.scroll, min(len(self.rows), self.scroll + body_h)):
+            row = self.rows[idx]
+            phase = row["phase"]
+            dir_name = phase.dir_name
+            attr = curses.color_pair(CP_HL) | curses.A_BOLD if idx == self.selected \
+                else curses.color_pair(CP_BG)
+
+            if row["kind"] == "phase":
+                on = self.phase_on[dir_name]
+                steps = self.steps[dir_name]
+                partial = steps and not all(self.step_on[dir_name].values()) and on
+                mark = "x" if on and not partial else ("~" if partial else " ")
+                arrow = ("-" if dir_name in self.expanded else "+") if steps else " "
+                if steps:
+                    what = "%d/%d scripts" % (
+                        sum(1 for v in self.step_on[dir_name].values() if v), len(steps))
+                else:
+                    pkgs = plan_mod.read_packages(phase)
+                    what = "%d packages" % len(pkgs)
+                forced = sorted(p for p in self.rebuild
+                                if self.pkg_index.get(p) == dir_name)
+                text = "[%s]%s %-18s %-38s %s" % (
+                    mark, arrow, dir_name, what,
+                    ",".join(forced)[:24] if forced else "")
+            else:
+                on = self.step_on[dir_name][row["name"]]
+                text = "  [%s]   %-52s" % ("x" if on else " ", row["name"])
+
+            self.put(y, 2, text.ljust(min(self.w - 4, max(len(header), len(text)))), attr)
+            y += 1
+
+        y += 1
+        if self.rebuild:
+            unplaced = sorted(p for p in self.rebuild if self.pkg_index.get(p) is None)
+            self.put(y, 2, "force rebuild: %s" % ", ".join(sorted(self.rebuild))[:self.w - 20],
+                     curses.color_pair(CP_SNAP) | curses.A_BOLD)
+            y += 1
+            if unplaced:
+                self.put(y, 2, "  (%s not listed in any packages.txt — only rebuilt if "
+                               "pulled in as a dependency)" % ", ".join(unplaced),
+                         curses.color_pair(CP_DIM))
+                y += 1
+        if any(not on for on in self.phase_on.values()) or \
+                any(f and not all(f.values()) for f in self.step_on.values()):
+            self.put(y, 2, "partial plan — snapshots are not written for this run",
+                     curses.color_pair(CP_WARN))
+            y += 1
+        if self.status:
+            self.put(y, 2, self.status, curses.color_pair(CP_FAIL))
+
+        keys = [("↑↓", "move"), ("SPACE", "toggle"), ("←→", "steps"),
+                ("/", "rebuild ports"), ("A/N", "all/none"), ("ENTER", "start"),
+                ("Q", "back")]
+        x = 2
+        fy = self.h - 2
+        for key, label in keys:
+            self.put(fy, x, "[%s]" % key, curses.color_pair(CP_KEY) | curses.A_BOLD)
+            x += len(key) + 2
+            self.put(fy, x, ":%s " % label, curses.color_pair(CP_BG))
+            x += len(label) + 2
+        self.stdscr.refresh()
+
+
+class PackagePicker(Screen):
+    """Fuzzy search + multi-select over every port, for forced rebuilds."""
+
+    def __init__(self, stdscr, pkg_index, selection):
+        super().__init__(stdscr)
+        self.pkg_index = pkg_index
+        self.selection = selection          # mutated in place
+        self.query = ""
+        self.selected = 0
+        self.scroll = 0
+        self.names = sorted(pkg_index)
+        self._filter()
+
+    def _filter(self):
+        query = self.query.lower()
+        if not query:
+            self.matches = list(self.names)
+        else:
+            starts = [n for n in self.names if n.lower().startswith(query)]
+            rest = [n for n in self.names if query in n.lower() and n not in starts]
+            self.matches = starts + rest
+        self.selected = max(0, min(self.selected, len(self.matches) - 1))
+
+    def run(self):
+        self.stdscr.nodelay(False)
+        while True:
+            self.h, self.w = self.stdscr.getmaxyx()
+            self.draw()
+            key = self.stdscr.getch()
+
+            if key == 27:                                   # ESC
+                return
+            elif key in (curses.KEY_ENTER, 10, 13):
+                return
+            elif key in (curses.KEY_UP,):
+                self.selected = max(0, self.selected - 1)
+            elif key in (curses.KEY_DOWN,):
+                self.selected = min(len(self.matches) - 1, self.selected + 1)
+            elif key == ord(' '):
+                if self.matches:
+                    name = self.matches[self.selected]
+                    if name in self.selection:
+                        self.selection.discard(name)
+                    else:
+                        self.selection.add(name)
+            elif key in (curses.KEY_BACKSPACE, 127, 8):
+                self.query = self.query[:-1]
+                self._filter()
+            elif 32 <= key < 127:
+                self.query += chr(key)
+                self._filter()
+            elif key == curses.KEY_RESIZE:
+                continue
+
+    def draw(self):
+        self.stdscr.bkgd(' ', curses.color_pair(CP_BG))
+        self.stdscr.erase()
+        y = 1
+        self.put(y, 2, "FORCE REBUILD — pick ports to rebuild even if installed",
+                 curses.color_pair(CP_RUN) | curses.A_BOLD)
+        y += 2
+        self.put(y, 2, "search: %s_" % self.query, curses.color_pair(CP_TITLE) | curses.A_BOLD)
+        y += 1
+        self.put(y, 2, "%d match(es), %d selected" % (len(self.matches), len(self.selection)),
+                 curses.color_pair(CP_DIM))
+        y += 2
+
+        body_h = max(3, self.h - y - 4)
+        if self.selected < self.scroll:
+            self.scroll = self.selected
+        elif self.selected >= self.scroll + body_h:
+            self.scroll = self.selected - body_h + 1
+
+        for idx in range(self.scroll, min(len(self.matches), self.scroll + body_h)):
+            name = self.matches[idx]
+            attr = curses.color_pair(CP_HL) | curses.A_BOLD if idx == self.selected \
+                else curses.color_pair(CP_BG)
+            where = self.pkg_index.get(name) or "dependency only"
+            text = "[%s] %-28s %s" % ("x" if name in self.selection else " ", name, where)
+            self.put(y, 2, text.ljust(min(self.w - 4, 60)), attr)
+            y += 1
+
+        keys = [("type", "filter"), ("↑↓", "move"), ("SPACE", "toggle"), ("ENTER", "done")]
+        x = 2
+        fy = self.h - 2
+        for key, label in keys:
+            self.put(fy, x, "[%s]" % key, curses.color_pair(CP_KEY) | curses.A_BOLD)
+            x += len(key) + 2
+            self.put(fy, x, ":%s " % label, curses.color_pair(CP_BG))
+            x += len(label) + 2
         self.stdscr.refresh()
 
 

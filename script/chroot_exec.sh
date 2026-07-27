@@ -111,8 +111,11 @@ trap cleanup EXIT
 # We cd to /kdos to maintain relative path assumptions for scripts
 # We use /usr/bin/env -i to clear host environment ensuring isolation
 # But we keep PATH (basic) and TERM
+# KDOS_REPLAY is forwarded: it tells a step that the developer picked it
+# deliberately, so mark-file guards ("already built, exit 0") stand down.
 chroot "$CHROOT_DIR" /usr/bin/env -i \
     HOME=/root \
     TERM="$TERM" \
+    KDOS_REPLAY="${KDOS_REPLAY:-0}" \
     PATH=/bin:/usr/bin:/sbin:/usr/sbin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"

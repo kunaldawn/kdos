@@ -119,8 +119,16 @@ cmd_install() {
 	
 	# Resolve dependencies
 	msg "Resolving dependencies..."
-	# kpkgdepends uses KPKG_ROOT env var
-	if ! DEPS=$(kpkgdepends $PACKAGES); then
+	# kpkgdepends uses KPKG_ROOT env var.
+	# It also drops anything already installed, which would make -f resolve to
+	# nothing at all: resolve against an empty db so the named packages survive,
+	# and decide what to actually rebuild per package below.
+	if [ "$FORCE" -eq 1 ]; then
+		if ! DEPS=$(PKGDB_DIR=/dev/null kpkgdepends $PACKAGES); then
+			msgerr "Dependency resolution failed"
+			exit 1
+		fi
+	elif ! DEPS=$(kpkgdepends $PACKAGES); then
 		msgerr "Dependency resolution failed"
 		exit 1
 	fi
@@ -134,15 +142,27 @@ cmd_install() {
 	
 	# Build and install each package
 	for pkg in $DEPS; do
+		# -f rebuilds only what was named on the command line; pulled-in
+		# dependencies keep the normal "skip if installed" behaviour.
+		forced=0
+		if [ "$FORCE" -eq 1 ]; then
+			for want in $PACKAGES; do
+				if [ "$want" = "$pkg" ]; then
+					forced=1
+					break
+				fi
+			done
+		fi
+
 		if is_installed "$pkg"; then
-			if [ "$FORCE" -eq 1 ]; then
-				msg "Reinstalling $pkg (forced)..."
+			if [ "$forced" -eq 1 ]; then
+				msg "Rebuilding $pkg (forced)..."
 			else
 				msg "Skipping $pkg (already installed)"
 				continue
 			fi
 		fi
-		
+
 		portpath=$(get_portpath "$pkg") || {
 			msgerr "Port not found: $pkg"
 			exit 1
@@ -162,7 +182,7 @@ cmd_install() {
 		PKGFILE="$PACKAGE_DIR/$name-$version-$release.tar.xz"
 		
 		ADD_OPTS=""
-		[ "$FORCE" -eq 1 ] && ADD_OPTS="--force"
+		[ "$forced" -eq 1 ] && ADD_OPTS="--force"
 		[ -n "$KPKG_ROOT" ] && ADD_OPTS="$ADD_OPTS --root $KPKG_ROOT"
 		
 		kpkgadd $ADD_OPTS "$PKGFILE" || {
