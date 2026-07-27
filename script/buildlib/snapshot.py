@@ -15,6 +15,7 @@ path, plus a manifest. Retention is one snapshot per phase: re-running a phase
 overwrites its snapshot.
 """
 
+import collections
 import json
 import os
 import shutil
@@ -22,8 +23,12 @@ import subprocess
 import threading
 import time
 
-SCHEMA = 2
+SCHEMA = 3
 MANIFEST = "manifest.json"
+# Written at the build/ root (not under snapshots/) while a restore is
+# rewriting the tree, so `make cleanbuild` discards the marker together with
+# the truncated tree it describes.
+RESTORE_MARKER = ".restore-in-progress"
 
 # Flags we would like tar to have; probed against `tar --help` because Alpine's
 # GNU tar may be built without acl/xattr support and busybox tar has almost none
@@ -84,26 +89,69 @@ def git_info(repo_root):
     return commit, dirty
 
 
-def dir_usage(path):
-    """(bytes, files) for `path`, staying on one filesystem."""
+MAX_WALK_DEPTH = 64
+SIZE_ESTIMATE_BUDGET = 120.0      # seconds spent measuring a tree before snapshotting
+
+
+Usage = collections.namedtuple("Usage", "bytes files complete")
+
+
+def dir_usage(path, deadline=None, on_tick=None):
+    """(bytes, files) for `path`, staying on one filesystem.
+
+    Cycle-safe. `build/fs/kdos` is a bind mount of the repo root, which
+    contains `build/fs` again — and because a bind mount of the same
+    filesystem keeps the same st_dev, a device check alone walks that loop
+    forever. Directories are therefore tracked by (st_dev, st_ino), live
+    mountpoints are skipped outright, and depth is capped. A lazily-detached
+    mount is gone from /proc/mounts but still traversable from inside, so the
+    inode check — not the mount list — is what actually closes the loop.
+
+    `deadline` (a time.monotonic() value) bounds the walk; `complete` is then
+    False and the counts are partial, which is fine for a size estimate and a
+    HUD counter. `on_tick(files, bytes)` is called periodically so a slow walk
+    can be shown progressing rather than looking hung.
+    """
     if not os.path.exists(path):
-        return 0, 0
+        return Usage(0, 0, True)
     if not os.path.isdir(path) or os.path.islink(path):
         try:
-            return os.lstat(path).st_size, 1
+            return Usage(os.lstat(path).st_size, 1, True)
         except OSError:
-            return 0, 0
+            return Usage(0, 0, True)
 
     try:
-        root_dev = os.lstat(path).st_dev
+        root_st = os.lstat(path)
     except OSError:
-        return 0, 0
+        return Usage(0, 0, True)
+    root_dev = root_st.st_dev
+
+    mountpoints = set()
+    try:
+        with open("/proc/mounts", 'r') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) > 1:
+                    mountpoints.add(parts[1].replace("\\040", " "))
+    except OSError:
+        pass
 
     total = 0
     files = 0
-    stack = [path]
+    visited = {(root_st.st_dev, root_st.st_ino)}
+    stack = [(path, 0)]
+    complete = True
+    next_tick = time.monotonic() + 0.25
+
     while stack:
-        current = stack.pop()
+        current, depth = stack.pop()
+        now = time.monotonic()
+        if deadline is not None and now > deadline:
+            complete = False
+            break
+        if on_tick and now >= next_tick:
+            next_tick = now + 0.25
+            on_tick(files, total)
         try:
             with os.scandir(current) as it:
                 for entry in it:
@@ -112,15 +160,21 @@ def dir_usage(path):
                     except OSError:
                         continue
                     if st.st_dev != root_dev:
-                        continue          # separate mount, not ours to count
-                    if entry.is_dir(follow_symlinks=False):
-                        stack.append(entry.path)
-                    else:
+                        continue          # separate filesystem, not ours to count
+                    if not entry.is_dir(follow_symlinks=False):
                         files += 1
                         total += st.st_size
+                        continue
+                    if depth >= MAX_WALK_DEPTH or entry.path in mountpoints:
+                        continue
+                    key = (st.st_dev, st.st_ino)
+                    if key in visited:
+                        continue          # bind-mount loop back into the tree
+                    visited.add(key)
+                    stack.append((entry.path, depth + 1))
         except OSError:
             continue
-    return total, files
+    return Usage(total, files, complete)
 
 
 class SnapshotStore:
@@ -184,6 +238,8 @@ class SnapshotStore:
             return None
         if not isinstance(manifest, dict) or "entries" not in manifest:
             return None
+        # Snapshots written before schema 3 are always whole-phase snapshots.
+        manifest.setdefault("complete", True)
         for entry in manifest["entries"]:
             archive = os.path.join(self.phase_dir(dir_name), entry.get("archive", ""))
             if not os.path.isfile(archive):
@@ -229,6 +285,49 @@ class SnapshotStore:
             pass
         return found
 
+    def marker_path(self):
+        return os.path.join(self.build_dir, RESTORE_MARKER)
+
+    def interrupted_restore(self):
+        """Details of a restore that never finished, or None."""
+        try:
+            with open(self.marker_path(), 'r') as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return None
+
+    def _write_marker(self, target, paths):
+        try:
+            with open(self.marker_path(), 'w') as f:
+                json.dump({"target": target, "paths": paths, "started": time.time()}, f)
+        except OSError:
+            pass
+
+    def clear_marker(self):
+        _unlink(self.marker_path())
+
+    def release_mounts(self, path):
+        """Unmount leftovers under `path`, returning whatever survives.
+
+        These are chroot_exec.sh's own bind mounts, and the phase's steps have
+        all finished by the time this runs, so releasing them is what the
+        wrapper intended anyway — one transient EBUSY at wrapper exit should
+        not cost the phase its snapshot.
+        """
+        released = []
+        for flags in ([], ["-l"]):
+            for mnt in sorted(self.mounts_under(path), key=len, reverse=True):
+                try:
+                    done = subprocess.run(["umount"] + flags + [mnt],
+                                          capture_output=True, timeout=30)
+                except Exception:
+                    continue
+                if done.returncode == 0:
+                    released.append(mnt + (" (lazy)" if flags else ""))
+            if not self.mounts_under(path):
+                break
+        return released, self.mounts_under(path)
+
     def free_bytes(self):
         try:
             st = os.statvfs(self.build_dir)
@@ -238,8 +337,19 @@ class SnapshotStore:
 
     # ----- create ---------------------------------------------------------
 
-    def create(self, meta, steps=0, duration=0.0, on_progress=None, should_stop=None):
-        """Snapshot one phase. Returns the manifest, or None when skipped."""
+    def create(self, meta, steps=0, duration=0.0, on_progress=None, should_stop=None,
+               complete=True, total_steps=None, done_steps=None, log=None):
+        """Snapshot one phase. Returns the manifest, or None when skipped.
+
+        `complete` is False for a snapshot taken part-way through a phase (the
+        [S] hotkey). Restoring one of those resumes inside the phase instead of
+        skipping it, so the remaining steps still run.
+        """
+        interrupted = self.interrupted_restore()
+        if interrupted:
+            raise RuntimeError("build/ is mid-restore of %s; refusing to snapshot it"
+                               % interrupted.get("target", "?"))
+
         unsafe = [p for p in meta.snapshot_paths if not is_safe_relpath(p)]
         if unsafe:
             raise RuntimeError("refusing unsafe snapshot path(s): %s" % " ".join(unsafe))
@@ -249,17 +359,48 @@ class SnapshotStore:
         if not paths:
             return None
 
-        blockers = self.mounts_under(os.path.join(self.build_dir, "fs"))
-        if blockers:
-            raise RuntimeError("mounts still active under build/fs: %s" % ", ".join(blockers[:3]))
+        if on_progress:
+            on_progress({"action": "preparing", "phase": meta.dir_name, "path": "",
+                         "bytes": 0, "est_bytes": 0, "files": 0, "rate": 0.0,
+                         "current": "checking mounts…", "started": time.time()})
+
+        fs_dir = os.path.join(self.build_dir, "fs")
+        if self.mounts_under(fs_dir):
+            released, blockers = self.release_mounts(fs_dir)
+            if released and log:
+                log("released stale chroot mount(s): %s" % ", ".join(released))
+            if blockers:
+                raise RuntimeError("mounts still active under build/fs: %s"
+                                   % ", ".join(blockers[:3]))
 
         previous = self.load(meta.dir_name) or {}
         prev_entries = {e["path"]: e for e in previous.get("entries", [])}
         prev_total = sum(e.get("bytes_compressed", 0) for e in prev_entries.values())
 
+        # Measuring an 8GB tree costs tens of seconds on a cold cache, and it
+        # only feeds the disk guard and an informational manifest field. Walk
+        # it only when there is no previous figure to reuse, bound it, and
+        # stream progress so it cannot look like a hang.
+        raw_deadline = time.monotonic() + SIZE_ESTIMATE_BUDGET
         raw_sizes = {}
         for path in paths:
-            raw_sizes[path] = dir_usage(os.path.join(self.build_dir, path))[0]
+            known = prev_entries.get(path, {}).get("bytes_raw")
+            if known:
+                raw_sizes[path] = known
+                continue
+
+            def tick(files, done_bytes, _path=path):
+                if on_progress:
+                    on_progress({"action": "measuring", "phase": meta.dir_name,
+                                 "path": _path, "bytes": done_bytes, "est_bytes": 0,
+                                 "files": files, "rate": 0.0,
+                                 "current": "sizing %s…" % _path,
+                                 "started": time.time()})
+
+            tick(0, 0)
+            usage = dir_usage(os.path.join(self.build_dir, path),
+                              deadline=raw_deadline, on_tick=tick)
+            raw_sizes[path] = usage.bytes
         # No history to go on for the first snapshot of a phase: zstd -3 on a
         # rootfs lands near 3x, so a third of the raw size is the estimate.
         needed = prev_total or int(sum(raw_sizes.values()) / 3)
@@ -315,6 +456,9 @@ class SnapshotStore:
             "duration_s": round(duration, 1),
             "snapshot_s": round(time.time() - started, 1),
             "steps": steps,
+            "complete": bool(complete),
+            "total_steps": total_steps if total_steps is not None else steps,
+            "done_steps": list(done_steps or [])[-200:],
             "codec": self.codec,
             "entries": entries,
         }
@@ -401,12 +545,22 @@ class SnapshotStore:
                 }
         return [chosen[k] for k in sorted(chosen)]
 
-    def restore(self, plan, on_progress=None, should_stop=None):
+    def restore(self, plan, on_progress=None, should_stop=None, target=None):
+        # Validate everything before touching the tree, so a rejected plan
+        # leaves build/ exactly as it was — and unmarked.
+        for item in plan:
+            if not is_safe_relpath(item["path"]):
+                raise RuntimeError("refusing unsafe restore path: %r" % item["path"])
+            if not os.path.isfile(item["archive"]):
+                raise RuntimeError("missing archive: %s" % item["archive"])
+
+        # From the first rmtree until the last member is extracted the tree is
+        # inconsistent; the marker is what lets the next run know that.
+        self._write_marker(target or (plan[0]["source"] if plan else "?"),
+                           [i["path"] for i in plan])
         for item in plan:
             if should_stop and should_stop():
                 raise RuntimeError("aborted")
-            if not is_safe_relpath(item["path"]):
-                raise RuntimeError("refusing unsafe restore path: %r" % item["path"])
 
             target = os.path.join(self.build_dir, item["path"])
             if os.path.isdir(target) and not os.path.islink(target):
@@ -438,28 +592,46 @@ class SnapshotStore:
             decomp = self.decompressor_for(item["manifest"]) + [item["archive"]]
             tar_cmd = ["tar"] + self._extract_flags() + ["-C", self.build_dir, "-xvf", "-"]
             self._pipe(decomp, tar_cmd, None, state, on_progress, should_stop,
-                       read_names_from="second", input_size=_size(item["archive"]))
+                       names_from="second-stdout", input_size=_size(item["archive"]))
+
+        self.clear_marker()
 
     # ----- plumbing -------------------------------------------------------
 
     def _pipe(self, first_cmd, second_cmd, out_path, state, on_progress,
-              should_stop, read_names_from="first", input_size=None):
+              should_stop, names_from="first-stderr", input_size=None):
         """Run `first | second`, optionally to a file, reporting progress.
 
-        Verbose member names come from whichever stage is tar; byte progress
-        comes from the output file size when writing an archive, or from how
-        much of the input archive has been consumed when extracting.
+        Which stream carries tar's member names depends on the direction:
+        creating an archive puts the archive itself on stdout so `-v` names go
+        to stderr, while extracting puts the names on stdout. Getting this
+        backwards costs both the file counter and, worse, tar's diagnostics —
+        so the name stream is named explicitly and every other stream is
+        collected as error output.
+
+        Byte progress is the output file's size when writing an archive, and
+        how much of the input archive the decompressor has read when
+        extracting. Rendering happens on the caller's thread: the ticker only
+        updates `state`, so a curses on_progress can never run concurrently
+        with the caller's own drawing.
         """
-        counter = {"files": 0, "current": "", "err": []}
-        out_fh = open(out_path, 'wb') if out_path else subprocess.DEVNULL
+        counter = {"files": 0, "current": "", "err": [], "names": []}
+        names_from_stdout = names_from == "second-stdout"
+        if out_path and names_from_stdout:
+            raise ValueError("cannot read names from stdout while writing it to a file")
+
+        out_fh = open(out_path, 'wb') if out_path else None
         stop_ticker = threading.Event()
+        threads = []
+        tick = None
 
         try:
             first = subprocess.Popen(first_cmd, stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE)
+            second_stdout = out_fh if out_path else (
+                subprocess.PIPE if names_from_stdout else subprocess.DEVNULL)
             second = subprocess.Popen(second_cmd, stdin=first.stdout,
-                                      stdout=(out_fh if out_path else subprocess.DEVNULL),
-                                      stderr=subprocess.PIPE)
+                                      stdout=second_stdout, stderr=subprocess.PIPE)
             first.stdout.close()
 
             def drain(stream, collect_names):
@@ -470,25 +642,31 @@ class SnapshotStore:
                     if collect_names:
                         counter["files"] += 1
                         counter["current"] = line
+                        # tar interleaves its own errors with -v names on the
+                        # same stream, so keep a tail for diagnostics.
+                        counter["names"].append(line)
+                        del counter["names"][:-5]
                     else:
                         counter["err"].append(line)
                         del counter["err"][:-20]
                 stream.close()
 
-            t1 = threading.Thread(target=drain,
-                                  args=(first.stderr, read_names_from == "first"),
-                                  daemon=True)
-            t2 = threading.Thread(target=drain,
-                                  args=(second.stderr, read_names_from == "second"),
-                                  daemon=True)
-            t1.start()
-            t2.start()
+            threads.append(threading.Thread(
+                target=drain, args=(first.stderr, names_from == "first-stderr"),
+                daemon=True))
+            threads.append(threading.Thread(
+                target=drain, args=(second.stderr, False), daemon=True))
+            if names_from_stdout:
+                threads.append(threading.Thread(
+                    target=drain, args=(second.stdout, True), daemon=True))
+            for t in threads:
+                t.start()
 
             def ticker():
                 last_bytes, last_t = 0, time.time()
                 while not stop_ticker.wait(0.25):
                     if out_path:
-                        done = _size(out_path + "") or 0
+                        done = _size(out_path)
                     elif input_size:
                         done = _consumed(first.pid, input_size)
                     else:
@@ -500,8 +678,6 @@ class SnapshotStore:
                     state["bytes"] = done
                     state["files"] = counter["files"]
                     state["current"] = counter["current"]
-                    if on_progress:
-                        on_progress(dict(state))
 
             tick = threading.Thread(target=ticker, daemon=True)
             tick.start()
@@ -511,17 +687,21 @@ class SnapshotStore:
                     second.wait(timeout=0.25)
                     break
                 except subprocess.TimeoutExpired:
+                    if on_progress:
+                        on_progress(dict(state))
                     if should_stop and should_stop():
                         second.terminate()
                         first.terminate()
                         raise RuntimeError("aborted")
 
             first.wait()
-            t1.join(timeout=5)
-            t2.join(timeout=5)
         finally:
             stop_ticker.set()
-            if out_path:
+            if tick is not None:
+                tick.join()
+            for t in threads:
+                t.join(timeout=5)
+            if out_fh is not None:
                 out_fh.close()
 
         # GNU tar exits 1 for warnings ("file changed as we read it"); the
@@ -529,10 +709,13 @@ class SnapshotStore:
         for proc, name in ((first, first_cmd[0]), (second, second_cmd[0])):
             rc = proc.returncode
             if rc not in (0, None) and not (name == "tar" and rc == 1):
-                tail = "; ".join(counter["err"][-3:])
+                tail = "; ".join((counter["err"] + counter["names"])[-3:])
                 raise RuntimeError("%s exited %s%s" % (name, rc, ": " + tail if tail else ""))
 
+        # The ticker may never have run for a short path, so publish the final
+        # counts here rather than leaving the last sample empty.
         state["files"] = counter["files"]
+        state["current"] = counter["current"]
         if on_progress:
             state["bytes"] = state.get("est_bytes") or state["bytes"]
             on_progress(dict(state))

@@ -19,7 +19,21 @@ BUILD_ARGS ?=
 fetch:
 	bash ports/fetch
 
-build:
+# Rewriting the ISO while a VM boots from it corrupts that VM: QEMU reads the
+# image lazily, so every block the guest has not cached yet turns into an I/O
+# error (bash reports it as "<binary>: I/O error" on the next exec). Refuse,
+# unless the developer insists.
+check-iso-free:
+	@if [ -f build/iso-build/kdos.iso ] && command -v fuser >/dev/null 2>&1 && \
+	    fuser build/iso-build/kdos.iso >/dev/null 2>&1; then \
+		echo "ERROR: build/iso-build/kdos.iso is open by another process — a running VM?"; \
+		echo "       Rebuilding it now would give that guest I/O errors on anything it"; \
+		echo "       has not already cached. Shut the VM down first, or override with:"; \
+		echo "           make build ALLOW_ISO_IN_USE=1"; \
+		test -n "$(ALLOW_ISO_IN_USE)" || exit 1; \
+	fi
+
+build: check-iso-free
 	mkdir -p build
 	docker build -t os-dev .
 	docker run --network none --cpus="10" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
@@ -59,13 +73,19 @@ debug-boot:
 
 # HW-accelerated run via a containerized QEMU 10 (virgl+blob on the host GPU).
 # The host's packaged QEMU is 8.2.2 (no blob+virgl) so `run`/`rundisk` above stay
-# software-GL for the shell; these render the Qt shell on the real GPU. See
-# testing/qemu-hw/. Needs Docker + NVIDIA Container Toolkit.
-run-hw:
+# software-GL for the shell; these render the Qt shell on the real GPU. GPU and
+# display flags (including gl=es — gl=on blanks the window) live in
+# testing/qemu-hw/run.sh. Needs Docker + NVIDIA Container Toolkit.
+run-hw: check-hw
 	testing/qemu-hw/run.sh iso
 
-rundisk-hw:
+rundisk-hw: check-hw
 	testing/qemu-hw/run.sh disk
+
+check-hw:
+	command -v docker >/dev/null || { echo "ERROR: docker not found — run-hw needs Docker + NVIDIA Container Toolkit"; exit 1; }
+	docker info 2>/dev/null | grep -q ' nvidia' || { echo "WARNING: docker has no 'nvidia' runtime — virgl will fall back to software or fail"; }
+	test -c /dev/udmabuf || { echo "WARNING: /dev/udmabuf not found — blob resources unavailable, the Qt shell will blank"; }
 
 cleandisk:
 	qemu-img create -f qcow2 build/kdos.qcow2 20G
@@ -78,4 +98,4 @@ cleanbuild:
 clean:
 	rm -rf build
 
-.PHONY: all build snapshots run rundisk run-hw rundisk-hw debug-boot cleandisk cleanbuild clean fetch
+.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch

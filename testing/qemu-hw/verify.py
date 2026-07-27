@@ -2,7 +2,7 @@
 """Drive the containerized HW-accel QEMU over a serial socket to prove the
 noctalia (Qt) shell renders on the NVIDIA GPU via virgl+blob instead of blanking.
 
-Boots gtk,gl=on + virtio-vga-gl,blob=true; logs in on ttyS0 (askfirst -> Enter);
+Boots gtk,gl=es + virtio-vga-gl,blob=true; logs in on ttyS0 (askfirst -> Enter);
 silences tty echo; swaps /usr/bin/noctalia for a HW variant (no software force,
 QSG_INFO=1); starts niri on a real VT via openvt (VT-bound seatd needs it);
 dumps niri + noctalia logs and a screenshot, transferred back over serial as hex.
@@ -31,7 +31,7 @@ def start_container():
         "-object memory-backend-memfd,id=mem,size=4G,share=on "
         "-machine pc,memory-backend=mem,accel=kvm -m 4G "
         "-bios /usr/share/ovmf/OVMF.fd "
-        f"-vga none -device virtio-vga-gl,{gpu} -display gtk,gl=on "
+        f"-vga none -device virtio-vga-gl,{gpu} -display gtk,gl=es "
         "-cdrom /work/build/iso-build/kdos.iso "
         "-drive file=/work/build/kdos.qcow2,format=qcow2 "
         f"-chardev socket,id=s0,host=127.0.0.1,port={PORT},server=on,wait=off,telnet=off "

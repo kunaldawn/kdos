@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: Rootless Xwayland integration for compositors without built-in Xwayland (niri spawns it)
+# homepage	: https://github.com/Supreeeme/xwayland-satellite
+# depends	: rust xwayland libxcb xcb-util-cursor
+
+name=xwayland-satellite
+version=0.8.2
+release=1
+source="https://github.com/Supreeeme/xwayland-satellite/archive/refs/tags/v$version.tar.gz"
+vendoring=rust
+
+build() {
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+	export CARGO_HOME="$SRC_ROOT/.cargo"
+	export RUSTFLAGS="-C target-feature=-crt-static"
+	export LIBCLANG_PATH=/usr/lib
+	export CARGO_NET_OFFLINE=true
+	cargo build --release --frozen --offline
+	install -Dm755 target/release/$name "$PKG/usr/bin/$name"
+}

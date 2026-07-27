@@ -228,3 +228,13 @@ slirp4netns
 fuse-overlayfs
 distrobox
 fuse3
+
+# ---------------------------------
+# X11 compatibility (Xwayland only — no Xorg server)
+# ---------------------------------
+# Alien apps that are X11-only (GIMP 2.x, Wine, older IDEs) need an X server.
+# niri has no built-in Xwayland: it spawns xwayland-satellite, which runs
+# Xwayland rootlessly and maps each X window to a real Wayland toplevel.
+# The libX11/libxcb chain is here only because xkbcomp and satellite need it.
+xwayland
+xwayland-satellite

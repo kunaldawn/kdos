@@ -14,7 +14,7 @@ set -e
 source script/phase1.env.sh
 source script/util/port.sh
 
-if [ -f "$MARK/libstdc++" ]; then
+if [ -f "$MARK/libstdc++" ] && [ "${KDOS_REPLAY:-0}" != "1" ]; then
     exit 0
 fi
 
