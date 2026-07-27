@@ -1,0 +1,82 @@
+{
+  "dark": {
+    "mPrimary": "#39ff14",
+    "mOnPrimary": "#000a03",
+    "mSecondary": "#ffb000",
+    "mOnSecondary": "#000a03",
+    "mTertiary": "#25d0c0",
+    "mOnTertiary": "#000a03",
+    "mError": "#ff3131",
+    "mOnError": "#000a03",
+    "mSurface": "#000a03",
+    "mOnSurface": "#b8ffc8",
+    "mSurfaceVariant": "#04120a",
+    "mOnSurfaceVariant": "#7ddb96",
+    "mOutline": "#12401f",
+    "mShadow": "#000000",
+    "mHover": "#39ff14",
+    "mOnHover": "#000a03",
+    "terminal": {
+      "normal": {
+        "black": "#04120a",
+        "red": "#ff3131",
+        "green": "#39ff14",
+        "yellow": "#ffb000",
+        "blue": "#2f8fff",
+        "magenta": "#c77dff",
+        "cyan": "#25d0c0",
+        "white": "#b8ffc8"
+      },
+      "bright": {
+        "black": "#12401f",
+        "red": "#ff6b6b",
+        "green": "#7dff5c",
+        "yellow": "#ffd166",
+        "blue": "#6bb6ff",
+        "magenta": "#e0aaff",
+        "cyan": "#68f5e6",
+        "white": "#e8ffee"
+      }
+    }
+  },
+  "light": {
+    "mPrimary": "#0f7a1f",
+    "mOnPrimary": "#f2fff5",
+    "mSecondary": "#8a5a00",
+    "mOnSecondary": "#f2fff5",
+    "mTertiary": "#0f6b63",
+    "mOnTertiary": "#f2fff5",
+    "mError": "#b3261e",
+    "mOnError": "#f2fff5",
+    "mSurface": "#eaf7ec",
+    "mOnSurface": "#0b1f10",
+    "mSurfaceVariant": "#d6ead9",
+    "mOnSurfaceVariant": "#274a30",
+    "mOutline": "#7fa88a",
+    "mShadow": "#0b1f10",
+    "mHover": "#0f7a1f",
+    "mOnHover": "#f2fff5",
+    "terminal": {
+      "normal": {
+        "black": "#0b1f10",
+        "red": "#b3261e",
+        "green": "#0f7a1f",
+        "yellow": "#8a5a00",
+        "blue": "#1f5fbf",
+        "magenta": "#7b3f9d",
+        "cyan": "#0f6b63",
+        "white": "#eaf7ec"
+      },
+      "bright": {
+        "black": "#274a30",
+        "red": "#d6453c",
+        "green": "#1a9c2c",
+        "yellow": "#b07800",
+        "blue": "#3c7fe0",
+        "magenta": "#9a5cc0",
+        "cyan": "#1a8c82",
+        "white": "#ffffff"
+      }
+    }
+  }
+}

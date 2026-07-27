@@ -17,36 +17,25 @@ export TERM=xterm-256color
 export LANG=C.UTF-8
 export LINES=${LINES:-24}
 export COLUMNS=${COLUMNS:-80}
-export HOME=/root
-export USER=root
+# HOME/USER/LOGNAME come from login(1). Only derive them when a login shell was
+# started without them (init's serial console, `su` without -l). Never hardcode
+# them — that would hand every user root's home and break rootless podman,
+# distrobox and anything else that resolves $HOME.
+[ -n "$USER" ]    || USER="$(id -un)"
+[ -n "$LOGNAME" ] || LOGNAME="$USER"
+[ -n "$HOME" ]    || HOME="$(awk -F: -v u="$(id -u)" '$3==u {print $6; exit}' /etc/passwd)"
+export USER LOGNAME HOME
 
-# Colors
-alias ls='ls --color=auto'
-alias grep='grep --color=auto'
-
-# Aliases
-alias ll='ls -alF'
-alias la='ls -A'
-alias l='ls -CF'
-alias cp='cp -i'
-alias mv='mv -i'
-alias rm='rm -i'
-
-# Prompt
-if [ "$PS1" ]; then
-    PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\] λ '
-fi
+# Aliases and prompt live in /etc/bash.bashrc so that non-login shells (every
+# terminal window: foot, a distrobox enter, ssh -t) get them too. Login shells
+# do not read it on their own, hence this line.
+[ -n "$BASH" ] && [ -r /etc/bash.bashrc ] && . /etc/bash.bashrc
 
 # Source drop-ins
 if [ -d /etc/profile.d ]; then
     for f in /etc/profile.d/*.sh; do
         [ -r "$f" ] && . "$f"
     done
-fi
-
-# Load custom font if available
-if [ -x /usr/bin/setfont ]; then
-    setfont ter-v32n
 fi
 
 clear
