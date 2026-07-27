@@ -1,49 +1,318 @@
-// niri config — KDOS default. See https://github.com/YaLTeR/niri/wiki/Configuration:-Overview
+// ██╗  ██╗██████╗  ██████╗ ███████╗
+// ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+// █████╔╝ ██║  ██║██║   ██║███████╗
+// ██╔═██╗ ██║  ██║██║   ██║╚════██║
+// ██║  ██╗██████╔╝╚██████╔╝███████║
+// ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+// ---------------------------------
+//   KD's Homebrew Linux Distro
+// ---------------------------------
+//
+// The KDOS session — "PHOSPHOR".
+// A green-screen terminal from 1983 that happens to run a scrollable-tiling
+// Wayland compositor. Sharp corners, thin phosphor frames, a green glow around
+// whatever has focus, and workspaces named after what you do on them.
+//
+// Palette (shared with foot and fuzzel — keep the three in sync):
+//   #39ff14  phosphor      focus, accents
+//   #12401f  phosphor dim  unfocused frames
+//   #ffb000  amber         secondary accent
+//   #ff3131  alarm         urgent
+//   #000a03  deep          desktop backdrop
+//   #b8ffc8  soft green    text
+//
+// Cheat sheet: Mod+Shift+Slash. Mod is Super.
+
+/////////////////////////////////////////////////////////////////////
+// Session startup
+/////////////////////////////////////////////////////////////////////
 
 spawn-at-startup "pipewire"
 spawn-at-startup "pipewire-pulse"
 spawn-at-startup "xdg-desktop-portal"
 spawn-at-startup "noctalia"
 
-// QEMU/virtio-gpu: the EDID's preferred mode is 640x480, so force a usable one.
-// virtio-vga exposes "VGA-1"; pure virtio-gpu exposes "Virtual-1".
-// The wildcard catches both without affecting real-hardware outputs.
-output "*" {
-    mode "1920x1080"
+// The wallpaper lives in the rootfs, not in $HOME, so it survives a wiped home
+// and a live boot. noctalia owns the background layer, so ask it to paint ours
+// once the shell is up ("" = every monitor). The shell's IPC socket appears a
+// few seconds after the compositor, hence the retry rather than a fixed sleep.
+spawn-sh-at-startup "for i in 1 2 3 4 5 6 7 8 9 10; do sleep 3; noctalia ipc call wallpaper set /usr/share/backgrounds/kdos/default-wallpaper.png \"\" >/dev/null 2>&1 && break; done"
+
+// X11-only alien apps (GIMP 2.x, Wine, older IDEs) get a rootless X server.
+xwayland-satellite {
+    path "/usr/bin/xwayland-satellite"
 }
+
+/////////////////////////////////////////////////////////////////////
+// Workspaces — named for what lives on them, not numbered 1..9
+/////////////////////////////////////////////////////////////////////
+
+workspace "main"
+workspace "code"
+workspace "net"
+workspace "media"
+workspace "sys"
+
+/////////////////////////////////////////////////////////////////////
+// Look
+/////////////////////////////////////////////////////////////////////
+
+layout {
+    // Tight gaps: a terminal grid, not a photo gallery.
+    gaps 6
+    center-focused-column "never"
+    always-center-single-column
+
+    // Open full width: a new terminal fills the screen, and extra columns are
+    // reached by scrolling (Mod+H/L) rather than by shrinking what you have.
+    // Mod+R cycles the presets below when you do want two things side by side.
+    preset-column-widths {
+        proportion 1.0
+        proportion 0.5
+        proportion 0.66667
+        proportion 0.33333
+    }
+    default-column-width { proportion 1.0; }
+
+    // Sharp thin frames on every window. No rounded corners anywhere — this is
+    // a CRT, not a phone.
+    border {
+        width 2
+        active-color "#39ff14"
+        inactive-color "#12401f"
+        urgent-color "#ff3131"
+    }
+
+    // The focus ring would double up with the border; the glow below does the
+    // "this one has focus" job better.
+    focus-ring {
+        off
+    }
+
+    // Phosphor bloom around the focused window — the signature of the theme.
+    shadow {
+        on
+        softness 24
+        spread 2
+        offset x=0 y=0
+        color "#39ff1466"
+        inactive-color "#00000000"
+    }
+
+    insert-hint {
+        color "#ffb00066"
+    }
+
+    background-color "#000a03"
+    struts { }
+}
+
+overview {
+    zoom 0.5
+    backdrop-color "#02120a"
+}
+
+cursor {
+    xcursor-size 24
+    hide-when-typing
+}
+
+prefer-no-csd
+
+hotkey-overlay {
+    // On demand (Mod+Shift+Slash), not in your face at every login.
+    skip-at-startup
+}
+
+screenshot-path "~/Pictures/Screenshots/kdos-%Y%m%d-%H%M%S.png"
+
+animations {
+    // Snappy. Old hardware did not ease-in-out.
+    slowdown 0.6
+}
+
+/////////////////////////////////////////////////////////////////////
+// Input
+/////////////////////////////////////////////////////////////////////
 
 input {
     keyboard {
         xkb {
             layout "us"
         }
+        repeat-delay 400
+        repeat-rate 40
     }
     touchpad {
         tap
         natural-scroll
+        dwt
+    }
+    mouse { }
+    warp-mouse-to-focus
+}
+
+/////////////////////////////////////////////////////////////////////
+// Output
+/////////////////////////////////////////////////////////////////////
+
+// QEMU's virtio-gpu advertises 640x480 as its preferred mode, which is
+// unusable. The wildcard forces something sane there and is inert on real
+// hardware, where the EDID's preferred mode already wins.
+output "*" {
+    mode "1920x1080"
+}
+
+/////////////////////////////////////////////////////////////////////
+// Window rules
+/////////////////////////////////////////////////////////////////////
+
+// Terminals get a hint of CRT translucency; real apps stay opaque so their
+// text remains readable.
+window-rule {
+    match app-id=r#"^foot$"#
+    opacity 0.94
+}
+
+// Mod+Shift+Return launches a scratch terminal — float it.
+window-rule {
+    match app-id=r#"^foot-float$"#
+    open-floating true
+}
+
+// Fat alien apps deserve the whole column on first open.
+window-rule {
+    match app-id=r#"[Gg]imp"#
+    match app-id=r#"[Bb]lender"#
+    match app-id=r#"[Ff]irefox"#
+    open-maximized true
+}
+
+// Dialogs and pickers float instead of stealing a column.
+window-rule {
+    match title=r#"^(Open|Save|Save As|Choose|Select) "#
+    match title=r#"^(Preferences|Settings)$"#
+    open-floating true
+}
+
+// Anything arriving through Xwayland gets an amber frame: X clients often draw
+// no decorations of their own, and it is useful to see which side a window is
+// coming from.
+window-rule {
+    match app-id=r#"^XTerm$"#
+    match app-id=r#"^xterm"#
+    border {
+        width 2
+        active-color "#ffb000"
     }
 }
 
-layout {
-    gaps 8
-    center-focused-column "never"
-    default-column-width { proportion 0.5; }
-}
+/////////////////////////////////////////////////////////////////////
+// Keys
+/////////////////////////////////////////////////////////////////////
 
 binds {
-    Mod+Return    { spawn "foot"; }
-    Mod+D         { spawn "fuzzel"; }
-    Mod+Q         { close-window; }
-    Mod+Shift+Q   { spawn "sh" "-c" "niri msg window | grep -q '^Window' && niri msg action close-window || true"; }
-    Mod+Shift+E   { quit; }
-    Mod+H         { focus-column-left; }
-    Mod+L         { focus-column-right; }
-    Mod+J         { focus-window-down; }
-    Mod+K         { focus-window-up; }
-    Mod+1         { focus-workspace 1; }
-    Mod+2         { focus-workspace 2; }
-    Mod+3         { focus-workspace 3; }
-    Mod+4         { focus-workspace 4; }
-}
+    Mod+Shift+Slash { show-hotkey-overlay; }
 
-prefer-no-csd
+    // ---- launching -------------------------------------------------
+    Mod+Return       hotkey-overlay-title="Terminal"          { spawn "foot"; }
+    Mod+Shift+Return hotkey-overlay-title="Floating terminal" { spawn "foot" "--app-id=foot-float"; }
+    Mod+D            hotkey-overlay-title="Run an app"        { spawn "fuzzel"; }
+    Mod+E            hotkey-overlay-title="Files (lf)"        { spawn "foot" "-e" "lf"; }
+    Mod+Space        hotkey-overlay-title="Shell launcher"    { spawn-sh "noctalia ipc call launcher toggle"; }
+    Mod+N            hotkey-overlay-title="Control centre"    { spawn-sh "noctalia ipc call controlCenter toggle"; }
+    Mod+X            hotkey-overlay-title="Session menu"      { spawn-sh "noctalia ipc call sessionMenu toggle"; }
+    Super+Alt+L      hotkey-overlay-title="Lock"              { spawn-sh "noctalia ipc call lockScreen lock"; }
+
+    // ---- windows ---------------------------------------------------
+    Mod+Q repeat=false { close-window; }
+    Mod+O repeat=false { toggle-overview; }
+    Mod+V              { toggle-window-floating; }
+    Mod+Shift+V        { switch-focus-between-floating-and-tiling; }
+    Mod+W              { toggle-column-tabbed-display; }
+    Mod+F              { maximize-column; }
+    Mod+Shift+F        { fullscreen-window; }
+    Mod+M              { maximize-window-to-edges; }
+    Mod+C              { center-column; }
+
+    // ---- focus (vim keys; arrows work too) -------------------------
+    Mod+H     { focus-column-left; }
+    Mod+J     { focus-window-down; }
+    Mod+K     { focus-window-up; }
+    Mod+L     { focus-column-right; }
+    Mod+Left  { focus-column-left; }
+    Mod+Down  { focus-window-down; }
+    Mod+Up    { focus-window-up; }
+    Mod+Right { focus-column-right; }
+    Mod+Home  { focus-column-first; }
+    Mod+End   { focus-column-last; }
+
+    // ---- moving ----------------------------------------------------
+    Mod+Ctrl+H     { move-column-left; }
+    Mod+Ctrl+J     { move-window-down; }
+    Mod+Ctrl+K     { move-window-up; }
+    Mod+Ctrl+L     { move-column-right; }
+    Mod+Ctrl+Left  { move-column-left; }
+    Mod+Ctrl+Down  { move-window-down; }
+    Mod+Ctrl+Up    { move-window-up; }
+    Mod+Ctrl+Right { move-column-right; }
+
+    // ---- columns ---------------------------------------------------
+    Mod+BracketLeft  { consume-or-expel-window-left; }
+    Mod+BracketRight { consume-or-expel-window-right; }
+    Mod+Comma        { consume-window-into-column; }
+    Mod+Period       { expel-window-from-column; }
+    Mod+R            { switch-preset-column-width; }
+    Mod+Shift+R      { switch-preset-column-width-back; }
+    Mod+Minus        { set-column-width "-10%"; }
+    Mod+Equal        { set-column-width "+10%"; }
+    Mod+Shift+Minus  { set-window-height "-10%"; }
+    Mod+Shift+Equal  { set-window-height "+10%"; }
+
+    // ---- workspaces ------------------------------------------------
+    Mod+1 { focus-workspace "main"; }
+    Mod+2 { focus-workspace "code"; }
+    Mod+3 { focus-workspace "net"; }
+    Mod+4 { focus-workspace "media"; }
+    Mod+5 { focus-workspace "sys"; }
+    Mod+Ctrl+1 { move-column-to-workspace "main"; }
+    Mod+Ctrl+2 { move-column-to-workspace "code"; }
+    Mod+Ctrl+3 { move-column-to-workspace "net"; }
+    Mod+Ctrl+4 { move-column-to-workspace "media"; }
+    Mod+Ctrl+5 { move-column-to-workspace "sys"; }
+    Mod+U { focus-workspace-down; }
+    Mod+I { focus-workspace-up; }
+    Mod+Ctrl+U { move-column-to-workspace-down; }
+    Mod+Ctrl+I { move-column-to-workspace-up; }
+    Mod+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }
+    Mod+WheelScrollUp   cooldown-ms=150 { focus-workspace-up; }
+
+    // ---- monitors --------------------------------------------------
+    Mod+Shift+H { focus-monitor-left; }
+    Mod+Shift+J { focus-monitor-down; }
+    Mod+Shift+K { focus-monitor-up; }
+    Mod+Shift+L { focus-monitor-right; }
+
+    // ---- screenshots -----------------------------------------------
+    Print      { screenshot; }
+    Ctrl+Print { screenshot-screen; }
+    Alt+Print  { screenshot-window; }
+
+    // ---- media / volume / brightness -------------------------------
+    // Routed through noctalia: KDOS ships no wpctl/pactl/brightnessctl, and
+    // going through the shell keeps its OSD in sync.
+    XF86AudioRaiseVolume  allow-when-locked=true { spawn-sh "noctalia ipc call volume increase"; }
+    XF86AudioLowerVolume  allow-when-locked=true { spawn-sh "noctalia ipc call volume decrease"; }
+    XF86AudioMute         allow-when-locked=true { spawn-sh "noctalia ipc call volume muteOutput"; }
+    XF86AudioMicMute      allow-when-locked=true { spawn-sh "noctalia ipc call volume muteInput"; }
+    XF86AudioPlay         allow-when-locked=true { spawn-sh "noctalia ipc call media playPause"; }
+    XF86AudioNext         allow-when-locked=true { spawn-sh "noctalia ipc call media next"; }
+    XF86AudioPrev         allow-when-locked=true { spawn-sh "noctalia ipc call media previous"; }
+    XF86MonBrightnessUp   allow-when-locked=true { spawn-sh "noctalia ipc call brightness increase"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn-sh "noctalia ipc call brightness decrease"; }
+
+    // ---- session ---------------------------------------------------
+    Mod+Shift+P     { power-off-monitors; }
+    Mod+Shift+E     { quit; }
+    Ctrl+Alt+Delete { quit; }
+}

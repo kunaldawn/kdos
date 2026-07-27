@@ -16,7 +16,7 @@ Most distros give you a house. KDOS gives you a pile of bricks, a trowel, and a 
 2.  **Musl Libc** — Glibc is a metropolitan city. Musl is a Zen garden. We choose the garden.
 3.  **Toybox** — one binary that rules them all.
 4.  **No SystemD** — we init like our ancestors did. `inittab`, serial `init.d`, simple service helpers.
-5.  **No X11** — Wayland-only. No Xorg server, no XWayland by default. Last century's display protocol stays in last century.
+5.  **No Xorg server** — Wayland-only. The one carve-out is **Xwayland**, spawned per-session by `xwayland-satellite` so X11-only alien apps (GIMP 2.x, Wine, older IDEs) get a real tiled window instead of nothing. No `Xorg`, no display manager, no X on the login path — and no GLX: mesa stays `platforms=wayland`, so X clients get 2D only.
 6.  **No GTK / GNOME / KDE / XFCE on the host** — fat GUI apps live in a Podman container alongside their glibc. *Qt 6 is the single carved-out exception, present only because the shell layer (Quickshell + noctalia) is QML.*
 7.  **KPKG** — our own package manager. For fun, and because we earned it.
 
@@ -51,6 +51,12 @@ kpkgdepends foo        # show resolved dependency tree
 
 ---
 
+## Logging In
+
+The system ships one human user, **`kdos` / `kdos`** (uid 1000, in `wheel`, so `sudo` works with that same password). `tty1` autologins as `kdos`; `tty2` and the serial console give a root login for admin and debugging. Alien apps run **rootless** under `kdos` — the same setup on the live ISO and on an installed disk.
+
+---
+
 ## The GUI Sliver: niri + noctalia (Wayland)
 
 To start a graphical session from a tty login:
@@ -60,6 +66,17 @@ niri-session
 ```
 
 That wraps `niri --session` in `dbus-run-session`. The skel config (`~/.config/niri/config.kdl`) auto-spawns the shell on session start.
+
+**The session has a look: "PHOSPHOR".** A 1983 green-screen terminal that happens to run a scrollable-tiling compositor — sharp 2px phosphor frames, a green CRT glow around the focused window, translucent terminals over the KDOS penguin, and workspaces named `main` `code` `net` `media` `sys` instead of 1–9. One palette (`#39ff14` phosphor, `#ffb000` amber, `#000a03` deep) is shared by four configs seeded from `/etc/skel`:
+
+| Config | What it themes |
+|---|---|
+| `.config/niri/config.kdl` | frames, glow, workspaces, every keybind |
+| `.config/foot/foot.ini` | terminal palette + CRT translucency |
+| `.config/fuzzel/fuzzel.ini` | launcher |
+| `.config/noctalia/settings.json` | bar/panels, via the `KDOS-Phosphor` colour scheme |
+
+Keys worth knowing: `Mod+Return` terminal, `Mod+D` fuzzel, `Mod+Space` shell launcher, `Mod+E` files, `Mod+O` overview, `Mod+1..5` named workspaces, `Mod+Shift+Slash` for the full cheat sheet. Volume/brightness/media keys route through noctalia's IPC, so its OSD stays in sync.
 
 **The compositor stack:**
 
@@ -93,7 +110,7 @@ Anything else (file manager, editor, calculator) is done in a terminal — `lf`,
 
 KDOS deliberately does not native-port browsers, IDEs, office suites, video editors, or chat clients. Those are the things upstream `apt`, `dnf`, and `pacman` already package well — we don't need to relitigate that.
 
-Instead, KDOS ships **Podman + distrobox**. On first boot you get a default `kdos-debian` distrobox (Debian glibc rootfs), and the helper:
+Instead, KDOS ships **Podman + distrobox**. The first `kdos-fetch-app` creates the default `kdos-debian` distrobox on demand (Debian glibc rootfs, pulled over the network), and the helper:
 
 ```sh
 kdos-fetch-app firefox        # apt-installs firefox in the box, exports it as a host launcher

@@ -69,10 +69,24 @@ if ! distrobox list 2>/dev/null | awk '{print $3}' | grep -qx "$BOX"; then
 	distrobox create --name "$BOX" --image "$IMAGE" --yes
 fi
 
+# Path of the app's binary inside the box, empty if it is GUI-only.
+app_binary() {
+	distrobox enter "$BOX" -- sh -lc "command -v '$APP' 2>/dev/null" 2>/dev/null \
+		| tr -d '\r' | tail -1
+}
+
 if [ "$REMOVE" -eq 1 ]; then
 	echo "==> Removing exported launcher for '$APP'"
 	distrobox enter "$BOX" -- distrobox-export --app "$APP" --delete \
-		|| err "failed to remove export (was it exported?)"
+		|| echo "    (no .desktop export to remove)"
+
+	BIN="$(app_binary)"
+	if [ -n "$BIN" ]; then
+		echo "==> Removing CLI wrapper for '$APP'"
+		distrobox enter "$BOX" -- distrobox-export --bin "$BIN" --delete \
+			|| echo "    (no CLI wrapper to remove)"
+	fi
+
 	echo "==> Uninstalling '$APP' inside '$BOX'"
 	# Best-effort uninstall — try apt, dnf, pacman in that order
 	distrobox enter "$BOX" -- bash -c "
@@ -98,9 +112,34 @@ distrobox enter "$BOX" -- bash -c "
 		exit 1
 	fi"
 
+# Two exports, and neither is fatal on its own: a GUI app has a .desktop but
+# often no useful CLI name, a CLI tool has the reverse, and plenty have both.
+EXPORTED=0
+
 echo "==> Exporting '$APP' as a host launcher"
-distrobox enter "$BOX" -- distrobox-export --app "$APP"
+if distrobox enter "$BOX" -- distrobox-export --app "$APP"; then
+	EXPORTED=1
+else
+	echo "    no .desktop file found for '$APP' — skipping the launcher entry"
+fi
+
+BIN="$(app_binary)"
+if [ -n "$BIN" ]; then
+	echo "==> Exporting '$APP' as a command ($BIN)"
+	mkdir -p "$HOME/.local/bin"
+	if distrobox enter "$BOX" -- distrobox-export --bin "$BIN" \
+			--export-path "$HOME/.local/bin"; then
+		EXPORTED=1
+	else
+		echo "    could not export a CLI wrapper for '$APP'"
+	fi
+fi
+
+[ "$EXPORTED" -eq 1 ] || err "nothing to export for '$APP' — is it really installed?"
 
 echo
-echo "Done. '$APP' is exported as a .desktop launcher in"
-echo "~/.local/share/applications/ — fuzzel and noctalia will pick it up."
+echo "Done."
+echo "  launcher : ~/.local/share/applications/  (fuzzel: Mod+D, noctalia: Mod+Space)"
+if [ -n "$BIN" ]; then
+	echo "  command  : just run '$APP' — ~/.local/bin is on PATH"
+fi

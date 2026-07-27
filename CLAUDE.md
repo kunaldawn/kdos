@@ -15,7 +15,7 @@ Mascot lives at `kdos.png`. Default wallpaper at `fs/usr/share/backgrounds/kdos/
 ## Hard rules — do not violate
 
 1. **No SystemD.** No `systemd-*` packages on the host. Replacements: `seatd` for seat management, `basu` for sd-bus, `eudev` for udev, `dbus` (not dbus-broker), `dnsmasq` (not systemd-resolved), `wpa_supplicant`/`NetworkManager` (not systemd-networkd).
-2. **No Xorg.** Already removed: `xorg`, `xorg-server`, `libx11`, all `libx*`, `xcb-util-*`, `dwm`, `st`, `dmenu`, `nsxiv`, etc. If a kpkgbuild tries to add an X dep, push back; usually the build flag exists to disable X.
+2. **No Xorg server.** No `xorg-server`, no display manager, nothing X on the login path. **Xwayland is the one carve-out** (added 2026-07-27): `xwayland` + `xwayland-satellite` (niri spawns it, it maps each X window to a real Wayland toplevel) so X11-only alien apps work. That pulled in the client chain `xorgproto xtrans libXau libXdmcp xcb-proto libxcb libX11 libxkbfile xkbcomp libxshmfence libfontenc libXfont2 xcb-util{,-image,-renderutil,-cursor}` — these exist **only** to satisfy Xwayland/xkbcomp/satellite. A kpkgbuild that wants X for anything else still gets pushed back. Mesa stays `-Dglx=disabled -Dplatforms=wayland`, so Xwayland is built `-Dglx=false`: X clients get no OpenGL. Enabling it means rebuilding mesa with `glx=dri,platforms=wayland,x11` plus libXext/libXfixes/libXdamage/libXrandr/libXxf86vm — not done.
 3. **No GTK on the host.** GTK apps go in distrobox via `kdos-fetch-app`. The single Qt 6 carve-out (carved for noctalia) is documented in the README rule #6.
 4. **No `kpkgbuild` rationale comments.** User strips multi-line comment blocks. Keep kpkgbuilds minimal — preserve only the banner header and one-line `# description` / `# homepage` / `# depends`. No "we set X because Y" prose. Belongs in commit messages or this file, not in the kpkgbuild.
 5. **Do not auto-commit.** User commits manually, often squashing many edits into one logical commit. Wait for explicit "commit this" requests.
@@ -126,12 +126,24 @@ file counts) and `timings.json` feeding the ETA.
 **Restoring.** `make build` opens a picker listing the snapshots; pick one and the build
 restores it and continues at the *next* phase. Restore is layered — each path is taken
 from the newest snapshot at or below the chosen phase, so restoring phase3 pulls `fs`
-from phase3 and `cross`/`mark` from phase1.
+from phase3 and `cross`/`mark` from phase1. Restoring a phase that has no snapshot of its
+own is refused rather than silently falling back to an older one.
+
+`[S]` during a build takes a *partial* snapshot of the running phase. Restoring one of
+those re-runs that phase instead of skipping it (kpkg skips already-installed packages),
+and the picker marks the row `done/total!`.
+
+If a restore is interrupted, `build/.restore-in-progress` remains and both snapshotting
+and the next build refuse to run until you restore again or `make cleanbuild`. Snapshot
+outcomes — including failures — are appended to `build/logs/snapshots.log`.
 
 Non-interactive equivalents:
 
 ```bash
 make build BUILD_ARGS="--restore phase2"   # restore phase2, continue at phase3
+make build BUILD_ARGS="--continue-from phase3"  # resume at phase3 on the CURRENT tree,
+                                           # no restore; earlier phases are skipped and
+                                           # their snapshots left untouched
 make build BUILD_ARGS=--fresh              # skip the picker, run everything
 make build BUILD_ARGS=--no-snapshot        # throwaway run, write no snapshots
 make snapshots                             # list them (build.py --list)
@@ -140,6 +152,61 @@ make cleanbuild                            # wipe build/ but KEEP build/snapshot
 
 `make clean` deletes snapshots along with everything else. Snapshots need `zstd` and GNU
 `tar` in the build image (both in the Dockerfile). Budget ~2-4G per phase.
+
+---
+
+## Build plans — iterating on an existing build/ tree
+
+Snapshots answer "go back"; the **build plan** answers "re-run just this". It never
+restores anything: it narrows what the next run executes on the tree you already have.
+
+Press **`[P]`** in the startup picker, or drive it from the command line:
+
+```bash
+# changed something under fs/ -> re-sync it and rebuild the ISO, nothing else
+make build BUILD_ARGS="--phases 01_phase1,06_packaging --steps 01_phase1:00_file_system.sh"
+
+# changed a kpkgbuild -> rebuild that port and repackage, no manual kpkgdel
+make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild niri,noctalia-shell"
+
+make build BUILD_ARGS=--plan            # interactive: phase/step checkboxes, '/' searches ports
+```
+
+In the picker: `SPACE` toggles, `←/→` expands a phase into its scripts, `/` opens a fuzzy
+port search with multi-select, `A`/`N` select all/none. The choice is remembered in
+`build/.devplan.json` and pre-selected next time.
+
+Three things make this safe, and they are the reason the plumbing exists:
+
+- **Snapshots are suppressed** whenever a plan narrows execution (override with
+  `--snapshot`). Re-running phase 1 on a phase-5 tree would otherwise file that tree under
+  phase 1's name — the trap documented above.
+- **`kpkg install -f` genuinely forces now.** It used to be a no-op: `kpkgdepends` filters
+  installed packages *before* the force check, so the package never reached the loop.
+  It now resolves against an empty db and rebuilds only the packages named on the command
+  line — dependencies keep the normal skip-if-installed behaviour. Because of that,
+  `build.py` passes `-f` **only** for ports the plan selected; passing it blanketly (as it
+  used to) would now rebuild all ~300 packages.
+- **Mark-file guards stand down for a step you picked deliberately.** 17 scripts start with
+  `if [ -f "$MARK/x" ] && [ "${KDOS_REPLAY:-0}" != "1" ]`. build.py exports `KDOS_REPLAY=1`
+  for explicitly named steps (chroot_exec.sh forwards it), so `--steps 01_phase1:12_kpkg.sh`
+  actually re-installs kpkg instead of exiting 0.
+
+`00_file_system.sh` **merges** `/etc/{passwd,group,shadow}` instead of overwriting them:
+package postinstalls add service users (polkitd, messagebus, sshd) long after phase 1 runs,
+and a plain `cp` on a re-sync would silently delete them. Repo entries win; runtime-added
+entries are appended back.
+
+**Don't re-run an early phase on a tree that is already ahead of it** — its snapshot would
+be overwritten with a tree containing later phases' packages, under the earlier phase's
+name. That is what `--continue-from` exists for: it resumes mid-build without re-running
+(and therefore without re-snapshotting) anything behind it.
+
+**Anything a chroot command prints is parsed.** `kpkgdepends` writes the install order to
+stdout and nothing else, so `chroot_exec.sh` logs its diagnostics to `build/logs/chroot.log`
+rather than stdout/stderr. build.py reads stdout only and validates every token against
+`^[A-Za-z0-9][A-Za-z0-9._+-]*$`; noise fails expansion loudly instead of being installed
+as a package.
 
 ---
 
@@ -268,6 +335,30 @@ sudo chroot build/fs /usr/bin/kpkgdel <pkg>
 sudo rm -f build/fs/var/cache/kpkg/packages/<pkg>-*.tar.xz
 make build  # will rebuild from kpkgbuild
 ```
+
+### Desktop theming lives in /etc/skel, and noctalia has two first-run traps
+
+The "PHOSPHOR" look is four seeded configs (`fs/etc/skel/.config/{niri,foot,fuzzel,noctalia}`) plus a colour scheme dropped into noctalia's own asset dir (`fs/usr/share/noctalia-shell/Assets/ColorScheme/KDOS-Phosphor/`) — noctalia only lists schemes found there, so a user-config path will not work. Two things bite on a live ISO, where every boot is a fresh profile:
+
+- **A setup wizard** runs when `settings.json` is missing (`Settings.isFreshInstall`), and a **"Privacy Update" telemetry wizard** runs when `settings.json` exists but `~/.cache/noctalia/shell-state.json` has no `changelogState.lastSeenVersion`. Seeding *both* files is what keeps the desktop unblocked; seeding only settings.json swaps one modal for the other. Bump the seeded version when the noctalia-shell port is upgraded, or the changelog shows once.
+- `telemetryEnabled` defaults to false; the seed pins it off explicitly.
+
+Config schemas drift: verify against the shipped version before writing (`niri validate` catches KDL errors; foot 1.26 moved the palette to `[colors-dark]` and the cursor colour into it).
+
+### initramfs must use util-linux `switch_root`, never toybox's
+
+toybox `switch_root` wipes the initramfs and `chroot()`s — it never does `mount(newroot, "/", MS_MOVE)`. The mount-namespace root then stays the *emptied* rootfs with the real root parked at `/newroot`, and anything that JOINS a mount namespace via `setns(CLONE_NEWNS)` (`podman exec`, `distrobox enter`, `nsenter -m`) gets that empty rootfs as `/` → every path ENOENT (`crun: executable file 'echo' not found`). `podman run` still works, because it CREATES the namespace. Tell-tale: `readlink /proc/<container-pid>/root` prints `/newroot` instead of `/`. `script/06_packaging/01_initramfs.sh` installs `/usr/sbin/switch_root` over the toybox symlink — keep it that way.
+
+### /usr/local prefix bug — now also bites via stale .pc files
+
+The known trap (a meson port without `--prefix=/usr` landing in `/usr/local`) has a second
+edge: **the stale `/usr/local/**/pkgconfig/*.pc` shadows the fixed one.** xkeyboard-config
+had this; after fixing its prefix and rebuilding, libxkbcommon still baked
+`/usr/local/share/xkeyboard-config-2` because the old `.pc` was still on the pkg-config
+path, and niri then panicked with `BadKeymap` at startup. When you fix a prefix, delete the
+old files *and* the old `.pc`, then rebuild the consumers. Still outstanding:
+`libinput` installs to `/usr/local/lib64` (port has no `--prefix`), it works only because
+its consumers were linked against that path.
 
 ### URL / version landmines
 
@@ -446,7 +537,7 @@ Things known-broken or known-incomplete, not necessarily my job to fix unless as
 - No `make build`-time check that all `# depends` resolve (orphan refs only fail at runtime).
 - No init script for NetworkManager itself (just the daemon binary).
 - No firewall rules shipped — `nftables` is installed but `/etc/nftables.conf` empty by default.
-- No proper user creation — installed system has root only; useradd works but no first-boot wizard.
+- No first-boot wizard. The system ships a fixed `kdos:kdos` user (uid 1000, `wheel`) declared in `fs/etc/{passwd,group,shadow}`; homes are materialized from `/etc/skel` by `script/06_packaging/00_user.sh`, `/run/user/<uid>` by `fs/etc/init.d/15_userdirs.sh`. Renaming/adding users is manual.
 
 ---
 

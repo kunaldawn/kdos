@@ -22,6 +22,7 @@ RAMP = " ⡀⣀⣄⣤⣦⣶⣷⣿"     # braille density ramp
 EWMA_ALPHA = 0.4
 FAST_INTERVAL = 1.0
 WALK_INTERVAL = 20.0
+WALK_BUDGET = 15.0        # seconds; the fs walk is a HUD counter, not a job
 
 
 class Sampler(threading.Thread):
@@ -43,6 +44,7 @@ class Sampler(threading.Thread):
 
         self.fs_files = 0
         self.fs_bytes = 0
+        self.fs_partial = False
         self.fs_sampled_at = 0.0
         self._walking = False
 
@@ -94,10 +96,16 @@ class Sampler(threading.Thread):
             pass
 
     def _walk_fs(self):
+        # Hard time budget: this is a cosmetic counter and must never pin a
+        # core, however pathological the tree gets.
         try:
             fs_path = os.path.join(self.build_dir, "fs")
-            self.fs_bytes, self.fs_files = dir_usage(fs_path)
+            usage = dir_usage(fs_path, deadline=time.monotonic() + WALK_BUDGET)
+            self.fs_bytes, self.fs_files = usage.bytes, usage.files
+            self.fs_partial = not usage.complete
             self.fs_sampled_at = time.time()
+        except Exception:
+            pass
         finally:
             self._walking = False
 

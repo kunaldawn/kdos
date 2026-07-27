@@ -27,6 +27,52 @@ if [ ! -d "$CHROOT_DIR" ]; then
     exit 1
 fi
 
+# Diagnostics go to a file, never to stdout/stderr: build.py parses the output
+# of commands run through this wrapper (kpkgdepends prints the install order
+# and nothing else), so a stray message here becomes a bogus package name.
+MOUNT_LOG="$REPO_ROOT/build/logs/chroot.log"
+log_mount() {
+    mkdir -p "$(dirname "$MOUNT_LOG")" 2>/dev/null || return 0
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$MOUNT_LOG" 2>/dev/null || true
+}
+
+# List every mountpoint at or below the chroot, deepest first.
+list_mounts() {
+    cut -d' ' -f2 /proc/self/mounts \
+        | awk -v dir="$CHROOT_DIR" '$0 == dir || index($0, dir "/") == 1' \
+        | sort -r
+}
+
+# Unmount everything under the chroot. A plain `umount ... || true` is not
+# enough: one transient EBUSY leaves a bind mount behind, the next run skips
+# re-mounting it because mountpoint(1) still says yes, and the phase snapshot
+# then refuses to archive a tree with live mounts in it.
+unmount_all() {
+    local mp attempt left
+    for attempt in 1 2 3; do
+        left=0
+        for mp in $(list_mounts); do
+            umount "$mp" 2>/dev/null && continue
+            sleep 0.2
+            umount "$mp" 2>/dev/null || left=1
+        done
+        [ "$left" -eq 0 ] && return 0
+    done
+
+    # Still stuck: detach lazily so the tree is at least clean for the next run.
+    for mp in $(list_mounts); do
+        log_mount "warning: lazily detaching busy mount $mp"
+        umount -l "$mp" 2>/dev/null || true
+    done
+
+    for mp in $(list_mounts); do
+        log_mount "ERROR: could not unmount $mp"
+    done
+}
+
+# Clear anything a previously killed run left behind, then mount fresh.
+unmount_all
+
 # Ensure mount points exist
 mkdir -p "$CHROOT_DIR/dev"
 mkdir -p "$CHROOT_DIR/proc"
@@ -55,18 +101,8 @@ mountpoint -q "$CHROOT_DIR/kdos/script" || mount --bind "$REPO_ROOT/script" "$CH
 mkdir -p "$CHROOT_DIR/kdos/src"
 mountpoint -q "$CHROOT_DIR/kdos/src" || mount --bind "$REPO_ROOT/src" "$CHROOT_DIR/kdos/src"
 
-# Cleanup function (Unmount on exit)
 cleanup() {
-    umount "$CHROOT_DIR/kdos/src" 2>/dev/null || true
-    umount "$CHROOT_DIR/kdos/script" 2>/dev/null || true
-    umount "$CHROOT_DIR/ports" 2>/dev/null || true
-    umount "$CHROOT_DIR/kdos/build" 2>/dev/null || true
-    umount "$CHROOT_DIR/kdos" 2>/dev/null || true
-    umount "$CHROOT_DIR/run" 2>/dev/null || true
-    umount "$CHROOT_DIR/tmp" 2>/dev/null || true
-    umount "$CHROOT_DIR/sys" 2>/dev/null || true
-    umount "$CHROOT_DIR/proc" 2>/dev/null || true
-    umount "$CHROOT_DIR/dev" 2>/dev/null || true
+    unmount_all
 }
 
 trap cleanup EXIT
@@ -75,8 +111,11 @@ trap cleanup EXIT
 # We cd to /kdos to maintain relative path assumptions for scripts
 # We use /usr/bin/env -i to clear host environment ensuring isolation
 # But we keep PATH (basic) and TERM
+# KDOS_REPLAY is forwarded: it tells a step that the developer picked it
+# deliberately, so mark-file guards ("already built, exit 0") stand down.
 chroot "$CHROOT_DIR" /usr/bin/env -i \
     HOME=/root \
     TERM="$TERM" \
+    KDOS_REPLAY="${KDOS_REPLAY:-0}" \
     PATH=/bin:/usr/bin:/sbin:/usr/sbin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"
