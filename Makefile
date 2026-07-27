@@ -59,13 +59,19 @@ debug-boot:
 
 # HW-accelerated run via a containerized QEMU 10 (virgl+blob on the host GPU).
 # The host's packaged QEMU is 8.2.2 (no blob+virgl) so `run`/`rundisk` above stay
-# software-GL for the shell; these render the Qt shell on the real GPU. See
-# testing/qemu-hw/. Needs Docker + NVIDIA Container Toolkit.
-run-hw:
+# software-GL for the shell; these render the Qt shell on the real GPU. GPU and
+# display flags (including gl=es — gl=on blanks the window) live in
+# testing/qemu-hw/run.sh. Needs Docker + NVIDIA Container Toolkit.
+run-hw: check-hw
 	testing/qemu-hw/run.sh iso
 
-rundisk-hw:
+rundisk-hw: check-hw
 	testing/qemu-hw/run.sh disk
+
+check-hw:
+	command -v docker >/dev/null || { echo "ERROR: docker not found — run-hw needs Docker + NVIDIA Container Toolkit"; exit 1; }
+	docker info 2>/dev/null | grep -q ' nvidia' || { echo "WARNING: docker has no 'nvidia' runtime — virgl will fall back to software or fail"; }
+	test -c /dev/udmabuf || { echo "WARNING: /dev/udmabuf not found — blob resources unavailable, the Qt shell will blank"; }
 
 cleandisk:
 	qemu-img create -f qcow2 build/kdos.qcow2 20G
@@ -78,4 +84,4 @@ cleanbuild:
 clean:
 	rm -rf build
 
-.PHONY: all build snapshots run rundisk run-hw rundisk-hw debug-boot cleandisk cleanbuild clean fetch
+.PHONY: all build snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch
