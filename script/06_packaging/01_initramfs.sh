@@ -44,6 +44,18 @@ done
 rm -f bin/switch_root
 cp /usr/sbin/switch_root bin/switch_root
 
+# Install the boot splash. Static, so it needs nothing else here, and it keeps
+# running across switch_root: its FIFO lives in /dev (devtmpfs is moved into the
+# new root, not remounted), so one process spans the initramfs and the real root
+# without the screen ever going black between them.
+if [ -x /usr/bin/kdos-splash ]; then
+    cp /usr/bin/kdos-splash bin/kdos-splash
+    mkdir -p usr/share/kdos
+    cp /usr/share/kdos/splash.psf usr/share/kdos/splash.psf
+else
+    echo "Warning: kdos-splash not installed — booting without the splash"
+fi
+
 # Install Libc
 cp /usr/lib/libc.so lib/libc.so
 ln -sf libc.so lib/ld-musl-x86_64.so.1
@@ -199,19 +211,34 @@ mount -t devpts devpts /dev/pts
 mkdir -p /dev/shm
 mount -t tmpfs -o nosuid,nodev tmpfs /dev/shm
 
+# The screen has been dark since the bootloader handed over: /dev/console is
+# ttyS0 (the last console= wins), so none of these messages reach it, and fbcon
+# defers taking the framebuffer until something prints to tty0. Nothing does.
+# Paint it ourselves.
+if [ -x /bin/kdos-splash ]; then
+    /bin/kdos-splash run </dev/null >/dev/null 2>&1 &
+fi
+sp_step() { [ -x /bin/kdos-splash ] && /bin/kdos-splash step "\$1" 2>/dev/null; return 0; }
+sp_ok()   { [ -x /bin/kdos-splash ] && /bin/kdos-splash ok 2>/dev/null; return 0; }
+sp_fail() { [ -x /bin/kdos-splash ] && /bin/kdos-splash fail 2>/dev/null; return 0; }
+
 # Populate /dev
 echo "Populating /dev..."
+sp_step "DEVICE MANAGER"
 udevd --daemon
 echo "Triggering udev events..."
 udevadm trigger --type=subsystems --action=add
 udevadm trigger --type=devices --action=add
 udevadm settle
+sp_ok
 
 echo "Loading essential filesystem modules..."
+sp_step "FILESYSTEM MODULES"
 modprobe -v loop || echo "Modprobe loop failed"
 modprobe -v isofs || echo "Modprobe isofs failed"
 modprobe -v squashfs || echo "Modprobe squashfs failed"
 modprobe -v overlay || echo "Modprobe overlay failed"
+sp_ok
 
 # Check for loop device (create if missing)
 if [ ! -e /dev/loop0 ]; then
@@ -232,7 +259,8 @@ done
 if [ -n "\$ROOT_UUID" ]; then
     # Disk Boot Mode
     echo "Waiting for root device \$ROOT_UUID..."
-    
+    sp_step "ROOT DEVICE"
+
     # Wait for device to appear (timeout 10s)
     for i in \$(seq 1 10); do
         ROOT_DEV=\$(blkid -U "\$ROOT_UUID")
@@ -241,12 +269,15 @@ if [ -n "\$ROOT_UUID" ]; then
         fi
         sleep 1
     done
-    
+
     if [ -n "\$ROOT_DEV" ]; then
         echo "Found root device: \$ROOT_DEV"
+        sp_ok
+        sp_step "MOUNTING ROOT"
         mount "\$ROOT_DEV" /newroot
-        
+
         if [ -x /newroot/sbin/init ]; then
+            sp_ok
             # Move Mountpoints
             mount --move /dev /newroot/dev
             mount --move /proc /newroot/proc
@@ -254,12 +285,16 @@ if [ -n "\$ROOT_UUID" ]; then
 
             # Switch Root
             echo "Switching root..."
+            sp_step "SWITCHING ROOT"
+            sp_ok
             exec switch_root /newroot /sbin/init
         else
             echo "Error: /sbin/init not found on root device!"
+            sp_fail
         fi
     else
         echo "Error: Root device with UUID=\$ROOT_UUID not found!"
+        sp_fail
     fi
     
     # Fallback to shell if disk boot fails
@@ -275,6 +310,7 @@ echo "Searching for KDOS boot media..."
 # Wait a bit for devices to settle
 sleep 2
 
+sp_step "BOOT MEDIA"
 FOUND=0
 for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do
     [ -e "\$dev" ] || continue
@@ -291,6 +327,8 @@ done
 
 if [ "\$FOUND" == "1" ]; then
     echo "Found KDOS Media, Mounting system..."
+    sp_ok
+    sp_step "SYSTEM IMAGE"
     
     # Mount System SquashFS using explicit loop
     mkdir -p /mnt/system
@@ -308,21 +346,25 @@ if [ "\$FOUND" == "1" ]; then
         echo "Mounting \$LOOPDEV to /mnt/system..."
         if mount -t squashfs -o ro "\$LOOPDEV" /mnt/system; then
              echo "System mounted successfully."
-             
+             sp_ok
+
              # Setup OverlayFS
+             sp_step "OVERLAY ROOT"
              mkdir -p /mnt/overlay
              mount -t tmpfs tmpfs /mnt/overlay
              mkdir -p /mnt/overlay/upper /mnt/overlay/work /newroot
-             
+
              echo "Mounting OverlayFS..."
              modprobe overlay
              mount -t overlay overlay -o lowerdir=/mnt/system,upperdir=/mnt/overlay/upper,workdir=/mnt/overlay/work /newroot
-             
+
              # Check if switch root dir is valid
-             if [ ! -d "/newroot" ]; then 
+             if [ ! -d "/newroot" ]; then
                 echo "Error: /newroot is not a directory"
+                sp_fail
                 exec /bin/sh
              fi
+             sp_ok
 
             # Create missing mountpoints in newroot
             mkdir -p /newroot/dev /newroot/proc /newroot/sys /newroot/run /newroot/tmp
@@ -339,25 +381,34 @@ if [ "\$FOUND" == "1" ]; then
 
             # Switch Root
             echo "Switching to new root..."
+            sp_step "SWITCHING ROOT"
             if [ -x /newroot/sbin/init ]; then
                 # Stop udevd
                 udevadm control --exit
+                # The splash keeps running through this: switch_root deletes the
+                # old rootfs but not the processes living in it, and its FIFO is
+                # on devtmpfs, which has just been moved into the new root.
+                sp_ok
                 exec switch_root /newroot /sbin/init
             else
                 echo "Error: /sbin/init not found in new root!"
                 ls -l /newroot/sbin/init
+                sp_fail
                 exec /bin/sh
             fi
         else
             echo "Failed to mount system.sfs"
+            sp_fail
             exec /bin/sh
         fi
     else
         echo "Failed to setup loop device for system.sfs"
+        sp_fail
         exec /bin/sh
     fi
 else
     echo "Failed to find KDOS installation media."
+    sp_fail
     exec /bin/sh
 fi
 

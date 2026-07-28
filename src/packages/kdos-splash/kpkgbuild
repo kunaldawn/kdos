@@ -8,22 +8,22 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Monospace bitmap console font
-# depends	: python3 bdftopcf fontconfig
+# description	: Boot splash — CRT power-on animation drawn on the framebuffer
+# homepage	: https://github.com/kunaldawn/kdos
+# depends	: terminus-font
 
-name=terminus-font
-version=4.49.1
+name=kdos-splash
+version=1.0
 release=1
-source="https://downloads.sourceforge.net/project/$name/$name-${version%.1}/$name-$version.tar.gz"
+source=""
 
 build() {
-	./configure \
-		--prefix=/usr \
-		--psfdir=/usr/share/consolefonts \
-		--x11dir=/usr/share/fonts/terminus
-	make psf pcf
-	make DESTDIR=$PKG install-psf install-pcf
-	# fontconfig ships 70-no-bitmaps.conf; without this whitelist Terminus is
-	# rejected and foot silently falls through to DejaVu.
-	install -Dm644 75-yes-terminus.conf "$PKG/etc/fonts/conf.d/75-yes-terminus.conf"
+	# Static: this runs from the initramfs, before any real root exists.
+	gcc $CFLAGS -O2 -Wall -static -o kdos-splash "$PORT_SRC/kdos-splash.c" -lm
+	install -Dm755 kdos-splash "$PKG/usr/bin/kdos-splash"
+
+	# The splash renders text with the console font. Ship it decompressed so
+	# the program needs no zlib.
+	gzip -dc /usr/share/consolefonts/ter-v16n.psf.gz > splash.psf
+	install -Dm644 splash.psf "$PKG/usr/share/kdos/splash.psf"
 }

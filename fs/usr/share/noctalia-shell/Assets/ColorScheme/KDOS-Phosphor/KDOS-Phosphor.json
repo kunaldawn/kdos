@@ -36,7 +36,13 @@
         "magenta": "#e0aaff",
         "cyan": "#68f5e6",
         "white": "#e8ffee"
-      }
+      },
+      "foreground": "#b8ffc8",
+      "background": "#000a03",
+      "selectionFg": "#39ff14",
+      "selectionBg": "#12401f",
+      "cursorText": "#000a03",
+      "cursor": "#39ff14"
     }
   },
   "light": {
@@ -76,7 +82,13 @@
         "magenta": "#9a5cc0",
         "cyan": "#1a8c82",
         "white": "#ffffff"
-      }
+      },
+      "foreground": "#0b1f10",
+      "background": "#eaf7ec",
+      "selectionFg": "#0b1f10",
+      "selectionBg": "#a8d6b4",
+      "cursorText": "#eaf7ec",
+      "cursor": "#0f7a1f"
     }
   }
 }

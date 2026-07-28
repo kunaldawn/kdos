@@ -13,7 +13,12 @@
 // Wayland compositor. Sharp corners, thin phosphor frames, a green glow around
 // whatever has focus, and workspaces named after what you do on them.
 //
-// Palette (shared with foot and fuzzel — keep the three in sync):
+// Windows open and close through custom GLSL: the tube warms up, the picture
+// unfolds from a hairline, and on close it collapses back into a dot. See the
+// animations block near the bottom.
+//
+// Palette (shared with foot, fuzzel and noctalia — keep them in sync, or let
+// `kdos-theme` do it for you):
 //   #39ff14  phosphor      focus, accents
 //   #12401f  phosphor dim  unfocused frames
 //   #ffb000  amber         secondary accent
@@ -21,7 +26,8 @@
 //   #000a03  deep          desktop backdrop
 //   #b8ffc8  soft green    text
 //
-// Cheat sheet: Mod+Shift+Slash. Mod is Super.
+// Cheat sheet: Mod+Shift+Slash (overlay) or Mod+Slash (full, in a terminal).
+// Mod is Super.
 
 /////////////////////////////////////////////////////////////////////
 // Session startup
@@ -41,6 +47,15 @@ spawn-sh-at-startup "for i in 1 2 3 4 5 6 7 8 9 10; do sleep 3; noctalia ipc cal
 // X11-only alien apps (GIMP 2.x, Wine, older IDEs) get a rootless X server.
 xwayland-satellite {
     path "/usr/bin/xwayland-satellite"
+}
+
+// Inherited by everything niri spawns, including alien apps launched from the
+// shell. KDOS_SESSION lets a script tell "started from the desktop" apart from
+// "started from a tty" without guessing at WAYLAND_DISPLAY.
+environment {
+    KDOS_SESSION "phosphor"
+    XCURSOR_SIZE "24"
+    ELECTRON_OZONE_PLATFORM_HINT "auto"
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -74,13 +89,20 @@ layout {
     }
     default-column-width { proportion 1.0; }
 
+    preset-window-heights {
+        proportion 1.0
+        proportion 0.5
+        proportion 0.33333
+    }
+
     // Sharp thin frames on every window. No rounded corners anywhere — this is
-    // a CRT, not a phone.
+    // a CRT, not a phone. The active frame is a gradient rather than a flat
+    // fill: a real phosphor mask is never perfectly even.
     border {
         width 2
-        active-color "#39ff14"
+        active-gradient from="#39ff14" to="#1f8f0c" angle=135 relative-to="workspace-view"
         inactive-color "#12401f"
-        urgent-color "#ff3131"
+        urgent-gradient from="#ff3131" to="#ffb000" angle=90
     }
 
     // The focus ring would double up with the border; the glow below does the
@@ -99,22 +121,53 @@ layout {
         inactive-color "#00000000"
     }
 
+    // Tabbed columns (Mod+W) get an amber spine down the left edge.
+    tab-indicator {
+        hide-when-single-tab
+        place-within-column
+        position "left"
+        width 3
+        gap 4
+        gaps-between-tabs 3
+        length total-proportion=1.0
+        active-color "#ffb000"
+        inactive-color "#12401f"
+        urgent-color "#ff3131"
+    }
+
     insert-hint {
-        color "#ffb00066"
+        gradient from="#ffb00099" to="#39ff1499" angle=45
     }
 
     background-color "#000a03"
     struts { }
 }
 
+// Dual-kawase blur, used only where a layer rule asks for it (the bar, the
+// launcher, notifications). Low saturation and a little noise so it reads as
+// smoked glass in front of a CRT rather than as a frosted phone panel.
+blur {
+    passes 2
+    offset 2
+    noise 0.04
+    saturation 0.8
+}
+
 overview {
     zoom 0.5
     backdrop-color "#02120a"
+    workspace-shadow {
+        softness 30
+        spread 4
+        offset x=0 y=0
+        color "#39ff1433"
+    }
 }
 
 cursor {
     xcursor-size 24
     hide-when-typing
+    hide-after-inactive-ms 6000
 }
 
 prefer-no-csd
@@ -126,9 +179,27 @@ hotkey-overlay {
 
 screenshot-path "~/Pictures/Screenshots/kdos-%Y%m%d-%H%M%S.png"
 
-animations {
-    // Snappy. Old hardware did not ease-in-out.
-    slowdown 0.6
+/////////////////////////////////////////////////////////////////////
+// Alt-Tab
+/////////////////////////////////////////////////////////////////////
+
+// niri's own MRU switcher, themed. Square highlight and near-zero padding so
+// the previews sit in a grid of hard-edged cells instead of floating cards.
+recent-windows {
+    debounce-ms 400
+    open-delay-ms 100
+
+    highlight {
+        active-color "#39ff14cc"
+        urgent-color "#ff3131cc"
+        padding 12
+        corner-radius 0
+    }
+
+    previews {
+        max-height 420
+        max-scale 0.45
+    }
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -164,6 +235,78 @@ output "*" {
 }
 
 /////////////////////////////////////////////////////////////////////
+// Gestures and hardware events
+/////////////////////////////////////////////////////////////////////
+
+gestures {
+    hot-corners {
+        top-left
+    }
+}
+
+switch-events {
+    // niri already blanks the internal panel on lid close; locking is ours to
+    // do. noctalia owns the lock screen, so it goes through IPC.
+    lid-close { spawn "sh" "-c" "noctalia ipc call lockScreen lock"; }
+}
+
+/////////////////////////////////////////////////////////////////////
+// Layer rules — the shell's own surfaces
+/////////////////////////////////////////////////////////////////////
+
+// The wallpaper is a background-layer surface owned by noctalia. Placing it in
+// the backdrop means the overview and the gap between workspaces show the
+// wallpaper instead of a flat colour.
+layer-rule {
+    match namespace=r#"^noctalia-wallpaper"#
+    place-within-backdrop true
+}
+
+// The bar floats over the CRT: blurred backing, phosphor glow underneath.
+layer-rule {
+    match namespace=r#"^noctalia-bar-content"#
+    background-effect {
+        blur true
+        noise 0.05
+        saturation 0.7
+    }
+    shadow {
+        on
+        softness 20
+        spread 0
+        offset x=0 y=2
+        color "#39ff1433"
+    }
+    geometry-corner-radius 0
+}
+
+// Transient surfaces — launcher, notifications, OSD, toasts, session menu —
+// get the same treatment so they read as one system, not five widgets.
+layer-rule {
+    match namespace=r#"^noctalia-(launcher|notifications|osd|toast|controlcenter|sessionmenu|popupmenu)"#
+    background-effect {
+        blur true
+        noise 0.05
+        saturation 0.7
+    }
+    shadow {
+        on
+        softness 28
+        spread 2
+        offset x=0 y=4
+        color "#39ff1440"
+    }
+    geometry-corner-radius 0
+}
+
+// Desktop widgets belong to the wallpaper, not to the window stack: never
+// capture them in a screencast of "the desktop", and let them drift.
+layer-rule {
+    match namespace=r#"^noctalia-desktop-widgets"#
+    place-within-backdrop true
+}
+
+/////////////////////////////////////////////////////////////////////
 // Window rules
 /////////////////////////////////////////////////////////////////////
 
@@ -174,18 +317,49 @@ window-rule {
     opacity 0.94
 }
 
-// Mod+Shift+Return launches a scratch terminal — float it.
+// Mod+Shift+Return launches a scratch terminal — float it, centred, small.
 window-rule {
     match app-id=r#"^foot-float$"#
     open-floating true
+    default-column-width { proportion 0.5; }
+    default-window-height { proportion 0.5; }
+    default-floating-position x=0 y=0 relative-to="top-right"
 }
 
-// Fat alien apps deserve the whole column on first open.
+// The cheat sheet is a read-and-dismiss window.
+window-rule {
+    match app-id=r#"^kdos-help$"#
+    open-floating true
+    open-focused true
+    default-column-width { proportion 0.55; }
+    default-window-height { proportion 0.8; }
+    border {
+        active-color "#ffb000"
+    }
+}
+
+// Fat alien apps deserve the whole column on first open, and land where they
+// belong instead of on top of whatever you were reading.
 window-rule {
     match app-id=r#"[Gg]imp"#
     match app-id=r#"[Bb]lender"#
-    match app-id=r#"[Ff]irefox"#
+    match app-id=r#"[Ii]nkscape"#
     open-maximized true
+    open-on-workspace "media"
+}
+
+window-rule {
+    match app-id=r#"[Ff]irefox"#
+    match app-id=r#"[Cc]hrom(e|ium)"#
+    open-maximized true
+    open-on-workspace "net"
+}
+
+window-rule {
+    match app-id=r#"[Cc]ode"#
+    match app-id=r#"jetbrains"#
+    open-maximized true
+    open-on-workspace "code"
 }
 
 // Dialogs and pickers float instead of stealing a column.
@@ -197,13 +371,189 @@ window-rule {
 
 // Anything arriving through Xwayland gets an amber frame: X clients often draw
 // no decorations of their own, and it is useful to see which side a window is
-// coming from.
+// coming from. xwayland-satellite reports its clients with an X11 app-id, so
+// this also catches alien apps that fell back to X.
 window-rule {
     match app-id=r#"^XTerm$"#
     match app-id=r#"^xterm"#
+    match app-id=r#"^X11:"#
     border {
         width 2
         active-color "#ffb000"
+        inactive-color "#4a3300"
+    }
+}
+
+// Never leak a password manager or the lock screen into a screencast.
+window-rule {
+    match app-id=r#"(?i)(keepass|bitwarden|1password)"#
+    match title=r#"(?i)password"#
+    block-out-from "screencast"
+}
+
+// Urgent windows pulse. baba-is-float is niri's bobbing animation; on an
+// urgent window it is a genuinely useful attention signal.
+window-rule {
+    match is-urgent=true
+    baba-is-float true
+}
+
+/////////////////////////////////////////////////////////////////////
+// Accent
+/////////////////////////////////////////////////////////////////////
+
+// Every colour above is the phosphor default; this file overrides them, and it
+// is the ONE file `kdos theme` rewrites. Includes are positional and merge
+// per-field, so it only needs to carry the colour keys — and because layer and
+// window rules are appended rather than merged, the rules it adds re-state the
+// same matches and win by being later. niri watches included files, so the
+// desktop repaints the moment the file lands. Removing this line simply leaves
+// the session phosphor forever.
+include "~/.config/niri/accent.kdl"
+
+/////////////////////////////////////////////////////////////////////
+// Animations — the CRT
+/////////////////////////////////////////////////////////////////////
+
+animations {
+    // Snappy. Old hardware did not ease-in-out.
+    slowdown 0.6
+
+    workspace-switch {
+        spring damping-ratio=0.9 stiffness=900 epsilon=0.0001
+    }
+
+    horizontal-view-movement {
+        spring damping-ratio=0.95 stiffness=900 epsilon=0.0001
+    }
+
+    // ── Power-on ────────────────────────────────────────────────────
+    // Three overlapping stages, all driven off niri_clamped_progress:
+    //   0.00-0.18  the horizontal deflection settles (a slight squeeze)
+    //   0.00-0.40  the picture unfolds vertically from a hairline
+    //   0.00-1.00  scanline banding and a green wash burn off
+    // A bright seam rides the leading edge of the unfold, which is what sells
+    // it as a beam rather than a scale transform.
+    window-open {
+        duration-ms 300
+        curve "linear"
+
+        custom-shader r"
+            vec4 open_color(vec3 coords_geo, vec3 size_geo) {
+                float p = niri_clamped_progress;
+
+                float unfold = clamp(p / 0.40, 0.0, 1.0);
+                unfold = 1.0 - pow(1.0 - unfold, 3.0);
+                unfold = max(unfold, 0.0025);
+
+                float widen = clamp(p / 0.18, 0.0, 1.0);
+                widen = mix(0.86, 1.0, 1.0 - pow(1.0 - widen, 2.0));
+
+                vec2 g = coords_geo.xy - vec2(0.5);
+                g.y /= unfold;
+                g.x /= widen;
+                vec3 sample_geo = vec3(g + vec2(0.5), 1.0);
+
+                vec4 color = vec4(0.0);
+
+                if (0.0 <= sample_geo.x && sample_geo.x <= 1.0
+                        && 0.0 <= sample_geo.y && sample_geo.y <= 1.0)
+                {
+                    vec3 coords_tex = niri_geo_to_tex * sample_geo;
+                    color = texture2D(niri_tex, coords_tex.st);
+
+                    float rows = max(size_geo.y * niri_scale, 1.0);
+                    float scan = 0.5 + 0.5 * cos(sample_geo.y * rows * 1.6);
+                    color *= mix(1.0, mix(0.55, 1.0, scan), 1.0 - p);
+
+                    vec4 phosphor = vec4(0.224, 1.0, 0.078, 1.0) * color.a;
+                    color = mix(color, phosphor, pow(1.0 - p, 2.2) * 0.7);
+                }
+
+                float edge = abs(coords_geo.y - 0.5) * 2.0;
+                float lead = smoothstep(unfold * 0.90, unfold, edge)
+                           * (1.0 - smoothstep(unfold, unfold * 1.10, edge));
+
+                if (0.0 <= coords_geo.x && coords_geo.x <= 1.0)
+                    color += vec4(0.80, 1.0, 0.80, 1.0) * lead * (1.0 - p) * 0.9;
+
+                return color;
+            }
+        "
+    }
+
+    // ── Power-off ───────────────────────────────────────────────────
+    // The inverse, in the order a real tube does it:
+    //   0.00-0.55  vertical collapse to a hairline
+    //   0.45-0.85  the hairline pinches horizontally to a dot
+    //   0.80-1.00  the dot decays
+    // The image blows out toward white-green on the way down, because the beam
+    // energy is going into a smaller and smaller area.
+    window-close {
+        duration-ms 250
+        curve "linear"
+
+        custom-shader r"
+            vec4 close_color(vec3 coords_geo, vec3 size_geo) {
+                float p = niri_clamped_progress;
+
+                float fold = 1.0 - clamp(p / 0.55, 0.0, 1.0);
+                fold = max(pow(fold, 2.0), 0.004);
+
+                float pinch = 1.0 - clamp((p - 0.45) / 0.40, 0.0, 1.0);
+                pinch = max(pinch, 0.002);
+
+                float decay = 1.0 - clamp((p - 0.80) / 0.20, 0.0, 1.0);
+
+                vec2 g = coords_geo.xy - vec2(0.5);
+                g.y /= fold;
+                g.x /= pinch;
+                vec3 sample_geo = vec3(g + vec2(0.5), 1.0);
+
+                vec4 color = vec4(0.0);
+
+                if (0.0 <= sample_geo.x && sample_geo.x <= 1.0
+                        && 0.0 <= sample_geo.y && sample_geo.y <= 1.0)
+                {
+                    vec3 coords_tex = niri_geo_to_tex * sample_geo;
+                    color = texture2D(niri_tex, coords_tex.st);
+
+                    vec4 hot = vec4(0.75, 1.0, 0.72, 1.0) * color.a;
+                    color = mix(color, hot, clamp(p * 1.4, 0.0, 1.0) * 0.8);
+                }
+
+                return color * decay;
+            }
+        "
+    }
+
+    // ── Resize ──────────────────────────────────────────────────────
+    // Interlaced crossfade: odd scanlines switch to the new size before the
+    // even ones do, so a resize tears the way a mode change on real hardware
+    // did. The tear closes as progress approaches 1.
+    window-resize {
+        duration-ms 180
+        curve "linear"
+
+        custom-shader r"
+            vec4 resize_color(vec3 coords_curr_geo, vec3 size_curr_geo) {
+                vec3 coords_tex_prev = niri_geo_to_tex_prev * coords_curr_geo;
+                vec4 color_prev = texture2D(niri_tex_prev, coords_tex_prev.st);
+
+                vec3 coords_tex_next = niri_geo_to_tex_next * coords_curr_geo;
+                vec4 color_next = texture2D(niri_tex_next, coords_tex_next.st);
+
+                float rows = max(size_curr_geo.y * niri_scale, 1.0);
+                float field = step(0.5, fract(coords_curr_geo.y * rows * 0.5));
+
+                float p = niri_clamped_progress;
+                float lead = clamp(p * 1.5, 0.0, 1.0);
+                float lag = clamp(p * 1.5 - 0.5, 0.0, 1.0);
+                float t = mix(lag, lead, field);
+
+                return mix(color_prev, color_next, t);
+            }
+        "
     }
 }
 
@@ -213,16 +563,26 @@ window-rule {
 
 binds {
     Mod+Shift+Slash { show-hotkey-overlay; }
+    Mod+Slash hotkey-overlay-title="KDOS cheat sheet" { spawn "foot" "--app-id=kdos-help" "-e" "kdos" "help" "--pager"; }
 
     // ---- launching -------------------------------------------------
     Mod+Return       hotkey-overlay-title="Terminal"          { spawn "foot"; }
     Mod+Shift+Return hotkey-overlay-title="Floating terminal" { spawn "foot" "--app-id=foot-float"; }
     Mod+D            hotkey-overlay-title="Run an app"        { spawn "fuzzel"; }
     Mod+E            hotkey-overlay-title="Files (lf)"        { spawn "foot" "-e" "lf"; }
+    Mod+Shift+M      hotkey-overlay-title="System monitor"    { spawn "foot" "-e" "btop"; }
     Mod+Space        hotkey-overlay-title="Shell launcher"    { spawn-sh "noctalia ipc call launcher toggle"; }
     Mod+N            hotkey-overlay-title="Control centre"    { spawn-sh "noctalia ipc call controlCenter toggle"; }
     Mod+X            hotkey-overlay-title="Session menu"      { spawn-sh "noctalia ipc call sessionMenu toggle"; }
+    Mod+Y            hotkey-overlay-title="Notifications"     { spawn-sh "noctalia ipc call notifications toggleHistory"; }
+    Mod+Z            hotkey-overlay-title="Keep awake"        { spawn-sh "noctalia ipc call idleInhibitor toggle"; }
+    Mod+B            hotkey-overlay-title="Toggle the bar"    { spawn-sh "noctalia ipc call bar toggle"; }
     Super+Alt+L      hotkey-overlay-title="Lock"              { spawn-sh "noctalia ipc call lockScreen lock"; }
+
+    // ---- KDOS ------------------------------------------------------
+    Mod+T       hotkey-overlay-title="Next accent"       { spawn "kdos" "theme" "next"; }
+    Mod+Shift+T hotkey-overlay-title="Previous accent"   { spawn "kdos" "theme" "prev"; }
+    Mod+Shift+W hotkey-overlay-title="Shuffle wallpaper" { spawn-sh "noctalia ipc call wallpaper random \"\""; }
 
     // ---- windows ---------------------------------------------------
     Mod+Q repeat=false { close-window; }
@@ -264,6 +624,7 @@ binds {
     Mod+Period       { expel-window-from-column; }
     Mod+R            { switch-preset-column-width; }
     Mod+Shift+R      { switch-preset-column-width-back; }
+    Mod+Ctrl+R       { switch-preset-window-height; }
     Mod+Minus        { set-column-width "-10%"; }
     Mod+Equal        { set-column-width "+10%"; }
     Mod+Shift+Minus  { set-window-height "-10%"; }
@@ -294,9 +655,12 @@ binds {
     Mod+Shift+L { focus-monitor-right; }
 
     // ---- screenshots -----------------------------------------------
+    // Print opens niri's own picker; Mod+Print takes a region straight to the
+    // clipboard through kdos-shot, which also files a copy and toasts.
     Print      { screenshot; }
     Ctrl+Print { screenshot-screen; }
     Alt+Print  { screenshot-window; }
+    Mod+Print hotkey-overlay-title="Region to clipboard" { spawn "kdos-shot" "region"; }
 
     // ---- media / volume / brightness -------------------------------
     // Routed through noctalia: KDOS ships no wpctl/pactl/brightnessctl, and

@@ -238,3 +238,9 @@ fuse3
 # The libX11/libxcb chain is here only because xkbcomp and satellite need it.
 xwayland
 xwayland-satellite
+
+# Boot splash. Lives in src/packages rather than ports/core because the source
+# is ours, not an upstream tarball. Draws the CRT power-on animation straight
+# to /dev/fb0 from the initramfs and keeps running until rcS hands the console
+# to agetty.
+kdos-splash

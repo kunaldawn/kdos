@@ -1,0 +1,26 @@
+# bash completion for the kdos umbrella command.
+
+_kdos() {
+    local cur prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    if [ "$COMP_CWORD" -eq 1 ]; then
+        COMPREPLY=($(compgen -W "help theme status doctor version app" -- "$cur"))
+        return
+    fi
+
+    case "${COMP_WORDS[1]}" in
+        theme)  COMPREPLY=($(compgen -W "phosphor amber ice bone next prev list current" -- "$cur")) ;;
+        status) COMPREPLY=($(compgen -W "--bar" -- "$cur")) ;;
+        help)   COMPREPLY=($(compgen -W "--pager" -- "$cur")) ;;
+        *)      COMPREPLY=() ;;
+    esac
+}
+complete -F _kdos kdos
+
+_kdos_shot() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    [ "$COMP_CWORD" -eq 1 ] && COMPREPLY=($(compgen -W "region screen window" -- "$cur"))
+}
+complete -F _kdos_shot kdos-shot

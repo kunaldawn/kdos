@@ -1,0 +1,425 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#
+# kdos — the front door. Everything KDOS-specific hangs off this one command so
+# there is exactly one thing to remember and one place to discover the rest.
+#
+#   kdos help            keybinds and commands, generated from the live config
+#   kdos theme           switch the accent across niri, foot, fuzzel, btop, GTK
+#   kdos status          what is installed, running and containerised
+#   kdos app <name>      install an alien app into a distrobox
+#   kdos doctor          check the session for the things that usually break
+#   kdos version         who and what this is
+
+set -u
+
+NIRI_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/niri/config.kdl"
+ACCENT_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/niri/accent.kdl"
+FUZZEL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/fuzzel/fuzzel.ini"
+STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/kdos"
+THEME_STATE="$STATE_DIR/theme"
+
+THEMES="phosphor amber ice bone"
+
+# ANSI, but only when someone is looking.
+if [ -t 1 ]; then
+    C_A=$'\033[1;32m'; C_B=$'\033[0;32m'; C_D=$'\033[2;32m'; C_W=$'\033[1;33m'; C_0=$'\033[0m'
+else
+    C_A=""; C_B=""; C_D=""; C_W=""; C_0=""
+fi
+
+die() { printf '%skdos:%s %s\n' "$C_W" "$C_0" "$*" >&2; exit 1; }
+
+# ─────────────────────────────────────────────────────────────────────
+# Palettes
+#
+# One table, four schemes, consumed by every generator below. Fields:
+#   primary  dim  secondary  urgent  deep  text  variant  primary_dark  backdrop
+# Keep in sync with the matching noctalia scheme in
+# /usr/share/noctalia-shell/Assets/ColorScheme/KDOS-*/ — noctalia owns foot,
+# starship, btop, GTK and Qt; this script owns niri and fuzzel.
+# ─────────────────────────────────────────────────────────────────────
+palette() {
+    case "$1" in
+        phosphor) echo "39ff14 12401f ffb000 ff3131 000a03 b8ffc8 04120a 1f8f0c 02120a KDOS-Phosphor" ;;
+        amber)    echo "ffb000 4a2f00 ff6b1a ff3131 0d0600 ffd9a0 160d02 8a5f00 140b02 KDOS-Amber" ;;
+        ice)      echo "4dd7ff 123a4a 7aa2ff ff4d6d 00080d bfeeff 031420 1f7fa0 021a26 KDOS-Ice" ;;
+        bone)     echo "f4f0e2 3a3833 b9b3a1 ff5a5a 0a0a09 ded9cb 141412 8f8b7e 161512 KDOS-Bone" ;;
+        *)        return 1 ;;
+    esac
+}
+
+current_theme() {
+    if [ -r "$THEME_STATE" ]; then
+        read -r t < "$THEME_STATE"
+        palette "$t" >/dev/null 2>&1 && { echo "$t"; return; }
+    fi
+    echo phosphor
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# kdos theme
+# ─────────────────────────────────────────────────────────────────────
+write_accent() {
+    local name="$1" p dim sec urg deep text var pdark backdrop scheme
+    read -r p dim sec urg deep text var pdark backdrop scheme <<EOF
+$(palette "$name")
+EOF
+
+    mkdir -p "$(dirname "$ACCENT_FILE")"
+    cat > "$ACCENT_FILE" <<EOF
+// KDOS accent — GENERATED FILE.
+//
+// \`kdos theme <phosphor|amber|ice|bone>\` rewrites this file wholesale and niri
+// live-reloads it. Edit config.kdl for anything structural; edit this only if
+// you want a one-off colour that the next \`kdos theme\` will discard.
+//
+// Scheme: $scheme
+
+layout {
+    border {
+        active-gradient from="#$p" to="#$pdark" angle=135 relative-to="workspace-view"
+        inactive-color "#$dim"
+        urgent-gradient from="#$urg" to="#$sec" angle=90
+    }
+    shadow {
+        color "#${p}66"
+    }
+    tab-indicator {
+        active-color "#$sec"
+        inactive-color "#$dim"
+        urgent-color "#$urg"
+    }
+    insert-hint {
+        gradient from="#${sec}99" to="#${p}99" angle=45
+    }
+    background-color "#$deep"
+}
+
+overview {
+    backdrop-color "#$backdrop"
+    workspace-shadow {
+        color "#${p}33"
+    }
+}
+
+recent-windows {
+    highlight {
+        active-color "#${p}cc"
+        urgent-color "#${urg}cc"
+    }
+}
+
+layer-rule {
+    match namespace=r#"^noctalia-bar-content"#
+    shadow {
+        color "#${p}33"
+    }
+}
+
+layer-rule {
+    match namespace=r#"^noctalia-(launcher|notifications|osd|toast|controlcenter|sessionmenu|popupmenu)"#
+    shadow {
+        color "#${p}40"
+    }
+}
+
+window-rule {
+    match app-id=r#"^kdos-help\$"#
+    border {
+        active-color "#$sec"
+    }
+}
+
+window-rule {
+    match app-id=r#"^XTerm\$"#
+    match app-id=r#"^xterm"#
+    match app-id=r#"^X11:"#
+    border {
+        active-color "#$sec"
+        inactive-color "#$dim"
+    }
+}
+EOF
+}
+
+write_fuzzel() {
+    local name="$1" p dim sec urg deep text var pdark backdrop scheme
+    read -r p dim sec urg deep text var pdark backdrop scheme <<EOF
+$(palette "$name")
+EOF
+    [ -w "$FUZZEL_CONFIG" ] || return 0
+
+    # fuzzel has no include directive, so the [colors] block is replaced in
+    # place. Everything before it (font, geometry, keybinds) is preserved.
+    local tmp="$FUZZEL_CONFIG.kdos.$$"
+    awk -v p="$p" -v dim="$dim" -v sec="$sec" -v deep="$deep" -v text="$text" -v var="$var" '
+        /^\[colors\]/ { incolors = 1
+            print "[colors]"
+            print "background=" deep "f2"
+            print "text=" text "ff"
+            print "prompt=" p "ff"
+            print "input=" text "ff"
+            print "match=" p "ff"
+            print "selection=" dim "ff"
+            print "selection-text=" p "ff"
+            print "selection-match=" sec "ff"
+            print "border=" p "ff"
+            next
+        }
+        /^\[/ && !/^\[colors\]/ { incolors = 0 }
+        incolors { next }
+        { print }
+    ' "$FUZZEL_CONFIG" > "$tmp" && mv "$tmp" "$FUZZEL_CONFIG"
+}
+
+cmd_theme() {
+    local want="${1:-}" cur list i n
+    cur="$(current_theme)"
+
+    case "$want" in
+        ""|show|current)
+            echo "$cur"
+            return 0
+            ;;
+        list)
+            for t in $THEMES; do
+                if [ "$t" = "$cur" ]; then
+                    printf '%s* %-10s%s %s\n' "$C_A" "$t" "$C_0" "$(palette "$t" | awk '{print $10}')"
+                else
+                    printf '  %-10s %s\n' "$t" "$(palette "$t" | awk '{print $10}')"
+                fi
+            done
+            return 0
+            ;;
+        next|prev)
+            list="$THEMES"
+            [ "$want" = prev ] && list="$(echo $THEMES | tr ' ' '\n' | tac | tr '\n' ' ')"
+            n=0
+            for t in $list; do
+                n=$((n + 1))
+                [ "$t" = "$cur" ] && break
+            done
+            want="$(echo $list | cut -d' ' -f$(( n % $(echo $list | wc -w) + 1 )))"
+            ;;
+    esac
+
+    palette "$want" >/dev/null 2>&1 || die "unknown theme '$want' (try: kdos theme list)"
+
+    local scheme
+    scheme="$(palette "$want" | awk '{print $10}')"
+
+    write_accent "$want"
+    write_fuzzel "$want"
+
+    # noctalia owns the shell, and through its template processor also foot,
+    # starship, btop, GTK and Qt — including the GTK/Qt configs that alien apps
+    # in a distrobox read out of the shared $HOME.
+    #
+    # Quickshell finds a running instance by matching the Wayland display, not
+    # just the config path: with WAYLAND_DISPLAY unset, `noctalia ipc` reports
+    # "No running instances" even though the shell is plainly on screen. That is
+    # every invocation from a tty, an ssh session or a detached script, so the
+    # display is recovered from the runtime dir when the caller has none.
+    if command -v noctalia >/dev/null 2>&1; then
+        if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+            for sock in "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"/wayland-*; do
+                case "$sock" in *.lock|*'*') continue ;; esac
+                WAYLAND_DISPLAY="$(basename "$sock")"
+                export WAYLAND_DISPLAY
+                break
+            done
+        fi
+        noctalia ipc call colorScheme set "$scheme" >/dev/null 2>&1 \
+            || echo "kdos: noctalia is not running — shell colours will follow at next login" >&2
+    fi
+
+    mkdir -p "$STATE_DIR"
+    echo "$want" > "$THEME_STATE"
+    printf '%s%s%s (%s)\n' "$C_A" "$want" "$C_0" "$scheme"
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# kdos help — generated from the live niri config, so it cannot go stale
+# ─────────────────────────────────────────────────────────────────────
+cmd_help() {
+    local pager=cat
+    [ "${1:-}" = "--pager" ] && { command -v less >/dev/null 2>&1 && pager="less -R"; }
+
+    {
+        printf '%s' "$C_A"
+        command cat <<'BANNER'
+██╗  ██╗██████╗  ██████╗ ███████╗
+██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+█████╔╝ ██║  ██║██║   ██║███████╗
+██╔═██╗ ██║  ██║██║   ██║╚════██║
+██║  ██╗██████╔╝╚██████╔╝███████║
+╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+BANNER
+        printf '%s   KD'"'"'s Homebrew Linux Distro%s\n\n' "$C_D" "$C_0"
+
+        printf '%sCOMMANDS%s\n' "$C_A" "$C_0"
+        printf '  %-26s %s\n' "kdos app <name>"     "install an alien app (distrobox + export)"
+        printf '  %-26s %s\n' "kdos theme [name]"   "phosphor | amber | ice | bone | next | prev | list"
+        printf '  %-26s %s\n' "kdos status"         "packages, containers, exported apps"
+        printf '  %-26s %s\n' "kdos doctor"         "check the session for common breakage"
+        printf '  %-26s %s\n' "kdos-shot [region]"  "screenshot to clipboard and ~/Pictures"
+        printf '  %-26s %s\n' "kdos-fetch-static"   "fetch a single verified static binary"
+        printf '\n'
+
+        if [ -r "$NIRI_CONFIG" ]; then
+            printf '%sKEYS%s  %s(from %s)%s\n' "$C_A" "$C_0" "$C_D" "$NIRI_CONFIG" "$C_0"
+            awk -v ca="$C_B" -v c0="$C_0" '
+                /^binds[[:space:]]*\{/ { inbinds = 1; next }
+                inbinds && /^\}/       { inbinds = 0 }
+                !inbinds               { next }
+                /^[[:space:]]*\/\//    { next }
+                /^[[:space:]]*$/       { next }
+                {
+                    line = $0
+                    # The key is the first whitespace-delimited token.
+                    key = $1
+                    title = ""
+                    if (match(line, /hotkey-overlay-title="[^"]*"/)) {
+                        title = substr(line, RSTART + 22, RLENGTH - 23)
+                    } else if (match(line, /\{[^}]*\}/)) {
+                        title = substr(line, RSTART + 1, RLENGTH - 2)
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", title)
+                        gsub(/;$/, "", title)
+                    }
+                    if (title != "")
+                        printf "  %s%-22s%s %s\n", ca, key, c0, title
+                }
+            ' "$NIRI_CONFIG"
+        else
+            printf '%sKEYS%s  (no niri config at %s)\n' "$C_A" "$C_0" "$NIRI_CONFIG"
+        fi
+    } | $pager
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# kdos status
+# ─────────────────────────────────────────────────────────────────────
+# grep -c always prints a count and exits 1 when that count is zero, so these
+# must NOT be chained with `|| echo 0` — that prints the number twice.
+count_containers() {
+    command -v podman >/dev/null 2>&1 || { echo 0; return; }
+    podman ps --format '{{.Names}}' 2>/dev/null | grep -c .
+}
+
+count_exported() {
+    ls -1 "${XDG_DATA_HOME:-$HOME/.local/share}"/applications/*.desktop 2>/dev/null | grep -c .
+}
+
+cmd_status() {
+    if [ "${1:-}" = "--bar" ]; then
+        # One short string for the noctalia bar widget. Boxes first, because
+        # that is the number that tells you whether an alien app will start.
+        printf '%s box · %s app\n' "$(count_containers)" "$(count_exported)"
+        return 0
+    fi
+
+    printf '%sKDOS%s  %s\n\n' "$C_A" "$C_0" "$(uname -sr)"
+
+    printf '%s%-16s%s %s\n' "$C_B" "Theme"      "$C_0" "$(current_theme)"
+    printf '%s%-16s%s %s\n' "$C_B" "Packages"   "$C_0" "$(ls -1 /var/lib/kpkg/db 2>/dev/null | grep -c .)"
+    printf '%s%-16s%s %s\n' "$C_B" "Exported apps" "$C_0" "$(count_exported)"
+    printf '%s%-16s%s %s\n' "$C_B" "Session"    "$C_0" "${KDOS_SESSION:-tty}"
+    printf '\n'
+
+    printf '%sCONTAINERS%s\n' "$C_A" "$C_0"
+    if command -v podman >/dev/null 2>&1; then
+        if podman ps -a --format '  {{.Names}}\t{{.Status}}\t{{.Image}}' 2>/dev/null | grep -q .; then
+            podman ps -a --format '  {{.Names}}\t{{.Status}}\t{{.Image}}' 2>/dev/null
+        else
+            printf '  none — try: kdos app gimp\n'
+        fi
+    else
+        printf '  podman not installed\n'
+    fi
+    printf '\n'
+
+    printf '%sEXPORTED APPS%s\n' "$C_A" "$C_0"
+    local found=0
+    for d in "${XDG_DATA_HOME:-$HOME/.local/share}"/applications/*.desktop; do
+        [ -e "$d" ] || continue
+        found=1
+        printf '  %s\n' "$(basename "$d" .desktop)"
+    done
+    [ "$found" = 0 ] && printf '  none\n'
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# kdos doctor — the checks that actually catch things on this system
+# ─────────────────────────────────────────────────────────────────────
+ok()   { printf '  %s[ ok ]%s %s\n' "$C_A" "$C_0" "$*"; }
+warn() { printf '  %s[warn]%s %s\n' "$C_W" "$C_0" "$*"; }
+
+cmd_doctor() {
+    printf '%sKDOS doctor%s\n\n' "$C_A" "$C_0"
+
+    printf '%sSession%s\n' "$C_B" "$C_0"
+    if [ -n "${WAYLAND_DISPLAY:-}" ]; then ok "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"; else warn "no WAYLAND_DISPLAY — not inside the desktop session"; fi
+    if [ -d "${XDG_RUNTIME_DIR:-/nonexistent}" ]; then ok "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"; else warn "XDG_RUNTIME_DIR missing — pipewire and podman will misbehave"; fi
+    if command -v niri >/dev/null 2>&1; then
+        if niri validate >/dev/null 2>&1; then ok "niri config valid"; else warn "niri config INVALID — run: niri validate"; fi
+    fi
+    if pgrep -x noctalia >/dev/null 2>&1 || pgrep -x qs >/dev/null 2>&1; then
+        ok "noctalia running"
+    else
+        warn "noctalia not running — no bar, no wallpaper, no OSD"
+    fi
+    printf '\n'
+
+    printf '%sContainers%s\n' "$C_B" "$C_0"
+    # The failure this distro actually had: toybox switch_root never MS_MOVEs
+    # the root, so anything that JOINS a mount namespace lands on an empty tree.
+    if [ "$(readlink /proc/self/root 2>/dev/null)" = "/" ] || [ -z "$(readlink /proc/self/root 2>/dev/null)" ]; then
+        ok "mount namespace root is /"
+    else
+        warn "mount namespace root is $(readlink /proc/self/root) — podman exec and distrobox enter will fail"
+    fi
+    if [ "$(id -u)" -ne 0 ]; then
+        if grep -q "^$(id -un):" /etc/subuid 2>/dev/null; then ok "subuid mapping present"; else warn "no /etc/subuid entry — rootless podman cannot map users"; fi
+        if grep -q "^$(id -un):" /etc/subgid 2>/dev/null; then ok "subgid mapping present"; else warn "no /etc/subgid entry"; fi
+    else
+        warn "running as root — alien apps are meant to run as the kdos user"
+    fi
+    for b in newuidmap newgidmap; do
+        if [ -u "$(command -v $b 2>/dev/null)" ] 2>/dev/null; then ok "$b is setuid"; else warn "$b missing or not setuid"; fi
+    done
+    printf '\n'
+
+    printf '%sDesktop%s\n' "$C_B" "$C_0"
+    if [ -r "$ACCENT_FILE" ]; then ok "accent file present ($(current_theme))"; else warn "no accent.kdl — run: kdos theme phosphor"; fi
+    if [ -r "${XDG_CONFIG_HOME:-$HOME/.config}/foot/themes/noctalia" ]; then ok "foot theme present"; else warn "foot theme missing — foot will use its own colours"; fi
+    if [ -n "${DISPLAY:-}" ]; then ok "Xwayland on $DISPLAY"; else warn "no DISPLAY — X11-only alien apps will not start"; fi
+    case ":$PATH:" in *":$HOME/.local/bin:"*) ok "~/.local/bin on PATH" ;; *) warn "~/.local/bin not on PATH — exported app wrappers will not resolve" ;; esac
+}
+
+# ─────────────────────────────────────────────────────────────────────
+cmd_version() {
+    printf '%sKDOS%s — KD'"'"'s Homebrew Linux Distro\n' "$C_A" "$C_0"
+    printf '  kernel   %s\n' "$(uname -r)"
+    printf '  libc     musl\n'
+    printf '  userland toybox\n'
+    printf '  session  niri + noctalia (%s)\n' "$(current_theme)"
+}
+
+case "${1:-help}" in
+    help|-h|--help) shift; cmd_help "$@" ;;
+    theme)          shift; cmd_theme "$@" ;;
+    status)         shift; cmd_status "$@" ;;
+    doctor)         shift; cmd_doctor ;;
+    version|-V)     cmd_version ;;
+    app)            shift; exec kdos-fetch-app "$@" ;;
+    *)              die "unknown command '$1' (try: kdos help)" ;;
+esac
