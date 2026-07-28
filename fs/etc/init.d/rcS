@@ -10,18 +10,40 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# The boot splash is already running: the initramfs started it and it survived
+# switch_root, because its FIFO lives on devtmpfs. Keep talking to the same
+# process so the screen never blinks between the two halves of boot.
+splash() {
+    command -v kdos-splash >/dev/null 2>&1 || return 0
+    kdos-splash "$@" 2>/dev/null
+    return 0
+}
+
 # Mount all filesystems in fstab
+splash step "MOUNTING FILESYSTEMS"
 mount -a
+splash ok
 
 # Console font. Set here rather than in /etc/profile: KDFONTOP needs root, so a
 # non-root login shell only ever printed an error. -C names the VT explicitly
 # because rcS itself may be running on the serial console.
+splash step "CONSOLE"
 if [ -x /usr/bin/setfont ]; then
     for _tty in /dev/tty1 /dev/tty2; do
         [ -c "$_tty" ] && setfont -C "$_tty" ter-v32n 2>/dev/null
     done
     unset _tty
 fi
+
+# Console palette. PIO_CMAP sets the default colour map for the whole VT
+# subsystem, so the text console is phosphor green from the first login prompt
+# on — before anything Wayland exists. setvtrgb has no -C, and rcS may be
+# running on the serial console, so stdin is redirected from a real VT to give
+# it a console fd to ioctl.
+if [ -x /usr/bin/setvtrgb ] && [ -r /etc/vtrgb ] && [ -c /dev/tty0 ]; then
+    setvtrgb /etc/vtrgb < /dev/tty0 > /dev/tty0 2>/dev/null
+fi
+splash ok
 
 # Make / recursively shared. systemd does this at PID1; OpenRC/Alpine document the
 # same. Rootless podman/crun require a shared root for mount propagation, otherwise
@@ -44,9 +66,22 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
         continue
     fi
     echo "[KDOS] Running: $(basename $_script) start"
-    "$_script" start
+    splash step "$(echo "$_name" | tr '[:lower:]' '[:upper:]')"
+    if "$_script" start; then
+        splash ok
+    else
+        splash fail
+    fi
 done
 
 unset _script
+
+# Hand the screen back. This runs the power-off animation and leaves the
+# framebuffer black, so agetty's first write to tty1 — which is what finally
+# triggers fbcon's deferred take-over — paints onto a clean console instead of
+# fighting a process that is still drawing.
+splash step "STARTING SESSION"
+splash ok
+splash quit
 
 echo "KDOS Initialized."
