@@ -1,0 +1,72 @@
+// KDOS accent — GENERATED FILE.
+//
+// `kdos theme <phosphor|amber|ice|bone>` rewrites this file wholesale and niri
+// live-reloads it. Edit config.kdl for anything structural; edit this only if
+// you want a one-off colour that the next `kdos theme` will discard.
+//
+// Scheme: KDOS-Phosphor
+
+layout {
+    border {
+        active-gradient from="#39ff14" to="#1f8f0c" angle=135 relative-to="workspace-view"
+        inactive-color "#12401f"
+        urgent-gradient from="#ff3131" to="#ffb000" angle=90
+    }
+    shadow {
+        color "#39ff1466"
+    }
+    tab-indicator {
+        active-color "#ffb000"
+        inactive-color "#12401f"
+        urgent-color "#ff3131"
+    }
+    insert-hint {
+        gradient from="#ffb00099" to="#39ff1499" angle=45
+    }
+    background-color "#000a03"
+}
+
+overview {
+    backdrop-color "#02120a"
+    workspace-shadow {
+        color "#39ff1433"
+    }
+}
+
+recent-windows {
+    highlight {
+        active-color "#39ff14cc"
+        urgent-color "#ff3131cc"
+    }
+}
+
+layer-rule {
+    match namespace=r#"^noctalia-bar-content"#
+    shadow {
+        color "#39ff1433"
+    }
+}
+
+layer-rule {
+    match namespace=r#"^noctalia-(launcher|notifications|osd|toast|controlcenter|sessionmenu|popupmenu)"#
+    shadow {
+        color "#39ff1440"
+    }
+}
+
+window-rule {
+    match app-id=r#"^kdos-help$"#
+    border {
+        active-color "#ffb000"
+    }
+}
+
+window-rule {
+    match app-id=r#"^XTerm$"#
+    match app-id=r#"^xterm"#
+    match app-id=r#"^X11:"#
+    border {
+        active-color "#ffb000"
+        inactive-color "#4a3300"
+    }
+}
