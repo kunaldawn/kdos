@@ -423,6 +423,49 @@ power-on / power-off / interlace effects. Notes that cost time to rediscover:
   the built-in animation. So a broken shader looks like "my animation did nothing".
 - No backwards-compatibility guarantee across niri releases — re-check on upgrade.
 
+### The boot splash
+
+`src/packages/kdos-splash/` — the first thing in `src/packages/`, which exists precisely
+for code that is ours rather than an upstream tarball (`source=""`; `kpkg` skips the
+extract loop and `build()` compiles out of `$PORT_SRC`). Static C, ~700 lines, drawing the
+CRT power-on straight to `/dev/fb0` with glyphs scaled up from the shipped Terminus PSF.
+
+**Why the screen was blank before.** `console=tty0 console=ttyS0` — the LAST `console=`
+becomes `/dev/console`, so every message the initramfs prints goes to the serial port, and
+the display gets nothing until agetty starts. That is also what makes the splash possible:
+the kernel has `CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER`, so fbcon does not claim the
+framebuffer while nothing prints to tty0.
+
+**Three things cost a debug cycle each:**
+
+- **Deferred take-over means nothing is being scanned out.** Writing to `/dev/fb0` before
+  the DRM fbdev client does its modeset paints a buffer nobody is looking at — the display
+  still shows what rEFInd left in the EFI framebuffer. (Tell-tale: the screen holds a flat
+  colour taken from the boot banner's corner pixel.) One byte to `/dev/tty0` ends the
+  deferral and makes the fbdev buffer the live scanout; `console_claim()` writes
+  `ESC[2J ESC[H ESC[?25l` to do that and hide the cursor in the same breath.
+- **mmap writes need an explicit flush.** They reach the host only when fbdev's deferred-IO
+  worker gets round to it, so each frame ends with `FBIOPAN_DISPLAY` to the offset it is
+  already at. Without it the animation runs at the kernel's whim, not at the frame rate.
+- **The process survives `switch_root` with a ghost root.** It is never chroot'ed, so
+  afterwards its `/` is still the (now deleted) initramfs root whose `/dev` was moved away.
+  Open fds keep working — that is the whole trick, one process spanning both halves of boot
+  with the FIFO on devtmpfs — but *every path it resolves by name after that points into
+  the ghost*. `unlink("/dev/.kdos-splash")` from the daemon silently fails. Hence the
+  `quit` client detects the daemon by opening the FIFO for writing and watching for ENXIO
+  (no reader), and does the cleanup itself from the real root.
+
+`quit` is deliberately synchronous: rcS returns from it and init starts agetty immediately,
+and agetty printing to tty1 during the power-off animation interleaves console text with
+splash pixels.
+
+Adding a stage is one line either side: `sp_step "NAME"` / `sp_ok` in the generated init in
+`script/06_packaging/01_initramfs.sh`, or `splash step "NAME"` / `splash ok` in
+`fs/etc/init.d/rcS` (which already wraps every `init.d` script automatically).
+
+Iterate on the look without booting: `kdos-splash preview 1280x800 0.35 out.ppm` renders a
+single frame at a given intro time to a PPM.
+
 ### The `kdos` command
 
 `fs/usr/local/bin/kdos` is the front door: `help` (cheat sheet **parsed out of the live

@@ -51,6 +51,14 @@ kpkgdepends foo        # show resolved dependency tree
 
 ---
 
+## Booting
+
+Past the bootloader, KDOS starts the way its windows do: a flash, then the picture unfolding vertically out of a hairline while the deflection settles, scanline banding burning off as the tube warms up. Boot then reports itself as POST lines — `MOUNTING SYSTEM IMAGE ....... OK` — and signs off by collapsing back into a line and a dot.
+
+That is `kdos-splash`, a small static C program drawing straight to `/dev/fb0`, with the wordmark rendered from the shipped Terminus console font scaled up, so the logo is real bitmap type rather than an image. It starts in the initramfs and **keeps running across `switch_root`** — its control FIFO lives on devtmpfs, which is moved into the new root rather than remounted — so one process spans both halves of boot and the screen never blinks. It hands the console back, black, right before agetty.
+
+It fails open: no framebuffer, no splash, no fuss. And every boot message still goes to the serial console regardless, so a machine that dies behind a pretty screen is debuggable from there.
+
 ## Logging In
 
 The system ships one human user, **`kdos` / `kdos`** (uid 1000, in `wheel`, so `sudo` works with that same password). `tty1` autologins as `kdos`; `tty2` and the serial console give a root login for admin and debugging. Alien apps run **rootless** under `kdos` — the same setup on the live ISO and on an installed disk.
