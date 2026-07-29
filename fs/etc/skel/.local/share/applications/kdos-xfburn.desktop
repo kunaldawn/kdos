@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Xfburn
+Comment=CD/DVD burning (alien app, kdos-apps box)
+Exec=kdos-appbox run xfburn
+Icon=stock_xfburn
+Terminal=false
+Categories=AudioVideo;DiscBurning;
+X-KDOS-Alien=true

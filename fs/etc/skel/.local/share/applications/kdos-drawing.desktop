@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Drawing
+Comment=Simple paint / image annotation (alien app, kdos-apps box)
+Exec=kdos-appbox run drawing %U
+Icon=com.github.maoschanz.drawing
+Terminal=false
+Categories=Graphics;RasterGraphics;
+X-KDOS-Alien=true

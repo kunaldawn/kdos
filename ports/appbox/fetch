@@ -1,0 +1,53 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/appbox/fetch
+#
+# Build the kdos-apps distrobox image on the HOST (the sandboxed ISO build has
+# no network) and leave two artifacts next to this script, both gitignored:
+#
+#   appbox.tar   the image, docker-archive format, for `podman load` in chroot
+#   icons/       the apps' icons, for the host launcher entries
+#
+# Run via `make fetch-apps`.
+
+set -e
+cd "$(dirname "$0")"
+
+IMAGE=localhost/kdos-appbox:latest
+
+ENGINE="${ENGINE:-}"
+if [ -z "$ENGINE" ]; then
+	if command -v docker >/dev/null 2>&1; then ENGINE=docker
+	elif command -v podman >/dev/null 2>&1; then ENGINE=podman
+	else echo "appbox/fetch: need docker or podman on the host" >&2; exit 1
+	fi
+fi
+
+echo "==> Building $IMAGE with $ENGINE"
+$ENGINE build -t "$IMAGE" -f Containerfile .
+
+echo "==> Saving image archive"
+rm -f appbox.tar
+$ENGINE save -o appbox.tar "$IMAGE"
+
+echo "==> Extracting app icons"
+# Every Icon= any .desktop in the image references, wherever the file lives —
+# guessing icon names cost one debug cycle already.
+rm -rf icons && mkdir -p icons
+$ENGINE run --rm "$IMAGE" sh -c '
+	names="$(sed -n "s/^Icon=//p" /usr/share/applications/*.desktop | sort -u) folder"
+	for n in $names; do
+		find /usr/share/icons /usr/share/pixmaps \
+		     \( -name "$n.png" -o -name "$n.svg" -o -name "$n.xpm" \) \
+		     2>/dev/null
+	done | sort -u | tar -cf - -T - 2>/dev/null
+' | tar -xf - -C icons
+
+echo "==> Done:"
+du -sh appbox.tar icons
