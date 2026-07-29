@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Document Scanner
+Comment=Scan documents and photos (alien app, kdos-apps box)
+Exec=kdos-appbox run simple-scan
+Icon=org.gnome.SimpleScan
+Terminal=false
+Categories=Graphics;Scanning;
+X-KDOS-Alien=true

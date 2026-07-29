@@ -152,11 +152,10 @@ netcat
 mtr
 
 # ---------------------------------
-# Wayland + niri + noctalia (GUI sliver)
+# Wayland + COSMIC (GUI sliver)
 # ---------------------------------
-# Compositor: niri. Shell layer: noctalia-shell (panels, bars, notifs,
-# lock screen) running on noctalia-qs (Quickshell fork, Qt/QML).
-# Companion CLI apps: terminal, screenshot, clipboard, image viewer.
+# Desktop: COSMIC (System76) — Rust/smithay/iced. Compositor, panel, launcher,
+# settings, notifications, files. seatd for seats, no logind. Terminal: foot.
 wayland
 wayland-protocols
 seatd
@@ -168,7 +167,6 @@ gst-plugins-bad
 gst-plugins-ugly
 gst-libav
 xdg-desktop-portal
-xdg-desktop-portal-wlr
 
 # Networking + auth (NetworkManager + polkit + Wi-Fi + firewall + VPN)
 duktape
@@ -180,30 +178,33 @@ nftables
 dnsmasq
 openvpn
 networkmanager-openvpn
-niri
 foot
-fuzzel
 grim
 slurp
 wl-clipboard
 imv
-
-# Qt6 stack (host-side exception to the no-Qt rule, for the shell layer)
-double-conversion
-cli11
-# Vulkan ICD loader (libvulkan.so.1) — completes the guest Vulkan stack so Qt's
-# Vulkan RHI can dispatch to Mesa's venus driver (HW accel via QEMU venus=true).
 vulkan-loader
-qt6-base
-qt6-shadertools
-qt6-declarative
-qt6-svg
-qt6-5compat
-qt6-wayland
 
-# Noctalia: shell on Quickshell fork
-noctalia-qs
-noctalia-shell
+# COSMIC desktop
+dav1d
+pop-launcher
+cosmic-comp
+cosmic-panel
+cosmic-applets
+cosmic-app-library
+cosmic-launcher
+cosmic-notifications
+cosmic-osd
+cosmic-settings
+cosmic-settings-daemon
+cosmic-bg
+cosmic-randr
+cosmic-idle
+cosmic-files
+cosmic-screenshot
+xdg-desktop-portal-cosmic
+cosmic-icons
+cosmic-session
 
 # ---------------------------------
 # Media & Imaging
@@ -233,14 +234,20 @@ fuse3
 # X11 compatibility (Xwayland only — no Xorg server)
 # ---------------------------------
 # Alien apps that are X11-only (GIMP 2.x, Wine, older IDEs) need an X server.
-# niri has no built-in Xwayland: it spawns xwayland-satellite, which runs
-# Xwayland rootlessly and maps each X window to a real Wayland toplevel.
-# The libX11/libxcb chain is here only because xkbcomp and satellite need it.
+# cosmic-comp runs Xwayland rootlessly itself.
+# The libX11/libxcb chain is here only because Xwayland and xkbcomp need it.
 xwayland
-xwayland-satellite
+
+# Icon-theme skeleton: the index.theme that makes /usr/share/icons/hicolor a
+# real theme. Qt/Quickshell icon lookup silently fails without it — every app
+# icon renders as the missing-texture checkerboard.
+hicolor-icon-theme
 
 # Boot splash. Lives in src/packages rather than ports/core because the source
 # is ours, not an upstream tarball. Draws the CRT power-on animation straight
 # to /dev/fb0 from the initramfs and keeps running until rcS hands the console
 # to agetty.
 kdos-splash
+
+# Builds the applied COSMIC theme from the KDOS palette (src/packages, ours).
+kdos-theme-helper

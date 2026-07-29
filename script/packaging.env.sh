@@ -16,7 +16,7 @@
 export KDOS_PHASE_TITLE="Packaging"
 export KDOS_PHASE_DESC="trim rootfs, build initramfs, assemble the ISO"
 export KDOS_SNAPSHOT_PATHS="fs iso_root iso-build initramfs initramfs.cpio.gz"
-export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/var/cache/kpkg/work/* fs/dev/* fs/proc/* fs/sys/* fs/run/* fs/kdos/* fs/ports/*"
+export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/var/cache/kpkg/work/* fs/dev/* fs/proc/* fs/sys/* fs/run/* fs/kdos/* fs/ports/* fs/home/kdos/.local/share/containers/*"
 
 export CHROOT=1
 
