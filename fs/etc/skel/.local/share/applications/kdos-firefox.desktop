@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Firefox ESR
+Comment=Web browser (alien app, kdos-apps box)
+Exec=kdos-appbox run firefox %U
+Icon=firefox-esr
+Terminal=false
+Categories=Network;WebBrowser;
+X-KDOS-Alien=true

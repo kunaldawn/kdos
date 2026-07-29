@@ -1,0 +1,61 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   kdos-getty <ttyN> <getty...>
+#
+# Console font and palette must be loaded AFTER fbcon takes the console, not in
+# rcS: the kernel defers the take-over until something writes to a VT, and the
+# take-over re-initialises every VT with the kernel's built-in font — wiping
+# anything setfont loaded earlier. So the sequence lives here, wrapping getty:
+# one write ends the deferral, then the font (ter-v32n carries λ and the box
+# glyphs the prompt uses) and the phosphor palette are loaded onto this VT.
+#
+# The take-over is scheduled work, so a fixed sleep is a race that first boot
+# reliably loses: wait for fbcon to report it in dmesg, then retry setfont
+# until showconsolefont confirms the 16x32 font is what the VT actually has.
+
+tty="$1"; shift
+
+# Boot-time diagnostics: /run is tmpfs, so this costs nothing persistent and
+# `kdos doctor` gets something to read when a VT comes up with the wrong font.
+exec 2>>"/run/kdos-getty.$tty.log"
+set -x
+
+if [ -c "/dev/$tty" ] && [ -x /usr/bin/setfont ]; then
+	# End fbcon's deferred take-over. Neither escape sequences NOR SPACES do
+	# it — escapes are eaten by the VT state machine, and spaces are skipped
+	# by the render path; only a real glyph reaches the putc that arms the
+	# take-over (verified: ' ' -> nothing, 'K' -> "fbcon: Taking over
+	# console"). So: one K, cleared away before anyone sees it.
+	printf 'K\033[2J\033[H' > "/dev/$tty"
+
+	i=0
+	while [ "$i" -lt 50 ]; do
+		dmesg 2>/dev/null | grep -q 'fbcon: Taking over console' && break
+		sleep 0.1
+		i=$((i + 1))
+	done
+
+	i=0
+	while [ "$i" -lt 10 ]; do
+		setfont -C "/dev/$tty" ter-kdos32n 2>/dev/null
+		showconsolefont -i -C "/dev/$tty" 2>/dev/null | grep -q '^16x32' && break
+		sleep 0.2
+		i=$((i + 1))
+	done
+
+	# Palette BEFORE the final clear: cells painted before the palette load
+	# keep the old colours, and a screen half-cleared in pure black and
+	# half in phosphor-black looks smudged.
+	if [ -x /usr/bin/setvtrgb ] && [ -r /etc/vtrgb ]; then
+		setvtrgb /etc/vtrgb < "/dev/$tty" > "/dev/$tty" 2>/dev/null
+	fi
+	printf '\033[2J\033[H' > "/dev/$tty"
+fi
+
+exec "$@"

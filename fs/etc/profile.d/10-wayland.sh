@@ -14,15 +14,14 @@ if [ ! -d "$XDG_RUNTIME_DIR" ]; then
 fi
 
 export XDG_SESSION_TYPE=wayland
-export XDG_CURRENT_DESKTOP=niri
+export XDG_CURRENT_DESKTOP=COSMIC
 
-# Where launchers look for .desktop files. These have XDG defaults, but stating
-# them removes any doubt: alien apps exported by kdos-fetch-app land in
-# $XDG_DATA_HOME/applications, and fuzzel/noctalia must scan that.
+# Where launchers look for .desktop files. XDG_DATA_HOME must NOT be repeated
+# inside XDG_DATA_DIRS — launchers scan both, and every app shows up twice.
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
-export XDG_DATA_DIRS="$XDG_DATA_HOME:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 
 # kdos-fetch-app also drops a CLI wrapper per alien app here, so `gimp` works
 # from any shell, not just from the launcher.

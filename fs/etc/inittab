@@ -15,10 +15,12 @@ ttyS0::askfirst:/bin/bash -l
 
 # Local Console (QEMU Window / Physical) — autologin as kdos.
 # agetty, not toybox getty: only agetty implements --autologin.
-tty1::respawn:/sbin/agetty --autologin kdos --noclear tty1 38400 linux
+# kdos-getty loads the console font/palette after fbcon's deferred take-over —
+# doing it in rcS is futile, the take-over resets every VT's font.
+tty1::respawn:/usr/local/sbin/kdos-getty tty1 /sbin/agetty --autologin kdos --noclear tty1 38400 linux
 
 # Second console, root login prompt
-tty2::respawn:/sbin/getty 38400 tty2
+tty2::respawn:/usr/local/sbin/kdos-getty tty2 /sbin/getty 38400 tty2
 
 # Restart
 ::restart:/sbin/init
