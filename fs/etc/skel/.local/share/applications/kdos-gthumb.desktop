@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=gThumb
+Comment=Photo organizer and viewer (alien app, kdos-apps box)
+Exec=kdos-appbox run gthumb %U
+Icon=org.gnome.gThumb
+Terminal=false
+Categories=Graphics;Viewer;Photography;
+X-KDOS-Alien=true

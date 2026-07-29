@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Shotcut
+Comment=Video editor (alien app, kdos-apps box)
+Exec=kdos-appbox run shotcut %U
+Icon=org.shotcut.Shotcut
+Terminal=false
+Categories=AudioVideo;AudioVideoEditing;
+X-KDOS-Alien=true

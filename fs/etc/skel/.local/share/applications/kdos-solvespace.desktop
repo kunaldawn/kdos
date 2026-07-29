@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SolveSpace
+Comment=Parametric 2D/3D CAD (alien app, kdos-apps box)
+Exec=kdos-appbox run solvespace %U
+Icon=solvespace
+Terminal=false
+Categories=Graphics;Engineering;
+X-KDOS-Alien=true

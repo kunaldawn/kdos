@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: COSMIC session orchestrator
+# homepage	: https://github.com/pop-os/cosmic-session
+# depends	: rust clang just cosmic-comp cosmic-panel cosmic-launcher cosmic-app-library cosmic-notifications cosmic-osd cosmic-bg cosmic-settings cosmic-settings-daemon cosmic-randr cosmic-idle cosmic-files cosmic-screenshot xdg-desktop-portal-cosmic cosmic-icons
+
+name=cosmic-session
+version=1.4.0
+release=1
+source="https://github.com/pop-os/cosmic-session/archive/refs/tags/epoch-$version.tar.gz"
+vendoring=rust
+
+build() {
+	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+	export CARGO_HOME="$SRC_ROOT/.cargo"
+	export RUSTFLAGS="-C target-feature=-crt-static"
+	export LIBCLANG_PATH=/usr/lib
+	export CARGO_NET_OFFLINE=true
+	cargo build --release --frozen --offline
+	just rootdir=$PKG install
+}

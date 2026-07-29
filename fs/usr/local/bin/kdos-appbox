@@ -1,0 +1,58 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   kdos-appbox
+#
+# Run an alien app from the kdos-apps distrobox that is baked into the ISO.
+# The image is loaded into podman storage at build time; the box itself is
+# created lazily on first launch — fully offline, from the local image.
+#
+#   kdos-appbox run <app> [args...]   ensure the box, then run the app in it
+#   kdos-appbox ensure                just create the box if missing
+#   kdos-appbox status                image / box state
+#
+# The .desktop launchers in ~/.local/share/applications use `run`.
+
+set -e
+
+BOX=kdos-apps
+IMAGE=localhost/kdos-appbox:latest
+
+err() { echo "kdos-appbox: $*" >&2; exit 1; }
+
+ensure() {
+	podman container exists "$BOX" 2>/dev/null && return 0
+	podman image exists "$IMAGE" 2>/dev/null || err \
+		"the appbox image is not baked into this system — build the ISO after 'make fetch-apps', or when online: kdos app <name>"
+	echo "==> First launch: creating distrobox '$BOX' from the baked image..."
+	distrobox create --name "$BOX" --image "$IMAGE" --yes >/dev/null
+}
+
+case "${1:-}" in
+	run)
+		shift
+		[ $# -ge 1 ] || err "usage: kdos-appbox run <app> [args...]"
+		ensure
+		exec distrobox enter "$BOX" -- "$@"
+		;;
+	ensure)
+		ensure
+		;;
+	status)
+		printf 'image : '; podman image exists "$IMAGE" 2>/dev/null && echo baked || echo missing
+		printf 'box   : '; podman container exists "$BOX" 2>/dev/null && echo created || echo "not created (first launch will)"
+		;;
+	*)
+		cat >&2 <<EOF
+Usage: kdos-appbox run <app> [args...]   run an app from the baked kdos-apps box
+       kdos-appbox ensure                create the box if missing
+       kdos-appbox status                image / box state
+EOF
+		exit 1
+		;;
+esac

@@ -12,10 +12,10 @@
 # depends	: curl cmake python3 llvm libssh2 xz
 
 name=rust
-version=1.92.0
+version=1.93.0
 release=1
-_date=2025-10-30
-_rust=1.91.0
+_date=2025-12-11
+_rust=1.92.0
 _cargo=$_rust
 _triplet=x86_64-unknown-linux-musl
 

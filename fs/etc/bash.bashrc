@@ -130,7 +130,7 @@ fi
 
 # ── Prompt ───────────────────────────────────────────────────────────
 # starship owns the prompt when it is installed; it reads ~/.config/starship.toml,
-# whose palette noctalia regenerates with the active colour scheme. The bare
+# whose palette `kdos theme` regenerates with the active colour scheme. The bare
 # fallback below is what a distrobox (or a rescue shell) gets. Both mark a
 # container so it is always obvious which side of the boundary you are on.
 if command -v starship >/dev/null 2>&1; then

@@ -6,7 +6,7 @@ This file briefs a fresh Claude session on KDOS so it can be useful immediately.
 
 ## What KDOS is
 
-A hand-built Linux distribution following Linux From Scratch principles. **musl libc** + **toybox** userland on the host, **no SystemD**, **Wayland-only** (no Xorg, no XWayland by default). Compositor: **niri** (Smithay/Rust scrollable-tiling). Shell: **noctalia-shell** (QML on a Quickshell fork) — the *only* place Qt 6 is allowed on the host. Everything else "fat" runs in a Podman/distrobox glibc rootfs.
+A hand-built Linux distribution following Linux From Scratch principles. **musl libc** + **toybox** userland on the host, **no SystemD**, **Wayland-only** (no Xorg server). Desktop: **COSMIC** (System76 — Rust/smithay/iced; compositor, panel, launcher, settings, notifications), pinned at one epoch release across all components. **No GTK and no Qt on the host** — the old noctalia-era Qt 6 carve-out is gone. Everything "fat" runs in a Podman/distrobox glibc rootfs. Session entry: `kdos-session` from a tty.
 
 Mascot lives at `kdos.png`. Default wallpaper at `fs/usr/share/backgrounds/kdos/default-wallpaper.png` (penguin, green Matrix glow).
 
@@ -15,8 +15,8 @@ Mascot lives at `kdos.png`. Default wallpaper at `fs/usr/share/backgrounds/kdos/
 ## Hard rules — do not violate
 
 1. **No SystemD.** No `systemd-*` packages on the host. Replacements: `seatd` for seat management, `basu` for sd-bus, `eudev` for udev, `dbus` (not dbus-broker), `dnsmasq` (not systemd-resolved), `wpa_supplicant`/`NetworkManager` (not systemd-networkd).
-2. **No Xorg server.** No `xorg-server`, no display manager, nothing X on the login path. **Xwayland is the one carve-out** (added 2026-07-27): `xwayland` + `xwayland-satellite` (niri spawns it, it maps each X window to a real Wayland toplevel) so X11-only alien apps work. That pulled in the client chain `xorgproto xtrans libXau libXdmcp xcb-proto libxcb libX11 libxkbfile xkbcomp libxshmfence libfontenc libXfont2 xcb-util{,-image,-renderutil,-cursor}` — these exist **only** to satisfy Xwayland/xkbcomp/satellite. A kpkgbuild that wants X for anything else still gets pushed back. Mesa stays `-Dglx=disabled -Dplatforms=wayland`, so Xwayland is built `-Dglx=false`: X clients get no OpenGL. Enabling it means rebuilding mesa with `glx=dri,platforms=wayland,x11` plus libXext/libXfixes/libXdamage/libXrandr/libXxf86vm — not done.
-3. **No GTK on the host.** GTK apps go in distrobox via `kdos-fetch-app`. The single Qt 6 carve-out (carved for noctalia) is documented in the README rule #6.
+2. **No Xorg server.** No `xorg-server`, no display manager, nothing X on the login path. **Xwayland is the one carve-out** (added 2026-07-27): `xwayland`, run rootlessly by cosmic-comp itself, so X11-only alien apps work. That pulled in the client chain `xorgproto xtrans libXau libXdmcp xcb-proto libxcb libX11 libxkbfile xkbcomp libxshmfence libfontenc libXfont2 xcb-util{,-image,-renderutil,-cursor}` — these exist **only** to satisfy Xwayland/xkbcomp. A kpkgbuild that wants X for anything else still gets pushed back. Mesa stays `-Dglx=disabled -Dplatforms=wayland`, so Xwayland is built `-Dglx=false`: X clients get no OpenGL. Enabling it means rebuilding mesa with `glx=dri,platforms=wayland,x11` plus libXext/libXfixes/libXdamage/libXrandr/libXxf86vm — not done.
+3. **No GTK and no Qt on the host.** GUI apps go in distrobox via `kdos-fetch-app`. COSMIC's iced toolkit needs neither; the noctalia-era Qt 6 carve-out is history.
 4. **No `kpkgbuild` rationale comments.** User strips multi-line comment blocks. Keep kpkgbuilds minimal — preserve only the banner header and one-line `# description` / `# homepage` / `# depends`. No "we set X because Y" prose. Belongs in commit messages or this file, not in the kpkgbuild.
 5. **Do not auto-commit.** User commits manually, often squashing many edits into one logical commit. Wait for explicit "commit this" requests.
 6. **Do not run destructive `git` ops without asking.** No `reset --hard`, `clean -f`, `branch -D`, force pushes.
@@ -28,10 +28,78 @@ Mascot lives at `kdos.png`. Default wallpaper at `fs/usr/share/backgrounds/kdos/
 | Ring | Lives in | Purpose |
 |---|---|---|
 | **Core** | `ports/core/` | Hand-compiled host packages (musl + toybox + libs + WM stack) |
-| **GUI sliver** | also `ports/core/` (separate `packages.txt` block) | Wayland compositor, shell, terminal, browser-via-distrobox prerequisites |
+| **GUI sliver** | also `ports/core/` (separate `packages.txt` block) | COSMIC desktop (19 `cosmic-*`/`pop-launcher` Rust ports), foot, Wayland CLI utils |
 | **Outer ring** | distrobox containers | Browsers, IDEs, Slack, GIMP — full glibc apps |
 
 There used to be a **`src/packages/`** namespace for vendored upstream forks (Window Maker era). It's currently empty/removed but the build pipeline still supports it via `PORT_REPO="/ports/core /kdos/src/packages"`. Use it if you ever need to vendor a project to apply local patches without `.patch` files.
+
+### The baked appbox (offline alien apps)
+
+The outer ring ships pre-baked: `ports/appbox/Containerfile` defines an alpine
+`kdos-apps` image (one lightweight app per desktop need — zathura, gimp,
+inkscape, solvespace, kicad, octave, shotcut, firefox-esr, …; gcompat for the
+odd glibc binary, `/.containersetupdone` pre-baked so distrobox-init never
+apk-adds anything at first enter). Because
+`make build` runs `--network none`, the image is built on the HOST with
+`make fetch-apps` → `ports/appbox/appbox.tar` + `icons/` (both gitignored,
+too big for LFS). `script/06_packaging/01_appbox.sh` then `podman load`s it
+into the kdos user's rootless storage inside the chroot — a missing tarball is
+a warning, the ISO builds without it. No container is created at build time:
+the launchers in `fs/etc/skel/.local/share/applications/kdos-*.desktop` call
+`kdos-appbox run <app>`, which creates the distrobox lazily on first launch,
+offline, from the local image. The Containerfile pre-installs distrobox's
+runtime prerequisites — without them the first `distrobox enter` apt-installs
+from the network, which would defeat the point. Packaging-phase snapshots
+exclude `fs/home/kdos/.local/share/containers/*`.
+
+### Icons, the shell's memory, and the two QEMU flavours
+
+- **`/usr/share/icons/hicolor/index.theme` must exist** or every icon lookup in
+  Qt/Quickshell silently fails (pink missing-texture checkerboards). The
+  `hicolor-icon-theme` port provides it and lives in phase-4 packages.txt — it
+  sat in ports/ uninstalled for months. Appbox app icons are installed into the
+  SYSTEM hicolor tree by `01_appbox.sh` (contexts flattened to `apps/`); a
+  user-dir icon tree without its own index.theme is not searched.
+- **`make run` (plain virtio-vga, no virgl) currently has NO desktop**: smithay
+  refuses software EGL renderers ("software EGL renderers are skipped" → "no
+  allocator available"), so the compositor (niri then, cosmic-comp now — same
+  library) gets no outputs. Only `make run-hw` (containerized Ubuntu-qemu 10,
+  virgl+blob — its machine string is "pc-i440fx-noble-v2", easy to mistake for
+  the host qemu) shows the desktop.
+- (Historical, noctalia era: quickshell RSS plateaued ~0.8–1.3 GB from QML JS
+  heap; solved by dropping the stack. If a COSMIC component ever balloons,
+  the same debug method applies.)
+- Debug rig for all of the above: boot the ISO headless with `-serial unix:` +
+  `-monitor unix:` sockets, sendkey `kdos-session` on tty1. **Use
+  `-display egl-headless -vnc :19`**: the gtk,gl=es window path can wedge the
+  guest in a soft-lockup storm once cosmic-comp starts (KDOS_QEMU_DISPLAY
+  overrides it in run.sh), screendump says "no surface" under GL either way,
+  and cosmic-comp has NO wlr-screencopy so grim fails — capture by reading the
+  VNC framebuffer raw (RFB handshake + Raw encoding), or cosmic-screenshot
+  in-session. Escape-only and space-only tty writes don't end fbcon's deferral.
+
+### Console font: kdos-getty, not rcS
+
+fbcon is built with deferred takeover; the takeover re-initialises every VT
+with the kernel's built-in font, which lacks λ (maps it to `l`) and double
+box-drawing — so a setfont in rcS is silently wiped. `/usr/local/sbin/kdos-getty`
+(wrapping both gettys in `fs/etc/inittab`) forces the takeover, loads the font
+and palette verified, then execs getty. Hard-won facts baked into that script:
+
+- **Only a real glyph ends the deferral.** Escape sequences are eaten by the VT
+  state machine and even *spaces* are skipped by the render path — the wrapper
+  prints `K` and clears it. Verified: `' '` → nothing, `'K'` → takeover.
+- The takeover is scheduled work: the wrapper polls dmesg for
+  `fbcon: Taking over console`, then retries setfont until `showconsolefont -i`
+  confirms 16x32.
+- **The font is `ter-kdos32n`** — built in the terminus-font port: the v/xos4-2
+  512-glyph charset (has λ) with six spacing diacritics (¤ ¦ ¨ ¸ ¯ ˝) swapped
+  for `═ ║ ╔ ╗ ╚ ╝`, which xos4-2 lacks and the block logo needs.
+- Palette (`setvtrgb`) loads before the final clear, or the screen ends up
+  half pure-black, half phosphor-black.
+- It traces to `/run/kdos-getty.<tty>.log` for `kdos doctor`-style debugging.
+
+Do not move font/palette setup back into rcS.
 
 ---
 
@@ -52,13 +120,13 @@ kdos/
 │   │   ├── profile            # sources /etc/profile.d/*.sh
 │   │   ├── profile.d/         # 10-wayland.sh sets XDG_RUNTIME_DIR + Qt/Wayland env
 │   │   ├── init.d/            # 01_udev → 80_cups; pattern in service_helper
-│   │   ├── skel/              # ~/.config/niri/config.kdl, etc.
+│   │   ├── skel/              # ~/.config/cosmic/*, foot, btop, starship seeds
 │   │   ├── kpkg.conf          # runtime kpkg config (matches src/kpkg/kpkg.conf)
 │   │   └── X11/               # DOES NOT EXIST — Wayland-only
 │   ├── usr/local/bin/
 │   │   ├── kdos-fetch-app     # distrobox + distrobox-export wrapper
 │   │   ├── kdos-fetch-static  # curl + sha256 + chmod
-│   │   └── niri-session       # `dbus-run-session -- niri --session`
+│   │   └── kdos-session       # `dbus-run-session -- cosmic-session`
 │   └── usr/share/
 │       └── backgrounds/kdos/default-wallpaper.png
 ├── script/                    # build.py orchestrator + phase scripts
@@ -167,7 +235,7 @@ Press **`[P]`** in the startup picker, or drive it from the command line:
 make build BUILD_ARGS="--phases 01_phase1,06_packaging --steps 01_phase1:00_file_system.sh"
 
 # changed a kpkgbuild -> rebuild that port and repackage, no manual kpkgdel
-make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild niri,noctalia-shell"
+make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild cosmic-comp,cosmic-panel"
 
 make build BUILD_ARGS=--plan            # interactive: phase/step checkboxes, '/' searches ports
 ```
@@ -273,7 +341,7 @@ KDOS's Rust toolchain is statically linked against musl. Crates that use `bindge
 export RUSTFLAGS="-C target-feature=-crt-static"
 export LIBCLANG_PATH=/usr/lib
 ```
-Affects: niri, librsvg, anything pulling pipewire-sys, Wayland-rs, etc.
+Affects: the cosmic-* ports, librsvg, anything pulling pipewire-sys, Wayland-rs, etc.
 
 ### CMake 4.x — "Compatibility with CMake < 3.5 has been removed"
 
@@ -292,18 +360,6 @@ Older C code (e.g. libndp 1.9) passes `struct sockaddr_in6 *` to `sendto()` inst
 Symptom: `Error loading shared library libxkbcommon.so.0` when running anything that links it. Caused by meson defaulting to `--prefix=/usr/local --libdir=lib64`.
 
 **Fix:** every meson `setup` call must include `--prefix=/usr --libdir=lib`. Audit any new meson-based port for this. The default landing path `/usr/local/lib64` is NOT in the runtime linker's search path inside the chroot.
-
-### Qt 6 — "Unknown platform linux-g++"
-
-Qt's `QtMkspecHelpers.cmake` derives `QT_MKSPECS_DIR` as `${cmake_dir}/../mkspecs`. cmake configs go to `/usr/lib/cmake/Qt6/`, so it expects mkspecs at `/usr/lib/cmake/mkspecs/` — but Qt's default `INSTALL_MKSPECSDIR=mkspecs` puts them at `/usr/mkspecs/`.
-
-**Fix:** in qt6-base, `-DINSTALL_MKSPECSDIR=lib/cmake/mkspecs`. Already applied; if you see this error, check that flag.
-
-### Qt 6 — "CMake was not built with zstd support"
-
-KDOS's cmake doesn't have zstd archiving. Qt's archiving API needs it.
-
-**Fix:** `-DQT_AVOID_CMAKE_ARCHIVING_API=ON`. Also `-DQT_GENERATE_SBOM=OFF` to skip downstream SBOM lookup chain.
 
 ### libunwind — undefined `__unw_getcontext` / `__libunwind_Registers_x86_64_jumpto`
 
@@ -336,92 +392,38 @@ sudo rm -f build/fs/var/cache/kpkg/packages/<pkg>-*.tar.xz
 make build  # will rebuild from kpkgbuild
 ```
 
-### Desktop theming lives in /etc/skel, and noctalia has two first-run traps
+### Desktop theming — PHOSPHOR on COSMIC
 
-The "PHOSPHOR" look is four seeded configs (`fs/etc/skel/.config/{niri,foot,fuzzel,noctalia}`) plus a colour scheme dropped into noctalia's own asset dir (`fs/usr/share/noctalia-shell/Assets/ColorScheme/KDOS-Phosphor/`) — noctalia only lists schemes found there, so a user-config path will not work. Two things bite on a live ISO, where every boot is a fresh profile:
+COSMIC reads layered RON config: `/usr/share/cosmic` (system defaults) then
+`~/.config/cosmic` (user). KDOS seeds the user side from
+`fs/etc/skel/.config/cosmic/`:
 
-- **A setup wizard** runs when `settings.json` is missing (`Settings.isFreshInstall`), and a **"Privacy Update" telemetry wizard** runs when `settings.json` exists but `~/.cache/noctalia/shell-state.json` has no `changelogState.lastSeenVersion`. Seeding *both* files is what keeps the desktop unblocked; seeding only settings.json swaps one modal for the other. Bump the seeded version when the noctalia-shell port is upgraded, or the changelog shows once.
-- `telemetryEnabled` defaults to false; the seed pins it off explicitly.
-
-Config schemas drift: verify against the shipped version before writing (`niri validate` catches KDL errors; foot 1.26 moved the palette to `[colors-dark]` and the cursor colour into it).
-
-### Who owns which colour — the PHOSPHOR pipeline
-
-The desktop has **one** source of truth per consumer, and two generators. Editing the
-wrong file gets silently overwritten on the next theme switch.
-
-| File | Owner | Notes |
-|---|---|---|
-| `fs/etc/skel/.config/niri/config.kdl` | hand-written | structure, binds, shaders. Colours here are the phosphor default only |
-| `fs/etc/skel/.config/niri/accent.kdl` | **`kdos theme`** | included at the END of config.kdl; niri includes are positional and merge per-field, so it carries colour keys only. niri watches it and live-reloads |
-| `fs/etc/skel/.config/foot/themes/noctalia` | **noctalia templates** | `foot.ini` includes it at the top; anything foot-specific the template does not write (alpha, cursor, urls) goes in `foot.ini` AFTER the include, where it wins |
-| `fs/etc/skel/.config/starship.toml` | mixed | modules hand-written, palette between `# >>> NOCTALIA STARSHIP PALETTE >>>` markers regenerated. Never define `[palettes.noctalia]` outside the markers — two tables is invalid TOML and starship dies |
-| `fs/etc/skel/.config/btop/{btop.conf,themes/noctalia.theme}` | noctalia templates | `btop.conf` must exist or the apply step warns and gives up |
-| `~/.config/gtk-3.0`, `gtk-4.0`, `qt6ct` | noctalia templates | **this is how alien apps get themed** — distrobox bind-mounts `$HOME`, so a GTK app in a Debian box reads the CSS noctalia generated on the host |
-| `fs/etc/skel/.config/fuzzel/fuzzel.ini` | **`kdos theme`** | fuzzel has no include directive, so `kdos` rewrites the `[colors]` block in place with awk. Do NOT enable noctalia's `fuzzel` template — it overwrites the whole file |
-
-`settings.json` enables exactly five templates (`foot starship btop gtk qt`) plus
-`enableUserTheming`. Adding `niri` or `fuzzel` to that list is the mistake to avoid.
-
-**Two traps cost a full debug cycle each — do not rediscover them:**
-
-- **A colour scheme needs `terminal.foreground` / `background` / `selectionFg` /
-  `selectionBg` / `cursorText` / `cursor`.** With a predefined scheme selected, noctalia
-  renders the `*-predefined` template variants, which dereference
-  `colors.terminal_foreground` and friends — flattened from those keys by
-  `inject_terminal_colors()`. A scheme carrying only `terminal.normal` / `terminal.bright`
-  (which is what the KDOS schemes originally had) makes every terminal template die with
-  `Unknown color 'terminal_foreground'`, silently, in the shell's log — foot simply never
-  gets repainted while GTK and btop do. Compare against a bundled scheme (`Gruvbox`) when
-  adding one.
-- **Quickshell finds a running instance by matching `WAYLAND_DISPLAY`, not just the config
-  path.** With it unset, `noctalia ipc call ...` prints *"No running instances for
-  /usr/share/noctalia-shell/shell.qml"* while the shell is plainly on screen — so IPC from
-  a tty, an ssh session, a cron job or any detached script fails. niri's own `spawn-sh`
-  binds inherit the variable and are fine. `kdos theme` recovers it from
-  `$XDG_RUNTIME_DIR/wayland-*` when the caller has none; do the same in anything new.
-
-Layer and window rules are **appended**, not merged, so `accent.kdl` re-states the same
-matches and wins by being later in the file. That is why it can repaint the bar glow and
-the Xwayland border without touching `config.kdl`.
-
-`kdos-hook colors` (wired to noctalia's `colorGeneration` hook) handles what is left over
-after a scheme change. Regenerating a file does not repaint a running process, and what
-can be repainted varies:
-
-| Consumer | On a live theme switch |
+| File (under `~/.config/cosmic/`) | Purpose |
 |---|---|
-| niri | repaints itself — it watches `accent.kdl` |
-| noctalia | repaints itself |
-| tmux | `tmux source-file` from the hook |
-| btop, GTK/Qt apps | next start |
-| **foot** | **never** — see below |
+| `com.system76.CosmicBackground/v1/all` | wallpaper → the penguin |
+| `com.system76.CosmicTheme.Dark.Builder/v1/accent` | accent colour (phosphor) |
+| `com.system76.CosmicTheme.Mode/v1/is_dark` | dark mode |
+| `com.system76.CosmicTk/v1/icon_theme` | `"Cosmic"` (cosmic-icons) |
 
-**foot has no config-reload signal.** In 1.26 `SIGUSR1`/`SIGUSR2` select the
-`[colors-dark]` / `[colors-light]` section that was parsed *at startup*; they do not
-re-read the file. An already-open terminal therefore keeps its palette until it is closed,
-and no amount of signalling changes that. The hook toasts to say so instead of pretending.
+The RON schemas were seeded best-effort. Verified on first boot: wallpaper,
+dark mode and icon-theme seeds WORK; the **Builder accent alone does not** —
+`com.system76.CosmicTheme.Dark/v1/` stays empty until cosmic-settings' UI
+applies a theme (the applied-theme serialization is a large nested RON that
+only the UI writes). Follow-up: open Settings → Appearance once in a live
+session, pick the accent, then copy what it wrote into the skel seeds and
+teach `kdos theme` the full schema. Until then the desktop runs the default
+COSMIC dark palette on the KDOS wallpaper.
 
-**KDOS's `pkill` also has no `-x`/`--exact`.** The procps-ng port is built without it, so
-`pkill -USR1 -x foot` exits 1 and signals nothing — which reads as "the theme did not
-apply" even when the real problem is elsewhere. This also silently no-ops the
-`pkill -SIGUSR2 -x btop` inside noctalia's vendored `Scripts/bash/template-apply.sh`; btop
-picks the new theme up on restart. Not worth patching an upstream script over.
+**`kdos theme <phosphor|amber|ice|bone>`** owns everything else: it writes the
+COSMIC accent (Builder RON), `~/.config/foot/themes/kdos`,
+`~/.config/btop/themes/kdos.theme`, and the palette block between the
+`# >>> KDOS STARSHIP PALETTE >>>` markers in starship.toml. One palette table
+inside `fs/usr/local/bin/kdos` drives all generators. COSMIC repaints itself;
+starship on next prompt; foot and btop on next start (foot cannot reload its
+config, and KDOS's pkill has no `-x`).
 
-### niri custom shaders — the CRT
-
-`window-open`, `window-close` and `window-resize` take a `custom-shader r"..."` block of
-GLSL defining `open_color` / `close_color` / `resize_color`. KDOS uses all three for the
-power-on / power-off / interlace effects. Notes that cost time to rediscover:
-
-- It is a **KDL raw string**, so the GLSL may not contain a double quote anywhere.
-- Sample with `vec3 coords_tex = niri_geo_to_tex * coords_geo; texture2D(niri_tex, coords_tex.st)`.
-  Colour is **premultiplied** — multiply the whole vec4, never just RGB.
-- Useful uniforms: `niri_progress` (may overshoot), `niri_clamped_progress`, `niri_scale`,
-  `niri_random_seed`, `niri_size`. Resize gets `niri_tex_prev`/`_next` and matching matrices.
-- A shader that fails to compile is **not fatal**: niri logs a warning and falls back to
-  the built-in animation. So a broken shader looks like "my animation did nothing".
-- No backwards-compatibility guarantee across niri releases — re-check on upgrade.
+The niri-era CRT window shaders are gone — cosmic-comp has no custom-shader
+API. The CRT identity lives in the boot splash, the TTY, and the palette.
 
 ### The boot splash
 
@@ -468,9 +470,8 @@ single frame at a given intro time to a PPM.
 
 ### The `kdos` command
 
-`fs/usr/local/bin/kdos` is the front door: `help` (cheat sheet **parsed out of the live
-niri config**, so it cannot go stale), `theme`, `status` (`--bar` feeds the noctalia
-CustomButton widget), `doctor`, `app`, `version`. `kdos-shot`, `kdos-hook` and the older
+`fs/usr/local/bin/kdos` is the front door: `help` (commands + COSMIC keybind
+cheat sheet), `theme`, `status`, `doctor`, `app`, `version`. `kdos-shot` and the older
 `kdos-fetch-app` / `kdos-fetch-static` sit alongside it.
 
 `kdos doctor` checks the things that have actually broken on this distro before —
@@ -486,7 +487,7 @@ The known trap (a meson port without `--prefix=/usr` landing in `/usr/local`) ha
 edge: **the stale `/usr/local/**/pkgconfig/*.pc` shadows the fixed one.** xkeyboard-config
 had this; after fixing its prefix and rebuilding, libxkbcommon still baked
 `/usr/local/share/xkeyboard-config-2` because the old `.pc` was still on the pkg-config
-path, and niri then panicked with `BadKeymap` at startup. When you fix a prefix, delete the
+path, and the compositor then panicked with `BadKeymap` at startup. When you fix a prefix, delete the
 old files *and* the old `.pc`, then rebuild the consumers. Still outstanding:
 `libinput` installs to `/usr/local/lib64` (port has no `--prefix`), it works only because
 its consumers were linked against that path.
@@ -596,7 +597,7 @@ build() {
 
 **At runtime:**
 - `45_seatd.sh` starts seatd at boot
-- NetworkManager started... actually currently no init script for NM (TODO if not added). User runs `nmcli` or noctalia widget.
+- NetworkManager started... actually currently no init script for NM (TODO if not added). User runs `nmcli` or the COSMIC network applet.
 
 ---
 

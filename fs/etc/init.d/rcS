@@ -24,26 +24,10 @@ splash step "MOUNTING FILESYSTEMS"
 mount -a
 splash ok
 
-# Console font. Set here rather than in /etc/profile: KDFONTOP needs root, so a
-# non-root login shell only ever printed an error. -C names the VT explicitly
-# because rcS itself may be running on the serial console.
-splash step "CONSOLE"
-if [ -x /usr/bin/setfont ]; then
-    for _tty in /dev/tty1 /dev/tty2; do
-        [ -c "$_tty" ] && setfont -C "$_tty" ter-v32n 2>/dev/null
-    done
-    unset _tty
-fi
-
-# Console palette. PIO_CMAP sets the default colour map for the whole VT
-# subsystem, so the text console is phosphor green from the first login prompt
-# on — before anything Wayland exists. setvtrgb has no -C, and rcS may be
-# running on the serial console, so stdin is redirected from a real VT to give
-# it a console fd to ioctl.
-if [ -x /usr/bin/setvtrgb ] && [ -r /etc/vtrgb ] && [ -c /dev/tty0 ]; then
-    setvtrgb /etc/vtrgb < /dev/tty0 > /dev/tty0 2>/dev/null
-fi
-splash ok
+# Console font and palette are NOT set here: fbcon's deferred take-over (which
+# happens when the first getty writes to its VT, after rcS is long gone) resets
+# every VT to the kernel's built-in font, wiping whatever setfont loaded.
+# /usr/local/sbin/kdos-getty does both, per VT, at the only time it sticks.
 
 # Make / recursively shared. systemd does this at PID1; OpenRC/Alpine document the
 # same. Rootless podman/crun require a shared root for mount propagation, otherwise
