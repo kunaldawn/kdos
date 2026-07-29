@@ -11,10 +11,10 @@
 #
 # kdos-shot [region|screen|window] — screenshot to the clipboard AND to disk.
 #
-# niri's own Print binding opens an interactive picker that saves a file. This
-# is the other half: one keystroke, region selected with the mouse, image on the
+# COSMIC's own PrtSc opens an interactive picker that saves a file. This is
+# the other half: one keystroke, region selected with the mouse, image on the
 # clipboard ready to paste, a copy filed under ~/Pictures/Screenshots, and a
-# toast through noctalia so you know it worked.
+# desktop notification so you know it worked.
 
 set -u
 
@@ -23,12 +23,30 @@ DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}/Screenshots"
 FILE="$DIR/kdos-$(date +%Y%m%d-%H%M%S).png"
 
 toast() {
-    command -v noctalia >/dev/null 2>&1 || return 0
-    noctalia ipc call toast send "{\"title\":\"$1\",\"body\":\"$2\",\"type\":\"${3:-notice}\"}" >/dev/null 2>&1 || true
+    # cosmic-notifications speaks org.freedesktop.Notifications; gdbus ships
+    # with glib. Best effort — a screenshot must never fail on a notification.
+    command -v gdbus >/dev/null 2>&1 || return 0
+    gdbus call --session --dest org.freedesktop.Notifications \
+        --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.Notify \
+        kdos-shot 0 "" "$1" "$2" '[]' '{}' 5000 >/dev/null 2>&1 || true
 }
 
-command -v grim >/dev/null 2>&1 || { echo "kdos-shot: grim is not installed" >&2; exit 1; }
 mkdir -p "$DIR"
+
+# cosmic-comp does not implement wlr-screencopy, so grim only works on
+# compositors that do. The portal path (cosmic-screenshot) is the native way.
+if ! grim -t png /dev/null 2>/dev/null && command -v cosmic-screenshot >/dev/null 2>&1; then
+	out="$(cosmic-screenshot --interactive=false --save-dir "$DIR" 2>/dev/null)" || {
+		echo "kdos-shot: cosmic-screenshot failed" >&2; exit 1; }
+	[ -n "$out" ] && [ -r "$out" ] && {
+		command -v wl-copy >/dev/null 2>&1 && wl-copy --type image/png < "$out"
+		toast "Screenshot copied" "$(basename "$out")"
+		echo "$out"
+		exit 0
+	}
+fi
+command -v grim >/dev/null 2>&1 || { echo "kdos-shot: grim is not installed" >&2; exit 1; }
 
 case "$MODE" in
     region)
@@ -37,15 +55,14 @@ case "$MODE" in
         # cancelled with Escape — that is a user decision, not a failure.
         geom="$(slurp -b 000a03cc -c 39ff14ff -s 39ff1420 -w 2 2>/dev/null)" || exit 0
         [ -n "$geom" ] || exit 0
-        grim -g "$geom" "$FILE" || { toast "Screenshot failed" "grim could not capture the region" error; exit 1; }
+        grim -g "$geom" "$FILE" || { toast "Screenshot failed" "grim could not capture the region"; exit 1; }
         ;;
     screen|full)
-        grim "$FILE" || { toast "Screenshot failed" "grim could not capture the output" error; exit 1; }
+        grim "$FILE" || { toast "Screenshot failed" "grim could not capture the output"; exit 1; }
         ;;
     window)
-        # niri's IPC reports a focused window's SIZE but not its position on the
-        # output, which is what grim -g needs. Rather than guess, hand it to the
-        # region picker — niri's own Alt+Print does true per-window capture.
+        # Per-window capture needs the compositor's help; hand it to the
+        # region picker instead of guessing geometry.
         exec "$0" region
         ;;
     *)

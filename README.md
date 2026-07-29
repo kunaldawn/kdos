@@ -17,7 +17,7 @@ Most distros give you a house. KDOS gives you a pile of bricks, a trowel, and a 
 3.  **Toybox** — one binary that rules them all.
 4.  **No SystemD** — we init like our ancestors did. `inittab`, serial `init.d`, simple service helpers.
 5.  **No Xorg server** — Wayland-only. The one carve-out is **Xwayland**, spawned per-session by `xwayland-satellite` so X11-only alien apps (GIMP 2.x, Wine, older IDEs) get a real tiled window instead of nothing. No `Xorg`, no display manager, no X on the login path — and no GLX: mesa stays `platforms=wayland`, so X clients get 2D only.
-6.  **No GTK / GNOME / KDE / XFCE on the host** — fat GUI apps live in a Podman container alongside their glibc. *Qt 6 is the single carved-out exception, present only because the shell layer (Quickshell + noctalia) is QML.*
+6.  **No GTK / Qt / GNOME / KDE / XFCE on the host** — fat GUI apps live in a Podman container alongside their glibc. COSMIC's iced toolkit needs none of them.
 7.  **KPKG** — our own package manager. For fun, and because we earned it.
 
 ---
@@ -29,7 +29,7 @@ KDOS organizes itself into three concentric rings, each with a distinct philosop
 | Ring | What lives here | Backed by |
 |------|-----------------|-----------|
 | **Core** | musl, toybox, kpkg, kernel, init scripts | hand-compiled, in `ports/core/` |
-| **GUI sliver** | niri compositor, noctalia shell, Wayland CLI utils | hand-compiled, Wayland-native |
+| **GUI sliver** | COSMIC desktop, foot terminal, Wayland CLI utils | hand-compiled, Wayland-native |
 | **Outer ring** | Browsers, IDEs, Slack, GIMP, Steam — the fat stuff | distrobox + glibc rootfs (Debian by default) |
 
 ---
@@ -65,68 +65,68 @@ The system ships one human user, **`kdos` / `kdos`** (uid 1000, in `wheel`, so `
 
 ---
 
-## The GUI Sliver: niri + noctalia (Wayland)
+## The GUI Sliver: COSMIC (Wayland)
 
 To start a graphical session from a tty login:
 
 ```sh
-niri-session
+kdos-session
 ```
 
-That wraps `niri --session` in `dbus-run-session`. The skel config (`~/.config/niri/config.kdl`) auto-spawns the shell on session start.
+That wraps `cosmic-session` in `dbus-run-session`. COSMIC brings the whole
+desktop — compositor, panel, launcher, app library, settings, notifications,
+files — as one pinned set of Rust ports, on the same seatd/smithay stack the
+distro already spoke.
 
-**The session has a look: "PHOSPHOR".** A 1983 green-screen terminal that happens to run a scrollable-tiling compositor — sharp 2px phosphor frames, a green CRT glow around the focused window, a bitmap font in the terminal, and workspaces named `main` `code` `net` `media` `sys` instead of 1–9. The console is green too: `setvtrgb` loads the palette in `rcS`, so tty1 is phosphor before anything Wayland exists.
+**The session has a look: "PHOSPHOR".** A 1983 green-screen terminal that
+happens to run a modern floating/tiling desktop — phosphor-green accent, dark
+CRT palette, a bitmap font in the terminal. The console is green too:
+`setvtrgb` loads the palette in `rcS`, so tty1 is phosphor before anything
+Wayland exists.
 
-**Windows switch on and off like a CRT.** niri lets an animation be a fragment shader, so KDOS ships three:
-
-- **open** — the picture unfolds vertically from a hairline while the deflection settles, scanline banding and a green wash burning off as the tube warms up
-- **close** — the inverse, in the order real hardware did it: collapse to a hairline, pinch horizontally to a dot, decay
-- **resize** — an interlaced crossfade, odd scanlines switching to the new geometry before the even ones
-
-A shader that fails to compile is not fatal — niri warns and falls back — so this degrades to a normal animation on hardware that dislikes it.
-
-**One palette, four accents, every app.** `kdos theme phosphor|amber|ice|bone` repaints the desktop live. niri picks it up by watching an included `accent.kdl`; noctalia's template processor regenerates foot, starship, btop, GTK and Qt from the matching colour scheme. Because distrobox bind-mounts `$HOME`, **the GTK and Qt files it writes are the ones alien apps read** — a GIMP running in a Debian box comes up in the same green as the compositor around it. The compositor and shell repaint immediately; terminals that are already open keep their palette until they are closed, because foot has no config-reload signal.
+**One palette, four accents.** `kdos theme phosphor|amber|ice|bone` writes the
+COSMIC accent (the settings daemon live-applies it) and regenerates the foot,
+btop and starship palettes from one table.
 
 | Config | Owner | What it themes |
 |---|---|---|
-| `.config/niri/config.kdl` | you | structure, binds, shaders |
-| `.config/niri/accent.kdl` | `kdos theme` | frames, glow, overview, bar shadow |
-| `.config/foot/themes/noctalia` | noctalia | terminal palette (foot.ini includes it) |
+| `.config/cosmic/` | cosmic-settings + `kdos theme` | desktop, accent, wallpaper |
+| `.config/foot/themes/kdos` | `kdos theme` | terminal palette (foot.ini includes it) |
 | `.config/starship.toml` | mixed | prompt hand-written, palette regenerated |
-| `.config/btop/themes/noctalia.theme` | noctalia | system monitor |
-| `~/.config/gtk-{3,4}.0`, `qt6ct` | noctalia | **alien apps in distrobox** |
-| `.config/fuzzel/fuzzel.ini` | `kdos theme` | launcher (no include directive, rewritten in place) |
-| `.config/noctalia/settings.json` | you | bar layout, desktop widgets, hooks, idle |
+| `.config/btop/themes/kdos.theme` | `kdos theme` | system monitor |
 
-Keys worth knowing: `Mod+Return` terminal, `Mod+D` fuzzel, `Mod+Space` shell launcher, `Mod+E` files, `Mod+O` overview, `Alt+Tab` MRU switcher with live previews, `Mod+1..5` named workspaces, `Mod+T` next accent, `Mod+Print` region screenshot to clipboard, `Mod+Shift+Slash` for the overlay and `Mod+Slash` for the full cheat sheet. Volume/brightness/media keys route through noctalia's IPC, so its OSD stays in sync.
+Keys worth knowing: `Super` launcher, `Super+T` terminal, `Super+A` app
+library, `Super+Q` close, `Super+Y` toggle tiling, `Super+1..9` workspaces,
+`PrtSc` screenshot. Remap anything in Settings → Keyboard.
 
 **The `kdos` command** is the front door:
 
 ```sh
-kdos help          # cheat sheet, parsed out of the live niri config so it can't go stale
-kdos theme amber   # repaint niri, foot, fuzzel, btop, starship, GTK, Qt
+kdos help          # commands + keybind cheat sheet
+kdos theme amber   # repaint COSMIC, foot, btop, starship
 kdos app gimp      # install an alien app into a container
-kdos status        # packages, containers, exported apps  (--bar feeds the bar widget)
+kdos status        # packages, containers, exported apps
 kdos doctor        # check the session for the things that actually break here
 kdos-shot region   # screenshot to the clipboard and ~/Pictures/Screenshots
 ```
 
-**The compositor stack:**
+**The desktop stack:**
 
 | Layer | What it is |
 |-------|-----------|
-| `niri` | Wayland compositor — Smithay-based, scrollable-tiling, Rust |
-| `noctalia-shell` | Desktop shell — bars, panels, notifications, lock screen, widgets (QML) |
-| `noctalia-qs` | Quickshell fork that runs noctalia's QML (Qt 6) |
+| `cosmic-comp` | Wayland compositor — smithay, Rust, floating + tiling |
+| `cosmic-panel` + applets | bar, tray, network/audio/battery applets |
+| `cosmic-launcher` / `pop-launcher` | Super-key launcher and its search backend |
+| `cosmic-settings(-daemon)` | settings UI and the daemon that live-applies config |
+| `xdg-desktop-portal-cosmic` | screenshots, screencast, file pickers |
 | `seatd` | Seat manager — auto-started by `/etc/init.d/45_seatd.sh` |
-| `xdg-desktop-portal` + `-wlr` | Portal layer — screencast, file picker, no GTK |
+| `xdg-desktop-portal` | Portal front-end (cosmic backend above) |
 | `basu` | sd-bus library extracted from systemd (no-systemd D-Bus glue for portals) |
 | `/etc/profile.d/10-wayland.sh` | Sets `XDG_RUNTIME_DIR`, `QT_QPA_PLATFORM=wayland`, etc. on every login |
 
 **Companion CLI utils** (kept tiny, all Wayland-native):
 
-- `foot` — terminal emulator (the daily driver; `Mod+Return`)
-- `fuzzel` — keyboard launcher (`Mod+D`)
+- `foot` — terminal emulator (the daily driver; `Super+T`)
 - `grim` + `slurp` — screenshot + region selector
 - `wl-clipboard` — `wl-copy` / `wl-paste`
 - `imv` — image viewer with SVG and animated GIF support
@@ -151,7 +151,7 @@ kdos-fetch-app gimp           # same for gimp
 kdos-fetch-app --remove gimp  # remove the export and uninstall in the box
 ```
 
-A `.desktop` file lands in `~/.local/share/applications/` — `fuzzel` and `noctalia` pick it up automatically. The host musl tree never sees a single glibc dep.
+A `.desktop` file lands in `~/.local/share/applications/` — the COSMIC launcher and app library pick it up automatically. The host musl tree never sees a single glibc dep.
 
 For single-binary tools (Zig, Go binaries, single-binary Rust apps), there's also:
 
@@ -180,7 +180,7 @@ make clean    # nuke the build/ tree
 - `build/fs/` — the populated rootfs (chroot-able for inspection)
 - `build/kdos.qcow2` — persistent disk image used by `make rundisk`
 
-A clean build takes 2–4 hours depending on hardware (Qt 6 alone is ~30 min on 8 cores; gstreamer adds ~15 min). Incremental rebuilds are fast — the build system marks completion of each phase and skips re-doing finished work.
+A clean build takes 2–4 hours depending on hardware (the Rust desktop ports dominate; gstreamer adds ~15 min). Incremental rebuilds are fast — the build system marks completion of each phase and skips re-doing finished work.
 
 ---
 
@@ -192,7 +192,7 @@ kdos/
 ├── src/                      # KDOS-authored tools (kpkg, kinstall)
 ├── fs/                       # files copied verbatim into the rootfs
 │   ├── etc/                  # inittab, init.d/, profile, profile.d/, skel/
-│   ├── usr/local/bin/        # kdos-fetch-app, kdos-fetch-static, niri-session
+│   ├── usr/local/bin/        # kdos, kdos-fetch-app, kdos-fetch-static, kdos-session
 │   └── usr/share/            # backgrounds, branding
 ├── script/                   # phase-by-phase build orchestrator (Python TUI)
 ├── testing/                  # standalone per-port build tests

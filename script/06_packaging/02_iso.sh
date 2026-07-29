@@ -73,6 +73,15 @@ else
     echo "Warning: KDOS boot banner not found — rEFInd will use its own"
 fi
 
+# The mascot as the OS selector icon, replacing rEFInd's stock tux.
+OS_ICON=os_linux.png
+if [ -f /usr/share/kdos/boot/os_kdos.png ]; then
+    cp /usr/share/kdos/boot/os_kdos.png $ISO_ROOT/EFI/BOOT/icons/os_kdos.png
+    OS_ICON=os_kdos.png
+else
+    echo "Warning: KDOS mascot icon not found — using rEFInd's tux"
+fi
+
 cat > $ISO_ROOT/EFI/BOOT/refind.conf <<EOF
 timeout 5
 banner /EFI/BOOT/kdos-banner.png
@@ -85,14 +94,14 @@ menuentry "KDOS Live" {
     loader /EFI/BOOT/vmlinuz
     initrd /EFI/BOOT/initramfs.cpio.gz
     options "root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3"
-    icon /EFI/BOOT/icons/os_linux.png
+    icon /EFI/BOOT/icons/$OS_ICON
 }
 
 menuentry "KDOS Live (verbose)" {
     loader /EFI/BOOT/vmlinuz
     initrd /EFI/BOOT/initramfs.cpio.gz
     options "root=/dev/ram0 rw console=tty0 console=ttyS0 loglevel=7"
-    icon /EFI/BOOT/icons/os_linux.png
+    icon /EFI/BOOT/icons/$OS_ICON
 }
 EOF
 

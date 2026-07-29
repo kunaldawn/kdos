@@ -59,15 +59,21 @@ fi
 # gl=es, NOT gl=on: gl=on makes QEMU's gtk-egl path ask for a desktop-GL (core)
 # context, which presents a BLACK window on this host (NVIDIA + Xorg) — the guest
 # is fine, only the host blit is lost. gl=es asks for a GLES context and presents
-# correctly, with virgl+blob still HW-accelerated (noctalia renders).
+# correctly, with virgl+blob still HW-accelerated.
+#
+# cosmic-comp CAN wedge the whole guest (soft-lockup storm, vCPUs spinning on
+# the virtio-gpu queue) through the gtk,gl=es path on this host, while
+# `egl-headless` is rock solid. If the desktop freezes the VM, run headless:
+#   KDOS_QEMU_DISPLAY=egl-headless testing/qemu-hw/run.sh iso   (view via -vnc)
 GPU_ARGS=(
     -object memory-backend-memfd,id=mem,size="$MEM",share=on
     -machine pc,memory-backend=mem,accel=kvm
     -m "$MEM"
     -cpu host
+    -smp "$(nproc)"
     -vga none
     -device virtio-vga-gl,blob=true,hostmem=4G,xres=1920,yres=1080
-    -display gtk,gl=es
+    -display "${KDOS_QEMU_DISPLAY:-gtk,gl=es}"
 )
 
 case "$MODE" in
