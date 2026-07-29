@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Xournal++
+Comment=Xournal++ (alien app, kdos-apps box)
+Exec=kdos-appbox run xournalpp %f
+Icon=com.github.xournalpp.xournalpp
+Terminal=false
+Categories=Office;GNOME;GTK;
+X-KDOS-Alien=true

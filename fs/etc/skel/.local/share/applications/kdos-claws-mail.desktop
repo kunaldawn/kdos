@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=Claws Mail
-Comment=Email client (alien app, kdos-apps box)
-Exec=kdos-appbox run claws-mail %U
+Comment=Claws Mail (alien app, kdos-apps box)
+Exec=kdos-appbox run claws-mail %u
 Icon=claws-mail
 Terminal=false
 Categories=Network;Email;

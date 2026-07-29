@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Kdenlive
+Comment=Kdenlive (alien app, kdos-apps box)
+Exec=kdos-appbox run kdenlive %F
+Icon=kdenlive
+Terminal=false
+Categories=Qt;KDE;AudioVideo;AudioVideoEditing;
+X-KDOS-Alien=true

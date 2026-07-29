@@ -8,45 +8,116 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# The kdos-apps distrobox image: one lightweight app per desktop need, baked
-# into the ISO so an offline machine works out of the box. Built on the HOST
-# with `make fetch-apps` (the sandboxed ISO build has no network), loaded into
-# the kdos user's podman storage by script/06_packaging/01_appbox.sh.
+# The kdos-apps distrobox image: the offline software library. One best-of
+# open-source GUI app per professional/student/home need — the whole point is
+# a fat Knoppix-style bootable stick that works with no internet, ever. Built
+# on the HOST with `make fetch-apps` (the sandboxed ISO build has no network),
+# loaded into the kdos user's podman storage by script/06_packaging/01_appbox.sh.
 #
-# Alpine base: much smaller than debian, and every app below exists in the
-# 3.23 repos. gcompat is included so the odd glibc-only binary still runs.
+# Debian trixie base: alpine 3.23 has no slicer (prusa/cura), no VSCode build,
+# no calibre/gtkwave — debian has the lot, glibc means AppImages and vendor
+# binaries also run. --no-install-recommends everywhere, with the data packages
+# that actually matter added back explicitly (kicad-{symbols,footprints,
+# templates} yes, kicad-packages3d's 5 GB no).
 #
 # The distrobox prerequisite block pre-installs what `distrobox enter` would
-# otherwise apk-add on first entry, and /.containersetupdone tells
+# otherwise apt-get on first entry, and /.containersetupdone tells
 # distrobox-init to skip its package-setup phase entirely — without both, the
 # first launch needs network, which defeats the point.
 
-FROM alpine:3.23
+FROM debian:trixie-slim
 
-# distrobox runtime prerequisites (distrobox-init's alpine list + basics)
-RUN apk add --no-cache \
-        alpine-base bash bash-completion bc bzip2 coreutils curl diffutils \
-        findutils gcompat less libc-utils lsof man-pages mandoc musl-utils \
-        openssh-client-default pinentry procps shadow sudo tar tzdata \
-        util-linux vte3 wget which xz zip unzip
+ENV DEBIAN_FRONTEND=noninteractive
 
-# GUI plumbing: GL/EGL for GTK, icons, fonts
-RUN apk add --no-cache \
-        mesa-dri-gallium mesa-egl mesa-gl \
-        adwaita-icon-theme font-dejavu font-liberation
+# distrobox runtime prerequisites (distrobox-init's debian list + basics)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash bc bzip2 ca-certificates curl diffutils findutils gnupg2 less \
+        libnss-myhostname libvte-2.91-common libvte-common lsof man-db \
+        manpages mount ncurses-base passwd pinentry-curses procps sudo tar \
+        time tree tzdata unzip util-linux wget xz-utils zip \
+    && rm -rf /var/lib/apt/lists/*
 
-# The apps — one per need, lightweight picks
-RUN apk add --no-cache \
-        zathura zathura-pdf-poppler zathura-djvu zathura-cb \
-        abiword gnumeric foliate zim mousepad geany \
-        drawing gimp inkscape gthumb \
-        solvespace kicad \
-        octave gnuplot py3-numpy py3-scipy py3-matplotlib py3-sympy \
-        qalculate-gtk xfburn \
-        audacity audacious shotcut mpv \
-        simple-scan claws-mail transmission-gtk \
-        pcmanfm xarchiver \
-        firefox-esr
+# GUI plumbing: GL/EGL, icons, fonts, mime, dbus
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1-mesa-dri libegl1 libgl1 mesa-vulkan-drivers \
+        adwaita-icon-theme hicolor-icon-theme librsvg2-common \
+        fonts-dejavu fonts-liberation fonts-noto-core \
+        dbus-x11 xdg-utils desktop-file-utils shared-mime-info \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ebooks, PDF, office, notes
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        zathura zathura-pdf-poppler zathura-djvu zathura-cb sioyek \
+        calibre foliate pdfarranger xournalpp \
+        libreoffice libreoffice-gtk3 gnucash zim mousepad \
+    && rm -rf /var/lib/apt/lists/*
+
+# Graphics / photo / publishing suite
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gimp inkscape krita darktable scribus drawing gthumb \
+        blender fontforge font-manager simple-scan \
+    && rm -rf /var/lib/apt/lists/*
+
+# CAD, 3D printing, electronics
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        freecad openscad prusa-slicer solvespace \
+        kicad kicad-symbols kicad-footprints kicad-templates \
+        gtkwave ngspice \
+    && rm -rf /var/lib/apt/lists/*
+
+# Science & maths
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        octave gnuplot qalculate-gtk stellarium maxima wxmaxima \
+        python3-numpy python3-scipy python3-matplotlib python3-sympy \
+    && rm -rf /var/lib/apt/lists/*
+
+# Audio: editing, DAWs, music production, tagging
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        audacity audacious ardour hydrogen lmms easyeffects musescore picard \
+    && rm -rf /var/lib/apt/lists/*
+
+# Video: player, editors, capture, transcode, burn
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        mpv shotcut kdenlive frei0r-plugins obs-studio handbrake xfburn \
+    && rm -rf /var/lib/apt/lists/*
+
+# Internet & communication
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        firefox-esr claws-mail transmission-gtk dino-im hexchat remmina \
+        wireshark \
+    && rm -rf /var/lib/apt/lists/*
+
+# Development
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        geany meld ghex zeal git sqlitebrowser \
+    && rm -rf /var/lib/apt/lists/*
+
+# VSCodium — the open-source VS Code build (MIT, no telemetry); not in debian
+RUN apt-get update \
+    && url=$(curl -s https://api.github.com/repos/VSCodium/vscodium/releases/latest \
+        | grep browser_download_url | grep 'amd64.deb"' | grep -v insiders | cut -d'"' -f4 | head -1) \
+    && curl -Lo /tmp/codium.deb "$url" \
+    && apt-get install -y --no-install-recommends /tmp/codium.deb \
+    && rm -f /tmp/codium.deb && rm -rf /var/lib/apt/lists/*
+
+# Utilities, backup & recovery
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        pcmanfm xarchiver keepassxc gparted gnome-disk-utility baobab \
+        gsmartcontrol bleachbit deja-dup testdisk grsync goldendict-ng \
+    && rm -rf /var/lib/apt/lists/*
+
+# Games (offline classics)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        supertux supertuxkart wesnoth openttd luanti \
+        gnome-chess aisleriot gnome-mines gnome-sudoku quadrapassel \
+    && rm -rf /var/lib/apt/lists/*
+
+# Emulators
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        retroarch retroarch-assets libretro-core-info \
+        libretro-nestopia libretro-gambatte libretro-mgba libretro-desmume \
+        dosbox mgba-qt desmume scummvm mednafen \
+    && rm -rf /var/lib/apt/lists/*
 
 # distrobox-init: skip the package-setup phase — everything is pre-baked
 RUN touch /.containersetupdone

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Blender
+Comment=Blender (alien app, kdos-apps box)
+Exec=kdos-appbox run blender %f
+Icon=blender
+Terminal=false
+Categories=Graphics;3DGraphics;
+X-KDOS-Alien=true

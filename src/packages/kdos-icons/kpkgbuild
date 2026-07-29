@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: KDOS phosphor icon theme derived from cosmic-icons
+# depends	: cosmic-icons python3
+
+name=kdos-icons
+version=1.0.0
+release=1
+source=""
+
+build() {
+	python3 "$PORT_SRC/recolor.py" \
+		/usr/share/icons/Cosmic/scalable \
+		/usr/share/icons/hicolor/scalable/apps \
+		"$PKG/usr/share/icons/KDOS"
+	install -Dm644 "$PORT_SRC/kdos-icon-256.png" \
+		"$PKG/usr/share/icons/KDOS/256x256/apps/distributor-logo-kdos.png"
+	install -Dm644 "$PORT_SRC/kdos-icon-256.png" \
+		"$PKG/usr/share/icons/KDOS/256x256/apps/start-here.png"
+}

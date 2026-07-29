@@ -4,6 +4,13 @@
 # vars Wayland-aware toolkits look for.
 
 uid=$(id -u)
+# A bare console (serial getty, rescue shell) can land here with HOME unset;
+# every $HOME-derived export below would then silently become "//..." and
+# follow the session around through su. Derive it from passwd instead.
+if [ -z "$HOME" ]; then
+	HOME=$(getent passwd "$uid" | cut -d: -f6)
+	[ -n "$HOME" ] && export HOME || HOME=/root
+fi
 if [ -z "$XDG_RUNTIME_DIR" ]; then
 	export XDG_RUNTIME_DIR="/run/user/$uid"
 fi

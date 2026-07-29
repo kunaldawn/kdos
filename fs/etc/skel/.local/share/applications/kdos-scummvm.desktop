@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ScummVM
+Comment=ScummVM (alien app, kdos-apps box)
+Exec=kdos-appbox run scummvm
+Icon=org.scummvm.scummvm
+Terminal=false
+Categories=Game;AdventureGame;
+X-KDOS-Alien=true

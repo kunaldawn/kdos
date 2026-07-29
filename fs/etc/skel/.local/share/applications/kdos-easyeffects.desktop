@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Easy Effects
+Comment=Easy Effects (alien app, kdos-apps box)
+Exec=kdos-appbox run easyeffects
+Icon=com.github.wwmm.easyeffects
+Terminal=false
+Categories=GTK;AudioVideo;Audio;
+X-KDOS-Alien=true

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=LMMS
+Comment=LMMS (alien app, kdos-apps box)
+Exec=kdos-appbox run lmms %f
+Icon=lmms
+Terminal=false
+Categories=Qt;AudioVideo;Audio;Midi;
+X-KDOS-Alien=true
