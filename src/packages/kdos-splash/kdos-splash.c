@@ -59,6 +59,8 @@
 #include <unistd.h>
 #include <linux/fb.h>
 
+#include "penguin.h"
+
 #define FIFO_PATH "/dev/.kdos-splash"
 
 /* PHOSPHOR. Keep in sync with the desktop palette in accent.kdl. */
@@ -220,9 +222,87 @@ static void draw_text(int x, int y, const char *s, int scale, int tracking, uint
 
 /* ----------------------------------------------------------------- frame */
 
-static int logo_scale, logo_track, logo_x, logo_y;
+static inline uint32_t mix_rgb(uint32_t a, uint32_t b, double t);
+
+/*
+ * The block-art wordmark, the same one every KDOS text file carries, encoded
+ * with one ASCII token per character cell so the C string stays single-byte:
+ *   '#' = █    '=' = ═    '|' = ║    '{' = ╔    '}' = ╗    '[' = ╚    ']' = ╝
+ */
+#define ART_ROWS 6
+#define ART_COLS 33
+static const char *art[ART_ROWS] = {
+	"##}  ##}######}  ######} #######}",
+	"##| ##{]##{==##}##{===##}##{====]",
+	"#####{] ##|  ##|##|   ##|#######}",
+	"##{=##} ##|  ##|##|   ##|[====##|",
+	"##|  ##}######{][######{]#######|",
+	"[=]  [=][=====]  [=====] [======]",
+};
+
+/* Mascot palette. Index 0 is transparent; order matches penguin.h. */
+static const uint32_t peng_pal[6] = {
+	0, 0x000000, 0xe8ffee, C_AMBER, C_PHOS, C_PHOSDIM
+};
+
+static int art_cw, art_ch, art_lt, art_x, art_y;
+static int peng_scale, peng_x, peng_y;
 static int sub_y, tag_y, rule_y;
 static int body_scale, body_x, body_y, body_step, body_max;
+
+/* One character cell of the wordmark: a solid block, or the box-drawing
+ * borders reduced to single thick strokes. */
+static void draw_art_cell(int x, int y, char c, uint32_t col)
+{
+	int mx = x + art_cw / 2 - art_lt / 2;
+	int my = y + art_ch / 2 - art_lt / 2;
+
+	switch (c) {
+	case '#': fill(x, y, art_cw, art_ch, col); break;
+	case '=': fill(x, my, art_cw, art_lt, col); break;
+	case '|': fill(mx, y, art_lt, art_ch, col); break;
+	case '{': fill(mx, my, x + art_cw - mx, art_lt, col);
+		  fill(mx, my, art_lt, y + art_ch - my, col); break;
+	case '}': fill(x, my, mx + art_lt - x, art_lt, col);
+		  fill(mx, my, art_lt, y + art_ch - my, col); break;
+	case '[': fill(mx, my, x + art_cw - mx, art_lt, col);
+		  fill(mx, y, art_lt, my + art_lt - y, col); break;
+	case ']': fill(x, my, mx + art_lt - x, art_lt, col);
+		  fill(mx, y, art_lt, my + art_lt - y, col); break;
+	default: break;
+	}
+}
+
+static void draw_art(int x, int y, uint32_t bright, uint32_t dim)
+{
+	for (int j = 0; j < ART_ROWS; j++) {
+		/* logo.txt renders the top half bold-green and the bottom half
+		 * plain-green; keep that split. */
+		uint32_t col = bright;
+		if (dim != bright && j >= ART_ROWS / 2)
+			col = mix_rgb(bright, dim, 0.35);
+		for (int i = 0; i < ART_COLS; i++)
+			draw_art_cell(x + i * art_cw, y + j * art_ch,
+				      art[j][i], col);
+	}
+}
+
+static void draw_penguin(int x, int y, int scale)
+{
+	int px2 = 0, py2 = 0;
+	for (size_t i = 0; i + 1 < sizeof(penguin_rle); i += 2) {
+		int idx = penguin_rle[i];
+		int run = penguin_rle[i + 1];
+		if (idx)
+			fill(x + px2 * scale, y + py2 * scale,
+			     run * scale, scale, peng_pal[idx]);
+		px2 += run;
+		if (px2 >= PENGUIN_W) {
+			px2 = 0;
+			py2++;
+		}
+	}
+}
 
 /*
  * Everything is stacked from the top down and measured in glyph cells, so the
@@ -230,9 +310,6 @@ static int body_scale, body_x, body_y, body_step, body_max;
  */
 static void layout(void)
 {
-	const char *word = "KDOS";
-	int n = (int)strlen(word);
-
 	body_scale = fbw / 640;
 	if (body_scale < 1)
 		body_scale = 1;
@@ -241,21 +318,37 @@ static void layout(void)
 
 	int cell = gh * body_scale;   /* one line of body text */
 
-	/* The wordmark takes a bit under half the screen width. */
-	int target = fbw * 46 / 100;
-	logo_scale = target / (n * gw + (n - 1) * 2);
-	if (logo_scale < 2)
-		logo_scale = 2;
-	if (logo_scale > 24)
-		logo_scale = 24;
-	logo_track = logo_scale * 2;
+	/* Wordmark cells: the mascot + wordmark group takes ~55% of the width. */
+	art_cw = fbw / 85;
+	if (art_cw < 4)
+		art_cw = 4;
+	if (art_cw > 60)
+		art_cw = 60;
+	art_ch = art_cw * 2;
+	art_lt = art_cw / 3;
+	if (art_lt < 1)
+		art_lt = 1;
 
-	int lw = text_width(word, logo_scale, logo_track);
-	logo_x = (fbw - lw) / 2;
-	logo_y = fbh * 14 / 100;
+	int art_w = ART_COLS * art_cw;
+	int art_h = ART_ROWS * art_ch;
 
-	int logo_end = logo_y + gh * logo_scale;
-	sub_y  = logo_end + cell;
+	peng_scale = (art_h * 115 / 100 + PENGUIN_H / 2) / PENGUIN_H;
+	if (peng_scale < 1)
+		peng_scale = 1;
+	int peng_w = PENGUIN_W * peng_scale;
+	int peng_h = PENGUIN_H * peng_scale;
+	int gap = art_cw * 2;
+
+	int group_w = peng_w + gap + art_w;
+	int group_h = peng_h > art_h ? peng_h : art_h;
+
+	peng_x = (fbw - group_w) / 2;
+	peng_y = fbh * 9 / 100;
+	art_x  = peng_x + peng_w + gap;
+	art_y  = peng_y + (group_h - art_h) / 2;
+
+	int group_end = peng_y + group_h;
+	sub_y  = group_end + cell;
 	tag_y  = sub_y + cell * 2;
 	rule_y = tag_y + cell * 2;
 
@@ -276,24 +369,25 @@ static void compose(int cursor_on)
 		canvas[i] = C_DEEP;
 
 	/*
-	 * The wordmark, in the console font blown up. Dim copies in four
-	 * directions first: phosphor bleeds around a lit pixel, it does not cast
-	 * a drop shadow to one side.
+	 * The block-art wordmark. Dim copies in four directions first: phosphor
+	 * bleeds around a lit pixel, it does not cast a drop shadow to one side.
 	 */
-	int bleed = logo_scale / 3;
+	int bleed = art_cw / 3;
 	if (bleed < 1)
 		bleed = 1;
-	draw_text(logo_x - bleed, logo_y, "KDOS", logo_scale, logo_track, C_PHOSDIM);
-	draw_text(logo_x + bleed, logo_y, "KDOS", logo_scale, logo_track, C_PHOSDIM);
-	draw_text(logo_x, logo_y - bleed, "KDOS", logo_scale, logo_track, C_PHOSDIM);
-	draw_text(logo_x, logo_y + bleed, "KDOS", logo_scale, logo_track, C_PHOSDIM);
-	draw_text(logo_x, logo_y, "KDOS", logo_scale, logo_track, C_PHOS);
+	draw_art(art_x - bleed, art_y, C_PHOSDIM, C_PHOSDIM);
+	draw_art(art_x + bleed, art_y, C_PHOSDIM, C_PHOSDIM);
+	draw_art(art_x, art_y - bleed, C_PHOSDIM, C_PHOSDIM);
+	draw_art(art_x, art_y + bleed, C_PHOSDIM, C_PHOSDIM);
+	draw_art(art_x, art_y, C_PHOS, C_DIM);
+
+	draw_penguin(peng_x, peng_y, peng_scale);
 
 	const char *sub = "KD's Homebrew Linux Distro";
 	draw_text((fbw - text_width(sub, body_scale, 0)) / 2, sub_y,
 		  sub, body_scale, 0, C_TEXT);
 
-	const char *tag = "musl . toybox . niri . no systemd";
+	const char *tag = "musl . toybox . cosmic . no systemd";
 	draw_text((fbw - text_width(tag, body_scale, 0)) / 2, tag_y,
 		  tag, body_scale, 0, C_DIM);
 

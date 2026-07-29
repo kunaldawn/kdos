@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Xarchiver
+Comment=Archive manager (alien app, kdos-apps box)
+Exec=kdos-appbox run xarchiver %U
+Icon=xarchiver
+Terminal=false
+Categories=Utility;Archiving;Compression;
+X-KDOS-Alien=true

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Zim
+Comment=Desktop wiki and notes (alien app, kdos-apps box)
+Exec=kdos-appbox run zim
+Icon=org.zim_wiki.Zim
+Terminal=false
+Categories=Office;Utility;
+X-KDOS-Alien=true

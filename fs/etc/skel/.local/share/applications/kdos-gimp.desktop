@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=GIMP
+Comment=Image editor (alien app, kdos-apps box)
+Exec=kdos-appbox run gimp %U
+Icon=gimp
+Terminal=false
+Categories=Graphics;RasterGraphics;
+X-KDOS-Alien=true
