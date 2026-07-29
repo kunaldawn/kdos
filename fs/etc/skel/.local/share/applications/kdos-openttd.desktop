@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OpenTTD
+Comment=OpenTTD (alien app, kdos-apps box)
+Exec=kdos-appbox run openttd
+Icon=openttd
+Terminal=false
+Categories=Game;Simulation;
+X-KDOS-Alien=true

@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Audacious
-Comment=Music player (alien app, kdos-apps box)
+Comment=Audacious (alien app, kdos-apps box)
 Exec=kdos-appbox run audacious %U
 Icon=audacious
 Terminal=false
-Categories=AudioVideo;Player;Audio;
+Categories=AudioVideo;Audio;Player;GTK;
 X-KDOS-Alien=true

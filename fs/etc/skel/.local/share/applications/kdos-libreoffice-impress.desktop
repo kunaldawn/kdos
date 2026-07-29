@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=LibreOffice Impress
+Comment=LibreOffice Impress (alien app, kdos-apps box)
+Exec=kdos-appbox run libreoffice --impress %U
+Icon=libreoffice-impress
+Terminal=false
+Categories=Office;Presentation;
+X-KDOS-Alien=true

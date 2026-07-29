@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BleachBit
+Comment=BleachBit (alien app, kdos-apps box)
+Exec=kdos-appbox run bleachbit
+Icon=bleachbit
+Terminal=false
+Categories=System;FileTools;GTK;
+X-KDOS-Alien=true

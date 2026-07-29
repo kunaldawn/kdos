@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Wireshark
+Comment=Wireshark (alien app, kdos-apps box)
+Exec=kdos-appbox run wireshark %f
+Icon=org.wireshark.Wireshark
+Terminal=false
+Categories=Network;Monitor;Qt;
+X-KDOS-Alien=true

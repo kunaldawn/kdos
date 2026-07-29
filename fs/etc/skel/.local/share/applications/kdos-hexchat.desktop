@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=HexChat
+Comment=HexChat (alien app, kdos-apps box)
+Exec=kdos-appbox run hexchat --existing %U
+Icon=io.github.Hexchat
+Terminal=false
+Categories=GTK;Network;IRCClient;
+X-KDOS-Alien=true

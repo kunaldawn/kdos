@@ -251,3 +251,6 @@ kdos-splash
 
 # Builds the applied COSMIC theme from the KDOS palette (src/packages, ours).
 kdos-theme-helper
+
+# KDOS phosphor icon theme (src/packages, ours) — recolored cosmic-icons.
+kdos-icons

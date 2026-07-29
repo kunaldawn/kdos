@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Geany
-Comment=Lightweight IDE (alien app, kdos-apps box)
-Exec=kdos-appbox run geany %U
+Comment=Geany (alien app, kdos-apps box)
+Exec=kdos-appbox run geany %F
 Icon=geany
 Terminal=false
-Categories=Development;IDE;
+Categories=GTK;Development;IDE;TextEditor;
 X-KDOS-Alien=true

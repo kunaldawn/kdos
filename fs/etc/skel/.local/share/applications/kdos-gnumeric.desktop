@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Gnumeric
-Comment=Spreadsheet (alien app, kdos-apps box)
-Exec=kdos-appbox run gnumeric %U
-Icon=org.gnumeric.gnumeric
-Terminal=false
-Categories=Office;Spreadsheet;
-X-KDOS-Alien=true

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Darktable
+Comment=Darktable (alien app, kdos-apps box)
+Exec=kdos-appbox run /usr/bin/darktable %U
+Icon=darktable
+Terminal=false
+Categories=Graphics;Photography;GTK;
+X-KDOS-Alien=true

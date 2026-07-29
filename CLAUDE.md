@@ -35,11 +35,25 @@ There used to be a **`src/packages/`** namespace for vendored upstream forks (Wi
 
 ### The baked appbox (offline alien apps)
 
-The outer ring ships pre-baked: `ports/appbox/Containerfile` defines an alpine
-`kdos-apps` image (one lightweight app per desktop need — zathura, gimp,
-inkscape, solvespace, kicad, octave, shotcut, firefox-esr, …; gcompat for the
-odd glibc binary, `/.containersetupdone` pre-baked so distrobox-init never
-apk-adds anything at first enter). Because
+The outer ring ships pre-baked: `ports/appbox/Containerfile` defines a
+**debian trixie** `kdos-apps` image — the best-of open-source GUI app per
+segment (Awesome-Linux-Software sweep; ~90 launchers: libreoffice, calibre,
+gimp, krita, blender, freecad, prusa-slicer, openscad, kicad+gtkwave+ngspice,
+octave, maxima/wxmaxima, stellarium, ardour, hydrogen, lmms, kdenlive,
+obs-studio, vscodium (upstream .deb — not in debian), wireshark, keepassxc,
+timeshift-style backup via deja-dup/testdisk/grsync, games
+(supertux/supertuxkart/wesnoth/openttd/luanti/gnome classics), emulators
+(retroarch+libretro cores, dosbox, mgba, scummvm), firefox-esr, …). Debian
+replaced alpine when the list outgrew it: alpine has no slicer, no VSCode
+build, no calibre/gtkwave in stable. Heavy is deliberate — the image IS the
+offline software library (Knoppix-style fat stick). `--no-install-recommends`
+everywhere with the data packages that matter re-added explicitly
+(kicad-packages3d's 5 GB stays out). `/.containersetupdone` pre-baked so
+distrobox-init never apt-gets anything at first enter.
+The launchers in `fs/etc/skel/.local/share/applications/` are GENERATED from
+the image's own desktop entries (`ports/appbox/genlaunchers.py` parses [Desktop Entry], skips
+NoDisplay/noise, renames to the ids the dock favorites reference) — regenerate
+rather than hand-edit when the app set changes. Because
 `make build` runs `--network none`, the image is built on the HOST with
 `make fetch-apps` → `ports/appbox/appbox.tar` + `icons/` (both gitignored,
 too big for LFS). `script/06_packaging/01_appbox.sh` then `podman load`s it
@@ -401,26 +415,39 @@ COSMIC reads layered RON config: `/usr/share/cosmic` (system defaults) then
 | File (under `~/.config/cosmic/`) | Purpose |
 |---|---|
 | `com.system76.CosmicBackground/v1/all` | wallpaper → the penguin |
-| `com.system76.CosmicTheme.Dark.Builder/v1/accent` | accent colour (phosphor) |
-| `com.system76.CosmicTheme.Mode/v1/is_dark` | dark mode |
-| `com.system76.CosmicTk/v1/icon_theme` | `"Cosmic"` (cosmic-icons) |
+| `com.system76.CosmicTk/v1/icon_theme` | `"KDOS"` (kdos-icons) |
+| `com.system76.CosmicPanel.Panel/v1/*` | floating top panel: phosphor bg Color, opacity 0.92, radius 12, trimmed wings (no a11y/input-sources applets) |
+| `com.system76.CosmicPanel.Dock/v1/*` | dock: phosphor bg Color, size M |
+| `com.system76.CosmicAppList/v1/favorites` | dock pins that actually exist: foot, CosmicFiles, kdos-firefox, kdos-mousepad, kdos-gimp, CosmicSettings (stock favorites are CosmicTerm/Edit/Store → gear placeholders) |
+| `com.system76.CosmicAppLibrary/v1/groups` | KDOS launcher groups: Internet, Graphics, Office, Media, Engineering, Science, System, Utilities — Categories-driven (`AppGroup` RON; field docs in upstream `app_group.rs` are swapped — `exclude` excludes, `include` force-includes) |
 
-The RON schemas were seeded best-effort. Verified on first boot: wallpaper,
-dark mode and icon-theme seeds WORK; the **Builder accent alone does not** —
-`com.system76.CosmicTheme.Dark/v1/` stays empty until cosmic-settings' UI
-applies a theme (the applied-theme serialization is a large nested RON that
-only the UI writes). Follow-up: open Settings → Appearance once in a live
-session, pick the accent, then copy what it wrote into the skel seeds and
-teach `kdos theme` the full schema. Until then the desktop runs the default
-COSMIC dark palette on the KDOS wallpaper.
+The applied theme itself (accent, hover states, container colors) is NOT a
+skel seed: `com.system76.CosmicTheme.Dark/v2/` is generated at packaging time
+by `script/06_packaging/00_theme.sh` running **kdos-theme-helper**
+(src/packages — drives cosmic-theme's own ThemeBuilder; the Theme struct is
+`#[version = 2]`, hand-seeded v1 files are silently ignored).
 
-**`kdos theme <phosphor|amber|ice|bone>`** owns everything else: it writes the
-COSMIC accent (Builder RON), `~/.config/foot/themes/kdos`,
+**`kdos theme <phosphor|amber|ice|bone>`** owns everything else: it reruns
+kdos-theme-helper, writes the panel+dock background Color RON
+(`write_panel_colors`), `~/.config/foot/themes/kdos`,
 `~/.config/btop/themes/kdos.theme`, and the palette block between the
 `# >>> KDOS STARSHIP PALETTE >>>` markers in starship.toml. One palette table
-inside `fs/usr/local/bin/kdos` drives all generators. COSMIC repaints itself;
-starship on next prompt; foot and btop on next start (foot cannot reload its
-config, and KDOS's pkill has no `-x`).
+inside `fs/usr/local/bin/kdos` drives all generators. COSMIC and cosmic-panel
+repaint live; starship on next prompt; foot and btop on next start (foot
+cannot reload its config, and KDOS's pkill has no `-x`).
+
+Known quirk: a live `kdos theme` switch makes cosmic-panel restart its applets,
+and the respawned cosmic-app-list collapses all pinned favorites into its
+overflow button (panel-size renegotiation race; upstream 1.4 behaviour —
+restarting cosmic-panel does not heal it, the next login does; the pins are
+still there, behind the overflow button).
+
+**kdos-icons** (`src/packages/kdos-icons`): theme `KDOS`, Inherits=Cosmic.
+`recolor.py` hue-shifts every non-symbolic Cosmic places/categories/devices/
+mimetypes SVG (plus the two hicolor panel-button SVGs) to the phosphor hue at
+build time; symbolic icons stay untouched (the toolkit tints them from the
+active theme). Ships `distributor-logo-kdos` / `start-here` (256px penguin).
+Depends on cosmic-icons being installed in the chroot at build.
 
 The niri-era CRT window shaders are gone — cosmic-comp has no custom-shader
 API. The CRT identity lives in the boot splash, the TTY, and the palette.

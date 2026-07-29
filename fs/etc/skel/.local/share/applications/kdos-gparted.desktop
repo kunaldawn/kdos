@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=GParted
+Comment=GParted (alien app, kdos-apps box)
+Exec=kdos-appbox run /usr/sbin/gparted %f
+Icon=gparted
+Terminal=false
+Categories=GNOME;System;Filesystem;
+X-KDOS-Alien=true
