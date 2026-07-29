@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=FontForge
+Comment=FontForge (alien app, kdos-apps box)
+Exec=kdos-appbox run fontforge %U
+Icon=org.fontforge.FontForge
+Terminal=false
+Categories=Graphics;
+X-KDOS-Alien=true

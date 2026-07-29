@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Backups
+Comment=Backups (alien app, kdos-apps box)
+Exec=kdos-appbox run deja-dup %u
+Icon=org.gnome.DejaDup
+Terminal=false
+Categories=Utility;Archiving;GNOME;GTK;X-GNOME-Utilities;
+X-KDOS-Alien=true

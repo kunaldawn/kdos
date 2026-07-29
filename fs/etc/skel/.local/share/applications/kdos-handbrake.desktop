@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=HandBrake
+Comment=HandBrake (alien app, kdos-apps box)
+Exec=kdos-appbox run ghb %f
+Icon=fr.handbrake.ghb
+Terminal=false
+Categories=GTK;AudioVideo;Video;
+X-KDOS-Alien=true

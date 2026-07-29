@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=GTKWave
+Comment=GTKWave (alien app, kdos-apps box)
+Exec=kdos-appbox run gtkwave %F
+Icon=gtkwave
+Terminal=false
+Categories=Utility;GTK;Electronics;Engineering;
+X-KDOS-Alien=true

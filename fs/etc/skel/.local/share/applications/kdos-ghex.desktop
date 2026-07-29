@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=GHex
+Comment=GHex (alien app, kdos-apps box)
+Exec=kdos-appbox run ghex %F
+Icon=org.gnome.GHex
+Terminal=false
+Categories=GNOME;GTK;Development;
+X-KDOS-Alien=true

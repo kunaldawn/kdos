@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Chess
+Comment=Chess (alien app, kdos-apps box)
+Exec=kdos-appbox run gnome-chess %U
+Icon=org.gnome.Chess
+Terminal=false
+Categories=GNOME;GTK;Game;BoardGame;
+X-KDOS-Alien=true

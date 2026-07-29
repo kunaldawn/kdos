@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Stellarium
+Comment=Stellarium (alien app, kdos-apps box)
+Exec=kdos-appbox run stellarium --startup-script=%f
+Icon=stellarium
+Terminal=false
+Categories=Education;
+X-KDOS-Alien=true

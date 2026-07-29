@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=LibreOffice
+Comment=LibreOffice (alien app, kdos-apps box)
+Exec=kdos-appbox run libreoffice %F
+Icon=libreoffice-startcenter
+Terminal=false
+Categories=Office;X-Red-Hat-Base;X-SuSE-Core-Office;
+X-KDOS-Alien=true

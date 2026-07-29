@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OpenSCAD
+Comment=OpenSCAD (alien app, kdos-apps box)
+Exec=kdos-appbox run openscad %f
+Icon=openscad
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+X-KDOS-Alien=true

@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=KiCad
-Comment=Electronics schematics and PCB design (alien app, kdos-apps box)
-Exec=kdos-appbox run kicad %U
+Comment=KiCad (alien app, kdos-apps box)
+Exec=kdos-appbox run kicad %f
 Icon=kicad
 Terminal=false
-Categories=Development;Engineering;Electronics;
+Categories=Science;Electronics;
 X-KDOS-Alien=true

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Dino
+Comment=Dino (alien app, kdos-apps box)
+Exec=kdos-appbox run dino %U
+Icon=im.dino.Dino
+Terminal=false
+Categories=GTK;Network;Chat;InstantMessaging;
+X-KDOS-Alien=true

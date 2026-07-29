@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SuperTuxKart
+Comment=SuperTuxKart (alien app, kdos-apps box)
+Exec=kdos-appbox run supertuxkart
+Icon=supertuxkart
+Terminal=false
+Categories=Game;ArcadeGame;
+X-KDOS-Alien=true

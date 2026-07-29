@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MuseScore 2
+Comment=MuseScore 2 (alien app, kdos-apps box)
+Exec=kdos-appbox run mscore %F
+Icon=mscore
+Terminal=false
+Categories=Qt;Audio;Sequencer;Midi;AudioVideoEditing;Music;AudioVideo;
+X-KDOS-Alien=true

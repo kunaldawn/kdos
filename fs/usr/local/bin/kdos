@@ -77,6 +77,19 @@ write_cosmic_theme() {
     kdos-theme-helper "$1" "$2" "$3" "$4" "$5" "$6" >/dev/null
 }
 
+write_panel_colors() {
+    # Panel + dock background follow the scheme's deep bg. cosmic-panel
+    # watches its config and repaints live.
+    local deep="$1" ron dir f
+    ron=$(awk -v r=$((16#${deep:0:2})) -v g=$((16#${deep:2:2})) -v b=$((16#${deep:4:2})) \
+        'BEGIN{printf "Color((%.7f, %.7f, %.7f))", r/255, g/255, b/255}')
+    for f in com.system76.CosmicPanel.Panel com.system76.CosmicPanel.Dock; do
+        dir="${XDG_CONFIG_HOME:-$HOME/.config}/cosmic/$f/v1"
+        mkdir -p "$dir"
+        printf '%s\n' "$ron" > "$dir/background"
+    done
+}
+
 write_foot() {
     local p="$1" dim="$2" sec="$3" urg="$4" deep="$5" text="$6"
     mkdir -p "$(dirname "$FOOT_THEME")"
@@ -246,6 +259,7 @@ $(palette "$want")
 EOF
 
     write_cosmic_theme "$p" "$deep" "$var" "$text" "$sec" "$urg"
+    write_panel_colors "$deep"
     write_foot "$p" "$dim" "$sec" "$urg" "$deep" "$text"
     write_btop "$p" "$dim" "$sec" "$urg" "$deep" "$text"
     write_starship "$p" "$dim" "$sec" "$urg" "$deep" "$text" "$var"

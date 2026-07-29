@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=LibreOffice Math
+Comment=LibreOffice Math (alien app, kdos-apps box)
+Exec=kdos-appbox run libreoffice --math %U
+Icon=libreoffice-math
+Terminal=false
+Categories=Office;Math;
+X-KDOS-Alien=true

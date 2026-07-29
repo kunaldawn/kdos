@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Scribus
+Comment=Scribus (alien app, kdos-apps box)
+Exec=kdos-appbox run scribus %f
+Icon=scribus
+Terminal=false
+Categories=Qt;Graphics;Publishing;
+X-KDOS-Alien=true

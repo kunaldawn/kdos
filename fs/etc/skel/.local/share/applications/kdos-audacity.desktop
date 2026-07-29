@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=Audacity
-Comment=Audio editor (alien app, kdos-apps box)
-Exec=kdos-appbox run audacity %U
+Comment=Audacity (alien app, kdos-apps box)
+Exec=kdos-appbox run env GDK_BACKEND=x11 audacity %F
 Icon=audacity
 Terminal=false
 Categories=AudioVideo;Audio;AudioVideoEditing;
