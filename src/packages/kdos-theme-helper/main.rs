@@ -52,7 +52,7 @@ fn main() {
         std::process::exit(1);
     }
 
-    let builder = ThemeBuilder::dark_default()
+    let builder = ThemeBuilder::dark()
         .accent(srgb(&a[1]))
         .bg_color(srgba(&a[2]))
         .primary_container_bg(srgba(&a[3]))

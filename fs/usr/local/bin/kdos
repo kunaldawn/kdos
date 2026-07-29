@@ -22,7 +22,6 @@
 set -u
 
 COSMIC_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/cosmic"
-BUILDER_DIR="$COSMIC_CFG/com.system76.CosmicTheme.Dark.Builder/v1"
 FOOT_THEME="${XDG_CONFIG_HOME:-$HOME/.config}/foot/themes/kdos"
 BTOP_THEME="${XDG_CONFIG_HOME:-$HOME/.config}/btop/themes/kdos.theme"
 STARSHIP_TOML="${XDG_CONFIG_HOME:-$HOME/.config}/starship.toml"
@@ -64,26 +63,18 @@ current_theme() {
     echo phosphor
 }
 
-# hex byte -> "0.123456" linear-ish sRGB float for RON
-hexf() {
-    printf '%s' "$1" | awk '{ printf "%.6f", strtonum("0x" $0) / 255 }'
-}
-
 # ─────────────────────────────────────────────────────────────────────
 # kdos theme
 # ─────────────────────────────────────────────────────────────────────
-write_cosmic_accent() {
-    local p="$1"
-    mkdir -p "$BUILDER_DIR"
-    # cosmic-theme ThemeBuilder: accent is Option<Srgb>. cosmic-settings-daemon
-    # notices the Builder change and rebuilds the applied Dark theme.
-    cat > "$BUILDER_DIR/accent" <<EOF
-Some((
-    red: $(hexf "${p:0:2}"),
-    green: $(hexf "${p:2:2}"),
-    blue: $(hexf "${p:4:2}"),
-))
-EOF
+write_cosmic_theme() {
+    # kdos-theme-helper drives cosmic-theme's own ThemeBuilder, so the applied
+    # theme (accent, backgrounds, hover/pressed states, the lot) is exactly
+    # what the Settings UI would compute. COSMIC repaints live.
+    command -v kdos-theme-helper >/dev/null 2>&1 || {
+        echo "kdos: kdos-theme-helper not installed — COSMIC keeps its palette" >&2
+        return 0
+    }
+    kdos-theme-helper "$1" "$2" "$3" "$4" "$5" "$6" >/dev/null
 }
 
 write_foot() {
@@ -254,7 +245,7 @@ cmd_theme() {
 $(palette "$want")
 EOF
 
-    write_cosmic_accent "$p"
+    write_cosmic_theme "$p" "$deep" "$var" "$text" "$sec" "$urg"
     write_foot "$p" "$dim" "$sec" "$urg" "$deep" "$text"
     write_btop "$p" "$dim" "$sec" "$urg" "$deep" "$text"
     write_starship "$p" "$dim" "$sec" "$urg" "$deep" "$text" "$var"
@@ -401,7 +392,7 @@ cmd_doctor() {
     printf '\n'
 
     printf '%sDesktop%s\n' "$C_B" "$C_0"
-    if [ -r "$BUILDER_DIR/accent" ]; then ok "cosmic accent present ($(current_theme))"; else warn "no cosmic accent — run: kdos theme phosphor"; fi
+    if [ -d "$COSMIC_CFG/com.system76.CosmicTheme.Dark/v2" ]; then ok "cosmic theme applied ($(current_theme))"; else warn "no applied cosmic theme — run: kdos theme phosphor"; fi
     if [ -r "$FOOT_THEME" ]; then ok "foot theme present"; else warn "foot theme missing — run: kdos theme phosphor"; fi
     if [ -n "${DISPLAY:-}" ]; then ok "Xwayland on $DISPLAY"; else warn "no DISPLAY — X11-only alien apps will not start"; fi
     case ":$PATH:" in *":$HOME/.local/bin:"*) ok "~/.local/bin on PATH" ;; *) warn "~/.local/bin not on PATH — exported app wrappers will not resolve" ;; esac
