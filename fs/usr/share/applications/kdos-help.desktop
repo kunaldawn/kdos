@@ -2,7 +2,7 @@
 Type=Application
 Name=KDOS Help
 GenericName=Keybinds and commands
-Comment=Cheat sheet generated from the live niri config
+Comment=KDOS cheat sheet — commands and COSMIC keybinds
 Exec=foot --app-id=kdos-help -e kdos help --pager
 Icon=help-browser
 Terminal=false

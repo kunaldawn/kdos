@@ -1,0 +1,52 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#
+# The kdos-apps distrobox image: one lightweight app per desktop need, baked
+# into the ISO so an offline machine works out of the box. Built on the HOST
+# with `make fetch-apps` (the sandboxed ISO build has no network), loaded into
+# the kdos user's podman storage by script/06_packaging/01_appbox.sh.
+#
+# Alpine base: much smaller than debian, and every app below exists in the
+# 3.23 repos. gcompat is included so the odd glibc-only binary still runs.
+#
+# The distrobox prerequisite block pre-installs what `distrobox enter` would
+# otherwise apk-add on first entry, and /.containersetupdone tells
+# distrobox-init to skip its package-setup phase entirely — without both, the
+# first launch needs network, which defeats the point.
+
+FROM alpine:3.23
+
+# distrobox runtime prerequisites (distrobox-init's alpine list + basics)
+RUN apk add --no-cache \
+        alpine-base bash bash-completion bc bzip2 coreutils curl diffutils \
+        findutils gcompat less libc-utils lsof man-pages mandoc musl-utils \
+        openssh-client-default pinentry procps shadow sudo tar tzdata \
+        util-linux vte3 wget which xz zip unzip
+
+# GUI plumbing: GL/EGL for GTK, icons, fonts
+RUN apk add --no-cache \
+        mesa-dri-gallium mesa-egl mesa-gl \
+        adwaita-icon-theme font-dejavu font-liberation
+
+# The apps — one per need, lightweight picks
+RUN apk add --no-cache \
+        zathura zathura-pdf-poppler zathura-djvu zathura-cb \
+        abiword gnumeric foliate zim mousepad geany \
+        drawing gimp inkscape gthumb \
+        solvespace kicad \
+        octave gnuplot py3-numpy py3-scipy py3-matplotlib py3-sympy \
+        qalculate-gtk xfburn \
+        audacity audacious shotcut mpv \
+        simple-scan claws-mail transmission-gtk \
+        pcmanfm xarchiver \
+        firefox-esr
+
+# distrobox-init: skip the package-setup phase — everything is pre-baked
+RUN touch /.containersetupdone

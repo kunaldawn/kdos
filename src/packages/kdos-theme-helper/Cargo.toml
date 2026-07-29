@@ -1,0 +1,11 @@
+[package]
+name = "kdos-theme-helper"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+cosmic-theme = { git = "https://github.com/pop-os/libcosmic", tag = "epoch-1.4.0" }
+cosmic-config = { git = "https://github.com/pop-os/libcosmic", tag = "epoch-1.4.0" }
+
+[profile.release]
+strip = true

@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: AV1 cross-platform decoder
+# homepage	: https://code.videolan.org/videolan/dav1d
+# depends	: meson ninja nasm
+
+name=dav1d
+version=1.5.4
+release=1
+source="https://code.videolan.org/videolan/dav1d/-/archive/$version/dav1d-$version.tar.bz2"
+
+build() {
+	meson setup build \
+		--prefix=/usr --libdir=lib \
+		--buildtype=release \
+		-Denable_tests=false -Denable_tools=false
+	meson compile -C build
+	DESTDIR=$PKG meson install --no-rebuild -C build
+}
