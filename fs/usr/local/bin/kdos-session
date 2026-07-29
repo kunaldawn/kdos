@@ -1,0 +1,19 @@
+#!/bin/sh
+# kdos-session — launch the COSMIC desktop with a fresh DBus user session.
+# Run from a tty after login. Wayland env vars are set by /etc/profile.d/10-wayland.sh.
+# KDOS uses seatd, not logind/elogind; cosmic-comp talks to it via libseat.
+case "$(cat /sys/class/drm/card0/device/modalias 2>/dev/null)" in
+	virtio:*|pci:v00001AF4*)
+		# iced/wgpu has no Vulkan on virgl — take the GL backend.
+		export WGPU_BACKEND=gl
+		# Without blob resources virgl's EGL path hangs; llvmpipe at least
+		# keeps clients alive (the compositor itself still needs virgl/blob —
+		# `make run-hw`. Plain `make run` has no desktop: smithay refuses
+		# software EGL renderers).
+		if ! dmesg 2>/dev/null | grep -q '+resource_blob'; then
+			export GALLIUM_DRIVER=llvmpipe
+		fi
+		;;
+esac
+
+exec dbus-run-session -- cosmic-session

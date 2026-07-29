@@ -139,7 +139,7 @@ fi
 
 echo
 echo "Done."
-echo "  launcher : ~/.local/share/applications/  (fuzzel: Mod+D, noctalia: Mod+Space)"
+echo "  launcher : ~/.local/share/applications/  (Super opens the COSMIC launcher)"
 if [ -n "$BIN" ]; then
 	echo "  command  : just run '$APP' — ~/.local/bin is on PATH"
 fi

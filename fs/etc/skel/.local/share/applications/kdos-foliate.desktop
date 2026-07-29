@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Foliate
+Comment=eBook reader (alien app, kdos-apps box)
+Exec=kdos-appbox run foliate %U
+Icon=com.github.johnfactotum.Foliate
+Terminal=false
+Categories=Office;Viewer;Literature;
+X-KDOS-Alien=true

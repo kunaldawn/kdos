@@ -1,5 +1,5 @@
 # KDOS default applications.
-# Read by xdg-open, fuzzel and noctalia. Only host-side apps are listed —
+# Read by xdg-open and the COSMIC launcher/files. Only host-side apps are listed —
 # anything opened by an alien app is that box's business, and kdos-fetch-app
 # exports its .desktop into ~/.local/share/applications where it wins by name.
 

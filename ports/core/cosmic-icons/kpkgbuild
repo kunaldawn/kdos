@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: COSMIC icon theme
+# homepage	: https://github.com/pop-os/cosmic-icons
+# depends	: just hicolor-icon-theme
+
+name=cosmic-icons
+version=1.4.0
+release=1
+source="https://github.com/pop-os/cosmic-icons/archive/refs/tags/epoch-$version.tar.gz"
+
+build() {
+	just rootdir=$PKG install
+}
