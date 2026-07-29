@@ -248,3 +248,6 @@ hicolor-icon-theme
 # to /dev/fb0 from the initramfs and keeps running until rcS hands the console
 # to agetty.
 kdos-splash
+
+# Builds the applied COSMIC theme from the KDOS palette (src/packages, ours).
+kdos-theme-helper
