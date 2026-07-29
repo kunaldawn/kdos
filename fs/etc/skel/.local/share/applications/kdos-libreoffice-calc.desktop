@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=LibreOffice Calc
+Comment=LibreOffice Calc (alien app, kdos-apps box)
+Exec=kdos-appbox run libreoffice --calc %U
+Icon=libreoffice-calc
+Terminal=false
+Categories=Office;Spreadsheet;
+X-KDOS-Alien=true

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Prusa GCode viewer
+Comment=Prusa GCode viewer (alien app, kdos-apps box)
+Exec=kdos-appbox run prusa-slicer --gcodeviewer %F
+Icon=PrusaSlicer-gcodeviewer
+Terminal=false
+Categories=Graphics;3DGraphics;
+X-KDOS-Alien=true

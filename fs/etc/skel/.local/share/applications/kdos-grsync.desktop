@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Grsync
+Comment=Grsync (alien app, kdos-apps box)
+Exec=kdos-appbox run /usr/bin/grsync -i %f
+Icon=grsync
+Terminal=false
+Categories=System;
+X-KDOS-Alien=true

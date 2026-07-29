@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KeePassXC
+Comment=KeePassXC (alien app, kdos-apps box)
+Exec=kdos-appbox run keepassxc %f
+Icon=keepassxc
+Terminal=false
+Categories=Utility;Security;Qt;
+X-KDOS-Alien=true
