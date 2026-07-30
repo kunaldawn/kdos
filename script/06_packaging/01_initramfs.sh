@@ -221,6 +221,10 @@ fi
 sp_step() { [ -x /bin/kdos-splash ] && /bin/kdos-splash step "\$1" 2>/dev/null; return 0; }
 sp_ok()   { [ -x /bin/kdos-splash ] && /bin/kdos-splash ok 2>/dev/null; return 0; }
 sp_fail() { [ -x /bin/kdos-splash ] && /bin/kdos-splash fail 2>/dev/null; return 0; }
+sp_total() { [ -x /bin/kdos-splash ] && /bin/kdos-splash total "\$1" 2>/dev/null; return 0; }
+
+# The two stages every boot path runs; each path adds its own share below.
+sp_total 2
 
 # Populate /dev
 echo "Populating /dev..."
@@ -259,6 +263,7 @@ done
 if [ -n "\$ROOT_UUID" ]; then
     # Disk Boot Mode
     echo "Waiting for root device \$ROOT_UUID..."
+    sp_total 3
     sp_step "ROOT DEVICE"
 
     # Wait for device to appear (timeout 10s)
@@ -310,6 +315,7 @@ echo "Searching for KDOS boot media..."
 # Wait a bit for devices to settle
 sleep 2
 
+sp_total 4
 sp_step "BOOT MEDIA"
 FOUND=0
 for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do

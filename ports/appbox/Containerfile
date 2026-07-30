@@ -119,5 +119,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         dosbox mgba-qt desmume scummvm mednafen \
     && rm -rf /var/lib/apt/lists/*
 
+# Tools the recommends-less install dropped that apps ask for at runtime:
+# kdenlive's first-run wizard (DVD authoring chain), and obs-plugins — debian
+# splits OBS's plugins out, and linux-pipewire.so (the ONLY Wayland screen
+# capture path) lives there.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        dvdauthor genisoimage obs-plugins \
+    && rm -rf /var/lib/apt/lists/*
+
 # distrobox-init: skip the package-setup phase — everything is pre-baked
 RUN touch /.containersetupdone

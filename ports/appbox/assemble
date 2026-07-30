@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/appbox/assemble
+#
+# Stream the docker-archive tar back out of the chunked image/ directory to
+# stdout, for `podman load` — no 11G temp file, no extra disk.
+#
+#   usage: assemble <image-dir> | podman load
+
+import json
+import os
+import subprocess
+import sys
+import tarfile
+
+def main(image_dir):
+    with open(os.path.join(image_dir, "INDEX.json")) as f:
+        index = json.load(f)
+
+    out = tarfile.open(fileobj=sys.stdout.buffer, mode="w|")
+    for m in index:
+        ti = tarfile.TarInfo(m["name"])
+        ti.size = m["size"]
+        ti.mode = 0o644
+        ti.mtime = 0
+
+        cat = subprocess.Popen(
+            ["cat"] + [os.path.join(image_dir, c) for c in m["chunks"]],
+            stdout=subprocess.PIPE)
+        z = subprocess.Popen(["zstd", "-q", "-dc"],
+                             stdin=cat.stdout, stdout=subprocess.PIPE)
+        cat.stdout.close()
+        out.addfile(ti, z.stdout)
+        if z.wait() != 0 or cat.wait() != 0:
+            sys.exit("assemble: zstd failed on " + m["name"])
+    out.close()
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        sys.exit("usage: assemble <image-dir> | podman load")
+    main(sys.argv[1])
