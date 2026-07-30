@@ -1,6 +1,6 @@
 #!/bin/sh
-# kdos-session-start — runs INSIDE the session D-Bus (spawned by kdos-session
-# via dbus-run-session). Brings up the media stack the desktop expects:
+# kdos-session-start — runs with the session bus up (kdos-session starts the
+# per-user daemon first). Brings up the media stack the desktop expects:
 #
 #   pipewire               the media graph
 #   pipewire-media-session its session manager (no wireplumber on KDOS)

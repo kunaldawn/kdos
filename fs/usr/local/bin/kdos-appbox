@@ -27,7 +27,55 @@ set -e
 BOX=kdos-apps
 IMAGE=localhost/kdos-appbox:latest
 
+# Environment for every app inside the box:
+#   GSETTINGS_BACKEND=keyfile  the box has no dconf-service reachable over
+#                              the (host) session bus — keyfile keeps GNOME
+#                              app settings persistent instead of silently
+#                              dropped every run
+#   NO_AT_BRIDGE / GTK_A11Y    KDOS ships no accessibility stack; stop every
+#                              GTK app from probing org.a11y.Bus at startup
+BOXENV="GSETTINGS_BACKEND=keyfile NO_AT_BRIDGE=1 GTK_A11Y=none"
+
 err() { echo "kdos-appbox: $*" >&2; exit 1; }
+
+# Desktop notification straight over the bus — libnotify isn't on the host.
+# Only useful because the session bus lives at $XDG_RUNTIME_DIR/bus.
+notify() {
+	gdbus call --session --dest org.freedesktop.Notifications \
+		--object-path /org/freedesktop/Notifications \
+		--method org.freedesktop.Notifications.Notify \
+		"KDOS" 0 "distributor-logo-kdos" "$1" "$2" "[]" "{}" 8000 \
+		>/dev/null 2>&1 || true
+}
+
+home_fstype() {
+	awk -v p="$HOME/" 'BEGIN { best = "" }
+		{ m = $2; if (m != "/") m = m "/"
+		  if (index(p, m) == 1 && length(m) > length(best)) { best = m; t = $3 } }
+		END { print t }' /proc/mounts 2>/dev/null
+}
+
+# One-time rootless storage tuning. /etc/containers/storage.conf pins
+# fuse-overlayfs, which the live ISO NEEDS ($HOME sits on an overlay whose
+# upper the kernel refuses to stack another overlay upper on — podman does
+# not fall back, the container just fails to mount). On an installed system
+# ($HOME on ext4) the kernel mounts rootless overlays natively — every file
+# an app reads stops going through a userspace FUSE daemon. Decided once,
+# before the store holds any container: fuse and native overlay write
+# incompatible whiteout metadata into container rw layers.
+tune_storage() {
+	local conf="$HOME/.config/containers/storage.conf"
+	[ -f "$conf" ] && return 0
+	local cj="$HOME/.local/share/containers/storage/overlay-containers/containers.json"
+	[ -f "$cj" ] && grep -q '"id"' "$cj" 2>/dev/null && return 0
+	case "$(home_fstype)" in
+	ext4|ext3|ext2|btrfs|xfs|f2fs) ;;
+	*) return 0 ;;
+	esac
+	mkdir -p "${conf%/*}"
+	printf '[storage]\ndriver = "overlay"\n' > "$conf"
+}
+tune_storage
 
 ensure() {
 	podman container exists "$BOX" 2>/dev/null && return 0
@@ -46,8 +94,41 @@ case "${1:-}" in
 	run)
 		shift
 		[ $# -ge 1 ] || err "usage: kdos-appbox run <app> [args...]"
+		app="$1"; shift
+		status=$(podman inspect --type container \
+			--format '{{.State.Status}}' "$BOX" 2>/dev/null || echo absent)
+		[ "$status" = running ] || notify "Starting $app" \
+			"Bringing up the app container — a few extra seconds."
+		if [ "$status" = stopping ]; then
+			# A hung app (D-state I/O on fuse-overlayfs) can wedge the box in
+			# "stopping" forever; every enter then dies instantly with
+			# "container state improper" and no app ever opens again. Wait it
+			# out, then force our way back to a startable container — it is
+			# stateless (image + shared $HOME), nothing is lost.
+			for _ in $(seq 1 15); do
+				sleep 1
+				status=$(podman inspect --type container \
+					--format '{{.State.Status}}' "$BOX" 2>/dev/null || echo absent)
+				[ "$status" = stopping ] || break
+			done
+			if [ "$status" = stopping ]; then
+				podman kill "$BOX" >/dev/null 2>&1 || true
+				sleep 2
+				status=$(podman inspect --type container \
+					--format '{{.State.Status}}' "$BOX" 2>/dev/null || echo absent)
+			fi
+			if [ "$status" = stopping ]; then
+				notify "Resetting app container" \
+					"The app container was stuck — recreating it."
+				podman rm -f -t 0 "$BOX" >/dev/null 2>&1 || true
+			fi
+		fi
 		ensure
-		exec distrobox enter "$BOX" -- "$@"
+		# Ride out an in-flight login warmup: with the container already
+		# started but distrobox-init still mid-setup, `enter` skips the
+		# readiness wait and can exec into a half-built user.
+		( flock -w 120 8 || true ) 8>"${XDG_RUNTIME_DIR:-/tmp}/kdos-appbox.warmup.lock"
+		exec distrobox enter "$BOX" -- env $BOXENV "$app" "$@"
 		;;
 	ensure)
 		ensure
