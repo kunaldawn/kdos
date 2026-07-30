@@ -19,6 +19,17 @@ splash() {
     return 0
 }
 
+# Tell the progress bar how many stages this half of boot will add: fstab,
+# one per enabled service script, and the session hand-off.
+_n=2
+for _s in /etc/init.d/[0-9][0-9]_*.sh; do
+    [ -x "$_s" ] || continue
+    [ -f "/etc/service.disabled/$(basename "$_s" | sed 's/^[0-9][0-9]_//;s/\.sh$//')" ] && continue
+    _n=$((_n + 1))
+done
+splash total "$_n"
+unset _s _n
+
 # Mount all filesystems in fstab
 splash step "MOUNTING FILESYSTEMS"
 mount -a
