@@ -1,0 +1,28 @@
+KDOS-cursors is a KDOS-specific derivative of the Bibata cursor theme.
+
+  Upstream:  Bibata_Cursor — https://github.com/ful1e5/Bibata_Cursor
+  Variant:   Bibata-Modern-Ice, release v2.0.7 (recorded in art/UPSTREAM)
+  Licence:   GNU General Public License v3.0 — the upstream repository holds
+             the full licence text and the original SVG sources
+
+The artwork in art/ is NOT upstream's release as shipped. It is a pruned,
+vendored subset produced by vendor.py, and the theme built from it is
+recoloured by gencursors.py. Specifically:
+
+  * Only the 32 shapes KDOS actually needs are kept. Upstream's X11 relics
+    (pirate/X_cursor, dotbox, draped box, target, corner tees and angles,
+    scrollbar arrows, draft, cross variants, colour picker) are dropped.
+  * Only five sizes are kept — 24, 32, 48, 64, 96 — out of upstream's fourteen.
+  * The two animated shapes are decimated from 54 frames to 18, with the
+    per-frame delay tripled so playback speed is unchanged.
+  * Every image is recoloured at build time: pixel luminance is mapped onto the
+    KDOS phosphor ramp (dark green to accent green), and the busy shapes (wait,
+    progress) ramp to KDOS amber instead, matching the boot splash's
+    pending-stage colour. Alpha is un-premultiplied before the mapping and
+    re-premultiplied after, so upstream's anti-aliasing survives intact.
+  * Alias groups are re-rooted on their CSS names: the real file is `default`
+    and `left_ptr` is a symlink to it, not the other way round.
+
+Shapes, hotspots and the remaining animation frames are upstream's work,
+unchanged. Both scripts performing the above are distributed alongside this
+notice in src/packages/kdos-cursors/.

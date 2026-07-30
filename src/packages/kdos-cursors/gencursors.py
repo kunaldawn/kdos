@@ -9,548 +9,185 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# Generate the KDOS cursor theme: chunky pixel-art phosphor cursors written
-# straight in the Xcursor binary format (raw ARGB — no image libraries, no
-# xcursorgen, no X client libs). Every shape cosmic-comp's alias table knows
-# is provided, so window borders actually show resize arrows.
+# Build the KDOS cursor theme from the vendored artwork in art/.
 #
-#   gencursors.py <outdir>            outdir gets cursors/* and index.theme
-#   gencursors.py <outdir> --preview  also write a PPM contact sheet
+# art/ holds monochrome Xcursor shapes (white body, black outline, grey
+# anti-aliasing), pruned by vendor.py from a Bibata-Modern-Ice release. This
+# script paints them in the KDOS palette and lays out the theme:
+#
+#   * Every pixel's luminance is mapped onto a phosphor ramp, dark green to
+#     accent, so the artwork stops being greyscale and starts being KDOS.
+#   * Busy shapes (wait, progress) ramp to AMBER instead — the same "working on
+#     it" colour the boot splash uses for a pending stage.
+#   * Xcursor ARGB is PREMULTIPLIED: alpha is divided out before the ramp and
+#     multiplied back after, or every anti-aliased edge becomes a dark halo.
+#   * The real file of each alias group is the CSS name and every X11 name is a
+#     symlink to it. That direction matters on upgrades — the theme this
+#     replaced was laid out the same way, so a stale `left_ptr -> default` is
+#     overwritten by an identical link instead of forming a loop that makes
+#     kpkg abort with "Symbolic link loop".
+#
+#   gencursors.py <outdir>              write the theme
+#   gencursors.py <outdir> --preview <png>   contact sheet, to eyeball it
+#
+# Palette must match the phosphor row in fs/usr/local/bin/kdos.
 
 import os
 import struct
 import sys
 
-# PHOSPHOR — keep in sync with the palette in fs/usr/local/bin/kdos.
-COL = {
-    '#': 0xFF000000,   # outline
-    'G': 0xFF39FF14,   # phosphor
-    'W': 0xFFB8FFC8,   # pale text-green
-    'R': 0xFFFF3131,   # alarm
-    'A': 0xFFFFB000,   # amber
-    '.': 0x00000000,
+OUTLINE = (0x04, 0x12, 0x0a)     # luminance 0 — the outline
+ACCENT = (0x39, 0xff, 0x14)      # luminance 1 — the body
+AMBER = (0xff, 0xb0, 0x00)       # luminance 1 — busy shapes only
+
+BUSY_SHAPES = {'wait', 'progress'}
+
+IMAGE_TYPE = 0xFFFD0002
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ART = os.path.join(HERE, 'art')
+
+# Canonical shape -> X11/legacy names that must resolve to it. Keep in sync
+# with SHAPES in vendor.py; anything listed here needs art/<shape> to exist.
+ALIASES = {
+    'default': ['arrow', 'left_ptr', 'top_left_arrow'],
+    'pointer': ['hand2', 'pointing_hand', '9d800788f1b08800ae810202380a0822',
+                'e29285e634086352946a0e7090d73106'],
+    'grab': ['hand1', 'openhand'],
+    'dnd-move': ['closedhand', 'dnd-none', 'grabbing',
+                 'fcf21c00b30f7e3f83fe0dfd12e71cff'],
+    'text': ['ibeam', 'xterm'],
+    'vertical-text': [],
+    'crosshair': [],
+    'cell': ['plus'],
+    'context-menu': [],
+    'help': ['left_ptr_help', 'question_arrow', 'whats_this',
+             '5c6cd98b3f3ebcb1f9c7f1c204630408',
+             'd9ce0ab605698f320427677b458ad60b'],
+    'copy': ['dnd-copy', '1081e37283d90000800003c07f3ef6bf',
+             '6407b0e94181790501fd1e167b474872',
+             'b66166c04f8c3109214a4fbd64a50fc8'],
+    'alias': ['dnd-link', 'link'],
+    'no-drop': ['dnd_no_drop'],
+    'not-allowed': ['crossed_circle', 'forbidden',
+                    '03b6e0fcb3499374a867c041f52298f0'],
+    'move': ['all-scroll', 'fleur', 'size_all',
+             '4498f0e0c1937ffe01fd06f973665830',
+             '9081237383d90e509aa00f00170e968f'],
+    'wait': ['watch'],
+    'progress': ['left_ptr_watch', '00000000000000020006000e7e9ffc3f',
+                 '08e8e1c95fe2fc01f976f1e063a24ccd',
+                 '3ecb610c1bf2410f44200f48c40d3599'],
+    'zoom-in': [],
+    'zoom-out': [],
+    'ew-resize': ['col-resize', 'h_double_arrow', 'sb_h_double_arrow',
+                  'size_hor', 'split_h', '028006030e0e7ebffc7f7070c0600140',
+                  '14fef782d02440884392942c1120523'],
+    'ns-resize': ['row-resize', 'v_double_arrow', 'sb_v_double_arrow',
+                  'size_ver', 'split_v', 'double_arrow',
+                  '00008160000006810000408080010102',
+                  '2870a09082c103050810ffdffffe0204'],
+    'nesw-resize': ['fd_double_arrow', 'size_bdiag',
+                    'fcf1c3c7cd4491d801f1e1c78f100000'],
+    'nwse-resize': ['bd_double_arrow', 'size_fdiag',
+                    'c7088f0f3e6c8088236ef8e1e3e70000'],
+    'n-resize': ['top_side'],
+    's-resize': ['bottom_side'],
+    'e-resize': ['right_side'],
+    'w-resize': ['left_side'],
+    'ne-resize': ['top_right_corner'],
+    'nw-resize': ['top_left_corner'],
+    'se-resize': ['bottom_right_corner'],
+    'sw-resize': ['bottom_left_corner'],
+    'wayland-cursor': [],
 }
 
-SIZES = (24, 32, 48, 64, 96)   # up to 96px: 4K/HiDPI at XCURSOR_SIZE=48 x2
-GRID = 16
-RIM = 0xFFB8FFC8               # pale rim so the dark outline reads on dark UIs
 
-# --------------------------------------------------------------- pixel art
-# 16x16 design grids. Hotspots are grid coordinates.
-
-ARROW = """
-#...............
-##..............
-#G#.............
-#GG#............
-#GGG#...........
-#GGGG#..........
-#GGGGG#.........
-#GGGGGG#........
-#GGGGGGG#.......
-#GGGGGGGG#......
-#GGGGG#####.....
-#GG#GG#.........
-#G#.#GG#........
-##..#GG#........
-....#GG#........
-.....##.........
-"""
-
-POINTER = """
-.....##.........
-....#GG#........
-....#GG#........
-....#GG#........
-....#GG###......
-....#GG#GG###...
-.##.#GG#GG#GG#..
-#GG##GGGGGGGGG#.
-#GGG#GGGGGGGGG#.
-.#GG#GGGGGGGGG#.
-.#GGGGGGGGGGGG#.
-..#GGGGGGGGGGG#.
-..#GGGGGGGGGG#..
-...#GGGGGGGGG#..
-....#GGGGGGG#...
-....#########...
-"""
-
-TEXT = """
-.###..###.......
-...#GG#.........
-....##..........
-....##..........
-....##..........
-....##..........
-....##..........
-....##..........
-....##..........
-....##..........
-....##..........
-....##..........
-....##..........
-....##..........
-...#GG#.........
-.###..###.......
-"""
-
-CROSSHAIR = """
-.......#........
-......#G#.......
-......#G#.......
-......#G#.......
-......#G#.......
-......#G#.......
-.######G######..
-#GGGGGG.GGGGGG#.
-.######G######..
-......#G#.......
-......#G#.......
-......#G#.......
-......#G#.......
-......#G#.......
-.......#........
-................
-"""
-
-MOVE = """
-.......#........
-......#G#.......
-.....#GGG#......
-....#GGGGG#.....
-......#G#.......
-...#..#G#..#....
-..#G###G###G#...
-.#GGGGGGGGGGG#..
-..#G###G###G#...
-...#..#G#..#....
-......#G#.......
-....#GGGGG#.....
-.....#GGG#......
-......#G#.......
-.......#........
-................
-"""
-
-HDOUBLE = """
-................
-................
-................
-................
-................
-...#........#...
-..#G#......#G#..
-.#GG########GG#.
-#GGGGGGGGGGGGGG#
-.#GG########GG#.
-..#G#......#G#..
-...#........#...
-................
-................
-................
-................
-"""
-
-DIAG1 = """
-................
-.######.........
-.#GGG#..........
-.#GG#...........
-.#G#G#..........
-.#G#.#G#........
-.##...#G#.......
-.......#G#......
-........#G#.....
-.........#G#....
-..........#G#...
-.......#G#.#G##.
-........#G#GG#..
-.........#GGG#..
-........######..
-................
-"""
-
-NOTALLOWED = """
-.....######.....
-...##RRRRRR##...
-..#RRR####RRR#..
-.#RRR#....#RRR#.
-.#RR#....#RRRR#.
-#RRR#...#RRR#R#.
-#RR#...#RRR#.R#.
-#RR#..#RRR#..R#.
-#RR#.#RRR#...R#.
-#RRR#RRR#...#R#.
-.#RRRRR#....#R#.
-.#RRRR#....#RR#.
-..#RRR####RRR#..
-...##RRRRRR##...
-.....######.....
-................
-"""
-
-GRAB = """
-................
-................
-...#.##.##......
-..#G#GG#GG##....
-..#G#GG#GG#G#...
-..#GGGGGGGG#G#..
-.##GGGGGGGGGG#..
-#GG#GGGGGGGGG#..
-#GGGGGGGGGGGG#..
-.#GGGGGGGGGGG#..
-..#GGGGGGGGG#...
-..#GGGGGGGGG#...
-...#GGGGGGG#....
-....#GGGGGG#....
-....########....
-................
-"""
-
-GRABBING = """
-................
-................
-................
-................
-................
-...##.##.##.....
-..#GG#GG#GG##...
-.##GGGGGGGG#G#..
-#GG#GGGGGGGGG#..
-#GGGGGGGGGGGG#..
-.#GGGGGGGGGGG#..
-..#GGGGGGGGG#...
-..#GGGGGGGGG#...
-...#GGGGGGG#....
-....########....
-................
-"""
-
-CELL = """
-................
-................
-................
-......###.......
-......#G#.......
-......#G#.......
-...####G####....
-...#GGG.GGG#....
-...####G####....
-......#G#.......
-......#G#.......
-......###.......
-................
-................
-................
-................
-"""
-
-# Magnifier body shared by zoom-in / zoom-out; the sign is stamped after.
-ZOOM = """
-...######.......
-..#GGGGGG#......
-.#GG####GG#.....
-#GG#....#GG#....
-#G#......#G#....
-#G#......#G#....
-#G#......#G#....
-#GG#....#GG#....
-.#GG####GG#.....
-..#GGGGGG##.....
-...#######GG#...
-..........#GG#..
-...........#GG#.
-............#G#.
-.............#..
-................
-"""
-
-WAIT_RING = ((7, 2), (11, 4), (13, 8), (11, 12), (7, 14), (3, 12), (1, 8), (3, 4))
+def ramp(top):
+    return [tuple(int(round(OUTLINE[c] + (top[c] - OUTLINE[c]) * (i / 255.0)))
+                  for c in range(3)) for i in range(256)]
 
 
-def parse(art):
-    rows = [r for r in art.strip().split('\n')]
-    g = [[COL[c] for c in row.ljust(GRID, '.')[:GRID]] for row in rows]
-    while len(g) < GRID:
-        g.append([0] * GRID)
-    return g
+LUT_ACCENT = ramp(ACCENT)
+LUT_AMBER = ramp(AMBER)
 
 
-def flip_h(g):
-    return [list(reversed(r)) for r in g]
-
-
-def transpose(g):
-    return [list(r) for r in zip(*g)]
-
-
-def blank():
-    return [[0] * GRID for _ in range(GRID)]
-
-
-def stamp(g, overlay, ox, oy):
-    g = [r[:] for r in g]
-    for y, row in enumerate(parse(overlay)):
-        for x, c in enumerate(row):
-            if c and 0 <= oy + y < GRID and 0 <= ox + x < GRID:
-                g[oy + y][ox + x] = c
-    return g
-
-
-def dot(g, x, y, w, h, col):
-    g = [r[:] for r in g]
-    for j in range(y, y + h):
-        for i in range(x, x + w):
-            if 0 <= j < GRID and 0 <= i < GRID:
-                g[j][i] = col
-    return g
-
-
-# Small overlays stamped onto the arrow (bottom-right corner).
-OV_PLUS = """
-.###.
-.#G#.
-##G##
-#GGG#
-##G##
-.#G#.
-.###.
-"""
-
-OV_QUESTION = """
-.####.
-#GGGG#
-##..G#
-...#G#
-..#G##
-..#G#.
-..##..
-..#G#.
-..###.
-"""
-
-OV_MENU = """
-######
-#WWWW#
-######
-#WWWW#
-######
-#WWWW#
-######
-"""
-
-OV_LINK = """
-.####.
-.#GGG#
-.##GG#
-.#GGG#
-##G#G#
-#G#.##
-##....
-"""
-
-
-def wait_frames():
-    frames = []
-    for f in range(8):
-        g = blank()
-        for i, (x, y) in enumerate(WAIT_RING):
-            age = (i - f) % 8
-            if age == 0:
-                g = dot(g, x, y, 2, 2, COL['W'])
-            elif age == 7:
-                g = dot(g, x, y, 2, 2, COL['G'])
-            elif age == 6:
-                g = dot(g, x, y, 2, 2, 0xFF1F8F0C)
-            else:
-                g = dot(g, x, y, 2, 2, 0xFF12401F)
-        frames.append(g)
-    return frames
-
-
-def progress_frames():
-    base = parse(ARROW)
-    frames = []
-    for f in range(4):
-        g = [r[:] for r in base]
-        for i in range(4):
-            col = COL['G'] if i == f else 0xFF12401F
-            g = dot(g, 10 + (i % 2) * 3, 10 + (i // 2) * 3, 2, 2, col)
-        frames.append(g)
-    return frames
-
-
-def build_shapes():
-    arrow = parse(ARROW)
-    hd = parse(HDOUBLE)
-    vd = transpose(hd)
-    d1 = parse(DIAG1)          # nwse
-    d2 = flip_h(d1)            # nesw
-    text = parse(TEXT)
-    zoom = parse(ZOOM)
-
-    shapes = {}
-
-    def add(names, grids, hot, delay=0):
-        if not isinstance(grids[0][0], list):
-            grids = [grids]        # single grid -> one frame
-        shapes[names[0]] = (names, grids, hot, delay)
-
-    add(["default", "left_ptr", "arrow", "top_left_arrow"], arrow, (1, 1))
-    add(["pointer", "hand", "hand1", "hand2", "pointing_hand"], parse(POINTER), (7, 1))
-    add(["text", "xterm", "ibeam"], text, (4, 8))
-    add(["vertical-text"], transpose(text), (8, 4))
-    add(["crosshair", "cross", "tcross"], parse(CROSSHAIR), (7, 7))
-    add(["move", "fleur", "size_all", "all-scroll"], parse(MOVE), (7, 7))
-    add(["grab", "openhand"], parse(GRAB), (7, 7))
-    add(["grabbing", "closedhand", "dnd-move", "dnd-none"], parse(GRABBING), (7, 8))
-    add(["not-allowed", "crossed_circle", "forbidden", "no-drop", "dnd-no-drop"],
-        parse(NOTALLOWED), (7, 7))
-    add(["wait", "watch"], wait_frames(), (7, 7), delay=110)
-    add(["progress", "left_ptr_watch", "half-busy"], progress_frames(), (1, 1),
-        delay=160)
-
-    add(["ew-resize", "h_double_arrow", "sb_h_double_arrow", "size_hor",
-         "col-resize", "split_h", "w-resize", "left_side",
-         "e-resize", "right_side"], hd, (7, 8))
-    add(["ns-resize", "v_double_arrow", "sb_v_double_arrow", "size_ver",
-         "row-resize", "split_v", "n-resize", "top_side",
-         "s-resize", "bottom_side"], vd, (8, 7))
-    add(["nwse-resize", "size_fdiag", "bd_double_arrow",
-         "nw-resize", "top_left_corner",
-         "se-resize", "bottom_right_corner"], d1, (7, 7))
-    add(["nesw-resize", "size_bdiag", "fd_double_arrow",
-         "ne-resize", "top_right_corner",
-         "sw-resize", "bottom_left_corner"], d2, (8, 7))
-
-    add(["help", "question_arrow", "left_ptr_help", "whats_this"],
-        stamp(arrow, OV_QUESTION, 9, 7), (1, 1))
-    add(["copy", "dnd-copy"], stamp(arrow, OV_PLUS, 10, 9), (1, 1))
-    add(["alias", "dnd-link", "dnd-ask"], stamp(arrow, OV_LINK, 9, 9), (1, 1))
-    add(["context-menu"], stamp(arrow, OV_MENU, 9, 9), (1, 1))
-    add(["cell", "plus"], parse(CELL), (7, 7))
-    add(["zoom-in", "zoom_in"], stamp(zoom, OV_PLUS, 3, 2), (5, 5))
-    add(["zoom-out", "zoom_out"],
-        stamp(dot(zoom, 3, 4, 5, 1, COL['G']), OV_PLUS, 20, 20), (5, 5))
-    return shapes
-
-
-# ------------------------------------------------------------ xcursor file
-
-def rim(g):
-    # One-cell pale halo around the OUTER silhouette: keeps the dark outline
-    # visible on dark surfaces. Interior holes (the ? counter, the lens) are
-    # left alone — only transparency reachable from the grid edge gets rimmed.
-    n = len(g)
-    outside = [[False] * n for _ in range(n)]
-    stack = [(x, y) for x in range(n) for y in (0, n - 1) if not g[y][x]] + \
-            [(x, y) for y in range(n) for x in (0, n - 1) if not g[y][x]]
-    while stack:
-        x, y = stack.pop()
-        if not (0 <= x < n and 0 <= y < n) or outside[y][x] or g[y][x]:
+def recolor(data, count, lut):
+    out = bytearray(len(data))
+    for i in range(count):
+        v = struct.unpack_from('<I', data, i * 4)[0]
+        a = (v >> 24) & 0xFF
+        if not a:
             continue
-        outside[y][x] = True
-        stack += [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
-    out = [r[:] for r in g]
-    for y in range(n):
-        for x in range(n):
-            if not outside[y][x]:
-                continue
-            if any(g[y + dy][x + dx]
-                   for dy in (-1, 0, 1) for dx in (-1, 0, 1)
-                   if 0 <= y + dy < n and 0 <= x + dx < n):
-                out[y][x] = RIM
-    return out
+        r, g, b = (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF
+        if a != 0xFF:                            # un-premultiply
+            r = min(255, r * 255 // a)
+            g = min(255, g * 255 // a)
+            b = min(255, b * 255 // a)
+        nr, ng, nb = lut[(r * 299 + g * 587 + b * 114) // 1000]
+        if a != 0xFF:                            # re-premultiply
+            nr, ng, nb = nr * a // 255, ng * a // 255, nb * a // 255
+        struct.pack_into('<I', out, i * 4, (a << 24) | (nr << 16) | (ng << 8) | nb)
+    return bytes(out)
 
 
-def scale2x(g):
-    # EPX/Scale2x: doubles pixel art while rounding staircase edges. Keeps
-    # the retro look but reads as crisp, not blocky, at 64/96px.
-    n = len(g)
-    out = [[0] * (n * 2) for _ in range(n * 2)]
-    for y in range(n):
-        for x in range(n):
-            p = g[y][x]
-            a = g[y - 1][x] if y > 0 else 0
-            b = g[y][x + 1] if x < n - 1 else 0
-            c = g[y][x - 1] if x > 0 else 0
-            d = g[y + 1][x] if y < n - 1 else 0
-            e1 = a if (c == a and c != d and a != b) else p
-            e2 = b if (a == b and a != c and b != d) else p
-            e3 = c if (d == c and d != b and c != a) else p
-            e4 = d if (b == d and b != a and d != c) else p
-            out[2 * y][2 * x] = e1
-            out[2 * y][2 * x + 1] = e2
-            out[2 * y + 1][2 * x] = e3
-            out[2 * y + 1][2 * x + 1] = e4
-    return out
-
-
-def scale_grid(g, size):
-    # Upscale through the scale2x chain to at least the target, then
-    # nearest-sample down to the exact size.
-    src = g
-    while len(src) < size:
-        src = scale2x(src)
-    n = len(src)
-    px = [[0] * size for _ in range(size)]
-    for y in range(size):
-        for x in range(size):
-            px[y][x] = src[y * n // size][x * n // size]
-    return px
-
-
-def write_xcursor(path, grids, hot, delay):
-    # One image chunk per (size, frame); frames with equal nominal size form
-    # the animation sequence, played with `delay` ms per frame.
+def convert(src, dst, lut):
+    d = open(src, 'rb').read()
+    if d[:4] != b'Xcur':
+        raise ValueError('%s is not an Xcursor file' % src)
+    _hsz, _ver, ntoc = struct.unpack('<3I', d[4:16])
     chunks = []
-    for size in SIZES:
-        for g in grids:
-            px = scale_grid(rim(g), size)
-            hx = hot[0] * size // GRID
-            hy = hot[1] * size // GRID
-            pixels = b''.join(struct.pack('<I', p) for row in px for p in row)
-            head = struct.pack('<9I', 36, 0xFFFD0002, size, 1,
-                               size, size, hx, hy, delay)
-            chunks.append((size, head + pixels))
+    for i in range(ntoc):
+        ctype, subtype, pos = struct.unpack('<3I', d[16 + i * 12:28 + i * 12])
+        if ctype == IMAGE_TYPE:
+            w, h = struct.unpack('<2I', d[pos + 16:pos + 24])
+            payload = d[pos:pos + 36] + recolor(d[pos + 36:pos + 36 + 4 * w * h],
+                                                w * h, lut)
+        else:
+            (clen,) = struct.unpack('<I', d[pos:pos + 4])
+            payload = d[pos:pos + clen]
+        chunks.append((ctype, subtype, payload))
 
-    ntoc = len(chunks)
-    pos = 16 + ntoc * 12
-    toc = b''
-    body = b''
-    for size, data in chunks:
-        toc += struct.pack('<3I', 0xFFFD0002, size, pos)
-        body += data
-        pos += len(data)
-
-    with open(path, 'wb') as f:
-        f.write(b'Xcur' + struct.pack('<3I', 16, 0x10000, ntoc))
+    pos = 16 + len(chunks) * 12
+    toc = body = b''
+    for ctype, subtype, payload in chunks:
+        toc += struct.pack('<3I', ctype, subtype, pos)
+        body += payload
+        pos += len(payload)
+    with open(dst, 'wb') as f:
+        f.write(b'Xcur' + struct.pack('<3I', 16, 0x10000, len(chunks)))
         f.write(toc)
         f.write(body)
 
 
-def preview(shapes, out):
-    # Contact sheet of every primary shape at 32px, PPM.
-    names = sorted(shapes)
-    cols = 8
-    rows = (len(names) + cols - 1) // cols
-    W, H = cols * 40, rows * 40
-    buf = [[0x000A03] * W for _ in range(H)]
-    for i, n in enumerate(names):
-        g = scale_grid(rim(shapes[n][1][0]), 32)
-        ox, oy = (i % cols) * 40 + 4, (i // cols) * 40 + 4
-        for y in range(32):
-            for x in range(32):
-                p = g[y][x]
-                if p >> 24:
-                    buf[oy + y][ox + x] = p & 0xFFFFFF
-    with open(out, 'wb') as f:
-        f.write(b'P6\n%d %d\n255\n' % (W, H))
-        for row in buf:
-            f.write(bytes(b for p in row
-                          for b in ((p >> 16) & 255, (p >> 8) & 255, p & 255)))
+def preview(theme_dir, path):
+    from PIL import Image
+    names = ['default', 'pointer', 'text', 'wait', 'progress', 'not-allowed',
+             'help', 'copy', 'move', 'ns-resize', 'nwse-resize', 'zoom-in']
+    tiles = []
+    for name in names:
+        d = open(os.path.join(theme_dir, 'cursors', name), 'rb').read()
+        _h, _v, ntoc = struct.unpack('<3I', d[4:16])
+        for i in range(ntoc):
+            ctype, subtype, pos = struct.unpack('<3I', d[16 + i * 12:28 + i * 12])
+            if ctype == IMAGE_TYPE and subtype == 48:
+                w, h = struct.unpack('<2I', d[pos + 16:pos + 24])
+                px = struct.unpack('<%dI' % (w * h), d[pos + 36:pos + 36 + 4 * w * h])
+                im = Image.new('RGBA', (w, h))
+                for y in range(h):
+                    for x in range(w):
+                        v = px[y * w + x]
+                        im.putpixel((x, y), ((v >> 16) & 255, (v >> 8) & 255,
+                                             v & 255, (v >> 24) & 255))
+                tiles.append(im)
+                break
+    cols = 6
+    rows = (len(tiles) + cols - 1) // cols
+    cell = max(max(i.size) for i in tiles) + 12
+    sheet = Image.new('RGB', (cols * cell, rows * cell), (0, 10, 3))
+    for k, im in enumerate(tiles):
+        sheet.paste(im, ((k % cols) * cell + 6, (k // cols) * cell + 6), im)
+    sheet.resize((sheet.width * 2, sheet.height * 2), Image.NEAREST).save(path)
 
 
 def main():
@@ -558,25 +195,33 @@ def main():
     curdir = os.path.join(outdir, 'cursors')
     os.makedirs(curdir, exist_ok=True)
 
-    shapes = build_shapes()
-    for primary, (names, grids, hot, delay) in shapes.items():
-        write_xcursor(os.path.join(curdir, primary), grids, hot, delay)
-        for alias in names[1:]:
+    shapes = links = 0
+    for shape, aliases in sorted(ALIASES.items()):
+        src = os.path.join(ART, shape)
+        if not os.path.exists(src):
+            raise SystemExit('art/%s is missing — re-run vendor.py' % shape)
+        lut = LUT_AMBER if shape in BUSY_SHAPES else LUT_ACCENT
+        convert(src, os.path.join(curdir, shape), lut)
+        shapes += 1
+        for alias in aliases:
             link = os.path.join(curdir, alias)
             if os.path.lexists(link):
                 os.unlink(link)
-            os.symlink(primary, link)
+            os.symlink(shape, link)
+            links += 1
 
     with open(os.path.join(outdir, 'index.theme'), 'w') as f:
-        f.write("[Icon Theme]\n"
-                "Name=KDOS-cursors\n"
-                "Comment=KDOS phosphor pixel cursors\n"
-                "Inherits=\n")
+        f.write('[Icon Theme]\n'
+                'Name=KDOS-cursors\n'
+                'Comment=KDOS phosphor cursors\n'
+                'Inherits=\n')
+    with open(os.path.join(outdir, 'cursor.theme'), 'w') as f:
+        f.write('[Icon Theme]\nName=KDOS-cursors\nInherits=KDOS-cursors\n')
+
+    print('kdos-cursors: %d shapes, %d aliases -> %s' % (shapes, links, curdir))
 
     if '--preview' in sys.argv:
-        preview(shapes, os.path.join(outdir, 'preview.ppm'))
-    print("kdos-cursors: %d shapes (+aliases) -> %s" % (len(shapes), curdir))
+        preview(outdir, sys.argv[sys.argv.index('--preview') + 1])
 
 
-if __name__ == '__main__':
-    main()
+main()

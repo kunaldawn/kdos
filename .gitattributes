@@ -12,3 +12,4 @@
 ports/appbox/image/**/*.zst filter=lfs diff=lfs merge=lfs -text
 *.tar.xz filter=lfs diff=lfs merge=lfs -text
 *.tar.bz2 filter=lfs diff=lfs merge=lfs -text
+src/packages/kdos-cursors/art/** filter=lfs diff=lfs merge=lfs -text

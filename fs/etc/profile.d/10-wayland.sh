@@ -24,7 +24,7 @@ export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=COSMIC
 
 # The per-user session bus lives at a fixed runtime path (started by
-# kdos-session; the same path is visible inside the appbox). Point shells
+# kdos-desktop; the same path is visible inside the appbox). Point shells
 # that didn't inherit the session env (ssh, tty2) at it when it's up.
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && [ -S "$XDG_RUNTIME_DIR/bus" ]; then
 	export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"

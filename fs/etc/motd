@@ -11,7 +11,7 @@ KD's Homebrew Linux Distro
 Based on Linux Kernel and Musl libc.
 This banner is the fallback; fastfetch replaces it when installed.
 
-λ kdos-session   start the COSMIC desktop
+λ desktop        start the COSMIC desktop (alias of kdos-desktop)
 λ kdos help      keybinds and commands
 λ kdos app gimp  install an alien app into a container
 λ kdos theme     phosphor · amber · ice · bone
