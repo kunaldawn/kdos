@@ -23,6 +23,13 @@ fi
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=COSMIC
 
+# The per-user session bus lives at a fixed runtime path (started by
+# kdos-session; the same path is visible inside the appbox). Point shells
+# that didn't inherit the session env (ssh, tty2) at it when it's up.
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && [ -S "$XDG_RUNTIME_DIR/bus" ]; then
+	export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+fi
+
 # Where launchers look for .desktop files. XDG_DATA_HOME must NOT be repeated
 # inside XDG_DATA_DIRS — launchers scan both, and every app shows up twice.
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
