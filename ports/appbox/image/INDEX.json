@@ -1,0 +1,282 @@
+[
+ {
+  "name": "blobs/sha256/2ef3861945ece9b0a46986b90fa808716e2520db6bff0e175f4df3c2fc136c10",
+  "size": 485435904,
+  "chunks": [
+   "blobs/sha256/2ef3861945ece9b0a46986b90fa808716e2520db6bff0e175f4df3c2fc136c10.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/317d762ad512f705190f4db9fdf6da6177adc0b06fbb23b98103c69d2073db53",
+  "size": 401767936,
+  "chunks": [
+   "blobs/sha256/317d762ad512f705190f4db9fdf6da6177adc0b06fbb23b98103c69d2073db53.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/378a76a4ff5bcb4e1b132b685b1a25c2c1429548295a76fc31241ebe444ce4fb",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/378a76a4ff5bcb4e1b132b685b1a25c2c1429548295a76fc31241ebe444ce4fb.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/3961e8ad4ec4976f2c620058587e1f58059a2f83bbbc60cb698c0ded8b4c9e61",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/3961e8ad4ec4976f2c620058587e1f58059a2f83bbbc60cb698c0ded8b4c9e61.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/40ca900c0a4db804873af2da7c9b726de358239f59c847a5f98705b3f8fa0f03",
+  "size": 113974784,
+  "chunks": [
+   "blobs/sha256/40ca900c0a4db804873af2da7c9b726de358239f59c847a5f98705b3f8fa0f03.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/42481f926af69075c8ed73d6b354f763331c3f2fd472df1cc27f8e9680d4cdbc",
+  "size": 833226752,
+  "chunks": [
+   "blobs/sha256/42481f926af69075c8ed73d6b354f763331c3f2fd472df1cc27f8e9680d4cdbc.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/570f2b6d83f285b2e629805d0672e7132dc639c336792cfe5472da806a12bfae",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/570f2b6d83f285b2e629805d0672e7132dc639c336792cfe5472da806a12bfae.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/583bd0b6aba5337ff02cb837b538d9c167d340caf12e1000eebb88b8aa4cb5cd",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/583bd0b6aba5337ff02cb837b538d9c167d340caf12e1000eebb88b8aa4cb5cd.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/604e0c41338e1b0692f5d6c0b2f075e31b4d918408ff83d0e0d73f63b8b563e1",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/604e0c41338e1b0692f5d6c0b2f075e31b4d918408ff83d0e0d73f63b8b563e1.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/6734d6f55f67be2909be3e3a933cfde201ae4a15900ab45288e35d3485eae18d",
+  "size": 2037864448,
+  "chunks": [
+   "blobs/sha256/6734d6f55f67be2909be3e3a933cfde201ae4a15900ab45288e35d3485eae18d.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/7498a08cd6f340d24dfca5a12b75c913a18a90807a3a9b2f25825d3b149028ae",
+  "size": 2048,
+  "chunks": [
+   "blobs/sha256/7498a08cd6f340d24dfca5a12b75c913a18a90807a3a9b2f25825d3b149028ae.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/7e64363408213001418c9c3e8248dfde2c14af9181274f7c3a271fcd711148a4",
+  "size": 1356067328,
+  "chunks": [
+   "blobs/sha256/7e64363408213001418c9c3e8248dfde2c14af9181274f7c3a271fcd711148a4.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/7eb51a87fe0e4db8b1eb75e12b2f5981327883e2005a8081fad9336a28dbadc9",
+  "size": 1268357632,
+  "chunks": [
+   "blobs/sha256/7eb51a87fe0e4db8b1eb75e12b2f5981327883e2005a8081fad9336a28dbadc9.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/81da1d1cfd1747e3b1cd65ec9ded77752bda7f46383d5c27548205e6ddbc89b4",
+  "size": 859,
+  "chunks": [
+   "blobs/sha256/81da1d1cfd1747e3b1cd65ec9ded77752bda7f46383d5c27548205e6ddbc89b4.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/88923abee7ef54aec6c170f0e788b3588ec2a402d206ec8d11ad5104746ef0ef",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/88923abee7ef54aec6c170f0e788b3588ec2a402d206ec8d11ad5104746ef0ef.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/8ff03bc4397cbe2cd6eaecb9bfa0629aa131cb6fba3224a94e25703630a32cb4",
+  "size": 397721600,
+  "chunks": [
+   "blobs/sha256/8ff03bc4397cbe2cd6eaecb9bfa0629aa131cb6fba3224a94e25703630a32cb4.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/90ab72b7fb5da9609602b495d269b55ccf7a936e4329f067a5c9f0400efde3d7",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/90ab72b7fb5da9609602b495d269b55ccf7a936e4329f067a5c9f0400efde3d7.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/9449b6b5d5fde6f24e10f688f09fb602b244395cc53d40eb40cae226bb3c06de",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/9449b6b5d5fde6f24e10f688f09fb602b244395cc53d40eb40cae226bb3c06de.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/960c7a7625cf08d35939716a5f44f95c9d6bb025fae457cc02803fae55903f80",
+  "size": 737317376,
+  "chunks": [
+   "blobs/sha256/960c7a7625cf08d35939716a5f44f95c9d6bb025fae457cc02803fae55903f80.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/9630f8d8f251297922cb7313f34323dd815afe129d45a2d59de72e724604f69b",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/9630f8d8f251297922cb7313f34323dd815afe129d45a2d59de72e724604f69b.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/aa4703b7d35d25b41eaaa63c841af9d1ac6991f5fa4557184ed07c3d54645d9b",
+  "size": 7740,
+  "chunks": [
+   "blobs/sha256/aa4703b7d35d25b41eaaa63c841af9d1ac6991f5fa4557184ed07c3d54645d9b.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/afa26c18dbb15614c8b38c765ee37a143f2dbd8d1f5a53cd40aca065c0d20a99",
+  "size": 2222350336,
+  "chunks": [
+   "blobs/sha256/afa26c18dbb15614c8b38c765ee37a143f2dbd8d1f5a53cd40aca065c0d20a99.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/b4d742a96eb666d02baacf9d4ba5ebcc611d63de03b138c912faf5809e8a2a38",
+  "size": 391,
+  "chunks": [
+   "blobs/sha256/b4d742a96eb666d02baacf9d4ba5ebcc611d63de03b138c912faf5809e8a2a38.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/b972e80328e285f8f82e194b117d4623f5e8458d687488e335de0c417e0e0a19",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/b972e80328e285f8f82e194b117d4623f5e8458d687488e335de0c417e0e0a19.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/d79cc2e70f34f2ceafc79392c0503abd9d22ca1b4e26064e7e3616b9c3b6c7ff",
+  "size": 69540864,
+  "chunks": [
+   "blobs/sha256/d79cc2e70f34f2ceafc79392c0503abd9d22ca1b4e26064e7e3616b9c3b6c7ff.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/dd59d03cb4c07a2df39e5a816ee4b9f29b1c19b9ec85cd17a335fdc5b580ce67",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/dd59d03cb4c07a2df39e5a816ee4b9f29b1c19b9ec85cd17a335fdc5b580ce67.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/e66262b235cce47d012192b03dd0658fd60b4f283ff66251133f7964f89a0ac0",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/e66262b235cce47d012192b03dd0658fd60b4f283ff66251133f7964f89a0ac0.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/e7dcebb233faf9d9af42ae13a6e66355953226c1771e2970df0b37ea0e4a6be6",
+  "size": 37776384,
+  "chunks": [
+   "blobs/sha256/e7dcebb233faf9d9af42ae13a6e66355953226c1771e2970df0b37ea0e4a6be6.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/ea7730fa1772138f826ad2e6fa6701682122cccf1a3a902d2541a6e2799f665b",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/ea7730fa1772138f826ad2e6fa6701682122cccf1a3a902d2541a6e2799f665b.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/eb6f5015d25e7010b3f9b944acfee1172541e47c4bb477b332e9653d884bb81d",
+  "size": 474909696,
+  "chunks": [
+   "blobs/sha256/eb6f5015d25e7010b3f9b944acfee1172541e47c4bb477b332e9653d884bb81d.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/ec9c38021b9e31605acfb1388b778490ef6a24cf9f78f6cdb8891befff0ad117",
+  "size": 2877,
+  "chunks": [
+   "blobs/sha256/ec9c38021b9e31605acfb1388b778490ef6a24cf9f78f6cdb8891befff0ad117.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
+  "size": 81049600,
+  "chunks": [
+   "blobs/sha256/f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/f69f0f1b04ab779361b09d8581aa59d29e2451abe2535f836fdf9e316f547be7",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/f69f0f1b04ab779361b09d8581aa59d29e2451abe2535f836fdf9e316f547be7.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/fa1bea32a0a2b5bde5536c2ec40140151f940169bede87a26836583b241d1cc3",
+  "size": 467,
+  "chunks": [
+   "blobs/sha256/fa1bea32a0a2b5bde5536c2ec40140151f940169bede87a26836583b241d1cc3.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/fd27fca890db0715afed2641eba51157fd4da22a57111f634a25b96419f293cd",
+  "size": 9953792,
+  "chunks": [
+   "blobs/sha256/fd27fca890db0715afed2641eba51157fd4da22a57111f634a25b96419f293cd.zst"
+  ]
+ },
+ {
+  "name": "blobs/sha256/fdf16c57aaff8344e2480aa8dd0ee19ca9282998b42fe2c36d9315757c6a20d3",
+  "size": 656221696,
+  "chunks": [
+   "blobs/sha256/fdf16c57aaff8344e2480aa8dd0ee19ca9282998b42fe2c36d9315757c6a20d3.zst"
+  ]
+ },
+ {
+  "name": "index.json",
+  "size": 360,
+  "chunks": [
+   "index.json.zst"
+  ]
+ },
+ {
+  "name": "manifest.json",
+  "size": 5412,
+  "chunks": [
+   "manifest.json.zst"
+  ]
+ },
+ {
+  "name": "oci-layout",
+  "size": 31,
+  "chunks": [
+   "oci-layout.zst"
+  ]
+ },
+ {
+  "name": "repositories",
+  "size": 104,
+  "chunks": [
+   "repositories.zst"
+  ]
+ }
+]

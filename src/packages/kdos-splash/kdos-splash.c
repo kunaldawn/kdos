@@ -34,6 +34,10 @@
  *   kdos-splash step "PROBING..."   begin a stage (prints NAME ....... )
  *   kdos-splash ok | fail           close the current stage
  *   kdos-splash msg  "text"         a plain line
+ *   kdos-splash total N             add N to the expected step count (the
+ *                                   progress bar; senders add their share as
+ *                                   soon as they know it — until the first
+ *                                   total arrives the bar sweeps)
  *   kdos-splash quit                power-off animation, then exit
  *
  * Commands reach the running instance through a FIFO in /dev, which is the
@@ -102,6 +106,7 @@ static int gw, gh, gstride, gcount;
 
 static struct line lines[MAX_LINES];
 static int nlines;
+static int total_steps, done_steps;
 
 static volatile sig_atomic_t stop;
 
@@ -247,8 +252,10 @@ static const uint32_t peng_pal[6] = {
 
 static int art_cw, art_ch, art_lt, art_x, art_y;
 static int peng_scale, peng_x, peng_y;
-static int sub_y, tag_y, rule_y;
-static int body_scale, body_x, body_y, body_step, body_max;
+static int sub_y, tag_y, rule_y, bar_y;
+static int body_scale, body_x, body_y, body_w, body_step, body_max;
+
+#define BAR_SEGS 26
 
 /* One character cell of the wordmark: a solid block, or the box-drawing
  * borders reduced to single thick strokes. */
@@ -353,8 +360,19 @@ static void layout(void)
 	rule_y = tag_y + cell * 2;
 
 	body_step = cell + body_scale * 4;
-	body_y = rule_y + body_step;
-	body_x = fbw * 22 / 100;
+
+	/*
+	 * The status column is a fixed-width block — name dotted to LINE_COLS,
+	 * a space, and up to "FAIL" — centered as a whole. Anchoring it at a
+	 * screen percentage (the old way) only looked centered at 1280 wide.
+	 */
+	body_w = (LINE_COLS + 6) * gw * body_scale;
+	body_x = (fbw - body_w) / 2;
+	if (body_x < 0)
+		body_x = 0;
+
+	bar_y  = rule_y + body_step;
+	body_y = bar_y + body_step + body_scale * 4;
 	body_max = (fbh * 94 / 100 - body_y) / body_step;
 	if (body_max > MAX_LINES)
 		body_max = MAX_LINES;
@@ -362,9 +380,84 @@ static void layout(void)
 		body_max = 1;
 }
 
-/* Compose the whole screen into the canvas. Effects come later, in present. */
-static void compose(int cursor_on)
+/*
+ * The retro progress bar: bracket caps, chunky segments, a percent readout.
+ * With a known total it fills as stages close, the leading segment pulsing
+ * amber; before any total arrives it plays a KITT sweep instead.
+ */
+static void draw_bar(int tick)
 {
+	int cell = gw * body_scale;
+	int pct_w = 5 * cell;
+	int seg_area_x = body_x + cell + body_scale * 2;
+	int seg_area_w = body_w - cell * 2 - body_scale * 4 - pct_w;
+	int gap = body_scale * 2;
+	int seg_w = (seg_area_w - gap * (BAR_SEGS - 1)) / BAR_SEGS;
+	int seg_h = gh * body_scale - body_scale * 6;
+	int y = bar_y + body_scale * 3;
+
+	if (seg_w < 2)
+		return;
+
+	draw_text(body_x - cell / 2, bar_y, "[", body_scale, 0, C_TEXT);
+	draw_text(seg_area_x + BAR_SEGS * (seg_w + gap) - gap + body_scale * 2,
+		  bar_y, "]", body_scale, 0, C_TEXT);
+
+	int filled = -1, kitt = -1;
+	if (total_steps > 0) {
+		filled = done_steps * BAR_SEGS / total_steps;
+		if (filled > BAR_SEGS)
+			filled = BAR_SEGS;
+	} else {
+		int span = 2 * (BAR_SEGS - 3);
+		kitt = tick % span;
+		if (kitt >= BAR_SEGS - 3)
+			kitt = span - kitt;
+	}
+
+	for (int i = 0; i < BAR_SEGS; i++) {
+		int x = seg_area_x + i * (seg_w + gap);
+		uint32_t c = C_DIM;
+
+		if (filled >= 0) {
+			if (i < filled)
+				c = C_PHOS;
+			else if (i == filled && done_steps < total_steps)
+				c = (tick & 2) ? C_AMBER : C_DIM;
+		} else {
+			int d = i - kitt;
+			if (d < 0)
+				d = -d;
+			if (d == 0)
+				c = C_PHOS;
+			else if (d == 1)
+				c = C_PHOSDIM;
+			else if (d == 2)
+				c = C_DIM;
+			else
+				c = mix_rgb(C_DEEP, C_DIM, 0.5);
+		}
+		fill(x, y, seg_w, seg_h, c);
+	}
+
+	char pct[16];
+	if (total_steps > 0) {
+		int p = done_steps * 100 / total_steps;
+		if (p > 100)
+			p = 100;
+		snprintf(pct, sizeof(pct), "%3d%%", p);
+	} else {
+		snprintf(pct, sizeof(pct), "BUSY");
+	}
+	draw_text(body_x + body_w - pct_w + cell, bar_y, pct, body_scale, 0,
+		  total_steps > 0 ? C_PHOS : C_AMBER);
+}
+
+/* Compose the whole screen into the canvas. Effects come later, in present. */
+static void compose(int tick)
+{
+	int cursor_on = (tick / 4) & 1;
+	static const char spin[4] = { '|', '/', '-', '\\' };
 	for (size_t i = 0; i < (size_t)fbw * fbh; i++)
 		canvas[i] = C_DEEP;
 
@@ -392,7 +485,9 @@ static void compose(int cursor_on)
 		  tag, body_scale, 0, C_DIM);
 
 	/* A rule between the identity and the machine talking. */
-	fill(body_x, rule_y, fbw - body_x * 2, body_scale, C_DIM);
+	fill(body_x, rule_y, body_w, body_scale, C_DIM);
+
+	draw_bar(tick);
 
 	/* Status lines, oldest first, scrolled to keep the newest visible. */
 	int first = nlines > body_max ? nlines - body_max : 0;
@@ -417,12 +512,18 @@ static void compose(int cursor_on)
 		draw_text(body_x, y, buf, body_scale, 0, C_TEXT);
 
 		int sx = body_x + text_width(buf, body_scale, 0) + gw * body_scale;
-		if (l->state == ST_OK)
+		if (l->state == ST_OK) {
 			draw_text(sx, y, "OK", body_scale, 0, C_PHOS);
-		else if (l->state == ST_FAIL)
+		} else if (l->state == ST_FAIL) {
 			draw_text(sx, y, "FAIL", body_scale, 0, C_ALARM);
-		else if (cursor_on)
-			fill(sx, y, gw * body_scale, gh * body_scale, C_PHOS);
+		} else {
+			/* A live stage gets a little rotor, not a mute block. */
+			char s[2] = { spin[tick & 3], 0 };
+			draw_text(sx, y, s, body_scale, 0, C_AMBER);
+			if (cursor_on)
+				fill(sx + gw * body_scale * 2, y,
+				     gw * body_scale, gh * body_scale, C_PHOS);
+		}
 	}
 }
 
@@ -463,12 +564,17 @@ static inline uint32_t mix_rgb(uint32_t a, uint32_t b, double t)
  *   hopen  1.0 = full width,  0.0 = a dot
  *   flash  how much of the picture is washed out toward white-green
  *   gain   overall brightness (the decay at the end, and the idle flicker)
+ *   hum    y position of the hum bar (the slow bright band real tubes get
+ *          from ripple on the supply rail), or a large negative to disable
  */
-static void present(double vopen, double hopen, double flash, double gain)
+static void present(double vopen, double hopen, double flash, double gain,
+		    double hum)
 {
 	double cy = fbh / 2.0, cx = fbw / 2.0;
 	if (vopen < 1e-4) vopen = 1e-4;
 	if (hopen < 1e-4) hopen = 1e-4;
+
+	double humw = fbh * 0.045 + 8.0;
 
 	for (int y = 0; y < fbh; y++) {
 		unsigned char *dst = fbmem + (size_t)y * fi.line_length;
@@ -488,6 +594,10 @@ static void present(double vopen, double hopen, double flash, double gain)
 
 		/* Scanlines: every other row is dimmer. This is the whole look. */
 		double scan = (y & 1) ? 0.78 : 1.0;
+
+		double hd = fabs(y - hum);
+		if (hd < humw)
+			scan *= 1.0 + 0.10 * (1.0 - hd / humw);
 
 		for (int x = 0; x < fbw; x++) {
 			uint32_t c = C_DEEP;
@@ -623,6 +733,7 @@ static void close_line(int state)
 	for (int i = nlines - 1; i >= 0; i--) {
 		if (lines[i].state == ST_PENDING) {
 			lines[i].state = state;
+			done_steps++;
 			return;
 		}
 	}
@@ -636,6 +747,7 @@ static int handle(const char *cmd)
 	case 'M': add_line(cmd + 1, ST_PLAIN); break;
 	case 'O': close_line(ST_OK); break;
 	case 'F': close_line(ST_FAIL); break;
+	case 'T': total_steps += atoi(cmd + 1); break;
 	case 'Q': return 1;
 	default: break;
 	}
@@ -675,14 +787,14 @@ static int run(void)
 	double t0 = now_s();
 	char buf[512];
 	size_t used = 0;
-	int quit = 0, cursor = 1;
-	double cursor_t = t0;
+	int quit = 0;
 
 	/* Power-on, then a steady picture until someone says stop. */
 	while (!stop) {
 		double t = now_s() - t0;
+		int tick = (int)(t * 10.0);
 
-		double vopen = 1.0, flash = 0.0, gain = 1.0;
+		double vopen = 1.0, flash = 0.0, gain = 1.0, hum = -1e6;
 		if (t < INTRO_S) {
 			double p = t / INTRO_S;
 			double u = p / 0.55;
@@ -693,15 +805,12 @@ static int run(void)
 		} else if (!quit) {
 			/* Idle: a slow, shallow brightness wander. Tubes breathe. */
 			gain = 0.97 + 0.03 * sin(t * 2.1);
+			/* And the hum bar drifts down the raster, forever. */
+			hum = fmod(t * fbh * 0.12, fbh * 1.3) - fbh * 0.15;
 		}
 
-		if (now_s() - cursor_t > 0.45) {
-			cursor = !cursor;
-			cursor_t = now_s();
-		}
-
-		compose(cursor);
-		present(vopen, 1.0, flash, gain);
+		compose(tick);
+		present(vopen, 1.0, flash, gain, hum);
 		fb_flush();
 
 		if (quit)
@@ -750,7 +859,7 @@ static int run(void)
 		if (decay < 0.0) decay = 0.0;
 
 		compose(0);
-		present(fold, pinch, p * 0.5, decay);
+		present(fold, pinch, p * 0.5, decay, -1e6);
 		fb_flush();
 		usleep(16000);
 	}
@@ -807,11 +916,13 @@ static int preview(const char *geom, const char *at, const char *out)
 	}
 	layout();
 
+	total_steps = 9;
 	add_line("PROBING BLOCK DEVICES", ST_OK);
 	add_line("MOUNTING SYSTEM IMAGE", ST_OK);
 	add_line("OVERLAY ROOT", ST_OK);
 	add_line("SWITCHING ROOT", ST_OK);
 	add_line("DEVICE MANAGER", ST_OK);
+	done_steps = 5;
 	add_line("STARTING NETWORK", ST_PENDING);
 
 	double vopen = 1.0, flash = 0.0, gain = 1.0;
@@ -824,8 +935,8 @@ static int preview(const char *geom, const char *at, const char *out)
 		flash = f > 0.0 ? f * f : 0.0;
 	}
 
-	compose(1);
-	present(vopen, 1.0, flash, gain);
+	compose(4);
+	present(vopen, 1.0, flash, gain, h * 0.62);
 
 	FILE *f = fopen(out, "wb");
 	if (!f)
@@ -903,6 +1014,8 @@ int main(int argc, char **argv)
 		return say("S%s\n", arg, 0);
 	if (!strcmp(cmd, "msg"))
 		return say("M%s\n", arg, 0);
+	if (!strcmp(cmd, "total"))
+		return say("T%s\n", arg, 0);
 	if (!strcmp(cmd, "ok"))
 		return say("O%s\n", NULL, 0);
 	if (!strcmp(cmd, "fail"))
@@ -910,6 +1023,6 @@ int main(int argc, char **argv)
 	if (!strcmp(cmd, "quit"))
 		return say("Q%s\n", NULL, 1);
 
-	fprintf(stderr, "usage: kdos-splash {run|step TEXT|msg TEXT|ok|fail|quit}\n");
+	fprintf(stderr, "usage: kdos-splash {run|step TEXT|msg TEXT|ok|fail|total N|quit}\n");
 	return 1;
 }

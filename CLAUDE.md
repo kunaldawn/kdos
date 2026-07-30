@@ -55,16 +55,53 @@ the image's own desktop entries (`ports/appbox/genlaunchers.py` parses [Desktop 
 NoDisplay/noise, renames to the ids the dock favorites reference) — regenerate
 rather than hand-edit when the app set changes. Because
 `make build` runs `--network none`, the image is built on the HOST with
-`make fetch-apps` → `ports/appbox/appbox.tar` + `icons/` (both gitignored,
-too big for LFS). `script/06_packaging/01_appbox.sh` then `podman load`s it
-into the kdos user's rootless storage inside the chroot — a missing tarball is
-a warning, the ISO builds without it. No container is created at build time:
+`make fetch-apps` → `ports/appbox/appbox.tar` (gitignored, over LFS's 2G/file
+limit) which `ports/appbox/pack` immediately explodes into
+**`ports/appbox/image/`**: one zstd file per docker-archive member (layer
+blobs split at 1.5G), all LFS-tracked, plus `INDEX.json`. That directory and
+`icons/` ARE committed — the repo alone must build the full ISO. The
+Containerfile is one `RUN` per segment, so a segment edit only changes that
+layer's blob in git. `script/06_packaging/01_appbox.sh` loads whichever
+exists: the tar directly, else `ports/appbox/assemble` streams the tar out of
+the chunks straight into `podman load` (no temp file). A missing image is a
+warning, the ISO builds without it. No container is created at build time:
 the launchers in `fs/etc/skel/.local/share/applications/kdos-*.desktop` call
-`kdos-appbox run <app>`, which creates the distrobox lazily on first launch,
-offline, from the local image. The Containerfile pre-installs distrobox's
-runtime prerequisites — without them the first `distrobox enter` apt-installs
-from the network, which would defeat the point. Packaging-phase snapshots
-exclude `fs/home/kdos/.local/share/containers/*`.
+`kdos-appbox run <app>`, which creates the distrobox lazily — and
+`kdos-session` backgrounds `kdos-appbox warmup` at login (flock-guarded, also
+serialized against `run`'s create), so container init normally happens while
+the desktop is still settling and the first app click hits a warm box. The
+Containerfile pre-installs distrobox's runtime prerequisites — without them
+the first `distrobox enter` apt-installs from the network, which would defeat
+the point. Packaging-phase snapshots exclude
+`fs/home/kdos/.local/share/containers/*`.
+
+Appbox runtime plumbing that cost a debug cycle each: debian's games live in
+`/usr/games`, which distrobox's inherited host PATH lacks — `10-wayland.sh`
+appends it or every game launcher dies on "not found". Audio and OBS screen
+capture come from the HOST side: `kdos-session` execs (inside the session
+bus) `kdos-session-start`, which brings up pipewire + pipewire-media-session
++ pipewire-pulse and then execs cosmic-session; the xdg-desktop portals are
+D-Bus-activated on demand, and OBS's capture source is portal→ScreenCast→
+pipewire, with the pulse/pipewire/bus sockets reaching the box via the
+shared `/run/user/1000`. The box side needs debian's `obs-plugins` package —
+debian splits OBS's plugins out as a Recommends, and `linux-pipewire.so`
+(the only Wayland capture path) lives there; the recommends-less install
+silently dropped it, exactly like kdenlive's ffmpeg/dvdauthor chain.
+
+Three bake-side traps, each cost a debug cycle: (1) the bake now WIPES
+`$STORAGE` before loading and the uid remap is idempotent — re-baking onto
+an existing store used to remap already-remapped uids (clamped to 165535)
+and every `distrobox enter` died with `crun: readlink ''`; (2) the loaded
+image is FLATTENED to one layer (rootful `podman create`+`export`+`import`)
+— the rootful unpack records whiteout/opaque markers as `trusted.overlay.*`
+which the ROOTLESS runtime mount cannot see, so multi-layer-rebuilt dirs
+like `/etc/alternatives` came up empty in the box (that emptied OBS's whole
+encoder list via the dangling libblas alternatives symlink); (3) the
+`xdg-desktop-portal` main daemon snapshots its backends at startup —
+`kdos-session-start` waits for the compositor socket, pushes
+WAYLAND_DISPLAY into the D-Bus activation environment, starts
+`xdg-desktop-portal-cosmic`, WAITS for it to own its bus name, and only
+then (re)starts the main portal, or ScreenCast stays empty all session.
 
 ### Icons, the shell's memory, and the two QEMU flavours
 
@@ -416,8 +453,8 @@ COSMIC reads layered RON config: `/usr/share/cosmic` (system defaults) then
 |---|---|
 | `com.system76.CosmicBackground/v1/all` | wallpaper → the penguin |
 | `com.system76.CosmicTk/v1/icon_theme` | `"KDOS"` (kdos-icons) |
-| `com.system76.CosmicPanel.Panel/v1/*` | floating top panel: phosphor bg Color, opacity 0.92, radius 12, trimmed wings (no a11y/input-sources applets) |
-| `com.system76.CosmicPanel.Dock/v1/*` | dock: phosphor bg Color, size M |
+| `com.system76.CosmicPanel.Panel/v1/*` | floating top panel: phosphor bg Color, opacity 0.92, radius 12, trimmed wings (no a11y/input-sources applets), `keep_style_on_maximize` true (else a maximized window snaps the panel to edge-to-edge theme-default styling) |
+| `com.system76.CosmicPanel.Dock/v1/*` | dock: phosphor bg Color, size M, `keep_style_on_maximize` true, `plugins_center` without the Launcher/App buttons (workspaces + app list + minimize only) |
 | `com.system76.CosmicAppList/v1/favorites` | dock pins that actually exist: foot, CosmicFiles, kdos-firefox, kdos-mousepad, kdos-gimp, CosmicSettings (stock favorites are CosmicTerm/Edit/Store → gear placeholders) |
 | `com.system76.CosmicAppLibrary/v1/groups` | KDOS launcher groups: Internet, Graphics, Office, Media, Engineering, Science, System, Utilities — Categories-driven (`AppGroup` RON; field docs in upstream `app_group.rs` are swapped — `exclude` excludes, `include` force-includes) |
 
@@ -446,11 +483,34 @@ still there, behind the overflow button).
 `recolor.py` hue-shifts every non-symbolic Cosmic places/categories/devices/
 mimetypes SVG (plus the two hicolor panel-button SVGs) to the phosphor hue at
 build time; symbolic icons stay untouched (the toolkit tints them from the
-active theme). Ships `distributor-logo-kdos` / `start-here` (256px penguin).
+active theme). Ships `distributor-logo-kdos` / `start-here` (256px penguin),
+and the dock's app-library button is the tux: the kpkgbuild deletes the
+recolored `com.system76.CosmicPanelAppButton.svg` and installs the penguin
+PNG at `256x256/apps/` instead (theme-internal lookup beats hicolor's SVG).
 Depends on cosmic-icons being installed in the chroot at build.
 
-The niri-era CRT window shaders are gone — cosmic-comp has no custom-shader
-API. The CRT identity lives in the boot splash, the TTY, and the palette.
+**kdos-cursors** (`src/packages/kdos-cursors`): pixel-art phosphor cursor
+theme, `gencursors.py` writes Xcursor binaries directly (raw ARGB, python
+stdlib only — no xcursorgen, no image libs; alpha kept 0/255 so premultiply
+never matters). 22 shapes covering cosmic-comp's whole `cursor_aliases`
+table (resize arrows included — without them the "default" theme has no
+resize shapes and cosmic-comp falls back to its built-in arrow on window
+borders), animated wait/progress, aliases as symlinks. Sizes 24–96
+(4K/HiDPI-ready), upscaled through a scale2x/EPX chain so big sizes read
+crisp rather than blocky, with a pale outer rim (outside-connected
+transparency only — interior holes stay open) so the dark outline is
+visible on dark surfaces. Installed to
+`/usr/share/icons/KDOS-cursors` AND `/etc/skel/.icons/` — distrobox apps
+share `$HOME` but not `/usr/share/icons`, so the home copy is what the box
+sees. Selected via `XCURSOR_THEME`/`XCURSOR_SIZE` in
+`fs/etc/profile.d/10-wayland.sh` (cosmic-comp/winit/Qt) and
+`fs/etc/skel/.config/gtk-{3,4}.0/settings.ini` (GTK apps in the box).
+
+The default wallpaper carries a baked CRT treatment (scanlines every 3rd row
++ vignette, imagemagick multiply — regenerate from a clean render if
+replaced). The niri-era CRT window shaders are gone — cosmic-comp has no
+custom-shader API. The CRT identity lives in the boot splash, the wallpaper,
+the TTY, and the palette.
 
 ### The boot splash
 
@@ -491,6 +551,16 @@ splash pixels.
 Adding a stage is one line either side: `sp_step "NAME"` / `sp_ok` in the generated init in
 `script/06_packaging/01_initramfs.sh`, or `splash step "NAME"` / `splash ok` in
 `fs/etc/init.d/rcS` (which already wraps every `init.d` script automatically).
+
+The layout is centered as a block on any resolution (the status column is a
+fixed-width LINE_COLS+6 field — never anchor it at a screen percentage, that
+only looked centered at 1280). The progress bar is fed by `kdos-splash total
+N`, *additive*: each boot phase adds its own step count as soon as it knows
+it (initramfs common part sends 2, the live/disk branch adds its 4/3, rcS
+adds 2 + enabled-service count). Until the first total arrives the bar plays
+a KITT sweep; pending stages show an amber rotor; idle adds a hum bar
+drifting down the raster. When adding stages, keep the nearby `sp_total`
+count in step.
 
 Iterate on the look without booting: `kdos-splash preview 1280x800 0.35 out.ppm` renders a
 single frame at a given intro time to a PPM.

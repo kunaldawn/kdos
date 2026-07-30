@@ -11,9 +11,10 @@
 build/
 build_test/
 
-# Host-built alien-app image (make fetch-apps) — too big for git/LFS
+# Host-built alien-app archive (make fetch-apps). The tar itself is too big
+# for LFS's 2G/file limit; its chunked form (ports/appbox/image/) and the
+# icons ARE committed — the repo alone must be able to build the full ISO.
 ports/appbox/appbox.tar
-ports/appbox/icons/
 __pycache__/
 ports-archived/
 port-archive.sh
