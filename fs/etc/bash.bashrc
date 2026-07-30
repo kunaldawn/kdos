@@ -146,7 +146,11 @@ fi
 # starts and higher for anything nested, so `bash` inside a session stays quiet.
 # Skipped inside a container, where the host's specs would be a lie.
 if [ "${SHLVL:-1}" -le 1 ] && [ -z "${CONTAINER_ID:-}" ] && [ -t 1 ]; then
-    if command -v fastfetch >/dev/null 2>&1; then
+    if command -v kdos-banner >/dev/null 2>&1; then
+        # Animates the fastfetch banner; falls back to motd on its own, and to
+        # a plain print when the terminal is dumb/short or KDOS_NO_ANIM is set.
+        kdos-banner
+    elif command -v fastfetch >/dev/null 2>&1; then
         fastfetch
     elif [ -r /etc/motd ]; then
         # `command` because cat is aliased to bat above.

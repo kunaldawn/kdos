@@ -150,6 +150,18 @@ chown kdos:kdos /home/kdos/.local /home/kdos/.local/share \
 # recreates it correctly on first use.
 rm -rf "$STORAGE/volumes"
 
+# Same class of bug, worse symptom: the libpod database records the runroot
+# and tmpdir it was created with, and the bake ran with root's paths. Rootless
+# podman then honours them —
+#   Overriding run root "/run/user/1000/containers" with "/tmp/appbox-runroot"
+#   Overriding tmp dir  "/run/user/1000/libpod/tmp"  with "/run/libpod"
+# — and dies on `mkdir /run/libpod: permission denied`, so EVERY podman call
+# fails and no alien app launches at all. Nothing is baked into that database
+# (images live in the c/storage dirs, and no container is created at build
+# time), so drop it and let the user's first podman call create it with its
+# own paths.
+rm -rf "$STORAGE/libpod" "$STORAGE/db.sql" "$STORAGE"/*/libpod
+
 # The launchers reference the apps' own icons. They go into the SYSTEM
 # hicolor tree (merged under /usr/share/icons/hicolor's index.theme) — a
 # user-dir icon tree without its own index.theme is not searched by the

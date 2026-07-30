@@ -8,11 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: KDOS phosphor pixel-art cursor theme (generated Xcursor files)
+# description	: KDOS phosphor cursor theme
 # depends	: python3
 
 name=kdos-cursors
-version=1.0.0
+version=2.0
 release=1
 source=""
 
@@ -22,4 +22,6 @@ build() {
 	# ~/.icons makes the theme visible inside the box too.
 	mkdir -p "$PKG/etc/skel/.icons"
 	cp -a "$PKG/usr/share/icons/KDOS-cursors" "$PKG/etc/skel/.icons/"
+	install -Dm644 "$PORT_SRC/LICENSE.notice" \
+		"$PKG/usr/share/licenses/$name/LICENSE.notice"
 }

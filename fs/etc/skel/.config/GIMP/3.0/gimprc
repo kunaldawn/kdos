@@ -1,0 +1,4 @@
+# KDOS seed: follow the system GTK theme (the KDOS gtk.css palette) instead
+# of GIMP's own gray theme. GIMP rewrites this file on preference changes.
+(theme "System")
+(theme-color-scheme dark)

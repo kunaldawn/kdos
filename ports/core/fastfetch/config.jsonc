@@ -1,38 +1,94 @@
+// ██╗  ██╗██████╗  ██████╗ ███████╗
+// ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+// █████╔╝ ██║  ██║██║   ██║███████╗
+// ██╔═██╗ ██║  ██║██║   ██║╚════██║
+// ██║  ██╗██████╔╝╚██████╔╝███████║
+// ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+// ---------------------------------
+//   KD's Homebrew Linux Distro
+// ---------------------------------
+//
+// KDOS system banner — the INFO COLUMN ONLY.
+//
+// The logo below is for a bare `fastfetch` at the prompt. THE LOGIN BANNER
+// DOES NOT USE IT: kdos-banner runs fastfetch with `--logo none` and pastes
+// /usr/share/kdos/logo.txt on beside the result itself, because fastfetch's
+// own logo placement works by moving the cursor back UP over the logo block,
+// which cannot survive being animated one line at a time (it painted the
+// whole banner twice, offset, over the mascot). Consequence worth knowing:
+// the info column no longer has to be taller than the logo.
+//
+// Layout rules learned the hard way:
+//
+//   * Keys are padded to 10 characters by hand. display.key.width looks like
+//     the right knob but fastfetch places values at an ABSOLUTE column, so
+//     padded keys run past it and the value overwrites the separator.
+//   * Only box-drawing and block characters: the TTY font (ter-kdos32n) has no
+//     Nerd Font glyphs, no half blocks (▀ ▄) and no shade glyphs (░ ▒ ▓ paint
+//     as a grey slab), so bars use ─ for the empty portion and section heads
+//     use █.
+//   * Keep every value short. On a 1280x800 TTY with the 16x32 console font
+//     the screen is 80 columns wide, and kdos-banner only gets to put the logo
+//     beside this block if logo + gap + this fits.
 {
-    "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
-    "logo": {
-        "source": "/usr/share/fastfetch/logos/kdos.txt",
-        "type": "file",
-        "color": {
-            "1": "blue",
-            "2": "white"
-        },
-        "padding": {
-            "top": 1,
-            "right": 3
-        }
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+
+  "logo": {
+    "type": "file-raw",
+    "source": "/usr/share/kdos/logo.txt",
+    "padding": { "top": 0, "left": 2, "right": 3 }
+  },
+
+  "display": {
+    "separator": " │ ",
+    "color": { "keys": "green", "title": "light_green", "separator": "green" },
+    "percent": { "type": ["bar", "num", "num-color"], "green": 50, "yellow": 80 },
+    "bar": {
+      "char": { "elapsed": "█", "total": "─" },
+      "border": { "left": "", "right": "" },
+      "width": 10
     },
-    "display": {
-        "separator": "  "
-    },
-    "modules": [
-        "title",
-        "separator",
-        "os",
-        "host",
-        "kernel",
-        "uptime",
-        "packages",
-        "shell",
-        "wm",
-        "terminal",
-        "cpu",
-        "gpu",
-        "memory",
-        "disk",
-        "localip",
-        "battery",
-        "break",
-        "colors"
-    ]
+    "constants": []
+  },
+
+  "modules": [
+    { "type": "title", "key": " ", "format": "{#1;32}{user-name}{#0;32}@{#1;32}{host-name}" },
+    { "type": "custom", "format": "\u001b[0;32m══════════════════════════════════════════════\u001b[0m" },
+
+    { "type": "custom", "format": "\u001b[1;32m█\u001b[0;32m SYSTEM\u001b[0m" },
+    { "type": "os", "key": "OS        ", "format": "{pretty-name}" },
+    { "type": "kernel", "key": "Kernel    " },
+    { "type": "host", "key": "Host      " },
+    { "type": "uptime", "key": "Uptime    " },
+    { "type": "loadavg", "key": "Load      " },
+
+    { "type": "custom", "format": "" },
+    { "type": "custom", "format": "\u001b[1;32m█\u001b[0;32m DESKTOP\u001b[0m" },
+    { "type": "wm", "key": "Desktop   " },
+    { "type": "shell", "key": "Shell     " },
+    // fastfetch identifies the terminal by walking the process tree, which from
+    // inside kdos-banner finds the wrapper script and reports "kdos-banner".
+    // $TERM is the honest answer on both the TTY and in foot.
+    { "type": "command", "key": "Terminal  ", "text": "printf %s \"${TERM:-unknown}\"" },
+    { "type": "display", "key": "Display   ", "compactType": "original" },
+    { "type": "command", "key": "Accent    ", "text": "kdos theme 2>/dev/null" },
+
+    { "type": "custom", "format": "" },
+    { "type": "custom", "format": "\u001b[1;32m█\u001b[0;32m SOFTWARE\u001b[0m" },
+    { "type": "command", "key": "Packages  ", "text": "printf '%s (kpkg)' \"$(ls -1 /var/lib/kpkg/db 2>/dev/null | wc -l | tr -d ' ')\"" },
+    { "type": "command", "key": "Alien apps", "text": "ls -1 \"$HOME\"/.local/share/applications/*.desktop 2>/dev/null | wc -l | tr -d ' '" },
+    { "type": "command", "key": "Containers", "text": "podman ps --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' '" },
+
+    { "type": "custom", "format": "" },
+    { "type": "custom", "format": "\u001b[1;32m█\u001b[0;32m HARDWARE\u001b[0m" },
+    { "type": "cpu", "key": "CPU       ", "showPeCoreCount": false },
+    { "type": "gpu", "key": "GPU       ", "hideType": "integrated" },
+    { "type": "memory", "key": "Memory    " },
+    { "type": "swap", "key": "Swap      " },
+    { "type": "disk", "key": "Disk      ", "folders": "/" },
+    { "type": "localip", "key": "Network   ", "showIpv6": false },
+
+    { "type": "custom", "format": "\u001b[0;32m══════════════════════════════════════════════\u001b[0m" },
+    { "type": "custom", "format": "\u001b[2;32m  musl · toybox · cosmic · no systemd\u001b[0m" }
+  ]
 }
