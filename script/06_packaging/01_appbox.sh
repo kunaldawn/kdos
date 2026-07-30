@@ -40,6 +40,7 @@
 set -e
 
 TAR=/ports/appbox/appbox.tar
+IMGDIR=/ports/appbox/image
 ICONS=/ports/appbox/icons
 STORAGE=/home/kdos/.local/share/containers/storage
 
@@ -65,7 +66,26 @@ case "${1:-}" in
     cd /
     export PODMAN_IGNORE_CGROUPSV1_WARNING=1
     mkdir -p "$STORAGE" /tmp/appbox-runroot
-    podman --root "$STORAGE" --runroot /tmp/appbox-runroot load -i "$TAR"
+    if [ -f "$TAR" ]; then
+        podman --root "$STORAGE" --runroot /tmp/appbox-runroot load -i "$TAR"
+    else
+        # No monolithic tar in the repo (LFS 2G/file limit): stream it back
+        # out of the chunked image/ directory instead.
+        python3 /ports/appbox/assemble "$IMGDIR" | \
+            podman --root "$STORAGE" --runroot /tmp/appbox-runroot load
+    fi
+    # Flatten to ONE layer. This rootful store is later mounted by ROOTLESS
+    # podman, which cannot see the trusted.overlay.* whiteout/opaque
+    # metadata the rootful unpack wrote — merged dirs that layers rebuilt
+    # (e.g. /etc/alternatives) come up EMPTY in the box, which is how OBS
+    # lost libblas and its whole encoder set. Exporting resolves the layers
+    # as root (correctly); the re-import has no whiteouts to misread.
+    podman --root "$STORAGE" --runroot /tmp/appbox-runroot create --name flatten localhost/kdos-appbox:latest
+    podman --root "$STORAGE" --runroot /tmp/appbox-runroot export flatten | \
+        podman --root "$STORAGE" --runroot /tmp/appbox-runroot import \
+            --change 'CMD ["bash"]' - localhost/kdos-appbox:latest
+    podman --root "$STORAGE" --runroot /tmp/appbox-runroot rm flatten
+    podman --root "$STORAGE" --runroot /tmp/appbox-runroot image prune -f
     podman --root "$STORAGE" --runroot /tmp/appbox-runroot image exists localhost/kdos-appbox:latest
     exit 0
     ;;
@@ -73,13 +93,18 @@ esac
 
 source script/packaging.env.sh
 
-if [ ! -f "$TAR" ]; then
-    echo "Warning: $TAR not found — run 'make fetch-apps' on the host first."
+if [ ! -f "$TAR" ] && [ ! -f "$IMGDIR/INDEX.json" ]; then
+    echo "Warning: neither $TAR nor $IMGDIR found — run 'make fetch-apps' first."
     echo "         Building ISO without the offline alien-app image."
     exit 0
 fi
 
 echo "Loading appbox image into kdos's podman storage (rootful, pivoted)..."
+# The bake is authoritative: start from an empty store every time. Loading
+# on top of a previous bake would double-remap the ownership below (uids
+# already pushed into the subuid range get clamped to 165535), leaving a
+# store the kdos user cannot write into — every distrobox start then fails.
+rm -rf "$STORAGE"
 unshare -m --propagation unchanged /bin/bash "$0" --pivot
 rm -rf /tmp/appbox-runroot
 grep -q kdos-appbox "$STORAGE"/*-images/images.json
@@ -93,6 +118,10 @@ SUB_BASE = 100000      # fs/etc/subuid: kdos:100000:65536
 SUB_COUNT = 65536
 
 def remap(n):
+    # Idempotent: ids already in the rootless layout stay put, so an
+    # accidental second pass cannot corrupt the store.
+    if n == BASE_UID or SUB_BASE <= n < SUB_BASE + SUB_COUNT:
+        return n
     if n == 0:
         return BASE_UID
     return SUB_BASE + min(n, SUB_COUNT) - 1
@@ -114,6 +143,12 @@ print("remapped %d entries" % count)
 EOF
 chown kdos:kdos /home/kdos/.local /home/kdos/.local/share \
                 /home/kdos/.local/share/containers
+# The rootful load/prune leaves an empty volumes/ skeleton whose remapped
+# owner the kdos user cannot write into — runtime podman then fails to
+# create volume _data dirs and every `distrobox enter` dies with
+# "crun: readlink ''". Nothing bakes volumes; drop it, rootless podman
+# recreates it correctly on first use.
+rm -rf "$STORAGE/volumes"
 
 # The launchers reference the apps' own icons. They go into the SYSTEM
 # hicolor tree (merged under /usr/share/icons/hicolor's index.theme) — a

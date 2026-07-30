@@ -36,6 +36,17 @@ case ":$PATH:" in
 	*":$HOME/.local/bin:"*) ;;
 	*) export PATH="$HOME/.local/bin:$PATH" ;;
 esac
+# Distrobox passes the host PATH into the appbox, and debian puts its games
+# under /usr/games — without this every game launcher dies on "not found".
+case ":$PATH:" in
+	*":/usr/games:"*) ;;
+	*) export PATH="$PATH:/usr/games" ;;
+esac
+# Cursor theme: cosmic-comp, winit clients, and Qt all read these; GTK apps
+# in the appbox read ~/.config/gtk-3.0/settings.ini (seeded in skel).
+export XCURSOR_THEME=KDOS-cursors
+export XCURSOR_SIZE=24
+
 export QT_QPA_PLATFORM=wayland
 export GDK_BACKEND=wayland
 export MOZ_ENABLE_WAYLAND=1

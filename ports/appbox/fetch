@@ -36,6 +36,9 @@ echo "==> Saving image archive"
 rm -f appbox.tar
 $ENGINE save -o appbox.tar "$IMAGE"
 
+echo "==> Chunking archive into image/ (git-committable, LFS-sized)"
+python3 pack appbox.tar image
+
 echo "==> Extracting app icons"
 # Every Icon= any .desktop in the image references, wherever the file lives —
 # guessing icon names cost one debug cycle already.

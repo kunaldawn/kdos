@@ -16,4 +16,10 @@ case "$(cat /sys/class/drm/card0/device/modalias 2>/dev/null)" in
 		;;
 esac
 
-exec dbus-run-session -- cosmic-session
+# Pre-create and start the alien-app box while the desktop is coming up, so
+# the first launcher click doesn't pay for container init.
+(nice -n 19 /usr/local/bin/kdos-appbox warmup >/dev/null 2>&1 &)
+
+# kdos-session-start runs inside the session bus: pipewire stack (audio +
+# portal ScreenCast for OBS), then exec cosmic-session.
+exec dbus-run-session -- /usr/local/bin/kdos-session-start

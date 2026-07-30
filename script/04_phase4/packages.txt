@@ -254,3 +254,6 @@ kdos-theme-helper
 
 # KDOS phosphor icon theme (src/packages, ours) — recolored cosmic-icons.
 kdos-icons
+
+# KDOS phosphor pixel-art cursor theme (src/packages, ours) — generated Xcursor.
+kdos-cursors
