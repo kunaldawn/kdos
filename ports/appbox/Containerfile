@@ -43,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         adwaita-icon-theme hicolor-icon-theme librsvg2-common \
         fonts-dejavu fonts-liberation fonts-noto-core \
         dbus-x11 xdg-utils desktop-file-utils shared-mime-info \
+        qt5-gtk-platformtheme qt6-gtk-platformtheme \
     && rm -rf /var/lib/apt/lists/*
 
 # Ebooks, PDF, office, notes
@@ -126,6 +127,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN apt-get update && apt-get install -y --no-install-recommends \
         dvdauthor genisoimage obs-plugins \
     && rm -rf /var/lib/apt/lists/*
+
+# Warm every cache a GUI app would otherwise build on ITS first run, inside the
+# user's home, while the user waits and the window is not up yet. With ~90 apps
+# and debian's font set that is the difference between a first launch measured
+# in seconds and one measured in tens of seconds.
+RUN fc-cache --force --system-only \
+    && update-mime-database /usr/share/mime \
+    && update-desktop-database /usr/share/applications \
+    && glib-compile-schemas /usr/share/glib-2.0/schemas \
+    && gdk-pixbuf-query-loaders --update-cache \
+    && ldconfig
 
 # distrobox-init: skip the package-setup phase — everything is pre-baked
 RUN touch /.containersetupdone

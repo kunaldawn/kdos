@@ -70,7 +70,7 @@ The system ships one human user, **`kdos` / `kdos`** (uid 1000, in `wheel`, so `
 To start a graphical session from a tty login:
 
 ```sh
-kdos-session
+kdos-desktop
 ```
 
 That wraps `cosmic-session` in `dbus-run-session`. COSMIC brings the whole
@@ -192,7 +192,7 @@ kdos/
 ├── src/                      # KDOS-authored tools (kpkg, kinstall)
 ├── fs/                       # files copied verbatim into the rootfs
 │   ├── etc/                  # inittab, init.d/, profile, profile.d/, skel/
-│   ├── usr/local/bin/        # kdos, kdos-fetch-app, kdos-fetch-static, kdos-session
+│   ├── usr/local/bin/        # kdos, kdos-fetch-app, kdos-fetch-static, kdos-desktop
 │   └── usr/share/            # backgrounds, branding
 ├── script/                   # phase-by-phase build orchestrator (Python TUI)
 ├── testing/                  # standalone per-port build tests

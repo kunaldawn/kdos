@@ -257,3 +257,6 @@ kdos-icons
 
 # KDOS phosphor pixel-art cursor theme (src/packages, ours) — generated Xcursor.
 kdos-cursors
+
+# KDOS phosphor GTK theme (src/packages, ours) — recolored adw-gtk3.
+kdos-gtk-theme

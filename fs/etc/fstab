@@ -2,6 +2,10 @@
 proc            /proc           proc    defaults        0       0
 sysfs           /sys            sysfs   defaults        0       0
 devtmpfs        /dev            devtmpfs defaults       0       0
-tmpfs           /tmp            tmpfs   defaults        0       0
-tmpfs           /run            tmpfs   defaults        0       0
+# mode=1777 is NOT optional: a tmpfs mounted with `defaults` comes up 0755
+# root, hiding the 1777 /tmp baked into the image, and then no non-root user
+# can write to /tmp at all — which breaks Wayland/GTK apps, GIMP, LibreOffice,
+# podman's temp files and fontconfig's cache writes.
+tmpfs           /tmp            tmpfs   mode=1777,nosuid,nodev  0   0
+tmpfs           /run            tmpfs   mode=0755,nosuid,nodev  0   0
 cgroup2         /sys/fs/cgroup  cgroup2 nsdelegate      0       0

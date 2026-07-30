@@ -8,19 +8,18 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: KDOS phosphor icon theme derived from cosmic-icons
+# description	: KDOS phosphor icon theme — a recoloured Papirus
+# homepage	: https://github.com/PapirusDevelopmentTeam/papirus-icon-theme
 # depends	: cosmic-icons python3
 
 name=kdos-icons
-version=1.0.0
+version=20250501
 release=1
 source=""
 
 build() {
-	python3 "$PORT_SRC/recolor.py" \
-		/usr/share/icons/Cosmic/scalable \
-		/usr/share/icons/hicolor/scalable/apps \
-		"$PKG/usr/share/icons/KDOS"
+	python3 "$PORT_SRC/genicons.py" "$PKG/usr/share/icons/KDOS"
+
 	install -Dm644 "$PORT_SRC/kdos-icon-256.png" \
 		"$PKG/usr/share/icons/KDOS/256x256/apps/distributor-logo-kdos.png"
 	install -Dm644 "$PORT_SRC/kdos-icon-256.png" \
@@ -36,4 +35,18 @@ build() {
 		install -Dm644 "$PORT_SRC/panel-tux.svg" \
 			"$PKG/usr/share/icons/hicolor/scalable/apps/$n.svg"
 	done
+
+	# `kdos theme <accent>` re-runs the generator against $HOME — the artwork
+	# is flat single-fill SVG, so the accent lives in the files and no CSS
+	# reaches it. That run is also what produces ~/.icons/KDOS, which is the
+	# only icon path the appbox can see (it shares $HOME, not /usr/share) and
+	# is why no /etc/skel copy is installed here: 06_packaging/00_theme.sh
+	# runs `kdos theme phosphor` against /etc/skel and generates it.
+	install -Dm755 "$PORT_SRC/genicons.py" "$PKG/usr/share/kdos/icons/genicons.py"
+	cp -a "$PORT_SRC/art" "$PKG/usr/share/kdos/icons/art"
+
+	install -Dm644 "$PORT_SRC/LICENSE.notice" \
+		"$PKG/usr/share/licenses/kdos-icons/LICENSE.notice"
+	install -Dm644 "$PORT_SRC/art/LICENSE.upstream" \
+		"$PKG/usr/share/licenses/kdos-icons/LICENSE.papirus"
 }

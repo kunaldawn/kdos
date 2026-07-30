@@ -1,0 +1,36 @@
+--- a/src/screencast_dialog.rs
++++ b/src/screencast_dialog.rs
+@@ -240,6 +240,18 @@
+             }
+         }
+         Msg::Share => {
++            // Answering with nothing selected produces a Success response with
++            // an empty stream list. OBS then underflows `n_streams - 1` (size_t)
++            // and spins forever inside g_variant_iter_loop, flooding its log at
++            // MBs per second. Keyboard Enter reaches here even while the Share
++            // button is disabled, so the guard belongs here too.
++            if portal
++                .screencast_args
++                .as_ref()
++                .is_some_and(|args| args.capture_sources.is_empty())
++            {
++                return cosmic::Task::none();
++            }
+             if let Some(mut args) = portal.screencast_args.take() {
+                 let response = mem::take(&mut args.capture_sources);
+                 args.send_response(Some(response));
+--- a/src/screencast.rs
++++ b/src/screencast.rs
+@@ -295,6 +295,12 @@
+                 let Some(capture_sources) = resp else {
+                     return PortalResponse::Cancelled;
+                 };
++                // Never answer Success with an empty stream list: xdg clients
++                // (OBS) compute `n_streams - 1` unsigned and loop ~2^64 times
++                // over an exhausted iterator, hanging with an unbounded log.
++                if capture_sources.is_empty() {
++                    return PortalResponse::Cancelled;
++                }
+                 capture_sources
+             };
+ 

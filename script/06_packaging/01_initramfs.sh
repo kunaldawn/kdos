@@ -311,12 +311,14 @@ fi
 mkdir -p /mnt/iso
 echo "Searching for KDOS boot media..."
 
+# Announce the stage BEFORE the settle wait: with only the two common steps
+# closed the bar would otherwise sit on "done" through the whole scan.
+sp_total 4
+sp_step "BOOT MEDIA"
+
 # Try to mount CDROM/ISO
 # Wait a bit for devices to settle
 sleep 2
-
-sp_total 4
-sp_step "BOOT MEDIA"
 FOUND=0
 for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*; do
     [ -e "\$dev" ] || continue

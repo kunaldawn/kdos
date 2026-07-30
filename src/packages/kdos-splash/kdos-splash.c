@@ -107,6 +107,13 @@ static int gw, gh, gstride, gcount;
 static struct line lines[MAX_LINES];
 static int nlines;
 static int total_steps, done_steps;
+/*
+ * The total is additive and each boot phase reports its own share late, so
+ * "all currently-known steps done" happens repeatedly at phase boundaries.
+ * Until quit arrives the boot is by definition not finished — hold the bar
+ * at 99% / one segment short so the user never watches a "100%" boot wait.
+ */
+static int finishing;
 
 static volatile sig_atomic_t stop;
 
@@ -408,6 +415,8 @@ static void draw_bar(int tick)
 		filled = done_steps * BAR_SEGS / total_steps;
 		if (filled > BAR_SEGS)
 			filled = BAR_SEGS;
+		if (!finishing && filled >= BAR_SEGS)
+			filled = BAR_SEGS - 1;
 	} else {
 		int span = 2 * (BAR_SEGS - 3);
 		kitt = tick % span;
@@ -422,7 +431,7 @@ static void draw_bar(int tick)
 		if (filled >= 0) {
 			if (i < filled)
 				c = C_PHOS;
-			else if (i == filled && done_steps < total_steps)
+			else if (i == filled && (done_steps < total_steps || !finishing))
 				c = (tick & 2) ? C_AMBER : C_DIM;
 		} else {
 			int d = i - kitt;
@@ -445,6 +454,8 @@ static void draw_bar(int tick)
 		int p = done_steps * 100 / total_steps;
 		if (p > 100)
 			p = 100;
+		if (!finishing && p > 99)
+			p = 99;
 		snprintf(pct, sizeof(pct), "%3d%%", p);
 	} else {
 		snprintf(pct, sizeof(pct), "BUSY");
@@ -748,7 +759,7 @@ static int handle(const char *cmd)
 	case 'O': close_line(ST_OK); break;
 	case 'F': close_line(ST_FAIL); break;
 	case 'T': total_steps += atoi(cmd + 1); break;
-	case 'Q': return 1;
+	case 'Q': finishing = 1; return 1;
 	default: break;
 	}
 	return 0;

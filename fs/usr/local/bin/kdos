@@ -25,6 +25,9 @@ COSMIC_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/cosmic"
 FOOT_THEME="${XDG_CONFIG_HOME:-$HOME/.config}/foot/themes/kdos"
 BTOP_THEME="${XDG_CONFIG_HOME:-$HOME/.config}/btop/themes/kdos.theme"
 STARSHIP_TOML="${XDG_CONFIG_HOME:-$HOME/.config}/starship.toml"
+# Overridable so the generator can be exercised outside an installed system.
+GTK_THEME_GEN="${KDOS_GTK_THEME_GEN:-/usr/share/kdos/gtk-theme/gengtk.py}"
+ICON_GEN="${KDOS_ICON_GEN:-/usr/share/kdos/icons/genicons.py}"
 STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/kdos"
 THEME_STATE="$STATE_DIR/theme"
 
@@ -88,6 +91,156 @@ write_panel_colors() {
         mkdir -p "$dir"
         printf '%s\n' "$ron" > "$dir/background"
     done
+}
+
+# Integer-percent hex mixer: mix_hex AABBCC DDEEFF 30 -> 70% first + 30% second.
+mix_hex() {
+    local a="$1" b="$2" f="$3" out="" i x y
+    for i in 0 2 4; do
+        x=$((16#${a:$i:2})); y=$((16#${b:$i:2}))
+        out+=$(printf '%02x' $(( (x * (100 - f) + y * f) / 100 )))
+    done
+    printf '%s' "$out"
+}
+
+write_gtk() {
+    # Two layers, and both are needed.
+    #
+    #   1. ~/.themes/KDOS — the full stylesheet, regenerated for this accent by
+    #      the kdos-gtk-theme generator. Straight @define-color in the user
+    #      config is NOT enough on its own for GTK3: stock Adwaita is compiled
+    #      from SASS with literal hex in every rule, so the names reach only the
+    #      widgets that reference them (GIMP's spin-scales did; its panels did
+    #      not). The theme KDOS ships is adw-gtk3, which is written against the
+    #      named colours end to end, so retinting it retints everything.
+    #   2. ~/.config/gtk-{3,4}.0/gtk.css — the same palette as @define-color, at
+    #      the highest style priority. libadwaita apps ignore GTK themes
+    #      entirely and read only this, and it also overrides the theme for any
+    #      GTK3 app started before the theme was regenerated.
+    #
+    # Alien apps in the appbox share $HOME, which is why both live there rather
+    # than in /usr/share. Qt apps in the box follow via the qgtk3 platform
+    # theme (QT_QPA_PLATFORMTHEME=gtk3).
+    local p="$1" dim="$2" sec="$3" urg="$4" deep="$5" text="$6" var="$7" pdark="$8" backdrop="$9"
+    local lift pop insens d3 d4 header onacc
+    lift=$(mix_hex "$deep" "$text" 9)
+    pop=$(mix_hex "$deep" "$text" 11)
+    header=$(mix_hex "$deep" "$text" 7)
+    onacc=$(mix_hex "ffffff" "$text" 35)
+    insens=$(mix_hex "$text" "$var" 55)
+    d3="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0"
+    d4="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-4.0"
+    mkdir -p "$d3" "$d4"
+
+    if [ -r "$GTK_THEME_GEN" ] && command -v python3 >/dev/null 2>&1; then
+        mkdir -p "$HOME/.themes"
+        python3 "$GTK_THEME_GEN" "$HOME/.themes/KDOS" \
+            "$p" "$dim" "$sec" "$urg" "$deep" "$text" "$var" "$pdark" "$backdrop"
+    fi
+
+    # One palette, written twice: GTK3 spells the surfaces theme_*, GTK4 and
+    # libadwaita spell them window_*/view_*. Both files carry both spellings so
+    # neither toolkit has to fall back to the stylesheet's own value.
+    local common
+    common=$(cat <<EOF
+@define-color accent_color #$p;
+@define-color accent_bg_color #$pdark;
+@define-color accent_fg_color #$onacc;
+@define-color success_color #$p;
+@define-color success_bg_color #$pdark;
+@define-color success_fg_color #$onacc;
+@define-color warning_color #$sec;
+@define-color warning_bg_color #$sec;
+@define-color warning_fg_color #$deep;
+@define-color destructive_color #$urg;
+@define-color destructive_bg_color #$urg;
+@define-color destructive_fg_color #$deep;
+@define-color error_color #$urg;
+@define-color error_bg_color #$urg;
+@define-color error_fg_color #$deep;
+
+@define-color window_bg_color #$var;
+@define-color window_fg_color #$text;
+@define-color view_bg_color #$deep;
+@define-color view_fg_color #$text;
+@define-color headerbar_bg_color #$header;
+@define-color headerbar_fg_color #$text;
+@define-color headerbar_border_color #$dim;
+@define-color headerbar_backdrop_color #$var;
+@define-color headerbar_shade_color rgba(0, 0, 0, 0.36);
+@define-color headerbar_darker_shade_color rgba(0, 0, 0, 0.72);
+@define-color sidebar_bg_color #$header;
+@define-color sidebar_fg_color #$text;
+@define-color sidebar_backdrop_color #$var;
+@define-color sidebar_shade_color rgba(0, 0, 0, 0.25);
+@define-color secondary_sidebar_bg_color #$header;
+@define-color secondary_sidebar_fg_color #$text;
+@define-color secondary_sidebar_backdrop_color #$var;
+@define-color secondary_sidebar_shade_color rgba(0, 0, 0, 0.25);
+@define-color card_bg_color #$lift;
+@define-color card_fg_color #$text;
+@define-color card_shade_color rgba(0, 0, 0, 0.36);
+@define-color dialog_bg_color #$pop;
+@define-color dialog_fg_color #$text;
+@define-color popover_bg_color #$pop;
+@define-color popover_fg_color #$text;
+@define-color popover_shade_color rgba(0, 0, 0, 0.36);
+@define-color thumbnail_bg_color #$lift;
+@define-color thumbnail_fg_color #$text;
+@define-color panel_bg_color #$deep;
+@define-color panel_fg_color #$text;
+@define-color shade_color rgba(0, 0, 0, 0.36);
+@define-color scrollbar_outline_color rgba(0, 0, 0, 0.5);
+
+@define-color theme_bg_color #$var;
+@define-color theme_fg_color #$text;
+@define-color theme_base_color #$deep;
+@define-color theme_text_color #$text;
+@define-color theme_selected_bg_color #$pdark;
+@define-color theme_selected_fg_color #$onacc;
+@define-color theme_unfocused_bg_color #$var;
+@define-color theme_unfocused_fg_color #$text;
+@define-color theme_unfocused_base_color #$deep;
+@define-color theme_unfocused_text_color #$text;
+@define-color theme_unfocused_selected_bg_color #$pdark;
+@define-color theme_unfocused_selected_fg_color #$onacc;
+@define-color insensitive_bg_color #$var;
+@define-color insensitive_fg_color #$insens;
+@define-color insensitive_base_color #$deep;
+@define-color borders #$dim;
+@define-color unfocused_borders #$dim;
+@define-color content_view_bg #$deep;
+@define-color text_view_bg #$deep;
+EOF
+)
+
+    printf '/* KDOS GTK3 palette — GENERATED by `kdos theme`; edits will be overwritten. */\n%s\n' \
+        "$common" > "$d3/gtk.css"
+    printf '/* KDOS GTK4/libadwaita palette — GENERATED by `kdos theme`; edits overwritten. */\n%s\n' \
+        "$common" > "$d4/gtk.css"
+}
+
+write_icons() {
+    # The icon theme is recoloured per accent for the same reason the GTK theme
+    # is: Papirus is flat single-fill artwork, so the accent lives in the SVGs
+    # themselves and no amount of CSS reaches it. ~/.icons wins over
+    # /usr/share/icons for the session AND is the only icon path the appbox can
+    # see, so regenerating it here retints the host and the box in one go.
+    [ -r "$ICON_GEN" ] && command -v python3 >/dev/null 2>&1 || return 0
+    mkdir -p "$HOME/.icons"
+    python3 "$ICON_GEN" "$HOME/.icons/KDOS" "$@" >/dev/null
+    # KDOS's own marks are not in the vendored artwork; carry them over from
+    # the installed theme rather than making the generator know about them.
+    local sysdir=/usr/share/icons/KDOS f rel
+    if [ -d "$sysdir" ]; then
+        for rel in 256x256/apps scalable/apps; do
+            [ -d "$sysdir/$rel" ] || continue
+            mkdir -p "$HOME/.icons/KDOS/$rel"
+            for f in "$sysdir/$rel"/*; do
+                [ -e "$f" ] && cp -f "$f" "$HOME/.icons/KDOS/$rel/"
+            done
+        done
+    fi
 }
 
 write_foot() {
@@ -260,6 +413,8 @@ EOF
 
     write_cosmic_theme "$p" "$deep" "$var" "$text" "$sec" "$urg"
     write_panel_colors "$deep"
+    write_gtk "$p" "$dim" "$sec" "$urg" "$deep" "$text" "$var" "$pdark" "$backdrop"
+    write_icons "$p" "$dim" "$sec" "$urg" "$deep" "$text" "$var" "$pdark" "$backdrop"
     write_foot "$p" "$dim" "$sec" "$urg" "$deep" "$text"
     write_btop "$p" "$dim" "$sec" "$urg" "$deep" "$text"
     write_starship "$p" "$dim" "$sec" "$urg" "$deep" "$text" "$var"
@@ -267,6 +422,8 @@ EOF
     # A regenerated file does not repaint a running process: COSMIC re-themes
     # itself (settings daemon watches the Builder), starship on next prompt,
     # btop and foot on next start (foot cannot reload its config at all).
+    # GTK apps — every alien app — pick up the new theme and icons when they
+    # are next launched; GTK re-reads neither on a file change.
     command -v tmux >/dev/null 2>&1 && tmux source-file ~/.config/tmux/tmux.conf 2>/dev/null
 
     mkdir -p "$STATE_DIR"
@@ -294,7 +451,7 @@ BANNER
         printf '%s   KD'"'"'s Homebrew Linux Distro%s\n\n' "$C_D" "$C_0"
 
         printf '%sCOMMANDS%s\n' "$C_A" "$C_0"
-        printf '  %-26s %s\n' "kdos-session"        "start the COSMIC desktop from a tty"
+        printf '  %-26s %s\n' "desktop"             "start the COSMIC desktop from a tty (kdos-desktop)"
         printf '  %-26s %s\n' "kdos app <name>"     "install an alien app (distrobox + export)"
         printf '  %-26s %s\n' "kdos theme [name]"   "phosphor | amber | ice | bone | next | prev | list"
         printf '  %-26s %s\n' "kdos status"         "packages, containers, exported apps"
@@ -381,7 +538,7 @@ cmd_doctor() {
     printf '%sSession%s\n' "$C_B" "$C_0"
     if [ -n "${WAYLAND_DISPLAY:-}" ]; then ok "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"; else warn "no WAYLAND_DISPLAY — not inside the desktop session"; fi
     if [ -d "${XDG_RUNTIME_DIR:-/nonexistent}" ]; then ok "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"; else warn "XDG_RUNTIME_DIR missing — pipewire and podman will misbehave"; fi
-    if pgrep -x cosmic-comp >/dev/null 2>&1; then ok "cosmic-comp running"; else warn "cosmic-comp not running — no desktop (start with: kdos-session)"; fi
+    if pgrep -x cosmic-comp >/dev/null 2>&1; then ok "cosmic-comp running"; else warn "cosmic-comp not running — no desktop (start with: kdos-desktop)"; fi
     if pgrep -x cosmic-panel >/dev/null 2>&1; then ok "cosmic-panel running"; else warn "cosmic-panel not running — no bar"; fi
     if pgrep -f xdg-desktop-portal-cosmic >/dev/null 2>&1; then ok "cosmic portal running"; else warn "cosmic portal not running — screenshots and file pickers degraded"; fi
     printf '\n'
