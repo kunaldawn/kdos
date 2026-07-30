@@ -103,6 +103,43 @@ WAYLAND_DISPLAY into the D-Bus activation environment, starts
 `xdg-desktop-portal-cosmic`, WAITS for it to own its bus name, and only
 then (re)starts the main portal, or ScreenCast stays empty all session.
 
+**The session bus is one daemon per user at `$XDG_RUNTIME_DIR/bus`** —
+kdos-session starts (or reuses) it and exports the address itself; it does
+NOT use dbus-run-session. dbus-run-session listens on `unix:tmpdir=/tmp`, a
+pathname socket in the host's /tmp — which the appbox does not share, so
+every alien app saw a dangling DBUS_SESSION_BUS_ADDRESS: GApplication
+single-instance broke (each impatient launcher re-click spawned another FULL
+instance — the "apps sometimes don't open" report), dconf/a11y stalled, and
+notifications went nowhere. `/run/user/1000` IS shared with the box, so the
+one fixed address works on both sides (verified: box apps reach
+org.freedesktop.Notifications, second gimp click hands off in 0.3s). Two
+traps encoded in kdos-session: the address must carry NO guid (a second
+daemon rebinding the socket kills zbus clients — cosmic-session aborts with
+"Server GUID mismatch"), and never add a second `<listen>` via dbus config
+instead — multi-address envs hit the same zbus crash. `10-wayland.sh`
+exports the address for ssh/tty shells when the socket exists.
+`kdos-appbox run` also: waits out an in-flight login warmup (entering while
+distrobox-init is mid-setup execs into a half-built user), fires a
+"Starting <app>" notification on cold starts (gdbus — no libnotify on host),
+launches apps with `GSETTINGS_BACKEND=keyfile NO_AT_BRIDGE=1 GTK_A11Y=none`
+(no dconf-service or a11y stack is reachable in the box), and self-heals a
+container wedged in "stopping" (a D-state app hang on fuse-overlayfs can
+survive SIGKILL; the container then sticks in stopping and every
+`distrobox enter` dies instantly with "container state improper" — reproduced;
+wait → `podman kill` → `podman rm -f`, the box is stateless so recreation
+loses nothing).
+
+**Rootless storage: fuse-overlayfs on live, native overlay when installed.**
+/etc/containers/storage.conf pins `mount_program = fuse-overlayfs` and the
+live ISO NEEDS it: $HOME sits on the boot overlay and the kernel refuses to
+stack an overlay upperdir on overlayfs — podman does NOT fall back, the
+container just fails to mount `merged/` (verified). On an ext4 install the
+kernel overlay is much faster than FUSE, so `kdos-appbox` writes a one-time
+`~/.config/containers/storage.conf` (driver=overlay, no mount_program) when
+$HOME's fs is ext4/btrfs/xfs — only while the store has no containers yet:
+fuse and native write incompatible whiteout formats into container rw
+layers, so the choice must never flip afterwards.
+
 ### Icons, the shell's memory, and the two QEMU flavours
 
 - **`/usr/share/icons/hicolor/index.theme` must exist** or every icon lookup in
@@ -177,7 +214,7 @@ kdos/
 │   ├── usr/local/bin/
 │   │   ├── kdos-fetch-app     # distrobox + distrobox-export wrapper
 │   │   ├── kdos-fetch-static  # curl + sha256 + chmod
-│   │   └── kdos-session       # `dbus-run-session -- cosmic-session`
+│   │   └── kdos-session       # user bus at $XDG_RUNTIME_DIR/bus → cosmic-session
 │   └── usr/share/
 │       └── backgrounds/kdos/default-wallpaper.png
 ├── script/                    # build.py orchestrator + phase scripts
