@@ -1,0 +1,51 @@
+#!/bin/sh
+# kdos-desktop — launch the COSMIC desktop. Run from a tty after login.
+# Wayland env vars are set by /etc/profile.d/10-wayland.sh.
+# KDOS uses seatd, not logind/elogind; cosmic-comp talks to it via libseat.
+case "$(cat /sys/class/drm/card0/device/modalias 2>/dev/null)" in
+	virtio:*|pci:v00001AF4*)
+		# iced/wgpu has no Vulkan on virgl — take the GL backend.
+		export WGPU_BACKEND=gl
+		# Without blob resources virgl's EGL path hangs; llvmpipe at least
+		# keeps clients alive (the compositor itself still needs virgl/blob —
+		# `make run-hw`. Plain `make run` has no desktop: smithay refuses
+		# software EGL renderers).
+		if ! dmesg 2>/dev/null | grep -q '+resource_blob'; then
+			export GALLIUM_DRIVER=llvmpipe
+		fi
+		;;
+esac
+
+# Pre-create and start the alien-app box while the desktop is coming up, so
+# the first launcher click doesn't pay for container init. nice 10, not 19:
+# at 19 the warmup loses every CPU slice to the starting desktop, so it was
+# still mid-init minutes later — and a launch that lands in that window has to
+# wait for it to finish.
+(nice -n 10 /usr/local/bin/kdos-appbox warmup >/dev/null 2>&1 &)
+
+# ONE session bus per user, at a fixed runtime path — not dbus-run-session.
+# dbus-run-session listens on unix:tmpdir=/tmp: a pathname socket in the
+# host's /tmp, which the appbox does NOT share — alien apps then see a
+# dangling DBUS_SESSION_BUS_ADDRESS: GApplication single-instance breaks
+# (every impatient re-click spawns another full instance), dconf/a11y probe
+# and stall, notifications go nowhere. $XDG_RUNTIME_DIR *is* shared with the
+# box, so this one address is valid on both sides. The daemon is reused
+# across session restarts; the address carries no guid on purpose — a later
+# session re-binding the socket would otherwise kill zbus clients with
+# "D-Bus handshake failed: Server GUID mismatch" (cosmic-session aborts).
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+# flock-serialized: two sessions starting at once must not both decide the
+# daemon is down — the loser's rm -f would yank the winner's socket away.
+(
+	flock 7
+	if ! dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+		/ org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
+		rm -f "$XDG_RUNTIME_DIR/bus"
+		dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+	fi
+) 7>"$XDG_RUNTIME_DIR/.kdos-bus.lock"
+
+# kdos-desktop-start runs on the session bus: pipewire stack (audio +
+# portal ScreenCast for OBS), then exec cosmic-session.
+exec /usr/local/bin/kdos-desktop-start

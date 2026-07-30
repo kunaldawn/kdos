@@ -1,0 +1,48 @@
+KDOS GTK theme — attribution and deviations
+===========================================
+
+This theme is a derivative work of adw-gtk3 by Lasse Kongo (lassekongo83) and
+contributors, which is itself a port of GNOME's libadwaita stylesheet to GTK3.
+
+    Upstream:  https://github.com/lassekongo83/adw-gtk3
+    License:   GNU Lesser General Public License, version 2.1
+    Vendored:  see theme/UPSTREAM for the exact release
+
+libadwaita and Adwaita, from which adw-gtk3 derives, are Copyright the GNOME
+Project and are licensed LGPL-2.1-or-later.
+
+This derivative is distributed under the same licence, LGPL-2.1. The complete
+corresponding source is the contents of theme/ (the vendored upstream
+stylesheet, unmodified) together with vendor.py and gengtk.py, which are the
+only things that produce the installed files.
+
+What KDOS changed
+-----------------
+
+1. Only the DARK variant is vendored. KDOS has no light mode. Upstream's
+   adw-gtk3 (light) directory is dropped in full.
+
+2. gtk-3.0/gtk.css is dropped: in upstream's dark variant it is byte-identical
+   to gtk-dark.css. The build writes both filenames from the one file.
+
+3. Assets are pruned to those the vendored stylesheets actually reference —
+   upstream ships both variants' scale-mark sliders and text-selection
+   handles. They are otherwise BIT-IDENTICAL to upstream: every asset is
+   neutral grey or a symbolic mask the toolkit tints itself, so none of them
+   carried a colour that needed changing.
+
+4. thumbnail.png (the theme-picker preview) is dropped; nothing on KDOS shows
+   one.
+
+5. Every literal colour in the stylesheets is remapped to the KDOS palette by
+   gengtk.py: hues are mapped by family (blue/green/purple to the accent,
+   yellow/orange/brown to the secondary, red to the urgent colour, greys to a
+   faintly tinted neutral) with lightness preserved, and the ~40 semantic
+   names (window/view/headerbar/sidebar/card/popover/dialog and the
+   accent/destructive/success/warning/error groups) are then overwritten with
+   KDOS values outright.
+
+6. index.theme is replaced: the theme is named KDOS and declares the KDOS icon
+   and cursor themes.
+
+No upstream rule, selector, dimension or asset is otherwise altered.

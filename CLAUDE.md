@@ -6,7 +6,7 @@ This file briefs a fresh Claude session on KDOS so it can be useful immediately.
 
 ## What KDOS is
 
-A hand-built Linux distribution following Linux From Scratch principles. **musl libc** + **toybox** userland on the host, **no SystemD**, **Wayland-only** (no Xorg server). Desktop: **COSMIC** (System76 — Rust/smithay/iced; compositor, panel, launcher, settings, notifications), pinned at one epoch release across all components. **No GTK and no Qt on the host** — the old noctalia-era Qt 6 carve-out is gone. Everything "fat" runs in a Podman/distrobox glibc rootfs. Session entry: `kdos-session` from a tty.
+A hand-built Linux distribution following Linux From Scratch principles. **musl libc** + **toybox** userland on the host, **no SystemD**, **Wayland-only** (no Xorg server). Desktop: **COSMIC** (System76 — Rust/smithay/iced; compositor, panel, launcher, settings, notifications), pinned at one epoch release across all components. **No GTK and no Qt on the host** — the old noctalia-era Qt 6 carve-out is gone. Everything "fat" runs in a Podman/distrobox glibc rootfs. Session entry: `kdos-desktop` from a tty.
 
 Mascot lives at `kdos.png`. Default wallpaper at `fs/usr/share/backgrounds/kdos/default-wallpaper.png` (penguin, green Matrix glow).
 
@@ -31,7 +31,7 @@ Mascot lives at `kdos.png`. Default wallpaper at `fs/usr/share/backgrounds/kdos/
 | **GUI sliver** | also `ports/core/` (separate `packages.txt` block) | COSMIC desktop (19 `cosmic-*`/`pop-launcher` Rust ports), foot, Wayland CLI utils |
 | **Outer ring** | distrobox containers | Browsers, IDEs, Slack, GIMP — full glibc apps |
 
-There used to be a **`src/packages/`** namespace for vendored upstream forks (Window Maker era). It's currently empty/removed but the build pipeline still supports it via `PORT_REPO="/ports/core /kdos/src/packages"`. Use it if you ever need to vendor a project to apply local patches without `.patch` files.
+**`src/packages/`** is the second port repo (`PORT_REPO="/ports/core /kdos/src/packages"`) and holds what is OURS rather than an upstream tarball: `kdos-splash`, `kdos-theme-helper`, and the three vendored-and-remade art packages `kdos-cursors` (Bibata), `kdos-icons` (Papirus) and `kdos-gtk-theme` (adw-gtk3). Those three all follow the same shape — a host-only `vendor.py` that prunes upstream into a committed `art/`/`theme/` directory, and a `gen*.py` the build (and `kdos theme`) runs to recolour it. Use the same shape when vendoring anything else; it keeps the palette a KDOS decision and avoids carrying `.patch` files against artwork.
 
 ### The baked appbox (offline alien apps)
 
@@ -67,7 +67,7 @@ the chunks straight into `podman load` (no temp file). A missing image is a
 warning, the ISO builds without it. No container is created at build time:
 the launchers in `fs/etc/skel/.local/share/applications/kdos-*.desktop` call
 `kdos-appbox run <app>`, which creates the distrobox lazily — and
-`kdos-session` backgrounds `kdos-appbox warmup` at login (flock-guarded, also
+`kdos-desktop` backgrounds `kdos-appbox warmup` at login (flock-guarded, also
 serialized against `run`'s create), so container init normally happens while
 the desktop is still settling and the first app click hits a warm box. The
 Containerfile pre-installs distrobox's runtime prerequisites — without them
@@ -78,8 +78,8 @@ the point. Packaging-phase snapshots exclude
 Appbox runtime plumbing that cost a debug cycle each: debian's games live in
 `/usr/games`, which distrobox's inherited host PATH lacks — `10-wayland.sh`
 appends it or every game launcher dies on "not found". Audio and OBS screen
-capture come from the HOST side: `kdos-session` execs (inside the session
-bus) `kdos-session-start`, which brings up pipewire + pipewire-media-session
+capture come from the HOST side: `kdos-desktop` execs (inside the session
+bus) `kdos-desktop-start`, which brings up pipewire + pipewire-media-session
 + pipewire-pulse and then execs cosmic-session; the xdg-desktop portals are
 D-Bus-activated on demand, and OBS's capture source is portal→ScreenCast→
 pipewire, with the pulse/pipewire/bus sockets reaching the box via the
@@ -88,7 +88,22 @@ debian splits OBS's plugins out as a Recommends, and `linux-pipewire.so`
 (the only Wayland capture path) lives there; the recommends-less install
 silently dropped it, exactly like kdenlive's ffmpeg/dvdauthor chain.
 
-Three bake-side traps, each cost a debug cycle: (1) the bake now WIPES
+**The bake must not leave root's runtime paths in the user's libpod database**
+— the fault behind "alien apps don't launch at all" (2026-07-30). The bake runs
+rootful podman with `--runroot /tmp/appbox-runroot`, and podman RECORDS the
+runroot and tmpdir it was created with. Rootless podman then honours them:
+
+    Overriding run root "/run/user/1000/containers" with "/tmp/appbox-runroot" from database
+    Overriding tmp dir  "/run/user/1000/libpod/tmp"  with "/run/libpod" from database
+
+and dies on `mkdir /run/libpod: permission denied`, so EVERY podman call fails
+and nothing launches — silently, because the launcher swallows stderr. Tell-tale:
+`podman images` as kdos fails while the same command as root works. Nothing is
+lost by deleting it (images live in the c/storage dirs, no container is created
+at build time), so `01_appbox.sh` removes `$STORAGE/libpod` and `db.sql` after
+the load and the first rootless call recreates them with its own paths.
+
+Four more bake-side traps, each cost a debug cycle: (1) the bake now WIPES
 `$STORAGE` before loading and the uid remap is idempotent — re-baking onto
 an existing store used to remap already-remapped uids (clamped to 165535)
 and every `distrobox enter` died with `crun: readlink ''`; (2) the loaded
@@ -98,13 +113,106 @@ which the ROOTLESS runtime mount cannot see, so multi-layer-rebuilt dirs
 like `/etc/alternatives` came up empty in the box (that emptied OBS's whole
 encoder list via the dangling libblas alternatives symlink); (3) the
 `xdg-desktop-portal` main daemon snapshots its backends at startup —
-`kdos-session-start` waits for the compositor socket, pushes
+`kdos-desktop-start` waits for the compositor socket, pushes
 WAYLAND_DISPLAY into the D-Bus activation environment, starts
 `xdg-desktop-portal-cosmic`, WAITS for it to own its bus name, and only
 then (re)starts the main portal, or ScreenCast stays empty all session.
 
+**`/tmp` must be mounted `mode=1777`.** `fs/etc/fstab` mounted it with
+`defaults`, which gives a 0755 root tmpfs that HIDES the 1777 `/tmp` baked into
+the image — so no non-root user could write to `/tmp` at all. Every alien app
+depends on it (GTK/Wayland lock files, GIMP scratch, LibreOffice, fontconfig
+cache writes), and the failure looks exactly like "the app is slow / never
+opens". Fixed in fstab AND with an explicit `chmod 1777 /tmp` after `mount -a`
+in rcS, because **a tmpfs that is already mounted ignores a mode change on
+remount** — `mount -o remount,mode=1777 /tmp` silently does nothing, only
+`chmod` works. Measured after the fix: cold launch (no container at all)
+**18.3s**, warm **0.3s**, second click **0.55s** with a single instance.
+
+**Two more things made alien apps take minutes to open** (2026-07-30, both
+self-inflicted, both now fixed in `kdos-appbox`): (1) the launch was serialized
+behind the login warmup with a blind `flock -w 120` on the warmup lock, so a
+click landing while the nice-19 warmup was still running waited for the ENTIRE
+container init — up to two minutes of dead-looking desktop. The wait now
+happens only when the box is already running but `container_setup_done` has not
+yet appeared in `podman logs` (the only honest readiness signal, because
+distrobox-enter waits for it ONLY when it started the container itself), and
+the warmup runs at nice 10 so it actually finishes. (2) `notify()` called
+`gdbus` with no `--timeout`, and gdbus's default reply timeout is **25
+seconds** — launching before cosmic-notifications owned its bus name stalled
+the app behind a dead wait. It is now `--timeout 2` and backgrounded: a
+notification must never gate a launch. `kdos-appbox` also appends stage timings
+to `$XDG_RUNTIME_DIR/kdos-appbox.trace`, so "why was that slow" is answerable
+after the fact. The appbox image additionally pre-builds the caches a GUI app
+would otherwise generate on its own first run (`fc-cache`, mime, desktop,
+gschemas, gdk-pixbuf loaders) — that part needs a `make fetch-apps` re-bake to
+take effect.
+
+**The login banner is animated** — `fs/usr/local/bin/kdos-banner` paints it one
+raster line at a time with a bright beam line leading the fill, then one frame
+of reverse video (`ESC[?5h`/`ESC[?5l`) for the CRT power-on thump. It bails to
+a plain print when stdout is not a tty, `TERM` is dumb, `KDOS_NO_ANIM` is set,
+or the banner is taller than the terminal (animating something that scrolls
+looks like a bug); any keypress skips the rest. Delays come from bash's
+`read -t`, not `sleep`, so a login costs zero extra forks per frame, and the
+beam line is stripped of SGR sequences in pure bash — `tr -d '\033'` removes
+the escape byte but leaves `[1;32m` visible as text for a frame.
+
+**kdos-banner composes the banner itself; fastfetch is run with `--logo none`.**
+This is not a style choice and must not be "simplified" back. Asked to draw a
+logo, fastfetch prints the logo block and then moves the CURSOR BACK UP over it
+(`ESC[<n>A`) and writes each info line with an absolute column jump. That output
+is not a sequence of raster lines, so replaying it a line at a time — which is
+what any animation does — drifts one row per line: the logo gets overpainted and
+the whole block is drawn TWICE, offset (that is the "no KDOS logo, looks ugly"
+report of 2026-07-31; the leftover green fragments in the middle of the screen
+were the mascot). So the script reads `/usr/share/kdos/logo.txt` itself, measures
+each line's visible width with the same pure-bash `strip_ansi`, and pastes the
+two columns together. Consequences worth keeping: the logo can never come out
+missing, the info column no longer has to be TALLER than the logo (it used to,
+or the prompt landed on the mascot), and when `logo + gap + info` exceeds
+`$COLUMNS` the script stacks them instead — a 1280x800 TTY with the 16x32
+console font is 80 columns, which is narrower than the two side by side.
+The config still declares a `logo`, for a bare `fastfetch` typed at the prompt;
+`--logo none` on the command line overrides it.
+
+`fs/usr/share/kdos/logo.txt` (the banner art: wordmark + tux) is GENERATED by
+`src/packages/kdos-splash/genlogo.py`, which decodes the mascot straight out of
+`penguin.h` — the same quantised crop of `kdos.png` the boot splash draws — so
+the banner, the splash and the mascot cannot drift apart. Do not hand-edit it.
+Three constraints are baked into that script: the TTY font has FULL BLOCK and
+the double-line box characters but **no half blocks or shades**, so one cell is
+one solid block; character cells are twice as tall as wide, so the sampling
+grid must be ~2x wider than tall or the penguin stretches into a bowling pin;
+and the whole banner has to stay under ~30 lines or it scrolls off a 33-row
+TTY. Amber, the bright rim and the eyes win their cell on a minority of pixels
+(`RIM_BIAS`) — a plain majority vote erases every small feature.
+The fastfetch keys are padded to 10 characters BY HAND. `display.key.width`
+looks like the right knob and is not: fastfetch places values at an ABSOLUTE
+column, so a padded key runs past it and the value overwrites the separator
+(`Packages 351`, `Alien app94`).
+
+**Never answer a ScreenCast Start with zero streams** — that is what "OBS
+crashes when I share the screen" actually was (2026-07-30). OBS 30.2's
+`on_start_response_received_cb` does `if (n_streams != 1) for (size_t i = 0;
+i < n_streams - 1; i++) g_variant_iter_loop(...)`: with `n_streams == 0` the
+unsigned subtraction wraps and it spins on an exhausted iterator, emitting
+`GLib-CRITICAL: g_variant_iter_next_value: must not be called again after
+NULL` — measured at 5 MB/s of log with the UI wedged (on the live ISO that
+log is tmpfs, so it eats RAM). Verified on the wire with `dbus-monitor` in the
+appbox: `uint32 0` + `streams: array []`. The portal produced that because
+`screencast_dialog.rs` binds Enter to `Msg::Share` unconditionally while the
+Share *button* is gated on a non-empty selection, so Enter with nothing
+selected answers Success with nothing in it.
+`ports/core/xdg-desktop-portal-cosmic/no-empty-streams.patch` fixes both ends:
+the Enter handler now checks the selection, and `Start` answers `Cancelled`
+rather than an empty Success. Debug notes for next time: OBS's stdout is
+block-buffered when redirected (use `stdbuf -oL`, or read
+`~/.config/obs-studio/logs/*.txt`), and the host has no `dbus-monitor` — run
+debian's from inside the appbox, it shares the session bus.
+
 **The session bus is one daemon per user at `$XDG_RUNTIME_DIR/bus`** —
-kdos-session starts (or reuses) it and exports the address itself; it does
+kdos-desktop starts (or reuses) it and exports the address itself; it does
 NOT use dbus-run-session. dbus-run-session listens on `unix:tmpdir=/tmp`, a
 pathname socket in the host's /tmp — which the appbox does not share, so
 every alien app saw a dangling DBUS_SESSION_BUS_ADDRESS: GApplication
@@ -113,7 +221,7 @@ instance — the "apps sometimes don't open" report), dconf/a11y stalled, and
 notifications went nowhere. `/run/user/1000` IS shared with the box, so the
 one fixed address works on both sides (verified: box apps reach
 org.freedesktop.Notifications, second gimp click hands off in 0.3s). Two
-traps encoded in kdos-session: the address must carry NO guid (a second
+traps encoded in kdos-desktop: the address must carry NO guid (a second
 daemon rebinding the socket kills zbus clients — cosmic-session aborts with
 "Server GUID mismatch"), and never add a second `<listen>` via dbus config
 instead — multi-address envs hit the same zbus crash. `10-wayland.sh`
@@ -158,7 +266,7 @@ layers, so the choice must never flip afterwards.
   heap; solved by dropping the stack. If a COSMIC component ever balloons,
   the same debug method applies.)
 - Debug rig for all of the above: boot the ISO headless with `-serial unix:` +
-  `-monitor unix:` sockets, sendkey `kdos-session` on tty1. **Use
+  `-monitor unix:` sockets, sendkey `kdos-desktop` on tty1. **Use
   `-display egl-headless -vnc :19`**: the gtk,gl=es window path can wedge the
   guest in a soft-lockup storm once cosmic-comp starts (KDOS_QEMU_DISPLAY
   overrides it in run.sh), screendump says "no surface" under GL either way,
@@ -214,7 +322,7 @@ kdos/
 │   ├── usr/local/bin/
 │   │   ├── kdos-fetch-app     # distrobox + distrobox-export wrapper
 │   │   ├── kdos-fetch-static  # curl + sha256 + chmod
-│   │   └── kdos-session       # user bus at $XDG_RUNTIME_DIR/bus → cosmic-session
+│   │   └── kdos-desktop       # user bus at $XDG_RUNTIME_DIR/bus → cosmic-session
 │   └── usr/share/
 │       └── backgrounds/kdos/default-wallpaper.png
 ├── script/                    # build.py orchestrator + phase scripts
@@ -497,13 +605,60 @@ COSMIC reads layered RON config: `/usr/share/cosmic` (system defaults) then
 
 The applied theme itself (accent, hover states, container colors) is NOT a
 skel seed: `com.system76.CosmicTheme.Dark/v2/` is generated at packaging time
-by `script/06_packaging/00_theme.sh` running **kdos-theme-helper**
-(src/packages — drives cosmic-theme's own ThemeBuilder; the Theme struct is
-`#[version = 2]`, hand-seeded v1 files are silently ignored).
+by `script/06_packaging/00_theme.sh`, which runs **`kdos theme phosphor`**
+itself against `/etc/skel` (HOME + XDG_CONFIG_HOME pointed there) rather than
+duplicating the palette — one generator, no drift. That in turn calls
+**kdos-theme-helper** (src/packages — drives cosmic-theme's own ThemeBuilder;
+the Theme struct is `#[version = 2]`, hand-seeded v1 files are silently
+ignored).
+
+**Alien apps are themed through `$HOME`, not through COSMIC** — the appbox
+shares the home directory and nothing else, so `/usr/share/themes` and
+`/usr/share/icons` are invisible inside the box. Everything an alien app needs
+therefore lives under `$HOME`, and **`kdos theme` is what puts it there**:
+
+| Path | Written by | Read by |
+|---|---|---|
+| `~/.themes/KDOS/` | `write_gtk` → `gengtk.py` | GTK3 and non-libadwaita GTK4 apps |
+| `~/.icons/KDOS/` | `write_icons` → `genicons.py` | every toolkit, host and box |
+| `~/.config/gtk-{3,4}.0/gtk.css` | `write_gtk` | libadwaita (which ignores themes entirely) |
+| `~/.icons/KDOS-cursors/` | kdos-cursors' `/etc/skel` copy | cursor lookup in the box |
+
+The packages install only the SYSTEM copies plus their generators; the home
+copies are produced by `06_packaging/00_theme.sh` running `kdos theme phosphor`
+with `HOME=/etc/skel`. One generator per artefact, no drift, no duplicated
+palette — and a live `kdos theme amber` retints host and box together.
+
+**The theme is a recoloured `adw-gtk3`, and choosing that specifically is the
+fix for "themes still not matching".** Redefining `theme_*` in the user's
+gtk.css is enough for GTK4/libadwaita, which genuinely resolves named colours,
+but **stock GTK3 Adwaita is compiled from SASS with literal hex in every rule**:
+the names reach only the widgets that reference them. In GIMP that repainted the
+spin-scales and left every panel Adwaita grey. The previous workaround —
+hand-written CSS rules for window/headerbar/notebook/popover/menu/entry/button/
+scrollbar/progress/selection — is gone; it never covered enough widgets and its
+blunt `*:selected` rules are what turned GIMP's Opacity/Size/Spacing labels into
+solid green bars. `adw-gtk3` is the libadwaita stylesheet ported to GTK3 and is
+written against named colours end to end (~125 `@define-color` at the top,
+almost nothing below), so `src/packages/kdos-gtk-theme/gengtk.py` rewrites the
+palette and every widget follows — and GTK3 apps end up genuinely identical to
+GTK4 ones rather than merely similar. `vendor.py` prunes the upstream release
+(dark variant only; `gtk.css` dropped because it is byte-identical to
+`gtk-dark.css`; unreferenced assets dropped — the rest are neutral grey or
+symbolic masks, so **no asset needs recolouring**). Fill accents use the DIM
+accent (`pdark`), never the full-intensity one: a 100%-filled GIMP opacity
+slider in `#39ff14` is an unreadable neon block.
+Qt apps in the box follow via `QT_QPA_PLATFORMTHEME=gtk3` (set in
+`kdos-appbox`'s BOXENV, together with `GTK_THEME=KDOS`) plus debian's
+`qt5-gtk-platformtheme` / `qt6-gtk-platformtheme` in the Containerfile. GIMP
+needs `(theme "System")` in `~/.config/GIMP/3.0/gimprc` (seeded in skel) or it
+keeps its own grey theme. GTK reloads neither theme nor icons on a file change,
+so alien apps pick up an accent switch on their next launch.
 
 **`kdos theme <phosphor|amber|ice|bone>`** owns everything else: it reruns
 kdos-theme-helper, writes the panel+dock background Color RON
-(`write_panel_colors`), `~/.config/foot/themes/kdos`,
+(`write_panel_colors`), regenerates `~/.themes/KDOS` and `~/.icons/KDOS`,
+writes the two `gtk.css` files, `~/.config/foot/themes/kdos`,
 `~/.config/btop/themes/kdos.theme`, and the palette block between the
 `# >>> KDOS STARSHIP PALETTE >>>` markers in starship.toml. One palette table
 inside `fs/usr/local/bin/kdos` drives all generators. COSMIC and cosmic-panel
@@ -516,27 +671,76 @@ overflow button (panel-size renegotiation race; upstream 1.4 behaviour —
 restarting cosmic-panel does not heal it, the next login does; the pins are
 still there, behind the overflow button).
 
-**kdos-icons** (`src/packages/kdos-icons`): theme `KDOS`, Inherits=Cosmic.
-`recolor.py` hue-shifts every non-symbolic Cosmic places/categories/devices/
-mimetypes SVG (plus the two hicolor panel-button SVGs) to the phosphor hue at
-build time; symbolic icons stay untouched (the toolkit tints them from the
-active theme). Ships `distributor-logo-kdos` / `start-here` (256px penguin),
-and the dock's app-library button is the tux: the kpkgbuild deletes the
-recolored `com.system76.CosmicPanelAppButton.svg` and installs the penguin
-PNG at `256x256/apps/` instead (theme-internal lookup beats hicolor's SVG).
-Depends on cosmic-icons being installed in the chroot at build.
+**kdos-icons** (`src/packages/kdos-icons`): theme `KDOS`, a **vendored, pruned,
+recoloured Papirus**, `Inherits=Cosmic,Pop,hicolor`. Same two-script split as
+kdos-cursors, and for the same reason:
 
-**kdos-cursors** (`src/packages/kdos-cursors`): pixel-art phosphor cursor
-theme, `gencursors.py` writes Xcursor binaries directly (raw ARGB, python
-stdlib only — no xcursorgen, no image libs; alpha kept 0/255 so premultiply
-never matters). 22 shapes covering cosmic-comp's whole `cursor_aliases`
-table (resize arrows included — without them the "default" theme has no
-resize shapes and cosmic-comp falls back to its built-in arrow on window
-borders), animated wait/progress, aliases as symlinks. Sizes 24–96
-(4K/HiDPI-ready), upscaled through a scale2x/EPX chain so big sizes read
-crisp rather than blocky, with a pale outer rim (outside-connected
-transparency only — interior holes stay open) so the dark outline is
-visible on dark surfaces. Installed to
+- **`vendor.py`** is the maintenance tool, run by hand on the host with network:
+  `vendor.py papirus-icon-theme-YYYYMMDD.tar.gz` rewrites `art/`. Papirus over
+  Tela/Colloid/Qogir purely for coverage — it is the only free set with a real
+  icon for essentially every mimetype, device and place COSMIC or the ~90 Debian
+  apps will ask for, and it is flat single-fill SVG, so a palette remap is a
+  substitution rather than a redraw. The prune is 90 MB → 13.7 MB: **`apps/` is
+  not vendored at all** (the alien apps ship their own icons and `01_appbox.sh`
+  installs them into hicolor; overriding Firefox's and GIMP's own marks makes
+  the launcher harder to read, and it is 76 MB of the 90), six sizes of upstream's
+  fourteen, and only the DEFAULT folder colourway — blue, which the unsuffixed
+  names already alias to (`folder-cd.svg → folder-blue-cd.svg`, so dropping blue
+  would strand every base name). Papirus-Dark is merged over Papirus rather than
+  kept separate. Aliases stay symlinks; any left dangling by the prune is
+  dropped iteratively (links point at links).
+- **`genicons.py`** is the build step, and `kdos theme` re-runs it per accent.
+
+Colours are mapped by FAMILY, not flattened: blue/green/purple → accent,
+yellow/orange/brown → secondary, red → urgent, near-greys → faintly tinted
+neutral, each keeping its own lightness and saturation. That is deliberate —
+Papirus colour-codes mimetypes, and collapsing every hue onto one accent turns a
+folder of files into a wall of identical green lozenges. A PDF stays red and an
+audio file stays amber while folders, devices and places go phosphor. The same
+mapping is in `kdos-gtk-theme/gengtk.py`, so icons and widgets agree about what
+"green" means. Ships `distributor-logo-kdos` / `start-here` (256px penguin), and
+the dock's app-library button is the tux: the kpkgbuild installs `panel-tux.svg`
+over `com.system76.CosmicPanelAppButton` in both KDOS and hicolor
+(theme-internal lookup beats hicolor's SVG). Cosmic is still inherited for the
+COSMIC applets' own icons and the symbolic set the shell tints itself.
+
+**kdos-cursors** (`src/packages/kdos-cursors`): a **vendored, pruned,
+recoloured fork of Bibata-Modern-Ice**. The hand-drawn pixel-art theme is gone
+(2026-07-30: it read as broken on screen no matter how the scaling was tuned —
+16x16 pixel art does not survive being a 24px cursor).
+
+Two scripts, and the split between them is the point:
+
+- **`vendor.py`** is a maintenance tool run by hand on the host, with network,
+  when the artwork should be refreshed: `vendor.py Bibata-Modern-Ice.tar.xz`
+  rewrites `art/`. It keeps only what KDOS uses — 32 shapes (upstream's X11
+  relics dropped: pirate/X_cursor, dotbox, draped box, target, tees and angles,
+  scrollbar arrows, draft, cross variants, colour picker), five sizes (24 32 48
+  64 96 of upstream's fourteen), and every third animation frame with the delay
+  tripled. `wait` and `progress` ship 54 frames at 9 MB each upstream — over
+  two thirds of the whole theme — so that decimation is most of the 27 MB → 4.4
+  MB cut. `art/` is LFS-tracked and `art/UPSTREAM` records the release.
+- **`gencursors.py`** is the build step: it recolours `art/` into the palette
+  and lays out the theme. Luminance maps onto a dark-green→accent ramp, except
+  `wait`/`progress`, which ramp to **amber** — the same "working on it" colour
+  the boot splash uses for a pending stage. No SVG toolchain, no clickgen, no
+  network at build time.
+
+**Xcursor ARGB is premultiplied** — alpha must be divided out before the ramp
+and multiplied back after, or every anti-aliased edge turns into a dark halo.
+
+**Alias groups are re-rooted on their CSS names** (`default` is the real file,
+`left_ptr` the symlink). This is not cosmetic: Bibata ships the opposite
+direction, and installing it over the old theme produced
+`default -> left_ptr -> default`, so kpkg aborted the whole package with
+`realpath: Symbolic link loop`. Canonicalising reproduces the old layout, so
+each stale symlink is overwritten by an identical one. If a theme swap ever
+fails that way on an existing tree: `kpkgdel kdos-cursors`, delete
+`/usr/share/icons/<theme>` plus the `/etc/skel/.icons` copy and the cached
+package, then rebuild.
+
+Upstream is GPL-3.0; `LICENSE.notice` records every deviation and installs to
+`/usr/share/licenses/kdos-cursors/`. Installed to
 `/usr/share/icons/KDOS-cursors` AND `/etc/skel/.icons/` — distrobox apps
 share `$HOME` but not `/usr/share/icons`, so the home copy is what the box
 sees. Selected via `XCURSOR_THEME`/`XCURSOR_SIZE` in
@@ -598,6 +802,14 @@ adds 2 + enabled-service count). Until the first total arrives the bar plays
 a KITT sweep; pending stages show an amber rotor; idle adds a hum bar
 drifting down the raster. When adding stages, keep the nearby `sp_total`
 count in step.
+
+Because the total is additive and each phase reports late, `done == total`
+happens at every phase boundary — the bar used to read **100% and then sit
+there waiting**, which looks like a stuck boot to anyone watching. The splash
+therefore clamps to 99% / one segment short until the `quit` command arrives
+(`finishing`), and the initramfs announces `BOOT MEDIA` *before* its 2s device
+settle wait instead of after. Keep both: a boot that shows 100% before it is
+finished is a bug report waiting to happen.
 
 Iterate on the look without booting: `kdos-splash preview 1280x800 0.35 out.ppm` renders a
 single frame at a given intro time to a PPM.

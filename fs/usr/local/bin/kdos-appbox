@@ -18,7 +18,7 @@
 #   kdos-appbox status                image / box state
 #
 # The .desktop launchers in ~/.local/share/applications use `run`.
-# kdos-session backgrounds `warmup` at login so the expensive first
+# kdos-desktop backgrounds `warmup` at login so the expensive first
 # `distrobox enter` (container init: user setup, mounts) happens while the
 # desktop is still settling — the first app click then hits a warm box.
 
@@ -34,18 +34,55 @@ IMAGE=localhost/kdos-appbox:latest
 #                              dropped every run
 #   NO_AT_BRIDGE / GTK_A11Y    KDOS ships no accessibility stack; stop every
 #                              GTK app from probing org.a11y.Bus at startup
-BOXENV="GSETTINGS_BACKEND=keyfile NO_AT_BRIDGE=1 GTK_A11Y=none"
+#   QT_QPA_PLATFORMTHEME=gtk3  Qt apps (krita, kdenlive, OBS...) take their
+#                              palette from the GTK theme via qgtk3, so the
+#                              KDOS gtk.css recolors them too
+BOXENV="GSETTINGS_BACKEND=keyfile NO_AT_BRIDGE=1 GTK_A11Y=none QT_QPA_PLATFORMTHEME=gtk3 GTK_THEME=KDOS"
 
 err() { echo "kdos-appbox: $*" >&2; exit 1; }
 
 # Desktop notification straight over the bus — libnotify isn't on the host.
 # Only useful because the session bus lives at $XDG_RUNTIME_DIR/bus.
+#
+# --timeout AND the background & are both load-bearing: gdbus's default reply
+# timeout is 25s, so launching before cosmic-notifications owns the name (or
+# from a tty with no notification daemon at all) used to stall the app behind a
+# 25 second dead wait. The notification is decoration; it must never gate the
+# launch.
 notify() {
-	gdbus call --session --dest org.freedesktop.Notifications \
-		--object-path /org/freedesktop/Notifications \
-		--method org.freedesktop.Notifications.Notify \
-		"KDOS" 0 "distributor-logo-kdos" "$1" "$2" "[]" "{}" 8000 \
-		>/dev/null 2>&1 || true
+	(
+		gdbus call --timeout 2 --session \
+			--dest org.freedesktop.Notifications \
+			--object-path /org/freedesktop/Notifications \
+			--method org.freedesktop.Notifications.Notify \
+			"KDOS" 0 "distributor-logo-kdos" "$1" "$2" "[]" "{}" 8000 \
+			>/dev/null 2>&1 || true
+	) &
+}
+
+# Stage timings, so "why did that take so long" is answerable after the fact.
+trace() {
+	printf '%s %s\n' "${EPOCHREALTIME:-?}" "$*" \
+		>> "${XDG_RUNTIME_DIR:-/tmp}/kdos-appbox.trace" 2>/dev/null || true
+}
+
+# distrobox-init announces completion with `container_setup_done` on the
+# container's stdout, which podman keeps in its logs. That marker is the only
+# honest readiness signal: distrobox-enter waits for it ONLY when it started
+# the container itself, so entering a container someone else started (the login
+# warmup) skips the wait and can exec into a half-built user.
+setup_done() {
+	podman logs "$BOX" 2>&1 | grep -q container_setup_done
+}
+
+wait_ready() {
+	local i=0
+	while [ "$i" -lt 600 ]; do        # 600 * 0.2s = 2 min ceiling
+		setup_done && return 0
+		sleep 0.2
+		i=$((i + 1))
+	done
+	return 1
 }
 
 home_fstype() {
@@ -123,11 +160,22 @@ case "${1:-}" in
 				podman rm -f -t 0 "$BOX" >/dev/null 2>&1 || true
 			fi
 		fi
+		trace "run $app status=$status"
 		ensure
-		# Ride out an in-flight login warmup: with the container already
-		# started but distrobox-init still mid-setup, `enter` skips the
-		# readiness wait and can exec into a half-built user.
-		( flock -w 120 8 || true ) 8>"${XDG_RUNTIME_DIR:-/tmp}/kdos-appbox.warmup.lock"
+		trace "ensured"
+		# Only wait when someone else already started the box: then
+		# distrobox-enter will NOT wait for setup itself. When the box is
+		# stopped we hand straight over — distrobox-enter starts it and does
+		# its own (progress-printing) wait.
+		#
+		# This used to be a blind `flock -w 120` on the warmup lock, which
+		# serialized every launch behind the whole login warmup: on a slow
+		# disk that is minutes of a dead-looking desktop for the first click.
+		if [ "$status" = running ] && ! setup_done; then
+			notify "Starting $app" "Finishing app container setup…"
+			wait_ready || trace "wait_ready timed out"
+		fi
+		trace "entering"
 		exec distrobox enter "$BOX" -- env $BOXENV "$app" "$@"
 		;;
 	ensure)
