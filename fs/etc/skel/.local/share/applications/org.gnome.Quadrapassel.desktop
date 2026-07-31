@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Quadrapassel
+Comment=Quadrapassel (alien app, kdos-apps box)
+Exec=kdos-appbox run quadrapassel
+Icon=org.gnome.Quadrapassel
+Terminal=false
+Categories=GNOME;GTK;Game;BlocksGame;
+Keywords=tetris;
+StartupWMClass=org.gnome.Quadrapassel
+X-KDOS-Alien=true

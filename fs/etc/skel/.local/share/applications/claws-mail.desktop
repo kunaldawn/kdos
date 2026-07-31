@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Claws Mail
+Comment=Claws Mail (alien app, kdos-apps box)
+Exec=kdos-appbox run claws-mail %u
+Icon=claws-mail
+Terminal=false
+Categories=Network;Email;
+GenericName=E-mail client
+MimeType=application/mbox;x-scheme-handler/mailto;
+Keywords=lightweight;fast;gui;extensible;plugin;pop;pop3;imap;imap4;nntp;news;
+StartupWMClass=claws-mail
+X-KDOS-Alien=true

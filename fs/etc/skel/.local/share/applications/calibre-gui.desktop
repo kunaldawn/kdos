@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=calibre
+Comment=calibre (alien app, kdos-apps box)
+Exec=kdos-appbox run calibre %U
+Icon=calibre-gui
+Terminal=false
+Categories=Office;
+GenericName=E-book library management
+MimeType=application/epub+zip;application/ereader;application/oebps-package+xml;application/pdf;application/vnd.ms-word.document.macroenabled.12;application/vnd.oasis.opendocument.text;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/x-cb7;application/x-cbc;application/x-cbr;application/x-cbz;application/x-mobi8-ebook;application/x-mobipocket-ebook;application/x-mobipocket-subscription;application/x-ruby;application/x-sony-bbeb;application/xhtml+xml;image/vnd.djvu;text/fb2+xml;text/html;text/plain;text/rtf;text/x-markdown;x-scheme-handler/calibre;
+Keywords=epub;ebook;manager;
+StartupWMClass=calibre-gui
+X-KDOS-Alien=true

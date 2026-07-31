@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=SuperTux 2
+Comment=SuperTux 2 (alien app, kdos-apps box)
+Exec=kdos-appbox run supertux2
+Icon=supertux2
+Terminal=false
+Categories=Game;ArcadeGame;
+GenericName=Platform Game
+Keywords=game;arcade;platform;
+StartupWMClass=supertux2
+X-KDOS-Alien=true

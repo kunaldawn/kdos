@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=FontForge
+Comment=FontForge (alien app, kdos-apps box)
+Exec=kdos-appbox run fontforge %U
+Icon=org.fontforge.FontForge
+Terminal=false
+Categories=Graphics;
+GenericName=Font Editor
+MimeType=application/vnd.font-fontforge-sfd;application/x-font-ttf;application/x-font-otf;application/x-font-type1;application/x-font-bdf;application/x-font-pcf;application/x-font-tex;application/font-woff;font/otf;font/ttf;font/woff;font/woff2;
+Keywords=font;fonts;editor;TTF;OTF;typeface;
+StartupWMClass=fontforge
+X-KDOS-Alien=true

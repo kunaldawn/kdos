@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=GSmartControl
+Comment=GSmartControl (alien app, kdos-apps box)
+Exec=kdos-appbox run "/usr/bin/gsmartcontrol-root"
+Icon=gsmartcontrol
+Terminal=false
+Categories=System;Monitor;
+GenericName=Hard Disk and SSD Health Inspection
+StartupWMClass=gsmartcontrol
+X-KDOS-Alien=true
