@@ -6,4 +6,5 @@ Exec=kdos-appbox run dosbox
 Icon=dosbox
 Terminal=false
 Categories=Game;Emulator;
+StartupWMClass=dosbox
 X-KDOS-Alien=true

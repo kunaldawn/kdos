@@ -6,4 +6,5 @@ Exec=kdos-appbox run libreoffice --impress %U
 Icon=libreoffice-impress
 Terminal=false
 Categories=Office;Presentation;
+StartupWMClass=libreoffice-impress
 X-KDOS-Alien=true

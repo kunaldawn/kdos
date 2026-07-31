@@ -6,4 +6,5 @@ Exec=kdos-appbox run kdenlive %F
 Icon=kdenlive
 Terminal=false
 Categories=Qt;KDE;AudioVideo;AudioVideoEditing;
+StartupWMClass=org.kde.kdenlive
 X-KDOS-Alien=true

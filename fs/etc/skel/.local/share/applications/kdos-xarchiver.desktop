@@ -6,4 +6,5 @@ Exec=kdos-appbox run xarchiver %f
 Icon=xarchiver
 Terminal=false
 Categories=GTK;Utility;Archiving;Compression;
+StartupWMClass=xarchiver
 X-KDOS-Alien=true

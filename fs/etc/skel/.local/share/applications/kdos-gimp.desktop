@@ -6,4 +6,5 @@ Exec=kdos-appbox run gimp-3.0 %U
 Icon=gimp
 Terminal=false
 Categories=Graphics;2DGraphics;RasterGraphics;GTK;
+StartupWMClass=gimp
 X-KDOS-Alien=true

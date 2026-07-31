@@ -6,4 +6,5 @@ Exec=kdos-appbox run geany %F
 Icon=geany
 Terminal=false
 Categories=GTK;Development;IDE;TextEditor;
+StartupWMClass=geany
 X-KDOS-Alien=true

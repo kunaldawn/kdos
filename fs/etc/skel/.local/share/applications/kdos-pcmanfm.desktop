@@ -6,4 +6,5 @@ Exec=kdos-appbox run pcmanfm %U
 Icon=system-file-manager
 Terminal=false
 Categories=GTK;System;Core;FileTools;FileManager;
+StartupWMClass=pcmanfm
 X-KDOS-Alien=true

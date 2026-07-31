@@ -6,4 +6,5 @@ Exec=kdos-appbox run quadrapassel
 Icon=org.gnome.Quadrapassel
 Terminal=false
 Categories=GNOME;GTK;Game;BlocksGame;
+StartupWMClass=org.gnome.Quadrapassel
 X-KDOS-Alien=true

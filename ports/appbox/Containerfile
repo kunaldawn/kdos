@@ -46,6 +46,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         qt5-gtk-platformtheme qt6-gtk-platformtheme \
     && rm -rf /var/lib/apt/lists/*
 
+# Read by kdos-appbox: it only sets QT_STYLE_OVERRIDE=Fusion when the image can
+# actually supply a palette through qgtk3. Declared here, in the same layer that
+# installs the platform themes, so the two can never disagree — Fusion without
+# them falls back to Qt's built-in LIGHT palette.
+LABEL kdos.qt-gtk-theme=1
+
 # Ebooks, PDF, office, notes
 RUN apt-get update && apt-get install -y --no-install-recommends \
         zathura zathura-pdf-poppler zathura-djvu zathura-cb sioyek \

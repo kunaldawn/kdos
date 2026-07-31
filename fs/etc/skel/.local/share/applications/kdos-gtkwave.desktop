@@ -6,4 +6,5 @@ Exec=kdos-appbox run gtkwave %F
 Icon=gtkwave
 Terminal=false
 Categories=Utility;GTK;Electronics;Engineering;
+StartupWMClass=gtkwave
 X-KDOS-Alien=true

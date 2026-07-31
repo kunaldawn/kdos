@@ -6,4 +6,5 @@ Exec=kdos-appbox run inkscape %F
 Icon=org.inkscape.Inkscape
 Terminal=false
 Categories=Graphics;VectorGraphics;GTK;
+StartupWMClass=org.inkscape.Inkscape
 X-KDOS-Alien=true

@@ -6,4 +6,5 @@ Exec=kdos-appbox run baobab %U
 Icon=org.gnome.baobab
 Terminal=false
 Categories=GTK;GNOME;System;Filesystem;Utility;
+StartupWMClass=org.gnome.baobab
 X-KDOS-Alien=true

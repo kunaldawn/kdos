@@ -6,4 +6,5 @@ Exec=kdos-appbox run openscad %f
 Icon=openscad
 Terminal=false
 Categories=Graphics;3DGraphics;Engineering;
+StartupWMClass=openscad
 X-KDOS-Alien=true

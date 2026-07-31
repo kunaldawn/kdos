@@ -6,4 +6,5 @@ Exec=kdos-appbox run sqlitebrowser %f
 Icon=sqlitebrowser
 Terminal=false
 Categories=Development;Utility;Database;
+StartupWMClass=sqlitebrowser
 X-KDOS-Alien=true

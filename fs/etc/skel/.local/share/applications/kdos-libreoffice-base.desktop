@@ -6,4 +6,5 @@ Exec=kdos-appbox run libreoffice --base %U
 Icon=libreoffice-base
 Terminal=false
 Categories=Office;Database;
+StartupWMClass=libreoffice-base
 X-KDOS-Alien=true

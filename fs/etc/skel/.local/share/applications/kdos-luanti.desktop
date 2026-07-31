@@ -6,4 +6,5 @@ Exec=kdos-appbox run luanti
 Icon=luanti
 Terminal=false
 Categories=Game;Simulation;
+StartupWMClass=net.minetest.minetest
 X-KDOS-Alien=true
