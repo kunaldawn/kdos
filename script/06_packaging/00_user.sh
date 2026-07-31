@@ -41,6 +41,10 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # user-authored lives there, so clear them first rather than merging onto
     # whatever the last build left.
     rm -rf "$home/.icons" "$home/.themes"
+    # Same reason, and the alien launchers need it most: they have been named
+    # kdos-<id> and <upstream-id> at different times, so a merge leaves both
+    # and the app library shows every alien app twice.
+    rm -rf "$home/.local/share/applications"
     if [ -d /etc/skel ]; then
         cp -r /etc/skel/. "$home"/ 2>/dev/null || true
     fi
