@@ -1,9 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=GNU Octave
-Comment=Numerical computing (alien app, kdos-apps box)
-Exec=kdos-appbox run octave --gui
+Comment=GNU Octave (alien app, kdos-apps box)
+Exec=kdos-appbox run /usr/bin/octave --gui %f
 Icon=octave
 Terminal=false
 Categories=Education;Science;Math;
+StartupWMClass=org.octave.Octave
 X-KDOS-Alien=true

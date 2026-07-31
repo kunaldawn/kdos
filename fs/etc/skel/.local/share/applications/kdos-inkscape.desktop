@@ -1,9 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=Inkscape
-Comment=Vector graphics editor (alien app, kdos-apps box)
-Exec=kdos-appbox run inkscape %U
+Comment=Inkscape (alien app, kdos-apps box)
+Exec=kdos-appbox run inkscape %F
 Icon=org.inkscape.Inkscape
 Terminal=false
-Categories=Graphics;VectorGraphics;
+Categories=Graphics;VectorGraphics;GTK;
+StartupWMClass=org.inkscape.Inkscape
 X-KDOS-Alien=true

@@ -1,0 +1,52 @@
+KDOS icon theme — attribution and deviations
+============================================
+
+This theme is a derivative work of the Papirus icon theme.
+
+    Upstream:  https://github.com/PapirusDevelopmentTeam/papirus-icon-theme
+    License:   GNU General Public License, version 3
+    Vendored:  see art/UPSTREAM for the exact release
+    Full text: art/LICENSE.upstream (installed as LICENSE.papirus)
+
+Papirus is itself based on the Paper icon set by Sam Hewitt.
+
+This derivative is distributed under the same licence, GPL-3.0. The complete
+corresponding source is the contents of art/ (the pruned upstream artwork,
+otherwise unmodified) together with vendor.py and genicons.py, which are the
+only things that produce the installed files.
+
+What KDOS changed
+-----------------
+
+1. apps/ is not vendored at all. The alien apps ship their own icons and
+   script/06_packaging/01_appbox.sh installs them into the system hicolor
+   tree; replacing Firefox's and GIMP's own marks with redraws makes the
+   launcher harder to read, not easier. It is also 76 MB of the 90.
+
+2. Only six sizes are kept (16, 22, 24, 32, 48, 64). Upstream ships 8 through
+   128 plus an @2x alias for each.
+
+3. Only the default folder/user colourway (blue) is kept. Upstream ships
+   twenty-two, none of which KDOS exposes any way to select, and blue is the
+   one the unsuffixed names already alias to.
+
+4. Papirus-Dark is merged over Papirus into a single theme rather than kept as
+   a second one: it differs only at 16/22/24 and symlinks back to Papirus for
+   everything else, and KDOS has no light mode.
+
+5. Aliases are preserved as symlinks. Any alias left dangling by the pruning
+   above is dropped.
+
+6. Every colour in every remaining SVG is remapped to the KDOS palette by
+   genicons.py: hues are mapped by family (blue/green/purple to the accent,
+   yellow/orange/brown to the secondary, red to the urgent colour, near-greys
+   to a faintly tinted neutral) with each icon's own lightness and saturation
+   preserved. Papirus colour-codes mimetypes, and that coding survives — a PDF
+   stays red and an audio file stays amber — while folders, devices and places
+   become phosphor.
+
+7. index.theme is replaced: the theme is named KDOS and inherits Cosmic, Pop
+   and hicolor so COSMIC's own applet icons and the alien apps' icons still
+   resolve.
+
+No upstream path, geometry or shape is otherwise altered.

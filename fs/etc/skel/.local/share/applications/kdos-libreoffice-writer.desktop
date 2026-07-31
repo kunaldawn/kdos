@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=LibreOffice Writer
+Comment=LibreOffice Writer (alien app, kdos-apps box)
+Exec=kdos-appbox run libreoffice --writer %U
+Icon=libreoffice-writer
+Terminal=false
+Categories=Office;WordProcessor;
+StartupWMClass=libreoffice-writer
+X-KDOS-Alien=true

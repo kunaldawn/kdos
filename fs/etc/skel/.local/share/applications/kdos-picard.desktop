@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=MusicBrainz Picard
+Comment=MusicBrainz Picard (alien app, kdos-apps box)
+Exec=kdos-appbox run picard %F
+Icon=org.musicbrainz.Picard
+Terminal=false
+Categories=AudioVideo;Audio;AudioVideoEditing;
+StartupWMClass=org.musicbrainz.Picard
+X-KDOS-Alien=true
