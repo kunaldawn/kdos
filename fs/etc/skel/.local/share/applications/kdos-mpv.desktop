@@ -1,9 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=mpv
-Comment=Video and music player (alien app, kdos-apps box)
-Exec=kdos-appbox run mpv --player-operation-mode=pseudo-gui %U
+Name=mpv Media Player
+Comment=mpv Media Player (alien app, kdos-apps box)
+Exec=kdos-appbox run mpv --player-operation-mode=pseudo-gui -- %U
 Icon=mpv
 Terminal=false
-Categories=AudioVideo;Player;
+Categories=AudioVideo;Audio;Video;Player;TV;
+StartupWMClass=mpv
 X-KDOS-Alien=true

@@ -19,9 +19,25 @@ splash() {
     return 0
 }
 
+# Tell the progress bar how many stages this half of boot will add: fstab,
+# one per enabled service script, and the session hand-off.
+_n=2
+for _s in /etc/init.d/[0-9][0-9]_*.sh; do
+    [ -x "$_s" ] || continue
+    [ -f "/etc/service.disabled/$(basename "$_s" | sed 's/^[0-9][0-9]_//;s/\.sh$//')" ] && continue
+    _n=$((_n + 1))
+done
+splash total "$_n"
+unset _s _n
+
 # Mount all filesystems in fstab
 splash step "MOUNTING FILESYSTEMS"
 mount -a
+# fstab asks for mode=1777, but a tmpfs that is already mounted ignores a mode
+# change on remount, and a 0755 /tmp locks every non-root user out of /tmp —
+# GTK/Wayland apps, GIMP, LibreOffice and fontconfig all fail in ways that look
+# like "the app just doesn't start". Cheap, idempotent, and it always sticks.
+chmod 1777 /tmp
 splash ok
 
 # Console font and palette are NOT set here: fbcon's deferred take-over (which

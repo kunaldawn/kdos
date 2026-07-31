@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Sioyek
+Comment=Sioyek (alien app, kdos-apps box)
+Exec=kdos-appbox run sioyek %f
+Icon=sioyek-icon-linux
+Terminal=false
+Categories=Development;Viewer;
+StartupWMClass=sioyek
+X-KDOS-Alien=true

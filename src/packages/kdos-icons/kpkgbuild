@@ -1,0 +1,49 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# description	: KDOS phosphor icon theme — a recoloured Papirus
+# homepage	: https://github.com/PapirusDevelopmentTeam/papirus-icon-theme
+# depends	: cosmic-icons python3
+
+name=kdos-icons
+version=20250501
+release=1
+source=""
+
+build() {
+	# genicons.py also recolours COSMIC's own app icons and installs the KDOS
+	# marks — it has to, because `kdos theme <accent>` re-runs it against
+	# $HOME and must produce a complete theme without this kpkgbuild's help.
+	python3 "$PORT_SRC/genicons.py" "$PKG/usr/share/icons/KDOS"
+
+	# panel-tux.svg is pure <rect> pixel art (from the splash penguin RLE) —
+	# resvg renders it without raster-image support. hicolor gets it too so
+	# every lookup path lands on the tux, not just the theme-internal one.
+	for n in com.system76.CosmicAppLibrary com.system76.CosmicPanelAppButton; do
+		install -Dm644 "$PORT_SRC/panel-tux.svg" \
+			"$PKG/usr/share/icons/hicolor/scalable/apps/$n.svg"
+	done
+
+	# `kdos theme <accent>` re-runs the generator against $HOME — the artwork
+	# is flat single-fill SVG, so the accent lives in the files and no CSS
+	# reaches it. That run is also what produces ~/.icons/KDOS, which is the
+	# only icon path the appbox can see (it shares $HOME, not /usr/share) and
+	# is why no /etc/skel copy is installed here: 06_packaging/00_theme.sh
+	# runs `kdos theme phosphor` against /etc/skel and generates it.
+	install -Dm755 "$PORT_SRC/genicons.py" "$PKG/usr/share/kdos/icons/genicons.py"
+	install -Dm644 "$PORT_SRC/panel-tux.svg" "$PKG/usr/share/kdos/icons/panel-tux.svg"
+	install -Dm644 "$PORT_SRC/kdos-icon-256.png" "$PKG/usr/share/kdos/icons/kdos-icon-256.png"
+	cp -a "$PORT_SRC/art" "$PKG/usr/share/kdos/icons/art"
+
+	install -Dm644 "$PORT_SRC/LICENSE.notice" \
+		"$PKG/usr/share/licenses/kdos-icons/LICENSE.notice"
+	install -Dm644 "$PORT_SRC/art/LICENSE.upstream" \
+		"$PKG/usr/share/licenses/kdos-icons/LICENSE.papirus"
+}
