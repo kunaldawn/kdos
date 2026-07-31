@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=mGBA
+Comment=mGBA (alien app, kdos-apps box)
+Exec=kdos-appbox run mgba-qt %f
+Icon=io.mgba.mGBA
+Terminal=false
+Categories=Game;Emulator;
+GenericName=Game Boy Advance Emulator
+MimeType=application/x-gameboy-advance-rom;application/x-agb-rom;application/x-gba-rom;application/x-gameboy-rom;application/x-gameboy-color-rom;
+Keywords=emulator;Nintendo;advance;gba;gbc;gb;Game Boy Advance;Game Boy Color; Game Boy;
+StartupWMClass=mGBA
+X-KDOS-Alien=true

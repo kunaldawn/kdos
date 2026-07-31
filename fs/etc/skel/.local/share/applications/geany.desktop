@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Geany
+Comment=Geany (alien app, kdos-apps box)
+Exec=kdos-appbox run geany %F
+Icon=geany
+Terminal=false
+Categories=GTK;Development;IDE;TextEditor;
+GenericName=Integrated Development Environment
+MimeType=text/plain;text/x-chdr;text/x-csrc;text/x-c++hdr;text/x-c++src;text/x-java;text/x-dsrc;text/x-pascal;text/x-perl;text/x-python;application/x-php;application/x-httpd-php3;application/x-httpd-php4;application/x-httpd-php5;application/xml;text/html;text/css;text/x-sql;text/x-diff;
+Keywords=Text;Editor;
+StartupWMClass=geany
+X-KDOS-Alien=true

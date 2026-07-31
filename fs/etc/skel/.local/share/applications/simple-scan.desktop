@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Document Scanner
+Comment=Document Scanner (alien app, kdos-apps box)
+Exec=kdos-appbox run simple-scan
+Icon=org.gnome.SimpleScan
+Terminal=false
+Categories=GNOME;GTK;Graphics;Scanning;
+Keywords=scan;scanner;flatbed;adf;
+StartupWMClass=simple-scan
+X-KDOS-Alien=true

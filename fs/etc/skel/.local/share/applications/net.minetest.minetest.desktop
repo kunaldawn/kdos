@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Luanti
+Comment=Luanti (alien app, kdos-apps box)
+Exec=kdos-appbox run luanti
+Icon=luanti
+Terminal=false
+Categories=Game;Simulation;
+GenericName=Luanti
+Keywords=sandbox;world;mining;crafting;blocks;nodes;multiplayer;roleplaying;
+StartupWMClass=net.minetest.minetest
+X-KDOS-Alien=true

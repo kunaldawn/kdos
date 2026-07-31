@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Qalculate!
+Comment=Qalculate! (alien app, kdos-apps box)
+Exec=kdos-appbox run qalculate-gtk
+Icon=qalculate
+Terminal=false
+Categories=GTK;Utility;Calculator;Education;Science;Math;
+GenericName=Calculator
+Keywords=calculation;arithmetic;scientific;financial;
+StartupWMClass=qalculate-gtk
+X-KDOS-Alien=true

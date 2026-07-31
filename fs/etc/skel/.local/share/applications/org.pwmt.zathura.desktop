@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Zathura
+Comment=Zathura (alien app, kdos-apps box)
+Exec=kdos-appbox run zathura %U
+Icon=org.pwmt.zathura
+Terminal=false
+Categories=Office;Viewer;
+Keywords=PDF;PS;PostScript;DjVU;document;presentation;viewer;
+StartupWMClass=org.pwmt.zathura
+X-KDOS-Alien=true

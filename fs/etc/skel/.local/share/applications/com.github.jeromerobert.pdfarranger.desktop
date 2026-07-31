@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=PDF Arranger
+Comment=PDF Arranger (alien app, kdos-apps box)
+Exec=kdos-appbox run pdfarranger %U
+Icon=com.github.jeromerobert.pdfarranger
+Terminal=false
+Categories=Office;
+MimeType=application/pdf;application/postscript;application/x-ext-pdf;image/x-bmp;image/bmp;image/gif;image/tiff;image/jp2;image/jpeg;image/jpg;image/png;image/x-icon;image/x-portable-pixmap;image/x-gray;image/x-ico;image/x-png;image/vnd.zbrush.pcx;image/x-pcx;
+Keywords=pdfarranger;pdfshuffler;PDF Shuffler;
+StartupWMClass=com.github.jeromerobert.pdfarranger
+X-KDOS-Alien=true

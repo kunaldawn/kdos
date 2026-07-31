@@ -23,12 +23,16 @@ build() {
 	# $HOME and must produce a complete theme without this kpkgbuild's help.
 	python3 "$PORT_SRC/genicons.py" "$PKG/usr/share/icons/KDOS"
 
-	# panel-tux.svg is pure <rect> pixel art (from the splash penguin RLE) —
-	# resvg renders it without raster-image support. hicolor gets it too so
-	# every lookup path lands on the tux, not just the theme-internal one.
+	# hicolor gets the marks too, so every lookup path lands on the tux and not
+	# just the theme-internal one. Any stale SVG from the pixel-art era has to
+	# go: at a given size the toolkit picks scalable over a fixed-size PNG.
 	for n in com.system76.CosmicAppLibrary com.system76.CosmicPanelAppButton; do
-		install -Dm644 "$PORT_SRC/panel-tux.svg" \
-			"$PKG/usr/share/icons/hicolor/scalable/apps/$n.svg"
+		rm -f "$PKG/usr/share/icons/hicolor/scalable/apps/$n.svg"
+		for f in "$PORT_SRC"/marks/tux-*.png; do
+			s="${f##*/tux-}"; s="${s%.png}"
+			install -Dm644 "$f" \
+				"$PKG/usr/share/icons/hicolor/${s}x${s}/apps/$n.png"
+		done
 	done
 
 	# `kdos theme <accent>` re-runs the generator against $HOME — the artwork
@@ -38,8 +42,7 @@ build() {
 	# is why no /etc/skel copy is installed here: 06_packaging/00_theme.sh
 	# runs `kdos theme phosphor` against /etc/skel and generates it.
 	install -Dm755 "$PORT_SRC/genicons.py" "$PKG/usr/share/kdos/icons/genicons.py"
-	install -Dm644 "$PORT_SRC/panel-tux.svg" "$PKG/usr/share/kdos/icons/panel-tux.svg"
-	install -Dm644 "$PORT_SRC/kdos-icon-256.png" "$PKG/usr/share/kdos/icons/kdos-icon-256.png"
+	cp -a "$PORT_SRC/marks" "$PKG/usr/share/kdos/icons/marks"
 	cp -a "$PORT_SRC/art" "$PKG/usr/share/kdos/icons/art"
 
 	install -Dm644 "$PORT_SRC/LICENSE.notice" \
