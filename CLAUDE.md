@@ -54,16 +54,46 @@ The launchers in `fs/etc/skel/.local/share/applications/` are GENERATED from
 the image's own desktop entries (`ports/appbox/genlaunchers.py` parses [Desktop Entry], skips
 NoDisplay/noise, renames to the ids the dock favorites reference) — regenerate
 rather than hand-edit when the app set changes.
-**Every launcher must carry `StartupWMClass`**, and it is the UPSTREAM desktop
-id (or upstream's own StartupWMClass), not ours: the window the launcher opens
-announces the APP's app_id, so without it cosmic-app-list cannot tie the
-toplevel back to any desktop entry and the dock shows a generic placeholder for
-every running alien app — the row of identical grey cogs in the 2026-07-31
-report. `EXEC_EXTRA` in the same script carries the argv an app needs only
+It writes FOUR things and dropping any one of them breaks something visible:
+
+| Output | Why |
+|---|---|
+| `kdos-<id>.desktop` | the launcher |
+| `mimeinfo.cache` beside them | without it the `MimeType` lines are never consulted |
+| `usr/share/kdos/alien-apps` | name → in-box command line |
+| `usr/local/bin/<name>` → `kdos-appbox` | every alien app is also a normal command |
+
+**`MimeType` must be carried through from upstream.** Without it no alien app is
+offered in any "Open with" dialog and none can ever be a default handler — that
+is what "alien apps missing from the open dialog" was: a PNG offered COSMIC
+Files, imv and Neovim and no GIMP. And the cache is written HERE rather than
+left to `update-desktop-database`, because the host has no desktop-file-utils.
+
+**The launcher FILENAME must be upstream's own desktop id** — not `kdos-<name>`,
+and not `StartupWMClass` either. Measured in a booted VM, not guessed:
+
+* `cosmic-app-list` matches a running toplevel to a desktop entry by the entry's
+  FILE ID and ignores `StartupWMClass`. Control: `foot`, whose id and app_id
+  both say `foot`, merges into its pinned icon; GIMP filed as `kdos-gimp` showed
+  a second grey cog beside it.
+* **A Wayland `app_id` is not the X11 `WM_CLASS`.** GIMP's entry says
+  `StartupWMClass=gimp-3.0`, but `WAYLAND_DEBUG=1` shows its toplevel calling
+  `set_app_id("gimp")` — its upstream filename. Renaming the launcher to
+  `gimp-3.0.desktop` changed nothing; renaming it to `gimp.desktop` made the
+  running window merge into the pinned icon immediately.
+
+So `dock favorites` reference upstream ids too (`firefox-esr`, `org.xfce.mousepad`,
+`gimp`). `StartupWMClass` is still written into the file — it costs nothing and
+is what an X11 app under Xwayland would be matched by. `EXEC_EXTRA` in the same script carries the argv an app needs only
 because it is containerised; VSCodium is there because Electron's chrome-sandbox
 wants a setuid helper and CLONE_NEWUSER, gets neither as a non-root user in an
 unprivileged podman container, and exits rather than falling back, so it needs
-`--no-sandbox`. Because
+`--no-sandbox`.
+
+The tool needs the image's `/usr/share/applications`. After an ISO build that is
+already on disk, because the bake flattens the appbox to one layer:
+`build/fs/home/kdos/.local/share/containers/storage/overlay/*/diff/usr/share/applications`
+— no `make fetch-apps` required to regenerate. Because
 `make build` runs `--network none`, the image is built on the HOST with
 `make fetch-apps` → `ports/appbox/appbox.tar` (gitignored, over LFS's 2G/file
 limit) which `ports/appbox/pack` immediately explodes into
@@ -115,6 +145,40 @@ shared `/run/user/1000`. The box side needs debian's `obs-plugins` package —
 debian splits OBS's plugins out as a Recommends, and `linux-pipewire.so`
 (the only Wayland capture path) lives there; the recommends-less install
 silently dropped it, exactly like kdenlive's ffmpeg/dvdauthor chain.
+
+### kdos-appbox is a C program (src/packages/kdos-appbox)
+
+`/usr/local/bin/kdos-appbox` is no longer a shell script. It is ~1200 lines of
+C in `src/packages/kdos-appbox/` (`main.c` CLI + launch path, `box.c` boxes and
+profiles, `app.c` the app table and install/refresh, `tui.c` the ncurses front
+end, `util.c` process/path/lock helpers), built against ncursesw.
+
+Two rules it exists to keep:
+
+- **The launch path is a straight port, ordering included.** 91 launchers and
+  the login warmup depend on its exact behaviour: the stuck-in-`stopping`
+  recovery, the `container_setup_done` readiness wait that only runs when
+  someone ELSE started the box, the fire-and-forget notification, the one-time
+  storage-driver choice. Every one of those is a fix for something that broke;
+  do not "simplify" one away. Comments marked *cost a debug cycle* mark them.
+- **There is no `system()` and no shell anywhere in the program.** App names,
+  package names and file arguments all arrive from .desktop files and argv, and
+  a shell in the middle turns any of them into an injection point. Everything
+  execs directly through an `Argv` builder.
+
+Invoked through a symlink named after an app it dispatches on its own basename,
+busybox-style, so `gimp photo.png` works from a terminal with no shell wrapper
+in between. The name → command table is `/usr/share/kdos/alien-apps` (baked)
+plus `~/.local/share/kdos/alien-apps` (added at runtime); user entries win.
+
+**Sandbox profiles** live in `~/.config/kdos/boxes/<name>.conf` and every key
+maps 1:1 onto a distrobox flag — `network`/`ipc`/`devices`/`processes` to
+`--unshare-{netns,ipc,devsys,process}`, `home` to `--home`. That mapping is the
+point: KDOS does not offer confinement it cannot enforce. Defaults are exactly
+what a plain `distrobox create` does, so an unprofiled box behaves identically.
+A profile is applied at CREATE time — namespaces cannot be re-flagged on a live
+container, so changing one tells you to run `kdos-appbox recreate <box>` rather
+than silently doing nothing.
 
 **The bake must not leave root's runtime paths in the user's libpod database**
 — the fault behind "alien apps don't launch at all" (2026-07-30). The bake runs
@@ -483,6 +547,21 @@ Three things make this safe, and they are the reason the plumbing exists:
   `if [ -f "$MARK/x" ] && [ "${KDOS_REPLAY:-0}" != "1" ]`. build.py exports `KDOS_REPLAY=1`
   for explicitly named steps (chroot_exec.sh forwards it), so `--steps 01_phase1:12_kpkg.sh`
   actually re-installs kpkg instead of exiting 0.
+
+**A file deleted from `fs/` must disappear from the tree.** `cp -r` overwrites
+but never removes, so a path the repo has dropped lingers forever — the shell
+`kdos-appbox` survived being replaced by the C port and kpkg refused the install
+with a file conflict; before that a stale icon rode three ISO rebuilds; and the
+old `kdos-*.desktop` launchers sat beside their replacements, which would have
+shown every alien app twice. `00_file_system.sh` therefore records every path
+`fs/` provided in `/var/lib/kdos/fs-manifest` and deletes, on the next sync,
+the ones it no longer provides. Two traps found the hard way: the manifest is
+written AFTER the copy (so a package that later owns the same path is not the
+manifest's to remove), and it must not use `find -printf` — that is a GNU
+extension, the build image's `find` is busybox's, and it wrote an EMPTY
+manifest that silently protected nothing. `00_user.sh` needs the same
+treatment for the generated trees it copies into the home (`.icons`,
+`.themes`, `.local/share/applications`) — it clears them before copying skel.
 
 `00_file_system.sh` **merges** `/etc/{passwd,group,shadow}` instead of overwriting them:
 package postinstalls add service users (polkitd, messagebus, sshd) long after phase 1 runs,

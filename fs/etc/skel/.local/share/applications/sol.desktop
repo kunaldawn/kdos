@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=AisleRiot Solitaire
+Comment=AisleRiot Solitaire (alien app, kdos-apps box)
+Exec=kdos-appbox run sol
+Icon=gnome-aisleriot
+Terminal=false
+Categories=GNOME;GTK;Game;CardGame;
+Keywords=solitaire;cards;klondike;spider;freecell;patience;
+StartupWMClass=sol
+X-KDOS-Alien=true

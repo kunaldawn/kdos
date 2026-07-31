@@ -1,18 +1,56 @@
 #!/usr/bin/env python3
-"""Generate kdos-*.desktop launchers from the appbox image's desktop entries.
+"""Generate everything the host needs to present the appbox's apps as its own.
 
-usage: genlaunchers.py <desktop-dir-dump> <out-dir>
+usage: genlaunchers.py <desktop-dir-dump> <fs-root>
+
+<desktop-dir-dump> is the image's /usr/share/applications. After an ISO build
+the flattened appbox layer has it on disk already:
+  build/fs/home/kdos/.local/share/containers/storage/overlay/*/diff/usr/share/applications
 
 Parses each .desktop [Desktop Entry] section (first section only, so action
 sections don't shadow Name/Icon like the old awk one-liner did), skips
 NoDisplay/noise, applies a rename map so dock favorites keep their IDs, and
-writes uniform kdos-<name>.desktop wrappers that exec `kdos-appbox run ...`.
+writes into <fs-root>:
+
+  etc/skel/.local/share/applications/<upstream-id>.desktop
+      the launcher, keeping UPSTREAM's own desktop-file id — not kdos-<name>,
+      and not StartupWMClass either. Measured in a booted VM: cosmic-app-list
+      matches a running toplevel to a desktop entry by the entry's FILE ID and
+      ignores StartupWMClass, and a Wayland app_id is NOT the X11 WM_CLASS —
+      GIMP's entry says StartupWMClass=gimp-3.0 but its toplevel announces
+      app_id "gimp" (confirmed with WAYLAND_DEBUG=1), which is exactly its
+      upstream filename. Get this wrong and every running alien app shows a
+      second grey cog beside its own pinned icon. Carries the upstream
+      MimeType, Keywords and GenericName —
+      WITHOUT MimeType no alien app is offered in any "Open with" dialog and
+      none can ever be a default handler, which is what "alien apps missing
+      from the open dialog" was.
+  etc/skel/.local/share/applications/mimeinfo.cache
+      the mime -> desktop-id index. Written here rather than left to
+      update-desktop-database: the host has no desktop-file-utils, and without
+      the cache the association list above is never consulted.
+  usr/share/kdos/alien-apps
+      name -> in-box command line, read by /usr/local/bin/kdos-alien.
+  usr/local/bin/<name> -> kdos-appbox
+      one symlink per app, so every alien app is also a normal command in
+      $PATH. kdos-appbox dispatches on its own basename, the way busybox does,
+      which keeps the alien-app path free of any shell.
 """
 
 import configparser
 import os
 import re
 import sys
+
+# Shim names that must never be created in /usr/local/bin. The host userland is
+# musl + toybox + COSMIC and currently collides with none of the Debian app
+# names, but the app set moves; a shim shadowing a host tool would be a very
+# confusing bug.
+RESERVED = {
+    "sh", "bash", "env", "ls", "cp", "mv", "rm", "cat", "sed", "awk", "grep",
+    "find", "tar", "gzip", "python3", "perl", "make", "gcc", "kdos", "foot",
+    "kdos-appbox", "kdos-banner", "kdos-desktop", "kdos-shot",
+}
 
 SKIP_BASENAMES = {
     "xfce4-about", "libfm-pref-apps", "lxshortcut", "pcmanfm-desktop-pref",
@@ -93,19 +131,39 @@ RENAME = {
 FIELD_CODE = re.compile(r"%[a-zA-Z]")
 KEEP_CODES = {"%U", "%F", "%f", "%u"}
 
-# Extra argv the app needs to work inside the container, appended after the
-# upstream Exec. VSCodium is Electron: its chrome-sandbox wants a setuid
-# helper and CLONE_NEWUSER, neither of which it gets as a non-root user inside
-# an unprivileged podman container, and it exits instead of falling back.
+# Extra argv an app needs to work inside the container / on this compositor,
+# appended after the upstream Exec. All three VSCodium flags were established
+# by launching it in a booted VM and reading why it died:
+#   --no-sandbox                chrome-sandbox wants a setuid helper and
+#                               CLONE_NEWUSER, gets neither as a non-root user
+#                               in an unprivileged podman container, and exits
+#                               rather than falling back
+#   --ozone-platform-hint=auto  otherwise Electron does not pick Wayland
+#   --disable-gpu-compositing   without it the renderer dies with
+#                               "create_immed failed and produced an invalid
+#                               wl_buffer" -> "launch-failed, code 1002".
+#                               --disable-gpu also fixes it but turns off GPU
+#                               rasterisation too; this is the smaller hammer.
 EXEC_EXTRA = {
-    "vscodium": "--no-sandbox",
+    "vscodium": "--no-sandbox --ozone-platform-hint=auto --disable-gpu-compositing",
+}
+
+# Environment assignments in an upstream Exec that force X11. KDOS is
+# Wayland-only and cosmic-comp is not currently starting Xwayland, so these are
+# a guaranteed silent failure: debian ships audacity as
+# `env GDK_BACKEND=x11 audacity`, and with no X server GTK exits before
+# printing anything at all. Measured: audacity runs fine on Wayland once the
+# prefix is dropped.
+X11_FORCING = {
+    "GDK_BACKEND=x11", "CLUTTER_BACKEND=x11", "QT_QPA_PLATFORM=xcb",
+    "SDL_VIDEODRIVER=x11", "MOZ_ENABLE_WAYLAND=0",
+    "ELECTRON_OZONE_PLATFORM_HINT=x11",
 }
 
 
-def main():
-    srcdir, outdir = sys.argv[1], sys.argv[2]
-    os.makedirs(outdir, exist_ok=True)
-    made = []
+def parse(srcdir):
+    """Upstream entry -> the fields KDOS carries forward."""
+    apps = []
     for fn in sorted(os.listdir(srcdir)):
         if not fn.endswith(".desktop"):
             continue
@@ -126,47 +184,125 @@ def main():
         if de.get("Type", "Application") != "Application":
             continue
         name = de.get("Name")
-        icon = de.get("Icon", "")
         execline = de.get("Exec", "")
         cats = de.get("Categories", "")
         if not name or not execline:
             continue
         if "Settings" in cats and "System" not in cats:
             continue
-        words = []
-        for w in execline.split():
-            if FIELD_CODE.fullmatch(w) and w not in KEEP_CODES:
-                continue
-            words.append(w)
+
+        words = [w for w in execline.split()
+                 if not (FIELD_CODE.fullmatch(w) and w not in KEEP_CODES)]
         if words and words[0] == "env":
-            pass  # keep env VAR=... prefixes intact
+            keep, i = ["env"], 1
+            while i < len(words) and "=" in words[i]:
+                if words[i] not in X11_FORCING:
+                    keep.append(words[i])
+                i += 1
+            if len(keep) == 1:          # nothing left to set
+                keep = []
+            words = keep + words[i:]
         execline = " ".join(words)
         out = RENAME.get(base, base.lower())
         extra = EXEC_EXTRA.get(out)
         if extra:
-            execline = f"{execline} {extra}" if "%" not in execline else \
-                execline.replace("%", f"{extra} %", 1)
-        # The window this launcher opens comes from the container announcing
-        # the APP's own app_id, not ours, so without this cosmic-app-list
-        # cannot tie the toplevel back to any desktop entry and the dock shows
-        # a generic placeholder for every running alien app. Upstream's own
-        # StartupWMClass wins; otherwise the upstream desktop-file id is what
-        # a GTK/Qt app sets by default.
-        wmclass = de.get("StartupWMClass") or base
-        with open(os.path.join(outdir, f"kdos-{out}.desktop"), "w") as f:
-            f.write("[Desktop Entry]\n")
-            f.write("Type=Application\n")
-            f.write(f"Name={name}\n")
-            f.write(f"Comment={name} (alien app, kdos-apps box)\n")
-            f.write(f"Exec=kdos-appbox run {execline}\n")
-            f.write(f"Icon={icon}\n")
-            f.write("Terminal=false\n")
-            f.write(f"Categories={cats}\n")
-            f.write(f"StartupWMClass={wmclass}\n")
-            f.write("X-KDOS-Alien=true\n")
-        made.append(f"kdos-{out}.desktop")
-    print("\n".join(made))
-    print(f"total {len(made)}", file=sys.stderr)
+            execline = (f"{execline} {extra}" if "%" not in execline
+                        else execline.replace("%", f"{extra} %", 1))
+        apps.append({
+            "id": out,
+            "base": base,
+            "name": name,
+            "exec": execline,
+            "icon": de.get("Icon", ""),
+            "cats": cats,
+            "mime": de.get("MimeType", ""),
+            "keywords": de.get("Keywords", ""),
+            "generic": de.get("GenericName", ""),
+            # The window this launcher opens announces the APP's app_id, not
+            # ours, so without this the dock cannot tie a running alien app
+            # back to any desktop entry and shows a generic placeholder.
+            "wmclass": de.get("StartupWMClass") or base,
+        })
+    return apps
+
+
+def write_launchers(apps, d):
+    os.makedirs(d, exist_ok=True)
+    # Clear by MARKER, not by name: these files have been called kdos-<id>
+    # and <app_id> at different times and an orphan launcher is a dead icon.
+    for fn in os.listdir(d):
+        if not fn.endswith(".desktop"):
+            continue
+        p = os.path.join(d, fn)
+        with open(p, encoding="utf-8", errors="replace") as f:
+            if "X-KDOS-Alien=true" in f.read():
+                os.unlink(p)
+    for a in apps:
+        lines = ["[Desktop Entry]", "Type=Application",
+                 f"Name={a['name']}",
+                 f"Comment={a['name']} (alien app, kdos-apps box)",
+                 f"Exec=kdos-appbox run {a['exec']}",
+                 f"Icon={a['icon']}", "Terminal=false",
+                 f"Categories={a['cats']}"]
+        if a["generic"]:
+            lines.append(f"GenericName={a['generic']}")
+        if a["mime"]:
+            lines.append(f"MimeType={a['mime']}")
+        if a["keywords"]:
+            lines.append(f"Keywords={a['keywords']}")
+        lines += [f"StartupWMClass={a['wmclass']}", "X-KDOS-Alien=true", ""]
+        with open(os.path.join(d, f"{a['base']}.desktop"), "w") as f:
+            f.write("\n".join(lines))
+
+
+def write_mimeinfo(apps, d):
+    index = {}
+    for a in apps:
+        for m in a["mime"].split(";"):
+            m = m.strip()
+            if m:
+                index.setdefault(m, []).append(f"{a['base']}.desktop")
+    with open(os.path.join(d, "mimeinfo.cache"), "w") as f:
+        f.write("[MIME Cache]\n")
+        for m in sorted(index):
+            f.write("%s=%s;\n" % (m, ";".join(index[m])))
+    return len(index)
+
+
+def write_shims(apps, fsroot):
+    table = os.path.join(fsroot, "usr/share/kdos/alien-apps")
+    os.makedirs(os.path.dirname(table), exist_ok=True)
+    with open(table, "w") as f:
+        f.write("# name\tcommand — GENERATED by ports/appbox/genlaunchers.py\n")
+        for a in apps:
+            f.write("%s\t%s\n" % (a["id"], a["exec"]))
+
+    bindir = os.path.join(fsroot, "usr/local/bin")
+    # Clear every shim, whatever it used to point at — the dispatcher has
+    # changed name once already and a stale symlink is a dead command.
+    for fn in os.listdir(bindir):
+        p = os.path.join(bindir, fn)
+        if os.path.islink(p) and not os.readlink(p).startswith("/"):
+            os.unlink(p)
+    n = 0
+    for a in apps:
+        if a["id"] in RESERVED:
+            print(f"shim {a['id']}: reserved name, skipped", file=sys.stderr)
+            continue
+        os.symlink("kdos-appbox", os.path.join(bindir, a["id"]))
+        n += 1
+    return n
+
+
+def main():
+    srcdir, fsroot = sys.argv[1], sys.argv[2]
+    apps = parse(srcdir)
+    appdir = os.path.join(fsroot, "etc/skel/.local/share/applications")
+    write_launchers(apps, appdir)
+    mimes = write_mimeinfo(apps, appdir)
+    shims = write_shims(apps, fsroot)
+    print(f"{len(apps)} launchers, {mimes} mime types, {shims} shims",
+          file=sys.stderr)
 
 
 if __name__ == "__main__":

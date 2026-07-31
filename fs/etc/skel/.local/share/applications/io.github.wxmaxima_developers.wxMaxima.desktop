@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=wxMaxima
+Comment=wxMaxima (alien app, kdos-apps box)
+Exec=kdos-appbox run wxmaxima %f
+Icon=io.github.wxmaxima_developers.wxMaxima
+Terminal=false
+Categories=Education;Math;Science;
+GenericName=GUI for Maxima
+MimeType=text/x-wxmaxima-batch;text/x-wxmathml;text/x-maximasession;text/x-maxima-out;
+Keywords=maths;cas;algebra;education;engineering;physics;
+StartupWMClass=wxmaxima
+X-KDOS-Alien=true
