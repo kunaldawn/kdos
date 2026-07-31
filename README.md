@@ -1,217 +1,459 @@
 <p align="center">
-  <img src="kdos.png" alt="KDOS Mascot" width="300"/>
+  <img src="kdos.png" alt="KDOS" width="280"/>
 </p>
 
-<p align="center"><b>KDOS</b> — a handmade, artisan-crafted Linux distribution built from the absolute ground up, following the sacred texts of <b>Linux From Scratch</b>.</p>
+<h1 align="center">KDOS</h1>
 
-<p align="center"><i>Powered by <b>musl libc</b> and <b>toybox</b>. Wayland-only. No SystemD.<br>The digital equivalent of a katana: minimal, sharp, and lightweight.</i></p>
+<p align="center"><b><i>I use KDOS btw.</i></b></p>
+
+<p align="center">
+A Linux distribution compiled from source, one <code>kpkgbuild</code> at a time.<br>
+<b>musl</b> · <b>toybox</b> · <b>COSMIC</b> · <b>no systemd</b> · <b>no Xorg</b> · <b>no GTK or Qt on the host</b>
+</p>
+
+<p align="center">
+<sub>387 ports · 353 packages installed · Linux 7.0 · Wayland only · ~90 containerised GUI apps baked in · builds offline from this repo</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop.png" alt="The KDOS desktop — COSMIC with the PHOSPHOR theme" width="100%"/>
+</p>
 
 ---
 
-## The Philosophy
+## Who this is for
 
-Most distros give you a house. KDOS gives you a pile of bricks, a trowel, and a blueprint written in Bash.
+Someone who already knows what `switch_root` does, has an opinion about init
+systems, and reads a build log for fun. KDOS ships one user, no first-boot
+wizard, and a package manager that is 900 lines of bash. Nothing here is
+hidden from you, and nothing here holds your hand.
 
-1.  **LFS Roots** — every byte of the OS is hand-compiled. If we didn't compile it, we don't trust it.
-2.  **Musl Libc** — Glibc is a metropolitan city. Musl is a Zen garden. We choose the garden.
-3.  **Toybox** — one binary that rules them all.
-4.  **No SystemD** — we init like our ancestors did. `inittab`, serial `init.d`, simple service helpers.
-5.  **No Xorg server** — Wayland-only. The one carve-out is **Xwayland**, spawned per-session by `xwayland-satellite` so X11-only alien apps (GIMP 2.x, Wine, older IDEs) get a real tiled window instead of nothing. No `Xorg`, no display manager, no X on the login path — and no GLX: mesa stays `platforms=wayland`, so X clients get 2D only.
-6.  **No GTK / Qt / GNOME / KDE / XFCE on the host** — fat GUI apps live in a Podman container alongside their glibc. COSMIC's iced toolkit needs none of them.
-7.  **KPKG** — our own package manager. For fun, and because we earned it.
+If you want a distro that just works so you can get on with your life, this is
+not that distro. If you want to read every line of the thing you boot, keep
+going.
+
+---
+
+## Philosophy
+
+### 1. Built from scratch
+
+Every byte of the host system is compiled here, from an upstream tarball, by a
+recipe in this repo. There is no upstream binary archive, no base image, no
+"and then we pull in Debian." 387 ports, each a `kpkgbuild` — sourced shell
+declaring a `name`, a `version`, a `source` and a `build()`. No DSL, no
+manifest format, no opinions you can't override with `vim`.
+
+Following Linux From Scratch means the toolchain bootstraps itself: a cross
+compiler targeting `x86_64-kdos-linux-musl`, then a musl userland, then a
+self-hosting pass where the chroot rebuilds tar, musl, zlib, binutils and gcc
+**with itself**.
+
+### 2. KDOS can build KDOS
+
+That self-hosting pass is not a formality. The shipped system carries gcc 15,
+binutils, rust, cmake, meson, ninja, python 3.14, make and `kpkg`. A running
+KDOS can compile every port in the tree, including its own kernel, its own
+compiler and its own desktop. The distro is not the output of some other
+distro's toolchain — it owns the whole chain.
+
+### 3. The repo builds offline, completely
+
+`make build` runs the entire build inside a container with `--network none`.
+Every upstream tarball, every `cargo vendor` bundle for the Rust desktop, and
+the whole ~4 GB alien-app container image live **in this repository** under Git
+LFS. Clone it once, unplug the network, get a bootable ISO.
+
+That is a deliberate constraint, not a convenience. A build that reaches out to
+the internet is a build that stops reproducing the day an upstream URL rots.
+
+### 4. Alien apps
+
+KDOS does not native-port Firefox, LibreOffice, Blender or VSCodium — those are
+things `apt` already packages well, and relitigating that would take years and
+produce something worse. Instead the outer ring is a **Debian container baked
+into the ISO**, and ~90 GUI apps out of it behave like ordinary system apps:
+they appear in the launcher, they register MIME types, they run as terminal
+commands, and they wear the same theme as everything else.
+
+The host stays musl, toybox and 353 packages. The applications stay glibc.
+Neither has to compromise.
 
 ---
 
 ## The Three Rings
 
-KDOS organizes itself into three concentric rings, each with a distinct philosophy:
-
-| Ring | What lives here | Backed by |
-|------|-----------------|-----------|
-| **Core** | musl, toybox, kpkg, kernel, init scripts | hand-compiled, in `ports/core/` |
-| **GUI sliver** | COSMIC desktop, foot terminal, Wayland CLI utils | hand-compiled, Wayland-native |
-| **Outer ring** | Browsers, IDEs, Slack, GIMP, Steam — the fat stuff | distrobox + glibc rootfs (Debian by default) |
-
----
-
-## The Core: musl + toybox + kpkg
-
-The base system is hand-built phase-by-phase via `script/build.py`, which orchestrates a Docker container that bootstraps a cross toolchain (Phase 0), builds the musl userland (Phase 1), then walks through expansion phases until the rootfs is complete. Every package is a `kpkgbuild` recipe under `ports/core/<name>/`.
-
-Package management is **kpkg** — a small Bash-based pacman/pkgsrc analog:
-
-```sh
-kpkg install foo       # build + install from ports
-kpkgadd  foo.tar.xz    # install a pre-built package
-kpkgdel  foo           # remove
-kpkgdepends foo        # show resolved dependency tree
-```
-
-`kpkgbuild` recipes are sourced shell — they declare `name`, `version`, `release`, `source`, and a `build()` function. No DSL, no manifests, no opinions you can't override with a `vim`.
-
----
-
-## Booting
-
-Past the bootloader, KDOS starts the way its windows do: a flash, then the picture unfolding vertically out of a hairline while the deflection settles, scanline banding burning off as the tube warms up. Boot then reports itself as POST lines — `MOUNTING SYSTEM IMAGE ....... OK` — and signs off by collapsing back into a line and a dot.
-
-That is `kdos-splash`, a small static C program drawing straight to `/dev/fb0`, with the wordmark rendered from the shipped Terminus console font scaled up, so the logo is real bitmap type rather than an image. It starts in the initramfs and **keeps running across `switch_root`** — its control FIFO lives on devtmpfs, which is moved into the new root rather than remounted — so one process spans both halves of boot and the screen never blinks. It hands the console back, black, right before agetty.
-
-It fails open: no framebuffer, no splash, no fuss. And every boot message still goes to the serial console regardless, so a machine that dies behind a pretty screen is debuggable from there.
-
-## Logging In
-
-The system ships one human user, **`kdos` / `kdos`** (uid 1000, in `wheel`, so `sudo` works with that same password). `tty1` autologins as `kdos`; `tty2` and the serial console give a root login for admin and debugging. Alien apps run **rootless** under `kdos` — the same setup on the live ISO and on an installed disk.
-
----
-
-## The GUI Sliver: COSMIC (Wayland)
-
-To start a graphical session from a tty login:
-
-```sh
-kdos-desktop
-```
-
-That wraps `cosmic-session` in `dbus-run-session`. COSMIC brings the whole
-desktop — compositor, panel, launcher, app library, settings, notifications,
-files — as one pinned set of Rust ports, on the same seatd/smithay stack the
-distro already spoke.
-
-**The session has a look: "PHOSPHOR".** A 1983 green-screen terminal that
-happens to run a modern floating/tiling desktop — phosphor-green accent, dark
-CRT palette, a bitmap font in the terminal. The console is green too:
-`setvtrgb` loads the palette in `rcS`, so tty1 is phosphor before anything
-Wayland exists.
-
-**One palette, four accents.** `kdos theme phosphor|amber|ice|bone` writes the
-COSMIC accent (the settings daemon live-applies it) and regenerates the foot,
-btop and starship palettes from one table.
-
-| Config | Owner | What it themes |
+| Ring | Lives in | What's there |
 |---|---|---|
-| `.config/cosmic/` | cosmic-settings + `kdos theme` | desktop, accent, wallpaper |
-| `.config/foot/themes/kdos` | `kdos theme` | terminal palette (foot.ini includes it) |
-| `.config/starship.toml` | mixed | prompt hand-written, palette regenerated |
-| `.config/btop/themes/kdos.theme` | `kdos theme` | system monitor |
+| **Core** | `ports/core/` | musl, toybox, kernel, kpkg, init, the whole toolchain |
+| **GUI sliver** | `ports/core/` (its own block) | COSMIC — compositor, panel, launcher, settings, files, portals — plus foot and the Wayland CLI utils |
+| **Outer ring** | `ports/appbox/` | The Debian app image: browsers, office, CAD, media, games |
+
+Plus `src/packages/` — the ports that are **ours** rather than an upstream
+tarball: the boot splash, the appbox runtime, the theme generator, and the
+three vendored-and-recoloured art packages (cursors, icons, GTK theme).
+
+---
+
+## Boot
+
+<p align="center">
+  <img src="docs/screenshots/boot-splash.png" alt="The KDOS boot splash" width="100%"/>
+</p>
+
+Past the bootloader, KDOS starts the way its windows do: a flash, the picture
+unfolding vertically out of a hairline while the deflection settles, scanline
+banding burning off as the tube warms up. Boot then reports itself as POST
+lines — `MOUNTING FILESYSTEMS ....... OK` — and signs off by collapsing back
+into a line and a dot.
+
+That is `kdos-splash`: ~700 lines of static C drawing straight to `/dev/fb0`,
+with the wordmark rendered from the shipped Terminus console font scaled up, so
+the logo is real bitmap type rather than an image. It starts in the initramfs
+and **keeps running across `switch_root`** — its control FIFO lives on
+devtmpfs, which is moved into the new root rather than remounted — so one
+process spans both halves of boot and the screen never blinks. It hands the
+console back, black, right before agetty.
+
+It fails open: no framebuffer, no splash, no fuss. And every boot message still
+goes to the serial console regardless, so a machine that dies behind a pretty
+screen is debuggable from there.
+
+The progress bar is fed additively — each boot phase adds its own step count as
+it learns it — and deliberately clamps one segment short of full until the
+system is actually up. A boot that shows 100% and then sits there is a bug
+report waiting to happen.
+
+---
+
+## The console
+
+<p align="center">
+  <img src="docs/screenshots/tty-banner.png" alt="The KDOS TTY login banner" width="100%"/>
+</p>
+
+`tty1` autologins as `kdos`. The banner is composed by `kdos-banner`, which
+paints it one raster line at a time with a bright beam leading the fill, then a
+single frame of reverse video for the CRT power-on thump. Any keypress skips
+the rest; a dumb `TERM`, a pipe, or a terminal too short for the art all fall
+back to a plain print.
+
+The penguin is decoded from the same quantised mascot the boot splash draws, so
+the banner, the splash and `kdos.png` cannot drift apart. The console font is
+`ter-kdos32n` — Terminus xos4-2 with six spacing diacritics swapped out for the
+double box-drawing glyphs the logo needs — loaded by a getty wrapper that first
+forces fbcon's deferred takeover, because a `setfont` any earlier is silently
+wiped.
+
+`tty2` and the serial console give you a root login.
+
+---
+
+## The desktop
+
+KDOS runs **COSMIC** (System76 — Rust, smithay, iced): compositor, panel, dock,
+app library, launcher, settings, notifications, files, portals — one pinned
+epoch release across all 17 ports. It needs neither GTK nor Qt, which is
+exactly why the host has neither.
+
+```sh
+kdos-desktop       # from a tty
+```
+
+<p align="center">
+  <img src="docs/screenshots/app-library.png" alt="The COSMIC app library with KDOS category groups" width="100%"/>
+</p>
+
+The app library is grouped by freedesktop Categories into Internet, Graphics,
+Office, Media, Engineering, Science, Games, System and Utilities — which is how
+~90 containerised apps stay findable.
 
 Keys worth knowing: `Super` launcher, `Super+T` terminal, `Super+A` app
 library, `Super+Q` close, `Super+Y` toggle tiling, `Super+1..9` workspaces,
 `PrtSc` screenshot. Remap anything in Settings → Keyboard.
 
-**The `kdos` command** is the front door:
+**Companion tools**, all Wayland-native: `foot` (terminal), `grim`+`slurp`
+(screenshot + region), `wl-clipboard`, `imv` (image viewer).
 
-```sh
-kdos help          # commands + keybind cheat sheet
-kdos theme amber   # repaint COSMIC, foot, btop, starship
-kdos app gimp      # install an alien app into a container
-kdos status        # packages, containers, exported apps
-kdos doctor        # check the session for the things that actually break here
-kdos-shot region   # screenshot to the clipboard and ~/Pictures/Screenshots
-```
-
-**The desktop stack:**
-
-| Layer | What it is |
-|-------|-----------|
-| `cosmic-comp` | Wayland compositor — smithay, Rust, floating + tiling |
-| `cosmic-panel` + applets | bar, tray, network/audio/battery applets |
-| `cosmic-launcher` / `pop-launcher` | Super-key launcher and its search backend |
-| `cosmic-settings(-daemon)` | settings UI and the daemon that live-applies config |
-| `xdg-desktop-portal-cosmic` | screenshots, screencast, file pickers |
-| `seatd` | Seat manager — auto-started by `/etc/init.d/45_seatd.sh` |
-| `xdg-desktop-portal` | Portal front-end (cosmic backend above) |
-| `basu` | sd-bus library extracted from systemd (no-systemd D-Bus glue for portals) |
-| `/etc/profile.d/10-wayland.sh` | Sets `XDG_RUNTIME_DIR`, `QT_QPA_PLATFORM=wayland`, etc. on every login |
-
-**Companion CLI utils** (kept tiny, all Wayland-native):
-
-- `foot` — terminal emulator (the daily driver; `Super+T`)
-- `grim` + `slurp` — screenshot + region selector
-- `wl-clipboard` — `wl-copy` / `wl-paste`
-- `imv` — image viewer with SVG and animated GIF support
-
-**Multimedia:** PipeWire 1.6 with Bluetooth (`bluez5`) and ffmpeg-backed file playback; PulseAudio compat shim built-in (apps that link against libpulse work transparently). Full GStreamer 1.28 stack (base/good/bad/ugly/libav).
-
-**Networking + auth:** NetworkManager 1.56 + `wpa_supplicant` for Wi-Fi, `polkit` for non-root connection management, `nftables` for firewall, `dnsmasq` for hotspot mode, `openvpn` + NM-openvpn plugin for VPN. UPower for battery/power widgets.
-
-Anything else (file manager, editor, calculator) is done in a terminal — `lf`, `nvim`, `bc`. Anything fatter is one `kdos-fetch-app` away.
+**Stack:** PipeWire 1.6 with a PulseAudio compat shim and the full GStreamer
+1.28 set; NetworkManager 1.56 with `wpa_supplicant`, `nftables`, `dnsmasq` and
+polkit; `seatd` for seat management; `basu` for sd-bus without systemd;
+xdg-desktop-portal with the COSMIC backend for screenshots, screencast and file
+pickers.
 
 ---
 
-## The Outer Ring: Alien Apps via Distrobox
+## PHOSPHOR
 
-KDOS deliberately does not native-port browsers, IDEs, office suites, video editors, or chat clients. Those are the things upstream `apt`, `dnf`, and `pacman` already package well — we don't need to relitigate that.
+The look is a 1983 green-screen terminal that happens to be running a modern
+Wayland desktop. It is not a wallpaper — it goes all the way down. `setvtrgb`
+loads the palette in `rcS`, so tty1 is phosphor before anything Wayland exists.
 
-Instead, KDOS ships **Podman + distrobox**. The first `kdos-fetch-app` creates the default `kdos-debian` distrobox on demand (Debian glibc rootfs, pulled over the network), and the helper:
+<p align="center">
+  <img src="docs/screenshots/cosmic-files.png" alt="COSMIC Files with the KDOS icon theme" width="100%"/>
+</p>
 
-```sh
-kdos-fetch-app firefox        # apt-installs firefox in the box, exports it as a host launcher
-kdos-fetch-app gimp           # same for gimp
-kdos-fetch-app --remove gimp  # remove the export and uninstall in the box
-```
-
-A `.desktop` file lands in `~/.local/share/applications/` — the COSMIC launcher and app library pick it up automatically. The host musl tree never sees a single glibc dep.
-
-For single-binary tools (Zig, Go binaries, single-binary Rust apps), there's also:
+**One palette, four accents.**
 
 ```sh
-kdos-fetch-static <name> <url> <sha256>
+kdos theme phosphor | amber | ice | bone
 ```
 
-— curl + sha256-verify + chmod into `/usr/local/bin`. The most suckless answer for "I just want this one tool."
+<p align="center">
+  <img src="docs/screenshots/theme-amber.png" alt="The amber accent" width="100%"/>
+</p>
+
+One command repaints the COSMIC theme, the panel and dock backgrounds, the icon
+theme, the cursor theme, the GTK stylesheets, foot, btop and the starship
+prompt — from a single palette table. COSMIC repaints live; the terminal and
+monitor pick it up on next start.
+
+**The interesting part is that alien apps follow.** A container shares your
+`$HOME` and nothing else, so `/usr/share/themes` is invisible inside it.
+Everything a containerised app needs therefore lives under `$HOME`, written by
+the same generator that themes the host:
+
+| Path | Read by |
+|---|---|
+| `~/.themes/KDOS/` | GTK3 and non-libadwaita GTK4 |
+| `~/.config/gtk-{3,4}.0/gtk.css` | libadwaita, which ignores themes entirely |
+| `~/.icons/KDOS/` | every toolkit, host and container |
+| `~/.icons/KDOS-cursors/` | cursor lookup in the container |
+
+<p align="center">
+  <img src="docs/screenshots/alien-gimp.png" alt="GIMP, running in a container, fully themed" width="100%"/>
+</p>
+
+That is GIMP — glibc, GTK3, running inside Podman — with KDOS's accent on every
+widget. It works because the GTK3 theme is a recoloured **adw-gtk3** rather
+than hand-written CSS over Adwaita: adw-gtk3 is written against GTK *named
+colours* end to end, so rewriting ~125 `@define-color` declarations repaints
+every widget instead of the handful that happen to reference a name. Qt apps
+follow via `QT_QPA_PLATFORMTHEME=gtk3` plus a Fusion style override.
+
+The icon theme is a **pruned, hue-mapped Papirus** (90 MB → 13.7 MB). Colours
+are mapped by *family* rather than flattened — blue/green/purple to the accent,
+yellow/orange/brown to the secondary, red to urgent — because Papirus
+colour-codes mimetypes, and collapsing every hue onto one accent turns a folder
+of files into a wall of identical green lozenges. A PDF stays red, an audio
+file stays amber, and the alien apps keep their own brand marks. Cursors are a
+recoloured, pruned Bibata (27 MB → 4.4 MB), where `wait` and `progress` ramp to
+amber — the same "working on it" colour the boot splash uses.
 
 ---
 
-## Building KDOS
+## Alien apps
 
-The full build runs inside a sandboxed Docker container — no contamination of the host, fully reproducible from clean.
+<p align="center">
+  <img src="docs/screenshots/alien-libreoffice.png" alt="LibreOffice Writer running from the appbox" width="100%"/>
+</p>
+
+The ISO ships a pre-baked **Debian trixie** image with the best open-source app
+per segment — LibreOffice, Firefox, GIMP, Krita, Inkscape, Blender, FreeCAD,
+PrusaSlicer, OpenSCAD, KiCad, Octave, Stellarium, Ardour, LMMS, Kdenlive, OBS,
+VSCodium, Wireshark, KeePassXC, RetroArch, a shelf of games, and about seventy
+more. Heavy is the point: **the image is the offline software library**, a
+Knoppix-style fat stick that gives you a full workstation with no network.
+
+Nothing about them looks containerised in use:
 
 ```sh
-make fetch    # download all upstream tarballs (LFS storage)
-make build    # bootstrap toolchain → build everything → produce ISO
-make run      # boot the resulting ISO in QEMU/KVM (KVM-accelerated)
-make rundisk  # boot from the persisted disk image instead of the ISO
-make clean    # nuke the build/ tree
+gimp photo.png              # every alien app is also a normal command
+libreoffice-writer report.odt
 ```
 
-**Build artifacts:**
-- `build/iso-build/kdos.iso` — bootable installer ISO
-- `build/fs/` — the populated rootfs (chroot-able for inspection)
-- `build/kdos.qcow2` — persistent disk image used by `make rundisk`
+They appear in the launcher, they register their MIME types (so they show up in
+"Open with" and can be default handlers), they merge into the dock as running
+windows with their own icons, and they share the session bus so single-instance
+handoff and notifications work. Cold start (no container at all) is ~18 s;
+warm start is **0.3 s**, because the login backgrounds a low-priority warmup
+while the desktop is still settling.
 
-A clean build takes 2–4 hours depending on hardware (the Rust desktop ports dominate; gstreamer adds ~15 min). Incremental rebuilds are fast — the build system marks completion of each phase and skips re-doing finished work.
+The runtime behind this is `kdos-appbox` — ~1200 lines of C with **no
+`system()` and no shell anywhere in it**, because app names, package names and
+file arguments all arrive from `.desktop` files and argv, and a shell in the
+middle turns any of them into an injection point.
+
+```sh
+kdos-appbox apps                    # what's available
+kdos-appbox list                    # boxes and their profiles
+kdos-appbox install thunderbird     # apt into the box
+kdos-appbox create dev image=fedora-toolbox:41
+kdos-appbox security dev network=private processes=private
+kdos-appbox tui                     # full-screen manager
+```
+
+<p align="center">
+  <img src="docs/screenshots/appbox-tui.png" alt="The kdos-appbox manager" width="100%"/>
+</p>
+
+You can run more than one box, each with its own image and its own **sandbox
+profile**. Every profile key maps 1:1 onto a container namespace flag —
+`network`, `ipc`, `devices`, `processes`, `home`. That mapping is the whole
+design: KDOS does not offer confinement it cannot actually enforce, so there is
+no security theatre in the UI. Profiles apply at creation time, because
+namespaces cannot be re-flagged on a live container, and the tool says so
+instead of silently doing nothing.
+
+For single-binary tools there is also `kdos-fetch-static <name> <url> <sha256>`
+— curl, verify, chmod, done.
 
 ---
 
-## Repository Layout
+## kpkg
+
+The package manager is ours, and it is small enough to read in an afternoon.
+
+```sh
+kpkg install foo       # build from ports and install
+kpkgadd  foo.tar.xz    # install a pre-built package
+kpkgdel  foo           # remove
+kpkgdepends foo        # resolved install order
+```
+
+A port is a directory with a `kpkgbuild` and its tarball:
+
+```bash
+# description	: Wayland compositor for the COSMIC desktop
+# homepage	: https://github.com/pop-os/cosmic-comp
+# depends	: libdisplay-info gbm libinput pixman seatd eudev libxkbcommon
+
+name=cosmic-comp
+version=1.4.0
+release=1
+source="https://github.com/pop-os/cosmic-comp/archive/refs/tags/epoch-$version.tar.gz"
+vendoring=rust
+
+build() {
+    tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+    export RUSTFLAGS="-C target-feature=-crt-static"
+    cargo build --release --frozen --offline
+    install -Dm755 target/release/$name "$PKG/usr/bin/$name"
+}
+```
+
+`vendoring=rust` is what makes the offline build possible: `make fetch` runs
+`cargo vendor` once and commits the result beside the tarball, so the build
+container never needs crates.io.
+
+---
+
+## The `kdos` command
+
+```sh
+kdos help          # commands + COSMIC keybind cheat sheet
+kdos theme amber   # repaint everything
+kdos status        # packages, containers, session
+kdos doctor        # check the things that actually break on this distro
+kdos version
+kdos-shot region   # screenshot to clipboard and ~/Pictures/Screenshots
+```
+
+`kdos doctor` is not a generic health check — it tests the specific failures
+this distro has hit before, down to `readlink /proc/self/root` catching an
+initramfs that used the wrong `switch_root` and quietly broke every container.
+
+---
+
+## Building it
+
+```sh
+make fetch        # download all upstream tarballs + vendor bundles (LFS)
+make fetch-apps   # bake the Debian app image (needs network; only when it changes)
+make build        # cross toolchain -> userland -> desktop -> kernel -> ISO
+make run          # boot the ISO in QEMU
+make run-hw       # boot with virgl (needed for the desktop; see below)
+```
+
+The build runs inside an Alpine container with `--network none`, so it cannot
+contaminate — or depend on — your host. It is organised into phases:
+
+| Phase | What it does |
+|---|---|
+| 0 | Cross toolchain — binutils + gcc for `x86_64-kdos-linux-musl` |
+| 1 | Base userland — musl, toybox, bash, native gcc, kpkg, kinstall |
+| 2 | Self-hosting bootstrap — the chroot rebuilds its own toolchain |
+| 3 | Core libraries, build systems, interpreters |
+| 4 | Userland and the GUI sliver |
+| 5 | Kernel + modules |
+| 6 | Packaging — theme, user, appbox, initramfs, ISO |
+
+Two things make iterating on a 2–4 hour build bearable.
+
+**Snapshots.** Every completed phase is archived to `build/snapshots/`. `make
+build` opens a picker; choose a phase and the build restores that tree and
+continues from the next one. Restores are layered, so restoring phase 3 still
+picks up the cross toolchain from phase 1.
+
+**Build plans.** Snapshots answer "go back"; plans answer "re-run just this."
+
+```sh
+# changed something under fs/ -> re-sync it and rebuild the ISO, nothing else
+make build BUILD_ARGS="--phases 01_phase1,06_packaging --steps 01_phase1:00_file_system.sh"
+
+# changed a kpkgbuild -> rebuild that port and repackage
+make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild cosmic-comp"
+
+make build BUILD_ARGS=--plan     # interactive picker, '/' fuzzy-searches ports
+```
+
+**Artifacts:** `build/iso-build/kdos.iso` (bootable, ~8.7 GiB — the app library
+is most of that), `build/fs/` (the rootfs, chroot-able for inspection),
+`build/kdos.qcow2` (persistent disk for `make rundisk`).
+
+---
+
+## Running it
+
+- **CPU:** x86_64 with KVM
+- **RAM:** 4 GB to run, 8 GB+ to build comfortably
+- **Disk:** the ISO is ~8.7 GiB; a full build tree is ~40 GB, plus ~35 GB more
+  if you keep phase snapshots
+
+Login is **`kdos` / `kdos`** (uid 1000, in `wheel`, so `sudo` works with the
+same password). The live ISO and an installed disk behave identically —
+including rootless containers, which use fuse-overlayfs on the live overlay and
+switch to the kernel's native overlay once installed on ext4.
+
+> **Note on QEMU:** `make run` uses plain virtio-vga and will get you a console
+> but **no desktop** — smithay refuses software EGL renderers, so the
+> compositor comes up with no outputs. Use `make run-hw` (virgl + blob) or real
+> hardware. Every screenshot in this README was captured from a QEMU guest via
+> `make run-hw`'s stack.
+
+Bare-metal install is via `kinstall`, an ncurses installer in `src/kinstall/`.
+
+---
+
+## Repository layout
 
 ```
 kdos/
-├── ports/core/<name>/        # upstream packages — kpkgbuild + tarball
-├── src/                      # KDOS-authored tools (kpkg, kinstall)
-├── fs/                       # files copied verbatim into the rootfs
-│   ├── etc/                  # inittab, init.d/, profile, profile.d/, skel/
-│   ├── usr/local/bin/        # kdos, kdos-fetch-app, kdos-fetch-static, kdos-desktop
-│   └── usr/share/            # backgrounds, branding
-├── script/                   # phase-by-phase build orchestrator (Python TUI)
-├── testing/                  # standalone per-port build tests
-├── Dockerfile                # Alpine sandbox the build runs inside
-└── Makefile                  # entry point — fetch / build / run
+├── ports/
+│   ├── core/<name>/         # kpkgbuild + upstream tarball (LFS)
+│   ├── appbox/              # Containerfile, launcher generator, image chunks
+│   └── fetch                # downloads every source= URL, runs cargo vendor
+├── src/
+│   ├── kpkg/                # the package manager
+│   ├── kinstall/            # the installer
+│   └── packages/            # ports that are ours: splash, appbox, theme, art
+├── fs/                      # copied verbatim into the rootfs
+├── script/                  # build.py orchestrator + phase directories
+├── testing/                 # per-port build tests, QEMU runners
+├── docs/screenshots/
+├── Dockerfile               # the Alpine build sandbox
+└── Makefile
 ```
 
----
-
-## Hardware
-
-- **CPU:** x86_64 with KVM virtualization for `make run`
-- **RAM:** 4 GB minimum to build comfortably (8 GB recommended for parallel cargo)
-- **Disk:** ~30 GB free for build artifacts; final ISO is ~2 GB
-
-QEMU virtio-vga is the default tested guest target — KDOS boots cleanly under QEMU/KVM with `make run` straight from the ISO. Bare-metal install is supported via the `kinstall` curses installer, but the QEMU path is the well-trodden one.
+There is no `fs/etc/X11/`, and there never will be.
 
 ---
 
 ## License
 
-MIT. Go forth and segfault.
+MIT for the KDOS-authored parts. Vendored artwork keeps its upstream license —
+see `LICENSE.notice` in `src/packages/kdos-cursors/`, `kdos-icons/` and
+`kdos-gtk-theme/`, each of which records exactly what was changed. Every port
+under `ports/core/` is upstream's own code under upstream's own terms.
+
+Go forth and segfault.
