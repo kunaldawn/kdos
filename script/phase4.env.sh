@@ -14,7 +14,7 @@
 
 # --- build-system metadata (parsed by script/build.py, never sourced) ---
 export KDOS_PHASE_TITLE="Userland & GUI Sliver"
-export KDOS_PHASE_DESC="system tools, network stack, wayland, niri, noctalia"
+export KDOS_PHASE_DESC="system tools, network stack, wayland, cosmic desktop"
 export KDOS_SNAPSHOT_PATHS="fs"
 export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/var/cache/kpkg/work/* fs/dev/* fs/proc/* fs/sys/* fs/run/* fs/kdos/* fs/ports/*"
 
