@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=FreeCAD
+Comment=FreeCAD (alien app, kdos-apps box)
+Exec=kdos-appbox run /usr/bin/freecad - --single-instance %F
+Icon=org.freecad.FreeCAD
+Terminal=false
+Categories=Graphics;Science;Education;Engineering;X-CNC;
+GenericName=CAD Application
+MimeType=application/x-extension-fcstd;model/obj;image/vnd.dwg;image/vnd.dxf;model/vnd.collada+xml;application/iges;model/iges;model/step;model/step+zip;model/stl;application/vnd.shp;model/vrml;
+StartupWMClass=FreeCAD
+X-KDOS-Alien=true

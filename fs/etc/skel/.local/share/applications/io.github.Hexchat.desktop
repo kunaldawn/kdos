@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=HexChat
+Comment=HexChat (alien app, kdos-apps box)
+Exec=kdos-appbox run hexchat --existing %U
+Icon=io.github.Hexchat
+Terminal=false
+Categories=GTK;Network;IRCClient;
+GenericName=IRC Client
+MimeType=x-scheme-handler/irc;x-scheme-handler/ircs;
+Keywords=IM;Chat;
+StartupWMClass=Hexchat
+X-KDOS-Alien=true
