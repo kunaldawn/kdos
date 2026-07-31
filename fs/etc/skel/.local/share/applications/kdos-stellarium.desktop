@@ -6,4 +6,5 @@ Exec=kdos-appbox run stellarium --startup-script=%f
 Icon=stellarium
 Terminal=false
 Categories=Education;
+StartupWMClass=org.stellarium.Stellarium
 X-KDOS-Alien=true

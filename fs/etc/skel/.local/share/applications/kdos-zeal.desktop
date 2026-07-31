@@ -6,4 +6,5 @@ Exec=kdos-appbox run zeal %u
 Icon=zeal
 Terminal=false
 Categories=Development;Documentation;
+StartupWMClass=org.zealdocs.zeal
 X-KDOS-Alien=true

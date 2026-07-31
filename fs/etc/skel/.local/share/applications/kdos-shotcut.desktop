@@ -6,4 +6,5 @@ Exec=kdos-appbox run shotcut %F
 Icon=org.shotcut.Shotcut
 Terminal=false
 Categories=AudioVideo;Video;AudioVideoEditing;
+StartupWMClass=org.shotcut.Shotcut
 X-KDOS-Alien=true

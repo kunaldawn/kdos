@@ -2,8 +2,9 @@
 Type=Application
 Name=VSCodium
 Comment=VSCodium (alien app, kdos-apps box)
-Exec=kdos-appbox run /usr/share/codium/codium %F
+Exec=kdos-appbox run /usr/share/codium/codium --no-sandbox %F
 Icon=vscodium
 Terminal=false
 Categories=TextEditor;Development;IDE;
+StartupWMClass=codium
 X-KDOS-Alien=true

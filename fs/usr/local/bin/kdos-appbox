@@ -36,8 +36,47 @@ IMAGE=localhost/kdos-appbox:latest
 #                              GTK app from probing org.a11y.Bus at startup
 #   QT_QPA_PLATFORMTHEME=gtk3  Qt apps (krita, kdenlive, OBS...) take their
 #                              palette from the GTK theme via qgtk3, so the
-#                              KDOS gtk.css recolors them too
+#                              KDOS gtk.css recolors them too. Needs debian's
+#                              qt5-/qt6-gtk-platformtheme in the image — an
+#                              appbox baked before those were added silently
+#                              ignores this and every Qt app stays grey.
 BOXENV="GSETTINGS_BACKEND=keyfile NO_AT_BRIDGE=1 GTK_A11Y=none QT_QPA_PLATFORMTHEME=gtk3 GTK_THEME=KDOS"
+
+# QT_STYLE_OVERRIDE=Fusion is the other half of Qt theming: the Breeze style,
+# which kdenlive and shotcut pull in, paints from its OWN colour scheme and
+# ignores the palette qgtk3 hands it, so the platform theme alone leaves those
+# apps grey. Fusion honours the palette.
+#
+# But ONLY when the image can actually supply that palette. Fusion with no
+# platform theme falls back to Qt's built-in LIGHT palette, which is worse than
+# the status quo, so this is gated on a label the Containerfile sets in the
+# same layer that installs qt{5,6}-gtk-platformtheme — the two can never be out
+# of step. The answer is cached in the runtime dir because `podman image
+# inspect` costs ~150ms and a warm launch is 300ms total; the image cannot
+# change without a reboot, and the cache dies with it.
+qt_gtk_available() {
+	local c="${XDG_RUNTIME_DIR:-/tmp}/kdos-appbox.qtgtk"
+	if [ ! -f "$c" ]; then
+		podman image inspect --format '{{index .Labels "kdos.qt-gtk-theme"}}' \
+			"$IMAGE" 2>/dev/null > "$c" || echo "" > "$c"
+	fi
+	[ "$(cat "$c" 2>/dev/null)" = "1" ]
+}
+
+# A few apps are X11-only and their own .desktop says so (debian ships
+# audacity as `env GDK_BACKEND=x11 audacity`). cosmic-comp runs Xwayland
+# rootlessly, but only exports DISPLAY to what IT spawned — a launcher fired
+# from the dock may not have it, and then the app exits at startup with no
+# window and no message. The socket is the authority, and distrobox shares the
+# host /tmp, so the box sees the same one.
+if [ -z "${DISPLAY:-}" ]; then
+	for _s in /tmp/.X11-unix/X*; do
+		[ -S "$_s" ] || continue
+		export DISPLAY=":${_s##*/X}"
+		break
+	done
+fi
+[ -n "${DISPLAY:-}" ] && BOXENV="$BOXENV DISPLAY=$DISPLAY"
 
 err() { echo "kdos-appbox: $*" >&2; exit 1; }
 
@@ -132,6 +171,7 @@ case "${1:-}" in
 		shift
 		[ $# -ge 1 ] || err "usage: kdos-appbox run <app> [args...]"
 		app="$1"; shift
+		qt_gtk_available && BOXENV="$BOXENV QT_STYLE_OVERRIDE=Fusion"
 		status=$(podman inspect --type container \
 			--format '{{.State.Status}}' "$BOX" 2>/dev/null || echo absent)
 		[ "$status" = running ] || notify "Starting $app" \

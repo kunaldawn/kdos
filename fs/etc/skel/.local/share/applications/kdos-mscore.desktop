@@ -6,4 +6,5 @@ Exec=kdos-appbox run mscore %F
 Icon=mscore
 Terminal=false
 Categories=Qt;Audio;Sequencer;Midi;AudioVideoEditing;Music;AudioVideo;
+StartupWMClass=mscore
 X-KDOS-Alien=true

@@ -53,7 +53,17 @@ distrobox-init never apt-gets anything at first enter.
 The launchers in `fs/etc/skel/.local/share/applications/` are GENERATED from
 the image's own desktop entries (`ports/appbox/genlaunchers.py` parses [Desktop Entry], skips
 NoDisplay/noise, renames to the ids the dock favorites reference) — regenerate
-rather than hand-edit when the app set changes. Because
+rather than hand-edit when the app set changes.
+**Every launcher must carry `StartupWMClass`**, and it is the UPSTREAM desktop
+id (or upstream's own StartupWMClass), not ours: the window the launcher opens
+announces the APP's app_id, so without it cosmic-app-list cannot tie the
+toplevel back to any desktop entry and the dock shows a generic placeholder for
+every running alien app — the row of identical grey cogs in the 2026-07-31
+report. `EXEC_EXTRA` in the same script carries the argv an app needs only
+because it is containerised; VSCodium is there because Electron's chrome-sandbox
+wants a setuid helper and CLONE_NEWUSER, gets neither as a non-root user in an
+unprivileged podman container, and exits rather than falling back, so it needs
+`--no-sandbox`. Because
 `make build` runs `--network none`, the image is built on the HOST with
 `make fetch-apps` → `ports/appbox/appbox.tar` (gitignored, over LFS's 2G/file
 limit) which `ports/appbox/pack` immediately explodes into
@@ -77,7 +87,25 @@ the point. Packaging-phase snapshots exclude
 
 Appbox runtime plumbing that cost a debug cycle each: debian's games live in
 `/usr/games`, which distrobox's inherited host PATH lacks — `10-wayland.sh`
-appends it or every game launcher dies on "not found". Audio and OBS screen
+appends it or every game launcher dies on "not found". **X11-only apps need
+`DISPLAY` pushed in explicitly** — debian ships audacity as
+`env GDK_BACKEND=x11 audacity`, cosmic-comp runs Xwayland rootlessly but exports
+DISPLAY only to what IT spawned, and an app launched without it exits with no
+window and no message; `kdos-appbox` probes `/tmp/.X11-unix/X*` (distrobox
+shares the host /tmp) and adds `DISPLAY=` to BOXENV.
+**Qt theming needs two things and one of them is gated.**
+`QT_QPA_PLATFORMTHEME=gtk3` is inert without debian's
+`qt{5,6}-gtk-platformtheme`, so an appbox baked before those were added leaves
+every Qt app grey — that is a re-bake (`make fetch-apps`), not a config bug. And
+the platform theme alone is not enough: the Breeze style that kdenlive and
+shotcut pull in paints from its own colour scheme and ignores the palette qgtk3
+hands it, so `QT_STYLE_OVERRIDE=Fusion` is needed too. Fusion with NO platform
+theme falls back to Qt's built-in LIGHT palette — worse than doing nothing — so
+kdos-appbox sets it only when `podman image inspect` reports the
+`kdos.qt-gtk-theme=1` label, which the Containerfile declares in the same layer
+that installs the platform themes. The answer is cached in `$XDG_RUNTIME_DIR`
+(a 150ms inspect against a 300ms warm launch; the image cannot change without a
+reboot). Audio and OBS screen
 capture come from the HOST side: `kdos-desktop` execs (inside the session
 bus) `kdos-desktop-start`, which brings up pipewire + pipewire-media-session
 + pipewire-pulse and then execs cosmic-session; the xdg-desktop portals are
@@ -698,11 +726,25 @@ Papirus colour-codes mimetypes, and collapsing every hue onto one accent turns a
 folder of files into a wall of identical green lozenges. A PDF stays red and an
 audio file stays amber while folders, devices and places go phosphor. The same
 mapping is in `kdos-gtk-theme/gengtk.py`, so icons and widgets agree about what
-"green" means. Ships `distributor-logo-kdos` / `start-here` (256px penguin), and
-the dock's app-library button is the tux: the kpkgbuild installs `panel-tux.svg`
-over `com.system76.CosmicPanelAppButton` in both KDOS and hicolor
-(theme-internal lookup beats hicolor's SVG). Cosmic is still inherited for the
-COSMIC applets' own icons and the symbolic set the shell tints itself.
+"green" means. Cosmic is still inherited for the symbolic set the shell tints itself.
+
+Because Papirus's `apps/` is not vendored, the theme would have NO Applications
+context at all and every app icon — COSMIC's own included — would come through
+untinted, which is what "the KDOS icon theme is not being used" looks like. So
+`genicons.py` also recolours two directories into `scalable/apps`: all of
+`Cosmic/`, and `com.system76.*` ONLY from `hicolor/` (06_packaging installs the
+ALIEN apps' icons into that same tree, and a phosphor Firefox logo is vandalism,
+not theming). **Sweep every size directory, not just `scalable/`** —
+`com.system76.CosmicFiles` is an SVG filed under 24x24/128x128/256x256 and
+nowhere else, so a scalable-only pass left exactly the dock buttons the user
+looks at unthemed. Largest variant per name wins.
+
+The KDOS marks (`distributor-logo-kdos` / `start-here`, and the tux over
+`com.system76.CosmicAppLibrary` + `com.system76.CosmicPanelAppButton`, which is
+the dock's app-library button) are installed by the GENERATOR, not the
+kpkgbuild — `kdos theme <accent>` re-runs it against `$HOME` and has to produce
+a complete theme on its own. The kpkgbuild only additionally drops the tux into
+hicolor so every lookup path lands on it.
 
 **kdos-cursors** (`src/packages/kdos-cursors`): a **vendored, pruned,
 recoloured fork of Bibata-Modern-Ice**. The hand-drawn pixel-art theme is gone

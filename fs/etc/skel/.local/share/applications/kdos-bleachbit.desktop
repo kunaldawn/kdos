@@ -6,4 +6,5 @@ Exec=kdos-appbox run bleachbit
 Icon=bleachbit
 Terminal=false
 Categories=System;FileTools;GTK;
+StartupWMClass=org.bleachbit.BleachBit
 X-KDOS-Alien=true

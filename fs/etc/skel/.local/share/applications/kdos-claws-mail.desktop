@@ -6,4 +6,5 @@ Exec=kdos-appbox run claws-mail %u
 Icon=claws-mail
 Terminal=false
 Categories=Network;Email;
+StartupWMClass=claws-mail
 X-KDOS-Alien=true

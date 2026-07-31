@@ -6,4 +6,5 @@ Exec=kdos-appbox run ghb %f
 Icon=fr.handbrake.ghb
 Terminal=false
 Categories=GTK;AudioVideo;Video;
+StartupWMClass=fr.handbrake.ghb
 X-KDOS-Alien=true

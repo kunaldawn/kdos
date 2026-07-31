@@ -6,4 +6,5 @@ Exec=kdos-appbox run gnome-disks
 Icon=org.gnome.DiskUtility
 Terminal=false
 Categories=GNOME;GTK;Utility;X-GNOME-Utilities;
+StartupWMClass=org.gnome.DiskUtility
 X-KDOS-Alien=true

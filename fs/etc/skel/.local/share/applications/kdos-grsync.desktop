@@ -6,4 +6,5 @@ Exec=kdos-appbox run /usr/bin/grsync -i %f
 Icon=grsync
 Terminal=false
 Categories=System;
+StartupWMClass=grsync
 X-KDOS-Alien=true

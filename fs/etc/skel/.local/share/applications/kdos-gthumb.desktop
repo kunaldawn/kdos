@@ -6,4 +6,5 @@ Exec=kdos-appbox run gthumb %U
 Icon=org.gnome.gThumb
 Terminal=false
 Categories=GNOME;GTK;Graphics;Viewer;RasterGraphics;2DGraphics;Photography;
+StartupWMClass=org.gnome.gThumb
 X-KDOS-Alien=true

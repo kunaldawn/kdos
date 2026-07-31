@@ -6,4 +6,5 @@ Exec=kdos-appbox run ghex %F
 Icon=org.gnome.GHex
 Terminal=false
 Categories=GNOME;GTK;Development;
+StartupWMClass=org.gnome.GHex
 X-KDOS-Alien=true

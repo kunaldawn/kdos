@@ -6,4 +6,5 @@ Exec=kdos-appbox run libreoffice --draw %U
 Icon=libreoffice-draw
 Terminal=false
 Categories=Office;FlowChart;Graphics;2DGraphics;VectorGraphics;
+StartupWMClass=libreoffice-draw
 X-KDOS-Alien=true

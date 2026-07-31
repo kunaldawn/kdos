@@ -6,4 +6,5 @@ Exec=kdos-appbox run ebook-viewer %f
 Icon=calibre-viewer
 Terminal=false
 Categories=Office;Viewer;
+StartupWMClass=calibre-ebook-viewer
 X-KDOS-Alien=true

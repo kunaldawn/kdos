@@ -6,4 +6,5 @@ Exec=kdos-appbox run simple-scan
 Icon=org.gnome.SimpleScan
 Terminal=false
 Categories=GNOME;GTK;Graphics;Scanning;
+StartupWMClass=org.gnome.SimpleScan
 X-KDOS-Alien=true

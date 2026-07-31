@@ -6,4 +6,5 @@ Exec=kdos-appbox run mousepad %U
 Icon=org.xfce.mousepad
 Terminal=false
 Categories=Utility;TextEditor;GTK;
+StartupWMClass=org.xfce.mousepad
 X-KDOS-Alien=true

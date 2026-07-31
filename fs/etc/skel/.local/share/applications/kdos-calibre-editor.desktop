@@ -6,4 +6,5 @@ Exec=kdos-appbox run ebook-edit %f
 Icon=calibre-ebook-edit
 Terminal=false
 Categories=Office;WordProcessor
+StartupWMClass=calibre-ebook-edit
 X-KDOS-Alien=true

@@ -6,4 +6,5 @@ Exec=kdos-appbox run gnome-mines
 Icon=org.gnome.Mines
 Terminal=false
 Categories=GNOME;GTK;Game;LogicGame;
+StartupWMClass=org.gnome.Mines
 X-KDOS-Alien=true

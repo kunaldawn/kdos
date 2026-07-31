@@ -6,4 +6,5 @@ Exec=kdos-appbox run blender %f
 Icon=blender
 Terminal=false
 Categories=Graphics;3DGraphics;
+StartupWMClass=blender
 X-KDOS-Alien=true
