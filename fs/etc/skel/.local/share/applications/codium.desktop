@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=VSCodium
+Comment=VSCodium (alien app, kdos-apps box)
+Exec=kdos-appbox run /usr/share/codium/codium --no-sandbox --ozone-platform-hint=auto --disable-gpu-compositing %F
+Icon=vscodium
+Terminal=false
+Categories=TextEditor;Development;IDE;
+GenericName=Text Editor
+MimeType=text/plain;inode/directory;application/x-codium-workspace;
+Keywords=vscodium;codium;vscode;
+StartupWMClass=VSCodium
+X-KDOS-Alien=true

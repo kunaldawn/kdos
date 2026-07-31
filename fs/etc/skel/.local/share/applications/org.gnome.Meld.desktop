@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Meld
+Comment=Meld (alien app, kdos-apps box)
+Exec=kdos-appbox run meld %F
+Icon=org.gnome.Meld
+Terminal=false
+Categories=GTK;Development;
+GenericName=Diff Viewer
+MimeType=application/x-meld-comparison;
+Keywords=diff;merge;
+StartupWMClass=org.gnome.Meld
+X-KDOS-Alien=true

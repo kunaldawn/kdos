@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Xfburn
+Comment=Xfburn (alien app, kdos-apps box)
+Exec=kdos-appbox run xfburn
+Icon=stock_xfburn
+Terminal=false
+Categories=X-XFCE;GTK;DiscBurning;Archiving;AudioVideo;Utility;
+GenericName=Disk Burning
+MimeType=application/x-cd-image;x-content/audio-cdda;x-content/blank-cd;
+StartupWMClass=xfburn
+X-KDOS-Alien=true

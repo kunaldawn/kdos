@@ -51,7 +51,36 @@ for account in $ACCOUNT_FILES; do
     fi
 done
 
+# A file DELETED from fs/ has to disappear from the tree too. cp -r overwrites
+# but never removes, so a path the repo has dropped lingers forever: the shell
+# kdos-appbox survived being replaced by the C port and kpkg then refused the
+# install with a file conflict, and before that a stale icon rode three ISO
+# rebuilds. So: remember what fs/ provided last time, and on the next sync
+# delete the paths it no longer provides.
+#
+# Only ever files, and only ever files this manifest itself put there — a
+# package that later installs to the same path takes ownership and is not the
+# manifest's to remove, which is why the manifest is rewritten AFTER the copy.
+MANIFEST="$SYSROOT/var/lib/kdos/fs-manifest"
+if [ -f "$MANIFEST" ]; then
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        [ -e "$WORKSPACE/fs/$rel" ] && continue
+        if [ -f "$SYSROOT/$rel" ] || [ -L "$SYSROOT/$rel" ]; then
+            echo "removing $rel (no longer in fs/)"
+            rm -f "$SYSROOT/$rel"
+        fi
+    done < "$MANIFEST"
+fi
+
 cp -r $WORKSPACE/fs/* $SYSROOT/
+
+mkdir -p "$(dirname "$MANIFEST")"
+# -printf is a GNU extension and the build image's find is busybox's, which
+# silently wrote an EMPTY manifest — and an empty manifest protects nothing.
+( cd "$WORKSPACE/fs" && find . \( -type f -o -type l \) ) \
+    | sed 's|^\./||' | sort > "$MANIFEST"
+echo "fs manifest: $(wc -l < "$MANIFEST") paths"
 
 for account in $ACCOUNT_FILES; do
     extra="$EXTRA_DIR/$account"

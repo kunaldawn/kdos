@@ -260,3 +260,7 @@ kdos-cursors
 
 # KDOS phosphor GTK theme (src/packages, ours) — recolored adw-gtk3.
 kdos-gtk-theme
+
+# Alien app runtime + appbox manager (src/packages, ours) — replaces the
+# shell kdos-appbox; the 91 launchers and kdos-desktop's warmup call it.
+kdos-appbox

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Mines
+Comment=Mines (alien app, kdos-apps box)
+Exec=kdos-appbox run gnome-mines
+Icon=org.gnome.Mines
+Terminal=false
+Categories=GNOME;GTK;Game;LogicGame;
+Keywords=minesweeper;
+StartupWMClass=org.gnome.Mines
+X-KDOS-Alien=true

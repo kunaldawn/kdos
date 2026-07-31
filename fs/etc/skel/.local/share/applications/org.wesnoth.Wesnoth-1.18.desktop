@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Battle for Wesnoth (1.18)
+Comment=Battle for Wesnoth (1.18) (alien app, kdos-apps box)
+Exec=kdos-appbox run sh -c "wesnoth-1.18 >/dev/null 2>&1"
+Icon=wesnoth-1.18-icon
+Terminal=false
+Categories=Game;StrategyGame;
+GenericName=Strategy Game
+Keywords=singleplayer;multiplayer;dark age;middle ages;medieval;mediaeval;
+StartupWMClass=org.wesnoth.Wesnoth-1.18
+X-KDOS-Alien=true
