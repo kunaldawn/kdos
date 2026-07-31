@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=PrusaSlicer
+Comment=PrusaSlicer (alien app, kdos-apps box)
+Exec=kdos-appbox run prusa-slicer %F
+Icon=PrusaSlicer
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+GenericName=3D Printing Software
+MimeType=model/stl;application/vnd.ms-3mfdocument;application/prs.wavefront-obj;application/x-amf;
+Keywords=3D;Printing;Slicer;slice;3D;printer;convert;gcode;stl;obj;amf;SLA
+StartupWMClass=prusa-slicer
+X-KDOS-Alien=true
