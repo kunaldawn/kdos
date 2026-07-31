@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=E-book editor
+Comment=E-book editor (alien app, kdos-apps box)
+Exec=kdos-appbox run ebook-edit %f
+Icon=calibre-ebook-edit
+Terminal=false
+Categories=Office;WordProcessor
+GenericName=Editor for E-books
+MimeType=application/epub+zip;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/x-mobi8-ebook;application/xhtml+xml;text/html;
+Keywords=epub;ebook;editor;
+StartupWMClass=calibre-ebook-edit
+X-KDOS-Alien=true

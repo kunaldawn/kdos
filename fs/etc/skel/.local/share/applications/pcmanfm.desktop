@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=PCMan File Manager
+Comment=PCMan File Manager (alien app, kdos-apps box)
+Exec=kdos-appbox run pcmanfm %U
+Icon=system-file-manager
+Terminal=false
+Categories=GTK;System;Core;FileTools;FileManager;
+GenericName=File Manager
+MimeType=inode/directory;
+StartupWMClass=pcmanfm
+X-KDOS-Alien=true
