@@ -1,9 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=Transmission
-Comment=BitTorrent client (alien app, kdos-apps box)
+Comment=Transmission (alien app, kdos-apps box)
 Exec=kdos-appbox run transmission-gtk %U
 Icon=transmission
 Terminal=false
-Categories=Network;FileTransfer;P2P;
+Categories=Network;FileTransfer;P2P;GTK;
+StartupWMClass=transmission-gtk
 X-KDOS-Alien=true

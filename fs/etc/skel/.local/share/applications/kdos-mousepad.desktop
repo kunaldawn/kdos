@@ -1,9 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=Mousepad
-Comment=Simple text editor (alien app, kdos-apps box)
+Comment=Mousepad (alien app, kdos-apps box)
 Exec=kdos-appbox run mousepad %U
 Icon=org.xfce.mousepad
 Terminal=false
-Categories=Utility;TextEditor;
+Categories=Utility;TextEditor;GTK;
+StartupWMClass=org.xfce.mousepad
 X-KDOS-Alien=true

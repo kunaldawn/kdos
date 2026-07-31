@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GnuCash
+Comment=GnuCash (alien app, kdos-apps box)
+Exec=kdos-appbox run gnucash %f
+Icon=gnucash-icon
+Terminal=false
+Categories=Office;Finance;
+StartupWMClass=gnucash
+X-KDOS-Alien=true

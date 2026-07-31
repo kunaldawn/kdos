@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=calibre
+Comment=calibre (alien app, kdos-apps box)
+Exec=kdos-appbox run calibre %U
+Icon=calibre-gui
+Terminal=false
+Categories=Office;
+StartupWMClass=calibre-gui
+X-KDOS-Alien=true

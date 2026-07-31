@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=PDF Arranger
+Comment=PDF Arranger (alien app, kdos-apps box)
+Exec=kdos-appbox run pdfarranger %U
+Icon=com.github.jeromerobert.pdfarranger
+Terminal=false
+Categories=Office;
+StartupWMClass=com.github.jeromerobert.pdfarranger
+X-KDOS-Alien=true

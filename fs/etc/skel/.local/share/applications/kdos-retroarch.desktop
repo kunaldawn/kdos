@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=RetroArch
+Comment=RetroArch (alien app, kdos-apps box)
+Exec=kdos-appbox run retroarch
+Icon=com.libretro.RetroArch
+Terminal=false
+Categories=Game;Emulator;
+StartupWMClass=com.libretro.RetroArch
+X-KDOS-Alien=true

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OBS Studio
+Comment=OBS Studio (alien app, kdos-apps box)
+Exec=kdos-appbox run obs
+Icon=com.obsproject.Studio
+Terminal=false
+Categories=AudioVideo;Recorder;
+StartupWMClass=com.obsproject.Studio
+X-KDOS-Alien=true

@@ -1,9 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=Zathura
-Comment=PDF, DjVu and comic-book viewer (alien app, kdos-apps box)
+Comment=Zathura (alien app, kdos-apps box)
 Exec=kdos-appbox run zathura %U
 Icon=org.pwmt.zathura
 Terminal=false
 Categories=Office;Viewer;
+StartupWMClass=org.pwmt.zathura
 X-KDOS-Alien=true

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Font Manager
+Comment=Font Manager (alien app, kdos-apps box)
+Exec=kdos-appbox run font-manager %u
+Icon=com.github.FontManager.FontManager
+Terminal=false
+Categories=Utility;GTK;GNOME;
+StartupWMClass=com.github.FontManager.FontManager
+X-KDOS-Alien=true

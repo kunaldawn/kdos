@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=AbiWord
-Comment=Word processor (alien app, kdos-apps box)
-Exec=kdos-appbox run abiword %U
-Icon=abiword
-Terminal=false
-Categories=Office;WordProcessor;
-X-KDOS-Alien=true
