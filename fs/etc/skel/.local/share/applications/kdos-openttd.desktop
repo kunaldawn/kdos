@@ -6,4 +6,5 @@ Exec=kdos-appbox run openttd
 Icon=openttd
 Terminal=false
 Categories=Game;Simulation;
+StartupWMClass=openttd
 X-KDOS-Alien=true

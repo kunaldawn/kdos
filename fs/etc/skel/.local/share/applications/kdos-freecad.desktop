@@ -6,4 +6,5 @@ Exec=kdos-appbox run /usr/bin/freecad - --single-instance %F
 Icon=org.freecad.FreeCAD
 Terminal=false
 Categories=Graphics;Science;Education;Engineering;X-CNC;
+StartupWMClass=org.freecad.FreeCAD
 X-KDOS-Alien=true

@@ -6,4 +6,5 @@ Exec=kdos-appbox run xournalpp %f
 Icon=com.github.xournalpp.xournalpp
 Terminal=false
 Categories=Office;GNOME;GTK;
+StartupWMClass=com.github.xournalpp.xournalpp
 X-KDOS-Alien=true

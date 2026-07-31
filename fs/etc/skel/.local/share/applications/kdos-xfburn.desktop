@@ -6,4 +6,5 @@ Exec=kdos-appbox run xfburn
 Icon=stock_xfburn
 Terminal=false
 Categories=X-XFCE;GTK;DiscBurning;Archiving;AudioVideo;Utility;
+StartupWMClass=xfburn
 X-KDOS-Alien=true

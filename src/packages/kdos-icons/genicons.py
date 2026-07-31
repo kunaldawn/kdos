@@ -56,6 +56,44 @@ CONTEXTS = {
     'status': 'Status',
 }
 
+# Papirus's apps/ is deliberately not vendored (see vendor.py), so without this
+# the theme has no Applications context at all and every app icon on the
+# desktop — including COSMIC's own — comes from Cosmic or hicolor untinted,
+# which is what "the KDOS icon theme is not being used" looks like. These two
+# directories are recoloured into scalable/apps at generation time:
+#
+#   Cosmic/scalable/apps      COSMIC's stock application icons
+#   hicolor/scalable/apps     but ONLY com.system76.* — 06_packaging installs
+#                             the ALIEN apps' icons into that same directory,
+#                             and a phosphor Firefox logo is vandalism, not
+#                             theming.
+#
+# Symbolic icons are skipped throughout: the toolkit tints those from the
+# active COSMIC palette already, and recolouring them fixes them at one accent.
+# Both are swept across EVERY size directory, not just scalable/: COSMIC's own
+# app icons are SVGs filed under fixed sizes (com.system76.CosmicFiles lives at
+# 24x24, 128x128 and 256x256 and nowhere else), which is why the dock's Files
+# and Settings buttons stayed stock when only scalable/ was read. The largest
+# variant of each name wins and is written to scalable/apps, since they are all
+# SVG anyway.
+APP_SOURCES = (
+    ('/usr/share/icons/Cosmic', None),
+    ('/usr/share/icons/hicolor', 'com.system76.'),
+)
+
+# KDOS's own marks, which are not in the vendored artwork. Kept here rather
+# than in the kpkgbuild so that `kdos theme <accent>` — which re-runs this
+# script against $HOME — produces a complete theme on its own.
+MARKS = (
+    ('kdos-icon-256.png', '256x256/apps/distributor-logo-kdos.png'),
+    ('kdos-icon-256.png', '256x256/apps/start-here.png'),
+    # The dock's app-library button shows the TARGET's icon
+    # (com.system76.CosmicAppLibrary), not the applet's own, so both names
+    # have to become the tux.
+    ('panel-tux.svg', 'scalable/apps/com.system76.CosmicAppLibrary.svg'),
+    ('panel-tux.svg', 'scalable/apps/com.system76.CosmicPanelAppButton.svg'),
+)
+
 
 def rgb(h):
     return tuple(int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
@@ -122,6 +160,52 @@ def recolor_tree(out, pal):
     return sizes, files, links
 
 
+def recolor_apps(out, pal):
+    """Recolour COSMIC's application icons into the theme's own apps context."""
+    best = {}
+    for root, prefix in APP_SOURCES:
+        if not os.path.isdir(root):
+            continue
+        for size in sorted(os.listdir(root)):
+            d = os.path.join(root, size, 'apps')
+            if not os.path.isdir(d):
+                continue
+            rank = 1 << 20 if size == 'scalable' else 0
+            try:
+                rank = rank or int(size.split('x')[0])
+            except ValueError:
+                continue
+            for name in sorted(os.listdir(d)):
+                if not name.endswith('.svg') or name.endswith('-symbolic.svg'):
+                    continue
+                if prefix and not name.startswith(prefix):
+                    continue
+                if best.get(name, (-1,))[0] < rank:
+                    best[name] = (rank, os.path.join(d, name))
+
+    od = os.path.join(out, 'scalable', 'apps')
+    os.makedirs(od, exist_ok=True)
+    for name, (_, src) in best.items():
+        with open(src, encoding='utf-8') as f:
+            data = f.read()
+        with open(os.path.join(od, name), 'w', encoding='utf-8') as f:
+            f.write(HEX_RE.sub(pal.shift, data))
+    return len(best)
+
+
+def install_marks(out):
+    n = 0
+    for src, rel in MARKS:
+        s = os.path.join(HERE, src)
+        if not os.path.isfile(s):
+            continue
+        d = os.path.join(out, rel)
+        os.makedirs(os.path.dirname(d), exist_ok=True)
+        shutil.copyfile(s, d)
+        n += 1
+    return n
+
+
 def write_index(out, dirs):
     lines = ['[Icon Theme]',
              'Name=KDOS',
@@ -153,14 +237,16 @@ def main():
     os.makedirs(out, exist_ok=True)
     sized, files, links = recolor_tree(out, pal)
 
+    apps = recolor_apps(out, pal)
+    marks = install_marks(out)          # after recolor_apps: the tux wins
+
     dirs = [('%s/%s' % (size, ctx), CONTEXTS[ctx], int(size.split('x')[0]))
             for size, ctx in sized]
-    # KDOS's own marks live outside the vendored tree.
     dirs.append(('scalable/apps', 'Applications', 0))
     dirs.append(('256x256/apps', 'Applications', 256))
     write_index(out, dirs)
-    print('kdos-icons: %d icons, %d aliases, %d directories -> %s'
-          % (files, links, len(dirs), out))
+    print('kdos-icons: %d icons, %d aliases, %d apps, %d marks, %d directories -> %s'
+          % (files, links, apps, marks, len(dirs), out))
 
 
 main()

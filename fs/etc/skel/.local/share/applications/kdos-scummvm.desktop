@@ -6,4 +6,5 @@ Exec=kdos-appbox run scummvm
 Icon=org.scummvm.scummvm
 Terminal=false
 Categories=Game;AdventureGame;
+StartupWMClass=org.scummvm.scummvm
 X-KDOS-Alien=true

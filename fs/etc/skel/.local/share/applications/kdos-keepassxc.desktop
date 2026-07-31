@@ -6,4 +6,5 @@ Exec=kdos-appbox run keepassxc %f
 Icon=keepassxc
 Terminal=false
 Categories=Utility;Security;Qt;
+StartupWMClass=org.keepassxc.KeePassXC
 X-KDOS-Alien=true

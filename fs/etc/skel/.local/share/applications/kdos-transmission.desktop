@@ -6,4 +6,5 @@ Exec=kdos-appbox run transmission-gtk %U
 Icon=transmission
 Terminal=false
 Categories=Network;FileTransfer;P2P;GTK;
+StartupWMClass=transmission-gtk
 X-KDOS-Alien=true

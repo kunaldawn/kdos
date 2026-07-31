@@ -229,18 +229,6 @@ write_icons() {
     [ -r "$ICON_GEN" ] && command -v python3 >/dev/null 2>&1 || return 0
     mkdir -p "$HOME/.icons"
     python3 "$ICON_GEN" "$HOME/.icons/KDOS" "$@" >/dev/null
-    # KDOS's own marks are not in the vendored artwork; carry them over from
-    # the installed theme rather than making the generator know about them.
-    local sysdir=/usr/share/icons/KDOS f rel
-    if [ -d "$sysdir" ]; then
-        for rel in 256x256/apps scalable/apps; do
-            [ -d "$sysdir/$rel" ] || continue
-            mkdir -p "$HOME/.icons/KDOS/$rel"
-            for f in "$sysdir/$rel"/*; do
-                [ -e "$f" ] && cp -f "$f" "$HOME/.icons/KDOS/$rel/"
-            done
-        done
-    fi
 }
 
 write_foot() {

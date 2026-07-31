@@ -6,4 +6,5 @@ Exec=kdos-appbox run mpv --player-operation-mode=pseudo-gui -- %U
 Icon=mpv
 Terminal=false
 Categories=AudioVideo;Audio;Video;Player;TV;
+StartupWMClass=mpv
 X-KDOS-Alien=true

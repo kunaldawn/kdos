@@ -6,4 +6,5 @@ Exec=kdos-appbox run calibre %U
 Icon=calibre-gui
 Terminal=false
 Categories=Office;
+StartupWMClass=calibre-gui
 X-KDOS-Alien=true

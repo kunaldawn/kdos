@@ -6,4 +6,5 @@ Exec=kdos-appbox run libreoffice --math %U
 Icon=libreoffice-math
 Terminal=false
 Categories=Office;Math;
+StartupWMClass=libreoffice-math
 X-KDOS-Alien=true

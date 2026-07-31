@@ -6,4 +6,5 @@ Exec=kdos-appbox run prusa-slicer --gcodeviewer %F
 Icon=PrusaSlicer-gcodeviewer
 Terminal=false
 Categories=Graphics;3DGraphics;
+StartupWMClass=PrusaGcodeviewer
 X-KDOS-Alien=true

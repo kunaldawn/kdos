@@ -6,4 +6,5 @@ Exec=kdos-appbox run deja-dup %u
 Icon=org.gnome.DejaDup
 Terminal=false
 Categories=Utility;Archiving;GNOME;GTK;X-GNOME-Utilities;
+StartupWMClass=org.gnome.DejaDup
 X-KDOS-Alien=true

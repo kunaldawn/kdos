@@ -6,4 +6,5 @@ Exec=kdos-appbox run meld %F
 Icon=org.gnome.Meld
 Terminal=false
 Categories=GTK;Development;
+StartupWMClass=org.gnome.Meld
 X-KDOS-Alien=true

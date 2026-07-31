@@ -6,4 +6,5 @@ Exec=kdos-appbox run audacious %U
 Icon=audacious
 Terminal=false
 Categories=AudioVideo;Audio;Player;GTK;
+StartupWMClass=audacious
 X-KDOS-Alien=true

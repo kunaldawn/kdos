@@ -6,4 +6,5 @@ Exec=kdos-appbox run wireshark %f
 Icon=org.wireshark.Wireshark
 Terminal=false
 Categories=Network;Monitor;Qt;
+StartupWMClass=org.wireshark.Wireshark
 X-KDOS-Alien=true

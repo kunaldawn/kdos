@@ -6,4 +6,5 @@ Exec=kdos-appbox run sol
 Icon=gnome-aisleriot
 Terminal=false
 Categories=GNOME;GTK;Game;CardGame;
+StartupWMClass=sol
 X-KDOS-Alien=true

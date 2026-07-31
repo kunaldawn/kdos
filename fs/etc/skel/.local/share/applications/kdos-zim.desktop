@@ -6,4 +6,5 @@ Exec=kdos-appbox run zim %f
 Icon=org.zim_wiki.Zim
 Terminal=false
 Categories=Utility;TextEditor;GTK;
+StartupWMClass=org.zim_wiki.Zim
 X-KDOS-Alien=true

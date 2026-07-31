@@ -6,4 +6,5 @@ Exec=kdos-appbox run easyeffects
 Icon=com.github.wwmm.easyeffects
 Terminal=false
 Categories=GTK;AudioVideo;Audio;
+StartupWMClass=com.github.wwmm.easyeffects
 X-KDOS-Alien=true
