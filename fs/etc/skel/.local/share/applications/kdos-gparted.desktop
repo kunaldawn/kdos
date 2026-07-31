@@ -6,4 +6,5 @@ Exec=kdos-appbox run /usr/sbin/gparted %f
 Icon=gparted
 Terminal=false
 Categories=GNOME;System;Filesystem;
+StartupWMClass=gparted
 X-KDOS-Alien=true

@@ -6,4 +6,5 @@ Exec=kdos-appbox run /usr/lib/firefox-esr/firefox-esr %u
 Icon=firefox-esr
 Terminal=false
 Categories=Network;WebBrowser;
+StartupWMClass=firefox-esr
 X-KDOS-Alien=true

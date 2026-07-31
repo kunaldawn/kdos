@@ -6,4 +6,5 @@ Exec=kdos-appbox run libreoffice --calc %U
 Icon=libreoffice-calc
 Terminal=false
 Categories=Office;Spreadsheet;
+StartupWMClass=libreoffice-calc
 X-KDOS-Alien=true

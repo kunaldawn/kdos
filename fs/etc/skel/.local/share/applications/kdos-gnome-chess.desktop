@@ -6,4 +6,5 @@ Exec=kdos-appbox run gnome-chess %U
 Icon=org.gnome.Chess
 Terminal=false
 Categories=GNOME;GTK;Game;BoardGame;
+StartupWMClass=org.gnome.Chess
 X-KDOS-Alien=true

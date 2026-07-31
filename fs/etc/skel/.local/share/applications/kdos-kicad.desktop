@@ -6,4 +6,5 @@ Exec=kdos-appbox run kicad %f
 Icon=kicad
 Terminal=false
 Categories=Science;Electronics;
+StartupWMClass=org.kicad.kicad
 X-KDOS-Alien=true

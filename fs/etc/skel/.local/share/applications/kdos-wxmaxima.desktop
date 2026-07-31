@@ -6,4 +6,5 @@ Exec=kdos-appbox run wxmaxima %f
 Icon=io.github.wxmaxima_developers.wxMaxima
 Terminal=false
 Categories=Education;Math;Science;
+StartupWMClass=io.github.wxmaxima_developers.wxMaxima
 X-KDOS-Alien=true

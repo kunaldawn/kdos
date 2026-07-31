@@ -6,4 +6,5 @@ Exec=kdos-appbox run gnucash %f
 Icon=gnucash-icon
 Terminal=false
 Categories=Office;Finance;
+StartupWMClass=gnucash
 X-KDOS-Alien=true

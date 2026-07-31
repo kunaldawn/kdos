@@ -6,4 +6,5 @@ Exec=kdos-appbox run zathura %U
 Icon=org.pwmt.zathura
 Terminal=false
 Categories=Office;Viewer;
+StartupWMClass=org.pwmt.zathura
 X-KDOS-Alien=true

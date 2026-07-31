@@ -6,4 +6,5 @@ Exec=kdos-appbox run /usr/bin/octave --gui %f
 Icon=octave
 Terminal=false
 Categories=Education;Science;Math;
+StartupWMClass=org.octave.Octave
 X-KDOS-Alien=true

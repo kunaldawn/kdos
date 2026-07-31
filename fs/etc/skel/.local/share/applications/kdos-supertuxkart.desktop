@@ -6,4 +6,5 @@ Exec=kdos-appbox run supertuxkart
 Icon=supertuxkart
 Terminal=false
 Categories=Game;ArcadeGame;
+StartupWMClass=supertuxkart
 X-KDOS-Alien=true

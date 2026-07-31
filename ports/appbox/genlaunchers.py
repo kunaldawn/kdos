@@ -93,6 +93,14 @@ RENAME = {
 FIELD_CODE = re.compile(r"%[a-zA-Z]")
 KEEP_CODES = {"%U", "%F", "%f", "%u"}
 
+# Extra argv the app needs to work inside the container, appended after the
+# upstream Exec. VSCodium is Electron: its chrome-sandbox wants a setuid
+# helper and CLONE_NEWUSER, neither of which it gets as a non-root user inside
+# an unprivileged podman container, and it exits instead of falling back.
+EXEC_EXTRA = {
+    "vscodium": "--no-sandbox",
+}
+
 
 def main():
     srcdir, outdir = sys.argv[1], sys.argv[2]
@@ -134,6 +142,17 @@ def main():
             pass  # keep env VAR=... prefixes intact
         execline = " ".join(words)
         out = RENAME.get(base, base.lower())
+        extra = EXEC_EXTRA.get(out)
+        if extra:
+            execline = f"{execline} {extra}" if "%" not in execline else \
+                execline.replace("%", f"{extra} %", 1)
+        # The window this launcher opens comes from the container announcing
+        # the APP's own app_id, not ours, so without this cosmic-app-list
+        # cannot tie the toplevel back to any desktop entry and the dock shows
+        # a generic placeholder for every running alien app. Upstream's own
+        # StartupWMClass wins; otherwise the upstream desktop-file id is what
+        # a GTK/Qt app sets by default.
+        wmclass = de.get("StartupWMClass") or base
         with open(os.path.join(outdir, f"kdos-{out}.desktop"), "w") as f:
             f.write("[Desktop Entry]\n")
             f.write("Type=Application\n")
@@ -143,6 +162,7 @@ def main():
             f.write(f"Icon={icon}\n")
             f.write("Terminal=false\n")
             f.write(f"Categories={cats}\n")
+            f.write(f"StartupWMClass={wmclass}\n")
             f.write("X-KDOS-Alien=true\n")
         made.append(f"kdos-{out}.desktop")
     print("\n".join(made))

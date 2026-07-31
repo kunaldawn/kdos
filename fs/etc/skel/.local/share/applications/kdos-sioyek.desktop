@@ -6,4 +6,5 @@ Exec=kdos-appbox run sioyek %f
 Icon=sioyek-icon-linux
 Terminal=false
 Categories=Development;Viewer;
+StartupWMClass=sioyek
 X-KDOS-Alien=true
