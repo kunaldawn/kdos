@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GoldenDict-ng
+Comment=GoldenDict-ng (alien app, kdos-apps box)
+Exec=kdos-appbox run goldendict %u
+Icon=goldendict
+Terminal=false
+Categories=Office;Dictionary;Education;Qt;
+StartupWMClass=io.github.xiaoyifang.goldendict_ng
+X-KDOS-Alien=true

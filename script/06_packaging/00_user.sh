@@ -33,6 +33,14 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # Skel wins: this only ever runs against the build tree, where the home is
     # a build artifact. With no-clobber, editing fs/etc/skel and rebuilding
     # would silently ship the previous build's dotfiles instead.
+    #
+    # cp -r overwrites but never DELETES, so a file skel has since dropped
+    # lingers in the home forever — a 256px icon from an older kdos-icons rode
+    # three rebuilds that way. The generated theme trees are wholly build
+    # output (00_theme.sh regenerates them from scratch every run) and nothing
+    # user-authored lives there, so clear them first rather than merging onto
+    # whatever the last build left.
+    rm -rf "$home/.icons" "$home/.themes"
     if [ -d /etc/skel ]; then
         cp -r /etc/skel/. "$home"/ 2>/dev/null || true
     fi

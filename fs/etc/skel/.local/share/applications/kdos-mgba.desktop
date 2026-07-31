@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=mGBA
+Comment=mGBA (alien app, kdos-apps box)
+Exec=kdos-appbox run mgba-qt %f
+Icon=io.mgba.mGBA
+Terminal=false
+Categories=Game;Emulator;
+StartupWMClass=io.mgba.mGBA
+X-KDOS-Alien=true

@@ -1,9 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=Firefox ESR
-Comment=Web browser (alien app, kdos-apps box)
-Exec=kdos-appbox run firefox %U
+Comment=Firefox ESR (alien app, kdos-apps box)
+Exec=kdos-appbox run /usr/lib/firefox-esr/firefox-esr %u
 Icon=firefox-esr
 Terminal=false
 Categories=Network;WebBrowser;
+StartupWMClass=firefox-esr
 X-KDOS-Alien=true

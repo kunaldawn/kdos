@@ -1,0 +1,182 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#
+# kdos-banner — the login banner, revealed the way a CRT would draw it.
+#
+# It paints the banner raster-line by raster-line with a brighter "beam" line
+# leading the fill, then a single reverse-video flash for the power-on thump.
+# Deliberately cheap: one fastfetch run, ~0.4s of animation, no subshell per
+# frame (bash's read -t provides the delay, so no 30 forks of sleep).
+#
+#   kdos-banner            animate, then leave the banner on screen
+#   kdos-banner --plain    print it with no animation
+#
+# THE BANNER IS COMPOSED HERE, NOT BY FASTFETCH, and that is not a style
+# choice. Asked to draw a logo, fastfetch prints the logo block, then moves the
+# CURSOR BACK UP over it (ESC[<n>A) and writes each info line with an absolute
+# column jump. That output is not a sequence of raster lines: replaying it one
+# line at a time — which is what any animation does — leaves the cursor drifting
+# one row per line, so the logo gets overpainted and the whole block is drawn
+# twice, offset. So fastfetch is run with --logo none, which emits plain lines,
+# and the logo column is pasted on here. Side effects worth keeping: the logo
+# can never come out missing, and its height no longer has to be smaller than
+# the info column's.
+#
+# It gets out of the way when it should: no animation unless stdout is a tty,
+# and never when KDOS_NO_ANIM is set, TERM is dumb, or the terminal is too
+# short for the banner (scrolling mid-animation looks like a glitch, not a
+# feature). Any keypress skips the rest instantly.
+
+set -u
+
+FRAME_DELAY=${KDOS_BANNER_DELAY:-0.012}
+BEAM=$'\033[1;97m'
+OFF=$'\033[0m'
+LOGO=${KDOS_BANNER_LOGO:-/usr/share/kdos/logo.txt}
+INDENT=2      # left margin of the logo column
+GAP=3         # blank columns between logo and info
+
+plain() { printf '%s\n' "$@"; }
+
+# Strip SGR sequences in pure bash — `tr -d '\033'` would drop the escape byte
+# and leave the "[1;32m" text visible for a frame, and a sed per line is a fork
+# per line on every single login.
+strip_ansi() {
+	local s=$1 out=''
+	while [[ $s =~ ^([^$'\033']*)$'\033'\[[0-9\;]*[a-zA-Z](.*)$ ]]; do
+		out+=${BASH_REMATCH[1]}
+		s=${BASH_REMATCH[2]}
+	done
+	printf '%s' "$out$s"
+}
+
+info_lines() {
+	if command -v fastfetch >/dev/null 2>&1; then
+		# fastfetch identifies the terminal by walking up the process tree,
+		# which from here finds *this script* and reports "kdos-banner" as the
+		# terminal. TERM_PROGRAM is checked first, so seed it from $TERM.
+		# --pipe false keeps the colours when stdout is a pipe (it is: $( )).
+		TERM_PROGRAM="${TERM_PROGRAM:-$TERM}" \
+			fastfetch --logo none --pipe false 2>/dev/null
+	elif [ -r /etc/motd ]; then
+		command cat /etc/motd
+	fi
+}
+
+# Paste the logo column and the info column into one array of raster lines.
+compose() {
+	local -n _out=$1
+	local -a logo=() info=() bare=()
+	local raw i w=0 pad n
+
+	[ -r "$LOGO" ] && mapfile -t logo < "$LOGO"
+	raw="$(info_lines)"
+	[ -n "$raw" ] && mapfile -t info <<< "$raw"
+
+	if [ ${#logo[@]} -eq 0 ]; then
+		_out=("${info[@]}")
+		return
+	fi
+
+	for ((i = 0; i < ${#logo[@]}; i++)); do
+		bare[i]=$(strip_ansi "${logo[i]}")
+		[ ${#bare[i]} -gt $w ] && w=${#bare[i]}
+	done
+
+	# Side by side only if it fits. A 1280x800 TTY with the 16x32 console
+	# font is 80 columns; the logo plus the info column is wider than that,
+	# and a banner that wraps mid-line looks like a crash, not a boot.
+	local cols=${COLUMNS:-0} iw=0
+	[ "$cols" -gt 0 ] || cols=$(tput cols 2>/dev/null || echo 80)
+	for ((i = 0; i < ${#info[@]}; i++)); do
+		local v; v=$(strip_ansi "${info[i]}")
+		[ ${#v} -gt $iw ] && iw=${#v}
+	done
+	if [ $((INDENT + w + GAP + iw)) -gt "$cols" ]; then
+		_out=()
+		for ((i = 0; i < ${#logo[@]}; i++)); do
+			printf -v raw '%*s%s' "$INDENT" '' "${logo[i]}"
+			_out+=("$raw")
+		done
+		_out+=('')
+		_out+=("${info[@]}")
+		return
+	fi
+
+	n=${#logo[@]}
+	[ ${#info[@]} -gt $n ] && n=${#info[@]}
+	_out=()
+	local l b r line
+	for ((i = 0; i < n; i++)); do
+		l=${logo[i]:-}; b=${bare[i]:-}; r=${info[i]:-}
+		if [ -z "$r" ]; then
+			# Nothing to the right: no trailing padding, or a "blank" line
+			# ends up full of spaces and the beam flashes an empty bar.
+			printf -v line '%*s%s' "$INDENT" '' "$l"
+		else
+			pad=$((w - ${#b} + GAP))
+			printf -v line '%*s%s%*s%s' "$INDENT" '' "$l" "$pad" '' "$r"
+		fi
+		_out+=("$line")
+	done
+}
+
+animate() {
+	local -a lines=("$@")
+	local n=${#lines[@]} i key
+	local -a bare=()
+	for ((i = 0; i < n; i++)); do bare[i]=$(strip_ansi "${lines[i]}"); done
+
+	printf '\033[?25l'                     # hide the cursor while painting
+	for ((i = 0; i < n; i++)); do
+		# Skip on any keypress: an impatient login should not be punished.
+		if read -rsn1 -t 0 key 2>/dev/null; then
+			printf '%s\n' "${lines[@]:i}"
+			break
+		fi
+		# The beam: draw the incoming line bright, then rewrite it in its own
+		# colours so only the leading edge glows.
+		printf '%s%s%s\r' "$BEAM" "${bare[i]}" "$OFF"
+		printf '%s\n' "${lines[i]}"
+		read -rst "$FRAME_DELAY" -N 0 _ 2>/dev/null || true
+	done
+	printf '\033[?25h'                     # cursor back
+
+	# Power-on thump: one frame of reverse video. Two escapes, no redraw.
+	printf '\033[?5h'
+	read -rst 0.04 -N 0 _ 2>/dev/null || true
+	printf '\033[?5l'
+}
+
+main() {
+	local -a lines=()
+	compose lines
+	[ ${#lines[@]} -gt 0 ] || return 0
+
+	if [ "${1:-}" = "--plain" ] || [ ! -t 1 ] || [ -n "${KDOS_NO_ANIM:-}" ] ||
+		[ "${TERM:-dumb}" = dumb ]; then
+		plain "${lines[@]}"
+		return 0
+	fi
+
+	# One row spare for the prompt: on a 33-row TTY the banner is close to the
+	# full height, and animating something that scrolls just looks broken.
+	local rows=${LINES:-0}
+	[ "$rows" -gt 0 ] || rows=$(tput lines 2>/dev/null || echo 24)
+	if [ "${#lines[@]}" -ge "$rows" ]; then
+		plain "${lines[@]}"
+		return 0
+	fi
+
+	animate "${lines[@]}"
+}
+
+main "$@"
