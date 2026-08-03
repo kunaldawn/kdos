@@ -55,6 +55,15 @@ if [ -c "/dev/$tty" ] && [ -x /usr/bin/setfont ]; then
 	if [ -x /usr/bin/setvtrgb ] && [ -r /etc/vtrgb ]; then
 		setvtrgb /etc/vtrgb < "/dev/$tty" > "/dev/$tty" 2>/dev/null
 	fi
+
+	# /etc/keymap is written by the installer. loadkeys is console-wide
+	# rather than per-VT, so doing it again on the second getty is a no-op;
+	# it lives here rather than in rcS only because this is the one place
+	# guaranteed to run after fbcon has finished resetting the VTs.
+	if [ -r /etc/keymap ] && [ -x /usr/bin/loadkeys ]; then
+		read -r _km < /etc/keymap
+		[ -n "$_km" ] && loadkeys "$_km" >/dev/null 2>&1
+	fi
 	printf '\033[2J\033[H' > "/dev/$tty"
 fi
 
