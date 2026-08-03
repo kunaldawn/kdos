@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Install KDOS
+GenericName=System Installer
+Comment=Copy this live image onto a disk
+# foot is the only terminal on the host, and sudo has to be able to prompt —
+# so the installer gets a real terminal rather than a graphical askpass that
+# KDOS deliberately does not ship.
+Exec=foot --title="Install KDOS" --app-id=kdos-install -- sudo kinstall
+Icon=distributor-logo-kdos
+Terminal=false
+Categories=System;Settings;
+Keywords=install;installer;setup;disk;
+StartupNotify=true
+StartupWMClass=kdos-install

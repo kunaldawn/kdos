@@ -446,6 +446,7 @@ BANNER
         printf '  %-26s %s\n' "kdos doctor"         "check the session for common breakage"
         printf '  %-26s %s\n' "kdos-shot [region]"  "screenshot to clipboard and ~/Pictures"
         printf '  %-26s %s\n' "kdos-fetch-static"   "fetch a single verified static binary"
+        printf '  %-26s %s\n' "sudo kinstall"       "install this live image onto a disk"
         printf '\n'
 
         printf '%sKEYS%s  %s(COSMIC defaults — remap in Settings > Keyboard)%s\n' "$C_A" "$C_0" "$C_D" "$C_0"
