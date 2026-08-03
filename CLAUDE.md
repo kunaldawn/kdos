@@ -431,7 +431,8 @@ column, so a padded key runs past it and the value overwrites the separator
 `penguin.h` — the same quantised crop of `kdos.png` the boot splash draws — so
 banner, splash and mascot cannot drift apart. Do not hand-edit it. Three
 constraints are baked into that script: the TTY font has FULL BLOCK and the
-double-line box characters but **no half blocks or shades**, so one cell is one
+double-line box characters but **no half blocks** (and ░ ▒ but no ▓ — grep
+`uni/xos4-2.uni` before using any glyph), so one cell is one
 solid block; character cells are twice as tall as wide, so the sampling grid
 must be ~2× wider than tall or the penguin stretches; and the banner must stay
 under ~30 lines or it scrolls off a 33-row TTY. Amber, the bright rim and the
@@ -616,6 +617,85 @@ the things that have actually broken on this distro — including
 
 ---
 
+## kinstall — the installer
+
+`src/kinstall/` is ~4500 lines of C across 11 files, built by
+`script/01_phase1/13_kinstall.sh` with the **cross** compiler. It links against
+**nothing** — not even ncurses — which is why it can live in phase 1 and exists
+on every tree from the first bootable image onward. Do not give it a library
+dependency without moving the build to phase 4.
+
+| File | What it owns |
+|---|---|
+| `term.c` | raw mode, alt screen, capability detection, the VT palette |
+| `draw.c` | cell buffer, diff flush, box/text/glyph primitives |
+| `input.c` | key decoding, SGR-1006 mouse, the evdev mouse backend |
+| `ui.c` | immediate-mode controls (button, check, radio, input, list) |
+| `probe.c` | /sys + superblock + GPT reader; a small blkid |
+| `pages.c` | the ten wizard pages |
+| `install.c` | the forked install child and its line protocol |
+| `main.c` | chrome, modals, the poll loop, CLI |
+
+Five decisions carry the design:
+
+- **Nothing is written before the summary.** Every page fills `cfg` and only
+  `cfg`; the install step is the single point of no return. The Python
+  installer it replaces partitioned in the middle of the questionnaire, so
+  "back" did not exist. `Next` on the summary page is deliberately refused —
+  the install starts from the button and only from the button.
+- **The whole UI is eight colours.** A 512-glyph console font makes the VT
+  steal the foreground intensity bit for the 9th glyph bit, so colours 8-15 are
+  unreachable as foreground and `A_BOLD` changes the FONT PAGE rather than the
+  weight — never emit it on a VT. Eight slots mean the tty and a truecolor
+  `foot` window render the same picture. On a VT the installer saves the
+  palette with `GIO_CMAP`, installs its own with `PIO_CMAP` and restores
+  exactly what `kdos-getty`'s setvtrgb loaded; elsewhere the same slots go out
+  as 24-bit or 256-colour SGR.
+- **The mouse works on tty1 with no gpm.** The Linux console has no mouse
+  reporting at all, so `input.c` opens `/dev/input/event*`, keeps its own
+  pointer (relative mice scaled by the real cell size read from
+  `/sys/class/graphics/fb0/virtual_size`, absolute devices — QEMU's usb-tablet
+  — mapped directly) and draws it as an inverted cell. Under a terminal
+  emulator it uses SGR-1006 instead and never touches evdev.
+- **The install runs in a forked child** speaking `S/K/P/N/L/F/D` lines back
+  over a pipe, so the work stays sequential code and the parent stays a
+  single-threaded poll loop that never blocks on a 4 GB rsync. The child
+  redirects its own stdio to `/dev/null` and keeps the protocol on its own fd;
+  nothing but `emit()` can reach the pipe. **No `system()`, no shell** — device
+  paths and user names all arrive from menus.
+- **Chrome takes hit ids from a reserved range** (`UI_ID_SIDEBAR`), never from
+  `ui_id()`. The sidebar draws before the page, so claiming real focus ids
+  there pushed every control on every page ten places down the Tab ring and
+  left the caret parked on a decoration — typing did nothing at all.
+
+Things the installer needed from the rest of the tree, all now present:
+
+- `kdos-getty` loads `/etc/keymap` with `loadkeys` (the installer writes it).
+- `rcS` runs `swapon -a` after `mount -a`; nothing else ever did, so the swap
+  option would otherwise have been decorative.
+- **fstab is appended to, never replaced.** The shipped file carries the
+  tmpfs `/tmp` with `mode=1777`; overwriting it is the /tmp bug above, arriving
+  a week later and looking like "GIMP does not start".
+- Renaming the user rewrites `passwd`, `group` (membership lists *and* the
+  primary group's own name), `shadow`, the home directory, and the
+  `--autologin kdos` in `inittab`. Miss the last one and the installed system
+  logs nobody in.
+- Kernel and initramfs are copied **onto the ESP** and the generated
+  `refind.conf` points at those FAT paths. rEFInd can read the ext4 root only
+  through its filesystem driver, and a boot that depends on a driver load is a
+  boot that fails silently after a kernel update.
+
+Known gaps, each for a missing port rather than a missing feature: no LUKS
+(`cryptsetup` is not installed and the initramfs cannot unlock anything), no
+btrfs/xfs/f2fs (no mkfs), and the time zone is written as a **POSIX TZ string**
+into `/etc/profile.d/20-timezone.sh` because there is no `tzdata` — musl parses
+those directly, DST rules included.
+
+Iterate without booting: `kinstall --dry-run` logs every command and executes
+none, and `--save`/`--config`/`--unattended` give it an answer file.
+
+---
+
 ## Repo layout
 
 ```
@@ -628,7 +708,7 @@ kdos/
 │   └── fetch                    # downloads all source= URLs; vendoring=rust|go|node|python
 ├── src/
 │   ├── kpkg/                    # kpkg, kpkgadd, kpkgbuild, kpkgdel, kpkgdepends
-│   ├── kinstall/                # ncurses-style installer (Python)
+│   ├── kinstall/                # the installer (C, zero libraries)
 │   └── packages/                # ports that are OURS (see Three Rings)
 ├── fs/                          # copied verbatim into the rootfs
 │   ├── etc/{inittab,fstab,profile,profile.d,init.d,skel,kpkg.conf}
