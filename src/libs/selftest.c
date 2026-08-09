@@ -196,6 +196,24 @@ static void test_base(void)
 	   "GNU tar reads our archive");
 	eq_str(listing, "blobs/sha256/deadbeef", "GNU tar agrees on the name");
 
+	/* Output bigger than the buffer must TRUNCATE, not hang. It used to
+	 * hang: the child inherited the pipe's read end, so closing ours left
+	 * the pipe writable and the child blocked in write() while we blocked
+	 * in waitpid(). `kpkg install zig` died there on a 1.1 MB listing. */
+	KbArgv gen = {0};
+	kb_argv_add(&gen, "seq");
+	kb_argv_add(&gen, "100000");
+	kb_argv_end(&gen);
+	char small[64];
+	kb_run_capture(&gen, small, sizeof(small));
+	ok(strlen(small) >= sizeof(small) - 2, "capture truncates at the ceiling");
+
+	KbBuf all = {0};
+	ok(kb_run_capture_buf(&gen, &all) == 0, "unbounded capture succeeds");
+	ok(all.n > (1 << 19), "unbounded capture keeps every byte");
+	eq_str(all.p + all.n - 7, "100000\n", "and the last line is intact");
+	kb_buf_free(&all);
+
 	free(tarpath);
 	kb_rmtree(dir);
 	ok(!kb_path_exists(dir), "rmtree removes the tree");

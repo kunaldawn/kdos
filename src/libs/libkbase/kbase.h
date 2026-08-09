@@ -176,6 +176,10 @@ int kb_run_tty(const KbArgv *a);
 /* Same, but copy up to n-1 bytes of stdout into buf, NUL terminated with any
  * trailing newline stripped. */
 int kb_run_capture(const KbArgv *a, char *buf, size_t n);
+/* Same, unbounded: stdout is appended to a growing buffer, NUL terminated,
+ * with the trailing newline left alone. Use this whenever the output has no
+ * natural ceiling — a `tar -tf` listing does not. */
+int kb_run_capture_buf(const KbArgv *a, KbBuf *out);
 /* Double-forked fire and forget: the caller can never block on the child or
  * collect a zombie. gdbus's default reply timeout is 25 seconds and a
  * notification must never be able to gate an app launch behind that. */
