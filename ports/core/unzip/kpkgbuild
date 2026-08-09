@@ -8,19 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: ZIP extraction utilities
+name        = unzip
+version     = 6.0
+release     = 1
 
-name=unzip
-version=6.0
-_version=$(echo $version | sed 's/\.//')
-release=1
-source="https://downloads.sourceforge.net/infozip/${name}${_version}.tar.gz"
+_version    = ${version//./}
 
-build() {
-	make -f unix/Makefile linux_noasm \
-		LOCAL_UNZIP="-DBSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -include time.h" \
-		prefix=$PKG/usr
-
-	make prefix=$PKG/usr MANDIR=$PKG/usr/share/man/man1 -f unix/Makefile install
-}
-
+source      = https://downloads.sourceforge.net/infozip/${name}${_version}.tar.gz
+description = ZIP extraction utilities

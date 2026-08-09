@@ -8,23 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: library that handles input devices for display servers and other applications that need to directly deal with input devices
-# depends	: eudev libevdev mtdev meson
-
-name=libinput
-version=1.30.1
-release=1
-source="https://gitlab.freedesktop.org/libinput/libinput/-/archive/$version/libinput-$version.tar.gz"
-
-build() {
-	meson \
-	-Dudev-dir=/lib/udev \
-	-Ddebug-gui=false \
-	-Db_ndebug=false \
-	-Dtests=false \
-	-Ddocumentation=false \
-	-Dlibwacom=false \
-	build
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = libinput
+version     = 1.30.1
+release     = 1
+source      = https://gitlab.freedesktop.org/libinput/libinput/-/archive/$version/libinput-$version.tar.gz
+description = library that handles input devices for display servers and other applications that need to directly deal with input devices
+depends     = eudev libevdev mtdev meson

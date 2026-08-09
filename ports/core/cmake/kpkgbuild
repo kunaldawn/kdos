@@ -8,25 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Modern toolset used for generating Makefiles
-# depends	: curl libarchive libuv expat
-
-name=cmake
-version=4.2.1
-release=1
-source="https://www.cmake.org/files/v${version%.*}/$name-$version.tar.gz"
-
-build() {
-	export CXXFLAGS="$CXXFLAGS -include cstdint"
-	./bootstrap \
-		--prefix=/usr \
-		--datadir=/share/$name \
-		--no-system-jsoncpp  \
-		--no-system-cppdap   \
-		--no-system-librhash \
-		--system-libs \
-		-- -D Cmake_BUILD_LTO=ON \
-		-D BUILD_TESTING=OFF
-	make
-	make DESTDIR=$PKG install
-}
+name        = cmake
+version     = 4.2.1
+release     = 1
+source      = https://www.cmake.org/files/v${version%.*}/$name-$version.tar.gz
+description = Modern toolset used for generating Makefiles
+depends     = curl libarchive libuv expat

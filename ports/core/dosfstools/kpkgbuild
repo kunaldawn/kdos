@@ -8,19 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Various utilities for use with the FAT family of file systems
-
-name=dosfstools
-version=4.2
-release=1
-source="https://github.com/dosfstools/dosfstools/releases/download/v$version/dosfstools-$version.tar.gz"
-
-build() {
-	./configure --prefix=/               \
-	            --enable-compat-symlinks \
-	            --mandir=/usr/share/man  \
-	            --docdir=/usr/share/doc/$name
-	make
-	make DESTDIR=$PKG install
-
-}
+name        = dosfstools
+version     = 4.2
+release     = 1
+source      = https://github.com/dosfstools/dosfstools/releases/download/v$version/dosfstools-$version.tar.gz
+description = Various utilities for use with the FAT family of file systems

@@ -421,7 +421,38 @@ switch to the kernel's native overlay once installed on ext4.
 > hardware. Every screenshot in this README was captured from a QEMU guest via
 > `make run-hw`'s stack.
 
-Bare-metal install is via `kinstall`, an ncurses installer in `src/kinstall/`.
+### Installing to a disk
+
+Bare-metal install is `sudo kinstall`, or **Install KDOS** in the app library.
+
+`kinstall` is a dependency-free C TUI in `src/packages/kdos-installer/`, drawn
+with KDOS's own `libktui` — no ncurses, no libraries at all beyond musl. It
+runs a ten-page wizard (preflight, keymap,
+time zone, disk, layout, accounts, accent + services, summary, install, done)
+and **writes nothing until the summary is confirmed**; every page before that
+is reversible, and the sidebar walks back to any of them.
+
+Two things it does that a terminal installer usually cannot:
+
+- **The mouse works on a bare tty.** The Linux console has no mouse reporting
+  and KDOS ships no gpm, so on tty1 the installer opens `/dev/input/event*`
+  itself, tracks the pointer and draws it. Under `foot` it uses ordinary
+  SGR-1006 reporting instead. Click anything, scroll any list.
+- **It looks the same in both places.** The whole interface is designed to
+  eight colours, because a 512-glyph console font steals the VT's foreground
+  intensity bit. On a tty it installs its own palette through `PIO_CMAP` and
+  restores the one `kdos-getty` loaded on exit; in a truecolor terminal the
+  same eight slots are emitted as exact hex. Picking an accent on the
+  penultimate page retints the installer live.
+
+```sh
+sudo kinstall                      # the wizard
+sudo kinstall --dry-run            # rehearse: logs every command, runs none
+sudo kinstall --save answers.conf  # write an answer file
+sudo kinstall --config answers.conf --unattended
+```
+
+A run logs to `/var/log/kinstall.log`.
 
 ---
 
@@ -435,8 +466,9 @@ kdos/
 │   └── fetch                # downloads every source= URL, runs cargo vendor
 ├── src/
 │   ├── kpkg/                # the package manager
-│   ├── kinstall/            # the installer
-│   └── packages/            # ports that are ours: splash, appbox, theme, art
+│   ├── libs/                # our C libraries: libkbase, libkcolor, libktui
+│   └── packages/            # ports that are ours: installer, splash, appbox,
+│                            #   theme helper, art
 ├── fs/                      # copied verbatim into the rootfs
 ├── script/                  # build.py orchestrator + phase directories
 ├── testing/                 # per-port build tests, QEMU runners

@@ -13,7 +13,7 @@ case "$1" in
         echo "[KDOS] Starting $NAME..."
         mkdir -p /run/dbus
         # --nofork keeps it in foreground for supervision
-        supervise "$NAME" "$DAEMON --system --nofork"
+        supervise "$NAME" "$DAEMON" --system --nofork
         ;;
     stop)
         stop_service "$NAME"

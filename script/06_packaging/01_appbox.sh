@@ -71,7 +71,7 @@ case "${1:-}" in
     else
         # No monolithic tar in the repo (LFS 2G/file limit): stream it back
         # out of the chunked image/ directory instead.
-        python3 /ports/appbox/assemble "$IMGDIR" | \
+        kdos-appbox image assemble "$IMGDIR" | \
             podman --root "$STORAGE" --runroot /tmp/appbox-runroot load
     fi
     # Flatten to ONE layer. This rootful store is later mounted by ROOTLESS
@@ -110,37 +110,7 @@ rm -rf /tmp/appbox-runroot
 grep -q kdos-appbox "$STORAGE"/*-images/images.json
 
 echo "Remapping ownership to the rootless layout..."
-python3 - "$STORAGE" <<'EOF'
-import os, stat, sys
-
-BASE_UID = 1000        # kdos
-SUB_BASE = 100000      # fs/etc/subuid: kdos:100000:65536
-SUB_COUNT = 65536
-
-def remap(n):
-    # Idempotent: ids already in the rootless layout stay put, so an
-    # accidental second pass cannot corrupt the store.
-    if n == BASE_UID or SUB_BASE <= n < SUB_BASE + SUB_COUNT:
-        return n
-    if n == 0:
-        return BASE_UID
-    return SUB_BASE + min(n, SUB_COUNT) - 1
-
-count = 0
-for root, dirs, files in os.walk(sys.argv[1]):
-    for name in dirs + files:
-        p = os.path.join(root, name)
-        st = os.lstat(p)
-        os.lchown(p, remap(st.st_uid), remap(st.st_gid))
-        # chown strips setuid/setgid from regular files; put the mode back
-        if not stat.S_ISLNK(st.st_mode) and st.st_mode & 0o6000:
-            os.chmod(p, stat.S_IMODE(st.st_mode))
-        count += 1
-top = sys.argv[1]
-st = os.lstat(top)
-os.lchown(top, remap(st.st_uid), remap(st.st_gid))
-print("remapped %d entries" % count)
-EOF
+kdos-appbox image remap-uids "$STORAGE"
 chown kdos:kdos /home/kdos/.local /home/kdos/.local/share \
                 /home/kdos/.local/share/containers
 # The rootful load/prune leaves an empty volumes/ skeleton whose remapped

@@ -1,0 +1,197 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   kdos-getty <ttyN> <getty...>
+ *
+ * Console font and palette must be loaded AFTER fbcon takes the console, not
+ * in rcS: the kernel defers the take-over until something writes to a VT, and
+ * the take-over re-initialises every VT with the kernel's built-in font —
+ * wiping anything setfont loaded earlier. So the sequence lives here, wrapping
+ * getty: one write ends the deferral, then the font (ter-kdos32n carries λ and
+ * the double box glyphs the banner needs) and the phosphor palette are loaded
+ * onto this VT.
+ *
+ * The take-over is scheduled work, so a fixed sleep is a race that first boot
+ * reliably loses: wait for fbcon to report it in the kernel ring, then retry
+ * setfont until showconsolefont confirms 16x32 is what the VT actually has.
+ *
+ * setfont/showconsolefont/setvtrgb/loadkeys are still exec'd rather than
+ * reimplemented as KDFONTOP/PIO_CMAP/KDSKBENT calls. Deliberate: setfont's
+ * real job is parsing a gzipped PSF and its unicode table, and a second
+ * implementation of that is a new way to produce exactly the wrong-font bug
+ * this wrapper exists to prevent. What DID move into C is the polling — the
+ * kernel ring is read with klogctl() instead of forking dmesg fifty times.
+ * ---------------------------------
+ */
+
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+#include <sys/klog.h>
+#include <sys/wait.h>
+
+#include "kdos-tools.h"
+
+#define FBCON_MARK "fbcon: Taking over console"
+#define FONT       "ter-kdos32n"
+#define FONT_GEOM  "16x32"
+
+static void nap(long ms)
+{
+	struct timespec ts = { ms / 1000, (ms % 1000) * 1000000L };
+	nanosleep(&ts, NULL);
+}
+
+/* SYSLOG_ACTION_READ_ALL — the whole ring, without disturbing it. */
+static int kmsg_has(const char *needle)
+{
+	static char buf[1 << 18];
+	int n = klogctl(3, buf, (int)sizeof(buf) - 1);
+	if (n <= 0)
+		return 0;
+	buf[n] = 0;
+	return strstr(buf, needle) != NULL;
+}
+
+static int run(const char *const *argv, char *out, size_t outcap)
+{
+	int fd[2] = { -1, -1 };
+	if (out && pipe(fd) < 0)
+		return -1;
+
+	pid_t pid = fork();
+	if (pid < 0)
+		return -1;
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDWR);
+		if (null >= 0) {
+			dup2(null, STDERR_FILENO);
+			if (!out)
+				dup2(null, STDOUT_FILENO);
+		}
+		if (out) {
+			dup2(fd[1], STDOUT_FILENO);
+			close(fd[0]);
+			close(fd[1]);
+		}
+		execvp(argv[0], (char *const *)argv);
+		_exit(127);
+	}
+	if (out) {
+		close(fd[1]);
+		ssize_t got = read(fd[0], out, outcap - 1);
+		out[got > 0 ? got : 0] = 0;
+		close(fd[0]);
+	}
+	int st;
+	while (waitpid(pid, &st, 0) < 0)
+		if (errno != EINTR)
+			return -1;
+	return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
+}
+
+int getty_main(int argc, char **argv)
+{
+	if (argc < 3) {
+		fprintf(stderr, "usage: kdos-getty <ttyN> <getty> [args...]\n");
+		return 1;
+	}
+	const char *tty = argv[1];
+
+	/* Boot-time diagnostics: /run is tmpfs, so this costs nothing
+	 * persistent and `kdos doctor` gets something to read when a VT comes
+	 * up with the wrong font. */
+	char logpath[128];
+	snprintf(logpath, sizeof(logpath), "/run/kdos-getty.%s.log", tty);
+	int lg = open(logpath, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+	if (lg >= 0) {
+		dup2(lg, STDERR_FILENO);
+		if (lg > STDERR_FILENO)
+			close(lg);
+	}
+
+	char dev[128];
+	snprintf(dev, sizeof(dev), "/dev/%s", tty);
+
+	int vt = open(dev, O_WRONLY | O_CLOEXEC);
+	if (vt >= 0 && kb_have_prog("setfont")) {
+		/* End fbcon's deferred take-over. Neither escape sequences NOR
+		 * SPACES do it — escapes are eaten by the VT state machine and
+		 * spaces are skipped by the render path; only a real glyph
+		 * reaches the putc that arms the take-over (verified: ' ' ->
+		 * nothing, 'K' -> "fbcon: Taking over console"). So: one K,
+		 * cleared away before anyone sees it. */
+		if (write(vt, "K\033[2J\033[H", 8) < 0)
+			fprintf(stderr, "kdos-getty: cannot write %s\n", dev);
+
+		for (int i = 0; i < 50 && !kmsg_has(FBCON_MARK); i++)
+			nap(100);
+
+		for (int i = 0; i < 10; i++) {
+			const char *set[] = { "setfont", "-C", dev, FONT, NULL };
+			run(set, NULL, 0);
+
+			char shown[256];
+			const char *show[] = { "showconsolefont", "-i", "-C",
+					       dev, NULL };
+			run(show, shown, sizeof(shown));
+			if (!strncmp(shown, FONT_GEOM, strlen(FONT_GEOM)))
+				break;
+			nap(200);
+		}
+
+		/* Palette BEFORE the final clear: cells painted before the
+		 * palette load keep the old colours, and a screen half-cleared
+		 * in pure black and half in phosphor-black looks smudged. */
+		if (kb_have_prog("setvtrgb") && kb_path_exists("/etc/vtrgb")) {
+			pid_t pid = fork();
+			if (pid == 0) {
+				int in = open(dev, O_RDONLY | O_CLOEXEC);
+				if (in >= 0)
+					dup2(in, STDIN_FILENO);
+				dup2(vt, STDOUT_FILENO);
+				int null = open("/dev/null", O_WRONLY);
+				if (null >= 0)
+					dup2(null, STDERR_FILENO);
+				execlp("setvtrgb", "setvtrgb", "/etc/vtrgb",
+				       (char *)NULL);
+				_exit(127);
+			}
+			if (pid > 0) {
+				int st;
+				while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
+					;
+			}
+		}
+
+		/* /etc/keymap is written by the installer. loadkeys is
+		 * console-wide rather than per-VT, so doing it again on the
+		 * second getty is a no-op; it lives here rather than in rcS
+		 * only because this is the one place guaranteed to run after
+		 * fbcon has finished resetting the VTs. */
+		char km[128] = {0};
+		if (kb_have_prog("loadkeys") &&
+		    kb_read_line_file("/etc/keymap", km, sizeof(km)) > 0 && km[0]) {
+			const char *lk[] = { "loadkeys", km, NULL };
+			run(lk, NULL, 0);
+		}
+
+		if (write(vt, "\033[2J\033[H", 7) < 0)
+			fprintf(stderr, "kdos-getty: cannot clear %s\n", dev);
+	}
+	if (vt >= 0)
+		close(vt);
+
+	execvp(argv[2], argv + 2);
+	fprintf(stderr, "kdos-getty: cannot exec %s: %s\n", argv[2],
+		strerror(errno));
+	return 127;
+}

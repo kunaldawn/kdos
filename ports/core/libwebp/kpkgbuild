@@ -8,23 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Library and support programs to encode and decode images in WebP format
-# depends	: libjpeg-turbo libpng libtiff
-
-name=libwebp
-version=1.6.0
-release=1
-source="http://downloads.webmproject.org/releases/webp/$name-$version.tar.gz"
-
-build() {
-	./configure --prefix=/usr           \
-	            --enable-libwebpmux     \
-	            --enable-libwebpdemux   \
-	            --enable-libwebpdecoder \
-	            --enable-libwebpextras  \
-	            --enable-swap-16bit-csp \
-	            --disable-static
-	make
-	make DESTDIR=$PKG install
-}
-
+name        = libwebp
+version     = 1.6.0
+release     = 1
+source      = http://downloads.webmproject.org/releases/webp/$name-$version.tar.gz
+description = Library and support programs to encode and decode images in WebP format
+depends     = libjpeg-turbo libpng libtiff

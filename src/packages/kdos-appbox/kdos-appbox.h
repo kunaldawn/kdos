@@ -18,51 +18,15 @@
 #include <stdarg.h>
 #include <stddef.h>
 
+#include "kbase.h"
+
 #define DEFAULT_BOX   "kdos-apps"
 #define DEFAULT_IMAGE "localhost/kdos-appbox:latest"
 #define APP_TABLE     "/usr/share/kdos/alien-apps"
 
-#define MAX_ARGV   256
 #define MAX_LINE   4096
 
 /* ---------------------------------------------------------------- util.c */
-
-void  die(const char *fmt, ...);
-void  warn(const char *fmt, ...);
-void *xmalloc(size_t n);
-char *xstrdup(const char *s);
-
-/* A growable argv being assembled for exec. */
-typedef struct {
-	const char *v[MAX_ARGV];
-	int n;
-} Argv;
-
-void argv_add(Argv *a, const char *s);
-void argv_addf(Argv *a, const char *fmt, ...);
-void argv_end(Argv *a);
-
-/*
- * run_quiet   fork/exec, discard output, return the exit status.
- * run_capture same, but copy up to n-1 bytes of stdout into buf (NUL
- *             terminated, trailing newline stripped).
- * run_detach  fork/exec and do NOT wait. Used for notifications, which must
- *             never gate a launch.
- */
-int  run_quiet(const Argv *a);
-int  run_capture(const Argv *a, char *buf, size_t n);
-void run_detach(const Argv *a);
-
-const char *runtime_dir(void);
-const char *home_dir(void);
-char       *path_join(const char *a, const char *b);
-int         mkdir_p(const char *path);
-int         file_exists(const char *path);
-int         read_file(const char *path, char *buf, size_t n);
-int         write_file(const char *path, const char *data);
-
-/* flock() wrapper. Returns the held fd, or -1. Close to release. */
-int lock_file(const char *path, int nonblock);
 
 void tracef(const char *fmt, ...);
 void notify(const char *summary, const char *body);
@@ -123,10 +87,20 @@ int  app_list(void);
 
 int tui_main(void);
 
+/* ----------------------------------------------------------- launchers.c */
+
+/* Regenerate the launchers, the mime cache, the alien-apps table and the
+ * /usr/local/bin shims from an image's /usr/share/applications. */
+int cmd_genlaunchers(const char *srcdir, const char *fsroot);
+
+/* --------------------------------------------------------------- image.c */
+
+/* pack / assemble / remap-uids — the appbox image in and out of the repo. */
+int cmd_image(int argc, char **argv);
+
 /* ---------------------------------------------------------------- main.c */
 
 extern const char *g_box;
-extern int         g_verbose;
 
 int cmd_run(int argc, char **argv);
 int cmd_ensure(void);

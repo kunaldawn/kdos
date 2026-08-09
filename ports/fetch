@@ -12,11 +12,28 @@
 
 # Smart fetch - Download sources to ports directories
 # Reads kpkgbuild files to determine what to download
+#
+# A recipe is a config file, not a shell script, so this cannot source it any
+# more. `kpkg meta` prints the same fields as shell assignments and this evals
+# those instead — one parser, in C, shared with the build. kpkg is compiled
+# here on the host for that, the way ports/appbox/fetch already compiles
+# kdos-appbox for `image pack`: it links nothing but libc and takes a second.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT_REPO="$SCRIPT_DIR/core"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+KPKG="${KPKG_BIN:-$SCRIPT_DIR/.kpkg-meta}"
+
+if [ ! -x "$KPKG" ]; then
+    echo "==> Building the recipe reader..."
+    ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE \
+        -I"$REPO_ROOT/src/libs/libkbase" -I"$REPO_ROOT/src/libs/libkpkg" \
+        -I"$REPO_ROOT/src/packages/kdos-kpkg" -o "$KPKG" \
+        "$REPO_ROOT"/src/packages/kdos-kpkg/*.c \
+        "$REPO_ROOT"/src/libs/libkbase/*.c "$REPO_ROOT"/src/libs/libkpkg/*.c
+fi
 
 echo "==> Fetching sources for all ports..."
 
@@ -32,12 +49,14 @@ fetch_port() {
         return 0
     fi
     
-    # Source the kpkgbuild to get source URLs
-    unset name version source vendoring pypackages
-    . ./kpkgbuild 2>/dev/null || {
-        echo "⚠  $portname: Failed to source kpkgbuild"
+    # Ask kpkg for the metadata; it prints shell assignments.
+    unset name version release source vendoring pypackages
+    local meta
+    meta=$("$KPKG" meta . 2>/dev/null) || {
+        echo "⚠  $portname: Failed to read kpkgbuild"
         return 0
     }
+    eval "$meta"
     
     [ -z "$source" ] && [ -z "$pypackages" ] && {
         echo "⚠  $portname: No source or pypackages defined"

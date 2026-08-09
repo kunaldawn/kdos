@@ -13,7 +13,7 @@ Project and are licensed LGPL-2.1-or-later.
 
 This derivative is distributed under the same licence, LGPL-2.1. The complete
 corresponding source is the contents of theme/ (the vendored upstream
-stylesheet, unmodified) together with vendor.py and gengtk.py, which are the
+stylesheet, unmodified) together with vendor.py and kdos-theme (src/packages/kdos-theme/gtk.c), which are the
 only things that produce the installed files.
 
 What KDOS changed
@@ -35,7 +35,7 @@ What KDOS changed
    one.
 
 5. Every literal colour in the stylesheets is remapped to the KDOS palette by
-   gengtk.py: hues are mapped by family (blue/green/purple to the accent,
+   kdos-theme gtk: hues are mapped by family (blue/green/purple to the accent,
    yellow/orange/brown to the secondary, red to the urgent colour, greys to a
    faintly tinted neutral) with lightness preserved, and the ~40 semantic
    names (window/view/headerbar/sidebar/card/popover/dialog and the

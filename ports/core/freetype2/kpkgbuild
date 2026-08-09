@@ -8,16 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Font rasterization library
-# depends	: libpng
-
-name=freetype2
-version=2.14.1
-release=1
-source="https://downloads.sourceforge.net/freetype/freetype-$version.tar.xz"
-
-build() {
-	./configure --prefix=/usr --enable-freetype-config
-	make
-	make DESTDIR=$PKG install
-}
+name        = freetype2
+version     = 2.14.1
+release     = 1
+source      = https://downloads.sourceforge.net/freetype/freetype-$version.tar.xz
+description = Font rasterization library
+depends     = libpng

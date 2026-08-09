@@ -8,17 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: Just-in-time compiler and drop-in replacement for Lua.
+name        = luajit
+version     = 20250826
+release     = 1
 
-name=luajit
-version=20250826
-vrsn=2.1
-release=1
-source="$name-$version.tar.gz::https://github.com/openresty/luajit2/archive/v${vrsn}-$version.tar.gz"
+vrsn        = 2.1
 
-build() {
-	# These flags are recommended by OpenResty.
-	local xcflags="-DLUAJIT_ENABLE_LUA52COMPAT -DLUAJIT_NUMMODE=2"
-	make amalg PREFIX=/usr XCFLAGS="$xcflags"
-	make PREFIX=/usr DESTDIR=$PKG install
-}
+source      = $name-$version.tar.gz::https://github.com/openresty/luajit2/archive/v${vrsn}-$version.tar.gz
+description = Just-in-time compiler and drop-in replacement for Lua.
