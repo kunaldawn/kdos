@@ -8,31 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Linux Pluggable Authentication Modules (libpam + pam_unix against /etc/shadow)
-# homepage	: https://github.com/linux-pam/linux-pam
-# depends	: meson ninja pkgconf flex
-
-name=pam
-version=1.7.2
-release=1
-source="https://github.com/linux-pam/linux-pam/releases/download/v$version/Linux-PAM-$version.tar.xz"
-
-build() {
-	meson setup build \
-		--prefix=/usr --libdir=lib --sysconfdir=/etc \
-		--buildtype=release \
-		-D i18n=disabled \
-		-D docs=disabled \
-		-D audit=disabled \
-		-D econf=disabled \
-		-D logind=disabled \
-		-D elogind=disabled \
-		-D selinux=disabled \
-		-D nis=disabled \
-		-D pam_userdb=disabled \
-		-D examples=false \
-		-D xtests=false \
-		-D pam_unix=enabled
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = pam
+version     = 1.7.2
+release     = 1
+source      = https://github.com/linux-pam/linux-pam/releases/download/v$version/Linux-PAM-$version.tar.xz
+description = Linux Pluggable Authentication Modules (libpam + pam_unix against /etc/shadow)
+homepage    = https://github.com/linux-pam/linux-pam
+depends     = meson ninja pkgconf flex

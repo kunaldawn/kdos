@@ -8,28 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Desktop portal D-Bus framework (Wayland screencast / file-picker integration)
-# homepage	: https://github.com/flatpak/xdg-desktop-portal
-# depends	: meson glib dbus pipewire fuse json-glib gst-plugins-base gdk-pixbuf
-
-name=xdg-desktop-portal
-version=1.20.4
-release=1
-source="https://github.com/flatpak/xdg-desktop-portal/releases/download/$version/xdg-desktop-portal-$version.tar.xz"
-
-build() {
-	meson setup build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
-		-Ddocumentation=disabled \
-		-Dman-pages=disabled \
-		-Dgeoclue=disabled \
-		-Dgudev=disabled \
-		-Dsystemd=disabled \
-		-Dflatpak-interfaces=disabled \
-		-Dtests=disabled \
-		-Dinstalled-tests=false \
-		-Dsandboxed-image-validation=disabled \
-		-Dsandboxed-sound-validation=disabled
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = xdg-desktop-portal
+version     = 1.20.4
+release     = 1
+source      = https://github.com/flatpak/xdg-desktop-portal/releases/download/$version/xdg-desktop-portal-$version.tar.xz
+description = Desktop portal D-Bus framework (Wayland screencast / file-picker integration)
+homepage    = https://github.com/flatpak/xdg-desktop-portal
+depends     = meson glib dbus pipewire fuse json-glib gst-plugins-base gdk-pixbuf

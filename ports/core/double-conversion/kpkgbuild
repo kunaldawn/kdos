@@ -8,25 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Binary-decimal and decimal-binary routines for IEEE doubles (Qt6 dep)
-# homepage	: https://github.com/google/double-conversion
-# depends	: cmake
-
-name=double-conversion
-version=3.3.0
-release=1
-source="https://github.com/google/double-conversion/archive/refs/tags/v$version.tar.gz"
-
-build() {
-	mkdir -p build
-	cd build
-	cmake .. \
-		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_INSTALL_PREFIX=/usr \
-		-DCMAKE_INSTALL_LIBDIR=lib \
-		-DBUILD_SHARED_LIBS=ON \
-		-DBUILD_TESTING=OFF
-	make
-	make DESTDIR=$PKG install
-}
+name        = double-conversion
+version     = 3.3.0
+release     = 1
+source      = https://github.com/google/double-conversion/archive/refs/tags/v$version.tar.gz
+description = Binary-decimal and decimal-binary routines for IEEE doubles (Qt6 dep)
+homepage    = https://github.com/google/double-conversion
+depends     = cmake

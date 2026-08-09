@@ -16,7 +16,7 @@ case "$1" in
         fi
         echo "[KDOS] Starting $NAME..."
         # -n = don't daemonise (stay foreground for supervision)
-        supervise "$NAME" "$DAEMON -n"
+        supervise "$NAME" "$DAEMON" -n
         ;;
     stop)
         stop_service "$NAME"

@@ -8,19 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: delta — a syntax-highlighting pager for git, diff, and grep output
-# homepage	: https://github.com/dandavison/delta
-# depends	: rust
-
-name=delta
-version=0.19.2
-release=1
-source="https://github.com/dandavison/delta/archive/refs/tags/$version.tar.gz"
-vendoring=rust
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-
-	cargo build --release --frozen --offline
-	install -Dm755 target/release/delta $PKG/usr/bin/delta
-}
+name        = delta
+version     = 0.19.2
+release     = 1
+source      = https://github.com/dandavison/delta/archive/refs/tags/$version.tar.gz
+description = delta — a syntax-highlighting pager for git, diff, and grep output
+homepage    = https://github.com/dandavison/delta
+depends     = rust
+vendoring   = rust

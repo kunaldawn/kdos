@@ -8,16 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: lsof — lists open files held by running processes
-# homepage	: https://github.com/lsof-org/lsof
-
-name=lsof
-version=4.99.6
-release=1
-source="https://github.com/lsof-org/lsof/releases/download/$version/lsof-$version.tar.gz"
-
-build() {
-	./configure --prefix=/usr --mandir=/usr/share/man
-	make man8_MANS=
-	make DESTDIR=$PKG install man8_MANS=
-}
+name        = lsof
+version     = 4.99.6
+release     = 1
+source      = https://github.com/lsof-org/lsof/releases/download/$version/lsof-$version.tar.gz
+description = lsof — lists open files held by running processes
+homepage    = https://github.com/lsof-org/lsof

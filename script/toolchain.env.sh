@@ -12,7 +12,7 @@
 
 # Environment configuration for KDOS build
 
-# --- build-system metadata (parsed by script/build.py, never sourced) ---
+# --- build-system metadata (PARSED by the orchestrator, never sourced) ---
 export KDOS_PHASE_TITLE="Cross Toolchain"
 export KDOS_PHASE_DESC="cross binutils + gcc targeting x86_64-kdos-linux-musl"
 export KDOS_SNAPSHOT_PATHS="cross fs mark"

@@ -8,20 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Convert X font from Bitmap Distribution Format to Portable Compiled Format
-# depends	: util-macros xorgproto
-
-name=bdftopcf
-version=1.1
-release=1
-source="https://www.x.org/pub/individual/app/$name-$version.tar.bz2"
-
-build() {
-	./configure \
-		--prefix=/usr \
-        --sysconfdir=/etc \
-        --localstatedir=/var \
-		--disable-devel-docs
-	make
-	make DESTDIR=$PKG install
-}
+name        = bdftopcf
+version     = 1.1
+release     = 1
+source      = https://www.x.org/pub/individual/app/$name-$version.tar.bz2
+description = Convert X font from Bitmap Distribution Format to Portable Compiled Format
+depends     = util-macros xorgproto

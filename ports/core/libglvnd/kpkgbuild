@@ -8,22 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: The GL Vendor-Neutral Dispatch library (EGL/GLES, no GLX)
-# depends	: meson
-
-name=libglvnd
-version=1.7.0
-release=1
-source="https://github.com/NVIDIA/libglvnd/archive/v$version/$name-v$version.tar.gz"
-
-build() {
-	meson setup build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib \
-		-D x11=disabled \
-		-D glx=disabled \
-		-D gles1=false \
-		-D egl=true \
-		-D tls=false
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = libglvnd
+version     = 1.7.0
+release     = 1
+source      = https://github.com/NVIDIA/libglvnd/archive/v$version/$name-v$version.tar.gz
+description = The GL Vendor-Neutral Dispatch library (EGL/GLES, no GLX)
+depends     = meson

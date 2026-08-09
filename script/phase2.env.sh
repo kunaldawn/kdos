@@ -12,7 +12,7 @@
 
 # Environment configuration for KDOS build
 
-# --- build-system metadata (parsed by script/build.py, never sourced) ---
+# --- build-system metadata (PARSED by the orchestrator, never sourced) ---
 export KDOS_PHASE_TITLE="Self-Hosting Bootstrap"
 export KDOS_PHASE_DESC="rebuild tar musl zlib binutils gcc inside the chroot"
 export KDOS_SNAPSHOT_PATHS="fs"

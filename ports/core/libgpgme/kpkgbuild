@@ -8,20 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: GnuPG Made Easy — high-level crypto API used by Podman/Skopeo
-# homepage	: https://www.gnupg.org/software/gpgme/
-# depends	: libgpg-error libassuan gnupg
-
-name=libgpgme
-version=1.24.3
-release=1
-source="https://www.gnupg.org/ftp/gcrypt/gpgme/gpgme-$version.tar.bz2"
-
-build() {
-	# musl needs _LARGEFILE64_SOURCE to expose ino64_t/off64_t used in
-	# src/posix-io.c's dirent64 struct (glibc defines them unconditionally).
-	export CFLAGS="${CFLAGS:-} -D_LARGEFILE64_SOURCE"
-	./configure --prefix=/usr --disable-gpg-test --disable-gpgsm-test --disable-g13-test
-	make
-	make DESTDIR=$PKG install
-}
+name        = libgpgme
+version     = 1.24.3
+release     = 1
+source      = https://www.gnupg.org/ftp/gcrypt/gpgme/gpgme-$version.tar.bz2
+description = GnuPG Made Easy — high-level crypto API used by Podman/Skopeo
+homepage    = https://www.gnupg.org/software/gpgme/
+depends     = libgpg-error libassuan gnupg

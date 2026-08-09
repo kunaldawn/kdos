@@ -8,17 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: A small utility to modify the ELF executable files.
-# depends: gcc make
-# homepage: https://github.com/NixOS/patchelf
-
-name=patchelf
-version=0.18.0
-release=1
-source="https://github.com/NixOS/patchelf/releases/download/$version/patchelf-$version.tar.bz2"
-
-build() {
-  ./configure --prefix=/usr
-  make
-  DESTDIR=$PKG make install
-}
+name        = patchelf
+version     = 0.18.0
+release     = 1
+source      = https://github.com/NixOS/patchelf/releases/download/$version/patchelf-$version.tar.bz2
+description = A small utility to modify the ELF executable files.
+homepage    = https://github.com/NixOS/patchelf
+depends     = gcc make
