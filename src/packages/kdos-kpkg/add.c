@@ -76,16 +76,17 @@ static int split_pkgname(const char *base, char *name, char *ver, char *rel,
  * out before installation and was never a file the package owns. */
 static char *manifest(const char *pkgfile, size_t *len)
 {
-	char *buf = kb_calloc(1, 1 << 20);
+	KbBuf raw = {0};
 	KbArgv a = {0};
 	kb_argv_add(&a, "tar");
 	kb_argv_add(&a, "-tf");
 	kb_argv_add(&a, pkgfile);
 	kb_argv_end(&a);
-	if (kb_run_capture(&a, buf, 1 << 20) != 0) {
-		free(buf);
+	if (kb_run_capture_buf(&a, &raw) != 0) {
+		kb_buf_free(&raw);
 		return NULL;
 	}
+	char *buf = raw.p;
 
 	KbBuf out = {0};
 	for (char *line = buf, *next; line && *line; line = next) {

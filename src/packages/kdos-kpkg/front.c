@@ -280,17 +280,17 @@ static char *find_package(const KpConf *c, const char *name)
 
 static char *manifest_of(const char *pkgfile)
 {
-	char *buf = kb_calloc(1, 1 << 20);
+	KbBuf out = {0};
 	KbArgv a = {0};
 	kb_argv_add(&a, "tar");
 	kb_argv_add(&a, "-tf");
 	kb_argv_add(&a, pkgfile);
 	kb_argv_end(&a);
-	if (kb_run_capture(&a, buf, 1 << 20) != 0) {
-		free(buf);
+	if (kb_run_capture_buf(&a, &out) != 0) {
+		kb_buf_free(&out);
 		return NULL;
 	}
-	return buf;
+	return out.p ? out.p : kb_strdup("");
 }
 
 /* `kpkg meta` — the recipe's fields as shell assignments, single-quoted.
