@@ -8,20 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: yq — a portable YAML / JSON / TOML / XML processor (Go, Mike Farah)
-# homepage	: https://github.com/mikefarah/yq
-# depends	: go
-
-name=yq
-version=4.53.2
-release=1
-source="https://github.com/mikefarah/yq/archive/v$version.tar.gz"
-vendoring=go
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-
-	export CGO_ENABLED=0
-	go build -ldflags "-s -w" -o yq
-	install -Dm755 yq $PKG/usr/bin/yq
-}
+name        = yq
+version     = 4.53.2
+release     = 1
+source      = https://github.com/mikefarah/yq/archive/v$version.tar.gz
+description = yq — a portable YAML / JSON / TOML / XML processor (Go, Mike Farah)
+homepage    = https://github.com/mikefarah/yq
+depends     = go
+vendoring   = go

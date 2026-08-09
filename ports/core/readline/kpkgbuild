@@ -8,16 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: GNU readline library
-# depends: ncurses
-
-name=readline
-version=8.3
-release=1
-source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz"
-
-build() {
-	./configure --host=$TARGET --prefix=/usr
-	make SHLIB_LIBS="-lncursesw"
-	make DESTDIR=$PKG install
-}
+name        = readline
+version     = 8.3
+release     = 1
+source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz
+description = GNU readline library
+depends     = ncurses

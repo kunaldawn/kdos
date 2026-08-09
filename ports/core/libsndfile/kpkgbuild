@@ -8,29 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Library for reading and writing files containing sampled sound (WAV, AIFF, FLAC, etc.)
-# homepage	: https://libsndfile.github.io/libsndfile/
-# depends	: cmake alsa-lib
-
-name=libsndfile
-version=1.2.2
-release=1
-source="https://github.com/libsndfile/libsndfile/releases/download/$version/libsndfile-$version.tar.xz"
-
-build() {
-	mkdir -p build
-	cd build
-	cmake .. \
-		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_INSTALL_PREFIX=/usr \
-		-DCMAKE_INSTALL_LIBDIR=lib \
-		-DBUILD_SHARED_LIBS=ON \
-		-DBUILD_PROGRAMS=OFF \
-		-DBUILD_EXAMPLES=OFF \
-		-DBUILD_TESTING=OFF \
-		-DENABLE_EXTERNAL_LIBS=OFF \
-		-DENABLE_MPEG=OFF
-	make
-	make DESTDIR=$PKG install
-}
+name        = libsndfile
+version     = 1.2.2
+release     = 1
+source      = https://github.com/libsndfile/libsndfile/releases/download/$version/libsndfile-$version.tar.xz
+description = Library for reading and writing files containing sampled sound (WAV, AIFF, FLAC, etc.)
+homepage    = https://libsndfile.github.io/libsndfile/
+depends     = cmake alsa-lib

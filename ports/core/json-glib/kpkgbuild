@@ -8,23 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: JSON parser/serializer library built on GLib (used by xdg-desktop-portal)
-# homepage	: https://gitlab.gnome.org/GNOME/json-glib
-# depends	: meson glib
-
-name=json-glib
-version=1.10.8
-release=1
-source="https://download.gnome.org/sources/json-glib/${version%.*}/json-glib-$version.tar.xz"
-
-build() {
-	meson setup build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib \
-		-Dintrospection=disabled \
-		-Ddocumentation=disabled \
-		-Dgtk_doc=disabled \
-		-Dman=false \
-		-Dtests=false
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = json-glib
+version     = 1.10.8
+release     = 1
+source      = https://download.gnome.org/sources/json-glib/${version%.*}/json-glib-$version.tar.xz
+description = JSON parser/serializer library built on GLib (used by xdg-desktop-portal)
+homepage    = https://gitlab.gnome.org/GNOME/json-glib
+depends     = meson glib

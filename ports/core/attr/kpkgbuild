@@ -8,19 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Utilities to administer the extended attributes on filesystem objects
-
-name=attr
-version=2.5.2
-release=1
-source="https://download.savannah.gnu.org/releases/$name/$name-$version.tar.gz"
-
-build() {
-	export CFLAGS="$CFLAGS -include libgen.h"
-	./configure --prefix=/usr     	\
-	            --bindir=/bin     	\
-	            --sysconfdir=/etc   \
-	            --disable-nls
-	make
-	make DESTDIR=$PKG install
-}
+name        = attr
+version     = 2.5.2
+release     = 1
+source      = https://download.savannah.gnu.org/releases/$name/$name-$version.tar.gz
+description = Utilities to administer the extended attributes on filesystem objects

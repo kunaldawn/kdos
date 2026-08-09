@@ -8,21 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Container network stack (network backend for Podman, Rust)
-# homepage	: https://github.com/containers/netavark
-# depends	: rust nftables
-
-name=netavark
-version=1.17.2
-release=1
-source="https://github.com/containers/netavark/archive/refs/tags/v$version.tar.gz"
-vendoring=rust
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-	export CARGO_HOME="$SRC_ROOT/.cargo"
-	export RUSTFLAGS="-C target-feature=-crt-static"
-	export LIBCLANG_PATH=/usr/lib
-	cargo build --release --frozen --offline
-	install -Dm755 target/release/netavark "$PKG/usr/libexec/podman/netavark"
-}
+name        = netavark
+version     = 1.17.2
+release     = 1
+source      = https://github.com/containers/netavark/archive/refs/tags/v$version.tar.gz
+description = Container network stack (network backend for Podman, Rust)
+homepage    = https://github.com/containers/netavark
+depends     = rust nftables
+vendoring   = rust

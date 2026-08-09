@@ -8,16 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: iotop — top-like utility for I/O (modern C rewrite)
-# homepage	: https://github.com/Tomas-M/iotop
-# depends	: ncurses
-
-name=iotop
-version=1.31
-release=1
-source="https://github.com/Tomas-M/iotop/archive/v$version.tar.gz"
-
-build() {
-	make
-	make DESTDIR=$PKG PREFIX=/usr install
-}
+name        = iotop
+version     = 1.31
+release     = 1
+source      = https://github.com/Tomas-M/iotop/archive/v$version.tar.gz
+description = iotop — top-like utility for I/O (modern C rewrite)
+homepage    = https://github.com/Tomas-M/iotop
+depends     = ncurses

@@ -1,0 +1,18 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+make CFLAGS="-O2 -fPIC"
+cc -shared -Wl,-soname,libstemmer.so.0 -o libstemmer.so.0.0.0 -Wl,--whole-archive libstemmer.a -Wl,--no-whole-archive
+
+install -Dm644 ./include/libstemmer.h $PKG/usr/include/libstemmer.h
+install -D ./libstemmer.so.0.0.0 $PKG/usr/lib/libstemmer.so.0.0.0
+ln -s libstemmer.so.0.0.0 $PKG/usr/lib/libstemmer.so.0
+ln -s libstemmer.so.0 $PKG/usr/lib/libstemmer.so

@@ -13,7 +13,7 @@ case "$1" in
         echo "[KDOS] Starting $NAME..."
         mkdir -p /run/cups
         # -f = run in foreground for supervision
-        supervise "$NAME" "$DAEMON -f"
+        supervise "$NAME" "$DAEMON" -f
         ;;
     stop)
         stop_service "$NAME"

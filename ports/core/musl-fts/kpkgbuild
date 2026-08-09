@@ -8,23 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Implementation of fts(3) for musl libc
 # url		: https://github.com/void-linux/musl-fts
 
-name=musl-fts
-version=1.2.7
-release=1
-source="https://github.com/void-linux/musl-fts/archive/v$version.tar.gz"
-
-build() {
-	sed -i 's/PKG_INSTALLDIR//' configure.ac
-	sed -i '/pkgconfig_DATA/i pkgconfigdir = $(libdir)/pkgconfig' Makefile.am
-	./bootstrap.sh
-	./configure \
-		--prefix=/usr \
-		--sysconfdir=/etc \
-        --libdir=/usr/lib
-
-	make
-	make DESTDIR=$PKG install
-}
+name        = musl-fts
+version     = 1.2.7
+release     = 1
+source      = https://github.com/void-linux/musl-fts/archive/v$version.tar.gz
+description = Implementation of fts(3) for musl libc

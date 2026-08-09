@@ -8,17 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: socat — multipurpose relay (TCP/UNIX/SSL/etc.)
-# homepage	: http://www.dest-unreach.org/socat/
-# depends	: openssl readline
-
-name=socat
-version=1.8.1.1
-release=1
-source="http://www.dest-unreach.org/socat/download/socat-$version.tar.gz"
-
-build() {
-	./configure --prefix=/usr --mandir=/usr/share/man
-	make
-	make DESTDIR=$PKG install
-}
+name        = socat
+version     = 1.8.1.1
+release     = 1
+source      = http://www.dest-unreach.org/socat/download/socat-$version.tar.gz
+description = socat — multipurpose relay (TCP/UNIX/SSL/etc.)
+homepage    = http://www.dest-unreach.org/socat/
+depends     = openssl readline

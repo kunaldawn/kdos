@@ -8,16 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: Collection of utilities for DOS disks in Unix
-
-name=mtools
-version=4.0.49
-release=1
-source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.bz2"
-
-build() {
-	./configure --prefix=/usr \
-	            --sysconfdir=/etc/default
-	make
-	make DESTDIR=$PKG install
-}
+name        = mtools
+version     = 4.0.49
+release     = 1
+source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.bz2
+description = Collection of utilities for DOS disks in Unix

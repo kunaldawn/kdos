@@ -8,23 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: fzf — general-purpose command-line fuzzy finder
-# homepage	: https://github.com/junegunn/fzf
-# depends	: go
-
-name=fzf
-version=0.72.0
-release=1
-source="https://github.com/junegunn/fzf/archive/v$version.tar.gz"
-vendoring=go
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-
-	export CGO_ENABLED=0
-	go build -ldflags "-s -w -X main.version=$version" -o fzf
-	install -Dm755 fzf $PKG/usr/bin/fzf
-	install -Dm644 man/man1/fzf.1 $PKG/usr/share/man/man1/fzf.1
-	install -Dm644 shell/key-bindings.bash $PKG/usr/share/fzf/key-bindings.bash
-	install -Dm644 shell/completion.bash $PKG/usr/share/fzf/completion.bash
-}
+name        = fzf
+version     = 0.72.0
+release     = 1
+source      = https://github.com/junegunn/fzf/archive/v$version.tar.gz
+description = fzf — general-purpose command-line fuzzy finder
+homepage    = https://github.com/junegunn/fzf
+depends     = go
+vendoring   = go

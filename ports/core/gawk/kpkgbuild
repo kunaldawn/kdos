@@ -8,16 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: GNU awk pattern scanning and processing language
-# depends: mpfr gmp
-
-name=gawk
-version=5.3.2
-release=1
-source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
-
-build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-}
+name        = gawk
+version     = 5.3.2
+release     = 1
+source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
+description = GNU awk pattern scanning and processing language
+depends     = mpfr gmp
