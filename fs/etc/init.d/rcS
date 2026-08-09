@@ -38,6 +38,10 @@ mount -a
 # GTK/Wayland apps, GIMP, LibreOffice and fontconfig all fail in ways that look
 # like "the app just doesn't start". Cheap, idempotent, and it always sticks.
 chmod 1777 /tmp
+# fstab may carry a swap entry (the installer writes one for a swap partition
+# or a /swapfile). `mount -a` ignores swap lines, and inittab already has the
+# matching swapoff on shutdown, so this is the only place it gets turned on.
+swapon -a 2>/dev/null || true
 splash ok
 
 # Console font and palette are NOT set here: fbcon's deferred take-over (which

@@ -8,16 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: GNU implementation of the traditional Unix macro processor
-
-name=m4
-version=1.4.20
-release=1
-source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
-
-build() {
-	export CFLAGS="-O2 -pipe -std=gnu17 -D_GL_ATTRIBUTE_NODISCARD=\"\""
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-}
+name        = m4
+version     = 1.4.20
+release     = 1
+source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
+description = GNU implementation of the traditional Unix macro processor

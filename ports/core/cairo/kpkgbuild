@@ -8,26 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: 2D graphics library (Wayland-only build, no X11)
-# depends	: pixman fontconfig freetype2 libpng lzo zlib glib
-
-name=cairo
-version=1.18.4
-release=1
-source="https://gitlab.freedesktop.org/cairo/cairo/-/archive/$version/$name-$version.tar.bz2"
-
-build() {
-	export XML_CATALOG_FILES=/etc/xml/catalog
-
-	meson setup build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib \
-		-D xlib=disabled \
-		-D xcb=disabled \
-		-D xlib-xcb=disabled \
-		-D dwrite=disabled \
-		-D spectre=disabled \
-		-D symbol-lookup=disabled \
-		-D tests=disabled
-	meson compile -C build
-	meson install --no-rebuild -C build --destdir $PKG
-}
+name        = cairo
+version     = 1.18.4
+release     = 1
+source      = https://gitlab.freedesktop.org/cairo/cairo/-/archive/$version/$name-$version.tar.bz2
+description = 2D graphics library (Wayland-only build, no X11)
+depends     = pixman fontconfig freetype2 libpng lzo zlib glib

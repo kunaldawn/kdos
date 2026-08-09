@@ -11,7 +11,7 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
-        supervise "$NAME" "$DAEMON --no-daemon"
+        supervise "$NAME" "$DAEMON" --no-daemon
         ;;
     stop)
         stop_service "$NAME"

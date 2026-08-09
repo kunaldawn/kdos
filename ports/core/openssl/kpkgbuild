@@ -8,34 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Management tools and libraries relating to cryptography
-# homepage	: https://www.openssl.org
-
-name=openssl
-version=3.6.0
-release=1
-source="https://openssl.org/source/$name-$version.tar.gz"
-
-build() {
-	./config \
-		--prefix=/usr \
-		--libdir=lib \
-		--openssldir=/etc/ssl \
-		enable-ec_nistp_64_gcc_128 \
-		enable-camellia \
-		enable-seed \
-		enable-rfc3779 \
-		enable-ktls \
-		enable-argon2 \
-		no-mdc2 \
-		no-ec2m \
-		no-sm2 \
-		no-sm4 \
-		shared \
-		threads \
-		zlib
-
-	make depend
-	make
-	make MANSUFFIX=ssl DESTDIR=$PKG install_sw install_ssldirs install_man_docs
-}
+name        = openssl
+version     = 3.6.0
+release     = 1
+source      = https://openssl.org/source/$name-$version.tar.gz
+description = Management tools and libraries relating to cryptography
+homepage    = https://www.openssl.org

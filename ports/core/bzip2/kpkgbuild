@@ -8,14 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Programs for compressing and decompressing files
-
-name=bzip2
-version=1.0.8
-release=1
-source="https://www.sourceware.org/pub/bzip2/$name-$version.tar.gz"
-
-build() {
-	make CFLAGS="$CFLAGS"
-	make PREFIX=$PKG/usr install
-}
+name        = bzip2
+version     = 1.0.8
+release     = 1
+source      = https://www.sourceware.org/pub/bzip2/$name-$version.tar.gz
+description = Programs for compressing and decompressing files

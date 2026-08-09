@@ -8,19 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: C library for encoding/decoding/manipulating JSON (NetworkManager dep)
-# homepage	: https://github.com/akheron/jansson
-
-name=jansson
-version=2.15.0
-release=1
-source="https://github.com/akheron/jansson/releases/download/v$version/jansson-$version.tar.gz"
-
-build() {
-	./configure \
-		--prefix=/usr \
-		--libdir=/usr/lib \
-		--disable-static
-	make
-	make DESTDIR=$PKG install
-}
+name        = jansson
+version     = 2.15.0
+release     = 1
+source      = https://github.com/akheron/jansson/releases/download/v$version/jansson-$version.tar.gz
+description = C library for encoding/decoding/manipulating JSON (NetworkManager dep)
+homepage    = https://github.com/akheron/jansson

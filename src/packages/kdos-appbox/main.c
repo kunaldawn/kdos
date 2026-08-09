@@ -41,7 +41,6 @@
 #include <unistd.h>
 
 const char *g_box = DEFAULT_BOX;
-int g_verbose;
 
 /*
  * Environment every app inside a box gets.
@@ -56,16 +55,16 @@ int g_verbose;
  *                              qt{5,6}-gtk-platformtheme in the image.
  *   GTK_THEME=KDOS             belt and braces next to gtk-3.0/settings.ini
  */
-static void box_env(Argv *a, const char *image)
+static void box_env(KbArgv *a, const char *image)
 {
 	const char *display;
 
-	argv_add(a, "env");
-	argv_add(a, "GSETTINGS_BACKEND=keyfile");
-	argv_add(a, "NO_AT_BRIDGE=1");
-	argv_add(a, "GTK_A11Y=none");
-	argv_add(a, "QT_QPA_PLATFORMTHEME=gtk3");
-	argv_add(a, "GTK_THEME=KDOS");
+	kb_argv_add(a, "env");
+	kb_argv_add(a, "GSETTINGS_BACKEND=keyfile");
+	kb_argv_add(a, "NO_AT_BRIDGE=1");
+	kb_argv_add(a, "GTK_A11Y=none");
+	kb_argv_add(a, "QT_QPA_PLATFORMTHEME=gtk3");
+	kb_argv_add(a, "GTK_THEME=KDOS");
 
 	/*
 	 * The Breeze style that kdenlive and shotcut pull in paints from its own
@@ -75,7 +74,7 @@ static void box_env(Argv *a, const char *image)
 	 * worse than doing nothing — hence the image label check.
 	 */
 	if (image_has_qt_gtk(image))
-		argv_add(a, "QT_STYLE_OVERRIDE=Fusion");
+		kb_argv_add(a, "QT_STYLE_OVERRIDE=Fusion");
 
 	/*
 	 * Cost a debug cycle: a few apps are X11-only and their own .desktop
@@ -87,13 +86,13 @@ static void box_env(Argv *a, const char *image)
 	 */
 	display = getenv("DISPLAY");
 	if (display && *display) {
-		argv_addf(a, "DISPLAY=%s", display);
+		kb_argv_addf(a, "DISPLAY=%s", display);
 	} else {
 		DIR *d = opendir("/tmp/.X11-unix");
 		struct dirent *e;
 		while (d && (e = readdir(d))) {
 			if (e->d_name[0] == 'X' && e->d_name[1]) {
-				argv_addf(a, "DISPLAY=:%s", e->d_name + 1);
+				kb_argv_addf(a, "DISPLAY=:%s", e->d_name + 1);
 				break;
 			}
 		}
@@ -120,20 +119,20 @@ static void tune_storage(void)
 {
 	char conf[MAX_LINE], mounts[1 << 16], best[256] = {0}, type[64] = {0};
 	char *line, *save;
-	const char *home = home_dir();
+	const char *home = kb_home_dir();
 	size_t homelen = strlen(home);
 
 	snprintf(conf, sizeof(conf), "%s/.config/containers/storage.conf", home);
-	if (file_exists(conf))
+	if (kb_path_exists(conf))
 		return;
 	{
 		char cj[MAX_LINE], buf[4096];
 		snprintf(cj, sizeof(cj), "%s/.local/share/containers/storage/"
 			 "overlay-containers/containers.json", home);
-		if (read_file(cj, buf, sizeof(buf)) > 0 && strstr(buf, "\"id\""))
+		if (kb_read_file(cj, buf, sizeof(buf)) > 0 && strstr(buf, "\"id\""))
 			return;
 	}
-	if (read_file("/proc/mounts", mounts, sizeof(mounts)) < 0)
+	if (kb_read_file("/proc/mounts", mounts, sizeof(mounts)) < 0)
 		return;
 
 	for (line = strtok_r(mounts, "\n", &save); line;
@@ -159,15 +158,15 @@ static void tune_storage(void)
 	{
 		char dir[MAX_LINE];
 		snprintf(dir, sizeof(dir), "%s/.config/containers", home);
-		mkdir_p(dir);
+		kb_mkdir_p(dir);
 	}
-	write_file(conf, "[storage]\ndriver = \"overlay\"\n");
+	kb_write_file(conf, "[storage]\ndriver = \"overlay\"\n");
 }
 
 int cmd_run(int argc, char **argv)
 {
 	Profile p;
-	Argv a = {0};
+	KbArgv a = {0};
 	char state[64];
 	const char *app = argv[0];
 	int i;
@@ -192,33 +191,33 @@ int cmd_run(int argc, char **argv)
 			box_state(g_box, state, sizeof(state));
 		}
 		if (!strcmp(state, "stopping")) {
-			Argv k = {0};
-			argv_add(&k, "podman");
-			argv_add(&k, "kill");
-			argv_add(&k, g_box);
-			argv_end(&k);
-			run_quiet(&k);
+			KbArgv k = {0};
+			kb_argv_add(&k, "podman");
+			kb_argv_add(&k, "kill");
+			kb_argv_add(&k, g_box);
+			kb_argv_end(&k);
+			kb_run(&k);
 			sleep(2);
 			box_state(g_box, state, sizeof(state));
 		}
 		if (!strcmp(state, "stopping")) {
-			Argv r = {0};
+			KbArgv r = {0};
 			notify("Resetting app container",
 			       "The app container was stuck — recreating it.");
-			argv_add(&r, "podman");
-			argv_add(&r, "rm");
-			argv_add(&r, "-f");
-			argv_add(&r, "-t");
-			argv_add(&r, "0");
-			argv_add(&r, g_box);
-			argv_end(&r);
-			run_quiet(&r);
+			kb_argv_add(&r, "podman");
+			kb_argv_add(&r, "rm");
+			kb_argv_add(&r, "-f");
+			kb_argv_add(&r, "-t");
+			kb_argv_add(&r, "0");
+			kb_argv_add(&r, g_box);
+			kb_argv_end(&r);
+			kb_run(&r);
 		}
 	}
 
 	tracef("run %s status=%s", app, state);
 	if (box_ensure(g_box) != 0)
-		die("could not create box '%s'", g_box);
+		kb_die("could not create box '%s'", g_box);
 	tracef("ensured");
 
 	/*
@@ -238,16 +237,16 @@ int cmd_run(int argc, char **argv)
 	}
 
 	tracef("entering");
-	argv_add(&a, "distrobox");
-	argv_add(&a, "enter");
-	argv_add(&a, g_box);
-	argv_add(&a, "--");
+	kb_argv_add(&a, "distrobox");
+	kb_argv_add(&a, "enter");
+	kb_argv_add(&a, g_box);
+	kb_argv_add(&a, "--");
 	box_env(&a, p.image);
 	for (i = 0; i < argc; i++)
-		argv_add(&a, argv[i]);
-	argv_end(&a);
+		kb_argv_add(&a, argv[i]);
+	kb_argv_end(&a);
 	execvp(a.v[0], (char *const *)a.v);
-	die("distrobox: not found");
+	kb_die("distrobox: not found");
 	return 1;
 }
 
@@ -259,7 +258,7 @@ int cmd_ensure(void)
 int cmd_warmup(void)
 {
 	Profile p;
-	Argv a = {0};
+	KbArgv a = {0};
 	char *lockpath;
 	int fd;
 
@@ -268,20 +267,20 @@ int cmd_warmup(void)
 		return 0;
 
 	/* Non-blocking: a second warmup is a no-op, never a queue. */
-	lockpath = path_join(runtime_dir(), "kdos-appbox.warmup.lock");
-	fd = lock_file(lockpath, 1);
+	lockpath = kb_path_join(kb_runtime_dir(), "kdos-appbox.warmup.lock");
+	fd = kb_lock_file(lockpath, 1);
 	free(lockpath);
 	if (fd < 0)
 		return 0;
 
 	if (box_ensure(g_box) == 0) {
-		argv_add(&a, "distrobox");
-		argv_add(&a, "enter");
-		argv_add(&a, g_box);
-		argv_add(&a, "--");
-		argv_add(&a, "true");
-		argv_end(&a);
-		run_quiet(&a);
+		kb_argv_add(&a, "distrobox");
+		kb_argv_add(&a, "enter");
+		kb_argv_add(&a, g_box);
+		kb_argv_add(&a, "--");
+		kb_argv_add(&a, "true");
+		kb_argv_end(&a);
+		kb_run(&a);
 	}
 	close(fd);
 	return 0;
@@ -309,11 +308,11 @@ static int cmd_security(int argc, char **argv)
 	int i, changed = 0;
 
 	if (argc < 1)
-		die("usage: kdos-appbox security <box> [key=value ...]");
+		kb_die("usage: kdos-appbox security <box> [key=value ...]");
 	profile_load(&p, argv[0]);
 	for (i = 1; i < argc; i++) {
 		if (profile_set(&p, argv[i]) != 0)
-			die("unknown setting '%s' (try: network=private, "
+			kb_die("unknown setting '%s' (try: network=private, "
 			    "ipc=private, devices=private, processes=private, "
 			    "home=private, init=yes, image=<ref>)", argv[i]);
 		changed = 1;
@@ -323,7 +322,7 @@ static int cmd_security(int argc, char **argv)
 		return 0;
 	}
 	if (profile_save(&p) != 0)
-		die("could not write the profile");
+		kb_die("could not write the profile");
 	profile_print(&p);
 	if (box_exists(p.name))
 		printf("\nNamespaces cannot be re-flagged on a live container.\n"
@@ -337,17 +336,17 @@ static int cmd_create(int argc, char **argv)
 	int i;
 
 	if (argc < 1)
-		die("usage: kdos-appbox create <box> [key=value ...]");
+		kb_die("usage: kdos-appbox create <box> [key=value ...]");
 	profile_defaults(&p, argv[0]);
 	for (i = 1; i < argc; i++)
 		if (profile_set(&p, argv[i]) != 0)
-			die("unknown setting '%s'", argv[i]);
+			kb_die("unknown setting '%s'", argv[i]);
 	if (box_exists(p.name))
-		die("box '%s' already exists", p.name);
+		kb_die("box '%s' already exists", p.name);
 	if (profile_save(&p) != 0)
-		die("could not write the profile");
+		kb_die("could not write the profile");
 	if (box_create(&p) != 0)
-		die("could not create box '%s'", p.name);
+		kb_die("could not create box '%s'", p.name);
 	printf("created %s\n", p.name);
 	return 0;
 }
@@ -357,9 +356,9 @@ static int cmd_recreate(const char *box)
 	Profile p;
 	profile_load(&p, box);
 	if (box_exists(box) && box_remove(box, 1) != 0)
-		die("could not remove box '%s'", box);
+		kb_die("could not remove box '%s'", box);
 	if (box_create(&p) != 0)
-		die("could not create box '%s'", box);
+		kb_die("could not create box '%s'", box);
 	printf("recreated %s\n", box);
 	return 0;
 }
@@ -397,14 +396,14 @@ static void usage(void)
 static int run_as_shim(const char *name, int argc, char **argv)
 {
 	char cmd[512];
-	char *vec[MAX_ARGV];
+	char *vec[KB_MAX_ARGV];
 	int n = 0, i;
 	char *w, *save;
 
 	if (!app_lookup(name, cmd, sizeof(cmd)))
-		die("unknown alien app '%s' (try: kdos-appbox apps)", name);
+		kb_die("unknown alien app '%s' (try: kdos-appbox apps)", name);
 
-	for (w = strtok_r(cmd, " ", &save); w && n < MAX_ARGV - argc - 1;
+	for (w = strtok_r(cmd, " ", &save); w && n < KB_MAX_ARGV - argc - 1;
 	     w = strtok_r(NULL, " ", &save)) {
 		/* Field codes are .desktop placeholders for the file the user
 		 * picked; from a terminal the user's own argv takes that role. */
@@ -413,7 +412,7 @@ static int run_as_shim(const char *name, int argc, char **argv)
 		vec[n++] = w;
 	}
 	if (!n)
-		die("empty command for '%s'", name);
+		kb_die("empty command for '%s'", name);
 	for (i = 0; i < argc; i++)
 		vec[n++] = argv[i];
 	vec[n] = NULL;
@@ -426,6 +425,7 @@ int main(int argc, char **argv)
 	int i = 1;
 
 	self = self ? self + 1 : argv[0];
+	kb_set_progname("kdos-appbox");
 	tune_storage();
 
 	if (strcmp(self, "kdos-appbox"))
@@ -434,15 +434,15 @@ int main(int argc, char **argv)
 	while (i < argc && argv[i][0] == '-') {
 		if (!strcmp(argv[i], "-b") || !strcmp(argv[i], "--box")) {
 			if (i + 1 >= argc)
-				die("--box needs a name");
+				kb_die("--box needs a name");
 			g_box = argv[++i];
 		} else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--verbose")) {
-			g_verbose = 1;
+			kb_proc_verbose = 1;
 		} else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
 			usage();
 			return 0;
 		} else {
-			die("unknown option '%s'", argv[i]);
+			kb_die("unknown option '%s'", argv[i]);
 		}
 		i++;
 	}
@@ -454,7 +454,7 @@ int main(int argc, char **argv)
 #define CMD(s) (!strcmp(argv[i], s))
 	if (CMD("run")) {
 		if (i + 1 >= argc)
-			die("usage: kdos-appbox run <app> [args...]");
+			kb_die("usage: kdos-appbox run <app> [args...]");
 		return cmd_run(argc - i - 1, argv + i + 1);
 	}
 	if (CMD("ensure"))
@@ -467,26 +467,34 @@ int main(int argc, char **argv)
 		return box_list();
 	if (CMD("apps"))
 		return app_list();
+	if (CMD("image"))
+		return cmd_image(argc - i - 1, argv + i + 1);
+	if (CMD("genlaunchers")) {
+		if (i + 2 >= argc)
+			kb_die("usage: kdos-appbox genlaunchers "
+			       "<desktop-dir> <fs-root>");
+		return cmd_genlaunchers(argv[i + 1], argv[i + 2]);
+	}
 	if (CMD("create"))
 		return cmd_create(argc - i - 1, argv + i + 1);
 	if (CMD("remove")) {
 		if (i + 1 >= argc)
-			die("usage: kdos-appbox remove <box>");
+			kb_die("usage: kdos-appbox remove <box>");
 		return box_remove(argv[i + 1], 1);
 	}
 	if (CMD("recreate")) {
 		if (i + 1 >= argc)
-			die("usage: kdos-appbox recreate <box>");
+			kb_die("usage: kdos-appbox recreate <box>");
 		return cmd_recreate(argv[i + 1]);
 	}
 	if (CMD("install")) {
 		if (i + 1 >= argc)
-			die("usage: kdos-appbox install <pkg>");
+			kb_die("usage: kdos-appbox install <pkg>");
 		return app_install(g_box, argv[i + 1]);
 	}
 	if (CMD("uninstall")) {
 		if (i + 1 >= argc)
-			die("usage: kdos-appbox uninstall <pkg>");
+			kb_die("usage: kdos-appbox uninstall <pkg>");
 		return app_uninstall(g_box, argv[i + 1]);
 	}
 	if (CMD("refresh"))

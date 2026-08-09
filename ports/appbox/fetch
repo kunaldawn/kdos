@@ -37,7 +37,20 @@ rm -f appbox.tar
 $ENGINE save -o appbox.tar "$IMAGE"
 
 echo "==> Chunking archive into image/ (git-committable, LFS-sized)"
-python3 pack appbox.tar image
+# kdos-appbox is a TARGET binary, and this runs on the host — so build a host
+# copy of it for the one subcommand needed here. It links nothing but libc, so
+# this is a two-second compile and not a toolchain.
+REPO="$(cd ../.. && pwd)"
+HOSTBIN="$(mktemp -d)/kdos-appbox"
+cc -O2 -std=c11 -D_GNU_SOURCE -o "$HOSTBIN" \
+	-I"$REPO/src/libs/libkbase" -I"$REPO/src/libs/libktui" \
+	-I"$REPO/src/libs/libkcolor" -I"$REPO/src/libs/libkxdg" \
+	-I"$REPO/src/packages/kdos-appbox" \
+	"$REPO"/src/packages/kdos-appbox/*.c "$REPO"/src/libs/libkbase/*.c \
+	"$REPO"/src/libs/libktui/*.c "$REPO"/src/libs/libkcolor/*.c \
+	"$REPO"/src/libs/libkxdg/*.c
+"$HOSTBIN" image pack appbox.tar image
+rm -rf "$(dirname "$HOSTBIN")"
 
 echo "==> Extracting app icons"
 # Every Icon= any .desktop in the image references, wherever the file lives —

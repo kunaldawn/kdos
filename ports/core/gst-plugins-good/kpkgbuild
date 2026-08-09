@@ -8,23 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: GStreamer "good" plugin set (well-maintained LGPL plugins)
-# homepage	: https://gstreamer.freedesktop.org/
-# depends	: gst-plugins-base libpng libjpeg-turbo
-
-name=gst-plugins-good
-version=1.28.0
-release=1
-source="https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz"
-
-build() {
-	meson setup build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \
-		--buildtype=release \
-		-Ddoc=disabled \
-		-Dexamples=disabled \
-		-Dtests=disabled \
-		-Dnls=disabled
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = gst-plugins-good
+version     = 1.28.0
+release     = 1
+source      = https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz
+description = GStreamer "good" plugin set (well-maintained LGPL plugins)
+homepage    = https://gstreamer.freedesktop.org/
+depends     = gst-plugins-base libpng libjpeg-turbo

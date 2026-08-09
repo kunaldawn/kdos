@@ -8,16 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Message Digest functions from BSD systems
-# homepage	: https://www.hadrons.org/software/libmd
-
-name=libmd
-version=1.1.0
-release=1
-source="https://libbsd.freedesktop.org/releases/libmd-$version.tar.xz"
-
-build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-}
+name        = libmd
+version     = 1.1.0
+release     = 1
+source      = https://libbsd.freedesktop.org/releases/libmd-$version.tar.xz
+description = Message Digest functions from BSD systems
+homepage    = https://www.hadrons.org/software/libmd
