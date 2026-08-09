@@ -109,13 +109,13 @@ distrobox-init never apt-gets anything on first enter.
 
 `make build` runs `--network none`, so the image is built on the HOST with
 `make fetch-apps` → `ports/appbox/appbox.tar` (gitignored, over LFS's 2G/file
-limit), which `ports/appbox/pack` immediately explodes into
+limit), which `kdos-appbox image pack` immediately explodes into
 **`ports/appbox/image/`**: one zstd file per docker-archive member (layer blobs
 split at 1.5 G), all LFS-tracked, plus `INDEX.json`. That directory and
 `icons/` ARE committed — the repo alone must build the full ISO. The
 Containerfile is one `RUN` per segment, so editing a segment only rewrites that
 layer's blob in git. `script/06_packaging/01_appbox.sh` loads the tar directly
-if present, else `ports/appbox/assemble` streams it out of the chunks into
+if present, else `kdos-appbox image assemble` streams it out of the chunks into
 `podman load`. A missing image is a warning; the ISO still builds.
 
 No container is created at build time. Launchers call `kdos-appbox run <app>`,
@@ -141,9 +141,9 @@ create), so container init normally happens while the desktop is still settling.
   multi-layer-rebuilt dirs like `/etc/alternatives` come up EMPTY in the box.
 - **Packaging snapshots exclude** `fs/home/kdos/.local/share/containers/*`.
 
-### genlaunchers.py writes four things
+### `kdos-appbox genlaunchers` writes four things
 
-`ports/appbox/genlaunchers.py <desktop-dir> <fs-root>` parses the image's own
+`kdos-appbox genlaunchers <desktop-dir> <fs-root>` parses the image's own
 desktop entries. Dropping any one output breaks something visible:
 
 | Output | Why |
@@ -228,10 +228,15 @@ that is already on disk (the bake flattens the appbox to one layer):
 
 ### `kdos-appbox` is a C program (`src/packages/kdos-appbox`)
 
-`/usr/local/bin/kdos-appbox` is ~1200 lines of C: `main.c` (CLI + launch path),
-`box.c` (boxes and profiles), `app.c` (app table, install/refresh), `tui.c`
-(ncurses front end), `util.c` (process/path/lock helpers). Built against
-ncursesw.
+`/usr/local/bin/kdos-appbox` is C: `main.c` (CLI + launch path), `box.c`
+(boxes and profiles), `app.c` (app table, install/refresh), `tui.c` (the
+front end), `launchers.c` (`genlaunchers`), `image.c` (`image
+pack|assemble|remap-uids`), `util.c` (the trace file and the notification).
+It links
+**libkbase + libktui + libkcolor and nothing else** — the process/path/lock
+helpers `util.c` used to carry are libkbase's now, and `tui.c` is libktui, so
+the `# depends : ncurses` line is gone. The TUI reads
+`$XDG_CACHE_HOME/kdos/theme` and adopts the accent the desktop is wearing.
 
 Two rules it exists to keep:
 
@@ -244,7 +249,7 @@ Two rules it exists to keep:
 - **There is no `system()` and no shell anywhere in the program.** App names,
   package names and file arguments all arrive from .desktop files and argv; a
   shell in the middle turns any of them into an injection point. Everything
-  execs through an `Argv` builder.
+  execs through libkbase's `KbArgv` builder.
 
 Invoked through a symlink named after an app, it dispatches on its own basename
 busybox-style, so `gimp photo.png` works from a terminal with no shell wrapper.
@@ -431,7 +436,8 @@ column, so a padded key runs past it and the value overwrites the separator
 `penguin.h` — the same quantised crop of `kdos.png` the boot splash draws — so
 banner, splash and mascot cannot drift apart. Do not hand-edit it. Three
 constraints are baked into that script: the TTY font has FULL BLOCK and the
-double-line box characters but **no half blocks or shades**, so one cell is one
+double-line box characters but **no half blocks** (and ░ ▒ but no ▓ — grep
+`uni/xos4-2.uni` before using any glyph), so one cell is one
 solid block; character cells are twice as tall as wide, so the sampling grid
 must be ~2× wider than tall or the penguin stretches; and the banner must stay
 under ~30 lines or it scrolls off a 33-row TTY. Amber, the bright rim and the
@@ -469,8 +475,8 @@ shares the home directory and nothing else, so `/usr/share/themes` and
 
 | Path | Written by | Read by |
 |---|---|---|
-| `~/.themes/KDOS/` | `write_gtk` → `gengtk.py` | GTK3 and non-libadwaita GTK4 apps |
-| `~/.icons/KDOS/` | `write_icons` → `genicons.py` | every toolkit, host and box |
+| `~/.themes/KDOS/` | `write_gtk` → `kdos-theme gtk` | GTK3 and non-libadwaita GTK4 apps |
+| `~/.icons/KDOS/` | `write_icons` → `kdos-theme icons` | every toolkit, host and box |
 | `~/.config/gtk-{3,4}.0/gtk.css` | `write_gtk` | libadwaita (which ignores themes entirely) |
 | `~/.icons/KDOS-cursors/` | kdos-cursors' `/etc/skel` copy | cursor lookup in the box |
 
@@ -488,7 +494,7 @@ cover enough widgets, and blunt `*:selected` rules turn GIMP's Opacity/Size/
 Spacing labels into solid green bars. `adw-gtk3` is the libadwaita stylesheet
 ported to GTK3 and is written against named colours end to end (~125
 `@define-color` at the top, almost nothing below), so
-`src/packages/kdos-gtk-theme/gengtk.py` rewrites the palette and every widget
+`kdos-theme gtk` rewrites the palette and every widget
 follows — GTK3 apps end up genuinely identical to GTK4 ones. `vendor.py` prunes
 the upstream release (dark variant only; `gtk.css` dropped as byte-identical to
 `gtk-dark.css`; unreferenced assets dropped — the rest are neutral grey or
@@ -535,7 +541,7 @@ Theme `KDOS`, a **vendored, pruned, recoloured Papirus**,
   so dropping blue strands every base name). Papirus-Dark is merged over
   Papirus. Aliases stay symlinks; any left dangling by the prune is dropped
   iteratively (links point at links).
-- **`genicons.py`** is the build step, and `kdos theme` re-runs it per accent.
+- **`kdos-theme icons`** is the build step, and `kdos theme` re-runs it per accent.
 
 Colours are mapped by FAMILY, not flattened: blue/green/purple → accent,
 yellow/orange/brown → secondary, red → urgent, near-greys → faintly tinted
@@ -543,12 +549,12 @@ neutral, each keeping its own lightness and saturation. Deliberate — Papirus
 colour-codes mimetypes, and collapsing every hue onto one accent turns a folder
 of files into a wall of identical green lozenges. A PDF stays red and an audio
 file stays amber while folders, devices and places go phosphor. The same mapping
-is in `kdos-gtk-theme/gengtk.py`, so icons and widgets agree about what "green"
+is in libkcolor's `kcol_remap`, so icons and widgets agree about what "green"
 means.
 
 Because Papirus's `apps/` is not vendored, the theme would have NO Applications
 context and every app icon — COSMIC's own included — would come through
-untinted. So `genicons.py` also recolours two directories into `scalable/apps`:
+untinted. So `kdos-theme icons` also recolours two directories into `scalable/apps`:
 all of `Cosmic/`, and `com.system76.*` ONLY from `hicolor/` (packaging installs
 the ALIEN apps' icons into that same tree, and a phosphor Firefox logo is
 vandalism, not theming). **Sweep every size directory, not just `scalable/`** —
@@ -560,8 +566,10 @@ The KDOS marks (`distributor-logo-kdos` / `start-here`, and the tux over
 `com.system76.CosmicAppLibrary` + `com.system76.CosmicPanelAppButton`, the
 dock's app-library button) are installed by the GENERATOR, not the kpkgbuild —
 `kdos theme <accent>` re-runs it against `$HOME` and has to produce a complete
-theme on its own. `genmarks.py` cuts those PNGs from `kdos.png`; **crop at the
-GLOW alpha threshold, not the SOLID one**, or the outer glow is clipped.
+theme on its own. The PNGs themselves are committed under `marks/`; the
+host-only `genmarks.py` is what cuts them from `kdos.png` when they need
+recutting, and nothing on the target or in the build ever runs it. **Crop at
+the GLOW alpha threshold, not the SOLID one**, or the outer glow is clipped.
 
 **`/usr/share/icons/hicolor/index.theme` must exist** or every icon lookup
 silently fails. The `hicolor-icon-theme` port provides it. Appbox app icons are
@@ -579,7 +587,7 @@ split:
   each upstream — over two thirds of the theme — so that decimation is most of
   the 27 MB → 4.4 MB cut. `art/` is LFS-tracked; `art/UPSTREAM` records the
   release.
-- **`gencursors.py`** recolours `art/` into the palette. Luminance maps onto a
+- **`kdos-theme cursors`** recolours `art/` into the palette. Luminance maps onto a
   dark-green→accent ramp, except `wait`/`progress`, which ramp to **amber** —
   the same "working on it" colour the boot splash uses. No SVG toolchain, no
   clickgen, no network at build time.
@@ -608,11 +616,259 @@ splash, the wallpaper, the TTY and the palette.
 
 ## The `kdos` command
 
-`fs/usr/local/bin/kdos` is the front door: `help` (commands + COSMIC keybind
-cheat sheet), `theme`, `status`, `doctor`, `app`, `version`. `kdos-shot` and
-`kdos-fetch-app` / `kdos-fetch-static` sit alongside it. `kdos doctor` checks
-the things that have actually broken on this distro — including
-`readlink /proc/self/root`, the switch_root trap above.
+`kdos` is the front door: `help` (commands + COSMIC keybind cheat sheet),
+`theme`, `status`, `doctor`, `app`, `version`. `kdos doctor` checks the things
+that have actually broken on this distro — including `readlink
+/proc/self/root`, the switch_root trap above.
+
+It is C now, in **`src/packages/kdos-tools`**, along with `kdos-banner`,
+`kdos-shot`, `kdos-fetch-app`, `kdos-fetch-static`, `ksvc`/`service` and
+`kdos-getty` — one binary dispatched on its own basename, installed under
+every name. Nothing of it is left in `fs/`.
+
+Two things that came out of the move:
+
+- **The palette is libkcolor's.** `kdos` used to carry its own copy of the
+  four-scheme table and a `mix_hex` to go with it; that copy and the
+  installer's were edited separately.
+- **`kdos-fetch-app` no longer interpolates an app name into a shell string.**
+  It built `bash -c "... sudo apt install -y '$APP' ..."`, which the OUTER
+  shell expanded before the inner one parsed it — a name containing a quote
+  broke out and ran as the box's root. The in-box package-manager fallback is
+  still shell, because that is what it is, but the name arrives as `$1`.
+
+Verified against the bash version: `kdos theme` produces byte-identical
+`gtk.css` ×2, foot, btop, starship, both panel RON files and the state file
+for **all four accents**, and `kdos help` is byte-identical. `kdos-banner
+--plain` is byte-identical too, multi-byte column alignment included.
+
+`kdos-desktop` and `kdos-desktop-start` are **deliberately still `/bin/sh`**.
+Every line in them is a fix for something that broke — the guid-less bus
+address, the flock, the portal restart ordering — they take no untrusted
+input, and rewriting them buys nothing but risk.
+
+---
+
+## The C libraries — `src/libs/`
+
+Static archives, `libk*`, **linking nothing but musl**. That is the constraint
+the whole set exists under: libktui has to be usable in phase 1, before any
+library exists to link against. If a lib ever needs a real `-l`, every phase-1
+consumer moves to phase 4 with it.
+
+| Lib | Prefix | Owns |
+|---|---|---|
+| `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach`** |
+| `libkcolor` | `kcol_` | **the palette table**, hex/HLS, `kcol_mix`, the hue-family classifier, `kcol_remap`, `kcol_retint_text` |
+| `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, immediate-mode widgets, modals, text furniture |
+| `libkxdg` | `kxdg_` | desktop entries, matching what `RawConfigParser(strict=False)` did with them |
+| `libkpkg` | `kp_` | the package database, the ports tree, `# depends` parsing, the dependency solver |
+| `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
+
+Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
+libkbase` and `libkbuild → libkbase`, and nothing points back up.
+
+Three rules the extraction exists to keep, each one a bug that was already
+there:
+
+- **Symbols are prefixed.** `Rect`, `Event`, `Ui`, `xstrdup`, `read_file` were
+  all unprefixed, and `kdos-appbox` had already declared its *own* `xstrdup`
+  and a `read_file` with different length semantics. Two of our own programs
+  could not be linked together.
+- **`ui` is private.** The frame state used to be a public struct that
+  applications assigned to field by field — `ui.consumed = 1` in two dozen
+  places in the installer alone. It is `static` in `ktui_widget.c` now, behind
+  `ktui_consume()` / `ktui_focus_get()` / `ktui_wheel_take()` /
+  `ktui_focus_rect()`. Same for the draw extent: `draw_maxy` was a global the
+  caller wrote to, and is `ktui_extent_reset()` / `ktui_extent()`.
+- **Chrome ids are the library's business.** `ui.c` used to hardcode the
+  installer's `UI_ID_SIDEBAR`. Chrome now registers through
+  `ktui_hit_chrome(rect, id)` with caller-local ids and reads back with
+  `ktui_chrome_clicked(id)`; the reserved range and the "never joins the Tab
+  ring, never drags the page scroll" rule stay inside libktui.
+
+And one libkbase rule: **a library does not own the exit path.** `kb_calloc`
+calls whatever `kb_set_oom_handler()` was given (the installer hands it
+`ktui_term_shutdown`) instead of knowing that a `term_shutdown` exists and
+that the program is called "kinstall". `kb_set_progname()` supplies the
+prefix for that message and for `kb_die`/`kb_warn`.
+
+### libkcolor is the one palette
+
+`KCOL_SCHEMES(X)` in `kcolor.h` is an **X-macro**, so every consumer expands
+the same literals into its own table at compile time — libktui projects them
+onto its eight VT slots (`deep` is the one colour a terminal has no use for),
+and the theme generators expand them into CSS, SVG and Xcursor. Nobody keeps
+a second copy of the numbers.
+
+**`kcol_to_hls` / `kcol_from_hls` / `kcol_remap` reproduce python's `colorsys`
+exactly**, including the odd `2.0 - maxc - minc`, the modulo on a negative
+hue, and `round()`'s half-to-even. That is not pedantry: the vendored Papirus
+and Bibata artwork is *committed*, and a C generator that rounds differently
+diffs against files already in git. Verified over 8476 colours × 4 schemes
+against CPython. Do not "clean up" the operation order.
+
+libkcolor stays off libm for the same reason libktui does — a phase-1
+consumer cannot link one. `pymod1` subtracts in a loop and the rounding is
+done by hand rather than with `fmod`/`nearbyint`.
+
+`kcol_mix` (integer, percent) and `kcol_mixf` (float, 0..1) are **not
+interchangeable** — they disagree by a unit on some inputs, and each generated
+file was written against exactly one of them. `kcol_retint_text` is the whole
+of KDOS's "SVG" and "CSS" recolouring: a `#rrggbb`/`#rgb` token scanner,
+matching python's `#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b` including the trailing
+word boundary, so `#39ff14ff` is left alone rather than half-rewritten. There
+is no SVG parser and no CSS parser anywhere in the tree.
+
+---
+
+## kdos-theme — the generators
+
+`src/packages/kdos-theme/` is one binary with three subcommands, replacing
+`gengtk.py`, `genicons.py` and `gencursors.py`:
+
+```sh
+kdos-theme gtk     <out> [accent] [--src DIR]
+kdos-theme icons   <out> [accent] [--src DIR] [--marks DIR]
+kdos-theme cursors <out> [accent] [--src DIR]
+kdos-theme accents
+```
+
+`--src`/`--marks` beat `$KDOS_GTK_SRC` / `$KDOS_ICON_ART` / `$KDOS_ICON_MARKS`
+/ `$KDOS_CURSOR_ART`, which beat the installed `/usr/share/kdos/…`. The three
+art packages call it from their `build()` against `$PORT_SRC`; `kdos theme`
+calls it against `$HOME`; `06_packaging/00_theme.sh` gets it via
+`kdos theme phosphor` with `HOME=/etc/skel`.
+
+**This is what took python3 off the target.** `gengtk.py` and `genicons.py`
+were installed into `/usr/share/kdos` and run by `kdos theme`; nothing on the
+shipped system runs python now.
+
+Output was verified **byte-identical to the python generators for all four
+accents** — 10792 icons, 12462 symlinks, 6 stylesheets, 32 cursor shapes,
+`diff -r` clean. Two things had to be reproduced exactly to get there, and
+both are noted in the source: python's `round()` is half-to-**even**, and
+`re.sub`'s greedy `\s*$` **swallows the file's trailing newline** after the
+last `@define-color`.
+
+### The appbox image tools
+
+`kdos-appbox image` replaces `ports/appbox/pack`, `ports/appbox/assemble` and
+the python heredoc that used to sit inside `01_appbox.sh`:
+
+| Subcommand | Runs where | Was |
+|---|---|---|
+| `image pack <tar> <dir>` | host, from `ports/appbox/fetch` | `ports/appbox/pack` |
+| `image assemble <dir>` | **inside the chroot**, from `01_appbox.sh` | `ports/appbox/assemble` |
+| `image remap-uids <store>` | inside the chroot | the inline `python3 - <<EOF` |
+
+`assemble` is why this mattered: it ran in the chroot, so python3 was a
+*packaging* dependency as well as a runtime one. `libkbase`'s `kb_tar_*` is a
+minimal ustar reader/writer — the only archives it ever sees are `podman save`
+output — and `zstd` is still exec'd rather than linked, so kdos-appbox keeps
+its zero-`-l` property.
+
+The INDEX.json format is unchanged and was verified **both ways**: the C
+`assemble` reads a python-written index, and the python `assemble` reads a
+C-written one. The committed `ports/appbox/image/` chunks do not need
+regenerating.
+
+`ports/appbox/fetch` runs on the host, where no target binary exists, so it
+compiles kdos-appbox itself for the one subcommand it needs. That is a
+two-second `cc` of a program that links nothing.
+
+Known limit, unchanged from the python version: `kdos theme <accent>` does not
+retint the cursors, because the cursor `art/` is not installed to the target.
+The generator itself is fully parameterised now, so shipping `art/` is all
+that stands in the way.
+
+---
+
+## kinstall — the installer
+
+`src/packages/kdos-installer/` is built by `script/01_phase1/13_kinstall.sh`
+with the **cross** compiler, alongside `src/libs/libkbase` and
+`src/libs/libktui` on the same command line. The whole set links against
+**nothing** — not even ncurses — which is why it can live in phase 1 and
+exists on every tree from the first bootable image onward. Do not give any of
+the three a library dependency without moving this build to phase 4. The
+binary is still `/usr/bin/kinstall`; a `kpkgbuild` sits beside the sources so
+a running KDOS can rebuild it natively.
+
+| File | What it owns |
+|---|---|
+| `probe.c` | /sys + superblock + GPT reader; a small blkid |
+| `pages.c` | the ten wizard pages |
+| `install.c` | the forked install child and its line protocol |
+| `conf.c` | the answer file |
+| `main.c` | chrome, the poll loop, CLI |
+
+Everything else it used to own — the terminal, the cell buffer, the input
+layer, the widgets, the modals, the palette — is libktui (see **The C
+libraries**).
+
+**libkcolor is on that build line too**, because libktui's `ktui_theme.c`
+includes `kcolor.h` — the palette numbers live there and nowhere else.
+Leaving it out builds fine on the host, where `testing/selftest.sh` passes it,
+and fails only in the cross build.
+
+Five decisions carry the design:
+
+- **Nothing is written before the summary.** Every page fills `cfg` and only
+  `cfg`; the install step is the single point of no return. The Python
+  installer it replaces partitioned in the middle of the questionnaire, so
+  "back" did not exist. `Next` on the summary page is deliberately refused —
+  the install starts from the button and only from the button.
+- **The whole UI is eight colours.** A 512-glyph console font makes the VT
+  steal the foreground intensity bit for the 9th glyph bit, so colours 8-15 are
+  unreachable as foreground and `A_BOLD` changes the FONT PAGE rather than the
+  weight — never emit it on a VT. Eight slots mean the tty and a truecolor
+  `foot` window render the same picture. On a VT the installer saves the
+  palette with `GIO_CMAP`, installs its own with `PIO_CMAP` and restores
+  exactly what `kdos-getty`'s setvtrgb loaded; elsewhere the same slots go out
+  as 24-bit or 256-colour SGR.
+- **The mouse works on tty1 with no gpm.** The Linux console has no mouse
+  reporting at all, so `input.c` opens `/dev/input/event*`, keeps its own
+  pointer (relative mice scaled by the real cell size read from
+  `/sys/class/graphics/fb0/virtual_size`, absolute devices — QEMU's usb-tablet
+  — mapped directly) and draws it as an inverted cell. Under a terminal
+  emulator it uses SGR-1006 instead and never touches evdev.
+- **The install runs in a forked child** speaking `S/K/P/N/L/F/D` lines back
+  over a pipe, so the work stays sequential code and the parent stays a
+  single-threaded poll loop that never blocks on a 4 GB rsync. The child
+  redirects its own stdio to `/dev/null` and keeps the protocol on its own fd;
+  nothing but `emit()` can reach the pipe. **No `system()`, no shell** — device
+  paths and user names all arrive from menus.
+- **Chrome takes hit ids from a reserved range** (`UI_ID_SIDEBAR`), never from
+  `ui_id()`. The sidebar draws before the page, so claiming real focus ids
+  there pushed every control on every page ten places down the Tab ring and
+  left the caret parked on a decoration — typing did nothing at all.
+
+Things the installer needed from the rest of the tree, all now present:
+
+- `kdos-getty` loads `/etc/keymap` with `loadkeys` (the installer writes it).
+- `rcS` runs `swapon -a` after `mount -a`; nothing else ever did, so the swap
+  option would otherwise have been decorative.
+- **fstab is appended to, never replaced.** The shipped file carries the
+  tmpfs `/tmp` with `mode=1777`; overwriting it is the /tmp bug above, arriving
+  a week later and looking like "GIMP does not start".
+- Renaming the user rewrites `passwd`, `group` (membership lists *and* the
+  primary group's own name), `shadow`, the home directory, and the
+  `--autologin kdos` in `inittab`. Miss the last one and the installed system
+  logs nobody in.
+- Kernel and initramfs are copied **onto the ESP** and the generated
+  `refind.conf` points at those FAT paths. rEFInd can read the ext4 root only
+  through its filesystem driver, and a boot that depends on a driver load is a
+  boot that fails silently after a kernel update.
+
+Known gaps, each for a missing port rather than a missing feature: no LUKS
+(`cryptsetup` is not installed and the initramfs cannot unlock anything), no
+btrfs/xfs/f2fs (no mkfs), and the time zone is written as a **POSIX TZ string**
+into `/etc/profile.d/20-timezone.sh` because there is no `tzdata` — musl parses
+those directly, DST rules included.
+
+Iterate without booting: `kinstall --dry-run` logs every command and executes
+none, and `--save`/`--config`/`--unattended` give it an answer file.
 
 ---
 
@@ -622,20 +878,33 @@ the things that have actually broken on this distro — including
 kdos/
 ├── ports/
 │   ├── core/<name>/
-│   │   ├── kpkgbuild            # the recipe (sourced bash; no shebang)
+│   │   ├── kpkgbuild            # declarative metadata — parsed, never sourced
+│   │   ├── build.sh             # the build; bash, cwd = $SRC
+│   │   ├── postinstall.sh       # optional install-time hook (4 ports)
 │   │   └── <name>-<ver>.tar.*   # cached upstream tarball (LFS)
-│   ├── appbox/                  # Containerfile, genlaunchers.py, image/ chunks
+│   ├── appbox/                  # Containerfile, fetch, image/ chunks
 │   └── fetch                    # downloads all source= URLs; vendoring=rust|go|node|python
 ├── src/
-│   ├── kpkg/                    # kpkg, kpkgadd, kpkgbuild, kpkgdel, kpkgdepends
-│   ├── kinstall/                # ncurses-style installer (Python)
+│   ├── libs/                    # our C libraries, static, no external deps
+│   │   ├── libkbase/            # kb_*  alloc/string/file/proc/lock helpers
+│   │   ├── libkcolor/           # kcol_* the palette table + colour maths
+│   │   ├── libktui/             # ktui_* terminal, widgets, mouse, modals
+│   │   ├── libkxdg/             # kxdg_* desktop entries
+│   │   ├── libkpkg/             # kp_*   db, ports tree, dependency solver
+│   │   └── libkbuild/           # kbuild_* phases, plans, snapshot inventory
+│   ├── build/
+│   │   └── kdosbuild/           # the build orchestrator (C, host-only)
 │   └── packages/                # ports that are OURS (see Three Rings)
+│       ├── kdos-installer/      # the installer (C, zero libraries)
+│       ├── kdos-kpkg/           # kpkg + the four names it answers to
+│       ├── kdos-theme/          # the GTK/icon/cursor generators
+│       └── kdos-tools/          # kdos, ksvc/service, kdos-getty, banner,
+│                                #   shot, fetch-app, fetch-static
 ├── fs/                          # copied verbatim into the rootfs
 │   ├── etc/{inittab,fstab,profile,profile.d,init.d,skel,kpkg.conf}
-│   ├── usr/local/bin/           # kdos, kdos-desktop, kdos-banner, app shims
-│   ├── usr/local/sbin/kdos-getty
+│   ├── usr/local/bin/           # kdos-desktop, alien-app shims
 │   └── usr/share/{kdos,backgrounds}
-├── script/                      # build.py orchestrator + phase dirs + util/
+├── script/                      # phase dirs + util/ + kdosbuild.sh
 ├── testing/                     # per-port build tests, qemu-hw runner
 ├── docs/screenshots/            # README images (captured from QEMU)
 ├── Dockerfile                   # Alpine build sandbox
@@ -648,12 +917,19 @@ kdos/
 
 ## Build system
 
-`make build` → builds the `os-dev` Alpine image → runs `python3 script/build.py`
-inside it with `--network none`.
+`make build` → builds the `os-dev` Alpine image → runs `script/kdosbuild.sh`
+inside it with `--network none`, which compiles `src/build/kdosbuild` (a
+two-second `cc` of a program that links nothing but libc) and runs it.
 
-`build.py` discovers phase directories and runs each as either **numbered shell
-scripts** (`00_*.sh`, `01_*.sh`, …) or **a `packages.txt`** (port names;
+The orchestrator discovers phase directories and runs each as either **numbered
+shell scripts** (`00_*.sh`, `01_*.sh`, …) or **a `packages.txt`** (port names;
 `kpkgdepends` resolves order, then `kpkg install -f <pkg>` per package).
+
+**`script/build.py` and `script/buildlib/` are gone.** kdosbuild is the
+orchestrator; there is no second driver and no `DRIVER` switch. It also has a
+headless mode, which the python one never did — `curses.wrapper` died with
+`setupterm: could not find terminal` the moment stdout was not a tty, so a
+build could not be run from anything but an interactive shell.
 
 | Phase dir | Title |
 |---|---|
@@ -673,19 +949,19 @@ scripts** (`00_*.sh`, `01_*.sh`, …) or **a `packages.txt`** (port names;
 
 **Anything a chroot command prints is parsed.** `kpkgdepends` writes the install
 order to stdout and nothing else, so `chroot_exec.sh` logs diagnostics to
-`build/logs/chroot.log`. build.py reads stdout only and validates every token
+`build/logs/chroot.log`. kdosbuild reads stdout only and validates every token
 against `^[A-Za-z0-9][A-Za-z0-9._+-]*$`; noise fails loudly instead of being
 installed as a package.
 
 ### Phase snapshots
 
 Every completed phase is snapshotted to `build/snapshots/<phase>/`. **What gets
-snapshotted is declared by the phase**, in a metadata block that build.py
+snapshotted is declared by the phase**, in a metadata block the orchestrator
 *parses* (never sources — sourcing would run those files' `rm -rf
 /var/cache/kpkg/work` on the build container):
 
 ```bash
-# --- build-system metadata (parsed by script/build.py, never sourced) ---
+# --- build-system metadata (PARSED by the orchestrator, never sourced) ---
 export KDOS_PHASE_TITLE="Toolchain & Core Libraries"
 export KDOS_PHASE_DESC="compilers, build systems, interpreters, base libraries"
 export KDOS_SNAPSHOT_PATHS="fs"                 # relative to build/
@@ -739,11 +1015,11 @@ Three things make that safe:
   tree under phase 1's name.
 - **`kpkg install -f` genuinely forces.** It resolves against an empty db and
   rebuilds only the packages named on the command line; dependencies keep the
-  normal skip-if-installed behaviour. Because of that, build.py passes `-f`
+  normal skip-if-installed behaviour. Because of that, kdosbuild passes `-f`
   **only** for ports the plan selected — passing it blanketly would rebuild all
   ~350 packages.
 - **Mark-file guards stand down for a step you picked.** 17 scripts start with
-  `if [ -f "$MARK/x" ] && [ "${KDOS_REPLAY:-0}" != "1" ]`; build.py exports
+  `if [ -f "$MARK/x" ] && [ "${KDOS_REPLAY:-0}" != "1" ]`; kdosbuild exports
   `KDOS_REPLAY=1` for explicitly named steps and `chroot_exec.sh` forwards it.
 
 **Don't re-run an early phase on a tree already ahead of it** — its snapshot
@@ -772,18 +1048,316 @@ entries win; runtime-added entries are appended back.
 (`.icons`, `.themes`, `.local/share/applications`) — it clears them before
 copying skel.
 
+### libkbuild — the deciding half of the orchestrator
+
+`src/libs/libkbuild/` is phase discovery, the phase-env metadata block, the
+build plan and the snapshot inventory: the part of the orchestrator that
+**decides**. It reads and it chooses; creating archives and running phases is
+kdosbuild's.
+
+**The env files are PARSED, never sourced** — several end with
+`rm -rf /var/cache/kpkg/work`, which at source time hits the build
+CONTAINER's filesystem, not the target's. So only `export NAME=VALUE` lines
+are read, only five keys are honoured (`CHROOT` plus the four `KDOS_*`), and a
+value must be a literal: no expansion, and an unterminated quote reads as
+empty.
+
+A declared snapshot path is either kept or **reported as rejected** — never
+quietly repaired. Snapshot and restore delete and re-extract those paths as
+root, so absolute, empty, `.` and anything with a `..` component is refused.
+(`..foo` is a real name and is allowed; only a whole `..` component counts.)
+
+The **build plan** (`kb_plan.c`) is the narrowing `--phases` / `--steps` /
+`--rebuild` do, plus the port discovery behind the picker. A plan that narrows
+anything **suppresses snapshot writes** (`--rebuild` alone is *custom* but does
+not narrow, so it keeps them) — a snapshot taken from a partially re-run tree
+would be filed under a phase name it no longer represents.
+
+The **snapshot inventory** (`kb_snap.c`) is `load` / `list` / `plan_restore` /
+the restore marker / `mounts_under`. Restore selection is layered and
+newest-wins — each declared path comes from the newest snapshot at or below
+the target — and a manifest that does not parse, carries no `entries`, or
+names an archive that is not on disk reads as **absent, never as partial**. A
+half-read manifest that looks complete is what loses a tree.
+
+`kb_json.c` is a read-only JSON scanner for exactly those files. It refuses
+anything that does not parse whole — truncated, trailing junk, trailing comma
+— because every caller treats a parse failure as "absent", and a lenient
+parser would turn a corrupt manifest into a confident wrong answer.
+
+Two bugs the port surfaced, both silent:
+
+- **`kb_read_all` stopped at the stat'ed size.** Every file under `/proc`
+  reports `st_size` 0, so `/proc/mounts` read back as an empty string and
+  `mounts_under()` answered "nothing is mounted" — the answer that lets a
+  snapshot run over a live bind mount. It reads to real EOF now.
+- **A `{}` restore marker is not a marker.** python returned the dict and
+  every caller tested it for truth, so an empty object means no interrupted
+  restore.
+
+These were all verified against `script/buildlib` line by line while both
+existed — phases, steps, ports, the package index, 16 build-plan shapes, the
+snapshot inventory, layered restore at 8 targets. buildlib is gone now, so
+that differential is gone with it; what remains is libkbuild's own assertions
+in `src/libs/selftest.c` and the end-to-end run below.
+
+### kdosbuild — the orchestrator in C
+
+`src/build/kdosbuild/` is `script/build.py` plus `script/buildlib/*.py`:
+`main.c` (the CLI), `manager.c` (the execution order and the step runner),
+`snapshot.c` (writing and extracting archives), `stats.c` (timing history, the
+ETA, the telemetry sampler) and `tui.c` (the four screens). It sits on
+libkbuild for everything that only INSPECTS the tree.
+
+Drawing on libktui is what kills the **third TUI toolkit** — kinstall's,
+kdos-appbox's ncurses one and `buildlib/tui.py`'s python curses one were three
+implementations of one idea, and the build screen was the last consumer.
+
+**One structural change from the python, and it is a simplification.**
+build.py ran the build on a worker THREAD because curses' `getch()` blocks.
+libktui's input has a timeout, so here the build IS the main loop: pump the
+running child, pump the sampler, draw, wait for a key with a deadline. No
+threads, no locks, no "never let the worker die silently" wrapper, and the
+progress callbacks that had to be careful never to draw concurrently with the
+caller now cannot be.
+
+Two behaviours are new rather than ported:
+
+- **A headless mode.** build.py went straight through `curses.wrapper`, so a
+  build with its output redirected drew a full-screen UI into a log file and a
+  build with no terminal could not start at all. kdosbuild answers a non-tty
+  stdout or `TERM=dumb` with plain lines, the same rule kpkg already follows —
+  and that is also what makes the engine testable without a pty.
+- **A phase's snapshot is deferred by one pump turn.** Nothing runs in
+  between; it exists so a front end can print a step's RESULT before the
+  snapshot's progress starts arriving underneath it.
+
+Everything else is behaviour-preserving, including the parts that only exist
+because something broke: the layered newest-wins restore, refusing to restore
+a phase whose earlier snapshots have gone missing (the fallback would build
+against a rootfs that never had the target's packages), the skip ceiling taken
+from the phase that actually CONTRIBUTED data, `KDOS_REPLAY=1` only for a step
+the plan named by name, `-f` only for ports the plan named, and reporting a
+`--rebuild` that no selected phase ever reached.
+
+**`kb_argv_add` stores the pointer; it does not copy.** Three call sites here
+handed it a `KbBuf` that was freed immediately after, or a stack buffer that
+went out of scope at `return` — `bash -c ' ;'`, which is what a corrupted
+command line looks like from the outside. The command strings are owned by
+the step (`BStep.cmd_line`) or by the manager (`Manager.chroot_exec`) now.
+Worth remembering before adding a fourth.
+
+**What is proved.** `testing/selftest.sh` compiles it, then runs it against a
+synthetic two-phase tree: a build with snapshots and logs, a restore that puts
+the tree back and resumes, plan narrowing with snapshot suppression and
+`KDOS_REPLAY`, and a failing step that stops the build without snapshotting
+the phase. Its CLI surface was diffed against build.py over 16 argument shapes
+including every refusal, while build.py still existed.
+
+And it has now driven real phases: **00_toolchain** (the cross toolchain,
+8m27s), **01_phase1** (musl through native gcc, kpkg and kinstall) and
+**02_phase2** (the self-hosting bootstrap, 14m12s, 11 packages through
+`kpkgdepends` + `kpkg install` inside the chroot). Phases 3–5 and packaging
+are the remaining unproven ground.
+
+### `testing/preflight.sh`
+
+Everything a full build would catch, minus the build. `make build` takes hours
+and needs a container; this checks the WIRING in seconds:
+
+- every package named in a `packages.txt` has a port
+- every `packages.txt` resolves to a dependency order, with no stderr, no
+  empty result, and every token matching what `phases.py` will accept
+- every `# depends` names a port that exists — the gap CLAUDE.md's TODO list
+  called "no build-time check that all `# depends` resolve"
+- every recipe declares name, version and release
+- all shipped and build shell is syntactically valid
+- nothing still invokes a tool the C consolidation removed
+- the rootfs carries no script whose interpreter is gone
+
+It cannot prove the build works. It can prove the build will not fail for one
+of the dull reasons. Run it after touching a `packages.txt`, a recipe, or
+anything under `script/`.
+
+### `testing/selftest.sh`
+
+Host-only regression net for `src/libs/`. Compiles every library with the host
+compiler under `-Werror`, runs `src/libs/selftest.c` against them, then
+compiles all five consumers to prove the headers still agree, and resolves a
+port to prove the ports tree still parses. No container, no network, seconds
+to run.
+
+Its assertions are the INVARIANTS that were established by diffing against the
+implementations these libraries replaced — python's `colorsys`, the shell
+kpkg, the shell `kdos`. Each is a claim that was measured once; this is what
+notices when it stops being true. Worth extending whenever a new one is found;
+worth running before trusting any change under `src/libs/`.
+
+Two of them are worth knowing about because they are counter-intuitive:
+`kcol_mix` and `kcol_mixf` are asserted to DISAGREE (0x7f vs 0x80 halfway
+between black and white — a truncating divide against python's round-half-to-
+even), and the ustar writer is checked by handing its output to real GNU tar.
+
+It also runs kdosbuild end to end against a synthetic two-phase tree — a real
+build, snapshot, restore, plan narrowing and a deliberate failure. That is the
+only test that exercises the ENGINE rather than a decision, and it is the one
+to extend when the orchestrator grows.
+
+There used to be a **libkbuild ↔ buildlib differential** here: `pdump.c` and
+`pdump.py` printed the same lines from the C and python implementations of the
+same decision, and `diff` was the whole test. It did its job — the port was
+verified against the original line by line — and went when `script/buildlib`
+did. Nothing is left to diff against.
+
 ---
 
-## kpkg and kpkgbuild conventions
+## kpkg is C
+
+`src/packages/kdos-kpkg/` is one binary answering to five names — `kpkg`,
+`kpkgadd`, `kpkgbuild`, `kpkgdel`, `kpkgdepends` — dispatched on its own
+basename, cross-compiled in phase 1 by `12_kpkg.sh` the same way kinstall is.
+It links libkbase and libkpkg and nothing else. There are no shell scripts in
+`src/` any more.
+
+**Recipes are unchanged and still bash.** kpkgbuild does the source
+extraction and rolls the package itself; bash is exec'd to do exactly one
+thing — run `build()` (and `postinstall()`) with `PKGNAME` / `PORT_SRC` /
+`SRC_ROOT` / `SRC` / `PKG` set as shell variables, cwd `$SRC`, inside
+`( set -e )`, stdio inherited so the interleaved output is still the per-port
+log. The recipe format a port uses is decided by looking at the file: a
+`build()` function means legacy. That is what lets ports convert one at a
+time.
+
+Contracts that were reproduced deliberately, each verified rather than
+assumed:
+
+- **`kpkgdepends` prints one bare space-separated line and nothing else.**
+  Verified identical to the shell version over all 397 ports individually,
+  over every phase's whole `packages.txt`, and with a populated database.
+- **`PKGDB_DIR=/dev/null` means an empty database.** `kp_installed` only asks
+  whether `<dir>/<name>` reads as a file and never stats the directory —
+  stating it would answer "character device" and silently break `kpkg install
+  -f`, the orchestrator and `mini_build.py` together.
+- **`kpkg install -f` forces only what was NAMED**; dependencies keep
+  skip-if-installed, because a blanket force rebuilds all ~350 packages.
+- The db line-1 format, the `./`-prefixed manifest with trailing slashes on
+  directories, `<name>-<version>-<release>.tar.xz`, `--root`, the whitespace
+  `PORT_REPO` list, env-over-config, and exit codes 0/1.
+
+**A file conflict is between PACKAGES.** A path that exists but that no
+installed package claims is adopted, not refused. That is not a loosening for
+its own sake — it is what phase 2 IS: phases 0 and 1 install tar, musl,
+binutils and gcc by hand with `make DESTDIR=$SYSROOT install`, leaving files
+no database entry owns, and the self-hosting bootstrap then rebuilds exactly
+those packages with kpkg. It used to work because the phase passed a blanket
+`kpkg install -f`, which skipped the conflict scan altogether; `-f` now
+genuinely forces a REBUILD, so it cannot be handed out just to get an
+overwrite, and narrowing it to plan-selected ports broke the bootstrap
+silently — phase 2 died on `tar`. A path another package owns is still a
+conflict, and `src/libs/selftest.c` asserts both halves.
+
+Bugs the rewrite fixed, all of them silent:
+
+- A failed `mv` ran inside `find | while read`, so its `exit 1` left only the
+  SUBSHELL — the script carried on and wrote a database entry for a package
+  that was half on disk.
+- The conflict scan used `for f in $(find …)` while the install loop used
+  `while read -r`; the two disagreed about any path with a space in it.
+- An upgrade never removed orphans. A file present in v1 and absent from v2
+  stayed on disk forever, owned by nothing. (Demonstrated, not inferred.)
+- `./.POSTINSTALL` was recorded in the manifest though it is never installed,
+  so removing such a package tried to `rm -f /./.POSTINSTALL`.
+- `realpath -m` was called only to pretty-print a log line and aborted the
+  install under `set -e` — the documented "Symbolic link loop" failure.
+- `kpkgdel a bogus c` removed `a`, then exited at `bogus` and never touched
+  `c`.
+- `rm -rf "$WORK_DIR/$name"` ran before `WORK_DIR` was validated.
+- `kpkg info` printed the package NAME as its description; `# description :`
+  was parsed by nothing. It is read now.
+
+### One recipe format, and how the tree got there
+
+Every one of the 396 ports is `kpkgbuild` + `build.sh`. There is no second
+format and no dual mode: `kpkg` no longer looks at a recipe to decide how to
+read it.
+
+**Why the shell went into its own file rather than into the format.** An
+earlier attempt made `[build]` a list of argv lines with no shell at all. It
+converted 333 ports and refused 63 — heredocs, loops, redirects, globs,
+`$(...)`. The two ways forward were to reimplement a shell inside kpkg, or to
+embed one. Embedding was researched and rejected: there is no embeddable
+evaluator. libdash is *"primarily to parse shell scripts"* and exposes an AST,
+not execution; mksh is BSD/ISC and a quarter of bash's size but is a program
+with `main()`, so embedding means forking ~30k lines of third-party C into
+`src/`, which vendors none. And it would buy nothing — `08_bash.sh` runs before
+`12_kpkg.sh`, so bash is in the sysroot before kpkg is compiled, and it ships
+on the target anyway.
+
+So the shell is a file. `bash -n`, shellcheck, highlighting and `git diff` all
+work on it; none of them work on a blob inside a config format. And no parser
+has to understand it, which matters more than it sounds: `ports/core/rust`
+writes a `config.toml` heredoc whose body contains a line reading exactly
+`[build]`, and `podman`'s contains `[engine]`, `[network]`, `[storage]`. Any
+format carrying the shell inline would have had to tell those apart from its
+own syntax.
+
+**`kpkg convert` could not refuse a port**, because it interpreted nothing: it
+lifted the `build()` body out, removed one level of indentation so it sat at
+column 0, and wrote it. That is the whole transformation, which is why the
+check that mattered is a `diff`. It was deleted with the last legacy recipe.
+
+**Four checks, none of which needs a build**, all run before the sweep was
+promoted:
+
+1. **`build.sh` against the committed `build()` body**, line by line — 387 of
+   387 `ports/core` recipes identical. (The 9 under `src/packages` were already
+   modified in the working tree, so HEAD is not their baseline; they were
+   checked by `bash -n` and by eye.)
+2. **`bash -n`** over all 400 scripts. Now permanent in `testing/preflight.sh`.
+3. **Metadata against bash** — `name`, `version`, `release` and the fully
+   expanded `source` list, compared with what bash yields from the original
+   recipe. 396 of 396 identical, which is what caught the helper-ordering bug:
+   helpers emitted after `source` left `$_date` expanding to nothing and
+   produced a URL that still looked plausible.
+4. **`kpkgdepends` byte-identical** before and after, over all 396 ports
+   individually and every `packages.txt` — the contract that is load-bearing
+   for the whole build.
+
+Then two ports were built for real, old recipe against new, and their package
+file lists compared: `zlib` (16 members) and `uthash` (9, and its `install -m644
+src/*.h` glob is one of the things the argv format had refused). Identical.
+
+**`kpkg verify <port>` is how a recipe CHANGE gets checked.** It builds the
+port with its current `kpkgbuild` + `build.sh` and again with the
+`kpkgbuild.new` / `build.sh.new` beside them, then compares the two packages'
+file lists. Neither build happens in the ports tree: a scratch directory is
+filled with symlinks to everything the port carries — tarballs, patches,
+vendor bundles — and only the files being tested are real. An interrupted
+verify leaves the tree untouched.
+
+It compares the file LIST, not payload bytes. That catches the dominant error
+(a missing or extra file) and does not trip over `.POSTINSTALL`.
+
+**A full `make build` is still what proves kpkg.** Everything else was verified
+by diffing artefacts and by building two ports for real; a package manager can
+only really be tested by building the distro with it.
+
+---
+
+## kpkg and recipe conventions
 
 ```sh
 kpkg install foo       # build + install from ports
 kpkgadd  foo.tar.xz    # install a pre-built package
 kpkgdel  foo           # remove
 kpkgdepends foo        # resolved install order (stdout is parsed — keep it clean)
+kpkg meta  foo         # the recipe's fields as shell assignments
 ```
 
-```bash
+**A port is two files.** `kpkgbuild` is declarative metadata and is NOT a shell
+script; `build.sh` beside it is the build and IS one.
+
+```
 # (banner header — keep verbatim)
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ...
@@ -791,38 +1365,55 @@ kpkgdepends foo        # resolved install order (stdout is parsed — keep it cl
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: <one-line description, tab-separated>
-# homepage	: <URL>
-# depends	: <space-separated port names>
-
-name=foo
-version=1.2.3
-release=1
-source="https://upstream.example/foo-$version.tar.gz"
-# Optional: vendoring=rust  (or go/node/python — runs cargo vendor / etc. during make fetch)
-
-build() {
-    ./configure --prefix=/usr --libdir=/usr/lib
-    make
-    make DESTDIR=$PKG install
-}
-
-# Optional: postinstall() runs at install time (in chroot)
+name        = foo
+version     = 1.2.3
+release     = 1
+source      = https://upstream.example/$name-$version.tar.gz
+description = <one line>
+homepage    = <URL>
+depends     = <space-separated port names>
+vendoring   = rust        # optional: go/node/python too
 ```
 
-- **No shebang.** kpkg `source`s the file.
-- **`# depends:`** is grepped as `^# depends[[:blank:]]*:` and split on
-  whitespace. Tab or space both work.
-- **Variables kpkg sets:** `$PORT_SRC` (the dir holding `kpkgbuild`), `$SRC`
-  (`$WORK_DIR/$name/$name-$version`), `$SRC_ROOT` (`$WORK_DIR/$name`), `$PKG`
-  (the DESTDIR staging tree).
-- **`source=`** auto-detects the extension and passes `--strip-components=1` for
-  the first source only.
-- **`vendoring=rust`** makes `ports/fetch` run `cargo vendor` and package
-  `vendor/` + `.cargo/config.toml` as `<name>-vendor-<version>.tar.xz` beside
-  the tarball; `build()` extracts it into `$SRC` and builds `--frozen --offline`.
+```bash
+# build.sh — cwd is $SRC
+./configure --prefix=/usr --libdir=/usr/lib
+make
+make DESTDIR=$PKG install
+```
 
-### Port recipes
+- **`kpkgbuild` has no shebang and is never sourced.** It is parsed. That is
+  the point of the split: kpkg used to run bash just to READ a recipe
+  (`. ./kpkgbuild` then `printf` the fields back) and to serialise
+  `postinstall()` with `declare -f`. Now bash is exec'd only to build.
+- **`description` / `homepage` / `depends` are KEYS, not comments.** They were
+  `# depends : …` while the file was a shell script, which made a comment
+  load-bearing. `kp_depends` still reads the old form as a fallback.
+- **`build.sh` is a real script**, so `bash -n` checks all 396 of them in
+  `testing/preflight.sh` — a syntax gate that was impossible while the build
+  lived inside the recipe. `postinstall.sh` is the optional install-time hook
+  (4 ports), and becomes `.POSTINSTALL` in the package.
+- **Variables the build gets:** `$name` / `$version` / `$release`, every recipe
+  helper, and `$PORT_SRC` (the port dir), `$SRC` (`$WORK_DIR/$name/$name-$version`,
+  the cwd), `$SRC_ROOT` (`$WORK_DIR/$name`), `$PKG` (the DESTDIR staging tree).
+  They are shell VARIABLES, not exports, and each is injected single-quoted.
+- **`source` repeats** to add a second tarball. It auto-detects the extension
+  and passes `--strip-components=1` for the first source only.
+- **Any key that is not one of ours is a recipe helper** — `_tag`, `vrsn`,
+  `_triplet` — declared between `release` and `source`, which is the only order
+  that works: a helper may read `$version` and `source` may read the helper.
+  Values expand `$var`, `${var}`, `${var#p}` `${var##p}` `${var%p}` `${var%%p}`
+  `${var/a/b}` `${var//a/b}` `${var:off:len}`. A command substitution is NOT
+  available — `unzip` spells its `$(echo $version | sed 's/\.//')` as
+  `${version//./}`.
+- **`vendoring = rust`** makes `ports/fetch` run `cargo vendor` and package
+  `vendor/` + `.cargo/config.toml` as `<name>-vendor-<version>.tar.xz` beside
+  the tarball; `build.sh` extracts it into `$SRC` and builds `--frozen --offline`.
+- **`ports/fetch` cannot source a recipe any more.** It compiles kpkg on the
+  host (a two-second `cc`, gitignored at `ports/.kpkg-meta`) and evals
+  `kpkg meta`. One parser, in C, shared with the build.
+
+### Port recipes — the canonical `build.sh` shapes
 
 ```bash
 # meson
@@ -910,7 +1501,8 @@ WebFetch.
 rcS  service_helper
 ```
 
-Each sources `service_helper` (`supervise`, `stop_service`, `check_status`):
+Each sources `service_helper`, which is now three one-line wrappers around
+**`ksvc`** — the C supervisor in `src/packages/kdos-tools`:
 
 ```bash
 #!/bin/bash
@@ -932,7 +1524,27 @@ esac
 ```
 
 `supervise` runs the daemon under a respawn loop and writes `/run/<name>.pid`.
-**The daemon must run in the foreground** — no daemonization.
+**The daemon must run in the foreground** — no daemonization. Note the argv:
+`supervise "$NAME" "$DAEMON" --foreground`, not one quoted string. The old
+helper did `local command="$@"` and then expanded it unquoted, so the
+word-splitting was load-bearing and a daemon path with a space in it could not
+be expressed.
+
+**`ksvc` exists because the shell supervisor was broken.** The respawn loop
+lived in a backgrounded subshell, and a subshell in a non-interactive shell
+does not lead its own process group — so `stop_service`'s `kill -- -$pid`
+addressed a group `$pid` did not lead, failed, fell through to a plain
+`kill $pid`, and **killed the supervisor while orphaning the daemon**, all
+while reporting success. The C supervisor calls `setsid()`, so the group kill
+reaches both. Verified: after `ksvc stop`, supervisor and daemon are both gone
+and the daemon's pgid was the supervisor's pid.
+
+`ksvc` also refuses a service name that is not a plain name. `find_service`
+used to interpolate the argument straight into a glob, so `service start '*'`
+matched whatever it liked.
+
+`/usr/sbin/service` and `/usr/local/sbin/kdos-getty` are **symlinks to
+`/usr/sbin/ksvc`**, dispatched on basename. Neither is in `fs/` any more.
 
 ---
 
@@ -1009,7 +1621,6 @@ and respond with the targeted fix.
 - `libunwind` lacks its assembly files → undefined symbols; consumers work
   around with `--allow-shlib-undefined`.
 - `libinput` still installs to `/usr/local/lib64` (port has no `--prefix`).
-- No build-time check that all `# depends` resolve.
 - No firewall rules shipped — `nftables` is installed, `/etc/nftables.conf` is
   empty.
 - **cosmic-comp does not start Xwayland.** `/tmp/.X11-unix` is absent although

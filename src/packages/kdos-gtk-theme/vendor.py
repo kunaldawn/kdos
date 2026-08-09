@@ -23,7 +23,7 @@
 # redefining theme_bg_color reaches the handful of widgets that reference the
 # name and leaves the rest grey — that is exactly what "themes still not
 # matching" looked like in GIMP. adw-gtk3 has ~125 @define-color at the top and
-# almost nothing below, so the KDOS palette is a header rewrite (gengtk.py) and
+# almost nothing below, so the KDOS palette is a header rewrite (kdos-theme) and
 # every widget follows. It is also the libadwaita stylesheet, which means GTK3
 # apps and GTK4/libadwaita apps in the appbox end up genuinely identical rather
 # than merely similar.

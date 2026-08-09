@@ -8,15 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: Tar utility
-
-name=gzip
-version=1.14
-release=1
-source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz"
-
-build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-}
+name        = gzip
+version     = 1.14
+release     = 1
+source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz
+description = Tar utility

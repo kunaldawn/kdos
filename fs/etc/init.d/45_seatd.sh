@@ -15,7 +15,7 @@ case "$1" in
         # The group ships in /etc/group (with the desktop user in it); this is
         # only a fallback for a tree that predates it. No getent on musl.
         grep -q '^seat:' /etc/group 2>/dev/null || groupadd -r seat
-        supervise "$NAME" "$DAEMON -g seat"
+        supervise "$NAME" "$DAEMON" -g seat
         ;;
     stop)
         stop_service "$NAME"

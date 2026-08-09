@@ -8,17 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Implementation of rpmatch(3) for musl libc
 # url		: https://github.com/pullmoll/musl-rpmatch
 
-name=musl-rpmatch
-version=1.0
-release=1
-source="https://github.com/pullmoll/musl-rpmatch/archive/v$version.tar.gz"
-
-build() {
-	autoreconf -fi
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-}
+name        = musl-rpmatch
+version     = 1.0
+release     = 1
+source      = https://github.com/pullmoll/musl-rpmatch/archive/v$version.tar.gz
+description = Implementation of rpmatch(3) for musl libc

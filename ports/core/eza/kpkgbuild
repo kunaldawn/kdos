@@ -8,18 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: eza — a modern replacement for ls
-# homepage	: https://github.com/eza-community/eza
-# depends	: rust
-
-name=eza
-version=0.23.4
-release=1
-source="https://github.com/eza-community/eza/archive/v$version.tar.gz"
-vendoring=rust
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-	cargo build --release --frozen --offline
-	install -Dm755 target/release/eza $PKG/usr/bin/eza
-}
+name        = eza
+version     = 0.23.4
+release     = 1
+source      = https://github.com/eza-community/eza/archive/v$version.tar.gz
+description = eza — a modern replacement for ls
+homepage    = https://github.com/eza-community/eza
+depends     = rust
+vendoring   = rust

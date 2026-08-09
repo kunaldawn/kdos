@@ -8,17 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Python module that implements hyperfast and lightweight templating for the Python platform
-# depends	: python3-setuptools python3-markupsafe
-
-name=python3-mako
-version=1.3.10
-release=1
-source="https://files.pythonhosted.org/packages/source/m/mako/mako-$version.tar.gz"
-vendoring=python
-
-build() {
-	mkdir -p vendor
-	tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
-	pip3 install --no-build-isolation --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
-}
+name        = python3-mako
+version     = 1.3.10
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/m/mako/mako-$version.tar.gz
+description = Python module that implements hyperfast and lightweight templating for the Python platform
+depends     = python3-setuptools python3-markupsafe
+vendoring   = python
