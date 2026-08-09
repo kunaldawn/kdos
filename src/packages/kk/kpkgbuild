@@ -8,9 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-*.tar.gz filter=lfs diff=lfs merge=lfs -text
-ports/appbox/image/**/*.zst filter=lfs diff=lfs merge=lfs -text
-*.tar.xz filter=lfs diff=lfs merge=lfs -text
-*.tar.bz2 filter=lfs diff=lfs merge=lfs -text
-src/packages/kk/music/*.xm filter=lfs diff=lfs merge=lfs -text
-src/packages/kdos-cursors/art/** filter=lfs diff=lfs merge=lfs -text
+name        = kk
+version     = 1.0
+release     = 1
+source      =
+description = The KDOS demo — an ASCII art audio-visual demo for the TTY
+homepage    = https://github.com/kunaldawn
+depends     = aalib libmikmod
