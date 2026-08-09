@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = aview
+version     = 1.3.0rc1
+release     = 1
+source      = https://downloads.sourceforge.net/project/aa-project/$name/$version/$name-$version.tar.gz
+description = ASCII art image browser and FLI/FLC player for the terminal
+homepage    = https://aa-project.sourceforge.net/aview/
+depends     = aalib bash imagemagick

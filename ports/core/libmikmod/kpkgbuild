@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libmikmod
+version     = 3.3.13
+release     = 1
+source      = https://downloads.sourceforge.net/project/mikmod/$name/$version/$name-$version.tar.gz
+description = Tracker module player library — S3M, XM, IT, MOD
+homepage    = https://mikmod.sourceforge.net/
+depends     = alsa-lib
