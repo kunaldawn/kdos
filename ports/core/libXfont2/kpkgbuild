@@ -8,21 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: X font rasterisation library
-# homepage	: https://gitlab.freedesktop.org/xorg/lib/libXfont2
-# depends	: libfontenc freetype2 xtrans
-
-name=libXfont2
-version=2.0.8
-release=1
-source="https://www.x.org/releases/individual/lib/$name-$version.tar.xz"
-
-build() {
-	./configure \
-		--prefix=/usr \
-		--sysconfdir=/etc \
-		--libdir=/usr/lib \
-		--disable-static
-	make
-	make DESTDIR=$PKG install
-}
+name        = libXfont2
+version     = 2.0.8
+release     = 1
+source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+description = X font rasterisation library
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libXfont2
+depends     = libfontenc freetype2 xtrans

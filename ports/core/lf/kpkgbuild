@@ -8,22 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: lf — terminal file manager (Go, single binary)
-# homepage	: https://github.com/gokcehan/lf
-# depends	: go
-
-name=lf
-version=41
-release=1
-source="https://github.com/gokcehan/lf/archive/r$version.tar.gz"
-vendoring=go
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-
-	export CGO_ENABLED=0
-	go build -ldflags "-s -w -X main.gVersion=r$version" -o lf
-	install -Dm755 lf $PKG/usr/bin/lf
-	install -Dm644 lf.1 $PKG/usr/share/man/man1/lf.1
-	install -Dm644 etc/lfcd.sh $PKG/usr/share/lf/lfcd.sh
-}
+name        = lf
+version     = 41
+release     = 1
+source      = https://github.com/gokcehan/lf/archive/r$version.tar.gz
+description = lf — terminal file manager (Go, single binary)
+homepage    = https://github.com/gokcehan/lf
+depends     = go
+vendoring   = go

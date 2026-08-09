@@ -8,52 +8,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: ImageMagick — convert, edit, and compose raster images (provides `convert`)
-# homepage	: https://imagemagick.org/
-# depends	: libpng libjpeg-turbo libtiff libwebp giflib freetype2 fontconfig libxml2 zlib pango
+name        = imagemagick
+version     = 7.1.2.21
+release     = 1
 
-name=imagemagick
-version=7.1.2.21
-release=1
-# Upstream tags use a hyphen (7.1.2-21); kpkg's package-name parser
-# treats hyphens as version separators, so we keep the dotted form
-# internally and reconstruct the hyphen for the download URL only.
-_imver=${version%.*}-${version##*.}
-source="https://imagemagick.org/archive/releases/ImageMagick-$_imver.tar.xz"
+_imver      = ${version%.*}-${version##*.}
 
-build() {
-	./configure \
-		--prefix=/usr \
-		--sysconfdir=/etc \
-		--mandir=/usr/share/man \
-		--without-modules \
-		--with-threads \
-		--with-png \
-		--with-jpeg \
-		--with-tiff \
-		--with-webp \
-		--with-zlib \
-		--with-xml \
-		--with-freetype \
-		--with-fontconfig \
-		--with-pango \
-		--without-x \
-		--without-perl \
-		--without-fftw \
-		--without-djvu \
-		--without-fpx \
-		--without-gslib \
-		--without-gvc \
-		--without-heic \
-		--without-jxl \
-		--without-lcms \
-		--without-lqr \
-		--without-openexr \
-		--without-openjp2 \
-		--without-raqm \
-		--without-raw \
-		--without-rsvg \
-		--without-wmf
-	make
-	make DESTDIR=$PKG install
-}
+source      = https://imagemagick.org/archive/releases/ImageMagick-$_imver.tar.xz
+description = ImageMagick — convert, edit, and compose raster images (provides `convert`)
+homepage    = https://imagemagick.org/
+depends     = libpng libjpeg-turbo libtiff libwebp giflib freetype2 fontconfig libxml2 zlib pango

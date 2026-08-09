@@ -8,21 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description   : Utilities for synchronizing large file archives over a network
-# depends       : zlib zstd acl attr
-
-name=rsync
-version=3.4.1
-release=1
-source="https://www.samba.org/ftp/rsync/src/$name-$version.tar.gz"
-
-build() {
-    ./configure \
-        --prefix=/usr \
-        --with-included-zlib=no \
-        --disable-xxhash \
-        --enable-acl \
-        --enable-xattr
-    make
-    make DESTDIR=$PKG install
-}
+name        = rsync
+version     = 3.4.1
+release     = 1
+source      = https://www.samba.org/ftp/rsync/src/$name-$version.tar.gz
+description = Utilities for synchronizing large file archives over a network
+depends     = zlib zstd acl attr

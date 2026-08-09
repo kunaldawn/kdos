@@ -8,16 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Asynchronous event notification software library
-# depends	: openssl
-
-name=libevent
-version=2.1.12
-release=1
-source="https://github.com/$name/$name/releases/download/release-$version-stable/$name-$version-stable.tar.gz"
-
-build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-}
+name        = libevent
+version     = 2.1.12
+release     = 1
+source      = https://github.com/$name/$name/releases/download/release-$version-stable/$name-$version-stable.tar.gz
+description = Asynchronous event notification software library
+depends     = openssl

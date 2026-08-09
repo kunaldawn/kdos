@@ -31,7 +31,7 @@
 #     request.
 #
 # The result is still upstream's monochrome artwork; recolouring happens at
-# build time in gencursors.py so the palette stays a KDOS decision.
+# build time by kdos-theme so the palette stays a KDOS decision.
 
 import os
 import re

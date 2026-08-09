@@ -8,16 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description: The GNU Bison parser generator
-# depends: m4
-
-name=bison
-version=3.8.2
-release=1
-source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
-
-build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-}
+name        = bison
+version     = 3.8.2
+release     = 1
+source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
+description = The GNU Bison parser generator
+depends     = m4

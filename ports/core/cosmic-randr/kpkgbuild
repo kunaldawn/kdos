@@ -8,22 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: COSMIC display configuration tool
-# homepage	: https://github.com/pop-os/cosmic-randr
-# depends	: rust clang just wayland
-
-name=cosmic-randr
-version=1.4.0
-release=1
-source="https://github.com/pop-os/cosmic-randr/archive/refs/tags/epoch-$version.tar.gz"
-vendoring=rust
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-	export CARGO_HOME="$SRC_ROOT/.cargo"
-	export RUSTFLAGS="-C target-feature=-crt-static"
-	export LIBCLANG_PATH=/usr/lib
-	export CARGO_NET_OFFLINE=true
-	cargo build --release --frozen --offline
-	just rootdir=$PKG install
-}
+name        = cosmic-randr
+version     = 1.4.0
+release     = 1
+source      = https://github.com/pop-os/cosmic-randr/archive/refs/tags/epoch-$version.tar.gz
+description = COSMIC display configuration tool
+homepage    = https://github.com/pop-os/cosmic-randr
+depends     = rust clang just wayland
+vendoring   = rust

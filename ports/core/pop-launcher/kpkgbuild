@@ -8,22 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Launcher service backend for COSMIC
-# homepage	: https://github.com/pop-os/launcher
-# depends	: rust clang just
-
-name=pop-launcher
-version=1.4.0
-release=1
-source="https://github.com/pop-os/launcher/archive/refs/tags/epoch-$version.tar.gz"
-vendoring=rust
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-	export CARGO_HOME="$SRC_ROOT/.cargo"
-	export RUSTFLAGS="-C target-feature=-crt-static"
-	export LIBCLANG_PATH=/usr/lib
-	export CARGO_NET_OFFLINE=true
-	just build-release
-	just rootdir=$PKG install
-}
+name        = pop-launcher
+version     = 1.4.0
+release     = 1
+source      = https://github.com/pop-os/launcher/archive/refs/tags/epoch-$version.tar.gz
+description = Launcher service backend for COSMIC
+homepage    = https://github.com/pop-os/launcher
+depends     = rust clang just
+vendoring   = rust

@@ -8,20 +8,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Bundle of CA Root Certificates from Mozilla
-# homepage	: https://curl.se/docs/caextract.html
+name        = ca-certificates
+version     = 20251202
+release     = 1
 
-name=ca-certificates
-version=20251202
-_noyear=${version#????}
-_version=${version%????}-${_noyear%??}-${version#??????}
-release=1
-source="https://curl.se/ca/cacert-$_version.pem"
+_noyear     = ${version#????}
+_version    = ${version%????}-${_noyear%??}-${version#??????}
 
-build() {
-	install -Dm644 cacert-$_version.pem $PKG/etc/ssl/cert.pem
-
-	install -d $PKG/etc/ssl/certs
-	ln -s /etc/ssl/cert.pem $PKG/etc/ssl/certs/ca-certificates.crt
-	ln -s /etc/ssl/cert.pem $PKG/etc/ssl/ca-bundle.crt
-}
+source      = https://curl.se/ca/cacert-$_version.pem
+description = Bundle of CA Root Certificates from Mozilla
+homepage    = https://curl.se/docs/caextract.html

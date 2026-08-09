@@ -34,41 +34,41 @@
 
 static char *user_table(void)
 {
-	char *p = xmalloc(MAX_LINE);
+	char *p = kb_calloc(1, MAX_LINE);
 	const char *data = getenv("XDG_DATA_HOME");
 	if (data && *data)
 		snprintf(p, MAX_LINE, "%s/kdos/alien-apps", data);
 	else
-		snprintf(p, MAX_LINE, "%s/.local/share/kdos/alien-apps", home_dir());
+		snprintf(p, MAX_LINE, "%s/.local/share/kdos/alien-apps", kb_home_dir());
 	return p;
 }
 
 static char *user_apps_dir(void)
 {
-	char *p = xmalloc(MAX_LINE);
+	char *p = kb_calloc(1, MAX_LINE);
 	const char *data = getenv("XDG_DATA_HOME");
 	if (data && *data)
 		snprintf(p, MAX_LINE, "%s/applications", data);
 	else
-		snprintf(p, MAX_LINE, "%s/.local/share/applications", home_dir());
+		snprintf(p, MAX_LINE, "%s/.local/share/applications", kb_home_dir());
 	return p;
 }
 
 static char *user_bin_dir(void)
 {
-	char *p = xmalloc(MAX_LINE);
-	snprintf(p, MAX_LINE, "%s/.local/bin", home_dir());
+	char *p = kb_calloc(1, MAX_LINE);
+	snprintf(p, MAX_LINE, "%s/.local/bin", kb_home_dir());
 	return p;
 }
 
 /* One "name\tcommand" line, in either table. */
 static int table_lookup(const char *path, const char *name, char *cmd, size_t n)
 {
-	char *buf = xmalloc(1 << 18);
+	char *buf = kb_calloc(1, 1 << 18);
 	char *line, *save;
 	int found = 0;
 
-	if (read_file(path, buf, 1 << 18) < 0) {
+	if (kb_read_file(path, buf, 1 << 18) < 0) {
 		free(buf);
 		return 0;
 	}
@@ -104,14 +104,14 @@ int app_list(void)
 {
 	char *ut = user_table();
 	const char *paths[2];
-	char *buf = xmalloc(1 << 18);
+	char *buf = kb_calloc(1, 1 << 18);
 	int i;
 
 	paths[0] = APP_TABLE;
 	paths[1] = ut;
 	for (i = 0; i < 2; i++) {
 		char *line, *save;
-		if (read_file(paths[i], buf, 1 << 18) < 0)
+		if (kb_read_file(paths[i], buf, 1 << 18) < 0)
 			continue;
 		for (line = strtok_r(buf, "\n", &save); line;
 		     line = strtok_r(NULL, "\n", &save)) {
@@ -204,22 +204,22 @@ static void lower(char *s)
  */
 static char *dump_entries(const char *box)
 {
-	char *dir = xmalloc(MAX_LINE);
-	Argv a = {0};
+	char *dir = kb_calloc(1, MAX_LINE);
+	KbArgv a = {0};
 
-	snprintf(dir, MAX_LINE, "%s/.cache/kdos/appdump", home_dir());
-	mkdir_p(dir);
-	argv_add(&a, "distrobox");
-	argv_add(&a, "enter");
-	argv_add(&a, box);
-	argv_add(&a, "--");
-	argv_add(&a, "cp");
-	argv_add(&a, "-rT");
-	argv_add(&a, "/usr/share/applications");
-	argv_add(&a, dir);
-	argv_end(&a);
-	if (run_quiet(&a) != 0) {
-		warn("could not read desktop entries out of '%s'", box);
+	snprintf(dir, MAX_LINE, "%s/.cache/kdos/appdump", kb_home_dir());
+	kb_mkdir_p(dir);
+	kb_argv_add(&a, "distrobox");
+	kb_argv_add(&a, "enter");
+	kb_argv_add(&a, box);
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, "cp");
+	kb_argv_add(&a, "-rT");
+	kb_argv_add(&a, "/usr/share/applications");
+	kb_argv_add(&a, dir);
+	kb_argv_end(&a);
+	if (kb_run(&a) != 0) {
+		kb_warn("could not read desktop entries out of '%s'", box);
 		free(dir);
 		return NULL;
 	}
@@ -240,7 +240,7 @@ int app_refresh(const char *box)
 	char *appdir = user_apps_dir();
 	char *bindir = user_bin_dir();
 	char *table = user_table();
-	char *text = xmalloc(1 << 16);
+	char *text = kb_calloc(1, 1 << 16);
 	FILE *tf;
 	DIR *d;
 	struct dirent *e;
@@ -248,12 +248,12 @@ int app_refresh(const char *box)
 
 	if (!dump)
 		return 1;
-	mkdir_p(appdir);
-	mkdir_p(bindir);
+	kb_mkdir_p(appdir);
+	kb_mkdir_p(bindir);
 	{
 		char *slash = strrchr(table, '/');
 		*slash = '\0';
-		mkdir_p(table);
+		kb_mkdir_p(table);
 		*slash = '/';
 	}
 
@@ -275,8 +275,8 @@ int app_refresh(const char *box)
 		snprintf(id, sizeof(id), "%s", base);
 		lower(id);
 
-		src = path_join(dump, e->d_name);
-		if (read_file(src, text, 1 << 16) < 0) {
+		src = kb_path_join(dump, e->d_name);
+		if (kb_read_file(src, text, 1 << 16) < 0) {
 			free(src);
 			continue;
 		}
@@ -299,9 +299,9 @@ int app_refresh(const char *box)
 		/* Keeps upstream's id: cosmic-app-list matches a toplevel to an
 		 * entry by FILE ID and ignores StartupWMClass, so anything else
 		 * leaves every running alien app showing a generic placeholder. */
-		dst = xmalloc(MAX_LINE);
+		dst = kb_calloc(1, MAX_LINE);
 		snprintf(dst, MAX_LINE, "%s/%s.desktop", appdir, base);
-		if (file_exists(dst)) {         /* already shipped or added */
+		if (kb_path_exists(dst)) {         /* already shipped or added */
 			free(dst);
 			continue;
 		}
@@ -327,9 +327,10 @@ int app_refresh(const char *box)
 		if (tf)
 			fprintf(tf, "%s\t%s\n", id, exec);
 
-		shim = path_join(bindir, id);
-		if (!file_exists(shim))
-			symlink("/usr/local/bin/kdos-appbox", shim);
+		shim = kb_path_join(bindir, id);
+		if (!kb_path_exists(shim) &&
+		    symlink("/usr/local/bin/kdos-appbox", shim) < 0)
+			kb_warn("cannot create shim %s", shim);
 		free(shim);
 	}
 	if (d)
@@ -348,20 +349,20 @@ int app_refresh(const char *box)
 
 static int apt(const char *box, const char *verb, const char *pkg)
 {
-	Argv a = {0};
-	argv_add(&a, "distrobox");
-	argv_add(&a, "enter");
-	argv_add(&a, box);
-	argv_add(&a, "--");
-	argv_add(&a, "sudo");
-	argv_add(&a, "apt-get");
-	argv_add(&a, verb);
-	argv_add(&a, "-y");
+	KbArgv a = {0};
+	kb_argv_add(&a, "distrobox");
+	kb_argv_add(&a, "enter");
+	kb_argv_add(&a, box);
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, "sudo");
+	kb_argv_add(&a, "apt-get");
+	kb_argv_add(&a, verb);
+	kb_argv_add(&a, "-y");
 	if (!strcmp(verb, "install"))
-		argv_add(&a, "--no-install-recommends");
-	argv_add(&a, pkg);
-	argv_end(&a);
-	return run_quiet(&a);
+		kb_argv_add(&a, "--no-install-recommends");
+	kb_argv_add(&a, pkg);
+	kb_argv_end(&a);
+	return kb_run(&a);
 }
 
 int app_install(const char *box, const char *pkg)
@@ -370,7 +371,7 @@ int app_install(const char *box, const char *pkg)
 		return 1;
 	printf("installing %s into %s...\n", pkg, box);
 	if (apt(box, "install", pkg) != 0) {
-		warn("apt-get install %s failed — the appbox is offline unless "
+		kb_warn("apt-get install %s failed — the appbox is offline unless "
 		     "this machine has network", pkg);
 		return 1;
 	}
@@ -380,12 +381,12 @@ int app_install(const char *box, const char *pkg)
 int app_uninstall(const char *box, const char *pkg)
 {
 	if (!box_exists(box)) {
-		warn("box '%s' does not exist", box);
+		kb_warn("box '%s' does not exist", box);
 		return 1;
 	}
 	printf("removing %s from %s...\n", pkg, box);
 	if (apt(box, "remove", pkg) != 0) {
-		warn("apt-get remove %s failed", pkg);
+		kb_warn("apt-get remove %s failed", pkg);
 		return 1;
 	}
 	/* Launchers for what is gone are left for `kdos-appbox prune`: an
@@ -396,7 +397,7 @@ int app_uninstall(const char *box, const char *pkg)
 
 int app_table_load(App **out)
 {
-	char *buf = xmalloc(1 << 18);
+	char *buf = kb_calloc(1, 1 << 18);
 	char *ut = user_table();
 	const char *paths[2];
 	App *apps = NULL;
@@ -406,7 +407,7 @@ int app_table_load(App **out)
 	paths[1] = ut;
 	for (i = 0; i < 2; i++) {
 		char *line, *save;
-		if (read_file(paths[i], buf, 1 << 18) < 0)
+		if (kb_read_file(paths[i], buf, 1 << 18) < 0)
 			continue;
 		for (line = strtok_r(buf, "\n", &save); line;
 		     line = strtok_r(NULL, "\n", &save)) {
@@ -421,7 +422,7 @@ int app_table_load(App **out)
 				cap = cap ? cap * 2 : 64;
 				apps = realloc(apps, (size_t)cap * sizeof(*apps));
 				if (!apps)
-					die("out of memory");
+					kb_die("out of memory");
 			}
 			snprintf(apps[n].name, sizeof(apps[n].name), "%s", line);
 			snprintf(apps[n].cmd, sizeof(apps[n].cmd), "%s", tab + 1);

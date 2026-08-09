@@ -12,7 +12,7 @@
 
 # Environment configuration for KDOS build
 
-# --- build-system metadata (parsed by script/build.py, never sourced) ---
+# --- build-system metadata (PARSED by the orchestrator, never sourced) ---
 export KDOS_PHASE_TITLE="Base Userland"
 export KDOS_PHASE_DESC="musl, toybox, bash, native gcc, kpkg, kinstall"
 export KDOS_SNAPSHOT_PATHS="cross fs mark"

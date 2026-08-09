@@ -8,13 +8,18 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-build/
-build_test/
+# Anchored: an unanchored build/ also matched src/build/, hiding the
+# orchestrator's own sources from git.
+/build/
+/build_test/
 
 # Host-built alien-app archive (make fetch-apps). The tar itself is too big
 # for LFS's 2G/file limit; its chunked form (ports/appbox/image/) and the
 # icons ARE committed — the repo alone must be able to build the full ISO.
 ports/appbox/appbox.tar
+# Host-built recipe reader (ports/fetch compiles it to read kpkgbuild files,
+# which are no longer shell and cannot be sourced).
+ports/.kpkg-meta
 __pycache__/
 ports-archived/
 port-archive.sh

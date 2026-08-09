@@ -1,0 +1,33 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+./configure \
+	--prefix=/usr \
+	--psfdir=/usr/share/consolefonts \
+	--x11dir=/usr/share/fonts/terminus
+make psf pcf
+make DESTDIR=$PKG install-psf install-pcf
+
+# ter-kdos*: the v (xos4-2) charset with six spacing diacritics swapped
+# for the double box-drawing glyphs the KDOS block logo needs; keeps λ.
+sed -e 's/^00A4$/2550/' -e 's/^00A6$/2551/' -e 's/^00A8$/2554/' \
+    -e 's/^00B8$/2557/' -e 's/^00AF$/255A/' -e 's/^02DD$/255D/' \
+    uni/xos4-2.uni > uni/kdos.uni
+for sz in 16 32; do
+	python3 bin/ucstoany.py ter-u${sz}n.bdf XOS4 2 uni/kdos.uni | \
+		python3 bin/bdftopsf.py -o ter-kdos${sz}n.psf \
+		dup/vgagr.dup dup/xos4-2.dup
+	gzip -c ter-kdos${sz}n.psf \
+		> "$PKG/usr/share/consolefonts/ter-kdos${sz}n.psf.gz"
+done
+# fontconfig ships 70-no-bitmaps.conf; without this whitelist Terminus is
+# rejected and foot silently falls through to DejaVu.
+install -Dm644 75-yes-terminus.conf "$PKG/etc/fonts/conf.d/75-yes-terminus.conf"

@@ -8,17 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: C header-only typed linked list library (foot/fcft dep)
-# homepage	: https://codeberg.org/dnkl/tllist
-# depends	: meson
-
-name=tllist
-version=1.1.0
-release=1
-source="https://codeberg.org/dnkl/tllist/archive/$version.tar.gz"
-
-build() {
-	meson setup build --prefix=/usr --libdir=lib
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = tllist
+version     = 1.1.0
+release     = 1
+source      = https://codeberg.org/dnkl/tllist/archive/$version.tar.gz
+description = C header-only typed linked list library (foot/fcft dep)
+homepage    = https://codeberg.org/dnkl/tllist
+depends     = meson

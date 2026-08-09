@@ -8,17 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# depends: python3-setuptools
-
-name=python3-pyyaml
-version=6.0.3
-release=1
-source="https://files.pythonhosted.org/packages/source/P/PyYAML/pyyaml-$version.tar.gz"
-vendoring=python
-
-build() {
-  mkdir -p vendor
-  tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
-  export CFLAGS="$CFLAGS -w"
-  pip3 install --no-build-isolation --no-deps --no-index --find-links=vendor --root=$PKG --prefix=/usr .
-}
+name        = python3-pyyaml
+version     = 6.0.3
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/P/PyYAML/pyyaml-$version.tar.gz
+depends     = python3-setuptools
+vendoring   = python
