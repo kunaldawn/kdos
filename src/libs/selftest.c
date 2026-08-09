@@ -309,7 +309,32 @@ static void test_pkg(void)
 	   "a file left by a hand install is owned by nobody");
 	ok(!kp_owned_has(ow, "usr/share"),
 	   "directories are shared and never owned");
+	/* An overwrite has to know WHO to take the path from. */
+	eq_str(kp_owned_owner(ow, "usr/bin/owned"), "owner",
+	       "the claim names its package");
+	ok(kp_owned_owner(ow, "usr/bin/stray") == NULL,
+	   "an unowned path has no owner to take it from");
 	kp_owned_free(ow);
+
+	/* `--overwrite` moves the path out of the old owner's manifest. Left
+	 * behind, it is claimed twice and `kpkgdel <old>` deletes a file the
+	 * new owner installed. */
+	char *drop[] = { (char *)"usr/bin/owned" };
+	ok(kp_db_drop_paths(&owned_conf, "owner", drop, 1) == 1,
+	   "the path leaves the old owner");
+	ok(kp_db_drop_paths(&owned_conf, "owner", drop, 1) == 0,
+	   "and dropping it twice is a no-op");
+	ow = kp_owned_load(&owned_conf);
+	ok(!kp_owned_has(ow, "usr/bin/owned"), "nothing claims it now");
+	ok(!kp_owned_has(ow, "usr/share"),
+	   "the rest of the manifest survived the rewrite");
+	kp_owned_free(ow);
+	char *dbcheck = kb_path_join(dir, "db/owner");
+	size_t dblen = 0;
+	char *dbtext = kb_read_all(dbcheck, &dblen);
+	eq_str(dbtext, "1 1\n./usr/share/\n", "version line and all");
+	free(dbtext);
+	free(dbcheck);
 	setenv("PKGDB_DIR", "/dev/null", 1);
 
 	kb_rmtree(dir);

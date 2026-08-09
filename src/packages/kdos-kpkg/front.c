@@ -38,6 +38,10 @@ static void usage(void)
 	       "Options:\n"
 	       "  --root <path>      Operate on a different root directory\n"
 	       "  --keep-cache       Keep cached packages after installation\n"
+	       "  -f, --force        Rebuild the named packages, skip the\n"
+	       "                     file-conflict scan for them\n"
+	       "  --overwrite        Let a package take a path another package\n"
+	       "                     owns; ownership moves with the file\n"
 	       "\n"
 	       "Commands:\n"
 	       "  install <pkg>...   Install package(s) with dependencies\n"
@@ -76,13 +80,16 @@ static int build_port(const char *portdir)
 	return rc;
 }
 
-static int install_pkgfile(const KpConf *c, const char *file, int force)
+static int install_pkgfile(const KpConf *c, const char *file, int force,
+			   int overwrite)
 {
-	char *args[6];
+	char *args[8];
 	int n = 0;
 	args[n++] = (char *)"kpkgadd";
 	if (force)
 		args[n++] = (char *)"--force";
+	if (overwrite)
+		args[n++] = (char *)"--overwrite";
 	if (c->root[0]) {
 		args[n++] = (char *)"--root";
 		args[n++] = (char *)c->root;
@@ -94,13 +101,15 @@ static int install_pkgfile(const KpConf *c, const char *file, int force)
 
 static int cmd_install(KpConf *c, int argc, char **argv)
 {
-	int force = 0, keep_cache = 0;
+	int force = 0, keep_cache = 0, overwrite = 0;
 	char *want[KP_MAX_ORDER];
 	int nwant = 0;
 
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--force"))
 			force = 1;
+		else if (!strcmp(argv[i], "--overwrite"))
+			overwrite = 1;
 		else if (!strcmp(argv[i], "--keep-cache"))
 			keep_cache = 1;
 		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
@@ -181,7 +190,11 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 			return 1;
 		}
 
-		if (install_pkgfile(c, found, forced) != 0) {
+		/* Unlike -f, --overwrite applies to every package in the order:
+		 * it is a property of the RUN, not of what was named. A phase
+		 * that rebuilds the userland has toybox and util-linux both
+		 * claiming /usr/bin/mount, and whichever comes last wins. */
+		if (install_pkgfile(c, found, forced, overwrite) != 0) {
 			kp_err("Failed to install %s", pkg);
 			free(found);
 			return 1;
