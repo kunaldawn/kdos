@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,9 +9,20 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-*.tar.gz filter=lfs diff=lfs merge=lfs -text
-ports/appbox/image/**/*.zst filter=lfs diff=lfs merge=lfs -text
-*.tar.xz filter=lfs diff=lfs merge=lfs -text
-*.tar.bz2 filter=lfs diff=lfs merge=lfs -text
-src/packages/kk/music/*.xm filter=lfs diff=lfs merge=lfs -text
-src/packages/kdos-cursors/art/** filter=lfs diff=lfs merge=lfs -text
+patch -p1 -i $PORT_SRC/ncurses-opaque-window.patch
+
+export CFLAGS="$CFLAGS -Wno-implicit-function-declaration"
+
+./configure --prefix=/usr \
+            --libdir=/usr/lib \
+            --mandir=/usr/share/man \
+            --infodir=/usr/share/info \
+            --disable-static \
+            --with-ncurses \
+            --with-slang-driver=no \
+            --with-x11-driver=no \
+            --without-x
+make
+make DESTDIR=$PKG install
+
+rm -f $PKG/usr/share/info/dir

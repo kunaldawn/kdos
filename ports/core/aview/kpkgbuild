@@ -8,9 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-*.tar.gz filter=lfs diff=lfs merge=lfs -text
-ports/appbox/image/**/*.zst filter=lfs diff=lfs merge=lfs -text
-*.tar.xz filter=lfs diff=lfs merge=lfs -text
-*.tar.bz2 filter=lfs diff=lfs merge=lfs -text
-src/packages/kk/music/*.xm filter=lfs diff=lfs merge=lfs -text
-src/packages/kdos-cursors/art/** filter=lfs diff=lfs merge=lfs -text
+name        = aview
+version     = 1.3.0rc1
+release     = 1
+source      = https://downloads.sourceforge.net/project/aa-project/$name/$version/$name-$version.tar.gz
+description = ASCII art image browser and FLI/FLC player for the terminal
+homepage    = https://aa-project.sourceforge.net/aview/
+depends     = aalib bash imagemagick

@@ -214,6 +214,27 @@ ffmpeg
 fastfetch
 
 # ---------------------------------
+# ASCII art (aa-project) + the KDOS demo
+# ---------------------------------
+# Runs on the TTY, so it needs nothing the GUI sliver provides. aalib's own
+# demos are aafire/aatest/aainfo/aasavefont; aview is the image/FLI browser
+# (its asciiview front end shells out to ImageMagick's `magick`, since IM7
+# does not build the legacy `convert` name), and aa3d turns a depth map into
+# a stereogram.
+aalib
+aview
+aa3d
+
+# Tracker-module playback for kk, ALSA only — on a bare TTY there is no
+# pipewire, and kdos is already in the audio group.
+libmikmod
+
+# kk, the KDOS demo (src/packages, ours): a fork of the 1997 AAlib demo bb,
+# carrying our own portrait, scenes and music. It REPLACES the stock bb port,
+# which is gone — see src/packages/kk/LICENSE.notice for what changed.
+kk
+
+# ---------------------------------
 # Container Layer (Podman + distrobox)
 # ---------------------------------
 # Replaces Flatpak. Daemonless, rootless. See plan.md §6.

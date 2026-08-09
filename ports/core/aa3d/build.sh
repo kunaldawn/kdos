@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,9 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-*.tar.gz filter=lfs diff=lfs merge=lfs -text
-ports/appbox/image/**/*.zst filter=lfs diff=lfs merge=lfs -text
-*.tar.xz filter=lfs diff=lfs merge=lfs -text
-*.tar.bz2 filter=lfs diff=lfs merge=lfs -text
-src/packages/kk/music/*.xm filter=lfs diff=lfs merge=lfs -text
-src/packages/kdos-cursors/art/** filter=lfs diff=lfs merge=lfs -text
+# One .c file, a two-line Makefile and no install rule.
+gcc $CFLAGS -O2 -Wno-implicit-function-declaration -o aa3d aa3d.c $LDFLAGS
+
+install -Dm755 aa3d "$PKG/usr/bin/aa3d"
+install -Dm644 logo "$PKG/usr/share/aa3d/logo"
+install -Dm644 pyramid "$PKG/usr/share/aa3d/pyramid"

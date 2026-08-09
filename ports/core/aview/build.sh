@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,9 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-*.tar.gz filter=lfs diff=lfs merge=lfs -text
-ports/appbox/image/**/*.zst filter=lfs diff=lfs merge=lfs -text
-*.tar.xz filter=lfs diff=lfs merge=lfs -text
-*.tar.bz2 filter=lfs diff=lfs merge=lfs -text
-src/packages/kk/music/*.xm filter=lfs diff=lfs merge=lfs -text
-src/packages/kdos-cursors/art/** filter=lfs diff=lfs merge=lfs -text
+patch -p1 -i $PORT_SRC/imagemagick7.patch
+
+export CFLAGS="$CFLAGS -Wno-implicit-function-declaration"
+
+./configure --prefix=/usr \
+            --mandir=/usr/share/man
+make
+make DESTDIR=$PKG install
