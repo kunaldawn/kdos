@@ -8,18 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: bat — a cat clone with syntax highlighting and Git integration
-# homepage	: https://github.com/sharkdp/bat
-# depends	: rust
-
-name=bat
-version=0.26.1
-release=1
-source="https://github.com/sharkdp/bat/archive/v$version.tar.gz"
-vendoring=rust
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-	cargo build --release --frozen --offline
-	install -Dm755 target/release/bat $PKG/usr/bin/bat
-}
+name        = bat
+version     = 0.26.1
+release     = 1
+source      = https://github.com/sharkdp/bat/archive/v$version.tar.gz
+description = bat — a cat clone with syntax highlighting and Git integration
+homepage    = https://github.com/sharkdp/bat
+depends     = rust
+vendoring   = rust

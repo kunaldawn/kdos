@@ -8,31 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: SVG rendering library (Rust-based; used by imv for SVG support)
-# homepage	: https://gitlab.gnome.org/GNOME/librsvg
-# depends	: meson rust cargo-c gdk-pixbuf cairo pango harfbuzz fontconfig freetype2 glib libxml2
-
-name=librsvg
-version=2.62.1
-release=1
-source="https://download.gnome.org/sources/librsvg/${version%.*}/librsvg-$version.tar.xz"
-vendoring=rust
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-	export CARGO_HOME="$SRC_ROOT/.cargo"
-	export CARGO_NET_OFFLINE=true
-	export RUSTFLAGS="-C target-feature=-crt-static"
-	meson setup build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib \
-		--buildtype=release \
-		-Dintrospection=disabled \
-		-Dvala=disabled \
-		-Ddocs=disabled \
-		-Dtests=false \
-		-Dpixbuf=enabled \
-		-Dpixbuf-loader=disabled \
-		-Dtriplet=x86_64-unknown-linux-musl
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = librsvg
+version     = 2.62.1
+release     = 1
+source      = https://download.gnome.org/sources/librsvg/${version%.*}/librsvg-$version.tar.xz
+description = SVG rendering library (Rust-based; used by imv for SVG support)
+homepage    = https://gitlab.gnome.org/GNOME/librsvg
+depends     = meson rust cargo-c gdk-pixbuf cairo pango harfbuzz fontconfig freetype2 glib libxml2
+vendoring   = rust

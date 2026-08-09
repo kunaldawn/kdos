@@ -8,16 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: An OCI container runtime monitor (used by Podman)
-# homepage	: https://github.com/containers/conmon
-# depends	: glib
-
-name=conmon
-version=2.2.1
-release=1
-source="https://github.com/containers/conmon/archive/v$version.tar.gz"
-
-build() {
-	make PREFIX=/usr
-	make PREFIX=/usr DESTDIR=$PKG install.bin install.crio install.podman
-}
+name        = conmon
+version     = 2.2.1
+release     = 1
+source      = https://github.com/containers/conmon/archive/v$version.tar.gz
+description = An OCI container runtime monitor (used by Podman)
+homepage    = https://github.com/containers/conmon
+depends     = glib

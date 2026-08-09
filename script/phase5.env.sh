@@ -12,7 +12,7 @@
 
 # Environment configuration for KDOS build
 
-# --- build-system metadata (parsed by script/build.py, never sourced) ---
+# --- build-system metadata (PARSED by the orchestrator, never sourced) ---
 export KDOS_PHASE_TITLE="Kernel"
 export KDOS_PHASE_DESC="linux kernel + modules for the target rootfs"
 export KDOS_SNAPSHOT_PATHS="fs"

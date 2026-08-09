@@ -425,8 +425,9 @@ switch to the kernel's native overlay once installed on ext4.
 
 Bare-metal install is `sudo kinstall`, or **Install KDOS** in the app library.
 
-`kinstall` is a dependency-free C TUI in `src/kinstall/` — no ncurses, no
-libraries at all beyond musl. It runs a ten-page wizard (preflight, keymap,
+`kinstall` is a dependency-free C TUI in `src/packages/kdos-installer/`, drawn
+with KDOS's own `libktui` — no ncurses, no libraries at all beyond musl. It
+runs a ten-page wizard (preflight, keymap,
 time zone, disk, layout, accounts, accent + services, summary, install, done)
 and **writes nothing until the summary is confirmed**; every page before that
 is reversible, and the sidebar walks back to any of them.
@@ -465,8 +466,9 @@ kdos/
 │   └── fetch                # downloads every source= URL, runs cargo vendor
 ├── src/
 │   ├── kpkg/                # the package manager
-│   ├── kinstall/            # the installer (C, no libraries)
-│   └── packages/            # ports that are ours: splash, appbox, theme, art
+│   ├── libs/                # our C libraries: libkbase, libkcolor, libktui
+│   └── packages/            # ports that are ours: installer, splash, appbox,
+│                            #   theme helper, art
 ├── fs/                      # copied verbatim into the rootfs
 ├── script/                  # build.py orchestrator + phase directories
 ├── testing/                 # per-port build tests, QEMU runners

@@ -1,0 +1,39 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+mv $SRC_ROOT/cmake-${version}.src $SRC_ROOT/cmake
+mv $SRC_ROOT/third-party-${version}.src $SRC_ROOT/third-party
+
+cmake -B build -G Ninja \
+	-D CMAKE_INSTALL_PREFIX=/usr \
+	-D CMAKE_BUILD_TYPE=Release \
+	-D CMAKE_C_FLAGS_RELEASE="$CFLAGS" \
+	-D CMAKE_CXX_FLAGS_RELEASE="$CXXFLAGS -include cstdint" \
+	-D LLVM_BINUTILS_INCDIR=/usr/include \
+	-D LLVM_BUILD_LLVM_DYLIB=OFF \
+	-D LLVM_LINK_LLVM_DYLIB=OFF \
+	-D BUILD_SHARED_LIBS=ON \
+	-D LLVM_PARALLEL_COMPILE_JOBS="$(echo "$MAKEFLAGS" | grep -o '[0-9]*')" \
+	-D LLVM_INCLUDE_EXAMPLES=OFF \
+	-D LLVM_INCLUDE_TESTS=OFF \
+	-D LLVM_ENABLE_FFI=ON \
+	-D LLVM_ENABLE_RTTI=ON \
+	-D LLVM_ENABLE_OCAMLDOC=OFF \
+	-D LLVM_INSTALL_UTILS=ON \
+	-D LLVM_ENABLE_LIBCXX=OFF \
+	-D LLVM_ENABLE_LLD=$(scratch isinstalled lld && echo ON || echo OFF) \
+	-D LLVM_OPTIMIZED_TABLEGEN=ON \
+	-D LLVM_INCLUDE_BENCHMARKS=OFF \
+	-D LLVM_TARGETS_TO_BUILD=all \
+	-Wno-dev
+
+cmake --build build
+DESTDIR=$PKG cmake --install build

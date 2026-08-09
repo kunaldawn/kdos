@@ -8,31 +8,16 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: openbsd-netcat — TCP/IP swiss army knife (OpenBSD port for Linux)
-# homepage	: http://ftp.debian.org/debian/pool/main/n/netcat-openbsd/
-# depends	: libbsd
+name        = netcat
+version     = 1.234
+release     = 1
 
-name=netcat
-version=1.234
-debrev=1
-_alpine_rev=8351754aab5744e775900b2a313cd5bcaebc91a3
-release=1
-source="https://salsa.debian.org/debian/netcat-openbsd/-/archive/debian/$version-$debrev/netcat-openbsd-debian-$version-$debrev.tar.gz
-	https://gitlab.alpinelinux.org/alpine/aports/-/raw/$_alpine_rev/main/netcat-openbsd/b64.patch
-	https://gitlab.alpinelinux.org/alpine/aports/-/raw/$_alpine_rev/main/netcat-openbsd/base64.c"
+debrev      = 1
+_alpine_rev = 8351754aab5744e775900b2a313cd5bcaebc91a3
 
-build() {
-	while read -r p; do
-		case "$p" in ''|\#*) continue ;; esac
-		patch -p1 -i "debian/patches/$p"
-	done < "debian/patches/series"
-
-	# musl libresolv lacks b64_ntop; ship a self-contained encoder and
-	# wire it into the Makefile, mirroring Alpine's netcat-openbsd port.
-	patch -p1 -i b64.patch
-	sed -i -e '/SRCS=/s;\(.*\);& base64.c;' Makefile
-
-	make CFLAGS="$CFLAGS -DDEBIAN_VERSION=\"\\\"$version-$debrev\\\"\"" LDFLAGS="$LDFLAGS"
-	install -Dm755 nc $PKG/usr/bin/nc
-	install -Dm644 nc.1 $PKG/usr/share/man/man1/nc.1
-}
+source      = https://salsa.debian.org/debian/netcat-openbsd/-/archive/debian/$version-$debrev/netcat-openbsd-debian-$version-$debrev.tar.gz
+source      = https://gitlab.alpinelinux.org/alpine/aports/-/raw/$_alpine_rev/main/netcat-openbsd/b64.patch
+source      = https://gitlab.alpinelinux.org/alpine/aports/-/raw/$_alpine_rev/main/netcat-openbsd/base64.c
+description = openbsd-netcat — TCP/IP swiss army knife (OpenBSD port for Linux)
+homepage    = http://ftp.debian.org/debian/pool/main/n/netcat-openbsd/
+depends     = libbsd

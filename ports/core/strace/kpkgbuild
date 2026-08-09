@@ -8,19 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: strace — diagnostic, debugging, and instructional userspace utility
-# homepage	: https://strace.io/
-
-name=strace
-version=7.0
-release=1
-source="https://github.com/strace/strace/releases/download/v$version/strace-$version.tar.xz"
-
-build() {
-	./configure \
-		--prefix=/usr \
-		--mandir=/usr/share/man \
-		--enable-mpers=no
-	make
-	make DESTDIR=$PKG install
-}
+name        = strace
+version     = 7.0
+release     = 1
+source      = https://github.com/strace/strace/releases/download/v$version/strace-$version.tar.xz
+description = strace — diagnostic, debugging, and instructional userspace utility
+homepage    = https://strace.io/

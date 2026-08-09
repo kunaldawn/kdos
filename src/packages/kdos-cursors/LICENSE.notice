@@ -7,7 +7,7 @@ KDOS-cursors is a KDOS-specific derivative of the Bibata cursor theme.
 
 The artwork in art/ is NOT upstream's release as shipped. It is a pruned,
 vendored subset produced by vendor.py, and the theme built from it is
-recoloured by gencursors.py. Specifically:
+recoloured by kdos-theme (src/packages/kdos-theme/cursors.c). Specifically:
 
   * Only the 32 shapes KDOS actually needs are kept. Upstream's X11 relics
     (pirate/X_cursor, dotbox, draped box, target, corner tees and angles,

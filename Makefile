@@ -10,7 +10,7 @@
 
 all: build
 
-# Extra flags for script/build.py, e.g.
+# Extra flags for the orchestrator, e.g.
 #   make build BUILD_ARGS="--restore phase2"
 #   make build BUILD_ARGS=--fresh
 #   make build BUILD_ARGS=--no-snapshot
@@ -50,10 +50,10 @@ build: check-iso-free
 		-v $$(pwd)/fs:/workspace/fs:ro \
 		-v $$(pwd)/script:/workspace/script:ro \
 		-v $$(pwd)/ports:/workspace/ports:ro \
-		-it os-dev python3 script/build.py $(BUILD_ARGS)
+		-it os-dev script/kdosbuild.sh $(BUILD_ARGS)
 
 snapshots:
-	python3 script/build.py --list
+	script/kdosbuild.sh --list
 
 run:
 	test -f build/iso-build/kdos.iso || { echo "ERROR: ISO not found at build/iso-build/kdos.iso — run 'make build' first"; exit 1; }

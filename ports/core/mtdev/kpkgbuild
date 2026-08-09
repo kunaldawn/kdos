@@ -8,16 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Multitouch Protocol Translation Library which is used to transform all variants of kernel MT (Multitouch) events to the slotted type B protocol
-
-name=mtdev
-version=1.1.7
-release=1
-source="http://bitmath.org/code/$name/$name-$version.tar.bz2"
-
-build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-}
-
+name        = mtdev
+version     = 1.1.7
+release     = 1
+source      = http://bitmath.org/code/$name/$name-$version.tar.bz2
+description = Multitouch Protocol Translation Library which is used to transform all variants of kernel MT (Multitouch) events to the slotted type B protocol

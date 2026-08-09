@@ -8,21 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: GObject bindings for libudev (used by upower and NetworkManager)
-# homepage	: https://gitlab.gnome.org/GNOME/libgudev
-# depends	: meson eudev glib
-
-name=libgudev
-version=238
-release=1
-source="https://download.gnome.org/sources/libgudev/$version/libgudev-$version.tar.xz"
-
-build() {
-	meson setup build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib \
-		-Dintrospection=disabled \
-		-Dvapi=disabled \
-		-Dtests=disabled
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = libgudev
+version     = 238
+release     = 1
+source      = https://download.gnome.org/sources/libgudev/$version/libgudev-$version.tar.xz
+description = GObject bindings for libudev (used by upower and NetworkManager)
+homepage    = https://gitlab.gnome.org/GNOME/libgudev
+depends     = meson eudev glib

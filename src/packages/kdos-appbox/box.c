@@ -41,22 +41,22 @@ void profile_defaults(Profile *p, const char *box)
 
 char *profile_path(const char *box)
 {
-	char *dir = xmalloc(MAX_LINE);
-	snprintf(dir, MAX_LINE, "%s/.config/kdos/boxes", home_dir());
-	mkdir_p(dir);
+	char *dir = kb_calloc(1, MAX_LINE);
+	snprintf(dir, MAX_LINE, "%s/.config/kdos/boxes", kb_home_dir());
+	kb_mkdir_p(dir);
 	snprintf(dir + strlen(dir), MAX_LINE - strlen(dir), "/%s.conf", box);
 	return dir;
 }
 
 char *profile_home(const char *box)
 {
-	char *p = xmalloc(MAX_LINE);
+	char *p = kb_calloc(1, MAX_LINE);
 	const char *data = getenv("XDG_DATA_HOME");
 	if (data && *data)
 		snprintf(p, MAX_LINE, "%s/kdos/boxes/%s", data, box);
 	else
 		snprintf(p, MAX_LINE, "%s/.local/share/kdos/boxes/%s",
-			 home_dir(), box);
+			 kb_home_dir(), box);
 	return p;
 }
 
@@ -108,7 +108,7 @@ int profile_load(Profile *p, const char *box)
 	int found;
 
 	profile_defaults(p, box);
-	found = read_file(path, buf, sizeof(buf)) >= 0;
+	found = kb_read_file(path, buf, sizeof(buf)) >= 0;
 	free(path);
 	if (!found)
 		return 0;
@@ -148,7 +148,7 @@ int profile_save(const Profile *p)
 		 p->process ? "private" : "shared",
 		 p->privhome ? "private" : "shared",
 		 p->init ? "yes" : "no");
-	rc = write_file(path, buf);
+	rc = kb_write_file(path, buf);
 	free(path);
 	return rc;
 }
@@ -172,13 +172,13 @@ void profile_print(const Profile *p)
 
 int image_exists(const char *image)
 {
-	Argv a = {0};
-	argv_add(&a, "podman");
-	argv_add(&a, "image");
-	argv_add(&a, "exists");
-	argv_add(&a, image);
-	argv_end(&a);
-	return run_quiet(&a) == 0;
+	KbArgv a = {0};
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "image");
+	kb_argv_add(&a, "exists");
+	kb_argv_add(&a, image);
+	kb_argv_end(&a);
+	return kb_run(&a) == 0;
 }
 
 /*
@@ -193,22 +193,22 @@ int image_exists(const char *image)
  */
 int image_has_qt_gtk(const char *image)
 {
-	char *cache = path_join(runtime_dir(), "kdos-appbox.qtgtk");
+	char *cache = kb_path_join(kb_runtime_dir(), "kdos-appbox.qtgtk");
 	char buf[64] = {0};
 	int yes;
 
-	if (read_file(cache, buf, sizeof(buf)) < 0) {
-		Argv a = {0};
-		argv_add(&a, "podman");
-		argv_add(&a, "image");
-		argv_add(&a, "inspect");
-		argv_add(&a, "--format");
-		argv_add(&a, "{{index .Labels \"kdos.qt-gtk-theme\"}}");
-		argv_add(&a, image);
-		argv_end(&a);
-		if (run_capture(&a, buf, sizeof(buf)) != 0)
+	if (kb_read_file(cache, buf, sizeof(buf)) < 0) {
+		KbArgv a = {0};
+		kb_argv_add(&a, "podman");
+		kb_argv_add(&a, "image");
+		kb_argv_add(&a, "inspect");
+		kb_argv_add(&a, "--format");
+		kb_argv_add(&a, "{{index .Labels \"kdos.qt-gtk-theme\"}}");
+		kb_argv_add(&a, image);
+		kb_argv_end(&a);
+		if (kb_run_capture(&a, buf, sizeof(buf)) != 0)
 			buf[0] = '\0';
-		write_file(cache, buf);
+		kb_write_file(cache, buf);
 	}
 	yes = (buf[0] == '1');
 	free(cache);
@@ -217,83 +217,83 @@ int image_has_qt_gtk(const char *image)
 
 int box_exists(const char *box)
 {
-	Argv a = {0};
-	argv_add(&a, "podman");
-	argv_add(&a, "container");
-	argv_add(&a, "exists");
-	argv_add(&a, box);
-	argv_end(&a);
-	return run_quiet(&a) == 0;
+	KbArgv a = {0};
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "container");
+	kb_argv_add(&a, "exists");
+	kb_argv_add(&a, box);
+	kb_argv_end(&a);
+	return kb_run(&a) == 0;
 }
 
 int box_state(const char *box, char *buf, size_t n)
 {
-	Argv a = {0};
-	argv_add(&a, "podman");
-	argv_add(&a, "inspect");
-	argv_add(&a, "--type");
-	argv_add(&a, "container");
-	argv_add(&a, "--format");
-	argv_add(&a, "{{.State.Status}}");
-	argv_add(&a, box);
-	argv_end(&a);
-	if (run_capture(&a, buf, n) != 0 || !buf[0])
+	KbArgv a = {0};
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "inspect");
+	kb_argv_add(&a, "--type");
+	kb_argv_add(&a, "container");
+	kb_argv_add(&a, "--format");
+	kb_argv_add(&a, "{{.State.Status}}");
+	kb_argv_add(&a, box);
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, buf, n) != 0 || !buf[0])
 		snprintf(buf, n, "absent");
 	return 0;
 }
 
 int box_create(const Profile *p)
 {
-	Argv a = {0};
+	KbArgv a = {0};
 	char flags[MAX_LINE] = {0};
 
 	if (!image_exists(p->image)) {
-		warn("image %s is not present", p->image);
+		kb_warn("image %s is not present", p->image);
 		return 1;
 	}
 
-	argv_add(&a, "distrobox");
-	argv_add(&a, "create");
-	argv_add(&a, "--name");
-	argv_add(&a, p->name);
-	argv_add(&a, "--image");
-	argv_add(&a, p->image);
-	argv_add(&a, "--yes");
+	kb_argv_add(&a, "distrobox");
+	kb_argv_add(&a, "create");
+	kb_argv_add(&a, "--name");
+	kb_argv_add(&a, p->name);
+	kb_argv_add(&a, "--image");
+	kb_argv_add(&a, p->image);
+	kb_argv_add(&a, "--yes");
 	if (p->netns)
-		argv_add(&a, "--unshare-netns");
+		kb_argv_add(&a, "--unshare-netns");
 	if (p->ipc)
-		argv_add(&a, "--unshare-ipc");
+		kb_argv_add(&a, "--unshare-ipc");
 	if (p->devsys)
-		argv_add(&a, "--unshare-devsys");
+		kb_argv_add(&a, "--unshare-devsys");
 	if (p->process)
-		argv_add(&a, "--unshare-process");
+		kb_argv_add(&a, "--unshare-process");
 	if (p->init)
-		argv_add(&a, "--init");
+		kb_argv_add(&a, "--init");
 	if (p->privhome) {
 		char *h = profile_home(p->name);
-		mkdir_p(h);
-		argv_add(&a, "--home");
-		argv_add(&a, h);
+		kb_mkdir_p(h);
+		kb_argv_add(&a, "--home");
+		kb_argv_add(&a, h);
 	}
 	if (flags[0]) {
-		argv_add(&a, "--additional-flags");
-		argv_add(&a, flags);
+		kb_argv_add(&a, "--additional-flags");
+		kb_argv_add(&a, flags);
 	}
-	argv_end(&a);
-	return run_quiet(&a);
+	kb_argv_end(&a);
+	return kb_run(&a);
 }
 
 int box_remove(const char *box, int force)
 {
-	Argv a = {0};
-	argv_add(&a, "distrobox");
-	argv_add(&a, "rm");
-	argv_add(&a, box);
-	argv_add(&a, "--yes");
+	KbArgv a = {0};
+	kb_argv_add(&a, "distrobox");
+	kb_argv_add(&a, "rm");
+	kb_argv_add(&a, box);
+	kb_argv_add(&a, "--yes");
 	if (force)
-		argv_add(&a, "--force");
-	argv_end(&a);
-	return run_quiet(&a);
+		kb_argv_add(&a, "--force");
+	kb_argv_end(&a);
+	return kb_run(&a);
 }
 
 /*
@@ -311,11 +311,11 @@ int box_ensure(const char *box)
 
 	profile_load(&p, box);
 	if (!image_exists(p.image))
-		die("the appbox image is not baked into this system — build the "
+		kb_die("the appbox image is not baked into this system — build the "
 		    "ISO after 'make fetch-apps', or when online: kdos app <name>");
 
-	lockpath = path_join(runtime_dir(), "kdos-appbox.create.lock");
-	fd = lock_file(lockpath, 0);
+	lockpath = kb_path_join(kb_runtime_dir(), "kdos-appbox.create.lock");
+	fd = kb_lock_file(lockpath, 0);
 	free(lockpath);
 	if (box_exists(box)) {          /* someone else won the race */
 		if (fd >= 0)
@@ -339,15 +339,15 @@ int box_ensure(const char *box)
  */
 int box_setup_done(const char *box)
 {
-	Argv a = {0};
-	char *buf = xmalloc(1 << 16);
+	KbArgv a = {0};
+	char *buf = kb_calloc(1, 1 << 16);
 	int done;
 
-	argv_add(&a, "podman");
-	argv_add(&a, "logs");
-	argv_add(&a, box);
-	argv_end(&a);
-	run_capture(&a, buf, 1 << 16);
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "logs");
+	kb_argv_add(&a, box);
+	kb_argv_end(&a);
+	kb_run_capture(&a, buf, 1 << 16);
 	done = strstr(buf, "container_setup_done") != NULL;
 	free(buf);
 	return done;
@@ -366,19 +366,19 @@ int box_wait_ready(const char *box, int seconds)
 
 int box_list(void)
 {
-	Argv a = {0};
-	char *buf = xmalloc(1 << 16);
+	KbArgv a = {0};
+	char *buf = kb_calloc(1, 1 << 16);
 	char *line, *save;
 
-	argv_add(&a, "podman");
-	argv_add(&a, "ps");
-	argv_add(&a, "--all");
-	argv_add(&a, "--format");
-	argv_add(&a, "{{.Names}}\t{{.Image}}\t{{.State}}");
-	argv_end(&a);
-	if (run_capture(&a, buf, 1 << 16) != 0) {
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "ps");
+	kb_argv_add(&a, "--all");
+	kb_argv_add(&a, "--format");
+	kb_argv_add(&a, "{{.Names}}\t{{.Image}}\t{{.State}}");
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, buf, 1 << 16) != 0) {
 		free(buf);
-		warn("podman is not usable — no boxes to list");
+		kb_warn("podman is not usable — no boxes to list");
 		return 1;
 	}
 
@@ -402,7 +402,7 @@ int box_list(void)
 		pp = profile_path(name);
 		profile_load(&p, name);
 		printf("%-16s %-34s %-10s %s\n", name, image, state,
-		       file_exists(pp) ? "custom" : "default");
+		       kb_path_exists(pp) ? "custom" : "default");
 		free(pp);
 	}
 	free(buf);

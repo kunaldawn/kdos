@@ -8,18 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: An implementation of overlay+shiftfs in FUSE for rootless containers
-# homepage	: https://github.com/containers/fuse-overlayfs
-# depends	: fuse3
-
-name=fuse-overlayfs
-version=1.16
-release=1
-source="https://github.com/containers/fuse-overlayfs/archive/v$version.tar.gz"
-
-build() {
-	./autogen.sh
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-}
+name        = fuse-overlayfs
+version     = 1.16
+release     = 1
+source      = https://github.com/containers/fuse-overlayfs/archive/v$version.tar.gz
+description = An implementation of overlay+shiftfs in FUSE for rootless containers
+homepage    = https://github.com/containers/fuse-overlayfs
+depends     = fuse3

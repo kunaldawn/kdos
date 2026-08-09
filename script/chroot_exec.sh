@@ -27,7 +27,7 @@ if [ ! -d "$CHROOT_DIR" ]; then
     exit 1
 fi
 
-# Diagnostics go to a file, never to stdout/stderr: build.py parses the output
+# Diagnostics go to a file, never to stdout/stderr: the orchestrator parses
 # of commands run through this wrapper (kpkgdepends prints the install order
 # and nothing else), so a stray message here becomes a bogus package name.
 MOUNT_LOG="$REPO_ROOT/build/logs/chroot.log"

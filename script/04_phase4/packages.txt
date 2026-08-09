@@ -252,6 +252,16 @@ kdos-splash
 # Builds the applied COSMIC theme from the KDOS palette (src/packages, ours).
 kdos-theme-helper
 
+# Service supervisor and the console getty wrapper (src/packages, ours).
+# Replaces fs/usr/sbin/service and fs/usr/local/sbin/kdos-getty, which is why
+# neither is in fs/ any more.
+kdos-tools
+
+# The GTK/icon/cursor generators (src/packages, ours). Build-time step for the
+# three art packages below AND the runtime engine behind `kdos theme` — which
+# is why python3 is no longer a runtime dependency of the shipped system.
+kdos-theme
+
 # KDOS phosphor icon theme (src/packages, ours) — recolored cosmic-icons.
 kdos-icons
 

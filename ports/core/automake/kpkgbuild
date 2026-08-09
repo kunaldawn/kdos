@@ -8,18 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Programs for generating Makefiles for use with Autoconf
-# depends	: autoconf
-
-name=automake
-version=1.18.1
-release=1
-source="https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz"
-
-build() {
-	./configure --prefix=/usr
-	make
-	make DESTDIR=$PKG install
-
-	rm $PKG/usr/share/automake-*/texinfo.tex
-}
+name        = automake
+version     = 1.18.1
+release     = 1
+source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
+description = Programs for generating Makefiles for use with Autoconf
+depends     = autoconf

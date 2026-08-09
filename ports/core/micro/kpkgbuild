@@ -8,20 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: micro — modern and intuitive terminal-based text editor (Go)
-# homepage	: https://micro-editor.github.io/
-# depends	: go
-
-name=micro
-version=2.0.15
-release=1
-source="https://github.com/zyedidia/micro/archive/v$version.tar.gz"
-vendoring=go
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-
-	export CGO_ENABLED=0
-	make build
-	install -Dm755 micro $PKG/usr/bin/micro
-}
+name        = micro
+version     = 2.0.15
+release     = 1
+source      = https://github.com/zyedidia/micro/archive/v$version.tar.gz
+description = micro — modern and intuitive terminal-based text editor (Go)
+homepage    = https://micro-editor.github.io/
+depends     = go
+vendoring   = go

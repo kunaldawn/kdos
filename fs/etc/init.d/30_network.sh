@@ -13,7 +13,7 @@ case "$1" in
         echo "[KDOS] Starting $NAME..."
         mkdir -p /run/dhcpcd
         # -B = foreground for supervision; -A = ARP check/release
-        supervise "$NAME" "$DAEMON -B"
+        supervise "$NAME" "$DAEMON" -B
         ;;
     stop)
         stop_service "$NAME"
