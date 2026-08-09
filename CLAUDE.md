@@ -1333,6 +1333,29 @@ overwrite, and narrowing it to plan-selected ports broke the bootstrap
 silently — phase 2 died on `tar`. A path another package owns is still a
 conflict, and `src/libs/selftest.c` asserts both halves.
 
+**`--overwrite` is the other half of what `-f` used to mean, split out.** The
+userland genuinely overlaps: toybox ships 242 paths and `awk` is gawk's,
+`readelf`/`strings` are binutils', `find`/`xargs` are findutils', and
+`mount`/`blkid`/`losetup` are util-linux's — about 70 collisions in all. The
+build's rule has always been that whoever comes last in the dependency order
+wins, and it worked only because the phase passed a blanket `-f` that skipped
+the scan. `--overwrite` does that deliberately and nothing else: no rebuild, and
+the path **changes hands in the database** — `kp_db_drop_paths` removes it from
+the old owner's manifest — instead of being claimed twice, which is what made
+`kpkgdel <old>` delete a file the new owner installed. kdosbuild passes it for
+every package a `packages.txt` phase installs; `-f` still means rebuild and is
+still only passed for ports a plan selected.
+
+**`kb_run_capture` used to deadlock on output past its buffer.** `spawn()` left
+the pipe's read end open in the child, so when the parent filled its ceiling and
+closed its own copy, the child blocked in `write()` forever instead of taking
+EPIPE, and the parent blocked in `waitpid()`. `kpkg install zig` hit it exactly:
+a 1.1 MB `tar -tf` listing against a 1 MB buffer. The read end is `FD_CLOEXEC`
+now, and the manifest readers use **`kb_run_capture_buf`**, which grows — a
+short manifest is a database entry that owns fewer files than the package
+installed. The upgrade orphan sweep had a matching `char *paths[8192]` ceiling
+against zig's 20831 paths; it grows too.
+
 Bugs the rewrite fixed, all of them silent:
 
 - A failed `mv` ran inside `find | while read`, so its `exit 1` left only the
