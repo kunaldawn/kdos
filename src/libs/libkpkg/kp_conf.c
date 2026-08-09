@@ -200,9 +200,14 @@ char **kp_all_ports(const KpConf *c, int *count)
  * a trailing slash. Loading it once and asking N questions of the result is
  * the difference between an install being instant and being quadratic.
  */
+typedef struct {
+	char *path;
+	char *owner;
+} OwnedPair;
+
 static int cmp_owned(const void *a, const void *b)
 {
-	return strcmp(*(char *const *)a, *(char *const *)b);
+	return strcmp(((const OwnedPair *)a)->path, ((const OwnedPair *)b)->path);
 }
 
 KpOwned *kp_owned_load(const KpConf *c)
@@ -216,7 +221,7 @@ KpOwned *kp_owned_load(const KpConf *c)
 	}
 
 	int cap = 4096;
-	o->path = kb_calloc((size_t)cap, sizeof(*o->path));
+	OwnedPair *pair = kb_calloc((size_t)cap, sizeof(*pair));
 	for (char **n = names; *n; n++) {
 		char *f = kb_path_join(db, *n);
 		size_t len = 0;
@@ -240,24 +245,34 @@ KpOwned *kp_owned_load(const KpConf *c)
 				continue;	/* directories are shared */
 			if (o->n == cap) {
 				cap *= 2;
-				char **nv = kb_calloc((size_t)cap, sizeof(*nv));
-				memcpy(nv, o->path, (size_t)o->n * sizeof(*nv));
-				free(o->path);
-				o->path = nv;
+				OwnedPair *nv =
+					kb_calloc((size_t)cap, sizeof(*nv));
+				memcpy(nv, pair, (size_t)o->n * sizeof(*nv));
+				free(pair);
+				pair = nv;
 			}
-			o->path[o->n++] = kb_strdup(line);
+			pair[o->n].path = kb_strdup(line);
+			pair[o->n].owner = kb_strdup(*n);
+			o->n++;
 		}
 		free(data);
 	}
 	kb_strv_free(names);
 	free(db);
 
-	qsort(o->path, (size_t)o->n, sizeof(*o->path), cmp_owned);
+	qsort(pair, (size_t)o->n, sizeof(*pair), cmp_owned);
+	o->path = kb_calloc((size_t)(o->n ? o->n : 1), sizeof(*o->path));
+	o->owner = kb_calloc((size_t)(o->n ? o->n : 1), sizeof(*o->owner));
+	for (int i = 0; i < o->n; i++) {
+		o->path[i] = pair[i].path;
+		o->owner[i] = pair[i].owner;
+	}
+	free(pair);
 	return o;
 }
 
-/* `rel` is `usr/bin/tar`; the database spells it `./usr/bin/tar`. */
-int kp_owned_has(const KpOwned *o, const char *rel)
+/* Binary search; -1 when nothing claims it. */
+static int owned_find(const KpOwned *o, const char *rel)
 {
 	char key[1024];
 	snprintf(key, sizeof(key), "./%s", rel);
@@ -266,23 +281,89 @@ int kp_owned_has(const KpOwned *o, const char *rel)
 		int mid = lo + (hi - lo) / 2;
 		int r = strcmp(o->path[mid], key);
 		if (!r)
-			return 1;
+			return mid;
 		if (r < 0)
 			lo = mid + 1;
 		else
 			hi = mid - 1;
 	}
-	return 0;
+	return -1;
+}
+
+/* `rel` is `usr/bin/tar`; the database spells it `./usr/bin/tar`. */
+int kp_owned_has(const KpOwned *o, const char *rel)
+{
+	return owned_find(o, rel) >= 0;
+}
+
+const char *kp_owned_owner(const KpOwned *o, const char *rel)
+{
+	int i = owned_find(o, rel);
+	return i < 0 ? NULL : o->owner[i];
 }
 
 void kp_owned_free(KpOwned *o)
 {
 	if (!o)
 		return;
-	for (int i = 0; i < o->n; i++)
+	for (int i = 0; i < o->n; i++) {
 		free(o->path[i]);
+		free(o->owner[i]);
+	}
 	free(o->path);
+	free(o->owner);
 	free(o);
+}
+
+/* An overwrite moves a path from one package to another. The old owner's
+ * manifest has to lose it, or `kpkgdel <old>` deletes a file the new owner
+ * installed — the "owned by nothing / owned by two" class of bug the rewrite
+ * was meant to end. Rewritten whole: the file is a few hundred KB at most. */
+int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
+		     int n)
+{
+	if (n <= 0)
+		return 0;
+	char *db = kp_db_dir(c);
+	char *file = kb_path_join(db, pkg);
+	free(db);
+
+	size_t len = 0;
+	char *data = kb_read_all(file, &len);
+	if (!data) {
+		free(file);
+		return 0;
+	}
+
+	KbBuf out = {0};
+	int dropped = 0, first = 1;
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		next = nl ? nl + 1 : NULL;
+		if (nl)
+			*nl = 0;
+		int drop = 0;
+		if (!first) {
+			for (int i = 0; i < n && !drop; i++) {
+				char key[1024];
+				snprintf(key, sizeof(key), "./%s", paths[i]);
+				if (!strcmp(line, key))
+					drop = 1;
+			}
+		}
+		first = 0;
+		if (drop)
+			dropped++;
+		else
+			kb_buf_printf(&out, "%s\n", line);
+	}
+	free(data);
+
+	if (dropped)
+		kb_write_all(file, out.p, out.n);
+	kb_buf_free(&out);
+	free(file);
+	return dropped;
 }
 
 /*

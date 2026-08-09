@@ -804,8 +804,14 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 			kb_strlcpy(node->note, "rebuild", sizeof(node->note));
 		}
 
+		/* --overwrite for every package a phase installs. The userland
+		 * genuinely overlaps — toybox, util-linux, procps-ng and gawk
+		 * all ship /usr/bin/awk-shaped paths — and the build's rule has
+		 * always been that whoever comes last in the dependency order
+		 * wins. It is NOT -f: nothing is rebuilt by it, and the path
+		 * changes hands in the database instead of being claimed twice. */
 		KbBuf cl = {0};
-		kb_buf_printf(&cl, "%skpkg install%s %s", env,
+		kb_buf_printf(&cl, "%skpkg install --overwrite%s %s", env,
 			      forced ? " -f" : "", tok);
 		node->cmd_line = cl.p;		/* the node owns it now */
 		cmd_prefix(m, g->step_type, &node->cmd);
