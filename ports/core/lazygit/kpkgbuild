@@ -8,20 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: lazygit — simple terminal UI for git commands
-# homepage	: https://github.com/jesseduffield/lazygit
-# depends	: go
-
-name=lazygit
-version=0.61.1
-release=1
-source="https://github.com/jesseduffield/lazygit/archive/v$version.tar.gz"
-vendoring=go
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-
-	export CGO_ENABLED=0
-	go build -ldflags "-s -w -X main.version=$version" -o lazygit
-	install -Dm755 lazygit $PKG/usr/bin/lazygit
-}
+name        = lazygit
+version     = 0.61.1
+release     = 1
+source      = https://github.com/jesseduffield/lazygit/archive/v$version.tar.gz
+description = lazygit — simple terminal UI for git commands
+homepage    = https://github.com/jesseduffield/lazygit
+depends     = go
+vendoring   = go

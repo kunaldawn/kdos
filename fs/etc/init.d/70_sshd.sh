@@ -16,7 +16,7 @@ case "$1" in
         [ ! -f /etc/ssh/ssh_host_rsa_key ] && ssh-keygen -q -t rsa -N "" -f /etc/ssh/ssh_host_rsa_key
         [ ! -f /etc/ssh/ssh_host_ed25519_key ] && ssh-keygen -q -t ed25519 -N "" -f /etc/ssh/ssh_host_ed25519_key
         # -D = don't detach (foreground for supervision)
-        supervise "$NAME" "$DAEMON -D"
+        supervise "$NAME" "$DAEMON" -D
         ;;
     stop)
         stop_service "$NAME"

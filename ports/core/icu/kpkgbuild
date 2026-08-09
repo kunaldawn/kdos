@@ -8,18 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: International Components for Unicode library
-# homepage	: https://icu.unicode.org
-
-name=icu
-version=78.2
-release=1
-source="$name-$version.tar.gz::https://github.com/unicode-org/icu/archive/refs/tags/release-$version.tar.gz"
-build() {
-	# icu tries to use clang by default
-	export CC=gcc CXX=g++
-	cd icu4c/source
-	./configure --prefix=/usr --disable-samples --disable-tests
-	make
-	make DESTDIR=$PKG install
-}
+name        = icu
+version     = 78.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/unicode-org/icu/archive/refs/tags/release-$version.tar.gz
+description = International Components for Unicode library
+homepage    = https://icu.unicode.org

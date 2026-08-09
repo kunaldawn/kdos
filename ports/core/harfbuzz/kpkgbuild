@@ -8,22 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: OpenType text shaping engine
-# depends	: meson glib cairo
-
-name=harfbuzz
-version=12.3.0
-release=2
-source="https://github.com/harfbuzz/harfbuzz/releases/download/$version/harfbuzz-$version.tar.xz"
-
-build() {
-	meson setup build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib \
-		-D docs=disabled \
-		-D graphite=auto \
-		-D benchmark=disabled \
-		-D introspection=disabled \
-		-D icu=disabled
-	meson compile -C build
-	DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = harfbuzz
+version     = 12.3.0
+release     = 2
+source      = https://github.com/harfbuzz/harfbuzz/releases/download/$version/harfbuzz-$version.tar.xz
+description = OpenType text shaping engine
+depends     = meson glib cairo

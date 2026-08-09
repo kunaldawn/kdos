@@ -8,19 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: starship — minimal, blazing-fast, infinitely customizable shell prompt
-# homepage	: https://starship.rs/
-# depends	: rust
-
-name=starship
-version=1.25.1
-release=1
-source="https://github.com/starship/starship/archive/refs/tags/v$version.tar.gz"
-vendoring=rust
-
-build() {
-	tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-
-	cargo build --release --frozen --offline
-	install -Dm755 target/release/starship $PKG/usr/bin/starship
-}
+name        = starship
+version     = 1.25.1
+release     = 1
+source      = https://github.com/starship/starship/archive/refs/tags/v$version.tar.gz
+description = starship — minimal, blazing-fast, infinitely customizable shell prompt
+homepage    = https://starship.rs/
+depends     = rust
+vendoring   = rust

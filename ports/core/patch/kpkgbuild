@@ -8,19 +8,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: GNU patch — apply a diff file to an original
-
-name=patch
-version=2.8
-release=1
-source="https://ftp.gnu.org/gnu/$name/$name-$version.tar.xz"
-
-build() {
-	./configure \
-		--prefix=/usr \
-		--sysconfdir=/etc \
-		--mandir=/usr/share/man \
-		--localstatedir=/var
-	make
-	make DESTDIR=$PKG install
-}
+name        = patch
+version     = 2.8
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.xz
+description = GNU patch — apply a diff file to an original

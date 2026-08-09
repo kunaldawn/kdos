@@ -8,19 +8,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Keyboard configuration database (keymap data, used by libxkbcommon)
-# depends	: meson
-
-name=xkeyboard-config
-version=2.46
-release=1
-source="http://xorg.freedesktop.org/archive/individual/data/xkeyboard-config/xkeyboard-config-$version.tar.xz"
-
-build() {
-    meson build \
-		--prefix=/usr --sysconfdir=/etc --libdir=lib \
-		-Dcompat-rules=true \
-		-Dxorg-rules-symlinks=true
-    meson compile -C build
-    DESTDIR=$PKG meson install --no-rebuild -C build
-}
+name        = xkeyboard-config
+version     = 2.46
+release     = 1
+source      = http://xorg.freedesktop.org/archive/individual/data/xkeyboard-config/xkeyboard-config-$version.tar.xz
+description = Keyboard configuration database (keymap data, used by libxkbcommon)
+depends     = meson

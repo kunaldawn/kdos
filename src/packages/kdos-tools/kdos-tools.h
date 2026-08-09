@@ -1,0 +1,44 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   kdos-tools — the target's own commands
+ *
+ * One binary, dispatched on its own basename the way busybox does, installed
+ * under every name it answers to. These were nine bash scripts.
+ * ---------------------------------
+ */
+
+#ifndef KDOS_TOOLS_H
+#define KDOS_TOOLS_H
+
+#include <stdarg.h>
+
+#include "kbase.h"
+#include "kcolor.h"
+
+/* Overridable at compile time so the service logic can be exercised outside a
+ * booted system. Not an environment hook: these are paths a root tool builds
+ * from, and nothing that runs as root should take them from the caller. */
+#ifndef INIT_DIR
+#define INIT_DIR     "/etc/init.d"
+#endif
+#ifndef DISABLED_DIR
+#define DISABLED_DIR "/etc/service.disabled"
+#endif
+#ifndef RUN_DIR
+#define RUN_DIR      "/run"
+#endif
+
+int kdos_main(int argc, char **argv);		/* kdos                     */
+int ksvc_main(int argc, char **argv);		/* service, ksvc            */
+int getty_main(int argc, char **argv);		/* kdos-getty               */
+int shot_main(int argc, char **argv);		/* kdos-shot                */
+int banner_main(int argc, char **argv);		/* kdos-banner              */
+int fetch_app_main(int argc, char **argv);	/* kdos-fetch-app           */
+int fetch_static_main(int argc, char **argv);	/* kdos-fetch-static        */
+
+#endif /* KDOS_TOOLS_H */

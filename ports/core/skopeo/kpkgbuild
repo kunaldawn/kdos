@@ -8,17 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: Inspect, copy, and sign container images and image registries
-# homepage	: https://github.com/containers/skopeo
-# depends	: go libgpgme
-
-name=skopeo
-version=1.22.2
-release=1
-source="https://github.com/containers/skopeo/archive/v$version.tar.gz"
-
-build() {
-	make PREFIX=/usr DISABLE_DOCS=1 bin/skopeo
-	install -Dm755 bin/skopeo $PKG/usr/bin/skopeo
-	install -Dm644 default-policy.json $PKG/etc/containers/policy.json
-}
+name        = skopeo
+version     = 1.22.2
+release     = 1
+source      = https://github.com/containers/skopeo/archive/v$version.tar.gz
+description = Inspect, copy, and sign container images and image registries
+homepage    = https://github.com/containers/skopeo
+depends     = go libgpgme

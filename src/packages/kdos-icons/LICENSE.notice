@@ -12,7 +12,7 @@ Papirus is itself based on the Paper icon set by Sam Hewitt.
 
 This derivative is distributed under the same licence, GPL-3.0. The complete
 corresponding source is the contents of art/ (the pruned upstream artwork,
-otherwise unmodified) together with vendor.py and genicons.py, which are the
+otherwise unmodified) together with vendor.py and kdos-theme (src/packages/kdos-theme/icons.c), which are the
 only things that produce the installed files.
 
 What KDOS changed
@@ -38,7 +38,7 @@ What KDOS changed
    above is dropped.
 
 6. Every colour in every remaining SVG is remapped to the KDOS palette by
-   genicons.py: hues are mapped by family (blue/green/purple to the accent,
+   kdos-theme icons: hues are mapped by family (blue/green/purple to the accent,
    yellow/orange/brown to the secondary, red to the urgent colour, near-greys
    to a faintly tinted neutral) with each icon's own lightness and saturation
    preserved. Papirus colour-codes mimetypes, and that coding survives — a PDF

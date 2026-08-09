@@ -8,27 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# description	: NetworkManager VPN plugin for OpenVPN
-# homepage	: https://gitlab.gnome.org/GNOME/NetworkManager-openvpn
-# depends	: networkmanager openvpn glib libsecret
-
-name=networkmanager-openvpn
-version=1.12.0
-release=1
-source="https://gitlab.gnome.org/GNOME/NetworkManager-openvpn/-/archive/$version/NetworkManager-openvpn-$version.tar.bz2"
-
-build() {
-	./autogen.sh \
-		--prefix=/usr \
-		--sysconfdir=/etc \
-		--libdir=/usr/lib \
-		--libexecdir=/usr/lib \
-		--localstatedir=/var \
-		--without-gnome \
-		--with-gtk4=no \
-		--without-libnm-glib \
-		--disable-introspection \
-		--disable-static
-	make
-	make DESTDIR=$PKG install
-}
+name        = networkmanager-openvpn
+version     = 1.12.0
+release     = 1
+source      = https://gitlab.gnome.org/GNOME/NetworkManager-openvpn/-/archive/$version/NetworkManager-openvpn-$version.tar.bz2
+description = NetworkManager VPN plugin for OpenVPN
+homepage    = https://gitlab.gnome.org/GNOME/NetworkManager-openvpn
+depends     = networkmanager openvpn glib libsecret

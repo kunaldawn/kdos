@@ -1,0 +1,22 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+make defconfig -j1
+sed -i 's/# CONFIG_EXPR is not set/CONFIG_EXPR=y/' .config
+sed -i 's/# CONFIG_GETTY is not set/CONFIG_GETTY=y/' .config
+sed -i 's/# CONFIG_INIT is not set/CONFIG_INIT=y/' .config
+sed -i 's/# CONFIG_TR is not set/CONFIG_TR=y/' .config
+sed -i 's/# CONFIG_AWK is not set/CONFIG_AWK=y/' .config
+sed -i 's/# CONFIG_STTY is not set/CONFIG_STTY=y/' .config
+sed -i 's/CONFIG_TAR=y/# CONFIG_TAR is not set/' .config
+sed -i 's/CONFIG_GETOPT=y/# CONFIG_GETOPT is not set/' .config
+sed -i 's/CONFIG_PATCH=y/# CONFIG_PATCH is not set/' .config
+make PREFIX=$PKG install -j1

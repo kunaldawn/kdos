@@ -1,0 +1,215 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   KDOS Installer
+ *
+ * The terminal, the cell buffer, the input layer and every widget live in
+ * libktui now; the string, file and time helpers live in libkbase. What is
+ * left here is the installer and nothing else: what it can see about the
+ * machine, what the user decided, and how the work is carried out.
+ * ---------------------------------
+ */
+
+#ifndef KINSTALL_H
+#define KINSTALL_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+
+#include "kbase.h"
+#include "ktui.h"
+
+#define KI_VERSION "4.0"
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Probe
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define MAX_DISKS 32
+#define MAX_PARTS 32
+
+typedef struct {
+	char name[32];		/* sda1                                    */
+	char path[64];		/* /dev/sda1                               */
+	unsigned long long start, sectors;
+	char fstype[16];
+	char label[40];
+	char uuid[40];
+	int is_esp;
+	int mounted;
+	char mountpoint[64];
+} Part;
+
+typedef struct {
+	char name[32];
+	char path[64];
+	char model[48];
+	char tran[16];		/* sata, nvme, usb, virtio                 */
+	unsigned long long sectors;
+	int sector_size;
+	int rotational;
+	int removable;
+	int readonly;
+	int is_boot_media;	/* the stick we are running from           */
+	char table[8];		/* gpt, dos, -                             */
+	Part part[MAX_PARTS];
+	int nparts;
+} Disk;
+
+typedef struct {
+	int uefi;
+	int secure_boot;
+	unsigned long long mem_kb;
+	char cpu[64];
+	int cores;
+	int live;		/* booted from the squashfs overlay        */
+	unsigned long long payload_kb;	/* what an install will copy       */
+	unsigned long long appbox_kb;	/* of which, the alien app store   */
+} SysInfo;
+
+extern Disk ki_disk[MAX_DISKS];
+extern int ki_ndisk;
+extern SysInfo ki_sys;
+
+void probe_system(void);
+void probe_disks(void);
+void probe_part(const char *path, Part *p);
+Disk *disk_by_path(const char *path);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Configuration — everything the wizard collects, nothing written until
+ * the install page runs.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum { PLAN_WIPE = 0, PLAN_REUSE, PLAN_MANUAL };
+enum { SWAP_NONE = 0, SWAP_FILE, SWAP_PART };
+
+typedef struct {
+	char keymap[64];
+	char tz[80];
+	char tz_label[64];
+
+	char disk[64];
+	int plan;
+	char part_esp[64];
+	char part_root[64];
+	int format_esp;
+	char fstype[16];
+	int swap;
+	long swap_mb;
+
+	char hostname[64];
+	char username[33];
+	char fullname[64];
+	char userpass[128];
+	char userpass2[128];
+	int user_wheel;
+	char rootpass[128];
+	char rootpass2[128];
+	int root_locked;
+
+	char theme[16];
+	int with_appbox;
+	unsigned svc_off;	/* bitmask over ki_services                */
+
+	int reboot_after;
+	int dry_run;
+} Config;
+
+extern Config cfg;
+
+typedef struct {
+	const char *name;	/* matches /etc/init.d/NN_<name>.sh         */
+	const char *label;
+	const char *note;
+	int def_on;
+} Service;
+
+extern const Service ki_services[];
+extern int ki_nservices;
+
+void conf_defaults(void);
+int conf_load(const char *path);
+int conf_save(const char *path);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Install engine
+ *
+ * The work runs in a forked child that speaks a one-line protocol back over
+ * a pipe, so the sequential shape of an install stays sequential code and
+ * the UI stays a single-threaded poll loop.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define MAX_STEPS 16
+#define LOG_LINES 4096
+#define LOG_COLS 200
+
+enum { ST_PENDING = 0, ST_RUNNING, ST_DONE, ST_FAIL, ST_SKIP };
+
+typedef struct {
+	const char *title;
+	const char *detail;
+	int state;
+	double t0, t1;
+	double frac;		/* -1 when indeterminate                   */
+	char note[96];
+} StepUi;
+
+typedef struct {
+	StepUi step[MAX_STEPS];
+	int nsteps;
+	int cur;
+	int running;
+	int failed;
+	int done;
+	char failmsg[256];
+	pid_t pid;
+	int fd;
+	double t0;
+	char (*log)[LOG_COLS];
+	int nlog, logtop;
+	int logfd;
+} Install;
+
+extern Install inst;
+
+void install_plan(void);	/* fill the step table from cfg            */
+void install_start(int from_step);
+void install_pump(void);
+void install_abort(void);
+int install_child_main(int wfd, int from_step);	/* runs in the child       */
+void install_log(const char *line);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Pages
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct Page {
+	const char *id;
+	const char *title;
+	const char *subtitle;
+	void (*enter)(void);
+	void (*draw)(KRect body);
+	/* Return 0 to allow Next, or fill err and return non-zero. */
+	int (*validate)(char *err, size_t n);
+	int (*event)(KtuiEvent *ev);
+	int hide_nav;
+} Page;
+
+extern Page *ki_pages[];
+extern int ki_npages;
+extern int ki_page;
+
+void page_goto(int n);
+void nav_next(void);
+void nav_back(void);
+
+extern int ki_quit;
+extern int ki_help;
+
+#endif /* KINSTALL_H */
