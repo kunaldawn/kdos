@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kk
+version     = 1.0
+release     = 1
+source      =
+description = The KDOS demo — an ASCII art audio-visual demo for the TTY
+homepage    = https://github.com/kunaldawn
+depends     = aalib libmikmod

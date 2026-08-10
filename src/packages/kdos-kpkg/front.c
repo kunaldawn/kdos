@@ -38,6 +38,10 @@ static void usage(void)
 	       "Options:\n"
 	       "  --root <path>      Operate on a different root directory\n"
 	       "  --keep-cache       Keep cached packages after installation\n"
+	       "  -f, --force        Rebuild the named packages, skip the\n"
+	       "                     file-conflict scan for them\n"
+	       "  --overwrite        Let a package take a path another package\n"
+	       "                     owns; ownership moves with the file\n"
 	       "\n"
 	       "Commands:\n"
 	       "  install <pkg>...   Install package(s) with dependencies\n"
@@ -76,13 +80,16 @@ static int build_port(const char *portdir)
 	return rc;
 }
 
-static int install_pkgfile(const KpConf *c, const char *file, int force)
+static int install_pkgfile(const KpConf *c, const char *file, int force,
+			   int overwrite)
 {
-	char *args[6];
+	char *args[8];
 	int n = 0;
 	args[n++] = (char *)"kpkgadd";
 	if (force)
 		args[n++] = (char *)"--force";
+	if (overwrite)
+		args[n++] = (char *)"--overwrite";
 	if (c->root[0]) {
 		args[n++] = (char *)"--root";
 		args[n++] = (char *)c->root;
@@ -98,14 +105,31 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 	char *want[KP_MAX_ORDER];
 	int nwant = 0;
 
+	/* Env over flag, the same way PORT_REPO and PKGDB_DIR work. The
+	 * orchestrator sets it rather than passing a flag, because a restored
+	 * snapshot can put an OLDER kpkg in the tree and an unknown env var is
+	 * ignored by every version while an unknown flag is not. */
+	const char *ov = getenv("KPKG_OVERWRITE");
+	int overwrite = ov && *ov && strcmp(ov, "0");
+
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--force"))
 			force = 1;
+		else if (!strcmp(argv[i], "--overwrite"))
+			overwrite = 1;
 		else if (!strcmp(argv[i], "--keep-cache"))
 			keep_cache = 1;
 		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c->root, argv[++i], sizeof(c->root));
-		else if (nwant < KP_MAX_ORDER)
+		else if (argv[i][0] == '-' && argv[i][1]) {
+			/* An unknown option used to fall through to the package
+			 * list, so `kpkg install --overwrite zig` on a kpkg that
+			 * predates the flag died with `Port not found:
+			 * --overwrite` — a message that names the flag but
+			 * blames the ports tree. */
+			kp_err("unknown option: %s", argv[i]);
+			return 1;
+		} else if (nwant < KP_MAX_ORDER)
 			want[nwant++] = argv[i];
 	}
 
@@ -181,7 +205,11 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 			return 1;
 		}
 
-		if (install_pkgfile(c, found, forced) != 0) {
+		/* Unlike -f, --overwrite applies to every package in the order:
+		 * it is a property of the RUN, not of what was named. A phase
+		 * that rebuilds the userland has toybox and util-linux both
+		 * claiming /usr/bin/mount, and whichever comes last wins. */
+		if (install_pkgfile(c, found, forced, overwrite) != 0) {
 			kp_err("Failed to install %s", pkg);
 			free(found);
 			return 1;
@@ -280,17 +308,17 @@ static char *find_package(const KpConf *c, const char *name)
 
 static char *manifest_of(const char *pkgfile)
 {
-	char *buf = kb_calloc(1, 1 << 20);
+	KbBuf out = {0};
 	KbArgv a = {0};
 	kb_argv_add(&a, "tar");
 	kb_argv_add(&a, "-tf");
 	kb_argv_add(&a, pkgfile);
 	kb_argv_end(&a);
-	if (kb_run_capture(&a, buf, 1 << 20) != 0) {
-		free(buf);
+	if (kb_run_capture_buf(&a, &out) != 0) {
+		kb_buf_free(&out);
 		return NULL;
 	}
-	return buf;
+	return out.p ? out.p : kb_strdup("");
 }
 
 /* `kpkg meta` — the recipe's fields as shell assignments, single-quoted.

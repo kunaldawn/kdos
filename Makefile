@@ -60,13 +60,13 @@ run:
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd — install ovmf (debian: ovmf, arch: edk2-ovmf)"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
 	test -f build/kdos.qcow2 || qemu-img create -f qcow2 build/kdos.qcow2 20G
-	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga -display gtk -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -cdrom build/iso-build/kdos.iso -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -usb -device usb-tablet -vga none -device virtio-vga -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 rundisk:
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
 	test -f build/kdos.qcow2 || { echo "ERROR: disk image not found at build/kdos.qcow2 — run 'make run' first to create it"; exit 1; }
-	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -vga none -device virtio-vga -display gtk -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+	qemu-system-x86_64 -enable-kvm -cpu host -smp $$(nproc) -m 4G -bios /usr/share/ovmf/OVMF.fd -serial stdio -drive file=build/kdos.qcow2,format=qcow2 -vga none -device virtio-vga -display gtk $$(testing/qemu-audio.sh) -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 debug-boot:
 	test -f build/fs/boot/vmlinuz-kdos || { echo "ERROR: kernel not found at build/fs/boot/vmlinuz-kdos — run 'make build' first"; exit 1; }
