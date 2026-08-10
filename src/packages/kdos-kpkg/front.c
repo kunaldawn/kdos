@@ -101,9 +101,16 @@ static int install_pkgfile(const KpConf *c, const char *file, int force,
 
 static int cmd_install(KpConf *c, int argc, char **argv)
 {
-	int force = 0, keep_cache = 0, overwrite = 0;
+	int force = 0, keep_cache = 0;
 	char *want[KP_MAX_ORDER];
 	int nwant = 0;
+
+	/* Env over flag, the same way PORT_REPO and PKGDB_DIR work. The
+	 * orchestrator sets it rather than passing a flag, because a restored
+	 * snapshot can put an OLDER kpkg in the tree and an unknown env var is
+	 * ignored by every version while an unknown flag is not. */
+	const char *ov = getenv("KPKG_OVERWRITE");
+	int overwrite = ov && *ov && strcmp(ov, "0");
 
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--force"))
@@ -114,7 +121,15 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 			keep_cache = 1;
 		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c->root, argv[++i], sizeof(c->root));
-		else if (nwant < KP_MAX_ORDER)
+		else if (argv[i][0] == '-' && argv[i][1]) {
+			/* An unknown option used to fall through to the package
+			 * list, so `kpkg install --overwrite zig` on a kpkg that
+			 * predates the flag died with `Port not found:
+			 * --overwrite` — a message that names the flag but
+			 * blames the ports tree. */
+			kp_err("unknown option: %s", argv[i]);
+			return 1;
+		} else if (nwant < KP_MAX_ORDER)
 			want[nwant++] = argv[i];
 	}
 
