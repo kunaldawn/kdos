@@ -55,7 +55,15 @@ static void usage(void)
 "  --snapshot            write snapshots even for a partial plan\n"
 "  --plain               no TUI: plain lines (implied by a non-tty stdout)\n"
 "  --list                list snapshots and exit\n"
-"  --delete PHASE        delete one snapshot and exit\n");
+"  --delete PHASE        delete one snapshot and exit\n"
+"\n"
+"  --selftest            run the view-geometry and log-classifier assertions\n"
+"  --preview SCREEN WxH TIER\n"
+"                        draw one screen offscreen and dump it as plain text.\n"
+"                        SCREEN: build activity failure pinned startup plan\n"
+"                                packages\n"
+"                        TIER:   rich (eighth blocks) | vt (the 512-glyph\n"
+"                                console font) | ascii\n");
 }
 
 static const KbuildPhase *resolve_phase(Manager *m, const char *token)
@@ -424,6 +432,20 @@ static void bail(const char *msg)
 int main(int argc, char **argv)
 {
 	kb_set_progname("kdosbuild");
+
+	if (argc > 1 && !strcmp(argv[1], "--selftest"))
+		return view_selftest();
+	/* Matched on argv[1] rather than on argc so a short `--preview build`
+	 * says what it wants instead of falling through to the option parser
+	 * and reporting `--preview` itself as an unknown argument. */
+	if (argc > 1 && !strcmp(argv[1], "--preview")) {
+		if (argc < 5) {
+			fprintf(stderr, "usage: kdosbuild --preview SCREEN WxH "
+				"TIER  (see --help)\n");
+			return 2;
+		}
+		return preview_main(argv[2], argv[3], argv[4]);
+	}
 
 	Args a = {0};
 	a.build_dir = getenv("KDOS_BUILD_DIR");

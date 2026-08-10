@@ -107,6 +107,17 @@ for d in ports/core/* src/packages/*; do
         [ -f "$f" ] || continue
         scripts=$((scripts + 1))
         bash -n "$f" 2>"$SP/err" || bad "$p" "$(basename "$f"): $(head -1 "$SP/err")"
+        # `local` is only legal inside a function, and a build.sh IS the
+        # function body now — bash accepts it at parse time and dies at RUN
+        # time with "can only be used in a function", hours into a build.
+        # `bash -n` cannot see it. It is a scar from the recipe conversion:
+        # the old format wrapped the build in `build() { ... }`, where local
+        # was fine, and the conversion lifted the body out verbatim. No
+        # build.sh in the tree defines a function, so any `local` is this bug.
+        if grep -qn '^[[:space:]]*local[[:space:]]' "$f"; then
+            bad "$p" "$(basename "$f"): 'local' outside a function (line $(grep -n '^[[:space:]]*local[[:space:]]' "$f" | head -1 | cut -d: -f1))"
+            missing=$((missing + 1))
+        fi
     done
 done
 [ "$missing" = 0 ] && note "build scripts" "$scripts parse, none missing"

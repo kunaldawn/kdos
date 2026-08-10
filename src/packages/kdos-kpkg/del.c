@@ -90,7 +90,12 @@ int del_main(int argc, char **argv)
 	for (int i = 1; i < argc && n < 256; i++) {
 		if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c.root, argv[++i], sizeof(c.root));
-		else
+		else if (argv[i][0] == '-' && argv[i][1]) {
+			/* Unknown options used to be taken as package names, so
+			 * a stray flag read as "Package 'x' not installed". */
+			kp_err("unknown option: %s", argv[i]);
+			return 1;
+		} else
 			names[n++] = argv[i];
 	}
 
