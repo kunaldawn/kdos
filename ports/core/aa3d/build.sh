@@ -9,22 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export LDFLAGS="$LDFLAGS -licuuc -Wl,--allow-shlib-undefined"
-meson setup build \
-	--prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release \
-	-Dwrap_mode=nodownload \
-	-Dwindows=wayland \
-	-Dunicode=icu \
-	-Dman=disabled \
-	-Dtest=disabled \
-	-Dlibpng=enabled \
-	-Dlibjpeg=enabled \
-	-Dlibtiff=enabled \
-	-Dlibrsvg=enabled \
-	-Dlibnsgif=enabled \
-	-Dfreeimage=disabled \
-	-Dlibheif=disabled \
-	-Dlibjxl=disabled
-meson compile -C build
-DESTDIR=$PKG meson install --no-rebuild -C build
+# One .c file, a two-line Makefile and no install rule.
+gcc $CFLAGS -O2 -Wno-implicit-function-declaration -o aa3d aa3d.c $LDFLAGS
+
+install -Dm755 aa3d "$PKG/usr/bin/aa3d"
+install -Dm644 logo "$PKG/usr/share/aa3d/logo"
+install -Dm644 pyramid "$PKG/usr/share/aa3d/pyramid"

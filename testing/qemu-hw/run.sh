@@ -76,6 +76,21 @@ GPU_ARGS=(
     -display "${KDOS_QEMU_DISPLAY:-gtk,gl=es}"
 )
 
+# Audio. The container's QEMU is not the host's, so the backend is probed
+# INSIDE it by the same testing/qemu-audio.sh every `make run*` uses — the host
+# probe would be answering for the wrong binary. Only the socket has to come
+# from out here.
+AUDIO_ARGS=()
+if [ -S "${XDG_RUNTIME_DIR:-}/pipewire-0" ]; then
+    AUDIO_ARGS=(-e XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"
+                -v "$XDG_RUNTIME_DIR/pipewire-0":"$XDG_RUNTIME_DIR/pipewire-0")
+elif [ -S "${XDG_RUNTIME_DIR:-}/pulse/native" ]; then
+    AUDIO_ARGS=(-e XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"
+                -v "$XDG_RUNTIME_DIR/pulse/native":"$XDG_RUNTIME_DIR/pulse/native")
+else
+    echo "[*] audio: no host socket — the guest gets no sound card"
+fi
+
 case "$MODE" in
     iso)  SRC_ARGS=(-cdrom /work/build/iso-build/kdos.iso -drive file=/work/build/kdos.qcow2,format=qcow2 -usb -device usb-tablet) ;;
     disk) SRC_ARGS=(-drive file=/work/build/kdos.qcow2,format=qcow2 -usb -device usb-tablet) ;;
@@ -88,11 +103,14 @@ exec docker run --rm -it \
     --device /dev/dri \
     --device /dev/udmabuf \
     "${DISP_ARGS[@]}" \
+    "${AUDIO_ARGS[@]}" \
     -v /usr/share/ovmf:/usr/share/ovmf:ro \
     -v "$REPO_ROOT/build:/work/build" \
+    -v "$REPO_ROOT/testing:/work/testing:ro" \
     "$IMAGE" -c "exec qemu-system-x86_64 -enable-kvm \
         -bios /usr/share/ovmf/OVMF.fd \
         ${GPU_ARGS[*]} \
         ${SRC_ARGS[*]} \
         -serial stdio \
+        \$(/work/testing/qemu-audio.sh) \
         -netdev user,id=net0 -device virtio-net-pci,netdev=net0"

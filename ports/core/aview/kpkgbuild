@@ -1,4 +1,3 @@
-#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -9,22 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export LDFLAGS="$LDFLAGS -licuuc -Wl,--allow-shlib-undefined"
-meson setup build \
-	--prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release \
-	-Dwrap_mode=nodownload \
-	-Dwindows=wayland \
-	-Dunicode=icu \
-	-Dman=disabled \
-	-Dtest=disabled \
-	-Dlibpng=enabled \
-	-Dlibjpeg=enabled \
-	-Dlibtiff=enabled \
-	-Dlibrsvg=enabled \
-	-Dlibnsgif=enabled \
-	-Dfreeimage=disabled \
-	-Dlibheif=disabled \
-	-Dlibjxl=disabled
-meson compile -C build
-DESTDIR=$PKG meson install --no-rebuild -C build
+name        = aview
+version     = 1.3.0rc1
+release     = 1
+source      = https://downloads.sourceforge.net/project/aa-project/$name/$version/$name-$version.tar.gz
+description = ASCII art image browser and FLI/FLC player for the terminal
+homepage    = https://aa-project.sourceforge.net/aview/
+depends     = aalib bash imagemagick

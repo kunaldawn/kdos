@@ -1,4 +1,3 @@
-#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -9,22 +8,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export LDFLAGS="$LDFLAGS -licuuc -Wl,--allow-shlib-undefined"
-meson setup build \
-	--prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release \
-	-Dwrap_mode=nodownload \
-	-Dwindows=wayland \
-	-Dunicode=icu \
-	-Dman=disabled \
-	-Dtest=disabled \
-	-Dlibpng=enabled \
-	-Dlibjpeg=enabled \
-	-Dlibtiff=enabled \
-	-Dlibrsvg=enabled \
-	-Dlibnsgif=enabled \
-	-Dfreeimage=disabled \
-	-Dlibheif=disabled \
-	-Dlibjxl=disabled
-meson compile -C build
-DESTDIR=$PKG meson install --no-rebuild -C build
+name        = libmikmod
+version     = 3.3.13
+release     = 1
+source      = https://downloads.sourceforge.net/project/mikmod/$name/$version/$name-$version.tar.gz
+description = Tracker module player library — S3M, XM, IT, MOD
+homepage    = https://mikmod.sourceforge.net/
+depends     = alsa-lib
