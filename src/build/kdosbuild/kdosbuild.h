@@ -207,6 +207,11 @@ void mgr_apply_plan(Manager *m);	/* after m->plan is filled in       */
 void mgr_free(Manager *m);
 double step_duration(const BStep *s);
 void step_timing_key(const BStep *s, char *out, size_t cap);
+/* build/logs/<phase>/<NNNN>_<name>.log — the file the step's output was TEE'd
+ * to. The in-memory log is capped at KB_MAX_LOG lines, so on a long step the
+ * file is the only place the head of it still exists, which is exactly when
+ * somebody wants to read it. */
+void log_path_for(const Manager *m, const BStep *s, char *out, size_t cap);
 void mgr_notice(Manager *m, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));
 void mgr_mark_continued(Manager *m, int phase_index);
@@ -249,6 +254,9 @@ typedef struct {
 	double history[240];
 	int nhistory;
 
+	double load_hist[240];
+	int nload;
+
 	long long fs_files, fs_bytes;
 	int fs_partial;
 	double fs_sampled_at;
@@ -274,6 +282,31 @@ const char *format_when(double ts);
 const char *human_count(long long n);
 
 /* ──────────────────────────────────────────────────────────────────────── */
+/* View geometry
+ *
+ * Every region's origin comes from here. It used to be three independent
+ * calculations — hud_h in screen_build, the 45% cap in tree_width, the header
+ * height inline — and at some widths the divider was drawn on top of the log
+ * text. One struct means a size that breaks the layout breaks it visibly in
+ * one place, and can be asserted over every size.
+ */
+typedef struct {
+	KRect header, tree, divider, detail, hud, footer;
+	int has_header, has_detail, hud_rows, too_small;
+} Layout;
+
+Layout layout_compute(int w, int h);
+
+/* Log line classification for the detail pane. */
+enum { LOG_PLAIN = 0, LOG_WARN, LOG_ERR };
+int log_severity(const char *line);
+
+/* Byte offset of `needle` in `hay`, case-insensitive, -1 when absent. */
+int log_find(const char *hay, const char *needle);
+
+int view_selftest(void);	/* --selftest: the assertions over the above */
+
+/* ──────────────────────────────────────────────────────────────────────── */
 /* Screens                                                                  */
 
 enum { PICK_QUIT = 0, PICK_FRESH, PICK_RESTORE, PICK_PLAN };
@@ -282,5 +315,27 @@ int screen_startup(Manager *m, int *index, const char *commit);
 int screen_plan(Manager *m, KbuildPlan *out);
 void screen_progress(Manager *m, const char *title);	/* restore HUD      */
 void screen_build(Manager *m, Sampler *s, Timings *t);
+
+/* ──────────────────────────────────────────────────────────────────────── */
+/* --preview — render one screen offscreen and dump it as text
+ *
+ * Each screen interleaved its drawing with its own event loop, so each has a
+ * draw_*_frame() split out of it that the loop and this both call. What that
+ * buys is the class of defect neither the compiler nor testing/selftest.sh can
+ * see, because the test suite has no terminal and cannot draw: a column that
+ * has drifted out from under its own header, text over a box border, a chart
+ * running past its rect, a gauge invisible on a selected row. Six of those
+ * shipped in this TUI and every one was found by hand arithmetic.
+ */
+int preview_main(const char *screen, const char *size, const char *tier);
+/* Draws one named screen once against the fixture. Non-zero for a bad name. */
+int preview_screen(const char *screen);
+/* Synthetic state chosen to exercise what breaks, not to look plausible: a
+ * group mid-run, a skipped step, a failed one, a log carrying both a warning
+ * and an error, a name too long for any pane, and values wide enough to stress
+ * the column arithmetic — a multi-terabyte total, a nine-digit file count and
+ * an hour-scale ETA. */
+void preview_fixture(Manager *m, Sampler *s, Timings *t);
+int preview_snapshots(Manager *m, KbuildSnapshot *out, int max);
 
 #endif /* KDOSBUILD_H */

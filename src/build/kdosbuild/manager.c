@@ -375,7 +375,7 @@ static void env_source(const Manager *m, const BStep *g, char *out, size_t cap)
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Running one child                                                        */
 
-static void log_path_for(const Manager *m, const BStep *s, char *out, size_t cap)
+void log_path_for(const Manager *m, const BStep *s, char *out, size_t cap)
 {
 	/* build/logs/<phase dir>/<NNNN>_<name>.log — the path the user is told
 	 * to tail when a port fails. */
@@ -804,15 +804,23 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 			kb_strlcpy(node->note, "rebuild", sizeof(node->note));
 		}
 
-		/* --overwrite for every package a phase installs. The userland
+		/* Overwrite for every package a phase installs. The userland
 		 * genuinely overlaps — toybox, util-linux, procps-ng and gawk
 		 * all ship /usr/bin/awk-shaped paths — and the build's rule has
 		 * always been that whoever comes last in the dependency order
 		 * wins. It is NOT -f: nothing is rebuilt by it, and the path
-		 * changes hands in the database instead of being claimed twice. */
+		 * changes hands in the database instead of being claimed twice.
+		 *
+		 * It goes in the ENVIRONMENT rather than on the command line
+		 * because the kpkg in the tree is not necessarily the kpkg this
+		 * orchestrator was built beside: restoring a phase-1 or phase-2
+		 * snapshot puts an OLDER kpkg back, and an older one parsed
+		 * `--overwrite` as a package name and died with `Port not
+		 * found: --overwrite` on the first package of the phase. An
+		 * unknown env var is ignored by every version. */
 		KbBuf cl = {0};
-		kb_buf_printf(&cl, "%skpkg install --overwrite%s %s", env,
-			      forced ? " -f" : "", tok);
+		kb_buf_printf(&cl, "%sexport KPKG_OVERWRITE=1 && kpkg install%s %s",
+			      env, forced ? " -f" : "", tok);
 		node->cmd_line = cl.p;		/* the node owns it now */
 		cmd_prefix(m, g->step_type, &node->cmd);
 		kb_argv_add(&node->cmd, node->cmd_line);

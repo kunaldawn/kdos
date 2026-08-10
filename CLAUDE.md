@@ -660,7 +660,7 @@ consumer moves to phase 4 with it.
 |---|---|---|
 | `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach`** |
 | `libkcolor` | `kcol_` | **the palette table**, hex/HLS, `kcol_mix`, the hue-family classifier, `kcol_remap`, `kcol_retint_text` |
-| `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, immediate-mode widgets, modals, text furniture |
+| `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, immediate-mode widgets, modals, text furniture, **the three glyph tiers and the charts drawn out of them**, offscreen rendering |
 | `libkxdg` | `kxdg_` | desktop entries, matching what `RawConfigParser(strict=False)` did with them |
 | `libkpkg` | `kp_` | the package database, the ports tree, `# depends` parsing, the dependency solver |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
@@ -692,6 +692,44 @@ calls whatever `kb_set_oom_handler()` was given (the installer hands it
 `ktui_term_shutdown`) instead of knowing that a `term_shutdown` exists and
 that the program is called "kinstall". `kb_set_progname()` supplies the
 prefix for that message and for `kb_die`/`kb_warn`.
+
+### libktui draws at three glyph tiers, and the middle one is the reason
+
+A ramp cell is picked from one of three tables, chosen by `ktui_ramp_init()`
+from `ktui_caps`:
+
+| Tier | Caps | Ramp | Levels |
+|---|---|---|---|
+| rich | `UTF8` | `▏▎▍▌▋▊▉█` / `▁▂▃▄▅▆▇█` | 8 |
+| vt | `UTF8 \| LINUXVT` | `░▒█` | 3 |
+| ascii | neither | `.:#` | 3 |
+
+**The vt tier exists because `ter-kdos32n` is 512 glyphs and eighth blocks are
+not among them.** kinstall runs on that console and shares these widgets with
+kdosbuild, which runs on the host in a modern terminal; a glyph the font does
+not carry renders as a BLANK on tty1, so an eighth-block bar there is not ugly,
+it is invisible. Three levels is the honest resolution of that font. Grep
+`uni/xos4-2.uni` in the terminus-font tarball before using any glyph — the
+`.uni` file is a plain list of 512 codepoints, and `ports/core/terminus-font/build.sh`
+adds exactly six more (the double box-drawing set). It has `░ ▒ █` and the box
+sets and `· • ■ … ° ↑ ↓ ◀ ▶`; it has **no eighth blocks, no half blocks, no
+braille, and no `← →`** (that pair is why `ktui_glyph` carries `◀ ▶` instead).
+
+**`ktui_progress` is a wrapper whose pixels must not move.** kinstall links it
+and only it, never `ktui_progress_ex` directly, and it pins `KT_BAR_SOLID` plus
+`KT_BG` so the installer keeps drawing exactly the two-state bar it always did:
+in the SOLID branch `tip` stays 0, the fractional-tip cell is unreachable, and
+`fill` is still `(int)(frac * r.w + 0.5)` under the same `frac > 1` clamp. The
+`frac < 0` indeterminate scanner is untouched. Change `ktui_progress_ex` freely;
+leave that branch alone.
+
+**`ktui_offscreen_init(w, h)` + `ktui_draw_dump()` render with no terminal at
+all** — the cell buffer at a fixed size, written out as plain text instead of
+escapes. Every geometry defect this toolkit has shipped (text over a box
+border at 80 columns, a heat strip past its rect, a column drifted out from
+under its own header, a gauge invisible on a selected row) was invisible to the
+compiler and to `testing/selftest.sh`, which has no terminal and cannot draw.
+This is how they get looked at. `kdosbuild --preview` is the consumer.
 
 ### libkcolor is the one palette
 
@@ -1183,8 +1221,10 @@ in `src/libs/selftest.c` and the end-to-end run below.
 `src/build/kdosbuild/` is `script/build.py` plus `script/buildlib/*.py`:
 `main.c` (the CLI), `manager.c` (the execution order and the step runner),
 `snapshot.c` (writing and extracting archives), `stats.c` (timing history, the
-ETA, the telemetry sampler) and `tui.c` (the four screens). It sits on
-libkbuild for everything that only INSPECTS the tree.
+ETA, the telemetry sampler), `tui.c` (the four screens) and `view.c` (the parts
+of the screens that are DECISIONS rather than drawing — the layout, the log
+classifier — plus the preview fixture). It sits on libkbuild for everything
+that only INSPECTS the tree.
 
 Drawing on libktui is what kills the **third TUI toolkit** — kinstall's,
 kdos-appbox's ncurses one and `buildlib/tui.py`'s python curses one were three
@@ -1223,6 +1263,40 @@ went out of scope at `return` — `bash -c ' ;'`, which is what a corrupted
 command line looks like from the outside. The command strings are owned by
 the step (`BStep.cmd_line`) or by the manager (`Manager.chroot_exec`) now.
 Worth remembering before adding a fourth.
+
+**The build screen's keys.** `↑↓`/`jk` select, `SPACE` folds a group, `F`
+toggles follow, `S` queues a partial snapshot, `Q` stops (twice to force). Five
+are newer and are the ones nothing else documents: **`/`** opens a search over
+the selected step's log — marks rather than filters, because a build log is
+read for the context AROUND the hit; **`n`/`N`** walk the marks; **`E`** jumps
+to the first line `log_severity()` calls an error; **`O`** opens the step's log
+file in `$PAGER` (argv, never a shell); **`T`** cycles the four accents live,
+which needs `ktui_term_repalette()` AND `ktui_draw_invalidate()` — repalette
+alone leaves every untouched cell wearing the old colours.
+
+**Two diagnostic entry points, neither of which needs a build.**
+
+- **`kdosbuild --selftest`** runs `view.c`'s assertions: `layout_compute` over
+  every size from 40x10 to 300x100 with no two regions overlapping and none
+  leaving the screen, the region drop order, and the log classifier including
+  the trap that "checking for error_at_line" is not an error. It is what
+  `testing/selftest.sh` calls; it prints `view: ok`.
+- **`kdosbuild --preview <screen> <WxH> <tier>`** draws one screen offscreen
+  and dumps the cell buffer as plain text. `<screen>` is
+  `build activity startup plan packages`, `<tier>` is `rich vt ascii` (see the
+  libktui tier table). It is the only way to SEE a layout without a two-hour
+  build and a terminal, and it exists because six geometry defects in this TUI
+  were found by hand arithmetic and none of them was visible to the compiler.
+  Read the `vt` output specifically for glyphs the console font lacks.
+
+  It is what forced each screen's drawing half out of its event loop into a
+  `draw_*_frame()`. The loop calls that function and nothing else — a second
+  drawing path would be a second thing to keep in agreement with the one
+  people look at. The fixture in `view.c` is chosen to break layouts rather
+  than to look plausible: a multi-terabyte total, a nine-digit file count, an
+  hour-scale ETA, a port name longer than any pane. The one thing that is not
+  reproducible between runs is the spinner glyph, which is picked from the
+  wall clock.
 
 **What is proved.** `testing/selftest.sh` compiles it, then runs it against a
 synthetic two-phase tree: a build with snapshots and logs, a restore that puts
@@ -1555,6 +1629,17 @@ Affects the cosmic-* ports, librsvg, pipewire-sys, wayland-rs.
 
 **GCC 15 — incompatible-pointer-types is an error.**
 `export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"`.
+
+**"C compiler cannot create executables" from an old autotools port.** That
+message blames the toolchain and is almost never about it: read
+`$WORK/<port>/<src>/config.log` and the real error is on the failing conftest.
+For anything with an autoconf 2.13-era `configure`, it is the K&R probe
+`main(){return(0);}`, which GCC 14 promoted from warning to error. Suppress the
+whole family at once — each one costs another hour-long round trip to find:
+`-Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion
+-Wno-incompatible-pointer-types -Wno-return-mismatch
+-Wno-declaration-missing-parameter-type`. `ports/core/aalib` is the worked
+example.
 
 **Every meson `setup` needs `--prefix=/usr --libdir=lib`.** The default
 `/usr/local/lib64` is not on the runtime linker's search path; symptom is

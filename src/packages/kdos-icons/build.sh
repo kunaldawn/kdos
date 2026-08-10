@@ -34,6 +34,12 @@ done
 # only icon path the appbox can see (it shares $HOME, not /usr/share) and
 # is why no /etc/skel copy is installed here: 06_packaging/00_theme.sh
 # runs `kdos theme phosphor` against /etc/skel and generates it.
+# The art and the marks ship so `kdos theme <accent>` can regenerate the whole
+# icon set on the running system: kdos-theme falls back to ICON_ART_DEFAULT and
+# ICON_MARKS_DEFAULT, which are exactly these two paths. `cp -a` will not create
+# the parent, and $PKG is a fresh staging tree for every package, so nothing
+# else has made usr/share/kdos yet.
+mkdir -p "$PKG/usr/share/kdos/icons"
 cp -a "$PORT_SRC/marks" "$PKG/usr/share/kdos/icons/marks"
 cp -a "$PORT_SRC/art" "$PKG/usr/share/kdos/icons/art"
 

@@ -12,7 +12,7 @@
 # Pre-stage vendored dep tarballs into CMake's ExternalProject DOWNLOAD_DIR.
 # CMake URL_HASH-checks each file before fetching, so when a tarball is
 # already present with a matching SHA256 it skips the network entirely.
-local dl=".deps/build/downloads"
+dl=".deps/build/downloads"
 mkdir -p "$dl"/{libuv,luajit,unibilium,luv,lpeg,lua_compat53,utf8proc,treesitter} \
          "$dl"/{treesitter_c,treesitter_lua,treesitter_vim,treesitter_vimdoc,treesitter_query,treesitter_markdown}
 

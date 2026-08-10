@@ -249,7 +249,7 @@ libslirp
 slirp4netns
 fuse-overlayfs
 distrobox
-fuse3
+fuse
 
 # ---------------------------------
 # X11 compatibility (Xwayland only — no Xorg server)
