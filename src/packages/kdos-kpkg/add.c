@@ -76,16 +76,17 @@ static int split_pkgname(const char *base, char *name, char *ver, char *rel,
  * out before installation and was never a file the package owns. */
 static char *manifest(const char *pkgfile, size_t *len)
 {
-	char *buf = kb_calloc(1, 1 << 20);
+	KbBuf raw = {0};
 	KbArgv a = {0};
 	kb_argv_add(&a, "tar");
 	kb_argv_add(&a, "-tf");
 	kb_argv_add(&a, pkgfile);
 	kb_argv_end(&a);
-	if (kb_run_capture(&a, buf, 1 << 20) != 0) {
-		free(buf);
+	if (kb_run_capture_buf(&a, &raw) != 0) {
+		kb_buf_free(&raw);
 		return NULL;
 	}
+	char *buf = raw.p;
 
 	KbBuf out = {0};
 	for (char *line = buf, *next; line && *line; line = next) {
@@ -152,7 +153,31 @@ typedef struct {
 	int conflicts;
 	KbBuf *report;
 	const KpOwned *owned;
+	/* When the caller allows an overwrite, a conflict is recorded rather
+	 * than refused: the path and the package that has to give it up. */
+	int take;
+	char **taken;
+	char **taken_from;
+	int ntaken, taken_cap;
 } Ctx;
+
+static void take_note(Ctx *x, const char *rel, const char *from)
+{
+	if (x->ntaken == x->taken_cap) {
+		x->taken_cap = x->taken_cap ? x->taken_cap * 2 : 64;
+		char **p = kb_calloc((size_t)x->taken_cap, sizeof(*p));
+		char **f = kb_calloc((size_t)x->taken_cap, sizeof(*f));
+		memcpy(p, x->taken, (size_t)x->ntaken * sizeof(*p));
+		memcpy(f, x->taken_from, (size_t)x->ntaken * sizeof(*f));
+		free(x->taken);
+		free(x->taken_from);
+		x->taken = p;
+		x->taken_from = f;
+	}
+	x->taken[x->ntaken] = kb_strdup(rel);
+	x->taken_from[x->ntaken] = kb_strdup(from);
+	x->ntaken++;
+}
 
 static int check_conflict(const char *rel, void *u)
 {
@@ -182,10 +207,15 @@ static int check_conflict(const char *rel, void *u)
 		 * which skipped this scan altogether; `-f` now genuinely
 		 * forces a rebuild, so it cannot be handed out just to get
 		 * an overwrite. */
-		int owned = x->owned && kp_owned_has(x->owned, rel);
-		if (owned && !(src_linkdir && dst_linkdir)) {
-			x->conflicts++;
-			kb_buf_printf(x->report, "\n  %s", rel);
+		const char *owner =
+			x->owned ? kp_owned_owner(x->owned, rel) : NULL;
+		if (owner && !(src_linkdir && dst_linkdir)) {
+			if (x->take) {
+				take_note(x, rel, owner);
+			} else {
+				x->conflicts++;
+				kb_buf_printf(x->report, "\n  %s", rel);
+			}
 		}
 	}
 	free(src);
@@ -199,6 +229,42 @@ static int mkdirs(const char *rel, void *u)
 	char *dst = kb_path_join(x->root, rel);
 	kb_mkdir_p(dst);
 	free(dst);
+	return 0;
+}
+
+/* The EXDEV path: reproduce `src` at `dst` rather than moving it. Every type a
+ * package can legitimately carry is handled — a regular file loses its mode if
+ * copied naively, and a symlink or a device node cannot be copied as bytes at
+ * all, which is exactly what a /dev entry is. Returns 0 on success. */
+static int copy_across(const char *src, const char *dst)
+{
+	struct stat st;
+	if (lstat(src, &st) != 0)
+		return -1;
+
+	unlink(dst);	/* replacing, not merging */
+
+	if (S_ISLNK(st.st_mode)) {
+		char target[4096];
+		ssize_t n = readlink(src, target, sizeof(target) - 1);
+		if (n < 0)
+			return -1;
+		target[n] = 0;
+		return symlink(target, dst);
+	}
+	if (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode) || S_ISFIFO(st.st_mode) ||
+	    S_ISSOCK(st.st_mode))
+		return mknod(dst, st.st_mode, st.st_rdev);
+	if (S_ISDIR(st.st_mode))
+		return kb_mkdir_p(dst);
+
+	if (kb_copy_file(src, dst) != 0)
+		return -1;
+	/* After the bytes, because kb_copy_file creates with the umask — and a
+	 * fusermount3 that arrives without its setuid bit is a rootless
+	 * fuse-overlayfs that cannot mount. */
+	if (chmod(dst, st.st_mode & 07777) != 0)
+		return -1;
 	return 0;
 }
 
@@ -219,10 +285,21 @@ static int place(const char *rel, void *u)
 	} else {
 		kp_msg("Installing %s -> %s", rel, dst);
 		if (rename(src, dst) < 0) {
-			/* A rename across filesystems cannot work; the staging
-			 * dir lives on the target fs precisely so it can. */
-			kp_err("Failed to install %s: %s", rel, strerror(errno));
-			rc = -1;
+			/* The staging dir is on the target fs so that placing a
+			 * file is a rename — but the target fs is not one
+			 * filesystem. /dev, /proc, /sys, /run and /tmp are all
+			 * separate mounts inside the build chroot, so a package
+			 * shipping ANY path under one of them gets EXDEV and,
+			 * before this fallback existed, aborted the install
+			 * half-written. fuse3 is the real case: its
+			 * install_helper mknods a /dev/fuse into DESTDIR. */
+			if (errno == EXDEV && copy_across(src, dst) == 0) {
+				unlink(src);
+			} else {
+				kp_err("Failed to install %s: %s", rel,
+				       strerror(errno));
+				rc = -1;
+			}
 		}
 	}
 	free(src);
@@ -240,17 +317,29 @@ int add_main(int argc, char **argv)
 	int force = 0;
 	const char *pkgfile = NULL;
 
+	const char *ov = getenv("KPKG_OVERWRITE");
+	int overwrite = ov && *ov && strcmp(ov, "0");
+
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--force"))
 			force = 1;
+		else if (!strcmp(argv[i], "--overwrite"))
+			overwrite = 1;
 		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c.root, argv[++i], sizeof(c.root));
-		else
+		else if (argv[i][0] == '-' && argv[i][1]) {
+			/* Unknown options used to fall through and become the
+			 * package FILE, so a stray flag produced "Package file
+			 * not found: --whatever". */
+			kp_err("unknown option: %s", argv[i]);
+			return 1;
+		} else
 			pkgfile = argv[i];
 	}
 
 	if (!pkgfile) {
-		printf("Usage: kpkgadd [--force] <package.tar.xz>\n");
+		printf("Usage: kpkgadd [--force] [--overwrite] "
+		       "<package.tar.xz>\n");
 		return 1;
 	}
 	if (!kb_path_exists(pkgfile)) {
@@ -324,8 +413,11 @@ int add_main(int argc, char **argv)
 	KbBuf dirs = {0}, files = {0};
 	walk(tmpl, "", &dirs, &files);
 
-	Ctx ctx = { tmpl, root, 0, NULL, NULL };
+	Ctx ctx = { tmpl, root, 0, NULL, NULL, overwrite, NULL, NULL, 0, 0 };
 
+	/* `--force` skips the scan outright, which is what it has always done.
+	 * `--overwrite` still runs it, because the paths it finds are exactly
+	 * the ones that have to change hands afterwards. */
 	if (!upgrade && !force) {
 		/* Loaded once: the scan asks it a question per staged file. */
 		KpOwned *owned = kp_owned_load(&c);
@@ -360,14 +452,29 @@ int add_main(int argc, char **argv)
 		char *nw = manifest(pkgfile, &nn);
 		if (old && nw) {
 			char *body = strchr(old, '\n');
-			int lines = 0;
-			char *paths[8192];
+			int lines = 0, pcap = 8192;
+			/* Grown, not capped: zig's manifest is 20831 paths and
+			 * a fixed ceiling silently leaves the tail owned by a
+			 * version that is no longer installed. */
+			char **paths = kb_calloc((size_t)pcap, sizeof(*paths));
 			for (char *l = body ? body + 1 : old; l && *l;) {
 				char *nl = strchr(l, '\n');
 				if (nl)
 					*nl = 0;
-				if (*l && lines < 8192)
+				if (*l) {
+					if (lines == pcap) {
+						pcap *= 2;
+						char **nv = kb_calloc(
+							(size_t)pcap,
+							sizeof(*nv));
+						memcpy(nv, paths,
+						       (size_t)lines *
+							       sizeof(*nv));
+						free(paths);
+						paths = nv;
+					}
 					paths[lines++] = l;
+				}
 				l = nl ? nl + 1 : NULL;
 			}
 			for (int i = lines - 1; i >= 0; i--) {
@@ -383,6 +490,7 @@ int add_main(int argc, char **argv)
 					kp_msg("Removing orphan %s", paths[i]);
 				free(victim);
 			}
+			free(paths);
 		}
 		free(old);
 		free(nw);
@@ -403,6 +511,36 @@ int add_main(int argc, char **argv)
 	kb_write_all(dbfile, entry.p, entry.n);
 	kb_buf_free(&entry);
 	free(m);
+
+	/* The new owner's entry is written FIRST and the old owners are edited
+	 * after: an interruption in between leaves a path claimed twice, which
+	 * is recoverable, rather than claimed by nobody, which is not. */
+	for (int i = 0; i < ctx.ntaken; i++) {
+		if (!ctx.taken_from[i])
+			continue;
+		const char *from = ctx.taken_from[i];
+		char *group[512];
+		int gn = 0;
+		for (int j = i; j < ctx.ntaken && gn < 512; j++) {
+			if (ctx.taken_from[j] && !strcmp(ctx.taken_from[j], from)) {
+				group[gn++] = ctx.taken[j];
+				if (j != i) {
+					free(ctx.taken_from[j]);
+					ctx.taken_from[j] = NULL;
+				}
+			}
+		}
+		int dropped = kp_db_drop_paths(&c, from, group, gn);
+		if (dropped)
+			kp_msg("Taking %d path%s from %s", dropped,
+			       dropped == 1 ? "" : "s", from);
+	}
+	for (int i = 0; i < ctx.ntaken; i++) {
+		free(ctx.taken[i]);
+		free(ctx.taken_from[i]);
+	}
+	free(ctx.taken);
+	free(ctx.taken_from);
 
 	if (hook_kept) {
 		KbArgv h = {0};

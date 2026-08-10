@@ -79,15 +79,26 @@ void kp_description(const char *portdir, char *out, size_t cap);
 
 int kp_installed(const KpConf *c, const char *name);
 
-/* Every path claimed by an installed package, sorted, for the conflict scan. */
+/* Every path claimed by an installed package, sorted, for the conflict scan.
+ * `owner[i]` is the package that claims `path[i]`, which is what an overwrite
+ * needs: the path has to leave the old owner's manifest, or the file ends up
+ * claimed twice and removing either package deletes the other's file. */
 typedef struct {
 	char **path;
+	char **owner;
 	int n;
 } KpOwned;
 
 KpOwned *kp_owned_load(const KpConf *c);
 int kp_owned_has(const KpOwned *o, const char *rel);
+/* The package claiming `rel`, or NULL. */
+const char *kp_owned_owner(const KpOwned *o, const char *rel);
 void kp_owned_free(KpOwned *o);
+
+/* Remove `paths` (relative, no `./`) from `pkg`'s manifest. The version line
+ * and every other path are left as they were. Returns the number dropped. */
+int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
+		     int n);
 /* Version and release from line 1. Returns 0 when the package is installed. */
 int kp_installed_version(const KpConf *c, const char *name, char *ver,
 			 size_t vcap, char *rel, size_t rcap);

@@ -58,6 +58,7 @@ static uint32_t glyph_cp[KT_G_N];
 static KtuiCell *front, *back;
 static int bw, bh;
 static int force_full;
+static int offscreen;
 static int ptr_x = -1, ptr_y = -1;
 
 /* A clip krect so a page can be drawn shifted and simply run off the top and
@@ -163,8 +164,42 @@ int ktui_draw_init(void)
 		ktui_utf8_next(ktui_glyph[i], &cp);
 		glyph_cp[i] = cp;
 	}
+	ktui_ramp_init();
 	ktui_draw_resize();
 	return 0;
+}
+
+/* No ktui_term_init, so no tty, no ioctl and no signal handler: the size is
+ * whatever the caller asked for. Everything downstream reads ktui_w/ktui_h, so
+ * a screen drawn through here is the same code path a real terminal takes.
+ *
+ * `offscreen` is a one-way latch: nothing in this file ever clears it, so once
+ * a process has called this there is no going back to a real terminal in the
+ * same process — ktui_draw_flush() checks it forever after. */
+int ktui_offscreen_init(int w, int h)
+{
+	if (w < 1 || h < 1)
+		return 1;
+	offscreen = 1;
+	ktui_w = w;
+	ktui_h = h;
+	return ktui_draw_init();
+}
+
+/* The buffer as plain text — no escapes, no colour. A cell the frame never
+ * touched holds 0 rather than a space, so it is spelled out here; otherwise a
+ * dump has holes in it exactly where a screen was left blank. */
+void ktui_draw_dump(void)
+{
+	char out[8];
+	for (int y = 0; y < bh; y++) {
+		for (int x = 0; x < bw; x++) {
+			uint32_t ch = back[y * bw + x].ch;
+			int n = utf8_encode(ch ? ch : ' ', out);
+			fwrite(out, 1, (size_t)n, stdout);
+		}
+		fputc('\n', stdout);
+	}
 }
 
 void ktui_draw_resize(void)
@@ -254,6 +289,15 @@ int ktui_draw_textf(int x, int y, int maxw, int fg, int bg, int attr,
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 	return ktui_draw_text(x, y, maxw, buf, fg, bg, attr);
+}
+
+int ktui_draw_text_right(int x, int y, int w, const char *s, int fg, int bg,
+			 int attr)
+{
+	int tw = ktui_utf8_width(s);
+	if (tw >= w)
+		return ktui_draw_text(x, y, w, s, fg, bg, attr);
+	return ktui_draw_text(x + w - tw, y, tw, s, fg, bg, attr);
 }
 
 void ktui_draw_hline(int x, int y, int w, int g, int fg, int bg)
@@ -392,6 +436,14 @@ static void emit_sgr(int fg, int bg, int attr)
 
 void ktui_draw_flush(void)
 {
+	/* Offscreen there is nothing to present to, and stdout is where the
+	 * dump goes — a flush would write escape sequences into it. It also has
+	 * to leave `back` alone, because the dump reads it. Not hypothetical:
+	 * ktui_toosmall() presents itself (kinstall and kdos-appbox return
+	 * straight after calling it and never flush), so a preview at a size
+	 * below the layout minimum came out as raw SGR. */
+	if (offscreen)
+		return;
 	if (ptr_x >= 0 && ptr_x < bw && ptr_y >= 0 && ptr_y < bh)
 		back[ptr_y * bw + ptr_x].attr ^= KT_A_REVERSE;
 

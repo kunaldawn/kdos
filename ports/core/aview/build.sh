@@ -9,22 +9,16 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export LDFLAGS="$LDFLAGS -licuuc -Wl,--allow-shlib-undefined"
-meson setup build \
-	--prefix=/usr --sysconfdir=/etc --libdir=lib \
-	--buildtype=release \
-	-Dwrap_mode=nodownload \
-	-Dwindows=wayland \
-	-Dunicode=icu \
-	-Dman=disabled \
-	-Dtest=disabled \
-	-Dlibpng=enabled \
-	-Dlibjpeg=enabled \
-	-Dlibtiff=enabled \
-	-Dlibrsvg=enabled \
-	-Dlibnsgif=enabled \
-	-Dfreeimage=disabled \
-	-Dlibheif=disabled \
-	-Dlibjxl=disabled
-meson compile -C build
-DESTDIR=$PKG meson install --no-rebuild -C build
+patch -p1 -i $PORT_SRC/imagemagick7.patch
+
+# Same 2001 aa-project autoconf 2.13 conftest as aalib: `main(){return(0);}`,
+# which GCC 14 promoted from warning to error, so configure decides the
+# compiler cannot create executables. See the recurring-fixes note in CLAUDE.md.
+export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
+	-Wno-int-conversion -Wno-incompatible-pointer-types \
+	-Wno-return-mismatch -Wno-declaration-missing-parameter-type"
+
+./configure --prefix=/usr \
+            --mandir=/usr/share/man
+make
+make DESTDIR=$PKG install
