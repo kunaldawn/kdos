@@ -1,0 +1,23 @@
+ImageMagick 7 builds the legacy `convert` name only with --enable-legacy-support,
+which KDOS does not pass, so asciiview's only reachable converter is `magick`.
+NetPBM is not ported, so `anytopnm` is never there either.
+
+--- a/asciiview
++++ b/asciiview
+@@ -7,12 +7,14 @@
+ }
+ myconvert()
+ {
+-   if anytopnm $1 >/tmp/aview$$.pgm 2>/dev/null ; then
++   if magick "$1" -colorspace gray pgm:- 2>/dev/null ; then
++     exit
++   elif anytopnm $1 >/tmp/aview$$.pgm 2>/dev/null ; then
+      exit
+    elif convert -colorspace gray $1 pgm:- 2>/dev/null ; then
+      exit
+    fi
+-   echo "Failed to convert file format to PNM by both convert and anytopnm" >&2
++   echo "Failed to convert file format to PNM by magick, convert or anytopnm" >&2
+    while true; do
+      echo "0 " 
+    done

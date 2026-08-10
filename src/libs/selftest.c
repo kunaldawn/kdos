@@ -30,6 +30,7 @@
 #include "kcolor.h"
 #include "kbuild.h"
 #include "kpkg.h"
+#include "ktui.h"
 
 static int failures;
 static int checks;
@@ -196,6 +197,24 @@ static void test_base(void)
 	   "GNU tar reads our archive");
 	eq_str(listing, "blobs/sha256/deadbeef", "GNU tar agrees on the name");
 
+	/* Output bigger than the buffer must TRUNCATE, not hang. It used to
+	 * hang: the child inherited the pipe's read end, so closing ours left
+	 * the pipe writable and the child blocked in write() while we blocked
+	 * in waitpid(). `kpkg install zig` died there on a 1.1 MB listing. */
+	KbArgv gen = {0};
+	kb_argv_add(&gen, "seq");
+	kb_argv_add(&gen, "100000");
+	kb_argv_end(&gen);
+	char small[64];
+	kb_run_capture(&gen, small, sizeof(small));
+	ok(strlen(small) >= sizeof(small) - 2, "capture truncates at the ceiling");
+
+	KbBuf all = {0};
+	ok(kb_run_capture_buf(&gen, &all) == 0, "unbounded capture succeeds");
+	ok(all.n > (1 << 19), "unbounded capture keeps every byte");
+	eq_str(all.p + all.n - 7, "100000\n", "and the last line is intact");
+	kb_buf_free(&all);
+
 	free(tarpath);
 	kb_rmtree(dir);
 	ok(!kb_path_exists(dir), "rmtree removes the tree");
@@ -291,7 +310,32 @@ static void test_pkg(void)
 	   "a file left by a hand install is owned by nobody");
 	ok(!kp_owned_has(ow, "usr/share"),
 	   "directories are shared and never owned");
+	/* An overwrite has to know WHO to take the path from. */
+	eq_str(kp_owned_owner(ow, "usr/bin/owned"), "owner",
+	       "the claim names its package");
+	ok(kp_owned_owner(ow, "usr/bin/stray") == NULL,
+	   "an unowned path has no owner to take it from");
 	kp_owned_free(ow);
+
+	/* `--overwrite` moves the path out of the old owner's manifest. Left
+	 * behind, it is claimed twice and `kpkgdel <old>` deletes a file the
+	 * new owner installed. */
+	char *drop[] = { (char *)"usr/bin/owned" };
+	ok(kp_db_drop_paths(&owned_conf, "owner", drop, 1) == 1,
+	   "the path leaves the old owner");
+	ok(kp_db_drop_paths(&owned_conf, "owner", drop, 1) == 0,
+	   "and dropping it twice is a no-op");
+	ow = kp_owned_load(&owned_conf);
+	ok(!kp_owned_has(ow, "usr/bin/owned"), "nothing claims it now");
+	ok(!kp_owned_has(ow, "usr/share"),
+	   "the rest of the manifest survived the rewrite");
+	kp_owned_free(ow);
+	char *dbcheck = kb_path_join(dir, "db/owner");
+	size_t dblen = 0;
+	char *dbtext = kb_read_all(dbcheck, &dblen);
+	eq_str(dbtext, "1 1\n./usr/share/\n", "version line and all");
+	free(dbtext);
+	free(dbcheck);
 	setenv("PKGDB_DIR", "/dev/null", 1);
 
 	kb_rmtree(dir);
@@ -461,6 +505,94 @@ static void test_build(void)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+static void test_ramps(int caps, int want_levels, const char *tier)
+{
+	ktui_caps = caps;
+	ktui_ramp_init();
+	checks++;
+	if (ktui_ramp_levels() != want_levels) {
+		failures++;
+		printf("  FAIL  %s ramp has %d levels, want %d\n", tier,
+		       ktui_ramp_levels(), want_levels);
+	}
+
+	/* Endpoints are exact: an empty bar must not show a sliver and a full
+	 * one must not stop one shade short. */
+	eq_str(ktui_ramp_h(0.0), " ", "empty cell is a space");
+	eq_str(ktui_ramp_v(0.0), " ", "empty vertical cell is a space");
+
+	/* Monotonic, and never out of range at the edges. */
+	int mono = 1;
+	const char *prev = ktui_ramp_h(0.0);
+	for (int i = 0; i <= 100; i++) {
+		const char *now = ktui_ramp_h(i / 100.0);
+		if (!now)
+			mono = 0;
+		prev = now;
+	}
+	(void)prev;
+	ok(mono, "the horizontal ramp answers every input");
+	ok(ktui_ramp_h(-5.0) != NULL && ktui_ramp_h(9.0) != NULL,
+	   "out-of-range input is clamped, not indexed");
+	ok(!strcmp(ktui_ramp_h(9.0), ktui_ramp_h(1.0)),
+	   "above 1 is the full cell");
+
+	/* Small non-zero f must show a sliver, not empty: the bar's tip tells
+	 * the story of how full it is, and a rounded-down tip lies about that. */
+	ok(strcmp(ktui_ramp_h(0.01), ktui_ramp_h(0.0)) != 0,
+	   "a small non-zero fraction is never the empty cell");
+	ok(strcmp(ktui_ramp_v(0.01), ktui_ramp_v(0.0)) != 0,
+	   "and the same vertically");
+}
+
+static void test_chart(void)
+{
+	printf("libktui charts\n");
+	int saved = ktui_caps;
+	test_ramps(KT_CAP_UTF8, 8, "rich");
+	test_ramps(KT_CAP_UTF8 | KT_CAP_LINUXVT, 3, "vt");
+	test_ramps(0, 3, "ascii");
+
+	/* The vt tier may only use glyphs the shipped console font carries. */
+	ktui_caps = KT_CAP_UTF8 | KT_CAP_LINUXVT;
+	ktui_ramp_init();
+	eq_str(ktui_ramp_h(1.0), "█", "vt full cell is FULL BLOCK");
+	eq_str(ktui_ramp_h(0.5), "▒", "vt mid cell is MEDIUM SHADE");
+	eq_str(ktui_ramp_h(0.2), "░", "vt low cell is LIGHT SHADE");
+
+	ktui_caps = KT_CAP_UTF8;
+	ktui_ramp_init();
+	eq_str(ktui_ramp_h(1.0), "█", "rich full cell is FULL BLOCK");
+	eq_str(ktui_ramp_v(0.125), "▁", "rich vertical starts at LOWER ONE EIGHTH");
+
+	ktui_caps = saved;
+	ktui_ramp_init();
+
+	/* The integer/tip split. A 40-cell bar at exactly half is 20 solid
+	 * cells and NO tip — a tip there would read as 51%. */
+	double tip = -1;
+	ok(ktui_bar_fill(40, 0.5, &tip) == 20 && tip == 0.0,
+	   "half of 40 cells is 20 solid and no tip");
+	ok(ktui_bar_fill(40, 0.5125, &tip) == 20 && tip > 0.49 && tip < 0.51,
+	   "half a cell past half is 20 solid plus a half tip");
+	ok(ktui_bar_fill(40, 0.0, &tip) == 0 && tip == 0.0, "zero is empty");
+	ok(ktui_bar_fill(40, 1.0, &tip) == 40 && tip == 0.0, "one is full");
+	ok(ktui_bar_fill(40, 1.5, &tip) == 40 && tip == 0.0, "over one clamps");
+	ok(ktui_bar_fill(40, -1.0, &tip) == 0 && tip == 0.0, "under zero clamps");
+
+	/* Never w+1 cells: solid + (tip ? 1 : 0) has to fit. */
+	int overflow = 0;
+	for (int w = 1; w <= 200; w++)
+		for (int i = 0; i <= 1000; i++) {
+			int solid = ktui_bar_fill(w, i / 1000.0, &tip);
+			if (solid + (tip > 0 ? 1 : 0) > w)
+				overflow = 1;
+		}
+	ok(!overflow, "solid plus tip never exceeds the bar width");
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
 int main(void)
 {
 	kb_set_progname("selftest");
@@ -469,6 +601,7 @@ int main(void)
 	test_colour();
 	test_pkg();
 	test_build();
+	test_chart();
 
 	printf("\n%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;

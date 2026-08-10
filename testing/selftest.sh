@@ -27,7 +27,8 @@ trap 'rm -rf "$OUT"' EXIT
 
 echo "==> selftest"
 $CC $STD $WARN $INC -o "$OUT/selftest" src/libs/selftest.c \
-    src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libkpkg/*.c src/libs/libkbuild/*.c
+    src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libkpkg/*.c \
+    src/libs/libkbuild/*.c src/libs/libktui/*.c
 "$OUT/selftest"
 
 echo
@@ -53,6 +54,7 @@ $CC $STD $WARN $INC -Isrc/build/kdosbuild -o "$OUT/kdosbuild" \
     src/build/kdosbuild/*.c src/libs/libkbase/*.c src/libs/libkbuild/*.c \
     src/libs/libktui/*.c src/libs/libkcolor/*.c
 echo "  kdosbuild"
+"$OUT/kdosbuild" --selftest
 
 echo
 echo "==> kpkgdepends still agrees with the ports tree"

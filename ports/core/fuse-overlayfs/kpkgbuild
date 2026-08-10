@@ -14,4 +14,4 @@ release     = 1
 source      = https://github.com/containers/fuse-overlayfs/archive/v$version.tar.gz
 description = An implementation of overlay+shiftfs in FUSE for rootless containers
 homepage    = https://github.com/containers/fuse-overlayfs
-depends     = fuse3
+depends     = fuse

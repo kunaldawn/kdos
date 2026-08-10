@@ -111,6 +111,12 @@ int kb_run_capture(const KbArgv *a, char *buf, size_t n)
 	buf[0] = '\0';
 	if (pipe(fd) < 0)
 		kb_die("pipe: %s", strerror(errno));
+	/* The read end must NOT survive into the child, or the child's own copy
+	 * keeps the pipe readable forever: when the buffer fills and we close
+	 * ours, the child blocks in write() instead of taking EPIPE, and we
+	 * block in waitpid(). `kpkg install zig` deadlocked exactly there —
+	 * a 1.1 MB `tar -tf` listing against a 1 MB buffer. */
+	fcntl(fd[0], F_SETFD, FD_CLOEXEC);
 	pid = spawn(a, fd[1]);
 	close(fd[1]);
 	for (;;) {
@@ -129,6 +135,32 @@ int kb_run_capture(const KbArgv *a, char *buf, size_t n)
 	while (got && (buf[got - 1] == '\n' || buf[got - 1] == '\r'))
 		buf[--got] = '\0';
 	return rc;
+}
+
+/* Same, into a growing buffer: no ceiling to overflow and nothing truncated.
+ * A package manifest is the whole reason — zig's is 1.1 MB and a short one
+ * writes a database entry that owns fewer files than the package installed. */
+int kb_run_capture_buf(const KbArgv *a, KbBuf *out)
+{
+	int fd[2];
+	pid_t pid;
+	char chunk[65536];
+
+	if (pipe(fd) < 0)
+		kb_die("pipe: %s", strerror(errno));
+	fcntl(fd[0], F_SETFD, FD_CLOEXEC);
+	pid = spawn(a, fd[1]);
+	close(fd[1]);
+	for (;;) {
+		ssize_t r = read(fd[0], chunk, sizeof(chunk));
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		kb_buf_add(out, chunk, (size_t)r);
+	}
+	close(fd[0]);
+	return reap(pid);
 }
 
 void kb_run_detach(const KbArgv *a)

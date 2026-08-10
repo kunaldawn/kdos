@@ -14,4 +14,4 @@ release     = 1
 source      = https://git.sr.ht/~exec64/imv/archive/v$version.tar.gz
 description = Image viewer for Wayland (Wayland-only build, meson)
 homepage    = https://sr.ht/~exec64/imv
-depends     = meson pkgconf wayland wayland-protocols libxkbcommon mesa fontconfig pango cairo libpng libjpeg-turbo libtiff icu librsvg libnsgif
+depends     = meson pkgconf wayland wayland-protocols libxkbcommon mesa fontconfig pango cairo libpng libjpeg-turbo libtiff icu librsvg libnsgif inih
