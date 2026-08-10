@@ -360,6 +360,14 @@ void sam_pump(Sampler *s, Manager *m)
 	s->history[s->nhistory++] = s->lines_per_sec;
 
 	read_loadavg(s);
+
+	int lcap = (int)(sizeof(s->load_hist) / sizeof(s->load_hist[0]));
+	if (s->nload == lcap) {
+		memmove(s->load_hist, s->load_hist + 1,
+			sizeof(s->load_hist[0]) * (size_t)(lcap - 1));
+		s->nload--;
+	}
+	s->load_hist[s->nload++] = s->load1;
 	read_meminfo(s);
 	struct statvfs st;
 	if (statvfs(m->build_dir, &st) == 0)

@@ -18,6 +18,10 @@ kdos-theme gtk "$PKG/usr/share/themes/KDOS" phosphor \
 # shares $HOME, not /usr/share) and is why no /etc/skel copy is installed
 # here: 06_packaging/00_theme.sh runs `kdos theme phosphor` against
 # /etc/skel and generates it.
+# Same as kdos-icons: the stylesheet source ships so `kdos theme <accent>` can
+# re-run the generator on the target, where it falls back to GTK_SRC_DEFAULT.
+# `cp -a` does not create the parent and $PKG starts empty for every package.
+mkdir -p "$PKG/usr/share/kdos/gtk-theme"
 cp -a "$PORT_SRC/theme" "$PKG/usr/share/kdos/gtk-theme/theme"
 
 install -Dm644 "$PORT_SRC/LICENSE.notice" \

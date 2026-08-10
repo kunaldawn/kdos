@@ -83,6 +83,35 @@ void ktui_term_flush(void)
 	obuf_len = 0;
 }
 
+static const char CLIP_B64[] =
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/* Hand-rolled rather than a library call — this file links nothing but libc,
+ * so there is no <b64.h> to reach for and pulling one in for a single
+ * OSC 52 write would break that property for everything else in libktui. */
+int ktui_clip_copy(const char *text)
+{
+	if (!text || (ktui_caps & KT_CAP_LINUXVT))
+		return 0;
+
+	size_t n = strlen(text);
+	ktui_term_write("\033]52;c;", 7);
+	for (size_t i = 0; i < n; i += 3) {
+		unsigned char b0 = (unsigned char)text[i];
+		unsigned char b1 = i + 1 < n ? (unsigned char)text[i + 1] : 0;
+		unsigned char b2 = i + 2 < n ? (unsigned char)text[i + 2] : 0;
+		char out[4];
+		out[0] = CLIP_B64[b0 >> 2];
+		out[1] = CLIP_B64[((b0 & 0x3) << 4) | (b1 >> 4)];
+		out[2] = i + 1 < n ? CLIP_B64[((b1 & 0xf) << 2) | (b2 >> 6)] : '=';
+		out[3] = i + 2 < n ? CLIP_B64[b2 & 0x3f] : '=';
+		ktui_term_write(out, 4);
+	}
+	ktui_term_write("\007", 1);
+	ktui_term_flush();
+	return 1;
+}
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static void on_winch(int sig)
@@ -125,6 +154,17 @@ static void detect_caps(void)
 	else if (term && (strstr(term, "foot") || strstr(term, "kitty") ||
 			  strstr(term, "alacritty") || strstr(term, "wezterm")))
 		ktui_caps |= KT_CAP_TRUECOLOR;
+	/* Anything else that is a terminal at all gets 256. Without this the
+	 * last branch of emit_sgr is reached, and that branch is a FIXED table
+	 * of ANSI codes that never consults ktui_theme — so the palette is the
+	 * terminal's, not ours, and `kdos theme`/[T] change nothing at all.
+	 * `make build` walks straight into it: docker run -it sets TERM=xterm
+	 * and does not forward COLORTERM, so the build TUI rendered in the
+	 * terminal's own eight colours and the theme key looked broken.
+	 * Every emulator that understands `\033[38;5;N` has for two decades;
+	 * `dumb` and an unset TERM are the ones that genuinely do not. */
+	else if (term && *term && strcmp(term, "dumb"))
+		ktui_caps |= KT_CAP_256;
 
 	/* A real VT is repainted through our own palette, so 24-bit SGR would
 	 * only be thrown away — the kernel does not parse it. */

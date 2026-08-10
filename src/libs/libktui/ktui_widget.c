@@ -442,35 +442,109 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placehold
 	return changed;
 }
 
-void ktui_progress(KRect r, double frac, const char *label)
+int ktui_bar_fill(int w, double frac, double *tip)
 {
+	if (tip)
+		*tip = 0;
+	if (w <= 0 || frac <= 0)
+		return 0;
+	if (frac >= 1)
+		return w;
+	double cells = frac * w;
+	int solid = (int)cells;
+	double rest = cells - solid;
+	/* A boundary must not sprout a tip: 0.5 of 40 is exactly 20 cells, and
+	 * a sliver there reads as 51%. The epsilon absorbs the binary
+	 * representation of a value the caller computed as done/total. */
+	if (rest < 1e-9)
+		rest = 0;
+	if (solid >= w) {
+		solid = w;
+		rest = 0;
+	}
+	if (tip)
+		*tip = rest;
+	return solid;
+}
+
+void ktui_progress_ex(KRect r, double frac, const char *label, int style,
+		      int bg)
+{
+	int pulse = style & KT_BAR_PULSE;
+	style &= KT_BAR_STYLE_MASK;
+
 	if (r.w < 4)
 		return;
 	if (frac < 0) {
 		/* Indeterminate: a scanning cell rather than a filled bar, so
 		 * nobody reads a stalled percentage into it. */
-		ktui_draw_hline(r.x, r.y, r.w, KT_G_SHADE, KT_DIM, KT_BG);
+		ktui_draw_hline(r.x, r.y, r.w, KT_G_SHADE, KT_DIM, bg);
 		int p = (int)(kb_now_s() * 12) % (r.w * 2);
 		if (p >= r.w)
 			p = r.w * 2 - p - 1;
 		for (int i = 0; i < 3 && p + i < r.w; i++)
 			ktui_draw_text(r.x + p + i, r.y, 1, ktui_glyph[KT_G_FULL],
-				  KT_ACCENT, KT_BG, 0);
-	} else {
+				       KT_ACCENT, bg, 0);
+	} else if (style == KT_BAR_SEGMENTED) {
 		if (frac > 1)
 			frac = 1;
 		int fill = (int)(frac * r.w + 0.5);
 		for (int i = 0; i < r.w; i++)
 			ktui_draw_text(r.x + i, r.y, 1,
-				  i < fill ? ktui_glyph[KT_G_FULL] : ktui_glyph[KT_G_SHADE],
-				  i < fill ? KT_ACCENT : KT_DIM, KT_BG, 0);
+				       (i & 1) ? " "
+					       : (i < fill ? ktui_glyph[KT_G_FULL]
+							   : ktui_glyph[KT_G_SHADE]),
+				       i < fill ? KT_ACCENT : KT_DIM, bg, 0);
+	} else {
+		double tip = 0;
+		int fill = style == KT_BAR_TIP
+				   ? ktui_bar_fill(r.w, frac, &tip)
+				   : (frac > 1 ? r.w : (int)(frac * r.w + 0.5));
+		for (int i = 0; i < r.w; i++) {
+			const char *g;
+			int fg;
+			if (i < fill) {
+				g = ktui_glyph[KT_G_FULL];
+				fg = KT_ACCENT;
+			} else if (i == fill && tip > 0) {
+				g = ktui_ramp_h(tip);
+				fg = KT_ACCENT;
+			} else {
+				g = ktui_glyph[KT_G_SHADE];
+				fg = KT_DIM;
+			}
+			ktui_draw_text(r.x + i, r.y, 1, g, fg, bg, 0);
+		}
+
+		/* One cell of the filled run is lit a shade brighter and walks
+		 * left to right. It says "still moving" on a bar that has not
+		 * advanced a whole cell in minutes — a zig sweep would read as
+		 * progress going backwards, so it wraps instead. */
+		if (pulse && fill > 0) {
+			int p = (int)(kb_now_s() * 9) % (fill + 4);
+			if (p < fill)
+				ktui_draw_text(r.x + p, r.y, 1,
+					       ktui_glyph[KT_G_FULL], KT_WARN,
+					       bg, 0);
+		}
 	}
 
 	if (label && *label) {
 		int w = ktui_utf8_width(label);
 		int x = r.x + (r.w - w) / 2;
-		ktui_draw_text(x, r.y, w, label, KT_BG, KT_ACCENT, KT_A_REVERSE);
+		/* Reverse video: fg/bg swap at render time, so passing the
+		 * panel's bg as fg here is what makes the chip's apparent
+		 * background match the panel instead of a hardcoded slot. */
+		ktui_draw_text(x, r.y, w, label, bg, KT_ACCENT, KT_A_REVERSE);
 	}
+}
+
+void ktui_progress(KRect r, double frac, const char *label)
+{
+	/* kinstall (the disc's installer) links this wrapper and only this
+	 * wrapper, never ktui_progress_ex directly — it must keep drawing
+	 * exactly what it always has, so the style/bg stay pinned here. */
+	ktui_progress_ex(r, frac, label, KT_BAR_SOLID, KT_BG);
 }
 
 void ktui_scrollbar(KRect r, int total, int shown, int off)

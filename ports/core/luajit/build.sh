@@ -10,6 +10,6 @@
 # ---------------------------------
 
 # These flags are recommended by OpenResty.
-local xcflags="-DLUAJIT_ENABLE_LUA52COMPAT -DLUAJIT_NUMMODE=2"
+xcflags="-DLUAJIT_ENABLE_LUA52COMPAT -DLUAJIT_NUMMODE=2"
 make amalg PREFIX=/usr XCFLAGS="$xcflags"
 make PREFIX=/usr DESTDIR=$PKG install

@@ -109,6 +109,12 @@ void ktui_term_write(const char *s, size_t n);
 void ktui_term_flush(void);
 void ktui_term_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void ktui_term_repalette(void);	/* after a live accent switch              */
+/* OSC 52 clipboard write, base64 encoded by hand (this library links nothing
+ * but libc). Returns whether anything was actually emitted: the Linux VT
+ * (KT_CAP_LINUXVT) has no OSC 52 handler at all — not "some terminals don't",
+ * every VT — so this is a deliberate no-op there, and the caller must not
+ * tell the user something was copied when it was not. */
+int ktui_clip_copy(const char *text);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Cell buffer
@@ -139,6 +145,14 @@ enum {
 extern const char *ktui_glyph[KT_G_N];
 
 int ktui_draw_init(void);
+/* Render with no terminal at all: allocate the cell buffer at a fixed size and
+ * write the result as plain text instead of escapes. This is what lets a
+ * screen be looked at, and diffed, without a two-hour build behind it — every
+ * geometry defect these widgets have shipped (text over a box border, a heat
+ * strip past its rect, a column out from under its own header) was invisible
+ * to the compiler and to a test suite that cannot draw. */
+int ktui_offscreen_init(int w, int h);
+void ktui_draw_dump(void);
 void ktui_draw_resize(void);
 void ktui_draw_clear(void);
 void ktui_draw_flush(void);
@@ -150,6 +164,11 @@ int ktui_draw_text(int x, int y, int maxw, const char *s, int fg, int bg,
 		   int attr);
 int ktui_draw_textf(int x, int y, int maxw, int fg, int bg, int attr,
 		    const char *fmt, ...) __attribute__((format(printf, 7, 8)));
+/* Draws `s` so that it ENDS at x + w - 1. Every duration, size and count
+ * column in the KDOS TUIs was hand-padded with a %8s-style guess, which drifts
+ * out of line with its own header the moment a value overflows the field. */
+int ktui_draw_text_right(int x, int y, int w, const char *s, int fg, int bg,
+			 int attr);
 void ktui_draw_hline(int x, int y, int w, int g, int fg, int bg);
 void ktui_draw_vline(int x, int y, int h, int g, int fg, int bg);
 void ktui_draw_box(KRect r, const char *title, int fg, int bg, int dbl);
@@ -168,6 +187,40 @@ int ktui_extent(void);
 
 int ktui_utf8_width(const char *s);	/* display cells, ignores overlong */
 const char *ktui_utf8_next(const char *s, uint32_t *cp);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Ramps and charts
+ *
+ * Three tiers, not two. The console font KDOS ships is 512 glyphs of xos4-2
+ * plus six double-line box characters: it has FULL BLOCK and the two shades
+ * and it does NOT have eighth blocks, half blocks or braille. kinstall runs
+ * on that VT and shares these widgets with kdosbuild, which runs on the host
+ * in a modern terminal — so a chart is drawn at eight levels there and three
+ * levels on a tty rather than being drawn in glyphs that come out blank.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+void ktui_ramp_init(void);	/* called by ktui_draw_init                */
+int ktui_ramp_levels(void);
+const char *ktui_ramp_v(double f);	/* bottom-aligned — sparklines     */
+const char *ktui_ramp_h(double f);	/* left-aligned   — bar tips       */
+
+/* One ramp cell per column, newest sample at the RIGHT so a short window does
+ * not slide the history sideways as it fills. vmax 0 autoscales over the
+ * window that is actually drawn. */
+void ktui_sparkline(KRect r, const double *v, int n, double vmax, int bg);
+/* The value the top of the ramp represents for that same window — an
+ * autoscaled chart with no stated peak tells you the SHAPE of the last two
+ * minutes and nothing about its magnitude, which is half the reading. Pass
+ * the same `cols` the sparkline was drawn with. */
+double ktui_sparkline_peak(const double *v, int n, int cols);
+/* A short bounded meter — memory, disk. Fill in `fg`, track in KT_DIM. */
+void ktui_gauge(int x, int y, int w, double frac, int fg, int bg);
+/* One cell per sample, averaged down when there are more samples than cells.
+ * Used for the per-step duration strip: darkest cell is the slowest step.
+ * Trailing `bg` matches ktui_gauge/ktui_sparkline — draw on the caller's
+ * actual background, not a hardcoded one, or a heat strip on a highlighted
+ * row punches a hole through the highlight. */
+void ktui_heat(KRect r, const double *v, int n, double vmax, int bg);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Events
@@ -280,7 +333,27 @@ int ktui_check(int x, int y, int w, const char *label, int *val);
 int ktui_radio(int x, int y, int w, const char *label, int *val, int on);
 int ktui_input(KRect r, char *buf, size_t cap, int secret,
 	       const char *placeholder);
+/* Bar styles. SOLID is the original: whole cells only. TIP adds one
+ * fractional cell from the horizontal ramp, so a 40-column bar carries 320
+ * positions on a rich terminal instead of 40 — a solid bar quantises to 2.5%
+ * and visibly lies during a long step. SEGMENTED draws one gapped segment per
+ * unit, for a small discrete count like "12 of 14 steps". */
+enum { KT_BAR_SOLID, KT_BAR_TIP, KT_BAR_SEGMENTED, KT_BAR_STYLE_MASK = 0xf };
+/* OR into the style: a highlight sweeps the filled region so a bar that is
+ * making slow progress still reads as ALIVE. Time-based, never frame-based —
+ * the build screen redraws at whatever rate its child is producing output,
+ * and a per-frame step would make the sweep race or crawl accordingly.
+ * Deliberately a flag rather than a style: ktui_progress() must keep drawing
+ * exactly what it always has for kinstall, so animation is opt-in. */
+#define KT_BAR_PULSE (1 << 4)
+
 void ktui_progress(KRect r, double frac, const char *label);
+void ktui_progress_ex(KRect r, double frac, const char *label, int style,
+		      int bg);
+/* Whole cells filled; *tip receives the leftover fraction of the next cell,
+ * 0 when it lands on a boundary. Exposed because it is the one piece of bar
+ * arithmetic worth asserting. */
+int ktui_bar_fill(int w, double frac, double *tip);
 void ktui_scrollbar(KRect r, int total, int shown, int off);
 
 /* ────────────────────────────────────────────────────────────────────────
