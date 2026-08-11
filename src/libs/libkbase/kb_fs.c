@@ -192,7 +192,13 @@ void kb_buf_add(KbBuf *b, const void *s, size_t n)
 		while (cap < b->n + n + 1)
 			cap *= 2;
 		char *np = kb_calloc(1, cap);
-		memcpy(np, b->p, b->n);
+		/* memcpy's second argument is declared never-null, so copying
+		 * zero bytes from a NULL b->p — true on a KbBuf's first ever
+		 * growth, straight out of a {0} initializer — is undefined
+		 * behaviour even though every real implementation tolerates
+		 * it. UBSan catches it on the very first kb_buf_add call. */
+		if (b->n)
+			memcpy(np, b->p, b->n);
 		free(b->p);
 		b->p = np;
 		b->cap = cap;

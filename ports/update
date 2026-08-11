@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# Compile-on-demand wrapper for kdos-portup, the shape ports/fetch already
+# uses for its own on-demand kpkg reader: build once into a gitignored path,
+# rebuild only when a source file is newer than the binary, then exec straight
+# through. kdos-portup's own find_repo_root() walks two directories up from
+# /proc/self/exe, so this binary has to live at exactly <repo_root>/ports/.portup
+# for that to resolve — unlike ports/.kpkg-meta's reader, the binary's own
+# NAME does not matter to any dispatcher here.
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+BIN="$SCRIPT_DIR/.portup"
+SRC="$REPO_ROOT/src/tools/kdos-portup"
+LIBS="$REPO_ROOT/src/libs"
+
+if [ ! -x "$BIN" ] || [ -n "$(find "$SRC" -newer "$BIN" -name '*.c' 2>/dev/null)" ]; then
+    echo "==> Building the port updater..."
+    cc -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra -Werror \
+       -I"$LIBS/libkbase" -I"$LIBS/libkpkg" -I"$LIBS/libkbuild" -I"$SRC" \
+       -o "$BIN" "$SRC"/*.c "$LIBS"/libkbase/*.c "$LIBS"/libkpkg/*.c \
+       "$LIBS"/libkbuild/*.c
+fi
+exec "$BIN" "$@"
