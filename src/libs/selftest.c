@@ -31,6 +31,7 @@
 #include "kbuild.h"
 #include "kpkg.h"
 #include "ktui.h"
+#include "portup.h"
 
 static int failures;
 static int checks;
@@ -593,6 +594,169 @@ static void test_chart(void)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+static void vcmp(const char *a, const char *b, int want, const char *what)
+{
+	checks++;
+	int got = pu_vercmp(a, b);
+	if (got == want)
+		return;
+	failures++;
+	printf("  FAIL  %s: vercmp(%s,%s) = %d, want %d\n", what, a, b, got, want);
+}
+
+static void vcmp_sym(const char *a, const char *b, int want, const char *what)
+{
+	vcmp(a, b, want, what);
+	vcmp(b, a, -want, what);	/* a comparator that is not antisymmetric
+					   is not an ordering */
+}
+
+/* Test helper: check if a candidate is present among the extracted ones. */
+static int pu_extract_has(char cand[][PU_MAX_VER], int n, const char *want)
+{
+	for (int i = 0; i < n; i++)
+		if (!strcmp(cand[i], want))
+			return 1;
+	return 0;
+}
+
+static void test_portup(void)
+{
+	printf("kdos-portup\n");
+
+	/* Every one of these is a real version pair from the ports tree. A
+	 * comparator that gets any of them wrong proposes a downgrade, and a
+	 * downgrade costs a full rebuild to notice. */
+	vcmp_sym("1.4rc5", "1.4", -1, "a release candidate precedes its release");
+	vcmp_sym("1.3.0rc1", "1.3.0", -1, "rc with a dotted base");
+	vcmp_sym("1.0pre4", "1.0", -1, "pre behaves like rc");
+	vcmp_sym("10.2p1", "10.2", 1, "OpenSSH's p-suffix is an increment");
+	vcmp_sym("1.9.17p2", "1.9.17p1", 1, "sudo's p-suffixes order numerically");
+	vcmp_sym("3.6a", "3.6", 1, "tmux's letter suffix is an increment");
+	vcmp_sym("20250826", "20250901", -1, "dates order as integers");
+	vcmp_sym("1.10.0", "1.9.0", 1, "components are numeric, not lexical");
+	vcmp_sym("r62", "r52", 1, "inih's rNN");
+	vcmp_sym("8.17.0", "8.17.0", 0, "equal");
+	vcmp_sym("1.4.0", "1.4", 1, "more components wins when the prefix ties");
+	vcmp_sym("1.4.0", "1.4.0.0", -1, "a trailing component is significant, "
+				       "as in dpkg and rpm");
+	vcmp_sym("99999999999999999999999", "1.0", 1,
+		 "a run too long for a long still orders as greater");
+	vcmp_sym("99999999999999999999999", "99999999999999999999998", 1,
+		 "two saturating runs order by their digits");
+	vcmp_sym("007", "7", 0, "leading zeroes do not change the value");
+
+	char sh[64];
+	pu_shape("1.4.0", sh, sizeof(sh));
+	eq_str(sh, "N.N.N", "shape of a three-part version");
+	pu_shape("20250826", sh, sizeof(sh));
+	eq_str(sh, "N8", "a lone digit run records its length");
+	pu_shape("1", sh, sizeof(sh));
+	eq_str(sh, "N1", "so a date cannot match a bare 1");
+	pu_shape("r62", sh, sizeof(sh));
+	eq_str(sh, "aN", "letter then digits");
+	pu_shape("10.2p1", sh, sizeof(sh));
+	eq_str(sh, "N.NaN", "sudo/openssh p-suffix shape");
+	pu_shape("1.4rc5", sh, sizeof(sh));
+	eq_str(sh, "N.NaN", "rc shares the p-suffix shape, which is fine: "
+			    "shape only gates comparability");
+
+	/* Real strings the adapters will hand it. */
+	char cand[PU_MAX_CAND][PU_MAX_VER];
+	int n;
+
+	n = pu_extract("epoch-1.5.0", cand, PU_MAX_CAND);
+	ok(n == 2, "epoch tag yields two (raw and cleaned)");
+	ok(pu_extract_has(cand, n, "1.5.0"), "cleaned version is present");
+
+	n = pu_extract("v2.1-20250901", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "v2.1-20250901"), "luajit's tag yields the whole form");
+	ok(pu_extract_has(cand, n, "2.1-20250901"), "the form without v prefix");
+	ok(pu_extract_has(cand, n, "20250901"), "and the date component");
+
+	n = pu_extract("cacert-2026-01-15.pem", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "2026-01-15"), "a dated pem yields the whole date");
+
+	n = pu_extract("fuse-3.19.0.tar.gz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "3.19.0"), "a tarball name yields its version");
+
+	n = pu_extract("no-version-here", cand, PU_MAX_CAND);
+	ok(n == 0, "a string with no version yields nothing");
+
+	/* The extractor is deliberately generous and the SHAPE FILTER is what
+	 * narrows it — that split is why no adapter needs to know about
+	 * `epoch-` or `v2.1-` conventions. */
+	n = pu_extract("Release_1_16_1", cand, PU_MAX_CAND);
+	ok(n == 2, "underscores separate into digit runs");
+	ok(pu_extract_has(cand, n, "1"), "including versions with repeated digits");
+	ok(pu_extract_has(cand, n, "16"), "and longer ones");
+
+	n = pu_extract("curl-8.12.1.tar.xz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "8.12.1"), ".tar.xz is trimmed — 129 ports use it");
+	n = pu_extract("mesa-25.2.0.tar.bz2", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "25.2.0"), ".tar.bz2 too — another 40 ports");
+	n = pu_extract("zlib-1.3.1.tar.gz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.3.1"), "and .tar.gz still works");
+
+	/* r62 is inih's real version; v1.2.3's v is a tag convention. The
+	 * extractor emits both forms rather than guessing which letters
+	 * belong to the version — the shape filter is what decides. */
+	n = pu_extract("r62", cand, PU_MAX_CAND);
+	ok(n >= 2, "a letter-prefixed run yields multiple forms");
+	ok(pu_extract_has(cand, n, "r62"), "the run as written");
+	ok(pu_extract_has(cand, n, "62"), "and without the prefix");
+
+	/* Multi-hyphen package names were yielding prefix+rest (e.g., "conf-1.2.5.1")
+	 * instead of the version alone. The new generative rules emit all useful
+	 * forms and the shape filter picks the matching one. Cost a debug cycle:
+	 * 15+ ports were broken; alsa-topology-conf, gst-plugins-{bad,base,good,ugly},
+	 * desktop-file-utils, shared-mime-info, xcb-util-{cursor,image,renderutil}
+	 * and others all reported unknown forever. */
+	n = pu_extract("alsa-topology-conf-1.2.5.1.tar.bz2", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.2.5.1"),
+	   "a name with three hyphens still yields its version");
+	n = pu_extract("gst-plugins-bad-1.28.0.tar.xz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.28.0"), "and a two-hyphen name");
+	n = pu_extract("cacert-2026-01-15.pem", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "2026-01-15"),
+	   "while a hyphenated DATE survives intact");
+
+	/* Rules must compose so that <name>-v<version> tarballs work. node-v22.14.0
+	 * needs both "node-" stripping (rule 2) AND "v" stripping (rule 1b) to yield
+	 * "22.14.0". Cost a debug cycle: 9 ports regressed (brotli, iso-codes,
+	 * libglvnd, libslirp, libuv, lynx, nodejs, spirv-tools, upower) because the
+	 * transformations were not iterative. */
+	n = pu_extract("node-v22.14.0.tar.xz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "22.14.0"),
+	   "a <name>-v<version> tarball yields the bare version");
+	n = pu_extract("upower-v1.90.9.tar.bz2", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.90.9"), "and so does a .tar.bz2 one");
+	n = pu_extract("alsa-topology-conf-1.2.5.1.tar.bz2", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.2.5.1"), "without losing round 2's fix");
+
+	/* LLVM uses .src convention; Debian uses .orig. Both must trim. */
+	n = pu_extract("llvm-21.1.8.src.tar.xz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "21.1.8"),
+	   "LLVM .src.tar.xz tarballs yield bare version");
+	n = pu_extract("libaio_0.3.113.orig.tar.gz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "0.3.113"),
+	   "Debian .orig.tar.gz tarballs yield bare version");
+
+	/* No candidate may repeat: a duplicate means dedup ran before a
+	 * transformation rather than after it. Release_1_16_1 yields repeated "1"
+	 * before dedup, so this check genuinely exercises that invariant. */
+	n = pu_extract("Release_1_16_1", cand, PU_MAX_CAND);
+	ok(n >= 2, "the dedup check needs at least two candidates to mean anything");
+	int dup = 0;
+	for (int i = 0; i < n; i++)
+		for (int k = i + 1; k < n; k++)
+			if (!strcmp(cand[i], cand[k]))
+				dup = 1;
+	ok(!dup, "no candidate repeats");
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
 int main(void)
 {
 	kb_set_progname("selftest");
@@ -602,6 +766,7 @@ int main(void)
 	test_pkg();
 	test_build();
 	test_chart();
+	test_portup();
 
 	printf("\n%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;

@@ -21,14 +21,15 @@ cd "$(dirname "$0")/.."
 CC=${CC:-cc}
 WARN="-Wall -Wextra -Werror"
 STD="-O2 -std=gnu11 -D_GNU_SOURCE"
-INC="-Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild"
+INC="-Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/tools/kdos-portup"
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
 echo "==> selftest"
 $CC $STD $WARN $INC -o "$OUT/selftest" src/libs/selftest.c \
     src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libkpkg/*.c \
-    src/libs/libkbuild/*.c src/libs/libktui/*.c
+    src/libs/libkbuild/*.c src/libs/libktui/*.c \
+    src/tools/kdos-portup/vercmp.c src/tools/kdos-portup/extract.c
 "$OUT/selftest"
 
 echo
@@ -55,6 +56,52 @@ $CC $STD $WARN $INC -Isrc/build/kdosbuild -o "$OUT/kdosbuild" \
     src/libs/libktui/*.c src/libs/libkcolor/*.c
 echo "  kdosbuild"
 "$OUT/kdosbuild" --selftest
+$CC $STD $WARN $INC -Isrc/tools/kdos-portup -o "$OUT/kdos-portup" \
+    src/tools/kdos-portup/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
+    src/libs/libkbuild/*.c
+echo "  kdos-portup"
+"$OUT/kdos-portup" --selftest --fixture testing/fixtures/portup
+
+echo
+echo "==> kdos-portup fixture-backed check (offline, no network)"
+# testing/fixtures/portup was recorded live against the six ports below, one
+# per discovery path: fuse (GitHub forge), zlib (a plain directory listing),
+# ca-certificates (directory listing that comes up empty, falling to repology
+# and only matching CURRENT's shape through the strip-separators/dot-collapse
+# normalisation), aalib (repology, genuinely CURRENT — upstream hasn't
+# released since 2001), mesa (a large directory listing), and imagemagick
+# (repology again, but UNKNOWN: its recipe's own source URL template is dead,
+# so no rendered candidate — including its own pinned version — ever proves).
+# Replaying them through --fixture exercises pu_list_upstream, pu_extract,
+# the shape filter and pu_render_candidate end to end with no curl involved —
+# proved separately with `unshare --net`, not just by inspection here — and
+# is what makes this reach all three outcomes (current/newer/unknown) without
+# a live network call.
+#
+# --fixture makes kdos-portup skip loading AND saving
+# ports/.update-cache.json entirely — fixture 200s are not evidence about the
+# real world and must never outlive this process — so there is nothing to
+# back up or restore around this run any more.
+CACHE="$PWD/ports/.update-cache.json"
+CACHE_BEFORE=$(md5sum "$CACHE" 2>/dev/null || true)
+set +e
+KDOS_PORTUP_REPO="$PWD" "$OUT/kdos-portup" --check --refresh --json \
+    --fixture "$PWD/testing/fixtures/portup" \
+    fuse zlib ca-certificates aalib mesa imagemagick \
+    > "$OUT/portup-fixture.json" 2> "$OUT/portup-fixture.err"
+rc=$?
+set -e
+[ "$(md5sum "$CACHE" 2>/dev/null || true)" = "$CACHE_BEFORE" ] || {
+    echo "  fixture run touched the real update cache"
+    exit 1
+}
+# 0 = every checked port is current, 1 = --check found at least one update —
+# both are a completed run; anything else is a crash or a usage error.
+[ "$rc" -le 1 ] || { echo "  fixture-backed check exited $rc"; cat "$OUT/portup-fixture.err"; exit 1; }
+grep -q '"state": "current"' "$OUT/portup-fixture.json" || { echo "  no current outcome reproduced"; exit 1; }
+grep -q '"state": "newer"'   "$OUT/portup-fixture.json" || { echo "  no newer outcome reproduced";   exit 1; }
+grep -q '"state": "unknown"' "$OUT/portup-fixture.json" || { echo "  no unknown outcome reproduced"; exit 1; }
+echo "  6 ports, all three outcomes reproduced from the recorded corpus"
 
 echo
 echo "==> kpkgdepends still agrees with the ports tree"
