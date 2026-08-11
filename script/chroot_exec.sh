@@ -113,9 +113,16 @@ trap cleanup EXIT
 # But we keep PATH (basic) and TERM
 # KDOS_REPLAY is forwarded: it tells a step that the developer picked it
 # deliberately, so mark-file guards ("already built, exit 0") stand down.
+#
+# /usr/local/bin is LAST, unlike fs/etc/profile which puts it first. Our own
+# tools install there — kdos, kdos-appbox — and leaving it out entirely made
+# `kdos-appbox image assemble` in 01_appbox.sh die with "command not found",
+# which podman then reported as an unreadable image format. Appending fixes
+# that without letting a /usr/local/bin binary shadow a /usr/bin one during a
+# port's configure, which is a different bug and a much harder one to see.
 chroot "$CHROOT_DIR" /usr/bin/env -i \
     HOME=/root \
     TERM="$TERM" \
     KDOS_REPLAY="${KDOS_REPLAY:-0}" \
-    PATH=/bin:/usr/bin:/sbin:/usr/sbin \
+    PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"

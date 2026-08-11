@@ -14,7 +14,16 @@ case "$1" in
         mkdir -pv /run/udev
         chmod 755 /run/udev
         "$DAEMON" --daemon
-        /usr/sbin/udevadm trigger
+        # --action=add, and not the default. udevadm trigger replays every
+        # device with action "change", but /lib/udev/rules.d/80-drivers.rules
+        # — the rule that modprobes a driver from MODALIAS — opens with
+        # ACTION!="add", GOTO="drivers_end". A plain trigger therefore loads
+        # NO module at all: the HDA controller stayed unclaimed, "No
+        # soundcards found", alsa-lib answered "Unknown PCM default" and kk
+        # aborted inside MikMod_Init. Subsystems before devices, so a bus
+        # module is in place before its children are replayed.
+        /usr/sbin/udevadm trigger --action=add --type=subsystems
+        /usr/sbin/udevadm trigger --action=add --type=devices
         /usr/sbin/udevadm settle
         echo "[KDOS] $NAME ready"
         ;;

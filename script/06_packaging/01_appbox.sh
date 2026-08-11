@@ -71,7 +71,14 @@ case "${1:-}" in
     else
         # No monolithic tar in the repo (LFS 2G/file limit): stream it back
         # out of the chunked image/ directory instead.
-        kdos-appbox image assemble "$IMGDIR" | \
+        #
+        # Absolute path, like 00_theme.sh calls /usr/local/bin/kdos: this runs
+        # under chroot_exec.sh, whose PATH is /bin:/usr/bin:/sbin:/usr/sbin and
+        # does NOT carry /usr/local/bin, which is where kdos-appbox installs.
+        # A bare name here failed with "command not found" and podman then
+        # reported an unreadable image format, which points at the archive
+        # rather than at the PATH.
+        /usr/local/bin/kdos-appbox image assemble "$IMGDIR" | \
             podman --root "$STORAGE" --runroot /tmp/appbox-runroot load
     fi
     # Flatten to ONE layer. This rootful store is later mounted by ROOTLESS
@@ -110,7 +117,7 @@ rm -rf /tmp/appbox-runroot
 grep -q kdos-appbox "$STORAGE"/*-images/images.json
 
 echo "Remapping ownership to the rootless layout..."
-kdos-appbox image remap-uids "$STORAGE"
+/usr/local/bin/kdos-appbox image remap-uids "$STORAGE"
 chown kdos:kdos /home/kdos/.local /home/kdos/.local/share \
                 /home/kdos/.local/share/containers
 # The rootful load/prune leaves an empty volumes/ skeleton whose remapped

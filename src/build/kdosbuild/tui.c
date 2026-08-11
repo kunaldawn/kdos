@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "kdosbuild.h"
@@ -1066,6 +1067,12 @@ typedef struct {
 	 * panel is owed a fresh appearance if a later run fails on a
 	 * DIFFERENT step. "up" is simply m->error_step && != err_dismissed. */
 	BStep *err_dismissed;
+
+	/* The success panel's counterpart to err_dismissed. A bare flag is
+	 * right here where a step pointer was right there: a build finishes
+	 * exactly once per run, so there is no "a DIFFERENT one succeeded"
+	 * case to distinguish. */
+	int done_dismissed;
 } BuildView;
 
 /* Marks rather than filters: a build log is read for context around the hit,
@@ -1109,7 +1116,14 @@ static BStep *phase_progress(Manager *m, int *done, int *total)
 		return NULL;
 	*total = g->nchild;
 	for (int i = 0; i < g->nchild; i++)
+		/* SKIPPED counts as finished. It is a step that will not run
+		 * again this pass — restored from a snapshot, or a package
+		 * already installed — and leaving it out meant a phase full of
+		 * skips could never reach 100%. On a resumed build that is the
+		 * ordinary case, so the bar sat short of the end for the whole
+		 * run and the ETA was computed against work nobody was doing. */
 		if (g->child[i]->status == ST_DONE ||
+		    g->child[i]->status == ST_SKIPPED ||
 		    g->child[i]->status == ST_FAIL)
 			(*done)++;
 	return g;
@@ -1922,6 +1936,108 @@ static void draw_failure_panel(Manager *m, BStep *n)
 		       KT_WARN, KT_SURFACE, KT_A_BOLD);
 }
 
+/* Every phase ran and none failed. Deliberately NOT just `!is_running`: a run
+ * the user stopped with Q, or one that never started a step, has not completed
+ * and must not be congratulated. m->stop_requested covers both the graceful
+ * stop and the force quit. */
+static int build_completed_ok(const Manager *m)
+{
+	if (m->is_running || m->error_step || m->stop_requested)
+		return 0;
+	if (m->start_time <= 0)
+		return 0;
+	/* A plan can legitimately select a subset, so "every phase" means
+	 * every phase this run intended to run — a skipped-by-plan phase is
+	 * not an unfinished one. */
+	for (int i = 0; i < m->nroot; i++)
+		if (m->root[i]->status != ST_DONE &&
+		    m->root[i]->status != ST_SKIPPED)
+			return 0;
+	return 1;
+}
+
+static void draw_success_panel(Manager *m)
+{
+	int w = ktui_w - 8;
+	/* Sized to its content rather than to a round number: 2 border, four
+	 * fact lines, a rule, the last notice when there is one, and the keys.
+	 * A fixed height left two dead rows above the keys. */
+	int h = 8 + (m->nnotice ? 1 : 0);
+	if (w < 60 || h > ktui_h - 2)
+		return;
+	KRect r = krect(4, (ktui_h - h) / 2, w, h);
+
+	ktui_draw_fill(r, KT_SURFACE);
+	ktui_draw_box(r, " BUILD COMPLETE ", KT_ACCENT, KT_SURFACE, 1);
+
+	int x = r.x + 2, iw = w - 4;
+	int y = r.y + 1;
+	char buf[700];
+
+	int phases = 0, done = 0, skipped = 0;
+	for (int i = 0; i < m->nroot; i++)
+		if (m->root[i]->status == ST_DONE)
+			phases++;
+	for (int i = 0; i < m->norder; i++) {
+		if (m->order[i]->is_group)
+			continue;
+		if (m->order[i]->status == ST_DONE)
+			done++;
+		else if (m->order[i]->status == ST_SKIPPED)
+			skipped++;
+	}
+
+	snprintf(buf, sizeof(buf), "phases      %d of %d", phases, m->nroot);
+	ktui_draw_text(x, y++, iw, buf, KT_TEXT, KT_SURFACE, KT_A_BOLD);
+
+	snprintf(buf, sizeof(buf), "steps       %d run, %d skipped", done,
+		 skipped);
+	ktui_draw_text(x, y++, iw, buf, KT_MID, KT_SURFACE, 0);
+
+	/* Two disjoint spans, the same rule draw_activity and the failure
+	 * panel follow: two snprintfs into one width let the second overwrite
+	 * the first rather than merely run long. */
+	int lw = iw / 2, rw = iw - lw - 1;
+	snprintf(buf, sizeof(buf), "elapsed     %s",
+		 human_time(kb_now_s() - m->start_time));
+	ktui_draw_text(x, y, lw, buf, KT_ACCENT, KT_SURFACE, KT_A_BOLD);
+	if (m->restored_from)
+		snprintf(buf, sizeof(buf), "restored <- %s",
+			 m->restored_from->dir_name);
+	else if (m->continued_from)
+		snprintf(buf, sizeof(buf), "continued past %s",
+			 m->continued_from->dir_name);
+	else
+		snprintf(buf, sizeof(buf), "from scratch");
+	ktui_draw_text_right(x + lw + 1, y, rw, buf, KT_MID, KT_SURFACE, 0);
+	y++;
+
+	/* The artefact is the point of the whole run, so it gets its own line
+	 * with a size — an ISO that exists but is 0 bytes has happened, and a
+	 * bare path would not have shown it. */
+	char iso[600];
+	snprintf(iso, sizeof(iso), "%s/iso-build/kdos.iso", m->build_dir);
+	struct stat ist;
+	long long isz = stat(iso, &ist) == 0 ? (long long)ist.st_size : -1;
+	if (isz > 0)
+		snprintf(buf, sizeof(buf), "iso         %s  (%s)", iso,
+			 human_bytes(isz));
+	else
+		snprintf(buf, sizeof(buf), "iso         not produced by this run");
+	ktui_draw_text(x, y++, iw, buf, isz > 0 ? KT_TEXT : KT_DIM, KT_SURFACE,
+		       0);
+
+	ktui_draw_hline(r.x + 1, y++, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
+
+	if (m->nnotice)
+		ktui_draw_text(x, y++, iw, m->notice[m->nnotice - 1].text,
+			       KT_WARN, KT_SURFACE, 0);
+
+	ktui_draw_text(x, r.y + h - 2, iw,
+		       "[Esc/Enter] dismiss   [Q] quit", KT_WARN, KT_SURFACE,
+		       KT_A_BOLD);
+}
+
 static void draw_build_frame(BuildView *v)
 {
 	ktui_draw_clear();
@@ -1950,6 +2066,8 @@ static void draw_build_frame(BuildView *v)
 		draw_activity(v->m);
 	else if (v->m->error_step && v->m->error_step != v->err_dismissed)
 		draw_failure_panel(v->m, v->m->error_step);
+	else if (build_completed_ok(v->m) && !v->done_dismissed)
+		draw_success_panel(v->m);
 }
 
 void screen_build(Manager *m, Sampler *sam, Timings *tm)
@@ -2129,6 +2247,18 @@ void screen_build(Manager *m, Sampler *sam, Timings *tm)
 			default:
 				break;
 			}
+			continue;
+		}
+
+		/* Same contract as the failure panel: it owns Esc/Enter while
+		 * up, and Q keeps falling through to the quit logic so the
+		 * panel can never trap the user. Everything else is left alone
+		 * — the tree and the log are still worth browsing after a
+		 * successful build, and dismissing is one keystroke away. */
+		if (build_completed_ok(m) && !v.done_dismissed &&
+		    (ev.key == KT_K_ESC || ev.key == KT_K_ENTER ||
+		     ev.key == '\n')) {
+			v.done_dismissed = 1;
 			continue;
 		}
 
@@ -2466,6 +2596,40 @@ static void preview_packages(void)
 	draw_packages_frame(&vw);
 }
 
+/* The fixture is built around a FAILED run, because that is the state most of
+ * the screens want to show. A completed run is the opposite of it in exactly
+ * four fields, so this flips those rather than carrying a second fixture that
+ * would drift out of step with the first. */
+static void preview_complete(Manager *m, Sampler *sam, Timings *tm)
+{
+	m->error_step = NULL;
+	m->stop_requested = 0;
+	m->is_running = 0;
+	/* mgr_start() stamps this on a real run; the fixture never calls it,
+	 * and build_completed_ok() treats an unstamped run as "never started"
+	 * rather than "finished" — which is right, and is why it has to be set
+	 * here for the render to show anything. */
+	m->start_time = kb_now_s() - 7384;
+	for (int i = 0; i < m->nroot; i++)
+		m->root[i]->status = ST_DONE;
+	for (int i = 0; i < m->norder; i++)
+		if (!m->order[i]->is_group && m->order[i]->status != ST_SKIPPED)
+			m->order[i]->status = ST_DONE;
+
+	BuildView v = {0};
+	v.m = m;
+	v.sam = sam;
+	v.tm = tm;
+	v.auto_follow = 0;
+	v.selected = m->norder ? m->order[m->norder - 1] : NULL;
+	/* Twice, for the same reason preview_build renders twice: view_update's
+	 * scroll math reads v.lay, which only draw_build_frame sets. */
+	view_update(&v);
+	draw_build_frame(&v);
+	view_update(&v);
+	draw_build_frame(&v);
+}
+
 int preview_screen(const char *screen)
 {
 	static Manager m;
@@ -2481,6 +2645,8 @@ int preview_screen(const char *screen)
 		preview_build(&m, &sam, &tm, 0, 1);
 	else if (!strcmp(screen, "pinned"))
 		preview_pinned(&m, &sam, &tm);
+	else if (!strcmp(screen, "complete"))
+		preview_complete(&m, &sam, &tm);
 	else if (!strcmp(screen, "startup"))
 		preview_startup(&m);
 	else if (!strcmp(screen, "plan"))

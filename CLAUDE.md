@@ -1615,6 +1615,91 @@ cargo build --release --frozen --offline
 
 ---
 
+## kdos-portup — upstream version checker
+
+`src/tools/kdos-portup/` (invoked through `ports/update`, the same
+compile-on-demand wrapper shape as `ports/fetch`: build to `ports/.portup`
+when a source file is newer, then exec) answers one question per port —
+"does upstream have a release newer than what `kpkgbuild` pins?" — for all
+390 ports, without touching git. Host-only, like `ports/fetch`; nothing
+ships on the target.
+
+**The six-step pipeline**, and the constraint every step above it exists to
+serve: `pu_list_upstream` (forge tag-feed / directory listing / repology, in
+that order, first non-empty wins) → `pu_extract` every raw string into
+version candidates → keep the ones whose `pu_shape` matches the CURRENT
+version's shape → `pu_vercmp`, walking from the highest match down →
+`pu_render_candidate` (copy the recipe to a temp dir, substitute the
+candidate, expand it through `kpkg meta` — the same parser the build uses,
+so a helper chain like ca-certificates' date rewrite falls out for free and
+no probe ever touches the real tree) → `pu_http_head` the rendered URL. A
+plain 404 drops that candidate and tries the next-highest; only a 200
+proves `PU_NEWER`. **Correctness comes from that last HEAD, not from the
+discovery step** — a forge feed or a directory listing can name a version
+whose tarball lives somewhere the recipe's template does not expect, and
+the tool would rather try the next candidate than report a version it never
+confirmed the build could actually fetch.
+
+**Three outcomes, never two.** `unknown` is never folded into `current`:
+that would be a confident wrong answer, the one thing this tool must not
+give. A listing that could not be reached at all (`pu_list_upstream`
+returns -1), a directory listing whose real tail was cut off by the
+adapter's own cap (`truncated`, since archive indexes sort ascending and
+the dropped entries are the newest ones), and a listing that named
+candidates but whose rendered URLs all 404 (a stale recipe template, see
+`imagemagick` below) are all `unknown` — reported with a reason, not
+silently averaged into "up to date".
+
+**GitHub's tag feeds need no authentication.** `https://github.com/<owner>/<repo>/tags.atom`
+has no rate limit worth worrying about, unlike the REST API's 60
+requests/hour (which does not cover one run over the 137 ports this tool
+can reach through a forge at all). Codeberg, sr.ht and GitLab (scoped to
+the first path segment after the host — GitLab groups nest arbitrarily, and
+under-grouping two projects that share an org is the dangerous direction,
+not over-grouping one that doesn't) get the same treatment. Repology is the
+fallback of last resort, rate-limited to one request/second and marked
+`low_confidence` — it is never upstream itself.
+
+**The group key is `<forge-org>@<current-version>`, deliberately not a name
+prefix.** A `cosmic-*` rule would miss the 17th member of the pop-os epoch,
+`pop-launcher`, whose repo is `pop-os/launcher`. All 17 resolve to the
+identical `pop-os@1.4.0` and are only ever offered as a bump together — an
+explicit `group =` key in a recipe overrides the derived one.
+
+**Coverage: 382 of 390 ports recover their exact current version from their
+own `source` URL** (verified against `kpkg meta`'s own expansion). The 8
+that do not are genuinely unrecoverable from a filename alone, not a gap in
+the extractor, and correctly report `unknown`.
+
+**`make updates`** runs `ports/update` with `PORTUP_ARGS` passed through
+(`make updates PORTUP_ARGS="--check curl"`). `--check` is the
+non-interactive form: exit 0 means every named port is current, 1 means at
+least one has an update, 2 means a bump was accepted but its tarball never
+made it to disk (the one state this tool exists to prevent a build from
+inheriting silently). With no port names it checks the whole tree. The tool
+never runs `git`; a review's "yes" only rewrites a recipe's `version =`
+line and re-fetches the tarball — committing the result is still a human
+decision.
+
+**`testing/fixtures/portup/`** is a corpus recorded live (never
+hand-named — the file names are `url_slug`'s own output, or a fixture
+silently reads as empty) against six ports, one per discovery path: `fuse`
+(GitHub forge), `zlib` (a plain Apache-style directory listing),
+`ca-certificates` (directory listing that comes back empty, falling through
+to repology and only matching through the strip-separators/dot-collapse
+normalisation — repology's dates need it to match `20251202`'s shape),
+`aalib` (repology, genuinely `current` — upstream has not released since
+2001), `mesa` (a large real directory listing), and `imagemagick`
+(repology again, but `unknown`: its `source` template
+(`imagemagick.org/archive/releases/…`) 404s even for its own pinned
+version, so no rendered candidate ever proves — a real recipe bug, not a
+tool bug, left unfixed here since it's outside this tool's scope).
+`testing/selftest.sh` replays all six through `--fixture`, which makes
+`pu_http_get`/`pu_http_head` read that directory instead of calling curl —
+verified offline with `unshare --net`, not just by omission of a mock.
+
+---
+
 ## Recurring build fixes
 
 Apply the canonical fix when a build fails for one of these.

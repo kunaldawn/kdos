@@ -1,0 +1,102 @@
+Do not let ALSA_Update block the caller's frame loop.
+
+ALSA_Init_internal opened the stream in BLOCKING mode and ALSA_Update then
+wrote a whole period per call, spinning on -EAGAIN. But Update is a pull
+API: the caller invokes it from its own loop, as often as that loop runs.
+kk pumps it every 10ms while a period is 50ms, so it offers the card five
+times realtime and snd_pcm_writei sleeps out the difference — the process
+sits in the audio write and its animation stops while the music plays on.
+The faster the display, the worse it gets, which is why it froze in foot
+under COSMIC and only slowed down on a 25fps VT.
+
+Non-blocking turns the full ring into -EAGAIN, and the existing
+bytes_played/bytes_written pair already carries a partly written period to
+the next call. The loop hands over as many periods as the card accepts, so
+a caller pumping SLOWER than realtime still keeps the ring fed, and a hard
+period bound means a device that never fills cannot trap us.
+
+--- a/drivers/drv_alsa.c
++++ b/drivers/drv_alsa.c
+@@ -272,9 +272,11 @@
+ 		goto END;
+ 	}
+ 
+-	/* Switch to blocking mode for playback */
++	/* Stay in NON-blocking mode for playback: ALSA_Update is called
++	   from the caller's frame loop, and a blocking write there pins
++	   that loop to the audio clock. */
+ 	/* Note: this must happen before hw/sw params are set. */
+-	alsa_pcm_nonblock(pcm_h, 0);
++	alsa_pcm_nonblock(pcm_h, 1);
+ 
+ 	snd_pcm_hw_params_alloca(&hwparams);
+ 	err = alsa_pcm_hw_params_any(pcm_h, hwparams);
+@@ -393,31 +395,51 @@
+ 	return err;
+ }
+ 
++/* Hard bound on the periods one Update may hand over, so a device that
++   never reports full cannot trap us in the loop below. The ring is
++   buffer_time/period_time == 5 periods, so this is never the limit that
++   ends a real call. */
++#define ALSA_UPDATE_MAX_PERIODS 8
++
+ static void ALSA_Update(void)
+ {
+-	int err;
++	int err, periods;
+ 
+ 	if (!enabled) return;
+ 
+-	if (bytes_written == 0 || bytes_played == bytes_written) {
+-		bytes_written = VC_WriteBytes(audiobuffer,period_size * global_frame_size);
+-		bytes_played = 0;
+-	}
++	/* Give the card as much as it will take right now, then return.
++	   The stream is non-blocking, so a full ring answers -EAGAIN rather
++	   than sleeping; bytes_played/bytes_written already carry a partly
++	   written period across calls. Upstream instead opened the stream
++	   blocking and spun on -EAGAIN, which made every Update wait out a
++	   whole 50ms period. A caller that pumps faster than realtime -- a
++	   demo loop calling this every 10ms -- then spends nearly all of its
++	   time asleep inside snd_pcm_writei, and its animation stops while
++	   the music keeps playing. */
++	for (periods = 0; periods < ALSA_UPDATE_MAX_PERIODS; periods++) {
++		if (bytes_written == 0 || bytes_played == bytes_written) {
++			bytes_written = VC_WriteBytes(audiobuffer,period_size * global_frame_size);
++			bytes_played = 0;
++			if (bytes_written <= 0)
++				return;
++		}
+ 
+-	while (bytes_played < bytes_written)
+-	{
+-		err = alsa_pcm_writei(pcm_h, &audiobuffer[bytes_played], (bytes_written - bytes_played) / global_frame_size);
+-		if (err == -EAGAIN)
+-			continue;
+-		if (err < 0) {
+-			if ((err = xrun_recovery(pcm_h, err)) < 0) {
+-				_mm_errno = MMERR_ALSA_PCM_RECOVER;
+-				enabled = 0;
+-				dbgprint(stderr, "Write error: %s\n", alsa_strerror(err));
++		while (bytes_played < bytes_written)
++		{
++			err = alsa_pcm_writei(pcm_h, &audiobuffer[bytes_played], (bytes_written - bytes_played) / global_frame_size);
++			if (err == -EAGAIN)
++				return;
++			if (err < 0) {
++				if ((err = xrun_recovery(pcm_h, err)) < 0) {
++					_mm_errno = MMERR_ALSA_PCM_RECOVER;
++					enabled = 0;
++					dbgprint(stderr, "Write error: %s\n", alsa_strerror(err));
++					return;
++				}
++				break;
+ 			}
+-			break;
++			bytes_played += err * global_frame_size;
+ 		}
+-		bytes_played += err * global_frame_size;
+ 	}
+ }
+ 

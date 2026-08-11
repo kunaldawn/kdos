@@ -18,14 +18,26 @@
 # icons ARE committed — the repo alone must be able to build the full ISO.
 ports/appbox/appbox.tar
 # Host-built recipe reader (ports/fetch compiles it to read kpkgbuild files,
-# which are no longer shell and cannot be sourced).
+# which are no longer shell and cannot be sourced). Its basename must be
+# literally "kpkg" for kdos-kpkg's own basename dispatch to resolve it, hence
+# the dedicated directory rather than a bare ports/.kpkg-meta file.
 ports/.kpkg-meta
+ports/.kpkgbin/
+# Host-built port updater (ports/update's own compile-on-demand block) and
+# its own private copy of the recipe reader — kept separate from
+# ports/.kpkgbin/ rather than shared, since the two are built from different
+# call sites and there is no reason for one to assume the other has run.
+ports/.portup
+ports/.portup-tools/
+# Per-port check results, 24h TTL, written by kdos-portup on every run.
+ports/.update-cache.json
 __pycache__/
 ports-archived/
 port-archive.sh
 
 # Testing runtime artifacts
 testing/logs/
+testing/fixtures
 testing/test_results.json
 
 # Claude Code local settings and notes

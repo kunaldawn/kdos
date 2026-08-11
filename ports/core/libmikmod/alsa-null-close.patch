@@ -1,0 +1,29 @@
+Guard the failure path in the ALSA driver against closing a NULL handle.
+
+ALSA_Init_internal jumps to END: when snd_pcm_open fails, and END:
+unconditionally calls snd_pcm_close(pcm_h). snd_pcm_open leaves pcm_h at
+its static NULL on failure, and alsa-lib's snd_pcm_close begins with
+assert(pcm) — so a machine with no usable "default" PCM does not get
+"sound off", it gets
+
+    ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) Unknown PCM default
+    Assertion failed: pcm (pcm.c: snd_pcm_close: 779)
+
+and the whole process aborts inside MikMod_Init, past any error check the
+caller could make. Every KDOS box without a loaded sound driver hit this.
+
+--- a/drivers/drv_alsa.c
++++ b/drivers/drv_alsa.c
+@@ -332,8 +332,10 @@
+ 		return 0;
+ 	}
+ END:
+-	alsa_pcm_close(pcm_h);
+-	pcm_h = NULL;
++	if (pcm_h) {
++		alsa_pcm_close(pcm_h);
++		pcm_h = NULL;
++	}
+ 	return 1;
+ }
+ 
