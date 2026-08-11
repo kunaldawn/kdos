@@ -2,8 +2,8 @@ Drop the leftover debug printf in the curses keyboard driver.
 
 curses_uninit() announces "uninitializing" on stdout every time an aalib
 program using the curses driver exits. It lands after endwin() has already
-restored the screen, so it is plain garbage on the user's terminal — kk
-printed it under its benchmark line on every run.
+restored the screen, so it is plain garbage on the user's terminal — bb
+prints it over the shell prompt every time it quits.
 
 --- a/src/aacurkbd.c
 +++ b/src/aacurkbd.c
