@@ -20,6 +20,17 @@ fetch:
 	bash ports/fetch
 	@test -f ports/appbox/appbox.tar || echo "hint: 'make fetch-apps' builds the offline alien-app image (needs network + docker/podman)"
 
+# Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
+# release. Needs network; never touches git. See CLAUDE.md's "kdos-portup"
+# section, e.g. make updates PORTUP_ARGS="--check curl"
+# --check exits 1 BY DESIGN when it finds an update, so a plain `make updates
+# PORTUP_ARGS="--check zlib"` would otherwise print "Error 1" for a check
+# that worked perfectly. 2 is the tool's own "unrecoverable" status (a revert
+# itself failed) and anything else is a crash — both of those still have to
+# fail the target.
+updates:
+	@ports/update $(PORTUP_ARGS); rc=$$?; [ $$rc -le 1 ] || exit $$rc
+
 # Build the kdos-apps distrobox image on the host and stash it for the
 # (network-less) ISO build to bake in. See ports/appbox/.
 fetch-apps:
@@ -104,4 +115,4 @@ cleanbuild:
 clean:
 	rm -rf build
 
-.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch
+.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates

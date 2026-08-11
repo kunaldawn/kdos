@@ -24,10 +24,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT_REPO="$SCRIPT_DIR/core"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-KPKG="${KPKG_BIN:-$SCRIPT_DIR/.kpkg-meta}"
+# kdos-kpkg's PRIMARY dispatch is argv[0]'s basename (main.c's `self`); the
+# argv[1] fallback it also has is one dispatcher refactor away from silently
+# breaking every caller that relies on it, the way it already broke this
+# script's own `.kpkg-meta meta .` once. So the on-demand build's OUTPUT
+# NAME is what has to be "kpkg" — not an extra argv token at the call site.
+KPKG="${KPKG_BIN:-$SCRIPT_DIR/.kpkgbin/kpkg}"
 
 if [ ! -x "$KPKG" ]; then
     echo "==> Building the recipe reader..."
+    mkdir -p "$(dirname "$KPKG")"
     ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE \
         -I"$REPO_ROOT/src/libs/libkbase" -I"$REPO_ROOT/src/libs/libkpkg" \
         -I"$REPO_ROOT/src/packages/kdos-kpkg" -o "$KPKG" \
@@ -38,9 +44,14 @@ fi
 echo "==> Fetching sources for all ports..."
 
 fetch_port() {
+    # `if fetch_port …` disables set -e for this whole function, so every
+    # fallible step has to report failure itself. Without this a failed
+    # cargo vendor returns the last echo's status — 0 — and kdos-portup's
+    # accept path sees success, never reverts, and leaves a bumped recipe
+    # beside a broken vendor bundle.
     local portdir=$1
     local portname=$(basename "$portdir")
-    
+
     cd "$portdir" || return 1
     
     # Check if kpkgbuild exists
@@ -49,7 +60,9 @@ fetch_port() {
         return 0
     fi
     
-    # Ask kpkg for the metadata; it prints shell assignments.
+    # Ask kpkg for the metadata; it prints shell assignments. $KPKG's own
+    # basename is literally "kpkg", so this resolves through kdos-kpkg's
+    # PRIMARY dispatch (argv[0] -> front_main), not its argv[1] fallback.
     unset name version release source vendoring pypackages
     local meta
     meta=$("$KPKG" meta . 2>/dev/null) || {
@@ -162,21 +175,40 @@ fetch_port() {
                 *) filename="$first_src" ;;
             esac
             
-            tar xf "$filename" -C "$tmp_dir" --strip-components=1
-            
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+                echo "✗  $portname: Failed to extract $filename"
+                rm -rf "$tmp_dir"
+                return 1
+            }
+
             # Vendor dependencies
             pushd "$tmp_dir" >/dev/null
             mkdir -p .cargo
-            cargo vendor > .cargo/config.toml
-            
+            cargo vendor > .cargo/config.toml || {
+                echo "✗  $portname: cargo vendor failed"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            }
+
             # Create vendor tarball
             if [ -f Cargo.lock ]; then
-                tar -cJf "$portdir/$vendor_file" vendor .cargo Cargo.lock
+                tar -cJf "$portdir/$vendor_file" vendor .cargo Cargo.lock || {
+                    echo "✗  $portname: Failed to create $vendor_file"
+                    popd >/dev/null
+                    rm -rf "$tmp_dir"
+                    return 1
+                }
             else
-                tar -cJf "$portdir/$vendor_file" vendor .cargo
+                tar -cJf "$portdir/$vendor_file" vendor .cargo || {
+                    echo "✗  $portname: Failed to create $vendor_file"
+                    popd >/dev/null
+                    rm -rf "$tmp_dir"
+                    return 1
+                }
             fi
             popd >/dev/null
-            
+
             # Cleanup
             rm -rf "$tmp_dir"
             echo "✓  $portname: Created $vendor_file"
@@ -209,13 +241,27 @@ fetch_port() {
                 *) filename="$first_src" ;;
             esac
             
-            tar xf "$filename" -C "$tmp_dir" --strip-components=1
-            
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+                echo "✗  $portname: Failed to extract $filename"
+                rm -rf "$tmp_dir"
+                return 1
+            }
+
             pushd "$tmp_dir" >/dev/null
-            go mod vendor
-            tar -cJf "$portdir/$vendor_file" vendor
+            go mod vendor || {
+                echo "✗  $portname: go mod vendor failed"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            }
+            tar -cJf "$portdir/$vendor_file" vendor || {
+                echo "✗  $portname: Failed to create $vendor_file"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            }
             popd >/dev/null
-            
+
             rm -rf "$tmp_dir"
             echo "✓  $portname: Created $vendor_file"
         fi
@@ -247,13 +293,27 @@ fetch_port() {
                 *) filename="$first_src" ;;
             esac
             
-            tar xf "$filename" -C "$tmp_dir" --strip-components=1
-            
+            tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+                echo "✗  $portname: Failed to extract $filename"
+                rm -rf "$tmp_dir"
+                return 1
+            }
+
             pushd "$tmp_dir" >/dev/null
-            npm install --ignore-scripts --no-audit --no-fund
-            tar -cJf "$portdir/$vendor_file" node_modules
+            npm install --ignore-scripts --no-audit --no-fund || {
+                echo "✗  $portname: npm install failed"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            }
+            tar -cJf "$portdir/$vendor_file" node_modules || {
+                echo "✗  $portname: Failed to create $vendor_file"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            }
             popd >/dev/null
-            
+
             rm -rf "$tmp_dir"
             echo "✓  $portname: Created $vendor_file"
         fi
@@ -289,7 +349,11 @@ fetch_port() {
                 esac
                 
                 if [ -f "$filename" ]; then
-                    tar xf "$filename" -C "$tmp_dir" --strip-components=1
+                    tar xf "$filename" -C "$tmp_dir" --strip-components=1 || {
+                        echo "✗  $portname: Failed to extract $filename"
+                        rm -rf "$tmp_dir"
+                        return 1
+                    }
                 fi
             fi
             case $first_src in
@@ -315,7 +379,13 @@ fetch_port() {
             pushd "$tmp_dir" >/dev/null
             mkdir -p vendor
             
-            # Download pypackages if defined
+            # Download pypackages if defined. This — and the setup.py/
+            # pyproject.toml branch below it — is the python equivalent of
+            # `cargo vendor`/`go mod vendor`: the one call that has to
+            # succeed for the bundle to be worth anything, so unlike the
+            # best-effort recursive build-dependency crawl further down
+            # (which may legitimately find nothing for a given package),
+            # its failure has to abort the whole vendor step.
             if [ -n "$pypackages" ]; then
                 echo "   Downloading requested pypackages..."
                 # Convert pkg:ver -> pkg==ver
@@ -324,10 +394,20 @@ fetch_port() {
                     req=$(echo "$pkg" | sed 's/:/==/g' | sed 's/=/==/g' | sed 's/====/==/g')
                     reqs="$reqs $req"
                 done
-                pip3 download --no-binary :all: --dest vendor $reqs || echo "⚠  pypackages download failed"
+                pip3 download --no-binary :all: --dest vendor $reqs || {
+                    echo "✗  $portname: pypackages download failed"
+                    popd >/dev/null
+                    rm -rf "$tmp_dir"
+                    return 1
+                }
             elif [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
                 echo "   Downloading runtime dependencies (source only)..."
-                pip3 download --no-binary :all: --dest vendor . || echo "⚠  Runtime dependency download failed/empty"
+                pip3 download --no-binary :all: --dest vendor . || {
+                    echo "✗  $portname: runtime dependency download failed"
+                    popd >/dev/null
+                    rm -rf "$tmp_dir"
+                    return 1
+                }
             fi
             
             if [ -f "requirements.txt" ]; then
@@ -407,32 +487,58 @@ fetch_port() {
             done
             rm processed.txt
 
-            tar -cJf "$portdir/$vendor_file" vendor
+            tar -cJf "$portdir/$vendor_file" vendor || {
+                echo "✗  $portname: Failed to create $vendor_file"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            }
             popd >/dev/null
-            
+
             rm -rf "$tmp_dir"
             echo "✓  $portname: Created $vendor_file"
         fi
     fi
-    
+
     return 0
 }
 
-# Fetch all ports
+# Fetch all ports, or only the ones named on the command line — a single
+# accepted version bump (kdos-portup) has no business re-fetching all ~390.
 total=0
 success=0
 failed=0
 
+wanted() {
+    local name=$1
+    shift
+    # $# is the FILTER list, name already shifted off — checking it before
+    # the shift counted the name itself as a "filter" and excluded every
+    # port when the script was run with no arguments at all.
+    [ $# -eq 0 ] && return 0
+    local w
+    for w in "$@"; do
+        [ "$w" = "$name" ] && return 0
+    done
+    return 1
+}
+
 for portdir in "$PORT_REPO"/*; do
     [ -d "$portdir" ] || continue
+    wanted "$(basename "$portdir")" "$@" || continue
     total=$((total + 1))
-    
+
     if fetch_port "$portdir"; then
         success=$((success + 1))
     else
         failed=$((failed + 1))
     fi
 done
+
+if [ $# -gt 0 ] && [ "$total" -eq 0 ]; then
+    echo "==> No port under $PORT_REPO matches: $*"
+    exit 1
+fi
 
 echo ""
 echo "==> Summary: $success/$total successful, $failed failed"
