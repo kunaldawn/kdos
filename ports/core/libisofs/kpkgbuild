@@ -12,5 +12,6 @@ name        = libisofs
 version     = 1.5.6
 release     = 1
 source      = http://files.libburnia-project.org/releases/$name-$version.tar.gz
+sha256      = 0152d66a9d340b659fe9c880eb9190f3570fb477ac07cf52e8bcd134a1d30d70  libisofs-1.5.6.tar.gz
 description = Library for creating and manipulating ISO 9660 filesystem images
 depends     = zlib

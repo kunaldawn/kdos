@@ -12,4 +12,5 @@ name        = libevdev
 version     = 1.13.6
 release     = 1
 source      = https://www.freedesktop.org/software/libevdev/libevdev-$version.tar.xz
+sha256      = 73f215eccbd8233f414737ac06bca2687e67c44b97d2d7576091aa9718551110  libevdev-1.13.6.tar.xz
 description = Common functions for Xorg input drivers

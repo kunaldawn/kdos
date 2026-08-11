@@ -12,4 +12,5 @@ name        = xz
 version     = 5.8.2
 release     = 1
 source      = https://github.com/tukaani-project/xz/releases/download/v$version/$name-$version.tar.gz
+sha256      = ce09c50a5962786b83e5da389c90dd2c15ecd0980a258dd01f70f9e7ce58a8f1  xz-5.8.2.tar.gz
 description = XZ compression utilities

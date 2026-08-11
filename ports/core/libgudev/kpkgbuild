@@ -12,6 +12,7 @@ name        = libgudev
 version     = 238
 release     = 1
 source      = https://download.gnome.org/sources/libgudev/$version/libgudev-$version.tar.xz
+sha256      = 61266ab1afc9d73dbc60a8b2af73e99d2fdff47d99544d085760e4fa667b5dd1  libgudev-238.tar.xz
 description = GObject bindings for libudev (used by upower and NetworkManager)
 homepage    = https://gitlab.gnome.org/GNOME/libgudev
 depends     = meson eudev glib

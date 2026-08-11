@@ -13,15 +13,21 @@ A hand-built Linux distribution following Linux From Scratch principles, for
 experienced Linux users. Tagline: **"I use KDOS btw."**
 
 **musl libc** + **toybox** userland, **no systemd**, **Wayland-only** (no Xorg
-server). Desktop is **COSMIC** (System76 — Rust/smithay/iced), pinned at one
-epoch release across all components. **No GTK and no Qt on the host.**
-Everything fat runs in a Podman/distrobox glibc rootfs. Session entry:
-`kdos-desktop` from a tty.
+server). **No GTK and no Qt on the host.** Everything fat runs in a
+Podman/distrobox glibc rootfs. Session entry: `kdos-desktop` from a tty.
+
+> **The desktop is mid-replacement.** COSMIC has been removed (M0, done: 18
+> ports and `kdos-theme-helper` deleted). Its replacement is **ours** —
+> `kdos-comp` (wlroots) plus `kdos-shell`, a character-cell-grid shell drawn by
+> libktui. **`docs/KDOS-DESKTOP.md` is the plan of record**, `docs/KDOS-ROADMAP.md`
+> the full menu of work, `docs/KDE-ON-HOST-REJECTED.md` the alternative that
+> lost. Sections below still describing COSMIC's config are stale until M19
+> and are marked where they matter.
 
 Four properties define the project. Everything else follows from them:
 
 1. **Built from scratch.** Every host byte is compiled here from an upstream
-   tarball by a `kpkgbuild` recipe in `ports/`. 391 ports, 353 installed.
+   tarball by a `kpkgbuild` recipe in `ports/`. 374 ports.
 2. **KDOS can build KDOS.** Phase 2 is a self-hosting bootstrap — the chroot
    rebuilds tar/musl/zlib/binutils/gcc with itself. The shipped system carries
    gcc, binutils, rust, cmake, meson, ninja, python3, make and `kpkg`, so a
@@ -30,9 +36,11 @@ Four properties define the project. Everything else follows from them:
    upstream tarball, every `cargo vendor` bundle and the whole ~4 GB alien-app
    container image live in-tree under Git LFS. Clone, `make build`, get an ISO,
    no network.
-4. **Alien apps.** KDOS deliberately does not native-port browsers, office
-   suites or IDEs. ~90 GUI apps ship pre-baked in a Debian container and behave
-   like ordinary system apps — launchers, MIME handlers, terminal commands.
+4. **Alien apps.** **KDOS builds the desktop; applications live in boxes.**
+   No native-porting of browsers, office suites or IDEs — ~90 GUI apps ship
+   pre-baked in a Debian container and behave like ordinary system apps
+   (launchers, MIME handlers, terminal commands). The boundary is now in the
+   same place as the build cost, with no per-app arguments.
 
 Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.png`.
 
@@ -45,7 +53,7 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
    `dnsmasq` (not systemd-resolved), `wpa_supplicant`/`NetworkManager` (not
    systemd-networkd).
 2. **No Xorg server.** No `xorg-server`, no display manager, nothing X on the
-   login path. **Xwayland is the one carve-out**, run rootlessly by cosmic-comp
+   login path. **Xwayland is the one carve-out**, run rootlessly by kdos-comp
    itself so X11-only alien apps work. It pulled in the client chain
    `xorgproto xtrans libXau libXdmcp xcb-proto libxcb libX11 libxkbfile xkbcomp
    libxshmfence libfontenc libXfont2 xcb-util{,-image,-renderutil,-cursor}` —
@@ -54,8 +62,9 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
    -Dplatforms=wayland`, so Xwayland is built `-Dglx=false`: X clients get no
    OpenGL. Enabling it means rebuilding mesa with `glx=dri,platforms=wayland,x11`
    plus libXext/libXfixes/libXdamage/libXrandr/libXxf86vm — not done.
-3. **No GTK and no Qt on the host.** GUI apps go in a container. COSMIC's iced
-   toolkit needs neither.
+3. **No GTK and no Qt on the host.** GUI apps go in a container. The desktop
+   is `kdos-comp` + `kdos-shell`, drawn by libktui, which needs neither.
+   `libcanberra`, if it ever lands, builds `--disable-gtk`.
 4. **No `kpkgbuild` rationale comments.** Banner header plus one-line
    `# description` / `# homepage` / `# depends`. No "we set X because Y" prose —
    that belongs in a commit message or in this file.
@@ -74,7 +83,7 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
 | Ring | Lives in | Purpose |
 |---|---|---|
 | **Core** | `ports/core/` | Hand-compiled host packages (musl + toybox + libs + toolchain) |
-| **GUI sliver** | also `ports/core/` (separate `packages.txt` block) | COSMIC desktop (17 `cosmic-*` Rust ports + pop-launcher), foot, Wayland CLI utils |
+| **Desktop** | `ports/core/` (`wlroots`) + `src/desktop/` (ours) | `kdos-comp`, `kdos-shell`, `kdos-lock` — see `docs/KDOS-DESKTOP.md`. Plus foot and the Wayland CLI utils |
 | **Outer ring** | the baked appbox container | Browsers, IDEs, office, media, CAD, games — full glibc apps |
 
 **`src/packages/`** is the second port repo (`PORT_REPO="/ports/core
@@ -446,11 +455,19 @@ erases every small feature.
 
 ---
 
-## Theming — PHOSPHOR on COSMIC
+## Theming — PHOSPHOR
 
-COSMIC reads layered RON config: `/usr/share/cosmic` (system defaults) then
-`~/.config/cosmic` (user). KDOS seeds the user side from
-`fs/etc/skel/.config/cosmic/`:
+> **Stale below (M19).** The COSMIC RON tables in this section describe a
+> desktop that no longer exists. What replaces them is one line: **`kdos-comp`
+> and `kdos-shell` link libkcolor and read only the accent NAME from
+> `$XDG_CACHE_HOME/kdos/theme`**, so no colours are written for the desktop at
+> all and `kdos theme` retints a running session with a SIGHUP. Everything else
+> in this section — GTK, icons, cursors, foot, btop, starship, and the whole
+> "alien apps are themed through `$HOME`" argument — is unchanged and correct.
+
+COSMIC read layered RON config: `/usr/share/cosmic` (system defaults) then
+`~/.config/cosmic` (user), seeded from `fs/etc/skel/.config/cosmic/` (deleted
+in M0):
 
 | File (under `~/.config/cosmic/`) | Purpose |
 |---|---|
@@ -616,7 +633,7 @@ splash, the wallpaper, the TTY and the palette.
 
 ## The `kdos` command
 
-`kdos` is the front door: `help` (commands + COSMIC keybind cheat sheet),
+`kdos` is the front door: `help` (commands + the keybind cheat sheet),
 `theme`, `status`, `doctor`, `app`, `version`. `kdos doctor` checks the things
 that have actually broken on this distro — including `readlink
 /proc/self/root`, the switch_root trap above.
@@ -1035,7 +1052,7 @@ build could not be run from anything but an interactive shell.
 | `01_phase1` | Base Userland — musl, toybox, bash, native gcc, kpkg, kinstall |
 | `02_phase2` | Self-Hosting Bootstrap — rebuild tar/musl/zlib/binutils/gcc inside the chroot |
 | `03_phase3` | Toolchain & Core Libraries |
-| `04_phase4` | Userland & GUI Sliver |
+| `04_phase4` | Userland & Wayland base |
 | `05_phase5` | Kernel |
 | `06_packaging` | trim rootfs, theme, user, appbox, initramfs, ISO |
 
@@ -1101,7 +1118,7 @@ Press `[P]` in the picker, or:
 make build BUILD_ARGS="--phases 01_phase1,06_packaging --steps 01_phase1:00_file_system.sh"
 
 # changed a kpkgbuild -> rebuild that port and repackage, no manual kpkgdel
-make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild cosmic-comp,cosmic-panel"
+make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild mesa,networkmanager"
 
 make build BUILD_ARGS=--plan     # interactive; '/' fuzzy-searches ports
 ```
@@ -1857,8 +1874,8 @@ adding users is manual.
 ## Working-state markers
 
 ```bash
-ls ports/core | wc -l                                  # 391 ports
-ls build/fs/var/lib/kpkg/db/ | wc -l                   # 353 installed
+ls ports/core | wc -l                                  # 374 ports
+ls build/fs/var/lib/kpkg/db/ | wc -l                   # installed packages
 git status --short | wc -l                             # tracked changes
 ls build/logs/04_phase4/*.log                          # which packages have logs
 tail -40 build/logs/04_phase4/<N>_<pkg>.install.log    # debug a failure
@@ -1876,10 +1893,12 @@ and respond with the targeted fix.
 - `libinput` still installs to `/usr/local/lib64` (port has no `--prefix`).
 - No firewall rules shipped — `nftables` is installed, `/etc/nftables.conf` is
   empty.
-- **cosmic-comp does not start Xwayland.** `/tmp/.X11-unix` is absent although
-  `/usr/bin/Xwayland` is installed and smithay's xwm is compiled in, so nothing
-  X11-only can run. Next step is capturing the compositor's stderr, which needs
-  a change to `kdos-desktop`.
+- ~~cosmic-comp does not start Xwayland~~ — **closed by the rewrite.** wlroots
+  runs Xwayland rootlessly and `kdos-comp` turns it on (`KDOS-DESKTOP.md` §7).
+- **No `linux-firmware`, no microcode, no `man`, no clock sync, no syslog, no
+  cron, no mkfs for btrfs/xfs/f2fs/exfat, and no source checksums in any
+  recipe.** All of wave 0 in `docs/KDOS-DESKTOP.md` §12; the firmware one means
+  a real laptop has no Wi-Fi, no Bluetooth and no GPU init today.
 
 ---
 

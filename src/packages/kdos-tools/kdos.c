@@ -7,8 +7,8 @@
  * ---------------------------------
  *   kdos — the front door
  *
- *   kdos help     commands + the COSMIC keybind cheat sheet
- *   kdos theme    switch the accent across COSMIC, GTK, icons, foot, btop,
+ *   kdos help     commands + the keybind cheat sheet
+ *   kdos theme    switch the accent across the desktop, GTK, icons, foot, btop,
  *                 starship
  *   kdos status   packages, containers, exported apps
  *   kdos doctor   the checks that have actually caught something on this distro
@@ -25,6 +25,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
+#include <sys/syscall.h>
 #include <sys/utsname.h>
 
 #include "kdos-tools.h"
@@ -45,7 +47,7 @@ static void colours(void)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-static char *cfg_home(const char *rest)
+char *kdt_cfg_home(const char *rest)
 {
 	const char *x = getenv("XDG_CONFIG_HOME");
 	char *base = (x && *x) ? kb_strdup(x)
@@ -99,60 +101,28 @@ static void mkparent(const char *path)
 	free(copy);
 }
 
-/* Rotating buffers so several colours can appear in one printf. */
-static const char *hx(uint32_t v)
-{
-	static char buf[12][8];
-	static int slot;
-	char *b = buf[slot = (slot + 1) % 12];
-	kcol_format(v, b);
-	return b;
-}
-
 /* ──────────────────────────────────────────────────────────────────────── */
 
-/* kdos-theme-helper drives cosmic-theme's own ThemeBuilder, so the applied
- * theme (accent, backgrounds, hover/pressed states, the lot) is exactly what
- * the Settings UI would compute. COSMIC repaints live. */
-static void write_cosmic_theme(const KcolScheme *sc)
+/* The desktop needs no theme file at all: kdos-comp and kdos-shell link
+ * libkcolor, so they carry the same KCOL_SCHEMES table this program does, and
+ * they read the accent NAME from $XDG_CACHE_HOME/kdos/theme — which
+ * write_state() below is what writes. A running session is retinted by
+ * signalling it, not by handing it colours. That is the whole reason
+ * kdos-theme-helper (Rust, and a dependency on cosmic-theme's ThemeBuilder)
+ * could be deleted rather than ported.
+ *
+ * Everything under this point exists for software that is NOT ours and cannot
+ * be told: GTK and Qt apps in the appbox, foot, btop, starship. */
+static void reload_session(void)
 {
-	if (!kb_have_prog("kdos-theme-helper")) {
-		fprintf(stderr, "kdos: kdos-theme-helper not installed — COSMIC "
-				"keeps its palette\n");
+	if (!kb_have_prog("pkill"))
 		return;
-	}
 	KbArgv a = {0};
-	kb_argv_add(&a, "kdos-theme-helper");
-	kb_argv_addf(&a, "%s", hx(sc->primary));
-	kb_argv_addf(&a, "%s", hx(sc->deep));
-	kb_argv_addf(&a, "%s", hx(sc->variant));
-	kb_argv_addf(&a, "%s", hx(sc->text));
-	kb_argv_addf(&a, "%s", hx(sc->secondary));
-	kb_argv_addf(&a, "%s", hx(sc->urgent));
+	kb_argv_add(&a, "pkill");
+	kb_argv_add(&a, "-HUP");
+	kb_argv_add(&a, "kdos-shell");
 	kb_argv_end(&a);
-	kb_run(&a);
-}
-
-/* Panel and dock background follow the scheme's deep bg. cosmic-panel watches
- * its config and repaints live. */
-static void write_panel_colors(const KcolScheme *sc)
-{
-	static const char *FILES[] = { "cosmic/com.system76.CosmicPanel.Panel/v1",
-				       "cosmic/com.system76.CosmicPanel.Dock/v1",
-				       NULL };
-	KcolRgb c = kcol_rgb(sc->deep);
-	char ron[96];
-	snprintf(ron, sizeof(ron), "Color((%.7f, %.7f, %.7f))\n", c.r / 255.0,
-		 c.g / 255.0, c.b / 255.0);
-
-	for (int i = 0; FILES[i]; i++) {
-		char *dir = cfg_home(FILES[i]);
-		kb_mkdir_p(dir);
-		char *f = kb_path_join(dir, "background");
-		kb_write_file(f, ron);
-		free(f);
-		free(dir);
-	}
+	kb_run(&a);	/* no session running is not an error */
 }
 
 /*
@@ -181,9 +151,11 @@ static void write_gtk(const KcolScheme *sc)
 	uint32_t onacc = kcol_mix(0xffffff, sc->text, 35);
 	uint32_t insens = kcol_mix(sc->text, sc->variant, 55);
 
-	/* Bound to locals, not called inline: hx() hands back a rotating
-	 * buffer, and a single printf here takes more colours than it has
-	 * slots — the early arguments came back overwritten. */
+	/* Every colour is formatted into its OWN local first. A helper handing
+	 * back a shared or rotating buffer cannot be used here: one printf
+	 * below takes more colours than any such buffer has slots, and the
+	 * early arguments come back overwritten. Do not "simplify" this into
+	 * inline calls. */
 	char P[8], PD[8], SEC[8], URG[8], DEEP[8], TXT[8], VAR[8], DIM[8];
 	char LIFT[8], POP[8], HDR[8], ONACC[8], INSENS[8], WHITE[8];
 	kcol_format(sc->primary, P);
@@ -313,7 +285,7 @@ static void write_gtk(const KcolScheme *sc)
 			     "`kdos theme`; edits overwritten. */\n" },
 	};
 	for (int i = 0; i < 2; i++) {
-		char *dir = cfg_home(OUT[i].dir);
+		char *dir = kdt_cfg_home(OUT[i].dir);
 		kb_mkdir_p(dir);
 		char *f = kb_path_join(dir, "gtk.css");
 		KbBuf full = {0};
@@ -349,7 +321,7 @@ static void write_icons(const KcolScheme *sc)
 
 static void write_foot(const KcolScheme *sc)
 {
-	char *f = cfg_home("foot/themes/kdos");
+	char *f = kdt_cfg_home("foot/themes/kdos");
 	mkparent(f);
 
 	char p[8], dim[8], sec[8], urg[8], deep[8], text[8];
@@ -383,7 +355,7 @@ static void write_foot(const KcolScheme *sc)
 
 static void write_btop(const KcolScheme *sc)
 {
-	char *f = cfg_home("btop/themes/kdos.theme");
+	char *f = kdt_cfg_home("btop/themes/kdos.theme");
 	mkparent(f);
 	char p[8], dim[8], sec[8], urg[8], deep[8], text[8];
 	kcol_format(sc->primary, p);
@@ -435,7 +407,7 @@ static void write_btop(const KcolScheme *sc)
  * markers is left exactly as it is. */
 static void write_starship(const KcolScheme *sc)
 {
-	char *f = cfg_home("starship.toml");
+	char *f = kdt_cfg_home("starship.toml");
 	size_t len = 0;
 	char *data = kb_read_all(f, &len);
 	if (!data) {
@@ -551,22 +523,31 @@ static int cmd_theme(int argc, char **argv)
 	if (!sc)
 		kb_die("unknown theme '%s' (try: kdos theme list)", want);
 
-	write_cosmic_theme(sc);
-	write_panel_colors(sc);
 	write_gtk(sc);
 	write_icons(sc);
 	write_foot(sc);
 	write_btop(sc);
 	write_starship(sc);
 
-	/* A regenerated file does not repaint a running process: COSMIC
-	 * re-themes itself (the settings daemon watches the Builder), starship
-	 * on the next prompt, btop and foot on next start (foot cannot reload
-	 * its config at all). GTK apps — every alien app — pick up the new
-	 * theme and icons when they are next launched; GTK re-reads neither on
-	 * a file change. */
+	/* The state file is the desktop's ONLY input, so it is written before
+	 * the session is signalled — a SIGHUP that arrives first would make the
+	 * shell re-read the accent it already had. */
+	char *state = cache_home("kdos/theme");
+	mkparent(state);
+	char line[40];
+	snprintf(line, sizeof(line), "%s\n", sc->name);
+	kb_write_file(state, line);
+	free(state);
+
+	reload_session();
+
+	/* A regenerated file does not repaint a running process. kdos-shell and
+	 * kdos-comp retint on the SIGHUP above; starship on the next prompt;
+	 * btop and foot on next start (foot cannot reload its config at all).
+	 * GTK apps — every alien app — pick up the new theme and icons when
+	 * they are next launched; GTK re-reads neither on a file change. */
 	if (kb_have_prog("tmux")) {
-		char *conf = cfg_home("tmux/tmux.conf");
+		char *conf = kdt_cfg_home("tmux/tmux.conf");
 		KbArgv a = {0};
 		kb_argv_add(&a, "tmux");
 		kb_argv_add(&a, "source-file");
@@ -575,13 +556,6 @@ static int cmd_theme(int argc, char **argv)
 		kb_run(&a);
 		free(conf);
 	}
-
-	char *state = cache_home("kdos/theme");
-	mkparent(state);
-	char line[40];
-	snprintf(line, sizeof(line), "%s\n", sc->name);
-	kb_write_file(state, line);
-	free(state);
 
 	printf("%s%s%s (%s)\n", C_A, sc->name, C_0, sc->theme_name);
 	return 0;
@@ -602,7 +576,10 @@ static void help_body(FILE *o)
 
 	fprintf(o, "%sCOMMANDS%s\n", C_A, C_0);
 	static const char *CMDS[][2] = {
-		{ "desktop", "start the COSMIC desktop from a tty (kdos-desktop)" },
+		{ "why <path|port>", "what provides this, and why it is that way" },
+		{ "explain [topic]", "the recorded debug cycles, browsable" },
+		{ "sandbox <prof> -- <cmd>", "run a native app under Landlock" },
+		{ "desktop", "start the KDOS desktop from a tty (kdos-desktop)" },
 		{ "kdos app <name>", "install an alien app (distrobox + export)" },
 		{ "kdos theme [name]", "phosphor | amber | ice | bone | next | prev | list" },
 		{ "kdos status", "packages, containers, exported apps" },
@@ -616,21 +593,20 @@ static void help_body(FILE *o)
 		fprintf(o, "  %-26s %s\n", CMDS[i][0], CMDS[i][1]);
 	fputc('\n', o);
 
-	fprintf(o, "%sKEYS%s  %s(COSMIC defaults — remap in Settings > Keyboard)%s\n",
+	fprintf(o, "%sKEYS%s  %s(defaults — remap in ~/.config/kdos/comp.conf)%s\n",
 		C_A, C_0, C_D, C_0);
 	static const char *KEYS[][2] = {
-		{ "Super", "open the launcher" },
-		{ "Super+T", "terminal (foot)" },
-		{ "Super+A", "application library" },
-		{ "Super+F", "files" },
+		{ "Super+D", "open the launcher" },
+		{ "Super+Return", "terminal (foot)" },
 		{ "Super+Q", "close window" },
-		{ "Super+M", "maximize" },
-		{ "Super+Arrows", "focus windows" },
-		{ "Super+Shift+Arrows", "move window" },
-		{ "Super+Y", "toggle tiling mode" },
-		{ "Super+1..9", "switch workspace" },
-		{ "Super+Esc", "lock / session menu" },
-		{ "PrtSc", "screenshot" },
+		{ "Alt+Tab", "switch window (most recent first)" },
+		{ "Super+Arrows", "snap: half, quarter, maximize" },
+		{ "Super+Shift+Arrows", "move window between outputs" },
+		{ "Super+F", "toggle floating / snapped" },
+		{ "Super+1..4", "switch workspace" },
+		{ "Super+Shift+1..4", "move window to workspace" },
+		{ "Super+L", "lock the screen" },
+		{ "PrtSc", "screenshot (region, to clipboard and disk)" },
 		{ NULL, NULL }
 	};
 	for (int i = 0; KEYS[i][0]; i++)
@@ -711,7 +687,7 @@ static int cmd_status(int argc, char **argv)
 	printf("%s%-16s%s %d\n", C_B, "Exported apps", C_0,
 	       count_dir(apps, ".desktop"));
 	printf("%s%-16s%s %s\n", C_B, "Session", C_0,
-	       getenv("WAYLAND_DISPLAY") ? "cosmic" : "tty");
+	       getenv("WAYLAND_DISPLAY") ? "wayland" : "tty");
 	putchar('\n');
 
 	printf("%sCONTAINERS%s\n", C_A, C_0);
@@ -811,9 +787,34 @@ static int running(const char *exact, const char *contains)
 	return kb_run_capture(&a, buf, sizeof(buf)) == 0 && buf[0];
 }
 
+/* The kernel reports its Landlock ABI through the create syscall itself:
+ * a NULL attr with LANDLOCK_CREATE_RULESET_VERSION (1<<0) returns the version
+ * rather than a ruleset fd. musl declares __NR_landlock_create_ruleset (444)
+ * and needs no wrapper, so this costs nothing to ask.
+ *
+ * -EOPNOTSUPP means the LSM is compiled in but not enabled in CONFIG_LSM or
+ * lsm=, which is the failure worth naming: everything silently degrades to
+ * "no sandbox" and nothing says so. */
+static int landlock_abi(void)
+{
+	long v = syscall(__NR_landlock_create_ruleset, NULL, 0, 1UL);
+	return v < 0 ? -errno : (int)v;
+}
+
 static int cmd_doctor(void)
 {
 	printf("%sKDOS doctor%s\n\n", C_A, C_0);
+
+	printf("%sKernel%s\n", C_B, C_0);
+	int abi = landlock_abi();
+	if (abi > 0)
+		ok("Landlock ABI %d", abi);
+	else if (abi == -ENOSYS)
+		warn_("no Landlock — kernel too old or CONFIG_SECURITY_LANDLOCK off");
+	else
+		warn_("Landlock present but disabled — add it to CONFIG_LSM or "
+		      "the lsm= cmdline");
+	putchar('\n');
 
 	printf("%sSession%s\n", C_B, C_0);
 	const char *wd = getenv("WAYLAND_DISPLAY");
@@ -829,19 +830,19 @@ static int cmd_doctor(void)
 		warn_("XDG_RUNTIME_DIR missing — pipewire and podman will "
 		      "misbehave");
 
-	if (running("cosmic-comp", NULL))
-		ok("cosmic-comp running");
+	if (running("kdos-comp", NULL))
+		ok("kdos-comp running");
 	else
-		warn_("cosmic-comp not running — no desktop (start with: "
+		warn_("kdos-comp not running — no desktop (start with: "
 		      "kdos-desktop)");
-	if (running("cosmic-panel", NULL))
-		ok("cosmic-panel running");
+	if (running("kdos-shell", NULL))
+		ok("kdos-shell running");
 	else
-		warn_("cosmic-panel not running — no bar");
-	if (running(NULL, "xdg-desktop-portal-cosmic"))
-		ok("cosmic portal running");
+		warn_("kdos-shell not running — no panel or launcher");
+	if (running(NULL, "xdg-desktop-portal-wlr"))
+		ok("wlr portal running");
 	else
-		warn_("cosmic portal not running — screenshots and file pickers "
+		warn_("wlr portal not running — screen capture and file pickers "
 		      "degraded");
 	putchar('\n');
 
@@ -879,14 +880,17 @@ static int cmd_doctor(void)
 	putchar('\n');
 
 	printf("%sDesktop%s\n", C_B, C_0);
-	char *ct = cfg_home("cosmic/com.system76.CosmicTheme.Dark/v2");
-	if (kb_is_dir(ct))
-		ok("cosmic theme applied (%s)", current_theme());
+	/* The accent NAME in the cache is what kdos-comp and kdos-shell read;
+	 * they carry the palette itself in libkcolor. No colours are written
+	 * for the desktop, so this file is the whole of its theme state. */
+	char *ct = cache_home("kdos/theme");
+	if (kb_path_exists(ct))
+		ok("accent applied (%s)", current_theme());
 	else
-		warn_("no applied cosmic theme — run: kdos theme phosphor");
+		warn_("no accent applied — run: kdos theme phosphor");
 	free(ct);
 
-	char *ft = cfg_home("foot/themes/kdos");
+	char *ft = kdt_cfg_home("foot/themes/kdos");
 	if (kb_path_exists(ft))
 		ok("foot theme present");
 	else
@@ -918,7 +922,7 @@ static int cmd_version(void)
 	printf("  kernel   %s\n", u.release);
 	printf("  libc     musl\n");
 	printf("  userland toybox\n");
-	printf("  session  COSMIC (%s)\n", current_theme());
+	printf("  session  kdos-comp (%s)\n", current_theme());
 	return 0;
 }
 
@@ -940,6 +944,12 @@ int kdos_main(int argc, char **argv)
 		return cmd_status(rest, restv);
 	if (!strcmp(cmd, "doctor"))
 		return cmd_doctor();
+	if (!strcmp(cmd, "why"))
+		return why_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "explain"))
+		return explain_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "sandbox"))
+		return sandbox_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
 		return cmd_version();
 	if (!strcmp(cmd, "app")) {

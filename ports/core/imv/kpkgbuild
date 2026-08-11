@@ -12,6 +12,7 @@ name        = imv
 version     = 4.5.0
 release     = 1
 source      = https://git.sr.ht/~exec64/imv/archive/v$version.tar.gz
+sha256      = 3b11991a86942d757830015033b1c3a3cc915be2f0c20fee7bc7493be560cbcb  imv-4.5.0.tar.gz
 description = Image viewer for Wayland (Wayland-only build, meson)
 homepage    = https://sr.ht/~exec64/imv
 depends     = meson pkgconf wayland wayland-protocols libxkbcommon mesa fontconfig pango cairo libpng libjpeg-turbo libtiff icu librsvg libnsgif inih

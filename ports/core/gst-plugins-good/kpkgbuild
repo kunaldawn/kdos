@@ -12,6 +12,7 @@ name        = gst-plugins-good
 version     = 1.28.0
 release     = 1
 source      = https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz
+sha256      = d97700f346fdf9ef5461c035e23ed1ce916ca7a31d6ddad987f774774361db77  gst-plugins-good-1.28.0.tar.xz
 description = GStreamer "good" plugin set (well-maintained LGPL plugins)
 homepage    = https://gstreamer.freedesktop.org/
 depends     = gst-plugins-base libpng libjpeg-turbo

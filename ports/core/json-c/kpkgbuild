@@ -12,5 +12,6 @@ name        = json-c
 version     = 0.18
 release     = 1
 source      = https://s3.amazonaws.com/json-c_releases/releases/$name-$version.tar.gz
+sha256      = 876ab046479166b869afc6896d288183bbc0e5843f141200c677b3e8dfb11724  json-c-0.18.tar.gz
 description = JSON implementation in C
 depends     = cmake ninja

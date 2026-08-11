@@ -1,0 +1,15 @@
+title: /tmp must be mounted mode=1777
+path: /etc/fstab
+path: /tmp
+port: toybox
+see: switch-root-ms-move
+
+`defaults` gives a 0755 root tmpfs that HIDES the 1777 /tmp baked into the
+image, so no non-root user can write to /tmp at all. Every alien app depends
+on it — GTK/Wayland lock files, GIMP scratch, LibreOffice, fontconfig — and
+the failure looks exactly like "the app is slow / never opens", which sends
+you looking at the container instead of the mount.
+
+Fixed in fstab AND with an explicit `chmod 1777 /tmp` after `mount -a` in rcS:
+a tmpfs that is already mounted ignores a mode change on remount, so
+`mount -o remount,mode=1777 /tmp` silently does nothing and only chmod works.

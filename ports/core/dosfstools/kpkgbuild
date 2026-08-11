@@ -12,4 +12,5 @@ name        = dosfstools
 version     = 4.2
 release     = 1
 source      = https://github.com/dosfstools/dosfstools/releases/download/v$version/dosfstools-$version.tar.gz
+sha256      = 64926eebf90092dca21b14259a5301b7b98e7b1943e8a201c7d726084809b527  dosfstools-4.2.tar.gz
 description = Various utilities for use with the FAT family of file systems

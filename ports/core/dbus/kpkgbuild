@@ -12,5 +12,6 @@ name        = dbus
 version     = 1.16.2
 release     = 1
 source      = https://gitlab.freedesktop.org/$name/$name/-/archive/$name-$version/$name-$version.tar.gz
+sha256      = 39d7ad68d6124a2c19262cd488c14d1d09bc0a90d634d2b7fd73c0c0943e8dea  dbus-1.16.2.tar.gz
 description = Message bus system, a simple way for applications to talk to one another
 depends     = expat meson

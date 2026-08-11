@@ -12,5 +12,6 @@ name        = lsof
 version     = 4.99.6
 release     = 1
 source      = https://github.com/lsof-org/lsof/releases/download/$version/lsof-$version.tar.gz
+sha256      = 6081dedf841cd61f8a022ff7cbe04ed78918a47dea3c39528c8571474167aa0f  lsof-4.99.6.tar.gz
 description = lsof — lists open files held by running processes
 homepage    = https://github.com/lsof-org/lsof

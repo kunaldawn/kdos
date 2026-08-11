@@ -12,6 +12,7 @@ name        = upower
 version     = 1.91.1
 release     = 1
 source      = https://gitlab.freedesktop.org/upower/upower/-/archive/v$version/upower-v$version.tar.bz2
+sha256      = d568638d670a63a1886335b7b136f4888cb38a3b28f3f4bcdeaffcca0b0f6df8  upower-1.91.1.tar.bz2
 description = D-Bus daemon for power-related stats and policy (battery, AC, suspend hints)
 homepage    = https://upower.freedesktop.org/
 depends     = meson glib dbus libgudev

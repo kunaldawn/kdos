@@ -6,6 +6,7 @@ release     = 1
 _version    = ${version//./_}
 
 source      = https://github.com/doxygen/doxygen/archive/refs/tags/Release_${_version}.tar.gz
+sha256      = cdf9d614ee8ed6a939ad12ab31a6aaa1b0c089dff2a4ce20aa008893b686d636  doxygen-1.16.1.tar.gz
 description = Documentation system for C++, C, Java, Objective-C, Python, IDL, PHP, C#
 homepage    = https://www.doxygen.nl/
 depends     = cmake flex bison python3

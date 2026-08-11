@@ -12,4 +12,5 @@ name        = npth
 version     = 1.8
 release     = 1
 source      = https://gnupg.org/ftp/gcrypt/$name/$name-$version.tar.bz2
+sha256      = 8bd24b4f23a3065d6e5b26e98aba9ce783ea4fd781069c1b35d149694e90ca3e  npth-1.8.tar.bz2
 description = Portable POSIX/ANSI-C based library for Unix platforms which provides non-preemptive priority-based scheduling for multiple threads of execution (multithreading) inside event-driven applications

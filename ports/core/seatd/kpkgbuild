@@ -12,6 +12,7 @@ name        = seatd
 version     = 0.9.2
 release     = 1
 source      = https://git.sr.ht/~kennylevinsen/seatd/archive/$version.tar.gz
+sha256      = 2811654fc87b3b1877f62e69cbf1e761c7072146f127860d9b8fe1ca27607d0e  seatd-0.9.2.tar.gz
 description = Minimal seat management daemon for non-systemd Wayland setups
 homepage    = https://git.sr.ht/~kennylevinsen/seatd
 depends     = meson scdoc

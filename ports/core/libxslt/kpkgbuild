@@ -12,5 +12,6 @@ name        = libxslt
 version     = 1.1.45
 release     = 1
 source      = https://download.gnome.org/sources/libxslt/${version%.*}/$name-$version.tar.xz
+sha256      = 9acfe68419c4d06a45c550321b3212762d92f41465062ca4ea19e632ee5d216e  libxslt-1.1.45.tar.xz
 description = XSLT libraries used for extending libxml2 libraries to support XSLT files
 depends     = libxml2 libgcrypt

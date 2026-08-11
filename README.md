@@ -8,15 +8,15 @@
 
 <p align="center">
 A Linux distribution compiled from source, one <code>kpkgbuild</code> at a time.<br>
-<b>musl</b> · <b>toybox</b> · <b>COSMIC</b> · <b>no systemd</b> · <b>no Xorg</b> · <b>no GTK or Qt on the host</b>
+<b>musl</b> · <b>toybox</b> · <b>wlroots</b> · <b>no systemd</b> · <b>no Xorg</b> · <b>no GTK or Qt on the host</b>
 </p>
 
 <p align="center">
-<sub>387 ports · 353 packages installed · Linux 7.0 · Wayland only · ~90 containerised GUI apps baked in · builds offline from this repo</sub>
+<sub>374 ports · Linux 7.0 · Wayland only · ~90 containerised GUI apps baked in · builds offline from this repo</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/desktop.png" alt="The KDOS desktop — COSMIC with the PHOSPHOR theme" width="100%"/>
+  <img src="docs/screenshots/desktop.png" alt="The KDOS desktop with the PHOSPHOR theme (v0.1, COSMIC-based)" width="100%"/>
 </p>
 
 ---
@@ -40,7 +40,7 @@ going.
 
 Every byte of the host system is compiled here, from an upstream tarball, by a
 recipe in this repo. There is no upstream binary archive, no base image, no
-"and then we pull in Debian." 387 ports, each a `kpkgbuild` — sourced shell
+"and then we pull in Debian." 374 ports, each a `kpkgbuild` — sourced shell
 declaring a `name`, a `version`, a `source` and a `build()`. No DSL, no
 manifest format, no opinions you can't override with `vim`.
 
@@ -60,7 +60,7 @@ distro's toolchain — it owns the whole chain.
 ### 3. The repo builds offline, completely
 
 `make build` runs the entire build inside a container with `--network none`.
-Every upstream tarball, every `cargo vendor` bundle for the Rust desktop, and
+Every upstream tarball, every `cargo vendor` bundle for every Rust port, and
 the whole ~4 GB alien-app container image live **in this repository** under Git
 LFS. Clone it once, unplug the network, get a bootable ISO.
 
@@ -76,7 +76,7 @@ into the ISO**, and ~90 GUI apps out of it behave like ordinary system apps:
 they appear in the launcher, they register MIME types, they run as terminal
 commands, and they wear the same theme as everything else.
 
-The host stays musl, toybox and 353 packages. The applications stay glibc.
+The host stays musl and toybox. The applications stay glibc.
 Neither has to compromise.
 
 ---
@@ -86,7 +86,7 @@ Neither has to compromise.
 | Ring | Lives in | What's there |
 |---|---|---|
 | **Core** | `ports/core/` | musl, toybox, kernel, kpkg, init, the whole toolchain |
-| **GUI sliver** | `ports/core/` (its own block) | COSMIC — compositor, panel, launcher, settings, files, portals — plus foot and the Wayland CLI utils |
+| **Desktop** | `ports/core/` (`wlroots`) + `src/desktop/` | `kdos-comp` and `kdos-shell`, ours, in C — plus foot and the Wayland CLI utils |
 | **Outer ring** | `ports/appbox/` | The Debian app image: browsers, office, CAD, media, games |
 
 Plus `src/packages/` — the ports that are **ours** rather than an upstream
@@ -151,26 +151,32 @@ wiped.
 
 ## The desktop
 
-KDOS runs **COSMIC** (System76 — Rust, smithay, iced): compositor, panel, dock,
-app library, launcher, settings, notifications, files, portals — one pinned
-epoch release across all 17 ports. It needs neither GTK nor Qt, which is
-exactly why the host has neither.
+> **In development.** KDOS ran COSMIC through v0.1 — the screenshots on this
+> page are of that desktop. It has been removed, and what replaces it is ours:
+> **`kdos-comp`**, a wlroots compositor, and **`kdos-shell`**, a
+> character-cell-grid panel and launcher drawn by the same libktui that draws
+> the installer and the build system. The plan is `docs/KDOS-DESKTOP.md`.
+
+The desktop needs neither GTK nor Qt, which is exactly why the host has
+neither: the shell is a cell grid in the KDOS palette, and application windows
+render as pixels inside it.
 
 ```sh
 kdos-desktop       # from a tty
 ```
 
 <p align="center">
-  <img src="docs/screenshots/app-library.png" alt="The COSMIC app library with KDOS category groups" width="100%"/>
+  <img src="docs/screenshots/app-library.png" alt="The app library with KDOS category groups (v0.1)" width="100%"/>
 </p>
 
 The app library is grouped by freedesktop Categories into Internet, Graphics,
 Office, Media, Engineering, Science, Games, System and Utilities — which is how
 ~90 containerised apps stay findable.
 
-Keys worth knowing: `Super` launcher, `Super+T` terminal, `Super+A` app
-library, `Super+Q` close, `Super+Y` toggle tiling, `Super+1..9` workspaces,
-`PrtSc` screenshot. Remap anything in Settings → Keyboard.
+Keys worth knowing: `Super+D` launcher, `Super+Return` terminal, `Super+Q`
+close, `Alt+Tab` switch, `Super+Arrows` snap, `Super+1..4` workspaces,
+`Super+L` lock, `PrtSc` screenshot. Remap anything in
+`~/.config/kdos/comp.conf`.
 
 **Companion tools**, all Wayland-native: `foot` (terminal), `grim`+`slurp`
 (screenshot + region), `wl-clipboard`, `imv` (image viewer).
@@ -178,8 +184,8 @@ library, `Super+Q` close, `Super+Y` toggle tiling, `Super+1..9` workspaces,
 **Stack:** PipeWire 1.6 with a PulseAudio compat shim and the full GStreamer
 1.28 set; NetworkManager 1.56 with `wpa_supplicant`, `nftables`, `dnsmasq` and
 polkit; `seatd` for seat management; `basu` for sd-bus without systemd;
-xdg-desktop-portal with the COSMIC backend for screenshots, screencast and file
-pickers.
+xdg-desktop-portal with the wlroots backend for screenshots, screencast and
+file pickers.
 
 ---
 
@@ -190,7 +196,7 @@ Wayland desktop. It is not a wallpaper — it goes all the way down. `setvtrgb`
 loads the palette in `rcS`, so tty1 is phosphor before anything Wayland exists.
 
 <p align="center">
-  <img src="docs/screenshots/cosmic-files.png" alt="COSMIC Files with the KDOS icon theme" width="100%"/>
+  <img src="docs/screenshots/cosmic-files.png" alt="The file manager with the KDOS icon theme (v0.1)" width="100%"/>
 </p>
 
 **One palette, four accents.**
@@ -203,10 +209,9 @@ kdos theme phosphor | amber | ice | bone
   <img src="docs/screenshots/theme-amber.png" alt="The amber accent" width="100%"/>
 </p>
 
-One command repaints the COSMIC theme, the panel and dock backgrounds, the icon
-theme, the cursor theme, the GTK stylesheets, foot, btop and the starship
-prompt — from a single palette table. COSMIC repaints live; the terminal and
-monitor pick it up on next start.
+One command repaints the desktop, the icon theme, the cursor theme, the GTK
+stylesheets, foot, btop and the starship prompt — from a single palette table.
+The session repaints live; the terminal and monitor pick it up on next start.
 
 **The interesting part is that alien apps follow.** A container shares your
 `$HOME` and nothing else, so `/usr/share/themes` is invisible inside it.
@@ -314,14 +319,14 @@ kpkgdepends foo        # resolved install order
 A port is a directory with a `kpkgbuild` and its tarball:
 
 ```bash
-# description	: Wayland compositor for the COSMIC desktop
-# homepage	: https://github.com/pop-os/cosmic-comp
+# description	: OpenGL and Vulkan implementation
+# homepage	: https://mesa3d.org
 # depends	: libdisplay-info gbm libinput pixman seatd eudev libxkbcommon
 
-name=cosmic-comp
+name=mesa
 version=1.4.0
 release=1
-source="https://github.com/pop-os/cosmic-comp/archive/refs/tags/epoch-$version.tar.gz"
+source="https://mesa3d.org/archive/mesa-$version.tar.xz"
 vendoring=rust
 
 build() {
@@ -341,7 +346,7 @@ container never needs crates.io.
 ## The `kdos` command
 
 ```sh
-kdos help          # commands + COSMIC keybind cheat sheet
+kdos help          # commands + keybind cheat sheet
 kdos theme amber   # repaint everything
 kdos status        # packages, containers, session
 kdos doctor        # check the things that actually break on this distro
@@ -392,7 +397,7 @@ picks up the cross toolchain from phase 1.
 make build BUILD_ARGS="--phases 01_phase1,06_packaging --steps 01_phase1:00_file_system.sh"
 
 # changed a kpkgbuild -> rebuild that port and repackage
-make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild cosmic-comp"
+make build BUILD_ARGS="--phases 04_phase4,06_packaging --rebuild mesa"
 
 make build BUILD_ARGS=--plan     # interactive picker, '/' fuzzy-searches ports
 ```

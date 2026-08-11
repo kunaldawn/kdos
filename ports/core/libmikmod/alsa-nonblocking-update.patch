@@ -7,7 +7,7 @@ A demo pumping it every 10ms while a period is 50ms offers the card five
 times realtime and snd_pcm_writei sleeps out the difference — the process
 sits in the audio write and its animation stops while the music plays on.
 The faster the display, the worse it gets, which is why it froze in foot
-under COSMIC and only slowed down on a 25fps VT.
+under a compositor and only slowed down on a 25fps VT.
 
 Non-blocking turns the full ring into -EAGAIN, and the existing
 bytes_played/bytes_written pair already carries a partly written period to

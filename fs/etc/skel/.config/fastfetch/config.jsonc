@@ -89,6 +89,6 @@
     { "type": "localip", "key": "Network   ", "showIpv6": false },
 
     { "type": "custom", "format": "\u001b[0;32m══════════════════════════════════════════════\u001b[0m" },
-    { "type": "custom", "format": "\u001b[2;32m  musl · toybox · cosmic · no systemd\u001b[0m" }
+    { "type": "custom", "format": "\u001b[2;32m  musl · toybox · wlroots · no systemd\u001b[0m" }
   ]
 }

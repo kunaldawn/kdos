@@ -12,4 +12,5 @@ name        = perl
 version     = 5.42.0
 release     = 1
 source      = https://www.cpan.org/src/5.0/$name-$version.tar.gz
+sha256      = e093ef184d7f9a1b9797e2465296f55510adb6dab8842b0c3ed53329663096dc  perl-5.42.0.tar.gz
 description = The Perl programming language

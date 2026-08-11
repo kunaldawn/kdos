@@ -12,5 +12,6 @@ name        = buildsystem
 version     = 1.9
 release     = 1
 source      = https://download.netsurf-browser.org/libs/releases/buildsystem-$version.tar.gz
+sha256      = 93841e314a688209a20b8745f065393f3a90f01be68f45e96bc8d2f4a2aa9a2a  buildsystem-1.9.tar.gz
 description = NetSurf shared build framework (Makefile fragments used by libnsgif and friends)
 homepage    = https://www.netsurf-browser.org/projects/buildsystem/

@@ -12,5 +12,6 @@ name        = ttf-dejavu
 version     = 2.37
 release     = 1
 source      = $name-$version.tar.bz2::https://downloads.sourceforge.net/dejavu/dejavu/$version/dejavu-fonts-ttf-$version.tar.bz2
+sha256      = fa9ca4d13871dd122f61258a80d01751d603b4d3ee14095d65453b4e846e17d7  ttf-dejavu-2.37.tar.bz2
 description = Font family based on the Bitstream Vera Fonts with a wider range of characters
 depends     = fontconfig

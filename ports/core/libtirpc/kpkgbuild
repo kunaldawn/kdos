@@ -12,5 +12,6 @@ name        = libtirpc
 version     = 1.3.7
 release     = 1
 source      = https://downloads.sourceforge.net/libtirpc/$name-$version.tar.bz2
+sha256      = b47d3ac19d3549e54a05d0019a6c400674da716123858cfdb6d3bdd70a66c702  libtirpc-1.3.7.tar.bz2
 description = Libraries that support programs that use the Remote Procedure Call (RPC) API
 depends     = libbsd rpcsvc-proto
