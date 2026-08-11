@@ -28,6 +28,7 @@
  * ---------------------------------
  */
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -35,6 +36,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 #include <sys/klog.h>
 #include <sys/wait.h>
 
@@ -43,6 +45,54 @@
 #define FBCON_MARK "fbcon: Taking over console"
 #define FONT       "ter-kdos32n"
 #define FONT_GEOM  "16x32"
+
+/* Force the tty's window size to the VT's real character grid.
+ *
+ * Deferred take-over means the console has no geometry yet when this runs, so
+ * whoever asks first gets a 0x0 TIOCGWINSZ and settles on a fallback — and on
+ * tty1 that fallback stuck: the VT is 120x33 with the 16x32 font, but every
+ * full-screen program came up believing it had 80x24 and drew into the
+ * top-left corner of the screen (measured with a full-screen aalib demo,
+ * which centred on column 40 of 120). kinstall and every other libktui
+ * program are on the same
+ * path. The size the loaded font actually produced is the first two bytes of
+ * /dev/vcsa<n> — rows, then columns — which is the console's own answer
+ * rather than a second guess at the arithmetic. Runs after the font is
+ * loaded, because that is what decides the grid. */
+static void fix_winsize(int fd, const char *tty)
+{
+	char path[128];
+	unsigned char hdr[2];
+	struct winsize ws, cur;
+	int v;
+
+	if (strncmp(tty, "tty", 3) || !isdigit((unsigned char)tty[3]))
+		return;
+	snprintf(path, sizeof(path), "/dev/vcsa%s", tty + 3);
+	v = open(path, O_RDONLY | O_CLOEXEC);
+	if (v < 0)
+		return;
+	if (read(v, hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr)) {
+		close(v);
+		return;
+	}
+	close(v);
+	if (!hdr[0] || !hdr[1])
+		return;
+
+	memset(&ws, 0, sizeof(ws));
+	ws.ws_row = hdr[0];
+	ws.ws_col = hdr[1];
+	if (ioctl(fd, TIOCGWINSZ, &cur) == 0 &&
+	    cur.ws_row == ws.ws_row && cur.ws_col == ws.ws_col)
+		return;
+	if (ioctl(fd, TIOCSWINSZ, &ws) != 0)
+		fprintf(stderr, "kdos-getty: TIOCSWINSZ %s: %s\n", tty,
+			strerror(errno));
+	else
+		fprintf(stderr, "kdos-getty: %s winsize -> %ux%u\n", tty,
+			ws.ws_col, ws.ws_row);
+}
 
 static void nap(long ms)
 {
@@ -186,6 +236,8 @@ int getty_main(int argc, char **argv)
 
 		if (write(vt, "\033[2J\033[H", 7) < 0)
 			fprintf(stderr, "kdos-getty: cannot clear %s\n", dev);
+
+		fix_winsize(vt, tty);
 	}
 	if (vt >= 0)
 		close(vt);

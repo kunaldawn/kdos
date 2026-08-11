@@ -1,0 +1,20 @@
+messager() scrolls its buffer with memcpy over an overlapping range.
+
+The two copies move the text and attribute buffers up by one row, so source
+and destination overlap by every row but one. memcpy may not be used for
+that; glibc's happened to survive it, musl is under no obligation to, and
+ASan rejects it outright. memmove is the defined operation.
+
+--- a/messager.c
++++ b/messager.c
+@@ -40,8 +40,8 @@
+ 	start = 0;
+     cursor_y++, cursor_x = 0;
+     if (cursor_y >= aa_scrheight(context)) {
+-	memcpy(context->textbuffer + start * aa_scrwidth(context), context->textbuffer + (start + 1) * aa_scrwidth(context), aa_scrwidth(context) * (aa_scrheight(context) - start - 1));
+-	memcpy(context->attrbuffer + start * aa_scrwidth(context), context->attrbuffer + (start + 1) * aa_scrwidth(context), aa_scrwidth(context) * (aa_scrheight(context) - start - 1));
++	memmove(context->textbuffer + start * aa_scrwidth(context), context->textbuffer + (start + 1) * aa_scrwidth(context), aa_scrwidth(context) * (aa_scrheight(context) - start - 1));
++	memmove(context->attrbuffer + start * aa_scrwidth(context), context->attrbuffer + (start + 1) * aa_scrwidth(context), aa_scrwidth(context) * (aa_scrheight(context) - start - 1));
+ 	memset(context->textbuffer + aa_scrwidth(context) * (aa_scrheight(context) - 1), ' ', aa_scrwidth(context));
+ 	memset(context->attrbuffer + aa_scrwidth(context) * (aa_scrheight(context) - 1), 0, aa_scrwidth(context));
+ 	cursor_y--;

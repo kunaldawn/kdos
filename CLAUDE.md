@@ -822,79 +822,63 @@ that stands in the way.
 
 ---
 
-## kk — the KDOS demo
+## bb — the AAlib demo
 
-`src/packages/kk/` is a **fork of BB**, the 1997 AAlib demo, carrying KDOS's
-own portrait, scenes and music. It replaces the stock `bb` port, which is
-gone. GPL-2.0, like its parent; `LICENSE.notice` records every deviation and
-the credits scene names AA-group and XaoS on screen.
+**There is no KDOS demoscene.** One was written (`src/packages/kd`, a
+from-scratch aalib demo with a 3D pipeline, audio-reactive channel taps and
+music-as-clock) and then removed at the user's request. Do not resurrect it,
+and do not reintroduce a `kd`/`kk` port on the strength of a stale reference:
+if one turns up, it is a leftover.
 
-`source = ""`, so kpkg skips the extract loop and `build.sh` compiles out of
-`$PORT_SRC` — the kdos-splash shape. The whole autotools layer is deleted and
-`src/aconfig.h` states what configure used to probe; the DOS/OS2/Windows/Plan 9
-paths and `ctrl87.c`'s i386 x87 assembly went with it.
-
-Two upstream defects had to be fixed before it would run on x86_64 at all,
-both found with ASan rather than by reading:
+What ships is `ports/core/bb` — the 1997 AAlib demo, **upstream and
+unmodified** apart from two musl/x86_64 safety patches. Both defects were
+found with ASan rather than by reading:
 
 - **`tex.c`'s `clear_zbuff()` cleared twice its allocation** — `set_zbuff()`
   allocates `sizeof(int)` per cell and the clear used `sizeof(long)`. Same
   size in 1997, double on x86_64: the heap corrupts and stage 2 aborts with
-  `malloc(): corrupted top size`.
+  `malloc(): corrupted top size`. (`zbuff-int-not-long.patch`)
 - **`messager.c` scrolled the text buffer with `memcpy`**, source and
   destination overlapping by every row but one. glibc survived it; musl is
-  free not to.
+  free not to. (`messager-overlapping-copy.patch`)
 
-Three things about the demo itself are load-bearing:
+Two aalib facts that cost a debug cycle each and outlive the demo that found
+them:
 
-- **Both display drivers must be on the recommended list.** aalib's `linux`
-  driver writes cells into `/dev/vcsa<n>`, which a non-root user on KDOS
-  cannot open, and `aa_autoinit` answers a failed *recommended* driver by
-  sweeping its own `aa_drivers[]` — landing on **`stdout`**, which scrolls a
-  fresh block of text up the terminal every frame. `bbinit` recommends curses
-  and then linux (insert-at-head, so the order is linux, curses). `--driver`
-  pins one and deliberately does not fall back: it exists to measure a path.
-- **Every scene interpolates against `TIME`, never against frames.** The
-  scenes free-run — thousands of frames a second through the stdout driver,
-  tens on a TTY — so a per-frame step makes the matrix rain fall at the speed
-  of the terminal. `fx_matrix` and `fx_scope` take a real `frame_dt()`.
+- **aalib's `linux` driver writes cells into `/dev/vcsa<n>`**, which a
+  non-root user on KDOS cannot open. `aa_autoinit` answers a failed
+  *recommended* driver by sweeping its own `aa_drivers[]` — landing on
+  **`stdout`**, which scrolls a fresh block of text up the terminal every
+  frame. Anything on aalib must recommend curses as well as linux.
 - **`MikMod_RegisterAllLoaders()`, not just `load_s3m`.** ModArchive's
-  public-domain shelf is `.xm`/`.it`/`.mod`; with the S3M loader alone every
-  vendored track fails inside `Player_Load` and the demo plays silent.
-
-`kk --benchmark[=SEC]` prints frames, seconds, fps and the driver that was
-actually initialized, then exits — which is how the "is a TTY fast enough"
-question gets a number. `--fps` overlays it live, `--scene N` jumps, and `s`
-/ Backspace skip a scene while `q` / Escape quits.
-
-**The portrait is not a photograph.** `face/face.txt` is the pre-baked `FACE`
-table lifted out of `generate_profile.py` in github.com/kunaldawn/kunaldawn —
-52 rows of glyph plus a `'0'..'P'` brightness bucket, which is a greyscale
-bitmap in disguise. `tools/genface.c` (host-only, like `genmarks.py`) turns it
-into `src/kd[1-4].c`: BB's own `struct image`, LZO1X, four crystallise stages
-so `vezen()` plays as rain condensing into the face. Cell aspect is 2:1, so
-the 85x52 grid is reconstructed at 170x208 — skip that and the face comes out
-flat. The generator round-trips every frame through `lzo1x_decompress` before
-writing it, because `image.c` exits the whole program on a bad decompress.
-
-**`penguin.h` is INCLUDED from kdos-splash, not copied** (`-I$PORT_SRC/../kdos-splash`).
-The splash, the login banner's generator and this demo have to be unable to
-end up wearing different birds.
-
-Music is three public-domain tracker modules from ModArchive's licence
-category, installed to `/usr/share/kk` unconditionally — upstream's
-`pkgdata_DATA` only installed them when libmikmod was found at configure time,
-which is exactly how a demo ships mute. `music/MUSIC.credits` records module
-id, artist, licence and MD5 for each; `src/kk.h`'s `SONG_*` macros name them
-by role, so swapping a track is a rename.
+  public-domain shelf is `.xm`/`.it`/`.mod`; with the S3M loader alone a
+  track fails inside `Player_Load` and the program plays silent.
 
 Sound needs `libmikmod` (ALSA only, `--disable-dl` so a missing ALSA is a link
-error rather than a silent runtime failure). On a bare TTY there is no
-pipewire and none is wanted: `kdos` is already in the `audio` group and
-`50_alsa.sh` runs `alsactl restore`. QEMU had no audio device at all until
-`testing/qemu-audio.sh` — every `make run*` target and the containerized
-`run.sh` now source their `-audiodev` from it, probed rather than hardcoded
-because QEMU aborts at startup on a backend its build lacks.
+error rather than a silent runtime failure), with two patches of its own:
+`alsa-null-close.patch` guards the `END:` label against closing a NULL pcm
+(otherwise a machine with no card aborts inside `MikMod_Init` on
+`Assertion failed: pcm`), and `alsa-nonblocking-update.patch` stops
+`ALSA_Update` blocking its caller's frame loop.
+
+**Audio on a bare TTY took two stacked fixes**, both in `fs/etc/init.d/`:
+
+- `01_udev.sh` triggers coldplug with **`--action=add`**. The default replays
+  every device as `change`, and `80-drivers.rules` — the rule that modprobes
+  from MODALIAS — opens with `ACTION!="add", GOTO="drivers_end"`. A plain
+  trigger therefore loads no module at all: the HDA controller stayed
+  unclaimed and alsa-lib answered "Unknown PCM default".
+- `50_alsa.sh` falls back to **`alsactl init`** when `alsactl restore` fails.
+  A live ISO has no saved `asound.state`, and a failed restore leaves HDA
+  exactly as the kernel did — Master MUTED at 0%/-74dB. `init` answers 99 when
+  it matched a generic rule, which is a success here, so its status is
+  deliberately ignored.
+
+There is no pipewire on a TTY and none is wanted: `kdos` is already in the
+`audio` group. QEMU had no audio device at all until `testing/qemu-audio.sh` —
+every `make run*` target and the containerized `run.sh` source their
+`-audiodev` from it, probed rather than hardcoded because QEMU aborts at
+startup on a backend its build lacks.
 
 ---
 
@@ -1012,9 +996,8 @@ kdos/
 │       ├── kdos-installer/      # the installer (C, zero libraries)
 │       ├── kdos-kpkg/           # kpkg + the four names it answers to
 │       ├── kdos-theme/          # the GTK/icon/cursor generators
-│       ├── kdos-tools/          # kdos, ksvc/service, kdos-getty, banner,
-│       │                        #   shot, fetch-app, fetch-static
-│       └── kk/                  # the KDOS demo — a fork of the AAlib demo bb
+│       └── kdos-tools/          # kdos, ksvc/service, kdos-getty, banner,
+│                                #   shot, fetch-app, fetch-static
 ├── fs/                          # copied verbatim into the rootfs
 │   ├── etc/{inittab,fstab,profile,profile.d,init.d,skel,kpkg.conf}
 │   ├── usr/local/bin/           # kdos-desktop, alien-app shims

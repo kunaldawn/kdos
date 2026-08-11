@@ -3,7 +3,7 @@ Do not let ALSA_Update block the caller's frame loop.
 ALSA_Init_internal opened the stream in BLOCKING mode and ALSA_Update then
 wrote a whole period per call, spinning on -EAGAIN. But Update is a pull
 API: the caller invokes it from its own loop, as often as that loop runs.
-kk pumps it every 10ms while a period is 50ms, so it offers the card five
+A demo pumping it every 10ms while a period is 50ms offers the card five
 times realtime and snd_pcm_writei sleeps out the difference — the process
 sits in the audio write and its animation stops while the music plays on.
 The faster the display, the worse it gets, which is why it froze in foot
