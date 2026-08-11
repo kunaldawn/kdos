@@ -79,7 +79,7 @@ static void box_env(KbArgv *a, const char *image)
 	/*
 	 * Cost a debug cycle: a few apps are X11-only and their own .desktop
 	 * says so (debian ships audacity as `env GDK_BACKEND=x11 audacity`).
-	 * cosmic-comp runs Xwayland rootlessly but exports DISPLAY only to what
+	 * kdos-comp runs Xwayland rootlessly but exports DISPLAY only to what
 	 * IT spawned, so a launcher fired from the dock may not have it and the
 	 * app then exits with no window and no message. The socket is the
 	 * authority, and distrobox shares the host /tmp.

@@ -12,6 +12,7 @@ name        = gdk-pixbuf
 version     = 2.44.6
 release     = 1
 source      = https://download.gnome.org/sources/gdk-pixbuf/${version%.*}/$name-$version.tar.xz
+sha256      = 140c2d0b899fcf853ee92b26373c9dc228dbcde0820a4246693f4328a27466fa  gdk-pixbuf-2.44.6.tar.xz
 description = gdk-pixbuf — image-loading library used by GTK and many notification daemons
 homepage    = https://gitlab.gnome.org/GNOME/gdk-pixbuf
 depends     = glib libpng libjpeg-turbo libtiff shared-mime-info meson

@@ -12,6 +12,12 @@
 make mrproper
 make defconfig
 
+# The panic-screen mark. drm_panic falls back to a hardcoded ASCII Tux without
+# CONFIG_LOGO, so kdos.config turns it on and points LOGO_LINUX_MONO_FILE at
+# this path — which means the file has to be in the tree before olddefconfig
+# runs. Committed artefact; genlogo-mono.py regenerates it on the host.
+cp $PORT_SRC/kdos-logo-mono.pbm drivers/video/logo/kdos-logo-mono.pbm
+
 # KDOS extensions
 cat $PORT_SRC/kdos.config >> .config
 

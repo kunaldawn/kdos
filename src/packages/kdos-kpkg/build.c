@@ -51,6 +51,7 @@ typedef struct {
 	char version[128];
 	char release[64];
 	char source[2048];
+	char sha256[4096];
 } Recipe;
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -118,6 +119,68 @@ static void source_file(const Recipe *r, const char *src, int first, char *out,
 		}
 }
 
+/*
+ * `sha256 = <64 hex>  <basename>` — find the hash for one file.
+ *
+ * The accumulated value is alternating <hex> <name> tokens (see decl.c), so
+ * this walks them in pairs and matches on the NAME. Returns NULL when the
+ * recipe names no hash for this file, which the caller must treat as a
+ * refusal rather than a pass.
+ */
+static const char *hash_for(const Recipe *r, const char *file, char out[65])
+{
+	char list[4096];
+	kb_strlcpy(list, r->sha256, sizeof(list));
+	char *hex = NULL;
+	int k = 0;
+	for (char *t = strtok(list, " \t\n"); t; t = strtok(NULL, " \t\n"), k++) {
+		if (k % 2 == 0) {
+			hex = t;
+		} else if (!strcmp(t, file) && hex) {
+			kb_strlcpy(out, hex, 65);
+			return out;
+		}
+	}
+	return NULL;
+}
+
+/*
+ * Nothing is extracted before its bytes are checked. A recipe with no hash
+ * for a source it names is a HARD failure, not a warning: a warning here is
+ * indistinguishable from a hash that passed, and the whole point is that an
+ * unverified tarball can never reach a build.
+ *
+ * KDOS_ALLOW_UNVERIFIED=1 is the bring-up escape hatch, for adding a port
+ * before its hash is known. testing/preflight.sh asserts that no recipe in
+ * the tree needs it.
+ */
+static int verify_source(const Recipe *r, const char *path, const char *file)
+{
+	char want[65];
+	if (!hash_for(r, file, want)) {
+		if (getenv("KDOS_ALLOW_UNVERIFIED")) {
+			kp_msg("UNVERIFIED: no sha256 for %s", file);
+			return 0;
+		}
+		kp_err("No sha256 for %s in the recipe — refusing to extract "
+		       "an unverified source (KDOS_ALLOW_UNVERIFIED=1 to override)",
+		       file);
+		return -1;
+	}
+
+	char got[65];
+	if (kb_sha256_file(path, got) != 0) {
+		kp_err("Cannot read %s to verify it", path);
+		return -1;
+	}
+	if (!kb_str_ieq(got, want)) {
+		kp_err("sha256 MISMATCH for %s\n  expected %s\n  got      %s",
+		       file, want, got);
+		return -1;
+	}
+	return 0;
+}
+
 static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir,
 			   const char *src_dir, const char *src_root)
 {
@@ -139,6 +202,11 @@ static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir
 				free(path);
 				return -1;
 			}
+		}
+
+		if (verify_source(r, path, file) != 0) {
+			free(path);
+			return -1;
 		}
 
 		KbArgv a = {0};
@@ -285,6 +353,7 @@ int build_main(int argc, char **argv)
 	kb_strlcpy(r.version, kp_decl_version(decl), sizeof(r.version));
 	kb_strlcpy(r.release, kp_decl_release(decl), sizeof(r.release));
 	kb_strlcpy(r.source, kp_decl_source(decl), sizeof(r.source));
+	kb_strlcpy(r.sha256, kp_decl_sha256(decl), sizeof(r.sha256));
 
 	if (!kb_path_exists("./build.sh")) {
 		kp_err("build.sh not found beside ./kpkgbuild");

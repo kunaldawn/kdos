@@ -13,5 +13,7 @@ version     = 21.1.8
 release     = 1
 source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/clang-$version.src.tar.xz
 source      = https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/cmake-${version}.src.tar.xz
+sha256      = 6090e3f23720d003cdd84483a47d0eec6d01adbb5e0c714ac0c8b58de546aa62  clang-21.1.8.tar.xz
+sha256      = 85735f20fd8c81ecb0a09abb0c267018475420e93b65050cc5b7634eab744de9  cmake-21.1.8.src.tar.xz
 description = Collection of modular and reusable compiler and toolchain technologies
 depends     = llvm

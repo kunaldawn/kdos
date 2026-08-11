@@ -1023,18 +1023,18 @@ static void selftest_columns(void)
 static void selftest_grouping(void)
 {
 	PortEntry pe[3] = {0};
-	kb_strlcpy(pe[0].r.name, "cosmic-comp", sizeof(pe[0].r.name));
+	kb_strlcpy(pe[0].r.name, "gst-plugins-base", sizeof(pe[0].r.name));
 	kb_strlcpy(pe[0].r.version, "1.4.0", sizeof(pe[0].r.version));
-	kb_strlcpy(pe[0].group, "pop-os@1.4.0", sizeof(pe[0].group));
+	kb_strlcpy(pe[0].group, "gstreamer@1.4.0", sizeof(pe[0].group));
 	pe[0].has_group = 1;
 	pe[0].res.state = PU_NEWER;
 	kb_strlcpy(pe[0].res.candidate, "1.5.0", sizeof(pe[0].res.candidate));
 
 	pe[1] = pe[0];
-	kb_strlcpy(pe[1].r.name, "pop-launcher", sizeof(pe[1].r.name));
+	kb_strlcpy(pe[1].r.name, "gst-plugins-good", sizeof(pe[1].r.name));
 
 	pe[2] = pe[0];
-	kb_strlcpy(pe[2].r.name, "cosmic-panel", sizeof(pe[2].r.name));
+	kb_strlcpy(pe[2].r.name, "gst-plugins-bad", sizeof(pe[2].r.name));
 	pe[2].res.state = PU_CURRENT;	/* breaks completeness */
 
 	compute_groups(pe, 3);

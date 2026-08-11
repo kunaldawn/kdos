@@ -71,10 +71,25 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
     fi
     echo "[KDOS] Running: $(basename $_script) start"
     splash step "$(echo "$_name" | tr '[:lower:]' '[:upper:]')"
-    if "$_script" start; then
+
+    # tee, not a redirect: every boot message must still reach the console and
+    # the serial line, which is the only way to debug a machine that dies
+    # behind a splash. The log is the copy the failure panel reads back.
+    #
+    # PIPESTATUS[0], not $?, because $? is tee's status and tee always
+    # succeeds — testing it would report every service as started.
+    _log="/run/kdos-init.${_name}.log"
+    "$_script" start 2>&1 | tee "$_log"
+    if [ "${PIPESTATUS[0]}" = 0 ]; then
         splash ok
     else
         splash fail
+        # The reason, not just the verdict. fbcon has not taken the console
+        # over yet, so on a framebuffer boot this output is otherwise gone.
+        while IFS= read -r _l; do
+            splash detail "$_l"
+        done < <(tail -n 6 "$_log" 2>/dev/null)
+        unset _l
     fi
 done
 

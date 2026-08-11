@@ -12,4 +12,5 @@ name        = libcap
 version     = 2.77
 release     = 1
 source      = https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/$name-$version.tar.xz
+sha256      = 897bc18b44afc26c70e78cead3dbb31e154acc24bee085a5a09079a88dbf6f52  libcap-2.77.tar.xz
 description = Implements the user-space interfaces to the POSIX 1003.1e capabilities

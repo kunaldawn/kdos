@@ -12,5 +12,6 @@ name        = strace
 version     = 7.0
 release     = 1
 source      = https://github.com/strace/strace/releases/download/v$version/strace-$version.tar.xz
+sha256      = 6c92419be3f2ec560b31728a4652217c59864c8642ba7b1b3771b1b013ad074b  strace-7.0.tar.xz
 description = strace — diagnostic, debugging, and instructional userspace utility
 homepage    = https://strace.io/

@@ -46,7 +46,8 @@ $CC $STD $WARN $INC -Isrc/packages/kdos-theme -o "$OUT/kdos-theme" \
     src/packages/kdos-theme/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
 echo "  kdos-theme"
 $CC $STD $WARN $INC -Isrc/packages/kdos-tools -o "$OUT/kdos-tools" \
-    src/packages/kdos-tools/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
+    src/packages/kdos-tools/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
+    src/libs/libkpkg/*.c
 echo "  kdos-tools"
 $CC $STD $WARN $INC -Isrc/packages/kdos-kpkg -o "$OUT/kdos-kpkg" \
     src/packages/kdos-kpkg/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c

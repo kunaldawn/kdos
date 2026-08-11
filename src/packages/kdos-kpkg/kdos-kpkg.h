@@ -41,6 +41,7 @@ const char *kp_decl_name(const KpDecl *d);
 const char *kp_decl_version(const KpDecl *d);
 const char *kp_decl_release(const KpDecl *d);
 const char *kp_decl_source(const KpDecl *d);
+const char *kp_decl_sha256(const KpDecl *d);
 const char *kp_decl_description(const KpDecl *d);
 const char *kp_decl_depends(const KpDecl *d);
 

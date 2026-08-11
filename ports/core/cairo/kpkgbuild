@@ -12,5 +12,6 @@ name        = cairo
 version     = 1.18.4
 release     = 1
 source      = https://gitlab.freedesktop.org/cairo/cairo/-/archive/$version/$name-$version.tar.bz2
+sha256      = 6d9281e786fd289d382324d4588d59973a36911e1865b40e64f9ec39936ceba8  cairo-1.18.4.tar.bz2
 description = 2D graphics library (Wayland-only build, no X11)
 depends     = pixman fontconfig freetype2 libpng lzo zlib glib

@@ -13,4 +13,4 @@ version     = 20250501
 release     = 1
 description = KDOS phosphor icon theme — a recoloured Papirus
 homepage    = https://github.com/PapirusDevelopmentTeam/papirus-icon-theme
-depends     = cosmic-icons kdos-theme
+depends     = kdos-theme

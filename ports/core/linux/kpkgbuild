@@ -12,4 +12,5 @@ name        = linux
 version     = 7.0.10
 release     = 1
 source      = https://cdn.kernel.org/pub/linux/kernel/v${version:0:1}.x/$name-$version.tar.xz
+sha256      = 094977eb62c20e3d1939fe81a92958a1f987f339446e532fa86963b2804e32dc  linux-7.0.10.tar.xz
 description = Linux kernel

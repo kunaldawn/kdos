@@ -12,6 +12,7 @@ name        = tllist
 version     = 1.1.0
 release     = 1
 source      = https://codeberg.org/dnkl/tllist/archive/$version.tar.gz
+sha256      = 0e7b7094a02550dd80b7243bcffc3671550b0f1d8ba625e4dff52517827d5d23  tllist-1.1.0.tar.gz
 description = C header-only typed linked list library (foot/fcft dep)
 homepage    = https://codeberg.org/dnkl/tllist
 depends     = meson

@@ -1,17 +1,23 @@
 #!/bin/sh
-# kdos-desktop — launch the COSMIC desktop. Run from a tty after login.
+# kdos-desktop — launch the KDOS desktop. Run from a tty after login.
 # Wayland env vars are set by /etc/profile.d/10-wayland.sh.
-# KDOS uses seatd, not logind/elogind; cosmic-comp talks to it via libseat.
+# KDOS uses seatd, not logind/elogind; kdos-comp talks to it via libseat.
+if [ ! -x /usr/bin/kdos-comp ]; then
+	echo "kdos-desktop: no desktop installed (kdos-comp missing)." >&2
+	echo "The compositor lands in build phase 05_desktop." >&2
+	exit 1
+fi
+
 case "$(cat /sys/class/drm/card0/device/modalias 2>/dev/null)" in
 	virtio:*|pci:v00001AF4*)
-		# iced/wgpu has no Vulkan on virgl — take the GL backend.
-		export WGPU_BACKEND=gl
-		# Without blob resources virgl's EGL path hangs; llvmpipe at least
-		# keeps clients alive (the compositor itself still needs virgl/blob —
-		# `make run-hw`. Plain `make run` has no desktop: smithay refuses
-		# software EGL renderers).
+		# QEMU's cursor plane lies about what it supports; without this the
+		# pointer is invisible or leaves trails on every virtio-gpu setup.
+		export WLR_NO_HARDWARE_CURSORS=1
+		# Without blob resources virgl's EGL path hangs. wlroots has a real
+		# software renderer, so unlike smithay it can still bring a session
+		# up here — this is what makes plain `make run` (no virgl) work.
 		if ! dmesg 2>/dev/null | grep -q '+resource_blob'; then
-			export GALLIUM_DRIVER=llvmpipe
+			export WLR_RENDERER=pixman
 		fi
 		;;
 esac
@@ -32,7 +38,7 @@ esac
 # box, so this one address is valid on both sides. The daemon is reused
 # across session restarts; the address carries no guid on purpose — a later
 # session re-binding the socket would otherwise kill zbus clients with
-# "D-Bus handshake failed: Server GUID mismatch" (cosmic-session aborts).
+# "D-Bus handshake failed: Server GUID mismatch" (the session aborts).
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 # flock-serialized: two sessions starting at once must not both decide the
@@ -47,5 +53,5 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 ) 7>"$XDG_RUNTIME_DIR/.kdos-bus.lock"
 
 # kdos-desktop-start runs on the session bus: pipewire stack (audio +
-# portal ScreenCast for OBS), then exec cosmic-session.
+# portal ScreenCast for OBS), then exec kdos-comp.
 exec /usr/local/bin/kdos-desktop-start

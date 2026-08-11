@@ -14,4 +14,5 @@ name        = musl-rpmatch
 version     = 1.0
 release     = 1
 source      = https://github.com/pullmoll/musl-rpmatch/archive/v$version.tar.gz
+sha256      = dcbd41909bd69eaeedd20f03435b165406b514465249186ff1ca68d04fd35953  musl-rpmatch-1.0.tar.gz
 description = Implementation of rpmatch(3) for musl libc

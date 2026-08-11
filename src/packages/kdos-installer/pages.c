@@ -1129,7 +1129,7 @@ static void system_draw(KRect b)
 	ktui_section(b.x, y, b.w, "ACCENT");
 	y++;
 	ktui_note(b.x, y++, b.w,
-	     "applied to COSMIC, GTK, the icons, the cursors, foot, btop and "
+	     "applied to the desktop, GTK, the icons, the cursors, foot, btop and "
 	     "this installer");
 	y++;
 

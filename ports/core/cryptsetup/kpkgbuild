@@ -12,5 +12,6 @@ name        = cryptsetup
 version     = 2.8.4
 release     = 2
 source      = https://www.kernel.org/pub/linux/utils/cryptsetup/v${version%.*}/$name-$version.tar.xz
+sha256      = 443e46f8964c9acc780f455afbb8e23aa0e8ed7ec504cfc59e04f406fa1e8a83  cryptsetup-2.8.4.tar.xz
 description = Used to set up transparent encryption of block devices using the kernel crypto API
 depends     = openssl popt json-c lvm2

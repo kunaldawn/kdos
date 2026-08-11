@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = liburcu
+version     = 0.15.6
+release     = 1
+source      = https://lttng.org/files/urcu/userspace-rcu-$version.tar.bz2
+sha256      = 850b192096eb11ebf2c70e8f97bc7da7479ee41da1bebeb44e3986908bac414f  liburcu-0.15.6.tar.bz2
+description = Userspace RCU — required by xfsprogs, no --disable option exists
+homepage    = https://liburcu.org
+depends     =

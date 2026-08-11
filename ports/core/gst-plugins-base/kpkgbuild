@@ -12,6 +12,7 @@ name        = gst-plugins-base
 version     = 1.28.0
 release     = 1
 source      = https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz
+sha256      = eace79d63bd2edeb2048777ea9f432d8b6e7336e656cbc20da450f6235758b31  gst-plugins-base-1.28.0.tar.xz
 description = GStreamer base plugin set (provides gstreamer-pbutils, audio/video conversion, file I/O)
 homepage    = https://gstreamer.freedesktop.org/
 depends     = gstreamer alsa-lib pango cairo libdrm wayland mesa

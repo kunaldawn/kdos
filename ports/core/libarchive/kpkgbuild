@@ -12,5 +12,6 @@ name        = libarchive
 version     = 3.8.5
 release     = 1
 source      = https://libarchive.org/downloads/$name-$version.tar.xz
+sha256      = d68068e74beee3a0ec0dd04aee9037d5757fcc651591a6dcf1b6d542fb15a703  libarchive-3.8.5.tar.xz
 description = Reading/writing various compression formats
 depends     = acl xz bzip2

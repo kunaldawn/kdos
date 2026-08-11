@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = snooze
+version     = 0.6
+release     = 1
+source      = https://github.com/leahneukirchen/snooze/archive/v$version/snooze-$version.tar.gz
+sha256      = 3a4a2f3f00d42e30647d9af79c8e417990ced6c3f0565474b1ca717938b1e2ab  snooze-0.6.tar.gz
+description = Run a command at a given time — a cron daemon replaced by one process per job
+homepage    = https://github.com/leahneukirchen/snooze
+depends     =

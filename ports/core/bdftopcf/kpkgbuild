@@ -12,5 +12,6 @@ name        = bdftopcf
 version     = 1.1
 release     = 1
 source      = https://www.x.org/pub/individual/app/$name-$version.tar.bz2
+sha256      = 4b4df05fc53f1e98993638d6f7e178d95b31745c4568cee407e167491fd311a2  bdftopcf-1.1.tar.bz2
 description = Convert X font from Bitmap Distribution Format to Portable Compiled Format
 depends     = util-macros xorgproto

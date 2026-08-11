@@ -18,7 +18,7 @@
 #   vendor.py <papirus-icon-theme-YYYYMMDD.tar.gz>
 #
 # Papirus over Tela/Colloid/Qogir for one reason that matters here: coverage.
-# KDOS's desktop is COSMIC plus ~90 Debian apps in a container, and Papirus is
+# KDOS's desktop is kdos-shell plus ~90 Debian apps in a container, and Papirus is
 # the only free set that has a real icon for essentially every mimetype, device
 # and place either of them will ask for. It is also flat single-fill SVG, so a
 # palette remap is a colour substitution rather than a redraw.

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = exfatprogs
+version     = 1.4.2
+release     = 1
+source      = https://github.com/exfatprogs/exfatprogs/releases/download/$version/exfatprogs-$version.tar.xz
+sha256      = 47c7c8ddeccbf50d39b903353f2cb3df79134367a4fd764fe2ce3755ff5877bf  exfatprogs-1.4.2.tar.xz
+description = exFAT filesystem utilities (mkfs, fsck, label)
+homepage    = https://github.com/exfatprogs/exfatprogs
+depends     =

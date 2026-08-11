@@ -16,6 +16,7 @@ name        = ltrace
 version     = 0.8.1
 release     = 1
 source      = https://gitlab.com/cespedes/ltrace/-/archive/$version/ltrace-$version.tar.gz
+sha256      = 11c85a1353fcf2b5438b19d0ccc2d376c96656ce6f11cf9537e3a92b84392c58  ltrace-0.8.1.tar.gz
 description = ltrace — library call tracer
 homepage    = https://gitlab.com/cespedes/ltrace
 depends     = elfutils

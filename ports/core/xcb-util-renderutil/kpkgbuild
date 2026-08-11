@@ -12,6 +12,7 @@ name        = xcb-util-renderutil
 version     = 0.3.10
 release     = 1
 source      = https://www.x.org/releases/individual/xcb/$name-$version.tar.xz
+sha256      = 3e15d4f0e22d8ddbfbb9f5d77db43eacd7a304029bf25a6166cc63caa96d04ba  xcb-util-renderutil-0.3.10.tar.xz
 description = XCB convenience functions for the Render extension
 homepage    = https://xcb.freedesktop.org/
 depends     = libxcb
