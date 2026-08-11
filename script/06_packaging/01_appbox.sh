@@ -65,6 +65,12 @@ case "${1:-}" in
 --load)
     cd /
     export PODMAN_IGNORE_CGROUPSV1_WARNING=1
+    # TMPDIR too, not just --runroot. podman's scratch defaults to /var/tmp,
+    # and the flatten below streams the WHOLE image through it as a tar —
+    # 5.6 GB of podman<pid>/ left sitting in the rootfs, which then shipped
+    # inside the ISO and put 2 GB on it. /tmp here is the build tmpfs and is
+    # cleaned by 00_cleanup.sh.
+    export TMPDIR=/tmp/appbox-runroot
     mkdir -p "$STORAGE" /tmp/appbox-runroot
     if [ -f "$TAR" ]; then
         podman --root "$STORAGE" --runroot /tmp/appbox-runroot load -i "$TAR"
@@ -94,6 +100,9 @@ case "${1:-}" in
     podman --root "$STORAGE" --runroot /tmp/appbox-runroot rm flatten
     podman --root "$STORAGE" --runroot /tmp/appbox-runroot image prune -f
     podman --root "$STORAGE" --runroot /tmp/appbox-runroot image exists localhost/kdos-appbox:latest
+    # Belt and braces: anything podman still parked in the rootfs's /var/tmp
+    # is scratch by definition and must not reach the image.
+    rm -rf /var/tmp/podman* 2>/dev/null || true
     exit 0
     ;;
 esac
