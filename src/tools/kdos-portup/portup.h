@@ -132,10 +132,13 @@ typedef struct {
  * unless the arguments themselves are unusable. */
 int pu_check(const char *kpkg_bin, const PuRecipe *r, PuResult *out);
 
-/* "<forge-org>@<current-version>", the key 17 pop-os ports at 1.4.0 share.
- * Chosen over a name prefix for a measured reason: the seventeenth member is
- * `pop-launcher`, repo pop-os/launcher, and a `cosmic-*` rule would leave it
- * behind and ship exactly the half-bumped epoch grouping exists to prevent.
+/* "<forge-org>@<current-version>" — a whole upstream epoch under one key.
+ * Chosen over a name prefix for a measured reason, and the case that proved
+ * it is worth keeping even though those ports are gone: the 17 pop-os ports
+ * at 1.4.0 included `pop-launcher`, whose repo is pop-os/launcher, so a
+ * `cosmic-*` name rule would have left the seventeenth member behind and
+ * shipped exactly the half-bumped epoch grouping exists to prevent. Any
+ * family released in lockstep behaves the same way.
  * An explicit `group =` key in the recipe overrides this. Returns 0 when the
  * port has no group (out left empty), 1 when `out` was written. */
 int pu_group_key(const PuRecipe *r, char *out, size_t cap);

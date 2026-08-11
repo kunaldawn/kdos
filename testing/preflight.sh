@@ -89,6 +89,69 @@ done
 [ "$orphans" = 0 ] && note "all depends resolve" "ok"
 
 echo
+echo "==> every archive a port ships is named by a sha256 in its recipe"
+# kpkg refuses to extract a source it has no hash for, so a gap here is a
+# port that cannot build. The hashes were bootstrapped from the git-LFS
+# pointers, where the oid IS the file's sha256.
+unhashed=0
+for d in ports/core/* src/packages/*; do
+    [ -f "$d/kpkgbuild" ] || continue
+    for a in "$d"/*.tar.gz "$d"/*.tar.xz "$d"/*.tar.bz2 "$d"/*.tar.zst \
+             "$d"/*.tgz "$d"/*.zip; do
+        [ -f "$a" ] || continue
+        base=$(basename "$a")
+        if ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
+            bad "$(basename "$d")" "ships $base with no sha256 line"
+            unhashed=$((unhashed + 1))
+        fi
+    done
+done
+[ "$unhashed" = 0 ] && note "every archive is hashed" "ok"
+
+# The escape hatch must be unused in a committed tree.
+if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild 2>/dev/null; then
+    bad "recipes" "a recipe references KDOS_ALLOW_UNVERIFIED"
+else
+    note "no recipe needs the unverified escape hatch" "ok"
+fi
+
+echo
+echo "==> every reason names things that still exist"
+# Without this the reasons corpus diverges from the tree within a month and
+# then actively lies, which is worse than not existing at all. Same gate as
+# an unresolvable `# depends`.
+rot=0
+for r in reasons/*.txt; do
+    [ -f "$r" ] || continue
+    _rn=$(basename "$r" .txt)
+    grep -q "^title:" "$r" || { bad "$_rn" "has no title:"; rot=$((rot + 1)); }
+    grep -q "^path:\|^port:" "$r" || { bad "$_rn" "claims nothing"; rot=$((rot + 1)); }
+
+    sed -n 's/^port:[[:blank:]]*//p' "$r" | while read -r _p; do
+        [ -n "$_p" ] || continue
+        if [ ! -f "ports/core/$_p/kpkgbuild" ] && [ ! -f "src/packages/$_p/kpkgbuild" ]; then
+            bad "$_rn" "names port '$_p', which no longer exists"
+        fi
+    done
+
+    # A path is real if fs/ provides it, or if the reason also names a port
+    # (which is what installs it — preflight cannot see an installed tree).
+    _hasport=$(grep -c "^port:" "$r")
+    sed -n 's/^path:[[:blank:]]*//p' "$r" | while read -r _q; do
+        [ -n "$_q" ] || continue
+        if [ ! -e "fs$_q" ] && [ "$_hasport" = 0 ]; then
+            bad "$_rn" "names path '$_q', which fs/ does not provide and no port claims"
+        fi
+    done
+
+    sed -n 's/^see:[[:blank:]]*//p' "$r" | while read -r _s; do
+        [ -n "$_s" ] || continue
+        [ -f "reasons/$_s.txt" ] || bad "$_rn" "sees '$_s', which is not a reason"
+    done
+done
+[ "$rot" = 0 ] && note "reasons resolve" "$(ls reasons/*.txt 2>/dev/null | wc -l) recorded"
+
+echo
 echo "==> every port has a build.sh, and it parses"
 # The build is a shell script in its own file, so it can actually be checked:
 # `bash -n` on 396 recipes is a real syntax gate, and it was impossible while

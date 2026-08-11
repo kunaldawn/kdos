@@ -12,6 +12,7 @@ name        = grim
 version     = 1.4.1
 release     = 1
 source      = https://git.sr.ht/~emersion/grim/archive/v$version.tar.gz
+sha256      = 5ed8e70fcd83a7e203e92d34dbb82a1342d3f13ad98a6b0310cc97e1a9342ded  grim-1.4.1.tar.gz
 description = Screenshot tool for wlroots-based Wayland compositors
 homepage    = https://sr.ht/~emersion/grim
 depends     = meson scdoc wayland cairo libpng libjpeg-turbo

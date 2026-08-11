@@ -12,6 +12,7 @@ name        = xkbcomp
 version     = 1.5.0
 release     = 1
 source      = https://www.x.org/releases/individual/app/$name-$version.tar.xz
+sha256      = 2ac31f26600776db6d9cd79b3fcd272263faebac7eb85fb2f33c7141b8486060  xkbcomp-1.5.0.tar.xz
 description = XKB keymap compiler, invoked by Xwayland at runtime
 homepage    = https://gitlab.freedesktop.org/xorg/app/xkbcomp
 depends     = libX11 libxkbfile xkeyboard-config

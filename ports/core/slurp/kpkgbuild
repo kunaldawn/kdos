@@ -12,6 +12,7 @@ name        = slurp
 version     = 1.5.0
 release     = 1
 source      = https://github.com/emersion/slurp/archive/refs/tags/v$version.tar.gz
+sha256      = 0fa880d4a93e1c795e3b5929fbea47546df0955bea34fc2f7ffeb1751678f663  slurp-1.5.0.tar.gz
 description = Region selector for Wayland compositors (pairs with grim for area screenshots)
 homepage    = https://github.com/emersion/slurp
 depends     = meson scdoc wayland wayland-protocols cairo libxkbcommon

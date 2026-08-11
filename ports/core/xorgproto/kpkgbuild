@@ -12,6 +12,7 @@ name        = xorgproto
 version     = 2025.1
 release     = 1
 source      = https://www.x.org/releases/individual/proto/$name-$version.tar.xz
+sha256      = 56898c716c0578df8a2d828c9c3e5c528277705c0484381a81960fe1a67668e8  xorgproto-2025.1.tar.xz
 description = X.Org protocol headers
 homepage    = https://gitlab.freedesktop.org/xorg/proto/xorgproto
 depends     = meson

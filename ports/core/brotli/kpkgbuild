@@ -12,6 +12,7 @@ name        = brotli
 version     = 1.2.0
 release     = 1
 source      = https://github.com/google/$name/archive/v$version/$name-v$version.tar.gz
+sha256      = 816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec  brotli-1.2.0.tar.gz
 description = Brotli compression library
 homepage    = https://github.com/google/brotli
 depends     = cmake ninja

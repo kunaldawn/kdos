@@ -12,6 +12,7 @@ name        = tcpdump
 version     = 4.99.6
 release     = 1
 source      = https://www.tcpdump.org/release/tcpdump-$version.tar.xz
+sha256      = 40a8cefd45f0d2a06827e6658efb830d484868c449ad80f7efb33516af44f3da  tcpdump-4.99.6.tar.xz
 description = tcpdump — command-line packet analyzer
 homepage    = https://www.tcpdump.org/
 depends     = libpcap openssl

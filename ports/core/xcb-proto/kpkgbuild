@@ -12,6 +12,7 @@ name        = xcb-proto
 version     = 1.17.0
 release     = 1
 source      = https://www.x.org/releases/individual/xcb/$name-$version.tar.xz
+sha256      = 2c1bacd2110f4799f74de6ebb714b94cf6f80fb112316b1219480fd22562148c  xcb-proto-1.17.0.tar.xz
 description = X protocol XML descriptions (build-time)
 homepage    = https://xcb.freedesktop.org/
 depends     = python3

@@ -63,7 +63,7 @@ fetch_port() {
     # Ask kpkg for the metadata; it prints shell assignments. $KPKG's own
     # basename is literally "kpkg", so this resolves through kdos-kpkg's
     # PRIMARY dispatch (argv[0] -> front_main), not its argv[1] fallback.
-    unset name version release source vendoring pypackages
+    unset name version release source sha256 vendoring pypackages
     local meta
     meta=$("$KPKG" meta . 2>/dev/null) || {
         echo "⚠  $portname: Failed to read kpkgbuild"
@@ -137,6 +137,29 @@ fetch_port() {
                 return 1
             }
             echo "✓  $portname: Downloaded $filename"
+        fi
+
+        # Verify against the recipe's sha256, if it names one for this file.
+        # A freshly downloaded tarball is the ONLY moment the bytes are not
+        # yet pinned by git, so this is where a substituted upstream would
+        # get caught. `kpkg meta` emits $sha256 as alternating
+        # "<hex> <name>" tokens.
+        if [ -n "$sha256" ]; then
+            want=$(echo "$sha256" | tr -s ' \t' '\n\n' | awk -v f="$filename" \
+                   'NR%2==1{h=$0} NR%2==0 && $0==f {print h; exit}')
+            if [ -n "$want" ]; then
+                got=$(sha256sum "./$filename" | cut -d" " -f1)
+                if [ "$got" != "$want" ]; then
+                    echo "✗  $portname: sha256 MISMATCH for $filename"
+                    echo "   expected $want"
+                    echo "   got      $got"
+                    rm -f "./$filename"
+                    return 1
+                fi
+                echo "✓  $portname: sha256 verified"
+            elif [ -z "${KDOS_ALLOW_UNVERIFIED:-}" ]; then
+                echo "⚠  $portname: no sha256 for $filename in the recipe"
+            fi
         fi
 
         src_idx=$((src_idx + 1))

@@ -17,6 +17,7 @@ name        = valgrind
 version     = 3.27.0
 release     = 1
 source      = https://sourceware.org/pub/valgrind/valgrind-$version.tar.bz2
+sha256      = 5b5937de8257ee8f51698ea71b9711adce98061aa07daa4a685efc3af9215bef  valgrind-3.27.0.tar.bz2
 description = valgrind — instrumentation framework for memory tools
 homepage    = https://valgrind.org/
 depends     = gcc

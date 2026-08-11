@@ -12,5 +12,6 @@ name        = alsa-ucm-conf
 version     = 1.2.15.2
 release     = 1
 source      = https://www.alsa-project.org/files/pub/lib/$name-$version.tar.bz2
+sha256      = 07b93bab13b2c54f4ecce1374efb8fce23a353d7e0038dd3c533a24825ea0ba3  alsa-ucm-conf-1.2.15.2.tar.bz2
 description = ALSA Use Case Manager configuration (and topologies)
 homepage    = https://alsa-project.org

@@ -12,5 +12,6 @@ name        = terminus-font
 version     = 4.49.1
 release     = 2
 source      = https://downloads.sourceforge.net/project/$name/$name-${version%.1}/$name-$version.tar.gz
+sha256      = d961c1b781627bf417f9b340693d64fc219e0113ad3a3af1a3424c7aa373ef79  terminus-font-4.49.1.tar.gz
 description = Monospace bitmap console font
 depends     = python3 bdftopcf fontconfig

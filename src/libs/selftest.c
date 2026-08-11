@@ -20,6 +20,7 @@
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -219,6 +220,29 @@ static void test_base(void)
 	free(tarpath);
 	kb_rmtree(dir);
 	ok(!kb_path_exists(dir), "rmtree removes the tree");
+
+	/* Landlock. A ruleset is only BUILT here, never enforced — enforcing is
+	 * irreversible and would sandbox the rest of this process. */
+	int abi = kb_landlock_abi();
+	ok(abi > 0 || abi == -ENOSYS || abi == -EOPNOTSUPP,
+	   "landlock abi probe answers a version or a known errno");
+
+	if (abi > 0) {
+		KbLandlock ll;
+		ok(kb_landlock_new(&ll, 0) == 0, "ruleset builds for this ABI");
+
+		/* The regression: a path_beneath rule on a NON-DIRECTORY is
+		 * EINVAL if the mask names directory-only accesses. /dev/null
+		 * has to take a write rule, or every sandboxed program dies on
+		 * its first `>/dev/null` and looks broken rather than confined. */
+		ok(kb_landlock_allow(&ll, "/dev/null", 1) == 0,
+		   "a write rule on a non-directory is accepted");
+		ok(kb_landlock_allow(&ll, "/usr", 0) == 0,
+		   "a read rule on a directory is accepted");
+		ok(kb_landlock_allow(&ll, "/nonexistent-kdos-selftest", 0) == -ENOENT,
+		   "a missing path reports ENOENT rather than being ignored");
+		kb_landlock_free(&ll);
+	}
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

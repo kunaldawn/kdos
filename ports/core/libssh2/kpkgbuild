@@ -12,5 +12,6 @@ name        = libssh2
 version     = 1.11.1
 release     = 1
 source      = https://www.libssh2.org/download/$name-$version.tar.gz
+sha256      = d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7  libssh2-1.11.1.tar.gz
 description = Client-side C library implementing the SSH2 protocol
 depends     = libgcrypt openssh

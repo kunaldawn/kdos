@@ -12,5 +12,6 @@ name        = harfbuzz
 version     = 12.3.0
 release     = 2
 source      = https://github.com/harfbuzz/harfbuzz/releases/download/$version/harfbuzz-$version.tar.xz
+sha256      = 8660ebd3c27d9407fc8433b5d172bafba5f0317cb0bb4339f28e5370c93d42b7  harfbuzz-12.3.0.tar.xz
 description = OpenType text shaping engine
 depends     = meson glib cairo

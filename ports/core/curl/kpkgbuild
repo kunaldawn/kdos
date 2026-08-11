@@ -12,5 +12,6 @@ name        = curl
 version     = 8.17.0
 release     = 1
 source      = https://curl.haxx.se/download/$name-$version.tar.xz
+sha256      = 955f6e729ad6b3566260e8fef68620e76ba3c31acf0a18524416a185acf77992  curl-8.17.0.tar.xz
 description = Utility and a library used for transferring files
 depends     = ca-certificates openssl zlib

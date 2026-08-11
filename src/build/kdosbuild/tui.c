@@ -2544,11 +2544,11 @@ static void preview_plan(Manager *m)
 	step_on[2][0] = step_on[2][1] = step_on[2][3] = 1;
 
 	static KbuildPkgRef pkg[] = {
-		{ "cosmic-comp", "04_phase4" },
-		{ "cosmic-panel", "04_phase4" },
+		{ "gst-plugins-base", "04_phase4" },
+		{ "gst-plugins-good", "04_phase4" },
 		{ "mesa", "04_phase4" },
 	};
-	static char rebuild[2][64] = { "cosmic-comp", "mesa" };
+	static char rebuild[2][64] = { "gst-plugins-base", "mesa" };
 
 	PlanRow row[KBUILD_MAX_PHASES * (KBUILD_MAX_STEPS + 1)];
 	int nrow = 0;
@@ -2574,25 +2574,25 @@ static void preview_plan(Manager *m)
 static void preview_packages(void)
 {
 	static KbuildPkgRef pkg[] = {
-		{ "cosmic-comp", "04_phase4" },
-		{ "cosmic-settings", "04_phase4" },
-		{ "cosmic-osd", "04_phase4" },
-		{ "xdg-desktop-portal-cosmic", "04_phase4" },
+		{ "gst-plugins-base", "04_phase4" },
+		{ "gst-plugins-good", "04_phase4" },
+		{ "gst-plugins-bad", "04_phase4" },
+		{ "gst-plugins-ugly", "04_phase4" },
 		{ "mesa", "04_phase4" },
 		{ "libunwind", "" },
 	};
-	static char chosen[KBUILD_MAX_REBUILD][64] = { "cosmic-comp",
-						       "cosmic-osd" };
+	static char chosen[KBUILD_MAX_REBUILD][64] = { "gst-plugins-base",
+						       "gst-plugins-bad" };
 	int nchosen = 2;
 	PickState st = { pkg, 6, chosen, &nchosen };
 
 	int match[6];
 	int nmatch = 0;
 	for (int i = 0; i < 6; i++)
-		if (strstr(pkg[i].name, "cosmic"))
+		if (strstr(pkg[i].name, "gst"))
 			match[nmatch++] = i;
 
-	PackView vw = { &st, match, nmatch, 1, 0, "cosmic" };
+	PackView vw = { &st, match, nmatch, 1, 0, "gst" };
 	draw_packages_frame(&vw);
 }
 

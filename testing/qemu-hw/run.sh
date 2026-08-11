@@ -61,9 +61,11 @@ fi
 # is fine, only the host blit is lost. gl=es asks for a GLES context and presents
 # correctly, with virgl+blob still HW-accelerated.
 #
-# cosmic-comp CAN wedge the whole guest (soft-lockup storm, vCPUs spinning on
-# the virtio-gpu queue) through the gtk,gl=es path on this host, while
-# `egl-headless` is rock solid. If the desktop freezes the VM, run headless:
+# A compositor CAN wedge the whole guest (soft-lockup storm, vCPUs spinning on
+# the virtio-gpu queue) through the gtk,gl=es path on this host — measured with
+# cosmic-comp, and the storm is in the host/guest virtio-gpu path rather than in
+# any one compositor, so assume it still applies. `egl-headless` is rock solid.
+# If the desktop freezes the VM, run headless:
 #   KDOS_QEMU_DISPLAY=egl-headless testing/qemu-hw/run.sh iso   (view via -vnc)
 GPU_ARGS=(
     -object memory-backend-memfd,id=mem,size="$MEM",share=on

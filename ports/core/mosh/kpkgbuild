@@ -12,6 +12,7 @@ name        = mosh
 version     = 1.4.0
 release     = 1
 source      = https://github.com/mobile-shell/mosh/releases/download/mosh-$version/mosh-$version.tar.gz
+sha256      = 872e4b134e5df29c8933dff12350785054d2fd2839b5ae6b5587b14db1465ddd  mosh-1.4.0.tar.gz
 description = mosh — mobile shell, robust replacement for SSH over flaky networks
 homepage    = https://mosh.org/
 depends     = openssl protobuf ncurses zlib openssh perl

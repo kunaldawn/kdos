@@ -12,5 +12,6 @@ name        = ccache
 version     = 4.13
 release     = 1
 source      = https://github.com/ccache/ccache/releases/download/v$version/$name-$version.tar.xz
+sha256      = 35a24dddd432578f13058d55018218c4250fc733de172afbfbfda538864be284  ccache-4.13.tar.xz
 description = A fast compiler cache
 depends     = cmake ninja zlib zstd xxhash
