@@ -915,8 +915,8 @@ static int gather_names(const KpConf *conf, char **want, int nwant,
 }
 
 /* Checks every named port (cache first, unless --refresh), storing a
- * PortEntry for each one that has an upstream source at all — the 11 ports
- * that are ours (kdos-*, kk) are dropped here, silently, exactly once,
+ * PortEntry for each one that has an upstream source at all — the ports
+ * that are ours (kdos-*) are dropped here, silently, exactly once,
  * rather than at every later call site that would otherwise have to know
  * the same rule. Progress goes to stderr: pu_check is network-bound and can
  * take minutes over the whole tree, and stderr keeps --json's stdout clean
