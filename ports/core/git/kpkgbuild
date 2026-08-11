@@ -12,5 +12,6 @@ name        = git
 version     = 2.52.0
 release     = 1
 source      = https://www.kernel.org/pub/software/scm/$name/$name-$version.tar.xz
+sha256      = 3cd8fee86f69a949cb610fee8cd9264e6873d07fa58411f6060b3d62729ed7c5  git-2.52.0.tar.xz
 description = Version control system designed to handle everything from small to very large projects with speed and efficiency
 depends     = curl openssl perl python3 gettext

@@ -15,4 +15,5 @@ release     = 1
 vrsn        = 2.1
 
 source      = $name-$version.tar.gz::https://github.com/openresty/luajit2/archive/v${vrsn}-$version.tar.gz
+sha256      = 5a49743ad6ce4b7f19aac71b55a08052c1feb62750f051982082c12bf62f39c0  luajit-20250826.tar.gz
 description = Just-in-time compiler and drop-in replacement for Lua.

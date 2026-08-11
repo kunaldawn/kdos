@@ -12,5 +12,6 @@ name        = gnutls
 version     = 3.8.11
 release     = 1
 source      = https://www.gnupg.org/ftp/gcrypt/gnutls/v${version%.*}/$name-${version}.tar.xz
+sha256      = 91bd23c4a86ebc6152e81303d20cf6ceaeb97bc8f84266d0faec6e29f17baa20  gnutls-3.8.11.tar.xz
 description = Libraries and userspace tools which provide a secure layer over a reliable transport layer
 depends     = libidn2 libtasn1 libunistring p11-kit nettle

@@ -12,4 +12,5 @@ name        = kbd
 version     = 2.9.0
 release     = 1
 source      = https://www.kernel.org/pub/linux/utils/$name/$name-$version.tar.xz
+sha256      = fb3197f17a99eb44d22a3a1a71f755f9622dd963e66acfdea1a45120951b02ed  kbd-2.9.0.tar.xz
 description = Key-table files, console fonts, and keyboard utilities

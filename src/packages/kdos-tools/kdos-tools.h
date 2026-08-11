@@ -40,5 +40,12 @@ int shot_main(int argc, char **argv);		/* kdos-shot                */
 int banner_main(int argc, char **argv);		/* kdos-banner              */
 int fetch_app_main(int argc, char **argv);	/* kdos-fetch-app           */
 int fetch_static_main(int argc, char **argv);	/* kdos-fetch-static        */
+int sandbox_main(int argc, char **argv);	/* kdos sandbox             */
+int why_main(int argc, char **argv);		/* kdos why                 */
+int explain_main(int argc, char **argv);		/* kdos explain             */
+
+/* $XDG_CONFIG_HOME/<rest>, falling back to ~/.config. Shared rather than
+ * copied: two XDG helpers in one binary is how the two drift apart. */
+char *kdt_cfg_home(const char *rest);
 
 #endif /* KDOS_TOOLS_H */

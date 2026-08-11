@@ -12,6 +12,7 @@ name        = libxkbfile
 version     = 1.2.0
 release     = 1
 source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = 7f71884e5faf56fb0e823f3848599cf9b5a9afce51c90982baeb64f635233ebf  libxkbfile-1.2.0.tar.xz
 description = XKB file handling library
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libxkbfile
 depends     = libX11 meson

@@ -191,4 +191,68 @@ void kb_run_detach(const KbArgv *a);
 
 double kb_now_s(void);
 
+/* ────────────────────────────────────────────────────────────────────────
+ * SHA-256 (FIPS 180-4)
+ *
+ * For `sha256 =` in a recipe: kpkg has to check an archive before extracting
+ * it, and kpkg links libkbase and nothing else.
+ *
+ * A hash, not a signature — it proves the bytes are the bytes the recipe
+ * named, and nothing about who named them.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	uint32_t h[8];
+	uint64_t len;
+	uint8_t buf[64];
+	size_t n;
+} KbSha256;
+
+void kb_sha256_init(KbSha256 *s);
+void kb_sha256_update(KbSha256 *s, const void *data, size_t n);
+void kb_sha256_final(KbSha256 *s, char out[65]);	/* lowercase hex */
+
+/* Streamed, so a 552 MB tarball costs one 64 K buffer. -1 on read error. */
+int kb_sha256_file(const char *path, char out[65]);
+/* 0 match, 1 mismatch, -1 unreadable. Comparison is case-insensitive. */
+int kb_sha256_check(const char *path, const char *want);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Landlock — unprivileged self-sandboxing. Three syscalls, no library.
+ *
+ * Deny by default: a ruleset starts with NOTHING reachable, and each
+ * kb_landlock_allow() opens one subtree back up. Enforcement is one-way and
+ * inherited by every child — there is no unsandbox.
+ *
+ * Usage is fixed: new() -> allow()* -> enforce() -> exec(). Everything after
+ * enforce() runs inside.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	int fd;			/* ruleset fd, -1 once enforced or freed */
+	int abi;		/* what the RUNNING kernel supports        */
+	int nrules;
+	int net_handled;	/* TCP is being policed at all             */
+} KbLandlock;
+
+/* ABI version the kernel reports, or -errno. -ENOSYS: no Landlock in this
+ * kernel. -EOPNOTSUPP: compiled in but not enabled in CONFIG_LSM or lsm=,
+ * which is the quiet failure worth naming — everything degrades to no
+ * sandbox and nothing says so. */
+int kb_landlock_abi(void);
+
+/* Build a ruleset covering everything this ABI can police. net_off also
+ * denies TCP bind and connect (needs ABI >= 4; silently not applied below
+ * that, which kb_landlock_explain must report as unenforced). */
+int kb_landlock_new(KbLandlock *ll, int net_off);
+
+/* Allow one subtree, read-only or read-write. A missing path is -ENOENT and
+ * is the caller's to decide about. */
+int kb_landlock_allow(KbLandlock *ll, const char *path, int write);
+int kb_landlock_allow_tcp(KbLandlock *ll, uint16_t port, int connect);
+
+/* Sets PR_SET_NO_NEW_PRIVS then restricts. Irreversible. */
+int kb_landlock_enforce(KbLandlock *ll);
+void kb_landlock_free(KbLandlock *ll);
+
 #endif /* KBASE_H */

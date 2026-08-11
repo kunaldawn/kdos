@@ -12,5 +12,6 @@ name        = cython3
 version     = 3.2.4
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/cython/cython/archive/$version.tar.gz
+sha256      = 9631e586c49b9d3f72c3962c376119479a6a98e3c0e3c14d5218e199ef563b18  cython3-3.2.4.tar.gz
 description = C-Extensions for Python3
 depends     = python3

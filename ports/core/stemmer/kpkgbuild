@@ -12,4 +12,5 @@ name        = stemmer
 version     = 3.0.1
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/snowballstem/snowball/archive/v$version.tar.gz
+sha256      = 80ac10ce40dc4fcfbfed8d085c457b5613da0e86a73611a3d5527d044a142d60  stemmer-3.0.1.tar.gz
 description = Stemming library supporting several languages

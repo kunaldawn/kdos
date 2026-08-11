@@ -12,5 +12,6 @@ name        = libtiff
 version     = 4.7.1
 release     = 1
 source      = $name-$version.tar.gz::https://download.osgeo.org/$name/tiff-$version.tar.gz
+sha256      = f698d94f3103da8ca7438d84e0344e453fe0ba3b7486e04c5bf7a9a3fabe9b69  libtiff-4.7.1.tar.gz
 description = TIFF libraries and associated utilities
 depends     = cmake ninja

@@ -12,6 +12,7 @@ name        = basu
 version     = 0.2.0
 release     = 1
 source      = https://github.com/emersion/basu/releases/download/v$version/basu-$version.tar.gz
+sha256      = e2fda9b69fc6c4530173fcf8db94c29aa5f3ed932d948cc6a31892623cde5e4b  basu-0.2.0.tar.gz
 description = sd-bus library extracted from systemd (no-systemd sd-bus provider)
 homepage    = https://sr.ht/~emersion/basu/
 depends     = meson ninja libcap

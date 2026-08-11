@@ -12,6 +12,7 @@ name        = libxcvt
 version     = 0.1.3
 release     = 1
 source      = https://xorg.freedesktop.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = a929998a8767de7dfa36d6da4751cdbeef34ed630714f2f4a767b351f2442e01  libxcvt-0.1.3.tar.xz
 description = Library providing a standalone version of the X server implementation of the VESA CVT standard timing modelines generator
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libxcvt
 depends     = meson

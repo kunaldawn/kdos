@@ -56,6 +56,7 @@ struct KpDecl {
 	char version[128];
 	char release[64];
 	char source[2048];
+	char sha256[4096];
 	char description[512];
 	char homepage[256];
 	char depends[1024];
@@ -343,6 +344,16 @@ static void set_key(KpDecl *d, const char *key, const char *val)
 		/* Repeatable: a port with two tarballs writes two lines, and
 		 * the extractor splits this on whitespace anyway. */
 		{ "source", d->source, sizeof(d->source), 1 },
+		/* Repeatable, and matched to a source by BASENAME rather than
+		 * by position: `sha256 = <64 hex>  <filename>`. Void and
+		 * Chimera use positional arrays, which silently miscompare the
+		 * moment someone reorders the source lines — and KDOS recipes
+		 * already have an order-sensitive helper block above them.
+		 * Appending joins entries with a space, so the accumulated
+		 * value reads as alternating <hex> <name> tokens; a hash is
+		 * always 64 characters and a tarball name never contains
+		 * whitespace, so that stays unambiguous. */
+		{ "sha256", d->sha256, sizeof(d->sha256), 1 },
 		{ "description", d->description, sizeof(d->description), 0 },
 		{ "homepage", d->homepage, sizeof(d->homepage), 0 },
 		{ "depends", d->depends, sizeof(d->depends), 1 },
@@ -415,6 +426,7 @@ const char *kp_decl_name(const KpDecl *d) { return d->name; }
 const char *kp_decl_version(const KpDecl *d) { return d->version; }
 const char *kp_decl_release(const KpDecl *d) { return d->release; }
 const char *kp_decl_source(const KpDecl *d) { return d->source; }
+const char *kp_decl_sha256(const KpDecl *d) { return d->sha256; }
 const char *kp_decl_description(const KpDecl *d) { return d->description; }
 const char *kp_decl_depends(const KpDecl *d) { return d->depends; }
 
@@ -444,6 +456,7 @@ void kp_decl_prelude(const KpDecl *d, KbBuf *b)
 		{ "version", offsetof(struct KpDecl, version) },
 		{ "release", offsetof(struct KpDecl, release) },
 		{ "source", offsetof(struct KpDecl, source) },
+		{ "sha256", offsetof(struct KpDecl, sha256) },
 		{ "vendoring", offsetof(struct KpDecl, vendoring) },
 		{ "pypackages", offsetof(struct KpDecl, pypackages) },
 	};

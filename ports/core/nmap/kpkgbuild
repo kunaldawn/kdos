@@ -12,6 +12,7 @@ name        = nmap
 version     = 7.99
 release     = 1
 source      = https://nmap.org/dist/nmap-$version.tar.bz2
+sha256      = df512492ffd108e53a27a06f26d8635bbe89e0e569455dc8ffef058c035d51b2  nmap-7.99.tar.bz2
 description = nmap — Network exploration tool and security scanner
 homepage    = https://nmap.org/
 depends     = openssl libpcap pcre2 lua python3

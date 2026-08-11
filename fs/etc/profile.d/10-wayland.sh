@@ -21,7 +21,7 @@ if [ ! -d "$XDG_RUNTIME_DIR" ]; then
 fi
 
 export XDG_SESSION_TYPE=wayland
-export XDG_CURRENT_DESKTOP=COSMIC
+export XDG_CURRENT_DESKTOP=KDOS
 
 # The per-user session bus lives at a fixed runtime path (started by
 # kdos-desktop; the same path is visible inside the appbox). Point shells
@@ -49,7 +49,7 @@ case ":$PATH:" in
 	*":/usr/games:"*) ;;
 	*) export PATH="$PATH:/usr/games" ;;
 esac
-# Cursor theme: cosmic-comp, winit clients, and Qt all read these; GTK apps
+# Cursor theme: kdos-comp, Wayland clients, and Qt all read these; GTK apps
 # in the appbox read ~/.config/gtk-3.0/settings.ini (seeded in skel).
 export XCURSOR_THEME=KDOS-cursors
 export XCURSOR_SIZE=24

@@ -91,6 +91,24 @@ struct line {
 	int  state;
 };
 
+/*
+ * When an init script fails, `FAIL` on its own tells the user nothing — the
+ * reason scrolled past on a console that fbcon has not taken over yet, so on
+ * a framebuffer boot it is simply gone. rcS feeds the tail of the script's
+ * output back as detail lines and they are painted under the stage list.
+ *
+ * Fedora's greenboot does health-check-and-rollback for servers, headlessly.
+ * Nobody does it on the framebuffer in the boot idiom, which is the whole
+ * point of having written our own splash.
+ *
+ * Retry and rollback are NOT here: retry needs an input path the splash does
+ * not have (it never reads a key), and rollback needs the A/B slots that do
+ * not exist yet. Showing the reason is the part that is buildable now, and it
+ * is most of the value.
+ */
+#define MAX_DETAIL 10
+#define DETAIL_COLS 68
+
 static struct fb_var_screeninfo vi;
 static struct fb_fix_screeninfo fi;
 static unsigned char *fbmem;
@@ -106,6 +124,9 @@ static int gw, gh, gstride, gcount;
 
 static struct line lines[MAX_LINES];
 static int nlines;
+static char detail[MAX_DETAIL][DETAIL_COLS + 1];
+static int ndetail;
+static int failed;
 static int total_steps, done_steps;
 /*
  * The total is additive and each boot phase reports its own share late, so
@@ -491,7 +512,7 @@ static void compose(int tick)
 	draw_text((fbw - text_width(sub, body_scale, 0)) / 2, sub_y,
 		  sub, body_scale, 0, C_TEXT);
 
-	const char *tag = "musl . toybox . cosmic . no systemd";
+	const char *tag = "musl . toybox . wlroots . no systemd";
 	draw_text((fbw - text_width(tag, body_scale, 0)) / 2, tag_y,
 		  tag, body_scale, 0, C_DIM);
 
@@ -534,6 +555,30 @@ static void compose(int tick)
 			if (cursor_on)
 				fill(sx + gw * body_scale * 2, y,
 				     gw * body_scale, gh * body_scale, C_PHOS);
+		}
+	}
+
+	/*
+	 * The failure panel. Drawn under the stage list, in alarm on the
+	 * dimmest surface, at HALF the body scale — the point is to fit real
+	 * log text on screen, and a boot log line is wider than a stage name.
+	 *
+	 * The stage list scrolls; this does not. Once something has failed the
+	 * reason stays up for the rest of the boot, because the user's next
+	 * move is to photograph it.
+	 */
+	if (failed && ndetail) {
+		int ds = body_scale > 1 ? body_scale - 1 : 1;
+		int dy = body_y + (nlines - first) * body_step + body_step;
+		int lh = gh * ds + ds;
+
+		draw_text(body_x, dy, "WHY:", ds, 0, C_ALARM);
+		dy += lh;
+		for (int i = 0; i < ndetail; i++, dy += lh) {
+			if (dy + lh > fbh)
+				break;	/* never scribble past the panel */
+			draw_text(body_x + gw * ds * 2, dy, detail[i], ds, 0,
+				  C_DIM);
 		}
 	}
 }
@@ -758,6 +803,19 @@ static int handle(const char *cmd)
 	case 'M': add_line(cmd + 1, ST_PLAIN); break;
 	case 'O': close_line(ST_OK); break;
 	case 'F': close_line(ST_FAIL); break;
+	case 'D':
+		/* Detail lines accumulate; the newest MAX_DETAIL are kept, so
+		 * a script that fails after pages of output still shows the
+		 * end, which is where the error is. */
+		if (ndetail == MAX_DETAIL) {
+			memmove(detail[0], detail[1],
+				sizeof(detail) - sizeof(detail[0]));
+			ndetail--;
+		}
+		snprintf(detail[ndetail], sizeof(detail[0]), "%s", cmd + 1);
+		ndetail++;
+		failed = 1;
+		break;
 	case 'T': total_steps += atoi(cmd + 1); break;
 	case 'Q': finishing = 1; return 1;
 	default: break;
@@ -934,6 +992,30 @@ static int preview(const char *geom, const char *at, const char *out)
 	add_line("SWITCHING ROOT", ST_OK);
 	add_line("DEVICE MANAGER", ST_OK);
 	done_steps = 5;
+
+	/*
+	 * The fixture carries a FAILURE, because the failure panel is the part
+	 * of this screen nobody can see without one — and a panel that has
+	 * never been looked at is a panel with a geometry bug in it. Same
+	 * reason kdosbuild's preview fixture uses a nine-digit file count and
+	 * a port name longer than any pane.
+	 *
+	 * The detail lines are deliberately at and over DETAIL_COLS: real log
+	 * output does not respect a column budget.
+	 */
+	add_line("NETWORK MANAGER", ST_FAIL);
+	done_steps++;
+	failed = 1;
+	static const char *FIX[] = {
+		"[KDOS] Starting NetworkManager...",
+		"<info>  NetworkManager (version 1.56.0) is starting...",
+		"<error> [1765.4] bus-manager: could not get the system bus: "
+		"Could not connect: No such file or directory",
+		"<error> [1765.4] Failed to initialize: no D-Bus connection",
+	};
+	for (size_t i = 0; i < sizeof(FIX) / sizeof(FIX[0]); i++)
+		snprintf(detail[ndetail++], sizeof(detail[0]), "%s", FIX[i]);
+
 	add_line("STARTING NETWORK", ST_PENDING);
 
 	double vopen = 1.0, flash = 0.0, gain = 1.0;
@@ -1031,9 +1113,12 @@ int main(int argc, char **argv)
 		return say("O%s\n", NULL, 0);
 	if (!strcmp(cmd, "fail"))
 		return say("F%s\n", NULL, 0);
+	if (!strcmp(cmd, "detail"))
+		return say("D%s\n", arg, 0);
 	if (!strcmp(cmd, "quit"))
 		return say("Q%s\n", NULL, 1);
 
-	fprintf(stderr, "usage: kdos-splash {run|step TEXT|msg TEXT|ok|fail|total N|quit}\n");
+	fprintf(stderr, "usage: kdos-splash {run|step TEXT|msg TEXT|ok|fail|detail TEXT|\n"
+		"                    total N|quit}\n");
 	return 1;
 }

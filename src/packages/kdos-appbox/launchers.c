@@ -23,7 +23,7 @@
  *   etc/skel/.local/share/applications/<upstream-id>.desktop
  *       the launcher, keeping UPSTREAM's own desktop-file id — not
  *       kdos-<name>, and not StartupWMClass either. Measured in a booted VM:
- *       cosmic-app-list matches a running toplevel to a desktop entry by the
+ *       kdos-shell matches a running toplevel to a desktop entry by the
  *       entry's FILE ID and ignores StartupWMClass, and a Wayland app_id is
  *       NOT the X11 WM_CLASS — GIMP's entry says StartupWMClass=gimp-3.0 but
  *       its toplevel announces app_id "gimp" (confirmed with WAYLAND_DEBUG=1),
@@ -55,7 +55,7 @@
 
 /*
  * Shim names that must never be created in /usr/local/bin. The host userland
- * is musl + toybox + COSMIC and currently collides with none of the Debian app
+ * is musl + toybox + wlroots and currently collides with none of the Debian app
  * names, but the app set moves; a shim shadowing a host tool would be a very
  * confusing bug.
  */

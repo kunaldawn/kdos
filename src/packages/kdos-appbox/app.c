@@ -296,7 +296,7 @@ int app_refresh(const char *box)
 		if (!de_get(text, "StartupWMClass", wmclass, sizeof(wmclass)))
 			snprintf(wmclass, sizeof(wmclass), "%s", base);
 
-		/* Keeps upstream's id: cosmic-app-list matches a toplevel to an
+		/* Keeps upstream's id: kdos-shell matches a toplevel to an
 		 * entry by FILE ID and ignores StartupWMClass, so anything else
 		 * leaves every running alien app showing a generic placeholder. */
 		dst = kb_calloc(1, MAX_LINE);

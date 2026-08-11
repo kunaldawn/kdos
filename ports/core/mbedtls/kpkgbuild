@@ -12,6 +12,7 @@ name        = mbedtls
 version     = 4.0.0
 release     = 1
 source      = https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-$version/mbedtls-$version.tar.bz2
+sha256      = 2f3a47f7b3a541ddef450e4867eeecb7ce2ef7776093f3a11d6d43ead6bf2827  mbedtls-4.0.0.tar.bz2
 description = Cryptographic library for embedded systems
 homepage    = https://tls.mbed.org/
 depends     = cmake ninja python3

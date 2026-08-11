@@ -12,4 +12,5 @@ name        = diffutils
 version     = 3.12
 release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
+sha256      = 7c8b7f9fc8609141fdea9cece85249d308624391ff61dedaf528fcb337727dfd  diffutils-3.12.tar.xz
 description = Utility programs for comparing files

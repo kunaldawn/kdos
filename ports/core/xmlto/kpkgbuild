@@ -12,5 +12,6 @@ name        = xmlto
 version     = 0.0.29
 release     = 1
 source      = https://releases.pagure.org/xmlto/$name-$version.tar.bz2
+sha256      = 6000d8e8f0f9040426c4f85d7ad86789bc88d4aeaef585c4d4110adb0b214f21  xmlto-0.0.29.tar.bz2
 description = Front-end to an XSL toolchain
 depends     = libxslt docbook-xsl
