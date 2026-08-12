@@ -64,21 +64,21 @@ char *kdt_cfg_home(const char *rest)
 	return p;
 }
 
-static char *cache_home(const char *rest)
+char *kdt_data_home(const char *rest)
 {
-	const char *x = getenv("XDG_CACHE_HOME");
+	const char *x = getenv("XDG_DATA_HOME");
 	char *base = (x && *x) ? kb_strdup(x)
-			       : kb_path_join(kb_home_dir(), ".cache");
+			       : kb_path_join(kb_home_dir(), ".local/share");
 	char *p = kb_path_join(base, rest);
 	free(base);
 	return p;
 }
 
-static char *data_home(const char *rest)
+static char *cache_home(const char *rest)
 {
-	const char *x = getenv("XDG_DATA_HOME");
+	const char *x = getenv("XDG_CACHE_HOME");
 	char *base = (x && *x) ? kb_strdup(x)
-			       : kb_path_join(kb_home_dir(), ".local/share");
+			       : kb_path_join(kb_home_dir(), ".cache");
 	char *p = kb_path_join(base, rest);
 	free(base);
 	return p;
@@ -449,6 +449,367 @@ static void write_btop(const KcolScheme *sc)
 	free(f);
 }
 
+/*
+ * KDE, which is the OTHER half of theming Qt.
+ *
+ * A KDE app reads its palette from ~/.config/kdeglobals, and the appbox shares
+ * $HOME — so writing that file here is the whole bridge. No portal, no daemon,
+ * no D-Bus: the same trick that already themes GTK apps through ~/.themes.
+ *
+ * Two files, answering different questions. `kdeglobals` is the palette in
+ * FORCE; `~/.local/share/color-schemes/KDOS.colors` is the palette OFFERED,
+ * which is what puts KDOS in a KDE app's own colour picker and what lets a user
+ * come back to it after trying another.
+ *
+ * Colours are decimal `R,G,B` triples — that is KColorScheme's format, and a
+ * hex string in these files reads as black.
+ *
+ * The selection background is `pdark`, never `primary`, for the same reason the
+ * GTK generator uses it: a full-intensity #39ff14 fill under text is an
+ * unreadable neon block.
+ *
+ * **kdeglobals is MERGED, not overwritten.** KDE apps write their own settings
+ * into it — dolphin's view modes, kate's session state — and clobbering the file
+ * on every `kdos theme` would throw those away every time an accent changed.
+ * Only what this generator owns is replaced: the [Colors:*] and [WM] sections
+ * outright, and four named keys elsewhere. Everything else in the file survives
+ * verbatim, in its original order.
+ */
+
+#define KDE_MAX_KV 128
+
+/* Leading and trailing blanks, in place. */
+static char *kde_trim(char *s)
+{
+	while (*s == ' ' || *s == '\t')
+		s++;
+	char *e = s + strlen(s);
+	while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r'))
+		*--e = 0;
+	return s;
+}
+
+typedef struct {
+	const char *sec;
+	char key[32];
+	char val[24];
+} KdeKV;
+
+static void kde_add(KdeKV *kv, int *n, const char *sec, const char *key,
+		    uint32_t rgb)
+{
+	if (*n >= KDE_MAX_KV)
+		return;
+	KcolRgb v = kcol_rgb(rgb);
+	kv[*n].sec = sec;
+	snprintf(kv[*n].key, sizeof(kv[*n].key), "%s", key);
+	snprintf(kv[*n].val, sizeof(kv[*n].val), "%u,%u,%u", v.r, v.g, v.b);
+	(*n)++;
+}
+
+static void kde_add_str(KdeKV *kv, int *n, const char *sec, const char *key,
+			const char *val)
+{
+	if (*n >= KDE_MAX_KV)
+		return;
+	kv[*n].sec = sec;
+	snprintf(kv[*n].key, sizeof(kv[*n].key), "%s", key);
+	snprintf(kv[*n].val, sizeof(kv[*n].val), "%s", val);
+	(*n)++;
+}
+
+/* The palette, as KColorScheme wants to read it. */
+static int kde_palette(KdeKV *kv, const KcolScheme *sc)
+{
+	static const char *const SECS[] = {
+		"Colors:View", "Colors:Window", "Colors:Button",
+		"Colors:Selection", "Colors:Tooltip", "Colors:Complementary",
+		"Colors:Header",
+	};
+	uint32_t view = sc->variant;
+	uint32_t alt = kcol_mix(sc->variant, sc->text, 5);
+	uint32_t btn = kcol_mix(sc->deep, sc->text, 9);
+	uint32_t btnalt = kcol_mix(sc->deep, sc->text, 11);
+	uint32_t hdr = kcol_mix(sc->deep, sc->text, 7);
+	uint32_t tip = kcol_mix(sc->deep, sc->text, 13);
+	uint32_t inact = kcol_mix(sc->text, sc->variant, 55);
+	int n = 0;
+
+	for (size_t i = 0; i < sizeof(SECS) / sizeof(SECS[0]); i++) {
+		const char *s = SECS[i];
+		uint32_t bg = view, bga = alt, fg = sc->text;
+
+		if (!strcmp(s, "Colors:Window")) {
+			bg = sc->deep;
+			bga = view;
+		} else if (!strcmp(s, "Colors:Button")) {
+			bg = btn;
+			bga = btnalt;
+		} else if (!strcmp(s, "Colors:Selection")) {
+			bg = bga = sc->pdark;
+		} else if (!strcmp(s, "Colors:Tooltip")) {
+			bg = bga = tip;
+		} else if (!strcmp(s, "Colors:Complementary") ||
+			   !strcmp(s, "Colors:Header")) {
+			bg = bga = hdr;
+		}
+
+		kde_add(kv, &n, s, "BackgroundNormal", bg);
+		kde_add(kv, &n, s, "BackgroundAlternate", bga);
+		kde_add(kv, &n, s, "DecorationFocus", sc->primary);
+		kde_add(kv, &n, s, "DecorationHover", sc->pdark);
+		kde_add(kv, &n, s, "ForegroundNormal", fg);
+		kde_add(kv, &n, s, "ForegroundInactive", inact);
+		kde_add(kv, &n, s, "ForegroundActive", sc->primary);
+		kde_add(kv, &n, s, "ForegroundLink", sc->primary);
+		kde_add(kv, &n, s, "ForegroundVisited", sc->pdark);
+		kde_add(kv, &n, s, "ForegroundNegative", sc->urgent);
+		kde_add(kv, &n, s, "ForegroundNeutral", sc->secondary);
+		kde_add(kv, &n, s, "ForegroundPositive", sc->primary);
+	}
+
+	kde_add(kv, &n, "WM", "activeBackground", hdr);
+	kde_add(kv, &n, "WM", "activeForeground", sc->text);
+	kde_add(kv, &n, "WM", "activeBlend", sc->primary);
+	kde_add(kv, &n, "WM", "inactiveBackground", sc->deep);
+	kde_add(kv, &n, "WM", "inactiveForeground", inact);
+	kde_add(kv, &n, "WM", "inactiveBlend", inact);
+
+	kde_add_str(kv, &n, "General", "ColorScheme", "KDOS");
+	kde_add_str(kv, &n, "General", "Name", "KDOS");
+	kde_add_str(kv, &n, "KDE", "widgetStyle", "Breeze");
+	kde_add_str(kv, &n, "Icons", "Theme", "KDOS");
+	return n;
+}
+
+/* What this generator owns: whole sections, and named keys in shared ones. */
+static int kde_owns_section(const char *sec)
+{
+	return !strncmp(sec, "Colors:", 7) || !strcmp(sec, "WM");
+}
+
+static int kde_owns_key(const char *sec, const char *key)
+{
+	if (!strcmp(sec, "General"))
+		return !strcmp(key, "ColorScheme") || !strcmp(key, "Name");
+	if (!strcmp(sec, "KDE"))
+		return !strcmp(key, "widgetStyle");
+	if (!strcmp(sec, "Icons"))
+		return !strcmp(key, "Theme");
+	return 0;
+}
+
+static void kde_emit_section(KbBuf *b, const KdeKV *kv, int n, const char *sec)
+{
+	for (int i = 0; i < n; i++)
+		if (!strcmp(kv[i].sec, sec))
+			kb_buf_printf(b, "%s=%s\n", kv[i].key, kv[i].val);
+}
+
+
+/*
+ * Merge our keys into an existing kdeglobals.
+ *
+ * The file is NORMALISED rather than patched in place: sections in their
+ * original order, foreign keys first, ours after, one blank line between. That
+ * is what makes the result IDEMPOTENT — a patch-in-place version of this kept
+ * moving [KDE] and re-emitting its own header comment, so `kdos theme` twice in
+ * a row produced two different files and `--audit` had a permanent complaint.
+ *
+ * Blank lines and comments are dropped, which costs nothing: KConfig writes
+ * neither, and every line this file cares about is `key=value`.
+ */
+
+/* The section a line belongs to, or "" for the lines before the first header. */
+static void kde_line_section(const char *line, char *sec, size_t n)
+{
+	const char *end = strchr(line + 1, ']');
+	size_t l = end ? (size_t)(end - line - 1) : strlen(line + 1);
+	if (l >= n)
+		l = n - 1;
+	memcpy(sec, line + 1, l);
+	sec[l] = 0;
+}
+
+/* Walk `old` line by line; `fn` is called with (section, trimmed line). */
+typedef void (*kde_line_fn)(const char *sec, const char *line, void *user);
+
+static void kde_walk(const char *old, kde_line_fn fn, void *user)
+{
+	char sec[64] = "";
+	const char *p = old;
+
+	while (p && *p) {
+		const char *nl = strchr(p, '\n');
+		size_t len = nl ? (size_t)(nl - p) : strlen(p);
+		char line[512];
+
+		if (len >= sizeof(line))
+			len = sizeof(line) - 1;
+		memcpy(line, p, len);
+		line[len] = 0;
+		p = nl ? nl + 1 : NULL;
+
+		char *t = kde_trim(line);
+		if (!*t || *t == '#')
+			continue;
+		if (*t == '[') {
+			kde_line_section(t, sec, sizeof(sec));
+			fn(sec, NULL, user);
+			continue;
+		}
+		fn(sec, t, user);
+	}
+}
+
+struct kde_secs {
+	char name[64][64];
+	int n;
+};
+
+static void kde_collect(const char *sec, const char *line, void *user)
+{
+	struct kde_secs *s = user;
+	(void)line;
+	if (kde_owns_section(sec))
+		return;
+	for (int i = 0; i < s->n; i++)
+		if (!strcmp(s->name[i], sec))
+			return;
+	if (s->n < 64)
+		snprintf(s->name[s->n++], 64, "%s", sec);
+}
+
+struct kde_emit {
+	KbBuf *out;
+	const char *want;
+	int wrote;
+};
+
+static void kde_emit_foreign(const char *sec, const char *line, void *user)
+{
+	struct kde_emit *e = user;
+	if (!line || strcmp(sec, e->want))
+		return;
+	/* Nothing in a section we own survives — not even a key we do not
+	 * generate. Leaving the old [Colors:Window] keys in place is what made
+	 * this file grow by one stale colour on every run. */
+	if (kde_owns_section(sec))
+		return;
+	char key[64];
+	const char *eq = strchr(line, '=');
+	size_t kl = eq ? (size_t)(eq - line) : strlen(line);
+	if (kl >= sizeof(key))
+		kl = sizeof(key) - 1;
+	memcpy(key, line, kl);
+	key[kl] = 0;
+	kde_trim(key);
+	if (kde_owns_key(sec, key))
+		return;
+	kb_buf_printf(e->out, "%s\n", line);
+	e->wrote = 1;
+}
+
+static void kde_merge(KbBuf *out, const char *old, const KdeKV *kv, int n)
+{
+	struct kde_secs secs = {0};
+	int done[64] = {0};
+
+	kde_walk(old, kde_collect, &secs);
+
+	/*
+	 * Two passes, and the split is what makes the result stable.
+	 *
+	 * A section that still carries something of the USER'S keeps its place
+	 * in the file. A section that would contain only our keys goes at the
+	 * end in generator order — wherever it happened to sit before. Emitting
+	 * both in file order instead moved [KDE] and [Icons] up on the second
+	 * run and down on the first, so `kdos theme` twice in a row produced two
+	 * different files.
+	 */
+	for (int i = 0; i < secs.n; i++) {
+		const char *sec = secs.name[i];
+		KbBuf foreign = {0};
+		struct kde_emit e = { &foreign, sec, 0 };
+
+		if (!*sec)
+			continue;	/* stray keys before any header */
+		kde_walk(old, kde_emit_foreign, &e);
+		if (!e.wrote) {
+			kb_buf_free(&foreign);
+			continue;
+		}
+		kb_buf_printf(out, "[%s]\n", sec);
+		kb_buf_printf(out, "%.*s", (int)foreign.n, foreign.p);
+		kde_emit_section(out, kv, n, sec);
+		kb_buf_printf(out, "\n");
+		kb_buf_free(&foreign);
+		done[i] = 1;
+	}
+
+	for (int i = 0; i < n; i++) {
+		int already = 0;
+		for (int j = 0; j < secs.n; j++)
+			if (!strcmp(secs.name[j], kv[i].sec) && done[j])
+				already = 1;
+		for (int j = 0; j < i; j++)
+			if (!strcmp(kv[j].sec, kv[i].sec))
+				already = 1;
+		if (already)
+			continue;
+		kb_buf_printf(out, "[%s]\n", kv[i].sec);
+		kde_emit_section(out, kv, n, kv[i].sec);
+		kb_buf_printf(out, "\n");
+	}
+}
+
+static void write_kde(const KcolScheme *sc)
+{
+	KdeKV kv[KDE_MAX_KV];
+	int n = kde_palette(kv, sc);
+	char *colors = kdt_data_home("color-schemes/KDOS.colors");
+	char *globals = kdt_cfg_home("kdeglobals");
+	KbBuf b = {0};
+
+	/* The offered scheme: ours alone, so it is written whole. */
+	kb_buf_printf(&b,
+		"# KDOS colour scheme — GENERATED by `kdos theme`; edits will "
+		"be overwritten.\n");
+	{
+		char last[64] = "";
+		for (int i = 0; i < n; i++) {
+			if (!strcmp(kv[i].sec, "Icons") ||
+			    !strcmp(kv[i].sec, "KDE"))
+				continue;	/* not part of a colour scheme */
+			if (strcmp(last, kv[i].sec)) {
+				kb_buf_printf(&b, "\n[%s]\n", kv[i].sec);
+				snprintf(last, sizeof(last), "%s", kv[i].sec);
+			}
+			kb_buf_printf(&b, "%s=%s\n", kv[i].key, kv[i].val);
+		}
+	}
+	mkparent(colors);
+	kb_write_all(colors, b.p, b.n);
+	kb_buf_free(&b);
+
+	/* The applied palette: merged, because KDE apps write here too. */
+	size_t len = 0;
+	char *old = kb_read_all(globals, &len);
+	kb_buf_printf(&b,
+		"# KDOS: the [Colors:*] and [WM] sections and the four keys "
+		"below them are\n"
+		"# GENERATED by `kdos theme`. Everything else in this file is "
+		"yours and is kept.\n");
+	kde_merge(&b, old ? old : "", kv, n);
+	free(old);
+	mkparent(globals);
+	kb_write_all(globals, b.p, b.n);
+	kb_buf_free(&b);
+
+	free(colors);
+	free(globals);
+}
+
 /* Everything between the two markers is replaced wholesale. A file with no
  * markers is left exactly as it is. */
 static void write_starship(const KcolScheme *sc)
@@ -540,6 +901,7 @@ static void theme_apply(const KcolScheme *sc)
 	write_gtk(sc);
 	write_icons(sc);
 	write_cursors(sc);
+	write_kde(sc);
 	write_foot(sc);
 	write_btop(sc);
 	write_starship(sc);
@@ -705,6 +1067,31 @@ static int cmd_help(int argc, char **argv)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/* Is this process up? Defined with doctor's other probes below; declared here
+ * because `kdos status` names the compositor and asks the same question. */
+static int running(const char *exact, const char *contains);
+
+/* Non-empty, non-comment lines. The alien-apps table is one line per app. */
+static int count_lines(const char *path)
+{
+	size_t len = 0;
+	char *data = kb_read_all(path, &len);
+	int n = 0;
+
+	if (!data)
+		return 0;
+	for (char *p = data; *p;) {
+		char *nl = strchr(p, '\n');
+		if (*p != '\n' && *p != '#')
+			n++;
+		if (!nl)
+			break;
+		p = nl + 1;
+	}
+	free(data);
+	return n;
+}
+
 static int count_dir(const char *path, const char *suffix)
 {
 	int n = 0, total = 0;
@@ -744,7 +1131,7 @@ static int count_containers(void)
 
 static int cmd_status(int argc, char **argv)
 {
-	char *apps = data_home("applications");
+	char *apps = kdt_data_home("applications");
 
 	if (argc > 0 && !strcmp(argv[0], "--bar")) {
 		printf("%d box · %d app\n", count_containers(),
@@ -762,8 +1149,18 @@ static int cmd_status(int argc, char **argv)
 	       count_dir("/var/lib/kpkg/db", NULL));
 	printf("%s%-16s%s %d\n", C_B, "Exported apps", C_0,
 	       count_dir(apps, ".desktop"));
+	/* The alien apps are a baked table, so this is a file read rather than a
+	 * podman call — and it answers on a machine where the box has never been
+	 * created, which is every machine before the first launch. */
+	printf("%s%-16s%s %d\n", C_B, "Alien apps", C_0,
+	       count_lines("/usr/share/kdos/alien-apps"));
+	/* Naming the compositor rather than saying "wayland": on KDOS the
+	 * answer is normally kdos-comp, and "wayland" would hide the case where
+	 * the session is something else entirely. */
 	printf("%s%-16s%s %s\n", C_B, "Session", C_0,
-	       getenv("WAYLAND_DISPLAY") ? "wayland" : "tty");
+	       !getenv("WAYLAND_DISPLAY") ? "tty"
+	       : running("kdos-comp", NULL) ? "kdos-comp"
+					  : "wayland (not kdos-comp)");
 	putchar('\n');
 
 	printf("%sCONTAINERS%s\n", C_A, C_0);
@@ -941,8 +1338,18 @@ static int cmd_doctor(int argc, char **argv)
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--json"))
 			doctor_json = 1;
-		else {
-			fprintf(stderr, "usage: kdos doctor [--json]\n");
+		else if (!strcmp(argv[i], "--cve")) {
+			/*
+			 * Delegated rather than inlined. The CVE answer is a
+			 * table of findings with its own exit code and its own
+			 * vintage to quote, and folding it into doctor's
+			 * ok/warn lines would flatten "17 packages are behind a
+			 * recorded fix" into one warning that says nothing.
+			 */
+			int rest = argc - i - 1;
+			return kdt_cve(rest, argv + i + 1, C_A, C_W, C_0);
+		} else {
+			fprintf(stderr, "usage: kdos doctor [--json] [--cve]\n");
 			return 2;
 		}
 	}
@@ -1044,6 +1451,25 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("foot theme missing — run: kdos theme phosphor");
 	free(ft);
 
+	/*
+	 * The KDE bridge is one file in the shared home: a boxed dolphin with no
+	 * kdeglobals is a grey dolphin, and that looks like a broken image
+	 * rather than a missing config. Checked by CONTENT, because a kdeglobals
+	 * written by a KDE app itself exists and says nothing about our palette.
+	 */
+	char *kg = kdt_cfg_home("kdeglobals");
+	char *kgd = kb_read_all(kg, NULL);
+	if (kgd && strstr(kgd, "ColorScheme=KDOS"))
+		ok("boxed KDE apps read the KDOS palette (kdeglobals)");
+	else if (kgd)
+		warn_("kdeglobals is not wearing the KDOS scheme — run: "
+		      "kdos theme %s", current_theme());
+	else
+		warn_("no kdeglobals — KDE apps in the box will be grey (run: "
+		      "kdos theme %s)", current_theme());
+	free(kgd);
+	free(kg);
+
 	const char *disp = getenv("DISPLAY");
 	if (disp && *disp)
 		ok("Xwayland on %s", disp);
@@ -1088,6 +1514,24 @@ static int cmd_doctor(int argc, char **argv)
 			      "compositor?)");
 		free(fs);
 	}
+
+	/*
+	 * The screen-capture portal, which is two files and one naming rule.
+	 * xdg-desktop-portal picks a backend by reading <desktop>-portals.conf
+	 * with XDG_CURRENT_DESKTOP lowercased, and wlr.portal's own UseIn= list
+	 * has never heard of KDOS — so without that file ScreenCast comes back
+	 * with no backend and the app says "no capture sources available",
+	 * which sounds like a driver problem and is not.
+	 */
+	if (!kb_path_exists("/usr/lib/xdg-desktop-portal-wlr"))
+		warn_("xdg-desktop-portal-wlr missing — no screen sharing and "
+		      "no screenshot portal for boxed apps");
+	else if (kb_path_exists("/usr/share/xdg-desktop-portal/kdos-portals.conf"))
+		ok("screen-capture portal installed and selected for KDOS");
+	else
+		warn_("kdos-portals.conf missing — the portal is installed but "
+		      "nothing selects it, so ScreenCast will report no "
+		      "backend");
 
 	const char *path = getenv("PATH");
 	char *want = kb_path_join(kb_home_dir(), ".local/bin");
@@ -1149,6 +1593,8 @@ int kdos_main(int argc, char **argv)
 		return restarts_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "stutter"))
 		return stutter_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "cve"))
+		return kdt_cve(rest, restv, C_A, C_W, C_0);
 	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
 		return cmd_version();
 	if (!strcmp(cmd, "app")) {

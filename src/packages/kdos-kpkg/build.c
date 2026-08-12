@@ -276,6 +276,73 @@ static int run_build(const KpConf *c, const KpDecl *d, const Recipe *r,
 	return rc;
 }
 
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Rolling the package, reproducibly.
+ *
+ * A package built twice from the same tree must be BYTE-IDENTICAL, and that is
+ * a property of this one function rather than of 396 recipes — which is the
+ * whole reason kpkg rolls its own archive instead of letting each build.sh do
+ * it. Everything below is a source of nondeterminism that was in the plain
+ * `tar -cJf` this replaced:
+ *
+ *   --sort=name        readdir order is filesystem order, and it is not stable
+ *                      across machines or even across a copy of the same tree
+ *   --mtime            every file carries the second it was installed
+ *   --owner/--group    the builder's uid, and its NAME as text in the header
+ *   --numeric-owner    ... and the name lookup that would otherwise happen
+ *   --format=gnu       pax headers carry atime and ctime, which are wall clock;
+ *                      ustar cannot hold a path over 255 bytes and some ports
+ *                      have them, so gnu is the only format that is both
+ *                      deterministic and sufficient
+ *   XZ_OPT             xz is single-threaded by default and deterministic, but
+ *                      -T0 in the environment silently changes the output, so
+ *                      the compressor is pinned rather than inherited
+ *
+ * SOURCE_DATE_EPOCH is honoured when set (the phase env files set it) and 0
+ * otherwise — either way the answer does not depend on when the build ran.
+ */
+static long long source_date_epoch(void)
+{
+	const char *s = getenv("SOURCE_DATE_EPOCH");
+	char *end = NULL;
+	long long v;
+
+	if (!s || !*s)
+		return 0;
+	v = strtoll(s, &end, 10);
+	if (end == s || v < 0)
+		return 0;
+	return v;
+}
+
+static int roll_package(const char *pkg, const char *out)
+{
+	char mtime[64];
+	snprintf(mtime, sizeof(mtime), "--mtime=@%lld", source_date_epoch());
+
+	/* The compressor, pinned: -9 for the size the ISO cares about, -T1 so a
+	 * builder with XZ_OPT=-T0 in their environment cannot change the bytes.
+	 * tar splits this on spaces itself; there is no shell involved. */
+	KbArgv t = {0};
+	kb_argv_add(&t, "tar");
+	kb_argv_add(&t, "--sort=name");
+	kb_argv_add(&t, "--format=gnu");
+	kb_argv_add(&t, "--numeric-owner");
+	kb_argv_add(&t, "--owner=0");
+	kb_argv_add(&t, "--group=0");
+	kb_argv_add(&t, mtime);
+	kb_argv_add(&t, "--use-compress-program=xz -9 -T1");
+	kb_argv_add(&t, "-cf");
+	kb_argv_add(&t, out);
+	kb_argv_add(&t, "-C");
+	kb_argv_add(&t, pkg);
+	kb_argv_add(&t, ".");
+	kb_argv_end(&t);
+	return kb_run_tty(&t);
+}
+
 /*
  * `.POSTINSTALL` is a standalone bash script: a shebang, the metadata the hook
  * may read, then `postinstall.sh` verbatim. It is packaged at the root of the
@@ -379,6 +446,14 @@ int build_main(int argc, char **argv)
 		return 1;
 	}
 
+	/*
+	 * The umask is part of the package. A file `make install` creates
+	 * without an explicit mode takes it, so a builder running with 002 or
+	 * 077 produces a package whose modes differ from everyone else's — the
+	 * one source of nondeterminism that is not in the tar invocation.
+	 */
+	umask(022);
+
 	char *src_root = kb_path_join(c.work_dir, r.name);
 	char verdir[512];
 	snprintf(verdir, sizeof(verdir), "%s-%s", r.name, r.version);
@@ -420,15 +495,7 @@ int build_main(int argc, char **argv)
 		 r.release);
 	char *out = kb_path_join(c.package_dir, pkgname);
 
-	KbArgv t = {0};
-	kb_argv_add(&t, "tar");
-	kb_argv_add(&t, "-cJf");
-	kb_argv_add(&t, out);
-	kb_argv_add(&t, "-C");
-	kb_argv_add(&t, pkg);
-	kb_argv_add(&t, ".");
-	kb_argv_end(&t);
-	if (kb_run_tty(&t) != 0) {
+	if (roll_package(pkg, out) != 0) {
 		kp_err("Failed to create %s", out);
 		return 1;
 	}

@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "kdos-kpkg.h"
 
@@ -53,6 +54,17 @@ static void usage(void)
 	       "                     assignments, for ports/fetch to eval\n"
 	       "  verify <pkg>       Build with kpkgbuild and kpkgbuild.new,\n"
 	       "                     then compare the two packages\n"
+	       "  verify --repro <pkg>  Build the SAME recipe twice; the two\n"
+	       "                     packages must be byte-identical\n"
+	       "  keygen <name>      Make an Ed25519 signing key pair\n"
+	       "  index <dir>        Write PACKAGES for a directory of packages\n"
+	       "                     (--sign <key> signs it and every package)\n"
+	       "  verify-index <dir> Check PACKAGES against the trusted keys\n"
+	       "  verify-pkg <file>  Check <file>.sig against the trusted keys\n"
+	       "  delta <old> <new>  Write the difference between two packages\n"
+	       "  apply-delta <old> <delta> -o <new>  Rebuild a package from one\n"
+	       "  binhost <dir> <p>  Install the prebuilt package, if arch, build\n"
+	       "                     config and recipe hash all match this machine\n"
 	       "  help               Show this help message\n"
 	       "\n"
 	       "Examples:\n"
@@ -306,19 +318,121 @@ static char *find_package(const KpConf *c, const char *name)
 	return found;
 }
 
-static char *manifest_of(const char *pkgfile)
+/*
+ * A package's FINGERPRINT: one line per member, `mode  sha256  path`, sorted.
+ *
+ * A file list answers "are the same files there" and stops. That caught the
+ * error it was built for — a missing or extra file — and it is silent about the
+ * one that matters more once recipes start changing: the same paths with
+ * different CONTENT. Hashing means the answer covers the payload, the modes and
+ * the symlink targets, which together are everything an installed package is.
+ *
+ * The archive is unpacked to compare it. Streaming each member out of tar
+ * separately would be one process per file, and a package like zig has 20 000.
+ */
+static void fingerprint_walk(const char *root, const char *rel, KbBuf *out)
 {
-	KbBuf out = {0};
+	char *dir = *rel ? kb_path_join(root, rel) : kb_strdup(root);
+	char **names = kb_listdir(dir, NULL);
+
+	/* kb_listdir returns readdir order, which is not sorted and not stable;
+	 * the fingerprint is a comparison key, so it has to be. */
+	for (char **a = names; a && *a; a++)
+		for (char **b = a + 1; *b; b++)
+			if (strcmp(*a, *b) > 0) {
+				char *t = *a;
+				*a = *b;
+				*b = t;
+			}
+
+	for (char **n = names; n && *n; n++) {
+		char sub[1024];
+		snprintf(sub, sizeof(sub), "%s%s%s", rel, *rel ? "/" : "", *n);
+		char *path = kb_path_join(dir, *n);
+		struct stat st;
+
+		if (lstat(path, &st) != 0) {
+			free(path);
+			continue;
+		}
+		if (S_ISDIR(st.st_mode)) {
+			kb_buf_printf(out, "%04o  dir%54s  %s\n",
+				      st.st_mode & 07777, "", sub);
+			fingerprint_walk(root, sub, out);
+		} else if (S_ISLNK(st.st_mode)) {
+			char tgt[1024] = {0};
+			ssize_t k = readlink(path, tgt, sizeof(tgt) - 1);
+			if (k > 0)
+				tgt[k] = 0;
+			kb_buf_printf(out, "%04o  link -> %-49s  %s\n",
+				      st.st_mode & 07777, tgt, sub);
+		} else {
+			char hash[65] = "unreadable";
+			kb_sha256_file(path, hash);
+			kb_buf_printf(out, "%04o  %s  %s\n",
+				      st.st_mode & 07777, hash, sub);
+		}
+		free(path);
+	}
+	kb_strv_free(names);
+	free(dir);
+}
+
+static char *fingerprint_of(const char *pkgfile)
+{
+	char tmpl[] = "/tmp/kpkg-fp.XXXXXX";
+	if (!mkdtemp(tmpl))
+		return NULL;
+
 	KbArgv a = {0};
 	kb_argv_add(&a, "tar");
-	kb_argv_add(&a, "-tf");
+	kb_argv_add(&a, "-xf");
 	kb_argv_add(&a, pkgfile);
+	kb_argv_add(&a, "-C");
+	kb_argv_add(&a, tmpl);
 	kb_argv_end(&a);
-	if (kb_run_capture_buf(&a, &out) != 0) {
-		kb_buf_free(&out);
+	if (kb_run(&a) != 0) {
+		kb_rmtree(tmpl);
 		return NULL;
 	}
+
+	KbBuf out = {0};
+	fingerprint_walk(tmpl, "", &out);
+	kb_rmtree(tmpl);
 	return out.p ? out.p : kb_strdup("");
+}
+
+/* The first few lines that differ, which is what a person needs to see. */
+static void report_diff(const char *a, const char *b)
+{
+	const char *pa = a, *pb = b;
+	int shown = 0;
+
+	while ((pa || pb) && shown < 10) {
+		char la[1024] = "", lb[1024] = "";
+		const char *na = pa ? strchr(pa, '\n') : NULL;
+		const char *nb = pb ? strchr(pb, '\n') : NULL;
+		size_t ka = pa ? (na ? (size_t)(na - pa) : strlen(pa)) : 0;
+		size_t kb = pb ? (nb ? (size_t)(nb - pb) : strlen(pb)) : 0;
+
+		if (ka >= sizeof(la))
+			ka = sizeof(la) - 1;
+		if (kb >= sizeof(lb))
+			kb = sizeof(lb) - 1;
+		if (pa)
+			memcpy(la, pa, ka);
+		if (pb)
+			memcpy(lb, pb, kb);
+		if (strcmp(la, lb)) {
+			printf("  - %s\n  + %s\n", la[0] ? la : "(absent)",
+			       lb[0] ? lb : "(absent)");
+			shown++;
+		}
+		pa = na ? na + 1 : NULL;
+		pb = nb ? nb + 1 : NULL;
+		if (!pa && !pb)
+			break;
+	}
 }
 
 /* `kpkg meta` — the recipe's fields as shell assignments, single-quoted.
@@ -352,7 +466,58 @@ static int cmd_meta(const KpConf *c, const char *who)
 	return 0;
 }
 
-static int cmd_verify(const KpConf *c, const char *name)
+/*
+ * `kpkg verify [--repro] <port>`.
+ *
+ * Two questions, one machine:
+ *
+ *   default   build with `kpkgbuild` and with `kpkgbuild.new`, and ask whether
+ *             the recipe change altered the package
+ *   --repro   build the SAME recipe twice, and ask whether the package depends
+ *             on anything but the recipe — the clock, the filesystem's readdir
+ *             order, the builder's uid, the umask
+ *
+ * The second is the acceptance test for reproducible packages, and it is the
+ * same code path because it is the same comparison: two archives, one
+ * fingerprint each.
+ */
+static int build_and_keep(const KpConf *c, const char *portdir,
+			  const char *recipe, const char *name, int slot,
+			  char **out)
+{
+	char stage[512];
+
+	if (stage_recipe(portdir, recipe, stage, sizeof(stage)) != 0) {
+		kp_err("cannot stage %s", recipe);
+		return 1;
+	}
+	kp_msg("Building with %s...", recipe);
+	if (build_port(stage) != 0) {
+		kp_err("build with %s failed", recipe);
+		kb_rmtree(stage);
+		return 1;
+	}
+	kb_rmtree(stage);
+
+	char *built = find_package(c, name);
+	if (!built) {
+		kp_err("no package produced by %s", recipe);
+		return 1;
+	}
+	char keep[600];
+	snprintf(keep, sizeof(keep), "/tmp/kpkg-verify-%d.tar.xz", slot);
+	if (rename(built, keep) != 0 && kb_copy_file(built, keep) != 0) {
+		kp_err("cannot set aside %s", built);
+		free(built);
+		return 1;
+	}
+	unlink(built);
+	free(built);
+	*out = kb_strdup(keep);
+	return 0;
+}
+
+static int cmd_verify(const KpConf *c, const char *name, int repro)
 {
 	char *portdir = kp_port_dir(c, name);
 	if (!portdir) {
@@ -360,58 +525,57 @@ static int cmd_verify(const KpConf *c, const char *name)
 		return 1;
 	}
 
-	char *newp = kb_path_join(portdir, "kpkgbuild.new");
-	if (!kb_path_exists(newp)) {
-		kp_err("%s has no kpkgbuild.new to verify against", name);
+	const char *which[2] = { "kpkgbuild",
+				 repro ? "kpkgbuild" : "kpkgbuild.new" };
+	if (!repro) {
+		char *newp = kb_path_join(portdir, "kpkgbuild.new");
+		if (!kb_path_exists(newp)) {
+			kp_err("%s has no kpkgbuild.new to verify against",
+			       name);
+			free(newp);
+			free(portdir);
+			return 1;
+		}
 		free(newp);
-		free(portdir);
-		return 1;
 	}
-	free(newp);
 
 	char *pkg[2] = { NULL, NULL };
-	const char *which[2] = { "kpkgbuild", "kpkgbuild.new" };
+	for (int i = 0; i < 2; i++)
+		if (build_and_keep(c, portdir, which[i], name, i, &pkg[i]) != 0) {
+			free(pkg[0]);
+			free(portdir);
+			return 1;
+		}
 
-	for (int i = 0; i < 2; i++) {
-		char stage[512];
-		if (stage_recipe(portdir, which[i], stage, sizeof(stage)) != 0) {
-			kp_err("cannot stage %s", which[i]);
-			return 1;
-		}
-		kp_msg("Building with %s...", which[i]);
-		if (build_port(stage) != 0) {
-			kp_err("build with %s failed", which[i]);
-			kb_rmtree(stage);
-			return 1;
-		}
-		kb_rmtree(stage);
+	/*
+	 * Byte equality first, because for --repro that is the whole claim and
+	 * for a recipe change it is a stronger answer than any comparison of
+	 * contents: identical archives cannot differ in anything at all.
+	 */
+	char ha[65] = "", hb[65] = "";
+	int identical = kb_sha256_file(pkg[0], ha) == 0 &&
+			kb_sha256_file(pkg[1], hb) == 0 && !strcmp(ha, hb);
 
-		char *built = find_package(c, name);
-		if (!built) {
-			kp_err("no package produced by %s", which[i]);
-			return 1;
-		}
-		char keep[600];
-		snprintf(keep, sizeof(keep), "/tmp/kpkg-verify-%d.tar.xz", i);
-		if (rename(built, keep) != 0 && kb_copy_file(built, keep) != 0) {
-			kp_err("cannot set aside %s", built);
-			free(built);
-			return 1;
-		}
-		unlink(built);
-		free(built);
-		pkg[i] = kb_strdup(keep);
-	}
-
-	char *a = manifest_of(pkg[0]);
-	char *b = manifest_of(pkg[1]);
-	int same = a && b && !strcmp(a, b);
+	char *a = fingerprint_of(pkg[0]);
+	char *b = fingerprint_of(pkg[1]);
+	int same_payload = a && b && !strcmp(a, b);
 
 	printf("\n");
-	if (same) {
-		kp_msg("%s: the two recipes produce the same file list", name);
+	if (identical) {
+		kp_msg("%s: the two packages are BYTE-IDENTICAL (%.16s...)",
+		       name, ha);
+	} else if (same_payload) {
+		/* Every file the same, the archive not: the metadata around
+		 * them moved. That is a reproducibility bug in the tar
+		 * invocation, not in the recipe, and it is worth saying so
+		 * rather than reporting success. */
+		kp_err("%s: same payload, DIFFERENT archive — the packaging is "
+		       "not reproducible", name);
+		printf("  %s  %s\n  %s  %s\n", ha, pkg[0], hb, pkg[1]);
 	} else {
-		kp_err("%s: the file lists DIFFER", name);
+		kp_err("%s: the payloads DIFFER", name);
+		if (a && b)
+			report_diff(a, b);
 		printf("  old: %s\n  new: %s\n", pkg[0], pkg[1]);
 	}
 	free(a);
@@ -419,7 +583,7 @@ static int cmd_verify(const KpConf *c, const char *name)
 	free(pkg[0]);
 	free(pkg[1]);
 	free(portdir);
-	return same ? 0 : 1;
+	return identical ? 0 : same_payload && !repro ? 0 : 1;
 }
 
 /*
@@ -615,12 +779,35 @@ int front_main(int argc, char **argv)
 		return cmd_meta(&c, restv[0]);
 	}
 
+	if (!strcmp(cmd, "keygen"))
+		return kp_cmd_keygen(rest, restv);
+	if (!strcmp(cmd, "index"))
+		return kp_cmd_index(&c, rest, restv);
+	if (!strcmp(cmd, "delta"))
+		return kp_cmd_delta(rest, restv);
+	if (!strcmp(cmd, "apply-delta"))
+		return kp_cmd_apply_delta(rest, restv);
+	if (!strcmp(cmd, "verify-pkg"))
+		return kp_cmd_verify_pkg(rest, restv);
+	if (!strcmp(cmd, "verify-index"))
+		return kp_cmd_verify_index(rest, restv);
+	if (!strcmp(cmd, "binhost"))
+		return kp_cmd_binhost(&c, rest, restv);
+
 	if (!strcmp(cmd, "verify")) {
-		if (!rest) {
-			printf("Usage: kpkg verify <package>\n");
+		int repro = 0;
+		const char *who = NULL;
+		for (int i = 0; i < rest; i++) {
+			if (!strcmp(restv[i], "--repro"))
+				repro = 1;
+			else if (!who)
+				who = restv[i];
+		}
+		if (!who) {
+			printf("Usage: kpkg verify [--repro] <package>\n");
 			return 1;
 		}
-		return cmd_verify(&c, restv[0]);
+		return cmd_verify(&c, who, repro);
 	}
 
 	if (!strcmp(cmd, "info")) {

@@ -50,6 +50,7 @@ int stutter_main(int argc, char **argv);	/* kdos stutter             */
 /* $XDG_CONFIG_HOME/<rest>, falling back to ~/.config. Shared rather than
  * copied: two XDG helpers in one binary is how the two drift apart. */
 char *kdt_cfg_home(const char *rest);
+char *kdt_data_home(const char *rest);
 
 /*
  * `kdos theme --audit` (themeaudit.c). Regenerates every themed artefact into a
@@ -59,5 +60,13 @@ char *kdt_cfg_home(const char *rest);
  */
 int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 		    const char *tty_accent, const char *tty_reset);
+
+/*
+ * `kdos cve` (cve.c). Compares what is pinned or installed against the vendored
+ * Alpine security database — offline, by version comparison, never by scanning
+ * a binary. 0 clean, 1 something is behind a recorded fix, 2 no database.
+ */
+int kdt_cve(int argc, char **argv, const char *tty_accent,
+	    const char *tty_warn, const char *tty_reset);
 
 #endif /* KDOS_TOOLS_H */

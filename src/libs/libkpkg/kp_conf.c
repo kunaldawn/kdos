@@ -416,8 +416,17 @@ int kp_depends(const char *portdir, char out[][128], int max)
 	return n;
 }
 
-void kp_description(const char *portdir, char *out, size_t cap)
+/*
+ * One declarative key out of a recipe, by name.
+ *
+ * kpkg's own parser (kp_decl) expands helpers and command-less substitutions
+ * and is the authority; this is the cheap reader for consumers that want a
+ * single literal field — the description for `kpkg info`, the version and the
+ * `secdb =` override for `kdos cve`. It reads the file, it does not run it.
+ */
+void kp_recipe_key(const char *portdir, const char *key, char *out, size_t cap)
 {
+	size_t klen = strlen(key);
 	out[0] = 0;
 	char *recipe = kb_path_join(portdir, "kpkgbuild");
 	size_t len = 0;
@@ -431,9 +440,9 @@ void kp_description(const char *portdir, char *out, size_t cap)
 		next = nl ? nl + 1 : NULL;
 		if (nl)
 			*nl = 0;
-		if (strncmp(line, "description", 11))
+		if (strncmp(line, key, klen))
 			continue;
-		char *p = line + 11;
+		char *p = line + klen;
 		while (*p == ' ' || *p == '\t')
 			p++;
 		if (*p != '=')
@@ -445,4 +454,9 @@ void kp_description(const char *portdir, char *out, size_t cap)
 		break;
 	}
 	free(data);
+}
+
+void kp_description(const char *portdir, char *out, size_t cap)
+{
+	kp_recipe_key(portdir, "description", out, cap);
 }

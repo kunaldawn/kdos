@@ -47,6 +47,12 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # it outlives the thing that made it. The fs-manifest guard cannot help —
     # it only owns paths fs/ itself provided.
     rm -rf "$home/.config/cosmic"
+    # The KDE colour scheme is generated output like .icons and .themes, so it
+    # is cleared for the same reason: an accent renamed or dropped upstream
+    # would otherwise leave a stale .colors file offered in every KDE app's
+    # colour picker forever. kdeglobals is NOT cleared — KDE apps write their
+    # own settings into it and `kdos theme` merges rather than overwrites.
+    rm -rf "$home/.local/share/color-schemes"
     # Same reason, and the alien launchers need it most: they have been named
     # kdos-<id> and <upstream-id> at different times, so a merge leaves both
     # and the app library shows every alien app twice.
@@ -56,9 +62,9 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     fi
 
     # XDG user dirs. ~/.config/user-dirs.dirs names them, but git cannot carry
-    # an empty directory through /etc/skel, so they are created here. niri's
-    # screenshot-path points into Pictures/Screenshots and will not create the
-    # tree itself.
+    # an empty directory through /etc/skel, so they are created here.
+    # `kdos-shot` writes into Pictures/Screenshots and will not create the tree
+    # itself.
     for _d in Desktop Downloads Documents Music Pictures Pictures/Screenshots \
               Videos Public Templates .local/bin .local/share/applications; do
         mkdir -p "$home/$_d"

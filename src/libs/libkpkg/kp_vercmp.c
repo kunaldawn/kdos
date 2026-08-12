@@ -1,8 +1,25 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   kp_vercmp — which of two version strings is newer
+ *
+ * It lives in libkpkg rather than in kdos-portup because it now has TWO
+ * consumers that must never disagree: portup asks "is upstream newer than what
+ * we pin", and `kdos cve` asks "is what we pin older than the version that
+ * fixed this CVE". Those are the same question, and a second implementation of
+ * it would eventually answer them differently.
+ * ---------------------------------
+ */
+
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "portup.h"
+#include "kpkg.h"
 
 /* One token of a version: either a number or a letter run. Splitting this way
  * is what makes 1.10 > 1.9 (numeric) while 3.6a > 3.6 (a letter run after an
@@ -76,7 +93,7 @@ static int alpha_is_prerelease(const char *a)
 	       !strcmp(a, "beta") || !strcmp(a, "dev");
 }
 
-int pu_vercmp(const char *a, const char *b)
+int kp_vercmp(const char *a, const char *b)
 {
 	const char *pa = a, *pb = b;
 	Tok ta, tb;

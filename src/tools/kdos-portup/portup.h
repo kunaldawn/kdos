@@ -18,13 +18,15 @@
 #include <stddef.h>
 
 #include "kbase.h"
+#include "kpkg.h"
 
 #define PU_MAX_VER   64
 #define PU_MAX_RAW   128
 #define PU_MAX_CAND  256
 
 /* -1 if a < b, 0 if equal, 1 if a > b. */
-int pu_vercmp(const char *a, const char *b);
+/* The comparator is libkpkg's (kp_vercmp): `kdos cve` asks the same question
+ * about the same strings, and two implementations would drift. */
 /* Digit-runs collapse to 'N', letter-runs to 'a', separators are kept. A
  * string that is ONE digit run records its length ("N8") so a date cannot
  * compare equal in shape to a bare "1". */
@@ -111,6 +113,11 @@ int pu_list_upstream(const PuRecipe *r, char out[][PU_MAX_RAW], int max,
 
 enum { PU_CURRENT = 0, PU_NEWER, PU_UNKNOWN };
 
+/* repology's per-version `vulnerable` flag, asked only under `--cve`. Tri-state
+ * because "not in repology" is not "not vulnerable". */
+enum { PU_VULN_UNKNOWN = -1, PU_VULN_NO = 0, PU_VULN_YES = 1 };
+int pu_repology_vuln(const PuRecipe *r);
+
 typedef struct {
 	int  state;
 	char candidate[PU_MAX_VER];
@@ -120,7 +127,7 @@ typedef struct {
 } PuResult;
 
 /* Pipeline: pu_list_upstream -> pu_extract every raw string -> keep the
- * candidates whose pu_shape matches the CURRENT version's -> pu_vercmp,
+ * candidates whose pu_shape matches the CURRENT version's -> kp_vercmp,
  * walking from the highest match down -> pu_render_candidate ->
  * pu_http_head. Only a 200 proves PU_NEWER; a 404 means that particular
  * candidate does not exist there and the next-highest is tried rather than

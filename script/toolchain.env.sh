@@ -40,4 +40,23 @@ export PATH=$CROSS_SYSROOT/bin:$CROSS_SYSROOT/usr/bin:$PATH
 export CFLAGS="-O2 -pipe -std=gnu99"
 export CXXFLAGS="-O2 -pipe"
 export LDFLAGS=""
+
+# ── reproducible packages (P12) ───────────────────────────────────────────
+#
+# A package built twice from this tree must be byte-identical. kpkg normalises
+# the ARCHIVE itself (sorted, uid/gid 0, --mtime from SOURCE_DATE_EPOCH, pinned
+# xz); these are the five environment lines that normalise what goes INTO it.
+#
+# The epoch is pinned rather than taken from the clock or from git — the build
+# container has no git, and "now" is the single largest source of drift. TZ and
+# LC_ALL because a few configure scripts and doc generators embed a formatted
+# date or sort a list by locale. -ffile-prefix-map rewrites the build directory
+# out of __FILE__ and DWARF paths, and --build-id=sha1 makes the note a function
+# of the contents instead of a random 128-bit value.
+export SOURCE_DATE_EPOCH=1735689600
+export TZ=UTC
+export LC_ALL=C
+export CFLAGS="$CFLAGS -ffile-prefix-map=/var/cache/kpkg/work=/build"
+export CXXFLAGS="$CXXFLAGS -ffile-prefix-map=/var/cache/kpkg/work=/build"
+export LDFLAGS="$LDFLAGS -Wl,--build-id=sha1"
 export MAKEFLAGS="-j12"

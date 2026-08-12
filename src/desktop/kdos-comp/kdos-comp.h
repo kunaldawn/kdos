@@ -50,6 +50,7 @@
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_ext_workspace_v1.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
@@ -162,8 +163,15 @@ struct kc_server {
 	struct wl_list layers;		/* struct kc_layer */
 
 	/* What a panel needs to know. Standard protocols, so waybar and friends
-	 * work here too — see shellsvc.c. */
+	 * work here too — see shellsvc.c. Two foreign-toplevel protocols: the
+	 * wlr one carries the state and the requests a taskbar needs, the ext
+	 * one carries nothing but identity and is what a capture source is named
+	 * by (capture.c). Neither is a superset of the other. */
 	struct wlr_foreign_toplevel_manager_v1 *ftl_mgr;
+	struct wlr_ext_foreign_toplevel_list_v1 *ext_ftl_list;
+	struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1
+		*ftl_capture_mgr;
+	struct wl_listener ftl_capture_request;
 	struct wlr_ext_workspace_manager_v1 *ws_mgr;
 	struct wlr_ext_workspace_group_handle_v1 *ws_group;
 	struct wlr_ext_workspace_handle_v1 *ws_handle[KC_WORKSPACES];
@@ -294,6 +302,12 @@ struct kc_toplevel {
 	struct wlr_foreign_toplevel_handle_v1 *ftl;	/* the taskbar's view */
 	struct wl_listener ftl_activate;		/* per handle, not per manager */
 	struct wl_listener ftl_close;
+	/* The same window under ext-foreign-toplevel-list, and the capture
+	 * source built on its scene node. The handle's `data` points back here,
+	 * which is how a capture request finds the window it names. */
+	struct wlr_ext_foreign_toplevel_handle_v1 *ext_ftl;
+	struct wlr_ext_image_capture_source_v1 *capture_src;
+	struct wl_listener capture_src_destroy;
 	int x, y;			/* scene position, ours to own */
 	struct wl_listener map;
 	struct wl_listener unmap;
@@ -488,6 +502,16 @@ void kc_frames_present(struct kc_output *o,
 void kc_frames_rendered(struct kc_output *o, int64_t ns);
 int64_t kc_frames_now(void);
 void kc_frames_free(struct kc_server *s);
+
+/*
+ * Screen capture and the clipboard (capture.c) — grim, wl-clipboard and
+ * xdg-desktop-portal-wlr. Call after kc_shellsvc_init: per-window capture needs
+ * the ext-foreign-toplevel list to name windows by.
+ */
+void kc_capture_init(struct kc_server *s);
+void kc_capture_free(struct kc_server *s);
+/* From the toplevel's destroy handler, before it is freed. */
+void kc_capture_toplevel_free(struct kc_toplevel *t);
 
 void kc_appid_init(struct kc_server *s);
 void kc_appid_observe(struct kc_server *s, const char *app_id);

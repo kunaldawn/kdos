@@ -62,6 +62,11 @@ struct KpDecl {
 	char depends[1024];
 	char vendoring[64];
 	char pypackages[512];
+	/* The Alpine package name this port maps onto, for `kdos cve`. Declared
+	 * only when it differs — the kernel is `linux` here and `linux-lts`
+	 * there — and it is a KEY rather than a helper so it is not expanded and
+	 * not carried into the build environment. */
+	char secdb[128];
 	/* "KEY=VALUE", in declaration order: a later helper may refer to an
 	 * earlier one, which `_cargo = $_rust` does. */
 	char var[MAX_VARS][512];
@@ -359,6 +364,7 @@ static void set_key(KpDecl *d, const char *key, const char *val)
 		{ "depends", d->depends, sizeof(d->depends), 1 },
 		{ "vendoring", d->vendoring, sizeof(d->vendoring), 0 },
 		{ "pypackages", d->pypackages, sizeof(d->pypackages), 1 },
+		{ "secdb", d->secdb, sizeof(d->secdb), 0 },
 		{ NULL, NULL, 0, 0 }
 	};
 	for (int i = 0; F[i].key; i++) {
@@ -459,6 +465,7 @@ void kp_decl_prelude(const KpDecl *d, KbBuf *b)
 		{ "sha256", offsetof(struct KpDecl, sha256) },
 		{ "vendoring", offsetof(struct KpDecl, vendoring) },
 		{ "pypackages", offsetof(struct KpDecl, pypackages) },
+		{ "secdb", offsetof(struct KpDecl, secdb) },
 	};
 	for (size_t i = 0; i < sizeof(SIMPLE) / sizeof(SIMPLE[0]); i++) {
 		const char *v = (const char *)d + SIMPLE[i].off;
