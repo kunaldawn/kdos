@@ -47,7 +47,7 @@ $CC $STD $WARN $INC -Isrc/packages/kdos-theme -o "$OUT/kdos-theme" \
 echo "  kdos-theme"
 $CC $STD $WARN $INC -Isrc/packages/kdos-tools -o "$OUT/kdos-tools" \
     src/packages/kdos-tools/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
-    src/libs/libkpkg/*.c
+    src/libs/libkpkg/*.c src/libs/libkxdg/*.c
 echo "  kdos-tools"
 $CC $STD $WARN $INC -Isrc/packages/kdos-kpkg -o "$OUT/kdos-kpkg" \
     src/packages/kdos-kpkg/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c
@@ -62,6 +62,41 @@ $CC $STD $WARN $INC -Isrc/tools/kdos-portup -o "$OUT/kdos-portup" \
     src/libs/libkbuild/*.c
 echo "  kdos-portup"
 "$OUT/kdos-portup" --selftest --fixture testing/fixtures/portup
+
+# libkwl is libktui's Wayland backend and is the ONE library here with real
+# external dependencies — which is the whole reason it is a separate archive
+# from libktui, whose zero-`-l` property keeps kinstall in phase 1. Skipped
+# rather than failed when they are absent: this script's contract is that it
+# runs on a bare host with no container and no network.
+if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
+   [ -n "$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)" ]; then
+    PROTO="$OUT/proto"
+    mkdir -p "$PROTO"
+    SCANNER=$(pkg-config --variable=wayland_scanner wayland-scanner)
+    XDG=$(pkg-config --variable=pkgdatadir wayland-protocols)/stable/xdg-shell/xdg-shell.xml
+    LS=$(ls ports/core/wlroots/wlroots-*.tar.gz 2>/dev/null | head -1)
+    if [ -n "$LS" ]; then
+        tar xf "$LS" -C "$PROTO" --strip-components=2 \
+            "$(tar tf "$LS" | grep 'protocol/wlr-layer-shell-unstable-v1.xml$' | head -1)"
+        "$SCANNER" client-header "$PROTO/wlr-layer-shell-unstable-v1.xml" \
+            "$PROTO/wlr-layer-shell-unstable-v1-client-protocol.h"
+        "$SCANNER" client-header "$XDG" "$PROTO/xdg-shell-client-protocol.h"
+        $CC $STD $WARN -c -I"$PROTO" -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkwl \
+            $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
+            -o "$OUT/kwl.o" src/libs/libkwl/kwl.c
+        for f in src/libs/libkwl/kwl_font.c src/libs/libkwl/kwl_paint.c \
+                 src/libs/libkwl/kwl_key.c; do
+            $CC $STD $WARN -c -I"$PROTO" -Isrc/libs/libkbase -Isrc/libs/libktui \
+                -Isrc/libs/libkcolor -Isrc/libs/libkwl \
+                $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
+                -o "$OUT/$(basename "$f" .c).o" "$f"
+        done
+        echo "  libkwl"
+    fi
+else
+    echo "  libkwl (skipped — fcft/pixman/xkbcommon/wayland-client not on this host)"
+fi
 
 echo
 echo "==> kdos-portup fixture-backed check (offline, no network)"

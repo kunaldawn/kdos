@@ -37,7 +37,7 @@
 	--disable-libevent \
 	--disable-manpages \
 	--disable-xmltoman \
-	--disable-libdaemon=no
+	--enable-libdaemon
 
 make
 make DESTDIR=$PKG install

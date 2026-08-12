@@ -43,8 +43,64 @@
 const char *g_box = DEFAULT_BOX;
 
 /*
+ * The box's own tagged Wayland socket, or NULL to use the session's.
+ *
+ * kdos-boxsock binds a socket per box and hands it to kdos-comp through
+ * security-context-v1, so every client on it is tagged with this box's name and
+ * gets the capability policy from the SAME ~/.config/kdos/boxes/<box>.conf that
+ * decided the container's namespaces. It must be started detached and must
+ * outlive us: `run` execs distrobox, and the context lives exactly as long as
+ * kdos-boxsock holds its close fd. It is idempotent under a flock, so starting
+ * it on every launch costs one failed lock after the first.
+ *
+ * Returns the shared session socket when anything at all is missing —
+ * kdos-boxsock, the compositor's support for the protocol, the runtime dir. A
+ * box on the shared socket is unconfined at the protocol level, which is what
+ * KDOS did before this existed. Silently substituting an untagged socket for a
+ * tagged one is the honest failure: the alternative is an app that does not
+ * start at all because its sandbox could not be labelled.
+ */
+static const char *box_wayland_socket(void)
+{
+	static char path[512];
+	const char *rundir = getenv("XDG_RUNTIME_DIR");
+	KbArgv a = {0};
+
+	if (!rundir || !*rundir)
+		return NULL;
+	/* Checked by path, not by PATH search: it is our own binary at a known
+	 * place, and the point of the check is to skip the socket wait entirely
+	 * on a tree that does not carry it. */
+	if (!kb_path_exists(KDOS_BOXSOCK))
+		return NULL;
+
+	snprintf(path, sizeof(path), "%s/kdos-box-%s.sock", rundir, g_box);
+
+	kb_argv_add(&a, KDOS_BOXSOCK);
+	kb_argv_add(&a, (char *)g_box);
+	kb_argv_end(&a);
+	kb_run_detach(&a);
+
+	/*
+	 * Wait for the socket rather than assuming it: the holder has a registry
+	 * round trip to do first, and handing the box a WAYLAND_DISPLAY that
+	 * does not exist yet is an app that dies at startup with "failed to
+	 * connect to display". Short, because on the second launch it is
+	 * already there.
+	 */
+	for (int i = 0; i < 50; i++) {
+		if (kb_path_exists(path))
+			return path;
+		usleep(20 * 1000);
+	}
+	tracef("boxsock: no socket for %s, using the session's", g_box);
+	return NULL;
+}
+
+/*
  * Environment every app inside a box gets.
  *
+ *   WAYLAND_DISPLAY            the box's own tagged socket, when there is one
  *   GSETTINGS_BACKEND=keyfile  no dconf-service is reachable over the (host)
  *                              session bus; keyfile keeps GNOME app settings
  *                              persistent instead of silently dropped
@@ -58,8 +114,19 @@ const char *g_box = DEFAULT_BOX;
 static void box_env(KbArgv *a, const char *image)
 {
 	const char *display;
+	const char *sock;
 
 	kb_argv_add(a, "env");
+
+	/*
+	 * A per-box socket is the client's identity, so it must be set before
+	 * anything in the box connects. WAYLAND_DISPLAY takes an absolute path
+	 * here rather than a name — libwayland accepts either, and the socket
+	 * lives beside the session's in $XDG_RUNTIME_DIR, which the box shares.
+	 */
+	sock = box_wayland_socket();
+	if (sock)
+		kb_argv_addf(a, "WAYLAND_DISPLAY=%s", sock);
 	kb_argv_add(a, "GSETTINGS_BACKEND=keyfile");
 	kb_argv_add(a, "NO_AT_BRIDGE=1");
 	kb_argv_add(a, "GTK_A11Y=none");
