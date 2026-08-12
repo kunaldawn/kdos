@@ -38,7 +38,10 @@ for n in kpkg kpkgadd kpkgbuild kpkgdel kpkgdepends; do
     ln -sf kdos-kpkg "$SP/$n"
 done
 
-export PORT_REPO="$PWD/ports/core $PWD/src/packages"
+# src/desktop is the third port repo — the compositor and shell live there,
+# and script/desktop.env.sh puts it on PORT_REPO for the desktop phase. This
+# has to match, or preflight reports ports that build fine as missing.
+export PORT_REPO="$PWD/ports/core $PWD/src/packages $PWD/src/desktop"
 export KPKG_CONF=/nonexistent PKGDB_DIR=/dev/null
 
 echo
@@ -49,7 +52,8 @@ for f in script/*/packages.txt; do
         [ -z "$p" ] && continue
         case "$p" in \#*) continue ;; esac
         if [ ! -f "ports/core/$p/kpkgbuild" ] && \
-           [ ! -f "src/packages/$p/kpkgbuild" ]; then
+           [ ! -f "src/packages/$p/kpkgbuild" ] && \
+           [ ! -f "src/desktop/$p/kpkgbuild" ]; then
             missing="$missing $p"
         fi
     done < "$f"
@@ -76,11 +80,12 @@ done
 echo
 echo "==> every depends key names a port that exists"
 orphans=0
-for d in ports/core/* src/packages/*; do
+for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     for dep in $(sed -n 's/^depends[[:blank:]]*=[[:blank:]]*//p' "$d/kpkgbuild"); do
         if [ ! -f "ports/core/$dep/kpkgbuild" ] && \
-           [ ! -f "src/packages/$dep/kpkgbuild" ]; then
+           [ ! -f "src/packages/$dep/kpkgbuild" ] && \
+           [ ! -f "src/desktop/$dep/kpkgbuild" ]; then
             bad "$(basename "$d")" "depends on '$dep', which has no port"
             orphans=$((orphans + 1))
         fi
@@ -94,7 +99,7 @@ echo "==> every archive a port ships is named by a sha256 in its recipe"
 # port that cannot build. The hashes were bootstrapped from the git-LFS
 # pointers, where the oid IS the file's sha256.
 unhashed=0
-for d in ports/core/* src/packages/*; do
+for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     for a in "$d"/*.tar.gz "$d"/*.tar.xz "$d"/*.tar.bz2 "$d"/*.tar.zst \
              "$d"/*.tgz "$d"/*.zip; do
@@ -109,7 +114,7 @@ done
 [ "$unhashed" = 0 ] && note "every archive is hashed" "ok"
 
 # The escape hatch must be unused in a committed tree.
-if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild 2>/dev/null; then
+if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild src/desktop/*/kpkgbuild 2>/dev/null; then
     bad "recipes" "a recipe references KDOS_ALLOW_UNVERIFIED"
 else
     note "no recipe needs the unverified escape hatch" "ok"
@@ -121,7 +126,7 @@ echo "==> every reason names things that still exist"
 # then actively lies, which is worse than not existing at all. Same gate as
 # an unresolvable `# depends`.
 rot=0
-for r in reasons/*.txt; do
+for r in src/packages/kdos-tools/reasons/*.txt; do
     [ -f "$r" ] || continue
     _rn=$(basename "$r" .txt)
     grep -q "^title:" "$r" || { bad "$_rn" "has no title:"; rot=$((rot + 1)); }
@@ -129,7 +134,8 @@ for r in reasons/*.txt; do
 
     sed -n 's/^port:[[:blank:]]*//p' "$r" | while read -r _p; do
         [ -n "$_p" ] || continue
-        if [ ! -f "ports/core/$_p/kpkgbuild" ] && [ ! -f "src/packages/$_p/kpkgbuild" ]; then
+        if [ ! -f "ports/core/$_p/kpkgbuild" ] && [ ! -f "src/packages/$_p/kpkgbuild" ] && \
+           [ ! -f "src/desktop/$_p/kpkgbuild" ]; then
             bad "$_rn" "names port '$_p', which no longer exists"
         fi
     done
@@ -146,10 +152,10 @@ for r in reasons/*.txt; do
 
     sed -n 's/^see:[[:blank:]]*//p' "$r" | while read -r _s; do
         [ -n "$_s" ] || continue
-        [ -f "reasons/$_s.txt" ] || bad "$_rn" "sees '$_s', which is not a reason"
+        [ -f "src/packages/kdos-tools/reasons/$_s.txt" ] || bad "$_rn" "sees '$_s', which is not a reason"
     done
 done
-[ "$rot" = 0 ] && note "reasons resolve" "$(ls reasons/*.txt 2>/dev/null | wc -l) recorded"
+[ "$rot" = 0 ] && note "reasons resolve" "$(ls src/packages/kdos-tools/reasons/*.txt 2>/dev/null | wc -l) recorded"
 
 echo
 echo "==> every port has a build.sh, and it parses"
@@ -158,7 +164,7 @@ echo "==> every port has a build.sh, and it parses"
 # the build lived inside the recipe.
 missing=0
 scripts=0
-for d in ports/core/* src/packages/*; do
+for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     p=$(basename "$d")
     if [ ! -f "$d/build.sh" ]; then
@@ -189,7 +195,7 @@ echo
 echo "==> every recipe parses as metadata"
 # The same reader the build uses. A recipe that does not parse has no name,
 # version or release, and nothing downstream would find out until it ran.
-for d in ports/core/* src/packages/*; do
+for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     p=$(basename "$d")
     out=$("$SP/kpkg" meta "$d" 2>"$SP/err")
@@ -201,7 +207,7 @@ note "recipe metadata" "all recipes parse"
 
 echo
 echo "==> every recipe declares a name, version and release"
-for d in ports/core/* src/packages/*; do
+for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     for k in name version release; do
         grep -qE "^$k[[:blank:]]*=" "$d/kpkgbuild" || \

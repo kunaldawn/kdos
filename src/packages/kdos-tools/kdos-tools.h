@@ -43,6 +43,7 @@ int fetch_static_main(int argc, char **argv);	/* kdos-fetch-static        */
 int sandbox_main(int argc, char **argv);	/* kdos sandbox             */
 int why_main(int argc, char **argv);		/* kdos why                 */
 int explain_main(int argc, char **argv);		/* kdos explain             */
+int appid_main(int argc, char **argv);		/* kdos appid               */
 
 /* $XDG_CONFIG_HOME/<rest>, falling back to ~/.config. Shared rather than
  * copied: two XDG helpers in one binary is how the two drift apart. */

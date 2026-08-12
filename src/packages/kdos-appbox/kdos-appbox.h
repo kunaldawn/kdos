@@ -23,6 +23,9 @@
 #define DEFAULT_BOX   "kdos-apps"
 #define DEFAULT_IMAGE "localhost/kdos-appbox:latest"
 #define APP_TABLE     "/usr/share/kdos/alien-apps"
+/* The security-context-v1 engine. Absent on a tree built before M2.5, which is
+ * why every use of it is guarded rather than assumed. */
+#define KDOS_BOXSOCK  "/usr/bin/kdos-boxsock"
 
 #define MAX_LINE   4096
 

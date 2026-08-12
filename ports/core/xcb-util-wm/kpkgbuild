@@ -8,11 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = avahi
-version     = 0.8
+name        = xcb-util-wm
+version     = 0.4.2
 release     = 1
-source      = https://github.com/avahi/avahi/releases/download/v$version/avahi-$version.tar.gz
-sha256      = 060309d7a333d38d951bc27598c677af1796934dbd98e1024e7ad8de798fedda  avahi-0.8.tar.gz
-description = mDNS/DNS-SD stack — what makes network printers discoverable
-homepage    = https://avahi.org
-depends     = libdaemon expat dbus glib gdbm
+source      = https://xorg.freedesktop.org/archive/individual/lib/xcb-util-wm-$version.tar.xz
+sha256      = 62c34e21d06264687faea7edbf63632c9f04d55e72114aa4a57bb95e4f888a0b  xcb-util-wm-0.4.2.tar.xz
+description = ICCCM and EWMH helpers for XCB — wlroots' Xwayland xwm needs both
+homepage    = https://gitlab.freedesktop.org/xorg/lib/libxcb-wm
+depends     = libxcb

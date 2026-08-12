@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,11 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = avahi
-version     = 0.8
-release     = 1
-source      = https://github.com/avahi/avahi/releases/download/v$version/avahi-$version.tar.gz
-sha256      = 060309d7a333d38d951bc27598c677af1796934dbd98e1024e7ad8de798fedda  avahi-0.8.tar.gz
-description = mDNS/DNS-SD stack — what makes network printers discoverable
-homepage    = https://avahi.org
-depends     = libdaemon expat dbus glib gdbm
+./configure \
+	--prefix=/usr \
+	--sysconfdir=/etc \
+	--libdir=/usr/lib \
+	--disable-static
+make
+make DESTDIR=$PKG install
