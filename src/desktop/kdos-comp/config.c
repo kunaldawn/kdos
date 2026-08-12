@@ -229,6 +229,13 @@ static int parse_action(struct kc_bind *b, char *value, const char *where,
 		b->action = KC_ACT_CYCLE_BACK;
 		return 1;
 	}
+	if (!strcmp(value, "lock")) {
+		/* Spawns kdos-lock; the compositor never locks itself. The verb
+		 * is `lock` rather than `spawn kdos-lock` so the compositor can
+		 * refuse a second one while a lock is live. */
+		b->action = KC_ACT_LOCK;
+		return 1;
+	}
 	if (!strcmp(value, "workspace") || !strcmp(value, "move-to-workspace")) {
 		/* Workspaces are written 1-based because that is what is printed
 		 * on the key, and stored 0-based because that is what indexes
@@ -312,6 +319,7 @@ static void load_defaults(struct kc_server *s)
 	add_default(s, "XF86AudioMute", "spawn kdos-osd volume toggle");
 	add_default(s, "XF86MonBrightnessUp", "spawn kdos-osd brightness +10");
 	add_default(s, "XF86MonBrightnessDown", "spawn kdos-osd brightness -10");
+	add_default(s, "Super+l", "lock");
 	add_default(s, "Super+q", "close");
 	add_default(s, "Super+Escape", "quit");
 	add_default(s, "Super+Tab", "cycle");
@@ -390,6 +398,36 @@ static void comp_conf_line(const char *key, char *value, const char *path,
 		int n = s->repeat_delay;
 		set_int(path, lineno, value, 0, 10000, &n);
 		s->repeat_delay = n;
+	} else if (!strcmp(key, "idle_dim") || !strcmp(key, "idle_lock") ||
+		   !strcmp(key, "idle_off")) {
+		/*
+		 * Seconds; 0 means never. A day is the ceiling because a value
+		 * larger than that is a typo rather than a preference, and a
+		 * timer that fires next week is indistinguishable from off.
+		 *
+		 * `idle_configured` is what tells kc_idle_init the user has an
+		 * opinion — the VM default is off, and the way to override
+		 * "off" has to include setting a value that is also 0.
+		 */
+		int *out = !strcmp(key, "idle_dim") ? &s->idle_dim_s
+			 : !strcmp(key, "idle_lock") ? &s->idle_lock_s
+						     : &s->idle_off_s;
+		set_int(path, lineno, value, 0, 86400, out);
+		s->idle_configured = true;
+	} else if (!strcmp(key, "crt") || !strcmp(key, "crt_scanlines") ||
+		   !strcmp(key, "crt_curve")) {
+		/*
+		 * Percentages. `crt = 0` switches the whole pass off and is the
+		 * documented answer for a machine where the fill rate is not
+		 * there; the other two scale one effect each, because the
+		 * scanlines are the component people either love or want gone
+		 * and the curvature is the one that argues with a character
+		 * grid.
+		 */
+		int *out = !strcmp(key, "crt") ? &s->crt_intensity
+			 : !strcmp(key, "crt_scanlines") ? &s->crt_scan
+							 : &s->crt_curve;
+		set_int(path, lineno, value, 0, 100, out);
 	} else if (!strcmp(key, "snap_px")) {
 		/* 0 disables snapping. A large value would snap from the middle
 		 * of the screen, so it is capped rather than trusted. */
@@ -405,6 +443,26 @@ void kc_config_load(struct kc_server *s)
 	s->repeat_rate = 25;
 	s->repeat_delay = 600;
 	s->snap_px = 16;
+	/*
+	 * The CRT pass. Scanlines are on because the wallpaper's baked-in ones
+	 * were REMOVED when this landed — the compositor renders them now, and
+	 * two sets would beat against each other. Curvature defaults to off: it
+	 * is the one effect that argues with a character grid, and it should be a
+	 * decision rather than a surprise. kc_crt_init() forces all of this to 0
+	 * on a renderer that is not GLES2.
+	 */
+	s->crt_intensity = 55;
+	s->crt_scan = 60;
+	s->crt_curve = 0;
+	/*
+	 * Idle defaults for real hardware: dim at five minutes, lock at ten,
+	 * outputs off at fifteen. kc_idle_init() zeroes all three in a VM
+	 * unless comp.conf set one — a blanked screen over VNC is
+	 * indistinguishable from a crashed compositor.
+	 */
+	s->idle_dim_s = 300;
+	s->idle_lock_s = 600;
+	s->idle_off_s = 900;
 	/* The shell, not a terminal. A desktop that opens a terminal at login
 	 * is a development stopgap, and M1's was exactly that. */
 	s->startup[0] = split_argv("kdos-shell");

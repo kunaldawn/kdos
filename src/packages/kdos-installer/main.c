@@ -385,6 +385,9 @@ static void usage(void)
 	       "  --save FILE       write the current answers and exit\n"
 	       "  --unattended      skip the wizard and install from --config\n"
 	       "  --dry-run         log every command, execute none\n"
+	       "  --dump probe      what the installer sees on this machine\n"
+	       "  --dump plan       the steps these answers would run\n"
+	       "  --json            render --dump as JSON instead of text\n"
 	       "  --theme NAME      phosphor | amber | ice | bone\n"
 	       "  --no-mouse        keyboard only\n"
 	       "  --ascii           box drawing with - | +, for odd terminals\n"
@@ -396,8 +399,8 @@ static void usage(void)
 
 int main(int argc, char **argv)
 {
-	int want_mouse = 1, unattended = 0;
-	const char *save_to = NULL;
+	int want_mouse = 1, unattended = 0, json = 0;
+	const char *save_to = NULL, *dump = NULL;
 
 	/* An allocation failure has to drop the terminal before it prints, or
 	 * the message lands in the alternate screen and dies with it. */
@@ -422,6 +425,10 @@ int main(int argc, char **argv)
 			}
 		} else if (!strcmp(a, "--save") && i + 1 < argc) {
 			save_to = argv[++i];
+		} else if (!strcmp(a, "--dump") && i + 1 < argc) {
+			dump = argv[++i];
+		} else if (!strcmp(a, "--json")) {
+			json = 1;
 		} else if (!strcmp(a, "--unattended")) {
 			unattended = 1;
 		} else if (!strcmp(a, "--dry-run")) {
@@ -441,6 +448,11 @@ int main(int argc, char **argv)
 
 	if (save_to)
 		return conf_save(save_to) == 0 ? 0 : 1;
+
+	/* Before the terminal, before the probe's own progress line: a dump is
+	 * stdout and only stdout. */
+	if (dump)
+		return ki_dump(dump, json);
 
 	if (ktui_theme_set(cfg.theme) < 0)
 		ktui_theme_set("phosphor");

@@ -249,3 +249,30 @@ void kb_buf_free(KbBuf *b)
 	b->p = NULL;
 	b->n = b->cap = 0;
 }
+
+void kb_json_str(KbBuf *b, const char *s)
+{
+	kb_buf_add(b, "\"", 1);
+	if (!s) {
+		kb_buf_add(b, "\"", 1);
+		return;
+	}
+	for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+		switch (*p) {
+		case '"':  kb_buf_str(b, "\\\""); break;
+		case '\\': kb_buf_str(b, "\\\\"); break;
+		case '\b': kb_buf_str(b, "\\b"); break;
+		case '\f': kb_buf_str(b, "\\f"); break;
+		case '\n': kb_buf_str(b, "\\n"); break;
+		case '\r': kb_buf_str(b, "\\r"); break;
+		case '\t': kb_buf_str(b, "\\t"); break;
+		default:
+			if (*p < 0x20)
+				kb_buf_printf(b, "\\u%04x", *p);
+			else
+				kb_buf_add(b, p, 1);
+			break;
+		}
+	}
+	kb_buf_add(b, "\"", 1);
+}

@@ -186,6 +186,15 @@ int install_child_main(int wfd, int from_step);	/* runs in the child       */
 void install_log(const char *line);
 
 /* ────────────────────────────────────────────────────────────────────────
+ * Headless dumps — the machine as probed, the install as planned
+ *
+ * `what` is "probe" or "plan"; `json` picks the rendering, not a second pass.
+ * Both run before the terminal is taken over and write nothing to disk.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+int ki_dump(const char *what, int json);
+
+/* ────────────────────────────────────────────────────────────────────────
  * Pages
  * ──────────────────────────────────────────────────────────────────────── */
 
