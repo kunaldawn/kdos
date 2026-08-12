@@ -33,8 +33,28 @@
 
 enum kwl_role {
 	KWL_ROLE_TOPLEVEL = 0,	/* an ordinary window (xdg-shell)          */
+	/*
+	 * Connect, bind the globals, install NO backend and create no surface.
+	 * This is what `--dump` runs under: the caller wants the protocol state
+	 * a panel would draw from, rendered offscreen as text rather than into
+	 * a buffer nobody will look at.
+	 */
+	KWL_ROLE_NONE,
 	KWL_ROLE_PANEL,		/* layer-shell, anchored, exclusive zone   */
 	KWL_ROLE_OVERLAY,	/* layer-shell, no exclusive zone          */
+	/*
+	 * ext-session-lock-v1: a surface the compositor keeps on screen even if
+	 * this process dies, which is the entire reason a lock screen is not
+	 * just a fullscreen window.
+	 *
+	 * The protocol wants ONE surface PER OUTPUT and will not report the
+	 * session locked until every output has one. libktui has a single cell
+	 * buffer, so the prompt is drawn on the first output and every other
+	 * one is filled with the theme background — covered, and honest about
+	 * it. Multi-output cell drawing is a libktui limitation, not a
+	 * protocol one.
+	 */
+	KWL_ROLE_LOCK,
 };
 
 enum kwl_edge {
@@ -108,5 +128,25 @@ void kwl_pump(void);	/* dispatch what has arrived, flush what is queued */
 
 /* Non-zero once the compositor or the user has asked the surface to go away. */
 int kwl_should_close(void);
+
+/*
+ * Session lock only.
+ *
+ * `kwl_lock_engaged()` is non-zero once the COMPOSITOR has confirmed the
+ * session is locked. A lock screen must not accept a password before that:
+ * until `locked` arrives the screen may still be showing the session, and the
+ * user would be typing into a machine that is not yet secured.
+ *
+ * `kwl_lock_finished()` is the compositor refusing the lock — it is already
+ * locked by someone else, or the request came too late. A client that sees it
+ * must exit WITHOUT unlocking anything.
+ *
+ * `kwl_unlock()` sends unlock_and_destroy and is the only way out. It must be
+ * called before the process exits, or the compositor keeps the screen locked
+ * exactly as if the client had crashed.
+ */
+int kwl_lock_engaged(void);
+int kwl_lock_finished(void);
+void kwl_unlock(void);
 
 #endif /* KWL_H */

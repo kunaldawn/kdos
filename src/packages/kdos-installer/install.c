@@ -68,7 +68,7 @@ static const struct {
 	{ "Copy system", "the live tree, verbatim" },
 	{ "Configure",   "fstab, hostname, keymap, services" },
 	{ "Accounts",    "users, passwords, autologin" },
-	{ "KtuiTheme",       "regenerate the accent for the new home" },
+	{ "Theme",       "regenerate the accent for the new home" },
 	{ "Bootloader",  "rEFInd on the ESP" },
 	{ "Finish",      "flush and unmount" },
 };

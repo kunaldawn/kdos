@@ -461,7 +461,9 @@ erases every small feature.
 > desktop that no longer exists. What replaces them is one line: **`kdos-comp`
 > and `kdos-shell` link libkcolor and read only the accent NAME from
 > `$XDG_CACHE_HOME/kdos/theme`**, so no colours are written for the desktop at
-> all and `kdos theme` retints a running session with a SIGHUP. Everything else
+> all and `kdos theme` retints a running session with a SIGHUP — which both of
+> them now handle: the shell repaints, and the compositor re-reads the accent its
+> CRT shader tints with. Everything else
 > in this section — GTK, icons, cursors, foot, btop, starship, and the whole
 > "alien apps are themed through `$HOME`" argument — is unchanged and correct.
 
@@ -525,20 +527,34 @@ in `kdos-appbox`'s BOXENV plus debian's platform themes. GIMP needs
 its own grey theme. GTK reloads neither theme nor icons on a file change, so
 alien apps pick up an accent switch on their next launch.
 
-**`kdos theme <phosphor|amber|ice|bone>`** owns everything else: it reruns
-kdos-theme-helper, writes the panel+dock background Color RON
-(`write_panel_colors`), regenerates `~/.themes/KDOS` and `~/.icons/KDOS`, writes
-the two `gtk.css` files, `~/.config/foot/themes/kdos`,
-`~/.config/btop/themes/kdos.theme`, and the palette block between the
-`# >>> KDOS STARSHIP PALETTE >>>` markers in starship.toml. One palette table
-inside `fs/usr/local/bin/kdos` drives all generators. COSMIC and cosmic-panel
-repaint live; starship on next prompt; foot and btop on next start (foot cannot
-reload its config, and KDOS's pkill has no `-x`).
+**`kdos theme <phosphor|amber|ice|bone>`** owns everything else: it regenerates
+`~/.themes/KDOS`, `~/.icons/KDOS` and `~/.icons/KDOS-cursors`, writes the two
+`gtk.css` files, `~/.config/foot/themes/kdos`, `~/.config/btop/themes/kdos.theme`
+and the palette block between the `# >>> KDOS STARSHIP PALETTE >>>` markers in
+starship.toml, then writes the accent NAME to `$XDG_CACHE_HOME/kdos/theme` and
+SIGHUPs `kdos-shell` and `kdos-comp`. The state file is written BEFORE the signal,
+or the session re-reads the accent it already had. Ours repaint live; starship on
+the next prompt; foot and btop on next start (foot cannot reload its config at
+all); GTK apps on their next launch, because GTK re-reads neither theme nor icons
+on a file change.
 
-Known quirk: a live `kdos theme` switch makes cosmic-panel restart its applets,
-and the respawned cosmic-app-list collapses all pinned favorites into its
-overflow button (panel-size renegotiation race; upstream 1.4 behaviour —
-restarting cosmic-panel does not heal it, the next login does).
+**`kdos theme --audit` is the palette claim, checked** (`src/packages/kdos-tools/
+themeaudit.c`). It does not try to recognise "palette colours" in the installed
+files — that test would have to know which mixes are legal and would drift from
+the generators. It runs the SAME generators with `$HOME` and the XDG variables
+pointed at a scratch directory (the trick `06_packaging/00_theme.sh` already uses
+for `/etc/skel`) and compares byte for byte, symlinks included. Anything that
+differs, differs from what this machine's own palette produces right now. It
+writes nothing outside the scratch directory and signals nothing — an audit that
+repaired what it found would be a `kdos theme` with a misleading name. Exit 0
+clean, 1 on drift, 2 if the audit could not run. `kdos theme --audit amber` asks
+what an accent switch WOULD change: measured, 10 605 of 23 279 icon entries, the
+rest being symlinks that do not move. A `starship.toml` is copied in first,
+because that artefact is edited between markers rather than written.
+
+Verified by `testing/selftest.sh` against a real generated `$HOME`: clean after
+generation, and all four kinds of drift caught — an edited stylesheet, a deleted
+icon, a stray file, and a cursor alias re-pointed at another shape.
 
 ### kdos-icons
 
@@ -624,10 +640,15 @@ Upstream is GPL-3.0; `LICENSE.notice` records every deviation. Installed to
 but not `/usr/share/icons`. Selected via `XCURSOR_THEME`/`XCURSOR_SIZE` in
 `fs/etc/profile.d/10-wayland.sh` and `fs/etc/skel/.config/gtk-{3,4}.0/settings.ini`.
 
-The default wallpaper carries a baked CRT treatment (scanlines every 3rd row +
-vignette, imagemagick multiply — regenerate from a clean render if replaced).
-cosmic-comp has no custom-shader API, so the CRT identity lives in the boot
-splash, the wallpaper, the TTY and the palette.
+**The wallpaper's baked scanlines are gone** — `kdos-comp` renders them now (see
+**The CRT pass** below), and two sets beating against each other is moiré, not
+identity. They were an exact `×0.779` multiply on every third row, so removing
+them was an exact divide: measured over the whole image (period-3 row means
+`10.59 / 10.59 / 8.26` before, `10.586 / 10.586 / 10.599` after) with **zero**
+clipped pixels, since the brightest affected pixel was 193. The **vignette is
+still baked in**: it is a radial function nobody recorded, so it is not exactly
+invertible, and the shader's own vignette is mild enough to live with it. If the
+wallpaper is ever re-rendered from a clean source, drop it there.
 
 ---
 
@@ -832,10 +853,13 @@ regenerating.
 compiles kdos-appbox itself for the one subcommand it needs. That is a
 two-second `cc` of a program that links nothing.
 
-Known limit, unchanged from the python version: `kdos theme <accent>` does not
-retint the cursors, because the cursor `art/` is not installed to the target.
-The generator itself is fully parameterised now, so shipping `art/` is all
-that stands in the way.
+**The cursors follow an accent switch now.** That was the one artefact
+`kdos theme <accent>` could not reach — the generator was always parameterised,
+but the art it needs was not on the target. `kdos-cursors` installs its `art/` to
+`/usr/share/kdos/cursors/art` (4.4 MB, the same shape kdos-icons already used),
+which is exactly `CURSOR_ART_DEFAULT`, and `kdos theme` regenerates
+`~/.icons/KDOS-cursors` with the rest. An install without the art keeps the
+cursors it has rather than getting an empty theme.
 
 ---
 
@@ -916,6 +940,7 @@ a running KDOS can rebuild it natively.
 | `pages.c` | the ten wizard pages |
 | `install.c` | the forked install child and its line protocol |
 | `conf.c` | the answer file |
+| `dump.c` | `--dump probe` / `--dump plan`, text or `--json` |
 | `main.c` | chrome, the poll loop, CLI |
 
 Everything else it used to own — the terminal, the cell buffer, the input
@@ -985,6 +1010,236 @@ those directly, DST rules included.
 Iterate without booting: `kinstall --dry-run` logs every command and executes
 none, and `--save`/`--config`/`--unattended` give it an answer file.
 
+**`kinstall --dump probe|plan [--json]` needs neither a terminal nor a run**
+(`dump.c`). `probe` is the machine as `probe.c` sees it — firmware, cpu, memory,
+every disk and partition — and is the right thing to paste into a bug report.
+`plan` calls the same `install_plan()` the wizard does, so the step list and its
+SKIPS are the real ones: `plan = reuse` skips Partition, a non-default accent
+un-skips Theme. `--json` is a rendering of the same traversal, not a second
+walk. **No password reaches either form** — `cfg` holds them in the clear
+because `crypt()` is next, and a dump is what ends up in a CI log; a sentinel in
+`testing/selftest.sh` proves it. `--dump probe` is not in the selftest: it walks
+the rootfs to measure the payload, seconds on a live ISO and far more on a
+developer's disk.
+
+---
+
+## Lock, idle and power
+
+`ext-session-lock-v1`, `ext-idle-notify-v1` and `idle-inhibit` in the
+compositor (`src/desktop/kdos-comp/lock.c`, `idle.c`), plus three binaries:
+`kdos-lock`, `kdos-checkpass` and `kdos-powerd`/`kdos-power`.
+
+**The compositor owns `locked`, not the client.** `s->locked` is a field and
+deliberately not `s->lock != NULL`: a lock screen that unlocks when it crashes
+is the failure mode the whole protocol exists to remove. A `SIGKILL` on
+`kdos-lock` leaves the session locked, the black rect under the lock tree
+covering everything, and the log saying so; recovery is another VT. Every input
+path asks `kc_locked()` — focus, bindings (VT switching excepted, it must
+survive everything), and the pointer.
+
+Three things that cost a debug cycle each, all found on a two-output headless
+compositor and none visible with one:
+
+- **`locked` may be sent EXACTLY once.** wlroots asserts `!locked_sent`, so the
+  second monitor's surface aborted the compositor and took the client with it.
+- **Count MAPPED lock surfaces, not created ones.** A client creates them all up
+  front, so counting creations answers "the screen is covered" while the second
+  monitor still shows the session.
+- **A lock surface must not be committed with a null buffer.** Layer-shell and
+  xdg-shell need that empty commit to get their first configure; here it is a
+  protocol error, the client is killed, and the machine is left locked with no
+  prompt on it. `kwl_init` skips the pre-configure commit for `KWL_ROLE_LOCK`.
+
+**libkwl's lock role covers every output** — the protocol will not report the
+session locked until they all have a surface. libktui has ONE cell buffer, so
+the prompt is on the first output and the rest are filled with `KT_BG`. That is
+a libktui limitation, said out loud, not a protocol one.
+
+**`kdos-checkpass` is the only setuid binary KDOS ships**, and it takes NO
+ARGUMENTS — not even a user name. The account checked is the caller's real uid,
+so there is nothing to aim at root and nothing an attacker can vary; the
+password arrives on **stdin** (`kb_run_feed`, new in libkbase) because argv is
+world-readable through `/proc/<pid>/cmdline`. Privilege is dropped as soon as
+the hash is read, the compare is constant time, and `!`, `*` or an empty hash
+always fail. Exit codes are 0 / 1 / 2 and the caller must distinguish them: a
+"wrong password" for a machine with a broken `/etc/shadow` sends the user
+looking in the wrong place.
+
+**`kdos-powerd` is a root daemon on `/run/kdos-powerd.sock`, gated by
+`SO_PEERCRED`** — root and `wheel`, checked on the socket rather than taken
+from the message, so there is nothing to forge. One word per connection
+(`suspend`, `poweroff`, `reboot`, `ping`); poweroff and reboot signal pid 1
+first (toybox init: SIGUSR2 poweroff, SIGTERM reboot) and only then call
+`reboot(2)`. `kdos-powerd --explain <user>` answers "would this user be allowed,
+and why" and is what a dead power key gets diagnosed with.
+`KDOS_POWERD_SOCKET` moves the socket for testing and grants nothing —
+authorisation never depended on the path.
+
+**The idle policy is one timer in the compositor**: dim → lock → outputs off,
+each stage measured from the LAST ACTIVITY rather than from the previous stage.
+Activity ends the dim and powers the outputs back on; it **never** unlocks.
+An inhibitor stops the policy dead rather than pausing it. `idle_dim`,
+`idle_lock`, `idle_off` in comp.conf, seconds, 0 = never — and **all three
+default to 0 in a VM** (DMI `sys_vendor`), because a blanked screen over VNC is
+indistinguishable from a crashed compositor. Any `idle_*` line overrides that.
+
+**`kdos doctor` checks the setuid bit**, because losing it is the worst failure
+in the system and a silent one: `kdos-checkpass` without it refuses every
+password and locks the user OUT of their own session. An `rsync` without `-p`
+is all it takes.
+
+---
+
+## The CRT pass
+
+`src/desktop/kdos-comp/crt.c`. The CRT stopped being four separate imitations
+and became one system property: the compositor renders the desktop through a
+phosphor shader, so the boot splash, the TTY and the session are finally the same
+machine. **The wallpaper's baked scanlines were deleted** in the same change.
+
+**wlroots has no shader API** — `wlr/render/pass.h` is `add_texture` and
+`add_rect`, and wlr_scene has three node types and no callback node. It does have
+a documented seam: `wlr_scene_output_build_state()` takes an options struct whose
+`.swapchain` field is *"Allows use of a custom swapchain."* So the scene
+composites into a buffer of ours, and our own GLES2 program blits that buffer
+into the output's real buffer with the effect applied. Both swapchains come from
+`wlr_output_configure_primary_swapchain()`, so neither needs format or modifier
+guesswork of ours.
+
+**Direct scanout is turned OFF for the whole session while the pass is on**, and
+that is correctness, not tuning. When wlr_scene takes the scanout path it hands
+the commit a *client's* buffer plus a `buffer_dst_box` — not a picture of the
+desktop — and the first version of this file stretched a 13-pixel-tall panel over
+the whole screen. wlroots exposes exactly one switch, an env var read by
+`wlr_scene_create()`, so `kc_crt_init()` sets it and is called before the scene
+is created. A foreign buffer arriving anyway is committed unprocessed rather than
+mangled.
+
+**The texture is imported per frame and destroyed after the pass.** Caching it
+per swapchain slot is the obvious optimisation and it deadlocks the swapchain:
+`wlr_texture_from_buffer()` LOCKS the buffer, a slot is only reused once its last
+lock goes, and four cached textures means `[ERROR] render/swapchain.c:95: No free
+output buffer slot` and a scene that stops rendering. Measured, not reasoned
+about.
+
+**Two fallbacks, and neither can produce a black screen.** A renderer that is not
+GLES2 gets no pass at all — pixman is software, `make run` has only that, and a
+fullscreen post-process there is a slideshow — reported at startup. Anything that
+fails at runtime marks that *output* broken and returns to
+`wlr_scene_output_commit()` for good, because 60 identical error lines a second
+is worse than missing scanlines.
+
+The shader is scanlines every third **physical** row (the splash's and the old
+wallpaper's period), a three-tap horizontal bleed, a vignette, optional barrel
+distortion and a faint phosphor floor so black is never quite black. **No
+persistence and no real bloom** — a history buffer and two blur passes
+respectively, and the fill rate is not free. The curvature is normalised by the
+corner displacement so no value crops the desktop; without that divisor,
+`crt_curve = 100` blacked out the corners and ate the panel's top row. Colours
+come from libkcolor's `KCOL_SCHEMES`, and the accent is read from
+`$XDG_CACHE_HOME/kdos/theme` — the same one-word file kdos-shell reads — **once, at
+startup**: a live `kdos theme amber` moves the panel and the box on their next
+start and the shader on the next login. The SIGHUP retint CLAUDE.md's theming
+section promises is M6.5's job, not done here.
+
+`crt` / `crt_scanlines` / `crt_curve` in comp.conf, percentages, `crt = 0` an
+honest off. **`KDOS_CRT_DUMP=<prefix>`** writes `<prefix>-in.ppm` and
+`-out.ppm` once — the composite and the result — with `KDOS_CRT_DUMP_FRAME=<n>`
+to wait past the empty first frame. That is how the pass gets looked at without a
+screen, the same reason kdosbuild has `--preview`. The input is read back through
+the texture the shader sampled, not the buffer, because that buffer is not always
+renderable.
+
+Sync is the one part only hardware can confirm: the composite and the pass share
+wlroots' single GLES2 context, so ordering is free, but the commit relies on
+implicit dmabuf fencing after `glFlush()` — a hand-built state cannot carry the
+scene's wait timeline. Getting it wrong shows up as a torn frame, not an error.
+
+## Stutter attribution — `kdos stutter`
+
+Three sources, none of them an answer alone, joined:
+
+| Knows | Does not know | Where |
+|---|---|---|
+| a frame was late, by how much, and what the compositor's own render cost | who did it | `kdos-comp/frames.c` |
+| the machine was starved, and of what | by whom | `/proc/pressure/*` |
+| who burned CPU and who sat in D state | that anyone cared | `/proc/<pid>/stat` |
+
+The closest prior art (Latency Lens) reads PSI and says outright it *"cannot
+identify which specific process caused a frame miss"*. That sentence is what this
+finishes: **"7 frames dropped on eDP-1 (133 ms) — the busiest just then:
+calibre-idx (appbox kdos-apps) waiting on the disk, calibre (appbox kdos-apps) at
+92% of a core."**
+
+**The compositor reports on `$XDG_RUNTIME_DIR/kdos-frames.sock`**, one NDJSON
+object per late frame. Presentation events are the truth where the backend has
+them (`wlr_output.events.present` carries when content turned into light, plus
+the refresh interval); headless and nested backends do not present, so the
+fallback is the frame clock, and the two are reported with a `source` field
+rather than averaged — a present gap is what the user SAW, a frame gap is what
+the compositor was GIVEN. The threshold is 1.5 refresh intervals.
+
+**The socket must never slow the frame loop.** Non-blocking both ends; a consumer
+that cannot keep up loses lines. No history either: a consumer that connects late
+has missed what happened, and a ring buffer would hide that. Not a Wayland
+protocol on purpose — it is one distro's channel between two of its own programs,
+and `presentation-time` already exists for clients that want their own numbers.
+
+**`render_ms` is what separates the two explanations.** Over 60% of the frame
+budget and `kdos stutter` says *the desktop itself was late* — the one causal
+claim it makes, because there it has both halves. Otherwise it reports what it
+measured and names who was busy, and it **never says "X caused this"**:
+attribution from a 500 ms sample window is circumstantial, and a tool that
+claimed otherwise would be wrong the first time two things were busy at once.
+
+Two details that are not obvious:
+
+- **Blocked before busy.** A process asleep in `D` shows almost no CPU while it
+  is the thing holding the disk, so sorting on CPU alone hides exactly the case
+  the io half exists for.
+- **Container names come from `conmon`'s argv, not from cgroups.** No systemd
+  means rootless podman gets no cgroup delegation and the box frequently sits in
+  `0::/`, which says nothing. Walking the ppid chain to the `conmon` that
+  supervises it and reading `-n <name>` costs a few file reads and no podman
+  call — which matters, because this runs while the machine is already
+  struggling.
+
+**`--fixture` is what makes an attribution engine testable.** The whole sampler
+reads from a directory that defaults to `/proc` and does not have to be one:
+`testing/fixtures/stutter` is two snapshots 500 ms apart plus the events
+kdos-comp would have sent between them, and `testing/selftest.sh` asserts the app
+is named with its box, the disk waiter is first, PSI is quoted, and exactly one
+of the two events is blamed on the compositor. Proved live as well, on a real
+compositor: three `SIGSTOP`/`SIGCONT` stalls produced three reports of 23 dropped
+frames each (~410 ms at 60 Hz) with the spinning process named first.
+
+`KDOS_COMP_DEBUG=1` puts kdos-comp's log at DEBUG, where every miss is also
+logged — a session log with a stutter in it is worth something even when nothing
+was listening. `kdos doctor` reports whether the socket is there at all.
+
+### Ending the session — and why the teardown had never run
+
+`SIGTERM`/`SIGINT` now end the session through `wl_event_loop_add_signal`, so a
+`kill` takes the same path `Super+Escape` does and the code after
+`wl_display_run()` actually executes. It had never executed, and it aborted the
+moment it did:
+
+```
+wlr_cursor_destroy: Assertion `wl_list_empty(&cur->events.motion.listener_list)'
+wlr_backend_finish:  Assertion `wl_list_empty(&backend->events.new_input...)'
+handle_display_destroy (security_context_v1): same assertion
+```
+
+**wlroots asserts that nothing is still listening when it destroys an object**, so
+every session-lifetime listener has to be removed first — the five cursor ones,
+the backend's two, and one each for layer-shell, session-lock, ext-workspace,
+output-management, the output layout, xdg-shell (×2), xdg-decoration, the seat
+(×2), the security-context manager and Xwayland (×2). Each removal is guarded the
+same way its `wl_signal_add` was, because a global that failed to create was never
+listened to. Verified under ASan: a two-output session with the panel up, and one
+with the screen locked and the lock client SIGKILLed, both exit 0.
+
 ---
 
 ## Repo layout
@@ -1007,13 +1262,20 @@ kdos/
 │   │   ├── libkxdg/             # kxdg_* desktop entries
 │   │   ├── libkpkg/             # kp_*   db, ports tree, dependency solver
 │   │   └── libkbuild/           # kbuild_* phases, plans, snapshot inventory
+│   ├── desktop/                 # the desktop, ours (see docs/KDOS-DESKTOP.md)
+│   │   ├── kdos-comp/           # the wlroots compositor + the CRT pass (crt.c)
+│   │   ├── kdos-shell/          # panel, launcher, notifyd, osd
+│   │   ├── kdos-lock/           # the lock screen + setuid kdos-checkpass
+│   │   ├── kdos-powerd/         # suspend/poweroff/reboot over a unix socket
+│   │   └── kdos-boxsock/        # the security-context-v1 sandbox engine
 │   ├── build/
 │   │   └── kdosbuild/           # the build orchestrator (C, host-only)
 │   └── packages/                # ports that are OURS (see Three Rings)
 │       ├── kdos-installer/      # the installer (C, zero libraries)
 │       ├── kdos-kpkg/           # kpkg + the four names it answers to
 │       ├── kdos-theme/          # the GTK/icon/cursor generators
-│       └── kdos-tools/          # kdos, ksvc/service, kdos-getty, banner,
+│       └── kdos-tools/          # kdos (+ theme --audit), ksvc/service,
+│                                #   kdos-getty, banner,
 │                                #   shot, fetch-app, fetch-static
 ├── fs/                          # copied verbatim into the rootfs
 │   ├── etc/{inittab,fstab,profile,profile.d,init.d,skel,kpkg.conf}
@@ -1221,10 +1483,11 @@ in `src/libs/selftest.c` and the end-to-end run below.
 `src/build/kdosbuild/` is `script/build.py` plus `script/buildlib/*.py`:
 `main.c` (the CLI), `manager.c` (the execution order and the step runner),
 `snapshot.c` (writing and extracting archives), `stats.c` (timing history, the
-ETA, the telemetry sampler), `tui.c` (the four screens) and `view.c` (the parts
+ETA, the telemetry sampler), `tui.c` (the four screens), `view.c` (the parts
 of the screens that are DECISIONS rather than drawing — the layout, the log
-classifier — plus the preview fixture). It sits on libkbuild for everything
-that only INSPECTS the tree.
+classifier — plus the preview fixture) and `report.c` (the headless output, text
+and NDJSON, from one traversal). It sits on libkbuild for everything that only
+INSPECTS the tree.
 
 Drawing on libktui is what kills the **third TUI toolkit** — kinstall's,
 kdos-appbox's ncurses one and `buildlib/tui.py`'s python curses one were three
@@ -1274,7 +1537,7 @@ file in `$PAGER` (argv, never a shell); **`T`** cycles the four accents live,
 which needs `ktui_term_repalette()` AND `ktui_draw_invalidate()` — repalette
 alone leaves every untouched cell wearing the old colours.
 
-**Two diagnostic entry points, neither of which needs a build.**
+**Three diagnostic entry points, none of which needs a build.**
 
 - **`kdosbuild --selftest`** runs `view.c`'s assertions: `layout_compute` over
   every size from 40x10 to 300x100 with no two regions overlapping and none
@@ -1297,6 +1560,19 @@ alone leaves every untouched cell wearing the old colours.
   hour-scale ETA, a port name longer than any pane. The one thing that is not
   reproducible between runs is the spinner glyph, which is picked from the
   wall clock.
+
+- **`kdosbuild --json`** replaces the plain lines with NDJSON, one object per
+  event: `build phase step snapshot notice restore result`. `--list --json`
+  prints the snapshot inventory as one object. Both are the SAME traversal —
+  `run_plain()` calls a `Reporter` (`report.c`) and does not know which of the
+  two it has, so the text and JSON views cannot disagree about what ran. NDJSON
+  rather than one document because a build can be killed at any moment and the
+  reason to have a machine-readable log is reading the tail of one that died.
+  There is no total step count in the `build` event on purpose: a
+  `packages.txt` phase expands only when it is entered. This is what lets
+  `testing/selftest.sh` assert on the ENGINE — the failing synthetic tree's
+  `rc`, which step failed, and that the step after it never ran — instead of
+  grepping for `BUILD COMPLETE`.
 
 **What is proved.** `testing/selftest.sh` compiles it, then runs it against a
 synthetic two-phase tree: a build with snapshots and logs, a restore that puts
@@ -1335,8 +1611,10 @@ anything under `script/`.
 Host-only regression net for `src/libs/`. Compiles every library with the host
 compiler under `-Werror`, runs `src/libs/selftest.c` against them, then
 compiles all five consumers to prove the headers still agree, and resolves a
-port to prove the ports tree still parses. No container, no network, seconds
-to run.
+port to prove the ports tree still parses, and audits a generated theme. No
+container, no network, half a minute — most of it the ~50 MB of icons and
+cursors the theme audit generates three times, which is the price of testing
+that claim with the real artwork.
 
 Its assertions are the INVARIANTS that were established by diffing against the
 implementations these libraries replaced — python's `colorsys`, the shell
@@ -1767,8 +2045,8 @@ WebFetch.
 
 ```
 01_udev  02_modules  05_hostname  10_sysctl  15_userdirs  20_dmesg  30_network
-40_dbus  42_networkmanager  45_seatd  50_alsa  60_bluetooth  70_sshd  80_cups
-rcS  service_helper
+40_dbus  42_networkmanager  45_seatd  50_alsa  55_powerd  60_bluetooth  70_sshd
+80_cups  rcS  service_helper
 ```
 
 Each sources `service_helper`, which is now three one-line wrappers around

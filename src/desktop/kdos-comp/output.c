@@ -37,11 +37,32 @@ static void output_frame(struct wl_listener *l, void *data)
 		wlr_scene_get_scene_output(o->server->scene, o->wlr_output);
 	if (!so)
 		return;
-	wlr_scene_output_commit(so, NULL);
+	/* The frame clock, before the work rather than after it: the gap between
+	 * two frame events is what the compositor was GIVEN, and moving this line
+	 * below the render would fold our own cost into it. */
+	kc_frames_frame(o);
+
+	int64_t t0 = kc_frames_now();
+	/* The CRT pass composites the scene into a buffer of its own and commits
+	 * the result itself. False means it did not — off, or fallen back — and
+	 * the frame is committed the ordinary way. */
+	if (!kc_crt_frame(o, so))
+		wlr_scene_output_commit(so, NULL);
+	/* What the desktop itself cost. A miss with a small number here was
+	 * somebody else's fault, and that distinction is the whole point. */
+	kc_frames_rendered(o, kc_frames_now() - t0);
 
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	wlr_scene_output_send_frame_done(so, &now);
+}
+
+/* Presentation: the authoritative clock where the backend has one. DRM does;
+ * headless and nested do not, which is what kc_frames_frame falls back for. */
+static void output_present(struct wl_listener *l, void *data)
+{
+	struct kc_output *o = wl_container_of(l, o, present);
+	kc_frames_present(o, data);
 }
 
 static void output_request_state(struct wl_listener *l, void *data)
@@ -114,8 +135,12 @@ static void output_destroy(struct wl_listener *l, void *data)
 	(void)data;
 	wl_list_remove(&o->frame.link);
 	wl_list_remove(&o->request_state.link);
+	wl_list_remove(&o->present.link);
 	wl_list_remove(&o->destroy.link);
 	wl_list_remove(&o->link);
+	/* The swapchains and the imported textures hold buffers of this output's
+	 * renderer; they go with the output, not with the session. */
+	kc_crt_output_free(o);
 	free(o);
 	reclaim_offscreen(s);
 }
@@ -147,6 +172,8 @@ static void new_output(struct wl_listener *l, void *data)
 	wl_signal_add(&wlr_output->events.frame, &o->frame);
 	o->request_state.notify = output_request_state;
 	wl_signal_add(&wlr_output->events.request_state, &o->request_state);
+	o->present.notify = output_present;
+	wl_signal_add(&wlr_output->events.present, &o->present);
 	o->destroy.notify = output_destroy;
 	wl_signal_add(&wlr_output->events.destroy, &o->destroy);
 	wl_list_insert(&s->outputs, &o->link);
@@ -157,6 +184,9 @@ static void new_output(struct wl_listener *l, void *data)
 	/* A new output has no usable area until the panels have been placed on
 	 * it, and o->usable is read by anything that positions a window. */
 	kc_layer_arrange(s);
+	/* And if the session is locked, a monitor plugged in NOW must come up
+	 * blank rather than showing the desktop it was never part of. */
+	kc_lock_arrange(s);
 }
 
 /* ── wlr-output-management ─────────────────────────────────────────────── */
@@ -187,6 +217,7 @@ static bool config_apply(struct kc_server *s,
 		}
 		reclaim_offscreen(s);
 		kc_layer_arrange(s);
+		kc_lock_arrange(s);
 	}
 
 	for (size_t i = 0; i < n; i++)

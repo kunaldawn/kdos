@@ -18,6 +18,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <wayland-client.h>
 
 #include "ext-workspace-v1-client-protocol.h"
@@ -39,6 +43,40 @@ int sh_read_line(const char *path, char *buf, size_t len)
 	fclose(f);
 	buf[strcspn(buf, "\n")] = '\0';
 	return 0;
+}
+
+/*
+ * `kdos restarts --quiet` exits 1 when something needs restarting and 0 when
+ * nothing does, which is why it has that exit code: the panel needs no parser
+ * and no shared format, just a status.
+ *
+ * Spawned rather than reimplemented. The join between the package manifest and
+ * /proc lives in one place, and a second copy in the panel would be a second
+ * thing to keep correct.
+ */
+int sh_restart_count(void)
+{
+	pid_t p = fork();
+	if (p < 0)
+		return -1;
+	if (p == 0) {
+		int null = open("/dev/null", O_WRONLY);
+		if (null >= 0) {
+			dup2(null, STDOUT_FILENO);
+			dup2(null, STDERR_FILENO);
+			if (null > STDERR_FILENO)
+				close(null);
+		}
+		execlp("kdos", "kdos", "restarts", "--quiet", (char *)NULL);
+		_exit(127);
+	}
+	int st = 0;
+	if (waitpid(p, &st, 0) < 0 || !WIFEXITED(st))
+		return -1;
+	int rc = WEXITSTATUS(st);
+	if (rc == 127)
+		return -1;	/* kdos is not installed; say unknown, not zero */
+	return rc == 1 ? 1 : 0;
 }
 
 void sh_theme_from_cache(void)

@@ -89,6 +89,19 @@ void kb_buf_printf(KbBuf *b, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));
 void kb_buf_free(KbBuf *b);
 
+/*
+ * Append `s` to `b` as a JSON string, quotes included.
+ *
+ * Every KDOS `--json` output funnels through this. Package descriptions, file
+ * paths and window titles all reach it, and every one of them can contain a
+ * quote, a backslash or a control character — which is exactly how a program
+ * emits output that looks like JSON and does not parse. Escapes the two
+ * mandatory characters, the five shorthand controls, and anything else below
+ * 0x20 as \u00xx; bytes >= 0x80 pass through, because the input is already
+ * UTF-8 and JSON strings are Unicode.
+ */
+void kb_json_str(KbBuf *b, const char *s);
+
 /* Whole-file read. malloc'd and NUL-terminated; *len excludes the NUL so the
  * buffer is usable as both a string and a blob. NULL on error. */
 char *kb_read_all(const char *path, size_t *len);
@@ -169,6 +182,11 @@ void kb_argv_end(KbArgv *a);
 extern int kb_proc_verbose;
 
 int kb_run(const KbArgv *a);		/* exec, wait, return exit status   */
+/* Same, but `in` (n bytes) is written to the child's stdin, which then sees
+ * EOF. A password belongs here and never in argv: /proc/<pid>/cmdline is
+ * world-readable for the life of the process. SIGPIPE is blocked around the
+ * write, so a child that exits early cannot kill the caller. */
+int kb_run_feed(const KbArgv *a, const char *in, size_t n);
 /* Same, but the child INHERITS stdin/stdout/stderr. A package build writes
  * straight to the build log, unbuffered and interleaved, and that is what the
  * per-port logs are. */

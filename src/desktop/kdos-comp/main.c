@@ -54,6 +54,14 @@ static void focus_toplevel(struct kc_toplevel *t, struct wlr_surface *surface,
 	if (!t)
 		return;
 	struct kc_server *s = t->server;
+	/*
+	 * While the session is locked NOTHING below the lock tree may take the
+	 * keyboard — not a window that just mapped, not a client that asked to
+	 * be activated. One check, here, because every focus change in the
+	 * compositor goes through this function.
+	 */
+	if (kc_locked(s))
+		return;
 	struct wlr_surface *prev = s->seat->keyboard_state.focused_surface;
 	if (prev == surface)
 		return;
@@ -125,6 +133,13 @@ static void focus_top_of_ws(struct kc_server *s)
 }
 
 static void end_interactive(struct kc_server *s);
+
+/* Give the keyboard back to the session — what an unlock ends with. Public
+ * because lock.c is the only caller and the MRU list is main.c's. */
+void kc_refocus(struct kc_server *s)
+{
+	focus_top_of_ws(s);
+}
 
 void kc_ws_switch(struct kc_server *s, int n)
 {
@@ -244,6 +259,15 @@ static void run_action(struct kc_server *s, const struct kc_bind *b)
 	case KC_ACT_MOVE_TO_WORKSPACE:
 		ws_move(s, b->arg);
 		break;
+	case KC_ACT_LOCK: {
+		/* The lock CLIENT is spawned; the compositor does not lock
+		 * itself. A lock nobody can type a password into is a reboot,
+		 * so the state only changes once the client asks for it. */
+		static const char *const argv[] = { "kdos-lock", NULL };
+		if (!kc_locked(s))
+			kc_spawn(argv);
+		break;
+	}
 	}
 }
 
@@ -337,6 +361,8 @@ static void keyboard_key(struct wl_listener *l, void *data)
 	bool handled = false;
 	uint32_t mods = wlr_keyboard_get_modifiers(kb->wlr_keyboard);
 
+	kc_idle_activity(s);
+
 	if (ev->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 		/* VT switching is checked FIRST and without a modifier test:
 		 * the keymap only produces XF86Switch_VT_n for the full
@@ -345,10 +371,19 @@ static void keyboard_key(struct wl_listener *l, void *data)
 		for (int i = 0; i < n && !handled; i++)
 			handled = handle_vt_switch(s, syms[i]);
 
+		/*
+		 * No compositor binding fires while the session is locked. VT
+		 * switching above is the deliberate exception — it is the way
+		 * out of a wedged session and must survive everything — but
+		 * Super+Q on a lock screen must not quit the compositor, and
+		 * Super+1 must not reveal workspace 1 behind it.
+		 */
+		if (kc_locked(s))
+			handled = false;
 		/* Any modifier at all is enough to be worth a lookup — the
 		 * binding itself decides which. A modifier-less key is never a
 		 * binding, because the config refuses to create one. */
-		if (!handled && (mods & KC_MOD_MASK))
+		else if (!handled && (mods & KC_MOD_MASK))
 			for (int i = 0; i < nraw && !handled; i++)
 				handled = handle_binding(s, raw[i], mods);
 	}
@@ -635,6 +670,7 @@ static void cursor_motion(struct wl_listener *l, void *data)
 {
 	struct kc_server *s = wl_container_of(l, s, cursor_motion);
 	struct wlr_pointer_motion_event *ev = data;
+	kc_idle_activity(s);
 	wlr_cursor_move(s->cursor, &ev->pointer->base, ev->delta_x, ev->delta_y);
 	pointer_motion_common(s, ev->time_msec);
 }
@@ -643,6 +679,7 @@ static void cursor_motion_absolute(struct wl_listener *l, void *data)
 {
 	struct kc_server *s = wl_container_of(l, s, cursor_motion_absolute);
 	struct wlr_pointer_motion_absolute_event *ev = data;
+	kc_idle_activity(s);
 	wlr_cursor_warp_absolute(s->cursor, &ev->pointer->base, ev->x, ev->y);
 	pointer_motion_common(s, ev->time_msec);
 }
@@ -651,6 +688,19 @@ static void cursor_button(struct wl_listener *l, void *data)
 {
 	struct kc_server *s = wl_container_of(l, s, cursor_button);
 	struct wlr_pointer_button_event *ev = data;
+
+	kc_idle_activity(s);
+
+	/*
+	 * A locked session has no windows to focus and no grabs to start. The
+	 * button still reaches the seat, because the lock surface has the
+	 * pointer focus and its own buttons to click.
+	 */
+	if (kc_locked(s)) {
+		wlr_seat_pointer_notify_button(s->seat, ev->time_msec,
+					       ev->button, ev->state);
+		return;
+	}
 
 	if (ev->state == WL_POINTER_BUTTON_STATE_RELEASED) {
 		if (s->cursor_mode != KC_CURSOR_PASSTHROUGH) {
@@ -711,6 +761,7 @@ static void cursor_axis(struct wl_listener *l, void *data)
 {
 	struct kc_server *s = wl_container_of(l, s, cursor_axis);
 	struct wlr_pointer_axis_event *ev = data;
+	kc_idle_activity(s);
 	wlr_seat_pointer_notify_axis(s->seat, ev->time_msec, ev->orientation,
 				     ev->delta, ev->delta_discrete, ev->source,
 				     ev->relative_direction);
@@ -884,9 +935,31 @@ static void new_xdg_popup(struct wl_listener *l, void *data)
 
 /* ── main ──────────────────────────────────────────────────────────────── */
 
+/* SIGHUP is `kdos theme <accent>` telling the session the accent changed. It is
+ * NOT a config reload: comp.conf is read once, and a binding that changed under
+ * a running session would be a surprise rather than a feature. */
+static int handle_hup_signal(int sig, void *data)
+{
+	struct kc_server *s = data;
+	(void)sig;
+	kc_crt_reload(s);
+	return 0;
+}
+
+static int handle_quit_signal(int sig, void *data)
+{
+	struct wl_display *display = data;
+	wlr_log(WLR_INFO, "signal %d — ending the session", sig);
+	wl_display_terminate(display);
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
-	wlr_log_init(WLR_INFO, NULL);
+	/* INFO by default; DEBUG when asked. The frame-timing lines and the
+	 * idle policy's decisions are DEBUG, and "why did my screen do that"
+	 * should not need a rebuild to answer. */
+	wlr_log_init(getenv("KDOS_COMP_DEBUG") ? WLR_DEBUG : WLR_INFO, NULL);
 
 	bool spawn_startup = true;
 	for (int i = 1; i < argc; i++) {
@@ -911,6 +984,21 @@ int main(int argc, char **argv)
 	kc_appid_init(&s);
 
 	s.display = wl_display_create();
+	/*
+	 * SIGTERM and SIGINT end the session the same way Super+Escape does,
+	 * through the event loop rather than from a signal handler — wayland's
+	 * add_signal delivers them as ordinary events, so the teardown that
+	 * follows wl_display_run() is the SAME teardown either way. Without this a
+	 * `kill` left the compositor to die on the default action, which is also
+	 * the only path the CRT pass's swapchains and the renderer's textures are
+	 * released on.
+	 */
+	wl_event_loop_add_signal(wl_display_get_event_loop(s.display), SIGTERM,
+				 handle_quit_signal, s.display);
+	wl_event_loop_add_signal(wl_display_get_event_loop(s.display), SIGINT,
+				 handle_quit_signal, s.display);
+	wl_event_loop_add_signal(wl_display_get_event_loop(s.display), SIGHUP,
+				 handle_hup_signal, &s);
 	s.backend = wlr_backend_autocreate(wl_display_get_event_loop(s.display),
 					   &s.session);
 	if (!s.backend) {
@@ -942,6 +1030,11 @@ int main(int argc, char **argv)
 	wlr_subcompositor_create(s.display);
 	wlr_data_device_manager_create(s.display);
 
+	/* The renderer exists, so this can decide whether there is going to be a
+	 * CRT pass at all and compile the shader once, instead of finding out per
+	 * frame. It only ever turns the pass OFF, so it is safe this early. */
+	kc_crt_init(&s);
+
 	s.output_layout = wlr_output_layout_create(s.display);
 	s.scene = wlr_scene_create();
 	s.scene_layout = wlr_scene_attach_output_layout(s.scene, s.output_layout);
@@ -968,6 +1061,15 @@ int main(int argc, char **argv)
 
 	s.layer_above = wlr_scene_tree_create(&s.scene->tree);
 	kc_layer_init(&s);
+
+	/*
+	 * Above everything, including layer-shell's overlay: a panel that could
+	 * draw over the lock screen would be a panel that could show you the
+	 * window titles of a locked session. The idle dim lives in here too,
+	 * below the lock surfaces.
+	 */
+	s.layer_lock = wlr_scene_tree_create(&s.scene->tree);
+	kc_lock_init(&s);
 	kc_shellsvc_init(&s);
 
 	wl_list_init(&s.toplevels);
@@ -1012,6 +1114,13 @@ int main(int argc, char **argv)
 	 * lazy server can become ready as soon as it is created. */
 	kc_xwayland_init(&s, compositor);
 
+	/* After the seat, which the idle notifier reports activity against. */
+	kc_idle_init(&s);
+	/* After the outputs exist and before the session does anything: the
+	 * socket has to be there when kdos-shell starts, or the panel's first
+	 * connection attempt is the one that fails. */
+	kc_frames_init(&s);
+
 	const char *socket = wl_display_add_socket_auto(s.display);
 	if (!socket) {
 		wlr_backend_destroy(s.backend);
@@ -1039,14 +1148,72 @@ int main(int argc, char **argv)
 
 	kc_appid_free(&s);
 	kc_security_free(&s);
+	kc_idle_free(&s);
 	kc_config_free(&s);
+
+	/*
+	 * Every listener that lives as long as the session, taken off before the
+	 * thing it listens to is destroyed. wlroots ASSERTS on a non-empty listener
+	 * list in several of these destructors — the security-context manager and
+	 * wlr_cursor were the two that aborted here — so this is not tidiness, it is
+	 * the difference between a clean logout and a core dump. Each is guarded the
+	 * same way its `wl_signal_add` was: a global that failed to create was never
+	 * listened to.
+	 */
+	if (s.layer_shell)
+		wl_list_remove(&s.new_layer_surface.link);
+	if (s.lock_mgr)
+		wl_list_remove(&s.new_lock.link);
+	if (s.ws_mgr)
+		wl_list_remove(&s.ws_commit.link);
+	if (s.output_mgr) {
+		wl_list_remove(&s.output_mgr_apply.link);
+		wl_list_remove(&s.output_mgr_test.link);
+	}
+	wl_list_remove(&s.layout_change.link);
+	wl_list_remove(&s.new_xdg_toplevel.link);
+	wl_list_remove(&s.new_xdg_popup.link);
+	if (s.deco_mgr)
+		wl_list_remove(&s.new_decoration.link);
+	wl_list_remove(&s.request_cursor.link);
+	wl_list_remove(&s.request_set_selection.link);
+	if (s.xwayland) {
+		wl_list_remove(&s.new_xwayland_surface.link);
+		wl_list_remove(&s.xwayland_ready.link);
+	}
 
 	if (s.xwayland)
 		wlr_xwayland_destroy(s.xwayland);
 	wl_display_destroy_clients(s.display);
 	wlr_scene_node_destroy(&s.scene->tree.node);
+	/* Before the renderer: the CRT pass's swapchains and imported textures
+	 * belong to it, and the backend — which is what destroys the outputs, and
+	 * so would otherwise run kc_crt_output_free — is torn down after it. */
+	struct kc_output *out;
+	wl_list_for_each(out, &s.outputs, link)
+		kc_crt_output_free(out);
+	kc_crt_free(&s);
+	kc_frames_free(&s);
 	wlr_xcursor_manager_destroy(s.cursor_mgr);
+	/*
+	 * wlr_cursor_destroy() ASSERTS that nothing is still listening to it, and
+	 * these five listeners are ours. Leaving them attached ended the session
+	 * with
+	 *
+	 *   wlr_cursor_destroy: Assertion `wl_list_empty(&cur->events.motion...)'
+	 *
+	 * which nobody had seen because nothing reached this code: `quit` was the
+	 * only way here until SIGTERM became the other one.
+	 */
+	wl_list_remove(&s.cursor_motion.link);
+	wl_list_remove(&s.cursor_motion_absolute.link);
+	wl_list_remove(&s.cursor_button.link);
+	wl_list_remove(&s.cursor_axis.link);
+	wl_list_remove(&s.cursor_frame.link);
 	wlr_cursor_destroy(s.cursor);
+	/* And the backend asserts the same thing about its own two signals. */
+	wl_list_remove(&s.new_input.link);
+	wl_list_remove(&s.new_output.link);
 	wlr_allocator_destroy(s.allocator);
 	wlr_renderer_destroy(s.renderer);
 	wlr_backend_destroy(s.backend);

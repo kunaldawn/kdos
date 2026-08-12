@@ -26,10 +26,17 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/utsname.h>
 
 #include "kdos-tools.h"
+
+/* Where kdos-cursors installs its artwork. kdos-theme's own CURSOR_ART_DEFAULT
+ * is this same path; asking here is only "is there anything to recolour", so an
+ * older install without the art keeps its cursors instead of getting an empty
+ * theme. */
+#define CURSOR_ART_PATH "/usr/share/kdos/cursors/art"
 
 /* ANSI, but only when someone is looking. */
 static const char *C_A = "", *C_B = "", *C_D = "", *C_W = "", *C_0 = "";
@@ -117,12 +124,19 @@ static void reload_session(void)
 {
 	if (!kb_have_prog("pkill"))
 		return;
-	KbArgv a = {0};
-	kb_argv_add(&a, "pkill");
-	kb_argv_add(&a, "-HUP");
-	kb_argv_add(&a, "kdos-shell");
-	kb_argv_end(&a);
-	kb_run(&a);	/* no session running is not an error */
+	/* Both halves of the desktop: the shell repaints its chrome, the
+	 * compositor re-reads the accent its CRT shader tints with. Separate
+	 * pkills rather than one pattern — `kdos-*` would also signal kdos-appbox
+	 * and any alien app launched through it. */
+	static const char *const who[] = { "kdos-shell", "kdos-comp" };
+	for (size_t i = 0; i < sizeof(who) / sizeof(who[0]); i++) {
+		KbArgv a = {0};
+		kb_argv_add(&a, "pkill");
+		kb_argv_add(&a, "-HUP");
+		kb_argv_add(&a, who[i]);
+		kb_argv_end(&a);
+		kb_run(&a);	/* no session running is not an error */
+	}
 }
 
 /*
@@ -319,6 +333,38 @@ static void write_icons(const KcolScheme *sc)
 	free(out);
 }
 
+/*
+ * The cursors, into ~/.icons/KDOS-cursors — where XCURSOR_THEME already points
+ * and, as with the icons, the only path the appbox can see. This was the one
+ * artefact an accent switch could not reach: the generator was always
+ * parameterised, but the art it needs was not installed on the target until
+ * kdos-cursors started shipping it to /usr/share/kdos/cursors/art.
+ *
+ * A cursor theme is 4.4 MB of premultiplied Xcursor files and takes a moment to
+ * write, which is why the accent switch prints before it rather than after.
+ */
+static void write_cursors(const KcolScheme *sc)
+{
+	const char *art = getenv("KDOS_CURSOR_ART");
+	if (!kb_have_prog("kdos-theme"))
+		return;
+	/* Same precedence kdos-theme itself uses: the environment beats the
+	 * installed art. An install with neither keeps the cursors it has rather
+	 * than getting an empty theme. */
+	if (!(art && *art && kb_is_dir(art)) && !kb_is_dir(CURSOR_ART_PATH))
+		return;
+	char *out = kb_path_join(kb_home_dir(), ".icons/KDOS-cursors");
+	mkparent(out);
+	KbArgv a = {0};
+	kb_argv_add(&a, "kdos-theme");
+	kb_argv_add(&a, "cursors");
+	kb_argv_add(&a, out);
+	kb_argv_add(&a, sc->name);
+	kb_argv_end(&a);
+	kb_run(&a);
+	free(out);
+}
+
 static void write_foot(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("foot/themes/kdos");
@@ -486,10 +532,34 @@ static void write_starship(const KcolScheme *sc)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/* Everything an accent switch produces, and nothing else — no state file, no
+ * signals. `kdos theme --audit` runs exactly this into a scratch $HOME, which
+ * only works because it is one function with no side effects beyond the files. */
+static void theme_apply(const KcolScheme *sc)
+{
+	write_gtk(sc);
+	write_icons(sc);
+	write_cursors(sc);
+	write_foot(sc);
+	write_btop(sc);
+	write_starship(sc);
+}
+
 static int cmd_theme(int argc, char **argv)
 {
 	const char *cur = current_theme();
 	const char *want = argc > 0 ? argv[0] : "";
+
+	if (!strcmp(want, "--audit") || !strcmp(want, "audit")) {
+		/* An accent may follow: `kdos theme --audit amber` asks what
+		 * would have to change for amber, which is how you check a switch
+		 * before making it. Without one it audits what is in force. */
+		const char *which = argc > 1 ? argv[1] : cur;
+		const KcolScheme *sc = kcol_find(which);
+		if (!sc)
+			kb_die("unknown theme '%s' (try: kdos theme list)", which);
+		return kdt_theme_audit(sc, theme_apply, C_A, C_0);
+	}
 
 	if (!*want || !strcmp(want, "show") || !strcmp(want, "current")) {
 		printf("%s\n", cur);
@@ -523,11 +593,7 @@ static int cmd_theme(int argc, char **argv)
 	if (!sc)
 		kb_die("unknown theme '%s' (try: kdos theme list)", want);
 
-	write_gtk(sc);
-	write_icons(sc);
-	write_foot(sc);
-	write_btop(sc);
-	write_starship(sc);
+	theme_apply(sc);
 
 	/* The state file is the desktop's ONLY input, so it is written before
 	 * the session is signalled — a SIGHUP that arrives first would make the
@@ -582,11 +648,15 @@ static void help_body(FILE *o)
 		{ "desktop", "start the KDOS desktop from a tty (kdos-desktop)" },
 		{ "kdos app <name>", "install an alien app (distrobox + export)" },
 		{ "kdos theme [name]", "phosphor | amber | ice | bone | next | prev | list" },
+		{ "kdos theme --audit", "is every generated colour still the palette's?" },
 		{ "kdos status", "packages, containers, exported apps" },
 		{ "kdos doctor", "check the session for common breakage" },
 		{ "kdos appid", "do launcher icons match the windows they open?" },
+		{ "kdos restarts", "what is running code an upgrade replaced" },
+		{ "kdos stutter", "why the desktop hiccuped — with the app's name" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
+		{ "kdos-power suspend", "suspend; also poweroff and reboot" },
 		{ "sudo kinstall", "install this live image onto a disk" },
 		{ NULL, NULL }
 	};
@@ -596,18 +666,23 @@ static void help_body(FILE *o)
 
 	fprintf(o, "%sKEYS%s  %s(defaults — remap in ~/.config/kdos/comp.conf)%s\n",
 		C_A, C_0, C_D, C_0);
+	/* Every line here is a binding kdos-comp's config.c actually installs.
+	 * The list used to carry four that nothing bound — Alt+Tab, the snap
+	 * arrows, Super+F, PrtSc — which is worse than a short cheat sheet: a
+	 * key that the help says exists and the desktop ignores reads as a
+	 * broken desktop. */
 	static const char *KEYS[][2] = {
 		{ "Super+D", "open the launcher" },
 		{ "Super+Return", "terminal (foot)" },
 		{ "Super+Q", "close window" },
-		{ "Alt+Tab", "switch window (most recent first)" },
-		{ "Super+Arrows", "snap: half, quarter, maximize" },
-		{ "Super+Shift+Arrows", "move window between outputs" },
-		{ "Super+F", "toggle floating / snapped" },
+		{ "Super+Tab", "switch window (most recent first)" },
+		{ "Super+Shift+Tab", "switch window, backwards" },
 		{ "Super+1..4", "switch workspace" },
 		{ "Super+Shift+1..4", "move window to workspace" },
+		{ "Super+drag", "move a window; Super+right-drag resizes" },
 		{ "Super+L", "lock the screen" },
-		{ "PrtSc", "screenshot (region, to clipboard and disk)" },
+		{ "Super+Escape", "end the session" },
+		{ "Volume / Brightness", "the media keys, with an on-screen gauge" },
 		{ NULL, NULL }
 	};
 	for (int i = 0; KEYS[i][0]; i++)
@@ -733,11 +808,45 @@ static int cmd_status(int argc, char **argv)
 static void ok(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void warn_(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
+/*
+ * Doctor's two funnels, and `--json` is a mode on them rather than a second
+ * pass over the same checks. Every check reports through exactly one of these,
+ * so the machine-readable output cannot drift from what a human is told — which
+ * is the entire point of N15 and the reason it is worth doing at all.
+ */
+static int doctor_json;		/* emitting records rather than lines */
+static const char *doctor_section = "";
+static int doctor_first = 1;
+static int doctor_warns;
+
+static void doctor_record(const char *level, const char *fmt, va_list ap)
+{
+	char msg[512];
+	vsnprintf(msg, sizeof(msg), fmt, ap);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b, "%s\n    {\"section\": ", doctor_first ? "" : ",");
+	kb_json_str(&b, doctor_section);
+	kb_buf_str(&b, ", \"level\": ");
+	kb_json_str(&b, level);
+	kb_buf_str(&b, ", \"message\": ");
+	kb_json_str(&b, msg);
+	kb_buf_str(&b, "}");
+	fwrite(b.p, 1, b.n, stdout);
+	kb_buf_free(&b);
+	doctor_first = 0;
+}
+
 static void ok(const char *fmt, ...)
 {
 	va_list ap;
-	printf("  %s[ ok ]%s ", C_A, C_0);
 	va_start(ap, fmt);
+	if (doctor_json) {
+		doctor_record("ok", fmt, ap);
+		va_end(ap);
+		return;
+	}
+	printf("  %s[ ok ]%s ", C_A, C_0);
 	vprintf(fmt, ap);
 	va_end(ap);
 	putchar('\n');
@@ -746,11 +855,36 @@ static void ok(const char *fmt, ...)
 static void warn_(const char *fmt, ...)
 {
 	va_list ap;
-	printf("  %s[warn]%s ", C_W, C_0);
+	doctor_warns++;
 	va_start(ap, fmt);
+	if (doctor_json) {
+		doctor_record("warn", fmt, ap);
+		va_end(ap);
+		return;
+	}
+	printf("  %s[warn]%s ", C_W, C_0);
 	vprintf(fmt, ap);
 	va_end(ap);
 	putchar('\n');
+}
+
+/* A section header in text mode; a field on every record in JSON mode. A
+ * machine consumer wants the grouping attached to the item, not emitted as a
+ * separate thing it has to remember. */
+static void doctor_head(const char *name)
+{
+	doctor_section = name;
+	if (!doctor_json)
+		printf("%s%s%s\n", C_B, name, C_0);
+}
+
+/* The blank line between sections is text-mode furniture. Left unguarded it
+ * lands in the middle of the JSON array — which still parses, and looks like a
+ * bug to anyone reading the output. */
+static void doctor_gap(void)
+{
+	if (!doctor_json)
+		putchar('\n');
 }
 
 /* `grep -q "^<prefix>"` — line-anchored, which matters: a bare substring
@@ -802,11 +936,23 @@ static int landlock_abi(void)
 	return v < 0 ? -errno : (int)v;
 }
 
-static int cmd_doctor(void)
+static int cmd_doctor(int argc, char **argv)
 {
-	printf("%sKDOS doctor%s\n\n", C_A, C_0);
+	for (int i = 0; i < argc; i++) {
+		if (!strcmp(argv[i], "--json"))
+			doctor_json = 1;
+		else {
+			fprintf(stderr, "usage: kdos doctor [--json]\n");
+			return 2;
+		}
+	}
 
-	printf("%sKernel%s\n", C_B, C_0);
+	if (doctor_json)
+		printf("{\n  \"checks\": [");
+	else
+		printf("%sKDOS doctor%s\n\n", C_A, C_0);
+
+	doctor_head("Kernel");
 	int abi = landlock_abi();
 	if (abi > 0)
 		ok("Landlock ABI %d", abi);
@@ -815,9 +961,9 @@ static int cmd_doctor(void)
 	else
 		warn_("Landlock present but disabled — add it to CONFIG_LSM or "
 		      "the lsm= cmdline");
-	putchar('\n');
+	doctor_gap();
 
-	printf("%sSession%s\n", C_B, C_0);
+	doctor_head("Session");
 	const char *wd = getenv("WAYLAND_DISPLAY");
 	if (wd && *wd)
 		ok("WAYLAND_DISPLAY=%s", wd);
@@ -845,9 +991,9 @@ static int cmd_doctor(void)
 	else
 		warn_("wlr portal not running — screen capture and file pickers "
 		      "degraded");
-	putchar('\n');
+	doctor_gap();
 
-	printf("%sContainers%s\n", C_B, C_0);
+	doctor_head("Containers");
 	/* The failure this distro actually had: toybox switch_root never
 	 * MS_MOVEs the root, so anything that JOINS a mount namespace lands on
 	 * an empty tree. */
@@ -878,9 +1024,9 @@ static int cmd_doctor(void)
 		warn_("running as root — alien apps are meant to run as the kdos "
 		      "user");
 	}
-	putchar('\n');
+	doctor_gap();
 
-	printf("%sDesktop%s\n", C_B, C_0);
+	doctor_head("Desktop");
 	/* The accent NAME in the cache is what kdos-comp and kdos-shell read;
 	 * they carry the palette itself in libkcolor. No colours are written
 	 * for the desktop, so this file is the whole of its theme state. */
@@ -904,6 +1050,45 @@ static int cmd_doctor(void)
 	else
 		warn_("no DISPLAY — X11-only alien apps will not start");
 
+	/*
+	 * The lock screen's two halves, and the worst failure mode in the
+	 * system: kdos-checkpass without its setuid bit cannot read
+	 * /etc/shadow, so every password is refused and the session locks you
+	 * OUT — recoverable only from another VT. A packaging mistake, an rsync
+	 * without -p or a restore from a tarball all lose that bit silently,
+	 * which is why it is checked here rather than trusted.
+	 */
+	struct stat cst;
+	if (stat("/usr/bin/kdos-checkpass", &cst) != 0)
+		warn_("kdos-checkpass missing — the lock screen can never "
+		      "unlock");
+	else if ((cst.st_mode & S_ISUID) && cst.st_uid == 0)
+		ok("kdos-checkpass is setuid root");
+	else
+		warn_("kdos-checkpass is not setuid root — every password will "
+		      "be refused (fix: chown root and chmod 4755)");
+
+	if (kb_path_exists("/run/kdos-powerd.sock"))
+		ok("kdos-powerd listening");
+	else
+		warn_("kdos-powerd not running — no suspend, poweroff or reboot "
+		      "from the desktop (start with: service kdos-powerd start)");
+
+	/* The frame-timing socket. Absent means `kdos stutter` has nothing to
+	 * watch — which is normal outside a session and worth saying inside one,
+	 * because the alternative is a tool that appears to hang. */
+	const char *rtd = getenv("XDG_RUNTIME_DIR");
+	if (rtd && *rtd) {
+		char *fs = kb_path_join(rtd, "kdos-frames.sock");
+		if (kb_path_exists(fs))
+			ok("kdos-comp is reporting frame timing (kdos stutter)");
+		else
+			warn_("no frame-timing socket — `kdos stutter` has "
+			      "nothing to watch (is kdos-comp this session's "
+			      "compositor?)");
+		free(fs);
+	}
+
 	const char *path = getenv("PATH");
 	char *want = kb_path_join(kb_home_dir(), ".local/bin");
 	if (path && strstr(path, want))
@@ -912,7 +1097,14 @@ static int cmd_doctor(void)
 		warn_("~/.local/bin not on PATH — exported app wrappers will not "
 		      "resolve");
 	free(want);
-	return 0;
+
+	if (doctor_json)
+		printf("\n  ],\n  \"warnings\": %d\n}\n", doctor_warns);
+	/*
+	 * Exit status carries the verdict in BOTH modes, so a script does not
+	 * have to choose between reading the text and parsing the JSON.
+	 */
+	return doctor_warns ? 1 : 0;
 }
 
 static int cmd_version(void)
@@ -944,7 +1136,7 @@ int kdos_main(int argc, char **argv)
 	if (!strcmp(cmd, "status"))
 		return cmd_status(rest, restv);
 	if (!strcmp(cmd, "doctor"))
-		return cmd_doctor();
+		return cmd_doctor(rest, restv);
 	if (!strcmp(cmd, "why"))
 		return why_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "explain"))
@@ -953,6 +1145,10 @@ int kdos_main(int argc, char **argv)
 		return sandbox_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "appid"))
 		return appid_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "restarts"))
+		return restarts_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "stutter"))
+		return stutter_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
 		return cmd_version();
 	if (!strcmp(cmd, "app")) {
