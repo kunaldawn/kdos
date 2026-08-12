@@ -144,6 +144,44 @@ enum {
 
 extern const char *ktui_glyph[KT_G_N];
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Backends
+ *
+ * The cell buffer, the widgets, the glyph tiers and the layout do not care
+ * where the cells end up. This vtable is that seam, and it exists so the
+ * Wayland backend can live in a DIFFERENT ARCHIVE: libktui links nothing but
+ * musl, and it has to keep doing so, because kinstall links it in phase 1
+ * before any library exists to link against. libkwl is where wayland-client,
+ * pixman, fcft and xkbcommon go. If libktui ever gains a real `-l`, kinstall
+ * moves to phase 4 with it — which is not a trade anyone wants.
+ *
+ * `flush` receives both buffers and decides for itself what changed. It is not
+ * handed a damage list because the tty backend's diff is fused into its
+ * emission — it walks cells and writes escapes in the same pass, tracking
+ * cursor position and SGR state as it goes — and splitting that in two to fit
+ * a tidier signature would move pixels that must not move.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Tagged and forward-declared because the backend vtable above needs the name
+ * before the input layer below defines the fields. */
+typedef struct KtuiEvent KtuiEvent;
+
+typedef struct {
+	const char *name;
+	/* `prev` is the last-presented buffer, updated by the backend as it
+	 * presents. `force_full` means ignore it and repaint everything. */
+	void (*flush)(const KtuiCell *cur, KtuiCell *prev, int w, int h,
+		      int force_full);
+	int (*poll_event)(KtuiEvent *ev, int timeout_ms);
+	void (*size)(int *w, int *h);
+	int (*caps)(void);
+} KtuiBackend;
+
+/* NULL selects the built-in tty backend. A backend must outlive the library's
+ * use of it; libkwl hands over a pointer to a static. */
+void ktui_backend_set(const KtuiBackend *b);
+const KtuiBackend *ktui_backend(void);
+
 int ktui_draw_init(void);
 /* Render with no terminal at all: allocate the cell buffer at a fixed size and
  * write the result as plain text instead of escapes. This is what lets a
@@ -257,14 +295,14 @@ enum {
 
 enum { KT_MP_RELEASE = 0, KT_MP_PRESS = 1, KT_MP_DRAG = 2 };
 
-typedef struct {
+struct KtuiEvent {
 	int type;
 	int key;		/* codepoint or KT_K_*                     */
 	int mods;
 	int mx, my;
 	int btn;
 	int press;
-} KtuiEvent;
+};
 
 int ktui_input_init(int want_mouse);
 void ktui_input_shutdown(void);

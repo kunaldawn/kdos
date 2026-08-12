@@ -21,6 +21,20 @@
  * A profile is applied at CREATE time. Namespaces cannot be re-flagged on a
  * live container, so changing one marks the box as needing a recreate rather
  * than silently doing nothing — see cmd_security() in main.c.
+ *
+ * THE SAME FILE IS ALSO THE COMPOSITOR'S POLICY. Its `wayland.*` keys are read
+ * by kdos-comp (src/desktop/kdos-comp/security.c) and enforced when a client
+ * from this box tries to bind a protocol global — screencopy, clipboard read,
+ * layer-shell, virtual input, foreign-toplevel, output management. One record,
+ * two enforcement points: namespaces here at create time, protocol globals
+ * there at bind time, with nothing to keep in sync. The keys are ignored here
+ * and the ones above are ignored there, on purpose — neither program treats
+ * the other's as an error.
+ *
+ * The path is resolved from $HOME/.config and NOT from $XDG_CONFIG_HOME, and
+ * kdos-comp deliberately copies that rather than doing the more correct thing,
+ * because the two resolving it differently is the one failure this design must
+ * not have.
  */
 
 #include "kdos-appbox.h"

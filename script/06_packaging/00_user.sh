@@ -41,6 +41,12 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # user-authored lives there, so clear them first rather than merging onto
     # whatever the last build left.
     rm -rf "$home/.icons" "$home/.themes"
+    # Desktop state the home accumulated from a generator that no longer
+    # exists. Same reasoning as .icons/.themes: the home is MATERIALIZED from
+    # skel, so anything skel has stopped providing has to be cleared here or
+    # it outlives the thing that made it. The fs-manifest guard cannot help —
+    # it only owns paths fs/ itself provided.
+    rm -rf "$home/.config/cosmic"
     # Same reason, and the alien launchers need it most: they have been named
     # kdos-<id> and <upstream-id> at different times, so a merge leaves both
     # and the app library shows every alien app twice.

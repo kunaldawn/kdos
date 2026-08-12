@@ -1,0 +1,1055 @@
+/* ██╗  ██╗██████╗  ██████╗ ███████╗
+ * ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+ * █████╔╝ ██║  ██║██║   ██║███████╗
+ * ██╔═██╗ ██║  ██║██║   ██║╚════██║
+ * ██║  ██╗██████╔╝╚██████╔╝███████║
+ * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+ * ---------------------------------
+ *   kdos-comp — outputs, windows, pointer, keyboard, VT switching,
+ *               workspaces, alt-tab, interactive move/resize with snapping
+ * ---------------------------------
+ */
+
+#include <assert.h>
+#include <linux/input-event-codes.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include "kdos-comp.h"
+
+/* ── spawning ──────────────────────────────────────────────────────────── */
+
+void kc_spawn(const char *const *argv)
+{
+	pid_t p = fork();
+	if (p < 0)
+		return;
+	if (p == 0) {
+		/* Double fork so the compositor never has to reap. The
+		 * intermediate exits immediately and init adopts the child. */
+		if (fork() == 0) {
+			setsid();
+			execvp(argv[0], (char *const *)argv);
+			_exit(127);
+		}
+		_exit(0);
+	}
+	waitpid(p, NULL, 0);
+}
+
+/* ── focus ─────────────────────────────────────────────────────────────── */
+
+/*
+ * `reorder` is what separates a real focus change from an alt-tab preview.
+ * Moving the window to the head of the MRU list is the thing that must NOT
+ * happen while a cycle is running — see kc_server.cycling.
+ */
+static void focus_toplevel(struct kc_toplevel *t, struct wlr_surface *surface,
+			   bool reorder)
+{
+	if (!t)
+		return;
+	struct kc_server *s = t->server;
+	struct wlr_surface *prev = s->seat->keyboard_state.focused_surface;
+	if (prev == surface)
+		return;
+
+	if (prev) {
+		/* Deactivate the old one so it repaints as unfocused. Popups
+		 * are not toplevels and must not be touched here. */
+		struct wlr_xdg_toplevel *pt =
+			wlr_xdg_toplevel_try_from_wlr_surface(prev);
+		if (pt)
+			wlr_xdg_toplevel_set_activated(pt, false);
+	}
+
+	wlr_scene_node_raise_to_top(&t->scene_tree->node);
+	if (reorder) {
+		wl_list_remove(&t->link);
+		wl_list_insert(&s->toplevels, &t->link);
+	}
+	wlr_xdg_toplevel_set_activated(t->xdg_toplevel, true);
+
+	struct wlr_keyboard *kb = wlr_seat_get_keyboard(s->seat);
+	if (kb)
+		wlr_seat_keyboard_notify_enter(s->seat,
+			t->xdg_toplevel->base->surface, kb->keycodes,
+			kb->num_keycodes, &kb->modifiers);
+
+	/* The taskbar highlights the focused entry, so a focus change is a
+	 * change to BOTH windows' reported state. */
+	kc_shellsvc_refresh(s);
+}
+
+void kc_focus(struct kc_toplevel *t, struct wlr_surface *surface)
+{
+	focus_toplevel(t, surface, true);
+}
+
+static struct kc_toplevel *focused_toplevel(struct kc_server *s)
+{
+	struct wlr_surface *f = s->seat->keyboard_state.focused_surface;
+	if (!f)
+		return NULL;
+	struct kc_toplevel *t;
+	wl_list_for_each(t, &s->toplevels, link)
+		if (t->xdg_toplevel->base->surface == f)
+			return t;
+	return NULL;
+}
+
+/* ── workspaces ────────────────────────────────────────────────────────── */
+
+/*
+ * Focus the most recent window on the current workspace, or nothing at all.
+ *
+ * The `nothing at all` half is not optional: a seat whose keyboard focus is
+ * still on a window that has just been hidden delivers every keystroke to a
+ * surface the user cannot see.
+ */
+static void focus_top_of_ws(struct kc_server *s)
+{
+	struct kc_toplevel *t;
+	wl_list_for_each(t, &s->toplevels, link) {
+		if (t->ws == s->cur_ws) {
+			focus_toplevel(t, t->xdg_toplevel->base->surface, true);
+			return;
+		}
+	}
+	wlr_seat_keyboard_notify_clear_focus(s->seat);
+	wlr_seat_pointer_clear_focus(s->seat);
+}
+
+static void end_interactive(struct kc_server *s);
+
+void kc_ws_switch(struct kc_server *s, int n)
+{
+	if (n < 0 || n >= KC_WORKSPACES || n == s->cur_ws)
+		return;
+	/* A drag that survives the switch is a grab on a window nobody can see:
+	 * the pointer keeps moving something invisible and the next click does
+	 * nothing. Switching workspaces ends it. */
+	if (s->cursor_mode != KC_CURSOR_PASSTHROUGH)
+		end_interactive(s);
+	wlr_scene_node_set_enabled(&s->ws_tree[s->cur_ws]->node, false);
+	s->cur_ws = n;
+	wlr_scene_node_set_enabled(&s->ws_tree[n]->node, true);
+	focus_top_of_ws(s);
+	/* Every window's reported visibility is relative to the current
+	 * workspace, so the taskbar's whole view changes here, not just the two
+	 * windows that swapped. */
+	kc_shellsvc_refresh(s);
+}
+
+static void ws_move(struct kc_server *s, int n)
+{
+	struct kc_toplevel *t = focused_toplevel(s);
+	if (!t || n < 0 || n >= KC_WORKSPACES || n == t->ws)
+		return;
+	t->ws = n;
+	wlr_scene_node_reparent(&t->scene_tree->node, s->ws_tree[n]);
+	kc_shellsvc_update(s, t);
+	/* The window is gone from here, so something else has to take the
+	 * keyboard — otherwise focus follows it to a workspace nobody is
+	 * looking at. */
+	focus_top_of_ws(s);
+}
+
+/* ── alt-tab ───────────────────────────────────────────────────────────── */
+
+/*
+ * The next window on this workspace, walking the MRU list from `from`.
+ *
+ * The walk is bounded by returning to where it started rather than by a count:
+ * the list is circular and the head is a sentinel, so the only two ways out are
+ * a match or a full lap.
+ */
+static struct kc_toplevel *ws_next(struct kc_server *s, struct kc_toplevel *from,
+				   bool back)
+{
+	struct wl_list *start = from ? &from->link : &s->toplevels;
+	struct wl_list *p = start;
+	do {
+		p = back ? p->prev : p->next;
+		if (p == &s->toplevels)		/* skip the head sentinel */
+			p = back ? p->prev : p->next;
+		if (p == start)
+			break;
+		struct kc_toplevel *t = wl_container_of(p, t, link);
+		if (t->ws == s->cur_ws)
+			return t;
+	} while (p != start);
+	return NULL;
+}
+
+static void cycle_step(struct kc_server *s, bool back)
+{
+	struct kc_toplevel *from = s->cycling ? s->cycle_at : focused_toplevel(s);
+	struct kc_toplevel *t = ws_next(s, from, back);
+	if (!t)
+		return;
+	s->cycling = true;
+	s->cycle_at = t;
+	/* Raise the candidate. Without an on-screen switcher — that is
+	 * kdos-shell's, not the compositor's — raising is the only way to see
+	 * what is being selected. */
+	focus_toplevel(t, t->xdg_toplevel->base->surface, false);
+}
+
+/* Super came up: the selection is now the choice, so it takes the MRU head. */
+static void cycle_commit(struct kc_server *s)
+{
+	struct kc_toplevel *t = s->cycle_at;
+	s->cycling = false;
+	s->cycle_at = NULL;
+	if (!t)
+		return;
+	wl_list_remove(&t->link);
+	wl_list_insert(&s->toplevels, &t->link);
+}
+
+/* ── keyboard ──────────────────────────────────────────────────────────── */
+
+static void run_action(struct kc_server *s, const struct kc_bind *b)
+{
+	switch (b->action) {
+	case KC_ACT_SPAWN:
+		kc_spawn((const char *const *)b->argv);
+		break;
+	case KC_ACT_CLOSE: {
+		/* The FOCUSED window, not the head of the list. While a cycle is
+		 * running those are different, and closing the wrong one is not
+		 * a mistake the user can undo. */
+		struct kc_toplevel *t = focused_toplevel(s);
+		if (t)
+			wlr_xdg_toplevel_send_close(t->xdg_toplevel);
+		break;
+	}
+	case KC_ACT_QUIT:
+		wl_display_terminate(s->display);
+		break;
+	case KC_ACT_CYCLE:
+		cycle_step(s, false);
+		break;
+	case KC_ACT_CYCLE_BACK:
+		cycle_step(s, true);
+		break;
+	case KC_ACT_WORKSPACE:
+		kc_ws_switch(s, b->arg);
+		break;
+	case KC_ACT_MOVE_TO_WORKSPACE:
+		ws_move(s, b->arg);
+		break;
+	}
+}
+
+/*
+ * Compositor bindings, from the config (which has already been given its
+ * defaults — Super, not Alt, because Alt belongs to the applications).
+ *
+ * The mask comparison is EQUALITY, not `contains`: Super+Shift+1 must not also
+ * fire the Super+1 binding, and those two mean different things.
+ *
+ * Returns true when the key was consumed and must not reach the client.
+ */
+static bool handle_binding(struct kc_server *s, xkb_keysym_t sym, uint32_t mods)
+{
+	struct kc_bind *b;
+	wl_list_for_each(b, &s->binds, link) {
+		if (b->sym == sym && (mods & KC_MOD_MASK) == b->mods) {
+			run_action(s, b);
+			return true;
+		}
+	}
+	return false;
+}
+
+/*
+ * VT switching, which tinywl does not implement.
+ *
+ * Without this the session owns the only VT you can see and Ctrl+Alt+F2 does
+ * nothing — on real hardware that means no way back to a root shell when the
+ * desktop misbehaves, which is exactly when you need one. XKB reports the
+ * combination as XF86Switch_VT_1..12 and libseat performs the switch.
+ *
+ * Under the headless backend there is no session at all, so this is a no-op
+ * rather than a crash.
+ */
+static bool handle_vt_switch(struct kc_server *s, xkb_keysym_t sym)
+{
+	if (sym < XKB_KEY_XF86Switch_VT_1 || sym > XKB_KEY_XF86Switch_VT_12)
+		return false;
+	if (s->session)
+		wlr_session_change_vt(s->session, sym - XKB_KEY_XF86Switch_VT_1 + 1);
+	return true;
+}
+
+static void keyboard_modifiers(struct wl_listener *l, void *data)
+{
+	struct kc_keyboard *kb = wl_container_of(l, kb, modifiers);
+	(void)data;
+	/* Releasing Super is what ends an alt-tab. There is no key event for a
+	 * modifier going up that handle_binding could see — this is the only
+	 * place the release is observable. */
+	if (kb->server->cycling &&
+	    !(wlr_keyboard_get_modifiers(kb->wlr_keyboard) & WLR_MODIFIER_LOGO))
+		cycle_commit(kb->server);
+	wlr_seat_set_keyboard(kb->server->seat, kb->wlr_keyboard);
+	wlr_seat_keyboard_notify_modifiers(kb->server->seat,
+					   &kb->wlr_keyboard->modifiers);
+}
+
+static void keyboard_key(struct wl_listener *l, void *data)
+{
+	struct kc_keyboard *kb = wl_container_of(l, kb, key);
+	struct kc_server *s = kb->server;
+	struct wlr_keyboard_key_event *ev = data;
+
+	uint32_t keycode = ev->keycode + 8;	/* libinput -> xkb */
+	const xkb_keysym_t *syms;
+	int n = xkb_state_key_get_syms(kb->wlr_keyboard->xkb_state, keycode,
+				       &syms);
+
+	/*
+	 * Bindings are matched against the UNSHIFTED keysym, taken from level 0
+	 * of the current layout rather than from the keyboard state. Shift
+	 * rewrites the state's keysym — on a us layout Super+Shift+1 arrives as
+	 * `exclam`, not as `1` — so a binding table written in digits would
+	 * never see the shifted half of Super+Shift+N at all. The shift is read
+	 * from the modifier mask instead, where it means the same thing on every
+	 * layout.
+	 *
+	 * VT switching deliberately keeps using the state-derived keysym: the
+	 * keymap only produces XF86Switch_VT_n at the Ctrl+Alt level, so at
+	 * level 0 there is nothing to match.
+	 */
+	struct xkb_keymap *keymap = xkb_state_get_keymap(kb->wlr_keyboard->xkb_state);
+	xkb_layout_index_t layout =
+		xkb_state_key_get_layout(kb->wlr_keyboard->xkb_state, keycode);
+	const xkb_keysym_t *raw;
+	int nraw = xkb_keymap_key_get_syms_by_level(keymap, keycode, layout, 0,
+						    &raw);
+
+	bool handled = false;
+	uint32_t mods = wlr_keyboard_get_modifiers(kb->wlr_keyboard);
+
+	if (ev->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+		/* VT switching is checked FIRST and without a modifier test:
+		 * the keymap only produces XF86Switch_VT_n for the full
+		 * Ctrl+Alt+Fn combination anyway, and it must work even if a
+		 * client has taken every other grab. */
+		for (int i = 0; i < n && !handled; i++)
+			handled = handle_vt_switch(s, syms[i]);
+
+		/* Any modifier at all is enough to be worth a lookup — the
+		 * binding itself decides which. A modifier-less key is never a
+		 * binding, because the config refuses to create one. */
+		if (!handled && (mods & KC_MOD_MASK))
+			for (int i = 0; i < nraw && !handled; i++)
+				handled = handle_binding(s, raw[i], mods);
+	}
+
+	if (!handled) {
+		wlr_seat_set_keyboard(s->seat, kb->wlr_keyboard);
+		wlr_seat_keyboard_notify_key(s->seat, ev->time_msec,
+					     ev->keycode, ev->state);
+	}
+}
+
+static void keyboard_destroy(struct wl_listener *l, void *data)
+{
+	struct kc_keyboard *kb = wl_container_of(l, kb, destroy);
+	(void)data;
+	wl_list_remove(&kb->modifiers.link);
+	wl_list_remove(&kb->key.link);
+	wl_list_remove(&kb->destroy.link);
+	wl_list_remove(&kb->link);
+	free(kb);
+}
+
+static void new_keyboard(struct kc_server *s, struct wlr_input_device *dev)
+{
+	struct wlr_keyboard *wlr_kb = wlr_keyboard_from_input_device(dev);
+	struct kc_keyboard *kb = calloc(1, sizeof(*kb));
+	if (!kb)
+		return;
+	kb->server = s;
+	kb->wlr_keyboard = wlr_kb;
+
+	/*
+	 * The keymap comes from the environment (XKB_DEFAULT_LAYOUT and
+	 * friends), which is what /etc/profile.d sets and what kinstall
+	 * writes. Compiling a hardcoded "us" here would silently ignore the
+	 * layout the installer just asked the user to choose.
+	 */
+	struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	struct xkb_keymap *keymap =
+		xkb_keymap_new_from_names(ctx, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	if (keymap) {
+		wlr_keyboard_set_keymap(wlr_kb, keymap);
+		xkb_keymap_unref(keymap);
+	} else {
+		wlr_log(WLR_ERROR, "no xkb keymap — keyboard will be unusable");
+	}
+	xkb_context_unref(ctx);
+	wlr_keyboard_set_repeat_info(wlr_kb, s->repeat_rate, s->repeat_delay);
+
+	kb->modifiers.notify = keyboard_modifiers;
+	wl_signal_add(&wlr_kb->events.modifiers, &kb->modifiers);
+	kb->key.notify = keyboard_key;
+	wl_signal_add(&wlr_kb->events.key, &kb->key);
+	kb->destroy.notify = keyboard_destroy;
+	wl_signal_add(&dev->events.destroy, &kb->destroy);
+
+	wlr_seat_set_keyboard(s->seat, wlr_kb);
+	wl_list_insert(&s->keyboards, &kb->link);
+}
+
+static void new_input(struct wl_listener *l, void *data)
+{
+	struct kc_server *s = wl_container_of(l, s, new_input);
+	struct wlr_input_device *dev = data;
+
+	switch (dev->type) {
+	case WLR_INPUT_DEVICE_KEYBOARD:
+		new_keyboard(s, dev);
+		break;
+	case WLR_INPUT_DEVICE_POINTER:
+		wlr_cursor_attach_input_device(s->cursor, dev);
+		break;
+	default:
+		break;
+	}
+
+	/* A seat with no keyboard capability makes clients ignore key events
+	 * entirely, so the advertised set has to track what is attached. */
+	uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
+	if (!wl_list_empty(&s->keyboards))
+		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
+	wlr_seat_set_capabilities(s->seat, caps);
+}
+
+/* ── interactive move and resize ───────────────────────────────────────── */
+
+/*
+ * The window under the cursor, walked back from the scene node.
+ *
+ * A scene node is a buffer deep inside a surface tree; only the toplevel's own
+ * tree carries our pointer in node.data, so this climbs until it finds one —
+ * and then CHECKS THE TAG, because an X11 surface's tree carries a
+ * kc_xsurface* in exactly the same field. Returning that as a kc_toplevel*
+ * would read `xdg_toplevel` out of the middle of an unrelated struct, and the
+ * first Super+drag on an X11 window would hand a garbage pointer to
+ * wlr_xdg_toplevel_set_size.
+ */
+static struct kc_toplevel *toplevel_at(struct kc_server *s, double lx, double ly,
+				       struct wlr_surface **surface,
+				       double *sx, double *sy)
+{
+	struct wlr_scene_node *node =
+		wlr_scene_node_at(&s->scene->tree.node, lx, ly, sx, sy);
+	if (!node || node->type != WLR_SCENE_NODE_BUFFER)
+		return NULL;
+	struct wlr_scene_buffer *b = wlr_scene_buffer_from_node(node);
+	struct wlr_scene_surface *ss = wlr_scene_surface_try_from_buffer(b);
+	if (!ss)
+		return NULL;
+	if (surface)
+		*surface = ss->surface;
+	struct wlr_scene_tree *tree = node->parent;
+	while (tree && !tree->node.data)
+		tree = tree->node.parent;
+	if (!tree)
+		return NULL;
+	enum kc_node_type *tag = tree->node.data;
+	return *tag == KC_NODE_TOPLEVEL ? (struct kc_toplevel *)tag : NULL;
+}
+
+static void begin_interactive(struct kc_toplevel *t, enum kc_cursor_mode mode,
+			      uint32_t edges)
+{
+	struct kc_server *s = t->server;
+
+	/* Refuse a grab on a window that does not have keyboard focus. Without
+	 * this a click-through on an unfocused window starts dragging it, which
+	 * is how you move a window you meant to click a button in. */
+	if (t->xdg_toplevel->base->surface !=
+	    s->seat->keyboard_state.focused_surface)
+		return;
+
+	s->grabbed = t;
+	s->cursor_mode = mode;
+	s->grab_x = s->cursor->x;
+	s->grab_y = s->cursor->y;
+	s->grab_geo = t->xdg_toplevel->base->geometry;
+	s->grab_geo.x = t->x;
+	s->grab_geo.y = t->y;
+	s->resize_edges = edges;
+}
+
+static void end_interactive(struct kc_server *s)
+{
+	s->cursor_mode = KC_CURSOR_PASSTHROUGH;
+	s->grabbed = NULL;
+}
+
+/*
+ * Snap on release. Dragging to an edge fills that half; a corner fills a
+ * quarter; the top maximises.
+ *
+ * The test is on the CURSOR, not on the window box, because that is what the
+ * user is aiming with — a window dragged by its right-hand side would
+ * otherwise snap when its left edge is nowhere near the screen.
+ */
+static void snap_on_release(struct kc_server *s, struct kc_toplevel *t)
+{
+	int snap = s->snap_px;
+	if (snap <= 0)		/* `snap_px = 0` in comp.conf turns it off */
+		return;
+	struct wlr_output *out = wlr_output_layout_output_at(s->output_layout,
+							     s->cursor->x,
+							     s->cursor->y);
+	if (!out)
+		return;
+	struct wlr_box ob;
+	wlr_output_layout_get_box(s->output_layout, out, &ob);
+	if (wlr_box_empty(&ob))
+		return;
+
+	int left   = s->cursor->x <= ob.x + snap;
+	int right  = s->cursor->x >= ob.x + ob.width  - snap;
+	int top    = s->cursor->y <= ob.y + snap;
+	int bottom = s->cursor->y >= ob.y + ob.height - snap;
+
+	if (!left && !right && !top && !bottom)
+		return;
+
+	struct wlr_box g = ob;
+	if (left || right) {
+		g.width = ob.width / 2;
+		g.x = left ? ob.x : ob.x + ob.width - g.width;
+		if (top || bottom) {			/* corner -> quarter */
+			g.height = ob.height / 2;
+			g.y = top ? ob.y : ob.y + ob.height - g.height;
+		}
+	} else if (top) {
+		/* Top edge maximises; bottom alone does nothing, because a
+		 * window dragged low is usually just being placed. */
+		;
+	} else {
+		return;
+	}
+
+	t->x = g.x;
+	t->y = g.y;
+	wlr_scene_node_set_position(&t->scene_tree->node, g.x, g.y);
+	wlr_xdg_toplevel_set_size(t->xdg_toplevel, g.width, g.height);
+}
+
+static void process_move(struct kc_server *s)
+{
+	struct kc_toplevel *t = s->grabbed;
+	t->x = (int)(s->grab_geo.x + (s->cursor->x - s->grab_x));
+	t->y = (int)(s->grab_geo.y + (s->cursor->y - s->grab_y));
+	wlr_scene_node_set_position(&t->scene_tree->node, t->x, t->y);
+}
+
+static void process_resize(struct kc_server *s)
+{
+	struct kc_toplevel *t = s->grabbed;
+	double dx = s->cursor->x - s->grab_x;
+	double dy = s->cursor->y - s->grab_y;
+
+	int x = s->grab_geo.x, y = s->grab_geo.y;
+	int w = s->grab_geo.width, h = s->grab_geo.height;
+
+	if (s->resize_edges & WLR_EDGE_TOP) {
+		y = (int)(s->grab_geo.y + dy);
+		h = (int)(s->grab_geo.height - dy);
+	} else if (s->resize_edges & WLR_EDGE_BOTTOM) {
+		h = (int)(s->grab_geo.height + dy);
+	}
+	if (s->resize_edges & WLR_EDGE_LEFT) {
+		x = (int)(s->grab_geo.x + dx);
+		w = (int)(s->grab_geo.width - dx);
+	} else if (s->resize_edges & WLR_EDGE_RIGHT) {
+		w = (int)(s->grab_geo.width + dx);
+	}
+
+	/* A client asked for a size it cannot honour will clamp it and then
+	 * disagree with us about where its edges are, so clamp here too. */
+	if (w < 40) w = 40;
+	if (h < 30) h = 30;
+
+	t->x = x;
+	t->y = y;
+	wlr_scene_node_set_position(&t->scene_tree->node, x, y);
+	wlr_xdg_toplevel_set_size(t->xdg_toplevel, w, h);
+}
+
+/* ── pointer ───────────────────────────────────────────────────────────── */
+
+static void pointer_motion_common(struct kc_server *s, uint32_t time)
+{
+	/* A grab owns the pointer completely: no enter/leave, no motion to any
+	 * client, until the button comes back up. */
+	if (s->cursor_mode == KC_CURSOR_MOVE) {
+		process_move(s);
+		return;
+	}
+	if (s->cursor_mode == KC_CURSOR_RESIZE) {
+		process_resize(s);
+		return;
+	}
+
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	struct wlr_scene_node *node = wlr_scene_node_at(
+		&s->scene->tree.node, s->cursor->x, s->cursor->y, &sx, &sy);
+
+	if (node && node->type == WLR_SCENE_NODE_BUFFER) {
+		struct wlr_scene_buffer *b = wlr_scene_buffer_from_node(node);
+		struct wlr_scene_surface *ss =
+			wlr_scene_surface_try_from_buffer(b);
+		if (ss)
+			surface = ss->surface;
+	}
+
+	if (surface) {
+		wlr_seat_pointer_notify_enter(s->seat, surface, sx, sy);
+		wlr_seat_pointer_notify_motion(s->seat, time, sx, sy);
+	} else {
+		/* Nothing under the pointer: fall back to the default image
+		 * and drop the client's focus, or the last surface keeps
+		 * receiving motion it cannot see. */
+		wlr_cursor_set_xcursor(s->cursor, s->cursor_mgr, "default");
+		wlr_seat_pointer_clear_focus(s->seat);
+	}
+}
+
+static void cursor_motion(struct wl_listener *l, void *data)
+{
+	struct kc_server *s = wl_container_of(l, s, cursor_motion);
+	struct wlr_pointer_motion_event *ev = data;
+	wlr_cursor_move(s->cursor, &ev->pointer->base, ev->delta_x, ev->delta_y);
+	pointer_motion_common(s, ev->time_msec);
+}
+
+static void cursor_motion_absolute(struct wl_listener *l, void *data)
+{
+	struct kc_server *s = wl_container_of(l, s, cursor_motion_absolute);
+	struct wlr_pointer_motion_absolute_event *ev = data;
+	wlr_cursor_warp_absolute(s->cursor, &ev->pointer->base, ev->x, ev->y);
+	pointer_motion_common(s, ev->time_msec);
+}
+
+static void cursor_button(struct wl_listener *l, void *data)
+{
+	struct kc_server *s = wl_container_of(l, s, cursor_button);
+	struct wlr_pointer_button_event *ev = data;
+
+	if (ev->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+		if (s->cursor_mode != KC_CURSOR_PASSTHROUGH) {
+			struct kc_toplevel *t = s->grabbed;
+			if (t && s->cursor_mode == KC_CURSOR_MOVE)
+				snap_on_release(s, t);
+			end_interactive(s);
+			return;	/* the release ended the grab, not a click */
+		}
+		wlr_seat_pointer_notify_button(s->seat, ev->time_msec,
+					       ev->button, ev->state);
+		return;
+	}
+
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	struct kc_toplevel *t = toplevel_at(s, s->cursor->x, s->cursor->y,
+					    &surface, &sx, &sy);
+	if (t)
+		kc_focus(t, surface);
+
+	/*
+	 * Super+drag moves, Super+right-drag resizes. Binding the grab to a
+	 * modifier rather than to a titlebar is what lets a window be moved
+	 * from anywhere in it — which matters here more than on other
+	 * desktops, because most KDOS windows are alien apps drawing their own
+	 * client-side decorations and there may be no titlebar to aim at.
+	 */
+	uint32_t mods = 0;
+	struct wlr_keyboard *kb = wlr_seat_get_keyboard(s->seat);
+	if (kb)
+		mods = wlr_keyboard_get_modifiers(kb);
+
+	if (t && (mods & WLR_MODIFIER_LOGO)) {
+		if (ev->button == BTN_LEFT) {
+			begin_interactive(t, KC_CURSOR_MOVE, 0);
+			return;
+		}
+		if (ev->button == BTN_RIGHT) {
+			/* Resize from the corner the cursor is nearest, so the
+			 * edge that follows the pointer is the one being
+			 * dragged rather than an arbitrary fixed corner. */
+			uint32_t edges = 0;
+			edges |= (s->cursor->x < t->x + t->xdg_toplevel->base->geometry.width / 2)
+				 ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT;
+			edges |= (s->cursor->y < t->y + t->xdg_toplevel->base->geometry.height / 2)
+				 ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM;
+			begin_interactive(t, KC_CURSOR_RESIZE, edges);
+			return;
+		}
+	}
+
+	wlr_seat_pointer_notify_button(s->seat, ev->time_msec, ev->button,
+				       ev->state);
+}
+
+static void cursor_axis(struct wl_listener *l, void *data)
+{
+	struct kc_server *s = wl_container_of(l, s, cursor_axis);
+	struct wlr_pointer_axis_event *ev = data;
+	wlr_seat_pointer_notify_axis(s->seat, ev->time_msec, ev->orientation,
+				     ev->delta, ev->delta_discrete, ev->source,
+				     ev->relative_direction);
+}
+
+static void cursor_frame(struct wl_listener *l, void *data)
+{
+	struct kc_server *s = wl_container_of(l, s, cursor_frame);
+	(void)data;
+	wlr_seat_pointer_notify_frame(s->seat);
+}
+
+static void request_cursor(struct wl_listener *l, void *data)
+{
+	struct kc_server *s = wl_container_of(l, s, request_cursor);
+	struct wlr_seat_pointer_request_set_cursor_event *ev = data;
+	/* Only the client with pointer focus may set the image — otherwise
+	 * any client could change the cursor at any time. */
+	if (ev->seat_client == s->seat->pointer_state.focused_client)
+		wlr_cursor_set_surface(s->cursor, ev->surface, ev->hotspot_x,
+				       ev->hotspot_y);
+}
+
+static void request_set_selection(struct wl_listener *l, void *data)
+{
+	struct kc_server *s = wl_container_of(l, s, request_set_selection);
+	struct wlr_seat_request_set_selection_event *ev = data;
+	wlr_seat_set_selection(s->seat, ev->source, ev->serial);
+}
+
+/* ── xdg-shell ─────────────────────────────────────────────────────────── */
+
+static void toplevel_map(struct wl_listener *l, void *data)
+{
+	struct kc_toplevel *t = wl_container_of(l, t, map);
+	(void)data;
+	wl_list_insert(&t->server->toplevels, &t->link);
+	/* t->x/t->y are the compositor's record of where the window IS. They
+	 * start at the scene default (0,0) and must be kept in step with every
+	 * set_position, or the first drag computes its delta from a position
+	 * the window never had and the window jumps. */
+	t->x = 0;
+	t->y = 0;
+	/* At map, not at creation: app_id is set before the first commit but a
+	 * client is free to set it later, and map is the first moment the value
+	 * is the one a shell would actually match against. */
+	kc_appid_observe(t->server, t->xdg_toplevel->app_id);
+	/* At map, not at creation: before this the window has no title and no
+	 * app_id, and a taskbar entry that appears blank then renames itself is
+	 * the startup flicker every desktop has. */
+	kc_shellsvc_add(t->server, t);
+	kc_focus(t, t->xdg_toplevel->base->surface);
+}
+
+static void toplevel_unmap(struct wl_listener *l, void *data)
+{
+	struct kc_toplevel *t = wl_container_of(l, t, unmap);
+	struct kc_server *s = t->server;
+	(void)data;
+	/* Both of these outlive the window if they are not cleared here. A
+	 * window can close mid-drag (a dialog that dismisses itself) and mid
+	 * alt-tab (anything with a timeout), and the next pointer motion or
+	 * modifier release would then walk a freed pointer. */
+	if (s->grabbed == t)
+		end_interactive(s);
+	if (s->cycle_at == t) {
+		s->cycle_at = NULL;
+		s->cycling = false;
+	}
+	kc_shellsvc_remove(t);
+	wl_list_remove(&t->link);
+	/* Focus does not fall anywhere by itself: without this the seat keeps
+	 * pointing at a surface that is gone and the keyboard goes dead. */
+	if (s->seat->keyboard_state.focused_surface ==
+	    t->xdg_toplevel->base->surface)
+		focus_top_of_ws(s);
+}
+
+static void toplevel_commit(struct wl_listener *l, void *data)
+{
+	struct kc_toplevel *t = wl_container_of(l, t, commit);
+	(void)data;
+	/* The first commit is the client asking what size it should be. Answer
+	 * 0x0 — "you choose" — or it waits forever and never maps. */
+	if (t->xdg_toplevel->base->initial_commit)
+		wlr_xdg_toplevel_set_size(t->xdg_toplevel, 0, 0);
+}
+
+static void toplevel_destroy(struct wl_listener *l, void *data)
+{
+	struct kc_toplevel *t = wl_container_of(l, t, destroy);
+	(void)data;
+	wl_list_remove(&t->map.link);
+	wl_list_remove(&t->unmap.link);
+	wl_list_remove(&t->commit.link);
+	wl_list_remove(&t->destroy.link);
+	free(t);
+}
+
+static void new_xdg_toplevel(struct wl_listener *l, void *data)
+{
+	struct kc_server *s = wl_container_of(l, s, new_xdg_toplevel);
+	struct wlr_xdg_toplevel *xdg_toplevel = data;
+
+	struct kc_toplevel *t = calloc(1, sizeof(*t));
+	if (!t)
+		return;
+	t->node_type = KC_NODE_TOPLEVEL;
+	t->server = s;
+	t->xdg_toplevel = xdg_toplevel;
+	/* Born on the workspace the user is looking at, and parented into that
+	 * workspace's tree rather than into the scene root — which is what makes
+	 * it disappear with the rest of them on a switch. */
+	t->ws = s->cur_ws;
+	t->scene_tree = wlr_scene_xdg_surface_create(s->ws_tree[t->ws],
+						     xdg_toplevel->base);
+	/* node.data is how a scene node is walked back to its toplevel when
+	 * the pointer lands on it. */
+	t->scene_tree->node.data = t;
+	xdg_toplevel->base->data = t->scene_tree;
+
+	t->map.notify = toplevel_map;
+	wl_signal_add(&xdg_toplevel->base->surface->events.map, &t->map);
+	t->unmap.notify = toplevel_unmap;
+	wl_signal_add(&xdg_toplevel->base->surface->events.unmap, &t->unmap);
+	t->commit.notify = toplevel_commit;
+	wl_signal_add(&xdg_toplevel->base->surface->events.commit, &t->commit);
+	t->destroy.notify = toplevel_destroy;
+	wl_signal_add(&xdg_toplevel->events.destroy, &t->destroy);
+}
+
+/*
+ * Server-side decorations.
+ *
+ * KDOS draws window frames as CHARACTER CELLS, in the same palette and the
+ * same glyph tier as the panel and the installer — a double-line box with the
+ * title in the accent. That is only possible for clients that let the
+ * compositor decorate them, so every toplevel is asked for SERVER_SIDE.
+ *
+ * The answer is not ours to force. GTK clients insist on client-side
+ * decorations and will keep drawing their own headerbar whatever this says;
+ * fighting them produces a window with two titlebars, which is worse than one
+ * that does not match. Offer, accept the reply, do not argue — the same rule
+ * kdos-appbox follows for the box's own theming.
+ *
+ * Nothing is painted yet: this milestone establishes WHO decorates. The cell
+ * grid arrives with libkwl in M3, because the frames are drawn with the same
+ * toolkit as everything else rather than with a second ad-hoc renderer.
+ */
+static void new_decoration(struct wl_listener *l, void *data)
+{
+	struct wlr_xdg_toplevel_decoration_v1 *deco = data;
+	(void)l;
+	wlr_xdg_toplevel_decoration_v1_set_mode(deco,
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
+
+static void new_xdg_popup(struct wl_listener *l, void *data)
+{
+	struct wlr_xdg_popup *popup = data;
+	(void)l;
+	/* A popup is positioned relative to its parent, so it only needs to be
+	 * put in the scene under the parent's tree; wlroots does the rest. */
+	struct wlr_xdg_surface *parent =
+		wlr_xdg_surface_try_from_wlr_surface(popup->parent);
+	if (!parent || !parent->data)
+		return;
+	struct wlr_scene_tree *ptree = parent->data;
+	popup->base->data = wlr_scene_xdg_surface_create(ptree, popup->base);
+}
+
+/* ── main ──────────────────────────────────────────────────────────────── */
+
+int main(int argc, char **argv)
+{
+	wlr_log_init(WLR_INFO, NULL);
+
+	bool spawn_startup = true;
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "--no-startup"))
+			spawn_startup = false;
+		else if (!strcmp(argv[i], "--version")) {
+			printf("kdos-comp (wlroots %s)\n", WLR_VERSION_STR);
+			return 0;
+		} else {
+			fprintf(stderr, "usage: kdos-comp [--no-startup]\n");
+			return 2;
+		}
+	}
+
+	/* A dead client must not take the compositor with it. */
+	signal(SIGPIPE, SIG_IGN);
+
+	struct kc_server s = {0};
+	/* Before anything that reads a setting — new_keyboard wants the repeat
+	 * rate, and a keyboard can arrive the instant the backend starts. */
+	kc_config_load(&s);
+	kc_appid_init(&s);
+
+	s.display = wl_display_create();
+	s.backend = wlr_backend_autocreate(wl_display_get_event_loop(s.display),
+					   &s.session);
+	if (!s.backend) {
+		wlr_log(WLR_ERROR, "no backend — no DRM master and no "
+				   "WAYLAND_DISPLAY to nest in");
+		return 1;
+	}
+
+	s.renderer = wlr_renderer_autocreate(s.backend);
+	if (!s.renderer) {
+		wlr_log(WLR_ERROR, "no renderer");
+		return 1;
+	}
+	wlr_renderer_init_wl_display(s.renderer, s.display);
+
+	s.allocator = wlr_allocator_autocreate(s.backend, s.renderer);
+	if (!s.allocator) {
+		wlr_log(WLR_ERROR, "no allocator");
+		return 1;
+	}
+
+	/* Before any global a boxed client must not reach. The filter applies to
+	 * globals registered either side of this call, so the ordering is for
+	 * the reader, not for correctness. */
+	kc_security_init(&s);
+
+	struct wlr_compositor *compositor =
+		wlr_compositor_create(s.display, 5, s.renderer);
+	wlr_subcompositor_create(s.display);
+	wlr_data_device_manager_create(s.display);
+
+	s.output_layout = wlr_output_layout_create(s.display);
+	s.scene = wlr_scene_create();
+	s.scene_layout = wlr_scene_attach_output_layout(s.scene, s.output_layout);
+	/* After the scene layout exists, because attaching an output needs both.
+	 * The backend has not been started yet, so no output can arrive early. */
+	kc_output_init(&s);
+
+	/*
+	 * Z-order is creation order, so these three groups are built in exactly
+	 * the order the layer-shell protocol defines: background and bottom
+	 * below every window, the workspaces in the middle, top and overlay
+	 * above. Create them in any other order and a panel is behind the
+	 * windows it is meant to sit over.
+	 */
+	s.layer_below = wlr_scene_tree_create(&s.scene->tree);
+
+	/* One tree per workspace, all but the first disabled. Everything a
+	 * window kind has to do to gain workspaces is be parented into one of
+	 * these. */
+	for (int i = 0; i < KC_WORKSPACES; i++) {
+		s.ws_tree[i] = wlr_scene_tree_create(&s.scene->tree);
+		wlr_scene_node_set_enabled(&s.ws_tree[i]->node, i == 0);
+	}
+
+	s.layer_above = wlr_scene_tree_create(&s.scene->tree);
+	kc_layer_init(&s);
+	kc_shellsvc_init(&s);
+
+	wl_list_init(&s.toplevels);
+	s.xdg_shell = wlr_xdg_shell_create(s.display, 3);
+	s.new_xdg_toplevel.notify = new_xdg_toplevel;
+	wl_signal_add(&s.xdg_shell->events.new_toplevel, &s.new_xdg_toplevel);
+	s.new_xdg_popup.notify = new_xdg_popup;
+	wl_signal_add(&s.xdg_shell->events.new_popup, &s.new_xdg_popup);
+
+	s.deco_mgr = wlr_xdg_decoration_manager_v1_create(s.display);
+	s.new_decoration.notify = new_decoration;
+	wl_signal_add(&s.deco_mgr->events.new_toplevel_decoration,
+		      &s.new_decoration);
+
+	s.cursor = wlr_cursor_create();
+	wlr_cursor_attach_output_layout(s.cursor, s.output_layout);
+	/* NULL theme = whatever XCURSOR_THEME says, which 10-wayland.sh sets
+	 * to KDOS-cursors. */
+	s.cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
+
+	s.cursor_motion.notify = cursor_motion;
+	wl_signal_add(&s.cursor->events.motion, &s.cursor_motion);
+	s.cursor_motion_absolute.notify = cursor_motion_absolute;
+	wl_signal_add(&s.cursor->events.motion_absolute, &s.cursor_motion_absolute);
+	s.cursor_button.notify = cursor_button;
+	wl_signal_add(&s.cursor->events.button, &s.cursor_button);
+	s.cursor_axis.notify = cursor_axis;
+	wl_signal_add(&s.cursor->events.axis, &s.cursor_axis);
+	s.cursor_frame.notify = cursor_frame;
+	wl_signal_add(&s.cursor->events.frame, &s.cursor_frame);
+
+	wl_list_init(&s.keyboards);
+	s.new_input.notify = new_input;
+	wl_signal_add(&s.backend->events.new_input, &s.new_input);
+	s.seat = wlr_seat_create(s.display, "seat0");
+	s.request_cursor.notify = request_cursor;
+	wl_signal_add(&s.seat->events.request_set_cursor, &s.request_cursor);
+	s.request_set_selection.notify = request_set_selection;
+	wl_signal_add(&s.seat->events.request_set_selection, &s.request_set_selection);
+
+	/* After the seat exists: xwayland_ready hands the seat over, and a
+	 * lazy server can become ready as soon as it is created. */
+	kc_xwayland_init(&s, compositor);
+
+	const char *socket = wl_display_add_socket_auto(s.display);
+	if (!socket) {
+		wlr_backend_destroy(s.backend);
+		return 1;
+	}
+	if (!wlr_backend_start(s.backend)) {
+		wlr_backend_destroy(s.backend);
+		wl_display_destroy(s.display);
+		return 1;
+	}
+
+	setenv("WAYLAND_DISPLAY", socket, true);
+	wlr_log(WLR_INFO, "kdos-comp running on WAYLAND_DISPLAY=%s", socket);
+
+	/*
+	 * The shell, and whatever else comp.conf lists. After the socket exists
+	 * and WAYLAND_DISPLAY is exported, or the first thing it does is fail to
+	 * connect to the compositor that just started it.
+	 */
+	if (spawn_startup)
+		for (int i = 0; i < s.nstartup; i++)
+			kc_spawn((const char *const *)s.startup[i]);
+
+	wl_display_run(s.display);
+
+	kc_appid_free(&s);
+	kc_security_free(&s);
+	kc_config_free(&s);
+
+	if (s.xwayland)
+		wlr_xwayland_destroy(s.xwayland);
+	wl_display_destroy_clients(s.display);
+	wlr_scene_node_destroy(&s.scene->tree.node);
+	wlr_xcursor_manager_destroy(s.cursor_mgr);
+	wlr_cursor_destroy(s.cursor);
+	wlr_allocator_destroy(s.allocator);
+	wlr_renderer_destroy(s.renderer);
+	wlr_backend_destroy(s.backend);
+	wl_display_destroy(s.display);
+	return 0;
+}
