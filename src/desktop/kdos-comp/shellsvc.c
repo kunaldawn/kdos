@@ -76,15 +76,43 @@ void kc_shellsvc_add(struct kc_server *s, struct kc_toplevel *t)
 	wl_signal_add(&t->ftl->events.request_activate, &t->ftl_activate);
 	t->ftl_close.notify = ftl_request_close;
 	wl_signal_add(&t->ftl->events.request_close, &t->ftl_close);
+
+	/*
+	 * The same window under ext-foreign-toplevel-list. That protocol carries
+	 * identity and nothing else — no state, no requests — which is exactly
+	 * what a client needs to say "capture THAT window" (capture.c) and not
+	 * enough to build a taskbar out of. Both are advertised because neither
+	 * replaces the other.
+	 */
+	if (s->ext_ftl_list) {
+		struct wlr_ext_foreign_toplevel_handle_v1_state st = {
+			.title = t->xdg_toplevel->title,
+			.app_id = t->xdg_toplevel->app_id,
+		};
+		t->ext_ftl = wlr_ext_foreign_toplevel_handle_v1_create(
+			s->ext_ftl_list, &st);
+		if (t->ext_ftl)
+			t->ext_ftl->data = t;
+	}
+
 	kc_shellsvc_update(s, t);
 }
 
 void kc_shellsvc_update(struct kc_server *s, struct kc_toplevel *t)
 {
-	if (!t->ftl)
-		return;
 	const char *title = t->xdg_toplevel->title;
 	const char *app_id = t->xdg_toplevel->app_id;
+
+	if (t->ext_ftl) {
+		struct wlr_ext_foreign_toplevel_handle_v1_state st = {
+			.title = title,
+			.app_id = app_id,
+		};
+		wlr_ext_foreign_toplevel_handle_v1_update_state(t->ext_ftl, &st);
+	}
+
+	if (!t->ftl)
+		return;
 	if (title)
 		wlr_foreign_toplevel_handle_v1_set_title(t->ftl, title);
 	if (app_id)
@@ -104,6 +132,10 @@ void kc_shellsvc_update(struct kc_server *s, struct kc_toplevel *t)
 
 void kc_shellsvc_remove(struct kc_toplevel *t)
 {
+	if (t->ext_ftl) {
+		wlr_ext_foreign_toplevel_handle_v1_destroy(t->ext_ftl);
+		t->ext_ftl = NULL;
+	}
 	if (!t->ftl)
 		return;
 	wl_list_remove(&t->ftl_activate.link);
@@ -155,6 +187,7 @@ static void ws_commit(struct wl_listener *l, void *data)
 void kc_shellsvc_init(struct kc_server *s)
 {
 	s->ftl_mgr = wlr_foreign_toplevel_manager_v1_create(s->display);
+	s->ext_ftl_list = wlr_ext_foreign_toplevel_list_v1_create(s->display, 1);
 
 	s->ws_mgr = wlr_ext_workspace_manager_v1_create(s->display, 1);
 	if (!s->ws_mgr)

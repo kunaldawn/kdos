@@ -8,7 +8,7 @@
  *   kdos-shell — the panel
  *
  *   ╔═══════════════════════════════════════════════════════════════════╗
- *   ║ ▶ KDOS │ 1 2 ▓3▓ 4 │ foot  firefox-esr  gimp │ ▂▄▆ 41% 21:07     ║
+ *   ║ ▶ KDOS │ 1 2 ▓3▓ 4 │ foot  firefox-esr  gimp │ ●MIC firefox  K N  41% 21:07 ║
  *   ╚═══════════════════════════════════════════════════════════════════╝
  *
  * One row of character cells, drawn with libktui through libkwl into a
@@ -25,7 +25,9 @@
  *
  * The right wing reads /sys and /proc directly. No upower, no D-Bus for
  * battery — those are three daemons and an IPC round trip to read a file that
- * the kernel already exports as text.
+ * the kernel already exports as text. The two things it cannot read from a file
+ * are the tray (pure D-Bus, tray.c) and which app is recording (the PipeWire
+ * graph, privacy.c).
  */
 
 #include <dirent.h>
@@ -180,6 +182,82 @@ static void draw_panel(struct sh_state *sh)
 		ktui_draw_text_right(0, 0, w - 1, right, KT_TEXT, KT_SURFACE,
 				     KT_A_NONE);
 
+	/*
+	 * ── the recording indicator, left of everything on the right ──
+	 *
+	 * The one thing on this panel that is not information but a WARNING, so
+	 * it takes the secondary colour and, for the camera, reverse video as
+	 * well: a microphone is a thing you can be recorded by and a camera is a
+	 * thing you can be seen by, and those do not deserve the same weight.
+	 * It names ONE app and counts the rest — the panel is one row, and
+	 * "MIC firefox +2" is more useful than three truncated names.
+	 */
+	for (int kind = SH_PRIV_MIC; kind <= SH_PRIV_CAM; kind++) {
+		int n = sh_priv_count(sh, kind);
+		const char *who = n > 0 ? sh_priv_name(sh, kind) : NULL;
+		char label[48];
+
+		if (n <= 0)
+			continue;
+		if (n > 1)
+			snprintf(label, sizeof(label), "%s%s %.14s +%d",
+				 ktui_glyph[KT_G_BULLET],
+				 kind == SH_PRIV_MIC ? "MIC" : "CAM",
+				 who ? who : "?", n - 1);
+		else
+			snprintf(label, sizeof(label), "%s%s %.20s",
+				 ktui_glyph[KT_G_BULLET],
+				 kind == SH_PRIV_MIC ? "MIC" : "CAM",
+				 who ? who : "?");
+
+		int lw = ktui_utf8_width(label);
+		if (right_x - x < lw + 2)
+			break;
+		right_x -= lw + 1;
+		ktui_draw_text(right_x, 0, lw, label, KT_WARN, KT_SURFACE,
+			       kind == SH_PRIV_CAM ? KT_A_REVERSE : KT_A_NONE);
+	}
+
+	/*
+	 * ── the tray, immediately left of the clock ──
+	 *
+	 * One cell per item and no icon: this is a character grid, and the first
+	 * letter of an item's Id is what survives the translation. Status is the
+	 * colour — passive dim, active in the text colour, NeedsAttention in the
+	 * accent AND reversed, because "this one wants you" has to be visible
+	 * without a second glance on an eight-colour palette.
+	 */
+	int ntray = sh_tray_count(sh);
+	sh->tray_hit_x = sh->tray_hit_end = 0;
+	if (ntray > 0 && right_x - x > ntray * 2 + 4) {
+		int tx = right_x - ntray * 2 - 1;
+		sh->tray_hit_x = tx;
+		for (int i = 0; i < ntray; i++) {
+			const struct sh_tray_item *it = sh_tray_get(sh, i);
+			char cell[8];
+			const char *src = it->id[0] ? it->id : it->service;
+			/* One BYTE, not one codepoint: a leading multi-byte
+			 * character would be cut in half and drawn as garbage.
+			 * Ids are program names — ascii in every case that
+			 * exists — so the fallback is a dot rather than a
+			 * decoder. */
+			snprintf(cell, sizeof(cell), "%c",
+				 (unsigned char)*src < 0x80 ? *src : '.');
+			if (cell[0] >= 'a' && cell[0] <= 'z')
+				cell[0] = (char)(cell[0] - 'a' + 'A');
+			int fg = it->status == SH_TRAY_ATTENTION ? KT_ACCENT
+				 : it->status == SH_TRAY_ACTIVE     ? KT_TEXT
+								    : KT_DIM;
+			ktui_draw_text(tx, 0, 1, cell, fg, KT_SURFACE,
+				       it->status == SH_TRAY_ATTENTION
+					       ? KT_A_REVERSE
+					       : KT_A_NONE);
+			tx += 2;
+		}
+		sh->tray_hit_end = tx;
+		right_x = sh->tray_hit_x - 1;
+	}
+
 	/* ── middle: the windows, in whatever room is left ── */
 	int avail = right_x - x - 1;
 	sh->task_hit_x = x;
@@ -217,8 +295,19 @@ static void draw_panel(struct sh_state *sh)
 
 /* ── clicks ────────────────────────────────────────────────────────────── */
 
-static void handle_click(struct sh_state *sh, int cx)
+static void handle_click(struct sh_state *sh, int cx, int btn)
 {
+	if (sh->tray_hit_end > sh->tray_hit_x && cx >= sh->tray_hit_x &&
+	    cx < sh->tray_hit_end) {
+		int i = (cx - sh->tray_hit_x) / 2;
+		/* The item is told where the pointer was in PIXELS: an app that
+		 * pops a menu at the cursor gets the cursor, and one that
+		 * ignores the argument loses nothing. */
+		sh_tray_activate(sh, i, btn, cx * kwl_cell_w(), kwl_cell_h());
+		return;
+	}
+	if (btn != SH_TRAY_BTN_LEFT)
+		return;
 	if (cx >= sh->ws_hit_x && cx < sh->ws_hit_end) {
 		/* Two cells per workspace: the digit and its separator. */
 		int i = (cx - sh->ws_hit_x) / 2;
@@ -296,11 +385,20 @@ int panel_main(int argc, char **argv)
 			kwl_shutdown();
 			return 1;
 		}
+		/* The tray too: a dump that omits it is a dump of a panel
+		 * nobody has. Failing to reach a bus is not an error here. */
+		sh_tray_init(&sh);
+		sh_tray_dispatch(&sh);
+		sh_priv_init(&sh);
+		sh_priv_settle(&sh, 800);
+		sh_priv_dispatch(&sh);
 		if (dump_w < 20 || dump_w > 500)
 			dump_w = 100;
 		ktui_offscreen_init(dump_w, 1);
 		draw_panel(&sh);
 		ktui_draw_dump();
+		sh_priv_free(&sh);
+		sh_tray_free(&sh);
 		sh_disconnect(&sh);
 		kwl_shutdown();
 		return 0;
@@ -317,6 +415,12 @@ int panel_main(int argc, char **argv)
 		kwl_shutdown();
 		return 1;
 	}
+	/* No session bus is a session with no tray, not a shell that refuses to
+	 * start — a tty-launched panel for a screenshot has neither. */
+	sh_tray_init(&sh);
+	/* Same contract: no PipeWire is a session where nothing can be recording
+	 * through it, not a shell that refuses to start. */
+	sh_priv_init(&sh);
 	ktui_draw_init();
 
 	while (!kwl_should_close()) {
@@ -331,8 +435,15 @@ int panel_main(int argc, char **argv)
 		 */
 		if (ktui_backend()->poll_event(&ev, 1000)) {
 			if (ev.type == KT_EVT_MOUSE &&
-			    ev.btn == KT_MB_LEFT && ev.press == KT_MP_PRESS)
-				handle_click(&sh, ev.mx);
+			    ev.press == KT_MP_PRESS &&
+			    (ev.btn == KT_MB_LEFT || ev.btn == KT_MB_MIDDLE ||
+			     ev.btn == KT_MB_RIGHT))
+				handle_click(&sh, ev.mx,
+					     ev.btn == KT_MB_MIDDLE
+						     ? SH_TRAY_BTN_MIDDLE
+					     : ev.btn == KT_MB_RIGHT
+						     ? SH_TRAY_BTN_RIGHT
+						     : SH_TRAY_BTN_LEFT);
 		}
 		if (ktui_resized) {
 			ktui_resized = 0;
@@ -340,8 +451,12 @@ int panel_main(int argc, char **argv)
 			ktui_draw_invalidate();
 		}
 		sh_dispatch(&sh);
+		sh_tray_dispatch(&sh);
+		sh_priv_dispatch(&sh);
 	}
 
+	sh_priv_free(&sh);
+	sh_tray_free(&sh);
 	sh_disconnect(&sh);
 	kwl_shutdown();
 	return 0;

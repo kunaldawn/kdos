@@ -525,6 +525,59 @@ static int repology_list(const PuRecipe *r, char out[][PU_MAX_RAW], int max,
 	return n;
 }
 
+/*
+ * Does repology flag the version we PIN as vulnerable?
+ *
+ * A different question from every other one in this file, and the only one that
+ * is about security rather than freshness: repology carries a per-entry
+ * `vulnerable` flag, aggregated from the distros that track CVEs, and a hit on
+ * our exact version string is a real signal that something is known about it.
+ *
+ * Deliberately NOT part of the normal update check. It costs one request per
+ * port at repology's one-per-second limit — six and a half minutes over the
+ * whole tree — so it lives behind `--cve` and the offline `kdos cve` is the
+ * everyday answer. This is the cross-check on that answer, not a replacement:
+ * repology sees distros KDOS does not, and misses the version comparison the
+ * secdb table makes.
+ *
+ * Tri-state on purpose. "repology has never heard of this project" and "this
+ * version is not flagged" are different, and only the second is good news.
+ */
+int pu_repology_vuln(const PuRecipe *r)
+{
+	if (!r->name[0] || !r->version[0])
+		return PU_VULN_UNKNOWN;
+
+	char url[300];
+	snprintf(url, sizeof(url), "https://repology.org/api/v1/project/%s",
+		 r->name);
+	repology_throttle();
+
+	KbBuf b = {0};
+	if (pu_http_get(url, &b) != 0) {
+		kb_buf_free(&b);
+		return PU_VULN_UNKNOWN;
+	}
+
+	int seen = 0, flagged = 0;
+	if (b.p) {
+		KjNode *root = kj_parse(b.p);
+		if (root && root->type == KJ_ARR) {
+			for (const KjNode *e = root->child; e; e = e->next) {
+				const char *v = kj_str(e, "version", "");
+				if (strcmp(v, r->version))
+					continue;
+				seen = 1;
+				if (kj_bool(e, "vulnerable", 0))
+					flagged = 1;
+			}
+		}
+		kj_free(root);
+	}
+	kb_buf_free(&b);
+	return !seen ? PU_VULN_UNKNOWN : flagged ? PU_VULN_YES : PU_VULN_NO;
+}
+
 /* ────────────────────────────────────────────────────────────────────────
  * The entry point
  * ──────────────────────────────────────────────────────────────────────── */
@@ -667,7 +720,7 @@ static int collect_matches(char raws[][PU_MAX_RAW], int nraw,
 
 static int vercmp_desc(const void *a, const void *b)
 {
-	return pu_vercmp((const char *)b, (const char *)a);
+	return kp_vercmp((const char *)b, (const char *)a);
 }
 
 int pu_check(const char *kpkg_bin, const PuRecipe *r, PuResult *out)
@@ -734,7 +787,7 @@ int pu_check(const char *kpkg_bin, const PuRecipe *r, PuResult *out)
 	/* matches is sorted descending, so the candidates that beat CURRENT
 	 * are exactly the leading run. */
 	int ncand = 0;
-	while (ncand < nm && pu_vercmp(matches[ncand], r->version) > 0)
+	while (ncand < nm && kp_vercmp(matches[ncand], r->version) > 0)
 		ncand++;
 
 	if (ncand == 0) {

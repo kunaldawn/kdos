@@ -38,6 +38,7 @@
 
 typedef struct {
 	int check;
+	int cve;
 	int json;
 	int no_fetch;
 	int refresh;
@@ -914,6 +915,53 @@ static int gather_names(const KpConf *conf, char **want, int nwant,
 	return n;
 }
 
+/*
+ * `--cve`: ask repology whether the version each port PINS is flagged.
+ *
+ * Separate pass, separate output, and never cached: the update cache stores
+ * "what is the newest version" and this stores "is ours known-bad", which age
+ * differently — a version that was clean this morning is not clean this evening
+ * because someone filed a CVE, and a stale yes/no is worse than another minute
+ * of requests.
+ *
+ * One request per port at repology's documented one per second, which is six
+ * and a half minutes over the whole tree. That cost is why this is a flag and
+ * why `kdos cve` — offline, instant, and vendored — is the everyday answer.
+ */
+static void report_vulnerable(const KpConf *conf, const char *kpkg_bin,
+			      char names[][64], int nnames)
+{
+	int flagged = 0, unknown = 0, checked = 0;
+
+	fprintf(stderr, "\nasking repology about %d pinned versions "
+			"(one request per second)...\n", nnames);
+	printf("\nrepology's vulnerability flag\n");
+	for (int i = 0; i < nnames; i++) {
+		char *dir = kp_port_dir(conf, names[i]);
+		if (!dir)
+			continue;
+		PuRecipe r;
+		int ok = pu_recipe_read(kpkg_bin, dir, &r) == 0;
+		free(dir);
+		if (!ok || !r.source[0])
+			continue;	/* ours: nothing upstream to ask about */
+
+		fprintf(stderr, "[%d/%d] %s\n", i + 1, nnames, names[i]);
+		checked++;
+		int v = pu_repology_vuln(&r);
+		if (v == PU_VULN_YES) {
+			flagged++;
+			printf("  %-24s %-16s FLAGGED\n", r.name, r.version);
+		} else if (v == PU_VULN_UNKNOWN) {
+			unknown++;
+		}
+	}
+	printf("\n  %d asked, %d flagged, %d repology could not answer for\n",
+	       checked, flagged, unknown);
+	printf("  this is the ONLINE cross-check; `kdos cve` answers offline "
+	       "from the vendored table\n");
+}
+
 /* Checks every named port (cache first, unless --refresh), storing a
  * PortEntry for each one that has an upstream source at all — the ports
  * that are ours (kdos-*) are dropped here, silently, exactly once,
@@ -968,7 +1016,7 @@ static int discover(const KpConf *conf, const char *kpkg_bin, char names[][64],
 /* ────────────────────────────────────────────────────────────────────────
  * --selftest — pure, offline assertions over this file's own logic
  *
- * pu_vercmp/pu_shape/pu_extract already have a table in src/libs/selftest.c,
+ * kp_vercmp/pu_shape/pu_extract already have a table in src/libs/selftest.c,
  * built against the pipeline's earlier stages. Everything new in THIS file
  * is the line layout, the grouping decision and the cache's round trip —
  * none of it touches the network, so all three get exercised here with no
@@ -1177,6 +1225,8 @@ int main(int argc, char **argv)
 			o.no_fetch = 1;
 		else if (!strcmp(a, "--refresh"))
 			o.refresh = 1;
+		else if (!strcmp(a, "--cve"))
+			o.cve = 1;
 		else if (!strcmp(a, "--selftest"))
 			selftest = 1;
 		else if (!strcmp(a, "--fixture")) {
@@ -1239,7 +1289,7 @@ int main(int argc, char **argv)
 	int any_newer = 0;
 	g_nentries = discover(&conf, kpkg_bin, names, nnames, &cache, o.refresh,
 			      &any_newer);
-	free(names);
+
 
 	if (!o.fixture)
 		cache_save(cache_path, &cache);
@@ -1255,6 +1305,12 @@ int main(int argc, char **argv)
 		       &unrecoverable);
 	}
 
+	/* After the review, so the two answers do not interleave: freshness
+	 * first, then the security cross-check. `names` is still alive here
+	 * precisely for this. */
+	if (o.cve)
+		report_vulnerable(&conf, kpkg_bin, names, nnames);
+	free(names);
 	free(g_entries);
 
 	/* Exit status ranks the three outcomes a script needs to tell apart:
