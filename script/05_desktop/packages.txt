@@ -1,0 +1,35 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   Phase 5: The desktop
+# ---------------------------------
+#
+# Everything the desktop is, and nothing the userland already provides.
+# The Wayland base (wayland, wayland-protocols, seatd, foot, grim, slurp,
+# wl-clipboard, xwayland) is phase 4 — it is useful without a compositor.
+#
+# See docs/KDOS-DESKTOP.md.
+
+# The compositor library. Pinned and vendored; wlroots breaks API every
+# release. Xwayland's xwm needs ICCCM and EWMH, which is xcb-util-wm.
+xcb-util-wm
+wlroots
+
+# The compositor. src/desktop is on PORT_REPO for this phase only.
+kdos-comp
+
+# The security-context-v1 sandbox engine: one tagged Wayland socket per box.
+# Separate from kdos-appbox because `run` execs distrobox and cannot hold the
+# context's close fd, and because kdos-appbox links no libraries.
+kdos-boxsock
+
+# The shell: a character-cell panel on layer-shell, drawn by libktui through
+# libkwl. Learns what it shows from wlr-foreign-toplevel-management and
+# ext-workspace-v1 — standard protocols, so waybar works here too.
+kdos-shell

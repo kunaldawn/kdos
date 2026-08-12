@@ -72,15 +72,21 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
     echo "[KDOS] Running: $(basename $_script) start"
     splash step "$(echo "$_name" | tr '[:lower:]' '[:upper:]')"
 
-    # tee, not a redirect: every boot message must still reach the console and
-    # the serial line, which is the only way to debug a machine that dies
-    # behind a splash. The log is the copy the failure panel reads back.
+    # Redirect to a file and print it AFTERWARDS. The obvious version of this
+    # — `"$_script" start 2>&1 | tee "$_log"` — hangs the entire boot: a
+    # service that calls `supervise` leaves a supervisor process running with
+    # the pipe's write end inherited, so tee never sees EOF and rcS waits on
+    # it forever. Found by booting; 22_syslog was the first service to hit it
+    # and boot stopped dead there.
     #
-    # PIPESTATUS[0], not $?, because $? is tee's status and tee always
-    # succeeds — testing it would report every service as started.
+    # Every message still reaches the console and the serial line, which is
+    # the only way to debug a machine that dies behind a splash — just after
+    # the step rather than streamed during it.
     _log="/run/kdos-init.${_name}.log"
-    "$_script" start 2>&1 | tee "$_log"
-    if [ "${PIPESTATUS[0]}" = 0 ]; then
+    "$_script" start >"$_log" 2>&1
+    _rc=$?
+    cat "$_log"
+    if [ "$_rc" = 0 ]; then
         splash ok
     else
         splash fail
@@ -91,6 +97,7 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
         done < <(tail -n 6 "$_log" 2>/dev/null)
         unset _l
     fi
+    unset _rc
 done
 
 unset _script

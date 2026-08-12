@@ -11,11 +11,15 @@
 
 LIBS="$PORT_SRC/../../libs"
 
+# libkxdg is here for `kdos appid`, which reads installed desktop entries. It
+# links libkbase and nothing else, so it costs no external dependency.
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
-	-I"$LIBS/libkbase" -I"$LIBS/libkcolor" -I"$LIBS/libkpkg" -I"$PORT_SRC" \
+	-I"$LIBS/libkbase" -I"$LIBS/libkcolor" -I"$LIBS/libkpkg" \
+	-I"$LIBS/libkxdg" -I"$PORT_SRC" \
 	-o kdos-tools \
 	"$PORT_SRC"/*.c \
-	"$LIBS"/libkbase/*.c "$LIBS"/libkcolor/*.c "$LIBS"/libkpkg/*.c $LDFLAGS
+	"$LIBS"/libkbase/*.c "$LIBS"/libkcolor/*.c "$LIBS"/libkpkg/*.c \
+	"$LIBS"/libkxdg/*.c $LDFLAGS
 
 install -Dm755 kdos-tools "$PKG/usr/sbin/ksvc"
 
@@ -35,4 +39,4 @@ done
 # `kdos explain`. Ships in the ISO like the appbox does: a help system that
 # needs a network is no help on the machine that will not boot.
 install -d "$PKG/usr/share/kdos/reasons"
-install -m644 "$PORT_SRC"/../../../reasons/*.txt "$PKG/usr/share/kdos/reasons/"
+install -m644 "$PORT_SRC"/reasons/*.txt "$PKG/usr/share/kdos/reasons/"

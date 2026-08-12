@@ -20,6 +20,16 @@
 set -e
 source script/packaging.env.sh
 
+# The COSMIC generators are gone, and the state they wrote into /etc/skel is
+# NOT removable by the fs-manifest guard: that guard only owns paths fs/ once
+# provided, and these were generated here at packaging time by
+# kdos-theme-helper and by kdos.c's write_panel_colors(). The seeds fs/ did
+# provide were removed correctly on the first re-sync; these 60-odd files
+# would otherwise ride every future ISO exactly the way the stale icon did.
+# Idempotent, so it stays rather than being a one-off cleanup someone has to
+# remember.
+rm -rf /etc/skel/.config/cosmic
+
 echo "Seeding PHOSPHOR theme (GTK + icons + foot/btop/starship) into /etc/skel..."
 # `kdos theme` is the single generator — running it against skel keeps the
 # seeds byte-identical to what a live `kdos theme phosphor` produces. It is

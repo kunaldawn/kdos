@@ -8,11 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = avahi
-version     = 0.8
+name        = wlroots
+version     = 0.20.2
 release     = 1
-source      = https://github.com/avahi/avahi/releases/download/v$version/avahi-$version.tar.gz
-sha256      = 060309d7a333d38d951bc27598c677af1796934dbd98e1024e7ad8de798fedda  avahi-0.8.tar.gz
-description = mDNS/DNS-SD stack — what makes network printers discoverable
-homepage    = https://avahi.org
-depends     = libdaemon expat dbus glib gdbm
+source      = https://gitlab.freedesktop.org/wlroots/wlroots/-/archive/$version/wlroots-$version.tar.gz
+sha256      = 972c7ac44b17828f4702bfae7cd8347346a3fb5b2c1076cfa2c3fcedac5ec343  wlroots-0.20.2.tar.gz
+description = Modular Wayland compositor library — the base kdos-comp is built on
+homepage    = https://gitlab.freedesktop.org/wlroots/wlroots
+depends     = meson ninja wayland wayland-protocols libdrm mesa pixman libxkbcommon libinput seatd eudev libdisplay-info hwdata vulkan-loader vulkan-headers glslang xwayland libxcb xcb-util-renderutil xcb-util-wm

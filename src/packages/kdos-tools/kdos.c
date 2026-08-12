@@ -584,6 +584,7 @@ static void help_body(FILE *o)
 		{ "kdos theme [name]", "phosphor | amber | ice | bone | next | prev | list" },
 		{ "kdos status", "packages, containers, exported apps" },
 		{ "kdos doctor", "check the session for common breakage" },
+		{ "kdos appid", "do launcher icons match the windows they open?" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "sudo kinstall", "install this live image onto a disk" },
@@ -950,6 +951,8 @@ int kdos_main(int argc, char **argv)
 		return explain_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "sandbox"))
 		return sandbox_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "appid"))
+		return appid_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
 		return cmd_version();
 	if (!strcmp(cmd, "app")) {
