@@ -35,6 +35,15 @@ static inline pixman_color_t to_pixman(KRgb c)
 	return p;
 }
 
+pixman_color_t kwl_slot_color(int slot)
+{
+	/* The one conversion, shared: kwl.c fills a blank lock surface with the
+	 * same KT_BG the cell grid would have painted, and two copies of this
+	 * would be two answers to what the background is. */
+	return to_pixman(ktui_theme->slot[slot & 7]);
+}
+
+
 /*
  * Paint one row of cells.
  *

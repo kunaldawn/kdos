@@ -34,6 +34,7 @@ int kwl_keysym_to_ktui(xkb_keysym_t sym, struct xkb_state *state,
 		       xkb_keycode_t code);
 
 /* Paint */
+pixman_color_t kwl_slot_color(int slot);	/* one of libktui's eight */
 void kwl_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev, int w,
 	       int h, int full);
 

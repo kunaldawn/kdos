@@ -12,6 +12,7 @@
  */
 
 #include <errno.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -87,6 +88,63 @@ static int reap(pid_t pid)
 int kb_run(const KbArgv *a)
 {
 	return reap(spawn(a, -1));
+}
+
+/*
+ * Run with `in` on the child's stdin. The one reason this exists: a password
+ * must not travel in argv, where /proc/<pid>/cmdline publishes it to every
+ * process on the machine for as long as the child lives — kdos-lock pipes one
+ * into kdos-checkpass.
+ *
+ * The write is guarded against SIGPIPE rather than assumed safe: a child that
+ * exits without reading (a bad invocation, a missing binary) would otherwise
+ * kill the CALLER, which for a lock screen means the lock client dying and the
+ * session staying locked forever.
+ */
+int kb_run_feed(const KbArgv *a, const char *in, size_t n)
+{
+	int fd[2];
+	pid_t pid;
+
+	if (pipe(fd) < 0)
+		kb_die("pipe: %s", strerror(errno));
+	/* The write end must not survive into the child, or its own copy keeps
+	 * the pipe open and the child never sees EOF on stdin. */
+	fcntl(fd[1], F_SETFD, FD_CLOEXEC);
+
+	pid = fork();
+	if (pid < 0)
+		kb_die("fork: %s", strerror(errno));
+	if (pid == 0) {
+		dup2(fd[0], STDIN_FILENO);
+		close(fd[0]);
+		int null = open("/dev/null", O_RDWR);
+		if (null >= 0) {
+			dup2(null, STDOUT_FILENO);
+			if (!kb_proc_verbose)
+				dup2(null, STDERR_FILENO);
+			if (null > STDERR_FILENO)
+				close(null);
+		}
+		execvp(a->v[0], (char *const *)a->v);
+		_exit(127);
+	}
+	close(fd[0]);
+
+	void (*old)(int) = signal(SIGPIPE, SIG_IGN);
+	size_t off = 0;
+	while (off < n) {
+		ssize_t w = write(fd[1], in + off, n - off);
+		if (w < 0) {
+			if (errno == EINTR)
+				continue;
+			break;		/* the child is gone; reap tells us */
+		}
+		off += (size_t)w;
+	}
+	close(fd[1]);
+	signal(SIGPIPE, old);
+	return reap(pid);
 }
 
 int kb_run_tty(const KbArgv *a)

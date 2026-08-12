@@ -24,9 +24,17 @@
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
 
+#include "ext-session-lock-v1-client-protocol.h"
 #include "kwl_priv.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
+
+/*
+ * Every output gets a lock surface, because the protocol will not report the
+ * session locked until they all have one. Eight is a ceiling on physical
+ * monitors, not on ambition.
+ */
+#define KWL_MAX_OUTPUTS 8
 
 /* ── state ─────────────────────────────────────────────────────────────── */
 
@@ -40,6 +48,25 @@ static struct {
 	struct wl_pointer *pointer;
 	struct xdg_wm_base *wm_base;
 	struct zwlr_layer_shell_v1 *layer_shell;
+	struct ext_session_lock_manager_v1 *lock_mgr;
+
+	/* Lock role. `engaged` is the compositor's confirmation, `finished` its
+	 * refusal; a lock screen must not take a password before the first or
+	 * after the second. */
+	struct ext_session_lock_v1 *lock;
+	int lock_engaged, lock_finished;
+	struct wl_output *outputs[KWL_MAX_OUTPUTS];
+	int noutputs;
+	/* The extra outputs: one lock surface each, filled with the theme
+	 * background. No cell grid — libktui has one buffer, and it is on the
+	 * first output. */
+	struct {
+		struct wl_surface *surface;
+		struct ext_session_lock_surface_v1 *lock_surface;
+		KwlBuffer buf;
+		int w, h;
+	} extra[KWL_MAX_OUTPUTS];
+	int nextra;
 
 	struct wl_surface *surface;
 	struct xdg_surface *xdg_surface;
@@ -68,6 +95,8 @@ static struct {
 } K;
 
 int kwl_should_close(void) { return K.closed; }
+int kwl_lock_engaged(void) { return K.lock_engaged; }
+int kwl_lock_finished(void) { return K.lock_finished; }
 void *kwl_display(void) { return K.display; }
 void *kwl_seat(void) { return K.seat; }
 
@@ -571,6 +600,16 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 	} else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
 		K.layer_shell = wl_registry_bind(r, name,
 						 &zwlr_layer_shell_v1_interface, 1);
+	else if (!strcmp(iface, wl_output_interface.name)) {
+		/* Bound for the lock role, which needs a surface per output.
+		 * Everything else here is placed by the compositor and never
+		 * names an output. */
+		if (K.noutputs < KWL_MAX_OUTPUTS)
+			K.outputs[K.noutputs++] =
+				wl_registry_bind(r, name, &wl_output_interface, 1);
+	} else if (!strcmp(iface, ext_session_lock_manager_v1_interface.name))
+		K.lock_mgr = wl_registry_bind(
+			r, name, &ext_session_lock_manager_v1_interface, 1);
 }
 
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name)
@@ -652,6 +691,154 @@ static int make_panel(void)
 	return 0;
 }
 
+/* ── session lock ──────────────────────────────────────────────────────── */
+
+static void lock_locked(void *d, struct ext_session_lock_v1 *lock)
+{
+	(void)d;
+	(void)lock;
+	/* The compositor has confirmed it: the session is secured and nothing
+	 * of it is on screen. Only now may a password be accepted. */
+	K.lock_engaged = 1;
+}
+
+static void lock_finished(void *d, struct ext_session_lock_v1 *lock)
+{
+	(void)d;
+	(void)lock;
+	/*
+	 * Refused — something else already holds the lock, or the request came
+	 * too late. The client must exit WITHOUT unlocking: it never locked
+	 * anything, and calling unlock_and_destroy here would be asking the
+	 * compositor to release a lock somebody else is holding.
+	 */
+	K.lock_finished = 1;
+	K.closed = 1;
+}
+
+static const struct ext_session_lock_v1_listener lock_listener = {
+	.locked = lock_locked,
+	.finished = lock_finished,
+};
+
+/* The cell-grid surface, on the first output. */
+static void lock_surface_configure(void *d, struct ext_session_lock_surface_v1 *ls,
+				   uint32_t serial, uint32_t w, uint32_t h)
+{
+	(void)d;
+	ext_session_lock_surface_v1_ack_configure(ls, serial);
+	if (w && h)
+		resize_cells((int)w, (int)h);
+	K.configured = 1;
+}
+
+static const struct ext_session_lock_surface_v1_listener lock_surface_listener = {
+	.configure = lock_surface_configure,
+};
+
+/*
+ * A covered-but-blank output. The whole content is one colour, so it is one
+ * buffer painted once — the double buffering the cell grid needs is for a
+ * surface that changes, and this one never does until it is resized.
+ */
+static void extra_paint(int i)
+{
+	if (K.extra[i].w <= 0 || K.extra[i].h <= 0)
+		return;
+	if (buffer_alloc(&K.extra[i].buf, K.extra[i].w, K.extra[i].h) < 0)
+		return;
+
+	pixman_color_t bg = kwl_slot_color(KT_BG);
+	pixman_image_t *fill = pixman_image_create_solid_fill(&bg);
+	if (fill) {
+		pixman_image_composite32(PIXMAN_OP_SRC, fill, NULL,
+					 K.extra[i].buf.img, 0, 0, 0, 0, 0, 0,
+					 K.extra[i].w, K.extra[i].h);
+		pixman_image_unref(fill);
+	}
+	wl_surface_attach(K.extra[i].surface, K.extra[i].buf.wl, 0, 0);
+	wl_surface_damage_buffer(K.extra[i].surface, 0, 0, K.extra[i].w,
+				 K.extra[i].h);
+	wl_surface_commit(K.extra[i].surface);
+}
+
+static void extra_configure(void *d, struct ext_session_lock_surface_v1 *ls,
+			    uint32_t serial, uint32_t w, uint32_t h)
+{
+	int i = (int)(intptr_t)d;
+	ext_session_lock_surface_v1_ack_configure(ls, serial);
+	K.extra[i].w = (int)w;
+	K.extra[i].h = (int)h;
+	extra_paint(i);
+}
+
+static const struct ext_session_lock_surface_v1_listener extra_listener = {
+	.configure = extra_configure,
+};
+
+static int make_lock(void)
+{
+	if (!K.lock_mgr || K.noutputs < 1)
+		return -1;
+
+	K.lock = ext_session_lock_manager_v1_lock(K.lock_mgr);
+	if (!K.lock)
+		return -1;
+	ext_session_lock_v1_add_listener(K.lock, &lock_listener, NULL);
+
+	/* The first output carries the prompt: K.surface is the one libktui
+	 * paints into. */
+	struct ext_session_lock_surface_v1 *ls =
+		ext_session_lock_v1_get_lock_surface(K.lock, K.surface,
+						     K.outputs[0]);
+	if (!ls)
+		return -1;
+	ext_session_lock_surface_v1_add_listener(ls, &lock_surface_listener, NULL);
+
+	/*
+	 * Every remaining output gets a surface too. Skipping them would leave
+	 * `locked` unsent forever — the compositor is waiting for them, and a
+	 * lock screen that never learns it is locked cannot safely accept a
+	 * password.
+	 */
+	for (int i = 1; i < K.noutputs; i++) {
+		int k = K.nextra;
+		K.extra[k].surface = wl_compositor_create_surface(K.compositor);
+		if (!K.extra[k].surface)
+			continue;
+		K.extra[k].lock_surface = ext_session_lock_v1_get_lock_surface(
+			K.lock, K.extra[k].surface, K.outputs[i]);
+		if (!K.extra[k].lock_surface) {
+			wl_surface_destroy(K.extra[k].surface);
+			K.extra[k].surface = NULL;
+			continue;
+		}
+		ext_session_lock_surface_v1_add_listener(K.extra[k].lock_surface,
+							&extra_listener,
+							(void *)(intptr_t)k);
+		K.nextra++;
+	}
+	return 0;
+}
+
+void kwl_unlock(void)
+{
+	if (!K.lock)
+		return;
+	/*
+	 * unlock_and_destroy, not destroy. Destroying the lock object without
+	 * unlocking is exactly what a crash looks like to the compositor, and
+	 * the compositor's answer to that is to keep the screen locked — which
+	 * is correct, and is why this is the only way out.
+	 */
+	if (K.lock_engaged)
+		ext_session_lock_v1_unlock_and_destroy(K.lock);
+	else
+		ext_session_lock_v1_destroy(K.lock);
+	K.lock = NULL;
+	wl_display_flush(K.display);
+}
+
 static int make_toplevel(void)
 {
 	if (!K.wm_base)
@@ -701,15 +888,49 @@ int kwl_init(const KwlConfig *cfg)
 	if (!K.compositor || !K.shm)
 		goto fail_xkb;
 
+	if (cfg->role == KWL_ROLE_NONE) {
+		/* No surface, no backend: the caller draws offscreen. The
+		 * connection and the seat are still live, which is the whole
+		 * point — a dump of a panel with no window list would be a
+		 * picture of nothing. */
+		return 0;
+	}
+
 	K.surface = wl_compositor_create_surface(K.compositor);
 	if (!K.surface)
 		goto fail_xkb;
 
-	int rc = cfg->role == KWL_ROLE_TOPLEVEL ? make_toplevel() : make_panel();
+	int rc;
+	switch (cfg->role) {
+	case KWL_ROLE_TOPLEVEL:
+		rc = make_toplevel();
+		break;
+	case KWL_ROLE_LOCK:
+		rc = make_lock();
+		break;
+	default:
+		rc = make_panel();
+		break;
+	}
 	if (rc != 0)
 		goto fail_xkb;
 
-	wl_surface_commit(K.surface);
+	/*
+	 * Layer-shell and xdg-shell need an empty commit to ask for the first
+	 * configure. A SESSION LOCK surface must not get one: the protocol makes
+	 * committing a null buffer a fatal error, and the compositor kills the
+	 * client for it —
+	 *
+	 *   ext_session_lock_surface_v1#12: error 1: session lock surface is
+	 *   committed with a null buffer
+	 *
+	 * which, because the compositor is right to keep the session locked when
+	 * the lock client dies, leaves a machine locked with no prompt on it.
+	 * The lock surface is configured the moment it is created, so there is
+	 * nothing to ask for.
+	 */
+	if (cfg->role != KWL_ROLE_LOCK)
+		wl_surface_commit(K.surface);
 	/* Wait for the first configure: the surface has no size until the
 	 * compositor gives it one, and painting before that is painting into a
 	 * buffer whose dimensions are a guess. */
@@ -733,9 +954,17 @@ fail_font:
 
 void kwl_shutdown(void)
 {
-	ktui_backend_set(NULL);
+	if (K.cfg.role != KWL_ROLE_NONE)
+		ktui_backend_set(NULL);
 	buffer_free(&K.buf[0]);
 	buffer_free(&K.buf[1]);
+	for (int i = 0; i < K.nextra; i++) {
+		buffer_free(&K.extra[i].buf);
+		if (K.extra[i].lock_surface)
+			ext_session_lock_surface_v1_destroy(K.extra[i].lock_surface);
+		if (K.extra[i].surface)
+			wl_surface_destroy(K.extra[i].surface);
+	}
 	if (K.xkb_state)
 		xkb_state_unref(K.xkb_state);
 	if (K.keymap)

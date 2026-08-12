@@ -44,9 +44,20 @@ int sandbox_main(int argc, char **argv);	/* kdos sandbox             */
 int why_main(int argc, char **argv);		/* kdos why                 */
 int explain_main(int argc, char **argv);		/* kdos explain             */
 int appid_main(int argc, char **argv);		/* kdos appid               */
+int restarts_main(int argc, char **argv);	/* kdos restarts            */
+int stutter_main(int argc, char **argv);	/* kdos stutter             */
 
 /* $XDG_CONFIG_HOME/<rest>, falling back to ~/.config. Shared rather than
  * copied: two XDG helpers in one binary is how the two drift apart. */
 char *kdt_cfg_home(const char *rest);
+
+/*
+ * `kdos theme --audit` (themeaudit.c). Regenerates every themed artefact into a
+ * scratch $HOME with `apply` and compares it byte for byte with what is
+ * installed — the palette claim, checked rather than asserted. Returns 0 when
+ * everything matches, 1 on drift, 2 when the audit itself could not run.
+ */
+int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
+		    const char *tty_accent, const char *tty_reset);
 
 #endif /* KDOS_TOOLS_H */

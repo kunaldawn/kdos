@@ -174,12 +174,17 @@ void probe_part(const char *path, Part *p)
  * an ESP is identified by its type GUID rather than by "it looks like FAT". */
 static void read_gpt(Disk *d)
 {
+	/* Set before the open, not after: a disk we could not open at all
+	 * (running unprivileged, or a device that vanished mid-probe) has an
+	 * UNKNOWN table, and an empty string renders as a blank column that
+	 * reads like "no partition table". */
+	kb_strlcpy(d->table, "-", sizeof(d->table));
+
 	int fd = open(d->path, O_RDONLY | O_CLOEXEC);
 	if (fd < 0)
 		return;
 
 	unsigned char hdr[512], mbr[512];
-	kb_strlcpy(d->table, "-", sizeof(d->table));
 
 	if (pread(fd, mbr, 512, 0) == 512 && mbr[510] == 0x55 && mbr[511] == 0xaa)
 		kb_strlcpy(d->table, "dos", sizeof(d->table));
@@ -233,8 +238,12 @@ static void read_gpt(Disk *d)
 
 static void apply_mounts(void)
 {
-	char buf[16384];
-	if (kb_read_file("/proc/mounts", buf, sizeof(buf)) < 0)
+	/* Read to real EOF: a truncated /proc/mounts loses the tail, and the
+	 * boot media is on it as often as not — marking the stick we are
+	 * running from as an ordinary install target. */
+	size_t len = 0;
+	char *buf = kb_read_all("/proc/mounts", &len);
+	if (!buf)
 		return;
 
 	char *save = NULL;
@@ -260,6 +269,7 @@ static void apply_mounts(void)
 			}
 		}
 	}
+	free(buf);
 }
 
 static int is_disk_name(const char *n)
@@ -483,15 +493,49 @@ void probe_system(void)
 				*nl = 0;
 			kb_strlcpy(ki_sys.cpu, p, sizeof(ki_sys.cpu));
 		}
-		for (char *q = buf; (q = strstr(q, "processor")); q++)
-			ki_sys.cores++;
 	}
 	if (!ki_sys.cpu[0])
 		kb_strlcpy(ki_sys.cpu, "unknown", sizeof(ki_sys.cpu));
 
-	if (kb_read_file("/proc/mounts", buf, sizeof(buf)) > 0) {
+	/*
+	 * The count comes from /sys, not from counting "processor" in
+	 * /proc/cpuinfo — which reported 1 on every machine and was found by
+	 * looking at `--dump probe`. Two reasons it could not work: the model
+	 * name parse above NUL-terminates the buffer at the end of the first
+	 * block, so there is nothing left to count, and cpuinfo on a 16-thread
+	 * part is 26 KB against an 8 KB buffer anyway. `present` is one short
+	 * line in the documented "0-3,8-11" form.
+	 */
+	if (kb_read_file("/sys/devices/system/cpu/present", buf,
+			 sizeof(buf)) > 0) {
+		for (const char *q = buf; *q;) {
+			char *end = NULL;
+			long lo = strtol(q, &end, 10), hi = lo;
+			if (end == q)
+				break;
+			q = end;
+			if (*q == '-') {
+				hi = strtol(q + 1, &end, 10);
+				q = end;
+			}
+			if (hi >= lo)
+				ki_sys.cores += (int)(hi - lo + 1);
+			while (*q == ',')
+				q++;
+			if (*q == '\n' || *q == '\0')
+				break;
+		}
+	}
+	if (ki_sys.cores < 1)
+		ki_sys.cores = 1;
+
+	/* A machine with many mounts overruns a fixed buffer, and a truncated
+	 * /proc/mounts is how "am I live?" gets answered wrong. */
+	size_t mlen = 0;
+	char *mounts = kb_read_all("/proc/mounts", &mlen);
+	if (mounts) {
 		char *save = NULL;
-		for (char *line = strtok_r(buf, "\n", &save); line;
+		for (char *line = strtok_r(mounts, "\n", &save); line;
 		     line = strtok_r(NULL, "\n", &save)) {
 			char dev[128], mnt[192], type[32];
 			if (sscanf(line, "%127s %191s %31s", dev, mnt, type) != 3)
@@ -499,6 +543,7 @@ void probe_system(void)
 			if (!strcmp(mnt, "/") && !strcmp(type, "overlay"))
 				ki_sys.live = 1;
 		}
+		free(mounts);
 	}
 
 	measure_payload();

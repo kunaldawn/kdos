@@ -320,6 +320,10 @@ void kc_security_init(struct kc_server *s)
 
 void kc_security_free(struct kc_server *s)
 {
+	/* The manager asserts its listener list is empty when the display tears
+	 * it down, so this has to go before that and not after. */
+	if (s->security_mgr)
+		wl_list_remove(&s->security_commit.link);
 	struct kc_policy *p, *tmp;
 	wl_list_for_each_safe(p, tmp, &s->policies, link) {
 		wl_list_remove(&p->link);
