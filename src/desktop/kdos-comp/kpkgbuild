@@ -13,4 +13,4 @@ version     = 0.1.0
 release     = 1
 description = The KDOS compositor — wlroots, ours above it
 homepage    = https://github.com/kunaldawn/kdos
-depends     = wlroots wayland wayland-protocols libxkbcommon pixman libdrm mesa
+depends     = wlroots wayland wayland-protocols libxkbcommon pixman libdrm mesa libglvnd

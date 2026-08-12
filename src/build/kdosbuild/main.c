@@ -33,8 +33,12 @@ typedef struct {
 	int snapshot;
 	int list;
 	int plain;
+	int json;
 	const char *del;
 } Args;
+
+/* Text or NDJSON, chosen once in main() and read by everything headless. */
+static const Reporter *rep;
 
 static void usage(void)
 {
@@ -54,6 +58,8 @@ static void usage(void)
 "  --rebuild LIST        force-rebuild these ports even though installed\n"
 "  --snapshot            write snapshots even for a partial plan\n"
 "  --plain               no TUI: plain lines (implied by a non-tty stdout)\n"
+"  --json                no TUI: one JSON object per event (NDJSON), and\n"
+"                        --list prints the snapshot inventory as one object\n"
 "  --list                list snapshots and exit\n"
 "  --delete PHASE        delete one snapshot and exit\n"
 "\n"
@@ -94,19 +100,29 @@ static const KbuildPhase *resolve_phase(Manager *m, const char *token)
 	return NULL;
 }
 
-static int cmd_list(Manager *m)
+static int cmd_list(Manager *m, int json)
 {
 	KbuildSnapshot *snaps = kb_calloc(KBUILD_MAX_PHASES, sizeof(*snaps));
 	int n = kbuild_snap_list(m->snap_root, snaps, KBUILD_MAX_PHASES);
+
+	char commit[64];
+	int dirty = 0;
+	snap_git_info(".", commit, sizeof(commit), &dirty);
+
+	/* An empty inventory is an empty ARRAY, not a message: "there are no
+	 * snapshots" is an answer, and a consumer that has to tell it apart
+	 * from a failure by reading prose has been handed the wrong thing. */
+	if (json) {
+		report_snapshots_json(m->phase, m->nphase, snaps, n, commit);
+		free(snaps);
+		return 0;
+	}
+
 	if (!n) {
 		printf("no snapshots in %s\n", m->snap_root);
 		free(snaps);
 		return 0;
 	}
-
-	char commit[64];
-	int dirty = 0;
-	snap_git_info(".", commit, sizeof(commit), &dirty);
 
 	printf("%-3s %-16s %-17s %9s %10s %6s\n", "#", "PHASE", "WHEN", "SIZE",
 	       "COMMIT", "STEPS");
@@ -220,7 +236,11 @@ static const char *check_restorable(Manager *m, const KbuildPhase *target,
 	return NULL;
 }
 
-static void plain_tick(Manager *m);
+/* snap_set_tick wants a plain function; the reporter is chosen at run time. */
+static void snap_tick_hook(Manager *m)
+{
+	rep->snap_tick(m);
+}
 
 /* The newest phase that actually contributed data. The skip ceiling comes
  * from this rather than from the requested target, so the header can never
@@ -261,9 +281,8 @@ static int do_restore(Manager *m, const KbuildPhase *target, int plain,
 	if (plain) {
 		/* screen_progress() installs a tick that DRAWS — calling it
 		 * with no terminal taken over is a segfault, not a no-op. */
-		snap_set_tick(m, plain_tick);
-		printf("==> restoring %s\n", target->dir_name);
-		fflush(stdout);
+		snap_set_tick(m, snap_tick_hook);
+		rep->restore(m, target->dir_name);
 	} else {
 		char title[128];
 		snprintf(title, sizeof(title), " RESTORING %s ",
@@ -290,46 +309,6 @@ static int do_restore(Manager *m, const KbuildPhase *target, int plain,
 	return 0;
 }
 
-/* Headless snapshot/restore progress: one line when the path changes, then a
- * heartbeat, so a forty-minute tar is visibly alive in a log file. */
-/* Set while a step line is open and waiting for its "ok"/"FAILED". A
- * snapshot starts INSIDE that window, so its progress has to break the line
- * rather than land in the middle of it. */
-static int plain_line_open;
-
-static void plain_break_line(void)
-{
-	if (plain_line_open) {
-		printf("\n");
-		plain_line_open = 0;
-	}
-}
-
-static void plain_tick(Manager *m)
-{
-	static double last;
-	static char seen[160];
-
-	char now[160];
-	snprintf(now, sizeof(now), "%s %s", m->snap.action, m->snap.path);
-	if (strcmp(seen, now)) {
-		kb_strlcpy(seen, now, sizeof(seen));
-		plain_break_line();
-		printf("    %s %s\n", m->snap.action, m->snap.path);
-		fflush(stdout);
-		last = kb_now_s();
-		return;
-	}
-	if (kb_now_s() - last < 15)
-		return;
-	last = kb_now_s();
-	plain_break_line();
-	printf("      %s / %s   %lld files\n", human_bytes(m->snap.bytes),
-	       m->snap.est_bytes ? human_bytes(m->snap.est_bytes) : "?",
-	       m->snap.files);
-	fflush(stdout);
-}
-
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Headless
  *
@@ -338,10 +317,15 @@ static void plain_tick(Manager *m)
  * a build with no terminal at all could not start. kpkg already answers
  * TERM=dumb or a non-tty stdout with plain lines; this is the same rule, and
  * it is also what makes the engine testable without a pty.
+ *
+ * ONE traversal, two renderings. `rep` is text or NDJSON (report.c); this loop
+ * does not know which, so the two cannot disagree about what happened.
  */
 static void run_plain(Manager *m, Sampler *sam, Timings *tm)
 {
-	snap_set_tick(m, plain_tick);
+	snap_set_tick(m, snap_tick_hook);
+	if (rep->begin)
+		rep->begin(m);
 	mgr_start(m);
 
 	BStep *announced = NULL;
@@ -362,41 +346,26 @@ static void run_plain(Manager *m, Sampler *sam, Timings *tm)
 		if (s && s != announced) {
 			announced = s;
 			if (s->is_group)
-				printf("==> %s\n", s->title);
-			else {
-				printf("    %-40s ", s->title);
-				plain_line_open = 1;
-			}
-			fflush(stdout);
+				rep->group(m, s);
+			else
+				rep->step_open(m, s);
 		}
 		if (announced && !announced->is_group && announced->end_time > 0 &&
 		    announced->status != ST_RUNNING) {
-			if (!plain_line_open)
-				printf("    %-40s ", announced->title);
-			plain_line_open = 0;
-			printf("%s (%s)\n",
-			       announced->status == ST_DONE ? "ok" : "FAILED",
-			       human_time(step_duration(announced)));
+			rep->step_close(m, announced);
 			announced->reported = 1;
 			announced = NULL;
 		}
-		if (shown_notices < m->nnotice)
-			plain_break_line();
 		for (; shown_notices < m->nnotice; shown_notices++)
-			printf("... %s\n", m->notice[shown_notices].text);
-		fflush(stdout);
+			rep->notice(m, m->notice[shown_notices].text);
 
 		usleep((useconds_t)(wait_ms > 0 ? wait_ms : 5) * 1000);
 	}
 
 	for (; shown_notices < m->nnotice; shown_notices++)
-		printf("... %s\n", m->notice[shown_notices].text);
+		rep->notice(m, m->notice[shown_notices].text);
 
-	if (m->error_step)
-		printf("BUILD FAILED at %s\n", m->error_step->title);
-	else
-		printf("BUILD COMPLETE in %s\n",
-		       human_time(kb_now_s() - m->start_time));
+	rep->finish(m);
 
 	sam_stop(sam);
 	tm_save(tm);
@@ -479,6 +448,8 @@ int main(int argc, char **argv)
 			a.snapshot = 1;
 		else if (!strcmp(argv[i], "--plain"))
 			a.plain = 1;
+		else if (!strcmp(argv[i], "--json"))
+			a.json = 1;
 		else if (!strcmp(argv[i], "--list"))
 			a.list = 1;
 		else if (!strcmp(argv[i], "--delete") && v)
@@ -492,12 +463,14 @@ int main(int argc, char **argv)
 		}
 	}
 
+	rep = reporter_for(a.json);
+
 	Manager m;
 	mgr_init(&m, a.script_dir, a.build_dir);
 	kb_mkdir_p(a.build_dir);
 
 	if (a.list)
-		return cmd_list(&m);
+		return cmd_list(&m, a.json);
 
 	if (a.del) {
 		const KbuildPhase *t = resolve_phase(&m, a.del);
@@ -563,14 +536,16 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (a.want_plan && !isatty(STDIN_FILENO)) {
+	/* --plan is a PICKER, and a run that is emitting NDJSON has nobody at
+	 * the terminal to use it. Refused rather than silently ignored. */
+	if (a.want_plan && (!isatty(STDIN_FILENO) || a.json)) {
 		fprintf(stderr, "--plan needs a terminal; use "
 			"--phases/--steps/--rebuild instead\n");
 		return 2;
 	}
 
 	const char *term = getenv("TERM");
-	int plain = a.plain || !isatty(STDOUT_FILENO) ||
+	int plain = a.plain || a.json || !isatty(STDOUT_FILENO) ||
 		    (term && !strcmp(term, "dumb"));
 
 	char timings_path[700];

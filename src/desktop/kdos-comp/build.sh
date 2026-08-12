@@ -18,7 +18,17 @@
 # wayland-client is on this list even though kdos-comp never acts as a
 # client: libwlroots itself pulls in wl_proxy_* for its nested backends, and
 # without it the link fails on wl_proxy_get_queue. Measured, not guessed.
-PKGCFG="wlroots-0.20 wayland-server wayland-client xkbcommon pixman-1"
+#
+# glesv2 and egl are here for the CRT pass: wlroots has no shader API, so
+# crt.c does the final blit itself with a GLES2 program of its own. Only the
+# headers and the two libraries — no GL loader, no helper toolkit.
+PKGCFG="wlroots-0.20 wayland-server wayland-client xkbcommon pixman-1 glesv2 egl"
+
+# libkcolor: the phosphor the shader tints with is the same KCOL_SCHEMES entry
+# the boot splash, the TTY palette, the icons and the GTK stylesheet expand.
+# libkbase comes with it — kcol_retint_text allocates through kb_calloc. Both
+# link nothing but musl, so they cost the compositor no dependency.
+LIBS="$PORT_SRC/../../libs"
 
 # wlr_layer_shell_v1.h includes a wayland-scanner SERVER header that wlroots
 # neither generates nor installs, so every consumer of layer-shell has to run
@@ -29,11 +39,12 @@ SCANNER="$(pkg-config --variable=wayland_scanner wayland-scanner)"
 	/usr/share/wlroots/protocols/wlr-layer-shell-unstable-v1.xml \
 	wlr-layer-shell-unstable-v1-protocol.h
 
+# -D_GNU_SOURCE is libkbase's requirement, not ours: kb_landlock.c wants O_PATH.
 gcc $CFLAGS -O2 -Wall -Wextra \
-	-DWLR_USE_UNSTABLE \
-	-I. \
+	-DWLR_USE_UNSTABLE -D_GNU_SOURCE \
+	-I. -I"$LIBS/libkcolor" -I"$LIBS/libkbase" \
 	$(pkg-config --cflags $PKGCFG) \
-	-o kdos-comp "$PORT_SRC"/*.c \
+	-o kdos-comp "$PORT_SRC"/*.c "$LIBS"/libkcolor/*.c "$LIBS"/libkbase/*.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
 
 install -Dm755 kdos-comp "$PKG/usr/bin/kdos-comp"

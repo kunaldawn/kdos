@@ -422,7 +422,18 @@ static int cmd_verify(const KpConf *c, const char *name)
 	return same ? 0 : 1;
 }
 
-static int cmd_list(const KpConf *c)
+/*
+ * `--json` is offered on `list` and `info` and NOWHERE ELSE in kpkg, which is
+ * deliberate rather than incomplete.
+ *
+ * `kpkgdepends` prints one bare space-separated line that the build orchestrator
+ * parses, and `kpkg meta` prints shell assignments that `ports/fetch` evals.
+ * Both are load-bearing formats with existing consumers; a flag near them is a
+ * flag someone eventually passes. These two commands are the ones that only
+ * ever report to a person, so they are the two that can safely gain a second
+ * shape.
+ */
+static int cmd_list(const KpConf *c, int json)
 {
 	char *db = kp_db_dir(c);
 	char **v = kb_listdir(db, NULL);
@@ -432,6 +443,33 @@ static int cmd_list(const KpConf *c)
 		if (n > width)
 			width = n;
 	}
+
+	if (json) {
+		KbBuf b = {0};
+		int first = 1;
+		kb_buf_str(&b, "{\n  \"packages\": [");
+		for (char **p = v; p && *p; p++) {
+			char ver[128], rel[128];
+			if (kp_installed_version(c, *p, ver, sizeof(ver), rel,
+						 sizeof(rel)) != 0)
+				continue;
+			kb_buf_printf(&b, "%s\n    {\"name\": ", first ? "" : ",");
+			kb_json_str(&b, *p);
+			kb_buf_str(&b, ", \"version\": ");
+			kb_json_str(&b, ver);
+			kb_buf_str(&b, ", \"release\": ");
+			kb_json_str(&b, rel);
+			kb_buf_str(&b, "}");
+			first = 0;
+		}
+		kb_buf_printf(&b, "%s  ]\n}\n", first ? "" : "\n");
+		fwrite(b.p, 1, b.n, stdout);
+		kb_buf_free(&b);
+		kb_strv_free(v);
+		free(db);
+		return 0;
+	}
+
 	for (char **p = v; p && *p; p++) {
 		char ver[128], rel[128];
 		if (kp_installed_version(c, *p, ver, sizeof(ver), rel,
@@ -443,7 +481,7 @@ static int cmd_list(const KpConf *c)
 	return 0;
 }
 
-static int cmd_info(const KpConf *c, const char *name)
+static int cmd_info(const KpConf *c, const char *name, int json)
 {
 	char ver[128], rel[128];
 	if (kp_installed_version(c, name, ver, sizeof(ver), rel, sizeof(rel)) == 0) {
@@ -458,13 +496,30 @@ static int cmd_info(const KpConf *c, const char *name)
 		free(data);
 		free(f);
 		free(db);
+		files = files > 0 ? files - 1 : 0;
+		if (json) {
+			KbBuf b = {0};
+			kb_buf_str(&b, "{\"name\": ");
+			kb_json_str(&b, name);
+			kb_buf_str(&b, ", \"installed\": true, \"version\": ");
+			kb_json_str(&b, ver);
+			kb_buf_str(&b, ", \"release\": ");
+			kb_json_str(&b, rel);
+			kb_buf_printf(&b, ", \"files\": %d}\n", files);
+			fwrite(b.p, 1, b.n, stdout);
+			kb_buf_free(&b);
+			return 0;
+		}
 		printf("Package: %s\nVersion: %s-%s\nFiles: %d\n", name, ver, rel,
-		       files > 0 ? files - 1 : 0);
+		       files);
 		return 0;
 	}
 
 	char *dir = kp_port_dir(c, name);
 	if (!dir) {
+		/* An error stays on stderr and out of the JSON: a consumer that
+		 * gets a parse failure and a non-zero exit knows more than one
+		 * that gets a well-formed object describing nothing. */
 		kp_err("Package not found or not installed: %s", name);
 		return 1;
 	}
@@ -478,6 +533,25 @@ static int cmd_info(const KpConf *c, const char *name)
 
 	char deps[KP_MAX_DEPS][128];
 	int nd = kp_depends(dir, deps, KP_MAX_DEPS);
+
+	if (json) {
+		KbBuf b = {0};
+		kb_buf_str(&b, "{\"name\": ");
+		kb_json_str(&b, name);
+		kb_buf_str(&b, ", \"installed\": false, \"description\": ");
+		kb_json_str(&b, desc[0] ? desc : NULL);
+		kb_buf_str(&b, ", \"depends\": [");
+		for (int i = 0; i < nd; i++) {
+			if (i)
+				kb_buf_str(&b, ", ");
+			kb_json_str(&b, deps[i]);
+		}
+		kb_buf_str(&b, "]}\n");
+		fwrite(b.p, 1, b.n, stdout);
+		kb_buf_free(&b);
+		free(dir);
+		return 0;
+	}
 
 	printf("Package: %s\n", name);
 	if (desc[0])
@@ -523,10 +597,14 @@ int front_main(int argc, char **argv)
 	}
 
 	if (!strcmp(cmd, "list") || !strcmp(cmd, "l")) {
-		for (int i = 0; i < rest; i++)
+		int json = 0;
+		for (int i = 0; i < rest; i++) {
 			if (!strcmp(restv[i], "--root") && i + 1 < rest)
 				kb_strlcpy(c.root, restv[++i], sizeof(c.root));
-		return cmd_list(&c);
+			else if (!strcmp(restv[i], "--json"))
+				json = 1;
+		}
+		return cmd_list(&c, json);
 	}
 
 	if (!strcmp(cmd, "meta")) {
@@ -547,17 +625,20 @@ int front_main(int argc, char **argv)
 
 	if (!strcmp(cmd, "info")) {
 		const char *who = NULL;
+		int json = 0;
 		for (int i = 0; i < rest; i++) {
 			if (!strcmp(restv[i], "--root") && i + 1 < rest)
 				kb_strlcpy(c.root, restv[++i], sizeof(c.root));
+			else if (!strcmp(restv[i], "--json"))
+				json = 1;
 			else if (!who)
 				who = restv[i];
 		}
 		if (!who) {
-			printf("Usage: kpkg info <package>\n");
+			printf("Usage: kpkg info [--json] <package>\n");
 			return 1;
 		}
-		return cmd_info(&c, who);
+		return cmd_info(&c, who, json);
 	}
 
 	if (!strcmp(cmd, "help") || !strcmp(cmd, "--help") ||

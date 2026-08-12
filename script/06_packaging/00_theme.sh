@@ -43,3 +43,8 @@ test -s /etc/skel/.config/gtk-3.0/gtk.css
 test -s /etc/skel/.config/gtk-4.0/gtk.css
 test -s /etc/skel/.themes/KDOS/gtk-3.0/gtk.css
 test -s /etc/skel/.icons/KDOS/index.theme
+# The cursors are generated here too now that kdos-cursors ships its art to
+# /usr/share/kdos/cursors/art. The package installs a phosphor build of its own
+# into /etc/skel/.icons; this rewrites it from the same generator and the same
+# art, so the two agree by construction rather than by luck.
+test -s /etc/skel/.icons/KDOS-cursors/cursors/default

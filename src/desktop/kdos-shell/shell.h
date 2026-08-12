@@ -64,6 +64,14 @@ void sh_activate_workspace(struct sh_state *sh, int i);
  * and one 15-line reader is cheaper than dragging in another archive. */
 int sh_read_line(const char *path, char *buf, size_t len);
 
+/*
+ * How many processes are running code an upgrade replaced, or -1 when the
+ * check could not run. Re-checked rarely: `kdos restarts` walks every process's
+ * maps, which is far too much work for a panel redraw, and the answer only
+ * changes when a package is installed.
+ */
+int sh_restart_count(void);
+
 /* The accent the desktop is currently wearing, from
  * $XDG_CACHE_HOME/kdos/theme. The same file kdos-appbox's TUI reads, so a
  * `kdos theme amber` retints the panel on its next start. */

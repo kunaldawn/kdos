@@ -33,3 +33,12 @@ kdos-boxsock
 # libkwl. Learns what it shows from wlr-foreign-toplevel-management and
 # ext-workspace-v1 — standard protocols, so waybar works here too.
 kdos-shell
+
+# The lock screen, and the one setuid-root binary KDOS ships: /etc/shadow is
+# root-only and kdos-lock must not be. ext-session-lock-v1 means the compositor
+# keeps the screen locked even if the client dies.
+kdos-lock
+
+# Suspend, poweroff and reboot for a desktop that is not root. A unix socket in
+# /run, gated by SO_PEERCRED — no setuid, no polkit prompt, no logind.
+kdos-powerd

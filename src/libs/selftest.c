@@ -159,6 +159,35 @@ static void test_base(void)
 	ok(big.n == 4095, "buf_printf handles an over-long single write");
 	kb_buf_free(&big);
 
+	/* JSON escaping. Every --json output funnels through this, and the
+	 * inputs are package descriptions, file paths and window titles — all
+	 * of which can carry a quote or a control character. Getting this wrong
+	 * emits something that looks like JSON and does not parse. */
+	KbBuf j = {0};
+	kb_json_str(&j, "plain");
+	eq_str(j.p, "\"plain\"", "json plain");
+	j.n = 0;
+	kb_json_str(&j, "say \"hi\"");
+	eq_str(j.p, "\"say \\\"hi\\\"\"", "json escapes quotes");
+	j.n = 0;
+	kb_json_str(&j, "back\\slash");
+	eq_str(j.p, "\"back\\\\slash\"", "json escapes backslash");
+	j.n = 0;
+	kb_json_str(&j, "a\nb\tc");
+	eq_str(j.p, "\"a\\nb\\tc\"", "json escapes newline and tab");
+	j.n = 0;
+	kb_json_str(&j, "bell\x07");
+	eq_str(j.p, "\"bell\\u0007\"", "json escapes other controls as \\u");
+	j.n = 0;
+	/* UTF-8 passes through: JSON strings are Unicode and the input is
+	 * already UTF-8, so escaping high bytes would double-encode them. */
+	kb_json_str(&j, "caf\xc3\xa9");
+	eq_str(j.p, "\"caf\xc3\xa9\"", "json passes UTF-8 through");
+	j.n = 0;
+	kb_json_str(&j, NULL);
+	eq_str(j.p, "\"\"", "json NULL is an empty string");
+	kb_buf_free(&j);
+
 	/* ustar round-trip — the appbox image goes out and comes back through
 	 * this, and a wrong header is a `podman load` that fails at 11 GB. */
 	char dir[] = "/tmp/kdos-selftest.XXXXXX";

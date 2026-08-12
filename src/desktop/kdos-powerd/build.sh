@@ -9,14 +9,15 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# One binary, two names, dispatched on its own basename. libkbase and nothing
+# else: this is a root daemon, and every library it links is code running as
+# root.
 LIBS="$PORT_SRC/../../libs"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
-	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" \
-	-I"$PORT_SRC" \
-	-o kinstall \
-	"$PORT_SRC"/main.c "$PORT_SRC"/probe.c "$PORT_SRC"/conf.c \
-	"$PORT_SRC"/install.c "$PORT_SRC"/pages.c "$PORT_SRC"/dump.c \
-	"$LIBS"/libkbase/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c $LDFLAGS
+	-I"$LIBS/libkbase" \
+	-o kdos-powerd "$PORT_SRC"/main.c "$LIBS"/libkbase/*.c $LDFLAGS
 
-install -Dm755 kinstall "$PKG/usr/bin/kinstall"
+install -Dm755 kdos-powerd "$PKG/usr/sbin/kdos-powerd"
+install -d "$PKG/usr/bin"
+ln -s ../sbin/kdos-powerd "$PKG/usr/bin/kdos-power"

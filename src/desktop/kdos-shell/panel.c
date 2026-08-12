@@ -147,12 +147,32 @@ static void draw_panel(struct sh_state *sh)
 	struct tm tm;
 	localtime_r(&now, &tm);
 
+	/*
+	 * Checked once a minute, not once a frame: `kdos restarts` walks every
+	 * process's maps, and the answer only changes when a package is
+	 * installed.
+	 */
+	static time_t last_restart_check;
+	static int restarts;
+	if (now - last_restart_check > 60) {
+		last_restart_check = now;
+		restarts = sh_restart_count();
+	}
+
 	int charging = 0, pct = battery_percent(&charging);
+	/* A leading mark rather than a word: the panel is one row, and the point
+	 * is to be noticed and clicked, not to explain itself in situ. Built in
+	 * one format rather than prepended afterwards — the compiler is right
+	 * that a two-step build can overflow the field. */
+	const char *mark = restarts > 0 ? ktui_glyph[KT_G_BULLET] : "";
+	const char *gap = restarts > 0 ? "  " : "";
 	if (pct >= 0)
-		snprintf(right, sizeof(right), "%s%d%%  %02d:%02d",
-			 charging ? "+" : "", pct, tm.tm_hour, tm.tm_min);
+		snprintf(right, sizeof(right), "%s%s%s%d%%  %02d:%02d",
+			 mark, gap, charging ? "+" : "", pct, tm.tm_hour,
+			 tm.tm_min);
 	else
-		snprintf(right, sizeof(right), "%02d:%02d", tm.tm_hour, tm.tm_min);
+		snprintf(right, sizeof(right), "%s%s%02d:%02d", mark, gap,
+			 tm.tm_hour, tm.tm_min);
 
 	int rw = ktui_utf8_width(right);
 	int right_x = w - rw - 1;
@@ -217,9 +237,14 @@ int panel_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	int edge = KWL_EDGE_TOP;
+	int dump = 0, dump_w = 100;
 
 	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--bottom"))
+		if (!strcmp(argv[i], "--dump"))
+			dump = 1;
+		else if (!strcmp(argv[i], "--dump-width") && i + 1 < argc)
+			dump_w = atoi(argv[++i]);
+		else if (!strcmp(argv[i], "--bottom"))
 			edge = KWL_EDGE_BOTTOM;
 		else if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
@@ -228,7 +253,8 @@ int panel_main(int argc, char **argv)
 			return 0;
 		} else {
 			fprintf(stderr,
-				"usage: kdos-shell [--bottom] [--font NAME]\n");
+				"usage: kdos-shell [--bottom] [--font NAME]\n"
+				"       kdos-shell --dump [--dump-width N]\n");
 			return 2;
 		}
 	}
@@ -247,6 +273,38 @@ int panel_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
+
+	/*
+	 * `--dump` renders one frame offscreen and prints the cell grid.
+	 *
+	 * It is the same draw_panel() the surface uses — not a second
+	 * description of what the panel contains, which would be a second thing
+	 * to keep true. That makes the panel testable without a screen, which
+	 * is the whole of N15: this is testability, not a machine interface.
+	 *
+	 * It reads REAL protocol state, so it needs the connection; it just does
+	 * not need a surface.
+	 */
+	if (dump) {
+		cfg.role = KWL_ROLE_NONE;
+		if (kwl_init(&cfg) != 0) {
+			fprintf(stderr, "kdos-shell: no compositor to dump\n");
+			return 1;
+		}
+		if (sh_connect(&sh) != 0) {
+			fprintf(stderr, "kdos-shell: no window list to dump\n");
+			kwl_shutdown();
+			return 1;
+		}
+		if (dump_w < 20 || dump_w > 500)
+			dump_w = 100;
+		ktui_offscreen_init(dump_w, 1);
+		draw_panel(&sh);
+		ktui_draw_dump();
+		sh_disconnect(&sh);
+		kwl_shutdown();
+		return 0;
+	}
 
 	if (kwl_init(&cfg) != 0) {
 		fprintf(stderr, "kdos-shell: no compositor, no font, or no "
