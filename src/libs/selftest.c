@@ -650,7 +650,7 @@ static void test_chart(void)
 static void vcmp(const char *a, const char *b, int want, const char *what)
 {
 	checks++;
-	int got = pu_vercmp(a, b);
+	int got = kp_vercmp(a, b);
 	if (got == want)
 		return;
 	failures++;

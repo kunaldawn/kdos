@@ -27,7 +27,7 @@ Podman/distrobox glibc rootfs. Session entry: `kdos-desktop` from a tty.
 Four properties define the project. Everything else follows from them:
 
 1. **Built from scratch.** Every host byte is compiled here from an upstream
-   tarball by a `kpkgbuild` recipe in `ports/`. 374 ports.
+   tarball by a `kpkgbuild` recipe in `ports/`. 389 ports.
 2. **KDOS can build KDOS.** Phase 2 is a self-hosting bootstrap — the chroot
    rebuilds tar/musl/zlib/binutils/gcc with itself. The shipped system carries
    gcc, binutils, rust, cmake, meson, ninja, python3, make and `kpkg`, so a
@@ -103,10 +103,18 @@ against artwork.
 ## The appbox — offline alien apps
 
 `ports/appbox/Containerfile` defines a **debian trixie** `kdos-apps` image:
-the best open-source GUI app per segment, ~90 launchers (libreoffice, calibre,
+the best open-source GUI app per segment, ~105 launchers (libreoffice, calibre,
 gimp, krita, blender, freecad, prusa-slicer, openscad, kicad+gtkwave+ngspice,
 octave, maxima, stellarium, ardour, hydrogen, lmms, kdenlive, obs-studio,
-vscodium, wireshark, keepassxc, backup tools, games, emulators, firefox-esr, …).
+vscodium, wireshark, keepassxc, backup tools, games, emulators, firefox-esr, …),
+plus a **KDE segment** — dolphin, konsole, kate, okular, gwenview, ark, kcalc,
+spectacle, digikam, elisa, kdeconnect, kdevelop, k3b, filelight, kwalletmanager.
+Not `kde-full`: that is Plasma itself plus everything and would roughly double a
+~4 G image. The applications are the half with no equal elsewhere; none of them
+needs Plasma running. `plasma-integration` comes with them, which is what makes
+`QT_QPA_PLATFORMTHEME=kde` work at all, and `kio-extras`/`ffmpegthumbs`/
+`kdegraphics-thumbnailers` are what make dolphin show thumbnails rather than
+generic icons.
 Debian rather than alpine because alpine has no slicer, no VSCode build, no
 calibre/gtkwave in stable. Heavy is deliberate — **the image IS the offline
 software library** (Knoppix-style fat stick). `--no-install-recommends`
@@ -198,42 +206,45 @@ that is already on disk (the bake flattens the appbox to one layer):
   Xwayland rootlessly but exports DISPLAY only to what IT spawned;
   `kdos-appbox` probes `/tmp/.X11-unix/X*` (distrobox shares the host /tmp) and
   adds `DISPLAY=` to BOXENV.
-- **Qt theming needs two things and one is gated.** `QT_QPA_PLATFORMTHEME=gtk3`
-  is inert without debian's `qt{5,6}-gtk-platformtheme`, so an appbox baked
-  before those were added leaves every Qt app grey — that is a re-bake, not a
-  config bug. The platform theme alone is not enough either: the Breeze style
-  that kdenlive and shotcut pull in paints from its own colour scheme, so
-  `QT_STYLE_OVERRIDE=Fusion` is needed too. Fusion with NO platform theme falls
-  back to Qt's built-in LIGHT palette — worse than nothing — so `kdos-appbox`
-  sets it only when `podman image inspect` reports the `kdos.qt-gtk-theme=1`
-  label the Containerfile declares in the same layer that installs the platform
-  themes. The answer is cached in `$XDG_RUNTIME_DIR` (150 ms inspect vs a 300 ms
-  warm launch; the image cannot change without a reboot).
+- **Qt theming has two routes and BOTH are gated on an image label.** With the
+  KDE segment the image carries `plasma-integration`, so `kdos-appbox` exports
+  `QT_QPA_PLATFORMTHEME=kde` and every Qt app reads `~/.config/kdeglobals` —
+  which `kdos theme` writes into the home the box already shares. That is the
+  direct route and it needs no style override.
+  Without it: `QT_QPA_PLATFORMTHEME=gtk3`, which is inert without debian's
+  `qt{5,6}-gtk-platformtheme` (an appbox baked before those were added leaves
+  every Qt app grey — a re-bake, not a config bug), plus
+  `QT_STYLE_OVERRIDE=Fusion`, because the Breeze style kdenlive and shotcut pull
+  in paints from its own colour scheme and ignores what qgtk3 hands it. Fusion
+  with NO platform theme falls back to Qt's built-in LIGHT palette — worse than
+  nothing — so both are gated on `kdos.qt-kde-theme` / `kdos.qt-gtk-theme`,
+  which the Containerfile declares in the same layer that installs each. One
+  `podman image inspect` per label per boot, cached in `$XDG_RUNTIME_DIR`
+  (150 ms inspect vs a 300 ms warm launch; the image cannot change without a
+  reboot).
 - Audio and OBS screen capture come from the HOST: `kdos-desktop` execs
   `kdos-desktop-start` inside the session bus, which brings up pipewire +
-  pipewire-media-session + pipewire-pulse and then execs cosmic-session. Portals
+  pipewire-media-session + pipewire-pulse and then execs `kdos-comp`. Portals
   are D-Bus-activated on demand; OBS captures via portal→ScreenCast→pipewire,
   with the sockets reaching the box through the shared `/run/user/1000`. The box
   needs debian's `obs-plugins` package — debian splits OBS's plugins out as a
   Recommends and `linux-pipewire.so` (the only Wayland capture path) lives there.
 - **The `xdg-desktop-portal` main daemon snapshots its backends at startup.**
   `kdos-desktop-start` waits for the compositor socket, pushes WAYLAND_DISPLAY
-  into the D-Bus activation environment, starts `xdg-desktop-portal-cosmic`,
+  into the D-Bus activation environment, starts `xdg-desktop-portal-wlr`,
   WAITS for it to own its bus name, and only then (re)starts the main portal —
-  or ScreenCast stays empty all session.
-- **Never answer a ScreenCast Start with zero streams.** OBS 30.2's
+  or ScreenCast stays empty all session. Backend-independent, so the fix
+  survived the move off COSMIC verbatim.
+- **The zero-streams trap was COSMIC's, and the lesson outlives it.** OBS 30.2's
   `on_start_response_received_cb` does `if (n_streams != 1) for (size_t i = 0;
   i < n_streams - 1; i++)`: with `n_streams == 0` the unsigned subtraction wraps
   and it spins on an exhausted iterator at ~5 MB/s of log with the UI wedged
-  (on the live ISO that log is tmpfs, so it eats RAM). The portal produced that
-  because `screencast_dialog.rs` bound Enter to `Msg::Share` unconditionally
-  while the Share *button* was gated on a non-empty selection.
-  `ports/core/xdg-desktop-portal-cosmic/no-empty-streams.patch` fixes both ends:
-  the Enter handler checks the selection, and `Start` answers `Cancelled` rather
-  than an empty Success. Debug notes: OBS's stdout is block-buffered when
-  redirected (use `stdbuf -oL` or read `~/.config/obs-studio/logs/*.txt`), and
-  the host has no `dbus-monitor` — run debian's from inside the appbox, it
-  shares the session bus.
+  (on the live ISO that log is tmpfs, so it eats RAM). A ScreenCast `Start` that
+  answers Success with no streams must never happen; `Cancelled` is the answer.
+  Debug notes that still apply: OBS's stdout is block-buffered when redirected
+  (use `stdbuf -oL` or read `~/.config/obs-studio/logs/*.txt`), and the host has
+  no `dbus-monitor` — run debian's from inside the appbox, it shares the session
+  bus.
 
 ### `kdos-appbox` is a C program (`src/packages/kdos-appbox`)
 
@@ -488,16 +499,36 @@ That calls **kdos-theme-helper** (`src/packages` — drives cosmic-theme's own
 ThemeBuilder; the Theme struct is `#[version = 2]`, hand-seeded v1 files are
 silently ignored).
 
-**Alien apps are themed through `$HOME`, not through COSMIC** — the appbox
-shares the home directory and nothing else, so `/usr/share/themes` and
-`/usr/share/icons` are invisible inside the box:
+**Alien apps are themed through `$HOME`** — the appbox shares the home directory
+and nothing else, so `/usr/share/themes` and `/usr/share/icons` are invisible
+inside the box:
 
 | Path | Written by | Read by |
 |---|---|---|
 | `~/.themes/KDOS/` | `write_gtk` → `kdos-theme gtk` | GTK3 and non-libadwaita GTK4 apps |
 | `~/.icons/KDOS/` | `write_icons` → `kdos-theme icons` | every toolkit, host and box |
 | `~/.config/gtk-{3,4}.0/gtk.css` | `write_gtk` | libadwaita (which ignores themes entirely) |
+| `~/.config/kdeglobals` | `write_kde` | every Qt app under `QT_QPA_PLATFORMTHEME=kde` |
+| `~/.local/share/color-schemes/KDOS.colors` | `write_kde` | a KDE app's own colour picker |
 | `~/.icons/KDOS-cursors/` | kdos-cursors' `/etc/skel` copy | cursor lookup in the box |
+
+**`kdeglobals` is MERGED, never overwritten**, and that is the one thing about
+it worth remembering. KDE apps write their own settings into that file —
+dolphin's view modes, kate's session state — so `kdos theme` replaces only what
+it owns (the `[Colors:*]` and `[WM]` sections outright, plus `ColorScheme`,
+`Name`, `widgetStyle` and `Icons/Theme`) and keeps every other section verbatim.
+The merge NORMALISES the file (sections in their original order, foreign keys
+first, ours after, blank lines and comments dropped) because the first version
+patched in place and moved `[KDE]` on every second run — `kdos theme` twice in a
+row produced two different files and `--audit` had a permanent complaint. A
+section that would hold only our keys goes at the end, in generator order,
+wherever it sat before. Sections we own are replaced WHOLE: leaving a foreign
+key inside `[Colors:Window]` made the file grow by one stale colour per run.
+
+`--audit` copies the live `kdeglobals` into its scratch home before
+regenerating, exactly as it already does for `starship.toml` — both are edited
+rather than written, and auditing a merge against an empty home would call every
+user's `[Dolphin]` section drift.
 
 The packages install only the SYSTEM copies plus their generators; the home
 copies come from `06_packaging/00_theme.sh` running `kdos theme phosphor` with
@@ -700,11 +731,13 @@ consumer moves to phase 4 with it.
 | `libkcolor` | `kcol_` | **the palette table**, hex/HLS, `kcol_mix`, the hue-family classifier, `kcol_remap`, `kcol_retint_text` |
 | `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, immediate-mode widgets, modals, text furniture, **the three glyph tiers and the charts drawn out of them**, offscreen rendering |
 | `libkxdg` | `kxdg_` | desktop entries, matching what `RawConfigParser(strict=False)` did with them |
-| `libkpkg` | `kp_` | the package database, the ports tree, `# depends` parsing, the dependency solver |
+| `libkpkg` | `kp_` | the package database, the ports tree, `# depends` parsing, the dependency solver, `kp_vercmp`, the recipe/build-config hashes |
+| `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings — the one library with vendored third-party source (Monocypher) |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
 
 Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
-libkbase` and `libkbuild → libkbase`, and nothing points back up.
+libkbase` and `libkbuild → libkbase` and `libksig → libkbase`, and nothing
+points back up.
 
 Three rules the extraction exists to keep, each one a bug that was already
 there:
@@ -1242,6 +1275,191 @@ with the screen locked and the lock client SIGKILLed, both exit 0.
 
 ---
 
+## Screen capture, the clipboard and the portal
+
+Three programs KDOS already shipped could not work, for one reason: **kdos-comp
+advertised no capture and no clipboard globals at all.** `grim` (and so
+`kdos-shot`) had nothing to bind, `wl-clipboard` had nothing to bind, and a
+portal backend would have had nothing to capture. `src/desktop/kdos-comp/capture.c`
+creates them, and both generations of each:
+
+| Global | Who wants it |
+|---|---|
+| `zwlr_screencopy_manager_v1` | **released grim (1.4.1)** — only grim master speaks the ext- protocol |
+| `zwlr_export_dmabuf_manager_v1` | zero-copy recorders |
+| `ext_image_copy_capture_manager_v1` + `ext_output_image_capture_source_manager_v1` | what `xdg-desktop-portal-wlr` prefers |
+| `ext_foreign_toplevel_image_capture_source_manager_v1` | capture ONE WINDOW rather than a screen |
+| `zwlr_data_control_manager_v1` + `ext_data_control_manager_v1` | wl-clipboard 2.2 and 2.3 respectively |
+
+Implementing only the ext- half breaks the shipped grim; implementing only the
+wlr half works today and strands every client written after 2024. The
+security-context table in `security.c` already named all six — it was written
+ahead of the compositor on purpose, and this is the day it paid off: nothing had
+to be added there to keep a boxed app off them. **That is also what makes the
+portal the sanctioned route rather than a convenience**: a boxed OBS cannot bind
+screencopy at all, so it asks the portal, which runs on the host and asks the
+user which output to share.
+
+**Per-window capture needs a second foreign-toplevel protocol.**
+`ext-foreign-toplevel-list-v1` carries identity and nothing else, which is
+exactly what "capture THAT window" needs and nowhere near enough for a taskbar,
+so `shellsvc.c` now creates handles on both it and `wlr-foreign-toplevel-management`.
+The handle's `data` points back at the `kc_toplevel`, and a request builds a
+source from that window's scene node.
+
+Two things that cost a debug cycle:
+
+- **The capture source outlives the window.** It hangs off the SCENE NODE, which
+  xdg-shell destroys *after* our own destroy handler has freed the toplevel, so
+  its destroy listener fired on freed memory. ASan caught it on the first run
+  with capture in play; `kc_capture_toplevel_free()` from `toplevel_destroy` is
+  the fix. A source is created lazily and kept — it owns a `wlr_scene_output` and
+  a swapchain, so one per window is worth paying for once and not per request.
+- **A request we cannot serve is answered with an INERT source**
+  (`request_accept(req, NULL)`), never ignored. Dropping it leaves the client
+  holding an object id that never becomes anything, waiting forever.
+
+**A screenshot of a phosphor desktop looks like the desktop.** Output capture
+copies the output's committed buffer, which under the CRT pass is the processed
+one — measured: the same window comes back as `(41,126,21)` where the client
+painted `(32,192,64)`, on a `(0,3,1)` phosphor floor. Per-window capture renders
+the scene node and is untinted. Both are the honest answer to what was asked.
+
+**The portal is `ports/core/xdg-desktop-portal-wlr` 0.8.4** — sd-bus from basu,
+`--libexecdir=/usr/lib` so both daemons sit where `kdos-desktop-start` looks.
+`wayland-protocols` needed no bump: 1.48 already carries every staging protocol
+it and wlroots ask for.
+
+**`fs/usr/share/xdg-desktop-portal/kdos-portals.conf` is not optional and its
+NAME is not free.** xdg-desktop-portal looks for `<desktop>-portals.conf` with
+`XDG_CURRENT_DESKTOP` lowercased, so `KDOS` → `kdos`. Without the file the only
+thing selecting a backend is `UseIn=` inside `wlr.portal`, which lists sway,
+river and Hyprland and has never heard of us. It reads `default=none` plus the
+two interfaces wlr implements — honest rather than lazy, because the usual
+second backend is xdg-desktop-portal-gtk and **there is no GTK on the host**. So
+FileChooser has no backend, boxed apps use their own dialogs, and a libktui
+cell-grid picker is the eventual answer.
+
+`~/.config/xdg-desktop-portal-wlr/config` (skel) uses `chooser_type=simple` with
+slurp. The alternative, `none`, silently captures the first output — right on a
+laptop, wrong the moment a second screen is plugged in, and wrong in the
+direction where the user never finds out.
+
+**Proved with `captest`**, a client that is its own subject: it opens a window
+filled with one known colour, waits for the compositor to list it under
+ext-foreign-toplevel-list, then captures it both ways and checks the pixels.
+28800/28800 pixels of the window on the per-window path under both renderers,
+and the window found in the full-screen shot. It also found two of its own
+bugs first — the headless GLES2 path advertises **BGR888, three bytes per
+pixel**, and a client that assumes four gets `Invalid stride`.
+
+## Which app is using your microphone
+
+`src/desktop/kdos-shell/privacy.c`. The panel names it:
+
+```
+ KDOS │ 1 2 3 4 │ foot  firefox │            ●MIC pw-cat  ●CAM firefox +1  41%  23:31
+```
+
+Every phone OS answers this and no Linux desktop does, and the reason is not
+difficulty — PipeWire knows the capture node, the node knows the client, the
+client knows its own name, the panel knows how to draw. It is **four owners for
+one indicator and nobody owns all four**. KDOS owns all four.
+
+**Two sources, because there are two ways to record and only one goes through
+PipeWire.**
+
+| | Where it comes from | Why not the other way |
+|---|---|---|
+| microphone | a PipeWire node with `media.class` = `Stream/Input/Audio`, counted only while its state is RUNNING | `/proc` says *pipewire* holds `/dev/snd/pcmC0D0c`, which is the non-answer every other desktop gives |
+| camera | a process holding an fd on `/dev/video*`, found by walking `/proc` | almost nothing takes the camera through the portal; PipeWire would report nothing at all |
+
+**A node that EXISTS is not a node that is RECORDING.** An app that opened the
+mic and went idle must not light the lamp — an indicator that cannot tell those
+apart is one nobody believes twice. The camera half is counted the other way
+round on purpose: an open fd on a camera *is* use, there being no other reason
+to hold one.
+
+The name is the app's own — `application.name` ("Google Chrome", not "chrome"),
+then `node.name`, then `/proc/<pid>/comm` for the camera. One app is named and
+the rest are counted (`●MIC firefox +2`): the panel is one row, and three
+truncated names say less than one name and a number.
+
+Drawn in the SECONDARY colour, and the camera additionally reversed — the one
+thing on this panel that is a warning rather than a fact, and a camera is more
+consequential than a mic.
+
+Three details worth keeping:
+
+- **`--dump` waits, the live panel does not.** Connect, registry, bind and info
+  are four roundtrips; a one-shot dump that asked once would report "nothing is
+  recording" because it asked too early, so `sh_priv_settle()` pumps up to
+  800 ms for it. The live panel pumps the loop FOUR times per tick instead of
+  once — measured, that is what puts a stream that just started on the panel in
+  one tick rather than two.
+- **The node record lives in the proxy's user data**, so `pw_registry_bind`
+  allocated it and the destroy handler must unlink it and NOT free it.
+- **`KDOS_PRIVACY_PROC` moves the `/proc` walk**, the same trick
+  `kdos stutter --fixture` uses, which is what makes the camera half testable on
+  a machine with no camera. `testing/fixtures/privacy/proc` is three processes:
+  one holding `/dev/video0` twice (named once), one holding `/dev/video1`, and
+  one holding an ALSA capture device that must be ignored.
+
+Cost: `kdos-shell` links `libpipewire-0.3` and the port depends on `pipewire`.
+The camera walk runs every two seconds — a readdir per process, and there is
+nothing to subscribe to.
+
+## The tray — a StatusNotifierItem host
+
+`src/desktop/kdos-shell/tray.c`. The tray is the one part of a desktop that is
+pure D-Bus: an app publishes an ITEM, a WATCHER keeps the list, a HOST displays
+it. KDOS is all three, because nothing else here is — and it matters more here
+than elsewhere, since **a boxed app that minimises to a tray which does not
+exist has minimised to nowhere** (kdeconnect, keepassxc, nextcloud, syncthing).
+
+An item is **one cell**: the first letter of its `Id`, coloured by `Status` —
+dim for Passive, the text colour for Active, the accent AND reversed for
+NeedsAttention. `Id` rather than `IconName` because a letter from a name a human
+chose beats a letter from a theme lookup that will never happen on a character
+grid. Left click sends `Activate`, middle `SecondaryActivate`, right
+`ContextMenu`.
+
+Three rules, each one a bug that was already there:
+
+- **Nothing blocks the panel.** Property reads have a 300 ms ceiling and use one
+  `GetAll` rather than five `Get`s (five against a wedged app is a second and a
+  half of dead panel); every method call to an item is fire-and-forget.
+- **Properties are never read from inside a bus callback.** A synchronous
+  `sd_bus_call` there does not get its reply — sd-bus is already processing a
+  message — so registration marks the item `needs_props` and the next dispatch
+  reads it. The first version drew items with no name at all.
+- **The interface spelling is only recorded when the OTHER one answered.** KDE
+  apps publish `org.kde.StatusNotifierItem`, a few publish the freedesktop
+  spelling. Flipping on the first failure sent every subsequent click to an
+  interface the app did not implement — and a fire-and-forget click reports
+  nothing, so it failed in total silence.
+
+**When something else owns the watcher, we adopt its list.** waybar might, and
+so does the live panel when `kdos-shell --dump` runs beside it — without the
+adopt path a dump drew an empty tray while the panel above it showed four items,
+which is exactly the quietly-wrong output a dump exists not to produce.
+
+**Known gap, stated rather than hidden:** `com.canonical.dbusmenu` is not
+rendered. It is a second protocol with a nested-variant layout tree, and drawing
+it as cells is its own piece of work. Apps with their own menu window answer
+ContextMenu correctly; apps that set `ItemIsMenu` expect the host to draw the
+menu and will do nothing.
+
+**`testing/fixtures/tray/traycheck.c` is the test, and it is a second PROCESS.**
+SNI is a conversation between two peers on a bus, and a mock of either side
+would have passed on both silent bugs above. It forks a Qt-shaped item, drives
+`tray.c` against it on a private `dbus-daemon`, and asserts the item is
+registered, its Id and Status are read, all three buttons arrive, and killing
+the app removes the cell. `testing/selftest.sh` runs it wherever there is an
+sd-bus and a dbus-daemon.
+
+---
+
 ## Repo layout
 
 ```
@@ -1260,11 +1478,13 @@ kdos/
 │   │   ├── libkcolor/           # kcol_* the palette table + colour maths
 │   │   ├── libktui/             # ktui_* terminal, widgets, mouse, modals
 │   │   ├── libkxdg/             # kxdg_* desktop entries
-│   │   ├── libkpkg/             # kp_*   db, ports tree, dependency solver
+│   │   ├── libkpkg/             # kp_*   db, ports tree, solver, version + hashes
+│   │   ├── libksig/             # ksig_* Ed25519 (vendored Monocypher)
 │   │   └── libkbuild/           # kbuild_* phases, plans, snapshot inventory
 │   ├── desktop/                 # the desktop, ours (see docs/KDOS-DESKTOP.md)
-│   │   ├── kdos-comp/           # the wlroots compositor + the CRT pass (crt.c)
-│   │   ├── kdos-shell/          # panel, launcher, notifyd, osd
+│   │   ├── kdos-comp/           # the wlroots compositor, the CRT pass (crt.c),
+│   │   │                        #   capture and the clipboard (capture.c)
+│   │   ├── kdos-shell/          # panel, launcher, notifyd, osd, tray (SNI)
 │   │   ├── kdos-lock/           # the lock screen + setuid kdos-checkpass
 │   │   ├── kdos-powerd/         # suspend/poweroff/reboot over a unix socket
 │   │   └── kdos-boxsock/        # the security-context-v1 sandbox engine
@@ -1645,7 +1865,7 @@ did. Nothing is left to diff against.
 `src/packages/kdos-kpkg/` is one binary answering to five names — `kpkg`,
 `kpkgadd`, `kpkgbuild`, `kpkgdel`, `kpkgdepends` — dispatched on its own
 basename, cross-compiled in phase 1 by `12_kpkg.sh` the same way kinstall is.
-It links libkbase and libkpkg and nothing else. There are no shell scripts in
+It links libkbase, libkpkg and libksig and nothing else. There are no shell scripts in
 `src/` any more.
 
 **Recipes are unchanged and still bash.** kpkgbuild does the source
@@ -1779,16 +1999,217 @@ Then two ports were built for real, old recipe against new, and their package
 file lists compared: `zlib` (16 members) and `uthash` (9, and its `install -m644
 src/*.h` glob is one of the things the argv format had refused). Identical.
 
-**`kpkg verify <port>` is how a recipe CHANGE gets checked.** It builds the
-port with its current `kpkgbuild` + `build.sh` and again with the
-`kpkgbuild.new` / `build.sh.new` beside them, then compares the two packages'
-file lists. Neither build happens in the ports tree: a scratch directory is
-filled with symlinks to everything the port carries — tarballs, patches,
-vendor bundles — and only the files being tested are real. An interrupted
-verify leaves the tree untouched.
+**`kpkg verify [--repro] <port>` is how a recipe CHANGE gets checked.** It
+builds the port with its current `kpkgbuild` + `build.sh` and again with the
+`kpkgbuild.new` / `build.sh.new` beside them, then compares the two packages.
+Neither build happens in the ports tree: a scratch directory is filled with
+symlinks to everything the port carries — tarballs, patches, vendor bundles —
+and only the files being tested are real. An interrupted verify leaves the tree
+untouched.
 
-It compares the file LIST, not payload bytes. That catches the dominant error
-(a missing or extra file) and does not trip over `.POSTINSTALL`.
+**It compares PAYLOAD, not the file list.** A file list answers "are the same
+files there" and is silent about the same paths with different content, which is
+the error that starts mattering the moment recipes change. The comparison is a
+fingerprint — `mode  sha256  path` per member, sorted, symlink targets included
+— and it prints the first differing lines. The archives are unpacked to build
+it; streaming each member out of `tar` separately would be one process per file,
+and zig has 20 831 of them.
+
+**`--repro` builds the SAME recipe twice** and requires the two packages to be
+byte-identical. That is the acceptance test for reproducible packaging, and it
+is the same code path because it is the same question asked of two archives.
+
+## The binhost — a signed index, and three equality tests
+
+```
+kpkg keygen builder                    # once, on the machine that builds
+kpkg index /repo --sign builder.key    # PACKAGES + PACKAGES.sig + a .sig per package
+cp builder.pub /etc/kdos/keys/         # on every machine that should trust it
+kpkg binhost /repo zlib                # installs it, or says why it will not
+```
+
+**Two hashes replace Gentoo's whole USE-flag matching problem**, because KDOS has
+no USE flags. A prebuilt package is usable when three things equal the client's
+own: the architecture, `B:` the **build-config hash** (arch, libc, target,
+compiler version, CFLAGS/CXXFLAGS/LDFLAGS) and `E:` the **recipe hash** (SHA-256
+over kpkgbuild, build.sh, postinstall.sh and every `.patch`, sorted, each
+contributing its name, its length and its bytes). Anything else builds from
+source. There is no BUILD_ID counter and no "close enough" — the exit codes say
+which happened: **0** used it, **1** no match so build it, **2** refused.
+
+The index is Alpine's shape — single-character keys, one stanza per package, a
+blank line between — because it parses in sixty lines of C and reads fine in a
+pager. The KDOS part is `A:`/`B:`/`E:`.
+
+**Signing is Ed25519 via Monocypher, and Monocypher is the ONE piece of vendored
+third-party source in `src/`.** The exception is narrow and the alternatives are
+all disqualified: libsodium is a shared library, BearSSL has no Ed25519
+*signing*, TweetNaCl has been unmaintained since 2014, OpenSSL is the opposite of
+"links nothing but musl". Monocypher is 4 files, ~120 KB of C99, public domain,
+no dependencies, no libm, no malloc — which is exactly the `libk*` rule.
+`src/libs/libksig/` holds it verbatim under `monocypher/` with its version and
+hash in `UPSTREAM`; everything above it (file formats, keyring, policy) is ours.
+
+**Sign the index, not 353 packages.** The index carries every package's SHA-256,
+so one signature covers all of them transitively. The per-package `.sig` sidecar
+exists for the other case — a package that travels on a USB stick with no index
+beside it — and `kpkg verify-pkg` is what checks one.
+
+Rules this design exists to keep, each one a way signing usually rots:
+
+- **A key id is not a key.** The id inside a signature file selects which key to
+  try; verification always uses a key from `/etc/kdos/keys`. A signature that
+  could supply its own key verifies nothing.
+- **A bad signature is not a missing one.** `kpkgadd` refuses to install a
+  package whose `.sig` fails, and allows one with no sidecar — because the
+  packages kpkg builds locally are the majority and are never signed.
+  `KPKG_REQUIRE_SIG=1` is the stricter rule for a machine that only installs from
+  a binhost.
+- **`--insecure` says so out loud, every time.** A flag that prints nothing is a
+  flag that gets left in a script.
+- **The index is verified before it is believed, and a package's hash before it
+  is unpacked.** Verifying after install is verifying nothing.
+- **Multi-signature from day one.** A signature file is one line per signature,
+  so during a key rollover both keys sign and a client trusting either keeps
+  working. Retrofitting that is brutal; designing it in is one loop.
+- **The signing key is written `0600` with `O_EXCL`**, and reading it back
+  refuses if the mode ever loosened — signing with a key other users can read is
+  signing with a key that must be assumed compromised.
+- **KDOS ships no key in `/etc/kdos/keys`.** Shipping one would be asking you to
+  trust whoever built the image, which is the question signing exists to let you
+  answer yourself.
+
+**Measured end to end**: a builder built zlib and uthash, keyed, indexed and
+signed; a client with an empty keyring refused (2); the same client with the
+public key installed zlib into its own root; an edited index, a package with one
+byte appended, and an index signed by an untrusted key were each refused (2);
+`CFLAGS="-O3 -march=native"` sent it back to source (1). `testing/selftest.sh`
+runs all of that against a synthetic port.
+
+### Deltas — an update that ships the difference
+
+```
+$ kpkg delta zlib-1.3-1.tar.xz zlib-1.3.1-1.tar.xz
+zlib-1.3.1-1--from--zlib-1.3-1.kdelta: 3166 bytes, 26.8x smaller than the
+package (84800 bytes)
+```
+
+`zstd --patch-from` is the engine; the two decisions around it are the work.
+
+**The delta is taken over the UNCOMPRESSED tars.** Two `.tar.xz` files built from
+nearly identical trees share almost no bytes — that is what a compressor does —
+so a delta between them is the size of the whole package. Decompressing first is
+the entire difference between 3 KB and 85 KB.
+
+**A delta is never trusted, and never needs to be.** It is applied and the
+RESULT is hashed against the `C:` the signed index already carries. A tampered
+delta produces a package whose hash does not match and is discarded; it cannot
+make a client install anything the index did not already name. So there is no
+delta signature and no second trust path — `kpkg index` deliberately does not
+write a sidecar for a `.kdelta`.
+
+**The reconstruction is byte-identical, and that is P12 paying off.** Measured:
+a zlib package rebuilt from a 3 166-byte delta compares equal to the builder's
+own file and **verifies against the builder's Ed25519 sidecar**. Without
+reproducible packaging, the reconstruction would differ in its metadata and the
+signature would be worthless.
+
+A delta stanza in the index is an ordinary stanza with `O:` — the package file it
+applies to. There is no type field, because "it names what it patches" says the
+same thing. The client uses one only when it still HAS that old package in
+`PACKAGE_DIR`, which is the ordinary case for a machine that has been updating
+rather than installing fresh; when it is gone, the full package is the answer and
+nothing is lost.
+
+## Vulnerability tracking — `kdos cve`
+
+```
+KDOS cve  —  Alpine secdb of 2026-08-12 (0 days old), the ports tree
+
+  curl                   8.17.0       fixed in 8.21.0       CVE-2025-14017,CVE-2025-14524,... +29 more
+  zlib                   1.3.1        fixed in 1.3.2        CVE-2026-22184,CVE-2026-27171
+
+  389 checked, 262 not in the database, 28 behind a recorded fix
+```
+
+**The data is vendored, and the answer is offline.** `src/packages/kdos-tools/secdb/`
+carries a host-only `vendor.py` and the committed table it produces — 270 KB,
+798 packages, 4 099 fix records, merged from six Alpine branches
+(main + community) and installed to `/usr/share/kdos/secdb.txt`. Same shape as
+the kdos-icons and kdos-cursors vendoring, and for the same reason: the prune is
+a KDOS decision and the artefact is diffable.
+
+**Alpine, not NVD or OSV.** Alpine is the closest distro to KDOS that publishes a
+machine-readable security database — musl, the same upstream tarballs,
+comparable pins. OSV's `Alpine/all.zip` is the same facts in 4 MB; NVD is retired
+feeds plus an API. Neither answers a question 270 KB answers.
+
+**The question is a version comparison, not a scan.** *Is the version we pin
+older than the version Alpine says fixed this CVE?* The comparator is
+`kp_vercmp` — moved into **libkpkg** for this, because `kdos-portup` asks the
+same question about the same strings ("is upstream newer than the pin") and two
+implementations would eventually disagree.
+
+Four details, each of which changes the answer:
+
+- **Alpine's `-rN` is packaging, not upstream.** Comparing `1.2.12` against
+  `1.2.12-r2` with the revision left on makes every pin look old. It is cut off.
+- **`fixed in 0` means "never affected"** in that branch, and it falls out of the
+  comparison for free — nothing is older than 0.
+- **The newest fix a pin is behind is the one reported**, because it closes
+  every hole below it too, and the CVEs from all the rows are merged and
+  deduplicated (the same CVE is recorded by every branch that shipped the fix).
+- **`secdb = <alpine-name>` in a recipe** maps a port whose name differs. Today
+  that is exactly one: our `linux` is Alpine's `linux-lts`.
+
+**A package Alpine does not carry is UNKNOWN, never clean.** 262 of 389 ports are
+in that state and the summary says so; a checker that counted them as fine would
+be reporting a number it had not earned. The vintage of the table is printed
+with every run and a database over 180 days old says so.
+
+**`ports/update --cve` is the ONLINE cross-check** — repology's per-version
+`vulnerable` flag, one request per port at their one-per-second limit, six and a
+half minutes over the whole tree. That cost is why it is a flag and why the
+vendored table is the everyday answer. Measured agreement: zlib 1.3.1, curl
+8.17.0 and expat 2.7.3 are flagged by repology and are the same three the
+offline table reports.
+
+`testing/fixtures/cve/` is four ports and a five-row table — a pin behind two
+fixes, a pin that only looks behind one because of `-rN`, a `secdb =` mapping,
+and a port Alpine never heard of.
+
+## Reproducible packages
+
+**A package built twice from the same tree is byte-identical.** That is a
+property of ONE function — `roll_package()` in `build.c` — rather than of 396
+recipes, which is the whole reason kpkg rolls the archive itself instead of
+letting each `build.sh` do it. Every flag there is a specific source of drift:
+
+| | |
+|---|---|
+| `--sort=name` | readdir order is filesystem order and is not stable, even between two copies of the same tree |
+| `--mtime=@$SOURCE_DATE_EPOCH` | otherwise every file carries the second it was installed |
+| `--owner=0 --group=0 --numeric-owner` | the builder's uid, and its NAME as text in the header |
+| `--format=gnu` | pax headers carry atime and ctime, which are wall clock; ustar cannot hold a path over 255 bytes and some ports have them |
+| `--use-compress-program=xz -9 -T1` | xz is deterministic single-threaded, and `XZ_OPT=-T0` in the environment silently changes the bytes |
+| `umask(022)` before the build | a file `make install` creates without an explicit mode takes the builder's umask — the one source of drift that is not in the tar call |
+
+The other half is five environment lines, now in **every** `script/*.env.sh`:
+`SOURCE_DATE_EPOCH=1735689600` (pinned, not `date` and not git — the build
+container has no git), `TZ=UTC`, `LC_ALL=C`, `-ffile-prefix-map` on CFLAGS and
+CXXFLAGS, and `-Wl,--build-id=sha1` so the build-id is a function of the
+contents rather than a random 128 bits.
+
+**Measured**, on real ports built twice through kpkg: `zlib`, `uthash` and
+`inih` each come out byte-identical, and zlib stays identical when the second
+build runs under `umask 077`, `XZ_OPT=-T0` and `TZ=Asia/Kolkata` — the three
+things that used to change it. `testing/selftest.sh` builds a synthetic
+source-less port twice under exactly that hostile environment and also checks
+the archive itself carries uid/gid 0 and the pinned epoch, so the test cannot
+pass by two builds being equally wrong.
+
+This is the precondition for P14 (A/B slots) and P15 (a signed binhost): a
+package that is not reproducible cannot be verified against a second builder.
 
 **A full `make build` is still what proves kpkg.** Everything else was verified
 by diffing artefacts and by building two ports for real; a package manager can
@@ -1858,6 +2279,9 @@ make DESTDIR=$PKG install
   `${var/a/b}` `${var//a/b}` `${var:off:len}`. A command substitution is NOT
   available — `unzip` spells its `$(echo $version | sed 's/\.//')` as
   `${version//./}`.
+- **`secdb = <alpine-package>`** maps a port onto the name Alpine's security
+  database uses, for `kdos cve`. Declared only when it differs — today only the
+  kernel (`linux` here, `linux-lts` there).
 - **`vendoring = rust`** makes `ports/fetch` run `cargo vendor` and package
   `vendor/` + `.cargo/config.toml` as `<name>-vendor-<version>.tar.xz` beside
   the tarball; `build.sh` extracts it into `$SRC` and builds `--frozen --offline`.
@@ -1950,7 +2374,8 @@ that do not are genuinely unrecoverable from a filename alone, not a gap in
 the extractor, and correctly report `unknown`.
 
 **`make updates`** runs `ports/update` with `PORTUP_ARGS` passed through
-(`make updates PORTUP_ARGS="--check curl"`). `--check` is the
+(`make updates PORTUP_ARGS="--check curl"`, and `--cve` for the repology
+vulnerability cross-check — see the CVE section). `--check` is the
 non-interactive form: exit 0 means every named port is current, 1 means at
 least one has an update, 2 means a bump was accepted but its tarball never
 made it to disk (the one state this tool exists to prevent a build from
@@ -2152,7 +2577,7 @@ adding users is manual.
 ## Working-state markers
 
 ```bash
-ls ports/core | wc -l                                  # 374 ports
+ls ports/core | wc -l                                  # 389 ports
 ls build/fs/var/lib/kpkg/db/ | wc -l                   # installed packages
 git status --short | wc -l                             # tracked changes
 ls build/logs/04_phase4/*.log                          # which packages have logs
@@ -2174,9 +2599,16 @@ and respond with the targeted fix.
 - ~~cosmic-comp does not start Xwayland~~ — **closed by the rewrite.** wlroots
   runs Xwayland rootlessly and `kdos-comp` turns it on (`KDOS-DESKTOP.md` §7).
 - **No `linux-firmware`, no microcode, no `man`, no clock sync, no syslog, no
-  cron, no mkfs for btrfs/xfs/f2fs/exfat, and no source checksums in any
-  recipe.** All of wave 0 in `docs/KDOS-DESKTOP.md` §12; the firmware one means
-  a real laptop has no Wi-Fi, no Bluetooth and no GPU init today.
+  cron and no mkfs for btrfs/xfs/f2fs/exfat.** All of wave 0 in
+  `docs/KDOS-DESKTOP.md` §12; the firmware one means a real laptop has no Wi-Fi,
+  no Bluetooth and no GPU init today. (Source checksums were on this list and
+  are not any more: `sha256 =` is a recipe key, preflight checks every archive
+  against it, and only the three source-less ports of ours lack one.)
+- **The tray does not render `com.canonical.dbusmenu`**, so an app that sets
+  `ItemIsMenu` has no reachable menu. See the tray section.
+- **No FileChooser portal** — xdg-desktop-portal-wlr implements ScreenCast and
+  Screenshot only, and there is no GTK backend to fall back to on a host with
+  no GTK. Boxed apps use their own dialogs.
 
 ---
 

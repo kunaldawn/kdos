@@ -196,28 +196,45 @@ int image_exists(const char *image)
 }
 
 /*
- * Does the image carry the qgtk3 platform themes?
+ * Does the image declare a label?
  *
- * QT_STYLE_OVERRIDE=Fusion only helps when something can supply Qt a palette;
- * with no platform theme Fusion falls back to Qt's built-in LIGHT palette,
- * which is worse than leaving the app alone. The Containerfile sets this label
- * in the same layer that installs qt{5,6}-gtk-platformtheme so the two cannot
- * drift. Cached for the boot: `podman image inspect` costs ~150ms against a
- * ~300ms warm launch, and the image cannot change without a reboot.
+ * Two of them decide how Qt apps are themed — `kdos.qt-gtk-theme` (the qgtk3
+ * platform themes are installed) and `kdos.qt-kde-theme` (the kde one is, along
+ * with the KDE segment). Each is set by the Containerfile in the SAME layer that
+ * installs what it promises, so the label and the image cannot drift; asking the
+ * image is what stops kdos-appbox exporting an environment the image cannot
+ * honour, and an unhonoured QT_STYLE_OVERRIDE=Fusion is worse than nothing (Qt
+ * falls back to its built-in LIGHT palette).
+ *
+ * Cached per label for the boot: `podman image inspect` costs ~150 ms against a
+ * ~300 ms warm launch, and the image cannot change without a reboot.
  */
-int image_has_qt_gtk(const char *image)
+int image_has_label(const char *image, const char *label)
 {
-	char *cache = kb_path_join(kb_runtime_dir(), "kdos-appbox.qtgtk");
-	char buf[64] = {0};
+	char name[128], buf[64] = {0};
+	size_t n = 0;
 	int yes;
 
+	/* The cache file is named after the label, so a label with a slash or a
+	 * space in it cannot name a path of its own choosing. */
+	n += (size_t)snprintf(name, sizeof(name), "kdos-appbox.label.");
+	for (const char *c = label; *c && n + 1 < sizeof(name); c++)
+		name[n++] = (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') ||
+				    (*c >= '0' && *c <= '9')
+				    ? *c
+				    : '-';
+	name[n] = '\0';
+
+	char *cache = kb_path_join(kb_runtime_dir(), name);
 	if (kb_read_file(cache, buf, sizeof(buf)) < 0) {
 		KbArgv a = {0};
+		char fmt[128];
+		snprintf(fmt, sizeof(fmt), "{{index .Labels \"%s\"}}", label);
 		kb_argv_add(&a, "podman");
 		kb_argv_add(&a, "image");
 		kb_argv_add(&a, "inspect");
 		kb_argv_add(&a, "--format");
-		kb_argv_add(&a, "{{index .Labels \"kdos.qt-gtk-theme\"}}");
+		kb_argv_add(&a, fmt);
 		kb_argv_add(&a, image);
 		kb_argv_end(&a);
 		if (kb_run_capture(&a, buf, sizeof(buf)) != 0)

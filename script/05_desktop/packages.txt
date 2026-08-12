@@ -42,3 +42,10 @@ kdos-lock
 # Suspend, poweroff and reboot for a desktop that is not root. A unix socket in
 # /run, gated by SO_PEERCRED — no setuid, no polkit prompt, no logind.
 kdos-powerd
+
+# The screen-capture portal. A boxed OBS or browser reaches the screen only
+# through xdg-desktop-portal, which has no capture code of its own — the wlr
+# backend is what turns the compositor's ext-image-copy-capture and
+# wlr-screencopy globals into a ScreenCast session. Screenshot comes with it.
+# Phase 4 installs the main portal; this is the half that knows about wlroots.
+xdg-desktop-portal-wlr

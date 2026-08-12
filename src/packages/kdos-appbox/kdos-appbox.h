@@ -70,7 +70,7 @@ int  box_ensure(const char *box);
 int  box_setup_done(const char *box);
 int  box_wait_ready(const char *box, int seconds);
 int  image_exists(const char *image);
-int  image_has_qt_gtk(const char *image);
+int  image_has_label(const char *image, const char *label);
 
 /* ----------------------------------------------------------------- app.c */
 

@@ -126,6 +126,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         dosbox mgba-qt desmume scummvm mednafen \
     && rm -rf /var/lib/apt/lists/*
 
+# KDE — the "I want a real desktop's applications" segment.
+#
+# NOT kde-full: that is Plasma itself plus everything, and it would roughly
+# double an image that is already ~4 G. This is the application half only, which
+# is the half that has no equal elsewhere — dolphin, okular, kate and gwenview
+# are each better than what the rest of this file could substitute, and none of
+# them needs Plasma running to work.
+#
+# plasma-integration is the Qt platform theme named "kde": with it, and with the
+# kdeglobals `kdos theme` writes into the SHARED home, every Qt app in this image
+# reads the KDOS palette directly. Both Qt majors are installed because trixie
+# still ships Qt5 apps and a missing platform theme is a silently unthemed app.
+# kio-extras/ffmpegthumbs/kdegraphics-thumbnailers are what make dolphin show
+# thumbnails rather than generic icons — the difference between "KDE is here"
+# and "KDE is here but broken".
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        dolphin konsole kate okular gwenview ark kcalc spectacle \
+        digikam elisa kdeconnect kdevelop k3b filelight kwalletmanager \
+        kio kio-extras ffmpegthumbs kdegraphics-thumbnailers \
+        kimageformat-plugins breeze breeze-icon-theme kde-cli-tools \
+        plasma-integration plasma-integration5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Read by kdos-appbox, exactly like kdos.qt-gtk-theme above and declared in the
+# same layer that installs the thing it promises. With this label it exports
+# QT_QPA_PLATFORMTHEME=kde instead of gtk3, because the kde platform theme reads
+# the palette kdeglobals already carries and needs no bridge at all.
+LABEL kdos.qt-kde-theme=1
+
 # Tools the recommends-less install dropped that apps ask for at runtime:
 # kdenlive's first-run wizard (DVD authoring chain), and obs-plugins — debian
 # splits OBS's plugins out, and linux-pipewire.so (the ONLY Wayland screen

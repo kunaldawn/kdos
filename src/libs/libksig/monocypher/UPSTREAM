@@ -1,0 +1,12 @@
+Monocypher 4.0.3
+https://github.com/LoupVaillant/Monocypher/archive/refs/tags/4.0.3.tar.gz
+sha256 a7cbae546fbdc489bca632c3747e1ceb8ca3d4bd39e2706a0916f28ccd280e50
+
+Vendored files, verbatim and unmodified:
+    src/monocypher.c                 src/monocypher.h
+    src/optional/monocypher-ed25519.c  src/optional/monocypher-ed25519.h
+
+Dual-licensed BSD-2-Clause / CC0-1.0 (LICENCE.md, copied beside them).
+
+This is the ONLY third-party source in src/. The rule it is an exception to,
+and why the exception is narrow, is written up in libksig/ksig.c.

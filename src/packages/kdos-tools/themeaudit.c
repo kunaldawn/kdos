@@ -150,7 +150,7 @@ static void walk(const char *want, const char *have, AuditCount *c)
 
 /* ── the artefacts ─────────────────────────────────────────────────────── */
 
-enum { A_HOME, A_CONFIG };
+enum { A_HOME, A_CONFIG, A_DATA };
 
 static const struct {
 	int base;
@@ -165,21 +165,29 @@ static const struct {
 	{ A_CONFIG, "foot/themes/kdos",         "foot"               },
 	{ A_CONFIG, "btop/themes/kdos.theme",   "btop"               },
 	{ A_CONFIG, "starship.toml",            "starship palette"   },
+	{ A_CONFIG, "kdeglobals",               "KDE palette"        },
+	{ A_DATA,   "color-schemes/KDOS.colors", "KDE colour scheme" },
 };
 #define NARTEFACTS ((int)(sizeof(ARTEFACTS) / sizeof(ARTEFACTS[0])))
 
 static char *live_path(int base, const char *rel)
 {
-	return base == A_CONFIG ? kdt_cfg_home(rel)
-				: kb_path_join(kb_home_dir(), rel);
+	if (base == A_CONFIG)
+		return kdt_cfg_home(rel);
+	if (base == A_DATA)
+		return kdt_data_home(rel);
+	return kb_path_join(kb_home_dir(), rel);
 }
 
 static char *tmp_path(const char *root, int base, const char *rel)
 {
-	if (base == A_CONFIG) {
-		char *cfg = kb_path_join(root, ".config");
-		char *p = kb_path_join(cfg, rel);
-		free(cfg);
+	const char *sub = base == A_CONFIG ? ".config"
+			  : base == A_DATA   ? ".local/share"
+					     : NULL;
+	if (sub) {
+		char *dir = kb_path_join(root, sub);
+		char *p = kb_path_join(dir, rel);
+		free(dir);
 		return p;
 	}
 	return kb_path_join(root, rel);
@@ -241,19 +249,29 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 	}
 
 	/*
-	 * starship.toml is the one artefact that is EDITED rather than written:
-	 * only the block between the markers is ours. Copying the installed file
-	 * in first means the comparison is "the same file with our block
-	 * regenerated", which is precisely the question — and a machine with no
-	 * starship.toml produces none on either side and is reported as absent.
+	 * Two artefacts are EDITED rather than written, and both have to be
+	 * copied in before the generators run or the comparison asks the wrong
+	 * question.
+	 *
+	 *   starship.toml   only the block between the markers is ours
+	 *   kdeglobals      KDE apps write their own settings into it, so the
+	 *                   generator merges; a user's [Dolphin] section is not
+	 *                   drift, and regenerating into an EMPTY home would call
+	 *                   it drift on every machine that has ever run dolphin
+	 *
+	 * A machine with neither file produces neither on either side and is
+	 * reported as absent, which is also correct.
 	 */
 	char *cfg = kb_path_join(root, ".config");
 	kb_mkdir_p(cfg);
-	char *live_starship = kdt_cfg_home("starship.toml");
-	char *tmp_starship = kb_path_join(cfg, "starship.toml");
-	kb_copy_file(live_starship, tmp_starship);	/* absent is fine */
-	free(live_starship);
-	free(tmp_starship);
+	static const char *const CARRIED[] = { "starship.toml", "kdeglobals" };
+	for (size_t i = 0; i < sizeof(CARRIED) / sizeof(CARRIED[0]); i++) {
+		char *live = kdt_cfg_home(CARRIED[i]);
+		char *tmp = kb_path_join(cfg, CARRIED[i]);
+		kb_copy_file(live, tmp);	/* absent is fine */
+		free(live);
+		free(tmp);
+	}
 	free(cfg);
 
 	printf("%s==> theme audit — %s%s\n", tty_accent, sc->name, tty_reset);

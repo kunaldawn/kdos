@@ -36,7 +36,7 @@ for p in wlr-layer-shell-unstable-v1 wlr-foreign-toplevel-management-unstable-v1
 		"$p-protocol.c"
 done
 
-PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa"
+PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I. -I"$PORT_SRC" \
