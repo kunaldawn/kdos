@@ -28,9 +28,11 @@ trap 'rm -rf "$SP"' EXIT
 
 echo "==> building kpkg for the checks"
 cc -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
-   -Isrc/libs/libkbase -Isrc/libs/libkpkg -Isrc/packages/kdos-kpkg \
+   -Isrc/libs/libkbase -Isrc/libs/libkpkg -Isrc/libs/libksig \
+   -Isrc/packages/kdos-kpkg \
    -o "$SP/kdos-kpkg" src/packages/kdos-kpkg/*.c src/libs/libkbase/*.c \
-   src/libs/libkpkg/*.c || { echo "  cannot build kpkg"; exit 1; }
+   src/libs/libkpkg/*.c src/libs/libksig/*.c \
+   src/libs/libksig/monocypher/*.c || { echo "  cannot build kpkg"; exit 1; }
 # Installed as five names and dispatched on its own basename, so the checks
 # have to invoke it the same way — `kpkg kpkgdepends ...` correctly reaches
 # kpkg's front end and prints usage, which is not what is being tested.

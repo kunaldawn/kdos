@@ -198,6 +198,9 @@ int kb_run_capture(const KbArgv *a, char *buf, size_t n);
  * with the trailing newline left alone. Use this whenever the output has no
  * natural ceiling — a `tar -tf` listing does not. */
 int kb_run_capture_buf(const KbArgv *a, KbBuf *out);
+/* Same, but stdout is written to `path` (created 0644, truncated). The `>` a
+ * shell would provide, without the shell. */
+int kb_run_to_file(const KbArgv *a, const char *path);
 /* Double-forked fire and forget: the caller can never block on the child or
  * collect a zombie. gdbus's default reply timeout is 25 seconds and a
  * notification must never be able to gate an app launch behind that. */

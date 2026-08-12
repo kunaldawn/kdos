@@ -91,6 +91,25 @@ int kb_run(const KbArgv *a)
 }
 
 /*
+ * Run with stdout going to a FILE.
+ *
+ * This is the `>` that would otherwise need a shell — and the reason there is no
+ * shell anywhere in these programs is that a redirect built by string
+ * concatenation puts every path it touches one quote away from being a command.
+ * The file is created here, in the parent, so a failure to create it is reported
+ * as itself rather than as a mysterious child exit.
+ */
+int kb_run_to_file(const KbArgv *a, const char *path)
+{
+	int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0)
+		return -1;
+	int rc = reap(spawn(a, fd));
+	close(fd);
+	return rc;
+}
+
+/*
  * Run with `in` on the child's stdin. The one reason this exists: a password
  * must not travel in argv, where /proc/<pid>/cmdline publishes it to every
  * process on the machine for as long as the child lives — kdos-lock pipes one

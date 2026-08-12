@@ -854,6 +854,10 @@ static void toplevel_destroy(struct wl_listener *l, void *data)
 {
 	struct kc_toplevel *t = wl_container_of(l, t, destroy);
 	(void)data;
+	/* Before the free: the capture source outlives this handler — it hangs
+	 * off the scene node — and its destroy listener would land on freed
+	 * memory. */
+	kc_capture_toplevel_free(t);
 	wl_list_remove(&t->map.link);
 	wl_list_remove(&t->unmap.link);
 	wl_list_remove(&t->commit.link);
@@ -1071,6 +1075,9 @@ int main(int argc, char **argv)
 	s.layer_lock = wlr_scene_tree_create(&s.scene->tree);
 	kc_lock_init(&s);
 	kc_shellsvc_init(&s);
+	/* After shellsvc: per-window capture names its window through
+	 * ext-foreign-toplevel-list, which shellsvc creates. */
+	kc_capture_init(&s);
 
 	wl_list_init(&s.toplevels);
 	s.xdg_shell = wlr_xdg_shell_create(s.display, 3);
@@ -1166,6 +1173,7 @@ int main(int argc, char **argv)
 		wl_list_remove(&s.new_lock.link);
 	if (s.ws_mgr)
 		wl_list_remove(&s.ws_commit.link);
+	kc_capture_free(&s);
 	if (s.output_mgr) {
 		wl_list_remove(&s.output_mgr_apply.link);
 		wl_list_remove(&s.output_mgr_test.link);

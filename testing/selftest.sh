@@ -29,7 +29,7 @@ echo "==> selftest"
 $CC $STD $WARN $INC -o "$OUT/selftest" src/libs/selftest.c \
     src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libkpkg/*.c \
     src/libs/libkbuild/*.c src/libs/libktui/*.c \
-    src/tools/kdos-portup/vercmp.c src/tools/kdos-portup/extract.c
+    src/tools/kdos-portup/extract.c
 "$OUT/selftest"
 
 echo
@@ -49,8 +49,10 @@ $CC $STD $WARN $INC -Isrc/packages/kdos-tools -o "$OUT/kdos-tools" \
     src/packages/kdos-tools/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
     src/libs/libkpkg/*.c src/libs/libkxdg/*.c
 echo "  kdos-tools"
-$CC $STD $WARN $INC -Isrc/packages/kdos-kpkg -o "$OUT/kdos-kpkg" \
-    src/packages/kdos-kpkg/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c
+$CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/packages/kdos-kpkg \
+    -o "$OUT/kdos-kpkg" \
+    src/packages/kdos-kpkg/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
+    src/libs/libksig/*.c src/libs/libksig/monocypher/*.c
 echo "  kdos-kpkg"
 # kdos-powerd is a root daemon and kdos-checkpass is the one setuid binary in
 # the tree; both link libkbase-or-less on purpose, so both compile here.
@@ -139,9 +141,17 @@ if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 2>/dev/nu
         -Isrc/libs/libkcolor -Isrc/libs/libkbase \
         $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server pixman-1) \
         -o "$OUT/frames.o" src/desktop/kdos-comp/frames.c
-    echo "  kdos-comp crt.c and frames.c"
+    # capture.c is where grim, wl-clipboard and the portal get their globals.
+    # Every one of them is a wlroots type whose create() signature changes
+    # between releases, so compiling it here is the cheapest possible check
+    # that the pinned wlroots still has the API this file was written against.
+    $CC $STD $WARN -c -DWLR_USE_UNSTABLE -I"$CP" -Isrc/desktop/kdos-comp \
+        -Isrc/libs/libkcolor -Isrc/libs/libkbase \
+        $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server pixman-1) \
+        -o "$OUT/capture.o" src/desktop/kdos-comp/capture.c
+    echo "  kdos-comp crt.c, frames.c and capture.c"
 else
-    echo "  kdos-comp crt.c/frames.c (skipped — wlroots-0.20/glesv2/egl not on this host)"
+    echo "  kdos-comp crt.c/frames.c/capture.c (skipped — wlroots-0.20/glesv2/egl not on this host)"
 fi
 
 echo
@@ -190,6 +200,163 @@ echo "==> kpkgdepends still agrees with the ports tree"
 PORT_REPO="$PWD/ports/core $PWD/src/packages" KPKG_CONF=/nonexistent \
     PKGDB_DIR=/dev/null "$OUT/kdos-kpkg" kpkgdepends bash >/dev/null
 echo "  ok"
+
+echo
+echo "==> a package built twice is byte-identical"
+# The P12 claim, tested against the mechanism rather than against a real port:
+# a synthetic source-less recipe whose build.sh installs a few files, built
+# twice, must produce the same bytes. Every nondeterminism this guards against
+# is in the packaging step and not in the compiler, so a toolchain is not
+# needed and the test costs milliseconds.
+#
+# The second build runs under a HOSTILE environment on purpose — a different
+# umask, XZ_OPT asking for threads, and another time zone — because each of
+# those silently changed the archive before kpkg pinned them.
+RP="$OUT/repro"
+rm -rf "$RP"
+mkdir -p "$RP/ports/tiny" "$RP/work" "$RP/pkgs"
+cat > "$RP/ports/tiny/kpkgbuild" <<'EOF'
+name        = tiny
+version     = 1.0
+release     = 1
+description = a synthetic port that exists to be built twice
+homepage    = https://example.invalid/
+EOF
+cat > "$RP/ports/tiny/build.sh" <<'EOF'
+install -Dm755 /dev/null "$PKG/usr/bin/tiny"
+printf 'hello\n' > "$PKG/usr/bin/tiny"
+install -d "$PKG/usr/share/tiny"
+printf 'one\n' > "$PKG/usr/share/tiny/a.txt"
+printf 'two\n' > "$PKG/usr/share/tiny/b.txt"
+ln -sf a.txt "$PKG/usr/share/tiny/link"
+touch "$PKG/usr/share/tiny/plain"
+EOF
+# kpkg dispatches on its own basename, so the builder has to be reached as one.
+ln -sf kdos-kpkg "$OUT/kpkgbuild"
+kbuild_pkg() {
+    ( cd "$RP/ports/tiny" &&
+      env PORT_REPO="$RP/ports" WORK_DIR="$RP/work" PACKAGE_DIR="$RP/pkgs" \
+          PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent \
+          SOURCE_DATE_EPOCH=1735689600 "$@" \
+          "$OUT/kpkgbuild" >/dev/null 2>&1 )
+}
+kbuild_pkg TZ=UTC || { echo "  the synthetic port did not build"; exit 1; }
+mv "$RP/pkgs/tiny-1.0-1.tar.xz" "$RP/one.tar.xz"
+( umask 077; kbuild_pkg TZ=Asia/Kolkata XZ_OPT=-T0 ) \
+    || { echo "  the second build failed"; exit 1; }
+cmp -s "$RP/one.tar.xz" "$RP/pkgs/tiny-1.0-1.tar.xz" \
+    || { echo "  the same recipe produced two different packages"; exit 1; }
+# And the normalisation is visible in the archive itself, not just equal by
+# luck: uid/gid 0, and the pinned epoch rather than the wall clock.
+TZ=UTC tar -tvf "$RP/one.tar.xz" | grep -q "0/0 .*2025-01-01" \
+    || { echo "  the archive is not normalised (uid/gid or mtime)"; exit 1; }
+echo "  identical under a different umask, TZ and XZ_OPT; uid/gid 0, epoch mtime"
+
+echo
+echo "==> the binhost signs an index and a client checks it"
+# The whole P15 chain against the synthetic port from the block above: build a
+# package, make a key, index and sign, then ask a client whether it may use it.
+# Every refusal is asserted, because a signing feature is only worth having if
+# the NO paths work — a verifier that cannot fail verifies nothing.
+BH="$OUT/binhost"
+rm -rf "$BH"
+mkdir -p "$BH/repo" "$BH/keys"
+cp "$RP/one.tar.xz" "$BH/repo/tiny-1.0-1.tar.xz"
+( cd "$BH" && "$OUT/kdos-kpkg" kpkg keygen builder >/dev/null 2>&1 ) \
+    || { echo "  keygen failed"; exit 1; }
+test "$(stat -c %a "$BH/builder.key")" = 600 \
+    || { echo "  the secret key was not written 0600"; exit 1; }
+kpkg_bh() {
+    env PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent PKGDB_DIR=/dev/null \
+        KPKG_KEYRING="$BH/keys" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos-kpkg" "$@"
+}
+kpkg_bh kpkg index "$BH/repo" --sign "$BH/builder.key" >/dev/null 2>&1 \
+    || { echo "  indexing failed"; exit 1; }
+test -s "$BH/repo/PACKAGES.sig" || { echo "  no index signature"; exit 1; }
+test -s "$BH/repo/tiny-1.0-1.tar.xz.sig" || { echo "  no package sidecar"; exit 1; }
+grep -q "^E:" "$BH/repo/PACKAGES" || { echo "  no recipe hash in the index"; exit 1; }
+
+# An empty keyring must REFUSE, not fall back to trusting the index.
+rc=0; kpkg_bh kpkg binhost "$BH/repo" tiny --dry-run >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 || { echo "  an unsigned-for-us index was accepted"; exit 1; }
+
+cp "$BH/builder.pub" "$BH/keys/"
+kpkg_bh kpkg binhost "$BH/repo" tiny --dry-run >/dev/null 2>&1 \
+    || { echo "  a good index and a matching build were rejected"; exit 1; }
+kpkg_bh kpkg verify-index "$BH/repo" >/dev/null 2>&1 \
+    || { echo "  verify-index rejected a good signature"; exit 1; }
+kpkg_bh kpkg verify-pkg "$BH/repo/tiny-1.0-1.tar.xz" >/dev/null 2>&1 \
+    || { echo "  verify-pkg rejected a good sidecar"; exit 1; }
+
+# One byte, three ways: a tampered index, a tampered package, and a signature
+# from a key nobody trusts.
+cp "$BH/repo/PACKAGES" "$BH/PACKAGES.good"
+sed -i 's/^S:[0-9]*$/S:1/' "$BH/repo/PACKAGES"
+rc=0; kpkg_bh kpkg binhost "$BH/repo" tiny --dry-run >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 || { echo "  an edited index still verified"; exit 1; }
+cp "$BH/PACKAGES.good" "$BH/repo/PACKAGES"
+
+printf 'x' >> "$BH/repo/tiny-1.0-1.tar.xz"
+rc=0; kpkg_bh kpkg binhost "$BH/repo" tiny --dry-run >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 || { echo "  a package whose hash moved was accepted"; exit 1; }
+rc=0; kpkg_bh kpkg verify-pkg "$BH/repo/tiny-1.0-1.tar.xz" >/dev/null 2>&1 || rc=$?
+test "$rc" = 1 || { echo "  a tampered package passed its sidecar"; exit 1; }
+truncate -s -1 "$BH/repo/tiny-1.0-1.tar.xz"
+
+( cd "$BH" && "$OUT/kdos-kpkg" kpkg keygen stranger >/dev/null 2>&1 )
+rm -f "$BH/repo/PACKAGES.sig"
+kpkg_bh kpkg index "$BH/repo" --sign "$BH/stranger.key" >/dev/null 2>&1
+rc=0; kpkg_bh kpkg binhost "$BH/repo" tiny --dry-run >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 || { echo "  a signature from an untrusted key was accepted"; exit 1; }
+kpkg_bh kpkg index "$BH/repo" --sign "$BH/builder.key" >/dev/null 2>&1
+
+# And the three equality tests: a different build config must send the client
+# back to source, with exit 1 (no match) rather than 2 (refused).
+rc=0; CFLAGS="-O3 -march=native" kpkg_bh kpkg binhost "$BH/repo" tiny \
+    --dry-run >/dev/null 2>&1 || rc=$?
+test "$rc" = 1 || { echo "  a different build config was treated as a match"; exit 1; }
+echo "  signed, verified, and every refusal refused"
+
+echo
+echo "==> a delta rebuilds the next package from the last one"
+# P16, against the same synthetic port: build 1.0 and 1.1, take the difference,
+# apply it, and require the result to be byte-identical — which is only possible
+# because packaging is reproducible (P12). The tampered case matters as much:
+# a delta is never trusted, it is applied and the RESULT is checked, so a delta
+# that produces the wrong bytes must leave nothing behind.
+if command -v zstd >/dev/null 2>&1 && command -v xz >/dev/null 2>&1; then
+    sed -i 's/^version     = 1.0$/version     = 1.1/' "$RP/ports/tiny/kpkgbuild"
+    printf 'printf "three\\n" > "$PKG/usr/share/tiny/c.txt"\n' >> "$RP/ports/tiny/build.sh"
+    kbuild_pkg TZ=UTC || { echo "  the second version did not build"; exit 1; }
+    NEW="$RP/pkgs/tiny-1.1-1.tar.xz"
+    test -s "$NEW" || { echo "  no second package"; exit 1; }
+
+    kpkg_bh kpkg delta "$RP/one.tar.xz" "$NEW" -o "$RP/tiny.kdelta" >/dev/null 2>&1 \
+        || { echo "  making the delta failed"; exit 1; }
+    DS=$(stat -c %s "$RP/tiny.kdelta"); NS=$(stat -c %s "$NEW")
+    test "$DS" -lt "$NS" \
+        || { echo "  the delta ($DS) is not smaller than the package ($NS)"; exit 1; }
+
+    WANT=$(sha256sum "$NEW" | cut -d' ' -f1)
+    kpkg_bh kpkg apply-delta "$RP/one.tar.xz" "$RP/tiny.kdelta" \
+        -o "$RP/rebuilt.tar.xz" --expect "$WANT" >/dev/null 2>&1 \
+        || { echo "  applying the delta failed"; exit 1; }
+    cmp -s "$RP/rebuilt.tar.xz" "$NEW" \
+        || { echo "  the reconstruction is not byte-identical"; exit 1; }
+
+    # A delta with one byte changed must not produce a package.
+    printf 'x' >> "$RP/tiny.kdelta"
+    rc=0
+    kpkg_bh kpkg apply-delta "$RP/one.tar.xz" "$RP/tiny.kdelta" \
+        -o "$RP/bad.tar.xz" --expect "$WANT" >/dev/null 2>&1 || rc=$?
+    test "$rc" != 0 || { echo "  a tampered delta was accepted"; exit 1; }
+    test ! -e "$RP/bad.tar.xz" \
+        || { echo "  a failed reconstruction left a package behind"; exit 1; }
+    echo "  delta smaller, reconstruction byte-identical, tampering discarded"
+else
+    echo "  deltas (skipped — no zstd or no xz on this host)"
+fi
 
 echo
 echo "==> kdosbuild reads the build tree correctly"
@@ -414,6 +581,98 @@ TZ=UTC "$OUT/kdos" stutter --json --fixture testing/fixtures/stutter \
 echo "  the fixture replays: the app, its box, the disk waiter first, and PSI"
 
 echo
+echo "==> the tray host talks to a real StatusNotifierItem"
+# SNI is a conversation between two processes on a session bus, so the fixture
+# is a second process rather than a mock: testing/fixtures/tray/traycheck.c
+# forks a Qt-shaped tray app and drives tray.c against it. Both bugs this caught
+# were silent — properties read from inside a bus callback never get their reply,
+# and a click sent to the interface spelling the app does not implement goes
+# nowhere without an error, because a click is fire-and-forget.
+#
+# Skipped rather than failed where there is no sd-bus or no dbus-daemon: this
+# script runs on a bare host, and basu is a KDOS port.
+TRAY_SDBUS=""
+pkg-config --exists basu 2>/dev/null && TRAY_SDBUS=basu
+[ -z "$TRAY_SDBUS" ] && pkg-config --exists libsystemd 2>/dev/null && \
+    TRAY_SDBUS=libsystemd
+if [ -n "$TRAY_SDBUS" ] && command -v dbus-daemon >/dev/null 2>&1; then
+    $CC $STD $WARN -o "$OUT/traycheck" \
+        -Isrc/desktop/kdos-shell -Isrc/libs/libktui -Isrc/libs/libkcolor \
+        -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+        $(pkg-config --cflags $TRAY_SDBUS) \
+        testing/fixtures/tray/traycheck.c src/desktop/kdos-shell/tray.c \
+        $(pkg-config --libs $TRAY_SDBUS)
+    # A private bus, so the test never touches the developer's own session and
+    # never inherits a tray that is already there.
+    TRAY_ADDR=$(dbus-daemon --session --print-address --fork \
+        --print-pid=3 3>"$OUT/tray-bus.pid")
+    TRAY_BUS_PID=$(cat "$OUT/tray-bus.pid")
+    DBUS_SESSION_BUS_ADDRESS="$TRAY_ADDR" "$OUT/traycheck" "$OUT/tray.log" \
+        || { kill "$TRAY_BUS_PID" 2>/dev/null; exit 1; }
+    kill "$TRAY_BUS_PID" 2>/dev/null
+else
+    echo "  tray (skipped — no sd-bus or no dbus-daemon on this host)"
+fi
+
+echo
+echo "==> the recording indicator names the app holding the camera"
+# The camera half is a /proc walk, so the fixture is a /proc: three processes,
+# one of which holds an ALSA capture device and must be ignored — on a PipeWire
+# system that process IS PipeWire, and naming it is the non-answer every other
+# desktop gives. The microphone half needs a live graph and is proved by hand;
+# here PIPEWIRE_RUNTIME_DIR points nowhere, so its absence is what gets checked.
+if pkg-config --exists libpipewire-0.3 2>/dev/null; then
+    $CC $STD $WARN -o "$OUT/privacycheck" \
+        -Isrc/desktop/kdos-shell -Isrc/libs/libktui -Isrc/libs/libkcolor \
+        -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+        $(pkg-config --cflags libpipewire-0.3) \
+        testing/fixtures/privacy/privacycheck.c src/desktop/kdos-shell/privacy.c \
+        $(pkg-config --libs libpipewire-0.3)
+    KDOS_PRIVACY_PROC=testing/fixtures/privacy/proc \
+        PIPEWIRE_RUNTIME_DIR=/nonexistent-pipewire "$OUT/privacycheck" || exit 1
+else
+    echo "  privacy (skipped — libpipewire-0.3 not on this host)"
+fi
+
+echo
+echo "==> kdos cve compares pins against the vendored security database"
+# Four ports and a five-row table, which is enough to exercise every rule the
+# real 4 099-row one exercises: a pin behind two fixes, a pin that only LOOKS
+# behind one because Alpine's `-rN` packaging revision is not upstream's
+# version, a port whose Alpine name differs (`secdb =`), and a port Alpine has
+# never heard of — which must read as UNKNOWN and never as clean.
+CV="$OUT/cve.txt"
+ln -sf kdos-tools "$OUT/kdos"
+if PORT_REPO="$PWD/testing/fixtures/cve/ports" KPKG_CONF=/nonexistent \
+    PKGDB_DIR=/dev/null KDOS_SECDB="$PWD/testing/fixtures/cve/secdb.txt" \
+    "$OUT/kdos" cve > "$CV" 2>&1; then
+    echo "  a vulnerable pin did not fail the exit code"; exit 1
+fi
+grep -q "oldpkg .*1.2.2 .*fixed in 1.4.0" "$CV" \
+    || { echo "  the newest fix a pin is behind was not reported"; cat "$CV"; exit 1; }
+grep -q "CVE-2024-1111,CVE-2024-2222,CVE-2025-3333" "$CV" \
+    || { echo "  CVEs from several fix rows were not merged"; exit 1; }
+if grep -q "CVE-2020-0001" "$CV"; then
+    echo "  Alpine's 'fixed in 0' row was treated as a finding"; exit 1
+fi
+if grep -q "newpkg" "$CV"; then
+    echo "  an -rN packaging revision was read as an upstream version"; exit 1
+fi
+grep -q "mappedpkg .*fixed in 3.1" "$CV" \
+    || { echo "  the 'secdb =' name mapping was not honoured"; exit 1; }
+grep -q "4 checked, 1 not in the database, 2 behind a recorded fix" "$CV" \
+    || { echo "  the summary miscounted"; cat "$CV"; exit 1; }
+grep -q "the database is .* days old" "$CV" \
+    || { echo "  a stale database was not called stale"; exit 1; }
+rc=0
+PORT_REPO="$PWD/testing/fixtures/cve/ports" KPKG_CONF=/nonexistent \
+    PKGDB_DIR=/dev/null KDOS_SECDB=/nonexistent-secdb "$OUT/kdos" cve \
+    >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 \
+    || { echo "  a missing database did not report itself as unrunnable"; exit 1; }
+echo "  fix rows merged, -rN ignored, 'secdb =' honoured, unknown ≠ clean"
+
+echo
 echo "==> kdos theme --audit catches artwork that is not the palette's"
 # The palette claim, checked the way the audit checks it: generate a full themed
 # $HOME from the repo's own art, audit it (must be clean), then break one of each
@@ -451,6 +710,29 @@ echo "  an edit, a deletion, a stray file and a re-pointed alias all caught"
 audit phosphor >/dev/null 2>&1
 audit --audit >/dev/null || { echo "  re-running the accent did not repair it"; exit 1; }
 echo "  and \`kdos theme <accent>\` puts it back"
+
+# kdeglobals is the one generated file that is MERGED: KDE apps write their own
+# settings into it, so a user's section has to survive an accent change, the
+# result has to be byte-stable across runs (an unstable merge makes --audit
+# complain forever), and a section we own has to be replaced WHOLE rather than
+# appended to — that last one grew the file by a stale colour on every run.
+printf '[Dolphin]\nViewMode=2\n\n[Colors:Window]\nBackgroundNormal=35,38,41\n' \
+    >> "$AH/.config/kdeglobals"
+audit amber >/dev/null 2>&1
+grep -q "ViewMode=2" "$AH/.config/kdeglobals" \
+    || { echo "  the merge dropped a KDE app's own settings"; exit 1; }
+grep -q "BackgroundNormal=35,38,41" "$AH/.config/kdeglobals" \
+    && { echo "  a section we own kept a foreign key"; exit 1; }
+grep -q "ColorScheme=KDOS" "$AH/.config/kdeglobals" \
+    || { echo "  the merge did not apply the KDOS scheme"; exit 1; }
+cp "$AH/.config/kdeglobals" "$OUT/kdeglobals.1"
+audit amber >/dev/null 2>&1
+cmp -s "$OUT/kdeglobals.1" "$AH/.config/kdeglobals" \
+    || { echo "  the kdeglobals merge is not idempotent"; exit 1; }
+audit --audit amber >/dev/null \
+    || { echo "  a merged kdeglobals does not audit clean"; exit 1; }
+audit phosphor >/dev/null 2>&1
+echo "  kdeglobals merges, keeps foreign keys, and is byte-stable"
 rm -rf "$AH"
 
 echo

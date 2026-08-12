@@ -37,8 +37,8 @@ fi
 	export WAYLAND_DISPLAY="$WD"
 	dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP \
 		XDG_SESSION_TYPE XCURSOR_THEME XCURSOR_SIZE >/dev/null 2>&1
-	[ -x /usr/libexec/xdg-desktop-portal-wlr ] && \
-		/usr/libexec/xdg-desktop-portal-wlr >/dev/null 2>&1 &
+	[ -x /usr/lib/xdg-desktop-portal-wlr ] && \
+		/usr/lib/xdg-desktop-portal-wlr >/dev/null 2>&1 &
 	# The main portal snapshots its backends at startup — it must not come
 	# up until the wlr backend actually owns its bus name, or ScreenCast
 	# stays empty for the whole session.

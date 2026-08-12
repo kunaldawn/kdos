@@ -106,9 +106,12 @@ static const char *box_wayland_socket(void)
  *                              persistent instead of silently dropped
  *   NO_AT_BRIDGE / GTK_A11Y    KDOS ships no accessibility stack; stop every
  *                              GTK app probing org.a11y.Bus at startup
- *   QT_QPA_PLATFORMTHEME=gtk3  Qt apps take their palette from the GTK theme
- *                              via qgtk3. Inert without debian's
- *                              qt{5,6}-gtk-platformtheme in the image.
+ *   QT_QPA_PLATFORMTHEME       how a Qt app finds a palette: `kde` when the
+ *                              image has the KDE segment (it reads the
+ *                              kdeglobals `kdos theme` writes into the shared
+ *                              home, which is the direct route), `gtk3`
+ *                              otherwise. Inert without the matching platform
+ *                              theme package, hence the label checks.
  *   GTK_THEME=KDOS             belt and braces next to gtk-3.0/settings.ini
  */
 static void box_env(KbArgv *a, const char *image)
@@ -130,18 +133,27 @@ static void box_env(KbArgv *a, const char *image)
 	kb_argv_add(a, "GSETTINGS_BACKEND=keyfile");
 	kb_argv_add(a, "NO_AT_BRIDGE=1");
 	kb_argv_add(a, "GTK_A11Y=none");
-	kb_argv_add(a, "QT_QPA_PLATFORMTHEME=gtk3");
 	kb_argv_add(a, "GTK_THEME=KDOS");
 
 	/*
-	 * The Breeze style that kdenlive and shotcut pull in paints from its own
-	 * colour scheme and ignores the palette qgtk3 hands it, so the platform
-	 * theme alone leaves those apps grey; Fusion honours it. But Fusion with
-	 * NO platform theme falls back to Qt's built-in LIGHT palette, which is
-	 * worse than doing nothing — hence the image label check.
+	 * Two routes to a themed Qt app, and the KDE one is better where it
+	 * exists: the `kde` platform theme reads ~/.config/kdeglobals, which
+	 * `kdos theme` writes into the home the box already shares, so Breeze
+	 * paints in the KDOS palette with no bridge and no style override.
+	 *
+	 * Without the KDE segment it is qgtk3 plus Fusion, and Fusion is not
+	 * optional there: the Breeze style kdenlive and shotcut pull in paints
+	 * from its own colour scheme and ignores the palette qgtk3 hands it. But
+	 * Fusion with NO platform theme falls back to Qt's built-in LIGHT
+	 * palette, worse than doing nothing — hence the label check.
 	 */
-	if (image_has_qt_gtk(image))
-		kb_argv_add(a, "QT_STYLE_OVERRIDE=Fusion");
+	if (image_has_label(image, "kdos.qt-kde-theme")) {
+		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=kde");
+	} else {
+		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=gtk3");
+		if (image_has_label(image, "kdos.qt-gtk-theme"))
+			kb_argv_add(a, "QT_STYLE_OVERRIDE=Fusion");
+	}
 
 	/*
 	 * Cost a debug cycle: a few apps are X11-only and their own .desktop
@@ -364,8 +376,15 @@ int cmd_status(void)
 	printf("box   : %s (%s)\n",
 	       strcmp(state, "absent") ? "created" : "not created (first launch will)",
 	       state);
-	printf("qt-gtk: %s\n", image_has_qt_gtk(p.image)
-	       ? "available" : "absent (Qt apps keep their own palette)");
+	/* Which route Qt apps take to the KDOS palette, in the order box_env
+	 * picks them. "absent" for both means an image baked before either
+	 * platform theme was added — a re-bake, not a config bug. */
+	printf("qt    : %s\n",
+	       image_has_label(p.image, "kdos.qt-kde-theme")
+		       ? "kde platform theme (reads ~/.config/kdeglobals)"
+	       : image_has_label(p.image, "kdos.qt-gtk-theme")
+		       ? "qgtk3 + Fusion (reads the GTK theme)"
+		       : "absent (Qt apps keep their own palette)");
 	return 0;
 }
 

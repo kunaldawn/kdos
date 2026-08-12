@@ -13,4 +13,4 @@ version     = 0.1.0
 release     = 1
 description = The KDOS shell — a character-cell panel on layer-shell
 homepage    = https://github.com/kunaldawn/kdos
-depends     = wayland wayland-protocols wlroots fcft pixman libxkbcommon basu alsa-lib
+depends     = wayland wayland-protocols wlroots fcft pixman libxkbcommon basu alsa-lib pipewire
