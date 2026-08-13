@@ -13,7 +13,7 @@
 	--prefix=/usr \
 	--sysconfdir=/etc \
 	--mandir=/usr/share/man \
-	--with-screen=ncurses \
+	--with-screen=slang \
 	--without-x \
 	--enable-vfs-smb=no \
 	--enable-vfs-sftp=yes \

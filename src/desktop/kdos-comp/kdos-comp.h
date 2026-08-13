@@ -61,6 +61,21 @@
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_cursor_shape_v1.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
+#include <wlr/types/wlr_viewporter.h>
+#include <wlr/types/wlr_presentation_time.h>
+#include <wlr/types/wlr_single_pixel_buffer_v1.h>
+#include <wlr/types/wlr_xdg_foreign_v1.h>
+#include <wlr/types/wlr_xdg_foreign_v2.h>
+#include <wlr/types/wlr_xdg_foreign_registry.h>
+#include <wlr/types/wlr_alpha_modifier_v1.h>
+#include <wlr/types/wlr_content_type_v1.h>
+#include <wlr/types/wlr_xdg_dialog_v1.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
+#include <wlr/types/wlr_relative_pointer_v1.h>
+#include <wlr/types/wlr_pointer_gestures_v1.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
+#include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_ext_workspace_v1.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
@@ -108,7 +123,7 @@ enum kc_cursor_mode { KC_CURSOR_PASSTHROUGH = 0, KC_CURSOR_MOVE, KC_CURSOR_RESIZ
  * struct. Every taggable thing therefore starts with this enum, and the lookup
  * checks the tag before it believes the pointer.
  */
-enum kc_node_type { KC_NODE_TOPLEVEL = 1, KC_NODE_XSURFACE };
+enum kc_node_type { KC_NODE_TOPLEVEL = 1, KC_NODE_XSURFACE, KC_NODE_DECO };
 
 enum kc_action {
 	KC_ACT_SPAWN = 1,
@@ -339,6 +354,15 @@ struct kc_server {
 	bool kbgrab_resize;
 	struct wlr_box kbgrab_from;
 
+	/*
+	 * A titlebar press that has not yet become a drag. The grab starts only
+	 * after the pointer moves DRAG_THRESHOLD_PX, so a slightly sloppy click
+	 * is a click — every modern desktop does this, and its absence is one
+	 * of the things that made v2 feel wrong under the hand.
+	 */
+	struct kc_toplevel *drag_pending;
+	double drag_px, drag_py;
+
 
 	/* The window menu and the alt-tab switcher (cellui.c). */
 	struct kc_popup *menu;
@@ -361,6 +385,30 @@ struct kc_server {
 	struct wl_listener request_cursor_shape;
 	struct wlr_xdg_activation_v1 *activation;
 	struct wl_listener request_activate;
+
+	/*
+	 * Capturing the pointer (pointer.c). Without these two protocols NO
+	 * game, emulator, 3D application or remote-desktop client can take the
+	 * mouse — the cursor walks out of the window mid-aim and nothing errors.
+	 */
+	struct wlr_pointer_constraints_v1 *pointer_constraints;
+	struct wl_listener new_constraint;
+	struct wlr_pointer_constraint_v1 *active_constraint;
+	bool constraint_committed;
+	/* Super breaks a constraint; it stays broken until focus moves. A locked
+	 * pointer with no escape hatch is a session you reboot. */
+	bool constraint_broken;
+	struct wlr_relative_pointer_manager_v1 *relative_pointer;
+
+	struct wlr_pointer_gestures_v1 *gestures;
+	struct wl_listener swipe_begin, swipe_update, swipe_end;
+	struct wl_listener pinch_begin, pinch_update, pinch_end;
+	struct wl_listener hold_begin, hold_end;
+
+	struct wlr_gamma_control_manager_v1 *gamma_control;
+	struct wl_listener set_gamma;
+	struct wlr_output_power_manager_v1 *output_power;
+	struct wl_listener set_output_power;
 	struct wl_list keyboards;
 };
 
@@ -701,6 +749,30 @@ bool kc_im_modifiers(struct kc_server *s, struct wlr_keyboard *kb);
 void kc_im_moved(struct kc_server *s);
 void kc_im_free(struct kc_server *s);
 
+/* One tracked pointer constraint — the wrapper that hears its destroy. */
+struct kc_pointer_constraint {
+	struct kc_server *server;
+	struct wlr_pointer_constraint_v1 *constraint;
+	struct wl_listener destroy;
+};
+
+/* Pointer capture, gestures, gamma and output power (pointer.c). */
+void kc_pointer_init(struct kc_server *s);
+void kc_pointer_free(struct kc_server *s);
+/* Re-evaluate which constraint is live. A constraint only ever applies to the
+ * FOCUSED surface, so this runs on every focus change. */
+void kc_pointer_check_constraint(struct kc_server *s);
+void kc_pointer_break_constraint(struct kc_server *s);
+void kc_pointer_unbreak_constraint(struct kc_server *s);
+/* True when the cursor must not move (a lock). A confine clips the deltas. */
+bool kc_pointer_constrain(struct kc_server *s, double *dx, double *dy);
+void kc_pointer_relative(struct kc_server *s, uint64_t time_usec, double dx,
+			 double dy, double dx_unaccel, double dy_unaccel);
+/* Where a surface sits in layout coordinates. False when it is not on screen —
+ * a confine we cannot place is one we do not enforce. */
+bool kc_surface_position(struct kc_server *s, struct wlr_surface *surface,
+			 double *lx, double *ly);
+
 void kc_appid_init(struct kc_server *s);
 void kc_appid_observe(struct kc_server *s, const char *app_id);
 void kc_appid_free(struct kc_server *s);
@@ -732,6 +804,24 @@ void kc_cellbuf_drop(struct kc_cellbuf *c);
 /* ── window frames, drawn as characters (deco.c) ──────────────────────── */
 
 struct kc_deco;
+
+/*
+ * The typed descriptor a frame strip's scene node carries — the labwc pattern,
+ * adopted after the first live boot proved the alternative wrong.
+ *
+ * v2 answered "what did the user click" TWICE: once with the scene hit test
+ * and once with a hand-rolled geometric walk (`deco_at_cursor`), consulted
+ * first. The moment anything stacked above a frame region — the panel, a
+ * kdos-menu, a GTK right-click menu, another window — the two answers diverged
+ * and the click went to the wrong place or died. That was "mouse not working"
+ * on the screenshot. Now every strip node carries this tag, ALL pointer input
+ * goes through one wlr_scene_node_at(), and there is no second answer to keep
+ * in agreement.
+ */
+struct kc_deco_part {
+	enum kc_node_type type;		/* KC_NODE_DECO — must stay first */
+	struct kc_toplevel *toplevel;
+};
 
 enum kc_deco_region {
 	KC_DECO_NONE = 0,
@@ -820,6 +910,9 @@ void kc_cellui_free(struct kc_server *s);
 /* Start the modal keyboard move/resize on a window — what the menu's Move and
  * Resize items do. In main.c, where the grab state lives. */
 void kc_window_kbgrab(struct kc_toplevel *t, bool resize);
+/* Drop any cached reference to a toplevel that is going away — the double-click
+ * memory holds a raw pointer that a reallocated toplevel would alias. */
+void kc_deco_forget(struct kc_toplevel *t);
 
 /* Whether this app_id is on comp.conf's `csd_apps` list — the clients that
  * draw their own titlebar without ever saying so over xdg-decoration. */

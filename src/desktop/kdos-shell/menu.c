@@ -326,7 +326,7 @@ static void load_system(void)
  */
 static void launch(const struct item *it)
 {
-	char buf[EXEC_MAX_LEN];
+	char buf[EXEC_MAX_LEN + 16];
 	char *argv[32];
 	int n = 0;
 
@@ -529,6 +529,54 @@ int menu_main(int argc, char **argv)
 		KtuiEvent ev;
 		if (!ktui_backend()->poll_event(&ev, 1000))
 			continue;
+
+		/*
+		 * Full mouse, because a menu opened BY mouse must be drivable by
+		 * it — the first live boot shipped keyboard-only menus, which
+		 * read as "mouse not working". Hover selects (motion arrives as
+		 * KT_MP_DRAG — libkwl's spelling for plain movement), a left
+		 * PRESS activates, the wheel scrolls, and a right press backs
+		 * out like Escape.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			int row = ev.my - 1 + v.top;
+			bool on_row = ev.my >= 1 && ev.my < ktui_h - 1 &&
+				      row >= 0 && row < v.n &&
+				      (v.rows[row] <= -2 ||
+				       items[v.rows[row]].submenu != -2);
+			if (ev.press == KT_MP_DRAG) {
+				if (on_row)
+					v.sel = row;
+				continue;
+			}
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_WHEEL_UP) {
+				step(&v, -1);
+				continue;
+			}
+			if (ev.btn == KT_MB_WHEEL_DOWN) {
+				step(&v, 1);
+				continue;
+			}
+			if (ev.btn == KT_MB_RIGHT) {
+				if (which == 0 && v.group >= 0)
+					build_view(&v, which, -1);
+				else
+					goto done;
+				continue;
+			}
+			if (ev.btn != KT_MB_LEFT || !on_row)
+				continue;
+			v.sel = row;
+			int r = v.rows[row];
+			if (r <= -2) {
+				build_view(&v, which, -r - 2);
+				continue;
+			}
+			launch(&items[r]);
+			goto done;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

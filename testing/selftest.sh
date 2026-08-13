@@ -127,6 +127,9 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" client-header \
             "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/ext-session-lock/ext-session-lock-v1.xml" \
             "$PROTO/ext-session-lock-v1-client-protocol.h"
+        "$SCANNER" client-header \
+            "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/cursor-shape/cursor-shape-v1.xml" \
+            "$PROTO/cursor-shape-v1-client-protocol.h"
         KCINC="-Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
 -Isrc/libs/libkcell -Isrc/libs/libkwl"
         # libkcell first and on its OWN: it must compile with no Wayland
@@ -155,6 +158,18 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
             $(pkg-config --libs fcft pixman-1)
         "$OUT/asciicheck" >/dev/null
         echo "  asciicheck (ramp monotonic, orientation distinguished)"
+
+        # kcell_paint must not write outside the caller's buffer. A guard region
+        # rather than ASan, because the offending store happens inside
+        # libpixman's uninstrumented fill loop — see the file's header.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell \
+            $(pkg-config --cflags fcft pixman-1) \
+            -o "$OUT/clipcheck" testing/fixtures/cellclip/clipcheck.c \
+            src/libs/libkcell/*.c src/libs/libktui/ktui_theme.c \
+            $(pkg-config --libs fcft pixman-1)
+        "$OUT/clipcheck" >/dev/null
+        echo "  clipcheck (no writes past a ragged cell grid)"
 
         $CC $STD $WARN -c -I"$PROTO" $KCINC \
             $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
@@ -250,6 +265,13 @@ if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 2>/dev/nu
     $(pkg-config --variable=wayland_scanner wayland-scanner) server-header \
         "$CP/wlr-layer-shell-unstable-v1.xml" \
         "$CP/wlr-layer-shell-unstable-v1-protocol.h"
+    # output-power joined layer-shell in the "wlroots includes a scanner header
+    # it does not install" club when pointer.c landed.
+    tar xf "$CRT_LS" -C "$CP" --strip-components=2 \
+        "$(tar tf "$CRT_LS" | grep 'protocol/wlr-output-power-management-unstable-v1.xml$' | head -1)"
+    $(pkg-config --variable=wayland_scanner wayland-scanner) server-header \
+        "$CP/wlr-output-power-management-unstable-v1.xml" \
+        "$CP/wlr-output-power-management-unstable-v1-protocol.h"
     # EVERY file, not a chosen three. crt.c, frames.c and capture.c were picked
     # originally because each touches something version-fragile, and that is
     # still true — capture.c alone binds six wlroots types whose create()
