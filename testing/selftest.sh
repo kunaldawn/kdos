@@ -25,12 +25,28 @@ INC="-Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libk
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
+# Worth running this whole script as
+#
+#     CC="cc -fsanitize=address,undefined -g" testing/selftest.sh
+#
+# which is how the kb_tar size-field overflow and the kxdg NULL memcpy were
+# found. One thing has to be arranged for it, and only one: LEAK CHECKING IS
+# OFF BY DEFAULT HERE. Every program below is a one-shot that owns its parsed
+# state until it exits — kpkgbuild holds the recipe, kdosbuild holds the plan —
+# and LeakSanitizer reports that as a leak and makes the exit code non-zero, so
+# a run that SUCCEEDED gets reported as "the synthetic port did not build".
+# It stays ON for the library suite, two lines down, because that is the one
+# binary here whose subject is code called over and over inside a long-lived
+# process, and where a leak is therefore a real defect rather than an exit
+# strategy. Both settings are inert without a sanitized CC.
+export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
+
 echo "==> selftest"
 $CC $STD $WARN $INC -o "$OUT/selftest" src/libs/selftest.c \
     src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libkpkg/*.c \
     src/libs/libkbuild/*.c src/libs/libktui/*.c \
     src/tools/kdos-portup/extract.c
-"$OUT/selftest"
+ASAN_OPTIONS=detect_leaks=1 "$OUT/selftest"
 
 echo
 echo "==> every consumer still compiles against the libraries"
@@ -117,9 +133,46 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                 -o "$OUT/$(basename "$f" .c).o" "$f"
         done
         echo "  libkwl"
+
+        # kdos-lock's client half draws through exactly the headers just
+        # generated, so it costs one more compile and is the only gate it has.
+        $CC $STD $WARN -c -I"$PROTO" -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkwl \
+            $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
+            -o "$OUT/kdos-lock.o" src/desktop/kdos-lock/main.c
+        echo "  kdos-lock"
+
+        # kdos-shell wants three more libraries and two more protocols than
+        # libkwl does — basu for the tray's bus, alsa for the volume OSD and
+        # libpipewire for the recording indicator. Gated separately so a host
+        # that has fcft but not those still gets the libkwl and kdos-lock
+        # checks above rather than an error.
+        if pkg-config --exists basu alsa libpipewire-0.3 2>/dev/null &&
+           [ -f "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/ext-workspace/ext-workspace-v1.xml" ]; then
+            "$SCANNER" client-header \
+                "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/ext-workspace/ext-workspace-v1.xml" \
+                "$PROTO/ext-workspace-v1-client-protocol.h"
+            tar xf "$LS" -C "$PROTO" --strip-components=2 \
+                "$(tar tf "$LS" | grep 'protocol/wlr-foreign-toplevel-management-unstable-v1.xml$' | head -1)"
+            "$SCANNER" client-header \
+                "$PROTO/wlr-foreign-toplevel-management-unstable-v1.xml" \
+                "$PROTO/wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
+            for f in src/desktop/kdos-shell/*.c; do
+                $CC $STD $WARN -c -I"$PROTO" -Isrc/desktop/kdos-shell \
+                    -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
+                    -Isrc/libs/libkwl -Isrc/libs/libkxdg \
+                    $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client \
+                                 basu alsa libpipewire-0.3) \
+                    -o "$OUT/shell-$(basename "$f" .c).o" "$f"
+            done
+            echo "  kdos-shell ($(ls src/desktop/kdos-shell/*.c | wc -l) files)"
+        else
+            echo "  kdos-shell (skipped — basu/alsa/libpipewire-0.3 or ext-workspace-v1.xml missing)"
+        fi
     fi
 else
     echo "  libkwl (skipped — fcft/pixman/xkbcommon/wayland-client not on this host)"
+    echo "  kdos-lock, kdos-shell (skipped with it)"
 fi
 
 # The compositor's CRT pass. Same shape as the block above and for the same
@@ -141,25 +194,43 @@ if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 2>/dev/nu
     $(pkg-config --variable=wayland_scanner wayland-scanner) server-header \
         "$CP/wlr-layer-shell-unstable-v1.xml" \
         "$CP/wlr-layer-shell-unstable-v1-protocol.h"
-    $CC $STD $WARN -c -DWLR_USE_UNSTABLE -I"$CP" -Isrc/desktop/kdos-comp \
-        -Isrc/libs/libkcolor -Isrc/libs/libkbase \
-        $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server pixman-1) \
-        -o "$OUT/crt.o" src/desktop/kdos-comp/crt.c
-    $CC $STD $WARN -c -DWLR_USE_UNSTABLE -I"$CP" -Isrc/desktop/kdos-comp \
-        -Isrc/libs/libkcolor -Isrc/libs/libkbase \
-        $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server pixman-1) \
-        -o "$OUT/frames.o" src/desktop/kdos-comp/frames.c
-    # capture.c is where grim, wl-clipboard and the portal get their globals.
-    # Every one of them is a wlroots type whose create() signature changes
-    # between releases, so compiling it here is the cheapest possible check
-    # that the pinned wlroots still has the API this file was written against.
-    $CC $STD $WARN -c -DWLR_USE_UNSTABLE -I"$CP" -Isrc/desktop/kdos-comp \
-        -Isrc/libs/libkcolor -Isrc/libs/libkbase \
-        $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server pixman-1) \
-        -o "$OUT/capture.o" src/desktop/kdos-comp/capture.c
-    echo "  kdos-comp crt.c, frames.c and capture.c"
+    # EVERY file, not a chosen three. crt.c, frames.c and capture.c were picked
+    # originally because each touches something version-fragile, and that is
+    # still true — capture.c alone binds six wlroots types whose create()
+    # signatures move between releases. But the argument generalises to the
+    # other eleven, and the cost of compiling them is seconds: this is the ONLY
+    # gate that ever sees kdos-comp, and its recipe has been built exactly once.
+    for f in src/desktop/kdos-comp/*.c; do
+        $CC $STD $WARN -c -DWLR_USE_UNSTABLE -I"$CP" -Isrc/desktop/kdos-comp \
+            -Isrc/libs/libkcolor -Isrc/libs/libkbase \
+            $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server pixman-1) \
+            -o "$OUT/comp-$(basename "$f" .c).o" "$f"
+    done
+    echo "  kdos-comp ($(ls src/desktop/kdos-comp/*.c | wc -l) files)"
 else
-    echo "  kdos-comp crt.c/frames.c/capture.c (skipped — wlroots-0.20/glesv2/egl not on this host)"
+    echo "  kdos-comp (skipped — wlroots-0.20/glesv2/egl not on this host)"
+fi
+
+# kdos-boxsock is the enforcement half of N1: it is what hands a box a socket
+# that is already stamped with a security context, so the compositor's filter
+# has something to filter on. It needs only wayland-client and one staging
+# protocol, both of which an ordinary host has — no wlroots, no fcft — so
+# unlike the two blocks above this one nearly always runs.
+if pkg-config --exists wayland-client 2>/dev/null &&
+   [ -n "$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)" ] &&
+   [ -f "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/security-context/security-context-v1.xml" ]; then
+    BP="$OUT/bproto"
+    mkdir -p "$BP"
+    BSCAN=$(pkg-config --variable=wayland_scanner wayland-scanner)
+    BXML=$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/security-context/security-context-v1.xml
+    "$BSCAN" client-header "$BXML" "$BP/security-context-v1-client-protocol.h"
+    "$BSCAN" private-code  "$BXML" "$BP/security-context-v1-protocol.c"
+    $CC $STD $WARN -Isrc/libs/libkbase -I"$BP" -o "$OUT/kdos-boxsock" \
+        src/desktop/kdos-boxsock/main.c "$BP/security-context-v1-protocol.c" \
+        src/libs/libkbase/*.c $(pkg-config --cflags --libs wayland-client)
+    echo "  kdos-boxsock"
+else
+    echo "  kdos-boxsock (skipped — no wayland-client or no security-context-v1.xml)"
 fi
 
 echo

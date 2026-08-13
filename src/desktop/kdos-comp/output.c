@@ -184,6 +184,7 @@ static void new_output(struct wl_listener *l, void *data)
 	/* A new output has no usable area until the panels have been placed on
 	 * it, and o->usable is read by anything that positions a window. */
 	kc_layer_arrange(s);
+	kc_wallpaper_arrange(s);
 	/* And if the session is locked, a monitor plugged in NOW must come up
 	 * blank rather than showing the desktop it was never part of. */
 	kc_lock_arrange(s);
@@ -262,6 +263,10 @@ static void layout_change(struct wl_listener *l, void *data)
 {
 	struct kc_server *s = wl_container_of(l, s, layout_change);
 	(void)data;
+	/* Every output's wallpaper is sized to that output's box, so the box
+	 * moving is exactly when it has to be redone — plugging a second monitor
+	 * in otherwise leaves it on a black rectangle. */
+	kc_wallpaper_arrange(s);
 	struct wlr_output_configuration_v1 *cfg =
 		wlr_output_configuration_v1_create();
 	if (!cfg)
