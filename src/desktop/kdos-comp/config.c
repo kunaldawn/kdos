@@ -217,6 +217,34 @@ static int parse_action(struct kc_bind *b, char *value, const char *where,
 		b->action = KC_ACT_CLOSE;
 		return 1;
 	}
+	if (!strcmp(value, "maximize")) {
+		b->action = KC_ACT_MAXIMIZE;
+		return 1;
+	}
+	if (!strcmp(value, "fullscreen")) {
+		b->action = KC_ACT_FULLSCREEN;
+		return 1;
+	}
+	if (!strcmp(value, "shade")) {
+		b->action = KC_ACT_SHADE;
+		return 1;
+	}
+	if (!strcmp(value, "minimize")) {
+		b->action = KC_ACT_MINIMIZE;
+		return 1;
+	}
+	if (!strcmp(value, "ascii")) {
+		b->action = KC_ACT_ASCII;
+		return 1;
+	}
+	if (!strcmp(value, "move")) {
+		b->action = KC_ACT_MOVE_KB;
+		return 1;
+	}
+	if (!strcmp(value, "resize")) {
+		b->action = KC_ACT_RESIZE_KB;
+		return 1;
+	}
 	if (!strcmp(value, "quit")) {
 		b->action = KC_ACT_QUIT;
 		return 1;
@@ -322,6 +350,30 @@ static void load_defaults(struct kc_server *s)
 	add_default(s, "Super+l", "lock");
 	add_default(s, "Super+q", "close");
 	add_default(s, "Super+Escape", "quit");
+	/*
+	 * Alt+F4/F5/F10/F11 rather than Super+something, and deliberately: these
+	 * four are the window-management keys every desktop since Windows 95 and
+	 * GNOME 1 has used, so they are already in the user's hands. Alt is the
+	 * applications' modifier everywhere else on this desktop — this is the
+	 * one carve-out, and it is the one people expect.
+	 */
+	add_default(s, "Alt+F4", "close");
+	add_default(s, "Alt+F5", "shade");
+	add_default(s, "Alt+F9", "minimize");
+	add_default(s, "Super+a", "ascii");
+	/* Alt+F2 is the run box, where every desktop since GNOME 1 has put it.
+	 * kdos-launcher (Super+D) searches installed applications by name; this
+	 * runs a command, which is the question you have when the thing you want
+	 * has no .desktop file. */
+	add_default(s, "Alt+F2", "spawn kdos-run");
+	add_default(s, "Alt+F7", "move");
+	add_default(s, "Alt+F8", "resize");
+	add_default(s, "Alt+F10", "maximize");
+	/* Alt+F11, not bare F11: parse_action refuses a modifier-less binding
+	 * for anything outside the XF86 vendor range, and it is right to — a
+	 * bare key would be swallowed from every application on the desktop.
+	 * The boot log said so on the very first line. */
+	add_default(s, "Alt+F11", "fullscreen");
 	add_default(s, "Super+Tab", "cycle");
 	add_default(s, "Super+Shift+Tab", "cycle-back");
 	for (int i = 1; i <= KC_WORKSPACES; i++) {
@@ -432,6 +484,43 @@ static void comp_conf_line(const char *key, char *value, const char *path,
 		/* 0 disables snapping. A large value would snap from the middle
 		 * of the screen, so it is capped rather than trusted. */
 		set_int(path, lineno, value, 0, 200, &s->snap_px);
+	} else if (!strcmp(key, "deco")) {
+		/* `deco = 0` is an honest off: undecorated windows, exactly as
+		 * this compositor behaved before the frames existed. */
+		int on = 1;
+		set_int(path, lineno, value, 0, 1, &on);
+		s->deco_frames = on != 0;
+	} else if (!strcmp(key, "ascii_color")) {
+		/* `mean` keeps applications recognisable; `accent` is the
+		 * monochrome terminal. Anything else is reported rather than
+		 * guessed at. */
+		if (!strcmp(value, "accent"))
+			s->ascii_mono = true;
+		else if (!strcmp(value, "mean"))
+			s->ascii_mono = false;
+		else
+			wlr_log(WLR_ERROR, "%s:%d: ascii_color is mean or accent",
+				path, lineno);
+	} else if (!strcmp(key, "deco_font")) {
+		free(s->deco_font);
+		s->deco_font = strdup(value);
+	} else if (!strcmp(key, "deco_scale")) {
+		/* 0 means follow each OUTPUT's own scale, which is what a 4K
+		 * panel beside a 1080p one needs. A forced value applies
+		 * everywhere and is for the case where the output is lying. */
+		set_int(path, lineno, value, 0, 4, &s->deco_scale);
+	} else if (!strcmp(key, "csd_apps")) {
+		/*
+		 * The clients that draw their own titlebar without ever saying
+		 * so over xdg-decoration. Space separated, `*` matches a
+		 * prefix. Replaces the default list rather than adding to it —
+		 * a user who names one has an opinion about the whole set.
+		 */
+		free_argv(s->csd_apps);
+		s->csd_apps = split_argv(value);
+		s->ncsd_apps = 0;
+		for (char **p = s->csd_apps; p && *p; p++)
+			s->ncsd_apps++;
 	} else if (!strcmp(key, "wallpaper")) {
 		/* A path, or the word `none`. Read here and used by
 		 * wallpaper.c; an unreadable path is reported there rather than
@@ -450,6 +539,32 @@ void kc_config_load(struct kc_server *s)
 	s->repeat_rate = 25;
 	s->repeat_delay = 600;
 	s->snap_px = 16;
+	/*
+	 * The cell-grid window frames.
+	 *
+	 * Terminus by name, and that is the whole point of using a bitmap font
+	 * here: it is the same rasterisation tty1 and the boot splash use, so
+	 * the machine wears one typeface from power-on to desktop. A host
+	 * without it falls back to whatever fontconfig calls `monospace`, which
+	 * still tiles — libkcell clips a glyph to its cell — but no longer
+	 * matches the console.
+	 *
+	 * scale 0 = follow the output. See kc_deco_scale().
+	 */
+	s->deco_frames = true;
+	s->deco_font = strdup("Terminus:pixelsize=32");
+	s->deco_scale = 0;
+	/*
+	 * The default CSD list is short on purpose and every entry is measured
+	 * rather than assumed: these are the clients that draw a headerbar and
+	 * never create an xdg-decoration object to say so. Everything else —
+	 * including everything that says nothing at all — is framed, because an
+	 * SDL game with no titlebar is worse than a GTK4 app with two.
+	 */
+	s->csd_apps = split_argv("org.gnome.* firefox-esr firefox thunderbird");
+	s->ncsd_apps = 0;
+	for (char **p = s->csd_apps; p && *p; p++)
+		s->ncsd_apps++;
 	/*
 	 * The CRT pass. Scanlines are on because the wallpaper's baked-in ones
 	 * were REMOVED when this landed — the compositor renders them now, and
@@ -478,6 +593,24 @@ void kc_config_load(struct kc_server *s)
 	 * a GTK app's notify call fails and anything using gdbus waits out its
 	 * 25-second default reply timeout first. */
 	s->startup[s->nstartup] = split_argv("kdos-notifyd");
+	if (s->startup[s->nstartup])
+		s->nstartup++;
+	/*
+	 * The SECOND panel, and it is a second PROCESS rather than a second
+	 * surface: a layer-shell surface carries one exclusive zone, so one
+	 * process cannot reserve space at the top and at the bottom. This is the
+	 * window list, the workspace pager and show-desktop — GNOME 2's bottom
+	 * panel.
+	 */
+	s->startup[s->nstartup] = split_argv("kdos-shell --bottom");
+	if (s->startup[s->nstartup])
+		s->nstartup++;
+	/*
+	 * The desktop itself: ~/Desktop as icons, on the background layer above
+	 * the wallpaper. Supervised like the rest of the chrome, because a
+	 * session that loses it has no way to get it back.
+	 */
+	s->startup[s->nstartup] = split_argv("kdos-desk");
 	if (s->startup[s->nstartup])
 		s->nstartup++;
 	load_defaults(s);
@@ -542,4 +675,34 @@ void kc_config_free(struct kc_server *s)
 	s->nstartup = 0;
 	free(s->wallpaper);
 	s->wallpaper = NULL;
+	free(s->deco_font);
+	s->deco_font = NULL;
+	free_argv(s->csd_apps);
+	s->csd_apps = NULL;
+	s->ncsd_apps = 0;
+}
+
+/*
+ * Does this app_id draw its own titlebar without saying so?
+ *
+ * A trailing `*` matches a prefix, which is the whole of the pattern language
+ * and is enough: the real list is `org.gnome.*` plus a handful of literal
+ * names. A general glob here would be a second matcher to keep agreeing with
+ * kdos-appbox's, for no case anybody has.
+ */
+bool kc_config_is_csd(const struct kc_server *s, const char *app_id)
+{
+	if (!app_id || !s->csd_apps)
+		return false;
+	for (int i = 0; i < s->ncsd_apps; i++) {
+		const char *p = s->csd_apps[i];
+		size_t n = strlen(p);
+		if (n && p[n - 1] == '*') {
+			if (!strncmp(app_id, p, n - 1))
+				return true;
+		} else if (!strcmp(app_id, p)) {
+			return true;
+		}
+	}
+	return false;
 }

@@ -31,6 +31,7 @@
  */
 
 #include <dirent.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -112,10 +113,27 @@ static void draw_panel(struct sh_state *sh)
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 
-	/* ── left: the mark and the workspaces ── */
+	/* ── left: the menu bar, then the workspaces ──
+	 *
+	 * GNOME 2's three words, behind the ≡ mark that stands in for the
+	 * distributor logo an icon theme would have supplied. The mark is a
+	 * button too — it opens Applications, which is what a person aiming at
+	 * a logo in the corner of a screen expects.
+	 */
 	int x = 1;
-	x += ktui_draw_text(x, 0, w - x, "KDOS", KT_ACCENT, KT_SURFACE, KT_A_NONE);
+	sh->menu_hit_x[0] = x;
+	x += ktui_draw_text(x, 0, w - x, SH_MENU_MARK, KT_ACCENT, KT_SURFACE,
+			    KT_A_NONE);
 	x += 1;
+	for (int i = 0; i < SH_NMENUS; i++) {
+		sh->menu_hit_x[i] = x;
+		x += ktui_draw_text(x, 0, w - x, sh_menu_labels[i],
+				    i == sh->menu_open ? KT_SURFACE : KT_TEXT,
+				    i == sh->menu_open ? KT_ACCENT : KT_SURFACE,
+				    KT_A_NONE);
+		sh->menu_hit_end[i] = x;
+		x += 2;
+	}
 	x += ktui_draw_text(x, 0, w - x, ktui_glyph[KT_G_VL], KT_DIM,
 			    KT_SURFACE, KT_A_NONE);
 	x += 1;
@@ -314,6 +332,134 @@ static void draw_panel(struct sh_state *sh)
 	ktui_draw_flush();
 }
 
+
+/* ── the bottom panel ──────────────────────────────────────────────────────
+ *
+ *   [□ foot] [■ GIMP] [□ mc]                              ▪▫▫▫    ░
+ *
+ * GNOME 2's second panel: the window list on the left, the workspace pager and
+ * show-desktop on the right. A SEPARATE FUNCTION rather than a mode inside
+ * draw_panel(), because the top panel's layout is load-bearing — it lays out
+ * right to left so the clock cannot be pushed off a narrow screen — and
+ * threading a second set of applets through it would put both at risk to
+ * change either.
+ *
+ * The two panels are two PROCESSES of the same binary. Each layer-shell surface
+ * has one exclusive zone, so a single process cannot reserve space at the top
+ * and the bottom; kdos-desktop-start launches `kdos-shell` and
+ * `kdos-shell --bottom`.
+ */
+static void draw_bottom(struct sh_state *sh)
+{
+	int w = ktui_w, h = ktui_h;
+	if (w < 20 || h < 1)
+		return;
+
+	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
+
+	/* Right first, for the same reason the top panel does it: the pager has
+	 * a fixed width and the window list is what has to give. */
+	int show_x = w - 2;
+	ktui_draw_text(show_x, 0, 1, ktui_glyph[KT_G_SHADE], KT_DIM, KT_SURFACE,
+		       KT_A_NONE);
+	sh->show_hit_x = show_x;
+
+	int pager_w = sh->nws * 2;
+	int pager_x = show_x - pager_w - 3;
+	sh->pager_hit_x = pager_x;
+	for (int i = 0; i < sh->nws; i++) {
+		/*
+		 * A filled square for the active workspace, a hollow one for the
+		 * rest. Not the digits the top panel uses: this is a pager, the
+		 * shape carries the meaning, and two glyphs read faster than
+		 * four numbers when you are aiming rather than reading.
+		 */
+		bool active = i == sh->active_ws;
+		ktui_draw_text(pager_x + i * 2, 0, 1,
+			       active ? ktui_glyph[KT_G_SQUARE] : ktui_glyph[KT_G_DOT],
+			       active ? KT_ACCENT : KT_DIM, KT_SURFACE, KT_A_NONE);
+	}
+	sh->pager_hit_end = pager_x + pager_w;
+
+	/* ── the window list ── */
+	int x = 1;
+	int avail = pager_x - x - 1;
+	sh->task_hit_x = x;
+	sh->task_cell_w = 0;
+	if (avail <= 6 || sh->ntasks <= 0) {
+		ktui_draw_flush();
+		return;
+	}
+
+	/*
+	 * Equal widths, so clicking position N always means task N — the same
+	 * decision the top panel's list makes, and for the same reason: a
+	 * proportional layout would need the click map rebuilt whenever a
+	 * browser tab changed a title.
+	 */
+	int per = avail / sh->ntasks;
+	if (per > 24)
+		per = 24;
+	if (per < 6)
+		per = 6;
+	sh->task_cell_w = per;
+
+	for (int i = 0; i < sh->ntasks && x + per <= pager_x; i++) {
+		const struct sh_task *t = &sh->tasks[i];
+		int fg = t->activated ? KT_SURFACE : KT_TEXT;
+		int bg = t->activated ? KT_ACCENT : KT_SURFACE;
+
+		ktui_draw_fill(krect(x, 0, per - 1, 1), bg);
+		/*
+		 * A filled square is a window you can see, a hollow one is
+		 * minimised. Every other desktop draws a minimised entry in
+		 * italics or greyed, and neither survives eight colours and one
+		 * font weight.
+		 */
+		ktui_draw_text(x, 0, 1,
+			       t->minimized ? ktui_glyph[KT_G_DOT]
+					    : ktui_glyph[KT_G_SQUARE],
+			       t->minimized ? KT_DIM : fg, bg, KT_A_NONE);
+
+		const char *label = t->title[0] ? t->title : t->app_id;
+		ktui_draw_text(x + 2, 0, per - 3, label, fg, bg, KT_A_NONE);
+		x += per;
+	}
+	ktui_draw_flush();
+}
+
+/* Clicks on the bottom panel. Kept beside its drawing for the same reason the
+ * two are split at all: the hit map is what the last frame actually drew. */
+static void handle_click_bottom(struct sh_state *sh, int cx, int btn)
+{
+	if (btn != SH_TRAY_BTN_LEFT)
+		return;
+
+	if (cx >= sh->show_hit_x) {
+		/*
+		 * Show desktop = minimise everything. There is no "restore them
+		 * all" here, and that is honest rather than lazy: kdos-comp has
+		 * no iconified state of its own, so the panel would have to
+		 * remember what it hid, and a memory that goes stale the moment
+		 * a window closes is worse than a button that does one thing.
+		 */
+		for (int i = 0; i < sh->ntasks; i++)
+			sh_minimize_task(sh, i);
+		return;
+	}
+	if (cx >= sh->pager_hit_x && cx < sh->pager_hit_end) {
+		int i = (cx - sh->pager_hit_x) / 2;
+		if (i >= 0 && i < sh->nws)
+			sh_activate_workspace(sh, i);
+		return;
+	}
+	if (sh->task_cell_w > 0 && cx >= sh->task_hit_x) {
+		int i = (cx - sh->task_hit_x) / sh->task_cell_w;
+		if (i >= 0 && i < sh->ntasks)
+			sh_activate_task(sh, i);
+	}
+}
+
 /* ── clicks ────────────────────────────────────────────────────────────── */
 
 static void handle_click(struct sh_state *sh, int cx, int btn)
@@ -329,6 +475,11 @@ static void handle_click(struct sh_state *sh, int cx, int btn)
 	}
 	if (btn != SH_TRAY_BTN_LEFT)
 		return;
+	for (int i = 0; i < SH_NMENUS; i++)
+		if (cx >= sh->menu_hit_x[i] && cx < sh->menu_hit_end[i]) {
+			sh_spawn_menu(i);
+			return;
+		}
 	if (cx >= sh->ws_hit_x && cx < sh->ws_hit_end) {
 		/* Two cells per workspace: the digit and its separator. */
 		int i = (cx - sh->ws_hit_x) / 2;
@@ -369,7 +520,21 @@ int panel_main(int argc, char **argv)
 		}
 	}
 
+	/*
+	 * Which panel this process IS.
+	 *
+	 * The two panels are two processes of the same binary: a layer-shell
+	 * surface has ONE exclusive zone, so a single process cannot reserve
+	 * space at the top and at the bottom.
+	 */
+	const int is_bottom = edge == KWL_EDGE_BOTTOM;
+
 	struct sh_state sh = {0};
+	/* -1, not 0: a zeroed struct would light "Applications" for the whole
+	 * session, which reads as a menu that is stuck open. Nothing sets this
+	 * yet — the menu is a separate process and does not report back — so it
+	 * stays -1 and the bar is drawn unlit. */
+	sh.menu_open = -1;
 	KwlConfig cfg = {
 		.role = KWL_ROLE_PANEL,
 		.edge = edge,
@@ -416,7 +581,10 @@ int panel_main(int argc, char **argv)
 		if (dump_w < 20 || dump_w > 500)
 			dump_w = 100;
 		ktui_offscreen_init(dump_w, 1);
-		draw_panel(&sh);
+		if (is_bottom)
+			draw_bottom(&sh);
+		else
+			draw_panel(&sh);
 		ktui_draw_dump();
 		sh_priv_free(&sh);
 		sh_tray_free(&sh);
@@ -445,7 +613,10 @@ int panel_main(int argc, char **argv)
 	ktui_draw_init();
 
 	while (!kwl_should_close()) {
-		draw_panel(&sh);
+		if (is_bottom)
+			draw_bottom(&sh);
+		else
+			draw_panel(&sh);
 
 		KtuiEvent ev;
 		/*
@@ -459,7 +630,8 @@ int panel_main(int argc, char **argv)
 			    ev.press == KT_MP_PRESS &&
 			    (ev.btn == KT_MB_LEFT || ev.btn == KT_MB_MIDDLE ||
 			     ev.btn == KT_MB_RIGHT))
-				handle_click(&sh, ev.mx,
+				(is_bottom ? handle_click_bottom
+					   : handle_click)(&sh, ev.mx,
 					     ev.btn == KT_MB_MIDDLE
 						     ? SH_TRAY_BTN_MIDDLE
 					     : ev.btn == KT_MB_RIGHT

@@ -26,6 +26,11 @@ static const struct {
 } TOOLS[] = {
 	{ "kdos-shell", panel_main },
 	{ "kdos-launcher", launcher_main },
+	{ "kdos-menu", menu_main },
+	{ "kdos-desk", desk_main },
+	{ "kdos-pick", pick_main },
+	{ "kdos-ascii", asciicmd_main },
+	{ "kdos-run", run_main },
 	{ "kdos-notifyd", notifyd_main },
 	{ "kdos-osd", osd_main },
 };
