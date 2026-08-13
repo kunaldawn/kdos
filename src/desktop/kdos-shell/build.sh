@@ -17,10 +17,11 @@ LIBS="$PORT_SRC/../../libs"
 SCANNER="$(pkg-config --variable=wayland_scanner wayland-scanner)"
 PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 
-# Three protocol definitions from three places, which is the usual state of
-# Wayland: xdg-shell is stable and in wayland-protocols, ext-workspace is
-# staging and also there, and layer-shell and foreign-toplevel are wlroots'
-# own — installed by the wlroots port precisely because upstream does not.
+# Four protocol definitions from three places, which is the usual state of
+# Wayland: xdg-shell is stable and in wayland-protocols, ext-workspace and
+# ext-session-lock are staging and also there, and layer-shell and
+# foreign-toplevel are wlroots' own — installed by the wlroots port precisely
+# because upstream does not.
 "$SCANNER" client-header "$PROTO/stable/xdg-shell/xdg-shell.xml" \
 	xdg-shell-client-protocol.h
 "$SCANNER" private-code  "$PROTO/stable/xdg-shell/xdg-shell.xml" \
@@ -29,6 +30,16 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	ext-workspace-v1-client-protocol.h
 "$SCANNER" private-code  "$PROTO/staging/ext-workspace/ext-workspace-v1.xml" \
 	ext-workspace-v1-protocol.c
+# The panel is not a lock screen and binds no lock role — but it compiles the
+# WHOLE of libkwl, and libkwl carries KWL_ROLE_LOCK for kdos-lock, so kwl.c
+# includes this header unconditionally. Generating it only in kdos-lock's
+# recipe is what made kdos-shell the first package of this phase to fail.
+"$SCANNER" client-header \
+	"$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
+	ext-session-lock-v1-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
+	ext-session-lock-v1-protocol.c
 for p in wlr-layer-shell-unstable-v1 wlr-foreign-toplevel-management-unstable-v1; do
 	"$SCANNER" client-header "/usr/share/wlroots/protocols/$p.xml" \
 		"$p-client-protocol.h"

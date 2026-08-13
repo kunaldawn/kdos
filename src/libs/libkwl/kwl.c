@@ -94,6 +94,9 @@ static struct {
 	int ptr_cx, ptr_cy;
 } K;
 
+/* The gap a corner-anchored overlay keeps from the screen edges, in pixels. */
+#define KWL_OVERLAY_MARGIN 8
+
 int kwl_should_close(void) { return K.closed; }
 int kwl_lock_engaged(void) { return K.lock_engaged; }
 int kwl_lock_finished(void) { return K.lock_finished; }
@@ -109,8 +112,17 @@ void kwl_pump(void)
 {
 	if (!K.display)
 		return;
-	if (wl_display_dispatch_pending(K.display) < 0 ||
-	    wl_display_flush(K.display) < 0)
+	if (wl_display_dispatch_pending(K.display) < 0) {
+		K.closed = 1;
+		return;
+	}
+	/*
+	 * EAGAIN from flush means the socket is full, not that the compositor is
+	 * gone — libwayland has buffered the requests and will send them when
+	 * the fd drains. Treating it as fatal is how a client that got briefly
+	 * ahead of the compositor exited 0 with no message at all.
+	 */
+	if (wl_display_flush(K.display) < 0 && errno != EAGAIN)
 		K.closed = 1;
 }
 int kwl_cell_w(void) { return kwl_font_cell_w(); }
@@ -503,6 +515,18 @@ static const struct wl_seat_listener seat_listener = {
 
 static void resize_cells(int px_w, int px_h)
 {
+	/*
+	 * A configure is not a resize. The compositor sends one on every commit
+	 * that changes anything, so raising `ktui_resized` unconditionally puts
+	 * a consumer that acts on it into a feedback loop: invalidate → full
+	 * repaint → attach/commit → configure → invalidate. Measured on
+	 * kdos-notifyd at ~100 commits a second, which ends when
+	 * `wl_display_flush` finally answers EAGAIN and the client decides the
+	 * compositor is gone — a clean exit 0 with nothing in any log saying
+	 * why. Only a real change in size is a resize.
+	 */
+	if (px_w == K.px_w && px_h == K.px_h)
+		return;
 	K.px_w = px_w;
 	K.px_h = px_h;
 	int cw = kwl_font_cell_w(), ch = kwl_font_cell_h();
@@ -661,9 +685,24 @@ static int make_panel(void)
 		 * No anchor at all, which is how layer-shell says "centre me":
 		 * a surface anchored to nothing is placed in the middle of the
 		 * output. Sized in cells, because the content is a grid.
+		 *
+		 * A corner is an ANCHOR TO TWO EDGES with a size, not a
+		 * position — layer-shell has no coordinates. Two edges rather
+		 * than all four, or the compositor stretches the surface to
+		 * fill the axis it is anchored on both sides of.
 		 */
 		int cols = K.cfg.cols > 0 ? K.cfg.cols : 64;
 		int rows = K.cfg.rows > 0 ? K.cfg.rows : 16;
+		if (K.cfg.corner == KWL_CORNER_TOP_RIGHT) {
+			zwlr_layer_surface_v1_set_anchor(
+				K.layer_surface,
+				ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+				ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+			zwlr_layer_surface_v1_set_margin(K.layer_surface,
+							 KWL_OVERLAY_MARGIN,
+							 KWL_OVERLAY_MARGIN,
+							 0, 0);
+		}
 		zwlr_layer_surface_v1_set_size(K.layer_surface,
 					       (uint32_t)(cols * kwl_font_cell_w()),
 					       (uint32_t)(rows * kwl_font_cell_h()));
@@ -950,6 +989,22 @@ fail_display:
 fail_font:
 	kwl_font_free();
 	return -1;
+}
+
+void kwl_overlay_resize(int cols, int rows)
+{
+	if (K.cfg.role != KWL_ROLE_OVERLAY || !K.layer_surface)
+		return;
+	if (cols < 1)
+		cols = 1;
+	if (rows < 1)
+		rows = 1;
+	zwlr_layer_surface_v1_set_size(K.layer_surface,
+				       (uint32_t)(cols * kwl_font_cell_w()),
+				       (uint32_t)(rows * kwl_font_cell_h()));
+	/* The commit is what makes the compositor send a configure back; without
+	 * it the request sits in the queue and nothing on screen changes. */
+	wl_surface_commit(K.surface);
 }
 
 void kwl_shutdown(void)

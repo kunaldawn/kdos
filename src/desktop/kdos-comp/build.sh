@@ -22,7 +22,11 @@
 # glesv2 and egl are here for the CRT pass: wlroots has no shader API, so
 # crt.c does the final blit itself with a GLES2 program of its own. Only the
 # headers and the two libraries — no GL loader, no helper toolkit.
-PKGCFG="wlroots-0.20 wayland-server wayland-client xkbcommon pixman-1 glesv2 egl"
+# libpng is for the wallpaper (wallpaper.c): the compositor decodes the image
+# and puts it in the scene itself rather than shipping a separate layer-shell
+# client for it — libkwl paints cells, so a wallpaper client would be the one
+# program in this desktop that is not a character grid.
+PKGCFG="wlroots-0.20 wayland-server wayland-client xkbcommon pixman-1 glesv2 egl libpng libdrm"
 
 # libkcolor: the phosphor the shader tints with is the same KCOL_SCHEMES entry
 # the boot splash, the TTY palette, the icons and the GTK stylesheet expand.

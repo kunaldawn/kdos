@@ -43,12 +43,22 @@ XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 # flock-serialized: two sessions starting at once must not both decide the
 # daemon is down — the loser's rm -f would yank the winner's socket away.
+#
+# `7>&-` CLOSES THE LOCK FD FOR THE DAEMON, and without it the SECOND login of
+# a boot hangs forever with no output at all. dbus-daemon --fork inherits every
+# open descriptor, fd 7 among them; the subshell then exits and drops its own
+# reference, but the daemon holds the flock for as long as the session bus
+# lives — which is until logout. Every later kdos-desktop blocks on `flock 7`
+# before it has printed a single line, so the symptom is a tty that sits there:
+# no compositor, no error, nothing in a log. Measured in QEMU with three
+# `flock 7` processes queued behind one dbus-daemon.
 (
 	flock 7
 	if ! dbus-send --session --print-reply --dest=org.freedesktop.DBus \
 		/ org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
 		rm -f "$XDG_RUNTIME_DIR/bus"
-		dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+		dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" \
+			--fork 7>&-
 	fi
 ) 7>"$XDG_RUNTIME_DIR/.kdos-bus.lock"
 

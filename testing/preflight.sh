@@ -257,6 +257,37 @@ for f in $(grep -rl '^#!' fs/ 2>/dev/null); do
 done
 note "rootfs interpreters" "bash and sh only"
 
+# ── the build tree still carries packages whose port is gone ───────────────
+#
+# `fs/` is manifest-guarded, packages were not, and the build tree is
+# incremental: a port deleted from `ports/` left its package installed forever.
+# Measured on v0.2 — the ISO shipped all sixteen `cosmic-*` packages,
+# `pop-launcher`, `kdos-theme-helper` and `xdg-desktop-portal-cosmic`, 529 MB of
+# a desktop removed a milestone earlier. `06_packaging/00_orphans.sh` sweeps
+# them at package time; this says so BEFORE a two-hour build does.
+#
+# Skipped, not failed, when there is no build tree: preflight's whole point is
+# that it needs nothing but the repo.
+echo
+echo "==> the build tree carries no package whose port is gone"
+if [ ! -d build/fs/var/lib/kpkg/db ]; then
+    note "orphaned packages" "skipped — no build tree"
+else
+    orphans=""
+    for pkg in $(ls build/fs/var/lib/kpkg/db); do
+        if [ ! -f "ports/core/$pkg/kpkgbuild" ] && \
+           [ ! -f "src/packages/$pkg/kpkgbuild" ] && \
+           [ ! -f "src/desktop/$pkg/kpkgbuild" ]; then
+            orphans="$orphans $pkg"
+        fi
+    done
+    if [ -n "$orphans" ]; then
+        bad "orphaned packages" "installed with no recipe:$orphans"
+    else
+        note "orphaned packages" "none"
+    fi
+fi
+
 echo
 if [ "$fail" = 0 ]; then
     echo "preflight clean — the wiring is consistent"

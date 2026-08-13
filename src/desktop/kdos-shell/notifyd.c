@@ -243,6 +243,19 @@ static const sd_bus_vtable notify_vtable[] = {
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
+/* How many rows the toasts currently need. The surface is sized to this and
+ * not to MAX_TOASTS: a cell grid has no transparent cell, so every unused row
+ * of the surface is painted in the theme background — sized for the maximum,
+ * the daemon left an opaque rectangle on the desktop for the whole session
+ * with nothing in it. */
+static int toast_rows(void)
+{
+	int rows = 0;
+	for (int i = 0; i < ntoasts; i++)
+		rows += toasts[i].body[0] ? 4 : 3;
+	return rows;
+}
+
 static void draw_toasts(void)
 {
 	int w = ktui_w, h = ktui_h;
@@ -254,7 +267,18 @@ static void draw_toasts(void)
 	for (int i = 0; i < ntoasts && y + 3 <= h; i++) {
 		const struct toast *t = &toasts[i];
 		int rows = t->body[0] ? 4 : 3;
+		/*
+		 * CLAMP, do not break. The surface is resized to fit the toasts
+		 * and the compositor answers with a configure one round trip
+		 * later, so for one frame the grid is the size it was BEFORE the
+		 * toast arrived. Breaking there drew the cleared background and
+		 * nothing else — an empty box in the corner, which is exactly
+		 * what a notification daemon must never produce. Three rows is
+		 * border, summary, border; the body is what gets dropped.
+		 */
 		if (y + rows > h)
+			rows = h - y;
+		if (rows < 3)
 			break;
 		KRect r = krect(0, y, w, rows);
 		int accent = t->urgent ? KT_ERR : KT_ACCENT;
@@ -311,10 +335,17 @@ int notifyd_main(int argc, char **argv)
 		return 1;
 	}
 
+	/*
+	 * Top right, not centred. An overlay with no anchor is centred, which is
+	 * right for the launcher and wrong for a toast — a notification that
+	 * covers the middle of the screen covers the thing the user was doing
+	 * when it arrived.
+	 */
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
+		.corner = KWL_CORNER_TOP_RIGHT,
 		.cols = TOAST_COLS,
-		.rows = MAX_TOASTS * 4,
+		.rows = 3,
 		.app_id = "kdos-notifyd",
 		.font = font,
 	};
@@ -328,8 +359,44 @@ int notifyd_main(int argc, char **argv)
 	int wl_fd = kwl_fd();
 	int bus_fd = sd_bus_get_fd(bus);
 
+	int shown_rows = -1;
 	while (!kwl_should_close()) {
 		expire_due();
+		/*
+		 * Resize BEFORE drawing, and only when the row count changed:
+		 * every request costs a configure round trip, and asking for the
+		 * size it already has on every pass of a poll loop is a commit
+		 * storm. With no toasts the surface still exists — layer-shell
+		 * has no "hide" — so it shrinks to the smallest thing that can
+		 * be committed and sits in the corner instead of the middle.
+		 */
+		/*
+		 * Never fewer than four rows while anything is up: that is one
+		 * toast WITH a body, so the common case needs no second
+		 * configure before it can be drawn in full.
+		 */
+		int want = toast_rows();
+		if (want > 0 && want < 4)
+			want = 4;
+		if (want != shown_rows) {
+			/*
+			 * With nothing to show the surface shrinks to ONE CELL
+			 * rather than going away. layer-shell's own hide is a
+			 * commit with a NULL buffer, and wlroots answers that by
+			 * resetting the surface to uninitialised — the next
+			 * paint then waits for a configure that only an
+			 * initial-commit handshake will produce, and the
+			 * notification never appears at all. Measured: the first
+			 * toast after the daemon idled was accepted, given an
+			 * id, and drawn nowhere. One dark cell in the corner is
+			 * the honest cost of a grid that has no transparent
+			 * cell; destroying and recreating the layer surface is
+			 * the real fix and is its own piece of work.
+			 */
+			kwl_overlay_resize(want > 0 ? TOAST_COLS : 1,
+					   want > 0 ? want : 1);
+			shown_rows = want;
+		}
 		draw_toasts();
 
 		/* Drain everything already queued before sleeping — sd_bus can
@@ -347,6 +414,21 @@ int notifyd_main(int argc, char **argv)
 			break;
 		if (fds[0].revents)
 			kwl_pump();
+		/*
+		 * The configure that answers kwl_overlay_resize() lands here, and
+		 * the cell buffer does NOT follow by itself — `ktui_w`/`ktui_h`
+		 * come from ktui_draw_resize(), exactly as panel.c and
+		 * launcher.c already do it. Without this the surface grew and
+		 * draw_toasts() went on believing it had the old three rows, so
+		 * a toast WITH A BODY (four rows) failed its `y + rows > h`
+		 * guard and the daemon painted an empty box. It only became
+		 * reachable when the surface started being resized at all.
+		 */
+		if (ktui_resized) {
+			ktui_resized = 0;
+			ktui_draw_resize();
+			ktui_draw_invalidate();
+		}
 	}
 
 	sd_bus_unref(bus);

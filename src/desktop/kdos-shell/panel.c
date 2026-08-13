@@ -120,21 +120,42 @@ static void draw_panel(struct sh_state *sh)
 			    KT_SURFACE, KT_A_NONE);
 	x += 1;
 
+	/*
+	 * ext-workspace-v1 has no "there are windows here" state — ACTIVE,
+	 * URGENT and HIDDEN are all it carries — so occupancy is DERIVED: the
+	 * workspace being shown is occupied exactly when a window is not
+	 * minimized, since kdos-comp reports a window on another workspace as
+	 * MINIMIZED. That is right for every workspace the user has visited and
+	 * silent about the rest, which is the honest shape: it never claims a
+	 * workspace is empty on the strength of a state the protocol does not
+	 * have. Reading URGENT alone, as this did, meant NO workspace was ever
+	 * drawn as occupied.
+	 */
+	if (sh->active_ws >= 0 && sh->active_ws < SH_MAX_WS) {
+		int live = 0;
+		for (int i = 0; i < sh->ntasks; i++)
+			if (!sh->tasks[i].minimized)
+				live = 1;
+		sh->ws_occupied[sh->active_ws] = live;
+	}
+
 	sh->ws_hit_x = x;
 	for (int i = 0; i < sh->nws && x < w - 4; i++) {
 		char label[8];
 		snprintf(label, sizeof(label), "%d", i + 1);
 		/*
-		 * The active workspace is drawn REVERSED rather than merely in
-		 * the accent: on the eight-slot palette a colour change alone
-		 * is easy to miss, and reverse is the one emphasis that reads
-		 * identically on a tty and in a truecolor surface.
+		 * The active workspace is drawn REVERSED — the one emphasis
+		 * that reads identically on a tty and in a truecolor surface.
+		 * The slots are swapped for it, so the ATTRIBUTE must not be
+		 * set as well: passing both swaps them back, and the active
+		 * workspace came out looking exactly like an inactive one that
+		 * happened to be occupied.
 		 */
 		int active = i == sh->active_ws;
 		int fg = sh->ws_occupied[i] ? KT_ACCENT : KT_DIM;
 		x += ktui_draw_text(x, 0, w - x, label, active ? KT_SURFACE : fg,
 				    active ? KT_ACCENT : KT_SURFACE,
-				    active ? KT_A_REVERSE : KT_A_NONE);
+				    KT_A_NONE);
 		x += 1;
 	}
 	sh->ws_hit_end = x;

@@ -85,9 +85,16 @@ static const char *sock_path(void)
 
 /*
  * Root and wheel, the same answer kdos-powerd gives to the same question, from
- * the same libkbase function. Not world-readable: on a multi-user machine the
- * app list is a list of what other people are running, and this daemon's whole
- * subject matter is what everyone on the machine is doing.
+ * the same libkbase function. It matters that this is a real gate rather than
+ * a courtesy: on a multi-user machine the app list is a list of what other
+ * people are running, and this daemon's whole subject matter is what everyone
+ * on the machine is doing.
+ *
+ * The gate is HERE and not on the socket's mode. The socket is 0666 and every
+ * uid may connect; what an unauthorised one gets is `err not permitted` and a
+ * closed connection. That is deliberate and is kdos-powerd's reasoning too —
+ * a mode that looked like the authorisation is a mode somebody eventually
+ * loosens, and SO_PEERCRED cannot be forged by the peer.
  */
 static bool uid_allowed(uid_t uid)
 {

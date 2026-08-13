@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -122,7 +123,7 @@ int kb_run_to_file(const KbArgv *a, const char *path)
  * kill the CALLER, which for a lock screen means the lock client dying and the
  * session staying locked forever.
  */
-int kb_run_feed(const KbArgv *a, const char *in, size_t n)
+static int feed(const KbArgv *a, const char *in, size_t n, bool keep_stdout)
 {
 	int fd[2];
 	pid_t pid;
@@ -139,13 +140,15 @@ int kb_run_feed(const KbArgv *a, const char *in, size_t n)
 	if (pid == 0) {
 		dup2(fd[0], STDIN_FILENO);
 		close(fd[0]);
-		int null = open("/dev/null", O_RDWR);
-		if (null >= 0) {
-			dup2(null, STDOUT_FILENO);
-			if (!kb_proc_verbose)
-				dup2(null, STDERR_FILENO);
-			if (null > STDERR_FILENO)
-				close(null);
+		if (!keep_stdout) {
+			int null = open("/dev/null", O_RDWR);
+			if (null >= 0) {
+				dup2(null, STDOUT_FILENO);
+				if (!kb_proc_verbose)
+					dup2(null, STDERR_FILENO);
+				if (null > STDERR_FILENO)
+					close(null);
+			}
 		}
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
@@ -166,6 +169,20 @@ int kb_run_feed(const KbArgv *a, const char *in, size_t n)
 	close(fd[1]);
 	signal(SIGPIPE, old);
 	return reap(pid);
+}
+
+int kb_run_feed(const KbArgv *a, const char *in, size_t n)
+{
+	return feed(a, in, n, false);
+}
+
+/* A pager is the case kb_run_feed cannot serve: it has to be fed on stdin AND
+ * keep the terminal it draws on. Writing to /dev/null is right for a checker
+ * and silent for a pager, which is a failure that looks like an empty
+ * document. */
+int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n)
+{
+	return feed(a, in, n, true);
 }
 
 int kb_run_tty(const KbArgv *a)
