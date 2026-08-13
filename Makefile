@@ -56,6 +56,7 @@ build: check-iso-free
 	docker run --network none --cpus="10" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
 		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
+		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \
 		-v $$(pwd)/build:/workspace/build \
 		-v $$(pwd)/src:/workspace/src:ro \
 		-v $$(pwd)/fs:/workspace/fs:ro \

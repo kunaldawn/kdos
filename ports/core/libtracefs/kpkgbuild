@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libtracefs
+version     = 1.8.3
+release     = 1
+source      = https://git.kernel.org/pub/scm/libs/libtrace/$name.git/snapshot/$name-$version.tar.gz
+sha256      = a9cd9cbae81b7fff71b3f72d2b819e49cec0402529e5f252e1d9319a62a356cb  libtracefs-1.8.3.tar.gz
+description = API for the tracefs filesystem
+homepage    = https://git.kernel.org/pub/scm/libs/libtrace/libtracefs.git
+depends     = libtraceevent

@@ -43,6 +43,22 @@ kdos-lock
 # /run, gated by SO_PEERCRED — no setuid, no polkit prompt, no logind.
 kdos-powerd
 
+# Per-app Energy Impact. RAPL is root-only (PLATYPUS), so the sampler is a
+# daemon; identity comes free from the fact that every alien app is already its
+# own container. Relative shares, never watt-hours.
+kdos-energyd
+
+# The input method. kdos-comp speaks text-input-v3 to applications and
+# input-method-v2 to fcitx5 (src/desktop/kdos-comp/textinput.c); this is the
+# thing on the other end of that second protocol. Built Wayland-only — no X11
+# frontend, no Qt config tool, no cloud pinyin — and the engines are one per
+# language: chinese-addons (pinyin, shuangpin, tables) over libime, anthy for
+# Japanese, hangul for Korean.
+fcitx5
+fcitx5-chinese-addons
+fcitx5-anthy
+fcitx5-hangul
+
 # The screen-capture portal. A boxed OBS or browser reaches the screen only
 # through xdg-desktop-portal, which has no capture code of its own — the wlr
 # backend is what turns the compositor's ext-image-copy-capture and

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fcitx5-anthy
+version     = 5.1.10
+release     = 1
+source      = https://download.fcitx-im.org/fcitx5/$name/$name-$version.tar.zst
+sha256      = b7865d3c03ef51b776890bdf525165a544e30be446e2762e0c53c87e90590786  fcitx5-anthy-5.1.10.tar.zst
+description = Japanese input for fcitx5, via anthy-unicode
+homepage    = https://github.com/fcitx/fcitx5-anthy
+depends     = cmake extra-cmake-modules fcitx5 anthy-unicode gettext

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = powertop
+version     = 2.16
+release     = 1
+source      = https://github.com/fenrus75/powertop/archive/refs/tags/v$version.tar.gz
+sha256      = cf37e565b958a64f1e3086daeab82d7959566a372d01d40d3904cbca95cdf3d2  powertop-2.16.tar.gz
+description = Where a laptop's power is going, and what to tune
+homepage    = https://github.com/fenrus75/powertop
+depends     = ncurses pciutils libnl libtracefs

@@ -35,9 +35,11 @@ __pycache__/
 ports-archived/
 port-archive.sh
 
-# Testing runtime artifacts
+# Testing runtime artifacts. NOT testing/fixtures — those are the recorded
+# corpora testing/selftest.sh replays (stutter, cve, portup, privacy, tray,
+# energy), and ignoring them made every fixture-driven test silently absent on
+# a fresh clone while passing on the machine that wrote them.
 testing/logs/
-testing/fixtures
 testing/test_results.json
 
 # Claude Code local settings and notes

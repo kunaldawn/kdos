@@ -63,7 +63,7 @@ static const struct {
 } steps[S_COUNT] = {
 	{ "Prepare",     "unmount the target, stop swap" },
 	{ "Partition",   "write the GPT layout" },
-	{ "Format",      "create the filesystems" },
+	{ "Format",      "encrypt if asked, then create the filesystems" },
 	{ "Mount",       "attach the target at /mnt" },
 	{ "Copy system", "the live tree, verbatim" },
 	{ "Configure",   "fstab, hostname, keymap, services" },
@@ -453,6 +453,15 @@ static int run(char *const argv[])
 	return run_full(argv, NULL, NULL, ok, 1);
 }
 
+/* Same, with a secret on the child's stdin. cryptsetup's `--key-file=-` reads
+ * from there, which keeps the passphrase out of argv and therefore out of
+ * /proc/<pid>/cmdline. */
+static int run_stdin(char *const argv[], const char *secret)
+{
+	static const int ok[] = { 0 };
+	return run_full(argv, secret, NULL, ok, 1);
+}
+
 static void must(char *const argv[])
 {
 	int rc = run(argv);
@@ -766,11 +775,16 @@ static void do_prepare(void)
 	if (geteuid() != 0)
 		fail("kinstall must run as root");
 
-	for (const char **p = (const char *[]){ "mount", "umount", "mkfs.ext4",
+	if (cfg.luks && !kb_have_prog("cryptsetup"))
+		fail("cryptsetup is not installed — cannot create an encrypted "
+		     "root");
+	for (const char **p = (const char *[]){ "mount", "umount",
 						"mkfs.vfat", "rsync", NULL };
 	     *p; p++)
 		if (!kb_have_prog(*p))
 			fail("required tool missing: %s", *p);
+	if (!kb_have_prog(ki_fs(cfg.fstype)->mkfs))
+		fail("required tool missing: %s", ki_fs(cfg.fstype)->mkfs);
 
 	char *sw[] = { "swapoff", "-a", NULL };
 	try_(sw);
@@ -829,6 +843,15 @@ static void do_partition(void)
 	emit('P', "1");
 }
 
+/* The name the container is opened under, on the kernel command line and in
+ * /dev/mapper. Fixed rather than configurable: the initramfs has to be told it
+ * anyway, and a second knob buys nothing. */
+#define LUKS_NAME "kdosroot"
+
+/* The raw partition holding the LUKS header, once part_root has been redirected
+ * at the mapper device. Empty when the install is not encrypted. */
+static char luks_part[64];
+
 static void resolve_parts(void)
 {
 	if (cfg.plan == PLAN_WIPE) {
@@ -843,8 +866,24 @@ static void resolve_parts(void)
 		kb_strlcpy(part_esp, cfg.part_esp, sizeof(part_esp));
 		kb_strlcpy(part_root, cfg.part_root, sizeof(part_root));
 	}
+	/*
+	 * With LUKS, `part_root` becomes the MAPPER device from here on: the
+	 * filesystem, the mount, the fstab UUID and the rsync all belong to what
+	 * is inside the container, and only do_format and the boot options ever
+	 * need the container itself. Keeping one name for "where the root
+	 * filesystem is" is what stops half the installer writing to the wrong
+	 * device.
+	 */
+	if (cfg.luks) {
+		kb_strlcpy(luks_part, part_root, sizeof(luks_part));
+		snprintf(part_root, sizeof(part_root), "/dev/mapper/%s",
+			 LUKS_NAME);
+	}
+
 	logf_("ESP  = %s", part_esp);
 	logf_("root = %s", part_root);
+	if (luks_part[0])
+		logf_("LUKS = %s", luks_part);
 	if (part_swap[0])
 		logf_("swap = %s", part_swap);
 }
@@ -858,8 +897,35 @@ static void do_format(void)
 	if (!cfg.dry_run && !kb_path_exists(part_root))
 		fail("%s does not exist", part_root);
 
+	/*
+	 * LUKS2 first, because everything after this point talks to the mapper
+	 * device. The passphrase goes in on STDIN both times: an argument would
+	 * be readable through /proc/<pid>/cmdline by every process on the
+	 * machine for as long as cryptsetup runs.
+	 */
+	if (cfg.luks) {
+		if (!luks_part[0])
+			fail("no partition to encrypt");
+		emit('N', "luksFormat %s", luks_part);
+		char *lf[] = { "cryptsetup", "luksFormat", "--type", "luks2",
+			       "--batch-mode", "--key-file=-", luks_part, NULL };
+		if (run_stdin(lf, cfg.luks_pass))
+			fail("cryptsetup luksFormat failed");
+
+		emit('N', "opening %s as %s", luks_part, LUKS_NAME);
+		char *lo[] = { "cryptsetup", "open", "--key-file=-", luks_part,
+			       (char *)LUKS_NAME, NULL };
+		if (run_stdin(lo, cfg.luks_pass))
+			fail("cryptsetup open failed");
+		if (!cfg.dry_run && !kb_path_exists(part_root))
+			fail("%s did not appear after unlocking", part_root);
+		emit('P', "0.5");
+	}
+
 	emit('N', "mkfs %s on %s", cfg.fstype, part_root);
-	char *mk[] = { "mkfs.ext4", "-F", "-L", "KDOS", part_root, NULL };
+	const Filesystem *fs = ki_fs(cfg.fstype);
+	char *mk[] = { (char *)fs->mkfs, (char *)fs->force, "-L", "KDOS",
+		       part_root, NULL };
 	must(mk);
 	emit('P', "0.6");
 
@@ -972,11 +1038,12 @@ static void do_config(void)
 	 * those locks every non-root user out of /tmp, which surfaces later as
 	 * "GIMP does not start" and costs an afternoon to trace back here. */
 	emit('N', "fstab");
+	const Filesystem *rfs = ki_fs(cfg.fstype);
 	char fst[8192] = "";
 	snprintf(fst, sizeof(fst),
 		 "# Written by the KDOS installer.\n"
-		 "UUID=%s\t/\text4\tdefaults,noatime\t0 1\n",
-		 root_uuid);
+		 "UUID=%s\t/\t%s\t%s\t0 %d\n",
+		 root_uuid, rfs->name, rfs->opts, rfs->passno);
 	if (esp_uuid[0]) {
 		char l[256];
 		snprintf(l, sizeof(l),
@@ -1048,22 +1115,47 @@ static void do_config(void)
 		emit('N', "swapfile (%ld MiB)", cfg.swap_mb);
 		char sz[32];
 		snprintf(sz, sizeof(sz), "%ldM", cfg.swap_mb);
-		if (kb_have_prog("fallocate")) {
-			char *fa[] = { "fallocate", "-l", sz, TARGET "/swapfile",
-				       NULL };
-			try_(fa);
+
+		/*
+		 * How a swapfile is made depends on the filesystem under it,
+		 * and getting it wrong does not fail here — it fails at the
+		 * next boot's `swapon -a`, with the machine simply having no
+		 * swap and nothing saying why.
+		 *
+		 * fallocate leaves unwritten extents; swapon rejects those on
+		 * xfs ("swapfile has holes"). btrfs additionally needs the file
+		 * to be NOCOW and uncompressed, which is the whole reason
+		 * `btrfs filesystem mkswapfile` exists.
+		 */
+		int mode = ki_fs(cfg.fstype)->swapfile;
+		if (mode == KI_SWAPFILE_FALLOCATE && !kb_have_prog("fallocate"))
+			mode = KI_SWAPFILE_DD;
+		if (mode == KI_SWAPFILE_BTRFS && !kb_have_prog("btrfs"))
+			mode = KI_SWAPFILE_DD;
+
+		if (mode == KI_SWAPFILE_BTRFS) {
+			char *bs[] = { "btrfs", "filesystem", "mkswapfile",
+				       "-s", sz, TARGET "/swapfile", NULL };
+			try_(bs);
 		} else {
-			char cnt[32];
-			snprintf(cnt, sizeof(cnt), "count=%ld", cfg.swap_mb);
-			char *dd[] = { "dd", "if=/dev/zero",
-				       "of=" TARGET "/swapfile", "bs=1M", cnt,
-				       NULL };
-			try_(dd);
+			if (mode == KI_SWAPFILE_FALLOCATE) {
+				char *fa[] = { "fallocate", "-l", sz,
+					       TARGET "/swapfile", NULL };
+				try_(fa);
+			} else {
+				char cnt[32];
+				snprintf(cnt, sizeof(cnt), "count=%ld",
+					 cfg.swap_mb);
+				char *dd[] = { "dd", "if=/dev/zero",
+					       "of=" TARGET "/swapfile",
+					       "bs=1M", cnt, NULL };
+				try_(dd);
+			}
+			if (!cfg.dry_run)
+				chmod(TARGET "/swapfile", 0600);
+			char *mks[] = { "mkswap", TARGET "/swapfile", NULL };
+			try_(mks);
 		}
-		if (!cfg.dry_run)
-			chmod(TARGET "/swapfile", 0600);
-		char *mks[] = { "mkswap", TARGET "/swapfile", NULL };
-		try_(mks);
 	}
 	emit('P', "1");
 }
@@ -1183,12 +1275,39 @@ static void copy_file(const char *src, const char *dst)
 
 static void do_boot(void)
 {
-	char root_uuid[64] = "";
+	char root_uuid[64] = "", esp_uuid[64] = "";
+	char crypt_opt[128] = "", slot_opt[128] = "";
 	Part p;
 
 	resolve_parts();
 	probe_part(part_root, &p);
 	kb_strlcpy(root_uuid, p.uuid, sizeof(root_uuid));
+	if (part_esp[0]) {
+		Part ep;
+		probe_part(part_esp, &ep);
+		kb_strlcpy(esp_uuid, ep.uuid, sizeof(esp_uuid));
+		if (esp_uuid[0])
+			snprintf(slot_opt, sizeof(slot_opt),
+				 "bootstate=UUID=%s ", esp_uuid);
+	}
+
+	/*
+	 * Two UUIDs, and confusing them is the whole trap: `root=` names the
+	 * FILESYSTEM inside the container, `cryptdevice=` names the container
+	 * itself. The filesystem's UUID does not exist until the container is
+	 * open, which is why the initramfs unlocks first and looks second.
+	 */
+	if (cfg.luks && luks_part[0]) {
+		Part lp;
+		probe_part(luks_part, &lp);
+		if (lp.uuid[0])
+			snprintf(crypt_opt, sizeof(crypt_opt),
+				 "cryptdevice=UUID=%s:%s ", lp.uuid, LUKS_NAME);
+		else if (!cfg.dry_run)
+			fail("cannot read the LUKS UUID back from %s",
+			     luks_part);
+		logf_("LUKS UUID %s", lp.uuid);
+	}
 
 	const char *refind = "/usr/share/refind";
 	if (!kb_path_exists(refind))
@@ -1243,16 +1362,41 @@ static void do_boot(void)
 	   "menuentry \"KDOS\" {\n"
 	   "    loader /EFI/kdos/vmlinuz\n"
 	   "    initrd /EFI/kdos/initramfs.cpio.gz\n"
-	   "    options \"root=UUID=%s rw console=tty0 quiet loglevel=3\"\n"
+	   "    options \"%s%sroot=UUID=%s rw console=tty0 quiet loglevel=3\"\n"
 	   "%s"
 	   "    submenuentry \"Verbose boot\" {\n"
-	   "        options \"root=UUID=%s rw console=tty0 loglevel=7\"\n"
+	   "        options \"%s%sroot=UUID=%s rw console=tty0 loglevel=7\"\n"
 	   "    }\n"
 	   "    submenuentry \"Single user\" {\n"
-	   "        options \"root=UUID=%s rw console=tty0 loglevel=7 single\"\n"
+	   "        options \"%s%sroot=UUID=%s rw console=tty0 loglevel=7 single\"\n"
 	   "    }\n"
 	   "}\n",
-	   root_uuid, icon, root_uuid, root_uuid);
+	   slot_opt, crypt_opt, root_uuid, icon, slot_opt, crypt_opt, root_uuid,
+	   slot_opt, crypt_opt, root_uuid);
+
+	/*
+	 * The initial boot state, so the machine starts life as slot A with
+	 * nothing to roll back to. An updater that installs into the other
+	 * partition later fills in slot_b and calls `kdos-bootctl try b`; the
+	 * initramfs already knows how to count and roll back either way.
+	 *
+	 * Written straight rather than through kdos-bootctl: this runs from the
+	 * live image against a target at /mnt, and the tool's default path is
+	 * the RUNNING system's ESP. One file, four lines, and the format is in
+	 * bootctl.c.
+	 */
+	if (esp_uuid[0]) {
+		mkpath(TARGET "/boot/efi/EFI/kdos");
+		wr("/boot/efi/EFI/kdos/bootstate",
+		   "# KDOS boot state. Written by the installer; maintained by\n"
+		   "# kdos-bootctl.\n"
+		   "slot_a   = %s\n"
+		   "slot_b   = \n"
+		   "active   = a\n"
+		   "try      = \n"
+		   "attempts = 0\n",
+		   root_uuid);
+	}
 
 	/* Fallback path for firmware that ignores everything but BOOTX64. */
 	wr("/boot/efi/EFI/BOOT/refind.conf",
@@ -1261,9 +1405,9 @@ static void do_boot(void)
 	/* And the auto-detection file, for anyone who later drops a kernel in
 	 * /boot and expects rEFInd to find it the usual way. */
 	wr("/boot/refind_linux.conf",
-	   "\"KDOS\"          \"root=UUID=%s rw quiet loglevel=3 initrd=boot/initramfs.cpio.gz\"\n"
-	   "\"KDOS verbose\"  \"root=UUID=%s rw loglevel=7 initrd=boot/initramfs.cpio.gz\"\n",
-	   root_uuid, root_uuid);
+	   "\"KDOS\"          \"%sroot=UUID=%s rw quiet loglevel=3 initrd=boot/initramfs.cpio.gz\"\n"
+	   "\"KDOS verbose\"  \"%sroot=UUID=%s rw loglevel=7 initrd=boot/initramfs.cpio.gz\"\n",
+	   crypt_opt, root_uuid, crypt_opt, root_uuid);
 
 	if (kb_have_prog("efibootmgr") && ki_sys.uefi) {
 		char disk[64];
