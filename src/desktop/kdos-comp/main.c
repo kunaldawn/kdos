@@ -17,11 +17,36 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "kdos-comp.h"
 
 /* ── spawning ──────────────────────────────────────────────────────────── */
+
+/*
+ * Everything a child must be handed back before it execs, and both halves cost
+ * a debug cycle each:
+ *
+ * - **The signal MASK survives exec.** `wl_event_loop_add_signal` blocks the
+ *   signal it watches — that is how it turns it into a signalfd event — so
+ *   kdos-comp runs with SIGHUP, SIGINT and SIGTERM blocked and EVERY child it
+ *   spawned inherited the block. Measured: `kdos theme amber` SIGHUPs
+ *   kdos-shell to retint the panel live, the signal was never delivered, and
+ *   the accent switch silently did nothing to the running session. `kill` on a
+ *   launcher-started app did nothing either.
+ * - **SIG_IGN survives exec too** (SIG_DFL and handlers do not). The
+ *   compositor ignores SIGPIPE so a dead client cannot kill it; a shell that
+ *   inherits that ignore never dies on a closed pipe, so `foo | head` runs foo
+ *   to completion.
+ */
+static void child_reset_signals(void)
+{
+	sigset_t none;
+	sigemptyset(&none);
+	sigprocmask(SIG_SETMASK, &none, NULL);
+	signal(SIGPIPE, SIG_DFL);
+}
 
 void kc_spawn(const char *const *argv)
 {
@@ -33,12 +58,85 @@ void kc_spawn(const char *const *argv)
 		 * intermediate exits immediately and init adopts the child. */
 		if (fork() == 0) {
 			setsid();
+			child_reset_signals();
 			execvp(argv[0], (char *const *)argv);
 			_exit(127);
 		}
 		_exit(0);
 	}
 	waitpid(p, NULL, 0);
+}
+
+/*
+ * ── supervising the startup children ───────────────────────────────────────
+ *
+ * kc_spawn double-forks so the compositor never reaps, which is right for a
+ * terminal a keybinding opened and wrong for the SHELL: kdos-shell draws the
+ * panel, the window list and the launcher, and kdos-notifyd owns
+ * org.freedesktop.Notifications. When one of those exits the session keeps
+ * running with no chrome and no way to get any back except a keybinding the
+ * user has to already know — measured in QEMU, where kdos-notifyd was gone by
+ * the time anything asked it for a notification and nothing said so.
+ *
+ * So startup entries are spawned with ONE fork, their pid is kept, and SIGCHLD
+ * arrives through the event loop like every other event. A child that keeps
+ * dying is not respawned forever: RESPAWN_MAX failures inside RESPAWN_WINDOW_S
+ * stop it, because a crash loop that repaints the screen sixty times a second
+ * is worse than a missing panel and hides the log line that explains it.
+ */
+#define RESPAWN_MAX	  5
+#define RESPAWN_WINDOW_S  30
+
+static void spawn_startup_one(struct kc_server *s, int i)
+{
+	pid_t p = fork();
+	if (p < 0) {
+		wlr_log(WLR_ERROR, "cannot fork for %s", s->startup[i][0]);
+		return;
+	}
+	if (p == 0) {
+		setsid();
+		child_reset_signals();
+		execvp(s->startup[i][0], s->startup[i]);
+		_exit(127);
+	}
+	s->startup_pid[i] = p;
+}
+
+static int handle_sigchld(int sig, void *data)
+{
+	struct kc_server *s = data;
+	pid_t p;
+	int st;
+	(void)sig;
+
+	while ((p = waitpid(-1, &st, WNOHANG)) > 0) {
+		for (int i = 0; i < s->nstartup; i++) {
+			if (s->startup_pid[i] != p)
+				continue;
+			s->startup_pid[i] = 0;
+
+			struct timespec now;
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			if (now.tv_sec - s->startup_since[i] > RESPAWN_WINDOW_S) {
+				s->startup_since[i] = now.tv_sec;
+				s->startup_fails[i] = 0;
+			}
+			if (++s->startup_fails[i] > RESPAWN_MAX) {
+				wlr_log(WLR_ERROR,
+					"%s died %d times in %ds — not "
+					"restarting it again",
+					s->startup[i][0], s->startup_fails[i],
+					RESPAWN_WINDOW_S);
+				break;
+			}
+			wlr_log(WLR_INFO, "%s exited (status %d) — restarting",
+				s->startup[i][0], st);
+			spawn_startup_one(s, i);
+			break;
+		}
+	}
+	return 0;
 }
 
 /* ── focus ─────────────────────────────────────────────────────────────── */
@@ -82,11 +180,26 @@ static void focus_toplevel(struct kc_toplevel *t, struct wlr_surface *surface,
 	}
 	wlr_xdg_toplevel_set_activated(t->xdg_toplevel, true);
 
+	/*
+	 * The `enter` happens EITHER WAY. Skipping it when the seat has no
+	 * keyboard looks like a harmless guard and is the difference between a
+	 * desktop you can type into and one you cannot: keyboard focus is a
+	 * property of the SEAT, and without the enter the seat has no focused
+	 * surface, so `wlr_seat_keyboard_notify_key` later delivers every
+	 * keystroke to nobody. Compositor bindings still fire — they read the
+	 * device event before the seat is involved — so the symptom is a
+	 * session where Super+Return opens a terminal that then ignores the
+	 * keyboard entirely. lock.c has always had both branches; this one
+	 * had only the first.
+	 */
 	struct wlr_keyboard *kb = wlr_seat_get_keyboard(s->seat);
 	if (kb)
 		wlr_seat_keyboard_notify_enter(s->seat,
 			t->xdg_toplevel->base->surface, kb->keycodes,
 			kb->num_keycodes, &kb->modifiers);
+	else
+		wlr_seat_keyboard_notify_enter(s->seat,
+			t->xdg_toplevel->base->surface, NULL, 0, NULL);
 
 	/* The taskbar highlights the focused entry, so a focus change is a
 	 * change to BOTH windows' reported state. */
@@ -573,14 +686,14 @@ static void snap_on_release(struct kc_server *s, struct kc_toplevel *t)
 	int snap = s->snap_px;
 	if (snap <= 0)		/* `snap_px = 0` in comp.conf turns it off */
 		return;
-	struct wlr_output *out = wlr_output_layout_output_at(s->output_layout,
-							     s->cursor->x,
-							     s->cursor->y);
-	if (!out)
-		return;
+	/*
+	 * The USABLE box, not the output's. Snapping to the output box painted a
+	 * maximised window straight over the panel — and the panel is the one
+	 * surface on this desktop that must always be reachable, because it is
+	 * where the workspaces and the clock are.
+	 */
 	struct wlr_box ob;
-	wlr_output_layout_get_box(s->output_layout, out, &ob);
-	if (wlr_box_empty(&ob))
+	if (!kc_usable_at(s, s->cursor->x, s->cursor->y, &ob))
 		return;
 
 	int left   = s->cursor->x <= ob.x + snap;
@@ -825,17 +938,75 @@ static void request_set_selection(struct wl_listener *l, void *data)
 
 /* ── xdg-shell ─────────────────────────────────────────────────────────── */
 
+/*
+ * Where a new window goes.
+ *
+ * It used to go nowhere: every toplevel mapped at the scene default of 0x0, so
+ * every window on this desktop opened in the top-left corner UNDER the panel,
+ * and a second window landed exactly on the first. Centring in the output's
+ * USABLE box fixes both — a window is never born behind the panel, and it is
+ * never off-screen either, because the clamp is against the same box.
+ *
+ * The cascade is what stops five terminals from being one terminal. It steps
+ * by CASCADE_PX and wraps after CASCADE_N, so an eleventh window is on top of
+ * the first rather than off the bottom of the screen.
+ */
+#define CASCADE_PX 28
+#define CASCADE_N  8
+
+static void place_new_window(struct kc_server *s, struct kc_toplevel *t)
+{
+	struct wlr_box u;
+	if (!kc_usable_at(s, s->cursor->x, s->cursor->y, &u))
+		return;
+
+	/* `base->geometry` is the window geometry the client last committed —
+	 * wlroots 0.20 keeps it on the surface and has no getter. It is 0x0 for
+	 * a client that has not committed one, which the size guard below is
+	 * for. */
+	struct wlr_box geo = t->xdg_toplevel->base->geometry;
+	/* A client that has not committed a size yet gets the centre of the
+	 * usable box and will grow from there; guessing a size for it would put
+	 * the window somewhere it never asked to be. */
+	int w = geo.width > 0 ? geo.width : 0;
+	int h = geo.height > 0 ? geo.height : 0;
+
+	static int step;
+	int off = (step++ % CASCADE_N) * CASCADE_PX;
+
+	int x = u.x + (u.width - w) / 2 + off;
+	int y = u.y + (u.height - h) / 2 + off;
+
+	/* Clamp last, so the cascade can never walk a window off the screen —
+	 * and clamp the top edge against the USABLE box, which is what keeps the
+	 * title bar out from under the panel. */
+	if (x + w > u.x + u.width)
+		x = u.x + u.width - w;
+	if (y + h > u.y + u.height)
+		y = u.y + u.height - h;
+	if (x < u.x)
+		x = u.x;
+	if (y < u.y)
+		y = u.y;
+
+	t->x = x;
+	t->y = y;
+	wlr_scene_node_set_position(&t->scene_tree->node, x, y);
+}
+
 static void toplevel_map(struct wl_listener *l, void *data)
 {
 	struct kc_toplevel *t = wl_container_of(l, t, map);
+	struct kc_server *s = t->server;
 	(void)data;
-	wl_list_insert(&t->server->toplevels, &t->link);
+	wl_list_insert(&s->toplevels, &t->link);
 	/* t->x/t->y are the compositor's record of where the window IS. They
 	 * start at the scene default (0,0) and must be kept in step with every
 	 * set_position, or the first drag computes its delta from a position
 	 * the window never had and the window jumps. */
 	t->x = 0;
 	t->y = 0;
+	place_new_window(s, t);
 	/* At map, not at creation: app_id is set before the first commit but a
 	 * client is free to set it later, and map is the first moment the value
 	 * is the one a shell would actually match against. */
@@ -945,13 +1116,53 @@ static void new_xdg_toplevel(struct wl_listener *l, void *data)
  * Nothing is painted yet: this milestone establishes WHO decorates. The cell
  * grid arrives with libkwl in M3, because the frames are drawn with the same
  * toolkit as everything else rather than with a second ad-hoc renderer.
+ *
+ * THE ANSWER IS DEFERRED TO THE SURFACE'S FIRST COMMIT, AND THAT IS NOT A
+ * REFINEMENT — it is the whole difference between a desktop and a compositor
+ * that aborts. A client creates its decoration object BEFORE it first commits
+ * the xdg_surface, so at `new_toplevel_decoration` time the surface is not yet
+ * `initialized`; `set_mode()` schedules a configure, and since wlroots 0.18
+ * `wlr_xdg_surface_schedule_configure()` asserts on exactly that:
+ *
+ *     Assertion failed: surface->initialized
+ *       (types/xdg_shell/wlr_xdg_surface.c: wlr_xdg_surface_schedule_configure)
+ *
+ * Answering at once killed kdos-comp the instant its FIRST client appeared —
+ * foot, launched by kdos-desktop — and took the session with it. Every client
+ * that speaks xdg-decoration did it, which is most of them. Found on the first
+ * QEMU boot of an ISO that had the desktop in it; no headless test reached it,
+ * because none of them used xdg-decoration.
  */
+static void deco_commit(struct wl_listener *l, void *data)
+{
+	struct kc_decoration *d = wl_container_of(l, d, commit);
+	(void)data;
+	if (d->deco->toplevel->base->initial_commit)
+		wlr_xdg_toplevel_decoration_v1_set_mode(d->deco,
+			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
+
+static void deco_destroy(struct wl_listener *l, void *data)
+{
+	struct kc_decoration *d = wl_container_of(l, d, destroy);
+	(void)data;
+	wl_list_remove(&d->commit.link);
+	wl_list_remove(&d->destroy.link);
+	free(d);
+}
+
 static void new_decoration(struct wl_listener *l, void *data)
 {
 	struct wlr_xdg_toplevel_decoration_v1 *deco = data;
 	(void)l;
-	wlr_xdg_toplevel_decoration_v1_set_mode(deco,
-		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	struct kc_decoration *d = calloc(1, sizeof(*d));
+	if (!d)
+		return;
+	d->deco = deco;
+	d->commit.notify = deco_commit;
+	wl_signal_add(&deco->toplevel->base->surface->events.commit, &d->commit);
+	d->destroy.notify = deco_destroy;
+	wl_signal_add(&deco->events.destroy, &d->destroy);
 }
 
 static void new_xdg_popup(struct wl_listener *l, void *data)
@@ -1086,6 +1297,13 @@ int main(int argc, char **argv)
 	 */
 	s.layer_below = wlr_scene_tree_create(&s.scene->tree);
 
+	/* The wallpaper is decoded HERE and not earlier: its scene nodes are
+	 * parented into layer_below, and kc_output_init above only registers a
+	 * listener — no output exists until the backend starts, which is further
+	 * down. Decoding after that point would show a black background on the
+	 * first output until something moved it. */
+	kc_wallpaper_init(&s);
+
 	/* One tree per workspace, all but the first disabled. Everything a
 	 * window kind has to do to gain workspaces is be parented into one of
 	 * these. */
@@ -1182,12 +1400,20 @@ int main(int argc, char **argv)
 	 * and WAYLAND_DISPLAY is exported, or the first thing it does is fail to
 	 * connect to the compositor that just started it.
 	 */
-	if (spawn_startup)
-		for (int i = 0; i < s.nstartup; i++)
-			kc_spawn((const char *const *)s.startup[i]);
+	if (spawn_startup) {
+		wl_event_loop_add_signal(wl_display_get_event_loop(s.display),
+					 SIGCHLD, handle_sigchld, &s);
+		struct timespec now;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		for (int i = 0; i < s.nstartup; i++) {
+			s.startup_since[i] = now.tv_sec;
+			spawn_startup_one(&s, i);
+		}
+	}
 
 	wl_display_run(s.display);
 
+	kc_wallpaper_free(&s);
 	kc_appid_free(&s);
 	kc_im_free(&s);
 	kc_security_free(&s);

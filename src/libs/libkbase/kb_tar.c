@@ -20,6 +20,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -84,15 +85,32 @@ static int write_full(int fd, const void *buf, size_t n)
 	return 0;
 }
 
+/* A field that does not hold a size this reader can act on. Not 0: a member
+ * whose size is unreadable must stop the walk, and 0 would be read as an empty
+ * member and step straight into the middle of its payload. */
+#define TAR_BADSIZE (-1LL)
+
 static long long from_octal(const char *s, size_t n)
 {
 	/* GNU base-256: the top bit of the first byte marks a binary size,
-	 * which is how a member over 8 GB is expressed. */
+	 * which is how a member over 8 GB is expressed.
+	 *
+	 * Accumulated UNSIGNED and refused when it will not fit. The size field
+	 * is 12 bytes, so eleven shifts of 8 overflow a long long outright —
+	 * which is undefined behaviour reachable from a corrupt archive, not
+	 * from a bug here, and the value it produced was NEGATIVE. Every
+	 * consumer below then read that as a length: `(size_t)size` in the 'L'
+	 * branch became 2^63, and the only thing between that and a 512-byte
+	 * stack buffer was the kernel refusing the read. Found by fuzzing. */
 	if ((unsigned char)s[0] & 0x80) {
-		long long v = (unsigned char)s[0] & 0x7f;
-		for (size_t i = 1; i < n; i++)
+		unsigned long long v = (unsigned char)s[0] & 0x7f;
+		for (size_t i = 1; i < n; i++) {
+			if (v > (ULLONG_MAX >> 8))
+				return TAR_BADSIZE;
 			v = (v << 8) | (unsigned char)s[i];
-		return v;
+		}
+		return v > (unsigned long long)LLONG_MAX ? TAR_BADSIZE
+							 : (long long)v;
 	}
 	long long v = 0;
 	for (size_t i = 0; i < n && s[i] >= '0' && s[i] <= '7'; i++)
@@ -162,6 +180,8 @@ int kb_tar_next(KbTarIn *t, KbTarEntry *e)
 			return 0;	/* end-of-archive block */
 
 		long long size = from_octal(h.size, sizeof(h.size));
+		if (size < 0)
+			return -1;
 		long long pad = (BLK - (size % BLK)) % BLK;
 
 		if (h.typeflag == 'L') {

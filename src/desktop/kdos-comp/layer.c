@@ -141,6 +141,35 @@ void kc_layer_arrange(struct kc_server *s)
 		arrange_output(s, o);
 }
 
+/*
+ * The one accessor for `o->usable`, because every window-positioning path has
+ * to agree with every other one. It answers with the LAYOUT box for an output
+ * whose panels have not arranged yet — a zeroed usable box would place the
+ * first window of a session at 0x0 with no size at all.
+ */
+bool kc_usable_at(struct kc_server *s, double x, double y, struct wlr_box *out)
+{
+	struct wlr_output *wo = wlr_output_layout_output_at(s->output_layout,
+							    x, y);
+	if (!wo)
+		return false;
+
+	struct wlr_box full = {0};
+	wlr_output_layout_get_box(s->output_layout, wo, &full);
+	if (wlr_box_empty(&full))
+		return false;
+
+	struct kc_output *o;
+	wl_list_for_each(o, &s->outputs, link) {
+		if (o->wlr_output != wo)
+			continue;
+		*out = wlr_box_empty(&o->usable) ? full : o->usable;
+		return true;
+	}
+	*out = full;
+	return true;
+}
+
 static void new_layer_surface(struct wl_listener *l, void *data)
 {
 	struct kc_server *s = wl_container_of(l, s, new_layer_surface);

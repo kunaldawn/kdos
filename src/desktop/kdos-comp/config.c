@@ -432,6 +432,13 @@ static void comp_conf_line(const char *key, char *value, const char *path,
 		/* 0 disables snapping. A large value would snap from the middle
 		 * of the screen, so it is capped rather than trusted. */
 		set_int(path, lineno, value, 0, 200, &s->snap_px);
+	} else if (!strcmp(key, "wallpaper")) {
+		/* A path, or the word `none`. Read here and used by
+		 * wallpaper.c; an unreadable path is reported there rather than
+		 * refused here, because the file may appear later and a config
+		 * error at login is the wrong place to say so. */
+		free(s->wallpaper);
+		s->wallpaper = strdup(value);
 	} else {
 		wlr_log(WLR_ERROR, "%s:%d: unknown key `%s`", path, lineno, key);
 	}
@@ -533,4 +540,6 @@ void kc_config_free(struct kc_server *s)
 	for (int i = 0; i < s->nstartup; i++)
 		free_argv(s->startup[i]);
 	s->nstartup = 0;
+	free(s->wallpaper);
+	s->wallpaper = NULL;
 }
