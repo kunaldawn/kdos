@@ -51,12 +51,12 @@ PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I. -I"$PORT_SRC" \
-	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkwl" \
+	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" \
 	-I"$LIBS/libkxdg" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-shell \
 	"$PORT_SRC"/*.c \
-	"$LIBS"/libkwl/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
+	"$LIBS"/libkwl/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
@@ -65,5 +65,10 @@ install -Dm755 kdos-shell "$PKG/usr/bin/kdos-shell"
 # Dispatched on its own basename, so the launcher is a link rather than a
 # second binary. `bind Super+D = spawn kdos-launcher` in comp.conf reaches it.
 ln -s kdos-shell "$PKG/usr/bin/kdos-launcher"
+ln -s kdos-shell "$PKG/usr/bin/kdos-menu"
+ln -s kdos-shell "$PKG/usr/bin/kdos-desk"
+ln -s kdos-shell "$PKG/usr/bin/kdos-pick"
+ln -s kdos-shell "$PKG/usr/bin/kdos-ascii"
+ln -s kdos-shell "$PKG/usr/bin/kdos-run"
 ln -s kdos-shell "$PKG/usr/bin/kdos-notifyd"
 ln -s kdos-shell "$PKG/usr/bin/kdos-osd"

@@ -97,11 +97,14 @@ $CC $STD $WARN $INC -Isrc/tools/kdos-portup -o "$OUT/kdos-portup" \
 echo "  kdos-portup"
 "$OUT/kdos-portup" --selftest --fixture testing/fixtures/portup
 
-# libkwl is libktui's Wayland backend and is the ONE library here with real
-# external dependencies — which is the whole reason it is a separate archive
-# from libktui, whose zero-`-l` property keeps kinstall in phase 1. Skipped
-# rather than failed when they are absent: this script's contract is that it
-# runs on a bare host with no container and no network.
+# libkcell and libkwl are the TWO libraries here with real external
+# dependencies — libkcell is the glyph cache and the cell painter, libkwl is
+# the Wayland half built on it. They are separate archives from libktui, whose
+# zero-`-l` property keeps kinstall in phase 1, and separate from EACH OTHER
+# because kdos-comp links libkcell to paint window frames and must not link a
+# client library to do it. Skipped rather than failed when the deps are absent:
+# this script's contract is that it runs on a bare host with no container and
+# no network.
 if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
    [ -n "$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)" ]; then
     PROTO="$OUT/proto"
@@ -112,6 +115,9 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
     if [ -n "$LS" ]; then
         tar xf "$LS" -C "$PROTO" --strip-components=2 \
             "$(tar tf "$LS" | grep 'protocol/wlr-layer-shell-unstable-v1.xml$' | head -1)"
+        tar xf "$LS" -C "$PROTO" --strip-components=2 \
+            "$(tar tf "$LS" | grep 'protocol/wlr-screencopy-unstable-v1.xml$' | head -1)" \
+            2>/dev/null || true
         "$SCANNER" client-header "$PROTO/wlr-layer-shell-unstable-v1.xml" \
             "$PROTO/wlr-layer-shell-unstable-v1-client-protocol.h"
         "$SCANNER" client-header "$XDG" "$PROTO/xdg-shell-client-protocol.h"
@@ -121,14 +127,40 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" client-header \
             "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/ext-session-lock/ext-session-lock-v1.xml" \
             "$PROTO/ext-session-lock-v1-client-protocol.h"
-        $CC $STD $WARN -c -I"$PROTO" -Isrc/libs/libkbase -Isrc/libs/libktui \
-            -Isrc/libs/libkcolor -Isrc/libs/libkwl \
+        KCINC="-Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
+-Isrc/libs/libkcell -Isrc/libs/libkwl"
+        # libkcell first and on its OWN: it must compile with no Wayland
+        # header anywhere on the command line, because that is the property
+        # that lets kdos-comp link it. Handing it $PROTO would let a stray
+        # include pass here and fail in the compositor's build.
+        for f in src/libs/libkcell/*.c; do
+            $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+                -Isrc/libs/libkcolor -Isrc/libs/libkcell \
+                $(pkg-config --cflags fcft pixman-1) \
+                -c -o "$OUT/$(basename "$f" .c).o" "$f"
+        done
+        echo "  libkcell"
+
+        # The ASCII engine's two claims, run rather than compiled: a
+        # black-to-white ramp must be monotonic in ink, and a vertical bar and
+        # a horizontal one must pick DIFFERENT glyphs. The second is the whole
+        # difference from aalib, which picks by luminance alone and cannot tell
+        # them apart. Its own binary because selftest.c links no fcft — adding
+        # one would put a real `-l` on the suite that proves libktui has none.
+        $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell \
+            $(pkg-config --cflags fcft pixman-1) \
+            -o "$OUT/asciicheck" testing/fixtures/ascii/asciicheck.c \
+            src/libs/libkcell/*.c src/libs/libktui/ktui_theme.c \
+            $(pkg-config --libs fcft pixman-1)
+        "$OUT/asciicheck" >/dev/null
+        echo "  asciicheck (ramp monotonic, orientation distinguished)"
+
+        $CC $STD $WARN -c -I"$PROTO" $KCINC \
             $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
             -o "$OUT/kwl.o" src/libs/libkwl/kwl.c
-        for f in src/libs/libkwl/kwl_font.c src/libs/libkwl/kwl_paint.c \
-                 src/libs/libkwl/kwl_key.c; do
-            $CC $STD $WARN -c -I"$PROTO" -Isrc/libs/libkbase -Isrc/libs/libktui \
-                -Isrc/libs/libkcolor -Isrc/libs/libkwl \
+        for f in src/libs/libkwl/kwl_key.c; do
+            $CC $STD $WARN -c -I"$PROTO" $KCINC \
                 $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
                 -o "$OUT/$(basename "$f" .c).o" "$f"
         done
@@ -137,10 +169,34 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # kdos-lock's client half draws through exactly the headers just
         # generated, so it costs one more compile and is the only gate it has.
         $CC $STD $WARN -c -I"$PROTO" -Isrc/libs/libkbase -Isrc/libs/libktui \
-            -Isrc/libs/libkcolor -Isrc/libs/libkwl \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkwl \
             $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
             -o "$OUT/kdos-lock.o" src/desktop/kdos-lock/main.c
         echo "  kdos-lock"
+
+        # decocheck is the window frames' test and it is a second PROCESS — a
+        # frame is a conversation between a client and a compositor, and a mock
+        # of either side would pass while the real pair failed. Running it needs
+        # a compositor; compiling it here is what stops it rotting.
+        if [ -f "$PROTO/wlr-screencopy-unstable-v1.xml" ]; then
+            "$SCANNER" client-header \
+                "$PROTO/wlr-screencopy-unstable-v1.xml" \
+                "$PROTO/wlr-screencopy-unstable-v1-client-protocol.h"
+            # xdg-decoration: decocheck asks for server-side mode, which is the
+            # branch that reached an ISO untested because the client did not.
+            "$SCANNER" client-header \
+                "$(pkg-config --variable=pkgdatadir wayland-protocols)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
+                "$PROTO/xdg-decoration-unstable-v1-client-protocol.h"
+            # NOT masked behind the xml check: a decocheck that stops compiling
+            # is a real failure, and reporting it as "skipped" is how a test
+            # quietly stops being one.
+            $CC $STD $WARN -Wno-missing-field-initializers -c -I"$PROTO" \
+                -o "$OUT/decocheck.o" testing/fixtures/deco/decocheck.c \
+                $(pkg-config --cflags wayland-client)
+            echo "  decocheck"
+        else
+            echo "  decocheck (skipped — no screencopy xml in the tarball)"
+        fi
 
         # kdos-shell wants three more libraries and two more protocols than
         # libkwl does — basu for the tray's bus, alsa for the volume OSD and
@@ -160,7 +216,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
             for f in src/desktop/kdos-shell/*.c; do
                 $CC $STD $WARN -c -I"$PROTO" -Isrc/desktop/kdos-shell \
                     -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
-                    -Isrc/libs/libkwl -Isrc/libs/libkxdg \
+                    -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkxdg \
                     $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client \
                                  basu alsa libpipewire-0.3) \
                     -o "$OUT/shell-$(basename "$f" .c).o" "$f"
@@ -202,7 +258,8 @@ if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 2>/dev/nu
     # gate that ever sees kdos-comp, and its recipe has been built exactly once.
     for f in src/desktop/kdos-comp/*.c; do
         $CC $STD $WARN -c -DWLR_USE_UNSTABLE -I"$CP" -Isrc/desktop/kdos-comp \
-            -Isrc/libs/libkcolor -Isrc/libs/libkbase \
+            -Isrc/libs/libkcolor -Isrc/libs/libkbase -Isrc/libs/libktui \
+            -Isrc/libs/libkcell \
             $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server pixman-1) \
             -o "$OUT/comp-$(basename "$f" .c).o" "$f"
     done

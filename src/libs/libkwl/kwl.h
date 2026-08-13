@@ -43,6 +43,14 @@ enum kwl_role {
 	KWL_ROLE_PANEL,		/* layer-shell, anchored, exclusive zone   */
 	KWL_ROLE_OVERLAY,	/* layer-shell, no exclusive zone          */
 	/*
+	 * The desktop itself: the BACKGROUND layer, anchored on all four edges,
+	 * no exclusive zone. Above the wallpaper the compositor draws and below
+	 * every window. Reserving space for it would shrink the usable box and
+	 * every maximised window with it, which is why it is its own role
+	 * rather than a panel with the zone turned off.
+	 */
+	KWL_ROLE_BACKGROUND,
+	/*
 	 * ext-session-lock-v1: a surface the compositor keeps on screen even if
 	 * this process dies, which is the entire reason a lock screen is not
 	 * just a fullscreen window.

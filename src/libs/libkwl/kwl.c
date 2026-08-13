@@ -125,8 +125,8 @@ void kwl_pump(void)
 	if (wl_display_flush(K.display) < 0 && errno != EAGAIN)
 		K.closed = 1;
 }
-int kwl_cell_w(void) { return kwl_font_cell_w(); }
-int kwl_cell_h(void) { return kwl_font_cell_h(); }
+int kwl_cell_w(void) { return kcell_w(); }
+int kwl_cell_h(void) { return kcell_h(); }
 
 static void push_event(const KtuiEvent *ev)
 {
@@ -240,7 +240,19 @@ static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		full = 1;
 	}
 
-	kwl_paint(b->img, cur, prev, w, h, full);
+	/*
+	 * Scale 1: a client's surface is sized in the compositor's pixels and
+	 * libkwl does not do HiDPI — wl_surface.set_buffer_scale would need the
+	 * cell buffer resized to match, and every layer-shell consumer here
+	 * asks for a size in CELLS already. The compositor-side consumer is the
+	 * one that scales, because it is the one that knows which output a
+	 * frame is on.
+	 *
+	 * b->w/b->h rather than w*cell_w: the shm buffer is what the compositor
+	 * will read, and any of it the grid does not reach must be KT_BG rather
+	 * than whatever the last frame left.
+	 */
+	kcell_paint(b->img, cur, prev, w, h, full, 1, b->w, b->h);
 
 	wl_surface_attach(K.surface, b->wl, 0, 0);
 	wl_surface_damage_buffer(K.surface, 0, 0, K.px_w, K.px_h);
@@ -417,7 +429,7 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t time,
 	(void)d;
 	(void)p;
 	(void)time;
-	int cw = kwl_font_cell_w(), ch = kwl_font_cell_h();
+	int cw = kcell_w(), ch = kcell_h();
 	if (cw <= 0 || ch <= 0)
 		return;
 	K.ptr_cx = wl_fixed_to_int(sx) / cw;
@@ -529,7 +541,7 @@ static void resize_cells(int px_w, int px_h)
 		return;
 	K.px_w = px_w;
 	K.px_h = px_h;
-	int cw = kwl_font_cell_w(), ch = kwl_font_cell_h();
+	int cw = kcell_w(), ch = kcell_h();
 	K.cols = cw > 0 ? px_w / cw : 0;
 	K.rows = ch > 0 ? px_h / ch : 0;
 	if (K.cols < 1)
@@ -667,18 +679,51 @@ static int make_panel(void)
 		return -1;
 
 	int vertical = K.cfg.edge == KWL_EDGE_TOP || K.cfg.edge == KWL_EDGE_BOTTOM;
-	int thickness = K.cfg.cells * kwl_font_cell_h();
+	int thickness = K.cfg.cells * kcell_h();
 	if (!vertical)
-		thickness = K.cfg.cells * kwl_font_cell_w();
+		thickness = K.cfg.cells * kcell_w();
+
+	uint32_t layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+	if (K.cfg.role == KWL_ROLE_OVERLAY)
+		layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+	else if (K.cfg.role == KWL_ROLE_BACKGROUND)
+		layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
 
 	K.layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-		K.layer_shell, K.surface, NULL,
-		K.cfg.role == KWL_ROLE_OVERLAY
-			? ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY
-			: ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+		K.layer_shell, K.surface, NULL, layer,
 		K.cfg.app_id ? K.cfg.app_id : "kdos");
 	if (!K.layer_surface)
 		return -1;
+
+	if (K.cfg.role == KWL_ROLE_BACKGROUND) {
+		/*
+		 * Anchored on ALL FOUR edges with a size of 0x0, which is how
+		 * layer-shell spells "the whole output": a surface anchored on
+		 * both ends of an axis is stretched to fill it, and 0 means
+		 * "you decide" rather than "no pixels".
+		 *
+		 * NO EXCLUSIVE ZONE, and that is the point of the role. The
+		 * desktop is what windows sit ON — reserving space for it would
+		 * shrink kc_usable_at()'s box and with it every maximised
+		 * window, which is the opposite of what a background is for.
+		 */
+		zwlr_layer_surface_v1_set_anchor(
+			K.layer_surface,
+			ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+			ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+			ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+			ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+		zwlr_layer_surface_v1_set_size(K.layer_surface, 0, 0);
+		zwlr_layer_surface_v1_set_exclusive_zone(K.layer_surface, 0);
+		if (K.cfg.keyboard)
+			zwlr_layer_surface_v1_set_keyboard_interactivity(
+				K.layer_surface,
+				ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND);
+		zwlr_layer_surface_v1_add_listener(K.layer_surface,
+						   &layer_listener, NULL);
+		wl_surface_commit(K.surface);
+		return 0;
+	}
 
 	if (K.cfg.role == KWL_ROLE_OVERLAY) {
 		/*
@@ -704,8 +749,8 @@ static int make_panel(void)
 							 0, 0);
 		}
 		zwlr_layer_surface_v1_set_size(K.layer_surface,
-					       (uint32_t)(cols * kwl_font_cell_w()),
-					       (uint32_t)(rows * kwl_font_cell_h()));
+					       (uint32_t)(cols * kcell_w()),
+					       (uint32_t)(rows * kcell_h()));
 	} else {
 		zwlr_layer_surface_v1_set_anchor(K.layer_surface, ANCHOR[K.cfg.edge]);
 		zwlr_layer_surface_v1_set_size(K.layer_surface,
@@ -787,7 +832,7 @@ static void extra_paint(int i)
 	if (buffer_alloc(&K.extra[i].buf, K.extra[i].w, K.extra[i].h) < 0)
 		return;
 
-	pixman_color_t bg = kwl_slot_color(KT_BG);
+	pixman_color_t bg = kcell_slot_color(KT_BG);
 	pixman_image_t *fill = pixman_image_create_solid_fill(&bg);
 	if (fill) {
 		pixman_image_composite32(PIXMAN_OP_SRC, fill, NULL,
@@ -899,7 +944,7 @@ static int make_toplevel(void)
 	 */
 	if (K.cfg.app_id)
 		xdg_toplevel_set_app_id(K.xdg_toplevel, K.cfg.app_id);
-	resize_cells(80 * kwl_font_cell_w(), 24 * kwl_font_cell_h());
+	resize_cells(80 * kcell_w(), 24 * kcell_h());
 	return 0;
 }
 
@@ -908,7 +953,7 @@ int kwl_init(const KwlConfig *cfg)
 	memset(&K, 0, sizeof(K));
 	K.cfg = *cfg;
 
-	if (kwl_font_load(cfg->font) != 0)
+	if (kcell_font_load(cfg->font) != 0)
 		return -1;
 
 	K.display = wl_display_connect(NULL);
@@ -987,7 +1032,7 @@ fail_display:
 	wl_display_disconnect(K.display);
 	K.display = NULL;
 fail_font:
-	kwl_font_free();
+	kcell_font_free();
 	return -1;
 }
 
@@ -1000,8 +1045,8 @@ void kwl_overlay_resize(int cols, int rows)
 	if (rows < 1)
 		rows = 1;
 	zwlr_layer_surface_v1_set_size(K.layer_surface,
-				       (uint32_t)(cols * kwl_font_cell_w()),
-				       (uint32_t)(rows * kwl_font_cell_h()));
+				       (uint32_t)(cols * kcell_w()),
+				       (uint32_t)(rows * kcell_h()));
 	/* The commit is what makes the compositor send a configure back; without
 	 * it the request sits in the queue and nothing on screen changes. */
 	wl_surface_commit(K.surface);
@@ -1030,6 +1075,6 @@ void kwl_shutdown(void)
 		wl_display_flush(K.display);
 		wl_display_disconnect(K.display);
 	}
-	kwl_font_free();
+	kcell_font_free();
 	memset(&K, 0, sizeof(K));
 }

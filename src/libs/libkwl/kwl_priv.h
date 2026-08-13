@@ -18,25 +18,20 @@
 #include <fcft/fcft.h>
 #include <pixman.h>
 
+#include "kcell.h"
 #include "kwl.h"
 
-/* Glyphs */
-int kwl_font_load(const char *name);
-void kwl_font_free(void);
-int kwl_font_cell_w(void);
-int kwl_font_cell_h(void);
-int kwl_font_ascent(void);
-const struct fcft_glyph *kwl_glyph(uint32_t cp);
+/*
+ * The glyph cache and the cell painter are libkcell's now — kdos-comp needs
+ * them to draw window frames into buffers of its own, in the middle of the
+ * scene graph, and a client library cannot be linked from there. What is left
+ * in this archive is exactly the Wayland half.
+ */
 
 /* Keys */
 #include <xkbcommon/xkbcommon.h>
 int kwl_keysym_to_ktui(xkb_keysym_t sym, struct xkb_state *state,
 		       xkb_keycode_t code);
-
-/* Paint */
-pixman_color_t kwl_slot_color(int slot);	/* one of libktui's eight */
-void kwl_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev, int w,
-	       int h, int full);
 
 /* The shm buffer the cells are painted into. */
 typedef struct {
