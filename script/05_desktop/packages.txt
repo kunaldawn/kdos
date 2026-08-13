@@ -65,3 +65,11 @@ fcitx5-hangul
 # wlr-screencopy globals into a ScreenCast session. Screenshot comes with it.
 # Phase 4 installs the main portal; this is the half that knows about wlroots.
 xdg-desktop-portal-wlr
+
+# The FileChooser portal, which nothing served before this: xdg-desktop-portal-wlr
+# does ScreenCast and Screenshot only, and the backend every other desktop falls
+# back to is xdg-desktop-portal-gtk — impossible here, because there is no GTK on
+# the host. Until this existed, every boxed app's Open and Save dialog was its
+# own toolkit's, which put a rounded antialiased GTK dialog in the middle of a
+# text-mode desktop. Settings comes with it and hands out the accent.
+xdg-desktop-portal-kdos

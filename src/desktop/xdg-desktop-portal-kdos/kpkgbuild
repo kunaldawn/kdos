@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = xdg-desktop-portal-kdos
+version     = 0.1.0
+release     = 1
+source      =
+description = FileChooser and Settings portal backend for KDOS
+homepage    = https://github.com/kunaldawn/kdos
+depends     = basu xdg-desktop-portal kdos-shell

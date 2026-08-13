@@ -26,7 +26,7 @@
 # and puts it in the scene itself rather than shipping a separate layer-shell
 # client for it — libkwl paints cells, so a wallpaper client would be the one
 # program in this desktop that is not a character grid.
-PKGCFG="wlroots-0.20 wayland-server wayland-client xkbcommon pixman-1 glesv2 egl libpng libdrm"
+PKGCFG="wlroots-0.20 wayland-server wayland-client xkbcommon pixman-1 glesv2 egl libpng libdrm fcft"
 
 # libkcolor: the phosphor the shader tints with is the same KCOL_SCHEMES entry
 # the boot splash, the TTY palette, the icons and the GTK stylesheet expand.
@@ -47,8 +47,10 @@ SCANNER="$(pkg-config --variable=wayland_scanner wayland-scanner)"
 gcc $CFLAGS -O2 -Wall -Wextra \
 	-DWLR_USE_UNSTABLE -D_GNU_SOURCE \
 	-I. -I"$LIBS/libkcolor" -I"$LIBS/libkbase" \
+	-I"$LIBS/libktui" -I"$LIBS/libkcell" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-comp "$PORT_SRC"/*.c "$LIBS"/libkcolor/*.c "$LIBS"/libkbase/*.c \
+	"$LIBS"/libktui/*.c "$LIBS"/libkcell/*.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
 
 install -Dm755 kdos-comp "$PKG/usr/bin/kdos-comp"

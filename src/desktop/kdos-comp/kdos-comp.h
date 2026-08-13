@@ -38,10 +38,14 @@
 #include <sys/types.h>
 #include <time.h>
 
+#include <pixman.h>
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
 #include <wlr/backend/session.h>
 #include <wlr/render/allocator.h>
+/* struct kc_cellbuf embeds a wlr_buffer, so the full definition is needed here
+ * rather than a forward declaration. */
+#include <wlr/types/wlr_buffer.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
@@ -53,6 +57,10 @@
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_primary_selection.h>
+#include <wlr/types/wlr_primary_selection_v1.h>
+#include <wlr/types/wlr_cursor_shape_v1.h>
+#include <wlr/types/wlr_xdg_activation_v1.h>
 #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_ext_workspace_v1.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
@@ -76,6 +84,10 @@
 #include <wlr/xwayland/xwayland.h>
 #include <wlr/version.h>
 #include <xkbcommon/xkbcommon.h>
+
+/* KtuiCell — struct kc_popup holds a grid of them. libktui links nothing but
+ * musl, so this costs the compositor no dependency. */
+#include "ktui.h"
 
 enum kc_cursor_mode { KC_CURSOR_PASSTHROUGH = 0, KC_CURSOR_MOVE, KC_CURSOR_RESIZE };
 
@@ -107,6 +119,17 @@ enum kc_action {
 	KC_ACT_WORKSPACE,
 	KC_ACT_MOVE_TO_WORKSPACE,
 	KC_ACT_LOCK,
+	/* The keyboard half of the window frame — every titlebar control has
+	 * one, because a CSD window has no titlebar to aim at. */
+	KC_ACT_MAXIMIZE,
+	KC_ACT_FULLSCREEN,
+	KC_ACT_SHADE,
+	KC_ACT_MINIMIZE,
+	/* Modal, arrow-driven, ended by Enter or Escape — for the window that
+	 * has been dragged off the screen and the machine with no pointer. */
+	KC_ACT_MOVE_KB,
+	KC_ACT_RESIZE_KB,
+	KC_ACT_ASCII,
 };
 
 /*
@@ -232,6 +255,12 @@ struct kc_server {
 	int crt_intensity, crt_scan, crt_curve;
 	struct kc_crt_gl *crt_gl;
 
+	/* Super+A: the whole screen as characters (ascii.c). Off by default and
+	 * built on first use — most sessions never ask for it. */
+	struct kc_ascii *ascii;
+	bool ascii_on;
+	bool ascii_mono;		/* `ascii_color = accent` */
+
 	/* Frame timing, reported on $XDG_RUNTIME_DIR/kdos-frames.sock — the
 	 * compositor's half of stutter attribution (frames.c). Opaque: nothing
 	 * outside that file needs its shape. */
@@ -264,6 +293,23 @@ struct kc_server {
 	int32_t repeat_rate, repeat_delay;
 	int snap_px;
 
+	/*
+	 * The cell-grid window frames (deco.c).
+	 *
+	 * `deco_font` is asked for by name and is Terminus by default, which is
+	 * the same rasterisation tty1 and the boot splash use — the whole point
+	 * of a bitmap font here rather than a nicer-looking scalable one.
+	 * `deco_scale` of 0 means follow each OUTPUT's scale, which is what a
+	 * 4K panel beside a 1080p one needs.
+	 */
+	bool deco_frames;
+	char *deco_font;
+	int deco_scale;
+	/* app_ids that draw their own titlebar without ever saying so over
+	 * xdg-decoration. A `*` suffix matches a prefix. */
+	char **csd_apps;
+	int ncsd_apps;
+
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
 	struct wl_listener cursor_motion;
@@ -283,6 +329,22 @@ struct kc_server {
 	 * one is running the pointer belongs to the WM, not to any client. */
 	enum kc_cursor_mode cursor_mode;
 	struct kc_toplevel *grabbed;
+	/* Where an edge-drag would put the window, shown while the drag is
+	 * still running. Created on the first drag that needs it. */
+	struct wlr_scene_rect *snap_rect;
+	/* The KEYBOARD move/resize grab (Alt+F7 / Alt+F8), which is modal
+	 * rather than a drag: it owns the arrow keys until Enter or Escape, and
+	 * Escape puts the window back where it started. */
+	struct kc_toplevel *kbgrab;
+	bool kbgrab_resize;
+	struct wlr_box kbgrab_from;
+
+
+	/* The window menu and the alt-tab switcher (cellui.c). */
+	struct kc_popup *menu;
+	struct kc_toplevel *menu_for;
+	int menu_sel;
+	struct kc_popup *switcher;
 	double grab_x, grab_y;		/* cursor at grab time */
 	struct wlr_box grab_geo;	/* window box at grab time */
 	uint32_t resize_edges;
@@ -291,6 +353,14 @@ struct kc_server {
 	struct wl_listener new_input;
 	struct wl_listener request_cursor;
 	struct wl_listener request_set_selection;
+	/* Middle-click paste, one pointer image for the desktop, and "raise my
+	 * other window". All three were missing globals that foot names on
+	 * startup; the first is why middle-click paste worked nowhere. */
+	struct wl_listener request_set_primary;
+	struct wlr_cursor_shape_manager_v1 *cursor_shape_mgr;
+	struct wl_listener request_cursor_shape;
+	struct wlr_xdg_activation_v1 *activation;
+	struct wl_listener request_activate;
 	struct wl_list keyboards;
 };
 
@@ -323,6 +393,9 @@ struct kc_output {
 struct kc_decoration {
 	struct wlr_xdg_toplevel_decoration_v1 *deco;
 	struct wl_listener commit;
+	/* The client answering. An explicit CLIENT_SIDE is the ONLY thing that
+	 * makes a window unframed by its own request — silence is framed. */
+	struct wl_listener mode;
 	struct wl_listener destroy;
 };
 
@@ -343,10 +416,35 @@ struct kc_toplevel {
 	struct wlr_ext_image_capture_source_v1 *capture_src;
 	struct wl_listener capture_src_destroy;
 	int x, y;			/* scene position, ours to own */
+
+	/*
+	 * The client's own subtree, INSIDE scene_tree rather than being it.
+	 * scene_tree is ours and holds the frame and the shadow beside this;
+	 * separating them is what lets a shade disable the client's pixels
+	 * while the titlebar stays on screen, and what keeps the frame moving
+	 * and raising with the window for free.
+	 */
+	struct wlr_scene_tree *surface_tree;
+	/* The cell-grid frame (deco.c). NULL when the client decorates itself
+	 * or frames are off. */
+	struct kc_deco *deco;
+	/* The client asked for client-side decorations, or its app_id is in
+	 * comp.conf's `csd_apps`. Frames are never forced onto it. */
+	bool csd;
+
+	bool maximized, fullscreen, shaded, minimized;
+	/* Where to go back to. Written ONCE on the way into maximise or
+	 * fullscreen — writing it again while already there is how a window
+	 * becomes impossible to restore. */
+	struct wlr_box saved;
+
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener commit;
 	struct wl_listener destroy;
+	struct wl_listener request_maximize;
+	struct wl_listener request_fullscreen;
+	struct wl_listener request_minimize;
 };
 
 /* A layer-shell surface: a panel, a wallpaper, an OSD or a lock screen. */
@@ -541,6 +639,22 @@ void kc_crt_output_free(struct kc_output *o);
 void kc_crt_free(struct kc_server *s);
 
 /*
+ * The ASCII effect (ascii.c) — Super+A.
+ *
+ * The algorithm is libkcell's; this is the same table and the same arithmetic
+ * on the GPU. `kc_ascii_render` returns false when it declined the frame, in
+ * which case the caller carries on with the untouched composite: a renderer
+ * that cannot do it is a desktop without the effect, never a black screen.
+ */
+struct kc_ascii;
+void kc_ascii_init(struct kc_server *s);
+bool kc_ascii_on(const struct kc_server *s);
+void kc_ascii_toggle(struct kc_server *s);
+bool kc_ascii_render(struct kc_server *s, unsigned tex, unsigned target,
+		     int w, int h, const float tint[3], unsigned *out_tex);
+void kc_ascii_free(struct kc_server *s);
+
+/*
  * Frame timing (frames.c). `kc_frames_frame` and `kc_frames_present` are the two
  * clocks; `kc_frames_rendered` records what the compositor's own render cost,
  * which is what separates "the desktop is slow" from "something else has the
@@ -590,5 +704,125 @@ void kc_im_free(struct kc_server *s);
 void kc_appid_init(struct kc_server *s);
 void kc_appid_observe(struct kc_server *s, const char *app_id);
 void kc_appid_free(struct kc_server *s);
+
+/* ── a wlr_buffer over plain memory (cellbuf.c) ─────────────────────────
+ *
+ * wlroots has no public "wlr_buffer from a malloc", so anything putting its own
+ * pixels in the scene supplies the smallest impl that works. One copy, shared
+ * by the wallpaper and by every window frame.
+ *
+ * Ownership: create -> paint -> wlr_scene_buffer_set_buffer() -> drop. After
+ * the drop the scene holds the only lock and frees it when it lets go.
+ */
+struct kc_cellbuf {
+	struct wlr_buffer base;
+	uint32_t *data;			/* ARGB8888, premultiplied */
+	size_t stride;
+	bool writable;
+	pixman_image_t *img;		/* NULL when the caller writes raw */
+};
+
+struct kc_cellbuf *kc_cellbuf_create(int w, int h, bool writable, bool want_img);
+pixman_image_t *kc_cellbuf_image(struct kc_cellbuf *c);
+uint32_t *kc_cellbuf_data(struct kc_cellbuf *c);
+size_t kc_cellbuf_stride(struct kc_cellbuf *c);
+struct wlr_buffer *kc_cellbuf_base(struct kc_cellbuf *c);
+void kc_cellbuf_drop(struct kc_cellbuf *c);
+
+/* ── window frames, drawn as characters (deco.c) ──────────────────────── */
+
+struct kc_deco;
+
+enum kc_deco_region {
+	KC_DECO_NONE = 0,
+	KC_DECO_TITLE,			/* drag = move, double = maximise */
+	KC_DECO_CLOSE, KC_DECO_MIN, KC_DECO_MAX,
+	KC_DECO_W, KC_DECO_E, KC_DECO_S,
+	KC_DECO_SW, KC_DECO_SE,
+};
+
+/* Resolve the glyph budget against the loaded font, then say what is missing.
+ * Both are called once, after the font is loaded — a missing glyph is a blank
+ * cell and nothing else, so this is the only warning there will be. */
+void kc_deco_glyphs_init(void);
+void kc_deco_check_glyphs(void);
+
+bool kc_deco_enabled(const struct kc_server *s);
+void kc_deco_create(struct kc_toplevel *t);
+void kc_deco_destroy(struct kc_toplevel *t);
+/* Reposition and, if anything visible changed, repaint. Cheap to call on every
+ * commit — it compares against what it last drew and returns. */
+void kc_deco_arrange(struct kc_toplevel *t);
+void kc_deco_refocus(struct kc_toplevel *t);
+void kc_deco_hide(struct kc_toplevel *t, bool hide);
+/* Per OUTPUT, not per session: a 4K panel beside a 1080p one needs two answers,
+ * and every frame carries its own cell grid anyway. */
+int kc_deco_scale(struct kc_toplevel *t);
+int kc_deco_border_w(struct kc_toplevel *t);
+int kc_deco_border_h(struct kc_toplevel *t);
+
+enum kc_deco_region kc_deco_at(struct kc_toplevel *t, double lx, double ly);
+uint32_t kc_deco_edges(enum kc_deco_region r);
+const char *kc_deco_cursor(enum kc_deco_region r);
+
+/* ── window state (window.c) ─────────────────────────────────────────────
+ *
+ * maximise takes the USABLE box inset by the frame; fullscreen takes the OUTPUT
+ * box with the frame hidden. Confusing the two is how a maximised window ends
+ * up painted over the panel.
+ */
+void kc_window_maximize(struct kc_toplevel *t, bool on);
+void kc_window_fullscreen(struct kc_toplevel *t, bool on);
+void kc_window_shade(struct kc_toplevel *t, bool on);
+void kc_window_minimize(struct kc_toplevel *t, bool on);
+void kc_window_close(struct kc_toplevel *t);
+void kc_window_request_maximize(struct wl_listener *l, void *data);
+void kc_window_request_fullscreen(struct wl_listener *l, void *data);
+void kc_window_request_minimize(struct wl_listener *l, void *data);
+
+/* ── the compositor's own popups (cellui.c) ─────────────────────────────
+ *
+ * The window menu and the alt-tab switcher. They are the compositor's rather
+ * than the shell's for two reasons: a window menu belongs to a titlebar the
+ * compositor drew, and a window switcher must still work when the shell is
+ * dead, because it is how you reach another window to fix things from.
+ */
+
+struct kc_popup {
+	struct kc_server *s;
+	struct wlr_scene_buffer *node;
+	struct wlr_scene_rect *shadow[2];
+	KtuiCell *cells;
+	int cols, rows, scale;
+	int x, y;			/* layout coords of the top-left cell */
+};
+
+enum kc_menu_action {
+	KC_MENU_NONE = 0,
+	KC_MENU_MOVE, KC_MENU_RESIZE, KC_MENU_MINIMIZE,
+	KC_MENU_MAXIMIZE, KC_MENU_SHADE, KC_MENU_CLOSE,
+};
+
+void kc_menu_open(struct kc_toplevel *t, double x, double y);
+void kc_menu_close(struct kc_server *s);
+bool kc_menu_open_p(const struct kc_server *s);
+/* Each returns true when it consumed the event. While a menu is up the pointer
+ * and the keyboard belong to the compositor — letting motion through would
+ * light up hover states in a window the click cannot reach. */
+bool kc_menu_key(struct kc_server *s, xkb_keysym_t sym);
+bool kc_menu_motion(struct kc_server *s, double x, double y);
+bool kc_menu_button(struct kc_server *s, double x, double y, bool pressed);
+
+void kc_switcher_show(struct kc_server *s);
+void kc_switcher_hide(struct kc_server *s);
+void kc_cellui_free(struct kc_server *s);
+
+/* Start the modal keyboard move/resize on a window — what the menu's Move and
+ * Resize items do. In main.c, where the grab state lives. */
+void kc_window_kbgrab(struct kc_toplevel *t, bool resize);
+
+/* Whether this app_id is on comp.conf's `csd_apps` list — the clients that
+ * draw their own titlebar without ever saying so over xdg-decoration. */
+bool kc_config_is_csd(const struct kc_server *s, const char *app_id);
 
 #endif /* KDOS_COMP_H */

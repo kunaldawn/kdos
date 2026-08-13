@@ -766,15 +766,37 @@ bool kc_crt_frame(struct kc_output *o, struct wlr_scene_output *so)
 	glDisable(GL_BLEND);
 	glDisable(GL_SCISSOR_TEST);
 
+	/*
+	 * Super+A, and it runs BEFORE the phosphor rather than after it.
+	 *
+	 * The order is the whole point. Quantising first and tinting after gives
+	 * phosphor TEXT, which is a text-mode machine. The other way round would
+	 * be text made out of a picture of a CRT — the scanlines would be
+	 * sampled into the glyph choice, so the letters would change as the
+	 * scanline phase moved, and the effect would fight itself.
+	 *
+	 * It renders into a texture of its OWN, which the phosphor then reads
+	 * instead of the scene composite. Declining is normal — an external
+	 * texture, or no font — and leaves `ta` untouched, so the pass below
+	 * runs on the desktop exactly as it did before.
+	 */
+	GLuint src_tex = ta.tex;
+	GLenum src_target = ta.target;
+	unsigned ascii_tex = 0;
+	if (kc_ascii_render(s, ta.tex, ta.target, w, h, gl->tint, &ascii_tex)) {
+		src_tex = ascii_tex;
+		src_target = GL_TEXTURE_2D;
+	}
+
 	glUseProgram(p->id);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(ta.target, ta.tex);
+	glBindTexture(src_target, src_tex);
 	/* CLAMP_TO_EDGE and LINEAR: the bleed samples a texel either side, and
 	 * at the border that must not wrap round to the far edge. */
-	glTexParameteri(ta.target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(ta.target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(ta.target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(ta.target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(src_target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(src_target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(src_target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(src_target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 	glUniform1i(p->u_tex, 0);
 	glUniform2f(p->u_res, (GLfloat)w, (GLfloat)h);
@@ -787,7 +809,7 @@ bool kc_crt_frame(struct kc_output *o, struct wlr_scene_output *so)
 	glEnableVertexAttribArray((GLuint)p->a_pos);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	glDisableVertexAttribArray((GLuint)p->a_pos);
-	glBindTexture(ta.target, 0);
+	glBindTexture(src_target, 0);
 	glUseProgram(0);
 
 	if (gl->dump && !gl->dumped && ++gl->frames >= gl->dump_at) {

@@ -65,6 +65,22 @@ struct sh_task {
 	int minimized;
 };
 
+/*
+ * The menu bar: GNOME 2's three words, on the left of the top panel.
+ *
+ * The mark is `≡` where an icon theme would have put a distributor logo — on a
+ * character grid a logo is one cell, and three horizontal rules is what that
+ * cell can honestly hold. It falls back to the word KDOS on a font without it,
+ * which is checked once rather than per frame.
+ */
+#define SH_NMENUS 3
+#define SH_MENU_MARK "\xe2\x89\xa1"		/* U+2261 IDENTICAL TO */
+extern const char *const sh_menu_labels[SH_NMENUS];
+/* Spawn kdos-menu for one of them. Double-forked, so the panel neither reaps
+ * nor blocks — a menu that takes a moment to scan 400 desktop files must not
+ * stop the clock. */
+void sh_spawn_menu(int which);
+
 struct sh_state {
 	void *display;			/* the panel shares libkwl's connection */
 	void *ftl_mgr;
@@ -91,6 +107,11 @@ struct sh_state {
 	/* Where the last frame put things, so a click can be mapped back to
 	 * what was drawn rather than to what the layout code intended. */
 	int ws_hit_x, ws_hit_end;
+	int menu_hit_x[SH_NMENUS], menu_hit_end[SH_NMENUS];
+	int menu_open;			/* which label is lit, or -1 */
+	/* The bottom panel's hit map: the pager and show-desktop. */
+	int pager_hit_x, pager_hit_end;
+	int show_hit_x;
 	int task_hit_x, task_cell_w;
 	int tray_hit_x, tray_hit_end;
 };
@@ -100,6 +121,13 @@ struct sh_state {
  * chain from a keybinding to a running program. */
 int panel_main(int argc, char **argv);		/* kdos-shell    */
 int launcher_main(int argc, char **argv);	/* kdos-launcher */
+int menu_main(int argc, char **argv);		/* kdos-menu     */
+int desk_main(int argc, char **argv);		/* kdos-desk     */
+int pick_main(int argc, char **argv);		/* kdos-pick     */
+int asciicmd_main(int argc, char **argv);	/* kdos-ascii    */
+int run_main(int argc, char **argv);		/* kdos-run      */
+
+
 int notifyd_main(int argc, char **argv);	/* kdos-notifyd  */
 int osd_main(int argc, char **argv);		/* kdos-osd      */
 
@@ -107,6 +135,9 @@ int sh_connect(struct sh_state *sh);
 void sh_disconnect(struct sh_state *sh);
 void sh_dispatch(struct sh_state *sh);
 void sh_activate_task(struct sh_state *sh, int i);
+/* What show-desktop is made of. Already-minimised windows are left alone, so
+ * pressing it twice does not un-minimise half the screen. */
+void sh_minimize_task(struct sh_state *sh, int i);
 void sh_activate_workspace(struct sh_state *sh, int i);
 
 /*
