@@ -136,6 +136,21 @@ static void box_env(KbArgv *a, const char *image)
 	kb_argv_add(a, "GTK_THEME=KDOS");
 
 	/*
+	 * Input methods. A boxed app reaches fcitx5 through the COMPOSITOR —
+	 * text-input-v3 to kdos-comp, which relays to input-method-v2 — and
+	 * never directly, because fcitx5 runs on the host and its bus name is
+	 * not what the box would find anyway.
+	 *
+	 * So the value is `wayland` and emphatically not `fcitx`: the fcitx
+	 * module is the X11-era route where each toolkit talks to the IM daemon
+	 * itself, and inside a container that daemon is not there. GTK on
+	 * Wayland picks the right context on its own when GTK_IM_MODULE is
+	 * UNSET, which is why only Qt is named here — setting GTK_IM_MODULE at
+	 * all is how a working GTK app stops accepting CJK input.
+	 */
+	kb_argv_add(a, "QT_IM_MODULE=wayland");
+
+	/*
 	 * Two routes to a themed Qt app, and the KDE one is better where it
 	 * exists: the `kde` platform theme reads ~/.config/kdeglobals, which
 	 * `kdos theme` writes into the home the box already shares, so Breeze

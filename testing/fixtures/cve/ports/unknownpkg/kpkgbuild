@@ -1,0 +1,5 @@
+name        = unknownpkg
+version     = 9.9
+release     = 1
+source      = https://example.invalid/unknownpkg-9.9.tar.gz
+description = fixture

@@ -16,18 +16,17 @@ experienced Linux users. Tagline: **"I use KDOS btw."**
 server). **No GTK and no Qt on the host.** Everything fat runs in a
 Podman/distrobox glibc rootfs. Session entry: `kdos-desktop` from a tty.
 
-> **The desktop is mid-replacement.** COSMIC has been removed (M0, done: 18
-> ports and `kdos-theme-helper` deleted). Its replacement is **ours** —
-> `kdos-comp` (wlroots) plus `kdos-shell`, a character-cell-grid shell drawn by
-> libktui. **`docs/KDOS-DESKTOP.md` is the plan of record**, `docs/KDOS-ROADMAP.md`
-> the full menu of work, `docs/KDE-ON-HOST-REJECTED.md` the alternative that
-> lost. Sections below still describing COSMIC's config are stale until M19
-> and are marked where they matter.
+> **The desktop is ours.** COSMIC was removed and replaced by `kdos-comp` (a
+> wlroots compositor with a CRT pass) plus `kdos-shell`, a character-cell-grid
+> shell drawn by libktui, with `kdos-lock`, `kdos-powerd` and `kdos-boxsock`
+> beside them. **`docs/KDOS-DESKTOP.md` is the plan of record and carries a
+> status block per milestone**, `docs/KDOS-ROADMAP.md` the full menu of work,
+> `docs/KDE-ON-HOST-REJECTED.md` the alternative that lost.
 
 Four properties define the project. Everything else follows from them:
 
 1. **Built from scratch.** Every host byte is compiled here from an upstream
-   tarball by a `kpkgbuild` recipe in `ports/`. 389 ports.
+   tarball by a `kpkgbuild` recipe in `ports/`. 405 ports.
 2. **KDOS can build KDOS.** Phase 2 is a self-hosting bootstrap — the chroot
    rebuilds tar/musl/zlib/binutils/gcc with itself. The shipped system carries
    gcc, binutils, rust, cmake, meson, ninja, python3, make and `kpkg`, so a
@@ -37,7 +36,7 @@ Four properties define the project. Everything else follows from them:
    container image live in-tree under Git LFS. Clone, `make build`, get an ISO,
    no network.
 4. **Alien apps.** **KDOS builds the desktop; applications live in boxes.**
-   No native-porting of browsers, office suites or IDEs — ~90 GUI apps ship
+   No native-porting of browsers, office suites or IDEs — ~105 GUI apps ship
    pre-baked in a Debian container and behave like ordinary system apps
    (launchers, MIME handlers, terminal commands). The boundary is now in the
    same place as the build cost, with no per-app arguments.
@@ -88,9 +87,10 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
 
 **`src/packages/`** is the second port repo (`PORT_REPO="/ports/core
 /kdos/src/packages"`) and holds what is OURS rather than an upstream tarball:
-`kdos-splash`, `kdos-appbox`, `kdos-theme-helper`, and the three
-vendored-and-remade art packages `kdos-cursors` (Bibata), `kdos-icons`
-(Papirus), `kdos-gtk-theme` (adw-gtk3).
+`kdos-splash`, `kdos-appbox`, `kdos-installer`, `kdos-kpkg`, `kdos-theme`,
+`kdos-tools`, and the three vendored-and-remade art packages `kdos-cursors`
+(Bibata), `kdos-icons` (Papirus), `kdos-gtk-theme` (adw-gtk3). The desktop's own
+packages live one directory over, in `src/desktop/`.
 
 The three art packages share one shape, and new vendoring should copy it: a
 host-only `vendor.py` that prunes upstream into a committed `art/`/`theme/`
@@ -106,7 +106,8 @@ against artwork.
 the best open-source GUI app per segment, ~105 launchers (libreoffice, calibre,
 gimp, krita, blender, freecad, prusa-slicer, openscad, kicad+gtkwave+ngspice,
 octave, maxima, stellarium, ardour, hydrogen, lmms, kdenlive, obs-studio,
-vscodium, wireshark, keepassxc, backup tools, games, emulators, firefox-esr, …),
+vscodium, wireshark, keepassxc, backup tools, games, emulators, wine,
+firefox-esr, …),
 plus a **KDE segment** — dolphin, konsole, kate, okular, gwenview, ark, kcalc,
 spectacle, digikam, elisa, kdeconnect, kdevelop, k3b, filelight, kwalletmanager.
 Not `kde-full`: that is Plasma itself plus everything and would roughly double a
@@ -170,14 +171,26 @@ desktop entries. Dropping any one output breaks something visible:
 | `usr/share/kdos/alien-apps` | name → in-box command line |
 | `usr/local/bin/<name>` → `kdos-appbox` | every alien app is also a normal command |
 
+- **Some alien software is a COMMAND, not an application.** wine is the case:
+  what you want is `wine setup.exe` at a prompt, and Debian's own entries for it
+  are `NoDisplay=true`, which the parse correctly drops — so the box would carry
+  wine and the host would have no way to reach it. The `COMMANDS` table gets an
+  `alien-apps` row and a shim and deliberately NO `.desktop`, because a launcher
+  for `wine` with no arguments opens nothing. Emitted only when the image really
+  carries the binary, so an older bake does not gain a shim that dies on "not
+  found".
+
 - **Carry `MimeType` through from upstream.** Without it no alien app appears
   in any "Open with" dialog and none can be a default handler. The cache is
   written here rather than by `update-desktop-database` because the host has no
   desktop-file-utils.
 - **The launcher FILENAME must be upstream's own desktop id** — not
-  `kdos-<name>`, and not `StartupWMClass`. `cosmic-app-list` matches a running
-  toplevel to a desktop entry by the entry's FILE ID and ignores
-  `StartupWMClass`; a mismatch shows a second grey cog beside the pinned icon.
+  `kdos-<name>`, and not `StartupWMClass`. A dock matches a running toplevel to
+  a desktop entry by the entry's FILE ID; COSMIC's app-list ignored
+  `StartupWMClass` entirely and a mismatch showed a second grey cog beside the
+  pinned icon. `kdos-shell` matches `app_id` first, then the desktop id, then
+  `StartupWMClass` — but upstream's id is still the right filename, because it
+  is the one every other tool agrees on.
   And **a Wayland `app_id` is not the X11 `WM_CLASS`**: GIMP's entry says
   `StartupWMClass=gimp-3.0` but its toplevel calls `set_app_id("gimp")` —
   measured with `WAYLAND_DEBUG=1`, not guessed. So dock favorites reference
@@ -202,7 +215,7 @@ that is already on disk (the bake flattens the appbox to one layer):
 
 - Debian's games live in `/usr/games`, which distrobox's inherited host PATH
   lacks — `10-wayland.sh` appends it or every game launcher dies on "not found".
-- **X11-only apps need `DISPLAY` pushed in explicitly.** cosmic-comp runs
+- **X11-only apps need `DISPLAY` pushed in explicitly.** `kdos-comp` runs
   Xwayland rootlessly but exports DISPLAY only to what IT spawned;
   `kdos-appbox` probes `/tmp/.X11-unix/X*` (distrobox shares the host /tmp) and
   adds `DISPLAY=` to BOXENV.
@@ -323,7 +336,7 @@ impatient re-click spawned another FULL instance), dconf/a11y stalled, and
 notifications went nowhere. `/run/user/1000` IS shared with the box, so one
 fixed address works on both sides. Two traps encoded in `kdos-desktop`: the
 address must carry **no guid** (a second daemon rebinding the socket kills zbus
-clients — cosmic-session aborts with "Server GUID mismatch"), and never add a
+clients — COSMIC's session aborted with "Server GUID mismatch"), and never add a
 second `<listen>` via dbus config instead (multi-address envs hit the same zbus
 crash). `10-wayland.sh` exports the address for ssh/tty shells when the socket
 exists.
@@ -338,6 +351,160 @@ failure looks exactly like "the app is slow / never opens". Fixed in `fstab`
 tmpfs that is already mounted ignores a mode change on remount —
 `mount -o remount,mode=1777 /tmp` silently does nothing, only `chmod` works.
 
+### `-march`, measured — `kdos march`
+
+```
+$ kdos march probe
+  x86-64-v2    yes
+  x86-64-v3    yes
+  x86-64-v4    missing avx512f ...
+highest usable: x86-64-v3
+nothing is built with it until `kdos march run <port>` measures a win
+
+$ kdos march run lz4
+lz4  x86-64-v3  baseline 0.321s  -march=x86-64-v3 0.302s  +5.9% (noise 16.7%) -> reverted
+       the win is inside the noise; that is not a win
+```
+
+**Gentoo optimises blind; CachyOS optimises by tier for a population; Clear
+Linux, which did runtime dispatch properly, was shut down in July 2025 — and
+musl closes that route anyway** (no glibc-hwcaps, IFUNC contested upstream).
+That leaves rebuild-per-machine, which makes the question not "which flags" but
+**"did they help HERE"**.
+
+The published v3 numbers are why: flac +20%, vorbis +21%, zstd decompress +16%
+— and bzip2 **−7%**, python **−3%**, lz4 **−2.9% with over 10% more power**. A
+distro that shipped v3 everywhere would ship those regressions and never know.
+
+So the tool builds each port twice on this machine, runs the port's own
+benchmark against both, and keeps the flags only where the win clears BOTH a
+fixed 3% floor and the machine's own measured noise. Four rules:
+
+- **A port with no `bench =` line is UNMEASURABLE, never a winner.** Most ports
+  have no meaningful benchmark, and assuming a win for them is the blind
+  optimisation this replaces.
+- **The median of several runs**, not the mean (which the worst outlier owns)
+  and not one run (which measures the scheduler). `KDOS_MARCH_RUNS` raises it.
+- **The noise floor is measured, not assumed** — it is the spread of the samples
+  themselves, and a "win" smaller than it is the machine breathing. Both
+  measurements here landed inside it and were reverted, which is the correct
+  answer on a busy machine and the tool says so.
+- **`bench_setup =` runs once and is not timed.** The first bench line written
+  measured `dd if=/dev/urandom` more than it measured lz4 — 64 MiB out of the
+  kernel RNG pushed the noise floor to 13.5%. A fixture belongs outside the
+  stopwatch.
+
+`kdos march report` is the ledger the roadmap asks for by name — kept, reverted,
+unmeasurable, with the summary line. A report that listed only winners would be
+a sales pitch; the reverts are the evidence that the measuring is real.
+
+### The stick rebuilds the stick — `kdos rebuild`
+
+```
+make build KDOS_ISO_SOURCES=1     # a developer stick: ~2.7 G larger
+...boot it...
+kdos rebuild /mnt/disk/work       # no network at any point
+```
+
+Every leg of this is old — the LFS LiveCD shipped its sources in 2005, FreeBSD
+has shipped `/usr/src` for thirty years — and what none of them does is **rebuild
+the medium from the medium**. KDOS can because of three properties it already
+had: the repo builds offline (every tarball is in `ports/`), KDOS can build KDOS
+(the shipped system carries gcc, binutils, make, meson, ninja, python3 and kpkg),
+and packages are reproducible, so a rebuild can be COMPARED to what it was built
+from rather than merely produced.
+
+**The sources go on the ISO9660 filesystem beside `system.sfs`, not inside it**,
+so they cost the installed system nothing and are readable from `/mnt/iso` the
+moment the live image is up. Opt-in, because `ports/` is 2.7 G of tarballs that
+are already compressed and squashing them again buys nothing.
+
+**`kdos rebuild` is checks plus `kdosbuild`, and the checks are the valuable
+half.** A live stick's `/` is an overlay whose upper layer is tmpfs: a rebuild
+started there reports gigabytes free, eats memory, and dies hours in with the
+machine unusable. So the work directory is refused when it is on `tmpfs`,
+`ramfs` or `overlay` — a free-space check cannot see that — and again when it has
+less than 25 GB or when a build tool is missing. Everything after the checks is
+the same orchestrator `make build` runs, compiled on demand out of the tree being
+built (the `ports/fetch` shape) so the build is driven by the sources on the
+machine rather than by a binary from somewhere else.
+
+### A/B root slots — `kdos-bootctl`
+
+Two root partitions, a state file on the ESP, and a boot that can change its
+mind. The shape is RAUC's state machine with none of its dependencies:
+
+```
+slot_a   = <root uuid>
+slot_b   = <root uuid>
+active   = a          the slot known to work
+try      = b          a candidate, or empty
+attempts = 3          how many boots it gets
+```
+
+**The counting is ours and it lives in the INITRAMFS.** rEFInd has no boot
+counting — that is a systemd-boot feature — and `rcS` is the wrong place
+regardless: a kernel that boots into a wedged userland must still spend an
+attempt, and the `rcS` in that userland never runs to say so. `kdos-bootctl
+select` decides and decrements in one step, before anything is mounted, and
+prints the UUID to boot. `kdos-bootctl mark-good` at the END of `rcS` — after
+every service that was going to fail has had its chance — promotes a candidate
+to active.
+
+So a bad update boots three times and rolls itself back with no help from
+anything, which is measurable: `testing/selftest.sh` runs `select` four times
+without ever calling `mark-good` and requires the fourth to hand back the old
+slot.
+
+**The state file is on the ESP, which is FAT and has no journal.** A torn write
+here does not fail an update, it bricks the machine — the initramfs cannot tell
+which slot to boot. So every write is temp file, `fsync` the FILE, `fsync` the
+DIRECTORY, then `rename`. The directory fsync is the step people leave out, and
+without it the rename can be lost while the data survives.
+
+**A state file that does not parse is ABSENT, never partial.** Half a file that
+looked complete is exactly how a machine boots a slot that was never installed;
+absent means "use the `root=` the command line already carries", which is what a
+single-root machine does anyway. `try` pointing at a slot with no root, or at the
+active slot, is refused rather than recorded.
+
+kinstall writes the initial state (slot A active, slot B empty) and adds
+`bootstate=UUID=<esp>` to the kernel options. Filling slot B is an updater's job
+and the state machine is already complete for it. **A/B and LUKS are not wired
+together**: the slot select yields a filesystem UUID and an encrypted slot's
+filesystem lives inside a container, so combining them needs a per-slot
+`cryptdevice=` and is not done.
+
+### An encrypted root
+
+`cryptdevice=UUID=<luks-uuid>:<name>` on the kernel command line, Arch's syntax
+because it is the one already in people's heads. The generated init unlocks
+before it looks for a filesystem, because the filesystem inside the container
+does not exist until then — `root=UUID=` names the INNER filesystem and
+`cryptdevice=` the container, and confusing the two is the whole trap.
+
+Three things the prompt gets right, and each is a way this usually goes wrong:
+
+- **It goes through the SPLASH, not `/dev/console`.** `console=` is ttyS0 on this
+  kernel command line (the last one wins), so a plain `read -p` prompts a serial
+  port nobody is looking at while the screen shows a splash that appears to have
+  frozen.
+- **The keystrokes come from `/dev/tty1`**, which is where the keyboard is.
+- **The passphrase is fed to `cryptsetup --key-file=-` on stdin**, never as an
+  argument: `/proc/<pid>/cmdline` is world-readable for the life of the process.
+
+Three attempts, then a shell rather than a reboot loop. There is no
+per-keystroke feedback: the splash owns the framebuffer and bash owns the
+terminal, and a masked field with dots would mean moving the read into the
+splash — stated rather than hidden.
+
+`01_initramfs.sh` carries cryptsetup and its libraries only when it is installed,
+and says so when it is not; a half-carried cryptsetup fails at the passphrase
+prompt instead of at build time. `PASS_TTY` and `CRYPT_MAPPER_DIR` default to the
+real thing and exist so `testing/selftest.sh` can run the unlock function against
+stub tools with no LUKS volume and no root — the same trick
+`kdos stutter --fixture` uses for `/proc`.
+
 ### initramfs must use util-linux `switch_root`, never toybox's
 
 toybox `switch_root` wipes the initramfs and `chroot()`s — it never does
@@ -349,6 +516,48 @@ ENOENT (`crun: executable file 'echo' not found`). `podman run` still works,
 because it CREATES the namespace. Tell-tale: `readlink /proc/<pid>/root` prints
 `/newroot`. `script/06_packaging/01_initramfs.sh` installs
 `/usr/sbin/switch_root` over the toybox symlink — keep it that way.
+
+### CPU microcode rides in front of the initramfs
+
+`CONFIG_MICROCODE=y`, `CONFIG_MICROCODE_LATE_LOADING` **off** — so the early
+loader is the only path there is, and it runs before any filesystem exists:
+it scans the raw initrd for the literal paths
+`kernel/x86/microcode/{GenuineIntel,AuthenticAMD}.bin`. Hence the shape:
+`01_initramfs.sh` builds a plain cpio of those two files and the ISO's
+`initramfs.cpio.gz` is that cpio **concatenated in front of** the gzipped
+initramfs. Three properties it must keep:
+
+- **Nothing in the microcode cpio may be compressed** — not the cpio and not
+  the blobs. `linux-firmware` ships `amd-ucode/*.bin.zst` because the *runtime*
+  firmware loader decompresses; the early loader cannot, so they are expanded
+  on the way in.
+- **`intel-ucode` is not curated.** It is upstream's whole `intel-ucode/`
+  concatenated into one bundle by the port (17.7 MB), minus
+  `intel-ucode-with-caveats/`, which upstream ships separately because it needs
+  coordinated firmware support. A per-family prune boots on the machines it
+  covers and leaves the rest silently unpatched, which is the state the errata
+  are written about.
+- **The Intel bundle must consume to exactly its last byte.** `scan_microcode()`
+  ends `return size ? NULL : patch;` — one stray file in `intel-ucode/` means
+  the kernel loads **nothing at all**, not "everything before the bad record".
+  So `build.sh` walks the records the same way and fails the build instead;
+  verified against a bundle with a README appended.
+
+**16-byte alignment is a myth worth not chasing.** `iucode_tool --write-earlyfw`
+inserts a dummy `.enuineIntel.align.0123456789abc` directory to pad the blob to
+16 bytes, which looks load-bearing and is not: `lib/earlycpio.c` in the kernel
+KDOS ships aligns headers to **4** and nothing else. Measured — our own cpio
+lands the blob at offset 636 (`% 16 == 12`) and that is fine. With alignment
+off the table the tool's only remaining gain was 2.5 MB of deduplicated
+revisions — which `scan_microcode()` skips anyway, keeping the highest revision
+it finds — so it is not a port.
+
+`kdos doctor` runs the kernel's own search against `/boot/initramfs.cpio.gz`
+and reports the running revision from
+`/sys/devices/system/cpu/cpu0/microcode/version`. That is the check that
+matters, because an initramfs rebuilt without the ucode step has no symptom —
+the CPU simply keeps whatever the firmware loaded. `KDOS_INITRD` moves the
+image so `testing/selftest.sh` can assert both answers.
 
 ### The boot splash
 
@@ -468,36 +677,20 @@ erases every small feature.
 
 ## Theming — PHOSPHOR
 
-> **Stale below (M19).** The COSMIC RON tables in this section describe a
-> desktop that no longer exists. What replaces them is one line: **`kdos-comp`
-> and `kdos-shell` link libkcolor and read only the accent NAME from
-> `$XDG_CACHE_HOME/kdos/theme`**, so no colours are written for the desktop at
-> all and `kdos theme` retints a running session with a SIGHUP — which both of
-> them now handle: the shell repaints, and the compositor re-reads the accent its
-> CRT shader tints with. Everything else
-> in this section — GTK, icons, cursors, foot, btop, starship, and the whole
-> "alien apps are themed through `$HOME`" argument — is unchanged and correct.
+**The desktop needs no theme file at all.** `kdos-comp` and `kdos-shell` link
+libkcolor, so they carry the same `KCOL_SCHEMES` table `kdos theme` expands, and
+they read one word — the accent NAME — from `$XDG_CACHE_HOME/kdos/theme`. No
+colours are written for the desktop, and a running session is retinted by a
+SIGHUP rather than by being handed a palette: the shell repaints its chrome, the
+compositor re-reads the accent its CRT shader tints with. The state file is
+written BEFORE the signal, or the session re-reads the accent it already had.
 
-COSMIC read layered RON config: `/usr/share/cosmic` (system defaults) then
-`~/.config/cosmic` (user), seeded from `fs/etc/skel/.config/cosmic/` (deleted
-in M0):
+That is why `kdos-theme-helper` — Rust, and a dependency on cosmic-theme's
+ThemeBuilder — could be deleted rather than ported: there was nothing left for it
+to generate.
 
-| File (under `~/.config/cosmic/`) | Purpose |
-|---|---|
-| `com.system76.CosmicBackground/v1/all` | wallpaper → the penguin |
-| `com.system76.CosmicTk/v1/icon_theme` | `"KDOS"` (kdos-icons) |
-| `com.system76.CosmicPanel.Panel/v1/*` | floating top panel: phosphor bg Color, opacity 0.92, radius 12, trimmed wings, `keep_style_on_maximize` true (else a maximized window snaps the panel to edge-to-edge default styling) |
-| `com.system76.CosmicPanel.Dock/v1/*` | dock: phosphor bg Color, size M, `keep_style_on_maximize` true, `plugins_center` = app-library button + workspaces + app list + minimize |
-| `com.system76.CosmicAppList/v1/favorites` | dock pins that actually exist: foot, CosmicFiles, firefox-esr, org.xfce.mousepad, gimp, CosmicSettings |
-| `com.system76.CosmicAppLibrary/v1/groups` | KDOS launcher groups: Internet, Graphics, Office, Media, Engineering, Science, System, Utilities — Categories-driven (`AppGroup` RON; field docs in upstream `app_group.rs` are swapped — `exclude` excludes, `include` force-includes) |
-
-The applied theme is NOT a skel seed: `com.system76.CosmicTheme.Dark/v2/` is
-generated at packaging time by `script/06_packaging/00_theme.sh`, which runs
-**`kdos theme phosphor`** itself against `/etc/skel` (HOME + XDG_CONFIG_HOME
-pointed there) rather than duplicating the palette — one generator, no drift.
-That calls **kdos-theme-helper** (`src/packages` — drives cosmic-theme's own
-ThemeBuilder; the Theme struct is `#[version = 2]`, hand-seeded v1 files are
-silently ignored).
+Everything else `kdos theme` writes exists for software that is NOT ours and
+cannot be told: GTK and Qt apps in the appbox, foot, btop, starship.
 
 **Alien apps are themed through `$HOME`** — the appbox shares the home directory
 and nothing else, so `/usr/share/themes` and `/usr/share/icons` are invisible
@@ -589,14 +782,15 @@ icon, a stray file, and a cursor alias re-pointed at another shape.
 
 ### kdos-icons
 
-Theme `KDOS`, a **vendored, pruned, recoloured Papirus**,
-`Inherits=Cosmic,Pop,hicolor`. Two scripts, same split as kdos-cursors:
+Theme `KDOS`, a **vendored, pruned, recoloured Papirus**, `Inherits=hicolor`
+(the COSMIC and Pop fallbacks went with the desktop that needed them). Two
+scripts, same split as kdos-cursors:
 
 - **`vendor.py`** is the maintenance tool, run by hand on the host with network:
   `vendor.py papirus-icon-theme-YYYYMMDD.tar.gz` rewrites `art/`. Papirus over
   Tela/Colloid/Qogir purely for coverage — the only free set with a real icon
-  for essentially every mimetype, device and place COSMIC or the ~90 Debian apps
-  will ask for, and flat single-fill SVG, so a palette remap is a substitution
+  for essentially every mimetype, device and place the desktop or the ~105
+  Debian apps will ask for, and flat single-fill SVG, so a palette remap is a substitution
   rather than a redraw. The prune is 90 MB → 13.7 MB: **`apps/` is not vendored
   at all** (the alien apps ship their own icons, overriding Firefox's and GIMP's
   marks makes the launcher harder to read, and it is 76 MB of the 90), six sizes
@@ -617,18 +811,19 @@ is in libkcolor's `kcol_remap`, so icons and widgets agree about what "green"
 means.
 
 Because Papirus's `apps/` is not vendored, the theme would have NO Applications
-context and every app icon — COSMIC's own included — would come through
-untinted. So `kdos-theme icons` also recolours two directories into `scalable/apps`:
-all of `Cosmic/`, and `com.system76.*` ONLY from `hicolor/` (packaging installs
-the ALIEN apps' icons into that same tree, and a phosphor Firefox logo is
-vandalism, not theming). **Sweep every size directory, not just `scalable/`** —
-`com.system76.CosmicFiles` is an SVG filed under 24x24/128x128/256x256 and
-nowhere else, so a scalable-only pass leaves exactly the dock buttons the user
-looks at unthemed. Largest variant per name wins.
+context at all and every host app icon would come through untinted — which is
+what "the KDOS icon theme is not being used" looks like. So `kdos-theme icons`
+also recolours `hicolor/<size>/apps` into `scalable/apps`, but **only names with
+the `kdos.` prefix**: `06_packaging` installs the ALIEN apps' icons into that
+same tree, and a phosphor Firefox logo is vandalism, not theming.
+**Sweep every size directory, not just `scalable/`** — the rule was learned
+against COSMIC, whose icons were SVGs filed under fixed sizes and nowhere else,
+so a scalable-only pass left exactly the buttons the user looks at unthemed. It
+still holds for anything that ships an SVG under a numeric directory. Largest
+variant per name wins.
 
 The KDOS marks (`distributor-logo-kdos` / `start-here`, and the tux over
-`com.system76.CosmicAppLibrary` + `com.system76.CosmicPanelAppButton`, the
-dock's app-library button) are installed by the GENERATOR, not the kpkgbuild —
+`kdos-launcher`) are installed by the GENERATOR, not the kpkgbuild —
 `kdos theme <accent>` re-runs it against `$HOME` and has to produce a complete
 theme on its own. The PNGs themselves are committed under `marks/`; the
 host-only `genmarks.py` is what cuts them from `kdos.png` when they need
@@ -727,7 +922,7 @@ consumer moves to phase 4 with it.
 
 | Lib | Prefix | Owns |
 |---|---|---|
-| `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach`** |
+| `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, group membership, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach`** |
 | `libkcolor` | `kcol_` | **the palette table**, hex/HLS, `kcol_mix`, the hue-family classifier, `kcol_remap`, `kcol_retint_text` |
 | `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, immediate-mode widgets, modals, text furniture, **the three glyph tiers and the charts drawn out of them**, offscreen rendering |
 | `libkxdg` | `kxdg_` | desktop entries, matching what `RawConfigParser(strict=False)` did with them |
@@ -1034,11 +1229,47 @@ Things the installer needed from the rest of the tree, all now present:
   through its filesystem driver, and a boot that depends on a driver load is a
   boot that fails silently after a kernel update.
 
-Known gaps, each for a missing port rather than a missing feature: no LUKS
-(`cryptsetup` is not installed and the initramfs cannot unlock anything), no
-btrfs/xfs/f2fs (no mkfs), and the time zone is written as a **POSIX TZ string**
-into `/etc/profile.d/20-timezone.sh` because there is no `tzdata` — musl parses
-those directly, DST rules included.
+**LUKS2 on the root partition** is a checkbox on the layout page. The installer
+runs `cryptsetup luksFormat` then `open`, feeding the passphrase on **stdin**
+both times — an argument would publish it through `/proc/<pid>/cmdline` to every
+process for as long as cryptsetup runs — and everything after that talks to
+`/dev/mapper/kdosroot`, so one name means "where the root filesystem is" for the
+mkfs, the mount, the fstab UUID and the rsync. The boot options carry **two**
+UUIDs and confusing them is the trap: `cryptdevice=UUID=<container>:kdosroot`
+names the LUKS volume, `root=UUID=<filesystem>` names what is inside it, and the
+second does not exist until the first is open. The passphrase is refused at the
+QUESTIONNAIRE when the image has no cryptsetup, not at the install step — after
+the point of no return is the wrong place to discover it.
+
+**The root filesystem is a table, not a branch** (`ki_filesystems[]` in
+`conf.c`): ext4, btrfs or xfs, and every consumer reads the same row — the
+menu, the mkfs argv, the fstab line and the swapfile step. Three things it
+encodes that are each a way this goes wrong later:
+
+- **`fs_passno` is 1 for ext4 and 0 for everything else.** A non-zero pass is
+  an instruction to run a checker; there is no `fsck.btrfs` worth running and
+  no `fsck.xfs` on this image at all.
+- **A swapfile is made differently on each.** `fallocate` leaves unwritten
+  extents and `swapon` refuses those on xfs (*"swapfile has holes"*), and btrfs
+  needs the file NOCOW and uncompressed, which is what `btrfs filesystem
+  mkswapfile` is for. The failure is at the NEXT boot's `swapon -a`, with no
+  swap and nothing saying why — so ext4 gets `fallocate`, xfs gets `dd`, btrfs
+  gets `mkswapfile`.
+- **`CONFIG_XFS_FS=m`**, so `01_initramfs.sh` carries the `xfs` module. ext4 and
+  btrfs are built in. An xfs root the initramfs cannot mount installs perfectly
+  and never boots again.
+
+A filesystem whose mkfs is missing is still listed and still selectable, with
+the row saying so and `do_prepare` refusing it *before* anything is written —
+a control that snaps back under the cursor is worse than one that explains
+itself. An answer file naming something else (`fstype = zfs`) falls back to
+ext4 rather than failing at the mkfs. `--dump plan` prints the resulting mkfs
+command and fstab line, because "fs btrfs" alone does not say what will run.
+
+Known gaps, each for a missing port rather than a missing feature: no f2fs
+(`CONFIG_F2FS_FS=m` with no mkfs), and the time zone is written as a **POSIX TZ
+string** into `/etc/profile.d/20-timezone.sh` because there is no `tzdata` —
+musl parses those directly, DST rules included.
 
 Iterate without booting: `kinstall --dry-run` logs every command and executes
 none, and `--save`/`--config`/`--unattended` give it an answer file.
@@ -1353,6 +1584,142 @@ and the window found in the full-screen shot. It also found two of its own
 bugs first — the headless GLES2 path advertises **BGR888, three bytes per
 pixel**, and a client that assumes four gets `Invalid stride`.
 
+## Input methods — the compositor is the wire
+
+`src/desktop/kdos-comp/textinput.c`. An input method is three parties that never
+speak to each other: the APPLICATION says "I am a text field, here is my cursor
+and what surrounds it" over **text-input-v3**, the INPUT METHOD says "here is a
+preedit, here is a string to commit" over **input-method-v2**, and only the
+compositor knows which application has the keyboard. kdos-comp advertised
+neither global, so no input method could work at all — the same shape as the
+capture globals, and the reason `docs/KDOS-DESKTOP.md` listed "no CJK input" as
+a known gap.
+
+**virtual-keyboard-v1 is part of the same feature, not a separate one.** An
+input method holds the keyboard grab, decides a key is not for it, and forwards
+it — through a virtual keyboard, because that is the only route back. Without
+the global, the arrow keys and Escape in every candidate window are simply
+swallowed.
+
+Rules the file exists to keep, each a way this goes wrong:
+
+- **One input method per seat.** The second gets `unavailable` rather than
+  silence: an IM that binds and then hears nothing looks like a compositor with
+  no IM support, which sends people to rebuild things that were fine.
+- **A text input hears `enter` only if ITS CLIENT owns the focused surface.**
+  text-input-v3 is bound per seat, not per surface.
+- **Compositor bindings are matched BEFORE the grab.** An input method that
+  could swallow `Super+Q` or `Ctrl+Alt+F2` could trap the session, and a
+  candidate window is exactly the state a user wants out of.
+- **A virtual keyboard's own keys never reach the grab** (`kc_keyboard.virt`).
+  Feeding an input method's forwarded key back to it is an infinite loop with
+  the key still not delivered.
+- **Nothing crosses a lock.** `kc_locked()` is asked on every path here, because
+  a lock screen whose keystrokes reach a boxed input method is a lock screen
+  that leaks the password.
+- **`zwp_input_method_manager_v2` is in the security-context table**, beside
+  virtual-keyboard: being an input method is a keylogger by design, since the
+  grab delivers every keystroke on the seat. `zwp_text_input_manager_v3` is
+  deliberately NOT in that table — that is the application half, and denying it
+  would deny input methods to the apps that need one most.
+
+**Proved with `imtest`**, a client that is both parties: one connection is an
+application with a window and a text field, another is an input method with a
+virtual keyboard, and everything it observes is the relay. 15 assertions, all
+green under ASan with a clean SIGTERM teardown — `enter` on focus, activation,
+the surrounding text arriving, a preedit and a commit coming back, the second
+input method refused, the grab receiving the keymap, a virtual key reaching the
+application and NOT the grab, and the candidate window created, positioned and
+destroyed while the IM was still active.
+
+**`wlr_seat_set_capabilities` had to move.** It ran only in `new_input`, so a
+keyboard that arrives over a PROTOCOL rather than from the backend left the seat
+advertising no keyboard capability at all — clients then never ask for a
+`wl_keyboard` and every key goes nowhere. Found by imtest, where the input
+method's own virtual keyboard was the only keyboard on the seat.
+
+**The engine is `fcitx5`, ported now** — see **The input method** below for the
+build and where each half lives. What this section describes is the wire; test
+it with any input-method-v2 client.
+
+## The input method — fcitx5, and where each half lives
+
+Three parties that never speak to each other, and the compositor is the wire
+between them (see **Input methods — the compositor is the wire** above for the
+protocol side). `fcitx5` is the party on the other end of `input-method-v2`.
+
+```
+fcitx5  ──input-method-v2──▶  kdos-comp  ──text-input-v3──▶  the application
+      ◀──virtual-keyboard-v1──                                (host or boxed)
+```
+
+**The build is Wayland-only, and every flag that says so is load-bearing:**
+
+| | |
+|---|---|
+| `ENABLE_X11=Off` | the hard rule. X11 here would pull xcb-imdkit, cairo-xcb, xkbfile and seven xcb components onto the host for an XIM frontend nothing can use. X11 apps reach fcitx5 through Xwayland and text-input-v3 like everything else |
+| `EVENT_LOOP_BACKEND=libuv` | the alternative is systemd. `USE_SYSTEMD=Off` alone still lets `auto` find one |
+| `BUILD_SPELL_DICT=Off` | it `file(DOWNLOAD)`s a dictionary at build time — the one thing in this tree that would reach the network under `--network none` |
+| `ENABLE_XDGAUTOSTART=Off` | KDOS runs no autostart agent; `kdos-desktop-start` launches fcitx5 by name |
+| `ENABLE_ENCHANT=Off` | word prediction for Latin scripts, and a port that exists for nothing else |
+| **`ENABLE_TESTING_ADDONS=On`** | **not an oversight.** Every engine port does an unconditional `find_package(Fcitx5Module REQUIRED COMPONENTS TestFrontend)`, so turning the testing addons off makes fcitx5-hangul, -anthy and -chinese-addons all fail to CONFIGURE. Three small addons |
+
+**One language per engine, and the Chinese one costs a Boost.**
+`fcitx5-chinese-addons` (pinyin, shuangpin, and the table methods — cangjie,
+wubi, erbi, zhengma…) sits on `libime`, which needs Boost's headers *and*
+`Boost::iostreams`; that is a 188 MB tarball in LFS for one compiled component,
+and the recipe builds `--with-libraries=iostreams` and nothing else. It buys the
+input method for the largest language population there is, and there is no
+smaller road to pinyin — librime wants Boost too. `fcitx5-anthy` over
+`anthy-unicode` is Japanese, `fcitx5-hangul` over `libhangul` is Korean, and
+neither needs it.
+
+**Two decisions in the engine builds are policy, not packaging:**
+
+- **`ENABLE_CLOUDPINYIN=Off`.** Cloud pinyin sends what you are typing to a
+  remote service to be completed. That is keystrokes leaving the machine, on a
+  distro that builds offline and boxes its applications so nothing has to phone
+  home.
+- **`ENABLE_GUI=Off` / `ENABLE_BROWSER=Off`.** The configuration tool is Qt
+  Widgets, and with the browser also QtWebEngine. There is no Qt on the host.
+  fcitx5's config is text under `~/.config/fcitx5/`.
+
+**libime's data is 49 MB fetched at build time upstream**, in three tarballs —
+the language model, the dictionary and the table set. `Fcitx5Download.cmake`
+skips the fetch when the file is already there and resolves the name against the
+SOURCE directory, so the port carries all three as extra `source =` lines and
+copies them into `data/` before cmake runs. That is the whole of making it
+offline, and it was verified by watching `sc.dict` and eight table dictionaries
+come out of a build with no network in it.
+
+**A boxed app reaches the input method through the compositor and never
+directly.** `kdos-appbox` exports `QT_IM_MODULE=wayland` and — deliberately —
+sets **no** `GTK_IM_MODULE` at all: GTK on Wayland picks the right context by
+itself when the variable is unset, and setting it is how a working GTK app stops
+accepting CJK. Neither is ever `fcitx`: that is the X11-era route where each
+toolkit talks to the IM daemon itself, and inside the container that daemon does
+not exist.
+
+**Proved by running it**, against a headless `kdos-comp` on the pixman backend:
+fcitx5 loads its `wayland` and `waylandim` addons, binds
+`zwp_input_method_manager_v2`, creates a `zwp_input_method_v2` and a
+`zwp_virtual_keyboard_v1` — the forwarding route the compositor half was built
+for — and loads the `pinyin` engine against the dictionary generated offline.
+All four engines register their input-method metadata (`pinyin`, `shuangpin`,
+`anthy`, `hangul`, plus eight table methods).
+
+**Known gaps, stated rather than hidden:**
+
+- **No `fcitx5-configtool`** — it is Qt. Configuration is the text files.
+- **The candidate window is fcitx5's own**, drawn with cairo and pango through
+  `get_input_popup_surface`. It is the one thing on this desktop that is not a
+  character grid, and making it one would mean writing an input method.
+- **`musl-locales` needs GCC 14 or newer** (`-std=c23`); KDOS ships 15, so it
+  builds there and not on an older host. It installs a `locale` command and
+  message catalogues — musl implements `LC_MESSAGES` and nothing else, so
+  `LANG=zh_CN.UTF-8` starts giving translated program output and still has no
+  collation and no localised `strftime`.
+
 ## Which app is using your microphone
 
 `src/desktop/kdos-shell/privacy.c`. The panel names it:
@@ -1408,6 +1775,95 @@ Three details worth keeping:
 Cost: `kdos-shell` links `libpipewire-0.3` and the port depends on `pipewire`.
 The camera walk runs every two seconds — a readdir per process, and there is
 nothing to subscribe to.
+
+## Per-app Energy Impact — `kdos-energyd`
+
+Windows 11, macOS and Android all ship per-app battery attribution. No Linux
+desktop does, and the reason is not the measurement — RAPL and the cycle-share
+model are twenty years old. It is **identity**: "Firefox" is forty processes in
+scattered cgroups and nothing on a normal desktop owns enough of the system to
+name them. On KDOS every fat application already runs inside its own container
+whose supervisor knows its name, so the expensive half is free here and only
+here.
+
+```
+KDOS energy  —  2.1 h of samples, RAPL package-0
+
+  firefox-esr (appbox kdos-apps)          75.5%  ███████████████       gpu 75.0%
+  kdos-comp                               15.4%  ███                   gpu 25.0%
+  short-lived and exited processes          8.7%
+
+  shares are of ATTRIBUTABLE energy — 57% of the package total; the rest is the idle floor
+  idle floor 15.00 W, the lowest average power seen in 3 samples
+```
+
+**`src/desktop/kdos-energyd/`** is a root daemon on `/run/kdos-energyd.sock`
+(`rapl.c` the counter, `attrib.c` the attribution, `report.c` what the numbers
+may say) plus a `kdos-energy` client, basename-dispatched — the kdos-powerd
+shape, including the `SO_PEERCRED` gate, which is **libkbase's
+`kb_user_in_group` now** rather than a copy in each daemon.
+
+**Relative, never watt-hours.** RAPL measures the CPU package. It cannot see the
+panel — the largest single draw on a laptop — nor the radio, the SSD, or a
+discrete GPU. "GIMP was 41% of attributable CPU energy today" is a measurement;
+"GIMP used 12% of your battery" is a guess wearing a unit.
+
+Six decisions, each of which changes the answer:
+
+- **Nested RAPL domains are dropped.** `/sys/class/powercap` lists
+  `intel-rapl:0` (a package) flat beside `intel-rapl:0:0` (that package's core
+  domain), and summing the listing counts the cores twice — measured on the
+  fixture: 15 W becomes 26.25 W. A domain is a subdomain exactly when it appears
+  *inside* another's directory. `psys` goes the other way: it contains the
+  packages, so where it exists it replaces them.
+- **The counter wraps**, about every 36 minutes at 30 W, and a naive subtraction
+  produces one enormous negative per wrap with nothing in the output saying so.
+- **The idle floor is subtracted before anything is attributed.** A package
+  burns watts with nothing running, and a cycle-share model that skips this
+  reports a machine at a login prompt as 90% one process. The floor is the
+  lowest average power seen — a measurement, printed with the answer.
+- **The floor is applied at REPORT time, not per window.** It can only fall, so
+  charging each window the floor as it stood then throws away the first window
+  entirely — which is usually the busiest, because something was just launched.
+  Each app instead carries two weighted sums (`we`, `wt`) and the report computes
+  `we − floor·wt` once, with the floor as it finally stands.
+- **The denominator is `/proc/stat`, not the sum of the surviving pids.** A build
+  that starts and exits inside one window is gone by the second sample, and
+  dividing by the survivors would hand its energy to them. The difference is a
+  real quantity and gets its own line.
+- **The GPU column is engine TIME from `drm-engine-*` in fdinfo, never energy.**
+  Nothing on the machine says what that time cost in joules. On a part with
+  integrated graphics it is already inside the package number (detected by an
+  `uncore` subdomain); on a discrete card it is outside RAPL entirely and the
+  report says so. A driver with no fdinfo stats — the proprietary nvidia one —
+  gets **no column**, not a column of zeroes.
+
+**Why a daemon, and why the socket is not an oracle.** RAPL is a free-running
+counter, so a one-shot tool can only report what happened while it was watching;
+and it has been root-only since Linux 5.10 closed PLATYPUS (CVE-2020-8694),
+where fine-grained unprivileged reads recover AES keys. What leaves this process
+is a per-app percentage over minutes — the raw counter and the interval are
+never republished, and the interval is **fixed at 10 s by the daemon rather than
+requested by a client**, so it cannot be driven toward being one. It is a
+sampler only: no write path into powercap at all, and no argument from any
+client. The socket is root and `wheel`, not world-readable — on a multi-user
+machine this list is what everyone else is running.
+
+**`56_energyd.sh` checks for a readable energy domain before `supervise` sees
+the daemon.** Most VMs have no RAPL; the daemon refuses to start there rather
+than report a machine that uses no energy at all, and a refusing daemon under a
+respawn loop is a boot that never settles.
+
+**`--fixture` is what makes it testable**, the same seam as `kdos stutter` and
+`KDOS_PRIVACY_PROC`: `testing/fixtures/energy/{0..3}/` are recorded `proc` and
+`powercap` trees, and `testing/selftest.sh` asserts the floor (the nesting), the
+attributable fraction (the wrap), that `Web Content` is rolled onto
+`firefox-esr (appbox kdos-apps)` and appears nowhere itself, and that the
+short-lived residue is its own line. Both traps were confirmed to bite by
+building the daemon with each one disabled.
+
+**Not built: a panel indicator.** The milestone's deliverable is the sentence,
+and `kdos-shell` drawing a share strip is its own piece of work.
 
 ## The tray — a StatusNotifierItem host
 
@@ -1487,6 +1943,7 @@ kdos/
 │   │   ├── kdos-shell/          # panel, launcher, notifyd, osd, tray (SNI)
 │   │   ├── kdos-lock/           # the lock screen + setuid kdos-checkpass
 │   │   ├── kdos-powerd/         # suspend/poweroff/reboot over a unix socket
+│   │   ├── kdos-energyd/        # per-app Energy Impact from RAPL, relative
 │   │   └── kdos-boxsock/        # the security-context-v1 sandbox engine
 │   ├── build/
 │   │   └── kdosbuild/           # the build orchestrator (C, host-only)
@@ -1949,7 +2406,7 @@ Bugs the rewrite fixed, all of them silent:
 
 ### One recipe format, and how the tree got there
 
-Every one of the 396 ports is `kpkgbuild` + `build.sh`. There is no second
+Every port is `kpkgbuild` + `build.sh`. There is no second
 format and no dual mode: `kpkg` no longer looks at a recipe to decide how to
 read it.
 
@@ -2282,6 +2739,9 @@ make DESTDIR=$PKG install
 - **`secdb = <alpine-package>`** maps a port onto the name Alpine's security
   database uses, for `kdos cve`. Declared only when it differs — today only the
   kernel (`linux` here, `linux-lts` there).
+- **`bench =` and `bench_setup =`** are how `kdos march` measures a port: the
+  first is timed, the second runs once and is not. A port with neither cannot be
+  measured and is never counted as a winner.
 - **`vendoring = rust`** makes `ports/fetch` run `cargo vendor` and package
   `vendor/` + `.cargo/config.toml` as `<name>-vendor-<version>.tar.xz` beside
   the tarball; `build.sh` extracts it into `$SRC` and builds `--frozen --offline`.
@@ -2363,10 +2823,11 @@ fallback of last resort, rate-limited to one request/second and marked
 `low_confidence` — it is never upstream itself.
 
 **The group key is `<forge-org>@<current-version>`, deliberately not a name
-prefix.** A `cosmic-*` rule would miss the 17th member of the pop-os epoch,
-`pop-launcher`, whose repo is `pop-os/launcher`. All 17 resolve to the
-identical `pop-os@1.4.0` and are only ever offered as a bump together — an
-explicit `group =` key in a recipe overrides the derived one.
+prefix.** The example that settled it is gone from the tree but the rule is not:
+a `cosmic-*` name rule missed the 17th member of that epoch, `pop-launcher`,
+whose repo is `pop-os/launcher`, while all 17 resolved to the identical
+`pop-os@1.4.0` and were only ever offered as a bump together. An explicit
+`group =` key in a recipe overrides the derived one.
 
 **Coverage: 382 of 390 ports recover their exact current version from their
 own `source` URL** (verified against `kpkg meta`'s own expansion). The 8
@@ -2410,7 +2871,8 @@ Apply the canonical fix when a build fails for one of these.
 **Static-musl + Rust + bindgen → "Dynamic loading not supported".** Crates using
 `bindgen`/`libloading` try to `dlopen libclang.so` at build time.
 `export RUSTFLAGS="-C target-feature=-crt-static"; export LIBCLANG_PATH=/usr/lib`.
-Affects the cosmic-* ports, librsvg, pipewire-sys, wayland-rs.
+Affects librsvg, pipewire-sys and wayland-rs; it was first hit on the cosmic-*
+ports, which are gone.
 
 **CMake 4.x — "Compatibility with CMake < 3.5 has been removed".** Add
 `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
@@ -2577,7 +3039,7 @@ adding users is manual.
 ## Working-state markers
 
 ```bash
-ls ports/core | wc -l                                  # 389 ports
+ls ports/core | wc -l                                  # 405 ports
 ls build/fs/var/lib/kpkg/db/ | wc -l                   # installed packages
 git status --short | wc -l                             # tracked changes
 ls build/logs/04_phase4/*.log                          # which packages have logs
@@ -2598,17 +3060,24 @@ and respond with the targeted fix.
   empty.
 - ~~cosmic-comp does not start Xwayland~~ — **closed by the rewrite.** wlroots
   runs Xwayland rootlessly and `kdos-comp` turns it on (`KDOS-DESKTOP.md` §7).
-- **No `linux-firmware`, no microcode, no `man`, no clock sync, no syslog, no
-  cron and no mkfs for btrfs/xfs/f2fs/exfat.** All of wave 0 in
-  `docs/KDOS-DESKTOP.md` §12; the firmware one means a real laptop has no Wi-Fi,
-  no Bluetooth and no GPU init today. (Source checksums were on this list and
-  are not any more: `sha256 =` is a recipe key, preflight checks every archive
-  against it, and only the three source-less ports of ours lack one.)
+- **No `f2fs-tools`**, so `CONFIG_F2FS_FS=m` is a filesystem the kernel can
+  mount and nothing here can create. (NTFS needs no port: `CONFIG_NTFS3_FS=m`
+  is read-write in the kernel.)
+  (`linux-firmware`, microcode, `man`, the clock, syslog, periodic jobs and
+  mDNS were all on this list and are not any more. Source checksums too:
+  `sha256 =` is a recipe key, preflight checks every archive against it, and
+  only the three source-less ports of ours lack one.)
 - **The tray does not render `com.canonical.dbusmenu`**, so an app that sets
   `ItemIsMenu` has no reachable menu. See the tray section.
 - **No FileChooser portal** — xdg-desktop-portal-wlr implements ScreenCast and
   Screenshot only, and there is no GTK backend to fall back to on a host with
   no GTK. Boxed apps use their own dialogs.
+- **No `fcitx5-configtool`** — it is Qt Widgets, and with its browser also
+  QtWebEngine. fcitx5 is configured through the text files under
+  `~/.config/fcitx5/`.
+- **No corefonts for wine.** winetricks fetches them from the network at run
+  time and nothing in the image may depend on that, so a Windows program that
+  wants Arial gets a substitute.
 
 ---
 

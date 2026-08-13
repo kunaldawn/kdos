@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = opencc
+version     = 1.4.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/BYVoid/OpenCC/archive/refs/tags/ver.$version.tar.gz
+sha256      = d4b94877c508a4774853f3b07330b3d25df00105c39dfba6ab9889d77946cc8a  opencc-1.4.1.tar.gz
+description = Conversion between Traditional and Simplified Chinese
+homepage    = https://github.com/BYVoid/OpenCC
+depends     = cmake

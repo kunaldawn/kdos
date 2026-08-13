@@ -67,6 +67,11 @@ struct KpDecl {
 	 * there — and it is a KEY rather than a helper so it is not expanded and
 	 * not carried into the build environment. */
 	char secdb[128];
+	/* How `kdos march` measures this port: a setup line that is run once and
+	 * not timed, and the line that IS timed. Keys rather than helpers so
+	 * they are not expanded and never reach the build environment. */
+	char bench[512];
+	char bench_setup[512];
 	/* "KEY=VALUE", in declaration order: a later helper may refer to an
 	 * earlier one, which `_cargo = $_rust` does. */
 	char var[MAX_VARS][512];
@@ -365,6 +370,8 @@ static void set_key(KpDecl *d, const char *key, const char *val)
 		{ "vendoring", d->vendoring, sizeof(d->vendoring), 0 },
 		{ "pypackages", d->pypackages, sizeof(d->pypackages), 1 },
 		{ "secdb", d->secdb, sizeof(d->secdb), 0 },
+		{ "bench", d->bench, sizeof(d->bench), 0 },
+		{ "bench_setup", d->bench_setup, sizeof(d->bench_setup), 0 },
 		{ NULL, NULL, 0, 0 }
 	};
 	for (int i = 0; F[i].key; i++) {
@@ -466,6 +473,8 @@ void kp_decl_prelude(const KpDecl *d, KbBuf *b)
 		{ "vendoring", offsetof(struct KpDecl, vendoring) },
 		{ "pypackages", offsetof(struct KpDecl, pypackages) },
 		{ "secdb", offsetof(struct KpDecl, secdb) },
+		{ "bench", offsetof(struct KpDecl, bench) },
+		{ "bench_setup", offsetof(struct KpDecl, bench_setup) },
 	};
 	for (size_t i = 0; i < sizeof(SIMPLE) / sizeof(SIMPLE[0]); i++) {
 		const char *v = (const char *)d + SIMPLE[i].off;

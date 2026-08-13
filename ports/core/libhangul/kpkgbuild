@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libhangul
+version     = 0.2.0
+release     = 1
+source      = https://github.com/libhangul/$name/releases/download/$name-$version/$name-$version.tar.gz
+sha256      = ea04e6a0cf4840a2a3b5641c1761068c78691036db839d0838f4e7a6553a5120  libhangul-0.2.0.tar.gz
+description = Hangul input processing library
+homepage    = https://github.com/libhangul/libhangul
+depends     =

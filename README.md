@@ -151,15 +151,25 @@ wiped.
 
 ## The desktop
 
-> **In development.** KDOS ran COSMIC through v0.1 — the screenshots on this
-> page are of that desktop. It has been removed, and what replaces it is ours:
-> **`kdos-comp`**, a wlroots compositor, and **`kdos-shell`**, a
-> character-cell-grid panel and launcher drawn by the same libktui that draws
-> the installer and the build system. The plan is `docs/KDOS-DESKTOP.md`.
+The desktop is **ours**: **`kdos-comp`**, a wlroots compositor, and
+**`kdos-shell`**, a character-cell-grid panel, launcher, notification daemon and
+tray drawn by the same libktui that draws the installer and the build system.
+Beside them: `kdos-lock` (with the one setuid binary KDOS ships), `kdos-powerd`
+for suspend and poweroff without logind, and `kdos-boxsock`, which gives every
+container its own tagged Wayland socket so a boxed app cannot copy your screen.
+
+> **Screenshots on this page are v0.1**, which ran COSMIC. The desktop they show
+> is gone; the theme, the icons and the palette are the same ones the current one
+> wears. `docs/KDOS-DESKTOP.md` carries a status block per milestone.
 
 The desktop needs neither GTK nor Qt, which is exactly why the host has
 neither: the shell is a cell grid in the KDOS palette, and application windows
 render as pixels inside it.
+
+**The compositor renders the session through a CRT shader** — scanlines every
+third physical row, a three-tap bleed, a vignette and a faint phosphor floor, so
+the boot splash, the TTY and the desktop are finally the same machine. `crt = 0`
+in `comp.conf` is an honest off.
 
 ```sh
 kdos-desktop       # from a tty
@@ -171,12 +181,38 @@ kdos-desktop       # from a tty
 
 The app library is grouped by freedesktop Categories into Internet, Graphics,
 Office, Media, Engineering, Science, Games, System and Utilities — which is how
-~90 containerised apps stay findable.
+~105 containerised apps stay findable, including a curated KDE segment (dolphin,
+okular, kate, gwenview, kdenlive, digikam and friends).
 
 Keys worth knowing: `Super+D` launcher, `Super+Return` terminal, `Super+Q`
 close, `Alt+Tab` switch, `Super+Arrows` snap, `Super+1..4` workspaces,
 `Super+L` lock, `PrtSc` screenshot. Remap anything in
 `~/.config/kdos/comp.conf`.
+
+**Three things this desktop tells you that no other Linux desktop does.**
+`kdos stutter` names the process that made your desktop hiccup — "7 frames
+dropped on eDP-1 (133 ms); busiest just then: calibre-idx (appbox kdos-apps)
+waiting on the disk" — by joining the compositor's own frame deadline with PSI
+and `/proc`. The panel names the app that is **using your microphone or
+camera**, which every phone OS has done for a decade. And `kdos-energy` gives
+you **per-app Energy Impact** — the thing Windows, macOS and Android all ship
+and Linux does not, because "Firefox" is forty processes nobody can name. Here
+every fat app is already its own container, so it can be named. Relative
+shares, never watt-hours: RAPL measures the CPU package and cannot see your
+screen.
+
+**Windows software runs in the box, not on the host.** `wine` is a Debian
+package in the appbox, reachable as an ordinary command — `wine setup.exe` — for
+the same reason browsers and IDEs are: KDOS builds the desktop, applications live
+in boxes. A musl-native wine would need two mingw-w64 cross toolchains ported
+first and could never run 32-bit Windows programs, which is most of them.
+
+**CJK input works**, which on a from-scratch distro is three parties that never
+speak to each other: `kdos-comp` is the wire between an application's
+`text-input-v3` and fcitx5's `input-method-v2`, and the engines are pinyin and
+the table methods (over libime), anthy for Japanese and hangul for Korean.
+`Ctrl+Space`. Cloud pinyin is deliberately off — it would send your keystrokes
+to a remote service.
 
 **Companion tools**, all Wayland-native: `foot` (terminal), `grim`+`slurp`
 (screenshot + region), `wl-clipboard`, `imv` (image viewer).
@@ -316,30 +352,52 @@ kpkgdel  foo           # remove
 kpkgdepends foo        # resolved install order
 ```
 
-A port is a directory with a `kpkgbuild` and its tarball:
+**A port is two files** — `kpkgbuild`, which is declarative metadata and is
+never sourced, and `build.sh` beside it, which is the build and is ordinary
+bash:
 
-```bash
-# description	: OpenGL and Vulkan implementation
-# homepage	: https://mesa3d.org
-# depends	: libdisplay-info gbm libinput pixman seatd eudev libxkbcommon
-
-name=mesa
-version=1.4.0
-release=1
-source="https://mesa3d.org/archive/mesa-$version.tar.xz"
-vendoring=rust
-
-build() {
-    tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
-    export RUSTFLAGS="-C target-feature=-crt-static"
-    cargo build --release --frozen --offline
-    install -Dm755 target/release/$name "$PKG/usr/bin/$name"
-}
+```
+name        = mesa
+version     = 25.3.3
+release     = 1
+source      = https://mesa3d.org/archive/mesa-$version.tar.xz
+sha256      = 9ba0...  mesa-25.3.3.tar.xz
+description = OpenGL and Vulkan implementation
+homepage    = https://mesa3d.org
+depends     = libdisplay-info libinput pixman seatd eudev libxkbcommon
+vendoring   = rust
 ```
 
-`vendoring=rust` is what makes the offline build possible: `make fetch` runs
-`cargo vendor` once and commits the result beside the tarball, so the build
-container never needs crates.io.
+```bash
+# build.sh — cwd is $SRC
+meson setup build --prefix=/usr --libdir=lib --buildtype=release
+meson compile -C build
+DESTDIR=$PKG meson install --no-rebuild -C build
+```
+
+Splitting them is what lets `bash -n` syntax-check all 405 builds in
+`testing/preflight.sh`, and what stopped kpkg exec'ing bash just to READ a
+recipe. `vendoring = rust` is what makes the offline build possible: `make
+fetch` runs `cargo vendor` once and commits the result beside the tarball, so
+the build container never needs crates.io.
+
+**Packages are reproducible and can be signed.** Building a port twice yields a
+byte-identical `.tar.xz` — sorted, `uid/gid 0`, mtime from `SOURCE_DATE_EPOCH`,
+a pinned compressor and a fixed umask — which is what makes a binary repository
+worth having:
+
+```sh
+kpkg verify --repro zlib          # build it twice; the two must be identical
+kpkg keygen builder               # Ed25519, via vendored Monocypher
+kpkg index /repo --sign builder.key
+kpkg binhost /repo zlib           # use the prebuilt package, or say why not
+kpkg delta old.tar.xz new.tar.xz  # 3 KB instead of 85 KB on a point release
+```
+
+A prebuilt package is used when three things match — architecture, the
+build-config hash, and the recipe hash — and the machine builds from source
+otherwise. KDOS has no USE flags, so that is the whole of the question Gentoo
+needs flag matching for.
 
 ---
 
@@ -347,16 +405,26 @@ container never needs crates.io.
 
 ```sh
 kdos help          # commands + keybind cheat sheet
-kdos theme amber   # repaint everything
-kdos status        # packages, containers, session
+kdos theme amber   # repaint everything, live
+kdos theme --audit # is every generated colour still the palette's?
+kdos status        # packages, containers, alien apps, session
 kdos doctor        # check the things that actually break on this distro
-kdos version
+kdos cve           # pinned versions with known holes — offline
+kdos stutter       # why the desktop hiccuped, with the app's name
+kdos-energy        # which app is spending the battery, relatively
+kdos why <path>    # what provides this, and why it is that way
+kdos rebuild <dir> # rebuild KDOS from the sources on this machine
 kdos-shot region   # screenshot to clipboard and ~/Pictures/Screenshots
 ```
 
 `kdos doctor` is not a generic health check — it tests the specific failures
 this distro has hit before, down to `readlink /proc/self/root` catching an
 initramfs that used the wrong `switch_root` and quietly broke every container.
+
+`kdos cve` compares every pinned version against a vendored copy of Alpine's
+security database — 270 KB, no network, and it answers on the machine that
+cannot reach a CVE feed. A package Alpine does not carry reads as UNKNOWN, never
+as clean.
 
 ---
 
@@ -379,8 +447,9 @@ contaminate — or depend on — your host. It is organised into phases:
 | 1 | Base userland — musl, toybox, bash, native gcc, kpkg, kinstall |
 | 2 | Self-hosting bootstrap — the chroot rebuilds its own toolchain |
 | 3 | Core libraries, build systems, interpreters |
-| 4 | Userland and the GUI sliver |
-| 5 | Kernel + modules |
+| 4 | Userland and the Wayland base |
+| 5 | The desktop — wlroots, kdos-comp, kdos-shell, kdos-lock, the portal |
+| 5 | Kernel + modules (a separate phase directory; the two 5s do not overlap) |
 | 6 | Packaging — theme, user, appbox, initramfs, ISO |
 
 Two things make iterating on a 2–4 hour build bearable.
@@ -466,17 +535,22 @@ A run logs to `/var/log/kinstall.log`.
 ```
 kdos/
 ├── ports/
-│   ├── core/<name>/         # kpkgbuild + upstream tarball (LFS)
+│   ├── core/<name>/         # kpkgbuild + build.sh + upstream tarball (LFS)
 │   ├── appbox/              # Containerfile, launcher generator, image chunks
-│   └── fetch                # downloads every source= URL, runs cargo vendor
+│   ├── fetch                # downloads every source= URL, runs cargo vendor
+│   └── update               # kdos-portup: is upstream newer than the pin?
 ├── src/
-│   ├── kpkg/                # the package manager
-│   ├── libs/                # our C libraries: libkbase, libkcolor, libktui
-│   └── packages/            # ports that are ours: installer, splash, appbox,
-│                            #   theme helper, art
+│   ├── libs/                # our C libraries — libkbase, libkcolor, libktui,
+│   │                        #   libkwl, libkxdg, libkpkg, libkbuild, libksig
+│   ├── desktop/             # kdos-comp, kdos-shell, kdos-lock, kdos-powerd,
+│   │                        #   kdos-boxsock
+│   ├── build/kdosbuild/     # the build orchestrator (C, host-only)
+│   ├── tools/               # host-only tools (kdos-portup)
+│   └── packages/            # ports that are ours: kpkg, installer, splash,
+│                            #   appbox, theme generators, kdos-tools, art
 ├── fs/                      # copied verbatim into the rootfs
-├── script/                  # build.py orchestrator + phase directories
-├── testing/                 # per-port build tests, QEMU runners
+├── script/                  # phase directories + the orchestrator's entry point
+├── testing/                 # preflight, selftest, fixtures, QEMU runners
 ├── docs/screenshots/
 ├── Dockerfile               # the Alpine build sandbox
 └── Makefile

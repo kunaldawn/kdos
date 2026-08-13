@@ -60,6 +60,14 @@ $CC $STD $WARN $INC -o "$OUT/kdos-powerd" \
     src/desktop/kdos-powerd/main.c src/libs/libkbase/*.c
 ln -sf kdos-powerd "$OUT/kdos-power"
 echo "  kdos-powerd"
+
+# kdos-energyd is the other root daemon, and the only one whose ANSWER can be
+# checked without root: --fixture replays recorded /proc and powercap trees
+# through the same sampler and ledger the daemon runs.
+$CC $STD $WARN $INC -Isrc/desktop/kdos-energyd -o "$OUT/kdos-energyd" \
+    src/desktop/kdos-energyd/*.c src/libs/libkbase/*.c
+ln -sf kdos-energyd "$OUT/kdos-energy"
+echo "  kdos-energyd"
 $CC $STD $WARN -o "$OUT/kdos-checkpass" src/desktop/kdos-lock/checkpass.c -lcrypt
 echo "  kdos-checkpass"
 $CC $STD $WARN $INC -Isrc/build/kdosbuild -o "$OUT/kdosbuild" \
@@ -359,6 +367,212 @@ else
 fi
 
 echo
+echo "==> -march is kept only where the win beat the noise"
+# N14's whole claim is the DECISION, and it is testable without building
+# anything twice: `kdos march decide <baseline> <optimised> <noise%>` is the
+# same function the measurement path calls. The cases below are the four that
+# matter, including the one every "optimised distro" gets wrong — a positive
+# number smaller than the spread it came out of.
+ln -sf kdos-tools "$OUT/kdos"
+march() { "$OUT/kdos" march decide "$@"; }
+march 10 8 1 | grep -q "kept" \
+    || { echo "  a 20% win over 1% noise was not kept"; exit 1; }
+march 10 9.8 1 | grep -q "reverted" \
+    || { echo "  a 2% win was kept"; exit 1; }
+march 10 8 30 | grep -q "reverted" \
+    || { echo "  a win inside the noise was kept"; exit 1; }
+march 10 12 1 | grep -q "reverted" \
+    || { echo "  a REGRESSION was kept"; exit 1; }
+# probe must never claim a level this CPU cannot run.
+"$OUT/kdos" march probe | grep -q "highest usable" \
+    || { echo "  probe said nothing about this CPU"; exit 1; }
+if ! grep -q avx512f /proc/cpuinfo 2>/dev/null; then
+    "$OUT/kdos" march probe | grep -q "x86-64-v4 *missing" \
+        || { echo "  probe claimed v4 on a CPU without avx512"; exit 1; }
+fi
+echo "  a win over noise is kept; a win under it, and a regression, are not"
+
+echo
+echo "==> kdos rebuild refuses what it cannot finish"
+# N13's value is in the checks, not the running: a rebuild started in RAM fills
+# memory and dies hours in with the machine unusable. Every refusal is tested
+# because the successful path is a six-hour build nothing here can run.
+ln -sf kdos-tools "$OUT/kdos"
+rb() { env KDOS_SOURCES="$1" "$OUT/kdos" rebuild "${@:2}"; }
+# From a directory that is not a tree and with nothing pointing at one: the
+# search falls back to `.`, which is the repo when this script runs from it.
+( cd "$OUT" && env -u KDOS_SOURCES "$OUT/kdos" rebuild --dry-run "$OUT/rb" ) \
+    >/dev/null 2>&1 \
+    && { echo "  a rebuild with no sources was allowed"; exit 1; }
+rb /tmp --dry-run "$OUT/rb" >/dev/null 2>&1 \
+    && { echo "  a directory that is not a KDOS tree was accepted"; exit 1; }
+rb "$PWD" --dry-run "$OUT/rb" >/dev/null 2>&1 \
+    || { echo "  this repo was not recognised as a KDOS tree"; exit 1; }
+# /dev/shm is tmpfs on any Linux that has it, which is the case this exists for.
+if [ -d /dev/shm ]; then
+    rb "$PWD" --dry-run /dev/shm/kdos-rebuild-check >/dev/null 2>&1 \
+        && { echo "  a work directory in RAM was accepted"; exit 1; }
+    rm -rf /dev/shm/kdos-rebuild-check
+fi
+rb "$PWD" --dry-run "$OUT/rb" 2>&1 | grep -q "nothing was copied" \
+    || { echo "  --dry-run did not say it did nothing"; exit 1; }
+echo "  no tree, a wrong tree and a work directory in RAM are all refused"
+
+echo
+echo "==> doctor can tell whether the initrd carries this CPU's microcode"
+# The early loader does not mount anything: it scans the raw initrd for one
+# literal path before decompression. So this builds an initrd shaped exactly
+# like 01_initramfs.sh's output -- an uncompressed cpio carrying both vendors'
+# blobs, then the gzipped part -- and asserts doctor's answer flips with it.
+# Both blobs are present so the assertion does not depend on the host's CPU.
+UC="$OUT/ucode"
+rm -rf "$UC"; mkdir -p "$UC/src/kernel/x86/microcode"
+printf 'not real microcode, but at the right path\n' \
+    > "$UC/src/kernel/x86/microcode/GenuineIntel.bin"
+cp "$UC/src/kernel/x86/microcode/GenuineIntel.bin" \
+   "$UC/src/kernel/x86/microcode/AuthenticAMD.bin"
+( cd "$UC/src" && find . | cpio -o -H newc ) > "$UC/ucode.cpio" 2>/dev/null
+printf 'the rest of the initramfs\n' | gzip -9 > "$UC/main.gz"
+cat "$UC/ucode.cpio" "$UC/main.gz" > "$UC/with.img"
+cp "$UC/main.gz" "$UC/without.img"
+
+ln -sf kdos-tools "$OUT/kdos"
+KDOS_INITRD="$UC/with.img" "$OUT/kdos" doctor 2>/dev/null \
+    | grep -q "microcode in the initrd" \
+    || { echo "  microcode in the initrd was not found"; exit 1; }
+KDOS_INITRD="$UC/without.img" "$OUT/kdos" doctor 2>/dev/null \
+    | grep -q "carries no .* microcode" \
+    || { echo "  a missing microcode blob was not reported"; exit 1; }
+KDOS_INITRD="$UC/nosuch.img" "$OUT/kdos" doctor 2>/dev/null \
+    | grep -q "cannot tell whether microcode is carried" \
+    || { echo "  a missing initrd was not reported honestly"; exit 1; }
+echo "  found when carried, reported when not, honest when there is no image"
+
+echo
+echo "==> a bad update boots three times and rolls itself back"
+# The A/B state machine, driven exactly as the machine drives it: `select` is
+# what the initramfs runs (decide and spend an attempt), `mark-good` what the
+# end of rcS runs. A boot that never reaches mark-good is a boot that failed,
+# which is the whole design — so the test simply never calls it.
+AB="$OUT/ab"
+mkdir -p "$AB"
+bootctl() { env KDOS_BOOTSTATE="$AB/bootstate" "$OUT/kdos-bootctl" "$@"; }
+ln -sf kdos-tools "$OUT/kdos-bootctl"
+
+bootctl status >/dev/null 2>&1 \
+    && { echo "  a machine with no state file claimed to have slots"; exit 1; }
+bootctl set-slot a AAAA-1111 >/dev/null || { echo "  set-slot failed"; exit 1; }
+bootctl set-slot b BBBB-2222 >/dev/null || { echo "  set-slot failed"; exit 1; }
+test "$(bootctl select)" = "AAAA-1111" \
+    || { echo "  a confirmed machine did not boot its active slot"; exit 1; }
+
+# The update: try the other slot. Three boots that never confirm, then a
+# rollback — and the rollback must be to the slot that was working.
+bootctl try b >/dev/null || { echo "  try failed"; exit 1; }
+for i in 1 2 3; do
+    test "$(bootctl select 2>/dev/null)" = "BBBB-2222" \
+        || { echo "  attempt $i did not boot the candidate"; exit 1; }
+done
+test "$(bootctl select 2>/dev/null)" = "AAAA-1111" \
+    || { echo "  a failing slot was not rolled back"; exit 1; }
+test "$(bootctl select 2>/dev/null)" = "AAAA-1111" \
+    || { echo "  the rollback did not stick"; exit 1; }
+bootctl status | grep -q "trying   nothing" \
+    || { echo "  the rollback left a try flag behind"; exit 1; }
+
+# The good update: one boot, then rcS confirms it.
+bootctl try b >/dev/null
+test "$(bootctl select 2>/dev/null)" = "BBBB-2222" || { echo "  no candidate"; exit 1; }
+bootctl mark-good >/dev/null || { echo "  mark-good failed"; exit 1; }
+test "$(bootctl select)" = "BBBB-2222" \
+    || { echo "  a confirmed slot did not become active"; exit 1; }
+
+# A torn state file reads as ABSENT, never as partial: half a file that looked
+# complete is how a machine boots a slot that was never installed.
+cp "$AB/bootstate" "$AB/good"
+printf 'slot_a = AAAA-1111\nactiv' > "$AB/bootstate"
+bootctl select >/dev/null 2>&1 \
+    && { echo "  a truncated state file was believed"; exit 1; }
+cp "$AB/good" "$AB/bootstate"
+# And the refusals, which are what keep a state file from naming nowhere.
+bootctl try b >/dev/null 2>&1 \
+    && { echo "  trying the active slot was allowed"; exit 1; }
+bootctl try z >/dev/null 2>&1 && { echo "  a bogus slot was allowed"; exit 1; }
+rm -f "$AB/bootstate"
+bootctl set-slot a AAAA-1111 >/dev/null
+bootctl try b >/dev/null 2>&1 \
+    && { echo "  trying a slot with no root was allowed"; exit 1; }
+echo "  three attempts then rollback, mark-good confirms, torn state ignored"
+
+echo
+echo "==> the initramfs unlocks a LUKS root, or says why it cannot"
+# The generated init is a heredoc inside a packaging script, which is exactly
+# the kind of code nothing ever tests until it is 3 a.m. and a laptop will not
+# boot. It is extracted, syntax-checked, and its unlock function is run against
+# stub tools — which is what PASS_TTY and CRYPT_MAPPER_DIR exist for.
+IR="$OUT/initramfs"
+mkdir -p "$IR/bin" "$IR/mapper"
+python3 - "$IR/init" <<'PYEOF' || { echo "  could not extract the generated init"; exit 1; }
+import re, sys
+s = open('script/06_packaging/01_initramfs.sh').read()
+m = re.search(r"cat > init <<EOF\n(.*?)\nEOF\n", s, re.S)
+if not m:
+    sys.exit(1)
+body = m.group(1).replace('\\$', '$').replace('\\`', '`').replace('\\\\', '\\')
+open(sys.argv[1], 'w').write(body)
+PYEOF
+bash -n "$IR/init" || { echo "  the generated init is not valid bash"; exit 1; }
+grep -q "cryptdevice=" "$IR/init" || { echo "  the init does not parse cryptdevice="; exit 1; }
+# The passphrase must never reach argv: /proc/<pid>/cmdline is world-readable.
+grep -q -- "--key-file=-" "$IR/init" \
+    || { echo "  the passphrase is not fed on stdin"; exit 1; }
+grep -q "cryptsetup open .*\"\$PASS\"" "$IR/init" \
+    && { echo "  the passphrase is passed as an argument"; exit 1; }
+
+cat > "$IR/bin/blkid" <<'EOF'
+#!/bin/sh
+echo "$FAKE_LUKS_DEV"
+EOF
+cat > "$IR/bin/cryptsetup" <<'EOF'
+#!/bin/sh
+# Accepts exactly one passphrase, and only on stdin.
+# argv is: open --key-file=- <device> <name>
+read -r given
+[ "$given" = "opensesame" ] || exit 2
+touch "$CRYPT_MAPPER_DIR/$4"
+EOF
+cat > "$IR/bin/modprobe" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod +x "$IR/bin/"*
+# The init calls cryptsetup and the splash by absolute path, which is right on a
+# real initramfs and is why the stubs are pointed at rather than shadowed.
+sed -i "s#/bin/cryptsetup#$IR/bin/cryptsetup#g; s#/bin/kdos-splash#true#g" "$IR/init"
+: > "$IR/fake-luks"
+
+luks_try() {
+    ( . /dev/stdin <<EOF
+$(sed -n '/^unlock_root() {/,/^}/p' "$IR/init")
+EOF
+      PATH="$IR/bin:$PATH" PASS_TTY="$1" CRYPT_MAPPER_DIR="$IR/mapper" \
+          FAKE_LUKS_DEV="$IR/fake-luks" unlock_root "$2" >/dev/null 2>&1 )
+}
+printf 'opensesame\n' > "$IR/good.tty"
+printf 'nope\nnope\nnope\n' > "$IR/bad.tty"
+rm -f "$IR/mapper/"*
+luks_try "$IR/good.tty" "UUID=1234-abcd:kdosroot" \
+    || { echo "  the right passphrase did not unlock"; exit 1; }
+test -e "$IR/mapper/kdosroot" \
+    || { echo "  no mapper device after a successful unlock"; exit 1; }
+rm -f "$IR/mapper/"*
+luks_try "$IR/bad.tty" "UUID=1234-abcd:kdosroot" \
+    && { echo "  a wrong passphrase unlocked the volume"; exit 1; }
+luks_try "$IR/good.tty" "this-is-not-a-spec" \
+    && { echo "  a malformed cryptdevice= was accepted"; exit 1; }
+echo "  cryptdevice= parsed, passphrase on stdin, three tries then a shell"
+
+echo
 echo "==> kdosbuild reads the build tree correctly"
 # This used to be a DIFFERENTIAL against script/buildlib: the C and python
 # views of the same tree, compared line by line. buildlib is gone, so there is
@@ -516,11 +730,44 @@ grep -q '"title": "Partition".*"state": "skipped"' "$OUT/plan.json" \
 # sentinel is what proves neither rendering repeats one.
 printf 'password = hunter2-sentinel\nroot_password = hunter2-sentinel\n' \
     >> "$OUT/answers.conf"
+# The LUKS passphrase is the third secret cfg carries and the newest, so it goes
+# through the same sentinel: an answer file may hold it, a dump may not.
+printf 'luks = 1\nluks_passphrase = hunter2-sentinel\n' >> "$OUT/answers.conf"
 "$KI" --config "$OUT/answers.conf" --dump plan --json > "$OUT/plan.json" 2>&1
 "$KI" --config "$OUT/answers.conf" --dump plan > "$OUT/plan.txt" 2>&1
 grep -q 'hunter2-sentinel' "$OUT/plan.json" "$OUT/plan.txt" \
-    && { echo "  a password reached the dump"; exit 1; }
+    && { echo "  a password or passphrase reached the dump"; exit 1; }
+# And the answer file kinstall WRITES never carries the passphrase either.
+"$KI" --config "$OUT/answers.conf" --save "$OUT/saved.conf" >/dev/null 2>&1
+grep -q 'hunter2-sentinel' "$OUT/saved.conf" \
+    && { echo "  --save wrote a secret into the answer file"; exit 1; }
+grep -q '^luks  *= *1' "$OUT/saved.conf" \
+    || { echo "  --save lost the luks flag"; exit 1; }
 "$KI" --dump bogus >/dev/null 2>&1 && { echo "  --dump took a bad subject"; exit 1; }
+
+# The root filesystem choice, read back as what it actually becomes. The three
+# things that must move together are the mkfs, its overwrite flag and the fstab
+# line — and fs_passno must be 0 for anything but ext4, because there is no
+# fsck.btrfs worth running and no fsck.xfs on this image at all.
+fsdump() {
+    printf 'fstype = %s\n' "$1" > "$OUT/fs.conf"
+    "$KI" --config "$OUT/fs.conf" --dump plan 2>&1
+}
+fsdump ext4  | grep -q "^mkfs  *mkfs.ext4 -F" \
+    || { echo "  ext4 does not use mkfs.ext4 -F"; exit 1; }
+fsdump ext4  | grep -q "^fstab root  *ext4 defaults,noatime 0 1" \
+    || { echo "  ext4 lost its fsck pass"; exit 1; }
+fsdump btrfs | grep -q "^mkfs  *mkfs.btrfs -f" \
+    || { echo "  btrfs does not use mkfs.btrfs -f"; exit 1; }
+fsdump btrfs | grep -q "^fstab root  *btrfs .* 0 0" \
+    || { echo "  btrfs was given a non-zero fsck pass"; exit 1; }
+fsdump xfs   | grep -q "^fstab root  *xfs .* 0 0" \
+    || { echo "  xfs was given a non-zero fsck pass"; exit 1; }
+# An answer file naming a filesystem this build cannot create must install a
+# working machine, not fail at the mkfs.
+fsdump zfs   | grep -q "fs ext4" \
+    || { echo "  an unknown fstype was not refused back to ext4"; exit 1; }
+echo "  the filesystem choice reaches mkfs and fstab, and only ext4 is fsck'd"
 if command -v python3 >/dev/null 2>&1; then
     python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$OUT/plan.json" \
         || exit 1
@@ -547,6 +794,100 @@ echo "==> kdos-powerd only lets root and wheel near the power"
 KDOS_POWERD_SOCKET="$OUT/nothing.sock" "$OUT/kdos-power" ping 2>&1 \
     | grep -q "no kdos-powerd" || { echo "  no message for a dead daemon"; exit 1; }
 echo "  --explain, the non-root refusal, and the client's message"
+
+echo
+echo "==> kdos-energyd attributes energy to apps, not to pids"
+# The two real inputs are a root-only counter and a machine that happens to be
+# busy in a particular way, so the fixture IS the test: four recorded snapshots
+# with a nested RAPL tree, a counter wrap, a boxed process tree and a /proc/stat
+# busy figure deliberately larger than the surviving pids account for.
+E="$OUT/energy.json"
+KDOS_ALIEN_APPS=testing/fixtures/energy/alien-apps \
+    "$OUT/kdos-energyd" --fixture testing/fixtures/energy --json > "$E" \
+    || { echo "  the fixture did not replay"; exit 1; }
+# The idle floor is 15 W only if the subdomains were NOT summed with their
+# parent. Counting intel-rapl:0:0 and :0:1 as well gives 26.25 W.
+grep -q '"idle_floor_w":15.000' "$E" \
+    || { echo "  nested RAPL domains were double-counted"; exit 1; }
+# 600 J attributable of 1050 J total, which is only true if the wrapped counter
+# in the last window was corrected; without it the fraction comes out 1.0000.
+grep -q '"attributable_fraction":0.5714' "$E" \
+    || { echo "  the wrapped energy counter was mishandled"; exit 1; }
+# Identity: a content process is rolled up onto the app that is its ancestor,
+# and the app is named with the box conmon says it is in.
+grep -q '"name":"firefox-esr (appbox kdos-apps)","impact":0.7550' "$E" \
+    || { echo "  the boxed app was not named or not rolled up"; exit 1; }
+grep -q "Web Content" "$E" \
+    && { echo "  a helper process was reported as an app of its own"; exit 1; }
+# The ticks /proc/stat counted that no surviving pid claims are their own line,
+# never spread over the survivors.
+grep -q '"short_lived":0.0867' "$E" \
+    || { echo "  exited processes were not accounted separately"; exit 1; }
+# Both honesty flags, which are what stop the number being read as watt-hours.
+grep -q '"gpu_in_domain":true' "$E" \
+    || { echo "  the uncore domain was not detected"; exit 1; }
+KDOS_ALIEN_APPS=testing/fixtures/energy/alien-apps \
+    "$OUT/kdos-energyd" --fixture testing/fixtures/energy \
+    | grep -q "no watt-hours here" \
+    || { echo "  the report does not say what it refuses to claim"; exit 1; }
+if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$E" || exit 1
+fi
+# A daemon that cannot read the counter must refuse to start rather than report
+# a machine using no energy at all.
+"$OUT/kdos-energyd" 2>&1 | grep -q "PLATYPUS" \
+    || { echo "  an unreadable counter did not stop the daemon"; exit 1; }
+KDOS_ENERGYD_SOCKET="$OUT/nothing.sock" "$OUT/kdos-energy" 2>&1 \
+    | grep -q "no kdos-energyd" || { echo "  no message for a dead daemon"; exit 1; }
+echo "  the fixture replays: nesting, the wrap, the roll-up and the residue"
+
+echo
+echo "==> genlaunchers turns an image's desktop entries into host commands"
+# Four outputs, and dropping any one of them breaks something visible: the
+# launcher, the mime cache beside it, the name -> in-box command table, and the
+# /usr/local/bin shim that makes every alien app an ordinary command. The fake
+# image also carries wine's shape — a NoDisplay entry plus a binary — because
+# that is the case the COMMANDS table exists for.
+IMG="$OUT/img"; FSR="$OUT/fsroot"
+rm -rf "$IMG" "$FSR"
+mkdir -p "$IMG/usr/share/applications" "$IMG/usr/bin" "$FSR"
+cat > "$IMG/usr/share/applications/gimp.desktop" <<'DESK'
+[Desktop Entry]
+Type=Application
+Name=GIMP
+Exec=gimp %U
+MimeType=image/png;
+Categories=Graphics;
+DESK
+cat > "$IMG/usr/share/applications/wine.desktop" <<'DESK'
+[Desktop Entry]
+Type=Application
+Name=Wine
+Exec=wine %f
+NoDisplay=true
+DESK
+touch "$IMG/usr/bin/wine" "$IMG/usr/bin/winecfg"
+"$OUT/kdos-appbox" genlaunchers "$IMG/usr/share/applications" "$FSR" 2>/dev/null \
+    || { echo "  genlaunchers failed"; exit 1; }
+APPS="$FSR/etc/skel/.local/share/applications"
+# The launcher FILENAME must be upstream's own desktop id — a dock matches a
+# running window to an entry by that id and nothing else.
+test -f "$APPS/gimp.desktop" || { echo "  no launcher for a normal app"; exit 1; }
+grep -q "^image/png=gimp.desktop;" "$APPS/mimeinfo.cache" \
+    || { echo "  MimeType did not reach the cache"; exit 1; }
+# NoDisplay is the box's own business and must never become a launcher.
+test -f "$APPS/wine.desktop" && { echo "  a NoDisplay entry became a launcher"; exit 1; }
+# …but the COMMAND must still be reachable, or the box carries wine and the host
+# cannot run it.
+grep -q "^wine	wine$" "$FSR/usr/share/kdos/alien-apps" \
+    || { echo "  a command-only app got no alien-apps row"; exit 1; }
+test -L "$FSR/usr/local/bin/wine" || { echo "  no shim for wine"; exit 1; }
+test -L "$FSR/usr/local/bin/gimp" || { echo "  no shim for gimp"; exit 1; }
+# winetricks is in the COMMANDS table and NOT in this image: an older bake must
+# not gain a shim that dies on "not found".
+test -e "$FSR/usr/local/bin/winetricks" \
+    && { echo "  a shim was made for a binary the image lacks"; exit 1; }
+echo "  launcher, mime cache, command table and shims — and no shim without a binary"
 
 echo
 echo "==> kdos stutter names the process, not just the pressure"

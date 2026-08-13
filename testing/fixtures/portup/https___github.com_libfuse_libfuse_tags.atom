@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/libfuse/libfuse/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/libfuse/libfuse/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/libfuse/libfuse/releases.atom"/>
+  <title>Tags from libfuse</title>
+  <updated>2026-03-18T21:19:19Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.18.2</id>
+    <updated>2026-03-18T21:32:13Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.18.2"/>
+    <title>fuse-3.18.2</title>
+    <content></content>
+    <author>
+      <name>bsbernd</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/13063040?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.18.1</id>
+    <updated>2025-12-20T23:35:58Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.18.1"/>
+    <title>fuse-3.18.1</title>
+    <content></content>
+    <author>
+      <name>bsbernd</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/13063040?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.18.0</id>
+    <updated>2025-12-19T14:38:21Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.18.0"/>
+    <title>fuse-3.18.0</title>
+    <content></content>
+    <author>
+      <name>bsbernd</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/13063040?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.17.4</id>
+    <updated>2025-08-19T21:55:39Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.17.4"/>
+    <title>fuse-3.17.4</title>
+    <content></content>
+    <author>
+      <name>bsbernd</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/13063040?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.17.3</id>
+    <updated>2025-07-19T13:16:02Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.17.3"/>
+    <title>fuse-3.17.3</title>
+    <content></content>
+    <author>
+      <name>bsbernd</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/13063040?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.17.2</id>
+    <updated>2025-04-23T23:42:16Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.17.2"/>
+    <title>fuse-3.17.2</title>
+    <content></content>
+    <author>
+      <name>bsbernd</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/13063040?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.17.1</id>
+    <updated>2025-03-24T13:00:42Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.17.1"/>
+    <title>fuse-3.17.1 (final)</title>
+    <content></content>
+    <author>
+      <name>bsbernd</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/13063040?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.17.1-rc1</id>
+    <updated>2025-02-18T22:47:37Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.17.1-rc1"/>
+    <title> libfuse 3.17.1-rc1</title>
+    <content></content>
+    <author>
+      <name>bsbernd</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/13063040?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.17.1-rc0</id>
+    <updated>2025-02-13T12:07:10Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.17.1-rc0"/>
+    <title>libfuse 3.17.1-rc0 Release Notes</title>
+    <content type="html">&lt;p&gt;Release 3.17.1-rc0&lt;/p&gt;
+
+&lt;p&gt;3.17.0 will not be officially released, as there was the 3.17 branch
+&lt;br /&gt;which had a 3.17.0 version set by meson. In order to avoid all
+&lt;br /&gt;possible issues, we advance to 3.17.1, for now as -rc0.&lt;/p&gt;</content>
+    <author>
+      <name>bsbernd</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/13063040?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/48296177/fuse-3.16.2</id>
+    <updated>2023-10-10T07:40:44Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/libfuse/libfuse/releases/tag/fuse-3.16.2"/>
+    <title>libfuse 3.16.2</title>
+    <content></content>
+    <author>
+      <name>Nikratio</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/701625?s=60&amp;v=4"/>
+  </entry>
+</feed>

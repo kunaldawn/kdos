@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 
 #include "kbase.h"
@@ -261,4 +263,45 @@ void kb_run_detach(const KbArgv *a)
 		_exit(0);
 	}
 	reap(pid);
+}
+
+/*
+ * Is `user` (whose primary group is `primary`) a member of `group`?
+ *
+ * /etc/group is parsed directly rather than through getgrnam(): musl's NSS is
+ * files-only anyway, and the callers are root daemons deciding whether to obey
+ * a request — loading a name-service module to answer a question one file read
+ * can is more code running as root, not less.
+ *
+ * The group's OWN gid counts as well as its member list. A user whose primary
+ * group IS wheel never appears in that list, and a check that missed it would
+ * refuse exactly the accounts an installer creates.
+ */
+int kb_user_in_group(const char *user, gid_t primary, const char *group)
+{
+	FILE *f = fopen("/etc/group", "r");
+	if (!f)
+		return 0;
+
+	int ok = 0;
+	char line[4096];
+	while (!ok && fgets(line, sizeof(line), f)) {
+		line[strcspn(line, "\n")] = '\0';
+		char *save = NULL;
+		char *gname = strtok_r(line, ":", &save);
+		if (!gname || strcmp(gname, group))
+			continue;
+		strtok_r(NULL, ":", &save);		/* the password field */
+		char *gid_s = strtok_r(NULL, ":", &save);
+		char *members = strtok_r(NULL, ":", &save);
+
+		if (gid_s && (gid_t)strtoul(gid_s, NULL, 10) == primary)
+			ok = 1;
+
+		for (char *m = members ? strtok_r(members, ",", &save) : NULL;
+		     m && !ok; m = strtok_r(NULL, ",", &save))
+			ok = !strcmp(m, user);
+	}
+	fclose(f);
+	return ok;
 }

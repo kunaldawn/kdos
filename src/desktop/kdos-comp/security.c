@@ -51,6 +51,7 @@ enum kc_cap {
 	KC_CAP_FOREIGN_TOPLEVEL,
 	KC_CAP_SHORTCUTS_INHIBIT,
 	KC_CAP_OUTPUT_MANAGEMENT,
+	KC_CAP_INPUT_METHOD,
 	KC_CAP_COUNT
 };
 
@@ -62,6 +63,7 @@ static const char *const cap_names[KC_CAP_COUNT] = {
 	[KC_CAP_FOREIGN_TOPLEVEL]  = "foreign_toplevel",
 	[KC_CAP_SHORTCUTS_INHIBIT] = "shortcuts_inhibit",
 	[KC_CAP_OUTPUT_MANAGEMENT] = "output_management",
+	[KC_CAP_INPUT_METHOD]      = "input_method",
 };
 
 /*
@@ -104,6 +106,19 @@ static const struct {
 
 	{ "zwlr_output_manager_v1",                    KC_CAP_OUTPUT_MANAGEMENT },
 	{ "zwlr_output_power_manager_v1",              KC_CAP_OUTPUT_MANAGEMENT },
+
+	/*
+	 * BEING an input method is a keylogger by design: the keyboard grab
+	 * delivers every keystroke on the seat to whoever holds it, including
+	 * the ones typed into other applications. So the manager sits here,
+	 * beside virtual-keyboard, and is denied to a box by default.
+	 *
+	 * zwp_text_input_manager_v3 is deliberately NOT in this table. That is
+	 * the application half — "I am a text field" — and every boxed app that
+	 * accepts typing needs it; denying it would be denying input methods to
+	 * exactly the applications that need one most.
+	 */
+	{ "zwp_input_method_manager_v2",               KC_CAP_INPUT_METHOD },
 };
 
 struct kc_policy {
