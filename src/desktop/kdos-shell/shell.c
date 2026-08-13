@@ -363,6 +363,22 @@ void sh_disconnect(struct sh_state *sh)
 	sh->display = NULL;
 }
 
+/*
+ * Minimise, which is what show-desktop is made of.
+ *
+ * No seat argument, and none is wanted: minimising is not a focus grab, so the
+ * compositor has nothing to protect against here. A window that is already
+ * minimised is left alone rather than toggled — show-desktop pressed twice must
+ * not un-minimise half the screen.
+ */
+void sh_minimize_task(struct sh_state *sh, int i)
+{
+	if (i < 0 || i >= sh->ntasks || sh->tasks[i].minimized)
+		return;
+	zwlr_foreign_toplevel_handle_v1_set_minimized(sh->tasks[i].handle);
+	wl_display_flush(sh->display);
+}
+
 void sh_activate_task(struct sh_state *sh, int i)
 {
 	if (i < 0 || i >= sh->ntasks)

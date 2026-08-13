@@ -37,11 +37,11 @@ PKGCFG="fcft pixman-1 xkbcommon wayland-client"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I. -I"$PORT_SRC" \
-	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkwl" \
+	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-lock \
 	"$PORT_SRC"/main.c \
-	"$LIBS"/libkwl/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
+	"$LIBS"/libkwl/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkbase/*.c \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
