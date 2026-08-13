@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fcitx5-hangul
+version     = 5.1.10
+release     = 1
+source      = https://download.fcitx-im.org/fcitx5/$name/$name-$version.tar.zst
+sha256      = 7f5def69c880d6b7fc291edf470ab508c240a6d9e0d2f27db8e0583cb730f5df  fcitx5-hangul-5.1.10.tar.zst
+description = Korean input for fcitx5, via libhangul
+homepage    = https://github.com/fcitx/fcitx5-hangul
+depends     = cmake extra-cmake-modules fcitx5 libhangul gettext

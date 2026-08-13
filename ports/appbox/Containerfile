@@ -126,6 +126,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         dosbox mgba-qt desmume scummvm mednafen \
     && rm -rf /var/lib/apt/lists/*
 
+# Windows software — wine, and it belongs HERE rather than in ports/.
+#
+# The rule is "KDOS builds the desktop, applications live in boxes", and a
+# Windows application is still an application. The cost of the other choice is
+# concrete rather than stylistic: wine's PE modules are built by a mingw-w64
+# cross compiler, so a musl-native port needs TWO cross toolchains — i686 and
+# x86_64 targeting w64-mingw32 — ported first, and `--without-mingw` builds the
+# ELF-format modules upstream deprecated. Debian has that build done properly.
+#
+# `dpkg --add-architecture i386` is what makes 32-bit Windows programs work,
+# which is most of the ones anybody still has lying around, and it is only
+# possible in the box: KDOS itself has no multilib and never will.
+#
+# No corefonts: winetricks fetches those from the network at run time, and
+# nothing in this image is allowed to depend on that.
+RUN dpkg --add-architecture i386 \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        wine wine64 wine32:i386 winetricks cabextract \
+    && rm -rf /var/lib/apt/lists/*
+
 # KDE — the "I want a real desktop's applications" segment.
 #
 # NOT kde-full: that is Plasma itself plus everything, and it would roughly

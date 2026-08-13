@@ -35,6 +35,12 @@ for t in kdos kdos-banner kdos-shot kdos-fetch-app kdos-fetch-static; do
 	ln -s /usr/sbin/ksvc "$PKG/usr/local/bin/$t"
 done
 
+# kdos-bootctl lands in /usr/bin rather than /usr/local/bin: the initramfs build
+# copies it by path, and /usr/local is not somewhere a boot-critical tool should
+# have to be looked for.
+install -d "$PKG/usr/bin"
+ln -s /usr/sbin/ksvc "$PKG/usr/bin/kdos-bootctl"
+
 # The recorded debug cycles, queryable offline by `kdos why` and
 # `kdos explain`. Ships in the ISO like the appbox does: a help system that
 # needs a network is no help on the machine that will not boot.

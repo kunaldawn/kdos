@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = musl-locales
+version     = 20260425
+release     = 1
+_commit     = f6f3cf5fc1ebc1e220c74a4e73c4586d698b4c00
+source      = $name-$version.tar.gz::https://gitlab.com/rilian-la-te/$name/-/archive/$_commit/$name-$_commit.tar.gz
+sha256      = 360e04585ed8e7707fe67d7ca4219ee239011ec0087a94f55df5c8a63f45dfc6  musl-locales-20260425.tar.gz
+description = A locale command and message catalogues for musl
+homepage    = https://gitlab.com/rilian-la-te/musl-locales
+depends     = cmake gettext

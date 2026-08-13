@@ -178,6 +178,23 @@ static const char *EXEC_EXTRA[][2] = {
  * before printing anything at all. Measured: audacity runs fine on Wayland
  * once the prefix is dropped.
  */
+/*
+ * Alien software whose interface is a COMMAND and not a launcher.
+ *
+ * wine is the case that forced this: what a person wants from it is
+ * `wine setup.exe` at a prompt, and Debian's own entries for it are
+ * NoDisplay=true, which parse_dir correctly drops — so without this table the
+ * box would contain wine and the host would have no way to reach it. These get
+ * an alien-apps row and a /usr/local/bin shim, and deliberately NOT a .desktop:
+ * a launcher for `wine` with no arguments opens nothing.
+ *
+ * Only emitted when the image actually carries the binary, so an appbox baked
+ * before this segment existed does not get a shim that dies on "not found".
+ */
+static const char *COMMANDS[] = {
+	"wine", "winecfg", "winetricks", NULL
+};
+
 static const char *X11_FORCING[] = {
 	"GDK_BACKEND=x11", "CLUTTER_BACKEND=x11", "QT_QPA_PLATFORM=xcb",
 	"SDL_VIDEODRIVER=x11", "MOZ_ENABLE_WAYLAND=0",
@@ -215,6 +232,7 @@ typedef struct {
 	char keywords[512];
 	char generic[160];
 	char wmclass[160];
+	int cmdonly;		/* a command, not an application: no launcher */
 } Launcher;
 
 static Launcher apps[MAX_APPS];
@@ -388,6 +406,39 @@ static void parse_dir(const char *srcdir)
 	kb_strv_free(files);
 }
 
+/*
+ * The image root, from the desktop directory it was pointed at: the caller
+ * passes <image>/usr/share/applications, so three components up is the root.
+ * Nothing else here needs it, which is why it is derived rather than passed.
+ */
+static void add_commands(const char *srcdir)
+{
+	char root[1024];
+	kb_strlcpy(root, srcdir, sizeof(root));
+	for (int up = 0; up < 3; up++) {
+		char *slash = strrchr(root, '/');
+		if (!slash)
+			return;
+		*slash = 0;
+	}
+
+	for (int i = 0; COMMANDS[i]; i++) {
+		char probe[1200];
+		snprintf(probe, sizeof(probe), "%s/usr/bin/%s", root, COMMANDS[i]);
+		if (!kb_path_exists(probe))
+			continue;
+		if (napps >= MAX_APPS)
+			return;
+		Launcher *a = &apps[napps++];
+		memset(a, 0, sizeof(*a));
+		a->cmdonly = 1;
+		kb_strlcpy(a->id, COMMANDS[i], sizeof(a->id));
+		kb_strlcpy(a->base, COMMANDS[i], sizeof(a->base));
+		kb_strlcpy(a->name, COMMANDS[i], sizeof(a->name));
+		kb_strlcpy(a->exec, COMMANDS[i], sizeof(a->exec));
+	}
+}
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static void write_launchers(const char *dir)
@@ -413,6 +464,8 @@ static void write_launchers(const char *dir)
 
 	for (int i = 0; i < napps; i++) {
 		Launcher *a = &apps[i];
+		if (a->cmdonly)
+			continue;
 		KbBuf b = {0};
 		kb_buf_printf(&b,
 			      "[Desktop Entry]\n"
@@ -459,6 +512,8 @@ static int write_mimeinfo(const char *dir)
 	int nrows = 0;
 
 	for (int i = 0; i < napps; i++) {
+		if (apps[i].cmdonly)
+			continue;	/* no MimeType, nothing to cache */
 		char *copy = kb_strdup(apps[i].mime), *save = NULL;
 		for (char *m = strtok_r(copy, ";", &save); m;
 		     m = strtok_r(NULL, ";", &save)) {
@@ -560,6 +615,7 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot)
 {
 	napps = 0;
 	parse_dir(srcdir);
+	add_commands(srcdir);
 
 	char *skel = kb_path_join(fsroot, "etc/skel/.local/share/applications");
 	write_launchers(skel);
@@ -567,7 +623,10 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot)
 	free(skel);
 
 	int shims = write_shims(fsroot);
-	fprintf(stderr, "%d launchers, %d mime types, %d shims\n", napps, mimes,
-		shims);
+	int cmds = 0;
+	for (int i = 0; i < napps; i++)
+		cmds += apps[i].cmdonly;
+	fprintf(stderr, "%d launchers, %d command-only, %d mime types, %d shims\n",
+		napps - cmds, cmds, mimes, shims);
 	return 0;
 }

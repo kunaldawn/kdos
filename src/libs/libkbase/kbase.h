@@ -18,6 +18,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 /* ────────────────────────────────────────────────────────────────────────
  * Allocation
@@ -205,6 +206,11 @@ int kb_run_to_file(const KbArgv *a, const char *path);
  * collect a zombie. gdbus's default reply timeout is 25 seconds and a
  * notification must never be able to gate an app launch behind that. */
 void kb_run_detach(const KbArgv *a);
+
+/* Membership of a group in /etc/group, counting the group's own gid as well as
+ * its member list. The authorisation both root daemons here are built on, in
+ * one place: two copies of a security decision eventually disagree. */
+int kb_user_in_group(const char *user, gid_t primary, const char *group);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Time

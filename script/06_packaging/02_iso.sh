@@ -52,6 +52,38 @@ mksquashfs / $ISO_ROOT/system.sfs \
     -p "media d 755 0 0" \
     -noappend -comp xz
 
+# 2b. The sources, when asked for.
+#
+# N13: a booted stick that can rebuild its own ISO. The tree goes on the ISO9660
+# filesystem BESIDE system.sfs rather than inside it, so it costs the installed
+# system nothing and is readable from /mnt/iso the moment the live image is up.
+#
+# Opt-in because it roughly doubles the image: ports/ is 2.7 G of upstream
+# tarballs that are already compressed, and squashing them again buys nothing.
+# `make build KDOS_ISO_SOURCES=1` is a developer stick, not the default one.
+if [ "${KDOS_ISO_SOURCES:-0}" = "1" ]; then
+    echo "Copying the sources onto the ISO (this is the big one)..."
+    mkdir -p $ISO_ROOT/sources
+    for d in ports src script; do
+        cp -a /kdos/$d $ISO_ROOT/sources/
+    done
+    for f in Makefile Dockerfile CLAUDE.md; do
+        [ -f /kdos/$f ] && cp -a /kdos/$f $ISO_ROOT/sources/
+    done
+    # Build artefacts are not sources, and the appbox image chunks are already
+    # in the payload the live system carries.
+    rm -rf $ISO_ROOT/sources/ports/.portup-tools $ISO_ROOT/sources/ports/.kpkg-meta \
+           $ISO_ROOT/sources/ports/.update-cache.json
+    # A stamp, so `kdos rebuild` can say what it is about to rebuild FROM.
+    cat > $ISO_ROOT/sources/SOURCES <<EOS
+# The KDOS tree that built this image.
+ports    $(ls /kdos/ports/core | wc -l) ports
+size     $(du -sh $ISO_ROOT/sources 2>/dev/null | cut -f1)
+built    $(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOS
+    echo "Sources: $(du -sh $ISO_ROOT/sources | cut -f1)"
+fi
+
 # 3. Setup Bootloaders
 ## UEFI: rEFInd
 echo "Configuring UEFI Boot..."

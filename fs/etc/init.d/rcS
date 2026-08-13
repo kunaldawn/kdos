@@ -102,6 +102,20 @@ done
 
 unset _script
 
+# The other half of A/B rollback: this boot got far enough to start every
+# service that was going to fail, so the slot it booted is confirmed good.
+#
+# LAST, deliberately. Confirming earlier would confirm a system that has not yet
+# failed rather than one that has succeeded — and the whole value of the attempt
+# counter is that a boot which wedges before this line never reaches it, spends
+# its attempt, and eventually rolls back.
+#
+# Silent when the machine has no boot state, which is every machine with a
+# single root: there is nothing to confirm and that is not a failure.
+if command -v kdos-bootctl >/dev/null 2>&1; then
+    kdos-bootctl mark-good >/dev/null 2>&1 || true
+fi
+
 # Hand the screen back. This runs the power-off animation and leaves the
 # framebuffer black, so agetty's first write to tty1 — which is what finally
 # triggers fbcon's deferred take-over — paints onto a clean console instead of

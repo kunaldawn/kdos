@@ -78,6 +78,10 @@ glib
 # Vendored, not upstream's 1.9 GB tree — ports/core/linux-firmware/vendor.py
 # records the curated set and what was dropped and why.
 linux-firmware
+# CPU microcode. AMD's blobs come with linux-firmware; Intel ships its own tree
+# and this is the whole of it, no per-family curation — 06_packaging/01_initramfs.sh
+# turns both into the uncompressed cpio the early loader scans for.
+intel-ucode
 
 # ---------------------------------
 # Core Services
@@ -111,6 +115,10 @@ cups
 # Laptop power saving: pure shell over /sys, no daemon, no compile. Conflicts
 # with power-profiles-daemon (both write the same knobs) — KDOS picks TLP.
 tlp
+# The measuring half. powertop 2.15 made libtracefs a hard requirement, so its
+# two kernel.org libraries come with it; 2.14 bundled traceevent in-tree and
+# pinning that would have frozen the tool at 2022 to save two ports.
+powertop
 
 # ---------------------------------
 # Power-User CLI base
@@ -204,6 +212,11 @@ gst-plugins-bad
 gst-plugins-ugly
 gst-libav
 xdg-desktop-portal
+
+# LUKS. Needed on the ISO rather than only on an installed system: kinstall
+# creates the container, and 01_initramfs.sh copies cryptsetup into the
+# initramfs so an encrypted root can be unlocked at boot.
+cryptsetup
 
 # Networking + auth (NetworkManager + polkit + Wi-Fi + firewall + VPN)
 duktape
