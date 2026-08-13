@@ -281,13 +281,20 @@ static void draw(const char *status)
 	int cols = columns();
 
 	/*
-	 * The background is NOT painted.
+	 * The background is NOT painted — and wanting that is not the same as
+	 * getting it.
 	 *
 	 * The compositor draws the wallpaper and this surface sits above it, so
-	 * filling here would cover it with a flat colour — the desktop would
-	 * lose its background the moment the icons appeared. Only the cells
-	 * that carry something are written; libkcell leaves the rest
-	 * transparent because the buffer starts zeroed.
+	 * a flat fill here covers it. But libkcell paints EVERY cell including
+	 * its background slot, and libkwl's shm buffer is XRGB8888, which has
+	 * no alpha at all: whatever KT_BG is, it lands opaque and the wallpaper
+	 * disappears the moment kdos-desk starts.
+	 *
+	 * So KWL_ROLE_BACKGROUND asks libkwl for an ARGB surface and turns on
+	 * libkcell's transparent-KT_BG mode: every cell the desktop does not
+	 * write is cleared to zero and the wallpaper shows through. Cells that
+	 * DO carry something — an icon glyph, a label, the selection bar — are
+	 * painted normally.
 	 */
 	ktui_draw_clear();
 
@@ -343,7 +350,11 @@ int desk_main(int argc, char **argv)
 		.app_id = "kdos-desk",
 		.font = font,
 		.exclusive = 0,
-		.keyboard = 0,
+		/* ON: this surface implements arrows, Enter and Delete-to-trash,
+		 * and shipping it with keyboard = 0 made all three unreachable —
+		 * a confirmed audit finding. ON_DEMAND, so it only holds the
+		 * keyboard while the user is actually on the desktop. */
+		.keyboard = 1,
 	};
 
 	sh_theme_from_cache();
@@ -380,7 +391,18 @@ int desk_main(int argc, char **argv)
 			continue;
 		}
 
-		if (ev.type == KT_EVT_MOUSE && ev.press) {
+		/*
+		 * KT_MP_PRESS exactly, and a real button.
+		 *
+		 * `ev.press` is an ENUM, not a boolean: libktui reports plain
+		 * pointer motion as KT_MP_DRAG (2) and a release as 0, so
+		 * testing it for truth made every mouse MOVE across the desktop
+		 * a click — and because a second click on the same icon opens
+		 * it, moving the pointer over an already-selected icon launched
+		 * it. Wheel ticks arrive as buttons too and must not select.
+		 */
+		if (ev.type == KT_EVT_MOUSE && ev.press == KT_MP_PRESS &&
+		    (ev.btn == KT_MB_LEFT || ev.btn == KT_MB_RIGHT)) {
 			int cols = columns();
 			int i = ((ev.my - 1) / CELL_H) * cols +
 				(ev.mx - 1) / CELL_W;

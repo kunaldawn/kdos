@@ -42,6 +42,31 @@
 static void cellbuf_destroy(struct wlr_buffer *b)
 {
 	struct kc_cellbuf *c = (struct kc_cellbuf *)b;
+
+	/*
+	 * wlr_buffer_finish() FIRST, and leaving it out is a general protection
+	 * fault in musl's allocator with a backtrace that points nowhere near
+	 * here. It cost a boot to find.
+	 *
+	 * It does two things this file cannot do without: it emits
+	 * events.destroy, so anything watching this buffer learns it is going
+	 * away, and it runs wlr_addon_set_finish() — and the addon set is the
+	 * part that bites. wlroots attaches addons to a buffer (the scene's
+	 * texture cache among them) and an addon holds LIST LINKS INTO THIS
+	 * ALLOCATION. Freeing the buffer without finishing the set leaves those
+	 * links pointing at freed memory; the next list operation writes through
+	 * them and corrupts the heap. The fault then lands on some unrelated
+	 * free() several frames later, which is why the crash appeared inside
+	 * pixman_image_unref with nothing obviously wrong nearby.
+	 *
+	 * Every wlr_buffer_impl in wlroots does this, including the
+	 * examples/cairo-buffer.c this file and wallpaper.c were modelled on.
+	 * Both of ours had missed it; wallpaper.c never showed it because its
+	 * buffer is created once and destroyed at shutdown, while a window frame
+	 * allocates and destroys one on every focus change.
+	 */
+	wlr_buffer_finish(b);
+
 	if (c->img)
 		pixman_image_unref(c->img);
 	free(c->data);

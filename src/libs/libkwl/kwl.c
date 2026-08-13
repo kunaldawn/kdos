@@ -26,6 +26,7 @@
 
 #include "ext-session-lock-v1-client-protocol.h"
 #include "kwl_priv.h"
+#include "cursor-shape-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -49,6 +50,14 @@ static struct {
 	struct xdg_wm_base *wm_base;
 	struct zwlr_layer_shell_v1 *layer_shell;
 	struct ext_session_lock_manager_v1 *lock_mgr;
+	/* cursor-shape-v1. Without it the pointer VANISHES over every libkwl
+	 * surface: on Wayland the focused client owns the cursor image, this
+	 * library never set one, and once kdos-desk covered the whole screen
+	 * "no cursor over chrome" became "no cursor anywhere". The protocol is
+	 * the cheap route — a shape name instead of a theme, a surface and a
+	 * buffer of our own. */
+	struct wp_cursor_shape_manager_v1 *shape_mgr;
+	struct wp_cursor_shape_device_v1 *shape_dev;
 
 	/* Lock role. `engaged` is the compositor's confirmation, `finished` its
 	 * refusal; a lock screen must not take a password before the first or
@@ -185,8 +194,16 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 		munmap(data, size);
 		return -1;
 	}
+	/*
+	 * ARGB for the background role, XRGB for everything else. XRGB has no
+	 * alpha at all, so a desktop surface in it paints an opaque rectangle
+	 * over the compositor's wallpaper no matter what is in the cells — the
+	 * wallpaper vanished the moment kdos-desk started.
+	 */
+	bool argb = K.cfg.role == KWL_ROLE_BACKGROUND;
 	b->wl = wl_shm_pool_create_buffer(pool, 0, w, h, (int32_t)stride,
-					  WL_SHM_FORMAT_XRGB8888);
+					  argb ? WL_SHM_FORMAT_ARGB8888
+					       : WL_SHM_FORMAT_XRGB8888);
 	wl_shm_pool_destroy(pool);
 	if (!b->wl) {
 		munmap(data, size);
@@ -194,7 +211,8 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 	}
 	wl_buffer_add_listener(b->wl, &buffer_listener, b);
 
-	b->img = pixman_image_create_bits(PIXMAN_x8r8g8b8, w, h, data,
+	b->img = pixman_image_create_bits(argb ? PIXMAN_a8r8g8b8
+					      : PIXMAN_x8r8g8b8, w, h, data,
 					  (int)stride);
 	if (!b->img) {
 		wl_buffer_destroy(b->wl);
@@ -252,10 +270,51 @@ static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 	 * will read, and any of it the grid does not reach must be KT_BG rather
 	 * than whatever the last frame left.
 	 */
+	/*
+	 * THE FLICKER FIX, in two halves, and it belongs here because every
+	 * chrome client inherits it at once.
+	 *
+	 * First: an unchanged frame is NOT COMMITTED. The panel redraws on a
+	 * one-second tick, the desk on its rescan, the bottom panel on its own
+	 * — and every one of those used to attach a fresh buffer and damage its
+	 * FULL surface even when not a cell had moved. On a virtio guest with
+	 * no GL every commit is a full framebuffer upload, so the desktop
+	 * pulsed at the union of everyone's timers. The diff below is against
+	 * `prev` — what was last flushed — so "nothing changed" is measured,
+	 * not assumed.
+	 *
+	 * Second: when something DID change, the damage is the dirty row span,
+	 * not the whole surface. The buffer is still painted in full when the
+	 * swap flipped (the compositor holds the other one), but damage
+	 * describes what changed ON SCREEN, and that is the diff against the
+	 * last flush regardless of which buffer carries it.
+	 */
+	int dirty_y0 = -1, dirty_y1 = -1;
+	if (prev) {
+		for (int y = 0; y < h; y++)
+			if (memcmp(cur + (size_t)y * w, prev + (size_t)y * w,
+				   (size_t)w * sizeof(*cur))) {
+				if (dirty_y0 < 0)
+					dirty_y0 = y;
+				dirty_y1 = y;
+			}
+	}
+	if (!full && prev && dirty_y0 < 0)
+		return;			/* nothing changed: no commit at all */
+
 	kcell_paint(b->img, cur, prev, w, h, full, 1, b->w, b->h);
 
 	wl_surface_attach(K.surface, b->wl, 0, 0);
-	wl_surface_damage_buffer(K.surface, 0, 0, K.px_w, K.px_h);
+	if (!full && dirty_y0 >= 0) {
+		int ch = kcell_h();
+		int y0 = dirty_y0 * ch;
+		int y1 = (dirty_y1 + 1) * ch;
+		if (y1 > K.px_h)
+			y1 = K.px_h;
+		wl_surface_damage_buffer(K.surface, 0, y0, K.px_w, y1 - y0);
+	} else {
+		wl_surface_damage_buffer(K.surface, 0, 0, K.px_w, K.px_h);
+	}
 	wl_surface_commit(K.surface);
 	b->busy = true;
 	K.cur_buf ^= 1;
@@ -476,9 +535,29 @@ static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
 	push_event(&ev);
 }
 
-static void pt_enter(void *d, struct wl_pointer *p, uint32_t s,
+static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
 		     struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y)
-{ (void)d; (void)p; (void)s; (void)sf; (void)x; (void)y; }
+{
+	(void)d;
+	(void)sf;
+	(void)x;
+	(void)y;
+	/*
+	 * The enter serial is the ONLY serial a set-cursor request may carry,
+	 * which is why this lives here and not somewhere more convenient. A
+	 * client that never answers the enter has no cursor at all — which is
+	 * exactly what every libkwl surface did until the desktop grew a
+	 * full-screen one and the pointer disappeared over the whole session.
+	 */
+	if (K.shape_mgr) {
+		if (!K.shape_dev)
+			K.shape_dev = wp_cursor_shape_manager_v1_get_pointer(
+				K.shape_mgr, p);
+		if (K.shape_dev)
+			wp_cursor_shape_device_v1_set_shape(K.shape_dev, serial,
+				WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+	}
+}
 static void pt_leave(void *d, struct wl_pointer *p, uint32_t s,
 		     struct wl_surface *sf)
 { (void)d; (void)p; (void)s; (void)sf; }
@@ -643,7 +722,10 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 		if (K.noutputs < KWL_MAX_OUTPUTS)
 			K.outputs[K.noutputs++] =
 				wl_registry_bind(r, name, &wl_output_interface, 1);
-	} else if (!strcmp(iface, ext_session_lock_manager_v1_interface.name))
+	} else if (!strcmp(iface, wp_cursor_shape_manager_v1_interface.name))
+		K.shape_mgr = wl_registry_bind(
+			r, name, &wp_cursor_shape_manager_v1_interface, 1);
+	else if (!strcmp(iface, ext_session_lock_manager_v1_interface.name))
 		K.lock_mgr = wl_registry_bind(
 			r, name, &ext_session_lock_manager_v1_interface, 1);
 }
@@ -953,7 +1035,19 @@ int kwl_init(const KwlConfig *cfg)
 	memset(&K, 0, sizeof(K));
 	K.cfg = *cfg;
 
-	if (kcell_font_load(cfg->font) != 0)
+	kcell_set_transparent_bg(cfg->role == KWL_ROLE_BACKGROUND);
+	/*
+	 * THE CHROME FONT DEFAULT LIVES HERE, and it is Terminus at the
+	 * console's own cell — the same default kdos-comp uses for the window
+	 * frames. It used to fall through to libkcell's generic
+	 * `monospace:size=11`, and the result was on the first live screenshot:
+	 * 32px Turbo Vision frames around an 11px DejaVu panel, a bar nobody
+	 * could read. One knob, all chrome — panel, menus, desk, pick, run,
+	 * launcher, notifyd, osd, lock. foot is CONTENT, not chrome, and keeps
+	 * its own 16px config.
+	 */
+	if (kcell_font_load(cfg->font && *cfg->font ? cfg->font
+						    : "Terminus:pixelsize=32") != 0)
 		return -1;
 
 	K.display = wl_display_connect(NULL);

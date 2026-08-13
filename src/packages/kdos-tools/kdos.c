@@ -480,6 +480,13 @@ static void kdt_ini_set(const char *path, const char *section, const char *key,
 	}
 
 	if (!done) {
+		/*
+		 * A file whose last line has no trailing newline would otherwise
+		 * get the new key concatenated onto it — `skin=kdos` welded to
+		 * the end of whatever mc last wrote. Terminate first.
+		 */
+		if (out.n && out.p[out.n - 1] != '\n')
+			kb_buf_add(&out, "\n", 1);
 		if (!in_section)
 			kb_buf_printf(&out, "%s[%s]\n", out.n ? "\n" : "",
 				      section);
@@ -493,17 +500,36 @@ static void kdt_ini_set(const char *path, const char *section, const char *key,
 
 static void write_mc(const KcolScheme *sc)
 {
-	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], pdark[8], varied[8];
-	kcol_format(sc->primary, p);
-	kcol_format(sc->dim, dim);
-	kcol_format(sc->secondary, sec);
-	kcol_format(sc->urgent, urg);
-	kcol_format(sc->deep, deep);
-	kcol_format(sc->text, text);
-	kcol_format(sc->pdark, pdark);
-	kcol_format(sc->variant, varied);
+	/*
+	 * `#rrggbb`, not mc's `rgb:` — there is no such spelling. mc accepts a
+	 * colour name, `color0..255`, `rgbRGB` where each of R,G,B is a DIGIT
+	 * 0-5 (the 216-entry cube), `grayN`, or `#rrggbb`. Only the last one can
+	 * express this palette, and it is honoured only when [skin] says
+	 * `truecolors=true` — spelled with the S, which is the whole reason the
+	 * first version of this file rendered as mc's stock blue.
+	 */
+	char p[10], dim[10], sec[10], urg[10], deep[10], text[10], varied[10];
+	char raw[8];
+#define HX(field, out) do {                    \
+		kcol_format((field), raw);     \
+		snprintf((out), sizeof(out), "#%s", raw); \
+	} while (0)
+	HX(sc->primary, p);
+	HX(sc->dim, dim);
+	HX(sc->secondary, sec);
+	HX(sc->urgent, urg);
+	HX(sc->deep, deep);
+	HX(sc->text, text);
+	HX(sc->variant, varied);
+#undef HX
 
-	char *f = kdt_cfg_home("mc/skins/kdos.ini");
+	/*
+	 * $XDG_DATA_HOME, not $XDG_CONFIG_HOME. mc looks for skins in
+	 * <data>/mc/skins, /etc/mc/skins and /usr/share/mc/skins and nowhere
+	 * else, so a skin written beside the config file is a skin mc will never
+	 * find — it falls back to `default` and reports nothing.
+	 */
+	char *f = kdt_data_home("mc/skins/kdos.ini");
 	mkparent(f);
 
 	KbBuf b = {0};
@@ -512,97 +538,103 @@ static void write_mc(const KcolScheme *sc)
 		"# edits will be overwritten.\n"
 		"[skin]\n"
 		"description=KDOS\n"
-		"truecolor=true\n"
+		"truecolors=true\n"
 		"\n"
+		/*
+		 * Literal UTF-8, not `\\u2500` escapes. mc parses this file with
+		 * GLib's key-file reader, which rejects `\\u` as an invalid
+		 * escape sequence and drops the whole group — the frames then
+		 * come out as mc's fallback `+-|` ASCII.
+		 */
 		"[Lines]\n"
-		"horiz=\\u2500\nvert=\\u2502\nlefttop=\\u250c\nrighttop=\\u2510\n"
-		"leftbottom=\\u2514\nrightbottom=\\u2518\n"
-		"topmiddle=\\u252c\nbottommiddle=\\u2534\n"
-		"leftmiddle=\\u251c\nrightmiddle=\\u2524\ncross=\\u253c\n"
-		"dhoriz=\\u2550\ndvert=\\u2551\ndlefttop=\\u2554\ndrighttop=\\u2557\n"
-		"dleftbottom=\\u255a\ndrightbottom=\\u255d\n"
-		"dtopmiddle=\\u2566\ndbottommiddle=\\u2569\n"
-		"dleftmiddle=\\u2560\ndrightmiddle=\\u2563\n"
+		"horiz=─\nvert=│\nlefttop=┌\nrighttop=┐\n"
+		"leftbottom=└\nrightbottom=┘\n"
+		"topmiddle=┬\nbottommiddle=┴\n"
+		"leftmiddle=├\nrightmiddle=┤\ncross=┼\n"
+		"dhoriz=═\ndvert=║\ndlefttop=╔\ndrighttop=╗\n"
+		"dleftbottom=╚\ndrightbottom=╝\n"
+		"dtopmiddle=╦\ndbottommiddle=╩\n"
+		"dleftmiddle=╠\ndrightmiddle=╣\n"
 		"\n"
 		"[core]\n"
-		"_default_=rgb:%s;rgb:%s\n"
-		"selected=rgb:%s;rgb:%s\n"
-		"marked=rgb:%s;rgb:%s\n"
-		"markselect=rgb:%s;rgb:%s\n"
-		"gauge=rgb:%s;rgb:%s\n"
-		"input=rgb:%s;rgb:%s\n"
-		"reverse=rgb:%s;rgb:%s\n"
-		"header=rgb:%s;rgb:%s\n"
-		"disabled=rgb:%s;rgb:%s\n"
+		"_default_=%s;%s\n"
+		"selected=%s;%s\n"
+		"marked=%s;%s\n"
+		"markselect=%s;%s\n"
+		"gauge=%s;%s\n"
+		"input=%s;%s\n"
+		"reverse=%s;%s\n"
+		"header=%s;%s\n"
+		"disabled=%s;%s\n"
 		"\n"
 		"[dialog]\n"
-		"_default_=rgb:%s;rgb:%s\n"
-		"dfocus=rgb:%s;rgb:%s\n"
-		"dhotnormal=rgb:%s;rgb:%s\n"
-		"dhotfocus=rgb:%s;rgb:%s\n"
-		"dtitle=rgb:%s;rgb:%s\n"
+		"_default_=%s;%s\n"
+		"dfocus=%s;%s\n"
+		"dhotnormal=%s;%s\n"
+		"dhotfocus=%s;%s\n"
+		"dtitle=%s;%s\n"
 		"\n"
 		"[error]\n"
-		"_default_=rgb:%s;rgb:%s\n"
-		"errdhotnormal=rgb:%s;rgb:%s\n"
-		"errdtitle=rgb:%s;rgb:%s\n"
+		"_default_=%s;%s\n"
+		"errdhotnormal=%s;%s\n"
+		"errdtitle=%s;%s\n"
 		"\n"
 		"[menu]\n"
-		"_default_=rgb:%s;rgb:%s\n"
-		"menusel=rgb:%s;rgb:%s\n"
-		"menuhot=rgb:%s;rgb:%s\n"
-		"menuhotsel=rgb:%s;rgb:%s\n"
-		"menuinactive=rgb:%s;rgb:%s\n"
+		"_default_=%s;%s\n"
+		"menusel=%s;%s\n"
+		"menuhot=%s;%s\n"
+		"menuhotsel=%s;%s\n"
+		"menuinactive=%s;%s\n"
 		"\n"
 		"[buttonbar]\n"
-		"# The F-key bar: the number dim, the word in the text colour.\n"
-		"# It is the one row of mc that is read at a glance rather than\n"
-		"# looked at, so it gets the least decoration.\n"
-		"button=rgb:%s;rgb:%s\n"
-		"hotbutton=rgb:%s;rgb:%s\n"
+		"# The F-key bar. `hotkey` is mc's name for the number; `button`\n"
+		"# is the word beside it. It is the one row of mc that is read at\n"
+		"# a glance rather than looked at, so it gets the least colour.\n"
+		"button=%s;%s\n"
+		"hotkey=%s;%s\n"
 		"\n"
 		"[statusbar]\n"
-		"_default_=rgb:%s;rgb:%s\n"
+		"_default_=%s;%s\n"
 		"\n"
 		"[help]\n"
-		"_default_=rgb:%s;rgb:%s\n"
-		"helpitalic=rgb:%s;rgb:%s\n"
-		"helpbold=rgb:%s;rgb:%s\n"
-		"helplink=rgb:%s;rgb:%s\n"
-		"helpslink=rgb:%s;rgb:%s\n"
+		"_default_=%s;%s\n"
+		"helpitalic=%s;%s\n"
+		"helpbold=%s;%s\n"
+		"helplink=%s;%s\n"
+		"helpslink=%s;%s\n"
 		"\n"
 		"[editor]\n"
-		"_default_=rgb:%s;rgb:%s\n"
-		"editbold=rgb:%s;rgb:%s\n"
-		"editmarked=rgb:%s;rgb:%s\n"
-		"editlinestate=rgb:%s;rgb:%s\n"
+		"_default_=%s;%s\n"
+		"editbold=%s;%s\n"
+		"editmarked=%s;%s\n"
+		"editlinestate=%s;%s\n"
 		"\n"
 		"[viewer]\n"
-		"_default_=rgb:%s;rgb:%s\n"
-		"viewbold=rgb:%s;rgb:%s\n"
-		"viewselected=rgb:%s;rgb:%s\n",
-		/* core */
-		text, deep,   deep, p,     sec, deep,   deep, sec,
-		deep, p,      text, varied, deep, p,     p, deep,
+		"_default_=%s;%s\n"
+		"viewbold=%s;%s\n"
+		"viewselected=%s;%s\n",
+		/* core: 9 pairs */
+		text, deep,   deep, p,      sec, deep,    deep, sec,
+		deep, p,      text, varied, deep, p,      p, deep,
 		dim, deep,
-		/* dialog */
-		text, varied, deep, p,     p, varied,   deep, p,
+		/* dialog: 5 pairs */
+		text, varied, deep, p,      p, varied,    deep, p,
 		p, varied,
-		/* error */
-		text, urg,    deep, urg,   text, urg,
-		/* menu */
-		text, varied, deep, p,     p, varied,   deep, p,
+		/* error: 3 pairs */
+		text, urg,    deep, urg,    text, urg,
+		/* menu: 5 pairs */
+		text, varied, deep, p,      p, varied,    deep, p,
 		dim, varied,
-		/* buttonbar */
-		dim, deep,    text, deep,
-		/* statusbar */
+		/* buttonbar: 2 pairs */
+		text, deep,   dim, deep,
+		/* statusbar: 1 pair */
 		text, varied,
-		/* help */
-		text, varied, sec, varied, p, varied,   p, varied,
+		/* help: 5 pairs */
+		text, varied, sec, varied, p, varied,     p, varied,
 		deep, p,
-		/* editor */
-		text, deep,   p, deep,     deep, p,     dim, deep,
-		/* viewer */
+		/* editor: 4 pairs */
+		text, deep,   p, deep,     deep, p,       dim, deep,
+		/* viewer: 3 pairs */
 		text, deep,   p, deep,     deep, p);
 	kb_write_all(f, b.p, b.n);
 	kb_buf_free(&b);

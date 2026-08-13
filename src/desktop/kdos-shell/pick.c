@@ -76,23 +76,41 @@ static char save_name[256];
  * fifteen lines. Character classes are deliberately NOT supported, and a
  * pattern using one simply fails to match rather than matching wrongly.
  */
+/*
+ * ITERATIVE, with a single backtrack point — not the obvious recursion.
+ *
+ * The obvious version recurses on every `*` and backtracks exponentially:
+ * `*a*a*a*a*a*b` against forty `a`s does not finish this century. That matters
+ * here and not in a shell, because the pattern is NOT the user's — it arrives
+ * from another application through the FileChooser portal's `filters` option,
+ * so a pattern is untrusted input and a chooser that wedges takes the portal's
+ * bus loop with it.
+ *
+ * The standard linear algorithm: remember where the last `*` was and where it
+ * had matched to; on a mismatch, advance that and carry on. Linear in the
+ * length of the name, no stack at all.
+ */
 static bool glob_match(const char *pat, const char *s)
 {
-	if (!*pat)
-		return !*s;
-	if (*pat == '*') {
-		for (const char *p = s; ; p++) {
-			if (glob_match(pat + 1, p))
-				return true;
-			if (!*p)
-				return false;
+	const char *star = NULL, *retry = NULL;
+
+	while (*s) {
+		if (*pat == '?' || *pat == *s) {
+			pat++;
+			s++;
+		} else if (*pat == '*') {
+			star = pat++;
+			retry = s;
+		} else if (star) {
+			pat = star + 1;
+			s = ++retry;
+		} else {
+			return false;
 		}
 	}
-	if (!*s)
-		return false;
-	if (*pat == '?' || *pat == *s)
-		return glob_match(pat + 1, s + 1);
-	return false;
+	while (*pat == '*')
+		pat++;
+	return !*pat;
 }
 
 static bool passes_filter(const char *name)
@@ -246,7 +264,11 @@ static void draw(const char *title)
 	/* The path, elided from the LEFT: the end of a path is the part that
 	 * identifies it, and truncating the tail is how a chooser shows you
 	 * three identical rows of "/home/kdos/Documents/…". */
+	/* Clamped: on a surface narrower than the chrome, `pw` goes negative and
+	 * the elide below would index PAST the end of the string. */
 	int pw = w - 4;
+	if (pw < 1)
+		pw = 1;
 	const char *shown = cwd;
 	if ((int)strlen(cwd) > pw)
 		shown = cwd + strlen(cwd) - pw;

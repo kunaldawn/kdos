@@ -156,8 +156,17 @@ static int read_first_filter(sd_bus_message *m, char *out, size_t len)
 	if (r <= 0)
 		return 0;
 
+	/*
+	 * The array is read TO THE END even once a usable filter is found.
+	 *
+	 * sd_bus_message_exit_container() fails with -EINVAL on a container that
+	 * is only partly consumed, and the caller then abandons the rest of the
+	 * options dictionary — so a request carrying `filters` followed by
+	 * `current_folder` lost the folder, and a second filter entry made the
+	 * whole OpenFile fail. Keep the first match, skip the remainder.
+	 */
 	bool got = false;
-	while (!got) {
+	for (;;) {
 		r = sd_bus_message_enter_container(m, 'r', "sa(us)");
 		if (r <= 0)
 			break;
@@ -185,7 +194,7 @@ static int read_first_filter(sd_bus_message *m, char *out, size_t len)
 		}
 		sd_bus_message_exit_container(m);
 
-		if (pats[0]) {
+		if (pats[0] && !got) {
 			snprintf(out, len, "%s:%s", label ? label : "Files", pats);
 			got = true;
 		}
@@ -349,7 +358,20 @@ static int file_chooser(sd_bus_message *m, void *userdata, sd_bus_error *err,
 	 * application as "here is your file" with an empty list, which is the
 	 * shape of bug that makes a save silently write nowhere.
 	 */
-	uint32_t code = (p.rc == 0 && p.n > 0) ? 0 : 1;
+	/*
+	 * 0 with a URI is success and 1 is "the user cancelled" — but 127 is
+	 * execvp failing and 2 is kdos-pick refusing to start, and reporting
+	 * either as a cancellation tells the application a lie it cannot act
+	 * on. Those are response 2, an error, which is what a portal is
+	 * supposed to say when it could not ask the question at all.
+	 */
+	uint32_t code;
+	if (p.rc == 0)
+		code = p.n > 0 ? 0 : 1;
+	else if (p.rc == 1)
+		code = 1;
+	else
+		code = 2;
 	int r = reply_uris(m, code, &p);
 	picked_free(&p);
 	return r;

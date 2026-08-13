@@ -42,6 +42,11 @@ SCANNER="$(pkg-config --variable=wayland_scanner wayland-scanner)"
 "$SCANNER" server-header \
 	/usr/share/wlroots/protocols/wlr-layer-shell-unstable-v1.xml \
 	wlr-layer-shell-unstable-v1-protocol.h
+# Same trap, second protocol: wlr_output_power_management_v1.h includes a
+# scanner-generated server header that wlroots does not install either.
+"$SCANNER" server-header \
+	/usr/share/wlroots/protocols/wlr-output-power-management-unstable-v1.xml \
+	wlr-output-power-management-unstable-v1-protocol.h
 
 # -D_GNU_SOURCE is libkbase's requirement, not ours: kb_landlock.c wants O_PATH.
 gcc $CFLAGS -O2 -Wall -Wextra \
