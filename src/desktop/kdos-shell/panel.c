@@ -126,7 +126,11 @@ static void draw_panel(struct sh_state *sh)
 			    KT_A_NONE);
 	x += 1;
 	for (int i = 0; i < SH_NMENUS; i++) {
-		sh->menu_hit_x[i] = x;
+		/* i == 0 keeps the span recorded BEFORE the ≡ mark, so the mark
+		 * itself opens Applications — overwriting it here was the dead
+		 * store that made the mark decorative. */
+		if (i)
+			sh->menu_hit_x[i] = x;
 		x += ktui_draw_text(x, 0, w - x, sh_menu_labels[i],
 				    i == sh->menu_open ? KT_SURFACE : KT_TEXT,
 				    i == sh->menu_open ? KT_ACCENT : KT_SURFACE,

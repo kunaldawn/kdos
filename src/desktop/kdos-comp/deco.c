@@ -70,6 +70,10 @@ enum { STRIP_TOP = 0, STRIP_LEFT, STRIP_RIGHT, STRIP_BOTTOM, STRIP_N };
 struct kc_deco {
 	struct kc_toplevel *t;
 	struct wlr_scene_buffer *strip[STRIP_N];
+	/* One typed descriptor per strip, pointed at by the strip node's
+	 * `data`. The scene hit test returns the node; the tag says whose
+	 * chrome it is. See struct kc_deco_part in kdos-comp.h. */
+	struct kc_deco_part part[STRIP_N];
 	struct wlr_scene_rect *shadow[2];
 	/* What the strips were last painted FOR. A repaint that would produce
 	 * identical pixels is skipped, which matters because commit fires far
@@ -450,15 +454,16 @@ void kc_deco_create(struct kc_toplevel *t)
 			return;
 		}
 		/*
-		 * A strip must never be treated as a surface: it has no
-		 * wlr_surface, it must never take keyboard focus, and it must
-		 * never be handed to wlr_seat_pointer_notify_enter(). The
-		 * pointer path tests node identity against the deco's own nodes
-		 * before it falls through to the surface path — see
-		 * kc_deco_at() and pointer_motion_common(). Marking the node
-		 * here is what makes that test cheap.
+		 * The typed tag. The scene hit test is the ONLY input router
+		 * now, and this is how it knows a node is chrome and whose:
+		 * a strip has no wlr_surface, so without the tag a hit on it
+		 * would read as "nothing", and with a geometric second answer
+		 * it read as whatever that walk decided — which is the bug the
+		 * first live boot shipped.
 		 */
-		d->strip[i]->node.data = NULL;
+		d->part[i].type = KC_NODE_DECO;
+		d->part[i].toplevel = t;
+		d->strip[i]->node.data = &d->part[i];
 	}
 
 	t->deco = d;

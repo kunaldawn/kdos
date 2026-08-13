@@ -84,6 +84,11 @@ bool kcell_has(uint32_t cp);
  * answers to what the background is. */
 pixman_color_t kcell_slot_color(int slot);
 
+/* Leave KT_BG cells transparent instead of filling them. For a surface that
+ * sits OVER something — the desktop, above the compositor's wallpaper. The
+ * caller must also be using a buffer format that has an alpha channel. */
+void kcell_set_transparent_bg(bool on);
+
 /* A glyph's mask at a given scale, with the offsets already multiplied. The
  * image is owned by the cache and must not be unref'd. */
 typedef struct {

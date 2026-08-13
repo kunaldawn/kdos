@@ -24,6 +24,20 @@
 
 #include "kcell.h"
 
+/*
+ * When set, cells whose background is KT_BG are left fully transparent instead
+ * of filled. It exists for exactly one caller — the desktop, which sits on the
+ * BACKGROUND layer above the compositor's wallpaper and must not paint over it.
+ * Off everywhere else, because a panel with a see-through background is a panel
+ * you cannot read.
+ */
+static bool transparent_bg;
+
+void kcell_set_transparent_bg(bool on)
+{
+	transparent_bg = on;
+}
+
 static inline pixman_color_t to_pixman(KRgb c)
 {
 	/* pixman wants 16-bit premultiplied channels; alpha is always opaque
@@ -62,7 +76,12 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		while (x + run < w && row[x + run].bg == bg)
 			run++;
 
-		pixman_color_t c = to_pixman(ktui_theme->slot[bg]);
+		/* Still an OP_SRC fill, so the run is CLEARED to zero rather
+		 * than skipped — the buffer is reused between frames and a skip
+		 * would leave the last frame's pixels behind. */
+		pixman_color_t c = (transparent_bg && bg == KT_BG)
+			? (pixman_color_t){ 0, 0, 0, 0 }
+			: to_pixman(ktui_theme->slot[bg]);
 		pixman_image_fill_rectangles(
 			PIXMAN_OP_SRC, dst, &c, 1,
 			&(pixman_rectangle16_t){ (int16_t)(x * cw), (int16_t)y,
@@ -138,7 +157,8 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 static void pad_remainder(pixman_image_t *dst, int used_w, int used_h,
 			  int dst_w, int dst_h)
 {
-	pixman_color_t bg = to_pixman(ktui_theme->slot[KT_BG]);
+	pixman_color_t bg = transparent_bg ? (pixman_color_t){ 0, 0, 0, 0 }
+					   : to_pixman(ktui_theme->slot[KT_BG]);
 
 	if (used_w < dst_w)
 		pixman_image_fill_rectangles(
@@ -162,6 +182,35 @@ void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 		scale = 1;
 	if (scale > KCELL_MAX_SCALE)
 		scale = KCELL_MAX_SCALE;
+
+	/*
+	 * CLIP THE DESTINATION, and this is not belt-and-braces — without it
+	 * this function writes outside the caller's allocation.
+	 *
+	 * pixman clips a COMPOSITE to the destination automatically
+	 * (_pixman_compute_composite_region32 clamps to bits.width/height), so
+	 * the glyph blit below is safe and always has been. A FILL is not:
+	 * pixman_image_fill_rectangles with PIXMAN_OP_SRC takes a fast path that
+	 * intersects the rectangle only with `common.clip_region`, and
+	 * pixman_image_create_bits leaves have_clip_region FALSE. It then calls
+	 * pixman_fill32, which is `bits += y*stride + x` and two loops that have
+	 * never heard of the image height.
+	 *
+	 * Every caller here paints ceil(w/cell) cells into a buffer that is only
+	 * w pixels wide, on the assumption that the last cell is clipped. For
+	 * the glyphs it is. For the background fill it was not: measured against
+	 * pixman 0.46.4, a 16x673 strip filled at (0,672,16,32) writes 1984
+	 * bytes past the end of the allocation. That is the heap corruption that
+	 * crashed kdos-comp on the first real window, and it was invisible to
+	 * ASan because the store happens inside uninstrumented libpixman.
+	 *
+	 * One region here fixes every caller, which is why it is here and not in
+	 * deco.c.
+	 */
+	pixman_region32_t clip;
+	pixman_region32_init_rect(&clip, 0, 0, (unsigned)dst_w, (unsigned)dst_h);
+	pixman_image_set_clip_region32(dst, &clip);
+	pixman_region32_fini(&clip);
 
 	/*
 	 * No `prev` means no history to diff against, which is the compositor's

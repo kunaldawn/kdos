@@ -44,6 +44,17 @@ static void save_box(struct kc_toplevel *t)
 	if (t->maximized || t->fullscreen)
 		return;
 	struct wlr_box g = t->xdg_toplevel->base->geometry;
+	/*
+	 * A toplevel that is initialized but has not committed a buffer has a
+	 * 0x0 geometry, and an application is entitled to ask for fullscreen in
+	 * that state — a video player started with a file does exactly that.
+	 * Recording 0x0 makes restore_box() a silent no-op, so the window can
+	 * never come back out. Refusing to record it leaves the previous saved
+	 * box, and if there is none the restore is skipped and the window keeps
+	 * the size it has, which is recoverable by hand.
+	 */
+	if (g.width <= 0 || g.height <= 0)
+		return;
 	t->saved.x = t->x;
 	t->saved.y = t->y;
 	t->saved.width = g.width;
@@ -137,17 +148,35 @@ void kc_window_fullscreen(struct kc_toplevel *t, bool on)
 		 * and a border around a fullscreen video is a border in a
 		 * cinema. */
 		kc_deco_hide(t, true);
-		/* Above the panels, which live outside the workspace trees. */
+		/*
+		 * Above the panels, which live outside the workspace trees —
+		 * and that is exactly why the workspace switch has to be told.
+		 * kc_ws_switch() hides a workspace by disabling ws_tree[n], and
+		 * a window parented to layer_above is not in any of them, so a
+		 * fullscreen video stayed on screen over every other workspace.
+		 * The node is disabled directly when its workspace is not the
+		 * current one.
+		 */
 		wlr_scene_node_reparent(&t->scene_tree->node, s->layer_above);
+		wlr_scene_node_set_enabled(&t->scene_tree->node,
+					   t->ws == s->cur_ws);
 	} else {
 		t->fullscreen = false;
 		kc_deco_hide(t, false);
 		wlr_scene_node_reparent(&t->scene_tree->node, s->ws_tree[t->ws]);
 		if (t->maximized) {
-			/* It was maximised before it went fullscreen; going
-			 * back to the saved box would skip a state the user
-			 * still expects to be in. */
-			t->maximized = false;
+			/*
+			 * It was maximised before it went fullscreen, so it
+			 * goes back to maximised rather than to the saved box.
+			 *
+			 * `fullscreen` is cleared FIRST and `maximized` is left
+			 * alone: kc_window_maximize() calls save_box(), which
+			 * only declines to overwrite while one of the two flags
+			 * is set. Clearing `maximized` here — as this did —
+			 * removed that guard and let save_box() record the
+			 * FULLSCREEN box as the box to restore to, so the
+			 * window could never get small again.
+			 */
 			kc_window_maximize(t, true);
 		} else {
 			restore_box(t);
@@ -200,8 +229,13 @@ void kc_window_minimize(struct kc_toplevel *t, bool on)
 		return;
 	t->minimized = on;
 	wlr_scene_node_set_enabled(&t->scene_tree->node, !on);
-	if (t->ftl)
-		wlr_foreign_toplevel_handle_v1_set_minimized(t->ftl, on);
+	/*
+	 * The flag is set by kc_shellsvc_update() below, not here. Setting it
+	 * twice is not redundant, it is wrong: shellsvc computes minimized as
+	 * `t->ws != s->cur_ws || t->minimized`, so setting it first and then
+	 * calling update just overwrote this value with the computed one — and
+	 * the panel showed a minimised window as ordinary.
+	 */
 	if (on) {
 		struct kc_server *s = t->server;
 		/* Focus must not stay on a window nobody can see. */

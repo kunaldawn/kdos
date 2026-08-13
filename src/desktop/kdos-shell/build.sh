@@ -22,6 +22,15 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 # ext-session-lock are staging and also there, and layer-shell and
 # foreign-toplevel are wlroots' own — installed by the wlroots port precisely
 # because upstream does not.
+# cursor-shape: libkwl sets the pointer shape on enter, or the cursor
+# vanishes over every chrome surface. The tablet protocol comes along because
+# cursor-shape-v1's generated code references zwp_tablet_tool_v2.
+"$SCANNER" client-header "$PROTO/staging/cursor-shape/cursor-shape-v1.xml" \
+	cursor-shape-v1-client-protocol.h
+"$SCANNER" private-code  "$PROTO/staging/cursor-shape/cursor-shape-v1.xml" \
+	cursor-shape-v1-protocol.c
+"$SCANNER" private-code  "$PROTO/unstable/tablet/tablet-unstable-v2.xml" \
+	tablet-unstable-v2-protocol.c
 "$SCANNER" client-header "$PROTO/stable/xdg-shell/xdg-shell.xml" \
 	xdg-shell-client-protocol.h
 "$SCANNER" private-code  "$PROTO/stable/xdg-shell/xdg-shell.xml" \
