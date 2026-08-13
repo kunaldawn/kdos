@@ -55,6 +55,9 @@
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
+#include <wlr/types/wlr_input_method_v2.h>
+#include <wlr/types/wlr_text_input_v3.h>
+#include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_scene.h>
@@ -226,6 +229,10 @@ struct kc_server {
 	 * outside that file needs its shape. */
 	struct kc_frames *frames;
 
+	/* The input-method relay (textinput.c). Opaque here; nothing outside
+	 * that file needs its shape. NULL when the globals could not be made. */
+	struct kc_im *im;
+
 	struct wlr_security_context_manager_v1 *security_mgr;
 	struct wl_listener security_commit;
 	struct wl_list policies;	/* struct kc_policy, one per box seen */
@@ -373,6 +380,11 @@ struct kc_keyboard {
 	struct wl_list link;
 	struct kc_server *server;
 	struct wlr_keyboard *wlr_keyboard;
+	/* A virtual-keyboard-v1 device rather than real hardware. Its keys never
+	 * reach the input method's grab: an input method forwards the keys it
+	 * does not want through a virtual keyboard, and feeding those back to the
+	 * grab is an infinite loop with the key still not delivered. */
+	bool virt;
 	struct wl_listener modifiers;
 	struct wl_listener key;
 	struct wl_listener destroy;
@@ -512,6 +524,28 @@ void kc_capture_init(struct kc_server *s);
 void kc_capture_free(struct kc_server *s);
 /* From the toplevel's destroy handler, before it is freed. */
 void kc_capture_toplevel_free(struct kc_toplevel *t);
+
+/*
+ * text-input-v3 + input-method-v2 (textinput.c). Call after the seat exists.
+ *
+ * `kc_im_key` and `kc_im_modifiers` return true when the input method's
+ * keyboard grab has TAKEN the event, in which case the seat must not also see
+ * it. They are asked AFTER compositor bindings on purpose — an input method
+ * that could swallow Super+Q could trap the session.
+ *
+ * `kc_im_moved` re-places the candidate window: it is anchored to the focused
+ * window's cursor rectangle, so moving the window moves it too.
+ */
+void kc_im_init(struct kc_server *s);
+/* Attach a keyboard to the seat. Public because the virtual-keyboard global
+ * lives in textinput.c and its devices come from a protocol, not a backend. */
+void kc_keyboard_add(struct kc_server *s, struct wlr_input_device *dev,
+		     bool virt);
+bool kc_im_key(struct kc_server *s, struct wlr_keyboard *kb,
+	       struct wlr_keyboard_key_event *ev);
+bool kc_im_modifiers(struct kc_server *s, struct wlr_keyboard *kb);
+void kc_im_moved(struct kc_server *s);
+void kc_im_free(struct kc_server *s);
 
 void kc_appid_init(struct kc_server *s);
 void kc_appid_observe(struct kc_server *s, const char *app_id);

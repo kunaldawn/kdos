@@ -322,6 +322,12 @@ static void keyboard_modifiers(struct wl_listener *l, void *data)
 	if (kb->server->cycling &&
 	    !(wlr_keyboard_get_modifiers(kb->wlr_keyboard) & WLR_MODIFIER_LOGO))
 		cycle_commit(kb->server);
+	/* An input method holding the keyboard grab gets the modifiers too, and
+	 * INSTEAD of the client: a Shift the application also saw would be
+	 * applied twice, once by the IME's own state machine and once by the
+	 * text field. */
+	if (!kb->virt && kc_im_modifiers(kb->server, kb->wlr_keyboard))
+		return;
 	wlr_seat_set_keyboard(kb->server->seat, kb->wlr_keyboard);
 	wlr_seat_keyboard_notify_modifiers(kb->server->seat,
 					   &kb->wlr_keyboard->modifiers);
@@ -388,6 +394,15 @@ static void keyboard_key(struct wl_listener *l, void *data)
 				handled = handle_binding(s, raw[i], mods);
 	}
 
+	/*
+	 * The input method's keyboard grab comes AFTER the bindings and after
+	 * the VT keys. An IME that could swallow Super+Q or Ctrl+Alt+F2 would be
+	 * an IME that can trap the session, and a candidate window is exactly
+	 * the state a user is in when they want out.
+	 */
+	if (!handled && !kb->virt && kc_im_key(s, kb->wlr_keyboard, ev))
+		handled = true;
+
 	if (!handled) {
 		wlr_seat_set_keyboard(s->seat, kb->wlr_keyboard);
 		wlr_seat_keyboard_notify_key(s->seat, ev->time_msec,
@@ -406,7 +421,8 @@ static void keyboard_destroy(struct wl_listener *l, void *data)
 	free(kb);
 }
 
-static void new_keyboard(struct kc_server *s, struct wlr_input_device *dev)
+void kc_keyboard_add(struct kc_server *s, struct wlr_input_device *dev,
+		     bool virt)
 {
 	struct wlr_keyboard *wlr_kb = wlr_keyboard_from_input_device(dev);
 	struct kc_keyboard *kb = calloc(1, sizeof(*kb));
@@ -414,6 +430,7 @@ static void new_keyboard(struct kc_server *s, struct wlr_input_device *dev)
 		return;
 	kb->server = s;
 	kb->wlr_keyboard = wlr_kb;
+	kb->virt = virt;
 
 	/*
 	 * The keymap comes from the environment (XKB_DEFAULT_LAYOUT and
@@ -442,6 +459,17 @@ static void new_keyboard(struct kc_server *s, struct wlr_input_device *dev)
 
 	wlr_seat_set_keyboard(s->seat, wlr_kb);
 	wl_list_insert(&s->keyboards, &kb->link);
+
+	/*
+	 * A seat with no keyboard capability makes clients ignore key events
+	 * entirely — they never even ask for a wl_keyboard. This has to happen
+	 * HERE rather than only in new_input, because a virtual keyboard arrives
+	 * through a protocol rather than through the backend: measured with
+	 * imtest, where the input method's own virtual keyboard was the only
+	 * keyboard on the seat and every key it sent went nowhere.
+	 */
+	uint32_t caps = WL_SEAT_CAPABILITY_POINTER | WL_SEAT_CAPABILITY_KEYBOARD;
+	wlr_seat_set_capabilities(s->seat, caps);
 }
 
 static void new_input(struct wl_listener *l, void *data)
@@ -451,7 +479,7 @@ static void new_input(struct wl_listener *l, void *data)
 
 	switch (dev->type) {
 	case WLR_INPUT_DEVICE_KEYBOARD:
-		new_keyboard(s, dev);
+		kc_keyboard_add(s, dev, false);
 		break;
 	case WLR_INPUT_DEVICE_POINTER:
 		wlr_cursor_attach_input_device(s->cursor, dev);
@@ -460,8 +488,8 @@ static void new_input(struct wl_listener *l, void *data)
 		break;
 	}
 
-	/* A seat with no keyboard capability makes clients ignore key events
-	 * entirely, so the advertised set has to track what is attached. */
+	/* The advertised set tracks what is attached; kc_keyboard_add does the
+	 * same for keyboards that arrive over a protocol rather than a backend. */
 	uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
 	if (!wl_list_empty(&s->keyboards))
 		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
@@ -591,6 +619,9 @@ static void process_move(struct kc_server *s)
 	t->x = (int)(s->grab_geo.x + (s->cursor->x - s->grab_x));
 	t->y = (int)(s->grab_geo.y + (s->cursor->y - s->grab_y));
 	wlr_scene_node_set_position(&t->scene_tree->node, t->x, t->y);
+	/* The candidate window is anchored to this window's cursor rectangle,
+	 * so dragging the window has to drag it too. */
+	kc_im_moved(s);
 }
 
 static void process_resize(struct kc_server *s)
@@ -1121,6 +1152,10 @@ int main(int argc, char **argv)
 	 * lazy server can become ready as soon as it is created. */
 	kc_xwayland_init(&s, compositor);
 
+	/* After the seat: the relay listens to the seat's own focus_change, and
+	 * a text input is bound per seat. */
+	kc_im_init(&s);
+
 	/* After the seat, which the idle notifier reports activity against. */
 	kc_idle_init(&s);
 	/* After the outputs exist and before the session does anything: the
@@ -1154,6 +1189,7 @@ int main(int argc, char **argv)
 	wl_display_run(s.display);
 
 	kc_appid_free(&s);
+	kc_im_free(&s);
 	kc_security_free(&s);
 	kc_idle_free(&s);
 	kc_config_free(&s);

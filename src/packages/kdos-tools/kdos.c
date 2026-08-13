@@ -1019,6 +1019,7 @@ static void help_body(FILE *o)
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "kdos-power suspend", "suspend; also poweroff and reboot" },
+		{ "kdos-energy", "which app is spending the battery" },
 		{ "sudo kinstall", "install this live image onto a disk" },
 		{ NULL, NULL }
 	};
@@ -1045,6 +1046,11 @@ static void help_body(FILE *o)
 		{ "Super+L", "lock the screen" },
 		{ "Super+Escape", "end the session" },
 		{ "Volume / Brightness", "the media keys, with an on-screen gauge" },
+		/* fcitx5's own binding, not kdos-comp's — but it is the one key
+		 * a CJK user needs and nothing else on the machine tells them
+		 * about it. Listed only because the compositor now speaks
+		 * text-input-v3, so it works wherever fcitx5 is installed. */
+		{ "Ctrl+Space", "switch input method (fcitx5, if installed)" },
 		{ NULL, NULL }
 	};
 	for (int i = 0; KEYS[i][0]; i++)
@@ -1333,6 +1339,76 @@ static int landlock_abi(void)
 	return v < 0 ? -errno : (int)v;
 }
 
+static int blob_has(const char *hay, size_t n, const char *needle)
+{
+	size_t m = strlen(needle);
+	if (m == 0 || m > n)
+		return 0;
+	for (size_t i = 0; i + m <= n; i++)
+		if (hay[i] == needle[0] && !memcmp(hay + i, needle, m))
+			return 1;
+	return 0;
+}
+
+/* The early microcode loader never touches a filesystem: before anything is
+ * decompressed it scans the raw initrd for one literal path. So the honest
+ * check is that same search against the image this machine actually boots.
+ * CONFIG_MICROCODE_LATE_LOADING is off, so a rebuild that lost the ucode cpio
+ * has no second chance and no symptom — the CPU just keeps running whatever
+ * revision its firmware loaded, which is the state the errata are written
+ * about. */
+static void check_microcode(void)
+{
+	char *cpu = kb_read_all("/proc/cpuinfo", NULL);
+	const char *want = NULL, *vendor = NULL;
+	if (cpu && strstr(cpu, "GenuineIntel")) {
+		want = "kernel/x86/microcode/GenuineIntel.bin";
+		vendor = "Intel";
+	} else if (cpu && strstr(cpu, "AuthenticAMD")) {
+		want = "kernel/x86/microcode/AuthenticAMD.bin";
+		vendor = "AMD";
+	}
+	free(cpu);
+	if (!want) {
+		warn_("unknown CPU vendor — cannot say which microcode applies");
+		return;
+	}
+
+	char note[96] = "";
+	char *v = kb_read_all("/sys/devices/system/cpu/cpu0/microcode/version",
+			      NULL);
+	if (v) {
+		char rev[32];
+		kb_strlcpy(rev, v, sizeof(rev));
+		rev[strcspn(rev, "\r\n")] = '\0';
+		if (rev[0])
+			snprintf(note, sizeof(note), " (revision %s)", rev);
+		free(v);
+	}
+
+	/* KDOS_INITRD moves the image the same way KDOS_PRIVACY_PROC moves the
+	 * /proc walk: it is what lets selftest.sh assert both answers on a
+	 * machine whose own /boot is not the subject. */
+	const char *path = getenv("KDOS_INITRD");
+	if (!path || !*path)
+		path = "/boot/initramfs.cpio.gz";
+
+	size_t n = 0;
+	char *img = kb_read_all(path, &n);
+	if (!img) {
+		warn_("no %s — cannot tell whether microcode is carried", path);
+		return;
+	}
+	int carried = blob_has(img, n, want);
+	free(img);
+
+	if (carried)
+		ok("%s microcode in the initrd%s", vendor, note);
+	else
+		warn_("the initrd carries no %s microcode — this CPU runs "
+		      "whatever the firmware loaded%s", vendor, note);
+}
+
 static int cmd_doctor(int argc, char **argv)
 {
 	for (int i = 0; i < argc; i++) {
@@ -1368,6 +1444,7 @@ static int cmd_doctor(int argc, char **argv)
 	else
 		warn_("Landlock present but disabled — add it to CONFIG_LSM or "
 		      "the lsm= cmdline");
+	check_microcode();
 	doctor_gap();
 
 	doctor_head("Session");
@@ -1500,6 +1577,54 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("kdos-powerd not running — no suspend, poweroff or reboot "
 		      "from the desktop (start with: service kdos-powerd start)");
 
+	/*
+	 * kdos-energyd, and WHY it is not running is the whole of what is worth
+	 * reporting. A machine with no RAPL at all — most VMs — is a machine
+	 * where per-app energy cannot be measured by anyone, and saying that is
+	 * a different answer from "the daemon is not started".
+	 */
+	if (kb_path_exists("/run/kdos-energyd.sock")) {
+		ok("kdos-energyd sampling (kdos-energy)");
+	} else {
+		int nrapl = 0;
+		char **dom = kb_listdir("/sys/class/powercap", &nrapl);
+		int any = 0;
+		for (int i = 0; i < nrapl; i++) {
+			char *e = kb_path_join("/sys/class/powercap", dom[i]);
+			char *f = kb_path_join(e, "energy_uj");
+			any |= kb_path_exists(f);
+			free(f);
+			free(e);
+		}
+		kb_strv_free(dom);
+		if (any)
+			warn_("kdos-energyd not running — no per-app energy "
+			      "attribution (start with: service kdos-energyd "
+			      "start)");
+		else
+			warn_("no RAPL energy domain on this machine — per-app "
+			      "energy cannot be measured here at all");
+	}
+
+	/*
+	 * The input method. Two halves, and only reporting both distinguishes
+	 * "no IME installed" from "installed and not running" — which look
+	 * identical from a text field that will not accept CJK.
+	 */
+	if (kb_have_prog("fcitx5")) {
+		KbArgv pg = {0};
+		kb_argv_add(&pg, "pgrep");
+		kb_argv_add(&pg, "-x");
+		kb_argv_add(&pg, "fcitx5");
+		kb_argv_end(&pg);
+		char out[64] = {0};
+		if (kb_run_capture(&pg, out, sizeof(out)) == 0 && *out)
+			ok("fcitx5 is running — Ctrl+Space switches input method");
+		else
+			warn_("fcitx5 is installed but not running — no CJK input "
+			      "this session (kdos-desktop-start launches it)");
+	}
+
 	/* The frame-timing socket. Absent means `kdos stutter` has nothing to
 	 * watch — which is normal outside a session and worth saying inside one,
 	 * because the alternative is a tool that appears to hang. */
@@ -1593,6 +1718,10 @@ int kdos_main(int argc, char **argv)
 		return restarts_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "stutter"))
 		return stutter_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "march"))
+		return march_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "rebuild"))
+		return rebuild_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "cve"))
 		return kdt_cve(rest, restv, C_A, C_W, C_0);
 	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))

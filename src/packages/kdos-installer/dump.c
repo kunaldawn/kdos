@@ -208,6 +208,13 @@ static void plan_dump(int json)
 		printf("timezone      %s (%s)\n", cfg.tz_label, cfg.tz);
 		printf("disk          %s   plan %s   fs %s\n", cfg.disk,
 		       plan_name(), cfg.fstype);
+		/* What the filesystem choice actually turns into. A dump is
+		 * what ends up in a bug report, and "fs btrfs" alone does not
+		 * say which mkfs will run or what lands in fstab. */
+		printf("mkfs          %s %s -L KDOS\n", ki_fs(cfg.fstype)->mkfs,
+		       ki_fs(cfg.fstype)->force);
+		printf("fstab root    %s %s 0 %d\n", cfg.fstype,
+		       ki_fs(cfg.fstype)->opts, ki_fs(cfg.fstype)->passno);
 		printf("esp           %s%s\n", cfg.part_esp,
 		       cfg.format_esp ? " (format)" : "");
 		printf("root          %s\n", cfg.part_root);
@@ -245,6 +252,11 @@ static void plan_dump(int json)
 	kb_buf_printf(&b, ", \"plan\": \"%s\"", plan_name());
 	kb_buf_str(&b, ", \"fstype\": ");
 	kb_json_str(&b, cfg.fstype);
+	kb_buf_str(&b, ", \"mkfs\": ");
+	kb_json_str(&b, ki_fs(cfg.fstype)->mkfs);
+	kb_buf_str(&b, ", \"fstab_options\": ");
+	kb_json_str(&b, ki_fs(cfg.fstype)->opts);
+	kb_buf_printf(&b, ", \"fstab_passno\": %d", ki_fs(cfg.fstype)->passno);
 	kb_buf_str(&b, ",\n  \"esp\": ");
 	kb_json_str(&b, cfg.part_esp);
 	kb_buf_printf(&b, ", \"format_esp\": %s",

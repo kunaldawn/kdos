@@ -16,3 +16,5 @@ This banner is the fallback; fastfetch replaces it when installed.
 λ kdos app gimp  install an alien app into a container
 λ kdos theme     phosphor · amber · ice · bone
 λ kdos doctor    check the session for common breakage
+λ kdos cve       pinned versions with known holes, offline
+λ kdos stutter   why the desktop hiccuped — with the app's name

@@ -79,39 +79,13 @@ static const char *sock_path(void)
 /*
  * Is `uid` root or a member of wheel?
  *
- * /etc/group and /etc/passwd are parsed directly rather than through
- * getgrnam()/initgroups(): musl's NSS is files-only anyway, and a daemon that
- * runs as root should not be loading a name-service module to answer a question
- * two file reads can. The group's OWN gid counts as well as its member list —
- * a user whose primary group is wheel never appears in the member list.
+ * The membership test itself is libkbase's, because kdos-energyd gates its
+ * socket on exactly the same question and two copies of a security decision
+ * eventually disagree about one of them.
  */
 static bool in_wheel(const char *name, gid_t primary)
 {
-	FILE *f = fopen("/etc/group", "r");
-	if (!f)
-		return false;
-
-	bool ok = false;
-	char line[4096];
-	while (!ok && fgets(line, sizeof(line), f)) {
-		line[strcspn(line, "\n")] = '\0';
-		char *save = NULL;
-		char *gname = strtok_r(line, ":", &save);
-		if (!gname || strcmp(gname, KP_GROUP))
-			continue;
-		strtok_r(NULL, ":", &save);		/* the password field */
-		char *gid_s = strtok_r(NULL, ":", &save);
-		char *members = strtok_r(NULL, ":", &save);
-
-		if (gid_s && (gid_t)strtoul(gid_s, NULL, 10) == primary)
-			ok = true;
-
-		for (char *m = members ? strtok_r(members, ",", &save) : NULL;
-		     m && !ok; m = strtok_r(NULL, ",", &save))
-			ok = !strcmp(m, name);
-	}
-	fclose(f);
-	return ok;
+	return kb_user_in_group(name, primary, KP_GROUP) != 0;
 }
 
 static bool uid_allowed(uid_t uid)

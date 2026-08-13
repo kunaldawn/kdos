@@ -26,6 +26,7 @@ static const struct {
 	{ "ksvc", ksvc_main },
 	{ "service", ksvc_main },
 	{ "kdos-getty", getty_main },
+	{ "kdos-bootctl", bootctl_main },
 	{ "kdos-shot", shot_main },
 	{ "kdos-banner", banner_main },
 	{ "kdos-fetch-app", fetch_app_main },

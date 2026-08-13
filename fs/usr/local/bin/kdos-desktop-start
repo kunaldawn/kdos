@@ -57,4 +57,27 @@ fi
 	/usr/lib/xdg-desktop-portal >/dev/null 2>&1 &
 ) &
 
+# The input method, if one is installed. fcitx5 is a Wayland client and speaks
+# input-method-v2 to kdos-comp (src/desktop/kdos-comp/textinput.c), so it has to
+# start AFTER the compositor exists — but this script execs the compositor, so
+# the wait happens in the background exactly as the portal's does.
+#
+# It is started here rather than by XDG autostart because KDOS runs no autostart
+# agent; the fcitx5 port is built with ENABLE_XDGAUTOSTART=Off for the same
+# reason. `-d` is fcitx5's own daemonise, and a missing binary is silence: a
+# machine with no input method installed must not print an error every login.
+if command -v fcitx5 >/dev/null 2>&1; then
+	(
+		for _ in $(seq 1 150); do
+			WD=$(cd "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" 2>/dev/null && \
+				ls wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
+			[ -n "$WD" ] && break
+			sleep 0.2
+		done
+		[ -n "$WD" ] || exit 0
+		export WAYLAND_DISPLAY="$WD"
+		fcitx5 -d >/dev/null 2>&1
+	) &
+fi
+
 exec kdos-comp

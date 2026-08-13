@@ -36,6 +36,21 @@
 int kdos_main(int argc, char **argv);		/* kdos                     */
 int ksvc_main(int argc, char **argv);		/* service, ksvc            */
 int getty_main(int argc, char **argv);		/* kdos-getty               */
+/* A/B root slots (bootctl.c). The initramfs runs `select`, the end of rcS runs
+ * `mark-good`, and everything else is administration. */
+int bootctl_main(int argc, char **argv);	/* kdos-bootctl             */
+
+/* `kdos rebuild` (rebuild.c): the stick rebuilding the stick. Finds the sources
+ * an ISO built with KDOS_ISO_SOURCES=1 carries, checks the machine can do the
+ * work, and hands over to kdosbuild. */
+int rebuild_main(int argc, char **argv);
+
+/*
+ * `kdos march` (march.c): build a port both ways, benchmark it, and keep the
+ * flags only where the win beat the noise. A port with no `bench =` line in its
+ * recipe is unmeasurable and is never counted as a winner.
+ */
+int march_main(int argc, char **argv);
 int shot_main(int argc, char **argv);		/* kdos-shot                */
 int banner_main(int argc, char **argv);		/* kdos-banner              */
 int fetch_app_main(int argc, char **argv);	/* kdos-fetch-app           */

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-wayland-protocols
+version     = 1.21.0
+release     = 1
+source      = https://download.kde.org/stable/$name/$name-$version.tar.xz
+sha256      = 698a7b28b711270314e396e248ae86087cfeaed01372009063995be6e1dc85ba  plasma-wayland-protocols-1.21.0.tar.xz
+description = KDE Plasma Wayland protocol definitions
+homepage    = https://invent.kde.org/libraries/plasma-wayland-protocols
+depends     = cmake extra-cmake-modules
