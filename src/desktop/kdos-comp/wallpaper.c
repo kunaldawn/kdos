@@ -53,6 +53,13 @@ struct kc_wallpaper_buffer {
 static void wp_buffer_destroy(struct wlr_buffer *b)
 {
 	struct kc_wallpaper_buffer *w = (struct kc_wallpaper_buffer *)b;
+	/*
+	 * Same omission cellbuf.c had, and latent here rather than harmless:
+	 * this buffer is created once and destroyed at shutdown, so the dangling
+	 * addon links never get walked again. See cellbuf_destroy() for what it
+	 * costs when a buffer is destroyed while the session is still running.
+	 */
+	wlr_buffer_finish(b);
 	free(w->data);
 	free(w);
 }
