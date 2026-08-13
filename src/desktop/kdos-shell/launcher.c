@@ -130,6 +130,18 @@ static void add_desktop_dir(const char *dir)
 		snprintf(t->name, sizeof(t->name), "%s", name);
 		snprintf(t->exec, sizeof(t->exec), "%s", exec);
 		strip_field_codes(t->exec);
+		/*
+		 * An entry whose Exec IS the box launcher is a box app, whatever
+		 * the alien-apps table is keyed by. That table's first column is
+		 * the SHIM name (`calibre`, `mousepad`) while a desktop id is
+		 * upstream's own (`calibre-gui`, `org.xfce.mousepad`), so
+		 * matching on the id alone marked [box] on the minority where
+		 * the two happen to coincide — Ardour had the tag and calibre,
+		 * VSCodium, Mousepad and Foliate did not.
+		 */
+		if (!strncmp(t->exec, "kdos-appbox run ", 16) ||
+		    strstr(t->exec, "/kdos-appbox run "))
+			t->alien = 1;
 		kxdg_free(&ent);
 		nentries++;
 	}
@@ -311,20 +323,27 @@ static void draw(const char *query, int sel, int top)
 		const struct entry *e = &entries[order[top + i]];
 		int y = 3 + i;
 		int is_sel = top + i == sel;
+		/*
+		 * The colours are ALREADY swapped for the selected row, so it
+		 * must not also carry KT_A_REVERSE: the attribute swaps fg and
+		 * bg again, and the row came out as accent-on-background text
+		 * sitting inside an accent bar — every glyph cell punched back
+		 * to the background colour. Swap the slots or set the
+		 * attribute, never both.
+		 */
 		int fg = is_sel ? KT_SURFACE : KT_TEXT;
 		int bg = is_sel ? KT_ACCENT : KT_SURFACE;
 
 		if (is_sel)
 			ktui_draw_fill(krect(1, y, w - 2, 1), bg);
-		ktui_draw_text(2, y, w - 12, e->name, fg, bg,
-			       is_sel ? KT_A_REVERSE : KT_A_NONE);
+		ktui_draw_text(2, y, w - 12, e->name, fg, bg, KT_A_NONE);
 		/* The mark is the honest part of this list: an alien app costs
 		 * a container start on first launch, and the user is entitled
 		 * to know which ones those are before clicking. */
 		if (e->alien)
 			ktui_draw_text_right(0, y, w - 2, "[box]",
 					     is_sel ? fg : KT_DIM, bg,
-					     is_sel ? KT_A_REVERSE : KT_A_NONE);
+					     KT_A_NONE);
 	}
 
 	if (nmatch == 0)

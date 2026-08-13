@@ -35,6 +35,9 @@
 #ifndef KDOS_COMP_H
 #define KDOS_COMP_H
 
+#include <sys/types.h>
+#include <time.h>
+
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
 #include <wlr/backend/session.h>
@@ -161,6 +164,11 @@ struct kc_server {
 	 * background/bottom, then windows, then top/overlay.
 	 */
 	struct wlr_scene_tree *layer_below, *layer_above;
+	/* The desktop background. One decoded image, one scene node per output
+	 * (wallpaper.c). NULL when there is no wallpaper, which is a black
+	 * desktop rather than an error. */
+	struct kc_wallpaper_buffer *wallpaper_buf;
+	char *wallpaper;		/* comp.conf `wallpaper =`, or NULL */
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct wl_listener new_layer_surface;
 	struct wl_list layers;		/* struct kc_layer */
@@ -246,6 +254,13 @@ struct kc_server {
 	char **startup[KC_MAX_STARTUP];
 	int nstartup;
 	int startup_overridden;
+	/* Supervision state, one slot per startup entry: the live pid (0 when
+	 * it is not running), how many times it has died and when that count
+	 * started. A startup child is the desktop's chrome and is restarted; a
+	 * `spawn` binding's child is not, and is not tracked here. */
+	pid_t startup_pid[KC_MAX_STARTUP];
+	int startup_fails[KC_MAX_STARTUP];
+	time_t startup_since[KC_MAX_STARTUP];
 	int32_t repeat_rate, repeat_delay;
 	int snap_px;
 
@@ -285,6 +300,9 @@ struct kc_output {
 	struct wlr_output *wlr_output;
 	/* What is left after the panels have taken their exclusive zones. */
 	struct wlr_box usable;
+	/* This output's wallpaper node, sized and positioned by
+	 * kc_wallpaper_arrange(). Owned by the scene, not by us. */
+	struct wlr_scene_buffer *wallpaper;
 	/* The CRT pass's two swapchains and its texture cache, created on the
 	 * first CRT frame. NULL means the plain path. */
 	struct kc_crt *crt;
@@ -296,6 +314,15 @@ struct kc_output {
 	struct wl_listener present;
 	struct wl_listener frame;
 	struct wl_listener request_state;
+	struct wl_listener destroy;
+};
+
+/* One per xdg-decoration object. It exists only to hold the two listeners that
+ * let the SERVER_SIDE answer wait for the surface's initial commit — see
+ * new_decoration() in main.c for why answering immediately aborts wlroots. */
+struct kc_decoration {
+	struct wlr_xdg_toplevel_decoration_v1 *deco;
+	struct wl_listener commit;
 	struct wl_listener destroy;
 };
 
@@ -455,6 +482,19 @@ void kc_ws_switch(struct kc_server *s, int n);
  * and must run whenever the outputs change. */
 void kc_layer_init(struct kc_server *s);
 void kc_layer_arrange(struct kc_server *s);
+/* The box a WINDOW may have on the output under (x, y) — the output's own box
+ * minus every panel's exclusive zone. Everything that positions a toplevel goes
+ * through this; using the raw layout box is how a maximised window ends up
+ * painted over the panel. False when there is no output there. */
+bool kc_usable_at(struct kc_server *s, double x, double y, struct wlr_box *out);
+
+/* The desktop background — wallpaper.c. `init` decodes once, `arrange` places
+ * one node per output and is called again on every layout change. */
+#define KC_WALLPAPER_DEFAULT "/usr/share/backgrounds/kdos/default-wallpaper.png"
+struct kc_wallpaper_buffer;
+void kc_wallpaper_init(struct kc_server *s);
+void kc_wallpaper_arrange(struct kc_server *s);
+void kc_wallpaper_free(struct kc_server *s);
 
 /*
  * ext-session-lock-v1. Create the global after layer_lock exists.

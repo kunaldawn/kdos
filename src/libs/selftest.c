@@ -228,6 +228,34 @@ static void test_base(void)
 	   "GNU tar reads our archive");
 	eq_str(listing, "blobs/sha256/deadbeef", "GNU tar agrees on the name");
 
+	/*
+	 * A size field that does not fit is a REFUSAL, not a number. GNU
+	 * base-256 puts the size in the low bytes of a 12-byte field, so
+	 * eleven shifts of 8 overflow a long long — undefined behaviour, and
+	 * the value it used to produce was negative. Everything downstream
+	 * read that as a length: the GNU-long-name branch computed
+	 * `(size_t)size` and asked read() for 2^63 bytes into a 512-byte
+	 * stack buffer, and the only thing that stopped it was the kernel
+	 * refusing an address range that large. Found by fuzzing kb_tar_next.
+	 */
+	char *badpath = kb_path_join(dir, "bad.tar");
+	unsigned char hdr[512] = {0};
+	memcpy(hdr, "longname", 8);
+	hdr[124] = 0x80;	/* base-256 marker */
+	hdr[128] = 0x80;	/* lands in bit 63 after the shifts */
+	hdr[156] = 'L';		/* GNU long name: the payload is a length */
+	memcpy(hdr + 257, "ustar\0" "00", 8);
+	int bfd = open(badpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	ok(bfd >= 0, "create a corrupt tar");
+	ok(write(bfd, hdr, sizeof(hdr)) == (ssize_t)sizeof(hdr), "write its header");
+	close(bfd);
+	KbTarIn bt;
+	KbTarEntry be;
+	ok(kb_tar_open(&bt, badpath) == 0, "open the corrupt tar");
+	ok(kb_tar_next(&bt, &be) == -1, "a size that overflows is refused, not read");
+	kb_tar_close(&bt);
+	free(badpath);
+
 	/* Output bigger than the buffer must TRUNCATE, not hang. It used to
 	 * hang: the child inherited the pipe's read end, so closing ours left
 	 * the pipe writable and the child blocked in write() while we blocked
@@ -542,7 +570,12 @@ static void test_build(void)
 	ok(kj_parse("{\"a\": 1} trailing") == NULL, "trailing junk is refused");
 	ok(kj_parse("{\"a\": }") == NULL, "a missing value is refused");
 	ok(kj_parse("[1, 2,]") == NULL, "a trailing comma is refused");
-	ok(kj_parse("{}") != NULL, "an empty object is still a document");
+	/* Freed rather than dropped so the whole suite runs clean under
+	 * `CC="cc -fsanitize=address,undefined" testing/selftest.sh` — one
+	 * leaked node is enough to make LeakSanitizer's verdict useless. */
+	KjNode *empty = kj_parse("{}");
+	ok(empty != NULL, "an empty object is still a document");
+	kj_free(empty);
 
 	/* /proc reports st_size 0. A whole-file read that trusts it returns an
 	 * empty string, and "no mounts" is the wrong answer to act on. */

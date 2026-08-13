@@ -762,6 +762,16 @@ the next prompt; foot and btop on next start (foot cannot reload its config at
 all); GTK apps on their next launch, because GTK re-reads neither theme nor icons
 on a file change.
 
+**That SIGHUP only started arriving when the compositor stopped blocking it** —
+see **What the compositor hands its children**. The live retint was written,
+correct and unreachable for as long as `kdos-shell` inherited a blocked SIGHUP.
+
+**The foot theme is `[colors-dark]`, never `[colors]`.** foot deprecated the old
+section name and warns ONCE PER KEY on stderr, so every terminal on this desktop
+opened with 24 lines of `deprecated: foot: [colors]: use [colors-dark] instead`
+above the first prompt. `initial-color-theme` defaults to `dark`, so one section
+is all foot reads and there is no light KDOS palette to write.
+
 **`kdos theme --audit` is the palette claim, checked** (`src/packages/kdos-tools/
 themeaudit.c`). It does not try to recognise "palette colours" in the installed
 files — that test would have to know which mixes are legal and would drift from
@@ -880,10 +890,12 @@ wallpaper is ever re-rendered from a clean source, drop it there.
 
 ## The `kdos` command
 
-`kdos` is the front door: `help` (commands + the keybind cheat sheet),
-`theme`, `status`, `doctor`, `app`, `version`. `kdos doctor` checks the things
-that have actually broken on this distro — including `readlink
-/proc/self/root`, the switch_root trap above.
+`kdos` is the front door, and by now it is fifteen subcommands: `help`
+(commands + the keybind cheat sheet), `theme`, `status`, `doctor`, `app`,
+`version`, plus `why` / `explain`, `sandbox`, `appid`, `restarts`, `stutter`,
+`march`, `rebuild` and `cve` — each documented in its own section here. `kdos
+doctor` checks the things that have actually broken on this distro — including
+`readlink /proc/self/root`, the switch_root trap above.
 
 It is C now, in **`src/packages/kdos-tools`**, along with `kdos-banner`,
 `kdos-shot`, `kdos-fetch-app`, `kdos-fetch-static`, `ksvc`/`service` and
@@ -915,10 +927,19 @@ input, and rewriting them buys nothing but risk.
 
 ## The C libraries — `src/libs/`
 
-Static archives, `libk*`, **linking nothing but musl**. That is the constraint
-the whole set exists under: libktui has to be usable in phase 1, before any
-library exists to link against. If a lib ever needs a real `-l`, every phase-1
-consumer moves to phase 4 with it.
+Static archives, `libk*`, **linking nothing but musl — with exactly one
+declared exception**. That is the constraint the whole set exists under:
+libktui has to be usable in phase 1, before any library exists to link against.
+If a lib ever needs a real `-l`, every phase-1 consumer moves to phase 4 with
+it.
+
+**`libkwl` is the exception, and being a separate archive is how the rule
+survives it.** It is libktui's *Wayland backend* — the cell grid painted into a
+layer-shell or session-lock surface instead of into a terminal — so it needs
+`fcft`, `pixman`, `xkbcommon` and `wayland-client`, which phase 1 does not have.
+Splitting it out rather than folding it into libktui is what keeps kinstall
+linking zero libraries on the first bootable image; that split IS milestone M3.
+`kdos-shell` and `kdos-lock` link it, and nothing in phase 1 does.
 
 | Lib | Prefix | Owns |
 |---|---|---|
@@ -929,10 +950,11 @@ consumer moves to phase 4 with it.
 | `libkpkg` | `kp_` | the package database, the ports tree, `# depends` parsing, the dependency solver, `kp_vercmp`, the recipe/build-config hashes |
 | `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings — the one library with vendored third-party source (Monocypher) |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
+| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers, the fcft glyph cache, keyboard decoding. **The one library with real `-l` dependencies** |
 
 Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
-libkbase` and `libkbuild → libkbase` and `libksig → libkbase`, and nothing
-points back up.
+libkbase` and `libkbuild → libkbase` and `libksig → libkbase` and `libkwl →
+libktui`, and nothing points back up.
 
 Three rules the extraction exists to keep, each one a bug that was already
 there:
@@ -988,6 +1010,15 @@ in the SOLID branch `tip` stays 0, the fractional-tip cell is unreachable, and
 `fill` is still `(int)(frac * r.w + 0.5)` under the same `frac > 1` clamp. The
 `frac < 0` indeterminate scanner is untouched. Change `ktui_progress_ex` freely;
 leave that branch alone.
+
+**A resize is not applied until the CONSUMER applies it.** The backend sets
+`ktui_resized`; `ktui_w`/`ktui_h` follow only when the loop calls
+`ktui_draw_resize()` and `ktui_draw_invalidate()`, which `panel.c` and
+`launcher.c` do and `notifyd.c` did not — it had a fixed-size surface and never
+needed to. The moment that surface started being resized, `draw_toasts()` went
+on believing it had the old three rows, a toast WITH A BODY failed its
+`y + rows > h` guard, and the daemon painted an empty box in the corner. Any
+loop that owns a surface owns this.
 
 **`ktui_offscreen_init(w, h)` + `ktui_draw_dump()` render with no terminal at
 all** — the cell buffer at a fixed size, written out as plain text instead of
@@ -1287,6 +1318,54 @@ the rootfs to measure the payload, seconds on a live ISO and far more on a
 developer's disk.
 
 ---
+
+## What the compositor hands its children, and where windows go
+
+Three defects that a headless run cannot see and a real boot in QEMU showed in
+one session. Each is a rule now.
+
+**A spawned child must be given its signals back.**
+`wl_event_loop_add_signal` BLOCKS the signal it watches — that is how it turns
+it into a signalfd event — so kdos-comp runs with SIGHUP, SIGINT and SIGTERM
+blocked, and **the signal mask survives `exec`**. Every child it spawned
+inherited the block. Measured: `kdos theme amber` writes the accent and SIGHUPs
+`kdos-shell` to retint the running session, the signal was never delivered, and
+the whole live-retint claim in **Theming** was silently false — the panel stayed
+phosphor. `kill` on anything the launcher started did nothing either.
+`SIG_IGN` survives exec as well (handlers do not), so the compositor's
+`signal(SIGPIPE, SIG_IGN)` reached every shell it started, where `foo | head`
+then runs `foo` to completion. `child_reset_signals()` in `main.c` undoes both,
+in the child, immediately before `execvp`.
+
+**The startup children are supervised; a `spawn` binding's child is not.**
+`kdos-shell` is the panel, the window list and the launcher, and
+`kdos-notifyd` owns `org.freedesktop.Notifications`; a session that loses one
+keeps running with no chrome and no way to get any back. So startup entries are
+spawned with ONE fork, their pid is kept, and SIGCHLD arrives through the event
+loop — five deaths in thirty seconds stops the respawn, because a crash loop
+hides the log line that explains it. `kc_spawn` keeps its double fork: a
+terminal a keybinding opened is not the desktop's chrome.
+
+**`o->usable` is the box a window may have, and everything that positions one
+reads it through `kc_usable_at()`.** It was computed by `layer.c` and consumed
+by NOTHING: every toplevel mapped at the scene default of 0x0 — under the
+panel, and exactly on top of the previous window — and snapping used
+`wlr_output_layout_get_box`, so a maximised window covered the panel outright.
+New windows are centred in the usable box with an eight-step cascade, and
+snapping is against the same box.
+
+**The wallpaper is the compositor's, not a client's.** `wallpaper.c` decodes the
+PNG with libpng and puts one `wlr_scene_buffer` per output in `layer_below`.
+The usual answer is a layer-shell client (swaybg) and it is wrong here: libkwl
+paints CELLS, so a wallpaper client would be the one program in this desktop
+that is not a character grid. Three things it has to get right — there is no
+public "wlr_buffer from memory", so the file carries the smallest `wlr_buffer_impl`
+that works (data-ptr access only, which is what both renderers use to upload a
+texture); libpng hands back R,G,B,A in memory order while `DRM_FORMAT_ARGB8888`
+wants B,G,R,A; and libpng reports a bad file by `longjmp`ing back **after** the
+allocation, so only an initialised buffer may leave `decode_png`. Scaled to
+COVER and centred via the source box, `wallpaper = none` in comp.conf an honest
+off.
 
 ## Lock, idle and power
 
@@ -1846,8 +1925,11 @@ is a per-app percentage over minutes — the raw counter and the interval are
 never republished, and the interval is **fixed at 10 s by the daemon rather than
 requested by a client**, so it cannot be driven toward being one. It is a
 sampler only: no write path into powercap at all, and no argument from any
-client. The socket is root and `wheel`, not world-readable — on a multi-user
-machine this list is what everyone else is running.
+client. Answers go to root and `wheel` and to nobody else — on a multi-user
+machine this list is what everyone else is running. The gate is `SO_PEERCRED`,
+**not the socket's mode**, which is 0666 exactly as kdos-powerd's is: anyone may
+connect and anyone unauthorised gets `err not permitted`. A mode that looked
+like the authorisation is a mode somebody eventually loosens.
 
 **`56_energyd.sh` checks for a readable energy domain before `supervise` sees
 the daemon.** Most VMs have no RAPL; the daemon refuses to start there rather
@@ -1936,7 +2018,9 @@ kdos/
 │   │   ├── libkxdg/             # kxdg_* desktop entries
 │   │   ├── libkpkg/             # kp_*   db, ports tree, solver, version + hashes
 │   │   ├── libksig/             # ksig_* Ed25519 (vendored Monocypher)
-│   │   └── libkbuild/           # kbuild_* phases, plans, snapshot inventory
+│   │   ├── libkbuild/           # kbuild_* phases, plans, snapshot inventory
+│   │   └── libkwl/              # kwl_*  libktui's Wayland backend — the one
+│   │                            #   library with real -l dependencies
 │   ├── desktop/                 # the desktop, ours (see docs/KDOS-DESKTOP.md)
 │   │   ├── kdos-comp/           # the wlroots compositor, the CRT pass (crt.c),
 │   │   │                        #   capture and the clipboard (capture.c)
@@ -1947,6 +2031,8 @@ kdos/
 │   │   └── kdos-boxsock/        # the security-context-v1 sandbox engine
 │   ├── build/
 │   │   └── kdosbuild/           # the build orchestrator (C, host-only)
+│   ├── tools/
+│   │   └── kdos-portup/         # the upstream version checker (C, host-only)
 │   └── packages/                # ports that are OURS (see Three Rings)
 │       ├── kdos-installer/      # the installer (C, zero libraries)
 │       ├── kdos-kpkg/           # kpkg + the four names it answers to
@@ -1992,8 +2078,13 @@ build could not be run from anything but an interactive shell.
 | `02_phase2` | Self-Hosting Bootstrap — rebuild tar/musl/zlib/binutils/gcc inside the chroot |
 | `03_phase3` | Toolchain & Core Libraries |
 | `04_phase4` | Userland & Wayland base |
+| `05_desktop` | Desktop — wlroots, then `kdos-comp`, `kdos-shell` and the rest of `src/desktop/` |
 | `05_phase5` | Kernel |
 | `06_packaging` | trim rootfs, theme, user, appbox, initramfs, ISO |
+
+`05_desktop` sorts before `05_phase5` and that ordering is deliberate, not an
+accident of the names: the desktop is ordinary userland and the kernel is the
+last thing built before packaging.
 
 **Phase 4/5 chroot** — `chroot_exec.sh` bind-mounts `$REPO_ROOT` → `/kdos`,
 `$REPO_ROOT/ports` → `/ports`, `$REPO_ROOT/build` → `/kdos/build`, plus
@@ -2101,6 +2192,29 @@ entries win; runtime-added entries are appended back.
 `00_user.sh` needs the same treatment for the trees it copies into the home
 (`.icons`, `.themes`, `.local/share/applications`) — it clears them before
 copying skel.
+
+### And PACKAGES are swept the same way
+
+**A port deleted from `ports/` used to leave its package installed forever.**
+`fs/` has had a manifest guard since the stale `kdos-appbox` above; packages had
+none, and the build tree is incremental. Measured on this branch: the ISO still
+carried all sixteen `cosmic-*` packages, `pop-launcher`, `kdos-theme-helper` and
+`xdg-desktop-portal-cosmic` — **529 MB of a desktop removed a milestone
+earlier**, plus `kd`, the demo the user asked to be deleted. Nothing was wrong
+with the recipes; there were no recipes.
+`06_packaging/00_orphans.sh` `kpkgdel`s every installed package with no
+`kpkgbuild` in `ports/core`, `src/packages` or `src/desktop`, and
+`testing/preflight.sh` says so in seconds instead of at the end of a two-hour
+build. Neither is fatal on failure: an orphan with a damaged manifest must not
+stop the ISO from being rolled.
+
+**Skip-if-installed still compares the VERSION, not the recipe** (see **kpkg is
+C**), and the same session found the other half of that: `fastfetch`'s
+`config.jsonc` is a KDOS file installed by the port, its banner footer was
+changed from `cosmic` to `wlroots`, no `release` was bumped, and the shipped
+`/etc/xdg/fastfetch/config.jsonc` still said `cosmic` for every user with no
+home config — root, on tty2. The fix was `release = 2`. Wiring `E:` into the
+skip decision is the real answer and is still not done.
 
 ### libkbuild — the deciding half of the orchestrator
 
@@ -2309,6 +2423,38 @@ build, snapshot, restore, plan narrowing and a deliberate failure. That is the
 only test that exercises the ENGINE rather than a decision, and it is the one
 to extend when the orchestrator grows.
 
+**Run it sanitized when you touch a parser.** `CC` is the seam and it takes
+more than one word:
+
+```sh
+CC="cc -fsanitize=address,undefined -g" testing/selftest.sh
+```
+
+The suite is clean that way and stays that way. It found two real defects the
+plain run could not see: `kb_tar`'s base-256 size field overflowed a `long
+long` (signed overflow, and the negative it produced became a `size_t` length —
+the GNU-long-name branch asked `read()` for 2^63 bytes into a 512-byte stack
+buffer, and only the kernel refusing an address range that large stood in the
+way), and `kxdg_entry.c` called `memcpy` with a NULL source on every entry's
+first key. **Leak checking is off by default and on for `src/libs/selftest.c`
+alone** — every program here owns its parsed state until it exits, which
+LeakSanitizer reports as a leak and turns into a false test failure; the
+library suite is the one binary whose subject is code called repeatedly.
+
+A `libFuzzer` driver over `kj_parse`, `kxdg_load`, `kp_recipe_key`,
+`kb_tar_next`, `kcol_retint_text` and `kp_vercmp` is what found both, in ten
+minutes across four workers, with no crash and no leak besides. It is not
+committed — the corpus is worth more than the driver, and neither has a home in
+a tree that ships no test binaries — but it is twenty minutes to rewrite and
+worth doing after any change to a parser.
+
+**What the gate does NOT cover.** `kdos-comp` and `kdos-shell` compile here
+only where wlroots 0.20 and fcft exist, which a bare host does not have, so on
+most machines the blocks that would catch a break in them print `skipped`.
+`kdos-boxsock` was in that category for a worse reason — an unguarded `#define
+_GNU_SOURCE` collided with the `-D_GNU_SOURCE` libkbase needs, under `-Werror`
+— and now compiles wherever wayland-client does, which is nearly everywhere.
+
 There used to be a **libkbuild ↔ buildlib differential** here: `pdump.c` and
 `pdump.py` printed the same lines from the C and python implementations of the
 same decision, and `diff` was the whole test. It did its job — the port was
@@ -2349,6 +2495,25 @@ assumed:
 - The db line-1 format, the `./`-prefixed manifest with trailing slashes on
   directories, `<name>-<version>-<release>.tar.xz`, `--root`, the whitespace
   `PORT_REPO` list, env-over-config, and exit codes 0/1.
+
+**Skip-if-installed compares the VERSION, not the recipe — so a recipe edit
+that does not bump `version`/`release` never rebuilds.** This is not
+theoretical and it cost a build: `ports/core/wlroots/build.sh` gained
+`install -m644 protocol/*.xml "$PKG/usr/share/wlroots/protocols/"` because
+upstream does not install its own protocol XML and three of our recipes read it
+from there. The installed wlroots on the tree predated that line, its manifest
+carried zero `.xml`, and `kdos-shell` — the first genuinely new package of
+`05_desktop` — died at once on wayland-scanner's `Could not open input file`.
+Nothing detects it: the version was unchanged, so kpkg correctly skipped a
+package that no longer matched its own recipe.
+
+KDOS already computes the answer — `kp_recipe_hash` is the binhost's `E:`, a
+SHA-256 over kpkgbuild, build.sh, postinstall.sh and every patch — and the
+local install path does not consult it. Until it does, **the fix is
+`--rebuild <port>`**, and the smell is a package whose behaviour disagrees with
+a recipe you just read. Wiring `E:` into the skip decision would rebuild every
+port whose recipe was touched, which is right and is also a mass rebuild, so it
+is a deliberate change rather than an obvious one.
 
 **A file conflict is between PACKAGES.** A path that exists but that no
 installed package claims is adopted, not refused. That is not a loosening for
@@ -2931,9 +3096,10 @@ WebFetch.
 `fs/etc/init.d/` uses a numeric-prefix convention:
 
 ```
-01_udev  02_modules  05_hostname  10_sysctl  15_userdirs  20_dmesg  30_network
-40_dbus  42_networkmanager  45_seatd  50_alsa  55_powerd  60_bluetooth  70_sshd
-80_cups  rcS  service_helper
+01_udev  02_modules  05_hostname  10_sysctl  15_userdirs  20_dmesg  22_syslog
+30_network  35_chrony  40_dbus  42_networkmanager  45_avahi  45_seatd  50_alsa
+55_powerd  55_tlp  56_energyd  60_bluetooth  70_sshd  80_cups
+rcS  service_helper
 ```
 
 Each sources `service_helper`, which is now three one-line wrappers around
@@ -3078,6 +3244,51 @@ and respond with the targeted fix.
 - **No corefonts for wine.** winetricks fetches them from the network at run
   time and nothing in the image may depend on that, so a Windows program that
   wants Arial gets a substitute.
+- **`xdg_toplevel.set_maximized` and `set_fullscreen` are not implemented.**
+  kdos-comp has no `request_maximize`/`request_fullscreen` handler at all, so an
+  app that asks to fill the screen — a video player, a game, anything with F11 —
+  is ignored. Dragging to the top edge maximises, which is the only route there
+  is. The pieces are in place now that `kc_usable_at()` exists (fullscreen wants
+  the OUTPUT box, maximise the usable one).
+- **The baked appbox predates its own Containerfile.** `ports/appbox/image/` was
+  packed on 2026-07-29; the KDE segment and the `kdos.qt-kde-theme` /
+  `kdos.qt-gtk-theme` labels were added after. The shipped image therefore has
+  91 apps, no KDE, and no labels — so `kdos-appbox` takes the
+  `QT_QPA_PLATFORMTHEME=gtk3` branch and every Qt app in the box is grey. This
+  is a re-bake (`make fetch-apps`, needs network), not a config bug, and until
+  it happens the **appbox** section here describes the Containerfile rather than
+  the ISO.
+- **Occupancy in the panel's workspace strip is derived, not reported.**
+  ext-workspace-v1 has ACTIVE, URGENT and HIDDEN and no "there are windows
+  here", so `panel.c` marks the workspace being shown occupied when a toplevel
+  is not minimized (kdos-comp reports a window on another workspace as
+  MINIMIZED). Right for every workspace the user has visited, silent about the
+  rest. Reading URGENT alone, as it did, meant no workspace was ever drawn
+  occupied at all.
+- **Five Wayland protocols the compositor does not create**, all of which `foot`
+  names on startup: `zwp_primary_selection_device_manager_v1` (so **middle-click
+  paste does not work anywhere**), `xdg-activation-v1`, `cursor-shape-v1` (every
+  client draws its own pointer, so it changes size between windows),
+  `wp_fractional_scale_v1` and `xdg-toplevel-icon-v1`. wlroots implements all
+  five. Roadmap Wave R, item R9.
+- **A configure is not a resize, and EAGAIN is not a dead compositor.** Two
+  libkwl defects that only became reachable when kdos-notifyd started resizing
+  its surface, and they compound: `resize_cells()` raised `ktui_resized` on
+  every configure, a consumer that answers that with `ktui_draw_invalidate()`
+  repaints in full, the repaint commits, the commit draws another configure —
+  ~100 frames a second until `wl_display_flush` answered EAGAIN, which
+  `kwl_pump` read as "the compositor is gone" and exited 0 with nothing in any
+  log. The supervisor added in the same session is what made it visible at all:
+  `kdos-notifyd died 6 times in 30s — not restarting it again`.
+- **`kdos-notifyd` shrinks to ONE CELL when idle rather than going away.**
+  layer-shell's own hide is a commit with a NULL buffer, and wlroots answers it
+  by resetting the surface to uninitialised — the next paint then waits for a
+  configure that only an initial-commit handshake produces, and the first toast
+  after an idle period is accepted, given an id and drawn nowhere. Measured.
+  Destroying and recreating the layer surface is the real fix.
+- **A cell grid leaves an unpainted strip** when the output height is not a
+  multiple of the cell height — visible as a black band along the bottom of the
+  lock screen at 1280x800. libkwl should pad the remainder with `KT_BG`.
 
 ---
 

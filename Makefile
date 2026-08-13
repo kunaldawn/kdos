@@ -50,6 +50,13 @@ check-iso-free:
 		test -n "$(ALLOW_ISO_IN_USE)" || exit 1; \
 	fi
 
+# `-it` unconditionally made `make build` impossible without a terminal —
+# docker refuses with "cannot attach stdin to a TTY-enabled container", which is
+# exactly the case kdosbuild's headless mode exists for (a non-tty stdout gets
+# plain lines instead of the TUI). Ask for a TTY only when there is one, so a
+# build can be logged to a file or run from CI.
+DOCKER_TTY := $(shell test -t 0 && echo -it)
+
 build: check-iso-free
 	mkdir -p build
 	docker build -t os-dev .
@@ -62,7 +69,7 @@ build: check-iso-free
 		-v $$(pwd)/fs:/workspace/fs:ro \
 		-v $$(pwd)/script:/workspace/script:ro \
 		-v $$(pwd)/ports:/workspace/ports:ro \
-		-it os-dev script/kdosbuild.sh $(BUILD_ARGS)
+		$(DOCKER_TTY) os-dev script/kdosbuild.sh $(BUILD_ARGS)
 
 snapshots:
 	script/kdosbuild.sh --list

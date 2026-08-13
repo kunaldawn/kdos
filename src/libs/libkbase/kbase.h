@@ -188,6 +188,12 @@ int kb_run(const KbArgv *a);		/* exec, wait, return exit status   */
  * world-readable for the life of the process. SIGPIPE is blocked around the
  * write, so a child that exits early cannot kill the caller. */
 int kb_run_feed(const KbArgv *a, const char *in, size_t n);
+/* Same as kb_run_feed, except the child keeps the caller's stdout and stderr.
+ * That is the difference between feeding a CHECKER and feeding a PAGER: the
+ * one place kb_run_feed is used sends the child's output to /dev/null, which
+ * is right for kdos-checkpass and would make `kdos help --pager` render the
+ * help text into nothing. Same reason kb_run_tty exists beside kb_run. */
+int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n);
 /* Same, but the child INHERITS stdin/stdout/stderr. A package build writes
  * straight to the build log, unbuffered and interleaved, and that is what the
  * per-port logs are. */

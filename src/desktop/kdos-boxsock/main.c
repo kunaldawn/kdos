@@ -40,7 +40,12 @@
  * ---------------------------------
  */
 
+/* Guarded: libkbase needs -D_GNU_SOURCE on the command line, and an
+ * unconditional define here collides with it under -Werror — which is what kept
+ * this file out of testing/selftest.sh's compile gate. */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>

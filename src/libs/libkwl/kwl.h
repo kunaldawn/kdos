@@ -64,6 +64,11 @@ enum kwl_edge {
 	KWL_EDGE_RIGHT,
 };
 
+enum kwl_corner {
+	KWL_CORNER_CENTER = 0,	/* the launcher: what you are looking at   */
+	KWL_CORNER_TOP_RIGHT,	/* a toast: what you are not looking at    */
+};
+
 typedef struct {
 	enum kwl_role role;
 	enum kwl_edge edge;	/* panels only                             */
@@ -77,6 +82,14 @@ typedef struct {
 	 * and its natural unit is rows of results, not pixels.
 	 */
 	int cols, rows;
+	/*
+	 * Overlay only: where it sits. Centre is right for a launcher, which is
+	 * what the user is looking at; it is wrong for a toast, which must not
+	 * cover the middle of the screen for as long as it is up. Anything
+	 * non-zero also gets a margin, because a notification flush against the
+	 * screen edge reads as a rendering fault.
+	 */
+	int corner;
 	/*
 	 * Take the keyboard. A panel must NOT — it would steal focus from
 	 * whatever you were typing into every time the clock redrew — but a
@@ -96,6 +109,14 @@ typedef struct {
  */
 int kwl_init(const KwlConfig *cfg);
 void kwl_shutdown(void);
+/*
+ * Overlay only: ask for a new size in cells. A toast stack is the case this
+ * exists for — its surface is opaque for its whole height, so a daemon sized
+ * once for the MAXIMUM number of toasts paints an empty dark rectangle on the
+ * desktop for the whole session. The compositor answers with a configure and
+ * the cell buffer follows; the caller redraws on the next frame.
+ */
+void kwl_overlay_resize(int cols, int rows);
 
 /* Cell metrics, once the font is loaded. A panel's pixel height is
  * cells * kwl_cell_h(). */
