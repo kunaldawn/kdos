@@ -359,8 +359,29 @@ int notifyd_main(int argc, char **argv)
 	int wl_fd = kwl_fd();
 	int bus_fd = sd_bus_get_fd(bus);
 
+	/* Same live retint as the panel: this daemon outlives an accent
+	 * change too, and a toast in the old accent after one is a toast the
+	 * desktop has already stopped wearing. */
+	sh_theme_watch();
+
 	int shown_rows = -1;
 	while (!kwl_should_close()) {
+		if (sh_theme_dirty) {
+			sh_theme_dirty = 0;
+			sh_theme_from_cache();
+			ktui_draw_invalidate();
+		}
+		/*
+		 * Drain the bus BEFORE deciding what to draw. This used to sit
+		 * after draw_toasts(), so a Notify was read only on the way
+		 * INTO poll: the toast joined the list, poll slept until its
+		 * expiry, expire_due() removed it at the top of the next pass,
+		 * and the toast was never drawn at all — accepted, given an
+		 * id, invisible. Traced with WAYLAND_DEBUG: the surface never
+		 * saw a single request between hide and expiry.
+		 */
+		while (sd_bus_process(bus, NULL) > 0)
+			;
 		expire_due();
 		/*
 		 * Resize BEFORE drawing, and only when the row count changed:
@@ -380,30 +401,32 @@ int notifyd_main(int argc, char **argv)
 			want = 4;
 		if (want != shown_rows) {
 			/*
-			 * With nothing to show the surface shrinks to ONE CELL
-			 * rather than going away. layer-shell's own hide is a
-			 * commit with a NULL buffer, and wlroots answers that by
-			 * resetting the surface to uninitialised — the next
-			 * paint then waits for a configure that only an
-			 * initial-commit handshake will produce, and the
-			 * notification never appears at all. Measured: the first
-			 * toast after the daemon idled was accepted, given an
-			 * id, and drawn nowhere. One dark cell in the corner is
-			 * the honest cost of a grid that has no transparent
-			 * cell; destroying and recreating the layer surface is
-			 * the real fix and is its own piece of work.
+			 * With nothing to show the surface is DESTROYED, not
+			 * shrunk: kwl_overlay_hide()/show() replace the old
+			 * one-cell workaround, and the show path completes the
+			 * initial-commit handshake before returning, so the
+			 * first toast after an idle period is drawn on a
+			 * surface that exists. The resize lesson still holds:
+			 * the configure lands in kwl_pump() below and the cell
+			 * buffer follows only through ktui_draw_resize().
 			 */
-			kwl_overlay_resize(want > 0 ? TOAST_COLS : 1,
-					   want > 0 ? want : 1);
+			if (want > 0)
+				kwl_overlay_show(TOAST_COLS, want);
+			else
+				kwl_overlay_hide();
 			shown_rows = want;
+			/*
+			 * show() has already dispatched the configure, so the
+			 * resize is pending NOW — apply it before this pass's
+			 * draw, or the first toast is painted at the old size.
+			 */
+			if (ktui_resized) {
+				ktui_resized = 0;
+				ktui_draw_resize();
+				ktui_draw_invalidate();
+			}
 		}
 		draw_toasts();
-
-		/* Drain everything already queued before sleeping — sd_bus can
-		 * hold several messages, and poll would not report the fd
-		 * readable for the ones already read out of it. */
-		while (sd_bus_process(bus, NULL) > 0)
-			;
 
 		struct pollfd fds[2] = {
 			{ .fd = wl_fd, .events = POLLIN },

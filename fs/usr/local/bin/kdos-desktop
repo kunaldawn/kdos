@@ -13,12 +13,29 @@ case "$(cat /sys/class/drm/card0/device/modalias 2>/dev/null)" in
 		# QEMU's cursor plane lies about what it supports; without this the
 		# pointer is invisible or leaves trails on every virtio-gpu setup.
 		export WLR_NO_HARDWARE_CURSORS=1
-		# Without blob resources virgl's EGL path hangs. wlroots has a real
-		# software renderer, so unlike smithay it can still bring a session
-		# up here — this is what makes plain `make run` (no virgl) work.
-		if ! dmesg 2>/dev/null | grep -q '+resource_blob'; then
+		# Without virgl there is no GL at all and wlroots must take its
+		# software renderer — that is what makes plain `make run` (no
+		# virgl) work. Read the feature bits from sysfs, NOT dmesg:
+		# dmesg is root-only under dmesg_restrict, so the old grep
+		# forced pixman for every normal user. The features file is one
+		# character per feature bit; VIRGL is bit 0. (The old check
+		# also demanded RESOURCE_BLOB — a smithay-era lesson; wlroots'
+		# GLES2 renderer runs fine on virgl without blob, measured on
+		# the labwc fork with the CRT pass on.)
+		_gpu_virgl=0
+		for _vdev in /sys/bus/virtio/devices/virtio*; do
+			case "$(readlink "$_vdev/driver" 2>/dev/null)" in
+			*/virtio_gpu) ;;
+			*) continue ;;
+			esac
+			case "$(cut -c1 "$_vdev/features" 2>/dev/null)" in
+			1) _gpu_virgl=1 ;;
+			esac
+		done
+		if [ "$_gpu_virgl" != 1 ]; then
 			export WLR_RENDERER=pixman
 		fi
+		unset _gpu_virgl _vdev
 		;;
 esac
 

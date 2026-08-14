@@ -22,14 +22,16 @@
  * live container, so changing one marks the box as needing a recreate rather
  * than silently doing nothing — see cmd_security() in main.c.
  *
- * THE SAME FILE IS ALSO THE COMPOSITOR'S POLICY. Its `wayland.*` keys are read
- * by kdos-comp (src/desktop/kdos-comp/security.c) and enforced when a client
- * from this box tries to bind a protocol global — screencopy, clipboard read,
- * layer-shell, virtual input, foreign-toplevel, output management. One record,
- * two enforcement points: namespaces here at create time, protocol globals
- * there at bind time, with nothing to keep in sync. The keys are ignored here
- * and the ones above are ignored there, on purpose — neither program treats
- * the other's as an error.
+ * THE PROTOCOL HALF IS NOT THIS FILE'S ANY MORE. Before the labwc fork a
+ * `wayland.*` key here could grant an individual global back to one box; the
+ * fork's filter (allow_for_sandbox() in kdos-comp's server.c) is a fixed
+ * allowlist, so a client is sandboxed or it is not — screencopy, data-control,
+ * input-method and layer-shell are denied to every tagged client and no
+ * profile key changes that. Nothing here writes or reads a `wayland.*` key,
+ * which is the honest state: KDOS does not offer confinement it cannot
+ * enforce, and it does not offer a knob that enforces nothing either. What
+ * this file still owns is the namespace half — the keys above, applied at
+ * create time.
  *
  * The path is resolved from $HOME/.config and NOT from $XDG_CONFIG_HOME, and
  * kdos-comp deliberately copies that rather than doing the more correct thing,

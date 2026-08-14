@@ -121,10 +121,53 @@ void kwl_pump(void)
 {
 	if (!K.display)
 		return;
+	/*
+	 * READ the socket, not just the queue. dispatch_pending() alone never
+	 * reads the fd, so an event the compositor sent sat in the socket
+	 * forever: poll() reported readable, nothing consumed it, and the
+	 * caller span at 100% CPU — measured on kdos-notifyd the moment its
+	 * surface was destroyed and the compositor answered with anything at
+	 * all. This is also why a consumer never noticed a DEAD compositor:
+	 * the EOF was never read either. prepare_read/read_events is
+	 * libwayland's non-blocking read protocol; a failed read (EOF, EPIPE)
+	 * is the compositor genuinely gone.
+	 */
+	while (wl_display_prepare_read(K.display) != 0) {
+		if (wl_display_dispatch_pending(K.display) < 0) {
+			K.closed = 1;
+			return;
+		}
+	}
+	/*
+	 * read_events() BLOCKS on a socket with nothing on it — the caller
+	 * is expected to have polled. kdos-notifyd does; a next caller that
+	 * forgets would hang its whole loop, so the poll is here instead of
+	 * in the contract. Zero timeout, the same prepare/cancel discipline
+	 * kwl_event() below uses.
+	 */
+	struct pollfd pfd = {
+		.fd = wl_display_get_fd(K.display),
+		.events = POLLIN,
+	};
+	int n = poll(&pfd, 1, 0);
+	if (n <= 0) {
+		wl_display_cancel_read(K.display);
+		if (n < 0 && errno != EINTR) {
+			K.closed = 1;
+			return;
+		}
+		/* nothing to read is not a reason to leave requests queued */
+		goto flush;
+	}
+	if (wl_display_read_events(K.display) < 0) {
+		K.closed = 1;
+		return;
+	}
 	if (wl_display_dispatch_pending(K.display) < 0) {
 		K.closed = 1;
 		return;
 	}
+flush:
 	/*
 	 * EAGAIN from flush means the socket is full, not that the compositor is
 	 * gone — libwayland has buffered the requests and will send them when
@@ -232,7 +275,9 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		      int full)
 {
-	if (!K.configured)
+	/* !K.surface: an overlay hidden via kwl_overlay_hide() — drawing
+	 * calls while hidden are no-ops, not errors. */
+	if (!K.configured || !K.surface)
 		return;
 
 	/*
@@ -786,8 +831,10 @@ static int make_panel(void)
 		 *
 		 * NO EXCLUSIVE ZONE, and that is the point of the role. The
 		 * desktop is what windows sit ON — reserving space for it would
-		 * shrink kc_usable_at()'s box and with it every maximised
-		 * window, which is the opposite of what a background is for.
+		 * shrink the compositor's usable area and with it every
+		 * maximised window, which is the opposite of what a background
+		 * is for. (labwc honours exclusive zones in placement, snapping
+		 * and maximise, so this is not advisory there either.)
 		 */
 		zwlr_layer_surface_v1_set_anchor(
 			K.layer_surface,
@@ -1144,6 +1191,66 @@ void kwl_overlay_resize(int cols, int rows)
 	/* The commit is what makes the compositor send a configure back; without
 	 * it the request sits in the queue and nothing on screen changes. */
 	wl_surface_commit(K.surface);
+}
+
+/*
+ * Overlay only: destroy the layer surface instead of shrinking to one cell.
+ *
+ * layer-shell's own "hide" is a commit with a NULL buffer, and wlroots
+ * answers that by resetting the surface to uninitialised — the next paint
+ * then waits for a configure that only an initial-commit handshake will
+ * produce, and the first toast after an idle period is accepted, given an
+ * id, and drawn nowhere. Measured, in kdos-notifyd, which shrank to one
+ * dark cell as a workaround. Destroying and recreating the surface is the
+ * real fix: the connection, the seat, the font cache and the backend all
+ * stay; only the surface goes.
+ */
+void kwl_overlay_hide(void)
+{
+	if (K.cfg.role != KWL_ROLE_OVERLAY || !K.layer_surface)
+		return;
+	zwlr_layer_surface_v1_destroy(K.layer_surface);
+	K.layer_surface = NULL;
+	wl_surface_destroy(K.surface);
+	K.surface = NULL;
+	buffer_free(&K.buf[0]);
+	buffer_free(&K.buf[1]);
+	K.configured = 0;
+	K.px_w = 0;
+	K.px_h = 0;
+	wl_display_flush(K.display);
+}
+
+int kwl_overlay_show(int cols, int rows)
+{
+	if (K.cfg.role != KWL_ROLE_OVERLAY)
+		return -1;
+	if (K.surface) {
+		kwl_overlay_resize(cols, rows);
+		return 0;
+	}
+	if (cols < 1)
+		cols = 1;
+	if (rows < 1)
+		rows = 1;
+	K.cfg.cols = cols;
+	K.cfg.rows = rows;
+	K.surface = wl_compositor_create_surface(K.compositor);
+	if (!K.surface)
+		return -1;
+	if (make_panel() != 0) {
+		wl_surface_destroy(K.surface);
+		K.surface = NULL;
+		return -1;
+	}
+	/* the initial-commit handshake, same as kwl_init's */
+	wl_surface_commit(K.surface);
+	while (!K.configured && !K.closed)
+		if (wl_display_dispatch(K.display) < 0)
+			return -1;
+	/* the recreated surface starts blank: force the next draw through */
+	ktui_resized = 1;
+	return 0;
 }
 
 void kwl_shutdown(void)

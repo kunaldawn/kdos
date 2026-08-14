@@ -1,0 +1,38 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   kdos-comp — server-side decoration colours
+# ---------------------------------
+#
+# labwc themerc keys; this file overrides the built-in theme. Deliberately
+# NEUTRAL dark — near-black bars, grey text — so it reads correctly under
+# every accent without needing a regeneration on `kdos theme <accent>`.
+# Most KDOS windows are boxed apps drawing their own decorations; this
+# covers the host-native ones (foot, and anything asking for SSD).
+
+border.width: 1
+window.active.border.color: #3a3a3a
+window.inactive.border.color: #1e1e1e
+
+window.active.title.bg: flat solid
+window.inactive.title.bg: flat solid
+window.active.title.bg.color: #101410
+window.inactive.title.bg.color: #0a0c0a
+window.active.label.text.color: #c8d0c8
+window.inactive.label.text.color: #5a625a
+
+window.active.button.unpressed.image.color: #c8d0c8
+window.inactive.button.unpressed.image.color: #5a625a
+
+menu.items.bg.color: #0a0c0a
+menu.items.text.color: #c8d0c8
+menu.items.active.bg.color: #1e241e
+menu.items.active.text.color: #e0e8e0
+
+osd.bg.color: #0a0c0a
+osd.label.text.color: #c8d0c8
+osd.border.color: #3a3a3a
