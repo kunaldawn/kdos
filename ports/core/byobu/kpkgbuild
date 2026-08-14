@@ -12,5 +12,6 @@ name        = byobu
 version     = 6.13
 release     = 1
 source      = https://github.com/dustinkirkland/$name/archive/refs/tags/$version.tar.gz
+sha256      = 9690c629588e8f95d16b2461950d39934faaf8005dd2a283886d4e3bd6c86df6  byobu-6.13.tar.gz
 description = Text-based window manager and terminal multiplexer
 depends     = tmux

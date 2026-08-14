@@ -1,0 +1,3 @@
+{"event":"hello","kdos_comp":"0.20.2","mono_ms":1000.000,"misses":0,"frames":600}
+{"event":"miss","mono_ms":1500.000,"wall_ms":1770000000000.0,"output":"eDP-1","source":"present","late_ms":133.400,"dropped":7,"render_ms":1.200,"refresh_hz":60.00}
+{"event":"miss","mono_ms":1520.000,"wall_ms":1770000000020.0,"output":"eDP-1","source":"present","late_ms":41.000,"dropped":2,"render_ms":14.900,"refresh_hz":60.00}

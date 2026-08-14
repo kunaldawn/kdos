@@ -12,6 +12,7 @@ name        = pam
 version     = 1.7.2
 release     = 1
 source      = https://github.com/linux-pam/linux-pam/releases/download/v$version/Linux-PAM-$version.tar.xz
+sha256      = 3d86b6383fb5fd9eb9578d2cd47d92801191f4bf3f9bc61419bfefc8aa1e531a  pam-1.7.2.tar.xz
 description = Linux Pluggable Authentication Modules (libpam + pam_unix against /etc/shadow)
 homepage    = https://github.com/linux-pam/linux-pam
 depends     = meson ninja pkgconf flex

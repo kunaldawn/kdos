@@ -12,4 +12,5 @@ name        = tar
 version     = 1.35
 release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.gz
+sha256      = 14d55e32063ea9526e057fbf35fcabd53378e769787eff7919c3755b02d2b57e  tar-1.35.tar.gz
 description = Tar utility

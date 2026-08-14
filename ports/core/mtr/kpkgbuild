@@ -12,6 +12,7 @@ name        = mtr
 version     = 0.96
 release     = 1
 source      = https://www.bitwizard.nl/mtr/files/mtr-$version.tar.gz
+sha256      = ffd19a9f8d5f616c1ea2f0da9fbf9d1239bcecdf5a68912e831966d20929037a  mtr-0.96.tar.gz
 description = mtr — combined ping and traceroute
 homepage    = https://www.bitwizard.nl/mtr/
 depends     = ncurses libcap

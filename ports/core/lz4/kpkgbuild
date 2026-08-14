@@ -12,4 +12,7 @@ name        = lz4
 version     = 1.10.0
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/lz4/lz4/archive/v$version.tar.gz
+sha256      = 537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b  lz4-1.10.0.tar.gz
 description = Extremely fast compression algorithm
+bench_setup = dd if=/dev/urandom of=bench.bin bs=1M count=64 status=none
+bench       = lz4 -9 -f -q bench.bin bench.lz4 && lz4 -d -f -q bench.lz4 /dev/null

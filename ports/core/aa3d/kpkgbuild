@@ -12,5 +12,6 @@ name        = aa3d
 version     = 1.0
 release     = 1
 source      = https://downloads.sourceforge.net/project/aa-project/$name/$version/$name-$version.tar.gz
+sha256      = aeecf333312cff0e9c80143c9b4fc92de19096a0dad3ca8d06db6dabdf569d2c  aa3d-1.0.tar.gz
 description = ASCII art stereogram generator — renders a depth map as a magic eye
 homepage    = https://aa-project.sourceforge.net/aa3d/

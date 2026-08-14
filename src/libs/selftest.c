@@ -20,6 +20,7 @@
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +32,7 @@
 #include "kbuild.h"
 #include "kpkg.h"
 #include "ktui.h"
+#include "portup.h"
 
 static int failures;
 static int checks;
@@ -157,6 +159,35 @@ static void test_base(void)
 	ok(big.n == 4095, "buf_printf handles an over-long single write");
 	kb_buf_free(&big);
 
+	/* JSON escaping. Every --json output funnels through this, and the
+	 * inputs are package descriptions, file paths and window titles — all
+	 * of which can carry a quote or a control character. Getting this wrong
+	 * emits something that looks like JSON and does not parse. */
+	KbBuf j = {0};
+	kb_json_str(&j, "plain");
+	eq_str(j.p, "\"plain\"", "json plain");
+	j.n = 0;
+	kb_json_str(&j, "say \"hi\"");
+	eq_str(j.p, "\"say \\\"hi\\\"\"", "json escapes quotes");
+	j.n = 0;
+	kb_json_str(&j, "back\\slash");
+	eq_str(j.p, "\"back\\\\slash\"", "json escapes backslash");
+	j.n = 0;
+	kb_json_str(&j, "a\nb\tc");
+	eq_str(j.p, "\"a\\nb\\tc\"", "json escapes newline and tab");
+	j.n = 0;
+	kb_json_str(&j, "bell\x07");
+	eq_str(j.p, "\"bell\\u0007\"", "json escapes other controls as \\u");
+	j.n = 0;
+	/* UTF-8 passes through: JSON strings are Unicode and the input is
+	 * already UTF-8, so escaping high bytes would double-encode them. */
+	kb_json_str(&j, "caf\xc3\xa9");
+	eq_str(j.p, "\"caf\xc3\xa9\"", "json passes UTF-8 through");
+	j.n = 0;
+	kb_json_str(&j, NULL);
+	eq_str(j.p, "\"\"", "json NULL is an empty string");
+	kb_buf_free(&j);
+
 	/* ustar round-trip — the appbox image goes out and comes back through
 	 * this, and a wrong header is a `podman load` that fails at 11 GB. */
 	char dir[] = "/tmp/kdos-selftest.XXXXXX";
@@ -197,6 +228,34 @@ static void test_base(void)
 	   "GNU tar reads our archive");
 	eq_str(listing, "blobs/sha256/deadbeef", "GNU tar agrees on the name");
 
+	/*
+	 * A size field that does not fit is a REFUSAL, not a number. GNU
+	 * base-256 puts the size in the low bytes of a 12-byte field, so
+	 * eleven shifts of 8 overflow a long long — undefined behaviour, and
+	 * the value it used to produce was negative. Everything downstream
+	 * read that as a length: the GNU-long-name branch computed
+	 * `(size_t)size` and asked read() for 2^63 bytes into a 512-byte
+	 * stack buffer, and the only thing that stopped it was the kernel
+	 * refusing an address range that large. Found by fuzzing kb_tar_next.
+	 */
+	char *badpath = kb_path_join(dir, "bad.tar");
+	unsigned char hdr[512] = {0};
+	memcpy(hdr, "longname", 8);
+	hdr[124] = 0x80;	/* base-256 marker */
+	hdr[128] = 0x80;	/* lands in bit 63 after the shifts */
+	hdr[156] = 'L';		/* GNU long name: the payload is a length */
+	memcpy(hdr + 257, "ustar\0" "00", 8);
+	int bfd = open(badpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	ok(bfd >= 0, "create a corrupt tar");
+	ok(write(bfd, hdr, sizeof(hdr)) == (ssize_t)sizeof(hdr), "write its header");
+	close(bfd);
+	KbTarIn bt;
+	KbTarEntry be;
+	ok(kb_tar_open(&bt, badpath) == 0, "open the corrupt tar");
+	ok(kb_tar_next(&bt, &be) == -1, "a size that overflows is refused, not read");
+	kb_tar_close(&bt);
+	free(badpath);
+
 	/* Output bigger than the buffer must TRUNCATE, not hang. It used to
 	 * hang: the child inherited the pipe's read end, so closing ours left
 	 * the pipe writable and the child blocked in write() while we blocked
@@ -218,6 +277,29 @@ static void test_base(void)
 	free(tarpath);
 	kb_rmtree(dir);
 	ok(!kb_path_exists(dir), "rmtree removes the tree");
+
+	/* Landlock. A ruleset is only BUILT here, never enforced — enforcing is
+	 * irreversible and would sandbox the rest of this process. */
+	int abi = kb_landlock_abi();
+	ok(abi > 0 || abi == -ENOSYS || abi == -EOPNOTSUPP,
+	   "landlock abi probe answers a version or a known errno");
+
+	if (abi > 0) {
+		KbLandlock ll;
+		ok(kb_landlock_new(&ll, 0) == 0, "ruleset builds for this ABI");
+
+		/* The regression: a path_beneath rule on a NON-DIRECTORY is
+		 * EINVAL if the mask names directory-only accesses. /dev/null
+		 * has to take a write rule, or every sandboxed program dies on
+		 * its first `>/dev/null` and looks broken rather than confined. */
+		ok(kb_landlock_allow(&ll, "/dev/null", 1) == 0,
+		   "a write rule on a non-directory is accepted");
+		ok(kb_landlock_allow(&ll, "/usr", 0) == 0,
+		   "a read rule on a directory is accepted");
+		ok(kb_landlock_allow(&ll, "/nonexistent-kdos-selftest", 0) == -ENOENT,
+		   "a missing path reports ENOENT rather than being ignored");
+		kb_landlock_free(&ll);
+	}
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -488,7 +570,12 @@ static void test_build(void)
 	ok(kj_parse("{\"a\": 1} trailing") == NULL, "trailing junk is refused");
 	ok(kj_parse("{\"a\": }") == NULL, "a missing value is refused");
 	ok(kj_parse("[1, 2,]") == NULL, "a trailing comma is refused");
-	ok(kj_parse("{}") != NULL, "an empty object is still a document");
+	/* Freed rather than dropped so the whole suite runs clean under
+	 * `CC="cc -fsanitize=address,undefined" testing/selftest.sh` — one
+	 * leaked node is enough to make LeakSanitizer's verdict useless. */
+	KjNode *empty = kj_parse("{}");
+	ok(empty != NULL, "an empty object is still a document");
+	kj_free(empty);
 
 	/* /proc reports st_size 0. A whole-file read that trusts it returns an
 	 * empty string, and "no mounts" is the wrong answer to act on. */
@@ -593,6 +680,169 @@ static void test_chart(void)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+static void vcmp(const char *a, const char *b, int want, const char *what)
+{
+	checks++;
+	int got = kp_vercmp(a, b);
+	if (got == want)
+		return;
+	failures++;
+	printf("  FAIL  %s: vercmp(%s,%s) = %d, want %d\n", what, a, b, got, want);
+}
+
+static void vcmp_sym(const char *a, const char *b, int want, const char *what)
+{
+	vcmp(a, b, want, what);
+	vcmp(b, a, -want, what);	/* a comparator that is not antisymmetric
+					   is not an ordering */
+}
+
+/* Test helper: check if a candidate is present among the extracted ones. */
+static int pu_extract_has(char cand[][PU_MAX_VER], int n, const char *want)
+{
+	for (int i = 0; i < n; i++)
+		if (!strcmp(cand[i], want))
+			return 1;
+	return 0;
+}
+
+static void test_portup(void)
+{
+	printf("kdos-portup\n");
+
+	/* Every one of these is a real version pair from the ports tree. A
+	 * comparator that gets any of them wrong proposes a downgrade, and a
+	 * downgrade costs a full rebuild to notice. */
+	vcmp_sym("1.4rc5", "1.4", -1, "a release candidate precedes its release");
+	vcmp_sym("1.3.0rc1", "1.3.0", -1, "rc with a dotted base");
+	vcmp_sym("1.0pre4", "1.0", -1, "pre behaves like rc");
+	vcmp_sym("10.2p1", "10.2", 1, "OpenSSH's p-suffix is an increment");
+	vcmp_sym("1.9.17p2", "1.9.17p1", 1, "sudo's p-suffixes order numerically");
+	vcmp_sym("3.6a", "3.6", 1, "tmux's letter suffix is an increment");
+	vcmp_sym("20250826", "20250901", -1, "dates order as integers");
+	vcmp_sym("1.10.0", "1.9.0", 1, "components are numeric, not lexical");
+	vcmp_sym("r62", "r52", 1, "inih's rNN");
+	vcmp_sym("8.17.0", "8.17.0", 0, "equal");
+	vcmp_sym("1.4.0", "1.4", 1, "more components wins when the prefix ties");
+	vcmp_sym("1.4.0", "1.4.0.0", -1, "a trailing component is significant, "
+				       "as in dpkg and rpm");
+	vcmp_sym("99999999999999999999999", "1.0", 1,
+		 "a run too long for a long still orders as greater");
+	vcmp_sym("99999999999999999999999", "99999999999999999999998", 1,
+		 "two saturating runs order by their digits");
+	vcmp_sym("007", "7", 0, "leading zeroes do not change the value");
+
+	char sh[64];
+	pu_shape("1.4.0", sh, sizeof(sh));
+	eq_str(sh, "N.N.N", "shape of a three-part version");
+	pu_shape("20250826", sh, sizeof(sh));
+	eq_str(sh, "N8", "a lone digit run records its length");
+	pu_shape("1", sh, sizeof(sh));
+	eq_str(sh, "N1", "so a date cannot match a bare 1");
+	pu_shape("r62", sh, sizeof(sh));
+	eq_str(sh, "aN", "letter then digits");
+	pu_shape("10.2p1", sh, sizeof(sh));
+	eq_str(sh, "N.NaN", "sudo/openssh p-suffix shape");
+	pu_shape("1.4rc5", sh, sizeof(sh));
+	eq_str(sh, "N.NaN", "rc shares the p-suffix shape, which is fine: "
+			    "shape only gates comparability");
+
+	/* Real strings the adapters will hand it. */
+	char cand[PU_MAX_CAND][PU_MAX_VER];
+	int n;
+
+	n = pu_extract("epoch-1.5.0", cand, PU_MAX_CAND);
+	ok(n == 2, "epoch tag yields two (raw and cleaned)");
+	ok(pu_extract_has(cand, n, "1.5.0"), "cleaned version is present");
+
+	n = pu_extract("v2.1-20250901", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "v2.1-20250901"), "luajit's tag yields the whole form");
+	ok(pu_extract_has(cand, n, "2.1-20250901"), "the form without v prefix");
+	ok(pu_extract_has(cand, n, "20250901"), "and the date component");
+
+	n = pu_extract("cacert-2026-01-15.pem", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "2026-01-15"), "a dated pem yields the whole date");
+
+	n = pu_extract("fuse-3.19.0.tar.gz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "3.19.0"), "a tarball name yields its version");
+
+	n = pu_extract("no-version-here", cand, PU_MAX_CAND);
+	ok(n == 0, "a string with no version yields nothing");
+
+	/* The extractor is deliberately generous and the SHAPE FILTER is what
+	 * narrows it — that split is why no adapter needs to know about
+	 * `epoch-` or `v2.1-` conventions. */
+	n = pu_extract("Release_1_16_1", cand, PU_MAX_CAND);
+	ok(n == 2, "underscores separate into digit runs");
+	ok(pu_extract_has(cand, n, "1"), "including versions with repeated digits");
+	ok(pu_extract_has(cand, n, "16"), "and longer ones");
+
+	n = pu_extract("curl-8.12.1.tar.xz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "8.12.1"), ".tar.xz is trimmed — 129 ports use it");
+	n = pu_extract("mesa-25.2.0.tar.bz2", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "25.2.0"), ".tar.bz2 too — another 40 ports");
+	n = pu_extract("zlib-1.3.1.tar.gz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.3.1"), "and .tar.gz still works");
+
+	/* r62 is inih's real version; v1.2.3's v is a tag convention. The
+	 * extractor emits both forms rather than guessing which letters
+	 * belong to the version — the shape filter is what decides. */
+	n = pu_extract("r62", cand, PU_MAX_CAND);
+	ok(n >= 2, "a letter-prefixed run yields multiple forms");
+	ok(pu_extract_has(cand, n, "r62"), "the run as written");
+	ok(pu_extract_has(cand, n, "62"), "and without the prefix");
+
+	/* Multi-hyphen package names were yielding prefix+rest (e.g., "conf-1.2.5.1")
+	 * instead of the version alone. The new generative rules emit all useful
+	 * forms and the shape filter picks the matching one. Cost a debug cycle:
+	 * 15+ ports were broken; alsa-topology-conf, gst-plugins-{bad,base,good,ugly},
+	 * desktop-file-utils, shared-mime-info, xcb-util-{cursor,image,renderutil}
+	 * and others all reported unknown forever. */
+	n = pu_extract("alsa-topology-conf-1.2.5.1.tar.bz2", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.2.5.1"),
+	   "a name with three hyphens still yields its version");
+	n = pu_extract("gst-plugins-bad-1.28.0.tar.xz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.28.0"), "and a two-hyphen name");
+	n = pu_extract("cacert-2026-01-15.pem", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "2026-01-15"),
+	   "while a hyphenated DATE survives intact");
+
+	/* Rules must compose so that <name>-v<version> tarballs work. node-v22.14.0
+	 * needs both "node-" stripping (rule 2) AND "v" stripping (rule 1b) to yield
+	 * "22.14.0". Cost a debug cycle: 9 ports regressed (brotli, iso-codes,
+	 * libglvnd, libslirp, libuv, lynx, nodejs, spirv-tools, upower) because the
+	 * transformations were not iterative. */
+	n = pu_extract("node-v22.14.0.tar.xz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "22.14.0"),
+	   "a <name>-v<version> tarball yields the bare version");
+	n = pu_extract("upower-v1.90.9.tar.bz2", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.90.9"), "and so does a .tar.bz2 one");
+	n = pu_extract("alsa-topology-conf-1.2.5.1.tar.bz2", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "1.2.5.1"), "without losing round 2's fix");
+
+	/* LLVM uses .src convention; Debian uses .orig. Both must trim. */
+	n = pu_extract("llvm-21.1.8.src.tar.xz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "21.1.8"),
+	   "LLVM .src.tar.xz tarballs yield bare version");
+	n = pu_extract("libaio_0.3.113.orig.tar.gz", cand, PU_MAX_CAND);
+	ok(pu_extract_has(cand, n, "0.3.113"),
+	   "Debian .orig.tar.gz tarballs yield bare version");
+
+	/* No candidate may repeat: a duplicate means dedup ran before a
+	 * transformation rather than after it. Release_1_16_1 yields repeated "1"
+	 * before dedup, so this check genuinely exercises that invariant. */
+	n = pu_extract("Release_1_16_1", cand, PU_MAX_CAND);
+	ok(n >= 2, "the dedup check needs at least two candidates to mean anything");
+	int dup = 0;
+	for (int i = 0; i < n; i++)
+		for (int k = i + 1; k < n; k++)
+			if (!strcmp(cand[i], cand[k]))
+				dup = 1;
+	ok(!dup, "no candidate repeats");
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
 int main(void)
 {
 	kb_set_progname("selftest");
@@ -602,6 +852,7 @@ int main(void)
 	test_pkg();
 	test_build();
 	test_chart();
+	test_portup();
 
 	printf("\n%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;

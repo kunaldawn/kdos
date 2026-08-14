@@ -12,4 +12,5 @@ name        = rpcsvc-proto
 version     = 1.4.4
 release     = 1
 source      = https://github.com/thkukuk/rpcsvc-proto/releases/download/v$version/$name-$version.tar.xz
+sha256      = 81c3aa27edb5d8a18ef027081ebb984234d5b5860c65bd99d4ac8f03145a558b  rpcsvc-proto-1.4.4.tar.xz
 description = rcpsvc protocol.x files and headers

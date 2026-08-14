@@ -12,6 +12,7 @@ name        = libfontenc
 version     = 1.1.9
 release     = 1
 source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = 9d8392705cb10803d5fe1d27d236cbab3f664e26841ce01916bbbe430cf273e2  libfontenc-1.1.9.tar.xz
 description = Font encoding library
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libfontenc
 depends     = xorgproto zlib

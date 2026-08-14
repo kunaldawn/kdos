@@ -1,0 +1,1362 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * output.c: labwc output and rendering
+ *
+ * Copyright (C) 2019-2021 Johan Malm
+ * Copyright (C) 2020 The Sway authors
+ */
+
+#define _POSIX_C_SOURCE 200809L
+#include "output.h"
+#include <assert.h>
+#include <drm_fourcc.h>
+#include <glib.h>
+#include <strings.h>
+#include <wlr/backend/wayland.h>
+#include <wlr/config.h>
+#include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_ext_workspace_v1.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
+#include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_management_v1.h>
+#include <wlr/types/wlr_output_power_management_v1.h>
+#include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
+#include <wlr/types/wlr_scene.h>
+#include <wlr/util/log.h>
+#include "common/macros.h"
+#include "common/mem.h"
+#include "common/scene-helpers.h"
+#include "common/string-helpers.h"
+#include "config/rcxml.h"
+#include "kdos.h" /* KDOS */
+#include "labwc.h"
+#include "layers.h"
+#include "node.h"
+#include "output-state.h"
+#include "output-virtual.h"
+#include "regions.h"
+#include "session-lock.h"
+#include "view.h"
+#include "xwayland.h"
+
+#if WLR_HAS_X11_BACKEND
+	#include <wlr/backend/x11.h>
+#endif
+
+#if WLR_HAS_DRM_BACKEND
+	#include <wlr/backend/drm.h>
+	#include <wlr/types/wlr_drm_lease_v1.h>
+#else
+	#define wlr_output_is_drm(output) (false)
+#endif
+
+#if WLR_HAS_SESSION
+	#include <wlr/backend/session.h>
+#endif
+
+static uint32_t output_formats_8bit[] = {
+	/* 32 bpp RGB with 8 bit component width */
+	DRM_FORMAT_XRGB8888,
+	DRM_FORMAT_XBGR8888,
+	DRM_FORMAT_RGBX8888,
+	DRM_FORMAT_BGRX8888,
+
+	DRM_FORMAT_ARGB8888,
+	DRM_FORMAT_ABGR8888,
+	DRM_FORMAT_RGBA8888,
+	DRM_FORMAT_BGRA8888,
+
+	/* 24 bpp RGB */
+	DRM_FORMAT_RGB888,
+	DRM_FORMAT_BGR888,
+};
+
+uint32_t output_formats_10bit[] = {
+	/* 32 bpp RGB with 10 bit component width */
+	DRM_FORMAT_XRGB2101010,
+	DRM_FORMAT_XBGR2101010,
+	DRM_FORMAT_RGBX1010102,
+	DRM_FORMAT_BGRX1010102,
+
+	DRM_FORMAT_ARGB2101010,
+	DRM_FORMAT_ABGR2101010,
+	DRM_FORMAT_RGBA1010102,
+	DRM_FORMAT_BGRA1010102,
+};
+
+static bool
+output_set_render_format(struct output *output, uint32_t candidates[], size_t count)
+{
+	for (size_t i = 0; i < count; i++) {
+		wlr_output_state_set_render_format(&output->pending, candidates[i]);
+		if (wlr_output_test_state(output->wlr_output, &output->pending)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool
+output_format_in_candidates(uint32_t render_format, uint32_t candidates[], size_t count)
+{
+	for (size_t i = 0; i < count; i++) {
+		if (candidates[i] == render_format) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static enum render_bit_depth
+bit_depth_from_format(uint32_t render_format)
+{
+	if (output_format_in_candidates(render_format, output_formats_10bit,
+			ARRAY_SIZE(output_formats_10bit))) {
+		return LAB_RENDER_BIT_DEPTH_10;
+	} else if (output_format_in_candidates(render_format, output_formats_8bit,
+			ARRAY_SIZE(output_formats_8bit))) {
+		return LAB_RENDER_BIT_DEPTH_8;
+	}
+	return LAB_RENDER_BIT_DEPTH_DEFAULT;
+}
+
+static enum render_bit_depth
+get_config_render_bit_depth(void)
+{
+	return rc.target_render_depth;
+}
+
+static bool
+output_supports_hdr(const struct wlr_output *output, const char **unsupported_reason_ptr)
+{
+	const char *unsupported_reason = NULL;
+	if (!(output->supported_primaries & WLR_COLOR_NAMED_PRIMARIES_BT2020)) {
+		unsupported_reason = "BT2020 primaries not supported by output";
+	} else if (!(output->supported_transfer_functions &
+		WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ)) {
+		unsupported_reason = "PQ transfer function not supported by output";
+	} else if (!server.renderer->features.output_color_transform) {
+		unsupported_reason = "renderer doesn't support output color transforms";
+	}
+	if (unsupported_reason_ptr) {
+		*unsupported_reason_ptr = unsupported_reason;
+	}
+	return !unsupported_reason;
+}
+
+void
+output_state_setup_hdr(struct output *output, bool silent)
+{
+	uint32_t render_format = output->wlr_output->render_format;
+	const char *unsupported_reason = NULL;
+	bool hdr_supported = output_supports_hdr(output->wlr_output,
+		&unsupported_reason);
+	bool hdr_succeeded = false;
+
+	enum render_bit_depth render_bit_depth = get_config_render_bit_depth();
+	if (render_bit_depth == LAB_RENDER_BIT_DEPTH_DEFAULT) {
+		render_bit_depth = bit_depth_from_format(render_format);
+	}
+
+	if (!hdr_supported && render_bit_depth == LAB_RENDER_BIT_DEPTH_10) {
+		if (!silent) {
+			wlr_log(WLR_INFO, "Cannot enable HDR on output %s: %s",
+				output->wlr_output->name, unsupported_reason);
+		}
+		render_bit_depth = LAB_RENDER_BIT_DEPTH_8;
+	}
+
+	if (render_bit_depth == LAB_RENDER_BIT_DEPTH_10 &&
+			bit_depth_from_format(render_format) == render_bit_depth) {
+		/* 10-bit was set successfully before, try to save some
+		 * tests by reusing the format
+		 */
+		hdr_succeeded = true;
+	} else if (render_bit_depth == LAB_RENDER_BIT_DEPTH_10) {
+		hdr_succeeded = output_set_render_format(output, output_formats_10bit,
+			ARRAY_SIZE(output_formats_10bit));
+		if (!hdr_succeeded) {
+			if (!silent) {
+				wlr_log(WLR_INFO, "No 10 bit color formats"
+					" supported, HDR disabled.");
+			}
+			if (!output_set_render_format(output, output_formats_8bit,
+					ARRAY_SIZE(output_formats_8bit))) {
+				if (!silent) {
+					wlr_log(WLR_ERROR, "No 8 bit color formats"
+						" supported either!");
+				}
+			}
+		}
+	} else {
+		if (!output_set_render_format(output, output_formats_8bit,
+				ARRAY_SIZE(output_formats_8bit)) && !silent) {
+			wlr_log(WLR_ERROR, "No 8 bit color formats supported!");
+		}
+	}
+
+	output_enable_hdr(output, &output->pending, hdr_succeeded, silent);
+}
+
+bool
+output_get_tearing_allowance(struct output *output)
+{
+	/* never allow tearing when disabled */
+	if (!rc.allow_tearing) {
+		return false;
+	}
+
+	struct view *view = server.active_view;
+
+	/* tearing is only allowed for the output with the active view */
+	if (!view || view->output != output) {
+		return false;
+	}
+
+	/* allow tearing for any window when requested or forced */
+	if (rc.allow_tearing == LAB_TEARING_ENABLED) {
+		if (view->force_tearing == LAB_STATE_UNSPECIFIED) {
+			return view->tearing_hint;
+		} else {
+			return view->force_tearing == LAB_STATE_ENABLED;
+		}
+	}
+
+	/* remaining tearing options apply only to full-screen windows */
+	if (!view->fullscreen) {
+		return false;
+	}
+
+	if (view->force_tearing == LAB_STATE_UNSPECIFIED) {
+		/* honor the tearing hint or the fullscreen-force preference */
+		return view->tearing_hint ||
+			rc.allow_tearing == LAB_TEARING_FULLSCREEN_FORCED;
+	}
+
+	/* honor tearing as requested by action */
+	return view->force_tearing == LAB_STATE_ENABLED;
+}
+
+static void
+handle_output_frame(struct wl_listener *listener, void *data)
+{
+	/*
+	 * This function is called every time an output is ready to display a
+	 * frame - which is typically at 60 Hz.
+	 */
+	struct output *output = wl_container_of(listener, output, frame);
+	if (!output_is_usable(output)) {
+		return;
+	}
+
+#if WLR_HAS_SESSION
+	/*
+	 * skip painting the session when it exists but is not active.
+	 */
+	if (server.session && !server.session->active) {
+		return;
+	}
+#endif
+
+	struct wlr_scene_output *scene_output = output->scene_output;
+	struct wlr_output_state *pending = &output->pending;
+
+	pending->tearing_page_flip = output_get_tearing_allowance(output);
+
+	/* KDOS: frame tick (fallback clock) + render duration for stutter.
+	 * The CRT pass commits the frame itself when it is on; false
+	 * means off or fallen back, and the plain path takes over. */
+	kdos_frames_frame(output);
+	int64_t kdos_t0 = kdos_frames_now();
+
+	if (!kdos_crt_frame(output, scene_output)) {
+		lab_wlr_scene_output_commit(scene_output, pending);
+	}
+
+	kdos_frames_render_ns(output, kdos_frames_now() - kdos_t0); /* KDOS */
+
+	struct timespec now = { 0 };
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	wlr_scene_output_send_frame_done(output->scene_output, &now);
+}
+
+static void
+handle_output_destroy(struct wl_listener *listener, void *data)
+{
+	struct output *output = wl_container_of(listener, output, destroy);
+	struct seat *seat = &server.seat;
+	/* KDOS: its chrome goes with it, before anything else is torn down —
+	 * a panel left running on an output that no longer exists is a
+	 * respawn loop against a layer surface the compositor has closed. */
+	kdos_children_output_remove(output->wlr_output->name);
+	regions_evacuate_output(output);
+	regions_destroy(seat, &output->regions);
+	if (seat->overlay.active.output == output) {
+		overlay_finish(seat);
+	}
+	wl_list_remove(&output->link);
+	wl_list_remove(&output->frame.link);
+	wl_list_remove(&output->destroy.link);
+	wl_list_remove(&output->request_state.link);
+	seat_output_layout_changed(seat);
+
+	for (size_t i = 0; i < ARRAY_SIZE(output->layer_tree); i++) {
+		wlr_scene_node_destroy(&output->layer_tree[i]->node);
+	}
+	wlr_scene_node_destroy(&output->layer_popup_tree->node);
+	wlr_scene_node_destroy(&output->cycle_osd_tree->node);
+	wlr_scene_node_destroy(&output->session_lock_tree->node);
+	if (output->workspace_osd) {
+		wlr_scene_node_destroy(&output->workspace_osd->node);
+		output->workspace_osd = NULL;
+	}
+
+	struct view *view;
+	wl_list_for_each(view, &server.views, link) {
+		if (view->output == output) {
+			view_on_output_destroy(view);
+		}
+	}
+
+	wlr_output_state_finish(&output->pending);
+
+	/*
+	 * Ensure that we don't accidentally try to dereference
+	 * the output pointer in some output event handler like
+	 * set_gamma.
+	 */
+	output->wlr_output->data = NULL;
+
+	/*
+	 * On nested backends (X11/Wayland), outputs correspond to
+	 * windows and cannot be reconnected. Exit the compositor
+	 * when the last one is destroyed.
+	 */
+	if (wl_list_empty(&server.outputs) && (
+			wlr_output_is_wl(output->wlr_output)
+#if WLR_HAS_X11_BACKEND
+			|| wlr_output_is_x11(output->wlr_output)
+#endif
+	)) {
+		wl_display_terminate(server.wl_display);
+	}
+
+	/*
+	 * output->scene_output (if still around at this point) is
+	 * destroyed automatically when the wlr_output is destroyed
+	 */
+	free(output);
+}
+
+static void
+handle_output_request_state(struct wl_listener *listener, void *data)
+{
+	/* This ensures nested backends can be resized */
+	struct output *output = wl_container_of(listener, output, request_state);
+	const struct wlr_output_event_request_state *event = data;
+
+	/*
+	 * If wlroots ever requests other state changes here we could
+	 * restore more of ddc9047a67cd53b2948f71fde1bbe9118000dd3f.
+	 */
+	if (event->state->committed == WLR_OUTPUT_STATE_MODE) {
+		/* Only the mode has changed */
+		switch (event->state->mode_type) {
+		case WLR_OUTPUT_STATE_MODE_FIXED:
+			wlr_output_state_set_mode(&output->pending,
+				event->state->mode);
+			break;
+		case WLR_OUTPUT_STATE_MODE_CUSTOM:
+			wlr_output_state_set_custom_mode(&output->pending,
+				event->state->custom_mode.width,
+				event->state->custom_mode.height,
+				event->state->custom_mode.refresh);
+			break;
+		}
+		wlr_output_schedule_frame(output->wlr_output);
+		return;
+	}
+
+	/*
+	 * Fallback path for everything that we didn't handle above.
+	 * The commit will cause a black frame injection so this
+	 * path causes flickering during resize of nested outputs.
+	 */
+	if (!wlr_output_commit_state(output->wlr_output, event->state)) {
+		wlr_log(WLR_ERROR, "Backend requested a new state that could not be applied");
+	}
+}
+
+static void do_output_layout_change(void);
+
+static void
+add_output_to_layout(struct output *output)
+{
+	struct wlr_output *wlr_output = output->wlr_output;
+	struct wlr_output_layout_output *layout_output =
+		wlr_output_layout_add_auto(server.output_layout, wlr_output);
+	if (!layout_output) {
+		wlr_log(WLR_ERROR, "unable to add output to layout");
+		return;
+	}
+
+	if (!output->scene_output) {
+		output->scene_output =
+			wlr_scene_output_create(server.scene, wlr_output);
+		if (!output->scene_output) {
+			wlr_log(WLR_ERROR, "unable to create scene output");
+			return;
+		}
+		/*
+		 * Note: wlr_scene_output_layout_add_output() is not
+		 * safe to call twice, so we call it only when initially
+		 * creating the scene_output.
+		 */
+		wlr_scene_output_layout_add_output(server.scene_layout,
+			layout_output, output->scene_output);
+	}
+
+	wlr_ext_workspace_group_handle_v1_output_enter(
+		server.workspaces.ext_group, output->wlr_output);
+
+	/* (Re-)create regions from config */
+	regions_reconfigure_output(output);
+
+	/* Create lock surface if needed */
+	if (server.session_lock_manager->locked) {
+		session_lock_output_create(server.session_lock_manager, output);
+	}
+}
+
+static bool
+output_test_auto(struct wlr_output *wlr_output, struct wlr_output_state *state,
+		bool is_client_request)
+{
+	wlr_log(WLR_DEBUG, "testing modes for %s", wlr_output->name);
+	/*
+	 * When a client requests a specific mode, test only that mode. Here
+	 * we interpret a custom_mode of all zeroes as "none/any"; this is
+	 * seen e.g. with kanshi configs containing no "mode" field. In
+	 * theory, (state->committed & WLR_OUTPUT_STATE_MODE) should be zero
+	 * in this case, but this is not seen in practice.
+	 *
+	 * If the wlr_output_state did not come from a client request, then
+	 * ignore the mode/custom_mode fields which are not meaningful.
+	 */
+	if (is_client_request && (state->mode
+			|| state->custom_mode.width
+			|| state->custom_mode.height
+			|| state->custom_mode.refresh)) {
+		if (state->mode) {
+			wlr_log(WLR_DEBUG, "testing requested mode %dx%d@%d",
+				state->mode->width, state->mode->height,
+				state->mode->refresh);
+		} else {
+			wlr_log(WLR_DEBUG, "testing custom mode %dx%d@%d",
+				state->custom_mode.width,
+				state->custom_mode.height,
+				state->custom_mode.refresh);
+		}
+		return wlr_output_test_state(wlr_output, state);
+	}
+
+	/*
+	 * Try to re-use the existing mode if configured to do so.
+	 * Failing that, try to set the preferred mode.
+	 */
+	if (rc.reuse_output_mode && wlr_output->current_mode) {
+		wlr_log(WLR_DEBUG, "testing current mode %dx%d@%d",
+			wlr_output->current_mode->width,
+			wlr_output->current_mode->height,
+			wlr_output->current_mode->refresh);
+		if (wlr_output_test_state(wlr_output, state)) {
+			return true;
+		}
+	}
+
+	struct wlr_output_mode *preferred_mode =
+		wlr_output_preferred_mode(wlr_output);
+	if (preferred_mode) {
+		wlr_log(WLR_DEBUG, "testing preferred mode %dx%d@%d",
+			preferred_mode->width, preferred_mode->height,
+			preferred_mode->refresh);
+		wlr_output_state_set_mode(state, preferred_mode);
+		if (wlr_output_test_state(wlr_output, state)) {
+			return true;
+		}
+	}
+
+	/*
+	 * Sometimes the preferred mode is not available due to hardware
+	 * constraints (e.g. GPU or cable bandwidth limitations). In these
+	 * cases it's better to fallback to lower modes than to end up with
+	 * a black screen. See sway@4cdc4ac6
+	 */
+	struct wlr_output_mode *mode;
+	wl_list_for_each(mode, &wlr_output->modes, link) {
+		if (mode == preferred_mode) {
+			continue;
+		}
+		wlr_log(WLR_DEBUG, "testing fallback mode %dx%d@%d",
+			mode->width, mode->height, mode->refresh);
+		wlr_output_state_set_mode(state, mode);
+		if (wlr_output_test_state(wlr_output, state)) {
+			return true;
+		}
+	}
+
+	/* Reset mode if none worked (we may still try to commit) */
+	wlr_log(WLR_DEBUG, "no working fixed mode found for output %s", wlr_output->name);
+	state->committed &= ~WLR_OUTPUT_STATE_MODE;
+
+	return wlr_output_test_state(wlr_output, state);
+}
+
+static void
+configure_new_output(struct output *output)
+{
+	struct wlr_output *wlr_output = output->wlr_output;
+
+	wlr_log(WLR_DEBUG, "enable output %s", wlr_output->name);
+	wlr_output_state_set_enabled(&output->pending, true);
+
+	if (!output_test_auto(wlr_output, &output->pending,
+			/* is_client_request */ false)) {
+		wlr_log(WLR_INFO, "mode test failed for output %s",
+			wlr_output->name);
+		wlr_output_state_set_enabled(&output->pending, false);
+		return;
+	}
+
+	if (rc.adaptive_sync == LAB_ADAPTIVE_SYNC_ENABLED) {
+		output_enable_adaptive_sync(output, true);
+	}
+
+	output_state_setup_hdr(output, false);
+
+	/*
+	 * Wait until wlr_output_layout_add_auto() returns before
+	 * calling do_output_layout_change(); this ensures that the
+	 * wlr_output_cursor is created for the new output.
+	 */
+	server.pending_output_layout_change++;
+	add_output_to_layout(output);
+	server.pending_output_layout_change--;
+
+	/*
+	 * Commit the output this way instead, HDR needs a buffer, and
+	 * this commit must be called after the output is added to the
+	 * layout above.
+	 */
+	lab_wlr_scene_output_commit(output->scene_output, &output->pending);
+
+	/*
+	 * Collect the effective resolution after the final commit.
+	 */
+	wlr_output_effective_resolution(wlr_output,
+		&output->usable_area.width, &output->usable_area.height);
+}
+
+static uint64_t
+get_unused_output_id_bit(void)
+{
+	uint64_t used_id_bits = 0;
+	struct output *output;
+	wl_list_for_each(output, &server.outputs, link) {
+		used_id_bits |= output->id_bit;
+	}
+
+	if (used_id_bits == UINT64_MAX) {
+		return 0;
+	}
+
+	uint64_t id_bit = server.next_output_id_bit;
+	/*
+	 * __builtin_popcountll() should be supported by GCC & clang.
+	 * If it causes portability issues, just remove the assert.
+	 */
+	assert(__builtin_popcountll(id_bit) == 1);
+
+	while ((id_bit & used_id_bits) != 0) {
+		id_bit = (id_bit << 1) | (id_bit >> 63); /* rotate left */
+	}
+
+	/*
+	 * The current implementation of view_update_outputs() isn't
+	 * robust against ID bit re-use. Save the next bit here so we
+	 * can cycle through all 64 available bits, making re-use less
+	 * frequent (on a best-effort basis).
+	 */
+	server.next_output_id_bit = (id_bit << 1) | (id_bit >> 63);
+
+	return id_bit;
+}
+
+static void
+handle_new_output(struct wl_listener *listener, void *data)
+{
+	/*
+	 * This event is raised by the backend when a new output (aka display
+	 * or monitor) becomes available.
+	 */
+	struct wlr_output *wlr_output = data;
+
+	struct output *output;
+	wl_list_for_each(output, &server.outputs, link) {
+		if (output->wlr_output == wlr_output) {
+			/*
+			 * This is a duplicated notification.
+			 * We may end up here when a virtual output
+			 * was added before the headless backend was
+			 * started up.
+			 */
+			return;
+		}
+	}
+
+	uint64_t id_bit = get_unused_output_id_bit();
+	if (!id_bit) {
+		wlr_log(WLR_ERROR, "Cannot add more than 64 outputs");
+		return;
+	}
+
+	if (wlr_output_is_wl(wlr_output)) {
+		GString *title = g_string_new(server.title_fmt);
+		g_string_replace(title, "%o", wlr_output->name, 0);
+		wlr_wl_output_set_title(wlr_output, title->str);
+		g_string_free(title, TRUE);
+		wlr_wl_output_set_app_id(wlr_output, "kdos-comp"); /* KDOS */
+	}
+
+	/*
+	 * We offer any display as available for lease, some apps like
+	 * gamescope want to take ownership of a display when they can
+	 * to use planes and present directly.
+	 * This is also useful for debugging the DRM parts of
+	 * another compositor.
+	 *
+	 */
+#if WLR_HAS_DRM_BACKEND
+	if (server.drm_lease_manager && wlr_output_is_drm(wlr_output)) {
+		wlr_drm_lease_v1_manager_offer_output(
+			server.drm_lease_manager, wlr_output);
+	}
+#endif
+
+	/*
+	 * Don't configure any non-desktop displays, such as VR headsets;
+	 */
+	if (wlr_output->non_desktop) {
+		wlr_log(WLR_DEBUG, "Not configuring non-desktop output");
+		return;
+	}
+
+	/*
+	 * Configures the output created by the backend to use our allocator
+	 * and our renderer. Must be done once, before committing the output
+	 */
+	if (!wlr_output_init_render(wlr_output, server.allocator,
+			server.renderer)) {
+		wlr_log(WLR_ERROR, "unable to init output renderer");
+		return;
+	}
+
+	output = znew(*output);
+	output->wlr_output = wlr_output;
+	wlr_output->data = output;
+	output->id_bit = id_bit;
+	output_state_init(output);
+
+	wl_list_insert(&server.outputs, &output->link);
+
+	output->destroy.notify = handle_output_destroy;
+	wl_signal_add(&wlr_output->events.destroy, &output->destroy);
+	output->frame.notify = handle_output_frame;
+	wl_signal_add(&wlr_output->events.frame, &output->frame);
+	kdos_frames_output_add(output); /* KDOS */
+	/* KDOS: this screen gets its own panel, window list and desktop.
+	 * No-op until kdos_children_start() has run — outputs exist before
+	 * the wayland socket is being serviced. */
+	kdos_children_output_add(wlr_output->name);
+
+	output->request_state.notify = handle_output_request_state;
+	wl_signal_add(&wlr_output->events.request_state, &output->request_state);
+
+	wl_list_init(&output->regions);
+
+	/*
+	 * Create layer-trees (background, bottom, top and overlay) and
+	 * a layer-popup-tree.
+	 */
+	for (size_t i = 0; i < ARRAY_SIZE(output->layer_tree); i++) {
+		output->layer_tree[i] =
+			lab_wlr_scene_tree_create(&server.scene->tree);
+	}
+	output->layer_popup_tree = lab_wlr_scene_tree_create(&server.scene->tree);
+	output->cycle_osd_tree = lab_wlr_scene_tree_create(&server.scene->tree);
+	output->session_lock_tree = lab_wlr_scene_tree_create(&server.scene->tree);
+
+	/*
+	 * Set the z-positions to achieve the following order (from top to
+	 * bottom):
+	 *	- session lock layer
+	 *	- window switcher osd
+	 *	- (compositor menu)
+	 *	- layer-shell popups
+	 *	- overlay layer
+	 *	- top layer
+	 *	- (views)
+	 *	- bottom layer
+	 *	- background layer
+	 */
+	wlr_scene_node_lower_to_bottom(&output->layer_tree[1]->node);
+	wlr_scene_node_lower_to_bottom(&output->layer_tree[0]->node);
+
+	struct wlr_scene_node *menu_node = &server.menu_tree->node;
+	wlr_scene_node_place_below(&output->layer_tree[2]->node, menu_node);
+	wlr_scene_node_place_below(&output->layer_tree[3]->node, menu_node);
+	wlr_scene_node_place_below(&output->layer_popup_tree->node, menu_node);
+
+	wlr_scene_node_raise_to_top(&output->cycle_osd_tree->node);
+	wlr_scene_node_raise_to_top(&output->session_lock_tree->node);
+
+	/*
+	 * autoEnableOutputs=no only makes sense for outputs that can be
+	 * hotplugged - currently only drm outputs. With wl/x11/headless
+	 * it would result in no outputs being enabled at all. This check
+	 * might need tweaking if wlroots adds other output backends.
+	 */
+	if (rc.auto_enable_outputs || !wlr_output_is_drm(wlr_output)) {
+		configure_new_output(output);
+	}
+
+	do_output_layout_change();
+}
+
+static void output_manager_init(void);
+
+void
+output_init(void)
+{
+	server.gamma_control_manager_v1 =
+		wlr_gamma_control_manager_v1_create(server.wl_display);
+	wlr_scene_set_gamma_control_manager_v1(server.scene,
+		server.gamma_control_manager_v1);
+
+	server.new_output.notify = handle_new_output;
+	wl_signal_add(&server.backend->events.new_output, &server.new_output);
+
+	/*
+	 * Create an output layout, which is a wlroots utility for working with
+	 * an arrangement of screens in a physical layout.
+	 */
+	server.output_layout = wlr_output_layout_create(server.wl_display);
+	if (!server.output_layout) {
+		wlr_log(WLR_ERROR, "unable to create output layout");
+		exit(EXIT_FAILURE);
+	}
+	server.scene_layout = wlr_scene_attach_output_layout(server.scene,
+		server.output_layout);
+	if (!server.scene_layout) {
+		wlr_log(WLR_ERROR, "unable to create scene layout");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Enable screen recording with wf-recorder */
+	wlr_xdg_output_manager_v1_create(server.wl_display,
+		server.output_layout);
+
+	wl_list_init(&server.outputs);
+	server.next_output_id_bit = (1 << 0);
+
+	output_manager_init();
+}
+
+static void output_manager_finish(void);
+
+void
+output_finish(void)
+{
+	wl_list_remove(&server.new_output.link);
+	output_manager_finish();
+}
+
+static void
+output_update_for_layout_change(void)
+{
+	output_update_all_usable_areas(/*layout_changed*/ true);
+	session_lock_update_for_layout_change();
+	kdos_wallpaper_arrange(); /* KDOS */
+
+	/*
+	 * "Move" each wlr_output_cursor (in per-output coordinates) to
+	 * align with the seat cursor. Re-set the cursor image so that
+	 * the cursor isn't invisible on new outputs.
+	 */
+	wlr_cursor_move(server.seat.cursor, NULL, 0, 0);
+	cursor_update_image(&server.seat);
+}
+
+static bool
+output_config_apply(struct wlr_output_configuration_v1 *config)
+{
+	bool success = true;
+	server.pending_output_layout_change++;
+
+	struct wlr_output_configuration_head_v1 *head;
+	wl_list_for_each(head, &config->heads, link) {
+		struct wlr_output *o = head->state.output;
+		struct output *output = output_from_wlr_output(o);
+		struct wlr_output_state *os = &output->pending;
+		bool output_enabled = head->state.enabled;
+
+		wlr_output_state_set_enabled(os, output_enabled);
+		if (output_enabled) {
+			/* Output specific actions only */
+			if (head->state.mode) {
+				wlr_output_state_set_mode(os, head->state.mode);
+			} else {
+				wlr_output_state_set_custom_mode(os,
+					head->state.custom_mode.width,
+					head->state.custom_mode.height,
+					head->state.custom_mode.refresh);
+			}
+			/*
+			 * Try to ensure a valid mode. Ignore failures
+			 * here and just check the commit below.
+			 */
+			(void)output_test_auto(o, os,
+				/* is_client_request */ true);
+			wlr_output_state_set_scale(os, head->state.scale);
+			wlr_output_state_set_transform(os, head->state.transform);
+			output_enable_adaptive_sync(output,
+				head->state.adaptive_sync_enabled);
+			output_state_setup_hdr(output, false);
+		}
+		if (!output_state_commit(output)) {
+			/*
+			 * FIXME: This is only part of the story, we should revert
+			 *        all previously committed outputs as well here.
+			 *
+			 *        See https://github.com/labwc/labwc/pull/1528
+			 */
+			wlr_log(WLR_INFO, "Output config commit failed: %s", o->name);
+			success = false;
+			break;
+		}
+
+		if (output_enabled) {
+			/*
+			 * The above commit was likely made without an image
+			 * buffer attached. This will break applying HDR color
+			 * transformation, since image descriptions must be
+			 * committed with a buffer attached. Queue the HDR mode
+			 * again if output is enabled, but make it silent,
+			 * since it would have emitted messages already when
+			 * called above.
+			 */
+			output_state_setup_hdr(output, true);
+		}
+
+		/*
+		 * Add or remove output from layout only if the commit went
+		 * through. Note that at startup, the output may have already
+		 * been enabled but not yet been added to the layout.
+		 */
+		bool was_in_layout =
+			!!wlr_output_layout_get(server.output_layout, o);
+
+		if (output_enabled) {
+			if (!was_in_layout) {
+				add_output_to_layout(output);
+			}
+
+			struct wlr_box pos = {0};
+			wlr_output_layout_get_box(server.output_layout, o, &pos);
+			if (pos.x != head->state.x || pos.y != head->state.y) {
+				/*
+				 * This overrides the automatic layout
+				 *
+				 * wlr_output_layout_add() in fact means _move()
+				 */
+				wlr_output_layout_add(server.output_layout, o,
+					head->state.x, head->state.y);
+			}
+		} else if (was_in_layout) {
+			regions_evacuate_output(output);
+
+			wlr_ext_workspace_group_handle_v1_output_leave(
+				server.workspaces.ext_group, output->wlr_output);
+
+			/*
+			 * At time of writing, wlr_output_layout_remove()
+			 * indirectly destroys the wlr_scene_output, but
+			 * this behavior may change in future. To remove
+			 * doubt and avoid either a leak or double-free,
+			 * explicitly destroy the wlr_scene_output before
+			 * calling wlr_output_layout_remove().
+			 */
+			wlr_scene_output_destroy(output->scene_output);
+			wlr_output_layout_remove(server.output_layout, o);
+			output->scene_output = NULL;
+		}
+	}
+
+	server.pending_output_layout_change--;
+	do_output_layout_change();
+	return success;
+}
+
+static bool
+verify_output_config_v1(const struct wlr_output_configuration_v1 *config)
+{
+	const char *err_msg = NULL;
+	struct wlr_output_configuration_head_v1 *head;
+	wl_list_for_each(head, &config->heads, link) {
+		if (!head->state.enabled) {
+			continue;
+		}
+
+		/* Handle custom modes */
+		if (!head->state.mode) {
+			int32_t refresh = head->state.custom_mode.refresh;
+			if (wlr_output_is_wl(head->state.output) && refresh != 0) {
+				/* Wayland backend does not support refresh rates */
+				err_msg = "Wayland backend refresh rates unsupported";
+				goto custom_mode_failed;
+			}
+		}
+
+		if (wlr_output_is_wl(head->state.output)
+				&& !head->state.adaptive_sync_enabled) {
+			err_msg = "Wayland backend requires adaptive sync";
+			goto custom_mode_failed;
+		}
+
+		/*
+		 * Ensure the new output state can be applied on
+		 * its own and inform the client when it can not.
+		 *
+		 * Applying the changes may still fail later when
+		 * getting mixed with wlr_output->pending which
+		 * may contain further unrelated changes.
+		 */
+		struct wlr_output_state output_state;
+		wlr_output_state_init(&output_state);
+		wlr_output_head_v1_state_apply(&head->state, &output_state);
+
+		if (!output_test_auto(head->state.output, &output_state,
+				/* is_client_request */ true)) {
+			wlr_output_state_finish(&output_state);
+			return false;
+		}
+		wlr_output_state_finish(&output_state);
+	}
+
+	return true;
+
+custom_mode_failed:
+	assert(err_msg);
+	wlr_log(WLR_INFO, "%s (%s: %dx%d@%d)",
+		err_msg,
+		head->state.output->name,
+		head->state.custom_mode.width,
+		head->state.custom_mode.height,
+		head->state.custom_mode.refresh);
+	return false;
+}
+
+static void
+handle_output_manager_test(struct wl_listener *listener, void *data)
+{
+	struct wlr_output_configuration_v1 *config = data;
+
+	if (verify_output_config_v1(config)) {
+		wlr_output_configuration_v1_send_succeeded(config);
+	} else {
+		wlr_output_configuration_v1_send_failed(config);
+	}
+	wlr_output_configuration_v1_destroy(config);
+}
+
+static void
+handle_output_manager_apply(struct wl_listener *listener, void *data)
+{
+	struct wlr_output_configuration_v1 *config = data;
+
+	bool config_is_good = verify_output_config_v1(config);
+
+	if (config_is_good && output_config_apply(config)) {
+		wlr_output_configuration_v1_send_succeeded(config);
+	} else {
+		wlr_output_configuration_v1_send_failed(config);
+	}
+	wlr_output_configuration_v1_destroy(config);
+	struct output *output;
+	wl_list_for_each(output, &server.outputs, link) {
+		wlr_xcursor_manager_load(server.seat.xcursor_manager,
+			output->wlr_output->scale);
+	}
+
+	/* Re-set cursor image in case scale changed */
+	cursor_update_focus();
+	cursor_update_image(&server.seat);
+}
+
+/*
+ * Take the way outputs are currently configured/laid out and turn that into
+ * a struct that we send to clients via the wlr_output_configuration v1
+ * interface
+ */
+static struct
+wlr_output_configuration_v1 *create_output_config(void)
+{
+	struct wlr_output_configuration_v1 *config =
+		wlr_output_configuration_v1_create();
+	if (!config) {
+		wlr_log(WLR_ERROR, "wlr_output_configuration_v1_create()");
+		return NULL;
+	}
+
+	struct output *output;
+	wl_list_for_each(output, &server.outputs, link) {
+		struct wlr_output_configuration_head_v1 *head =
+			wlr_output_configuration_head_v1_create(config,
+				output->wlr_output);
+		if (!head) {
+			wlr_log(WLR_ERROR,
+				"wlr_output_configuration_head_v1_create()");
+			wlr_output_configuration_v1_destroy(config);
+			return NULL;
+		}
+		if (output_is_usable(output)) {
+			head->state.x = output->scene_output->x;
+			head->state.y = output->scene_output->y;
+		}
+	}
+	return config;
+}
+
+static void
+do_output_layout_change(void)
+{
+	if (!server.pending_output_layout_change) {
+		struct wlr_output_configuration_v1 *config =
+			create_output_config();
+		if (config) {
+			wlr_output_manager_v1_set_configuration(
+				server.output_manager, config);
+		} else {
+			wlr_log(WLR_ERROR,
+				"wlr_output_manager_v1_set_configuration()");
+		}
+		output_update_for_layout_change();
+		seat_output_layout_changed(&server.seat);
+	}
+}
+
+static void
+handle_output_layout_change(struct wl_listener *listener, void *data)
+{
+	/* Prevents unnecessary layout recalculations */
+	server.pending_output_layout_change++;
+	output_virtual_update_fallback();
+	server.pending_output_layout_change--;
+
+	do_output_layout_change();
+}
+
+static void
+output_manager_init(void)
+{
+	server.output_manager = wlr_output_manager_v1_create(server.wl_display);
+
+	server.output_layout_change.notify = handle_output_layout_change;
+	wl_signal_add(&server.output_layout->events.change,
+		&server.output_layout_change);
+
+	server.output_manager_apply.notify = handle_output_manager_apply;
+	wl_signal_add(&server.output_manager->events.apply,
+		&server.output_manager_apply);
+
+	server.output_manager_test.notify = handle_output_manager_test;
+	wl_signal_add(&server.output_manager->events.test,
+		&server.output_manager_test);
+}
+
+static void
+output_manager_finish(void)
+{
+	wl_list_remove(&server.output_layout_change.link);
+	wl_list_remove(&server.output_manager_apply.link);
+	wl_list_remove(&server.output_manager_test.link);
+}
+
+struct output *
+output_from_wlr_output(struct wlr_output *wlr_output)
+{
+	struct output *output;
+	wl_list_for_each(output, &server.outputs, link) {
+		if (output->wlr_output == wlr_output) {
+			return output;
+		}
+	}
+	return NULL;
+}
+
+struct output *
+output_from_name(const char *name)
+{
+	struct output *output;
+	wl_list_for_each(output, &server.outputs, link) {
+		if (!output_is_usable(output) || !output->wlr_output->name) {
+			continue;
+		}
+		if (!strcasecmp(name, output->wlr_output->name)) {
+			return output;
+		}
+	}
+	return NULL;
+}
+
+struct output *
+output_nearest_to(int lx, int ly)
+{
+	double closest_x, closest_y;
+	wlr_output_layout_closest_point(server.output_layout, NULL, lx, ly,
+		&closest_x, &closest_y);
+
+	return output_from_wlr_output(wlr_output_layout_output_at(server.output_layout,
+			closest_x, closest_y));
+}
+
+struct output *
+output_nearest_to_cursor(void)
+{
+	return output_nearest_to(server.seat.cursor->x,
+		server.seat.cursor->y);
+}
+
+struct output *
+output_get_adjacent(struct output *output, enum lab_edge edge, bool wrap)
+{
+	if (!output_is_usable(output)) {
+		wlr_log(WLR_ERROR,
+			"output is not usable, cannot find adjacent output");
+		return NULL;
+	}
+
+	/* Allow only up/down/left/right */
+	if (!lab_edge_is_cardinal(edge)) {
+		return NULL;
+	}
+
+	struct wlr_box box = output_usable_area_in_layout_coords(output);
+	int lx = box.x + box.width / 2;
+	int ly = box.y + box.height / 2;
+
+	/* Determine any adjacent output in the appropriate direction */
+	struct wlr_output *new_output = NULL;
+	struct wlr_output *current_output = output->wlr_output;
+	struct wlr_output_layout *layout = server.output_layout;
+	/* Cast from enum lab_edge to enum wlr_direction is safe */
+	new_output = wlr_output_layout_adjacent_output(layout,
+		(enum wlr_direction)edge, current_output, lx, ly);
+
+	/*
+	 * Optionally wrap around from top-to-bottom or left-to-right, and vice
+	 * versa.
+	 */
+	if (wrap && !new_output) {
+		enum lab_edge opposite = lab_edge_invert(edge);
+		new_output = wlr_output_layout_farthest_output(layout,
+			(enum wlr_direction)opposite, current_output, lx, ly);
+	}
+
+	/*
+	 * When "adjacent" output is the same as the original, there is no
+	 * adjacent
+	 */
+	if (!new_output || new_output == current_output) {
+		return NULL;
+	}
+
+	output = output_from_wlr_output(new_output);
+	if (!output_is_usable(output)) {
+		wlr_log(WLR_ERROR, "invalid output in layout");
+		return NULL;
+	}
+
+	return output;
+}
+
+bool
+output_is_usable(struct output *output)
+{
+	/*
+	 * output_is_usable(NULL) is safe and returns false.
+	 *
+	 * Checking output->scene_output != NULL is necessary in case the
+	 * wlr_output was initially enabled but hasn't been configured yet
+	 * (occurs with autoEnableOutputs=no).
+	 */
+	return output && output->wlr_output->enabled && output->scene_output;
+}
+
+/* returns true if usable area changed */
+static bool
+update_usable_area(struct output *output)
+{
+	struct wlr_box old = output->usable_area;
+	layers_arrange(output);
+
+#if HAVE_XWAYLAND
+	struct view *view;
+	wl_list_for_each(view, &server.views, link) {
+		if (view->mapped && view->type == LAB_XWAYLAND_VIEW) {
+			xwayland_adjust_usable_area(view,
+				server.output_layout,
+				output->wlr_output, &output->usable_area);
+		}
+	}
+#endif
+	return !wlr_box_equal(&old, &output->usable_area);
+}
+
+void
+output_update_usable_area(struct output *output)
+{
+	if (update_usable_area(output)) {
+		regions_update_geometry(output);
+#if HAVE_XWAYLAND
+		xwayland_update_workarea();
+#endif
+		desktop_arrange_all_views();
+	}
+}
+
+void
+output_update_all_usable_areas(bool layout_changed)
+{
+	bool usable_area_changed = false;
+	struct output *output;
+
+	wl_list_for_each(output, &server.outputs, link) {
+		if (update_usable_area(output)) {
+			usable_area_changed = true;
+			regions_update_geometry(output);
+		} else if (layout_changed) {
+			regions_update_geometry(output);
+		}
+	}
+	if (usable_area_changed || layout_changed) {
+#if HAVE_XWAYLAND
+		xwayland_update_workarea();
+#endif
+		desktop_arrange_all_views();
+	}
+}
+
+struct wlr_box
+output_usable_area_in_layout_coords(struct output *output)
+{
+	if (!output_is_usable(output)) {
+		return (struct wlr_box){0};
+	}
+	struct wlr_box box = output->usable_area;
+	double ox = 0, oy = 0;
+	wlr_output_layout_output_coords(server.output_layout,
+		output->wlr_output, &ox, &oy);
+	box.x -= ox;
+	box.y -= oy;
+	return box;
+}
+
+void
+handle_output_power_manager_set_mode(struct wl_listener *listener, void *data)
+{
+	struct wlr_output_power_v1_set_mode_event *event = data;
+	struct output *output = event->output->data;
+	assert(output);
+
+	switch (event->mode) {
+	case ZWLR_OUTPUT_POWER_V1_MODE_OFF:
+		if (!event->output->enabled) {
+			return;
+		}
+		wlr_output_state_set_enabled(&output->pending, false);
+		output_state_commit(output);
+		break;
+	case ZWLR_OUTPUT_POWER_V1_MODE_ON:
+		if (event->output->enabled) {
+			return;
+		}
+		wlr_output_state_set_enabled(&output->pending, true);
+		output_state_commit(output);
+		/*
+		 * Re-set the cursor image so that the cursor
+		 * isn't invisible on the newly enabled output.
+		 */
+		cursor_update_image(&server.seat);
+		break;
+	}
+}
+
+void
+output_enable_adaptive_sync(struct output *output, bool enabled)
+{
+	wlr_output_state_set_adaptive_sync_enabled(&output->pending, enabled);
+	if (!wlr_output_test_state(output->wlr_output, &output->pending)) {
+		wlr_output_state_set_adaptive_sync_enabled(&output->pending, false);
+		wlr_log(WLR_DEBUG,
+			"failed to enable adaptive sync for output %s",
+			output->wlr_output->name);
+	} else {
+		wlr_log(WLR_INFO, "adaptive sync %sabled for output %s",
+			enabled ? "en" : "dis", output->wlr_output->name);
+	}
+}
+
+void
+output_set_has_fullscreen_view(struct output *output, bool has_fullscreen_view)
+{
+	if (rc.adaptive_sync != LAB_ADAPTIVE_SYNC_FULLSCREEN
+			|| !output_is_usable(output)) {
+		return;
+	}
+	/* Enable adaptive sync if view is fullscreen */
+	output_enable_adaptive_sync(output, has_fullscreen_view);
+	output_state_commit(output);
+}
+
+void
+output_enable_hdr(struct output *output, struct wlr_output_state *os,
+	bool enabled, bool silent)
+{
+	if (enabled && !output_supports_hdr(output->wlr_output, NULL)) {
+		enabled = false;
+	}
+
+	if (!enabled) {
+		if (output->wlr_output->supported_primaries != 0 ||
+				output->wlr_output->supported_transfer_functions != 0) {
+			if (!silent) {
+				wlr_log(WLR_DEBUG, "Disabling HDR on output %s",
+					output->wlr_output->name);
+			}
+			wlr_output_state_set_image_description(os, NULL);
+		}
+		return;
+	}
+
+	if (!silent) {
+		wlr_log(WLR_DEBUG, "Enabling HDR on output %s",
+			output->wlr_output->name);
+	}
+	const struct wlr_output_image_description image_desc = {
+		.primaries = WLR_COLOR_NAMED_PRIMARIES_BT2020,
+		.transfer_function = WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ,
+	};
+	wlr_output_state_set_image_description(os, &image_desc);
+}

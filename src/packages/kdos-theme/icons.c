@@ -48,45 +48,38 @@ static const char *context_of(const char *dir)
 
 /*
  * Papirus's apps/ is deliberately not vendored (see vendor.py), so without
- * this the theme has no Applications context at all and every app icon on the
- * desktop — including COSMIC's own — comes from Cosmic or hicolor untinted,
- * which is what "the KDOS icon theme is not being used" looks like.
+ * this the theme has no Applications context at all and every host app icon
+ * comes through untinted, which is what "the KDOS icon theme is not being
+ * used" looks like.
  *
- *   Cosmic  <size>/apps   COSMIC's stock application icons
- *   hicolor <size>/apps   but ONLY com.system76. — 06_packaging installs the
- *                         ALIEN apps' icons into that same directory, and a
- *                         phosphor Firefox logo is vandalism, not theming.
+ *   hicolor <size>/apps   but ONLY the kdos. prefix — 06_packaging installs
+ *                         the ALIEN apps' icons into that same directory, and
+ *                         a phosphor Firefox logo is vandalism, not theming.
  *
- * Swept across EVERY size directory, not just scalable/: COSMIC's own app
- * icons are SVGs filed under fixed sizes (com.system76.CosmicFiles lives at
- * 24x24, 128x128 and 256x256 and nowhere else), which is why the dock's Files
- * and Settings buttons stayed stock when only scalable/ was read. The largest
- * variant of each name wins and is written to scalable/apps, since they are
- * all SVG anyway.
+ * Swept across EVERY size directory, not just scalable/. That rule was learned
+ * against COSMIC, whose own icons were SVGs filed under fixed sizes and
+ * nowhere else, so a scalable-only pass left exactly the dock buttons the user
+ * looks at unthemed. It still holds for anything that ships an SVG under a
+ * numeric directory. The largest variant of each name wins and is written to
+ * scalable/apps, since they are all SVG anyway.
  */
 static const struct {
 	const char *root;
 	const char *prefix;
 } APP_SOURCES[] = {
-	{ "/usr/share/icons/Cosmic", NULL },
-	{ "/usr/share/icons/hicolor", "com.system76." },
+	{ "/usr/share/icons/hicolor", "kdos." },
 };
 
 /*
  * KDOS's own marks, which are not in the vendored artwork. Kept here rather
  * than in the kpkgbuild so that `kdos theme <accent>` — which re-runs this
  * against $HOME — produces a complete theme on its own.
- *
- * The dock's app-library button shows the TARGET's icon
- * (com.system76.CosmicAppLibrary), not the applet's own, so both names have to
- * become the tux.
  */
 static const struct {
 	const char *stem;
 	const char *names[3];
 } MARK_SETS[] = {
-	{ "tux", { "com.system76.CosmicAppLibrary",
-		   "com.system76.CosmicPanelAppButton", NULL } },
+	{ "tux", { "kdos-launcher", NULL } },
 	{ "logo", { "distributor-logo-kdos", "start-here", NULL } },
 };
 #define NMARKSET ((int)(sizeof(MARK_SETS) / sizeof(MARK_SETS[0])))
@@ -317,9 +310,9 @@ static int install_marks(const char *marks, const char *out)
 		kb_strv_free(files);
 	}
 
-	/* recolor_apps just wrote COSMIC's own SVG under these names, and a
-	 * scalable icon beats a fixed-size PNG at any requested size — so the
-	 * stock grid button would win over the tux. Drop them. */
+	/* If recolor_apps wrote an SVG under any of these names, it would beat
+	 * the mark: a scalable icon wins over a fixed-size PNG at any requested
+	 * size, so the stock button would show instead of the tux. Drop them. */
 	char *o1 = kb_path_join(out, "scalable");
 	char *od = kb_path_join(o1, "apps");
 	for (int m = 0; m < NMARKSET; m++) {
@@ -397,10 +390,10 @@ static int write_index(const char *out)
 		   "[Icon Theme]\n"
 		   "Name=KDOS\n"
 		   "Comment=KDOS phosphor icon theme\n"
-		   /* Cosmic still supplies the symbolic set the shell tints
-		    * itself; hicolor supplies the alien apps' icons, installed
-		    * there by 06_packaging/01_appbox.sh. */
-		   "Inherits=Cosmic,Pop,hicolor\n"
+		   /* hicolor supplies the alien apps' icons, installed there by
+		    * 06_packaging/01_appbox.sh, and the index.theme that makes
+		    * the lookup work at all comes from hicolor-icon-theme. */
+		   "Inherits=hicolor\n"
 		   "Directories=");
 	kb_buf_add(&full, dirs.p ? dirs.p : "", dirs.n);
 	kb_buf_str(&full, "\n\n");

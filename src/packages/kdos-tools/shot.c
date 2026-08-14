@@ -7,11 +7,9 @@
  * ---------------------------------
  *   kdos-shot [region|screen|window]
  *
- * Screenshot to the clipboard AND to disk. COSMIC's own PrtSc opens an
- * interactive picker that saves a file; this is the other half — one
- * keystroke, region selected with the mouse, image on the clipboard ready to
- * paste, a copy filed under ~/Pictures/Screenshots, and a notification so you
- * know it worked.
+ * Screenshot to the clipboard AND to disk. One keystroke, region selected
+ * with the mouse, image on the clipboard ready to paste, a copy filed under
+ * ~/Pictures/Screenshots, and a notification so you know it worked.
  * ---------------------------------
  */
 
@@ -77,9 +75,10 @@ static void clip(const char *file)
 		;
 }
 
-/* cosmic-comp does not implement wlr-screencopy, so grim only works on
- * compositors that do. The portal path (cosmic-screenshot) is the native way,
- * and this is how we find out which world we are in. */
+/* grim needs wlr-screencopy. kdos-comp implements it (wlroots supplies both
+ * that and ext-image-copy-capture), so this probe should always succeed — it
+ * stays because the failure it catches is otherwise mute: grim exits non-zero
+ * with nothing useful on stderr when the global is missing. */
 static int grim_works(void)
 {
 	KbArgv a = {0};
@@ -110,26 +109,11 @@ int shot_main(int argc, char **argv)
 	free(base);
 	kb_mkdir_p(dir);
 
-	if (!grim_works() && kb_have_prog("cosmic-screenshot")) {
-		char out[1024] = {0};
-		KbArgv a = {0};
-		kb_argv_add(&a, "cosmic-screenshot");
-		kb_argv_add(&a, "--interactive=false");
-		kb_argv_add(&a, "--save-dir");
-		kb_argv_add(&a, dir);
-		kb_argv_end(&a);
-		if (kb_run_capture(&a, out, sizeof(out)) != 0)
-			kb_die("cosmic-screenshot failed");
-		if (out[0] && access(out, R_OK) == 0) {
-			clip(out);
-			toast("Screenshot copied", kb_basename(out));
-			printf("%s\n", out);
-			return 0;
-		}
-	}
-
 	if (!kb_have_prog("grim"))
 		kb_die("grim is not installed");
+	if (!grim_works())
+		kb_die("grim cannot capture — the compositor does not offer "
+		       "wlr-screencopy");
 
 	time_t now = time(NULL);
 	struct tm tm;

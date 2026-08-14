@@ -15,6 +15,7 @@ release     = 1
 _imver      = ${version%.*}-${version##*.}
 
 source      = https://imagemagick.org/archive/releases/ImageMagick-$_imver.tar.xz
+sha256      = 56450bf5d65b63abb09568abb2c40b493ab913418f92df135ed661471da0eb0d  imagemagick-7.1.2.21.tar.xz
 description = ImageMagick — convert, edit, and compose raster images (provides `convert`)
 homepage    = https://imagemagick.org/
 depends     = libpng libjpeg-turbo libtiff libwebp giflib freetype2 fontconfig libxml2 zlib pango

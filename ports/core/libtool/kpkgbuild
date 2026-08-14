@@ -12,4 +12,5 @@ name        = libtool
 version     = 2.5.4
 release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
+sha256      = f81f5860666b0bc7d84baddefa60d1cb9fa6fceb2398cc3baca6afaa60266675  libtool-2.5.4.tar.xz
 description = The GNU generic library support script

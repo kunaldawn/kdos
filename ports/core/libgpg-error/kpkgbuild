@@ -12,4 +12,5 @@ name        = libgpg-error
 version     = 1.58
 release     = 1
 source      = https://www.gnupg.org/ftp/gcrypt/$name/$name-$version.tar.bz2
+sha256      = f943aea9a830a8bd938e5124b579efaece24a3225ff4c3d27611a80ce1260c27  libgpg-error-1.58.tar.bz2
 description = Library that defines common error values for all GnuPG components

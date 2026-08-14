@@ -15,4 +15,5 @@ release     = 1
 _majorver   = ${version%.*}
 
 source      = https://www.lua.org/ftp/$name-$version.tar.gz
+sha256      = 57ccc32bbbd005cab75bcc52444052535af691789dba2b9016d5c50640d68b3d  lua-5.5.0.tar.gz
 description = Light-weight programming language designed for extending applications

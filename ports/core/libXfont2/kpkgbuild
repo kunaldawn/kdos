@@ -12,6 +12,7 @@ name        = libXfont2
 version     = 2.0.8
 release     = 1
 source      = https://www.x.org/releases/individual/lib/$name-$version.tar.xz
+sha256      = f556c0e1093a4e6911cc90bc4b106d201902ee187fd74af206ff162f7e6a24d5  libXfont2-2.0.8.tar.xz
 description = X font rasterisation library
 homepage    = https://gitlab.freedesktop.org/xorg/lib/libXfont2
 depends     = libfontenc freetype2 xtrans

@@ -70,8 +70,42 @@ char **kp_all_ports(const KpConf *c, int *count);
  */
 int kp_depends(const char *portdir, char out[][128], int max);
 
+/* One declarative key out of a recipe, verbatim. "" when it has none. The
+ * recipe is READ, not run — kp_decl is the authority for anything that needs
+ * helper expansion. */
+void kp_recipe_key(const char *portdir, const char *key, char *out, size_t cap);
+
 /* The one-line description a recipe declares. "" when it has none. */
 void kp_description(const char *portdir, char *out, size_t cap);
+
+/*
+ * Version ordering, shared. -1/0/1, tokenised into numeric and alpha runs so
+ * 1.10 > 1.9 and 3.6a > 3.6. Two consumers ask the same question of it —
+ * `kdos-portup` ("is upstream newer than the pin") and `kdos cve` ("is the pin
+ * older than the version that fixed this") — and a second implementation would
+ * eventually answer them differently.
+ */
+int kp_vercmp(const char *a, const char *b);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Binary-package identity (kp_hash.c)
+ *
+ * A prebuilt package is usable when three things match: the architecture, the
+ * BUILD CONFIG hash and the RECIPE hash. KDOS has no USE flags, so that is the
+ * whole of the question Gentoo needs flag matching for.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* SHA-256 over kpkgbuild, build.sh, postinstall.sh and every .patch, sorted,
+ * each contributing its name, its length and its bytes. -1 when the directory
+ * holds none of them. */
+int kp_recipe_hash(const char *portdir, char out[65]);
+
+/* SHA-256 over arch, libc, target triplet, compiler version and the three flag
+ * variables. `human` optionally receives the canonical text that was hashed,
+ * which is what a mismatch has to be explained with. */
+int kp_buildconfig_hash(char out[65], char *human, size_t hcap);
+
+void kp_arch(char *out, size_t cap);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Database

@@ -12,5 +12,6 @@ name        = gptfdisk
 version     = 1.0.10
 release     = 1
 source      = https://downloads.sourceforge.net/$name/$name/$version/$name-$version.tar.gz
+sha256      = 2abed61bc6d2b9ec498973c0440b8b804b7a72d7144069b5a9209b2ad693a282  gptfdisk-1.0.10.tar.gz
 description = A text-mode partitioning tool that works on GUID Partition Table (GPT) disks
 depends     = popt

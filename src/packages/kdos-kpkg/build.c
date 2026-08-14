@@ -51,6 +51,7 @@ typedef struct {
 	char version[128];
 	char release[64];
 	char source[2048];
+	char sha256[4096];
 } Recipe;
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -118,6 +119,68 @@ static void source_file(const Recipe *r, const char *src, int first, char *out,
 		}
 }
 
+/*
+ * `sha256 = <64 hex>  <basename>` — find the hash for one file.
+ *
+ * The accumulated value is alternating <hex> <name> tokens (see decl.c), so
+ * this walks them in pairs and matches on the NAME. Returns NULL when the
+ * recipe names no hash for this file, which the caller must treat as a
+ * refusal rather than a pass.
+ */
+static const char *hash_for(const Recipe *r, const char *file, char out[65])
+{
+	char list[4096];
+	kb_strlcpy(list, r->sha256, sizeof(list));
+	char *hex = NULL;
+	int k = 0;
+	for (char *t = strtok(list, " \t\n"); t; t = strtok(NULL, " \t\n"), k++) {
+		if (k % 2 == 0) {
+			hex = t;
+		} else if (!strcmp(t, file) && hex) {
+			kb_strlcpy(out, hex, 65);
+			return out;
+		}
+	}
+	return NULL;
+}
+
+/*
+ * Nothing is extracted before its bytes are checked. A recipe with no hash
+ * for a source it names is a HARD failure, not a warning: a warning here is
+ * indistinguishable from a hash that passed, and the whole point is that an
+ * unverified tarball can never reach a build.
+ *
+ * KDOS_ALLOW_UNVERIFIED=1 is the bring-up escape hatch, for adding a port
+ * before its hash is known. testing/preflight.sh asserts that no recipe in
+ * the tree needs it.
+ */
+static int verify_source(const Recipe *r, const char *path, const char *file)
+{
+	char want[65];
+	if (!hash_for(r, file, want)) {
+		if (getenv("KDOS_ALLOW_UNVERIFIED")) {
+			kp_msg("UNVERIFIED: no sha256 for %s", file);
+			return 0;
+		}
+		kp_err("No sha256 for %s in the recipe — refusing to extract "
+		       "an unverified source (KDOS_ALLOW_UNVERIFIED=1 to override)",
+		       file);
+		return -1;
+	}
+
+	char got[65];
+	if (kb_sha256_file(path, got) != 0) {
+		kp_err("Cannot read %s to verify it", path);
+		return -1;
+	}
+	if (!kb_str_ieq(got, want)) {
+		kp_err("sha256 MISMATCH for %s\n  expected %s\n  got      %s",
+		       file, want, got);
+		return -1;
+	}
+	return 0;
+}
+
 static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir,
 			   const char *src_dir, const char *src_root)
 {
@@ -139,6 +202,11 @@ static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir
 				free(path);
 				return -1;
 			}
+		}
+
+		if (verify_source(r, path, file) != 0) {
+			free(path);
+			return -1;
 		}
 
 		KbArgv a = {0};
@@ -206,6 +274,73 @@ static int run_build(const KpConf *c, const KpDecl *d, const Recipe *r,
 	int rc = kb_run_tty(&a);
 	kb_buf_free(&s);
 	return rc;
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Rolling the package, reproducibly.
+ *
+ * A package built twice from the same tree must be BYTE-IDENTICAL, and that is
+ * a property of this one function rather than of 396 recipes — which is the
+ * whole reason kpkg rolls its own archive instead of letting each build.sh do
+ * it. Everything below is a source of nondeterminism that was in the plain
+ * `tar -cJf` this replaced:
+ *
+ *   --sort=name        readdir order is filesystem order, and it is not stable
+ *                      across machines or even across a copy of the same tree
+ *   --mtime            every file carries the second it was installed
+ *   --owner/--group    the builder's uid, and its NAME as text in the header
+ *   --numeric-owner    ... and the name lookup that would otherwise happen
+ *   --format=gnu       pax headers carry atime and ctime, which are wall clock;
+ *                      ustar cannot hold a path over 255 bytes and some ports
+ *                      have them, so gnu is the only format that is both
+ *                      deterministic and sufficient
+ *   XZ_OPT             xz is single-threaded by default and deterministic, but
+ *                      -T0 in the environment silently changes the output, so
+ *                      the compressor is pinned rather than inherited
+ *
+ * SOURCE_DATE_EPOCH is honoured when set (the phase env files set it) and 0
+ * otherwise — either way the answer does not depend on when the build ran.
+ */
+static long long source_date_epoch(void)
+{
+	const char *s = getenv("SOURCE_DATE_EPOCH");
+	char *end = NULL;
+	long long v;
+
+	if (!s || !*s)
+		return 0;
+	v = strtoll(s, &end, 10);
+	if (end == s || v < 0)
+		return 0;
+	return v;
+}
+
+static int roll_package(const char *pkg, const char *out)
+{
+	char mtime[64];
+	snprintf(mtime, sizeof(mtime), "--mtime=@%lld", source_date_epoch());
+
+	/* The compressor, pinned: -9 for the size the ISO cares about, -T1 so a
+	 * builder with XZ_OPT=-T0 in their environment cannot change the bytes.
+	 * tar splits this on spaces itself; there is no shell involved. */
+	KbArgv t = {0};
+	kb_argv_add(&t, "tar");
+	kb_argv_add(&t, "--sort=name");
+	kb_argv_add(&t, "--format=gnu");
+	kb_argv_add(&t, "--numeric-owner");
+	kb_argv_add(&t, "--owner=0");
+	kb_argv_add(&t, "--group=0");
+	kb_argv_add(&t, mtime);
+	kb_argv_add(&t, "--use-compress-program=xz -9 -T1");
+	kb_argv_add(&t, "-cf");
+	kb_argv_add(&t, out);
+	kb_argv_add(&t, "-C");
+	kb_argv_add(&t, pkg);
+	kb_argv_add(&t, ".");
+	kb_argv_end(&t);
+	return kb_run_tty(&t);
 }
 
 /*
@@ -285,6 +420,7 @@ int build_main(int argc, char **argv)
 	kb_strlcpy(r.version, kp_decl_version(decl), sizeof(r.version));
 	kb_strlcpy(r.release, kp_decl_release(decl), sizeof(r.release));
 	kb_strlcpy(r.source, kp_decl_source(decl), sizeof(r.source));
+	kb_strlcpy(r.sha256, kp_decl_sha256(decl), sizeof(r.sha256));
 
 	if (!kb_path_exists("./build.sh")) {
 		kp_err("build.sh not found beside ./kpkgbuild");
@@ -309,6 +445,14 @@ int build_main(int argc, char **argv)
 		kp_err("WORK_DIR is not an absolute path: '%s'", c.work_dir);
 		return 1;
 	}
+
+	/*
+	 * The umask is part of the package. A file `make install` creates
+	 * without an explicit mode takes it, so a builder running with 002 or
+	 * 077 produces a package whose modes differ from everyone else's — the
+	 * one source of nondeterminism that is not in the tar invocation.
+	 */
+	umask(022);
 
 	char *src_root = kb_path_join(c.work_dir, r.name);
 	char verdir[512];
@@ -351,15 +495,7 @@ int build_main(int argc, char **argv)
 		 r.release);
 	char *out = kb_path_join(c.package_dir, pkgname);
 
-	KbArgv t = {0};
-	kb_argv_add(&t, "tar");
-	kb_argv_add(&t, "-cJf");
-	kb_argv_add(&t, out);
-	kb_argv_add(&t, "-C");
-	kb_argv_add(&t, pkg);
-	kb_argv_add(&t, ".");
-	kb_argv_end(&t);
-	if (kb_run_tty(&t) != 0) {
+	if (roll_package(pkg, out) != 0) {
 		kp_err("Failed to create %s", out);
 		return 1;
 	}

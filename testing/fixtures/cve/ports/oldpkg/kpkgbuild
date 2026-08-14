@@ -1,0 +1,5 @@
+name        = oldpkg
+version     = 1.2.2
+release     = 1
+source      = https://example.invalid/oldpkg-1.2.2.tar.gz
+description = fixture

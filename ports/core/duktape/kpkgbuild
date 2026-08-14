@@ -12,5 +12,6 @@ name        = duktape
 version     = 2.7.0
 release     = 1
 source      = https://duktape.org/duktape-$version.tar.xz
+sha256      = 90f8d2fa8b5567c6899830ddef2c03f3c27960b11aca222fa17aa7ac613c2890  duktape-2.7.0.tar.xz
 description = Embeddable JavaScript engine (used by polkit for rule processing)
 homepage    = https://duktape.org/

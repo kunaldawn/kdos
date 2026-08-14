@@ -12,6 +12,7 @@ name        = conmon
 version     = 2.2.1
 release     = 1
 source      = https://github.com/containers/conmon/archive/v$version.tar.gz
+sha256      = 814fb5979a3a4b8576b1f901e606b482bebb41cb7e57926e6d5765ee786b96d3  conmon-2.2.1.tar.gz
 description = An OCI container runtime monitor (used by Podman)
 homepage    = https://github.com/containers/conmon
 depends     = glib

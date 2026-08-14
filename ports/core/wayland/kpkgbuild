@@ -12,6 +12,7 @@ name        = wayland
 version     = 1.24.0
 release     = 1
 source      = https://gitlab.freedesktop.org/wayland/wayland/-/releases/$version/downloads/wayland-$version.tar.xz
+sha256      = 82892487a01ad67b334eca83b54317a7c86a03a89cfadacfef5211f11a5d0536  wayland-1.24.0.tar.xz
 description = Core Wayland protocol library (libwayland-server / libwayland-client)
 homepage    = https://wayland.freedesktop.org/
 depends     = libffi libxml2 expat meson

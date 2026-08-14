@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = xdg-desktop-portal-wlr
+version     = 0.8.4
+release     = 1
+source      = https://github.com/emersion/xdg-desktop-portal-wlr/releases/download/v$version/$name-$version.tar.gz
+sha256      = 41b9683acae9415005d7b62d801e34946cb95da5eaaa83528c7085759a635187  xdg-desktop-portal-wlr-0.8.4.tar.gz
+description = wlroots backend for xdg-desktop-portal (ScreenCast and Screenshot)
+homepage    = https://github.com/emersion/xdg-desktop-portal-wlr
+depends     = meson ninja wayland wayland-protocols xdg-desktop-portal pipewire inih basu mesa libdrm

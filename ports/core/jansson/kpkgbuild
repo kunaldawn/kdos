@@ -12,5 +12,6 @@ name        = jansson
 version     = 2.15.0
 release     = 1
 source      = https://github.com/akheron/jansson/releases/download/v$version/jansson-$version.tar.gz
+sha256      = 070a629590723228dc3b744ae90e965a569efb9c535b3309b52e80e75d8eb3be  jansson-2.15.0.tar.gz
 description = C library for encoding/decoding/manipulating JSON (NetworkManager dep)
 homepage    = https://github.com/akheron/jansson

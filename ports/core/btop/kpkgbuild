@@ -12,5 +12,6 @@ name        = btop
 version     = 1.4.6
 release     = 1
 source      = https://github.com/aristocratos/${name}/archive/refs/tags/v${version}.tar.gz
+sha256      = 4beb90172c6acaac08c1b4a5112fb616772e214a7ef992bcbd461453295a58be  btop-1.4.6.tar.gz
 description = A monitor for system resources
 homepage    = https://github.com/aristocratos/btop

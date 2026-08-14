@@ -1,0 +1,17 @@
+title: one session bus at $XDG_RUNTIME_DIR/bus, never dbus-run-session
+path: /usr/local/bin/kdos-desktop
+port: dbus
+
+dbus-run-session listens on unix:tmpdir=/tmp — a pathname socket in the HOST's
+/tmp, which the appbox does not share. Every alien app then saw a dangling
+DBUS_SESSION_BUS_ADDRESS: GApplication single-instance broke (each impatient
+re-click spawned another FULL instance), dconf and the a11y stack stalled, and
+notifications went nowhere.
+
+/run/user/1000 IS shared with the box, so one fixed address is valid on both
+sides.
+
+Two traps encoded in kdos-desktop: the address must carry NO guid — a second
+daemon rebinding the socket kills zbus clients with "Server GUID mismatch" —
+and you must not add a second <listen> via dbus config instead, because a
+multi-address environment hits the same crash.

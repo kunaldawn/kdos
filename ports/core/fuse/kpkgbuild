@@ -12,6 +12,7 @@ name        = fuse
 version     = 3.18.2
 release     = 1
 source      = https://github.com/libfuse/libfuse/releases/download/fuse-$version/fuse-$version.tar.gz
+sha256      = f01de85717e20adf5f98aff324acd85dd73d61a5ca3834d573dcf0bd6e54a298  fuse-3.18.2.tar.gz
 description = libfuse 3 — Filesystem in Userspace library (used by xdg-desktop-portal document portal)
 homepage    = https://github.com/libfuse/libfuse
 depends     = meson ninja
