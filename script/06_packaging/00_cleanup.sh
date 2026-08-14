@@ -46,7 +46,10 @@ echo "[KDOS] Cleanup pass over $FS (initial size: $INITIAL)"
 # ── Build cache ─────────────────────────────────────────────────────────
 if [ "$CLEAN_BUILD_CACHE" = 1 ]; then
     section "Build cache"
-    for p in root/.cache root/.cargo root/.npm tmp/* var/cache/kpkg/work; do
+    # var/tmp/* belongs here: it is scratch by definition, and the appbox
+    # bake used to leave multi-gigabyte podman<pid>/ directories in it that
+    # rode all the way into the ISO.
+    for p in root/.cache root/.cargo root/.npm tmp/* var/tmp/* var/cache/kpkg/work; do
         target="$FS/$p"
         if compgen -G "$target" >/dev/null 2>&1; then
             before=$(size_of "$target")

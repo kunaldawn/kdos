@@ -18,6 +18,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 /* ────────────────────────────────────────────────────────────────────────
  * Allocation
@@ -88,6 +89,19 @@ void kb_buf_str(KbBuf *b, const char *s);
 void kb_buf_printf(KbBuf *b, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));
 void kb_buf_free(KbBuf *b);
+
+/*
+ * Append `s` to `b` as a JSON string, quotes included.
+ *
+ * Every KDOS `--json` output funnels through this. Package descriptions, file
+ * paths and window titles all reach it, and every one of them can contain a
+ * quote, a backslash or a control character — which is exactly how a program
+ * emits output that looks like JSON and does not parse. Escapes the two
+ * mandatory characters, the five shorthand controls, and anything else below
+ * 0x20 as \u00xx; bytes >= 0x80 pass through, because the input is already
+ * UTF-8 and JSON strings are Unicode.
+ */
+void kb_json_str(KbBuf *b, const char *s);
 
 /* Whole-file read. malloc'd and NUL-terminated; *len excludes the NUL so the
  * buffer is usable as both a string and a blob. NULL on error. */
@@ -169,6 +183,17 @@ void kb_argv_end(KbArgv *a);
 extern int kb_proc_verbose;
 
 int kb_run(const KbArgv *a);		/* exec, wait, return exit status   */
+/* Same, but `in` (n bytes) is written to the child's stdin, which then sees
+ * EOF. A password belongs here and never in argv: /proc/<pid>/cmdline is
+ * world-readable for the life of the process. SIGPIPE is blocked around the
+ * write, so a child that exits early cannot kill the caller. */
+int kb_run_feed(const KbArgv *a, const char *in, size_t n);
+/* Same as kb_run_feed, except the child keeps the caller's stdout and stderr.
+ * That is the difference between feeding a CHECKER and feeding a PAGER: the
+ * one place kb_run_feed is used sends the child's output to /dev/null, which
+ * is right for kdos-checkpass and would make `kdos help --pager` render the
+ * help text into nothing. Same reason kb_run_tty exists beside kb_run. */
+int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n);
 /* Same, but the child INHERITS stdin/stdout/stderr. A package build writes
  * straight to the build log, unbuffered and interleaved, and that is what the
  * per-port logs are. */
@@ -180,15 +205,87 @@ int kb_run_capture(const KbArgv *a, char *buf, size_t n);
  * with the trailing newline left alone. Use this whenever the output has no
  * natural ceiling — a `tar -tf` listing does not. */
 int kb_run_capture_buf(const KbArgv *a, KbBuf *out);
+/* Same, but stdout is written to `path` (created 0644, truncated). The `>` a
+ * shell would provide, without the shell. */
+int kb_run_to_file(const KbArgv *a, const char *path);
 /* Double-forked fire and forget: the caller can never block on the child or
  * collect a zombie. gdbus's default reply timeout is 25 seconds and a
  * notification must never be able to gate an app launch behind that. */
 void kb_run_detach(const KbArgv *a);
+
+/* Membership of a group in /etc/group, counting the group's own gid as well as
+ * its member list. The authorisation both root daemons here are built on, in
+ * one place: two copies of a security decision eventually disagree. */
+int kb_user_in_group(const char *user, gid_t primary, const char *group);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Time
  * ──────────────────────────────────────────────────────────────────────── */
 
 double kb_now_s(void);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * SHA-256 (FIPS 180-4)
+ *
+ * For `sha256 =` in a recipe: kpkg has to check an archive before extracting
+ * it, and kpkg links libkbase and nothing else.
+ *
+ * A hash, not a signature — it proves the bytes are the bytes the recipe
+ * named, and nothing about who named them.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	uint32_t h[8];
+	uint64_t len;
+	uint8_t buf[64];
+	size_t n;
+} KbSha256;
+
+void kb_sha256_init(KbSha256 *s);
+void kb_sha256_update(KbSha256 *s, const void *data, size_t n);
+void kb_sha256_final(KbSha256 *s, char out[65]);	/* lowercase hex */
+
+/* Streamed, so a 552 MB tarball costs one 64 K buffer. -1 on read error. */
+int kb_sha256_file(const char *path, char out[65]);
+/* 0 match, 1 mismatch, -1 unreadable. Comparison is case-insensitive. */
+int kb_sha256_check(const char *path, const char *want);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Landlock — unprivileged self-sandboxing. Three syscalls, no library.
+ *
+ * Deny by default: a ruleset starts with NOTHING reachable, and each
+ * kb_landlock_allow() opens one subtree back up. Enforcement is one-way and
+ * inherited by every child — there is no unsandbox.
+ *
+ * Usage is fixed: new() -> allow()* -> enforce() -> exec(). Everything after
+ * enforce() runs inside.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	int fd;			/* ruleset fd, -1 once enforced or freed */
+	int abi;		/* what the RUNNING kernel supports        */
+	int nrules;
+	int net_handled;	/* TCP is being policed at all             */
+} KbLandlock;
+
+/* ABI version the kernel reports, or -errno. -ENOSYS: no Landlock in this
+ * kernel. -EOPNOTSUPP: compiled in but not enabled in CONFIG_LSM or lsm=,
+ * which is the quiet failure worth naming — everything degrades to no
+ * sandbox and nothing says so. */
+int kb_landlock_abi(void);
+
+/* Build a ruleset covering everything this ABI can police. net_off also
+ * denies TCP bind and connect (needs ABI >= 4; silently not applied below
+ * that, which kb_landlock_explain must report as unenforced). */
+int kb_landlock_new(KbLandlock *ll, int net_off);
+
+/* Allow one subtree, read-only or read-write. A missing path is -ENOENT and
+ * is the caller's to decide about. */
+int kb_landlock_allow(KbLandlock *ll, const char *path, int write);
+int kb_landlock_allow_tcp(KbLandlock *ll, uint16_t port, int connect);
+
+/* Sets PR_SET_NO_NEW_PRIVS then restricts. Irreversible. */
+int kb_landlock_enforce(KbLandlock *ll);
+void kb_landlock_free(KbLandlock *ll);
 
 #endif /* KBASE_H */

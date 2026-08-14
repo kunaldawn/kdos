@@ -14,10 +14,15 @@
 # straight into the sysroot here rather than being a port of its own — the same
 # bootstrap the five shell scripts this replaces needed.
 #
-# It links libkbase and libkpkg and nothing else, so like kinstall it
+# It links libkbase, libkpkg and libksig and nothing else, so like kinstall it
 # cross-compiles in phase 1 against musl and the kernel headers alone. bash is
-# still exec'd to run a legacy recipe's build(), but that is a runtime
-# dependency of a BUILD, not a link-time one.
+# still exec'd to run a recipe's build.sh, but that is a runtime dependency of a
+# BUILD, not a link-time one.
+#
+# libksig is Ed25519 for the binary repository, and it brings Monocypher with it
+# — the one vendored third-party source in the tree, chosen because it is the
+# only implementation that also links nothing but the C library (see
+# src/libs/libksig/ksig.c).
 
 set -e
 source script/phase1.env.sh
@@ -33,9 +38,10 @@ OUT=$BUILD_DIR/tmp/kdos-kpkg
 
 $KDOS_TARGET-gcc \
     -O2 -pipe -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
-    -I"$LIBS"/libkbase -I"$LIBS"/libkpkg -I"$SRC" \
+    -I"$LIBS"/libkbase -I"$LIBS"/libkpkg -I"$LIBS"/libksig -I"$SRC" \
     -o "$OUT" \
-    "$SRC"/*.c "$LIBS"/libkbase/*.c "$LIBS"/libkpkg/*.c
+    "$SRC"/*.c "$LIBS"/libkbase/*.c "$LIBS"/libkpkg/*.c \
+    "$LIBS"/libksig/*.c "$LIBS"/libksig/monocypher/*.c
 
 install -Dm755 "$OUT" $SYSROOT/usr/bin/kpkg
 

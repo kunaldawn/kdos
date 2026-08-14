@@ -41,7 +41,7 @@ $KDOS_TARGET-gcc \
     -I"$LIBS"/libkbase -I"$LIBS"/libktui -I"$LIBS"/libkcolor -I"$SRC" \
     -o "$OUT" \
     "$SRC"/main.c "$SRC"/probe.c "$SRC"/conf.c \
-    "$SRC"/install.c "$SRC"/pages.c \
+    "$SRC"/install.c "$SRC"/pages.c "$SRC"/dump.c \
     "$LIBS"/libkbase/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c
 
 install -Dm755 "$OUT" $SYSROOT/usr/bin/kinstall

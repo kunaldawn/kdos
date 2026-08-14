@@ -12,5 +12,6 @@ name        = encodings
 version     = 1.1.0
 release     = 1
 source      = https://gitlab.freedesktop.org/xorg/font/$name/-/archive/$name-$version/$name-$name-$version.tar.gz
+sha256      = c3f8129ea069d464ff54e8b0ec4ab3a1f9cbaa7a8026edb06758c2bcc2b7f4a7  encodings-1.1.0.tar.gz
 description = X.org font encoding files
 depends     = util-macros mkfontscale

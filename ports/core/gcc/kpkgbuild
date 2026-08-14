@@ -12,5 +12,6 @@ name        = gcc
 version     = 15.2.0
 release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version/$name-$version.tar.xz
+sha256      = 438fd996826b0c82485a29da03a72d71d6e3541a83ec702df4271f6fe025d24e  gcc-15.2.0.tar.xz
 description = The GNU compiler collection
 depends     = mpc mpfr gmp zlib

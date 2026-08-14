@@ -12,5 +12,6 @@ name        = nano
 version     = 8.7
 release     = 1
 source      = https://www.nano-editor.org/dist/v${version%%.*}/$name-$version.tar.xz
+sha256      = afd287aa672c48b8e1a93fdb6c6588453d527510d966822b687f2835f0d986e9  nano-8.7.tar.xz
 description = Simple text editor which aims to replace Pico, the default editor in the Pine package
 depends     = ncurses

@@ -12,6 +12,7 @@ name        = sbc
 version     = 2.0
 release     = 1
 source      = https://www.kernel.org/pub/linux/bluetooth/sbc-$version.tar.xz
+sha256      = 8f12368e1dbbf55e14536520473cfb338c84b392939cc9b64298360fd4a07992  sbc-2.0.tar.xz
 description = Bluetooth Sub-Band Codec library (mandatory codec for A2DP audio)
 homepage    = https://www.kernel.org/pub/linux/bluetooth/
 depends     = libsndfile

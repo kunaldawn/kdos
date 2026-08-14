@@ -7,7 +7,7 @@
 #   pipewire-pulse         PulseAudio shim — appbox apps find audio via the
 #                          shared /run/user/<uid>/pulse socket
 #
-# The xdg-desktop portals (xdg-desktop-portal + the cosmic backend) are
+# The xdg-desktop portals (xdg-desktop-portal + the wlr backend) are
 # D-Bus-activated on demand and need no spawning here — but OBS's screen
 # capture goes portal -> ScreenCast -> pipewire, so without this stack the
 # capture source simply never appears.
@@ -21,11 +21,11 @@ if command -v pipewire >/dev/null 2>&1 && ! pgrep -f '^pipewire$' >/dev/null 2>&
 fi
 
 # The D-Bus activation environment is frozen from BEFORE the compositor
-# exists, so it has no WAYLAND_DISPLAY — and xdg-desktop-portal-cosmic is a
+# exists, so it has no WAYLAND_DISPLAY — and xdg-desktop-portal-wlr is a
 # Wayland client: activated with that stale env it dies instantly, and the
 # main portal then reports no ScreenCast (OBS: "No capture sources
 # available"). Wait for the compositor socket, push the env, start the
-# cosmic backend ourselves, and restart any main portal that raced ahead.
+# wlr backend ourselves, and restart any main portal that raced ahead.
 (
 	for _ in $(seq 1 150); do
 		WD=$(cd "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" 2>/dev/null && \
@@ -37,15 +37,15 @@ fi
 	export WAYLAND_DISPLAY="$WD"
 	dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP \
 		XDG_SESSION_TYPE XCURSOR_THEME XCURSOR_SIZE >/dev/null 2>&1
-	[ -x /usr/libexec/xdg-desktop-portal-cosmic ] && \
-		/usr/libexec/xdg-desktop-portal-cosmic >/dev/null 2>&1 &
+	[ -x /usr/lib/xdg-desktop-portal-wlr ] && \
+		/usr/lib/xdg-desktop-portal-wlr >/dev/null 2>&1 &
 	# The main portal snapshots its backends at startup — it must not come
-	# up until the cosmic backend actually owns its bus name, or ScreenCast
+	# up until the wlr backend actually owns its bus name, or ScreenCast
 	# stays empty for the whole session.
 	for _ in $(seq 1 100); do
 		dbus-send --session --print-reply --dest=org.freedesktop.DBus \
 			/org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
-			string:org.freedesktop.impl.portal.desktop.cosmic 2>/dev/null \
+			string:org.freedesktop.impl.portal.desktop.wlr 2>/dev/null \
 			| grep -q 'boolean true' && break
 		sleep 0.2
 	done
@@ -57,4 +57,27 @@ fi
 	/usr/lib/xdg-desktop-portal >/dev/null 2>&1 &
 ) &
 
-exec cosmic-session
+# The input method, if one is installed. fcitx5 is a Wayland client and speaks
+# input-method-v2 to kdos-comp (the fork's src/input/ime.c, labwc's own relay),
+# so it has to start AFTER the compositor exists — but this script execs the compositor, so
+# the wait happens in the background exactly as the portal's does.
+#
+# It is started here rather than by XDG autostart because KDOS runs no autostart
+# agent; the fcitx5 port is built with ENABLE_XDGAUTOSTART=Off for the same
+# reason. `-d` is fcitx5's own daemonise, and a missing binary is silence: a
+# machine with no input method installed must not print an error every login.
+if command -v fcitx5 >/dev/null 2>&1; then
+	(
+		for _ in $(seq 1 150); do
+			WD=$(cd "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" 2>/dev/null && \
+				ls wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
+			[ -n "$WD" ] && break
+			sleep 0.2
+		done
+		[ -n "$WD" ] || exit 0
+		export WAYLAND_DISPLAY="$WD"
+		fcitx5 -d >/dev/null 2>&1
+	) &
+fi
+
+exec kdos-comp

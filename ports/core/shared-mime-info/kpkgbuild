@@ -10,7 +10,8 @@
 
 name        = shared-mime-info
 version     = 1.10
-release     = 1
+release     = 2
 source      = https://freedesktop.org/~hadess/$name-$version.tar.xz
+sha256      = c625a83b4838befc8cafcd54e3619946515d9e44d63d61c4adf7f5513ddfbebf  shared-mime-info-1.10.tar.xz
 description = A MIME database
 depends     = glib libxml2 intltool

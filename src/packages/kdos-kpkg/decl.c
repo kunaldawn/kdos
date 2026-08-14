@@ -56,11 +56,22 @@ struct KpDecl {
 	char version[128];
 	char release[64];
 	char source[2048];
+	char sha256[4096];
 	char description[512];
 	char homepage[256];
 	char depends[1024];
 	char vendoring[64];
 	char pypackages[512];
+	/* The Alpine package name this port maps onto, for `kdos cve`. Declared
+	 * only when it differs — the kernel is `linux` here and `linux-lts`
+	 * there — and it is a KEY rather than a helper so it is not expanded and
+	 * not carried into the build environment. */
+	char secdb[128];
+	/* How `kdos march` measures this port: a setup line that is run once and
+	 * not timed, and the line that IS timed. Keys rather than helpers so
+	 * they are not expanded and never reach the build environment. */
+	char bench[512];
+	char bench_setup[512];
 	/* "KEY=VALUE", in declaration order: a later helper may refer to an
 	 * earlier one, which `_cargo = $_rust` does. */
 	char var[MAX_VARS][512];
@@ -343,11 +354,24 @@ static void set_key(KpDecl *d, const char *key, const char *val)
 		/* Repeatable: a port with two tarballs writes two lines, and
 		 * the extractor splits this on whitespace anyway. */
 		{ "source", d->source, sizeof(d->source), 1 },
+		/* Repeatable, and matched to a source by BASENAME rather than
+		 * by position: `sha256 = <64 hex>  <filename>`. Void and
+		 * Chimera use positional arrays, which silently miscompare the
+		 * moment someone reorders the source lines — and KDOS recipes
+		 * already have an order-sensitive helper block above them.
+		 * Appending joins entries with a space, so the accumulated
+		 * value reads as alternating <hex> <name> tokens; a hash is
+		 * always 64 characters and a tarball name never contains
+		 * whitespace, so that stays unambiguous. */
+		{ "sha256", d->sha256, sizeof(d->sha256), 1 },
 		{ "description", d->description, sizeof(d->description), 0 },
 		{ "homepage", d->homepage, sizeof(d->homepage), 0 },
 		{ "depends", d->depends, sizeof(d->depends), 1 },
 		{ "vendoring", d->vendoring, sizeof(d->vendoring), 0 },
 		{ "pypackages", d->pypackages, sizeof(d->pypackages), 1 },
+		{ "secdb", d->secdb, sizeof(d->secdb), 0 },
+		{ "bench", d->bench, sizeof(d->bench), 0 },
+		{ "bench_setup", d->bench_setup, sizeof(d->bench_setup), 0 },
 		{ NULL, NULL, 0, 0 }
 	};
 	for (int i = 0; F[i].key; i++) {
@@ -415,6 +439,7 @@ const char *kp_decl_name(const KpDecl *d) { return d->name; }
 const char *kp_decl_version(const KpDecl *d) { return d->version; }
 const char *kp_decl_release(const KpDecl *d) { return d->release; }
 const char *kp_decl_source(const KpDecl *d) { return d->source; }
+const char *kp_decl_sha256(const KpDecl *d) { return d->sha256; }
 const char *kp_decl_description(const KpDecl *d) { return d->description; }
 const char *kp_decl_depends(const KpDecl *d) { return d->depends; }
 
@@ -444,8 +469,12 @@ void kp_decl_prelude(const KpDecl *d, KbBuf *b)
 		{ "version", offsetof(struct KpDecl, version) },
 		{ "release", offsetof(struct KpDecl, release) },
 		{ "source", offsetof(struct KpDecl, source) },
+		{ "sha256", offsetof(struct KpDecl, sha256) },
 		{ "vendoring", offsetof(struct KpDecl, vendoring) },
 		{ "pypackages", offsetof(struct KpDecl, pypackages) },
+		{ "secdb", offsetof(struct KpDecl, secdb) },
+		{ "bench", offsetof(struct KpDecl, bench) },
+		{ "bench_setup", offsetof(struct KpDecl, bench_setup) },
 	};
 	for (size_t i = 0; i < sizeof(SIMPLE) / sizeof(SIMPLE[0]); i++) {
 		const char *v = (const char *)d + SIMPLE[i].off;

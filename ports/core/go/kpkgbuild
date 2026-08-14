@@ -17,6 +17,8 @@ _arch       = linux-amd64
 
 source      = https://go.dev/dl/go$version.src.tar.gz
 source      = https://go.dev/dl/go$_bootstrap.$_arch.tar.gz
+sha256      = 2e91ebb6947a96e9436fb2b3926a8802efe63a6d375dffec4f82aa9dbd6fd43b  go-1.26.2.tar.gz
+sha256      = 00859d7bd6defe8bf84d9db9e57b9a4467b2887c18cd93ae7460e713db774bc1  go1.25.9.linux-amd64.tar.gz
 description = The Go programming language toolchain (with bootstrap)
 homepage    = https://go.dev/
 depends     = bash gcc

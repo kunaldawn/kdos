@@ -12,4 +12,5 @@ name        = yaml
 version     = 0.2.5
 release     = 1
 source      = http://pyyaml.org/download/libyaml/$name-$version.tar.gz
+sha256      = c642ae9b75fee120b2d96c712538bd2cf283228d2337df2cf2988e3c02678ef4  yaml-0.2.5.tar.gz
 description = C library for parsing and emitting YAML

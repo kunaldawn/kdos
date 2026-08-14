@@ -12,5 +12,6 @@ name        = meson
 version     = 1.10.0
 release     = 1
 source      = https://github.com/mesonbuild/meson/releases/download/$version/$name-$version.tar.gz
+sha256      = 8071860c1f46a75ea34801490fd1c445c9d75147a65508cd3a10366a7006cc1c  meson-1.10.0.tar.gz
 description = Open source build system meant to be both extremely fast, and, even more importantly, as user friendly as possible
 depends     = ninja python3-setuptools

@@ -30,6 +30,34 @@ const Service ki_services[] = {
 
 int ki_nservices = (int)(sizeof(ki_services) / sizeof(ki_services[0]));
 
+/*
+ * ext4 first because it is the default and the one the kernel has built in.
+ * btrfs is built in too; xfs is a MODULE, which is why 01_initramfs.sh carries
+ * it — an xfs root the initramfs cannot mount is a machine that installs fine
+ * and never boots again.
+ */
+const Filesystem ki_filesystems[] = {
+	{ "ext4",  "mkfs.ext4",  "-F", "defaults,noatime", 1,
+	  KI_SWAPFILE_FALLOCATE,
+	  "the default: journalled, boring, and what the kernel has built in" },
+	{ "btrfs", "mkfs.btrfs", "-f", "defaults,noatime,compress=zstd:3", 0,
+	  KI_SWAPFILE_BTRFS,
+	  "snapshots and transparent zstd compression" },
+	{ "xfs",   "mkfs.xfs",   "-f", "defaults,noatime", 0,
+	  KI_SWAPFILE_DD,
+	  "large files and parallel IO; it cannot be shrunk" },
+};
+
+int ki_nfilesystems = (int)(sizeof(ki_filesystems) / sizeof(ki_filesystems[0]));
+
+const Filesystem *ki_fs(const char *name)
+{
+	for (int i = 0; i < ki_nfilesystems; i++)
+		if (!strcmp(ki_filesystems[i].name, name))
+			return &ki_filesystems[i];
+	return &ki_filesystems[0];
+}
+
 void conf_defaults(void)
 {
 	memset(&cfg, 0, sizeof(cfg));
@@ -77,12 +105,23 @@ static void set_kv(const char *k, const char *v)
 	else if (!strcmp(k, "format_esp"))
 		cfg.format_esp = atoi(v);
 	else if (!strcmp(k, "fstype"))
-		kb_strlcpy(cfg.fstype, v, sizeof(cfg.fstype));
+		/* ki_fs falls back to ext4, so an answer file naming a
+		 * filesystem this build cannot create installs a working
+		 * machine rather than failing at the mkfs. */
+		kb_strlcpy(cfg.fstype, ki_fs(v)->name, sizeof(cfg.fstype));
 	else if (!strcmp(k, "swap"))
 		cfg.swap = !strcmp(v, "file") ? SWAP_FILE
 			 : !strcmp(v, "partition") ? SWAP_PART : SWAP_NONE;
 	else if (!strcmp(k, "swap_mb"))
 		cfg.swap_mb = atol(v);
+	else if (!strcmp(k, "luks"))
+		cfg.luks = atoi(v);
+	else if (!strcmp(k, "luks_passphrase"))
+		/* Accepted for an unattended install, exactly like `password=`,
+		 * and written back no more than that one is. A passphrase on the
+		 * install medium is the operator's decision to make, not ours to
+		 * make for them by refusing. */
+		kb_strlcpy(cfg.luks_pass, v, sizeof(cfg.luks_pass));
 	else if (!strcmp(k, "hostname"))
 		kb_strlcpy(cfg.hostname, v, sizeof(cfg.hostname));
 	else if (!strcmp(k, "username"))
@@ -157,9 +196,10 @@ int conf_save(const char *path)
 		 "# KDOS installer answer file\n"
 		 "# kinstall --config <this file> [--unattended]\n"
 		 "#\n"
-		 "# Passwords are deliberately NOT written here. Set them with\n"
-		 "# password= / root_password= yourself if you accept a plaintext\n"
-		 "# credential on the medium this file lives on.\n"
+		 "# Passwords are deliberately NOT written here — including the\n"
+		 "# LUKS passphrase. Set them with password= / root_password= /\n"
+		 "# luks_passphrase= yourself if you accept a plaintext credential\n"
+		 "# on the medium this file lives on.\n"
 		 "\n"
 		 "keymap         = %s\n"
 		 "timezone       = %s\n"
@@ -173,6 +213,7 @@ int conf_save(const char *path)
 		 "fstype         = %s\n"
 		 "swap           = %s\n"
 		 "swap_mb        = %ld\n"
+		 "luks           = %d\n"
 		 "\n"
 		 "hostname       = %s\n"
 		 "username       = %s\n"
@@ -190,7 +231,7 @@ int conf_save(const char *path)
 		 cfg.part_esp, cfg.part_root, cfg.format_esp, cfg.fstype,
 		 cfg.swap == SWAP_FILE ? "file"
 				       : cfg.swap == SWAP_PART ? "partition" : "none",
-		 cfg.swap_mb,
+		 cfg.swap_mb, cfg.luks,
 		 cfg.hostname, cfg.username, cfg.fullname, cfg.root_locked,
 		 cfg.theme, cfg.with_appbox, svc, cfg.reboot_after);
 

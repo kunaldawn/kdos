@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i $PORT_SRC/ncurses-opaque-window.patch
+patch -p1 -i $PORT_SRC/curses-kbd-debug-print.patch
 
 # aalib is from 2001 and ships an autoconf 2.13 configure whose very first
 # probe is K&R: `main(){return(0);}`. GCC 14 promoted that whole family from

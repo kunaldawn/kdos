@@ -14,4 +14,5 @@ name        = musl-obstack
 version     = 1.2.3
 release     = 1
 source      = https://github.com/void-linux/musl-obstack/archive/v$version.tar.gz
+sha256      = 9ffb3479b15df0170eba4480e51723c3961dbe0b461ec289744622db03a69395  musl-obstack-1.2.3.tar.gz
 description = Obstack standalone library

@@ -12,6 +12,7 @@ name        = extra-cmake-modules
 version     = 6.23.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
+sha256      = dba2d34765d09a3a5d3e95a64b9b18ae278b1dfee507cbd0a873a910a1084194  extra-cmake-modules-6.23.0.tar.xz
 description = Extra modules and scripts for CMake (KDE)
 homepage    = https://api.kde.org/frameworks/extra-cmake-modules/html/
 depends     = cmake

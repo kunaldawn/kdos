@@ -12,5 +12,6 @@ name        = eudev
 version     = 3.2.14
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/eudev-project/eudev/archive/v$version.tar.gz
+sha256      = c340e6c51dfc5531ac0c0fa84a34b72162acf525f9023eb9cf4931b782c8f177  eudev-3.2.14.tar.gz
 description = Programs for dynamic creation of device nodes
 depends     = util-linux kmod gperf

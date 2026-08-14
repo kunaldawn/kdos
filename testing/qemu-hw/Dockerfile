@@ -42,6 +42,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libwayland-egl1 \
         libwayland-client0 \
         pciutils \
+        # qemu-system-x86 pulls in libpipewire, so `-audiodev help` lists
+        # pipewire and the probe picks it — but libpipewire will not build a
+        # context without /usr/share/pipewire/client.conf, and that file ships
+        # in the `pipewire` package, NOT in libpipewire-0.3-0t64 or the
+        # -common package (which on 25.10 carries only documentation). Without
+        # it QEMU dies at startup with "Could not create PipeWire context" and
+        # `make run-hw` never reaches the guest. The daemon it also installs is
+        # never started here; only its config is wanted.
+        pipewire \
     && rm -rf /var/lib/apt/lists/*
 
 # glvnd dispatch finds the NVIDIA libs the container toolkit injects at runtime.

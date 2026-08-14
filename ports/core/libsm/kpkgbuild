@@ -12,5 +12,6 @@ name        = libsm
 version     = 1.2.6
 release     = 1
 source      = $name-$version.tar.bz2::http://ftp.x.org/pub/individual/lib/libSM-$version.tar.xz
+sha256      = be7c0abdb15cbfd29ac62573c1c82e877f9d4047ad15321e7ea97d1e43d835be  libsm-1.2.6.tar.bz2
 description = X11 Session Management library
 depends     = libice util-linux

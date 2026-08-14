@@ -12,6 +12,7 @@ name        = networkmanager
 version     = 1.56.0
 release     = 1
 source      = https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/archive/$version/NetworkManager-$version.tar.bz2
+sha256      = 589281aed255b5872c0899240bb0ded1883cd7221aa5b54d42a90dffcb57fdec  networkmanager-1.56.0.tar.bz2
 description = Network connection manager (Wi-Fi, Ethernet, VPN; libnm for noctalia network widget)
 homepage    = https://networkmanager.dev/
 depends     = meson glib dbus libnl libndp jansson libgudev libxslt polkit wpa_supplicant nftables dnsmasq libpsl newt

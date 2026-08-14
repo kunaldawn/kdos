@@ -45,8 +45,7 @@ What KDOS changed
    stays red and an audio file stays amber — while folders, devices and places
    become phosphor.
 
-7. index.theme is replaced: the theme is named KDOS and inherits Cosmic, Pop
-   and hicolor so COSMIC's own applet icons and the alien apps' icons still
-   resolve.
+7. index.theme is replaced: the theme is named KDOS and inherits hicolor, so
+   the alien apps' icons still resolve.
 
 No upstream path, geometry or shape is otherwise altered.

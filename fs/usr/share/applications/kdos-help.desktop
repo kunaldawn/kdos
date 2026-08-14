@@ -2,7 +2,7 @@
 Type=Application
 Name=KDOS Help
 GenericName=Keybinds and commands
-Comment=KDOS cheat sheet — commands and COSMIC keybinds
+Comment=KDOS cheat sheet — commands and keybinds
 Exec=foot --app-id=kdos-help -e kdos help --pager
 Icon=help-browser
 Terminal=false

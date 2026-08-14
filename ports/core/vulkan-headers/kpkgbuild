@@ -12,6 +12,7 @@ name        = vulkan-headers
 version     = 1.4.345
 release     = 1
 source      = https://github.com/KhronosGroup/Vulkan-Headers/archive/v$version/$name-$version.tar.gz
+sha256      = 99e19205df172c33229f18b5574c9258bc73ea229ec7d6b04daa357b2430f6c8  vulkan-headers-1.4.345.tar.gz
 description = Vulkan header files
 homepage    = https://www.khronos.org/vulkan/
 depends     = cmake

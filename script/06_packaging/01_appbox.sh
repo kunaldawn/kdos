@@ -65,13 +65,26 @@ case "${1:-}" in
 --load)
     cd /
     export PODMAN_IGNORE_CGROUPSV1_WARNING=1
+    # TMPDIR too, not just --runroot. podman's scratch defaults to /var/tmp,
+    # and the flatten below streams the WHOLE image through it as a tar —
+    # 5.6 GB of podman<pid>/ left sitting in the rootfs, which then shipped
+    # inside the ISO and put 2 GB on it. /tmp here is the build tmpfs and is
+    # cleaned by 00_cleanup.sh.
+    export TMPDIR=/tmp/appbox-runroot
     mkdir -p "$STORAGE" /tmp/appbox-runroot
     if [ -f "$TAR" ]; then
         podman --root "$STORAGE" --runroot /tmp/appbox-runroot load -i "$TAR"
     else
         # No monolithic tar in the repo (LFS 2G/file limit): stream it back
         # out of the chunked image/ directory instead.
-        kdos-appbox image assemble "$IMGDIR" | \
+        #
+        # Absolute path, like 00_theme.sh calls /usr/local/bin/kdos: this runs
+        # under chroot_exec.sh, whose PATH is /bin:/usr/bin:/sbin:/usr/sbin and
+        # does NOT carry /usr/local/bin, which is where kdos-appbox installs.
+        # A bare name here failed with "command not found" and podman then
+        # reported an unreadable image format, which points at the archive
+        # rather than at the PATH.
+        /usr/local/bin/kdos-appbox image assemble "$IMGDIR" | \
             podman --root "$STORAGE" --runroot /tmp/appbox-runroot load
     fi
     # Flatten to ONE layer. This rootful store is later mounted by ROOTLESS
@@ -87,6 +100,9 @@ case "${1:-}" in
     podman --root "$STORAGE" --runroot /tmp/appbox-runroot rm flatten
     podman --root "$STORAGE" --runroot /tmp/appbox-runroot image prune -f
     podman --root "$STORAGE" --runroot /tmp/appbox-runroot image exists localhost/kdos-appbox:latest
+    # Belt and braces: anything podman still parked in the rootfs's /var/tmp
+    # is scratch by definition and must not reach the image.
+    rm -rf /var/tmp/podman* 2>/dev/null || true
     exit 0
     ;;
 esac
@@ -110,7 +126,7 @@ rm -rf /tmp/appbox-runroot
 grep -q kdos-appbox "$STORAGE"/*-images/images.json
 
 echo "Remapping ownership to the rootless layout..."
-kdos-appbox image remap-uids "$STORAGE"
+/usr/local/bin/kdos-appbox image remap-uids "$STORAGE"
 chown kdos:kdos /home/kdos/.local /home/kdos/.local/share \
                 /home/kdos/.local/share/containers
 # The rootful load/prune leaves an empty volumes/ skeleton whose remapped
