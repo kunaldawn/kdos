@@ -12,5 +12,6 @@ name        = gdbm
 version     = 1.26
 release     = 1
 source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.gz
+sha256      = 6a24504a14de4a744103dcb936be976df6fbe88ccff26065e54c1c47946f4a5e  gdbm-1.26.tar.gz
 description = The GNU Database Manager
 depends     = readline ncurses

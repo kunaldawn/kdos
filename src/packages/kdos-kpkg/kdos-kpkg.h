@@ -19,6 +19,7 @@
 
 #include "kbase.h"
 #include "kpkg.h"
+#include "ksig.h"
 
 /* `==> ` on stdout, `ERROR: ` on stderr — the two the shell version had, and
  * the only two anything downstream has ever seen. */
@@ -41,6 +42,7 @@ const char *kp_decl_name(const KpDecl *d);
 const char *kp_decl_version(const KpDecl *d);
 const char *kp_decl_release(const KpDecl *d);
 const char *kp_decl_source(const KpDecl *d);
+const char *kp_decl_sha256(const KpDecl *d);
 const char *kp_decl_description(const KpDecl *d);
 const char *kp_decl_depends(const KpDecl *d);
 
@@ -59,5 +61,33 @@ int add_main(int argc, char **argv);
 int del_main(int argc, char **argv);
 int build_main(int argc, char **argv);
 int front_main(int argc, char **argv);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The binary repository (binhost.c)
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* No index is ever this large — 396 ports plus room. The cap exists so the
+ * parser cannot be made to allocate by a hostile index. */
+#define KP_MAX_INDEX 4096
+
+int kp_cmd_index(const KpConf *c, int argc, char **argv);
+int kp_cmd_keygen(int argc, char **argv);
+int kp_cmd_verify_index(int argc, char **argv);
+int kp_cmd_binhost(const KpConf *c, int argc, char **argv);
+int kp_cmd_verify_pkg(int argc, char **argv);
+
+/* Deltas (delta.c). Made and applied over the UNCOMPRESSED tars — two .tar.xz
+ * files share almost no bytes even when their contents are nearly identical. */
+int kp_delta_make(const char *oldpkg, const char *newpkg, const char *out);
+int kp_delta_apply(const char *oldpkg, const char *delta, const char *out);
+int kp_cmd_delta(int argc, char **argv);
+int kp_cmd_apply_delta(int argc, char **argv);
+
+/*
+ * Check `<path>.sig` against the trusted keys. Returns 0 verified, 1 "there is
+ * nothing to check" (no sidecar, or no keyring, and `required` is 0), -1 a
+ * signature that does not verify — which is never the same as an absent one.
+ */
+int kp_verify_package(const char *path, int required, char who[KSIG_ID_HEX]);
 
 #endif /* KDOS_KPKG_H */

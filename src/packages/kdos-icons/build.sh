@@ -9,17 +9,16 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# The generator also recolours COSMIC's own app icons and installs the
-# KDOS marks — it has to, because `kdos theme <accent>` re-runs it
-# against $HOME and must produce a complete theme without this
-# kpkgbuild's help.
+# The generator also installs the KDOS marks — it has to, because
+# `kdos theme <accent>` re-runs it against $HOME and must produce a
+# complete theme without this kpkgbuild's help.
 kdos-theme icons "$PKG/usr/share/icons/KDOS" phosphor \
 	--src "$PORT_SRC/art" --marks "$PORT_SRC/marks"
 
 # hicolor gets the marks too, so every lookup path lands on the tux and not
 # just the theme-internal one. Any stale SVG from the pixel-art era has to
 # go: at a given size the toolkit picks scalable over a fixed-size PNG.
-for n in com.system76.CosmicAppLibrary com.system76.CosmicPanelAppButton; do
+for n in kdos-launcher; do
 	rm -f "$PKG/usr/share/icons/hicolor/scalable/apps/$n.svg"
 	for f in "$PORT_SRC"/marks/tux-*.png; do
 		s="${f##*/tux-}"; s="${s%.png}"

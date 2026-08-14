@@ -28,9 +28,11 @@ trap 'rm -rf "$SP"' EXIT
 
 echo "==> building kpkg for the checks"
 cc -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
-   -Isrc/libs/libkbase -Isrc/libs/libkpkg -Isrc/packages/kdos-kpkg \
+   -Isrc/libs/libkbase -Isrc/libs/libkpkg -Isrc/libs/libksig \
+   -Isrc/packages/kdos-kpkg \
    -o "$SP/kdos-kpkg" src/packages/kdos-kpkg/*.c src/libs/libkbase/*.c \
-   src/libs/libkpkg/*.c || { echo "  cannot build kpkg"; exit 1; }
+   src/libs/libkpkg/*.c src/libs/libksig/*.c \
+   src/libs/libksig/monocypher/*.c || { echo "  cannot build kpkg"; exit 1; }
 # Installed as five names and dispatched on its own basename, so the checks
 # have to invoke it the same way — `kpkg kpkgdepends ...` correctly reaches
 # kpkg's front end and prints usage, which is not what is being tested.
@@ -38,7 +40,10 @@ for n in kpkg kpkgadd kpkgbuild kpkgdel kpkgdepends; do
     ln -sf kdos-kpkg "$SP/$n"
 done
 
-export PORT_REPO="$PWD/ports/core $PWD/src/packages"
+# src/desktop is the third port repo — the compositor and shell live there,
+# and script/desktop.env.sh puts it on PORT_REPO for the desktop phase. This
+# has to match, or preflight reports ports that build fine as missing.
+export PORT_REPO="$PWD/ports/core $PWD/src/packages $PWD/src/desktop"
 export KPKG_CONF=/nonexistent PKGDB_DIR=/dev/null
 
 echo
@@ -49,7 +54,8 @@ for f in script/*/packages.txt; do
         [ -z "$p" ] && continue
         case "$p" in \#*) continue ;; esac
         if [ ! -f "ports/core/$p/kpkgbuild" ] && \
-           [ ! -f "src/packages/$p/kpkgbuild" ]; then
+           [ ! -f "src/packages/$p/kpkgbuild" ] && \
+           [ ! -f "src/desktop/$p/kpkgbuild" ]; then
             missing="$missing $p"
         fi
     done < "$f"
@@ -76,11 +82,12 @@ done
 echo
 echo "==> every depends key names a port that exists"
 orphans=0
-for d in ports/core/* src/packages/*; do
+for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     for dep in $(sed -n 's/^depends[[:blank:]]*=[[:blank:]]*//p' "$d/kpkgbuild"); do
         if [ ! -f "ports/core/$dep/kpkgbuild" ] && \
-           [ ! -f "src/packages/$dep/kpkgbuild" ]; then
+           [ ! -f "src/packages/$dep/kpkgbuild" ] && \
+           [ ! -f "src/desktop/$dep/kpkgbuild" ]; then
             bad "$(basename "$d")" "depends on '$dep', which has no port"
             orphans=$((orphans + 1))
         fi
@@ -89,13 +96,77 @@ done
 [ "$orphans" = 0 ] && note "all depends resolve" "ok"
 
 echo
+echo "==> every archive a port ships is named by a sha256 in its recipe"
+# kpkg refuses to extract a source it has no hash for, so a gap here is a
+# port that cannot build. The hashes were bootstrapped from the git-LFS
+# pointers, where the oid IS the file's sha256.
+unhashed=0
+for d in ports/core/* src/packages/* src/desktop/*; do
+    [ -f "$d/kpkgbuild" ] || continue
+    for a in "$d"/*.tar.gz "$d"/*.tar.xz "$d"/*.tar.bz2 "$d"/*.tar.zst \
+             "$d"/*.tgz "$d"/*.zip; do
+        [ -f "$a" ] || continue
+        base=$(basename "$a")
+        if ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
+            bad "$(basename "$d")" "ships $base with no sha256 line"
+            unhashed=$((unhashed + 1))
+        fi
+    done
+done
+[ "$unhashed" = 0 ] && note "every archive is hashed" "ok"
+
+# The escape hatch must be unused in a committed tree.
+if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild src/desktop/*/kpkgbuild 2>/dev/null; then
+    bad "recipes" "a recipe references KDOS_ALLOW_UNVERIFIED"
+else
+    note "no recipe needs the unverified escape hatch" "ok"
+fi
+
+echo
+echo "==> every reason names things that still exist"
+# Without this the reasons corpus diverges from the tree within a month and
+# then actively lies, which is worse than not existing at all. Same gate as
+# an unresolvable `# depends`.
+rot=0
+for r in src/packages/kdos-tools/reasons/*.txt; do
+    [ -f "$r" ] || continue
+    _rn=$(basename "$r" .txt)
+    grep -q "^title:" "$r" || { bad "$_rn" "has no title:"; rot=$((rot + 1)); }
+    grep -q "^path:\|^port:" "$r" || { bad "$_rn" "claims nothing"; rot=$((rot + 1)); }
+
+    sed -n 's/^port:[[:blank:]]*//p' "$r" | while read -r _p; do
+        [ -n "$_p" ] || continue
+        if [ ! -f "ports/core/$_p/kpkgbuild" ] && [ ! -f "src/packages/$_p/kpkgbuild" ] && \
+           [ ! -f "src/desktop/$_p/kpkgbuild" ]; then
+            bad "$_rn" "names port '$_p', which no longer exists"
+        fi
+    done
+
+    # A path is real if fs/ provides it, or if the reason also names a port
+    # (which is what installs it — preflight cannot see an installed tree).
+    _hasport=$(grep -c "^port:" "$r")
+    sed -n 's/^path:[[:blank:]]*//p' "$r" | while read -r _q; do
+        [ -n "$_q" ] || continue
+        if [ ! -e "fs$_q" ] && [ "$_hasport" = 0 ]; then
+            bad "$_rn" "names path '$_q', which fs/ does not provide and no port claims"
+        fi
+    done
+
+    sed -n 's/^see:[[:blank:]]*//p' "$r" | while read -r _s; do
+        [ -n "$_s" ] || continue
+        [ -f "src/packages/kdos-tools/reasons/$_s.txt" ] || bad "$_rn" "sees '$_s', which is not a reason"
+    done
+done
+[ "$rot" = 0 ] && note "reasons resolve" "$(ls src/packages/kdos-tools/reasons/*.txt 2>/dev/null | wc -l) recorded"
+
+echo
 echo "==> every port has a build.sh, and it parses"
 # The build is a shell script in its own file, so it can actually be checked:
 # `bash -n` on 396 recipes is a real syntax gate, and it was impossible while
 # the build lived inside the recipe.
 missing=0
 scripts=0
-for d in ports/core/* src/packages/*; do
+for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     p=$(basename "$d")
     if [ ! -f "$d/build.sh" ]; then
@@ -126,7 +197,7 @@ echo
 echo "==> every recipe parses as metadata"
 # The same reader the build uses. A recipe that does not parse has no name,
 # version or release, and nothing downstream would find out until it ran.
-for d in ports/core/* src/packages/*; do
+for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     p=$(basename "$d")
     out=$("$SP/kpkg" meta "$d" 2>"$SP/err")
@@ -138,7 +209,7 @@ note "recipe metadata" "all recipes parse"
 
 echo
 echo "==> every recipe declares a name, version and release"
-for d in ports/core/* src/packages/*; do
+for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     for k in name version release; do
         grep -qE "^$k[[:blank:]]*=" "$d/kpkgbuild" || \
@@ -185,6 +256,146 @@ for f in $(grep -rl '^#!' fs/ 2>/dev/null); do
     esac
 done
 note "rootfs interpreters" "bash and sh only"
+
+# ── the build tree still carries packages whose port is gone ───────────────
+#
+# `fs/` is manifest-guarded, packages were not, and the build tree is
+# incremental: a port deleted from `ports/` left its package installed forever.
+# Measured on v0.2 — the ISO shipped all sixteen `cosmic-*` packages,
+# `pop-launcher`, `kdos-theme-helper` and `xdg-desktop-portal-cosmic`, 529 MB of
+# a desktop removed a milestone earlier. `06_packaging/00_orphans.sh` sweeps
+# them at package time; this says so BEFORE a two-hour build does.
+#
+# Skipped, not failed, when there is no build tree: preflight's whole point is
+# that it needs nothing but the repo.
+echo
+echo "==> the build tree carries no package whose port is gone"
+if [ ! -d build/fs/var/lib/kpkg/db ]; then
+    note "orphaned packages" "skipped — no build tree"
+else
+    orphans=""
+    for pkg in $(ls build/fs/var/lib/kpkg/db); do
+        if [ ! -f "ports/core/$pkg/kpkgbuild" ] && \
+           [ ! -f "src/packages/$pkg/kpkgbuild" ] && \
+           [ ! -f "src/desktop/$pkg/kpkgbuild" ]; then
+            orphans="$orphans $pkg"
+        fi
+    done
+    if [ -n "$orphans" ]; then
+        bad "orphaned packages" "installed with no recipe:$orphans"
+    else
+        note "orphaned packages" "none"
+    fi
+fi
+
+# ── the shipped rc.xml must not throw away labwc's default bindings ────────
+#
+# THE MOST EXPENSIVE ONE-LINE MISTAKE IN THIS TREE.
+#
+# labwc loads its built-in key and mouse bindings only when the user's config
+# defines NONE of that kind (rcxml.c post_processing). A file that binds one
+# key therefore silently discards every default — and the defaults are not
+# conveniences, they are the desktop: `Client Left Press -> Focus/Raise` is
+# what makes CLICKING A WINDOW FOCUS IT (focus_follow_mouse is false), `Title
+# Left Drag` is the titlebar, `Close/Iconify/Maximize` are the three buttons
+# drawn on every frame, `Border Left Drag` is the edges, and `Root Right Press`
+# is the desktop menu.
+#
+# KDOS shipped exactly that file for a release. The symptom on a booted ISO is
+# "the mouse does not work" and it is invisible to every other check here: the
+# XML is valid, the recipe parses, the build succeeds.
+echo
+echo "==> the shipped rc.xml keeps labwc's default bindings"
+RC=fs/etc/skel/.config/kdos-comp/rc.xml
+if [ ! -f "$RC" ]; then
+    bad "rc.xml defaults" "$RC is missing"
+else
+    # COMMENTS ARE STRIPPED FIRST, and that is not fussiness: this file's own
+    # header explains the trap in prose, so it contains the words <mouse> and
+    # <keyboard> and <default /> as TEXT. A grep over the raw file finds them
+    # there and passes whatever the config actually says — which is a check
+    # that reports on its own documentation.
+    awk '
+        { line = $0
+          while (1) {
+              if (inc) { p = index(line, "-->")
+                         if (!p) { line = ""; break }
+                         line = substr(line, p + 3); inc = 0; continue }
+              p = index(line, "<!--")
+              if (!p) break
+              out = out substr(line, 1, p - 1); line = substr(line, p + 4)
+              inc = 1
+          }
+          out = out line "\n" }
+        END { printf "%s", out }
+    ' "$RC" > "$SP/rc-nocomment.xml"
+
+    for sect in keyboard mouse; do
+        if ! grep -q "<$sect>" "$SP/rc-nocomment.xml"; then
+            note "rc.xml <$sect>" "no section — labwc's defaults load"
+        elif sed -n "/<$sect>/,/<\/$sect>/p" "$SP/rc-nocomment.xml" \
+                | grep -q "<default */>"; then
+            note "rc.xml <$sect>" "<default /> present"
+        else
+            bad "rc.xml <$sect>" \
+                "binds something without <default />: every labwc default in that section is discarded"
+        fi
+    done
+fi
+
+# ── every command the desktop's own config names must exist ────────────────
+#
+# rc.xml and menu.xml are the two files that turn a keystroke or a menu row
+# into a program, and NOTHING checks them: the XML is valid whatever the
+# command says, the recipe parses, the build succeeds, and the failure is a
+# key that does nothing on a booted ISO. This tree has shipped that twice —
+# `<promptCommand>` named `labnag`, which is `-Dlabnag=disabled` and therefore
+# not on the image at all, and `kdos-desk` called `kdos-appbox open` for a
+# release before that subcommand existed.
+#
+# A command counts as existing when a port of that name is in the tree, when
+# some build.sh installs or links it into a bin directory, or when fs/ ships
+# it. That is the same question the ISO asks, minus the two hours.
+echo
+echo "==> every command in the shipped rc.xml and menu.xml exists"
+for f in fs/etc/skel/.config/kdos-comp/rc.xml \
+         fs/etc/skel/.config/kdos-comp/menu.xml; do
+    [ -f "$f" ] || continue
+    # command="foo -x" and <promptCommand>foo …</promptCommand>; the first
+    # word is the program. `foot -e mc` also contributes `mc`, because a
+    # terminal wrapper that opens nothing is the same failure one level down.
+    { sed -n 's/.*command="\([^"]*\)".*/\1/p' "$f"
+      sed -n 's,.*<promptCommand>\([^<]*\)</promptCommand>.*,\1,p' "$f"
+    } | while read -r line; do
+        set -- $line
+        echo "$1"
+        [ "$1" = foot ] && [ "$2" = "-e" ] && echo "$3"
+    done
+done | sort -u | while read -r cmd; do
+    [ -n "$cmd" ] || continue
+    if [ -d "ports/core/$cmd" ] || [ -d "src/packages/$cmd" ] ||
+       [ -d "src/desktop/$cmd" ] ||
+       [ -e "fs/usr/local/bin/$cmd" ] || [ -e "fs/usr/bin/$cmd" ] ||
+       grep -rqF -- "/bin/$cmd\"" ports/core/*/build.sh src/packages/*/build.sh \
+            src/desktop/*/build.sh 2>/dev/null ||
+       # ...or in a `for t in …` list, which is what a name installed by a
+       # loop looks like: kdos-tools links five of its names that way and the
+       # path form never appears in the file at all. Restricted to those lines
+       # ON PURPOSE — a bare word search over the whole recipe passes on a
+       # COMMENT, which is exactly how a check like this ends up green against
+       # a desktop that does not work (`-Dlabnag=disabled` matched `labnag`).
+       grep -rhE '^[[:space:]]*for [A-Za-z_]+ in ' src/packages/*/build.sh \
+            src/desktop/*/build.sh 2>/dev/null |
+            grep -qE "(^|[[:space:]])$cmd([[:space:]]|;|\$)"; then
+        continue
+    fi
+    echo "MISSING $cmd"
+done > "$SP/missing-cmds" 2>/dev/null
+if [ -s "$SP/missing-cmds" ]; then
+    bad "desktop commands" "$(tr '\n' ' ' < "$SP/missing-cmds")"
+else
+    note "desktop commands" "every one is provided by the tree"
+fi
 
 echo
 if [ "$fail" = 0 ]; then

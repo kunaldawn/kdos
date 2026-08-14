@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wlroots
+version     = 0.20.2
+release     = 1
+source      = https://gitlab.freedesktop.org/wlroots/wlroots/-/archive/$version/wlroots-$version.tar.gz
+sha256      = 972c7ac44b17828f4702bfae7cd8347346a3fb5b2c1076cfa2c3fcedac5ec343  wlroots-0.20.2.tar.gz
+description = Modular Wayland compositor library — the base kdos-comp is built on
+homepage    = https://gitlab.freedesktop.org/wlroots/wlroots
+depends     = meson ninja wayland wayland-protocols libdrm mesa pixman libxkbcommon libinput seatd eudev libdisplay-info hwdata vulkan-loader vulkan-headers glslang xwayland libxcb xcb-util-renderutil xcb-util-wm

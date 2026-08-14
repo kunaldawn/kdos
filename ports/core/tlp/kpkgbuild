@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tlp
+version     = 1.8.0
+release     = 1
+source      = https://github.com/linrunner/TLP/archive/$version/TLP-$version.tar.gz
+sha256      = 65515f7652064a1be2940c031e045b762924bb1dbd94f5e58e3b765113cf5210  tlp-1.8.0.tar.gz
+description = Laptop power saving — pure shell over /sys, no daemon
+homepage    = https://linrunner.de/tlp
+depends     = bash

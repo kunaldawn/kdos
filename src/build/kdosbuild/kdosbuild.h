@@ -307,6 +307,25 @@ int log_find(const char *hay, const char *needle);
 int view_selftest(void);	/* --selftest: the assertions over the above */
 
 /* ──────────────────────────────────────────────────────────────────────── */
+/* Headless reporting — text and JSON, one traversal (report.c)              */
+
+typedef struct {
+	void (*begin)(const Manager *m);	/* NULL for text          */
+	void (*group)(const Manager *m, const BStep *s);
+	void (*step_open)(const Manager *m, const BStep *s);
+	void (*step_close)(const Manager *m, const BStep *s);
+	void (*notice)(const Manager *m, const char *text);
+	void (*restore)(const Manager *m, const char *phase);
+	void (*snap_tick)(const Manager *m);
+	void (*finish)(const Manager *m);
+} Reporter;
+
+const Reporter *reporter_for(int json);
+void report_snapshots_json(const KbuildPhase *ph, int nph,
+			   const KbuildSnapshot *snaps, int n,
+			   const char *commit);
+
+/* ──────────────────────────────────────────────────────────────────────── */
 /* Screens                                                                  */
 
 enum { PICK_QUIT = 0, PICK_FRESH, PICK_RESTORE, PICK_PLAN };

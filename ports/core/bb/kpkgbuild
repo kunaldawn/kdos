@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = bb
+version     = 1.3rc1
+release     = 1
+source      = https://downloads.sourceforge.net/project/aa-project/$name/$version/$name-$version.tar.gz
+sha256      = 793d88c872793b6dab444cf5bab24f283ecb2f3502f1479ebbe41dd8e90b81c4  bb-1.3rc1.tar.gz
+description = The original AAlib demo, upstream and unmodified
+homepage    = https://aa-project.sourceforge.net/bb/
+depends     = aalib libmikmod ncurses

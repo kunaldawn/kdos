@@ -12,5 +12,6 @@ name        = nettle
 version     = 3.10.2
 release     = 1
 source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.gz
+sha256      = fe9ff51cb1f2abb5e65a6b8c10a92da0ab5ab6eaf26e7fc2b675c45f1fb519b5  nettle-3.10.2.tar.gz
 description = Low-level cryptographic library that is designed to fit easily in many contexts
 depends     = libgmp

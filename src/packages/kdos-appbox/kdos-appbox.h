@@ -23,6 +23,9 @@
 #define DEFAULT_BOX   "kdos-apps"
 #define DEFAULT_IMAGE "localhost/kdos-appbox:latest"
 #define APP_TABLE     "/usr/share/kdos/alien-apps"
+/* The security-context-v1 engine. Absent on a tree built before M2.5, which is
+ * why every use of it is guarded rather than assumed. */
+#define KDOS_BOXSOCK  "/usr/bin/kdos-boxsock"
 
 #define MAX_LINE   4096
 
@@ -67,7 +70,7 @@ int  box_ensure(const char *box);
 int  box_setup_done(const char *box);
 int  box_wait_ready(const char *box, int seconds);
 int  image_exists(const char *image);
-int  image_has_qt_gtk(const char *image);
+int  image_has_label(const char *image, const char *label);
 
 /* ----------------------------------------------------------------- app.c */
 
@@ -92,6 +95,12 @@ int tui_main(void);
 /* Regenerate the launchers, the mime cache, the alien-apps table and the
  * /usr/local/bin shims from an image's /usr/share/applications. */
 int cmd_genlaunchers(const char *srcdir, const char *fsroot);
+
+/* ---------------------------------------------------------------- open.c */
+
+/* A path, opened by whatever the freedesktop association says opens it —
+ * host app or boxed app, since both are ordinary desktop entries here. */
+int cmd_open(int argc, char **argv);
 
 /* --------------------------------------------------------------- image.c */
 

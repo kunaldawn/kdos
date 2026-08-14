@@ -12,6 +12,7 @@ name        = utf8proc
 version     = 2.10.0
 release     = 1
 source      = https://github.com/JuliaStrings/utf8proc/archive/refs/tags/v$version.tar.gz
+sha256      = 6f4f1b639daa6dca9f80bc5db1233e9cbaa31a67790887106160b33ef743f136  utf8proc-2.10.0.tar.gz
 description = Unicode normalization, casefolding, etc. (fcft dep)
 homepage    = https://github.com/JuliaStrings/utf8proc
 depends     = cmake

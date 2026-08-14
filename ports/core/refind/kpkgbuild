@@ -12,5 +12,6 @@ name        = refind
 version     = 0.14.2
 release     = 1
 source      = https://downloads.sourceforge.net/project/$name/$version/$name-src-$version.tar.gz
+sha256      = f7d93ce80da76b86c567281ea225b6a87907ce86ff77233c9357a522c115c8f0  refind-0.14.2.tar.gz
 description = rEFInd Boot Manager
 depends     = gnu-efi

@@ -12,5 +12,6 @@ name        = ninja
 version     = 1.13.2
 release     = 1
 source      = https://github.com/ninja-build/ninja/archive/v$version/ninja-$version.tar.gz
+sha256      = 974d6b2f4eeefa25625d34da3cb36bdcebe7fbce40f4c16ac0835fd1c0cbae17  ninja-1.13.2.tar.gz
 description = Small build system with a focus on speed
 depends     = python3

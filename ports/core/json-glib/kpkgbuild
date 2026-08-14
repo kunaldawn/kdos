@@ -12,6 +12,7 @@ name        = json-glib
 version     = 1.10.8
 release     = 1
 source      = https://download.gnome.org/sources/json-glib/${version%.*}/json-glib-$version.tar.xz
+sha256      = 55c5c141a564245b8f8fbe7698663c87a45a7333c2a2c56f06f811ab73b212dd  json-glib-1.10.8.tar.xz
 description = JSON parser/serializer library built on GLib (used by xdg-desktop-portal)
 homepage    = https://gitlab.gnome.org/GNOME/json-glib
 depends     = meson glib

@@ -12,6 +12,7 @@ name        = aview
 version     = 1.3.0rc1
 release     = 1
 source      = https://downloads.sourceforge.net/project/aa-project/$name/$version/$name-$version.tar.gz
+sha256      = 42d61c4194e8b9b69a881fdde698c83cb27d7eda59e08b300e73aaa34474ec99  aview-1.3.0rc1.tar.gz
 description = ASCII art image browser and FLI/FLC player for the terminal
 homepage    = https://aa-project.sourceforge.net/aview/
 depends     = aalib bash imagemagick

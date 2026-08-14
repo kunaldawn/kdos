@@ -12,4 +12,5 @@ name        = libpciaccess
 version     = 0.18.1
 release     = 1
 source      = http://ftp.x.org/pub/individual/lib/libpciaccess-$version.tar.xz
+sha256      = 4af43444b38adb5545d0ed1c2ce46d9608cc47b31c2387fc5181656765a6fa76  libpciaccess-0.18.1.tar.xz
 description = X11 PCI access library

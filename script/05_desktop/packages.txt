@@ -1,0 +1,75 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   Phase 5: The desktop
+# ---------------------------------
+#
+# Everything the desktop is, and nothing the userland already provides.
+# The Wayland base (wayland, wayland-protocols, seatd, foot, grim, slurp,
+# wl-clipboard, xwayland) is phase 4 — it is useful without a compositor.
+#
+# See docs/KDOS-DESKTOP.md.
+
+# The compositor library. Pinned and vendored; wlroots breaks API every
+# release. Xwayland's xwm needs ICCCM and EWMH, which is xcb-util-wm.
+xcb-util-wm
+wlroots
+
+# The compositor. src/desktop is on PORT_REPO for this phase only.
+kdos-comp
+
+# The security-context-v1 sandbox engine: one tagged Wayland socket per box.
+# Separate from kdos-appbox because `run` execs distrobox and cannot hold the
+# context's close fd, and because kdos-appbox links no libraries.
+kdos-boxsock
+
+# The shell: a character-cell panel on layer-shell, drawn by libktui through
+# libkwl. Learns what it shows from wlr-foreign-toplevel-management and
+# ext-workspace-v1 — standard protocols, so waybar works here too.
+kdos-shell
+
+# The lock screen, and the one setuid-root binary KDOS ships: /etc/shadow is
+# root-only and kdos-lock must not be. ext-session-lock-v1 means the compositor
+# keeps the screen locked even if the client dies.
+kdos-lock
+
+# Suspend, poweroff and reboot for a desktop that is not root. A unix socket in
+# /run, gated by SO_PEERCRED — no setuid, no polkit prompt, no logind.
+kdos-powerd
+
+# Per-app Energy Impact. RAPL is root-only (PLATYPUS), so the sampler is a
+# daemon; identity comes free from the fact that every alien app is already its
+# own container. Relative shares, never watt-hours.
+kdos-energyd
+
+# The input method. kdos-comp speaks text-input-v3 to applications and
+# input-method-v2 to fcitx5 (the fork's src/input/ime.c); this is the
+# thing on the other end of that second protocol. Built Wayland-only — no X11
+# frontend, no Qt config tool, no cloud pinyin — and the engines are one per
+# language: chinese-addons (pinyin, shuangpin, tables) over libime, anthy for
+# Japanese, hangul for Korean.
+fcitx5
+fcitx5-chinese-addons
+fcitx5-anthy
+fcitx5-hangul
+
+# The screen-capture portal. A boxed OBS or browser reaches the screen only
+# through xdg-desktop-portal, which has no capture code of its own — the wlr
+# backend is what turns the compositor's ext-image-copy-capture and
+# wlr-screencopy globals into a ScreenCast session. Screenshot comes with it.
+# Phase 4 installs the main portal; this is the half that knows about wlroots.
+xdg-desktop-portal-wlr
+
+# The FileChooser portal, which nothing served before this: xdg-desktop-portal-wlr
+# does ScreenCast and Screenshot only, and the backend every other desktop falls
+# back to is xdg-desktop-portal-gtk — impossible here, because there is no GTK on
+# the host. Until this existed, every boxed app's Open and Save dialog was its
+# own toolkit's, which put a rounded antialiased GTK dialog in the middle of a
+# text-mode desktop. Settings comes with it and hands out the accent.
+xdg-desktop-portal-kdos

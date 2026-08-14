@@ -155,8 +155,45 @@ static int utf8_encode(uint32_t cp, char *out)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/* Defined with the tty backend below; the drawing entry points above it need
+ * to ask it for the size. NULL means "nobody chose", which resolves to the tty
+ * — so a program that never calls ktui_backend_set() behaves exactly as it did
+ * before backends existed. */
+static const KtuiBackend backend_tty;
+static const KtuiBackend *backend;
+
+static const KtuiBackend *cur_backend(void)
+{
+	return backend ? backend : &backend_tty;
+}
+
+/*
+ * Take the size and the capabilities from whichever backend is installed.
+ *
+ * ktui_w/ktui_h/ktui_caps used to be set only by ktui_term_init(), which meant
+ * every drawing path silently assumed a terminal had been opened first. A
+ * Wayland surface has neither an ioctl nor a TERM to answer that question — it
+ * learns its size from a configure event — so without this the cell buffer was
+ * allocated 0x0 and the first fill ran off the end of it. Found by segfault,
+ * not by reading.
+ *
+ * Offscreen is exempt: its size is the caller's declaration, not a
+ * measurement, and re-reading it would overwrite the very thing being asked
+ * for.
+ */
+static void backend_sync(void)
+{
+	if (offscreen)
+		return;
+	ktui_caps = cur_backend()->caps();
+	cur_backend()->size(&ktui_w, &ktui_h);
+}
+
 int ktui_draw_init(void)
 {
+	/* Before the glyph table is chosen: the tier follows from KT_CAP_UTF8,
+	 * so the caps have to be the backend's by now. */
+	backend_sync();
 	const char **tbl = (ktui_caps & KT_CAP_UTF8) ? glyph_utf8 : glyph_ascii;
 	for (int i = 0; i < KT_G_N; i++) {
 		ktui_glyph[i] = tbl[i] ? tbl[i] : "?";
@@ -204,6 +241,7 @@ void ktui_draw_dump(void)
 
 void ktui_draw_resize(void)
 {
+	backend_sync();
 	if (bw == ktui_w && bh == ktui_h && front)
 		return;
 	free(front);
@@ -434,28 +472,29 @@ static void emit_sgr(int fg, int bg, int attr)
 	ktui_term_write(buf, (size_t)n);
 }
 
-void ktui_draw_flush(void)
+/*
+ * The tty backend's present.
+ *
+ * Moved here from ktui_draw_flush() UNCHANGED, character for character. Its
+ * diff and its emission are one pass — cursor position and SGR state are
+ * carried across cells so that only what actually changed is written — and
+ * that fusion is why the backend seam hands over both buffers instead of a
+ * damage list. Rewriting this to fit a tidier vtable would move pixels on a
+ * screen people read.
+ */
+static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
+		      int full)
 {
-	/* Offscreen there is nothing to present to, and stdout is where the
-	 * dump goes — a flush would write escape sequences into it. It also has
-	 * to leave `back` alone, because the dump reads it. Not hypothetical:
-	 * ktui_toosmall() presents itself (kinstall and kdos-appbox return
-	 * straight after calling it and never flush), so a preview at a size
-	 * below the layout minimum came out as raw SGR. */
-	if (offscreen)
-		return;
-	if (ptr_x >= 0 && ptr_x < bw && ptr_y >= 0 && ptr_y < bh)
-		back[ptr_y * bw + ptr_x].attr ^= KT_A_REVERSE;
-
 	int cur_fg = -1, cur_bg = -1, cur_attr = -1;
 	int cx = -1, cy = -1;
 	char utf[8];
 
-	for (int y = 0; y < bh; y++) {
-		for (int x = 0; x < bw; x++) {
-			int i = y * bw + x;
-			KtuiCell *b = &back[i], *f = &front[i];
-			if (!force_full && b->ch == f->ch && b->fg == f->fg &&
+	for (int y = 0; y < h; y++) {
+		for (int x = 0; x < w; x++) {
+			int i = y * w + x;
+			const KtuiCell *b = &cur[i];
+			KtuiCell *f = &prev[i];
+			if (!full && b->ch == f->ch && b->fg == f->fg &&
 			    b->bg == f->bg && b->attr == f->attr)
 				continue;
 
@@ -479,6 +518,60 @@ void ktui_draw_flush(void)
 	}
 
 	ktui_term_write("\033[0m", 4);
-	force_full = 0;
 	ktui_term_flush();
+}
+
+static void tty_size(int *w, int *h)
+{
+	ktui_term_size_refresh();
+	*w = ktui_w;
+	*h = ktui_h;
+}
+
+static int tty_caps(void)
+{
+	return ktui_caps;
+}
+
+static const KtuiBackend backend_tty = {
+	.name = "tty",
+	.flush = tty_flush,
+	.poll_event = ktui_input_next,
+	.size = tty_size,
+	.caps = tty_caps,
+};
+
+void ktui_backend_set(const KtuiBackend *b)
+{
+	backend = b ? b : &backend_tty;
+	/* A backend change is a different surface with different contents, so
+	 * nothing carried over from the old one can be trusted as already
+	 * presented. */
+	force_full = 1;
+}
+
+const KtuiBackend *ktui_backend(void)
+{
+	return cur_backend();
+}
+
+void ktui_draw_flush(void)
+{
+	/* Offscreen there is nothing to present to, and stdout is where the
+	 * dump goes — a flush would write escape sequences into it. It also has
+	 * to leave `back` alone, because the dump reads it. Not hypothetical:
+	 * ktui_toosmall() presents itself (kinstall and kdos-appbox return
+	 * straight after calling it and never flush), so a preview at a size
+	 * below the layout minimum came out as raw SGR.
+	 *
+	 * Still a latch rather than a backend of its own: `offscreen` also
+	 * suppresses the terminal SETUP, which a backend vtable does not
+	 * describe, and ktui_draw_dump() reads `back` directly. */
+	if (offscreen)
+		return;
+	if (ptr_x >= 0 && ptr_x < bw && ptr_y >= 0 && ptr_y < bh)
+		back[ptr_y * bw + ptr_x].attr ^= KT_A_REVERSE;
+
+	cur_backend()->flush(back, front, bw, bh, force_full);
+	force_full = 0;
 }

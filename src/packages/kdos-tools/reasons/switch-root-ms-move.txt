@@ -1,0 +1,18 @@
+title: the initramfs uses util-linux switch_root, never toybox's
+path: /usr/sbin/switch_root
+port: util-linux
+port: toybox
+
+toybox switch_root wipes the initramfs and chroot()s — it never does
+mount(newroot, "/", MS_MOVE). The mount-namespace root then stays the EMPTIED
+rootfs with the real root parked at /newroot, so anything that JOINS a mount
+namespace via setns(CLONE_NEWNS) — podman exec, distrobox enter, nsenter -m —
+gets that empty rootfs as / and every path ENOENTs
+("crun: executable file 'echo' not found").
+
+podman run still works, because it CREATES the namespace rather than joining
+one, which is what makes this so confusing to diagnose.
+
+Tell-tale: readlink /proc/<pid>/root prints /newroot. `kdos doctor` checks it.
+script/06_packaging/01_initramfs.sh installs /usr/sbin/switch_root over the
+toybox symlink — keep it that way.

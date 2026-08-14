@@ -12,6 +12,7 @@ name        = helix
 version     = 25.01
 release     = 1
 source      = https://github.com/helix-editor/helix/archive/$version.tar.gz
+sha256      = 3d23d45adefe2daba877b05921e99d205683528814acb6a0d549a62b0f633548  helix-25.01.tar.gz
 description = helix — a post-modern modal text editor (Rust)
 homepage    = https://helix-editor.com/
 depends     = rust

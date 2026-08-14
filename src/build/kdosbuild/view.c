@@ -320,19 +320,19 @@ void preview_fixture(Manager *m, Sampler *s, Timings *t)
 	pv_step(m, g0, "musl headers", ST_SKIPPED, 0);
 
 	BStep *g1 = pv_group(m, &m->phase[1], 1, "04_phase4", "phase4", 1,
-			     "Userland & GUI Sliver",
-			     "the COSMIC desktop, the wayland utilities and the "
+			     "Userland & Wayland base",
+			     "the wayland base, the container layer and the "
 			     "alien-app plumbing", "fs");
 	g1->status = ST_RUNNING;
 	pv_step(m, g1, "mesa", ST_DONE, 872);
-	pv_step(m, g1, "cosmic-comp", ST_DONE, 1934);
-	pv_step(m, g1, "pop-launcher", ST_SKIPPED, 0);
+	pv_step(m, g1, "networkmanager", ST_DONE, 1934);
+	pv_step(m, g1, "wl-clipboard", ST_SKIPPED, 0);
 	/* Longer than any tree pane this layout will ever hand it: the pane is
 	 * capped at 48 columns and the title starts 6 in. */
 	BStep *run = pv_step(m, g1,
-			     "xdg-desktop-portal-cosmic-with-a-very-long-port-name",
+			     "xdg-desktop-portal-wlr-with-a-very-long-port-name",
 			     ST_RUNNING, 47);
-	BStep *bad = pv_step(m, g1, "cosmic-settings", ST_FAIL, 213);
+	BStep *bad = pv_step(m, g1, "gst-plugins-bad", ST_FAIL, 213);
 	bad->return_code = 2;	/* matches the "make: *** ... Error 2" log line */
 
 	BStep *g2 = pv_group(m, &m->phase[2], 2, "06_packaging", "packaging", 0,
@@ -363,18 +363,18 @@ void preview_fixture(Manager *m, Sampler *s, Timings *t)
 	m->current_step = run;
 	m->error_step = bad;
 
-	pv_log(run, "[142/318] Compiling cosmic-comp v1.0.0-alpha.7");
+	pv_log(run, "[142/318] Compiling wlroots v0.20.2");
 	pv_log(run, "  Compiling smithay v0.4.0");
 	pv_log(run, "checking for error_at_line... yes");
 	pv_log(run, "warning: unused variable: `output_state`");
-	pv_log(bad, "  Compiling cosmic-settings-page v0.1.0");
+	pv_log(bad, "  CC       gstreamer/plugins/element.lo");
 	pv_log(bad, "warning: field `subscription` is never read");
 	pv_log(bad, "  --> src/pages/display/mod.rs:118:5");
 	pv_log(bad, "error: linking with `cc` failed: exit status: 1");
 	pv_log(bad, "  = note: /usr/lib/libEGL.so: undefined reference to "
 		    "`__unw_getcontext'");
-	pv_log(bad, "error: could not compile `cosmic-settings` (bin "
-		    "\"cosmic-settings\") due to 1 previous error");
+	pv_log(bad, "error: could not compile `gst-plugins-bad` (bin "
+		    "\"gst-plugins-bad\") due to 1 previous error");
 	pv_log(bad, "make: *** [Makefile:41: all] Error 2");
 
 	/* An hour-scale ETA. Every step still to run has a recorded estimate,
@@ -432,7 +432,7 @@ void preview_fixture(Manager *m, Sampler *s, Timings *t)
 	kb_strlcpy(m->snap.phase, "04_phase4", sizeof(m->snap.phase));
 	kb_strlcpy(m->snap.path, "fs", sizeof(m->snap.path));
 	kb_strlcpy(m->snap.current,
-		   "fs/usr/lib/cosmic/libcosmic-workspaces-applet.so",
+		   "fs/usr/lib/gstreamer-1.0/libgstvideoconvert.so",
 		   sizeof(m->snap.current));
 }
 

@@ -12,5 +12,6 @@ name        = gettext
 version     = 0.26
 release     = 1
 source      = https://mirrors.ocf.berkeley.edu/gnu/$name/$name-$version.tar.xz
+sha256      = d1fb86e260cfe7da6031f94d2e44c0da55903dbae0a2fa0fae78c91ae1b56f00  gettext-0.26.tar.xz
 description = Utilities for internationalization and localization
 depends     = ncurses

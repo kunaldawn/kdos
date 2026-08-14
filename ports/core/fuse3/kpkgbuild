@@ -12,5 +12,6 @@ name        = fuse3
 version     = 3.18.2
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/libfuse/libfuse/archive/refs/tags/fuse-${version}.tar.gz
+sha256      = 55a97cfd8661a9b42ff0123b44af52cac49feaec36987f4d968c046f93b42e1d  fuse3-3.18.2.tar.gz
 description = A simple interface for userspace programs to export a virtual filesystem to the Linux kernel
 depends     = meson

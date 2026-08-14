@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fcitx5-chinese-addons
+version     = 5.1.13
+release     = 1
+_pytable    = py_table-20121124.tar.gz
+_pystroke   = py_stroke-20250329.tar.gz
+source      = https://download.fcitx-im.org/fcitx5/$name/$name-$version.tar.zst
+source      = https://download.fcitx-im.org/data/$_pytable
+source      = https://download.fcitx-im.org/data/$_pystroke
+sha256      = ad980117208bd1f5bfe134e2b5c0b36e0c52427f55611caa8a65c19160041c95  fcitx5-chinese-addons-5.1.13.tar.zst
+sha256      = 42146ac97de6c13d55f9e99ed873915f4c66739e9c11532a34556badf9792c04  py_table-20121124.tar.gz
+sha256      = c1a7ca7225d3614ab83353fc827503006a980447762018f53760425d7b5303a6  py_stroke-20250329.tar.gz
+description = Pinyin, shuangpin and table input for fcitx5
+homepage    = https://github.com/fcitx/fcitx5-chinese-addons
+depends     = cmake extra-cmake-modules fcitx5 libime opencc boost gettext

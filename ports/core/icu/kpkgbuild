@@ -12,5 +12,6 @@ name        = icu
 version     = 78.2
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/unicode-org/icu/archive/refs/tags/release-$version.tar.gz
+sha256      = 45cfa1a4abe98db9732d19fa3cdb87f4f0ffb17012fab6afbb38b5de3b8771f7  icu-78.2.tar.gz
 description = International Components for Unicode library
 homepage    = https://icu.unicode.org

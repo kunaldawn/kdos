@@ -12,5 +12,6 @@ name        = asciidoc
 version     = 10.2.1
 release     = 2
 source      = https://github.com/asciidoc/$name-py3/archive/$version/$name-py3-$version.tar.gz
+sha256      = 8e1fb9691952cc4f13357e1ef58172e566c5f88e3c44222d4a8693585f884507  asciidoc-10.2.1.tar.gz
 description = Text document format for short documents, articles, books and UNIX man pages
 depends     = docbook-xml python3-pip libxslt python3-setuptools docbook-xsl

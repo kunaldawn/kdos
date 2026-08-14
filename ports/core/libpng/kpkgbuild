@@ -12,5 +12,6 @@ name        = libpng
 version     = 1.6.55
 release     = 1
 source      = https://downloads.sourceforge.net/$name/$name-$version.tar.xz
+sha256      = d925722864837ad5ae2a82070d4b2e0603dc72af44bd457c3962298258b8e82d  libpng-1.6.55.tar.xz
 description = A collection of routines used to create PNG format graphics files
 depends     = zlib

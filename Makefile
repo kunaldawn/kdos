@@ -20,6 +20,17 @@ fetch:
 	bash ports/fetch
 	@test -f ports/appbox/appbox.tar || echo "hint: 'make fetch-apps' builds the offline alien-app image (needs network + docker/podman)"
 
+# Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
+# release. Needs network; never touches git. See CLAUDE.md's "kdos-portup"
+# section, e.g. make updates PORTUP_ARGS="--check curl"
+# --check exits 1 BY DESIGN when it finds an update, so a plain `make updates
+# PORTUP_ARGS="--check zlib"` would otherwise print "Error 1" for a check
+# that worked perfectly. 2 is the tool's own "unrecoverable" status (a revert
+# itself failed) and anything else is a crash — both of those still have to
+# fail the target.
+updates:
+	@ports/update $(PORTUP_ARGS); rc=$$?; [ $$rc -le 1 ] || exit $$rc
+
 # Build the kdos-apps distrobox image on the host and stash it for the
 # (network-less) ISO build to bake in. See ports/appbox/.
 fetch-apps:
@@ -39,18 +50,26 @@ check-iso-free:
 		test -n "$(ALLOW_ISO_IN_USE)" || exit 1; \
 	fi
 
+# `-it` unconditionally made `make build` impossible without a terminal —
+# docker refuses with "cannot attach stdin to a TTY-enabled container", which is
+# exactly the case kdosbuild's headless mode exists for (a non-tty stdout gets
+# plain lines instead of the TUI). Ask for a TTY only when there is one, so a
+# build can be logged to a file or run from CI.
+DOCKER_TTY := $(shell test -t 0 && echo -it)
+
 build: check-iso-free
 	mkdir -p build
 	docker build -t os-dev .
 	docker run --network none --cpus="10" --rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
 		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
+		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \
 		-v $$(pwd)/build:/workspace/build \
 		-v $$(pwd)/src:/workspace/src:ro \
 		-v $$(pwd)/fs:/workspace/fs:ro \
 		-v $$(pwd)/script:/workspace/script:ro \
 		-v $$(pwd)/ports:/workspace/ports:ro \
-		-it os-dev script/kdosbuild.sh $(BUILD_ARGS)
+		$(DOCKER_TTY) os-dev script/kdosbuild.sh $(BUILD_ARGS)
 
 snapshots:
 	script/kdosbuild.sh --list
@@ -104,4 +123,4 @@ cleanbuild:
 clean:
 	rm -rf build
 
-.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch
+.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates

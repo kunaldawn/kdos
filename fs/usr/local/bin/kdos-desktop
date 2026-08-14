@@ -1,18 +1,41 @@
 #!/bin/sh
-# kdos-desktop — launch the COSMIC desktop. Run from a tty after login.
+# kdos-desktop — launch the KDOS desktop. Run from a tty after login.
 # Wayland env vars are set by /etc/profile.d/10-wayland.sh.
-# KDOS uses seatd, not logind/elogind; cosmic-comp talks to it via libseat.
+# KDOS uses seatd, not logind/elogind; kdos-comp talks to it via libseat.
+if [ ! -x /usr/bin/kdos-comp ]; then
+	echo "kdos-desktop: no desktop installed (kdos-comp missing)." >&2
+	echo "The compositor lands in build phase 05_desktop." >&2
+	exit 1
+fi
+
 case "$(cat /sys/class/drm/card0/device/modalias 2>/dev/null)" in
 	virtio:*|pci:v00001AF4*)
-		# iced/wgpu has no Vulkan on virgl — take the GL backend.
-		export WGPU_BACKEND=gl
-		# Without blob resources virgl's EGL path hangs; llvmpipe at least
-		# keeps clients alive (the compositor itself still needs virgl/blob —
-		# `make run-hw`. Plain `make run` has no desktop: smithay refuses
-		# software EGL renderers).
-		if ! dmesg 2>/dev/null | grep -q '+resource_blob'; then
-			export GALLIUM_DRIVER=llvmpipe
+		# QEMU's cursor plane lies about what it supports; without this the
+		# pointer is invisible or leaves trails on every virtio-gpu setup.
+		export WLR_NO_HARDWARE_CURSORS=1
+		# Without virgl there is no GL at all and wlroots must take its
+		# software renderer — that is what makes plain `make run` (no
+		# virgl) work. Read the feature bits from sysfs, NOT dmesg:
+		# dmesg is root-only under dmesg_restrict, so the old grep
+		# forced pixman for every normal user. The features file is one
+		# character per feature bit; VIRGL is bit 0. (The old check
+		# also demanded RESOURCE_BLOB — a smithay-era lesson; wlroots'
+		# GLES2 renderer runs fine on virgl without blob, measured on
+		# the labwc fork with the CRT pass on.)
+		_gpu_virgl=0
+		for _vdev in /sys/bus/virtio/devices/virtio*; do
+			case "$(readlink "$_vdev/driver" 2>/dev/null)" in
+			*/virtio_gpu) ;;
+			*) continue ;;
+			esac
+			case "$(cut -c1 "$_vdev/features" 2>/dev/null)" in
+			1) _gpu_virgl=1 ;;
+			esac
+		done
+		if [ "$_gpu_virgl" != 1 ]; then
+			export WLR_RENDERER=pixman
 		fi
+		unset _gpu_virgl _vdev
 		;;
 esac
 
@@ -32,20 +55,30 @@ esac
 # box, so this one address is valid on both sides. The daemon is reused
 # across session restarts; the address carries no guid on purpose — a later
 # session re-binding the socket would otherwise kill zbus clients with
-# "D-Bus handshake failed: Server GUID mismatch" (cosmic-session aborts).
+# "D-Bus handshake failed: Server GUID mismatch" (the session aborts).
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 # flock-serialized: two sessions starting at once must not both decide the
 # daemon is down — the loser's rm -f would yank the winner's socket away.
+#
+# `7>&-` CLOSES THE LOCK FD FOR THE DAEMON, and without it the SECOND login of
+# a boot hangs forever with no output at all. dbus-daemon --fork inherits every
+# open descriptor, fd 7 among them; the subshell then exits and drops its own
+# reference, but the daemon holds the flock for as long as the session bus
+# lives — which is until logout. Every later kdos-desktop blocks on `flock 7`
+# before it has printed a single line, so the symptom is a tty that sits there:
+# no compositor, no error, nothing in a log. Measured in QEMU with three
+# `flock 7` processes queued behind one dbus-daemon.
 (
 	flock 7
 	if ! dbus-send --session --print-reply --dest=org.freedesktop.DBus \
 		/ org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
 		rm -f "$XDG_RUNTIME_DIR/bus"
-		dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+		dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" \
+			--fork 7>&-
 	fi
 ) 7>"$XDG_RUNTIME_DIR/.kdos-bus.lock"
 
 # kdos-desktop-start runs on the session bus: pipewire stack (audio +
-# portal ScreenCast for OBS), then exec cosmic-session.
+# portal ScreenCast for OBS), then exec kdos-comp.
 exec /usr/local/bin/kdos-desktop-start

@@ -7,17 +7,19 @@
 # ---------------------------------
 #   KD's Homebrew Linux Distro
 # ---------------------------------
-#   Phase 4: User-space + GUI sliver
+#   Phase 4: User-space + Wayland base
 # ---------------------------------
 #
 # This phase installs the rest of the user-space:
 #   - core build/runtime utilities and ISO tooling
-#   - infrastructure for service management (dbus only — polkit/udisks/etc. archived)
+#   - the services every distro has: clock, logs, manual pages
+#   - service and auth infrastructure (dbus, polkit, NetworkManager)
 #   - power-user CLI tools (the actual workspace)
 #   - container layer (podman + distrobox) for fat alien apps
-#   - slim Xorg + Window Maker for the rare GUI session
+#   - the Wayland base and Xwayland, but NOT the desktop
 #
-# See plan.md for the architecture rationale.
+# The desktop — wlroots, kdos-comp, kdos-shell — is 05_desktop.
+# See docs/KDOS-DESKTOP.md for the architecture rationale.
 
 # ---------------------------------
 # Core Build Utilities (host-side)
@@ -51,6 +53,12 @@ mtools
 eudev
 dosfstools
 e2fsprogs
+# The kernel mounts btrfs, xfs, f2fs, ntfs3 and exfat and could create none of
+# them until these landed. kinstall's filesystem menu depends on them.
+exfatprogs
+liburcu
+btrfs-progs
+xfsprogs
 util-linux
 gptfdisk
 sqlite
@@ -61,10 +69,39 @@ shadow
 sudo
 glib
 
+# Firmware. Without it a real machine has no Wi-Fi, no Bluetooth and — this is
+# the one that surprises people — no GPU: from Vega/GFX9 on, amdgpu must load
+# PSP/SMU/GFX/SDMA blobs before it can bring the display up, and Xe and Gen12+
+# i915 refuse to load without GuC. You fall through to simpledrm on the EFI
+# framebuffer: a picture, no EGL, no compositor.
+#
+# Vendored, not upstream's 1.9 GB tree — ports/core/linux-firmware/vendor.py
+# records the curated set and what was dropped and why.
+linux-firmware
+# CPU microcode. AMD's blobs come with linux-firmware; Intel ships its own tree
+# and this is the whole of it, no per-family curation — 06_packaging/01_initramfs.sh
+# turns both into the uncompressed cpio the early loader scans for.
+intel-ucode
+
 # ---------------------------------
 # Core Services
 # ---------------------------------
 dbus
+# The clock, the logs and the manual. Absent until wave 0: a skewed clock
+# breaks TLS (so ports/fetch, git and every alien app), every daemon's
+# diagnostics went to /dev/null, and the ISO carried thousands of man pages
+# with nothing able to read them.
+chrony
+sysklogd
+mandoc
+# Periodic jobs. snooze is one process per job under ksvc rather than a cron
+# daemon with its own scheduler — it fits the supervisor KDOS already has.
+snooze
+# mDNS, and the only reason it is here: CUPS' driverless printer discovery is
+# compiled out without it. musl has no NSS module system, so `.local` name
+# resolution will never work — avahi's own API is what CUPS uses.
+libdaemon
+avahi
 
 # ---------------------------------
 # Network / SSH / Audio / Bluetooth / Print
@@ -74,6 +111,14 @@ openssh
 alsa-utils
 bluez
 cups
+
+# Laptop power saving: pure shell over /sys, no daemon, no compile. Conflicts
+# with power-profiles-daemon (both write the same knobs) — KDOS picks TLP.
+tlp
+# The measuring half. powertop 2.15 made libtracefs a hard requirement, so its
+# two kernel.org libraries come with it; 2.14 bundled traceevent in-tree and
+# pinning that would have frozen the tool at 2022 to save two ports.
+powertop
 
 # ---------------------------------
 # Power-User CLI base
@@ -94,7 +139,7 @@ kbd
 terminus-font
 # Scalable GUI fonts (Sans/Mono/Serif) — terminus is console-only (PSF). Without
 # this, fontconfig has no fonts: foot fails ("failed to load primary fonts") and
-# noctalia's bar renders no text/icons (blank/shadow-only).
+# the cell-grid shell has nothing to draw glyphs with.
 ttf-dejavu
 
 # ---------------------------------
@@ -152,10 +197,10 @@ netcat
 mtr
 
 # ---------------------------------
-# Wayland + COSMIC (GUI sliver)
+# Wayland base
 # ---------------------------------
-# Desktop: COSMIC (System76) — Rust/smithay/iced. Compositor, panel, launcher,
-# settings, notifications, files. seatd for seats, no logind. Terminal: foot.
+# The desktop itself (kdos-comp + kdos-shell, wlroots) lands in 05_desktop.
+# seatd for seats, no logind — kdos-comp talks to it via libseat. Terminal: foot.
 wayland
 wayland-protocols
 seatd
@@ -167,6 +212,11 @@ gst-plugins-bad
 gst-plugins-ugly
 gst-libav
 xdg-desktop-portal
+
+# LUKS. Needed on the ISO rather than only on an installed system: kinstall
+# creates the container, and 01_initramfs.sh copies cryptsetup into the
+# initramfs so an encrypted root can be unlocked at boot.
+cryptsetup
 
 # Networking + auth (NetworkManager + polkit + Wi-Fi + firewall + VPN)
 duktape
@@ -185,26 +235,7 @@ wl-clipboard
 imv
 vulkan-loader
 
-# COSMIC desktop
 dav1d
-pop-launcher
-cosmic-comp
-cosmic-panel
-cosmic-applets
-cosmic-app-library
-cosmic-launcher
-cosmic-notifications
-cosmic-osd
-cosmic-settings
-cosmic-settings-daemon
-cosmic-bg
-cosmic-randr
-cosmic-idle
-cosmic-files
-cosmic-screenshot
-xdg-desktop-portal-cosmic
-cosmic-icons
-cosmic-session
 
 # ---------------------------------
 # Media & Imaging
@@ -214,7 +245,7 @@ ffmpeg
 fastfetch
 
 # ---------------------------------
-# ASCII art (aa-project) + the KDOS demo
+# ASCII art (aa-project)
 # ---------------------------------
 # Runs on the TTY, so it needs nothing the GUI sliver provides. aalib's own
 # demos are aafire/aatest/aainfo/aasavefont; aview is the image/FLI browser
@@ -225,14 +256,12 @@ aalib
 aview
 aa3d
 
-# Tracker-module playback for kk, ALSA only — on a bare TTY there is no
+# Tracker-module playback for bb, ALSA only — on a bare TTY there is no
 # pipewire, and kdos is already in the audio group.
 libmikmod
 
-# kk, the KDOS demo (src/packages, ours): a fork of the 1997 AAlib demo bb,
-# carrying our own portrait, scenes and music. It REPLACES the stock bb port,
-# which is gone — see src/packages/kk/LICENSE.notice for what changed.
-kk
+# bb, the 1997 AAlib demo, upstream and unmodified.
+bb
 
 # ---------------------------------
 # Container Layer (Podman + distrobox)
@@ -255,7 +284,7 @@ fuse
 # X11 compatibility (Xwayland only — no Xorg server)
 # ---------------------------------
 # Alien apps that are X11-only (GIMP 2.x, Wine, older IDEs) need an X server.
-# cosmic-comp runs Xwayland rootlessly itself.
+# kdos-comp runs Xwayland rootlessly itself (wlroots does the work).
 # The libX11/libxcb chain is here only because Xwayland and xkbcomp need it.
 xwayland
 
@@ -270,9 +299,6 @@ hicolor-icon-theme
 # to agetty.
 kdos-splash
 
-# Builds the applied COSMIC theme from the KDOS palette (src/packages, ours).
-kdos-theme-helper
-
 # Service supervisor and the console getty wrapper (src/packages, ours).
 # Replaces fs/usr/sbin/service and fs/usr/local/sbin/kdos-getty, which is why
 # neither is in fs/ any more.
@@ -283,7 +309,7 @@ kdos-tools
 # is why python3 is no longer a runtime dependency of the shipped system.
 kdos-theme
 
-# KDOS phosphor icon theme (src/packages, ours) — recolored cosmic-icons.
+# KDOS phosphor icon theme (src/packages, ours) — recolored Papirus.
 kdos-icons
 
 # KDOS phosphor pixel-art cursor theme (src/packages, ours) — generated Xcursor.

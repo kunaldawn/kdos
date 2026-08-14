@@ -12,6 +12,7 @@ name        = vulkan-loader
 version     = 1.4.345
 release     = 1
 source      = https://github.com/KhronosGroup/Vulkan-Loader/archive/v$version/$name-$version.tar.gz
+sha256      = a6b62ea8e51053a8622be2fa293e2bae658dbbab0e292214c358e4b8fed8064a  vulkan-loader-1.4.345.tar.gz
 description = Khronos Vulkan ICD loader (libvulkan.so.1) — dispatches to Mesa venus/lavapipe ICDs
 homepage    = https://github.com/KhronosGroup/Vulkan-Loader
 depends     = cmake ninja pkgconf vulkan-headers wayland
