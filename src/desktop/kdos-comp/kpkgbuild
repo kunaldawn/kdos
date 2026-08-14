@@ -9,8 +9,8 @@
 # ---------------------------------
 
 name        = kdos-comp
-version     = 0.1.0
+version     = 0.20.0
 release     = 1
-description = The KDOS compositor — wlroots, ours above it
+description = The KDOS compositor — a hard fork of labwc 0.20.0
 homepage    = https://github.com/kunaldawn/kdos
-depends     = wlroots wayland wayland-protocols libxkbcommon pixman libdrm mesa libglvnd libpng
+depends     = wlroots wayland wayland-protocols libxkbcommon pixman libdrm mesa libglvnd libpng libxml2 glib cairo pango libinput xcb-util-wm

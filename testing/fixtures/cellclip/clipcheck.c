@@ -75,6 +75,62 @@ static void run(const char *what, int w, int h, int cols, int rows)
 	free(m);
 }
 
+/*
+ * The other half of the ragged-grid contract: what the grid does NOT
+ * reach must be KT_BG, not whatever the allocation held. The lock
+ * screen at 1280x800 is 800 = 25*32 exactly on the shipped font, but
+ * any output height that is not a cell multiple used to show the
+ * remainder as a stale/black band — pad_remainder() is the fix and
+ * this is its regression net.
+ */
+static void run_pad(const char *what, int w, int h, int cols, int rows)
+{
+	size_t stride = (size_t)w * 4, sz = stride * (size_t)h;
+	uint32_t *m = malloc(sz);
+	KtuiCell *c = calloc((size_t)cols * rows, sizeof(*c));
+	if (!m || !c) {
+		fails++;
+		free(m);
+		free(c);
+		return;
+	}
+	/* poison: the pad must overwrite every one of these words */
+	for (size_t i = 0; i < sz / 4; i++)
+		m[i] = 0xDEADBEEF;
+	for (int i = 0; i < cols * rows; i++) {
+		c[i].ch = 0x2551;
+		c[i].fg = KT_ACCENT;
+		c[i].bg = KT_SURFACE;
+	}
+
+	pixman_image_t *img = pixman_image_create_bits(PIXMAN_a8r8g8b8, w, h,
+						       m, (int)stride);
+	kcell_paint(img, c, NULL, cols, rows, 1, 1, w, h);
+
+	KRgb bg = ktui_theme->slot[KT_BG];
+	uint32_t want = 0xFF000000u | ((uint32_t)bg.r << 16)
+		| ((uint32_t)bg.g << 8) | bg.b;
+
+	int used_w = cols * kcell_w(), used_h = rows * kcell_h();
+	int bad = 0;
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++) {
+			if (x < used_w && y < used_h)
+				continue;	/* the grid's own cells */
+			if (m[(size_t)y * (stride / 4) + x] != want)
+				bad++;
+		}
+
+	printf("  %-26s %4dx%-4d grid %2dx%-3d  %4d unpadded px       %s\n",
+	       what, w, h, cols, rows, bad, bad ? "FAIL" : "ok");
+	if (bad)
+		fails++;
+
+	pixman_image_unref(img);
+	free(c);
+	free(m);
+}
+
 int main(int argc, char **argv)
 {
 	const char *font = argc > 1 ? argv[1] : "monospace:pixelsize=16";
@@ -97,6 +153,12 @@ int main(int argc, char **argv)
 
 	/* The control: exact multiples overflow under neither version. */
 	run("exact multiple (control)", cw, ch * 21, 1, 21);
+
+	/* The remainder pad: the grid stops short of the buffer and the
+	 * strip beyond it must come out KT_BG, both edges at once. */
+	run_pad("bottom strip padded", cw * 4, ch * 3 + 7, 4, 3);
+	run_pad("right strip padded", cw * 4 + 5, ch * 3, 4, 3);
+	run_pad("both strips padded", cw * 4 + 5, ch * 3 + 7, 4, 3);
 
 	kcell_font_free();
 	printf("\n%s (%d failed)\n", fails ? "FAILED" : "all ok", fails);

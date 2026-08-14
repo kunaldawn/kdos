@@ -49,7 +49,7 @@ kdos-powerd
 kdos-energyd
 
 # The input method. kdos-comp speaks text-input-v3 to applications and
-# input-method-v2 to fcitx5 (src/desktop/kdos-comp/textinput.c); this is the
+# input-method-v2 to fcitx5 (the fork's src/input/ime.c); this is the
 # thing on the other end of that second protocol. Built Wayland-only — no X11
 # frontend, no Qt config tool, no cloud pinyin — and the engines are one per
 # language: chinese-addons (pinyin, shuangpin, tables) over libime, anthy for

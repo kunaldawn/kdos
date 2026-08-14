@@ -53,6 +53,11 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # colour picker forever. kdeglobals is NOT cleared — KDE apps write their
     # own settings into it and `kdos theme` merges rather than overwrites.
     rm -rf "$home/.local/share/color-schemes"
+    # The compositor config dir is skel's wholesale (rc.xml). A file skel has
+    # stopped providing must not outlive it — a stale `autostart` here started
+    # a second kdos-shell beside the supervised one and lost kdos-notifyd the
+    # bus-name race on every boot.
+    rm -rf "$home/.config/kdos-comp"
     # Same reason, and the alien launchers need it most: they have been named
     # kdos-<id> and <upstream-id> at different times, so a merge leaves both
     # and the app library shows every alien app twice.

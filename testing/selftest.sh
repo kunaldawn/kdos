@@ -252,42 +252,31 @@ fi
 # touches raw GLES2, and its two shader programs are built from a printf format
 # whose sampler declaration differs per program. A typo there is a runtime
 # failure on a screen nobody here has.
-CRT_LS=$(ls ports/core/wlroots/wlroots-*.tar.gz 2>/dev/null | head -1)
-if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 2>/dev/null &&
-   [ -n "$CRT_LS" ]; then
-    # wlr_layer_shell_v1.h includes a wayland-scanner SERVER header that wlroots
-    # neither generates nor installs, so every consumer has to run the scanner
-    # itself — the port's build.sh does exactly this.
-    CP="$OUT/cproto"
-    mkdir -p "$CP"
-    tar xf "$CRT_LS" -C "$CP" --strip-components=2 \
-        "$(tar tf "$CRT_LS" | grep 'protocol/wlr-layer-shell-unstable-v1.xml$' | head -1)"
-    $(pkg-config --variable=wayland_scanner wayland-scanner) server-header \
-        "$CP/wlr-layer-shell-unstable-v1.xml" \
-        "$CP/wlr-layer-shell-unstable-v1-protocol.h"
-    # output-power joined layer-shell in the "wlroots includes a scanner header
-    # it does not install" club when pointer.c landed.
-    tar xf "$CRT_LS" -C "$CP" --strip-components=2 \
-        "$(tar tf "$CRT_LS" | grep 'protocol/wlr-output-power-management-unstable-v1.xml$' | head -1)"
-    $(pkg-config --variable=wayland_scanner wayland-scanner) server-header \
-        "$CP/wlr-output-power-management-unstable-v1.xml" \
-        "$CP/wlr-output-power-management-unstable-v1-protocol.h"
-    # EVERY file, not a chosen three. crt.c, frames.c and capture.c were picked
-    # originally because each touches something version-fragile, and that is
-    # still true — capture.c alone binds six wlroots types whose create()
-    # signatures move between releases. But the argument generalises to the
-    # other eleven, and the cost of compiling them is seconds: this is the ONLY
-    # gate that ever sees kdos-comp, and its recipe has been built exactly once.
-    for f in src/desktop/kdos-comp/*.c; do
-        $CC $STD $WARN -c -DWLR_USE_UNSTABLE -I"$CP" -Isrc/desktop/kdos-comp \
-            -Isrc/libs/libkcolor -Isrc/libs/libkbase -Isrc/libs/libktui \
-            -Isrc/libs/libkcell \
-            $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server pixman-1) \
+# kdos-comp is a hard fork of labwc and builds with meson out of its own
+# tree — generated protocol headers, libxml2, glib, cairo, pango and a
+# libinput floor of 1.26 — which is more toolchain than this half-minute
+# suite may assume. The graft files (src/kdos-*.c) still get a compile
+# gate here, because they are the KDOS-owned code and each includes
+# labwc.h + wlroots headers, which is where version drift would bite.
+if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 \
+        libdrm libpng 2>/dev/null; then
+    KC=src/desktop/kdos-comp
+    # labwc.h includes the meson-generated config.h; the graft files read
+    # none of its flags, so a stub with the defaults is enough here.
+    mkdir -p "$OUT/compconf"
+    printf '#pragma once\n#define HAVE_XWAYLAND 0\n#define HAVE_NLS 0\n#define HAVE_RSVG 0\n#define HAVE_LIBSFDO 0\n#define HAVE_LIBINPUT_CONFIG_3FG_DRAG_ENABLED_3FG 0\n#define HAVE_LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_STICKY 0\n' \
+        > "$OUT/compconf/config.h"
+    for f in "$KC"/src/kdos-*.c; do
+        $CC $STD -Wall -Wextra -Wno-unused-parameter -c -DWLR_USE_UNSTABLE \
+            -I"$KC/include" -I"$OUT/compconf" \
+            -Isrc/libs/libkcolor -Isrc/libs/libkbase \
+            $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server \
+                pixman-1 libdrm libpng) \
             -o "$OUT/comp-$(basename "$f" .c).o" "$f"
     done
-    echo "  kdos-comp ($(ls src/desktop/kdos-comp/*.c | wc -l) files)"
+    echo "  kdos-comp grafts ($(ls "$KC"/src/kdos-*.c | wc -l) files)"
 else
-    echo "  kdos-comp (skipped — wlroots-0.20/glesv2/egl not on this host)"
+    echo "  kdos-comp grafts (skipped — wlroots-0.20/glesv2/egl not on this host)"
 fi
 
 # kdos-boxsock is the enforcement half of N1: it is what hands a box a socket

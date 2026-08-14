@@ -16,11 +16,14 @@ experienced Linux users. Tagline: **"I use KDOS btw."**
 server). **No GTK and no Qt on the host.** Everything fat runs in a
 Podman/distrobox glibc rootfs. Session entry: `kdos-desktop` from a tty.
 
-> **The desktop is ours.** COSMIC was removed and replaced by `kdos-comp` (a
-> wlroots compositor with a CRT pass) plus `kdos-shell`, a character-cell-grid
-> shell drawn by libktui, with `kdos-lock`, `kdos-powerd` and `kdos-boxsock`
-> beside them. **`docs/KDOS-DESKTOP.md` is the plan of record and carries a
-> status block per milestone**, `docs/KDOS-ROADMAP.md` the full menu of work,
+> **The desktop is ours; the compositor is a hard fork.** COSMIC was removed
+> and replaced by `kdos-comp` — since 2026-08-14 a **frozen, rebranded hard
+> fork of labwc 0.20.0** carrying the KDOS features as `src/kdos-*.c` grafts
+> (CRT pass, wallpaper, frames socket, idle policy, supervised chrome) — plus
+> `kdos-shell`, a character-cell-grid shell drawn by libktui, with
+> `kdos-lock`, `kdos-powerd` and `kdos-boxsock` beside them.
+> **`docs/KDOS-DESKTOP.md` is the plan of record and carries a status block
+> per milestone**, `docs/KDOS-ROADMAP.md` the full menu of work,
 > `docs/KDE-ON-HOST-REJECTED.md` the alternative that lost.
 
 Four properties define the project. Everything else follows from them:
@@ -763,8 +766,32 @@ all); GTK apps on their next launch, because GTK re-reads neither theme nor icon
 on a file change.
 
 **That SIGHUP only started arriving when the compositor stopped blocking it** —
-see **What the compositor hands its children**. The live retint was written,
-correct and unreachable for as long as `kdos-shell` inherited a blocked SIGHUP.
+see **The compositor is a hard fork of labwc** (signal lessons). In kdos-comp
+itself, SIGHUP is labwc's Reconfigure and additionally calls
+`kdos_crt_reload()`, and that half has worked since the fork.
+
+**The panel half was a CRASH, not a repaint, and it took a measurement to see
+it.** `kdos-shell` installed no SIGHUP handler at all (`SigCgt: 0` on a running
+panel), so the signal did what an unhandled SIGHUP does: it KILLED the panel,
+the compositor's supervisor respawned it, the new process read the state file,
+and the desktop came up in the new accent — indistinguishable from a live
+retint until you look at the pid. What made it a real bug rather than an ugly
+one is `RESPAWN_MAX`: **five deaths in thirty seconds stops the respawn**, and
+one `kdos theme` takes about a second, so trying the four accents to pick one
+loses the panel for the rest of the session. Measured, on the live ISO — six
+changes in twelve seconds and `kdos-shell died 6 times in 30s — not restarting
+it again`. `sh_theme_watch()` (shell.c) now catches SIGHUP for the two
+long-lived surfaces, the panel and the notification daemon, and each re-reads
+the accent and invalidates at the top of its loop; the short-lived front ends
+read it when they start, which is already after the change.
+
+**A supervised child gets every ignored disposition back, not just SIGPIPE.**
+`SIG_IGN` survives exec exactly as the mask does, so a session started under
+`nohup` handed its ignored SIGHUP all the way down and the new handler would
+never have fired — measured as `SigIgn: 0x1` on a running panel.
+`child_reset_signals()` in `kdos-child.c` walks the 31 standard signals and
+restores the default for any it finds ignored. labwc's own `spawn.c` resets
+SIGPIPE only, which is right for a process that inherited nothing.
 
 **The foot theme is `[colors-dark]`, never `[colors]`.** foot deprecated the old
 section name and warns ONCE PER KEY on stderr, so every terminal on this desktop
@@ -1319,80 +1346,146 @@ developer's disk.
 
 ---
 
-## What the compositor hands its children, and where windows go
+## The compositor is a hard fork of labwc
 
-Three defects that a headless run cannot see and a real boot in QEMU showed in
-one session. Each is a rule now.
+`src/desktop/kdos-comp/` is **labwc 0.20.0, imported wholesale, rebranded and
+FROZEN** — no upstream merges, no `.patch` files; it is our source now and is
+edited directly. `KDOS-FORK` at its root records the upstream tarball and
+sha256. GPL-2.0 and upstream copyright headers are kept. The binary is
+`kdos-comp`; config dirs are `kdos-comp` (`~/.config/kdos-comp/rc.xml` — labwc's
+own format, and labwc's documentation applies verbatim). The port builds with
+meson out of `$PORT_SRC` (`source =` empty), compiling libkbase + libkcolor
+into a small static archive first because the grafts need the palette.
 
-**A spawned child must be given its signals back.**
-`wl_event_loop_add_signal` BLOCKS the signal it watches — that is how it turns
-it into a signalfd event — so kdos-comp runs with SIGHUP, SIGINT and SIGTERM
-blocked, and **the signal mask survives `exec`**. Every child it spawned
-inherited the block. Measured: `kdos theme amber` writes the accent and SIGHUPs
-`kdos-shell` to retint the running session, the signal was never delivered, and
-the whole live-retint claim in **Theming** was silently false — the panel stayed
-phosphor. `kill` on anything the launcher started did nothing either.
-`SIG_IGN` survives exec as well (handlers do not), so the compositor's
-`signal(SIGPIPE, SIG_IGN)` reached every shell it started, where `foo | head`
-then runs `foo` to completion. `child_reset_signals()` in `main.c` undoes both,
-in the child, immediately before `execvp`.
+**KDOS code lives in `src/kdos-*.c` plus `include/kdos.h`; upstream files carry
+minimal hooks marked `/* KDOS */`.** Grep for that marker to find every
+touch-point. The graft files: `kdos-config.c` (comp.conf), `kdos-child.c`
+(supervised chrome), `kdos-wallpaper.c`, `kdos-frames.c` (stutter socket),
+`kdos-idle.c` (dim → lock → off policy), `kdos-crt.c` (the CRT pass). What the
+old from-scratch compositor carried beyond these — window management,
+session-lock, capture and clipboard globals, the input-method wire, Xwayland,
+security-context filtering — is labwc upstream code and needs no graft.
 
-**The startup children are supervised; a `spawn` binding's child is not.**
-`kdos-shell` is the panel, the window list and the launcher, and
-`kdos-notifyd` owns `org.freedesktop.Notifications`; a session that loses one
-keeps running with no chrome and no way to get any back. So startup entries are
-spawned with ONE fork, their pid is kept, and SIGCHLD arrives through the event
-loop — five deaths in thirty seconds stops the respawn, because a crash loop
-hides the log line that explains it. `kc_spawn` keeps its double fork: a
+**`~/.config/kdos/comp.conf` holds ONLY the KDOS keys now**: `wallpaper`,
+`crt` / `crt_scanlines` / `crt_curve`, `idle_dim` / `idle_lock` / `idle_off`.
+Keybinds, mouse, workspaces and window behaviour are rc.xml's business; an old
+`bind`/`startup`/`workspaces`/`mouse` line is ignored **and says so**, naming
+rc.xml — as does any other unrecognised key, because the skel file promises
+that a line which does not take effect is reported, and a typo that produced
+silence is indistinguishable from a setting that does nothing. The skel rc.xml maps
+the old default bindings (W-Return foot, W-d launcher, W-q close, W-Tab cycle,
+W-1..4 workspaces, W-l lock, media keys → kdos-osd) and adds what the fork
+gained: `W-m` ToggleMaximize, `W-f` ToggleFullscreen.
+
+**What the fork closed outright** (each was a documented gap of the old
+compositor): `set_maximized`/`set_fullscreen` work; middle-click paste works
+(primary selection); cursor-shape-v1, fractional-scale-v1, xdg-activation-v1
+and xdg-toplevel-icon-v1 exist; SIGHUP is labwc's Reconfigure and reaches the
+CRT tint reload (`kdos_crt_reload()` hook in `handle_sighup`).
+
+**Window frames: skel `themerc-override`, and foot is told to use them.**
+labwc reads `~/.config/kdos-comp/themerc-override` over its built-in theme;
+the skel copy is deliberately NEUTRAL dark (near-black bars, grey text) so it
+reads correctly under every accent with no regeneration on `kdos theme`. Two
+traps found live: a `*.title.bg.color` alone changes nothing — the default
+texture is a gradient, so `window.*.title.bg: flat solid` must be set too —
+and the grey bar foot showed was foot's own CSD, not labwc's SSD at all:
+skel `foot.ini` carries `[csd] preferred=server` now.
+
+**The fork logs at INFO by default** (labwc's default is ERROR — with it, the
+graft layer's decisions were invisible and an empty session log looked like a
+hung session). `KDOS_COMP_DEBUG=1` maps to DEBUG, keeping the contract the
+`kdos stutter` section documents.
+
+**The `WLR_RENDERER=pixman` fallback in `kdos-desktop` reads sysfs, not
+dmesg.** `dmesg` is root-only under dmesg_restrict, so the old grep forced
+software rendering for every normal user — which silently disabled the CRT
+pass (it declines non-GLES2). `/sys/bus/virtio/devices/*/features` is
+world-readable, one character per feature bit, VIRGL is bit 0. The old check
+also demanded RESOURCE_BLOB; that was a smithay-era lesson — wlroots' GLES2
+renderer runs fine on virgl without blob, measured on the fork with the pass
+on (and this host's qemu cannot even combine virgl with blob).
+
+**Signal lessons, now upstream's.** The old compositor's hardest-won rule — a
+spawned child must get its signal mask and SIG_IGN dispositions back before
+`execvp`, because both survive exec and `wl_event_loop_add_signal` blocks what
+it watches — is encoded in labwc's own `spawn.c` (`reset_signals_and_limits()`)
+on every spawn path, and `kdos-child.c` does the same for the supervised pair.
+The live-retint claim in **Theming** depends on it; it was verified against the
+fork (`kdos theme amber` retints the running panel and shader).
+
+**The startup children are supervised; a rc.xml Execute child is not.**
+`kdos-child.c`: `kdos-shell` and `kdos-notifyd` are spawned with ONE fork,
+their pid kept, and the reap arrives through labwc's existing SIGCHLD handler
+(`kdos_child_reap()` hook — a second signalfd on SIGCHLD would race the first).
+signalfd COALESCES the signal and labwc's handler reaps one zombie per event,
+so the handler also runs `kdos_children_poll()` — targeted `waitpid(WNOHANG)`
+per supervised pid, which can never steal a zombie that is not ours — or two
+chrome children dying together leave one a zombie that never respawns.
+Five deaths in thirty seconds stops the respawn, because a crash loop hides
+the log line that explains it. labwc's own spawns keep their double fork: a
 terminal a keybinding opened is not the desktop's chrome.
 
-**`o->usable` is the box a window may have, and everything that positions one
-reads it through `kc_usable_at()`.** It was computed by `layer.c` and consumed
-by NOTHING: every toplevel mapped at the scene default of 0x0 — under the
-panel, and exactly on top of the previous window — and snapping used
-`wlr_output_layout_get_box`, so a maximised window covered the panel outright.
-New windows are centred in the usable box with an eight-step cascade, and
-snapping is against the same box.
+**Windows land in the usable area because labwc computes one.** Placement,
+snapping and maximise all honour layer-shell exclusive zones upstream — the
+old `kc_usable_at()` lesson (a maximised window must not cover the panel) is
+now somebody else's regression test.
 
-**The wallpaper is the compositor's, not a client's.** `wallpaper.c` decodes the
-PNG with libpng and puts one `wlr_scene_buffer` per output in `layer_below`.
-The usual answer is a layer-shell client (swaybg) and it is wrong here: libkwl
-paints CELLS, so a wallpaper client would be the one program in this desktop
-that is not a character grid. Three things it has to get right — there is no
-public "wlr_buffer from memory", so the file carries the smallest `wlr_buffer_impl`
-that works (data-ptr access only, which is what both renderers use to upload a
-texture); libpng hands back R,G,B,A in memory order while `DRM_FORMAT_ARGB8888`
-wants B,G,R,A; and libpng reports a bad file by `longjmp`ing back **after** the
-allocation, so only an initialised buffer may leave `decode_png`. Scaled to
-COVER and centred via the source box, `wallpaper = none` in comp.conf an honest
-off.
+**The wallpaper is the compositor's, not a client's.** `kdos-wallpaper.c`
+decodes the PNG with libpng and puts one `wlr_scene_buffer` per output at the
+bottom of the scene tree, rebuilt from the `output_update_for_layout_change()`
+hook. The usual answer is a layer-shell client (swaybg) and it is wrong here:
+libkwl paints CELLS, so a wallpaper client would be the one program in this
+desktop that is not a character grid. Three things it has to get right — there
+is no public "wlr_buffer from memory", so the file carries the smallest
+`wlr_buffer_impl` that works (data-ptr access only, which is what both
+renderers use to upload a texture); libpng hands back R,G,B,A in memory order
+while `DRM_FORMAT_ARGB8888` wants B,G,R,A; and libpng reports a bad file by
+`longjmp`ing back **after** the allocation, so only an initialised buffer may
+leave `decode_png` (its locals are `volatile` for exactly that path). Scaled
+to COVER and centred via the source box, `wallpaper = none` in comp.conf an
+honest off.
+
+**A view on another workspace is re-reported as MINIMIZED** over
+wlr-foreign-toplevel (`kdos_foreign_workspace_sync()`, hooks in
+`workspaces_switch_to` and `view_move_to_workspace`, plus
+`view_toggle_visible_on_all_workspaces` — omnipresence is an input to the
+predicate, so it resyncs there too, though labwc moves omnipresent views to
+the current workspace on every switch and the toggle is normally a no-op).
+The pre-fork compositor
+did this and kdos-shell is built on it twice over: the panel's workspace-
+occupancy derivation counts non-minimized tasks, and the window list dims
+minimized ones. Stock labwc reports them unminimized, which made every visited
+workspace look occupied while any window existed anywhere.
 
 ## Lock, idle and power
 
-`ext-session-lock-v1`, `ext-idle-notify-v1` and `idle-inhibit` in the
-compositor (`src/desktop/kdos-comp/lock.c`, `idle.c`), plus three binaries:
-`kdos-lock`, `kdos-checkpass` and `kdos-powerd`/`kdos-power`.
+`ext-session-lock-v1`, `ext-idle-notify-v1` and `idle-inhibit` are labwc
+upstream code now (`src/session-lock.c`, `src/idle.c` in the fork), plus three
+binaries of ours: `kdos-lock`, `kdos-checkpass` and `kdos-powerd`/`kdos-power`.
 
-**The compositor owns `locked`, not the client.** `s->locked` is a field and
-deliberately not `s->lock != NULL`: a lock screen that unlocks when it crashes
-is the failure mode the whole protocol exists to remove. A `SIGKILL` on
-`kdos-lock` leaves the session locked, the black rect under the lock tree
-covering everything, and the log saying so; recovery is another VT. Every input
-path asks `kc_locked()` — focus, bindings (VT switching excepted, it must
-survive everything), and the pointer.
+**The compositor owns `locked`, not the client — and labwc agrees.** Its
+`manager->locked` stays true when the lock client dies without unlocking
+("abandoned lock"): the lock output trees keep covering every screen, and a
+NEW lock client may replace the abandoned one — which is exactly the recovery
+`kdos-lock` needs after a crash. A lock screen that unlocks when it crashes is
+the failure mode the protocol exists to remove; verified semantics, not
+assumed. The old per-surface lessons (locked sent exactly once, count mapped
+surfaces, no null-buffer commit on a lock surface) are upstream's code paths
+now — but the libkwl half of the last one is still OURS: `kwl_init` skips the
+pre-configure commit for `KWL_ROLE_LOCK`, because that empty commit is a
+protocol error on a lock surface.
 
-Three things that cost a debug cycle each, all found on a two-output headless
-compositor and none visible with one:
-
-- **`locked` may be sent EXACTLY once.** wlroots asserts `!locked_sent`, so the
-  second monitor's surface aborted the compositor and took the client with it.
-- **Count MAPPED lock surfaces, not created ones.** A client creates them all up
-  front, so counting creations answers "the screen is covered" while the second
-  monitor still shows the session.
-- **A lock surface must not be committed with a null buffer.** Layer-shell and
-  xdg-shell need that empty commit to get their first configure; here it is a
-  protocol error, the client is killed, and the machine is left locked with no
-  prompt on it. `kwl_init` skips the pre-configure commit for `KWL_ROLE_LOCK`.
+**The idle POLICY is a graft** (`kdos-crt.c`'s sibling, `kdos-idle.c`): one
+timer, dim → lock → outputs off, each stage measured from the LAST ACTIVITY,
+never from the previous stage. Activity ends the dim and powers outputs back
+on; it never unlocks. An inhibitor stops the policy dead. The hook is labwc's
+`idle_manager_notify_activity()` — the single funnel every input path already
+goes through — plus one call in each idle-inhibitor handler. The dim is a
+translucent scene rect raised to the top (lock trees re-raised above it), not
+a gamma change. All three timers default to 0 in a VM (DMI `sys_vendor`, or no
+`wlr_session`) unless any `idle_*` key is set in comp.conf — a blanked screen
+over VNC is indistinguishable from a crashed compositor.
 
 **libkwl's lock role covers every output** — the protocol will not report the
 session locked until they all have a surface. libktui has ONE cell buffer, so
@@ -1419,14 +1512,6 @@ and why" and is what a dead power key gets diagnosed with.
 `KDOS_POWERD_SOCKET` moves the socket for testing and grants nothing —
 authorisation never depended on the path.
 
-**The idle policy is one timer in the compositor**: dim → lock → outputs off,
-each stage measured from the LAST ACTIVITY rather than from the previous stage.
-Activity ends the dim and powers the outputs back on; it **never** unlocks.
-An inhibitor stops the policy dead rather than pausing it. `idle_dim`,
-`idle_lock`, `idle_off` in comp.conf, seconds, 0 = never — and **all three
-default to 0 in a VM** (DMI `sys_vendor`), because a blanked screen over VNC is
-indistinguishable from a crashed compositor. Any `idle_*` line overrides that.
-
 **`kdos doctor` checks the setuid bit**, because losing it is the worst failure
 in the system and a silent one: `kdos-checkpass` without it refuses every
 password and locks the user OUT of their own session. An `rsync` without `-p`
@@ -1436,10 +1521,16 @@ is all it takes.
 
 ## The CRT pass
 
-`src/desktop/kdos-comp/crt.c`. The CRT stopped being four separate imitations
-and became one system property: the compositor renders the desktop through a
-phosphor shader, so the boot splash, the TTY and the session are finally the same
-machine. **The wallpaper's baked scanlines were deleted** in the same change.
+`src/desktop/kdos-comp/src/kdos-crt.c` — ported whole onto the labwc fork, and
+**ON by default** (`crt = 55`, scanlines 60, curve 0). The CRT stopped being
+four separate imitations and became one system property: the compositor
+renders the desktop through a phosphor shader, so the boot splash, the TTY and
+the session are finally the same machine. **The wallpaper's baked scanlines
+were deleted** in the same change. Fork hook points: `kdos_crt_early_init()`
+before `wlr_scene_create()` (main.c), the commit routed through
+`kdos_crt_frame()` in labwc's `handle_output_frame` (output.c, falling back to
+`lab_wlr_scene_output_commit` when the pass declines), and `kdos_crt_reload()`
+in `handle_sighup` so `kdos theme <accent>` retints the shader live.
 
 **wlroots has no shader API** — `wlr/render/pass.h` is `add_texture` and
 `add_rect`, and wlr_scene has three node types and no callback node. It does have
@@ -1473,6 +1564,19 @@ fails at runtime marks that *output* broken and returns to
 `wlr_scene_output_commit()` for good, because 60 identical error lines a second
 is worse than missing scanlines.
 
+**The magnifier takes the frame instead, whole.** labwc draws its magnified
+inset inside `lab_wlr_scene_output_commit()` — the call this pass replaces — so
+with the pass on, a magnified frame lost the inset whenever the scene needed
+redrawing and kept it whenever the scene was static (a hardware cursor damages
+nothing): a flicker between two different pictures. `kdos_crt_frame()` declines
+while `magnifier_is_enabled()`, which is also the right answer on its own — an
+accessibility zoom read through scanlines and a three-tap bleed is harder to
+read, not easier. Nothing else in `output->pending` is lost by the bypass:
+every writer of that struct commits it itself (`output_state_commit()`, or
+`configure_new_output()`'s own scene commit), and the only field the frame
+handler leaves there is `tearing_page_flip`, which is meaningless under a
+fullscreen post-process.
+
 The shader is scanlines every third **physical** row (the splash's and the old
 wallpaper's period), a three-tap horizontal bleed, a vignette, optional barrel
 distortion and a faint phosphor floor so black is never quite black. **No
@@ -1481,10 +1585,9 @@ respectively, and the fill rate is not free. The curvature is normalised by the
 corner displacement so no value crops the desktop; without that divisor,
 `crt_curve = 100` blacked out the corners and ate the panel's top row. Colours
 come from libkcolor's `KCOL_SCHEMES`, and the accent is read from
-`$XDG_CACHE_HOME/kdos/theme` — the same one-word file kdos-shell reads — **once, at
-startup**: a live `kdos theme amber` moves the panel and the box on their next
-start and the shader on the next login. The SIGHUP retint CLAUDE.md's theming
-section promises is M6.5's job, not done here.
+`$XDG_CACHE_HOME/kdos/theme` — the same one-word file kdos-shell reads — at
+startup and again on SIGHUP: `kdos theme amber` retints the running shader in
+the same signal that repaints the panel (verified on the fork).
 
 `crt` / `crt_scanlines` / `crt_curve` in comp.conf, percentages, `crt = 0` an
 honest off. **`KDOS_CRT_DUMP=<prefix>`** writes `<prefix>-in.ppm` and
@@ -1505,7 +1608,7 @@ Three sources, none of them an answer alone, joined:
 
 | Knows | Does not know | Where |
 |---|---|---|
-| a frame was late, by how much, and what the compositor's own render cost | who did it | `kdos-comp/frames.c` |
+| a frame was late, by how much, and what the compositor's own render cost | who did it | `kdos-comp/src/kdos-frames.c` |
 | the machine was starved, and of what | by whom | `/proc/pressure/*` |
 | who burned CPU and who sat in D state | that anyone cared | `/proc/<pid>/stat` |
 
@@ -1561,79 +1664,47 @@ frames each (~410 ms at 60 Hz) with the spinning process named first.
 logged — a session log with a stutter in it is worth something even when nothing
 was listening. `kdos doctor` reports whether the socket is there at all.
 
-### Ending the session — and why the teardown had never run
+### Ending the session
 
-`SIGTERM`/`SIGINT` now end the session through `wl_event_loop_add_signal`, so a
-`kill` takes the same path `Super+Escape` does and the code after
-`wl_display_run()` actually executes. It had never executed, and it aborted the
-moment it did:
-
-```
-wlr_cursor_destroy: Assertion `wl_list_empty(&cur->events.motion.listener_list)'
-wlr_backend_finish:  Assertion `wl_list_empty(&backend->events.new_input...)'
-handle_display_destroy (security_context_v1): same assertion
-```
-
-**wlroots asserts that nothing is still listening when it destroys an object**, so
-every session-lifetime listener has to be removed first — the five cursor ones,
-the backend's two, and one each for layer-shell, session-lock, ext-workspace,
-output-management, the output layout, xdg-shell (×2), xdg-decoration, the seat
-(×2), the security-context manager and Xwayland (×2). Each removal is guarded the
-same way its `wl_signal_add` was, because a global that failed to create was never
-listened to. Verified under ASan: a two-output session with the panel up, and one
-with the screen locked and the lock client SIGKILLed, both exit 0.
+labwc handles `SIGTERM`/`SIGINT` through `wl_event_loop_add_signal` and its
+teardown removes its own listeners — the "wlroots asserts nothing is still
+listening at destroy" lesson is upstream's to keep now. What is OURS on that
+path: `main.c`'s shutdown hooks run the graft teardown in order
+(`kdos_wallpaper_finish` → `kdos_frames_finish` → `kdos_idle_finish` →
+`kdos_crt_finish`) before the server dies, and the shell/notifyd notice the
+dead compositor themselves — libkwl's `kwl_pump` uses the documented
+prepare_read/read_events sequence, so a closed socket is seen instead of spun
+on (see **the shell**'s notifyd notes).
 
 ---
 
 ## Screen capture, the clipboard and the portal
 
-Three programs KDOS already shipped could not work, for one reason: **kdos-comp
-advertised no capture and no clipboard globals at all.** `grim` (and so
-`kdos-shot`) had nothing to bind, `wl-clipboard` had nothing to bind, and a
-portal backend would have had nothing to capture. `src/desktop/kdos-comp/capture.c`
-creates them, and both generations of each:
+**All the capture and clipboard globals are labwc upstream code now** — both
+generations of each: `zwlr_screencopy_manager_v1` (released grim 1.4.1),
+`zwlr_export_dmabuf_manager_v1`, `ext_image_copy_capture_manager_v1` with the
+output and foreign-toplevel capture sources (what `xdg-desktop-portal-wlr`
+prefers, and per-WINDOW capture), and both data-control managers (wl-clipboard
+2.2 and 2.3). Implementing only one generation strands either the shipped
+grim or every client written after 2024; labwc carries both, which is part of
+why the fork won.
 
-| Global | Who wants it |
-|---|---|
-| `zwlr_screencopy_manager_v1` | **released grim (1.4.1)** — only grim master speaks the ext- protocol |
-| `zwlr_export_dmabuf_manager_v1` | zero-copy recorders |
-| `ext_image_copy_capture_manager_v1` + `ext_output_image_capture_source_manager_v1` | what `xdg-desktop-portal-wlr` prefers |
-| `ext_foreign_toplevel_image_capture_source_manager_v1` | capture ONE WINDOW rather than a screen |
-| `zwlr_data_control_manager_v1` + `ext_data_control_manager_v1` | wl-clipboard 2.2 and 2.3 respectively |
-
-Implementing only the ext- half breaks the shipped grim; implementing only the
-wlr half works today and strands every client written after 2024. The
-security-context table in `security.c` already named all six — it was written
-ahead of the compositor on purpose, and this is the day it paid off: nothing had
-to be added there to keep a boxed app off them. **That is also what makes the
-portal the sanctioned route rather than a convenience**: a boxed OBS cannot bind
+**A boxed app is kept off them by labwc's security-context filter**
+(`allow_for_sandbox()` in `src/server.c`): a client tagged through
+`kdos-boxsock` gets a static allowlist — surfaces, seat, dmabuf, text-input,
+primary selection — and none of the capture, data-control or input-method
+globals. Verified against the fork: a tagged `grim` cannot bind screencopy
+while an untagged one shoots the screen. **That is what makes the portal the
+sanctioned route rather than a convenience**: a boxed OBS cannot bind
 screencopy at all, so it asks the portal, which runs on the host and asks the
-user which output to share.
-
-**Per-window capture needs a second foreign-toplevel protocol.**
-`ext-foreign-toplevel-list-v1` carries identity and nothing else, which is
-exactly what "capture THAT window" needs and nowhere near enough for a taskbar,
-so `shellsvc.c` now creates handles on both it and `wlr-foreign-toplevel-management`.
-The handle's `data` points back at the `kc_toplevel`, and a request builds a
-source from that window's scene node.
-
-Two things that cost a debug cycle:
-
-- **The capture source outlives the window.** It hangs off the SCENE NODE, which
-  xdg-shell destroys *after* our own destroy handler has freed the toplevel, so
-  its destroy listener fired on freed memory. ASan caught it on the first run
-  with capture in play; `kc_capture_toplevel_free()` from `toplevel_destroy` is
-  the fix. A source is created lazily and kept — it owns a `wlr_scene_output` and
-  a swapchain, so one per window is worth paying for once and not per request.
-- **A request we cannot serve is answered with an INERT source**
-  (`request_accept(req, NULL)`), never ignored. Dropping it leaves the client
-  holding an object id that never becomes anything, waiting forever.
+user which output to share. (The legacy per-box `wayland.*` grant keys in box
+profiles have no labwc equivalent — a box either is sandboxed or is not. Gap
+stated, not hidden.)
 
 **A screenshot of a phosphor desktop looks like the desktop.** Output capture
 copies the output's committed buffer, which under the CRT pass is the processed
-one — measured: the same window comes back as `(41,126,21)` where the client
-painted `(32,192,64)`, on a `(0,3,1)` phosphor floor. Per-window capture renders
-the scene node and is untinted. Both are the honest answer to what was asked.
+one. Per-window capture renders the scene node and is untinted. Both are the
+honest answer to what was asked.
 
 **The portal is `ports/core/xdg-desktop-portal-wlr` 0.8.4** — sd-bus from basu,
 `--libexecdir=/usr/lib` so both daemons sit where `kdos-desktop-start` looks.
@@ -1655,69 +1726,37 @@ slurp. The alternative, `none`, silently captures the first output — right on 
 laptop, wrong the moment a second screen is plugged in, and wrong in the
 direction where the user never finds out.
 
-**Proved with `captest`**, a client that is its own subject: it opens a window
-filled with one known colour, waits for the compositor to list it under
-ext-foreign-toplevel-list, then captures it both ways and checks the pixels.
-28800/28800 pixels of the window on the per-window path under both renderers,
-and the window found in the full-screen shot. It also found two of its own
-bugs first — the headless GLES2 path advertises **BGR888, three bytes per
-pixel**, and a client that assumes four gets `Invalid stride`.
+**The `captest` proof was of the PRE-FORK compositor** — a client that is its
+own subject: window of a known colour, captured both ways, pixels checked,
+28800/28800 under both renderers. The binary was never committed, so it was
+not rerun against the fork; what was verified on the fork is `grim` shooting
+the screen and the sandbox denial above. One fact of captest's outlives it:
+the headless GLES2 path advertises **BGR888, three bytes per pixel**, and a
+client that assumes four gets `Invalid stride`.
 
 ## Input methods — the compositor is the wire
 
-`src/desktop/kdos-comp/textinput.c`. An input method is three parties that never
-speak to each other: the APPLICATION says "I am a text field, here is my cursor
-and what surrounds it" over **text-input-v3**, the INPUT METHOD says "here is a
-preedit, here is a string to commit" over **input-method-v2**, and only the
-compositor knows which application has the keyboard. kdos-comp advertised
-neither global, so no input method could work at all — the same shape as the
-capture globals, and the reason `docs/KDOS-DESKTOP.md` listed "no CJK input" as
-a known gap.
+**The wire is labwc upstream code now** (`src/input/ime.c` in the fork):
+text-input-v3 for the application, input-method-v2 for the engine,
+virtual-keyboard-v1 for the route back, all three globals created and relayed
+by code that sway and labwc users have exercised for years. The semantic rules
+the old `textinput.c` was written around — one IM per seat, enter only for the
+focused surface's client, compositor bindings before the grab, a virtual
+keyboard's keys never fed back to the grab, nothing crossing a lock — are the
+protocol's rules, and labwc's implementation is the one the ecosystem tests
+against. The pre-fork `imtest` proof (15 assertions, both parties in one
+client) was of our from-scratch wire; its binary was never committed and was
+not rerun — what was verified on the fork is fcitx5 itself binding
+`zwp_input_method_manager_v2` in the session.
 
-**virtual-keyboard-v1 is part of the same feature, not a separate one.** An
-input method holds the keyboard grab, decides a key is not for it, and forwards
-it — through a virtual keyboard, because that is the only route back. Without
-the global, the arrow keys and Escape in every candidate window are simply
-swallowed.
+**Sandboxed clients cannot BE an input method** — `zwp_input_method_manager_v2`
+and `zwp_virtual_keyboard_manager_v1` are outside labwc's `allow_for_sandbox`
+allowlist (a keylogger by design, since the grab delivers every keystroke on
+the seat), while `zwp_text_input_manager_v3` is deliberately inside it: that
+is the application half, and denying it would deny input methods to the boxed
+apps that need one most.
 
-Rules the file exists to keep, each a way this goes wrong:
-
-- **One input method per seat.** The second gets `unavailable` rather than
-  silence: an IM that binds and then hears nothing looks like a compositor with
-  no IM support, which sends people to rebuild things that were fine.
-- **A text input hears `enter` only if ITS CLIENT owns the focused surface.**
-  text-input-v3 is bound per seat, not per surface.
-- **Compositor bindings are matched BEFORE the grab.** An input method that
-  could swallow `Super+Q` or `Ctrl+Alt+F2` could trap the session, and a
-  candidate window is exactly the state a user wants out of.
-- **A virtual keyboard's own keys never reach the grab** (`kc_keyboard.virt`).
-  Feeding an input method's forwarded key back to it is an infinite loop with
-  the key still not delivered.
-- **Nothing crosses a lock.** `kc_locked()` is asked on every path here, because
-  a lock screen whose keystrokes reach a boxed input method is a lock screen
-  that leaks the password.
-- **`zwp_input_method_manager_v2` is in the security-context table**, beside
-  virtual-keyboard: being an input method is a keylogger by design, since the
-  grab delivers every keystroke on the seat. `zwp_text_input_manager_v3` is
-  deliberately NOT in that table — that is the application half, and denying it
-  would deny input methods to the apps that need one most.
-
-**Proved with `imtest`**, a client that is both parties: one connection is an
-application with a window and a text field, another is an input method with a
-virtual keyboard, and everything it observes is the relay. 15 assertions, all
-green under ASan with a clean SIGTERM teardown — `enter` on focus, activation,
-the surrounding text arriving, a preedit and a commit coming back, the second
-input method refused, the grab receiving the keymap, a virtual key reaching the
-application and NOT the grab, and the candidate window created, positioned and
-destroyed while the IM was still active.
-
-**`wlr_seat_set_capabilities` had to move.** It ran only in `new_input`, so a
-keyboard that arrives over a PROTOCOL rather than from the backend left the seat
-advertising no keyboard capability at all — clients then never ask for a
-`wl_keyboard` and every key goes nowhere. Found by imtest, where the input
-method's own virtual keyboard was the only keyboard on the seat.
-
-**The engine is `fcitx5`, ported now** — see **The input method** below for the
+**The engine is `fcitx5`, ported** — see **The input method** below for the
 build and where each half lives. What this section describes is the wire; test
 it with any input-method-v2 client.
 
@@ -2022,8 +2061,8 @@ kdos/
 │   │   └── libkwl/              # kwl_*  libktui's Wayland backend — the one
 │   │                            #   library with real -l dependencies
 │   ├── desktop/                 # the desktop, ours (see docs/KDOS-DESKTOP.md)
-│   │   ├── kdos-comp/           # the wlroots compositor, the CRT pass (crt.c),
-│   │   │                        #   capture and the clipboard (capture.c)
+│   │   ├── kdos-comp/           # hard fork of labwc 0.20.0; KDOS grafts in
+│   │   │                        #   src/kdos-*.c (CRT, wallpaper, frames, idle)
 │   │   ├── kdos-shell/          # panel, launcher, notifyd, osd, tray (SNI)
 │   │   ├── kdos-lock/           # the lock screen + setuid kdos-checkpass
 │   │   ├── kdos-powerd/         # suspend/poweroff/reboot over a unix socket
@@ -3175,26 +3214,25 @@ adding users is manual.
 
 ## Testing and the VM rig
 
-- **`make run` (plain virtio-vga, no virgl) has NO desktop**: smithay refuses
-  software EGL renderers ("software EGL renderers are skipped" → "no allocator
-  available"), so cosmic-comp gets no outputs. Only **`make run-hw`**
-  (containerized Ubuntu-qemu 10, virgl+blob) shows the desktop. Its machine
-  string is `pc-i440fx-noble-v2`, easy to mistake for the host qemu.
+- **`make run` (plain virtio-vga, no virgl) HAS a desktop but no CRT pass**:
+  wlroots falls back to the pixman renderer there, and `kdos_crt_init()`
+  declines anything that is not GLES2 (a fullscreen shader on software
+  rendering is a slideshow). **`make run-hw`** (containerized Ubuntu-qemu 10,
+  virgl+blob) is the GLES2 path with the pass on. Its machine string is
+  `pc-i440fx-noble-v2`, easy to mistake for the host qemu.
 - **Debug rig:** boot the ISO headless with `-serial unix:` + `-monitor unix:`
-  sockets and **`-display egl-headless -vnc :19`** (the `gtk,gl=es` window path
-  can wedge the guest in a soft-lockup storm once cosmic-comp starts;
-  `KDOS_QEMU_DISPLAY` overrides it in `run.sh`). `screendump` says "no surface"
-  under GL, and cosmic-comp has NO wlr-screencopy so grim fails — capture by
-  reading the VNC framebuffer raw (RFB handshake + Raw encoding; `SetEncodings`
-  is `type(1) pad(1) count(2)` then `count*int32` — an extra padding field
-  desyncs the stream and every later read blocks), or use `cosmic-screenshot`
-  in-session.
-- Monitor `sendkey` reaches the VT and reaches focused Wayland windows; the HMP
-  mouse does not drive cosmic-comp, and a layer-shell surface launched
-  standalone (e.g. `cosmic-app-library`) never takes keyboard focus. Drive the
-  session from the serial root shell with `su - kdos -c '...'` — a **login**
-  shell, because a plain `su kdos -c` leaves podman resolving HOME to `/` and
-  every call fails with `mkdir /.local: permission denied`.
+  sockets and **`-display egl-headless -vnc :N`** (virgl → GLES2, so the CRT
+  pass runs; `KDOS_QEMU_DISPLAY` overrides the display in `run.sh`).
+  `screendump` says "no surface" under GL — capture by reading the VNC
+  framebuffer raw (RFB handshake + Raw encoding; `SetEncodings` is
+  `type(1) pad(1) count(2)` then `count*int32` — an extra padding field
+  desyncs the stream and every later read blocks), or run `grim` in-session:
+  the fork carries wlr-screencopy.
+- Monitor `sendkey` reaches the VT and focused Wayland windows (`sendkey
+  meta_l-ret` opens foot). Drive the session from the serial root shell with
+  `su - kdos -c '...'` — a **login** shell, because a plain `su kdos -c`
+  leaves podman resolving HOME to `/` and every call fails with
+  `mkdir /.local: permission denied`.
 - Escape-only and space-only tty writes don't end fbcon's deferral.
 - `testing/prepare_base.py` mini-builds a Phase 2 rootfs as a Docker base image;
   `testing/test_runner.py` builds individual ports against it; logs in
@@ -3244,12 +3282,6 @@ and respond with the targeted fix.
 - **No corefonts for wine.** winetricks fetches them from the network at run
   time and nothing in the image may depend on that, so a Windows program that
   wants Arial gets a substitute.
-- **`xdg_toplevel.set_maximized` and `set_fullscreen` are not implemented.**
-  kdos-comp has no `request_maximize`/`request_fullscreen` handler at all, so an
-  app that asks to fill the screen — a video player, a game, anything with F11 —
-  is ignored. Dragging to the top edge maximises, which is the only route there
-  is. The pieces are in place now that `kc_usable_at()` exists (fullscreen wants
-  the OUTPUT box, maximise the usable one).
 - **The baked appbox predates its own Containerfile.** `ports/appbox/image/` was
   packed on 2026-07-29; the KDE segment and the `kdos.qt-kde-theme` /
   `kdos.qt-gtk-theme` labels were added after. The shipped image therefore has
@@ -3261,34 +3293,22 @@ and respond with the targeted fix.
 - **Occupancy in the panel's workspace strip is derived, not reported.**
   ext-workspace-v1 has ACTIVE, URGENT and HIDDEN and no "there are windows
   here", so `panel.c` marks the workspace being shown occupied when a toplevel
-  is not minimized (kdos-comp reports a window on another workspace as
-  MINIMIZED). Right for every workspace the user has visited, silent about the
-  rest. Reading URGENT alone, as it did, meant no workspace was ever drawn
-  occupied at all.
-- **Five Wayland protocols the compositor does not create**, all of which `foot`
-  names on startup: `zwp_primary_selection_device_manager_v1` (so **middle-click
-  paste does not work anywhere**), `xdg-activation-v1`, `cursor-shape-v1` (every
-  client draws its own pointer, so it changes size between windows),
-  `wp_fractional_scale_v1` and `xdg-toplevel-icon-v1`. wlroots implements all
-  five. Roadmap Wave R, item R9.
-- **A configure is not a resize, and EAGAIN is not a dead compositor.** Two
-  libkwl defects that only became reachable when kdos-notifyd started resizing
-  its surface, and they compound: `resize_cells()` raised `ktui_resized` on
-  every configure, a consumer that answers that with `ktui_draw_invalidate()`
-  repaints in full, the repaint commits, the commit draws another configure —
-  ~100 frames a second until `wl_display_flush` answered EAGAIN, which
-  `kwl_pump` read as "the compositor is gone" and exited 0 with nothing in any
-  log. The supervisor added in the same session is what made it visible at all:
-  `kdos-notifyd died 6 times in 30s — not restarting it again`.
-- **`kdos-notifyd` shrinks to ONE CELL when idle rather than going away.**
-  layer-shell's own hide is a commit with a NULL buffer, and wlroots answers it
-  by resetting the surface to uninitialised — the next paint then waits for a
-  configure that only an initial-commit handshake produces, and the first toast
-  after an idle period is accepted, given an id and drawn nowhere. Measured.
-  Destroying and recreating the layer surface is the real fix.
-- **A cell grid leaves an unpainted strip** when the output height is not a
-  multiple of the cell height — visible as a black band along the bottom of the
-  lock screen at 1280x800. libkwl should pad the remainder with `KT_BG`.
+  is not minimized — which works because the fork re-reports a view on another
+  workspace as MINIMIZED (`kdos_foreign_workspace_sync()`; stock labwc does
+  not, and without the graft every visited workspace looked occupied). Right
+  for every workspace the user has visited, silent about the rest.
+- **Per-box `wayland.*` grants are gone.** The legacy compositor let a box
+  profile grant an individual denied global back; labwc's security-context
+  filter is a fixed allowlist — a client is sandboxed or it is not. Re-adding
+  per-box grants means teaching `allow_for_sandbox()` to consult the boxsock
+  profile, a deliberate piece of work.
+  (Closed from this list by the labwc fork and the shell fixes:
+  maximize/fullscreen, the five foot protocols incl. middle-click paste, the
+  notifyd one-cell shrink — the layer surface is destroyed and recreated
+  through the initial-commit handshake now — the kwl_pump EAGAIN/dead-
+  compositor confusion — it uses the documented prepare_read/read_events
+  sequence — and the cell grid's unpainted strip, padded with `KT_BG` by
+  `kcell_paint` and asserted by `clipcheck`.)
 
 ---
 
