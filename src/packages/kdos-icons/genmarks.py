@@ -29,7 +29,7 @@
 # halo survives — cropping at SOLID shaves it off on all four sides, which is
 # exactly what it looks like.
 # This replaces the old panel-tux.svg, which was <rect> pixel art traced from
-# the boot splash's 34x34 penguin because COSMIC's SVG renderer (resvg) is
+# the boot splash's 34x34 penguin because a general-purpose SVG renderer is
 # built without raster-image support, so an SVG wrapping a PNG renders empty.
 # PNG icons sidestep that entirely — icon themes have always taken them — and
 # a Lanczos downscale of the real artwork beats a 34x34 grid at every size.

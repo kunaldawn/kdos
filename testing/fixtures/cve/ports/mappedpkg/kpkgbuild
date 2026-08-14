@@ -1,0 +1,6 @@
+name        = mappedpkg
+version     = 3.0
+release     = 1
+source      = https://example.invalid/mappedpkg-3.0.tar.gz
+description = fixture
+secdb       = upstream-name

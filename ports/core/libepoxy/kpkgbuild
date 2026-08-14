@@ -12,5 +12,6 @@ name        = libepoxy
 version     = 1.5.10
 release     = 1
 source      = https://github.com/anholt/libepoxy/archive/$version/$name-$version.tar.gz
+sha256      = a7ced37f4102b745ac86d6a70a9da399cc139ff168ba6b8002b4d8d43c900c15  libepoxy-1.5.10.tar.gz
 description = Library for handling OpenGL function pointer management
 depends     = mesa meson libX11

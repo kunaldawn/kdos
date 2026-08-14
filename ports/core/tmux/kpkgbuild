@@ -12,5 +12,6 @@ name        = tmux
 version     = 3.6a
 release     = 1
 source      = https://github.com/tmux/tmux/releases/download/${version}/${name}-${version}.tar.gz
+sha256      = b6d8d9c76585db8ef5fa00d4931902fa4b8cbe8166f528f44fc403961a3f3759  tmux-3.6a.tar.gz
 description = tmux - Terminal multiplexer
 depends     = libevent ncurses

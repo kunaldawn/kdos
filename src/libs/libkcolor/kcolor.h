@@ -50,7 +50,7 @@ typedef struct {
 typedef struct {
 	const char *name;	/* phosphor                                */
 	const char *label;	/* PHOSPHOR — for a UI                     */
-	const char *theme_name;	/* KDOS-Phosphor — for a COSMIC theme file */
+	const char *theme_name;	/* KDOS-Phosphor — the theme name generators emit */
 	uint32_t primary;
 	uint32_t dim;
 	uint32_t secondary;

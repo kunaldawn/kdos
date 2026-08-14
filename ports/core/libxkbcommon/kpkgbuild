@@ -12,5 +12,6 @@ name        = libxkbcommon
 version     = 1.13.1
 release     = 1
 source      = https://github.com/xkbcommon/libxkbcommon/archive/refs/tags/xkbcommon-$version.tar.gz
+sha256      = aeb951964c2f7ecc08174cb5517962d157595e9e3f38fc4a130b91dc2f9fec18  libxkbcommon-1.13.1.tar.gz
 description = Keymap compiler and support library (Wayland-only build)
 depends     = xkeyboard-config meson libxml2 wayland wayland-protocols

@@ -12,6 +12,7 @@ name        = foot
 version     = 1.26.1
 release     = 1
 source      = https://codeberg.org/dnkl/foot/archive/$version.tar.gz
+sha256      = 2213a78b773c1f87bc503fcc2914d1f3474e9aaa2cb7fc92ec5dba4867ab71e0  foot-1.26.1.tar.gz
 description = Fast, lightweight, minimalistic Wayland terminal emulator
 homepage    = https://codeberg.org/dnkl/foot
 depends     = meson scdoc fcft tllist wayland wayland-protocols libxkbcommon fontconfig pixman freetype2

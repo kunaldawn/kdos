@@ -1,0 +1,17 @@
+Trusted package-signing keys.
+
+Every `*.pub` in this directory is a key this machine will accept a signature
+from — for the binhost index (PACKAGES.sig) and for a package's own `.sig`
+sidecar. Adding a key is copying a file in; removing trust is deleting one.
+There is no revocation list and no online check: the directory IS the policy.
+
+    kpkg keygen builder          # on the machine that builds
+    cp builder.pub /etc/kdos/keys/   # on every machine that should trust it
+
+A key id (16 hex characters, printed by kpkg) identifies a key. It is NOT a
+credential: a signature file names the id so a person can be told which key
+signed, and verification always uses the key from THIS directory.
+
+KDOS ships no key here. A distro that shipped its own trusted key in the image
+would be asking you to trust whoever built the image, which is exactly the
+question signing exists to let you answer for yourself.

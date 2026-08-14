@@ -12,4 +12,5 @@ name        = gnu-efi
 version     = 3.0.18
 release     = 1
 source      = http://downloads.sourceforge.net/$name/$name-$version.tar.bz2
+sha256      = 7f212c96ee66547eeefb531267b641e5473d7d8529f0bd8ccdefd33cf7413f5c  gnu-efi-3.0.18.tar.bz2
 description = GNU EFI library

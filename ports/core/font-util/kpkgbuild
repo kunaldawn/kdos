@@ -12,5 +12,6 @@ name        = font-util
 version     = 1.4.1
 release     = 1
 source      = https://gitlab.freedesktop.org/xorg/font/util/-/archive/$name-$version/util-$name-$version.tar.gz
+sha256      = f0129159515c13ebe53ba2a6a94755e98c266470e844ee0aacc6196fd62b44f0  font-util-1.4.1.tar.gz
 description = X.Org font utilities
 depends     = util-macros

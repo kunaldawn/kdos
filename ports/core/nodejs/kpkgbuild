@@ -12,5 +12,6 @@ name        = nodejs
 version     = 25.6.1
 release     = 1
 source      = https://nodejs.org/dist/v$version/node-v$version.tar.xz
+sha256      = cf756781c8b4dc5ee030f87ddf9d51b8d5bf219ad56cbd9855c4a3bdc832c78e  nodejs-25.6.1.tar.xz
 description = JavaScript runtime built on Chrome's V8 JavaScript engine
 depends     = c-ares icu python3 libuv zlib

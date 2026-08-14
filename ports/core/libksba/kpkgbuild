@@ -12,5 +12,6 @@ name        = libksba
 version     = 1.6.7
 release     = 1
 source      = https://gnupg.org/ftp/gcrypt/libksba/$name-$version.tar.bz2
+sha256      = cf72510b8ebb4eb6693eef765749d83677a03c79291a311040a5bfd79baab763  libksba-1.6.7.tar.bz2
 description = Library used to make X.509 certificates as well as making the CMS (Cryptographic Message Syntax) easily accessible by other applications
 depends     = libgpg-error

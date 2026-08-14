@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libime
+version     = 1.1.15
+release     = 1
+_lm         = lm_sc.arpa-20260606.tar.zst
+_dict       = dict-20260430.tar.zst
+_table      = table-20240108.tar.zst
+source      = https://download.fcitx-im.org/$name/$name-$version.tar.zst
+source      = https://download.fcitx-im.org/data/$_lm
+source      = https://download.fcitx-im.org/data/$_dict
+source      = https://download.fcitx-im.org/data/$_table
+sha256      = e225da70ba9554a4b11af44fc3063f09290059da2c20c81124f7a9ba02c9916e  libime-1.1.15.tar.zst
+sha256      = 8c7da1b03770060269b92c0e6172552a2a9041cb74ef0be0b2659e10f0a703f1  lm_sc.arpa-20260606.tar.zst
+sha256      = 3edc008d90fcd61b9967b9e590f396189d7a00fa74c45ecde0d9850a0fdd6241  dict-20260430.tar.zst
+sha256      = 3e9d87b04a393f131723472c8eaa860dd23c378a3d4f6a9005513b2a95b3614b  table-20240108.tar.zst
+description = Pinyin and table input method engine library for fcitx5
+homepage    = https://github.com/fcitx/libime
+depends     = cmake extra-cmake-modules fcitx5 boost zstd gettext

@@ -12,6 +12,7 @@ name        = ncdu
 version     = 1.22
 release     = 1
 source      = https://dev.yorhel.nl/download/ncdu-$version.tar.gz
+sha256      = 0ad6c096dc04d5120581104760c01b8f4e97d4191d6c9ef79654fa3c691a176b  ncdu-1.22.tar.gz
 description = ncdu — NCurses Disk Usage analyzer
 homepage    = https://dev.yorhel.nl/ncdu
 depends     = ncurses

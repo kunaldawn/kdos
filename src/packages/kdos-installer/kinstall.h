@@ -102,6 +102,11 @@ typedef struct {
 	char fstype[16];
 	int swap;
 	long swap_mb;
+	/* LUKS2 on the root partition. The passphrase never reaches argv, never
+	 * reaches a dump, and never reaches the answer file — see conf.c. */
+	int luks;
+	char luks_pass[128];
+	char luks_pass2[128];
 
 	char hostname[64];
 	char username[33];
@@ -132,6 +137,36 @@ typedef struct {
 
 extern const Service ki_services[];
 extern int ki_nservices;
+
+/*
+ * The root filesystems the installer can create. One table, because every
+ * consumer has to agree: the menu offers it, mkfs creates it, fstab describes
+ * it and the swapfile step has to know what a swapfile means there.
+ *
+ * `passno` is 0 for everything but ext4 on purpose — there is no fsck.btrfs
+ * worth running and no fsck.xfs at all, so a non-zero pass is an instruction
+ * to run a checker that is not installed.
+ *
+ * `swapfile` is the trap. `fallocate` produces unwritten extents, and swapon
+ * refuses those on xfs ("swapfile has holes"); btrfs needs a NOCOW,
+ * uncompressed file, which is what `btrfs filesystem mkswapfile` makes. Only
+ * ext4 is happy with the fast path.
+ */
+enum { KI_SWAPFILE_FALLOCATE = 0, KI_SWAPFILE_DD, KI_SWAPFILE_BTRFS };
+
+typedef struct {
+	const char *name;	/* ext4                                    */
+	const char *mkfs;	/* mkfs.ext4                               */
+	const char *force;	/* -F or -f: overwrite an existing fs      */
+	const char *opts;	/* fstab mount options                     */
+	int passno;		/* fstab fs_passno                         */
+	int swapfile;		/* how a swap FILE has to be made here     */
+	const char *note;
+} Filesystem;
+
+extern const Filesystem ki_filesystems[];
+extern int ki_nfilesystems;
+const Filesystem *ki_fs(const char *name);
 
 void conf_defaults(void);
 int conf_load(const char *path);
@@ -184,6 +219,15 @@ void install_pump(void);
 void install_abort(void);
 int install_child_main(int wfd, int from_step);	/* runs in the child       */
 void install_log(const char *line);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Headless dumps — the machine as probed, the install as planned
+ *
+ * `what` is "probe" or "plan"; `json` picks the rendering, not a second pass.
+ * Both run before the terminal is taken over and write nothing to disk.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+int ki_dump(const char *what, int json);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Pages

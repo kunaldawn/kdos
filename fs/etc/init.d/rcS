@@ -71,14 +71,50 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
     fi
     echo "[KDOS] Running: $(basename $_script) start"
     splash step "$(echo "$_name" | tr '[:lower:]' '[:upper:]')"
-    if "$_script" start; then
+
+    # Redirect to a file and print it AFTERWARDS. The obvious version of this
+    # — `"$_script" start 2>&1 | tee "$_log"` — hangs the entire boot: a
+    # service that calls `supervise` leaves a supervisor process running with
+    # the pipe's write end inherited, so tee never sees EOF and rcS waits on
+    # it forever. Found by booting; 22_syslog was the first service to hit it
+    # and boot stopped dead there.
+    #
+    # Every message still reaches the console and the serial line, which is
+    # the only way to debug a machine that dies behind a splash — just after
+    # the step rather than streamed during it.
+    _log="/run/kdos-init.${_name}.log"
+    "$_script" start >"$_log" 2>&1
+    _rc=$?
+    cat "$_log"
+    if [ "$_rc" = 0 ]; then
         splash ok
     else
         splash fail
+        # The reason, not just the verdict. fbcon has not taken the console
+        # over yet, so on a framebuffer boot this output is otherwise gone.
+        while IFS= read -r _l; do
+            splash detail "$_l"
+        done < <(tail -n 6 "$_log" 2>/dev/null)
+        unset _l
     fi
+    unset _rc
 done
 
 unset _script
+
+# The other half of A/B rollback: this boot got far enough to start every
+# service that was going to fail, so the slot it booted is confirmed good.
+#
+# LAST, deliberately. Confirming earlier would confirm a system that has not yet
+# failed rather than one that has succeeded — and the whole value of the attempt
+# counter is that a boot which wedges before this line never reaches it, spends
+# its attempt, and eventually rolls back.
+#
+# Silent when the machine has no boot state, which is every machine with a
+# single root: there is nothing to confirm and that is not a failure.
+if command -v kdos-bootctl >/dev/null 2>&1; then
+    kdos-bootctl mark-good >/dev/null 2>&1 || true
+fi
 
 # Hand the screen back. This runs the power-off animation and leaves the
 # framebuffer black, so agetty's first write to tty1 — which is what finally

@@ -39,7 +39,12 @@ static void add(KxdgEntry *e, const char *key, size_t klen, const char *val,
 	if (e->n >= e->cap) {
 		int cap = e->cap ? e->cap * 2 : 32;
 		KxdgPair *nv = kb_calloc((size_t)cap, sizeof(*nv));
-		memcpy(nv, e->v, (size_t)e->n * sizeof(*nv));
+		/* Guarded because the FIRST grow has e->v == NULL, and
+		 * memcpy(dst, NULL, 0) is undefined however harmless it looks —
+		 * memcpy's second parameter is declared never-null, so a
+		 * sanitized build reports every .desktop file it reads. */
+		if (e->v)
+			memcpy(nv, e->v, (size_t)e->n * sizeof(*nv));
 		free(e->v);
 		e->v = nv;
 		e->cap = cap;

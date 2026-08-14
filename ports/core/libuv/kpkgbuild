@@ -12,4 +12,5 @@ name        = libuv
 version     = 1.51.0
 release     = 1
 source      = https://dist.libuv.org/dist/v$version/libuv-v$version.tar.gz
+sha256      = 5f0557b90b1106de71951a3c3931de5e0430d78da1d9a10287ebc7a3f78ef8eb  libuv-1.51.0.tar.gz
 description = Multi-platform support library with a focus on asynchronous I/O

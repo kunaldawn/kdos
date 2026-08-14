@@ -21,6 +21,22 @@
  * A profile is applied at CREATE time. Namespaces cannot be re-flagged on a
  * live container, so changing one marks the box as needing a recreate rather
  * than silently doing nothing — see cmd_security() in main.c.
+ *
+ * THE PROTOCOL HALF IS NOT THIS FILE'S ANY MORE. Before the labwc fork a
+ * `wayland.*` key here could grant an individual global back to one box; the
+ * fork's filter (allow_for_sandbox() in kdos-comp's server.c) is a fixed
+ * allowlist, so a client is sandboxed or it is not — screencopy, data-control,
+ * input-method and layer-shell are denied to every tagged client and no
+ * profile key changes that. Nothing here writes or reads a `wayland.*` key,
+ * which is the honest state: KDOS does not offer confinement it cannot
+ * enforce, and it does not offer a knob that enforces nothing either. What
+ * this file still owns is the namespace half — the keys above, applied at
+ * create time.
+ *
+ * The path is resolved from $HOME/.config and NOT from $XDG_CONFIG_HOME, and
+ * kdos-comp deliberately copies that rather than doing the more correct thing,
+ * because the two resolving it differently is the one failure this design must
+ * not have.
  */
 
 #include "kdos-appbox.h"
@@ -182,28 +198,45 @@ int image_exists(const char *image)
 }
 
 /*
- * Does the image carry the qgtk3 platform themes?
+ * Does the image declare a label?
  *
- * QT_STYLE_OVERRIDE=Fusion only helps when something can supply Qt a palette;
- * with no platform theme Fusion falls back to Qt's built-in LIGHT palette,
- * which is worse than leaving the app alone. The Containerfile sets this label
- * in the same layer that installs qt{5,6}-gtk-platformtheme so the two cannot
- * drift. Cached for the boot: `podman image inspect` costs ~150ms against a
- * ~300ms warm launch, and the image cannot change without a reboot.
+ * Two of them decide how Qt apps are themed — `kdos.qt-gtk-theme` (the qgtk3
+ * platform themes are installed) and `kdos.qt-kde-theme` (the kde one is, along
+ * with the KDE segment). Each is set by the Containerfile in the SAME layer that
+ * installs what it promises, so the label and the image cannot drift; asking the
+ * image is what stops kdos-appbox exporting an environment the image cannot
+ * honour, and an unhonoured QT_STYLE_OVERRIDE=Fusion is worse than nothing (Qt
+ * falls back to its built-in LIGHT palette).
+ *
+ * Cached per label for the boot: `podman image inspect` costs ~150 ms against a
+ * ~300 ms warm launch, and the image cannot change without a reboot.
  */
-int image_has_qt_gtk(const char *image)
+int image_has_label(const char *image, const char *label)
 {
-	char *cache = kb_path_join(kb_runtime_dir(), "kdos-appbox.qtgtk");
-	char buf[64] = {0};
+	char name[128], buf[64] = {0};
+	size_t n = 0;
 	int yes;
 
+	/* The cache file is named after the label, so a label with a slash or a
+	 * space in it cannot name a path of its own choosing. */
+	n += (size_t)snprintf(name, sizeof(name), "kdos-appbox.label.");
+	for (const char *c = label; *c && n + 1 < sizeof(name); c++)
+		name[n++] = (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') ||
+				    (*c >= '0' && *c <= '9')
+				    ? *c
+				    : '-';
+	name[n] = '\0';
+
+	char *cache = kb_path_join(kb_runtime_dir(), name);
 	if (kb_read_file(cache, buf, sizeof(buf)) < 0) {
 		KbArgv a = {0};
+		char fmt[128];
+		snprintf(fmt, sizeof(fmt), "{{index .Labels \"%s\"}}", label);
 		kb_argv_add(&a, "podman");
 		kb_argv_add(&a, "image");
 		kb_argv_add(&a, "inspect");
 		kb_argv_add(&a, "--format");
-		kb_argv_add(&a, "{{index .Labels \"kdos.qt-gtk-theme\"}}");
+		kb_argv_add(&a, fmt);
 		kb_argv_add(&a, image);
 		kb_argv_end(&a);
 		if (kb_run_capture(&a, buf, sizeof(buf)) != 0)

@@ -12,5 +12,6 @@ name        = perl-xml-simple
 version     = 2.25
 release     = 1
 source      = $name-$version.tar.gz::http://cpan.org/authors/id/G/GR/GRANTM/XML-Simple-$version.tar.gz
+sha256      = 531fddaebea2416743eb5c4fdfab028f502123d9a220405a4100e68fc480dbf8  perl-xml-simple-2.25.tar.gz
 description = Perl extension that provides an easy API to read and write XML (especially config files)
 depends     = perl

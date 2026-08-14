@@ -764,6 +764,44 @@ static void layout_enter(void)
 			}
 }
 
+/*
+ * The root filesystem. Drawn on BOTH plans, because the reuse plan reformats
+ * root as well — it keeps the other partitions, not that one.
+ *
+ * A filesystem whose mkfs is not on this image is still offered and still
+ * selectable; it is labelled, and `do_prepare` refuses it before anything is
+ * written. Snapping the selection back would be a control that fights the
+ * person using it, and hiding the row would leave them wondering where btrfs
+ * went on an image that has the kernel support for it.
+ */
+static int fs_rows(KRect b, int y)
+{
+	int idx = 0;
+	for (int i = 0; i < ki_nfilesystems; i++)
+		if (!strcmp(ki_filesystems[i].name, cfg.fstype))
+			idx = i;
+
+	for (int i = 0; i < ki_nfilesystems; i++) {
+		const Filesystem *f = &ki_filesystems[i];
+		int have = kb_have_prog(f->mkfs);
+		char label[96];
+		snprintf(label, sizeof(label), "%-6s %s", f->name,
+			 have ? f->note : "no mkfs on this image");
+		ktui_radio(b.x, y++, b.w, label, &idx, i);
+	}
+	kb_strlcpy(cfg.fstype, ki_filesystems[idx].name, sizeof(cfg.fstype));
+
+	if (!kb_have_prog(ki_filesystems[idx].mkfs)) {
+		char msg[128];
+		snprintf(msg, sizeof(msg),
+			 "%s is not installed — the install will stop before it "
+			 "writes anything", ki_filesystems[idx].mkfs);
+		ktui_para(b.x + 4, y, b.w - 4, msg, KT_ERR);
+		y++;
+	}
+	return y;
+}
+
 static void layout_draw(KRect b)
 {
 	Disk *d = disk_by_path(cfg.disk);
@@ -836,15 +874,17 @@ static void layout_draw(KRect b)
 		ktui_kv(b.x, y++, b.w, "root",
 		      cfg.part_root[0] ? cfg.part_root : "-", KT_ACCENT);
 		ktui_note(b.x, y++, b.w, "the root partition is reformatted, always");
+		y++;
+		ktui_section(b.x, y, b.w, "ROOT FILESYSTEM");
+		y++;
+		fs_rows(b, y);
 		return;
 	}
 
 	/* PLAN_WIPE */
 	ktui_section(b.x, y, b.w, "FILESYSTEM AND SWAP");
 	y++;
-	ktui_kv(b.x, y++, b.w, "root filesystem", "ext4", KT_TEXT);
-	ktui_note(b.x + 17, y++, b.w,
-	     "the only mkfs KDOS ships; btrfs and xfs are not ported yet");
+	y = fs_rows(b, y);
 	y++;
 
 	ktui_radio(b.x, y++, b.w / 2, "No swap", &cfg.swap, SWAP_NONE);
@@ -852,6 +892,31 @@ static void layout_draw(KRect b)
 		 &cfg.swap, SWAP_FILE);
 	ktui_radio(b.x, y++, b.w / 2, "Dedicated swap partition", &cfg.swap,
 		 SWAP_PART);
+
+	y++;
+	/*
+	 * LUKS2 on the root partition. Offered on the WIPE plan only: encrypting
+	 * a partition destroys what is on it, and the reuse plan exists for
+	 * people who are keeping something.
+	 */
+	ktui_check(b.x, y++, b.w, "Encrypt the root filesystem (LUKS2)",
+		   &cfg.luks);
+	if (cfg.luks) {
+		int fw = b.w - 20 > 32 ? 32 : b.w - 20;
+		ktui_draw_text(b.x, y, 16, "passphrase", KT_MID, KT_BG, 0);
+		ktui_input(krect(b.x + 17, y++, fw, 1), cfg.luks_pass,
+			   sizeof(cfg.luks_pass), 1, "");
+		ktui_draw_text(b.x, y, 16, "again", KT_MID, KT_BG, 0);
+		ktui_input(krect(b.x + 17, y++, fw, 1), cfg.luks_pass2,
+			   sizeof(cfg.luks_pass2), 1, "");
+		if (cfg.luks_pass2[0] && strcmp(cfg.luks_pass, cfg.luks_pass2))
+			ktui_note(b.x + 17, y, b.w, "the two do not match");
+		else
+			ktui_note(b.x + 17, y, b.w,
+				  "asked for at every boot; there is no "
+				  "recovery key and no way back in without it");
+		y += 2;
+	}
 
 	if (cfg.swap != SWAP_NONE) {
 		y++;
@@ -913,8 +978,10 @@ static void layout_draw(KRect b)
 			   kb_human_size(swp), "Linux swap");
 	}
 	pname(d->path, n++, nm, sizeof(nm));
+	char rootdesc[64];
+	snprintf(rootdesc, sizeof(rootdesc), "%s, mounted at /", cfg.fstype);
 	ktui_draw_textf(b.x, y++, b.w, KT_ACCENT, KT_BG, 0, "  %-14s %-9s %s", nm,
-		   kb_human_size(root), "ext4, mounted at /");
+		   kb_human_size(root), rootdesc);
 	y++;
 
 	ktui_para(b.x, y, b.w,
@@ -924,6 +991,26 @@ static void layout_draw(KRect b)
 
 static int layout_validate(char *err, size_t n)
 {
+	if (cfg.luks) {
+		if (!cfg.luks_pass[0]) {
+			snprintf(err, n, "set a passphrase for the encrypted "
+					 "root, or turn encryption off");
+			return 1;
+		}
+		if (strcmp(cfg.luks_pass, cfg.luks_pass2)) {
+			snprintf(err, n, "the two passphrases do not match");
+			return 1;
+		}
+		if (!kb_have_prog("cryptsetup")) {
+			/* Refused HERE rather than at the install step: a
+			 * questionnaire that accepts an answer the installer
+			 * cannot honour is a questionnaire that fails after the
+			 * point of no return. */
+			snprintf(err, n, "this image has no cryptsetup — it "
+					 "cannot create an encrypted root");
+			return 1;
+		}
+	}
 	if (cfg.plan == PLAN_MANUAL) {
 		snprintf(err, n,
 			 "run cfdisk, or switch to one of the other two modes");
@@ -1129,7 +1216,7 @@ static void system_draw(KRect b)
 	ktui_section(b.x, y, b.w, "ACCENT");
 	y++;
 	ktui_note(b.x, y++, b.w,
-	     "applied to COSMIC, GTK, the icons, the cursors, foot, btop and "
+	     "applied to the desktop, GTK, the icons, the cursors, foot, btop and "
 	     "this installer");
 	y++;
 

@@ -15,4 +15,5 @@ release     = 1
 _version    = ${version//./}
 
 source      = https://downloads.sourceforge.net/infozip/${name}${_version}.tar.gz
+sha256      = 036d96991646d0449ed0aa952e4fbe21b476ce994abc276e49d30e686708bd37  unzip-6.0.tar.gz
 description = ZIP extraction utilities

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = intel-ucode
+version     = 20260811
+release     = 1
+_repo       = Intel-Linux-Processor-Microcode-Data-Files
+source      = https://github.com/intel/$_repo/archive/refs/tags/microcode-$version.tar.gz
+sha256      = 643a1ac6154f065eb467d45a0c8277844d5b60f10b650a23c1c893386b82cd30  intel-ucode-20260811.tar.gz
+description = Intel processor microcode, bundled for early loading
+homepage    = https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files
+depends     =

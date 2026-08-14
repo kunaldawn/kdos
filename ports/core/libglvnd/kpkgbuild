@@ -12,5 +12,6 @@ name        = libglvnd
 version     = 1.7.0
 release     = 1
 source      = https://github.com/NVIDIA/libglvnd/archive/v$version/$name-v$version.tar.gz
+sha256      = 073e7292788d4d3eeb45ea6c7bdcce9bfdb3b3eef8d7dbd47f2f30dce046ef98  libglvnd-1.7.0.tar.gz
 description = The GL Vendor-Neutral Dispatch library (EGL/GLES, no GLX)
 depends     = meson

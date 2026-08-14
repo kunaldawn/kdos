@@ -12,6 +12,7 @@ name        = xcb-util-cursor
 version     = 0.1.6
 release     = 1
 source      = https://www.x.org/releases/individual/xcb/$name-$version.tar.xz
+sha256      = fdeb8bd127873519be5cc70dcd0d3b5d33b667877200f9925a59fdcad8f7a933  xcb-util-cursor-0.1.6.tar.xz
 description = XCB cursor library (libxcb-cursor)
 homepage    = https://xcb.freedesktop.org/
 depends     = xcb-util-image xcb-util-renderutil

@@ -12,5 +12,7 @@ name        = python3-pyyaml
 version     = 6.0.3
 release     = 1
 source      = https://files.pythonhosted.org/packages/source/P/PyYAML/pyyaml-$version.tar.gz
+sha256      = d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f  python3-pyyaml-6.0.3.tar.gz
+sha256      = 8fe9267165fd2d548fbe03b2bb6dfc362289f2ce70cc41f817a289038b8c6c6e  python3-pyyaml-vendor-6.0.3.tar.xz
 depends     = python3-setuptools
 vendoring   = python

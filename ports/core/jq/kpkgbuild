@@ -12,5 +12,6 @@ name        = jq
 version     = 1.8.1
 release     = 1
 source      = https://github.com/jqlang/jq/releases/download/jq-$version/jq-$version.tar.gz
+sha256      = 2be64e7129cecb11d5906290eba10af694fb9e3e7f9fc208a311dc33ca837eb0  jq-1.8.1.tar.gz
 description = jq — a lightweight and flexible command-line JSON processor
 homepage    = https://jqlang.github.io/jq/

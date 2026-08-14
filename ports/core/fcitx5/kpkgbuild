@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fcitx5
+version     = 5.1.21
+release     = 1
+source      = https://download.fcitx-im.org/$name/$name/$name-$version.tar.zst
+sha256      = 0ddda3cae1c442be56cb4179e33875fdfba1bc2455f60e4af31fa48036292596  fcitx5-5.1.21.tar.zst
+description = Input method framework, Wayland only on KDOS
+homepage    = https://fcitx-im.org
+depends     = cmake extra-cmake-modules nlohmann-json plasma-wayland-protocols libxkbcommon xkeyboard-config iso-codes wayland wayland-protocols cairo pango gdk-pixbuf glib expat gettext libuv dbus util-linux zstd

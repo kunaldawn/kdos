@@ -347,6 +347,27 @@ int add_main(int argc, char **argv)
 		return 1;
 	}
 
+	/*
+	 * The signature, BEFORE anything is unpacked.
+	 *
+	 * A `<file>.sig` that does not verify stops the install: a bad signature
+	 * is a stronger statement than no signature, and treating the two the
+	 * same is how signing becomes decoration. An ABSENT sidecar is allowed
+	 * by default, because the packages kpkg builds locally are the
+	 * overwhelming majority and are never signed — `KPKG_REQUIRE_SIG=1` is
+	 * the stricter rule for a machine that only installs from a binhost.
+	 */
+	const char *req = getenv("KPKG_REQUIRE_SIG");
+	int need_sig = req && *req && strcmp(req, "0");
+	char signer[KSIG_ID_HEX];
+	int vr = kp_verify_package(pkgfile, need_sig, signer);
+	if (vr < 0) {
+		kp_err("%s: signature check FAILED — not installing", pkgfile);
+		return 1;
+	}
+	if (vr == 0)
+		kp_msg("Signature good (key %s)", signer);
+
 	const char *root = c.root[0] ? c.root : "/";
 	/* The question is not "am I uid 0" but "can I write here" — that is
 	 * what the root check was standing in for, and it is the one that stays

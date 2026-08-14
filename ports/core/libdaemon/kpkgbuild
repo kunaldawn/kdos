@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libdaemon
+version     = 0.14
+release     = 1
+source      = https://0pointer.de/lennart/projects/libdaemon/libdaemon-$version.tar.gz
+sha256      = fd23eb5f6f986dcc7e708307355ba3289abe03cc381fc47a80bca4a50aa6b834  libdaemon-0.14.tar.gz
+description = Lightweight C library for writing UNIX daemons (avahi dependency)
+homepage    = https://0pointer.de/lennart/projects/libdaemon
+depends     =

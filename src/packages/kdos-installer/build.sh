@@ -16,7 +16,7 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I"$PORT_SRC" \
 	-o kinstall \
 	"$PORT_SRC"/main.c "$PORT_SRC"/probe.c "$PORT_SRC"/conf.c \
-	"$PORT_SRC"/install.c "$PORT_SRC"/pages.c \
+	"$PORT_SRC"/install.c "$PORT_SRC"/pages.c "$PORT_SRC"/dump.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c $LDFLAGS
 
 install -Dm755 kinstall "$PKG/usr/bin/kinstall"

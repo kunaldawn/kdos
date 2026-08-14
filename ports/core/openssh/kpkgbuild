@@ -12,5 +12,6 @@ name        = openssh
 version     = 10.2p1
 release     = 1
 source      = https://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/$name-$version.tar.gz
+sha256      = ccc42c0419937959263fa1dbd16dafc18c56b984c03562d2937ce56a60f798b2  openssh-10.2p1.tar.gz
 description = Free version of the SSH connectivity tools
 depends     = openssl

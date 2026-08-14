@@ -1,0 +1,5 @@
+name        = newpkg
+version     = 2.0.0
+release     = 1
+source      = https://example.invalid/newpkg-2.0.0.tar.gz
+description = fixture

@@ -12,6 +12,7 @@ name        = xcb-util
 version     = 0.4.1
 release     = 1
 source      = https://www.x.org/releases/individual/xcb/$name-$version.tar.xz
+sha256      = 5abe3bbbd8e54f0fa3ec945291b7e8fa8cfd3cccc43718f8758430f94126e512  xcb-util-0.4.1.tar.xz
 description = XCB utility convenience functions
 homepage    = https://xcb.freedesktop.org/
 depends     = libxcb

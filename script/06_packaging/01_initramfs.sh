@@ -81,6 +81,38 @@ cp /usr/lib/liblzma.so.5 lib/liblzma.so.5
 cp /usr/lib/libz.so.1 lib/libz.so.1
 cp /usr/lib/libzstd.so.1 lib/libzstd.so.1
 
+# Install kdos-bootctl, which decides WHICH root to boot when the machine has
+# two. rEFInd cannot count boots — that is a systemd-boot feature — so the
+# counting is ours and it has to happen here rather than in rcS: a kernel that
+# boots into a wedged userland must still spend an attempt.
+if [ -x /usr/bin/kdos-bootctl ]; then
+    cp /usr/bin/kdos-bootctl bin/kdos-bootctl
+elif [ -x /usr/bin/kdos-tools ]; then
+    cp /usr/bin/kdos-tools bin/kdos-bootctl
+else
+    echo "Note: kdos-bootctl not installed — no A/B slot selection at boot"
+fi
+
+# Install cryptsetup, for an encrypted root.
+#
+# Copied WITH its libraries and skipped entirely when it is not installed: an
+# initramfs that half-carries a cryptsetup is an initramfs that fails at the
+# passphrase prompt instead of at build time. `ldd` is not available here, so
+# the list is explicit — and if one is missing the boot says "cryptsetup: not
+# found" rather than something subtler.
+if [ -x /usr/sbin/cryptsetup ]; then
+    cp /usr/sbin/cryptsetup bin/cryptsetup
+    for _l in libcryptsetup.so.12 libdevmapper.so.1.02 libjson-c.so.5 \
+              libpopt.so.0 libssl.so.3 libcrypto.so.3 libargon2.so.1 \
+              libuuid.so.1 libblkid.so.1 libz.so.1; do
+        [ -f /usr/lib/$_l ] && cp /usr/lib/$_l lib/$_l
+    done
+    HAVE_CRYPT=1
+else
+    echo "Note: cryptsetup not installed — the initramfs cannot unlock a LUKS root"
+    HAVE_CRYPT=0
+fi
+
 # Install udev rules and helpers
 mkdir -p lib/udev/rules.d etc/udev/rules.d
 cp -r /usr/lib/udev/rules.d/* lib/udev/rules.d/ 2>/dev/null || true
@@ -167,6 +199,17 @@ copy_module() {
 
 # Core Modules for Booting (Storage, FS, Input, etc.)
 MODULES="overlay squashfs isofs cdrom sr_mod loop sd_mod ata_piix ahci libahci virtio virtio_blk virtio_pci virtio_scsi xhci-pci xhci-hcd ehci-pci ehci-hcd ohci-pci ohci-hcd usb-storage uas"
+
+# dm-crypt and the ciphers a LUKS2 default header actually uses. Carried
+# unconditionally: they are small, and a kernel that has them built in makes
+# copy_module a no-op anyway.
+# vfat, so the initramfs can read the boot state off the ESP.
+MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
+# Root filesystems the installer can create. ext4 and btrfs are built in and
+# copy_module is a no-op for them; xfs is CONFIG_XFS_FS=m, and an xfs root the
+# initramfs cannot mount installs perfectly and never boots again.
+MODULES="$MODULES xfs"
+MODULES="$MODULES dm-crypt dm-mod aes_generic aes_x86_64 aesni-intel xts sha256_generic sha512_generic crypto_null algif_skcipher"
 
 for MOD in $MODULES; do
     copy_module $MOD
@@ -257,8 +300,153 @@ for i in \$(cat /proc/cmdline); do
         root=UUID=*)
             ROOT_UUID="\${i#root=UUID=}"
             ;;
+        cryptdevice=*)
+            CRYPTDEV="\${i#cryptdevice=}"
+            ;;
+        bootstate=UUID=*)
+            BOOTSTATE_UUID="\${i#bootstate=UUID=}"
+            ;;
     esac
 done
+
+#
+# An encrypted root, unlocked before anything looks for the filesystem inside
+# it. The syntax is Arch's, because it is the one already in people's heads:
+#
+#     cryptdevice=UUID=<luks-uuid>:<name>   root=UUID=<filesystem-uuid>
+#
+# The two UUIDs are DIFFERENT things and the distinction is the whole trap: the
+# first is the LUKS container's, the second belongs to the filesystem that only
+# exists once the container is open. kinstall writes both.
+#
+# The prompt goes through the SPLASH, not to /dev/console. console= is ttyS0 on
+# this kernel command line (the last one wins), so a plain `read -p` prompts a
+# serial port nobody is looking at while the screen shows a boot splash that
+# appears to have frozen. The keystrokes are read from /dev/tty1, which is where
+# the keyboard actually is.
+#
+# There is no per-keystroke feedback: the splash owns the framebuffer and bash
+# owns the terminal, and a passphrase field that echoed dots would mean moving
+# the read into the splash. Stated rather than hidden.
+#
+# Two knobs, both defaulted to the real thing. The keyboard is on tty1 because
+# console= is the serial port, and the mapper directory is where the kernel puts
+# an opened container. They are variables so `testing/selftest.sh` can exercise
+# this function without a LUKS volume and without root — the same trick
+# `kdos stutter --fixture` uses for /proc.
+: "\${PASS_TTY:=/dev/tty1}"
+: "\${CRYPT_MAPPER_DIR:=/dev/mapper}"
+
+unlock_root() {
+    local spec="\$1" luks_uuid name dev tries
+
+    case "\$spec" in
+        UUID=*:*)  luks_uuid="\${spec#UUID=}"; luks_uuid="\${luks_uuid%%:*}"
+                   name="\${spec##*:}" ;;
+        /dev/*:*)  dev="\${spec%%:*}"; name="\${spec##*:}" ;;
+        *)         echo "cryptdevice: cannot parse '\$spec'"; return 1 ;;
+    esac
+    [ -n "\$name" ] || name=kdosroot
+
+    if [ -z "\$dev" ]; then
+        for i in \$(seq 1 10); do
+            dev=\$(blkid -U "\$luks_uuid")
+            [ -n "\$dev" ] && break
+            sleep 1
+        done
+    fi
+    if [ -z "\$dev" ] || [ ! -e "\$dev" ]; then
+        echo "cryptdevice: no device for \$spec"
+        return 1
+    fi
+    if [ ! -x /bin/cryptsetup ]; then
+        echo "cryptdevice: this initramfs has no cryptsetup"
+        return 1
+    fi
+
+    modprobe -q dm-crypt 2>/dev/null
+
+    tries=0
+    while [ \$tries -lt 3 ]; do
+        tries=\$((tries + 1))
+        [ -x /bin/kdos-splash ] && /bin/kdos-splash msg \
+            "PASSPHRASE FOR \$name (attempt \$tries of 3)" 2>/dev/null
+        # -s: never echo the passphrase. Read from tty1 because the keyboard
+        # is there and /dev/console is the serial port.
+        PASS=""
+        read -r -s PASS < "\$PASS_TTY" || true
+        # Fed on STDIN, never as an argument: /proc/<pid>/cmdline is readable
+        # by every process on the machine for as long as the process lives.
+        printf '%s' "\$PASS" | cryptsetup open --key-file=- "\$dev" "\$name"
+        rc=\$?
+        PASS=""
+        if [ \$rc -eq 0 ] && [ -e "\$CRYPT_MAPPER_DIR/\$name" ]; then
+            [ -x /bin/kdos-splash ] && /bin/kdos-splash msg "UNLOCKED" 2>/dev/null
+            return 0
+        fi
+        [ -x /bin/kdos-splash ] && /bin/kdos-splash msg \
+            "WRONG PASSPHRASE" 2>/dev/null
+    done
+    return 1
+}
+
+#
+# A/B slots: the boot state lives on the ESP because it must be readable and
+# WRITABLE before any root filesystem is mounted — including the one that turns
+# out not to work. `select` prints the UUID to boot and spends an attempt in the
+# same breath, so a kernel that hangs after this point has still been counted.
+#
+# Failing to read it is not fatal: `root=` on the command line is what a machine
+# without A/B uses anyway, and it stays the fallback.
+#
+if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
+    sp_total 1
+    sp_step "BOOT SLOT"
+    modprobe -q vfat 2>/dev/null
+    mkdir -p /esp
+    ESP_DEV=""
+    for i in \$(seq 1 10); do
+        ESP_DEV=\$(blkid -U "\$BOOTSTATE_UUID")
+        [ -n "\$ESP_DEV" ] && break
+        sleep 1
+    done
+    if [ -n "\$ESP_DEV" ] && mount -t vfat "\$ESP_DEV" /esp 2>/dev/null; then
+        SEL=\$(KDOS_BOOTSTATE=/esp/EFI/kdos/bootstate \
+               /bin/kdos-bootctl select 2>/dev/console)
+        # Unmounted immediately: the root filesystem mounts it again at
+        # /boot/efi, and two mounts of one FAT filesystem is how a state file
+        # gets written twice and read once.
+        umount /esp 2>/dev/null
+        if [ -n "\$SEL" ]; then
+            echo "Boot slot selected: \$SEL"
+            ROOT_UUID="\$SEL"
+            sp_ok
+        else
+            echo "No usable boot state; keeping root=\$ROOT_UUID"
+            sp_ok
+        fi
+    else
+        echo "Cannot read the boot state; keeping root=\$ROOT_UUID"
+        sp_ok
+    fi
+fi
+
+if [ -n "\$CRYPTDEV" ]; then
+    # One extra stage on the progress bar, added here rather than up front:
+    # the total is additive, and only this branch knows there is an unlock.
+    sp_total 1
+    sp_step "UNLOCKING"
+    if unlock_root "\$CRYPTDEV"; then
+        sp_ok
+        # The filesystem inside the container has only just appeared, so the
+        # udev pass that ran before the unlock never saw it.
+        udevadm settle 2>/dev/null || true
+    else
+        sp_fail
+        echo "Failed to unlock \$CRYPTDEV — dropping to a shell"
+        exec /bin/sh
+    fi
+fi
 
 if [ -n "\$ROOT_UUID" ]; then
     # Disk Boot Mode
@@ -425,8 +613,59 @@ exec /bin/sh
 EOF
 chmod +x init
 
+# ---------------------------------------------------------------------------
+# CPU microcode
+# ---------------------------------------------------------------------------
+# The early loader runs before the initramfs is decompressed and before any
+# filesystem exists: it scans the raw initrd image for the literal paths
+# kernel/x86/microcode/{GenuineIntel,AuthenticAMD}.bin. Three consequences,
+# and getting any one wrong means the microcode is silently never applied:
+#
+#   - this cpio must NOT be compressed, and the blobs inside it must not be
+#     either. linux-firmware ships amd-ucode as .zst because the *runtime*
+#     firmware loader can decompress; the early loader cannot.
+#   - it must come FIRST in the file, ahead of the gzipped part.
+#   - CONFIG_MICROCODE_LATE_LOADING is off, so this is the only path there is.
+#     /usr/lib/firmware/intel-ucode.bin is never read at runtime.
+UCODE=/kdos/build/ucode
+rm -rf $UCODE
+mkdir -p $UCODE/kernel/x86/microcode
+
+if [ -f /usr/lib/firmware/intel-ucode.bin ]; then
+    cp /usr/lib/firmware/intel-ucode.bin \
+       $UCODE/kernel/x86/microcode/GenuineIntel.bin
+    echo "Microcode: Intel bundle carried"
+else
+    echo "Microcode: no intel-ucode.bin — Intel CPUs will run BIOS microcode"
+fi
+
+# One AMD container per family, concatenated in the order the shell sorts them;
+# the loader walks the containers and matches on the equivalence table.
+for BLOB in /usr/lib/firmware/amd-ucode/microcode_amd*.bin.zst; do
+    [ -e "$BLOB" ] || continue
+    zstd -d -c "$BLOB" >> $UCODE/kernel/x86/microcode/AuthenticAMD.bin
+done
+if [ -s $UCODE/kernel/x86/microcode/AuthenticAMD.bin ]; then
+    echo "Microcode: AMD containers carried"
+else
+    rm -f $UCODE/kernel/x86/microcode/AuthenticAMD.bin
+    echo "Microcode: no amd-ucode blobs — AMD CPUs will run BIOS microcode"
+fi
+
+UCODE_CPIO=/kdos/build/ucode.cpio
+rm -f $UCODE_CPIO
+if [ -n "$(ls -A $UCODE/kernel/x86/microcode)" ]; then
+    ( cd $UCODE && find . | cpio -o -H newc ) > $UCODE_CPIO 2>/dev/null
+fi
+
 # Pack Initramfs
-find . | cpio -o -H newc | gzip -9 > ../initramfs.cpio.gz
+find . | cpio -o -H newc | gzip -9 > ../initramfs.gz.part
+if [ -s "$UCODE_CPIO" ]; then
+    cat $UCODE_CPIO ../initramfs.gz.part > ../initramfs.cpio.gz
+else
+    mv ../initramfs.gz.part ../initramfs.cpio.gz
+fi
+rm -f ../initramfs.gz.part
 echo "Initramfs created at $INITRAMFS"
 
 ls /kdos/build

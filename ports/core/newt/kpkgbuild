@@ -12,6 +12,7 @@ name        = newt
 version     = 0.52.25
 release     = 1
 source      = https://releases.pagure.org/newt/newt-$version.tar.gz
+sha256      = ef0ca9ee27850d1a5c863bb7ff9aa08096c9ed312ece9087b30f3a426828de82  newt-0.52.25.tar.gz
 description = Programming library for color text-mode widget UIs (provides libnewt for nmtui)
 homepage    = https://pagure.io/newt
 depends     = slang popt

@@ -277,7 +277,7 @@ int fetch_app_main(int argc, char **argv)
 
 	printf("\nDone.\n"
 	       "  launcher : ~/.local/share/applications/  "
-	       "(Super opens the COSMIC launcher)\n");
+	       "(Super opens the KDOS launcher)\n");
 	if (bin[0])
 		printf("  command  : just run '%s' — ~/.local/bin is on PATH\n",
 		       app);
