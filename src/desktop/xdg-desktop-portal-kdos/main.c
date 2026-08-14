@@ -46,7 +46,9 @@
 #define _GNU_SOURCE
 #endif
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
+#include <time.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -85,18 +87,46 @@ static void picked_free(struct picked *p)
 }
 
 /*
- * Fork kdos-pick, read its stdout, wait for it.
+ * A chooser that is still open, and the call that is waiting for it.
  *
- * The read comes BEFORE the wait, and that ordering is the whole of not
- * deadlocking here: a chooser that printed more than a pipe buffer would block
- * in write() while this blocked in waitpid(), and neither would ever move. The
- * same defect kb_run_capture had, recorded in CLAUDE.md.
+ * THE BUS LOOP MUST NOT BLOCK ON A DIALOG. The first version of this file
+ * forked kdos-pick and sat in waitpid() inside the method handler, which meant
+ * that for as long as anybody had a file dialog open this process answered
+ * nothing at all: a second application's Open request queued behind the first,
+ * and — worse, because it happens on every launch — a boxed app asking
+ * Settings for the colour scheme hung until the dialog was dismissed. A portal
+ * backend is a server; a server that stops serving while it thinks is a server
+ * that is down.
+ *
+ * So the fork happens in the handler, the sd_bus_message is REFFED and the
+ * handler returns "handled" without replying; the pipe joins the main loop's
+ * poll set, and the reply is built when the child's stdout reaches EOF. sd-bus
+ * supports exactly this — a method call may be answered at any later point
+ * while a reference to it is held.
  */
-static int run_picker(const char *const argv[], struct picked *out)
+struct pending {
+	struct pending *next;
+	sd_bus_message *call;
+	pid_t pid;
+	int fd;
+	int savefiles;			/* the code mapping differs */
+	char *buf;
+	size_t len, cap;
+};
+
+static struct pending *pendings;
+
+/*
+ * Fork kdos-pick and register it. The read and the wait happen later and in
+ * that order, which is the rule this file has always had: a chooser that
+ * printed more than a pipe buffer would block in write() while this blocked in
+ * waitpid(), and neither would ever move.
+ */
+static int start_picker(const char *const argv[], sd_bus_message *call,
+			int savefiles)
 {
 	int fds[2];
 
-	memset(out, 0, sizeof(*out));
 	if (pipe(fds) != 0)
 		return -1;
 
@@ -115,26 +145,56 @@ static int run_picker(const char *const argv[], struct picked *out)
 	}
 	close(fds[1]);
 
-	FILE *f = fdopen(fds[0], "r");
-	if (f) {
-		char line[4096];
-		while (fgets(line, sizeof(line), f) && out->n < MAX_URIS) {
-			size_t n = strlen(line);
-			while (n && (line[n - 1] == '\n' || line[n - 1] == '\r'))
-				line[--n] = '\0';
-			if (n)
-				out->uri[out->n++] = strdup(line);
-		}
-		fclose(f);
-	} else {
-		close(fds[0]);
-	}
+	/*
+	 * NON-BLOCKING, and this is not belt and braces: `pending_read` drains
+	 * until EOF or EAGAIN, and on a blocking pipe the read AFTER the one
+	 * poll() promised would block until the chooser wrote again or exited
+	 * — which is the whole thing this rewrite exists to stop doing.
+	 */
+	fcntl(fds[0], F_SETFL, O_NONBLOCK);
 
-	int status = 0;
-	while (waitpid(pid, &status, 0) < 0 && errno == EINTR)
-		;
-	out->rc = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+	struct pending *p = calloc(1, sizeof(*p));
+	if (!p) {
+		close(fds[0]);
+		return -1;
+	}
+	p->call = sd_bus_message_ref(call);
+	p->pid = pid;
+	p->fd = fds[0];
+	p->savefiles = savefiles;
+	p->next = pendings;
+	pendings = p;
 	return 0;
+}
+
+/* Split what the chooser printed into the URI list the reply carries. */
+static void pending_parse(struct pending *pend, struct picked *out)
+{
+	memset(out, 0, sizeof(*out));
+	for (size_t i = 0; i < pend->len && out->n < MAX_URIS;) {
+		size_t j = i;
+		while (j < pend->len && pend->buf[j] != '\n')
+			j++;
+		size_t n = j - i;
+		while (n && pend->buf[i + n - 1] == '\r')
+			n--;
+		if (n) {
+			char *s = malloc(n + 1);
+			if (s) {
+				memcpy(s, pend->buf + i, n);
+				s[n] = '\0';
+				out->uri[out->n++] = s;
+			}
+		}
+		i = j + 1;
+	}
+}
+
+static void pending_free(struct pending *p)
+{
+	sd_bus_message_unref(p->call);
+	free(p->buf);
+	free(p);
 }
 
 /* ── reading the options a portal request carries ──────────────────────── */
@@ -348,33 +408,14 @@ static int file_chooser(sd_bus_message *m, void *userdata, sd_bus_error *err,
 	}
 	argv[n] = NULL;
 
-	struct picked p;
-	if (run_picker(argv, &p) != 0)
+	/*
+	 * Answered later, from the main loop, when the chooser exits — see
+	 * `struct pending`. Returning 1 here is "handled"; the reply carries
+	 * the same serial because the message is still referenced.
+	 */
+	if (start_picker(argv, m, 0) != 0)
 		return reply_uris(m, 2, NULL);
-
-	/*
-	 * Exit 0 WITH at least one URI is the only success. A chooser that
-	 * exited 0 having printed nothing would otherwise be reported to the
-	 * application as "here is your file" with an empty list, which is the
-	 * shape of bug that makes a save silently write nowhere.
-	 */
-	/*
-	 * 0 with a URI is success and 1 is "the user cancelled" — but 127 is
-	 * execvp failing and 2 is kdos-pick refusing to start, and reporting
-	 * either as a cancellation tells the application a lie it cannot act
-	 * on. Those are response 2, an error, which is what a portal is
-	 * supposed to say when it could not ask the question at all.
-	 */
-	uint32_t code;
-	if (p.rc == 0)
-		code = p.n > 0 ? 0 : 1;
-	else if (p.rc == 1)
-		code = 1;
-	else
-		code = 2;
-	int r = reply_uris(m, code, &p);
-	picked_free(&p);
-	return r;
+	return 1;
 }
 
 static int method_open_file(sd_bus_message *m, void *u, sd_bus_error *e)
@@ -419,13 +460,76 @@ static int method_save_files(sd_bus_message *m, void *userdata, sd_bus_error *er
 	}
 	argv[n] = NULL;
 
-	struct picked p;
-	if (run_picker(argv, &p) != 0)
+	if (start_picker(argv, m, 1) != 0)
 		return reply_uris(m, 2, NULL);
-	uint32_t code = (p.rc == 0 && p.n > 0) ? 0 : 1;
-	int r = reply_uris(m, code, &p);
+	return 1;
+}
+
+/*
+ * The chooser has closed its stdout. Read what is left, reap it, and answer
+ * the call that has been waiting.
+ *
+ * Exit 0 WITH at least one URI is the only success. A chooser that exited 0
+ * having printed nothing reported to the application as "here is your file"
+ * with an empty list is the shape of bug that makes a save write nowhere.
+ *
+ * 0 with a URI is success and 1 is "the user cancelled" — but 127 is execvp
+ * failing and 2 is kdos-pick refusing to start, and reporting either as a
+ * cancellation tells the application a lie it cannot act on. Those are
+ * response 2, an error, which is what a portal says when it could not ask the
+ * question at all.
+ */
+static void pending_finish(struct pending *pend)
+{
+	int status = 0;
+	while (waitpid(pend->pid, &status, 0) < 0 && errno == EINTR)
+		;
+	int rc = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+
+	struct picked p;
+	pending_parse(pend, &p);
+
+	uint32_t code;
+	if (pend->savefiles) {
+		code = (rc == 0 && p.n > 0) ? 0 : 1;
+	} else if (rc == 0) {
+		code = p.n > 0 ? 0 : 1;
+	} else if (rc == 1) {
+		code = 1;
+	} else {
+		code = 2;
+	}
+	reply_uris(pend->call, code, &p);
 	picked_free(&p);
-	return r;
+	close(pend->fd);
+}
+
+/* Drain one pending chooser's pipe. Returns 1 when it has finished. */
+static int pending_read(struct pending *pend)
+{
+	for (;;) {
+		if (pend->len + 4096 > pend->cap) {
+			size_t cap = pend->cap ? pend->cap * 2 : 8192;
+			char *nb = realloc(pend->buf, cap);
+			if (!nb)
+				return 1;	/* out of memory: answer with what we have */
+			pend->buf = nb;
+			pend->cap = cap;
+		}
+		ssize_t n = read(pend->fd, pend->buf + pend->len,
+				 pend->cap - pend->len);
+		if (n > 0) {
+			pend->len += (size_t)n;
+			continue;
+		}
+		if (n == 0)
+			return 1;		/* EOF: the chooser is done */
+		if (errno == EINTR)
+			continue;
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+			return 0;
+		return 1;			/* a real error is also "done" */
+	}
 }
 
 /* ── Settings ──────────────────────────────────────────────────────────── */
@@ -637,15 +741,73 @@ int main(int argc, char **argv)
 	if (r < 0)
 		goto fail;
 
+	/*
+	 * sd_bus_wait() would be the one-liner and it is exactly what cannot be
+	 * used here: it waits on the bus and on nothing else, and every open
+	 * file chooser is a pipe this process has to watch at the same time.
+	 * So the loop is the documented sd-bus integration — process until it
+	 * has nothing left, then poll the bus fd together with the choosers'.
+	 */
 	for (;;) {
 		r = sd_bus_process(bus, NULL);
 		if (r < 0)
 			break;
 		if (r > 0)
 			continue;
-		r = sd_bus_wait(bus, (uint64_t)-1);
-		if (r < 0)
+
+		struct pollfd fds[1 + 16];
+		struct pending *watched[16];
+		int nfds = 0, nw = 0;
+
+		fds[nfds].fd = sd_bus_get_fd(bus);
+		fds[nfds].events = (short)sd_bus_get_events(bus);
+		fds[nfds].revents = 0;
+		nfds++;
+
+		for (struct pending *p = pendings; p && nw < 16; p = p->next) {
+			fds[nfds].fd = p->fd;
+			fds[nfds].events = POLLIN;
+			fds[nfds].revents = 0;
+			watched[nw++] = p;
+			nfds++;
+		}
+
+		uint64_t usec = 0;
+		int timeout = -1;
+		if (sd_bus_get_timeout(bus, &usec) >= 0 &&
+		    usec != (uint64_t)-1) {
+			struct timespec ts;
+			clock_gettime(CLOCK_MONOTONIC, &ts);
+			uint64_t now = (uint64_t)ts.tv_sec * 1000000
+				+ (uint64_t)ts.tv_nsec / 1000;
+			timeout = usec > now
+				? (int)((usec - now + 999) / 1000) : 0;
+		}
+
+		if (poll(fds, (nfds_t)nfds, timeout) < 0) {
+			if (errno == EINTR)
+				continue;
 			break;
+		}
+
+		for (int i = 0; i < nw; i++) {
+			if (!fds[i + 1].revents)
+				continue;
+			if (!pending_read(watched[i]))
+				continue;
+			pending_finish(watched[i]);
+			/* Unlink before freeing: the list is walked again on
+			 * the next turn and a freed node in it is the crash
+			 * this loop must not have while a dialog is open. */
+			for (struct pending **pp = &pendings; *pp;
+			     pp = &(*pp)->next) {
+				if (*pp == watched[i]) {
+					*pp = watched[i]->next;
+					break;
+				}
+			}
+			pending_free(watched[i]);
+		}
 	}
 
 fail:

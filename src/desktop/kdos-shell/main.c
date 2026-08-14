@@ -31,6 +31,7 @@ static const struct {
 	{ "kdos-pick", pick_main },
 	{ "kdos-ascii", asciicmd_main },
 	{ "kdos-run", run_main },
+	{ "kdos-prompt", prompt_main },
 	{ "kdos-notifyd", notifyd_main },
 	{ "kdos-osd", osd_main },
 };

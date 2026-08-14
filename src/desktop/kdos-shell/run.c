@@ -94,6 +94,8 @@ int run_main(int argc, char **argv)
 		.app_id = "kdos-run",
 		.font = font,
 		.keyboard = 1,
+		/* A menu, not a dialog: clicking elsewhere closes it. */
+		.dismiss_on_unfocus = 1,
 	};
 
 	sh_theme_from_cache();
@@ -131,6 +133,18 @@ int run_main(int argc, char **argv)
 		KtuiEvent ev;
 		if (!ktui_backend()->poll_event(&ev, 1000))
 			continue;
+		/*
+		 * A right press closes it, the same as Escape. There is nothing
+		 * else here to click — a run box is a text field — but a
+		 * dialog that ignores the mouse entirely is a dialog people
+		 * poke at before they find the keyboard. (Clicking AWAY closes
+		 * it too — `dismiss_on_unfocus` above.)
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_RIGHT)
+				break;
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 

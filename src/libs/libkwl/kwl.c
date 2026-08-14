@@ -36,6 +36,7 @@
  * monitors, not on ambition.
  */
 #define KWL_MAX_OUTPUTS 8
+#define KWL_OUTPUT_NAME_MAX 64
 
 /* ── state ─────────────────────────────────────────────────────────────── */
 
@@ -65,6 +66,10 @@ static struct {
 	struct ext_session_lock_v1 *lock;
 	int lock_engaged, lock_finished;
 	struct wl_output *outputs[KWL_MAX_OUTPUTS];
+	/* The compositor's own name for each — `eDP-1`, `HDMI-A-1`. wl_output
+	 * version 4's `name` event, which is the only handle on an output that
+	 * survives being written on a command line. */
+	char output_name[KWL_MAX_OUTPUTS][KWL_OUTPUT_NAME_MAX];
 	int noutputs;
 	/* The extra outputs: one lock surface each, filled with the theme
 	 * background. No cell grid — libktui has one buffer, and it is on the
@@ -94,6 +99,7 @@ static struct {
 	int cols, rows;		/* and in cells                            */
 	int configured;
 	int closed;
+	int kb_entered;		/* the keyboard has been here at least once */
 
 	/* One pending event, filled by the wl listeners and drained by
 	 * poll_event. A cell UI consumes one event per frame, so a queue would
@@ -508,12 +514,38 @@ static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t serial,
 		xkb_state_update_mask(K.xkb_state, dep, lat, lock, 0, 0, group);
 }
 
+/*
+ * CLICK AWAY CLOSES IT — for the callers that asked.
+ *
+ * The menu, the launcher and the run box are transient and have no business
+ * surviving the moment the user's attention goes elsewhere: before this,
+ * clicking on a window while a menu was open left the menu floating over that
+ * window until somebody found the Escape key, and there is no useful
+ * "unfocused menu" state.
+ *
+ * It is `dismiss_on_unfocus` rather than "every keyboard overlay" because a
+ * DIALOG is not a menu — see the flag's comment in kwl.h for the file chooser,
+ * which is the case that decides it.
+ *
+ * Gated on having seen an ENTER first. A leave that arrives before any enter
+ * would otherwise close the surface during its own map — and the compositor
+ * decides when an ON_DEMAND layer surface gets the keyboard, so that ordering
+ * is not ours to assume.
+ */
 static void kb_enter(void *d, struct wl_keyboard *k, uint32_t s,
 		     struct wl_surface *sf, struct wl_array *keys)
-{ (void)d; (void)k; (void)s; (void)sf; (void)keys; }
+{
+	(void)d; (void)k; (void)s; (void)sf; (void)keys;
+	K.kb_entered = 1;
+}
 static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s,
 		     struct wl_surface *sf)
-{ (void)d; (void)k; (void)s; (void)sf; }
+{
+	(void)d; (void)k; (void)s; (void)sf;
+	if (K.kb_entered && K.cfg.role == KWL_ROLE_OVERLAY &&
+	    K.cfg.dismiss_on_unfocus)
+		K.closed = 1;
+}
 static void kb_repeat(void *d, struct wl_keyboard *k, int32_t rate,
 		      int32_t delay)
 { (void)d; (void)k; (void)rate; (void)delay; }
@@ -740,6 +772,62 @@ static const struct xdg_wm_base_listener wm_base_listener = {
 	.ping = wm_ping,
 };
 
+/* ── outputs ───────────────────────────────────────────────────────────── */
+
+/*
+ * All six events, because a listener with a NULL function pointer is a crash
+ * the first time the compositor sends that event, not a compile error. Only
+ * `name` is wanted: it is the string the compositor uses for the output
+ * everywhere else — `eDP-1`, `HDMI-A-1` — and therefore the only thing that
+ * can be passed on a command line.
+ */
+static void out_geometry(void *d, struct wl_output *o, int32_t x, int32_t y,
+			 int32_t pw, int32_t ph, int32_t sub, const char *make,
+			 const char *model, int32_t transform)
+{ (void)d; (void)o; (void)x; (void)y; (void)pw; (void)ph; (void)sub;
+  (void)make; (void)model; (void)transform; }
+static void out_mode(void *d, struct wl_output *o, uint32_t flags, int32_t w,
+		     int32_t h, int32_t refresh)
+{ (void)d; (void)o; (void)flags; (void)w; (void)h; (void)refresh; }
+static void out_done(void *d, struct wl_output *o) { (void)d; (void)o; }
+static void out_scale(void *d, struct wl_output *o, int32_t f)
+{ (void)d; (void)o; (void)f; }
+static void out_name(void *data, struct wl_output *o, const char *name)
+{
+	(void)o;
+	if (data && name)
+		snprintf((char *)data, KWL_OUTPUT_NAME_MAX, "%s", name);
+}
+static void out_description(void *d, struct wl_output *o, const char *desc)
+{ (void)d; (void)o; (void)desc; }
+
+static const struct wl_output_listener output_listener = {
+	.geometry = out_geometry,
+	.mode = out_mode,
+	.done = out_done,
+	.scale = out_scale,
+	.name = out_name,
+	.description = out_description,
+};
+
+/*
+ * The output `cfg.output` names, or NULL for "the compositor decides".
+ *
+ * NULL is not a failure and must not be turned into one: a panel asked for a
+ * screen that has just been unplugged is better placed somewhere than not
+ * placed at all, and the compositor's supervisor will notice the output is
+ * gone and stop it a moment later.
+ */
+static struct wl_output *named_output(void)
+{
+	if (!K.cfg.output || !*K.cfg.output)
+		return NULL;
+	for (int i = 0; i < K.noutputs; i++)
+		if (!strcmp(K.output_name[i], K.cfg.output))
+			return K.outputs[i];
+	return NULL;
+}
+
 /* ── registry ──────────────────────────────────────────────────────────── */
 
 static void reg_global(void *d, struct wl_registry *r, uint32_t name,
@@ -761,12 +849,24 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 		K.layer_shell = wl_registry_bind(r, name,
 						 &zwlr_layer_shell_v1_interface, 1);
 	else if (!strcmp(iface, wl_output_interface.name)) {
-		/* Bound for the lock role, which needs a surface per output.
-		 * Everything else here is placed by the compositor and never
-		 * names an output. */
-		if (K.noutputs < KWL_MAX_OUTPUTS)
-			K.outputs[K.noutputs++] =
-				wl_registry_bind(r, name, &wl_output_interface, 1);
+		/*
+		 * Bound for the lock role, which needs a surface per output —
+		 * and for `cfg.output`, which is how a panel says WHICH screen
+		 * it belongs to. Version 4 for the `name` event: without it the
+		 * only handle on an output is a registry id no other process
+		 * can name, so a second monitor could be given a panel but not
+		 * the RIGHT one.
+		 */
+		if (K.noutputs < KWL_MAX_OUTPUTS) {
+			uint32_t v = version < 4 ? version : 4;
+			K.outputs[K.noutputs] = wl_registry_bind(
+				r, name, &wl_output_interface, v);
+			if (v >= 4)
+				wl_output_add_listener(K.outputs[K.noutputs],
+						       &output_listener,
+						       K.output_name[K.noutputs]);
+			K.noutputs++;
+		}
 	} else if (!strcmp(iface, wp_cursor_shape_manager_v1_interface.name))
 		K.shape_mgr = wl_registry_bind(
 			r, name, &wp_cursor_shape_manager_v1_interface, 1);
@@ -816,8 +916,15 @@ static int make_panel(void)
 	else if (K.cfg.role == KWL_ROLE_BACKGROUND)
 		layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
 
+	/*
+	 * The output, when one was named. Passing NULL is layer-shell for
+	 * "you choose", and what the compositor chooses is ONE screen — which
+	 * is why a two-monitor KDOS had a panel and a desktop on one of them
+	 * and nothing on the other. Naming it is how a supervisor can run one
+	 * panel per output and know which is which.
+	 */
 	K.layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-		K.layer_shell, K.surface, NULL, layer,
+		K.layer_shell, K.surface, named_output(), layer,
 		K.cfg.app_id ? K.cfg.app_id : "kdos");
 	if (!K.layer_surface)
 		return -1;
@@ -872,10 +979,30 @@ static int make_panel(void)
 				K.layer_surface,
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+			zwlr_layer_surface_v1_set_margin(
+				K.layer_surface,
+				K.cfg.margin_y ? K.cfg.margin_y
+					       : KWL_OVERLAY_MARGIN,
+				K.cfg.margin_x ? K.cfg.margin_x
+					       : KWL_OVERLAY_MARGIN,
+				0, 0);
+		} else if (K.cfg.corner == KWL_CORNER_TOP_LEFT) {
+			/*
+			 * The dropdown case. margin_y is normally the panel's
+			 * own height, so the menu hangs off the bar rather
+			 * than covering it, and margin_x is where the word
+			 * that was clicked starts. The compositor clamps a
+			 * margin that would push the surface off the output,
+			 * so a menu opened from the far right does not have to
+			 * be clamped here as well.
+			 */
+			zwlr_layer_surface_v1_set_anchor(
+				K.layer_surface,
+				ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+				ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
 			zwlr_layer_surface_v1_set_margin(K.layer_surface,
-							 KWL_OVERLAY_MARGIN,
-							 KWL_OVERLAY_MARGIN,
-							 0, 0);
+							 K.cfg.margin_y, 0, 0,
+							 K.cfg.margin_x);
 		}
 		zwlr_layer_surface_v1_set_size(K.layer_surface,
 					       (uint32_t)(cols * kcell_w()),

@@ -151,12 +151,80 @@ static void tl_title(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
 		snprintf(t->title, sizeof(t->title), "%s", title);
 }
 
+/*
+ * The name a person would recognise, from the app's own desktop entry.
+ *
+ * A taskbar that shows `org.gnome.Meld` is showing an implementation detail:
+ * an app_id is a reverse-DNS identifier chosen so it cannot collide, and it is
+ * the last thing that should be on screen when the entry that identifier
+ * belongs to carries the word "Meld" three lines down. The launcher, the menu
+ * and the dock all read that entry already; this is the fourth consumer of it
+ * and the one the user looks at most.
+ *
+ * Empty when there is no entry — an alien app launched by a shim, a client
+ * with an invented app_id — and the caller then falls back to the title and to
+ * the app_id, in that order.
+ */
+static void desktop_name(const char *app_id, char *out, size_t n)
+{
+	const char *home = getenv("XDG_DATA_HOME");
+	const char *dirs = getenv("XDG_DATA_DIRS");
+	char bases[8][512];
+	int nb = 0;
+
+	*out = '\0';
+	if (!app_id || !*app_id || strchr(app_id, '/'))
+		return;			/* not a desktop id; do not build a path */
+
+	if (home && *home)
+		snprintf(bases[nb++], sizeof(bases[0]), "%s", home);
+	else if (getenv("HOME"))
+		snprintf(bases[nb++], sizeof(bases[0]), "%s/.local/share",
+			 getenv("HOME"));
+	if (!dirs || !*dirs)
+		dirs = "/usr/local/share:/usr/share";
+	for (const char *p = dirs; *p && nb < 8;) {
+		const char *sep = strchr(p, ':');
+		size_t len = sep ? (size_t)(sep - p) : strlen(p);
+		while (len > 1 && p[len - 1] == '/')
+			len--;
+		if (len && len < sizeof(bases[0])) {
+			memcpy(bases[nb], p, len);
+			bases[nb][len] = '\0';
+			nb++;
+		}
+		if (!sep)
+			break;
+		p = sep + 1;
+	}
+
+	for (int i = 0; i < nb; i++) {
+		char path[1024];
+		KxdgEntry e;
+		snprintf(path, sizeof(path), "%.400s/applications/%.100s.desktop",
+			 bases[i], app_id);
+		if (kxdg_load(&e, path, "Desktop Entry") != 0)
+			continue;
+		const char *name = kxdg_get(&e, "Name", NULL);
+		if (name && *name)
+			snprintf(out, n, "%s", name);
+		kxdg_free(&e);
+		if (*out)
+			return;
+	}
+}
+
 static void tl_app_id(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
 		      const char *app_id)
 {
 	struct sh_task *t = task_for(data, h);
-	if (t)
-		snprintf(t->app_id, sizeof(t->app_id), "%s", app_id);
+	if (!t)
+		return;
+	snprintf(t->app_id, sizeof(t->app_id), "%s", app_id);
+	/* Resolved once, here, rather than per frame: this fires when a window
+	 * maps and when it changes its id, which is the only time the answer
+	 * can change, and the panel redraws every second. */
+	desktop_name(app_id, t->name, sizeof(t->name));
 }
 
 static void tl_output_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
@@ -412,6 +480,42 @@ void sh_minimize_task(struct sh_state *sh, int i)
 		return;
 	zwlr_foreign_toplevel_handle_v1_set_minimized(sh->tasks[i].handle);
 	wl_display_flush(sh->display);
+}
+
+/*
+ * Close, for the middle click every taskbar since the nineties has answered
+ * that way. This is the protocol's polite close — the same request the window's
+ * own close box sends, so an editor with unsaved work still gets to ask.
+ */
+void sh_close_task(struct sh_state *sh, int i)
+{
+	if (i < 0 || i >= sh->ntasks)
+		return;
+	zwlr_foreign_toplevel_handle_v1_close(sh->tasks[i].handle);
+	wl_display_flush(sh->display);
+}
+
+/*
+ * What a LEFT click on a task entry should do, which is not simply "activate".
+ * Clicking the window you are already in minimises it and clicking it again
+ * brings it back — the behaviour every taskbar has, and the reason the entry
+ * is worth clicking at all once the window is on screen.
+ */
+void sh_toggle_task(struct sh_state *sh, int i)
+{
+	if (i < 0 || i >= sh->ntasks)
+		return;
+	if (sh->tasks[i].minimized) {
+		zwlr_foreign_toplevel_handle_v1_unset_minimized(sh->tasks[i].handle);
+		sh_activate_task(sh, i);
+		return;
+	}
+	if (sh->tasks[i].activated) {
+		zwlr_foreign_toplevel_handle_v1_set_minimized(sh->tasks[i].handle);
+		wl_display_flush(sh->display);
+		return;
+	}
+	sh_activate_task(sh, i);
 }
 
 void sh_activate_task(struct sh_state *sh, int i)

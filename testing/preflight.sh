@@ -288,6 +288,61 @@ else
     fi
 fi
 
+# ── the shipped rc.xml must not throw away labwc's default bindings ────────
+#
+# THE MOST EXPENSIVE ONE-LINE MISTAKE IN THIS TREE.
+#
+# labwc loads its built-in key and mouse bindings only when the user's config
+# defines NONE of that kind (rcxml.c post_processing). A file that binds one
+# key therefore silently discards every default — and the defaults are not
+# conveniences, they are the desktop: `Client Left Press -> Focus/Raise` is
+# what makes CLICKING A WINDOW FOCUS IT (focus_follow_mouse is false), `Title
+# Left Drag` is the titlebar, `Close/Iconify/Maximize` are the three buttons
+# drawn on every frame, `Border Left Drag` is the edges, and `Root Right Press`
+# is the desktop menu.
+#
+# KDOS shipped exactly that file for a release. The symptom on a booted ISO is
+# "the mouse does not work" and it is invisible to every other check here: the
+# XML is valid, the recipe parses, the build succeeds.
+echo
+echo "==> the shipped rc.xml keeps labwc's default bindings"
+RC=fs/etc/skel/.config/kdos-comp/rc.xml
+if [ ! -f "$RC" ]; then
+    bad "rc.xml defaults" "$RC is missing"
+else
+    # COMMENTS ARE STRIPPED FIRST, and that is not fussiness: this file's own
+    # header explains the trap in prose, so it contains the words <mouse> and
+    # <keyboard> and <default /> as TEXT. A grep over the raw file finds them
+    # there and passes whatever the config actually says — which is a check
+    # that reports on its own documentation.
+    awk '
+        { line = $0
+          while (1) {
+              if (inc) { p = index(line, "-->")
+                         if (!p) { line = ""; break }
+                         line = substr(line, p + 3); inc = 0; continue }
+              p = index(line, "<!--")
+              if (!p) break
+              out = out substr(line, 1, p - 1); line = substr(line, p + 4)
+              inc = 1
+          }
+          out = out line "\n" }
+        END { printf "%s", out }
+    ' "$RC" > "$SP/rc-nocomment.xml"
+
+    for sect in keyboard mouse; do
+        if ! grep -q "<$sect>" "$SP/rc-nocomment.xml"; then
+            note "rc.xml <$sect>" "no section — labwc's defaults load"
+        elif sed -n "/<$sect>/,/<\/$sect>/p" "$SP/rc-nocomment.xml" \
+                | grep -q "<default */>"; then
+            note "rc.xml <$sect>" "<default /> present"
+        else
+            bad "rc.xml <$sect>" \
+                "binds something without <default />: every labwc default in that section is discarded"
+        fi
+    done
+fi
+
 echo
 if [ "$fail" = 0 ]; then
     echo "preflight clean — the wiring is consistent"

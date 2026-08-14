@@ -82,6 +82,10 @@ struct item {
 	int group;			/* index into GROUPS, or -1 */
 	int submenu;			/* -1, or the group this row opens */
 	int terminal;			/* Terminal=true — run it inside foot */
+	/* Ask before running it. Three rows in System end the session or the
+	 * machine, and they sit one cell apart from "Terminal" in a menu
+	 * people navigate with a mouse. */
+	const char *confirm;
 };
 
 static struct item items[MAX_ITEMS];
@@ -290,14 +294,31 @@ static void load_places(void)
 	fclose(f);
 }
 
+/* Same as add(), plus the question to ask first. */
+static void add_confirmed(const char *name, const char *exec,
+			  const char *question)
+{
+	add(name, exec, -1);
+	if (nitems > 0)
+		items[nitems - 1].confirm = question;
+}
+
 static void load_system(void)
 {
 	add("Theme — phosphor", "foot -e kdos theme phosphor", -1);
 	add("Theme — amber",    "foot -e kdos theme amber", -1);
 	add("Theme — ice",      "foot -e kdos theme ice", -1);
 	add("Theme — bone",     "foot -e kdos theme bone", -1);
+	add("",                 NULL, -2);		/* separator */
+	add("Applications…",    "kdos-appbox tui", -1);
+	add("Network",          "foot -e nmtui", -1);
+	add("Files",            "foot -e mc", -1);
+	add("Task Manager",     "foot -e btop", -1);
+	add("",                 NULL, -2);		/* separator */
 	add("System status",    "foot -e kdos status", -1);
+	add("Energy Impact",    "foot -e kdos-energy", -1);
 	add("Doctor",           "foot -e kdos doctor", -1);
+	add("Help — keys and commands", "foot -e kdos help --pager", -1);
 	add("Terminal",         "foot", -1);
 	add("",                 NULL, -2);		/* separator */
 	add("Lock Screen",      "kdos-lock", -1);
@@ -307,10 +328,13 @@ static void load_system(void)
 	 * path Super+Escape takes — and nothing publishes its pid. An exec of
 	 * pkill is not a shell, so the no-shell rule holds.
 	 */
-	add("Log Out",          "pkill -TERM -x kdos-comp", -1);
+	add_confirmed("Log Out", "pkill -TERM -x kdos-comp",
+		      "End the KDOS session? Unsaved work will be lost.");
 	add("Suspend",          "kdos-power suspend", -1);
-	add("Restart",          "kdos-power reboot", -1);
-	add("Shut Down",        "kdos-power poweroff", -1);
+	add_confirmed("Restart", "kdos-power reboot",
+		      "Restart this machine?");
+	add_confirmed("Shut Down", "kdos-power poweroff",
+		      "Shut this machine down?");
 }
 
 /* ── launching ─────────────────────────────────────────────────────────── */
@@ -324,6 +348,32 @@ static void load_system(void)
  * which is a real limitation and the correct trade — a launcher that runs
  * `rm -rf ~` because a .desktop asked it to is not a launcher.
  */
+/*
+ * Ask, and wait for the answer.
+ *
+ * SYNCHRONOUS on purpose: the menu is about to exit and the question is
+ * whether to do the thing at all, so there is nothing to do in the meantime.
+ * kdos-prompt is the same dialog kdos-comp's own Log Out uses, so the two
+ * routes to ending a session ask the same question in the same words.
+ * Returns non-zero when the user said yes; anything else — No, Escape, a
+ * prompt that could not start — is a no.
+ */
+static int confirmed(const char *question)
+{
+	pid_t pid = fork();
+	if (pid < 0)
+		return 0;
+	if (pid == 0) {
+		execlp("kdos-prompt", "kdos-prompt", "--message", question,
+		       "--yes", "Yes", "--no", "No", (char *)NULL);
+		_exit(254);
+	}
+	int st = 0;
+	if (waitpid(pid, &st, 0) < 0 || !WIFEXITED(st))
+		return 0;
+	return WEXITSTATUS(st) == 0;
+}
+
 static void launch(const struct item *it)
 {
 	char buf[EXEC_MAX_LEN + 16];
@@ -331,6 +381,8 @@ static void launch(const struct item *it)
 	int n = 0;
 
 	if (!*it->exec)
+		return;
+	if (it->confirm && !confirmed(it->confirm))
 		return;
 
 	if (it->terminal)
@@ -462,11 +514,22 @@ int menu_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	int which = 0;				/* 0 apps, 1 places, 2 system */
+	int at_x = -1, at_y = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
-		else if (!strcmp(argv[i], "applications"))
+		/*
+		 * Where the word that opened it is, in pixels. The panel knows
+		 * and the menu does not: they are two processes, and a
+		 * dropdown that appears in the middle of the screen does not
+		 * read as belonging to anything. Absent, it centres, which is
+		 * right for `kdos-menu system` typed at a prompt.
+		 */
+		else if (!strcmp(argv[i], "--at") && i + 2 < argc) {
+			at_x = atoi(argv[++i]);
+			at_y = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "applications"))
 			which = 0;
 		else if (!strcmp(argv[i], "places"))
 			which = 1;
@@ -475,7 +538,7 @@ int menu_main(int argc, char **argv)
 		else {
 			fprintf(stderr, "usage: kdos-menu "
 					"[applications|places|system] "
-					"[--font NAME]\n");
+					"[--at X Y] [--font NAME]\n");
 			return 2;
 		}
 	}
@@ -492,9 +555,9 @@ int menu_main(int argc, char **argv)
 
 	/*
 	 * Sized to the content, capped so it cannot be taller than a small
-	 * screen. Anchored top-left, under the menu bar it came from — a
-	 * dropdown that appeared in the middle of the screen would not read as
-	 * belonging to the word that was clicked.
+	 * screen. Anchored top-left under the word it came from when the panel
+	 * said where that was — layer-shell has no coordinates, so "at x" is
+	 * an anchor plus a margin, which is what KWL_CORNER_TOP_LEFT is.
 	 */
 	int rows = v.n + 2;
 	if (rows > 24)
@@ -506,9 +569,14 @@ int menu_main(int argc, char **argv)
 		.role = KWL_ROLE_OVERLAY,
 		.cols = 42,
 		.rows = rows,
+		.corner = at_x >= 0 ? KWL_CORNER_TOP_LEFT : KWL_CORNER_CENTER,
+		.margin_x = at_x >= 0 ? at_x : 0,
+		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-menu",
 		.font = font,
 		.keyboard = 1,
+		/* A menu, not a dialog: clicking elsewhere closes it. */
+		.dismiss_on_unfocus = 1,
 	};
 
 	sh_theme_from_cache();
@@ -632,13 +700,17 @@ const char *const sh_menu_labels[SH_NMENUS] = {
 	"Applications", "Places", "System"
 };
 
-void sh_spawn_menu(int which)
+void sh_spawn_menu(int which, int x, int y)
 {
 	static const char *const names[SH_NMENUS] = {
 		"applications", "places", "system"
 	};
+	char xs[16], ys[16];
+
 	if (which < 0 || which >= SH_NMENUS)
 		return;
+	snprintf(xs, sizeof(xs), "%d", x);
+	snprintf(ys, sizeof(ys), "%d", y);
 
 	/*
 	 * Double fork, so the panel never reaps and never waits. Scanning four
@@ -649,7 +721,8 @@ void sh_spawn_menu(int which)
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
-			execlp("kdos-menu", "kdos-menu", names[which], (char *)NULL);
+			execlp("kdos-menu", "kdos-menu", names[which], "--at",
+			       xs, ys, (char *)NULL);
 			_exit(127);
 		}
 		_exit(0);

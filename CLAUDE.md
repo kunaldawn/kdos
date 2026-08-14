@@ -267,9 +267,10 @@ that is already on disk (the bake flattens the appbox to one layer):
 `/usr/local/bin/kdos-appbox` is C: `main.c` (CLI + launch path), `box.c`
 (boxes and profiles), `app.c` (app table, install/refresh), `tui.c` (the
 front end), `launchers.c` (`genlaunchers`), `image.c` (`image
-pack|assemble|remap-uids`), `util.c` (the trace file and the notification).
+pack|assemble|remap-uids`), `open.c` (`open`), `util.c` (the trace file and the
+notification).
 It links
-**libkbase + libktui + libkcolor and nothing else** — the process/path/lock
+**libkbase + libktui + libkcolor + libkxdg and nothing else** — the process/path/lock
 helpers `util.c` used to carry are libkbase's now, and `tui.c` is libktui, so
 the `# depends : ncurses` line is gone. The TUI reads
 `$XDG_CACHE_HOME/kdos/theme` and adopts the accent the desktop is wearing.
@@ -291,6 +292,31 @@ Invoked through a symlink named after an app, it dispatches on its own basename
 busybox-style, so `gimp photo.png` works from a terminal with no shell wrapper.
 The name → command table is `/usr/share/kdos/alien-apps` (baked) plus
 `~/.local/share/kdos/alien-apps` (runtime); user entries win.
+
+**`shared-mime-info` ships a database that has to be COMPILED on the target.**
+The port builds `--disable-update-mimedb`, so the package contains
+`packages/freedesktop.org.xml` and nothing else — no `globs`, no `types`, no
+`mime.cache`. Measured on a booted ISO: `/usr/share/mime` held one directory,
+and every consumer asking "what type is this file" got no answer at all.
+`postinstall.sh` runs `update-mime-database /usr/share/mime`, which is a target
+binary and therefore something only an install-time hook can do. Verified live:
+before it, `kdos-appbox open --print /tmp/a.txt` fell through to `xdg-open`;
+after it, the same file resolves to `nvim.desktop`.
+
+**`kdos-appbox open <path>` is the MIME route, and it is here rather than in
+xdg-open because this is already the program that knows what "open with GIMP"
+means on this machine.** `kdos-desk` called it for a release before it existed,
+so every double-click on the desktop died on "unknown". The resolution is the
+freedesktop one and nothing clever: `/usr/share/mime/globs` for the type
+(**longest matching suffix wins**, or every `.tar.gz` opens in a decompressor),
+then `mimeapps.list` `[Default Applications]`, `[Added Associations]` and each
+`applications/mimeinfo.cache` — which is the file `genlaunchers` already writes
+beside the box's own launchers, so a boxed app is found by exactly the same
+lookup as a host one. Field codes are SUBSTITUTED rather than stripped: `%f` IS
+the file, and dropping it opens the application with an empty document.
+`--print` resolves and prints instead of executing, which is what
+`testing/selftest.sh` asserts on; `xdg-open` is the last resort, because it
+knows about URL schemes this does not read.
 
 **Sandbox profiles** live in `~/.config/kdos/boxes/<name>.conf` and every key
 maps 1:1 onto a distrobox flag — `network`/`ipc`/`devices`/`processes` to
@@ -977,11 +1003,14 @@ linking zero libraries on the first bootable image; that split IS milestone M3.
 | `libkpkg` | `kp_` | the package database, the ports tree, `# depends` parsing, the dependency solver, `kp_vercmp`, the recipe/build-config hashes |
 | `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings — the one library with vendored third-party source (Monocypher) |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
-| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers, the fcft glyph cache, keyboard decoding. **The one library with real `-l` dependencies** |
+| `libkcell` | `kcell_` | the fcft glyph cache and the cell painter — a grid of cells into a pixel buffer, and the ASCII ramp built out of it. Needs fcft and pixman |
+| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers, output naming, keyboard decoding. **The one library with real `-l` dependencies beyond libkcell's** |
 
 Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
 libkbase` and `libkbuild → libkbase` and `libksig → libkbase` and `libkwl →
-libktui`, and nothing points back up.
+libkcell → libktui`, and nothing points back up. libkcell is a SEPARATE
+archive from libkwl so that a consumer wanting the cell painter is not made to
+link a Wayland client library to get it.
 
 Three rules the extraction exists to keep, each one a bug that was already
 there:
@@ -1372,10 +1401,30 @@ Keybinds, mouse, workspaces and window behaviour are rc.xml's business; an old
 `bind`/`startup`/`workspaces`/`mouse` line is ignored **and says so**, naming
 rc.xml — as does any other unrecognised key, because the skel file promises
 that a line which does not take effect is reported, and a typo that produced
-silence is indistinguishable from a setting that does nothing. The skel rc.xml maps
-the old default bindings (W-Return foot, W-d launcher, W-q close, W-Tab cycle,
-W-1..4 workspaces, W-l lock, media keys → kdos-osd) and adds what the fork
-gained: `W-m` ToggleMaximize, `W-f` ToggleFullscreen.
+silence is indistinguishable from a setting that does nothing. It also carries
+`panel_bottom` and `desktop_icons`, the two pieces of supervised chrome that
+are optional; both are read once at startup.
+
+**`<default />` MUST be the first child of `<keyboard>` and of `<mouse>` in
+rc.xml, and it is the most load-bearing line in this distro's configuration.**
+labwc loads its built-in bindings only when the user's file defines NONE of
+that kind (`post_processing()`), so a file that binds one key throws every
+default away. KDOS shipped exactly that: no `Client Left Press → Focus/Raise`
+(so **clicking a window did not focus it** — `focus_follow_mouse` is false),
+no titlebar drag, no working Close/Iconify/Maximize buttons, no border resize,
+no root menu, no A-Tab, no A-F4, no snap arrows. On a booted ISO the symptom is
+"the mouse does not work", and it is invisible to a compile, to the recipe
+parser and to XML validation. Overrides go AFTER `<default />`, because
+`deduplicate_{key,mouse}_bindings()` keeps the LATER of a duplicate pair.
+`testing/preflight.sh` fails a skel rc.xml that gets this wrong — with the
+comments stripped first, or it reports on the file's own explanation of the
+trap.
+
+The skel rc.xml keeps the old KDOS bindings (W-Return foot, W-d launcher,
+W-q close, W-Tab cycle, W-1..4 workspaces, W-l lock, media keys → kdos-osd),
+adds what the fork gained (`W-m` ToggleMaximize, `W-f` ToggleFullscreen) and
+adds the three front ends that had no way in: `A-F2` kdos-run, `W-e` mc,
+`Print`/`S-Print` kdos-shot. `W-Escape` goes through the prompt below.
 
 **What the fork closed outright** (each was a documented gap of the old
 compositor): `set_maximized`/`set_fullscreen` work; middle-click paste works
@@ -1383,14 +1432,44 @@ compositor): `set_maximized`/`set_fullscreen` work; middle-click paste works
 and xdg-toplevel-icon-v1 exist; SIGHUP is labwc's Reconfigure and reaches the
 CRT tint reload (`kdos_crt_reload()` hook in `handle_sighup`).
 
-**Window frames: skel `themerc-override`, and foot is told to use them.**
-labwc reads `~/.config/kdos-comp/themerc-override` over its built-in theme;
-the skel copy is deliberately NEUTRAL dark (near-black bars, grey text) so it
-reads correctly under every accent with no regeneration on `kdos theme`. Two
-traps found live: a `*.title.bg.color` alone changes nothing — the default
-texture is a gradient, so `window.*.title.bg: flat solid` must be set too —
-and the grey bar foot showed was foot's own CSD, not labwc's SSD at all:
-skel `foot.ini` carries `[csd] preferred=server` now.
+**Window frames: `themerc-override` is GENERATED, and foot is told to use
+them.** labwc reads `~/.config/kdos-comp/themerc-override` over its built-in
+theme, and `kdos theme` writes it (`write_themerc()` in `kdos.c`) from the same
+palette as everything else — the SIGHUP it already sends is labwc's
+Reconfigure, so the frames retint live with the panel and the shader. It used
+to ship from `fs/` as a fixed neutral grey, chosen so it would read acceptably
+under all four accents without regeneration; the cost was the one artefact an
+accent switch could not reach, and a bar across the top of every window that
+looked like somebody else's desktop. `kdos theme --audit` covers it.
+
+Three traps found live: a `*.title.bg.color` alone changes nothing — the
+default texture is a gradient, so `window.*.title.bg: flat solid` must be set
+too; the grey bar foot showed was foot's own CSD, not labwc's SSD at all (skel
+`foot.ini` carries `[csd] preferred=server`); and **the SSD font is pango's,
+not the cell grid's** — its default is `sans` 10, which put a 13-pixel
+antialiased title on top of every 32-pixel window. `<theme><font>` in rc.xml
+is Terminus at 24 POINTS, which is 32 pixels at 96dpi and therefore exactly the
+`ter-u32n` bitmap the rest of the desktop is drawn in. The same block covers
+MenuItem, MenuHeader and OnScreenDisplay, which are labwc's root menu and its
+window switcher.
+
+**`<core><promptCommand>` is `kdos-prompt`, because labnag is not built.**
+labwc's `<action name="If"><prompt>` spawns the prompt command and dispatches
+on its EXIT STATUS — 0 takes `then`, 254 is "cancelled, do nothing", anything
+else takes `else`. Upstream's program for that is labnag, which is
+`-Dlabnag=disabled` here, so the facility existed with nothing on the other end
+of it. `kdos-prompt` is kdos-shell under another name and answers with those
+codes; it is what lets `W-Escape`, Log Out, Restart and Shut Down ask before
+they act. Its one shell was `spawn_piped()`, upstream's only `/bin/sh -c`, and
+it is `g_shell_parse_argv` + `execvp` now like every other spawn in the fork —
+the string it runs interpolates a message that came out of rc.xml.
+
+**The root menu is `menu.xml`, and it deliberately lists no applications.**
+labwc's built-in default is Terminal / Reconfigure / Exit, a compositor's menu
+rather than a desktop's, and that is what a KDOS user got. Applications, Places
+and System are `kdos-menu`, which reads the same desktop entries the launcher
+and the panel do; a second application menu built at compositor startup would
+be the one that went stale.
 
 **The fork logs at INFO by default** (labwc's default is ERROR — with it, the
 graft layer's decisions were invisible and an empty session log looked like a
@@ -1415,7 +1494,8 @@ The live-retint claim in **Theming** depends on it; it was verified against the
 fork (`kdos theme amber` retints the running panel and shader).
 
 **The startup children are supervised; a rc.xml Execute child is not.**
-`kdos-child.c`: `kdos-shell` and `kdos-notifyd` are spawned with ONE fork,
+`kdos-child.c`: `kdos-shell`, `kdos-shell --bottom`, `kdos-desk` and
+`kdos-notifyd` are spawned with ONE fork,
 their pid kept, and the reap arrives through labwc's existing SIGCHLD handler
 (`kdos_child_reap()` hook — a second signalfd on SIGCHLD would race the first).
 signalfd COALESCES the signal and labwc's handler reaps one zombie per event,
@@ -1425,6 +1505,25 @@ chrome children dying together leave one a zombie that never respawns.
 Five deaths in thirty seconds stops the respawn, because a crash loop hides
 the log line that explains it. labwc's own spawns keep their double fork: a
 terminal a keybinding opened is not the desktop's chrome.
+
+**ONE SET OF CHROME PER OUTPUT**, spawned from labwc's output-created hook and
+SIGTERMed from output-destroyed (the slot is marked `stopping` so the reap frees
+it instead of respawning it — a panel whose output is gone would otherwise
+exit, respawn and exit until the five-in-thirty rule stopped trusting it).
+An unnamed layer surface is placed by the compositor on ONE output, so a
+two-monitor machine used to get a panel, a window list and desktop icons on the
+first screen and nothing on the second. libktui has a single cell buffer, so a
+second screen cannot be a second surface of the same process — it has to be a
+second PROCESS, which is what the two panels already were. `libkwl`'s
+`KwlConfig.output` names it (wl_output version **4**, for the `name` event: a
+registry id cannot be written on a command line), and `kdos-shell`/`kdos-desk`
+take `--output`. `kdos-notifyd` stays one per session because it owns a bus
+name and a second instance would simply fail to take it.
+
+The bottom panel and the desktop icons were, for a release, code that **nothing
+started** — `panel.c`'s own comment claimed `kdos-desktop-start` launched the
+bottom panel and it did not. If a feature here has no line in `TEMPLATES[]`, it
+does not run, whatever any comment says.
 
 **Windows land in the usable area because labwc computes one.** Placement,
 snapping and maximise all honour layer-shell exclusive zones upstream — the
@@ -1715,11 +1814,33 @@ it and wlroots ask for.
 NAME is not free.** xdg-desktop-portal looks for `<desktop>-portals.conf` with
 `XDG_CURRENT_DESKTOP` lowercased, so `KDOS` → `kdos`. Without the file the only
 thing selecting a backend is `UseIn=` inside `wlr.portal`, which lists sway,
-river and Hyprland and has never heard of us. It reads `default=none` plus the
-two interfaces wlr implements — honest rather than lazy, because the usual
-second backend is xdg-desktop-portal-gtk and **there is no GTK on the host**. So
-FileChooser has no backend, boxed apps use their own dialogs, and a libktui
-cell-grid picker is the eventual answer.
+river and Hyprland and has never heard of us. It reads `default=none` — honest
+rather than lazy, because the usual second backend is xdg-desktop-portal-gtk and
+**there is no GTK on the host**, so Print, Email and Wallpaper genuinely have
+nobody — plus ScreenCast and Screenshot to `wlr` and FileChooser and Settings
+to `kdos`.
+
+**FileChooser and Settings are ours: `src/desktop/xdg-desktop-portal-kdos`.**
+It is a bus adapter and nothing more — it spawns `kdos-pick` and reads its
+stdout, so the chooser stays a normal program that can be run by hand,
+scripted or replaced. Before it, every boxed application's Open and Save fell
+back to whatever dialog its own toolkit shipped, which put a rounded
+antialiased GTK window in the middle of a text-mode desktop every time anybody
+opened a file. Three rules it exists to keep: **every request is answered** (0
+success, 1 cancelled, 2 error — an unanswered request leaves the application
+blocked forever, the same lesson as the ScreenCast zero-streams trap on a
+different interface); `parent_window` is ignored and says so; and the chooser
+is exec'd with argv, never a command string.
+
+**And the bus loop does not block on the dialog.** The first version forked the
+picker and sat in `waitpid()` inside the method handler, so for as long as
+anybody had a file dialog open this backend answered nothing at all — a second
+application's Open queued behind the first, and a boxed app asking Settings for
+the colour scheme (which happens on every launch) hung until the dialog was
+dismissed. The fork happens in the handler, the `sd_bus_message` is REFFED and
+the handler returns "handled" without replying, the pipe joins the main loop's
+poll set, and the reply is built at EOF. A portal backend is a server, and a
+server that stops serving while it thinks is a server that is down.
 
 `~/.config/xdg-desktop-portal-wlr/config` (skel) uses `chooser_type=simple` with
 slurp. The alternative, `none`, silently captures the first output — right on a
@@ -1986,6 +2107,64 @@ building the daemon with each one disabled.
 **Not built: a panel indicator.** The milestone's deliverable is the sentence,
 and `kdos-shell` drawing a share strip is its own piece of work.
 
+## The shell answers the mouse, everywhere
+
+`kdos-shell` is one binary under nine names: `kdos-shell` (the panel, and
+`--bottom` the second one), `kdos-launcher`, `kdos-menu`, `kdos-desk`,
+`kdos-pick`, `kdos-run`, `kdos-prompt`, `kdos-notifyd`, `kdos-osd`. Four of
+them shipped with no mouse handling at all — `grep -c KT_EVT_MOUSE` was 0 for
+launcher, pick, run and notifyd — and one of those is the file dialog **every
+boxed application reaches through the portal**. The one dialog on the system
+that other people's software puts in front of you was the one that could not be
+clicked.
+
+One contract, so a hand that learns it in the menu already knows the launcher:
+
+| | |
+|---|---|
+| motion | selects (it arrives as `KT_MP_DRAG` — libkwl's spelling for plain movement, and testing `ev.press` for truth made every mouse MOVE a click) |
+| left press | activates |
+| wheel | scrolls the selection |
+| right press | backs out one level, then closes |
+| click away | closes — see below |
+
+**A keyboard overlay that loses focus closes itself** (`kb_leave` in libkwl,
+gated on having seen an ENTER first, because the compositor decides when an
+ON_DEMAND layer surface gets the keyboard and a leave before any enter would
+close the surface during its own map). Before that, clicking on a window while
+a menu was open left the menu floating over it until somebody found Escape.
+There is no "unfocused menu" state worth having.
+
+**A menu opens under the word that was clicked.** Layer-shell has no
+coordinates, so "at x" is an anchor plus a margin: `KWL_CORNER_TOP_LEFT` with
+`margin_x`/`margin_y` in pixels, which the panel passes as `--at X Y`. Without
+it every menu opened in the CENTRE of the screen and read as a dialog.
+
+**The panel lights the word the pointer is over.** `menu_open` is never set by
+anything — the menu is a separate process and does not report back — so hover
+is what the bar actually knows, and it is what makes three words read as three
+buttons.
+
+**The window list answers all three buttons**, as taskbars have since Windows
+95: left toggles (minimise the window you are in, restore the one you are not),
+middle closes politely so an editor still gets to ask, right minimises. The
+workspace strip answers the wheel, which is also the only way to reach
+workspace 5 and up — the strip has room for four digits and does not scroll.
+
+**The taskbar shows the desktop entry's `Name`.** `Name` > title > `app_id`,
+resolved once when the app_id arrives rather than per frame. An app_id is a
+reverse-DNS identifier chosen so it cannot collide, and `org.gnome.Meld` was
+sitting in the one place a human name belongs.
+
+**A toast dismisses on click**, with the spec's reason 2. The surface takes no
+keyboard — a toast must never steal focus — so the pointer is the only way to
+make one go away early, and a notification that cannot be dismissed is one
+people learn to work around by not looking at that corner of the screen.
+
+**`kdos-prompt` is the yes/no dialog**, and its interface is its EXIT STATUS
+because that is what kdos-comp already reads: 0 yes, 1 no, 254 cancelled. It is
+what `W-Escape` and the System menu's Log Out / Restart / Shut Down go through.
+
 ## The tray — a StatusNotifierItem host
 
 `src/desktop/kdos-shell/tray.c`. The tray is the one part of a desktop that is
@@ -2054,6 +2233,7 @@ kdos/
 │   │   ├── libkbase/            # kb_*  alloc/string/file/proc/lock helpers
 │   │   ├── libkcolor/           # kcol_* the palette table + colour maths
 │   │   ├── libktui/             # ktui_* terminal, widgets, mouse, modals
+│   │   ├── libkcell/            # kcell_* the glyph cache and cell painter
 │   │   ├── libkxdg/             # kxdg_* desktop entries
 │   │   ├── libkpkg/             # kp_*   db, ports tree, solver, version + hashes
 │   │   ├── libksig/             # ksig_* Ed25519 (vendored Monocypher)
@@ -2063,11 +2243,13 @@ kdos/
 │   ├── desktop/                 # the desktop, ours (see docs/KDOS-DESKTOP.md)
 │   │   ├── kdos-comp/           # hard fork of labwc 0.20.0; KDOS grafts in
 │   │   │                        #   src/kdos-*.c (CRT, wallpaper, frames, idle)
-│   │   ├── kdos-shell/          # panel, launcher, notifyd, osd, tray (SNI)
+│   │   ├── kdos-shell/          # panel x2, launcher, menu, desk, pick, run,
+│   │   │                        #   prompt, notifyd, osd, tray (SNI), privacy
 │   │   ├── kdos-lock/           # the lock screen + setuid kdos-checkpass
 │   │   ├── kdos-powerd/         # suspend/poweroff/reboot over a unix socket
 │   │   ├── kdos-energyd/        # per-app Energy Impact from RAPL, relative
-│   │   └── kdos-boxsock/        # the security-context-v1 sandbox engine
+│   │   ├── kdos-boxsock/        # the security-context-v1 sandbox engine
+│   │   └── xdg-desktop-portal-kdos/  # FileChooser + Settings, over kdos-pick
 │   ├── build/
 │   │   └── kdosbuild/           # the build orchestrator (C, host-only)
 │   ├── tools/
@@ -2535,9 +2717,16 @@ assumed:
   directories, `<name>-<version>-<release>.tar.xz`, `--root`, the whitespace
   `PORT_REPO` list, env-over-config, and exit codes 0/1.
 
-**Skip-if-installed compares the VERSION, not the recipe — so a recipe edit
-that does not bump `version`/`release` never rebuilds.** This is not
-theoretical and it cost a build: `ports/core/wlroots/build.sh` gained
+**Skip-if-installed compares NOTHING — it asks whether a database entry
+exists** (`kp_installed()` is `kb_read_all(<db>/<name>) != NULL`), so an
+installed package is skipped whatever its version, its release or its recipe
+now say. Bumping `version` is therefore worth doing for the binhost and for a
+fresh tree, and does nothing at all for an incremental local build: **the only
+thing that rebuilds a changed port on a built tree is `--rebuild <port>`** (or
+`kpkg install -f`). Get that wrong and a build "succeeds" carrying the old
+binary, which is indistinguishable from a change that did not work.
+
+This is not theoretical and it cost a build: `ports/core/wlroots/build.sh` gained
 `install -m644 protocol/*.xml "$PKG/usr/share/wlroots/protocols/"` because
 upstream does not install its own protocol XML and three of our recipes read it
 from there. The installed wlroots on the tree predated that line, its manifest
@@ -3273,9 +3462,21 @@ and respond with the targeted fix.
   only the three source-less ports of ours lack one.)
 - **The tray does not render `com.canonical.dbusmenu`**, so an app that sets
   `ItemIsMenu` has no reachable menu. See the tray section.
-- **No FileChooser portal** — xdg-desktop-portal-wlr implements ScreenCast and
-  Screenshot only, and there is no GTK backend to fall back to on a host with
-  no GTK. Boxed apps use their own dialogs.
+- **A per-output panel shows EVERY window, not that output's.**
+  wlr-foreign-toplevel reports `output_enter`/`output_leave` and the shell
+  ignores them, so on two screens both taskbars list the same windows. That is
+  GNOME 2's behaviour and not obviously wrong; filtering is a decision, not a
+  fix, and it is not made.
+- **libkwl does no HiDPI.** No `wl_surface.set_buffer_scale`, so on a scaled
+  output the cell grid is upscaled by the compositor rather than drawn at the
+  output's own scale. The 32-pixel Terminus cell is what makes the desktop
+  legible on a 4K panel anyway, which is why this has not bitten yet.
+- ~~No FileChooser portal~~ — **closed.** `src/desktop/xdg-desktop-portal-kdos`
+  serves FileChooser and Settings by spawning `kdos-pick` and reading its
+  stdout; `kdos-portals.conf` routes both to it and ScreenCast/Screenshot to
+  wlr. The remaining gap is `parent_window`, which is ignored: positioning a
+  dialog over the window that asked for it needs xdg-foreign wiring that is not
+  done, so it opens centred.
 - **No `fcitx5-configtool`** — it is Qt Widgets, and with its browser also
   QtWebEngine. fcitx5 is configured through the text files under
   `~/.config/fcitx5/`.

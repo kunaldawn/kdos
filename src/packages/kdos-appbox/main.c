@@ -468,6 +468,7 @@ static void usage(void)
 {
 	fputs(
 "Usage: kdos-appbox run <app> [args...]     run an app from a box\n"
+"       kdos-appbox open [--print] <path>   open a file in whatever opens it\n"
 "       kdos-appbox ensure | warmup | status\n"
 "\n"
 "       kdos-appbox list                    boxes and their profiles\n"
@@ -557,6 +558,11 @@ int main(int argc, char **argv)
 		if (i + 1 >= argc)
 			kb_die("usage: kdos-appbox run <app> [args...]");
 		return cmd_run(argc - i - 1, argv + i + 1);
+	}
+	if (CMD("open")) {
+		if (i + 1 >= argc)
+			kb_die("usage: kdos-appbox open <path> [path...]");
+		return cmd_open(argc - i - 1, argv + i + 1);
 	}
 	if (CMD("ensure"))
 		return cmd_ensure();

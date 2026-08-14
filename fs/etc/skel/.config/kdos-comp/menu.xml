@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  kdos-comp root menu — right-click (or middle-click) the desktop.
+
+  labwc's built-in default is three items: Terminal, Reconfigure, Exit. That
+  is a compositor's menu, not a desktop's, and it was what a KDOS user got
+  because this file did not exist.
+
+  IT DELIBERATELY DOES NOT LIST APPLICATIONS. Applications, Places and System
+  are kdos-menu — a character-cell program that reads the same desktop entries
+  the launcher and the panel do, alien apps included. Duplicating them here
+  would be a second application menu to keep in agreement with the first, and
+  the one that scanned /usr/share/applications at compositor startup would be
+  the one that went stale. So this menu is the WINDOW MANAGER's half — the few
+  things that are true whatever is installed — and it opens the other one.
+-->
+<openbox_menu>
+  <menu id="root-menu" label="KDOS">
+
+    <item label="Terminal">
+      <action name="Execute" command="foot"/>
+    </item>
+    <item label="Files">
+      <action name="Execute" command="foot -e mc"/>
+    </item>
+    <item label="Run…">
+      <action name="Execute" command="kdos-run"/>
+    </item>
+
+    <separator/>
+
+    <item label="Applications">
+      <action name="Execute" command="kdos-menu applications"/>
+    </item>
+    <item label="Places">
+      <action name="Execute" command="kdos-menu places"/>
+    </item>
+    <item label="System">
+      <action name="Execute" command="kdos-menu system"/>
+    </item>
+
+    <separator/>
+
+    <item label="Screenshot">
+      <action name="Execute" command="kdos-shot region"/>
+    </item>
+    <item label="Show Desktop">
+      <action name="ToggleShowDesktop"/>
+    </item>
+
+    <separator/>
+
+    <item label="Lock Screen">
+      <action name="Execute" command="kdos-lock"/>
+    </item>
+    <item label="Suspend">
+      <action name="Execute" command="kdos-power suspend"/>
+    </item>
+    <item label="Reload Configuration">
+      <action name="Reconfigure"/>
+    </item>
+    <!-- The three that cannot be undone ask first, through kdos-prompt
+         (<core><promptCommand> in rc.xml). -->
+    <item label="Log Out">
+      <action name="If">
+        <prompt><message>End the KDOS session? Unsaved work will be lost.</message></prompt>
+        <then><action name="Exit"/></then>
+      </action>
+    </item>
+    <item label="Restart">
+      <action name="If">
+        <prompt><message>Restart this machine?</message></prompt>
+        <then><action name="Execute" command="kdos-power reboot"/></then>
+      </action>
+    </item>
+    <item label="Shut Down">
+      <action name="If">
+        <prompt><message>Shut this machine down?</message></prompt>
+        <then><action name="Execute" command="kdos-power poweroff"/></then>
+      </action>
+    </item>
+
+  </menu>
+</openbox_menu>
