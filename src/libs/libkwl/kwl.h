@@ -75,6 +75,16 @@ enum kwl_edge {
 enum kwl_corner {
 	KWL_CORNER_CENTER = 0,	/* the launcher: what you are looking at   */
 	KWL_CORNER_TOP_RIGHT,	/* a toast: what you are not looking at    */
+	/*
+	 * A dropdown, under the word on the menu bar that opened it. Together
+	 * with margin_x/margin_y this is as close to a coordinate as
+	 * layer-shell gets: the protocol has no positions, only anchors and
+	 * margins, so "at x" is "anchored left, with a left margin of x".
+	 * Without it every menu opened in the CENTRE of the screen, which
+	 * reads as a dialog rather than as a menu belonging to the word that
+	 * was clicked.
+	 */
+	KWL_CORNER_TOP_LEFT,
 };
 
 typedef struct {
@@ -84,6 +94,18 @@ typedef struct {
 	const char *title;	/* toplevel only                           */
 	const char *app_id;	/* must equal the .desktop id — `kdos appid` */
 	const char *font;	/* fontconfig name; NULL for the default   */
+	/*
+	 * Which screen, by the compositor's own name for it (`eDP-1`,
+	 * `HDMI-A-1`). NULL leaves the choice to the compositor, and what a
+	 * compositor chooses is exactly one output — so a panel with no
+	 * `output` on a two-monitor machine is a panel on one of them and
+	 * nothing on the other. Ignored for roles that are not layer-shell.
+	 *
+	 * An unknown name is not an error: it falls back to the compositor's
+	 * choice, because a screen that was unplugged between the supervisor
+	 * deciding and this process starting is a race, not a mistake.
+	 */
+	const char *output;
 	int exclusive;		/* reserve the zone so windows do not overlap */
 	/*
 	 * Overlay only: the size in CELLS, because a launcher is a grid of text
@@ -99,12 +121,32 @@ typedef struct {
 	 */
 	int corner;
 	/*
+	 * Overlay only, PIXELS, and only meaningful with a corner: the gap
+	 * from the two edges the corner anchors to. Zero means the library's
+	 * own margin, which is what a toast wants.
+	 */
+	int margin_x, margin_y;
+	/*
 	 * Take the keyboard. A panel must NOT — it would steal focus from
 	 * whatever you were typing into every time the clock redrew — but a
 	 * launcher is useless without it, and layer-shell surfaces get no
 	 * keyboard at all unless they ask.
 	 */
 	int keyboard;
+	/*
+	 * Close when the keyboard focus goes elsewhere. Right for a MENU and
+	 * for the launcher and the run box — clicking on a window while one is
+	 * open used to leave it floating over that window until somebody found
+	 * Escape, and there is no useful "unfocused menu" state.
+	 *
+	 * WRONG for a dialog, which is why it is opt-in rather than implied by
+	 * `keyboard`. The file chooser is the case: it is what every boxed
+	 * application's Open reaches through the portal, people click back to
+	 * the application mid-choice as a matter of course, and a picker that
+	 * vanished when they did would answer the portal "cancelled" for a
+	 * dialog the user had not finished with. Same for the yes/no prompt.
+	 */
+	int dismiss_on_unfocus;
 } KwlConfig;
 
 /*

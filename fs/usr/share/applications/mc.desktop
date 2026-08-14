@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+GenericName=File Manager
+Comment=Browse files with Midnight Commander
+# mc IS the file manager on this desktop: already a port, already Turbo
+# Vision, and on the same glyph grid as the rest of the chrome when foot uses
+# Terminus. The menu's Places entries, kdos-desk and Super+E all open this;
+# this file is what makes the MIME association agree with them.
+#
+# mc ships no desktop entry of its own (the port builds --without-x), so this
+# one is ours, the same way lf.desktop is.
+Exec=foot --app-id=mc -e mc %f
+Icon=system-file-manager
+Terminal=false
+Categories=System;FileTools;FileManager;
+MimeType=inode/directory;
+Keywords=file;manager;browser;mc;midnight;commander;

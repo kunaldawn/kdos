@@ -3,21 +3,79 @@
   kdos-comp (labwc fork) window-manager config.
   KDOS-only settings (crt*, idle_*, wallpaper) live in ~/.config/kdos/comp.conf.
   Modifiers: W=Super  S=Shift  C=Ctrl  A=Alt.
+
+  <default /> MUST BE THE FIRST CHILD of <keyboard> and of <mouse>, and it is
+  the most load-bearing line in this file.
+
+  labwc loads its built-in bindings ONLY when the user's file defines none at
+  all (rcxml.c post_processing). A file that binds one key therefore silently
+  throws away every default — and the defaults are not conveniences, they are
+  the desktop: `Client Left Press -> Focus/Raise` is what makes CLICKING A
+  WINDOW FOCUS IT (focus_follow_mouse is false), `Title Left Drag -> Move` is
+  the titlebar, `Close/Iconify/Maximize Left Click` are the three buttons
+  drawn on every frame, `Border Left Drag -> Resize` is the edges, and
+  `Root Right Press -> ShowMenu` is the desktop menu. Dropping this line ships
+  a session where the mouse appears not to work at all.
+
+  Overrides go AFTER it: a duplicate binding replaces the earlier one
+  (deduplicate_{key,mouse}_bindings keeps the LATER of the two).
 -->
 <labwc_config>
 
   <core>
     <gap>0</gap>
+    <!--
+      The yes/no dialog for <action name="If"><prompt>. labwc's default names
+      `labnag`, which KDOS does not build (-Dlabnag=disabled: it is a
+      pango-and-cairo dialog and this desktop draws cells), so the facility
+      pointed at a binary that is not on the image. kdos-prompt is
+      kdos-shell under another name and answers with the exit status labwc
+      reads: 0 yes, 1 no, 254 cancelled.
+    -->
+    <promptCommand>kdos-prompt --message '%m' --no '%n' --yes '%y'</promptCommand>
   </core>
+
+  <!--
+    THE ONE CELL SIZE.
+
+    Everything else on this desktop is a character grid at Terminus 32px: the
+    panels, the menus, the launcher, the desktop icons, the lock screen, the
+    boot splash and tty1. The compositor's own chrome — titlebars, the root
+    menu, the window-switcher OSD — is drawn with pango, and pango's default
+    is `sans` at 10 points. That put a 13-pixel antialiased sans title on top
+    of every 32-pixel window, which is the one place the desktop stopped
+    looking like one machine.
+
+    Pango sizes are POINTS: at 96dpi, 24pt is 32 pixels, which is exactly the
+    ter-u32n bitmap. The colours of these same surfaces are generated —
+    ~/.config/kdos-comp/themerc-override, written by `kdos theme`.
+  -->
+  <theme>
+    <font place="ActiveWindow"><name>Terminus</name><size>24</size></font>
+    <font place="InactiveWindow"><name>Terminus</name><size>24</size></font>
+    <font place="MenuHeader"><name>Terminus</name><size>24</size></font>
+    <font place="MenuItem"><name>Terminus</name><size>24</size></font>
+    <font place="OnScreenDisplay"><name>Terminus</name><size>24</size></font>
+  </theme>
 
   <desktops number="4"/>
 
   <keyboard>
+    <default />
+
     <!-- the KDOS bindings, carried over from the old compositor -->
     <keybind key="W-Return"><action name="Execute" command="foot"/></keybind>
     <keybind key="W-d"><action name="Execute" command="kdos-launcher"/></keybind>
     <keybind key="W-q"><action name="Close"/></keybind>
-    <keybind key="W-Escape"><action name="Exit"/></keybind>
+    <!-- Ends the session, and ASKS first: one keystroke between a full screen
+         of unsaved work and no screen at all is how a desktop loses trust.
+         The dialog is kdos-prompt, via <promptCommand> above. -->
+    <keybind key="W-Escape">
+      <action name="If">
+        <prompt><message>End the KDOS session? Unsaved work will be lost.</message></prompt>
+        <then><action name="Exit"/></then>
+      </action>
+    </keybind>
     <keybind key="W-Tab"><action name="NextWindow"/></keybind>
     <keybind key="W-S-Tab"><action name="PreviousWindow"/></keybind>
     <keybind key="W-l"><action name="Execute" command="kdos-lock"/></keybind>
@@ -25,6 +83,12 @@
     <!-- new with the fork: maximize / fullscreen finally exist -->
     <keybind key="W-m"><action name="ToggleMaximize"/></keybind>
     <keybind key="W-f"><action name="ToggleFullscreen"/></keybind>
+
+    <!-- the three shell front ends that had no way in until now -->
+    <keybind key="A-F2"><action name="Execute" command="kdos-run"/></keybind>
+    <keybind key="W-e"><action name="Execute" command="foot -e mc"/></keybind>
+    <keybind key="Print"><action name="Execute" command="kdos-shot region"/></keybind>
+    <keybind key="S-Print"><action name="Execute" command="kdos-shot screen"/></keybind>
 
     <keybind key="W-1"><action name="GoToDesktop" to="1"/></keybind>
     <keybind key="W-2"><action name="GoToDesktop" to="2"/></keybind>
@@ -36,7 +100,10 @@
     <keybind key="W-S-3"><action name="SendToDesktop" to="3"/></keybind>
     <keybind key="W-S-4"><action name="SendToDesktop" to="4"/></keybind>
 
-    <!-- media keys: keysyms that exist only on those keys, safe unmodified -->
+    <!-- media keys: keysyms that exist only on those keys, safe unmodified.
+         These REPLACE the defaults, which shell out to pactl and
+         brightnessctl — neither of which KDOS ships. kdos-osd does the
+         change and draws the gauge. -->
     <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="kdos-osd volume +5"/></keybind>
     <keybind key="XF86AudioLowerVolume"><action name="Execute" command="kdos-osd volume -5"/></keybind>
     <keybind key="XF86AudioMute"><action name="Execute" command="kdos-osd volume toggle"/></keybind>
@@ -45,11 +112,18 @@
   </keyboard>
 
   <mouse>
+    <default />
+
     <!-- Super+drag moves, Super+right-drag resizes: most KDOS windows are
-         alien apps with no titlebar to aim at -->
+         alien apps drawing their own decorations, with no titlebar to aim
+         at. Both are in the defaults above verbatim; they are restated here
+         because they are the two this desktop cannot do without and a future
+         labwc would be free to drop them. -->
     <context name="Frame">
-      <mousebind button="W-Left" action="Press"><action name="Focus"/><action name="Raise"/><action name="Move"/></mousebind>
-      <mousebind button="W-Right" action="Press"><action name="Focus"/><action name="Raise"/><action name="Resize"/></mousebind>
+      <mousebind button="W-Left" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
+      <mousebind button="W-Left" action="Drag"><action name="Move"/></mousebind>
+      <mousebind button="W-Right" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
+      <mousebind button="W-Right" action="Drag"><action name="Resize"/></mousebind>
     </context>
   </mouse>
 

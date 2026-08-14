@@ -9,7 +9,7 @@
 # ---------------------------------
 
 name        = kdos-appbox
-version     = 1.1.0
+version     = 1.2.0
 release     = 1
 description = KDOS alien app runtime and appbox manager
-depends     = podman distrobox
+depends     = podman distrobox shared-mime-info xdg-utils

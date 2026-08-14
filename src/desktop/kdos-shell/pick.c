@@ -248,6 +248,10 @@ static void human(long long n, char *out, size_t len)
 		snprintf(out, len, "%lld G", n / (1024LL * 1024 * 1024));
 }
 
+/* Where the last frame put the two buttons, so a click maps back to what was
+ * drawn rather than to what the layout intended. */
+static int btn_ok_x, btn_ok_end, btn_cancel_x, btn_cancel_end, btn_row;
+
 static void draw(const char *title)
 {
 	int w = ktui_w, h = ktui_h;
@@ -324,6 +328,38 @@ static void draw(const char *title)
 		       : multi_mode ? "Space mark   Enter open   Esc cancel"
 				    : "Enter open   Esc cancel",
 		       KT_DIM, KT_SURFACE, KT_A_NONE);
+
+	/*
+	 * TWO REAL BUTTONS, right-aligned on the hint row.
+	 *
+	 * This dialog is what every boxed application's Open and Save reaches
+	 * through the portal — GIMP, LibreOffice, Firefox — and a person who
+	 * got here by clicking File ▸ Open is holding a mouse. Shipping it
+	 * keyboard-only meant the one dialog on the system that other people's
+	 * software puts in front of you was the one you could not click.
+	 */
+	const char *ok = save_mode ? " Save " : dir_mode ? " Choose " : " Open ";
+	int okw = ktui_utf8_width(ok) + 2, cw = 10;
+	btn_ok_x = w - 2 - okw;
+	btn_ok_end = btn_ok_x + okw;
+	btn_cancel_x = btn_ok_x - 1 - cw;
+	btn_cancel_end = btn_cancel_x + cw;
+	btn_row = h - 2;
+	if (btn_cancel_x > 26) {
+		ktui_draw_text(btn_cancel_x, btn_row, cw, "[ Cancel ]", KT_TEXT,
+			       KT_SURFACE, KT_A_NONE);
+		ktui_draw_text(btn_ok_x, btn_row, 1, "[", KT_DIM, KT_SURFACE,
+			       KT_A_NONE);
+		ktui_draw_text(btn_ok_x + 1, btn_row, okw - 2, ok, KT_SURFACE,
+			       KT_ACCENT, KT_A_NONE);
+		ktui_draw_text(btn_ok_end - 1, btn_row, 1, "]", KT_DIM,
+			       KT_SURFACE, KT_A_NONE);
+	} else {
+		/* No room: the buttons are the first thing to go, because the
+		 * keyboard path still works and a button drawn over the hint
+		 * text is worse than no button. */
+		btn_ok_x = btn_ok_end = btn_cancel_x = btn_cancel_end = 0;
+	}
 	ktui_draw_flush();
 }
 
@@ -333,6 +369,67 @@ static void add_pattern(const char *p)
 {
 	if (npatterns < MAX_PATTERNS)
 		snprintf(patterns[npatterns++], sizeof(patterns[0]), "%s", p);
+}
+
+/*
+ * What Enter — and the Open button, and a click on an already-selected row —
+ * all do. One function, because three entry points into a chooser that has
+ * four modes is three chances for them to disagree about what a directory
+ * means in save mode.
+ *
+ * Returns 1 when the picker has an answer and should close, 0 to stay open
+ * (a directory was entered, or there was nothing to accept).
+ */
+static int activate(void)
+{
+	if (save_mode) {
+		if (sel >= 0 && sel < nrows && rows[sel].dir) {
+			enter_dir(rows[sel].name);
+			return 0;
+		}
+		if (!save_name[0])
+			return 0;
+		emit_path(save_name);
+		return 1;
+	}
+	if (dir_mode) {
+		/*
+		 * In directory mode Enter on a folder CHOOSES it rather than
+		 * entering it — except `..`, which is the only way back up and
+		 * would otherwise be unusable.
+		 */
+		if (sel >= 0 && sel < nrows && !strcmp(rows[sel].name, "..")) {
+			enter_dir("..");
+			return 0;
+		}
+		if (sel >= 0 && sel < nrows)
+			emit_path(rows[sel].name);
+		else
+			print_uri(cwd);
+		return 1;
+	}
+	if (sel >= 0 && sel < nrows && rows[sel].dir) {
+		enter_dir(rows[sel].name);
+		return 0;
+	}
+	if (multi_mode) {
+		int n = 0;
+		for (int i = 0; i < nrows; i++)
+			if (rows[i].selected) {
+				emit_path(rows[i].name);
+				n++;
+			}
+		if (!n && sel >= 0 && sel < nrows) {
+			emit_path(rows[sel].name);
+			n++;
+		}
+		return n ? 1 : 0;
+	}
+	if (sel >= 0 && sel < nrows) {
+		emit_path(rows[sel].name);
+		return 1;
+	}
+	return 0;
 }
 
 int pick_main(int argc, char **argv)
@@ -419,6 +516,63 @@ int pick_main(int argc, char **argv)
 		KtuiEvent ev;
 		if (!ktui_backend()->poll_event(&ev, 1000))
 			continue;
+
+		/*
+		 * The mouse, on the same contract as the menu and the
+		 * launcher: hover selects, the wheel scrolls, a click on a row
+		 * selects it and a click on an already-selected row opens it —
+		 * the spatial model kdos-desk uses, and the one that does not
+		 * descend into a directory every time the pointer crosses it.
+		 * A right press goes UP, which is where a right click in a
+		 * file list has gone since Norton Commander.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			int row = ev.my - 2 + top;
+			int on_row = ev.my >= 2 && ev.my < ktui_h - 3 &&
+				     row >= 0 && row < nrows;
+			if (ev.press == KT_MP_DRAG) {
+				if (on_row)
+					sel = row;
+				continue;
+			}
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_WHEEL_UP) {
+				sel--;
+			} else if (ev.btn == KT_MB_WHEEL_DOWN) {
+				sel++;
+			} else if (ev.btn == KT_MB_RIGHT) {
+				enter_dir("..");
+			} else if (ev.btn == KT_MB_MIDDLE && multi_mode &&
+				   on_row && !rows[row].dir) {
+				sel = row;
+				rows[row].selected = !rows[row].selected;
+			} else if (ev.btn == KT_MB_LEFT) {
+				if (btn_ok_end > btn_ok_x && ev.my == btn_row &&
+				    ev.mx >= btn_ok_x && ev.mx < btn_ok_end) {
+					if (activate()) {
+						rc = 0;
+						break;
+					}
+				} else if (btn_cancel_end > btn_cancel_x &&
+					   ev.my == btn_row &&
+					   ev.mx >= btn_cancel_x &&
+					   ev.mx < btn_cancel_end) {
+					break;
+				} else if (on_row) {
+					if (row == sel && activate()) {
+						rc = 0;
+						break;
+					}
+					sel = row;
+				}
+			}
+			if (sel < 0)
+				sel = 0;
+			if (sel >= nrows)
+				sel = nrows ? nrows - 1 : 0;
+			continue;
+		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
@@ -435,62 +589,11 @@ int pick_main(int argc, char **argv)
 				rows[sel].selected = !rows[sel].selected;
 			sel++;
 		} else if (ev.key == KT_K_ENTER) {
-			if (save_mode) {
-				if (sel >= 0 && sel < nrows && rows[sel].dir) {
-					enter_dir(rows[sel].name);
-					continue;
-				}
-				if (!save_name[0])
-					continue;
-				emit_path(save_name);
+			if (activate()) {
 				rc = 0;
 				break;
 			}
-			if (dir_mode) {
-				/*
-				 * In directory mode Enter on a folder CHOOSES
-				 * it rather than entering it — except `..`,
-				 * which is the only way back up and would
-				 * otherwise be unusable.
-				 */
-				if (sel >= 0 && sel < nrows &&
-				    !strcmp(rows[sel].name, "..")) {
-					enter_dir("..");
-					continue;
-				}
-				if (sel >= 0 && sel < nrows)
-					emit_path(rows[sel].name);
-				else
-					print_uri(cwd);
-				rc = 0;
-				break;
-			}
-			if (sel >= 0 && sel < nrows && rows[sel].dir) {
-				enter_dir(rows[sel].name);
-				continue;
-			}
-			if (multi_mode) {
-				int n = 0;
-				for (int i = 0; i < nrows; i++)
-					if (rows[i].selected) {
-						emit_path(rows[i].name);
-						n++;
-					}
-				if (!n && sel >= 0 && sel < nrows) {
-					emit_path(rows[sel].name);
-					n++;
-				}
-				if (n) {
-					rc = 0;
-					break;
-				}
-				continue;
-			}
-			if (sel >= 0 && sel < nrows) {
-				emit_path(rows[sel].name);
-				rc = 0;
-				break;
-			}
+			continue;
 		} else if (save_mode) {
 			size_t n = strlen(save_name);
 			if (ev.key == KT_K_BACKSPACE) {

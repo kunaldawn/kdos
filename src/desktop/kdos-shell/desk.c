@@ -329,12 +329,19 @@ static void draw(const char *status)
 int desk_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	const char *output = NULL;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* One desktop per screen: layer-shell puts an unnamed surface
+		 * on whichever output the compositor picks, so a second monitor
+		 * got a wallpaper and no icons. */
+		else if (!strcmp(argv[i], "--output") && i + 1 < argc)
+			output = argv[++i];
 		else {
-			fprintf(stderr, "usage: kdos-desk [--font NAME]\n");
+			fprintf(stderr,
+				"usage: kdos-desk [--output NAME] [--font NAME]\n");
 			return 2;
 		}
 	}
@@ -349,6 +356,7 @@ int desk_main(int argc, char **argv)
 		.role = KWL_ROLE_BACKGROUND,
 		.app_id = "kdos-desk",
 		.font = font,
+		.output = output,
 		.exclusive = 0,
 		/* ON: this surface implements arrows, Enter and Delete-to-trash,
 		 * and shipping it with keyboard = 0 made all three unreachable —
