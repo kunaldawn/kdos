@@ -23,9 +23,11 @@
  *      back. Without it everything collapses onto the mid-grey glyph
  *   4. nearest neighbour by Euclidean distance over the candidate table
  *
- * ONE ALGORITHM, TWO IMPLEMENTATIONS. This is the CPU half; kdos-comp/ascii.c
- * is the same table and the same arithmetic in GLES2. They are meant to agree,
- * and `kdos-shot --text` is the CPU half's own reason to exist regardless.
+ * ONE ALGORITHM, ONE IMPLEMENTATION — this one. There used to be a GLES2 twin
+ * in the pre-fork compositor's ascii.c; the labwc fork did not regraft it, so
+ * the CPU half is the whole of it now and `kdos-ascii` (kdos-shell, by
+ * basename) is its consumer. The disc positions are still handed out below rather
+ * than inlined, for whoever writes the second one next.
  *
  * NO libm, which is the constraint the whole file is written under: libkcell
  * must stay linkable by anything libktui is, and libktui links nothing but
@@ -115,9 +117,9 @@ static float disc_mean(const uint8_t *cov, int w, int h, int stride, int d)
 
 /*
  * The disc positions, for a consumer that has to reproduce the sampling
- * somewhere else — the GPU shader in kdos-comp/ascii.c is the only one.
- * Handing them out beats repeating the literals in GLSL, where a drifted copy
- * would make the two halves quietly disagree.
+ * somewhere else — a GPU shader was the one such consumer and went with the
+ * pre-fork compositor. Handing them out still beats repeating the literals in
+ * GLSL, where a drifted copy would make two halves quietly disagree.
  */
 void kcell_ascii_discs(float *out_xy)
 {

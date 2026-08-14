@@ -615,8 +615,15 @@ int panel_main(int argc, char **argv)
 	 * through it, not a shell that refuses to start. */
 	sh_priv_init(&sh);
 	ktui_draw_init();
+	/* `kdos theme <accent>` SIGHUPs us; see sh_theme_watch(). */
+	sh_theme_watch();
 
 	while (!kwl_should_close()) {
+		if (sh_theme_dirty) {
+			sh_theme_dirty = 0;
+			sh_theme_from_cache();
+			ktui_draw_invalidate();
+		}
 		if (is_bottom)
 			draw_bottom(&sh);
 		else

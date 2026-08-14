@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<!--
+  kdos-comp (labwc fork) window-manager config.
+  KDOS-only settings (crt*, idle_*, wallpaper) live in ~/.config/kdos/comp.conf.
+  Modifiers: W=Super  S=Shift  C=Ctrl  A=Alt.
+-->
+<labwc_config>
+
+  <core>
+    <gap>0</gap>
+  </core>
+
+  <desktops number="4"/>
+
+  <keyboard>
+    <!-- the KDOS bindings, carried over from the old compositor -->
+    <keybind key="W-Return"><action name="Execute" command="foot"/></keybind>
+    <keybind key="W-d"><action name="Execute" command="kdos-launcher"/></keybind>
+    <keybind key="W-q"><action name="Close"/></keybind>
+    <keybind key="W-Escape"><action name="Exit"/></keybind>
+    <keybind key="W-Tab"><action name="NextWindow"/></keybind>
+    <keybind key="W-S-Tab"><action name="PreviousWindow"/></keybind>
+    <keybind key="W-l"><action name="Execute" command="kdos-lock"/></keybind>
+
+    <!-- new with the fork: maximize / fullscreen finally exist -->
+    <keybind key="W-m"><action name="ToggleMaximize"/></keybind>
+    <keybind key="W-f"><action name="ToggleFullscreen"/></keybind>
+
+    <keybind key="W-1"><action name="GoToDesktop" to="1"/></keybind>
+    <keybind key="W-2"><action name="GoToDesktop" to="2"/></keybind>
+    <keybind key="W-3"><action name="GoToDesktop" to="3"/></keybind>
+    <keybind key="W-4"><action name="GoToDesktop" to="4"/></keybind>
+
+    <keybind key="W-S-1"><action name="SendToDesktop" to="1"/></keybind>
+    <keybind key="W-S-2"><action name="SendToDesktop" to="2"/></keybind>
+    <keybind key="W-S-3"><action name="SendToDesktop" to="3"/></keybind>
+    <keybind key="W-S-4"><action name="SendToDesktop" to="4"/></keybind>
+
+    <!-- media keys: keysyms that exist only on those keys, safe unmodified -->
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="kdos-osd volume +5"/></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="kdos-osd volume -5"/></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="kdos-osd volume toggle"/></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="kdos-osd brightness +10"/></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="kdos-osd brightness -10"/></keybind>
+  </keyboard>
+
+  <mouse>
+    <!-- Super+drag moves, Super+right-drag resizes: most KDOS windows are
+         alien apps with no titlebar to aim at -->
+    <context name="Frame">
+      <mousebind button="W-Left" action="Press"><action name="Focus"/><action name="Raise"/><action name="Move"/></mousebind>
+      <mousebind button="W-Right" action="Press"><action name="Focus"/><action name="Raise"/><action name="Resize"/></mousebind>
+    </context>
+  </mouse>
+
+</labwc_config>

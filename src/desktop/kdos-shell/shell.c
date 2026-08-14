@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -96,6 +97,40 @@ void sh_theme_from_cache(void)
 		ktui_theme_set(name);
 	/* No file is not an error: ktui_theme_set already defaulted to
 	 * phosphor, which is what a fresh install wears. */
+}
+
+/*
+ * `kdos theme <accent>` writes the state file and then SIGHUPs kdos-shell and
+ * kdos-comp. The compositor half worked from the start (labwc's Reconfigure);
+ * this half did not exist, and the failure had two faces depending on how the
+ * session was started:
+ *
+ *   - default disposition: SIGHUP TERMINATES. The panel died and the
+ *     compositor's supervisor respawned it, which re-read the state file and
+ *     came up in the new accent — so it LOOKED like a live retint. But it is a
+ *     crash per accent change, and RESPAWN_MAX is 5 in 30 s: trying four or
+ *     five accents to pick one is enough to lose the panel for the session.
+ *   - inherited SIG_IGN (a session started under nohup, say): nothing happened
+ *     at all. Measured: SigIgn 0x1, SigCgt 0 on a running kdos-shell.
+ *
+ * sigaction() here settles both — it overrides an inherited SIG_IGN, and a
+ * caught signal is not a fatal one. No SA_RESTART: the poll the loops sleep in
+ * should come back at once, and both already treat EINTR as "go round again".
+ */
+volatile sig_atomic_t sh_theme_dirty;
+
+static void on_sighup(int sig)
+{
+	(void)sig;
+	sh_theme_dirty = 1;
+}
+
+void sh_theme_watch(void)
+{
+	struct sigaction sa = { 0 };
+	sa.sa_handler = on_sighup;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGHUP, &sa, NULL);
 }
 
 static struct sh_task *task_for(struct sh_state *sh, void *handle)

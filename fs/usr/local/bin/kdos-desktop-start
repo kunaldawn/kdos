@@ -58,8 +58,8 @@ fi
 ) &
 
 # The input method, if one is installed. fcitx5 is a Wayland client and speaks
-# input-method-v2 to kdos-comp (src/desktop/kdos-comp/textinput.c), so it has to
-# start AFTER the compositor exists — but this script execs the compositor, so
+# input-method-v2 to kdos-comp (the fork's src/input/ime.c, labwc's own relay),
+# so it has to start AFTER the compositor exists — but this script execs the compositor, so
 # the wait happens in the background exactly as the portal's does.
 #
 # It is started here rather than by XDG autostart because KDOS runs no autostart

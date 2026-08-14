@@ -126,6 +126,17 @@ void kwl_shutdown(void);
  */
 void kwl_overlay_resize(int cols, int rows);
 
+/*
+ * Overlay only: destroy the layer surface while idle and recreate it on
+ * demand. The alternative — a NULL-buffer commit — resets the surface to
+ * uninitialised in wlroots and the next toast is drawn nowhere; a one-cell
+ * surface is the workaround this pair replaces. show() with a live surface
+ * is just a resize; after a recreate it has completed the initial-commit
+ * handshake and the surface is ready to draw on when it returns 0.
+ */
+void kwl_overlay_hide(void);
+int kwl_overlay_show(int cols, int rows);
+
 /* Cell metrics, once the font is loaded. A panel's pixel height is
  * cells * kwl_cell_h(). */
 int kwl_cell_w(void);

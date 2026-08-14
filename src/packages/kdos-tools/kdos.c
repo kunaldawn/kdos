@@ -1280,19 +1280,25 @@ static void help_body(FILE *o)
 		fprintf(o, "  %-26s %s\n", CMDS[i][0], CMDS[i][1]);
 	fputc('\n', o);
 
-	fprintf(o, "%sKEYS%s  %s(defaults — remap in ~/.config/kdos/comp.conf)%s\n",
-		C_A, C_0, C_D, C_0);
-	/* Every line here is a binding kdos-comp's config.c actually installs.
-	 * The list used to carry four that nothing bound — Alt+Tab, the snap
-	 * arrows, Super+F, PrtSc — which is worse than a short cheat sheet: a
-	 * key that the help says exists and the desktop ignores reads as a
-	 * broken desktop. */
+	fprintf(o, "%sKEYS%s  %s(defaults — remap in "
+		"~/.config/kdos-comp/rc.xml)%s\n", C_A, C_0, C_D, C_0);
+	/* Every line here is a binding the skel rc.xml actually installs, and
+	 * the file named above is the one that installs it: since the labwc
+	 * fork, comp.conf keeps only the KDOS keys and skips a `bind` line in
+	 * silence, so pointing a remapper at it was pointing them at a file
+	 * that would ignore them. The list used to carry four keys that
+	 * nothing bound — Alt+Tab, the snap arrows, Super+F, PrtSc — which is
+	 * worse than a short cheat sheet: a key that the help says exists and
+	 * the desktop ignores reads as a broken desktop. Super+F is bound now
+	 * and is back on the list for that reason, not for the old one. */
 	static const char *KEYS[][2] = {
 		{ "Super+D", "open the launcher" },
 		{ "Super+Return", "terminal (foot)" },
 		{ "Super+Q", "close window" },
 		{ "Super+Tab", "switch window (most recent first)" },
 		{ "Super+Shift+Tab", "switch window, backwards" },
+		{ "Super+M", "maximize / restore" },
+		{ "Super+F", "fullscreen / restore" },
 		{ "Super+1..4", "switch workspace" },
 		{ "Super+Shift+1..4", "move window to workspace" },
 		{ "Super+drag", "move a window; Super+right-drag resizes" },
@@ -1857,7 +1863,7 @@ static int cmd_doctor(int argc, char **argv)
 		struct dirent *xe;
 		while ((xe = readdir(xd)))
 			if (xe->d_name[0] == 'X' && xe->d_name[1]) {
-				snprintf(xsock, sizeof(xsock), ":%s",
+				snprintf(xsock, sizeof(xsock), ":%.30s",
 					 xe->d_name + 1);
 				break;
 			}
