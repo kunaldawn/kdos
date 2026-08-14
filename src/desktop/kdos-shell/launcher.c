@@ -374,6 +374,8 @@ int launcher_main(int argc, char **argv)
 		.app_id = "kdos-launcher",
 		.font = font,
 		.keyboard = 1,
+		/* A menu, not a dialog: clicking elsewhere closes it. */
+		.dismiss_on_unfocus = 1,
 	};
 
 	sh_theme_from_cache();
@@ -416,6 +418,39 @@ int launcher_main(int argc, char **argv)
 				ktui_draw_invalidate();
 			}
 			continue;
+		}
+		/*
+		 * Full mouse, on the same contract as kdos-menu: hover selects
+		 * (plain movement arrives as KT_MP_DRAG — libkwl's spelling),
+		 * a left press launches, the wheel scrolls, a right press
+		 * closes. A launcher opened by a keystroke is still a list of
+		 * things on a screen, and a list you cannot click reads as a
+		 * broken one.
+		 */
+		if (ev.type == KT_EVT_MOUSE) {
+			int row = ev.my - 3 + top;
+			int on_row = ev.my >= 3 && row >= 0 && row < nmatch;
+			if (ev.press == KT_MP_DRAG) {
+				if (on_row)
+					sel = row;
+				continue;
+			}
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_WHEEL_UP) {
+				sel--;
+				continue;
+			}
+			if (ev.btn == KT_MB_WHEEL_DOWN) {
+				sel++;
+				continue;
+			}
+			if (ev.btn == KT_MB_RIGHT)
+				goto done;
+			if (ev.btn != KT_MB_LEFT || !on_row)
+				continue;
+			launch(&entries[order[row]]);
+			goto done;
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;

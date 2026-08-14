@@ -286,6 +286,10 @@ handle_output_destroy(struct wl_listener *listener, void *data)
 {
 	struct output *output = wl_container_of(listener, output, destroy);
 	struct seat *seat = &server.seat;
+	/* KDOS: its chrome goes with it, before anything else is torn down —
+	 * a panel left running on an output that no longer exists is a
+	 * respawn loop against a layer surface the compositor has closed. */
+	kdos_children_output_remove(output->wlr_output->name);
 	regions_evacuate_output(output);
 	regions_destroy(seat, &output->regions);
 	if (seat->overlay.active.output == output) {
@@ -671,6 +675,10 @@ handle_new_output(struct wl_listener *listener, void *data)
 	output->frame.notify = handle_output_frame;
 	wl_signal_add(&wlr_output->events.frame, &output->frame);
 	kdos_frames_output_add(output); /* KDOS */
+	/* KDOS: this screen gets its own panel, window list and desktop.
+	 * No-op until kdos_children_start() has run — outputs exist before
+	 * the wayland socket is being serviced. */
+	kdos_children_output_add(wlr_output->name);
 
 	output->request_state.notify = handle_output_request_state;
 	wl_signal_add(&wlr_output->events.request_state, &output->request_state);

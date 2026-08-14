@@ -35,6 +35,16 @@ struct kdos_conf {
 
 	/* Wallpaper PNG path, or "none". */
 	char wallpaper[512];
+
+	/*
+	 * Which pieces of chrome the compositor supervises besides the top
+	 * panel and the notification daemon. Both default ON — they are the
+	 * desktop, not extras — and both exist as keys because a second panel
+	 * and a layer of desktop icons are the two things a person running
+	 * this on a small screen will genuinely want off.
+	 */
+	bool panel_bottom;
+	bool desktop_icons;
 };
 
 extern struct kdos_conf kdos_conf;
@@ -42,9 +52,16 @@ extern struct kdos_conf kdos_conf;
 /* Fill defaults, then overlay ~/.config/kdos/comp.conf. */
 void kdos_conf_load(void);
 
-/* Supervised chrome children (kdos-shell, kdos-notifyd). */
+/*
+ * Supervised chrome children: the two panels and the desktop icons, ONE SET
+ * PER OUTPUT, plus the notification daemon, which is one for the session
+ * because it owns a bus name. The output pair is called from labwc's own
+ * output create/destroy paths.
+ */
 #include <sys/types.h>
 void kdos_children_start(void);
+void kdos_children_output_add(const char *name);
+void kdos_children_output_remove(const char *name);
 bool kdos_child_reap(pid_t pid, int status);
 void kdos_children_poll(void);
 

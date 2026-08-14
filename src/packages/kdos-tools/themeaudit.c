@@ -162,6 +162,7 @@ static const struct {
 	{ A_HOME,   ".icons/KDOS-cursors",      "cursor theme"       },
 	{ A_CONFIG, "gtk-3.0/gtk.css",          "GTK3 palette"       },
 	{ A_CONFIG, "gtk-4.0/gtk.css",          "GTK4 palette"       },
+	{ A_CONFIG, "kdos-comp/themerc-override", "window frames"    },
 	{ A_CONFIG, "foot/themes/kdos",         "foot"               },
 	{ A_CONFIG, "btop/themes/kdos.theme",   "btop"               },
 	{ A_CONFIG, "starship.toml",            "starship palette"   },

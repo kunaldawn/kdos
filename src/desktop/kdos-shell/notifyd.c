@@ -295,6 +295,24 @@ static void draw_toasts(void)
 	ktui_draw_flush();
 }
 
+/*
+ * Which toast a row belongs to, or -1. Walks the same accumulation
+ * draw_toasts() does rather than dividing by a fixed height — toasts are three
+ * rows or four depending on whether they carry a body, so a division would
+ * dismiss the wrong one as soon as two of different heights were stacked.
+ */
+static int toast_at_row(int row)
+{
+	int y = 0;
+	for (int i = 0; i < ntoasts; i++) {
+		int rows = toasts[i].body[0] ? 4 : 3;
+		if (row >= y && row < y + rows)
+			return i;
+		y += rows;
+	}
+	return -1;
+}
+
 /* ── main ──────────────────────────────────────────────────────────────── */
 
 int notifyd_main(int argc, char **argv)
@@ -435,8 +453,31 @@ int notifyd_main(int argc, char **argv)
 		int r2 = poll(fds, 2, next_timeout());
 		if (r2 < 0 && errno != EINTR)
 			break;
-		if (fds[0].revents)
-			kwl_pump();
+		if (fds[0].revents) {
+			/*
+			 * CLICK DISMISSES IT. The surface takes no keyboard —
+			 * a toast must never steal focus — so the pointer is
+			 * the only way a person can make one go away before
+			 * its timeout, and a notification that cannot be
+			 * dismissed is one people learn to work around by not
+			 * looking at that corner of the screen. Reason 2 is
+			 * the spec's "dismissed by the user", which is what a
+			 * client waiting on NotificationClosed is told.
+			 */
+			KtuiEvent ev;
+			while (ktui_backend()->poll_event(&ev, 0)) {
+				if (ev.type != KT_EVT_MOUSE ||
+				    ev.press != KT_MP_PRESS)
+					continue;
+				if (ev.btn != KT_MB_LEFT &&
+				    ev.btn != KT_MB_MIDDLE &&
+				    ev.btn != KT_MB_RIGHT)
+					continue;
+				int i = toast_at_row(ev.my);
+				if (i >= 0)
+					drop_at(i, 2);
+			}
+		}
 		/*
 		 * The configure that answers kwl_overlay_resize() lands here, and
 		 * the cell buffer does NOT follow by itself — `ktui_w`/`ktui_h`
