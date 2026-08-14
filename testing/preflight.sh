@@ -343,6 +343,60 @@ else
     done
 fi
 
+# ── every command the desktop's own config names must exist ────────────────
+#
+# rc.xml and menu.xml are the two files that turn a keystroke or a menu row
+# into a program, and NOTHING checks them: the XML is valid whatever the
+# command says, the recipe parses, the build succeeds, and the failure is a
+# key that does nothing on a booted ISO. This tree has shipped that twice —
+# `<promptCommand>` named `labnag`, which is `-Dlabnag=disabled` and therefore
+# not on the image at all, and `kdos-desk` called `kdos-appbox open` for a
+# release before that subcommand existed.
+#
+# A command counts as existing when a port of that name is in the tree, when
+# some build.sh installs or links it into a bin directory, or when fs/ ships
+# it. That is the same question the ISO asks, minus the two hours.
+echo
+echo "==> every command in the shipped rc.xml and menu.xml exists"
+for f in fs/etc/skel/.config/kdos-comp/rc.xml \
+         fs/etc/skel/.config/kdos-comp/menu.xml; do
+    [ -f "$f" ] || continue
+    # command="foo -x" and <promptCommand>foo …</promptCommand>; the first
+    # word is the program. `foot -e mc` also contributes `mc`, because a
+    # terminal wrapper that opens nothing is the same failure one level down.
+    { sed -n 's/.*command="\([^"]*\)".*/\1/p' "$f"
+      sed -n 's,.*<promptCommand>\([^<]*\)</promptCommand>.*,\1,p' "$f"
+    } | while read -r line; do
+        set -- $line
+        echo "$1"
+        [ "$1" = foot ] && [ "$2" = "-e" ] && echo "$3"
+    done
+done | sort -u | while read -r cmd; do
+    [ -n "$cmd" ] || continue
+    if [ -d "ports/core/$cmd" ] || [ -d "src/packages/$cmd" ] ||
+       [ -d "src/desktop/$cmd" ] ||
+       [ -e "fs/usr/local/bin/$cmd" ] || [ -e "fs/usr/bin/$cmd" ] ||
+       grep -rqF -- "/bin/$cmd\"" ports/core/*/build.sh src/packages/*/build.sh \
+            src/desktop/*/build.sh 2>/dev/null ||
+       # ...or in a `for t in …` list, which is what a name installed by a
+       # loop looks like: kdos-tools links five of its names that way and the
+       # path form never appears in the file at all. Restricted to those lines
+       # ON PURPOSE — a bare word search over the whole recipe passes on a
+       # COMMENT, which is exactly how a check like this ends up green against
+       # a desktop that does not work (`-Dlabnag=disabled` matched `labnag`).
+       grep -rhE '^[[:space:]]*for [A-Za-z_]+ in ' src/packages/*/build.sh \
+            src/desktop/*/build.sh 2>/dev/null |
+            grep -qE "(^|[[:space:]])$cmd([[:space:]]|;|\$)"; then
+        continue
+    fi
+    echo "MISSING $cmd"
+done > "$SP/missing-cmds" 2>/dev/null
+if [ -s "$SP/missing-cmds" ]; then
+    bad "desktop commands" "$(tr '\n' ' ' < "$SP/missing-cmds")"
+else
+    note "desktop commands" "every one is provided by the tree"
+fi
+
 echo
 if [ "$fail" = 0 ]; then
     echo "preflight clean — the wiring is consistent"

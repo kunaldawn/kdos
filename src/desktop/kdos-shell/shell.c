@@ -17,7 +17,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -209,6 +211,51 @@ static void desktop_name(const char *app_id, char *out, size_t n)
 		if (name && *name)
 			snprintf(out, n, "%s", name);
 		kxdg_free(&e);
+		if (*out)
+			return;
+	}
+
+	/*
+	 * THEN StartupWMClass, which is the other half of the answer and was
+	 * only ever the documented half.
+	 *
+	 * A Wayland app_id is usually the desktop id and this stops at the
+	 * lookup above; an X11 client under Xwayland reports its WM_CLASS
+	 * instead, and the entry that owns it says so in StartupWMClass rather
+	 * than in its file name — GIMP's entry says `gimp-3.0` while its
+	 * Wayland toplevel says `gimp`. Without this pass those windows fell
+	 * through to the raw id, which is the reverse-DNS-in-the-taskbar defect
+	 * one step down.
+	 *
+	 * A directory scan, and it is affordable because it only runs when the
+	 * cheap lookup MISSED, and then once per window rather than per frame.
+	 */
+	for (int i = 0; i < nb; i++) {
+		char dir[600];
+		snprintf(dir, sizeof(dir), "%.500s/applications", bases[i]);
+		DIR *d = opendir(dir);
+		struct dirent *de;
+		if (!d)
+			continue;
+		while ((de = readdir(d))) {
+			char path[1200];
+			KxdgEntry e;
+			size_t len = strlen(de->d_name);
+			if (len < 9 || strcmp(de->d_name + len - 8, ".desktop"))
+				continue;
+			snprintf(path, sizeof(path), "%.600s/%.500s", dir,
+				 de->d_name);
+			if (kxdg_load(&e, path, "Desktop Entry") != 0)
+				continue;
+			const char *wm = kxdg_get(&e, "StartupWMClass", NULL);
+			const char *name = kxdg_get(&e, "Name", NULL);
+			if (wm && !strcasecmp(wm, app_id) && name && *name)
+				snprintf(out, n, "%s", name);
+			kxdg_free(&e);
+			if (*out)
+				break;
+		}
+		closedir(d);
 		if (*out)
 			return;
 	}

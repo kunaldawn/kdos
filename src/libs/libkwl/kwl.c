@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <wayland-client.h>
@@ -37,6 +38,25 @@
  */
 #define KWL_MAX_OUTPUTS 8
 #define KWL_OUTPUT_NAME_MAX 64
+
+/*
+ * The event QUEUE, and why one slot was not enough.
+ *
+ * A single `pending` overwritten by the newest event is right for motion and
+ * wrong for everything else: libwayland delivers a whole batch of listener
+ * callbacks from one read, so a button PRESS followed in the same batch by the
+ * motion that inevitably accompanies it was dropped before any consumer saw
+ * it. Clicks went missing under a moving hand, which is every click.
+ *
+ * Sixteen is a batch's worth. Consecutive motion still collapses — losing an
+ * intermediate position is invisible, and coalescing is what keeps a fast drag
+ * from filling the ring with stale coordinates.
+ */
+#define KWL_EVQ 16
+
+/* Key repeat, when the compositor sends no repeat_info (or an older one). */
+#define KWL_REPEAT_DELAY_MS 400
+#define KWL_REPEAT_RATE_HZ  25
 
 /* ── state ─────────────────────────────────────────────────────────────── */
 
@@ -86,6 +106,18 @@ static struct {
 	struct xdg_surface *xdg_surface;
 	struct xdg_toplevel *xdg_toplevel;
 	struct zwlr_layer_surface_v1 *layer_surface;
+	/*
+	 * What the compositor offered for zwlr_layer_shell_v1. It matters:
+	 * KEYBOARD_INTERACTIVITY_ON_DEMAND arrived in version 4, and wlroots
+	 * answers the request on an older resource with `!!interactive` — so a
+	 * client bound at version 1 asking for ON_DEMAND gets EXCLUSIVE. That
+	 * is not a cosmetic downgrade: labwc then parks the seat's keyboard on
+	 * that layer surface and `seat_focus()` refuses every later window
+	 * focus, so with desktop icons on (the default) NOTHING TYPED REACHED
+	 * ANY WINDOW until an overlay happened to take the focus and give it
+	 * back.
+	 */
+	int layer_version;
 
 	struct xkb_context *xkb_ctx;
 	struct xkb_keymap *keymap;
@@ -101,13 +133,40 @@ static struct {
 	int closed;
 	int kb_entered;		/* the keyboard has been here at least once */
 
-	/* One pending event, filled by the wl listeners and drained by
-	 * poll_event. A cell UI consumes one event per frame, so a queue would
-	 * be machinery for a case that does not arise. */
-	KtuiEvent pending;
-	int has_pending;
+	/* Filled by the wl listeners, drained by poll_event. See KWL_EVQ. */
+	KtuiEvent q[KWL_EVQ];
+	int qhead, qtail;
 	int ptr_cx, ptr_cy;
+
+	/*
+	 * The wheel, accumulated rather than forwarded event for event.
+	 * wl_pointer.axis carries a CONTINUOUS value: a mouse notch is one
+	 * large one, a touchpad gesture is a stream of small ones, and treating
+	 * each as a tick made two fingers on a touchpad scroll a list by
+	 * hundreds of rows. `discrete` is used when the compositor sends it,
+	 * because that is the notch count measured at the source.
+	 */
+	double axis_acc;
+	int axis_disc;
+
+	/*
+	 * Key repeat. Wayland has no repeat of its own — the compositor sends
+	 * repeat_info and every client is expected to do the repeating, which
+	 * is why holding an arrow key did nothing in the launcher, the menu,
+	 * the file chooser, the run box and the desktop.
+	 */
+	int32_t rep_rate, rep_delay;
+	uint32_t rep_code;		/* the key held, or 0 for none */
+	KtuiEvent rep_ev;
+	int64_t rep_at_ms;
 } K;
+
+static int64_t now_ms(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
 
 /* The gap a corner-anchored overlay keeps from the screen edges, in pixels. */
 #define KWL_OVERLAY_MARGIN 8
@@ -186,13 +245,54 @@ flush:
 int kwl_cell_w(void) { return kcell_w(); }
 int kwl_cell_h(void) { return kcell_h(); }
 
+static int ev_is_motion(const KtuiEvent *ev)
+{
+	return ev->type == KT_EVT_MOUSE && ev->press == KT_MP_DRAG;
+}
+
 static void push_event(const KtuiEvent *ev)
 {
-	/* Last one wins when a frame produced several. Losing an intermediate
-	 * pointer-motion is invisible; losing the newest would make the cursor
-	 * lag, which is not. */
-	K.pending = *ev;
-	K.has_pending = 1;
+	int next = (K.qtail + 1) % KWL_EVQ;
+
+	/*
+	 * Motion collapses onto motion: a drag produces one event per pointer
+	 * sample and only the newest position means anything. A button or a key
+	 * NEVER overwrites anything — that was the bug this queue exists for.
+	 */
+	if (ev_is_motion(ev) && K.qtail != K.qhead) {
+		int last = (K.qtail + KWL_EVQ - 1) % KWL_EVQ;
+		if (ev_is_motion(&K.q[last])) {
+			K.q[last] = *ev;
+			return;
+		}
+	}
+	if (next == K.qhead) {
+		/* Full: drop the OLDEST. A consumer that has fallen this far
+		 * behind wants the newest click, not a click from a frame ago. */
+		K.qhead = (K.qhead + 1) % KWL_EVQ;
+	}
+	K.q[K.qtail] = *ev;
+	K.qtail = next;
+}
+
+static int pop_event(KtuiEvent *ev)
+{
+	if (K.qhead == K.qtail)
+		return 0;
+	*ev = K.q[K.qhead];
+	K.qhead = (K.qhead + 1) % KWL_EVQ;
+	return 1;
+}
+
+/* The held key's next repeat, if it is due. */
+static int repeat_due(KtuiEvent *ev)
+{
+	if (!K.rep_code || now_ms() < K.rep_at_ms)
+		return 0;
+	int hz = K.rep_rate > 0 ? K.rep_rate : KWL_REPEAT_RATE_HZ;
+	K.rep_at_ms = now_ms() + 1000 / hz;
+	*ev = K.rep_ev;
+	return 1;
 }
 
 /* ── buffers ───────────────────────────────────────────────────────────── */
@@ -382,23 +482,36 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 		wl_display_dispatch_pending(K.display);
 	wl_display_flush(K.display);
 
-	if (K.has_pending) {
+	if (pop_event(ev)) {
 		wl_display_cancel_read(K.display);
-		*ev = K.pending;
-		K.has_pending = 0;
 		return 1;
+	}
+
+	/*
+	 * A held key is a deadline the caller does not know about, so the wait
+	 * is shortened to it. Without this the repeat would fire at whatever
+	 * cadence the consumer happened to poll at — one second, in every one
+	 * of these loops.
+	 */
+	int wait = timeout_ms;
+	if (K.rep_code) {
+		int64_t rem = K.rep_at_ms - now_ms();
+		if (rem < 0)
+			rem = 0;
+		if (wait < 0 || rem < wait)
+			wait = (int)rem;
 	}
 
 	struct pollfd pfd = {
 		.fd = wl_display_get_fd(K.display),
 		.events = POLLIN,
 	};
-	int n = poll(&pfd, 1, timeout_ms);
+	int n = poll(&pfd, 1, wait);
 	if (n <= 0) {
 		wl_display_cancel_read(K.display);
 		if (n < 0 && errno != EINTR)
 			K.closed = 1;
-		return 0;
+		return repeat_due(ev);
 	}
 	if (wl_display_read_events(K.display) < 0) {
 		K.closed = 1;
@@ -409,12 +522,9 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 		return 0;
 	}
 
-	if (K.has_pending) {
-		*ev = K.pending;
-		K.has_pending = 0;
+	if (pop_event(ev))
 		return 1;
-	}
-	return 0;
+	return repeat_due(ev);
 }
 
 static void kwl_size(int *w, int *h)
@@ -480,7 +590,15 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 	(void)k;
 	(void)serial;
 	(void)time;
-	if (state != WL_KEYBOARD_KEY_STATE_PRESSED || !K.xkb_state)
+	if (state != WL_KEYBOARD_KEY_STATE_PRESSED) {
+		/* The held key was let go: stop repeating it. Any OTHER key's
+		 * release is not ours to act on — a chord ends when the key
+		 * that is repeating ends. */
+		if (K.rep_code == key + 8)
+			K.rep_code = 0;
+		return;
+	}
+	if (!K.xkb_state)
 		return;
 
 	xkb_keycode_t kc = key + 8;	/* evdev -> xkb */
@@ -499,8 +617,20 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 		ev.mods |= KT_MOD_SHIFT;
 
 	ev.key = kwl_keysym_to_ktui(sym, K.xkb_state, kc);
-	if (ev.key)
-		push_event(&ev);
+	if (!ev.key)
+		return;			/* a bare modifier: nothing to repeat */
+	push_event(&ev);
+
+	/*
+	 * Arm the repeat. `rate == 0` is the compositor saying repeat is
+	 * disabled, and it must be honoured rather than defaulted over.
+	 */
+	if (K.rep_rate == 0 && K.rep_delay > 0)
+		return;
+	K.rep_code = kc;
+	K.rep_ev = ev;
+	K.rep_at_ms = now_ms()
+		    + (K.rep_delay > 0 ? K.rep_delay : KWL_REPEAT_DELAY_MS);
 }
 
 static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t serial,
@@ -542,13 +672,23 @@ static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s,
 		     struct wl_surface *sf)
 {
 	(void)d; (void)k; (void)s; (void)sf;
+	/* A key held when the focus went away is a key this client will never
+	 * see released — repeating it would run until something else stopped
+	 * it. */
+	K.rep_code = 0;
 	if (K.kb_entered && K.cfg.role == KWL_ROLE_OVERLAY &&
 	    K.cfg.dismiss_on_unfocus)
 		K.closed = 1;
 }
 static void kb_repeat(void *d, struct wl_keyboard *k, int32_t rate,
 		      int32_t delay)
-{ (void)d; (void)k; (void)rate; (void)delay; }
+{
+	(void)d;
+	(void)k;
+	/* Keys per second and milliseconds; rate 0 means "do not repeat". */
+	K.rep_rate = rate;
+	K.rep_delay = delay;
+}
 
 static const struct wl_keyboard_listener keyboard_listener = {
 	.keymap = kb_keymap,
@@ -597,6 +737,18 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial,
 	push_event(&ev);
 }
 
+/*
+ * One wheel tick, emitted from the frame handler rather than from the axis
+ * event — see the `axis_acc` comment on the state block.
+ */
+static void push_wheel(int up)
+{
+	KtuiEvent ev = { .type = KT_EVT_MOUSE, .mx = K.ptr_cx, .my = K.ptr_cy,
+			 .press = KT_MP_PRESS,
+			 .btn = up ? KT_MB_WHEEL_UP : KT_MB_WHEEL_DOWN };
+	push_event(&ev);
+}
+
 static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
 		    uint32_t axis, wl_fixed_t value)
 {
@@ -605,11 +757,7 @@ static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
 	(void)time;
 	if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL)
 		return;
-	KtuiEvent ev = { .type = KT_EVT_MOUSE, .mx = K.ptr_cx, .my = K.ptr_cy,
-			 .press = KT_MP_PRESS };
-	ev.btn = wl_fixed_to_double(value) < 0 ? KT_MB_WHEEL_UP
-					       : KT_MB_WHEEL_DOWN;
-	push_event(&ev);
+	K.axis_acc += wl_fixed_to_double(value);
 }
 
 static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
@@ -635,16 +783,75 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
 				WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
 	}
 }
+/*
+ * The pointer left this surface, and a consumer has to be TOLD.
+ *
+ * Hover state is what makes the panel's three words read as three buttons, and
+ * with no leave event the last word the pointer crossed stayed lit for the rest
+ * of the session. An off-grid position is the honest report: every consumer
+ * already maps a coordinate to "which thing is this", and (-1,-1) is not any of
+ * them.
+ */
 static void pt_leave(void *d, struct wl_pointer *p, uint32_t s,
 		     struct wl_surface *sf)
-{ (void)d; (void)p; (void)s; (void)sf; }
-static void pt_frame(void *d, struct wl_pointer *p) { (void)d; (void)p; }
+{
+	(void)d; (void)p; (void)s; (void)sf;
+	K.ptr_cx = -1;
+	K.ptr_cy = -1;
+	K.axis_acc = 0;
+	K.axis_disc = 0;
+	KtuiEvent ev = { .type = KT_EVT_MOUSE, .btn = KT_MB_MOVE, .mx = -1,
+			 .my = -1, .press = KT_MP_DRAG };
+	push_event(&ev);
+}
+
+/*
+ * End of one logical pointer event group, which is where the wheel is decided.
+ *
+ * `discrete` is the notch count when the compositor measured one; otherwise the
+ * continuous value is spent in notch-sized units. Ten is libinput's own step
+ * for a wheel detent, so a mouse still moves a list one row per click while a
+ * touchpad's small deltas accumulate instead of each becoming a full tick.
+ */
+static void pt_frame(void *d, struct wl_pointer *p)
+{
+	(void)d;
+	(void)p;
+	if (K.axis_disc) {
+		int n = K.axis_disc < 0 ? -K.axis_disc : K.axis_disc;
+		if (n > 5)
+			n = 5;		/* a flicked wheel is not 40 rows */
+		for (int i = 0; i < n; i++)
+			push_wheel(K.axis_disc < 0);
+		K.axis_disc = 0;
+		K.axis_acc = 0;
+		return;
+	}
+	int guard = 0;
+	while ((K.axis_acc >= 10.0 || K.axis_acc <= -10.0) && guard++ < 5) {
+		push_wheel(K.axis_acc < 0);
+		K.axis_acc += K.axis_acc < 0 ? 10.0 : -10.0;
+	}
+}
+
 static void pt_axis_src(void *d, struct wl_pointer *p, uint32_t s)
 { (void)d; (void)p; (void)s; }
+
+/* A finger left the touchpad: the leftover fraction is not the start of the
+ * next gesture. */
 static void pt_axis_stop(void *d, struct wl_pointer *p, uint32_t t, uint32_t a)
-{ (void)d; (void)p; (void)t; (void)a; }
+{
+	(void)d; (void)p; (void)t; (void)a;
+	K.axis_acc = 0;
+}
+
 static void pt_axis_disc(void *d, struct wl_pointer *p, uint32_t a, int32_t v)
-{ (void)d; (void)p; (void)a; (void)v; }
+{
+	(void)d;
+	(void)p;
+	if (a == WL_POINTER_AXIS_VERTICAL_SCROLL)
+		K.axis_disc += v;
+}
 
 static const struct wl_pointer_listener pointer_listener = {
 	.enter = pt_enter,
@@ -845,10 +1052,20 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 	} else if (!strcmp(iface, xdg_wm_base_interface.name)) {
 		K.wm_base = wl_registry_bind(r, name, &xdg_wm_base_interface, 1);
 		xdg_wm_base_add_listener(K.wm_base, &wm_base_listener, NULL);
-	} else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
-		K.layer_shell = wl_registry_bind(r, name,
-						 &zwlr_layer_shell_v1_interface, 1);
-	else if (!strcmp(iface, wl_output_interface.name)) {
+	} else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name)) {
+		/*
+		 * FOUR, not one. See K.layer_version: ON_DEMAND keyboard
+		 * interactivity is a version-4 request and wlroots turns it into
+		 * EXCLUSIVE on an older resource — which is how the desktop-icon
+		 * layer came to hold the seat's keyboard against every window on
+		 * the screen. Capped at what the compositor offers, so an older
+		 * one still gets a working panel.
+		 */
+		uint32_t v = version < 4 ? version : 4;
+		K.layer_version = (int)v;
+		K.layer_shell = wl_registry_bind(
+			r, name, &zwlr_layer_shell_v1_interface, v);
+	} else if (!strcmp(iface, wl_output_interface.name)) {
 		/*
 		 * Bound for the lock role, which needs a surface per output —
 		 * and for `cfg.output`, which is how a panel says WHICH screen
@@ -951,10 +1168,23 @@ static int make_panel(void)
 			ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
 		zwlr_layer_surface_v1_set_size(K.layer_surface, 0, 0);
 		zwlr_layer_surface_v1_set_exclusive_zone(K.layer_surface, 0);
-		if (K.cfg.keyboard)
+		/*
+		 * ON_DEMAND, and only where the compositor can hear it. On a
+		 * version-3-or-older layer shell this request is read as
+		 * EXCLUSIVE (wlroots: `!!interactive`), and an EXCLUSIVE
+		 * BACKGROUND layer holds the seat's keyboard against every
+		 * window for the rest of the session. A desktop whose arrow
+		 * keys do nothing is a small loss; a desktop where nothing else
+		 * receives a keystroke is not.
+		 */
+		if (K.cfg.keyboard && K.layer_version >= 4)
 			zwlr_layer_surface_v1_set_keyboard_interactivity(
 				K.layer_surface,
 				ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND);
+		else if (K.cfg.keyboard)
+			fprintf(stderr, "kwl: layer-shell v%d has no on-demand "
+					"keyboard; this surface takes none\n",
+				K.layer_version);
 		zwlr_layer_surface_v1_add_listener(K.layer_surface,
 						   &layer_listener, NULL);
 		wl_surface_commit(K.surface);
@@ -1302,6 +1532,38 @@ fail_display:
 fail_font:
 	kcell_font_free();
 	return -1;
+}
+
+void kwl_input_cells(const KRect *rects, int n)
+{
+	if (!K.surface || !K.compositor)
+		return;
+	if (n < 0) {
+		/* NULL is layer-shell/wl_surface for "all of me", which is the
+		 * default a surface starts with. */
+		wl_surface_set_input_region(K.surface, NULL);
+		wl_surface_commit(K.surface);
+		wl_display_flush(K.display);
+		return;
+	}
+
+	struct wl_region *reg = wl_compositor_create_region(K.compositor);
+	if (!reg)
+		return;
+	int cw = kcell_w(), ch = kcell_h();
+	for (int i = 0; i < n; i++)
+		wl_region_add(reg, rects[i].x * cw, rects[i].y * ch,
+			      rects[i].w * cw, rects[i].h * ch);
+	wl_surface_set_input_region(K.surface, reg);
+	wl_region_destroy(reg);
+	/*
+	 * Committed here rather than left for the next frame: a surface whose
+	 * content did not change is deliberately NOT committed by kwl_flush
+	 * (the flicker fix), so a region set on an idle desktop would never
+	 * take effect.
+	 */
+	wl_surface_commit(K.surface);
+	wl_display_flush(K.display);
 }
 
 void kwl_overlay_resize(int cols, int rows)

@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -97,7 +98,77 @@ static int battery_percent(int *charging)
 	return pct;
 }
 
+/*
+ * Is this machine on a network, and by which interface.
+ *
+ * From /sys/class/net, like the battery and for the same reason: NetworkManager
+ * is running and could be asked over D-Bus, but the kernel already exports the
+ * answer as text and a panel does not need a bus round trip per second to read
+ * a file. It reports the INTERFACE rather than an SSID — an SSID needs nl80211,
+ * which is a netlink socket and a genl family lookup for a string that does not
+ * fit in this row anyway. Clicking it opens the thing that CAN change it.
+ *
+ * Returns 1 when something is up, and fills `out` with its name either way.
+ */
+static int net_state(char *out, size_t n)
+{
+	DIR *d = opendir("/sys/class/net");
+	struct dirent *e;
+	int up = 0;
+
+	snprintf(out, n, "down");
+	if (!d)
+		return 0;
+	while ((e = readdir(d))) {
+		char path[512], buf[64];
+		if (e->d_name[0] == '.' || !strcmp(e->d_name, "lo"))
+			continue;
+		snprintf(path, sizeof(path), "/sys/class/net/%s/operstate",
+			 e->d_name);
+		if (sh_read_line(path, buf, sizeof(buf)) != 0)
+			continue;
+		if (strcmp(buf, "up"))
+			continue;
+		/* A wireless interface wins a tie: on a laptop with both, the
+		 * one people ask about is the one that drops. */
+		snprintf(path, sizeof(path), "/sys/class/net/%s/wireless",
+			 e->d_name);
+		int wifi = access(path, F_OK) == 0;
+		if (!up || wifi) {
+			snprintf(out, n, "%s", e->d_name);
+			up = 1;
+		}
+		if (wifi)
+			break;
+	}
+	closedir(d);
+	return up;
+}
+
 /* ── drawing ───────────────────────────────────────────────────────────── */
+
+/*
+ * One applet on the right wing, laid out right to left.
+ *
+ * Returns 0 without drawing when there is not room, and records an EMPTY span
+ * so a click lands on nothing rather than on whatever used to be there — a hit
+ * map that outlives what it describes is how a narrow screen ends up muting
+ * itself when somebody aims at the clock.
+ */
+static int applet(struct sh_state *sh, int id, int *right_x, int x_min,
+		  const char *label, int fg, int attr)
+{
+	int lw = ktui_utf8_width(label);
+
+	sh->ap_x[id] = sh->ap_end[id] = 0;
+	if (!lw || *right_x - x_min < lw + 2)
+		return 0;
+	*right_x -= lw + 1;
+	ktui_draw_text(*right_x, 0, lw, label, fg, KT_SURFACE, attr);
+	sh->ap_x[id] = *right_x;
+	sh->ap_end[id] = *right_x + lw;
+	return 1;
+}
 
 /*
  * The panel is drawn RIGHT TO LEFT after the left wing, because the right wing
@@ -170,9 +241,12 @@ static void draw_panel(struct sh_state *sh)
 	}
 
 	sh->ws_hit_x = x;
+	for (int i = 0; i < SH_MAX_WS; i++)
+		sh->ws_hit[i] = -1;	/* -1 is "not on screen this frame" */
 	for (int i = 0; i < sh->nws && x < w - 4; i++) {
 		char label[8];
 		snprintf(label, sizeof(label), "%d", i + 1);
+		sh->ws_hit[i] = x;
 		/*
 		 * The active workspace is drawn REVERSED — the one emphasis
 		 * that reads identically on a tty and in a truecolor surface.
@@ -212,26 +286,72 @@ static void draw_panel(struct sh_state *sh)
 		restarts = sh_restart_count();
 	}
 
-	int charging = 0, pct = battery_percent(&charging);
-	/* A leading mark rather than a word: the panel is one row, and the point
-	 * is to be noticed and clicked, not to explain itself in situ. Built in
-	 * one format rather than prepended afterwards — the compiler is right
-	 * that a two-step build can overflow the field. */
-	const char *mark = restarts > 0 ? ktui_glyph[KT_G_BULLET] : "";
-	const char *gap = restarts > 0 ? "  " : "";
-	if (pct >= 0)
-		snprintf(right, sizeof(right), "%s%s%s%d%%  %02d:%02d",
-			 mark, gap, charging ? "+" : "", pct, tm.tm_hour,
-			 tm.tm_min);
-	else
-		snprintf(right, sizeof(right), "%s%s%02d:%02d", mark, gap,
-			 tm.tm_hour, tm.tm_min);
-
+	snprintf(right, sizeof(right), "%02d:%02d", tm.tm_hour, tm.tm_min);
 	int rw = ktui_utf8_width(right);
 	int right_x = w - rw - 1;
-	if (right_x > x)
+	if (right_x > x) {
 		ktui_draw_text_right(0, 0, w - 1, right, KT_TEXT, KT_SURFACE,
 				     KT_A_NONE);
+		sh->ap_x[SH_AP_CLOCK] = right_x;
+		sh->ap_end[SH_AP_CLOCK] = w - 1;
+	} else {
+		sh->ap_x[SH_AP_CLOCK] = sh->ap_end[SH_AP_CLOCK] = 0;
+	}
+
+	/*
+	 * ── the right wing's applets ──
+	 *
+	 * Everything here was a picture until now: a battery percentage, a clock
+	 * and a mark, none of which answered a click, and no volume or network
+	 * indicator at all — so a machine with no media keys had no way to change
+	 * the volume from the desktop and nothing that said whether it was on a
+	 * network. Each is a span the click handler reads back.
+	 */
+	int charging = 0, pct = battery_percent(&charging);
+	char label[48];
+
+	if (pct >= 0) {
+		snprintf(label, sizeof(label), "%s%d%%", charging ? "+" : "",
+			 pct);
+		/* Colour is the warning, because there is no room for a word:
+		 * urgent under 15% and only when nothing is charging it. */
+		int fg = KT_TEXT;
+		if (!charging && pct < 15)
+			fg = KT_ERR;
+		else if (!charging && pct < 30)
+			fg = KT_WARN;
+		applet(sh, SH_AP_BATT, &right_x, x, label, fg, KT_A_NONE);
+	} else {
+		sh->ap_x[SH_AP_BATT] = sh->ap_end[SH_AP_BATT] = 0;
+	}
+
+	int muted = 0, vol = sh_volume_get(&muted);
+	if (vol >= 0) {
+		if (muted)
+			snprintf(label, sizeof(label), "VOL off");
+		else
+			snprintf(label, sizeof(label), "VOL %d%%", vol);
+		applet(sh, SH_AP_VOL, &right_x, x, label,
+		       muted ? KT_DIM : KT_TEXT, KT_A_NONE);
+	} else {
+		sh->ap_x[SH_AP_VOL] = sh->ap_end[SH_AP_VOL] = 0;
+	}
+
+	char iface[32];
+	int up = net_state(iface, sizeof(iface));
+	snprintf(label, sizeof(label), "NET %.8s", iface);
+	applet(sh, SH_AP_NET, &right_x, x, label, up ? KT_TEXT : KT_DIM,
+	       KT_A_NONE);
+
+	if (restarts > 0) {
+		/* A mark rather than a word: the panel is one row, and the point
+		 * is to be noticed and clicked, not to explain itself in situ. */
+		snprintf(label, sizeof(label), "%s", ktui_glyph[KT_G_BULLET]);
+		applet(sh, SH_AP_RESTART, &right_x, x, label, KT_WARN,
+		       KT_A_NONE);
+	} else {
+		sh->ap_x[SH_AP_RESTART] = sh->ap_end[SH_AP_RESTART] = 0;
+	}
 
 	/*
 	 * ── the recording indicator, left of everything on the right ──
@@ -265,8 +385,19 @@ static void draw_panel(struct sh_state *sh)
 		if (right_x - x < lw + 2)
 			break;
 		right_x -= lw + 1;
-		ktui_draw_text(right_x, 0, lw, label, KT_WARN, KT_SURFACE,
-			       kind == SH_PRIV_CAM ? KT_A_REVERSE : KT_A_NONE);
+		/* The camera's emphasis is a FILL plus swapped slots, not
+		 * KT_A_REVERSE: the attribute inverts only the cells the text
+		 * covers, so `●CAM firefox` would come out as two lit blocks
+		 * with an unlit gap — the same defect the focused task entry
+		 * had. */
+		if (kind == SH_PRIV_CAM) {
+			ktui_draw_fill(krect(right_x, 0, lw, 1), KT_WARN);
+			ktui_draw_text(right_x, 0, lw, label, KT_SURFACE,
+				       KT_WARN, KT_A_NONE);
+		} else {
+			ktui_draw_text(right_x, 0, lw, label, KT_WARN,
+				       KT_SURFACE, KT_A_NONE);
+		}
 	}
 
 	/*
@@ -327,18 +458,31 @@ static void draw_panel(struct sh_state *sh)
 			sh->task_cell_w = per;
 			for (int i = 0; i < sh->ntasks && x + per <= right_x; i++) {
 				const struct sh_task *t = &sh->tasks[i];
-				int fg = t->activated ? KT_ACCENT
+				/*
+				 * FILL, then draw with the slots swapped — not
+				 * KT_A_REVERSE over the label. The attribute
+				 * inverts the cells the TEXT occupies, so the
+				 * spaces inside a name were left at the panel's
+				 * own background and the focused entry came out
+				 * as one highlighted block per WORD:
+				 * `▓GNU▓ ▓Image▓ ▓Mani▓`. Invisible until a
+				 * window with a space in its name was focused on
+				 * a screen wide enough to show it, and the
+				 * bottom panel has always done it this way.
+				 */
+				int fg = t->activated ? KT_SURFACE
 						      : t->minimized ? KT_DIM
 								     : KT_TEXT;
+				int bg = t->activated ? KT_ACCENT : KT_SURFACE;
 				/* Hover takes the accent WITHOUT the swap, so
 				 * it cannot be read as the focused entry: it is
 				 * an affordance, not a state. */
 				if (!t->activated && sh->hover_task == i)
 					fg = KT_ACCENT;
+				if (t->activated)
+					ktui_draw_fill(krect(x, 0, per - 1, 1), bg);
 				ktui_draw_text(x, 0, per - 1, sh_task_label(t),
-					       fg, KT_SURFACE,
-					       t->activated ? KT_A_REVERSE
-							    : KT_A_NONE);
+					       fg, bg, KT_A_NONE);
 				x += per;
 			}
 		}
@@ -511,6 +655,39 @@ static int task_at(const struct sh_state *sh, int cx)
 	return i >= 0 && i < sh->ntasks ? i : -1;
 }
 
+/*
+ * Which workspace digit is at this cell, or -1.
+ *
+ * Reads the positions the last frame RECORDED rather than dividing by two. The
+ * stride is two cells only while every label is one digit wide: with
+ * `<desktops number="12"/>` in rc.xml — a supported thing to write — everything
+ * from the tenth on was offset by one more cell and the strip activated the
+ * wrong workspace.
+ */
+static int ws_at(const struct sh_state *sh, int cx)
+{
+	for (int i = 0; i < sh->nws && i < SH_MAX_WS; i++) {
+		if (sh->ws_hit[i] < 0)
+			continue;
+		int end = (i + 1 < sh->nws && sh->ws_hit[i + 1] >= 0)
+				  ? sh->ws_hit[i + 1]
+				  : sh->ws_hit_end;
+		if (cx >= sh->ws_hit[i] && cx < end)
+			return i;
+	}
+	return -1;
+}
+
+/* Which right-wing applet is at this cell, or -1. */
+static int applet_at(const struct sh_state *sh, int cx)
+{
+	for (int i = 0; i < SH_AP_N; i++)
+		if (sh->ap_end[i] > sh->ap_x[i] && cx >= sh->ap_x[i] &&
+		    cx < sh->ap_end[i])
+			return i;
+	return -1;
+}
+
 static int menu_at(const struct sh_state *sh, int cx)
 {
 	for (int i = 0; i < SH_NMENUS; i++)
@@ -538,6 +715,14 @@ static void handle_motion(struct sh_state *sh, int cx, int is_bottom)
  */
 static void handle_wheel(struct sh_state *sh, int cx, int up)
 {
+	/* Over the volume applet the wheel is the volume, which is what a
+	 * pointer over a volume readout is for on every desktop that has one. */
+	if (applet_at(sh, cx) == SH_AP_VOL) {
+		int muted = 0, vol = sh_volume_get(&muted);
+		if (vol >= 0)
+			sh_volume_set(vol + (up ? 5 : -5));
+		return;
+	}
 	if (cx < sh->ws_hit_x || cx >= sh->ws_hit_end || sh->nws < 2)
 		return;
 	int i = sh->active_ws + (up ? -1 : 1);
@@ -548,8 +733,77 @@ static void handle_wheel(struct sh_state *sh, int cx, int up)
 	sh_activate_workspace(sh, i);
 }
 
+/*
+ * Spawn something the panel must not wait for. Double-forked, so the panel
+ * neither reaps nor blocks — the same shape sh_spawn_menu uses, and the reason
+ * is the same: a clock that stopped while a terminal started would be worse
+ * than no button at all.
+ */
+static void panel_spawn(const char *const argv[])
+{
+	pid_t pid = fork();
+	if (pid == 0) {
+		if (fork() == 0) {
+			setsid();
+			execvp(argv[0], (char *const *)argv);
+			_exit(127);
+		}
+		_exit(0);
+	} else if (pid > 0) {
+		waitpid(pid, NULL, 0);
+	}
+}
+
+/*
+ * A click on the right wing.
+ *
+ * Each applet does the one thing a person aiming at it wants: the volume mutes,
+ * the network opens the tool that can change it, the clock shows a calendar,
+ * the restart mark explains itself. Nothing here opens a settings application,
+ * because there isn't one — these are the whole of the desktop's controls.
+ */
+static void handle_applet(struct sh_state *sh, int id, int btn)
+{
+	switch (id) {
+	case SH_AP_VOL:
+		if (btn == SH_TRAY_BTN_LEFT)
+			sh_volume_toggle();
+		break;
+	case SH_AP_NET: {
+		const char *argv[] = { "foot", "-e", "nmtui", NULL };
+		panel_spawn(argv);
+		break;
+	}
+	case SH_AP_CLOCK:
+	case SH_AP_BATT: {
+		/* Anchored under itself, in pixels, one panel down — the same
+		 * trick the menu bar uses, and layer-shell's only coordinate. */
+		char xs[16], ys[16];
+		snprintf(xs, sizeof(xs), "%d",
+			 sh->ap_x[id] * kwl_cell_w());
+		snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+		const char *argv[] = { "kdos-cal", "--at", xs, ys, NULL };
+		panel_spawn(argv);
+		break;
+	}
+	case SH_AP_RESTART: {
+		const char *argv[] = { "foot", "-e", "kdos", "restarts", NULL };
+		panel_spawn(argv);
+		break;
+	}
+	default:
+		break;
+	}
+}
+
 static void handle_click(struct sh_state *sh, int cx, int btn)
 {
+	int ap = applet_at(sh, cx);
+	if (ap >= 0) {
+		handle_applet(sh, ap, btn);
+		return;
+	}
+
 	if (sh->tray_hit_end > sh->tray_hit_x && cx >= sh->tray_hit_x &&
 	    cx < sh->tray_hit_end) {
 		int i = (cx - sh->tray_hit_x) / 2;
@@ -589,13 +843,9 @@ static void handle_click(struct sh_state *sh, int cx, int btn)
 			      ktui_h * kwl_cell_h());
 		return;
 	}
-	if (cx >= sh->ws_hit_x && cx < sh->ws_hit_end) {
-		/* Two cells per workspace: the digit and its separator. */
-		int i = (cx - sh->ws_hit_x) / 2;
-		if (i >= 0 && i < sh->nws)
-			sh_activate_workspace(sh, i);
-		return;
-	}
+	int ws = ws_at(sh, cx);
+	if (ws >= 0)
+		sh_activate_workspace(sh, ws);
 }
 
 int panel_main(int argc, char **argv)

@@ -45,6 +45,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -465,6 +466,170 @@ static int method_save_files(sd_bus_message *m, void *userdata, sd_bus_error *er
 	return 1;
 }
 
+/* ── OpenURI ───────────────────────────────────────────────────────────────
+ *
+ * "Open this for me on the host", which is the request every containerised
+ * application makes when you click a link or a downloaded file. There was no
+ * backend for it at all — `default=none` in kdos-portals.conf — so a boxed
+ * app's link and its "open containing folder" did nothing whatsoever, silently,
+ * because a portal with no backend answers not-supported and toolkits treat
+ * that as "the desktop cannot do this".
+ *
+ * There is nothing to write here beyond the plumbing: `kdos-appbox open` IS the
+ * implementation of "what opens this on this machine", down to the MIME lookup
+ * and the field-code substitution. This forwards to it and to `xdg-open` for
+ * anything that is not a path, which is the split those two programs already
+ * have.
+ *
+ * NO CHOOSER, NO PROMPT. The front end has already decided the application is
+ * allowed to ask; a second dialog here would be a permission question asked by
+ * the half of the stack that does not know the answer.
+ */
+
+static int reply_empty(sd_bus_message *call, uint32_t code)
+{
+	sd_bus_message *reply = NULL;
+	int r = sd_bus_message_new_method_return(call, &reply);
+	if (r < 0)
+		return r;
+	if ((r = sd_bus_message_append(reply, "u", code)) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'a', "{sv}")) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0)
+		goto out;
+	r = sd_bus_send(NULL, reply, NULL);
+out:
+	sd_bus_message_unref(reply);
+	return r;
+}
+
+/*
+ * Double-forked and never waited for. The opened application outlives this
+ * process's interest in it entirely, and a portal that reaped its own children
+ * would be holding a bus loop open for LibreOffice to finish starting.
+ */
+static void open_detached(const char *const argv[])
+{
+	pid_t pid = fork();
+	if (pid == 0) {
+		if (fork() == 0) {
+			setsid();
+			execvp(argv[0], (char *const *)argv);
+			_exit(127);
+		}
+		_exit(0);
+	} else if (pid > 0) {
+		waitpid(pid, NULL, 0);
+	}
+}
+
+/* `file:///home/kdos/a%20b.txt` -> `/home/kdos/a b.txt`. Returns 0 when the URI
+ * is not a local file, which is the caller's signal to hand it to xdg-open
+ * whole — http:, mailto: and the rest are not this program's business. */
+static int uri_to_path(const char *uri, char *out, size_t n)
+{
+	if (strncmp(uri, "file://", 7))
+		return 0;
+	const char *p = uri + 7;
+	/* An authority of `localhost` is legal and means the same as none. */
+	if (!strncmp(p, "localhost/", 10))
+		p += 9;
+	if (*p != '/')
+		return 0;
+
+	size_t o = 0;
+	for (; *p && o + 1 < n; p++) {
+		if (*p == '%' && isxdigit((unsigned char)p[1]) &&
+		    isxdigit((unsigned char)p[2])) {
+			char hex[3] = { p[1], p[2], 0 };
+			out[o++] = (char)strtol(hex, NULL, 16);
+			p += 2;
+		} else {
+			out[o++] = *p;
+		}
+	}
+	out[o] = '\0';
+	return o > 0;
+}
+
+static int method_open_uri(sd_bus_message *m, void *userdata, sd_bus_error *err)
+{
+	const char *handle, *app_id, *parent, *uri;
+	char path[2048];
+	(void)userdata;
+	(void)err;
+
+	if (sd_bus_message_read(m, "osss", &handle, &app_id, &parent, &uri) < 0)
+		return reply_empty(m, 2);
+
+	if (uri_to_path(uri, path, sizeof(path))) {
+		const char *argv[] = { "kdos-appbox", "open", path, NULL };
+		open_detached(argv);
+	} else {
+		/* A scheme rather than a path. xdg-open knows about those and
+		 * `kdos-appbox open` deliberately does not. */
+		const char *argv[] = { "xdg-open", uri, NULL };
+		open_detached(argv);
+	}
+	return reply_empty(m, 0);
+}
+
+/*
+ * OpenFile and OpenDirectory take an FD rather than a name, because the point
+ * of them is that the application may not be able to NAME the file in terms
+ * the host would recognise — it is inside a container with its own mount
+ * namespace. /proc/self/fd is the translation, and it is the only one there is.
+ */
+static int open_fd(sd_bus_message *m, int directory)
+{
+	const char *handle, *app_id, *parent;
+	int fd = -1;
+	char link[64], path[2048];
+	ssize_t k;
+
+	if (sd_bus_message_read(m, "ossh", &handle, &app_id, &parent, &fd) < 0)
+		return reply_empty(m, 2);
+	if (fd < 0)
+		return reply_empty(m, 2);
+
+	snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
+	k = readlink(link, path, sizeof(path) - 1);
+	if (k <= 0)
+		return reply_empty(m, 2);
+	path[k] = '\0';
+	/* A deleted file still has a link, with ` (deleted)` on the end of it —
+	 * opening that path would open a file of that literal name or nothing. */
+	if (strstr(path, " (deleted)"))
+		return reply_empty(m, 2);
+
+	if (directory) {
+		/*
+		 * "Show me where this is." The portal's OpenDirectory is given
+		 * the FILE and is expected to open its FOLDER — an application
+		 * asking for it has the document open, not the directory.
+		 */
+		char *slash = strrchr(path, '/');
+		if (slash && slash != path)
+			*slash = '\0';
+	}
+	const char *argv[] = { "kdos-appbox", "open", path, NULL };
+	open_detached(argv);
+	return reply_empty(m, 0);
+}
+
+static int method_open_fd(sd_bus_message *m, void *u, sd_bus_error *e)
+{
+	(void)u;
+	(void)e;
+	return open_fd(m, 0);
+}
+
+static int method_open_dir(sd_bus_message *m, void *u, sd_bus_error *e)
+{
+	(void)u;
+	(void)e;
+	return open_fd(m, 1);
+}
+
 /*
  * The chooser has closed its stdout. Read what is left, reap it, and answer
  * the call that has been waiting.
@@ -679,6 +844,35 @@ static const sd_bus_vtable file_chooser_vtable[] = {
 	SD_BUS_VTABLE_END
 };
 
+/*
+ * `version` is a property the front end reads to decide which methods exist.
+ * OpenDirectory arrived in version 3, and all three are implemented here — so
+ * 3 is the honest answer and not a claim. A getter rather than an offset: with
+ * a NULL getter sd-bus reads the value out of the vtable's userdata, which is
+ * NULL here, and the read is a crash rather than a wrong number.
+ */
+static int prop_version(sd_bus *bus, const char *path, const char *iface,
+			const char *prop, sd_bus_message *reply, void *userdata,
+			sd_bus_error *err)
+{
+	(void)bus; (void)path; (void)iface; (void)prop; (void)userdata;
+	(void)err;
+	return sd_bus_message_append(reply, "u", (uint32_t)3);
+}
+
+static const sd_bus_vtable open_uri_vtable[] = {
+	SD_BUS_VTABLE_START(0),
+	SD_BUS_METHOD("OpenURI", "osssa{sv}", "ua{sv}", method_open_uri,
+		      SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_METHOD("OpenFile", "ossha{sv}", "ua{sv}", method_open_fd,
+		      SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_METHOD("OpenDirectory", "ossha{sv}", "ua{sv}", method_open_dir,
+		      SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_PROPERTY("version", "u", prop_version, 0,
+			SD_BUS_VTABLE_PROPERTY_CONST),
+	SD_BUS_VTABLE_END
+};
+
 static const sd_bus_vtable settings_vtable[] = {
 	SD_BUS_VTABLE_START(0),
 	SD_BUS_METHOD("ReadAll", "as", "a{sa{sv}}", method_settings_read_all,
@@ -692,7 +886,7 @@ static const sd_bus_vtable settings_vtable[] = {
 int main(int argc, char **argv)
 {
 	sd_bus *bus = NULL;
-	sd_bus_slot *fc = NULL, *st = NULL;
+	sd_bus_slot *fc = NULL, *st = NULL, *ou = NULL;
 	int r;
 
 	for (int i = 1; i < argc; i++) {
@@ -727,6 +921,11 @@ int main(int argc, char **argv)
 	r = sd_bus_add_object_vtable(bus, &st, PORTAL_PATH,
 				     "org.freedesktop.impl.portal.Settings",
 				     settings_vtable, NULL);
+	if (r < 0)
+		goto fail;
+	r = sd_bus_add_object_vtable(bus, &ou, PORTAL_PATH,
+				     "org.freedesktop.impl.portal.OpenURI",
+				     open_uri_vtable, NULL);
 	if (r < 0)
 		goto fail;
 
@@ -813,6 +1012,7 @@ int main(int argc, char **argv)
 fail:
 	if (r < 0)
 		fprintf(stderr, "xdg-desktop-portal-kdos: %s\n", strerror(-r));
+	sd_bus_slot_unref(ou);
 	sd_bus_slot_unref(st);
 	sd_bus_slot_unref(fc);
 	sd_bus_unref(bus);
