@@ -127,14 +127,35 @@ static void reload_session(void)
 {
 	if (!kb_have_prog("pkill"))
 		return;
-	/* Both halves of the desktop: the shell repaints its chrome, the
-	 * compositor re-reads the accent its CRT shader tints with. Separate
-	 * pkills rather than one pattern — `kdos-*` would also signal kdos-appbox
-	 * and any alien app launched through it. */
-	static const char *const who[] = { "kdos-shell", "kdos-comp" };
+	/*
+	 * Every long-lived surface on the desktop, and the compositor.
+	 *
+	 * The list is by NAME because kdos-shell is basename-dispatched: the
+	 * panel, the desktop icons and the notification daemon are three
+	 * different argv[0]s of one binary, and `pkill -HUP kdos-shell` reaches
+	 * exactly one of them. Photographed on a booted ISO — `kdos theme amber`
+	 * left the desktop icons and a toast in phosphor while the panel and the
+	 * window frames went amber, which reads as a half-finished repaint
+	 * because that is what it was.
+	 *
+	 * Separate pkills rather than one pattern: `kdos-*` would also signal
+	 * kdos-appbox and every alien app launched through it.
+	 */
+	static const char *const who[] = {
+		"kdos-shell", "kdos-desk", "kdos-notifyd", "kdos-comp"
+	};
 	for (size_t i = 0; i < sizeof(who) / sizeof(who[0]); i++) {
 		KbArgv a = {0};
 		kb_argv_add(&a, "pkill");
+		/*
+		 * EXACT, and that is not tidiness: `kdos-desk` is a SUBSTRING
+		 * of `kdos-desktop` and of `kdos-desktop-start`, which are the
+		 * two /bin/sh scripts that own the session. A substring match
+		 * would send them a SIGHUP they do not handle, and the default
+		 * disposition for that is death — so retinting the desktop
+		 * would have taken the session's own helpers with it.
+		 */
+		kb_argv_add(&a, "-x");
 		kb_argv_add(&a, "-HUP");
 		kb_argv_add(&a, who[i]);
 		kb_argv_end(&a);
@@ -1384,6 +1405,7 @@ static void help_body(FILE *o)
 		{ "kdos restarts", "what is running code an upgrade replaced" },
 		{ "kdos stutter", "why the desktop hiccuped — with the app's name" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
+		{ "kdos-display [--list]", "the screens: mode, scale, rotation, order" },
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "kdos-power suspend", "suspend; also poweroff and reboot" },
 		{ "kdos-energy", "which app is spending the battery" },
@@ -1421,6 +1443,9 @@ static void help_body(FILE *o)
 		{ "Super+Shift+Tab", "switch window, backwards" },
 		{ "Super+M", "maximize / restore" },
 		{ "Super+F", "fullscreen / restore" },
+		{ "Super+N", "minimize the window" },
+		{ "Super+Space", "the root menu, without the desktop" },
+		{ "Super+P", "the screens (kdos-display)" },
 		{ "Super+Arrows", "snap the window to that half or corner" },
 		{ "Alt+Space", "the window menu" },
 		{ "Super+1..4", "switch workspace" },

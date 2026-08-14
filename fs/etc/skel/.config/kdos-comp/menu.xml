@@ -41,6 +41,9 @@
 
     <separator/>
 
+    <item label="Displays">
+      <action name="Execute" command="kdos-display"/>
+    </item>
     <item label="Screenshot">
       <action name="Execute" command="kdos-shot region"/>
     </item>

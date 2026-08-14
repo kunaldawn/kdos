@@ -30,9 +30,13 @@
 
 #include <alsa/asoundlib.h>
 #include <dirent.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "kwl.h"
@@ -128,6 +132,68 @@ static void volume_set(snd_mixer_elem_t *e, int pct)
 		snd_mixer_selem_set_playback_switch_all(e, 1);
 }
 
+/* ── the mixer as the PANEL sees it ────────────────────────────────────────
+ *
+ * Opened once and kept, because the panel asks every second and
+ * open+attach+register+load per tick is a mixer rebuilt sixty times a minute
+ * to read one number. `snd_mixer_handle_events` is what makes the cached
+ * handle honest: it drains the card's own change notifications, so a volume
+ * changed by amixer or by an alien app shows up here.
+ */
+static snd_mixer_t *g_mixer;
+static snd_mixer_elem_t *g_elem;
+
+static int mixer_ensure(void)
+{
+	/*
+	 * A machine with no sound card is the case this guard exists for: the
+	 * panel asks once a second, and without it every one of those seconds
+	 * pays for an ALSA open, an attach and a failure. Thirty seconds is
+	 * long enough to cost nothing and short enough that a card whose module
+	 * loads late still lights the applet up on its own.
+	 */
+	static time_t last_try;
+
+	if (g_mixer) {
+		snd_mixer_handle_events(g_mixer);
+		return 0;
+	}
+	time_t now = time(NULL);
+	if (last_try && now - last_try < 30)
+		return -1;
+	last_try = now;
+	g_mixer = mixer_open(&g_elem);
+	return g_mixer ? 0 : -1;
+}
+
+int sh_volume_get(int *muted)
+{
+	int m = 0;
+	if (mixer_ensure() != 0)
+		return -1;
+	int pct = volume_get(g_elem, &m);
+	if (muted)
+		*muted = m;
+	return pct;
+}
+
+void sh_volume_set(int pct)
+{
+	if (mixer_ensure() == 0)
+		volume_set(g_elem, pct);
+}
+
+void sh_volume_toggle(void)
+{
+	int m = 0;
+	if (mixer_ensure() != 0)
+		return;
+	if (volume_get(g_elem, &m) < 0 ||
+	    !snd_mixer_selem_has_playback_switch(g_elem))
+		return;
+	snd_mixer_selem_set_playback_switch_all(g_elem, m);
+}
+
 /* ── backlight ─────────────────────────────────────────────────────────── */
 
 static int backlight_path(char *buf, size_t len, const char *leaf)
@@ -220,6 +286,120 @@ static void draw_osd(const char *label, int pct, int muted)
 	ktui_draw_flush();
 }
 
+/* ── one OSD at a time ─────────────────────────────────────────────────────
+ *
+ * A media key is HELD. Every press used to be a whole process — fork, connect,
+ * load a 32-pixel bitmap font, create a layer surface, sit there for 1.2
+ * seconds — so holding volume-up produced a queue of overlapping overlays, each
+ * showing a value that was already stale, and a dozen font caches at once.
+ *
+ * So the first one to take the lock is the one on screen, and every later press
+ * applies its change (which it has already done by this point), tells the owner
+ * to look again, and exits. The lock file carries the owner's pid; the word to
+ * show goes in a file beside it, because a signal cannot carry an argument.
+ */
+static volatile sig_atomic_t poked;
+
+static void on_poke(int sig)
+{
+	(void)sig;
+	poked = 1;
+}
+
+static int64_t osd_now_ms(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static int osd_path(char *buf, size_t n, const char *leaf)
+{
+	const char *rt = getenv("XDG_RUNTIME_DIR");
+	if (!rt || !*rt)
+		return -1;
+	snprintf(buf, n, "%s/kdos-osd.%s", rt, leaf);
+	return 0;
+}
+
+static void osd_write_what(const char *what)
+{
+	char p[512];
+	if (osd_path(p, sizeof(p), "what") != 0)
+		return;
+	FILE *f = fopen(p, "w");
+	if (!f)
+		return;
+	fprintf(f, "%s\n", what);
+	fclose(f);
+}
+
+static void osd_read_what(char *out, size_t n)
+{
+	char p[512];
+	if (osd_path(p, sizeof(p), "what") == 0)
+		sh_read_line(p, out, n);
+}
+
+/*
+ * Returns 1 when this process should DRAW, 0 when another one already is (and
+ * has been told to refresh). The lock fd is deliberately leaked into the draw:
+ * it must stay held for as long as the overlay is up.
+ */
+static int osd_claim(void)
+{
+	char p[512], buf[32];
+	int fd;
+
+	/* The caller has already written what is to be shown: the poke below
+	 * carries no argument, so the file IS the argument. */
+	if (osd_path(p, sizeof(p), "lock") != 0)
+		return 1;	/* no runtime dir: one-shot, as it always was */
+	fd = open(p, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+	if (fd < 0)
+		return 1;
+
+	if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+		ssize_t k = read(fd, buf, sizeof(buf) - 1);
+		close(fd);
+		if (k > 0) {
+			buf[k] = '\0';
+			pid_t other = (pid_t)atoi(buf);
+			/* ESRCH means the owner died between the flock and
+			 * here; the lock is about to be released and the next
+			 * press will draw. Nothing to recover. */
+			if (other > 0)
+				kill(other, SIGUSR1);
+		}
+		return 0;
+	}
+
+	int n = snprintf(buf, sizeof(buf), "%d\n", (int)getpid());
+	if (ftruncate(fd, 0) == 0 && lseek(fd, 0, SEEK_SET) == 0) {
+		if (write(fd, buf, (size_t)n) < 0) {
+			/* The pid is a convenience for the next press, not
+			 * correctness: without it that press simply draws
+			 * nothing rather than misbehaving. */
+		}
+	}
+	struct sigaction sa = { 0 };
+	sa.sa_handler = on_poke;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGUSR1, &sa, NULL);
+	return 1;
+}
+
+/* Re-read whatever the newest press changed. */
+static void osd_value(const char *what, int *pct, int *muted)
+{
+	if (!strcmp(what, "brightness")) {
+		*pct = backlight_get();
+		*muted = 0;
+	} else {
+		*pct = sh_volume_get(muted);
+	}
+}
+
 /* ── main ──────────────────────────────────────────────────────────────── */
 
 static int usage(void)
@@ -240,37 +420,22 @@ int osd_main(int argc, char **argv)
 	int pct = -1, muted = 0;
 
 	if (!strcmp(what, "volume")) {
-		snd_mixer_elem_t *elem = NULL;
-		snd_mixer_t *h = mixer_open(&elem);
-		if (!h) {
-			fprintf(stderr, "kdos-osd: no ALSA mixer — is the card "
-					"driver loaded?\n");
-			return 1;
-		}
-		pct = volume_get(elem, &muted);
+		pct = sh_volume_get(&muted);
 		if (pct < 0) {
-			snd_mixer_close(h);
-			fprintf(stderr, "kdos-osd: the mixer has no playback "
-					"volume\n");
+			fprintf(stderr, "kdos-osd: no ALSA mixer with a playback "
+					"volume — is the card driver loaded?\n");
 			return 1;
 		}
 		if (arg) {
 			if (!strcmp(arg, "mute") || !strcmp(arg, "toggle")) {
-				if (snd_mixer_selem_has_playback_switch(elem)) {
-					muted = !muted;
-					snd_mixer_selem_set_playback_switch_all(
-						elem, !muted);
-				}
+				sh_volume_toggle();
 			} else if (arg[0] == '+' || arg[0] == '-') {
-				pct += atoi(arg);
-				volume_set(elem, pct);
-				pct = volume_get(elem, &muted);
+				sh_volume_set(pct + atoi(arg));
 			} else {
-				snd_mixer_close(h);
 				return usage();
 			}
+			pct = sh_volume_get(&muted);
 		}
-		snd_mixer_close(h);
 	} else if (!strcmp(what, "brightness")) {
 		pct = backlight_get();
 		if (pct < 0) {
@@ -299,6 +464,10 @@ int osd_main(int argc, char **argv)
 	 * refuses to work because it cannot draw would be worse than one that
 	 * works silently.
 	 */
+	osd_write_what(what);
+	if (!osd_claim())
+		return 0;		/* another OSD is up; it will refresh */
+
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
 		.cols = OSD_COLS,
@@ -310,16 +479,35 @@ int osd_main(int argc, char **argv)
 		return 0;
 	ktui_draw_init();
 
-	draw_osd(what, pct, muted);
+	char shown[32];
+	snprintf(shown, sizeof(shown), "%s", what);
+	draw_osd(shown, pct, muted);
 
-	/* One shot: draw, wait out the dwell, exit. There is no state to keep,
-	 * and a resident OSD daemon would be a process per session holding a
-	 * surface it shows for one second an hour. */
+	/*
+	 * Draw, wait out the dwell, exit — but a press that arrives while this
+	 * one is still up EXTENDS it and changes what it says, instead of
+	 * starting a second overlay on top of this one. That is the whole of
+	 * the singleton: no resident daemon, just the first press of a run
+	 * holding the screen for the rest of them.
+	 *
+	 * A deadline rather than a counter: poll_event returns early on any
+	 * event at all, and adding the timeout each time round made the dwell
+	 * as short as the pointer was busy.
+	 */
 	KtuiEvent ev;
-	int64_t waited = 0;
-	while (waited < OSD_MS && !kwl_should_close()) {
-		ktui_backend()->poll_event(&ev, 100);
-		waited += 100;
+	int64_t until = osd_now_ms() + OSD_MS;
+	while (osd_now_ms() < until && !kwl_should_close()) {
+		int rem = (int)(until - osd_now_ms());
+		ktui_backend()->poll_event(&ev, rem > 100 ? 100 : rem);
+		if (!poked)
+			continue;
+		poked = 0;
+		osd_read_what(shown, sizeof(shown));
+		if (!shown[0])
+			snprintf(shown, sizeof(shown), "%s", what);
+		osd_value(shown, &pct, &muted);
+		draw_osd(shown, pct, muted);
+		until = osd_now_ms() + OSD_MS;
 	}
 
 	kwl_shutdown();

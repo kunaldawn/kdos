@@ -45,6 +45,20 @@ struct kdos_conf {
 	 */
 	bool panel_bottom;
 	bool desktop_icons;
+
+	/*
+	 * The font every piece of supervised chrome is drawn in, as a
+	 * fontconfig name. Empty means libkwl's default, which is
+	 * `Terminus:pixelsize=32` — the console's own cell, and the reason the
+	 * panel, the boot splash and tty1 look like one machine.
+	 *
+	 * It exists because that default is a PIXEL size and libkwl does no
+	 * HiDPI: on a 4K panel the chrome comes out half the height it should
+	 * be, and there was no knob anywhere in the system to say so. The
+	 * compositor's own titlebars are rc.xml's <theme><font>, which is the
+	 * matching setting on the labwc side.
+	 */
+	char chrome_font[128];
 };
 
 extern struct kdos_conf kdos_conf;

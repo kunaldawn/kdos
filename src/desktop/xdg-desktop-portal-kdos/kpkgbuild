@@ -10,7 +10,7 @@
 
 name        = xdg-desktop-portal-kdos
 version     = 0.2.0
-release     = 1
+release     = 2
 source      =
 description = FileChooser and Settings portal backend for KDOS
 homepage    = https://github.com/kunaldawn/kdos

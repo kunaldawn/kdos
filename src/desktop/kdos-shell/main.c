@@ -34,6 +34,8 @@ static const struct {
 	{ "kdos-prompt", prompt_main },
 	{ "kdos-notifyd", notifyd_main },
 	{ "kdos-osd", osd_main },
+	{ "kdos-cal", cal_main },
+	{ "kdos-display", display_main },
 };
 #define NTOOLS ((int)(sizeof(TOOLS) / sizeof(TOOLS[0])))
 

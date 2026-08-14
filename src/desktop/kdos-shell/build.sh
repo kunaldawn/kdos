@@ -49,7 +49,11 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	"$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
 	ext-session-lock-v1-protocol.c
-for p in wlr-layer-shell-unstable-v1 wlr-foreign-toplevel-management-unstable-v1; do
+# wlr-output-management is kdos-display's: labwc takes its screen configuration
+# over it like every wlroots compositor, and nothing in this tree spoke it, so
+# there was no way at all to set a mode, a scale or a second monitor's place.
+for p in wlr-layer-shell-unstable-v1 wlr-foreign-toplevel-management-unstable-v1 \
+	 wlr-output-management-unstable-v1; do
 	"$SCANNER" client-header "/usr/share/wlroots/protocols/$p.xml" \
 		"$p-client-protocol.h"
 	"$SCANNER" private-code  "/usr/share/wlroots/protocols/$p.xml" \
@@ -84,3 +88,6 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-run"
 ln -s kdos-shell "$PKG/usr/bin/kdos-prompt"
 ln -s kdos-shell "$PKG/usr/bin/kdos-notifyd"
 ln -s kdos-shell "$PKG/usr/bin/kdos-osd"
+# The clock's other half, and the screens. The panel spawns kdos-cal by name.
+ln -s kdos-shell "$PKG/usr/bin/kdos-cal"
+ln -s kdos-shell "$PKG/usr/bin/kdos-display"
