@@ -42,6 +42,11 @@ test -s /etc/skel/.config/gtk-3.0/gtk.css
 test -s /etc/skel/.config/gtk-4.0/gtk.css
 test -s /etc/skel/.themes/KDOS/gtk-3.0/gtk.css
 test -s /etc/skel/.icons/KDOS/index.theme
+# The window frames. This file used to ship from fs/ as a fixed neutral grey
+# and was the one artefact an accent switch could not reach; it is generated
+# now, from the same palette as everything else, and kdos-comp re-reads it on
+# the SIGHUP `kdos theme` already sends.
+test -s /etc/skel/.config/kdos-comp/themerc-override
 # The cursors are generated here too now that kdos-cursors ships its art to
 # /usr/share/kdos/cursors/art. The package installs a phosphor build of its own
 # into /etc/skel/.icons; this rewrites it from the same generator and the same

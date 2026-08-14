@@ -79,5 +79,8 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-desk"
 ln -s kdos-shell "$PKG/usr/bin/kdos-pick"
 ln -s kdos-shell "$PKG/usr/bin/kdos-ascii"
 ln -s kdos-shell "$PKG/usr/bin/kdos-run"
+# kdos-comp's <core><promptCommand> — the yes/no dialog labwc's If/prompt
+# action needs. Upstream's labnag is not built (-Dlabnag=disabled).
+ln -s kdos-shell "$PKG/usr/bin/kdos-prompt"
 ln -s kdos-shell "$PKG/usr/bin/kdos-notifyd"
 ln -s kdos-shell "$PKG/usr/bin/kdos-osd"

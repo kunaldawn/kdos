@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <wlr/util/log.h>
 
 #include "kdos.h"
@@ -60,6 +61,32 @@ set_int(const char *where, int lineno, const char *value, int lo, int hi,
 }
 
 /*
+ * yes/no, true/false, on/off, 1/0. A value that is none of those is reported
+ * rather than guessed at: this file's own comment promises that a line which
+ * does not take effect says so.
+ */
+static void
+set_bool(const char *where, int lineno, const char *value, bool *out)
+{
+	static const char *const yes[] = { "yes", "true", "on", "1", NULL };
+	static const char *const no[] = { "no", "false", "off", "0", NULL };
+
+	for (int i = 0; yes[i]; i++) {
+		if (!strcasecmp(value, yes[i])) {
+			*out = true;
+			return;
+		}
+	}
+	for (int i = 0; no[i]; i++) {
+		if (!strcasecmp(value, no[i])) {
+			*out = false;
+			return;
+		}
+	}
+	wlr_log(WLR_ERROR, "%s:%d: expected yes or no", where, lineno);
+}
+
+/*
  * The pre-fork schema put the binding IN the key — `bind Super+Return = spawn
  * foot` — so the key of a line worth naming is `bind Super+Return`, not
  * `bind`. An exact compare here matched nothing anyone had actually written.
@@ -98,6 +125,10 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 		c->idle_configured = true;
 	} else if (!strcmp(key, "wallpaper")) {
 		snprintf(c->wallpaper, sizeof(c->wallpaper), "%s", value);
+	} else if (!strcmp(key, "panel_bottom")) {
+		set_bool(path, lineno, value, &c->panel_bottom);
+	} else if (!strcmp(key, "desktop_icons")) {
+		set_bool(path, lineno, value, &c->desktop_icons);
 	} else if (first_word_is(key, "bind") || first_word_is(key, "startup")
 			|| first_word_is(key, "workspaces")
 			|| first_word_is(key, "mouse")) {
@@ -139,6 +170,8 @@ kdos_conf_load(void)
 	c->idle_lock_s = 600;
 	c->idle_off_s = 900;
 	c->idle_configured = false;
+	c->panel_bottom = true;
+	c->desktop_icons = true;
 	snprintf(c->wallpaper, sizeof(c->wallpaper), "%s",
 		"/usr/share/backgrounds/kdos/default-wallpaper.png");
 

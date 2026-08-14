@@ -16,4 +16,4 @@ text/markdown=nvim.desktop
 text/x-shellscript=nvim.desktop
 application/json=nvim.desktop
 application/x-shellscript=nvim.desktop
-inode/directory=lf.desktop
+inode/directory=mc.desktop

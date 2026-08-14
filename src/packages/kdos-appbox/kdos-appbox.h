@@ -96,6 +96,12 @@ int tui_main(void);
  * /usr/local/bin shims from an image's /usr/share/applications. */
 int cmd_genlaunchers(const char *srcdir, const char *fsroot);
 
+/* ---------------------------------------------------------------- open.c */
+
+/* A path, opened by whatever the freedesktop association says opens it —
+ * host app or boxed app, since both are ordinary desktop entries here. */
+int cmd_open(int argc, char **argv);
+
 /* --------------------------------------------------------------- image.c */
 
 /* pack / assemble / remap-uids — the appbox image in and out of the repo. */

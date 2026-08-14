@@ -100,9 +100,12 @@ echo "  kdos-portup"
 # libkcell and libkwl are the TWO libraries here with real external
 # dependencies — libkcell is the glyph cache and the cell painter, libkwl is
 # the Wayland half built on it. They are separate archives from libktui, whose
-# zero-`-l` property keeps kinstall in phase 1, and separate from EACH OTHER
-# because kdos-comp links libkcell to paint window frames and must not link a
-# client library to do it. Skipped rather than failed when the deps are absent:
+# zero-`-l` property keeps kinstall in phase 1, and separate from EACH OTHER so
+# that a consumer wanting the cell painter is not made to link a Wayland CLIENT
+# library to get it. (kdos-comp does not link either: since the labwc fork its
+# window frames are labwc's own SSD, drawn with pango and coloured from the
+# generated `themerc-override`.) Skipped rather than failed when the deps are
+# absent:
 # this script's contract is that it runs on a bare host with no container and
 # no network.
 if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
@@ -1029,6 +1032,62 @@ test -e "$FSR/usr/local/bin/winetricks" \
 echo "  launcher, mime cache, command table and shims — and no shim without a binary"
 
 echo
+echo "==> kdos-appbox open resolves a path to the thing that opens it"
+# `kdos-desk` called `kdos-appbox open` for a release before the subcommand
+# existed, so every double-click on the desktop died on "unknown". The
+# resolution is the freedesktop one — globs for the MIME type, then
+# mimeapps.list, then the mimeinfo.cache genlaunchers writes above — and
+# `--print` is what makes it checkable without launching LibreOffice.
+#
+# XDG_DATA_HOME is pointed at the tree genlaunchers just produced, so this also
+# proves the two halves agree: the cache one wrote is the cache the other reads.
+OPENH="$OUT/openhome"
+rm -rf "$OPENH"
+mkdir -p "$OPENH/.config" "$OPENH/files"
+: > "$OPENH/files/shot.png"
+# The longest suffix has to win, or every .tar.gz opens in a decompressor.
+: > "$OPENH/files/roll.tar.gz"
+cat > "$OPENH/.config/mimeapps.list" <<'MIME'
+[Default Applications]
+application/x-compressed-tar=gimp.desktop
+MIME
+open_print() {
+    HOME="$OPENH" XDG_CONFIG_HOME="$OPENH/.config" \
+    XDG_DATA_HOME="$FSR/etc/skel/.local/share" XDG_DATA_DIRS="$FSR/usr/share" \
+        "$OUT/kdos-appbox" open --print "$1"
+}
+if [ ! -f /usr/share/mime/globs ]; then
+    echo "  kdos-appbox open (skipped — no shared-mime-info on this host)"
+else
+    out=$(open_print "$OPENH/files/shot.png")
+    echo "$out" | grep -q "^mime	image/png$" \
+        || { echo "  a .png was not recognised: $out"; exit 1; }
+    # image/png reaches gimp only through the mimeinfo.cache above — there is
+    # no [Default Applications] line for it.
+    echo "$out" | grep -q "gimp.desktop" \
+        || { echo "  the mime cache was not consulted: $out"; exit 1; }
+    # And the whole chain in one line: genlaunchers rewrote the entry's Exec to
+    # go through `kdos-appbox run`, so opening a file with a BOXED app lands on
+    # the launch path with all its fixes rather than exec'ing a binary the host
+    # does not have.
+    echo "$out" | grep -q "^exec	kdos-appbox	run	gimp	$OPENH/files/shot.png$" \
+        || { echo "  the field code was not substituted: $out"; exit 1; }
+
+    out=$(open_print "$OPENH/files/roll.tar.gz")
+    echo "$out" | grep -q "^mime	application/x-compressed-tar$" \
+        || { echo "  the longest suffix did not win: $out"; exit 1; }
+
+    out=$(open_print "$OPENH/files")
+    echo "$out" | grep -q "^mime	inode/directory$" \
+        || { echo "  a directory was not recognised: $out"; exit 1; }
+    # Nothing in this scratch tree claims a directory, so it must fall through
+    # to xdg-open rather than inventing a handler.
+    echo "$out" | grep -q "^exec	xdg-open$" \
+        || { echo "  no fallback for an unclaimed type: $out"; exit 1; }
+    echo "  mime by longest glob, mimeapps and the cache, field codes, xdg-open last"
+fi
+
+echo
 echo "==> kdos stutter names the process, not just the pressure"
 # A real stutter cannot be summoned on demand, so the fixture IS the test:
 # testing/fixtures/stutter is two /proc snapshots 500 ms apart and the two miss
@@ -1092,6 +1151,90 @@ if [ -n "$TRAY_SDBUS" ] && command -v dbus-daemon >/dev/null 2>&1; then
     kill "$TRAY_BUS_PID" 2>/dev/null
 else
     echo "  tray (skipped — no sd-bus or no dbus-daemon on this host)"
+fi
+
+echo
+echo "==> the FileChooser portal keeps serving while a dialog is open"
+# THE REGRESSION THIS EXISTS FOR. The first version forked kdos-pick and sat in
+# waitpid() inside the method handler, so the backend answered nothing at all
+# for as long as anybody had a file dialog open — a second application's Open
+# queued behind the first, and a boxed app asking Settings for the colour
+# scheme (which happens on every launch) hung until the dialog was dismissed.
+#
+# So the test is not "does OpenFile work": it is "does ANOTHER call get an
+# answer while OpenFile is still outstanding". A stub chooser that sleeps and
+# then prints a URI stands in for a person reading a directory listing.
+if [ -n "$TRAY_SDBUS" ] && command -v dbus-daemon >/dev/null 2>&1 &&
+   command -v busctl >/dev/null 2>&1; then
+    $CC $STD $WARN -o "$OUT/xdp-kdos" \
+        $(pkg-config --cflags $TRAY_SDBUS) \
+        src/desktop/xdg-desktop-portal-kdos/main.c \
+        $(pkg-config --libs $TRAY_SDBUS)
+    mkdir -p "$OUT/pbin"
+    cat > "$OUT/pbin/kdos-pick" <<'PICK'
+#!/bin/sh
+sleep 3
+echo "file:///tmp/chosen.txt"
+PICK
+    chmod +x "$OUT/pbin/kdos-pick"
+
+    PORTAL_ADDR=$(dbus-daemon --session --print-address --fork \
+        --print-pid=3 3>"$OUT/portal-bus.pid")
+    PORTAL_BUS_PID=$(cat "$OUT/portal-bus.pid")
+    PATH="$OUT/pbin:$PATH" DBUS_SESSION_BUS_ADDRESS="$PORTAL_ADDR" \
+        "$OUT/xdp-kdos" & PORTAL_PID=$!
+    # Let it take its bus name before anything calls it.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        DBUS_SESSION_BUS_ADDRESS="$PORTAL_ADDR" busctl --user \
+            --address="$PORTAL_ADDR" status \
+            org.freedesktop.impl.portal.desktop.kdos >/dev/null 2>&1 && break
+        sleep 0.2
+    done
+
+    # OpenFile in the background; it cannot return for 3 seconds.
+    ( busctl --address="$PORTAL_ADDR" call \
+        org.freedesktop.impl.portal.desktop.kdos \
+        /org/freedesktop/portal/desktop \
+        org.freedesktop.impl.portal.FileChooser OpenFile \
+        "osssa{sv}" /org/f/p/r1 app.Test "" "Open" 0 \
+        > "$OUT/portal-open.out" 2>&1 ) & OPEN_PID=$!
+    sleep 1   # the chooser is now up and the call is outstanding
+
+    # …and Settings must answer NOW, not in two seconds' time.
+    t0=$(date +%s%N)
+    DBUS_SESSION_BUS_ADDRESS="$PORTAL_ADDR" timeout 2 busctl \
+        --address="$PORTAL_ADDR" call \
+        org.freedesktop.impl.portal.desktop.kdos \
+        /org/freedesktop/portal/desktop \
+        org.freedesktop.impl.portal.Settings Read ss \
+        org.freedesktop.appearance color-scheme > "$OUT/portal-set.out" 2>&1
+    set_rc=$?
+    t1=$(date +%s%N)
+    took=$(( (t1 - t0) / 1000000 ))
+
+    wait $OPEN_PID 2>/dev/null
+    kill $PORTAL_PID 2>/dev/null
+    kill "$PORTAL_BUS_PID" 2>/dev/null
+
+    [ "$set_rc" = 0 ] || {
+        echo "  Settings blocked behind the open dialog (rc=$set_rc)"
+        cat "$OUT/portal-set.out"; exit 1; }
+    [ "$took" -lt 1000 ] || {
+        echo "  Settings answered, but only after ${took}ms — it waited for the dialog"
+        exit 1; }
+    grep -q "^v u 1$" "$OUT/portal-set.out" || {
+        echo "  color-scheme is not 'prefer dark': $(cat "$OUT/portal-set.out")"
+        exit 1; }
+    # And the deferred reply really is the chooser's answer.
+    grep -q "file:///tmp/chosen.txt" "$OUT/portal-open.out" || {
+        echo "  the deferred OpenFile reply lost the URI"
+        cat "$OUT/portal-open.out"; exit 1; }
+    grep -q "^ua{sv} 0 " "$OUT/portal-open.out" || {
+        echo "  OpenFile did not report success: $(cat "$OUT/portal-open.out")"
+        exit 1; }
+    echo "  Settings answered in ${took}ms with a dialog open; the deferred reply carried the URI"
+else
+    echo "  portal (skipped — no sd-bus, dbus-daemon or busctl on this host)"
 fi
 
 echo

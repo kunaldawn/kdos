@@ -63,9 +63,24 @@ struct sh_task {
 	void *handle;			/* zwlr_foreign_toplevel_handle_v1 * */
 	char title[128];
 	char app_id[64];
+	/* The `Name` from the app's own desktop entry, resolved once when the
+	 * app_id arrives. Empty when there is no entry. A taskbar reading
+	 * `org.gnome.Meld` is showing an identifier chosen not to collide, in
+	 * the one place a human name belongs. */
+	char name[64];
 	int activated;
 	int minimized;
 };
+
+/* Name > title > app_id, the order a person reads them in. */
+static inline const char *sh_task_label(const struct sh_task *t)
+{
+	if (t->name[0])
+		return t->name;
+	if (t->title[0])
+		return t->title;
+	return t->app_id;
+}
 
 /*
  * The menu bar: GNOME 2's three words, on the left of the top panel.
@@ -78,10 +93,12 @@ struct sh_task {
 #define SH_NMENUS 3
 #define SH_MENU_MARK "\xe2\x89\xa1"		/* U+2261 IDENTICAL TO */
 extern const char *const sh_menu_labels[SH_NMENUS];
-/* Spawn kdos-menu for one of them. Double-forked, so the panel neither reaps
- * nor blocks — a menu that takes a moment to scan 400 desktop files must not
- * stop the clock. */
-void sh_spawn_menu(int which);
+/* Spawn kdos-menu for one of them, anchored at (x, y) in PIXELS — where the
+ * word that was clicked starts, and how far down the panel reaches. Layer-shell
+ * has no coordinates, so that pair becomes an anchor and a margin. Double-
+ * forked, so the panel neither reaps nor blocks: a menu that takes a moment to
+ * scan 400 desktop files must not stop the clock. */
+void sh_spawn_menu(int which, int x, int y);
 
 struct sh_state {
 	void *display;			/* the panel shares libkwl's connection */
@@ -111,6 +128,12 @@ struct sh_state {
 	int ws_hit_x, ws_hit_end;
 	int menu_hit_x[SH_NMENUS], menu_hit_end[SH_NMENUS];
 	int menu_open;			/* which label is lit, or -1 */
+	/* What the pointer is over, or -1. The panel and the menu are two
+	 * processes, so `menu_open` is never set by anything; hover is what
+	 * the bar actually knows, and it is what makes three words read as
+	 * three buttons. */
+	int hover_menu;
+	int hover_task;
 	/* The bottom panel's hit map: the pager and show-desktop. */
 	int pager_hit_x, pager_hit_end;
 	int show_hit_x;
@@ -128,6 +151,7 @@ int desk_main(int argc, char **argv);		/* kdos-desk     */
 int pick_main(int argc, char **argv);		/* kdos-pick     */
 int asciicmd_main(int argc, char **argv);	/* kdos-ascii    */
 int run_main(int argc, char **argv);		/* kdos-run      */
+int prompt_main(int argc, char **argv);		/* kdos-prompt   */
 
 
 int notifyd_main(int argc, char **argv);	/* kdos-notifyd  */
@@ -137,6 +161,12 @@ int sh_connect(struct sh_state *sh);
 void sh_disconnect(struct sh_state *sh);
 void sh_dispatch(struct sh_state *sh);
 void sh_activate_task(struct sh_state *sh, int i);
+/* Left click on a task entry: minimise the window you are in, restore the one
+ * you are not — what every taskbar does, and what makes the entry worth
+ * clicking once the window is already on screen. */
+void sh_toggle_task(struct sh_state *sh, int i);
+/* Middle click: the protocol's polite close, so an editor still gets to ask. */
+void sh_close_task(struct sh_state *sh, int i);
 /* What show-desktop is made of. Already-minimised windows are left alone, so
  * pressing it twice does not un-minimise half the screen. */
 void sh_minimize_task(struct sh_state *sh, int i);

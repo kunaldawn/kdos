@@ -160,9 +160,37 @@ spawn_piped(const char *command, int *pipe_fd)
 {
 	assert(command);
 
+	/*
+	 * KDOS: parsed into argv, not handed to `/bin/sh -c`.
+	 *
+	 * Upstream execs a shell here and only here. On KDOS this is the
+	 * promptCommand path, whose format string interpolates a MESSAGE that
+	 * came out of rc.xml — so a shell in the middle is a place the next
+	 * person puts a variable, which is the rule the whole tree keeps
+	 * (kpkg, kinstall, kdos-appbox, the shell's own launchers). glib's
+	 * shell-parse still honours the quoting the default command relies on,
+	 * so `--message '%m'` keeps working; what goes away is expansion.
+	 */
+	GError *err = NULL;
+	gchar **argv = NULL;
+	g_shell_parse_argv((gchar *)command, NULL, &argv, &err);
+	if (err) {
+		g_message("%s", err->message);
+		g_error_free(err);
+		return -1;
+	}
+	/* An empty or all-whitespace command parses without an error and
+	 * yields no argv[0]; execvp(NULL, ...) is not a diagnosable failure. */
+	if (!argv || !argv[0]) {
+		wlr_log(WLR_ERROR, "empty command");
+		g_strfreev(argv);
+		return -1;
+	}
+
 	int pipe_rw[2];
 	if (pipe(pipe_rw) != 0) {
 		wlr_log(WLR_ERROR, "unable to pipe()");
+		g_strfreev(argv);
 		return -1;
 	}
 
@@ -170,6 +198,7 @@ spawn_piped(const char *command, int *pipe_fd)
 	if (pid < 0) {
 		close(pipe_rw[0]);
 		close(pipe_rw[1]);
+		g_strfreev(argv);
 		wlr_log(WLR_ERROR, "unable to fork()");
 		return pid;
 	}
@@ -201,7 +230,7 @@ spawn_piped(const char *command, int *pipe_fd)
 			close(dev_null);
 		}
 
-		execl("/bin/sh", "sh", "-c", command, NULL);
+		execvp(argv[0], argv); /* KDOS: no shell */
 		/*
 		 * Our stderr points to /dev/null or is closed
 		 * at this point so logging is pretty useless.
@@ -211,6 +240,7 @@ spawn_piped(const char *command, int *pipe_fd)
 
 	/* labwc */
 	close(pipe_rw[1]);
+	g_strfreev(argv); /* KDOS */
 
 	/*
 	 * Prevent leaking the read end of the pipe to further

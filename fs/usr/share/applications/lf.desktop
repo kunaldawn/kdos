@@ -1,11 +1,17 @@
 [Desktop Entry]
 Type=Application
-Name=Files
+Name=Files (lf)
 GenericName=File Manager
 Comment=Browse files in a terminal (lf)
-Exec=foot -e lf %f
+# The SECOND file manager, and it carries no MimeType on purpose.
+#
+# mc is the one this desktop is built around — the menu's Places entries,
+# kdos-desk, Super+E and the inode/directory association all open it. Two
+# entries claiming the same MIME type is how a machine ends up opening folders
+# in whichever of them sorted first, which is not a decision anybody made.
+# lf stays installed and stays launchable; it is not the default.
+Exec=foot --app-id=lf -e lf %f
 Icon=system-file-manager
 Terminal=false
 Categories=System;FileTools;FileManager;
-MimeType=inode/directory;
 Keywords=file;manager;browser;lf;

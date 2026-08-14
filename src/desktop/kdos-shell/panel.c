@@ -131,9 +131,17 @@ static void draw_panel(struct sh_state *sh)
 		 * store that made the mark decorative. */
 		if (i)
 			sh->menu_hit_x[i] = x;
+		/*
+		 * Lit while the pointer is on it. `menu_open` cannot drive this
+		 * — the menu is a separate process and does not report back —
+		 * so what the bar shows is where the pointer is, which is the
+		 * honest thing it knows and is what makes the three words read
+		 * as buttons rather than as a caption.
+		 */
+		int lit = i == sh->menu_open || i == sh->hover_menu;
 		x += ktui_draw_text(x, 0, w - x, sh_menu_labels[i],
-				    i == sh->menu_open ? KT_SURFACE : KT_TEXT,
-				    i == sh->menu_open ? KT_ACCENT : KT_SURFACE,
+				    lit ? KT_SURFACE : KT_TEXT,
+				    lit ? KT_ACCENT : KT_SURFACE,
 				    KT_A_NONE);
 		sh->menu_hit_end[i] = x;
 		x += 2;
@@ -319,13 +327,16 @@ static void draw_panel(struct sh_state *sh)
 			sh->task_cell_w = per;
 			for (int i = 0; i < sh->ntasks && x + per <= right_x; i++) {
 				const struct sh_task *t = &sh->tasks[i];
-				const char *label = t->app_id[0] ? t->app_id
-								 : t->title;
 				int fg = t->activated ? KT_ACCENT
 						      : t->minimized ? KT_DIM
 								     : KT_TEXT;
-				ktui_draw_text(x, 0, per - 1, label, fg,
-					       KT_SURFACE,
+				/* Hover takes the accent WITHOUT the swap, so
+				 * it cannot be read as the focused entry: it is
+				 * an affordance, not a state. */
+				if (!t->activated && sh->hover_task == i)
+					fg = KT_ACCENT;
+				ktui_draw_text(x, 0, per - 1, sh_task_label(t),
+					       fg, KT_SURFACE,
 					       t->activated ? KT_A_REVERSE
 							    : KT_A_NONE);
 				x += per;
@@ -350,8 +361,9 @@ static void draw_panel(struct sh_state *sh)
  *
  * The two panels are two PROCESSES of the same binary. Each layer-shell surface
  * has one exclusive zone, so a single process cannot reserve space at the top
- * and the bottom; kdos-desktop-start launches `kdos-shell` and
- * `kdos-shell --bottom`.
+ * and the bottom; the compositor supervises both (`kdos-child.c`), and
+ * `panel_bottom = no` in comp.conf is what turns this one off. It said
+ * kdos-desktop-start launched it for a release, and nothing did.
  */
 static void draw_bottom(struct sh_state *sh)
 {
@@ -413,6 +425,12 @@ static void draw_bottom(struct sh_state *sh)
 		int fg = t->activated ? KT_SURFACE : KT_TEXT;
 		int bg = t->activated ? KT_ACCENT : KT_SURFACE;
 
+		/* Hover in the accent, unreversed: an entry the pointer is on
+		 * is not an entry that has focus, and on eight colours the
+		 * difference has to be the swap rather than a fifth shade. */
+		if (!t->activated && sh->hover_task == i)
+			fg = KT_ACCENT;
+
 		ktui_draw_fill(krect(x, 0, per - 1, 1), bg);
 		/*
 		 * A filled square is a window you can see, a hollow one is
@@ -425,8 +443,8 @@ static void draw_bottom(struct sh_state *sh)
 					    : ktui_glyph[KT_G_SQUARE],
 			       t->minimized ? KT_DIM : fg, bg, KT_A_NONE);
 
-		const char *label = t->title[0] ? t->title : t->app_id;
-		ktui_draw_text(x + 2, 0, per - 3, label, fg, bg, KT_A_NONE);
+		ktui_draw_text(x + 2, 0, per - 3, sh_task_label(t), fg, bg,
+			       KT_A_NONE);
 		x += per;
 	}
 	ktui_draw_flush();
@@ -436,6 +454,20 @@ static void draw_bottom(struct sh_state *sh)
  * two are split at all: the hit map is what the last frame actually drew. */
 static void handle_click_bottom(struct sh_state *sh, int cx, int btn)
 {
+	/* Same three buttons as the top panel's list, and the same reason. */
+	if (sh->task_cell_w > 0 && cx >= sh->task_hit_x &&
+	    cx < sh->pager_hit_x) {
+		int i = (cx - sh->task_hit_x) / sh->task_cell_w;
+		if (i < 0 || i >= sh->ntasks)
+			return;
+		if (btn == SH_TRAY_BTN_MIDDLE)
+			sh_close_task(sh, i);
+		else if (btn == SH_TRAY_BTN_RIGHT)
+			sh_minimize_task(sh, i);
+		else
+			sh_toggle_task(sh, i);
+		return;
+	}
 	if (btn != SH_TRAY_BTN_LEFT)
 		return;
 
@@ -466,6 +498,56 @@ static void handle_click_bottom(struct sh_state *sh, int cx, int btn)
 
 /* ── clicks ────────────────────────────────────────────────────────────── */
 
+/*
+ * Which task entry, or -1. One place, because the draw, the click and the
+ * hover all have to agree about it and two of them disagreeing is a panel that
+ * highlights one window and raises another.
+ */
+static int task_at(const struct sh_state *sh, int cx)
+{
+	if (sh->task_cell_w <= 0 || cx < sh->task_hit_x)
+		return -1;
+	int i = (cx - sh->task_hit_x) / sh->task_cell_w;
+	return i >= 0 && i < sh->ntasks ? i : -1;
+}
+
+static int menu_at(const struct sh_state *sh, int cx)
+{
+	for (int i = 0; i < SH_NMENUS; i++)
+		if (cx >= sh->menu_hit_x[i] && cx < sh->menu_hit_end[i])
+			return i;
+	return -1;
+}
+
+/* The pointer moved. Nothing here acts; it only records what is under it, so
+ * the next frame can light it. The bottom panel has a window list too and no
+ * menu bar, which is the only difference. */
+static void handle_motion(struct sh_state *sh, int cx, int is_bottom)
+{
+	sh->hover_menu = is_bottom ? -1 : menu_at(sh, cx);
+	sh->hover_task = task_at(sh, cx);
+	if (is_bottom && cx >= sh->pager_hit_x)
+		sh->hover_task = -1;
+}
+
+/*
+ * The wheel over the workspace strip steps through workspaces, which is what
+ * every pager on every desktop does and costs one branch. It is also the only
+ * way to reach workspace 5 and up: the strip has room for four digits before
+ * the window list starts and the numbers do not scroll.
+ */
+static void handle_wheel(struct sh_state *sh, int cx, int up)
+{
+	if (cx < sh->ws_hit_x || cx >= sh->ws_hit_end || sh->nws < 2)
+		return;
+	int i = sh->active_ws + (up ? -1 : 1);
+	if (i < 0)
+		i = sh->nws - 1;
+	if (i >= sh->nws)
+		i = 0;
+	sh_activate_workspace(sh, i);
+}
+
 static void handle_click(struct sh_state *sh, int cx, int btn)
 {
 	if (sh->tray_hit_end > sh->tray_hit_x && cx >= sh->tray_hit_x &&
@@ -477,13 +559,36 @@ static void handle_click(struct sh_state *sh, int cx, int btn)
 		sh_tray_activate(sh, i, btn, cx * kwl_cell_w(), kwl_cell_h());
 		return;
 	}
+
+	/*
+	 * The window list answers all three buttons, the way a taskbar has
+	 * since Windows 95: left toggles, middle closes, right minimises. There
+	 * is no per-window menu to open — that is the compositor's client-menu,
+	 * reachable on the window itself — so right does the one thing a menu
+	 * would have been opened for.
+	 */
+	int task = task_at(sh, cx);
+	if (task >= 0) {
+		if (btn == SH_TRAY_BTN_MIDDLE)
+			sh_close_task(sh, task);
+		else if (btn == SH_TRAY_BTN_RIGHT)
+			sh_minimize_task(sh, task);
+		else
+			sh_toggle_task(sh, task);
+		return;
+	}
+
 	if (btn != SH_TRAY_BTN_LEFT)
 		return;
-	for (int i = 0; i < SH_NMENUS; i++)
-		if (cx >= sh->menu_hit_x[i] && cx < sh->menu_hit_end[i]) {
-			sh_spawn_menu(i);
-			return;
-		}
+
+	int menu = menu_at(sh, cx);
+	if (menu >= 0) {
+		/* Anchored under the word, in pixels, one row down — the panel
+		 * is `cells` tall and the menu hangs off the bottom of it. */
+		sh_spawn_menu(menu, sh->menu_hit_x[menu] * kwl_cell_w(),
+			      ktui_h * kwl_cell_h());
+		return;
+	}
 	if (cx >= sh->ws_hit_x && cx < sh->ws_hit_end) {
 		/* Two cells per workspace: the digit and its separator. */
 		int i = (cx - sh->ws_hit_x) / 2;
@@ -491,16 +596,12 @@ static void handle_click(struct sh_state *sh, int cx, int btn)
 			sh_activate_workspace(sh, i);
 		return;
 	}
-	if (sh->task_cell_w > 0 && cx >= sh->task_hit_x) {
-		int i = (cx - sh->task_hit_x) / sh->task_cell_w;
-		if (i >= 0 && i < sh->ntasks)
-			sh_activate_task(sh, i);
-	}
 }
 
 int panel_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	const char *output = NULL;
 	int edge = KWL_EDGE_TOP;
 	int dump = 0, dump_w = 100;
 
@@ -513,12 +614,18 @@ int panel_main(int argc, char **argv)
 			edge = KWL_EDGE_BOTTOM;
 		else if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* Which screen this panel is the panel of. The compositor
+		 * supervises one per output and names it here; without it
+		 * layer-shell picks one output and the others get nothing. */
+		else if (!strcmp(argv[i], "--output") && i + 1 < argc)
+			output = argv[++i];
 		else if (!strcmp(argv[i], "--version")) {
 			printf("kdos-shell 0.1.0\n");
 			return 0;
 		} else {
 			fprintf(stderr,
-				"usage: kdos-shell [--bottom] [--font NAME]\n"
+				"usage: kdos-shell [--bottom] [--output NAME] "
+				"[--font NAME]\n"
 				"       kdos-shell --dump [--dump-width N]\n");
 			return 2;
 		}
@@ -539,6 +646,8 @@ int panel_main(int argc, char **argv)
 	 * yet — the menu is a separate process and does not report back — so it
 	 * stays -1 and the bar is drawn unlit. */
 	sh.menu_open = -1;
+	sh.hover_menu = -1;
+	sh.hover_task = -1;
 	KwlConfig cfg = {
 		.role = KWL_ROLE_PANEL,
 		.edge = edge,
@@ -548,6 +657,7 @@ int panel_main(int argc, char **argv)
 		 * one program with no excuse for it. */
 		.app_id = "kdos-shell",
 		.font = font,
+		.output = output,
 		.exclusive = 1,
 	};
 
@@ -636,18 +746,30 @@ int panel_main(int argc, char **argv)
 		 * would burn a core to show the same pixels. Any event — a
 		 * window appearing, a click — wakes it sooner.
 		 */
-		if (ktui_backend()->poll_event(&ev, 1000)) {
-			if (ev.type == KT_EVT_MOUSE &&
-			    ev.press == KT_MP_PRESS &&
-			    (ev.btn == KT_MB_LEFT || ev.btn == KT_MB_MIDDLE ||
-			     ev.btn == KT_MB_RIGHT))
-				(is_bottom ? handle_click_bottom
-					   : handle_click)(&sh, ev.mx,
-					     ev.btn == KT_MB_MIDDLE
-						     ? SH_TRAY_BTN_MIDDLE
-					     : ev.btn == KT_MB_RIGHT
-						     ? SH_TRAY_BTN_RIGHT
-						     : SH_TRAY_BTN_LEFT);
+		if (ktui_backend()->poll_event(&ev, 1000) &&
+		    ev.type == KT_EVT_MOUSE) {
+			/* Plain movement arrives as KT_MP_DRAG — libkwl's
+			 * spelling, and the same one kdos-menu reads. */
+			if (ev.press == KT_MP_DRAG) {
+				handle_motion(&sh, ev.mx, is_bottom);
+			} else if (ev.press == KT_MP_PRESS) {
+				if (ev.btn == KT_MB_WHEEL_UP ||
+				    ev.btn == KT_MB_WHEEL_DOWN) {
+					if (!is_bottom)
+						handle_wheel(&sh, ev.mx,
+							     ev.btn == KT_MB_WHEEL_UP);
+				} else if (ev.btn == KT_MB_LEFT ||
+					   ev.btn == KT_MB_MIDDLE ||
+					   ev.btn == KT_MB_RIGHT) {
+					(is_bottom ? handle_click_bottom
+						   : handle_click)(&sh, ev.mx,
+						     ev.btn == KT_MB_MIDDLE
+							     ? SH_TRAY_BTN_MIDDLE
+						     : ev.btn == KT_MB_RIGHT
+							     ? SH_TRAY_BTN_RIGHT
+							     : SH_TRAY_BTN_LEFT);
+				}
+			}
 		}
 		if (ktui_resized) {
 			ktui_resized = 0;
