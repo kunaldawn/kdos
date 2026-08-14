@@ -241,7 +241,10 @@ static void add(const char *name, const char *exec, int submenu)
 static void add_place(const char *label, const char *path)
 {
 	char cmd[EXEC_MAX_LEN];
-	snprintf(cmd, sizeof(cmd), "foot -e mc %s", path);
+	/* Bounded explicitly: a mount point can be longer than the Exec field
+	 * and a truncated path is a menu row that opens the wrong directory —
+	 * and, under -Werror, a build that does not finish. */
+	snprintf(cmd, sizeof(cmd), "foot -e mc %.240s", path);
 	add(label, cmd, -1);
 }
 
@@ -311,6 +314,7 @@ static void load_system(void)
 	add("Theme — bone",     "foot -e kdos theme bone", -1);
 	add("",                 NULL, -2);		/* separator */
 	add("Applications…",    "kdos-appbox tui", -1);
+	add("Displays",         "kdos-display", -1);
 	add("Network",          "foot -e nmtui", -1);
 	add("Files",            "foot -e mc", -1);
 	add("Task Manager",     "foot -e btop", -1);
@@ -494,6 +498,21 @@ static void draw(const struct view *v)
 	ktui_draw_flush();
 }
 
+/* What a row reads as: a group's name, an item's name, or nothing for a
+ * separator. One place, because the drawing, the type-ahead and any future
+ * search all have to agree about it. */
+static const char *row_label(const struct view *v, int i)
+{
+	if (i < 0 || i >= v->n)
+		return "";
+	int row = v->rows[i];
+	if (row <= -2)
+		return GROUPS[-row - 2].name;
+	if (items[row].submenu == -2)
+		return "";
+	return items[row].name;
+}
+
 /* Separators are drawn but never selected — stepping onto one and having Enter
  * do nothing is how a menu feels broken. */
 static void step(struct view *v, int dir)
@@ -510,15 +529,51 @@ static void step(struct view *v, int dir)
 	}
 }
 
+/* A page, or an end. `step` rather than an assignment, so a separator is never
+ * what a page lands on. */
+static void jump(struct view *v, int dir, int n)
+{
+	for (int i = 0; i < n; i++)
+		step(v, dir);
+}
+
+/*
+ * Type-ahead: a letter goes to the next row that starts with it.
+ *
+ * Applications has nine groups and some of them have forty entries; walking to
+ * `wireshark` with the down arrow is not navigation. Wrapping from the current
+ * position rather than from the top is what makes pressing the same letter
+ * twice cycle through the matches, which is the behaviour every list on every
+ * desktop has.
+ */
+static void typeahead(struct view *v, int ch)
+{
+	int lc = ch >= 'A' && ch <= 'Z' ? ch + 32 : ch;
+
+	for (int k = 1; k <= v->n; k++) {
+		int i = (v->sel + k) % v->n;
+		const char *l = row_label(v, i);
+		int f = *l >= 'A' && *l <= 'Z' ? *l + 32 : *l;
+		if (*l && f == lc) {
+			v->sel = i;
+			return;
+		}
+	}
+}
+
 int menu_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	int which = 0;				/* 0 apps, 1 places, 2 system */
 	int at_x = -1, at_y = 0;
+	int dump = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* One frame, offscreen, as text: see kdos-launcher --dump. */
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
 		/*
 		 * Where the word that opened it is, in pixels. The panel knows
 		 * and the menu does not: they are two processes, and a
@@ -538,7 +593,7 @@ int menu_main(int argc, char **argv)
 		else {
 			fprintf(stderr, "usage: kdos-menu "
 					"[applications|places|system] "
-					"[--at X Y] [--font NAME]\n");
+					"[--at X Y] [--dump] [--font NAME]\n");
 			return 2;
 		}
 	}
@@ -564,6 +619,14 @@ int menu_main(int argc, char **argv)
 		rows = 24;
 	if (rows < 4)
 		rows = 4;
+
+	if (dump) {
+		sh_theme_from_cache();
+		ktui_offscreen_init(42, rows);
+		draw(&v);
+		ktui_draw_dump();
+		return 0;
+	}
 
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
@@ -667,6 +730,22 @@ int menu_main(int argc, char **argv)
 		case KT_K_DOWN:
 			step(&v, 1);
 			break;
+		case KT_K_PGUP:
+			jump(&v, -1, ktui_h - 2);
+			break;
+		case KT_K_PGDN:
+			jump(&v, 1, ktui_h - 2);
+			break;
+		case KT_K_HOME:
+			v.sel = 0;
+			if (v.n && row_label(&v, 0)[0] == '\0')
+				step(&v, 1);
+			break;
+		case KT_K_END:
+			v.sel = v.n ? v.n - 1 : 0;
+			if (v.n && row_label(&v, v.sel)[0] == '\0')
+				step(&v, -1);
+			break;
 		case KT_K_LEFT:
 			if (which == 0 && v.group >= 0)
 				build_view(&v, which, -1);
@@ -686,6 +765,8 @@ int menu_main(int argc, char **argv)
 			goto done;
 		}
 		default:
+			if (ev.key >= 0x20 && ev.key < 0x7f)
+				typeahead(&v, ev.key);
 			break;
 		}
 	}

@@ -88,7 +88,7 @@ struct kdos_child {
 	bool live;
 	int tmpl;			/* index into TEMPLATES */
 	char output[KDOS_OUTPUT_NAME_MAX];	/* "" for the global ones */
-	const char *argv[5];
+	const char *argv[8];
 	pid_t pid;
 	int fails;
 	time_t since;
@@ -128,6 +128,15 @@ child_build_argv(struct kdos_child *c)
 	if (c->output[0]) {
 		c->argv[n++] = "--output";
 		c->argv[n++] = c->output;
+	}
+	/*
+	 * One font for all of the chrome, from comp.conf. kdos_conf outlives
+	 * every child, so pointing into it is safe — the same rule the output
+	 * name follows by living in the slot.
+	 */
+	if (kdos_conf.chrome_font[0]) {
+		c->argv[n++] = "--font";
+		c->argv[n++] = kdos_conf.chrome_font;
 	}
 	c->argv[n] = NULL;
 }

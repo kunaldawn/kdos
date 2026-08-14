@@ -26,6 +26,10 @@
 
 enum { SH_PRIV_MIC = 0, SH_PRIV_CAM };
 
+/* The clickable applets on the right of the top panel, right to left. */
+enum { SH_AP_CLOCK = 0, SH_AP_BATT, SH_AP_VOL, SH_AP_NET, SH_AP_RESTART,
+       SH_AP_N };
+
 /* One app holding one capture device. `pid` is set for the camera half, which
  * finds its users in /proc; the microphone half comes from PipeWire, where a
  * stream need not have a pid at all. */
@@ -126,6 +130,14 @@ struct sh_state {
 	/* Where the last frame put things, so a click can be mapped back to
 	 * what was drawn rather than to what the layout code intended. */
 	int ws_hit_x, ws_hit_end;
+	/*
+	 * And where each workspace digit STARTS. A fixed two-cell stride was
+	 * right until somebody set `<desktops number="12"/>`: from ten on, the
+	 * label is two cells wide plus its separator, every later digit is
+	 * offset by one more, and clicking the strip activated the wrong
+	 * workspace. The draw records what it drew.
+	 */
+	int ws_hit[SH_MAX_WS];
 	int menu_hit_x[SH_NMENUS], menu_hit_end[SH_NMENUS];
 	int menu_open;			/* which label is lit, or -1 */
 	/* What the pointer is over, or -1. The panel and the menu are two
@@ -139,6 +151,19 @@ struct sh_state {
 	int show_hit_x;
 	int task_hit_x, task_cell_w;
 	int tray_hit_x, tray_hit_end;
+
+	/*
+	 * The right wing's applets, and where the last frame put each of them.
+	 *
+	 * Everything on that side of the panel used to be a picture: the clock,
+	 * the battery and the "something needs restarting" mark were drawn and
+	 * answered nothing, and there was no volume or network indicator at all
+	 * — so on a laptop with no media keys there was NO WAY to change the
+	 * volume from the desktop, and nothing said whether the machine was on
+	 * a network. Each is a span now, and each does the obvious thing when
+	 * it is clicked.
+	 */
+	int ap_x[SH_AP_N], ap_end[SH_AP_N];
 };
 
 /* One binary, dispatched on its own basename — the same trick kdos-tools and
@@ -156,6 +181,21 @@ int prompt_main(int argc, char **argv);		/* kdos-prompt   */
 
 int notifyd_main(int argc, char **argv);	/* kdos-notifyd  */
 int osd_main(int argc, char **argv);		/* kdos-osd      */
+int cal_main(int argc, char **argv);		/* kdos-cal      */
+int display_main(int argc, char **argv);	/* kdos-display  */
+
+/*
+ * The ALSA mixer, shared with the panel (osd.c).
+ *
+ * The OSD owns this code because it is the thing that CHANGES the volume, and
+ * the panel needs the same numbers to draw them — two readers of one mixer,
+ * never two implementations of what "62%" means. `sh_volume_get` returns -1
+ * when the machine has no mixer at all, which is a panel with no volume applet
+ * rather than a panel that lies about one.
+ */
+int sh_volume_get(int *muted);
+void sh_volume_set(int pct);
+void sh_volume_toggle(void);
 
 int sh_connect(struct sh_state *sh);
 void sh_disconnect(struct sh_state *sh);

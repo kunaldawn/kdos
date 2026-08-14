@@ -65,6 +65,16 @@ static char filter_label[256];
 
 static bool save_mode, dir_mode, multi_mode;
 static char save_name[256];
+/*
+ * Dotfiles, off by default and reachable — Ctrl+H, which is the same key every
+ * file manager on the machine uses, mc included. A chooser that can never show
+ * a hidden file cannot open one, and `~/.config` is a real place people keep
+ * things they want to edit.
+ */
+static bool show_hidden;
+/* Save mode only: Enter on an existing name asks once before it answers. */
+static bool overwrite_ok;
+static char note[128];
 
 /* ── matching ──────────────────────────────────────────────────────────── */
 
@@ -144,7 +154,12 @@ static void load_dir(void)
 		return;
 	struct dirent *e;
 	while ((e = readdir(d)) && nrows < MAX_ROWS - 1) {
-		if (!strcmp(e->d_name, ".") || e->d_name[0] == '.')
+		/* `..` is added below, unconditionally and first; `.` is never
+		 * useful, and everything else beginning with a dot is a
+		 * decision the user makes with Ctrl+H. */
+		if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+			continue;
+		if (!show_hidden && e->d_name[0] == '.')
 			continue;
 
 		char path[2048];
@@ -323,11 +338,19 @@ static void draw(const char *title)
 		ktui_draw_text(2, y, w - 4, line, KT_DIM, KT_SURFACE, KT_A_NONE);
 	}
 
-	ktui_draw_text(2, h - 2, w - 4,
-		       save_mode ? "Enter save   Esc cancel"
-		       : multi_mode ? "Space mark   Enter open   Esc cancel"
-				    : "Enter open   Esc cancel",
-		       KT_DIM, KT_SURFACE, KT_A_NONE);
+	/* The note takes the hint row when there is one: "that file exists" is
+	 * worth more than a reminder of what Escape does, and it is the only
+	 * row a dialog this size can spare. */
+	if (note[0])
+		ktui_draw_text(2, h - 2, w - 26, note, KT_WARN, KT_SURFACE,
+			       KT_A_NONE);
+	else
+		ktui_draw_text(2, h - 2, w - 26,
+			       save_mode ? "Enter save   Esc cancel"
+			       : multi_mode
+				       ? "Space mark   ^H hidden   Esc cancel"
+				       : "Enter open   ^H hidden   Esc cancel",
+			       KT_DIM, KT_SURFACE, KT_A_NONE);
 
 	/*
 	 * TWO REAL BUTTONS, right-aligned on the hint row.
@@ -389,6 +412,23 @@ static int activate(void)
 		}
 		if (!save_name[0])
 			return 0;
+		/*
+		 * ASK ONCE before naming a file that already exists. The
+		 * application does the writing and most of them will not ask
+		 * again — a Save dialog that silently answers with the name of
+		 * somebody's existing document is how work is lost. A second
+		 * Enter is the confirmation, which is why the note says so.
+		 */
+		char full[2048];
+		snprintf(full, sizeof(full), "%s%s%s", cwd,
+			 strcmp(cwd, "/") ? "/" : "", save_name);
+		if (!overwrite_ok && access(full, F_OK) == 0) {
+			overwrite_ok = true;
+			snprintf(note, sizeof(note),
+				 "%.60s exists — Enter again to replace it",
+				 save_name);
+			return 0;
+		}
 		emit_path(save_name);
 		return 1;
 	}
@@ -437,10 +477,17 @@ int pick_main(int argc, char **argv)
 	const char *font = NULL;
 	const char *title = "Open File";
 	const char *start = NULL;
+	int dump = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* One frame, offscreen, as text: see kdos-launcher --dump. This
+		 * is the dialog every boxed application's Open goes through, so
+		 * it is the one whose layout is worth checking without a
+		 * compositor to hand. */
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
 		else if (!strcmp(argv[i], "--title") && i + 1 < argc)
 			title = argv[++i];
 		else if (!strcmp(argv[i], "--save"))
@@ -477,7 +524,8 @@ int pick_main(int argc, char **argv)
 				"usage: kdos-pick [--save] [--directory] "
 				"[--multiple] [--title T] [--name N]\n"
 				"                 [--dir D] "
-				"[--filter 'Label:*.png *.jpg'] [--font F]\n");
+				"[--filter 'Label:*.png *.jpg'] [--dump] "
+				"[--font F]\n");
 			return 2;
 		}
 	}
@@ -485,6 +533,14 @@ int pick_main(int argc, char **argv)
 	const char *home = getenv("HOME");
 	snprintf(cwd, sizeof(cwd), "%s", start ? start : (home ? home : "/"));
 	load_dir();
+
+	if (dump) {
+		sh_theme_from_cache();
+		ktui_offscreen_init(64, 22);
+		draw(title);
+		ktui_draw_dump();
+		return 0;
+	}
 
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
@@ -576,12 +632,30 @@ int pick_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
+		int page = ktui_h - 5;
+		if (page < 1)
+			page = 1;
+
 		if (ev.key == KT_K_ESC)
 			break;
 		if (ev.key == KT_K_UP) {
 			sel--;
 		} else if (ev.key == KT_K_DOWN) {
 			sel++;
+		} else if (ev.key == KT_K_PGUP) {
+			sel -= page;
+		} else if (ev.key == KT_K_PGDN) {
+			sel += page;
+		} else if (ev.key == KT_K_HOME) {
+			sel = 0;
+		} else if (ev.key == KT_K_END) {
+			sel = nrows - 1;
+		} else if (ev.key == 8) {
+			/* Ctrl+H: xkb folds the modifier into the control code,
+			 * so this is the character, not a chord to decode.
+			 * BACKSPACE is 127 and is the save name's, not this. */
+			show_hidden = !show_hidden;
+			load_dir();
 		} else if (ev.key == KT_K_LEFT) {
 			enter_dir("..");
 		} else if (ev.key == ' ' && multi_mode && !save_mode) {
@@ -603,6 +677,30 @@ int pick_main(int argc, char **argv)
 				   n + 1 < sizeof(save_name)) {
 				save_name[n] = (char)ev.key;
 				save_name[n + 1] = '\0';
+			}
+			/* The name changed, so the answer to "may I replace
+			 * that" is no longer about this file. */
+			overwrite_ok = false;
+			note[0] = '\0';
+		} else if (ev.key >= 0x20 && ev.key < 0x7f) {
+			/*
+			 * Type-ahead. A directory can hold four thousand
+			 * entries and this is the dialog every boxed
+			 * application's Open goes through; arrowing to `zlib`
+			 * is not a way to choose a file. Wraps from where the
+			 * cursor is, so the same letter cycles.
+			 */
+			int lc = ev.key >= 'A' && ev.key <= 'Z' ? ev.key + 32
+								: ev.key;
+			for (int k = 1; k <= nrows; k++) {
+				int i = (sel + k) % nrows;
+				int f = rows[i].name[0];
+				if (f >= 'A' && f <= 'Z')
+					f += 32;
+				if (f == lc) {
+					sel = i;
+					break;
+				}
 			}
 		}
 

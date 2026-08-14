@@ -83,10 +83,27 @@
     <!-- new with the fork: maximize / fullscreen finally exist -->
     <keybind key="W-m"><action name="ToggleMaximize"/></keybind>
     <keybind key="W-f"><action name="ToggleFullscreen"/></keybind>
+    <!-- Minimise had no key at all: the taskbar could do it with a click and
+         the keyboard could not, so a window sent behind another could only be
+         got at with the mouse. -->
+    <keybind key="W-n"><action name="Iconify"/></keybind>
+    <!-- The root menu from the keyboard. It is a right-click on the desktop
+         otherwise, and the desktop is not always reachable — a maximised
+         window covers all of it. atCursor="no" puts it where the pointer is
+         NOT, which is the right answer for a menu opened by a key. -->
+    <keybind key="W-space">
+      <action name="ShowMenu" menu="root-menu" atCursor="no"/>
+    </keybind>
 
     <!-- the three shell front ends that had no way in until now -->
     <keybind key="A-F2"><action name="Execute" command="kdos-run"/></keybind>
     <keybind key="W-e"><action name="Execute" command="foot -e mc"/></keybind>
+    <!-- The screens. labwc takes its output configuration over
+         wlr-output-management-v1 and KDOS had no client for it, so a mode, a
+         scale or a second monitor's place could not be set at all. Both keys,
+         because a laptop's own display key is the one people press. -->
+    <keybind key="W-p"><action name="Execute" command="kdos-display"/></keybind>
+    <keybind key="XF86Display"><action name="Execute" command="kdos-display"/></keybind>
     <keybind key="Print"><action name="Execute" command="kdos-shot region"/></keybind>
     <keybind key="S-Print"><action name="Execute" command="kdos-shot screen"/></keybind>
 
@@ -110,6 +127,29 @@
     <keybind key="XF86MonBrightnessUp"><action name="Execute" command="kdos-osd brightness +10"/></keybind>
     <keybind key="XF86MonBrightnessDown"><action name="Execute" command="kdos-osd brightness -10"/></keybind>
   </keyboard>
+
+  <!--
+    Pointing devices. Nothing here is set, and the block is left as a comment
+    on purpose: labwc's own defaults are already right for a laptop —
+    tap-to-click is ENABLED by default (libinput_category_create() in
+    config/libinput.c), which is the one people expect to have to turn on.
+    These are the knobs for the ones that are a preference rather than a
+    default, so they can be found without reading labwc's manual.
+
+    <libinput>
+      <device category="touchpad">
+        <naturalScroll>yes</naturalScroll>
+        <tap>yes</tap>
+        <tapButtonMap>lrm</tapButtonMap>
+        <disableWhileTyping>yes</disableWhileTyping>
+        <pointerSpeed>0.0</pointerSpeed>
+      </device>
+      <device category="default">
+        <accelProfile>adaptive</accelProfile>
+        <scrollFactor>1.0</scrollFactor>
+      </device>
+    </libinput>
+  -->
 
   <mouse>
     <default />

@@ -136,6 +136,34 @@ static void box_env(KbArgv *a, const char *image)
 	kb_argv_add(a, "GTK_THEME=KDOS");
 
 	/*
+	 * THE PORTAL, AND WHY THE ENV IS WHAT SWITCHES IT ON.
+	 *
+	 * KDOS serves FileChooser, Settings and OpenURI from
+	 * xdg-desktop-portal-kdos, and every one of those is for the benefit of
+	 * boxed applications — but a GTK app only ROUTES through the portal
+	 * when it believes it is sandboxed, which it decides from
+	 * /.flatpak-info or from this variable. A distrobox is neither, so
+	 * every one of them went on drawing its own GtkFileChooser: the KDOS
+	 * file dialog existed, the portal answered, and nothing ever called it.
+	 * Firefox's `widget.use-xdg-desktop-portal.file-picker` default of 2
+	 * ("auto") consults the same variable, so it is covered by this line
+	 * too.
+	 *
+	 * The cost, stated: with the portal on, GTK's Print dialog also goes
+	 * through it, and KDOS has no Print backend (kdos-portals.conf says
+	 * `default=none` and means it). Printing from a boxed app did not work
+	 * before this either — the box has no route to the host's cups socket —
+	 * so nothing that worked stops working; it fails through a different
+	 * dialog.
+	 *
+	 * XDG_CURRENT_DESKTOP goes with it because a toolkit that has decided
+	 * to use portals then asks which desktop it is on, and the answer
+	 * inside the container is otherwise nothing at all.
+	 */
+	kb_argv_add(a, "GTK_USE_PORTAL=1");
+	kb_argv_add(a, "XDG_CURRENT_DESKTOP=KDOS");
+
+	/*
 	 * Input methods. A boxed app reaches fcitx5 through the COMPOSITOR —
 	 * text-input-v3 to kdos-comp, which relays to input-method-v2 — and
 	 * never directly, because fcitx5 runs on the host and its bus name is
