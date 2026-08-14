@@ -72,7 +72,7 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 
 install -Dm755 kdos-shell "$PKG/usr/bin/kdos-shell"
 # Dispatched on its own basename, so the launcher is a link rather than a
-# second binary. `bind Super+D = spawn kdos-launcher` in comp.conf reaches it.
+# second binary. The skel rc.xml's W-d keybind Executes it by that name.
 ln -s kdos-shell "$PKG/usr/bin/kdos-launcher"
 ln -s kdos-shell "$PKG/usr/bin/kdos-menu"
 ln -s kdos-shell "$PKG/usr/bin/kdos-desk"

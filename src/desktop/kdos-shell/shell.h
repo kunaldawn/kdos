@@ -12,6 +12,8 @@
 #ifndef KDOS_SHELL_H
 #define KDOS_SHELL_H
 
+#include <signal.h>	/* sig_atomic_t, for the live-retint flag below */
+
 #include "ktui.h"
 #include "kxdg.h"
 
@@ -179,8 +181,17 @@ int sh_read_line(const char *path, char *buf, size_t len);
 int sh_restart_count(void);
 
 /* The accent the desktop is currently wearing, from
- * $XDG_CACHE_HOME/kdos/theme. The same file kdos-appbox's TUI reads, so a
- * `kdos theme amber` retints the panel on its next start. */
+ * $XDG_CACHE_HOME/kdos/theme. The same file kdos-appbox's TUI reads. */
 void sh_theme_from_cache(void);
+
+/*
+ * Live retint. A long-lived surface (the panel, the notification daemon) calls
+ * sh_theme_watch() once and then checks sh_theme_dirty each time round its
+ * loop: on set, clear it, sh_theme_from_cache(), ktui_draw_invalidate(). The
+ * short-lived front ends (launcher, menu, osd, pick) need neither — they read
+ * the accent when they start, which is after the change.
+ */
+extern volatile sig_atomic_t sh_theme_dirty;
+void sh_theme_watch(void);
 
 #endif /* KDOS_SHELL_H */
