@@ -185,6 +185,23 @@ int kwl_cell_w(void);
 int kwl_cell_h(void);
 
 /*
+ * Which cells of this surface answer the pointer at all.
+ *
+ * `n` rectangles in CELLS; n == 0 means the surface takes no pointer input and
+ * every click falls through to whatever is behind it. Pass n < 0 to go back to
+ * the default, which is the whole surface.
+ *
+ * THE DESKTOP IS WHY THIS EXISTS. kdos-desk covers the entire output, so with
+ * the default region it ate every click on the root window — and the
+ * compositor's own root-menu mousebind (right-press -> ShowMenu, menu.xml)
+ * therefore never fired for as long as desktop icons were on, which is the
+ * shipped default. The desk now claims only the cells its icons occupy, so a
+ * click on bare wallpaper reaches the compositor exactly as it does with the
+ * icons switched off.
+ */
+void kwl_input_cells(const KRect *rects, int n);
+
+/*
  * The connection and the seat, for a consumer that needs to bind protocols of
  * its own — kdos-shell binds foreign-toplevel and ext-workspace on exactly this
  * display. Deliberately shared rather than opened a second time: two

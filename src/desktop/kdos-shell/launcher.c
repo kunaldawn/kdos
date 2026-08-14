@@ -49,6 +49,15 @@ struct entry {
 	char exec[256];		/* argv[0..] as written  */
 	char id[96];		/* desktop file id       */
 	int alien;		/* lives in a box        */
+	/*
+	 * `Terminal=true`: the entry is a program that draws in a terminal and
+	 * has none of its own. kdos-menu has always honoured it; this did not,
+	 * so every console application on the machine — mc, nvim, btop, htop,
+	 * the whole of what a text-mode desktop is FOR — was launched from
+	 * Super+D with no terminal, drew nothing and exited. Silently: a
+	 * launcher that has already closed has nowhere to report it.
+	 */
+	int terminal;
 };
 
 static struct entry entries[MAX_ENTRIES];
@@ -130,6 +139,7 @@ static void add_desktop_dir(const char *dir)
 		snprintf(t->name, sizeof(t->name), "%s", name);
 		snprintf(t->exec, sizeof(t->exec), "%s", exec);
 		strip_field_codes(t->exec);
+		t->terminal = kxdg_bool(&ent, "Terminal", 0);
 		/*
 		 * An entry whose Exec IS the box launcher is a box app, whatever
 		 * the alien-apps table is keyed by. That table's first column is
@@ -265,11 +275,19 @@ static void launch(const struct entry *e)
 	int n = 0;
 
 	if (e->alien) {
-		/* Through kdos-appbox, never around it — see the header. */
+		/* Through kdos-appbox, never around it — see the header. A
+		 * boxed app carries its own terminal question inside the box;
+		 * `run` is the whole interface. */
 		argv[n++] = "kdos-appbox";
 		argv[n++] = "run";
 		argv[n++] = e->id;
 	} else {
+		/* Terminal=true is a program with no window of its own — the
+		 * same wrapping kdos-menu does, and for the same reason. */
+		if (e->terminal) {
+			argv[n++] = "foot";
+			argv[n++] = "-e";
+		}
 		snprintf(buf, sizeof(buf), "%s", e->exec);
 		char *save = NULL;
 		for (char *tok = strtok_r(buf, " \t", &save);
@@ -358,13 +376,34 @@ static void draw(const char *query, int sel, int top)
 int launcher_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	int dump = 0;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/*
+		 * One frame, offscreen, as text — the same seam `kdos-shell
+		 * --dump` and `kdosbuild --preview` have. Every geometry defect
+		 * this toolkit has shipped was invisible to the compiler and to
+		 * a test suite with no terminal; this is how a layout gets
+		 * looked at without a compositor.
+		 */
+		else if (!strcmp(argv[i], "--dump"))
+			dump = 1;
 		else {
-			fprintf(stderr, "usage: kdos-launcher [--font NAME]\n");
+			fprintf(stderr,
+				"usage: kdos-launcher [--dump] [--font NAME]\n");
 			return 2;
 		}
+	}
+
+	if (dump) {
+		sh_theme_from_cache();
+		gather();
+		filter("");
+		ktui_offscreen_init(64, 18);
+		draw("", 0, 0);
+		ktui_draw_dump();
+		return 0;
 	}
 
 	KwlConfig cfg = {
@@ -467,6 +506,21 @@ int launcher_main(int argc, char **argv)
 			break;
 		case KT_K_DOWN:
 			sel++;
+			break;
+		/* A page at a time, and the ends. The list is every application
+		 * on the machine — a hundred of them before a query narrows it
+		 * — and one row per keystroke is not a way through that. */
+		case KT_K_PGUP:
+			sel -= ktui_h - 4;
+			break;
+		case KT_K_PGDN:
+			sel += ktui_h - 4;
+			break;
+		case KT_K_HOME:
+			sel = 0;
+			break;
+		case KT_K_END:
+			sel = nmatch - 1;
 			break;
 		case KT_K_BACKSPACE:
 			if (qlen > 0)

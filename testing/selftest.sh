@@ -1177,6 +1177,16 @@ sleep 3
 echo "file:///tmp/chosen.txt"
 PICK
     chmod +x "$OUT/pbin/kdos-pick"
+    # OpenURI forwards to `kdos-appbox open`, so the stand-in records what it
+    # was handed. The percent-encoding matters: the URI is a URI and the
+    # program underneath takes a PATH, and every space in every Downloads
+    # folder goes through this decode.
+    cat > "$OUT/pbin/kdos-appbox" <<APPBOX
+#!/bin/sh
+printf '%s\n' "\$*" >> "$OUT/opened.log"
+APPBOX
+    chmod +x "$OUT/pbin/kdos-appbox"
+    : > "$OUT/opened.log"
 
     PORTAL_ADDR=$(dbus-daemon --session --print-address --fork \
         --print-pid=3 3>"$OUT/portal-bus.pid")
@@ -1212,9 +1222,37 @@ PICK
     t1=$(date +%s%N)
     took=$(( (t1 - t0) / 1000000 ))
 
+    # OpenURI — "open this on the host for me", which is what a containerised
+    # application asks when a link or a downloaded file is clicked. There was no
+    # backend for it at all, so the click did nothing, silently. It must answer
+    # AT ONCE (there is no dialog) and hand the decoded path to the program that
+    # knows what opens it.
+    DBUS_SESSION_BUS_ADDRESS="$PORTAL_ADDR" timeout 2 busctl \
+        --address="$PORTAL_ADDR" call \
+        org.freedesktop.impl.portal.desktop.kdos \
+        /org/freedesktop/portal/desktop \
+        org.freedesktop.impl.portal.OpenURI OpenURI \
+        "osssa{sv}" /org/f/p/r2 app.Test "" \
+        "file:///tmp/a%20b.txt" 0 > "$OUT/portal-uri.out" 2>&1
+    uri_rc=$?
+
     wait $OPEN_PID 2>/dev/null
     kill $PORTAL_PID 2>/dev/null
     kill "$PORTAL_BUS_PID" 2>/dev/null
+
+    [ "$uri_rc" = 0 ] || {
+        echo "  OpenURI did not answer: $(cat "$OUT/portal-uri.out")"; exit 1; }
+    grep -q "^ua{sv} 0 " "$OUT/portal-uri.out" || {
+        echo "  OpenURI did not report success: $(cat "$OUT/portal-uri.out")"
+        exit 1; }
+    # The child is double-forked, so give it a moment to land.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [ -s "$OUT/opened.log" ] && break
+        sleep 0.2
+    done
+    grep -qx "open /tmp/a b.txt" "$OUT/opened.log" || {
+        echo "  OpenURI did not hand the decoded path to kdos-appbox: $(cat "$OUT/opened.log")"
+        exit 1; }
 
     [ "$set_rc" = 0 ] || {
         echo "  Settings blocked behind the open dialog (rc=$set_rc)"
@@ -1233,9 +1271,73 @@ PICK
         echo "  OpenFile did not report success: $(cat "$OUT/portal-open.out")"
         exit 1; }
     echo "  Settings answered in ${took}ms with a dialog open; the deferred reply carried the URI"
+    echo "  OpenURI answered at once and handed the decoded path on"
 else
     echo "  portal (skipped — no sd-bus, dbus-daemon or busctl on this host)"
 fi
+
+echo
+echo "==> the shell's front ends draw offscreen, and the boxes line up"
+# WHAT THIS CATCHES. Six geometry defects have shipped in this toolkit and not
+# one was visible to a compiler: text drawn over a box border, a button on top
+# of the hint row, a column that drifted out from under its own header. They are
+# only visible when somebody LOOKS at the grid — so the grid is printed, without
+# a compositor, and the shape of it is asserted.
+#
+# libkwl is stubbed (testing/fixtures/shell/dumpmain.c), which is what makes it
+# runnable on a host with no fcft and no wlroots — the dump path touches
+# neither.
+$CC $STD $WARN -o "$OUT/dumpcheck" \
+    -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
+    -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+    testing/fixtures/shell/dumpmain.c \
+    src/desktop/kdos-shell/cal.c src/desktop/kdos-shell/menu.c \
+    src/desktop/kdos-shell/launcher.c src/desktop/kdos-shell/pick.c \
+    src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkxdg/*.c \
+    src/libs/libkbase/*.c
+
+# Every row the same width, which is the whole of "the box lines up": a frame
+# whose bottom border is shorter than its top is a rect that was drawn past the
+# surface, and that is exactly how the notification daemon once painted an empty
+# box in the corner.
+check_box() {
+    awk -v what="$1" '
+        { n = length($0)
+          if (w == 0) w = n
+          else if (n != w) { printf "  %s: row %d is %d wide, the box is %d\n",
+                             what, NR, n, w; bad = 1 } }
+        END { if (NR < 4) { printf "  %s: drew %d rows\n", what, NR; bad = 1 }
+              exit bad }
+    ' || exit 1
+}
+
+"$OUT/dumpcheck" cal --dump > "$OUT/dump-cal.txt"
+check_box cal < "$OUT/dump-cal.txt"
+grep -q "Mo Tu We Th Fr Sa Su" "$OUT/dump-cal.txt" || {
+    echo "  the calendar lost its weekday header"; exit 1; }
+
+"$OUT/dumpcheck" menu system --dump > "$OUT/dump-menu.txt"
+check_box menu < "$OUT/dump-menu.txt"
+grep -q "Shut Down" "$OUT/dump-menu.txt" || {
+    echo "  the System menu lost its last row — the box is shorter than the list"
+    exit 1; }
+
+"$OUT/dumpcheck" launcher --dump > "$OUT/dump-launcher.txt"
+check_box launcher < "$OUT/dump-launcher.txt"
+
+"$OUT/dumpcheck" pick --dump > "$OUT/dump-pick.txt"
+check_box pick < "$OUT/dump-pick.txt"
+# The chooser's two buttons and the hint text share one row, and the row is the
+# narrowest thing in this dialog. Both present means neither pushed the other
+# off the end — the check that would have caught a hint wide enough to overwrite
+# the Open button.
+grep -q "\[ Open \]" "$OUT/dump-pick.txt" || {
+    echo "  kdos-pick has no Open button"; exit 1; }
+grep -q "\[ Cancel \].*\[ Open \]" "$OUT/dump-pick.txt" || {
+    echo "  kdos-pick's buttons are not both on their row"; exit 1; }
+grep -q "Esc cancel.*\[ Cancel \]" "$OUT/dump-pick.txt" || {
+    echo "  kdos-pick's hint row and its buttons collide"; exit 1; }
+echo "  cal, menu, launcher and pick draw square boxes with their controls in them"
 
 echo
 echo "==> the recording indicator names the app holding the camera"

@@ -140,15 +140,51 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 				&body);
 	if (r < 0)
 		return r;
-	/* actions (as) and hints (a{sv}) are read past rather than parsed: this
-	 * daemon draws text and has no buttons, so advertising `actions` in
-	 * GetCapabilities would be a promise it cannot keep. */
+	/* actions (as) is read past: this daemon draws text and has no buttons,
+	 * so advertising `actions` in GetCapabilities would be a promise it
+	 * cannot keep. */
 	r = sd_bus_message_skip(m, "as");
 	if (r < 0)
 		return r;
-	r = sd_bus_message_skip(m, "a{sv}");
+
+	/*
+	 * The hints are NOT skipped, because one of them is `urgency` and it is
+	 * the only thing in this protocol that says a notification matters.
+	 * Skipping the lot left every toast at normal: a critical one — the
+	 * battery about to run out, a disk that stopped answering — was drawn
+	 * in the same accent as "download finished", and the daemon carried an
+	 * `urgent` field that nothing ever set.
+	 *
+	 * 0 low, 1 normal, 2 critical. Anything else is normal: a hint is a
+	 * value from another program and this is not the place to be strict.
+	 */
+	int urgency = 1;
+	r = sd_bus_message_enter_container(m, 'a', "{sv}");
 	if (r < 0)
 		return r;
+	while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
+		const char *key = NULL;
+		r = sd_bus_message_read(m, "s", &key);
+		if (r < 0)
+			return r;
+		if (key && !strcmp(key, "urgency") &&
+		    sd_bus_message_enter_container(m, 'v', "y") > 0) {
+			uint8_t u = 1;
+			r = sd_bus_message_read(m, "y", &u);
+			if (r < 0)
+				return r;
+			urgency = u;
+			sd_bus_message_exit_container(m);
+		} else {
+			/* Every other hint, and an `urgency` that is not the
+			 * byte the spec says it is. */
+			r = sd_bus_message_skip(m, "v");
+			if (r < 0)
+				return r;
+		}
+		sd_bus_message_exit_container(m);
+	}
+	sd_bus_message_exit_container(m);
 	r = sd_bus_message_read(m, "i", &timeout);
 	if (r < 0)
 		return r;
@@ -175,14 +211,21 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	snprintf(t->app, sizeof(t->app), "%s", app ? app : "");
 	snprintf(t->summary, sizeof(t->summary), "%s", summary ? summary : "");
 	snprintf(t->body, sizeof(t->body), "%s", body ? body : "");
+	t->urgent = urgency >= 2;
 	/*
 	 * -1 means "the server decides"; 0 means "never expire", and that is
 	 * honoured rather than clamped — a "battery critical" notification is
 	 * supposed to stay up.
+	 *
+	 * And when the server decides, it decides differently for a CRITICAL
+	 * one: it stays until it is dismissed, which is what every other
+	 * daemon does and what the urgency is for. A five-second toast about a
+	 * battery at 3% is a toast that will be missed.
 	 */
-	t->expires_ms = timeout == 0	? 0
-			: timeout < 0	? now_ms() + 5000
-					: now_ms() + timeout;
+	t->expires_ms = timeout == 0	 ? 0
+			: timeout > 0	 ? now_ms() + timeout
+			: t->urgent	 ? 0
+					 : now_ms() + 5000;
 
 	return sd_bus_reply_method_return(m, "u", t->id);
 }
@@ -284,7 +327,11 @@ static void draw_toasts(void)
 		int accent = t->urgent ? KT_ERR : KT_ACCENT;
 
 		ktui_draw_fill(r, KT_SURFACE);
-		ktui_draw_box(r, NULL, accent, KT_SURFACE, 1);
+		/* The application's own name in the border, where a title goes.
+		 * It was captured and never drawn, and "which program is
+		 * telling me this" is half of what a toast has to say. */
+		ktui_draw_box(r, t->app[0] ? t->app : NULL, accent, KT_SURFACE,
+			      1);
 		ktui_draw_text(2, y + 1, w - 4, t->summary, KT_TEXT, KT_SURFACE,
 			       KT_A_NONE);
 		if (t->body[0])

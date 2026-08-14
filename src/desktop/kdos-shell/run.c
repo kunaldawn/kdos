@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -39,6 +40,83 @@
 #include "shell.h"
 
 #define MAX_CMD 512
+#define MAX_HIST 50
+
+/*
+ * The history, which is what makes a run box worth opening twice.
+ *
+ * `$XDG_DATA_HOME/kdos/run-history`, one command per line, newest last. A
+ * plain file rather than anything cleverer: it is readable, it is editable,
+ * and `kdos-run` is not important enough to own a format. Fifty lines, because
+ * the fifty-first is never what anybody was reaching for.
+ */
+static char hist[MAX_HIST][MAX_CMD];
+static int nhist;
+
+static int hist_path(char *buf, size_t n)
+{
+	const char *data = getenv("XDG_DATA_HOME");
+	const char *home = getenv("HOME");
+
+	if (data && *data)
+		snprintf(buf, n, "%s/kdos", data);
+	else if (home && *home)
+		snprintf(buf, n, "%s/.local/share/kdos", home);
+	else
+		return -1;
+	mkdir(buf, 0700);
+	if (data && *data)
+		snprintf(buf, n, "%s/kdos/run-history", data);
+	else
+		snprintf(buf, n, "%s/.local/share/kdos/run-history", home);
+	return 0;
+}
+
+static void hist_load(void)
+{
+	char path[512], line[MAX_CMD];
+	FILE *f;
+
+	if (hist_path(path, sizeof(path)) != 0)
+		return;
+	f = fopen(path, "r");
+	if (!f)
+		return;
+	while (nhist < MAX_HIST && fgets(line, sizeof(line), f)) {
+		line[strcspn(line, "\n")] = '\0';
+		if (*line)
+			snprintf(hist[nhist++], MAX_CMD, "%s", line);
+	}
+	fclose(f);
+}
+
+/* Append, unless it is what was run last — a history whose top five entries
+ * are the same command is a history with four wasted rows. */
+static void hist_add(const char *cmd)
+{
+	char path[512];
+	FILE *f;
+
+	if (!*cmd || (nhist && !strcmp(hist[nhist - 1], cmd)))
+		return;
+	if (hist_path(path, sizeof(path)) != 0)
+		return;
+
+	if (nhist == MAX_HIST) {
+		memmove(hist[0], hist[1], (MAX_HIST - 1) * MAX_CMD);
+		nhist--;
+	}
+	snprintf(hist[nhist++], MAX_CMD, "%s", cmd);
+
+	/* Rewritten whole rather than appended: the trim above has to reach
+	 * the file too, and fifty short lines is nothing to write. */
+	f = fopen(path, "w");
+	if (!f)
+		return;
+	for (int i = 0; i < nhist; i++)
+		fprintf(f, "%s\n", hist[i]);
+	fclose(f);
+}
 
 static void launch(const char *cmd, bool in_term)
 {
@@ -109,6 +187,11 @@ int run_main(int argc, char **argv)
 	size_t len = 0;
 	int rc = 1;
 
+	hist_load();
+	/* nhist means "the line being typed"; walking up from it is walking
+	 * back through what was run before. */
+	int hpos = nhist;
+
 	while (!kwl_should_close()) {
 		int w = ktui_w, h = ktui_h;
 		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
@@ -151,12 +234,37 @@ int run_main(int argc, char **argv)
 		if (ev.key == KT_K_ESC)
 			break;
 		if (ev.key == KT_K_ENTER) {
+			hist_add(cmd);
 			launch(cmd, (ev.mods & KT_MOD_CTRL) != 0);
 			rc = 0;
 			break;
 		}
 		if (ev.key == KT_K_BACKSPACE) {
 			if (len)
+				cmd[--len] = '\0';
+			continue;
+		}
+		if (ev.key == KT_K_UP || ev.key == KT_K_DOWN) {
+			if (ev.key == KT_K_UP && hpos > 0)
+				hpos--;
+			else if (ev.key == KT_K_DOWN && hpos < nhist)
+				hpos++;
+			if (hpos >= nhist)
+				cmd[0] = '\0';	/* back to a fresh line */
+			else
+				snprintf(cmd, sizeof(cmd), "%s", hist[hpos]);
+			len = strlen(cmd);
+			continue;
+		}
+		if (ev.key == 21) {		/* Ctrl+U: clear the line */
+			cmd[0] = '\0';
+			len = 0;
+			continue;
+		}
+		if (ev.key == 23) {		/* Ctrl+W: the last word */
+			while (len && cmd[len - 1] == ' ')
+				cmd[--len] = '\0';
+			while (len && cmd[len - 1] != ' ')
 				cmd[--len] = '\0';
 			continue;
 		}

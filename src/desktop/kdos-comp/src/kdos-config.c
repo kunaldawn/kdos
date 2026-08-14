@@ -125,6 +125,8 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 		c->idle_configured = true;
 	} else if (!strcmp(key, "wallpaper")) {
 		snprintf(c->wallpaper, sizeof(c->wallpaper), "%s", value);
+	} else if (!strcmp(key, "chrome_font")) {
+		snprintf(c->chrome_font, sizeof(c->chrome_font), "%s", value);
 	} else if (!strcmp(key, "panel_bottom")) {
 		set_bool(path, lineno, value, &c->panel_bottom);
 	} else if (!strcmp(key, "desktop_icons")) {
@@ -172,6 +174,7 @@ kdos_conf_load(void)
 	c->idle_configured = false;
 	c->panel_bottom = true;
 	c->desktop_icons = true;
+	c->chrome_font[0] = '\0';	/* libkwl's Terminus:pixelsize=32 */
 	snprintf(c->wallpaper, sizeof(c->wallpaper), "%s",
 		"/usr/share/backgrounds/kdos/default-wallpaper.png");
 
