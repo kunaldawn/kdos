@@ -40,6 +40,23 @@ int kwl_keysym_to_ktui(xkb_keysym_t sym, struct xkb_state *state,
 	case XKB_KEY_Page_Down:	return KT_K_PGDN;
 	case XKB_KEY_Insert:	return KT_K_INS;
 	case XKB_KEY_Delete:	return KT_K_DEL;
+	/*
+	 * The keypad with NumLock off. xkb hands these out as their own
+	 * keysyms — with NumLock on the digits come through get_utf32 below —
+	 * and without the mapping half the keyboard's navigation keys did
+	 * nothing at all. (KP_Prior/KP_Next ARE KP_Page_Up/KP_Page_Down: same
+	 * keysym value, so only one spelling can appear as a case label.)
+	 */
+	case XKB_KEY_KP_Up:	return KT_K_UP;
+	case XKB_KEY_KP_Down:	return KT_K_DOWN;
+	case XKB_KEY_KP_Left:	return KT_K_LEFT;
+	case XKB_KEY_KP_Right:	return KT_K_RIGHT;
+	case XKB_KEY_KP_Home:	return KT_K_HOME;
+	case XKB_KEY_KP_End:	return KT_K_END;
+	case XKB_KEY_KP_Prior:	return KT_K_PGUP;
+	case XKB_KEY_KP_Next:	return KT_K_PGDN;
+	case XKB_KEY_KP_Insert:	return KT_K_INS;
+	case XKB_KEY_KP_Delete:	return KT_K_DEL;
 	case XKB_KEY_F1:	return KT_K_F1;
 	case XKB_KEY_F2:	return KT_K_F2;
 	case XKB_KEY_F3:	return KT_K_F3;

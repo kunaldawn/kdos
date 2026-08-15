@@ -44,6 +44,7 @@
 
 #include <pwd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -55,6 +56,7 @@
 #define LK_MAX_PASS 256
 #define LK_BOX_W    46
 #define LK_BOX_H    9
+#define LK_LOGO_MAX 40
 
 /* Long enough that a script cannot try a dictionary through this UI, short
  * enough that a mistyped password is not a punishment. kdos-checkpass sleeps a
@@ -62,9 +64,13 @@
 #define LK_FAIL_MS  1200
 
 static char pass[LK_MAX_PASS];
-static int npass;
+static int npass;			/* bytes */
+static int nchars;			/* characters — what the dots show */
 static const char *status;
 static int failed;
+
+static char *logo_lines[LK_LOGO_MAX];
+static int logo_n, logo_w;
 
 static void pass_clear(void)
 {
@@ -72,6 +78,97 @@ static void pass_clear(void)
 	 * alive across attempts. */
 	memset(pass, 0, sizeof(pass));
 	npass = 0;
+	nchars = 0;
+}
+
+/*
+ * The accent the desktop is wearing, read the way every kdos-shell front end
+ * reads it (sh_theme_from_cache) — replicated rather than linked, because this
+ * program must stay a lock screen and nothing else.
+ */
+static void theme_from_cache(void)
+{
+	char path[512], name[64];
+	const char *cache = getenv("XDG_CACHE_HOME");
+	const char *home = getenv("HOME");
+
+	if (cache && *cache)
+		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
+	else if (home && *home)
+		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
+	else
+		return;
+
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return;
+	if (fgets(name, sizeof(name), f)) {
+		name[strcspn(name, "\n")] = '\0';
+		if (*name)
+			ktui_theme_set(name);
+	}
+	fclose(f);
+}
+
+/* ── the logo ──────────────────────────────────────────────────────────── */
+
+/*
+ * logo.txt carries SGR colour, and the kdos-banner rule applies: strip the
+ * WHOLE sequence, not just the escape byte, or `[1;32m` stays visible as
+ * text. The colour is discarded on purpose — the lock draws the logo in one
+ * breathing slot of its own.
+ */
+static char *strip_ansi(const char *s, size_t n)
+{
+	char *out = malloc(n + 1);
+	size_t k = 0;
+
+	if (!out)
+		return NULL;
+	for (size_t i = 0; i < n;) {
+		if (s[i] == '\x1b') {
+			i++;
+			if (i < n && s[i] == '[') {
+				i++;
+				while (i < n && ((unsigned char)s[i] < 0x40 ||
+						 (unsigned char)s[i] > 0x7e))
+					i++;
+				if (i < n)
+					i++;	/* the final byte */
+			}
+			continue;
+		}
+		out[k++] = s[i++];
+	}
+	out[k] = '\0';
+	return out;
+}
+
+static void logo_load(void)
+{
+	size_t len;
+	char *data = kb_read_all("/usr/share/kdos/logo.txt", &len);
+	if (!data)
+		return;
+
+	const char *p = data;
+	while (*p && logo_n < LK_LOGO_MAX) {
+		const char *nl = strchr(p, '\n');
+		size_t l = nl ? (size_t)(nl - p) : strlen(p);
+		char *clean = strip_ansi(p, l);
+		if (!clean)
+			break;
+		int w = ktui_utf8_width(clean);
+		logo_lines[logo_n++] = clean;
+		if (w > logo_w)
+			logo_w = w;
+		p = nl ? nl + 1 : p + l;
+	}
+	free(data);
+
+	/* Trailing blank lines would push the box down for nothing. */
+	while (logo_n > 0 && logo_lines[logo_n - 1][0] == '\0')
+		free(logo_lines[--logo_n]);
 }
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
@@ -86,8 +183,26 @@ static void draw(const char *user, const char *host)
 
 	KRect box = krect((w - LK_BOX_W) / 2, (h - LK_BOX_H) / 2, LK_BOX_W,
 			  LK_BOX_H);
-	if (box.x < 0 || box.y < 0)
+	int cramped = box.x < 0 || box.y < 0;
+	if (cramped)
 		box = krect(0, 0, w, h);
+
+	/*
+	 * The logo above the prompt, when the whole stack fits — taller than
+	 * the surface means NO logo, never a scrolled one (the kdos-banner
+	 * rule). It breathes between text and dim on a 4 s clock; the cell
+	 * diff makes the repaint one colour change, not a redraw.
+	 */
+	if (!cramped && logo_n && logo_w <= w &&
+	    logo_n + 1 + LK_BOX_H <= h) {
+		int top = (h - (logo_n + 1 + LK_BOX_H)) / 2;
+		int lx = (w - logo_w) / 2;
+		int slot = (time(NULL) / 4) % 2 ? KT_TEXT : KT_DIM;
+		for (int i = 0; i < logo_n; i++)
+			ktui_draw_text(lx, top + i, logo_w, logo_lines[i],
+				       slot, KT_BG, KT_A_NONE);
+		box.y = top + logo_n + 1;
+	}
 
 	ktui_draw_fill(box, KT_SURFACE);
 	ktui_draw_box(box, NULL, failed ? KT_ERR : KT_ACCENT, KT_SURFACE, 1);
@@ -120,7 +235,7 @@ static void draw(const char *user, const char *host)
 	int room = box.w - 14;
 	if (room < 4)
 		room = 4;
-	int shown = npass < room ? npass : room;
+	int shown = nchars < room ? nchars : room;
 	int k = 0;
 	for (int i = 0; i < shown && k + 3 < (int)sizeof(dots); i++) {
 		/* U+25CF BLACK CIRCLE — in the console font's charset as well
@@ -145,6 +260,32 @@ static void draw(const char *user, const char *host)
 		       failed ? KT_ERR : KT_DIM, KT_SURFACE, KT_A_NONE);
 
 	ktui_draw_flush();
+}
+
+/* ── input ─────────────────────────────────────────────────────────────── */
+
+static int utf8_encode(uint32_t cp, char out[4])
+{
+	if (cp < 0x80) {
+		out[0] = (char)cp;
+		return 1;
+	}
+	if (cp < 0x800) {
+		out[0] = (char)(0xc0 | (cp >> 6));
+		out[1] = (char)(0x80 | (cp & 0x3f));
+		return 2;
+	}
+	if (cp < 0x10000) {
+		out[0] = (char)(0xe0 | (cp >> 12));
+		out[1] = (char)(0x80 | ((cp >> 6) & 0x3f));
+		out[2] = (char)(0x80 | (cp & 0x3f));
+		return 3;
+	}
+	out[0] = (char)(0xf0 | (cp >> 18));
+	out[1] = (char)(0x80 | ((cp >> 12) & 0x3f));
+	out[2] = (char)(0x80 | ((cp >> 6) & 0x3f));
+	out[3] = (char)(0x80 | (cp & 0x3f));
+	return 4;
 }
 
 /* ── authentication ────────────────────────────────────────────────────── */
@@ -202,6 +343,9 @@ int main(int argc, char **argv)
 		.app_id = "kdos-lock",
 		.keyboard = 1,
 	};
+	theme_from_cache();
+	logo_load();
+
 	if (kwl_init(&cfg) != 0) {
 		/*
 		 * No compositor, no session-lock global, or no font. Exiting
@@ -215,13 +359,27 @@ int main(int argc, char **argv)
 	}
 	ktui_draw_init();
 
-	int done = 0;
+	int done = 0, announced = 0;
 	while (!done && !kwl_should_close()) {
+		/*
+		 * The LOCK READY handshake: kdos-power waits on this exact
+		 * line before it sends `suspend`, so a machine never sleeps
+		 * with its session still on screen. Once, when the compositor
+		 * confirms — never on this process's own say-so.
+		 */
+		if (!announced && kwl_lock_engaged()) {
+			printf("locked\n");
+			fflush(stdout);
+			announced = 1;
+		}
+
 		draw(user, host);
 
 		KtuiEvent ev;
-		/* One second, so the clock stays right without a redraw loop. */
-		if (!ktui_backend()->poll_event(&ev, 1000))
+		/* One second, so the clock stays right without a redraw loop —
+		 * shorter until the lock is confirmed, so the handshake above
+		 * is not a second late for a suspend that is waiting on it. */
+		if (!ktui_backend()->poll_event(&ev, announced ? 1000 : 100))
 			continue;
 		if (ev.type != KT_EVT_KEY)
 			continue;
@@ -241,8 +399,20 @@ int main(int argc, char **argv)
 				done = try_unlock();
 			break;
 		case KT_K_BACKSPACE:
-			if (npass)
-				pass[--npass] = '\0';
+			if (npass) {
+				/* The whole final UTF-8 sequence, lead byte
+				 * and continuations together — a backspace
+				 * that ate one byte of a two-byte character
+				 * left a password nobody typed. */
+				int i = npass - 1;
+				while (i > 0 &&
+				       ((unsigned char)pass[i] & 0xc0) == 0x80)
+					i--;
+				memset(pass + i, 0, (size_t)(npass - i));
+				npass = i;
+				if (nchars)
+					nchars--;
+			}
 			break;
 		case KT_K_ESC:
 			pass_clear();
@@ -252,11 +422,22 @@ int main(int argc, char **argv)
 			 * Printable characters only, and the cap is silent: a
 			 * held-down key must not be able to grow the buffer, and
 			 * a message saying the password is too long would be a
-			 * message about its length.
+			 * message about its length. The codepoint goes in as
+			 * UTF-8 — the byte sequence kdos-checkpass will read is
+			 * the one the user's shell would have fed passwd —
+			 * whole or not at all: a cap that split a sequence
+			 * would store a password that cannot be retyped.
 			 */
 			if (ev.key >= 32 && ev.key < KT_K_SPECIAL &&
-			    ev.key != KT_K_BACKSPACE && npass < LK_MAX_PASS - 1)
-				pass[npass++] = (char)ev.key;
+			    ev.key != KT_K_BACKSPACE) {
+				char seq[4];
+				int sl = utf8_encode((uint32_t)ev.key, seq);
+				if (npass + sl < LK_MAX_PASS) {
+					memcpy(pass + npass, seq, (size_t)sl);
+					npass += sl;
+					nchars++;
+				}
+			}
 			break;
 		}
 

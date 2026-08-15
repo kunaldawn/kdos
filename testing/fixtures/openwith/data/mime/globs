@@ -1,0 +1,4 @@
+application/gzip:*.gz
+application/x-compressed-tar:*.tar.gz
+image/png:*.png
+text/plain:*.txt

@@ -14,6 +14,7 @@
  * other about what it is showing.
  */
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +50,39 @@ int sh_read_line(const char *path, char *buf, size_t len)
 }
 
 /*
+ * At most `cells` display columns of `src`, cut on a codepoint boundary.
+ *
+ * `%.14s` cuts by BYTES, and every string this panel truncates is somebody
+ * else's: an app's `application.name` from the PipeWire graph, a workspace name
+ * out of the user's own rc.xml. A cut in the middle of a sequence leaves a lone
+ * continuation byte for ktui_utf8_width to measure and ktui_draw_text to
+ * decode. Bounded by the destination as well, so a wide script cannot overrun a
+ * buffer sized in cells.
+ */
+void sh_utf8_trunc(char *dst, size_t n, const char *src, int cells)
+{
+	size_t w = 0;
+	int used = 0;
+
+	if (!n)
+		return;
+	for (const char *p = src; *p;) {
+		uint32_t cp = 0;
+		const char *next = ktui_utf8_next(p, &cp);
+		size_t len = (size_t)(next - p);
+		int cw = ktui_wcwidth(cp);
+
+		if (used + cw > cells || w + len >= n)
+			break;
+		memcpy(dst + w, p, len);
+		w += len;
+		used += cw;
+		p = next;
+	}
+	dst[w] = '\0';
+}
+
+/*
  * `kdos restarts --quiet` exits 1 when something needs restarting and 0 when
  * nothing does, which is why it has that exit code: the panel needs no parser
  * and no shared format, just a status.
@@ -56,12 +90,21 @@ int sh_read_line(const char *path, char *buf, size_t len)
  * Spawned rather than reimplemented. The join between the package manifest and
  * /proc lives in one place, and a second copy in the panel would be a second
  * thing to keep correct.
+ *
+ * Never waited for synchronously: the command walks every process's maps, and
+ * blocking in waitpid here froze the panel for the whole walk once a minute.
+ * `begin` forks, `poll` collects with WNOHANG on later ticks.
  */
-int sh_restart_count(void)
+static pid_t restart_pid = -1;
+static int restart_val = -1;
+
+void sh_restart_begin(void)
 {
+	if (restart_pid > 0)
+		return;			/* one in flight is enough */
 	pid_t p = fork();
 	if (p < 0)
-		return -1;
+		return;
 	if (p == 0) {
 		int null = open("/dev/null", O_WRONLY);
 		if (null >= 0) {
@@ -73,13 +116,63 @@ int sh_restart_count(void)
 		execlp("kdos", "kdos", "restarts", "--quiet", (char *)NULL);
 		_exit(127);
 	}
-	int st = 0;
-	if (waitpid(p, &st, 0) < 0 || !WIFEXITED(st))
-		return -1;
-	int rc = WEXITSTATUS(st);
-	if (rc == 127)
-		return -1;	/* kdos is not installed; say unknown, not zero */
-	return rc == 1 ? 1 : 0;
+	restart_pid = p;
+}
+
+int sh_restart_poll(void)
+{
+	if (restart_pid > 0) {
+		int st = 0;
+		pid_t r = waitpid(restart_pid, &st, WNOHANG);
+		if (r == restart_pid) {
+			restart_pid = -1;
+			if (!WIFEXITED(st) || WEXITSTATUS(st) == 127)
+				restart_val = -1;  /* no kdos: unknown, not zero */
+			else
+				restart_val = WEXITSTATUS(st) == 1 ? 1 : 0;
+		} else if (r < 0) {
+			restart_pid = -1;
+		}
+	}
+	return restart_val;
+}
+
+/*
+ * Field codes, out of an Exec line: `%f` is a file, `%U` a URL list, `%i` the
+ * icon option. Launching with them still in argv passes the LITERAL "%U" to
+ * the program, which browsers open as a search and everything else reports as
+ * a missing file. `%%` is the escape for a percent the program should SEE.
+ * The whitespace a dropped code leaves behind is collapsed, so the result
+ * still splits into clean argv — "app  --flag" is two words, not three.
+ */
+void sh_strip_field_codes(char *exec)
+{
+	char *w = exec;
+	int sp = 1;	/* at start: also swallows leading whitespace */
+
+	for (char *r = exec; *r; r++) {
+		if (r[0] == '%' && r[1]) {
+			if (r[1] == '%') {
+				*w++ = '%';
+				sp = 0;
+				r++;
+				continue;
+			}
+			r++;		/* drop the code */
+			continue;
+		}
+		if (*r == ' ' || *r == '\t') {
+			if (!sp)
+				*w++ = ' ';
+			sp = 1;
+			continue;
+		}
+		*w++ = *r;
+		sp = 0;
+	}
+	while (w > exec && w[-1] == ' ')
+		w--;
+	*w = '\0';
 }
 
 void sh_theme_from_cache(void)
@@ -167,16 +260,13 @@ static void tl_title(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
  * with an invented app_id — and the caller then falls back to the title and to
  * the app_id, in that order.
  */
-static void desktop_name(const char *app_id, char *out, size_t n)
+
+/* The XDG data dirs, most specific first — shared by every lookup below. */
+static int data_dirs(char bases[8][512])
 {
 	const char *home = getenv("XDG_DATA_HOME");
 	const char *dirs = getenv("XDG_DATA_DIRS");
-	char bases[8][512];
 	int nb = 0;
-
-	*out = '\0';
-	if (!app_id || !*app_id || strchr(app_id, '/'))
-		return;			/* not a desktop id; do not build a path */
 
 	if (home && *home)
 		snprintf(bases[nb++], sizeof(bases[0]), "%s", home);
@@ -199,6 +289,18 @@ static void desktop_name(const char *app_id, char *out, size_t n)
 			break;
 		p = sep + 1;
 	}
+	return nb;
+}
+
+static void desktop_name(const char *app_id, char *out, size_t n)
+{
+	char bases[8][512];
+	int nb;
+
+	*out = '\0';
+	if (!app_id || !*app_id || strchr(app_id, '/'))
+		return;			/* not a desktop id; do not build a path */
+	nb = data_dirs(bases);
 
 	for (int i = 0; i < nb; i++) {
 		char path[1024];
@@ -259,6 +361,44 @@ static void desktop_name(const char *app_id, char *out, size_t n)
 		if (*out)
 			return;
 	}
+}
+
+/*
+ * Name and Exec for a desktop-entry id — the favorites row's lookup, through
+ * the same directories the taskbar label search reads, so the two can never
+ * disagree about which entry an id means.
+ */
+int sh_desktop_entry(const char *id, char *name, size_t nname,
+		     char *exec, size_t nexec)
+{
+	char bases[8][512];
+	int nb, found = -1;
+
+	if (name && nname)
+		*name = '\0';
+	if (exec && nexec)
+		*exec = '\0';
+	if (!id || !*id || strchr(id, '/'))
+		return -1;
+	nb = data_dirs(bases);
+
+	for (int i = 0; i < nb && found < 0; i++) {
+		char path[1024];
+		KxdgEntry e;
+		snprintf(path, sizeof(path), "%.400s/applications/%.100s.desktop",
+			 bases[i], id);
+		if (kxdg_load(&e, path, "Desktop Entry") != 0)
+			continue;
+		const char *v = kxdg_get(&e, "Name", NULL);
+		if (name && nname && v && *v)
+			snprintf(name, nname, "%s", v);
+		v = kxdg_get(&e, "Exec", NULL);
+		if (exec && nexec && v && *v)
+			snprintf(exec, nexec, "%s", v);
+		kxdg_free(&e);
+		found = 0;
+	}
+	return found;
 }
 
 static void tl_app_id(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
@@ -369,8 +509,21 @@ static const struct zwlr_foreign_toplevel_manager_v1_listener ftl_listener = {
 static void ws_id(void *d, struct ext_workspace_handle_v1 *h, const char *id)
 { (void)d; (void)h; (void)id; }
 
-static void ws_name(void *d, struct ext_workspace_handle_v1 *h, const char *name)
-{ (void)d; (void)h; (void)name; }
+/* labwc publishes workspace names over ext-workspace-v1; a strip that shows
+ * synthesized digits over a user's own `<names>` is showing the wrong thing.
+ * Truncated to what a strip cell row can afford; the draw clamps further. */
+static void ws_name(void *data, struct ext_workspace_handle_v1 *h,
+		    const char *name)
+{
+	struct sh_state *sh = data;
+	for (int i = 0; i < sh->nws; i++) {
+		if (sh->ws[i] != h)
+			continue;
+		sh_utf8_trunc(sh->ws_name[i], sizeof(sh->ws_name[i]),
+			      name ? name : "", (int)sizeof(sh->ws_name[i]) - 1);
+		break;
+	}
+}
 
 static void ws_coordinates(void *d, struct ext_workspace_handle_v1 *h,
 			   struct wl_array *coords)
@@ -385,12 +538,12 @@ static void ws_state(void *data, struct ext_workspace_handle_v1 *h,
 			continue;
 		if (state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE)
 			sh->active_ws = i;
-		/* `urgent` is the protocol's word for "something here wants
-		 * you"; the panel shows it the same way it shows occupancy,
-		 * because on one row there is no space for a third state. */
-		sh->ws_occupied[i] =
-			(state & EXT_WORKSPACE_HANDLE_V1_STATE_URGENT) ? 1
-			: sh->ws_occupied[i];
+		/* The protocol sends the COMPLETE state every time, so urgency
+		 * is set and CLEARED here — its own bit, never folded into
+		 * occupancy: folding made it invisible (same colour as
+		 * occupied) and sticky (nothing ever unset it). */
+		sh->ws_urgent[i] =
+			(state & EXT_WORKSPACE_HANDLE_V1_STATE_URGENT) ? 1 : 0;
 		break;
 	}
 }
@@ -405,8 +558,17 @@ static void ws_removed(void *data, struct ext_workspace_handle_v1 *h)
 	for (int i = 0; i < sh->nws; i++) {
 		if (sh->ws[i] != h)
 			continue;
+		/* Every parallel array moves with the handle, or workspace N's
+		 * name and urgency become workspace N+1's for the session. */
+		int rest = sh->nws - i - 1;
 		memmove(&sh->ws[i], &sh->ws[i + 1],
-			(size_t)(sh->nws - i - 1) * sizeof(sh->ws[0]));
+			(size_t)rest * sizeof(sh->ws[0]));
+		memmove(&sh->ws_occupied[i], &sh->ws_occupied[i + 1],
+			(size_t)rest * sizeof(sh->ws_occupied[0]));
+		memmove(&sh->ws_urgent[i], &sh->ws_urgent[i + 1],
+			(size_t)rest * sizeof(sh->ws_urgent[0]));
+		memmove(sh->ws_name[i], sh->ws_name[i + 1],
+			(size_t)rest * sizeof(sh->ws_name[0]));
 		sh->nws--;
 		break;
 	}
@@ -435,6 +597,9 @@ static void wsm_workspace(void *data, struct ext_workspace_manager_v1 *m,
 		ext_workspace_handle_v1_destroy(h);
 		return;
 	}
+	sh->ws_occupied[sh->nws] = 0;
+	sh->ws_urgent[sh->nws] = 0;
+	sh->ws_name[sh->nws][0] = '\0';
 	sh->ws[sh->nws++] = h;
 	ext_workspace_handle_v1_add_listener(h, &workspace_listener, sh);
 }

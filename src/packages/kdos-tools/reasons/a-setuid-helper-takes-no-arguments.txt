@@ -1,0 +1,14 @@
+title: the one setuid binary here takes NO arguments — not even a user name
+cite: kdos-checkpass
+port: kdos-lock
+
+The account checked is the caller's real uid, so there is nothing to aim at
+root and nothing an attacker can vary. The password arrives on STDIN, because
+argv is world-readable through /proc/<pid>/cmdline. Privilege is dropped as
+soon as the hash is read, the compare is constant time, and !, * or an empty
+hash always fail.
+
+Losing the setuid bit is the worst failure in the system and a silent one:
+kdos-checkpass without it refuses every password and locks the user OUT of
+their own session. An rsync without -p is all it takes, which is why
+`kdos doctor` checks the bit.

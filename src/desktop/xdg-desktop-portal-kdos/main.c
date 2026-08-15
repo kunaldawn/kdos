@@ -66,6 +66,12 @@
 #  include <systemd/sd-bus.h>
 #endif
 
+/* Header only, for the KCOL_SCHEMES X-macro: the accent table below expands
+ * it at compile time, so this stays a zero-libk link. By relative path, so
+ * every build of this file — the port's and the selftest's — finds it with no
+ * -I flag to keep in step. */
+#include "../../libs/libkcolor/kcolor.h"
+
 #define PORTAL_BUS "org.freedesktop.impl.portal.desktop.kdos"
 #define PORTAL_PATH "/org/freedesktop/portal/desktop"
 
@@ -481,9 +487,14 @@ static int method_save_files(sd_bus_message *m, void *userdata, sd_bus_error *er
  * anything that is not a path, which is the split those two programs already
  * have.
  *
- * NO CHOOSER, NO PROMPT. The front end has already decided the application is
+ * NO PERMISSION PROMPT. The front end has already decided the application is
  * allowed to ask; a second dialog here would be a permission question asked by
  * the half of the stack that does not know the answer.
+ *
+ * There is no handler choice here either, and that is not the same statement:
+ * `kdos-appbox open` puts up its own "open with" chooser when more than one
+ * handler claims the type and nobody has set a default (G7). Deciding that
+ * here would be a second copy of a resolution this file does not do.
  */
 
 static int reply_empty(sd_bus_message *call, uint32_t code)
@@ -709,14 +720,25 @@ static int pending_read(struct pending *pend)
  * one-word file kdos-shell and kdos-comp read, so an application that honours
  * it wears the accent the desktop is wearing.
  */
+/* The accent table is KCOL_SCHEMES expanded at compile time — the X-macro,
+ * not libkcolor's object code, so this process still links sd-bus and nothing
+ * else. The previous version carried a hand-copied table and two of its four
+ * entries were wrong: an app honouring accent-color wore a colour the desktop
+ * never was. */
+static const struct {
+	const char *name;
+	uint32_t primary;
+} accents[] = {
+#define ACCENT_ROW(id, lbl, tname, p, dm, sec, urg, dp, txt, var, pd, bd) \
+	{ #id, KCOL_HEX(p) },
+	KCOL_SCHEMES(ACCENT_ROW)
+#undef ACCENT_ROW
+};
+
 static int read_accent(double *r, double *g, double *b)
 {
-	/* The default is phosphor #39ff14 — the same literal libkcolor carries,
-	 * repeated here rather than linked because this process links sd-bus
-	 * and nothing else. */
-	*r = 0x39 / 255.0;
-	*g = 0xff / 255.0;
-	*b = 0x14 / 255.0;
+	/* Default: the first scheme in the table, which is phosphor. */
+	uint32_t p = accents[0].primary;
 
 	const char *home = getenv("HOME");
 	const char *cache = getenv("XDG_CACHE_HOME");
@@ -726,25 +748,26 @@ static int read_accent(double *r, double *g, double *b)
 	else if (home)
 		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
 	else
-		return 0;
+		path[0] = '\0';
 
-	FILE *f = fopen(path, "r");
-	if (!f)
-		return 0;
-	char name[64] = { 0 };
-	if (fgets(name, sizeof(name), f)) {
-		char *nl = strchr(name, '\n');
-		if (nl)
-			*nl = '\0';
-		if (!strcmp(name, "amber")) {
-			*r = 1.0; *g = 0xb0 / 255.0; *b = 0.0;
-		} else if (!strcmp(name, "ice")) {
-			*r = 0x7d / 255.0; *g = 0xf9 / 255.0; *b = 1.0;
-		} else if (!strcmp(name, "bone")) {
-			*r = 0xe8 / 255.0; *g = 0xe6 / 255.0; *b = 0xdf / 255.0;
+	FILE *f = path[0] ? fopen(path, "r") : NULL;
+	if (f) {
+		char name[64] = { 0 };
+		if (fgets(name, sizeof(name), f)) {
+			char *nl = strchr(name, '\n');
+			if (nl)
+				*nl = '\0';
+			for (size_t i = 0;
+			     i < sizeof(accents) / sizeof(accents[0]); i++)
+				if (!strcmp(name, accents[i].name))
+					p = accents[i].primary;
 		}
+		fclose(f);
 	}
-	fclose(f);
+
+	*r = ((p >> 16) & 0xff) / 255.0;
+	*g = ((p >> 8) & 0xff) / 255.0;
+	*b = (p & 0xff) / 255.0;
 	return 0;
 }
 

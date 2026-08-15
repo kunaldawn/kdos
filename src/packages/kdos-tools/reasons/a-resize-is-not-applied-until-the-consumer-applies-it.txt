@@ -1,0 +1,12 @@
+title: a resize is not applied until the consumer applies it
+cite: libktui
+port: kdos-shell
+
+The backend sets ktui_resized; ktui_w/ktui_h follow only when the loop calls
+ktui_draw_resize() and ktui_draw_invalidate(). panel.c and launcher.c do;
+notifyd.c did not, because it had a fixed-size surface and never needed to.
+
+The moment that surface started being resized, draw_toasts() went on believing
+it had the old three rows, a toast WITH A BODY failed its y + rows > h guard,
+and the daemon painted an empty box in the corner. Any loop that owns a
+surface owns this.

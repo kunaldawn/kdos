@@ -1,0 +1,12 @@
+title: a file conflict is between PACKAGES — an unowned path is adopted
+cite: kpkg
+port: kdos-installer
+
+That is not a loosening for its own sake: it is what phase 2 IS. Phases 0 and
+1 install tar, musl, binutils and gcc by hand with make DESTDIR install,
+leaving files no database entry owns, and the self-hosting bootstrap then
+rebuilds exactly those packages with kpkg.
+
+It used to work because the phase passed a blanket -f, which skipped the
+conflict scan altogether. Narrowing -f to plan-selected ports broke the
+bootstrap silently — phase 2 died on `tar`.

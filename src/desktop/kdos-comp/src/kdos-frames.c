@@ -62,6 +62,14 @@ struct kf_output {
 	int64_t last_present_ns, last_frame_ns;
 	int64_t refresh_ns, render_ns;
 	bool presenting;
+	/*
+	 * Set the moment a frame event submits nothing: this desktop
+	 * renders SPARSELY by design, so the next gap is idle time and
+	 * must not be reported as dropped frames. Cleared by the next
+	 * real submission — a stall while something wanted to draw keeps
+	 * counting, which is what the SIGSTOP proof measures.
+	 */
+	bool quiesced;
 };
 
 struct kf {
@@ -126,9 +134,18 @@ broadcast(const char *line, size_t len)
 		/* EWOULDBLOCK is EAGAIN on linux; naming both is a
 		 * -Wlogical-op warning, not extra portability */
 		if (n < 0 && errno == EAGAIN) {
-			/* the consumer is behind — its problem, not ours */
+			/* the consumer is behind — its problem, not ours;
+			 * NOTHING went out, so its stream is still whole */
 			c->dropped_lines++;
 			continue;
+		}
+		/*
+		 * A short write already tore an NDJSON line in half, and
+		 * healing it would mean blocking the frame loop on this
+		 * consumer. The stream is unusable; the client goes.
+		 */
+		if (n >= 0) {
+			c->dropped_lines++;
 		}
 		client_drop(c);
 	}
@@ -170,8 +187,9 @@ listen_ready(int fd, uint32_t mask, void *data)
 		"\"mono_ms\":%.3f,\"misses\":%ld,\"frames\":%ld}\n",
 		LABWC_VERSION, WLR_VERSION_STR,
 		now_ns(CLOCK_MONOTONIC) / 1e6, kf->misses, kf->frames);
+	/* whole or not at all — a torn hello is a torn stream */
 	if (n > 0 && n < (int)sizeof(line)
-			&& write(cfd, line, (size_t)n) < 0 && errno != EAGAIN) {
+			&& write(cfd, line, (size_t)n) != (ssize_t)n) {
 		client_drop(c);
 	}
 	return 0;
@@ -233,6 +251,9 @@ tick(struct kf_output *ko, int64_t when_ns, int64_t refresh_ns,
 	*last = when_ns;
 	if (prev <= 0 || when_ns <= prev) {
 		return;		/* first frame, or a clock that moved */
+	}
+	if (ko->quiesced) {
+		return;		/* the gap was idleness, not lateness */
 	}
 
 	int64_t gap = when_ns - prev;
@@ -311,6 +332,35 @@ kdos_frames_frame(struct output *output)
 		return;
 	}
 	tick(ko, now_ns(CLOCK_MONOTONIC), 0, &ko->last_frame_ns, "frame");
+}
+
+/*
+ * From the output-frame hook, AFTER the commit: did this frame event
+ * actually put a buffer out? `false` quiesces the output's gap clocks —
+ * see the field comment — and the first submission after a quiet spell
+ * re-primes the present clock, whose last tick predates the idle gap
+ * (the present for the final pre-idle commit can land after the
+ * quiescing frame event, which is why clearing a timestamp here alone
+ * was not enough).
+ */
+void
+kdos_frames_submit(struct output *output, bool submitted)
+{
+	if (!kf) {
+		return;
+	}
+	struct kf_output *ko = kf_output_get(output);
+	if (!ko) {
+		return;
+	}
+	if (!submitted) {
+		ko->quiesced = true;
+		return;
+	}
+	if (ko->quiesced) {
+		ko->quiesced = false;
+		ko->last_present_ns = 0;
+	}
 }
 
 void

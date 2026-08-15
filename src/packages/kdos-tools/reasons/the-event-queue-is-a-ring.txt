@@ -1,0 +1,14 @@
+title: libwayland delivers a BATCH per read — the event queue is a ring
+cite: libkwl
+port: kdos-shell
+
+A button PRESS followed in that batch by the motion that accompanies it was
+overwritten before any consumer saw it, so every click under a moving hand was
+a coin toss. Motion still collapses onto motion; a button or a key never
+overwrites anything.
+
+Two more from the same file: key repeat is the CLIENT's job (Wayland sends
+repeat_info and nothing else, so holding an arrow did exactly one thing), and
+a wheel TICK is not an axis event — wl_pointer.axis is continuous and a
+touchpad sends a stream of small ones, each of which scrolled a list by
+hundreds of rows.

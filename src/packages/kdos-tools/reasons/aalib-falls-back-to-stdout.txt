@@ -1,0 +1,12 @@
+title: aalib answers a failed driver by sweeping its list and landing on stdout
+cite: bb
+port: bb
+
+Its `linux` driver writes cells into /dev/vcsa<n>, which a non-root user on
+KDOS cannot open. aa_autoinit then sweeps aa_drivers[] and lands on stdout,
+which scrolls a fresh block of text up the terminal every frame. Anything on
+aalib must recommend curses as well as linux.
+
+The neighbouring one: MikMod_RegisterAllLoaders(), not just load_s3m.
+ModArchive's public-domain shelf is .xm/.it/.mod, and with the S3M loader
+alone a track fails inside Player_Load and the program plays silent.

@@ -1,0 +1,14 @@
+title: one set of chrome per output, and that means one PROCESS per output
+cite: kdos-child.c
+port: kdos-comp
+
+An unnamed layer surface is placed by the compositor on ONE output, so a
+two-monitor machine got a panel, a window list and desktop icons on the first
+screen and nothing on the second. libktui has a single cell buffer, so a
+second screen cannot be a second surface of the same process.
+
+The output-destroyed path marks the slot `stopping` so the reap frees it
+instead of respawning it — a panel whose output is gone would otherwise exit,
+respawn and exit until the five-in-thirty rule stopped trusting it. And
+signalfd COALESCES SIGCHLD, so the handler also polls every supervised pid by
+waitpid(WNOHANG) or two chrome children dying together leave one a zombie.

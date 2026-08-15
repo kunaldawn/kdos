@@ -1,0 +1,12 @@
+title: a boot that shows 100% before it is finished is a bug report waiting
+cite: kdos-splash
+port: kdos-splash
+
+The bar is fed additively — each phase adds its own step count as soon as it
+knows it — so done == total happens at every phase boundary. The splash clamps
+to 99% until `quit` arrives, and the initramfs announces BOOT MEDIA before its
+two-second device settle.
+
+`quit` is deliberately synchronous: rcS returns from it and init starts agetty
+immediately, and agetty printing to tty1 during the power-off animation would
+interleave console text with splash pixels.

@@ -297,7 +297,9 @@ main(int argc, char *argv[])
 	kdos_crt_init(); /* KDOS: needs the renderer, before the first frame */
 	kdos_wallpaper_init(); /* KDOS: decode once; nodes arrive per layout change */
 	kdos_frames_init(); /* KDOS: stutter reporting socket */
+	kdos_cmd_init(); /* KDOS: `kdos hey` command socket */
 	kdos_idle_init(); /* KDOS: dim -> lock -> outputs off */
+	kdos_lid_init(); /* KDOS: lid switch -> lid_close policy */
 	server_start();
 
 	struct theme theme = { 0 };
@@ -315,8 +317,16 @@ main(int argc, char *argv[])
 
 	wl_display_run(server.wl_display);
 
+	/* KDOS: before the animation below, not after — it keeps the event
+	 * loop running for up to its deadline, and a `kdos hey run <action>`
+	 * dispatched there would act on a session that is already over */
+	kdos_cmd_finish(); /* KDOS */
+	kdos_crt_powerdown(); /* KDOS: the collapse-to-a-dot, deadline-bounded */
 	kdos_wallpaper_finish(); /* KDOS: before the scene dies with the server */
 	kdos_frames_finish(); /* KDOS */
+	kdos_winpos_finish(); /* KDOS */
+	kdos_group_finish(); /* KDOS */
+	kdos_lid_finish(); /* KDOS */
 	kdos_idle_finish(); /* KDOS */
 	kdos_crt_finish(); /* KDOS */
 	session_shutdown();

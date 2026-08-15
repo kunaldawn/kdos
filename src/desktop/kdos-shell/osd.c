@@ -70,7 +70,30 @@ static snd_mixer_elem_t *find_elem(snd_mixer_t *h)
 	return NULL;
 }
 
-static snd_mixer_t *mixer_open(snd_mixer_elem_t **elem)
+/*
+ * The capture side, for the mic mode. `Capture` is the selem ALSA gives the
+ * recording path on essentially every HDA codec; `Mic` covers the USB headsets
+ * that name it after the jack instead. A switch with no volume still counts —
+ * mute is the half the panel's ●MIC indicator needs a companion for.
+ */
+static snd_mixer_elem_t *find_cap_elem(snd_mixer_t *h)
+{
+	static const char *const NAMES[] = { "Capture", "Mic" };
+	snd_mixer_selem_id_t *sid;
+	snd_mixer_selem_id_alloca(&sid);
+
+	for (size_t i = 0; i < sizeof(NAMES) / sizeof(NAMES[0]); i++) {
+		snd_mixer_selem_id_set_index(sid, 0);
+		snd_mixer_selem_id_set_name(sid, NAMES[i]);
+		snd_mixer_elem_t *e = snd_mixer_find_selem(h, sid);
+		if (e && (snd_mixer_selem_has_capture_volume(e) ||
+			  snd_mixer_selem_has_capture_switch(e)))
+			return e;
+	}
+	return NULL;
+}
+
+static snd_mixer_t *mixer_open_raw(void)
 {
 	snd_mixer_t *h = NULL;
 	if (snd_mixer_open(&h, 0) < 0)
@@ -81,6 +104,14 @@ static snd_mixer_t *mixer_open(snd_mixer_elem_t **elem)
 		snd_mixer_close(h);
 		return NULL;
 	}
+	return h;
+}
+
+static snd_mixer_t *mixer_open(snd_mixer_elem_t **elem)
+{
+	snd_mixer_t *h = mixer_open_raw();
+	if (!h)
+		return NULL;
 	*elem = find_elem(h);
 	if (!*elem) {
 		snd_mixer_close(h);
@@ -192,6 +223,91 @@ void sh_volume_toggle(void)
 	    !snd_mixer_selem_has_playback_switch(g_elem))
 		return;
 	snd_mixer_selem_set_playback_switch_all(g_elem, m);
+}
+
+/* ── the microphone ────────────────────────────────────────────────────────
+ *
+ * Opened per invocation rather than cached: the mic mode is a keypress, not
+ * the panel's once-a-second read, so there is nothing here worth keeping a
+ * handle alive for.
+ */
+
+/* Returns the capture percent, or -1 when there is no capture mixer at all.
+ * An element with a switch but no volume answers 100 — mute is then the only
+ * state it has, and a bar at zero while live would read as muted. */
+static int mic_get(int *muted)
+{
+	snd_mixer_t *h = mixer_open_raw();
+	int pct = -1;
+
+	*muted = 0;
+	if (!h)
+		return -1;
+	snd_mixer_elem_t *e = find_cap_elem(h);
+	if (e) {
+		long min = 0, max = 0, val = 0;
+		pct = 100;
+		if (snd_mixer_selem_has_capture_volume(e) &&
+		    snd_mixer_selem_get_capture_volume_range(e, &min, &max) == 0 &&
+		    max > min &&
+		    snd_mixer_selem_get_capture_volume(e,
+						       SND_MIXER_SCHN_FRONT_LEFT,
+						       &val) == 0)
+			pct = (int)(((val - min) * 100 + (max - min) / 2) /
+				    (max - min));
+		if (snd_mixer_selem_has_capture_switch(e)) {
+			int on = 1;
+			snd_mixer_selem_get_capture_switch(e,
+							   SND_MIXER_SCHN_FRONT_LEFT,
+							   &on);
+			*muted = !on;
+		}
+	}
+	snd_mixer_close(h);
+	return pct;
+}
+
+/* delta 0 toggles the switch; a delta moves the volume and, like the playback
+ * side, unmutes on the way up — a key that raises a number nobody can hear is
+ * the media-key complaint, capture edition. */
+static void mic_adjust(int delta)
+{
+	snd_mixer_t *h = mixer_open_raw();
+	if (!h)
+		return;
+	snd_mixer_elem_t *e = find_cap_elem(h);
+	if (!e) {
+		snd_mixer_close(h);
+		return;
+	}
+	if (delta == 0) {
+		if (snd_mixer_selem_has_capture_switch(e)) {
+			int on = 1;
+			snd_mixer_selem_get_capture_switch(e,
+							   SND_MIXER_SCHN_FRONT_LEFT,
+							   &on);
+			snd_mixer_selem_set_capture_switch_all(e, !on);
+		}
+	} else if (snd_mixer_selem_has_capture_volume(e)) {
+		long min = 0, max = 0, val = 0;
+		if (snd_mixer_selem_get_capture_volume_range(e, &min, &max) == 0 &&
+		    max > min &&
+		    snd_mixer_selem_get_capture_volume(e,
+						       SND_MIXER_SCHN_FRONT_LEFT,
+						       &val) == 0) {
+			int pct = (int)(((val - min) * 100 + (max - min) / 2) /
+					(max - min)) + delta;
+			if (pct < 0)
+				pct = 0;
+			if (pct > 100)
+				pct = 100;
+			snd_mixer_selem_set_capture_volume_all(e,
+					min + (max - min) * pct / 100);
+			if (pct > 0 && snd_mixer_selem_has_capture_switch(e))
+				snd_mixer_selem_set_capture_switch_all(e, 1);
+		}
+	}
+	snd_mixer_close(h);
 }
 
 /* ── backlight ─────────────────────────────────────────────────────────── */
@@ -395,9 +511,25 @@ static void osd_value(const char *what, int *pct, int *muted)
 	if (!strcmp(what, "brightness")) {
 		*pct = backlight_get();
 		*muted = 0;
+	} else if (!strcmp(what, "mic")) {
+		*pct = mic_get(muted);
 	} else {
 		*pct = sh_volume_get(muted);
 	}
+}
+
+/* The mic wears the panel indicator's bullet, so the overlay and the ●MIC
+ * warning read as two views of the same thing. */
+static void osd_show(const char *what, int pct, int muted)
+{
+	char label[48];
+
+	if (!strcmp(what, "mic"))
+		snprintf(label, sizeof(label), "%smic",
+			 ktui_glyph[KT_G_BULLET]);
+	else
+		snprintf(label, sizeof(label), "%s", what);
+	draw_osd(label, pct, muted);
 }
 
 /* ── main ──────────────────────────────────────────────────────────────── */
@@ -406,6 +538,7 @@ static int usage(void)
 {
 	fprintf(stderr,
 		"usage: kdos-osd volume [+N|-N|mute|toggle]\n"
+		"       kdos-osd mic [toggle|up|down|+N|-N]\n"
 		"       kdos-osd brightness [+N|-N]\n");
 	return 2;
 }
@@ -435,6 +568,26 @@ int osd_main(int argc, char **argv)
 				return usage();
 			}
 			pct = sh_volume_get(&muted);
+		}
+	} else if (!strcmp(what, "mic")) {
+		pct = mic_get(&muted);
+		if (pct < 0) {
+			fprintf(stderr, "kdos-osd: no ALSA capture mixer — is "
+					"the card driver loaded?\n");
+			return 1;
+		}
+		if (arg) {
+			if (!strcmp(arg, "mute") || !strcmp(arg, "toggle"))
+				mic_adjust(0);
+			else if (!strcmp(arg, "up"))
+				mic_adjust(5);
+			else if (!strcmp(arg, "down"))
+				mic_adjust(-5);
+			else if (arg[0] == '+' || arg[0] == '-')
+				mic_adjust(atoi(arg));
+			else
+				return usage();
+			pct = mic_get(&muted);
 		}
 	} else if (!strcmp(what, "brightness")) {
 		pct = backlight_get();
@@ -470,6 +623,11 @@ int osd_main(int argc, char **argv)
 
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * Bottom-centre, where a volume bezel goes — dead centre put
+		 * it on top of whatever the media key was pressed OVER.
+		 */
+		.corner = KWL_CORNER_BOTTOM_CENTER,
 		.cols = OSD_COLS,
 		.rows = OSD_ROWS,
 		.app_id = "kdos-osd",
@@ -477,11 +635,17 @@ int osd_main(int argc, char **argv)
 	sh_theme_from_cache();
 	if (kwl_init(&cfg) != 0)
 		return 0;
+	/*
+	 * NO pointer input, ever: this overlay sat mid-screen with the default
+	 * input region and ate every click under it for 1.2 s per keypress.
+	 * It changes nothing on a click and must be transparent to one.
+	 */
+	kwl_input_cells(NULL, 0);
 	ktui_draw_init();
 
 	char shown[32];
 	snprintf(shown, sizeof(shown), "%s", what);
-	draw_osd(shown, pct, muted);
+	osd_show(shown, pct, muted);
 
 	/*
 	 * Draw, wait out the dwell, exit — but a press that arrives while this
@@ -506,7 +670,7 @@ int osd_main(int argc, char **argv)
 		if (!shown[0])
 			snprintf(shown, sizeof(shown), "%s", what);
 		osd_value(shown, &pct, &muted);
-		draw_osd(shown, pct, muted);
+		osd_show(shown, pct, muted);
 		until = osd_now_ms() + OSD_MS;
 	}
 

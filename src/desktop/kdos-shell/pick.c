@@ -33,6 +33,7 @@
  */
 
 #include <dirent.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,6 +76,25 @@ static bool show_hidden;
 /* Save mode only: Enter on an existing name asks once before it answers. */
 static bool overwrite_ok;
 static char note[128];
+
+/*
+ * The one line editor, shared by Create Folder (F7/Ctrl+N, save mode) and the
+ * Ctrl+L path entry — the same editing path the save name already has, worn
+ * by two more questions.
+ */
+enum { ED_NONE = 0, ED_NEWDIR, ED_PATH };
+static int edit_mode;
+static char edit_buf[1024];
+
+/* Ctrl+F: the portal's filter, or everything. The patterns another
+ * application handed the portal are which files IT wants; '*' is which files
+ * the user can see anyway, and a chooser that cannot show them cannot open
+ * them. */
+static bool filter_off;
+
+/* Where the last frame ended the list — the preview pane starts there, and a
+ * click under the pane must not select the row it covers. */
+static int list_w = 1 << 20;
 
 /* ── matching ──────────────────────────────────────────────────────────── */
 
@@ -125,7 +145,7 @@ static bool glob_match(const char *pat, const char *s)
 
 static bool passes_filter(const char *name)
 {
-	if (!npatterns)
+	if (!npatterns || filter_off)
 		return true;
 	for (int i = 0; i < npatterns; i++)
 		if (glob_match(patterns[i], name))
@@ -149,11 +169,18 @@ static void load_dir(void)
 	sel = 0;
 	top = 0;
 
+	/*
+	 * A directory that cannot be READ still gets its `..` below — Ctrl+L
+	 * into somebody else's home, or a cwd deleted under us, used to leave a
+	 * chooser with no rows at all and therefore no way out that is drawn
+	 * anywhere. The reason goes in the note, or an empty list explains
+	 * nothing.
+	 */
 	DIR *d = opendir(cwd);
 	if (!d)
-		return;
+		snprintf(note, sizeof(note), "%.60s: %s", cwd, strerror(errno));
 	struct dirent *e;
-	while ((e = readdir(d)) && nrows < MAX_ROWS - 1) {
+	while (d && (e = readdir(d)) && nrows < MAX_ROWS - 1) {
 		/* `..` is added below, unconditionally and first; `.` is never
 		 * useful, and everything else beginning with a dot is a
 		 * decision the user makes with Ctrl+H. */
@@ -164,7 +191,9 @@ static void load_dir(void)
 
 		char path[2048];
 		snprintf(path, sizeof(path), "%s/%s", cwd, e->d_name);
-		struct stat st;
+		/* Zeroed: stat fails on a dangling symlink and on a file deleted
+		 * between the readdir and here, and st_size is read below. */
+		struct stat st = {0};
 		bool isdir = stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 
 		/*
@@ -182,7 +211,8 @@ static void load_dir(void)
 		r->dir = isdir;
 		r->size = isdir ? 0 : (long long)st.st_size;
 	}
-	closedir(d);
+	if (d)
+		closedir(d);
 	qsort(rows, (size_t)nrows, sizeof(rows[0]), cmp_row);
 
 	/* `..` first and always, even in a directory that is otherwise empty —
@@ -194,6 +224,29 @@ static void load_dir(void)
 		rows[0].dir = true;
 		nrows++;
 	}
+}
+
+/*
+ * Reload, keeping the multi-select marks — by NAME, because the row indexes
+ * are the one thing a reload does not preserve. Toggling hidden files to
+ * find one more attachment used to throw away every mark already made.
+ */
+static void reload_keep_marks(void)
+{
+	static char keep[MAX_SEL][256];
+	int nkeep = 0;
+
+	for (int i = 0; i < nrows && nkeep < MAX_SEL; i++)
+		if (rows[i].selected)
+			snprintf(keep[nkeep++], sizeof(keep[0]), "%.*s",
+				 (int)sizeof(keep[0]) - 1, rows[i].name);
+	load_dir();
+	for (int k = 0; k < nkeep; k++)
+		for (int i = 0; i < nrows; i++)
+			if (!strcmp(rows[i].name, keep[k])) {
+				rows[i].selected = true;
+				break;
+			}
 }
 
 static void enter_dir(const char *name)
@@ -249,6 +302,163 @@ static void emit_path(const char *name)
 	print_uri(full);
 }
 
+/* ── image preview (D7.9) ──────────────────────────────────────────────────
+ *
+ * P6 only. The parser is asciicmd.c's, copied rather than shared: the
+ * offscreen --dump build links this file WITHOUT libkcell (see
+ * testing/selftest.sh's dumpcheck line), so the preview cannot reference the
+ * glyph matcher — and grim writes `-t ppm`, which makes P6 the format
+ * screenshots actually arrive in. PNG and JPG say "no preview"; decoding
+ * them is a future piece of work, not a missing include.
+ *
+ * The glyphs are ktui's own vt-tier ramp — ░ ▒ █, which the console font and
+ * Terminus both carry — not the rich tier's eighth blocks, which are BAR
+ * glyphs: partial-height cells turn a photograph into stripes.
+ */
+#define PV_COLS 20
+#define PV_ROWS 17
+#define PV_MAX_BYTES (20 * 1024 * 1024)
+
+static char pv_want[2048];	/* what the selection asks for; "" = nothing */
+static char pv_path[2048];	/* what pv_state describes                   */
+static int pv_state;		/* 2 ready, 3 unreadable/over budget         */
+static unsigned char pv_lum[PV_COLS * PV_ROWS];
+static int pv_cols, pv_rows;
+
+/* 1 = previewable here, 2 = an image this cannot decode, 0 = not an image. */
+static int pv_kind(const char *name)
+{
+	const char *dot = strrchr(name, '.');
+	if (!dot)
+		return 0;
+	if (!strcasecmp(dot, ".ppm") || !strcasecmp(dot, ".pnm"))
+		return 1;
+	if (!strcasecmp(dot, ".png") || !strcasecmp(dot, ".jpg") ||
+	    !strcasecmp(dot, ".jpeg"))
+		return 2;
+	return 0;
+}
+
+static const char *pv_glyph(double f)
+{
+	static const char *const SHADE[] = { " ", "\xe2\x96\x91",
+					     "\xe2\x96\x92", "\xe2\x96\x88" };
+	static const char *const ASCII[] = { " ", ".", ":", "#" };
+	const char *const *t = (ktui_caps & KT_CAP_UTF8) ? SHADE : ASCII;
+	int i = (int)(f * 4.0);
+
+	if (i > 3)
+		i = 3;
+	if (i < 0)
+		i = 0;
+	return t[i];
+}
+
+/* Whitespace and `#` comments, anywhere in the header — netpbm allows them. */
+static int pv_next_int(FILE *f, int *out)
+{
+	int c, v = 0;
+	bool got = false;
+
+	for (;;) {
+		c = fgetc(f);
+		if (c == EOF)
+			return -1;
+		if (c == '#') {
+			while (c != '\n' && c != EOF)
+				c = fgetc(f);
+			continue;
+		}
+		if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+			if (got)
+				break;
+			continue;
+		}
+		if (c < '0' || c > '9')
+			return -1;
+		v = v * 10 + (c - '0');
+		got = true;
+	}
+	if (!got)
+		return -1;
+	*out = v;
+	return 0;
+}
+
+static void pv_decode(const char *path)
+{
+	snprintf(pv_path, sizeof(pv_path), "%s", path);
+	pv_state = 3;
+	pv_cols = pv_rows = 0;
+
+	/* Over budget is "no preview", never a stall: this runs in the poll
+	 * loop's idle slot and a 2 GB file must not own the dialog. */
+	struct stat st;
+	if (stat(path, &st) != 0 || st.st_size > PV_MAX_BYTES)
+		return;
+	FILE *f = fopen(path, "rb");
+	if (!f)
+		return;
+	int w = 0, h = 0, maxv = 0;
+	if (fgetc(f) != 'P' || fgetc(f) != '6' || pv_next_int(f, &w) ||
+	    pv_next_int(f, &h) || pv_next_int(f, &maxv) || w <= 0 || h <= 0 ||
+	    maxv != 255 || (long long)w * h * 3 > (long long)PV_MAX_BYTES) {
+		fclose(f);
+		return;
+	}
+	unsigned char *rgb = malloc((size_t)w * h * 3);
+	if (!rgb || fread(rgb, 3, (size_t)w * h, f) != (size_t)w * h) {
+		free(rgb);
+		fclose(f);
+		return;
+	}
+	fclose(f);
+
+	/* Fit into the pane. A cell is twice as tall as wide, so the vertical
+	 * scale carries a factor of two or the picture stretches — the same
+	 * constraint genlogo.py records for the banner. */
+	int gw = PV_COLS;
+	int gh = (int)(((long long)h * PV_COLS) / ((long long)w * 2));
+	if (gh > PV_ROWS) {
+		gh = PV_ROWS;
+		gw = (int)(((long long)w * PV_ROWS * 2) / h);
+		if (gw > PV_COLS)
+			gw = PV_COLS;
+	}
+	if (gw < 1)
+		gw = 1;
+	if (gh < 1)
+		gh = 1;
+
+	for (int cy = 0; cy < gh; cy++) {
+		int y0 = (int)((long long)cy * h / gh);
+		int y1 = (int)((long long)(cy + 1) * h / gh);
+		if (y1 <= y0)
+			y1 = y0 + 1;
+		for (int cx = 0; cx < gw; cx++) {
+			int x0 = (int)((long long)cx * w / gw);
+			int x1 = (int)((long long)(cx + 1) * w / gw);
+			if (x1 <= x0)
+				x1 = x0 + 1;
+			long long sum = 0;
+			for (int y = y0; y < y1; y++) {
+				const unsigned char *p =
+					rgb + ((size_t)y * w + x0) * 3;
+				for (int x = x0; x < x1; x++, p += 3)
+					sum += 299 * p[0] + 587 * p[1] +
+					       114 * p[2];
+			}
+			long long npix = (long long)(y1 - y0) * (x1 - x0);
+			pv_lum[cy * PV_COLS + cx] =
+				(unsigned char)(sum / (npix * 1000));
+		}
+	}
+	free(rgb);
+	pv_cols = gw;
+	pv_rows = gh;
+	pv_state = 2;
+}
+
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 static void human(long long n, char *out, size_t len)
@@ -293,6 +503,20 @@ static void draw(const char *title)
 		shown = cwd + strlen(cwd) - pw;
 	ktui_draw_text(2, 1, pw, shown, KT_MID, KT_SURFACE, KT_A_NONE);
 
+	/*
+	 * The preview pane is CARVED from the list when the selected row is an
+	 * image: only the list's WIDTH changes, so the row hit math the mouse
+	 * uses stays exactly the accumulation it always was.
+	 */
+	int kind = 0;
+	if (sel >= 0 && sel < nrows && !rows[sel].dir)
+		kind = pv_kind(rows[sel].name);
+	int pane_x = w;
+	if (kind && w >= 46)
+		pane_x = w - 1 - w / 3;
+	list_w = pane_x < w ? pane_x : 1 << 20;
+	int lw = pane_x < w ? pane_x : w;
+
 	for (int i = 0; i < list_rows; i++) {
 		int idx = top + i;
 		if (idx >= nrows)
@@ -302,7 +526,7 @@ static void draw(const char *title)
 		int fg = on ? KT_SURFACE : KT_TEXT;
 		int bg = on ? KT_ACCENT : KT_SURFACE;
 
-		ktui_draw_fill(krect(1, list_top + i, w - 2, 1), bg);
+		ktui_draw_fill(krect(1, list_top + i, lw - 2, 1), bg);
 		if (multi_mode)
 			ktui_draw_text(1, list_top + i, 1,
 				       r->selected ? ktui_glyph[KT_G_SQUARE] : " ",
@@ -315,26 +539,78 @@ static void draw(const char *title)
 
 		char label[300];
 		snprintf(label, sizeof(label), "%s%s", r->name, r->dir ? "/" : "");
-		ktui_draw_text(4, list_top + i, w - 18, label, fg, bg, KT_A_NONE);
+		ktui_draw_text(4, list_top + i, lw - 18, label, fg, bg, KT_A_NONE);
 
 		if (!r->dir) {
 			char sz[32];
 			human(r->size, sz, sizeof(sz));
-			ktui_draw_text_right(0, list_top + i, w - 2, sz,
+			ktui_draw_text_right(0, list_top + i, lw - 2, sz,
 					     on ? KT_SURFACE : KT_DIM, bg,
 					     KT_A_NONE);
 		}
 	}
 
+	if (pane_x < w) {
+		ktui_draw_vline(pane_x - 1, list_top, list_rows, KT_G_VL,
+				KT_DIM, KT_SURFACE);
+		int pw2 = w - 1 - pane_x;
+		int have = pv_want[0] && !strcmp(pv_want, pv_path);
+		if (kind == 2 || (have && pv_state == 3)) {
+			ktui_draw_text(pane_x + (pw2 > 10 ? (pw2 - 10) / 2 : 0),
+				       list_top + list_rows / 2, pw2,
+				       "no preview", KT_DIM, KT_SURFACE,
+				       KT_A_NONE);
+		} else if (!have) {
+			/* Still pending: the decode runs in the idle slot and
+			 * may render a frame late, never block a click. */
+			ktui_draw_text(pane_x + pw2 / 2,
+				       list_top + list_rows / 2, pw2,
+				       ktui_glyph[KT_G_ELLIPSIS], KT_DIM,
+				       KT_SURFACE, KT_A_NONE);
+		} else {
+			int x0 = pane_x + (pw2 - pv_cols) / 2;
+			int y0 = list_top + (list_rows - pv_rows) / 2;
+			if (x0 < pane_x)
+				x0 = pane_x;
+			if (y0 < list_top)
+				y0 = list_top;
+			for (int py = 0;
+			     py < pv_rows && y0 + py < list_top + list_rows;
+			     py++)
+				for (int qx = 0;
+				     qx < pv_cols && x0 + qx < w - 1; qx++)
+					ktui_draw_text(x0 + qx, y0 + py, 1,
+						       pv_glyph(pv_lum[py * PV_COLS + qx] / 255.0),
+						       KT_TEXT, KT_SURFACE,
+						       KT_A_NONE);
+		}
+	}
+
 	int y = h - 3;
-	if (save_mode) {
+	if (edit_mode) {
+		/* The editor takes the name/filter row; elided from the LEFT
+		 * like the path above it — the tail is where the caret is. */
+		char line[1100];
+		snprintf(line, sizeof(line), "%s: %s",
+			 edit_mode == ED_NEWDIR ? "New folder" : "Path",
+			 edit_buf);
+		/* `pw`, not `w - 4`: the same clamp the path row above needs,
+		 * and for the same reason — a negative width sends the elide
+		 * past the end of the string. */
+		const char *el = line;
+		if ((int)strlen(line) > pw)
+			el = line + strlen(line) - pw;
+		ktui_draw_text(2, y, pw, el, KT_TEXT, KT_SURFACE,
+			       KT_A_UNDERLINE);
+	} else if (save_mode) {
 		char line[320];
 		snprintf(line, sizeof(line), "Name: %s", save_name);
 		ktui_draw_text(2, y, w - 4, line, KT_TEXT, KT_SURFACE,
 			       KT_A_UNDERLINE);
 	} else if (filter_label[0]) {
 		char line[320];
-		snprintf(line, sizeof(line), "Filter: %s", filter_label);
+		snprintf(line, sizeof(line), "Filter: %s",
+			 filter_off ? "*" : filter_label);
 		ktui_draw_text(2, y, w - 4, line, KT_DIM, KT_SURFACE, KT_A_NONE);
 	}
 
@@ -346,7 +622,8 @@ static void draw(const char *title)
 			       KT_A_NONE);
 	else
 		ktui_draw_text(2, h - 2, w - 26,
-			       save_mode ? "Enter save   Esc cancel"
+			       edit_mode ? "Enter ok   Esc cancel"
+			       : save_mode ? "Enter save   ^N folder   Esc cancel"
 			       : multi_mode
 				       ? "Space mark   ^H hidden   Esc cancel"
 				       : "Enter open   ^H hidden   Esc cancel",
@@ -408,6 +685,21 @@ static int activate(void)
 	if (save_mode) {
 		if (sel >= 0 && sel < nrows && rows[sel].dir) {
 			enter_dir(rows[sel].name);
+			return 0;
+		}
+		/*
+		 * An existing file's row ADOPTS its name first — the universal
+		 * "click the file, hit Save" overwrite flow. Only when the
+		 * name differs: the same name falls through to the ask-once
+		 * below, so the second Enter is the confirmation, not another
+		 * adoption.
+		 */
+		if (sel >= 0 && sel < nrows && !rows[sel].dir &&
+		    strcmp(rows[sel].name, save_name) != 0) {
+			snprintf(save_name, sizeof(save_name), "%s",
+				 rows[sel].name);
+			overwrite_ok = false;
+			note[0] = '\0';
 			return 0;
 		}
 		if (!save_name[0])
@@ -567,11 +859,35 @@ int pick_main(int argc, char **argv)
 			top = sel;
 		if (sel >= top + list_rows)
 			top = sel - list_rows + 1;
+
+		/* What the preview pane wants decoded, from the selection. */
+		pv_want[0] = '\0';
+		if (sel >= 0 && sel < nrows && !rows[sel].dir &&
+		    pv_kind(rows[sel].name) == 1)
+			snprintf(pv_want, sizeof(pv_want), "%s%s%s", cwd,
+				 strcmp(cwd, "/") ? "/" : "", rows[sel].name);
+		int pv_pending = pv_want[0] && strcmp(pv_want, pv_path) != 0;
+
 		draw(title);
 
 		KtuiEvent ev;
-		if (!ktui_backend()->poll_event(&ev, 1000))
+		if (!ktui_backend()->poll_event(&ev, pv_pending ? 15 : 1000)) {
+			/* The idle slot: a decode never sits between an input
+			 * event and its answer — a slow file renders late
+			 * rather than making the dialog miss a click. */
+			if (pv_pending)
+				pv_decode(pv_want);
+			/* The grid follows a configure only when the loop that
+			 * owns the surface applies it: without this the buttons
+			 * are placed off the visible surface while the hit test
+			 * goes on accepting those columns. */
+			if (ktui_resized) {
+				ktui_resized = 0;
+				ktui_draw_resize();
+				ktui_draw_invalidate();
+			}
 			continue;
+		}
 
 		/*
 		 * The mouse, on the same contract as the menu and the
@@ -583,9 +899,14 @@ int pick_main(int argc, char **argv)
 		 * file list has gone since Norton Commander.
 		 */
 		if (ev.type == KT_EVT_MOUSE) {
+			/* The editor is keyboard-owned; a click mid-edit must
+			 * not change the directory under a half-typed path. */
+			if (edit_mode)
+				continue;
 			int row = ev.my - 2 + top;
 			int on_row = ev.my >= 2 && ev.my < ktui_h - 3 &&
-				     row >= 0 && row < nrows;
+				     row >= 0 && row < nrows &&
+				     ev.mx < list_w;
 			if (ev.press == KT_MP_DRAG) {
 				if (on_row)
 					sel = row;
@@ -621,6 +942,18 @@ int pick_main(int argc, char **argv)
 						break;
 					}
 					sel = row;
+					/* F6: one click on an existing file
+					 * adopts its name; the second click is
+					 * activate(), which then asks about
+					 * replacing exactly that file. */
+					if (save_mode && !rows[row].dir &&
+					    strcmp(rows[row].name, save_name)) {
+						snprintf(save_name,
+							 sizeof(save_name), "%s",
+							 rows[row].name);
+						overwrite_ok = false;
+						note[0] = '\0';
+					}
 				}
 			}
 			if (sel < 0)
@@ -635,6 +968,76 @@ int pick_main(int argc, char **argv)
 		int page = ktui_h - 5;
 		if (page < 1)
 			page = 1;
+
+		if (edit_mode) {
+			size_t n = strlen(edit_buf);
+			if (ev.key == KT_K_ESC) {
+				edit_mode = ED_NONE;
+				note[0] = '\0';
+			} else if (ev.key == KT_K_ENTER) {
+				if (edit_mode == ED_NEWDIR) {
+					if (!edit_buf[0] ||
+					    strchr(edit_buf, '/')) {
+						snprintf(note, sizeof(note),
+							 "not a usable name");
+					} else {
+						char p[2048];
+						snprintf(p, sizeof(p),
+							 "%s%s%s", cwd,
+							 strcmp(cwd, "/") ? "/" : "",
+							 edit_buf);
+						if (mkdir(p, 0755) == 0) {
+							edit_mode = ED_NONE;
+							load_dir();
+							for (int i = 0; i < nrows; i++)
+								if (!strcmp(rows[i].name, edit_buf)) {
+									sel = i;
+									break;
+								}
+						} else {
+							snprintf(note, sizeof(note),
+								 "cannot create %.60s: %s",
+								 edit_buf,
+								 strerror(errno));
+						}
+					}
+				} else {
+					/* Ctrl+L: chdir to what was typed, if
+					 * it is a directory; say so if not. */
+					char p[1024];
+					if (edit_buf[0] == '~' &&
+					    (edit_buf[1] == '/' || !edit_buf[1]))
+						snprintf(p, sizeof(p), "%s%s",
+							 home ? home : "",
+							 edit_buf + 1);
+					else
+						snprintf(p, sizeof(p), "%s",
+							 edit_buf);
+					size_t pl = strlen(p);
+					while (pl > 1 && p[pl - 1] == '/')
+						p[--pl] = '\0';
+					struct stat st;
+					if (p[0] == '/' && stat(p, &st) == 0 &&
+					    S_ISDIR(st.st_mode)) {
+						snprintf(cwd, sizeof(cwd), "%s", p);
+						edit_mode = ED_NONE;
+						load_dir();
+					} else {
+						snprintf(note, sizeof(note),
+							 "not a directory: %.80s",
+							 edit_buf);
+					}
+				}
+			} else if (ev.key == KT_K_BACKSPACE) {
+				if (n)
+					edit_buf[n - 1] = '\0';
+			} else if (ev.key >= 0x20 && ev.key < 0x7f &&
+				   n + 1 < sizeof(edit_buf)) {
+				edit_buf[n] = (char)ev.key;
+				edit_buf[n + 1] = '\0';
+			}
+			continue;
+		}
 
 		if (ev.key == KT_K_ESC)
 			break;
@@ -655,7 +1058,27 @@ int pick_main(int argc, char **argv)
 			 * so this is the character, not a chord to decode.
 			 * BACKSPACE is 127 and is the save name's, not this. */
 			show_hidden = !show_hidden;
-			load_dir();
+			reload_keep_marks();
+		} else if (ev.key == KT_K_F7 || ev.key == 14) {
+			/* Ctrl+N / F7: Create Folder, in save mode — the one
+			 * mode where the directory being missing is the
+			 * reason the dialog is open. */
+			if (save_mode) {
+				edit_mode = ED_NEWDIR;
+				edit_buf[0] = '\0';
+				note[0] = '\0';
+			}
+		} else if (ev.key == 12) {
+			/* Ctrl+L: type the path instead of walking it. */
+			edit_mode = ED_PATH;
+			snprintf(edit_buf, sizeof(edit_buf), "%s", cwd);
+			note[0] = '\0';
+		} else if (ev.key == 6) {
+			/* Ctrl+F: the portal's filter, or everything. */
+			if (npatterns) {
+				filter_off = !filter_off;
+				reload_keep_marks();
+			}
 		} else if (ev.key == KT_K_LEFT) {
 			enter_dir("..");
 		} else if (ev.key == ' ' && multi_mode && !save_mode) {

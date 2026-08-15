@@ -328,6 +328,27 @@ static void animate(double delay)
 		tcsetattr(STDIN_FILENO, TCSANOW, &saved);
 }
 
+/*
+ * One recorded lesson under the banner, in the secondary colour (SGR 33 — the
+ * slot /etc/vtrgb and the generated foot palette both point at the scheme's
+ * secondary; never bold, because on a 512-glyph VT the intensity bit selects
+ * the second font page).
+ *
+ * NOT printed in --plain, and not when stdout is redirected. `kdos-banner
+ * --plain` is asserted byte-identical against the shell version it replaced,
+ * and a login line that varies by day and pid would make every diff of it a
+ * failure. The animated login is the surface this is for.
+ */
+static void oracle_line(void)
+{
+	char *line = kdt_oracle_line();
+	if (!line)
+		return;
+	if (cells(line) + INDENT <= term_cols())
+		printf("\n%*s\033[33m%s\033[0m\n", INDENT, "", line);
+	free(line);
+}
+
 int banner_main(int argc, char **argv)
 {
 	compose();
@@ -342,7 +363,9 @@ int banner_main(int argc, char **argv)
 	}
 
 	/* One row spare for the prompt: on a 33-row TTY the banner is close to
-	 * the full height, and animating something that scrolls looks broken. */
+	 * the full height, and animating something that scrolls looks broken.
+	 * The oracle costs two more rows, so it is height-guarded with them. */
+	int want = nlines + 2;
 	if (nlines >= term_rows()) {
 		plain(0);
 		return 0;
@@ -351,5 +374,7 @@ int banner_main(int argc, char **argv)
 	const char *d = getenv("KDOS_BANNER_DELAY");
 	double delay = d && *d ? atof(d) : 0.012;
 	animate(delay);
+	if (want < term_rows())
+		oracle_line();
 	return 0;
 }

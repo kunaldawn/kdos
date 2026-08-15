@@ -1,0 +1,18 @@
+title: a state file that does not parse is ABSENT, never partial
+cite: kdos-bootctl
+port: kdos-tools
+
+Half a file that looked complete is exactly how a machine boots a slot that was
+never installed. Absent means "use the root= the kernel command line already
+carries", which is what a single-root machine does anyway.
+
+The A/B state file lives on the ESP, which is FAT and has no journal: a torn
+write here does not fail an update, it BRICKS the machine, because the
+initramfs cannot tell which slot to boot. So every write is temp file, fsync
+the FILE, fsync the DIRECTORY, then rename. The directory fsync is the step
+people leave out, and without it the rename can be lost while the data
+survives.
+
+The same rule runs through libkbuild: a snapshot manifest that does not parse,
+carries no entries, or names an archive that is not on disk reads as absent. A
+lenient parser turns a corrupt manifest into a confident wrong answer.

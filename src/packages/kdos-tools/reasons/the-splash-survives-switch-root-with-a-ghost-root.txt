@@ -1,0 +1,16 @@
+title: the splash spans switch_root, and every path it resolves after is a ghost
+cite: kdos-splash
+port: kdos-splash
+see: switch-root-ms-move
+
+It is never chroot'ed, so afterwards its / is the deleted initramfs root whose
+/dev was moved away. Open fds keep working — that is the whole trick, one
+process spanning both halves of boot with the FIFO on devtmpfs — but every
+path it resolves BY NAME after that points into the ghost. Hence the `quit`
+client detects the daemon by opening the FIFO for writing and watching for
+ENXIO, and does the cleanup itself from the real root.
+
+Two more, one debug cycle each: deferred take-over means nothing is being
+scanned out until one byte reaches /dev/tty0, and mmap writes need an explicit
+FBIOPAN_DISPLAY or they reach the host whenever fbdev's deferred-IO worker
+gets round to it.

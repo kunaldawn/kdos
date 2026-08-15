@@ -1,0 +1,3 @@
+[MIME Cache]
+application/gzip=gunzip.desktop;
+application/x-compressed-tar=ark.desktop;filezip.desktop;

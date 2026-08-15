@@ -69,7 +69,10 @@
 
 #define FIFO_PATH "/dev/.kdos-splash"
 
-/* PHOSPHOR. Keep in sync with the desktop palette in accent.kdl. */
+/* PHOSPHOR — libkcolor's KCOL_SCHEMES row, spelled out because this binary is
+ * static and links nothing. The splash is phosphor by scope: it runs before
+ * any $HOME exists, so the accent (a session-level setting) cannot reach it.
+ * The two derived values are kcol_mix results, not free-hand colours. */
 #define C_PHOS    0x39ff14
 #define C_PHOSDIM 0x1f8f0c
 #define C_DIM     0x12401f
@@ -77,7 +80,8 @@
 #define C_ALARM   0xff3131
 #define C_TEXT    0xb8ffc8
 #define C_DEEP    0x000a03
-#define C_HOT     0xd8ffd8
+#define C_HOT     0xe2ffe9	/* kcol_mix(C_TEXT, 0xffffff, 60) — beam flash */
+#define C_GLOW    0xe8ffed	/* kcol_mix(C_TEXT, 0xffffff, 68) — mascot rim */
 
 /* How long the tube takes to warm up. Boot is ~10s; this is the part of it
  * anyone actually watches, so it gets a full second. */
@@ -277,7 +281,7 @@ static const char *art[ART_ROWS] = {
 
 /* Mascot palette. Index 0 is transparent; order matches penguin.h. */
 static const uint32_t peng_pal[6] = {
-	0, 0x000000, 0xe8ffee, C_AMBER, C_PHOS, C_PHOSDIM
+	0, 0x000000, C_GLOW, C_AMBER, C_PHOS, C_PHOSDIM
 };
 
 static int art_cw, art_ch, art_lt, art_x, art_y;

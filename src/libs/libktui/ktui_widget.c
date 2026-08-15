@@ -32,9 +32,16 @@ typedef struct {
 	int hover;
 	KRect focus_rect;	/* where the focused control landed        */
 	int focus_seen;
+	/* Press capture: the id whose rect saw the left press owns every
+	 * KT_MP_DRAG until the release, however far the pointer strays — a
+	 * slider or a text selection that loses its widget the moment the hand
+	 * drifts a row is not a drag at all. `drag` is that id for exactly the
+	 * frames a captured drag arrived on, -1 otherwise. */
+	int capture;
+	int drag;
 } KtuiUi;
 
-static KtuiUi ui;
+static KtuiUi ui = { .capture = -1, .drag = -1 };
 
 #define MAX_HITS 512
 #define MAX_IDS 512
@@ -67,18 +74,24 @@ void ktui_frame_begin(KtuiEvent *ev)
 	ui.maxid = 0;
 	ui.hover = -1;
 	ui.focus_seen = 0;
+	ui.drag = -1;
 
 	if (ev->type == KT_EVT_MOUSE) {
 		ui.mx = ev->mx;
 		ui.my = ev->my;
-		for (int i = *prev_n - 1; i >= 0; i--) {
+		int is_wheel = ev->btn == KT_MB_WHEEL_UP ||
+			       ev->btn == KT_MB_WHEEL_DOWN;
+		if (!is_wheel && ev->press == KT_MP_DRAG && ui.capture >= 0) {
+			ui.drag = ui.capture;
+		} else for (int i = *prev_n - 1; i >= 0; i--) {
 			if (!krect_hit(prev_hits[i].r, ev->mx, ev->my))
 				continue;
-			if (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN) {
+			if (is_wheel) {
 				ui.wheel = ev->btn == KT_MB_WHEEL_UP ? -1 : 1;
 				ui.wheel_id = prev_hits[i].id;
 			} else if (ev->btn == KT_MB_LEFT && ev->press == KT_MP_PRESS) {
 				ui.clicked = prev_hits[i].id;
+				ui.capture = prev_hits[i].id;
 				/* Chrome ids are not focus ids — clicking the
 				 * sidebar must not throw the caret at whatever
 				 * control happens to sit last on the page. */
@@ -92,6 +105,8 @@ void ktui_frame_begin(KtuiEvent *ev)
 			}
 			break;
 		}
+		if (!is_wheel && ev->press == KT_MP_RELEASE)
+			ui.capture = -1;
 	}
 
 	Hit *t = cur_hits;
@@ -341,6 +356,116 @@ int ktui_radio(int x, int y, int w, const char *label, int *val, int on)
 	return 0;
 }
 
+/* Pasted text waiting for the focused input. One queue for the process: a
+ * frame has at most one focused input, and the first one drawn after the push
+ * takes the lot. */
+static char paste_buf[4096];
+static size_t paste_len;
+static double paste_at;
+#define PASTE_TTL 2.0		/* seconds an unclaimed paste waits */
+
+void ktui_paste_push(const char *utf8, size_t len)
+{
+	/* A new paste SUPERSEDES an unclaimed one. The backend delivers a
+	 * whole selection in one push, so appending never joins anything —
+	 * it only accumulates pastes nobody took, until the queue is full and
+	 * the one being made is the one lost. */
+	paste_len = 0;
+	paste_at = kb_now_s();
+
+	/* Stripped at the door: control bytes never match a UTF-8 continuation
+	 * byte, so this filter cannot split a sequence. */
+	for (size_t i = 0; i < len; i++) {
+		unsigned char c = (unsigned char)utf8[i];
+		if (c == '\n')
+			c = ' ';
+		else if (c < 0x20 || c == 0x7f)
+			continue;
+		if (paste_len + 1 >= sizeof(paste_buf))
+			break;
+		paste_buf[paste_len++] = (char)c;
+	}
+	/* A full queue may have cut a sequence in half; drop the fragment
+	 * rather than hand the insert path a lead byte with no body. */
+	size_t k = paste_len;
+	while (k > 0 && ((unsigned char)paste_buf[k - 1] & 0xc0) == 0x80)
+		k--;
+	if (k > 0 && (unsigned char)paste_buf[k - 1] >= 0xc0) {
+		unsigned char lead = (unsigned char)paste_buf[k - 1];
+		size_t need = (lead & 0xe0) == 0xc0 ? 2
+			      : (lead & 0xf0) == 0xe0 ? 3 : 4;
+		if (paste_len - (k - 1) < need)
+			paste_len = k - 1;
+	}
+	paste_buf[paste_len] = 0;
+}
+
+/* The caret is a BYTE index into a UTF-8 buffer; it only ever rests on a
+ * sequence boundary, and these two walk between boundaries. */
+static int in_prev_bound(const char *buf, int at)
+{
+	if (at > 0)
+		at--;
+	while (at > 0 && ((unsigned char)buf[at] & 0xc0) == 0x80)
+		at--;
+	return at;
+}
+
+static int in_next_bound(const char *buf, int at)
+{
+	uint32_t cp;
+	return (int)(ktui_utf8_next(buf + at, &cp) - buf);
+}
+
+/* Display column of byte offset `at` — a secret field shows one bullet per
+ * CODEPOINT, so its column is the sequence count, not the glyph width. */
+static int in_col_at(const char *buf, int at, int secret)
+{
+	const char *p = buf;
+	uint32_t cp;
+	int col = 0;
+	while (p < buf + at && *p) {
+		p = ktui_utf8_next(p, &cp);
+		col += secret ? 1 : ktui_wcwidth(cp);
+	}
+	return col;
+}
+
+/* First byte offset at or past display column `col`. */
+static int in_byte_at(const char *buf, int col, int secret)
+{
+	const char *p = buf;
+	uint32_t cp;
+	int c = 0;
+	while (*p && c < col) {
+		p = ktui_utf8_next(p, &cp);
+		c += secret ? 1 : ktui_wcwidth(cp);
+	}
+	return (int)(p - buf);
+}
+
+static int in_insert(char *buf, size_t cap, int *cur, int len,
+		     const char *src, size_t n)
+{
+	/* Whole sequences only: a paste cut mid-codepoint would leave a
+	 * trailing byte every later edit trips over. */
+	size_t room = cap - 1 - (size_t)len;
+	size_t take = 0;
+	while (take < n) {
+		uint32_t cp;
+		size_t sl = (size_t)(ktui_utf8_next(src + take, &cp) - (src + take));
+		if (take + sl > n || take + sl > room)
+			break;
+		take += sl;
+	}
+	if (!take)
+		return 0;
+	memmove(buf + *cur + take, buf + *cur, (size_t)(len - *cur + 1));
+	memcpy(buf + *cur, src, take);
+	*cur += (int)take;
+	return 1;
+}
+
 int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placeholder)
 {
 	int id = ktui_id();
@@ -351,16 +476,33 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placehold
 
 	if (*cur > len)
 		*cur = len;
+	/* A caret restored from another life of this id can land mid-sequence. */
+	while (*cur > 0 && ((unsigned char)buf[*cur] & 0xc0) == 0x80)
+		(*cur)--;
+
+	/* Expired rather than held: in a process with no focused input when the
+	 * paste arrived — the panel, the desktop, a chooser whose list has the
+	 * focus — the text would otherwise sit in the queue and be injected
+	 * into whatever field is drawn next, seconds later and somewhere the
+	 * user was not aiming. */
+	if (paste_len && kb_now_s() - paste_at > PASTE_TTL)
+		paste_len = 0;
+
+	if (focus && paste_len) {
+		if (in_insert(buf, cap, cur, len, paste_buf, paste_len))
+			changed = 1;
+		paste_len = 0;
+		len = (int)strlen(buf);
+	}
 
 	if (focus && !ui.consumed && ui.ev.type == KT_EVT_KEY) {
 		int k = ui.ev.key;
 		if (k == KT_K_LEFT) {
-			if (*cur > 0)
-				(*cur)--;
+			*cur = in_prev_bound(buf, *cur);
 			ui.consumed = 1;
 		} else if (k == KT_K_RIGHT) {
 			if (*cur < len)
-				(*cur)++;
+				*cur = in_next_bound(buf, *cur);
 			ui.consumed = 1;
 		} else if (k == KT_K_HOME) {
 			*cur = 0;
@@ -370,16 +512,18 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placehold
 			ui.consumed = 1;
 		} else if (k == KT_K_BACKSPACE) {
 			if (*cur > 0) {
-				memmove(buf + *cur - 1, buf + *cur,
+				int p = in_prev_bound(buf, *cur);
+				memmove(buf + p, buf + *cur,
 					(size_t)(len - *cur + 1));
-				(*cur)--;
+				*cur = p;
 				changed = 1;
 			}
 			ui.consumed = 1;
 		} else if (k == KT_K_DEL) {
 			if (*cur < len) {
-				memmove(buf + *cur, buf + *cur + 1,
-					(size_t)(len - *cur));
+				int nx = in_next_bound(buf, *cur);
+				memmove(buf + *cur, buf + nx,
+					(size_t)(len - nx + 1));
 				changed = 1;
 			}
 			ui.consumed = 1;
@@ -388,11 +532,16 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placehold
 			*cur = 0;
 			changed = 1;
 			ui.consumed = 1;
-		} else if (k >= 0x20 && k < 0x7f && (size_t)len + 1 < cap) {
-			memmove(buf + *cur + 1, buf + *cur, (size_t)(len - *cur + 1));
-			buf[*cur] = (char)k;
-			(*cur)++;
-			changed = 1;
+		} else if (k >= 0x20 && k != 0x7f && k < KT_K_SPECIAL) {
+			char enc[4];
+			int el = ktui_utf8_encode((uint32_t)k, enc);
+			if ((size_t)(len + el) < cap) {
+				memmove(buf + *cur + el, buf + *cur,
+					(size_t)(len - *cur + 1));
+				memcpy(buf + *cur, enc, (size_t)el);
+				*cur += el;
+				changed = 1;
+			}
 			ui.consumed = 1;
 		}
 		len = (int)strlen(buf);
@@ -404,40 +553,56 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placehold
 	ktui_draw_text(r.x, r.y, 1, focus ? ktui_glyph[KT_G_RIGHT] : " ",
 		  focus ? KT_ACCENT : KT_DIM, bg, 0);
 
+	/* Scrolling is in display COLUMNS, converted to a byte offset for the
+	 * draw — byte arithmetic here is exactly the CJK-corrupts-the-row bug. */
 	int field = r.w - 2;
-	int scroll = 0;
-	if (*cur > field - 1)
-		scroll = *cur - field + 1;
+	int ccol = in_col_at(buf, *cur, secret);
+	int scol = 0;
+	if (ccol > field - 1)
+		scol = ccol - field + 1;
+	int sbyte = in_byte_at(buf, scol, secret);
+	if (sbyte)
+		scol = in_col_at(buf, sbyte, secret);	/* wide-glyph straddle */
 
 	if (!len && placeholder && !focus) {
 		ktui_draw_text(r.x + 2, r.y, field, placeholder, KT_DIM, bg, 0);
 	} else if (secret) {
-		for (int i = 0; i < len - scroll && i < field; i++)
+		int glyphs = in_col_at(buf, len, 1);
+		for (int i = 0; i < glyphs - scol && i < field; i++)
 			ktui_draw_text(r.x + 2 + i, r.y, 1, ktui_glyph[KT_G_BULLET], fg, bg, 0);
 	} else {
-		ktui_draw_text(r.x + 2, r.y, field, buf + scroll, fg, bg, 0);
+		ktui_draw_text(r.x + 2, r.y, field, buf + sbyte, fg, bg, 0);
 	}
 
 	if (focus) {
-		int cx = r.x + 2 + (*cur - scroll);
+		int cx = r.x + 2 + (ccol - scol);
 		if (cx < r.x + r.w) {
 			uint32_t under = ' ';
-			int idx = *cur;
-			if (idx < len)
-				under = secret ? (uint32_t)0x2022
-					       : (uint32_t)(unsigned char)buf[idx];
+			if (*cur < len) {
+				if (secret) {
+					under = 0x2022;
+				} else {
+					uint32_t cp;
+					ktui_utf8_next(buf + *cur, &cp);
+					under = cp;
+				}
+			}
 			ktui_draw_cell(cx, r.y, under, KT_BG, KT_ACCENT, 0);
+			/* A wide glyph owns two cells; without the
+			 * continuation the caret highlights its left half and
+			 * the right half keeps the text's colours. */
+			if (ktui_wcwidth(under) == 2 && cx + 1 < r.x + r.w)
+				ktui_draw_cell(cx + 1, r.y, KTUI_WIDE_CONT,
+					       KT_BG, KT_ACCENT, 0);
 		}
 	}
 
 	ktui_hit(r, id);
 	if (ui.clicked == id) {
-		int p = ui.mx - (r.x + 2) + scroll;
-		if (p < 0)
-			p = 0;
-		if (p > len)
-			p = len;
-		*cur = p;
+		int col = ui.mx - (r.x + 2) + scol;
+		if (col < 0)
+			col = 0;
+		*cur = in_byte_at(buf, col, secret);
 	}
 	return changed;
 }
@@ -609,11 +774,28 @@ int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user, int
 	}
 
 	if (ui.clicked == id) {
-		int idx = st->off + (ui.my - r.y);
-		if (idx >= 0 && idx < count) {
-			st->sel = idx;
-			if (ui.dblclick)
-				chosen = 1;
+		if (count > vis && ui.mx == r.x + r.w - 1) {
+			/* The scrollbar column is paint, not rows — selecting
+			 * the row hidden under it is the bug. A click above
+			 * the thumb pages up, below it pages down, moving the
+			 * selection the way PgUp/PgDn do so the off/sel clamps
+			 * below cannot drag the view straight back. */
+			int th = r.h * vis / count;
+			if (th < 1)
+				th = 1;
+			int ty = (r.h - th) * st->off / (count - vis);
+			int cy = ui.my - r.y;
+			if (cy < ty)
+				st->sel -= vis;
+			else if (cy >= ty + th)
+				st->sel += vis;
+		} else {
+			int idx = st->off + (ui.my - r.y);
+			if (idx >= 0 && idx < count) {
+				st->sel = idx;
+				if (ui.dblclick)
+					chosen = 1;
+			}
 		}
 	}
 

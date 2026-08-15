@@ -1,0 +1,12 @@
+title: a delta is never trusted, and never needs to be
+cite: kpkg delta
+port: kdos-installer
+
+It is applied and the RESULT is hashed against the C: the signed index already
+carries. A tampered delta produces a package whose hash does not match and is
+discarded; it cannot make a client install anything the index did not already
+name. So there is no delta signature and no second trust path.
+
+The delta is taken over the UNCOMPRESSED tars: two .tar.xz files built from
+nearly identical trees share almost no bytes, so a delta between them is the
+size of the whole package. That is the difference between 3 KB and 85 KB.

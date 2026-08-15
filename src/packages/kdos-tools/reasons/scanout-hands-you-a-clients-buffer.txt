@@ -1,0 +1,15 @@
+title: direct scanout hands the commit a CLIENT's buffer, not the desktop
+cite: kdos-crt.c
+port: kdos-comp
+
+When wlr_scene takes the scanout path it passes a buffer plus a
+buffer_dst_box, and the first version of the CRT pass stretched a 13-pixel-tall
+panel over the whole screen. wlroots exposes exactly one switch, an env var
+read by wlr_scene_create(), so it is set before the scene is created and stays
+off for the session while the pass is on.
+
+The texture is imported per frame and destroyed after the pass. Caching it per
+swapchain slot deadlocks the swapchain: wlr_texture_from_buffer() LOCKS the
+buffer, a slot is reused only once its last lock goes, and four cached
+textures means "No free output buffer slot" and a scene that stops rendering.
+Measured, not reasoned about.

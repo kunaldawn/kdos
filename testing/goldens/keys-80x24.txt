@@ -1,0 +1,24 @@
++=  keys  =====================================================================+
+| launch                                                                       |
+|   Super+Enter    foot                                                        |
+|   Super+d        kdos-launcher                                               |
+|   Super+Shift+q  sh -c "a && b"                                              |
+| window                                                                       |
+|   Super+q        close the window                                            |
+|   Alt+Tab        next window                                                 |
+| workspace                                                                    |
+|   Super+1        workspace 1                                                 |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+| any key closes                                                               |
++==============================================================================+
