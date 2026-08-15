@@ -1,0 +1,13 @@
+title: "C compiler cannot create executables" is almost never about the toolchain
+cite: recurring build fixes
+port: bash
+
+Read $WORK/<port>/<src>/config.log: the real error is on the failing conftest.
+For anything with an autoconf 2.13-era configure it is the K&R probe
+main(){return(0);}, which GCC 14 promoted from warning to error.
+
+Suppress the whole family at once, because each one costs another hour-long
+round trip to find: -Wno-implicit-function-declaration -Wno-implicit-int
+-Wno-int-conversion -Wno-incompatible-pointer-types -Wno-return-mismatch
+-Wno-declaration-missing-parameter-type. ports/core/aalib is the worked
+example.

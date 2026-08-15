@@ -90,7 +90,9 @@ pixman_color_t kcell_slot_color(int slot);
 void kcell_set_transparent_bg(bool on);
 
 /* A glyph's mask at a given scale, with the offsets already multiplied. The
- * image is owned by the cache and must not be unref'd. */
+ * image is owned by the cache and must not be unref'd — and the cache is
+ * CAPPED, so it is valid only until the next glyph lookup: use it and let go,
+ * never keep it across cells or frames. */
 typedef struct {
 	pixman_image_t *pix;
 	int x, y;		/* bearing, scaled */

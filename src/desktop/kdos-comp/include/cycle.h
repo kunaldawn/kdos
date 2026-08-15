@@ -166,5 +166,16 @@ void cycle_osd_scroll_update(struct cycle_osd_output *osd_output);
 
 extern struct cycle_osd_impl cycle_osd_classic_impl;
 extern struct cycle_osd_impl cycle_osd_thumbnail_impl;
+/* KDOS: app-first switcher — groups the cycle list by app_id */
+extern struct cycle_osd_impl cycle_osd_apps_impl;
+struct view *cycle_osd_apps_step_group(struct view *from, enum lab_cycle_dir dir);
+struct view *cycle_osd_apps_step_member(struct view *from, enum lab_cycle_dir dir);
+
+/*
+ * KDOS: step WITHIN whatever the OSD considers the current unit. Only
+ * the app-first switcher has one; every other style forwards to
+ * cycle_step(), which is what Up/Down did before it existed.
+ */
+void cycle_step_within(enum lab_cycle_dir direction);
 
 #endif // LABWC_CYCLE_H

@@ -1,0 +1,12 @@
+title: link libkcolor; a second copy of the palette is a second thing to edit
+cite: libkcolor
+port: kdos-theme
+
+KCOL_SCHEMES is an X-macro so every consumer expands the same literals into
+its own table at compile time. `kdos` used to carry its own copy of the
+four-scheme table and a mix_hex to go with it; that copy and the installer's
+were edited separately.
+
+The same defect came back from a different direction: the portal carried a
+second accent table and two of its four entries had drifted, so apps honouring
+accent-color got a different colour than the desktop.

@@ -3,7 +3,11 @@ labwc_sources = files(
   'kdos-child.c', # KDOS
   'kdos-wallpaper.c', # KDOS
   'kdos-frames.c', # KDOS
+  'kdos-cmd.c', # KDOS
+  'kdos-winpos.c', # KDOS
+  'kdos-group.c', # KDOS
   'kdos-idle.c', # KDOS
+  'kdos-lid.c', # KDOS
   'kdos-crt.c', # KDOS
   'action.c',
   'buffer.c',

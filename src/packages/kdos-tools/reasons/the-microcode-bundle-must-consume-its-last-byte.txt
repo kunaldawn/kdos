@@ -1,0 +1,12 @@
+title: one stray file in the microcode bundle and the kernel loads NOTHING
+cite: 01_initramfs.sh
+port: intel-ucode
+
+scan_microcode() ends `return size ? NULL : patch;` — not "everything before
+the bad record", nothing at all. build.sh walks the records the same way and
+fails the build instead; verified against a bundle with a README appended.
+
+Nothing in the microcode cpio may be compressed, either: linux-firmware ships
+amd-ucode/*.bin.zst because the RUNTIME loader decompresses, and the early
+loader cannot. And 16-byte alignment is a myth worth not chasing — the kernel
+KDOS ships aligns headers to 4, measured with our blob landing at offset 636.

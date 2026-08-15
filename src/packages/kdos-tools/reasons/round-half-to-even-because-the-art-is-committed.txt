@@ -1,0 +1,12 @@
+title: reproduce python's rounding exactly — the vendored artwork is COMMITTED
+cite: libkcolor
+port: kdos-theme
+
+kcol_to_hls / kcol_from_hls / kcol_remap reproduce colorsys including the odd
+`2.0 - maxc - minc`, the modulo on a negative hue, and round()'s
+half-to-even. A C generator that rounds differently diffs against files
+already in git. Verified over 8476 colours x 4 schemes against CPython.
+
+kcol_mix (integer, percent) and kcol_mixf (float) are NOT interchangeable —
+they disagree by a unit on some inputs, and each generated file was written
+against exactly one of them.

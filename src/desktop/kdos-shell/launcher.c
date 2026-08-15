@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -58,6 +59,7 @@ struct entry {
 	 * launcher that has already closed has nowhere to report it.
 	 */
 	int terminal;
+	int launches;		/* frecency: how often it was started here */
 };
 
 static struct entry entries[MAX_ENTRIES];
@@ -73,29 +75,6 @@ static int have_id(const char *id)
 		if (!strcmp(entries[i].id, id))
 			return 1;
 	return 0;
-}
-
-/*
- * `%f`, `%U` and friends are placeholders for the files an entry was opened
- * with. Launched from here there are none, so they are stripped — passing the
- * literal string `%U` to a program is how you get a browser opening a tab for
- * a file called "%U".
- */
-static void strip_field_codes(char *exec)
-{
-	char *w = exec;
-	for (char *r = exec; *r; r++) {
-		if (r[0] == '%' && r[1]) {
-			r++;		/* skip the code letter too */
-			continue;
-		}
-		*w++ = *r;
-	}
-	*w = '\0';
-	/* A trailing space left by a stripped code is harmless to exec but ugly
-	 * in the list, and the list shows the name rather than this anyway. */
-	while (w > exec && w[-1] == ' ')
-		*--w = '\0';
 }
 
 static void add_desktop_dir(const char *dir)
@@ -138,7 +117,7 @@ static void add_desktop_dir(const char *dir)
 		}
 		snprintf(t->name, sizeof(t->name), "%s", name);
 		snprintf(t->exec, sizeof(t->exec), "%s", exec);
-		strip_field_codes(t->exec);
+		sh_strip_field_codes(t->exec);
 		t->terminal = kxdg_bool(&ent, "Terminal", 0);
 		/*
 		 * An entry whose Exec IS the box launcher is a box app, whatever
@@ -184,6 +163,108 @@ static void mark_alien(const char *path)
 	fclose(f);
 }
 
+/* ── frecency ──────────────────────────────────────────────────────────── */
+
+/*
+ * `$XDG_DATA_HOME/kdos/launcher-history`, one `<count> <desktop-id>` per line
+ * — the same plain-file shape as kdos-run's history, and for the same reason.
+ * The count breaks score ties in filter(), so the app you start every day
+ * floats above the one that merely sorts earlier.
+ */
+#define MAX_HCOUNT 256
+
+static struct { char id[96]; int n; } hcount[MAX_HCOUNT];
+static int nhcount;
+
+static int hist_path(char *buf, size_t n)
+{
+	const char *data = getenv("XDG_DATA_HOME");
+	const char *home = getenv("HOME");
+
+	if (data && *data)
+		snprintf(buf, n, "%s/kdos", data);
+	else if (home && *home)
+		snprintf(buf, n, "%s/.local/share/kdos", home);
+	else
+		return -1;
+	mkdir(buf, 0700);
+	if (data && *data)
+		snprintf(buf, n, "%s/kdos/launcher-history", data);
+	else
+		snprintf(buf, n, "%s/.local/share/kdos/launcher-history", home);
+	return 0;
+}
+
+static void hist_load(void)
+{
+	char path[512], line[160];
+	FILE *f;
+
+	if (hist_path(path, sizeof(path)) != 0 || !(f = fopen(path, "r")))
+		return;
+	while (nhcount < MAX_HCOUNT && fgets(line, sizeof(line), f)) {
+		line[strcspn(line, "\n")] = '\0';
+		/* Count first, id the rest of the line — a desktop id may
+		 * carry a space, a count cannot. */
+		char *sp = strchr(line, ' ');
+		if (!sp || !sp[1])
+			continue;
+		*sp = '\0';
+		int n = atoi(line);
+		if (n <= 0)
+			continue;
+		snprintf(hcount[nhcount].id, sizeof(hcount[0].id), "%s", sp + 1);
+		hcount[nhcount++].n = n;
+	}
+	fclose(f);
+}
+
+static int hist_count(const char *id)
+{
+	for (int i = 0; i < nhcount; i++)
+		if (!strcmp(hcount[i].id, id))
+			return hcount[i].n;
+	return 0;
+}
+
+static void hist_bump(const char *id)
+{
+	char path[512];
+	FILE *f;
+	int i;
+
+	/* A newline is a legal byte in a file name and this file is one record
+	 * per line: recording such an id splits it in two, the row never matches
+	 * again, and the file gains a duplicate on every launch until the 256
+	 * ceiling stops frecency working for every app on the machine. */
+	if (strchr(id, '\n'))
+		return;
+	for (i = 0; i < nhcount; i++)
+		if (!strcmp(hcount[i].id, id))
+			break;
+	if (i == nhcount) {
+		/* Full is full: 256 distinct apps launched is a cap nobody
+		 * reaches, and evicting one would forget a real habit. */
+		if (nhcount == MAX_HCOUNT)
+			return;
+		snprintf(hcount[i].id, sizeof(hcount[0].id), "%s", id);
+		hcount[nhcount++].n = 0;
+	}
+	hcount[i].n++;
+
+	if (hist_path(path, sizeof(path)) != 0 || !(f = fopen(path, "w")))
+		return;
+	for (i = 0; i < nhcount; i++)
+		fprintf(f, "%d %s\n", hcount[i].n, hcount[i].id);
+	fclose(f);
+}
+
+static int cmp_name(const void *a, const void *b)
+{
+	return strcasecmp(((const struct entry *)a)->name,
+			  ((const struct entry *)b)->name);
+}
+
 static void gather(void)
 {
 	char path[1024];
@@ -202,6 +283,13 @@ static void gather(void)
 			 home);
 		mark_alien(path);
 	}
+
+	/* Alphabetical, so the empty query is a directory rather than readdir
+	 * order; frecency then lifts what actually gets used (filter()). */
+	qsort(entries, (size_t)nentries, sizeof(entries[0]), cmp_name);
+	hist_load();
+	for (int i = 0; i < nentries; i++)
+		entries[i].launches = hist_count(entries[i].id);
 }
 
 /* ── matching ──────────────────────────────────────────────────────────── */
@@ -253,10 +341,15 @@ static void filter(const char *query)
 		order[nmatch++] = i;
 	}
 	/* Insertion sort: nmatch is a few hundred at worst and this runs on a
-	 * keystroke, where the constant factor matters more than the order. */
+	 * keystroke, where the constant factor matters more than the order.
+	 * Ties go to the launch count; equal counts keep the alphabetical
+	 * order gather() established, because the sort is stable. */
 	for (int i = 1; i < nmatch; i++) {
 		int si = scores[i], oi = order[i], j = i - 1;
-		while (j >= 0 && scores[j] > si) {
+		while (j >= 0 && (scores[j] > si ||
+				  (scores[j] == si &&
+				   entries[order[j]].launches <
+				   entries[oi].launches))) {
 			scores[j + 1] = scores[j];
 			order[j + 1] = order[j];
 			j--;
@@ -274,26 +367,31 @@ static void launch(const struct entry *e)
 	const char *argv[32];
 	int n = 0;
 
-	if (e->alien) {
-		/* Through kdos-appbox, never around it — see the header. A
-		 * boxed app carries its own terminal question inside the box;
-		 * `run` is the whole interface. */
-		argv[n++] = "kdos-appbox";
-		argv[n++] = "run";
-		argv[n++] = e->id;
-	} else {
-		/* Terminal=true is a program with no window of its own — the
-		 * same wrapping kdos-menu does, and for the same reason. */
-		if (e->terminal) {
-			argv[n++] = "foot";
-			argv[n++] = "-e";
-		}
-		snprintf(buf, sizeof(buf), "%s", e->exec);
-		char *save = NULL;
-		for (char *tok = strtok_r(buf, " \t", &save);
-		     tok && n < 30; tok = strtok_r(NULL, " \t", &save))
-			argv[n++] = tok;
+	hist_bump(e->id);
+
+	/*
+	 * The Exec line and nothing else, boxed or not. A boxed app's entry
+	 * already reads `kdos-appbox run <in-box command>` — which is what goes
+	 * through kdos-appbox, never around it, see the header — and the id is
+	 * NOT that command: genlaunchers names the FILE after upstream's desktop
+	 * id (`org.xfce.mousepad.desktop`) and writes the box's own command into
+	 * Exec (`kdos-appbox run mousepad`). Handing the id to `run` asked the
+	 * box for a program called `org.xfce.mousepad`, and every renamed app —
+	 * mousepad, meld, krita, obs, wireshark, a dozen more — did nothing at
+	 * all when clicked, with the launcher already gone and no terminal to
+	 * say so.
+	 */
+	/* Terminal=true is a program with no window of its own — the same
+	 * wrapping kdos-menu does, and for the same reason. */
+	if (e->terminal) {
+		argv[n++] = "foot";
+		argv[n++] = "-e";
 	}
+	snprintf(buf, sizeof(buf), "%s", e->exec);
+	char *save = NULL;
+	for (char *tok = strtok_r(buf, " \t", &save);
+	     tok && n < 30; tok = strtok_r(NULL, " \t", &save))
+		argv[n++] = tok;
 	if (!n)
 		return;
 	argv[n] = NULL;
@@ -468,7 +566,11 @@ int launcher_main(int argc, char **argv)
 		 */
 		if (ev.type == KT_EVT_MOUSE) {
 			int row = ev.my - 3 + top;
-			int on_row = ev.my >= 3 && row >= 0 && row < nmatch;
+			/* Bounded above as well as below: the bottom border is
+			 * ktui_h - 1, and a click there used to launch the
+			 * first entry scrolled OFF the screen. */
+			int on_row = ev.my >= 3 && ev.my < ktui_h - 1 &&
+				     row >= 0 && row < nmatch;
 			if (ev.press == KT_MP_DRAG) {
 				if (on_row)
 					sel = row;

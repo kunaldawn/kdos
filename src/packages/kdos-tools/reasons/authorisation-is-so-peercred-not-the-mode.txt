@@ -1,0 +1,12 @@
+title: the gate is SO_PEERCRED, never the socket's mode
+cite: kdos-powerd
+port: kdos-powerd
+
+A mode that looked like the authorisation is a mode somebody eventually
+loosens. Both root daemons here are 0666 on purpose: anyone may connect, and
+anyone unauthorised gets "err not permitted".
+
+Checking the credential on the CONNECTION rather than taking a user name from
+the message means there is nothing to forge. KDOS_POWERD_SOCKET moves the
+socket for testing and grants nothing — authorisation never depended on the
+path.

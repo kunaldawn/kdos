@@ -96,6 +96,53 @@ done
 [ "$orphans" = 0 ] && note "all depends resolve" "ok"
 
 echo
+echo "==> every port of OURS is built by something"
+# The reverse of the check above, and the one a NEW port needs. `ports/core` is
+# upstream and a recipe there may legitimately sit unbuilt; `src/packages` and
+# `src/desktop` are ours, and a port nobody installs is a directory that
+# compiles on a developer's machine and is absent from the ISO. kdos-oomd is
+# the live example: a daemon, an init script and a recipe, and one missing line
+# in script/05_desktop/packages.txt between it and never running.
+#
+# A port a PHASE SCRIPT builds by name is fine — that is how kinstall is built,
+# in phase 1, long before any packages.txt exists.
+unbuilt=0
+for d in src/packages/* src/desktop/*; do
+    [ -f "$d/kpkgbuild" ] || continue
+    p=$(basename "$d")
+    grep -qxF "$p" script/*/packages.txt 2>/dev/null && continue
+    grep -rqlF "$p" script/*/*.sh 2>/dev/null && continue
+    bad "$p" "in no packages.txt and named by no phase script — nothing builds it"
+    unbuilt=$((unbuilt + 1))
+done
+[ "$unbuilt" = 0 ] && note "our ports are all built" "ok"
+
+echo
+echo "==> every KDOS daemon an init script starts is installed by a port"
+# `supervise` is given an absolute path and the script SKIPS quietly when it is
+# not there ("[SKIP] foo: /usr/sbin/foo not found"), which is right on a live
+# system and useless here: a daemon whose port never installs it is a service
+# that silently never runs. Only the kdos-* ones are checked — an upstream
+# daemon's path comes out of somebody else's `make install` and no grep over
+# this tree can see it.
+daemons=0
+for f in fs/etc/init.d/*.sh; do
+    [ -f "$f" ] || continue
+    # Read from a file, not a pipe: `bad` in a pipeline's subshell increments
+    # a copy of $fail and the check reports without failing.
+    sed -n 's/^[[:space:]]*DAEMON="\([^"]*\)".*/\1/p' "$f" > "$SP/daemons"
+    while read -r dpath; do
+        case "$(basename "$dpath")" in kdos-*) ;; *) continue ;; esac
+        if ! grep -rqF -- "$dpath\"" ports/core/*/build.sh src/packages/*/build.sh \
+                src/desktop/*/build.sh 2>/dev/null; then
+            bad "$(basename "$f")" "starts $dpath, which no build.sh installs"
+        fi
+    done < "$SP/daemons"
+    daemons=$((daemons + 1))
+done
+note "init.d services" "$daemons checked"
+
+echo
 echo "==> every archive a port ships is named by a sha256 in its recipe"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
 # port that cannot build. The hashes were bootstrapped from the git-LFS

@@ -1,0 +1,103 @@
+#!/bin/sh
+# kdos-session-save — write down what is running, so the next login can put it
+# back. Called from the menu's Log Out / Restart / Shut Down items and from
+# W-Escape, BEFORE the prompt they ask through: by the time the compositor has
+# exited there is nobody left to ask.
+#
+# The file is $XDG_STATE_HOME/kdos/session, one line each:
+#
+#   app <name>            an alien app, by its /usr/share/kdos/alien-apps name
+#   native <app_id>       a host toplevel, by the app_id it reported
+#
+# Only the `app` lines are ever relaunched (kdos-desktop-start, opt-in via
+# ~/.config/kdos/session-restore) — an alien app costs a measured 18.3 s of
+# container cold start and a host program does not. Where each window comes
+# BACK is the compositor's window memory, not this file.
+#
+# The rule this script keeps is that a wrong answer is worse than a short one:
+# anything it cannot establish is left out, and a run that establishes nothing
+# writes an empty file rather than a guess.
+set -f		# the alien-apps commands are split unquoted; never glob them
+
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/kdos"
+APPS=/usr/share/kdos/alien-apps
+
+mkdir -p "$STATE" 2>/dev/null || exit 0
+TMP="$STATE/session.new"
+: > "$TMP" 2>/dev/null || exit 0
+
+# ── the alien apps ──────────────────────────────────────────────────────────
+#
+# The box shares the host's PID namespace (a distrobox is only unshared when a
+# sandbox profile says so), so its processes are ordinary entries in /proc and
+# the command's own binary name against /proc/<pid>/comm is the whole test. Two
+# consequences are accepted rather than papered over: a program whose binary is
+# not what its launcher is called (libreoffice runs as soffice.bin) is not
+# recorded, and neither is one whose name is longer than the 15 characters
+# /proc/<pid>/comm holds. Both are misses. A false hit would relaunch something
+# the user never had open, which is the failure worth avoiding.
+#
+# ONE /proc pass, not one `pgrep` per launcher. This runs from the menu's Log
+# Out item and from W-Escape, and labwc's Execute never waits — so the confirm
+# prompt is already on screen while this is still working, and a Yes clicked
+# meanwhile kills the compositor before the `mv` at the end, leaving the
+# PREVIOUS logout's list to be restored at the next login. 105 launchers × one
+# pgrep is 105 full /proc walks, measured at ~9 s on a busy machine; one `cat`
+# over the pid glob is a single fork and the matching is `case`.
+NL='
+'
+if [ -r "$APPS" ] && [ -d /proc/1 ]; then
+	set +f		# the one glob in this script, and it is a pid list
+	COMMS="$NL$(cat /proc/[0-9]*/comm 2>/dev/null)$NL"
+	set -f
+	CAND="$STATE/session.cand"
+	: > "$CAND" 2>/dev/null
+	while IFS='	' read -r name cmd; do
+		case "$name" in ''|'#'*) continue ;; esac
+		[ -n "$cmd" ] || continue
+		set -- $cmd
+		bin=${1##*/}
+		[ -n "$bin" ] || continue
+		case "$COMMS" in *"$NL$bin$NL"*) ;; *) continue ;; esac
+		# Several launchers can share one binary — prusa-slicer and
+		# prusa-gcodeviewer are the same program with an argument — and
+		# the running process cannot say which was clicked. The one with
+		# no arguments of its own is the honest answer, so it sorts
+		# first and the others are dropped below.
+		extra=0
+		shift
+		for a in "$@"; do
+			case "$a" in %?) ;; *) extra=1 ;; esac
+		done
+		printf '%s %d %s\n' "$bin" "$extra" "$name" >> "$CAND"
+	done < "$APPS"
+
+	sort "$CAND" 2>/dev/null | {
+		last=
+		while read -r bin extra name; do
+			[ "$bin" = "$last" ] && continue
+			last=$bin
+			printf 'app %s\n' "$name"
+		done
+	} >> "$TMP"
+	rm -f "$CAND"
+fi
+
+# ── the native toplevels ────────────────────────────────────────────────────
+#
+# `kdos hey list` is the compositor's own answer over $XDG_RUNTIME_DIR/
+# kdos-cmd.sock, one NDJSON object per call. No socket, no line — a session
+# with no kdos-comd socket is a session where nothing here is knowable, not one
+# where nothing is running.
+SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kdos-cmd.sock"
+if [ -S "$SOCK" ] && command -v kdos >/dev/null 2>&1; then
+	kdos hey list 2>/dev/null \
+		| grep -o '"app_id":"[^"]*"' \
+		| cut -d'"' -f4 \
+		| while read -r id; do
+			[ -n "$id" ] && printf 'native %s\n' "$id"
+		done >> "$TMP"
+fi
+
+mv -f "$TMP" "$STATE/session" 2>/dev/null || rm -f "$TMP"
+exit 0

@@ -1,0 +1,12 @@
+title: a mic node that EXISTS is not a node that is RECORDING
+cite: kdos-shell privacy
+port: kdos-shell
+
+An app that opened the mic and went idle must not light the lamp — an
+indicator that cannot tell those apart is one nobody believes twice. The
+microphone is counted only while a Stream/Input/Audio node's state is RUNNING.
+
+The camera half is counted the other way round on purpose: an open fd on
+/dev/video* IS use, there being no other reason to hold one. And it has to be
+counted that way, because almost nothing takes the camera through the portal
+and PipeWire would report nothing at all.

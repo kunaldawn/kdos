@@ -189,6 +189,29 @@ uint32_t kcol_mix(uint32_t a, uint32_t b, int pct)
 	return out;
 }
 
+uint32_t kcol_muted(const KcolScheme *sc)
+{
+	return kcol_mix(sc->deep, sc->text, 56);
+}
+
+void kcol_sem(const KcolScheme *sc, KcolSem *out)
+{
+	uint32_t d = sc->deep, t = sc->text, urg = sc->urgent;
+
+	out->on_accent = kcol_mixf(0xffffff, t, 0.35);
+	out->warning_bg = kcol_mixf(sc->secondary, d, 0.25);
+	out->warning_fg = d;
+	out->destructive_bg = kcol_mixf(urg, d, 0.2);
+	out->destructive_fg = kcol_mixf(0xffffff, urg, 0.15);
+	out->headerbar_border = t;
+	out->header = kcol_mixf(d, t, 0.07);
+	out->side_backdrop = kcol_mixf(d, t, 0.04);
+	out->dialog = kcol_mixf(d, t, 0.11);
+	out->thumb = kcol_mixf(d, t, 0.13);
+	out->border = kcol_mixf(sc->variant, t, 0.22);
+	out->border_unfocused = kcol_mixf(sc->variant, t, 0.14);
+}
+
 double kcol_luma(uint32_t rgb)
 {
 	double r = (double)((rgb >> 16) & 0xff);

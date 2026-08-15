@@ -36,6 +36,14 @@ static const struct {
 	{ "kdos-osd", osd_main },
 	{ "kdos-cal", cal_main },
 	{ "kdos-display", display_main },
+	{ "kdos-keys", keys_main },
+	{ "kdos-teams", teams_main },
+	{ "kdos-saver", saver_main },
+	{ "kdos-slit", slit_main },
+	{ "kdos-doc", doc_main },
+	{ "kdos-settings", settings_main },
+	{ "kdos-openwith", openwith_main },
+	{ "kdos-audio", audio_main },
 };
 #define NTOOLS ((int)(sizeof(TOOLS) / sizeof(TOOLS[0])))
 

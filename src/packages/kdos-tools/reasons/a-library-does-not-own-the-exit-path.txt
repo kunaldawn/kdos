@@ -1,0 +1,13 @@
+title: a library does not own the exit path
+cite: libkbase
+port: kdos-installer
+
+kb_calloc calls whatever kb_set_oom_handler() was given — the installer hands
+it ktui_term_shutdown — instead of knowing that a term_shutdown exists and
+that the program is called "kinstall". kb_set_progname() supplies the prefix
+for that message and for kb_die/kb_warn.
+
+The same boundary explains libkwl being a separate archive from libktui:
+libktui has to be usable in phase 1, before any library exists to link
+against, and libkwl needs fcft, pixman, xkbcommon and wayland-client. If a lib
+ever needs a real -l, every phase-1 consumer moves to phase 4 with it.

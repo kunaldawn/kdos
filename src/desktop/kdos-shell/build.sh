@@ -31,6 +31,16 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	cursor-shape-v1-protocol.c
 "$SCANNER" private-code  "$PROTO/unstable/tablet/tablet-unstable-v2.xml" \
 	tablet-unstable-v2-protocol.c
+# primary-selection: middle-click paste is a SECOND selection with its own
+# device manager, and libkwl includes the header unconditionally. The
+# private-code is what carries the zwp_primary_selection_* interface symbols
+# the link needs; generating only the header builds and then fails at link.
+"$SCANNER" client-header \
+	"$PROTO/unstable/primary-selection/primary-selection-unstable-v1.xml" \
+	primary-selection-unstable-v1-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/primary-selection/primary-selection-unstable-v1.xml" \
+	primary-selection-unstable-v1-protocol.c
 "$SCANNER" client-header "$PROTO/stable/xdg-shell/xdg-shell.xml" \
 	xdg-shell-client-protocol.h
 "$SCANNER" private-code  "$PROTO/stable/xdg-shell/xdg-shell.xml" \
@@ -91,3 +101,13 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-osd"
 # The clock's other half, and the screens. The panel spawns kdos-cal by name.
 ln -s kdos-shell "$PKG/usr/bin/kdos-cal"
 ln -s kdos-shell "$PKG/usr/bin/kdos-display"
+# The keybind card is generated from the same rc.xml the compositor reads, so
+# help cannot drift from what the keys actually do; W-F1 opens it.
+ln -s kdos-shell "$PKG/usr/bin/kdos-keys"
+ln -s kdos-shell "$PKG/usr/bin/kdos-teams"
+ln -s kdos-shell "$PKG/usr/bin/kdos-saver"
+ln -s kdos-shell "$PKG/usr/bin/kdos-slit"
+ln -s kdos-shell "$PKG/usr/bin/kdos-doc"
+ln -s kdos-shell "$PKG/usr/bin/kdos-settings"
+ln -s kdos-shell "$PKG/usr/bin/kdos-openwith"
+ln -s kdos-shell "$PKG/usr/bin/kdos-audio"

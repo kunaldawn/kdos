@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=File Zip
+Exec=filezip %f
+MimeType=application/x-compressed-tar;

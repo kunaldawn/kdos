@@ -90,15 +90,56 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		x += run;
 	}
 
+	int covered = 0;	/* the cell before painted across this one */
+
 	for (int x = 0; x < w; x++) {
 		uint32_t cp = row[x].ch ? row[x].ch : ' ';
+		int was_covered = covered;
+		covered = 0;
 		if (cp == ' ')
 			continue;		/* the fill already drew it */
+		/* Control cells carry colour only, never a glyph.
+		 * KTUI_WIDE_CONT marks the continuation half of a double-width
+		 * glyph; its lead cell paints across it below — but only when
+		 * the lead's glyph really was two cells wide. A codepoint no
+		 * font has, or one a fallback face renders single-width, leaves
+		 * the continuation to swap its own colours, or a reversed run
+		 * comes out with one un-lit cell per wide character. */
+		if (cp < 0x20) {
+			if (!was_covered && (row[x].attr & KT_A_REVERSE)) {
+				pixman_color_t c =
+					to_pixman(ktui_theme->slot[row[x].fg]);
+				pixman_image_fill_rectangles(
+					PIXMAN_OP_SRC, dst, &c, 1,
+					&(pixman_rectangle16_t){
+						(int16_t)(x * cw), (int16_t)y,
+						(uint16_t)cw, (uint16_t)ch });
+			}
+			continue;
+		}
 
 		uint8_t fg = row[x].fg, bg = row[x].bg;
+
+		KCellGlyph g;
+		bool have = kcell_glyph_scaled(cp, scale, &g);
+
+		/*
+		 * A glyph wider than its cell may spill into the next one ONLY
+		 * when libktui reserved that cell for it — otherwise the clip
+		 * below cuts it at the cell edge.
+		 */
+		int cells = 1;
+		if (have && g.x + g.width > cw && x + 1 < w &&
+		    row[x + 1].ch == KTUI_WIDE_CONT) {
+			cells = 2;
+			covered = 1;
+		}
+
 		/* KT_A_REVERSE is how the mouse pointer and selected rows are
 		 * drawn, and it is a swap, not a highlight — matching what the
-		 * terminal does with the same attribute. */
+		 * terminal does with the same attribute. Covers the reserved
+		 * continuation cell too: painting it on its own turn would
+		 * overwrite the right half of the glyph already composited. */
 		if (row[x].attr & KT_A_REVERSE) {
 			uint8_t t = fg;
 			fg = bg;
@@ -108,11 +149,11 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 				PIXMAN_OP_SRC, dst, &c, 1,
 				&(pixman_rectangle16_t){
 					(int16_t)(x * cw), (int16_t)y,
-					(uint16_t)cw, (uint16_t)ch });
+					(uint16_t)(cells * cw),
+					(uint16_t)ch });
 		}
 
-		KCellGlyph g;
-		if (!kcell_glyph_scaled(cp, scale, &g))
+		if (!have)
 			continue;
 
 		pixman_color_t c = to_pixman(ktui_theme->slot[fg]);
@@ -121,15 +162,31 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 			continue;
 
 		/*
-		 * Clipped to the cell. A glyph whose advance exceeds the cell
-		 * would otherwise bleed into its neighbour, and libktui's
-		 * box-drawing characters have to TILE — one pixel of overhang
-		 * turns a continuous border into a dashed one.
+		 * Clipped to the cell (or the two cells of a wide pair) by
+		 * arithmetic on the composite rectangle rather than a pixman
+		 * clip region — swapping the destination's region per glyph
+		 * would also clip the row's background fills. A fallback glyph
+		 * whose bitmap exceeds the cell would otherwise bleed into its
+		 * neighbour, and libktui's box-drawing characters have to TILE
+		 * — one pixel of overhang turns a continuous border into a
+		 * dashed one.
 		 */
-		pixman_image_composite32(
-			PIXMAN_OP_OVER, src, g.pix, dst, 0, 0, 0, 0,
-			x * cw + g.x, y + kcell_ascent() * scale - g.y,
-			g.width, g.height);
+		{
+			int dx = x * cw + g.x;
+			int dy = y + kcell_ascent() * scale - g.y;
+			int cx1 = x * cw + cells * cw, cy1 = y + ch;
+			int mx = dx < x * cw ? x * cw - dx : 0;
+			int my = dy < y ? y - dy : 0;
+			int ex = dx + g.width < cx1 ? dx + g.width : cx1;
+			int ey = dy + g.height < cy1 ? dy + g.height : cy1;
+			int px = dx + mx, py = dy + my;
+
+			if (ex > px && ey > py)
+				pixman_image_composite32(
+					PIXMAN_OP_OVER, src, g.pix, dst,
+					0, 0, mx, my, px, py,
+					ex - px, ey - py);
+		}
 		pixman_image_unref(src);
 
 		if (row[x].attr & KT_A_UNDERLINE) {
@@ -139,7 +196,8 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 				&(pixman_rectangle16_t){
 					(int16_t)(x * cw),
 					(int16_t)(y + ch - 2 * scale),
-					(uint16_t)cw, (uint16_t)scale });
+					(uint16_t)(cells * cw),
+					(uint16_t)scale });
 		}
 	}
 }
