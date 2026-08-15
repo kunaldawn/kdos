@@ -48,6 +48,13 @@ kdos-powerd
 # own container. Relative shares, never watt-hours.
 kdos-energyd
 
+# Wedge protection under memory pressure. Blocks on a /proc/pressure/memory PSI
+# trigger and SIGKILLs + process_mrelease()s the largest attributable offender —
+# preferring boxed apps, never the desktop's own chrome — at most once per ten
+# seconds. Same shape as kdos-powerd: root, foreground under ksvc, SO_PEERCRED
+# socket for `kdos doctor`.
+kdos-oomd
+
 # The input method. kdos-comp speaks text-input-v3 to applications and
 # input-method-v2 to fcitx5 (the fork's src/input/ime.c); this is the
 # thing on the other end of that second protocol. Built Wayland-only — no X11

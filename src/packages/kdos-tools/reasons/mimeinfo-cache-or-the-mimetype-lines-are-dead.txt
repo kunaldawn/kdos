@@ -1,0 +1,15 @@
+title: without mimeinfo.cache beside them, MimeType lines are never consulted
+cite: kdos-appbox genlaunchers
+port: kdos-appbox
+port: shared-mime-info
+
+No alien app appears in any "Open with" dialog and none can be a default
+handler. The cache is written by genlaunchers rather than by
+update-desktop-database because the host has no desktop-file-utils.
+
+The other half is the database itself: shared-mime-info builds
+--disable-update-mimedb, so the package carries packages/freedesktop.org.xml
+and nothing else — no globs, no mime.cache. Measured on a booted ISO,
+/usr/share/mime held one directory and every consumer asking "what type is
+this file" got no answer. postinstall.sh runs update-mime-database, which is a
+target binary and therefore something only an install-time hook can do.

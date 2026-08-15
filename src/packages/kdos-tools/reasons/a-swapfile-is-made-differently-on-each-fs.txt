@@ -1,0 +1,13 @@
+title: a swapfile is made differently on each filesystem, and fails at NEXT boot
+cite: kinstall
+port: kdos-installer
+
+fallocate leaves unwritten extents and swapon refuses those on xfs
+("swapfile has holes"); btrfs needs the file NOCOW and uncompressed, which is
+what `btrfs filesystem mkswapfile` is for. So ext4 gets fallocate, xfs gets
+dd, btrfs gets mkswapfile.
+
+The failure is at the next boot's `swapon -a`, with no swap and nothing saying
+why. Same table, same file: fs_passno is 1 for ext4 and 0 for everything else,
+because a non-zero pass is an instruction to run a checker and there is no
+fsck.btrfs worth running.

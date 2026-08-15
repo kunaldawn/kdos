@@ -2,6 +2,7 @@
 /* view-impl-common.c: common code for shell view->impl functions */
 #include "view-impl-common.h"
 #include "foreign-toplevel/foreign.h"
+#include "kdos.h" /* KDOS */
 #include "labwc.h"
 #include "view.h"
 #include "window-rules.h"
@@ -18,6 +19,9 @@ view_impl_map(struct view *view)
 
 	if (!view->been_mapped) {
 		window_rules_apply(view, LAB_WINDOW_RULE_EVENT_ON_FIRST_MAP);
+		/* KDOS: window memory, AFTER the rules — a rule that placed
+		 * this window has an opinion older than ours */
+		kdos_winpos_apply(view);
 	}
 
 	/*
@@ -44,6 +48,7 @@ view_impl_map(struct view *view)
 void
 view_impl_unmap(struct view *view)
 {
+	kdos_winpos_record(view); /* KDOS: where this app was, for next time */
 	view_update_visibility(view);
 
 	/*

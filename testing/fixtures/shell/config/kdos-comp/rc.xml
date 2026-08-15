@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<!--
+  A FIXTURE rc.xml, frozen on purpose: the golden for kdos-keys is a check on
+  the CARD, not on whatever the shipped skel happens to bind this week. It
+  carries one of every shape the parser has to get right — a plain bind, an
+  &amp; that must come back as itself, and a commented-out example that must
+  never be advertised as live.
+
+  <keybind key="W-x"><action name="Execute" command="never-bound"/></keybind>
+-->
+<labwc_config>
+  <keyboard>
+    <default />
+    <keybind key="W-Return">
+      <action name="Execute" command="foot" />
+    </keybind>
+    <keybind key="W-d">
+      <action name="Execute" command="kdos-launcher" />
+    </keybind>
+    <keybind key="W-S-q">
+      <action name="Execute" command="sh -c &quot;a &amp;&amp; b&quot;" />
+    </keybind>
+    <keybind key="W-q">
+      <action name="Close" />
+    </keybind>
+    <keybind key="A-Tab">
+      <action name="NextWindow" />
+    </keybind>
+    <keybind key="W-1">
+      <action name="GoToDesktop" to="1" />
+    </keybind>
+  </keyboard>
+  <mouse>
+    <default />
+  </mouse>
+</labwc_config>

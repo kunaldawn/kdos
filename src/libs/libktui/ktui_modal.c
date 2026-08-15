@@ -80,8 +80,17 @@ void ktui_modal_draw(void)
 	int w = 56;
 	if (w > ktui_w - 6)
 		w = ktui_w - 6;
+	/* Floor, not a refusal: below this the buttons have no room at any
+	 * layout, so the dialog stops shrinking and lets the cell clipping
+	 * take the edges on a screen that is genuinely smaller. */
+	if (w < 20)
+		w = 20;
 	int h = lines + 6;
 	int x = (ktui_w - w) / 2, y = (ktui_h - h) / 2;
+	if (x < 0)
+		x = 0;
+	if (y < 0)
+		y = 0;
 
 	KRect r = krect(x, y, w, h);
 	ktui_draw_fill(r, KT_SURFACE);
@@ -103,18 +112,32 @@ void ktui_modal_draw(void)
 		p = nl + 1;
 	}
 
+	/* Buttons stay inside the dialog rect at every width: the old fixed
+	 * x + w - 40 walked off the left edge below 46 columns. */
 	int by = y + h - 2;
+	int bw = 18;
 	if (md.confirm) {
-		if (ktui_button(krect(x + w - 40, by, 18, 1), md.yes, 1, 1)) {
+		int bx1 = x + w - 40, bx2 = x + w - 21;
+		if (w < 42) {
+			bw = (w - 2) / 2;
+			bx1 = x + 1;
+			bx2 = x + w - 1 - bw;
+		}
+		if (ktui_button(krect(bx1, by, bw, 1), md.yes, 1, 1)) {
 			void (*fn)(void) = md.on_yes;
 			modal_close();
 			if (fn)
 				fn();
 		}
-		if (ktui_button(krect(x + w - 21, by, 18, 1), md.no, 1, 0))
+		if (ktui_button(krect(bx2, by, bw, 1), md.no, 1, 0))
 			modal_close();
 	} else {
-		if (ktui_button(krect(x + w - 21, by, 18, 1), md.yes, 1, 1))
+		int bx = x + w - 21;
+		if (bw > w - 2)
+			bw = w - 2;
+		if (bx < x + 1)
+			bx = x + 1;
+		if (ktui_button(krect(bx, by, bw, 1), md.yes, 1, 1))
 			modal_close();
 	}
 }

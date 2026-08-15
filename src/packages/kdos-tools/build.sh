@@ -13,13 +13,16 @@ LIBS="$PORT_SRC/../../libs"
 
 # libkxdg is here for `kdos appid`, which reads installed desktop entries. It
 # links libkbase and nothing else, so it costs no external dependency.
-gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
+# libpng is the wallpaper retint (`kdos theme` writes the accent-tinted copy
+# into ~/.cache); KDOS_HAVE_LIBPNG gates the code so the host selftest, which
+# links without libpng, still builds.
+gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -DKDOS_HAVE_LIBPNG -Wall -Wextra \
 	-I"$LIBS/libkbase" -I"$LIBS/libkcolor" -I"$LIBS/libkpkg" \
 	-I"$LIBS/libkxdg" -I"$PORT_SRC" \
 	-o kdos-tools \
 	"$PORT_SRC"/*.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libkcolor/*.c "$LIBS"/libkpkg/*.c \
-	"$LIBS"/libkxdg/*.c $LDFLAGS
+	"$LIBS"/libkxdg/*.c -lpng $LDFLAGS
 
 install -Dm755 kdos-tools "$PKG/usr/sbin/ksvc"
 
@@ -31,7 +34,7 @@ install -d "$PKG/usr/local/sbin"
 ln -s /usr/sbin/ksvc "$PKG/usr/local/sbin/kdos-getty"
 
 install -d "$PKG/usr/local/bin"
-for t in kdos kdos-banner kdos-shot kdos-fetch-app kdos-fetch-static; do
+for t in kdos kdos-banner kdos-shot kdos-fetch-app kdos-fetch-static kdos-sfx; do
 	ln -s /usr/sbin/ksvc "$PKG/usr/local/bin/$t"
 done
 
@@ -41,8 +44,8 @@ done
 install -d "$PKG/usr/bin"
 ln -s /usr/sbin/ksvc "$PKG/usr/bin/kdos-bootctl"
 
-# The recorded debug cycles, queryable offline by `kdos why` and
-# `kdos explain`. Ships in the ISO like the appbox does: a help system that
+# The recorded debug cycles, queryable offline by `kdos why`, `kdos explain`
+# and `kdos oracle`. Ships in the ISO like the appbox does: a help system that
 # needs a network is no help on the machine that will not boot.
 install -d "$PKG/usr/share/kdos/reasons"
 install -m644 "$PORT_SRC"/reasons/*.txt "$PKG/usr/share/kdos/reasons/"

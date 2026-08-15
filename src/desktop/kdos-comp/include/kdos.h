@@ -11,10 +11,23 @@
 #define KDOS_H
 
 #include <stdbool.h>
+#include <stddef.h> /* kcolor.h names size_t and does not include it */
+
+#include "kcolor.h"
 
 struct server;
 struct output;
+struct view;
 struct wl_display;
+
+/* What closing the laptop lid does. `off` is screen off ONLY — the
+ * machine keeps running, which is what a clamshell-with-external-screen
+ * setup wants. */
+enum kdos_lid_close {
+	KDOS_LID_OFF = 0,
+	KDOS_LID_LOCK,
+	KDOS_LID_SUSPEND,
+};
 
 struct kdos_conf {
 	/*
@@ -26,12 +39,30 @@ struct kdos_conf {
 	int crt, crt_scanlines, crt_curve;
 
 	/*
+	 * crt_fullscreen = off skips the pass on an output whose topmost
+	 * view is fullscreen — one render instead of two for video and
+	 * games. Direct scanout itself stays off for the session (the
+	 * scene's switch is creation-time), so this is the battery lever,
+	 * not a zero-copy path.
+	 */
+	bool crt_fullscreen;
+
+	/*
 	 * Idle policy, seconds from last activity; 0 = never. idle_configured
 	 * says the user wrote ANY idle_ key — the VM default is all-off, and
 	 * overriding "off" must include writing a 0 that is meant.
 	 */
 	int idle_dim_s, idle_lock_s, idle_off_s;
 	bool idle_configured;
+
+	/*
+	 * The lid switch (enum kdos_lid_close). Same VM gate as the idle
+	 * timers: default suspend on hardware, off in a VM unless the key
+	 * is written — a VM has no lid, and a default that suspends the
+	 * host's nested session is a trap.
+	 */
+	int lid_close;
+	bool lid_configured;
 
 	/* Wallpaper PNG path, or "none". */
 	char wallpaper[512];
@@ -47,6 +78,23 @@ struct kdos_conf {
 	bool desktop_icons;
 
 	/*
+	 * The top panel hides against the edge until the pointer reaches it.
+	 * Off by default: a panel that is not there is a panel nobody can
+	 * find, and this desktop's face is the one thing a new user is
+	 * looking for. Startup-only, like the rest of the chrome's argv.
+	 */
+	bool panel_autohide;
+
+	/*
+	 * Window memory (kdos-winpos.c): app_id -> geometry/workspace/shaded,
+	 * recorded at unmap and applied at map. ON, because a window that
+	 * comes back where it was is what everyone expects and nobody
+	 * configures; the key exists for the person who wants every launch to
+	 * be placed by the policy instead.
+	 */
+	bool window_memory;
+
+	/*
 	 * The font every piece of supervised chrome is drawn in, as a
 	 * fontconfig name. Empty means libkwl's default, which is
 	 * `Terminus:pixelsize=32` — the console's own cell, and the reason the
@@ -59,12 +107,34 @@ struct kdos_conf {
 	 * matching setting on the labwc side.
 	 */
 	char chrome_font[128];
+
+	/*
+	 * strftime format for the panel clock, passed as `--clock`.
+	 * Empty means the panel's own default (%H:%M). Startup-only, like
+	 * the rest of the chrome's command line.
+	 */
+	char clock_format[64];
 };
 
 extern struct kdos_conf kdos_conf;
 
 /* Fill defaults, then overlay ~/.config/kdos/comp.conf. */
 void kdos_conf_load(void);
+
+/*
+ * SIGHUP/Reconfigure: re-parse comp.conf. The crt, idle, lid_close and
+ * wallpaper keys apply live; the chrome keys (panel_bottom, desktop_icons, chrome_font,
+ * clock_format) are a child's command line and stay startup-only — a
+ * change is LOGGED, never half-applied.
+ */
+void kdos_conf_reload(void);
+
+/* The accent, from $XDG_CACHE_HOME/kdos/theme — one reader for every
+ * graft. Never NULL; absent or unknown means phosphor. */
+const KcolScheme *kdos_accent_scheme(void);
+
+/* The idle policy's DMI/session VM test, shared with the lid gate. */
+bool kdos_in_vm(void);
 
 /*
  * Supervised chrome children: the two panels and the desktop icons, ONE SET
@@ -78,10 +148,16 @@ void kdos_children_output_add(const char *name);
 void kdos_children_output_remove(const char *name);
 bool kdos_child_reap(pid_t pid, int status);
 void kdos_children_poll(void);
+/* Reconfigure re-arms supervision: fail counters reset, a given-up child
+ * gets another chance. */
+void kdos_children_reconfigure(void);
 
 /* Compositor-owned wallpaper (no swaybg on a cell-grid desktop). */
 void kdos_wallpaper_init(void);
 void kdos_wallpaper_arrange(void);
+/* SIGHUP: prefer $XDG_CACHE_HOME/kdos/wallpaper.png (kdos theme's
+ * retint), re-decode when the source changed, retint the deep rects. */
+void kdos_wallpaper_reload(void);
 void kdos_wallpaper_finish(void);
 
 /* Frame-timing reports on $XDG_RUNTIME_DIR/kdos-frames.sock. */
@@ -90,14 +166,67 @@ void kdos_frames_init(void);
 void kdos_frames_finish(void);
 void kdos_frames_output_add(struct output *output);
 void kdos_frames_frame(struct output *output);
+/* Whether this frame event actually submitted a buffer — the difference
+ * between "late" and "nothing wanted drawing". */
+void kdos_frames_submit(struct output *output, bool submitted);
 void kdos_frames_render_ns(struct output *output, int64_t ns);
 int64_t kdos_frames_now(void);
+
+/*
+ * `kdos hey` — the command socket on $XDG_RUNTIME_DIR/kdos-cmd.sock. One
+ * NDJSON request line in, one response line out, close: no history and no
+ * subscriptions, which is what kdos-frames.sock is for.
+ */
+void kdos_cmd_init(void);
+void kdos_cmd_finish(void);
+
+/*
+ * Window memory. _record() at unmap, _apply() at map AFTER the window
+ * rules have run; _client_positioned() is how a shell tells us the client
+ * placed this window itself (X11 USPosition), which is the one case that
+ * must never be overridden. _forget() drops that mark when a view dies
+ * before it maps.
+ */
+void kdos_winpos_record(struct view *view);
+void kdos_winpos_apply(struct view *view);
+void kdos_winpos_client_positioned(struct view *view);
+void kdos_winpos_forget(struct view *view);
+void kdos_winpos_finish(void);
+
+/*
+ * Window grouping — Haiku's Stack & Tile, the stack half. A hidden
+ * member is a MINIMIZED view (show-desktop.c's pattern), which is what
+ * makes the panel stay truthful with no second graft.
+ */
+struct ssd;
+void kdos_group_add(struct view *view);
+void kdos_group_remove(struct view *view);
+void kdos_group_next(struct view *view, bool reverse);
+/* From the focus path: this member is now the one showing. */
+void kdos_group_activate(struct view *view);
+int kdos_group_size(struct view *view);
+/* From ssd_update_title(): (re)draw the tab strip over the title area. */
+void kdos_group_ssd_update(struct ssd *ssd);
+/* From ssd_titlebar_destroy(): the strip went with the titlebar. */
+void kdos_group_ssd_clear(struct view *view);
+void kdos_group_finish(void);
 
 /* Idle policy: dim -> lock -> outputs off, from last activity. */
 void kdos_idle_init(void);
 void kdos_idle_finish(void);
 void kdos_idle_activity(void);
 void kdos_idle_inhibit(bool add);
+/* The dim rect follows the layout, next to the wallpaper's arrange. */
+void kdos_idle_arrange(void);
+void kdos_idle_reconfigure(void);
+/* The lid policy shares the idle policy's output blanking. */
+void kdos_idle_outputs_power(bool on);
+
+/* The lid switch (wlr_switch): lid_close = off|lock|suspend. */
+struct wlr_input_device;
+void kdos_lid_init(void);
+void kdos_lid_finish(void);
+void kdos_lid_reconfigure(void);
 
 /*
  * The CRT pass. kdos_crt_early_init() BEFORE wlr_scene_create() (it
@@ -113,5 +242,12 @@ void kdos_crt_init(void);
 void kdos_crt_reload(void);
 void kdos_crt_finish(void);
 bool kdos_crt_frame(struct output *output, struct wlr_scene_output *so);
+/*
+ * The CRT power-down: the last composite collapses to a bright line,
+ * then a dot. Called from main() AFTER wl_display_run() returns and
+ * BEFORE any graft teardown; hard 600 ms deadline, GLES2-only, a clean
+ * no-op everywhere else — it must never block shutdown.
+ */
+void kdos_crt_powerdown(void);
 
 #endif /* KDOS_H */

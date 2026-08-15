@@ -1,0 +1,18 @@
+title: skip-if-installed compares nothing — it asks whether a db entry exists
+cite: kpkg
+port: wlroots
+
+kp_installed() is kb_read_all(<db>/<name>) != NULL, so an installed package is
+skipped whatever its version, its release or its recipe now say. Bumping
+`version` is worth doing for the binhost and for a fresh tree, and does nothing
+at all for an incremental local build.
+
+It cost a build: ports/core/wlroots/build.sh gained an install of the protocol
+XML upstream does not ship, the installed wlroots predated that line, and
+kdos-shell died at once on wayland-scanner's "Could not open input file".
+Nothing detects it — the version was unchanged, so kpkg correctly skipped a
+package that no longer matched its own recipe.
+
+The only thing that rebuilds a changed port on a built tree is
+`--rebuild <port>` (or `kpkg install -f`). The smell is a package whose
+behaviour disagrees with a recipe you just read.

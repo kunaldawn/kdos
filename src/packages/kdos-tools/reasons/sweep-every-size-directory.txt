@@ -1,0 +1,12 @@
+title: sweep every icon size directory, not just scalable/
+cite: kdos-theme icons
+port: kdos-theme
+
+The rule was learned against a desktop whose icons were SVGs filed under fixed
+sizes and nowhere else, so a scalable-only pass left exactly the buttons the
+user looks at unthemed. It still holds for anything that ships an SVG under a
+numeric directory. Largest variant per name wins.
+
+And /usr/share/icons/hicolor/index.theme must exist or every icon lookup
+silently fails — a user-dir icon tree without its own index.theme is not
+searched either.

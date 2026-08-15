@@ -13,6 +13,7 @@
 #define KDOS_SHELL_H
 
 #include <signal.h>	/* sig_atomic_t, for the live-retint flag below */
+#include <time.h>	/* time_t, for the tray's retry backoff */
 
 #include "ktui.h"
 #include "kxdg.h"
@@ -24,7 +25,10 @@
 #define SH_MAX_PRIV  8
 #define SH_PRIV_NAME 48
 
-enum { SH_PRIV_MIC = 0, SH_PRIV_CAM };
+/* SCR is a screen-share consumer: a PipeWire video stream whose props do NOT
+ * say camera is somebody watching the screen, not the webcam, and lighting the
+ * CAM lamp for it teaches people the lamp lies. */
+enum { SH_PRIV_MIC = 0, SH_PRIV_CAM, SH_PRIV_SCR, SH_PRIV_NKIND };
 
 /* The clickable applets on the right of the top panel, right to left. */
 enum { SH_AP_CLOCK = 0, SH_AP_BATT, SH_AP_VOL, SH_AP_NET, SH_AP_RESTART,
@@ -58,7 +62,9 @@ struct sh_tray_item {
 	int status;			/* SH_TRAY_* */
 	int is_menu;			/* ItemIsMenu: Activate means "show menu" */
 	int fdo_iface;			/* publishes the freedesktop spelling */
-	int needs_props;		/* read them on the next dispatch */
+	int needs_props;		/* read them on a later dispatch */
+	int prop_fails;			/* consecutive failed reads, for backoff */
+	time_t next_try;		/* do not re-read before this */
 };
 
 struct sh_tray;
@@ -91,8 +97,9 @@ static inline const char *sh_task_label(const struct sh_task *t)
  *
  * The mark is `≡` where an icon theme would have put a distributor logo — on a
  * character grid a logo is one cell, and three horizontal rules is what that
- * cell can honestly hold. It falls back to the word KDOS on a font without it,
- * which is checked once rather than per frame.
+ * cell can honestly hold. It falls back to the word KDOS on a font without it
+ * (panel.c's menu_mark(), resolved once from ktui_caps rather than per frame) —
+ * U+2261 is not among the console font's 512 glyphs.
  */
 #define SH_NMENUS 3
 #define SH_MENU_MARK "\xe2\x89\xa1"		/* U+2261 IDENTICAL TO */
@@ -114,6 +121,13 @@ struct sh_state {
 
 	void *ws[SH_MAX_WS];
 	int ws_occupied[SH_MAX_WS];
+	/* URGENT is its own bit, never folded into occupancy: the protocol sends
+	 * the full state each time, so it is cleared the moment an event lacks
+	 * it rather than sticking until the workspace is visited. */
+	int ws_urgent[SH_MAX_WS];
+	/* The name ext-workspace-v1 published, or empty for a synthesized digit.
+	 * Truncated to what a strip cell can hold. */
+	char ws_name[SH_MAX_WS][16];
 	int nws;
 	int active_ws;
 
@@ -146,9 +160,12 @@ struct sh_state {
 	 * three buttons. */
 	int hover_menu;
 	int hover_task;
-	/* The bottom panel's hit map: the pager and show-desktop. */
+	/* The bottom panel's hit map: the pager and show-desktop. Half-open
+	 * spans, show-desktop included — it is one cell at w - 2, and an
+	 * open-ended test made the blank column beside it minimise the
+	 * session. */
 	int pager_hit_x, pager_hit_end;
-	int show_hit_x;
+	int show_hit_x, show_hit_end;
 	int task_hit_x, task_cell_w;
 	int tray_hit_x, tray_hit_end;
 
@@ -183,6 +200,14 @@ int notifyd_main(int argc, char **argv);	/* kdos-notifyd  */
 int osd_main(int argc, char **argv);		/* kdos-osd      */
 int cal_main(int argc, char **argv);		/* kdos-cal      */
 int display_main(int argc, char **argv);	/* kdos-display  */
+int keys_main(int argc, char **argv);		/* kdos-keys     */
+int teams_main(int argc, char **argv);		/* kdos-teams    */
+int saver_main(int argc, char **argv);		/* kdos-saver    */
+int slit_main(int argc, char **argv);		/* kdos-slit     */
+int doc_main(int argc, char **argv);		/* kdos-doc      */
+int settings_main(int argc, char **argv);	/* kdos-settings */
+int openwith_main(int argc, char **argv);	/* kdos-openwith */
+int audio_main(int argc, char **argv);		/* kdos-audio    */
 
 /*
  * The ALSA mixer, shared with the panel (osd.c).
@@ -223,6 +248,14 @@ void sh_tray_free(struct sh_state *sh);
 int sh_tray_count(const struct sh_state *sh);
 const struct sh_tray_item *sh_tray_get(const struct sh_state *sh, int i);
 void sh_tray_activate(struct sh_state *sh, int i, int button, int x, int y);
+/* SNI Scroll — what a volume item expects from the wheel. `delta` is positive
+ * for up, and fire-and-forget like every other call to an item. */
+void sh_tray_scroll(struct sh_state *sh, int i, int delta);
+/* One org.freedesktop.Notifications.Notify over the tray's bus, async — the
+ * panel already holds a session-bus connection, and a notification must never
+ * gate a frame. A session with no bus drops it, which is honest: there is no
+ * notifyd to show it either. */
+void sh_tray_notify(struct sh_state *sh, const char *summary, const char *body);
 
 /*
  * Which app is recording (privacy.c). `count` is how many apps hold that kind
@@ -242,13 +275,36 @@ const char *sh_priv_name(const struct sh_state *sh, int kind);
  * and one 15-line reader is cheaper than dragging in another archive. */
 int sh_read_line(const char *path, char *buf, size_t len);
 
+/* At most `cells` display columns of `src` into `dst`, never cutting a UTF-8
+ * sequence and never overrunning `n`. Every string this panel truncates is
+ * somebody else's — an app's own name, a workspace name out of rc.xml — and a
+ * `%.14s` on one of those leaves half a sequence behind. */
+void sh_utf8_trunc(char *dst, size_t n, const char *src, int cells);
+
 /*
  * How many processes are running code an upgrade replaced, or -1 when the
- * check could not run. Re-checked rarely: `kdos restarts` walks every process's
- * maps, which is far too much work for a panel redraw, and the answer only
- * changes when a package is installed.
+ * check could not run. `kdos restarts` walks every process's maps — far too
+ * much work for a panel redraw, and too much even to WAIT on: the check runs
+ * in a forked child that is never waited for synchronously. `begin` starts one
+ * (a no-op while one is in flight), `poll` collects with WNOHANG and returns
+ * the last answer collected.
  */
-int sh_restart_count(void);
+void sh_restart_begin(void);
+int sh_restart_poll(void);
+
+/*
+ * Strip desktop-entry field codes from an Exec line, in place: `%%` becomes a
+ * literal percent, every other `%X` is removed, and the whitespace a dropped
+ * code leaves behind is collapsed so the line still splits into clean argv.
+ * One copy, here, because three diverged copies shipped three behaviours.
+ */
+void sh_strip_field_codes(char *exec);
+
+/* Resolve a desktop-entry id to its Name and Exec through the XDG data dirs —
+ * the same search the taskbar's label uses. Returns 0 when found. Either out
+ * pointer may be NULL. */
+int sh_desktop_entry(const char *id, char *name, size_t nname,
+		     char *exec, size_t nexec);
 
 /* The accent the desktop is currently wearing, from
  * $XDG_CACHE_HOME/kdos/theme. The same file kdos-appbox's TUI reads. */

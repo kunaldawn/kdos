@@ -1,0 +1,13 @@
+title: the console font is 512 glyphs — an eighth block there is INVISIBLE
+cite: libktui ramp tiers
+port: terminus-font
+port: kdos-shell
+
+ter-kdos32n has the box sets and the three shades and no eighth blocks, no
+half blocks, no braille and no left/right arrows (which is why ktui_glyph
+carries the triangles instead). A glyph the font does not carry renders as a
+BLANK on tty1, so an eighth-block bar there is not ugly, it is missing.
+
+Three levels is the honest resolution of that font. Grep uni/xos4-2.uni in the
+terminus-font tarball before using any glyph; the port adds exactly six
+codepoints to it, the double box-drawing set the block logo needs.

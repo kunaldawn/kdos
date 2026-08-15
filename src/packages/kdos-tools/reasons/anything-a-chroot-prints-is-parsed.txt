@@ -1,0 +1,12 @@
+title: anything a chroot command prints is parsed — keep stdout clean
+cite: chroot_exec.sh
+port: kdos-tools
+
+kpkgdepends writes the install order to stdout and nothing else, so
+chroot_exec.sh logs diagnostics to build/logs/chroot.log. kdosbuild reads
+stdout only and validates every token against ^[A-Za-z0-9][A-Za-z0-9._+-]*$;
+noise fails loudly instead of being installed as a package.
+
+That contract was verified identical to the shell version over all 397 ports
+individually, over every phase's whole packages.txt, and with a populated
+database.

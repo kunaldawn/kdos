@@ -1,0 +1,15 @@
+title: longest matching suffix wins, or every .tar.gz opens in a decompressor
+cite: kdos-appbox open
+port: kdos-appbox
+
+/usr/share/mime/globs is scanned for the type, and the freedesktop rule is
+longest-match. Take the first hit instead and a .tar.gz resolves as .gz.
+
+The rest of the resolution is the freedesktop one and nothing clever:
+mimeapps.list [Default Applications], [Added Associations], then each
+applications/mimeinfo.cache — which is the file genlaunchers already writes
+beside the box's own launchers, so a boxed app is found by exactly the same
+lookup as a host one.
+
+Field codes are SUBSTITUTED rather than stripped: %f IS the file, and dropping
+it opens the application with an empty document.

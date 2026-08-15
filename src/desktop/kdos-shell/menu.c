@@ -43,9 +43,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <wayland-client.h>
+
 #include "kwl.h"
 #include "kxdg.h"
 #include "shell.h"
+#include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 
 #define MAX_ITEMS 512
 #define NAME_MAX_LEN 64
@@ -79,6 +82,14 @@ static const struct {
 struct item {
 	char name[NAME_MAX_LEN];
 	char exec[EXEC_MAX_LEN];
+	/* The desktop-file id, applications only — what the dedupe below keys
+	 * on. Empty for Places and System rows. */
+	char id[64];
+	/* Places only: the directory, as its OWN field. It used to ride inside
+	 * `exec` and be re-split on whitespace at launch, which turned
+	 * "/run/media/kdos/My Disk" into two bogus argv entries — a mount with
+	 * a space in its name simply could not be opened. */
+	char path[256];
 	int group;			/* index into GROUPS, or -1 */
 	int submenu;			/* -1, or the group this row opens */
 	int terminal;			/* Terminal=true — run it inside foot */
@@ -92,36 +103,6 @@ static struct item items[MAX_ITEMS];
 static int nitems;
 
 /* ── reading the applications ──────────────────────────────────────────── */
-
-/*
- * Strip the field codes.
- *
- * A `.desktop` Exec is a template: %f is a file, %U a list of URLs, %i the icon
- * option, %c the name. Launching with them still in argv passes the LITERAL
- * "%U" to the program, which browsers open as a search and everything else
- * reports as a missing file. Nothing here substitutes them, because a menu
- * launch has no document to substitute.
- */
-static void strip_field_codes(char *s)
-{
-	char *w = s;
-	for (char *r = s; *r; r++) {
-		if (r[0] == '%' && r[1]) {
-			if (r[1] == '%') {	/* an escaped percent is a percent */
-				*w++ = '%';
-				r++;
-				continue;
-			}
-			r++;			/* drop the code */
-			continue;
-		}
-		*w++ = *r;
-	}
-	*w = '\0';
-	/* Trailing space left by a dropped code at the end. */
-	while (w > s && w[-1] == ' ')
-		*--w = '\0';
-}
 
 static int group_for(const char *categories)
 {
@@ -148,9 +129,30 @@ static int group_for(const char *categories)
 	return 0;				/* Accessories */
 }
 
+static int have_id(const char *id)
+{
+	for (int i = 0; i < nitems; i++)
+		if (*id && !strcmp(items[i].id, id))
+			return 1;
+	return 0;
+}
+
 static void add_desktop_file(const char *path)
 {
 	KxdgEntry e;
+	char id[64];
+
+	/* The desktop-file id, from the file name. The user's directory is
+	 * scanned first and wins: a ~/.local/share entry exists precisely to
+	 * REPLACE the system one of the same id, and without this check an
+	 * override showed the app twice. */
+	const char *base = strrchr(path, '/');
+	base = base ? base + 1 : path;
+	size_t blen = strlen(base);		/* ends in .desktop — scan_dir checked */
+	snprintf(id, sizeof(id), "%.*s", (int)(blen - 8), base);
+	if (have_id(id))
+		return;
+
 	if (nitems >= MAX_ITEMS || kxdg_load(&e, path, "Desktop Entry") != 0)
 		return;
 
@@ -170,7 +172,8 @@ static void add_desktop_file(const char *path)
 	memset(it, 0, sizeof(*it));
 	snprintf(it->name, sizeof(it->name), "%s", name);
 	snprintf(it->exec, sizeof(it->exec), "%s", exec);
-	strip_field_codes(it->exec);
+	snprintf(it->id, sizeof(it->id), "%s", id);
+	sh_strip_field_codes(it->exec);
 	it->group = group_for(kxdg_get(&e, "Categories", NULL));
 	it->submenu = -1;
 	it->terminal = kxdg_bool(&e, "Terminal", 0);
@@ -207,12 +210,14 @@ static void load_applications(void)
 	const char *home = getenv("HOME");
 	char user[512];
 
-	scan_dir("/usr/share/applications");
-	scan_dir("/usr/local/share/applications");
+	/* User first — the dedupe in add_desktop_file keeps the FIRST entry
+	 * per id, so this order is what makes an override an override. */
 	if (home) {
 		snprintf(user, sizeof(user), "%s/.local/share/applications", home);
 		scan_dir(user);
 	}
+	scan_dir("/usr/local/share/applications");
+	scan_dir("/usr/share/applications");
 	qsort(items, (size_t)nitems, sizeof(items[0]), cmp_name);
 }
 
@@ -240,12 +245,12 @@ static void add(const char *name, const char *exec, int submenu)
  */
 static void add_place(const char *label, const char *path)
 {
-	char cmd[EXEC_MAX_LEN];
-	/* Bounded explicitly: a mount point can be longer than the Exec field
-	 * and a truncated path is a menu row that opens the wrong directory —
-	 * and, under -Werror, a build that does not finish. */
-	snprintf(cmd, sizeof(cmd), "foot -e mc %.240s", path);
-	add(label, cmd, -1);
+	if (nitems >= MAX_ITEMS)
+		return;
+	add(label, NULL, -1);
+	/* The path is its own field: launch() builds the argv directly from
+	 * it, so a mount with a space in its name is one argument. */
+	snprintf(items[nitems - 1].path, sizeof(items[0].path), "%s", path);
 }
 
 static void load_places(void)
@@ -381,21 +386,31 @@ static int confirmed(const char *question)
 static void launch(const struct item *it)
 {
 	char buf[EXEC_MAX_LEN + 16];
-	char *argv[32];
+	const char *argv[32];
 	int n = 0;
 
-	if (!*it->exec)
+	if (!*it->exec && !it->path[0])
 		return;
 	if (it->confirm && !confirmed(it->confirm))
 		return;
 
-	if (it->terminal)
-		snprintf(buf, sizeof(buf), "foot -e %s", it->exec);
-	else
-		snprintf(buf, sizeof(buf), "%s", it->exec);
+	if (it->path[0]) {
+		/* A Places row: the path travels as ONE argument, whatever is
+		 * in it — no re-split, no truncation. */
+		argv[n++] = "foot";
+		argv[n++] = "-e";
+		argv[n++] = "mc";
+		argv[n++] = it->path;
+	} else {
+		if (it->terminal)
+			snprintf(buf, sizeof(buf), "foot -e %s", it->exec);
+		else
+			snprintf(buf, sizeof(buf), "%s", it->exec);
 
-	for (char *p = strtok(buf, " \t"); p && n < 31; p = strtok(NULL, " \t"))
-		argv[n++] = p;
+		for (char *p = strtok(buf, " \t"); p && n < 31;
+		     p = strtok(NULL, " \t"))
+			argv[n++] = p;
+	}
 	argv[n] = NULL;
 	if (!n)
 		return;
@@ -406,7 +421,7 @@ static void launch(const struct item *it)
 	if (pid == 0) {
 		if (fork() == 0) {
 			setsid();
-			execvp(argv[0], argv);
+			execvp(argv[0], (char *const *)argv);
 			_exit(127);
 		}
 		_exit(0);
@@ -561,9 +576,374 @@ static void typeahead(struct view *v, int ch)
 	}
 }
 
+/* ── --windows: one app's windows, from the panel's grouped chip ────────── */
+
+/*
+ * `kdos-menu --windows <app_id>` lists the titles of that app's toplevels
+ * plus "Close all" and "Minimize all", and the panel spawns it when a grouped
+ * task chip with more than one window is clicked. Foreign-toplevel is bound
+ * HERE, on libkwl's connection (the same pattern shell.c uses and for the
+ * same reason — a second wl_display would be a second seat and a second set
+ * of globals), only in this mode: the ordinary menus never need it.
+ */
+#define MAX_WIN 64
+
+struct win {
+	struct zwlr_foreign_toplevel_handle_v1 *handle;
+	char app_id[64];
+	char title[128];
+};
+
+static struct win wins[MAX_WIN];
+static int nwins;
+static struct zwlr_foreign_toplevel_manager_v1 *win_mgr;
+
+static struct win *win_for(struct zwlr_foreign_toplevel_handle_v1 *h)
+{
+	for (int i = 0; i < nwins; i++)
+		if (wins[i].handle == h)
+			return &wins[i];
+	return NULL;
+}
+
+static void wtl_title(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+		      const char *title)
+{
+	struct win *w = win_for(h);
+	(void)d;
+	if (w)
+		snprintf(w->title, sizeof(w->title), "%s", title);
+}
+
+static void wtl_app_id(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+		       const char *app_id)
+{
+	struct win *w = win_for(h);
+	(void)d;
+	if (w)
+		snprintf(w->app_id, sizeof(w->app_id), "%s", app_id);
+}
+
+static void wtl_output_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+			     struct wl_output *o)
+{ (void)d; (void)h; (void)o; }
+static void wtl_output_leave(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+			     struct wl_output *o)
+{ (void)d; (void)h; (void)o; }
+static void wtl_state(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+		      struct wl_array *states)
+{ (void)d; (void)h; (void)states; }
+static void wtl_done(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
+{ (void)d; (void)h; }
+
+static void wtl_closed(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
+{
+	(void)d;
+	for (int i = 0; i < nwins; i++) {
+		if (wins[i].handle != h)
+			continue;
+		memmove(&wins[i], &wins[i + 1],
+			(size_t)(nwins - i - 1) * sizeof(wins[0]));
+		nwins--;
+		break;
+	}
+	zwlr_foreign_toplevel_handle_v1_destroy(h);
+}
+
+static void wtl_parent(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+		       struct zwlr_foreign_toplevel_handle_v1 *p)
+{ (void)d; (void)h; (void)p; }
+
+static const struct zwlr_foreign_toplevel_handle_v1_listener win_tl_listener = {
+	.title = wtl_title,
+	.app_id = wtl_app_id,
+	.output_enter = wtl_output_enter,
+	.output_leave = wtl_output_leave,
+	.state = wtl_state,
+	.done = wtl_done,
+	.closed = wtl_closed,
+	.parent = wtl_parent,
+};
+
+static void wmgr_toplevel(void *d, struct zwlr_foreign_toplevel_manager_v1 *m,
+			  struct zwlr_foreign_toplevel_handle_v1 *h)
+{
+	(void)d; (void)m;
+	if (nwins >= MAX_WIN) {
+		zwlr_foreign_toplevel_handle_v1_destroy(h);
+		return;
+	}
+	struct win *w = &wins[nwins++];
+	memset(w, 0, sizeof(*w));
+	w->handle = h;
+	zwlr_foreign_toplevel_handle_v1_add_listener(h, &win_tl_listener, NULL);
+}
+
+static void wmgr_finished(void *d, struct zwlr_foreign_toplevel_manager_v1 *m)
+{ (void)d; (void)m; }
+
+static const struct zwlr_foreign_toplevel_manager_v1_listener win_mgr_listener = {
+	.toplevel = wmgr_toplevel,
+	.finished = wmgr_finished,
+};
+
+static void win_reg_global(void *d, struct wl_registry *r, uint32_t name,
+			   const char *iface, uint32_t version)
+{
+	(void)d; (void)version;
+	if (!strcmp(iface, zwlr_foreign_toplevel_manager_v1_interface.name)) {
+		win_mgr = wl_registry_bind(
+			r, name, &zwlr_foreign_toplevel_manager_v1_interface, 3);
+		zwlr_foreign_toplevel_manager_v1_add_listener(win_mgr,
+							      &win_mgr_listener,
+							      NULL);
+	}
+}
+
+static void win_reg_remove(void *d, struct wl_registry *r, uint32_t name)
+{ (void)d; (void)r; (void)name; }
+
+static const struct wl_registry_listener win_registry_listener = {
+	.global = win_reg_global,
+	.global_remove = win_reg_remove,
+};
+
+/* Rows are 0..n-1 the windows, n a separator, n+1 Close all, n+2 Minimize
+ * all. One separator, so stepping over it is one extra hop. */
+static int win_step(int sel, int dir, int n, int total)
+{
+	sel += dir;
+	if (sel < 0)
+		sel = total - 1;
+	if (sel >= total)
+		sel = 0;
+	if (sel == n) {
+		sel += dir >= 0 ? 1 : -1;
+		if (sel < 0)
+			sel = total - 1;
+		if (sel >= total)
+			sel = 0;
+	}
+	return sel;
+}
+
+static void windows_draw(const char *app, const int *ord, int n, int sel,
+			 int top)
+{
+	int w = ktui_w, h = ktui_h;
+	int total = n + 3;
+
+	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
+	ktui_draw_box(krect(0, 0, w, h), app, KT_ACCENT, KT_SURFACE, 0);
+
+	int rows = h - 2;
+	for (int r = 0; r < rows; r++) {
+		int idx = top + r;
+		if (idx >= total)
+			break;
+		bool is_sel = idx == sel;
+		uint8_t fg = is_sel ? KT_SURFACE : KT_TEXT;
+		uint8_t bg = is_sel ? KT_ACCENT : KT_SURFACE;
+
+		ktui_draw_fill(krect(1, 1 + r, w - 2, 1), bg);
+		if (idx < n) {
+			const struct win *wn = &wins[ord[idx]];
+			ktui_draw_text(2, 1 + r, w - 4,
+				       wn->title[0] ? wn->title : wn->app_id,
+				       fg, bg, KT_A_NONE);
+		} else if (idx == n) {
+			for (int x = 1; x < w - 1; x++)
+				ktui_draw_text(x, 1 + r, 1, ktui_glyph[KT_G_HL],
+					       KT_DIM, KT_SURFACE, KT_A_NONE);
+		} else {
+			ktui_draw_text(2, 1 + r, w - 4,
+				       idx == n + 1 ? "Close all"
+						    : "Minimize all",
+				       fg, bg, KT_A_NONE);
+		}
+	}
+	ktui_draw_flush();
+}
+
+static int windows_main(const char *app, int at_x, int at_y, const char *font)
+{
+	KwlConfig cfg = {
+		.role = KWL_ROLE_OVERLAY,
+		.cols = 42,
+		.rows = 7,		/* provisional; resized once counted */
+		.corner = at_x >= 0 ? KWL_CORNER_TOP_LEFT : KWL_CORNER_CENTER,
+		.margin_x = at_x >= 0 ? at_x : 0,
+		.margin_y = at_x >= 0 ? at_y : 0,
+		.app_id = "kdos-menu",
+		.font = font,
+		.keyboard = 1,
+		/* A menu, not a dialog: clicking elsewhere closes it. */
+		.dismiss_on_unfocus = 1,
+	};
+
+	sh_theme_from_cache();
+	if (kwl_init(&cfg) != 0) {
+		fprintf(stderr, "kdos-menu: no compositor or no layer-shell\n");
+		return 1;
+	}
+	ktui_draw_init();
+
+	struct wl_display *dpy = kwl_display();
+	struct wl_registry *reg = wl_display_get_registry(dpy);
+	wl_registry_add_listener(reg, &win_registry_listener, NULL);
+	wl_display_roundtrip(dpy);		/* the globals */
+	wl_display_roundtrip(dpy);		/* and the toplevels they announce */
+	if (!win_mgr) {
+		fprintf(stderr, "kdos-menu: no foreign-toplevel manager\n");
+		kwl_shutdown();
+		return 1;
+	}
+
+	int sel = 0, top = 0, want_rows = -1;
+	int done = 0;
+
+	while (!kwl_should_close() && !done) {
+		wl_display_dispatch_pending(dpy);
+		if (ktui_resized) {
+			ktui_resized = 0;
+			ktui_draw_resize();
+			ktui_draw_invalidate();
+		}
+
+		int ord[MAX_WIN], n = 0;
+		struct zwlr_foreign_toplevel_handle_v1 *shown[MAX_WIN];
+		for (int i = 0; i < nwins; i++)
+			if (!strcmp(wins[i].app_id, app)) {
+				shown[n] = wins[i].handle;
+				ord[n++] = i;
+			}
+		/* Every window of the app closed under us: a menu of nothing
+		 * has nothing left to offer. */
+		if (n == 0)
+			break;
+		int total = n + 3;
+		int wr = total + 2;
+		if (wr > 24)
+			wr = 24;
+		if (wr != want_rows) {
+			want_rows = wr;
+			kwl_overlay_resize(42, wr);
+		}
+
+		if (sel >= total)
+			sel = total - 1;
+		if (sel == n)
+			sel = n - 1;
+		int rows_vis = ktui_h - 2;
+		if (sel < top)
+			top = sel;
+		if (rows_vis > 0 && sel >= top + rows_vis)
+			top = sel - rows_vis + 1;
+		windows_draw(app, ord, n, sel, top);
+
+		KtuiEvent ev;
+		if (!ktui_backend()->poll_event(&ev, 1000))
+			continue;
+
+		int act = -1;			/* row to activate */
+		if (ev.type == KT_EVT_MOUSE) {
+			int row = ev.my - 1 + top;
+			bool on_row = ev.my >= 1 && ev.my < ktui_h - 1 &&
+				      row >= 0 && row < total && row != n;
+			if (ev.press == KT_MP_DRAG) {
+				if (on_row)
+					sel = row;
+				continue;
+			}
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_WHEEL_UP) {
+				sel = win_step(sel, -1, n, total);
+				continue;
+			}
+			if (ev.btn == KT_MB_WHEEL_DOWN) {
+				sel = win_step(sel, 1, n, total);
+				continue;
+			}
+			if (ev.btn == KT_MB_RIGHT)
+				break;
+			if (ev.btn != KT_MB_LEFT || !on_row)
+				continue;
+			act = row;
+		} else if (ev.type == KT_EVT_KEY) {
+			switch (ev.key) {
+			case KT_K_ESC:
+				done = 1;
+				break;
+			case KT_K_UP:
+				sel = win_step(sel, -1, n, total);
+				break;
+			case KT_K_DOWN:
+				sel = win_step(sel, 1, n, total);
+				break;
+			case KT_K_HOME:
+				sel = 0;
+				break;
+			case KT_K_END:
+				sel = total - 1;
+				break;
+			case KT_K_ENTER:
+				act = sel;
+				break;
+			default:
+				break;
+			}
+		}
+		if (act < 0)
+			continue;
+		/* The poll may have dispatched a closed window, compacting
+		 * wins[] under ord[]. Rebuild the match set and compare the
+		 * HANDLES, not the count: one window closing and another of the
+		 * same app opening in one batch leaves the count unchanged while
+		 * every row names a different window. */
+		{
+			int n2 = 0, i;
+			for (i = 0; i < nwins && n2 < MAX_WIN; i++)
+				if (!strcmp(wins[i].app_id, app))
+					ord[n2++] = i;
+			if (n2 != n)
+				continue;
+			for (i = 0; i < n; i++)
+				if (wins[ord[i]].handle != shown[i])
+					break;
+			if (i != n)
+				continue;
+		}
+
+		if (act < n) {
+			struct wl_seat *seat = kwl_seat();
+			if (seat) {
+				zwlr_foreign_toplevel_handle_v1_activate(
+					wins[ord[act]].handle, seat);
+				wl_display_flush(dpy);
+			}
+		} else if (act == n + 1) {
+			for (int i = 0; i < n; i++)
+				zwlr_foreign_toplevel_handle_v1_close(
+					wins[ord[i]].handle);
+			wl_display_flush(dpy);
+		} else if (act == n + 2) {
+			for (int i = 0; i < n; i++)
+				zwlr_foreign_toplevel_handle_v1_set_minimized(
+					wins[ord[i]].handle);
+			wl_display_flush(dpy);
+		}
+		break;
+	}
+
+	kwl_shutdown();
+	return 0;
+}
+
 int menu_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	const char *win_app = NULL;		/* --windows: one app's toplevels */
 	int which = 0;				/* 0 apps, 1 places, 2 system */
 	int at_x = -1, at_y = 0;
 	int dump = 0;
@@ -584,7 +964,9 @@ int menu_main(int argc, char **argv)
 		else if (!strcmp(argv[i], "--at") && i + 2 < argc) {
 			at_x = atoi(argv[++i]);
 			at_y = atoi(argv[++i]);
-		} else if (!strcmp(argv[i], "applications"))
+		} else if (!strcmp(argv[i], "--windows") && i + 1 < argc)
+			win_app = argv[++i];
+		else if (!strcmp(argv[i], "applications"))
 			which = 0;
 		else if (!strcmp(argv[i], "places"))
 			which = 1;
@@ -593,10 +975,14 @@ int menu_main(int argc, char **argv)
 		else {
 			fprintf(stderr, "usage: kdos-menu "
 					"[applications|places|system] "
+					"[--windows APP_ID] "
 					"[--at X Y] [--dump] [--font NAME]\n");
 			return 2;
 		}
 	}
+
+	if (win_app)
+		return windows_main(win_app, at_x, at_y, font);
 
 	if (which == 0)
 		load_applications();
@@ -658,8 +1044,17 @@ int menu_main(int argc, char **argv)
 		draw(&v);
 
 		KtuiEvent ev;
-		if (!ktui_backend()->poll_event(&ev, 1000))
+		if (!ktui_backend()->poll_event(&ev, 1000)) {
+			/* A configure is not applied until the loop that owns
+			 * the surface applies it — `rows_vis` above is computed
+			 * from a height that no longer exists otherwise. */
+			if (ktui_resized) {
+				ktui_resized = 0;
+				ktui_draw_resize();
+				ktui_draw_invalidate();
+			}
 			continue;
+		}
 
 		/*
 		 * Full mouse, because a menu opened BY mouse must be drivable by

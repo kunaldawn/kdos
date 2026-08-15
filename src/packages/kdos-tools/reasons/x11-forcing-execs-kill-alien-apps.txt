@@ -1,0 +1,17 @@
+title: strip GDK_BACKEND=x11 out of an Exec line — those apps run fine on Wayland
+cite: kdos-appbox genlaunchers
+port: kdos-appbox
+
+Debian ships audacity as `env GDK_BACKEND=x11 audacity`, which kills it under
+a compositor whose Xwayland the app cannot reach.
+
+The neighbouring table is EXEC_EXTRA, argv an app needs only because it is
+containerised: VSCodium gets --no-sandbox --ozone-platform-hint=auto
+--disable-gpu-compositing, because Electron's chrome-sandbox wants a setuid
+helper and CLONE_NEWUSER, gets neither as a non-root user in an unprivileged
+podman container, and exits rather than falling back.
+
+And some alien software is a COMMAND, not an application: wine's own entries
+are NoDisplay=true, so the box would carry it and the host would have no way
+to reach it. It gets an alien-apps row and a shim and deliberately no
+.desktop.
