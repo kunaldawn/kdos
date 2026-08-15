@@ -1,0 +1,10 @@
+title: emphasis on a cell grid is a FILL plus swapped slots, never REVERSE
+cite: kdos-shell
+port: kdos-shell
+
+KT_A_REVERSE inverts only the cells the text COVERS, so the focused taskbar
+entry came out as one lit block per WORD — "|GNU| |Image| |Mani|" — and looked
+correct for every window whose name had no space in it.
+
+Fill the row first, then draw the label with the two colour slots swapped. The
+bottom panel always did; the top panel and the privacy indicator do now.

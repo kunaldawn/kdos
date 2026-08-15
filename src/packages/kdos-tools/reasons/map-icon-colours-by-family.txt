@@ -1,0 +1,13 @@
+title: map icon hues by FAMILY — collapsing them onto one accent destroys meaning
+cite: kdos-icons
+port: kdos-icons
+
+Papirus colour-codes mimetypes. Flatten every hue onto the accent and a folder
+of files becomes a wall of identical green lozenges. A PDF stays red and an
+audio file stays amber while folders, devices and places go phosphor.
+
+Two more prunes that are load-bearing: only the DEFAULT folder colourway is
+vendored, because the unsuffixed names alias to blue and dropping blue strands
+every base name; and apps/ is not vendored at all, so the generator must
+recolour hicolor apps into scalable/apps — but ONLY names with the kdos.
+prefix, because a phosphor Firefox logo is vandalism, not theming.

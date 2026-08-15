@@ -120,6 +120,32 @@ static void test_colour(void)
 	out = kcol_retint_text("#000000", 7, ph, &n);
 	eq_str(out, "#000000", "declined colours keep their spelling");
 	free(out);
+
+	/*
+	 * kcol_muted is T9: `dim` was used as a TEXT colour in every scheme and
+	 * lands around 1.6:1 against `deep`, which is below any legibility
+	 * floor. The claim is not "muted is a colour" — it is that muted sits
+	 * strictly between the background and the text, and is farther from the
+	 * background than dim is by a wide enough margin to be a different
+	 * decision rather than a nudge. Checked for every scheme, because a
+	 * palette that only reads in phosphor is the bug this replaces.
+	 */
+	int muted_ok = 1, muted_far = 1;
+	for (int i = 0; i < kcol_nscheme; i++) {
+		const KcolScheme *sc = &kcol_schemes[i];
+		unsigned m = kcol_muted(sc);
+		double ld = kcol_luma(sc->deep), lm = kcol_luma(m);
+		if (m == sc->dim || m == sc->text || m == sc->deep)
+			muted_ok = 0;
+		if (!(ld < kcol_luma(sc->dim) && kcol_luma(sc->dim) < lm &&
+		      lm < kcol_luma(sc->text)))
+			muted_ok = 0;
+		/* Measured: 2.2x in bone, 2.7x in phosphor. */
+		if ((lm - ld) <= 2.0 * (kcol_luma(sc->dim) - ld))
+			muted_far = 0;
+	}
+	ok(muted_ok, "muted is its own colour, between deep and text, in every scheme");
+	ok(muted_far, "muted is more than twice as far from the background as dim");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -680,6 +706,317 @@ static void test_chart(void)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * The cell grid's own arithmetic: widths, the paste queue, the caret, and one
+ * modal rendered offscreen.
+ *
+ * S3 (no wcwidth anywhere) and S2 (nothing above 0x7f could be typed) were
+ * both invisible to the compiler and to a suite with no terminal, and the
+ * damage they did — a CJK filename shearing every column after it in pick, a
+ * non-ASCII password that could not unlock the session — is arithmetic, so it
+ * is checkable here rather than by looking at a screen.
+ */
+
+static void feed(KtuiEvent *ev, int key)
+{
+	memset(ev, 0, sizeof(*ev));
+	ev->type = KT_EVT_KEY;
+	ev->key = key;
+}
+
+/* ktui_draw_dump() writes the cell buffer to stdout; there is no reader for
+ * it, and a golden-frame check needs one. Redirect, render, read back. */
+static char *capture_dump(void)
+{
+	char tmpl[] = "/tmp/kdos-selftest-dump.XXXXXX";
+	int fd = mkstemp(tmpl);
+	if (fd < 0)
+		return NULL;
+	fflush(stdout);
+	int saved = dup(1);
+	if (saved < 0 || dup2(fd, 1) < 0) {
+		close(fd);
+		unlink(tmpl);
+		return NULL;
+	}
+	ktui_draw_dump();
+	fflush(stdout);
+	dup2(saved, 1);
+	close(saved);
+	close(fd);
+	size_t n = 0;
+	char *text = kb_read_all(tmpl, &n);
+	unlink(tmpl);
+	return text;
+}
+
+/*
+ * A modal, rendered at a size where it used to break, with nothing outside its
+ * own rect.
+ *
+ * S11: the buttons were placed at `x + w - 40` with no floor, so below 46
+ * columns the Yes button started to the LEFT of the dialog and drew over the
+ * page behind it. The rect is recomputed here from the same three rules
+ * ktui_modal_draw uses (56 wide, ktui_w - 6, floor 20) because the assertion
+ * IS "the drawing stayed inside the box the layout claims", and a check that
+ * asked the drawing where the box was would agree with itself.
+ */
+static void check_modal(int sw, int sh)
+{
+	KtuiEvent ev;
+	char what[64];
+
+	ktui_offscreen_init(sw, sh);
+	ktui_modal_confirm("Log Out", "End this session?", "Log Out",
+			   "Cancel", NULL);
+	feed(&ev, 0);
+	ev.type = KT_EVT_NONE;
+	ktui_frame_begin(&ev);
+	ktui_draw_clear();
+	ktui_modal_draw();
+	ktui_frame_end();
+
+	int w = 56;
+	if (w > sw - 6)
+		w = sw - 6;
+	if (w < 20)
+		w = 20;
+	int h = 1 + 6;
+	int x = (sw - w) / 2, y = (sh - h) / 2;
+	if (x < 0)
+		x = 0;
+	if (y < 0)
+		y = 0;
+
+	char *text = capture_dump();
+	if (!text) {
+		ok(0, "the modal dump could not be captured");
+		return;
+	}
+	int row = 0, col = 0, outside = 0;
+	for (const char *p = text; *p; p++) {
+		if (*p == '\n') {
+			row++;
+			col = 0;
+			continue;
+		}
+		/* The dump is ASCII here: ktui_caps is 0 offscreen, so the box
+		 * is drawn in the ascii tier and one byte is one cell. */
+		if (*p != ' ' &&
+		    (col < x || col >= x + w || row < y || row >= y + h))
+			outside = 1;
+		col++;
+	}
+	snprintf(what, sizeof(what),
+		 "a modal at %dx%d draws nothing outside its own rect", sw, sh);
+	ok(!outside, what);
+	snprintf(what, sizeof(what), "a modal at %dx%d keeps both buttons", sw, sh);
+	ok(strstr(text, "Log Out") && strstr(text, "Cancel"), what);
+	free(text);
+}
+
+static void test_grid(void)
+{
+	printf("libktui grid\n");
+
+	/* The three answers, and nothing else. */
+	int only_three = 1;
+	for (uint32_t cp = 0; cp <= 0x10ffff; cp++) {
+		int w = ktui_wcwidth(cp);
+		if (w < 0 || w > 2)
+			only_three = 0;
+	}
+	ok(only_three, "wcwidth answers 0, 1 or 2 for every codepoint");
+
+	ok(ktui_wcwidth('A') == 1 && ktui_wcwidth(' ') == 1 &&
+	   ktui_wcwidth(0x7f) == 1, "ASCII is one cell");
+	ok(ktui_wcwidth(0x00e9) == 1 && ktui_wcwidth(0x0410) == 1,
+	   "Latin-1 and Cyrillic are one cell");
+	ok(ktui_wcwidth(0x2500) == 1 && ktui_wcwidth(0x2591) == 1,
+	   "the box-drawing and shade glyphs the console font carries are one cell");
+	ok(ktui_wcwidth(0x0301) == 0, "a combining acute takes no cell");
+	ok(ktui_wcwidth(0x4e2d) == 2 && ktui_wcwidth(0xac00) == 2,
+	   "CJK and Hangul are two cells");
+	ok(ktui_wcwidth(0xff21) == 2, "a fullwidth Latin capital is two cells");
+	ok(ktui_wcwidth(0x1f600) == 2, "an emoji is two cells");
+
+	/*
+	 * The bsearch precondition.
+	 *
+	 * cp_in() is a binary search, so both range tables must be sorted and
+	 * disjoint — an out-of-order entry makes the ranges after it
+	 * UNREACHABLE and the failure is silent, a CJK name that shears one
+	 * row and not another. The tables are static to ktui_draw.c and cannot
+	 * be walked from here, so the precondition is asserted the only way it
+	 * can be from outside: one codepoint from the first, the last and
+	 * several middle ranges of each table, which is what an unsorted table
+	 * stops finding. A gap between two ranges is checked too, or a table
+	 * that answered 2 for everything would pass.
+	 */
+	static const uint32_t two[] = {
+		0x1100, 0x231a, 0x2648, 0x267f, 0x2b50, 0x3000, 0x3400,
+		0x4e00, 0xa000, 0xac00, 0xf900, 0xfe30, 0xff01, 0xffe0,
+		0x17000, 0x1f004, 0x1f191, 0x1f300, 0x1f680, 0x1f9d1,
+		0x20000, 0x3fffd,
+	};
+	static const uint32_t zero[] = {
+		0x0300, 0x0591, 0x06df, 0x0e31, 0x102d, 0x135f, 0x1712,
+		0x1dc0, 0x200b, 0x20d0, 0x302a, 0xa806, 0xaab0, 0xfe00,
+		0xfeff, 0x101fd, 0x11038, 0x1d167, 0xe0100,
+	};
+	/* Neither table claims these: the gaps a "return 2 for everything"
+	 * table would swallow. */
+	static const uint32_t one[] = {
+		0x1160, 0x2000, 0x2318, 0x2600, 0x303f, 0xa4d0, 0xd800,
+		0xfb00, 0xff61, 0x1f000, 0x1f700, 0x40000,
+	};
+	int t_ok = 1, z_ok = 1, o_ok = 1;
+	for (size_t i = 0; i < sizeof(two) / sizeof(*two); i++)
+		if (ktui_wcwidth(two[i]) != 2)
+			t_ok = 0;
+	for (size_t i = 0; i < sizeof(zero) / sizeof(*zero); i++)
+		if (ktui_wcwidth(zero[i]) != 0)
+			z_ok = 0;
+	for (size_t i = 0; i < sizeof(one) / sizeof(*one); i++)
+		if (ktui_wcwidth(one[i]) != 1)
+			o_ok = 0;
+	ok(t_ok, "every sampled wide range is still reachable by the bsearch");
+	ok(z_ok, "and every sampled zero-width one");
+	ok(o_ok, "while the gaps between them stay one cell");
+
+	/* ktui_utf8_width is what every column in this toolkit measures with. */
+	ok(ktui_utf8_width("abc") == 3, "utf8_width counts ASCII");
+	ok(ktui_utf8_width("中文") == 4, "two CJK glyphs are four columns");
+	/* e + combining acute is ONE column, not two: a name typed with a dead
+	 * key must not push the column after it out of line. */
+	ok(ktui_utf8_width("e\xcc\x81") == 1,
+	   "a combining mark adds no column");
+	ok(ktui_utf8_width("e\xcc\x81t\xc3\xa9") == 3,
+	   "and a mix of composed and decomposed measures the same either way");
+	ok(ktui_utf8_width("") == 0, "an empty string is no columns");
+
+	/* ── the paste queue ─────────────────────────────────────────────── */
+
+	/*
+	 * There is no reader for the queue: the focused ktui_input takes it.
+	 * So every assertion below pushes, draws one input, and reads the
+	 * buffer — which is also the only path that matters.
+	 */
+	KtuiEvent ev;
+	char buf[256];
+	KRect r = krect(0, 0, 40, 1);
+
+	ktui_offscreen_init(40, 3);
+	feed(&ev, 0);
+	ev.type = KT_EVT_NONE;
+
+#define PASTE_INTO(src, len) do {                                        \
+		buf[0] = 0;                                              \
+		ktui_paste_push((src), (len));                           \
+		ktui_frame_begin(&ev);                                   \
+		ktui_focus_set(0);                                       \
+		ktui_input(r, buf, sizeof(buf), 0, NULL);                \
+		ktui_frame_end();                                        \
+	} while (0)
+
+	PASTE_INTO("hello", 5);
+	eq_str(buf, "hello", "a plain paste reaches the focused input");
+
+	/* A multi-line paste must not be able to fake an Enter. */
+	PASTE_INTO("one\ntwo", 7);
+	eq_str(buf, "one two", "a newline in a paste becomes a space");
+
+	PASTE_INTO("a\x01\x02\tb\x7f", 6);
+	eq_str(buf, "ab", "control bytes and DEL are stripped at the door");
+
+	/* Stripping bytes below 0x20 can never split a UTF-8 sequence — a
+	 * continuation byte is >= 0x80 — and this is the check that says so. */
+	PASTE_INTO("caf\xc3\xa9\x01!", 7);
+	eq_str(buf, "café!", "stripping a control byte leaves a sequence intact");
+
+	/* The 4 KB cap, and the fragment it can leave behind. The queue is
+	 * filled to one byte short of full with ASCII and then handed a
+	 * three-byte sequence: two bytes fit, and a lead byte with no body
+	 * would be a trailing fragment every later edit trips over. */
+	{
+		static char big[8192];
+		memset(big, 'x', sizeof(big));
+		PASTE_INTO(big, sizeof(big));
+		size_t n = strlen(buf);
+		ok(n == sizeof(buf) - 1,
+		   "an oversized paste fills the input and stops");
+		int clean = 1;
+		for (size_t i = 0; i < n; i++)
+			if (buf[i] != 'x')
+				clean = 0;
+		ok(clean, "and what it inserted is the paste, not the overflow");
+
+		static char edge[4200];
+		memset(edge, 'y', sizeof(edge));
+		memcpy(edge + 4090, "\xe4\xb8\xad", 3);	/* 中, on the seam */
+		buf[0] = 0;
+		ktui_paste_push(edge, sizeof(edge));
+		char sink[8192];
+		sink[0] = 0;
+		ktui_frame_begin(&ev);
+		ktui_focus_set(0);
+		ktui_input(krect(0, 0, 40, 1), sink, sizeof(sink), 0, NULL);
+		ktui_frame_end();
+		size_t m = strlen(sink);
+		int trailing_lead = m > 0 && (unsigned char)sink[m - 1] >= 0xc0;
+		ok(!trailing_lead,
+		   "a sequence cut by the 4 KB cap is dropped, not half-kept");
+	}
+#undef PASTE_INTO
+
+	/* ── the caret walks sequences, not bytes ────────────────────────── */
+
+	/*
+	 * S2's other half. The caret is a BYTE index into a UTF-8 buffer, so
+	 * LEFT and BACKSPACE have to move a whole sequence or they leave a
+	 * half-codepoint behind — which is what a lock screen refusing a
+	 * password typed with a dead key looked like.
+	 */
+	kb_strlcpy(buf, "", sizeof(buf));
+	ktui_paste_push("héllo中", strlen("héllo中"));
+	ktui_frame_begin(&ev);
+	ktui_focus_set(0);
+	ktui_input(r, buf, sizeof(buf), 0, NULL);
+	ktui_frame_end();
+	eq_str(buf, "héllo中", "multibyte text reaches the buffer whole");
+
+	/* One BACKSPACE removes the three-byte 中, not one byte of it. */
+	feed(&ev, KT_K_BACKSPACE);
+	ktui_frame_begin(&ev);
+	ktui_focus_set(0);
+	ktui_input(r, buf, sizeof(buf), 0, NULL);
+	ktui_frame_end();
+	eq_str(buf, "héllo", "backspace deletes a whole sequence");
+
+	/* LEFT over the two-byte é, then BACKSPACE, must take the 'l' before
+	 * it and leave the é standing. */
+	for (int i = 0; i < 4; i++) {
+		feed(&ev, KT_K_LEFT);
+		ktui_frame_begin(&ev);
+		ktui_focus_set(0);
+		ktui_input(r, buf, sizeof(buf), 0, NULL);
+		ktui_frame_end();
+	}
+	feed(&ev, KT_K_BACKSPACE);
+	ktui_frame_begin(&ev);
+	ktui_focus_set(0);
+	ktui_input(r, buf, sizeof(buf), 0, NULL);
+	ktui_frame_end();
+	eq_str(buf, "éllo", "left moves by sequence, so the delete lands on one");
+
+	/* ── modals ──────────────────────────────────────────────────────── */
+
+	check_modal(44, 12);
+	check_modal(30, 8);
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
 static void vcmp(const char *a, const char *b, int want, const char *what)
 {
 	checks++;
@@ -852,6 +1189,7 @@ int main(void)
 	test_pkg();
 	test_build();
 	test_chart();
+	test_grid();
 	test_portup();
 
 	printf("\n%d checks, %d failed\n", checks, failures);

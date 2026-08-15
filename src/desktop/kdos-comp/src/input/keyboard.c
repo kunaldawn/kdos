@@ -481,15 +481,27 @@ handle_cycle_view_key(struct keyinfo *keyinfo)
 			cycle_finish(/*switch_focus*/ false);
 			return true;
 		}
-		if (keyinfo->translated.syms[i] == XKB_KEY_Up
-				|| keyinfo->translated.syms[i] == XKB_KEY_Left) {
-			/* Up/Left cycles the window backward */
+		/*
+		 * KDOS: Up/Down step WITHIN the switcher's current unit and
+		 * Left/Right between units. For every OSD but the app-first
+		 * one those are the same thing, which is what all four keys
+		 * did before it existed.
+		 */
+		if (keyinfo->translated.syms[i] == XKB_KEY_Up) {
+			cycle_step_within(LAB_CYCLE_DIR_BACKWARD);
+			return true;
+		}
+		if (keyinfo->translated.syms[i] == XKB_KEY_Down) {
+			cycle_step_within(LAB_CYCLE_DIR_FORWARD);
+			return true;
+		}
+		if (keyinfo->translated.syms[i] == XKB_KEY_Left) {
+			/* Left cycles backward */
 			cycle_step(LAB_CYCLE_DIR_BACKWARD);
 			return true;
 		}
-		if (keyinfo->translated.syms[i] == XKB_KEY_Down
-				|| keyinfo->translated.syms[i] == XKB_KEY_Right) {
-			/* Down/Right cycles the window forward */
+		if (keyinfo->translated.syms[i] == XKB_KEY_Right) {
+			/* Right cycles forward */
 			cycle_step(LAB_CYCLE_DIR_FORWARD);
 			return true;
 		}

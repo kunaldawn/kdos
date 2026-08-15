@@ -1,0 +1,14 @@
+title: stock GTK3 Adwaita is compiled from SASS with literal hex in every rule
+cite: kdos-gtk-theme
+port: kdos-gtk-theme
+
+Redefining theme_* in the user's gtk.css is enough for GTK4/libadwaita, which
+genuinely resolves named colours. In GTK3 Adwaita the names reach only the
+widgets that reference them, hand-written CSS rules never cover enough
+widgets, and blunt *:selected rules turn GIMP's Opacity/Size/Spacing labels
+into solid green bars.
+
+adw-gtk3 is the libadwaita stylesheet ported to GTK3 and is written against
+named colours end to end, so rewriting the palette makes every widget follow.
+Fill accents use the DIM accent, never full intensity: a 100%-filled GIMP
+opacity slider in #39ff14 is an unreadable neon block.

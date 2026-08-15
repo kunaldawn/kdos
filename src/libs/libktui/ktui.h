@@ -132,6 +132,13 @@ typedef struct {
 	uint8_t fg, bg, attr;
 } KtuiCell;
 
+/* A double-width codepoint occupies TWO cells: the glyph in cell i and this
+ * marker in cell i+1 (same colours). Backends skip the marker — the glyph
+ * already covered it — and a painter may extend a wide glyph's clip into the
+ * next cell only when it holds this marker. 0x1 is a control code no text
+ * path ever writes, so it cannot collide with a real character. */
+#define KTUI_WIDE_CONT 0x1u
+
 /* Glyphs, resolved once against what the console font actually carries. */
 enum {
 	KT_G_HL, KT_G_VL, KT_G_TL, KT_G_TR, KT_G_BL, KT_G_BR,	/* single box */
@@ -225,6 +232,12 @@ int ktui_extent(void);
 
 int ktui_utf8_width(const char *s);	/* display cells, ignores overlong */
 const char *ktui_utf8_next(const char *s, uint32_t *cp);
+int ktui_utf8_encode(uint32_t cp, char *out);	/* out needs 4 bytes; ret len */
+/* Display cells a codepoint occupies: 0 combining, 2 East-Asian wide and
+ * fullwidth, 1 everything else. A compact range table, not the libc's — musl's
+ * wcwidth answers for the locale, this answers for the cell grid, and the two
+ * must not drift apart per-consumer. */
+int ktui_wcwidth(uint32_t cp);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Ramps and charts
@@ -371,6 +384,12 @@ int ktui_check(int x, int y, int w, const char *label, int *val);
 int ktui_radio(int x, int y, int w, const char *label, int *val, int on);
 int ktui_input(KRect r, char *buf, size_t cap, int secret,
 	       const char *placeholder);
+/* Queue pasted text; the focused ktui_input inserts it at the caret on its
+ * next pass. Control characters are stripped and newlines become spaces, so a
+ * multi-line paste cannot fake an Enter. libkwl calls this when an async
+ * clipboard receive completes; the tty backend has no paste channel and
+ * simply never calls it. */
+void ktui_paste_push(const char *utf8, size_t len);
 /* Bar styles. SOLID is the original: whole cells only. TIP adds one
  * fractional cell from the horizontal ramp, so a 40-column bar carries 320
  * positions on a rich terminal instead of 40 — a solid bar quantises to 2.5%

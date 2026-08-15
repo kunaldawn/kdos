@@ -27,6 +27,15 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	cursor-shape-v1-protocol.c
 "$SCANNER" private-code  "$PROTO/unstable/tablet/tablet-unstable-v2.xml" \
 	tablet-unstable-v2-protocol.c
+# primary-selection: libkwl includes the header unconditionally for the paste
+# path, so the lock screen generates it too — and the private-code with it, or
+# the zwp_primary_selection_* interface symbols are missing at link.
+"$SCANNER" client-header \
+	"$PROTO/unstable/primary-selection/primary-selection-unstable-v1.xml" \
+	primary-selection-unstable-v1-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/primary-selection/primary-selection-unstable-v1.xml" \
+	primary-selection-unstable-v1-protocol.c
 "$SCANNER" client-header "$PROTO/stable/xdg-shell/xdg-shell.xml" \
 	xdg-shell-client-protocol.h
 "$SCANNER" private-code  "$PROTO/stable/xdg-shell/xdg-shell.xml" \

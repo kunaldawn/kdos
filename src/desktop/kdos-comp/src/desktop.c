@@ -11,6 +11,7 @@
 #include "common/scene-helpers.h"
 #include "config/rcxml.h"
 #include "dnd.h"
+#include "kdos.h" /* KDOS */
 #include "labwc.h"
 #include "layers.h"
 #include "node.h"
@@ -138,6 +139,9 @@ desktop_focus_view_internal(struct view *view, bool raise, bool allow_delay)
 	if (!view->mapped) {
 		return;
 	}
+
+	/* KDOS: a focused tab-group member becomes the one showing */
+	kdos_group_activate(view);
 
 	/*
 	 * Switch workspace if necessary to make the view visible

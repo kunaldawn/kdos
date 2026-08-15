@@ -1,0 +1,11 @@
+title: correctness comes from the final HEAD, not from the discovery step
+cite: kdos-portup
+port: kdos-tools
+
+A forge feed or a directory listing can name a version whose tarball lives
+somewhere the recipe's template does not expect. A plain 404 drops that
+candidate and the next-highest is tried; only a 200 proves NEWER.
+
+The candidate is rendered by copying the recipe to a temp dir and expanding it
+through `kpkg meta` — the same parser the build uses, so a helper chain falls
+out for free and no probe ever touches the real tree.

@@ -19,12 +19,24 @@ Podman/distrobox glibc rootfs. Session entry: `kdos-desktop` from a tty.
 > **The desktop is ours; the compositor is a hard fork.** COSMIC was removed
 > and replaced by `kdos-comp` — since 2026-08-14 a **frozen, rebranded hard
 > fork of labwc 0.20.0** carrying the KDOS features as `src/kdos-*.c` grafts
-> (CRT pass, wallpaper, frames socket, idle policy, supervised chrome) — plus
-> `kdos-shell`, a character-cell-grid shell drawn by libktui, with
-> `kdos-lock`, `kdos-powerd` and `kdos-boxsock` beside them.
-> **`docs/KDOS-DESKTOP.md` is the plan of record and carries a status block
-> per milestone**, `docs/KDOS-ROADMAP.md` the full menu of work,
-> `docs/KDE-ON-HOST-REJECTED.md` the alternative that lost.
+> (CRT pass, wallpaper, frames socket, idle policy, lid switch, command
+> socket, supervised chrome) — plus `kdos-shell`, a character-cell-grid shell
+> drawn by libktui, with `kdos-lock`, `kdos-powerd`, `kdos-energyd`,
+> `kdos-oomd` and `kdos-boxsock` beside them.
+>
+> | Doc | What it is |
+> |---|---|
+> | `docs/KDOS-DESKTOP.md` | the plan of record, a status block per milestone |
+> | `docs/KDOS-DESKTOP-MATURITY.md` | the **next arc** — the defect inventory (S/P/F/C/T/G ids), waves D0–D7, and an implementation-status section recording what landed |
+> | `docs/KDOS-ROADMAP.md` | the full menu of work |
+> | `docs/KDOS-TEXTMODE.md` | the text-mode design — **banner-superseded in part** by the labwc fork; read the banner before citing it |
+> | `docs/ACCESSIBILITY.md` | the statement of record: measured contrast, what exists, and what will never exist |
+> | `docs/KDE-ON-HOST-REJECTED.md` | the alternative that lost |
+>
+> **A doc that is stale-pessimistic costs a re-verification** — the "what
+> built means" block in KDOS-DESKTOP.md claimed for weeks that `05_desktop`
+> had never finished after it had. When a status paragraph and the tree
+> disagree, measure the tree and fix the paragraph in the same pass.
 
 Four properties define the project. Everything else follows from them:
 
@@ -345,8 +357,20 @@ click wait for the entire container init, up to two minutes of dead-looking
 desktop. The warmup runs at nice 10 so it actually finishes. `notify()` uses
 `gdbus --timeout 2` and is backgrounded — gdbus's default reply timeout is **25
 seconds**, and a notification must never gate a launch. Apps are launched with
-`GSETTINGS_BACKEND=keyfile NO_AT_BRIDGE=1 GTK_A11Y=none` (no dconf-service or
-a11y stack is reachable in the box).
+`GSETTINGS_BACKEND=keyfile` (no dconf-service is reachable) and, **by default
+but not as a policy**, `NO_AT_BRIDGE=1 GTK_A11Y=none`.
+
+**That a11y pair is a DEFAULT and `a11y_wanted()` is why.** The host runs no
+at-spi registry and nothing answers `org.a11y.Bus`, so every boxed GTK app was
+spending a startup probe timing out — which justified the export and did not
+justify hard-disabling the accessibility stack of ~105 applications on the
+argument that the HOST had none. The image carries `at-spi2-core` and a screen
+reader running INSIDE the box can reach it, so the user opts in with
+`~/.config/kdos/a11y` (an empty file is enough) or `KDOS_A11Y=1` for one launch,
+and neither variable is exported. Resolved from `$HOME/.config` like the box
+profiles, for the same reason: two programs resolving it differently is the
+failure this must not have. Recorded in `docs/ACCESSIBILITY.md`, which is the
+statement of record for what this desktop can and cannot do.
 
 **`GTK_USE_PORTAL=1` is what makes the KDOS portal reachable at all**, with
 `XDG_CURRENT_DESKTOP=KDOS` beside it. A GTK app routes through the portal only
@@ -797,14 +821,47 @@ alien apps pick up an accent switch on their next launch.
 
 **`kdos theme <phosphor|amber|ice|bone>`** owns everything else: it regenerates
 `~/.themes/KDOS`, `~/.icons/KDOS` and `~/.icons/KDOS-cursors`, writes the two
-`gtk.css` files, `~/.config/foot/themes/kdos`, `~/.config/btop/themes/kdos.theme`
-and the palette block between the `# >>> KDOS STARSHIP PALETTE >>>` markers in
-starship.toml, then writes the accent NAME to `$XDG_CACHE_HOME/kdos/theme` and
-SIGHUPs `kdos-shell` and `kdos-comp`. The state file is written BEFORE the signal,
-or the session re-reads the accent it already had. Ours repaint live; starship on
-the next prompt; foot and btop on next start (foot cannot reload its config at
-all); GTK apps on their next launch, because GTK re-reads neither theme nor icons
-on a file change.
+`gtk.css` files, `~/.config/foot/themes/kdos`, `~/.config/btop/themes/kdos.theme`,
+`~/.config/tmux/themes/kdos`, the mc skin, an `LS_COLORS`, the compositor's
+`themerc-override` and the palette block between the
+`# >>> KDOS STARSHIP PALETTE >>>` markers in starship.toml, then runs
+`theme_commit()`. Ours repaint live; starship on the next prompt; tmux is
+`source-file`d if tmux is running; foot and btop on next start (foot cannot
+reload its config at all); GTK apps on their next launch, because GTK re-reads
+neither theme nor icons on a file change.
+
+**`theme_commit()` is an ORDER, and every line of it is load-bearing.** The
+wallpaper cache and the state file are both INPUTS to the SIGHUP, so both are
+written before it is sent — the state file because a signal that arrives first
+makes the shell re-read the accent it already had, and the wallpaper because
+the compositor re-decodes on that same SIGHUP and would re-decode the old one.
+It is shared with `kdos theme style` rather than duplicated, so a style file
+cannot get a different order.
+
+**Two derived colours, and confusing them is a legibility bug.** `dim` is a
+FILL: at 1.63–1.70:1 against `deep` in every accent it is below any text floor,
+and every generator that used it for a LABEL (mc's disabled entries, btop's
+inactive rows, starship's subtext, foot's bright-black) was writing something
+nobody could read. **`kcol_muted()` — `kcol_mix(deep, text, 50)` — is the
+derived readable muted colour** and every text role goes through it (4.07–4.73:1).
+`dim` keeps fills, borders and selection backgrounds, where contrast is not the
+question. See `docs/ACCESSIBILITY.md` for the measured table.
+
+**The wallpaper follows the accent, through a CACHE the compositor prefers.**
+`write_wallpaper()` retints the shipped PNG through `kcol_remap` into
+`$XDG_CACHE_HOME/kdos/wallpaper.png`, and `kdos-wallpaper.c` prefers that over
+the comp.conf path when it re-reads on SIGHUP. Two constraints in it: the remap
+is six HLS conversions per call against millions of pixels, so identical colours
+are memoised rather than recomputed; and an install with no shipped wallpaper
+keeps the one it has rather than getting an empty theme.
+
+**`kdos theme style <file>` is a shareable LOOK** — flat `key = value` bundling
+`accent` with `crt` / `crt_scanlines` / `crt_curve` / `crt_fullscreen` /
+`chrome_font` / `clock_format`, plus any DOTTED key, which is a
+`themerc-override` line appended after the generated block so it wins. It
+rewrites only the comp.conf keys the style NAMES — every other line survives
+verbatim and a key the file lacks is appended — then goes through the same
+`theme_commit()`. `kdos theme list` / `next` / `prev` round out the switch.
 
 **The SIGHUP goes to FOUR names, and `pkill -x` is load-bearing.**
 `reload_session()` in `kdos.c` signals `kdos-shell`, `kdos-desk`,
@@ -1056,17 +1113,40 @@ everything: the request was right, the protocol was right, the number was 1.
   `frame`. `pt_leave` also has to report — hover state with no leave stays lit
   for the rest of the session.
 
+**Four more that came with the maturity arc, same shape — each was already a
+bug:**
+
+- **A double buffer needs a shadow PER BUFFER.** The paint diffs against a
+  front buffer to damage only what changed; with two buffers alternating and
+  ONE global front buffer, the rows that changed while the *other* buffer was
+  in flight were never redrawn in it — stale rows in the committed frame, and a
+  comment claiming a full repaint on swap that the code never did. Each
+  `KwlBuffer` carries its own cell shadow now, and `bfull` is forced whenever a
+  buffer has no shadow or has just been resized. **Damage is still the global
+  diff; only the PAINT is per buffer.**
+- **A serial must be RETAINED, not `(void)`'d.** Every input event's serial was
+  discarded, so `set_selection`, `start_drag` and `set_cursor` had nothing to
+  present — the clipboard was blocked one level below where anyone was looking
+  for it. `last_serial` is kept from key, button and enter.
+- **`pt_enter` carries coordinates and they are not optional.** Discarding them
+  put the first click after an enter at (-1,-1) and left hover stale until the
+  pointer moved, so a menu opening under a stationary pointer missed its first
+  click. The enter now seeds the position and synthesises a move.
+- **`set_buffer_scale` and the resized buffer must land in ONE commit.**
+  `scale_sent` trails `scale` for exactly that: split them and the compositor
+  sees a buffer whose size disagrees with its declared scale for a frame.
+
 | Lib | Prefix | Owns |
 |---|---|---|
 | `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, group membership, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach`** |
-| `libkcolor` | `kcol_` | **the palette table**, hex/HLS, `kcol_mix`, the hue-family classifier, `kcol_remap`, `kcol_retint_text` |
-| `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, immediate-mode widgets, modals, text furniture, **the three glyph tiers and the charts drawn out of them**, offscreen rendering |
+| `libkcolor` | `kcol_` | **the palette table**, hex/HLS, `kcol_mix`, `kcol_muted` (the derived READABLE muted text colour — `dim` is a fill), the hue-family classifier, `kcol_remap`, `kcol_retint_text`, `kcol_sem` (the shared semantic values gtk.css and the adw-gtk3 recolour both read, so they cannot disagree) |
+| `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, **UTF-8 input and `ktui_wcwidth`/`KTUI_WIDE_CONT`**, `ktui_paste_push`, immediate-mode widgets, modals, text furniture, **the three glyph tiers and the charts drawn out of them**, offscreen rendering |
 | `libkxdg` | `kxdg_` | desktop entries, matching what `RawConfigParser(strict=False)` did with them |
 | `libkpkg` | `kp_` | the package database, the ports tree, `# depends` parsing, the dependency solver, `kp_vercmp`, the recipe/build-config hashes |
 | `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings — the one library with vendored third-party source (Monocypher) |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
 | `libkcell` | `kcell_` | the fcft glyph cache and the cell painter — a grid of cells into a pixel buffer, and the ASCII ramp built out of it. Needs fcft and pixman |
-| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers, output naming, input (queue, key repeat, wheel accumulation), `kwl_input_cells`. **The one library with real `-l` dependencies beyond libkcell's** |
+| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection RECEIVE**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`. **The one library with real `-l` dependencies beyond libkcell's** |
 
 Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
 libkbase` and `libkbuild → libkbase` and `libksig → libkbase` and `libkwl →
@@ -1457,20 +1537,36 @@ old from-scratch compositor carried beyond these — window management,
 session-lock, capture and clipboard globals, the input-method wire, Xwayland,
 security-context filtering — is labwc upstream code and needs no graft.
 
-**`~/.config/kdos/comp.conf` holds ONLY the KDOS keys now**: `wallpaper`,
-`crt` / `crt_scanlines` / `crt_curve`, `idle_dim` / `idle_lock` / `idle_off`.
+**`~/.config/kdos/comp.conf` holds ONLY the KDOS keys**, and they split into
+two classes that behave differently:
+
+| Class | Keys | Behaviour |
+|---|---|---|
+| **live** — re-read by `kdos_conf_reload()` on SIGHUP/Reconfigure | `wallpaper`, `crt`, `crt_scanlines`, `crt_curve`, `crt_fullscreen`, `idle_dim`, `idle_lock`, `idle_off`, `lid_close` | apply immediately; `kdos theme <accent>` already sends that SIGHUP |
+| **startup-only**, and the reload SAYS SO rather than silently keeping the old value | `panel_bottom`, `desktop_icons`, `chrome_font`, `clock_format`, `panel_autohide`, `window_memory` | each is a supervised child's COMMAND LINE; changing one takes effect at the next login |
+
 Keybinds, mouse, workspaces and window behaviour are rc.xml's business; an old
 `bind`/`startup`/`workspaces`/`mouse` line is ignored **and says so**, naming
 rc.xml — as does any other unrecognised key, because the skel file promises
 that a line which does not take effect is reported, and a typo that produced
-silence is indistinguishable from a setting that does nothing. It also carries
-`panel_bottom` and `desktop_icons`, the two pieces of supervised chrome that
-are optional, and `chrome_font`, which `kdos-child.c` passes to every one of
-them as `--font`. All three are read once at startup. `chrome_font` exists
-because libkwl's default is a PIXEL size and libkwl does no HiDPI: on a 4K panel
-the chrome comes out half the height it should be and nothing could say so
-(`Terminus:pixelsize=64` is the doubled cell). The compositor's own titlebars
-are the matching knob on the labwc side — `<theme><font>` in rc.xml, in POINTS.
+silence is indistinguishable from a setting that does nothing. **A startup-only
+key that changed is reported the same way and its old value is restored into
+`kdos_conf`**, because a config struct that disagrees with the running chrome
+is how a later reader concludes the setting works.
+
+`chrome_font` is passed to every chrome child as `--font`, and it survives
+libkwl gaining HiDPI: libkwl now adopts the output's INTEGER scale, so the
+grid is sharp rather than stretched, but the pixel size is still one number for
+every screen — right on a machine with one, wrong on two of different
+densities (`Terminus:pixelsize=64` is the doubled cell). The compositor's own
+titlebars are the matching knob on the labwc side — `<theme><font>` in rc.xml,
+in POINTS.
+
+**Three things beside comp.conf are files, not keys, and ship ABSENT:**
+`~/.config/kdos/favorites` (the bottom panel's pinned launchers, one desktop-entry
+id per line), `~/.config/kdos/session-restore` (its EXISTENCE is the setting)
+and `~/.config/kdos/a11y` (opts the appbox out of `NO_AT_BRIDGE`/`GTK_A11Y=none`).
+Absent is a working default in all three; an empty feature would not be.
 
 **`<default />` MUST be the first child of `<keyboard>` and of `<mouse>` in
 rc.xml, and it is the most load-bearing line in this distro's configuration.**
@@ -2199,17 +2295,71 @@ building the daemon with each one disabled.
 **Not built: a panel indicator.** The milestone's deliverable is the sentence,
 and `kdos-shell` drawing a share strip is its own piece of work.
 
+## Memory pressure — `kdos-oomd`
+
+`src/desktop/kdos-oomd/` is the fourth root daemon and takes kdos-powerd's shape
+exactly: foreground under `ksvc`, one socket in `/run` gated by `SO_PEERCRED`
+to root and `wheel`, one word per connection. It links libkbase and nothing
+else.
+
+**The kernel's OOM killer is the wrong signal, not a redundant one.** It fires
+when an ALLOCATION fails, which on a machine with swap is minutes after the
+desktop stopped answering — the whole session spent thrashing while the kernel
+technically still had pages. `/proc/pressure/memory` says the machine is
+STALLING on memory, which is what a wedged desktop feels like, and the appbox
+makes that likely here (a browser plus a slicer in one 8 GB machine).
+
+Five rules, each one a way this goes wrong:
+
+- **It blocks, it does not poll.** The threshold (`full 150000 1000000` — 150 ms
+  of full stall in a one-second window) is WRITTEN INTO the pressure file and
+  the daemon waits on `POLLPRI`. That is the kernel's own trigger API; a
+  sampling loop would be the thing competing for CPU with the stall it is
+  trying to notice.
+- **The desktop is not eligible.** `ko_protected[]` is `kdos-comp`,
+  `kdos-shell`, `kdos-desk`, `kdos-notifyd`, plus pid 1 and kernel threads.
+  Boxed processes are PREFERRED victims: an alien app is the likely culprit, is
+  supervised by podman and relaunches in seconds, while a host process is more
+  often session state.
+- **Identity is the conmon ppid-walk**, the same one `kdos stutter` and
+  `kdos-energyd` use — no systemd means no cgroup delegation and a rootless box
+  frequently sits in `0::/`, which says nothing. The message names the box:
+  `firefox-esr (appbox kdos-apps)`.
+- **`process_mrelease(2)` after the SIGKILL, through a pidfd taken FIRST** so
+  the reclaim cannot land on a recycled pid. The pages come back now rather
+  than whenever the zombie is reaped, which under a stall is the whole point. A
+  kernel without the syscall skips the release; the SIGKILL stands.
+- **Nothing in the protocol names a process, so there is nothing to aim.** The
+  socket answers `ping` and `status` and takes no argument; killing is the
+  daemon's own decision or it does not happen. At most one kill per ten seconds.
+
+`--fixture <dir>` prints who WOULD be killed and signals nobody — the
+`kdos stutter --fixture` seam, and the only way selection logic this
+consequential gets tested. **It has never fired for real**; a genuine PSI stall
+is the test that matters and has not been run.
+
 ## The shell answers the mouse, everywhere
 
-`kdos-shell` is one binary under eleven names: `kdos-shell` (the panel, and
-`--bottom` the second one), `kdos-launcher`, `kdos-menu`, `kdos-desk`,
-`kdos-pick`, `kdos-run`, `kdos-prompt`, `kdos-notifyd`, `kdos-osd`,
-`kdos-cal` and `kdos-display`. Four of
-them shipped with no mouse handling at all — `grep -c KT_EVT_MOUSE` was 0 for
-launcher, pick, run and notifyd — and one of those is the file dialog **every
-boxed application reaches through the portal**. The one dialog on the system
-that other people's software puts in front of you was the one that could not be
-clicked.
+**`kdos-shell` is one binary under twenty names, and `TOOLS[]` in `main.c` is
+the list** — not this paragraph, and not any comment. It grew by nine in one
+arc, so read the table rather than trusting a count anywhere in prose:
+
+`kdos-shell` (the panel; `--bottom` is the second one) · `kdos-launcher` ·
+`kdos-menu` · `kdos-desk` · `kdos-pick` · `kdos-ascii` · `kdos-run` ·
+`kdos-prompt` · `kdos-notifyd` · `kdos-osd` · `kdos-cal` · `kdos-display` ·
+`kdos-keys` · `kdos-teams` · `kdos-saver` · `kdos-slit` · `kdos-doc` ·
+`kdos-settings` · `kdos-openwith` · `kdos-audio`.
+
+**A name in `TOOLS[]` with no `<name>_main` is a link error, not a missing
+feature** — the table and the file are one edit. And a name here that
+`build.sh` does not symlink is a program nothing can reach, which is the other
+half of the same mistake.
+
+Four of them shipped with no mouse handling at all — `grep -c KT_EVT_MOUSE` was
+0 for launcher, pick, run and notifyd — and one of those is the file dialog
+**every boxed application reaches through the portal**. The one dialog on the
+system that other people's software puts in front of you was the one that could
+not be clicked.
 
 One contract, so a hand that learns it in the menu already knows the launcher:
 
@@ -2365,12 +2515,14 @@ kdos/
 │   │                            #   library with real -l dependencies
 │   ├── desktop/                 # the desktop, ours (see docs/KDOS-DESKTOP.md)
 │   │   ├── kdos-comp/           # hard fork of labwc 0.20.0; KDOS grafts in
-│   │   │                        #   src/kdos-*.c (CRT, wallpaper, frames, idle)
-│   │   ├── kdos-shell/          # panel x2, launcher, menu, desk, pick, run,
-│   │   │                        #   prompt, notifyd, osd, tray (SNI), privacy
+│   │   │                        #   src/kdos-*.c (CRT, wallpaper, frames,
+│   │   │                        #   idle, lid, cmd socket, supervised chrome)
+│   │   ├── kdos-shell/          # one binary, twenty names — see TOOLS[] in
+│   │   │                        #   main.c, which is the authoritative list
 │   │   ├── kdos-lock/           # the lock screen + setuid kdos-checkpass
 │   │   ├── kdos-powerd/         # suspend/poweroff/reboot over a unix socket
 │   │   ├── kdos-energyd/        # per-app Energy Impact from RAPL, relative
+│   │   ├── kdos-oomd/           # PSI-triggered kill before the desktop wedges
 │   │   ├── kdos-boxsock/        # the security-context-v1 sandbox engine
 │   │   └── xdg-desktop-portal-kdos/  # FileChooser + Settings + OpenURI
 │   ├── build/
@@ -3468,9 +3620,19 @@ WebFetch.
 ```
 01_udev  02_modules  05_hostname  10_sysctl  15_userdirs  20_dmesg  22_syslog
 30_network  35_chrony  40_dbus  42_networkmanager  45_avahi  45_seatd  50_alsa
-55_powerd  55_tlp  56_energyd  60_bluetooth  70_sshd  80_cups
+55_powerd  55_tlp  56_energyd  57_oomd  60_bluetooth  70_sshd  80_cups
 rcS  service_helper
 ```
+
+**A daemon that cannot do its job on this machine is SKIPPED before
+`supervise` sees it, never started and left to fail.** Three scripts encode
+that and it is one rule: `56_energyd.sh` checks for a readable RAPL energy
+domain (most VMs have none), `57_oomd.sh` checks that
+`/proc/pressure/memory` is WRITABLE (PSI off, or `psi=0` on the command line —
+and a daemon that cannot arm its trigger protects nothing), and every script
+checks its binary is executable. The reason is the respawn loop: a refusing
+daemon under `supervise` is a boot that never settles, and the check therefore
+belongs *before* the loop exists rather than inside the daemon.
 
 Each sources `service_helper`, which is now three one-line wrappers around
 **`ksvc`** — the C supervisor in `src/packages/kdos-tools`:
@@ -3609,16 +3771,25 @@ and respond with the targeted fix.
   ignores them, so on two screens both taskbars list the same windows. That is
   GNOME 2's behaviour and not obviously wrong; filtering is a decision, not a
   fix, and it is not made.
-- **libkwl does no HiDPI.** No `wl_surface.set_buffer_scale`, so on a scaled
-  output the cell grid is upscaled by the compositor rather than drawn at the
-  output's own scale. `chrome_font` in comp.conf is the mitigation, not the fix:
-  it changes the pixel size the chrome is drawn at, which is the right answer on
-  a machine with one screen and the wrong one on a machine with two of different
-  densities.
-- **libkwl binds no `wl_data_device` and no `wl_touch`**, so there is no
-  clipboard and no drag-and-drop in any of the chrome — a file cannot be dragged
-  off `kdos-desk` into a window, and nothing can be pasted into `kdos-run` or
-  the file chooser's save name — and a touchscreen drives none of it.
+- ~~libkwl does no HiDPI~~ — **closed for INTEGER scale.** libkwl adopts the
+  scale of the output the surface is on, sends `wl_surface.set_buffer_scale`,
+  sizes the shm buffer at `px * scale` and renders the glyphs AT that scale, so
+  a HiDPI panel gets a sharp grid rather than a stretched one. `scale_sent`
+  trails `scale` so the buffer_scale and the resized buffer land in ONE commit —
+  split them and the compositor sees a buffer whose size disagrees with its
+  scale for a frame. **Two things are still missing and they are not the same
+  thing:** fractional scale (`wp_fractional_scale_v1` is not bound), and
+  `chrome_font` is still one pixel size for every output — right on a machine
+  with one screen, wrong on two of different densities.
+- **libkwl PASTES but does not COPY.** `wl_data_device` and
+  `zwp_primary_selection_device_v1` are bound and the receive side is complete
+  (async, `text/plain;charset=utf-8` preferred, delivered into the focused text
+  widget by `ktui_paste_push`) — so Ctrl+V and middle-click work in
+  `kdos-run`, the launcher filter and the file chooser's save name. There is
+  **no `wl_data_source`**, so nothing in the chrome can put anything ON the
+  clipboard, there is no drag-and-drop either way (a file still cannot be
+  dragged off `kdos-desk` into a window), and **`wl_touch` is not bound at
+  all** — a touchscreen drives none of this.
 - **`kdos-display` lays screens out edge to edge from x=0 in list order.** A
   vertical arrangement, an overlap, or a gap cannot be expressed. That is a
   deliberate narrowing rather than a missing feature: the protocol takes pixel
@@ -3655,6 +3826,31 @@ and respond with the targeted fix.
   filter is a fixed allowlist — a client is sandboxed or it is not. Re-adding
   per-box grants means teaching `allow_for_sandbox()` to consult the boxsock
   profile, a deliberate piece of work.
+- **No golden-frame regression test, and it is the gap that let the stale-row
+  bug ship.** `testing/selftest.sh` looks at five surfaces' `--dump` output and
+  asserts SHAPE (every row of a box the same width, the hint row and its buttons
+  not colliding). `run`, `prompt`, `notifyd`, `osd` and `desk` have no `--dump`
+  at all, there is no codepoint+colour-slot serializer, and no goldens are
+  committed. Six geometry defects have shipped in this toolkit and none was
+  visible to a compiler.
+- **Dead keys yield nothing: libkwl has no xkb-compose.** UTF-8 text entry
+  itself works end to end — `xkb_state_key_get_utf32` hands whole codepoints to
+  libktui, which encodes and moves the caret by SEQUENCE, and kdos-lock takes a
+  multi-byte password — so a layout that types `é` directly is fine. A COMPOSE
+  sequence (`Compose e '`) is not: `xkb_compose_*` is unbound, and xkbcommon is
+  already a libkwl dependency, so this is wiring rather than a new `-l`.
+- **A wide glyph is measured, not guaranteed.** libktui has `ktui_wcwidth` and a
+  `KTUI_WIDE_CONT` continuation cell and libkcell clips each composite to its
+  cell, so CJK no longer corrupts row layout — but **the console font is 512
+  glyphs** and carries none of those codepoints. What renders is fcft's
+  fallback, at whatever the fontconfig chain finds, and on a tty1 running the
+  same text there is nothing at all. Chrome that must read on BOTH surfaces
+  stays inside the vt tier (`░▒█`, box drawing, `◀▶`).
+- **`kdos-oomd` has never fired for real.** `--fixture` proves the victim
+  selection against a recorded `/proc`; an actual PSI stall on a machine with a
+  browser and a slicer in 8 GB is the test that matters and has not been run.
+  Neither it nor `kdos-energyd` has any panel surface — the pressure/energy
+  strip is written in the plan and not in the code.
   (Closed from this list by the labwc fork and the shell fixes:
   maximize/fullscreen, the five foot protocols incl. middle-click paste, the
   notifyd one-cell shrink — the layer surface is destroyed and recreated

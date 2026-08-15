@@ -80,4 +80,106 @@ if command -v fcitx5 >/dev/null 2>&1; then
 	) &
 fi
 
-exec kdos-comp
+# Everything the session does ONCE, after the compositor exists: the login
+# sound, the first-run keybind card, and the session restore. All of it is in
+# one backgrounded subshell with the same socket wait the two blocks above use,
+# because none of it may delay the compositor by a millisecond — the session
+# starts whether or not any of these three is installed or wanted.
+(
+	for _ in $(seq 1 150); do
+		WD=$(cd "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" 2>/dev/null && \
+			ls wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
+		[ -n "$WD" ] && break
+		sleep 0.2
+	done
+	[ -n "$WD" ] || exit 0
+	export WAYLAND_DISPLAY="$WD"
+	_cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+	# The login chord. Fire and forget, and silent about failure: an image
+	# with no kdos-sfx, or a machine with no card, must not print anything
+	# at every login.
+	command -v kdos-sfx >/dev/null 2>&1 && kdos-sfx login >/dev/null 2>&1 &
+
+	# The keybind card, once. kdos-keys writes the marker itself when the
+	# user has seen it — this only decides whether to open it, so a user
+	# who deletes the marker gets the welcome back.
+	if [ ! -e "$_cfg/kdos/first-run" ] && command -v kdos-keys >/dev/null 2>&1; then
+		kdos-keys --first-run >/dev/null 2>&1 &
+	fi
+
+	# Session restore, opt-in: ~/.config/kdos/session-restore has to exist,
+	# because relaunching half a dozen containerised applications at login
+	# is a decision, not a default. Only the `app` lines are relaunched —
+	# a native program costs no container start, and where every window
+	# comes back is the compositor's window memory rather than this list.
+	# Staggered, because six `kdos-appbox run` at once contend for the same
+	# box the login warmup is still building.
+	_sess="${XDG_STATE_HOME:-$HOME/.local/state}/kdos/session"
+	if [ -e "$_cfg/kdos/session-restore" ] && [ -r "$_sess" ] && \
+	   command -v kdos-appbox >/dev/null 2>&1; then
+		while read -r _kind _name; do
+			[ "$_kind" = app ] || continue
+			[ -n "$_name" ] || continue
+			# kdos-appbox waits out an in-flight warmup itself.
+			kdos-appbox run "$_name" >/dev/null 2>&1 &
+			sleep 2
+		done < "$_sess"
+	fi
+) &
+
+# The compositor, no longer exec'd blind: a crashing kdos-comp used to drop
+# straight back to a bare tty with its dying words lost — the least mature
+# thing a desktop can do is die silently. So its stderr is kept, and it goes
+# to a FILE followed by `tail -f`, never through a pipe into `tee`:
+#
+# EVERY DESCENDANT OF THE COMPOSITOR INHERITS FD 2. A pipe's reader sees EOF
+# only when the LAST write end closes, so a single surviving grandchild —
+# rootless podman's `conmon`, which lives for the whole life of an alien app's
+# container, or anything else spawn_async_no_shell() left behind — would hold
+# `tee` open forever, and this script would never reach the restart prompt or
+# give the tty back. That is the same shape as the `flock 7>&-` trap above: a
+# tty that sits there with no compositor, no error and nothing in a log.
+#
+# The follower is killed once the compositor is reaped; the failure path below
+# re-prints the log's tail, so nothing is lost to whatever it had not polled.
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+_log="$XDG_RUNTIME_DIR/kdos-comp.log"
+[ -f "$_log" ] && mv -f "$_log" "$_log.old"
+: > "$_log"
+tail -f "$_log" >&2 2>/dev/null &
+_tail=$!
+kdos-comp 2>>"$_log"
+rc=$?
+kill "$_tail" 2>/dev/null
+wait "$_tail" 2>/dev/null
+
+# A clean exit is a logout.
+[ "$rc" -eq 0 ] && exit 0
+
+echo "" >&2
+echo "kdos-comp exited with status $rc — last 20 lines of $_log:" >&2
+[ -f "$_log" ] && tail -n 20 "$_log" >&2
+
+# Restart by re-exec'ing this script, which re-arms everything above — the
+# pipewire block is pgrep-guarded, and the portal block MUST re-run: the wlr
+# backend is a Wayland client and died with the compositor. The 3-in-60s cap
+# rides in exported variables, which survive the exec; a crash loop faster
+# than a human can read the log is not one a human should keep feeding.
+_now=$(date +%s)
+if [ $((_now - ${KDOS_COMP_FAIL_T0:-0})) -gt 60 ]; then
+	KDOS_COMP_FAIL_T0=$_now
+	KDOS_COMP_FAIL_N=0
+fi
+KDOS_COMP_FAIL_N=$((${KDOS_COMP_FAIL_N:-0} + 1))
+export KDOS_COMP_FAIL_T0 KDOS_COMP_FAIL_N
+if [ "$KDOS_COMP_FAIL_N" -ge 3 ]; then
+	echo "kdos-comp: crashed $KDOS_COMP_FAIL_N times in 60s — not restarting again." >&2
+	exit "$rc"
+fi
+printf 'r=restart session, anything else=exit to tty: ' >&2
+if ! read -r _ans </dev/tty; then
+	_ans=
+fi
+[ "$_ans" = "r" ] || exit "$rc"
+exec "$0"

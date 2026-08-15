@@ -1,0 +1,24 @@
++=  kdos-doc * index  =========================================================+
+| KDOS DOC                                                                     |
+|                                                                              |
+| Everything on this machine that can explain itself, in one place. A link     |
+| is followed with Enter or a click; Backspace goes back.                      |
+|                                                                              |
+| No documents are installed, which is a working state: every                  |
+| resolver below needs no corpus at all. Try one.                              |
+|                                                                              |
+| What a link resolves to                                                      |
+|                                                                              |
+|   port    a recipe's own metadata     zlib                                   |
+|   reason  a recorded debug cycle      tmp-mode-1777                          |
+|   man     a manual page, in foot      kpkg.1                                 |
+|   key     the keybind card            W-d                                    |
+|   doc     another document            index                                  |
+|                                                                              |
+| A document is plain text with kind:target spans in double square             |
+| brackets. Drop one in                                                        |
+|   /nonexistent-kdos-data/kdos/doc                                            |
+| or in /usr/share/kdos/doc and it is listed above.                            |
+|                                                                              |
+| Tab link   Enter follow   Bksp back   / search   Esc close                   |
++==============================================================================+

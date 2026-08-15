@@ -28,6 +28,7 @@
 #include "ext-session-lock-v1-client-protocol.h"
 #include "kwl_priv.h"
 #include "cursor-shape-v1-client-protocol.h"
+#include "primary-selection-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -58,6 +59,21 @@
 #define KWL_REPEAT_DELAY_MS 400
 #define KWL_REPEAT_RATE_HZ  25
 
+/*
+ * Paste is capped, and the cap is a policy, not a buffer size that happened:
+ * these are single-line text fields (a filename, a command, a password) and a
+ * 64K paste into one of them is a mistake, not a use case.
+ */
+#define KWL_PASTE_MAX     65536
+#define KWL_PASTE_TIMEOUT_MS 2000	/* a source that never finishes */
+
+/*
+ * A frame callback the compositor never answers — the surface is occluded, or
+ * the output is off — must not freeze the surface forever: past this, commit
+ * anyway and let the compositor throttle us its own way.
+ */
+#define KWL_FRAME_STALL_MS 100
+
 /* ── state ─────────────────────────────────────────────────────────────── */
 
 static struct {
@@ -79,6 +95,31 @@ static struct {
 	 * buffer of our own. */
 	struct wp_cursor_shape_manager_v1 *shape_mgr;
 	struct wp_cursor_shape_device_v1 *shape_dev;
+	int cursor;		/* enum kwl_cursor, re-sent on every enter */
+	uint32_t ptr_serial;	/* the pointer-enter serial set_shape needs */
+
+	/*
+	 * Paste, and only paste. The selection offers are tracked so Ctrl+V and
+	 * middle-click can receive text/plain; setting the selection and
+	 * drag-and-drop are future work — a source needs data to keep serving
+	 * after the widget that owned it is gone, which is a lifetime this
+	 * library does not hold yet.
+	 */
+	struct wl_data_device_manager *data_mgr;
+	struct wl_data_device *data_dev;
+	struct zwp_primary_selection_device_manager_v1 *primary_mgr;
+	struct zwp_primary_selection_device_v1 *primary_dev;
+	struct wl_data_offer *sel_offer;	/* the clipboard, or NULL   */
+	struct zwp_primary_selection_offer_v1 *prim_offer;
+	struct wl_data_offer *drag_offer;	/* held only to destroy it  */
+	int paste_fd;				/* in-flight receive, or -1 */
+	char *paste_buf;
+	size_t paste_len;
+	int64_t paste_deadline;
+
+	/* The last serial an input event carried: what wl_data_device
+	 * set_selection (and start_drag, one day) must present. */
+	uint32_t input_serial;
 
 	/* Lock role. `engaged` is the compositor's confirmation, `finished` its
 	 * refusal; a lock screen must not take a password before the first or
@@ -90,6 +131,14 @@ static struct {
 	 * version 4's `name` event, which is the only handle on an output that
 	 * survives being written on a command line. */
 	char output_name[KWL_MAX_OUTPUTS][KWL_OUTPUT_NAME_MAX];
+	int output_scale[KWL_MAX_OUTPUTS];
+	/* The registry id each slot was bound from: without it a global_remove
+	 * cannot be matched back to an output, and an unplugged screen is left
+	 * in the table for named_output() and make_lock() to hand a destroyed
+	 * proxy to — an "invalid object" error, which kills the client. A
+	 * removed slot is emptied rather than compacted: the output listener
+	 * carries its index as user data, and the next bind reuses it. */
+	uint32_t output_id[KWL_MAX_OUTPUTS];
 	int noutputs;
 	/* The extra outputs: one lock surface each, filled with the theme
 	 * background. No cell grid — libktui has one buffer, and it is on the
@@ -118,6 +167,10 @@ static struct {
 	 * back.
 	 */
 	int layer_version;
+	/* Panel autohide: non-zero while the panel is collapsed to its edge
+	 * strip with no exclusive zone. Kept here rather than in the caller so
+	 * a repeated request is free. */
+	int autohidden;
 
 	struct xkb_context *xkb_ctx;
 	struct xkb_keymap *keymap;
@@ -125,9 +178,40 @@ static struct {
 
 	KwlBuffer buf[2];
 	int cur_buf;
+	/*
+	 * What the compositor is SHOWING, cell for cell — the damage diff's
+	 * baseline. It cannot be either buffer's shadow (the front buffer
+	 * changes hands every commit) and it cannot be libktui's own front
+	 * buffer (a throttled commit lands after the flush that carried it,
+	 * when that pointer may be gone).
+	 */
+	KtuiCell *screen;
+	int screen_w, screen_h;
+
+	/*
+	 * Frame-callback throttling. While `frame_cb` is outstanding, a flush
+	 * snapshots its cells into `pend` instead of committing; the callback
+	 * commits the newest snapshot. Sustained change — a drag-hover, the
+	 * OSD's volume ramp — then commits at display cadence rather than at
+	 * event cadence.
+	 */
+	struct wl_callback *frame_cb;
+	int64_t frame_at_ms;
+	KtuiCell *pend;
+	int pend_w, pend_h, pend_full, pend_valid;
+
+	/*
+	 * HiDPI: the integer scale of the output the surface is on, clamped to
+	 * KCELL_MAX_SCALE. Layer-surface sizes stay in logical pixels; the shm
+	 * buffer is px * scale and the glyphs are rendered at the scale rather
+	 * than stretched. `scale_sent` trails it so set_buffer_scale is always
+	 * committed together with a buffer of the matching size.
+	 */
+	int scale, scale_sent;
+	int on_output;		/* index of the output last entered, or -1 */
 
 	KwlConfig cfg;
-	int px_w, px_h;		/* surface size in pixels                  */
+	int px_w, px_h;		/* surface size in LOGICAL pixels          */
 	int cols, rows;		/* and in cells                            */
 	int configured;
 	int closed;
@@ -182,6 +266,8 @@ int kwl_fd(void)
 	return K.display ? wl_display_get_fd(K.display) : -1;
 }
 
+static void paste_pump(void);
+
 void kwl_pump(void)
 {
 	if (!K.display)
@@ -233,6 +319,9 @@ void kwl_pump(void)
 		return;
 	}
 flush:
+	/* An in-flight paste rides this loop too: the read is non-blocking and
+	 * kwl_pump's callers call it on every turn. */
+	paste_pump();
 	/*
 	 * EAGAIN from flush means the socket is full, not that the compositor is
 	 * gone — libwayland has buffered the requests and will send them when
@@ -284,6 +373,29 @@ static int pop_event(KtuiEvent *ev)
 	return 1;
 }
 
+/*
+ * The modifiers as xkb holds them NOW. One reading, shared by the key and the
+ * pointer handlers: the tty backend's SGR decoding fills ev.mods for mouse
+ * events, and the two backends must not disagree about the event vocabulary —
+ * shift-click was invisible to every chrome surface here.
+ */
+static int mods_now(void)
+{
+	int m = 0;
+	if (!K.xkb_state)
+		return 0;
+	if (xkb_state_mod_name_is_active(K.xkb_state, XKB_MOD_NAME_CTRL,
+					 XKB_STATE_MODS_EFFECTIVE) > 0)
+		m |= KT_MOD_CTRL;
+	if (xkb_state_mod_name_is_active(K.xkb_state, XKB_MOD_NAME_ALT,
+					 XKB_STATE_MODS_EFFECTIVE) > 0)
+		m |= KT_MOD_ALT;
+	if (xkb_state_mod_name_is_active(K.xkb_state, XKB_MOD_NAME_SHIFT,
+					 XKB_STATE_MODS_EFFECTIVE) > 0)
+		m |= KT_MOD_SHIFT;
+	return m;
+}
+
 /* The held key's next repeat, if it is due. */
 static int repeat_due(KtuiEvent *ev)
 {
@@ -292,8 +404,217 @@ static int repeat_due(KtuiEvent *ev)
 	int hz = K.rep_rate > 0 ? K.rep_rate : KWL_REPEAT_RATE_HZ;
 	K.rep_at_ms = now_ms() + 1000 / hz;
 	*ev = K.rep_ev;
+	/* The modifiers as held NOW, not as they were at the press: a Shift
+	 * released mid-repeat must stop extending the selection. */
+	ev->mods = mods_now();
 	return 1;
 }
+
+/* ── paste ─────────────────────────────────────────────────────────────── */
+
+/*
+ * The mimes worth receiving, best first. The rank survives on the offer's
+ * user data (index + 1, 0 for "nothing textual"), because the mime events
+ * arrive long before anybody presses Ctrl+V and the strings themselves are
+ * gone by then.
+ */
+static const char *const paste_mime[] = {
+	"text/plain;charset=utf-8",
+	"UTF8_STRING",
+	"text/plain",
+};
+
+static void offer_rank(struct wl_proxy *o, const char *mime)
+{
+	intptr_t cur = (intptr_t)wl_proxy_get_user_data(o);
+	for (int i = 0; i < (int)(sizeof(paste_mime) / sizeof(*paste_mime)); i++)
+		if (!strcmp(mime, paste_mime[i])) {
+			if (!cur || (intptr_t)i + 1 < cur)
+				wl_proxy_set_user_data(o, (void *)(intptr_t)(i + 1));
+			return;
+		}
+}
+
+/*
+ * Drain the receive pipe; on EOF hand the text to libktui. Non-blocking, and
+ * pumped from BOTH event loops (kwl_pump and the backend's poll_event),
+ * because a paste started in the file chooser arrives through poll_event and
+ * one started while kdos-notifyd is idle arrives through kwl_pump.
+ */
+static void paste_pump(void)
+{
+	if (K.paste_fd < 0)
+		return;
+	for (;;) {
+		ssize_t r = read(K.paste_fd, K.paste_buf + K.paste_len,
+				 KWL_PASTE_MAX - K.paste_len);
+		if (r > 0) {
+			K.paste_len += (size_t)r;
+			if (K.paste_len >= KWL_PASTE_MAX)
+				break;	/* the cap: keep what fits */
+			continue;
+		}
+		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+			if (now_ms() < K.paste_deadline)
+				return;	/* still coming; poll again */
+			break;		/* a source that never finishes */
+		}
+		break;			/* EOF, or an error: done */
+	}
+	close(K.paste_fd);
+	K.paste_fd = -1;
+	if (K.paste_len)
+		ktui_paste_push(K.paste_buf, K.paste_len);
+	K.paste_len = 0;
+}
+
+static void paste_start(int primary)
+{
+	int rank;
+
+	if (K.paste_fd >= 0)
+		return;			/* one at a time */
+	if (primary) {
+		if (!K.prim_offer)
+			return;
+		rank = (int)(intptr_t)wl_proxy_get_user_data(
+			(struct wl_proxy *)K.prim_offer);
+	} else {
+		if (!K.sel_offer)
+			return;
+		rank = (int)(intptr_t)wl_proxy_get_user_data(
+			(struct wl_proxy *)K.sel_offer);
+	}
+	if (!rank)
+		return;			/* nothing textual on offer */
+	if (!K.paste_buf) {
+		K.paste_buf = malloc(KWL_PASTE_MAX);
+		if (!K.paste_buf)
+			return;
+	}
+
+	int fds[2];
+	if (pipe2(fds, O_CLOEXEC) < 0)
+		return;
+	if (primary)
+		zwp_primary_selection_offer_v1_receive(
+			K.prim_offer, paste_mime[rank - 1], fds[1]);
+	else
+		wl_data_offer_receive(K.sel_offer, paste_mime[rank - 1], fds[1]);
+	/* The write end is the SOURCE's now; holding our copy open turns its
+	 * close-at-EOF into a pipe that never reports EOF here. */
+	close(fds[1]);
+	fcntl(fds[0], F_SETFL, O_NONBLOCK);
+	K.paste_fd = fds[0];
+	K.paste_len = 0;
+	K.paste_deadline = now_ms() + KWL_PASTE_TIMEOUT_MS;
+	wl_display_flush(K.display);
+}
+
+static void doff_offer(void *d, struct wl_data_offer *o, const char *mime)
+{
+	(void)d;
+	offer_rank((struct wl_proxy *)o, mime);
+}
+
+static const struct wl_data_offer_listener data_offer_listener = {
+	.offer = doff_offer,
+};
+
+static void dd_data_offer(void *d, struct wl_data_device *dev,
+			  struct wl_data_offer *o)
+{
+	(void)d;
+	(void)dev;
+	wl_data_offer_add_listener(o, &data_offer_listener, NULL);
+}
+
+/* No drag-and-drop: the offer a drag announces is held only so it can be
+ * destroyed when the drag ends, as the protocol requires. */
+static void dd_enter(void *d, struct wl_data_device *dev, uint32_t serial,
+		     struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y,
+		     struct wl_data_offer *o)
+{
+	(void)d; (void)dev; (void)serial; (void)sf; (void)x; (void)y;
+	K.drag_offer = o;
+}
+static void dd_leave(void *d, struct wl_data_device *dev)
+{
+	(void)d;
+	(void)dev;
+	if (K.drag_offer) {
+		wl_data_offer_destroy(K.drag_offer);
+		K.drag_offer = NULL;
+	}
+}
+static void dd_motion(void *d, struct wl_data_device *dev, uint32_t time,
+		      wl_fixed_t x, wl_fixed_t y)
+{ (void)d; (void)dev; (void)time; (void)x; (void)y; }
+static void dd_drop(void *d, struct wl_data_device *dev)
+{
+	(void)d;
+	(void)dev;
+	if (K.drag_offer) {
+		wl_data_offer_destroy(K.drag_offer);
+		K.drag_offer = NULL;
+	}
+}
+
+static void dd_selection(void *d, struct wl_data_device *dev,
+			 struct wl_data_offer *o)
+{
+	(void)d;
+	(void)dev;
+	/* The previous offer is invalid the moment this event arrives; `o` is
+	 * NULL when the selection was cleared. */
+	if (K.sel_offer && K.sel_offer != o)
+		wl_data_offer_destroy(K.sel_offer);
+	K.sel_offer = o;
+}
+
+static const struct wl_data_device_listener data_device_listener = {
+	.data_offer = dd_data_offer,
+	.enter = dd_enter,
+	.leave = dd_leave,
+	.motion = dd_motion,
+	.drop = dd_drop,
+	.selection = dd_selection,
+};
+
+static void poff_offer(void *d, struct zwp_primary_selection_offer_v1 *o,
+		       const char *mime)
+{
+	(void)d;
+	offer_rank((struct wl_proxy *)o, mime);
+}
+
+static const struct zwp_primary_selection_offer_v1_listener primary_offer_listener = {
+	.offer = poff_offer,
+};
+
+static void pd_data_offer(void *d, struct zwp_primary_selection_device_v1 *dev,
+			  struct zwp_primary_selection_offer_v1 *o)
+{
+	(void)d;
+	(void)dev;
+	zwp_primary_selection_offer_v1_add_listener(o, &primary_offer_listener,
+						    NULL);
+}
+
+static void pd_selection(void *d, struct zwp_primary_selection_device_v1 *dev,
+			 struct zwp_primary_selection_offer_v1 *o)
+{
+	(void)d;
+	(void)dev;
+	if (K.prim_offer && K.prim_offer != o)
+		zwp_primary_selection_offer_v1_destroy(K.prim_offer);
+	K.prim_offer = o;
+}
+
+static const struct zwp_primary_selection_device_v1_listener primary_device_listener = {
+	.data_offer = pd_data_offer,
+	.selection = pd_selection,
+};
 
 /* ── buffers ───────────────────────────────────────────────────────────── */
 
@@ -315,6 +636,7 @@ static void buffer_free(KwlBuffer *b)
 		wl_buffer_destroy(b->wl);
 	if (b->data)
 		munmap(b->data, b->size);
+	free(b->shadow);
 	memset(b, 0, sizeof(*b));
 }
 
@@ -378,93 +700,134 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 
 /* ── the backend ───────────────────────────────────────────────────────── */
 
-static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
-		      int full)
+static void frame_done(void *d, struct wl_callback *cb, uint32_t t);
+
+static const struct wl_callback_listener frame_listener = {
+	.done = frame_done,
+};
+
+/*
+ * Paint `cur` into a buffer and commit it. Two different diffs, against two
+ * different baselines, and keeping them apart is the whole of S1:
+ *
+ * The DAMAGE is the diff against `K.screen` — what the compositor is showing —
+ * because damage describes what changed ON SCREEN. This is also the flicker
+ * fix: an unchanged frame is NOT COMMITTED at all. The panel redraws on a
+ * one-second tick, the desk on its rescan — and every one of those used to
+ * attach a fresh buffer and damage its full surface even when not a cell had
+ * moved; on a virtio guest with no GL every commit is a full framebuffer
+ * upload, so the desktop pulsed at the union of everyone's timers.
+ *
+ * The PAINT diffs against the buffer's OWN shadow, because commits alternate
+ * buffers: the buffer being painted holds the frame before last, and a partial
+ * paint measured against the frame on screen is how a cell grid grows stale
+ * rows that never repair.
+ */
+static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 {
-	/* !K.surface: an overlay hidden via kwl_overlay_hide() — drawing
-	 * calls while hidden are no-ops, not errors. */
-	if (!K.configured || !K.surface)
-		return;
+	size_t n = (size_t)w * h;
 
-	/*
-	 * Two buffers, and the flip is not an optimisation. Painting into a
-	 * buffer the compositor is still scanning out tears; blocking until it
-	 * is released stalls the frame. With two, the common case never waits.
-	 */
-	KwlBuffer *b = &K.buf[K.cur_buf];
-	if (b->busy) {
-		K.cur_buf ^= 1;
-		b = &K.buf[K.cur_buf];
-		/*
-		 * Both busy: the compositor is behind. Repaint the one we are
-		 * about to reuse in full, because `prev` describes what is in
-		 * the OTHER buffer and a partial paint over stale contents is
-		 * how a cell grid grows a corrupted row that never repairs.
-		 */
-		full = 1;
-	}
-	if (!b->img || b->w != K.px_w || b->h != K.px_h) {
-		if (buffer_alloc(b, K.px_w, K.px_h) < 0)
+	if (!K.screen || K.screen_w != w || K.screen_h != h) {
+		free(K.screen);
+		K.screen = malloc(n * sizeof(KtuiCell));
+		if (!K.screen) {
+			K.screen_w = K.screen_h = 0;
 			return;
+		}
+		K.screen_w = w;
+		K.screen_h = h;
 		full = 1;
 	}
 
-	/*
-	 * Scale 1: a client's surface is sized in the compositor's pixels and
-	 * libkwl does not do HiDPI — wl_surface.set_buffer_scale would need the
-	 * cell buffer resized to match, and every layer-shell consumer here
-	 * asks for a size in CELLS already. The compositor-side consumer is the
-	 * one that scales, because it is the one that knows which output a
-	 * frame is on.
-	 *
-	 * b->w/b->h rather than w*cell_w: the shm buffer is what the compositor
-	 * will read, and any of it the grid does not reach must be KT_BG rather
-	 * than whatever the last frame left.
-	 */
-	/*
-	 * THE FLICKER FIX, in two halves, and it belongs here because every
-	 * chrome client inherits it at once.
-	 *
-	 * First: an unchanged frame is NOT COMMITTED. The panel redraws on a
-	 * one-second tick, the desk on its rescan, the bottom panel on its own
-	 * — and every one of those used to attach a fresh buffer and damage its
-	 * FULL surface even when not a cell had moved. On a virtio guest with
-	 * no GL every commit is a full framebuffer upload, so the desktop
-	 * pulsed at the union of everyone's timers. The diff below is against
-	 * `prev` — what was last flushed — so "nothing changed" is measured,
-	 * not assumed.
-	 *
-	 * Second: when something DID change, the damage is the dirty row span,
-	 * not the whole surface. The buffer is still painted in full when the
-	 * swap flipped (the compositor holds the other one), but damage
-	 * describes what changed ON SCREEN, and that is the diff against the
-	 * last flush regardless of which buffer carries it.
-	 */
 	int dirty_y0 = -1, dirty_y1 = -1;
-	if (prev) {
+	if (!full) {
 		for (int y = 0; y < h; y++)
-			if (memcmp(cur + (size_t)y * w, prev + (size_t)y * w,
+			if (memcmp(cur + (size_t)y * w, K.screen + (size_t)y * w,
 				   (size_t)w * sizeof(*cur))) {
 				if (dirty_y0 < 0)
 					dirty_y0 = y;
 				dirty_y1 = y;
 			}
+		if (dirty_y0 < 0)
+			return;		/* nothing changed: no commit at all */
 	}
-	if (!full && prev && dirty_y0 < 0)
-		return;			/* nothing changed: no commit at all */
 
-	kcell_paint(b->img, cur, prev, w, h, full, 1, b->w, b->h);
+	/*
+	 * Two buffers, and the flip is not an optimisation. Painting into a
+	 * buffer the compositor is still scanning out tears; blocking until it
+	 * is released stalls the frame. With two, the common case never waits.
+	 * Both busy means the compositor is behind; painting the one we hold
+	 * anyway is the least-bad option, and the per-buffer shadow keeps the
+	 * partial paint correct wherever it lands.
+	 */
+	KwlBuffer *b = &K.buf[K.cur_buf];
+	if (b->busy) {
+		K.cur_buf ^= 1;
+		b = &K.buf[K.cur_buf];
+	}
+	/*
+	 * A full repaint is full for BOTH buffers. `full` normally means the
+	 * cell→pixel mapping changed under cells that did not — `kdos theme`
+	 * SIGHUPs the panel and every slot moves without a cell moving — and
+	 * the shadow records CELLS, so the buffer not painted here would take
+	 * its next turn believing rows that still wear the old accent.
+	 */
+	if (full)
+		K.buf[K.cur_buf ^ 1].stale = true;
 
+	/*
+	 * b->w/b->h rather than w*cell_w: the shm buffer is what the compositor
+	 * will read, and any of it the grid does not reach must be KT_BG rather
+	 * than whatever the last frame left. Sized at scale: the surface stays
+	 * logical, the pixels are the output's own.
+	 */
+	int scale = K.scale > 0 ? K.scale : 1;
+	int bw = K.px_w * scale, bh = K.px_h * scale;
+	int bfull = full || b->stale;
+	if (!b->img || b->w != bw || b->h != bh) {
+		if (buffer_alloc(b, bw, bh) < 0)
+			return;
+		bfull = 1;
+	}
+	if (!b->shadow || b->scols != w || b->srows != h) {
+		free(b->shadow);
+		b->shadow = malloc(n * sizeof(KtuiCell));
+		b->scols = w;
+		b->srows = h;
+		bfull = 1;
+	}
+
+	/* kcell_paint updates `prev` (the shadow) with what it painted; a NULL
+	 * shadow — allocation failure — degrades to a full paint every frame. */
+	kcell_paint(b->img, cur, bfull ? NULL : b->shadow, w, h, bfull, scale,
+		    b->w, b->h);
+	if (b->shadow && bfull)
+		memcpy(b->shadow, cur, n * sizeof(KtuiCell));
+	if (bfull)
+		b->stale = false;
+	memcpy(K.screen, cur, n * sizeof(KtuiCell));
+
+	if (scale != K.scale_sent) {
+		/* Sent here, not when the output changed: the scale and a
+		 * buffer of the matching size must land in the SAME commit. */
+		wl_surface_set_buffer_scale(K.surface, scale);
+		K.scale_sent = scale;
+	}
 	wl_surface_attach(K.surface, b->wl, 0, 0);
 	if (!full && dirty_y0 >= 0) {
-		int ch = kcell_h();
+		int ch = kcell_h() * scale;
 		int y0 = dirty_y0 * ch;
 		int y1 = (dirty_y1 + 1) * ch;
-		if (y1 > K.px_h)
-			y1 = K.px_h;
-		wl_surface_damage_buffer(K.surface, 0, y0, K.px_w, y1 - y0);
+		if (y1 > bh)
+			y1 = bh;
+		wl_surface_damage_buffer(K.surface, 0, y0, bw, y1 - y0);
 	} else {
-		wl_surface_damage_buffer(K.surface, 0, 0, K.px_w, K.px_h);
+		wl_surface_damage_buffer(K.surface, 0, 0, bw, bh);
+	}
+	K.frame_cb = wl_surface_frame(K.surface);
+	if (K.frame_cb) {
+		wl_callback_add_listener(K.frame_cb, &frame_listener, NULL);
+		K.frame_at_ms = now_ms();
 	}
 	wl_surface_commit(K.surface);
 	b->busy = true;
@@ -472,14 +835,98 @@ static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 	wl_display_flush(K.display);
 }
 
+static void frame_done(void *d, struct wl_callback *cb, uint32_t t)
+{
+	(void)d;
+	(void)t;
+	if (K.frame_cb == cb)
+		K.frame_cb = NULL;
+	wl_callback_destroy(cb);
+	if (K.pend_valid && K.configured && K.surface) {
+		K.pend_valid = 0;
+		int full = K.pend_full;
+		K.pend_full = 0;
+		flush_commit(K.pend, K.pend_w, K.pend_h, full);
+	}
+}
+
+static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
+		      int full)
+{
+	/* The diff baseline is K.screen, not libktui's front buffer: a
+	 * throttled commit happens after this call returns, when `prev` may
+	 * describe a frame that was never presented — or be gone entirely. */
+	(void)prev;
+
+	/* !K.surface: an overlay hidden via kwl_overlay_hide() — drawing
+	 * calls while hidden are no-ops, not errors. */
+	if (!K.configured || !K.surface)
+		return;
+
+	/*
+	 * Frame-callback throttling: while the compositor has not yet shown
+	 * the last commit, snapshot the newest cells and commit them when it
+	 * says it is ready. Motion-driven redraws then cost one commit per
+	 * display frame instead of one per pointer sample.
+	 */
+	if (K.frame_cb && now_ms() - K.frame_at_ms < KWL_FRAME_STALL_MS) {
+		size_t n = (size_t)w * h;
+		if (!K.pend || K.pend_w != w || K.pend_h != h) {
+			free(K.pend);
+			K.pend = malloc(n * sizeof(KtuiCell));
+			if (!K.pend) {
+				K.pend_w = K.pend_h = 0;
+				K.pend_valid = 0;
+				return;
+			}
+			K.pend_w = w;
+			K.pend_h = h;
+			K.pend_full = 1;
+		}
+		memcpy(K.pend, cur, n * sizeof(KtuiCell));
+		K.pend_full |= full;
+		K.pend_valid = 1;
+		return;
+	}
+	if (K.frame_cb) {
+		/* See KWL_FRAME_STALL_MS: an unanswered callback must not
+		 * freeze the surface for good. */
+		wl_callback_destroy(K.frame_cb);
+		K.frame_cb = NULL;
+	}
+	/*
+	 * The stash is superseded by `cur`, which is newer by construction, so
+	 * it is joined into this commit rather than left behind: keeping it
+	 * would let the next frame callback republish a frame older than the
+	 * one on screen, and dropping its `full` would lose a repaint the
+	 * consumer has already forgotten about — ktui_draw_flush() clears
+	 * force_full after ANY flush, throttled ones included.
+	 */
+	if (K.pend_valid) {
+		full |= K.pend_full;
+		K.pend_valid = 0;
+		K.pend_full = 0;
+	}
+	flush_commit(cur, w, h, full);
+}
+
 static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 {
 	/* The documented libwayland read sequence. Anything simpler races: two
 	 * threads or a re-entrant dispatch can consume the socket between the
 	 * poll and the read, and prepare_read/cancel_read is what makes that
-	 * safe rather than occasionally hanging. */
-	while (wl_display_prepare_read(K.display) != 0)
-		wl_display_dispatch_pending(K.display);
+	 * safe rather than occasionally hanging.
+	 *
+	 * The return value is not optional: after a fatal protocol error
+	 * libwayland refuses to dispatch and leaves the queue non-empty, so
+	 * prepare_read goes on answering EAGAIN and this loop never ends —
+	 * 100% of a core, in the wait every front end sits in. */
+	while (wl_display_prepare_read(K.display) != 0) {
+		if (wl_display_dispatch_pending(K.display) < 0) {
+			K.closed = 1;
+			return 0;
+		}
+	}
 	wl_display_flush(K.display);
 
 	if (pop_event(ev)) {
@@ -501,13 +948,24 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 		if (wait < 0 || rem < wait)
 			wait = (int)rem;
 	}
+	if (K.paste_fd >= 0) {
+		/* An in-flight paste has its own deadline — a source that
+		 * wedged must be abandoned even when no event ever comes. */
+		int64_t rem = K.paste_deadline - now_ms();
+		if (rem < 0)
+			rem = 0;
+		if (wait < 0 || rem < wait)
+			wait = (int)rem;
+	}
 
-	struct pollfd pfd = {
-		.fd = wl_display_get_fd(K.display),
-		.events = POLLIN,
+	struct pollfd pfd[2] = {
+		{ .fd = wl_display_get_fd(K.display), .events = POLLIN },
+		{ .fd = K.paste_fd, .events = POLLIN },
 	};
-	int n = poll(&pfd, 1, wait);
-	if (n <= 0) {
+	int n = poll(pfd, K.paste_fd >= 0 ? 2 : 1, wait);
+	if (K.paste_fd >= 0 && (n <= 0 || pfd[1].revents))
+		paste_pump();
+	if (n <= 0 || !(pfd[0].revents & (POLLIN | POLLHUP | POLLERR))) {
 		wl_display_cancel_read(K.display);
 		if (n < 0 && errno != EINTR)
 			K.closed = 1;
@@ -521,6 +979,8 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 		K.closed = 1;
 		return 0;
 	}
+	if (K.paste_fd >= 0)
+		paste_pump();
 
 	if (pop_event(ev))
 		return 1;
@@ -588,7 +1048,6 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 {
 	(void)d;
 	(void)k;
-	(void)serial;
 	(void)time;
 	if (state != WL_KEYBOARD_KEY_STATE_PRESSED) {
 		/* The held key was let go: stop repeating it. Any OTHER key's
@@ -600,32 +1059,33 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 	}
 	if (!K.xkb_state)
 		return;
+	K.input_serial = serial;
 
 	xkb_keycode_t kc = key + 8;	/* evdev -> xkb */
 	xkb_keysym_t sym = xkb_state_key_get_one_sym(K.xkb_state, kc);
 
 	KtuiEvent ev = { .type = KT_EVT_KEY };
-	ev.mods = 0;
-	if (xkb_state_mod_name_is_active(K.xkb_state, XKB_MOD_NAME_CTRL,
-					 XKB_STATE_MODS_EFFECTIVE) > 0)
-		ev.mods |= KT_MOD_CTRL;
-	if (xkb_state_mod_name_is_active(K.xkb_state, XKB_MOD_NAME_ALT,
-					 XKB_STATE_MODS_EFFECTIVE) > 0)
-		ev.mods |= KT_MOD_ALT;
-	if (xkb_state_mod_name_is_active(K.xkb_state, XKB_MOD_NAME_SHIFT,
-					 XKB_STATE_MODS_EFFECTIVE) > 0)
-		ev.mods |= KT_MOD_SHIFT;
+	ev.mods = mods_now();
 
 	ev.key = kwl_keysym_to_ktui(sym, K.xkb_state, kc);
 	if (!ev.key)
 		return;			/* a bare modifier: nothing to repeat */
+	/* Ctrl+V arrives from xkb as U+0016 — start receiving the clipboard.
+	 * The key is still delivered: with nothing on the clipboard the
+	 * consumer sees exactly what it always saw. */
+	if (ev.key == 0x16 && K.data_dev)
+		paste_start(0);
 	push_event(&ev);
 
 	/*
 	 * Arm the repeat. `rate == 0` is the compositor saying repeat is
-	 * disabled, and it must be honoured rather than defaulted over.
+	 * disabled, and it must be honoured rather than defaulted over — as
+	 * must the keymap's own per-key flag: a key the keymap marks
+	 * non-repeating must not repeat here either.
 	 */
 	if (K.rep_rate == 0 && K.rep_delay > 0)
+		return;
+	if (K.keymap && !xkb_keymap_key_repeats(K.keymap, kc))
 		return;
 	K.rep_code = kc;
 	K.rep_ev = ev;
@@ -665,7 +1125,8 @@ static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t serial,
 static void kb_enter(void *d, struct wl_keyboard *k, uint32_t s,
 		     struct wl_surface *sf, struct wl_array *keys)
 {
-	(void)d; (void)k; (void)s; (void)sf; (void)keys;
+	(void)d; (void)k; (void)sf; (void)keys;
+	K.input_serial = s;
 	K.kb_entered = 1;
 }
 static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s,
@@ -712,7 +1173,8 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t time,
 	K.ptr_cy = wl_fixed_to_int(sy) / ch;
 
 	KtuiEvent ev = { .type = KT_EVT_MOUSE, .btn = KT_MB_MOVE,
-			 .mx = K.ptr_cx, .my = K.ptr_cy, .press = KT_MP_DRAG };
+			 .mx = K.ptr_cx, .my = K.ptr_cy, .press = KT_MP_DRAG,
+			 .mods = mods_now() };
 	push_event(&ev);
 }
 
@@ -721,9 +1183,10 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial,
 {
 	(void)d;
 	(void)p;
-	(void)serial;
 	(void)time;
-	KtuiEvent ev = { .type = KT_EVT_MOUSE, .mx = K.ptr_cx, .my = K.ptr_cy };
+	K.input_serial = serial;
+	KtuiEvent ev = { .type = KT_EVT_MOUSE, .mx = K.ptr_cx, .my = K.ptr_cy,
+			 .mods = mods_now() };
 	/* linux/input-event-codes.h, not repeated as an include: libkwl is a
 	 * Wayland client and these three are the whole vocabulary. */
 	switch (button) {
@@ -734,6 +1197,13 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial,
 	}
 	ev.press = state == WL_POINTER_BUTTON_STATE_PRESSED ? KT_MP_PRESS
 							    : KT_MP_RELEASE;
+	/* Middle-click pastes the primary selection, the X11 tradition every
+	 * Wayland terminal keeps. The click is still delivered — with no
+	 * focused text field the paste lands nowhere, and a consumer that
+	 * means something else by middle (the window list closes) is
+	 * unaffected. */
+	if (ev.btn == KT_MB_MIDDLE && ev.press == KT_MP_PRESS && K.primary_dev)
+		paste_start(1);
 	push_event(&ev);
 }
 
@@ -744,7 +1214,7 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial,
 static void push_wheel(int up)
 {
 	KtuiEvent ev = { .type = KT_EVT_MOUSE, .mx = K.ptr_cx, .my = K.ptr_cy,
-			 .press = KT_MP_PRESS,
+			 .press = KT_MP_PRESS, .mods = mods_now(),
 			 .btn = up ? KT_MB_WHEEL_UP : KT_MB_WHEEL_DOWN };
 	push_event(&ev);
 }
@@ -760,29 +1230,67 @@ static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
 	K.axis_acc += wl_fixed_to_double(value);
 }
 
+static uint32_t shape_of(int cursor)
+{
+	switch (cursor) {
+	case KWL_CUR_TEXT:	return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT;
+	case KWL_CUR_POINTER:	return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER;
+	case KWL_CUR_PROGRESS:	return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_PROGRESS;
+	default:		return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT;
+	}
+}
+
 static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
 		     struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y)
 {
 	(void)d;
 	(void)sf;
-	(void)x;
-	(void)y;
+	/*
+	 * The entry position is a real position: hover must be right and the
+	 * first click must land where the pointer is, not at the (-1,-1) the
+	 * last leave recorded. Reported the way pt_leave reports its own — a
+	 * synthetic motion — so consumers learn it without a new vocabulary.
+	 */
+	int cw = kcell_w(), ch = kcell_h();
+	if (cw > 0 && ch > 0) {
+		K.ptr_cx = wl_fixed_to_int(x) / cw;
+		K.ptr_cy = wl_fixed_to_int(y) / ch;
+	}
+	KtuiEvent ev = { .type = KT_EVT_MOUSE, .btn = KT_MB_MOVE,
+			 .mx = K.ptr_cx, .my = K.ptr_cy, .press = KT_MP_DRAG,
+			 .mods = mods_now() };
+	push_event(&ev);
 	/*
 	 * The enter serial is the ONLY serial a set-cursor request may carry,
 	 * which is why this lives here and not somewhere more convenient. A
 	 * client that never answers the enter has no cursor at all — which is
 	 * exactly what every libkwl surface did until the desktop grew a
 	 * full-screen one and the pointer disappeared over the whole session.
+	 * The shape re-sent is whatever kwl_cursor_set last chose.
 	 */
+	K.ptr_serial = serial;
 	if (K.shape_mgr) {
 		if (!K.shape_dev)
 			K.shape_dev = wp_cursor_shape_manager_v1_get_pointer(
 				K.shape_mgr, p);
 		if (K.shape_dev)
 			wp_cursor_shape_device_v1_set_shape(K.shape_dev, serial,
-				WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+							    shape_of(K.cursor));
 	}
 }
+
+void kwl_cursor_set(enum kwl_cursor c)
+{
+	if ((int)c == K.cursor)
+		return;
+	K.cursor = (int)c;
+	/* No serial yet means the pointer has never been here; the enter
+	 * handler will send the shape when it is. */
+	if (K.shape_dev && K.ptr_serial)
+		wp_cursor_shape_device_v1_set_shape(K.shape_dev, K.ptr_serial,
+						    shape_of(K.cursor));
+}
+
 /*
  * The pointer left this surface, and a consumer has to be TOLD.
  *
@@ -801,7 +1309,7 @@ static void pt_leave(void *d, struct wl_pointer *p, uint32_t s,
 	K.axis_acc = 0;
 	K.axis_disc = 0;
 	KtuiEvent ev = { .type = KT_EVT_MOUSE, .btn = KT_MB_MOVE, .mx = -1,
-			 .my = -1, .press = KT_MP_DRAG };
+			 .my = -1, .press = KT_MP_DRAG, .mods = mods_now() };
 	push_event(&ev);
 }
 
@@ -997,13 +1505,28 @@ static void out_mode(void *d, struct wl_output *o, uint32_t flags, int32_t w,
 		     int32_t h, int32_t refresh)
 { (void)d; (void)o; (void)flags; (void)w; (void)h; (void)refresh; }
 static void out_done(void *d, struct wl_output *o) { (void)d; (void)o; }
+
+static void apply_scale(void);
+
+/* The listener's data is the output's INDEX: two arrays hang off it — the
+ * name, and the scale HiDPI needs. */
 static void out_scale(void *d, struct wl_output *o, int32_t f)
-{ (void)d; (void)o; (void)f; }
-static void out_name(void *data, struct wl_output *o, const char *name)
 {
 	(void)o;
-	if (data && name)
-		snprintf((char *)data, KWL_OUTPUT_NAME_MAX, "%s", name);
+	int i = (int)(intptr_t)d;
+	if (i < 0 || i >= KWL_MAX_OUTPUTS)
+		return;
+	K.output_scale[i] = (int)f;
+	if (i == K.on_output)
+		apply_scale();
+}
+static void out_name(void *d, struct wl_output *o, const char *name)
+{
+	(void)o;
+	int i = (int)(intptr_t)d;
+	if (i < 0 || i >= KWL_MAX_OUTPUTS || !name)
+		return;
+	snprintf(K.output_name[i], KWL_OUTPUT_NAME_MAX, "%s", name);
 }
 static void out_description(void *d, struct wl_output *o, const char *desc)
 { (void)d; (void)o; (void)desc; }
@@ -1015,6 +1538,54 @@ static const struct wl_output_listener output_listener = {
 	.scale = out_scale,
 	.name = out_name,
 	.description = out_description,
+};
+
+/*
+ * HiDPI: adopt the scale of the output the surface is on. The layer-surface
+ * size stays in LOGICAL pixels — the compositor's configure already speaks
+ * them — while the shm buffer grows to px * scale and the glyphs are rendered
+ * at the scale, which is a sharper picture than the compositor stretching a
+ * 1x buffer. Integer only, clamped to what the glyph cache will render (see
+ * KCELL_MAX_SCALE); the buffer swap itself waits for the next flush, where
+ * set_buffer_scale and the resized buffer land in one commit.
+ */
+static void apply_scale(void)
+{
+	int s = K.on_output >= 0 ? K.output_scale[K.on_output] : 1;
+	if (s < 1)
+		s = 1;
+	if (s > KCELL_MAX_SCALE)
+		s = KCELL_MAX_SCALE;
+	if (s == K.scale)
+		return;
+	K.scale = s;
+	/* The cell grid is unchanged — same cols, same rows — so this is not
+	 * a resize; but every pixel must be repainted at the new scale even
+	 * when no cell differs. */
+	ktui_draw_invalidate();
+}
+
+static void surf_enter(void *d, struct wl_surface *sf, struct wl_output *o)
+{
+	(void)d;
+	(void)sf;
+	for (int i = 0; i < K.noutputs; i++)
+		if (K.outputs[i] == o) {
+			K.on_output = i;
+			apply_scale();
+			return;
+		}
+}
+
+/* A surface spanning two outputs gets an enter per output and a leave when it
+ * stops overlapping one; the scale followed the LAST enter, which is as good
+ * an answer as a single-buffer surface has. */
+static void surf_leave(void *d, struct wl_surface *sf, struct wl_output *o)
+{ (void)d; (void)sf; (void)o; }
+
+static const struct wl_surface_listener surface_listener = {
+	.enter = surf_enter,
+	.leave = surf_leave,
 };
 
 /*
@@ -1030,7 +1601,7 @@ static struct wl_output *named_output(void)
 	if (!K.cfg.output || !*K.cfg.output)
 		return NULL;
 	for (int i = 0; i < K.noutputs; i++)
-		if (!strcmp(K.output_name[i], K.cfg.output))
+		if (K.outputs[i] && !strcmp(K.output_name[i], K.cfg.output))
 			return K.outputs[i];
 	return NULL;
 }
@@ -1074,26 +1645,76 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 		 * can name, so a second monitor could be given a panel but not
 		 * the RIGHT one.
 		 */
-		if (K.noutputs < KWL_MAX_OUTPUTS) {
+		int slot = -1;
+		for (int i = 0; i < K.noutputs; i++)
+			if (!K.outputs[i]) {
+				slot = i;
+				break;
+			}
+		if (slot < 0 && K.noutputs < KWL_MAX_OUTPUTS)
+			slot = K.noutputs++;
+		if (slot >= 0) {
 			uint32_t v = version < 4 ? version : 4;
-			K.outputs[K.noutputs] = wl_registry_bind(
+			K.outputs[slot] = wl_registry_bind(
 				r, name, &wl_output_interface, v);
-			if (v >= 4)
-				wl_output_add_listener(K.outputs[K.noutputs],
-						       &output_listener,
-						       K.output_name[K.noutputs]);
-			K.noutputs++;
+			K.output_id[slot] = name;
+			K.output_name[slot][0] = 0;
+			K.output_scale[slot] = 0;
+			/* v2 for `scale`; `name` only ever arrives at v4. The
+			 * data is the index, keying both arrays. */
+			if (v >= 2)
+				wl_output_add_listener(
+					K.outputs[slot], &output_listener,
+					(void *)(intptr_t)slot);
 		}
 	} else if (!strcmp(iface, wp_cursor_shape_manager_v1_interface.name))
 		K.shape_mgr = wl_registry_bind(
 			r, name, &wp_cursor_shape_manager_v1_interface, 1);
+	else if (!strcmp(iface, wl_data_device_manager_interface.name))
+		/* Version 1: receive-only. The DnD action negotiation the
+		 * later versions add belongs to a copy/DnD milestone this
+		 * library has not reached. */
+		K.data_mgr = wl_registry_bind(
+			r, name, &wl_data_device_manager_interface, 1);
+	else if (!strcmp(iface,
+			 zwp_primary_selection_device_manager_v1_interface.name))
+		K.primary_mgr = wl_registry_bind(
+			r, name,
+			&zwp_primary_selection_device_manager_v1_interface, 1);
 	else if (!strcmp(iface, ext_session_lock_manager_v1_interface.name))
 		K.lock_mgr = wl_registry_bind(
 			r, name, &ext_session_lock_manager_v1_interface, 1);
 }
 
+/*
+ * Only outputs are tracked here, and only because a stale one is fatal: the
+ * proxy is destroyed the moment the compositor says the screen is gone, so
+ * nothing can hand it to get_layer_surface or get_lock_surface afterwards.
+ * The other globals go away with the compositor.
+ */
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name)
-{ (void)d; (void)r; (void)name; }
+{
+	(void)d;
+	(void)r;
+	for (int i = 0; i < K.noutputs; i++) {
+		if (!K.outputs[i] || K.output_id[i] != name)
+			continue;
+		if (wl_output_get_version(K.outputs[i]) >=
+		    WL_OUTPUT_RELEASE_SINCE_VERSION)
+			wl_output_release(K.outputs[i]);
+		else
+			wl_output_destroy(K.outputs[i]);
+		K.outputs[i] = NULL;
+		K.output_id[i] = 0;
+		K.output_name[i][0] = 0;
+		K.output_scale[i] = 0;
+		if (K.on_output == i) {
+			K.on_output = -1;
+			apply_scale();
+		}
+		return;
+	}
+}
 
 static const struct wl_registry_listener registry_listener = {
 	.global = reg_global,
@@ -1233,6 +1854,21 @@ static int make_panel(void)
 			zwlr_layer_surface_v1_set_margin(K.layer_surface,
 							 K.cfg.margin_y, 0, 0,
 							 K.cfg.margin_x);
+		} else if (K.cfg.corner == KWL_CORNER_BOTTOM_CENTER) {
+			/*
+			 * ONE edge, not two: anchoring left and right as well
+			 * would stretch the bezel across the whole output.
+			 * The unanchored axis is centred by the compositor,
+			 * which is exactly what a volume overlay wants.
+			 */
+			zwlr_layer_surface_v1_set_anchor(
+				K.layer_surface,
+				ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
+			zwlr_layer_surface_v1_set_margin(
+				K.layer_surface, 0, 0,
+				K.cfg.margin_y ? K.cfg.margin_y
+					       : KWL_OVERLAY_MARGIN,
+				0);
 		}
 		zwlr_layer_surface_v1_set_size(K.layer_surface,
 					       (uint32_t)(cols * kcell_w()),
@@ -1315,7 +1951,15 @@ static void extra_paint(int i)
 {
 	if (K.extra[i].w <= 0 || K.extra[i].h <= 0)
 		return;
-	if (buffer_alloc(&K.extra[i].buf, K.extra[i].w, K.extra[i].h) < 0)
+	/* Only when the size actually moved: buffer_alloc frees what it is
+	 * handed, and there is no second buffer here to flip to, so a
+	 * configure at the size we already have would destroy the wl_buffer
+	 * the compositor is showing. */
+	if (K.extra[i].buf.w != K.extra[i].w || K.extra[i].buf.h != K.extra[i].h)
+		if (buffer_alloc(&K.extra[i].buf, K.extra[i].w,
+				 K.extra[i].h) < 0)
+			return;
+	if (!K.extra[i].buf.img)
 		return;
 
 	pixman_color_t bg = kcell_slot_color(KT_BG);
@@ -1348,7 +1992,15 @@ static const struct ext_session_lock_surface_v1_listener extra_listener = {
 
 static int make_lock(void)
 {
-	if (!K.lock_mgr || K.noutputs < 1)
+	/* An emptied slot is an output that has been unplugged; a lock surface
+	 * on one is a protocol error, not a blank screen. */
+	int first = -1;
+	for (int i = 0; i < K.noutputs; i++)
+		if (K.outputs[i]) {
+			first = i;
+			break;
+		}
+	if (!K.lock_mgr || first < 0)
 		return -1;
 
 	K.lock = ext_session_lock_manager_v1_lock(K.lock_mgr);
@@ -1360,7 +2012,7 @@ static int make_lock(void)
 	 * paints into. */
 	struct ext_session_lock_surface_v1 *ls =
 		ext_session_lock_v1_get_lock_surface(K.lock, K.surface,
-						     K.outputs[0]);
+						     K.outputs[first]);
 	if (!ls)
 		return -1;
 	ext_session_lock_surface_v1_add_listener(ls, &lock_surface_listener, NULL);
@@ -1371,7 +2023,9 @@ static int make_lock(void)
 	 * lock screen that never learns it is locked cannot safely accept a
 	 * password.
 	 */
-	for (int i = 1; i < K.noutputs; i++) {
+	for (int i = 0; i < K.noutputs; i++) {
+		if (i == first || !K.outputs[i])
+			continue;
 		int k = K.nextra;
 		K.extra[k].surface = wl_compositor_create_surface(K.compositor);
 		if (!K.extra[k].surface)
@@ -1438,6 +2092,10 @@ int kwl_init(const KwlConfig *cfg)
 {
 	memset(&K, 0, sizeof(K));
 	K.cfg = *cfg;
+	K.paste_fd = -1;
+	K.scale = 1;
+	K.scale_sent = 1;	/* the protocol's own default */
+	K.on_output = -1;
 
 	kcell_set_transparent_bg(cfg->role == KWL_ROLE_BACKGROUND);
 	/*
@@ -1470,6 +2128,26 @@ int kwl_init(const KwlConfig *cfg)
 	if (!K.compositor || !K.shm)
 		goto fail_xkb;
 
+	/*
+	 * Paste needs a device per selection protocol, and both are guarded:
+	 * a registry without them just leaves Ctrl+V and middle-click doing
+	 * what they always did.
+	 */
+	if (K.seat && K.data_mgr) {
+		K.data_dev = wl_data_device_manager_get_data_device(K.data_mgr,
+								    K.seat);
+		if (K.data_dev)
+			wl_data_device_add_listener(K.data_dev,
+						    &data_device_listener, NULL);
+	}
+	if (K.seat && K.primary_mgr) {
+		K.primary_dev = zwp_primary_selection_device_manager_v1_get_device(
+			K.primary_mgr, K.seat);
+		if (K.primary_dev)
+			zwp_primary_selection_device_v1_add_listener(
+				K.primary_dev, &primary_device_listener, NULL);
+	}
+
 	if (cfg->role == KWL_ROLE_NONE) {
 		/* No surface, no backend: the caller draws offscreen. The
 		 * connection and the seat are still live, which is the whole
@@ -1481,6 +2159,8 @@ int kwl_init(const KwlConfig *cfg)
 	K.surface = wl_compositor_create_surface(K.compositor);
 	if (!K.surface)
 		goto fail_xkb;
+	/* enter/leave: which output the surface is on, for its scale */
+	wl_surface_add_listener(K.surface, &surface_listener, NULL);
 
 	int rc;
 	switch (cfg->role) {
@@ -1566,6 +2246,63 @@ void kwl_input_cells(const KRect *rects, int n)
 	wl_display_flush(K.display);
 }
 
+void kwl_layer_autohide(bool hidden)
+{
+	if (K.cfg.role != KWL_ROLE_PANEL || !K.layer_surface || !K.surface)
+		return;
+	if (K.autohidden == (hidden ? 1 : 0))
+		return;
+	K.autohidden = hidden ? 1 : 0;
+
+	int vertical = K.cfg.edge == KWL_EDGE_TOP ||
+		       K.cfg.edge == KWL_EDGE_BOTTOM;
+	int cell = vertical ? kcell_h() : kcell_w();
+	int cells = hidden ? 1 : (K.cfg.cells > 0 ? K.cfg.cells : 1);
+	int thickness = cells * cell;
+
+	zwlr_layer_surface_v1_set_size(K.layer_surface,
+				       vertical ? 0 : (uint32_t)thickness,
+				       vertical ? (uint32_t)thickness : 0);
+	/*
+	 * The zone is the whole point: a hidden panel that still reserved its
+	 * strip would hide nothing — every window would stay exactly where it
+	 * was and the screen would simply have a blank line across it.
+	 */
+	zwlr_layer_surface_v1_set_exclusive_zone(
+		K.layer_surface,
+		(!hidden && K.cfg.exclusive) ? thickness : 0);
+
+	/*
+	 * Staged content is content for the OLD size. Attaching it against the
+	 * configure that answers this request is the race that leaves a blank
+	 * strip: the compositor gets a buffer whose height is not the one it
+	 * just asked for, and what is on screen afterwards is whichever the
+	 * renderer preferred. Drop the pending frame and the staged cells; the
+	 * caller redraws from ktui_resized below.
+	 */
+	if (K.frame_cb) {
+		wl_callback_destroy(K.frame_cb);
+		K.frame_cb = NULL;
+	}
+	K.pend_valid = 0;
+
+	wl_surface_commit(K.surface);
+	/*
+	 * A roundtrip rather than a dispatch loop: it is bounded by
+	 * construction, and the configure answering the resize is delivered
+	 * inside it. Waiting for a specific size instead would hang on the
+	 * ordinary case where the geometry did not change at all — this panel
+	 * is one cell tall either way and only its zone moves.
+	 */
+	if (wl_display_roundtrip(K.display) < 0) {
+		K.closed = 1;
+		return;
+	}
+	/* The surface is a different surface as far as the compositor is
+	 * concerned; nothing on it survived. */
+	ktui_resized = 1;
+}
+
 void kwl_overlay_resize(int cols, int rows)
 {
 	if (K.cfg.role != KWL_ROLE_OVERLAY || !K.layer_surface)
@@ -1598,12 +2335,23 @@ void kwl_overlay_hide(void)
 {
 	if (K.cfg.role != KWL_ROLE_OVERLAY || !K.layer_surface)
 		return;
+	if (K.frame_cb) {
+		wl_callback_destroy(K.frame_cb);
+		K.frame_cb = NULL;
+	}
+	K.pend_valid = 0;
 	zwlr_layer_surface_v1_destroy(K.layer_surface);
 	K.layer_surface = NULL;
 	wl_surface_destroy(K.surface);
 	K.surface = NULL;
 	buffer_free(&K.buf[0]);
 	buffer_free(&K.buf[1]);
+	/* The next surface starts at the protocol defaults and shows nothing:
+	 * neither the sent scale nor the on-screen record survives it. */
+	K.scale_sent = 1;
+	free(K.screen);
+	K.screen = NULL;
+	K.screen_w = K.screen_h = 0;
 	K.configured = 0;
 	K.px_w = 0;
 	K.px_h = 0;
@@ -1627,6 +2375,7 @@ int kwl_overlay_show(int cols, int rows)
 	K.surface = wl_compositor_create_surface(K.compositor);
 	if (!K.surface)
 		return -1;
+	wl_surface_add_listener(K.surface, &surface_listener, NULL);
 	if (make_panel() != 0) {
 		wl_surface_destroy(K.surface);
 		K.surface = NULL;
@@ -1646,6 +2395,13 @@ void kwl_shutdown(void)
 {
 	if (K.cfg.role != KWL_ROLE_NONE)
 		ktui_backend_set(NULL);
+	if (K.paste_fd >= 0)
+		close(K.paste_fd);
+	free(K.paste_buf);
+	free(K.pend);
+	free(K.screen);
+	if (K.frame_cb)
+		wl_callback_destroy(K.frame_cb);
 	buffer_free(&K.buf[0]);
 	buffer_free(&K.buf[1]);
 	for (int i = 0; i < K.nextra; i++) {

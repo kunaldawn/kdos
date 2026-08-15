@@ -1,0 +1,13 @@
+title: podman RECORDS the runroot, and rootless honours it
+cite: 01_appbox.sh
+port: kdos-appbox
+port: podman
+
+The bake runs rootful podman with --runroot /tmp/appbox-runroot. Rootless
+podman then reads that path out of the user's libpod database, dies on
+"mkdir /run/libpod: permission denied", and EVERY podman call fails —
+silently, because the launcher swallows stderr.
+
+Tell-tale: `podman images` as kdos fails while the same command as root works.
+01_appbox.sh removes $STORAGE/libpod and db.sql after the load; the first
+rootless call recreates them.

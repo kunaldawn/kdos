@@ -1,0 +1,10 @@
+title: xdg-desktop-portal snapshots its backends at startup
+cite: kdos-desktop-start
+port: xdg-desktop-portal-wlr
+
+kdos-desktop-start waits for the compositor socket, pushes WAYLAND_DISPLAY
+into the D-Bus activation environment, starts xdg-desktop-portal-wlr, WAITS
+for it to own its bus name, and only then (re)starts the main portal — or
+ScreenCast stays empty all session.
+
+Backend-independent, so the fix survived the move off COSMIC verbatim.

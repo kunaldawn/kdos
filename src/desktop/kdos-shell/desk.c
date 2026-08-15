@@ -52,6 +52,7 @@ struct entry {
 	char exec[256];		/* a .desktop's Exec, field codes stripped */
 	bool dir;
 	bool is_trash;
+	bool pinned;		/* Home and Trash: places, not files */
 	bool is_app;		/* a .desktop file: launch it, do not open it */
 	bool terminal;		/* ...inside foot */
 };
@@ -68,15 +69,23 @@ static int sel;
  * the whole surface for input again (see input_region()).
  */
 #define MENU_W 26
+/* Rows carry an ID and the run switch dispatches on it, so a row that is
+ * hidden for this entry can never be run by its position. */
+enum { CT_OPEN, CT_TERM, CT_RENAME, CT_NEWDIR, CT_TRASH, CT_EMPTY,
+       CT_REFRESH };
 static const struct {
 	const char *label;
+	int id;
 	int trash_only;		/* Empty Trash is not offered on a photo */
+	int no_pin;		/* Rename: Home and Trash are places */
 } CTX[] = {
-	{ "Open",                0 },
-	{ "Open Terminal Here",  0 },
-	{ "Move to Trash",       0 },
-	{ "Empty Trash",         1 },
-	{ "Refresh",             0 },
+	{ "Open",                CT_OPEN,    0, 0 },
+	{ "Open Terminal Here",  CT_TERM,    0, 0 },
+	{ "Rename",              CT_RENAME,  0, 1 },
+	{ "New Folder",          CT_NEWDIR,  0, 0 },
+	{ "Move to Trash",       CT_TRASH,   0, 1 },
+	{ "Empty Trash",         CT_EMPTY,   1, 0 },
+	{ "Refresh",             CT_REFRESH, 0, 0 },
 };
 #define NCTX ((int)(sizeof(CTX) / sizeof(CTX[0])))
 
@@ -84,6 +93,13 @@ static int ctx_open;		/* the menu is up */
 static int ctx_x, ctx_y;	/* its top-left, in cells */
 static int ctx_sel;
 static int ctx_for;		/* which entry it belongs to */
+
+/* The name line-edit, pick.c's editing pattern worn by Rename and New
+ * Folder. It lives on the status row; keys own it while it is up. */
+enum { ED_NONE = 0, ED_RENAME, ED_NEWDIR };
+static int edit_mode;
+static int edit_for;		/* the entry Rename targets */
+static char edit_buf[256];
 
 /* ── the trash, which nothing in this tree had ─────────────────────────── */
 
@@ -263,20 +279,8 @@ static int load_desktop_entry(struct entry *it)
 	kxdg_free(&e);
 
 	/* The field codes are placeholders for documents this launch has none
-	 * of; passing the literal `%U` is how a browser opens a search for it. */
-	char *w = it->exec;
-	for (char *r = it->exec; *r; r++) {
-		if (r[0] == '%' && r[1]) {
-			if (r[1] == '%')
-				*w++ = '%';
-			r++;
-			continue;
-		}
-		*w++ = *r;
-	}
-	*w = '\0';
-	while (w > it->exec && w[-1] == ' ')
-		*--w = '\0';
+	 * of; one shared stripper (shell.c) — three diverged copies was F17. */
+	sh_strip_field_codes(it->exec);
 	return 1;
 }
 
@@ -300,13 +304,36 @@ static void reload(void)
 		return;
 	desktop_dir(dir, sizeof(dir));
 
+	/*
+	 * Home and Trash come FIRST — fixed cells at the START of the grid.
+	 * The grid fills left to right, so pins at the front survive a full
+	 * desktop (appended last, they were the first thing overflow dropped)
+	 * and never move when a file is created; a desktop whose fixed icons
+	 * move is a desktop nobody builds muscle memory on.
+	 */
+	struct entry *it = &entries[nentries++];
+	memset(it, 0, sizeof(*it));
+	snprintf(it->name, sizeof(it->name), "Home");
+	snprintf(it->path, sizeof(it->path), "%s", home);
+	it->dir = true;
+	it->pinned = true;
+
+	it = &entries[nentries++];
+	memset(it, 0, sizeof(*it));
+	snprintf(it->name, sizeof(it->name), "Trash");
+	snprintf(it->path, sizeof(it->path), "%s/.local/share/Trash/files",
+		 home);
+	it->dir = true;
+	it->is_trash = true;
+	it->pinned = true;
+
 	DIR *d = opendir(dir);
 	if (d) {
 		struct dirent *e;
-		while ((e = readdir(d)) && nentries < MAX_ENTRIES - 2) {
+		while ((e = readdir(d)) && nentries < MAX_ENTRIES) {
 			if (e->d_name[0] == '.')
 				continue;
-			struct entry *it = &entries[nentries];
+			it = &entries[nentries];
 			memset(it, 0, sizeof(*it));
 			snprintf(it->name, sizeof(it->name), "%s", e->d_name);
 			snprintf(it->path, sizeof(it->path), "%s/%s", dir,
@@ -321,30 +348,8 @@ static void reload(void)
 		}
 		closedir(d);
 	}
-	qsort(entries, (size_t)nentries, sizeof(entries[0]), cmp_entry);
-
-	/*
-	 * Home and Trash are appended AFTER the sort and in that order, so they
-	 * are always the last two and always in the same place. A desktop whose
-	 * fixed icons move when a file is created is a desktop nobody builds
-	 * muscle memory on.
-	 */
-	if (nentries < MAX_ENTRIES) {
-		struct entry *it = &entries[nentries++];
-		memset(it, 0, sizeof(*it));
-		snprintf(it->name, sizeof(it->name), "Home");
-		snprintf(it->path, sizeof(it->path), "%s", home);
-		it->dir = true;
-	}
-	if (nentries < MAX_ENTRIES) {
-		struct entry *it = &entries[nentries++];
-		memset(it, 0, sizeof(*it));
-		snprintf(it->name, sizeof(it->name), "Trash");
-		snprintf(it->path, sizeof(it->path),
-			 "%s/.local/share/Trash/files", home);
-		it->dir = true;
-		it->is_trash = true;
-	}
+	qsort(entries + 2, (size_t)(nentries - 2), sizeof(entries[0]),
+	      cmp_entry);
 }
 
 /* ── opening ───────────────────────────────────────────────────────────── */
@@ -362,6 +367,25 @@ static void spawn(const char *const argv[])
 	} else if (pid > 0) {
 		waitpid(pid, NULL, 0);
 	}
+}
+
+/* Like spawn(), but WAITS for the command itself. Empty Trash is the caller:
+ * reporting an async `rm -rf` as done was a lie — the next rescan showed the
+ * trash still full. A short block on a menu action is acceptable. */
+static int spawn_wait(const char *const argv[])
+{
+	pid_t pid = fork();
+
+	if (pid < 0)
+		return -1;
+	if (pid == 0) {
+		execvp(argv[0], (char *const *)argv);
+		_exit(127);
+	}
+	int st = 0;
+	if (waitpid(pid, &st, 0) < 0 || !WIFEXITED(st))
+		return -1;
+	return WEXITSTATUS(st) == 0 ? 0 : -1;
 }
 
 /*
@@ -449,10 +473,12 @@ static int empty_trash(void)
 				/* A trashed DIRECTORY needs a recursive
 				 * removal, which is a file operation this
 				 * program has no business writing by hand.
-				 * rm is toybox's, exec'd with argv. */
+				 * rm is toybox's, exec'd with argv — and
+				 * WAITED for, so the count reported is what
+				 * actually happened. */
 				const char *argv[] = { "rm", "-rf", p, NULL };
-				spawn(argv);
-				n++;
+				if (spawn_wait(argv) == 0)
+					n++;
 				continue;
 			}
 			if (unlink(p) == 0 && !pass)
@@ -469,6 +495,23 @@ static int columns(void)
 {
 	int c = ktui_w / CELL_W;
 	return c < 1 ? 1 : c;
+}
+
+/* How many grid cells fit on screen — mirrors the draw loop's
+ * `cy + 1 >= h` guard exactly, or the keyboard selects invisible entries. */
+static int cells_fit(void)
+{
+	int fit = ((ktui_h - 1) / CELL_H) * columns();
+	return fit < 1 ? 1 : fit;
+}
+
+/* What is actually DRAWN. One cell is reserved for the `+N more` marker when
+ * the directory overflows the screen — an overflow with no marker is files
+ * that silently do not exist. */
+static int drawn_count(void)
+{
+	int fit = cells_fit();
+	return nentries > fit ? fit - 1 : nentries;
 }
 
 /* Split out so the draw loop reads as layout rather than as a lookup. */
@@ -520,13 +563,15 @@ static void input_region(void)
 	}
 
 	int n = 0;
-	for (int i = 0; i < nentries && n < MAX_ENTRIES; i++) {
+	int drawn = drawn_count();
+	for (int i = 0; i < drawn && n < MAX_ENTRIES; i++) {
 		int cx = (i % cols) * CELL_W + 1;
 		int cy = (i / cols) * CELL_H + 1;
 		if (cy + 1 >= ktui_h)
 			break;
 		/* The glyph and its label, one row: the blank row under an icon
-		 * and the gap column beside it are wallpaper. */
+		 * and the gap column beside it are wallpaper. The `+N more`
+		 * marker is not claimed — it answers nothing. */
 		claim[n++] = krect(cx, cy, CELL_W - 1, 1);
 	}
 	kwl_input_cells(claim, n);
@@ -542,8 +587,13 @@ static bool ctx_shown(int i)
 {
 	if (i < 0 || i >= NCTX)
 		return false;
-	return !CTX[i].trash_only ||
-	       (ctx_for >= 0 && ctx_for < nentries && entries[ctx_for].is_trash);
+	if (ctx_for < 0 || ctx_for >= nentries)
+		return false;
+	if (CTX[i].trash_only && !entries[ctx_for].is_trash)
+		return false;
+	if (CTX[i].no_pin && entries[ctx_for].pinned)
+		return false;
+	return true;
 }
 
 static void ctx_step(int dir)
@@ -636,7 +686,8 @@ static void draw(const char *status)
 	 */
 	ktui_draw_clear();
 
-	for (int i = 0; i < nentries; i++) {
+	int drawn = drawn_count();
+	for (int i = 0; i < drawn; i++) {
 		int cx = (i % cols) * CELL_W + 1;
 		int cy = (i / cols) * CELL_H + 1;
 		if (cy + 1 >= h)
@@ -658,7 +709,31 @@ static void draw(const char *status)
 			       KT_A_NONE);
 	}
 
-	if (status && *status)
+	if (nentries > drawn) {
+		/* The overflow marker takes the reserved cell right after the
+		 * last drawn entry. */
+		int cx = (drawn % cols) * CELL_W + 1;
+		int cy = (drawn / cols) * CELL_H + 1;
+		if (cy + 1 < h) {
+			char more[24];
+			snprintf(more, sizeof(more), "+%d more",
+				 nentries - drawn);
+			ktui_draw_text(cx, cy, 2, ktui_glyph[KT_G_ELLIPSIS],
+				       KT_MID, KT_BG, KT_A_NONE);
+			ktui_draw_text(cx + 2, cy, CELL_W - 3, more, KT_DIM,
+				       KT_BG, KT_A_NONE);
+		}
+	}
+
+	if (edit_mode) {
+		/* pick.c's line editor, on the status row. */
+		char line[320];
+		snprintf(line, sizeof(line), "%s: %s",
+			 edit_mode == ED_RENAME ? "Rename to" : "New folder",
+			 edit_buf);
+		ktui_draw_text(1, h - 1, w - 2, line, KT_TEXT, KT_BG,
+			       KT_A_UNDERLINE);
+	} else if (status && *status)
 		ktui_draw_text(1, h - 1, w - 2, status, KT_WARN, KT_BG,
 			       KT_A_NONE);
 	if (ctx_open)
@@ -679,7 +754,7 @@ static void trash_selected(char *status, size_t n)
 
 	if (sel < 0 || sel >= nentries)
 		return;
-	if (entries[sel].is_trash || !strcmp(entries[sel].name, "Home")) {
+	if (entries[sel].pinned) {
 		snprintf(status, n, "%s is not a file you can trash",
 			 entries[sel].name);
 		return;
@@ -702,20 +777,58 @@ static void trash_selected(char *status, size_t n)
 	reload();
 }
 
-/* One context-menu row. Indexes CTX directly, so a row that is skipped for a
- * non-trash icon can never be run by its position. */
+/*
+ * Commit the line editor. Both operations stay WITHIN the desktop dir — the
+ * '/' is refused at the keystroke, so a name here cannot name a path.
+ */
+static void edit_commit(char *status, size_t n)
+{
+	char dir[1024], to[1400];
+
+	desktop_dir(dir, sizeof(dir));
+	if (!edit_buf[0] || !strcmp(edit_buf, ".") || !strcmp(edit_buf, "..")) {
+		snprintf(status, n, "not a usable name");
+		return;
+	}
+	snprintf(to, sizeof(to), "%s/%s", dir, edit_buf);
+	if (edit_mode == ED_NEWDIR) {
+		if (mkdir(to, 0755) == 0)
+			snprintf(status, n, "created %.64s", edit_buf);
+		else
+			snprintf(status, n, "cannot create %.64s: %s", edit_buf,
+				 strerror(errno));
+	} else {
+		if (edit_for < 0 || edit_for >= nentries)
+			return;
+		/* rename(2) silently replaces an existing target; a desktop
+		 * that eats a file on a name collision is data loss. */
+		if (access(to, F_OK) == 0) {
+			snprintf(status, n, "%.64s already exists", edit_buf);
+			return;
+		}
+		if (rename(entries[edit_for].path, to) == 0)
+			snprintf(status, n, "renamed to %.64s", edit_buf);
+		else
+			snprintf(status, n, "cannot rename: %s",
+				 strerror(errno));
+	}
+	reload();
+}
+
+/* One context-menu row. Dispatches on the row's ID, so a row that is skipped
+ * for this entry can never be run by its position. */
 static void ctx_run(int row, char *status, size_t n)
 {
-	const struct entry *it = &entries[ctx_for];
-
 	if (ctx_for < 0 || ctx_for >= nentries || !ctx_shown(row))
 		return;
 
-	switch (row) {
-	case 0:					/* Open */
+	const struct entry *it = &entries[ctx_for];
+
+	switch (CTX[row].id) {
+	case CT_OPEN:
 		open_entry(it);
 		break;
-	case 1: {				/* Open Terminal Here */
+	case CT_TERM: {
 		/* In the directory itself, or in the one holding the file —
 		 * which is what "here" means when the pointer is on a
 		 * document. */
@@ -730,11 +843,26 @@ static void ctx_run(int row, char *status, size_t n)
 		spawn(argv);
 		break;
 	}
-	case 2:					/* Move to Trash */
+	case CT_RENAME: {
+		/* Prefill with the FILE's basename, not the row label — a
+		 * .desktop row reads `Firefox` and renaming renames the
+		 * file. */
+		const char *base = strrchr(it->path, '/');
+		edit_mode = ED_RENAME;
+		edit_for = ctx_for;
+		snprintf(edit_buf, sizeof(edit_buf), "%s",
+			 base ? base + 1 : it->path);
+		break;
+	}
+	case CT_NEWDIR:
+		edit_mode = ED_NEWDIR;
+		edit_buf[0] = '\0';
+		break;
+	case CT_TRASH:
 		sel = ctx_for;
 		trash_selected(status, n);
 		break;
-	case 3: {				/* Empty Trash */
+	case CT_EMPTY: {
 		int k = confirmed("Empty the trash? This cannot be undone.")
 			? empty_trash() : -1;
 		if (k >= 0)
@@ -742,7 +870,7 @@ static void ctx_run(int row, char *status, size_t n)
 		reload();
 		break;
 	}
-	case 4:					/* Refresh */
+	case CT_REFRESH:
 		reload();
 		break;
 	default:
@@ -822,6 +950,18 @@ int desk_main(int argc, char **argv)
 			sh_theme_from_cache();
 			ktui_draw_invalidate();
 		}
+		/* Clamped to the DRAWN count, not nentries: an overflowing
+		 * desktop must not park the selection on an invisible icon. At
+		 * the TOP of the loop, because a context-menu action that
+		 * reloads (Trash, Empty) `continue`s from the middle of the
+		 * mouse and key paths alike and would skip a clamp at the
+		 * bottom — leaving the highlight on nothing at all. */
+		int drawn = drawn_count();
+		if (sel < 0)
+			sel = 0;
+		if (sel >= drawn)
+			sel = drawn ? drawn - 1 : 0;
+
 		input_region();
 		draw(status);
 
@@ -835,12 +975,9 @@ int desk_main(int argc, char **argv)
 			 * fd and the event plumbing an inotify watch costs.
 			 */
 			time_t now = time(NULL);
-			if (now - last_scan >= 2 && !ctx_open) {
+			if (now - last_scan >= 2 && !ctx_open && !edit_mode) {
 				last_scan = now;
-				int was = nentries;
-				reload();
-				if (nentries != was && sel >= nentries)
-					sel = nentries ? nentries - 1 : 0;
+				reload();	/* sel is reclamped at the top */
 			}
 			if (ktui_resized) {
 				ktui_resized = 0;
@@ -863,6 +1000,11 @@ int desk_main(int argc, char **argv)
 		if (ev.type == KT_EVT_MOUSE) {
 			if (ev.mx < 0 || ev.my < 0)
 				continue;	/* the pointer left the surface */
+			/* The editor is keyboard-owned; a click must not
+			 * change what Rename is renaming under a half-typed
+			 * name. */
+			if (edit_mode)
+				continue;
 
 			if (ctx_open) {
 				int row = ctx_row_at(ev.mx, ev.my);
@@ -889,7 +1031,9 @@ int desk_main(int argc, char **argv)
 			int cols = columns();
 			int i = ((ev.my - 1) / CELL_H) * cols +
 				(ev.mx - 1) / CELL_W;
-			if (i < 0 || i >= nentries)
+			/* DRAWN entries only: the cells past the overflow
+			 * marker belong to nothing. */
+			if (i < 0 || i >= drawn_count())
 				continue;
 			if (ev.btn == KT_MB_RIGHT) {
 				/* The menu belongs to the icon under the
@@ -923,6 +1067,28 @@ int desk_main(int argc, char **argv)
 		if (per_page < 1)
 			per_page = 1;
 
+		if (edit_mode) {
+			size_t n2 = strlen(edit_buf);
+			if (ev.key == KT_K_ESC) {
+				edit_mode = ED_NONE;
+			} else if (ev.key == KT_K_ENTER) {
+				edit_commit(status, sizeof(status));
+				status_at = time(NULL);
+				edit_mode = ED_NONE;
+			} else if (ev.key == KT_K_BACKSPACE) {
+				if (n2)
+					edit_buf[n2 - 1] = '\0';
+			} else if (ev.key >= 0x20 && ev.key < 0x7f &&
+				   ev.key != '/' &&
+				   n2 + 1 < sizeof(edit_buf)) {
+				/* '/' refused at the keystroke: the name
+				 * stays within the desktop dir. */
+				edit_buf[n2] = (char)ev.key;
+				edit_buf[n2 + 1] = '\0';
+			}
+			continue;
+		}
+
 		if (ctx_open) {
 			switch (ev.key) {
 			case KT_K_ESC:
@@ -951,7 +1117,7 @@ int desk_main(int argc, char **argv)
 		case KT_K_UP:    sel -= cols; break;
 		case KT_K_DOWN:  sel += cols; break;
 		case KT_K_HOME:  sel = 0; break;
-		case KT_K_END:   sel = nentries - 1; break;
+		case KT_K_END:   sel = drawn_count() - 1; break;
 		case KT_K_PGUP:  sel -= per_page; break;
 		case KT_K_PGDN:  sel += per_page; break;
 		case KT_K_ENTER:
@@ -974,10 +1140,6 @@ int desk_main(int argc, char **argv)
 		default:
 			break;
 		}
-		if (sel < 0)
-			sel = 0;
-		if (sel >= nentries)
-			sel = nentries ? nentries - 1 : 0;
 	}
 
 	kwl_shutdown();

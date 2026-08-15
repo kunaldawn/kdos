@@ -30,6 +30,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -55,12 +57,25 @@
 
 #define MAX_TOASTS 4
 #define TOAST_COLS 40
+#define MAX_ACTS 3
+#define BODY_W (TOAST_COLS - 4)
+#define BODY_LINES 3
+
+/* Style flags, one byte per byte of the cleaned body. */
+enum { ST_B = 1, ST_I = 2, ST_U = 4, ST_A = 8 };
 
 struct toast {
 	uint32_t id;
 	char summary[128];
-	char body[256];
+	char body[256];		/* markup stripped, C0 sanitized       */
+	uint8_t style[256];	/* ST_* per body byte                  */
+	char href[256];		/* the FIRST link's target             */
+	int nlinks;		/* how many <a href> the body carried  */
+	int body_rows;		/* wrapped height, fixed at receipt    */
 	char app[64];
+	char act_id[MAX_ACTS][48];
+	char act_label[MAX_ACTS][24];
+	int nact;
 	int64_t expires_ms;	/* monotonic; 0 = never */
 	int urgent;
 };
@@ -69,6 +84,14 @@ static struct toast toasts[MAX_TOASTS];
 static int ntoasts;
 static uint32_t next_id = 1;
 static sd_bus *bus;
+
+/* Where the last frame put each toast's buttons — a hit map that outlives
+ * what it describes is how a click lands on the wrong action. Rebuilt by
+ * draw_toasts(), cleared by drop_at(). */
+static struct {
+	int row;
+	int x[MAX_ACTS], end[MAX_ACTS];
+} act_hit[MAX_TOASTS];
 
 static int64_t now_ms(void)
 {
@@ -98,6 +121,14 @@ static void drop_at(int i, uint32_t reason)
 	memmove(&toasts[i], &toasts[i + 1],
 		(size_t)(ntoasts - i - 1) * sizeof(toasts[0]));
 	ntoasts--;
+	/*
+	 * The stack just moved under the hit map. libkwl hands the pointer
+	 * drain a whole BATCH from one read, so a double-click on a button
+	 * dismissed the first toast and then found the same row and column
+	 * still claimed by the map — and fired the SECOND notification's
+	 * action, which nobody aimed at. The next frame rebuilds it.
+	 */
+	memset(act_hit, 0, sizeof(act_hit));
 }
 
 static void expire_due(void)
@@ -124,6 +155,158 @@ static int next_timeout(void)
 	return best < 0 ? -1 : (int)best;
 }
 
+/* ── text, as it arrives off the bus ───────────────────────────────────── */
+
+/* A summary or body comes from any program on the bus; `\n` and `\t` become
+ * the space they meant and every other C0 (and DEL) is dropped rather than
+ * painted as a junk glyph. */
+static void sanitize(char *s)
+{
+	char *w = s;
+
+	for (char *r = s; *r; r++) {
+		unsigned char c = (unsigned char)*r;
+		if (c == '\n' || c == '\t')
+			*w++ = ' ';
+		else if (c >= 0x20 && c != 0x7f)
+			*w++ = *r;
+	}
+	*w = '\0';
+}
+
+/*
+ * The markup subset: <b> <i> <u> <a href="..."> and the four entities.
+ * Unknown tags are STRIPPED, never shown — advertising `body-markup` means a
+ * client may send anything HTML-shaped, and a literal `<img>` painted into a
+ * toast is the failure the capability list used to avoid by lying the other
+ * way. Only the FIRST link's target is kept; the count is what decides
+ * whether a click can open anything (one link is unambiguous, two is a menu
+ * this surface does not have).
+ */
+static void parse_markup(const char *in, char *out, uint8_t *style, size_t cap,
+			 char *href, size_t hrefcap, int *nlinks)
+{
+	size_t o = 0;
+	unsigned cur = 0;
+
+	*nlinks = 0;
+	href[0] = '\0';
+	for (const char *r = in; *r && o + 1 < cap;) {
+		if (*r == '<') {
+			const char *end = strchr(r, '>');
+			if (!end) {
+				/* A lone `<` is text, not a tag. */
+				out[o] = '<';
+				style[o++] = (uint8_t)cur;
+				r++;
+				continue;
+			}
+			const char *t = r + 1;
+			size_t tn = (size_t)(end - t);
+			int off = tn > 0 && *t == '/';
+			if (off) {
+				t++;
+				tn--;
+			}
+			char c0 = tn ? (char)(*t | 0x20) : 0;
+			if (tn == 1 && c0 == 'b') {
+				cur = off ? cur & ~ST_B : cur | ST_B;
+			} else if (tn == 1 && c0 == 'i') {
+				cur = off ? cur & ~ST_I : cur | ST_I;
+			} else if (tn == 1 && c0 == 'u') {
+				cur = off ? cur & ~ST_U : cur | ST_U;
+			} else if (c0 == 'a' &&
+				   (tn == 1 || (!off && (t[1] == ' ' ||
+							 t[1] == '\t')))) {
+				if (off) {
+					cur &= ~ST_A;
+				} else {
+					cur |= ST_A;
+					for (const char *p = t; p + 5 < end; p++) {
+						if (strncasecmp(p, "href=", 5))
+							continue;
+						p += 5;
+						char q = (*p == '"' || *p == '\'')
+							 ? *p++ : 0;
+						if (!*nlinks) {
+							size_t k = 0;
+							while (p < end &&
+							       k + 1 < hrefcap &&
+							       (q ? *p != q
+								  : (*p != ' ' &&
+								     *p != '\t')))
+								href[k++] = *p++;
+							href[k] = '\0';
+						}
+						(*nlinks)++;
+						break;
+					}
+				}
+			}
+			/* every other tag: stripped */
+			r = end + 1;
+			continue;
+		}
+		if (*r == '&') {
+			static const struct { const char *e; char c; } ENT[] = {
+				{ "&amp;", '&' }, { "&lt;", '<' },
+				{ "&gt;", '>' },  { "&quot;", '"' },
+			};
+			int hit = 0;
+			for (size_t k = 0; k < sizeof(ENT) / sizeof(ENT[0]); k++) {
+				size_t el = strlen(ENT[k].e);
+				if (!strncmp(r, ENT[k].e, el)) {
+					out[o] = ENT[k].c;
+					style[o++] = (uint8_t)cur;
+					r += el;
+					hit = 1;
+					break;
+				}
+			}
+			if (hit)
+				continue;
+		}
+		out[o] = *r;
+		style[o++] = (uint8_t)cur;
+		r++;
+	}
+	out[o] = '\0';
+}
+
+/*
+ * prompt.c's wrap, returning RANGES into the cleaned body so every byte keeps
+ * its style. Cells, not bytes: a continuation byte is not a column.
+ */
+static int wrap_ranges(const char *s, int w, int starts[BODY_LINES],
+		       int lens[BODY_LINES])
+{
+	int n = 0;
+	const char *p = s;
+
+	if (w < 8)
+		w = 8;
+	while (*p && n < BODY_LINES) {
+		int used = 0, last_space = -1;
+		const char *start = p;
+		while (*p && used < w) {
+			if (*p == ' ')
+				last_space = (int)(p - start);
+			if (((unsigned char)*p & 0xc0) != 0x80)
+				used++;
+			p++;
+		}
+		int len = (int)(p - start);
+		if (*p && last_space > 0) {
+			len = last_space;
+			p = start + last_space + 1;
+		}
+		starts[n] = (int)(start - s);
+		lens[n] = len;
+		n++;
+	}
+	return n;
+}
+
 /* ── the bus interface ─────────────────────────────────────────────────── */
 
 static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
@@ -140,12 +323,33 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 				&body);
 	if (r < 0)
 		return r;
-	/* actions (as) is read past: this daemon draws text and has no buttons,
-	 * so advertising `actions` in GetCapabilities would be a promise it
-	 * cannot keep. */
-	r = sd_bus_message_skip(m, "as");
+	/*
+	 * actions arrive as pairs — id, label — flattened into one string
+	 * array. The first three pairs become buttons; the rest are read past,
+	 * because a toast three rows tall has one row to spend on them.
+	 */
+	char aid[MAX_ACTS][48], alab[MAX_ACTS][24];
+	int nact = 0;
+	r = sd_bus_message_enter_container(m, 'a', "s");
 	if (r < 0)
 		return r;
+	for (;;) {
+		const char *s1 = NULL, *s2 = NULL;
+		r = sd_bus_message_read(m, "s", &s1);
+		if (r <= 0)
+			break;
+		r = sd_bus_message_read(m, "s", &s2);
+		if (r <= 0)
+			break;	/* an odd count is a malformed client */
+		if (nact < MAX_ACTS && s1 && *s1) {
+			snprintf(aid[nact], sizeof(aid[0]), "%s", s1);
+			snprintf(alab[nact], sizeof(alab[0]), "%s",
+				 s2 && *s2 ? s2 : s1);
+			sanitize(alab[nact]);
+			nact++;
+		}
+	}
+	sd_bus_message_exit_container(m);
 
 	/*
 	 * The hints are NOT skipped, because one of them is `urgency` and it is
@@ -189,6 +393,28 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	if (r < 0)
 		return r;
 
+	/*
+	 * DND: while $XDG_RUNTIME_DIR/kdos-dnd exists (the panel creates and
+	 * removes it), a non-critical notification is answered — an id, and
+	 * NotificationClosed so no client waits on it — and never stored.
+	 * Nothing is queued for later either: a DND that ambushes on exit is
+	 * worse than one that drops. Critical still shows; that is what the
+	 * urgency byte is FOR.
+	 */
+	if (urgency < 2) {
+		const char *rt = getenv("XDG_RUNTIME_DIR");
+		char dnd[512];
+		struct stat st;
+		if (rt && *rt) {
+			snprintf(dnd, sizeof(dnd), "%s/kdos-dnd", rt);
+			if (stat(dnd, &st) == 0) {
+				uint32_t id = replaces ? replaces : next_id++;
+				emit_closed(id, 1);
+				return sd_bus_reply_method_return(m, "u", id);
+			}
+		}
+	}
+
 	struct toast *t = NULL;
 	if (replaces) {
 		for (int i = 0; i < ntoasts; i++)
@@ -209,8 +435,25 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	}
 
 	snprintf(t->app, sizeof(t->app), "%s", app ? app : "");
+	sanitize(t->app);
 	snprintf(t->summary, sizeof(t->summary), "%s", summary ? summary : "");
-	snprintf(t->body, sizeof(t->body), "%s", body ? body : "");
+	sanitize(t->summary);
+	/* Sanitize BEFORE the markup pass, so a control byte cannot split a
+	 * tag; every field is written unconditionally — a `replaces` reuses
+	 * the slot and stale actions on a replaced toast are a wrong click. */
+	char raw[256];
+	snprintf(raw, sizeof(raw), "%s", body ? body : "");
+	sanitize(raw);
+	parse_markup(raw, t->body, t->style, sizeof(t->body), t->href,
+		     sizeof(t->href), &t->nlinks);
+	int st_[BODY_LINES], ln_[BODY_LINES];
+	t->body_rows = t->body[0] ? wrap_ranges(t->body, BODY_W, st_, ln_) : 0;
+	t->nact = nact;
+	for (int i = 0; i < nact; i++) {
+		snprintf(t->act_id[i], sizeof(t->act_id[0]), "%s", aid[i]);
+		snprintf(t->act_label[i], sizeof(t->act_label[0]), "%s",
+			 alab[i]);
+	}
 	t->urgent = urgency >= 2;
 	/*
 	 * -1 means "the server decides"; 0 means "never expire", and that is
@@ -253,12 +496,13 @@ static int method_caps(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	(void)userdata;
 	(void)err;
 	/*
-	 * `body` and nothing else. No `actions` (there are no buttons), no
-	 * `body-markup` (the cell grid has no bold), no `icon-static` (there is
-	 * nowhere to put a pixmap in a text row). A daemon that overstates its
-	 * capabilities gets sent markup it then draws as literal `<b>` tags.
+	 * `actions` and `body-markup` are honest now: the button row and the
+	 * markup scanner exist. Still no `icon-static` — there is nowhere to
+	 * put a pixmap in a text row. A capability list that overstates gets
+	 * sent things it then draws as literal tags.
 	 */
-	return sd_bus_reply_method_return(m, "as", 1, "body");
+	return sd_bus_reply_method_return(m, "as", 3, "body", "actions",
+					  "body-markup");
 }
 
 static int method_info(sd_bus_message *m, void *userdata, sd_bus_error *err)
@@ -291,12 +535,52 @@ static const sd_bus_vtable notify_vtable[] = {
  * of the surface is painted in the theme background — sized for the maximum,
  * the daemon left an opaque rectangle on the desktop for the whole session
  * with nothing in it. */
+/* One height rule for the three walkers below — border, summary, wrapped
+ * body, an optional button row, border. */
+static int toast_height(const struct toast *t)
+{
+	return 3 + t->body_rows + (t->nact ? 1 : 0);
+}
+
 static int toast_rows(void)
 {
 	int rows = 0;
 	for (int i = 0; i < ntoasts; i++)
-		rows += toasts[i].body[0] ? 4 : 3;
+		rows += toast_height(&toasts[i]);
 	return rows;
+}
+
+/* One wrapped body line, as runs of equal style. <b> is the house fill —
+ * swapped slots, never KT_A_REVERSE over a label. <i> maps to the body's own
+ * dim, which is honest rather than loud: the grid has no second slant. */
+static void draw_body_line(const struct toast *t, int start, int len, int x,
+			   int y)
+{
+	int i = start, end = start + len;
+
+	while (i < end && x < ktui_w - 2) {
+		uint8_t st = t->style[i];
+		int j = i;
+		while (j < end && t->style[j] == st)
+			j++;
+		char run[256];
+		int rn = j - i;
+		if (rn > (int)sizeof(run) - 1)
+			rn = (int)sizeof(run) - 1;
+		memcpy(run, t->body + i, (size_t)rn);
+		run[rn] = '\0';
+		int fg = KT_DIM, bg = KT_SURFACE, attr = KT_A_NONE;
+		if (st & ST_A)
+			fg = KT_ACCENT;
+		if (st & ST_U)
+			attr |= KT_A_UNDERLINE;
+		if (st & ST_B) {
+			fg = KT_SURFACE;
+			bg = KT_TEXT;
+		}
+		x += ktui_draw_text(x, y, ktui_w - 2 - x, run, fg, bg, attr);
+		i = j;
+	}
 }
 
 static void draw_toasts(void)
@@ -306,10 +590,11 @@ static void draw_toasts(void)
 		return;
 
 	ktui_draw_clear();
+	memset(act_hit, 0, sizeof(act_hit));
 	int y = 0;
 	for (int i = 0; i < ntoasts && y + 3 <= h; i++) {
 		const struct toast *t = &toasts[i];
-		int rows = t->body[0] ? 4 : 3;
+		int rows = toast_height(t);
 		/*
 		 * CLAMP, do not break. The surface is resized to fit the toasts
 		 * and the compositor answers with a configure one round trip
@@ -317,7 +602,8 @@ static void draw_toasts(void)
 		 * toast arrived. Breaking there drew the cleared background and
 		 * nothing else — an empty box in the corner, which is exactly
 		 * what a notification daemon must never produce. Three rows is
-		 * border, summary, border; the body is what gets dropped.
+		 * border, summary, border; the body and the buttons are what
+		 * get dropped.
 		 */
 		if (y + rows > h)
 			rows = h - y;
@@ -334,9 +620,36 @@ static void draw_toasts(void)
 			      1);
 		ktui_draw_text(2, y + 1, w - 4, t->summary, KT_TEXT, KT_SURFACE,
 			       KT_A_NONE);
-		if (t->body[0])
-			ktui_draw_text(2, y + 2, w - 4, t->body, KT_DIM,
-				       KT_SURFACE, KT_A_NONE);
+		int ry = y + 2;
+		if (t->body[0]) {
+			int starts[BODY_LINES], lens[BODY_LINES];
+			int nl = wrap_ranges(t->body, BODY_W, starts, lens);
+			for (int l = 0; l < nl && ry < y + rows - 1; l++, ry++)
+				draw_body_line(t, starts[l], lens[l], 2, ry);
+		}
+		if (t->nact && ry < y + rows - 1) {
+			/* The button row, pick.c's pattern: dim brackets, the
+			 * label filled with the toast's accent. */
+			int x = 2;
+			act_hit[i].row = ry;
+			for (int a = 0; a < t->nact; a++) {
+				char lab[28];
+				snprintf(lab, sizeof(lab), " %s ",
+					 t->act_label[a]);
+				int lw = ktui_utf8_width(lab);
+				if (x + lw + 2 > w - 2)
+					break;
+				ktui_draw_text(x, ry, 1, "[", KT_DIM,
+					       KT_SURFACE, KT_A_NONE);
+				ktui_draw_text(x + 1, ry, lw, lab, KT_SURFACE,
+					       accent, KT_A_NONE);
+				ktui_draw_text(x + 1 + lw, ry, 1, "]", KT_DIM,
+					       KT_SURFACE, KT_A_NONE);
+				act_hit[i].x[a] = x;
+				act_hit[i].end[a] = x + lw + 2;
+				x = act_hit[i].end[a] + 1;
+			}
+		}
 		y += rows;
 	}
 	ktui_draw_flush();
@@ -344,20 +657,39 @@ static void draw_toasts(void)
 
 /*
  * Which toast a row belongs to, or -1. Walks the same accumulation
- * draw_toasts() does rather than dividing by a fixed height — toasts are three
- * rows or four depending on whether they carry a body, so a division would
- * dismiss the wrong one as soon as two of different heights were stacked.
+ * draw_toasts() does rather than dividing by a fixed height — toast heights
+ * vary with body and buttons, so a division would dismiss the wrong one as
+ * soon as two of different heights were stacked.
  */
 static int toast_at_row(int row)
 {
 	int y = 0;
 	for (int i = 0; i < ntoasts; i++) {
-		int rows = toasts[i].body[0] ? 4 : 3;
+		int rows = toast_height(&toasts[i]);
 		if (row >= y && row < y + rows)
 			return i;
 		y += rows;
 	}
 	return -1;
+}
+
+/* Fire-and-forget, argv only — the href came off the bus. Double-forked so
+ * this daemon neither reaps nor waits on a browser. */
+static void open_href(const char *href)
+{
+	pid_t pid = fork();
+
+	if (pid == 0) {
+		if (fork() == 0) {
+			setsid();
+			execlp("kdos-appbox", "kdos-appbox", "open", href,
+			       (char *)NULL);
+			_exit(127);
+		}
+		_exit(0);
+	} else if (pid > 0) {
+		waitpid(pid, NULL, 0);
+	}
 }
 
 /* ── main ──────────────────────────────────────────────────────────────── */
@@ -521,8 +853,45 @@ int notifyd_main(int argc, char **argv)
 				    ev.btn != KT_MB_RIGHT)
 					continue;
 				int i = toast_at_row(ev.my);
-				if (i >= 0)
-					drop_at(i, 2);
+				if (i < 0)
+					continue;
+				/*
+				 * Left answers what was AIMED at: a button
+				 * emits ActionInvoked, a single-link body
+				 * opens its link; both then close with the
+				 * spec's reason 2. Middle and right always
+				 * plain-dismiss — the way out that cannot
+				 * accidentally do something.
+				 */
+				if (ev.btn == KT_MB_LEFT) {
+					int a = -1;
+					if (toasts[i].nact &&
+					    act_hit[i].row == ev.my)
+						for (int k = 0; k < toasts[i].nact; k++)
+							if (act_hit[i].end[k] > act_hit[i].x[k] &&
+							    ev.mx >= act_hit[i].x[k] &&
+							    ev.mx < act_hit[i].end[k]) {
+								a = k;
+								break;
+							}
+					if (a >= 0) {
+						sd_bus_emit_signal(bus,
+							"/org/freedesktop/Notifications",
+							"org.freedesktop.Notifications",
+							"ActionInvoked", "us",
+							toasts[i].id,
+							toasts[i].act_id[a]);
+						drop_at(i, 2);
+						continue;
+					}
+					if (toasts[i].nlinks == 1 &&
+					    toasts[i].href[0]) {
+						open_href(toasts[i].href);
+						drop_at(i, 2);
+						continue;
+					}
+				}
+				drop_at(i, 2);
 			}
 		}
 		/*

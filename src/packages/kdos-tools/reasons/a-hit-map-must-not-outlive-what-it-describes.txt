@@ -1,0 +1,12 @@
+title: a hit map that outlives what it describes aims clicks at nothing
+cite: kdos-shell panel
+port: kdos-shell
+
+Each applet records the span the last frame drew it in, and an applet with no
+room records an EMPTY one — otherwise a narrow screen mutes itself when
+somebody aims at the clock.
+
+The workspace strip has the same shape: a two-cell stride is right only while
+every label is one digit wide, and <desktops number="12"/> is a supported
+thing to write, so from the tenth on the strip activated the wrong workspace.
+Record where each digit was actually drawn.

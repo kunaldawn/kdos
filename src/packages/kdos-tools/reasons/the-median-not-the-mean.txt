@@ -1,0 +1,13 @@
+title: the median of several runs, and a win smaller than the measured noise is not a win
+cite: kdos march
+port: kdos-tools
+
+The mean is owned by its worst outlier and one run measures the scheduler. The
+noise floor is the spread of the samples themselves; both real measurements so
+far landed inside it and were reverted, which is the correct answer on a busy
+machine and the tool says so.
+
+A port with no `bench =` line is UNMEASURABLE and never a winner — assuming a
+win for it is the blind optimisation this replaces. And `bench_setup =` runs
+once and is not timed: the first bench line written measured
+`dd if=/dev/urandom` more than it measured lz4.

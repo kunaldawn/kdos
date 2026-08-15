@@ -31,6 +31,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/util/log.h>
 
+#include "common/spawn.h"
 #include "kdos.h"
 /* For server.outputs at startup: the chrome for a screen that already exists
  * when the children are first started cannot come from the output-created
@@ -88,7 +89,7 @@ struct kdos_child {
 	bool live;
 	int tmpl;			/* index into TEMPLATES */
 	char output[KDOS_OUTPUT_NAME_MAX];	/* "" for the global ones */
-	const char *argv[8];
+	const char *argv[12];
 	pid_t pid;
 	int fails;
 	time_t since;
@@ -97,6 +98,10 @@ struct kdos_child {
 
 static struct kdos_child children[KDOS_MAX_CHILDREN];
 static bool children_started;
+/* one crash-loop dialog per reconfigure cycle — a prompt spawned per give-up
+ * would itself be a loop when several children die together */
+static bool gaveup_prompted;
+static struct wl_event_source *display_apply_timer;
 
 /* For the log lines: `kdos-shell --bottom on HDMI-A-1` rather than four rows
  * all saying kdos-shell, which is what a crash-loop message has to tell
@@ -137,6 +142,17 @@ child_build_argv(struct kdos_child *c)
 	if (kdos_conf.chrome_font[0]) {
 		c->argv[n++] = "--font";
 		c->argv[n++] = kdos_conf.chrome_font;
+	}
+	/* clock_format and panel_autohide are the panel's, not the desk's or
+	 * the notifyd's */
+	if (!strcmp(TEMPLATES[c->tmpl].cmd, "kdos-shell")) {
+		if (kdos_conf.clock_format[0]) {
+			c->argv[n++] = "--clock";
+			c->argv[n++] = kdos_conf.clock_format;
+		}
+		if (kdos_conf.panel_autohide) {
+			c->argv[n++] = "--autohide";
+		}
 	}
 	c->argv[n] = NULL;
 }
@@ -226,6 +242,34 @@ start_template(int tmpl, const char *output)
 }
 
 /*
+ * DISPLAY APPLY contract: an output arrived, so the saved layout in
+ * ~/.config/kdos/displays.conf gets re-asserted — `kdos-display --apply`
+ * matches heads by name, skips unknowns and exits. Debounced one second
+ * so a dock plugging three heads spawns one apply, not three; not
+ * supervised, because a one-shot with nothing to respawn is not chrome.
+ */
+static int
+display_apply_fire(void *data)
+{
+	(void)data;
+	spawn_async_no_shell("kdos-display --apply");
+	return 0;
+}
+
+static void
+display_apply_debounce(void)
+{
+	if (!display_apply_timer) {
+		display_apply_timer = wl_event_loop_add_timer(
+			wl_display_get_event_loop(server.wl_display),
+			display_apply_fire, NULL);
+	}
+	if (display_apply_timer) {
+		wl_event_source_timer_update(display_apply_timer, 1000);
+	}
+}
+
+/*
  * A screen appeared. Give it its own panel, window list and desktop.
  *
  * Before the compositor has started its children at all this does nothing:
@@ -239,8 +283,14 @@ kdos_children_output_add(const char *name)
 	if (!children_started || !name || !*name) {
 		return;
 	}
+	display_apply_debounce();
 	for (int i = 0; i < KDOS_MAX_CHILDREN; i++) {
-		if (children[i].live && !strcmp(children[i].output, name)) {
+		/* a `stopping` slot is the SAME name on its way out — a
+		 * replugged monitor (DP retrain on resume) re-creates the
+		 * output before the old chrome is reaped, and matching it
+		 * here left the new screen bare for the session */
+		if (children[i].live && !children[i].stopping
+				&& !strcmp(children[i].output, name)) {
 			return;	/* already has its set */
 		}
 	}
@@ -337,6 +387,25 @@ kdos_child_reap(pid_t pid, int status)
 			wlr_log(WLR_ERROR,
 				"%s died %d times in %ds — not restarting it again",
 				child_label(c), c->fails, RESPAWN_WINDOW_S);
+			/* the log line is invisible from inside the session;
+			 * this is the one place the user can be told */
+			if (!gaveup_prompted) {
+				gaveup_prompted = true;
+				char msg[256];
+				snprintf(msg, sizeof(msg), "%s crashed "
+					"repeatedly and was given up on — "
+					"Reconfigure (W-Escape menu) retries",
+					child_label(c));
+				const char *argv[] = { "kdos-prompt",
+					"--message", msg, NULL };
+				pid_t p = fork();
+				if (p == 0) {
+					setsid();
+					child_reset_signals();
+					execvp(argv[0], (char *const *)argv);
+					_exit(127);
+				}
+			}
 			return true;
 		}
 		wlr_log(WLR_INFO, "%s exited (status %d) — restarting",
@@ -345,6 +414,37 @@ kdos_child_reap(pid_t pid, int status)
 		return true;
 	}
 	return false;
+}
+
+/*
+ * Reconfigure re-arms supervision: the counters reset and a child that
+ * crossed RESPAWN_MAX gets exactly one more run of attempts. That is
+ * the recovery the give-up dialog names — before it, a crashed-out
+ * panel was gone until the next login.
+ */
+void
+kdos_children_reconfigure(void)
+{
+	if (!children_started) {
+		return;
+	}
+	gaveup_prompted = false;
+
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	for (int i = 0; i < KDOS_MAX_CHILDREN; i++) {
+		struct kdos_child *c = &children[i];
+		if (!c->live || c->stopping) {
+			continue;
+		}
+		c->fails = 0;
+		c->since = now.tv_sec;
+		if (c->pid == 0) {
+			wlr_log(WLR_INFO, "%s: retrying after reconfigure",
+				child_label(c));
+			spawn_one(c);
+		}
+	}
 }
 
 /*

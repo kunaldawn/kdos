@@ -1,0 +1,12 @@
+title: the live ISO NEEDS fuse-overlayfs; never flip the driver on a live store
+cite: kdos-appbox
+port: kdos-appbox
+
+$HOME sits on the boot overlay and the kernel refuses to stack an overlay
+upperdir on overlayfs. podman does NOT fall back — the container simply fails
+to mount merged/.
+
+On an ext4 install the kernel overlay is much faster, so kdos-appbox writes a
+one-time ~/.config/containers/storage.conf ONLY while the store has no
+containers yet: fuse and native write incompatible whiteout formats into
+container rw layers, so the choice must never flip afterwards.

@@ -112,6 +112,7 @@ enum window_switcher_order {
 enum cycle_osd_style {
 	CYCLE_OSD_STYLE_CLASSIC,
 	CYCLE_OSD_STYLE_THUMBNAIL,
+	CYCLE_OSD_STYLE_APPS, /* KDOS: app-first, cycle/osd-apps.c */
 };
 
 enum cycle_workspace_filter {

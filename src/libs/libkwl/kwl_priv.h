@@ -41,6 +41,21 @@ typedef struct {
 	size_t size;
 	struct wl_buffer *wl;
 	bool busy;		/* held by the compositor until release */
+	/*
+	 * What THIS buffer's pixels currently show, cell for cell. Commits
+	 * alternate buffers, so a partial paint must diff against the buffer
+	 * being painted — diffing against the frame on SCREEN (the other
+	 * buffer) is how a grid grows stale rows that never repair.
+	 */
+	KtuiCell *shadow;
+	int scols, srows;
+	/*
+	 * The shadow's cells are current but its PIXELS are not: something
+	 * changed the cell→pixel mapping (the palette, the scale) while the
+	 * other buffer was the one being painted. Cleared by the next full
+	 * paint of this buffer.
+	 */
+	bool stale;
 } KwlBuffer;
 
 #endif /* KWL_PRIV_H */

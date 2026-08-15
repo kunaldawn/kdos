@@ -1,0 +1,12 @@
+title: every meson setup needs --prefix=/usr --libdir=lib
+cite: recurring build fixes
+port: mesa
+
+The default /usr/local/lib64 is not on the runtime linker's search path;
+the symptom is "Error loading shared library libxkbcommon.so.0".
+
+The trap has a second edge: a stale /usr/local/**/pkgconfig/*.pc SHADOWS the
+fixed one, so after correcting a prefix you must delete the old files and the
+old .pc, then rebuild the consumers. libinput still installs to
+/usr/local/lib64 and works only because its consumers were linked against that
+path.

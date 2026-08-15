@@ -1,0 +1,16 @@
+title: <default /> must be the first child of <keyboard> and <mouse>
+cite: skel rc.xml
+port: kdos-comp
+path: /etc/skel/.config/kdos-comp/rc.xml
+
+labwc loads its built-in bindings only when the user's file defines NONE of
+that kind (post_processing()), so a file that binds one key throws every
+default away. KDOS shipped exactly that: no Client Left Press -> Focus/Raise,
+so CLICKING A WINDOW DID NOT FOCUS IT; no titlebar drag; no working Close,
+Iconify or Maximize buttons; no border resize; no root menu; no A-Tab; no
+A-F4; no snap arrows.
+
+On a booted ISO the symptom is "the mouse does not work", and it is invisible
+to a compile, to the recipe parser and to XML validation. Overrides go AFTER
+<default />, because deduplicate_{key,mouse}_bindings() keeps the LATER of a
+duplicate pair. testing/preflight.sh fails a skel rc.xml that gets this wrong.

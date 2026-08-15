@@ -1,0 +1,14 @@
+title: a subshell does not lead its own process group, so the group kill missed
+cite: ksvc
+port: kdos-tools
+
+The old shell supervisor ran its respawn loop in a backgrounded subshell, so
+`kill -- -$pid` addressed a group $pid did not lead, failed, fell through to a
+plain `kill $pid`, and KILLED THE SUPERVISOR WHILE ORPHANING THE DAEMON — all
+while reporting success.
+
+ksvc calls setsid(), so the group kill reaches both. Verified: after
+`ksvc stop`, supervisor and daemon are both gone and the daemon's pgid was the
+supervisor's pid. ksvc also refuses a service name that is not a plain name;
+find_service used to interpolate the argument straight into a glob, so
+`service start '*'` matched whatever it liked.

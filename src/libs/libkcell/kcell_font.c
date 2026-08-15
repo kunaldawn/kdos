@@ -27,6 +27,22 @@
 #include "kcell.h"
 
 #define CACHE_BUCKETS 512
+/*
+ * The cap exists because notifyd renders attacker-influenced strings: without
+ * one, a notification body sweeping the codepoint space grows a slot per
+ * distinct codepoint ever seen, misses and upscaled masks included, for the
+ * life of the session. fcft re-rasterises cheaply, so eviction is cheap to be
+ * wrong about.
+ */
+#define CACHE_MAX_SLOTS 4096
+/*
+ * And a budget in BYTES, because a slot is not a fixed cost: it also owns an
+ * upscaled mask per scale above 1, and those are the memory. A colour glyph at
+ * a 32-pixel cell is 64x64x4 at scale 2 and 128x128x4 at scale 4, so the slot
+ * cap alone bounds the cache at hundreds of megabytes — on a 4 GB live ISO
+ * that is still the OOM the cap was added to prevent.
+ */
+#define CACHE_MAX_BYTES (8u << 20)
 
 struct glyph_slot {
 	struct glyph_slot *next;
@@ -42,7 +58,51 @@ struct glyph_slot {
 
 static struct fcft_font *font;
 static struct glyph_slot *cache[CACHE_BUCKETS];
+static unsigned cache_count;
+static size_t cache_bytes;	/* the upscaled masks only; fcft owns the rest */
+static unsigned evict_cursor;
 static int cell_w, cell_h, ascent;
+
+/* What an upscaled mask costs, from the image itself so that the accounting
+ * cannot drift from the allocation. */
+static size_t mask_bytes(pixman_image_t *img)
+{
+	return (size_t)pixman_image_get_stride(img) *
+	       (size_t)pixman_image_get_height(img);
+}
+
+static void slot_free(struct glyph_slot *s)
+{
+	for (int n = 2; n <= KCELL_MAX_SCALE; n++)
+		if (s->up[n]) {
+			cache_bytes -= mask_bytes(s->up[n]);
+			pixman_image_unref(s->up[n]);
+		}
+	free(s);
+}
+
+/*
+ * Clock over the buckets: the next non-empty one loses its TAIL entry — the
+ * oldest insertion in that chain, so the glyph just asked for is never the
+ * victim. The fcft glyph itself is fcft's and survives; only our slot and its
+ * upscaled masks go.
+ */
+static void cache_evict_one(void)
+{
+	for (unsigned i = 0; i < CACHE_BUCKETS; i++) {
+		unsigned b = (evict_cursor + i) % CACHE_BUCKETS;
+		struct glyph_slot **pp = &cache[b];
+		if (!*pp)
+			continue;
+		while ((*pp)->next)
+			pp = &(*pp)->next;
+		slot_free(*pp);
+		*pp = NULL;
+		cache_count--;
+		evict_cursor = (b + 1) % CACHE_BUCKETS;
+		return;
+	}
+}
 
 /*
  * Is what fontconfig handed back actually monospaced?
@@ -126,14 +186,14 @@ void kcell_font_free(void)
 		struct glyph_slot *s = cache[i];
 		while (s) {
 			struct glyph_slot *next = s->next;
-			for (int n = 2; n <= KCELL_MAX_SCALE; n++)
-				if (s->up[n])
-					pixman_image_unref(s->up[n]);
-			free(s);
+			slot_free(s);
 			s = next;
 		}
 		cache[i] = NULL;
 	}
+	cache_count = 0;
+	cache_bytes = 0;
+	evict_cursor = 0;
 	if (font) {
 		fcft_destroy(font);
 		font = NULL;
@@ -155,6 +215,13 @@ static struct glyph_slot *slot_for(uint32_t cp)
 		if (s->cp == cp)
 			return s;
 
+	/* Here and nowhere else: the slot about to be inserted is not in the
+	 * cache yet, so it can never be its own victim, and every consumer
+	 * finishes with the glyph it was handed before asking for another. */
+	while (cache_count &&
+	       (cache_count >= CACHE_MAX_SLOTS || cache_bytes > CACHE_MAX_BYTES))
+		cache_evict_one();
+
 	const struct fcft_glyph *g =
 		fcft_rasterize_char_utf32(font, cp, FCFT_SUBPIXEL_NONE);
 
@@ -171,6 +238,7 @@ static struct glyph_slot *slot_for(uint32_t cp)
 	s->g = g;
 	s->next = cache[h];
 	cache[h] = s;
+	cache_count++;
 	return s;
 }
 
@@ -282,6 +350,7 @@ bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out)
 			s->up[scale] = upscale(s->g->pix, scale);
 			if (!s->up[scale])
 				return false;
+			cache_bytes += mask_bytes(s->up[scale]);
 		}
 		pix = s->up[scale];
 	}

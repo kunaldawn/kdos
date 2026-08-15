@@ -42,6 +42,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
+#include <poll.h>
 #include <signal.h>
 #include <pwd.h>
 #include <stdbool.h>
@@ -284,21 +285,120 @@ static int serve(void)
 
 /* ── the client ────────────────────────────────────────────────────────── */
 
+/*
+ * Is a lock client already up? The everyday suspend is a lid close on a
+ * session kdos-idle locked minutes ago, and a SECOND ext-session-lock client
+ * is refused by the compositor — it exits 1 without ever printing `locked`, so
+ * the wait below would run its whole deadline and then blame the lock screen
+ * for a session that was locked all along. That warning is the one thing that
+ * makes an unlocked resume attributable, and it must not cry wolf.
+ */
+static bool lock_running(void)
+{
+	int n = 0;
+	char **names = kb_listdir("/proc", &n);
+	if (!names)
+		return false;
+	bool found = false;
+	for (int i = 0; i < n && !found; i++) {
+		if (names[i][0] < '1' || names[i][0] > '9')
+			continue;
+		char path[64];
+		size_t len = 0;
+		snprintf(path, sizeof(path), "/proc/%s/comm", names[i]);
+		char *comm = kb_read_all(path, &len);
+		if (!comm)
+			continue;	/* vanished, or not a pid at all */
+		comm[strcspn(comm, "\n")] = '\0';
+		found = !strcmp(comm, "kdos-lock");
+		free(comm);
+	}
+	kb_strv_free(names);
+	return found;
+}
+
+/*
+ * Lock the session before it suspends — a resume that hands back an unlocked
+ * desktop is the failure this exists to remove. Client-side only: the daemon
+ * protocol stays one word per connection, and the daemon has no session to
+ * lock anyway.
+ *
+ * kdos-lock prints exactly "locked\n" once the COMPOSITOR has confirmed the
+ * session locked (the ext-session-lock handshake), and then stays running as
+ * the lock client — so this waits for the line, never for the process. The
+ * suspend goes ahead REGARDLESS after two seconds: a broken lock screen must
+ * not turn the suspend key into a no-op, and the timeout is logged so the
+ * unlocked resume is attributable. Closing our end of the pipe afterwards is
+ * safe because that line is kdos-lock's only stdout write.
+ */
+static void lock_before_suspend(void)
+{
+	int pfd[2];
+	if (lock_running())
+		return;
+	if (pipe2(pfd, O_CLOEXEC) < 0)
+		return;
+
+	pid_t pid = fork();
+	if (pid < 0) {
+		close(pfd[0]);
+		close(pfd[1]);
+		return;
+	}
+	if (pid == 0) {
+		static char *lock_argv[] = { "kdos-lock", NULL };
+		/* Its own session: the lock client outlives this process, and
+		 * sharing our process group would hand it the terminal's ^C —
+		 * an abandoned lock with no prompt on it. */
+		setsid();
+		dup2(pfd[1], STDOUT_FILENO);
+		execvp(lock_argv[0], lock_argv);
+		_exit(127);
+	}
+	close(pfd[1]);
+
+	char buf[64] = {0};
+	size_t got = 0;
+	bool locked = false;
+	double deadline = kb_now_s() + 2.0;
+
+	while (got < sizeof(buf) - 1) {
+		int wait_ms = (int)((deadline - kb_now_s()) * 1000.0);
+		if (wait_ms <= 0)
+			break;
+		struct pollfd p = { .fd = pfd[0], .events = POLLIN };
+		int rc = poll(&p, 1, wait_ms);
+		if (rc < 0 && errno == EINTR)
+			continue;
+		if (rc <= 0)
+			break;
+		ssize_t n = read(pfd[0], buf + got, sizeof(buf) - 1 - got);
+		if (n <= 0)	/* EOF: kdos-lock is gone (or was never here) */
+			break;
+		got += (size_t)n;
+		buf[got] = '\0';
+		if (strstr(buf, "locked\n")) {
+			locked = true;
+			break;
+		}
+	}
+	close(pfd[0]);
+	if (!locked)
+		fprintf(stderr, "kdos-power: no lock confirmation within 2s — "
+				"suspending anyway\n");
+}
+
 static int usage(void)
 {
-	fprintf(stderr, "usage: kdos-power suspend|poweroff|reboot|ping\n");
+	fprintf(stderr,
+		"usage: kdos-power [--no-lock] suspend|poweroff|reboot|ping\n");
 	return 2;
 }
 
-static int client(int argc, char **argv)
+/* One word, one connection: the whole protocol. 0 when the daemon answered
+ * `ok`, 1 otherwise, with the reason on stderr. */
+static int request(const char *cmd)
 {
-	if (argc != 2)
-		return usage();
-	const char *cmd = argv[1];
-	if (strcmp(cmd, "suspend") && strcmp(cmd, "poweroff") &&
-	    strcmp(cmd, "reboot") && strcmp(cmd, "ping"))
-		return usage();
-
 	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd < 0)
 		return 1;
@@ -336,6 +436,45 @@ static int client(int argc, char **argv)
 	reply[strcspn(reply, "\r\n")] = '\0';
 	fprintf(stderr, "kdos-power: %s\n", reply);
 	return 1;
+}
+
+static int client(int argc, char **argv)
+{
+	const char *cmd = NULL;
+	bool no_lock = false;
+
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "--no-lock"))
+			no_lock = true;
+		else if (!cmd)
+			cmd = argv[i];
+		else
+			return usage();
+	}
+	if (!cmd)
+		return usage();
+	if (strcmp(cmd, "suspend") && strcmp(cmd, "poweroff") &&
+	    strcmp(cmd, "reboot") && strcmp(cmd, "ping"))
+		return usage();
+
+	/* KDOS_NO_LOCK_ON_SUSPEND=1 is the scriptable escape hatch — the same
+	 * skip the flag gives, for a caller that cannot edit its own argv. */
+	const char *skip = getenv("KDOS_NO_LOCK_ON_SUSPEND");
+	if (!strcmp(cmd, "suspend") && !no_lock && !(skip && *skip)) {
+		/*
+		 * ASK FIRST, LOCK SECOND. `ping` runs the same SO_PEERCRED gate
+		 * suspend does, so a caller outside `wheel` — or a machine with
+		 * no kdos-powerd at all — is refused BEFORE the screen is
+		 * locked. Locking and then not suspending is a password prompt
+		 * in exchange for nothing, off one click on the panel's power
+		 * item.
+		 */
+		if (request("ping") != 0)
+			return 1;
+		lock_before_suspend();
+	}
+
+	return request(cmd);
 }
 
 int main(int argc, char **argv)

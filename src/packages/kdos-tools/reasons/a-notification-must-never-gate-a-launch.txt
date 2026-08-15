@@ -1,0 +1,11 @@
+title: a notification must never be able to gate a launch
+cite: kdos-appbox
+port: kdos-appbox
+
+gdbus's default reply timeout is 25 SECONDS. notify() uses --timeout 2 and is
+backgrounded, so the toast can never sit in front of the app it is announcing.
+
+Same family: a blind `flock -w 120` on the login warmup lock made a click wait
+for the entire container init, up to two minutes of dead-looking desktop. The
+launch path waits out an in-flight warmup only when the box is already running
+and container_setup_done has not yet appeared in podman logs.
