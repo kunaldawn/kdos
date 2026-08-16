@@ -4,7 +4,7 @@
 | Input       | crt_scanlines      75                                     live |
 | Apps        | crt_curve          10                                     live |
 |             | crt_fullscreen     on                                     live |
-|             | wallpaper          /usr/share/backgrounds/kdos/default-   live |
+|             | wallpaper          ?/kdos/default-wallpaper.png           live |
 |             | chrome_font        Terminus:pixelsize=32                 login |
 |             | clock_format       %H:%M                                 login |
 |             |                                                                |

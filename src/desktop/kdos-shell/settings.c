@@ -603,6 +603,55 @@ static void cycle(struct row *r, int dir)
 
 #define CATW 13
 
+/*
+ * A value too wide for its column, marked as such — libktui clips silently,
+ * and a clipped value is indistinguishable from the real one. Measured on a
+ * booted ISO: `wallpaper` read `/usr/share/backgrounds/kdos/`, which is a
+ * directory that exists, so nothing about it looked wrong.
+ *
+ * A PATH keeps its TAIL, because the file name is the part being identified
+ * and every wallpaper on this machine shares the first three components.
+ * Anything else keeps its head. The glyph is one cell of the reserved width,
+ * never an extra one.
+ */
+static const char *elide(const char *s, int width, char *buf, size_t cap)
+{
+	if (width < 2 || ktui_utf8_width(s) <= width)
+		return s;
+
+	/*
+	 * Cut at a SEPARATOR, not at whatever character the width lands on:
+	 * the first cut that fit produced `…kgrounds/kdos/default-wallpaper.png`,
+	 * which invents a directory. Left to right, the first `/` whose tail
+	 * fits is the longest one that does. A single component too long for
+	 * the column falls through to the plain head cut below.
+	 */
+	for (const char *p = strchr(s, '/'); p; p = strchr(p + 1, '/')) {
+		if (ktui_utf8_width(p) <= width - 1) {
+			snprintf(buf, cap, "…%s", p);
+			return buf;
+		}
+	}
+
+	size_t n = 0;
+	int cells = 0;
+	while (s[n] && cells < width - 1) {
+		/* Step whole UTF-8 sequences: a half-copied one is a broken
+		 * glyph, and this is the same rule ktui_utf8_width counts by. */
+		size_t len = 1;
+		while ((s[n + len] & 0xc0) == 0x80)
+			len++;
+		char one[8];
+		snprintf(one, sizeof(one), "%.*s", (int)len, s + n);
+		cells += ktui_utf8_width(one);
+		if (cells > width - 1)
+			break;
+		n += len;
+	}
+	snprintf(buf, cap, "%.*s…", (int)n, s);
+	return buf;
+}
+
 static int btn_x, btn_end, btn_row;
 
 static void draw(void)
@@ -683,7 +732,10 @@ static void draw(void)
 		int vw = fw - 20 - 7;
 		if (vw < 4)
 			vw = 4;
-		ktui_draw_text(fx + 19, y, vw, r->val[0] ? r->val : "(unset)",
+		char shown[256];
+		ktui_draw_text(fx + 19, y, vw,
+			       elide(r->val[0] ? r->val : "(unset)", vw,
+				     shown, sizeof(shown)),
 			       on ? fg : (r->val[0] ? KT_MID : KT_DIM), bg,
 			       KT_A_NONE);
 		ktui_draw_text_right(0, y, w - 2, tag,
@@ -914,6 +966,8 @@ int settings_main(int argc, char **argv)
 	ktui_draw_init();
 
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
+		sh_theme_poll();
 		int pane_rows = ktui_h - 5;
 		int n = cat_rows();
 

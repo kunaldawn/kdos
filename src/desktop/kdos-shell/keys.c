@@ -763,6 +763,8 @@ int keys_main(int argc, char **argv)
 	int top = 0;
 
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
+		sh_theme_poll();
 		int rowsv = list_rows(welcome) - (parse_note[0] ? 1 : 0);
 		int maxtop = nrows - rowsv;
 
