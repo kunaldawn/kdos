@@ -250,4 +250,20 @@ bool kdos_crt_frame(struct output *output, struct wlr_scene_output *so);
  */
 void kdos_crt_powerdown(void);
 
+/*
+ * Click-away for on-demand layer surfaces.
+ *
+ * Every front end on this desktop that takes a keyboard — the menus, the
+ * launcher, the run box, the file chooser — is an on-demand layer surface
+ * that dismisses itself when it loses keyboard focus. Focusing a VIEW does
+ * that for free, so launching an app closes a menu; a press on the desktop,
+ * the wallpaper or a keyboard-less layer surface like the panel changes no
+ * focus at all, and the menu stayed open. Called from the button-press path
+ * with the layer surface that was pressed, or NULL when it was not one.
+ */
+struct seat;
+struct wlr_layer_surface_v1;
+void kdos_layer_release_on_demand(struct seat *seat,
+	struct wlr_layer_surface_v1 *pressed);
+
 #endif /* KDOS_H */

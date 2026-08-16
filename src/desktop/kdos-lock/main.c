@@ -69,7 +69,30 @@ static int nchars;			/* characters — what the dots show */
 static const char *status;
 static int failed;
 
-static char *logo_lines[LK_LOGO_MAX];
+/*
+ * The logo as COLOURED RUNS, not as one string.
+ *
+ * It used to be stripped to plain text and painted in a single slot that
+ * breathed between text and dim on a four-second clock. That was defensible
+ * while logo.txt was one green: there was nothing else in the file to draw.
+ * Now that the mascot carries a dark body, a white belly, an amber beak and a
+ * glow ring, stripping the colour is throwing the picture away — photographed
+ * on a booted ISO, the lock screen showed a featureless dark-green mass where
+ * tty1 two seconds earlier had shown a penguin.
+ *
+ * The colours become libktui SLOTS rather than literal RGB, so the lock screen
+ * follows the accent like everything else: an amber desktop gets an amber
+ * penguin without a second copy of the palette living here.
+ */
+#define LK_MAX_RUNS 48
+
+struct lk_run {
+	int slot;
+	char *text;
+};
+
+static struct lk_run logo_runs[LK_LOGO_MAX][LK_MAX_RUNS];
+static int logo_nruns[LK_LOGO_MAX];
 static int logo_n, logo_w;
 
 static void pass_clear(void)
@@ -113,35 +136,77 @@ static void theme_from_cache(void)
 /* ── the logo ──────────────────────────────────────────────────────────── */
 
 /*
- * logo.txt carries SGR colour, and the kdos-banner rule applies: strip the
- * WHOLE sequence, not just the escape byte, or `[1;32m` stays visible as
- * text. The colour is discarded on purpose — the lock draws the logo in one
- * breathing slot of its own.
+ * The SGR runs are parsed rather than stripped: the WHOLE sequence is
+ * consumed either way, or `[1;32m` stays visible as text, but the code it
+ * carries now picks the slot the run is drawn in. See lk_run.
  */
-static char *strip_ansi(const char *s, size_t n)
+
+/*
+ * genlogo.py's five materials, as slots. The file is generated and its palette
+ * is fixed there, so this table is small and closed: dark body, glow ring,
+ * belly and eyes, beak and feet, and the wordmark's two tones. Anything
+ * unrecognised reads as text, which is what an uncoloured banner was.
+ */
+static int slot_for(const char *sgr, size_t n)
 {
-	char *out = malloc(n + 1);
+	struct { const char *code; int slot; } map[] = {
+		{ "1;30", KT_DIM },	/* the black body   */
+		{ "0;32", KT_ACCENT },	/* the glow ring    */
+		{ "1;32", KT_TEXT },	/* wordmark, bright */
+		{ "1;37", KT_TEXT },	/* belly, eyes      */
+		{ "0;33", KT_WARN },	/* beak, feet       */
+		{ "2;32", KT_DIM },	/* tagline          */
+	};
+	for (size_t i = 0; i < sizeof(map) / sizeof(map[0]); i++)
+		if (n == strlen(map[i].code) && !strncmp(sgr, map[i].code, n))
+			return map[i].slot;
+	return KT_TEXT;
+}
+
+static void logo_line(const char *p, size_t l)
+{
+	struct lk_run *runs = logo_runs[logo_n];
+	int nruns = 0, slot = KT_TEXT, width = 0;
+	char buf[512];
 	size_t k = 0;
 
-	if (!out)
-		return NULL;
-	for (size_t i = 0; i < n;) {
-		if (s[i] == '\x1b') {
-			i++;
-			if (i < n && s[i] == '[') {
-				i++;
-				while (i < n && ((unsigned char)s[i] < 0x40 ||
-						 (unsigned char)s[i] > 0x7e))
-					i++;
-				if (i < n)
-					i++;	/* the final byte */
+	for (size_t i = 0; i <= l; i++) {
+		int flush = (i == l);
+		int newslot = slot;
+
+		if (!flush && p[i] == '\x1b') {
+			size_t j = i + 1;
+			if (j < l && p[j] == '[') {
+				size_t s = ++j;
+				while (j < l && (p[j] < 0x40 || p[j] > 0x7e))
+					j++;
+				newslot = (j > s && p[j] == 'm')
+					? slot_for(p + s, j - s) : KT_TEXT;
+				i = j;		/* the loop's ++ steps past 'm' */
+				flush = 1;
 			}
+		}
+
+		if (flush) {
+			if (k && nruns < LK_MAX_RUNS) {
+				buf[k] = '\0';
+				runs[nruns].slot = slot;
+				runs[nruns].text = kb_strdup(buf);
+				width += ktui_utf8_width(buf);
+				nruns++;
+			}
+			k = 0;
+			slot = newslot;
 			continue;
 		}
-		out[k++] = s[i++];
+		if (k + 1 < sizeof(buf))
+			buf[k++] = p[i];
 	}
-	out[k] = '\0';
-	return out;
+
+	logo_nruns[logo_n] = nruns;
+	if (width > logo_w)
+		logo_w = width;
+	logo_n++;
 }
 
 static void logo_load(void)
@@ -155,20 +220,14 @@ static void logo_load(void)
 	while (*p && logo_n < LK_LOGO_MAX) {
 		const char *nl = strchr(p, '\n');
 		size_t l = nl ? (size_t)(nl - p) : strlen(p);
-		char *clean = strip_ansi(p, l);
-		if (!clean)
-			break;
-		int w = ktui_utf8_width(clean);
-		logo_lines[logo_n++] = clean;
-		if (w > logo_w)
-			logo_w = w;
+		logo_line(p, l);
 		p = nl ? nl + 1 : p + l;
 	}
 	free(data);
 
 	/* Trailing blank lines would push the box down for nothing. */
-	while (logo_n > 0 && logo_lines[logo_n - 1][0] == '\0')
-		free(logo_lines[--logo_n]);
+	while (logo_n > 0 && logo_nruns[logo_n - 1] == 0)
+		logo_n--;
 }
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
@@ -190,17 +249,25 @@ static void draw(const char *user, const char *host)
 	/*
 	 * The logo above the prompt, when the whole stack fits — taller than
 	 * the surface means NO logo, never a scrolled one (the kdos-banner
-	 * rule). It breathes between text and dim on a 4 s clock; the cell
-	 * diff makes the repaint one colour change, not a redraw.
+	 * rule). Drawn run by run in the colours genlogo.py put in the file;
+	 * the four-second breathe went with the monochrome it was compensating
+	 * for.
 	 */
 	if (!cramped && logo_n && logo_w <= w &&
 	    logo_n + 1 + LK_BOX_H <= h) {
 		int top = (h - (logo_n + 1 + LK_BOX_H)) / 2;
 		int lx = (w - logo_w) / 2;
-		int slot = (time(NULL) / 4) % 2 ? KT_TEXT : KT_DIM;
-		for (int i = 0; i < logo_n; i++)
-			ktui_draw_text(lx, top + i, logo_w, logo_lines[i],
-				       slot, KT_BG, KT_A_NONE);
+		for (int i = 0; i < logo_n; i++) {
+			int x = lx;
+			for (int r = 0; r < logo_nruns[i]; r++) {
+				const char *t = logo_runs[i][r].text;
+				int tw = ktui_utf8_width(t);
+				ktui_draw_text(x, top + i, tw, t,
+					       logo_runs[i][r].slot, KT_BG,
+					       KT_A_NONE);
+				x += tw;
+			}
+		}
 		box.y = top + logo_n + 1;
 	}
 

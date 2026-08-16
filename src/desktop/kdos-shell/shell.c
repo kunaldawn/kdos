@@ -23,6 +23,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -192,6 +193,57 @@ void sh_theme_from_cache(void)
 		ktui_theme_set(name);
 	/* No file is not an error: ktui_theme_set already defaulted to
 	 * phosphor, which is what a fresh install wears. */
+}
+
+/*
+ * The same retint for the front ends nobody signals — and the reason it polls
+ * a file instead of taking the SIGHUP the panel takes.
+ *
+ * `kdos theme` signals FOUR names by design (kdos-shell, kdos-desk,
+ * kdos-notifyd, kdos-comp), because SIGHUP's default disposition is death and
+ * a name on that list whose program installs no handler would be KILLED by a
+ * theme change. That made the list a thing two files have to agree about, and
+ * they already disagreed: kdos-slit calls sh_theme_watch() and is on nobody's
+ * list, so the slit never retinted at all.
+ *
+ * A dialog is not short-lived just because it is modal. Photographed on a
+ * booted ISO: `kdos theme amber` repainted the wallpaper, both panels and the
+ * desktop icons, and left the open `kdos-openwith` in phosphor — and the most
+ * likely way to change an accent at all is kdos-settings, which is one of
+ * these surfaces and so was left wearing the accent it had just replaced.
+ *
+ * Polling the state file's mtime needs no signal, no handler and no second
+ * list: a front end that draws is a front end that follows. It is one stat per
+ * wake-up of a loop that is already blocked on input the rest of the time.
+ */
+void sh_theme_poll(void)
+{
+	static time_t seen;
+	static int primed;
+	char path[512];
+	const char *cache = getenv("XDG_CACHE_HOME");
+	const char *home = getenv("HOME");
+	struct stat st;
+
+	if (cache && *cache)
+		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
+	else if (home && *home)
+		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
+	else
+		return;
+
+	if (stat(path, &st) != 0)
+		return;
+	if (!primed) {
+		primed = 1;
+		seen = st.st_mtime;
+		return;
+	}
+	if (st.st_mtime == seen)
+		return;
+	seen = st.st_mtime;
+	sh_theme_from_cache();
+	ktui_draw_invalidate();
 }
 
 /*

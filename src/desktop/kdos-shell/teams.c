@@ -842,6 +842,8 @@ int teams_main(int argc, char **argv)
 	int sel = 0, top = 0;
 
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
+		sh_theme_poll();
 		int rowsv = list_rows();
 
 		if (sel >= nviews)

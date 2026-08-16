@@ -222,6 +222,10 @@ int sh_volume_get(int *muted);
 void sh_volume_set(int pct);
 void sh_volume_toggle(void);
 
+/* Install ALSA's error handler once, so a machine with no card reports it once
+ * instead of eight lines every retry for the life of the session. */
+void sh_alsa_quiet(void);
+
 int sh_connect(struct sh_state *sh);
 void sh_disconnect(struct sh_state *sh);
 void sh_dispatch(struct sh_state *sh);
@@ -311,13 +315,22 @@ int sh_desktop_entry(const char *id, char *name, size_t nname,
 void sh_theme_from_cache(void);
 
 /*
- * Live retint. A long-lived surface (the panel, the notification daemon) calls
- * sh_theme_watch() once and then checks sh_theme_dirty each time round its
- * loop: on set, clear it, sh_theme_from_cache(), ktui_draw_invalidate(). The
- * short-lived front ends (launcher, menu, osd, pick) need neither — they read
- * the accent when they start, which is after the change.
+ * Live retint, two ways in.
+ *
+ * A surface `kdos theme` SIGNALS BY NAME (the panel, the desktop icons, the
+ * notification daemon) calls sh_theme_watch() once and then checks
+ * sh_theme_dirty each time round its loop: on set, clear it,
+ * sh_theme_from_cache(), ktui_draw_invalidate().
+ *
+ * Everything else calls sh_theme_poll() once per loop instead. It needs no
+ * signal and therefore no entry on that list — which matters, because SIGHUP
+ * kills a process that installs no handler, so the list and the handlers are
+ * two things that have to agree and already did not. A dialog is not
+ * short-lived merely because it is modal: kdos-settings is where an accent
+ * gets changed, and it was left wearing the old one.
  */
 extern volatile sig_atomic_t sh_theme_dirty;
 void sh_theme_watch(void);
+void sh_theme_poll(void);
 
 #endif /* KDOS_SHELL_H */

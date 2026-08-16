@@ -93,9 +93,45 @@ static snd_mixer_elem_t *find_cap_elem(snd_mixer_t *h)
 	return NULL;
 }
 
+/*
+ * ALSA prints its own failures, and on a machine with no card it prints EIGHT
+ * lines per attempt — `cannot find card '0'`, `Invalid CTL default`, four
+ * `No such file or directory`. The panel retries every 30s forever, so a
+ * booted VM's session log grew by ~0.8 lines a second with nothing else in
+ * it. That is not a cosmetic complaint: the log is where a crash gets
+ * diagnosed, and the wallpaper assert that started this investigation was
+ * already competing with pages of noise for the reader's attention.
+ *
+ * The first occurrence is kept, because a real card that fails is worth one
+ * line, and everything after it is dropped. Silencing the lot outright would
+ * hide the one message that means something.
+ */
+static void alsa_quiet_handler(const char *file, int line, const char *fn,
+			       int err, const char *fmt, ...)
+{
+	static int spoken;
+	(void)file; (void)line; (void)fn; (void)err; (void)fmt;
+	if (spoken)
+		return;
+	spoken = 1;
+	fprintf(stderr, "kdos-shell: ALSA reports no usable mixer; "
+		"the volume applet stays off (further ALSA messages "
+		"suppressed)\n");
+}
+
+void sh_alsa_quiet(void)
+{
+	static int done;
+	if (done)
+		return;
+	done = 1;
+	snd_lib_error_set_handler(alsa_quiet_handler);
+}
+
 static snd_mixer_t *mixer_open_raw(void)
 {
 	snd_mixer_t *h = NULL;
+	sh_alsa_quiet();
 	if (snd_mixer_open(&h, 0) < 0)
 		return NULL;
 	if (snd_mixer_attach(h, "default") < 0 ||
