@@ -13,7 +13,23 @@
 export PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 export LD_LIBRARY_PATH=/usr/lib:/lib:/usr/local/lib64:/usr/local/lib
 export PKG_CONFIG_PATH="/usr/share/pkgconfig:/usr/lib/pkgconfig:/usr/lib64/pkgconfig:/usr/local/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig"${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
-export TERM=xterm-256color
+# TERM describes the TERMINAL and belongs to whoever opened it — agetty says
+# `linux` on a VT, foot says `foot`, ssh forwards the client's. Exporting one
+# value here overrode all three, and on tty1 that broke the one thing on this
+# distro that reads it: libktui takes TERM=linux to mean the 512-glyph console
+# (ktui_term.c), and without it kinstall picks the eighth-block ramp the font
+# does not carry (invisible bars), emits A_BOLD — which on a 512-glyph VT
+# changes the FONT PAGE, not the weight — skips the PIO_CMAP palette, and
+# reports SGR mouse to a console that has none instead of reading evdev.
+# So: only fill it in when nobody set one, which is the serial console, where
+# inittab runs `bash -l` with no getty in front of it.
+if [ -z "$TERM" ] || [ "$TERM" = "dumb" ]; then
+	case "$(tty 2>/dev/null)" in
+	/dev/tty[0-9]*) TERM=linux ;;
+	*)              TERM=vt100 ;;
+	esac
+fi
+export TERM
 export LANG=C.UTF-8
 export LINES=${LINES:-24}
 export COLUMNS=${COLUMNS:-80}

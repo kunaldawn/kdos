@@ -75,6 +75,24 @@ fi
 
 cp -r $WORKSPACE/fs/* $SYSROOT/
 
+# cp overwrites CONTENT and keeps the DESTINATION's mode, so a permission
+# change in fs/ never reached a tree that had already been synced once. That
+# is not cosmetic: rcS runs `[ -x "$_script" ] || continue`, so 57_oomd.sh
+# arriving 644 meant kdos-oomd never started and nothing said so. Replay the
+# execute bit — 755/644 is exactly what cp itself produces for a NEW file
+# under the umask this build runs with, so a first sync and a re-sync agree.
+# Regular files only: chmod follows a symlink, and every alien-app shim in
+# usr/local/bin points at kdos-appbox.
+( cd "$WORKSPACE/fs" && find . -type f ) | while IFS= read -r rel; do
+    rel="${rel#./}"
+    [ -f "$SYSROOT/$rel" ] || continue
+    if [ -x "$WORKSPACE/fs/$rel" ]; then
+        chmod 755 "$SYSROOT/$rel"
+    else
+        chmod 644 "$SYSROOT/$rel"
+    fi
+done
+
 mkdir -p "$(dirname "$MANIFEST")"
 # -printf is a GNU extension and the build image's find is busybox's, which
 # silently wrote an EMPTY manifest — and an empty manifest protects nothing.

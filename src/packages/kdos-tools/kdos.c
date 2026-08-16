@@ -148,8 +148,18 @@ static void reload_session(void)
 	 * Separate pkills rather than one pattern: `kdos-*` would also signal
 	 * kdos-appbox and every alien app launched through it.
 	 */
+	/*
+	 * A name goes here ONLY if that program installs a SIGHUP handler —
+	 * the default disposition is death, so this list and sh_theme_watch()
+	 * are two things that must agree. kdos-slit is here because it calls
+	 * sh_theme_watch() and was on nobody's list, so the dockapp column
+	 * kept the accent it started in. Every other front end follows the
+	 * state file's mtime instead (sh_theme_poll), which needs no entry
+	 * here and cannot be got wrong in this direction.
+	 */
 	static const char *const who[] = {
-		"kdos-shell", "kdos-desk", "kdos-notifyd", "kdos-comp"
+		"kdos-shell", "kdos-desk", "kdos-notifyd", "kdos-slit",
+		"kdos-comp"
 	};
 	for (size_t i = 0; i < sizeof(who) / sizeof(who[0]); i++) {
 		KbArgv a = {0};
@@ -746,6 +756,16 @@ static void write_themerc(const KcolScheme *sc)
 		"window.active.button.close.unpressed.image.color: #%s\n"
 		"window.button.hover.bg.color: #%s\n"
 		"\n"
+		/*
+		 * labwc's own default cap is 200 PIXELS, sized for the ~10px
+		 * font a normal theme uses. This desktop draws menus at 32px,
+		 * where 200px is eleven characters — measured on a booted ISO,
+		 * the root menu read "Applicati...", "Lock Scr..." and
+		 * "Reload C...". The cap only truncates; a generous one costs
+		 * a narrow menu nothing, because the width is the content's.
+		 */
+		"menu.width.min: 120\n"
+		"menu.width.max: 900\n"
 		"menu.border.width: 1\n"
 		"menu.border.color: #%s\n"
 		"menu.items.bg.color: #%s\n"
@@ -761,13 +781,19 @@ static void write_themerc(const KcolScheme *sc)
 		"osd.border.width: 1\n"
 		"osd.border.color: #%s\n"
 		"\n"
+		/*
+		 * #rrggbbaa, not the openbox `#rrggbb 40` form: labwc still
+		 * parses that one (40 is a PERCENT, so 0x66) but logs an ERROR
+		 * per occurrence and says it may stop. Two of them were the
+		 * only errors in a whole booted session's log.
+		 */
 		"snapping.overlay.region.bg.enabled: yes\n"
-		"snapping.overlay.region.bg.color: #%s 40\n"
+		"snapping.overlay.region.bg.color: #%s66\n"
 		"snapping.overlay.region.border.enabled: yes\n"
 		"snapping.overlay.region.border.width: 1\n"
 		"snapping.overlay.region.border.color: #%s\n"
 		"snapping.overlay.edge.bg.enabled: yes\n"
-		"snapping.overlay.edge.bg.color: #%s 40\n"
+		"snapping.overlay.edge.bg.color: #%s66\n"
 		"snapping.overlay.edge.border.enabled: yes\n"
 		"snapping.overlay.edge.border.width: 1\n"
 		"snapping.overlay.edge.border.color: #%s\n"

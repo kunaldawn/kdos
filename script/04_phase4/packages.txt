@@ -137,6 +137,13 @@ tmux
 byobu
 kbd
 terminus-font
+# The same face, scalable. pango has not rendered bitmap fonts since 1.44, so
+# labwc's titlebars, root menu and window-switcher OSD could not use the PCF
+# above and silently drew in DejaVu Sans — the one part of the desktop that
+# was not Terminus. Its family is `Terminus (TTF)`, deliberately distinct
+# upstream, so fcft keeps drawing the crisp bitmap for the cell grid and only
+# the pango surfaces ask for this one.
+terminus-ttf
 # Scalable GUI fonts (Sans/Mono/Serif) — terminus is console-only (PSF). Without
 # this, fontconfig has no fonts: foot fails ("failed to load primary fonts") and
 # the cell-grid shell has nothing to draw glyphs with.

@@ -1617,10 +1617,26 @@ too; the grey bar foot showed was foot's own CSD, not labwc's SSD at all (skel
 `foot.ini` carries `[csd] preferred=server`); and **the SSD font is pango's,
 not the cell grid's** — its default is `sans` 10, which put a 13-pixel
 antialiased title on top of every 32-pixel window. `<theme><font>` in rc.xml
-is Terminus at 24 POINTS, which is 32 pixels at 96dpi and therefore exactly the
-`ter-u32n` bitmap the rest of the desktop is drawn in. The same block covers
-MenuItem, MenuHeader and OnScreenDisplay, which are labwc's root menu and its
-window switcher.
+sets it at 24 POINTS, which is 32 pixels at 96dpi, so the titlebar is one cell
+tall. The same block covers MenuItem, MenuHeader and OnScreenDisplay, which are
+labwc's root menu and its window switcher.
+
+**It asked for `Terminus` for a release and never got it.** Terminus is a PCF
+bitmap and **pango has not rendered bitmap fonts since 1.44**; this tree ships
+1.57, so every titlebar and every menu silently fell back to DejaVu Sans.
+Measured on a booted ISO rather than reasoned about: the panel's text has **3**
+luminance levels and zero midtone pixels, the titlebar's has **143** and 230 —
+one is a bitmap, the other is not. fontconfig was never the problem
+(`fc-match Terminus` resolves on the target), so no `70-yes-bitmaps` snippet
+would have helped. The block now names `DejaVu Sans Mono`, which pango can
+actually draw; the real fix is a scalable Terminus (terminus-ttf is the same
+shapes as OTB/TTF) and that is a port and a tarball this tree does not carry.
+
+**labwc's `menu.width.max` default is 200 PIXELS** and it is sized for a ~10px
+font. At 32px that is eleven characters, and the shipped root menu read
+`Applicati...`, `Lock Scr...`, `Reload C...` on a real screen. `write_themerc()`
+sets 120/900 now. A cap only truncates — the width is still the content's — so a
+generous one costs a short menu nothing.
 
 **`<core><promptCommand>` is `kdos-prompt`, because labnag is not built.**
 labwc's `<action name="If"><prompt>` spawns the prompt command and dispatches

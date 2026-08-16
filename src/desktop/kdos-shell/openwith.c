@@ -895,6 +895,8 @@ int openwith_main(int argc, char **argv)
 
 	int rc = 1;
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
+		sh_theme_poll();
 		int list_rows = ktui_h - 6;
 		if (list_rows < 1)
 			list_rows = 1;
