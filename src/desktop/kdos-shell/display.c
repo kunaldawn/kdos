@@ -937,6 +937,8 @@ int display_main(int argc, char **argv)
 	ktui_draw_init();
 
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
+		sh_theme_poll();
 		/*
 		 * An apply that succeeded does NOT close the dialog: the mode
 		 * may be one the monitor cannot show, so the answer is a

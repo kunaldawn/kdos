@@ -852,6 +852,11 @@ int pick_main(int argc, char **argv)
 
 	int rc = 1;
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). The
+		 * file chooser is the dialog most likely to be open when one
+		 * happens — every boxed app's Open reaches it through the
+		 * portal. */
+		sh_theme_poll();
 		int list_rows = ktui_h - 5;
 		if (list_rows < 1)
 			list_rows = 1;

@@ -196,13 +196,40 @@ out:
 	return w;
 }
 
-/* Cover: scale by the LARGER ratio and centre; overhang is cropped. */
+/*
+ * Cover: scale by the LARGER ratio and centre; overhang is cropped.
+ *
+ * The clamp is the whole point and it is not defensive coding. On paper the
+ * visible box can never exceed the image — the larger ratio wins, so one axis
+ * comes out exactly whole and the other smaller — but `oh / (oh / ih)` is two
+ * roundings in IEEE double and lands a hair ABOVE ih often enough to matter:
+ * a 2561x1601 wallpaper on a 2404x1890 output gives y = -1.14e-13.
+ * wlr_scene_buffer_set_source_box() asserts x, y, width and height are all
+ * >= 0, so that hair ABORTS the compositor before the desktop ever draws —
+ * "kdos-desktop does not start", on some screen sizes and not others (134 of
+ * them in a 320..3840 x 240..2160 sweep against the shipped image).
+ */
 static void
 cover_src_box(int iw, int ih, int ow, int oh, struct wlr_fbox *src)
 {
+	if (iw <= 0 || ih <= 0 || ow <= 0 || oh <= 0) {
+		/* A zero divides to inf, and inf fails >= 0 as surely as a
+		 * negative does. The whole image is the honest fallback. */
+		src->x = src->y = 0;
+		src->width = iw > 0 ? iw : 0;
+		src->height = ih > 0 ? ih : 0;
+		return;
+	}
+
 	double sx = (double)ow / iw, sy = (double)oh / ih;
 	double s = sx > sy ? sx : sy;
 	double vw = ow / s, vh = oh / s;
+	if (vw > iw) {
+		vw = iw;
+	}
+	if (vh > ih) {
+		vh = ih;
+	}
 	src->x = (iw - vw) / 2;
 	src->y = (ih - vh) / 2;
 	src->width = vw;

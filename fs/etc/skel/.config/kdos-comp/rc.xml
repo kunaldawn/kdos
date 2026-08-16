@@ -36,7 +36,7 @@
   </core>
 
   <!--
-    THE ONE CELL SIZE.
+    THE ONE CELL SIZE — and the one surface that cannot have it.
 
     Everything else on this desktop is a character grid at Terminus 32px: the
     panels, the menus, the launcher, the desktop icons, the lock screen, the
@@ -46,16 +46,30 @@
     of every 32-pixel window, which is the one place the desktop stopped
     looking like one machine.
 
-    Pango sizes are POINTS: at 96dpi, 24pt is 32 pixels, which is exactly the
-    ter-u32n bitmap. The colours of these same surfaces are generated —
-    ~/.config/kdos-comp/themerc-override, written by `kdos theme`.
+    Plain `Terminus` was asked for here and NEVER ARRIVED. Terminus is a PCF
+    bitmap and **pango has not rendered bitmap fonts since 1.44** (this ships
+    1.57), so the request fell through to DejaVu Sans on every titlebar and
+    every menu — measured on a booted ISO, where the panel's text has 3
+    luminance levels and the titlebar's has 143. fontconfig was never the
+    problem: `fc-match Terminus` resolves correctly on the target.
+
+    Hence the `terminus-ttf` port: the same face, converted to TTF, which pango
+    CAN draw. Its family is `Terminus (TTF)` — upstream names it that way on
+    purpose — and that separation is doing real work here. fcft draws the cell
+    grid from the PCF and stays crisp; only these pango surfaces ask for the
+    scalable one. A fontconfig alias from `Terminus` to the TTF would have
+    "fixed" this line and turned the whole panel antialiased.
+
+    Pango sizes are POINTS: at 96dpi, 24pt is 32 pixels, which keeps the
+    titlebar the height of one cell. The colours of these same surfaces are
+    generated — ~/.config/kdos-comp/themerc-override, written by `kdos theme`.
   -->
   <theme>
-    <font place="ActiveWindow"><name>Terminus</name><size>24</size></font>
-    <font place="InactiveWindow"><name>Terminus</name><size>24</size></font>
-    <font place="MenuHeader"><name>Terminus</name><size>24</size></font>
-    <font place="MenuItem"><name>Terminus</name><size>24</size></font>
-    <font place="OnScreenDisplay"><name>Terminus</name><size>24</size></font>
+    <font place="ActiveWindow"><name>Terminus (TTF)</name><size>24</size></font>
+    <font place="InactiveWindow"><name>Terminus (TTF)</name><size>24</size></font>
+    <font place="MenuHeader"><name>Terminus (TTF)</name><size>24</size></font>
+    <font place="MenuItem"><name>Terminus (TTF)</name><size>24</size></font>
+    <font place="OnScreenDisplay"><name>Terminus (TTF)</name><size>24</size></font>
   </theme>
 
   <!-- Named, because the panel's strip can show a name where it shows a digit,

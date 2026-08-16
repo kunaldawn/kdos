@@ -7,6 +7,7 @@ labwc_sources = files(
   'kdos-winpos.c', # KDOS
   'kdos-group.c', # KDOS
   'kdos-idle.c', # KDOS
+  'kdos-layerfocus.c', # KDOS
   'kdos-lid.c', # KDOS
   'kdos-crt.c', # KDOS
   'action.c',

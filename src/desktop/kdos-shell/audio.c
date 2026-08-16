@@ -132,6 +132,7 @@ static snd_mixer_t *au_mixer_open(int card, snd_mixer_elem_t **elem)
 	snd_mixer_t *h = NULL;
 
 	snprintf(hw, sizeof(hw), "hw:%d", card);
+	sh_alsa_quiet();
 	if (snd_mixer_open(&h, 0) < 0)
 		return NULL;
 	if (snd_mixer_attach(h, hw) < 0 ||
@@ -1195,6 +1196,8 @@ int audio_main(int argc, char **argv)
 	time_t last_bt = time(NULL), last_dev = last_bt;
 
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
+		sh_theme_poll();
 		int out_rows = (ktui_h - 7) / 2;
 		if (out_rows < 2)
 			out_rows = 2;

@@ -425,7 +425,7 @@ static void draw(const char *query, int sel, int top)
 		return;
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), " run ", KT_ACCENT, KT_SURFACE, 1);
+	ktui_draw_box(krect(0, 0, w, h), " launch ", KT_ACCENT, KT_SURFACE, 1);
 
 	/* The query line, with a block for a caret — the cell grid has no
 	 * hardware cursor to place. */
@@ -530,6 +530,8 @@ int launcher_main(int argc, char **argv)
 	filter(query);
 
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
+		sh_theme_poll();
 		/* Keep the selection on screen and inside the list — every one
 		 * of these is reachable by typing until the match set shrinks
 		 * under the cursor. */

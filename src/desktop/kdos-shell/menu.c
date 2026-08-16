@@ -1036,6 +1036,8 @@ int menu_main(int argc, char **argv)
 	ktui_draw_init();
 
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
+		sh_theme_poll();
 		int rows_vis = ktui_h - 2;
 		if (v.sel < v.top)
 			v.top = v.sel;

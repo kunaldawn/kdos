@@ -132,6 +132,10 @@ static struct {
 	 * survives being written on a command line. */
 	char output_name[KWL_MAX_OUTPUTS][KWL_OUTPUT_NAME_MAX];
 	int output_scale[KWL_MAX_OUTPUTS];
+	/* The current mode, in physical pixels — divided by the scale it is
+	 * the logical box an overlay has to fit inside. See place_clamp(). */
+	int output_w[KWL_MAX_OUTPUTS];
+	int output_h[KWL_MAX_OUTPUTS];
 	/* The registry id each slot was bound from: without it a global_remove
 	 * cannot be matched back to an output, and an unplugged screen is left
 	 * in the table for named_output() and make_lock() to hand a destroyed
@@ -1503,7 +1507,14 @@ static void out_geometry(void *d, struct wl_output *o, int32_t x, int32_t y,
   (void)make; (void)model; (void)transform; }
 static void out_mode(void *d, struct wl_output *o, uint32_t flags, int32_t w,
 		     int32_t h, int32_t refresh)
-{ (void)d; (void)o; (void)flags; (void)w; (void)h; (void)refresh; }
+{
+	(void)o; (void)refresh;
+	int i = (int)(intptr_t)d;
+	if (i < 0 || i >= KWL_MAX_OUTPUTS || !(flags & WL_OUTPUT_MODE_CURRENT))
+		return;
+	K.output_w[i] = (int)w;
+	K.output_h[i] = (int)h;
+}
 static void out_done(void *d, struct wl_output *o) { (void)d; (void)o; }
 
 static void apply_scale(void);
@@ -1723,6 +1734,58 @@ static const struct wl_registry_listener registry_listener = {
 
 /* ── init ──────────────────────────────────────────────────────────────── */
 
+/*
+ * Keep an overlay on the screen.
+ *
+ * Layer-shell has no coordinates: a corner is an anchor plus a margin, and
+ * wlroots places the surface at exactly that margin — it does NOT pull one
+ * back that would hang the surface off the output. So a dropdown whose
+ * margin_x is "where the word I clicked starts" runs off the right edge as
+ * soon as the word is near it. Measured: the calendar, opened from the clock
+ * in the panel's right wing, drew four columns on screen and the rest past
+ * the edge.
+ *
+ * The output is the named one when a name was given, else the first whose
+ * mode has arrived — two roundtrips happen before this, so on a single-screen
+ * machine it always has. An unknown size clamps nothing, which is exactly the
+ * old behaviour and no worse.
+ */
+static void place_clamp(int surf_w, int surf_h, int *mx, int *my)
+{
+	int idx = -1;
+
+	if (K.cfg.output && *K.cfg.output) {
+		for (int i = 0; i < KWL_MAX_OUTPUTS; i++)
+			if (!strcmp(K.output_name[i], K.cfg.output)) {
+				idx = i;
+				break;
+			}
+	}
+	if (idx < 0) {
+		for (int i = 0; i < KWL_MAX_OUTPUTS; i++)
+			if (K.output_w[i] > 0 && K.output_h[i] > 0) {
+				idx = i;
+				break;
+			}
+	}
+	if (idx < 0)
+		return;
+
+	/* The mode is physical; a layer-surface margin is logical. */
+	int scale = K.output_scale[idx] > 0 ? K.output_scale[idx] : 1;
+	int ow = K.output_w[idx] / scale;
+	int oh = K.output_h[idx] / scale;
+
+	if (ow > surf_w && *mx > ow - surf_w)
+		*mx = ow - surf_w;
+	if (oh > surf_h && *my > oh - surf_h)
+		*my = oh - surf_h;
+	if (*mx < 0)
+		*mx = 0;
+	if (*my < 0)
+		*my = 0;
+}
+
 static int make_panel(void)
 {
 	static const uint32_t ANCHOR[] = {
@@ -1825,6 +1888,8 @@ static int make_panel(void)
 		 */
 		int cols = K.cfg.cols > 0 ? K.cfg.cols : 64;
 		int rows = K.cfg.rows > 0 ? K.cfg.rows : 16;
+		int mx = K.cfg.margin_x, my = K.cfg.margin_y;
+		place_clamp(cols * kcell_w(), rows * kcell_h(), &mx, &my);
 		if (K.cfg.corner == KWL_CORNER_TOP_RIGHT) {
 			zwlr_layer_surface_v1_set_anchor(
 				K.layer_surface,
@@ -1832,28 +1897,27 @@ static int make_panel(void)
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
 			zwlr_layer_surface_v1_set_margin(
 				K.layer_surface,
-				K.cfg.margin_y ? K.cfg.margin_y
-					       : KWL_OVERLAY_MARGIN,
-				K.cfg.margin_x ? K.cfg.margin_x
-					       : KWL_OVERLAY_MARGIN,
+				my ? my : KWL_OVERLAY_MARGIN,
+				mx ? mx : KWL_OVERLAY_MARGIN,
 				0, 0);
 		} else if (K.cfg.corner == KWL_CORNER_TOP_LEFT) {
 			/*
 			 * The dropdown case. margin_y is normally the panel's
 			 * own height, so the menu hangs off the bar rather
 			 * than covering it, and margin_x is where the word
-			 * that was clicked starts. The compositor clamps a
-			 * margin that would push the surface off the output,
-			 * so a menu opened from the far right does not have to
-			 * be clamped here as well.
+			 * that was clicked starts — already clamped by
+			 * place_clamp(), because the compositor does NOT do it
+			 * (this comment used to claim it did; the calendar,
+			 * opened from a clock at the far right of the panel,
+			 * hung off the edge of the screen with most of it
+			 * unreachable).
 			 */
 			zwlr_layer_surface_v1_set_anchor(
 				K.layer_surface,
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
 			zwlr_layer_surface_v1_set_margin(K.layer_surface,
-							 K.cfg.margin_y, 0, 0,
-							 K.cfg.margin_x);
+							 my, 0, 0, mx);
 		} else if (K.cfg.corner == KWL_CORNER_BOTTOM_CENTER) {
 			/*
 			 * ONE edge, not two: anchoring left and right as well
@@ -1866,9 +1930,7 @@ static int make_panel(void)
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
 			zwlr_layer_surface_v1_set_margin(
 				K.layer_surface, 0, 0,
-				K.cfg.margin_y ? K.cfg.margin_y
-					       : KWL_OVERLAY_MARGIN,
-				0);
+				my ? my : KWL_OVERLAY_MARGIN, 0);
 		}
 		zwlr_layer_surface_v1_set_size(K.layer_surface,
 					       (uint32_t)(cols * kcell_w()),
@@ -1888,10 +1950,45 @@ static int make_panel(void)
 								 thickness);
 	}
 
-	if (K.cfg.keyboard)
+	/*
+	 * ON_DEMAND, not EXCLUSIVE — the same lesson as the BACKGROUND branch
+	 * above, arriving on a different surface and costing more.
+	 *
+	 * EXCLUSIVE means "hold the seat's keyboard here until I go away", and
+	 * labwc obeys it precisely: seat_focus() REFUSES every view focus while
+	 * an exclusive layer surface is focused. Every front end in this
+	 * desktop that takes a keyboard is one of these overlays, so with a
+	 * menu, the launcher, the run box or the file chooser on screen,
+	 * NOTHING ELSE COULD BE FOCUSED. Measured on a booted ISO: with the
+	 * Applications menu open, a foot window that mapped afterwards reported
+	 * `"focused":false` in `kdos hey list` and its titlebar stayed
+	 * inactive. And because focus never moved, the menu never received
+	 * wl_keyboard.leave, so `dismiss_on_unfocus` — the whole click-away
+	 * mechanism — could never fire. What the user sees is a menu that will
+	 * not close, over a window that will not take a keystroke.
+	 *
+	 * ON_DEMAND still hands these surfaces the keyboard the moment they
+	 * map: they are in the OVERLAY layer, and labwc focuses an on-demand
+	 * layer surface that sits above the toplevels (is_above_toplevels()).
+	 * What it stops doing is nailing the keyboard down.
+	 *
+	 * Below version 4 there is no ON_DEMAND to ask for and the request is
+	 * read as EXCLUSIVE regardless, so that case keeps the old behaviour
+	 * and says so — a menu that holds the keyboard is bad, a menu that
+	 * never receives a keystroke is worse.
+	 */
+	if (K.cfg.keyboard && K.layer_version >= 4) {
+		zwlr_layer_surface_v1_set_keyboard_interactivity(
+			K.layer_surface,
+			ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND);
+	} else if (K.cfg.keyboard) {
+		fprintf(stderr, "kwl: layer-shell v%d has no on-demand keyboard; "
+				"this surface holds the seat's keyboard until it "
+				"exits\n", K.layer_version);
 		zwlr_layer_surface_v1_set_keyboard_interactivity(
 			K.layer_surface,
 			ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE);
+	}
 
 	zwlr_layer_surface_v1_add_listener(K.layer_surface, &layer_listener, NULL);
 	return 0;
