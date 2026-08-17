@@ -57,6 +57,10 @@ struct row {
 
 static struct row rows[MAX_ROWS];
 static int nrows, sel, top;
+/* The viewport follows the SELECTION only when the selection is what moved —
+ * see sh_list_wheel. A clamp that followed unconditionally would undo a page
+ * scroll on the next frame. */
+static int sel_follow = 1;
 static char cwd[1024];
 
 /* The filter, as a list of glob patterns. NULL means everything. */
@@ -65,6 +69,22 @@ static int npatterns;
 static char filter_label[256];
 
 static bool save_mode, dir_mode, multi_mode;
+/*
+ * BROWSE: the same list, opening things instead of answering with them.
+ *
+ * The Start menu's Places rows have always run `kdos-pick --browse <dir>` and
+ * this program had no such flag, so every one of them — Home, Documents,
+ * Downloads, Pictures — hit the unknown-argument branch, printed a usage line
+ * to a stderr nobody was reading, and exited before a surface existed. Four
+ * dead rows in the most-used menu on the desktop.
+ *
+ * It is this program rather than a second one because a file manager and a
+ * file chooser are the same list with a different verb: here Enter on a file
+ * hands it to `kdos-appbox open`, which is already what "open this on this
+ * machine" means, and the dialog STAYS UP — a browser that closed after one
+ * file would be a chooser wearing the wrong name.
+ */
+static bool browse_mode;
 static char save_name[256];
 /*
  * Dotfiles, off by default and reachable — Ctrl+H, which is the same key every
@@ -476,6 +496,9 @@ static void human(long long n, char *out, size_t len)
 /* Where the last frame put the two buttons, so a click maps back to what was
  * drawn rather than to what the layout intended. */
 static int btn_ok_x, btn_ok_end, btn_cancel_x, btn_cancel_end, btn_row;
+/* Which button the pointer is on, or -1. A control that looks the same under
+ * the hand as away from it is one people click to find out what it is. */
+static int hover_btn = -1;
 
 static void draw(const char *title)
 {
@@ -549,6 +572,15 @@ static void draw(const char *title)
 					     KT_A_NONE);
 		}
 	}
+
+	/*
+	 * ONE COLUMN THAT SAYS THERE IS MORE — see sh_list_scrollbar. It goes
+	 * on the list pane's own right edge, which is the divider before the
+	 * preview when there is one and the window's border when there is
+	 * not. A directory of forty files gave no sign that thirty of them
+	 * were below the fold.
+	 */
+	sh_list_scrollbar(lw - 1, list_top, list_rows, nrows, top, KT_SURFACE);
 
 	if (pane_x < w) {
 		ktui_draw_vline(pane_x - 1, list_top, list_rows, KT_G_VL,
@@ -624,6 +656,8 @@ static void draw(const char *title)
 		ktui_draw_text(2, h - 2, w - 26,
 			       edit_mode ? "Enter ok   Esc cancel"
 			       : save_mode ? "Enter save   ^N folder   Esc cancel"
+			       : browse_mode
+				       ? "Enter open   ^H hidden   Esc close"
 			       : multi_mode
 				       ? "Space mark   ^H hidden   Esc cancel"
 				       : "Enter open   ^H hidden   Esc cancel",
@@ -639,21 +673,32 @@ static void draw(const char *title)
 	 * software puts in front of you was the one you could not click.
 	 */
 	const char *ok = save_mode ? " Save " : dir_mode ? " Choose " : " Open ";
-	int okw = ktui_utf8_width(ok) + 2, cw = 10;
+	/* Browsing has nothing to cancel: the second button says Close, and
+	 * both do the same thing a chooser's Cancel does. */
+	const char *cancel = browse_mode ? "[ Close ]" : "[ Cancel ]";
+	int okw = ktui_utf8_width(ok) + 2, cw = ktui_utf8_width(cancel);
 	btn_ok_x = w - 2 - okw;
 	btn_ok_end = btn_ok_x + okw;
 	btn_cancel_x = btn_ok_x - 1 - cw;
 	btn_cancel_end = btn_cancel_x + cw;
 	btn_row = h - 2;
 	if (btn_cancel_x > 26) {
-		ktui_draw_text(btn_cancel_x, btn_row, cw, "[ Cancel ]", KT_TEXT,
-			       KT_SURFACE, KT_A_NONE);
-		ktui_draw_text(btn_ok_x, btn_row, 1, "[", KT_DIM, KT_SURFACE,
+		int cbg = hover_btn == 1 ? KT_DIM : KT_SURFACE;
+		if (cbg != KT_SURFACE)
+			ktui_draw_fill(krect(btn_cancel_x, btn_row, cw, 1), cbg);
+		ktui_draw_text(btn_cancel_x, btn_row, cw, cancel, KT_TEXT, cbg,
 			       KT_A_NONE);
+		ktui_draw_text(btn_ok_x, btn_row, 1, "[",
+			       hover_btn == 0 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       KT_A_NONE);
+		/* The default action is already accent-filled, so its hover is
+		 * the WARN fill — the same "brighter than rest, different from
+		 * focus" rule the shared button bar keeps. */
 		ktui_draw_text(btn_ok_x + 1, btn_row, okw - 2, ok, KT_SURFACE,
-			       KT_ACCENT, KT_A_NONE);
-		ktui_draw_text(btn_ok_end - 1, btn_row, 1, "]", KT_DIM,
-			       KT_SURFACE, KT_A_NONE);
+			       hover_btn == 0 ? KT_WARN : KT_ACCENT, KT_A_NONE);
+		ktui_draw_text(btn_ok_end - 1, btn_row, 1, "]",
+			       hover_btn == 0 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       KT_A_NONE);
 	} else {
 		/* No room: the buttons are the first thing to go, because the
 		 * keyboard path still works and a button drawn over the hint
@@ -744,6 +789,22 @@ static int activate(void)
 		enter_dir(rows[sel].name);
 		return 0;
 	}
+	if (browse_mode) {
+		/* `kdos-appbox open` IS the answer to "what opens this here" —
+		 * the same resolution the portal's OpenURI and a double-click
+		 * on the desktop go through, so a boxed app is found by
+		 * exactly the lookup a host one is. Nothing is printed: a
+		 * browser has no caller waiting on stdout. */
+		if (sel >= 0 && sel < nrows) {
+			char full[2048];
+			snprintf(full, sizeof(full), "%s%s%s", cwd,
+				 strcmp(cwd, "/") ? "/" : "", rows[sel].name);
+			const char *argv[] = { "kdos-appbox", "open", full,
+					       NULL };
+			sh_spawn(argv);
+		}
+		return 0;
+	}
 	if (multi_mode) {
 		int n = 0;
 		for (int i = 0; i < nrows; i++)
@@ -788,6 +849,14 @@ int pick_main(int argc, char **argv)
 			dir_mode = true;
 		else if (!strcmp(argv[i], "--multiple"))
 			multi_mode = true;
+		/* `--browse [DIR]`: the directory is optional and positional
+		 * so the Start menu's rows read as `kdos-pick --browse $HOME`
+		 * rather than as a chooser invocation. */
+		else if (!strcmp(argv[i], "--browse")) {
+			browse_mode = true;
+			if (i + 1 < argc && argv[i + 1][0] != '-')
+				start = argv[++i];
+		}
 		else if (!strcmp(argv[i], "--name") && i + 1 < argc)
 			snprintf(save_name, sizeof(save_name), "%s", argv[++i]);
 		else if (!strcmp(argv[i], "--dir") && i + 1 < argc)
@@ -814,16 +883,32 @@ int pick_main(int argc, char **argv)
 		} else {
 			fprintf(stderr,
 				"usage: kdos-pick [--save] [--directory] "
-				"[--multiple] [--title T] [--name N]\n"
-				"                 [--dir D] "
-				"[--filter 'Label:*.png *.jpg'] [--dump] "
-				"[--font F]\n");
+				"[--multiple] [--browse [DIR]]\n"
+				"                 [--title T] [--name N] "
+				"[--dir D] "
+				"[--filter 'Label:*.png *.jpg']\n"
+				"                 [--dump] [--font F]\n");
 			return 2;
 		}
 	}
 
 	const char *home = getenv("HOME");
 	snprintf(cwd, sizeof(cwd), "%s", start ? start : (home ? home : "/"));
+	/* The window is named after the place it is showing, not after the
+	 * verb: a browser called "Open File" reads as a dialog somebody is
+	 * waiting on. Set only when --title did not, so a caller can still
+	 * name it. */
+	static char btitle[256];
+	if (browse_mode && !strcmp(title, "Open File")) {
+		const char *base = strrchr(cwd, '/');
+		/* An explicit precision, not a bare %s: cwd is 1024 bytes and
+		 * this buffer is 256, and gcc's format-truncation warning is
+		 * an error in the gate. */
+		snprintf(btitle, sizeof(btitle), "%.*s",
+			 (int)sizeof(btitle) - 1,
+			 base && base[1] ? base + 1 : cwd);
+		title = btitle;
+	}
 	load_dir();
 
 	if (dump) {
@@ -860,10 +945,8 @@ int pick_main(int argc, char **argv)
 		int list_rows = ktui_h - 5;
 		if (list_rows < 1)
 			list_rows = 1;
-		if (sel < top)
-			top = sel;
-		if (sel >= top + list_rows)
-			top = sel - list_rows + 1;
+		sh_list_clamp(&top, sel, nrows, list_rows, sel_follow);
+		sel_follow = 0;
 
 		/* What the preview pane wants decoded, from the selection. */
 		pv_want[0] = '\0';
@@ -873,6 +956,15 @@ int pick_main(int argc, char **argv)
 				 strcmp(cwd, "/") ? "/" : "", rows[sel].name);
 		int pv_pending = pv_want[0] && strcmp(pv_want, pv_path) != 0;
 
+		/* Browsing, the title FOLLOWS the folder — the window says
+		 * where you are, and a browser whose name froze on the folder
+		 * it opened in is a browser that lies after the first click. */
+		if (browse_mode && title == btitle) {
+			const char *base = strrchr(cwd, '/');
+			snprintf(btitle, sizeof(btitle), "%.*s",
+				 (int)sizeof(btitle) - 1,
+				 base && base[1] ? base + 1 : cwd);
+		}
 		draw(title);
 
 		KtuiEvent ev;
@@ -913,21 +1005,39 @@ int pick_main(int argc, char **argv)
 				     row >= 0 && row < nrows &&
 				     ev.mx < list_w;
 			if (ev.press == KT_MP_DRAG) {
-				if (on_row)
+				if (on_row) {
 					sel = row;
+					sel_follow = 1;
+				}
+				hover_btn = -1;
+				if (ev.my == btn_row) {
+					if (btn_ok_end > btn_ok_x &&
+					    ev.mx >= btn_ok_x &&
+					    ev.mx < btn_ok_end)
+						hover_btn = 0;
+					else if (btn_cancel_end > btn_cancel_x &&
+						 ev.mx >= btn_cancel_x &&
+						 ev.mx < btn_cancel_end)
+						hover_btn = 1;
+				}
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
-			if (ev.btn == KT_MB_WHEEL_UP) {
-				sel--;
-			} else if (ev.btn == KT_MB_WHEEL_DOWN) {
-				sel++;
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				int up = ev.btn == KT_MB_WHEEL_UP;
+				int lr = ktui_h - 5 > 0 ? ktui_h - 5 : 1;
+				if (!sh_list_wheel(up, &top, nrows, lr)) {
+					sel += up ? -1 : 1;
+					sel_follow = 1;
+				}
 			} else if (ev.btn == KT_MB_RIGHT) {
 				enter_dir("..");
 			} else if (ev.btn == KT_MB_MIDDLE && multi_mode &&
 				   on_row && !rows[row].dir) {
 				sel = row;
+				sel_follow = 1;
 				rows[row].selected = !rows[row].selected;
 			} else if (ev.btn == KT_MB_LEFT) {
 				if (btn_ok_end > btn_ok_x && ev.my == btn_row &&
@@ -970,6 +1080,9 @@ int pick_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
+		/* A key either moves the cursor or refills the list; both want
+		 * the viewport to follow. */
+		sel_follow = 1;
 		int page = ktui_h - 5;
 		if (page < 1)
 			page = 1;

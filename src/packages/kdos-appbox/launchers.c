@@ -248,21 +248,34 @@ static int drop_field_code(const char *w)
 	return !(w[1] == 'U' || w[1] == 'F' || w[1] == 'f' || w[1] == 'u');
 }
 
+/*
+ * QUOTE-AWARE, and it has to be. An Exec value is not a whitespace-separated
+ * list: debian ships `Exec="/usr/bin/gsmartcontrol-root"` and
+ * `Exec=sh -c "wesnoth-1.18 >/dev/null 2>&1"`, and a `strtok(" ")` turns the
+ * first into a path that begins with a quote and the second into five words.
+ * Both were in the shipped table and both looked, from the launcher, exactly
+ * like an application that does not start.
+ *
+ * The split keeps field codes verbatim (`nfiles < 0`) because this REWRITES an
+ * Exec line rather than running one — the placeholders have to survive into
+ * the file — and the join re-quotes anything that would not read back as one
+ * argument.
+ */
 static void clean_exec(const char *in, char *out, size_t cap)
 {
-	char *words[128];
-	int nw = 0;
-	char *copy = kb_strdup(in);
-	char *save = NULL;
+	const char *words[128];
+	char store[2048];
+	int nw = kxdg_exec_split(in, NULL, -1, store, sizeof(store), words,
+				 128);
+	int keep_n = 0;
 
-	for (char *w = strtok_r(copy, " \t", &save); w && nw < 128;
-	     w = strtok_r(NULL, " \t", &save))
-		if (!drop_field_code(w))
-			words[nw++] = w;
+	for (int i = 0; i < nw; i++)
+		if (!drop_field_code(words[i]))
+			words[keep_n++] = words[i];
+	nw = keep_n;
 
-	int start = 0;
 	if (nw && !strcmp(words[0], "env")) {
-		char *keep[128];
+		const char *keep[128];
 		int nk = 0;
 		keep[nk++] = words[0];
 		int i = 1;
@@ -281,17 +294,19 @@ static void clean_exec(const char *in, char *out, size_t cap)
 
 	out[0] = 0;
 	size_t used = 0;
-	for (int i = start; i < nw; i++) {
-		size_t n = strlen(words[i]);
+	for (int i = 0; i < nw; i++) {
+		char q[1024];
+		if (kxdg_exec_quote(words[i], q, sizeof(q)) != 0)
+			continue;
+		size_t n = strlen(q);
 		if (used + n + 2 >= cap)
 			break;
 		if (used)
 			out[used++] = ' ';
-		memcpy(out + used, words[i], n);
+		memcpy(out + used, q, n);
 		used += n;
 		out[used] = 0;
 	}
-	free(copy);
 }
 
 static int ends_with(const char *s, const char *suffix)

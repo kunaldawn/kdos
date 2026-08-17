@@ -212,6 +212,21 @@ desktop entries. Dropping any one output breaks something visible:
   upstream ids too (`firefox-esr`, `org.xfce.mousepad`, `gimp`).
   `StartupWMClass` is still written — it costs nothing and is what an X11 app
   under Xwayland matches by.
+- **AN `Exec=` LINE IS NOT A WHITESPACE-SEPARATED LIST**, and treating it as
+  one is a whole class of alien app that appears not to start. It carries the
+  desktop-entry format's QUOTING — the shipped image has
+  `Exec="/usr/bin/gsmartcontrol-root"`, whose quotes ended up part of the path,
+  and `Exec=sh -c "wesnoth-1.18 >/dev/null 2>&1"`, whose one shell argument was
+  handed to sh in three pieces — and it carries FIELD CODES, which must vanish
+  when nothing was picked (`mpv … -- %U` otherwise tries to play a file called
+  `%U` and exits). `kxdg_exec_split()` is the single implementation: it
+  unquotes, it substitutes `%f`/`%u` with one file and `%F`/`%U` with all of
+  them, it drops `%i %c %k %d %D %n %N %v %m`, and `nfiles < 0` keeps every
+  code verbatim for a tool that REWRITES a line rather than running one.
+  `kxdg_exec_quote()` is the other half, so `genlaunchers` re-quotes what it
+  writes and the table round-trips. Every launch path goes through it —
+  `sh_apps_launch`, `kdos-appbox`'s busybox-style shim, `clean_exec` — and
+  `testing/selftest.sh` asserts both directions against those two real shapes.
 - **Strip X11-forcing env prefixes** (`X11_FORCING`): debian ships audacity as
   `env GDK_BACKEND=x11 audacity`, which kills it under a compositor whose
   Xwayland the app cannot reach. Those apps run fine on pure Wayland.
@@ -1135,17 +1150,29 @@ bug:**
 - **`set_buffer_scale` and the resized buffer must land in ONE commit.**
   `scale_sent` trails `scale` for exactly that: split them and the compositor
   sees a buffer whose size disagrees with its declared scale for a frame.
+- **A MOTION THAT DID NOT MOVE IS NOT A MOTION**, and reporting one is how the
+  wheel gets undone. Every consumer maps a motion to "which row is under the
+  pointer" and selects it — that is the whole of hover — and a wheel notch does
+  not arrive alone: an absolute pointing device (a tablet, which is what every
+  VM presents) sends the position again with the axis event. So the sequence a
+  menu saw was `wheel, motion(same cell)`: it stepped the cursor and then put it
+  straight back under a pointer that had not moved a pixel. Reported as "the
+  highlight jumps back", and invisible from inside any one of the four links in
+  that chain. `pt_motion` drops a motion whose CELL is unchanged; the position
+  is still recorded for the next click, only the event is dropped, and
+  `pt_enter` seeds the comparison so an enter is never swallowed. It is the
+  other half of `sh_list_wheel` — see **The shell answers the mouse**.
 
 | Lib | Prefix | Owns |
 |---|---|---|
 | `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, group membership, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach`** |
 | `libkcolor` | `kcol_` | **the palette table**, hex/HLS, `kcol_mix`, `kcol_muted` (the derived READABLE muted text colour — `dim` is a fill), the hue-family classifier, `kcol_remap`, `kcol_retint_text`, `kcol_sem` (the shared semantic values gtk.css and the adw-gtk3 recolour both read, so they cannot disagree) |
 | `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, **UTF-8 input and `ktui_wcwidth`/`KTUI_WIDE_CONT`**, `ktui_paste_push`, immediate-mode widgets, modals, text furniture, **the three glyph tiers and the charts drawn out of them**, offscreen rendering |
-| `libkxdg` | `kxdg_` | desktop entries, matching what `RawConfigParser(strict=False)` did with them |
+| `libkxdg` | `kxdg_` | desktop entries (matching what `RawConfigParser(strict=False)` did with them), the mime glob table, and **`kxdg_exec_split` — the one correct way to turn an `Exec=` line into argv** |
 | `libkpkg` | `kp_` | the package database, the ports tree, `# depends` parsing, the dependency solver, `kp_vercmp`, the recipe/build-config hashes |
 | `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings — the one library with vendored third-party source (Monocypher) |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
-| `libkcell` | `kcell_` | the fcft glyph cache and the cell painter — a grid of cells into a pixel buffer, and the ASCII ramp built out of it. Needs fcft and pixman |
+| `libkcell` | `kcell_` | the fcft glyph cache and the cell painter — a grid of cells into a pixel buffer, the ASCII ramp built out of it, and **`kcell_canvas_*`, the pixel canvas a block of cells can be drawn as**. Needs fcft and pixman |
 | `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection RECEIVE**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`. **The one library with real `-l` dependencies beyond libkcell's** |
 
 Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
@@ -1587,7 +1614,9 @@ The skel rc.xml keeps the old KDOS bindings (W-Return foot, W-d launcher,
 W-q close, W-Tab cycle, W-1..4 workspaces, W-l lock, media keys → kdos-osd),
 adds what the fork gained (`W-m` ToggleMaximize, `W-f` ToggleFullscreen) and
 adds the three front ends that had no way in: `A-F2` kdos-run, `W-e` mc,
-`Print`/`S-Print` kdos-shot. `W-Escape` goes through the prompt below. Three
+`Print`/`S-Print` kdos-shot. `W-S-n` opens the notification CENTRE — shifted
+because `W-n` is Iconify and a minimise key is pressed far more often than a
+history is read. `W-Escape` goes through the prompt below. Three
 more since: `W-n` Iconify (minimise had a click and no key), `W-space` ShowMenu
 (the root menu is a right-click on a desktop a maximised window covers), and
 `W-p`/`XF86Display` for `kdos-display`. The `<libinput>` block is shipped
@@ -2356,15 +2385,17 @@ is the test that matters and has not been run.
 
 ## The shell answers the mouse, everywhere
 
-**`kdos-shell` is one binary under twenty names, and `TOOLS[]` in `main.c` is
-the list** — not this paragraph, and not any comment. It grew by nine in one
-arc, so read the table rather than trusting a count anywhere in prose:
+**`kdos-shell` is one binary under many names, and `TOOLS[]` in `main.c` is the
+list** — not this paragraph, and not any comment. It grew by nine in one arc,
+by four in the next, by one in the one after that and by two in the one after
+that, so read the table rather than trusting a count anywhere in prose:
 
-`kdos-shell` (the panel; `--bottom` is the second one) · `kdos-launcher` ·
-`kdos-menu` · `kdos-desk` · `kdos-pick` · `kdos-ascii` · `kdos-run` ·
-`kdos-prompt` · `kdos-notifyd` · `kdos-osd` · `kdos-cal` · `kdos-display` ·
+`kdos-shell` (the taskbar) · `kdos-start` · `kdos-launcher` · `kdos-menu` ·
+`kdos-desk` · `kdos-pick` · `kdos-ascii` · `kdos-run` · `kdos-prompt` ·
+`kdos-notifyd` · `kdos-notify` · `kdos-osd` · `kdos-cal` · `kdos-display` ·
 `kdos-keys` · `kdos-teams` · `kdos-saver` · `kdos-slit` · `kdos-doc` ·
-`kdos-settings` · `kdos-openwith` · `kdos-audio`.
+`kdos-settings` · `kdos-openwith` · `kdos-audio` · `kdos-net` · `kdos-bt` ·
+`kdos-devices` · `kdos-clip` · `kdos-status` · `kdos-tip`.
 
 **A name in `TOOLS[]` with no `<name>_main` is a link error, not a missing
 feature** — the table and the file are one edit. And a name here that
@@ -2383,9 +2414,46 @@ One contract, so a hand that learns it in the menu already knows the launcher:
 |---|---|
 | motion | selects (it arrives as `KT_MP_DRAG` — libkwl's spelling for plain movement, and testing `ev.press` for truth made every mouse MOVE a click) |
 | left press | activates |
-| wheel | scrolls the selection |
+| wheel | steps the cursor while the list FITS; scrolls the page when it does not — see below |
 | right press | backs out one level, then closes |
 | click away | closes — see below |
+
+**ONE ANSWER TO "WHAT DOES THE WHEEL DO", because it was answered fifteen
+times.** `sh_list_wheel` / `sh_list_clamp` in chrome.c: a list that fits gets a
+cursor step, a list that scrolls gets its VIEWPORT moved three rows with the
+cursor left on the row it was on. The `sel_follow` flag each front end carries
+is the load-bearing half — a draw that pulls the selection into view on every
+frame undoes the page scroll on the very next one, which is why the flag is set
+by everything that MOVES the cursor and by nothing that scrolls the page.
+
+**And hover only re-selects when the pointer has actually MOVED** — see the
+`pt_motion` note under **The C libraries**. Without it the position that rides
+along with an axis event put the highlight straight back on the row under a
+stationary pointer, so the selection snapped back the instant the wheel moved
+it. Two correct behaviours fighting, reported as "the highlight jumps", and
+neither half fixes it alone: the dedup stops the snap-back, and the viewport
+rule is what makes a wheel over a long list useful once it has stopped.
+
+**AND A LIST THAT SCROLLS SAYS SO.** `sh_list_scrollbar` is one column — the
+shade glyph for the track, the full block for the thumb, both in the vt tier so
+it draws the same on tty1 and in a golden — and it is what the wheel rule made
+NECESSARY rather than nice: the page can now move without the cursor, so
+without a bar the content slides for no visible reason. Nothing is drawn when
+everything fits, because a full-height thumb says exactly what no bar says. It
+goes on the FRAME's own right edge in the surfaces that have one (launcher,
+menu, clip, openwith, teams, settings) and on the pane divider in the two that
+do not (the Start menu's columns, kdos-pick's file list) — and where the rows
+would otherwise reach that column, the ROWS give up a cell rather than the bar
+overdrawing them: a selected row is an accent fill and a bar drawn on top of it
+puts a notch in the highlight.
+
+**`--dump` at a size that forces it is how the Start menu's columns were caught
+running over their own footer.** `body` was `h - 3` where the rows occupy 1 to
+`h - 4` — the title takes row 0, the rule sits at `h - 3` — so the last row of
+a full column was drawn straight through the rule. Invisible for as long as
+neither column was long enough to reach it, and the right column got there
+first when Suspend and Restart landed. Nothing in the compiler, the goldens or
+a booted session would have shown it; `KDOS_DUMP_SIZE=66x10` did, immediately.
 
 **A keyboard overlay that loses focus closes itself** (`kb_leave` in libkwl,
 gated on having seen an ENTER first, because the compositor decides when an
@@ -2404,9 +2472,56 @@ anything — the menu is a separate process and does not report back — so hove
 is what the bar actually knows, and it is what makes three words read as three
 buttons.
 
+**A WINDOW BUTTON IS A BUTTON.** An inactive chip was filled with KT_SURFACE —
+the panel's own background — so it had no shape at all and the row read as a
+line of floating words. KT_DIM is the palette's FILL colour and is exactly what
+a raised tile wants; the label on it is KT_TEXT at better than 4:1, so nothing
+is traded for the shape. Hover takes KT_MID, which is brighter than rest and
+dimmer than focused so it cannot be misread as "this is the window you are in".
+
+**SEPARATORS AT EVERY SEGMENT BOUNDARY** — after Start, after quick-launch,
+before the status wing, before the clock. The bar had two and the right-hand
+half read as one undifferentiated run of glyphs. The wing's rule goes ONE
+COLUMN BEFORE it, not on it: `wing_left` is the first column the wing occupies
+and drawing there put the rule through the meters tile and sliced the C and P
+off `CPU`.
+
+**HOVER AND A LAUNCH PULSE, BEHIND THE PICTURE.** The quick-launch row answered
+the pointer with nothing at all, and a launcher that looks identical before and
+after a click is one people click twice. The affordance is a fill BEHIND the
+icon — tinting the icon would change what the app looks like — and a launch
+alternates fill and accent at about four hertz for a beat and a bit. The panel
+shortens its own poll to 60 ms only WHILE one runs; an idle bar still wakes
+once a second.
+
+**PIN AND UNPIN.** `~/.config/kdos/favorites` is written by `sh_fav_set` in
+chrome.c and by nothing else — pinning happens in a MENU and the row is drawn
+by the PANEL, two processes, so a second implementation would be a second
+answer to what a pin is. Temp + fsync + rename like every other state file. The
+window menu carries the Pin row (resolved through `sh_desktop_entry`, because
+favorites is a list of desktop IDS and an app_id is not always one), a right
+click on a pinned icon unpins it, and the panel notices by stat'ing the file
+once a second.
+
+**`task_labels = auto | yes | no`** in panel.conf: AUTO is the ladder, NEVER is
+a dock, ALWAYS keeps the label and lets `+N` carry the overflow.
+
 **The window list answers all three buttons**, as taskbars have since Windows
-95: left toggles (minimise the window you are in, restore the one you are not),
-middle closes politely so an editor still gets to ask, right minimises. The
+95: left toggles (minimise the window you are in, restore the one you are not,
+and open the member list for a group), middle closes politely so an editor
+still gets to ask, and **right opens the WINDOW MENU** — `kdos-menu --winmenu
+<app_id>`, which carries Restore / Minimize / Maximize↔Restore Down /
+Fullscreen / Close plus Minimize all and Close all for a group, over the
+window titles. Right used to MINIMISE, which is a second way to do what left
+already does on the button every other desktop reserves for these verbs: there
+was no way at all to maximise or restore a window from this bar, which on a
+machine where most windows belong to boxed applications is the bar you are
+holding. The menu reads the toplevel's own state, so `Maximize` says
+`Restore Down` when the window is maximised rather than being a toggle nobody
+can see the direction of. **Move and Size are deliberately absent**:
+wlr-foreign-toplevel-management has no request for either, and a menu row that
+did nothing would be worse than the compositor's titlebar drag (and `W-Left`
+drag), which is the move. The
 workspace strip answers the wheel, which is also the only way to reach
 workspace 5 and up — the strip has room for four digits and does not scroll.
 
@@ -2419,6 +2534,403 @@ Xwayland needs: it reports its WM_CLASS as its app_id, and the entry that owns
 that names it in `StartupWMClass` rather than in its file name (GIMP's says
 `gimp-3.0`; the toplevel says `gimp`). The second pass is a directory scan and
 runs only when the cheap lookup missed, once per window.
+
+### Tiles — a block of cells drawn as PIXELS
+
+**The grid's one real limit is that a control is as tall as one row of text**,
+and the Start button is where that shows. On the two-row bar it was a 32x64
+slab of accent with a 32-pixel mark and a 32-pixel word sitting in its top
+half, because a cell is a cell and there is no way to say "this word is forty
+pixels tall and centred in the button". It reads as a mistake and it is not
+one — it is the grid being honest.
+
+**The answer is not a second renderer, and it did not need one.** libktui
+already has a mechanism for a picture that occupies WHOLE CELLS: a sprite. Its
+slot and sub-cell coordinate ride inside the cell's codepoint, so **the
+ordinary row diff is already its damage mechanism**, `ktui_sprite_put` already
+accepts up to **16x16 cells**, and a text backend already renders the fallback
+codepoint. Nothing about any of that changed. What was missing was a way to
+RASTERISE something other than an icon file into one.
+
+So `kcell_canvas_*` is a pixman image exactly N x M cells at the output scale,
+with fills and **text at an arbitrary pixel size** (its own fcft font cache,
+keyed by size, six deep), handed to `ktui_sprite_put` when it is finished.
+`kicon_pixmap()` is the same lookup as `kicon_slot` returning the PIXELS, so a
+tile can compose an icon and a word at pixel positions. `src/desktop/kdos-shell/
+tile.c` is the shell's front end.
+
+Three rules, and the first is the one that bites:
+
+- **TWO SLOTS PER TILE, ALTERNATING.** A sprite cell encodes the SLOT, not the
+  picture, so redrawing a canvas in place changes no cell, the row diff sees
+  nothing and the frame is never re-presented — a clock tile would freeze at
+  the minute it was first drawn. The obvious fix, `ktui_draw_invalidate()`,
+  repaints the whole surface once a second for a fifteen-cell chart. So a tile
+  owns two canvases and two keys and swaps on every content change: exactly the
+  rows it covers repaint.
+- **The geometry is decided BEFORE the tile is claimed.** `sh_tile_begin()`
+  records the content hash it was given, so bailing out after it leaves the
+  tile believing it drew that content and the next frame presents a stale slot.
+- **A TILE IS NEVER REQUIRED.** `sh_tile_slot()` answers -1 on a terminal, under
+  `icons = no`, with no font, with a full table and when the canvas will not
+  allocate, and every caller draws the glyph layout it had before. That is what
+  keeps `--dump`, tty1 and the golden frames honest — and it is why the content
+  hash excludes the accent: `kdos theme` drops every tile through
+  `sh_tile_reset()`, the same moment and the same reason as `kicon_retint()`.
+
+Two consumers so far, and a bar with a dozen of these would be a bar that had
+stopped being a character grid: the Start button, and the meters strip.
+
+**TWO FONT TRAPS, both measured before the code was written, both silent.**
+
+- **A repeated fontconfig property APPENDS; it does not replace.**
+  `chrome_font` is `Terminus:pixelsize=32`, so the obvious
+  `"%s:pixelsize=%d"` yields `Terminus:pixelsize=32:pixelsize=39` —
+  `fc-match -v` reports `pixelsize: 32 64` and derives `size` from the FIRST.
+  Every canvas would have come out at the cell's own size, with the text still
+  rendering, which is the whole feature quietly not working. The size the name
+  carries is STRIPPED before the requested one is appended.
+- **A bitmap font cannot be asked for an arbitrary size.** Terminus is a PCF
+  and answers a request for 39 with the nearest strike it has. So the result
+  is MEASURED: a font that came back much shorter than what was asked for is
+  retried restricted to `:scalable=true`, and whichever is closer wins. A
+  machine with no scalable face keeps the bitmap, which is the honest answer
+  and is what a minimal install has. (This is the same fact that made the
+  compositor's SSD font `DejaVu Sans Mono` — pango has not rendered bitmaps
+  since 1.44 — arrived at from the other side.)
+
+**AN ICON WITH NO LABEL IS CENTRED ON THE BAR'S FULL HEIGHT; an icon with a
+label beside it shares that label's row.** Quick-launch is pictures and nothing
+else, so a 2x2 box puts it on the same optical line as the Start button's
+centred content; a task button's icon stays on its label's row, because an icon
+floating between a name and a title is the misalignment this bar was reported
+for in the first place.
+
+**EVERY OTHER SPRITE ON THE BAR IS TWO CELLS WIDE AND ONE TALL.** A cell is 16x32,
+so 2x1 is exactly 32x32 — a square, on the same row as the text beside it.
+Asking for `2 x h` on the two-row bar gives libkicon a 32x64 box in which it
+centres a 32x32 picture, so every icon landed straddling the boundary between
+the rows while every label sat in the top one: nothing was wrong with either
+half and the whole bar read as though none of it lined up, which is what it was
+reported as. The same rule holds in kdos-start, kdos-settings' tiles and the
+device apps' header band.
+
+**THE METERS ARE FIVE, AND THE SET IS `meters =` IN panel.conf.** `cpu ram
+disk net diskio`, default `cpu ram net`, and the ORDER IS THE ORDER OF
+IMPORTANCE because a narrow bar drops them from the right. `disk` is `/`'s
+usage by statvfs, sampled every ten seconds because it moves in megabytes over
+minutes; `diskio` is `/proc/diskstats` read/written, **whole disks only** —
+the file lists `sda` beside `sda1` and summing the lot counts every byte twice
+or three times, so a device with `/sys/class/block/<name>/partition` is
+skipped, along with `loop`, `ram` and `zram`. A diskstats sector is 512 bytes
+BY DEFINITION of that interface whatever the drive's own sector size, and
+reading `queue/hw_sector_size` instead is the classic way to be eight times
+wrong on a 4K disk.
+
+**A NICE SCALE WITH HYSTERESIS IS MOST OF WHAT "THE GRAPH FLICKERS" WAS.** A
+rate chart autoscaled to its own window moves its AXIS on every sample, so a
+perfectly steady stream still draws a shape that jumps — the data is flat and
+the ruler is not. The axis snaps to a ladder of round numbers (16k, 64k, 256k,
+1M …) and changes only when the data leaves the band: grow as soon as a sample
+does not fit, because a clipped chart is a lie, and shrink only under a THIRD
+of the scale, because one threshold in each direction oscillates between two
+rungs for a stream sitting on the boundary. Percentages are pinned 0–100 and
+never scale at all.
+
+**A FILLED AREA UNDER A LINE, NOT A ROW OF BARS.** At one sample per pixel a
+bar chart is grass — every column is its own object and the eye has nothing to
+follow. The fill is the colour at a third of its weight and the line rides on
+top; a steep edge draws the run down to the previous column's top, so the line
+is continuous rather than a stack of dots. **The plotted series is smoothed and
+the printed number is not**: a three-point mean takes the hash off the line
+while a one-second spike still moves it by a third of its height, and smoothing
+the NUMBER instead would be lying about the instant.
+
+**AND A FLAT BAND HAS TO SHOW THE TIME PASSING, or the chart looks broken.**
+Reported as *"when the net activity stops the graphs don't move and just go back
+and forth one pixel"*, and both halves of that sentence were real. Flat data
+draws the same picture every frame, so an idle link rendered a still image — and
+because `met_hash` saw the same zeroes it was not even re-rasterised. The answer
+is what every monitor that reads well at rest does: a faint **gridline every ten
+seconds, keyed to the ABSOLUTE sample number** so it marches left with the
+samples beside it, drawn under the trace, with `met_seq` in the hash so the tile
+redraws. The other half is the trace itself: a sample worth less than a pixel is
+drawn as one (a non-zero sample is never nothing), so a dribble was a row of
+isolated dots blinking in and out with nothing joining them — **every column now
+puts the line down even at zero**, and the baseline and midline are drawn BEFORE
+the graph rather than after, or they would paint over the very line at rest.
+
+**THE PLOT AREA IS DRAWN EVEN WHEN THE PLOT IS NOT.** Six percent of a 64-pixel
+band is four pixels along the bottom edge of the screen: the chart was working
+and was invisible, and an idle machine showed a label, a number and nothing
+else. Every band gets a faint backdrop and a baseline, so the BOX reads at a
+glance and the fill is seen against something.
+
+**A `rows`-TALL TILE IS PLACED AT `row + 1 - rows`, NOT AT `row`.** The strip's
+`row` is the panel's SECOND row, which is what the one-row glyph fallback
+needs. A two-row tile drawn from there hangs off the bottom of the panel and
+`ktui_draw_sprite` silently drops the out-of-bounds cells — so the tile
+rendered its top half into the lower row and threw the other half away. It
+looked like a chart that worked at half height in the wrong place, and it took
+adding the plot backdrop to see at all.
+
+**THE STATUS WING IS TWO ROWS AND THE WINDOW LIST STOPS AT IT.** The meters
+were drawn on row 1 and the chips were given everything left of the APPLET
+row's edge — so with seven windows open the window list ran straight across the
+charts and painted over them: `CPU` gone, `RAM` starting mid-word under a task
+button, photographed. A status area a window list can overwrite is not a status
+area. The wing's left edge is now whichever of its two rows reaches further
+left; the strip is handed the room the window list needs as its floor, so on a
+narrow bar it degrades — fewer meters, shorter charts, then nothing — rather
+than squeezing the thing a taskbar exists to show.
+
+**AND EVERY APPLET USES BOTH ROWS, because the wing owns both.** Each readout
+was one row of text with thirty-two pixels of nothing under it — `NET eth0`,
+`VOL 45%`, four workspace dots — beside a clock that used both rows and
+therefore looked like the only finished thing on the bar. There are two shapes
+and the split is what each carries: **a NUMBER goes under its picture, a NAME
+goes beside it.** `applet_tile()` is the compact one — an icon centred over the
+reading — and `applet2()` is the wide one, an icon with a headline and a detail
+line, for the two readouts that carry somebody's name (the media title, the
+application holding the microphone). The pager is little SCREENS: one filled
+cell per workspace in its own state colour with its number under it, and the
+second cell of the stride left as background, because filling both turned three
+inactive workspaces into one unbroken dark bar with three digits under it. Tray
+icons are 2x2 and centred on the wing's full height, since an item is a picture
+with no label.
+
+**AND A WING THAT WIDE COSTS THE CHARTS, which is why the compact shape
+exists.** The first version was all wide applets, the wing came to forty-three
+of an eighty-column bar's cells, and the meters strip was refused outright the
+moment a window was open — visible only with `KDOS_PANEL_DEBUG=1`, which said
+`meters tile: no room (right_x=35 x_min=33)`. Stacked, the same readouts are
+three cells each and all three meters fit again with a window open. The
+interface's NAME went with them, deliberately: the icon already says wired or
+wireless, the number already says the link is alive, and the name is in the
+popup a click opens.
+
+**AN APPLET TILE IS THREE CELLS WIDE WHATEVER IT SAYS, AND A TILE THAT SIZES
+ITSELF TO ITS OWN READING MOVES THE WHOLE BAR.** The wing is laid out right to
+left and everything left of it — the meters strip, the separator, the window
+list — starts where that walk stopped, so a network readout going from `↓63` to
+`↓7` narrowed the wing by a column and slid every chart on the panel one cell
+sideways. Photographed four seconds apart: `CPU` at one column and then at the
+next, with the graphs apparently scrolling backwards. Nothing was wrong with
+the charts, and both of the reports it produced — "the panel jerks" and "the
+graphs move front and back" — were this. `applet2()` has a fixed text field for
+the same reason: a track title changes while the panel is up.
+
+**AND THE ODD WIDTH IS THE POINT.** `kicon_slot(icon, 3, 1)` centres the same
+32x32 picture in a 48-pixel box, so the icon is centred in the TILE rather than
+in its left half — which is the other half of "the numbers are not aligned":
+with a two-cell tile and a one-character value, `(width - vw) / 2` is zero, so
+the removable-media count sat under the icon's LEFT edge and read as belonging
+to the tray item beside it. Three also centres exactly the values that occur
+(a count is one column; a rate, `off` and the volume's level bar are three),
+where an even width leaves every one of them half a cell off. A rate that
+needs all three columns drops its arrow rather than being clipped — the
+direction is still under it in the strip's own two colours.
+
+**THE NOTIFICATION AREA ANSWERS THE POINTER.** The Start button, the window
+buttons and the quick-launch row all lit under the hand and the right third of
+the bar did not, so a dozen controls looked like a readout and the only way to
+learn that the clock opens a calendar was to click it. Every applet, the
+workspace squares, the tray items, the show-desktop column and the meters strip
+now take a hover FILL — never `KT_A_REVERSE` over a label, which lights the
+cells a glyph covers and leaves the spaces between words dark. The strip's own
+hover is inside the tile's content hash, or the frame it belongs to is never
+re-presented.
+
+**THE STUTTER CHIP, AND NOTHING ELSE ON ANY DESKTOP HAS ONE.** kdos-comp
+reports every late frame on `$XDG_RUNTIME_DIR/kdos-frames.sock` — one NDJSON
+object per miss — and `kdos stutter` joins that to PSI and `/proc` and names who
+was busy. It is the one thing on this machine that can answer "why did that
+jerk", and it was reachable only by knowing the subcommand's name and typing it
+AFTER the moment had passed. The panel holds the socket open, counts the drops
+of the last ten seconds, and shows a cell when there have been at least three;
+a click opens the attribution. The cell goes away when the desktop stops
+missing frames, which is the honest shape — an indicator that is always up says
+nothing. The read is non-blocking with a reconnect no oftener than every ten
+seconds (the frame loop is what this must never slow, the same rule the
+compositor keeps on its end), and there is still no JSON parser in this binary:
+`"dropped":` is scanned for literally, and the line it scans is written three
+files away in the same repository.
+
+**`[box]` IN THE START MENU, which only this distro has to say.** Every fat
+application here lives in a container and the first launch of one costs a
+container start — 18.3 s cold, measured. A menu that showed no difference
+between that and a host program was hiding the one thing a person is entitled
+to know before they click. The launcher has marked them for a release; the
+decision moved into the SHARED index (`sh_app.alien`, from an `Exec` that is
+the box launcher rather than from the alien-apps table, whose first column is
+the shim name and not the desktop id), so the Start menu and the launcher
+cannot disagree about it.
+
+**THE STRIP ANSWERS THREE BUTTONS, because a meter raises three questions and
+answers none of them.** Left is `btop` — which process. MIDDLE is `kdos
+stutter`, the only thing on this machine that can say why a frame was late and
+who was busy when it was; it had no surface at all and was reachable only by
+knowing the subcommand's name. RIGHT is `kdos-energy`, the same for the per-app
+energy share. Both are real features of this distro that the desktop never
+pointed at.
+
+**`+N` OPENS THE WINDOW LIST.** It used to STEP the row by one per click, so
+reaching the third hidden window meant three clicks and three reflows, and
+there was no way to see what was in there at all. `kdos-teams` is the window
+list this desktop already has — it took `--at`/`--at-bottom` for this, the same
+one flag that decides popup-or-window for the device managers. The wheel over
+the row still steps, which is the gesture that wanted stepping.
+
+**A DRAG ON THE QUICK-LAUNCH ROW REORDERS IT**, which is the only property of
+that row a person can have an opinion about and was editable only by hand.
+Wayland delivers plain motion and dragged motion identically, so the BUTTON is
+what is remembered — the volume slider's rule: a press arms, motion tracks the
+target, the RELEASE decides. That is also why a launch moved from the press to
+the release; a launch on press fires before a drag can begin. Released off the
+row it does nothing, which is what dragging an icon into empty space means
+everywhere else. `sh_fav_move` is the writer, beside `sh_fav_set`, because a
+second implementation would be a second answer to what the order is.
+
+**THE METERS STRIP IS TWO ROWS AND THE CLICK TEST NAMED ONE.** `row` is the
+strip's row for the GLYPH fallback, which is one row of text; the tile is drawn
+from `row + 1 - rows`. The hit test asked for `cy == row`, so the top half of
+every chart — all of CPU and RAM, the received half of the network — was inert:
+a click there fell through the applet walk, matched nothing and did nothing.
+Aiming at the middle of a chart is what people do. It records the ROWS it drew,
+like every other span on this bar.
+
+**AND A MIRRORED METER HAD NO LABEL.** `CPU` and `RAM` named themselves and the
+third band was two arrows and two numbers, so the one meter whose unit is not
+obvious — bytes a second, of what? — was the one with nothing to say it. Top
+left, where the other two put theirs, and dropped rather than overlapped when
+the band is too narrow for both it and the reading.
+
+**AND THE REMOVABLE-MEDIA COUNT COUNTED THE DISC IT BOOTED FROM AND A FLOPPY
+THAT IS NOT THERE.** `media_count` was "removable, full stop", so the panel read
+`2` on a machine with nothing plugged in while `kdos-devices` — which asks
+kdos-mountd, and that refuses the boot medium and anything in fstab — offered
+nothing at all. A readout that disagrees with the window it opens is worse than
+no readout. Measured on the booted ISO, the `2` was `fd0` (every i440fx machine
+QEMU builds has one, `removable = 1`, eight sectors long) and `sr0` (the disc it
+was running from). Four refusals now, and the last two are kdos-mountd's own:
+a device the system has mounted somewhere that is not `/media`; an empty drive
+(size zero); anything named `fd*`; and, in a live session — root is an
+`overlay`, which is the only evidence there is, because `switch_root` MS_MOVEs
+the real root and **the live ISO cannot be found in `/proc/mounts` at all** —
+every optical device. It cost four columns of the right wing, which is what had
+pushed the meters strip off the bar.
+
+**A TRAY ITEM MAY RESOLVE TO A THEMED NAME FIRST**, and exactly one class of
+them does. fcitx5 is the item every KDOS session has; it publishes no usable
+`IconName`, so the id fallback found its own art — a full-colour penguin with a
+paintbrush, between a phosphor network card and a phosphor speaker. `fcitx`,
+`fcitx5` and `ibus` map to `input-keyboard` before the app-art lookup runs.
+This is not a licence to restyle other people's marks: it is the narrow case
+where the item is a SYSTEM function and the theme has the right glyph for it.
+
+**AND ONE FLOOR, NOT TWO — the first version of that change emptied the
+taskbar.** `draw_chips` kept its own early guard at the LABEL floor while the
+wing had started reserving the ICON one, so a bar with five cells left for the
+window list passed the pass's acceptance test and then drew nothing at all:
+three windows on screen and a row with no buttons on it, photographed on the
+booted ISO. The wing's reservation is also one cell wider than the test's
+figure now (`avail` is `wing_left - x - 2`, so a floor of `x + need + 1` leaves
+the list one short of the `need` it is then measured against). Both are the
+same rule stated twice, which is what made it possible to state it two
+different ways.
+
+**THE WINDOW LIST'S FLOOR IS ITS ICON FLOOR, and the difference is whether a
+1280 screen ever sees a chart.** The right wing reserved six cells a window —
+the LABEL floor — before it would let the meters have anything, so with two
+windows open on an eighty-column bar the strip was dropped whole while every
+window button kept its name. Photographed. That is the wrong trade in both
+directions: the list degrades to icon mode by itself (three cells, every button
+still there, the picture and its state marker) and a chart is worth more than a
+word whose icon is already saying it. `CHIP_MINW_ICON` is what both the meters
+and the pass's acceptance test measure against now — they have to be the same
+figure, or a pass throws away the layout the strip was measured for.
+
+**FOUR PASSES, AND THE ORDER IS THE PRIORITY.** `pass 0` is the whole bar;
+`pass 1` drops the METERS; `pass 2` also collapses the Start button to its
+mark; `pass 3` also drops the quick-launch row. It used to be two passes with
+the meters inside both, so a single window that did not fit took the Start
+word AND the whole quick-launch row with it while a fifteen-cell chart stayed
+— exactly backwards. Each rung gives up the least useful thing left: a chart,
+then a word whose icon says the same thing, then shortcuts that are all in the
+menu. Nothing here may drop a window BUTTON.
+
+**AND THE WINDOW LIST DROPS ITS TEXT BEFORE IT DROPS A WINDOW.** The
+degradation used to be full labels → labels squeezed to the six-cell floor →
+straight to a `+N` cell with windows hidden behind it, which on the shipped
+80-column bar meant a seventh window went out of sight while the row still had
+room for a picture of it. Windows 7, KDE and XFCE all drop the TEXT first and
+keep every button, and so does this: **icon mode**, three cells a window, the
+picture centred over both rows with the □/▪ state marker under it, and the
+first letter of the name for a window with no artwork. `+N` is what happens
+after that.
+
+**The SECOND ROW is a detail line, not padding.** With one row of content on a
+two-row bar the lower half was 32 pixels of nothing the width of the screen.
+It carries the clock's date, a window button's own title under the app's name
+(`Firefox` over `KDOS — Mozilla Firefox`, or `3 windows` for a group), and the
+**meters strip** — fifteen cells drawn as a TILE: CPU, RAM and the network as
+real area graphs, sixty samples in sixty pixels rather than eight ramp levels
+in eight cells. **RX and TX are two measurements**, mirrored about a midline,
+received above in the accent and sent below in the secondary on ONE shared
+scale: summing them was hiding the only thing anybody watches a network meter
+for, because "269 kB/s" does not say whether this machine is downloading or
+being uploaded from. The bands are not equal thirds — a percentage is four
+characters and a pair of byte rates is eleven, so CPU and RAM take four cells
+each and the network takes seven. A click on it opens btop, which is
+the program that answers the question a meter can only raise. The strip is laid
+out LEFT TO RIGHT from a computed origin rather than right to left like the
+applet row, because it degrades as a unit — the chart gets shorter, then the
+least important meter goes — and a right-to-left walk would drop the one on the
+left, which is CPU.
+
+**THE METERS SAMPLE ON A CLOCK, NOT ON THE DRAW LOOP.** A rate is a difference
+over an elapsed time and this loop is woken by EVENTS: the poll timeout is a
+second, but a pointer crossing the bar, a window appearing or a tray property
+arriving all return from it early. The old CPU readout re-sampled `/proc/stat`
+on every one of those and divided by whatever interval had happened to pass — a
+few jiffies over a few milliseconds — so moving the mouse made `CPU 0%` and
+`CPU 100%` flash at pointer speed. It was not a rendering fault and no redraw
+throttling would have fixed it: the NUMBER was wrong. The meters keep their own
+monotonic deadline, the label is an exponential average (a one-second CPU
+sample genuinely jumps between 4% and 60% on an idle desktop) and the SPARKLINE
+plots the raw samples, because the point of a chart is the spikes. Memory is
+`MemAvailable`, never `MemTotal - MemFree` — Linux spends every spare page on
+cache and that arithmetic reports a healthy machine at 95%.
+
+**AND THE DEADLINE HAS TO BE THE POLL'S TOO, which is the other half of that
+bug and is the whole of "the graph does not flow, it sticks and then jumps".**
+The loop waited a flat second while the sampler wanted a sample every half one,
+so any event at all — a pointer crossing the bar, a window mapping, a tray
+property — returned early, found the deadline not yet due, and then spent the
+NEXT wait in full: the sample landed at 990 ms and the one after it at 1490.
+A chart draws one sample per PIXEL, so an irregular sample interval is an
+irregular chart, and moving the mouse was enough to cause it. The wait is
+shortened to whatever is left of the interval, exactly as it already is for the
+launch pulse and as libkwl's own poll is for a key repeat. **And the interval
+is half a second, not a whole one**: the band is around sixty pixels wide and
+one sample is one pixel, so at a second apart a chart takes a minute to fill
+and creeps a pixel at a time, which reads as a picture that has stopped. It is
+not faster because it is more accurate — a half-second CPU sample is noisier,
+which is what the smoothing is for — it is faster because a chart is a thing in
+motion. The window is MET_HIST samples either way, so it went from two minutes
+to a little over one.
+
+**A LABEL IS `KT_MID`, NEVER `KT_DIM`.** `dim` is a fill at 1.63:1 against the
+backdrop; the clock's date and the meters' labels were drawn in it and were
+below any text floor. Same rule the theme generators already keep — see
+**Theming**'s two-derived-colours note.
+
+**The tray falls back to the item's ID AS AN ICON NAME** before it falls back
+to a letter. fcitx5 is the item every KDOS session has, it publishes no usable
+`IconName`, and the tray therefore drew a bare `F` beside the clock for ever —
+the one question that raises is the one it cannot answer. An SNI `Id` is
+conventionally the program's own name and fcitx5 installs `fcitx.png` into the
+hicolor tree like everything else, so the lowercased id resolves it.
 
 **The right wing of the panel is CONTROLS, not a picture.** Clock and battery
 open `kdos-cal`; `VOL 62%` mutes on a click and takes ±5% from the wheel;
@@ -2435,24 +2947,544 @@ right only while every label is one digit wide, and `<desktops number="12"/>`
 is a supported thing to write — from the tenth on, the strip activated the
 wrong workspace.
 
-**`kdos-desk` claims only the cells its icons occupy** (`kwl_input_cells`).
-It covers the whole output, so with the default input region it ate every click
-on bare wallpaper — and labwc's root-menu mousebind therefore never fired for
-anybody running with desktop icons on, which is the shipped default. The region
-is recomputed only when the layout changes, because setting one is a surface
-commit and doing it per frame puts back the cadence the flicker fix removed.
+**`kdos-desk` claims the WHOLE surface, and that is a reversal.** It used to
+claim only the cells its icons occupy (`kwl_input_cells`), so a click on bare
+wallpaper reached the compositor and labwc's root-menu mousebind fired. The
+cost was that the desktop had no menu of its own: New Folder, Sort Icons and
+Refresh were reachable only by right-clicking an EXISTING icon, and on a fresh
+login the only icons are Home and Trash — both pinned places, so half those
+rows are hidden. A desktop you cannot create anything on reads as read-only,
+which is exactly how it was reported. The claim is back and the desktop answers
+its own wallpaper: a right click on it opens New Folder / New File / Open
+Terminal Here / Sort Icons / Refresh plus Applications, Change Wallpaper,
+Display Settings and Settings — everything labwc's root menu offered, because
+dropping the claim without replacing what it fed would have been the
+regression. `W-space` still opens the compositor's own menu.
+
+**And `~/Desktop` is CREATED if it is not there.** `/etc/skel` shipped no such
+folder, so on a fresh login the readdir failed silently and the desktop held
+Home and Trash for ever; skel carries one now and `reload()` mkdirs it anyway.
+A menu that can make a folder and nowhere to put it is the same bug twice.
+
 Its right-click context menu is drawn INTO its own grid (it owns the screen; a
-popup here is not a second surface), and while that is up the whole surface is
-claimed so a click-away lands on it rather than on the compositor.
+popup here is not a second surface). The menu's rows carry a SCOPE — icon,
+wallpaper or both — because two menus is two places for New Folder to drift.
 
 **A toast dismisses on click**, with the spec's reason 2. The surface takes no
 keyboard — a toast must never steal focus — so the pointer is the only way to
 make one go away early, and a notification that cannot be dismissed is one
 people learn to work around by not looking at that corner of the screen.
 
+### The notification centre — `kdos-notify`
+
+**A NOTIFICATION THAT EXPIRED IS NOT A NOTIFICATION THAT WAS READ.** kdos-notifyd
+threw every toast away the moment its five seconds were up, so anything that
+arrived while the screen was locked, while another workspace was up, or while
+somebody was looking at the other half of the screen was simply gone. That
+lands harder here than elsewhere: every fat application on this distro runs
+inside a container, and a boxed app's notification is often the ONLY thing that
+says the work it was doing has finished.
+
+**The daemon owns the list and a front end draws it** — kdos-clip's split,
+which is the one this desktop already has. A ring of 64 entries in kdos-notifyd
+and a short connection per request on `$XDG_RUNTIME_DIR/kdos-notify.sock`
+(`count` / `list` / `seen` / `open` / `forget` / `clear` / `dnd`), so the centre
+is an ordinary program that can be run by hand, scripted or replaced, and the
+panel can ask for one line once a second without either process knowing
+anything about the other's drawing. Every toast joins the history ON THE WAY
+OUT, whatever took it out — expiry, a click, or the client's own
+CloseNotification — because the ones nobody saw are exactly the ones the centre
+exists to answer for.
+
+**`unseen` is what the badge counts, and the CENTRE clears it.** Entries that
+have arrived since somebody last opened it; cleared by the `seen` command and
+by nothing else, because a count that cleared itself on a timer is a count
+nobody trusts.
+
+**DO NOT DISTURB IS ONLY HONEST WITH A HISTORY BEHIND IT.** Silencing toasts
+without somewhere for them to go would mean losing them; with the ring in place
+the notification is kept, the badge still counts it, and the client cannot tell
+the difference — the id is returned and NotificationClosed is still emitted, so
+nothing hangs waiting. **An URGENT one is shown anyway**: the urgency level
+exists to say "this is not routine", and a Do Not Disturb that hid a
+battery-critical warning would be a switch nobody dares leave on. Middle-click
+on the panel's badge toggles it, which is the same one-gesture rule the volume
+and the microphone keep.
+
+**AND HOVERING ONE HOLDS ITS COUNTDOWN**, which every notification daemon of
+the last fifteen years does and this one did not: a toast that disappears while
+it is being read has to be read twice, and it cannot be. The remaining time is
+banked, `expires_ms` goes to 0 (never), and the leave puts it back with a
+1.5-second floor so a pointer that merely crossed the corner never costs a
+notification. Two rules it needs: the resume walks EVERY held toast rather than
+the one an index names, because the stack moves under the pointer whenever a
+toast is dropped and a stale index would leave one paused for the rest of the
+session; and the border goes to the secondary colour while it is held, because
+a countdown that quietly stops is one nobody can tell has stopped. Urgent keeps
+its own colour — a warning that changed colour under the hand would be saying
+something it does not mean.
+
+**`kdos-settings` OPENS ON A GRID OF ICONS.** A sidebar of seven words is a
+fine way to move between pages once you know what is on them and a poor way to
+find anything the first time, which is why every control panel worth the name
+opens on a field of labelled pictures. The home screen is a tile per category —
+icon, name, and a line saying what is behind it — and the list view is what you
+land in when you pick one; Escape steps BACK to the grid rather than out of the
+program, so the unsaved-changes guard stays at the single exit and does not
+fire every time somebody backs out of a page they only wanted to look at.
+`--page <name>` still lands on the page, because an applet deep-linking into
+Session and making you pick Session again would be a link that does half its
+job. The tile icon names are checked against the SHIPPED ATLAS, not taken from
+the naming spec: Papirus has no `preferences-desktop-theme`, and the blurbs are
+cut to what a tile holds at 80 columns, which is where they have to read.
+
+**`kdos-pick --browse [DIR]` is the file MANAGER half of the chooser**, and its
+absence was four dead rows in the most-used menu on the desktop: the Start
+menu's Places have always run `kdos-pick --browse $HOME` and this program had
+no such flag, so Home, Documents, Downloads and Pictures each hit the
+unknown-argument branch and exited before a surface existed. It is the same
+list with a different verb — Enter on a file hands it to `kdos-appbox open`,
+which is already what "open this on this machine" means, and the dialog STAYS
+UP, because a browser that closed after one file would be a chooser wearing the
+wrong name.
+
+**THE PANEL'S POPUPS ARE ANCHORED TO THE APPLET THAT OPENED THEM.** kdos-net,
+kdos-bt, kdos-audio and kdos-devices all opened CENTRED, as dialogs in the
+middle of the screen with no relationship to the thing that was clicked, which
+is how a panel applet's own window is not supposed to behave. They take
+`--at-bottom X Y` now like kdos-cal and kdos-start, and the panel computes it
+once for every branch of its applet handler. Which flag it passes depends on
+the bar's own edge — `--at` for a top panel — because layer-shell has no
+coordinates and a popup belonging to a bar on the other edge has to grow the
+other way.
+
+**ANCHORED MEANS POPUP; CENTRED MEANS WINDOW.** The four device managers are
+both things and the difference is which one asked. From the panel they are the
+bar's own popup and are sized like one (52x16, 56x18) and dismissed by a click
+elsewhere; typed by name or opened from the Start menu they are the
+application, centred, full size, and staying up — because somebody who went
+looking for kdos-net is going to go looking at something else in the middle of
+using it, and a pairing confirmation must not vanish because the pointer went
+to the device on the desk. One flag decides both.
+
+**A BUTTON BAR DROPS BUTTONS, IT DOES NOT VANISH.** `sh_chrome_buttons` was all
+or nothing, which was right while these were full-screen windows and wrong the
+moment the same list became a fifty-column popup: kdos-net's five buttons come
+to sixty-one columns, so the popup showed NONE of them and fell back to the row
+of key hints the buttons exist to replace. They are ordered most-useful-first,
+so it drops from the RIGHT — Close goes before Connect, and a popup dismisses
+on Esc and on a click away anyway. Never half a button.
+
+**AND IT RETURNS ITS LEFT EDGE, because the status line shares that row.** The
+bar clears its own span, so a status drawn BEFORE it was cut off mid-word:
+`Enter [ Connect ]`, photographed on the fifty-two column popup, where the bar
+now fits and used to be dropped whole. The bar is drawn first and the text is
+clipped to what it left. **A HINT ROW is then drawn WHOLE OR NOT AT ALL** — a
+fragment of one sentence against the start of another is worse than an empty
+half-row — while a MESSAGE takes whatever room there is, because it is what the
+user just did. Same reason `kdos-devices` had its own two longest strings
+shortened: it has no button bar, and at fifty-six columns
+`none — no /dev/video device can capture` came out as `can ca`.
+
+**A CLICK ON THE VOLUME OPENS A SLIDER, NOT A MUTE.** `kdos-osd slider` is an
+anchored, interactive popup — the bezel that the media keys raise is the
+opposite in every respect (it takes no input at all, having once eaten every
+click under it) so they share the ALSA helpers and nothing else. The gauge is
+clickable along its length, because a control that can only be nudged five
+points at a time is one people give up on. Mute is a labelled button beside the
+bar; middle-click on the applet is still the one-gesture mute.
+
+**AND IT IS DRAGGED, which is what a slider is for.** Wayland delivers plain
+motion and dragged motion identically — a `wl_pointer.motion` event carries no
+button state at all, and libkwl spells both `KT_MP_DRAG` — so the BUTTON is
+what has to be remembered: a press on the gauge starts a drag, every motion
+until the release sets the level, and the release ends it. The implicit grab
+means the motion keeps arriving after the pointer leaves the popup, so a hand
+that runs past the end of the bar lands on 100 rather than stopping wherever
+the surface did. The level also wears the right speaker icon, resolved with the
+same four names the panel's own applet uses, so the readout and the popup it
+opens cannot show two different pictures of one number.
+
+**Anything that overdraws part of a row has to own all of it.** The chrome's
+button bar is drawn over the status line, and the single column BETWEEN two
+buttons belonged to neither — so a leftover glyph showed through the gap:
+`[ Rescan ]s[ Wi-Fi Off ]`, photographed. The bar clears its whole span first.
+
 **`kdos-prompt` is the yes/no dialog**, and its interface is its EXIT STATUS
 because that is what kdos-comp already reads: 0 yes, 1 no, 254 cancelled. It is
 what `W-Escape` and the System menu's Log Out / Restart / Shut Down go through.
+
+## One taskbar, a Start menu, and pictures in the grid
+
+**There is ONE panel and it is on the bottom edge.** There were two — a GNOME-2
+menu bar at the top and a GNOME-2 second panel at the bottom — which is two
+exclusive zones, two hit maps and the window list drawn TWICE; on the shipped
+1280x800 with the 32-pixel font that is 8% of the screen spent saying the same
+thing at both ends of it. `panel = bottom | top | off` and `panel_cells = 1..4`
+in comp.conf are the knobs; **`panel_bottom` is retired and the reload reports
+it by name** rather than ignoring it.
+
+Two cells is the default because that is what makes an icon SQUARE: a cell is
+16x32, so two cells across two rows is a 32x64 box with a 32x32 picture centred
+in it. The clock uses both rows (time over date) and everything else is
+vertically centred.
+
+**The notification area is a LIST, not a layout.** `~/.config/kdos/panel.conf`
+carries one line — `right = pager tray privacy mpris cpu restart net volume
+battery clock` — and an unknown widget name is REPORTED, not ignored. That is
+the whole widget system, deliberately: the extension point for anything else is
+`kdos-slit`, where a gadget is a program that prints a line and its config line
+is argv. `mpris` is new and matters here more than elsewhere — every media
+player on this machine is inside the appbox, and MPRIS is the only thing that
+can pause one without finding its window first.
+
+**HALF THE WING WAS OCCASIONAL, AND THAT IS WHY THE BAR APPEARED TO JERK.** The
+stutter chip, the restart mark, the clipboard depth and the removable-media
+count each appear when they have something to say and vanish when they do not —
+four columns every time — so the wing changed width, the meters strip beside it
+slid, and every chart on the panel moved sideways. Reported as *"the orange icon
+always comes with many warnings, and when it disappears it shrinks the bar"*. It
+is the same defect the fixed-width applet tile fixed one level down, one level
+up. So the occasional widgets live behind **one chevron of fixed width that is
+drawn whether or not anything is in it** — `overflow = stutter restart clipboard`
+in panel.conf, the same names `right =` uses, because a widget is either on the
+bar or behind the chevron. Nothing in the wing comes and goes any more.
+`tray_hide = <ids>` does the same for tray items.
+
+**THE CHEVRON IS A TRAY-SHAPED CELL, AND THE ARITHMETIC IS THE ARGUMENT.** Two
+columns and no gap, like the tray items it sits beside — because an
+`applet_tile` would be four, and four columns is the NET chart on an
+eighty-column bar. Two is exactly what hiding fcitx5's tray item gives back, so
+the wing is the width it always was. It carries NO COUNT: a digit is one cell
+wide in a two-cell box, so it would sit half a cell left of the picture above
+it, which is the misalignment the three-cell tile exists to avoid. Colour says
+whether anything is there and whether it wants attention; the tooltip names the
+first two items; the popup has the list.
+
+**AND `draw_more` RETURNS `x - 1`, WHICH IS NOT TIDINESS.** The pager draws its
+own separator AT whatever `right_x` it was handed (`draw_sep(px + pager_w)` is
+that exact column) — this bar's convention for the widget on the left of a
+boundary, and one the tray has always reserved for. Returning `x` put that rule
+through the chevron's left cell: the 2x2 sprite drew all four of its cells and
+the separator overwrote the two on the left, so the picture came up as its own
+right half. Measured on the booted ISO — ink in one cell column where a two-cell
+sprite had put it in two — and completely invisible to anything but a
+photograph.
+
+**`kdos-status` is what the chevron opens, and it is also where `kdos stutter`
+finally got a surface.** The list is published BY THE PANEL — one tab-separated
+line per hidden item into `$XDG_RUNTIME_DIR/kdos-panel.overflow` — for
+kdos-notify's reason: re-deriving "3 restarts" in the popup would be a second
+implementation of the same reading, asking `/proc` again at the moment somebody
+clicked. Its second half is a **live pane**: it forks `kdos stutter`,
+`kdos restarts` or `kdos-energy` onto a pipe and drains it non-blockingly every
+200 ms, so the two most KDOS-specific tools on the machine are read in a popup
+that can be scrolled and stopped instead of in `foot -e kdos stutter` — a
+terminal that covered the desktop and scrolled a fresh paragraph per dropped
+frame until it was closed. Long lines are soft-wrapped ON THE WAY IN, because a
+stutter report is a hundred columns wide and the half that gets clipped is the
+half that names the process.
+
+**THE KEYBOARD ICON DID NOTHING, AND IT COULD NOT.** fcitx5 is the one tray item
+every KDOS session has; it publishes `ItemIsMenu`, so its Activate means "show
+my menu", and that menu is `com.canonical.dbusmenu`, which this tray does not
+render (a stated gap — see the tray section). A picture beside the clock that
+answers nothing is exactly what this desktop keeps deleting, so it is in
+`tray_hide` by default: it is listed in the chevron's popup, where the row can
+at least SAY what it is, and one line of panel.conf brings it back. The tray's
+`(cx - hit_x) / 2` click arithmetic was the item's index because the two were
+the same number; hiding one breaks that, so the drawn order is now recorded in
+`tray_map[]` and the click reads it.
+
+**TOOLTIPS, AND THEY ARE A PROCESS — `kdos-tip`.** Half this bar is 32-pixel
+pictures with no words: the whole notification area, the quick-launch row, a
+window button in icon mode. Every one is a control and the only way to learn
+what any of them did was to click it. libktui has ONE cell buffer per process,
+so a second surface is a second program — the rule every popup here already
+keeps — and the panel spawns one after **700 ms of stillness on one thing**,
+SIGTERMs it when the pointer moves on, and shortens its own poll to the dwell
+deadline exactly as it does for the meters and the launch pulse. The tip takes
+**no input at all** (`kwl_input_cells(NULL, 0)` is an empty input region), or it
+would eat the click aimed at the thing it describes. It is also the only place
+that can admit what a tray item cannot do: an `ItemIsMenu` item's tip says its
+menu is dbusmenu. **Sixty-four columns, not forty-four**: at 44 every tip that
+says what the three buttons do came out cut mid-word (`right-cl`, `mid`),
+photographed. A tip is anchored at the item's own column and `place_clamp`
+pulls it back from the screen edge, so a wide one on the clock is not lost.
+
+**`kdos-settings` writes panel.conf now (`ST_PANEL`), and the panel re-reads it
+on SIGHUP** — the same signal `kdos theme` already sends, so `overflow`,
+`tray_hide`, `meters`, `task_labels` and `right` take effect on the bar that is
+on the screen rather than at the next login. `load_widgets()` restores every
+default before parsing, because it runs again on that signal and a reload that
+only ever ADDED would leave a widget hidden after the line hiding it was
+deleted.
+
+**`kdos-start` is the front door.** There were three ways to start a program
+(`kdos-menu`'s three cascading columns, `kdos-launcher`'s full-screen search,
+the root menu's Applications entry) and none of them was the one a person aims
+at. The left column is what you USE — pinned from `~/.config/kdos/favorites`
+above the rule, most-frequent below it — which needed something nothing on this
+desktop had: a **usage count**, now in `$XDG_STATE_HOME/kdos/appusage` and
+written the fsync-rename way. All Programs opens the category list IN PLACE; a
+cascade needs a surface per level and buys nothing on a grid. Typing searches.
+It is anchored with **`KWL_CORNER_BOTTOM_LEFT`**, which libkwl grew for it: a
+menu belonging to a bar on the bottom edge has to grow upwards, and a client
+cannot express that by anchoring TOP because it does not know the output's
+pixel height.
+
+**THE WAY BACK IS A ROW, because Escape and the right button are not
+discoverable.** All Programs opened the categories, a category opened its
+applications, and from two levels down the only ways out were a key nobody is
+told about and a button whose other meaning here is "menu" — so a pointer-only
+user, which is every first-time user of a Start menu, was stuck. It is the
+first row of the left column, carries `go-previous`, and never closes the menu
+(that is Escape's job and the desktop's). A search gets the same row as
+`Clear search`, which is the pointer's backspace; so does clicking the field,
+which now looks like a field — placeholder text and the block caret the
+launcher's query line uses — rather than a dim caption.
+
+**Suspend and Restart are ordinary rows now**, and they used to be reachable
+only from the compositor's System menu, which is a RIGHT click on the Start
+button. The footer's two buttons cover Log Off and Shut Down; the other two
+verbs were in no menu a pointer could find. That is also what put the row
+struct's `confirm` field to work — it was declared with the rest of the row and
+read by nothing. Suspend asks nothing, being the one power action that undoes
+itself.
+
+**THE FIELD IS A FIELD, AND IT LOOKS DIFFERENT WHEN IT IS ACTIVE.** `Search` in
+dim text with nothing round it is a caption; this one takes typing, so it wears
+the magnifier every filter on this desktop uses, it is sunken, it lights under
+the pointer, and it goes to the accent the moment it is active — a click on it
+or the first character typed. A control that looks identical before and after
+being clicked is one people click again to find out whether it worked. `✕`
+clears it and is drawn ONLY while there is something to clear, because a
+permanent one is a button that does nothing most of the time.
+
+**AND WITH NOTHING TYPED, THAT ROW EXPLAINS THE SELECTION.** Every desktop entry
+carries a `Comment` and this menu threw it away, so `Meld` and `Gwenview` were
+words with pictures beside them. The placeholder comes back the moment there is
+nothing to describe, so the field never stops saying what it is for.
+
+**TYPING SEARCHES THE PLACES AND THE SETTINGS TOO.** A search over the
+application index alone answered `wifi` with an empty list on a machine whose
+network tool is three rows up the right column — and somebody who is typing has
+stopped looking over there. Every fixed row carries its own synonyms
+(`Network` answers to wifi, wireless, internet, ethernet, vpn), matched
+case-insensitively both ways, and the hits are appended under a rule.
+
+**PINNING IS IN THE MENU THAT LISTS EVERY APPLICATION.** `~/.config/kdos/
+favorites` is what the taskbar's quick-launch row draws, and the only writer
+was the WINDOW menu — a right click on a running window's button. So an
+application had to be STARTED before it could be pinned. The mark is at the
+right edge of the row (`starred`/`non-starred`, a filled block against a hollow
+one where there is no artwork): filled for a pinned entry always, hollow on the
+selected row, absent everywhere else. It is checked BEFORE the row's own action,
+or a click on it would launch the application and close the menu under the hand.
+
+**The category you were last in is preselected**, from a one-line state file
+written the same fsync-rename way as the usage count. It does not OPEN that
+category — it selects it in the list, which costs nobody a keystroke and saves
+one for somebody who lives in Graphics.
+
+**One application index.** `apps.c` — `kdos-start`, `kdos-launcher`,
+`kdos-menu` and `kdos-run` were four walks of `/usr/share/applications` with
+four slightly different rules about `NoDisplay`.
+
+**AND THE POINTER REACHES EVERY VERB, which took a sweep rather than a fix.**
+Four surfaces had no hover at all and two had no wheel: `kdos-cal` grew the two
+arrows and the `Today` button every calendar has had since 1995 (it had the
+wheel and no sign that it did anything), `kdos-devices` grew a wheel and a
+second click that mounts — its verbs were on keys nobody is told about —
+`kdos-display` grew a button bar, because a pointer could select a screen and
+then not switch it off, change its mode or apply anything, and `kdos-run` takes
+a click to place its caret and grew `[ Run ] [ In Terminal ] [ Cancel ]` — its
+one feature beyond a prompt was a MODIFIER (Ctrl+Enter) that nothing announced.
+The shared button bar has three states rather than two: focus is what Enter
+presses, hover is what the pointer is on, and a mouse crossing a row must never
+change what a key does.
+
+### Pixel icons are an ENHANCEMENT layer, never a replacement
+
+`ktui_sprite.c` in libktui plus `libkicon`. A sprite cell's codepoint carries
+`0x02 | slot(16) | sy(4) | sx(4)`, which is the whole design: **the ordinary
+row diff is the damage mechanism**, because a different icon at a cell is a
+different codepoint. The slot is keyed by CONTENT (name + size + scale +
+accent), so two frames drawing the same icon produce byte-identical cells and
+the hot path is a `ktui_sprite_find()` with no stat, no decode and no
+allocation. libktui still links nothing but musl — the pointer is `const void *`
+and libkcell, which already links pixman, is what turns it into pixels.
+
+**Every consumer must draw correctly with `kicon_slot()` answering -1**, which
+is what a tty, `icons = no`, a missing atlas and a full sprite table all look
+like. The dump harness stubs libkicon to exactly that, so a golden frame is the
+CHARACTER grid and a layout that only lines up once the pictures load is a
+layout that is broken.
+
+Two sources, different in kind:
+
+| Source | Tinted? | Why |
+|---|---|---|
+| `/usr/share/kdos/icons/atlas.kia` | **yes**, through `kcol_remap` | the theme's own set, rasterised from the vendored Papirus by the host-only `genatlas.py`. One atlas serves all four accents; `kdos theme amber` retints it live |
+| `/usr/share/icons/hicolor/<size>/apps/*.png` | **no** | the alien apps' own icons, installed by `01_appbox.sh`. A phosphor Firefox mark is vandalism — the same split `kdos-theme icons` already keeps |
+
+**The atlas is consulted FIRST, and that order is a bug that shipped once.**
+`01_appbox.sh` flattens every context of the appbox image's icon theme into
+hicolor's `apps/`, so `/usr/share/icons/hicolor/16x16/apps/folder.png` exists —
+looking there first made every folder on the desktop Debian's blue one, at 16
+pixels upscaled to 32, with no tint, beside correctly tinted icons. The atlas
+can never shadow an application: Papirus's `apps/` is deliberately not
+vendored.
+
+**An icon that rasterises to nothing is DROPPED, not shipped.** Papirus's
+smaller icons use `fill:currentColor` with the colour on a CSS class, which
+ImageMagick's SVG path renders as an empty PNG — and an empty picture is worse
+than no picture, because it still takes the slot and the caller never falls
+back to its glyph. `genatlas.py` substitutes the class colour and refuses
+anything still blank. Ten entries were affected; the symptom was four Start
+menu rows silently missing their icon.
+
+### The device managers — `kdos-net`, `kdos-bt`, `kdos-devices`
+
+Everything they drive has been running on this distro since before there was a
+desktop. What was missing was a surface, and `foot -e nmtui` was it.
+
+**Three of them share their chrome, and `chrome.c` is it.** `kdos-net`,
+`kdos-bt` and `kdos-audio` were lists with a box round them and a row of key
+hints at the bottom, and the whole of their interface was "here are the words,
+now guess which letter does the thing". (**`kdos-devices` is the one that never
+adopted it** — no header band, no group headings, no button bar, just its own
+sections and a hint row. Stated rather than implied: it is the odd one out and
+looks it beside the other three.) That is a fine shape for a program somebody types
+the name of and a poor one for the surface a person reaches by clicking
+`NET wlan0` on a taskbar, which is how all of them are actually opened. Three
+things every control panel of the XP / System-7 lineage has and these did not,
+none of them decoration:
+
+- **A HEADER BAND** — accent-filled, two rows, an icon and a SUBJECT LINE that
+  says what its subject is doing right now. "Am I connected" is the question
+  the window is opened to answer and it was somewhere in a list.
+- **GROUP HEADINGS** (`sh_chrome_group`), so eight rows read as two groups.
+- **REAL BUTTONS** (`sh_chrome_buttons`), labelled with verbs, clickable, each
+  ENABLED from the selection — a Connect that fails when pressed teaches people
+  to stop trusting the row it was on. A bar too wide for the window draws
+  NOTHING rather than half of itself, exactly as pick.c's own pair does.
+
+Two rules the shared file exists to keep. The hit map is recorded from what was
+DRAWN (`sh_chrome_button_at`), the same rule the panel's applets keep — and the
+header band moved every list down by three rows, so each of these files now
+records `list_y0` in its draw and reads it in its click test. Deriving that
+origin twice is how a click lands on the row above the one under the pointer,
+which on kdos-net is joining the wrong network.
+
+- **`kdos-net`** is NetworkManager over sd-bus — one `GetManagedObjects` on
+  `/org/freedesktop`, parsed where it arrives. **The list does not reorder
+  under the pointer**: signal strength moves on its own, so it is sorted once
+  per refresh and the selection follows the SSID rather than the index. Known
+  limit, stated: there is no `SecretAgent`, so a passphrase is written into the
+  connection at create time and NM cannot come back and ask for another —
+  802.1X and OTP VPNs still need `nmtui`.
+- **`kdos-bt`** registers an **`org.bluez.Agent1`**, and without one a keyboard
+  cannot be paired at all: bluez asks the agent to confirm a passkey and
+  refuses the pairing when nobody answers. The confirmation is a **deferred
+  reply** — the handler refs the message and returns without replying — because
+  a handler that sat in its own loop would stop answering bluez, which is the
+  lesson `xdg-desktop-portal-kdos` learned on a different interface.
+- **`kdos-devices`** enumerates cameras by V4L2 ioctl (no library: the kernel
+  uapi header IS the API), finds who is holding one by walking `/proc`, and
+  previews a grabbed frame through `kcell_ascii_image` — the shape-vector
+  renderer libkcell already had. Opening a camera to preview it IS using it, so
+  the privacy lamp lights for this program too and the fd is closed with the
+  frame.
+- The `●MIC` lamp is a **control** now (`sh_mic_toggle`), and
+  `XF86AudioMicMute` is bound. An indicator that names the application
+  recording you and cannot stop it is one people learn to ignore.
+
+### Removable media — `kdos-mountd`
+
+**Plugging a stick into this machine did NOTHING.** Not "opened the wrong
+program" — nothing at all: there is no udisks here, mounting is root's, and the
+desktop is not root. It is the fifth root daemon and takes kdos-powerd's shape
+exactly: foreground under `ksvc`, one socket in `/run` gated by `SO_PEERCRED`
+to root and `wheel`, one line per connection, libkbase and nothing else.
+
+**THE CLIENT NEVER NAMES A PATH.** It asks for an INDEX out of a list the
+daemon itself published, and the daemon decides the device, the mountpoint and
+the options. Every "just take a path and a mountpoint" design ends at
+`mount /dev/sda2 /etc` from any shell in `wheel`; there is nothing here to aim,
+because no argument means anything except a row number the daemon wrote a
+moment ago. The list is re-scanned on EVERY request rather than cached — a
+stick pulled out between two requests must not still be offered.
+
+Eligibility is four refusals, and each one is the point:
+
+- **removable or on USB** (`/sys/block/<disk>/removable`, or `usb` on the sysfs
+  path — an external drive in an enclosure reports removable = 0 and is exactly
+  as much somebody else's disk as a stick). An internal disk is the admin's.
+- **a filesystem this kernel can mount**, checked by name against
+  `/proc/filesystems` before mount(2) rather than after it.
+- **not in `/etc/fstab`** — an fstab entry is a decision somebody already made.
+- **not the medium this system BOOTED from**. Offering to unmount the live ISO
+  is offering to kill the session.
+
+**`nosuid,nodev` always, `noexec` by default.** A setuid root binary on a
+stick is a local root hole that predates every other consideration; `exec =
+yes` in `/etc/kdos/mountd.conf` is how somebody says they meant it. The
+mountpoint is `/media/<user>/<label>`, and the label is **sanitised to
+`[A-Za-z0-9._-]`** before it becomes a path component — it is whatever was
+written into a superblock by somebody else's computer.
+
+There is no blkid here either: the label and type come from reading the
+superblock (ext4's magic at 0x438, FAT's at 0x36/0x52, NTFS, exFAT, ISO9660,
+btrfs). Six formats cover what a stick is formatted with and a seventh would be
+a library.
+
+**`--fixture <sys> [dev]` prints what it WOULD offer and mounts nothing**, the
+same seam `kdos stutter --fixture`, `kdos-oomd --fixture` and
+`KDOS_PRIVACY_PROC` use. `testing/fixtures/mountd` is a recorded `/sys/block`
+plus two hand-built superblocks — a FAT32 stick and an ext4 INTERNAL disk that
+must never be offered — and `testing/selftest.sh` asserts the acceptance and
+both refusals. The internal disk carries a real superblock precisely so that a
+broken removable check shows up as an extra row rather than as nothing.
+
+**The front end is `kdos-devices`, not the panel.** A short connection per
+request from a surface that is already waiting for a keystroke is fine; a
+socket round trip per panel tick is exactly what "nothing blocks the frame" is
+about. A media widget on the taskbar is not built, and saying so is better than
+a widget that stutters.
+
+### `/var/run` IS `/run`, and it was not
+
+`sd_bus_open_system()` in basu defaults to
+`unix:path=/var/run/dbus/system_bus_socket` — the pre-2011 path every library
+still compiles in. dbus-daemon listens on `/run/dbus/system_bus_socket`, and
+`/var/run` was a real, empty directory: **every sd-bus client on this machine
+failed to reach the system bus**. `kdos-net` said "NetworkManager is not
+reachable" with NetworkManager running two processes away, and kdos-audio's
+bluetooth pane said the same about bluetoothd. Photographed on a booted ISO,
+then proved by re-running the same binary with `DBUS_SYSTEM_BUS_ADDRESS` set.
+`01_phase1/00_file_system.sh` makes both `/var/run` and `/var/lock` symlinks
+now, which is what every distro has done since `/run` existed and fixes libdbus
+and basu at once.
+
+### Looking at the screen without a human — `testing/vnc-shot.py`
+
+`testing/goldens` catches what a `--dump` can see. Everything it cannot — the
+compositor, the wallpaper under the desktop, the icon layer, a menu anchored to
+the wrong corner — is only visible by looking. This boots the ISO headless with
+a serial socket, a monitor socket and `-vnc`, **types `kdos-desktop` on tty1
+through the monitor's `sendkey`** (the session is started by hand on this
+distro, and a compositor launched from ttyS0 gets no seat), waits for
+`kdos-comp`, and reads the framebuffer over RFB.
+
+Three things it has to get right: `screendump` answers "no surface" under a GL
+display, so the framebuffer is read over RFB, whose `SetEncodings` is
+`type(1) pad(1) count(2)` — an extra padding field desyncs the stream and every
+later read blocks; driving the session means `su - kdos -c`, a LOGIN shell; and
+`-display none -vnc` with plain virtio-vga puts wlroots on **pixman**, so the
+CRT pass declines and the phosphor shader is NOT in the photograph. What is
+photographed is the cell grid underneath it. Three defects in one afternoon
+came out of it and none was visible to a compiler or to a golden.
 
 ## The tray — a StatusNotifierItem host
 
@@ -2493,7 +3525,11 @@ which is exactly the quietly-wrong output a dump exists not to produce.
 rendered. It is a second protocol with a nested-variant layout tree, and drawing
 it as cells is its own piece of work. Apps with their own menu window answer
 ContextMenu correctly; apps that set `ItemIsMenu` expect the host to draw the
-menu and will do nothing.
+menu and will do nothing. **fcitx5 is that item and it is `tray_hide`d by
+default** — a picture beside the clock that answers nothing is worse than no
+picture — so it is listed in the chevron's popup instead, where the row says
+what it is, and its tooltip says why it cannot be clicked. One line of
+panel.conf brings it back.
 
 **`testing/fixtures/tray/traycheck.c` is the test, and it is a second PROCESS.**
 SNI is a conversation between two peers on a bus, and a mock of either side
@@ -2905,6 +3941,19 @@ and needs a container; this checks the WIRING in seconds:
 - nothing still invokes a tool the C consolidation removed
 - the rootfs carries no script whose interpreter is gone
 - the shipped `rc.xml` keeps `<default />` in `<keyboard>` and `<mouse>`
+- **every flag one kdos-shell tool passes another is one the other accepts.**
+  This is the check three dead controls needed. kdos-shell is one binary under
+  two dozen names and they spawn each other by name; an unknown argument in
+  every one of them prints a usage line to a stderr nobody reads and exits 2
+  BEFORE a surface exists. The panel had spawned `kdos-cal --at-bottom X Y`,
+  `kdos-menu system --at-bottom X Y` and `kdos-menu --windows APP --at-bottom
+  X Y` for a release and NEITHER kdos-cal nor kdos-menu had ever accepted
+  `--at-bottom` — only kdos-start and kdos-clip did, which is what made it look
+  like a panel fault rather than a missing flag. Clicking the clock, opening
+  the System menu and clicking any grouped task button all did nothing at all,
+  silently, and no compile and no golden frame could see it. The test is
+  crude on purpose: find the argv literals, take every `--word` in them, and
+  require it to appear as a string in the target's own source
 - **every command named in the shipped `rc.xml` and `menu.xml` is provided by
   the tree** — the check `<promptCommand>labnag</promptCommand>` needed, and the
   one `kdos-desk` needed when it called a `kdos-appbox` subcommand that did not
@@ -3781,7 +4830,10 @@ and respond with the targeted fix.
   `sha256 =` is a recipe key, preflight checks every archive against it, and
   only the three source-less ports of ours lack one.)
 - **The tray does not render `com.canonical.dbusmenu`**, so an app that sets
-  `ItemIsMenu` has no reachable menu. See the tray section.
+  `ItemIsMenu` has no reachable menu. Such an item is now `tray_hide`d (fcitx5
+  by default) rather than drawn as a cell that cannot be clicked, and both the
+  chevron's popup and the tooltip say why — but the menu itself is still not
+  drawn. See the tray section.
 - **A per-output panel shows EVERY window, not that output's.**
   wlr-foreign-toplevel reports `output_enter`/`output_leave` and the shell
   ignores them, so on two screens both taskbars list the same windows. That is
@@ -3849,6 +4901,50 @@ and respond with the targeted fix.
   at all, there is no codepoint+colour-slot serializer, and no goldens are
   committed. Six geometry defects have shipped in this toolkit and none was
   visible to a compiler.
+- **A WHEEL SOURCE IS ALREADY QUANTISED; A FINGER IS NOT.** libkwl's
+  accumulator was written for a touchpad, where `wl_pointer.axis` is a stream
+  of small continuous values and a tick has to be synthesised from a ten-unit
+  threshold. A WHEEL emits one axis event per detent, and running that through
+  the accumulator leaves a remainder — a fifteen-unit notch leaves five, so the
+  next notch crosses twice and a list jumps two rows. `axis_source` says which
+  it is and has since version 5, which is what libkwl binds; the accumulator is
+  now only for the sources it was written for.
+- **AND ONE FRAME IS ONE DETENT — which is the half that actually fixed "two
+  months per scroll".** Reading `axis_source` correctly was not enough, because
+  the doubling does not arrive as two axis events: it arrives as ONE pointer
+  frame carrying `axis_discrete = 2`. Measured in the VM by injecting the two
+  shapes side by side — one wheel click, then two queued back to back in a
+  single `input-send-event` batch, which is what a front end that turns one
+  host scroll into two produces (QEMU's GTK display gets a smooth scroll event
+  AND the discrete one GTK emulates from it; a VNC client with a hi-res wheel
+  does the same). The first moved the calendar August → September; the second
+  moved it March → May. So `pt_frame` now emits ONE tick per frame on the
+  discrete path and throws the count away — `axis_discrete` is only ever sent
+  for a wheel, so that branch IS the wheel path, and a hand that moved two real
+  detents inside one pointer frame is rarer than a notch counted twice.
+  A touchpad is untouched: it sends no discrete at all and keeps the counted
+  path. **Verified after the change: a doubled notch moves one month.**
+  Underneath it is a duplicate GATE — the same direction inside
+  `KWL_WHEEL_MIN_MS` (20 ms, `KDOS_WHEEL_MIN_MS` to move it, 0 to disable) is
+  dropped — which catches the same duplication when it arrives as two separate
+  frames instead. Stated cost: a free-spinning wheel is capped at fifty rows a
+  second. `KDOS_WHEEL_DEBUG=1` traces every axis, discrete, frame, emitted tick
+  and dropped duplicate.
+- **A POPUP'S MARGIN IS MEASURED FROM THE OUTPUT, AND `exclusive_zone` IS WHAT
+  DECIDES THAT.** A layer surface with zone 0 is arranged inside the
+  compositor's USABLE AREA, which already has the panel's own exclusive zone
+  taken out of it — and the panel passes its height as the popup's margin so
+  the popup sits just above the bar. The two applied one after the other, so
+  every popup on this desktop floated exactly ONE BAR HEIGHT above the bar it
+  belonged to: the Start menu, the calendar, the volume slider and kdos-net,
+  photographed, and the whole of "it looks detached". Zone **-1** is the
+  protocol's "do not move me out of anyone's exclusive zone", so the anchor is
+  the output edge and the margin is the only offset there is — which is the
+  arithmetic the caller already did. Set only when a margin was actually GIVEN:
+  a centred dialog, a notification with the default corner margin and the
+  volume bezel are all asking to be PLACED, and being kept off the panel is
+  right for them. The size clamp takes the same margin as its headroom instead
+  of the four rows it used to guess at.
 - **Dead keys yield nothing: libkwl has no xkb-compose.** UTF-8 text entry
   itself works end to end — `xkb_state_key_get_utf32` hands whole codepoints to
   libktui, which encodes and moves the caret by SEQUENCE, and kdos-lock takes a

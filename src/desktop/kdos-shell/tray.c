@@ -828,3 +828,17 @@ void sh_tray_free(struct sh_state *sh)
 	free(t);
 	sh->tray = NULL;
 }
+
+/*
+ * The session-bus connection, for the ONE other widget that needs one.
+ *
+ * The MPRIS cell reads whichever player is up; opening a second connection for
+ * it would mean a second fd, a second unique name and a second thing to
+ * dispatch, in a process whose whole rule is that nothing blocks the frame.
+ * NULL when there is no bus, which is a session with no tray and no media
+ * controls rather than a panel that failed to start.
+ */
+void *sh_tray_bus(const struct sh_state *sh)
+{
+	return sh && sh->tray ? sh->tray->bus : NULL;
+}

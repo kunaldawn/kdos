@@ -16,10 +16,38 @@ source script/util/port.sh
 
 mkdir -pv $SYSROOT/{etc,var,tmp,root,home,run,dev,proc,sys}
 mkdir -pv $SYSROOT/usr/{bin,lib,sbin,include,share,local}
-mkdir -pv $SYSROOT/var/{lib,log,local,run,tmp}
+mkdir -pv $SYSROOT/var/{lib,log,local,tmp}
 mkdir -pv $SYSROOT/var/local/log
 # 1777 on both: rootless podman/skopeo stage pulled image layers in /var/tmp.
 chmod 1777 $SYSROOT/tmp $SYSROOT/var/tmp
+
+# /var/run IS /run, and this is not tidiness — it is a live bug it fixes.
+#
+# `sd_bus_open_system()` in basu defaults to
+# `unix:path=/var/run/dbus/system_bus_socket`, which is the pre-2011 path every
+# library still compiles in. dbus-daemon listens on /run/dbus/system_bus_socket,
+# so with /var/run a real empty directory EVERY sd-bus client on this machine
+# failed to reach the system bus: kdos-net said "NetworkManager is not
+# reachable" while NetworkManager was running two processes away, and
+# kdos-audio's bluetooth pane said the same about bluetoothd. Photographed on a
+# booted ISO.
+#
+# The symlink is what every distro has done since /run existed, and it fixes
+# libdbus, basu and anything else with the old path compiled in, at once.
+# /var/lock goes the same way for the same reason.
+# A directory left by an earlier build has to go first: `ln -sfT` refuses to
+# replace one. This is the build tree, never a running system, so there is no
+# runtime state under it to lose.
+mkdir -pv $SYSROOT/run/lock
+# An `if`, not an `&&` chain: this script runs under `set -e`, and a chain
+# whose FIRST test is false returns non-zero and takes the whole build with it.
+for d in run lock; do
+	if [ -d "$SYSROOT/var/$d" ] && [ ! -L "$SYSROOT/var/$d" ]; then
+		rm -rf "$SYSROOT/var/$d"
+	fi
+done
+ln -svfT ../run "$SYSROOT/var/run"
+ln -svfT ../run/lock "$SYSROOT/var/lock"
 
 cd $SYSROOT
 

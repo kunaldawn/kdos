@@ -65,6 +65,7 @@
 #endif
 
 #include "kbase.h"
+#include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
 
@@ -100,6 +101,16 @@ struct au_dev {
 static struct au_dev au_dev[AU_MAX_DEV];
 static int au_ndev;
 static int au_default_card;	/* what ~/.asoundrc says, or 0 */
+/* comp.conf's `icons = no`, through --no-icons. */
+static int au_icons_on = 1;
+/*
+ * Where the last frame put its two lists. The header band moved them down by
+ * three rows and the click test derived its own origin, so a click landed on
+ * the row above the one under the pointer — and on this window that is
+ * switching the wrong output. RECORDED by the draw, read by the click: two
+ * places computing one geometry is the defect, not the offset.
+ */
+static int au_out_y = 3, au_out_rows, au_bt_y, au_bt_rows;
 
 /* ── ALSA ────────────────────────────────────────────────────────────────
  *
@@ -712,7 +723,7 @@ static int au_bt_reply(sd_bus_message *reply, void *userdata, sd_bus_error *e)
 
 	if (sd_bus_message_is_method_error(reply, NULL)) {
 		snprintf(au_bt_why, sizeof(au_bt_why),
-			 "bluetoothd is not running (service start 60_bluetooth)");
+			 "not running — service start 60_bluetooth");
 		return 0;
 	}
 	au_bt_why[0] = '\0';
@@ -1039,6 +1050,31 @@ static void au_draw_bt(struct au_ui *u, int y0, int rows, int w)
 	}
 }
 
+/* The verbs. Mute and the two scan controls are the ones people come here for;
+ * everything else on this window is a list you pick from. */
+enum { AB_MUTE = 0, AB_DEFAULT, AB_SCAN, AB_PAIR, AB_CLOSE, AB_N };
+
+static int au_buttons(struct au_ui *u, int w, int row)
+{
+	const struct au_dev *d = u->pane == AU_PANE_OUT &&
+					 u->sel[AU_PANE_OUT] < au_ndev
+					 ? &au_dev[u->sel[AU_PANE_OUT]]
+					 : NULL;
+	struct sh_button b[AB_N];
+
+	b[AB_MUTE].label = d && d->muted ? "Unmute" : "Mute";
+	b[AB_MUTE].enabled = d != NULL && d->vol >= 0;
+	b[AB_DEFAULT].label = "Set Default";
+	b[AB_DEFAULT].enabled = d != NULL;
+	b[AB_SCAN].label = au_bt_discovering ? "Stop Scan" : "Scan";
+	b[AB_SCAN].enabled = au_adapter[0] != '\0';
+	b[AB_PAIR].label = "Pair";
+	b[AB_PAIR].enabled = au_nbt > 0 && u->sel[AU_PANE_BT] < au_nbt;
+	b[AB_CLOSE].label = "Close";
+	b[AB_CLOSE].enabled = 1;
+	return sh_chrome_buttons(w, row, b, AB_N, -1);
+}
+
 static void au_draw(struct au_ui *u)
 {
 	int w = ktui_w, h = ktui_h;
@@ -1050,9 +1086,36 @@ static void au_draw(struct au_ui *u)
 	}
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), " audio ", KT_ACCENT, KT_SURFACE, 1);
+	ktui_draw_box(krect(0, 0, w, h), "Sound", KT_ACCENT, KT_SURFACE, 1);
 
-	int out_y = 2, out_rows = (h - 7) / 2;
+	/*
+	 * The header says what is playing out of what, and how loud. That was
+	 * previously spread across a column heading, a right-aligned `default
+	 * hw:0` and a volume bar somewhere in the list — three places to look
+	 * for one answer, on the surface a person reaches by clicking `VOL 62%`
+	 * on the taskbar.
+	 */
+	char sub[128];
+	const struct au_dev *cur = NULL;
+	for (int i = 0; i < au_ndev; i++)
+		if (au_dev[i].card >= 0 && au_dev[i].card == au_default_card) {
+			cur = &au_dev[i];
+			break;
+		}
+	if (cur && cur->vol >= 0)
+		snprintf(sub, sizeof(sub), "%.40s · %s%d%%",
+			 cur->name[0] ? cur->name : "output",
+			 cur->muted ? "muted at " : "", cur->vol);
+	else if (cur)
+		snprintf(sub, sizeof(sub), "%.40s · no playback mixer",
+			 cur->name[0] ? cur->name : "output");
+	else
+		snprintf(sub, sizeof(sub), "%s",
+			 au_ndev ? "no default output" : "no sound card");
+	int body_y = sh_chrome_header(w, "audio-speakers", "Sound", sub,
+				      au_icons_on);
+
+	int out_y = body_y + 1, out_rows = (h - body_y - 6) / 2;
 	if (out_rows < 2)
 		out_rows = 2;
 	int sep_y = out_y + out_rows;
@@ -1061,28 +1124,15 @@ static void au_draw(struct au_ui *u)
 	int bt_rows = h - 2 - bt_y;
 	if (bt_rows < 1)
 		bt_rows = 1;
+	au_out_y = out_y;
+	au_out_rows = out_rows;
+	au_bt_y = bt_y;
+	au_bt_rows = bt_rows;
 
-	ktui_draw_text(2, 1, w - 4, "OUTPUTS",
-		       u->pane == AU_PANE_OUT ? KT_ACCENT : KT_DIM, KT_SURFACE,
-		       KT_A_NONE);
-	/* Only where there IS an ALSA card: `default hw:0` over an empty list is
-	 * a claim about a device that is not there. */
-	for (int i = 0; i < au_ndev; i++)
-		if (au_dev[i].card >= 0) {
-			char d[32];
-			snprintf(d, sizeof(d), "default hw:%d",
-				 au_default_card);
-			ktui_draw_text_right(0, 1, w - 2, d, KT_DIM,
-					     KT_SURFACE, KT_A_NONE);
-			break;
-		}
+	sh_chrome_group(2, body_y, w - 4, "Outputs");
 	au_draw_outputs(u, out_y, out_rows, w);
 
-	ktui_draw_hline(1, sep_y, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
-
-	ktui_draw_text(2, bt_hdr, w - 4, "BLUETOOTH",
-		       u->pane == AU_PANE_BT ? KT_ACCENT : KT_DIM, KT_SURFACE,
-		       KT_A_NONE);
+	sh_chrome_group(2, bt_hdr, w - 4, "Bluetooth");
 	if (au_adapter[0])
 		ktui_draw_text_right(0, bt_hdr, w - 2,
 				     au_bt_discovering ? "scanning"
@@ -1092,19 +1142,18 @@ static void au_draw(struct au_ui *u)
 				     KT_SURFACE, KT_A_NONE);
 	au_draw_bt(u, bt_y, bt_rows, w);
 
-	/* The hint row is the message row: an action's answer belongs where the
-	 * user's eyes already are, not in a toast they may not have on. */
-	if (u->msg[0])
-		ktui_draw_text(2, h - 2, w - 4, u->msg, KT_WARN, KT_SURFACE,
+	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
+	/* The bar first, the text clipped to where it starts — see the same
+	 * pair in net.c. The hint row is the message row: an action's answer
+	 * belongs where the user's eyes already are, not in a toast they may
+	 * not have on. */
+	static const char HINT[] = "Tab pane   <> volume   Enter switch   Esc";
+	int bx = au_buttons(u, w, h - 2);
+	int room = bx - 3;
+	if (u->msg[0] ? room >= 8 : room >= (int)ktui_utf8_width(HINT))
+		ktui_draw_text(2, h - 2, room, u->msg[0] ? u->msg : HINT,
+			       u->msg[0] ? KT_WARN : KT_DIM, KT_SURFACE,
 			       KT_A_NONE);
-	else
-		/* A hint chopped in half by the border tells the user about
-		 * half the keys and lies about the rest of the sentence. */
-		ktui_draw_text(2, h - 2, w - 4,
-			       w >= 74 ? "Tab pane  <> volume  m mute  "
-					 "Enter switch  s scan  p pair  Esc close"
-				       : "Tab  <> vol  Enter  s scan  p pair",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
 	ktui_draw_flush();
 }
 
@@ -1131,17 +1180,27 @@ static void au_clamp(struct au_ui *u, int rows_out, int rows_bt)
 
 static int au_usage(void)
 {
-	fprintf(stderr, "usage: kdos-audio [--font NAME] [--dump]\n");
+	fprintf(stderr, "usage: kdos-audio [--font NAME] [--no-icons] "
+			"[--dump]\n");
 	return 2;
 }
 
 int audio_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	int at_x = -1, at_y = 0;
 	int dump = 0;
 	struct au_ui u = {0};
 
 	for (int i = 1; i < argc; i++) {
+		/* Anchored above the applet that opened it. A panel readout
+		 * whose window appears in the middle of the screen reads as a
+		 * separate application rather than as part of the bar. */
+		if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
+			at_x = atoi(argv[i + 1]);
+			at_y = atoi(argv[i + 2]);
+			i += 2;
+		} else
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
 		else if (!strcmp(argv[i], "--dump"))
@@ -1163,6 +1222,8 @@ int audio_main(int argc, char **argv)
 	au_refresh();
 
 	if (dump) {
+		/* A golden frame is the character grid. */
+		au_icons_on = 0;
 		ktui_offscreen_init(AU_COLS, AU_ROWS);
 		au_draw(&u);
 		ktui_draw_dump();
@@ -1173,15 +1234,25 @@ int audio_main(int argc, char **argv)
 		return 0;
 	}
 
+	/* Anchored means popup, centred means window — see the same block in
+	 * net.c, which is where that split is written down. */
+	int popup = at_x >= 0;
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
-		.cols = AU_COLS,
-		.rows = AU_ROWS,
+		.cols = popup ? 56 : AU_COLS,
+		.rows = popup ? 18 : AU_ROWS,
+		/* Above the applet that opened it, or centred when nobody
+		 * said where. */
+		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.margin_x = popup ? at_x : 0,
+		.margin_y = popup ? at_y : 0,
 		.app_id = "kdos-audio",
 		.font = font,
 		.keyboard = 1,
-		/* A dialog, not a menu: people click back to whatever is
-		 * playing to hear whether the switch worked. */
+		/* The window stays: people click back to whatever is playing
+		 * to hear whether the switch worked. The panel's popup goes,
+		 * like every other panel popup. */
+		.dismiss_on_unfocus = popup,
 	};
 	if (kwl_init(&cfg) != 0) {
 		fprintf(stderr, "kdos-audio: no compositor or no layer-shell\n");
@@ -1191,6 +1262,9 @@ int audio_main(int argc, char **argv)
 		au_mixer_close_all();
 		return 1;
 	}
+	/* AFTER kwl_init: the icon layer needs the cell size and the scale. */
+	if (au_icons_on)
+		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
 	ktui_draw_init();
 
 	time_t last_bt = time(NULL), last_dev = last_bt;
@@ -1198,11 +1272,15 @@ int audio_main(int argc, char **argv)
 	while (!kwl_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
-		int out_rows = (ktui_h - 7) / 2;
-		if (out_rows < 2)
-			out_rows = 2;
-		int bt_y = 2 + out_rows + 2;
-		int bt_rows = ktui_h - 2 - bt_y;
+		/* The geometry the LAST frame drew. On the very first turn the
+		 * defaults stand in; au_draw runs before the poll below, so
+		 * every click after that is measured against what is on
+		 * screen. */
+		int out_rows = au_out_rows > 0 ? au_out_rows : 2;
+		int out_y = au_out_y;
+		int bt_y = au_bt_y > 0 ? au_bt_y : out_y + out_rows + 2;
+		int bt_rows = au_bt_rows > 0 ? au_bt_rows
+					     : ktui_h - 2 - bt_y;
 
 		au_clamp(&u, out_rows, bt_rows);
 		au_draw(&u);
@@ -1238,9 +1316,9 @@ int audio_main(int argc, char **argv)
 
 		if (ev.type == KT_EVT_MOUSE) {
 			int row = -1, pane = u.pane;
-			if (ev.my >= 2 && ev.my < 2 + out_rows) {
+			if (ev.my >= out_y && ev.my < out_y + out_rows) {
 				pane = AU_PANE_OUT;
-				row = u.top[AU_PANE_OUT] + ev.my - 2;
+				row = u.top[AU_PANE_OUT] + ev.my - out_y;
 			} else if (ev.my >= bt_y && ev.my < bt_y + bt_rows) {
 				pane = AU_PANE_BT;
 				row = u.top[AU_PANE_BT] + ev.my - bt_y;
@@ -1257,6 +1335,9 @@ int audio_main(int argc, char **argv)
 					u.pane = pane;
 					u.sel[pane] = row;
 				}
+				/* The button bar lights under the pointer —
+				 * see sh_chrome_hover. */
+				sh_chrome_hover(ev.mx, ev.my);
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
@@ -1271,7 +1352,51 @@ int audio_main(int argc, char **argv)
 			}
 			if (ev.btn == KT_MB_RIGHT)
 				break;
-			if (ev.btn != KT_MB_LEFT || row < 0)
+			if (ev.btn != KT_MB_LEFT)
+				continue;
+			int bi = sh_chrome_button_at(ev.mx, ev.my);
+			if (bi >= 0) {
+				switch (bi) {
+				case AB_MUTE:
+					if (u.sel[AU_PANE_OUT] < au_ndev)
+						au_card_toggle(
+							&au_dev[u.sel[AU_PANE_OUT]]);
+					break;
+				case AB_DEFAULT:
+					if (u.sel[AU_PANE_OUT] < au_ndev)
+						au_set_default(
+							&au_dev[u.sel[AU_PANE_OUT]],
+							u.msg, sizeof(u.msg));
+					break;
+				case AB_SCAN:
+					if (!au_adapter[0])
+						break;
+					au_bt_call(au_adapter,
+						   au_bt_discovering
+							   ? "StopDiscovery"
+							   : "StartDiscovery");
+					snprintf(u.msg, sizeof(u.msg), "%s",
+						 au_bt_discovering
+							 ? "stopping scan"
+							 : "scanning");
+					break;
+				case AB_PAIR:
+					if (u.sel[AU_PANE_BT] < au_nbt) {
+						au_bt_call(
+							au_bt[u.sel[AU_PANE_BT]].path,
+							"Pair");
+						snprintf(u.msg, sizeof(u.msg),
+							 "pairing %s — check "
+							 "the device",
+							 au_bt_label(&au_bt[u.sel[AU_PANE_BT]]));
+					}
+					break;
+				case AB_CLOSE:
+					goto done;
+				}
+				continue;
+			}
+			if (row < 0)
 				continue;
 			/* A click on the row that is already selected activates
 			 * it — pick.c's rule, so one hand learns one thing.

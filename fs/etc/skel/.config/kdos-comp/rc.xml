@@ -123,6 +123,13 @@
       <action name="ShowMenu" menu="root-menu" atCursor="no"/>
     </keybind>
 
+    <!-- The notification CENTRE. A toast that expired used to be gone; the
+         daemon keeps a history now and this is the way back to it, which
+         matters most for the notifications nobody was there to see. Shift,
+         because W-n is Iconify and a minimise key is pressed far more often
+         than a history is read. -->
+    <keybind key="W-S-n"><action name="Execute" command="kdos-notify"/></keybind>
+
     <!-- the three shell front ends that had no way in until now -->
     <keybind key="A-F2"><action name="Execute" command="kdos-run"/></keybind>
     <keybind key="W-e"><action name="Execute" command="foot -e mc"/></keybind>
@@ -210,6 +217,16 @@
     <keybind key="W-F3"><action name="Execute" command="kdos-audio"/></keybind>
     <keybind key="W-i"><action name="Execute" command="kdos-settings"/></keybind>
     <keybind key="W-slash"><action name="Execute" command="kdos-doc"/></keybind>
+    <!-- The Start menu from the keyboard. The taskbar's own button is where a
+         pointer goes; this is the same surface for a hand already on the
+         keyboard, and it is deliberately NOT W-d — the launcher is a search
+         box and this is a menu, and conflating them would cost one of them. -->
+    <keybind key="W-a"><action name="Execute" command="kdos-start"/></keybind>
+    <!-- The device managers. Everything they drive has been running here
+         since before there was a desktop; what was missing was a way in. -->
+    <keybind key="W-F4"><action name="Execute" command="kdos-net"/></keybind>
+    <keybind key="W-F5"><action name="Execute" command="kdos-bt"/></keybind>
+    <keybind key="W-F6"><action name="Execute" command="kdos-devices"/></keybind>
 
     <!-- Run-or-raise, for anyone who wants one key per app. ForEach runs its
          <then> on every view matching the <query> (identifier is the app_id,
@@ -233,6 +250,10 @@
     <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="kdos-osd volume +5"/></keybind>
     <keybind key="XF86AudioLowerVolume"><action name="Execute" command="kdos-osd volume -5"/></keybind>
     <keybind key="XF86AudioMute"><action name="Execute" command="kdos-osd volume toggle"/></keybind>
+    <!-- The other half of the panel's `●MIC` lamp: the indicator names the
+         application recording you and this is the key that stops it. It was
+         the one media key with a readout and no control. -->
+    <keybind key="XF86AudioMicMute"><action name="Execute" command="kdos-osd mic toggle"/></keybind>
     <keybind key="XF86MonBrightnessUp"><action name="Execute" command="kdos-osd brightness +10"/></keybind>
     <keybind key="XF86MonBrightnessDown"><action name="Execute" command="kdos-osd brightness -10"/></keybind>
   </keyboard>

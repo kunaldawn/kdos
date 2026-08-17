@@ -432,6 +432,10 @@ static void launch(const struct item *it)
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
+/* The viewport follows the SELECTION only when the selection is what moved —
+ * see sh_list_wheel. Shared by both menus in this file; only one runs. */
+static int sel_follow = 1;
+
 struct view {
 	int rows[MAX_ITEMS];		/* item indices, or -(group+2) for a group */
 	int n;
@@ -446,6 +450,7 @@ static void build_view(struct view *v, int which, int group)
 	v->n = 0;
 	v->sel = 0;
 	v->top = 0;
+	sel_follow = 1;
 	v->group = group;
 
 	if (which == 0 && group < 0) {
@@ -510,6 +515,14 @@ static void draw(const struct view *v)
 				       KT_A_NONE);
 		}
 	}
+
+	/*
+	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
+	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * moving the PAGE rather than the cursor: without it the content
+	 * slides for no visible reason.
+	 */
+	sh_list_scrollbar(w - 1, 1, rows, v->n, v->top, KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -532,6 +545,7 @@ static const char *row_label(const struct view *v, int i)
  * do nothing is how a menu feels broken. */
 static void step(struct view *v, int dir)
 {
+	sel_follow = 1;
 	for (int i = 0; i < v->n; i++) {
 		v->sel += dir;
 		if (v->sel < 0)
@@ -592,6 +606,11 @@ struct win {
 	struct zwlr_foreign_toplevel_handle_v1 *handle;
 	char app_id[64];
 	char title[128];
+	/* The compositor's own answer, not a guess. A control menu whose
+	 * Maximize is a toggle has to KNOW which way the window is, or the
+	 * entry does nothing every second time it is used and reads as
+	 * broken. */
+	int maximized, minimized, activated, fullscreen;
 };
 
 static struct win wins[MAX_WIN];
@@ -630,9 +649,41 @@ static void wtl_output_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
 static void wtl_output_leave(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
 			     struct wl_output *o)
 { (void)d; (void)h; (void)o; }
+/*
+ * The state array is the FULL state every time, so every flag is cleared
+ * first — a state that is only ever set is a window that stays "activated"
+ * for the rest of the session, which is the same bug the panel's task list
+ * documents.
+ */
 static void wtl_state(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
 		      struct wl_array *states)
-{ (void)d; (void)h; (void)states; }
+{
+	struct win *w = win_for(h);
+	uint32_t *st;
+	(void)d;
+
+	if (!w)
+		return;
+	w->maximized = w->minimized = w->activated = w->fullscreen = 0;
+	wl_array_for_each(st, states) {
+		switch (*st) {
+		case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED:
+			w->maximized = 1;
+			break;
+		case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED:
+			w->minimized = 1;
+			break;
+		case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED:
+			w->activated = 1;
+			break;
+		case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN:
+			w->fullscreen = 1;
+			break;
+		default:
+			break;
+		}
+	}
+}
 static void wtl_done(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
 { (void)d; (void)h; }
 
@@ -708,70 +759,219 @@ static const struct wl_registry_listener win_registry_listener = {
 	.global_remove = win_reg_remove,
 };
 
-/* Rows are 0..n-1 the windows, n a separator, n+1 Close all, n+2 Minimize
- * all. One separator, so stepping over it is one extra hop. */
-static int win_step(int sel, int dir, int n, int total)
+/* ── the rows ──────────────────────────────────────────────────────────────
+ *
+ * TWO MENUS, ONE ROW MODEL. `--windows` lists an app's toplevels and is what a
+ * left click on a grouped task button opens; `--winmenu` is the WINDOW CONTROL
+ * menu a right click opens, which is what every taskbar has offered since
+ * Windows 95 and this one did not — a right click simply minimised the button
+ * and there was no way to maximise, restore or close a window from the bar at
+ * all.
+ *
+ * Building a row LIST rather than indexing 0..n-1/n+1/n+2 is the difference
+ * between adding an entry and re-deriving three pieces of arithmetic. A rule
+ * is a row that draws and cannot be selected.
+ *
+ * WHAT IS NOT HERE, and deliberately: Move and Size. XP has them and
+ * wlr-foreign-toplevel-management has no request for either — it can maximize,
+ * minimize, fullscreen, activate, close and set a rectangle, and that is all.
+ * Offering a Move that did nothing would be worse than not offering it; the
+ * compositor's own titlebar drag and `A-` drag are the move.
+ */
+enum { WR_WIN = 0, WR_RULE, WR_RESTORE, WR_MIN, WR_MAX, WR_FULL, WR_CLOSE,
+       WR_MIN_ALL, WR_CLOSE_ALL, WR_PIN };
+
+struct wrow {
+	int kind;
+	int win;		/* index into wins[], for WR_WIN */
+	char label[128];
+};
+
+#define MAX_WROW (MAX_WIN + 10)
+
+static int wrow_pickable(const struct wrow *r)
 {
-	sel += dir;
-	if (sel < 0)
-		sel = total - 1;
-	if (sel >= total)
-		sel = 0;
-	if (sel == n) {
-		sel += dir >= 0 ? 1 : -1;
+	return r->kind != WR_RULE;
+}
+
+static int win_step(const struct wrow *rows, int nrows, int sel, int dir)
+{
+	sel_follow = 1;
+	for (int k = 0; k < nrows; k++) {
+		sel += dir;
 		if (sel < 0)
-			sel = total - 1;
-		if (sel >= total)
+			sel = nrows - 1;
+		if (sel >= nrows)
 			sel = 0;
+		if (wrow_pickable(&rows[sel]))
+			return sel;
 	}
 	return sel;
 }
 
-static void windows_draw(const char *app, const int *ord, int n, int sel,
-			 int top)
+static void windows_draw(const char *app, const struct wrow *rows, int nrows,
+			 int sel, int top)
 {
 	int w = ktui_w, h = ktui_h;
-	int total = n + 3;
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 	ktui_draw_box(krect(0, 0, w, h), app, KT_ACCENT, KT_SURFACE, 0);
 
-	int rows = h - 2;
-	for (int r = 0; r < rows; r++) {
+	int vis = h - 2;
+	for (int r = 0; r < vis; r++) {
 		int idx = top + r;
-		if (idx >= total)
+		if (idx >= nrows)
 			break;
+		if (rows[idx].kind == WR_RULE) {
+			ktui_draw_hline(1, 1 + r, w - 2, KT_G_HL, KT_DIM,
+					KT_SURFACE);
+			continue;
+		}
 		bool is_sel = idx == sel;
 		uint8_t fg = is_sel ? KT_SURFACE : KT_TEXT;
 		uint8_t bg = is_sel ? KT_ACCENT : KT_SURFACE;
 
 		ktui_draw_fill(krect(1, 1 + r, w - 2, 1), bg);
-		if (idx < n) {
-			const struct win *wn = &wins[ord[idx]];
-			ktui_draw_text(2, 1 + r, w - 4,
-				       wn->title[0] ? wn->title : wn->app_id,
-				       fg, bg, KT_A_NONE);
-		} else if (idx == n) {
-			for (int x = 1; x < w - 1; x++)
-				ktui_draw_text(x, 1 + r, 1, ktui_glyph[KT_G_HL],
-					       KT_DIM, KT_SURFACE, KT_A_NONE);
-		} else {
-			ktui_draw_text(2, 1 + r, w - 4,
-				       idx == n + 1 ? "Close all"
-						    : "Minimize all",
-				       fg, bg, KT_A_NONE);
-		}
+		ktui_draw_text(2, 1 + r, w - 4, rows[idx].label, fg, bg,
+			       KT_A_NONE);
 	}
+
+	/*
+	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
+	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * moving the PAGE rather than the cursor: without it the content
+	 * slides for no visible reason.
+	 */
+	sh_list_scrollbar(w - 1, 1, vis, nrows, top, KT_SURFACE);
 	ktui_draw_flush();
 }
 
-static int windows_main(const char *app, int at_x, int at_y, const char *font)
+/*
+ * The rows this app's windows deserve right now.
+ *
+ * The control half acts on ONE window — the app's activated one, or its first
+ * — because "Maximize" on four windows at once is not what anybody aiming at a
+ * taskbar button means. The `all` rows are the group operations and say so.
+ */
+static char pin_id[128];	/* the desktop id behind `app`, or empty */
+
+static int windows_rows(const char *app, int ctrl, struct wrow *rows,
+			int *ord, int *nwin_out, int *target)
+{
+	int n = 0, nrows = 0, tgt = -1;
+
+	/* The one the controls act on: the focused window if the app has one,
+	 * its first otherwise. */
+	for (int i = 0; i < nwins && n < MAX_WIN; i++) {
+		if (strcmp(wins[i].app_id, app))
+			continue;
+		if (tgt < 0 || (wins[i].activated && !wins[tgt].activated))
+			tgt = i;
+		ord[n++] = i;
+	}
+	*nwin_out = n;
+	*target = tgt;
+	if (n == 0)
+		return 0;
+
+	if (ctrl) {
+		const struct win *t = &wins[tgt];
+		rows[nrows].kind = WR_RESTORE;
+		snprintf(rows[nrows].label, sizeof(rows[nrows].label),
+			 "Restore");
+		nrows++;
+		rows[nrows].kind = WR_MIN;
+		snprintf(rows[nrows].label, sizeof(rows[nrows].label),
+			 "Minimize");
+		nrows++;
+		rows[nrows].kind = WR_MAX;
+		/* The label says which way the toggle goes, so nobody has to
+		 * click it to find out. */
+		snprintf(rows[nrows].label, sizeof(rows[nrows].label), "%s",
+			 t->maximized ? "Restore Down" : "Maximize");
+		nrows++;
+		rows[nrows].kind = WR_FULL;
+		snprintf(rows[nrows].label, sizeof(rows[nrows].label), "%s",
+			 t->fullscreen ? "Leave Fullscreen" : "Fullscreen");
+		nrows++;
+		rows[nrows].kind = WR_RULE;
+		rows[nrows].label[0] = '\0';
+		nrows++;
+		/*
+		 * PIN, above Close, because it is the row somebody comes to
+		 * this menu for a second time to find. The id is the desktop
+		 * entry's, resolved from the app_id the same way the taskbar
+		 * resolves a NAME — the favorites file is a list of ids and an
+		 * app_id is not always one.
+		 */
+		if (pin_id[0]) {
+			rows[nrows].kind = WR_PIN;
+			snprintf(rows[nrows].label, sizeof(rows[nrows].label),
+				 "%s taskbar",
+				 sh_fav_has(pin_id) ? "Unpin from"
+						    : "Pin to");
+			nrows++;
+		}
+		rows[nrows].kind = WR_CLOSE;
+		snprintf(rows[nrows].label, sizeof(rows[nrows].label), "Close");
+		nrows++;
+		if (n > 1) {
+			rows[nrows].kind = WR_RULE;
+			rows[nrows].label[0] = '\0';
+			nrows++;
+			rows[nrows].kind = WR_MIN_ALL;
+			snprintf(rows[nrows].label, sizeof(rows[nrows].label),
+				 "Minimize all (%d)", n);
+			nrows++;
+			rows[nrows].kind = WR_CLOSE_ALL;
+			snprintf(rows[nrows].label, sizeof(rows[nrows].label),
+				 "Close all (%d)", n);
+			nrows++;
+			rows[nrows].kind = WR_RULE;
+			rows[nrows].label[0] = '\0';
+			nrows++;
+		}
+	}
+
+	for (int i = 0; i < n && nrows < MAX_WROW - 4; i++) {
+		const struct win *wn = &wins[ord[i]];
+		rows[nrows].kind = WR_WIN;
+		rows[nrows].win = ord[i];
+		/* A minimised window is marked, not hidden: the list is how
+		 * you get one back and it has to say which ones are gone. */
+		snprintf(rows[nrows].label, sizeof(rows[nrows].label), "%s %s",
+			 wn->minimized	? ktui_glyph[KT_G_DOT]
+			 : wn->activated ? ktui_glyph[KT_G_SQUARE]
+					 : " ",
+			 wn->title[0] ? wn->title : wn->app_id);
+		nrows++;
+	}
+	if (!ctrl) {
+		rows[nrows].kind = WR_RULE;
+		rows[nrows].label[0] = '\0';
+		nrows++;
+		rows[nrows].kind = WR_CLOSE_ALL;
+		snprintf(rows[nrows].label, sizeof(rows[nrows].label),
+			 "Close all");
+		nrows++;
+		rows[nrows].kind = WR_MIN_ALL;
+		snprintf(rows[nrows].label, sizeof(rows[nrows].label),
+			 "Minimize all");
+		nrows++;
+	}
+	return nrows;
+}
+
+static int windows_main(const char *app, int ctrl, int at_x, int at_y,
+			int at_bottom, const char *font)
 {
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
 		.cols = 42,
 		.rows = 7,		/* provisional; resized once counted */
-		.corner = at_x >= 0 ? KWL_CORNER_TOP_LEFT : KWL_CORNER_CENTER,
+		.corner = at_x < 0	? KWL_CORNER_CENTER
+			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
+					: KWL_CORNER_TOP_LEFT,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-menu",
@@ -787,6 +987,20 @@ static int windows_main(const char *app, int at_x, int at_y, const char *font)
 		return 1;
 	}
 	ktui_draw_init();
+
+	/*
+	 * The desktop id behind this app_id, for the Pin row. `favorites` is a
+	 * list of IDS and an app_id is not always one — `gimp` names an entry
+	 * called `gimp.desktop` and `org.gnome.Meld` does not. sh_desktop_entry
+	 * answers only when the id really resolves, so a window with no entry
+	 * gets no Pin row rather than a row that pins nothing.
+	 */
+	if (ctrl) {
+		char nm[64], ex[256];
+		if (sh_desktop_entry(app, nm, sizeof(nm), ex, sizeof(ex)) == 0 &&
+		    ex[0])
+			snprintf(pin_id, sizeof(pin_id), "%s", app);
+	}
 
 	struct wl_display *dpy = kwl_display();
 	struct wl_registry *reg = wl_display_get_registry(dpy);
@@ -810,19 +1024,19 @@ static int windows_main(const char *app, int at_x, int at_y, const char *font)
 			ktui_draw_invalidate();
 		}
 
-		int ord[MAX_WIN], n = 0;
+		struct wrow rows[MAX_WROW];
+		int ord[MAX_WIN], n = 0, tgt = -1;
 		struct zwlr_foreign_toplevel_handle_v1 *shown[MAX_WIN];
-		for (int i = 0; i < nwins; i++)
-			if (!strcmp(wins[i].app_id, app)) {
-				shown[n] = wins[i].handle;
-				ord[n++] = i;
-			}
+		int nrows = windows_rows(app, ctrl, rows, ord, &n, &tgt);
+
 		/* Every window of the app closed under us: a menu of nothing
 		 * has nothing left to offer. */
-		if (n == 0)
+		if (n == 0 || nrows == 0)
 			break;
-		int total = n + 3;
-		int wr = total + 2;
+		for (int i = 0; i < n; i++)
+			shown[i] = wins[ord[i]].handle;
+
+		int wr = nrows + 2;
 		if (wr > 24)
 			wr = 24;
 		if (wr != want_rows) {
@@ -830,16 +1044,16 @@ static int windows_main(const char *app, int at_x, int at_y, const char *font)
 			kwl_overlay_resize(42, wr);
 		}
 
-		if (sel >= total)
-			sel = total - 1;
-		if (sel == n)
-			sel = n - 1;
+		if (sel >= nrows)
+			sel = nrows - 1;
+		if (sel < 0)
+			sel = 0;
+		if (!wrow_pickable(&rows[sel]))
+			sel = win_step(rows, nrows, sel, 1);
 		int rows_vis = ktui_h - 2;
-		if (sel < top)
-			top = sel;
-		if (rows_vis > 0 && sel >= top + rows_vis)
-			top = sel - rows_vis + 1;
-		windows_draw(app, ord, n, sel, top);
+		sh_list_clamp(&top, sel, nrows, rows_vis, sel_follow);
+		sel_follow = 0;
+		windows_draw(app, rows, nrows, sel, top);
 
 		KtuiEvent ev;
 		if (!ktui_backend()->poll_event(&ev, 1000))
@@ -849,20 +1063,25 @@ static int windows_main(const char *app, int at_x, int at_y, const char *font)
 		if (ev.type == KT_EVT_MOUSE) {
 			int row = ev.my - 1 + top;
 			bool on_row = ev.my >= 1 && ev.my < ktui_h - 1 &&
-				      row >= 0 && row < total && row != n;
+				      row >= 0 && row < nrows &&
+				      wrow_pickable(&rows[row]);
 			if (ev.press == KT_MP_DRAG) {
-				if (on_row)
+				if (on_row) {
 					sel = row;
+					sel_follow = 1;
+				}
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
-			if (ev.btn == KT_MB_WHEEL_UP) {
-				sel = win_step(sel, -1, n, total);
-				continue;
-			}
-			if (ev.btn == KT_MB_WHEEL_DOWN) {
-				sel = win_step(sel, 1, n, total);
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				int up = ev.btn == KT_MB_WHEEL_UP;
+				if (!sh_list_wheel(up, &top, nrows, rows_vis)) {
+					sel = win_step(rows, nrows, sel,
+						       up ? -1 : 1);
+					sel_follow = 1;
+				}
 				continue;
 			}
 			if (ev.btn == KT_MB_RIGHT)
@@ -876,16 +1095,16 @@ static int windows_main(const char *app, int at_x, int at_y, const char *font)
 				done = 1;
 				break;
 			case KT_K_UP:
-				sel = win_step(sel, -1, n, total);
+				sel = win_step(rows, nrows, sel, -1);
 				break;
 			case KT_K_DOWN:
-				sel = win_step(sel, 1, n, total);
+				sel = win_step(rows, nrows, sel, 1);
 				break;
 			case KT_K_HOME:
-				sel = 0;
+				sel = win_step(rows, nrows, nrows - 1, 1);
 				break;
 			case KT_K_END:
-				sel = total - 1;
+				sel = win_step(rows, nrows, 0, -1);
 				break;
 			case KT_K_ENTER:
 				act = sel;
@@ -894,7 +1113,7 @@ static int windows_main(const char *app, int at_x, int at_y, const char *font)
 				break;
 			}
 		}
-		if (act < 0)
+		if (act < 0 || act >= nrows)
 			continue;
 		/* The poll may have dispatched a closed window, compacting
 		 * wins[] under ord[]. Rebuild the match set and compare the
@@ -915,24 +1134,90 @@ static int windows_main(const char *app, int at_x, int at_y, const char *font)
 				continue;
 		}
 
-		if (act < n) {
-			struct wl_seat *seat = kwl_seat();
-			if (seat) {
+		struct wl_seat *seat = kwl_seat();
+		struct zwlr_foreign_toplevel_handle_v1 *th =
+			tgt >= 0 ? wins[tgt].handle : NULL;
+		switch (rows[act].kind) {
+		case WR_WIN:
+			/* Restore FIRST, then focus. Activating a minimised
+			 * window is not defined to unminimise it, and a list
+			 * whose entries did nothing for exactly the windows
+			 * you needed the list to reach would be worthless. */
+			zwlr_foreign_toplevel_handle_v1_unset_minimized(
+				wins[rows[act].win].handle);
+			if (seat)
 				zwlr_foreign_toplevel_handle_v1_activate(
-					wins[ord[act]].handle, seat);
-				wl_display_flush(dpy);
-			}
-		} else if (act == n + 1) {
+					wins[rows[act].win].handle, seat);
+			break;
+		case WR_RESTORE:
+			if (!th)
+				break;
+			zwlr_foreign_toplevel_handle_v1_unset_minimized(th);
+			if (wins[tgt].fullscreen)
+				zwlr_foreign_toplevel_handle_v1_unset_fullscreen(
+					th);
+			else if (wins[tgt].maximized)
+				zwlr_foreign_toplevel_handle_v1_unset_maximized(
+					th);
+			if (seat)
+				zwlr_foreign_toplevel_handle_v1_activate(th,
+									 seat);
+			break;
+		case WR_MIN:
+			if (th)
+				zwlr_foreign_toplevel_handle_v1_set_minimized(th);
+			break;
+		case WR_MAX:
+			if (!th)
+				break;
+			/* A minimised window cannot show itself maximised, so
+			 * the restore comes first — otherwise Maximize on a
+			 * minimised button appears to do nothing at all. */
+			zwlr_foreign_toplevel_handle_v1_unset_minimized(th);
+			if (wins[tgt].maximized)
+				zwlr_foreign_toplevel_handle_v1_unset_maximized(
+					th);
+			else
+				zwlr_foreign_toplevel_handle_v1_set_maximized(th);
+			if (seat)
+				zwlr_foreign_toplevel_handle_v1_activate(th,
+									 seat);
+			break;
+		case WR_FULL:
+			if (!th)
+				break;
+			zwlr_foreign_toplevel_handle_v1_unset_minimized(th);
+			if (wins[tgt].fullscreen)
+				zwlr_foreign_toplevel_handle_v1_unset_fullscreen(
+					th);
+			else
+				zwlr_foreign_toplevel_handle_v1_set_fullscreen(
+					th, NULL);
+			break;
+		case WR_CLOSE:
+			if (th)
+				zwlr_foreign_toplevel_handle_v1_close(th);
+			break;
+		case WR_PIN:
+			/* The panel notices by stat: see its favorites
+			 * reload. Nothing here talks to it. */
+			if (pin_id[0])
+				sh_fav_set(pin_id, !sh_fav_has(pin_id));
+			break;
+		case WR_CLOSE_ALL:
 			for (int i = 0; i < n; i++)
 				zwlr_foreign_toplevel_handle_v1_close(
 					wins[ord[i]].handle);
-			wl_display_flush(dpy);
-		} else if (act == n + 2) {
+			break;
+		case WR_MIN_ALL:
 			for (int i = 0; i < n; i++)
 				zwlr_foreign_toplevel_handle_v1_set_minimized(
 					wins[ord[i]].handle);
-			wl_display_flush(dpy);
+			break;
+		default:
+			break;
 		}
+		wl_display_flush(dpy);
 		break;
 	}
 
@@ -944,8 +1229,9 @@ int menu_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	const char *win_app = NULL;		/* --windows: one app's toplevels */
+	int win_ctrl = 0;			/* --winmenu: with the controls */
 	int which = 0;				/* 0 apps, 1 places, 2 system */
-	int at_x = -1, at_y = 0;
+	int at_x = -1, at_y = 0, at_bottom = 0;
 	int dump = 0;
 
 	for (int i = 1; i < argc; i++) {
@@ -964,9 +1250,34 @@ int menu_main(int argc, char **argv)
 		else if (!strcmp(argv[i], "--at") && i + 2 < argc) {
 			at_x = atoi(argv[++i]);
 			at_y = atoi(argv[++i]);
+		}
+		/*
+		 * The SAME anchor, measured from the bottom edge — what a menu
+		 * belonging to a bar on the bottom of the screen needs, because
+		 * a client cannot express "grow upwards" by anchoring TOP: it
+		 * does not know the output's pixel height.
+		 *
+		 * The panel has spawned `kdos-menu system --at-bottom X Y` and
+		 * `kdos-menu --windows APP --at-bottom X Y` for a release and
+		 * this program did not accept the flag, so both fell into the
+		 * usage branch below and exited before a surface existed. The
+		 * System menu and every grouped task button did nothing at all
+		 * when clicked; kdos-start and kdos-clip took the same
+		 * argument and worked, which is what made it look like a panel
+		 * fault rather than a missing flag.
+		 */
+		else if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
+			at_x = atoi(argv[++i]);
+			at_y = atoi(argv[++i]);
+			at_bottom = 1;
 		} else if (!strcmp(argv[i], "--windows") && i + 1 < argc)
 			win_app = argv[++i];
-		else if (!strcmp(argv[i], "applications"))
+		/* The right-click menu: the same window list with the window
+		 * CONTROLS above it. See the rows block. */
+		else if (!strcmp(argv[i], "--winmenu") && i + 1 < argc) {
+			win_app = argv[++i];
+			win_ctrl = 1;
+		} else if (!strcmp(argv[i], "applications"))
 			which = 0;
 		else if (!strcmp(argv[i], "places"))
 			which = 1;
@@ -976,13 +1287,17 @@ int menu_main(int argc, char **argv)
 			fprintf(stderr, "usage: kdos-menu "
 					"[applications|places|system] "
 					"[--windows APP_ID] "
-					"[--at X Y] [--dump] [--font NAME]\n");
+					"[--winmenu APP_ID]\n"
+					"                  "
+					"[--at X Y] [--at-bottom X Y] "
+					"[--dump] [--font NAME]\n");
 			return 2;
 		}
 	}
 
 	if (win_app)
-		return windows_main(win_app, at_x, at_y, font);
+		return windows_main(win_app, win_ctrl, at_x, at_y, at_bottom,
+				    font);
 
 	if (which == 0)
 		load_applications();
@@ -1018,7 +1333,9 @@ int menu_main(int argc, char **argv)
 		.role = KWL_ROLE_OVERLAY,
 		.cols = 42,
 		.rows = rows,
-		.corner = at_x >= 0 ? KWL_CORNER_TOP_LEFT : KWL_CORNER_CENTER,
+		.corner = at_x < 0	? KWL_CORNER_CENTER
+			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
+					: KWL_CORNER_TOP_LEFT,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-menu",
@@ -1039,10 +1356,8 @@ int menu_main(int argc, char **argv)
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		int rows_vis = ktui_h - 2;
-		if (v.sel < v.top)
-			v.top = v.sel;
-		if (rows_vis > 0 && v.sel >= v.top + rows_vis)
-			v.top = v.sel - rows_vis + 1;
+		sh_list_clamp(&v.top, v.sel, v.n, rows_vis, sel_follow);
+		sel_follow = 0;
 		draw(&v);
 
 		KtuiEvent ev;
@@ -1073,18 +1388,21 @@ int menu_main(int argc, char **argv)
 				      (v.rows[row] <= -2 ||
 				       items[v.rows[row]].submenu != -2);
 			if (ev.press == KT_MP_DRAG) {
-				if (on_row)
+				if (on_row) {
 					v.sel = row;
+					sel_follow = 1;
+				}
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
-			if (ev.btn == KT_MB_WHEEL_UP) {
-				step(&v, -1);
-				continue;
-			}
-			if (ev.btn == KT_MB_WHEEL_DOWN) {
-				step(&v, 1);
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				int up = ev.btn == KT_MB_WHEEL_UP;
+				if (!sh_list_wheel(up, &v.top, v.n, rows_vis)) {
+					step(&v, up ? -1 : 1);
+					sel_follow = 1;
+				}
 				continue;
 			}
 			if (ev.btn == KT_MB_RIGHT) {
