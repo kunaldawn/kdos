@@ -1,43 +1,43 @@
 +=  Settings  =====================================================================================================================+
-| Appearance  | accent             phosphor                                                                                   live |
-| Session     | crt                40                                                                                         live |
-| Input       | crt_scanlines      75                                                                                         live |
-| Apps        | crt_curve          10                                                                                         live |
-|             | crt_fullscreen     on                                                                                         live |
-|             | wallpaper          /usr/share/backgrounds/kdos/default-wallpaper.png                                          live |
-|             | chrome_font        Terminus:pixelsize=32                                                                     login |
-|             | clock_format       %H:%M                                                                                     login |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|             |                                                                                                                    |
-|-------------+--------------------------------------------------------------------------------------------------------------------|
-| runs `kdos theme <accent>`: host, box and window frames together                                                                 |
-| <> change   Enter edit   a apply   Esc close                                                                           [ Apply ] |
+| Appearance                                 Panel                                      Desktop                                    |
+| accent, CRT, wallpaper                     the taskbar and tray                       icons and workspaces                       |
+|                                                                                                                                  |
+| Hardware                                   Session                                    Input                                      |
+| screens, net, sound                        idle, lock and power                       keyboard and pointer                       |
+|                                                                                                                                  |
+| Apps                                                                                                                             |
+| which app opens what                                                                                                             |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|----------------------------------------------------------------------------------------------------------------------------------|
+| Enter opens a page   arrows move   Esc closes                                                                                    |
+| accent, CRT, wallpaper                                                                                                           |
 +==================================================================================================================================+

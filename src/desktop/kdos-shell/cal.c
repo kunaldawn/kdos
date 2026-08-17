@@ -52,6 +52,23 @@ static int mon_first(int tm_wday)
 	return (tm_wday + 6) % 7;
 }
 
+/*
+ * WHERE THE POINTER IS, AND THE THREE THINGS IT CAN PRESS.
+ *
+ * This popup had the wheel and nothing else: no way at all to change month
+ * with a pointer except to guess that the wheel did it, and no sign under the
+ * hand that anything here answered a click. Every calendar drawn since 1995
+ * has two arrows and a way back to today, and on a 26-column grid they cost
+ * one row that was already empty.
+ */
+static int hov_x = -1, hov_y = -1;		/* the pointer, in cells */
+static int prev_x, prev_end, next_x, next_end, today_x, today_end, nav_row;
+
+static int cal_in(int v, int a, int b)
+{
+	return b > a && v >= a && v < b;
+}
+
 static void draw(int year, int mon, int today_y, int today_m, int today_d)
 {
 	int w = ktui_w, h = ktui_h;
@@ -105,8 +122,56 @@ static void draw(int year, int mon, int today_y, int today_m, int today_d)
 			break;
 		snprintf(num, sizeof(num), "%2d", d);
 		int on = year == today_y && mon == today_m && d == today_d;
+		/* The cell under the pointer lifts. There is nothing to click
+		 * — this calendar has no events to open — and a day that
+		 * answers the hand is still what makes the grid readable as a
+		 * grid rather than as a block of numbers. */
+		int hot = !on && hov_y == y && cal_in(hov_x, x, x + 2);
 		ktui_draw_text(x, y, 2, num, on ? KT_SURFACE : KT_TEXT,
-			       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+			       on    ? KT_ACCENT
+			       : hot ? KT_DIM
+				     : KT_SURFACE,
+			       KT_A_NONE);
+	}
+
+	/*
+	 * The navigation row, on the two rows a month can never reach: six
+	 * week rows starting at 2 end at 7 in the worst case (a 31-day month
+	 * beginning on a Sunday), and the date line is at h - 2.
+	 */
+	const char *prev = "[ \xe2\x97\x80 ]", *next = "[ \xe2\x96\xb6 ]";
+	const char *tdy = "[ Today ]";
+	int pw = ktui_utf8_width(prev), nw = ktui_utf8_width(next);
+	int tw = ktui_utf8_width(tdy);
+
+	nav_row = h - 3;
+	prev_x = 2;
+	prev_end = prev_x + pw;
+	next_x = w - 2 - nw;
+	next_end = next_x + nw;
+	today_x = (w - tw) / 2;
+	today_end = today_x + tw;
+	if (nav_row > 1 && next_x > today_end && today_x > prev_end) {
+		int hp = hov_y == nav_row && cal_in(hov_x, prev_x, prev_end);
+		int hn = hov_y == nav_row && cal_in(hov_x, next_x, next_end);
+		int ht = hov_y == nav_row && cal_in(hov_x, today_x, today_end);
+
+		if (hp)
+			ktui_draw_fill(krect(prev_x, nav_row, pw, 1), KT_DIM);
+		if (hn)
+			ktui_draw_fill(krect(next_x, nav_row, nw, 1), KT_DIM);
+		if (ht)
+			ktui_draw_fill(krect(today_x, nav_row, tw, 1), KT_DIM);
+		ktui_draw_text(prev_x, nav_row, pw, prev, KT_TEXT,
+			       hp ? KT_DIM : KT_SURFACE, KT_A_NONE);
+		ktui_draw_text(today_x, nav_row, tw, tdy, KT_TEXT,
+			       ht ? KT_DIM : KT_SURFACE, KT_A_NONE);
+		ktui_draw_text(next_x, nav_row, nw, next, KT_TEXT,
+			       hn ? KT_DIM : KT_SURFACE, KT_A_NONE);
+	} else {
+		/* Not drawn is not clickable — the rule every hit map on this
+		 * desktop keeps. */
+		prev_x = prev_end = next_x = next_end = today_x = today_end = 0;
 	}
 
 	/* The date in words, and the time — the two things the clock itself
@@ -124,7 +189,7 @@ static void draw(int year, int mon, int today_y, int today_m, int today_d)
 int cal_main(int argc, char **argv)
 {
 	const char *font = NULL;
-	int at_x = -1, at_y = 0, dump = 0;
+	int at_x = -1, at_y = 0, at_bottom = 0, dump = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc) {
@@ -132,10 +197,22 @@ int cal_main(int argc, char **argv)
 		} else if (!strcmp(argv[i], "--at") && i + 2 < argc) {
 			at_x = atoi(argv[++i]);
 			at_y = atoi(argv[++i]);
+		}
+		/* The panel is on the BOTTOM edge and has spawned
+		 * `kdos-cal --at-bottom X Y` for a release; this program only
+		 * knew `--at`, so it fell into the usage branch and exited
+		 * before a surface existed — a click on the clock did nothing
+		 * whatsoever. Anchoring TOP cannot express "above the bar":
+		 * the client does not know the output's pixel height. */
+		else if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
+			at_x = atoi(argv[++i]);
+			at_y = atoi(argv[++i]);
+			at_bottom = 1;
 		} else if (!strcmp(argv[i], "--dump")) {
 			dump = 1;	/* see kdos-launcher --dump */
 		} else {
-			fprintf(stderr, "usage: kdos-cal [--at X Y] [--dump] "
+			fprintf(stderr, "usage: kdos-cal [--at X Y] "
+					"[--at-bottom X Y] [--dump] "
 					"[--font NAME]\n");
 			return 2;
 		}
@@ -160,7 +237,9 @@ int cal_main(int argc, char **argv)
 		.role = KWL_ROLE_OVERLAY,
 		.cols = CAL_COLS,
 		.rows = CAL_ROWS,
-		.corner = at_x >= 0 ? KWL_CORNER_TOP_LEFT : KWL_CORNER_CENTER,
+		.corner = at_x < 0	? KWL_CORNER_CENTER
+			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
+					: KWL_CORNER_TOP_LEFT,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-cal",
@@ -194,6 +273,15 @@ int cal_main(int argc, char **argv)
 
 		int step = 0;
 		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press == KT_MP_DRAG) {
+				/* Plain movement — libkwl's spelling. It
+				 * reports one only when the pointer changed
+				 * cell, so this is never the position that
+				 * rides along with a wheel event. */
+				hov_x = ev.mx;
+				hov_y = ev.my;
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
 			if (ev.btn == KT_MB_RIGHT)
@@ -202,8 +290,20 @@ int cal_main(int argc, char **argv)
 				step = -1;
 			else if (ev.btn == KT_MB_WHEEL_DOWN)
 				step = 1;
-			else
+			else if (ev.btn == KT_MB_LEFT && ev.my == nav_row) {
+				if (cal_in(ev.mx, prev_x, prev_end)) {
+					step = -1;
+				} else if (cal_in(ev.mx, next_x, next_end)) {
+					step = 1;
+				} else if (cal_in(ev.mx, today_x, today_end)) {
+					year = today_y;
+					mon = today_m;
+				} else {
+					continue;
+				}
+			} else {
 				continue;
+			}
 		} else if (ev.type == KT_EVT_KEY) {
 			switch (ev.key) {
 			case KT_K_ESC:

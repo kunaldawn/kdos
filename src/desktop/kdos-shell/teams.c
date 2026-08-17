@@ -723,6 +723,14 @@ static void draw(int sel, int top)
 				     bg, KT_A_NONE);
 	}
 
+	/*
+	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
+	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * moving the PAGE rather than the cursor: without it the content
+	 * slides for no visible reason.
+	 */
+	sh_list_scrollbar(w - 1, 2, rowsv, nviews, top, KT_SURFACE);
+
 	if (status[0])
 		ktui_draw_text(2, h - 3, w - 4, status, KT_WARN, KT_SURFACE,
 			       KT_A_NONE);
@@ -782,9 +790,26 @@ int teams_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	int dump = 0, dump_cells = 0;
+	int at_x = -1, at_y = 0, at_bottom = 0;
 
 	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--font") && i + 1 < argc)
+		/*
+		 * ANCHORED WHEN THE PANEL OPENS IT. The window list is what
+		 * the taskbar's `+N` cell now leads to — the overflow used to
+		 * step one window per click, which on a bar with four hidden
+		 * windows is a guessing game — and a popup belonging to a bar
+		 * has to grow out of that bar. Typed by name it is still a
+		 * centred window: the same one flag decides both, exactly as
+		 * it does for the device managers.
+		 */
+		if (!strcmp(argv[i], "--at") && i + 2 < argc) {
+			at_x = atoi(argv[++i]);
+			at_y = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
+			at_x = atoi(argv[++i]);
+			at_y = atoi(argv[++i]);
+			at_bottom = 1;
+		} else if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
 		else if (!strcmp(argv[i], "--dump"))
 			dump = 1;
@@ -799,6 +824,7 @@ int teams_main(int argc, char **argv)
 			}
 		} else {
 			fprintf(stderr, "usage: kdos-teams "
+					"[--at X Y] [--at-bottom X Y] "
 					"[--dump|--dump-cells] [--dump-size WxH] "
 					"[--font NAME]\n");
 			return 2;
@@ -824,6 +850,11 @@ int teams_main(int argc, char **argv)
 		.role = KWL_ROLE_OVERLAY,
 		.cols = TEAMS_COLS,
 		.rows = TEAMS_ROWS,
+		.corner = at_x < 0	? KWL_CORNER_CENTER
+			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
+					: KWL_CORNER_TOP_LEFT,
+		.margin_x = at_x >= 0 ? at_x : 0,
+		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-teams",
 		.font = font,
 		.keyboard = 1,

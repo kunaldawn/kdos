@@ -27,10 +27,14 @@
 
 #include <errno.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -77,8 +81,23 @@ struct toast {
 	char act_label[MAX_ACTS][24];
 	int nact;
 	int64_t expires_ms;	/* monotonic; 0 = never */
+	/*
+	 * WHAT IS LEFT OF THE COUNTDOWN WHILE THE POINTER IS ON IT.
+	 *
+	 * A toast that disappears while it is being read is a toast that has
+	 * to be read twice — and it cannot be, because it is gone. Every
+	 * notification daemon of the last fifteen years pauses on hover; here
+	 * it costs one field: the remaining time is banked, `expires_ms` goes
+	 * to 0 (never), and the leave puts it back with a floor under it so a
+	 * toast the pointer merely crossed does not vanish in the same frame.
+	 */
+	int64_t paused_ms;
 	int urgent;
 };
+
+/* Which toast the pointer is over, or -1. */
+static int hover_toast = -1;
+static void hover_resume_all(void);
 
 static struct toast toasts[MAX_TOASTS];
 static int ntoasts;
@@ -100,6 +119,156 @@ static int64_t now_ms(void)
 	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
+/* ── the history, and the centre that reads it ──────────────────────────────
+ *
+ * A NOTIFICATION THAT EXPIRED IS NOT A NOTIFICATION THAT WAS READ, and until
+ * now this daemon threw one away the moment its five seconds were up. Every
+ * desktop of the last decade keeps a list — the thing that arrived while you
+ * were in another workspace, the download that finished while the screen was
+ * locked — and on KDOS the case is sharper than elsewhere: every fat
+ * application lives in a container, so a boxed app's notification is often the
+ * ONLY thing that ever says the work it was doing has finished.
+ *
+ * The shape is kdos-clip's, deliberately, because that is the one this desktop
+ * already has: the DAEMON owns the list and a short connection per request
+ * hands it out over a unix socket in $XDG_RUNTIME_DIR, so the front end is an
+ * ordinary program that can be run by hand, scripted or replaced, and the
+ * panel can ask for one number once a second without either process knowing
+ * anything about the other's drawing.
+ *
+ * `unseen` is what the panel's badge counts: entries that have arrived since
+ * somebody last opened the centre. Cleared by the `seen` command and by
+ * nothing else — a count that cleared itself on a timer would be a count
+ * nobody trusts.
+ */
+#define NHIST 64
+
+struct hentry {
+	char app[64];
+	char summary[128];
+	char body[256];
+	char href[256];
+	time_t when;			/* wall clock, for the list      */
+	int urgent;
+};
+
+static struct hentry hist[NHIST];
+static int nhist;			/* newest LAST, like every ring here */
+static int unseen;
+/*
+ * DO NOT DISTURB, which is the other half of a notification centre: without
+ * somewhere for a notification to GO, silencing toasts would mean losing them.
+ * With the history in place it is honest — the toast is not drawn, the entry
+ * is kept, and the badge says how many are waiting.
+ */
+static int dnd;
+
+static void hist_push(const struct toast *t)
+{
+	struct hentry *h;
+
+	if (nhist >= NHIST) {
+		memmove(&hist[0], &hist[1], (NHIST - 1) * sizeof(hist[0]));
+		nhist = NHIST - 1;
+	}
+	h = &hist[nhist++];
+	memset(h, 0, sizeof(*h));
+	snprintf(h->app, sizeof(h->app), "%s", t->app);
+	snprintf(h->summary, sizeof(h->summary), "%s", t->summary);
+	snprintf(h->body, sizeof(h->body), "%s", t->body);
+	snprintf(h->href, sizeof(h->href), "%s", t->href);
+	h->when = time(NULL);
+	h->urgent = t->urgent;
+	if (unseen < NHIST)
+		unseen++;
+}
+
+/* ── the socket ────────────────────────────────────────────────────────────
+ *
+ * kdos-clip's shape, down to the mode: $XDG_RUNTIME_DIR is already 0700 and
+ * what this hands out is exactly as private as the session it belongs to.
+ * One word per connection, one answer, and the daemon never blocks on a
+ * client — a notification daemon that stalled while somebody read a list
+ * would be a notification daemon that stopped answering the bus.
+ */
+static int notify_sock_path(char *out, size_t n)
+{
+	const char *run = getenv("XDG_RUNTIME_DIR");
+
+	if (!run || !*run)
+		return -1;
+	return snprintf(out, n, "%s/kdos-notify.sock", run) < (int)n ? 0 : -1;
+}
+
+static void open_href(const char *href);
+
+static void serve_client(int c)
+{
+	char buf[64] = {0};
+	ssize_t n = read(c, buf, sizeof(buf) - 1);
+
+	if (n <= 0)
+		return;
+	buf[n] = '\0';
+	buf[strcspn(buf, "\r\n")] = '\0';
+
+	if (!strcmp(buf, "count")) {
+		/* `<unseen> <total> <dnd>` — everything the panel's badge
+		 * needs in one line, because it asks once a second. */
+		dprintf(c, "%d %d %d\n", unseen, nhist, dnd);
+	} else if (!strcmp(buf, "list")) {
+		/*
+		 * NEWEST FIRST, which is the order a list of things that
+		 * happened is read in — and tab separated, which is safe
+		 * because sanitize() has already turned every tab and newline
+		 * in somebody else's string into a space.
+		 */
+		for (int i = nhist - 1; i >= 0; i--)
+			dprintf(c, "%d\t%lld\t%d\t%s\t%s\t%s\n", i,
+				(long long)hist[i].when, hist[i].urgent,
+				hist[i].app, hist[i].summary, hist[i].body);
+		(void)!write(c, "ok\n", 3);
+	} else if (!strcmp(buf, "seen")) {
+		unseen = 0;
+		(void)!write(c, "ok\n", 3);
+	} else if (!strncmp(buf, "open ", 5)) {
+		int i = atoi(buf + 5);
+
+		if (i >= 0 && i < nhist && hist[i].href[0])
+			open_href(hist[i].href);
+		(void)!write(c, "ok\n", 3);
+	} else if (!strncmp(buf, "forget ", 7)) {
+		int i = atoi(buf + 7);
+
+		if (i >= 0 && i < nhist) {
+			memmove(&hist[i], &hist[i + 1],
+				(size_t)(nhist - i - 1) * sizeof(hist[0]));
+			nhist--;
+			if (unseen > nhist)
+				unseen = nhist;
+		}
+		(void)!write(c, "ok\n", 3);
+	} else if (!strcmp(buf, "clear")) {
+		nhist = 0;
+		unseen = 0;
+		(void)!write(c, "ok\n", 3);
+	} else if (!strncmp(buf, "dnd", 3)) {
+		const char *a = buf + 3;
+
+		while (*a == ' ')
+			a++;
+		if (!strcmp(a, "on"))
+			dnd = 1;
+		else if (!strcmp(a, "off"))
+			dnd = 0;
+		else if (!strcmp(a, "toggle") || !*a)
+			dnd = !dnd;
+		dprintf(c, "%d\n", dnd);
+	} else {
+		(void)!write(c, "err unknown command\n", 20);
+	}
+}
+
 /* ── the stack ─────────────────────────────────────────────────────────── */
 
 static void emit_closed(uint32_t id, uint32_t reason)
@@ -118,9 +287,17 @@ static void drop_at(int i, uint32_t reason)
 	if (i < 0 || i >= ntoasts)
 		return;
 	emit_closed(toasts[i].id, reason);
+	/* On the way OUT, whatever took it out: expiry, a click, or the
+	 * client's own CloseNotification. The centre is the answer to "what
+	 * was that", and the ones a person never saw are exactly the ones
+	 * that answer it. */
+	hist_push(&toasts[i]);
 	memmove(&toasts[i], &toasts[i + 1],
 		(size_t)(ntoasts - i - 1) * sizeof(toasts[0]));
 	ntoasts--;
+	/* The stack moved under the POINTER as well as under the hit map: a
+	 * held index that outlives its toast holds the wrong one's clock. */
+	hover_resume_all();
 	/*
 	 * The stack just moved under the hit map. libkwl hands the pointer
 	 * drain a whole BATCH from one read, so a double-click on a button
@@ -137,6 +314,46 @@ static void expire_due(void)
 	for (int i = ntoasts - 1; i >= 0; i--)
 		if (toasts[i].expires_ms && toasts[i].expires_ms <= t)
 			drop_at(i, 1);
+}
+
+/* The pointer arrived on `i` (or on nothing). Banks and restores the
+ * countdown; the floor is a second and a half, so crossing the corner of the
+ * screen never costs a notification. */
+#define TOAST_RESUME_MIN 1500
+
+/*
+ * Put every held countdown back. EVERY, not the one `hover_toast` names: the
+ * stack moves under the pointer whenever a toast is dropped, and an index that
+ * outlives what it pointed at would leave a paused toast paused for the rest
+ * of the session with nothing left to resume it.
+ */
+static void hover_resume_all(void)
+{
+	for (int i = 0; i < ntoasts; i++) {
+		if (!toasts[i].paused_ms)
+			continue;
+		int64_t left = toasts[i].paused_ms;
+
+		if (left < TOAST_RESUME_MIN)
+			left = TOAST_RESUME_MIN;
+		toasts[i].expires_ms = now_ms() + left;
+		toasts[i].paused_ms = 0;
+	}
+	hover_toast = -1;
+}
+
+static void hover_set(int i)
+{
+	if (i == hover_toast)
+		return;
+	hover_resume_all();
+	hover_toast = i;
+	if (i >= 0 && i < ntoasts && toasts[i].expires_ms) {
+		int64_t left = toasts[i].expires_ms - now_ms();
+
+		toasts[i].paused_ms = left > 0 ? left : TOAST_RESUME_MIN;
+		toasts[i].expires_ms = 0;	/* held, not forgotten */
+	}
 }
 
 /* How long until something needs doing, or -1 to wait forever. */
@@ -470,6 +687,22 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 			: t->urgent	 ? 0
 					 : now_ms() + 5000;
 
+	/*
+	 * DO NOT DISTURB KEEPS IT AND DOES NOT SHOW IT. The id is still
+	 * returned and NotificationClosed is still emitted, so the client
+	 * cannot tell the difference and nothing hangs waiting; the entry goes
+	 * straight to the history, where the badge counts it. An URGENT one is
+	 * shown anyway — the urgency level exists to say "this one is not
+	 * routine", and a Do Not Disturb that hid a battery-critical warning
+	 * would be a switch nobody dares leave on.
+	 */
+	if (dnd && !t->urgent) {
+		uint32_t id = t->id;
+
+		drop_at((int)(t - toasts), 1);
+		return sd_bus_reply_method_return(m, "u", id);
+	}
+
 	return sd_bus_reply_method_return(m, "u", t->id);
 }
 
@@ -611,6 +844,17 @@ static void draw_toasts(void)
 			break;
 		KRect r = krect(0, y, w, rows);
 		int accent = t->urgent ? KT_ERR : KT_ACCENT;
+		/*
+		 * THE HELD ONE SAYS SO. A countdown that quietly stops is a
+		 * countdown nobody can tell has stopped — and the border is
+		 * the only part of a toast that is not already carrying
+		 * something, so the frame goes to the secondary colour while
+		 * the pointer is holding it. Urgent keeps its own colour: a
+		 * warning that changed colour under the hand would be saying
+		 * something it does not mean.
+		 */
+		if (i == hover_toast && !t->urgent)
+			accent = KT_WARN;
 
 		ktui_draw_fill(r, KT_SURFACE);
 		/* The application's own name in the border, where a title goes.
@@ -733,6 +977,31 @@ int notifyd_main(int argc, char **argv)
 	}
 
 	/*
+	 * The centre's socket. A failure here is NOT fatal: the toasts are the
+	 * job and the history is the extra, and a session with no
+	 * XDG_RUNTIME_DIR should still get its notifications drawn.
+	 */
+	char spath[256];
+	int srv = -1;
+	if (notify_sock_path(spath, sizeof(spath)) == 0) {
+		srv = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+		if (srv >= 0) {
+			struct sockaddr_un sa = { .sun_family = AF_UNIX };
+
+			snprintf(sa.sun_path, sizeof(sa.sun_path), "%s", spath);
+			unlink(spath);
+			if (bind(srv, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+				close(srv);
+				srv = -1;
+			} else {
+				chmod(spath, 0600);
+				listen(srv, 4);
+			}
+		}
+	}
+	signal(SIGPIPE, SIG_IGN);
+
+	/*
 	 * Top right, not centred. An overlay with no anchor is centred, which is
 	 * right for the launcher and wrong for a toast — a notification that
 	 * covers the middle of the screen covers the thing the user was doing
@@ -825,11 +1094,12 @@ int notifyd_main(int argc, char **argv)
 		}
 		draw_toasts();
 
-		struct pollfd fds[2] = {
+		struct pollfd fds[3] = {
 			{ .fd = wl_fd, .events = POLLIN },
 			{ .fd = bus_fd, .events = POLLIN },
+			{ .fd = srv, .events = POLLIN },
 		};
-		int r2 = poll(fds, 2, next_timeout());
+		int r2 = poll(fds, srv >= 0 ? 3 : 2, next_timeout());
 		if (r2 < 0 && errno != EINTR)
 			break;
 		if (fds[0].revents) {
@@ -845,8 +1115,20 @@ int notifyd_main(int argc, char **argv)
 			 */
 			KtuiEvent ev;
 			while (ktui_backend()->poll_event(&ev, 0)) {
-				if (ev.type != KT_EVT_MOUSE ||
-				    ev.press != KT_MP_PRESS)
+				if (ev.type != KT_EVT_MOUSE)
+					continue;
+				/*
+				 * HOVER HOLDS THE COUNTDOWN. libkwl reports a
+				 * motion only when the pointer changed cell —
+				 * and an off-grid one is its LEAVE, which is
+				 * what resumes the timer. See hover_set.
+				 */
+				if (ev.press == KT_MP_DRAG) {
+					hover_set(ev.mx < 0 ? -1
+							    : toast_at_row(ev.my));
+					continue;
+				}
+				if (ev.press != KT_MP_PRESS)
 					continue;
 				if (ev.btn != KT_MB_LEFT &&
 				    ev.btn != KT_MB_MIDDLE &&
@@ -904,6 +1186,30 @@ int notifyd_main(int argc, char **argv)
 		 * guard and the daemon painted an empty box. It only became
 		 * reachable when the surface started being resized at all.
 		 */
+		if (srv >= 0 && (fds[2].revents & POLLIN)) {
+			int c = accept(srv, NULL, NULL);
+
+			if (c >= 0) {
+				/*
+				 * A DEADLINE ON THE READ, because this process
+				 * owns org.freedesktop.Notifications for the
+				 * whole session: a client that connects and
+				 * then says nothing would otherwise stop every
+				 * toast on the machine until it went away.
+				 * Two hundred milliseconds is forever for a
+				 * peer that is about to write one word.
+				 */
+				struct timeval tv = { .tv_sec = 0,
+						      .tv_usec = 200000 };
+
+				setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv,
+					   sizeof(tv));
+				setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &tv,
+					   sizeof(tv));
+				serve_client(c);
+				close(c);
+			}
+		}
 		if (ktui_resized) {
 			ktui_resized = 0;
 			ktui_draw_resize();
@@ -911,6 +1217,10 @@ int notifyd_main(int argc, char **argv)
 		}
 	}
 
+	if (srv >= 0) {
+		close(srv);
+		unlink(spath);
+	}
 	sd_bus_unref(bus);
 	kwl_shutdown();
 	return 0;

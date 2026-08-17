@@ -735,7 +735,41 @@ static int apply_saved(struct wl_display *dpy)
 	return 0;
 }
 
+/*
+ * Refusing to switch off the LAST screen is not paternalism: the compositor
+ * would have nothing to draw on and this dialog would go with it, leaving a
+ * machine that is running and cannot be seen.
+ *
+ * It is a function rather than a case now because the pointer reaches the same
+ * verb through a button, and two copies of this rule is one copy that stops
+ * being true.
+ */
+static void toggle_enabled(struct head *h)
+{
+	if (!h)
+		return;
+	if (h->enabled) {
+		int live = 0;
+
+		for (int i = 0; i < nheads; i++)
+			if (heads[i].enabled)
+				live++;
+		if (live < 2) {
+			snprintf(applied_note, sizeof(applied_note),
+				 "that is the only screen there is");
+			applied = -1;
+			return;
+		}
+	}
+	h->enabled = !h->enabled;
+	applied_note[0] = '\0';
+}
+
 /* ── drawing ───────────────────────────────────────────────────────────── */
+
+/* Most useful first: the bar drops from the RIGHT, so Close goes before
+ * Apply. Escape and a click away still close it. */
+enum { DB_APPLY, DB_ONOFF, DB_MODE, DB_SCALE, DB_ROTATE, DB_CLOSE, DB_N };
 
 static void mode_label(const struct head *h, char *out, size_t n)
 {
@@ -789,10 +823,42 @@ static void draw(void)
 			       ? "K keep   R revert now"
 			       : "SPACE on/off   m/M mode   s scale   t rotate   [ ] order",
 		       KT_DIM, KT_SURFACE, KT_A_NONE);
-	ktui_draw_text(2, h - 2, w - 4,
-		       applied_note[0] ? applied_note
-				       : "ENTER apply    ESC cancel",
-		       applied < 0 ? KT_ERR : KT_DIM, KT_SURFACE, KT_A_NONE);
+	/*
+	 * EVERY VERB IN THIS WINDOW WAS A KEY, and the row of keys above is a
+	 * legend, not a control: a pointer could select a screen and then do
+	 * nothing to it — not switch it off, not change its mode, not apply.
+	 * The shared bar drops from the right when the window is narrow and
+	 * returns where it started, which is where the note has to stop.
+	 */
+	const struct head *bh = (sel >= 0 && sel < nheads) ? &heads[order[sel]]
+							   : NULL;
+	int live = 0;
+	for (int i = 0; i < nheads; i++)
+		if (heads[i].enabled)
+			live++;
+	struct sh_button b[DB_N];
+	b[DB_APPLY] = (struct sh_button){ "Apply", nheads > 0 };
+	b[DB_ONOFF] = (struct sh_button){ bh && bh->enabled ? "Turn Off"
+							   : "Turn On",
+					  bh && bh->proxy &&
+						  (!bh->enabled || live > 1) };
+	b[DB_MODE] = (struct sh_button){ "Mode", bh && bh->proxy &&
+							bh->nmodes > 1 };
+	b[DB_SCALE] = (struct sh_button){ "Scale", bh && bh->proxy };
+	b[DB_ROTATE] = (struct sh_button){ "Rotate", bh && bh->proxy };
+	b[DB_CLOSE] = (struct sh_button){ "Close", 1 };
+	int bx = sh_chrome_buttons(w, h - 2, b, DB_N, -1);
+	int room = bx - 3;
+	const char *note = applied_note[0] ? applied_note
+					   : "ENTER apply    ESC cancel";
+	/* A MESSAGE takes whatever room is left; a HINT is drawn whole or not
+	 * at all, because half a sentence is worse than none. */
+	if (room > 0 && (applied_note[0]
+				 ? 1
+				 : room >= (int)ktui_utf8_width(note)))
+		ktui_draw_text(2, h - 2, room, note,
+			       applied < 0 ? KT_ERR : KT_DIM, KT_SURFACE,
+			       KT_A_NONE);
 	ktui_draw_flush();
 }
 
@@ -1005,12 +1071,69 @@ int display_main(int argc, char **argv)
 		}
 
 		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press == KT_MP_DRAG) {
+				/* The button bar lights under the pointer. The
+				 * LIST does not follow the pointer here: a row
+				 * is a screen and the buttons act on the
+				 * selected one, so hover-to-select would move
+				 * the target out from under the hand between
+				 * aiming and clicking. */
+				sh_chrome_hover(ev.mx, ev.my);
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS || ev.mx < 0)
 				continue;
 			if (ev.btn == KT_MB_RIGHT)
 				break;
+			if (ev.btn == KT_MB_WHEEL_UP) {
+				if (sel > 0)
+					sel--;
+				continue;
+			}
+			if (ev.btn == KT_MB_WHEEL_DOWN) {
+				if (sel + 1 < nheads)
+					sel++;
+				continue;
+			}
+			if (ev.btn != KT_MB_LEFT)
+				continue;
 			int row = ev.my - 1;
-			if (ev.btn == KT_MB_LEFT && row >= 0 && row < nheads)
+			int bi = sh_chrome_button_at(ev.mx, ev.my);
+			if (bi >= 0) {
+				struct head *hh = (sel >= 0 && sel < nheads)
+							  ? &heads[order[sel]]
+							  : NULL;
+				if (hh && !hh->proxy)
+					hh = NULL;
+				switch (bi) {
+				case DB_APPLY:
+					reverting = 0;
+					applied = 0;
+					applied_note[0] = '\0';
+					apply_now();
+					wl_display_flush(dpy);
+					break;
+				case DB_ONOFF:
+					toggle_enabled(hh);
+					break;
+				case DB_MODE:
+					if (hh)
+						cycle_mode(hh, 1);
+					break;
+				case DB_SCALE:
+					if (hh)
+						cycle_scale(hh);
+					break;
+				case DB_ROTATE:
+					if (hh)
+						cycle_transform(hh);
+					break;
+				case DB_CLOSE:
+					goto done;
+				}
+				continue;
+			}
+			if (row >= 0 && row < nheads)
 				sel = row;
 			continue;
 		}
@@ -1035,29 +1158,7 @@ int display_main(int argc, char **argv)
 				sel++;
 			break;
 		case ' ':
-			/*
-			 * Refusing to switch off the LAST screen is not
-			 * paternalism: the compositor would have nothing to draw
-			 * on and this dialog would go with it, leaving a machine
-			 * that is running and cannot be seen.
-			 */
-			if (!h)
-				break;
-			if (h->enabled) {
-				int live = 0;
-				for (int i = 0; i < nheads; i++)
-					if (heads[i].enabled)
-						live++;
-				if (live < 2) {
-					snprintf(applied_note,
-						 sizeof(applied_note),
-						 "that is the only screen there is");
-					applied = -1;
-					break;
-				}
-			}
-			h->enabled = !h->enabled;
-			applied_note[0] = '\0';
+			toggle_enabled(h);
 			break;
 		case 'm':
 			if (h)

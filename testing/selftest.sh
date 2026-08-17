@@ -1032,6 +1032,50 @@ grep -q "appbox" "$OUT/oomd2.txt" \
 echo "  boxed preferred, adj-shielded and protected comms spared, kthreads skipped"
 
 echo
+echo "==> kdos-mountd offers the stick and refuses everything else"
+# Mounting needs root and a real device, so the ACTION cannot be summoned in a
+# test. The SELECTION can, and it is the whole of the design: --fixture replays
+# a recorded /sys/block plus two hand-built superblocks through the same scan()
+# the daemon serves from, and mounts nothing.
+#
+# The two REFUSALS matter more than the acceptance. An internal disk must never
+# be offered whatever it is formatted with — testing/fixtures/mountd/dev/sda1
+# carries a real ext4 superblock precisely so that a broken removable check
+# would show up as an extra row rather than as nothing. And a device claimed by
+# /etc/fstab is somebody's existing decision, which this daemon does not get to
+# second-guess.
+$CC $STD $WARN $INC -o "$OUT/kdos-mountd" \
+    src/desktop/kdos-mountd/main.c src/libs/libkbase/*.c
+MF=testing/fixtures/mountd
+MO="$OUT/mountd.txt"
+"$OUT/kdos-mountd" --fixture "$MF/sys" "$MF/dev" > "$MO" 2>&1
+grep -q "sdb1	KDOSSTICK	vfat" "$MO" \
+    || { echo "  the removable stick was not offered"; cat "$MO"; exit 1; }
+grep -q "^2 eligible" "$MO" \
+    || { echo "  the stick and the disc were not the whole answer"
+         cat "$MO"; exit 1; }
+grep -q "sda1" "$MO" \
+    && { echo "  the INTERNAL disk was offered"; cat "$MO"; exit 1; }
+# The optical disc IS offered on a machine with a real root — this run has one.
+# On the LIVE ISO it must not be, and that half cannot be asserted here: the
+# rule keys off `/` being an overlay, which is the running system's own
+# /proc/mounts and not something a fixture can supply. Recorded rather than
+# faked; it was found by kdos-mountd offering the disc it had booted from.
+grep -q "sr0	-	iso9660" "$MO" \
+    || { echo "  the data disc was not offered"; cat "$MO"; exit 1; }
+# The fstab claims the STICK by label and says nothing about the disc, so the
+# refusal has to be visible as the stick leaving and the disc staying — "0
+# eligible" would also pass if the whole scan had broken.
+KDOS_MOUNTD_FSTAB="$MF/fstab" "$OUT/kdos-mountd" --fixture "$MF/sys" "$MF/dev" \
+    > "$MO" 2>&1
+grep -q "KDOSSTICK" "$MO" \
+    && { echo "  a device claimed by fstab was still offered"; cat "$MO"; exit 1; }
+grep -q "sr0" "$MO" \
+    || { echo "  the fstab entry took the disc with it"; cat "$MO"; exit 1; }
+echo "  the stick and the disc are offered; the internal disk and an fstab"
+echo "  entry are not"
+
+echo
 echo "==> genlaunchers turns an image's desktop entries into host commands"
 # Four outputs, and dropping any one of them breaks something visible: the
 # launcher, the mime cache beside it, the name -> in-box command table, and the
@@ -1078,6 +1122,75 @@ test -L "$FSR/usr/local/bin/gimp" || { echo "  no shim for gimp"; exit 1; }
 test -e "$FSR/usr/local/bin/winetricks" \
     && { echo "  a shim was made for a binary the image lacks"; exit 1; }
 echo "  launcher, mime cache, command table and shims — and no shim without a binary"
+
+# ── an Exec line is not a whitespace-separated list ──────────────────────
+#
+# Two shapes out of the SHIPPED appbox that a `strtok(" ")` gets wrong, and
+# both looked from the desktop exactly like an application that does not start:
+# debian's gsmartcontrol is `Exec="/usr/bin/gsmartcontrol-root"`, whose quotes
+# ended up part of the path, and its wesnoth is
+# `Exec=sh -c "wesnoth-1.18 >/dev/null 2>&1"`, whose single shell argument was
+# handed to sh in three pieces. The rewrite has to preserve the quoting (these
+# go into a table that is read back) and the reader has to undo it.
+cat > "$IMG/usr/share/applications/gsmart.desktop" <<'DESK'
+[Desktop Entry]
+Type=Application
+Name=GSmartControl
+Exec="/usr/bin/gsmart root"
+DESK
+cat > "$IMG/usr/share/applications/wesnoth.desktop" <<'DESK'
+[Desktop Entry]
+Type=Application
+Name=Wesnoth
+Exec=sh -c "wesnoth-1.18 >/dev/null 2>&1"
+DESK
+rm -rf "$FSR"; mkdir -p "$FSR"
+"$OUT/kdos-appbox" genlaunchers "$IMG/usr/share/applications" "$FSR" 2>/dev/null
+grep -q '^gsmart	"/usr/bin/gsmart root"$' "$FSR/usr/share/kdos/alien-apps" \
+    || { echo "  a quoted Exec did not survive the rewrite as one argument"
+         grep '^gsmart' "$FSR/usr/share/kdos/alien-apps"; exit 1; }
+grep -q '^wesnoth	sh -c "wesnoth-1.18 >/dev/null 2>&1"$' \
+    "$FSR/usr/share/kdos/alien-apps" \
+    || { echo "  a quoted shell argument was split by the rewrite"
+         grep '^wesnoth' "$FSR/usr/share/kdos/alien-apps"; exit 1; }
+# And the READING side: field codes vanish with nothing picked, so
+# `mpv -- %U` does not go looking for a file called %U.
+$CC $STD $WARN -o "$OUT/execsplit" -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+    -x c - src/libs/libkxdg/kxdg_exec.c <<'EOF'
+#include <stdio.h>
+#include <string.h>
+#include "kxdg.h"
+static int fail;
+static void want(const char *exec, const char *const *f, int nf,
+                 const char *expect)
+{
+        char store[1024], out[1024] = "";
+        const char *a[32];
+        int n = kxdg_exec_split(exec, f, nf, store, sizeof store, a, 32);
+        for (int i = 0; i < n; i++) {
+                if (i) strcat(out, "|");
+                strcat(out, a[i]);
+        }
+        if (strcmp(out, expect)) {
+                printf("  [%s] -> <%s>, wanted <%s>\n", exec, out, expect);
+                fail = 1;
+        }
+}
+int main(void)
+{
+        const char *one[] = { "/tmp/a b.png" };
+        want("\"/usr/bin/gsmart root\"", NULL, 0, "/usr/bin/gsmart root");
+        want("sh -c \"a >b 2>&1\"", NULL, 0, "sh|-c|a >b 2>&1");
+        want("mpv --pseudo-gui -- %U", NULL, 0, "mpv|--pseudo-gui|--");
+        want("gimp-3.0 %U", one, 1, "gimp-3.0|/tmp/a b.png");
+        want("foo %%bar %i %c baz", NULL, 0, "foo|%bar|baz");
+        want("keep %U codes", NULL, -1, "keep|%U|codes");
+        return fail;
+}
+EOF
+"$OUT/execsplit" || { echo "  kxdg_exec_split does not read back what it writes"
+                      exit 1; }
+echo "  Exec quoting round-trips, and a field code with no file vanishes"
 
 echo
 echo "==> kdos-appbox open resolves a path to the thing that opens it"
@@ -1363,9 +1476,15 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     # The four original surfaces, plus any Phase B front end that has landed.
     # dumpmain.c declares every entry point WEAK, so a file that is not on the
     # tree yet is a name it declines rather than a link error.
+    # chrome.c is not a front end — it is the header band, group headings and
+    # button bar the device surfaces share, so it belongs in the base set
+    # rather than in the candidate loop. Leaving it out made every surface that
+    # uses it fail to LINK, which the harness correctly reported as "the new
+    # front ends do not link" and which reads as a defect in those files.
     DFRONTS="src/desktop/kdos-shell/cal.c src/desktop/kdos-shell/menu.c
              src/desktop/kdos-shell/launcher.c src/desktop/kdos-shell/pick.c
-             src/desktop/kdos-shell/shell.c"
+             src/desktop/kdos-shell/shell.c src/desktop/kdos-shell/apps.c
+             src/desktop/kdos-shell/chrome.c"
     # A new surface may want alsa or an sd-bus; offer them when the host has
     # them rather than making the whole harness conditional on either.
     DEXTRA_PC=""
@@ -1376,11 +1495,13 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     # that does not build must cost its own golden and nobody else's.
     DNEW=""
     DBAD=""
-    for s in keys teams saver slit doc settings openwith audio; do
+    for s in keys teams saver slit doc settings openwith audio \
+             start net bt devices notify status tip; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         if $CC $STD $WARN -fsyntax-only -I"$DPROTO" \
                 -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+                -Isrc/libs/libkicon \
                 $(pkg-config --cflags wayland-client $DEXTRA_PC) \
                 "src/desktop/kdos-shell/$s.c" 2>"$OUT/dump-$s.err"; then
             DNEW="$DNEW src/desktop/kdos-shell/$s.c"
@@ -1399,6 +1520,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
         $CC $STD $WARN -o "$OUT/dumpcheck" -I"$DPROTO" \
             -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+            -Isrc/libs/libkicon \
             -Wl,--wrap=ktui_offscreen_init \
             testing/fixtures/shell/dumpmain.c $DFRONTS "$@" \
             "$DPROTO"/*-protocol.c \
@@ -1495,6 +1617,9 @@ echo "==> golden frames — the committed cell grid, diffed"
 #              asynchronously — a dump catches whatever had answered by then
 #   openwith   its header carries the file's absolute path. Its resolution is
 #              checked below instead, which is the part that can be wrong
+#   net bt     both need a system bus, and what is ON it — an access point
+#              list, a paired headset — is the machine's, not a fixture's
+#   devices    /dev/video* and /proc/asound are the host's
 #
 # What is goldened reads its inputs from testing/fixtures/shell: `tree/` for
 # pick and `config/` for the surfaces that parse one (a frozen rc.xml for the
@@ -1549,7 +1674,7 @@ golden pick        132x43 pick --dir tree --dump
 # The Phase B surfaces, each only if it linked in. `--have` is dumpmain.c
 # answering for its own weak symbols, so a surface that has not landed is a
 # skip with a name on it rather than a silent gap.
-for _s in keys teams doc settings; do
+for _s in keys teams doc settings start notify; do
     if "$DUMPCK" --have "$_s"; then
         golden "$_s" 80x24  "$_s" --dump
         golden "$_s" 132x43 "$_s" --dump
@@ -1563,6 +1688,20 @@ for _s in keys teams doc settings; do
         echo "  $_s (skipped — not linked into the harness)"
     fi
 done
+# The overflow popup reads its list from a FILE the panel writes, so the golden
+# gets a fixture rather than whatever this machine's own panel published a
+# moment ago — three rows, one of them wanting attention and one of them the
+# tray item whose menu this desktop cannot draw.
+if "$DUMPCK" --have status; then
+    golden status 80x24  status --from status.tbl --dump
+    golden status 132x43 status --from status.tbl --dump
+elif [ -f "$GOLD/status-80x24.txt" ]; then
+    echo "  status: a golden is committed but the surface no longer links"
+    golden_fail=1
+else
+    echo "  status (skipped — not linked into the harness)"
+fi
+
 # The keybind card's one claim beyond its shape: rc.xml documents itself with
 # commented-out bindings, and every one of them would be advertised as live if
 # strip_comments ever stopped running first. The fixture carries exactly one.

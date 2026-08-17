@@ -42,29 +42,97 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include "kbase.h"
+#include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
 
-enum { CAT_APPEARANCE = 0, CAT_SESSION, CAT_INPUT, CAT_APPS, NCAT };
+enum { CAT_APPEARANCE = 0, CAT_PANEL, CAT_DESKTOP, CAT_HARDWARE, CAT_SESSION,
+       CAT_INPUT, CAT_APPS, NCAT };
 
 static const char *const CAT_NAMES[NCAT] = {
-	"Appearance", "Session", "Input", "Apps"
+	"Appearance", "Panel", "Desktop", "Hardware", "Session", "Input",
+	"Apps"
+};
+
+/*
+ * THE HOME SCREEN IS A GRID OF ICONS, and it is the front door.
+ *
+ * A sidebar of seven words is a fine way to move between pages once you know
+ * what is on them and a poor way to find anything the first time — which is
+ * why every control panel worth the name, from System 7's through XP's, opens
+ * on a field of labelled pictures rather than on a list. This does the same:
+ * a tile per category with its icon, its name and a line saying what is behind
+ * it, and the list view is what you land in when you pick one.
+ *
+ * The icon names are checked against the SHIPPED ATLAS rather than taken from
+ * the freedesktop naming spec — Papirus has no `preferences-desktop-theme` and
+ * no `applications-system`, and a tile whose picture silently resolves to
+ * nothing is the one tile that looks broken. A name that misses still draws:
+ * the glyph tier is the fallback, which is what a tty and an install with no
+ * artwork get.
+ */
+static const struct {
+	const char *icon;
+	const char *blurb;
+} CAT_TILE[NCAT] = {
+	/* The blurbs are cut to what a tile holds at 80 columns — three
+	 * across is 26 cells and the text gets 22 of them. A line that only
+	 * fits on a wide screen is a line that is truncated on the shipped
+	 * one, which is where it has to read. */
+	{ "color-picker",      "accent, CRT, wallpaper" },
+	{ "panel",             "the taskbar and tray" },
+	{ "desktop",           "icons and workspaces" },
+	{ "computer",          "screens, net, sound" },
+	{ "system-shutdown",   "idle, lock and power" },
+	{ "input-keyboard",    "keyboard and pointer" },
+	{ "preferences-other", "which app opens what" },
+};
+
+/* Where the app starts and what Escape steps back to. */
+enum { SM_HOME = 0, SM_PAGE };
+static int mode = SM_HOME;
+static int home_sel;
+
+/*
+ * `--page <name>`, so an applet can deep-link into the page that owns it —
+ * the panel's battery readout opens Session, its network readout opens the
+ * manager itself. The names are the category words, lowercased.
+ */
+static const char *const PAGE_NAMES[NCAT] = {
+	"appearance", "panel", "desktop", "hardware", "session", "input",
+	"apps"
 };
 
 /* Where a row's value is stored. ST_THEME is the accent, which is not a file
  * this program writes at all: `kdos theme` owns the whole palette pipeline
  * (icons, cursors, gtk.css, foot, btop, starship) and a second writer of the
  * accent would be a second thing to keep in agreement with it. */
-enum { ST_NONE = 0, ST_COMP, ST_THEME };
+/*
+ * ST_PANEL is `~/.config/kdos/panel.conf`, which is a SECOND file in exactly
+ * the same `key = value` shape — so write_kv already knows how to rewrite it
+ * and the only new thing is which signal to send afterwards. It matters
+ * because everything in it is a decision about the bar somebody is looking at
+ * (which widgets, which charts, what is hidden behind the chevron), and until
+ * now the only way to change any of it was to know the file existed.
+ */
+enum { ST_NONE = 0, ST_COMP, ST_THEME, ST_PANEL };
 
 /* When a change takes effect. */
 enum { SC_NONE = 0, SC_LIVE, SC_LOGIN };
 
-enum { FT_CHOICE = 0, FT_INT, FT_TEXT, FT_NOTE, FT_APP };
+/*
+ * FT_TOOL is a row that RUNS something rather than storing anything, and it is
+ * what makes this a control centre instead of a comp.conf editor. The screens,
+ * the network, bluetooth, sound and the cameras are each a whole program with
+ * its own protocol; re-implementing a summary of them here would be a second
+ * thing to keep true. The row says what it opens and opens it.
+ */
+enum { FT_CHOICE = 0, FT_INT, FT_TEXT, FT_NOTE, FT_APP, FT_TOOL };
 
 struct row {
 	int cat;
@@ -84,6 +152,8 @@ struct row {
 static const char *const YESNO[] = { "yes", "no" };
 static const char *const ONOFF[] = { "on", "off" };
 static const char *const LIDS[] = { "off", "lock", "suspend" };
+static const char *const PANELS[] = { "bottom", "top", "off" };
+static const char *const TASKLAB[] = { "auto", "yes", "no" };
 
 /* The accent names, filled from libktui's own table at startup — the palette
  * lives in libkcolor and every consumer expands the same one. */
@@ -150,20 +220,108 @@ static struct row rows[] = {
 	  LIDS, 3, 0, 0, 0,
 	  "what closing the laptop lid does; in a VM the default is off",
 	  "suspend", "suspend" },
-	{ CAT_SESSION, FT_CHOICE, ST_COMP, SC_LOGIN, "panel_bottom",
-	  "panel_bottom", YESNO, 2, 0, 0, 0,
-	  "the second panel: window list, pager and show-desktop. A second "
-	  "process, started at login",
-	  "yes", "yes" },
-	{ CAT_SESSION, FT_CHOICE, ST_COMP, SC_LOGIN, "desktop_icons",
+	/* ── Panel ──────────────────────────────────────────────────── */
+	{ CAT_PANEL, FT_CHOICE, ST_COMP, SC_LOGIN, "panel", "panel",
+	  PANELS, 3, 0, 0, 0,
+	  "which edge the one taskbar is on, or off entirely. There were two "
+	  "panels here; there is one",
+	  "bottom", "bottom" },
+	{ CAT_PANEL, FT_INT, ST_COMP, SC_LOGIN, "panel_cells", "panel_cells",
+	  NULL, 0, 1, 4, 1,
+	  "its thickness in CELLS. Two is what makes a task button's icon "
+	  "square on a 16x32 cell",
+	  "2", "2" },
+	{ CAT_PANEL, FT_CHOICE, ST_COMP, SC_LOGIN, "panel_autohide",
+	  "panel_autohide", YESNO, 2, 0, 0, 0,
+	  "the taskbar retreats to an edge strip until the pointer reaches it",
+	  "no", "no" },
+	{ CAT_PANEL, FT_TEXT, ST_COMP, SC_LOGIN, "clock_format",
+	  "clock_format", NULL, 0, 0, 0, 0,
+	  "the clock as a strftime format; it reaches the panel on its command "
+	  "line",
+	  "%H:%M", "%H:%M" },
+	/* ── panel.conf, the bar's own file ──────────────────────────── */
+	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "overflow", "overflow",
+	  NULL, 0, 0, 0, 0,
+	  "widgets that live behind the chevron instead of on the bar, so the "
+	  "wing stops changing width",
+	  "stutter restart clipboard", "stutter restart clipboard" },
+	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "tray_hide", "tray_hide",
+	  NULL, 0, 0, 0, 0,
+	  "tray ids not drawn on the bar. fcitx5 is here because its menu is "
+	  "dbusmenu, which this tray cannot draw",
+	  "fcitx fcitx5 org.fcitx.fcitx5", "fcitx fcitx5 org.fcitx.fcitx5" },
+	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "meters", "meters",
+	  NULL, 0, 0, 0, 0,
+	  "which charts on the second row, in the order of importance: a "
+	  "narrow bar drops them from the right",
+	  "cpu ram net", "cpu ram net" },
+	{ CAT_PANEL, FT_CHOICE, ST_PANEL, SC_LIVE, "task_labels", "task_labels",
+	  TASKLAB, 3, 0, 0, 0,
+	  "whether a window button carries its name. `auto` is the bar "
+	  "deciding; `no` is a dock",
+	  "auto", "auto" },
+	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "right", "right",
+	  NULL, 0, 0, 0, 0,
+	  "the notification area, left to right. An unknown name is reported "
+	  "on stderr, never ignored",
+	  "pager tray more media privacy mpris clipboard cpu stutter restart "
+	  "net volume battery notify clock",
+	  "pager tray more media privacy mpris clipboard cpu stutter restart "
+	  "net volume battery notify clock" },
+	{ CAT_PANEL, FT_NOTE, ST_NONE, SC_NONE, NULL, "pinned launchers",
+	  NULL, 0, 0, 0, 0,
+	  "~/.config/kdos/favorites, one desktop-entry id per line — the same "
+	  "file the Start menu pins from",
+	  "", "" },
+
+	/* ── Desktop ────────────────────────────────────────────────── */
+	{ CAT_DESKTOP, FT_CHOICE, ST_COMP, SC_LOGIN, "desktop_icons",
 	  "desktop_icons", YESNO, 2, 0, 0, 0,
 	  "~/Desktop drawn on the background layer, with Home and Trash pinned "
 	  "last",
 	  "yes", "yes" },
-	{ CAT_SESSION, FT_CHOICE, ST_COMP, SC_LOGIN, "panel_autohide",
-	  "panel_autohide", YESNO, 2, 0, 0, 0,
-	  "the panels retreat to an edge strip until the pointer reaches them",
+	{ CAT_DESKTOP, FT_CHOICE, ST_COMP, SC_LOGIN, "icons", "icons",
+	  YESNO, 2, 0, 0, 0,
+	  "pixel icons at all. Off is not a degraded mode — it is what a tty "
+	  "draws, and every surface falls back to its glyphs",
+	  "yes", "yes" },
+	{ CAT_DESKTOP, FT_CHOICE, ST_COMP, SC_LOGIN, "slit", "slit",
+	  YESNO, 2, 0, 0, 0,
+	  "the dockapp column (kdos-slit), from ~/.config/kdos/slit.conf: "
+	  "<interval> <width> <command…> per line",
 	  "no", "no" },
+	{ CAT_DESKTOP, FT_TOOL, ST_NONE, SC_NONE, "kdos-display",
+	  "Displays…", NULL, 0, 0, 0, 0,
+	  "modes, scale, rotation and the left-to-right order of every screen",
+	  "", "" },
+
+	/* ── Hardware ───────────────────────────────────────────────────
+	 *
+	 * Every row here is a whole program with its own protocol. A summary
+	 * of NetworkManager drawn in this window would be a second thing to
+	 * keep in agreement with the manager itself, so the row says what it
+	 * opens and opens it. */
+	{ CAT_HARDWARE, FT_TOOL, ST_NONE, SC_NONE, "kdos-net",
+	  "Network…", NULL, 0, 0, 0, 0,
+	  "wifi, wired and VPN over NetworkManager — what `foot -e nmtui` used "
+	  "to be",
+	  "", "" },
+	{ CAT_HARDWARE, FT_TOOL, ST_NONE, SC_NONE, "kdos-bt",
+	  "Bluetooth…", NULL, 0, 0, 0, 0,
+	  "scan, pair and connect over bluez, with the pairing agent a keyboard "
+	  "cannot be paired without",
+	  "", "" },
+	{ CAT_HARDWARE, FT_TOOL, ST_NONE, SC_NONE, "kdos-audio",
+	  "Sound…", NULL, 0, 0, 0, 0,
+	  "which card the sound comes out of, and the bluetooth headset that "
+	  "will not connect",
+	  "", "" },
+	{ CAT_HARDWARE, FT_TOOL, ST_NONE, SC_NONE, "kdos-devices",
+	  "Cameras and microphones…", NULL, 0, 0, 0, 0,
+	  "which cameras exist, what is holding one, and the key that mutes "
+	  "every microphone at once",
+	  "", "" },
 
 	/* ── Input ──────────────────────────────────────────────────────
 	 *
@@ -202,6 +360,9 @@ static struct app_row apps[MAX_APPS];
 static int napps;
 
 static int cat, sel, top, pane;		/* pane 0 = categories, 1 = fields */
+/* The viewport follows the SELECTION only when the selection is what moved
+ * — see sh_list_wheel. */
+static int sel_follow = 1;
 static char note[192];
 static int editing, quit_armed;
 static char edit_buf[256];
@@ -336,6 +497,8 @@ static void load_all(void)
 
 	cfg_path("comp.conf", path, sizeof(path));
 	load_kv(path, ST_COMP);
+	cfg_path("panel.conf", path, sizeof(path));
+	load_kv(path, ST_PANEL);
 	load_apps();
 }
 
@@ -448,7 +611,7 @@ static int write_kv(const char *path, int store)
  * `kdos-desktop-start` — an unhandled SIGHUP kills a shell, and those two
  * /bin/sh scripts own the session.
  */
-static void sighup_comp(void)
+static void sighup(const char *name)
 {
 	KbArgv a = {0};
 
@@ -457,7 +620,7 @@ static void sighup_comp(void)
 	kb_argv_add(&a, "pkill");
 	kb_argv_add(&a, "-x");
 	kb_argv_add(&a, "-HUP");
-	kb_argv_add(&a, "kdos-comp");
+	kb_argv_add(&a, name);
 	kb_argv_end(&a);
 	kb_run(&a);		/* no session running is not an error */
 }
@@ -476,7 +639,12 @@ static void apply(void)
 {
 	char path[700];
 	int comp = dirty_count(ST_COMP), theme = dirty_count(ST_THEME);
+	int panel = dirty_count(ST_PANEL);
 	int live = 0, login = 0, failed = 0;
+	/* `pkill -x` is EXACT and that is load-bearing: `kdos-comp` is a
+	 * substring of `kdos-desktop-start`, which is a /bin/sh script that
+	 * owns the session and dies on an unhandled SIGHUP. */
+	static const char kdos_comp[] = "kdos-comp";
 
 	for (int i = 0; i < NROWS; i++) {
 		if (!strcmp(rows[i].val, rows[i].orig))
@@ -492,7 +660,17 @@ static void apply(void)
 		if (write_kv(path, ST_COMP) != 0)
 			failed++;
 		else
-			sighup_comp();
+			sighup(kdos_comp);
+	}
+	if (panel) {
+		/* The panel re-reads panel.conf on the same signal `kdos theme`
+		 * uses, so these take effect on the bar that is on the screen
+		 * rather than at the next login. */
+		cfg_path("panel.conf", path, sizeof(path));
+		if (write_kv(path, ST_PANEL) != 0)
+			failed++;
+		else
+			sighup("kdos-shell");
 	}
 	if (theme) {
 		for (int i = 0; i < NROWS; i++) {
@@ -654,7 +832,81 @@ static const char *elide(const char *s, int width, char *buf, size_t cap)
 
 static int btn_x, btn_end, btn_row;
 
-static void draw(void)
+/* ── the home grid ─────────────────────────────────────────────────────── */
+
+/* Where the last frame put each tile, so a click maps back to what was drawn
+ * rather than to arithmetic that has to be kept in step with it. */
+static KRect tile_hit[NCAT];
+static int icons_on = 1;
+
+/* Tiles as wide as the window allows, at least two across. A tile is three
+ * rows: the picture and the name on one, the blurb under it, and a blank. */
+#define TILE_H 3
+static int tile_cols(int w)
+{
+	int cols = (w - 2) / 26;
+
+	if (cols < 1)
+		cols = 1;
+	if (cols > 3)
+		cols = 3;
+	return cols;
+}
+
+static void draw_home(void)
+{
+	int w = ktui_w, h = ktui_h;
+	int cols = tile_cols(w);
+	int tw = (w - 2) / cols;
+
+	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
+	ktui_draw_box(krect(0, 0, w, h), " Settings ", KT_ACCENT, KT_SURFACE, 1);
+
+	for (int i = 0; i < NCAT; i++) {
+		int cx = 1 + (i % cols) * tw;
+		int cy = 1 + (i / cols) * TILE_H;
+		int on = i == home_sel;
+		int fg = on ? KT_SURFACE : KT_TEXT;
+		int bg = on ? KT_ACCENT : KT_SURFACE;
+
+		tile_hit[i] = krect(0, 0, 0, 0);
+		if (cy + 1 >= h - 3)
+			break;
+		/* FILL then swap the slots — never KT_A_REVERSE over the
+		 * label, which inverts only the cells the text covers and
+		 * turns a two-word name into two lit blocks. */
+		ktui_draw_fill(krect(cx, cy, tw - 1, 2), bg);
+
+		/* 2x1 — a 32x32 square on the name's own row. The same rule
+		 * the panel keeps: a sprite given two ROWS is centred across
+		 * the boundary between them and lines up with nothing. */
+		int icon = icons_on ? kicon_slot(CAT_TILE[i].icon, 2, 1) : -1;
+		int tx = cx + 1;
+		if (icon >= 0) {
+			ktui_draw_sprite(krect(cx + 1, cy, 2, 1), icon, fg, bg);
+			tx = cx + 4;
+		}
+		ktui_draw_text(tx, cy, cx + tw - 2 - tx, CAT_NAMES[i], fg, bg,
+			       KT_A_NONE);
+		ktui_draw_text(cx + 1, cy + 1, tw - 3, CAT_TILE[i].blurb,
+			       on ? fg : KT_DIM, bg, KT_A_NONE);
+		tile_hit[i] = krect(cx, cy, tw - 1, 2);
+	}
+
+	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
+	/* WORDS, not arrows. The ascii tier has no ← →, and the console font
+	 * has no left/right arrow either — which is why ktui_glyph carries
+	 * ◀ ▶ — so a literal `↑↓←→` here came out as `????` in the golden
+	 * frame and would come out as four blanks on tty1. */
+	ktui_draw_text(2, h - 3, w - 4,
+		       "Enter opens a page   arrows move   Esc closes", KT_DIM,
+		       KT_SURFACE, KT_A_NONE);
+	ktui_draw_text(2, h - 2, w - 4, CAT_TILE[home_sel].blurb, KT_MID,
+		       KT_SURFACE, KT_A_NONE);
+	ktui_draw_flush();
+}
+
+static void draw_page(void)
 {
 	int w = ktui_w, h = ktui_h;
 	int pane_rows = h - 5;
@@ -719,6 +971,16 @@ static void draw(void)
 				       KT_A_NONE);
 			continue;
 		}
+		if (r->type == FT_TOOL) {
+			/* A row that opens a program, drawn as one: the label
+			 * and the ▶ that says Enter goes somewhere. */
+			ktui_draw_text(fx, y, fw - 2, r->label,
+				       on ? fg : KT_ACCENT, bg, KT_A_NONE);
+			ktui_draw_text(fx + fw - 2, y, 1,
+				       ktui_glyph[KT_G_RIGHT],
+				       on ? fg : KT_DIM, bg, KT_A_NONE);
+			continue;
+		}
 
 		char label[64];
 		snprintf(label, sizeof(label), "%s%s", r->label,
@@ -743,6 +1005,14 @@ static void draw(void)
 							            : KT_DIM),
 				     bg, KT_A_NONE);
 	}
+
+	/*
+	 * ONE COLUMN THAT SAYS THERE IS MORE — see sh_list_scrollbar. The
+	 * Apps page is every recorded default handler on the machine, which is
+	 * the longest list this window has and the one that gave no sign of
+	 * having a below-the-fold at all.
+	 */
+	sh_list_scrollbar(w - 1, 1, pane_rows, n, top, KT_SURFACE);
 
 	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 	/* The junction where the category divider meets the rule under it —
@@ -811,6 +1081,16 @@ static void draw(void)
 		btn_x = btn_end = 0;
 	}
 	ktui_draw_flush();
+}
+
+/* One draw entry point, so the loop and the `--dump` path cannot diverge about
+ * which screen is on. */
+static void draw(void)
+{
+	if (mode == SM_HOME)
+		draw_home();
+	else
+		draw_page();
 }
 
 /*
@@ -893,6 +1173,16 @@ static void activate(void)
 	int ri = cat_row(sel);
 	if (ri < 0 || rows[ri].type == FT_NOTE)
 		return;
+	if (rows[ri].type == FT_TOOL) {
+		/* Spawned DETACHED, never waited for: the managers are
+		 * long-lived surfaces of their own, and a settings window that
+		 * froze until the network dialog closed would be the thing
+		 * this hub exists not to be. */
+		const char *argv[2] = { rows[ri].key, NULL };
+		sh_spawn(argv);
+		snprintf(note, sizeof(note), "opened %.40s", rows[ri].key);
+		return;
+	}
 	if (rows[ri].type == FT_CHOICE) {
 		cycle(&rows[ri], 1);
 		return;
@@ -906,6 +1196,7 @@ int settings_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	int dump = 0, cells = 0;
+	int start_cat = -1;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
@@ -914,6 +1205,11 @@ int settings_main(int argc, char **argv)
 			dump = 1;
 		else if (!strcmp(argv[i], "--dump-cells"))
 			cells = 1;
+		/* comp.conf's `icons = no`. Off is not a degraded mode: the
+		 * grid falls back to its glyph tier, which is what a tty and
+		 * an install with no artwork draw. */
+		else if (!strcmp(argv[i], "--no-icons"))
+			icons_on = 0;
 		/* A golden frame is named for its size, so the harness has to
 		 * be able to ask for one. */
 		else if (!strcmp(argv[i], "--dump-size") && i + 1 < argc) {
@@ -923,19 +1219,47 @@ int settings_main(int argc, char **argv)
 				cap_w = dw;
 				cap_h = dh;
 			}
+		}
+		/* `--page <name>`: an applet opens the page that owns it. The
+		 * names are the category words, lowercased. An unknown one is
+		 * reported rather than ignored — a deep link that silently
+		 * opened the first page would be a link nobody could debug. */
+		else if (!strcmp(argv[i], "--page") && i + 1 < argc) {
+			const char *want = argv[++i];
+			int found = -1;
+			for (int c = 0; c < NCAT; c++)
+				if (!strcasecmp(PAGE_NAMES[c], want))
+					found = c;
+			if (found < 0) {
+				fprintf(stderr, "kdos-settings: no page named "
+						"'%s'\n", want);
+				return 2;
+			}
+			start_cat = found;
 		} else {
 			fprintf(stderr, "usage: kdos-settings "
 					"[--dump|--dump-cells] [--dump-size WxH]\n"
-					"                     [--font NAME]\n");
+					"                     [--page NAME] "
+					"[--no-icons] [--font NAME]\n");
 			return 2;
 		}
 	}
 
 	load_all();
+	/* A deep link lands ON the page, not on the grid: the panel's battery
+	 * readout opening Settings and making you pick Session again would be
+	 * a link that does half its job. */
+	if (start_cat >= 0) {
+		cat = start_cat;
+		home_sel = start_cat;
+		sel = top = 0;
+		mode = SM_PAGE;
+	}
 	pane = 1;
 
 	if (dump || cells) {
 		sh_theme_from_cache();
+		icons_on = 0;
 		if (cells) {
 			ktui_backend_set(&cap_backend);
 			ktui_draw_init();
@@ -963,6 +1287,10 @@ int settings_main(int argc, char **argv)
 				"layer-shell\n");
 		return 2;
 	}
+	/* AFTER kwl_init: the icon layer needs the cell size and the output
+	 * scale, and neither exists until the surface does. */
+	if (icons_on)
+		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
 	ktui_draw_init();
 
 	while (!kwl_should_close()) {
@@ -998,6 +1326,88 @@ int settings_main(int argc, char **argv)
 			continue;
 		}
 
+		/* ── the home grid owns its own input ── */
+		if (mode == SM_HOME) {
+			int cols = tile_cols(ktui_w);
+			int open = -1;
+
+			if (ev.type == KT_EVT_MOUSE) {
+				int hit = -1;
+				for (int i = 0; i < NCAT; i++)
+					if (tile_hit[i].w > 0 &&
+					    ev.mx >= tile_hit[i].x &&
+					    ev.mx < tile_hit[i].x + tile_hit[i].w &&
+					    ev.my >= tile_hit[i].y &&
+					    ev.my < tile_hit[i].y + tile_hit[i].h)
+						hit = i;
+				if (ev.press == KT_MP_DRAG) {
+					if (hit >= 0)
+						home_sel = hit;
+					continue;
+				}
+				if (ev.press != KT_MP_PRESS)
+					continue;
+				/* ONE click opens a tile. A grid of seven
+				 * pictures is aimed at, not browsed — the
+				 * double-click a file manager needs is there
+				 * to protect a selection this screen does not
+				 * have. */
+				if (ev.btn == KT_MB_LEFT && hit >= 0) {
+					home_sel = hit;
+					open = hit;
+				} else if (ev.btn == KT_MB_RIGHT) {
+					break;
+				} else {
+					continue;
+				}
+			} else if (ev.type == KT_EVT_KEY) {
+				switch (ev.key) {
+				case KT_K_ESC:
+					if (try_quit())
+						goto out;
+					continue;
+				case KT_K_LEFT:
+					if (home_sel > 0)
+						home_sel--;
+					continue;
+				case KT_K_RIGHT:
+					if (home_sel < NCAT - 1)
+						home_sel++;
+					continue;
+				case KT_K_UP:
+					if (home_sel - cols >= 0)
+						home_sel -= cols;
+					continue;
+				case KT_K_DOWN:
+					if (home_sel + cols < NCAT)
+						home_sel += cols;
+					continue;
+				case KT_K_HOME:
+					home_sel = 0;
+					continue;
+				case KT_K_END:
+					home_sel = NCAT - 1;
+					continue;
+				case KT_K_ENTER:
+					open = home_sel;
+					break;
+				default:
+					continue;
+				}
+			} else {
+				continue;
+			}
+			if (open < 0)
+				continue;
+			cat = open;
+			sel = top = 0;
+			pane = 1;
+			mode = SM_PAGE;
+			if (cat == CAT_APPS)
+				load_apps();
+			continue;
+		}
+
 		if (ev.type == KT_EVT_MOUSE) {
 			int row = ev.my - 1 + top;
 			int in_cats = ev.mx <= CATW && ev.my >= 1 &&
@@ -1019,8 +1429,9 @@ int settings_main(int argc, char **argv)
 			} else if (ev.btn == KT_MB_WHEEL_DOWN) {
 				sel++;
 			} else if (ev.btn == KT_MB_RIGHT) {
-				if (try_quit())
-					break;
+				/* Back one level, the same as Escape. */
+				mode = SM_HOME;
+				home_sel = cat;
 			} else if (ev.btn == KT_MB_LEFT) {
 				if (btn_end > btn_x && ev.my == btn_row &&
 				    ev.mx >= btn_x && ev.mx < btn_end) {
@@ -1048,6 +1459,8 @@ int settings_main(int argc, char **argv)
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
+
+		sel_follow = 1;	/* a key moves the cursor; the view follows */
 
 		if (editing) {
 			int ri = cat_row(sel);
@@ -1084,9 +1497,16 @@ int settings_main(int argc, char **argv)
 		}
 
 		if (ev.key == KT_K_ESC) {
-			if (!try_quit())
-				continue;
-			break;
+			/* Back to the grid, not out of the program. Edits are
+			 * held in `rows[]` and Apply is still one key away, so
+			 * stepping back loses nothing — and the unsaved-changes
+			 * guard stays at the single exit, on the home screen,
+			 * rather than firing every time somebody backs out of a
+			 * page they only wanted to look at. */
+			mode = SM_HOME;
+			home_sel = cat;
+			quit_armed = 0;
+			continue;
 		}
 		quit_armed = 0;
 
@@ -1156,7 +1576,7 @@ int settings_main(int argc, char **argv)
 			break;
 		}
 	}
-
+out:
 	kwl_shutdown();
 	return 0;
 }

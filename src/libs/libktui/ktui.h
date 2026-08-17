@@ -139,6 +139,52 @@ typedef struct {
  * path ever writes, so it cannot collide with a real character. */
 #define KTUI_WIDE_CONT 0x1u
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Sprites — a picture occupying whole cells (ktui_sprite.c)
+ *
+ * The desktop is a character grid and stays one; a sprite is an ENHANCEMENT
+ * layer over it, never a replacement. Every consumer must draw correctly when
+ * ktui_sprite_put() answers -1, which is what a tty, a missing icon theme, a
+ * full table and `icons = off` all look like.
+ *
+ * A sprite cell's codepoint carries everything a painter needs:
+ *
+ *     0x02 | slot(16) | sy(4) | sx(4)
+ *
+ * — so no separate damage list exists, and none is needed: the row diff sees a
+ * different slot as a different cell. 0x02000000 is above Unicode's last
+ * codepoint (0x10FFFF), so it cannot collide with text.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define KTUI_SPRITE_BASE  0x02000000u
+#define KTUI_MAX_SPRITES  256
+#define KTUI_IS_SPRITE(ch) (((ch) & 0xff000000u) == KTUI_SPRITE_BASE)
+#define KTUI_SPRITE_SLOT(ch) (((ch) >> 8) & 0xffffu)
+#define KTUI_SPRITE_SX(ch) ((ch) & 0xfu)
+#define KTUI_SPRITE_SY(ch) (((ch) >> 4) & 0xfu)
+
+typedef struct {
+	uint64_t key;		/* content identity, the CALLER's hash      */
+	const void *pix;	/* pixman_image_t *, owned by the caller    */
+	uint32_t fallback;	/* what a text backend puts there instead   */
+	int w, h;		/* size in cells, 1..16                     */
+} KtuiSprite;
+
+/* Register (or refresh) the picture for `key`. `pix` must already be scaled to
+ * cw*cell_w x ch*cell_h at the backend's scale — this library does no pixel
+ * work at all. Returns a slot, or -1 when the caller must draw its glyph. */
+int ktui_sprite_put(uint64_t key, const void *pix, int cw, int ch,
+		    uint32_t fallback);
+int ktui_sprite_find(uint64_t key);
+const KtuiSprite *ktui_sprite_get(int slot);
+int ktui_sprite_slots(void);
+/* Call BEFORE freeing the picture. There is no refcount and no eviction. */
+void ktui_sprite_drop(uint64_t key);
+void ktui_sprite_clear(void);
+void ktui_draw_sprite(KRect r, int slot, int fg, int bg);
+/* A text backend's substitute for a sprite cell. */
+uint32_t ktui_sprite_text_cell(uint32_t ch);
+
 /* Glyphs, resolved once against what the console font actually carries. */
 enum {
 	KT_G_HL, KT_G_VL, KT_G_TL, KT_G_TR, KT_G_BL, KT_G_BR,	/* single box */

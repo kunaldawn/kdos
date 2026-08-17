@@ -65,7 +65,10 @@ struct ow_cand {
 
 static struct ow_cand cands[OW_MAX_CANDS];
 static int ncands;
-static int sel, top;
+/* The viewport follows the SELECTION only when the selection is what moved —
+ * see sh_list_wheel. A clamp that followed unconditionally would undo a page
+ * scroll on the very next frame. */
+static int sel, top, sel_follow = 1;
 
 static char ow_path[1024];	/* the file, or "" for --mime               */
 static char ow_mime[OW_MIME_MAX];
@@ -661,6 +664,15 @@ static void draw(void)
 			ktui_draw_text_right(0, y, rx, "[box]", on ? fg : KT_DIM,
 					     bg, KT_A_NONE);
 	}
+
+	/*
+	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
+	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * moving the PAGE rather than the cursor: without it the content
+	 * slides for no visible reason.
+	 */
+	sh_list_scrollbar(w - 1, list_top, list_rows, nrows(), top,
+			  KT_SURFACE);
 	/* On `!ncands`, never `!nrows()`: the Other row is always there, so the
 	 * list is never empty and this said nothing on the one machine that
 	 * needed it — a type outside the appbox's mimeinfo.cache showed a lone
@@ -900,10 +912,8 @@ int openwith_main(int argc, char **argv)
 		int list_rows = ktui_h - 6;
 		if (list_rows < 1)
 			list_rows = 1;
-		if (sel < top)
-			top = sel;
-		if (sel >= top + list_rows)
-			top = sel - list_rows + 1;
+		sh_list_clamp(&top, sel, nrows(), list_rows, sel_follow);
+		sel_follow = 0;
 
 		draw();
 
@@ -924,16 +934,22 @@ int openwith_main(int argc, char **argv)
 			int on_row = ev.my >= 3 && ev.my < ktui_h - 3 &&
 				     row >= 0 && row < nrows();
 			if (ev.press == KT_MP_DRAG) {
-				if (on_row && !editing)
+				if (on_row && !editing) {
 					sel = row;
+					sel_follow = 1;
+				}
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
-			if (ev.btn == KT_MB_WHEEL_UP) {
-				sel--;
-			} else if (ev.btn == KT_MB_WHEEL_DOWN) {
-				sel++;
+			if (ev.btn == KT_MB_WHEEL_UP ||
+			    ev.btn == KT_MB_WHEEL_DOWN) {
+				int up = ev.btn == KT_MB_WHEEL_UP;
+				int lr = ktui_h - 6 > 0 ? ktui_h - 6 : 1;
+				if (!sh_list_wheel(up, &top, nrows(), lr)) {
+					sel += up ? -1 : 1;
+					sel_follow = 1;
+				}
 			} else if (ev.btn == KT_MB_RIGHT) {
 				break;
 			} else if (ev.btn == KT_MB_LEFT) {
@@ -956,6 +972,7 @@ int openwith_main(int argc, char **argv)
 						break;
 					}
 					sel = row;
+					sel_follow = 1;
 				}
 			}
 			if (sel < 0)
@@ -966,6 +983,10 @@ int openwith_main(int argc, char **argv)
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
+
+		/* A key either moves the cursor or refills the list; both want
+		 * the viewport to follow. */
+		sel_follow = 1;
 
 		if (editing) {
 			size_t n = strlen(edit_buf);

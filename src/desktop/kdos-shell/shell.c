@@ -21,6 +21,7 @@
 #include <strings.h>
 
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
@@ -808,4 +809,39 @@ void sh_activate_workspace(struct sh_state *sh, int i)
 	ext_workspace_handle_v1_activate(sh->ws[i]);
 	ext_workspace_manager_v1_commit(sh->ws_mgr);
 	wl_display_flush(sh->display);
+}
+
+/*
+ * Spawn something no surface here must wait for.
+ *
+ * DOUBLE FORK: the intermediate child exits at once and init reaps the
+ * grandchild, so a panel that never calls waitpid() cannot accumulate zombies
+ * — and a launcher that blocked on a boxed app's eighteen-second cold start
+ * would be a launcher nobody uses twice.
+ *
+ * The waitpid on the INTERMEDIATE child is interruptible on purpose: the
+ * SIGHUP `kdos theme` sends is caught without SA_RESTART (see sh_theme_watch),
+ * and a waitpid it interrupts leaves that child a zombie for the life of the
+ * process — one per menu click.
+ *
+ * No shell. argv is exec'd as given.
+ */
+void sh_spawn(const char *const argv[])
+{
+	pid_t pid;
+
+	if (!argv || !argv[0])
+		return;
+	pid = fork();
+	if (pid == 0) {
+		if (fork() == 0) {
+			setsid();
+			execvp(argv[0], (char *const *)argv);
+			_exit(127);
+		}
+		_exit(0);
+	} else if (pid > 0) {
+		while (waitpid(pid, NULL, 0) < 0 && errno == EINTR)
+			;
+	}
 }

@@ -20,6 +20,13 @@ struct output;
 struct view;
 struct wl_display;
 
+/* Where the one taskbar goes. */
+enum kdos_panel_edge {
+	KDOS_PANEL_BOTTOM = 0,
+	KDOS_PANEL_TOP,
+	KDOS_PANEL_OFF,
+};
+
 /* What closing the laptop lid does. `off` is screen off ONLY — the
  * machine keeps running, which is what a clamshell-with-external-screen
  * setup wants. */
@@ -68,14 +75,60 @@ struct kdos_conf {
 	char wallpaper[512];
 
 	/*
-	 * Which pieces of chrome the compositor supervises besides the top
-	 * panel and the notification daemon. Both default ON — they are the
-	 * desktop, not extras — and both exist as keys because a second panel
-	 * and a layer of desktop icons are the two things a person running
+	 * WHERE THE ONE BAR IS. There used to be two panels — a menu bar at
+	 * the top and a second panel at the bottom — which was two exclusive
+	 * zones, two hit maps and the window list drawn twice. It is one
+	 * taskbar on the bottom edge now, the shape every desktop of this
+	 * lineage settled on, and this key is what moves it or turns it off.
+	 *
+	 *   0 bottom (the default)   1 top   2 off
+	 *
+	 * `panel_bottom` is GONE. A comp.conf that still carries it is
+	 * reported by name rather than silently ignored, because the file
+	 * promises that a line which does not take effect says so.
+	 */
+	int panel_edge;
+
+	/*
+	 * How many CELLS thick. Two by default, and that is what makes a task
+	 * button's icon square: a cell is 16x32, so two cells across two rows
+	 * is a 32x64 box with a 32x32 picture centred in it. One row is the
+	 * bar as it was before the icon layer and still works — nothing on
+	 * this desktop requires a picture.
+	 */
+	int panel_cells;
+
+	/*
+	 * Pixel icons at all (libkicon). ON where there is artwork; off makes
+	 * every surface fall back to its glyph tier, which is also what a tty,
+	 * a missing atlas and an unreadable PNG produce. Passed to every
+	 * chrome child as --no-icons, so it is startup-only like the rest of
+	 * their argv.
+	 */
+	bool icons;
+
+	/*
+	 * The desktop icon layer. Defaults ON — it is the desktop, not an
+	 * extra — and exists as a key because it is the thing a person running
 	 * this on a small screen will genuinely want off.
 	 */
-	bool panel_bottom;
 	bool desktop_icons;
+
+	/*
+	 * The dockapp column (kdos-slit) and the desktop's widget zone. Both
+	 * OFF by default and both are opt-in for the same reason: a column of
+	 * gadgets nobody configured is a column of dim `!` marks.
+	 */
+	bool slit;
+
+	/*
+	 * The clipboard history (kdos-clip). ON: a desktop that forgets what
+	 * you copied thirty seconds ago is the complaint every clipboard
+	 * manager exists to answer. Nothing is written to disk — the history
+	 * lives in that process and dies with the session — so the key is
+	 * about whether to keep one at all rather than about where it goes.
+	 */
+	bool clipboard;
 
 	/*
 	 * The top panel hides against the edge until the pointer reaches it.

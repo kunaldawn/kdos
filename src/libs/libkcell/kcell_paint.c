@@ -120,6 +120,44 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 
 		uint8_t fg = row[x].fg, bg = row[x].bg;
 
+		/*
+		 * A SPRITE cell: composite the matching sub-rectangle of the
+		 * caller's picture over the background that was just filled.
+		 *
+		 * Over, not src, and that is the point — an icon with an alpha
+		 * edge takes the panel's colour, or the selection's fill on a
+		 * highlighted row, for free. The picture was scaled to the
+		 * whole sprite's pixel size by whoever registered it (libkicon
+		 * does it once per name+size and caches), so all this does is
+		 * pick the cell out of it. Nothing here can fail: an
+		 * unregistered slot leaves the background, which is what an
+		 * icon that went away should look like.
+		 */
+		if (KTUI_IS_SPRITE(cp)) {
+			const KtuiSprite *s =
+				ktui_sprite_get((int)KTUI_SPRITE_SLOT(cp));
+			/* Reverse under a sprite is a swap like everywhere
+			 * else: the fill that the icon then sits on becomes
+			 * the foreground slot. */
+			if (row[x].attr & KT_A_REVERSE) {
+				pixman_color_t rc =
+					to_pixman(ktui_theme->slot[fg]);
+				pixman_image_fill_rectangles(
+					PIXMAN_OP_SRC, dst, &rc, 1,
+					&(pixman_rectangle16_t){
+						(int16_t)(x * cw), (int16_t)y,
+						(uint16_t)cw, (uint16_t)ch });
+			}
+			if (s && s->pix)
+				pixman_image_composite32(
+					PIXMAN_OP_OVER,
+					(pixman_image_t *)s->pix, NULL, dst,
+					(int)KTUI_SPRITE_SX(cp) * cw,
+					(int)KTUI_SPRITE_SY(cp) * ch,
+					0, 0, x * cw, y, cw, ch);
+			continue;
+		}
+
 		KCellGlyph g;
 		bool have = kcell_glyph_scaled(cp, scale, &g);
 

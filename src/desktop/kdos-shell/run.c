@@ -236,6 +236,24 @@ static int col_of(const char *s, size_t nbytes)
 	return c;
 }
 
+/* Most useful first: the shared bar drops from the RIGHT. */
+enum { RB_RUN, RB_TERM, RB_CANCEL, RB_N };
+
+/* The inverse: the byte offset of a column, clamped to the end of the line.
+ * A text field that cannot be clicked into is one you have to arrow across. */
+static size_t cur_at_col(const char *s, int want)
+{
+	const char *p = s;
+	int c = 0;
+
+	while (*p && c < want) {
+		uint32_t cp;
+		p = ktui_utf8_next(p, &cp);
+		c++;
+	}
+	return (size_t)(p - s);
+}
+
 static void launch(const char *cmd, bool in_term)
 {
 	char buf[MAX_CMD + 32];
@@ -285,7 +303,11 @@ int run_main(int argc, char **argv)
 
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
-		.cols = 52,
+		/* Fifty-six, not fifty-two: the three buttons come to
+		 * thirty-five columns and the hint beside them is drawn whole
+		 * or not at all, so four more cells are the difference between
+		 * a row that explains itself and a row of buttons alone. */
+		.cols = 56,
 		.rows = 5,
 		.app_id = "kdos-run",
 		.font = font,
@@ -350,9 +372,25 @@ int run_main(int argc, char **argv)
 			ktui_draw_text(cx, 1, 1, "_", KT_ACCENT, KT_SURFACE,
 				       KT_A_NONE);
 		}
-		ktui_draw_text(2, h - 2, w - 4,
-			       "Enter run    Ctrl+Enter in a terminal    Esc cancel",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+		/*
+		 * THE VERBS AS BUTTONS. The row said `Enter run    Ctrl+Enter
+		 * in a terminal    Esc cancel`, which is a legend: the one
+		 * feature this box has beyond a prompt — running something in
+		 * a terminal — was a modifier nobody is told about, and a
+		 * pointer could do nothing here at all. Three buttons say the
+		 * same three things and can be pressed. Most useful first, so
+		 * the shared bar drops Cancel before it drops Run.
+		 */
+		struct sh_button rb[RB_N];
+		rb[RB_RUN] = (struct sh_button){ "Run", cmd[0] != '\0' };
+		rb[RB_TERM] = (struct sh_button){ "In Terminal",
+						  cmd[0] != '\0' };
+		rb[RB_CANCEL] = (struct sh_button){ "Cancel", 1 };
+		int bx = sh_chrome_buttons(w, h - 2, rb, RB_N, -1);
+		const char *hint = "type a command";
+		if (bx - 3 >= (int)ktui_utf8_width(hint))
+			ktui_draw_text(2, h - 2, bx - 3, hint, KT_DIM,
+				       KT_SURFACE, KT_A_NONE);
 		ktui_draw_flush();
 
 		KtuiEvent ev;
@@ -376,8 +414,31 @@ int run_main(int argc, char **argv)
 		 * it too — `dismiss_on_unfocus` above.)
 		 */
 		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press == KT_MP_DRAG) {
+				sh_chrome_hover(ev.mx, ev.my);
+				continue;
+			}
 			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_RIGHT)
 				break;
+			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_LEFT) {
+				int bi = sh_chrome_button_at(ev.mx, ev.my);
+
+				if (bi == RB_CANCEL)
+					break;
+				if ((bi == RB_RUN || bi == RB_TERM) && cmd[0]) {
+					hist_add(cmd);
+					launch(cmd, bi == RB_TERM);
+					rc = 0;
+					break;
+				}
+				/* A CLICK PLACES THE CARET. It is the one
+				 * thing a pointer owes a text field, and the
+				 * only mouse gesture this box could not
+				 * answer: editing the middle of a long command
+				 * meant arrowing to it. */
+				if (bi < 0 && ev.my == 1 && ev.mx >= 4)
+					cur = cur_at_col(cmd, off + ev.mx - 4);
+			}
 			continue;
 		}
 		if (ev.type != KT_EVT_KEY)

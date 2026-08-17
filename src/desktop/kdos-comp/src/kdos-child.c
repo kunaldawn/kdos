@@ -4,10 +4,10 @@
  *
  * labwc's spawn_async_no_shell() double-forks so the compositor never
  * reaps — right for a terminal a keybinding opened, wrong for the SHELL:
- * `kdos-shell` is the top panel, `kdos-shell --bottom` the window list
- * and pager, `kdos-desk` the desktop icons, and `kdos-notifyd` owns
+ * `kdos-shell` is the taskbar, `kdos-desk` the desktop icons, `kdos-slit`
+ * the dockapp column, and `kdos-notifyd` owns
  * org.freedesktop.Notifications. A session that loses one keeps running
- * with no chrome and no way to get any back. So these four are
+ * with no chrome and no way to get any back. So these are
  * spawned with ONE fork, their pid is kept, and the reap arrives through
  * labwc's existing SIGCHLD source (a second signalfd on SIGCHLD would
  * race the first for the event — hence the hook in handle_sigchld, not a
@@ -65,15 +65,37 @@
 #define KDOS_MAX_CHILDREN	40
 #define KDOS_OUTPUT_NAME_MAX	64
 
+/*
+ * `want` is a `const bool *` into kdos_conf, and the panel's switch is an
+ * ENUM there rather than a bool — so it is mirrored here, once, at the point
+ * the children are started. A pointer into a struct field of the wrong type is
+ * the sort of thing that compiles.
+ */
+static bool kdos_want_panel = true;
+static char kdos_panel_cells_arg[16] = "2";
+
 static const struct {
 	const char *cmd;
 	const char *arg;		/* NULL for none */
 	const bool *want;		/* NULL = always */
 	bool per_output;
 } TEMPLATES[] = {
-	{ "kdos-shell", NULL, NULL, true },
-	{ "kdos-shell", "--bottom", &kdos_conf.panel_bottom, true },
+	/*
+	 * ONE taskbar. There were two panels here — a menu bar at the top and
+	 * a second panel at the bottom — which is two exclusive zones and the
+	 * window list drawn twice. `panel = top|off` in comp.conf moves it or
+	 * turns it off; the edge is an ARGUMENT rather than a second row,
+	 * because two rows here would be two panels again.
+	 */
+	{ "kdos-shell", NULL, &kdos_want_panel, true },
 	{ "kdos-desk", NULL, &kdos_conf.desktop_icons, true },
+	/*
+	 * The dockapp column. Off by default — a slit nobody configured is a
+	 * column of dim `!` marks — and it had no row here at all for a
+	 * release, which meant writing ~/.config/kdos/slit.conf did nothing
+	 * whatever the file's own comment claimed.
+	 */
+	{ "kdos-slit", NULL, &kdos_conf.slit, true },
 	/*
 	 * The notification daemon is NOT per-output: it owns
 	 * org.freedesktop.Notifications, which is one bus name, and a second
@@ -82,6 +104,12 @@ static const struct {
 	 * single-owner protocol.
 	 */
 	{ "kdos-notifyd", NULL, NULL, false },
+	/*
+	 * The clipboard history. NOT per-output either: it owns one socket in
+	 * $XDG_RUNTIME_DIR and holds the history in memory, and a second
+	 * instance would be a second history nobody could reach.
+	 */
+	{ "kdos-clip", NULL, &kdos_conf.clipboard, false },
 };
 #define NTEMPLATES ((int)(sizeof(TEMPLATES) / sizeof(TEMPLATES[0])))
 
@@ -89,7 +117,10 @@ struct kdos_child {
 	bool live;
 	int tmpl;			/* index into TEMPLATES */
 	char output[KDOS_OUTPUT_NAME_MAX];	/* "" for the global ones */
-	const char *argv[12];
+	/* cmd + --output N + --font N + --top/--bottom + --cells N +
+	 * --clock N + --autohide + --no-icons + NULL = 13 at the widest, and
+	 * an overrun here writes past the slot into the next child's. */
+	const char *argv[20];
 	pid_t pid;
 	int fails;
 	time_t since;
@@ -146,6 +177,10 @@ child_build_argv(struct kdos_child *c)
 	/* clock_format and panel_autohide are the panel's, not the desk's or
 	 * the notifyd's */
 	if (!strcmp(TEMPLATES[c->tmpl].cmd, "kdos-shell")) {
+		c->argv[n++] = kdos_conf.panel_edge == KDOS_PANEL_TOP
+			? "--top" : "--bottom";
+		c->argv[n++] = "--cells";
+		c->argv[n++] = kdos_panel_cells_arg;
 		if (kdos_conf.clock_format[0]) {
 			c->argv[n++] = "--clock";
 			c->argv[n++] = kdos_conf.clock_format;
@@ -153,6 +188,17 @@ child_build_argv(struct kdos_child *c)
 		if (kdos_conf.panel_autohide) {
 			c->argv[n++] = "--autohide";
 		}
+	}
+	/*
+	 * `icons = no` reaches every surface that can draw one — and ONLY
+	 * those. A flag handed to a child that does not parse it is a usage
+	 * error and a child that never starts, which under a respawn loop is a
+	 * session that never settles.
+	 */
+	if (!kdos_conf.icons
+			&& (!strcmp(TEMPLATES[c->tmpl].cmd, "kdos-shell")
+				|| !strcmp(TEMPLATES[c->tmpl].cmd, "kdos-desk"))) {
+		c->argv[n++] = "--no-icons";
 	}
 	c->argv[n] = NULL;
 }
@@ -334,6 +380,13 @@ void
 kdos_children_start(void)
 {
 	children_started = true;
+
+	/* The enum-to-bool mirror, and the cell count as the string it will be
+	 * passed as: kb_argv-style tables store POINTERS, so every argument a
+	 * child gets has to outlive the exec. */
+	kdos_want_panel = kdos_conf.panel_edge != KDOS_PANEL_OFF;
+	snprintf(kdos_panel_cells_arg, sizeof(kdos_panel_cells_arg), "%d",
+		 kdos_conf.panel_cells > 0 ? kdos_conf.panel_cells : 2);
 
 	for (int t = 0; t < NTEMPLATES; t++) {
 		if (TEMPLATES[t].want && !*TEMPLATES[t].want) {
