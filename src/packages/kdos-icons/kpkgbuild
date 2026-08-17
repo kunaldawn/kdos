@@ -10,7 +10,7 @@
 
 name        = kdos-icons
 version     = 20250501
-release     = 1
+release     = 2
 description = KDOS phosphor icon theme — a recoloured Papirus
 homepage    = https://github.com/PapirusDevelopmentTeam/papirus-icon-theme
 depends     = kdos-theme

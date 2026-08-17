@@ -88,6 +88,15 @@ enum kwl_corner {
 	 */
 	KWL_CORNER_TOP_LEFT,
 	/*
+	 * The same, measured from the bottom — what a menu belonging to a bar
+	 * on the BOTTOM edge needs. A client cannot express this by anchoring
+	 * TOP with a computed margin: it does not know the output's pixel
+	 * height, so it cannot say where "just above the taskbar" is. margin_y
+	 * is the gap from the bottom edge (the panel's own height), margin_x
+	 * the offset from the left.
+	 */
+	KWL_CORNER_BOTTOM_LEFT,
+	/*
 	 * A bezel: the OSD's place, where every desktop has put the volume
 	 * overlay since the laptop grew media keys. Anchored to the bottom
 	 * edge ONLY — anchoring left and right as well would stretch the
@@ -207,10 +216,28 @@ void kwl_layer_autohide(bool hidden);
 void kwl_overlay_hide(void);
 int kwl_overlay_show(int cols, int rows);
 
+/*
+ * COPY. Puts `text` on the clipboard (primary = 0) or the primary selection
+ * (primary = 1), by creating a data source this client answers `send` on.
+ *
+ * Returns -1 when there is no manager for that selection, when the allocation
+ * fails, and — the one worth knowing about — when this surface has never seen
+ * an input event: set_selection presents the SERIAL of the event that
+ * justified it, and a compositor refuses one it has never issued. That is the
+ * protocol saying a background client may not take the clipboard, not a bug.
+ *
+ * The text is copied; the caller keeps its own. Sends are drained from
+ * kwl_pump and never block the frame.
+ */
+int kwl_copy(const char *text, size_t len, int primary);
+
 /* Cell metrics, once the font is loaded. A panel's pixel height is
  * cells * kwl_cell_h(). */
 int kwl_cell_w(void);
 int kwl_cell_h(void);
+/* The integer output scale in force. Anything a consumer rasterises for itself
+ * has to be produced at cell * scale — libkicon is the caller. */
+int kwl_scale(void);
 
 /*
  * The pointer's shape over this surface, via cursor-shape-v1. Sticky: it is
