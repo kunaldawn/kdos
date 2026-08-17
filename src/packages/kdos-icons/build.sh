@@ -42,6 +42,15 @@ mkdir -p "$PKG/usr/share/kdos/icons"
 cp -a "$PORT_SRC/marks" "$PKG/usr/share/kdos/icons/marks"
 cp -a "$PORT_SRC/art" "$PKG/usr/share/kdos/icons/art"
 
+# The pixel-icon atlas libkicon reads: the same artwork rasterised on the
+# maintainer's host by genatlas.py, in upstream's colours, tinted at load.
+# Absent is a working state — the desktop draws its glyph tier — so this is
+# conditional rather than a build failure on a tree that has not generated one.
+if [ -f "$PORT_SRC/atlas/atlas.kia" ]; then
+	install -Dm644 "$PORT_SRC/atlas/atlas.kia" \
+		"$PKG/usr/share/kdos/icons/atlas.kia"
+fi
+
 install -Dm644 "$PORT_SRC/LICENSE.notice" \
 	"$PKG/usr/share/licenses/kdos-icons/LICENSE.notice"
 install -Dm644 "$PORT_SRC/art/LICENSE.upstream" \

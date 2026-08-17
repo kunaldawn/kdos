@@ -33,6 +33,7 @@
  */
 
 #include "kdos-appbox.h"
+#include "kxdg.h"
 
 #include <dirent.h>
 #include <stdio.h>
@@ -565,24 +566,34 @@ static void usage(void)
  */
 static int run_as_shim(const char *name, int argc, char **argv)
 {
-	char cmd[512];
+	char cmd[512], store[1024];
+	const char *slot[KB_MAX_ARGV];
 	char *vec[KB_MAX_ARGV];
 	int n = 0, i;
-	char *w, *save;
 
 	if (!app_lookup(name, cmd, sizeof(cmd)))
 		kb_die("unknown alien app '%s' (try: kdos-appbox apps)", name);
 
-	for (w = strtok_r(cmd, " ", &save); w && n < KB_MAX_ARGV - argc - 1;
-	     w = strtok_r(NULL, " ", &save)) {
-		/* Field codes are .desktop placeholders for the file the user
-		 * picked; from a terminal the user's own argv takes that role. */
-		if (w[0] == '%' && w[1] && !w[2])
-			continue;
-		vec[n++] = w;
-	}
-	if (!n)
-		kb_die("empty command for '%s'", name);
+	/*
+	 * kxdg_exec_split, not a `strtok(" ")`: the table's commands come out
+	 * of upstream .desktop files and carry the format's QUOTING, which a
+	 * whitespace split gets wrong. Measured on the shipped image —
+	 * `gsmartcontrol` is `"/usr/bin/gsmartcontrol-root"` and was exec'd
+	 * with the quotes still on the path, and `wesnoth` is
+	 * `sh -c "wesnoth-1.18 >/dev/null 2>&1"`, whose one shell argument was
+	 * handed to sh in three pieces. Both looked exactly like an app that
+	 * does not start.
+	 *
+	 * Field codes are .desktop placeholders for the file the user picked;
+	 * from a terminal the user's own argv takes that role, so they expand
+	 * to nothing here and the argv is appended after.
+	 */
+	n = kxdg_exec_split(cmd, NULL, 0, store, sizeof(store), slot,
+			    KB_MAX_ARGV - argc - 1);
+	if (n <= 0)
+		kb_die("empty or unparseable command for '%s'", name);
+	for (i = 0; i < n; i++)
+		vec[i] = (char *)slot[i];
 	for (i = 0; i < argc; i++)
 		vec[n++] = argv[i];
 	vec[n] = NULL;

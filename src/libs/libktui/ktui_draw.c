@@ -382,6 +382,12 @@ void ktui_draw_dump(void)
 					continue;
 				ch = ' ';
 			}
+			/* A sprite has no codepoint. What a text view shows is
+			 * the fallback the caller registered, in the sprite's
+			 * top-left cell only — four identical blocks for one
+			 * 2x2 icon merge with the icon beside it, and a dump
+			 * exists to be read. */
+			ch = ktui_sprite_text_cell(ch);
 			int n = ktui_utf8_encode(ch ? ch : ' ', out);
 			fwrite(out, 1, (size_t)n, stdout);
 		}
@@ -712,6 +718,7 @@ static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 			 * byte on the wire. */
 			uint32_t ch = b->ch == KTUI_WIDE_CONT ? ' '
 							      : (b->ch ? b->ch : ' ');
+			ch = ktui_sprite_text_cell(ch);
 			int n = ktui_utf8_encode(ch, utf);
 			ktui_term_write(utf, (size_t)n);
 			*f = *b;

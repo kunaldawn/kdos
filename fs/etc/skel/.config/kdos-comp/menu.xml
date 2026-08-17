@@ -29,6 +29,9 @@
 
     <separator/>
 
+    <item label="Start Menu">
+      <action name="Execute" command="kdos-start"/>
+    </item>
     <item label="Applications">
       <action name="Execute" command="kdos-menu applications"/>
     </item>
@@ -43,6 +46,15 @@
 
     <item label="Displays">
       <action name="Execute" command="kdos-display"/>
+    </item>
+    <item label="Network">
+      <action name="Execute" command="kdos-net"/>
+    </item>
+    <item label="Bluetooth">
+      <action name="Execute" command="kdos-bt"/>
+    </item>
+    <item label="Devices">
+      <action name="Execute" command="kdos-devices"/>
     </item>
     <item label="Screenshot">
       <action name="Execute" command="kdos-shot region"/>

@@ -1,0 +1,29 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   pinned launchers
+# ---------------------------------
+#
+# One DESKTOP-ENTRY ID per line — the file name under
+# /usr/share/applications or ~/.local/share/applications, without the
+# `.desktop`. Two surfaces read this file and they read the same one: the
+# taskbar's quick-launch row, left of the window list, and the Start menu's
+# pinned column above the rule. Two lists of favourites would be two things to
+# keep in agreement, and one of them always loses.
+#
+# An id with no entry is skipped in silence: an alien app that is not in this
+# image's appbox bake must not leave a launcher that opens nothing.
+#
+# This file used to ship ABSENT, on the argument that absent is a working
+# default. It is not one any more: with a Start menu and a quick-launch row,
+# an empty list makes both of them look broken on a machine somebody has just
+# booted. Delete every line for the old behaviour.
+
+foot
+firefox-esr
+org.xfce.mousepad
+gimp

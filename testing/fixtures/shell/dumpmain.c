@@ -53,9 +53,43 @@ void kwl_overlay_resize(int c, int r) { (void)c; (void)r; }
 void kwl_cursor_set(enum kwl_cursor c) { (void)c; }
 int kwl_fd(void) { return -1; }
 void kwl_pump(void) {}
+int kwl_scale(void) { return 1; }
+int kwl_copy(const char *t, size_t n, int p)
+{
+	(void)t; (void)n; (void)p;
+	return -1;
+}
 int kwl_lock_engaged(void) { return 0; }
 int kwl_lock_finished(void) { return 1; }
 void kwl_unlock(void) {}
+
+/*
+ * libkicon, stubbed to "there are no icons".
+ *
+ * That is not a convenience — it is the POINT. Every surface here must draw
+ * correctly on a machine with no artwork, because a tty has none and
+ * `icons = off` is a supported setting, so a golden frame is the CHARACTER
+ * grid and a layout that only lines up once the pictures load is a layout that
+ * is broken. Stubbing also keeps pixman and libpng out of this harness, which
+ * is what lets it run on a host that has neither.
+ */
+int kicon_init(int cw, int ch, int s) { (void)cw; (void)ch; (void)s; return -1; }
+void kicon_finish(void) {}
+void kicon_set_enabled(int on) { (void)on; }
+int kicon_enabled(void) { return 0; }
+int kicon_slot(const char *n, int cw, int ch)
+{
+	(void)n; (void)cw; (void)ch;
+	return -1;
+}
+int kicon_slot_for_path(const char *p, int d, int cw, int ch)
+{
+	(void)p; (void)d; (void)cw; (void)ch;
+	return -1;
+}
+const char *kicon_app_icon(const char *id) { (void)id; return NULL; }
+void kicon_retint(void) {}
+int kicon_cached(void) { return 0; }
 
 /* ── the size override ──────────────────────────────────────────────────── */
 
@@ -91,6 +125,13 @@ FRONT_END(doc_main);
 FRONT_END(settings_main);
 FRONT_END(openwith_main);
 FRONT_END(audio_main);
+FRONT_END(start_main);
+FRONT_END(net_main);
+FRONT_END(bt_main);
+FRONT_END(devices_main);
+FRONT_END(notify_main);
+FRONT_END(status_main);
+FRONT_END(tip_main);
 
 static const struct {
 	const char *name;
@@ -108,6 +149,13 @@ static const struct {
 	{ "settings",	settings_main },
 	{ "openwith",	openwith_main },
 	{ "audio",	audio_main },
+	{ "start",	start_main },
+	{ "net",	net_main },
+	{ "bt",		bt_main },
+	{ "devices",	devices_main },
+	{ "notify",	notify_main },
+	{ "status",	status_main },
+	{ "tip",	tip_main },
 };
 
 int main(int argc, char **argv)

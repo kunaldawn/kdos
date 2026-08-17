@@ -24,6 +24,10 @@
 
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
+/* Dead keys and Compose sequences. A separate header in xkbcommon, and
+ * without it every xkb_compose_* call below is an implicit declaration —
+ * which under this tree's -Werror is a kdos-shell that does not build. */
+#include <xkbcommon/xkbcommon-compose.h>
 
 #include "ext-session-lock-v1-client-protocol.h"
 #include "kwl_priv.h"
@@ -178,6 +182,10 @@ static struct {
 
 	struct xkb_context *xkb_ctx;
 	struct xkb_keymap *keymap;
+	/* Dead keys. NULL on a machine with no Compose file, which is the old
+	 * behaviour exactly. */
+	struct xkb_compose_table *compose_table;
+	struct xkb_compose_state *compose_state;
 	struct xkb_state *xkb_state;
 
 	KwlBuffer buf[2];
@@ -225,6 +233,9 @@ static struct {
 	KtuiEvent q[KWL_EVQ];
 	int qhead, qtail;
 	int ptr_cx, ptr_cy;
+	/* The last cell a MOTION was reported for — see pt_motion. Seeded off
+	 * the grid so an enter and the first motion after one always report. */
+	int move_cx, move_cy;
 
 	/*
 	 * The wheel, accumulated rather than forwarded event for event.
@@ -236,6 +247,14 @@ static struct {
 	 */
 	double axis_acc;
 	int axis_disc;
+	/* wl_pointer.axis_source, which decides what the accumulator below is
+	 * FOR — see pt_frame. */
+	uint32_t axis_src;
+	int axis_src_seen;
+	/* The last tick this client emitted, for the duplicate gate — see
+	 * wheel_gate(). */
+	int64_t wheel_last_ms;
+	int wheel_last_up;
 
 	/*
 	 * Key repeat. Wayland has no repeat of its own — the compositor sends
@@ -271,6 +290,7 @@ int kwl_fd(void)
 }
 
 static void paste_pump(void);
+static void send_pump(void);
 
 void kwl_pump(void)
 {
@@ -324,8 +344,10 @@ void kwl_pump(void)
 	}
 flush:
 	/* An in-flight paste rides this loop too: the read is non-blocking and
-	 * kwl_pump's callers call it on every turn. */
+	 * kwl_pump's callers call it on every turn. So does an in-flight COPY —
+	 * a selection somebody is reading out of us. */
 	paste_pump();
+	send_pump();
 	/*
 	 * EAGAIN from flush means the socket is full, not that the compositor is
 	 * gone — libwayland has buffered the requests and will send them when
@@ -337,6 +359,10 @@ flush:
 }
 int kwl_cell_w(void) { return kcell_w(); }
 int kwl_cell_h(void) { return kcell_h(); }
+/* The integer output scale this surface is being rendered at. A consumer that
+ * rasterises anything of its own — libkicon is the one — has to do it at
+ * cell * scale, or a HiDPI panel gets a picture upscaled from half its size. */
+int kwl_scale(void) { return K.scale > 0 ? K.scale : 1; }
 
 static int ev_is_motion(const KtuiEvent *ev)
 {
@@ -513,6 +539,209 @@ static void paste_start(int primary)
 	K.paste_len = 0;
 	K.paste_deadline = now_ms() + KWL_PASTE_TIMEOUT_MS;
 	wl_display_flush(K.display);
+}
+
+/* ── copy ────────────────────────────────────────────────────────────────
+ *
+ * The half libkwl did not have. Every surface here could PASTE and nothing on
+ * this desktop could put anything on the clipboard — not a file name from the
+ * chooser, not a line from kdos-doc, not an SSID from the network manager, not
+ * an error from a toast. Every one of those is a thing a person copies.
+ *
+ * THE SEND MUST NOT BLOCK THE FRAME. A data source is handed a pipe and the
+ * receiving client may not read it for a while; a blocking write of a large
+ * selection into a full pipe stops the panel. So the fd goes non-blocking, one
+ * write is attempted immediately (which finishes it for anything that fits a
+ * pipe buffer — every clipboard payload this desktop produces), and a partial
+ * write is parked and drained from the pump. A send that never drains is
+ * dropped on a deadline rather than held forever.
+ *
+ * BOTH SELECTIONS, because this desktop has both: wl_data_device is Ctrl+C and
+ * the primary selection is the middle-click paste foot and mc expect.
+ */
+#define KWL_COPY_SENDS 4
+#define KWL_COPY_TIMEOUT_MS 4000
+
+struct kwl_send {
+	int fd;
+	size_t off;
+	int64_t deadline;
+};
+
+static char *copy_text;
+static size_t copy_len;
+static struct wl_data_source *copy_src;
+static struct zwp_primary_selection_source_v1 *copy_prim;
+static struct kwl_send copy_send[KWL_COPY_SENDS];
+
+static void send_pump(void)
+{
+	for (int i = 0; i < KWL_COPY_SENDS; i++) {
+		struct kwl_send *t = &copy_send[i];
+		if (t->fd < 0)
+			continue;
+		while (t->off < copy_len) {
+			ssize_t w = write(t->fd, copy_text + t->off,
+					  copy_len - t->off);
+			if (w > 0) {
+				t->off += (size_t)w;
+				continue;
+			}
+			if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+				if (now_ms() < t->deadline)
+					goto next;	/* still draining */
+			}
+			break;			/* EPIPE, or gave up */
+		}
+		close(t->fd);
+		t->fd = -1;
+next:
+		;
+	}
+}
+
+static void send_start(int fd)
+{
+	if (!copy_text || !copy_len) {
+		close(fd);
+		return;
+	}
+	fcntl(fd, F_SETFL, O_NONBLOCK);
+	for (int i = 0; i < KWL_COPY_SENDS; i++) {
+		if (copy_send[i].fd >= 0)
+			continue;
+		copy_send[i].fd = fd;
+		copy_send[i].off = 0;
+		copy_send[i].deadline = now_ms() + KWL_COPY_TIMEOUT_MS;
+		send_pump();
+		return;
+	}
+	/* Four consumers reading one selection at once is not a thing that
+	 * happens; refusing the fifth beats growing an unbounded table. */
+	close(fd);
+}
+
+static void src_target(void *d, struct wl_data_source *src, const char *mime)
+{
+	(void)d;
+	(void)src;
+	(void)mime;
+}
+
+static void src_send(void *d, struct wl_data_source *src, const char *mime,
+		     int32_t fd)
+{
+	(void)d;
+	(void)src;
+	(void)mime;
+	send_start(fd);
+}
+
+/*
+ * Somebody else took the selection. The source is destroyed here and NOT in
+ * kwl_copy: destroying it at set time would cancel the selection we just made.
+ */
+static void src_cancelled(void *d, struct wl_data_source *src)
+{
+	(void)d;
+	if (src == copy_src) {
+		wl_data_source_destroy(copy_src);
+		copy_src = NULL;
+	}
+}
+
+static const struct wl_data_source_listener data_source_listener = {
+	.target = src_target,
+	.send = src_send,
+	.cancelled = src_cancelled,
+};
+
+static void psrc_send(void *d, struct zwp_primary_selection_source_v1 *src,
+		      const char *mime, int32_t fd)
+{
+	(void)d;
+	(void)src;
+	(void)mime;
+	send_start(fd);
+}
+
+static void psrc_cancelled(void *d,
+			   struct zwp_primary_selection_source_v1 *src)
+{
+	(void)d;
+	if (src == copy_prim) {
+		zwp_primary_selection_source_v1_destroy(copy_prim);
+		copy_prim = NULL;
+	}
+}
+
+static const struct zwp_primary_selection_source_v1_listener
+		primary_source_listener = {
+	.send = psrc_send,
+	.cancelled = psrc_cancelled,
+};
+
+int kwl_copy(const char *text, size_t len, int primary)
+{
+	static const char *const MIMES[] = {
+		"text/plain;charset=utf-8", "text/plain", "TEXT", "STRING",
+		"UTF8_STRING",
+	};
+
+	if (!text || !len)
+		return -1;
+	/*
+	 * A serial is REQUIRED: set_selection presents the serial of the input
+	 * event that justified it, and a compositor refuses one it has never
+	 * seen. A surface that has not been clicked or typed into cannot copy,
+	 * which is the protocol saying that a background client may not take
+	 * the clipboard.
+	 */
+	if (!K.input_serial)
+		return -1;
+
+	char *copy = malloc(len);
+	if (!copy)
+		return -1;
+	memcpy(copy, text, len);
+	free(copy_text);
+	copy_text = copy;
+	copy_len = len;
+
+	if (primary) {
+		if (!K.primary_mgr || !K.primary_dev)
+			return -1;
+		if (copy_prim)
+			zwp_primary_selection_source_v1_destroy(copy_prim);
+		copy_prim = zwp_primary_selection_device_manager_v1_create_source(
+			K.primary_mgr);
+		if (!copy_prim)
+			return -1;
+		zwp_primary_selection_source_v1_add_listener(
+			copy_prim, &primary_source_listener, NULL);
+		for (size_t i = 0; i < sizeof(MIMES) / sizeof(MIMES[0]); i++)
+			zwp_primary_selection_source_v1_offer(copy_prim,
+							      MIMES[i]);
+		zwp_primary_selection_device_v1_set_selection(K.primary_dev,
+							      copy_prim,
+							      K.input_serial);
+	} else {
+		if (!K.data_mgr || !K.data_dev)
+			return -1;
+		if (copy_src)
+			wl_data_source_destroy(copy_src);
+		copy_src = wl_data_device_manager_create_data_source(K.data_mgr);
+		if (!copy_src)
+			return -1;
+		wl_data_source_add_listener(copy_src, &data_source_listener,
+					    NULL);
+		for (size_t i = 0; i < sizeof(MIMES) / sizeof(MIMES[0]); i++)
+			wl_data_source_offer(copy_src, MIMES[i]);
+		wl_data_device_set_selection(K.data_dev, copy_src,
+					     K.input_serial);
+	}
+	wl_display_flush(K.display);
+	return 0;
 }
 
 static void doff_offer(void *d, struct wl_data_offer *o, const char *mime)
@@ -969,6 +1198,7 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 	int n = poll(pfd, K.paste_fd >= 0 ? 2 : 1, wait);
 	if (K.paste_fd >= 0 && (n <= 0 || pfd[1].revents))
 		paste_pump();
+	send_pump();
 	if (n <= 0 || !(pfd[0].revents & (POLLIN | POLLHUP | POLLERR))) {
 		wl_display_cancel_read(K.display);
 		if (n < 0 && errno != EINTR)
@@ -1018,6 +1248,10 @@ static const KtuiBackend kwl_backend = {
 
 /* ── input ─────────────────────────────────────────────────────────────── */
 
+/* Defined below, beside the rest of the compose machine, and called from the
+ * keymap handler above it — a keymap change is what invalidates the table. */
+static void compose_init(void);
+
 static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int fd,
 		      uint32_t size)
 {
@@ -1045,6 +1279,84 @@ static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int fd,
 		xkb_keymap_unref(K.keymap);
 	K.keymap = km;
 	K.xkb_state = xkb_state_new(km);
+	compose_init();
+}
+
+
+/*
+ * DEAD KEYS. Without this a compose sequence produces nothing at all: xkb
+ * hands out `dead_acute` as a keysym with no text, `xkb_state_key_get_utf32`
+ * answers 0, and libkwl dropped the event — so `Compose e '` typed an `e` and
+ * then swallowed the quote, and a French or Czech layout could not write half
+ * its own alphabet.
+ *
+ * The table is the locale's, from $XKB_DEFAULT_LAYOUT's Compose file by way of
+ * $LC_CTYPE. A machine with no table at all keeps the old behaviour exactly —
+ * `compose_state` stays NULL and every branch below is skipped.
+ */
+static void compose_init(void)
+{
+	const char *locale = getenv("LC_ALL");
+
+	if (!locale || !*locale)
+		locale = getenv("LC_CTYPE");
+	if (!locale || !*locale)
+		locale = getenv("LANG");
+	if (!locale || !*locale)
+		locale = "C.UTF-8";
+
+	if (K.compose_state) {
+		xkb_compose_state_unref(K.compose_state);
+		K.compose_state = NULL;
+	}
+	if (K.compose_table) {
+		xkb_compose_table_unref(K.compose_table);
+		K.compose_table = NULL;
+	}
+	K.compose_table = xkb_compose_table_new_from_locale(
+		K.xkb_ctx, locale, XKB_COMPOSE_COMPILE_NO_FLAGS);
+	if (K.compose_table)
+		K.compose_state = xkb_compose_state_new(
+			K.compose_table, XKB_COMPOSE_STATE_NO_FLAGS);
+}
+
+/*
+ * Feed one keysym through the compose machine.
+ *
+ * Returns 0 when the caller should carry on with `sym`, and 1 when the key was
+ * SWALLOWED — either because a sequence is in progress or because it was
+ * cancelled. A composed result replaces `*sym` in place.
+ */
+static int compose_feed(xkb_keysym_t *sym)
+{
+	if (!K.compose_state)
+		return 0;
+	if (xkb_compose_state_feed(K.compose_state, *sym) !=
+	    XKB_COMPOSE_FEED_ACCEPTED)
+		return 0;
+
+	switch (xkb_compose_state_get_status(K.compose_state)) {
+	case XKB_COMPOSE_COMPOSING:
+		return 1;		/* mid-sequence: nothing to deliver */
+	case XKB_COMPOSE_COMPOSED: {
+		xkb_keysym_t out =
+			xkb_compose_state_get_one_sym(K.compose_state);
+		xkb_compose_state_reset(K.compose_state);
+		if (out == XKB_KEY_NoSymbol)
+			return 1;
+		*sym = out;
+		return 0;
+	}
+	case XKB_COMPOSE_CANCELLED:
+		/* `Compose a a` is not a sequence: the keys are eaten and
+		 * nothing is produced, which is what every other toolkit does
+		 * and is less surprising than delivering the last one. */
+		xkb_compose_state_reset(K.compose_state);
+		return 1;
+	case XKB_COMPOSE_NOTHING:
+	default:
+		return 0;
+	}
 }
 
 static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
@@ -1071,6 +1383,16 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 	KtuiEvent ev = { .type = KT_EVT_KEY };
 	ev.mods = mods_now();
 
+	/*
+	 * Compose FIRST, and the composed result is translated by keysym
+	 * rather than by keycode: `Compose e '` produces XKB_KEY_eacute, which
+	 * belongs to no key on the keyboard, so asking xkb what text that
+	 * KEYCODE produces would answer `'` again.
+	 */
+	if (compose_feed(&sym)) {
+		K.rep_code = 0;		/* a swallowed key does not repeat */
+		return;
+	}
 	ev.key = kwl_keysym_to_ktui(sym, K.xkb_state, kc);
 	if (!ev.key)
 		return;			/* a bare modifier: nothing to repeat */
@@ -1164,6 +1486,27 @@ static const struct wl_keyboard_listener keyboard_listener = {
 	.repeat_info = kb_repeat,
 };
 
+/*
+ * A MOTION THAT DID NOT MOVE IS NOT A MOTION, and reporting one is how a menu
+ * undoes what the wheel just did.
+ *
+ * Every consumer of this backend maps a motion to "which row is under the
+ * pointer" and selects it, which is the whole of hover. A wheel notch on a
+ * real machine does NOT arrive alone: an absolute pointing device (a tablet,
+ * which is what every VM presents, and every touchpad's absolute mode) sends
+ * the position again with the axis event, and the front end that turns one
+ * host scroll into two sends it twice. So the sequence the consumer saw was
+ * `wheel, motion(same place)` — it stepped the cursor and then instantly put
+ * it back on the row under a pointer that had not moved a pixel. Reported as
+ * "the highlight jumps back", and invisible from inside any one of the four
+ * links in that chain.
+ *
+ * Cell granularity is the right resolution for it: hover IS cell-granular,
+ * nothing above this reads sub-cell positions, and the one consumer that
+ * tracks a continuous value (the volume slider's drag) reads the cell too.
+ * The position is still recorded for the next click either way — only the
+ * EVENT is dropped.
+ */
 static void pt_motion(void *d, struct wl_pointer *p, uint32_t time,
 		      wl_fixed_t sx, wl_fixed_t sy)
 {
@@ -1173,8 +1516,15 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t time,
 	int cw = kcell_w(), ch = kcell_h();
 	if (cw <= 0 || ch <= 0)
 		return;
-	K.ptr_cx = wl_fixed_to_int(sx) / cw;
-	K.ptr_cy = wl_fixed_to_int(sy) / ch;
+	int cx = wl_fixed_to_int(sx) / cw;
+	int cy = wl_fixed_to_int(sy) / ch;
+
+	K.ptr_cx = cx;
+	K.ptr_cy = cy;
+	if (cx == K.move_cx && cy == K.move_cy)
+		return;
+	K.move_cx = cx;
+	K.move_cy = cy;
 
 	KtuiEvent ev = { .type = KT_EVT_MOUSE, .btn = KT_MB_MOVE,
 			 .mx = K.ptr_cx, .my = K.ptr_cy, .press = KT_MP_DRAG,
@@ -1215,12 +1565,105 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial,
  * One wheel tick, emitted from the frame handler rather than from the axis
  * event — see the `axis_acc` comment on the state block.
  */
-static void push_wheel(int up)
+/*
+ * `KDOS_WHEEL_DEBUG=1` traces the axis events one physical notch produces.
+ *
+ * "The calendar moves two months per scroll" is a report about a chain with
+ * four links in it — the emulated mouse, libinput, the compositor, and this —
+ * and the only way to say which one doubles is to watch what arrives. Off by
+ * default and one getenv at startup, so an instrumented build is the shipped
+ * build.
+ */
+static int wheel_dbg(void)
 {
+	static int on = -1;
+
+	if (on < 0) {
+		const char *e = getenv("KDOS_WHEEL_DEBUG");
+		on = e && *e && *e != '0';
+	}
+	return on;
+}
+
+/*
+ * ONE PHYSICAL NOTCH IS ONE TICK, whatever the chain in front of us does.
+ *
+ * "The calendar moves two months per scroll" survived a correct reading of the
+ * protocol here, and the reason is that this client is the LAST link of four:
+ * the emulator, libinput, the compositor and this. Two of the three in front
+ * are known to double a notch — QEMU's GTK display receives a smooth scroll
+ * event AND the discrete one GTK emulates from it for legacy handlers, and
+ * queues a wheel button for each; a device that reports both REL_WHEEL and
+ * REL_WHEEL_HI_RES can do the same one layer lower. Both arrive as two
+ * genuine, well-formed notches, so there is nothing left to read differently:
+ * by the time they reach a Wayland client they are indistinguishable from a
+ * scroll except by the CLOCK.
+ *
+ * So the gate is a rate limit and nothing cleverer: a second tick in the same
+ * direction within KWL_WHEEL_MIN_MS of the last is a duplicate and is dropped.
+ * Twenty milliseconds is fifty notches a second — several times what a hand
+ * does with a detented wheel, and far more than the gap a doubling front end
+ * leaves between its two copies, which come from ONE host event and are
+ * queued back to back. A direction change is never a duplicate and is always
+ * let through, so a reversal is instant, and a genuine multi-notch flick
+ * measured inside one pointer frame is passed in full (see wheel_emit).
+ *
+ * The cost is stated rather than hidden: a free-spinning wheel spun hard can
+ * outrun fifty notches a second, and on this desktop it will scroll at fifty.
+ * `KDOS_WHEEL_MIN_MS` moves it and 0 turns it off — which, with
+ * KDOS_WHEEL_DEBUG=1, is also how the raw chain gets measured on a machine
+ * that has one.
+ */
+#define KWL_WHEEL_MIN_MS 20
+
+static int wheel_gate(int up)
+{
+	static int min_ms = -1;
+	int64_t now = now_ms();
+
+	if (min_ms < 0) {
+		const char *e = getenv("KDOS_WHEEL_MIN_MS");
+		min_ms = e && *e ? atoi(e) : KWL_WHEEL_MIN_MS;
+		if (min_ms < 0)
+			min_ms = 0;
+	}
+	if (min_ms && K.wheel_last_ms && K.wheel_last_up == up &&
+	    now - K.wheel_last_ms < min_ms) {
+		if (wheel_dbg())
+			fprintf(stderr, "kwl: wheel %s DROPPED (%lld ms since "
+					"the last one)\n",
+				up ? "up" : "down",
+				(long long)(now - K.wheel_last_ms));
+		return 0;
+	}
+	K.wheel_last_ms = now;
+	K.wheel_last_up = up;
+	return 1;
+}
+
+static void push_wheel_raw(int up)
+{
+	if (wheel_dbg())
+		fprintf(stderr, "kwl: wheel %s\n", up ? "up" : "down");
 	KtuiEvent ev = { .type = KT_EVT_MOUSE, .mx = K.ptr_cx, .my = K.ptr_cy,
 			 .press = KT_MP_PRESS, .mods = mods_now(),
 			 .btn = up ? KT_MB_WHEEL_UP : KT_MB_WHEEL_DOWN };
 	push_event(&ev);
+}
+
+/*
+ * `n` ticks from ONE pointer frame, past the duplicate gate — which is asked
+ * once, because a frame is one gesture. The wheel path always passes 1 (see
+ * pt_frame); the counted path is the touchpad's, where several ticks' worth of
+ * accumulated delta in one frame is a real flick and dropping all but the
+ * first would make a two-finger scroll crawl.
+ */
+static void wheel_emit(int up, int n)
+{
+	if (n < 1 || !wheel_gate(up))
+		return;
+	for (int i = 0; i < n; i++)
+		push_wheel_raw(up);
 }
 
 static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
@@ -1232,6 +1675,9 @@ static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
 	if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL)
 		return;
 	K.axis_acc += wl_fixed_to_double(value);
+	if (wheel_dbg())
+		fprintf(stderr, "kwl: axis %+.2f (acc %+.2f)\n",
+			wl_fixed_to_double(value), K.axis_acc);
 }
 
 static uint32_t shape_of(int cursor)
@@ -1260,6 +1706,10 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
 		K.ptr_cx = wl_fixed_to_int(x) / cw;
 		K.ptr_cy = wl_fixed_to_int(y) / ch;
 	}
+	/* This IS the motion for that cell, so the dedup starts from here — an
+	 * enter followed by a real move to the same cell is not two moves. */
+	K.move_cx = K.ptr_cx;
+	K.move_cy = K.ptr_cy;
 	KtuiEvent ev = { .type = KT_EVT_MOUSE, .btn = KT_MB_MOVE,
 			 .mx = K.ptr_cx, .my = K.ptr_cy, .press = KT_MP_DRAG,
 			 .mods = mods_now() };
@@ -1310,6 +1760,8 @@ static void pt_leave(void *d, struct wl_pointer *p, uint32_t s,
 	(void)d; (void)p; (void)s; (void)sf;
 	K.ptr_cx = -1;
 	K.ptr_cy = -1;
+	K.move_cx = -1;
+	K.move_cy = -1;
 	K.axis_acc = 0;
 	K.axis_disc = 0;
 	KtuiEvent ev = { .type = KT_EVT_MOUSE, .btn = KT_MB_MOVE, .mx = -1,
@@ -1329,25 +1781,81 @@ static void pt_frame(void *d, struct wl_pointer *p)
 {
 	(void)d;
 	(void)p;
+	if (wheel_dbg() && (K.axis_disc || K.axis_acc != 0))
+		fprintf(stderr, "kwl: frame disc=%d acc=%+.2f\n", K.axis_disc,
+			K.axis_acc);
 	if (K.axis_disc) {
-		int n = K.axis_disc < 0 ? -K.axis_disc : K.axis_disc;
-		if (n > 5)
-			n = 5;		/* a flicked wheel is not 40 rows */
-		for (int i = 0; i < n; i++)
-			push_wheel(K.axis_disc < 0);
+		/*
+		 * ONE FRAME IS ONE DETENT, and the count in it is deliberately
+		 * thrown away.
+		 *
+		 * `axis_discrete` is only ever sent for a WHEEL — libinput
+		 * measures notches for nothing else — so this branch IS the
+		 * wheel path, and a frame carrying two of them is far more
+		 * often one physical notch counted twice than a hand that
+		 * moved two detents inside a single pointer frame. Measured in
+		 * the VM: two wheel clicks queued back to back (what a front
+		 * end that turns one host scroll into two produces, and what
+		 * "the calendar moves two months per scroll" is) arrive as
+		 * ONE frame with discrete=2 — so the duplicate gate below
+		 * never sees a second tick to drop, and honouring the count
+		 * moved the calendar two months. August → September → October
+		 * → November for three single notches, and March → May for one
+		 * doubled one, in the same session.
+		 *
+		 * A wheel spun hard enough to put two real detents in one
+		 * frame is then capped at one, which is the same ceiling the
+		 * duplicate gate already imposes and is not a second loss.
+		 * A TOUCHPAD is unaffected: it sends no discrete at all and
+		 * keeps the counted path below.
+		 */
+		wheel_emit(K.axis_disc < 0, 1);
 		K.axis_disc = 0;
 		K.axis_acc = 0;
 		return;
 	}
-	int guard = 0;
-	while ((K.axis_acc >= 10.0 || K.axis_acc <= -10.0) && guard++ < 5) {
-		push_wheel(K.axis_acc < 0);
+	/*
+	 * A WHEEL HAS ALREADY BEEN QUANTISED; A FINGER HAS NOT.
+	 *
+	 * The accumulator below exists for a touchpad, where wl_pointer.axis
+	 * is a continuous stream of small values and a tick has to be
+	 * synthesised from a threshold. A WHEEL is the opposite: the
+	 * compositor emits one axis event per detent, and running that
+	 * through a ten-unit accumulator turns one notch into an uneven
+	 * cadence — a fifteen-unit notch leaves five behind, so the second
+	 * notch crosses the threshold twice and the list jumps two rows.
+	 * `axis_source` says which this is and the protocol has carried it
+	 * since version 5, which is the version this binds; a compositor that
+	 * sends no source at all keeps the old accumulator, because then
+	 * there is genuinely nothing to go on.
+	 *
+	 * This is the correct reading of the protocol whether or not it is
+	 * what somebody's mouse is doing: `KDOS_WHEEL_DEBUG=1` prints what
+	 * actually arrives.
+	 */
+	if (K.axis_src_seen && K.axis_src == WL_POINTER_AXIS_SOURCE_WHEEL) {
+		if (K.axis_acc != 0)
+			wheel_emit(K.axis_acc < 0, 1);
+		K.axis_acc = 0;
+		return;
+	}
+
+	/* Counted, then emitted in one call: the ticks a finger's worth of
+	 * accumulated delta is worth all belong to the same frame, and asking
+	 * the duplicate gate once per tick would throw away every one after the
+	 * first. */
+	int n = 0, up = K.axis_acc < 0;
+	while ((K.axis_acc >= 10.0 || K.axis_acc <= -10.0) && n < 5) {
+		n++;
 		K.axis_acc += K.axis_acc < 0 ? 10.0 : -10.0;
 	}
+	wheel_emit(up, n);
 }
 
 static void pt_axis_src(void *d, struct wl_pointer *p, uint32_t s)
-{ (void)d; (void)p; (void)s; }
+{
+	K.axis_src = s;
+	K.axis_src_seen = 1; (void)d; (void)p; (void)s; }
 
 /* A finger left the touchpad: the leftover fraction is not the start of the
  * next gesture. */
@@ -1363,6 +1871,9 @@ static void pt_axis_disc(void *d, struct wl_pointer *p, uint32_t a, int32_t v)
 	(void)p;
 	if (a == WL_POINTER_AXIS_VERTICAL_SCROLL)
 		K.axis_disc += v;
+	if (wheel_dbg())
+		fprintf(stderr, "kwl: discrete axis=%u v=%d (disc %d)\n", a, v,
+			K.axis_disc);
 }
 
 static const struct wl_pointer_listener pointer_listener = {
@@ -1517,6 +2028,51 @@ static void out_mode(void *d, struct wl_output *o, uint32_t flags, int32_t w,
 }
 static void out_done(void *d, struct wl_output *o) { (void)d; (void)o; }
 
+/*
+ * The largest overlay this output can actually show, in cells. Uses the output
+ * the surface is already on when there is one, and the first one that reported
+ * a mode otherwise — before the first configure there is nothing better, and a
+ * machine whose outputs have not reported a mode at all is left alone.
+ */
+/*
+ * `reserve` is the caller's own margin — the bar it is anchored above. With
+ * exclusive_zone -1 the surface is measured against the whole output, so the
+ * room it actually has is the output minus that margin; a surface sized past
+ * it hangs off the far edge, which is how kdos-net lost its title bar.
+ */
+static void overlay_clamp(int *cols, int *rows, int reserve)
+{
+	int w = 0, h = 0;
+	int i = K.on_output;
+
+	if (i < 0 || i >= KWL_MAX_OUTPUTS || !K.output_w[i] || !K.output_h[i]) {
+		i = -1;
+		for (int k = 0; k < KWL_MAX_OUTPUTS; k++)
+			if (K.output_w[k] > 0 && K.output_h[k] > 0) {
+				i = k;
+				break;
+			}
+	}
+	if (i < 0)
+		return;
+	w = K.output_w[i];
+	h = K.output_h[i];
+	if (kcell_w() <= 0 || kcell_h() <= 0)
+		return;
+
+	if (reserve > 0 && reserve < h)
+		h -= reserve;
+	int max_cols = w / kcell_w() - 2;
+	/* One row of air, not four: the four were standing in for a panel
+	 * thickness this could not see, and `reserve` is now that thickness
+	 * measured rather than guessed. */
+	int max_rows = h / kcell_h() - (reserve > 0 ? 1 : 4);
+	if (max_cols > 4 && *cols > max_cols)
+		*cols = max_cols;
+	if (max_rows > 4 && *rows > max_rows)
+		*rows = max_rows;
+}
+
 static void apply_scale(void);
 
 /* The listener's data is the output's INDEX: two arrays hang off it — the
@@ -1629,6 +2185,11 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 	else if (!strcmp(iface, wl_shm_interface.name))
 		K.shm = wl_registry_bind(r, name, &wl_shm_interface, 1);
 	else if (!strcmp(iface, wl_seat_interface.name)) {
+		/* ONE. A compositor advertising a second seat would otherwise
+		 * get a second wl_pointer and a second wl_keyboard on this
+		 * client, and every event would arrive twice. */
+		if (K.seat)
+			return;
 		K.seat = wl_registry_bind(r, name, &wl_seat_interface, 5);
 		wl_seat_add_listener(K.seat, &seat_listener, NULL);
 	} else if (!strcmp(iface, xdg_wm_base_interface.name)) {
@@ -1888,8 +2449,51 @@ static int make_panel(void)
 		 */
 		int cols = K.cfg.cols > 0 ? K.cfg.cols : 64;
 		int rows = K.cfg.rows > 0 ? K.cfg.rows : 16;
+		/*
+		 * CLAMPED TO THE OUTPUT, and this is a live defect it fixes.
+		 *
+		 * layer-shell honours the size a client asks for; it does not
+		 * shrink it. A surface taller than the USABLE area — the
+		 * output minus the taskbar's exclusive zone — is then centred
+		 * around a negative y, and the top of it is simply off the
+		 * screen: kdos-net asked for 24 rows on a 25-row display with
+		 * a 2-row panel and lost its title bar. Photographed.
+		 *
+		 * The headroom is the caller's own margin where there is one —
+		 * that IS the bar's thickness, measured rather than the four
+		 * rows this used to guess at because the panel's height is a
+		 * setting and a popup cannot see it.
+		 */
+		overlay_clamp(&cols, &rows, K.cfg.margin_y);
 		int mx = K.cfg.margin_x, my = K.cfg.margin_y;
 		place_clamp(cols * kcell_w(), rows * kcell_h(), &mx, &my);
+		/*
+		 * AN EXPLICIT MARGIN IS MEASURED FROM THE OUTPUT, NOT FROM WHAT
+		 * IS LEFT OF IT — and this is the whole of "the Start menu is
+		 * detached from the taskbar".
+		 *
+		 * A layer surface with exclusive_zone 0 is arranged inside the
+		 * compositor's USABLE AREA, which already has every other
+		 * surface's exclusive zone taken out of it — the panel's own,
+		 * here. The panel then passes its height as this surface's
+		 * margin so the popup sits just above the bar, and the two are
+		 * applied one after the other: the popup floats exactly ONE BAR
+		 * HEIGHT above the bar it belongs to. Photographed on the Start
+		 * menu, the calendar, the volume slider and kdos-net, which is
+		 * every popup this desktop has.
+		 *
+		 * -1 is the protocol's "do not move me out of anyone's
+		 * exclusive zone", so the anchor is the output edge and the
+		 * margin is the only offset there is — which is the arithmetic
+		 * the caller already did. Only when a margin was actually
+		 * GIVEN: a surface that named no position (a centred dialog, a
+		 * notification with the default corner margin, the volume
+		 * bezel) is asking to be placed, and being kept off the panel
+		 * is exactly right for it.
+		 */
+		if (mx || my)
+			zwlr_layer_surface_v1_set_exclusive_zone(K.layer_surface,
+								 -1);
 		if (K.cfg.corner == KWL_CORNER_TOP_RIGHT) {
 			zwlr_layer_surface_v1_set_anchor(
 				K.layer_surface,
@@ -1918,6 +2522,23 @@ static int make_panel(void)
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
 			zwlr_layer_surface_v1_set_margin(K.layer_surface,
 							 my, 0, 0, mx);
+		} else if (K.cfg.corner == KWL_CORNER_BOTTOM_LEFT) {
+			/*
+			 * The Start menu's case, and it is the TOP_LEFT one
+			 * measured from the other end — a menu belonging to a
+			 * bar on the bottom edge has to grow upwards from it.
+			 * Anchoring TOP and computing a top margin cannot do
+			 * this: the client does not know the output's pixel
+			 * height, so it cannot say where "just above the
+			 * taskbar" is. The compositor does, and the protocol
+			 * already has the word for it.
+			 */
+			zwlr_layer_surface_v1_set_anchor(
+				K.layer_surface,
+				ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+				ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+			zwlr_layer_surface_v1_set_margin(K.layer_surface, 0, 0,
+							 my, mx);
 		} else if (K.cfg.corner == KWL_CORNER_BOTTOM_CENTER) {
 			/*
 			 * ONE edge, not two: anchoring left and right as well
@@ -2190,6 +2811,10 @@ int kwl_init(const KwlConfig *cfg)
 	memset(&K, 0, sizeof(K));
 	K.cfg = *cfg;
 	K.paste_fd = -1;
+	/* -1 is "no send in flight"; a zeroed table would look like four
+	 * consumers all reading fd 0. */
+	for (int i = 0; i < KWL_COPY_SENDS; i++)
+		copy_send[i].fd = -1;
 	K.scale = 1;
 	K.scale_sent = 1;	/* the protocol's own default */
 	K.on_output = -1;

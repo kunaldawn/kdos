@@ -172,8 +172,36 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 		set_path(c->wallpaper, sizeof(c->wallpaper), value);
 	} else if (!strcmp(key, "chrome_font")) {
 		snprintf(c->chrome_font, sizeof(c->chrome_font), "%s", value);
+	} else if (!strcmp(key, "panel")) {
+		if (!strcasecmp(value, "bottom")) {
+			c->panel_edge = KDOS_PANEL_BOTTOM;
+		} else if (!strcasecmp(value, "top")) {
+			c->panel_edge = KDOS_PANEL_TOP;
+		} else if (!strcasecmp(value, "off")
+				|| !strcasecmp(value, "none")) {
+			c->panel_edge = KDOS_PANEL_OFF;
+		} else {
+			wlr_log(WLR_ERROR, "%s:%d: expected bottom, top or off",
+				path, lineno);
+		}
+	} else if (!strcmp(key, "panel_cells")) {
+		set_int(path, lineno, value, 1, 4, &c->panel_cells);
+	} else if (!strcmp(key, "icons")) {
+		set_bool(path, lineno, value, &c->icons);
+	} else if (!strcmp(key, "slit")) {
+		set_bool(path, lineno, value, &c->slit);
+	} else if (!strcmp(key, "clipboard")) {
+		set_bool(path, lineno, value, &c->clipboard);
 	} else if (!strcmp(key, "panel_bottom")) {
-		set_bool(path, lineno, value, &c->panel_bottom);
+		/*
+		 * Retired with the two-panel layout. Reported by name rather
+		 * than ignored: the shipped comp.conf promises that a line
+		 * which does not take effect says so, and a key that silently
+		 * stopped meaning anything is indistinguishable from a typo.
+		 */
+		wlr_log(WLR_INFO, "%s:%d: `panel_bottom` is retired — there is "
+			"one taskbar now; use `panel = bottom|top|off`",
+			path, lineno);
 	} else if (!strcmp(key, "desktop_icons")) {
 		set_bool(path, lineno, value, &c->desktop_icons);
 	} else if (!strcmp(key, "panel_autohide")) {
@@ -224,7 +252,11 @@ kdos_conf_load(void)
 	c->idle_configured = false;
 	c->lid_close = KDOS_LID_SUSPEND;	/* kdos_lid_init() gates the VM */
 	c->lid_configured = false;
-	c->panel_bottom = true;
+	c->panel_edge = KDOS_PANEL_BOTTOM;
+	c->panel_cells = 2;
+	c->icons = true;
+	c->slit = false;
+	c->clipboard = true;
 	c->desktop_icons = true;
 	c->panel_autohide = false;
 	c->window_memory = true;
@@ -286,12 +318,21 @@ kdos_conf_reload(void)
 	struct kdos_conf old = kdos_conf;
 	kdos_conf_load();
 
-	if (old.panel_bottom != kdos_conf.panel_bottom
+	if (old.panel_edge != kdos_conf.panel_edge
+			|| old.panel_cells != kdos_conf.panel_cells
+			|| old.icons != kdos_conf.icons
+			|| old.slit != kdos_conf.slit
+			|| old.clipboard != kdos_conf.clipboard
 			|| old.desktop_icons != kdos_conf.desktop_icons
 			|| old.panel_autohide != kdos_conf.panel_autohide) {
-		wlr_log(WLR_INFO, "comp.conf: panel_bottom/desktop_icons/"
-			"panel_autohide changed — applies at the next login");
-		kdos_conf.panel_bottom = old.panel_bottom;
+		wlr_log(WLR_INFO, "comp.conf: panel/panel_cells/icons/slit/"
+			"desktop_icons/panel_autohide changed — applies at the "
+			"next login");
+		kdos_conf.panel_edge = old.panel_edge;
+		kdos_conf.panel_cells = old.panel_cells;
+		kdos_conf.icons = old.icons;
+		kdos_conf.slit = old.slit;
+		kdos_conf.clipboard = old.clipboard;
 		kdos_conf.desktop_icons = old.desktop_icons;
 		kdos_conf.panel_autohide = old.panel_autohide;
 	}
