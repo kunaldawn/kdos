@@ -1,0 +1,13 @@
+title: unknown is never folded into current — that is a confident wrong answer
+cite: kdos-portup, kdos cve
+port: kdos-tools
+
+kdos-portup has three outcomes on purpose. A listing that could not be
+reached, a directory listing whose tail the adapter's own cap cut off, and a
+listing whose rendered URLs all 404 are all `unknown` with a reason, not
+silently averaged into "up to date".
+
+`kdos cve` keeps the same rule from the other side: a package Alpine does not
+carry is UNKNOWN, never clean. 262 of 389 ports are in that state and the
+summary says so; a checker that counted them as fine would be reporting a
+number it had not earned.

@@ -90,7 +90,9 @@ pixman_color_t kcell_slot_color(int slot);
 void kcell_set_transparent_bg(bool on);
 
 /* A glyph's mask at a given scale, with the offsets already multiplied. The
- * image is owned by the cache and must not be unref'd. */
+ * image is owned by the cache and must not be unref'd — and the cache is
+ * CAPPED, so it is valid only until the next glyph lookup: use it and let go,
+ * never keep it across cells or frames. */
 typedef struct {
 	pixman_image_t *pix;
 	int x, y;		/* bearing, scaled */
@@ -118,6 +120,48 @@ bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out);
  */
 void kcell_paint(pixman_image_t *dst, const KtuiCell *cur, KtuiCell *prev,
 		 int cols, int rows, int full, int scale, int dst_w, int dst_h);
+
+/* ── a pixel canvas that lands in the cell grid (kcell_canvas.c) ─────────
+ *
+ * A canvas is a pixman image exactly N x M CELLS at the output scale, drawn
+ * into with fills and text at any pixel size, and handed to
+ * `ktui_sprite_put()` when it is finished — so the grid keeps the layout, the
+ * row diff keeps being the damage mechanism, and a text backend keeps drawing
+ * the fallback codepoint. It is what lets a control be taller than one row of
+ * text without the toolkit growing a second drawing model. See the file for
+ * the whole argument, and for the one thing a caller must still do: a
+ * sprite's cells encode the SLOT, so an ANIMATED tile has to publish under a
+ * key that changes when its content does or the diff sees nothing.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct KCellCanvas KCellCanvas;
+
+/* The family canvas text is drawn in — the chrome's own `--font`, whose size
+ * is replaced per request. Dropping every cached size is the point of setting
+ * it: they were all resolved from the previous family. */
+void kcell_canvas_font(const char *name);
+
+KCellCanvas *kcell_canvas_new(int cells_w, int cells_h, int cell_w, int cell_h,
+			      int scale);
+void kcell_canvas_free(KCellCanvas *c);
+/* Borrowed, and valid until the canvas is freed — which the caller must not do
+ * while a sprite slot still points at it. */
+pixman_image_t *kcell_canvas_image(KCellCanvas *c);
+int kcell_canvas_w(const KCellCanvas *c);
+int kcell_canvas_h(const KCellCanvas *c);
+void kcell_canvas_clear(KCellCanvas *c);
+
+/* SRC, so a fill can put transparency back; `alpha` 0..255 scales the slot. */
+void kcell_canvas_fill(KCellCanvas *c, int x, int y, int w, int h, int slot,
+		       int alpha);
+
+/* Text at an arbitrary pixel size, drawn from its BASELINE. Returns the
+ * advance. `kcell_canvas_text_width` measures without drawing. */
+int kcell_canvas_text(KCellCanvas *c, int x, int baseline, int px,
+		      const char *utf8, int slot);
+int kcell_canvas_text_width(int px, const char *utf8);
+int kcell_canvas_text_ascent(int px);
+int kcell_canvas_text_height(int px);
 
 /* ── pixels to characters, by shape (kcell_ascii.c) ──────────────────────
  *

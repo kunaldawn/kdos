@@ -22,6 +22,7 @@
 #include "debug.h"
 #include "input/keyboard.h"
 #include "input/key-state.h"
+#include "kdos.h" /* KDOS */
 #include "labwc.h"
 #include "magnifier.h"
 #include "menu/menu.h"
@@ -137,6 +138,9 @@ struct action_arg_list {
 	X(ZOOM_IN, "ZoomIn") \
 	X(ZOOM_OUT, "ZoomOut") \
 	X(TOGGLE_SHOW_DESKTOP, "ToggleShowDesktop") \
+	X(ADD_TO_TAB_GROUP, "AddToTabGroup") /* KDOS */ \
+	X(REMOVE_FROM_TAB_GROUP, "RemoveFromTabGroup") /* KDOS */ \
+	X(NEXT_IN_TAB_GROUP, "NextInTabGroup") /* KDOS */ \
 	X(WARP_CURSOR, "WarpCursor") \
 	X(HIDE_CURSOR, "HideCursor") \
 	X(DEBUG_TOGGLE_KEY_STATE_INDICATOR, "DebugToggleKeyStateIndicator")
@@ -1585,6 +1589,21 @@ run_action(struct view *view, struct action *action,
 		break;
 	case ACTION_TYPE_TOGGLE_SHOW_DESKTOP:
 		show_desktop_toggle();
+		break;
+	case ACTION_TYPE_ADD_TO_TAB_GROUP: /* KDOS */
+		if (view) {
+			kdos_group_add(view);
+		}
+		break;
+	case ACTION_TYPE_REMOVE_FROM_TAB_GROUP: /* KDOS */
+		if (view) {
+			kdos_group_remove(view);
+		}
+		break;
+	case ACTION_TYPE_NEXT_IN_TAB_GROUP: /* KDOS */
+		if (view) {
+			kdos_group_next(view, /*reverse*/ false);
+		}
 		break;
 	case ACTION_TYPE_WARP_CURSOR: {
 		const char *to = action_get_str(action, "to", "output");

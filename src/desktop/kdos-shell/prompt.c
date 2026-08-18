@@ -86,6 +86,26 @@ static int wrap(const char *s, int w, char out[MAX_LINES][MAX_MSG])
 		out[n][len] = '\0';
 		n++;
 	}
+	/*
+	 * Text remains after the last line: the line says so with an
+	 * ellipsis instead of silently ending the question early. '…' is in
+	 * the console font's 512 glyphs — the tail is trimmed to w-1 cells
+	 * to make its room.
+	 */
+	while (*p == ' ')
+		p++;		/* residual spaces are not dropped text */
+	if (*p && n == MAX_LINES) {
+		char *l = out[n - 1];
+		char *q = l;
+		int used = 0;
+		while (*q && used < w - 1) {
+			q++;
+			while (((unsigned char)*q & 0xc0) == 0x80)
+				q++;
+			used++;
+		}
+		strcpy(q, "\xe2\x80\xa6");
+	}
 	return n ? n : 1;
 }
 
@@ -194,8 +214,18 @@ int prompt_main(int argc, char **argv)
 		ktui_draw_flush();
 
 		KtuiEvent ev;
-		if (!ktui_backend()->poll_event(&ev, 1000))
+		if (!ktui_backend()->poll_event(&ev, 1000)) {
+			/* The grid follows a configure only when the loop that
+			 * owns the surface applies it — the buttons are placed
+			 * from `w` and the hit test reads `ktui_h - 2`, so a
+			 * surface configured smaller leaves both wrong. */
+			if (ktui_resized) {
+				ktui_resized = 0;
+				ktui_draw_resize();
+				ktui_draw_invalidate();
+			}
 			continue;
+		}
 
 		if (ev.type == KT_EVT_MOUSE) {
 			if (ev.press == KT_MP_DRAG) {
@@ -209,7 +239,16 @@ int prompt_main(int argc, char **argv)
 				}
 				continue;
 			}
-			if (ev.press != KT_MP_PRESS || ev.btn != KT_MB_LEFT)
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			/* The shell-wide contract: a right press backs out.
+			 * On a dialog "out" is cancelled, never No — 254 is
+			 * the code kdos-comp reads as "do nothing". */
+			if (ev.btn == KT_MB_RIGHT) {
+				rc = EXIT_CANCELLED;
+				break;
+			}
+			if (ev.btn != KT_MB_LEFT)
 				continue;
 			if (ev.my != ktui_h - 2)
 				continue;

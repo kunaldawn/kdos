@@ -1,0 +1,14 @@
+title: only a real glyph ends fbcon's deferred takeover
+cite: kdos-getty
+port: kdos-tools
+port: terminus-font
+
+Escape sequences are eaten by the VT state machine and even SPACES are skipped
+by the render path. Verified: ' ' -> nothing, 'K' -> takeover. kdos-getty
+prints K and clears it.
+
+The takeover then re-initialises every VT with the kernel's built-in font,
+which is why a setfont in rcS is silently wiped and the font load belongs in
+the getty wrapper. The takeover is scheduled work, so poll dmesg for
+"fbcon: Taking over console" and retry setfont until showconsolefont -i
+confirms 16x32.

@@ -1,0 +1,12 @@
+title: on a 512-glyph VT, A_BOLD changes the FONT PAGE, not the weight
+cite: kinstall
+port: kdos-installer
+
+The VT steals the foreground intensity bit for the 9th glyph bit, so colours
+8-15 are unreachable as foreground and bold selects the second half of the
+font. The whole installer UI is therefore eight colours — which also means a
+tty and a truecolor foot window render the same picture.
+
+On a VT it saves the palette with GIO_CMAP, installs its own with PIO_CMAP and
+restores exactly what kdos-getty's setvtrgb loaded; elsewhere the same slots go
+out as 24-bit or 256-colour SGR.

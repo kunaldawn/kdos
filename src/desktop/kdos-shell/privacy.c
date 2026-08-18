@@ -23,6 +23,14 @@
  *   camera     — a process holding an open fd on /dev/video*, found by walking
  *                /proc. Almost no app takes the camera through the portal; they
  *                open the device. PipeWire would report nothing at all here.
+ *                Plus a Stream/Input/Video node whose props say media.role
+ *                Camera — the libcamera/portal route, deduped against the walk
+ *                by application.process.id where the app published one, and
+ *                counted twice (`+1`) where it did not.
+ *   screen     — every other Stream/Input/Video node: a portal ScreenCast
+ *                consumer is exactly that shape, and it is somebody watching
+ *                the SCREEN, which deserves its own lamp rather than the
+ *                camera's.
  *
  * The name comes from `application.name` where PipeWire has it (which is the
  * app's own idea of what it is called — "Google Chrome", not "chrome"), from
@@ -38,6 +46,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -58,8 +67,9 @@ struct priv_node {
 	struct pw_proxy *proxy;
 	struct spa_hook proxy_hook;
 	struct spa_hook node_hook;
-	int kind;			/* SH_PRIV_MIC or SH_PRIV_CAM */
+	int kind;			/* SH_PRIV_MIC, _CAM or _SCR */
 	int running;
+	int pid;			/* application.process.id, or 0 */
 	char name[SH_PRIV_NAME];
 };
 
@@ -100,6 +110,28 @@ static void read_comm(const char *root, const char *pid, char *out, size_t len)
 		snprintf(out, len, "pid %.16s", pid);
 }
 
+/*
+ * Is this pid already counted as a CAMERA by the graph? Then the /proc walk
+ * must not count the same app a second time — one recording, one lamp.
+ *
+ * Only against a node that is actually being counted, which is what the dedupe
+ * MEANS: any video node used to match, so OBS sharing the screen (a SCR node
+ * carrying the same pid) hid the webcam it was also holding — dark CAM lamp
+ * with the camera live, and dark in both lamps when that node was idle. The
+ * dedupe works only for an app that published `application.process.id`; one
+ * that did not is counted by both halves and shows as `+1`.
+ */
+static int pw_video_pid(struct sh_priv *p, int pid)
+{
+	struct priv_node *n;
+	if (pid <= 0)
+		return 0;
+	spa_list_for_each(n, &p->nodes, link)
+		if (n->pid == pid && n->kind == SH_PRIV_CAM && n->running)
+			return 1;
+	return 0;
+}
+
 static void scan_cameras(struct sh_priv *p)
 {
 	const char *root = proc_root();
@@ -131,6 +163,8 @@ static void scan_cameras(struct sh_priv *p)
 			target[n] = 0;
 			if (strncmp(target, "/dev/video", 10))
 				continue;
+			if (pw_video_pid(p, atoi(e->d_name)))
+				break;	/* the graph already names this app */
 
 			struct sh_priv_use *u = &p->cam[p->ncam];
 			u->pid = atoi(e->d_name);
@@ -170,6 +204,9 @@ static void node_info(void *data, const struct pw_node_info *info)
 		name = spa_dict_lookup(info->props, PW_KEY_NODE_NAME);
 	if (name)
 		snprintf(n->name, sizeof(n->name), "%s", name);
+	name = spa_dict_lookup(info->props, PW_KEY_APP_PROCESS_ID);
+	if (name)
+		n->pid = atoi(name);
 }
 
 static const struct pw_node_events node_events = {
@@ -219,13 +256,22 @@ static void registry_global(void *data, uint32_t id, uint32_t permissions,
 	 * A STREAM, not a device. `Audio/Source` is the microphone itself and is
 	 * always there; `Stream/Input/Audio` is an application connected to one,
 	 * which is the only thing worth lighting a lamp for.
+	 *
+	 * A video stream is only the CAMERA when its props say so: a portal
+	 * ScreenCast consumer (OBS sharing the screen) is exactly a
+	 * `Stream/Input/Video` node too, and lighting the CAM lamp for it is
+	 * how an indicator teaches people not to believe it. Everything not
+	 * declaring media.role=Camera is SCR — screen capture, its own warning.
 	 */
-	if (!strcmp(cls, "Stream/Input/Audio"))
+	if (!strcmp(cls, "Stream/Input/Audio")) {
 		kind = SH_PRIV_MIC;
-	else if (!strcmp(cls, "Stream/Input/Video"))
-		kind = SH_PRIV_CAM;
-	else
+	} else if (!strcmp(cls, "Stream/Input/Video")) {
+		const char *role = spa_dict_lookup(props, PW_KEY_MEDIA_ROLE);
+		kind = (role && !strcasecmp(role, "Camera")) ? SH_PRIV_CAM
+							     : SH_PRIV_SCR;
+	} else {
 		return;
+	}
 
 	struct pw_proxy *proxy = pw_registry_bind(p->registry, id, type,
 						  PW_VERSION_NODE,
@@ -243,6 +289,12 @@ static void registry_global(void *data, uint32_t id, uint32_t permissions,
 	if (!name)
 		name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
 	snprintf(n->name, sizeof(n->name), "%s", name ? name : "an app");
+	/* The pid, when the app published one — what lets the /proc camera walk
+	 * skip processes this graph already names, instead of counting them
+	 * twice. */
+	const char *pid = spa_dict_lookup(props, PW_KEY_APP_PROCESS_ID);
+	if (pid)
+		n->pid = atoi(pid);
 	spa_list_append(&p->nodes, &n->link);
 
 	pw_proxy_add_listener(proxy, &n->proxy_hook, &proxy_events, n);

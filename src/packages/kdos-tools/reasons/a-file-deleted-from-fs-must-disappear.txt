@@ -1,0 +1,16 @@
+title: cp -r overwrites but never removes — a dropped path lingers forever
+cite: 00_file_system.sh
+port: kdos-tools
+
+That is how a stale shell kdos-appbox blocked its C replacement with a kpkg
+file conflict, how a stale icon rode three ISO rebuilds, and how 94 old
+kdos-*.desktop launchers sat beside their 91 replacements.
+
+00_file_system.sh records every path fs/ provided in
+/var/lib/kdos/fs-manifest and deletes the ones it no longer provides. Two
+traps: the manifest is written AFTER the copy, and it must not use
+`find -printf` — a GNU extension the build image's busybox find rejects, which
+wrote an EMPTY manifest that silently protected nothing.
+
+Packages are swept the same way, and were not for a milestone: the ISO still
+carried 529 MB of a desktop that had been removed.

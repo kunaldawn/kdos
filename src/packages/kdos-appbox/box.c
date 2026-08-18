@@ -308,6 +308,16 @@ int box_create(const Profile *p)
 		kb_argv_add(&a, "--home");
 		kb_argv_add(&a, h);
 	}
+	/* The host's cups socket, so every boxed app's own print dialog works
+	 * (no portal Print backend exists or is needed). A volume is a
+	 * CREATE-time property — it cannot be added to a live container — so a
+	 * box created before cups was up keeps missing it until
+	 * `kdos-appbox recreate`; the matching CUPS_SERVER export in box_env()
+	 * is per-launch and probes the socket again. */
+	if (kb_path_exists("/run/cups/cups.sock")) {
+		kb_argv_add(&a, "--volume");
+		kb_argv_add(&a, "/run/cups:/run/cups");
+	}
 	if (flags[0]) {
 		kb_argv_add(&a, "--additional-flags");
 		kb_argv_add(&a, flags);

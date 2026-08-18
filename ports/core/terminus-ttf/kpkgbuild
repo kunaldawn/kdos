@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = terminus-ttf
+version     = 4.49.3
+release     = 1
+source      = https://files.ax86.net/$name/files/$version/$name-$version.zip
+sha256      = 0ead921d98d99a4590ffe6cd66dc037fc0a2ceea1c735d866ba73fe058257577  terminus-ttf-4.49.3.zip
+description = Scalable TTF build of Terminus, for the consumers that cannot draw a bitmap font
+homepage    = https://files.ax86.net/terminus-ttf/
+depends     = fontconfig libarchive

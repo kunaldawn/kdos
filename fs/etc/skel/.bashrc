@@ -20,4 +20,9 @@ elif [ -r /etc/bash.bashrc ]; then
     . /etc/bash.bashrc
 fi
 
+# ls/grep colours, generated per accent by `kdos theme` (it exports
+# LS_COLORS). Guarded: a home the generator has not reached yet keeps the
+# tools' defaults rather than printing an error per shell.
+[ -r "$HOME/.config/kdos/ls-colors" ] && . "$HOME/.config/kdos/ls-colors"
+
 # Your own aliases and prompt overrides go below.

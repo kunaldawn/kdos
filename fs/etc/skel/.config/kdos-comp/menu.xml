@@ -29,6 +29,9 @@
 
     <separator/>
 
+    <item label="Start Menu">
+      <action name="Execute" command="kdos-start"/>
+    </item>
     <item label="Applications">
       <action name="Execute" command="kdos-menu applications"/>
     </item>
@@ -43,6 +46,15 @@
 
     <item label="Displays">
       <action name="Execute" command="kdos-display"/>
+    </item>
+    <item label="Network">
+      <action name="Execute" command="kdos-net"/>
+    </item>
+    <item label="Bluetooth">
+      <action name="Execute" command="kdos-bt"/>
+    </item>
+    <item label="Devices">
+      <action name="Execute" command="kdos-devices"/>
     </item>
     <item label="Screenshot">
       <action name="Execute" command="kdos-shot region"/>
@@ -63,25 +75,77 @@
       <action name="Reconfigure"/>
     </item>
     <!-- The three that cannot be undone ask first, through kdos-prompt
-         (<core><promptCommand> in rc.xml). -->
+         (<core><promptCommand> in rc.xml).
+
+         Each writes the session list BEFORE the question rather than inside
+         the <then>: the answer is a human moment away, and by the time the
+         compositor is tearing down there is nothing left to enumerate. The
+         file is only read back at the next login, and only when
+         ~/.config/kdos/session-restore exists, so writing one for a dialog
+         that was cancelled costs nothing. -->
     <item label="Log Out">
+      <action name="Execute" command="kdos-session-save"/>
       <action name="If">
         <prompt><message>End the KDOS session? Unsaved work will be lost.</message></prompt>
         <then><action name="Exit"/></then>
       </action>
     </item>
     <item label="Restart">
+      <action name="Execute" command="kdos-session-save"/>
       <action name="If">
         <prompt><message>Restart this machine?</message></prompt>
         <then><action name="Execute" command="kdos-power reboot"/></then>
       </action>
     </item>
     <item label="Shut Down">
+      <action name="Execute" command="kdos-session-save"/>
       <action name="If">
         <prompt><message>Shut this machine down?</message></prompt>
         <then><action name="Execute" command="kdos-power poweroff"/></then>
       </action>
     </item>
 
+  </menu>
+
+  <!--
+    The WINDOW menu — A-space, or a right press on a titlebar. Defining it here
+    replaces the fork's built-in client-menu (init_windowmenu builds one only
+    when this id is absent), so this file is the whole record of what it says.
+    fluxbox's window-menu order.
+  -->
+  <menu id="client-menu" label="Window">
+    <item label="Shade">
+      <action name="ToggleShade"/>
+    </item>
+    <item label="Stick">
+      <action name="ToggleOmnipresent"/>
+    </item>
+    <item label="Always on Top">
+      <action name="ToggleAlwaysOnTop"/>
+    </item>
+    <item label="Decorations">
+      <action name="ToggleDecorations"/>
+    </item>
+    <menu id="client-menu-send-to" label="Send To Desktop">
+      <item label="1 main">
+        <action name="SendToDesktop" to="1" follow="no"/>
+      </item>
+      <item label="2 www">
+        <action name="SendToDesktop" to="2" follow="no"/>
+      </item>
+      <item label="3 hack">
+        <action name="SendToDesktop" to="3" follow="no"/>
+      </item>
+      <item label="4 misc">
+        <action name="SendToDesktop" to="4" follow="no"/>
+      </item>
+    </menu>
+    <separator/>
+    <item label="Fullscreen">
+      <action name="ToggleFullscreen"/>
+    </item>
+    <item label="Close">
+      <action name="Close"/>
+    </item>
   </menu>
 </openbox_menu>

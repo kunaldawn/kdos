@@ -1,0 +1,15 @@
+# The archives under here are FIXTURES, not upstream tarballs.
+#
+# testing/fixtures/shell/tree/roll.tar.gz is two bytes and its twin under
+# openwith/ is empty, and both are named .tar.gz for one reason: to prove the
+# LONGEST matching suffix wins, so a .tar.gz does not open in a decompressor.
+# The root .gitattributes sends every *.tar.gz through Git LFS, and a clone without
+# LFS gets a POINTER FILE — which is a different size, and the file chooser's
+# golden frame prints the size. A missing LFS setup would come back as a
+# failing layout test with nothing pointing at the cause.
+*.tar.gz  !filter !diff !merge -text
+*.tar.xz  !filter !diff !merge -text
+*.tar.bz2 !filter !diff !merge -text
+*.tar.zst !filter !diff !merge -text
+*.tgz     !filter !diff !merge -text
+*.zip     !filter !diff !merge -text

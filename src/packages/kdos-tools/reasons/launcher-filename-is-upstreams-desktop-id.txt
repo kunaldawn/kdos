@@ -1,0 +1,13 @@
+title: a launcher's FILENAME must be upstream's own desktop id
+cite: kdos-appbox genlaunchers
+port: kdos-appbox
+
+A dock matches a running toplevel to a desktop entry by the entry's FILE ID,
+not by StartupWMClass — so `kdos-<name>.desktop` beside a pinned icon shows a
+second grey cog. kdos-shell matches app_id first, then the desktop id, then
+StartupWMClass, but upstream's id is still the right filename because it is
+the one every other tool agrees on.
+
+And a Wayland app_id is NOT the X11 WM_CLASS: GIMP's entry says
+StartupWMClass=gimp-3.0 while its toplevel calls set_app_id("gimp") — measured
+with WAYLAND_DEBUG=1, not guessed.

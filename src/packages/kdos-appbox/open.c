@@ -41,6 +41,19 @@
 #include "kxdg.h"
 
 #define MIME_MAX 128
+#define CAND_MAX 32
+
+/* A handler for a type: the desktop id somebody wrote in a list, and the
+ * entry it resolved to. Both, because the chooser is addressed by id and the
+ * Exec line is read out of the file. */
+typedef struct {
+	char id[192];
+	char path[600];
+} OpenCand;
+
+/* The "open with" chooser, a kdos-shell front end. Absent on a tree built
+ * before it landed, which is why every use of it is guarded. */
+#define OPENWITH_PROG "kdos-openwith"
 
 /* ── path -> MIME ──────────────────────────────────────────────────────── */
 
@@ -169,41 +182,79 @@ static int desktop_find(const char *id, char *out, size_t n)
 }
 
 /*
- * A mimeapps/mimeinfo value is a `;`-separated preference list. Take the
- * first entry that is actually installed: a mimeapps.list naming an app that
- * was removed must fall through to the next one rather than fail, which is
- * the state every machine ends up in eventually.
+ * A mimeapps/mimeinfo value is a `;`-separated preference list. Every entry
+ * that is actually installed is kept, in the order it was written: a
+ * mimeapps.list naming an app that was removed must fall through to the next
+ * one rather than fail, which is the state every machine ends up in
+ * eventually, and the ones behind it are the "open with" menu.
  */
-static int first_installed(const char *list, char *out, size_t n)
+static int collect_installed(const char *list, OpenCand *c, int *n, int max)
 {
-	char buf[1024];
+	char buf[1024], *save = NULL;
+	int seen = 0;
 	kb_strlcpy(buf, list, sizeof(buf));
-	for (char *p = strtok(buf, ";"); p; p = strtok(NULL, ";")) {
+	for (char *p = strtok_r(buf, ";", &save); p && *n < max;
+	     p = strtok_r(NULL, ";", &save)) {
+		char path[600];
+		int dup = 0;
 		while (*p == ' ')
 			p++;
-		if (*p && desktop_find(p, out, n))
-			return 1;
+		if (!*p || !desktop_find(p, path, sizeof(path)))
+			continue;
+		/* Counted before the de-duplication, because the caller is
+		 * asking whether this SECTION named a handler, not how many
+		 * new ones it contributed. */
+		seen++;
+		for (int i = 0; i < *n; i++)
+			if (!strcmp(c[i].id, p))
+				dup = 1;
+		/* The same id is named by mimeapps AND by every cache that
+		 * carries it; counting it twice would put a one-handler type in
+		 * front of the chooser. */
+		if (dup)
+			continue;
+		kb_strlcpy(c[*n].id, p, sizeof(c[*n].id));
+		kb_strlcpy(c[*n].path, path, sizeof(c[*n].path));
+		(*n)++;
 	}
-	return 0;
+	return seen;
 }
 
-static int lookup_in(const char *path, const char *section, const char *mime,
-		     char *out, size_t n)
+/* How many INSTALLED handlers this section named for this type — which is not
+ * how far `n` moved, since the same id can already be in the list. */
+static int collect_in(const char *path, const char *section, const char *mime,
+		      OpenCand *c, int *n, int max)
 {
 	KxdgEntry e;
 	if (kxdg_load(&e, path, section) != 0)
 		return 0;
 	const char *v = kxdg_get(&e, mime, NULL);
-	int ok = v && first_installed(v, out, n);
+	int seen = v ? collect_installed(v, c, n, max) : 0;
 	kxdg_free(&e);
-	return ok;
+	return seen;
 }
 
-static int handler_for_mime(const char *mime, char *out, size_t n)
+/*
+ * Every handler for a type, best first, plus whether the best one is a
+ * CONFIGURED DEFAULT — a `[Default Applications]` line somebody wrote — rather
+ * than merely the first thing that claimed the type.
+ *
+ * That distinction is the whole of G7. A default, or a single candidate, means
+ * the answer is known and nothing may interrupt: a chooser that appears when
+ * the answer is known is a worse desktop, not a better one. Two or more
+ * candidates and no default means nobody has decided yet, and picking the
+ * first silently is how a machine ends up opening PDFs in an image viewer for
+ * a year.
+ */
+static int handlers_for_mime(const char *mime, OpenCand *c, int max,
+			     int *defaulted)
 {
 	char dirs[16][512], path[600];
 	int nd = data_dirs(dirs, 16);
+	int n = 0;
 	const char *cfg = getenv("XDG_CONFIG_HOME");
+
+	*defaulted = 0;
 
 	/* The user's declared default beats everything, including a launcher
 	 * the box shipped a moment ago. */
@@ -212,13 +263,20 @@ static int handler_for_mime(const char *mime, char *out, size_t n)
 	else
 		snprintf(path, sizeof(path), "%.500s/.config/mimeapps.list",
 			 kb_home_dir());
-	if (lookup_in(path, "Default Applications", mime, out, n))
-		return 1;
-	if (lookup_in(path, "Added Associations", mime, out, n))
-		return 1;
-	if (lookup_in("/etc/xdg/mimeapps.list", "Default Applications", mime,
-		      out, n))
-		return 1;
+	collect_in(path, "Default Applications", mime, c, &n, max);
+	if (n) {
+		*defaulted = 1;
+		return n;
+	}
+	collect_in(path, "Added Associations", mime, c, &n, max);
+
+	/* The distro's default counts as a decision too, whatever the user's
+	 * additions found: XDG puts Default Applications ahead of Added
+	 * Associations at every level, so an association that masked one would
+	 * turn a type somebody had decided into a chooser prompt. */
+	if (collect_in("/etc/xdg/mimeapps.list", "Default Applications",
+		       mime, c, &n, max))
+		*defaulted = 1;
 
 	/*
 	 * Then the caches. `mimeinfo.cache` is the file genlaunchers writes
@@ -229,10 +287,9 @@ static int handler_for_mime(const char *mime, char *out, size_t n)
 	for (int i = 0; i < nd; i++) {
 		snprintf(path, sizeof(path), "%.500s/applications/mimeinfo.cache",
 			 dirs[i]);
-		if (lookup_in(path, "MIME Cache", mime, out, n))
-			return 1;
+		collect_in(path, "MIME Cache", mime, c, &n, max);
 	}
-	return 0;
+	return n;
 }
 
 /* ── entry -> argv ─────────────────────────────────────────────────────── */
@@ -292,10 +349,33 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 
 /* ── the command ───────────────────────────────────────────────────────── */
 
+/*
+ * Hand the whole question to the chooser. It reads the same chain this file
+ * does, so there is nothing to pass but the files — a candidate list on the
+ * command line would be a second copy of the resolution, going stale the
+ * moment an app is installed.
+ *
+ * exec, for the same reason the launch below does: `open` is one shot and its
+ * caller already decided who owns the process.
+ */
+static int run_openwith(int argc, char **argv)
+{
+	KbArgv a = {0};
+	kb_argv_add(&a, OPENWITH_PROG);
+	for (int i = 0; i < argc; i++)
+		kb_argv_add(&a, argv[i]);
+	kb_argv_end(&a);
+	execvp(a.v[0], (char *const *)a.v);
+	kb_die("cannot run %s", OPENWITH_PROG);
+	return 127;
+}
+
 int cmd_open(int argc, char **argv)
 {
-	char mime[MIME_MAX], entry[600];
-	int print = 0;
+	OpenCand cand[CAND_MAX];
+	char mime[MIME_MAX];
+	const char *entry;
+	int print = 0, choose = 0, defaulted = 0, ncand;
 
 	/*
 	 * `--print` resolves and prints instead of executing. Every other
@@ -303,14 +383,21 @@ int cmd_open(int argc, char **argv)
 	 * --preview, kdos-shell's --dump — and for the same reason: the answer
 	 * is worth checking without launching LibreOffice to find out what it
 	 * was. It is also what testing/selftest.sh can assert on.
+	 *
+	 * `--choose` forces the chooser whatever the resolution says, which is
+	 * what a desktop's "Open with…" menu item means.
 	 */
-	if (argc > 0 && !strcmp(argv[0], "--print")) {
-		print = 1;
-		argc--;
-		argv++;
+	for (; argc > 0 && argv[0][0] == '-'; argc--, argv++) {
+		if (!strcmp(argv[0], "--print"))
+			print = 1;
+		else if (!strcmp(argv[0], "--choose"))
+			choose = 1;
+		else
+			break;
 	}
 	if (argc < 1)
-		kb_die("usage: kdos-appbox open [--print] <path> [path...]");
+		kb_die("usage: kdos-appbox open [--print] [--choose] "
+		       "<path> [path...]");
 
 	/* One MIME type for the set, taken from the first: a handler is chosen
 	 * once and handed every file, which is what %F means. Mixed types are
@@ -320,7 +407,40 @@ int cmd_open(int argc, char **argv)
 	if (print)
 		printf("mime\t%s\n", mime);
 
-	if (!handler_for_mime(mime, entry, sizeof(entry))) {
+	ncand = handlers_for_mime(mime, cand, CAND_MAX, &defaulted);
+
+	if (print && ncand) {
+		printf("candidates");
+		for (int i = 0; i < ncand; i++)
+			printf("\t%s", cand[i].id);
+		printf("\ndefault\t%s\n", defaulted ? "yes" : "no");
+	}
+
+	/*
+	 * MORE THAN ONE ANSWER AND NOBODY HAS CHOSEN — ask. Exactly one
+	 * candidate, or a configured default, keeps today's behaviour and opens
+	 * the file: the dialog exists for the case where the machine genuinely
+	 * does not know, and for no other.
+	 *
+	 * A tree without the chooser falls through to the first candidate
+	 * rather than failing. Losing a dialog is a worse desktop; losing the
+	 * click entirely is a broken one.
+	 */
+	if ((choose || (ncand > 1 && !defaulted)) && kb_have_prog(OPENWITH_PROG)) {
+		/* Under --print the resolution below is still printed: the
+		 * `choose` line says the chooser would run, and what follows is
+		 * what a tree without it would do. Both are worth knowing and
+		 * one of them is what actually happens. */
+		if (print) {
+			printf("choose\t%s\n", OPENWITH_PROG);
+		} else {
+			tracef("open: %d handlers for %s and no default, asking",
+			       ncand, mime);
+			return run_openwith(argc, argv);
+		}
+	}
+
+	if (!ncand) {
 		if (print) {
 			printf("entry\t-\nexec\txdg-open\n");
 			return 0;
@@ -341,6 +461,8 @@ int cmd_open(int argc, char **argv)
 		kb_argv_end(&a);
 		return kb_run(&a);
 	}
+
+	entry = cand[0].path;
 
 	KxdgEntry e;
 	if (kxdg_load(&e, entry, "Desktop Entry") != 0)

@@ -45,10 +45,16 @@
  */
 #define KDOS_DIM_ALPHA 0.55f
 
+/* One heads-up this long before the LOCK stage — a lock with no warning
+ * eats the sentence someone was typing. */
+#define KDOS_LOCK_WARN_S 10
+
 static struct wlr_scene_rect *dim_rect;
 static struct wl_event_source *idle_timer;
 static int idle_stage;		/* next stage to fire: 0 dim, 1 lock, 2 off */
 static int ninhibit;
+static bool warn_armed;		/* the timer's next fire is the warning */
+static bool lock_warned;	/* one warning per idle spell */
 
 static void
 raise_locks_above_dim(void)
@@ -91,7 +97,15 @@ dim_set(bool on)
 	raise_locks_above_dim();
 }
 
-/* `enabled` on a wlr_output is the only portable "off" there is. */
+/*
+ * `enabled` on a wlr_output is the only portable "off" there is. A failed
+ * commit is LOGGED — an output that will not come back on is the worst
+ * silent failure this file can have — and a failed re-enable is retried on
+ * the next activity, because the user's next keypress is exactly when a
+ * still-black screen is being stared at.
+ */
+static bool power_reassert;
+
 static void
 outputs_power(bool on)
 {
@@ -100,9 +114,21 @@ outputs_power(bool on)
 		struct wlr_output_state st;
 		wlr_output_state_init(&st);
 		wlr_output_state_set_enabled(&st, on);
-		wlr_output_commit_state(o->wlr_output, &st);
+		if (!wlr_output_commit_state(o->wlr_output, &st)) {
+			wlr_log(WLR_ERROR, "idle: cannot power %s %s",
+				o->wlr_output->name, on ? "on" : "off");
+			if (on) {
+				power_reassert = true;
+			}
+		}
 		wlr_output_state_finish(&st);
 	}
+}
+
+void
+kdos_idle_outputs_power(bool on)
+{
+	outputs_power(on);
 }
 
 /* ── the timer ──────────────────────────────────────────────────── */
@@ -123,6 +149,7 @@ next_deadline(void)
 static void
 arm(void)
 {
+	warn_armed = false;
 	if (!idle_timer) {
 		return;
 	}
@@ -143,6 +170,27 @@ arm(void)
 			reached = at[i];
 		}
 	}
+
+	/* the stage the timer is running toward */
+	int fire_stage = idle_stage;
+	while (fire_stage < 3 && at[fire_stage] <= 0) {
+		fire_stage++;
+	}
+	/* the warning is a stop on the way to LOCK, not a stage: it moves
+	 * no state and activity between it and the lock cancels nothing
+	 * but the warning itself. `reached` measures from the point arm()
+	 * ran, so a fired warning IS a reached threshold — without that,
+	 * the rearm after it pushed the lock a whole interval out. */
+	if (fire_stage == 1) {
+		if (!lock_warned && next - reached > KDOS_LOCK_WARN_S) {
+			next -= KDOS_LOCK_WARN_S;
+			warn_armed = true;
+		} else if (lock_warned
+				&& at[1] - KDOS_LOCK_WARN_S > reached) {
+			reached = at[1] - KDOS_LOCK_WARN_S;
+		}
+	}
+
 	int delay = next - reached;
 	if (delay < 1) {
 		delay = 1;
@@ -157,6 +205,27 @@ idle_tick(void *data)
 	const int at[] = { kdos_conf.idle_dim_s, kdos_conf.idle_lock_s,
 		kdos_conf.idle_off_s };
 	int stage = idle_stage;
+
+	if (warn_armed) {
+		warn_armed = false;
+		lock_warned = true;
+		/* through the notification daemon the compositor already
+		 * supervises; gdbus is the same route kdos-appbox takes, a
+		 * fixed string with nothing interpolated into it */
+		if (!server.session_lock_manager
+				|| !server.session_lock_manager->locked) {
+			wlr_log(WLR_INFO, "idle: lock in %ds", KDOS_LOCK_WARN_S);
+			spawn_async_no_shell("gdbus call --timeout 2 --session "
+				"--dest org.freedesktop.Notifications "
+				"--object-path /org/freedesktop/Notifications "
+				"--method org.freedesktop.Notifications.Notify "
+				"KDOS 0 distributor-logo-kdos 'Locking soon' "
+				"'The session locks in 10 seconds — any input keeps it open' "
+				"[] {} 8000");
+		}
+		arm();
+		return 0;
+	}
 
 	/* skip switched-off stages so `idle_off` alone works */
 	while (stage < 3 && at[stage] <= 0) {
@@ -199,7 +268,13 @@ idle_tick(void *data)
 void
 kdos_idle_activity(void)
 {
-	if (idle_stage == 0) {
+	/* a re-enable that failed at wake time gets another go now */
+	if (power_reassert) {
+		power_reassert = false;
+		outputs_power(true);
+	}
+
+	if (idle_stage == 0 && !lock_warned) {
 		/* the common case by a mile: rearm and nothing else */
 		arm();
 		return;
@@ -209,9 +284,18 @@ kdos_idle_activity(void)
 	wlr_log(WLR_DEBUG, "idle: activity at stage %d", idle_stage);
 	if (idle_stage > 2) {
 		outputs_power(true);
+		/* a commit can lie by succeeding late; anything still dark
+		 * is retried on the NEXT activity */
+		struct output *o;
+		wl_list_for_each(o, &server.outputs, link) {
+			if (!o->wlr_output->enabled) {
+				power_reassert = true;
+			}
+		}
 	}
 	dim_set(false);
 	idle_stage = 0;
+	lock_warned = false;
 	arm();
 	/* deliberately NOT unlocking — a password ends the lock */
 }
@@ -253,11 +337,22 @@ in_a_vm(void)
 	}
 	return strstr(vendor, "QEMU") || strstr(vendor, "Bochs")
 		|| strstr(vendor, "VirtualBox") || strstr(vendor, "VMware")
-		|| strstr(vendor, "innotek");
+		|| strstr(vendor, "innotek")
+		|| strstr(vendor, "Microsoft Corporation")	/* Hyper-V */
+		|| strstr(vendor, "Parallels")
+		|| strstr(vendor, "Amazon EC2")
+		|| strstr(vendor, "Google");			/* GCE */
 }
 
-void
-kdos_idle_init(void)
+bool
+kdos_in_vm(void)
+{
+	return in_a_vm();
+}
+
+/* The VM gate, factored so a SIGHUP re-parse gets the same answer. */
+static void
+idle_apply_vm_gate(void)
 {
 	if (!kdos_conf.idle_configured && in_a_vm()) {
 		kdos_conf.idle_dim_s = 0;
@@ -267,6 +362,12 @@ kdos_idle_init(void)
 			"comp.conf) — a blanked screen is indistinguishable "
 			"from a crash over VNC");
 	}
+}
+
+void
+kdos_idle_init(void)
+{
+	idle_apply_vm_gate();
 
 	idle_timer = wl_event_loop_add_timer(
 		wl_display_get_event_loop(server.wl_display), idle_tick, NULL);
@@ -278,6 +379,44 @@ kdos_idle_init(void)
 			"(0 = never)", kdos_conf.idle_dim_s,
 			kdos_conf.idle_lock_s, kdos_conf.idle_off_s);
 	}
+}
+
+/*
+ * comp.conf was re-read. The stage the session is at survives — a reload
+ * during a dim must not wake the screen — but the deadlines are the new
+ * ones and the warning gets to fire again for them.
+ */
+void
+kdos_idle_reconfigure(void)
+{
+	idle_apply_vm_gate();
+	lock_warned = false;
+	arm();
+	wlr_log(WLR_INFO, "idle: dim %ds, lock %ds, outputs off %ds "
+		"(0 = never)", kdos_conf.idle_dim_s,
+		kdos_conf.idle_lock_s, kdos_conf.idle_off_s);
+}
+
+/*
+ * The layout changed under a live dim: the rect was sized for the old
+ * layout and a new output would come up undimmed beside a dimmed one.
+ * Runs from output_update_for_layout_change(), beside the wallpaper.
+ */
+void
+kdos_idle_arrange(void)
+{
+	if (!dim_rect) {
+		return;
+	}
+	struct wlr_box box = { 0 };
+	wlr_output_layout_get_box(server.output_layout, NULL, &box);
+	if (box.width <= 0 || box.height <= 0) {
+		return;
+	}
+	wlr_scene_rect_set_size(dim_rect, box.width, box.height);
+	wlr_scene_node_set_position(&dim_rect->node, box.x, box.y);
+	wlr_scene_node_raise_to_top(&dim_rect->node);
+	raise_locks_above_dim();
 }
 
 void

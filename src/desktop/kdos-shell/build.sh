@@ -31,6 +31,16 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	cursor-shape-v1-protocol.c
 "$SCANNER" private-code  "$PROTO/unstable/tablet/tablet-unstable-v2.xml" \
 	tablet-unstable-v2-protocol.c
+# primary-selection: middle-click paste is a SECOND selection with its own
+# device manager, and libkwl includes the header unconditionally. The
+# private-code is what carries the zwp_primary_selection_* interface symbols
+# the link needs; generating only the header builds and then fails at link.
+"$SCANNER" client-header \
+	"$PROTO/unstable/primary-selection/primary-selection-unstable-v1.xml" \
+	primary-selection-unstable-v1-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/primary-selection/primary-selection-unstable-v1.xml" \
+	primary-selection-unstable-v1-protocol.c
 "$SCANNER" client-header "$PROTO/stable/xdg-shell/xdg-shell.xml" \
 	xdg-shell-client-protocol.h
 "$SCANNER" private-code  "$PROTO/stable/xdg-shell/xdg-shell.xml" \
@@ -52,25 +62,31 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 # wlr-output-management is kdos-display's: labwc takes its screen configuration
 # over it like every wlroots compositor, and nothing in this tree spoke it, so
 # there was no way at all to set a mode, a scale or a second monitor's place.
+# wlr-data-control is kdos-clip's, and it is the only protocol that can carry a
+# clipboard HISTORY: wl_data_device delivers a selection event solely to the
+# client with keyboard focus, so a manager built on it records nothing.
 for p in wlr-layer-shell-unstable-v1 wlr-foreign-toplevel-management-unstable-v1 \
-	 wlr-output-management-unstable-v1; do
+	 wlr-output-management-unstable-v1 wlr-data-control-unstable-v1; do
 	"$SCANNER" client-header "/usr/share/wlroots/protocols/$p.xml" \
 		"$p-client-protocol.h"
 	"$SCANNER" private-code  "/usr/share/wlroots/protocols/$p.xml" \
 		"$p-protocol.c"
 done
 
-PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3"
+# libpng is libkicon's: the icon layer decodes the alien apps' own PNGs out of
+# /usr/share/icons/hicolor and the theme's atlas, and there is no SVG parser
+# anywhere in this tree.
+PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I. -I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" \
-	-I"$LIBS/libkxdg" \
+	-I"$LIBS/libkxdg" -I"$LIBS/libkicon" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-shell \
 	"$PORT_SRC"/*.c \
 	"$LIBS"/libkwl/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
-	"$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c \
+	"$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c "$LIBS"/libkicon/*.c \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
 
@@ -87,7 +103,42 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-run"
 # action needs. Upstream's labnag is not built (-Dlabnag=disabled).
 ln -s kdos-shell "$PKG/usr/bin/kdos-prompt"
 ln -s kdos-shell "$PKG/usr/bin/kdos-notifyd"
+# The notification CENTRE: the daemon keeps a history and this draws it. A
+# notification that expired is not a notification that was read, and on a
+# desktop whose fat applications all live in containers a boxed app's toast is
+# often the only thing that says its work has finished.
+ln -s kdos-shell "$PKG/usr/bin/kdos-notify"
 ln -s kdos-shell "$PKG/usr/bin/kdos-osd"
 # The clock's other half, and the screens. The panel spawns kdos-cal by name.
 ln -s kdos-shell "$PKG/usr/bin/kdos-cal"
 ln -s kdos-shell "$PKG/usr/bin/kdos-display"
+# The keybind card is generated from the same rc.xml the compositor reads, so
+# help cannot drift from what the keys actually do; W-F1 opens it.
+ln -s kdos-shell "$PKG/usr/bin/kdos-keys"
+ln -s kdos-shell "$PKG/usr/bin/kdos-teams"
+ln -s kdos-shell "$PKG/usr/bin/kdos-saver"
+ln -s kdos-shell "$PKG/usr/bin/kdos-slit"
+ln -s kdos-shell "$PKG/usr/bin/kdos-doc"
+ln -s kdos-shell "$PKG/usr/bin/kdos-settings"
+ln -s kdos-shell "$PKG/usr/bin/kdos-openwith"
+ln -s kdos-shell "$PKG/usr/bin/kdos-audio"
+# The Start menu — the panel's own button, and the one front door this desktop
+# did not have. kdos-menu and kdos-launcher keep the jobs they are good at.
+ln -s kdos-shell "$PKG/usr/bin/kdos-start"
+# The device managers. Everything they talk to (NetworkManager, bluez, V4L2)
+# has been running here since before there was a desktop; what was missing was
+# a surface, and `foot -e nmtui` was it.
+ln -s kdos-shell "$PKG/usr/bin/kdos-net"
+ln -s kdos-shell "$PKG/usr/bin/kdos-bt"
+ln -s kdos-shell "$PKG/usr/bin/kdos-devices"
+# The clipboard history: the daemon the compositor supervises, and the picker
+# `W-v` opens. One binary, one name, two roles.
+ln -s kdos-shell "$PKG/usr/bin/kdos-clip"
+# The notification area's overflow: the occasional widgets live behind one
+# chevron of fixed width so the right wing stops changing size, and this is
+# what the chevron opens. It also runs `kdos stutter` and `kdos-energy` inside
+# a pane, which is what those two had instead of a surface.
+ln -s kdos-shell "$PKG/usr/bin/kdos-status"
+# The tooltip. Half the bar is 32-pixel pictures with no words beside them, and
+# a control nobody can name is a control nobody clicks.
+ln -s kdos-shell "$PKG/usr/bin/kdos-tip"

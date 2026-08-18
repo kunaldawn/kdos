@@ -1,0 +1,24 @@
++=  Settings  =================================================================+
+| Appearance                Panel                     Desktop                  |
+| accent, CRT, wallpaper    the taskbar and tray      icons and workspaces     |
+|                                                                              |
+| Hardware                  Session                   Input                    |
+| screens, net, sound       idle, lock and power      keyboard and pointer     |
+|                                                                              |
+| Apps                                                                         |
+| which app opens what                                                         |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|------------------------------------------------------------------------------|
+| Enter opens a page   arrows move   Esc closes                                |
+| accent, CRT, wallpaper                                                       |
++==============================================================================+

@@ -29,6 +29,8 @@
 #ifndef KWL_H
 #define KWL_H
 
+#include <stdbool.h>
+
 #include "ktui.h"
 
 enum kwl_role {
@@ -85,6 +87,24 @@ enum kwl_corner {
 	 * was clicked.
 	 */
 	KWL_CORNER_TOP_LEFT,
+	/*
+	 * The same, measured from the bottom — what a menu belonging to a bar
+	 * on the BOTTOM edge needs. A client cannot express this by anchoring
+	 * TOP with a computed margin: it does not know the output's pixel
+	 * height, so it cannot say where "just above the taskbar" is. margin_y
+	 * is the gap from the bottom edge (the panel's own height), margin_x
+	 * the offset from the left.
+	 */
+	KWL_CORNER_BOTTOM_LEFT,
+	/*
+	 * A bezel: the OSD's place, where every desktop has put the volume
+	 * overlay since the laptop grew media keys. Anchored to the bottom
+	 * edge ONLY — anchoring left and right as well would stretch the
+	 * surface across the output, so the horizontal centring is the
+	 * compositor's own for an unanchored axis. margin_y is the gap from
+	 * the bottom; margin_x is meaningless here and ignored.
+	 */
+	KWL_CORNER_BOTTOM_CENTER,
 };
 
 typedef struct {
@@ -169,6 +189,23 @@ void kwl_shutdown(void);
 void kwl_overlay_resize(int cols, int rows);
 
 /*
+ * Panel only: collapse to a one-cell strip with no exclusive zone, and back.
+ *
+ * Autohide is a PANEL property rather than a drawing one because the half that
+ * matters is the exclusive zone — a panel that merely painted itself away
+ * would still hold its strip of the screen against every maximised window.
+ * Hidden the surface stays where it is, one cell thick, above the windows and
+ * still answering the pointer, which is what makes hovering the edge able to
+ * bring it back.
+ *
+ * The call blocks for one protocol roundtrip: the configure answering the
+ * resize must be in hand before anything is painted, or the buffer committed
+ * against it is the wrong size. It sets `ktui_resized`, so the caller's normal
+ * resize path redraws.
+ */
+void kwl_layer_autohide(bool hidden);
+
+/*
  * Overlay only: destroy the layer surface while idle and recreate it on
  * demand. The alternative — a NULL-buffer commit — resets the surface to
  * uninitialised in wlroots and the next toast is drawn nowhere; a one-cell
@@ -179,10 +216,42 @@ void kwl_overlay_resize(int cols, int rows);
 void kwl_overlay_hide(void);
 int kwl_overlay_show(int cols, int rows);
 
+/*
+ * COPY. Puts `text` on the clipboard (primary = 0) or the primary selection
+ * (primary = 1), by creating a data source this client answers `send` on.
+ *
+ * Returns -1 when there is no manager for that selection, when the allocation
+ * fails, and — the one worth knowing about — when this surface has never seen
+ * an input event: set_selection presents the SERIAL of the event that
+ * justified it, and a compositor refuses one it has never issued. That is the
+ * protocol saying a background client may not take the clipboard, not a bug.
+ *
+ * The text is copied; the caller keeps its own. Sends are drained from
+ * kwl_pump and never block the frame.
+ */
+int kwl_copy(const char *text, size_t len, int primary);
+
 /* Cell metrics, once the font is loaded. A panel's pixel height is
  * cells * kwl_cell_h(). */
 int kwl_cell_w(void);
 int kwl_cell_h(void);
+/* The integer output scale in force. Anything a consumer rasterises for itself
+ * has to be produced at cell * scale — libkicon is the caller. */
+int kwl_scale(void);
+
+/*
+ * The pointer's shape over this surface, via cursor-shape-v1. Sticky: it is
+ * re-sent on every pointer enter, so a consumer sets it when its hover target
+ * changes, not per frame. A compositor without the protocol ignores it, which
+ * leaves the arrow — the state every surface had before this existed.
+ */
+enum kwl_cursor {
+	KWL_CUR_DEFAULT = 0,	/* the arrow                               */
+	KWL_CUR_TEXT,		/* an I-beam: over a text field            */
+	KWL_CUR_POINTER,	/* a hand: over something clickable        */
+	KWL_CUR_PROGRESS,	/* working, but still interactive          */
+};
+void kwl_cursor_set(enum kwl_cursor c);
 
 /*
  * Which cells of this surface answer the pointer at all.

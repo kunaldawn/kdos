@@ -36,7 +36,7 @@
   </core>
 
   <!--
-    THE ONE CELL SIZE.
+    THE ONE CELL SIZE — and the one surface that cannot have it.
 
     Everything else on this desktop is a character grid at Terminus 32px: the
     panels, the menus, the launcher, the desktop icons, the lock screen, the
@@ -46,19 +46,43 @@
     of every 32-pixel window, which is the one place the desktop stopped
     looking like one machine.
 
-    Pango sizes are POINTS: at 96dpi, 24pt is 32 pixels, which is exactly the
-    ter-u32n bitmap. The colours of these same surfaces are generated —
-    ~/.config/kdos-comp/themerc-override, written by `kdos theme`.
+    Plain `Terminus` was asked for here and NEVER ARRIVED. Terminus is a PCF
+    bitmap and **pango has not rendered bitmap fonts since 1.44** (this ships
+    1.57), so the request fell through to DejaVu Sans on every titlebar and
+    every menu — measured on a booted ISO, where the panel's text has 3
+    luminance levels and the titlebar's has 143. fontconfig was never the
+    problem: `fc-match Terminus` resolves correctly on the target.
+
+    Hence the `terminus-ttf` port: the same face, converted to TTF, which pango
+    CAN draw. Its family is `Terminus (TTF)` — upstream names it that way on
+    purpose — and that separation is doing real work here. fcft draws the cell
+    grid from the PCF and stays crisp; only these pango surfaces ask for the
+    scalable one. A fontconfig alias from `Terminus` to the TTF would have
+    "fixed" this line and turned the whole panel antialiased.
+
+    Pango sizes are POINTS: at 96dpi, 24pt is 32 pixels, which keeps the
+    titlebar the height of one cell. The colours of these same surfaces are
+    generated — ~/.config/kdos-comp/themerc-override, written by `kdos theme`.
   -->
   <theme>
-    <font place="ActiveWindow"><name>Terminus</name><size>24</size></font>
-    <font place="InactiveWindow"><name>Terminus</name><size>24</size></font>
-    <font place="MenuHeader"><name>Terminus</name><size>24</size></font>
-    <font place="MenuItem"><name>Terminus</name><size>24</size></font>
-    <font place="OnScreenDisplay"><name>Terminus</name><size>24</size></font>
+    <font place="ActiveWindow"><name>Terminus (TTF)</name><size>24</size></font>
+    <font place="InactiveWindow"><name>Terminus (TTF)</name><size>24</size></font>
+    <font place="MenuHeader"><name>Terminus (TTF)</name><size>24</size></font>
+    <font place="MenuItem"><name>Terminus (TTF)</name><size>24</size></font>
+    <font place="OnScreenDisplay"><name>Terminus (TTF)</name><size>24</size></font>
   </theme>
 
-  <desktops number="4"/>
+  <!-- Named, because the panel's strip can show a name where it shows a digit,
+       and "www" says more than "2". Numeric targets still work: to="2" resolves
+       by index whatever the name says. -->
+  <desktops number="4">
+    <names>
+      <name>main</name>
+      <name>www</name>
+      <name>hack</name>
+      <name>misc</name>
+    </names>
+  </desktops>
 
   <keyboard>
     <default />
@@ -71,6 +95,10 @@
          of unsaved work and no screen at all is how a desktop loses trust.
          The dialog is kdos-prompt, via <promptCommand> above. -->
     <keybind key="W-Escape">
+      <!-- The list of what was open is written BEFORE the question, because
+           after the answer there is no session left to ask. It is only ever
+           read back when ~/.config/kdos/session-restore exists. -->
+      <action name="Execute" command="kdos-session-save"/>
       <action name="If">
         <prompt><message>End the KDOS session? Unsaved work will be lost.</message></prompt>
         <then><action name="Exit"/></then>
@@ -95,6 +123,13 @@
       <action name="ShowMenu" menu="root-menu" atCursor="no"/>
     </keybind>
 
+    <!-- The notification CENTRE. A toast that expired used to be gone; the
+         daemon keeps a history now and this is the way back to it, which
+         matters most for the notifications nobody was there to see. Shift,
+         because W-n is Iconify and a minimise key is pressed far more often
+         than a history is read. -->
+    <keybind key="W-S-n"><action name="Execute" command="kdos-notify"/></keybind>
+
     <!-- the three shell front ends that had no way in until now -->
     <keybind key="A-F2"><action name="Execute" command="kdos-run"/></keybind>
     <keybind key="W-e"><action name="Execute" command="foot -e mc"/></keybind>
@@ -117,6 +152,97 @@
     <keybind key="W-S-3"><action name="SendToDesktop" to="3"/></keybind>
     <keybind key="W-S-4"><action name="SendToDesktop" to="4"/></keybind>
 
+    <!-- 5 to 9 as well, and they are here even though <desktops number> above
+         is 4: the panel's strip has room for four digits and does not scroll,
+         so a fifth workspace was reachable with the WHEEL and with nothing
+         else. Raise the number above and these keys are already bound; leave
+         it at 4 and labwc resolves them to nothing, which is the same answer
+         the strip gives. -->
+    <keybind key="W-5"><action name="GoToDesktop" to="5"/></keybind>
+    <keybind key="W-6"><action name="GoToDesktop" to="6"/></keybind>
+    <keybind key="W-7"><action name="GoToDesktop" to="7"/></keybind>
+    <keybind key="W-8"><action name="GoToDesktop" to="8"/></keybind>
+    <keybind key="W-9"><action name="GoToDesktop" to="9"/></keybind>
+
+    <keybind key="W-S-5"><action name="SendToDesktop" to="5"/></keybind>
+    <keybind key="W-S-6"><action name="SendToDesktop" to="6"/></keybind>
+    <keybind key="W-S-7"><action name="SendToDesktop" to="7"/></keybind>
+    <keybind key="W-S-8"><action name="SendToDesktop" to="8"/></keybind>
+    <keybind key="W-S-9"><action name="SendToDesktop" to="9"/></keybind>
+
+    <!-- Relative workspace movement: the root-scroll default does the same
+         thing and is unreachable under a maximised window. -->
+    <keybind key="W-comma"><action name="GoToDesktop" to="left" wrap="yes"/></keybind>
+    <keybind key="W-period"><action name="GoToDesktop" to="right" wrap="yes"/></keybind>
+    <keybind key="W-S-comma"><action name="SendToDesktop" to="left"/></keybind>
+    <keybind key="W-S-period"><action name="SendToDesktop" to="right"/></keybind>
+
+    <!-- Window-state toggles the fork compiled and nothing bound. -->
+    <keybind key="W-t"><action name="ToggleAlwaysOnTop"/></keybind>
+    <keybind key="W-o"><action name="ToggleOmnipresent"/></keybind>
+    <keybind key="W-s"><action name="ToggleShade"/></keybind>
+    <!-- W-d above shadows labwc's default ToggleShowDesktop (the launcher
+         matters more); this gives Show Desktop a key back. -->
+    <keybind key="W-S-d"><action name="ToggleShowDesktop"/></keybind>
+    <!-- The window menu from the keyboard (also a labwc default; restated
+         because this file is the record of what a key does). -->
+    <keybind key="A-space">
+      <action name="ShowMenu" menu="client-menu" atCursor="no"/>
+    </keybind>
+
+    <!-- Keyboard tiling. The W-arrow snaps are labwc defaults, restated with
+         the same combine="yes" they ship with; MoveToEdge and GrowToEdge had
+         no key at all. -->
+    <keybind key="W-Left"><action name="SnapToEdge" direction="left" combine="yes"/></keybind>
+    <keybind key="W-Right"><action name="SnapToEdge" direction="right" combine="yes"/></keybind>
+    <keybind key="W-Up"><action name="SnapToEdge" direction="up" combine="yes"/></keybind>
+    <keybind key="W-Down"><action name="SnapToEdge" direction="down" combine="yes"/></keybind>
+    <keybind key="W-A-Left"><action name="MoveToEdge" direction="left"/></keybind>
+    <keybind key="W-A-Right"><action name="MoveToEdge" direction="right"/></keybind>
+    <keybind key="W-A-Up"><action name="MoveToEdge" direction="up"/></keybind>
+    <keybind key="W-A-Down"><action name="MoveToEdge" direction="down"/></keybind>
+    <keybind key="W-C-Left"><action name="GrowToEdge" direction="left"/></keybind>
+    <keybind key="W-C-Right"><action name="GrowToEdge" direction="right"/></keybind>
+    <keybind key="W-C-Up"><action name="GrowToEdge" direction="up"/></keybind>
+    <keybind key="W-C-Down"><action name="GrowToEdge" direction="down"/></keybind>
+
+    <!-- The keybind cheat sheet, generated from THIS file. -->
+    <keybind key="W-F1"><action name="Execute" command="kdos-keys"/></keybind>
+    <!-- The rest of the panel from the keyboard. Everything below was a
+         pointer-only surface: the clock and battery opened a calendar on a
+         click and on nothing else, the volume applet was the wheel, and the
+         settings and the documentation had no way in at all. -->
+    <keybind key="W-c"><action name="Execute" command="kdos-cal"/></keybind>
+    <keybind key="W-F2"><action name="Execute" command="kdos-teams"/></keybind>
+    <keybind key="W-F3"><action name="Execute" command="kdos-audio"/></keybind>
+    <keybind key="W-i"><action name="Execute" command="kdos-settings"/></keybind>
+    <keybind key="W-slash"><action name="Execute" command="kdos-doc"/></keybind>
+    <!-- The Start menu from the keyboard. The taskbar's own button is where a
+         pointer goes; this is the same surface for a hand already on the
+         keyboard, and it is deliberately NOT W-d — the launcher is a search
+         box and this is a menu, and conflating them would cost one of them. -->
+    <keybind key="W-a"><action name="Execute" command="kdos-start"/></keybind>
+    <!-- The device managers. Everything they drive has been running here
+         since before there was a desktop; what was missing was a way in. -->
+    <keybind key="W-F4"><action name="Execute" command="kdos-net"/></keybind>
+    <keybind key="W-F5"><action name="Execute" command="kdos-bt"/></keybind>
+    <keybind key="W-F6"><action name="Execute" command="kdos-devices"/></keybind>
+
+    <!-- Run-or-raise, for anyone who wants one key per app. ForEach runs its
+         <then> on every view matching the <query> (identifier is the app_id,
+         globs allowed) and <none> when nothing matched — fluxbox's
+         ClientPattern language, already compiled in. One key, one terminal:
+
+    <keybind key="W-grave">
+      <action name="ForEach">
+        <query identifier="foot"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot"/></none>
+      </action>
+    </keybind>
+    -->
+
+
     <!-- media keys: keysyms that exist only on those keys, safe unmodified.
          These REPLACE the defaults, which shell out to pactl and
          brightnessctl — neither of which KDOS ships. kdos-osd does the
@@ -124,6 +250,10 @@
     <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="kdos-osd volume +5"/></keybind>
     <keybind key="XF86AudioLowerVolume"><action name="Execute" command="kdos-osd volume -5"/></keybind>
     <keybind key="XF86AudioMute"><action name="Execute" command="kdos-osd volume toggle"/></keybind>
+    <!-- The other half of the panel's `●MIC` lamp: the indicator names the
+         application recording you and this is the key that stops it. It was
+         the one media key with a readout and no control. -->
+    <keybind key="XF86AudioMicMute"><action name="Execute" command="kdos-osd mic toggle"/></keybind>
     <keybind key="XF86MonBrightnessUp"><action name="Execute" command="kdos-osd brightness +10"/></keybind>
     <keybind key="XF86MonBrightnessDown"><action name="Execute" command="kdos-osd brightness -10"/></keybind>
   </keyboard>
@@ -165,6 +295,58 @@
       <mousebind button="W-Right" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
       <mousebind button="W-Right" action="Drag"><action name="Resize"/></mousebind>
     </context>
+
+    <!-- Shade on the titlebar, the fluxbox way: wheel up rolls the window into
+         its bar, wheel down rolls it back. The wheel pair restates a labwc
+         default verbatim (Unfocus/Focus included — a shaded window must not
+         keep the keyboard); the double-click replaces the default
+         ToggleMaximize, which W-m and the Maximize button both still do.
+         "Title" is the context that covers the blank titlebar as well as the
+         text (node-type.c), which is why the double-click is bound there and
+         not on "Titlebar" — the latter would also fire on the buttons. -->
+    <context name="Titlebar">
+      <mousebind direction="Up" action="Scroll"><action name="Unfocus"/><action name="Shade"/></mousebind>
+      <mousebind direction="Down" action="Scroll"><action name="Unshade"/><action name="Focus"/></mousebind>
+      <!-- The window menu on press, not on release: same feel as the root
+           menu's default Root Right Press. -->
+      <mousebind button="Right" action="Press"><action name="Focus"/><action name="ShowMenu" menu="client-menu"/></mousebind>
+    </context>
+    <context name="Title">
+      <mousebind button="Left" action="DoubleClick"><action name="ToggleShade"/></mousebind>
+      <!-- Replaces the default Title Right Click (Focus/Raise/ShowMenu): the
+           Titlebar Press above already opens the menu, and a second ShowMenu
+           on the release would close what the press opened. -->
+      <mousebind button="Right" action="Click"><action name="Focus"/><action name="Raise"/></mousebind>
+    </context>
   </mouse>
+
+  <!--
+    Per-window rules, applied when a window first maps. Criteria are
+    attributes (identifier = app_id, globs allowed; type = the window type;
+    sandboxEngine/sandboxAppId = what kdos-boxsock tagged the client with, so
+    a rule can name "everything from the appbox" — something no X11 window
+    manager could say); properties are attributes too, and child <action>
+    elements run on the new window. Three worked examples:
+
+    GIMP's tool dialogs are busy enough without a titlebar each:
+
+      <windowRule identifier="gimp" type="utility" serverDecoration="no"/>
+
+    Every alien app opens on workspace 4 (misc) — the box name is the
+    sandboxAppId kdos-boxsock registers; follow="no" keeps you where you are:
+
+      <windowRule sandboxEngine="io.kdos.appbox" sandboxAppId="kdos-apps">
+        <action name="SendToDesktop" to="4" follow="no"/>
+      </windowRule>
+
+    A dropdown terminal (`foot -a dropdown-foot`), parked at the top edge and
+    immune to interactive moves:
+
+      <windowRule identifier="dropdown-foot" fixedPosition="yes">
+        <action name="MoveTo" x="0" y="0"/>
+      </windowRule>
+
+    Wrap the rules in one <windowRules> element to enable them.
+  -->
 
 </labwc_config>

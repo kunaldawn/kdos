@@ -19,9 +19,9 @@
  *   destroy after the pass.
  *
  * - TWO HONEST FALLBACKS: a renderer that is not GLES2 gets no pass
- *   at all (pixman is a slideshow); anything failing at runtime marks
- *   that OUTPUT broken and permanently returns to the plain path —
- *   this file must never be the reason for a black screen.
+ *   at all (pixman is a slideshow); anything failing at runtime puts
+ *   that OUTPUT on the plain path for a doubling cooldown (see
+ *   give_up()) — this file must never be the reason for a black screen.
  *
  * - Direct scanout is off for the whole session while the pass is on
  *   (WLR_SCENE_DISABLE_DIRECT_SCANOUT before wlr_scene_create), and
@@ -39,15 +39,18 @@
  * and the pre-fork ascii effect (Super+A) is not carried over.
  */
 #define _POSIX_C_SOURCE 200809L
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 #include <pixman.h>
 
+#include <wlr/render/color.h>
 #include <wlr/render/egl.h>
 #include <wlr/render/gles2.h>
 #include <wlr/render/swapchain.h>
@@ -61,6 +64,7 @@
 #include "labwc.h"
 #include "magnifier.h"
 #include "output.h"
+#include "view.h"
 
 enum { KDOS_PROG_2D = 0, KDOS_PROG_EXT = 1, KDOS_NPROG = 2 };
 
@@ -68,12 +72,16 @@ struct kdos_prog {
 	GLuint id;
 	GLint a_pos;
 	GLint u_tex, u_res, u_int, u_scan, u_curve, u_tint;
+	GLint u_fx, u_collapse;
 };
 
 struct kdos_crt_gl {
 	bool ok;
 	struct kdos_prog prog[KDOS_NPROG];
 	float tint[3];			/* the accent, 0..1 */
+	/* D7.3: an accent change plays 400 ms of decaying wobble — the
+	 * degauss thoomp. Amplitude decays CPU-side; 0 means over. */
+	int64_t degauss_start_ns;
 	/* KDOS_CRT_DUMP=<prefix> writes <prefix>-in.ppm / -out.ppm once;
 	 * KDOS_CRT_DUMP_FRAME=<n> waits past the empty first frames. */
 	const char *dump;
@@ -87,11 +95,24 @@ struct kdos_crt_output {
 	struct wl_listener destroy;
 	struct wlr_swapchain *scene_sc;
 	struct wlr_swapchain *out_sc;
-	bool broken;
+	/*
+	 * C7: a failure is a COOLDOWN, not a sentence — a transient commit
+	 * error (hotplug link renegotiation, VT switch) used to untheme
+	 * the screen for the session. 5 s, doubling per consecutive trip,
+	 * capped at 60 s; a completed pass resets the backoff.
+	 */
+	int64_t broken_until_ns;
+	int64_t cooldown_ns;
 	bool said, said_scanout;
 };
 
 static struct kdos_crt_gl *crt_gl;
+/* THIS session refused the pass, and the reason will not change in it.
+ * kdos_conf.crt cannot carry that: kdos_conf_reload() re-reads the file
+ * and puts the configured value back, so a SIGHUP on pixman used to
+ * promise that a new session would turn on what this renderer had just
+ * declined. */
+static bool crt_declined;
 static struct wl_list crt_outputs = { .prev = &crt_outputs,
 	.next = &crt_outputs };
 
@@ -120,11 +141,19 @@ static const char *FRAG_FMT =
 	"uniform float u_scan;\n"
 	"uniform float u_curve;\n"
 	"uniform vec3 u_tint;\n"
+	/* degauss: x amplitude (UV units), y phase — both 0 when idle */
+	"uniform vec2 u_fx;\n"
+	/* power-down: vertical/horizontal sample-space scale, (1,1) live */
+	"uniform vec2 u_collapse;\n"
 	"void main() {\n"
 	"	vec2 c = v_uv * 2.0 - 1.0;\n"
 	"	float k = u_curve * 0.06;\n"
 	"	c *= (1.0 + k * dot(c, c)) / (1.0 + 2.0 * k);\n"
+	/* the collapse expands sample space, so everything off the
+	 * shrinking band lands in the black branch below */
+	"	c = vec2(c.x / u_collapse.y, c.y / u_collapse.x);\n"
 	"	vec2 uv = c * 0.5 + 0.5;\n"
+	"	uv.x += u_fx.x * sin(uv.y * 90.0 + u_fx.y);\n"
 	"	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {\n"
 	"		gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
 	"		return;\n"
@@ -142,6 +171,10 @@ static const char *FRAG_FMT =
 	/* vignette */
 	"	vec2 v = uv * 2.0 - 1.0;\n"
 	"	col *= 1.0 - 0.15 * u_int * dot(v, v);\n"
+	/* degauss lifts the picture a little; the collapse concentrates
+	 * a screen's worth of light into the surviving band */
+	"	col *= 1.0 + 6.0 * u_fx.x\n"
+	"		+ 1.5 * (2.0 - u_collapse.x - u_collapse.y);\n"
 	/* the phosphor floor: black is never quite black */
 	"	col += u_tint * 0.02 * u_int;\n"
 	"	gl_FragColor = vec4(col, 1.0);\n"
@@ -222,6 +255,8 @@ build_prog(struct kdos_prog *p, const char *head)
 	p->u_scan = glGetUniformLocation(p->id, "u_scan");
 	p->u_curve = glGetUniformLocation(p->id, "u_curve");
 	p->u_tint = glGetUniformLocation(p->id, "u_tint");
+	p->u_fx = glGetUniformLocation(p->id, "u_fx");
+	p->u_collapse = glGetUniformLocation(p->id, "u_collapse");
 	return p->a_pos >= 0;
 }
 
@@ -264,48 +299,33 @@ gl_leave(struct kdos_egl_ctx *sv)
 	eglMakeCurrent(sv->dpy, sv->draw, sv->read, sv->ctx);
 }
 
-/* The accent, from the same one-word file kdos-shell reads. Absent is
- * the normal case on a fresh system and means phosphor. */
-static const KcolScheme *
-accent_scheme(void)
-{
-	char path[512];
-	const char *cache = getenv("XDG_CACHE_HOME");
-	const char *home = getenv("HOME");
-	if (cache && *cache) {
-		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
-	} else if (home && *home) {
-		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
-	} else {
-		return kcol_find("phosphor");
-	}
-
-	const KcolScheme *sc = NULL;
-	FILE *f = fopen(path, "r");
-	if (f) {
-		char name[64] = { 0 };
-		if (fgets(name, sizeof(name), f)) {
-			char *nl = strpbrk(name, "\r\n");
-			if (nl) {
-				*nl = '\0';
-			}
-			sc = kcol_find(name);
-		}
-		fclose(f);
-	}
-	return sc ? sc : kcol_find("phosphor");
-}
-
 /*
  * Before wlr_scene_create(): when the pass is wanted, direct scanout
- * must be off for the session — wlroots exposes exactly one switch,
- * an env var the scene reads at creation.
+ * must be off for the session. The scene's own field is writable at
+ * runtime — the magnifier flips it — but it is scene-GLOBAL while the
+ * pass is decided per output and per frame, so the env var the scene
+ * reads at creation is the switch this uses. The cost is stated
+ * wherever the lever is: `crt = 0` after startup, and crt_fullscreen's
+ * bypass, both give the frame back unprocessed and neither gives
+ * scanout back.
  */
 void
 kdos_crt_early_init(void)
 {
 	if (kdos_conf.crt > 0) {
 		setenv("WLR_SCENE_DISABLE_DIRECT_SCANOUT", "1", 1);
+	}
+	/*
+	 * C6: the hardware cursor plane is composited by the display
+	 * engine AFTER our shader, so under barrel distortion it floats
+	 * unwarped over a warped desktop and drifts off the hotspot
+	 * toward the edges. Software cursor is drawn into the scene and
+	 * warps with everything else.
+	 */
+	if (kdos_conf.crt > 0 && kdos_conf.crt_curve > 0) {
+		setenv("WLR_NO_HARDWARE_CURSORS", "1", 1);
+		wlr_log(WLR_INFO, "crt: software cursor — the hardware plane "
+			"cannot follow crt_curve's warp");
 	}
 }
 
@@ -322,16 +342,18 @@ kdos_crt_init(void)
 			"renderer, and a fullscreen shader on a software "
 			"renderer is a slideshow");
 		kdos_conf.crt = 0;
+		crt_declined = true;
 		return;
 	}
 
 	struct kdos_crt_gl *gl = calloc(1, sizeof(*gl));
 	if (!gl) {
 		kdos_conf.crt = 0;
+		crt_declined = true;
 		return;
 	}
 
-	const KcolScheme *sc = accent_scheme();
+	const KcolScheme *sc = kdos_accent_scheme();
 	KcolRgb rgb = kcol_rgb(sc ? sc->primary : 0x39ff14);
 	gl->tint[0] = rgb.r / 255.0f;
 	gl->tint[1] = rgb.g / 255.0f;
@@ -355,6 +377,7 @@ kdos_crt_init(void)
 		wlr_log(WLR_ERROR, "crt: off — no EGL context");
 		free(gl);
 		kdos_conf.crt = 0;
+		crt_declined = true;
 		return;
 	}
 
@@ -372,6 +395,7 @@ kdos_crt_init(void)
 		wlr_log(WLR_ERROR, "crt: off — the shader did not build");
 		free(gl);
 		kdos_conf.crt = 0;
+		crt_declined = true;
 		return;
 	}
 
@@ -394,9 +418,18 @@ kdos_crt_reload(void)
 {
 	struct kdos_crt_gl *gl = crt_gl;
 	if (!gl || !gl->ok) {
+		/* a conf reload can only tune a pass that exists — the
+		 * scanout switch is scene-creation-time */
+		if (kdos_conf.crt > 0) {
+			wlr_log(WLR_INFO, "%s", crt_declined
+				? "crt: on in comp.conf, but this session "
+					"could not have it"
+				: "crt: on in comp.conf but off at startup "
+					"— a new session turns it on");
+		}
 		return;
 	}
-	const KcolScheme *sc = accent_scheme();
+	const KcolScheme *sc = kdos_accent_scheme();
 	KcolRgb rgb = kcol_rgb(sc ? sc->primary : 0x39ff14);
 	gl->tint[0] = rgb.r / 255.0f;
 	gl->tint[1] = rgb.g / 255.0f;
@@ -405,6 +438,9 @@ kdos_crt_reload(void)
 	kcol_format(sc ? sc->primary : 0x39ff14, hex);
 	wlr_log(WLR_INFO, "crt: phosphor is now #%s (%s)", hex,
 		sc ? sc->name : "phosphor");
+
+	/* D7.3: the retint IS the degauss moment */
+	gl->degauss_start_ns = kdos_frames_now();
 
 	/* a retint on an idle desktop must not wait for motion */
 	struct output *o;
@@ -555,28 +591,99 @@ dump_fbo(GLuint fbo, int w, int h, const char *prefix, const char *suffix)
 
 /* ── the frame ──────────────────────────────────────────────────── */
 
-/* one-way: a pass that fails once will fail every frame, and 60
- * identical error lines a second is worse than missing scanlines */
+#define KDOS_CRT_COOLDOWN_MIN_NS 5000000000LL	/* 5 s */
+#define KDOS_CRT_COOLDOWN_MAX_NS 60000000000LL	/* 60 s */
+
+/*
+ * A cooldown, then one retry: 60 identical error lines a second is worse
+ * than missing scanlines, but a permanent give-up unthemed a screen for
+ * the session over one transient failure. Logged once per trip — this
+ * runs at most once per cooldown by construction.
+ */
 static bool
 give_up(struct kdos_crt_output *co, const char *why)
 {
-	wlr_log(WLR_ERROR, "crt: %s on %s — falling back to the plain path",
-		why, co->output->wlr_output->name);
-	co->broken = true;
+	co->cooldown_ns = co->cooldown_ns <= 0 ? KDOS_CRT_COOLDOWN_MIN_NS
+		: co->cooldown_ns * 2;
+	if (co->cooldown_ns > KDOS_CRT_COOLDOWN_MAX_NS) {
+		co->cooldown_ns = KDOS_CRT_COOLDOWN_MAX_NS;
+	}
+	co->broken_until_ns = kdos_frames_now() + co->cooldown_ns;
+	wlr_log(WLR_ERROR, "crt: %s on %s — plain path for %llds",
+		why, co->output->wlr_output->name,
+		(long long)(co->cooldown_ns / 1000000000LL));
 	return false;
 }
+
+/*
+ * C11: crt_fullscreen = off means a fullscreen topmost view gets its
+ * frames without the pass — one render instead of two for video and
+ * games, which is the battery lever. NOT a zero-copy path: the scene's
+ * direct-scanout switch is creation-time and stays off all session, so
+ * the client's buffer is still composited once either way.
+ */
+static bool
+output_topmost_is_fullscreen(struct output *output)
+{
+	struct view *view;
+	for_each_view(view, &server.views, LAB_VIEW_CRITERIA_CURRENT_WORKSPACE) {
+		if (view->minimized || view->output != output) {
+			continue;
+		}
+		return view->fullscreen;
+	}
+	return false;
+}
+
+/* Whole-output damage, the shape scene-helpers.c already uses — needed
+ * when an animation must repaint a scene that has no damage of its own. */
+static void
+crt_damage_whole(struct wlr_scene_output *so)
+{
+	pixman_region32_t full;
+	pixman_region32_init_rect(&full, 0, 0, so->output->width,
+		so->output->height);
+	wlr_damage_ring_add(&so->damage_ring, &full);
+	pixman_region32_union(&so->WLR_PRIVATE.pending_commit_damage,
+		&so->WLR_PRIVATE.pending_commit_damage, &full);
+	pixman_region32_fini(&full);
+}
+
+/* the power-down owns every output's frames while it runs */
+static bool crt_in_powerdown;
 
 bool
 kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 {
 	struct kdos_crt_gl *gl = crt_gl;
 
+	/* the shutdown animation is drawing; a live frame under it would
+	 * paint the desktop back over the collapse */
+	if (crt_in_powerdown) {
+		return true;
+	}
 	if (kdos_conf.crt <= 0 || !gl || !gl->ok) {
 		return false;
 	}
 	struct kdos_crt_output *co = crt_output_get(output);
-	if (!co || co->broken) {
+	if (!co || co->broken_until_ns > kdos_frames_now()) {
 		return false;
+	}
+	if (!kdos_conf.crt_fullscreen && output_topmost_is_fullscreen(output)) {
+		return false;
+	}
+
+	/* D7.3: while the degauss runs, every frame is forced and the
+	 * next one scheduled — a static desktop still animates */
+	float dg_amp = 0.0f, dg_phase = 0.0f;
+	if (gl->degauss_start_ns > 0) {
+		double t = (kdos_frames_now() - gl->degauss_start_ns) / 1e9;
+		if (t >= 0.0 && t < 0.4) {
+			dg_amp = 0.012f * (float)exp(-t * 8.0);
+			dg_phase = (float)(t * 40.0);
+		} else {
+			gl->degauss_start_ns = 0;
+		}
 	}
 
 	/*
@@ -598,7 +705,10 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 	/* nothing changed: same pixels at full cost — let the plain
 	 * path take its early-out */
 	if (!wlr_scene_output_needs_frame(so)) {
-		return false;
+		if (dg_amp <= 0.0f) {
+			return false;
+		}
+		crt_damage_whole(so);
 	}
 
 	struct wlr_output_state probe;
@@ -643,11 +753,24 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 	}
 
 	struct wlr_buffer *src = wlr_buffer_lock(scene_state.buffer);
+	/*
+	 * C2: the scene applies wlr-gamma-control as a color transform in
+	 * the state it built. Our replacement commit must carry it too, or
+	 * night light silently no-ops while the pass is on. The transform
+	 * is refcounted; the flag with a NULL transform is a reset and is
+	 * propagated as one.
+	 */
+	bool have_ct = scene_state.committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM;
+	struct wlr_color_transform *ct = have_ct && scene_state.color_transform
+		? wlr_color_transform_ref(scene_state.color_transform) : NULL;
 	wlr_output_state_finish(&scene_state);
 
 	struct wlr_texture *tex = wlr_texture_from_buffer(server.renderer, src);
 	if (!tex) {
 		wlr_buffer_unlock(src);
+		if (ct) {
+			wlr_color_transform_unref(ct);
+		}
 		return give_up(co, "the composited buffer will not import "
 			"as a texture");
 	}
@@ -722,6 +845,8 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 	glUniform1f(p->u_scan, kdos_conf.crt_scanlines / 100.0f);
 	glUniform1f(p->u_curve, kdos_conf.crt_curve / 100.0f);
 	glUniform3f(p->u_tint, gl->tint[0], gl->tint[1], gl->tint[2]);
+	glUniform2f(p->u_fx, dg_amp, dg_phase);
+	glUniform2f(p->u_collapse, 1.0f, 1.0f);
 
 	glVertexAttribPointer((GLuint)p->a_pos, 2, GL_FLOAT, GL_FALSE, 0,
 		quad);
@@ -750,6 +875,9 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 	struct wlr_output_state st;
 	wlr_output_state_init(&st);
 	wlr_output_state_set_buffer(&st, dst);
+	if (have_ct) {
+		wlr_output_state_set_color_transform(&st, ct);
+	}
 	pixman_region32_t full;
 	pixman_region32_init_rect(&full, 0, 0, (unsigned)w, (unsigned)h);
 	wlr_output_state_set_damage(&st, &full);
@@ -767,8 +895,229 @@ fail:
 		wlr_buffer_unlock(dst);
 	}
 	wlr_buffer_unlock(src);
+	if (ct) {
+		wlr_color_transform_unref(ct);
+	}
 	if (err) {
 		return give_up(co, err);
 	}
+	/* a whole pass went through: the cooldown backoff starts over */
+	co->cooldown_ns = 0;
+	if (gl->degauss_start_ns > 0) {
+		wlr_output_schedule_frame(output->wlr_output);
+	}
 	return true;
+}
+
+/* ── the power-down ─────────────────────────────────────────────── */
+
+/*
+ * D7.4: the signature every retro machine had, closing the loop with
+ * the boot splash's power-ON. The last composite collapses vertically
+ * to a bright centre line (~350 ms), then horizontally to a dot
+ * (~100 ms). Runs AFTER wl_display_run() returns, so the event loop is
+ * pumped by hand each frame — DRM page-flip completions arrive through
+ * it, and without the pump every commit after the first would find the
+ * previous flip still pending. Hard 600 ms deadline: this must never
+ * be the reason a shutdown hangs, so anything that fails is skipped,
+ * never retried past the clock.
+ */
+#define KDOS_PD_V_MS		350
+#define KDOS_PD_H_MS		100
+#define KDOS_PD_DEADLINE_MS	600
+#define KDOS_PD_MAX_OUTPUTS	8
+#define KDOS_PD_MIN_SCALE	0.006f
+
+struct kdos_pd_output {
+	struct kdos_crt_output *co;
+	struct wlr_buffer *src;
+	struct wlr_texture *tex;
+	struct wlr_gles2_texture_attribs ta;
+	bool dead;
+};
+
+static bool
+pd_blit(struct kdos_pd_output *pd, float vs, float hs)
+{
+	struct kdos_crt_gl *gl = crt_gl;
+	struct kdos_crt_output *co = pd->co;
+	int which = pd->ta.target == GL_TEXTURE_EXTERNAL_OES ? KDOS_PROG_EXT
+		: KDOS_PROG_2D;
+	const struct kdos_prog *p = &gl->prog[which];
+	if (!p->id) {
+		return false;
+	}
+
+	struct wlr_buffer *dst = wlr_swapchain_acquire(co->out_sc);
+	if (!dst) {
+		/* every slot still locked by an unflipped commit — not
+		 * fatal, the next iteration tries again */
+		return true;
+	}
+	GLuint fbo = wlr_gles2_renderer_get_buffer_fbo(server.renderer, dst);
+	if (!fbo) {
+		wlr_buffer_unlock(dst);
+		return false;
+	}
+
+	struct kdos_egl_ctx sv;
+	if (!gl_enter(&sv)) {
+		wlr_buffer_unlock(dst);
+		return false;
+	}
+
+	int w = dst->width, h = dst->height;
+	static const GLfloat quad[] = {
+		-1.0f, -1.0f,  1.0f, -1.0f,  -1.0f, 1.0f,
+		 1.0f, -1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,
+	};
+
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glViewport(0, 0, w, h);
+	glDisable(GL_BLEND);
+	glDisable(GL_SCISSOR_TEST);
+
+	glUseProgram(p->id);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(pd->ta.target, pd->ta.tex);
+	glTexParameteri(pd->ta.target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(pd->ta.target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(pd->ta.target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(pd->ta.target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	glUniform1i(p->u_tex, 0);
+	glUniform2f(p->u_res, (GLfloat)w, (GLfloat)h);
+	glUniform1f(p->u_int, kdos_conf.crt / 100.0f);
+	glUniform1f(p->u_scan, kdos_conf.crt_scanlines / 100.0f);
+	glUniform1f(p->u_curve, kdos_conf.crt_curve / 100.0f);
+	glUniform3f(p->u_tint, gl->tint[0], gl->tint[1], gl->tint[2]);
+	glUniform2f(p->u_fx, 0.0f, 0.0f);
+	glUniform2f(p->u_collapse, vs, hs);
+
+	glVertexAttribPointer((GLuint)p->a_pos, 2, GL_FLOAT, GL_FALSE, 0,
+		quad);
+	glEnableVertexAttribArray((GLuint)p->a_pos);
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glDisableVertexAttribArray((GLuint)p->a_pos);
+	glBindTexture(pd->ta.target, 0);
+	glUseProgram(0);
+	glFlush();
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	gl_leave(&sv);
+
+	struct wlr_output_state st;
+	wlr_output_state_init(&st);
+	wlr_output_state_set_buffer(&st, dst);
+	pixman_region32_t full;
+	pixman_region32_init_rect(&full, 0, 0, (unsigned)w, (unsigned)h);
+	wlr_output_state_set_damage(&st, &full);
+	pixman_region32_fini(&full);
+	/* a refused commit is a pending flip more often than a dead
+	 * output; keep going, the deadline bounds the worst case */
+	wlr_output_commit_state(co->output->wlr_output, &st);
+	wlr_output_state_finish(&st);
+	wlr_buffer_unlock(dst);
+	return true;
+}
+
+void
+kdos_crt_powerdown(void)
+{
+	struct kdos_crt_gl *gl = crt_gl;
+	if (!gl || !gl->ok) {
+		return;		/* GLES2-only; off is off */
+	}
+
+	/* freeze the last composite of every healthy output */
+	struct kdos_pd_output pd[KDOS_PD_MAX_OUTPUTS];
+	int npd = 0;
+	struct kdos_crt_output *co;
+	wl_list_for_each(co, &crt_outputs, link) {
+		if (npd >= KDOS_PD_MAX_OUTPUTS || !co->scene_sc || !co->out_sc
+				|| co->broken_until_ns > kdos_frames_now()) {
+			continue;
+		}
+		struct wlr_scene_output *so = co->output->scene_output;
+		if (!so) {
+			continue;
+		}
+		crt_damage_whole(so);	/* force a full final render */
+		struct wlr_output_state ss;
+		wlr_output_state_init(&ss);
+		struct wlr_scene_output_state_options opts = {
+			.swapchain = co->scene_sc };
+		if (!wlr_scene_output_build_state(so, &ss, &opts)
+				|| !(ss.committed & WLR_OUTPUT_STATE_BUFFER)
+				|| !wlr_swapchain_has_buffer(co->scene_sc,
+					ss.buffer)) {
+			wlr_output_state_finish(&ss);
+			continue;
+		}
+		struct wlr_buffer *src = wlr_buffer_lock(ss.buffer);
+		wlr_output_state_finish(&ss);
+		struct wlr_texture *tex = wlr_texture_from_buffer(
+			server.renderer, src);
+		if (!tex) {
+			wlr_buffer_unlock(src);
+			continue;
+		}
+		pd[npd].co = co;
+		pd[npd].src = src;
+		pd[npd].tex = tex;
+		pd[npd].ta = (struct wlr_gles2_texture_attribs) { 0 };
+		wlr_gles2_texture_get_attribs(tex, &pd[npd].ta);
+		pd[npd].dead = false;
+		npd++;
+	}
+	if (!npd) {
+		return;
+	}
+
+	crt_in_powerdown = true;
+	int64_t start = kdos_frames_now();
+	for (;;) {
+		int64_t el = (kdos_frames_now() - start) / 1000000;
+		if (el > KDOS_PD_V_MS + KDOS_PD_H_MS
+				|| el > KDOS_PD_DEADLINE_MS) {
+			break;
+		}
+		float vs, hs;
+		if (el <= KDOS_PD_V_MS) {
+			vs = 1.0f - (float)el / KDOS_PD_V_MS
+				* (1.0f - KDOS_PD_MIN_SCALE);
+			hs = 1.0f;
+		} else {
+			vs = KDOS_PD_MIN_SCALE;
+			hs = 1.0f - (float)(el - KDOS_PD_V_MS) / KDOS_PD_H_MS
+				* (1.0f - KDOS_PD_MIN_SCALE);
+		}
+		int alive = 0;
+		for (int i = 0; i < npd; i++) {
+			if (pd[i].dead) {
+				continue;
+			}
+			if (!pd_blit(&pd[i], vs, hs)) {
+				pd[i].dead = true;
+			} else {
+				alive++;
+			}
+		}
+		/* nothing left to draw on: the rest of the deadline would be
+		 * a session that has already ended still holding the loop
+		 * open, dispatching sources main() is about to tear down */
+		if (!alive) {
+			break;
+		}
+		/* flip completions arrive through the (stopped) loop */
+		wl_event_loop_dispatch(
+			wl_display_get_event_loop(server.wl_display), 0);
+		struct timespec ts = { 0, 16000000L };
+		nanosleep(&ts, NULL);
+	}
+
+	for (int i = 0; i < npd; i++) {
+		wlr_texture_destroy(pd[i].tex);
+		wlr_buffer_unlock(pd[i].src);
+	}
+	crt_in_powerdown = false;
 }

@@ -1,0 +1,14 @@
+title: a GTK app routes through the portal only when it believes it is sandboxed
+cite: kdos-appbox BOXENV
+port: kdos-appbox
+
+It decides that from /.flatpak-info or from GTK_USE_PORTAL=1 — and a distrobox
+is neither. So FileChooser, Settings and OpenURI all existed, all answered,
+and NOTHING EVER CALLED THEM: every boxed app went on drawing its own
+GtkFileChooser, the exact rounded antialiased dialog kdos-pick was written to
+replace.
+
+Firefox's widget.use-xdg-desktop-portal.file-picker default of `auto` reads
+the same variable. Stated cost: GTK's Print dialog goes through the portal as
+well and KDOS has no Print backend — but printing from a boxed app did not
+work before either.

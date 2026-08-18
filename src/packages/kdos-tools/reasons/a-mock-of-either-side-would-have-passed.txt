@@ -1,0 +1,13 @@
+title: a mock of either side would have passed — the test has to be a second PROCESS
+cite: traycheck
+port: kdos-shell
+
+StatusNotifierItem is a conversation between two peers on a bus, and both of
+the tray's silent bugs would have survived a mock. The test forks a Qt-shaped
+item, drives tray.c against it on a private dbus-daemon, and asserts the item
+is registered, its Id and Status are read, all three buttons arrive, and
+killing the app removes the cell.
+
+The same principle one file over: --fixture is what makes an attribution
+engine testable. kdos stutter reads from a directory that defaults to /proc
+and does not have to be one.
