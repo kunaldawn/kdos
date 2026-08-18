@@ -1,0 +1,14 @@
+title: the wallpaper is the compositor's, because everything else here is cells
+cite: kdos-wallpaper.c
+port: kdos-comp
+
+The usual answer is a layer-shell client like swaybg, and it is wrong here:
+libkwl paints CELLS, so a wallpaper client would be the one program in this
+desktop that is not a character grid.
+
+Three things it has to get right: there is no public "wlr_buffer from memory",
+so the file carries the smallest wlr_buffer_impl that works; libpng hands back
+R,G,B,A in memory order while DRM_FORMAT_ARGB8888 wants B,G,R,A; and libpng
+reports a bad file by longjmp'ing back AFTER the allocation, so only an
+initialised buffer may leave decode_png and its locals are volatile for
+exactly that path.

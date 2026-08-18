@@ -164,9 +164,13 @@ static const struct {
 	{ A_CONFIG, "gtk-4.0/gtk.css",          "GTK4 palette"       },
 	{ A_CONFIG, "kdos-comp/themerc-override", "window frames"    },
 	{ A_CONFIG, "foot/themes/kdos",         "foot"               },
+	{ A_CONFIG, "tmux/themes/kdos.conf",    "tmux"               },
 	{ A_CONFIG, "btop/themes/kdos.theme",   "btop"               },
 	{ A_CONFIG, "starship.toml",            "starship palette"   },
+	{ A_CONFIG, "kdos/ls-colors",           "LS_COLORS"          },
 	{ A_CONFIG, "kdeglobals",               "KDE palette"        },
+	{ A_CONFIG, "mc/ini",                   "mc skin selection"  },
+	{ A_DATA,   "mc/skins/kdos.ini",        "mc skin"            },
 	{ A_DATA,   "color-schemes/KDOS.colors", "KDE colour scheme" },
 };
 #define NARTEFACTS ((int)(sizeof(ARTEFACTS) / sizeof(ARTEFACTS[0])))
@@ -259,16 +263,32 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 	 *                   generator merges; a user's [Dolphin] section is not
 	 *                   drift, and regenerating into an EMPTY home would call
 	 *                   it drift on every machine that has ever run dolphin
+	 *   mc/ini          the same merge rule — mc keeps real user state there
+	 *                   and the generator only sets `skin`
 	 *
-	 * A machine with neither file produces neither on either side and is
+	 * kdos/style-themerc is carried for a different reason: it is an INPUT
+	 * to write_themerc, not an artefact of it. Regenerating without it
+	 * would produce a themerc-override missing the applied style's lines
+	 * and call the live file drift on every machine that has ever run
+	 * `kdos theme style`.
+	 *
+	 * A machine with none of the files produces none on either side and is
 	 * reported as absent, which is also correct.
 	 */
 	char *cfg = kb_path_join(root, ".config");
 	kb_mkdir_p(cfg);
-	static const char *const CARRIED[] = { "starship.toml", "kdeglobals" };
+	static const char *const CARRIED[] = {
+		"starship.toml", "kdeglobals", "mc/ini", "kdos/style-themerc"
+	};
 	for (size_t i = 0; i < sizeof(CARRIED) / sizeof(CARRIED[0]); i++) {
 		char *live = kdt_cfg_home(CARRIED[i]);
 		char *tmp = kb_path_join(cfg, CARRIED[i]);
+		char *slash = strrchr(tmp, '/');
+		if (slash && slash != tmp) {
+			*slash = 0;
+			kb_mkdir_p(tmp);
+			*slash = '/';
+		}
 		kb_copy_file(live, tmp);	/* absent is fine */
 		free(live);
 		free(tmp);

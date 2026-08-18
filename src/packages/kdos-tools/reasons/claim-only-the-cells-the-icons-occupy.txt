@@ -1,0 +1,12 @@
+title: a full-screen layer surface must claim only the cells it uses
+cite: kdos-desk
+port: kdos-shell
+
+kdos-desk covers the whole output, so with the default input region it ate
+every click on bare wallpaper — and labwc's root-menu mousebind therefore
+never fired for anybody running with desktop icons on, which is the shipped
+default.
+
+The region is recomputed only when the layout changes: setting one is a
+surface commit, and doing it per frame puts back the cadence the flicker fix
+removed.

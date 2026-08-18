@@ -11,7 +11,8 @@
 
 # source= is empty: this is ours. It links basu and nothing else — the chooser
 # is a separate program driven over a pipe, so none of libktui, libkwl or
-# Wayland is reachable from here.
+# Wayland is reachable from here. (main.c includes libkcolor's HEADER by
+# relative path for the KCOL_SCHEMES X-macro; it links none of it.)
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	$(pkg-config --cflags basu) \
 	-o xdg-desktop-portal-kdos "$PORT_SRC/main.c" \

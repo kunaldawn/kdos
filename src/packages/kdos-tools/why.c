@@ -59,7 +59,7 @@ static void why_colours(void)
 /* $KDOS_REASONS beats the installed copy, so the tree can be queried from a
  * checkout before anything is installed — which is also how preflight reads
  * the corpus. */
-static const char *reason_dir(void)
+const char *kdt_reason_dir(void)
 {
 	const char *e = getenv("KDOS_REASONS");
 	return (e && *e) ? e : REASON_DIR;
@@ -67,7 +67,7 @@ static const char *reason_dir(void)
 
 /* One `key: value` from a reason's header, or NULL. Occurrence `nth`, so
  * repeated `path:` lines are all reachable. */
-static char *header(const char *text, const char *key, int nth)
+char *kdt_reason_header(const char *text, const char *key, int nth)
 {
 	size_t klen = strlen(key);
 	int seen = 0;
@@ -120,7 +120,7 @@ static int contains_ci(const char *hay, const char *needle)
 static char **reason_files(int *count)
 {
 	*count = 0;
-	DIR *d = opendir(reason_dir());
+	DIR *d = opendir(kdt_reason_dir());
 	if (!d)
 		return NULL;
 	char **v = NULL;
@@ -138,7 +138,7 @@ static char **reason_files(int *count)
 			v = nv;
 			cap = ncap;
 		}
-		v[n++] = kb_path_join(reason_dir(), e->d_name);
+		v[n++] = kb_path_join(kdt_reason_dir(), e->d_name);
 	}
 	closedir(d);
 	*count = n;
@@ -152,7 +152,7 @@ static char **reason_files(int *count)
 static int claims(const char *text, const char *subject)
 {
 	for (int i = 0;; i++) {
-		char *p = header(text, "path", i);
+		char *p = kdt_reason_header(text, "path", i);
 		if (!p)
 			break;
 		size_t n = strlen(p);
@@ -164,7 +164,7 @@ static int claims(const char *text, const char *subject)
 			return 1;
 	}
 	for (int i = 0;; i++) {
-		char *p = header(text, "port", i);
+		char *p = kdt_reason_header(text, "port", i);
 		if (!p)
 			break;
 		int hit = !strcmp(p, subject);
@@ -177,7 +177,7 @@ static int claims(const char *text, const char *subject)
 
 static void print_reason(const char *path, const char *text, int full)
 {
-	char *t = header(text, "title", 0);
+	char *t = kdt_reason_header(text, "title", 0);
 	char *stem = kb_strdup(kb_basename(path));
 	char *dot = strrchr(stem, '.');
 	if (dot)
@@ -271,7 +271,7 @@ int explain_main(int argc, char **argv)
 	char **files = reason_files(&n);
 	if (!n) {
 		fprintf(stderr, "kdos explain: no reasons installed (%s)\n",
-			reason_dir());
+			kdt_reason_dir());
 		return 1;
 	}
 

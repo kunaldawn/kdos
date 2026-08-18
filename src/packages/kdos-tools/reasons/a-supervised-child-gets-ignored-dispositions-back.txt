@@ -1,0 +1,12 @@
+title: SIG_IGN survives exec, so a supervised child must have its signals reset
+cite: kdos-child.c
+port: kdos-comp
+
+A session started under nohup handed its ignored SIGHUP all the way down, and
+the panel's new theme handler would never have fired — measured as
+SigIgn: 0x1 on a running panel. child_reset_signals() walks the 31 standard
+signals and restores the default for any it finds ignored.
+
+The signal mask survives exec too, and wl_event_loop_add_signal blocks what it
+watches. labwc's own spawn.c resets SIGPIPE only, which is right for a process
+that inherited nothing.

@@ -1,0 +1,14 @@
+title: a kpkgbuild is parsed, never sourced — bash is exec'd only to BUILD
+cite: kpkg
+port: kdos-installer
+
+kpkg used to run bash just to READ a recipe. Now the metadata is declarative
+and the build is a real script in its own file, so `bash -n` checks all 396 of
+them in preflight — a syntax gate that was impossible while the build lived
+inside the recipe.
+
+Keeping the shell in a separate file rather than inside the format is also
+what makes ports/core/rust buildable: its config.toml heredoc contains a line
+reading exactly `[build]`, and podman's contains `[engine]`, `[network]` and
+`[storage]`. Any format carrying the shell inline would have had to tell those
+apart from its own syntax.

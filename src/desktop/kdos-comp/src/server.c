@@ -129,7 +129,9 @@ handle_sighup(int signal, void *data)
 	session_environment_init();
 	reload_config_and_theme();
 	output_virtual_update_fallback();
+	kdos_conf_reload(); /* KDOS: comp.conf re-read — crt/idle/wallpaper live */
 	kdos_crt_reload(); /* KDOS: `kdos theme <accent>` retints the shader */
+	kdos_children_reconfigure(); /* KDOS: re-arm chrome supervision */
 	return 0;
 }
 

@@ -1,0 +1,15 @@
+title: OpenURI needed no new implementation — `kdos-appbox open` already IS one
+cite: xdg-desktop-portal-kdos
+port: xdg-desktop-portal-kdos
+
+That is the request every containerised application makes when a link or a
+downloaded file is clicked, default=none answered not-supported, and the click
+therefore did nothing — silently.
+
+OpenFile takes an FD because the application may not be able to NAME the file
+in terms the host would recognise; /proc/self/fd is the only translation there
+is, and a link ending in " (deleted)" is refused rather than opened as a file
+of that literal name. No chooser and no prompt: the front end has already
+decided the application may ask, and a second dialog here would be a
+permission question asked by the half of the stack that does not know the
+answer.

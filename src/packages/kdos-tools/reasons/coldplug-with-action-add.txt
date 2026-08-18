@@ -1,0 +1,14 @@
+title: udev coldplug must trigger --action=add, or no module is loaded
+cite: 01_udev.sh
+port: eudev
+
+The default replays every device as `change`, and 80-drivers.rules — the rule
+that modprobes from MODALIAS — opens with
+ACTION!="add", GOTO="drivers_end". A plain trigger therefore loads nothing:
+the HDA controller stayed unclaimed and alsa-lib answered "Unknown PCM
+default".
+
+The second half of audio on a bare TTY is in 50_alsa.sh: a live ISO has no
+saved asound.state, and a failed `alsactl restore` leaves HDA exactly as the
+kernel did — Master MUTED at 0%. `alsactl init` answers 99 when it matched a
+generic rule, which is a success here, so its status is deliberately ignored.

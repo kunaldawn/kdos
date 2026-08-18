@@ -25,6 +25,7 @@ static const struct {
 	int (*fn)(int, char **);
 } TOOLS[] = {
 	{ "kdos-shell", panel_main },
+	{ "kdos-start", start_main },
 	{ "kdos-launcher", launcher_main },
 	{ "kdos-menu", menu_main },
 	{ "kdos-desk", desk_main },
@@ -33,9 +34,24 @@ static const struct {
 	{ "kdos-run", run_main },
 	{ "kdos-prompt", prompt_main },
 	{ "kdos-notifyd", notifyd_main },
+	{ "kdos-notify", notify_main },
 	{ "kdos-osd", osd_main },
 	{ "kdos-cal", cal_main },
 	{ "kdos-display", display_main },
+	{ "kdos-keys", keys_main },
+	{ "kdos-teams", teams_main },
+	{ "kdos-saver", saver_main },
+	{ "kdos-slit", slit_main },
+	{ "kdos-doc", doc_main },
+	{ "kdos-settings", settings_main },
+	{ "kdos-openwith", openwith_main },
+	{ "kdos-audio", audio_main },
+	{ "kdos-net", net_main },
+	{ "kdos-bt", bt_main },
+	{ "kdos-devices", devices_main },
+	{ "kdos-clip", clip_main },
+	{ "kdos-status", status_main },
+	{ "kdos-tip", tip_main },
 };
 #define NTOOLS ((int)(sizeof(TOOLS) / sizeof(TOOLS[0])))
 

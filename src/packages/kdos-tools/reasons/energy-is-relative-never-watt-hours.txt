@@ -1,0 +1,11 @@
+title: report shares, never watt-hours — RAPL cannot see the panel
+cite: kdos-energyd
+port: kdos-energyd
+
+Nor the radio, the SSD, or a discrete GPU. "GIMP was 41% of attributable CPU
+energy today" is a measurement; "GIMP used 12% of your battery" is a guess
+wearing a unit.
+
+The GPU column is engine TIME from drm-engine-* in fdinfo, never energy —
+nothing on the machine says what that time cost in joules. A driver with no
+fdinfo stats gets NO column, not a column of zeroes.

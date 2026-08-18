@@ -133,6 +133,13 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" client-header \
             "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/cursor-shape/cursor-shape-v1.xml" \
             "$PROTO/cursor-shape-v1-client-protocol.h"
+        # Primary selection: the middle-click paste half of the clipboard.
+        # libkwl binds it beside wl_data_device, so it is as mandatory here as
+        # the lock role's protocol — a missing header is a compile failure, not
+        # a quiet skip.
+        "$SCANNER" client-header \
+            "$(pkg-config --variable=pkgdatadir wayland-protocols)/unstable/primary-selection/primary-selection-unstable-v1.xml" \
+            "$PROTO/primary-selection-unstable-v1-client-protocol.h"
         KCINC="-Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
 -Isrc/libs/libkcell -Isrc/libs/libkwl"
         # libkcell first and on its OWN: it must compile with no Wayland
@@ -984,6 +991,91 @@ KDOS_ENERGYD_SOCKET="$OUT/nothing.sock" "$OUT/kdos-energy" 2>&1 \
 echo "  the fixture replays: nesting, the wrap, the roll-up and the residue"
 
 echo
+echo "==> kdos-oomd picks the victim the desktop can afford to lose"
+# The trigger is memory pressure and the effect is a SIGKILL, so neither can be
+# summoned in a test. What can is the SELECTION, and it is the whole of the
+# design: --fixture replays a recorded /proc through the same pick_victim() the
+# daemon runs and prints the choice without signalling anybody.
+#
+# testing/fixtures/oomd/preferred is arranged so that the four exclusions are
+# each load-bearing — every process the daemon must NOT choose is LARGER than
+# the one it must: pipewire-pulse (2.4 G, protected by comm), kdos-comp (2 G,
+# same), a nightly backup at oom_score_adj -1000 (1.6 G), and a kernel thread
+# with an empty cmdline (1.2 G). If any one of those checks broke, the answer
+# would be that process and not firefox-esr.
+$CC $STD $WARN $INC -o "$OUT/kdos-oomd" \
+    src/desktop/kdos-oomd/main.c src/libs/libkbase/*.c
+echo "  kdos-oomd"
+OM="$OUT/oomd.txt"
+"$OUT/kdos-oomd" --fixture testing/fixtures/oomd/preferred > "$OM" \
+    || { echo "  the fixture found no candidate at all"; cat "$OM"; exit 1; }
+grep -q "would kill firefox-esr (appbox kdos-apps)" "$OM" \
+    || { echo "  the boxed app was not chosen or not named with its box"
+         cat "$OM"; exit 1; }
+for spared in pipewire-pulse kdos-comp backup kswapd0 init; do
+    grep -q "would kill $spared" "$OM" \
+        && { echo "  $spared was chosen — an exclusion is not holding"; exit 1; }
+done
+grep -q "avg10 full=41.02 some=61.23" "$OM" \
+    || { echo "  the pressure that triggered it was not reported"; exit 1; }
+# …and the preference is not ABSOLUTE. Same tree with the host process three
+# times the boxed one's size: an alien app relaunches in seconds, but shooting
+# a 800 MB browser while a 3.6 G host leak keeps the machine wedged is not a
+# trade, it is a second failure.
+"$OUT/kdos-oomd" --fixture testing/fixtures/oomd/hostwins > "$OUT/oomd2.txt" \
+    || { echo "  the second fixture found no candidate"; exit 1; }
+grep -q "would kill kdosbuild (pid 950" "$OUT/oomd2.txt" \
+    || { echo "  a boxed victim was preferred over a host process twice its size"
+         cat "$OUT/oomd2.txt"; exit 1; }
+grep -q "appbox" "$OUT/oomd2.txt" \
+    && { echo "  an unboxed victim was reported as boxed"; exit 1; }
+echo "  boxed preferred, adj-shielded and protected comms spared, kthreads skipped"
+
+echo
+echo "==> kdos-mountd offers the stick and refuses everything else"
+# Mounting needs root and a real device, so the ACTION cannot be summoned in a
+# test. The SELECTION can, and it is the whole of the design: --fixture replays
+# a recorded /sys/block plus two hand-built superblocks through the same scan()
+# the daemon serves from, and mounts nothing.
+#
+# The two REFUSALS matter more than the acceptance. An internal disk must never
+# be offered whatever it is formatted with — testing/fixtures/mountd/dev/sda1
+# carries a real ext4 superblock precisely so that a broken removable check
+# would show up as an extra row rather than as nothing. And a device claimed by
+# /etc/fstab is somebody's existing decision, which this daemon does not get to
+# second-guess.
+$CC $STD $WARN $INC -o "$OUT/kdos-mountd" \
+    src/desktop/kdos-mountd/main.c src/libs/libkbase/*.c
+MF=testing/fixtures/mountd
+MO="$OUT/mountd.txt"
+"$OUT/kdos-mountd" --fixture "$MF/sys" "$MF/dev" > "$MO" 2>&1
+grep -q "sdb1	KDOSSTICK	vfat" "$MO" \
+    || { echo "  the removable stick was not offered"; cat "$MO"; exit 1; }
+grep -q "^2 eligible" "$MO" \
+    || { echo "  the stick and the disc were not the whole answer"
+         cat "$MO"; exit 1; }
+grep -q "sda1" "$MO" \
+    && { echo "  the INTERNAL disk was offered"; cat "$MO"; exit 1; }
+# The optical disc IS offered on a machine with a real root — this run has one.
+# On the LIVE ISO it must not be, and that half cannot be asserted here: the
+# rule keys off `/` being an overlay, which is the running system's own
+# /proc/mounts and not something a fixture can supply. Recorded rather than
+# faked; it was found by kdos-mountd offering the disc it had booted from.
+grep -q "sr0	-	iso9660" "$MO" \
+    || { echo "  the data disc was not offered"; cat "$MO"; exit 1; }
+# The fstab claims the STICK by label and says nothing about the disc, so the
+# refusal has to be visible as the stick leaving and the disc staying — "0
+# eligible" would also pass if the whole scan had broken.
+KDOS_MOUNTD_FSTAB="$MF/fstab" "$OUT/kdos-mountd" --fixture "$MF/sys" "$MF/dev" \
+    > "$MO" 2>&1
+grep -q "KDOSSTICK" "$MO" \
+    && { echo "  a device claimed by fstab was still offered"; cat "$MO"; exit 1; }
+grep -q "sr0" "$MO" \
+    || { echo "  the fstab entry took the disc with it"; cat "$MO"; exit 1; }
+echo "  the stick and the disc are offered; the internal disk and an fstab"
+echo "  entry are not"
+
+echo
 echo "==> genlaunchers turns an image's desktop entries into host commands"
 # Four outputs, and dropping any one of them breaks something visible: the
 # launcher, the mime cache beside it, the name -> in-box command table, and the
@@ -1030,6 +1122,75 @@ test -L "$FSR/usr/local/bin/gimp" || { echo "  no shim for gimp"; exit 1; }
 test -e "$FSR/usr/local/bin/winetricks" \
     && { echo "  a shim was made for a binary the image lacks"; exit 1; }
 echo "  launcher, mime cache, command table and shims — and no shim without a binary"
+
+# ── an Exec line is not a whitespace-separated list ──────────────────────
+#
+# Two shapes out of the SHIPPED appbox that a `strtok(" ")` gets wrong, and
+# both looked from the desktop exactly like an application that does not start:
+# debian's gsmartcontrol is `Exec="/usr/bin/gsmartcontrol-root"`, whose quotes
+# ended up part of the path, and its wesnoth is
+# `Exec=sh -c "wesnoth-1.18 >/dev/null 2>&1"`, whose single shell argument was
+# handed to sh in three pieces. The rewrite has to preserve the quoting (these
+# go into a table that is read back) and the reader has to undo it.
+cat > "$IMG/usr/share/applications/gsmart.desktop" <<'DESK'
+[Desktop Entry]
+Type=Application
+Name=GSmartControl
+Exec="/usr/bin/gsmart root"
+DESK
+cat > "$IMG/usr/share/applications/wesnoth.desktop" <<'DESK'
+[Desktop Entry]
+Type=Application
+Name=Wesnoth
+Exec=sh -c "wesnoth-1.18 >/dev/null 2>&1"
+DESK
+rm -rf "$FSR"; mkdir -p "$FSR"
+"$OUT/kdos-appbox" genlaunchers "$IMG/usr/share/applications" "$FSR" 2>/dev/null
+grep -q '^gsmart	"/usr/bin/gsmart root"$' "$FSR/usr/share/kdos/alien-apps" \
+    || { echo "  a quoted Exec did not survive the rewrite as one argument"
+         grep '^gsmart' "$FSR/usr/share/kdos/alien-apps"; exit 1; }
+grep -q '^wesnoth	sh -c "wesnoth-1.18 >/dev/null 2>&1"$' \
+    "$FSR/usr/share/kdos/alien-apps" \
+    || { echo "  a quoted shell argument was split by the rewrite"
+         grep '^wesnoth' "$FSR/usr/share/kdos/alien-apps"; exit 1; }
+# And the READING side: field codes vanish with nothing picked, so
+# `mpv -- %U` does not go looking for a file called %U.
+$CC $STD $WARN -o "$OUT/execsplit" -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+    -x c - src/libs/libkxdg/kxdg_exec.c <<'EOF'
+#include <stdio.h>
+#include <string.h>
+#include "kxdg.h"
+static int fail;
+static void want(const char *exec, const char *const *f, int nf,
+                 const char *expect)
+{
+        char store[1024], out[1024] = "";
+        const char *a[32];
+        int n = kxdg_exec_split(exec, f, nf, store, sizeof store, a, 32);
+        for (int i = 0; i < n; i++) {
+                if (i) strcat(out, "|");
+                strcat(out, a[i]);
+        }
+        if (strcmp(out, expect)) {
+                printf("  [%s] -> <%s>, wanted <%s>\n", exec, out, expect);
+                fail = 1;
+        }
+}
+int main(void)
+{
+        const char *one[] = { "/tmp/a b.png" };
+        want("\"/usr/bin/gsmart root\"", NULL, 0, "/usr/bin/gsmart root");
+        want("sh -c \"a >b 2>&1\"", NULL, 0, "sh|-c|a >b 2>&1");
+        want("mpv --pseudo-gui -- %U", NULL, 0, "mpv|--pseudo-gui|--");
+        want("gimp-3.0 %U", one, 1, "gimp-3.0|/tmp/a b.png");
+        want("foo %%bar %i %c baz", NULL, 0, "foo|%bar|baz");
+        want("keep %U codes", NULL, -1, "keep|%U|codes");
+        return fail;
+}
+EOF
+"$OUT/execsplit" || { echo "  kxdg_exec_split does not read back what it writes"
+                      exit 1; }
+echo "  Exec quoting round-trips, and a field code with no file vanishes"
 
 echo
 echo "==> kdos-appbox open resolves a path to the thing that opens it"
@@ -1287,14 +1448,107 @@ echo "==> the shell's front ends draw offscreen, and the boxes line up"
 # libkwl is stubbed (testing/fixtures/shell/dumpmain.c), which is what makes it
 # runnable on a host with no fcft and no wlroots — the dump path touches
 # neither.
-$CC $STD $WARN -o "$OUT/dumpcheck" \
-    -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
-    -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
-    testing/fixtures/shell/dumpmain.c \
-    src/desktop/kdos-shell/cal.c src/desktop/kdos-shell/menu.c \
-    src/desktop/kdos-shell/launcher.c src/desktop/kdos-shell/pick.c \
-    src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkxdg/*.c \
-    src/libs/libkbase/*.c
+#
+# It DOES need libwayland-client now, and that is not a loosening: menu.c and
+# shell.c reach for wlr-foreign-toplevel and ext-workspace on the interactive
+# path (the window list a task chip opens, the workspace names the strip
+# draws), so the generated glue is compiled in whether the dump calls it or
+# not. wayland-client is on nearly every host; fcft and wlroots are not, which
+# is the distinction this harness was built around and still keeps.
+DUMPCK=""
+DPROTO="$OUT/dproto"
+DWLR=$(ls ports/core/wlroots/wlroots-*.tar.gz 2>/dev/null | head -1)
+DSCAN=$(pkg-config --variable=wayland_scanner wayland-scanner 2>/dev/null || true)
+DWP=$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null || true)
+if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
+   [ -n "$DWLR" ] && [ -n "$DWP" ] &&
+   [ -f "$DWP/staging/ext-workspace/ext-workspace-v1.xml" ]; then
+    mkdir -p "$DPROTO"
+    tar xf "$DWLR" -C "$DPROTO" --strip-components=2 \
+        "$(tar tf "$DWLR" | grep 'protocol/wlr-foreign-toplevel-management-unstable-v1.xml$' | head -1)"
+    for x in "$DPROTO/wlr-foreign-toplevel-management-unstable-v1.xml" \
+             "$DWP/staging/ext-workspace/ext-workspace-v1.xml"; do
+        b=$(basename "$x" .xml)
+        "$DSCAN" client-header "$x" "$DPROTO/$b-client-protocol.h"
+        "$DSCAN" private-code  "$x" "$DPROTO/$b-protocol.c"
+    done
+
+    # The four original surfaces, plus any Phase B front end that has landed.
+    # dumpmain.c declares every entry point WEAK, so a file that is not on the
+    # tree yet is a name it declines rather than a link error.
+    # chrome.c is not a front end — it is the header band, group headings and
+    # button bar the device surfaces share, so it belongs in the base set
+    # rather than in the candidate loop. Leaving it out made every surface that
+    # uses it fail to LINK, which the harness correctly reported as "the new
+    # front ends do not link" and which reads as a defect in those files.
+    DFRONTS="src/desktop/kdos-shell/cal.c src/desktop/kdos-shell/menu.c
+             src/desktop/kdos-shell/launcher.c src/desktop/kdos-shell/pick.c
+             src/desktop/kdos-shell/shell.c src/desktop/kdos-shell/apps.c
+             src/desktop/kdos-shell/chrome.c"
+    # A new surface may want alsa or an sd-bus; offer them when the host has
+    # them rather than making the whole harness conditional on either.
+    DEXTRA_PC=""
+    pkg-config --exists alsa 2>/dev/null && DEXTRA_PC="alsa"
+    [ -n "$TRAY_SDBUS" ] && DEXTRA_PC="$DEXTRA_PC $TRAY_SDBUS"
+
+    # Each candidate is admitted on its OWN compile, not the batch's: one file
+    # that does not build must cost its own golden and nobody else's.
+    DNEW=""
+    DBAD=""
+    for s in keys teams saver slit doc settings openwith audio \
+             start net bt devices notify status tip; do
+        [ -f "src/desktop/kdos-shell/$s.c" ] || continue
+        if $CC $STD $WARN -fsyntax-only -I"$DPROTO" \
+                -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
+                -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+                -Isrc/libs/libkicon \
+                $(pkg-config --cflags wayland-client $DEXTRA_PC) \
+                "src/desktop/kdos-shell/$s.c" 2>"$OUT/dump-$s.err"; then
+            DNEW="$DNEW src/desktop/kdos-shell/$s.c"
+        else
+            DBAD="$DBAD $s"
+        fi
+    done
+    [ -n "$DBAD" ] && {
+        echo "  NOTE: these front ends do not compile, so their dumps and"
+        echo "        goldens are skipped:$DBAD"
+        for s in $DBAD; do
+            grep -m1 "error:" "$OUT/dump-$s.err" | sed 's/^/        /'
+        done
+    }
+    dumpbuild() {
+        $CC $STD $WARN -o "$OUT/dumpcheck" -I"$DPROTO" \
+            -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
+            -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+            -Isrc/libs/libkicon \
+            -Wl,--wrap=ktui_offscreen_init \
+            testing/fixtures/shell/dumpmain.c $DFRONTS "$@" \
+            "$DPROTO"/*-protocol.c \
+            src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkxdg/*.c \
+            src/libs/libkbase/*.c \
+            $(pkg-config --cflags --libs wayland-client $DEXTRA_PC)
+    }
+    if [ -n "$DNEW" ] && dumpbuild $DNEW 2>"$OUT/dumpnew.err"; then
+        DUMPCK="$OUT/dumpcheck"
+        echo "  harness: cal menu launcher pick $(echo $DNEW | \
+            sed 's,src/desktop/kdos-shell/,,g; s,\.c,,g')"
+    elif dumpbuild; then
+        # Every candidate compiled on its own, so a failure here is a LINK
+        # failure — a surface wanting a library this harness does not offer.
+        DUMPCK="$OUT/dumpcheck"
+        [ -n "$DNEW" ] && {
+            echo "  NOTE: the new front ends do not LINK into the dump harness,"
+            echo "        so their goldens are skipped:$(echo $DNEW | \
+                sed 's,src/desktop/kdos-shell/,,g; s,\.c,,g')"
+            grep -m3 "undefined\|error" "$OUT/dumpnew.err" | sed 's/^/        /'
+        }
+    else
+        echo "  the dump harness does not build"; exit 1
+    fi
+else
+    echo "  front-end dumps (skipped — no wayland-client, wayland-scanner,"
+    echo "    ext-workspace-v1.xml or wlroots tarball on this host)"
+fi
 
 # Every row the same width, which is the whole of "the box lines up": a frame
 # whose bottom border is shorter than its top is a rect that was drawn past the
@@ -1311,21 +1565,24 @@ check_box() {
     ' || exit 1
 }
 
-"$OUT/dumpcheck" cal --dump > "$OUT/dump-cal.txt"
+# Body deliberately unindented: it is a long stretch of assertions that used to
+# be top-level, and reindenting all of it would bury the one thing that changed.
+if [ -n "$DUMPCK" ]; then
+"$DUMPCK" cal --dump > "$OUT/dump-cal.txt"
 check_box cal < "$OUT/dump-cal.txt"
 grep -q "Mo Tu We Th Fr Sa Su" "$OUT/dump-cal.txt" || {
     echo "  the calendar lost its weekday header"; exit 1; }
 
-"$OUT/dumpcheck" menu system --dump > "$OUT/dump-menu.txt"
+"$DUMPCK" menu system --dump > "$OUT/dump-menu.txt"
 check_box menu < "$OUT/dump-menu.txt"
 grep -q "Shut Down" "$OUT/dump-menu.txt" || {
     echo "  the System menu lost its last row — the box is shorter than the list"
     exit 1; }
 
-"$OUT/dumpcheck" launcher --dump > "$OUT/dump-launcher.txt"
+"$DUMPCK" launcher --dump > "$OUT/dump-launcher.txt"
 check_box launcher < "$OUT/dump-launcher.txt"
 
-"$OUT/dumpcheck" pick --dump > "$OUT/dump-pick.txt"
+"$DUMPCK" pick --dump > "$OUT/dump-pick.txt"
 check_box pick < "$OUT/dump-pick.txt"
 # The chooser's two buttons and the hint text share one row, and the row is the
 # narrowest thing in this dialog. Both present means neither pushed the other
@@ -1338,6 +1595,171 @@ grep -q "\[ Cancel \].*\[ Open \]" "$OUT/dump-pick.txt" || {
 grep -q "Esc cancel.*\[ Cancel \]" "$OUT/dump-pick.txt" || {
     echo "  kdos-pick's hint row and its buttons collide"; exit 1; }
 echo "  cal, menu, launcher and pick draw square boxes with their controls in them"
+
+echo
+echo "==> golden frames — the committed cell grid, diffed"
+# G14. check_box above proves the frame is SQUARE; a golden proves it is the
+# SAME. That is the net S1 (stale rows in the other swap buffer) went through
+# untouched: every row was the right width and every row was wrong.
+#
+# A golden is only committed for a dump that is deterministic on ANY host, and
+# that rules a good deal of this desktop out. Left out, and why:
+#
+#   cal        draws the CURRENT month and honours no date override
+#   launcher   scans /usr/share/applications, which is the host's
+#   menu apps  likewise
+#   menu places reads /proc/mounts and the $HOME xdg dirs
+#   panel      needs a live compositor to dump at all — it reads real protocol
+#              state on purpose (see panel.c)
+#   saver      seeds from time() ^ getpid(); phosphor rain is never twice the
+#              same picture, which is the point of it
+#   slit       renders the OUTPUT of forked gadget commands, arriving
+#              asynchronously — a dump catches whatever had answered by then
+#   openwith   its header carries the file's absolute path. Its resolution is
+#              checked below instead, which is the part that can be wrong
+#   net bt     both need a system bus, and what is ON it — an access point
+#              list, a paired headset — is the machine's, not a fixture's
+#   devices    /dev/video* and /proc/asound are the host's
+#
+# What is goldened reads its inputs from testing/fixtures/shell: `tree/` for
+# pick and `config/` for the surfaces that parse one (a frozen rc.xml for the
+# keybind card, a comp.conf for settings), so a golden cannot move because
+# somebody edited skel.
+#
+# Each is rendered at two sizes: KDOS_DUMP_SIZE overrides the geometry a
+# surface asked for (dumpmain.c wraps ktui_offscreen_init), which is also the
+# only check there is that a draw pass does not assume the buffer is exactly
+# the size it hoped for.
+#
+# The dumps are ASCII: ktui_caps is 0 with no terminal, so every surface draws
+# in the ascii tier here. The rich and vt tiers are covered by the ramp
+# assertions in src/libs/selftest.c instead.
+GOLD="$PWD/testing/goldens"
+golden_fail=0
+golden() {			# <name> <WxH> <argv…>
+    _g_name=$1; _g_size=$2; shift 2
+    _g_file="$GOLD/$_g_name-$_g_size.txt"
+    _g_got="$OUT/golden-$_g_name-$_g_size.txt"
+    ( cd testing/fixtures/shell &&
+      env LC_ALL=C TZ=UTC HOME="$PWD" \
+          XDG_CACHE_HOME=/nonexistent-kdos-cache \
+          XDG_CONFIG_HOME="$PWD/config" \
+          XDG_DATA_HOME=/nonexistent-kdos-data \
+          XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
+          XDG_RUNTIME_DIR=/nonexistent-kdos-run \
+          KDOS_DUMP_SIZE="$_g_size" "$DUMPCK" "$@" ) > "$_g_got"
+    if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
+        mkdir -p "$GOLD"
+        cp "$_g_got" "$_g_file"
+        echo "  wrote $_g_name-$_g_size"
+        return 0
+    fi
+    if [ ! -f "$_g_file" ]; then
+        echo "  $_g_name-$_g_size: no golden committed"
+        golden_fail=1
+        return 0
+    fi
+    if diff -u "$_g_file" "$_g_got" > "$OUT/golden-$_g_name-$_g_size.diff"; then
+        echo "  $_g_name-$_g_size"
+    else
+        echo "  $_g_name-$_g_size DRIFTED:"
+        head -30 "$OUT/golden-$_g_name-$_g_size.diff" | sed 's/^/    /'
+        golden_fail=1
+    fi
+}
+golden menu-system 80x24  menu system --dump
+golden menu-system 132x43 menu system --dump
+golden pick        80x24  pick --dir tree --dump
+golden pick        132x43 pick --dir tree --dump
+# The Phase B surfaces, each only if it linked in. `--have` is dumpmain.c
+# answering for its own weak symbols, so a surface that has not landed is a
+# skip with a name on it rather than a silent gap.
+for _s in keys teams doc settings start notify; do
+    if "$DUMPCK" --have "$_s"; then
+        golden "$_s" 80x24  "$_s" --dump
+        golden "$_s" 132x43 "$_s" --dump
+    elif [ -f "$GOLD/$_s-80x24.txt" ]; then
+        # A COMMITTED golden that stops being asserted is a test weakening
+        # itself in response to a regression: the surface used to link into
+        # this harness and no longer does, which is the change to look at.
+        echo "  $_s: a golden is committed but the surface no longer links"
+        golden_fail=1
+    else
+        echo "  $_s (skipped — not linked into the harness)"
+    fi
+done
+# The overflow popup reads its list from a FILE the panel writes, so the golden
+# gets a fixture rather than whatever this machine's own panel published a
+# moment ago — three rows, one of them wanting attention and one of them the
+# tray item whose menu this desktop cannot draw.
+if "$DUMPCK" --have status; then
+    golden status 80x24  status --from status.tbl --dump
+    golden status 132x43 status --from status.tbl --dump
+elif [ -f "$GOLD/status-80x24.txt" ]; then
+    echo "  status: a golden is committed but the surface no longer links"
+    golden_fail=1
+else
+    echo "  status (skipped — not linked into the harness)"
+fi
+
+# The keybind card's one claim beyond its shape: rc.xml documents itself with
+# commented-out bindings, and every one of them would be advertised as live if
+# strip_comments ever stopped running first. The fixture carries exactly one.
+if "$DUMPCK" --have keys; then
+    grep -q "never-bound" "$OUT/golden-keys-80x24.txt" \
+        && { echo "  the keybind card advertised a commented-out binding"
+             exit 1; }
+fi
+if [ "$golden_fail" != 0 ]; then
+    echo
+    echo "  A golden frame changed. If the change is intended:"
+    echo "      KDOS_GOLDEN_UPDATE=1 testing/selftest.sh"
+    echo "  then read the diff in git before committing it."
+    exit 1
+fi
+
+# --dump-cells is the other half of the GOLDEN FRAMES contract: one line per
+# non-blank cell, `row col U+XXXX fg bg attr`, which is what makes a COLOUR
+# regression visible as well as a geometry one. No surface implements it yet;
+# said out loud rather than quietly not run, because a check that silently
+# covers nothing is worse than one that is missing.
+if "$DUMPCK" menu system --dump-cells >"$OUT/cells.txt" 2>/dev/null &&
+   grep -qE '^[0-9]+ [0-9]+ U\+[0-9A-Fa-f]+ ' "$OUT/cells.txt"; then
+    echo "  --dump-cells answers; cell goldens are not committed yet"
+else
+    echo "  --dump-cells: not implemented by any surface — skipped"
+fi
+
+# G7's chooser resolves a file the same way `kdos-appbox open` does, so it
+# inherits the same two traps: the LONGEST matching suffix wins (or every
+# .tar.gz opens in a decompressor), and mimeapps.list's [Default Applications]
+# beats whatever mimeinfo.cache happens to list first. testing/fixtures/openwith
+# is a complete XDG data/config pair carrying exactly that pair of cases —
+# *.gz against *.tar.gz, and a cache whose FIRST handler is not the default.
+if "$DUMPCK" --have openwith; then
+    OW="$PWD/testing/fixtures/openwith"
+    ow_rc=0
+    env HOME="$OW" XDG_DATA_HOME="$OW/data" XDG_DATA_DIRS="$OW/data" \
+        XDG_CONFIG_HOME="$OW/config" \
+        "$DUMPCK" openwith --print "$OW/files/roll.tar.gz" \
+        > "$OUT/openwith.txt" 2>&1 || ow_rc=$?
+    if [ "$ow_rc" != 0 ]; then
+        echo "  kdos-openwith --print exited $ow_rc"
+        cat "$OUT/openwith.txt"; exit 1
+    fi
+    grep -q "application/x-compressed-tar" "$OUT/openwith.txt" \
+        || { echo "  the longest suffix did not win: $(cat "$OUT/openwith.txt")"
+             exit 1; }
+    grep -q "filezip" "$OUT/openwith.txt" \
+        || { echo "  [Default Applications] did not beat the cache order"
+             cat "$OUT/openwith.txt"; exit 1; }
+    echo "  kdos-openwith: longest suffix wins and the default handler overrides"
+else
+    echo "  kdos-openwith (skipped — the surface has not landed)"
+fi
+else
+    echo "  the front-end dumps and their goldens are skipped with the harness"
+fi
 
 echo
 echo "==> the recording indicator names the app holding the camera"

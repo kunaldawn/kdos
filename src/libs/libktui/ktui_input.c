@@ -98,10 +98,12 @@ static void mice_open(void)
 		unsigned long keys[(KEY_MAX + 8 * sizeof(long)) / (8 * sizeof(long))];
 		unsigned long rel[(REL_MAX + 8 * sizeof(long)) / (8 * sizeof(long))];
 		unsigned long abs_[(ABS_MAX + 8 * sizeof(long)) / (8 * sizeof(long))];
+		unsigned long props[(INPUT_PROP_MAX + 8 * sizeof(long)) / (8 * sizeof(long))];
 		memset(types, 0, sizeof(types));
 		memset(keys, 0, sizeof(keys));
 		memset(rel, 0, sizeof(rel));
 		memset(abs_, 0, sizeof(abs_));
+		memset(props, 0, sizeof(props));
 
 		if (ioctl(fd, EVIOCGBIT(0, sizeof(types)), types) < 0 ||
 		    ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keys)), keys) < 0) {
@@ -115,21 +117,33 @@ static void mice_open(void)
 			close(fd);
 			continue;
 		}
+		/* Old kernels fail this ioctl; zeroed props keep the old
+		 * behaviour there. */
+		ioctl(fd, EVIOCGPROP(sizeof(props)), props);
+		int prop_pointer = bit_set(props, INPUT_PROP_POINTER);
+		int prop_direct = bit_set(props, INPUT_PROP_DIRECT);
 
 		Mouse m;
 		memset(&m, 0, sizeof(m));
 		m.fd = fd;
 
+		int has_rel = 0;
 		if (bit_set(types, EV_REL)) {
 			ioctl(fd, EVIOCGBIT(EV_REL, sizeof(rel)), rel);
-			if (bit_set(rel, REL_X) && bit_set(rel, REL_Y))
-				m.absolute = 0;
-			else if (!bit_set(types, EV_ABS)) {
-				close(fd);
-				continue;
-			}
+			has_rel = bit_set(rel, REL_X) && bit_set(rel, REL_Y);
 		}
-		if (bit_set(types, EV_ABS)) {
+		/* A clickpad is BTN_LEFT + ABS and no REL, exactly the shape of
+		 * an absolute tablet — but its coordinates are finger positions
+		 * on the PAD, and mapping them teleports the pointer to every
+		 * finger-down. INPUT_PROP_POINTER is how the kernel says so; a
+		 * skipped touchpad beats a teleporting one. QEMU's usb-tablet
+		 * carries no properties at all and must stay absolute, so the
+		 * gate is POINTER, with INPUT_PROP_DIRECT explicitly allowed. */
+		if (prop_pointer && !prop_direct && !has_rel) {
+			close(fd);
+			continue;
+		}
+		if (!has_rel && bit_set(types, EV_ABS)) {
 			ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs_)), abs_);
 			if (bit_set(abs_, ABS_X) && bit_set(abs_, ABS_Y)) {
 				struct input_absinfo ai;
@@ -145,6 +159,10 @@ static void mice_open(void)
 				if (m.amax_x <= m.amin_x || m.amax_y <= m.amin_y)
 					m.absolute = 0;
 			}
+		}
+		if (!has_rel && !m.absolute) {
+			close(fd);
+			continue;
 		}
 		mice[nmice++] = m;
 	}

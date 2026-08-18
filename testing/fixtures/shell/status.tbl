@@ -1,0 +1,3 @@
+stutter	dialog-warning	Stutter	14 frames dropped in the last 10 seconds	1		
+clip	edit-paste	Clipboard	12 entries kept	0		
+tray	input-keyboard	fcitx5	its menu is dbusmenu - this tray cannot draw it	0	org.kde.StatusNotifierItem-421-1	/StatusNotifierItem

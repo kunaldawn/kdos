@@ -14,6 +14,7 @@
 #include "scaled-buffer/scaled-font-buffer.h"
 #include "scaled-buffer/scaled-icon-buffer.h"
 #include "scaled-buffer/scaled-img-buffer.h"
+#include "kdos.h" /* KDOS */
 #include "ssd.h"
 #include "ssd-internal.h"
 #include "theme.h"
@@ -344,6 +345,7 @@ ssd_titlebar_destroy(struct ssd *ssd)
 		return;
 	}
 
+	kdos_group_ssd_clear(ssd->view); /* KDOS: the tab strip goes with it */
 	zfree(ssd->state.title.text);
 	wlr_scene_node_destroy(&ssd->titlebar.tree->node);
 	ssd->titlebar = (struct ssd_titlebar_scene){0};
@@ -484,6 +486,7 @@ ssd_update_title(struct ssd *ssd)
 		xstrdup_replace(state->text, view->title);
 	}
 	ssd_update_title_positions(ssd, offset_left, offset_right);
+	kdos_group_ssd_update(ssd); /* KDOS: tabs over the title, when grouped */
 }
 
 void

@@ -1,0 +1,51 @@
+testing/goldens — one committed cell grid per chrome surface
+
+WHAT THESE ARE
+
+Each file is `ktui_draw_dump()`'s output for one front end at one size: the
+libktui cell buffer as plain text, every row padded to the full width, one
+line per row. `testing/selftest.sh` renders the same frame and diffs.
+
+WHY, beyond the shape checks that were already there
+
+selftest.sh already asserted that a dump is SQUARE — every row the same width,
+enough rows to be a box. S1 (the double-buffer stale-row bug: paint diffed
+against libktui's single global front buffer while every commit alternated
+buffers, so the other buffer's rows went stale) passed that check on every
+frame it corrupted. Every row was the right width and every row was wrong.
+A golden is the only check that notices.
+
+HOW TO REGENERATE
+
+    KDOS_GOLDEN_UPDATE=1 testing/selftest.sh
+
+then read the diff in `git diff testing/goldens/` before committing it. That
+diff IS the review: it is a picture of what the change did to the screen.
+
+THE RULE FOR ADDING ONE
+
+A golden is committed only for a dump that is deterministic on ANY host — no
+clock, no hostname, no readdir order, no absolute paths, nothing read out of
+the developer's own /usr/share. Everything the surface reads comes from
+`testing/fixtures/shell/` (`tree/` for the file chooser, `config/` for the
+surfaces that parse an rc.xml or a comp.conf), frozen there on purpose so a
+golden cannot move because somebody edited skel.
+
+A surface that cannot meet that is left out and SAID SO in selftest.sh's
+comment beside the list — cal draws the current month, the launcher scans the
+host's /usr/share/applications, kdos-saver seeds from time() ^ getpid(),
+kdos-slit renders the output of forked commands, the panel needs a live
+compositor. A golden pinned with a hack nobody can reproduce is worse than a
+missing one.
+
+The dumps are ASCII: `ktui_caps` is 0 with no terminal, so every surface draws
+in the ascii tier here. The rich and vt tiers are covered by the ramp
+assertions in `src/libs/selftest.c`.
+
+WHAT IS STILL MISSING
+
+`--dump-cells` — one line per non-blank cell, `row col U+XXXX fg bg attr` —
+is the other half of the contract and no surface implements it yet. It is what
+would make a COLOUR regression visible as well as a geometry one, and it is
+what `kdos chrome --audit` (D7) is meant to be built on. selftest.sh probes for
+it and says out loud that it is not there.

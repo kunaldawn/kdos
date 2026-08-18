@@ -1,0 +1,12 @@
+title: a ScreenCast Start that answers Success with no streams must never happen
+cite: xdg-desktop-portal-kdos
+port: xdg-desktop-portal-kdos
+
+OBS 30.2's on_start_response_received_cb does
+`if (n_streams != 1) for (size_t i = 0; i < n_streams - 1; i++)`: with
+n_streams == 0 the unsigned subtraction wraps and it spins on an exhausted
+iterator at ~5 MB/s of log with the UI wedged. On a live ISO that log is
+tmpfs, so it eats RAM. Cancelled is the answer.
+
+The same rule on a different interface: every portal request must be answered.
+An unanswered request leaves the application blocked forever.

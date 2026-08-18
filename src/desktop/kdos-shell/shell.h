@@ -13,6 +13,7 @@
 #define KDOS_SHELL_H
 
 #include <signal.h>	/* sig_atomic_t, for the live-retint flag below */
+#include <time.h>	/* time_t, for the tray's retry backoff */
 
 #include "ktui.h"
 #include "kxdg.h"
@@ -24,10 +25,20 @@
 #define SH_MAX_PRIV  8
 #define SH_PRIV_NAME 48
 
-enum { SH_PRIV_MIC = 0, SH_PRIV_CAM };
+/* SCR is a screen-share consumer: a PipeWire video stream whose props do NOT
+ * say camera is somebody watching the screen, not the webcam, and lighting the
+ * CAM lamp for it teaches people the lamp lies. */
+enum { SH_PRIV_MIC = 0, SH_PRIV_CAM, SH_PRIV_SCR, SH_PRIV_NKIND };
 
-/* The clickable applets on the right of the top panel, right to left. */
+/* The clickable applets in the notification area, right to left.
+ *
+ * MIC and CAM are here because an indicator that cannot be acted on is one
+ * people learn to ignore: the panel already knows which application is
+ * recording, and a click on `●MIC` mutes every capture device on the machine.
+ * MPRIS is the transport for whatever is playing. */
 enum { SH_AP_CLOCK = 0, SH_AP_BATT, SH_AP_VOL, SH_AP_NET, SH_AP_RESTART,
+       SH_AP_MIC, SH_AP_CAM, SH_AP_MPRIS, SH_AP_CPU, SH_AP_LAYOUT,
+       SH_AP_CLIP, SH_AP_MEDIA, SH_AP_NOTIFY, SH_AP_STUTTER, SH_AP_MORE,
        SH_AP_N };
 
 /* One app holding one capture device. `pid` is set for the camera half, which
@@ -58,7 +69,9 @@ struct sh_tray_item {
 	int status;			/* SH_TRAY_* */
 	int is_menu;			/* ItemIsMenu: Activate means "show menu" */
 	int fdo_iface;			/* publishes the freedesktop spelling */
-	int needs_props;		/* read them on the next dispatch */
+	int needs_props;		/* read them on a later dispatch */
+	int prop_fails;			/* consecutive failed reads, for backoff */
+	time_t next_try;		/* do not re-read before this */
 };
 
 struct sh_tray;
@@ -91,8 +104,9 @@ static inline const char *sh_task_label(const struct sh_task *t)
  *
  * The mark is `≡` where an icon theme would have put a distributor logo — on a
  * character grid a logo is one cell, and three horizontal rules is what that
- * cell can honestly hold. It falls back to the word KDOS on a font without it,
- * which is checked once rather than per frame.
+ * cell can honestly hold. It falls back to the word KDOS on a font without it
+ * (panel.c's menu_mark(), resolved once from ktui_caps rather than per frame) —
+ * U+2261 is not among the console font's 512 glyphs.
  */
 #define SH_NMENUS 3
 #define SH_MENU_MARK "\xe2\x89\xa1"		/* U+2261 IDENTICAL TO */
@@ -114,6 +128,13 @@ struct sh_state {
 
 	void *ws[SH_MAX_WS];
 	int ws_occupied[SH_MAX_WS];
+	/* URGENT is its own bit, never folded into occupancy: the protocol sends
+	 * the full state each time, so it is cleared the moment an event lacks
+	 * it rather than sticking until the workspace is visited. */
+	int ws_urgent[SH_MAX_WS];
+	/* The name ext-workspace-v1 published, or empty for a synthesized digit.
+	 * Truncated to what a strip cell can hold. */
+	char ws_name[SH_MAX_WS][16];
 	int nws;
 	int active_ws;
 
@@ -126,6 +147,11 @@ struct sh_state {
 	 * reason the tray is: it is a PipeWire client and a /proc walk, and the
 	 * panel needs two counts and two names out of it. */
 	struct sh_priv *priv;
+
+	/* What is playing (mpris.c), on the tray's own bus connection. NULL
+	 * when there is no session bus — a session with no media controls
+	 * rather than a panel that failed to start. */
+	struct sh_mpris *mpris;
 
 	/* Where the last frame put things, so a click can be mapped back to
 	 * what was drawn rather than to what the layout code intended. */
@@ -146,11 +172,18 @@ struct sh_state {
 	 * three buttons. */
 	int hover_menu;
 	int hover_task;
-	/* The bottom panel's hit map: the pager and show-desktop. */
+	/* The bottom panel's hit map: the pager and show-desktop. Half-open
+	 * spans, show-desktop included — it is one cell at w - 2, and an
+	 * open-ended test made the blank column beside it minimise the
+	 * session. */
 	int pager_hit_x, pager_hit_end;
-	int show_hit_x;
+	int show_hit_x, show_hit_end;
 	int task_hit_x, task_cell_w;
 	int tray_hit_x, tray_hit_end;
+	/* The CPU/RAM/NET strip on the panel's second row. A click on it opens
+	 * btop, which is the program that answers the question a meter can
+	 * only raise. */
+	int meter_hit_x, meter_hit_end;
 
 	/*
 	 * The right wing's applets, and where the last frame put each of them.
@@ -164,12 +197,22 @@ struct sh_state {
 	 * it is clicked.
 	 */
 	int ap_x[SH_AP_N], ap_end[SH_AP_N];
+
+	/*
+	 * The Start button — the one control on this bar that is always in the
+	 * same place, which is the whole argument for a taskbar with a corner
+	 * in it. Its span is recorded like every other, because the button
+	 * narrows to its mark alone on a screen too narrow for the word.
+	 */
+	int start_x, start_end;
+	int hover_start;
 };
 
 /* One binary, dispatched on its own basename — the same trick kdos-tools and
  * kdos-appbox use, and for the same reason: no shell wrapper anywhere in the
  * chain from a keybinding to a running program. */
 int panel_main(int argc, char **argv);		/* kdos-shell    */
+int start_main(int argc, char **argv);		/* kdos-start    */
 int launcher_main(int argc, char **argv);	/* kdos-launcher */
 int menu_main(int argc, char **argv);		/* kdos-menu     */
 int desk_main(int argc, char **argv);		/* kdos-desk     */
@@ -180,9 +223,29 @@ int prompt_main(int argc, char **argv);		/* kdos-prompt   */
 
 
 int notifyd_main(int argc, char **argv);	/* kdos-notifyd  */
+int notify_main(int argc, char **argv);		/* kdos-notify   */
 int osd_main(int argc, char **argv);		/* kdos-osd      */
 int cal_main(int argc, char **argv);		/* kdos-cal      */
 int display_main(int argc, char **argv);	/* kdos-display  */
+int keys_main(int argc, char **argv);		/* kdos-keys     */
+int teams_main(int argc, char **argv);		/* kdos-teams    */
+int saver_main(int argc, char **argv);		/* kdos-saver    */
+int slit_main(int argc, char **argv);		/* kdos-slit     */
+int doc_main(int argc, char **argv);		/* kdos-doc      */
+int settings_main(int argc, char **argv);	/* kdos-settings */
+int openwith_main(int argc, char **argv);	/* kdos-openwith */
+int audio_main(int argc, char **argv);		/* kdos-audio    */
+int net_main(int argc, char **argv);		/* kdos-net      */
+int bt_main(int argc, char **argv);		/* kdos-bt       */
+int devices_main(int argc, char **argv);	/* kdos-devices  */
+int clip_main(int argc, char **argv);		/* kdos-clip     */
+/* What the notification area's chevron opens — the widgets that are hidden
+ * behind it, and the two KDOS tools (`kdos stutter`, `kdos-energy`) that used
+ * to be reachable only as a terminal nobody could get rid of. */
+int status_main(int argc, char **argv);		/* kdos-status   */
+/* The tooltip, which is a surface and therefore a process. Half this bar is
+ * pictures with no words; this is what says what they are. */
+int tip_main(int argc, char **argv);		/* kdos-tip      */
 
 /*
  * The ALSA mixer, shared with the panel (osd.c).
@@ -196,6 +259,20 @@ int display_main(int argc, char **argv);	/* kdos-display  */
 int sh_volume_get(int *muted);
 void sh_volume_set(int pct);
 void sh_volume_toggle(void);
+
+/*
+ * The microphone, for the panel's `●MIC` lamp — which is a CONTROL now. An
+ * indicator that names the application recording you and cannot stop it is one
+ * people learn to ignore. `sh_mic_muted` is cached for a second because the
+ * panel asks once per frame; `sh_mic_toggle` flips every capture switch on the
+ * card and is what the lamp's click and XF86AudioMicMute both reach.
+ */
+int sh_mic_muted(void);
+void sh_mic_toggle(void);
+
+/* Install ALSA's error handler once, so a machine with no card reports it once
+ * instead of eight lines every retry for the life of the session. */
+void sh_alsa_quiet(void);
 
 int sh_connect(struct sh_state *sh);
 void sh_disconnect(struct sh_state *sh);
@@ -223,6 +300,40 @@ void sh_tray_free(struct sh_state *sh);
 int sh_tray_count(const struct sh_state *sh);
 const struct sh_tray_item *sh_tray_get(const struct sh_state *sh, int i);
 void sh_tray_activate(struct sh_state *sh, int i, int button, int x, int y);
+/* SNI Scroll — what a volume item expects from the wheel. `delta` is positive
+ * for up, and fire-and-forget like every other call to an item. */
+void sh_tray_scroll(struct sh_state *sh, int i, int delta);
+/* One org.freedesktop.Notifications.Notify over the tray's bus, async — the
+ * panel already holds a session-bus connection, and a notification must never
+ * gate a frame. A session with no bus drops it, which is honest: there is no
+ * notifyd to show it either. */
+void sh_tray_notify(struct sh_state *sh, const char *summary, const char *body);
+/* The session-bus connection the tray holds, for the one other widget that
+ * needs one. NULL when there is no bus. */
+void *sh_tray_bus(const struct sh_state *sh);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * What is playing (mpris.c)
+ *
+ * The panel widget every desktop has and this one did not — and it matters
+ * more here, because every media player on this machine is inside the appbox
+ * and its window is on another workspace the moment you go back to work. MPRIS
+ * is the only thing that can pause it without finding it first, and the box
+ * shares the session bus, so it needs no plumbing at all.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+struct sh_mpris;
+
+/* `existing_bus` is sh_tray_bus(), or NULL to open one. */
+struct sh_mpris *sh_mpris_init(void *existing_bus);
+void sh_mpris_dispatch(struct sh_mpris *p);
+void sh_mpris_free(struct sh_mpris *p);
+int sh_mpris_have(const struct sh_mpris *p);
+int sh_mpris_playing(const struct sh_mpris *p);
+const char *sh_mpris_title(const struct sh_mpris *p);
+const char *sh_mpris_artist(const struct sh_mpris *p);
+/* "PlayPause", "Next", "Previous" — fire and forget. */
+void sh_mpris_action(struct sh_mpris *p, const char *method);
 
 /*
  * Which app is recording (privacy.c). `count` is how many apps hold that kind
@@ -237,31 +348,245 @@ void sh_priv_free(struct sh_state *sh);
 int sh_priv_count(const struct sh_state *sh, int kind);
 const char *sh_priv_name(const struct sh_state *sh, int kind);
 
+/* ────────────────────────────────────────────────────────────────────────
+ * The application index (apps.c)
+ *
+ * One answer to "what is installed on this machine", shared by the Start
+ * menu, the launcher, the run box and the chooser — four surfaces that each
+ * used to walk /usr/share/applications with their own rule about NoDisplay.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define SH_MAX_APPS 512
+#define SH_APP_ID 128
+#define SH_APP_EXEC 256
+/* How many rows of the usage file are kept. An unbounded history of every
+ * program ever run is a file nobody can read and a scan on every menu open. */
+#define SH_APP_USAGE_MAX 256
+
+struct sh_app {
+	char id[SH_APP_ID];		/* desktop-entry id, no .desktop     */
+	char name[96];
+	char exec[SH_APP_EXEC];		/* field codes already stripped      */
+	char icon[96];			/* the entry's own Icon=             */
+	char comment[128];
+	char keywords[192];		/* Keywords + GenericName, for search */
+	int group;			/* index into the category table     */
+	int terminal;			/* Terminal=true — run it in foot    */
+	int alien;			/* lives in the appbox — see apps.c  */
+	int uses;			/* launch count, from appusage       */
+	long last;			/* when it was last launched         */
+};
+
+int sh_apps_load(void);
+int sh_apps_count(void);
+const struct sh_app *sh_apps_get(int i);
+const struct sh_app *sh_apps_find(const char *id);
+/* Most-used first, with the score halving every fortnight since the last
+ * launch — a frequency list that never forgets is a list of what somebody used
+ * in their first week. */
+int sh_apps_frequent(const struct sh_app **out, int max);
+int sh_apps_in_group(int group, const struct sh_app **out, int max);
+/* Ranked substring match: a prefix of the name beats a word start beats
+ * anywhere, and the usage count breaks ties inside each band. An empty needle
+ * answers with the frequent list. */
+int sh_apps_match(const char *needle, const struct sh_app **out, int max);
+/* Records the launch (and rewrites the usage file) before spawning. The Exec
+ * line goes through kxdg_exec_split, not a whitespace split: quoting is part
+ * of the format and getting it wrong is an app that silently does not start. */
+void sh_apps_launch(const struct sh_app *a);
+/* The same, opening files with it. */
+void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
+			 int nfiles);
+int sh_app_ngroups(void);
+const char *sh_app_group_name(int g);
+
+/* Double-forked spawn: the caller neither reaps nor waits, and there is no
+ * shell anywhere in it. Every surface here spawns the same way. */
+void sh_spawn(const char *const argv[]);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Tiles (tile.c) — a block of cells the shell paints as PIXELS
+ *
+ * The escape hatch from "a control is one row of text tall", without a second
+ * renderer: libkcell rasterises a canvas of N x M cells and libktui's sprite
+ * table carries it, so layout, damage, palette and the text fallback are
+ * unchanged. See tile.c for the two-slot alternation that keeps the row diff
+ * precise, and kcell_canvas.c for why this shape rather than another.
+ *
+ * EVERY CALLER MUST DRAW WITHOUT IT. `sh_tile_begin`/`sh_tile_slot` answer
+ * NULL/-1 on a terminal, under `icons = no`, with no font, and when the table
+ * is full — and the caller then draws the glyph layout it always had.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+struct KCellCanvas;
+
+/* Stable ids, one per tile the shell owns. */
+enum { SH_TILE_START = 0, SH_TILE_METERS };
+
+/* The canvas to draw into, or NULL when the tile already shows exactly this
+ * content. `content` is the caller's hash of everything it is about to draw. */
+struct KCellCanvas *sh_tile_begin(int id, int cw, int ch, uint64_t content);
+int sh_tile_commit(int id);
+int sh_tile_slot(int id);
+/* Drop every tile — what a live `kdos theme <accent>` needs, because each one
+ * was rasterised in the palette that is being replaced. */
+void sh_tile_reset(void);
+void sh_tile_enable(int on);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Window chrome (chrome.c)
+ *
+ * The header band, group headings and button bar the device apps share.
+ * See chrome.c for what these are for and why they are not four copies.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define SH_MAX_BTN 6
+
+struct sh_button {
+	const char *label;
+	int enabled;		/* drawn dim and never the focus when 0 */
+};
+
+/* Draws into rows 1..3 of a boxed window and returns the first BODY row. */
+int sh_chrome_header(int w, const char *icon_name, const char *title,
+		     const char *subtitle, int icons_on);
+void sh_chrome_group(int x, int y, int w, const char *label);
+/*
+ * Right-aligned on `row`, recording the span each button actually got. Never
+ * half a button: a bar too wide for the window drops them from the RIGHT — the
+ * callers order them most-useful-first — until what is left fits.
+ *
+ * Returns the leftmost column the bar took, which is where the caller's status
+ * text on that row has to stop.
+ */
+int sh_chrome_buttons(int w, int row, const struct sh_button *b, int n,
+		      int focus);
+/* Which button the last frame drew at this cell, or -1. */
+int sh_chrome_button_at(int mx, int my);
+/*
+ * WHERE THE POINTER IS, so a button can light under it.
+ *
+ * A button bar that looks identical whether or not the pointer is on it is a
+ * row of words with brackets round them: the only way to find out that
+ * `[ Connect ]` is a control was to click it. Fed from the same motion branch
+ * that already moves the list selection; (-1, -1) — libkwl's leave — clears it.
+ */
+void sh_chrome_hover(int mx, int my);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Scrolling lists (chrome.c)
+ *
+ * ONE ANSWER TO "WHAT DOES THE WHEEL DO", because it was answered fifteen
+ * times. The rule is what a mature list toolkit does and it has two halves:
+ *
+ *   - The list FITS: the wheel is a cursor step, the same as ↑ and ↓.
+ *   - The list SCROLLS: the wheel moves the VIEWPORT and the cursor stays on
+ *     the row it was on, travelling with the content.
+ *
+ * The other half of it is in libkwl (pt_motion): hover re-selects only when
+ * the pointer has actually MOVED to another cell. Without that, a wheel notch
+ * — which on every absolute pointing device arrives with the position repeated
+ * — put the highlight straight back on the row under a stationary pointer, so
+ * the selection appeared to snap back the instant it moved. Reported as "the
+ * highlight jumps"; it was two correct behaviours fighting.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Rows per notch when the wheel is scrolling a viewport. */
+#define SH_WHEEL_ROWS 3
+
+/*
+ * Returns 1 when the viewport was scrolled — the caller must NOT move its
+ * cursor — and 0 when the list fits, which means the wheel is a cursor step.
+ */
+int sh_list_wheel(int up, int *top, int n, int body);
+/*
+ * Clamp `top` into the list, pulling `sel` into view only when `follow` says
+ * the SELECTION is what moved. A draw that pulls unconditionally undoes the
+ * scroll on the very next frame, which is the whole reason this is a flag.
+ */
+void sh_list_clamp(int *top, int sel, int n, int body, int follow);
+/*
+ * ONE COLUMN THAT SAYS THERE IS MORE.
+ *
+ * A list that scrolls and gives no sign of it is a list people believe they
+ * have seen all of — and the wheel rule above made that worse rather than
+ * better, because the page can now move without the cursor. The track is the
+ * shade glyph and the thumb is the full block, both in the vt tier, so it
+ * draws on tty1 and in a golden frame exactly as it does under fcft. Nothing
+ * at all when everything fits: a full-height thumb is a decoration.
+ */
+void sh_list_scrollbar(int x, int y, int rows, int n, int top, int bg);
+
+/* ── the pinned list (chrome.c) ────────────────────────────────────────────
+ * `~/.config/kdos/favorites`, one desktop-entry id per line — what the
+ * quick-launch row draws. Pinning happens in a MENU and the row is drawn by
+ * the PANEL, two processes, so the writer is shared: a second implementation
+ * would be a second answer to what a pin is. Written temp + fsync + rename.
+ * ──────────────────────────────────────────────────────────────────────── */
+int sh_fav_path(char *out, size_t n);
+int sh_fav_has(const char *id);
+int sh_fav_set(const char *id, int pinned);
+/* Move one pinned id to a position in the row — what a drag on the taskbar's
+ * quick-launch strip writes. */
+int sh_fav_move(const char *id, int to);
+
 /* One line from a /sys or /proc file, newline stripped. Returns 0 on success.
  * There is no libkbase here — the shell links libktui, libkcolor and libkwl,
  * and one 15-line reader is cheaper than dragging in another archive. */
 int sh_read_line(const char *path, char *buf, size_t len);
 
+/* At most `cells` display columns of `src` into `dst`, never cutting a UTF-8
+ * sequence and never overrunning `n`. Every string this panel truncates is
+ * somebody else's — an app's own name, a workspace name out of rc.xml — and a
+ * `%.14s` on one of those leaves half a sequence behind. */
+void sh_utf8_trunc(char *dst, size_t n, const char *src, int cells);
+
 /*
  * How many processes are running code an upgrade replaced, or -1 when the
- * check could not run. Re-checked rarely: `kdos restarts` walks every process's
- * maps, which is far too much work for a panel redraw, and the answer only
- * changes when a package is installed.
+ * check could not run. `kdos restarts` walks every process's maps — far too
+ * much work for a panel redraw, and too much even to WAIT on: the check runs
+ * in a forked child that is never waited for synchronously. `begin` starts one
+ * (a no-op while one is in flight), `poll` collects with WNOHANG and returns
+ * the last answer collected.
  */
-int sh_restart_count(void);
+void sh_restart_begin(void);
+int sh_restart_poll(void);
+
+/*
+ * Strip desktop-entry field codes from an Exec line, in place: `%%` becomes a
+ * literal percent, every other `%X` is removed, and the whitespace a dropped
+ * code leaves behind is collapsed so the line still splits into clean argv.
+ * One copy, here, because three diverged copies shipped three behaviours.
+ */
+void sh_strip_field_codes(char *exec);
+
+/* Resolve a desktop-entry id to its Name and Exec through the XDG data dirs —
+ * the same search the taskbar's label uses. Returns 0 when found. Either out
+ * pointer may be NULL. */
+int sh_desktop_entry(const char *id, char *name, size_t nname,
+		     char *exec, size_t nexec);
 
 /* The accent the desktop is currently wearing, from
  * $XDG_CACHE_HOME/kdos/theme. The same file kdos-appbox's TUI reads. */
 void sh_theme_from_cache(void);
 
 /*
- * Live retint. A long-lived surface (the panel, the notification daemon) calls
- * sh_theme_watch() once and then checks sh_theme_dirty each time round its
- * loop: on set, clear it, sh_theme_from_cache(), ktui_draw_invalidate(). The
- * short-lived front ends (launcher, menu, osd, pick) need neither — they read
- * the accent when they start, which is after the change.
+ * Live retint, two ways in.
+ *
+ * A surface `kdos theme` SIGNALS BY NAME (the panel, the desktop icons, the
+ * notification daemon) calls sh_theme_watch() once and then checks
+ * sh_theme_dirty each time round its loop: on set, clear it,
+ * sh_theme_from_cache(), ktui_draw_invalidate().
+ *
+ * Everything else calls sh_theme_poll() once per loop instead. It needs no
+ * signal and therefore no entry on that list — which matters, because SIGHUP
+ * kills a process that installs no handler, so the list and the handlers are
+ * two things that have to agree and already did not. A dialog is not
+ * short-lived merely because it is modal: kdos-settings is where an accent
+ * gets changed, and it was left wearing the old one.
  */
 extern volatile sig_atomic_t sh_theme_dirty;
 void sh_theme_watch(void);
+void sh_theme_poll(void);
 
 #endif /* KDOS_SHELL_H */

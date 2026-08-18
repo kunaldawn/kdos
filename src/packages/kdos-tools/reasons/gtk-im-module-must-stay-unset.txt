@@ -1,0 +1,12 @@
+title: never set GTK_IM_MODULE — unset is how a GTK app finds the right context
+cite: kdos-appbox BOXENV
+port: fcitx5
+
+GTK on Wayland picks the right input context by itself when the variable is
+unset, and setting it is how a working GTK app stops accepting CJK. Neither it
+nor QT_IM_MODULE is ever `fcitx`: that is the X11-era route where each toolkit
+talks to the IM daemon itself, and inside the container that daemon does not
+exist.
+
+A boxed app reaches the input method through the compositor and never
+directly. QT_IM_MODULE=wayland is the Qt half.

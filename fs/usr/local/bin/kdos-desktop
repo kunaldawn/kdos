@@ -39,6 +39,54 @@ case "$(cat /sys/class/drm/card0/device/modalias 2>/dev/null)" in
 		;;
 esac
 
+# The keyboard layout. The installer writes the CONSOLE keymap name to
+# /etc/keymap and kdos-getty loadkeys it on every tty — but nothing carried it
+# into the Wayland session, so a non-US user got US QWERTY in the desktop,
+# the lock-screen password prompt included. xkbcommon reads these variables in
+# every client and in kdos-comp itself; console names and XKB layout names are
+# different vocabularies, hence the table. Anything not listed falls back to
+# its first two letters, which is how most console maps are named anyway.
+if [ -r /etc/keymap ]; then
+	_km=$(cat /etc/keymap 2>/dev/null)
+	_layout= _variant=
+	case "$_km" in
+	"")        ;;
+	us)        _layout=us ;;
+	uk)        _layout=gb ;;
+	de*)       _layout=de ;;
+	fr*)       _layout=fr ;;
+	es*)       _layout=es ;;
+	it*)       _layout=it ;;
+	br*)       _layout=br ;;
+	ru*)       _layout=ru ;;
+	# The console names whose first two letters are a DIFFERENT layout —
+	# `la` is Lao, not Latin American, and there is no `sg`, `sl` or `cr`.
+	sg*)       _layout=ch ;;
+	slovene)   _layout=si ;;
+	croat)     _layout=hr ;;
+	la-latin1) _layout=latam ;;
+	dvorak*)   _layout=us _variant=dvorak ;;
+	*)         _layout=$(printf '%.2s' "$_km") ;;
+	esac
+	# A layout xkbcommon cannot compile does not fall back loudly: kdos-comp
+	# logs the failure and sets XKB_DEFAULT_LAYOUT=us for the whole session,
+	# lock prompt included — the exact bug this block exists to fix, arriving
+	# silently. So a DERIVED name is only exported when xkeyboard-config
+	# really carries it. The check is skipped where that data is absent,
+	# because then nothing here can be verified either way.
+	_xkb=/usr/share/X11/xkb/symbols
+	if [ -n "$_layout" ] && [ -d "$_xkb" ] && [ ! -f "$_xkb/$_layout" ]; then
+		echo "kdos-desktop: keymap '$_km' has no XKB layout '$_layout'" \
+			"— leaving the default" >&2
+		_layout=
+	fi
+	if [ -n "$_layout" ]; then
+		export XKB_DEFAULT_LAYOUT="$_layout"
+		[ -n "$_variant" ] && export XKB_DEFAULT_VARIANT="$_variant"
+	fi
+	unset _km _layout _variant _xkb
+fi
+
 # Pre-create and start the alien-app box while the desktop is coming up, so
 # the first launcher click doesn't pay for container init. nice 10, not 19:
 # at 19 the warmup loses every CPU slice to the starting desktop, so it was
@@ -80,5 +128,6 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 ) 7>"$XDG_RUNTIME_DIR/.kdos-bus.lock"
 
 # kdos-desktop-start runs on the session bus: pipewire stack (audio +
-# portal ScreenCast for OBS), then exec kdos-comp.
+# portal ScreenCast for OBS), then runs kdos-comp with its stderr kept in
+# $XDG_RUNTIME_DIR/kdos-comp.log and a restart offer if it crashes.
 exec /usr/local/bin/kdos-desktop-start

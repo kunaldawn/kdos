@@ -1,0 +1,16 @@
+title: the LUKS prompt goes through the splash, and reads from /dev/tty1
+cite: initramfs init
+port: cryptsetup
+
+console= is ttyS0 on this kernel command line and the LAST one wins, so a
+plain `read -p` prompts a serial port nobody is looking at while the screen
+shows a splash that appears to have frozen. The keystrokes come from
+/dev/tty1, which is where the keyboard is.
+
+The passphrase is fed to cryptsetup --key-file=- on stdin, never as an
+argument: /proc/<pid>/cmdline is world-readable for the life of the process.
+Three attempts, then a shell rather than a reboot loop.
+
+And root=UUID= names the INNER filesystem while cryptdevice= names the
+container. Confusing the two is the whole trap: the filesystem does not exist
+until the container is open.

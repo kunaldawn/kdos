@@ -1,0 +1,15 @@
+title: sort blocked before busy — a process in D state shows almost no CPU
+cite: kdos stutter
+port: kdos-tools
+
+It is the thing holding the disk while looking idle, so sorting on CPU alone
+hides exactly the case the io half exists for.
+
+And container names come from conmon's argv, not from cgroups: no systemd
+means rootless podman gets no cgroup delegation and the box frequently sits in
+0::/, which says nothing. Walking the ppid chain to the conmon that supervises
+it costs a few file reads and no podman call — which matters, because this
+runs while the machine is already struggling.
+
+The tool never says "X caused this": attribution from a 500 ms sample window
+is circumstantial.

@@ -1,0 +1,12 @@
+title: a view on another workspace is re-reported as MINIMIZED
+cite: kdos_foreign_workspace_sync
+port: kdos-comp
+
+Stock labwc reports them unminimized, which made every visited workspace look
+occupied while any window existed anywhere. The panel is built on the graft
+twice over: workspace occupancy counts non-minimized tasks, and the window
+list dims minimized ones.
+
+ext-workspace-v1 has ACTIVE, URGENT and HIDDEN and no "there are windows
+here", so occupancy is derived rather than reported — right for every
+workspace the user has visited, silent about the rest.

@@ -1,0 +1,13 @@
+title: kdeglobals is MERGED, never overwritten
+cite: kdos theme
+port: kdos-tools
+
+KDE apps write their own settings into that file — dolphin's view modes,
+kate's session state — so `kdos theme` replaces only what it owns and keeps
+every other section verbatim.
+
+The merge NORMALISES the file because the first version patched in place and
+moved [KDE] on every second run: `kdos theme` twice in a row produced two
+different files and --audit had a permanent complaint. Sections we own are
+replaced WHOLE — leaving a foreign key inside [Colors:Window] made the file
+grow by one stale colour per run.

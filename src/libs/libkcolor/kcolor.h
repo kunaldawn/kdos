@@ -102,6 +102,45 @@ uint32_t kcol_mixf(uint32_t a, uint32_t b, double t);
 
 double kcol_luma(uint32_t rgb);	/* 0..1, Rec.601 */
 
+/* The derived READABLE muted text colour: kcol_mix(deep, text, 56). `dim` is a
+ * fill/border colour and sits at ~1.7:1 against `deep` — every generator that
+ * used it for text (mc's disabled entries, btop's inactive rows, starship's
+ * subtext) was writing labels below any legibility floor. Text roles take
+ * this; fills, borders and selection backgrounds keep `dim`.
+ *
+ * The floor is WCAG AA for normal-size text, 4.5:1 against `deep`, and it is
+ * named here so the next change to the mix can be measured rather than
+ * guessed: 50% cleared it only in phosphor (4.73) and left amber at 4.22, bone
+ * at 4.07 and ice at 4.48. Measured at 56%: 5.73 / 5.07 / 5.35 / 4.82. */
+uint32_t kcol_muted(const KcolScheme *sc);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Derived semantic values
+ *
+ * The user-level gtk.css (`kdos theme`) and the recoloured stylesheet
+ * (kdos-theme's build_names) define the same named colours, and the user layer
+ * wins — so the two disagreeing was three surfaces wearing a harsher warning
+ * red than the theme's. Both now expand THIS struct, so they agree by
+ * construction. The mixes are the stylesheet's tuned ones.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	uint32_t on_accent;	/* fg over an accent fill                  */
+	uint32_t warning_bg;
+	uint32_t warning_fg;
+	uint32_t destructive_bg;	/* error_* too — same pair         */
+	uint32_t destructive_fg;
+	uint32_t headerbar_border;
+	uint32_t header;	/* headerbar / sidebar surface             */
+	uint32_t side_backdrop;
+	uint32_t dialog;	/* dialog / popover surface                */
+	uint32_t thumb;
+	uint32_t border;
+	uint32_t border_unfocused;
+} KcolSem;
+
+void kcol_sem(const KcolScheme *sc, KcolSem *out);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Hue families
  *

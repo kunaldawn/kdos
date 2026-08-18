@@ -39,6 +39,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
 
@@ -70,9 +71,68 @@ static snd_mixer_elem_t *find_elem(snd_mixer_t *h)
 	return NULL;
 }
 
-static snd_mixer_t *mixer_open(snd_mixer_elem_t **elem)
+/*
+ * The capture side, for the mic mode. `Capture` is the selem ALSA gives the
+ * recording path on essentially every HDA codec; `Mic` covers the USB headsets
+ * that name it after the jack instead. A switch with no volume still counts —
+ * mute is the half the panel's ●MIC indicator needs a companion for.
+ */
+static snd_mixer_elem_t *find_cap_elem(snd_mixer_t *h)
+{
+	static const char *const NAMES[] = { "Capture", "Mic" };
+	snd_mixer_selem_id_t *sid;
+	snd_mixer_selem_id_alloca(&sid);
+
+	for (size_t i = 0; i < sizeof(NAMES) / sizeof(NAMES[0]); i++) {
+		snd_mixer_selem_id_set_index(sid, 0);
+		snd_mixer_selem_id_set_name(sid, NAMES[i]);
+		snd_mixer_elem_t *e = snd_mixer_find_selem(h, sid);
+		if (e && (snd_mixer_selem_has_capture_volume(e) ||
+			  snd_mixer_selem_has_capture_switch(e)))
+			return e;
+	}
+	return NULL;
+}
+
+/*
+ * ALSA prints its own failures, and on a machine with no card it prints EIGHT
+ * lines per attempt — `cannot find card '0'`, `Invalid CTL default`, four
+ * `No such file or directory`. The panel retries every 30s forever, so a
+ * booted VM's session log grew by ~0.8 lines a second with nothing else in
+ * it. That is not a cosmetic complaint: the log is where a crash gets
+ * diagnosed, and the wallpaper assert that started this investigation was
+ * already competing with pages of noise for the reader's attention.
+ *
+ * The first occurrence is kept, because a real card that fails is worth one
+ * line, and everything after it is dropped. Silencing the lot outright would
+ * hide the one message that means something.
+ */
+static void alsa_quiet_handler(const char *file, int line, const char *fn,
+			       int err, const char *fmt, ...)
+{
+	static int spoken;
+	(void)file; (void)line; (void)fn; (void)err; (void)fmt;
+	if (spoken)
+		return;
+	spoken = 1;
+	fprintf(stderr, "kdos-shell: ALSA reports no usable mixer; "
+		"the volume applet stays off (further ALSA messages "
+		"suppressed)\n");
+}
+
+void sh_alsa_quiet(void)
+{
+	static int done;
+	if (done)
+		return;
+	done = 1;
+	snd_lib_error_set_handler(alsa_quiet_handler);
+}
+
+static snd_mixer_t *mixer_open_raw(void)
 {
 	snd_mixer_t *h = NULL;
+	sh_alsa_quiet();
 	if (snd_mixer_open(&h, 0) < 0)
 		return NULL;
 	if (snd_mixer_attach(h, "default") < 0 ||
@@ -81,6 +141,14 @@ static snd_mixer_t *mixer_open(snd_mixer_elem_t **elem)
 		snd_mixer_close(h);
 		return NULL;
 	}
+	return h;
+}
+
+static snd_mixer_t *mixer_open(snd_mixer_elem_t **elem)
+{
+	snd_mixer_t *h = mixer_open_raw();
+	if (!h)
+		return NULL;
 	*elem = find_elem(h);
 	if (!*elem) {
 		snd_mixer_close(h);
@@ -192,6 +260,123 @@ void sh_volume_toggle(void)
 	    !snd_mixer_selem_has_playback_switch(g_elem))
 		return;
 	snd_mixer_selem_set_playback_switch_all(g_elem, m);
+}
+
+/* ── the microphone ────────────────────────────────────────────────────────
+ *
+ * Opened per invocation rather than cached: the mic mode is a keypress, not
+ * the panel's once-a-second read, so there is nothing here worth keeping a
+ * handle alive for.
+ */
+
+/* Returns the capture percent, or -1 when there is no capture mixer at all.
+ * An element with a switch but no volume answers 100 — mute is then the only
+ * state it has, and a bar at zero while live would read as muted. */
+static int mic_get(int *muted)
+{
+	snd_mixer_t *h = mixer_open_raw();
+	int pct = -1;
+
+	*muted = 0;
+	if (!h)
+		return -1;
+	snd_mixer_elem_t *e = find_cap_elem(h);
+	if (e) {
+		long min = 0, max = 0, val = 0;
+		pct = 100;
+		if (snd_mixer_selem_has_capture_volume(e) &&
+		    snd_mixer_selem_get_capture_volume_range(e, &min, &max) == 0 &&
+		    max > min &&
+		    snd_mixer_selem_get_capture_volume(e,
+						       SND_MIXER_SCHN_FRONT_LEFT,
+						       &val) == 0)
+			pct = (int)(((val - min) * 100 + (max - min) / 2) /
+				    (max - min));
+		if (snd_mixer_selem_has_capture_switch(e)) {
+			int on = 1;
+			snd_mixer_selem_get_capture_switch(e,
+							   SND_MIXER_SCHN_FRONT_LEFT,
+							   &on);
+			*muted = !on;
+		}
+	}
+	snd_mixer_close(h);
+	return pct;
+}
+
+/* delta 0 toggles the switch; a delta moves the volume and, like the playback
+ * side, unmutes on the way up — a key that raises a number nobody can hear is
+ * the media-key complaint, capture edition. */
+static void mic_adjust(int delta)
+{
+	snd_mixer_t *h = mixer_open_raw();
+	if (!h)
+		return;
+	snd_mixer_elem_t *e = find_cap_elem(h);
+	if (!e) {
+		snd_mixer_close(h);
+		return;
+	}
+	if (delta == 0) {
+		if (snd_mixer_selem_has_capture_switch(e)) {
+			int on = 1;
+			snd_mixer_selem_get_capture_switch(e,
+							   SND_MIXER_SCHN_FRONT_LEFT,
+							   &on);
+			snd_mixer_selem_set_capture_switch_all(e, !on);
+		}
+	} else if (snd_mixer_selem_has_capture_volume(e)) {
+		long min = 0, max = 0, val = 0;
+		if (snd_mixer_selem_get_capture_volume_range(e, &min, &max) == 0 &&
+		    max > min &&
+		    snd_mixer_selem_get_capture_volume(e,
+						       SND_MIXER_SCHN_FRONT_LEFT,
+						       &val) == 0) {
+			int pct = (int)(((val - min) * 100 + (max - min) / 2) /
+					(max - min)) + delta;
+			if (pct < 0)
+				pct = 0;
+			if (pct > 100)
+				pct = 100;
+			snd_mixer_selem_set_capture_volume_all(e,
+					min + (max - min) * pct / 100);
+			if (pct > 0 && snd_mixer_selem_has_capture_switch(e))
+				snd_mixer_selem_set_capture_switch_all(e, 1);
+		}
+	}
+	snd_mixer_close(h);
+}
+
+/*
+ * The panel's half of the microphone: read the state, and flip it.
+ *
+ * The `●MIC` lamp told you which application was recording and could do
+ * nothing about it, which is an indicator people learn to stop looking at.
+ * These two make it a control — one click mutes every capture switch on the
+ * card, a second click puts it back.
+ *
+ * CACHED FOR A SECOND, because the panel asks once per frame and this opens
+ * the mixer per call by design (the mic is a keypress, not a readout). A
+ * machine with no capture element answers "not muted", which is the honest
+ * reading of a machine that cannot mute anything.
+ */
+int sh_mic_muted(void)
+{
+	static time_t asked;
+	static int cached;
+	time_t now = time(NULL);
+	int m = 0;
+
+	if (asked == now)
+		return cached;
+	asked = now;
+	cached = mic_get(&m) >= 0 ? m : 0;
+	return cached;
+}
+
+void sh_mic_toggle(void)
+{
+	mic_adjust(0);
 }
 
 /* ── backlight ─────────────────────────────────────────────────────────── */
@@ -395,9 +580,25 @@ static void osd_value(const char *what, int *pct, int *muted)
 	if (!strcmp(what, "brightness")) {
 		*pct = backlight_get();
 		*muted = 0;
+	} else if (!strcmp(what, "mic")) {
+		*pct = mic_get(muted);
 	} else {
 		*pct = sh_volume_get(muted);
 	}
+}
+
+/* The mic wears the panel indicator's bullet, so the overlay and the ●MIC
+ * warning read as two views of the same thing. */
+static void osd_show(const char *what, int pct, int muted)
+{
+	char label[48];
+
+	if (!strcmp(what, "mic"))
+		snprintf(label, sizeof(label), "%smic",
+			 ktui_glyph[KT_G_BULLET]);
+	else
+		snprintf(label, sizeof(label), "%s", what);
+	draw_osd(label, pct, muted);
 }
 
 /* ── main ──────────────────────────────────────────────────────────────── */
@@ -406,8 +607,266 @@ static int usage(void)
 {
 	fprintf(stderr,
 		"usage: kdos-osd volume [+N|-N|mute|toggle]\n"
-		"       kdos-osd brightness [+N|-N]\n");
+		"       kdos-osd mic [toggle|up|down|+N|-N]\n"
+		"       kdos-osd brightness [+N|-N]\n"
+		"       kdos-osd slider [--at-bottom X Y] [--font NAME]\n");
 	return 2;
+}
+
+/* ── the volume slider ─────────────────────────────────────────────────────
+ *
+ * `kdos-osd slider [--at-bottom X Y]` — the popup a click on `VOL 62%` opens.
+ *
+ * The bezel above is a NOTIFICATION: it appears when a media key is pressed,
+ * takes no input at all (it sat mid-screen and ate every click under it until
+ * that was fixed), and goes away by itself. A slider is the opposite in every
+ * one of those: it is aimed at, it is dragged, and it stays until dismissed.
+ * Sharing the drawing would mean one surface with two contradictory input
+ * policies, so it shares the ALSA helpers and nothing else.
+ *
+ * The gauge is CLICKABLE ALONG ITS LENGTH, because a control that can only be
+ * nudged five points at a time is a control people give up on and go to the
+ * mixer for — which is the thing this exists to save them.
+ */
+#define SL_COLS 34
+#define SL_ROWS 5
+
+/* Where the gauge starts and how wide it is, from the surface's own width —
+ * asked by the draw AND by the hit test, which is the rule every hit map on
+ * this desktop keeps: a click lands where the last frame drew, not where a
+ * second copy of the arithmetic says it should have. */
+#define SL_GX 6
+static int sl_gauge_w(void)
+{
+	int gw = ktui_w - SL_GX - 7;
+
+	return gw < 4 ? 4 : gw;
+}
+
+/* The picture the level is wearing — the same four names the panel's own
+ * volume applet resolves, so the readout and the popup it opens cannot show
+ * two different pictures of one number. */
+static const char *sl_icon(int pct, int muted)
+{
+	if (muted)
+		return "audio-volume-muted";
+	return pct >= 66   ? "audio-volume-high"
+	       : pct >= 33 ? "audio-volume-medium"
+			   : "audio-volume-low";
+}
+
+/* The mute button's span on its row, recorded by the draw. */
+static int sl_mute_x, sl_mute_end;
+
+static void slider_draw(int pct, int muted, int hover, int dragging)
+{
+	int w = ktui_w, h = ktui_h;
+	char val[16];
+
+	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
+	ktui_draw_box(krect(0, 0, w, h), "Volume", KT_ACCENT, KT_SURFACE, 1);
+
+	/* The level as a PICTURE, two cells wide and centred across the two
+	 * rows the controls occupy: a popup that a click on a speaker icon
+	 * opens and that has no speaker in it reads as a different program. */
+	int icon = kicon_slot(sl_icon(pct, muted), 2, h > 4 ? 2 : 1);
+	if (icon >= 0)
+		ktui_draw_sprite(krect(2, 1, 2, h > 4 ? 2 : 1), icon,
+				 muted ? KT_MID : KT_ACCENT, KT_SURFACE);
+	else
+		ktui_draw_text(2, 1, 2, muted ? "x" : ktui_glyph[KT_G_UP],
+			       muted ? KT_MID : KT_ACCENT, KT_SURFACE,
+			       KT_A_NONE);
+
+	int gw = sl_gauge_w();
+	ktui_gauge(SL_GX, 1, gw, muted ? 0.0 : pct / 100.0,
+		   muted ? KT_DIM : KT_ACCENT, KT_SURFACE);
+	snprintf(val, sizeof(val), "%3d%%", pct);
+	ktui_draw_text(w - 6, 1, 5, val, muted ? KT_MID : KT_TEXT, KT_SURFACE,
+		       KT_A_NONE);
+
+	/* A LABELLED BUTTON, not a glyph in a box. `)` and `x` were the whole
+	 * of the mute switch and neither says which state a click produces. */
+	const char *ml = muted ? "Unmute" : "Mute";
+	int mw = ktui_utf8_width(ml);
+	sl_mute_x = SL_GX;
+	sl_mute_end = SL_GX + mw + 4;
+	if (sl_mute_end > w - 2) {
+		sl_mute_x = sl_mute_end = 0;
+	} else {
+		/* Hover lifts it to the accent — brighter than rest and a
+		 * different colour from the muted state, so the two never read
+		 * as each other. */
+		int mbg = hover == 2 ? KT_ACCENT : muted ? KT_ERR : KT_DIM;
+
+		ktui_draw_text(sl_mute_x, 2, 1, "[",
+			       hover == 2 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       KT_A_NONE);
+		ktui_draw_fill(krect(sl_mute_x + 1, 2, mw + 2, 1), mbg);
+		ktui_draw_text(sl_mute_x + 2, 2, mw, ml, KT_SURFACE, mbg,
+			       KT_A_NONE);
+		ktui_draw_text(sl_mute_x + mw + 3, 2, 1, "]",
+			       hover == 2 ? KT_TEXT : KT_DIM, KT_SURFACE,
+			       KT_A_NONE);
+	}
+
+	/* Short enough to FIT: the hint is drawn in w-4 cells and
+	 * `scroll, drag   m mute   Esc close` came out as `... Esc cl`,
+	 * which is the one thing a hint may never be. */
+	if (h > 4)
+		ktui_draw_text(2, 3, w - 4,
+			       dragging	    ? "release to set"
+			       : hover == 2 ? "click to silence everything"
+			       : hover	    ? "click or drag the bar"
+					: "drag, scroll   m   Esc",
+			       KT_MID, KT_SURFACE, KT_A_NONE);
+	ktui_draw_flush();
+}
+
+static int slider_main(int at_x, int at_y, const char *font)
+{
+	int muted = 0;
+	int pct = sh_volume_get(&muted);
+
+	if (pct < 0) {
+		fprintf(stderr, "kdos-osd: no ALSA mixer with a playback "
+				"volume — is the card driver loaded?\n");
+		return 1;
+	}
+
+	KwlConfig cfg = {
+		.role = KWL_ROLE_OVERLAY,
+		.cols = SL_COLS,
+		.rows = SL_ROWS,
+		/* Above the applet that opened it, or centred when nobody
+		 * said where — the anchor kdos-cal and kdos-start already
+		 * use, and the reason a popup reads as belonging to the thing
+		 * it came from. */
+		.corner = at_x >= 0 ? KWL_CORNER_BOTTOM_LEFT
+				    : KWL_CORNER_CENTER,
+		.margin_x = at_x >= 0 ? at_x : 0,
+		.margin_y = at_x >= 0 ? at_y : 0,
+		.app_id = "kdos-osd",
+		.font = font,
+		.keyboard = 1,
+		/* A popup, not a dialog: clicking anywhere else closes it. */
+		.dismiss_on_unfocus = 1,
+	};
+
+	sh_theme_from_cache();
+	if (kwl_init(&cfg) != 0)
+		return 1;
+	/* AFTER kwl_init: the icon layer needs the cell size and the output
+	 * scale. No artwork is a slider with a glyph in it, not a failure. */
+	kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+	ktui_draw_init();
+
+	int hover = 0, dragging = 0;
+	while (!kwl_should_close()) {
+		pct = sh_volume_get(&muted);
+		if (pct < 0)
+			pct = 0;
+		slider_draw(pct, muted, hover, dragging);
+
+		KtuiEvent ev;
+		if (!ktui_backend()->poll_event(&ev, 500))
+			continue;
+
+		int gw = sl_gauge_w();
+		if (ev.type == KT_EVT_MOUSE) {
+			int on_bar = ev.my == 1 && ev.mx >= SL_GX &&
+				     ev.mx < SL_GX + gw;
+			/*
+			 * DRAG, which a slider that could not be dragged was
+			 * missing the whole point of. Wayland delivers plain
+			 * motion and dragged motion identically — libkwl
+			 * spells both KT_MP_DRAG, because a wl_pointer motion
+			 * event carries no button state at all — so the
+			 * BUTTON is what has to be remembered: pressed on the
+			 * bar starts a drag, every motion until the release
+			 * sets the level, and the release ends it. The
+			 * implicit grab means the motion keeps arriving even
+			 * when the pointer leaves the popup, so a hand that
+			 * runs past the end of the bar still lands on 100
+			 * rather than stopping wherever the surface did.
+			 */
+			if (ev.press == KT_MP_DRAG) {
+				/* 1 = the gauge, 2 = the mute button. Both are
+				 * controls and neither said so. */
+				hover = on_bar ? 1
+					: (ev.my == 2 && sl_mute_end > sl_mute_x &&
+					   ev.mx >= sl_mute_x &&
+					   ev.mx < sl_mute_end)
+						? 2
+						: 0;
+				if (dragging && ev.mx >= 0) {
+					int at = ev.mx - SL_GX;
+					if (at < 0)
+						at = 0;
+					if (at > gw - 1)
+						at = gw - 1;
+					sh_volume_set(at * 100 / (gw - 1));
+				}
+				continue;
+			}
+			if (ev.press == KT_MP_RELEASE) {
+				dragging = 0;
+				continue;
+			}
+			if (ev.press != KT_MP_PRESS)
+				continue;
+			if (ev.btn == KT_MB_WHEEL_UP) {
+				sh_volume_set(pct + 5);
+			} else if (ev.btn == KT_MB_WHEEL_DOWN) {
+				sh_volume_set(pct - 5);
+			} else if (ev.btn == KT_MB_RIGHT) {
+				break;
+			} else if (ev.btn == KT_MB_LEFT) {
+				if (ev.my == 2 && sl_mute_end > sl_mute_x &&
+				    ev.mx >= sl_mute_x && ev.mx < sl_mute_end)
+					sh_volume_toggle();
+				else if (on_bar) {
+					/* Where along the bar, rounded to the
+					 * cell's own centre so the first and
+					 * last cells can reach 0 and 100. */
+					sh_volume_set((ev.mx - SL_GX) * 100 /
+						      (gw - 1));
+					dragging = 1;
+				}
+			}
+			continue;
+		}
+		if (ev.type != KT_EVT_KEY)
+			continue;
+		switch (ev.key) {
+		case KT_K_ESC:
+		case KT_K_ENTER:
+			goto done;
+		case KT_K_LEFT:
+		case KT_K_DOWN:
+			sh_volume_set(pct - 5);
+			break;
+		case KT_K_RIGHT:
+		case KT_K_UP:
+			sh_volume_set(pct + 5);
+			break;
+		case KT_K_HOME:
+			sh_volume_set(0);
+			break;
+		case KT_K_END:
+			sh_volume_set(100);
+			break;
+		case 'm':
+			sh_volume_toggle();
+			break;
+		default:
+			break;
+		}
+	}
+done:
+	kicon_finish();
+	kwl_shutdown();
+	return 0;
 }
 
 int osd_main(int argc, char **argv)
@@ -418,6 +877,23 @@ int osd_main(int argc, char **argv)
 	const char *what = argv[1];
 	const char *arg = argc > 2 ? argv[2] : NULL;
 	int pct = -1, muted = 0;
+
+	if (!strcmp(what, "slider")) {
+		int ax = -1, ay = 0;
+		const char *font = NULL;
+		for (int i = 2; i < argc; i++) {
+			if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
+				ax = atoi(argv[i + 1]);
+				ay = atoi(argv[i + 2]);
+				i += 2;
+			} else if (!strcmp(argv[i], "--font") && i + 1 < argc) {
+				font = argv[++i];
+			} else {
+				return usage();
+			}
+		}
+		return slider_main(ax, ay, font);
+	}
 
 	if (!strcmp(what, "volume")) {
 		pct = sh_volume_get(&muted);
@@ -435,6 +911,26 @@ int osd_main(int argc, char **argv)
 				return usage();
 			}
 			pct = sh_volume_get(&muted);
+		}
+	} else if (!strcmp(what, "mic")) {
+		pct = mic_get(&muted);
+		if (pct < 0) {
+			fprintf(stderr, "kdos-osd: no ALSA capture mixer — is "
+					"the card driver loaded?\n");
+			return 1;
+		}
+		if (arg) {
+			if (!strcmp(arg, "mute") || !strcmp(arg, "toggle"))
+				mic_adjust(0);
+			else if (!strcmp(arg, "up"))
+				mic_adjust(5);
+			else if (!strcmp(arg, "down"))
+				mic_adjust(-5);
+			else if (arg[0] == '+' || arg[0] == '-')
+				mic_adjust(atoi(arg));
+			else
+				return usage();
+			pct = mic_get(&muted);
 		}
 	} else if (!strcmp(what, "brightness")) {
 		pct = backlight_get();
@@ -470,6 +966,11 @@ int osd_main(int argc, char **argv)
 
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * Bottom-centre, where a volume bezel goes — dead centre put
+		 * it on top of whatever the media key was pressed OVER.
+		 */
+		.corner = KWL_CORNER_BOTTOM_CENTER,
 		.cols = OSD_COLS,
 		.rows = OSD_ROWS,
 		.app_id = "kdos-osd",
@@ -477,11 +978,17 @@ int osd_main(int argc, char **argv)
 	sh_theme_from_cache();
 	if (kwl_init(&cfg) != 0)
 		return 0;
+	/*
+	 * NO pointer input, ever: this overlay sat mid-screen with the default
+	 * input region and ate every click under it for 1.2 s per keypress.
+	 * It changes nothing on a click and must be transparent to one.
+	 */
+	kwl_input_cells(NULL, 0);
 	ktui_draw_init();
 
 	char shown[32];
 	snprintf(shown, sizeof(shown), "%s", what);
-	draw_osd(shown, pct, muted);
+	osd_show(shown, pct, muted);
 
 	/*
 	 * Draw, wait out the dwell, exit — but a press that arrives while this
@@ -506,7 +1013,7 @@ int osd_main(int argc, char **argv)
 		if (!shown[0])
 			snprintf(shown, sizeof(shown), "%s", what);
 		osd_value(shown, &pct, &muted);
-		draw_osd(shown, pct, muted);
+		osd_show(shown, pct, muted);
 		until = osd_now_ms() + OSD_MS;
 	}
 
