@@ -143,24 +143,47 @@ done
 note "init.d services" "$daemons checked"
 
 echo
-echo "==> every archive a port ships is named by a sha256 in its recipe"
+echo "==> every source a port ships is named by a sha256 in its recipe"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
-# port that cannot build. The hashes were bootstrapped from the git-LFS
+# port that cannot build. The enumeration is the RECIPE's own source list
+# read through the same parser the build uses, NOT a glob of archive
+# extensions: that glob knew about six suffixes, so ca-certificates' .pem
+# and iana-etc's four plain files were invisible here and failed instead
+# two hours into phase 3. The hashes were bootstrapped from the git-LFS
 # pointers, where the oid IS the file's sha256.
 unhashed=0
 for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
-    for a in "$d"/*.tar.gz "$d"/*.tar.xz "$d"/*.tar.bz2 "$d"/*.tar.zst \
-             "$d"/*.tgz "$d"/*.zip; do
-        [ -f "$a" ] || continue
-        base=$(basename "$a")
+    p=$(basename "$d")
+    unset name version source
+    eval "$("$SP/kpkg" meta "$d" 2>/dev/null)"
+    idx=0
+    for s in $source; do
+        # source_file() in build.c: a non-URL is its own name, a URL is its
+        # basename, and only the FIRST source is renamed to <name>-<version>
+        # when it carries an archive suffix.
+        case "$s" in
+            *://*) base=${s##*/} ;;
+            *)     base=$s ;;
+        esac
+        if [ "$idx" = 0 ]; then
+            case "$base" in
+                *.tar.gz|*.tgz)   base="$name-$version.tar.gz" ;;
+                *.tar.bz2|*.tbz2) base="$name-$version.tar.bz2" ;;
+                *.tar.xz|*.txz)   base="$name-$version.tar.xz" ;;
+                *.tar.zst)        base="$name-$version.tar.zst" ;;
+                *.zip)            base="$name-$version.zip" ;;
+            esac
+        fi
+        idx=$((idx + 1))
+        [ -f "$d/$base" ] || continue
         if ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
-            bad "$(basename "$d")" "ships $base with no sha256 line"
+            bad "$p" "ships $base with no sha256 line"
             unhashed=$((unhashed + 1))
         fi
     done
 done
-[ "$unhashed" = 0 ] && note "every archive is hashed" "ok"
+[ "$unhashed" = 0 ] && note "every source is hashed" "ok"
 
 # The escape hatch must be unused in a committed tree.
 if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild src/desktop/*/kpkgbuild 2>/dev/null; then
@@ -295,14 +318,27 @@ hits=$(grep -rln 'python3 .*genlaunchers\|python3 .*pack \|python3 .*assemble\|p
 
 echo
 echo "==> the rootfs carries no script whose interpreter is gone"
+# The question is whether the interpreter EXISTS on the target, not whether it
+# is a shell: a shipped file whose `#!` names something the tree does not build
+# is a file that cannot run. bash and toybox's sh are always there; anything
+# else has to be a binary some port installs, and is listed here with the port
+# that provides it so the list cannot drift into an unchecked allowlist.
+#
+#   /usr/sbin/nft   nftables   — fs/etc/nftables.conf carries nft's own `-f`
+#                                shebang; 25_nftables.sh runs it explicitly, so
+#                                the shebang documents the format rather than
+#                                being the execution path.
 for f in $(grep -rl '^#!' fs/ 2>/dev/null); do
     interp=$(head -1 "$f" | sed 's|^#!||; s| .*||')
     case "$interp" in
         /bin/bash|/bin/sh) ;;
+        /usr/sbin/nft)
+            [ -d ports/core/nftables ] \
+                || bad "$f" "interpreter $interp has no port" ;;
         *) bad "$f" "unexpected interpreter $interp" ;;
     esac
 done
-note "rootfs interpreters" "bash and sh only"
+note "rootfs interpreters" "every #! is provided by the tree"
 
 # ── the build tree still carries packages whose port is gone ───────────────
 #

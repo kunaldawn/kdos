@@ -1,0 +1,23 @@
+# KDOS — software-defined radio front ends.
+#
+# The dvb_usb_rtl28xxu blacklist in /etc/modprobe.d/kdos-sdr.conf is the
+# load-bearing half of this. The kernel otherwise claims an RTL2832U as a DVB-T
+# tuner on plug-in and librtlsdr cannot open a device that is present,
+# enumerated and listed by lsusb — which presents as a dead dongle. This file
+# is the access half; neither works alone.
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="2832", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="2838", GROUP="dialout", MODE="0660"
+
+# HackRF One / Jawbreaker
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d50", GROUP="dialout", MODE="0660"
+
+# Airspy, Airspy HF+
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d50", ATTR{idProduct}=="60a1", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="03eb", ATTR{idProduct}=="800c", GROUP="dialout", MODE="0660"
+
+# Great Scott Gadgets / Nuand bladeRF
+SUBSYSTEM=="usb", ATTR{idVendor}=="2cf0", GROUP="dialout", MODE="0660"
+
+# SDRplay
+SUBSYSTEM=="usb", ATTR{idVendor}=="1df7", GROUP="dialout", MODE="0660"

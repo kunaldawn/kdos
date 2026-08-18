@@ -24,7 +24,7 @@ meson setup build \
 	-Dlibrsvg=enabled \
 	-Dlibnsgif=enabled \
 	-Dfreeimage=disabled \
-	-Dlibheif=disabled \
+	-Dlibheif=enabled \
 	-Dlibjxl=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

@@ -8,7 +8,7 @@ daemon:x:7:
 floppy:x:8:
 disk:x:9:
 lp:x:10:
-dialout:x:11:
+dialout:x:11:kdos
 audio:x:12:kdos
 video:x:13:kdos
 utmp:x:14:

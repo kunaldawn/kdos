@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = flac
+version     = 1.5.0
+release     = 1
+source      = https://downloads.xiph.org/releases/flac/$name-$version.tar.xz
+sha256      = f2c1c76592a82ffff8413ba3c4a1299b6c7ab06c734dee03fd88630485c2b920  flac-1.5.0.tar.xz
+description = Free Lossless Audio Codec — libsndfile reads WAV and nothing else without it
+homepage    = https://xiph.org/flac/
+depends     = libogg

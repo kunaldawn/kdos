@@ -1,0 +1,7 @@
+# KDOS — USB Test & Measurement Class: scopes, DMMs, function generators,
+# spectrum analysers. CONFIG_USB_TMC=m creates the nodes; without this rule
+# they are root-owned and the console user cannot read an instrument that is
+# plugged in and working.
+
+KERNEL=="usbtmc[0-9]*", GROUP="dialout", MODE="0660"
+KERNEL=="usbtmc",       GROUP="dialout", MODE="0660"

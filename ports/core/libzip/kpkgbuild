@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libzip
+version     = 1.11.4
+release     = 1
+source      = https://libzip.org/download/$name-$version.tar.xz
+sha256      = 8a247f57d1e3e6f6d11413b12a6f28a9d388de110adc0ec608d893180ed7097b  libzip-1.11.4.tar.xz
+description = C library for reading and writing zip archives
+homepage    = https://libzip.org/
+depends     = cmake zlib bzip2 xz openssl
