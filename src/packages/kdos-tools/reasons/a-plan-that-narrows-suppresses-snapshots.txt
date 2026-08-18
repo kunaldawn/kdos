@@ -1,0 +1,13 @@
+title: a build plan that narrows execution must suppress snapshot writes
+cite: kdosbuild
+port: kdos-tools
+
+Re-running phase 1 on a phase-5 tree would otherwise file that tree under
+phase 1's name, and the snapshot that answers "go back" becomes the one that
+loses it.
+
+Two more from the same engine: `kpkg install -f` genuinely forces a rebuild,
+so it is passed only for ports the plan selected — blanketly it would rebuild
+all ~350 packages — and `--overwrite` is the other half of what -f used to
+mean, split out, because the userland genuinely overlaps in about 70 paths and
+the path must CHANGE HANDS in the database rather than be claimed twice.

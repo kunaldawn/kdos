@@ -1,0 +1,13 @@
+title: flatten the loaded image to one layer, or rebuilt dirs come up EMPTY
+cite: 01_appbox.sh
+port: kdos-appbox
+port: podman
+
+The rootful unpack records whiteout and opaque markers as trusted.overlay.*,
+which the ROOTLESS runtime mount cannot see. Multi-layer-rebuilt directories
+like /etc/alternatives are then empty inside the box.
+
+Rootful `podman create` + export + import is the flatten. And wipe $STORAGE
+before loading: re-baking onto an existing store remapped already-remapped
+uids (clamped at 165535) and every distrobox enter died with
+"crun: readlink ''".

@@ -1,0 +1,14 @@
+title: reproducible packaging is a property of ONE function, not of 396 recipes
+cite: roll_package
+port: kdos-installer
+
+That is the whole reason kpkg rolls the archive itself instead of letting each
+build.sh do it. --sort=name because readdir order is filesystem order;
+--mtime=@$SOURCE_DATE_EPOCH; --owner=0 --group=0 --numeric-owner because the
+builder's uid and its NAME go in the header; --format=gnu because pax headers
+carry atime and ctime; xz -9 -T1 because XZ_OPT=-T0 in the environment
+silently changes the bytes.
+
+And umask(022) before the build — the one source of drift that is not in the
+tar call. Measured: zlib stays byte-identical under umask 077, XZ_OPT=-T0 and
+TZ=Asia/Kolkata together.

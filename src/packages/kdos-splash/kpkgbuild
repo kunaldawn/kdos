@@ -10,7 +10,7 @@
 
 name        = kdos-splash
 version     = 1.1
-release     = 1
+release     = 2
 description = Boot splash — CRT power-on animation drawn on the framebuffer
 homepage    = https://github.com/kunaldawn/kdos
 depends     = terminus-font

@@ -1,0 +1,13 @@
+title: a portal backend is a server, and a server that blocks while it thinks is down
+cite: xdg-desktop-portal-kdos
+port: xdg-desktop-portal-kdos
+
+The first version forked the picker and sat in waitpid() inside the method
+handler, so for as long as anybody had a file dialog open this backend
+answered nothing at all — a second application's Open queued behind the first,
+and a boxed app asking Settings for the colour scheme (which happens on every
+launch) hung until the dialog was dismissed.
+
+The fork happens in the handler, the sd_bus_message is REFFED and the handler
+returns "handled" without replying, the pipe joins the main loop's poll set,
+and the reply is built at EOF.

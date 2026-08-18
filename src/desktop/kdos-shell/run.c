@@ -28,6 +28,7 @@
  * ---------------------------------
  */
 
+#include <dirent.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -90,32 +91,167 @@ static void hist_load(void)
 	fclose(f);
 }
 
-/* Append, unless it is what was run last — a history whose top five entries
- * are the same command is a history with four wasted rows. */
+/* Append — but a command already ANYWHERE in the list moves to the end
+ * instead of appearing twice, so the up-arrow order is recency and a
+ * re-run of an old command does not push a fresh one off the top. */
 static void hist_add(const char *cmd)
 {
-	char path[512];
+	char path[512], keep[MAX_CMD];
 	FILE *f;
+	int i;
 
-	if (!*cmd || (nhist && !strcmp(hist[nhist - 1], cmd)))
+	if (!*cmd)
 		return;
-	if (hist_path(path, sizeof(path)) != 0)
-		return;
-
+	for (i = 0; i < nhist; i++) {
+		if (strcmp(hist[i], cmd))
+			continue;
+		memcpy(keep, hist[i], MAX_CMD);
+		memmove(hist[i], hist[i + 1],
+			(size_t)(nhist - 1 - i) * MAX_CMD);
+		memcpy(hist[nhist - 1], keep, MAX_CMD);
+		goto write;
+	}
 	if (nhist == MAX_HIST) {
 		memmove(hist[0], hist[1], (MAX_HIST - 1) * MAX_CMD);
 		nhist--;
 	}
 	snprintf(hist[nhist++], MAX_CMD, "%s", cmd);
 
+write:
+	if (hist_path(path, sizeof(path)) != 0)
+		return;
 	/* Rewritten whole rather than appended: the trim above has to reach
 	 * the file too, and fifty short lines is nothing to write. */
 	f = fopen(path, "w");
 	if (!f)
 		return;
-	for (int i = 0; i < nhist; i++)
+	for (i = 0; i < nhist; i++)
 		fprintf(f, "%s\n", hist[i]);
 	fclose(f);
+}
+
+/* ── $PATH completion ──────────────────────────────────────────────────── */
+
+/*
+ * Tab completes the FIRST token against the executables on $PATH — readdir
+ * and a prefix match, no shell anywhere. The matches are gathered once per
+ * cycle (the prefix as it stood at the first Tab) and repeated Tabs walk
+ * them; any other key ends the cycle.
+ */
+#define MAX_COMP 64
+
+static char comp[MAX_COMP][128];
+static int ncomp = -1;			/* -1: no cycle in progress */
+static int comp_i;
+
+static int cmp_str(const void *a, const void *b)
+{
+	return strcmp((const char *)a, (const char *)b);
+}
+
+static void complete_scan(const char *prefix)
+{
+	const char *path = getenv("PATH");
+	size_t plen = strlen(prefix);
+	char dir[512];
+
+	ncomp = 0;
+	if (!path || !plen)
+		return;
+	for (const char *p = path; *p;) {
+		const char *sep = strchr(p, ':');
+		size_t dl = sep ? (size_t)(sep - p) : strlen(p);
+		if (dl && dl < sizeof(dir)) {
+			memcpy(dir, p, dl);
+			dir[dl] = '\0';
+			DIR *d = opendir(dir);
+			struct dirent *e;
+			while (d && (e = readdir(d))) {
+				if (strncmp(e->d_name, prefix, plen))
+					continue;
+				char full[768];
+				struct stat st;
+				snprintf(full, sizeof(full), "%s/%s", dir,
+					 e->d_name);
+				/* A regular executable, not "." matching a
+				 * directory access() would also say yes to. */
+				if (stat(full, &st) || !S_ISREG(st.st_mode) ||
+				    access(full, X_OK))
+					continue;
+				int dup = 0;
+				for (int i = 0; i < ncomp; i++)
+					if (!strcmp(comp[i], e->d_name)) {
+						dup = 1;
+						break;
+					}
+				if (dup)
+					continue;
+				if (ncomp < MAX_COMP) {
+					snprintf(comp[ncomp++], sizeof(comp[0]),
+						 "%.*s", (int)sizeof(comp[0]) - 1,
+						 e->d_name);
+					continue;
+				}
+				/*
+				 * Full: keep the lexicographically first
+				 * MAX_COMP, which is the head of the list the
+				 * qsort below is about to produce. The cap used
+				 * to be applied in readdir order with the sort
+				 * AFTER it, so which matches survived was
+				 * filesystem order biased to the earliest $PATH
+				 * entry — with ~90 alien-app shims in
+				 * /usr/local/bin, `k` then Tab could simply not
+				 * contain `kpkg`, and nothing said so.
+				 */
+				int worst = 0;
+				for (int i = 1; i < ncomp; i++)
+					if (strcmp(comp[i], comp[worst]) > 0)
+						worst = i;
+				if (strcmp(e->d_name, comp[worst]) < 0)
+					snprintf(comp[worst], sizeof(comp[0]),
+						 "%.*s", (int)sizeof(comp[0]) - 1,
+						 e->d_name);
+			}
+			if (d)
+				closedir(d);
+		}
+		if (!sep)
+			break;
+		p = sep + 1;
+	}
+	qsort(comp, (size_t)ncomp, sizeof(comp[0]), cmp_str);
+}
+
+/* Display columns in the first `nbytes` bytes — the caret's cell. */
+static int col_of(const char *s, size_t nbytes)
+{
+	const char *p = s, *end = s + nbytes;
+	int c = 0;
+
+	while (p < end && *p) {
+		uint32_t cp;
+		p = ktui_utf8_next(p, &cp);
+		c++;
+	}
+	return c;
+}
+
+/* Most useful first: the shared bar drops from the RIGHT. */
+enum { RB_RUN, RB_TERM, RB_CANCEL, RB_N };
+
+/* The inverse: the byte offset of a column, clamped to the end of the line.
+ * A text field that cannot be clicked into is one you have to arrow across. */
+static size_t cur_at_col(const char *s, int want)
+{
+	const char *p = s;
+	int c = 0;
+
+	while (*p && c < want) {
+		uint32_t cp;
+		p = ktui_utf8_next(p, &cp);
+		c++;
+	}
+	return (size_t)(p - s);
 }
 
 static void launch(const char *cmd, bool in_term)
@@ -167,7 +303,11 @@ int run_main(int argc, char **argv)
 
 	KwlConfig cfg = {
 		.role = KWL_ROLE_OVERLAY,
-		.cols = 52,
+		/* Fifty-six, not fifty-two: the three buttons come to
+		 * thirty-five columns and the hint beside them is drawn whole
+		 * or not at all, so four more cells are the difference between
+		 * a row that explains itself and a row of buttons alone. */
+		.cols = 56,
 		.rows = 5,
 		.app_id = "kdos-run",
 		.font = font,
@@ -184,7 +324,8 @@ int run_main(int argc, char **argv)
 	ktui_draw_init();
 
 	char cmd[MAX_CMD] = { 0 };
-	size_t len = 0;
+	size_t len = 0, cur = 0;	/* bytes; cur is the caret */
+	int off = 0;			/* leftmost shown column */
 	int rc = 1;
 
 	hist_load();
@@ -198,24 +339,73 @@ int run_main(int argc, char **argv)
 		ktui_draw_box(krect(0, 0, w, h), "Run", KT_ACCENT, KT_SURFACE, 0);
 
 		ktui_draw_text(2, 1, 1, ">", KT_ACCENT, KT_SURFACE, KT_A_NONE);
-		/* The tail, not the head: a long command that scrolled off the
-		 * left is still being typed at its right-hand end, and showing
-		 * the beginning would hide the cursor. */
+		/* The window follows the CARET, not the tail: a long command
+		 * scrolls under a caret that stays inside the box, so editing
+		 * in the middle is visible wherever the middle is. */
 		int room = w - 6;
+		if (room < 1)
+			room = 1;
+		int pw = col_of(cmd, cur);
+		if (pw < off)
+			off = pw;
+		if (pw - off >= room)
+			off = pw - room + 1;
 		const char *shown = cmd;
-		if ((int)len > room)
-			shown = cmd + len - room;
+		for (int c = 0; c < off && *shown; c++) {
+			uint32_t cp;
+			shown = ktui_utf8_next(shown, &cp);
+		}
 		ktui_draw_text(4, 1, room, shown, KT_TEXT, KT_SURFACE, KT_A_NONE);
-		ktui_draw_text(4 + (int)(len > (size_t)room ? (size_t)room : len),
-			       1, 1, "_", KT_ACCENT, KT_SURFACE, KT_A_NONE);
-		ktui_draw_text(2, h - 2, w - 4,
-			       "Enter run    Ctrl+Enter in a terminal    Esc cancel",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+		/* The caret: the cell under it with the colours swapped, or a
+		 * bare underscore when it sits past the end of the line. */
+		int cx = 4 + (pw - off);
+		if (cur < len) {
+			uint32_t cp;
+			const char *nx = ktui_utf8_next(cmd + cur, &cp);
+			char ch[8];
+			snprintf(ch, sizeof(ch), "%.*s",
+				 (int)(nx - (cmd + cur)), cmd + cur);
+			ktui_draw_fill(krect(cx, 1, 1, 1), KT_ACCENT);
+			ktui_draw_text(cx, 1, 1, ch, KT_SURFACE, KT_ACCENT,
+				       KT_A_NONE);
+		} else {
+			ktui_draw_text(cx, 1, 1, "_", KT_ACCENT, KT_SURFACE,
+				       KT_A_NONE);
+		}
+		/*
+		 * THE VERBS AS BUTTONS. The row said `Enter run    Ctrl+Enter
+		 * in a terminal    Esc cancel`, which is a legend: the one
+		 * feature this box has beyond a prompt — running something in
+		 * a terminal — was a modifier nobody is told about, and a
+		 * pointer could do nothing here at all. Three buttons say the
+		 * same three things and can be pressed. Most useful first, so
+		 * the shared bar drops Cancel before it drops Run.
+		 */
+		struct sh_button rb[RB_N];
+		rb[RB_RUN] = (struct sh_button){ "Run", cmd[0] != '\0' };
+		rb[RB_TERM] = (struct sh_button){ "In Terminal",
+						  cmd[0] != '\0' };
+		rb[RB_CANCEL] = (struct sh_button){ "Cancel", 1 };
+		int bx = sh_chrome_buttons(w, h - 2, rb, RB_N, -1);
+		const char *hint = "type a command";
+		if (bx - 3 >= (int)ktui_utf8_width(hint))
+			ktui_draw_text(2, h - 2, bx - 3, hint, KT_DIM,
+				       KT_SURFACE, KT_A_NONE);
 		ktui_draw_flush();
 
 		KtuiEvent ev;
-		if (!ktui_backend()->poll_event(&ev, 1000))
+		if (!ktui_backend()->poll_event(&ev, 1000)) {
+			/* The grid follows a configure only when the loop that
+			 * owns the surface applies it — the caret window above
+			 * is computed from a width that no longer exists
+			 * otherwise. */
+			if (ktui_resized) {
+				ktui_resized = 0;
+				ktui_draw_resize();
+				ktui_draw_invalidate();
+			}
 			continue;
+		}
 		/*
 		 * A right press closes it, the same as Escape. There is nothing
 		 * else here to click — a run box is a text field — but a
@@ -224,12 +414,39 @@ int run_main(int argc, char **argv)
 		 * it too — `dismiss_on_unfocus` above.)
 		 */
 		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press == KT_MP_DRAG) {
+				sh_chrome_hover(ev.mx, ev.my);
+				continue;
+			}
 			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_RIGHT)
 				break;
+			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_LEFT) {
+				int bi = sh_chrome_button_at(ev.mx, ev.my);
+
+				if (bi == RB_CANCEL)
+					break;
+				if ((bi == RB_RUN || bi == RB_TERM) && cmd[0]) {
+					hist_add(cmd);
+					launch(cmd, bi == RB_TERM);
+					rc = 0;
+					break;
+				}
+				/* A CLICK PLACES THE CARET. It is the one
+				 * thing a pointer owes a text field, and the
+				 * only mouse gesture this box could not
+				 * answer: editing the middle of a long command
+				 * meant arrowing to it. */
+				if (bi < 0 && ev.my == 1 && ev.mx >= 4)
+					cur = cur_at_col(cmd, off + ev.mx - 4);
+			}
 			continue;
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		/* Any key but Tab ends a completion cycle — the next Tab
+		 * gathers matches for whatever the line says by then. */
+		if (ev.key != KT_K_TAB)
+			ncomp = -1;
 
 		if (ev.key == KT_K_ESC)
 			break;
@@ -239,9 +456,75 @@ int run_main(int argc, char **argv)
 			rc = 0;
 			break;
 		}
+		if (ev.key == KT_K_TAB) {
+			/* First token only: a run box completes the COMMAND;
+			 * an argument is a path question it does not answer. */
+			size_t tok = strcspn(cmd, " \t");
+			if (cur > tok)
+				continue;
+			if (ncomp < 0) {
+				char pre[MAX_CMD];
+				snprintf(pre, sizeof(pre), "%.*s", (int)tok,
+					 cmd);
+				complete_scan(pre);
+				comp_i = 0;
+			}
+			if (ncomp > 0) {
+				const char *m = comp[comp_i++ % ncomp];
+				size_t ml = strlen(m);
+				if (ml + len - tok < sizeof(cmd)) {
+					memmove(cmd + ml, cmd + tok,
+						len - tok + 1);
+					memcpy(cmd, m, ml);
+					len += ml - tok;
+					cur = ml;
+				}
+			}
+			continue;
+		}
 		if (ev.key == KT_K_BACKSPACE) {
-			if (len)
-				cmd[--len] = '\0';
+			if (cur) {
+				size_t p = cur - 1;
+				while (p > 0 && (cmd[p] & 0xc0) == 0x80)
+					p--;
+				memmove(cmd + p, cmd + cur, len - cur + 1);
+				len -= cur - p;
+				cur = p;
+			}
+			continue;
+		}
+		if (ev.key == KT_K_DEL) {
+			if (cur < len) {
+				uint32_t cp;
+				size_t nx = (size_t)(ktui_utf8_next(cmd + cur,
+								    &cp) - cmd);
+				memmove(cmd + cur, cmd + nx, len - nx + 1);
+				len -= nx - cur;
+			}
+			continue;
+		}
+		if (ev.key == KT_K_LEFT) {
+			while (cur > 0) {
+				cur--;
+				if ((cmd[cur] & 0xc0) != 0x80)
+					break;
+			}
+			continue;
+		}
+		if (ev.key == KT_K_RIGHT) {
+			if (cur < len) {
+				uint32_t cp;
+				cur = (size_t)(ktui_utf8_next(cmd + cur, &cp) -
+					       cmd);
+			}
+			continue;
+		}
+		if (ev.key == KT_K_HOME) {
+			cur = 0;
+			continue;
+		}
+		if (ev.key == KT_K_END) {
+			cur = len;
 			continue;
 		}
 		if (ev.key == KT_K_UP || ev.key == KT_K_DOWN) {
@@ -254,26 +537,33 @@ int run_main(int argc, char **argv)
 			else
 				snprintf(cmd, sizeof(cmd), "%s", hist[hpos]);
 			len = strlen(cmd);
+			cur = len;
 			continue;
 		}
 		if (ev.key == 21) {		/* Ctrl+U: clear the line */
 			cmd[0] = '\0';
 			len = 0;
+			cur = 0;
 			continue;
 		}
-		if (ev.key == 23) {		/* Ctrl+W: the last word */
-			while (len && cmd[len - 1] == ' ')
-				cmd[--len] = '\0';
-			while (len && cmd[len - 1] != ' ')
-				cmd[--len] = '\0';
+		if (ev.key == 23) {		/* Ctrl+W: the word before the caret */
+			size_t p = cur;
+			while (p && cmd[p - 1] == ' ')
+				p--;
+			while (p && cmd[p - 1] != ' ')
+				p--;
+			memmove(cmd + p, cmd + cur, len - cur + 1);
+			len -= cur - p;
+			cur = p;
 			continue;
 		}
 		/* Printable ASCII only: the command is split into argv by
 		 * bytes, and accepting multi-byte input here would let half a
 		 * codepoint end an argument. */
 		if (ev.key >= 0x20 && ev.key < 0x7f && len + 1 < sizeof(cmd)) {
-			cmd[len++] = (char)ev.key;
-			cmd[len] = '\0';
+			memmove(cmd + cur + 1, cmd + cur, len - cur + 1);
+			cmd[cur++] = (char)ev.key;
+			len++;
 		}
 	}
 

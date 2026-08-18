@@ -1,0 +1,11 @@
+title: fstab is appended to, never replaced
+cite: kinstall
+port: kdos-installer
+see: tmp-mode-1777
+
+The shipped file carries the tmpfs /tmp with mode=1777. Overwriting it is the
+/tmp bug arriving a week later and looking like "GIMP does not start".
+
+The same shape one directory over: 00_file_system.sh MERGES
+/etc/{passwd,group,shadow} instead of overwriting, because package
+postinstalls add service users long after phase 1 runs.

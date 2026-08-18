@@ -1,0 +1,12 @@
+title: /sys/class/powercap lists nested RAPL domains FLAT — summing double-counts
+cite: kdos-energyd
+port: kdos-energyd
+
+intel-rapl:0 (a package) sits beside intel-rapl:0:0 (that package's core
+domain). Measured on the fixture: 15 W becomes 26.25 W. A domain is a
+subdomain exactly when it appears INSIDE another's directory. psys goes the
+other way — it contains the packages, so where it exists it replaces them.
+
+Two more that change the answer: the counter wraps about every 36 minutes at
+30 W, and the idle floor must be subtracted before anything is attributed or a
+machine at a login prompt reports as 90% one process.

@@ -1,0 +1,12 @@
+title: Xcursor ARGB is premultiplied — divide alpha out before any ramp
+cite: kdos-cursors
+port: kdos-cursors
+
+Recolour without dividing and multiplying back and every anti-aliased edge
+turns into a dark halo.
+
+The other cursor trap is aliasing direction: alias groups are re-rooted on
+their CSS names (`default` is the real file, `left_ptr` the symlink). Bibata
+ships the opposite direction, and installing it over the old theme produced
+default -> left_ptr -> default, so kpkg aborted with
+"realpath: Symbolic link loop".

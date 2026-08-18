@@ -24,14 +24,17 @@
  */
 #include <drm_fourcc.h>
 #include <png.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
+#include "kcolor.h"
 #include "kdos.h"
 #include "labwc.h"
 #include "output.h"
@@ -46,9 +49,14 @@ static struct kdos_wp_buffer *wp_buf;
 
 struct kdos_wp_node {
 	struct wl_list link;
-	struct wlr_scene_buffer *scene_buffer;
+	struct wlr_scene_buffer *scene_buffer;	/* NULL for a rect-only output */
+	struct wlr_scene_rect *rect;
 };
 static struct wl_list wp_nodes = { .prev = &wp_nodes, .next = &wp_nodes };
+
+/* what the current wp_buf was decoded from, for the SIGHUP reload */
+static char wp_src[512];
+static time_t wp_mtime;
 
 static void
 wp_buffer_destroy(struct wlr_buffer *b)
@@ -188,34 +196,108 @@ out:
 	return w;
 }
 
-/* Cover: scale by the LARGER ratio and centre; overhang is cropped. */
+/*
+ * Cover: scale by the LARGER ratio and centre; overhang is cropped.
+ *
+ * The clamp is the whole point and it is not defensive coding. On paper the
+ * visible box can never exceed the image — the larger ratio wins, so one axis
+ * comes out exactly whole and the other smaller — but `oh / (oh / ih)` is two
+ * roundings in IEEE double and lands a hair ABOVE ih often enough to matter:
+ * a 2561x1601 wallpaper on a 2404x1890 output gives y = -1.14e-13.
+ * wlr_scene_buffer_set_source_box() asserts x, y, width and height are all
+ * >= 0, so that hair ABORTS the compositor before the desktop ever draws —
+ * "kdos-desktop does not start", on some screen sizes and not others (134 of
+ * them in a 320..3840 x 240..2160 sweep against the shipped image).
+ */
 static void
 cover_src_box(int iw, int ih, int ow, int oh, struct wlr_fbox *src)
 {
+	if (iw <= 0 || ih <= 0 || ow <= 0 || oh <= 0) {
+		/* A zero divides to inf, and inf fails >= 0 as surely as a
+		 * negative does. The whole image is the honest fallback. */
+		src->x = src->y = 0;
+		src->width = iw > 0 ? iw : 0;
+		src->height = ih > 0 ? ih : 0;
+		return;
+	}
+
 	double sx = (double)ow / iw, sy = (double)oh / ih;
 	double s = sx > sy ? sx : sy;
 	double vw = ow / s, vh = oh / s;
+	if (vw > iw) {
+		vw = iw;
+	}
+	if (vh > ih) {
+		vh = ih;
+	}
 	src->x = (iw - vw) / 2;
 	src->y = (ih - vh) / 2;
 	src->width = vw;
 	src->height = vh;
 }
 
+/*
+ * The image to decode: `kdos theme` retints the shipped wallpaper into
+ * $XDG_CACHE_HOME/kdos/wallpaper.png, and that file — the accent the
+ * user actually chose — beats the fixed comp.conf path whenever it
+ * exists. `wallpaper = none` stays an honest off and is never
+ * overridden by the cache: the user said none.
+ * Returns false when the wallpaper is off; *mtime is 0 when the chosen
+ * file cannot be statted.
+ */
+static bool
+wp_source(char *buf, size_t len, time_t *mtime)
+{
+	*mtime = 0;
+	const char *conf = kdos_conf.wallpaper;
+	if (!*conf || !strcmp(conf, "none")) {
+		return false;
+	}
+
+	char cachef[512];
+	const char *cache = getenv("XDG_CACHE_HOME");
+	const char *home = getenv("HOME");
+	cachef[0] = '\0';
+	if (cache && *cache) {
+		snprintf(cachef, sizeof(cachef), "%s/kdos/wallpaper.png", cache);
+	} else if (home && *home) {
+		snprintf(cachef, sizeof(cachef), "%s/.cache/kdos/wallpaper.png",
+			home);
+	}
+
+	struct stat st;
+	if (cachef[0] && stat(cachef, &st) == 0) {
+		snprintf(buf, len, "%s", cachef);
+		*mtime = st.st_mtime;
+		return true;
+	}
+	snprintf(buf, len, "%s", conf);
+	if (stat(buf, &st) == 0) {
+		*mtime = st.st_mtime;
+	}
+	return true;
+}
+
 void
 kdos_wallpaper_init(void)
 {
-	const char *path = kdos_conf.wallpaper;
-	/* `wallpaper = none` is an honest off, not a missing file */
-	if (!*path || !strcmp(path, "none")) {
-		wlr_log(WLR_INFO, "wallpaper off (comp.conf)");
+	char path[512];
+	time_t mtime;
+	if (!wp_source(path, sizeof(path), &mtime)) {
+		/* an honest off, not a missing file — the deep rects from
+		 * kdos_wallpaper_arrange() are the background */
+		wlr_log(WLR_INFO, "wallpaper off (comp.conf) — the desktop "
+			"background is the accent's deep colour");
 		return;
 	}
 	wp_buf = decode_png(path);
 	if (!wp_buf) {
 		wlr_log(WLR_INFO, "no wallpaper at %s — the desktop "
-			"background is the theme colour", path);
+			"background is the accent's deep colour", path);
 		return;
 	}
+	snprintf(wp_src, sizeof(wp_src), "%s", path);
+	wp_mtime = mtime;
 	wlr_log(WLR_INFO, "wallpaper %s (%dx%d)", path,
 		wp_buf->base.width, wp_buf->base.height);
 }
@@ -229,16 +311,33 @@ kdos_wallpaper_init(void)
 void
 kdos_wallpaper_arrange(void)
 {
-	if (!wp_buf || !server.scene) {
+	if (!server.scene) {
 		return;
 	}
 
 	struct kdos_wp_node *n, *tmp;
 	wl_list_for_each_safe(n, tmp, &wp_nodes, link) {
-		wlr_scene_node_destroy(&n->scene_buffer->node);
+		if (n->scene_buffer) {
+			wlr_scene_node_destroy(&n->scene_buffer->node);
+		}
+		if (n->rect) {
+			wlr_scene_node_destroy(&n->rect->node);
+		}
 		wl_list_remove(&n->link);
 		free(n);
 	}
+
+	/*
+	 * C8: the very bottom of every output is a rect in the accent's
+	 * DEEP colour, image or no image — `wallpaper = none` and a failed
+	 * decode now genuinely show the theme colour the log always
+	 * claimed, and an image that does not cover (it always does, but
+	 * cover is a crop) has the palette under it, not undefined black.
+	 */
+	const KcolScheme *sc = kdos_accent_scheme();
+	KcolRgb deep = kcol_rgb(sc ? sc->deep : 0x000a03);
+	const float shade[4] = { deep.r / 255.0f, deep.g / 255.0f,
+		deep.b / 255.0f, 1.0f };
 
 	struct output *o;
 	wl_list_for_each(o, &server.outputs, link) {
@@ -249,28 +348,90 @@ kdos_wallpaper_arrange(void)
 			continue;
 		}
 
-		struct wlr_scene_buffer *sb = wlr_scene_buffer_create(
-			&server.scene->tree, &wp_buf->base);
-		if (!sb) {
-			continue;
-		}
-		/* under everything, including background layer clients */
-		wlr_scene_node_lower_to_bottom(&sb->node);
-
-		struct wlr_fbox src;
-		cover_src_box(wp_buf->base.width, wp_buf->base.height,
-			box.width, box.height, &src);
-		wlr_scene_buffer_set_source_box(sb, &src);
-		wlr_scene_buffer_set_dest_size(sb, box.width, box.height);
-		wlr_scene_node_set_position(&sb->node, box.x, box.y);
-
 		n = calloc(1, sizeof(*n));
 		if (!n) {
-			wlr_scene_node_destroy(&sb->node);
+			continue;
+		}
+
+		struct wlr_scene_buffer *sb = NULL;
+		if (wp_buf) {
+			sb = wlr_scene_buffer_create(&server.scene->tree,
+				&wp_buf->base);
+		}
+		if (sb) {
+			/* under everything, incl. background layer clients */
+			wlr_scene_node_lower_to_bottom(&sb->node);
+
+			struct wlr_fbox src;
+			cover_src_box(wp_buf->base.width, wp_buf->base.height,
+				box.width, box.height, &src);
+			wlr_scene_buffer_set_source_box(sb, &src);
+			wlr_scene_buffer_set_dest_size(sb, box.width,
+				box.height);
+			wlr_scene_node_set_position(&sb->node, box.x, box.y);
+		}
+
+		struct wlr_scene_rect *rect = wlr_scene_rect_create(
+			&server.scene->tree, box.width, box.height, shade);
+		if (rect) {
+			wlr_scene_node_set_position(&rect->node, box.x, box.y);
+			/* created after the image, lowered after it: the
+			 * rect ends up underneath */
+			wlr_scene_node_lower_to_bottom(&rect->node);
+		}
+
+		if (!sb && !rect) {
+			free(n);
 			continue;
 		}
 		n->scene_buffer = sb;
+		n->rect = rect;
 		wl_list_insert(&wp_nodes, &n->link);
+	}
+}
+
+/*
+ * SIGHUP: `kdos theme <accent>` just retinted the cache wallpaper and
+ * the deep colour moved with the accent. Re-decode only when the chosen
+ * file actually changed — a SIGHUP that changed nothing must not decode
+ * a 4K PNG for fun — and rebuild either way for the retinted rects.
+ */
+void
+kdos_wallpaper_reload(void)
+{
+	char path[512];
+	time_t mtime;
+	struct kdos_wp_buffer *old = wp_buf;
+
+	if (!wp_source(path, sizeof(path), &mtime)) {
+		wp_buf = NULL;
+		wp_src[0] = '\0';
+		wp_mtime = 0;
+		if (old) {
+			wlr_log(WLR_INFO, "wallpaper off (comp.conf) — the "
+				"desktop background is the accent's deep colour");
+		}
+	} else if (!old || strcmp(path, wp_src) || mtime != wp_mtime) {
+		wp_buf = decode_png(path);
+		if (wp_buf) {
+			snprintf(wp_src, sizeof(wp_src), "%s", path);
+			wp_mtime = mtime;
+			wlr_log(WLR_INFO, "wallpaper %s (%dx%d)", path,
+				wp_buf->base.width, wp_buf->base.height);
+		} else {
+			wp_src[0] = '\0';
+			wp_mtime = 0;
+			wlr_log(WLR_INFO, "no wallpaper at %s — the desktop "
+				"background is the accent's deep colour", path);
+		}
+	} else {
+		old = NULL;	/* unchanged: keep the decode */
+	}
+
+	kdos_wallpaper_arrange();
+	if (old && old != wp_buf) {
+		/* after arrange: the nodes holding its refs are gone */
+		wlr_buffer_drop(&old->base);
 	}
 }
 

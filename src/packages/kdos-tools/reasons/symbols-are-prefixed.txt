@@ -1,0 +1,13 @@
+title: symbols are prefixed, or two of our own programs cannot be linked together
+cite: libktui extraction
+port: kdos-appbox
+
+Rect, Event, Ui, xstrdup and read_file were all unprefixed, and kdos-appbox
+had already declared its own xstrdup and a read_file with different length
+semantics.
+
+Two more rules the extraction exists to keep: the frame state is private
+(`ui.consumed = 1` appeared in two dozen places in the installer alone), and
+chrome ids are the library's business — ui.c used to hardcode the installer's
+sidebar id, and claiming real focus ids there pushed every control on every
+page ten places down the Tab ring and parked the caret on a decoration.

@@ -269,12 +269,14 @@ handle_output_frame(struct wl_listener *listener, void *data)
 	 * means off or fallen back, and the plain path takes over. */
 	kdos_frames_frame(output);
 	int64_t kdos_t0 = kdos_frames_now();
+	bool kdos_wanted = wlr_scene_output_needs_frame(scene_output); /* KDOS */
 
 	if (!kdos_crt_frame(output, scene_output)) {
 		lab_wlr_scene_output_commit(scene_output, pending);
 	}
 
 	kdos_frames_render_ns(output, kdos_frames_now() - kdos_t0); /* KDOS */
+	kdos_frames_submit(output, kdos_wanted); /* KDOS: idle gaps are not misses */
 
 	struct timespec now = { 0 };
 	clock_gettime(CLOCK_MONOTONIC, &now);
@@ -788,6 +790,7 @@ output_update_for_layout_change(void)
 	output_update_all_usable_areas(/*layout_changed*/ true);
 	session_lock_update_for_layout_change();
 	kdos_wallpaper_arrange(); /* KDOS */
+	kdos_idle_arrange(); /* KDOS: a live dim follows the layout */
 
 	/*
 	 * "Move" each wlr_output_cursor (in per-output coordinates) to

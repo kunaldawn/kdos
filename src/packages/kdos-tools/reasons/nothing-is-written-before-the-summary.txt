@@ -1,0 +1,12 @@
+title: nothing is written before the summary — the install starts from the button
+cite: kinstall
+port: kdos-installer
+
+Every page fills cfg and only cfg; the install step is the single point of no
+return. The Python installer it replaces partitioned in the middle of the
+questionnaire, so "back" did not exist. Next on the summary page is
+deliberately refused.
+
+The same principle downstream: a passphrase is refused at the QUESTIONNAIRE
+when the image has no cryptsetup, not at the install step. After the point of
+no return is the wrong place to discover it.

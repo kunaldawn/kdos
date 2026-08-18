@@ -17,6 +17,7 @@
 #include "config/rcxml.h"
 #include "config/session.h"
 #include "foreign-toplevel/foreign.h"
+#include "kdos.h" /* KDOS */
 #include "labwc.h"
 #include "node.h"
 #include "output.h"
@@ -265,6 +266,9 @@ ensure_initial_geometry_and_output(struct view *view)
 		& (XCB_ICCCM_SIZE_HINT_US_POSITION | XCB_ICCCM_SIZE_HINT_P_POSITION));
 
 	if (has_position) {
+		/* KDOS: the client placed this window; window memory must
+		 * not second-guess it */
+		kdos_winpos_client_positioned(view);
 		set_output_from_pending_geometry(view);
 	} else {
 		view_set_output(view, output_nearest_to_cursor());

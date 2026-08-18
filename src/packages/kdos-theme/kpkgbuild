@@ -10,6 +10,6 @@
 
 name        = kdos-theme
 version     = 1.0.0
-release     = 1
+release     = 2
 description = KDOS theme generators — GTK stylesheet, icons, cursors
 homepage    = https://github.com/kunaldawn/kdos
