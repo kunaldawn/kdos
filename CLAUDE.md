@@ -40,8 +40,17 @@ Podman/distrobox glibc rootfs. Session entry: `kdos-desktop` from a tty.
 
 Four properties define the project. Everything else follows from them:
 
-1. **Built from scratch.** Every host byte is compiled here from an upstream
-   tarball by a `kpkgbuild` recipe in `ports/`. 405 ports.
+1. **Built from scratch, with eight named exceptions.** The host is compiled
+   here from upstream tarballs by `kpkgbuild` recipes in `ports/`. 430 ports.
+   What is NOT compiled here, and must not be described as if it were:
+   `linux-firmware`, `intel-ucode`, `sof-firmware` and `wireless-regdb` (vendor
+   binaries with no published source; regdb additionally MUST stay prebuilt or
+   its signature fails), the `rust` and `go` bootstrap toolchains (both
+   languages are written in themselves), and `ttf-dejavu` and `terminus-ttf`
+   (upstream publishes `.ttf` only — `terminus-font`, the console font, IS
+   built from source). Beyond the ports: the vendored artwork in `kdos-icons`,
+   `kdos-cursors` and `kdos-gtk-theme`, Monocypher in libksig, and the 3.9 GB
+   Debian appbox image. README.md carries the full table with sizes.
 2. **KDOS can build KDOS.** Phase 2 is a self-hosting bootstrap — the chroot
    rebuilds tar/musl/zlib/binutils/gcc with itself. The shipped system carries
    gcc, binutils, rust, cmake, meson, ninja, python3, make and `kpkg`, so a
@@ -89,6 +98,36 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
 7. **No source edits with sed/awk.** Use build flags. Patch only when there is
    genuinely no flag, and then ship a real `.patch` beside the kpkgbuild.
 8. **Be terse in responses.** State what changed; the user reads the diff.
+9. **Comments and docs describe the CURRENT state, never the history.** This
+   applies to every code comment, every `build.sh`, every shipped config file
+   and every document under `docs/` — in every patch, without exception.
+
+   Write the **constraint**: what the code does, and what breaks if it is
+   changed. Do not write the **changelog**: what it used to be, what bug this
+   fixed, what "cost a debug cycle", what "was broken for a release", what
+   "used to", "no longer", "now finally". A reader has the file in front of
+   them and needs to know what is true and what they must not break; the story
+   of how it got there belongs in the commit message and in git.
+
+   ```c
+   /* WRONG — narrates a past defect */
+   /* This used to read the buffer size before the offset, which overflowed
+    * on a full buffer and reported EOF. Fixed by clamping first. */
+
+   /* RIGHT — states the rule and its consequence */
+   /* Clamp before the read: a full buffer would otherwise ask for a
+    * zero-length read and take the result for EOF. */
+   ```
+
+   Both sentences carry the same warning. Only the second is still true and
+   useful in five years, and only the second stays correct when the
+   surrounding code is rewritten again.
+
+   The corollary is that a patch which changes behaviour **must** update every
+   comment and document that describes that behaviour, in the same patch. A
+   comment that contradicts its code is worse than no comment: it is a claim
+   the next reader will act on. Stale-optimistic sends them past a bug;
+   stale-pessimistic makes them re-verify something that already works.
 
 ---
 
@@ -600,6 +639,71 @@ because it CREATES the namespace. Tell-tale: `readlink /proc/<pid>/root` prints
 `/newroot`. `script/06_packaging/01_initramfs.sh` installs
 `/usr/sbin/switch_root` over the toybox symlink — keep it that way.
 
+### Firmware, and the hardware the machine cannot use without it
+
+**`linux-firmware` ships upstream's COMPLETE tree, unpruned.** 619 MB of source
+becomes 921 MB installed, and that is the price of not betting on which
+hardware the machine will have: a curated subset fails silently, because
+`request_firmware()` returning nothing looks like a device that does not work
+rather than like a file that is absent.
+
+The install is upstream's own `copy-firmware.sh --zstd`, not a copy of the
+tree, and that distinction is load-bearing. **The tree on disk is not the
+installed layout**: `WHENCE` carries `Link:` directives naming the aliases
+drivers actually request, and only that script creates them. Measured on this
+version: 2307 symlinks, none dangling — and `build.sh` fails the build if it
+ever finds a dangling one. `--zstd` because the kernel is
+`CONFIG_FW_LOADER_COMPRESS_ZSTD=y` and loads blobs compressed.
+
+Two upstream conveniences are deliberately not used: `-j` needs GNU parallel
+and `make dedup` needs rdfind, and neither is a port. Serial takes about a
+minute; skipping dedup means duplicate blobs are stored twice, which is inside
+the 921 MB.
+
+**`wireless-regdb` installs the PREBUILT database and must never regenerate
+it.** `CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y`, so the kernel loads
+`regulatory.db` only against the `regulatory.db.p7s` upstream signs with the
+key compiled into it. The tarball's own Makefile will rebuild the db from
+`db.txt`, and that result is signed with nothing: the kernel rejects it in
+silence and leaves the radio in the world domain — working, with no 5 GHz DFS
+and reduced TX power, and no diagnostic anywhere.
+
+**`sof-firmware` is not part of linux-firmware.** Upstream ships it as
+`thesofproject/sof-bin`, and `CONFIG_SND_SOC_SOF=m` binds a driver on every
+Tiger Lake and newer laptop that then requests these blobs by name. Both trees
+are required: `sof/` is the DSP firmware and `sof-tplg/` is the topology set
+that binds an image to a machine's codec and speaker layout, and firmware with
+no topology loads and binds nothing, which is still silence.
+
+### The console user can open the hardware — `dialout` and the udev rules
+
+`fs/etc/group` puts `kdos` in `dialout`, and `fs/etc/udev/rules.d/70-kdos-*.rules`
+grant that group the device classes this tree ships tools for: serial bridges
+(FTDI, CP210x, CH341, CDC-ACM), in-circuit debuggers (CMSIS-DAP, ST-Link,
+J-Link, PICkit, the Espressif and RP2040 native-USB modes), SDR front ends,
+USBTMC instruments, PTP cameras and SANE scanners. **Both halves are required**
+— the group membership alone grants nothing, and the rules alone have no group
+to grant to — and without them every serial programmer, dev board, instrument
+and GPS in the tree is installed and unopenable, which presents as a broken
+cable rather than as a permission.
+
+`fs/etc/modprobe.d/kdos-sdr.conf` blacklists `dvb_usb_rtl28xxu`, and that is
+the load-bearing half of the SDR rules: the kernel otherwise claims an RTL2832U
+as a DVB-T tuner on plug-in and librtlsdr cannot open a device that is present,
+enumerated and listed by `lsusb`.
+
+`MODE="0660"` throughout rather than 0666 — these are devices other users on a
+multi-user machine have no business reading.
+
+**`kdos doctor` has a Hardware section for exactly this**, and it carries a
+third report level: `skip`, with a reason. Half of what it asks cannot be
+answered in a VM — no SOF controller, no Wi-Fi, no NVIDIA GPU, no boot medium —
+and reporting those `ok` would be a green line for something never tested while
+`warn` would make every VM look broken. Its most useful check is
+**device-present-but-unopenable**: it walks the attached nodes and reports each
+one the calling user cannot open, naming the owning group, because "add
+yourself to dialout" is an instruction and "permission denied" is not.
+
 ### CPU microcode rides in front of the initramfs
 
 `CONFIG_MICROCODE=y`, `CONFIG_MICROCODE_LATE_LOADING` **off** — so the early
@@ -1045,12 +1149,64 @@ wallpaper is ever re-rendered from a clean source, drop it there.
 
 ---
 
+## Codecs, colour and time on the host
+
+**`ffmpeg` is built with the full codec set and is therefore GPL-2+.**
+`--enable-gpl` is what x264 and x265 require, and it relicenses the shipped
+binary from LGPL-2.1+; `pipewire` and `gst-libav` link it and inherit that, and
+both are GPL-compatible. `ports/core/ffmpeg/LICENSE.notice` is the record — the
+component licence table, the reason the LGPL alternative is not taken, and the
+patent position stated rather than left implicit. That file is what a
+redistributor is expected to read and what `kdos licence --audit` will consult.
+
+One encoder per format, deliberately: `x264` (H.264), `x265` (HEVC), `libvpx`
+(VP8/VP9), `svt-av1` (AV1 encode) against the already-present `dav1d` (AV1
+decode), `lame`, `opus`, `libvorbis`/`libogg`, `flac`, `libass` for subtitle
+burn-in and `libva` for hardware paths. Adding a second encoder for a format
+earns nothing.
+
+**A library nobody links is a library the host does not have**, and three
+recipes are gated on this rather than on the library being installed:
+
+| Port | The flag | Without it |
+|---|---|---|
+| `imagemagick` | `--with-lcms --with-heic --with-openjp2 --with-openexr` | `-profile` is accepted and ignored; HEIC, JPEG 2000 and EXR are unreadable |
+| `libsndfile` | `ENABLE_EXTERNAL_LIBS=ON`, `ENABLE_MPEG=ON` | the whole host reads WAV and nothing else |
+| `gst-plugins-{ugly,bad}` | `-Dgpl=enabled` **and** the per-plugin `enabled` | the packages build and install with no plugins in them |
+
+Each of those build systems answers a missing dependency by disabling the
+feature rather than failing, so the options are `enabled` rather than `auto`
+and the `depends` lines are load-bearing: dropping one produces a build that
+succeeds and is silently narrower than its recipe claims. **`-Dgpl=enabled` is
+required in addition to `-Dx264=enabled`** — GStreamer skips its GPL plugins
+without it even when the library is present.
+
+**`lcms2` is the ICC engine** and nothing else on the host can apply a colour
+profile. `libheif` sits on `libde265`+`x265` for HEIC and `dav1d`+`svt-av1` for
+AVIF; `imv` reads both through it.
+
+**`tzdata` is a compiled zoneinfo tree and musl reads it directly.** The port
+builds from upstream's git tag archive rather than IANA's `tzdata`/`tzcode`
+pair, because those are FLAT tarballs and kpkg passes `--strip-components=1` to
+the first source unconditionally — which on a flat archive discards every
+top-level file. `zic -b fat`, not slim: the appbox's glibc programs read the
+same tree through the shared filesystem, and a format the box misreads makes
+host and box disagree about local time on one machine.
+
 ## The `kdos` command
 
-`kdos` is the front door, and by now it is fifteen subcommands: `help`
+`kdos` is the front door, and by now it is eighteen subcommands: `help`
 (commands + the keybind cheat sheet), `theme`, `status`, `doctor`, `app`,
 `version`, plus `why` / `explain`, `sandbox`, `appid`, `restarts`, `stutter`,
-`march`, `rebuild` and `cve` — each documented in its own section here. `kdos
+`march`, `rebuild`, `cve`, **`hey`** (the `$XDG_RUNTIME_DIR/kdos-cmd.sock`
+query front end, Haiku's shape: the window manager answers questions from the
+command line, so a window is something a script can find and act on),
+**`oracle`** (the aphorism picker, keyed on `day XOR boot` so the same line can
+be quoted an hour later and a machine up for a month is not showing one line
+for a month), **`update`** (orchestration of `kpkg binhost` and the A/B slots —
+no new trust path, the exit code is the answer). The dispatch table in `kdos.c` is the
+authoritative list; this sentence is not. Each is documented in its own section
+here. `kdos
 doctor` checks the things that have actually broken on this distro — including
 `readlink /proc/self/root`, the switch_root trap above.
 
@@ -1108,7 +1264,19 @@ keyboard against every window on the screen and NOTHING TYPED REACHED ANY WINDOW
 until an overlay took the focus and gave it back. Shipped, and invisible to
 everything: the request was right, the protocol was right, the number was 1.
 
-**Three input rules libkwl now keeps, each one a bug that was already there:**
+**Two rules the clipboard and compose paths keep:**
+
+- **A `wl_data_source` is destroyed on `cancelled`, never at set time.**
+  Destroying it when the selection is made cancels the selection just made, and
+  the copy silently does nothing.
+- **A compose table that fails to build is absent, never partial.**
+  `xkb_compose_table_new_from_locale` reads `$LC_CTYPE`; when there is no
+  `Compose` file the state stays NULL and the plain
+  `xkb_state_key_get_utf32` path runs unchanged. Every key press is fed through
+  `xkb_compose_state_feed` before that lookup, so `Compose e '` composes and a
+  layout that types `é` directly is unaffected.
+
+**Three input rules libkwl keeps, each guarding a distinct failure:**
 
 - **The event queue is a RING, not one slot.** libwayland delivers a whole batch
   of callbacks from a single read, so a button PRESS followed in that batch by
@@ -1173,7 +1341,7 @@ bug:**
 | `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings — the one library with vendored third-party source (Monocypher) |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
 | `libkcell` | `kcell_` | the fcft glyph cache and the cell painter — a grid of cells into a pixel buffer, the ASCII ramp built out of it, and **`kcell_canvas_*`, the pixel canvas a block of cells can be drawn as**. Needs fcft and pixman |
-| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection RECEIVE**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`. **The one library with real `-l` dependencies beyond libkcell's** |
+| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection, both directions** (`kwl_copy`), **xkb-compose**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`. **The one library with real `-l` dependencies beyond libkcell's** |
 
 Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
 libkbase` and `libkbuild → libkbase` and `libksig → libkbase` and `libkwl →
@@ -1650,16 +1818,20 @@ sets it at 24 POINTS, which is 32 pixels at 96dpi, so the titlebar is one cell
 tall. The same block covers MenuItem, MenuHeader and OnScreenDisplay, which are
 labwc's root menu and its window switcher.
 
-**It asked for `Terminus` for a release and never got it.** Terminus is a PCF
-bitmap and **pango has not rendered bitmap fonts since 1.44**; this tree ships
-1.57, so every titlebar and every menu silently fell back to DejaVu Sans.
-Measured on a booted ISO rather than reasoned about: the panel's text has **3**
-luminance levels and zero midtone pixels, the titlebar's has **143** and 230 —
-one is a bitmap, the other is not. fontconfig was never the problem
-(`fc-match Terminus` resolves on the target), so no `70-yes-bitmaps` snippet
-would have helped. The block now names `DejaVu Sans Mono`, which pango can
-actually draw; the real fix is a scalable Terminus (terminus-ttf is the same
-shapes as OTB/TTF) and that is a port and a tarball this tree does not carry.
+**The SSD font must name a SCALABLE face, and `Terminus (TTF)` is it.**
+Terminus proper is a PCF bitmap and **pango has not rendered bitmap fonts since
+1.44**; this tree ships 1.57, so naming plain `Terminus` here resolves and then
+silently falls back to DejaVu Sans for every titlebar and every menu.
+fontconfig is not the lever — `fc-match Terminus` succeeds on the target — so
+no `70-yes-bitmaps` snippet changes it. `ports/core/terminus-ttf` (4.49.3, the
+same shapes as OTB/TTF) is what `rc.xml` names, at 24 points for ActiveWindow,
+InactiveWindow, MenuHeader, MenuItem and OnScreenDisplay, so the titlebar is
+the same face as the cell grid under it. A machine without that port falls back
+to DejaVu Sans.
+
+**Telling the two apart takes a measurement, not an eye**: count luminance
+levels in a screenshot. The panel's bitmap text has **3** and zero midtone
+pixels; an antialiased face has **143** and 230.
 
 **labwc's `menu.width.max` default is 200 PIXELS** and it is sized for a ~10px
 font. At 32px that is eleven characters, and the shipped root menu read
@@ -2595,9 +2767,10 @@ stopped being a character grid: the Start button, and the meters strip.
   is MEASURED: a font that came back much shorter than what was asked for is
   retried restricted to `:scalable=true`, and whichever is closer wins. A
   machine with no scalable face keeps the bitmap, which is the honest answer
-  and is what a minimal install has. (This is the same fact that made the
-  compositor's SSD font `DejaVu Sans Mono` — pango has not rendered bitmaps
-  since 1.44 — arrived at from the other side.)
+  and is what a minimal install has. (This is the same fact that sent the
+  compositor's SSD font to a scalable face — pango has not rendered bitmaps
+  since 1.44 — arrived at from the other side. `terminus-ttf` is what both
+  halves now use.)
 
 **AN ICON WITH NO LABEL IS CENTRED ON THE BAR'S FULL HEIGHT; an icon with a
 label beside it shares that label's row.** Quick-launch is pictures and nothing
@@ -3756,13 +3929,12 @@ with the recipes; there were no recipes.
 build. Neither is fatal on failure: an orphan with a damaged manifest must not
 stop the ISO from being rolled.
 
-**Skip-if-installed still compares the VERSION, not the recipe** (see **kpkg is
-C**), and the same session found the other half of that: `fastfetch`'s
-`config.jsonc` is a KDOS file installed by the port, its banner footer was
-changed from `cosmic` to `wlroots`, no `release` was bumped, and the shipped
-`/etc/xdg/fastfetch/config.jsonc` still said `cosmic` for every user with no
-home config — root, on tty2. The fix was `release = 2`. Wiring `E:` into the
-skip decision is the real answer and is still not done.
+**Skip-if-installed compares the RECIPE HASH under `KPKG_STRICT_RECIPE=1`,
+which every `script/*.env.sh` sets** — see **kpkg is C**. A port whose recipe
+changed is rebuilt by the build without being named. Note what that does NOT
+cover: a KDOS file the port installs, edited in `fs/` rather than in the port,
+is not part of the recipe hash. `fastfetch`'s `config.jsonc` is such a file,
+and the lever for it is still `release = N`.
 
 ### libkbuild — the deciding half of the orchestrator
 
@@ -4076,31 +4248,42 @@ assumed:
   directories, `<name>-<version>-<release>.tar.xz`, `--root`, the whitespace
   `PORT_REPO` list, env-over-config, and exit codes 0/1.
 
-**Skip-if-installed compares NOTHING — it asks whether a database entry
-exists** (`kp_installed()` is `kb_read_all(<db>/<name>) != NULL`), so an
-installed package is skipped whatever its version, its release or its recipe
-now say. Bumping `version` is therefore worth doing for the binhost and for a
-fresh tree, and does nothing at all for an incremental local build: **the only
-thing that rebuilds a changed port on a built tree is `--rebuild <port>`** (or
-`kpkg install -f`). Get that wrong and a build "succeeds" carrying the old
-binary, which is indistinguishable from a change that did not work.
+**Skip-if-installed compares the RECIPE HASH**, and the comparison has three
+states. `kp_installed_current()` in libkpkg is the predicate: installed, AND
+its recorded recipe hash equal to `kp_recipe_hash()` of the port as it stands
+now — the same SHA-256 over kpkgbuild, build.sh, postinstall.sh and every patch
+that the binhost's `E:` uses, so there is one definition of "the recipe
+changed" rather than two.
 
-This is not theoretical and it cost a build: `ports/core/wlroots/build.sh` gained
-`install -m644 protocol/*.xml "$PKG/usr/share/wlroots/protocols/"` because
-upstream does not install its own protocol XML and three of our recipes read it
-from there. The installed wlroots on the tree predated that line, its manifest
-carried zero `.xml`, and `kdos-shell` — the first genuinely new package of
-`05_desktop` — died at once on wayland-scanner's `Could not open input file`.
-Nothing detects it: the version was unchanged, so kpkg correctly skipped a
-package that no longer matched its own recipe.
+| State | Result |
+|---|---|
+| hashes match | skip |
+| hashes differ | rebuild |
+| **no recorded hash, or a corrupt one** | **skip** |
 
-KDOS already computes the answer — `kp_recipe_hash` is the binhost's `E:`, a
-SHA-256 over kpkgbuild, build.sh, postinstall.sh and every patch — and the
-local install path does not consult it. Until it does, **the fix is
-`--rebuild <port>`**, and the smell is a package whose behaviour disagrees with
-a recipe you just read. Wiring `E:` into the skip decision would rebuild every
-port whose recipe was touched, which is right and is also a mass rebuild, so it
-is a deliberate change rather than an obvious one.
+The third row is what makes this safe on a tree that predates the mechanism:
+absent reads as UNKNOWN, never as "changed", so no package is rebuilt merely
+for lacking a record. A sidecar that is not exactly 64 hex characters is
+treated the same way — reading it as a mismatch would rebuild that one package
+on every run for ever with nothing saying why.
+
+**THE SOLVER CALLS IT, NOT THE INSTALL LOOP.** `kp_resolve()` drops an
+installed package before the loop in `front.c` ever runs, so a test placed
+downstream reaches only packages named on the command line and misses every
+DEPENDENCY whose recipe changed. The loop's own guard — for a package that
+became installed between the resolve and now — must ask the same question, or
+it skips exactly what the solver deliberately queued and the run reports
+"Packages to install: <name>" and builds nothing.
+
+The hash is recorded in `<db>/.recipe/<name>` AFTER a successful install, never
+before: a record written ahead of a build that then fails would claim a recipe
+is installed that is not. It is a sidecar rather than a third field on the
+database entry's first line because that line is `"<version> <release>"` and
+`kp_installed_version()` copies everything after the first space into `rel`.
+
+`KPKG_STRICT_RECIPE=1` turns it on. Every `script/*.env.sh` sets it, so the
+BUILD is strict; an interactive `kpkg install` is not. **`--rebuild <port>` and
+`kpkg install -f` remain the way to force a rebuild for any other reason.**
 
 **A file conflict is between PACKAGES.** A path that exists but that no
 installed package claims is adopted, not refused. That is not a loosening for
@@ -4684,8 +4867,9 @@ WebFetch.
 
 ```
 01_udev  02_modules  05_hostname  10_sysctl  15_userdirs  20_dmesg  22_syslog
-30_network  35_chrony  40_dbus  42_networkmanager  45_avahi  45_seatd  50_alsa
-55_powerd  55_tlp  56_energyd  57_oomd  60_bluetooth  70_sshd  80_cups
+25_nftables  30_network  35_chrony  40_dbus  42_networkmanager  45_avahi
+45_seatd  50_alsa  55_powerd  55_tlp  56_energyd  57_oomd  58_mountd
+60_bluetooth  70_sshd  80_cups
 rcS  service_helper
 ```
 
@@ -4722,7 +4906,15 @@ esac
 ```
 
 `supervise` runs the daemon under a respawn loop and writes `/run/<name>.pid`.
-**The daemon must run in the foreground** — no daemonization. Note the argv:
+**The daemon must run in the foreground** — no daemonization.
+
+**A one-shot is NOT supervised.** `25_nftables.sh` is the case: `nft` hands a
+ruleset to the kernel and exits, and the kernel holds it, so a respawn loop
+would be wrapped around a program that is supposed to exit. It runs before
+`30_network.sh` — a firewall applied after the interface is up leaves a window
+— and it runs `nft -c` first, because the ruleset opens with `flush ruleset`
+and a failure partway through would otherwise leave the input chain's drop
+policy with its accept rules missing. Note the argv:
 `supervise "$NAME" "$DAEMON" --foreground`, not one quoted string. The old
 helper did `local command="$@"` and then expanded it unquoted, so the
 word-splitting was load-bearing and a daemon path with a space in it could not
@@ -4801,7 +4993,7 @@ adding users is manual.
 ## Working-state markers
 
 ```bash
-ls ports/core | wc -l                                  # 405 ports
+ls ports/core | wc -l                                  # 430 ports
 ls build/fs/var/lib/kpkg/db/ | wc -l                   # installed packages
 git status --short | wc -l                             # tracked changes
 ls build/logs/04_phase4/*.log                          # which packages have logs
@@ -4817,9 +5009,16 @@ and respond with the targeted fix.
 
 - `libunwind` lacks its assembly files → undefined symbols; consumers work
   around with `--allow-shlib-undefined`.
-- `libinput` still installs to `/usr/local/lib64` (port has no `--prefix`).
-- No firewall rules shipped — `nftables` is installed, `/etc/nftables.conf` is
-  empty.
+- No per-service firewall rules. `fs/etc/nftables.conf` ships a default
+  workstation policy — established/related and loopback accepted, ICMP and
+  **ICMPv6 answered** (dropping ICMPv6 does not harden IPv6, it breaks
+  neighbour discovery and Path MTU), mDNS and DHCPv6 open for the avahi and
+  dhcp clients that are started, everything else on input dropped, forward
+  dropped — and `fs/etc/init.d/25_nftables.sh` loads it before `30_network.sh`,
+  after an `nft -c` check so an unloadable ruleset leaves the previous state
+  standing rather than half-applying a `flush ruleset`. Anything that should be
+  REACHABLE (sshd, a served corpus, a shared printer) needs a rule added; the
+  shipped file has them as commented examples.
 - ~~cosmic-comp does not start Xwayland~~ — **closed by the rewrite.** wlroots
   runs Xwayland rootlessly and `kdos-comp` turns it on (`KDOS-DESKTOP.md` §7).
 - **No `f2fs-tools`**, so `CONFIG_F2FS_FS=m` is a filesystem the kernel can
@@ -4849,15 +5048,15 @@ and respond with the targeted fix.
   thing:** fractional scale (`wp_fractional_scale_v1` is not bound), and
   `chrome_font` is still one pixel size for every output — right on a machine
   with one screen, wrong on two of different densities.
-- **libkwl PASTES but does not COPY.** `wl_data_device` and
-  `zwp_primary_selection_device_v1` are bound and the receive side is complete
-  (async, `text/plain;charset=utf-8` preferred, delivered into the focused text
-  widget by `ktui_paste_push`) — so Ctrl+V and middle-click work in
-  `kdos-run`, the launcher filter and the file chooser's save name. There is
-  **no `wl_data_source`**, so nothing in the chrome can put anything ON the
-  clipboard, there is no drag-and-drop either way (a file still cannot be
-  dragged off `kdos-desk` into a window), and **`wl_touch` is not bound at
-  all** — a touchscreen drives none of this.
+- **No drag-and-drop, and no `wl_touch`.** The clipboard is complete in both
+  directions — `wl_data_device` and `zwp_primary_selection_device_v1` are bound,
+  the receive side is async with `text/plain;charset=utf-8` preferred and
+  delivered by `ktui_paste_push`, and `kwl_copy(text, len, primary)` offers a
+  `wl_data_source` against the retained serial. What is absent is the drag:
+  `start_drag` is a comment in `kwl.c`, so a file cannot be dragged off
+  `kdos-desk` into a window, and nothing can accept a drop. `wl_touch` is not
+  bound at all — `seat_caps` handles KEYBOARD and POINTER only, so a
+  touchscreen drives none of the chrome.
 - **`kdos-display` lays screens out edge to edge from x=0 in list order.** A
   vertical arrangement, an overlap, or a gap cannot be expressed. That is a
   deliberate narrowing rather than a missing feature: the protocol takes pixel
@@ -4894,13 +5093,17 @@ and respond with the targeted fix.
   filter is a fixed allowlist — a client is sandboxed or it is not. Re-adding
   per-box grants means teaching `allow_for_sandbox()` to consult the boxsock
   profile, a deliberate piece of work.
-- **No golden-frame regression test, and it is the gap that let the stale-row
-  bug ship.** `testing/selftest.sh` looks at five surfaces' `--dump` output and
-  asserts SHAPE (every row of a box the same width, the hint row and its buttons
-  not colliding). `run`, `prompt`, `notifyd`, `osd` and `desk` have no `--dump`
-  at all, there is no codepoint+colour-slot serializer, and no goldens are
-  committed. Six geometry defects have shipped in this toolkit and none was
-  visible to a compiler.
+- **Six surfaces have no `--dump`, and no cell goldens are committed.**
+  `testing/goldens/` carries 18 frames — `ktui_draw_dump()`'s cell buffer as
+  padded plain text, at 80x24 and 132x43, for `doc`, `keys`, `menu system`,
+  `notify`, `pick`, `settings`, `start`, `status` and `teams` — and
+  `selftest.sh` diffs against them. Two sizes, because a geometry defect is
+  usually a defect at ONE width. **`run`, `prompt`, `notifyd`, `osd`, `desk`
+  and the panel's own `shell` have no `--dump`**, so they have no golden.
+  `--dump-cells` (one line per painted cell, `row col U+XXXX fg bg attr`,
+  which is what makes a COLOUR regression visible as well as a geometry one)
+  is implemented and **no cell goldens are committed** — selftest says so
+  rather than running a check that covers nothing.
 - **A WHEEL SOURCE IS ALREADY QUANTISED; A FINGER IS NOT.** libkwl's
   accumulator was written for a touchpad, where `wl_pointer.axis` is a stream
   of small continuous values and a tick has to be synthesised from a ten-unit
@@ -4945,12 +5148,6 @@ and respond with the targeted fix.
   volume bezel are all asking to be PLACED, and being kept off the panel is
   right for them. The size clamp takes the same margin as its headroom instead
   of the four rows it used to guess at.
-- **Dead keys yield nothing: libkwl has no xkb-compose.** UTF-8 text entry
-  itself works end to end — `xkb_state_key_get_utf32` hands whole codepoints to
-  libktui, which encodes and moves the caret by SEQUENCE, and kdos-lock takes a
-  multi-byte password — so a layout that types `é` directly is fine. A COMPOSE
-  sequence (`Compose e '`) is not: `xkb_compose_*` is unbound, and xkbcommon is
-  already a libkwl dependency, so this is wiring rather than a new `-l`.
 - **A wide glyph is measured, not guaranteed.** libktui has `ktui_wcwidth` and a
   `KTUI_WIDE_CONT` continuation cell and libkcell clips each composite to its
   cell, so CJK no longer corrupts row layout — but **the console font is 512

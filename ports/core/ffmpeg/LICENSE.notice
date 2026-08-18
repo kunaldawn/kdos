@@ -1,0 +1,59 @@
+ffmpeg on KDOS is GPL-2-or-later, not LGPL
+==========================================
+
+THE POSITION
+
+`build.sh` passes `--enable-gpl`, and with it `--enable-libx264` and
+`--enable-libx265`. Upstream ffmpeg is LGPL-2.1-or-later by default; the GPL
+components are opt-in, and opting in relicenses the resulting binary.
+
+WHY
+
+On a distribution whose purpose is to work with no network — where the machine
+in front of you is the only machine — an encoder that cannot produce the format
+every other computer reads is a missing capability rather than a reduced one.
+
+The LGPL alternative is available and is not taken: shipping libvpx, svt-av1,
+dav1d, opus, vorbis and lame while refusing x264/x265 yields working VP9, AV1,
+Opus, Vorbis and MP3 and no H.264 or HEVC encode. H.264 is what a phone
+records, a camera writes and a colleague expects, so it stays.
+
+WHAT IT MEANS FOR ANYONE REDISTRIBUTING KDOS
+
+  - The `ffmpeg` binary and libraries in this image are GPL-2.0-or-later.
+  - Anything that links them inherits that. In this tree that is `pipewire`
+    and `gst-libav`, both already GPL-compatible.
+  - Complete corresponding source for every one of those components is in this
+    repository, under `ports/core/`, which is what KDOS ships by construction:
+    the tarball, its sha256, and the exact recipe that built it.
+
+COMPONENT LICENCES
+
+  x264      GPL-2.0-or-later     ports/core/x264
+  x265      GPL-2.0-or-later     ports/core/x265
+  libvpx    BSD-3-Clause         ports/core/libvpx
+  svt-av1   BSD-3-Clause + AOM   ports/core/svt-av1
+  dav1d     BSD-2-Clause         ports/core/dav1d
+  opus      BSD-3-Clause         ports/core/opus
+  libvorbis BSD-3-Clause         ports/core/libvorbis
+  libogg    BSD-3-Clause         ports/core/libogg
+  lame      LGPL-2.0-or-later    ports/core/lame
+  libass    ISC                  ports/core/libass
+  libva     MIT                  ports/core/libva
+
+PATENTS
+
+H.264 and HEVC are covered by patents in some jurisdictions, and the licensing
+pools for them (MPEG LA / Access Advance) address distributors of encoders and
+decoders. KDOS's position, stated rather than left implicit:
+
+KDOS distributes SOURCE and a recipe. The encoder on your machine was compiled
+on your machine, or on one you control, from a tarball whose hash is in this
+repository. That is the same position Gentoo, Arch's ABS and Linux From Scratch
+occupy, and it is not the same as shipping a licensed product. It is not legal
+advice, and a party who redistributes a BUILT KDOS image commercially in a
+jurisdiction where these patents are in force should establish their own
+position before doing so.
+
+`kdos licence --audit`, when it exists, reports this file as a component of the
+image's overall licence answer.

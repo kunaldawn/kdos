@@ -410,6 +410,73 @@ TZ=UTC tar -tvf "$RP/one.tar.xz" | grep -q "0/0 .*2025-01-01" \
 echo "  identical under a different umask, TZ and XZ_OPT; uid/gid 0, epoch mtime"
 
 echo
+
+# ── Skip-if-installed compares the RECIPE, not just the entry ──────────────
+#
+# A skip that asks only whether a database entry exists ships the previously
+# built binary from a build that reports success. The comparison is the recipe
+# hash, and it has THREE states — conflating any two of them is a defect:
+#   match     skip
+#   differ    rebuild
+#   unknown   SKIP — a tree with no recorded hashes must not rebuild wholesale
+#
+# The unknown cases carry the most weight here: they are what makes this safe
+# to turn on, and getting them wrong costs a mass rebuild rather than a wrong
+# answer, so nothing would report it until it hurt.
+echo "==> kpkg skip-if-installed compares the recipe hash"
+SR="$OUT/strict"
+rm -rf "$SR"; mkdir -p "$SR/ports/demo" "$SR/work" "$SR/pkgs" "$SR/root"
+cat > "$SR/ports/demo/kpkgbuild" <<'EOF'
+name        = demo
+version     = 1.0
+release     = 1
+description = a synthetic port that exists to have its recipe changed
+EOF
+cat > "$SR/ports/demo/build.sh" <<'EOF'
+install -Dm755 /dev/null "$PKG/usr/bin/demo"
+printf 'v1
+' > "$PKG/usr/bin/demo"
+EOF
+ln -sf kdos-kpkg "$OUT/kpkg"
+kstrict() {
+    env PORT_REPO="$SR/ports" WORK_DIR="$SR/work" PACKAGE_DIR="$SR/pkgs" \
+        PKGDB_DIR=/db KPKG_CONF=/nonexistent SOURCE_DATE_EPOCH=1735689600 \
+        TZ=UTC "$@" "$OUT/kpkg" install --root "$SR/root" demo 2>&1
+}
+kstrict >/dev/null || { echo "  the synthetic port did not install"; exit 1; }
+SIDE="$SR/root/db/.recipe/demo"
+[ -s "$SIDE" ] || { echo "  no recipe-hash sidecar was recorded"; exit 1; }
+H1=$(cat "$SIDE")
+[ "${#H1}" = 64 ] || { echo "  the sidecar is not a 64-char hash"; exit 1; }
+
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  an UNCHANGED recipe was rebuilt under strict mode"; exit 1; }
+
+# The recipe changes. Without strict mode nothing happens: the flag is the only
+# thing that makes the comparison apply.
+printf '# a change\n' >> "$SR/ports/demo/build.sh"
+kstrict | grep -q "Nothing to do" \
+    || { echo "  strict mode leaked into the default behaviour"; exit 1; }
+
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+    || { echo "  a CHANGED recipe was not rebuilt under strict mode"; exit 1; }
+H2=$(cat "$SIDE")
+[ "$H1" != "$H2" ] || { echo "  the sidecar was not updated after the rebuild"; exit 1; }
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  it rebuilt again after the hash was brought up to date"; exit 1; }
+
+# UNKNOWN, both ways. An absent sidecar is every package on a tree that
+# predates the mechanism; a corrupt one is a truncated write. Neither may read
+# as "changed".
+rm -f "$SIDE"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  a MISSING sidecar was treated as a changed recipe"; exit 1; }
+printf 'garbage\n' > "$SIDE"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  a CORRUPT sidecar was treated as a changed recipe"; exit 1; }
+echo "  match skips, drift rebuilds, unknown and corrupt are left alone"
+
+echo
 echo "==> the binhost signs an index and a client checks it"
 # The whole P15 chain against the synthetic port from the block above: build a
 # package, make a key, index and sign, then ask a client whether it may use it.
@@ -547,6 +614,12 @@ echo "==> kdos rebuild refuses what it cannot finish"
 # memory and dies hours in with the machine unusable. Every refusal is tested
 # because the successful path is a six-hour build nothing here can run.
 ln -sf kdos-tools "$OUT/kdos"
+# THE WORK DIRECTORY FOR THE ACCEPTING CASES MUST NOT BE IN RAM. $OUT is
+# `mktemp -d`, which is /tmp, which is tmpfs on essentially every modern Linux
+# — exactly what `kdos rebuild` exists to refuse. The repo is on a real
+# filesystem by construction, since the sources being checked are in it.
+RBW="$PWD/.selftest-rebuild-work"
+rm -rf "$RBW"; mkdir -p "$RBW"
 rb() { env KDOS_SOURCES="$1" "$OUT/kdos" rebuild "${@:2}"; }
 # From a directory that is not a tree and with nothing pointing at one: the
 # search falls back to `.`, which is the repo when this script runs from it.
@@ -555,7 +628,7 @@ rb() { env KDOS_SOURCES="$1" "$OUT/kdos" rebuild "${@:2}"; }
     && { echo "  a rebuild with no sources was allowed"; exit 1; }
 rb /tmp --dry-run "$OUT/rb" >/dev/null 2>&1 \
     && { echo "  a directory that is not a KDOS tree was accepted"; exit 1; }
-rb "$PWD" --dry-run "$OUT/rb" >/dev/null 2>&1 \
+rb "$PWD" --dry-run "$RBW" >/dev/null 2>&1 \
     || { echo "  this repo was not recognised as a KDOS tree"; exit 1; }
 # /dev/shm is tmpfs on any Linux that has it, which is the case this exists for.
 if [ -d /dev/shm ]; then
@@ -563,8 +636,9 @@ if [ -d /dev/shm ]; then
         && { echo "  a work directory in RAM was accepted"; exit 1; }
     rm -rf /dev/shm/kdos-rebuild-check
 fi
-rb "$PWD" --dry-run "$OUT/rb" 2>&1 | grep -q "nothing was copied" \
+rb "$PWD" --dry-run "$RBW" 2>&1 | grep -q "nothing was copied" \
     || { echo "  --dry-run did not say it did nothing"; exit 1; }
+rm -rf "$RBW"
 echo "  no tree, a wrong tree and a work directory in RAM are all refused"
 
 echo

@@ -318,14 +318,27 @@ hits=$(grep -rln 'python3 .*genlaunchers\|python3 .*pack \|python3 .*assemble\|p
 
 echo
 echo "==> the rootfs carries no script whose interpreter is gone"
+# The question is whether the interpreter EXISTS on the target, not whether it
+# is a shell: a shipped file whose `#!` names something the tree does not build
+# is a file that cannot run. bash and toybox's sh are always there; anything
+# else has to be a binary some port installs, and is listed here with the port
+# that provides it so the list cannot drift into an unchecked allowlist.
+#
+#   /usr/sbin/nft   nftables   — fs/etc/nftables.conf carries nft's own `-f`
+#                                shebang; 25_nftables.sh runs it explicitly, so
+#                                the shebang documents the format rather than
+#                                being the execution path.
 for f in $(grep -rl '^#!' fs/ 2>/dev/null); do
     interp=$(head -1 "$f" | sed 's|^#!||; s| .*||')
     case "$interp" in
         /bin/bash|/bin/sh) ;;
+        /usr/sbin/nft)
+            [ -d ports/core/nftables ] \
+                || bad "$f" "interpreter $interp has no port" ;;
         *) bad "$f" "unexpected interpreter $interp" ;;
     esac
 done
-note "rootfs interpreters" "bash and sh only"
+note "rootfs interpreters" "every #! is provided by the tree"
 
 # ── the build tree still carries packages whose port is gone ───────────────
 #

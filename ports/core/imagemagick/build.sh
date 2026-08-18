@@ -9,6 +9,20 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# Four delegates, each a format or a facility with no other route on this
+# host:
+#
+#   --with-lcms     the ICC engine. Without it `-profile` is accepted and
+#                   silently ignored, which is worse than refused.
+#   --with-heic     HEIC and AVIF — what a phone camera writes.
+#   --with-openjp2  JPEG 2000 — what scanners and archives write.
+#   --with-openexr  high dynamic range — what a renderer writes.
+#
+# Each needs its port present at configure time; autotools answers a missing
+# one by disabling the feature rather than failing, so dropping one of these
+# from `depends` produces a build that succeeds and quietly cannot read the
+# format.
+
 ./configure \
 	--prefix=/usr \
 	--sysconfdir=/etc \
@@ -31,12 +45,12 @@
 	--without-fpx \
 	--without-gslib \
 	--without-gvc \
-	--without-heic \
+	--with-heic \
 	--without-jxl \
-	--without-lcms \
+	--with-lcms \
 	--without-lqr \
-	--without-openexr \
-	--without-openjp2 \
+	--with-openexr \
+	--with-openjp2 \
 	--without-raqm \
 	--without-raw \
 	--without-rsvg \
