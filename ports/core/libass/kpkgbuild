@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libass
+version     = 0.17.3
+release     = 1
+source      = https://github.com/libass/libass/releases/download/$version/$name-$version.tar.xz
+sha256      = eae425da50f0015c21f7b3a9c7262a910f0218af469e22e2931462fed3c50959  libass-0.17.3.tar.xz
+description = SSA/ASS subtitle renderer — what lets ffmpeg burn subtitles in
+homepage    = https://github.com/libass/libass
+depends     = freetype2 fribidi harfbuzz fontconfig nasm

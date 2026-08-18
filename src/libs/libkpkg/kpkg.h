@@ -44,6 +44,17 @@ typedef struct {
 	char package_dir[512];
 	char work_dir[512];
 	char pkgdb_dir[512];
+
+	/*
+	 * $KPKG_STRICT_RECIPE=1 — treat an installed package whose RECIPE has
+	 * changed as not installed, so the solver puts it back in the order.
+	 *
+	 * On KpConf rather than read at one call site because the answer must
+	 * be the same everywhere: `kpkg install`, the `kpkgdepends` output the
+	 * orchestrator parses, and the build plan all have to agree about what
+	 * is installed, or the order disagrees with what the build then does.
+	 */
+	int strict_recipe;
 } KpConf;
 
 /* Reads the config file, then lets the environment override every value —
@@ -112,6 +123,34 @@ void kp_arch(char *out, size_t cap);
  * ──────────────────────────────────────────────────────────────────────── */
 
 int kp_installed(const KpConf *c, const char *name);
+
+/*
+ * THE RECIPE HASH OF WHAT IS INSTALLED — "does the package on this machine
+ * still match the recipe in the tree?"
+ *
+ * kp_installed() answers only whether a database entry exists, so on its own it
+ * skips an installed package whatever its version, its release or its recipe
+ * say. A recipe edited on an incremental tree would ship the previously built
+ * binary from a build that reports success, which is indistinguishable from a
+ * change that did not work.
+ *
+ * The hash is kp_recipe_hash() — the same SHA-256 over kpkgbuild, build.sh,
+ * postinstall.sh and every patch that the binhost's `E:` uses. One definition
+ * of "the recipe changed", not two.
+ *
+ * It lives in a SIDECAR (`<db>/.recipe/<name>`) rather than on the database
+ * entry's first line. That line is `"<version> <release>"` and
+ * kp_installed_version() splits it on the first space and copies the whole
+ * remainder into `rel`, so a third field there would become part of the
+ * release string for every caller. The sidecar is also what makes this safe on
+ * a tree that predates it: an ABSENT sidecar reads as "unknown", never as
+ * "changed", so no package is rebuilt merely for lacking one.
+ */
+/* Installed AND still matching its recipe (see kp_db.c). The SOLVER's test. */
+int kp_installed_current(const KpConf *c, const char *name);
+
+int kp_installed_recipe_hash(const KpConf *c, const char *name, char out[65]);
+int kp_record_recipe_hash(const KpConf *c, const char *name, const char *hash);
 
 /* Every path claimed by an installed package, sorted, for the conflict scan.
  * `owner[i]` is the package that claims `path[i]`, which is what an overwrite
