@@ -638,7 +638,25 @@ int stutter_main(int argc, char **argv)
 		if (r <= 0)
 			continue;
 
-		ssize_t n = read(fd, buf + have, sizeof(buf) - have - 1);
+		/*
+		 * A LINE THAT DOES NOT FIT IS DROPPED, NOT MISTAKEN FOR EOF.
+		 *
+		 * `have` reaches sizeof(buf) - 1 with no newline in it only
+		 * when the compositor has written a line longer than this
+		 * buffer. Without the reset below, read() is then asked for
+		 * zero bytes, returns zero, and the n <= 0 branch takes that
+		 * for a closed socket — reporting a dead compositor that is
+		 * running fine. Resync instead: discard the partial line and
+		 * keep reading.
+		 */
+		size_t room = sizeof(buf) - have - 1;
+		if (room == 0) {
+			have = 0;
+			buf[0] = '\0';
+			room = sizeof(buf) - 1;
+		}
+
+		ssize_t n = read(fd, buf + have, room);
 		if (n <= 0) {
 			if (n < 0 && errno == EINTR)
 				continue;

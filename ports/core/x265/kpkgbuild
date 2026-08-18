@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = x265
+version     = 4.1
+release     = 1
+source      = https://bitbucket.org/multicoreware/x265_git/downloads/x265_$version.tar.gz
+sha256      = a31699c6a89806b74b0151e5e6a7df65de4b49050482fe5ebf8a4379d7af8f29  x265-4.1.tar.gz
+description = HEVC encoder — GPL-2+
+homepage    = https://www.videolan.org/developers/x265.html
+depends     = cmake nasm

@@ -34,11 +34,17 @@ KPKG="${KPKG_BIN:-$SCRIPT_DIR/.kpkgbin/kpkg}"
 if [ ! -x "$KPKG" ]; then
     echo "==> Building the recipe reader..."
     mkdir -p "$(dirname "$KPKG")"
+    # kdos-kpkg links libkbase, libkpkg AND libksig — kdos-kpkg.h includes
+    # ksig.h. The same command line lives in src/tools/kdos-portup/main.c and
+    # testing/selftest.sh; all three must list the same set, or the recipe
+    # reader fails to compile and this exits before downloading anything.
     ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE \
         -I"$REPO_ROOT/src/libs/libkbase" -I"$REPO_ROOT/src/libs/libkpkg" \
+        -I"$REPO_ROOT/src/libs/libksig" \
         -I"$REPO_ROOT/src/packages/kdos-kpkg" -o "$KPKG" \
         "$REPO_ROOT"/src/packages/kdos-kpkg/*.c \
-        "$REPO_ROOT"/src/libs/libkbase/*.c "$REPO_ROOT"/src/libs/libkpkg/*.c
+        "$REPO_ROOT"/src/libs/libkbase/*.c "$REPO_ROOT"/src/libs/libkpkg/*.c \
+        "$REPO_ROOT"/src/libs/libksig/*.c "$REPO_ROOT"/src/libs/libksig/monocypher/*.c
 fi
 
 echo "==> Fetching sources for all ports..."

@@ -22,6 +22,7 @@
  */
 
 #include <dirent.h>
+#include <grp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2382,6 +2383,29 @@ static void warn_(const char *fmt, ...)
 	putchar('\n');
 }
 
+/*
+ * The third level, and the Hardware section is what needs it. Half of what that
+ * section asks cannot be answered in a VM: no SOF-capable audio controller, no
+ * Wi-Fi, no NVIDIA GPU, no boot medium. `ok` there would be a green line for
+ * something never tested, and `warn` would make every VM look broken. A check
+ * that could not run says so and says why.
+ */
+static void skip_(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void skip_(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	if (doctor_json) {
+		doctor_record("skip", fmt, ap);
+		va_end(ap);
+		return;
+	}
+	printf("  %s[skip]%s ", C_W, C_0);
+	vprintf(fmt, ap);
+	va_end(ap);
+	putchar('\n');
+}
+
 /* A section header in text mode; a field on every record in JSON mode. A
  * machine consumer wants the grouping attached to the item, not emitted as a
  * separate thing it has to remember. */
@@ -2580,6 +2604,243 @@ static void check_default_password(void)
 	}
 }
 
+
+/* ------------------------------------------------------------------------
+ * The Hardware section.
+ *
+ * Every check here covers a failure that is SILENT. A machine with no
+ * regulatory.db has Wi-Fi; it just has no 5 GHz. A machine with no SOF
+ * firmware has an audio device; it just makes no sound. A user outside
+ * `dialout` has a /dev/ttyUSB0; they just cannot open it. None of those
+ * announces itself, and all three read as broken hardware.
+ * ------------------------------------------------------------------------ */
+
+/* Read one small sysfs/proc file, trimmed. Returns NULL if absent. */
+static char *hw_slurp(const char *path)
+{
+	size_t n = 0;
+	char *d = kb_read_all(path, &n);
+	if (!d)
+		return NULL;
+	while (n && (d[n - 1] == '\n' || d[n - 1] == ' ' || d[n - 1] == '\t'))
+		d[--n] = 0;
+	return d;
+}
+
+/* Does any directory entry under `dir` start with `pfx`? */
+static int hw_dir_has_prefix(const char *dir, const char *pfx)
+{
+	DIR *d = opendir(dir);
+	if (!d)
+		return 0;
+	struct dirent *e;
+	size_t n = strlen(pfx);
+	int found = 0;
+	while ((e = readdir(d))) {
+		if (!strncmp(e->d_name, pfx, n)) {
+			found = 1;
+			break;
+		}
+	}
+	closedir(d);
+	return found;
+}
+
+/*
+ * The wireless regulatory database.
+ *
+ * kdos.config sets CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y, so the kernel will
+ * load regulatory.db ONLY with a valid regulatory.db.p7s beside it. A database
+ * regenerated locally from db.txt fails that check in silence and leaves the
+ * radio exactly where it was: country 00, world-roaming, no 5 GHz DFS, reduced
+ * TX power. So both files are checked, and the SIGNATURE is not optional.
+ */
+static void check_regdb(void)
+{
+	int have_db  = kb_path_exists("/lib/firmware/regulatory.db");
+	int have_sig = kb_path_exists("/lib/firmware/regulatory.db.p7s");
+
+	if (!have_db) {
+		warn_("no /lib/firmware/regulatory.db — every radio is stuck "
+		      "world-roaming: no 5 GHz DFS, reduced TX power");
+		return;
+	}
+	if (!have_sig) {
+		warn_("regulatory.db present but regulatory.db.p7s is not — "
+		      "REQUIRE_SIGNED_REGDB rejects it silently, so this is "
+		      "the same as having none");
+		return;
+	}
+
+	/*
+	 * The files being present is not the same as the kernel having loaded
+	 * them. cfg80211 exposes the alpha2 it settled on; "00" is the world
+	 * regulatory domain, which is what a failed load looks like.
+	 */
+	char *a2 = hw_slurp("/sys/module/cfg80211/parameters/ieee80211_regdom");
+	if (a2 && *a2 && strcmp(a2, "00"))
+		ok("regulatory.db signed and loaded (regdom %s)", a2);
+	else if (!hw_dir_has_prefix("/sys/class/ieee80211", "phy"))
+		skip_("regulatory.db and signature present; no wireless device "
+		      "here to load them");
+	else
+		warn_("regulatory.db present but the regulatory domain is 00 "
+		      "(world) — set one with: iw reg set <CC>");
+	free(a2);
+}
+
+/*
+ * Intel SOF audio firmware.
+ *
+ * CONFIG_SND_SOC_SOF=m binds the driver on every Tiger Lake and newer laptop,
+ * and the firmware it then requests is not part of linux-firmware — upstream
+ * ships it separately as thesofproject/sof-bin. Missing, it leaves a working
+ * audio driver and no sound, which presents as the distro having no audio
+ * support rather than as a missing file.
+ */
+static void check_sof(void)
+{
+	int sof_bound = hw_dir_has_prefix("/sys/bus/pci/drivers/sof-audio-pci-intel-tgl", "0000:")
+		     || hw_dir_has_prefix("/sys/bus/pci/drivers/sof-audio-pci-intel-mtl", "0000:")
+		     || hw_dir_has_prefix("/sys/bus/pci/drivers/sof-audio-pci-intel-icl", "0000:")
+		     || hw_dir_has_prefix("/sys/bus/pci/drivers/sof-audio-pci-intel-skl", "0000:");
+	int have_fw  = kb_path_exists("/lib/firmware/intel/sof");
+	int have_tpl = kb_path_exists("/lib/firmware/intel/sof-tplg");
+
+	if (!sof_bound) {
+		if (have_fw)
+			ok("SOF firmware installed (no SOF audio device here)");
+		else
+			skip_("no SOF audio device on this machine — Intel DSP "
+			      "firmware not required");
+		return;
+	}
+	if (have_fw && have_tpl)
+		ok("SOF firmware and topologies present");
+	else if (have_fw)
+		warn_("SOF firmware present but /lib/firmware/intel/sof-tplg "
+		      "is missing — the DSP loads and no topology binds, which "
+		      "is still silence");
+	else
+		warn_("an Intel SOF audio device is bound and "
+		      "/lib/firmware/intel/sof is absent — this machine has no "
+		      "sound (install the sof-firmware package)");
+}
+
+/*
+ * The GPU firmware. nouveau on Turing and later cannot initialise without the
+ * GSP blobs; without them the machine falls back to efifb, wlroots falls back
+ * to pixman, and kdos_crt_init() declines a fullscreen post-process on
+ * software rendering. The blobs are checked directly because the consequence
+ * — a desktop that renders but does not look like KDOS — is several steps
+ * removed from the cause.
+ */
+static void check_gpu_firmware(void)
+{
+	int nouveau = hw_dir_has_prefix("/sys/bus/pci/drivers/nouveau", "0000:");
+	int have_gsp = kb_path_exists("/lib/firmware/nvidia");
+
+	if (nouveau && !have_gsp)
+		warn_("nouveau is bound and /lib/firmware/nvidia is absent — "
+		      "Turing and later need GSP firmware to initialise at "
+		      "all, so this falls back to efifb, then to the pixman "
+		      "renderer, and the CRT pass declines");
+	else if (nouveau)
+		ok("nouveau bound with NVIDIA firmware present");
+	else if (have_gsp)
+		ok("NVIDIA GSP firmware installed (no nouveau device here)");
+	else
+		skip_("no NVIDIA GPU on this machine — GSP firmware not "
+		      "required");
+}
+
+/*
+ * DEVICE PRESENT BUT UNOPENABLE is the state this looks for, and the only way
+ * to catch a udev rule that has stopped granting: the node exists, `ls -l`
+ * looks plausible, and the program that wanted it reports something that
+ * sounds like broken hardware.
+ *
+ * Walk the classes KDOS ships tools for and report each node the CALLING user
+ * cannot open, naming the group that owns it — "add yourself to dialout" is an
+ * instruction where "permission denied" is not.
+ */
+static void check_dev_access(void)
+{
+	static const char *globs[] = {
+		"/dev/ttyUSB", "/dev/ttyACM", "/dev/video", "/dev/usbtmc", NULL
+	};
+	int checked = 0, denied = 0;
+	char denied_names[512] = "";
+
+	for (int g = 0; globs[g]; g++) {
+		for (int i = 0; i < 8; i++) {
+			char path[64];
+			snprintf(path, sizeof(path), "%s%d", globs[g], i);
+			if (!kb_path_exists(path))
+				continue;
+			checked++;
+			if (access(path, R_OK | W_OK) == 0)
+				continue;
+			denied++;
+			struct stat st;
+			const char *grp = "?";
+			char gbuf[64];
+			if (!stat(path, &st)) {
+				struct group *gr = getgrgid(st.st_gid);
+				if (gr && gr->gr_name)
+					grp = gr->gr_name;
+				else {
+					snprintf(gbuf, sizeof(gbuf), "gid %u",
+						 (unsigned)st.st_gid);
+					grp = gbuf;
+				}
+			}
+			size_t used = strlen(denied_names);
+			snprintf(denied_names + used, sizeof(denied_names) - used,
+				 "%s%s (%s)", used ? ", " : "", path, grp);
+		}
+	}
+
+	if (!checked)
+		skip_("no serial, camera or instrument device plugged in — "
+		      "nothing to check reachability against");
+	else if (!denied)
+		ok("all %d attached device nodes are reachable by this user",
+		   checked);
+	else
+		warn_("%d of %d device nodes cannot be opened: %s — this user "
+		      "is not in the owning group",
+		      denied, checked, denied_names);
+}
+
+/*
+ * The boot medium, after switch_root.
+ *
+ * The initramfs mounts the ISO at /mnt/iso and must MOVE that mount into the
+ * new root; left behind it dies with the initramfs namespace and the booted
+ * system cannot read the medium it is running from — `kdos rebuild` resolves
+ * /mnt/iso/sources under it. On an installed system there is no boot medium
+ * and this is not a fault.
+ */
+static void check_boot_medium(void)
+{
+	char *mounts = kb_read_all("/proc/mounts", NULL);
+	int live = mounts && strstr(mounts, " / overlay ") != NULL;
+	int iso  = mounts && strstr(mounts, " /mnt/iso ") != NULL;
+	free(mounts);
+
+	if (!live) {
+		skip_("installed system — no boot medium to reach");
+		return;
+	}
+	if (iso)
+		ok("boot medium reachable at /mnt/iso");
+	else
+		warn_("live session and /mnt/iso is not mounted — the "
+		      "initramfs did not move it across switch_root, so "
+		      "nothing on the medium is readable by name");
+}
+
 static int cmd_doctor(int argc, char **argv)
 {
 	for (int i = 0; i < argc; i++) {
@@ -2616,6 +2877,14 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("Landlock present but disabled — add it to CONFIG_LSM or "
 		      "the lsm= cmdline");
 	check_microcode();
+	doctor_gap();
+
+	doctor_head("Hardware");
+	check_regdb();
+	check_sof();
+	check_gpu_firmware();
+	check_dev_access();
+	check_boot_medium();
 	doctor_gap();
 
 	doctor_head("Session");
