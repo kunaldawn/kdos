@@ -33,12 +33,23 @@
  * NOTHING IS APPLIED UNTIL ENTER. The same rule kinstall keeps — every key
  * edits a plan and one action commits it — and it matters more here, because
  * the mistake a display tool makes is a screen you can no longer read.
+ *
+ * AND AN APPLY THAT SUCCEEDED IS NOT YET KEPT. A mode the monitor cannot show
+ * is a `succeeded` from the compositor and an unreadable screen for the user,
+ * so success opens a 15-second keep/revert countdown: K keeps (and persists to
+ * ~/.config/kdos/displays.conf), R or the timeout re-applies the snapshot
+ * taken before ENTER. `kdos-display --apply` is the other half — headless, it
+ * replays that file onto the heads it names, which is what a session start or
+ * a hotplug runs.
  * ---------------------------------
  */
 
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
 
 #include <wayland-client.h>
 
@@ -79,18 +90,41 @@ static int have_serial;
 static int applied;			/* 1 done, -1 refused */
 static char applied_note[128];
 
+/* The keep/revert countdown (F10): a `succeeded` from the compositor proves
+ * only that the hardware took the mode, not that the user can read it. */
+static double confirm_deadline;		/* monotonic; 0 = no countdown */
+static int reverting;			/* the in-flight apply is the revert */
+static struct {
+	int enabled;
+	int cur_mode;
+	int32_t transform;
+	double scale;
+} snap[MAX_HEADS];
+static int snap_order[MAX_HEADS];
+static int snap_n;			/* heads that existed at snapshot time */
+
 /* The scales offered. Integer-ish and few on purpose: libkwl draws a cell grid
  * and the compositor scales it, so 1.5 is already a compromise and 3 is a
  * screen nobody has. */
 static const double SCALES[] = { 1.0, 1.5, 2.0 };
 #define NSCALES ((int)(sizeof(SCALES) / sizeof(SCALES[0])))
 
-static const char *const TRANSFORMS[] = { "normal", "90", "180", "270" };
+/* All EIGHT, flips included. A compositor may report any of them, and a table
+ * of four labelled a flipped screen `normal` — the one field a display tool
+ * exists to show, saying the opposite of the truth — while `t` dropped the flip
+ * on the first press. Cycling the whole set keeps a flipped screen flipped as
+ * it rotates. */
+static const char *const TRANSFORMS[] = {
+	"normal", "90", "180", "270",
+	"flipped", "flipped-90", "flipped-180", "flipped-270"
+};
 static const int32_t TRANSFORM_ENUM[] = {
 	WL_OUTPUT_TRANSFORM_NORMAL, WL_OUTPUT_TRANSFORM_90,
-	WL_OUTPUT_TRANSFORM_180, WL_OUTPUT_TRANSFORM_270
+	WL_OUTPUT_TRANSFORM_180, WL_OUTPUT_TRANSFORM_270,
+	WL_OUTPUT_TRANSFORM_FLIPPED, WL_OUTPUT_TRANSFORM_FLIPPED_90,
+	WL_OUTPUT_TRANSFORM_FLIPPED_180, WL_OUTPUT_TRANSFORM_FLIPPED_270
 };
-#define NTRANSFORMS 4
+#define NTRANSFORMS 8
 
 /* ── the mode object ───────────────────────────────────────────────────── */
 
@@ -426,7 +460,316 @@ static void apply_now(void)
 	zwlr_output_configuration_v1_apply(cfg);
 }
 
+/* ── keep / revert / persist ───────────────────────────────────────────── */
+
+static double now_s(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (double)ts.tv_sec + ts.tv_nsec / 1e9;
+}
+
+/*
+ * The revert baseline, and it is taken ONCE, before any key is pressed.
+ * `heads[]` is the plan as well as the compositor's mirror — every edit writes
+ * straight into it — so a snapshot taken at ENTER would be the configuration
+ * about to be applied, and the countdown would `revert` to exactly the screen
+ * the user cannot read.
+ */
+static void snap_take(void)
+{
+	for (int i = 0; i < nheads; i++) {
+		snap[i].enabled = heads[i].enabled;
+		snap[i].cur_mode = heads[i].cur_mode;
+		snap[i].transform = heads[i].transform;
+		snap[i].scale = heads[i].scale;
+	}
+	memcpy(snap_order, order, sizeof(order));
+	snap_n = nheads;
+}
+
+static void snap_restore(void)
+{
+	/* Only the heads the snapshot saw: one hotplugged mid-countdown has no
+	 * saved state and keeps whatever it came up as. */
+	for (int i = 0; i < snap_n; i++) {
+		heads[i].enabled = snap[i].enabled;
+		heads[i].cur_mode = snap[i].cur_mode;
+		heads[i].transform = snap[i].transform;
+		heads[i].scale = snap[i].scale;
+	}
+	if (snap_n == nheads)
+		memcpy(order, snap_order, sizeof(order));
+}
+
+static int conf_path(char *out, size_t n)
+{
+	const char *home = getenv("HOME");
+	if (!home || !*home)
+		return -1;
+	snprintf(out, n, "%s/.config/kdos/displays.conf", home);
+	return 0;
+}
+
+/*
+ * One line per head, in the format `kdos-display --apply` reads back:
+ *   output <name> mode <W>x<H>@<mHz> scale <milli> transform <n> pos <x> <y>
+ *   output <name> off
+ * A screen switched OFF and kept needs its own row: --apply leaves a head the
+ * file does not name exactly as it found it, and at session start that is the
+ * enabled state the compositor brought it up in — so recording only the enabled
+ * heads made `off` survive until the next login and no further.
+ * Written temp+rename: a session killed mid-write must not leave half a file
+ * that --apply then replays onto every screen at the next login.
+ */
+static int persist_layout(void)
+{
+	char path[512], tmp[520], dir[512];
+	const char *home = getenv("HOME");
+
+	if (conf_path(path, sizeof(path)) != 0 || !home)
+		return -1;
+	snprintf(dir, sizeof(dir), "%s/.config", home);
+	mkdir(dir, 0755);
+	snprintf(dir, sizeof(dir), "%s/.config/kdos", home);
+	mkdir(dir, 0755);
+
+	snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+	FILE *f = fopen(tmp, "w");
+	if (!f)
+		return -1;
+
+	int x = 0;
+	for (int k = 0; k < nheads; k++) {
+		const struct head *h = &heads[order[k]];
+		if (!h->proxy)
+			continue;
+		if (!h->enabled) {
+			fprintf(f, "output %s off\n", h->name);
+			continue;
+		}
+		const struct mode *m =
+			(h->cur_mode >= 0 && h->cur_mode < h->nmodes)
+				? &h->modes[h->cur_mode]
+				: NULL;
+		int lw, lh;
+		logical_size(h, &lw, &lh);
+		fprintf(f, "output %s mode %dx%d@%d scale %d transform %d pos %d %d\n",
+			h->name, m ? m->w : 0, m ? m->h : 0,
+			m ? m->refresh : 0, (int)(h->scale * 1000.0 + 0.5),
+			(int)h->transform, x, 0);
+		x += lw;
+	}
+	if (fclose(f) != 0) {
+		remove(tmp);
+		return -1;
+	}
+	return rename(tmp, path);
+}
+
+/* ── --apply: replay the saved layout, headless ────────────────────────── */
+
+struct saved_head {
+	char name[64];
+	int off;			/* the head was switched off and kept */
+	int w, h, refresh;		/* refresh in mHz; 0x0@0 = auto */
+	int scale_milli;
+	int transform;
+	int x, y;
+};
+
+static int load_saved(struct saved_head *out, int max)
+{
+	char path[512], line[256];
+	if (conf_path(path, sizeof(path)) != 0)
+		return 0;
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return 0;	/* no config is not an error — nothing to do */
+	int n = 0;
+	while (n < max && fgets(line, sizeof(line), f)) {
+		struct saved_head *c = &out[n];
+		char kw[8];
+		memset(c, 0, sizeof(*c));
+		/* A line that does not parse is skipped, not fatal: an edited
+		 * file must not take down every screen at login. */
+		if (sscanf(line,
+			   "output %63s mode %dx%d@%d scale %d transform %d pos %d %d",
+			   c->name, &c->w, &c->h, &c->refresh, &c->scale_milli,
+			   &c->transform, &c->x, &c->y) == 8) {
+			n++;
+		} else if (sscanf(line, "output %63s %7s", c->name, kw) == 2 &&
+			   !strcmp(kw, "off")) {
+			c->off = 1;
+			n++;
+		}
+	}
+	fclose(f);
+	return n;
+}
+
+static void pump_until_answered(struct wl_display *dpy)
+{
+	double deadline = now_s() + 3.0;
+	int fd = wl_display_get_fd(dpy);
+
+	while (!applied && now_s() < deadline) {
+		while (wl_display_prepare_read(dpy) != 0)
+			wl_display_dispatch_pending(dpy);
+		wl_display_flush(dpy);
+		struct pollfd p = { .fd = fd, .events = POLLIN };
+		if (poll(&p, 1, 200) > 0)
+			wl_display_read_events(dpy);
+		else
+			wl_display_cancel_read(dpy);
+		wl_display_dispatch_pending(dpy);
+	}
+}
+
+static int apply_saved(struct wl_display *dpy)
+{
+	struct saved_head saved[MAX_HEADS];
+	int nsaved = load_saved(saved, MAX_HEADS);
+
+	if (nsaved == 0 || !mgr || !have_serial)
+		return 0;
+
+	struct zwlr_output_configuration_v1 *cfg =
+		zwlr_output_manager_v1_create_configuration(mgr, mgr_serial);
+	if (!cfg)
+		return 0;
+	zwlr_output_configuration_v1_add_listener(cfg, &cfg_listener, NULL);
+
+	int touched = 0;
+	for (int i = 0; i < nheads; i++) {
+		struct head *h = &heads[i];
+		if (!h->proxy)
+			continue;
+		const struct saved_head *c = NULL;
+		for (int j = 0; j < nsaved; j++)
+			if (!strcmp(saved[j].name, h->name)) {
+				c = &saved[j];
+				break;
+			}
+		/*
+		 * Omitting a head from a configuration is a protocol error, so
+		 * a head the file does not know keeps exactly its current
+		 * state rather than being skipped.
+		 */
+		if (!c) {
+			if (!h->enabled) {
+				zwlr_output_configuration_v1_disable_head(
+					cfg, h->proxy);
+				continue;
+			}
+			struct zwlr_output_configuration_head_v1 *ch =
+				zwlr_output_configuration_v1_enable_head(
+					cfg, h->proxy);
+			if (!ch)
+				continue;
+			if (h->cur_mode >= 0 && h->cur_mode < h->nmodes &&
+			    h->modes[h->cur_mode].proxy)
+				zwlr_output_configuration_head_v1_set_mode(
+					ch, h->modes[h->cur_mode].proxy);
+			zwlr_output_configuration_head_v1_set_transform(
+				ch, h->transform);
+			zwlr_output_configuration_head_v1_set_scale(
+				ch, wl_fixed_from_double(h->scale));
+			zwlr_output_configuration_head_v1_set_position(
+				ch, h->x, h->y);
+			continue;
+		}
+
+		touched = 1;
+		if (c->off) {
+			zwlr_output_configuration_v1_disable_head(cfg, h->proxy);
+			continue;
+		}
+		struct zwlr_output_configuration_head_v1 *ch =
+			zwlr_output_configuration_v1_enable_head(cfg, h->proxy);
+		if (!ch)
+			continue;
+		/* Exact mode first; the same size at another refresh second —
+		 * a monitor replugged through a different cable loses only the
+		 * refresh, not the layout. */
+		int mi = -1;
+		for (int m = 0; m < h->nmodes && mi < 0; m++)
+			if (h->modes[m].proxy && h->modes[m].w == c->w &&
+			    h->modes[m].h == c->h &&
+			    h->modes[m].refresh == c->refresh)
+				mi = m;
+		for (int m = 0; m < h->nmodes && mi < 0; m++)
+			if (h->modes[m].proxy && h->modes[m].w == c->w &&
+			    h->modes[m].h == c->h)
+				mi = m;
+		if (mi >= 0)
+			zwlr_output_configuration_head_v1_set_mode(
+				ch, h->modes[mi].proxy);
+		zwlr_output_configuration_head_v1_set_transform(
+			ch, (c->transform >= 0 && c->transform <= 7)
+				    ? c->transform
+				    : WL_OUTPUT_TRANSFORM_NORMAL);
+		zwlr_output_configuration_head_v1_set_scale(
+			ch, wl_fixed_from_double(
+				    c->scale_milli > 0
+					    ? c->scale_milli / 1000.0
+					    : 1.0));
+		zwlr_output_configuration_head_v1_set_position(ch, c->x, c->y);
+	}
+
+	if (!touched) {
+		/* The file names no screen this machine has — apply nothing. */
+		zwlr_output_configuration_v1_destroy(cfg);
+		return 0;
+	}
+	zwlr_output_configuration_v1_apply(cfg);
+	pump_until_answered(dpy);
+	/* A refusal here has nobody watching a screen — this runs at session
+	 * start and on hotplug — so it goes to stderr and into the exit status,
+	 * or a layout the compositor threw out looks exactly like one it took. */
+	if (applied < 0) {
+		fprintf(stderr, "kdos-display: %s\n",
+			applied_note[0] ? applied_note : "the layout was refused");
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * Refusing to switch off the LAST screen is not paternalism: the compositor
+ * would have nothing to draw on and this dialog would go with it, leaving a
+ * machine that is running and cannot be seen.
+ *
+ * It is a function rather than a case now because the pointer reaches the same
+ * verb through a button, and two copies of this rule is one copy that stops
+ * being true.
+ */
+static void toggle_enabled(struct head *h)
+{
+	if (!h)
+		return;
+	if (h->enabled) {
+		int live = 0;
+
+		for (int i = 0; i < nheads; i++)
+			if (heads[i].enabled)
+				live++;
+		if (live < 2) {
+			snprintf(applied_note, sizeof(applied_note),
+				 "that is the only screen there is");
+			applied = -1;
+			return;
+		}
+	}
+	h->enabled = !h->enabled;
+	applied_note[0] = '\0';
+}
+
 /* ── drawing ───────────────────────────────────────────────────────────── */
+
+/* Most useful first: the bar drops from the RIGHT, so Close goes before
+ * Apply. Escape and a click away still close it. */
+enum { DB_APPLY, DB_ONOFF, DB_MODE, DB_SCALE, DB_ROTATE, DB_CLOSE, DB_N };
 
 static void mode_label(const struct head *h, char *out, size_t n)
 {
@@ -439,7 +782,8 @@ static void mode_label(const struct head *h, char *out, size_t n)
 		return;
 	}
 	const struct mode *m = &h->modes[h->cur_mode];
-	snprintf(out, n, "%dx%d@%d", m->w, m->h, (m->refresh + 500) / 1000);
+	snprintf(out, n, "%dx%d@%d%s", m->w, m->h, (m->refresh + 500) / 1000,
+		 m->preferred ? "*" : "");
 }
 
 static void draw(void)
@@ -475,22 +819,70 @@ static void draw(void)
 
 	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 	ktui_draw_text(2, h - 3, w - 4,
-		       "SPACE on/off   m mode   s scale   t rotate   [ ] order",
+		       confirm_deadline > 0.0
+			       ? "K keep   R revert now"
+			       : "SPACE on/off   m/M mode   s scale   t rotate   [ ] order",
 		       KT_DIM, KT_SURFACE, KT_A_NONE);
-	ktui_draw_text(2, h - 2, w - 4,
-		       applied_note[0] ? applied_note
-				       : "ENTER apply    ESC cancel",
-		       applied < 0 ? KT_ERR : KT_DIM, KT_SURFACE, KT_A_NONE);
+	/*
+	 * EVERY VERB IN THIS WINDOW WAS A KEY, and the row of keys above is a
+	 * legend, not a control: a pointer could select a screen and then do
+	 * nothing to it — not switch it off, not change its mode, not apply.
+	 * The shared bar drops from the right when the window is narrow and
+	 * returns where it started, which is where the note has to stop.
+	 */
+	const struct head *bh = (sel >= 0 && sel < nheads) ? &heads[order[sel]]
+							   : NULL;
+	int live = 0;
+	for (int i = 0; i < nheads; i++)
+		if (heads[i].enabled)
+			live++;
+	struct sh_button b[DB_N];
+	b[DB_APPLY] = (struct sh_button){ "Apply", nheads > 0 };
+	b[DB_ONOFF] = (struct sh_button){ bh && bh->enabled ? "Turn Off"
+							   : "Turn On",
+					  bh && bh->proxy &&
+						  (!bh->enabled || live > 1) };
+	b[DB_MODE] = (struct sh_button){ "Mode", bh && bh->proxy &&
+							bh->nmodes > 1 };
+	b[DB_SCALE] = (struct sh_button){ "Scale", bh && bh->proxy };
+	b[DB_ROTATE] = (struct sh_button){ "Rotate", bh && bh->proxy };
+	b[DB_CLOSE] = (struct sh_button){ "Close", 1 };
+	int bx = sh_chrome_buttons(w, h - 2, b, DB_N, -1);
+	int room = bx - 3;
+	const char *note = applied_note[0] ? applied_note
+					   : "ENTER apply    ESC cancel";
+	/* A MESSAGE takes whatever room is left; a HINT is drawn whole or not
+	 * at all, because half a sentence is worse than none. */
+	if (room > 0 && (applied_note[0]
+				 ? 1
+				 : room >= (int)ktui_utf8_width(note)))
+		ktui_draw_text(2, h - 2, room, note,
+			       applied < 0 ? KT_ERR : KT_DIM, KT_SURFACE,
+			       KT_A_NONE);
 	ktui_draw_flush();
 }
 
 /* ── the plan, as keys ─────────────────────────────────────────────────── */
 
-static void cycle_mode(struct head *h)
+static int preferred_mode(const struct head *h)
+{
+	for (int i = 0; i < h->nmodes; i++)
+		if (h->modes[i].preferred)
+			return i;
+	return 0;
+}
+
+static void cycle_mode(struct head *h, int dir)
 {
 	if (h->nmodes < 1)
 		return;
-	h->cur_mode = (h->cur_mode + 1) % h->nmodes;
+	/* From `auto`, the first press lands on the preferred mode — the one
+	 * the monitor itself advertises — not on whatever slot came first. */
+	if (h->cur_mode < 0) {
+		h->cur_mode = preferred_mode(h);
+		return;
+	}
+	h->cur_mode = (h->cur_mode + dir + h->nmodes) % h->nmodes;
 }
 
 static void cycle_scale(struct head *h)
@@ -543,27 +935,32 @@ static void print_list(void)
 int display_main(int argc, char **argv)
 {
 	const char *font = NULL;
-	int list_only = 0;
+	int list_only = 0, apply_only = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
 		else if (!strcmp(argv[i], "--list"))
 			list_only = 1;
+		else if (!strcmp(argv[i], "--apply"))
+			apply_only = 1;
 		else {
 			fprintf(stderr, "usage: kdos-display [--list] "
-					"[--font NAME]\n");
+					"[--apply] [--font NAME]\n");
 			return 2;
 		}
 	}
 
 	/*
-	 * --list needs the protocol and no surface, which is the same shape
-	 * `kdos-shell --dump` uses and for the same reason: the answer is worth
-	 * having in a bug report without a screen to draw it on.
+	 * --list and --apply need the protocol and no surface, which is the
+	 * same shape `kdos-shell --dump` uses and for the same reason: the
+	 * answer is worth having in a bug report without a screen to draw it
+	 * on — and --apply runs at session start and on hotplug, where there
+	 * is nobody to draw for.
 	 */
 	KwlConfig cfg = {
-		.role = list_only ? KWL_ROLE_NONE : KWL_ROLE_OVERLAY,
+		.role = (list_only || apply_only) ? KWL_ROLE_NONE
+						  : KWL_ROLE_OVERLAY,
 		.cols = 60,
 		.rows = 14,
 		.app_id = "kdos-display",
@@ -596,10 +993,51 @@ int display_main(int argc, char **argv)
 		kwl_shutdown();
 		return 0;
 	}
+	if (apply_only) {
+		int rc = apply_saved(dpy);
+		kwl_shutdown();
+		return rc;
+	}
 
+	snap_take();
 	ktui_draw_init();
 
 	while (!kwl_should_close()) {
+		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
+		sh_theme_poll();
+		/*
+		 * An apply that succeeded does NOT close the dialog: the mode
+		 * may be one the monitor cannot show, so the answer is a
+		 * countdown the user must interrupt to keep it. A revert's
+		 * success just says so.
+		 */
+		if (applied > 0) {
+			applied = 0;
+			if (reverting) {
+				reverting = 0;
+				snprintf(applied_note, sizeof(applied_note),
+					 "reverted");
+			} else if (confirm_deadline == 0.0) {
+				confirm_deadline = now_s() + 15.0;
+			}
+		}
+		if (applied < 0)
+			reverting = 0;
+		if (confirm_deadline > 0.0) {
+			int left = (int)(confirm_deadline - now_s() + 0.999);
+			if (left <= 0) {
+				confirm_deadline = 0.0;
+				snap_restore();
+				reverting = 1;
+				apply_now();
+				wl_display_flush(dpy);
+			} else {
+				snprintf(applied_note, sizeof(applied_note),
+					 "Keep these settings? reverting in %ds — press K",
+					 left);
+			}
+		}
+
 		draw();
 
 		KtuiEvent ev;
@@ -609,20 +1047,93 @@ int display_main(int argc, char **argv)
 				ktui_draw_resize();
 				ktui_draw_invalidate();
 			}
-			/* An apply that succeeded closes the dialog: the answer
-			 * is on the screens themselves. */
-			if (applied > 0)
-				break;
+			continue;
+		}
+
+		/* The countdown answers two keys and nothing else: editing a
+		 * plan mid-revert would apply a state nobody chose. */
+		if (confirm_deadline > 0.0) {
+			if (ev.type == KT_EVT_KEY &&
+			    (ev.key == 'k' || ev.key == 'K')) {
+				confirm_deadline = 0.0;
+				persist_layout();
+				goto done;
+			}
+			if (ev.type == KT_EVT_KEY &&
+			    (ev.key == 'r' || ev.key == 'R')) {
+				confirm_deadline = 0.0;
+				snap_restore();
+				reverting = 1;
+				apply_now();
+				wl_display_flush(dpy);
+			}
 			continue;
 		}
 
 		if (ev.type == KT_EVT_MOUSE) {
+			if (ev.press == KT_MP_DRAG) {
+				/* The button bar lights under the pointer. The
+				 * LIST does not follow the pointer here: a row
+				 * is a screen and the buttons act on the
+				 * selected one, so hover-to-select would move
+				 * the target out from under the hand between
+				 * aiming and clicking. */
+				sh_chrome_hover(ev.mx, ev.my);
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS || ev.mx < 0)
 				continue;
 			if (ev.btn == KT_MB_RIGHT)
 				break;
+			if (ev.btn == KT_MB_WHEEL_UP) {
+				if (sel > 0)
+					sel--;
+				continue;
+			}
+			if (ev.btn == KT_MB_WHEEL_DOWN) {
+				if (sel + 1 < nheads)
+					sel++;
+				continue;
+			}
+			if (ev.btn != KT_MB_LEFT)
+				continue;
 			int row = ev.my - 1;
-			if (ev.btn == KT_MB_LEFT && row >= 0 && row < nheads)
+			int bi = sh_chrome_button_at(ev.mx, ev.my);
+			if (bi >= 0) {
+				struct head *hh = (sel >= 0 && sel < nheads)
+							  ? &heads[order[sel]]
+							  : NULL;
+				if (hh && !hh->proxy)
+					hh = NULL;
+				switch (bi) {
+				case DB_APPLY:
+					reverting = 0;
+					applied = 0;
+					applied_note[0] = '\0';
+					apply_now();
+					wl_display_flush(dpy);
+					break;
+				case DB_ONOFF:
+					toggle_enabled(hh);
+					break;
+				case DB_MODE:
+					if (hh)
+						cycle_mode(hh, 1);
+					break;
+				case DB_SCALE:
+					if (hh)
+						cycle_scale(hh);
+					break;
+				case DB_ROTATE:
+					if (hh)
+						cycle_transform(hh);
+					break;
+				case DB_CLOSE:
+					goto done;
+				}
+				continue;
+			}
+			if (row >= 0 && row < nheads)
 				sel = row;
 			continue;
 		}
@@ -647,33 +1158,15 @@ int display_main(int argc, char **argv)
 				sel++;
 			break;
 		case ' ':
-			/*
-			 * Refusing to switch off the LAST screen is not
-			 * paternalism: the compositor would have nothing to draw
-			 * on and this dialog would go with it, leaving a machine
-			 * that is running and cannot be seen.
-			 */
-			if (!h)
-				break;
-			if (h->enabled) {
-				int live = 0;
-				for (int i = 0; i < nheads; i++)
-					if (heads[i].enabled)
-						live++;
-				if (live < 2) {
-					snprintf(applied_note,
-						 sizeof(applied_note),
-						 "that is the only screen there is");
-					applied = -1;
-					break;
-				}
-			}
-			h->enabled = !h->enabled;
-			applied_note[0] = '\0';
+			toggle_enabled(h);
 			break;
 		case 'm':
 			if (h)
-				cycle_mode(h);
+				cycle_mode(h, 1);
+			break;
+		case 'M':
+			if (h)
+				cycle_mode(h, -1);
 			break;
 		case 's':
 			if (h)
@@ -690,6 +1183,9 @@ int display_main(int argc, char **argv)
 			move_in_order(1);
 			break;
 		case KT_K_ENTER:
+			/* The countdown's revert replays the baseline
+			 * snap_take() recorded before the first edit. */
+			reverting = 0;
 			applied = 0;
 			applied_note[0] = '\0';
 			apply_now();

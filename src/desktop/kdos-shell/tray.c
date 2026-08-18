@@ -34,9 +34,11 @@
  *     that is the known gap, stated rather than hidden.
  */
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 /* KDOS ships basu; a development host usually has libsystemd, whose sd-bus is
@@ -63,6 +65,9 @@
 /* A property read that outlives this is a broken app, not a slow bus. */
 #define PROP_TIMEOUT_US 300000
 
+/* How long one dispatch may spend reading properties. See sh_tray_dispatch. */
+#define REFRESH_BUDGET_MS 100
+
 struct sh_tray {
 	sd_bus *bus;
 	sd_bus_slot *vtable_slot;
@@ -70,11 +75,29 @@ struct sh_tray {
 	sd_bus_slot *item_slot;
 	sd_bus_slot *watcher_slot;
 	int own_watcher;		/* we own the watcher name */
+	int adopt_pending;		/* a new foreign watcher appeared */
+	char uniq[64];			/* our own unique bus name */
+	char host[64];			/* our per-process host name */
 	struct sh_tray_item items[SH_MAX_TRAY];
 	int nitems;
+	/* Where the next property read starts. A scan from zero refreshed the
+	 * first eligible item and stopped, and an app that animates its icon
+	 * (nextcloud syncing, syncthing) sets needs_props several times a
+	 * second — so items after it were never read at all. */
+	int refresh_cur;
 };
 
 /* ── item bookkeeping ──────────────────────────────────────────────────── */
+
+/* Monotonic, for the refresh budget: `time()` is a second's resolution and the
+ * budget is a tenth of one. */
+static int64_t now_ms(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
 
 static struct sh_tray_item *find_item(struct sh_tray *t, const char *service,
 				      const char *path)
@@ -95,6 +118,9 @@ static void drop_item(struct sh_tray *t, int i)
 	memmove(&t->items[i], &t->items[i + 1],
 		(size_t)(t->nitems - i - 1) * sizeof(t->items[0]));
 	t->nitems--;
+	/* The array moved under the cursor. */
+	if (t->refresh_cur > i)
+		t->refresh_cur--;
 	if (t->own_watcher) {
 		sd_bus_emit_signal(t->bus, WATCHER_PATH, WATCHER_IFACE,
 				   "StatusNotifierItemUnregistered", "s", gone);
@@ -125,7 +151,7 @@ static int getall(struct sh_tray *t, struct sh_tray_item *it, const char *iface)
 {
 	sd_bus_message *m = NULL, *reply = NULL;
 	sd_bus_error err = SD_BUS_ERROR_NULL;
-	int r;
+	int r, nkeys = 0;
 
 	r = sd_bus_message_new_method_call(t->bus, &m, it->service, it->path,
 					   "org.freedesktop.DBus.Properties",
@@ -150,6 +176,7 @@ static int getall(struct sh_tray *t, struct sh_tray_item *it, const char *iface)
 			break;
 		if (sd_bus_message_peek_type(reply, &type, &contents) < 0)
 			break;
+		nkeys++;
 
 		if (contents && !strcmp(contents, "s") &&
 		    sd_bus_message_enter_container(reply, 'v', "s") > 0) {
@@ -180,7 +207,15 @@ static int getall(struct sh_tray *t, struct sh_tray_item *it, const char *iface)
 		sd_bus_message_exit_container(reply);
 	}
 	sd_bus_message_exit_container(reply);
-	r = 0;
+	/*
+	 * An EMPTY dict is not an answer. Several bindings reply to a GetAll for
+	 * an interface the object does not implement with a well-formed empty
+	 * a{sv} rather than an error, and counting that as success is what stops
+	 * the probe below ever trying the other spelling — which is the exact
+	 * failure it exists to fix, keyed on "the call did not error" instead of
+	 * "the interface answered". Every SNI item publishes Id and Status.
+	 */
+	r = nkeys > 0 ? 0 : -1;
 out:
 	sd_bus_error_free(&err);
 	sd_bus_message_unref(m);
@@ -201,15 +236,77 @@ static void refresh_item(struct sh_tray *t, struct sh_tray_item *it)
 	const char *first = it->fdo_iface ? SNI_IFACE_FDO : SNI_IFACE_KDE;
 	const char *second = it->fdo_iface ? SNI_IFACE_KDE : SNI_IFACE_FDO;
 
-	it->needs_props = 0;
-	if (getall(t, it, first) < 0 && getall(t, it, second) == 0)
+	if (getall(t, it, first) == 0) {
+		it->needs_props = 0;
+		it->prop_fails = 0;
+	} else if (getall(t, it, second) == 0) {
 		it->fdo_iface = !it->fdo_iface;
+		it->needs_props = 0;
+		it->prop_fails = 0;
+	} else {
+		/*
+		 * BOTH failed: keep needs_props and back off. Clearing it here
+		 * left an item registered while the app was still starting up
+		 * with no name for the rest of the session; retrying every
+		 * dispatch against a wedged app is 600 ms of dead panel per
+		 * second. Doubling up to about a minute is the middle.
+		 */
+		if (it->prop_fails < 6)
+			it->prop_fails++;
+		it->next_try = time(NULL) + (1 << it->prop_fails);
+	}
 
 	/* Something to draw, whatever the app told us. An item with no Id and
 	 * no Title still exists and still has to be clickable. */
 	if (!it->id[0])
 		copy_str(it->id, sizeof(it->id),
 			 it->title[0] ? it->title : it->service);
+}
+
+/*
+ * An adopted item arrives with no sender, so its `owner` starts as the service
+ * name — which is a WELL-KNOWN name, and the change signals every item sends
+ * carry the UNIQUE one. Matching against the wrong spelling meant an adopted
+ * item never updated. The unique name is asked for asynchronously; the reply
+ * finds the item by service, because items memmove and a pointer would not
+ * survive a drop in between.
+ */
+struct owner_lookup {
+	struct sh_tray *t;
+	char service[SH_TRAY_NAME];
+};
+
+static int on_get_name_owner(sd_bus_message *m, void *userdata,
+			     sd_bus_error *err)
+{
+	struct owner_lookup *l = userdata;
+	const char *owner = NULL;
+	(void)err;
+
+	if (!sd_bus_message_is_method_error(m, NULL) &&
+	    sd_bus_message_read(m, "s", &owner) >= 0 && owner && *owner) {
+		struct sh_tray_item *it = find_item(l->t, l->service, NULL);
+		if (it)
+			copy_str(it->owner, sizeof(it->owner), owner);
+	}
+	free(l);
+	return 0;
+}
+
+static void resolve_owner(struct sh_tray *t, const char *service)
+{
+	if (service[0] == ':')
+		return;			/* already a unique name */
+	struct owner_lookup *l = calloc(1, sizeof(*l));
+	if (!l)
+		return;
+	l->t = t;
+	copy_str(l->service, sizeof(l->service), service);
+	if (sd_bus_call_method_async(t->bus, NULL, "org.freedesktop.DBus",
+				     "/org/freedesktop/DBus",
+				     "org.freedesktop.DBus", "GetNameOwner",
+				     on_get_name_owner, l, "s", service) < 0)
+		free(l);
 }
 
 /*
@@ -257,8 +354,11 @@ static struct sh_tray_item *add_item(struct sh_tray *t, const char *arg,
 	copy_str(it->service, sizeof(it->service), service);
 	copy_str(it->path, sizeof(it->path), path);
 	/* No sender means we adopted this from another watcher and do not know
-	 * the unique name behind it; the service name is what we can match on. */
+	 * the unique name behind it yet; the service name stands in until the
+	 * async GetNameOwner below answers. */
 	copy_str(it->owner, sizeof(it->owner), sender ? sender : service);
+	if (!sender)
+		resolve_owner(t, service);
 	/*
 	 * Deferred, never read here: add_item runs inside a bus callback, and a
 	 * SYNCHRONOUS call from inside one does not get its reply — sd-bus is
@@ -292,6 +392,11 @@ static int on_item_signal(sd_bus_message *m, void *userdata,
  * An app that died still has an entry in our list until the bus tells us its
  * name went away. Without this the panel keeps a dead letter forever and a
  * click on it goes to a name nobody owns.
+ *
+ * The same signal is how the WATCHER role changes hands: the name was
+ * requested with SD_BUS_NAME_QUEUE, so when a foreign watcher (waybar, say)
+ * exits, the bus hands the name to us and announces it here — without this
+ * the tray was dead from that moment until the panel was restarted.
  */
 static int on_name_owner_changed(sd_bus_message *m, void *userdata,
 				 sd_bus_error *err)
@@ -302,7 +407,26 @@ static int on_name_owner_changed(sd_bus_message *m, void *userdata,
 
 	if (sd_bus_message_read(m, "sss", &name, &old, &new) < 0)
 		return 0;
-	if (!name || (new && *new))
+	if (!name)
+		return 0;
+	if (!strcmp(name, WATCHER_NAME)) {
+		int mine = new && *new && !strcmp(new, t->uniq);
+		if (mine && !t->own_watcher) {
+			t->own_watcher = 1;
+			/* Apps re-register when the watcher changes hands, but
+			 * only if told there is a host behind the new one. */
+			sd_bus_emit_signal(t->bus, WATCHER_PATH, WATCHER_IFACE,
+					   "StatusNotifierHostRegistered", "");
+		} else if (!mine && new && *new) {
+			/* Deferred to the next dispatch: adopting reads the
+			 * new watcher's list SYNCHRONOUSLY, and a sync call
+			 * from inside a bus callback never gets its reply. */
+			t->own_watcher = 0;
+			t->adopt_pending = 1;
+		}
+		return 0;
+	}
+	if (new && *new)
 		return 0;
 	for (int i = t->nitems - 1; i >= 0; i--)
 		if (!strcmp(t->items[i].service, name) ||
@@ -487,19 +611,29 @@ int sh_tray_init(struct sh_state *sh)
 	if (r < 0)
 		goto fail;
 
+	const char *uniq = NULL;
+	if (sd_bus_get_unique_name(t->bus, &uniq) >= 0 && uniq)
+		copy_str(t->uniq, sizeof(t->uniq), uniq);
+
 	/*
 	 * Requesting the watcher name is allowed to FAIL. Another host (a
 	 * waybar the user prefers) may already own it, and then we are a host
 	 * and not the watcher — which is the protocol working as designed, not
-	 * an error worth refusing to start over.
+	 * an error worth refusing to start over. But we QUEUE for the name, so
+	 * that watcher exiting hands the role to us (announced through
+	 * NameOwnerChanged) instead of leaving the session with no watcher and
+	 * a tray that is dead until the panel restarts.
 	 */
 	r = sd_bus_request_name(t->bus, WATCHER_NAME, 0);
 	t->own_watcher = r >= 0;
+	if (!t->own_watcher)
+		sd_bus_request_name(t->bus, WATCHER_NAME, SD_BUS_NAME_QUEUE);
 
 	/* The host name is per-process by spec, and owning it is what an app
 	 * checks before it bothers to publish an item at all. */
 	snprintf(host, sizeof(host), "org.kde.StatusNotifierHost-%d",
 		 (int)getpid());
+	copy_str(t->host, sizeof(t->host), host);
 	sd_bus_request_name(t->bus, host, 0);
 	if (t->own_watcher) {
 		sd_bus_emit_signal(t->bus, WATCHER_PATH, WATCHER_IFACE,
@@ -552,11 +686,43 @@ void sh_tray_dispatch(struct sh_state *sh)
 		return;
 	while (sd_bus_process(t->bus, NULL) > 0)
 		;
-	/* Property reads happen HERE, outside every callback, for the reason in
-	 * refresh_item's neighbour above. */
-	for (int i = 0; i < t->nitems; i++)
-		if (t->items[i].needs_props)
-			refresh_item(t, &t->items[i]);
+	if (t->adopt_pending) {
+		/* A new foreign watcher took the name: introduce our host to
+		 * it and read its list, both outside any callback. */
+		t->adopt_pending = 0;
+		sd_bus_call_method_async(t->bus, NULL, WATCHER_NAME,
+					 WATCHER_PATH, WATCHER_IFACE,
+					 "RegisterStatusNotifierHost", NULL,
+					 NULL, "s", t->host);
+		adopt_items(t);
+	}
+	/*
+	 * Property reads happen HERE, outside every callback, for the reason in
+	 * refresh_item's neighbour above — and on a BUDGET rather than one item
+	 * per dispatch: the read has a 300 ms ceiling per interface, so a burst
+	 * of sixteen wedged registrations serviced in one loop was ~10 s of dead
+	 * panel. The budget is spent AFTER a read, so a burst that answers
+	 * quickly drains in one tick (six items resolving one per second is six
+	 * seconds of placeholder cells) while one wedged item still costs its
+	 * ceiling and no more.
+	 *
+	 * And the scan starts from a CURSOR. A failed item's next_try pushes it
+	 * past the others, but a SUCCEEDING one is eligible again the moment it
+	 * emits its next NewIcon — an animated tray icon at items[0] therefore
+	 * took every read for as long as it was animating.
+	 */
+	time_t now = time(NULL);
+	int64_t started = now_ms();
+	int cur = t->refresh_cur;
+	for (int k = 0; k < t->nitems; k++) {
+		int i = (cur + k) % t->nitems;
+		if (!t->items[i].needs_props || t->items[i].next_try > now)
+			continue;
+		refresh_item(t, &t->items[i]);
+		t->refresh_cur = (i + 1) % t->nitems;
+		if (now_ms() - started >= REFRESH_BUDGET_MS)
+			break;
+	}
 	sd_bus_flush(t->bus);
 }
 
@@ -607,6 +773,45 @@ void sh_tray_activate(struct sh_state *sh, int i, int button, int x, int y)
 	sd_bus_flush(t->bus);
 }
 
+/*
+ * The wheel, delivered as the spec's Scroll — a volume item (pasystray,
+ * kmix) expects exactly this and nothing else the host can send changes its
+ * level. Fire-and-forget for the same reason every other item call is.
+ */
+void sh_tray_scroll(struct sh_state *sh, int i, int delta)
+{
+	struct sh_tray *t = sh->tray;
+
+	if (!t || !t->bus || i < 0 || i >= t->nitems)
+		return;
+	struct sh_tray_item *it = &t->items[i];
+	sd_bus_call_method_async(t->bus, NULL, it->service, it->path,
+				 it->fdo_iface ? SNI_IFACE_FDO : SNI_IFACE_KDE,
+				 "Scroll", NULL, NULL, "is", delta, "vertical");
+	sd_bus_flush(t->bus);
+}
+
+/*
+ * One notification, through the connection the tray already holds — the
+ * battery warning's route. Async with no reply handler: a notification must
+ * never gate a frame, and there is nothing to do with the returned id.
+ */
+void sh_tray_notify(struct sh_state *sh, const char *summary, const char *body)
+{
+	struct sh_tray *t = sh->tray;
+
+	if (!t || !t->bus)
+		return;
+	sd_bus_call_method_async(t->bus, NULL,
+				 "org.freedesktop.Notifications",
+				 "/org/freedesktop/Notifications",
+				 "org.freedesktop.Notifications", "Notify",
+				 NULL, NULL, "susssasa{sv}i",
+				 "kdos-shell", (uint32_t)0, "", summary, body,
+				 0, 0, (int32_t)-1);
+	sd_bus_flush(t->bus);
+}
+
 void sh_tray_free(struct sh_state *sh)
 {
 	struct sh_tray *t = sh->tray;
@@ -622,4 +827,18 @@ void sh_tray_free(struct sh_state *sh)
 	}
 	free(t);
 	sh->tray = NULL;
+}
+
+/*
+ * The session-bus connection, for the ONE other widget that needs one.
+ *
+ * The MPRIS cell reads whichever player is up; opening a second connection for
+ * it would mean a second fd, a second unique name and a second thing to
+ * dispatch, in a process whose whole rule is that nothing blocks the frame.
+ * NULL when there is no bus, which is a session with no tray and no media
+ * controls rather than a panel that failed to start.
+ */
+void *sh_tray_bus(const struct sh_state *sh)
+{
+	return sh && sh->tray ? sh->tray->bus : NULL;
 }

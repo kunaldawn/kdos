@@ -1290,9 +1290,11 @@ entry(xmlNode *node, char *nodename, char *content)
 			rc.window_switcher.osd.style = CYCLE_OSD_STYLE_CLASSIC;
 		} else if (!strcasecmp(content, "thumbnail")) {
 			rc.window_switcher.osd.style = CYCLE_OSD_STYLE_THUMBNAIL;
+		} else if (!strcasecmp(content, "apps")) {
+			rc.window_switcher.osd.style = CYCLE_OSD_STYLE_APPS; /* KDOS */
 		} else {
 			wlr_log(WLR_ERROR, "Invalid windowSwitcher style '%s': "
-				"should be one of classic|thumbnail", content);
+				"should be one of classic|thumbnail|apps", content);
 		}
 	} else if (!strcasecmp(nodename, "output.osd.windowSwitcher")) {
 		if (!strcasecmp(content, "all")) {

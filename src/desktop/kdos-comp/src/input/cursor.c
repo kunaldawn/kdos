@@ -23,6 +23,7 @@
 #include "config/rcxml.h"
 #include "cycle.h"
 #include "dnd.h"
+#include "kdos.h" /* KDOS */
 #include "idle.h"
 #include "input/gestures.h"
 #include "input/keyboard.h"
@@ -1171,11 +1172,34 @@ cursor_process_button_press(struct seat *seat, uint32_t button, uint32_t time_ms
 		if (layer && layer->current.keyboard_interactive) {
 			layer_try_set_focus(seat, layer);
 		}
+		/*
+		 * KDOS: and the other half — a press on a DIFFERENT layer
+		 * surface gives up the focused one. Clicking the panel while a
+		 * menu is open is the case: the panel takes no keyboard, so
+		 * the branch above does nothing and the menu would keep the
+		 * focus it needs to lose in order to dismiss itself.
+		 */
+		if (layer != seat->focused_layer) {
+			kdos_layer_release_on_demand(seat, layer);
+		}
 #if HAVE_XWAYLAND
 	} else if (ctx.type == LAB_NODE_UNMANAGED) {
 		desktop_focus_view_or_surface(seat, NULL, ctx.surface,
 			/*raise*/ false);
 #endif
+	} else {
+		/*
+		 * KDOS: a press on anything that is NOT a layer surface —
+		 * the desktop, the wallpaper, a window's decoration — releases
+		 * an on-demand layer surface that holds the keyboard.
+		 *
+		 * A press on a VIEW already did this by way of focusing it,
+		 * which is why launching an app dismissed a menu but clicking
+		 * bare wallpaper did not: nothing on that path changes focus,
+		 * so the menu never received wl_keyboard.leave and stayed open
+		 * over a desktop the user had clearly clicked away to.
+		 */
+		kdos_layer_release_on_demand(seat, NULL);
 	}
 
 	if (ctx.type != LAB_NODE_CLIENT && ctx.type != LAB_NODE_LAYER_SURFACE

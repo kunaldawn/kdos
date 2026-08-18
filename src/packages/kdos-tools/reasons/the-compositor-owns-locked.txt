@@ -1,0 +1,14 @@
+title: the compositor owns `locked` — a lock that unlocks when it crashes is the bug
+cite: kdos-lock
+port: kdos-lock
+
+labwc's manager->locked stays true when the lock client dies without
+unlocking. The lock output trees keep covering every screen, and a NEW lock
+client may replace the abandoned one, which is exactly the recovery kdos-lock
+needs after a crash. Verified semantics, not assumed.
+
+libkwl's half: kwl_init skips the pre-configure commit for KWL_ROLE_LOCK,
+because an empty commit is a protocol error on a lock surface. And the
+protocol will not report the session locked until EVERY output has a surface —
+libktui has one cell buffer, so the prompt is on the first output and the rest
+are filled with the background slot.

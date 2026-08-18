@@ -100,6 +100,13 @@ static const char *current_theme(void)
 	return "phosphor";
 }
 
+/* The same answer, for `kdos update theme` — which has to re-run the
+ * generators with the accent the session is already wearing. */
+const char *kdt_current_accent(void)
+{
+	return current_theme();
+}
+
 static void mkparent(const char *path)
 {
 	char *copy = kb_strdup(path);
@@ -141,8 +148,18 @@ static void reload_session(void)
 	 * Separate pkills rather than one pattern: `kdos-*` would also signal
 	 * kdos-appbox and every alien app launched through it.
 	 */
+	/*
+	 * A name goes here ONLY if that program installs a SIGHUP handler —
+	 * the default disposition is death, so this list and sh_theme_watch()
+	 * are two things that must agree. kdos-slit is here because it calls
+	 * sh_theme_watch() and was on nobody's list, so the dockapp column
+	 * kept the accent it started in. Every other front end follows the
+	 * state file's mtime instead (sh_theme_poll), which needs no entry
+	 * here and cannot be got wrong in this direction.
+	 */
 	static const char *const who[] = {
-		"kdos-shell", "kdos-desk", "kdos-notifyd", "kdos-comp"
+		"kdos-shell", "kdos-desk", "kdos-notifyd", "kdos-slit",
+		"kdos-comp"
 	};
 	for (size_t i = 0; i < sizeof(who) / sizeof(who[0]); i++) {
 		KbArgv a = {0};
@@ -183,10 +200,12 @@ static void reload_session(void)
  */
 static void write_gtk(const KcolScheme *sc)
 {
-	uint32_t lift = kcol_mix(sc->deep, sc->text, 9);
-	uint32_t pop = kcol_mix(sc->deep, sc->text, 11);
-	uint32_t header = kcol_mix(sc->deep, sc->text, 7);
-	uint32_t onacc = kcol_mix(0xffffff, sc->text, 35);
+	/* The derived values are kcol_sem's — the SAME struct kdos-theme's
+	 * build_names expands into the recoloured stylesheet. This layer sits
+	 * at a higher style priority, so a mix computed twice was a mix where
+	 * the harsher copy won (warning, destructive, the headerbar border). */
+	KcolSem sem;
+	kcol_sem(sc, &sem);
 	uint32_t insens = kcol_mix(sc->text, sc->variant, 55);
 
 	/* Every colour is formatted into its OWN local first. A helper handing
@@ -194,8 +213,9 @@ static void write_gtk(const KcolScheme *sc)
 	 * below takes more colours than any such buffer has slots, and the
 	 * early arguments come back overwritten. Do not "simplify" this into
 	 * inline calls. */
-	char P[8], PD[8], SEC[8], URG[8], DEEP[8], TXT[8], VAR[8], DIM[8];
-	char LIFT[8], POP[8], HDR[8], ONACC[8], INSENS[8], WHITE[8];
+	char P[8], PD[8], SEC[8], URG[8], DEEP[8], TXT[8], VAR[8];
+	char HDR[8], SBKD[8], DLG[8], THUMB[8], ONACC[8], INSENS[8];
+	char WBG[8], WFG[8], DBG[8], DFG[8], HBORD[8], BORD[8], UBORD[8];
 	kcol_format(sc->primary, P);
 	kcol_format(sc->pdark, PD);
 	kcol_format(sc->secondary, SEC);
@@ -203,13 +223,24 @@ static void write_gtk(const KcolScheme *sc)
 	kcol_format(sc->deep, DEEP);
 	kcol_format(sc->text, TXT);
 	kcol_format(sc->variant, VAR);
-	kcol_format(sc->dim, DIM);
-	kcol_format(lift, LIFT);
-	kcol_format(pop, POP);
-	kcol_format(header, HDR);
-	kcol_format(onacc, ONACC);
+	kcol_format(sem.header, HDR);
+	kcol_format(sem.side_backdrop, SBKD);
+	kcol_format(sem.dialog, DLG);
+	kcol_format(sem.thumb, THUMB);
+	kcol_format(sem.on_accent, ONACC);
 	kcol_format(insens, INSENS);
-	(void)WHITE;
+	kcol_format(sem.warning_bg, WBG);
+	kcol_format(sem.warning_fg, WFG);
+	kcol_format(sem.destructive_bg, DBG);
+	kcol_format(sem.destructive_fg, DFG);
+	kcol_format(sem.headerbar_border, HBORD);
+	kcol_format(sem.border, BORD);
+	kcol_format(sem.border_unfocused, UBORD);
+
+	/* build_names spells the card surface exactly this way; matching its
+	 * spelling is the point of sharing the values at all. */
+	char CARD[24];
+	snprintf(CARD, sizeof(CARD), "alpha(#%s, 0.07)", TXT);
 
 	if (kb_have_prog("kdos-theme")) {
 		char *themes = kb_path_join(kb_home_dir(), ".themes/KDOS");
@@ -247,7 +278,7 @@ static void write_gtk(const KcolScheme *sc)
 		"@define-color error_fg_color #%s;\n"
 		"\n",
 		P, PD, ONACC, P, PD, ONACC,
-		SEC, SEC, DEEP, URG, URG, DEEP, URG, URG, DEEP);
+		SEC, WBG, WFG, URG, DBG, DFG, URG, DBG, DFG);
 	kb_buf_printf(&b,
 		"@define-color window_bg_color #%s;\n"
 		"@define-color window_fg_color #%s;\n"
@@ -267,7 +298,7 @@ static void write_gtk(const KcolScheme *sc)
 		"@define-color secondary_sidebar_fg_color #%s;\n"
 		"@define-color secondary_sidebar_backdrop_color #%s;\n"
 		"@define-color secondary_sidebar_shade_color rgba(0, 0, 0, 0.25);\n"
-		"@define-color card_bg_color #%s;\n"
+		"@define-color card_bg_color %s;\n"
 		"@define-color card_fg_color #%s;\n"
 		"@define-color card_shade_color rgba(0, 0, 0, 0.36);\n"
 		"@define-color dialog_bg_color #%s;\n"
@@ -283,12 +314,12 @@ static void write_gtk(const KcolScheme *sc)
 		"@define-color scrollbar_outline_color rgba(0, 0, 0, 0.5);\n"
 		"\n",
 		VAR, TXT, DEEP, TXT,
-		HDR, TXT, DIM, VAR,
-		HDR, TXT, VAR,
-		HDR, TXT, VAR,
-		LIFT, TXT,
-		POP, TXT, POP, TXT,
-		LIFT, TXT, DEEP, TXT);
+		HDR, TXT, HBORD, VAR,
+		HDR, TXT, SBKD,
+		HDR, TXT, SBKD,
+		CARD, TXT,
+		DLG, TXT, DLG, TXT,
+		THUMB, TXT, DEEP, TXT);
 	kb_buf_printf(&b,
 		"@define-color theme_bg_color #%s;\n"
 		"@define-color theme_fg_color #%s;\n"
@@ -311,7 +342,7 @@ static void write_gtk(const KcolScheme *sc)
 		"@define-color text_view_bg #%s;\n",
 		VAR, TXT, DEEP, TXT, PD, ONACC,
 		VAR, TXT, DEEP, TXT, PD, ONACC,
-		VAR, INSENS, DEEP, DIM, DIM, DEEP, DEEP);
+		VAR, INSENS, DEEP, BORD, UBORD, DEEP, DEEP);
 
 	static const struct {
 		const char *dir;
@@ -389,18 +420,129 @@ static void write_cursors(const KcolScheme *sc)
 	free(out);
 }
 
+/*
+ * The derived ANSI palette.
+ *
+ * The scheme has no blue, no magenta and no cyan, and the first generator
+ * mapped those slots onto `dim` and `secondary` — ls directories at 1.7:1
+ * contrast, vim comments invisible, and three distinguishable colours
+ * collapsed onto one. The hand-tuned phosphor palette in skel had real hues;
+ * these functions are those tuned values made per-accent, with phosphor
+ * reproducing them byte for byte (verified: the HLS round trip is exact).
+ *
+ * Two derivations, because the anchors relate to the scheme two ways:
+ *
+ *   - a BRIGHT variant of a scheme slot (bright green is bright PRIMARY, not
+ *     bright #39ff14) transplants the anchor's hue/lightness/saturation offset
+ *     from the phosphor slot onto this scheme's slot;
+ *   - a hue the scheme cannot supply (blue/magenta/cyan) keeps the anchor's
+ *     hue and follows only the scheme's text lightness, so an amber terminal
+ *     gets a slightly warm-dark blue rather than a green.
+ */
+static double ansi_wrap1(double x)
+{
+	while (x >= 1.0)
+		x -= 1.0;
+	while (x < 0.0)
+		x += 1.0;
+	return x;
+}
+
+/* `anchor`'s relation to `from`, transplanted onto `to`. Identity when
+ * from == to, which is what makes phosphor byte-exact. */
+static uint32_t ansi_derive(uint32_t anchor, uint32_t from, uint32_t to)
+{
+	double ah, al, as, fh, fl, fs, th, tl, ts;
+	kcol_to_hls(anchor, &ah, &al, &as);
+	kcol_to_hls(from, &fh, &fl, &fs);
+	kcol_to_hls(to, &th, &tl, &ts);
+	double h = ansi_wrap1(th + (ah - fh));
+	double l = tl + (al - fl);
+	/* A clip here is not a bright colour, it is WHITE: bone's primary
+	 * already sits at l=0.92 and phosphor's +0.14 bright offset lands past
+	 * 1.0, so bright-green came out #ffffff — the only pure white in any
+	 * palette, out-brightening the bright-white slot beside it. Rescale the
+	 * offset into whatever headroom the destination has instead. */
+	if (l > 1.0)
+		l = tl + (1.0 - tl) * (al - fl) / (1.0 - fl);
+	if (l < 0.0)
+		l = 0.0;
+	if (l > 1.0)
+		l = 1.0;
+	double s = fs > 0.0 ? ts * (as / fs) : as;
+	if (s < 0.0)
+		s = 0.0;
+	if (s > 1.0)
+		s = 1.0;
+	return kcol_from_hls(h, l, s);
+}
+
+/* Hue and saturation are the anchor's own; lightness follows the scheme's
+ * text so the foreign hues sit in the same brightness envelope. */
+static uint32_t ansi_fixed(uint32_t anchor, uint32_t phos_text, uint32_t text)
+{
+	double ah, al, as, dh, dl, ds, th, tl, ts;
+	kcol_to_hls(anchor, &ah, &al, &as);
+	kcol_to_hls(phos_text, &dh, &dl, &ds);
+	kcol_to_hls(text, &th, &tl, &ts);
+	double l = dl > 0.0 ? al * (tl / dl) : al;
+	if (l > 1.0)
+		l = 1.0;
+	return kcol_from_hls(ah, l, as);
+}
+
+typedef struct {
+	uint32_t blue, magenta, cyan;		/* regular4/5/6            */
+	uint32_t bblue, bmagenta, bcyan;	/* bright4/5/6             */
+	uint32_t bprimary, bsecondary;		/* bright2/3               */
+	uint32_t burgent, btext;		/* bright1/7               */
+} AnsiDerived;
+
+static void ansi_all(const KcolScheme *sc, AnsiDerived *o)
+{
+	const KcolScheme *ph = kcol_find("phosphor");
+
+	o->blue = ansi_fixed(0x2f8fff, ph->text, sc->text);
+	o->magenta = ansi_fixed(0xc77dff, ph->text, sc->text);
+	o->cyan = ansi_fixed(0x25d0c0, ph->text, sc->text);
+	o->bblue = ansi_fixed(0x6bb6ff, ph->text, sc->text);
+	o->bmagenta = ansi_fixed(0xe0aaff, ph->text, sc->text);
+	o->bcyan = ansi_fixed(0x68f5e6, ph->text, sc->text);
+	o->bprimary = ansi_derive(0x7dff5c, ph->primary, sc->primary);
+	o->bsecondary = ansi_derive(0xffd166, ph->secondary, sc->secondary);
+	o->burgent = ansi_derive(0xff6b6b, ph->urgent, sc->urgent);
+	o->btext = ansi_derive(0xe8ffee, ph->text, sc->text);
+}
+
 static void write_foot(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("foot/themes/kdos");
 	mkparent(f);
 
-	char p[8], dim[8], sec[8], urg[8], deep[8], text[8];
+	AnsiDerived a;
+	ansi_all(sc, &a);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], var[8], mut[8];
+	char blue[8], mag[8], cyan[8], bblue[8], bmag[8], bcyan[8];
+	char bpri[8], bsec[8], burg[8], btxt[8];
 	kcol_format(sc->primary, p);
 	kcol_format(sc->dim, dim);
 	kcol_format(sc->secondary, sec);
 	kcol_format(sc->urgent, urg);
 	kcol_format(sc->deep, deep);
 	kcol_format(sc->text, text);
+	kcol_format(sc->variant, var);
+	kcol_format(kcol_muted(sc), mut);
+	kcol_format(a.blue, blue);
+	kcol_format(a.magenta, mag);
+	kcol_format(a.cyan, cyan);
+	kcol_format(a.bblue, bblue);
+	kcol_format(a.bmagenta, bmag);
+	kcol_format(a.bcyan, bcyan);
+	kcol_format(a.bprimary, bpri);
+	kcol_format(a.bsecondary, bsec);
+	kcol_format(a.burgent, burg);
+	kcol_format(a.btext, btxt);
 
 	/*
 	 * One section, and it is `[colors-dark]`, not `[colors]`. foot deprecated
@@ -409,21 +551,133 @@ static void write_foot(const KcolScheme *sc)
 	 * "deprecated: foot: [colors]: use [colors-dark] instead" above the first
 	 * prompt. `initial-color-theme` defaults to `dark`, so the dark section
 	 * alone is what foot reads; there is no light KDOS palette to write.
+	 *
+	 * cursor and urls are written HERE, per accent — foot.ini must carry
+	 * neither after its include, or every terminal wears the phosphor cursor
+	 * whatever the accent (the trap the old foot.ini shipped). bright0 is
+	 * kcol_muted, not dim: bright-black is what ls and vim use for de-
+	 * emphasised TEXT, and dim is unreadable as text.
 	 */
 	KbBuf b = {0};
 	kb_buf_printf(&b,
 		"# KDOS foot theme — GENERATED by `kdos theme`; edits will be "
 		"overwritten.\n"
 		"[colors-dark]\n"
-		"background=%s\nforeground=%s\ncursor=%s %s\n"
+		"background=%s\nforeground=%s\ncursor=%s %s\nurls=%s\n"
 		"selection-background=%s\nselection-foreground=%s\n"
 		"regular0=%s\nregular1=%s\nregular2=%s\nregular3=%s\n"
 		"regular4=%s\nregular5=%s\nregular6=%s\nregular7=%s\n"
 		"bright0=%s\nbright1=%s\nbright2=%s\nbright3=%s\n"
 		"bright4=%s\nbright5=%s\nbright6=%s\nbright7=%s\n",
-		deep, text, deep, p, dim, p,
-		deep, urg, p, sec, dim, sec, p, text,
-		dim, urg, p, sec, dim, sec, p, text);
+		deep, text, deep, p, sec, dim, p,
+		var, urg, p, sec, blue, mag, cyan, text,
+		mut, burg, bpri, bsec, bblue, bmag, bcyan, btxt);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+/*
+ * tmux, the same shape as foot: the shareable skel tmux.conf keeps the
+ * BEHAVIOUR (prefix, binds, status position) and sources this file for every
+ * colour-bearing line, so `kdos theme amber` repaints the next attach — and a
+ * running server too, via the source-file reload cmd_theme already sends.
+ */
+static void write_tmux(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("tmux/themes/kdos.conf");
+	mkparent(f);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], mut[8];
+	kcol_format(sc->primary, p);
+	kcol_format(sc->dim, dim);
+	kcol_format(sc->secondary, sec);
+	kcol_format(sc->urgent, urg);
+	kcol_format(sc->deep, deep);
+	kcol_format(sc->text, text);
+	kcol_format(kcol_muted(sc), mut);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS tmux theme — GENERATED by `kdos theme`; edits will be "
+		"overwritten.\n"
+		"set -g status-style \"bg=#%s,fg=#%s\"\n"
+		"\n"
+		"set -g status-left-length 40\n"
+		"set -g status-left \"#[bg=#%s,fg=#%s,bold] #S #[bg=#%s,fg=#%s] \"\n"
+		"\n"
+		"set -g status-right-length 80\n"
+		"set -g status-right \"#[fg=#%s]|#[fg=#%s] #(uptime | sed "
+		"'s/.*load average: //') #[fg=#%s]|#[fg=#%s] %%Y-%%m-%%d "
+		"#[fg=#%s]%%H:%%M \"\n"
+		"\n"
+		"setw -g window-status-format \"#[fg=#%s] #I:#W"
+		"#{?window_zoomed_flag,+,} \"\n"
+		"setw -g window-status-current-format \"#[bg=#%s,fg=#%s,bold] "
+		"#I:#W#{?window_zoomed_flag,+,} \"\n"
+		"setw -g window-status-activity-style \"fg=#%s\"\n"
+		"setw -g window-status-bell-style \"fg=#%s\"\n"
+		"\n"
+		"set -g pane-border-style \"fg=#%s\"\n"
+		"set -g pane-active-border-style \"fg=#%s\"\n"
+		"\n"
+		"set -g message-style \"bg=#%s,fg=#%s\"\n"
+		"set -g message-command-style \"bg=#%s,fg=#%s\"\n"
+		"setw -g mode-style \"bg=#%s,fg=#%s\"\n"
+		"\n"
+		"set -g display-panes-active-colour \"#%s\"\n"
+		"set -g display-panes-colour \"#%s\"\n"
+		"set -g clock-mode-colour \"#%s\"\n",
+		deep, text,
+		p, deep, deep, p,
+		dim, mut, dim, sec, p,
+		mut, dim, p, sec, urg,
+		dim, p,
+		dim, p, dim, sec, dim, p,
+		p, dim, p);
+	kb_write_all(f, b.p, b.n);
+	kb_buf_free(&b);
+	free(f);
+}
+
+/*
+ * LS_COLORS, as a shell fragment `.bashrc` sources. Four classes are enough
+ * for a glance — directory, link, executable, orphan.
+ *
+ * The consumers are eza (which `.bashrc` aliases `ls` to whenever it is
+ * installed) and the appbox's Debian coreutils; toybox's own `ls` colours from
+ * a hardcoded table and reads no LS_COLORS at all, so the host's fallback `ls`
+ * gains nothing from this file. Each class gets its OWN colour rather than a
+ * bold bit: directory and executable used to share `primary` and were told
+ * apart only by the intensity attribute, which on a 512-glyph console font is
+ * the 9th glyph bit rather than a weight.
+ */
+static void write_lscolors(const KcolScheme *sc)
+{
+	char *f = kdt_cfg_home("kdos/ls-colors");
+	mkparent(f);
+
+	AnsiDerived a;
+	ansi_all(sc, &a);
+
+	KcolRgb di = kcol_rgb(sc->primary);
+	KcolRgb ln = kcol_rgb(sc->secondary);
+	KcolRgb ex = kcol_rgb(a.cyan);
+	KcolRgb or_ = kcol_rgb(sc->urgent);
+
+	KbBuf b = {0};
+	kb_buf_printf(&b,
+		"# KDOS LS_COLORS — GENERATED by `kdos theme`; edits will be "
+		"overwritten.\n"
+		"export LS_COLORS=\""
+		"di=1;38;2;%u;%u;%u:"
+		"ln=38;2;%u;%u;%u:"
+		"ex=38;2;%u;%u;%u:"
+		"or=38;2;%u;%u;%u\"\n",
+		di.r, di.g, di.b,
+		ln.r, ln.g, ln.b,
+		ex.r, ex.g, ex.b,
+		or_.r, or_.g, or_.b);
 	kb_write_all(f, b.p, b.n);
 	kb_buf_free(&b);
 	free(f);
@@ -502,6 +756,16 @@ static void write_themerc(const KcolScheme *sc)
 		"window.active.button.close.unpressed.image.color: #%s\n"
 		"window.button.hover.bg.color: #%s\n"
 		"\n"
+		/*
+		 * labwc's own default cap is 200 PIXELS, sized for the ~10px
+		 * font a normal theme uses. This desktop draws menus at 32px,
+		 * where 200px is eleven characters — measured on a booted ISO,
+		 * the root menu read "Applicati...", "Lock Scr..." and
+		 * "Reload C...". The cap only truncates; a generous one costs
+		 * a narrow menu nothing, because the width is the content's.
+		 */
+		"menu.width.min: 120\n"
+		"menu.width.max: 900\n"
 		"menu.border.width: 1\n"
 		"menu.border.color: #%s\n"
 		"menu.items.bg.color: #%s\n"
@@ -517,13 +781,19 @@ static void write_themerc(const KcolScheme *sc)
 		"osd.border.width: 1\n"
 		"osd.border.color: #%s\n"
 		"\n"
+		/*
+		 * #rrggbbaa, not the openbox `#rrggbb 40` form: labwc still
+		 * parses that one (40 is a PERCENT, so 0x66) but logs an ERROR
+		 * per occurrence and says it may stop. Two of them were the
+		 * only errors in a whole booted session's log.
+		 */
 		"snapping.overlay.region.bg.enabled: yes\n"
-		"snapping.overlay.region.bg.color: #%s 40\n"
+		"snapping.overlay.region.bg.color: #%s66\n"
 		"snapping.overlay.region.border.enabled: yes\n"
 		"snapping.overlay.region.border.width: 1\n"
 		"snapping.overlay.region.border.color: #%s\n"
 		"snapping.overlay.edge.bg.enabled: yes\n"
-		"snapping.overlay.edge.bg.color: #%s 40\n"
+		"snapping.overlay.edge.bg.color: #%s66\n"
 		"snapping.overlay.edge.border.enabled: yes\n"
 		"snapping.overlay.edge.border.width: 1\n"
 		"snapping.overlay.edge.border.color: #%s\n"
@@ -538,6 +808,23 @@ static void write_themerc(const KcolScheme *sc)
 		deep, text, pdark,
 		pdark, p, pdark, p,
 		sec);
+
+	/* `kdos theme style` leaves its themerc lines in their own file and
+	 * they are re-appended HERE, after the generated block, so they win —
+	 * labwc keeps the last spelling of a repeated key. Appending them once
+	 * at style time instead lost them on the next plain `kdos theme
+	 * <accent>`, which rewrites this file whole: half an applied style
+	 * survived (comp.conf) and half vanished, with nothing saying so. */
+	char *sf = kdt_cfg_home("kdos/style-themerc");
+	size_t sn = 0;
+	char *style = kb_read_all(sf, &sn);
+	free(sf);
+	if (style && sn) {
+		kb_buf_str(&b, "\n# style overrides — `kdos theme style`\n");
+		kb_buf_add(&b, style, sn);
+	}
+	free(style);
+
 	kb_write_all(f, b.p, b.n);
 	kb_buf_free(&b);
 	free(f);
@@ -643,6 +930,7 @@ static void write_mc(const KcolScheme *sc)
 	 * first version of this file rendered as mc's stock blue.
 	 */
 	char p[10], dim[10], sec[10], urg[10], deep[10], text[10], varied[10];
+	char mut[10];
 	char raw[8];
 #define HX(field, out) do {                    \
 		kcol_format((field), raw);     \
@@ -655,6 +943,7 @@ static void write_mc(const KcolScheme *sc)
 	HX(sc->deep, deep);
 	HX(sc->text, text);
 	HX(sc->variant, varied);
+	HX(kcol_muted(sc), mut);
 #undef HX
 
 	/*
@@ -747,10 +1036,10 @@ static void write_mc(const KcolScheme *sc)
 		"_default_=%s;%s\n"
 		"viewbold=%s;%s\n"
 		"viewselected=%s;%s\n",
-		/* core: 9 pairs */
+		/* core: 9 pairs — disabled is TEXT, so muted rather than dim */
 		text, deep,   deep, p,      sec, deep,    deep, sec,
 		deep, p,      text, varied, deep, p,      p, deep,
-		dim, deep,
+		mut, deep,
 		/* dialog: 5 pairs */
 		text, varied, deep, p,      p, varied,    deep, p,
 		p, varied,
@@ -758,9 +1047,9 @@ static void write_mc(const KcolScheme *sc)
 		text, urg,    deep, urg,    text, urg,
 		/* menu: 5 pairs */
 		text, varied, deep, p,      p, varied,    deep, p,
-		dim, varied,
-		/* buttonbar: 2 pairs */
-		text, deep,   dim, deep,
+		mut, varied,
+		/* buttonbar: 2 pairs — the F-key number must still be readable */
+		text, deep,   mut, deep,
 		/* statusbar: 1 pair */
 		text, varied,
 		/* help: 5 pairs */
@@ -789,14 +1078,29 @@ static void write_btop(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("btop/themes/kdos.theme");
 	mkparent(f);
-	char p[8], dim[8], sec[8], urg[8], deep[8], text[8];
+
+	AnsiDerived a;
+	ansi_all(sc, &a);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], mut[8];
+	char cyan[8];
 	kcol_format(sc->primary, p);
 	kcol_format(sc->dim, dim);
 	kcol_format(sc->secondary, sec);
 	kcol_format(sc->urgent, urg);
 	kcol_format(sc->deep, deep);
 	kcol_format(sc->text, text);
+	kcol_format(kcol_muted(sc), mut);
+	kcol_format(a.cyan, cyan);
 
+	/* inactive_fg is TEXT (a de-emphasised process row is still read), so it
+	 * is kcol_muted; the box frames and div_line are borders and keep dim.
+	 * The SELECTED row keeps dim-on-primary: it is a fill, not text, and
+	 * `variant` sits at 1.05:1 against `deep` — with selected_fg equal to
+	 * main_fg on top of that, the row you are about to send a signal to was
+	 * indistinguishable from every other row.
+	 * Gradients run primary → secondary → derived cyan (temperature ends on
+	 * urgent — the one gauge where the top of the scale is an alarm). */
 	KbBuf b = {0};
 	kb_buf_printf(&b,
 		"# KDOS btop theme — GENERATED by `kdos theme`; edits will be "
@@ -825,11 +1129,11 @@ static void write_btop(const KcolScheme *sc)
 		"theme[download_end]=\"#%s\"\n"
 		"theme[upload_start]=\"#%s\"\ntheme[upload_mid]=\"#%s\"\n"
 		"theme[upload_end]=\"#%s\"\n",
-		deep, text, p, p, dim, p, dim, text, sec,
+		deep, text, p, cyan, dim, p, mut, text, sec,
 		dim, dim, dim, dim, dim,
-		p, sec, urg, p, sec, urg,
-		dim, sec, p, dim, sec, p, dim, sec, p,
-		dim, sec, urg, dim, sec, p, dim, sec, urg);
+		p, sec, urg, p, sec, cyan,
+		p, sec, cyan, p, sec, cyan, p, sec, cyan,
+		p, sec, cyan, p, sec, cyan, p, sec, cyan);
 	kb_write_all(f, b.p, b.n);
 	kb_buf_free(&b);
 	free(f);
@@ -968,9 +1272,16 @@ static int kde_palette(KdeKV *kv, const KcolScheme *sc)
 	return n;
 }
 
-/* What this generator owns: whole sections, and named keys in shared ones. */
+/* What this generator owns: whole sections, and named keys in shared ones.
+ *
+ * KConfig nests groups as `[A][B]`, and a nested group is a DIFFERENT group:
+ * `[Colors:View][Inactive]` is an application's, not ours. Owning it swallowed
+ * it — silently, on every accent switch — so a header with a subgroup in it is
+ * never ours. */
 static int kde_owns_section(const char *sec)
 {
+	if (strchr(sec, ']'))
+		return 0;
 	return !strncmp(sec, "Colors:", 7) || !strcmp(sec, "WM");
 }
 
@@ -1006,52 +1317,74 @@ static void kde_emit_section(KbBuf *b, const KdeKV *kv, int n, const char *sec)
  * neither, and every line this file cares about is `key=value`.
  */
 
-/* The section a line belongs to, or "" for the lines before the first header. */
-static void kde_line_section(const char *line, char *sec, size_t n)
-{
-	const char *end = strchr(line + 1, ']');
-	size_t l = end ? (size_t)(end - line - 1) : strlen(line + 1);
-	if (l >= n)
-		l = n - 1;
-	memcpy(sec, line + 1, l);
-	sec[l] = 0;
-}
-
-/* Walk `old` line by line; `fn` is called with (section, trimmed line). */
+/* Walk `old` line by line; `fn` is called with (section, trimmed line).
+ *
+ * Every allocation here is per-LINE, not a fixed buffer: the old 512-byte line
+ * copy truncated — which is to say CORRUPTED — any long user value on every
+ * accent switch (KDE recent-file lists and geometry blobs routinely run past
+ * it), and the truncated line then survived as the file's new content. A line
+ * this walk does not own must come out byte for byte. */
 typedef void (*kde_line_fn)(const char *sec, const char *line, void *user);
 
 static void kde_walk(const char *old, kde_line_fn fn, void *user)
 {
-	char sec[64] = "";
+	char *sec = kb_strdup("");
 	const char *p = old;
 
 	while (p && *p) {
 		const char *nl = strchr(p, '\n');
 		size_t len = nl ? (size_t)(nl - p) : strlen(p);
-		char line[512];
+		char *line = kb_calloc(1, len + 1);
 
-		if (len >= sizeof(line))
-			len = sizeof(line) - 1;
 		memcpy(line, p, len);
-		line[len] = 0;
 		p = nl ? nl + 1 : NULL;
 
 		char *t = kde_trim(line);
-		if (!*t || *t == '#')
+		if (!*t || *t == '#') {
+			free(line);
 			continue;
+		}
 		if (*t == '[') {
-			kde_line_section(t, sec, sizeof(sec));
+			/* The header is EVERY bracketed run on the line —
+			 * KConfig writes a nested group as `[A][B]`. Stopping
+			 * at the first `]` filed a subgroup's keys under its
+			 * parent and lost the subgroup, and two subgroups of
+			 * one parent merged into each other. */
+			const char *end = NULL;
+			for (const char *q = t; *q == '['; ) {
+				const char *c = strchr(q + 1, ']');
+				if (!c)
+					break;
+				end = c;
+				q = c + 1;
+			}
+			size_t l = end ? (size_t)(end - t - 1) : strlen(t + 1);
+			free(sec);
+			sec = kb_calloc(1, l + 1);
+			memcpy(sec, t + 1, l);
 			fn(sec, NULL, user);
+			free(line);
 			continue;
 		}
 		fn(sec, t, user);
+		free(line);
 	}
+	free(sec);
 }
 
+/* Grows without a ceiling: the old fixed 64 silently DROPPED every section
+ * past it, and a KDE home accumulates one section per application. */
 struct kde_secs {
-	char name[64][64];
-	int n;
+	char **name;
+	int n, cap;
 };
+
+static void kde_secs_free(struct kde_secs *s)
+{
+	for (int i = 0; i < s->n; i++)
+		free(s->name[i]);
+	free(s->name);
+}
 
 static void kde_collect(const char *sec, const char *line, void *user)
 {
@@ -1062,8 +1395,17 @@ static void kde_collect(const char *sec, const char *line, void *user)
 	for (int i = 0; i < s->n; i++)
 		if (!strcmp(s->name[i], sec))
 			return;
-	if (s->n < 64)
-		snprintf(s->name[s->n++], 64, "%s", sec);
+	if (s->n == s->cap) {
+		int cap = s->cap ? s->cap * 2 : 16;
+		char **v = kb_calloc((size_t)cap, sizeof(*v));
+		if (s->name) {
+			memcpy(v, s->name, (size_t)s->n * sizeof(*v));
+			free(s->name);
+		}
+		s->name = v;
+		s->cap = cap;
+	}
+	s->name[s->n++] = kb_strdup(sec);
 }
 
 struct kde_emit {
@@ -1082,15 +1424,13 @@ static void kde_emit_foreign(const char *sec, const char *line, void *user)
 	 * this file grow by one stale colour on every run. */
 	if (kde_owns_section(sec))
 		return;
-	char key[64];
 	const char *eq = strchr(line, '=');
 	size_t kl = eq ? (size_t)(eq - line) : strlen(line);
-	if (kl >= sizeof(key))
-		kl = sizeof(key) - 1;
+	char *key = kb_calloc(1, kl + 1);
 	memcpy(key, line, kl);
-	key[kl] = 0;
-	kde_trim(key);
-	if (kde_owns_key(sec, key))
+	int ours = kde_owns_key(sec, kde_trim(key));
+	free(key);
+	if (ours)
 		return;
 	kb_buf_printf(e->out, "%s\n", line);
 	e->wrote = 1;
@@ -1099,9 +1439,10 @@ static void kde_emit_foreign(const char *sec, const char *line, void *user)
 static void kde_merge(KbBuf *out, const char *old, const KdeKV *kv, int n)
 {
 	struct kde_secs secs = {0};
-	int done[64] = {0};
 
 	kde_walk(old, kde_collect, &secs);
+
+	int *done = kb_calloc(secs.n ? (size_t)secs.n : 1, sizeof(int));
 
 	/*
 	 * Two passes, and the split is what makes the result stable.
@@ -1147,6 +1488,9 @@ static void kde_merge(KbBuf *out, const char *old, const KdeKV *kv, int n)
 		kde_emit_section(out, kv, n, kv[i].sec);
 		kb_buf_printf(out, "\n");
 	}
+
+	free(done);
+	kde_secs_free(&secs);
 }
 
 static void write_kde(const KcolScheme *sc)
@@ -1208,7 +1552,11 @@ static void write_starship(const KcolScheme *sc)
 		return;
 	}
 
-	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], var[8];
+	AnsiDerived a;
+	ansi_all(sc, &a);
+
+	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], var[8], mut[8];
+	char cyan[8], bcyan[8], mag[8], bpri[8], bsec[8];
 	kcol_format(sc->primary, p);
 	kcol_format(sc->dim, dim);
 	kcol_format(sc->secondary, sec);
@@ -1216,6 +1564,12 @@ static void write_starship(const KcolScheme *sc)
 	kcol_format(sc->deep, deep);
 	kcol_format(sc->text, text);
 	kcol_format(sc->variant, var);
+	kcol_format(kcol_muted(sc), mut);
+	kcol_format(a.cyan, cyan);
+	kcol_format(a.bcyan, bcyan);
+	kcol_format(a.magenta, mag);
+	kcol_format(a.bprimary, bpri);
+	kcol_format(a.bsecondary, bsec);
 
 	KbBuf out = {0};
 	int inpal = 0;
@@ -1253,10 +1607,17 @@ static void write_starship(const KcolScheme *sc)
 				"teal      = \"#%s\"\nsky       = \"#%s\"\n"
 				"sapphire  = \"#%s\"\nlavender  = \"#%s\"\n"
 				"# <<< KDOS STARSHIP PALETTE <<<\n",
-				p, urg, sec, sec, sec, sec, text, deep,
-				text, dim, dim, dim, dim, var,
+				/* `yellow` stays the SECONDARY: these are colour
+				 * NAMES a starship.toml resolves by name, the
+				 * shipped one styles four modules with it, and
+				 * a `yellow` that renders teal is wrong output
+				 * rather than a palette choice. The derived
+				 * cyan goes on `cyan`, where it belongs. */
+				p, urg, sec, sec, cyan, mag, text, deep,
+				text, mut, dim, dim, mut, var,
 				var, deep, deep, deep, deep, deep,
-				sec, sec, sec, p, urg, sec, sec, sec, sec, p);
+				cyan, bcyan, mag, bpri, urg, bsec, sec,
+				bcyan, bcyan, bpri);
 			continue;
 		}
 		if (close) {
@@ -1279,9 +1640,109 @@ static void write_starship(const KcolScheme *sc)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * The wallpaper follows the accent: the shipped PNG is retinted through
+ * kcol_remap — the same operation every icon goes through — into
+ * $XDG_CACHE_HOME/kdos/wallpaper.png, which kdos-comp prefers over the
+ * comp.conf path when it re-reads the wallpaper on SIGHUP. Without this,
+ * `kdos theme ice` was an ice desktop over a green background.
+ *
+ * Gated on KDOS_HAVE_LIBPNG (build.sh passes it with -lpng) so the host
+ * selftest, which links kdos-tools without libpng, still builds; without the
+ * macro an accent switch simply leaves no cache file, which kdos-comp treats
+ * as "use the configured path".
+ */
+#ifdef KDOS_HAVE_LIBPNG
+#include <png.h>
+
+#define WALLPAPER_SRC "/usr/share/backgrounds/kdos/default-wallpaper.png"
+
+static void write_wallpaper(const KcolScheme *sc)
+{
+	/* KDOS_WALLPAPER_SRC moves the source the same way KDOS_INITRD moves
+	 * the initrd: it is what lets a test retint a wallpaper on a machine
+	 * whose /usr/share is not the subject. */
+	const char *src = getenv("KDOS_WALLPAPER_SRC");
+	if (!src || !*src)
+		src = WALLPAPER_SRC;
+	if (!kb_path_exists(src))
+		return;		/* no shipped wallpaper: nothing to retint */
+
+	png_image in;
+	memset(&in, 0, sizeof(in));
+	in.version = PNG_IMAGE_VERSION;
+	if (!png_image_begin_read_from_file(&in, src))
+		return;
+	in.format = PNG_FORMAT_RGBA;
+	uint8_t *px = kb_calloc(1, PNG_IMAGE_SIZE(in));
+	if (!png_image_finish_read(&in, NULL, px, 0, NULL)) {
+		png_image_free(&in);
+		free(px);
+		return;
+	}
+
+	/* kcol_remap is six HLS conversions per call and a 4K wallpaper is
+	 * eight million pixels; a photograph-free wallpaper repeats colours
+	 * constantly, so a direct-mapped cache turns most pixels into a load. */
+	size_t n = PNG_IMAGE_SIZE(in);
+	uint32_t *ck = kb_calloc(1 << 16, sizeof(uint32_t));
+	uint32_t *cv = kb_calloc(1 << 16, sizeof(uint32_t));
+	memset(ck, 0xff, (1 << 16) * sizeof(uint32_t));	/* no 24-bit colour */
+	for (size_t i = 0; i + 3 < n; i += 4) {
+		uint32_t c = (uint32_t)px[i] << 16 | (uint32_t)px[i + 1] << 8 |
+			     px[i + 2];
+		unsigned slot = (c ^ (c >> 13)) & 0xffff;
+		uint32_t v;
+		if (ck[slot] == c) {
+			v = cv[slot];
+		} else {
+			v = kcol_remap(sc, c);
+			ck[slot] = c;
+			cv[slot] = v;
+		}
+		px[i] = (uint8_t)(v >> 16);
+		px[i + 1] = (uint8_t)(v >> 8);
+		px[i + 2] = (uint8_t)v;
+	}
+	free(ck);
+	free(cv);
+
+	char *out = cache_home("kdos/wallpaper.png");
+	mkparent(out);
+	KbBuf tb = {0};
+	kb_buf_printf(&tb, "%s.tmp", out);
+
+	png_image wr;
+	memset(&wr, 0, sizeof(wr));
+	wr.version = PNG_IMAGE_VERSION;
+	wr.width = in.width;
+	wr.height = in.height;
+	wr.format = PNG_FORMAT_RGBA;
+	/* Written beside and renamed over: kdos-comp may re-decode this file on
+	 * any SIGHUP, and a half-written PNG is a black screen, not an error. */
+	if (png_image_write_to_file(&wr, tb.p, 0, px, 0, NULL))
+		rename(tb.p, out);
+	else
+		unlink(tb.p);
+	png_image_free(&wr);
+	png_image_free(&in);
+	kb_buf_free(&tb);
+	free(out);
+	free(px);
+}
+#else
+static void write_wallpaper(const KcolScheme *sc)
+{
+	(void)sc;
+}
+#endif
+
 /* Everything an accent switch produces, and nothing else — no state file, no
  * signals. `kdos theme --audit` runs exactly this into a scratch $HOME, which
- * only works because it is one function with no side effects beyond the files. */
+ * only works because it is one function with no side effects beyond the files.
+ * The wallpaper cache is NOT here: it is minutes-of-pixels heavy next to
+ * everything else and lives under $XDG_CACHE_HOME, so cmd_theme writes it
+ * beside the state file instead and the audit skips it. */
 static void theme_apply(const KcolScheme *sc)
 {
 	write_gtk(sc);
@@ -1290,15 +1751,234 @@ static void theme_apply(const KcolScheme *sc)
 	write_kde(sc);
 	write_themerc(sc);
 	write_foot(sc);
+	write_tmux(sc);
 	write_btop(sc);
 	write_mc(sc);
 	write_starship(sc);
+	write_lscolors(sc);
+}
+
+/* The switch's tail, shared with `kdos theme style`: everything that happens
+ * AFTER the artefacts are regenerated, in the one order that works — the
+ * wallpaper cache and the state file are both inputs to the SIGHUP, so both
+ * are written before it is sent. */
+static void theme_commit(const KcolScheme *sc)
+{
+	write_wallpaper(sc);
+
+	/* The state file is the desktop's ONLY input, so it is written before
+	 * the session is signalled — a SIGHUP that arrives first would make the
+	 * shell re-read the accent it already had. */
+	char *state = cache_home("kdos/theme");
+	mkparent(state);
+	char line[40];
+	snprintf(line, sizeof(line), "%s\n", sc->name);
+	kb_write_file(state, line);
+	free(state);
+
+	reload_session();
+
+	/* A regenerated file does not repaint a running process. kdos-shell and
+	 * kdos-comp retint on the SIGHUP above; starship on the next prompt;
+	 * btop and foot on next start (foot cannot reload its config at all).
+	 * GTK apps — every alien app — pick up the new theme and icons when
+	 * they are next launched; GTK re-reads neither on a file change. */
+	if (kb_have_prog("tmux")) {
+		char *conf = kdt_cfg_home("tmux/tmux.conf");
+		KbArgv a = {0};
+		kb_argv_add(&a, "tmux");
+		kb_argv_add(&a, "source-file");
+		kb_argv_add(&a, conf);
+		kb_argv_end(&a);
+		kb_run(&a);	/* no server running is not an error */
+		free(conf);
+	}
+}
+
+/*
+ * `kdos theme style <file>` — a shareable LOOK: the accent plus the knobs that
+ * make a machine somebody's machine, in one flat key=value file.
+ *
+ *   accent = amber            the normal accent path
+ *   crt = 40                  ┐ rewritten in ~/.config/kdos/comp.conf,
+ *   crt_scanlines = 50        │ preserving every line the style does not name
+ *   chrome_font = ...         ┘ (kdos-comp re-reads them on the same SIGHUP)
+ *   osd.bg.color: ...         any dotted key is a themerc-override line, kept
+ *                             in ~/.config/kdos/style-themerc and re-appended
+ *                             AFTER the generated block on every regeneration
+ *
+ * `=` or `:` separates a key from its value, whichever comes first — the
+ * themerc half is written `key: value` everywhere else and a value may itself
+ * carry a colon (`chrome_font = Terminus:pixelsize=64`).
+ */
+static const char *const STYLE_COMP_KEYS[] = {
+	"crt", "crt_scanlines", "crt_curve", "crt_fullscreen",
+	"chrome_font", "clock_format",
+};
+#define NSTYLE_COMP ((int)(sizeof(STYLE_COMP_KEYS) / sizeof(STYLE_COMP_KEYS[0])))
+
+/* Rewrite the named keys in comp.conf, preserving everything else verbatim.
+ * A key the file does not carry yet is appended at the end. */
+static void style_write_comp(char *const *val)
+{
+	char *f = kdt_cfg_home("kdos/comp.conf");
+	mkparent(f);
+	char *old = kb_read_all(f, NULL);
+	KbBuf out = {0};
+	int done[NSTYLE_COMP] = {0};
+
+	for (char *line = old, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		next = nl ? nl + 1 : line + strlen(line);
+		size_t len = (size_t)(next - line);
+
+		const char *t = line;
+		while (*t == ' ' || *t == '\t')
+			t++;
+		int hit = -1;
+		for (int i = 0; i < NSTYLE_COMP && hit < 0; i++) {
+			if (!val[i])
+				continue;
+			size_t kl = strlen(STYLE_COMP_KEYS[i]);
+			if (!strncmp(t, STYLE_COMP_KEYS[i], kl) &&
+			    (t[kl] == ' ' || t[kl] == '\t' || t[kl] == '='))
+				hit = i;
+		}
+		if (hit >= 0) {
+			kb_buf_printf(&out, "%s = %s\n", STYLE_COMP_KEYS[hit],
+				      val[hit]);
+			done[hit] = 1;
+		} else {
+			kb_buf_add(&out, line, len);
+		}
+	}
+
+	for (int i = 0; i < NSTYLE_COMP; i++) {
+		if (!val[i] || done[i])
+			continue;
+		if (out.n && out.p[out.n - 1] != '\n')
+			kb_buf_add(&out, "\n", 1);
+		kb_buf_printf(&out, "%s = %s\n", STYLE_COMP_KEYS[i], val[i]);
+	}
+
+	kb_write_all(f, out.p, out.n);
+	kb_buf_free(&out);
+	free(old);
+	free(f);
+}
+
+static int cmd_theme_style(const char *path)
+{
+	char *data = kb_read_all(path, NULL);
+	if (!data)
+		kb_die("cannot read style '%s'", path);
+
+	char accent[32] = "";
+	char *comp[NSTYLE_COMP] = {0};
+	KbBuf trc = {0};
+
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		next = nl ? nl + 1 : NULL;
+		if (nl)
+			*nl = 0;
+
+		char *k = line;
+		while (*k == ' ' || *k == '\t')
+			k++;
+		if (!*k || *k == '#')
+			continue;
+		/* Whichever separator comes FIRST: a themerc line is spelled
+		 * `key: value`, which is how write_themerc emits it and how
+		 * the block above documents it, while a value may itself carry
+		 * a colon — `chrome_font = Terminus:pixelsize=64`. */
+		char *eq = strchr(k, '=');
+		char *co = strchr(k, ':');
+		if (!eq || (co && co < eq))
+			eq = co;
+		if (!eq) {
+			kb_warn("style: '%s' is not key = value — ignored", k);
+			continue;
+		}
+		char *v = eq + 1;
+		while (eq > k && (eq[-1] == ' ' || eq[-1] == '\t'))
+			eq--;
+		*eq = 0;
+		while (*v == ' ' || *v == '\t')
+			v++;
+		char *e = v + strlen(v);
+		while (e > v && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r'))
+			*--e = 0;
+
+		if (!strcmp(k, "accent")) {
+			kb_strlcpy(accent, v, sizeof(accent));
+			continue;
+		}
+		int hit = -1;
+		for (int i = 0; i < NSTYLE_COMP; i++)
+			if (!strcmp(k, STYLE_COMP_KEYS[i]))
+				hit = i;
+		if (hit >= 0) {
+			free(comp[hit]);
+			comp[hit] = kb_strdup(v);
+			continue;
+		}
+		/* A dotted key is labwc themerc vocabulary. Anything else is a
+		 * typo, and the skel comp.conf promises a line that does not
+		 * take effect says so. */
+		if (strchr(k, '.'))
+			kb_buf_printf(&trc, "%s: %s\n", k, v);
+		else
+			kb_warn("style: unknown key '%s' — ignored", k);
+	}
+	free(data);
+
+	const KcolScheme *sc = kcol_find(accent[0] ? accent : current_theme());
+	if (!sc)
+		kb_die("style names unknown accent '%s'", accent);
+
+	int any_comp = 0;
+	for (int i = 0; i < NSTYLE_COMP; i++)
+		any_comp |= comp[i] != NULL;
+	if (any_comp)
+		style_write_comp(comp);
+	for (int i = 0; i < NSTYLE_COMP; i++)
+		free(comp[i]);
+
+	/* Written to their own file BEFORE the generators run: write_themerc
+	 * rewrites themerc-override whole and re-appends this after its own
+	 * block, so the style's lines survive a later plain `kdos theme
+	 * <accent>` and still win. A style with no themerc lines clears them —
+	 * a style is a whole look, not a patch on the last one. */
+	{
+		char *f = kdt_cfg_home("kdos/style-themerc");
+		mkparent(f);
+		if (trc.n)
+			kb_write_all(f, trc.p, trc.n);
+		else
+			unlink(f);
+		free(f);
+	}
+	kb_buf_free(&trc);
+
+	theme_apply(sc);
+
+	theme_commit(sc);
+	printf("%s%s%s (%s) — style applied\n", C_A, sc->name, C_0,
+	       sc->theme_name);
+	return 0;
 }
 
 static int cmd_theme(int argc, char **argv)
 {
 	const char *cur = current_theme();
 	const char *want = argc > 0 ? argv[0] : "";
+
+	if (!strcmp(want, "style")) {
+		if (argc < 2)
+			kb_die("usage: kdos theme style <file>");
+		return cmd_theme_style(argv[1]);
+	}
 
 	if (!strcmp(want, "--audit") || !strcmp(want, "audit")) {
 		/* An accent may follow: `kdos theme --audit amber` asks what
@@ -1344,34 +2024,7 @@ static int cmd_theme(int argc, char **argv)
 		kb_die("unknown theme '%s' (try: kdos theme list)", want);
 
 	theme_apply(sc);
-
-	/* The state file is the desktop's ONLY input, so it is written before
-	 * the session is signalled — a SIGHUP that arrives first would make the
-	 * shell re-read the accent it already had. */
-	char *state = cache_home("kdos/theme");
-	mkparent(state);
-	char line[40];
-	snprintf(line, sizeof(line), "%s\n", sc->name);
-	kb_write_file(state, line);
-	free(state);
-
-	reload_session();
-
-	/* A regenerated file does not repaint a running process. kdos-shell and
-	 * kdos-comp retint on the SIGHUP above; starship on the next prompt;
-	 * btop and foot on next start (foot cannot reload its config at all).
-	 * GTK apps — every alien app — pick up the new theme and icons when
-	 * they are next launched; GTK re-reads neither on a file change. */
-	if (kb_have_prog("tmux")) {
-		char *conf = kdt_cfg_home("tmux/tmux.conf");
-		KbArgv a = {0};
-		kb_argv_add(&a, "tmux");
-		kb_argv_add(&a, "source-file");
-		kb_argv_add(&a, conf);
-		kb_argv_end(&a);
-		kb_run(&a);
-		free(conf);
-	}
+	theme_commit(sc);
 
 	printf("%s%s%s (%s)\n", C_A, sc->name, C_0, sc->theme_name);
 	return 0;
@@ -1398,13 +2051,18 @@ static void help_body(FILE *o)
 		{ "desktop", "start the KDOS desktop from a tty (kdos-desktop)" },
 		{ "kdos app <name>", "install an alien app (distrobox + export)" },
 		{ "kdos theme [name]", "phosphor | amber | ice | bone | next | prev | list" },
+		{ "kdos theme style <f>", "apply a style file: accent + crt + fonts, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
 		{ "kdos status", "packages, containers, exported apps" },
 		{ "kdos doctor", "check the session for common breakage" },
 		{ "kdos appid", "do launcher icons match the windows they open?" },
 		{ "kdos restarts", "what is running code an upgrade replaced" },
 		{ "kdos stutter", "why the desktop hiccuped — with the app's name" },
+		{ "kdos hey list", "every window, from a prompt; run <action> <id>" },
+		{ "kdos update check", "what the ports tree pins that is not installed" },
+		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
+		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
 		{ "kdos-display [--list]", "the screens: mode, scale, rotation, order" },
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "kdos-power suspend", "suspend; also poweroff and reboot" },
@@ -1418,6 +2076,25 @@ static void help_body(FILE *o)
 
 	fprintf(o, "%sKEYS%s  %s(defaults — remap in "
 		"~/.config/kdos-comp/rc.xml)%s\n", C_A, C_0, C_D, C_0);
+
+	/*
+	 * The authority on what is bound is the rc.xml the session loaded, and
+	 * `kdos-keys` — the W-F1 keybind card in kdos-shell — is the program
+	 * that reads it. This POINTS AT it rather than pasting it: `--dump`
+	 * renders the card into a fixed 72x24 viewport with no scroll, so what
+	 * came back was a 72-column box holding the first twenty bindings and
+	 * an interactive hint row, silently missing every workspace, lock,
+	 * screenshot and media key. A cheat sheet that stops two thirds of the
+	 * way through is worse than a short one.
+	 *
+	 * So the table below is what `kdos help` prints, and it is not dead
+	 * weight either way: this is answerable on a machine with no desktop
+	 * installed at all, and that is exactly where somebody is reading it.
+	 */
+	if (kb_have_prog("kdos-keys"))
+		fprintf(o, "  %s%-22s%s %s\n", C_B, "Super+F1", C_0,
+			"the full card, generated from your own rc.xml");
+
 	/* Every line here is a binding the skel rc.xml actually installs, and
 	 * the file named above is the one that installs it: since the labwc
 	 * fork, comp.conf keeps only the KDOS keys and skips a `bind` line in
@@ -1843,6 +2520,66 @@ static void check_microcode(void)
 		      "whatever the firmware loaded%s", vendor, note);
 }
 
+/*
+ * The shipped image logs in as kdos/kdos and ships sshd enabled, so a machine
+ * whose owner never ran passwd is a machine anyone on the network can log
+ * into. The shipped hash cannot be compiled in (the source cannot read fs/ at
+ * build time, and a copied literal goes stale the day the shadow file
+ * changes), so the check IS the question: does "kdos" still hash to what
+ * /etc/shadow holds?
+ *
+ * crypt() is weak so the host selftest — which links kdos-tools without
+ * libcrypt — still links; on the target musl's libc carries it. Declared here
+ * rather than via <crypt.h>, which a glibc host without libxcrypt lacks.
+ */
+#pragma weak crypt
+extern char *crypt(const char *key, const char *salt);
+
+static void check_default_password(void)
+{
+	/* Root-only: shadow is unreadable otherwise, and silence is correct —
+	 * a non-root doctor cannot answer this and must not pretend to. */
+	char *data = kb_read_all("/etc/shadow", NULL);
+	if (!data || !crypt) {
+		free(data);
+		return;
+	}
+
+	char hash[128] = "";
+	for (char *line = data; line && *line;) {
+		char *nl = strchr(line, '\n');
+		if (!strncmp(line, "kdos:", 5)) {
+			char *end = strchr(line + 5, ':');
+			size_t l = end ? (size_t)(end - line - 5)
+				       : strcspn(line + 5, "\n");
+			if (l < sizeof(hash)) {
+				memcpy(hash, line + 5, l);
+				hash[l] = 0;
+			}
+			break;
+		}
+		line = nl ? nl + 1 : NULL;
+	}
+	free(data);
+
+	/* No kdos user, or a locked/empty field: not this check's business. */
+	if (!hash[0] || hash[0] == '!' || hash[0] == '*')
+		return;
+
+	char *h = crypt("kdos", hash);
+	if (h && !strcmp(h, hash)) {
+		if (kb_path_exists(INIT_DIR "/70_sshd"))
+			warn_("the kdos password is still the shipped default "
+			      "— and sshd is enabled, so anyone who can reach "
+			      "this machine can log in (run: passwd)");
+		else
+			warn_("the kdos password is still the shipped default "
+			      "(run: passwd)");
+	} else {
+		ok("the kdos password is not the shipped default");
+	}
+}
+
 static int cmd_doctor(int argc, char **argv)
 {
 	for (int i = 0; i < argc; i++) {
@@ -2046,11 +2783,15 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("kdos-checkpass is not setuid root — every password will "
 		      "be refused (fix: chown root and chmod 4755)");
 
+	/* `service <name>` keys on the init SCRIPT — ksvc strips the numeric
+	 * prefix and the .sh, so 55_powerd.sh is `powerd`. The NAME= inside the
+	 * script is the pidfile, not the lookup key, and naming that here
+	 * printed a command that finds no service. */
 	if (kb_path_exists("/run/kdos-powerd.sock"))
 		ok("kdos-powerd listening");
 	else
 		warn_("kdos-powerd not running — no suspend, poweroff or reboot "
-		      "from the desktop (start with: service kdos-powerd start)");
+		      "from the desktop (start with: service powerd start)");
 
 	/*
 	 * kdos-energyd, and WHY it is not running is the whole of what is worth
@@ -2074,7 +2815,7 @@ static int cmd_doctor(int argc, char **argv)
 		kb_strv_free(dom);
 		if (any)
 			warn_("kdos-energyd not running — no per-app energy "
-			      "attribution (start with: service kdos-energyd "
+			      "attribution (start with: service energyd "
 			      "start)");
 		else
 			warn_("no RAPL energy domain on this machine — per-app "
@@ -2100,6 +2841,19 @@ static int cmd_doctor(int argc, char **argv)
 			      "this session (kdos-desktop-start launches it)");
 	}
 
+	/*
+	 * The out-of-memory killer. Without it the appbox — which is the
+	 * likeliest thing on this machine to eat the memory — takes the desktop
+	 * down with it, and the kernel's own OOM killer picks by badness rather
+	 * than by who the user is looking at.
+	 */
+	if (kb_path_exists("/run/kdos-oomd.sock"))
+		ok("kdos-oomd watching /proc/pressure/memory");
+	else
+		warn_("kdos-oomd not running — nothing protects the session "
+		      "under memory pressure (start with: service oomd "
+		      "start)");
+
 	/* The frame-timing socket. Absent means `kdos stutter` has nothing to
 	 * watch — which is normal outside a session and worth saying inside one,
 	 * because the alternative is a tool that appears to hang. */
@@ -2113,7 +2867,41 @@ static int cmd_doctor(int argc, char **argv)
 			      "nothing to watch (is kdos-comp this session's "
 			      "compositor?)");
 		free(fs);
+
+		/*
+		 * The command socket, and the two failures it distinguishes.
+		 * A compositor that IS running without one is an older
+		 * kdos-comp — `kdos hey` and kdos-teams then fail with a
+		 * message about a socket, which sounds like a permissions
+		 * problem and is a version.
+		 */
+		char *cs = kb_path_join(rtd, "kdos-cmd.sock");
+		if (kb_path_exists(cs))
+			ok("kdos-comp answers `kdos hey`");
+		else if (running("kdos-comp", NULL))
+			warn_("kdos-comp is running but exposes no command "
+			      "socket — `kdos hey` and kdos-teams have nothing "
+			      "to talk to (this compositor predates it)");
+		else
+			warn_("no command socket — `kdos hey` needs a running "
+			      "kdos-comp");
+		free(cs);
 	}
+
+	/*
+	 * The keybind card. It is the one surface that answers "what can I
+	 * press", on a desktop where every operation has a key and almost none
+	 * of them is discoverable any other way — and `kdos help` quietly falls
+	 * back to a static table when it is missing, so its absence is
+	 * otherwise invisible.
+	 */
+	if (kb_have_prog("kdos-keys"))
+		ok("kdos-keys installed — W-F1 and `kdos help` read the real "
+		   "rc.xml");
+	else
+		warn_("kdos-keys missing — no keybind card, and `kdos help` "
+		      "falls back to a hand-written key list that rc.xml can "
+		      "contradict");
 
 	/*
 	 * The screen-capture portal, which is two files and one naming rule.
@@ -2141,6 +2929,14 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("~/.local/bin not on PATH — exported app wrappers will not "
 		      "resolve");
 	free(want);
+
+	/* Root-only — a normal user cannot read shadow and gets no section at
+	 * all rather than a check that pretends it looked. */
+	if (access("/etc/shadow", R_OK) == 0) {
+		doctor_gap();
+		doctor_head("Security");
+		check_default_password();
+	}
 
 	if (doctor_json)
 		printf("\n  ],\n  \"warnings\": %d\n}\n", doctor_warns);
@@ -2199,6 +2995,12 @@ int kdos_main(int argc, char **argv)
 		return rebuild_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "cve"))
 		return kdt_cve(rest, restv, C_A, C_W, C_0);
+	if (!strcmp(cmd, "hey"))
+		return hey_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "oracle"))
+		return oracle_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "update"))
+		return kdt_update(rest, restv, cmd_theme);
 	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
 		return cmd_version();
 	if (!strcmp(cmd, "app")) {

@@ -1,0 +1,17 @@
+title: a key id is not a key — verification always uses the local keyring
+cite: libksig
+port: kdos-installer
+
+The id inside a signature file selects which key to TRY. A signature that
+could supply its own key verifies nothing.
+
+Three more rules that keep signing from rotting: a bad signature is not a
+missing one (kpkgadd refuses a package whose .sig fails and allows one with no
+sidecar, because locally built packages are the majority); --insecure says so
+out loud every time, because a flag that prints nothing gets left in a script;
+and the index is verified before it is believed, because verifying after
+install is verifying nothing.
+
+KDOS ships no key in /etc/kdos/keys. Shipping one would be asking you to trust
+whoever built the image, which is the question signing exists to let you
+answer yourself.

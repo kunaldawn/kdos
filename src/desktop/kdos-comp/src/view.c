@@ -19,6 +19,7 @@
 #include "cycle.h"
 #include "foreign-toplevel/foreign.h"
 #include "input/keyboard.h"
+#include "kdos.h" /* KDOS */
 #include "labwc.h"
 #include "menu/menu.h"
 #include "output.h"
@@ -2495,6 +2496,7 @@ view_destroy(struct view *view)
 {
 	assert(view);
 
+	kdos_winpos_forget(view); /* KDOS: drop a mark left by a view that never mapped */
 	wl_signal_emit_mutable(&view->events.destroy, NULL);
 	snap_constraints_invalidate(view);
 

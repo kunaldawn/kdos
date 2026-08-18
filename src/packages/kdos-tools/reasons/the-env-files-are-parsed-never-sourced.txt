@@ -1,0 +1,16 @@
+title: the phase env files are PARSED, never sourced
+cite: libkbuild
+port: kdos-tools
+
+Several end with `rm -rf /var/cache/kpkg/work`, which at source time hits the
+build CONTAINER's filesystem, not the target's. So only export NAME=VALUE
+lines are read, only five keys are honoured, and a value must be a literal.
+
+A declared snapshot path is either kept or reported as REJECTED, never quietly
+repaired: snapshot and restore delete and re-extract those paths as root, so
+absolute, empty, "." and anything with a .. component is refused.
+
+And kb_read_all stopped at the stat'ed size once — every file under /proc
+reports st_size 0, so /proc/mounts read back empty and mounts_under() answered
+"nothing is mounted", which is the answer that lets a snapshot run over a live
+bind mount.

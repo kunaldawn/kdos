@@ -61,6 +61,36 @@ int explain_main(int argc, char **argv);		/* kdos explain             */
 int appid_main(int argc, char **argv);		/* kdos appid               */
 int restarts_main(int argc, char **argv);	/* kdos restarts            */
 int stutter_main(int argc, char **argv);	/* kdos stutter             */
+int oracle_main(int argc, char **argv);		/* kdos oracle              */
+/* `kdos hey` (hey.c): the compositor answering questions from a prompt, over
+ * $XDG_RUNTIME_DIR/kdos-cmd.sock. */
+int hey_main(int argc, char **argv);
+/* kdos-sfx (sfx.c): four synthesized noises. Its own basename, because the
+ * things that play them are init scripts and keybinds, not `kdos` users. */
+int sfx_main(int argc, char **argv);
+
+/*
+ * The reasons corpus, shared by `kdos why`, `kdos explain` and `kdos oracle`.
+ * $KDOS_REASONS beats the installed copy, which is how the tree can be queried
+ * from a checkout and how preflight reads it.
+ */
+const char *kdt_reason_dir(void);
+char *kdt_reason_header(const char *text, const char *key, int nth);
+
+/* "the aphorism · the scar", picked by (day XOR pid). NULL when nothing is
+ * installed. The caller frees. */
+char *kdt_oracle_line(void);
+
+/* The accent name in $XDG_CACHE_HOME/kdos/theme, or "phosphor". Points at a
+ * static buffer. */
+const char *kdt_current_accent(void);
+
+/*
+ * `kdos update` (update.c). Orchestration of kpkg, kdos-bootctl and the theme
+ * generators — no new package format and no new trust path. `theme` is handed
+ * kdos.c's own `kdos theme` entry point rather than reimplementing it.
+ */
+int kdt_update(int argc, char **argv, int (*theme)(int, char **));
 
 /* $XDG_CONFIG_HOME/<rest>, falling back to ~/.config. Shared rather than
  * copied: two XDG helpers in one binary is how the two drift apart. */

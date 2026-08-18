@@ -48,6 +48,20 @@ kdos-powerd
 # own container. Relative shares, never watt-hours.
 kdos-energyd
 
+# Wedge protection under memory pressure. Blocks on a /proc/pressure/memory PSI
+# trigger and SIGKILLs + process_mrelease()s the largest attributable offender —
+# preferring boxed apps, never the desktop's own chrome — at most once per ten
+# seconds. Same shape as kdos-powerd: root, foreground under ksvc, SO_PEERCRED
+# socket for `kdos doctor`.
+kdos-oomd
+
+# Removable media. Plugging a stick into this machine did nothing at all —
+# there is no udisks here, mounting is root's and the desktop is not root.
+# Same shape as kdos-powerd: root, foreground under ksvc, an SO_PEERCRED
+# socket, and a protocol whose only argument is a row number out of a list the
+# daemon published, so a client can never name a device or a mountpoint.
+kdos-mountd
+
 # The input method. kdos-comp speaks text-input-v3 to applications and
 # input-method-v2 to fcitx5 (the fork's src/input/ime.c); this is the
 # thing on the other end of that second protocol. Built Wayland-only — no X11

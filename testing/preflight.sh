@@ -96,6 +96,53 @@ done
 [ "$orphans" = 0 ] && note "all depends resolve" "ok"
 
 echo
+echo "==> every port of OURS is built by something"
+# The reverse of the check above, and the one a NEW port needs. `ports/core` is
+# upstream and a recipe there may legitimately sit unbuilt; `src/packages` and
+# `src/desktop` are ours, and a port nobody installs is a directory that
+# compiles on a developer's machine and is absent from the ISO. kdos-oomd is
+# the live example: a daemon, an init script and a recipe, and one missing line
+# in script/05_desktop/packages.txt between it and never running.
+#
+# A port a PHASE SCRIPT builds by name is fine — that is how kinstall is built,
+# in phase 1, long before any packages.txt exists.
+unbuilt=0
+for d in src/packages/* src/desktop/*; do
+    [ -f "$d/kpkgbuild" ] || continue
+    p=$(basename "$d")
+    grep -qxF "$p" script/*/packages.txt 2>/dev/null && continue
+    grep -rqlF "$p" script/*/*.sh 2>/dev/null && continue
+    bad "$p" "in no packages.txt and named by no phase script — nothing builds it"
+    unbuilt=$((unbuilt + 1))
+done
+[ "$unbuilt" = 0 ] && note "our ports are all built" "ok"
+
+echo
+echo "==> every KDOS daemon an init script starts is installed by a port"
+# `supervise` is given an absolute path and the script SKIPS quietly when it is
+# not there ("[SKIP] foo: /usr/sbin/foo not found"), which is right on a live
+# system and useless here: a daemon whose port never installs it is a service
+# that silently never runs. Only the kdos-* ones are checked — an upstream
+# daemon's path comes out of somebody else's `make install` and no grep over
+# this tree can see it.
+daemons=0
+for f in fs/etc/init.d/*.sh; do
+    [ -f "$f" ] || continue
+    # Read from a file, not a pipe: `bad` in a pipeline's subshell increments
+    # a copy of $fail and the check reports without failing.
+    sed -n 's/^[[:space:]]*DAEMON="\([^"]*\)".*/\1/p' "$f" > "$SP/daemons"
+    while read -r dpath; do
+        case "$(basename "$dpath")" in kdos-*) ;; *) continue ;; esac
+        if ! grep -rqF -- "$dpath\"" ports/core/*/build.sh src/packages/*/build.sh \
+                src/desktop/*/build.sh 2>/dev/null; then
+            bad "$(basename "$f")" "starts $dpath, which no build.sh installs"
+        fi
+    done < "$SP/daemons"
+    daemons=$((daemons + 1))
+done
+note "init.d services" "$daemons checked"
+
+echo
 echo "==> every archive a port ships is named by a sha256 in its recipe"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
 # port that cannot build. The hashes were bootstrapped from the git-LFS
@@ -395,6 +442,65 @@ if [ -s "$SP/missing-cmds" ]; then
     bad "desktop commands" "$(tr '\n' ' ' < "$SP/missing-cmds")"
 else
     note "desktop commands" "every one is provided by the tree"
+fi
+
+# ── every flag one kdos-shell tool passes another, the other accepts ──────
+#
+# kdos-shell is one binary under two dozen names and they spawn each other by
+# name with flags on the command line. Nothing checked that the far end knew
+# the flag, and an unknown argument in every one of these programs prints a
+# usage line to a stderr nobody is reading and exits 2 BEFORE a surface exists.
+#
+# Three shipped controls were dead that way at once: the panel spawned
+# `kdos-cal --at-bottom X Y`, `kdos-menu system --at-bottom X Y` and
+# `kdos-menu --windows APP --at-bottom X Y`, and neither kdos-cal nor kdos-menu
+# had ever accepted `--at-bottom` — kdos-start and kdos-clip did, which is what
+# made it look like a panel fault rather than a missing flag. Clicking the
+# clock, the System menu and any grouped task button all did nothing at all,
+# silently, and no compile and no golden could see it.
+#
+# The test is deliberately crude: find the argv literals, take every `--word`
+# in them, and require that word to appear as a string in the target's own
+# source. A tool that accepts a flag necessarily compares against it.
+echo
+echo "==> every flag a kdos-shell tool passes another is one it accepts"
+python3 - <<'PY' > "$SP/badflags" 2>/dev/null || true
+import glob, os, re
+
+SRC = "src/desktop/kdos-shell"
+# name -> the file that implements it, from TOOLS[] in main.c
+main = open(os.path.join(SRC, "main.c")).read()
+tools = dict(re.findall(r'\{\s*"(kdos-[a-z]+)"\s*,\s*([a-z_]+)_main\s*\}', main))
+text = {}
+for name, fn in tools.items():
+    for path in glob.glob(os.path.join(SRC, "*.c")):
+        body = open(path).read()
+        if re.search(r'\b(int\s+)?%s_main\s*\(' % re.escape(fn), body):
+            text.setdefault(name, "")
+            text[name] += body
+
+for path in glob.glob(os.path.join(SRC, "*.c")):
+    src = open(path).read()
+    # const char *argv[] = { "kdos-foo", "--flag", ... };
+    for m in re.finditer(r'argv\[\]\s*=\s*\{(.*?)\}\s*;', src, re.S):
+        body = m.group(1)
+        words = re.findall(r'"([^"]*)"', body)
+        if not words:
+            continue
+        target = words[0]
+        if target not in text:
+            continue
+        for w in words[1:]:
+            if not w.startswith("--"):
+                continue
+            if ('"%s"' % w) not in text[target]:
+                print("%s spawns %s %s — %s never accepts it"
+                      % (os.path.basename(path), target, w, target))
+PY
+if [ -s "$SP/badflags" ]; then
+    bad "shell tool flags" "$(head -3 "$SP/badflags" | tr '\n' ';')"
+else
+    note "shell tool flags" "every spawned flag is accepted"
 fi
 
 echo

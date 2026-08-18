@@ -78,15 +78,20 @@ static void build_names(const KcolScheme *sc)
 {
 	uint32_t d = sc->deep, t = sc->text, p = sc->primary;
 	uint32_t acc = sc->pdark, sec = sc->secondary, urg = sc->urgent;
-	uint32_t white = 0xffffff;
+
+	/* The derived values are kcol_sem's, shared with the user-level gtk.css
+	 * `kdos theme` writes: the two layers define the same names and the user
+	 * layer wins, so a mix computed twice is a mix that drifts. */
+	KcolSem sem;
+	kcol_sem(sc, &sem);
 
 	uint32_t view = d;
 	uint32_t window = sc->variant;
-	uint32_t header = kcol_mixf(d, t, 0.07);
-	uint32_t side_backdrop = kcol_mixf(d, t, 0.04);
-	uint32_t dialog = kcol_mixf(d, t, 0.11);
-	uint32_t thumb = kcol_mixf(d, t, 0.13);
-	uint32_t on_accent = kcol_mixf(white, t, 0.35);
+	uint32_t header = sem.header;
+	uint32_t side_backdrop = sem.side_backdrop;
+	uint32_t dialog = sem.dialog;
+	uint32_t thumb = sem.thumb;
+	uint32_t on_accent = sem.on_accent;
 
 	char card[48];
 	snprintf(card, sizeof(card), "alpha(%s, 0.07)", hx(t));
@@ -98,14 +103,14 @@ static void build_names(const KcolScheme *sc)
 	put("success_bg_color", hx(acc));
 	put("success_fg_color", hx(on_accent));
 	put("success_color", hx(p));
-	put("warning_bg_color", hx(kcol_mixf(sec, d, 0.25)));
-	put("warning_fg_color", hx(d));
+	put("warning_bg_color", hx(sem.warning_bg));
+	put("warning_fg_color", hx(sem.warning_fg));
 	put("warning_color", hx(sec));
-	put("destructive_bg_color", hx(kcol_mixf(urg, d, 0.2)));
-	put("destructive_fg_color", hx(kcol_mixf(white, urg, 0.15)));
+	put("destructive_bg_color", hx(sem.destructive_bg));
+	put("destructive_fg_color", hx(sem.destructive_fg));
 	put("destructive_color", hx(urg));
-	put("error_bg_color", hx(kcol_mixf(urg, d, 0.2)));
-	put("error_fg_color", hx(kcol_mixf(white, urg, 0.15)));
+	put("error_bg_color", hx(sem.destructive_bg));
+	put("error_fg_color", hx(sem.destructive_fg));
 	put("error_color", hx(urg));
 
 	put("window_bg_color", hx(window));
@@ -114,7 +119,7 @@ static void build_names(const KcolScheme *sc)
 	put("view_fg_color", hx(t));
 	put("headerbar_bg_color", hx(header));
 	put("headerbar_fg_color", hx(t));
-	put("headerbar_border_color", hx(t));
+	put("headerbar_border_color", hx(sem.headerbar_border));
 	put("headerbar_backdrop_color", hx(window));
 	put("sidebar_bg_color", hx(header));
 	put("sidebar_fg_color", hx(t));
@@ -139,8 +144,8 @@ static void build_names(const KcolScheme *sc)
 	put("theme_text_color", hx(t));
 	put("theme_selected_bg_color", hx(acc));
 	put("theme_selected_fg_color", hx(on_accent));
-	put("borders", hx(kcol_mixf(window, t, 0.22)));
-	put("unfocused_borders", hx(kcol_mixf(window, t, 0.14)));
+	put("borders", hx(sem.border));
+	put("unfocused_borders", hx(sem.border_unfocused));
 	put("wm_highlight", hx(header));
 	put("content_view_bg", hx(view));
 	put("text_view_bg", hx(view));

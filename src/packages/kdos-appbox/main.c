@@ -33,6 +33,7 @@
  */
 
 #include "kdos-appbox.h"
+#include "kxdg.h"
 
 #include <dirent.h>
 #include <stdio.h>
@@ -98,14 +99,40 @@ static const char *box_wayland_socket(void)
 }
 
 /*
+ * Accessibility, opt-in.
+ *
+ * The host runs no at-spi registry and nothing answers org.a11y.Bus on the
+ * session bus, so by default every boxed GTK app is told not to look — that is
+ * a startup probe that can only time out. It is a DEFAULT and not a policy:
+ * a user who wants the box's own stack (the image carries at-spi2-core, and a
+ * screen reader running inside the box can reach it) opts in by creating
+ * ~/.config/kdos/a11y — an empty file is enough — or by exporting KDOS_A11Y=1
+ * for one launch. Resolved from $HOME/.config like the box profiles, and for
+ * the same reason: two programs resolving it differently is the failure this
+ * must not have.
+ */
+static int a11y_wanted(void)
+{
+	char path[MAX_LINE];
+	const char *env = getenv("KDOS_A11Y");
+
+	if (env && *env)
+		return strcmp(env, "0") != 0;
+	snprintf(path, sizeof(path), "%s/.config/kdos/a11y", kb_home_dir());
+	return kb_path_exists(path);
+}
+
+/*
  * Environment every app inside a box gets.
  *
  *   WAYLAND_DISPLAY            the box's own tagged socket, when there is one
  *   GSETTINGS_BACKEND=keyfile  no dconf-service is reachable over the (host)
  *                              session bus; keyfile keeps GNOME app settings
  *                              persistent instead of silently dropped
- *   NO_AT_BRIDGE / GTK_A11Y    KDOS ships no accessibility stack; stop every
- *                              GTK app probing org.a11y.Bus at startup
+ *   NO_AT_BRIDGE / GTK_A11Y    no accessibility stack is reachable on the host;
+ *                              stop every GTK app probing org.a11y.Bus at
+ *                              startup — unless the user opted in, see
+ *                              a11y_wanted()
  *   QT_QPA_PLATFORMTHEME       how a Qt app finds a palette: `kde` when the
  *                              image has the KDE segment (it reads the
  *                              kdeglobals `kdos theme` writes into the shared
@@ -131,8 +158,10 @@ static void box_env(KbArgv *a, const char *image)
 	if (sock)
 		kb_argv_addf(a, "WAYLAND_DISPLAY=%s", sock);
 	kb_argv_add(a, "GSETTINGS_BACKEND=keyfile");
-	kb_argv_add(a, "NO_AT_BRIDGE=1");
-	kb_argv_add(a, "GTK_A11Y=none");
+	if (!a11y_wanted()) {
+		kb_argv_add(a, "NO_AT_BRIDGE=1");
+		kb_argv_add(a, "GTK_A11Y=none");
+	}
 	kb_argv_add(a, "GTK_THEME=KDOS");
 
 	/*
@@ -151,10 +180,10 @@ static void box_env(KbArgv *a, const char *image)
 	 *
 	 * The cost, stated: with the portal on, GTK's Print dialog also goes
 	 * through it, and KDOS has no Print backend (kdos-portals.conf says
-	 * `default=none` and means it). Printing from a boxed app did not work
-	 * before this either — the box has no route to the host's cups socket —
-	 * so nothing that worked stops working; it fails through a different
-	 * dialog.
+	 * `default=none` and means it). Printing still works from a boxed app:
+	 * box_create() shares /run/cups into the box and CUPS_SERVER below
+	 * points every toolkit's OWN print dialog at it, which is the route
+	 * that needs no portal.
 	 *
 	 * XDG_CURRENT_DESKTOP goes with it because a toolkit that has decided
 	 * to use portals then asks which desktop it is on, and the answer
@@ -162,6 +191,17 @@ static void box_env(KbArgv *a, const char *image)
 	 */
 	kb_argv_add(a, "GTK_USE_PORTAL=1");
 	kb_argv_add(a, "XDG_CURRENT_DESKTOP=KDOS");
+
+	/*
+	 * Printing. box_create() shares /run/cups into the box as a VOLUME —
+	 * a create-time property — while this export is per-LAUNCH and probes
+	 * the socket again. Asymmetric on purpose: a box created before cups
+	 * was up gets the env but not the socket, and needs `kdos-appbox
+	 * recreate` to grow the volume, which is the same message the profile
+	 * system already sends for a namespace change.
+	 */
+	if (kb_path_exists("/run/cups/cups.sock"))
+		kb_argv_add(a, "CUPS_SERVER=/run/cups/cups.sock");
 
 	/*
 	 * Input methods. A boxed app reaches fcitx5 through the COMPOSITOR —
@@ -496,7 +536,8 @@ static void usage(void)
 {
 	fputs(
 "Usage: kdos-appbox run <app> [args...]     run an app from a box\n"
-"       kdos-appbox open [--print] <path>   open a file in whatever opens it\n"
+"       kdos-appbox open [--print|--choose] <path>\n"
+"                                           open a file in whatever opens it\n"
 "       kdos-appbox ensure | warmup | status\n"
 "\n"
 "       kdos-appbox list                    boxes and their profiles\n"
@@ -525,24 +566,34 @@ static void usage(void)
  */
 static int run_as_shim(const char *name, int argc, char **argv)
 {
-	char cmd[512];
+	char cmd[512], store[1024];
+	const char *slot[KB_MAX_ARGV];
 	char *vec[KB_MAX_ARGV];
 	int n = 0, i;
-	char *w, *save;
 
 	if (!app_lookup(name, cmd, sizeof(cmd)))
 		kb_die("unknown alien app '%s' (try: kdos-appbox apps)", name);
 
-	for (w = strtok_r(cmd, " ", &save); w && n < KB_MAX_ARGV - argc - 1;
-	     w = strtok_r(NULL, " ", &save)) {
-		/* Field codes are .desktop placeholders for the file the user
-		 * picked; from a terminal the user's own argv takes that role. */
-		if (w[0] == '%' && w[1] && !w[2])
-			continue;
-		vec[n++] = w;
-	}
-	if (!n)
-		kb_die("empty command for '%s'", name);
+	/*
+	 * kxdg_exec_split, not a `strtok(" ")`: the table's commands come out
+	 * of upstream .desktop files and carry the format's QUOTING, which a
+	 * whitespace split gets wrong. Measured on the shipped image —
+	 * `gsmartcontrol` is `"/usr/bin/gsmartcontrol-root"` and was exec'd
+	 * with the quotes still on the path, and `wesnoth` is
+	 * `sh -c "wesnoth-1.18 >/dev/null 2>&1"`, whose one shell argument was
+	 * handed to sh in three pieces. Both looked exactly like an app that
+	 * does not start.
+	 *
+	 * Field codes are .desktop placeholders for the file the user picked;
+	 * from a terminal the user's own argv takes that role, so they expand
+	 * to nothing here and the argv is appended after.
+	 */
+	n = kxdg_exec_split(cmd, NULL, 0, store, sizeof(store), slot,
+			    KB_MAX_ARGV - argc - 1);
+	if (n <= 0)
+		kb_die("empty or unparseable command for '%s'", name);
+	for (i = 0; i < n; i++)
+		vec[i] = (char *)slot[i];
 	for (i = 0; i < argc; i++)
 		vec[n++] = argv[i];
 	vec[n] = NULL;
@@ -589,7 +640,8 @@ int main(int argc, char **argv)
 	}
 	if (CMD("open")) {
 		if (i + 1 >= argc)
-			kb_die("usage: kdos-appbox open <path> [path...]");
+			kb_die("usage: kdos-appbox open [--print] [--choose] "
+			       "<path> [path...]");
 		return cmd_open(argc - i - 1, argv + i + 1);
 	}
 	if (CMD("ensure"))

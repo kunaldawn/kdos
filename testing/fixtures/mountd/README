@@ -1,0 +1,18 @@
+testing/fixtures/mountd — what kdos-mountd would offer, on a machine with
+nothing plugged in
+
+`sys/` is a /sys/block tree and `dev/` holds two hand-built superblocks: a
+FAT32 one labelled KDOSSTICK on a REMOVABLE disk, and an ext4 one on an
+internal disk that must never be offered. `fstab` is an /etc/fstab that claims
+the stick by label.
+
+    kdos-mountd --fixture testing/fixtures/mountd/sys testing/fixtures/mountd/dev
+
+Three assertions come out of it, and each is a refusal that matters more than
+the acceptance: the stick is eligible; it stops being eligible the moment an
+fstab entry claims it (somebody already decided what that device is for); and
+the internal disk is never eligible at all whatever it is formatted with.
+
+Nothing is mounted by `--fixture` and nothing needs root — which is the only
+reason selection logic this consequential gets tested at all. The same seam
+`kdos stutter --fixture`, `kdos-oomd --fixture` and `KDOS_PRIVACY_PROC` use.

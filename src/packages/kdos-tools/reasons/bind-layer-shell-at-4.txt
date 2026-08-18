@@ -1,0 +1,12 @@
+title: bind zwlr_layer_shell_v1 at 4, or ON_DEMAND is granted as EXCLUSIVE
+cite: libkwl
+port: kdos-shell
+
+KEYBOARD_INTERACTIVITY_ON_DEMAND is a version-4 request and wlroots answers it
+on an older resource with !!interactive. labwc parks the seat's keyboard on an
+exclusive layer surface and seat_focus() then refuses every window focus, so
+kdos-desk held the keyboard against every window on the screen and NOTHING
+TYPED REACHED ANY WINDOW.
+
+Shipped, and invisible to everything: the request was right, the protocol was
+right, the number was 1.

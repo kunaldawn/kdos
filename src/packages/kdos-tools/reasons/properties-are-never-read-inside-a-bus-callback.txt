@@ -1,0 +1,13 @@
+title: never read properties from inside a bus callback — the reply never comes
+cite: kdos-shell tray
+port: kdos-shell
+
+A synchronous sd_bus_call there does not get its reply, because sd-bus is
+already processing a message. Registration marks the item needs_props and the
+next dispatch reads it; the first version drew items with no name at all.
+
+Two more the tray exists to keep: nothing blocks the panel (one GetAll rather
+than five Gets, 300 ms ceiling, every method call to an item fire-and-forget),
+and the interface spelling is only recorded when the OTHER one answered —
+flipping on the first failure sent every subsequent click to an interface the
+app did not implement, in total silence.

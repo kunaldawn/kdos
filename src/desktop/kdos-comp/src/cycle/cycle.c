@@ -190,7 +190,34 @@ cycle_step(enum lab_cycle_dir direction)
 {
 	assert(server.input_mode == LAB_INPUT_STATE_CYCLE);
 
-	server.cycle.selected_view = get_next_selected_view(direction);
+	/*
+	 * KDOS: the app-first OSD's unit is the application, so Tab steps
+	 * to the next GROUP's most recently used window; cycle_step_within()
+	 * is what walks the windows of one application.
+	 */
+	if (rc.window_switcher.osd.style == CYCLE_OSD_STYLE_APPS) {
+		server.cycle.selected_view = cycle_osd_apps_step_group(
+			server.cycle.selected_view, direction);
+	} else {
+		server.cycle.selected_view = get_next_selected_view(direction);
+	}
+	update_cycle();
+}
+
+/* KDOS */
+void
+cycle_step_within(enum lab_cycle_dir direction)
+{
+	assert(server.input_mode == LAB_INPUT_STATE_CYCLE);
+
+	if (rc.window_switcher.osd.style != CYCLE_OSD_STYLE_APPS) {
+		/* every other style has one unit, and this is what Up/Down
+		 * did before the app-first switcher existed */
+		cycle_step(direction);
+		return;
+	}
+	server.cycle.selected_view = cycle_osd_apps_step_member(
+		server.cycle.selected_view, direction);
 	update_cycle();
 }
 
@@ -259,6 +286,8 @@ get_osd_impl(void)
 		return &cycle_osd_classic_impl;
 	case CYCLE_OSD_STYLE_THUMBNAIL:
 		return &cycle_osd_thumbnail_impl;
+	case CYCLE_OSD_STYLE_APPS: /* KDOS */
+		return &cycle_osd_apps_impl;
 	}
 	return NULL;
 }

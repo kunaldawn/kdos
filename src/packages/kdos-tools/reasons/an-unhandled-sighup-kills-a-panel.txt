@@ -1,0 +1,17 @@
+title: an unhandled SIGHUP is not a repaint, it is a KILL
+cite: kdos theme
+port: kdos-shell
+
+kdos-shell installed no SIGHUP handler at all (SigCgt: 0 on a running panel),
+so `kdos theme` KILLED the panel, the compositor's supervisor respawned it,
+and the new process read the state file — indistinguishable from a live retint
+until you look at the pid.
+
+What made it a real bug is RESPAWN_MAX: five deaths in thirty seconds stops
+the respawn, and one `kdos theme` takes about a second, so trying the four
+accents to pick one loses the panel for the rest of the session. Measured on
+the live ISO: six changes in twelve seconds and "kdos-shell died 6 times in
+30s — not restarting it again".
+
+And the match must be EXACT: `kdos-desk` is a substring of `kdos-desktop`, the
+/bin/sh script that owns the session.

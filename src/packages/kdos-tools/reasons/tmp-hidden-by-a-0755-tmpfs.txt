@@ -1,0 +1,11 @@
+title: a tmpfs already mounted ignores a mode change on remount
+cite: rcS
+port: toybox
+see: tmp-mode-1777
+
+`mount -o remount,mode=1777 /tmp` silently does nothing. Only chmod works,
+which is why rcS runs an explicit `chmod 1777 /tmp` after `mount -a` even
+though fstab already says mode=1777.
+
+This is the second half of the /tmp bug and the half that is easy to leave out
+after fixing the first.
