@@ -16,7 +16,7 @@ with a desktop that is a character grid all the way down.
 </p>
 
 <p align="center">
-<sub>405 ports · Linux 7.0.10 · 377 packages on the ISO · ~90 containerised GUI apps baked in · builds offline from this repo</sub>
+<sub>430 ports · Linux 7.0.10 · 377 packages on the ISO · ~90 containerised GUI apps baked in · builds offline from this repo</sub>
 </p>
 
 <p align="center">
@@ -34,8 +34,11 @@ with a desktop that is a character grid all the way down.
 KDOS assumes a reader who is comfortable with a build log, a package recipe, and
 the C that draws the panel. It ships one user account, no first-boot wizard, no
 telemetry, and no configuration layer between you and the file that takes
-effect. Every byte of the host is compiled here from an upstream tarball, so
-anything that is wrong is wrong somewhere you can read.
+effect. Almost every byte of the host is compiled here from an upstream
+tarball, so anything that is wrong is wrong somewhere you can read — and the
+handful of things that are *not* compiled here are named, counted and
+explained in [What is not built from source](#what-is-not-built-from-source)
+rather than glossed over.
 
 That trade is deliberate. You get a system that is inspectable end to end and
 rebuildable from the machine itself, offline, with reproducible packages. You
@@ -60,9 +63,11 @@ requirements; this is not the distribution that meets them.
 
 Four properties. Everything else in this repository follows from them.
 
-**1 — Built from scratch.** Every host byte is compiled here by a recipe in
-`ports/`: 405 ports, cross toolchain → musl userland → self-hosting bootstrap →
-libraries → desktop → kernel. No base image, no upstream binary archive.
+**1 — Built from scratch.** The host is compiled here by a recipe in `ports/`:
+430 ports, cross toolchain → musl userland → self-hosting bootstrap →
+libraries → desktop → kernel. No base image, no binary package archive. Eight
+ports are exceptions — vendor firmware that has no source, two bootstrap
+compilers, and two prebuilt font sets — and they are listed in full below.
 
 **2 — KDOS can build KDOS.** Phase 2 is a real self-hosting pass: the chroot
 rebuilds tar, musl, zlib, binutils and gcc *with itself*. The shipped system
@@ -82,11 +87,84 @@ native-port Firefox, LibreOffice or Blender. The outer ring is a Debian image
 baked into the ISO, and ~90 GUI apps out of it behave like ordinary system
 apps: launcher entries, MIME handlers, terminal commands, one theme.
 
+### What is not built from source
+
+"Built from scratch" is a claim, so here is the complete list of things it does
+not cover. Every one is a deliberate decision with a reason, and each was checked against
+the tree rather than remembered.
+
+**Vendor firmware and microcode — no source exists to build.** These are
+processor and device code published only as binaries. There is no version of
+this distribution, or of any other, that compiles them.
+
+| Port | Size | What it is |
+|---|---|---|
+| `linux-firmware` | 619 MB source → **921 MB installed** | Upstream's complete tree, unpruned. Installed with upstream's own `copy-firmware.sh --zstd`, which creates the 2307 `WHENCE` alias symlinks a plain copy would omit |
+| `intel-ucode` | 17 MB | 157 Intel CPU microcode files, upstream's whole set. Rides in front of the initramfs for the kernel's early loader |
+| `sof-firmware` | 10 MB | Intel SOF audio DSP firmware and topologies. Not part of linux-firmware; Tiger Lake and newer are silent without it |
+| `wireless-regdb` | 40 KB | The wireless regulatory database. **Must** be installed prebuilt: the kernel is built `CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y` and verifies upstream's signature, so a locally regenerated database is rejected in silence |
+
+The firmware tree is shipped **whole rather than curated**. A pruned subset is a
+bet on which hardware the machine will turn out to have, and losing that bet is
+silent — `request_firmware()` fails and the device simply does not work. 921 MB
+is what not making that bet costs.
+
+**Two bootstrap compilers — the chicken and the egg.** Rust and Go are written
+in themselves. Building either from source requires a working one first.
+
+| Port | Prebuilt input | Why |
+|---|---|---|
+| `rust` | 146 MB — `rustc`, `cargo`, `rust-std` | Upstream's stage-0 binaries for the previous release. The alternative is `mrustc` and a chain of a dozen historical compilers |
+| `go` | 57 MB — `go1.x.linux-amd64` | Go's own bootstrap toolchain, for the same reason |
+
+Both are pinned by version and sha256 like every other source, and both are
+downloaded once by `make fetch` and committed, so the offline build still holds.
+Everything they then produce — the shipped `rustc`, `cargo` and `go`, and every
+Rust program in the tree — is compiled here.
+
+**Two prebuilt font sets.** `ttf-dejavu` (5 MB) and `terminus-ttf` (0.5 MB)
+ship as `.ttf` because upstream publishes them that way. The console font
+`terminus-font` is a counter-example and is genuinely built from source: BDF
+through `configure` and `make` into the PSF that `kdos-getty` loads.
+
+**Vendored artwork, remade rather than redrawn.** `kdos-icons` (45 MB of
+pruned Papirus SVG), `kdos-cursors` (4.4 MB of Bibata Xcursor binaries) and
+`kdos-gtk-theme` (adw-gtk3 stylesheets) are upstream assets committed to this
+repository and recoloured at build time by generators in `src/packages/`. The
+palette is ours; the shapes are not. Each carries a `LICENSE.notice` recording
+exactly what was changed. `kdos-icons` also ships a 2.6 MB pre-rasterised icon
+atlas, generated on a host by `genatlas.py` because rasterising SVG needs a
+renderer the target does not have.
+
+**One vendored third-party source file set.** Monocypher, in
+`src/libs/libksig/monocypher/` — 4 files of public-domain C99 for Ed25519.
+It is compiled here like everything else; it is listed because it is the only
+code in `src/` that is not ours.
+
+**The application container is Debian, and always was.** `ports/appbox/` is a
+3.9 GB pre-baked Debian trixie image, and nothing in it is compiled by this
+repository. That is the whole point of the outer ring — KDOS builds the
+*desktop* and does not native-port Firefox — but it is by far the largest body
+of binaries on the medium and deserves saying plainly rather than only being
+implied by "applications live in boxes".
+
+**Data files are data.** `ca-certificates`, `iana-etc`, `hwdata`,
+`xkeyboard-config`, `iso-codes` and `docbook-xml`/`xsl` are text or tables
+installed as they arrive. There is nothing to compile; they are noted for
+completeness, not as exceptions. One of them is not purely text:
+`alsa-ucm-conf` carries 18 small binary `.bin` files alongside its
+configuration — precomputed EQ filter coefficients for SOF DSPs, which belong
+with the firmware group above in kind if not in size.
+
+Everything else on the host — every library, every daemon, the compiler, the
+kernel and the desktop — is compiled here from a tarball whose URL and sha256
+are in this repository.
+
 ### The Three Rings
 
 | Ring | Lives in | What is there |
 |---|---|---|
-| **Core** | `ports/core/` | musl, toybox, the kernel, the toolchain, init — 405 recipes |
+| **Core** | `ports/core/` | musl, toybox, the kernel, the toolchain, init — 430 recipes |
 | **Desktop** | `src/desktop/` + `wlroots` | `kdos-comp`, `kdos-shell`, lock, power, energy, boxsock, the portal |
 | **Outer** | `ports/appbox/` | The Debian app image: browsers, office, CAD, media, IDEs, games |
 
@@ -154,13 +232,14 @@ Three things it gets right, each of which was a bug first:
 composite and the result as PPMs, which is how the pass gets looked at without a
 screen.
 
-### `kdos-shell` is one binary under eleven names
+### `kdos-shell` is one binary under many names
 
-`kdos-shell` (the top panel, and `--bottom` the second one), `kdos-launcher`,
-`kdos-menu`, `kdos-desk`, `kdos-pick`, `kdos-run`, `kdos-prompt`,
-`kdos-notifyd`, `kdos-osd`, `kdos-cal`, `kdos-display` — 8,600 lines of C,
-basename-dispatched, sharing one font cache, one palette and one widget
-toolkit. Everything it knows it learns from **standard protocols**:
+The panel, the Start menu, the launcher, the menus, the desktop icons, the file
+chooser, the run box, the notification daemon and centre, the calendar, the
+display, audio, network, bluetooth and device managers, the clipboard history,
+the tooltips — all one basename-dispatched binary sharing one font cache, one
+palette and one widget toolkit. `TOOLS[]` in `main.c` is the authoritative list;
+a number in a heading is a number that goes stale. Everything it knows it learns from **standard protocols**:
 wlr-foreign-toplevel for the window list, ext-workspace-v1 for the pager,
 wlr-output-management for the screens, StatusNotifierItem for the tray. There is
 no private channel to the compositor, which is what lets you run waybar here

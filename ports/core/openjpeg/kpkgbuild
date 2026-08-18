@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = openjpeg
+version     = 2.5.3
+release     = 1
+source      = https://github.com/uclouvain/openjpeg/archive/refs/tags/v$version.tar.gz
+sha256      = 368fe0468228e767433c9ebdea82ad9d801a3ad1e4234421f352c8b06e7aa707  openjpeg-2.5.3.tar.gz
+description = JPEG 2000 codec — what scanners, archives and PDFs put images in
+homepage    = https://www.openjpeg.org/
+depends     = cmake zlib libpng libtiff lcms2

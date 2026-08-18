@@ -1,0 +1,8 @@
+# KDOS — PTP/MTP still cameras, for gphoto2.
+#
+# Matched on the INTERFACE class rather than a vendor table: the PTP class is
+# 6/1/1 and every camera that speaks it is covered, where a vendor list is a
+# list that is wrong the day somebody buys a newer body.
+
+SUBSYSTEM=="usb", ENV{ID_USB_INTERFACES}=="*:060101:*", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTRS{bInterfaceClass}=="06", ATTRS{bInterfaceSubClass}=="01", GROUP="dialout", MODE="0660"

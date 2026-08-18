@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hidapi
+version     = 0.15.0
+release     = 1
+source      = https://github.com/libusb/hidapi/archive/refs/tags/$name-$version.tar.gz
+sha256      = 5d84dec684c27b97b921d2f3b73218cb773cf4ea915caee317ac8fc73cef8136  hidapi-0.15.0.tar.gz
+description = HID device access — CMSIS-DAP debuggers and instruments speak it
+homepage    = https://github.com/libusb/hidapi
+depends     = eudev cmake
