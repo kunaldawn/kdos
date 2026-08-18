@@ -119,10 +119,22 @@ static void ensure_kpkg_bin(const char *repo_root, char *out, size_t cap)
 	if (kb_path_exists(out))
 		return;
 
-	char kdir[1536], lbase[1536], lpkg[1536];
+	/*
+	 * kdos-kpkg links THREE libraries — libkbase, libkpkg and libksig —
+	 * because kdos-kpkg.h includes ksig.h. This command line is duplicated
+	 * in ports/fetch and testing/selftest.sh; all three must list the same
+	 * set, or the ones that do not fail to compile the recipe reader and
+	 * the tool exits before doing any work.
+	 *
+	 * monocypher is a separate add_c_files: it is vendored third-party
+	 * source in a subdirectory of libksig rather than beside it.
+	 */
+	char kdir[1536], lbase[1536], lpkg[1536], lsig[1536], lmono[1600];
 	snprintf(kdir, sizeof(kdir), "%s/src/packages/kdos-kpkg", repo_root);
 	snprintf(lbase, sizeof(lbase), "%s/src/libs/libkbase", repo_root);
 	snprintf(lpkg, sizeof(lpkg), "%s/src/libs/libkpkg", repo_root);
+	snprintf(lsig, sizeof(lsig), "%s/src/libs/libksig", repo_root);
+	snprintf(lmono, sizeof(lmono), "%s/src/libs/libksig/monocypher", repo_root);
 
 	fprintf(stderr, "==> Building the recipe reader...\n");
 
@@ -134,11 +146,14 @@ static void ensure_kpkg_bin(const char *repo_root, char *out, size_t cap)
 	kb_argv_addf(&a, "-I%s", kdir);
 	kb_argv_addf(&a, "-I%s", lbase);
 	kb_argv_addf(&a, "-I%s", lpkg);
+	kb_argv_addf(&a, "-I%s", lsig);
 	kb_argv_add(&a, "-o");
 	kb_argv_add(&a, out);
 	add_c_files(&a, kdir);
 	add_c_files(&a, lbase);
 	add_c_files(&a, lpkg);
+	add_c_files(&a, lsig);
+	add_c_files(&a, lmono);
 	kb_argv_end(&a);
 
 	if (kb_run_tty(&a) != 0)

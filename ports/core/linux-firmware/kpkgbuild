@@ -11,7 +11,8 @@
 name        = linux-firmware
 version     = 20260810
 release     = 1
-description = Firmware blobs — curated for desktop and laptop hardware
+description = Device firmware blobs — upstream's complete tree, unpruned
 homepage    = https://gitlab.com/kernel-firmware/linux-firmware
-depends     =
-sha256      = 6254d348c38c2aab95f4ed2d2a26e01a890da42f0c24af3178da8762227b97fb  linux-firmware-20260810.tar.zst
+depends     = zstd
+source      = https://cdn.kernel.org/pub/linux/kernel/firmware/$name-$version.tar.xz
+sha256      = ac17c34fe73756926a961fbafadf8d8f07a3bd2dd2f4ea31a0fb5d50c714a49a  linux-firmware-20260810.tar.xz

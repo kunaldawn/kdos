@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sof-firmware
+version     = 2025.01.1
+release     = 1
+source      = https://github.com/thesofproject/sof-bin/releases/download/v$version/sof-bin-$version.tar.gz
+sha256      = a36210d9c245e81b0d9674d6b27d1fd4122968cf925aefc55b486d3650f88323  sof-firmware-2025.01.1.tar.gz
+description = Intel SOF DSP firmware and topologies — every Tiger Lake+ laptop is silent without it
+homepage    = https://github.com/thesofproject/sof-bin
+depends     =

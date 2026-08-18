@@ -1,0 +1,28 @@
+# KDOS — in-circuit debuggers and programmers.
+#
+# These are hidraw or raw-USB devices, never ttys, so 70-kdos-serial.rules does
+# not reach them. openocd, avrdude, flashrom, dfu-util, esptool and
+# openFPGALoader all open them directly.
+
+# CMSIS-DAP / DAPLink (ARM mbed, and every board that clones it)
+SUBSYSTEM=="usb", ATTR{idVendor}=="0d28", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0d28", GROUP="dialout", MODE="0660"
+
+# ST-Link v1/v2/v2-1/v3
+SUBSYSTEM=="usb", ATTR{idVendor}=="0483", GROUP="dialout", MODE="0660"
+
+# SEGGER J-Link
+SUBSYSTEM=="usb", ATTR{idVendor}=="1366", GROUP="dialout", MODE="0660"
+
+# Atmel/Microchip ICE, PICkit
+SUBSYSTEM=="usb", ATTR{idVendor}=="03eb", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04d8", GROUP="dialout", MODE="0660"
+
+# Espressif USB-JTAG (ESP32-S2/S3/C3 native USB)
+SUBSYSTEM=="usb", ATTR{idVendor}=="303a", GROUP="dialout", MODE="0660"
+
+# Raspberry Pi Debug Probe / RP2040 boot ROM
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", GROUP="dialout", MODE="0660"
+
+# Lattice / FTDI-based FPGA programmers reached as hidraw
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0403", GROUP="dialout", MODE="0660"

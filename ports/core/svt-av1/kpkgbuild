@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = svt-av1
+version     = 2.3.0
+release     = 1
+source      = https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v$version/SVT-AV1-v$version.tar.bz2
+sha256      = f65358499f572a47d6b076dda73681a8162b02c0b619a551bc2d62ead8ee719a  svt-av1-2.3.0.tar.bz2
+description = AV1 encoder — BSD-3, the practical AV1 encode path
+homepage    = https://gitlab.com/AOMediaCodec/SVT-AV1
+depends     = cmake nasm

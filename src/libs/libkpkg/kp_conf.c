@@ -75,6 +75,16 @@ void kp_conf_load(KpConf *c)
 	set_from_env(c->conf, sizeof(c->conf), "KPKG_CONF");
 	set_from_env(c->root, sizeof(c->root), "KPKG_ROOT");
 
+	/*
+	 * Off by default and set by the phase env files, so the BUILD is strict
+	 * — where a package that no longer matches its recipe is a defect —
+	 * while an interactive `kpkg install` is not.
+	 */
+	{
+		const char *v = getenv("KPKG_STRICT_RECIPE");
+		c->strict_recipe = (v && *v == '1');
+	}
+
 	char repos[2048];
 	kb_strlcpy(repos, "/ports/core", sizeof(repos));
 	kb_strlcpy(c->source_dir, "/var/cache/kpkg/sources", sizeof(c->source_dir));

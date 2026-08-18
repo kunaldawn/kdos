@@ -300,6 +300,65 @@ xwayland
 # icon renders as the missing-texture checkerboard.
 hicolor-icon-theme
 
+# ---------------------------------
+# Firmware (regulatory database, Intel SOF audio)
+# ---------------------------------
+# Neither is part of linux-firmware; both are separate upstreams. The kernel
+# builds a driver for each — CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y and
+# CONFIG_SND_SOC_SOF=m — and requests these blobs by name at probe time.
+# Without them the failures are silent: a radio stuck in the world domain with
+# no 5 GHz, and a bound audio driver that makes no sound.
+wireless-regdb
+sof-firmware
+
+# ---------------------------------
+# Time zones
+# ---------------------------------
+# musl reads /usr/share/zoneinfo directly. The appbox installs debian's own
+# tzdata, so without this the host and the box disagree about local time on one
+# machine in one session; a POSIX TZ string alone stays correct only until a
+# DST rule changes.
+tzdata
+
+# ---------------------------------
+# Device access libraries (serial, HID, USB)
+# ---------------------------------
+# What the flashing, SDR and instrument tools link against. Listed here rather
+# than arriving through a `depends` because those consumers are not in the tree
+# yet, and a library built only once something needs it is not a prerequisite.
+# Reachability is the other half: fs/etc/group and fs/etc/udev/rules.d.
+libserialport
+libftdi1
+hidapi
+libzip
+eigen3
+
+# ---------------------------------
+# Colour management and codecs
+# ---------------------------------
+# ffmpeg, imagemagick, libsndfile and the gst plugin packages are all
+# configured against these and are only as capable as what is installed here:
+# each of those build systems answers a missing library by disabling the
+# feature rather than failing. One encoder per format — adding a second earns
+# nothing. See ports/core/ffmpeg/LICENSE.notice for what --enable-gpl does to
+# the shipped binary's licence.
+lcms2
+openjpeg
+openexr
+libogg
+libvorbis
+flac
+opus
+lame
+x264
+x265
+libvpx
+svt-av1
+libass
+libva
+libde265
+libheif
+
 # Boot splash. Lives in src/packages rather than ports/core because the source
 # is ours, not an upstream tarball. Draws the CRT power-on animation straight
 # to /dev/fb0 from the initramfs and keeps running until rcS hands the console
