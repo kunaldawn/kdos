@@ -24,15 +24,23 @@
 
 unsigned res_wanted_flags(void)
 {
+	/*
+	 * The detail page's needs are ORed in rather than switched on: it is
+	 * an overlay, so the subject can have been opened from a page that
+	 * asks for nothing per-process, and a subject with no cmdline is a
+	 * detail view that cannot say what it is looking at.
+	 */
+	unsigned extra = res_detail_wants();
+
 	switch (res_page_current()) {
 	case RP_PROCESSES:
 		return KPR_WANT_STATUS | KPR_WANT_IO | KPR_WANT_CMDLINE |
-		       KPR_WANT_BOX;
+		       KPR_WANT_BOX | extra;
 	case RP_APPLICATIONS:
 		return KPR_WANT_STATUS | KPR_WANT_IO | KPR_WANT_CMDLINE |
-		       KPR_WANT_BOX;
+		       KPR_WANT_BOX | extra;
 	case RP_GPU:
-		return KPR_WANT_STATUS | KPR_WANT_GPU | KPR_WANT_BOX;
+		return KPR_WANT_STATUS | KPR_WANT_GPU | KPR_WANT_BOX | extra;
 	default:
 		/*
 		 * Zero: `stat` only. A CPU, memory, drive, network or battery
@@ -40,7 +48,7 @@ unsigned res_wanted_flags(void)
 		 * how a monitor with nine pages costs nine pages of io on
 		 * every one of them.
 		 */
-		return 0;
+		return extra;
 	}
 }
 
@@ -148,6 +156,12 @@ void res_sample(void)
 		}
 		R.sample_flags = want;
 	}
+
+	/* The subject's own rings advance on the program's clock, not on how
+	 * often its page happens to be drawn — and the same is true of the
+	 * device rates, which is why neither lives in a prepare(). */
+	res_detail_sample();
+	res_dev_sample();
 
 	R.tick++;
 }

@@ -42,6 +42,7 @@ static int g_searching;
 static const KprProc **g_rows;
 static double *g_cpu;
 static int g_nrows, g_cap;
+static int g_body = 1;		/* body rows the last draw used  */
 
 static double cpu_of(const KprProc *p)
 {
@@ -235,6 +236,10 @@ void res_draw_procs(int x, int y, int w, int h)
 	int body = bottom - row - 1;
 	if (body < 1)
 		return;
+	/* The wheel is answered against the rows this frame actually drew, the
+	 * same rule the panel's hit map keeps: a height derived twice is a
+	 * height that disagrees with itself the frame the window is resized. */
+	g_body = body;
 
 	int sel = sel_index();
 	if (sel >= 0)
@@ -322,6 +327,17 @@ int res_procs_key(int k)
 	case '/':
 		g_searching = 1;
 		return 1;
+	case '\n':
+	case '\r':
+		/*
+		 * The verbs are the DETAIL page's, not this one's. A key that
+		 * ended a process from a table would be a key pressed while
+		 * the cursor happens to be on a row, with nothing on the
+		 * screen saying which row that is.
+		 */
+		if (sel >= 0)
+			res_detail_open_proc(g_rows[sel]->pid);
+		return 1;
 	case KT_K_UP:
 		if (sel > 0)
 			g_sel_pid = g_rows[sel - 1]->pid;
@@ -338,6 +354,24 @@ int res_procs_key(int k)
 		return 1;
 	}
 	return 0;
+}
+
+/*
+ * SCROLL THE PAGE WHILE THE LIST OVERFLOWS, STEP THE CURSOR WHILE IT FITS —
+ * kch_list_wheel is that rule and is the only place it is written. A process
+ * table is the longest list on this machine and was the one surface here the
+ * wheel did nothing on.
+ */
+int res_procs_wheel(int up)
+{
+	if (!kch_list_wheel(up, &g_top, g_nrows, g_body)) {
+		int sel = sel_index();
+		if (up && sel > 0)
+			g_sel_pid = g_rows[sel - 1]->pid;
+		else if (!up && sel >= 0 && sel + 1 < g_nrows)
+			g_sel_pid = g_rows[sel + 1]->pid;
+	}
+	return 1;
 }
 
 int res_procs_click(int mx, int my, int btn)

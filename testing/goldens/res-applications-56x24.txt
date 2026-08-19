@@ -1,0 +1,24 @@
+                                                        
+  Applications                                          
+  5 applications                                        
+ ------------------------------------------------------ 
+APPLICATION                 CPU%   MEMORY               
+firefox-esr [box kdos-apps] 155.0  1.2G                 
+foot                        3.0    40M                  
+conmon                      1.0    2.0M                 
+backup                      0.0    8.0M                 
+sshd                        0.0    6.0M                 
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+15.0% CPU outside the rollup  .  memory is RSS and over-

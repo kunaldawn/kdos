@@ -59,6 +59,33 @@ int kwl_copy(const char *t, size_t n, int p)
 	(void)t; (void)n; (void)p;
 	return -1;
 }
+/*
+ * libkcell, stubbed for the same reason libkwl is: kdos-devices previews a
+ * camera frame through kcell_ascii_image(), which would drag fcft and pixman
+ * into a harness whose whole point is that a dump touches neither. -1 is the
+ * library's own "there is no font", which every caller already handles — so
+ * the surface draws exactly what it draws on a machine with no font, which is
+ * the layout the goldens are of.
+ */
+/*
+ * The microphone switch, stubbed. It is ALSA's, through privacy.c, which
+ * needs libpipewire — and kdos-devices draws the lamp beside its camera list.
+ * A dump records nothing and mutes nothing, so "not muted" is the honest
+ * answer and the one that keeps the layout the goldens are of.
+ */
+int sh_mic_muted(void) { return 0; }
+void sh_mic_toggle(void) {}
+
+int kcell_ascii_image(const uint32_t *argb, int w, int h, int stride_px,
+		      int cell_w, int cell_h, uint32_t *out_cp,
+		      uint32_t *out_tint, int *out_cols, int *out_rows)
+{
+	(void)argb; (void)w; (void)h; (void)stride_px;
+	(void)cell_w; (void)cell_h; (void)out_cp; (void)out_tint;
+	(void)out_cols; (void)out_rows;
+	return -1;
+}
+
 int kwl_lock_engaged(void) { return 0; }
 int kwl_lock_finished(void) { return 1; }
 void kwl_unlock(void) {}

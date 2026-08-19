@@ -80,8 +80,9 @@ echo "  kdos-powerd"
 # kdos-energyd is the other root daemon, and the only one whose ANSWER can be
 # checked without root: --fixture replays recorded /proc and powercap trees
 # through the same sampler and ledger the daemon runs.
-$CC $STD $WARN $INC -Isrc/desktop/kdos-energyd -o "$OUT/kdos-energyd" \
-    src/desktop/kdos-energyd/*.c src/libs/libkbase/*.c
+$CC $STD $WARN $INC -Isrc/libs/libkproc -Isrc/desktop/kdos-energyd \
+    -o "$OUT/kdos-energyd" \
+    src/desktop/kdos-energyd/*.c src/libs/libkbase/*.c src/libs/libkproc/*.c
 ln -sf kdos-energyd "$OUT/kdos-energy"
 echo "  kdos-energyd"
 $CC $STD $WARN -o "$OUT/kdos-checkpass" src/desktop/kdos-lock/checkpass.c -lcrypt
@@ -124,6 +125,11 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" client-header "$PROTO/wlr-layer-shell-unstable-v1.xml" \
             "$PROTO/wlr-layer-shell-unstable-v1-client-protocol.h"
         "$SCANNER" client-header "$XDG" "$PROTO/xdg-shell-client-protocol.h"
+        # The toplevel's frame. libkwl asks for a SERVER decoration, so this
+        # is as mandatory as the lock role's protocol.
+        "$SCANNER" client-header \
+            "$(pkg-config --variable=pkgdatadir wayland-protocols)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
+            "$PROTO/xdg-decoration-unstable-v1-client-protocol.h"
         # The lock role's protocol. Missing it fails the compile rather than
         # skipping quietly, which is the point: libkwl is what the lock screen
         # draws through.
@@ -149,6 +155,9 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         "$SCANNER" private-code "$PROTO/wlr-layer-shell-unstable-v1.xml" \
             "$PROTO/wlr-layer-shell-unstable-v1-protocol.c"
         "$SCANNER" private-code "$XDG" "$PROTO/xdg-shell-protocol.c"
+        "$SCANNER" private-code \
+            "$_wp/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
+            "$PROTO/xdg-decoration-unstable-v1-protocol.c"
         "$SCANNER" private-code \
             "$_wp/staging/ext-session-lock/ext-session-lock-v1.xml" \
             "$PROTO/ext-session-lock-v1-protocol.c"
@@ -1083,7 +1092,16 @@ echo "==> kdos-powerd only lets root and wheel near the power"
     && { echo "  an unknown user exited 0"; exit 1; }
 # A group whose name merely STARTS with wheel must not count, and the daemon
 # must refuse to serve the real socket without privilege.
-"$OUT/kdos-powerd" >/dev/null 2>&1 && { echo "  served /run as non-root"; exit 1; }
+#
+# Only as an unprivileged user: run as root the daemon is SUPPOSED to bind
+# /run/kdos-powerd.sock and stay in the foreground, so asserting it here would
+# not fail, it would hang for ever — which is what it did in a root container.
+if [ "$(id -u)" -ne 0 ]; then
+    "$OUT/kdos-powerd" >/dev/null 2>&1 \
+        && { echo "  served /run as non-root"; exit 1; }
+else
+    echo "  the non-root refusal is skipped (running as root)"
+fi
 # The client says what to do when nothing is listening, rather than failing mute.
 KDOS_POWERD_SOCKET="$OUT/nothing.sock" "$OUT/kdos-power" ping 2>&1 \
     | grep -q "no kdos-powerd" || { echo "  no message for a dead daemon"; exit 1; }
@@ -1660,7 +1678,9 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
                 -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
                 -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
-                $(pkg-config --cflags wayland-client $DEXTRA_PC) \
+                -Isrc/libs/libkcell \
+                $(pkg-config --cflags wayland-client pixman-1 fcft \
+                             $DEXTRA_PC) \
                 "src/desktop/kdos-shell/$s.c" 2>"$OUT/dump-$s.err"; then
             DNEW="$DNEW src/desktop/kdos-shell/$s.c"
         else
@@ -1686,6 +1706,8 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
             -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
             -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
+            -Isrc/libs/libkcell \
+            $(pkg-config --cflags pixman-1 fcft 2>/dev/null) \
             -Wl,--wrap=ktui_offscreen_init \
             testing/fixtures/shell/dumpmain.c $DFRONTS "$@" \
             "$DPROTO"/*-protocol.c \
@@ -1838,13 +1860,15 @@ golden() {			# <name> <WxH> <argv…>
 # the Wayland stack exists; where it is not, its goldens are skipped with a
 # name rather than silently dropped.
 if [ -n "${RESBIN:-}" ] && [ -x "$RESBIN" ]; then
-    res_golden() {          # <page> <WxH>
+    res_golden() {          # <name> <WxH> <argv…>
         _r_file="$GOLD/res-$1-$2.txt"
         _r_got="$OUT/golden-res-$1-$2.txt"
+        _r_n=$1; _r_s=$2; shift 2
         env LC_ALL=C TZ=UTC XDG_CACHE_HOME=/nonexistent-kdos-cache \
             XDG_CONFIG_HOME=/nonexistent-kdos-config \
             "$RESBIN" --fixture testing/fixtures/res --dump \
-            --page "$1" --dump-size "$2" > "$_r_got"
+            --dump-size "$_r_s" "$@" > "$_r_got"
+        set -- "$_r_n" "$_r_s"
         if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
             cp "$_r_got" "$_r_file"; echo "  wrote res-$1-$2"; return 0
         fi
@@ -1859,12 +1883,27 @@ if [ -n "${RESBIN:-}" ] && [ -x "$RESBIN" ]; then
             golden_fail=1
         fi
     }
+    #
+    # THREE WIDTHS, AND 56 IS THE ONE THAT MATTERS. 80 and 132 are the two
+    # terminals anybody actually has; 56 is the narrow band where the sidebar
+    # collapses and where every layout defect this toolkit has shipped first
+    # showed itself. The height is held at 24 across 56 and 80 so that a diff
+    # between them is a response to WIDTH and nothing else.
     for _p in applications processes cpu memory gpu drives network \
               batteries energy; do
         [ -f "$GOLD/res-$_p-80x24.txt" ] || continue
-        res_golden "$_p" 80x24
-        res_golden "$_p" 132x43
+        res_golden "$_p" 56x24  --page "$_p"
+        res_golden "$_p" 80x24  --page "$_p"
+        res_golden "$_p" 132x43 --page "$_p"
     done
+    #
+    # The detail page is the one surface --page cannot reach: it is opened
+    # with Enter on a row, so a golden of it needs a way in. pid 950 is the
+    # fixture's boxed firefox-esr, which is the interesting subject — a
+    # process with a box, a cmdline and real io counters.
+    res_golden detail 56x24  --page processes --detail 950
+    res_golden detail 80x24  --page processes --detail 950
+    res_golden detail 132x43 --page processes --detail 950
 else
     echo "  kdos-res goldens (skipped — the binary was not built on this host)"
 fi
