@@ -73,6 +73,14 @@ typedef struct ResPage {
 	const char *(*headline)(void);
 	void (*draw)(int x, int y, int w, int h);
 	int  (*click)(int mx, int my, int btn);	/* 1 if it consumed it   */
+	/*
+	 * A WHEEL NOTCH IS NOT A CLICK, and a page that has no list has
+	 * nothing to scroll. It arrives as a PRESS of KT_MB_WHEEL_UP/DOWN, so
+	 * a frame that hands it to `click` selects the row under the pointer
+	 * instead of scrolling — and over the sidebar it changes page. The
+	 * frame routes it here instead, and a NULL means this page ignores it.
+	 */
+	int  (*wheel)(int up);			/* 1 if it consumed it   */
 	int  (*key)(int k);			/* 1 if it consumed it   */
 } ResPage;
 
@@ -133,6 +141,7 @@ int  res_page_current(void);
  * then the page's own handler. Returns 1 when the program should exit. */
 int  res_frame_key(int k);
 int  res_frame_click(int mx, int my, int btn);
+int  res_frame_wheel(int up);
 void res_frame_motion(int mx, int my);
 
 /* ── sampling ────────────────────────────────────────────────────────── */
@@ -156,17 +165,26 @@ const char *res_proc_headline(void);
 void res_draw_procs(int x, int y, int w, int h);
 int  res_procs_key(int k);
 int  res_procs_click(int mx, int my, int btn);
+int  res_procs_wheel(int up);
 void res_procs_prepare(void);
 void res_app_prepare(void);
 const char *res_app_headline(void);
 void res_draw_apps(int x, int y, int w, int h);
 int  res_app_key(int k);
+int  res_app_wheel(int up);
 void res_drive_prepare(void);
 const char *res_drive_headline(void);
 void res_draw_drives(int x, int y, int w, int h);
+int  res_drive_key(int k);
+int  res_drive_wheel(int up);
 void res_net_prepare(void);
 const char *res_net_headline(void);
 void res_draw_net(int x, int y, int w, int h);
+int  res_net_key(int k);
+int  res_net_wheel(int up);
+/* Fed from res_sample(): a rate needs two readings an interval apart, and a
+ * page's prepare() runs once per FRAME. */
+void res_dev_sample(void);
 int  res_act_signal(const KprProc *p, int sig);
 int  res_act_renice(const KprProc *p, int nice);
 const char *res_act_helper_why(void);
@@ -186,7 +204,40 @@ void res_theme_from_cache(void);
 void res_page_placeholder(int x, int y, int w, int h, const char *name);
 void res_graph(int id, KRect r, const KprHist *h, const char *label,
 	       const char *reading);
+/* A mirrored pair on ONE shared axis: `a` above the midline in the accent,
+ * `b` below it in the secondary. Summing the two hides the direction, which
+ * is the only thing anybody opens a rate chart to see. */
+void res_graph2(int id, KRect r, const KprHist *a, const KprHist *b,
+		const char *label, const char *reading);
 void res_draw_cpu(int x, int y, int w, int h);
+
+/* ── the detail page ─────────────────────────────────────────────────────
+ *
+ * One subject, full screen, opened with Enter from a list. It owns the
+ * VERBS: ending or renicing a process needs its name on the screen and a
+ * confirm that says what will happen, and a list row is neither.
+ */
+void res_detail_open_proc(int pid);
+void res_detail_open_app(const char *name, const char *box, int pid);
+/* A device page supplies its own already-formatted facts: the subject is
+ * that page's reading, and a second reader here would be a second answer. */
+void res_detail_open_facts(const char *title, const char *sub,
+			   const char *const *lines, int n);
+int  res_detail_active(void);
+void res_detail_close(void);
+const char *res_detail_title(void);
+const char *res_detail_subtitle(void);
+void res_detail_draw(int x, int y, int w, int h);
+int  res_detail_key(int k);
+int  res_detail_click(int mx, int my, int btn);
+int  res_detail_wheel(int up);
+void res_detail_sample(void);
+unsigned res_detail_wants(void);
+
+/* The ONE confirm modal, shared by every verb — see page.c. */
+void res_confirm(const char *title, const char *msg, const char *yes,
+		 void (*on_yes)(void));
+int  res_confirm_active(void);
 void res_draw_mem(int x, int y, int w, int h);
 
 #endif /* RES_H */

@@ -38,6 +38,12 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	xdg-shell-client-protocol.h
 "$SCANNER" private-code  "$PROTO/stable/xdg-shell/xdg-shell.xml" \
 	xdg-shell-protocol.c
+"$SCANNER" client-header \
+	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
+	xdg-decoration-unstable-v1-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
+	xdg-decoration-unstable-v1-protocol.c
 "$SCANNER" client-header "$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
 	ext-session-lock-v1-client-protocol.h
 "$SCANNER" private-code  "$PROTO/staging/ext-session-lock/ext-session-lock-v1.xml" \
@@ -52,6 +58,20 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 # libpng is libkicon's: the icon layer decodes the alien apps' own PNGs.
 PKGCFG="fcft pixman-1 xkbcommon wayland-client libpng"
 
+# EVERY .c IN THE PORT EXCEPT THE HELPER, by glob rather than by a list. The
+# list was a second place to remember a new file, and the selftest — which
+# globs — built a source the shipped recipe did not, so a whole page could
+# pass every gate on this machine and fail to LINK in the build.
+# resctl.c is the one exclusion: it is setuid and is built on its own line
+# below, linking libkbase and nothing else.
+RES_SRC=""
+for f in "$PORT_SRC"/*.c; do
+	case "$f" in
+	*/resctl.c) continue ;;
+	esac
+	RES_SRC="$RES_SRC $f"
+done
+
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKDOS_RES_VERSION="\"$version\"" \
 	-I. -I"$PORT_SRC" \
@@ -60,11 +80,7 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I"$LIBS/libkicon" -I"$LIBS/libkchrome" -I"$LIBS/libkproc" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-res \
-	"$PORT_SRC"/main.c "$PORT_SRC"/page.c "$PORT_SRC"/pages.c \
-	"$PORT_SRC"/conf.c "$PORT_SRC"/sample.c "$PORT_SRC"/graph.c \
-	"$PORT_SRC"/p_cpu.c "$PORT_SRC"/p_mem.c "$PORT_SRC"/p_proc.c \
-	"$PORT_SRC"/p_app.c "$PORT_SRC"/p_dev.c "$PORT_SRC"/p_gpu.c \
-	"$PORT_SRC"/p_energy.c "$PORT_SRC"/act.c \
+	$RES_SRC \
 	"$LIBS"/libkwl/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c \
 	"$LIBS"/libkcolor/*.c "$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c \
 	"$LIBS"/libkicon/*.c "$LIBS"/libkchrome/*.c "$LIBS"/libkproc/*.c \

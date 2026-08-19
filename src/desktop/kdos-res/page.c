@@ -29,6 +29,22 @@ ResState R;
 static int g_page;
 static int g_focus_sidebar;
 static int g_modal;		/* the F1 page list, for the narrow band  */
+
+/*
+ * THE ONE CONFIRM MODAL. Every verb that ends or renices somebody else's work
+ * goes through it — a process row, a whole application's worth of them — and
+ * it is one implementation because two would eventually disagree about what
+ * they were about to do. It NAMES the subject and the action rather than
+ * asking "are you sure": a dialog that does not say what it will do is one
+ * people learn to dismiss without reading.
+ */
+static struct {
+	int active;
+	int sel;		/* 0 = the verb, 1 = Cancel               */
+	char title[48], msg[224], yes[24];
+	void (*on_yes)(void);
+	KRect r_yes, r_no;
+} g_conf;
 static int g_hover = -1;
 
 /* Where the sidebar ended, so a click knows which side it landed on. */
@@ -51,6 +67,111 @@ void res_page_set(int idx)
 }
 
 int res_page_current(void) { return g_page; }
+
+void res_confirm(const char *title, const char *msg, const char *yes,
+		 void (*on_yes)(void))
+{
+	memset(&g_conf, 0, sizeof(g_conf));
+	g_conf.active = 1;
+	/* Cancel is preselected. The destructive button being under the caret
+	 * when the dialog opens turns a reflex Enter into a kill. */
+	g_conf.sel = 1;
+	kb_strlcpy(g_conf.title, title, sizeof(g_conf.title));
+	kb_strlcpy(g_conf.msg, msg, sizeof(g_conf.msg));
+	kb_strlcpy(g_conf.yes, yes, sizeof(g_conf.yes));
+	g_conf.on_yes = on_yes;
+}
+
+int res_confirm_active(void) { return g_conf.active; }
+
+static void confirm_take(int yes)
+{
+	void (*fn)(void) = g_conf.on_yes;
+
+	g_conf.active = 0;
+	g_conf.on_yes = NULL;
+	if (yes && fn)
+		fn();
+}
+
+/* A centred label on a filled rect. libktui's ktui_button() belongs to the
+ * immediate-mode frame protocol, which this program does not drive. */
+static void button(KRect r, const char *label, int on, int hue)
+{
+	int len = (int)strlen(label);
+	int off = (r.w - len) / 2;
+
+	if (off < 0)
+		off = 0;
+	ktui_draw_fill(r, on ? hue : KT_DIM);
+	ktui_draw_text(r.x + off, r.y, r.w - off, label,
+		       on ? KT_SURFACE : KT_TEXT, on ? hue : KT_DIM, 0);
+}
+
+static void draw_confirm(int w, int h)
+{
+	int mw = 56;
+	if (mw > w - 4)
+		mw = w - 4;
+	if (mw < 20)
+		mw = 20;
+
+	/* The message is wrapped on WORDS into the dialog's own width: a
+	 * subject is a process name and a box name, and clipping it is
+	 * clipping the half that says which one. */
+	char lines[4][224];
+	int nl = 0;
+	const char *p = g_conf.msg;
+	int avail = mw - 6;
+	if (avail < 8)
+		avail = 8;
+	while (*p && nl < 4) {
+		int take = 0, last = 0;
+		while (p[take] && take < avail) {
+			if (p[take] == ' ')
+				last = take;
+			take++;
+		}
+		if (p[take] && last)
+			take = last;
+		if (take > (int)sizeof(lines[0]) - 1)
+			take = (int)sizeof(lines[0]) - 1;
+		memcpy(lines[nl], p, (size_t)take);
+		lines[nl][take] = 0;
+		nl++;
+		p += take;
+		while (*p == ' ')
+			p++;
+	}
+
+	int mh = nl + 4;
+	if (mh > h)
+		mh = h;
+	int x = (w - mw) / 2, y = (h - mh) / 2;
+	if (x < 0)
+		x = 0;
+	if (y < 0)
+		y = 0;
+
+	KRect r = krect(x, y, mw, mh);
+	ktui_draw_fill(r, KT_SURFACE);
+	/* WARN, not the accent: this is the one dialog in the program whose
+	 * yes does something that cannot be undone. */
+	ktui_draw_box(r, g_conf.title, KT_WARN, KT_SURFACE, 1);
+	for (int i = 0; i < nl && y + 1 + i < y + mh - 2; i++)
+		ktui_draw_text(x + 2, y + 1 + i, mw - 4, lines[i], KT_TEXT,
+			       KT_SURFACE, 0);
+
+	int bw = (mw - 5) / 2;
+	if (bw < 6)
+		bw = 6;
+	int by = y + mh - 2;
+	g_conf.r_yes = krect(x + 2, by, bw, 1);
+	g_conf.r_no = krect(x + mw - 2 - bw, by, bw, 1);
+
+	button(g_conf.r_yes, g_conf.yes, g_conf.sel == 0, KT_WARN);
+	button(g_conf.r_no, "Cancel", g_conf.sel == 1, KT_ACCENT);
+}
 
 /*
  * The three bands. Measured in CELLS, because that is the unit the whole
@@ -143,6 +264,28 @@ void res_draw_frame(void)
 	 * drawn by the page — which starts at the body's origin — would paint
 	 * over the sidebar beside it.
 	 */
+	/*
+	 * A DETAIL VIEW IS THE WHOLE FRAME, sidebar included. It is one
+	 * subject, so a page list beside it would be offering to leave
+	 * without saying so; Esc is the way back and the band says whose
+	 * page this is.
+	 */
+	if (res_detail_active()) {
+		int top = kch_header(w, NULL, res_detail_title(),
+				     res_detail_subtitle(), 0);
+		if (top < 1 || top >= h)
+			top = h > 1 ? 1 : 0;
+		g_side_w = 0;
+		g_body_x = 0;
+		g_body_y = top;
+		g_body_w = w;
+		g_body_h = h - top;
+		res_detail_draw(0, top, w, h - top);
+		if (g_conf.active)
+			draw_confirm(w, h);
+		return;
+	}
+
 	const ResPage *pg = &RES_PAGES[g_page];
 	if (pg->prepare)
 		pg->prepare();
@@ -170,10 +313,59 @@ void res_draw_frame(void)
 
 	if (g_modal)
 		draw_modal(w, h);
+	/* Last, and over everything: a dialog under the page it belongs to is
+	 * a dialog nobody can read. */
+	if (g_conf.active)
+		draw_confirm(w, h);
 }
 
 int res_frame_key(int k)
 {
+	/*
+	 * The confirm owns the keyboard while it is up, and it NEVER returns
+	 * 1: `q` and Esc mean "not that" here, not "leave the program". A
+	 * dialog whose cancel key also quits is one that loses the answer.
+	 */
+	if (g_conf.active) {
+		switch (k) {
+		case KT_K_LEFT:
+		case KT_K_RIGHT:
+		case '\t':
+			g_conf.sel = !g_conf.sel;
+			break;
+		case '\n':
+		case '\r':
+			confirm_take(g_conf.sel == 0);
+			break;
+		case 'y':
+		case 'Y':
+			confirm_take(1);
+			break;
+		case KT_K_ESC:
+		case 'n':
+		case 'N':
+		case 'q':
+			confirm_take(0);
+			break;
+		}
+		return 0;
+	}
+
+	if (res_detail_active()) {
+		/* Esc steps back to the list rather than out of the program,
+		 * which is the rule the comment on the page-level Esc has
+		 * always described. */
+		if (res_detail_key(k))
+			return 0;
+		if (k == KT_K_ESC) {
+			res_detail_close();
+			return 0;
+		}
+		if (k == 'q')
+			return 1;
+		return 0;
+	}
+
 	if (g_modal) {
 		if (k == KT_K_ESC || k == KT_K_F1) {
 			g_modal = 0;
@@ -230,8 +422,43 @@ int res_frame_key(int k)
 	return 0;
 }
 
+/*
+ * The wheel, before anything else looks at the pointer.
+ *
+ * It reaches the loop as a PRESS, so every test below that asks "what is under
+ * the cursor" would answer a notch the way it answers a click: over the
+ * sidebar that is a page change, over a list it is a selection. Neither is
+ * scrolling, and scrolling is the only thing a wheel means.
+ */
+int res_frame_wheel(int up)
+{
+	if (g_conf.active || g_modal)
+		return 0;
+	if (res_detail_active())
+		return res_detail_wheel(up);
+	if (RES_PAGES[g_page].wheel)
+		return RES_PAGES[g_page].wheel(up);
+	return 0;
+}
+
+static int in_rect(KRect r, int mx, int my)
+{
+	return mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h;
+}
+
 int res_frame_click(int mx, int my, int btn)
 {
+	if (g_conf.active) {
+		if (in_rect(g_conf.r_yes, mx, my))
+			confirm_take(1);
+		else if (in_rect(g_conf.r_no, mx, my))
+			confirm_take(0);
+		/* A click anywhere else is neither answer and must not fall
+		 * through to the page underneath, which is still drawn. */
+		return 0;
+	}
+	if (res_detail_active())
+		return res_detail_click(mx, my, btn);
 	if (g_modal) {
 		int mh = RP_NPAGES + 2, y = (ktui_h - mh) / 2;
 		int i = my - (y < 0 ? 0 : y) - 1;

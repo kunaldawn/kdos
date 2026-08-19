@@ -35,6 +35,7 @@
 #include "primary-selection-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
+#include "xdg-decoration-unstable-v1-client-protocol.h"
 
 /*
  * Every output gets a lock surface, because the protocol will not report the
@@ -162,6 +163,17 @@ static struct {
 	struct wl_surface *surface;
 	struct xdg_surface *xdg_surface;
 	struct xdg_toplevel *xdg_toplevel;
+	/*
+	 * SERVER-SIDE DECORATION, asked for explicitly. A toplevel that never
+	 * binds this protocol has not said which side draws its frame, and it
+	 * gets whatever the compositor guesses — which here was no frame at
+	 * all: no titlebar to drag, no close button, and the window manager's
+	 * own Close/Maximize unreachable by pointer. Every other surface in
+	 * this library is a layer or a lock surface and has no decoration to
+	 * negotiate, so this is the toplevel path's alone.
+	 */
+	struct zxdg_decoration_manager_v1 *deco_mgr;
+	struct zxdg_toplevel_decoration_v1 *deco;
 	struct zwlr_layer_surface_v1 *layer_surface;
 	/*
 	 * What the compositor offered for zwlr_layer_shell_v1. It matters:
@@ -2195,6 +2207,9 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 	} else if (!strcmp(iface, xdg_wm_base_interface.name)) {
 		K.wm_base = wl_registry_bind(r, name, &xdg_wm_base_interface, 1);
 		xdg_wm_base_add_listener(K.wm_base, &wm_base_listener, NULL);
+	} else if (!strcmp(iface, zxdg_decoration_manager_v1_interface.name)) {
+		K.deco_mgr = wl_registry_bind(
+			r, name, &zxdg_decoration_manager_v1_interface, 1);
 	} else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name)) {
 		/*
 		 * FOUR, not one. See K.layer_version: ON_DEMAND keyboard
@@ -2802,7 +2817,26 @@ static int make_toplevel(void)
 	 */
 	if (K.cfg.app_id)
 		xdg_toplevel_set_app_id(K.xdg_toplevel, K.cfg.app_id);
-	resize_cells(80 * kcell_w(), 24 * kcell_h());
+	/*
+	 * Ask for a SERVER frame. A compositor that does not offer the
+	 * protocol simply has no manager to bind and the window is undecorated
+	 * as before, which is the honest fallback rather than a failure.
+	 */
+	if (K.deco_mgr) {
+		K.deco = zxdg_decoration_manager_v1_get_toplevel_decoration(
+			K.deco_mgr, K.xdg_toplevel);
+		if (K.deco)
+			zxdg_toplevel_decoration_v1_set_mode(
+				K.deco,
+				ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	}
+	/*
+	 * A DEFAULT, not a demand: the compositor's first configure carries
+	 * the size it wants and xdg_top_configure() takes it. 80x24 is only
+	 * what to commit if it declines to choose — and it is deliberately
+	 * short of a whole screen, because a frame needs somewhere to go.
+	 */
+	resize_cells(80 * kcell_w(), 22 * kcell_h());
 	return 0;
 }
 

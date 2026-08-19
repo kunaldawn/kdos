@@ -169,6 +169,12 @@ unsigned long long kpr_mono_ms(void);
 int kpr_box_of(const KprSample *s, int pid, char *out, size_t cap);
 /* The same answer with no sample in hand, reading /proc as it climbs. */
 int kpr_box_of_pid(int pid, char *out, size_t cap);
+/* conmon's own argv -> the box name, for a caller that has already climbed to
+ * it. Both spellings, `-n` and `--name`. Returns 1 and fills out, or 0. */
+int kpr_conmon_name(int pid, char *out, size_t cap);
+/* Is this comm podman's per-container supervisor — the boundary of a box? The
+ * name is a fact about podman, not about any one consumer. */
+int kpr_is_box_boundary(const char *comm);
 /* /etc/passwd, cached. There is no NSS here. Never NULL — an unknown uid comes
  * back as its own number. */
 const char *kpr_user_of(int uid);
@@ -260,6 +266,9 @@ double kpr_hist_peak(const KprHist *h);
  * direction oscillates between two rungs for a series sitting on the boundary.
  * A pinned ring stays 0..100 and never rescales. */
 double kpr_hist_scale(KprHist *h);
+/* The same step as a scalar, for a caller whose axis is shared by more than one
+ * ring — a mirrored pair is two series on one axis. */
+double kpr_scale_step(double peak, double cur);
 /* A three-point mean, for the PLOTTED series only. The printed number is never
  * smoothed: that would be lying about the instant. */
 double kpr_hist_smooth(const KprHist *h, int i);

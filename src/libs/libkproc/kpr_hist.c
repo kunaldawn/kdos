@@ -73,41 +73,41 @@ double kpr_hist_peak(const KprHist *h)
  *
  * A pinned ring is a percentage and never rescales — 0..100 is the axis, and
  * a CPU chart that rescaled to its own peak would make 3% look like 100%.
+ *
+ * The step is a SCALAR so that a caller with more than one ring on one axis
+ * can use it: a mirrored pair (received above a midline, sent below) is two
+ * series sharing an axis, and an axis taken from either ring alone would move
+ * under the other one's data.
  */
-double kpr_hist_scale(KprHist *h)
+double kpr_scale_step(double peak, double cur)
 {
 	static const double LADDER[] = {
 		16e3, 64e3, 256e3, 1e6, 4e6, 16e6, 64e6, 256e6, 1e9, 4e9,
 	};
 	const int n = (int)(sizeof(LADDER) / sizeof(LADDER[0]));
 
-	if (h->pinned)
-		return 100.0;
-
-	double peak = kpr_hist_peak(h);
-	double cur = h->scale;
-
 	if (cur <= 0)
 		cur = LADDER[0];
 	if (peak > cur) {
 		for (int i = 0; i < n; i++)
-			if (LADDER[i] > peak) {
-				h->scale = LADDER[i];
-				return h->scale;
-			}
-		h->scale = LADDER[n - 1];
-		return h->scale;
+			if (LADDER[i] > peak)
+				return LADDER[i];
+		return LADDER[n - 1];
 	}
 	if (peak < cur / 3.0) {
 		for (int i = n - 1; i >= 0; i--)
-			if (LADDER[i] < cur && LADDER[i] > peak) {
-				h->scale = LADDER[i];
-				return h->scale;
-			}
-		h->scale = LADDER[0];
-		return h->scale;
+			if (LADDER[i] < cur && LADDER[i] > peak)
+				return LADDER[i];
+		return LADDER[0];
 	}
-	h->scale = cur;
+	return cur;
+}
+
+double kpr_hist_scale(KprHist *h)
+{
+	if (h->pinned)
+		return 100.0;
+	h->scale = kpr_scale_step(kpr_hist_peak(h), h->scale);
 	return h->scale;
 }
 

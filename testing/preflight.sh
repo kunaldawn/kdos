@@ -567,6 +567,31 @@ else
 fi
 
 echo
+echo "==> every source file in one of OUR ports is compiled by its recipe"
+# A .c that no build.sh names and no glob picks up is a file that passes every
+# gate on this machine and fails to LINK in the build — testing/selftest.sh
+# globs these directories, so a whole page can be exercised by the harness and
+# be absent from the shipped binary. Only our own trees: an upstream tarball
+# is entitled to carry sources its own build system chooses between.
+: > "$SP/uncompiled"
+for d in src/desktop/*/ src/packages/*/; do
+    b="$d/build.sh"
+    [ -f "$b" ] || continue
+    # A recipe that globs *.c compiles whatever is there; nothing to check.
+    grep -q '\*\.c' "$b" && continue
+    for f in "$d"*.c; do
+        [ -e "$f" ] || continue
+        base=$(basename "$f")
+        grep -q "$base" "$b" || echo "$d$base" >> "$SP/uncompiled"
+    done
+done
+if [ -s "$SP/uncompiled" ]; then
+    bad "port sources" "$(head -3 "$SP/uncompiled" | tr '\n' ' ')not compiled by its build.sh"
+else
+    note "port sources" "every .c is named or globbed by its recipe"
+fi
+
+echo
 if [ "$fail" = 0 ]; then
     echo "preflight clean — the wiring is consistent"
 else

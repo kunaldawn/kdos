@@ -33,15 +33,29 @@
  * eight hops is deeper than any real container nesting here.
  */
 /*
- * conmon's argv carries `-n <name>`. Pulled out of the two walks below so the
- * parse exists once: the walk differs (one has a sample in hand, one reads
- * /proc) and what it does when it arrives does not.
+ * conmon's argv carries `-n <name>`. The parse exists once because three
+ * walks arrive at it: the two below, which differ only in whether they hold a
+ * sample or read /proc as they climb, and kdos-energyd's, which fuses the box
+ * question with an attribution policy that must not live in a library. What
+ * they do on arrival is the same, and a second copy is a second answer to
+ * "what is this box called".
  *
  * The scan is over the NUL separators rather than a strstr of the whole blob:
  * a container actually named "-n" would otherwise match the flag and the next
  * argument would be read as the box.
  */
-static int conmon_name(int pid, char *out, size_t cap)
+/*
+ * Is this comm the boundary of a box? One predicate, because the NAME of
+ * podman's supervisor is a fact about podman rather than about any one
+ * consumer, and a program that spelled it itself would keep working right up
+ * until podman renamed it.
+ */
+int kpr_is_box_boundary(const char *comm)
+{
+	return comm && !strcmp(comm, "conmon");
+}
+
+int kpr_conmon_name(int pid, char *out, size_t cap)
 {
 	size_t len = 0;
 	char path[512];
@@ -108,14 +122,14 @@ int kpr_box_of_pid(int pid, char *out, size_t cap)
 			return 0;
 		}
 		*close = 0;
-		int is_conmon = !strcmp(open + 1, "conmon");
+		int is_conmon = kpr_is_box_boundary(open + 1);
 		int ppid = 0;
 		sscanf(close + 1, " %*c %d", &ppid);
 		int self = cur;
 		free(st);
 
 		if (is_conmon)
-			return conmon_name(self, out, cap);
+			return kpr_conmon_name(self, out, cap);
 		cur = ppid;
 	}
 	return 0;
@@ -143,8 +157,8 @@ int kpr_box_of(const KprSample *s, int pid, char *out, size_t cap)
 		const KprProc *p = kpr_find_pid(s, cur);
 		if (!p)
 			return 0;
-		if (!strcmp(p->comm, "conmon"))
-			return conmon_name(p->pid, out, cap);
+		if (kpr_is_box_boundary(p->comm))
+			return kpr_conmon_name(p->pid, out, cap);
 		cur = p->ppid;
 	}
 	return 0;

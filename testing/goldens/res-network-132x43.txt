@@ -28,6 +28,7 @@
                   |                                                                                                                 
                   |                                                                                                                 
                   |                                                                                                                 
+                  |eth0  received / sent                                                                                        -  -
                   |                                                                                                                 
                   |                                                                                                                 
                   |                                                                                                                 
@@ -39,5 +40,4 @@
                   |                                                                                                                 
                   |                                                                                                                 
                   |                                                                                                                 
-                  |                                                                                                                 
-                  |totals are since boot  .  kdos-net owns Wi-Fi and VPN                                                            
+                  |totals since boot  .  Enter for details  .  n opens kdos-net for Wi-Fi and VPN                                   
