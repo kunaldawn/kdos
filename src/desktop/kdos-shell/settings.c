@@ -120,7 +120,13 @@ static const char *const PAGE_NAMES[NCAT] = {
  * (which widgets, which charts, what is hidden behind the chevron), and until
  * now the only way to change any of it was to know the file existed.
  */
-enum { ST_NONE = 0, ST_COMP, ST_THEME, ST_PANEL };
+/*
+ * ST_RES is `~/.config/kdos/res.conf`, a THIRD file in the same `key = value`
+ * shape. kdos-res re-reads it on the SIGHUP this program already sends for the
+ * panel, so a changed interval or column set reaches the monitor that is on
+ * the screen rather than the next one started.
+ */
+enum { ST_NONE = 0, ST_COMP, ST_THEME, ST_PANEL, ST_RES };
 
 /* When a change takes effect. */
 enum { SC_NONE = 0, SC_LIVE, SC_LOGIN };
@@ -154,6 +160,9 @@ static const char *const ONOFF[] = { "on", "off" };
 static const char *const LIDS[] = { "off", "lock", "suspend" };
 static const char *const PANELS[] = { "bottom", "top", "off" };
 static const char *const TASKLAB[] = { "auto", "yes", "no" };
+static const char *const CPUPCT[] = { "core", "machine" };
+static const char *const UNITS[] = { "1024", "1000" };
+static const char *const TEMPU[] = { "c", "f" };
 
 /* The accent names, filled from libktui's own table at startup — the palette
  * lives in libkcolor and every consumer expands the same one. */
@@ -269,6 +278,51 @@ static struct row rows[] = {
 	  "net volume battery notify clock",
 	  "pager tray more media privacy mpris clipboard cpu stutter restart "
 	  "net volume battery notify clock" },
+	/* ── res.conf, the monitor's own file ────────────────────────
+	 * Every row here changes a READING, and a reading measured
+	 * differently is a different number — so each says what it changes
+	 * rather than restating its key. */
+	{ CAT_HARDWARE, FT_INT, ST_RES, SC_LIVE, "interval", "interval",
+	  NULL, 0, 200, 60000, 100,
+	  "sampling interval in milliseconds. The floor is 200: a monitor "
+	  "sampling faster than that is mostly measuring itself",
+	  "1000", "1000" },
+	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "cpu_percent",
+	  "cpu_percent", CPUPCT, 2, 0, 0, 0,
+	  "core: eight busy threads read 800%, which is top's convention. "
+	  "machine: the same load reads 100%",
+	  "core", "core" },
+	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "units", "units",
+	  UNITS, 2, 0, 0, 0,
+	  "1024 gives KiB/MiB/GiB; 1000 gives kB/MB/GB",
+	  "1024", "1024" },
+	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "temperature",
+	  "temperature", TEMPU, 2, 0, 0, 0,
+	  "celsius or fahrenheit, everywhere a sensor is shown",
+	  "c", "c" },
+	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "kernel_threads",
+	  "kernel_threads", YESNO, 2, 0, 0, 0,
+	  "show kernel threads in the process table. The footer says how "
+	  "many are hidden either way",
+	  "no", "no" },
+	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "virtual_drives",
+	  "virtual_drives", YESNO, 2, 0, 0, 0,
+	  "show loop, zram and device-mapper devices on the Drives page",
+	  "no", "no" },
+	{ CAT_PANEL, FT_CHOICE, ST_PANEL, SC_LIVE, "task_labels", "task_labels",
+	  TASKLAB, 3, 0, 0, 0,
+	  "whether a window button carries its name. `auto` is the bar "
+	  "deciding; `no` is a dock",
+	  "auto", "auto" },
+	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "right", "right",
+	  NULL, 0, 0, 0, 0,
+	  "the notification area, left to right. An unknown name is reported "
+	  "on stderr, never ignored",
+	  "pager tray more media privacy mpris clipboard cpu stutter restart "
+	  "net volume battery notify clock",
+	  "pager tray more media privacy mpris clipboard cpu stutter restart "
+	  "net volume battery notify clock" },
+
 	{ CAT_PANEL, FT_NOTE, ST_NONE, SC_NONE, NULL, "pinned launchers",
 	  NULL, 0, 0, 0, 0,
 	  "~/.config/kdos/favorites, one desktop-entry id per line — the same "
@@ -361,7 +415,7 @@ static int napps;
 
 static int cat, sel, top, pane;		/* pane 0 = categories, 1 = fields */
 /* The viewport follows the SELECTION only when the selection is what moved
- * — see sh_list_wheel. */
+ * — see kch_list_wheel. */
 static int sel_follow = 1;
 static char note[192];
 static int editing, quit_armed;
@@ -499,6 +553,8 @@ static void load_all(void)
 	load_kv(path, ST_COMP);
 	cfg_path("panel.conf", path, sizeof(path));
 	load_kv(path, ST_PANEL);
+	cfg_path("res.conf", path, sizeof(path));
+	load_kv(path, ST_RES);
 	load_apps();
 }
 
@@ -639,7 +695,7 @@ static void apply(void)
 {
 	char path[700];
 	int comp = dirty_count(ST_COMP), theme = dirty_count(ST_THEME);
-	int panel = dirty_count(ST_PANEL);
+	int panel = dirty_count(ST_PANEL), res = dirty_count(ST_RES);
 	int live = 0, login = 0, failed = 0;
 	/* `pkill -x` is EXACT and that is load-bearing: `kdos-comp` is a
 	 * substring of `kdos-desktop-start`, which is a /bin/sh script that
@@ -671,6 +727,19 @@ static void apply(void)
 			failed++;
 		else
 			sighup("kdos-shell");
+	}
+	if (res) {
+		/*
+		 * `kdos-res`, EXACTLY. `kdos-resctl` is a longer name with
+		 * this one as its prefix, and it is setuid: a substring match
+		 * would send a SIGHUP to a privileged helper that handles no
+		 * signals, whose default disposition is death.
+		 */
+		cfg_path("res.conf", path, sizeof(path));
+		if (write_kv(path, ST_RES) != 0)
+			failed++;
+		else
+			sighup("kdos-res");
 	}
 	if (theme) {
 		for (int i = 0; i < NROWS; i++) {
@@ -1007,12 +1076,12 @@ static void draw_page(void)
 	}
 
 	/*
-	 * ONE COLUMN THAT SAYS THERE IS MORE — see sh_list_scrollbar. The
+	 * ONE COLUMN THAT SAYS THERE IS MORE — see kch_list_scrollbar. The
 	 * Apps page is every recorded default handler on the machine, which is
 	 * the longest list this window has and the one that gave no sign of
 	 * having a below-the-fold at all.
 	 */
-	sh_list_scrollbar(w - 1, 1, pane_rows, n, top, KT_SURFACE);
+	kch_list_scrollbar(w - 1, 1, pane_rows, n, top, KT_SURFACE);
 
 	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 	/* The junction where the category divider meets the rule under it —

@@ -54,6 +54,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "kproc.h"
 #include "energyd.h"
 
 /* comm in /proc/<pid>/stat is TASK_COMM_LEN-1 = 15 characters, truncated by the
@@ -352,11 +353,24 @@ static const KeProc *find_pid(const KeSample *s, int pid)
 /*
  * Which app does this process belong to?
  *
+ * ONE WALK, TWO ANSWERS, and that is why this is not libkproc's.
+ *
+ * kpr_box_of() answers "which container is this pid in", which is a reading
+ * about the machine. This answers "which APPLICATION does this process roll
+ * up to", which is an attribution POLICY: the highest ancestor in the
+ * alien-app table wins, so a helper an app spawned is reported as the app and
+ * not as an app of its own. The two happen to climb the same chain and are
+ * different questions, and moving this into the library would put one
+ * program's policy in every consumer's path.
+ *
  * One walk up the parent chain answers both halves. `conmon` is podman's
- * supervisor and its argv carries `-n <name>`, which is the box; any ancestor
- * whose comm is in the alien-app table is the app, and the HIGHEST such
- * ancestor wins so that a helper process spawned by an app is not reported as
- * an app of its own.
+ * supervisor and is the boundary of the box; any ancestor whose comm is in the
+ * alien-app table is the app, and the HIGHEST such ancestor wins so that a
+ * helper process spawned by an app is not reported as an app of its own.
+ *
+ * Reading the box NAME out of conmon's argv is libkproc's, not this file's:
+ * the walk is a policy and the name is a reading, and two parsers would be two
+ * answers to what a box is called.
  *
  * cgroups are the textbook answer and are unusable here: no systemd means
  * rootless podman gets no cgroup delegation, and the whole box frequently sits
@@ -376,20 +390,13 @@ void ke_name_of(const KeSample *s, int idx, char *out, size_t cap)
 		const KeProc *up = find_pid(s, pid);
 		if (!up)
 			break;
-		if (!strcmp(up->comm, "conmon")) {
-			char *cmd = slurp("%s/%d/cmdline", ke_proc(), up->pid);
-			if (cmd) {
-				size_t len = 0;
-				for (char *a = cmd; *a; a += len + 1) {
-					len = strlen(a);
-					if (!strcmp(a, "-n") && a[len + 1]) {
-						kb_strlcpy(box, a + len + 1,
-							   sizeof(box));
-						break;
-					}
-				}
-				free(cmd);
-			}
+		if (kpr_is_box_boundary(up->comm)) {
+			/* The NAME comes from libkproc, which is where that
+			 * parse lives for every consumer; only the WALK is
+			 * ours. Pointed at this program's root each time
+			 * because the fixture moves it per snapshot. */
+			kpr_root_set(ke_proc(), NULL);
+			kpr_conmon_name(up->pid, box, sizeof(box));
 			break;		/* conmon is the boundary of the box */
 		}
 		const char *up_app = alien_name(up->comm);

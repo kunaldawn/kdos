@@ -1,0 +1,43 @@
+                                                                                                                                    
+  Memory                                                                                                                            
+  11G of 16G                                                                                                                        
+ ---------------------------------------------------------------------------------------------------------------------------------- 
+  Applications    | RAM                                                                                                  11G of 16G 
+  Processes       |                                                                                                                 
+  CPU             |                                                                                                                 
+  Memory          |                                                                                                              ## 
+  GPU             |                                                                                                              ## 
+  Drives          |                                                                                                              ## 
+  Network         |                                                                                                              ## 
+  Batteries       |                                                                                                              ## 
+  Energy          | swap                                                                                                94M of 3.9G 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                              .. 
+                  | pressure  some 0.10%  full 0.00% (10s)                                                                          
+                  |                                                                                                                 
+                  | breakdown ----------------------------------------------------------------------------------------------------- 
+                  |  available      5.0G                                                                                            
+                  |  free           500M                                                                                            
+                  |  cached         5.9G                                                                                            
+                  |  buffers        250M                                                                                            
+                  |  shared         125M                                                                                            
+                  |  dirty          4.0M                                                                                            
+                  |  reclaimable    500M                                                                                            
+                  |                                                                                                                 
+                  | memory device details need kdos-resctl                                                                          
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 

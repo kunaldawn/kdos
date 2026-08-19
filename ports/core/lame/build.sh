@@ -16,10 +16,12 @@ export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
 	-Wno-int-conversion -Wno-incompatible-pointer-types"
 
 # --enable-nasm is deliberately OFF: lame's hand-written assembly predates
-# x86_64 and the C path is what every distribution ships.
+# x86_64 and the C path is what every distribution ships. The frontend is the
+# `lame` command itself, named explicitly because it is what the pre-C99
+# suppressions above are for.
 ./configure --prefix=/usr --libdir=/usr/lib --disable-static \
 	--enable-nasm=no \
-	--disable-frontend=no \
+	--enable-frontend \
 	--disable-gtktest
 make
 make DESTDIR=$PKG install

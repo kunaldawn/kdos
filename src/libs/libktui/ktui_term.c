@@ -11,6 +11,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +39,8 @@ static int cmap_saved;
 
 static char *obuf;
 static size_t obuf_len, obuf_cap;
+static int write_ms = -1;	/* -1 blocks; >=0 bounds one flush         */
+static int dropped;
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
@@ -68,19 +71,82 @@ void ktui_term_printf(const char *fmt, ...)
 		ktui_term_write(buf, (size_t)n > sizeof(buf) - 1 ? sizeof(buf) - 1 : (size_t)n);
 }
 
+/* A FRAME IS DISPOSABLE AND THE WORK BEHIND IT IS NOT. A terminal that stops
+ * reading — a scrollback pager, a paused pty, a wedged ssh — otherwise blocks
+ * this write for as long as it likes, and a caller that must also service a
+ * pipe (kdosbuild draining tar's member names while it archives) deadlocks
+ * against a child that fills its 64 K pipe and stops working.
+ *
+ * So a flush may be given a deadline. Past it the rest of the buffer is
+ * DROPPED and the frame is reported lost, because the alternative is stalling
+ * the program to redraw a progress bar nobody is reading.
+ *
+ * A dropped frame leaves the diff renderer's belief about the screen ahead of
+ * the screen itself, so ktui_term_flush_dropped() is what the draw layer asks
+ * before deciding whether the next paint has to be a full one.
+ */
 void ktui_term_flush(void)
 {
 	size_t off = 0;
+	int restore = -1;
+	double deadline = 0;
+
+	/* O_NONBLOCK rather than poll() alone, because POLLOUT promises only
+	 * that SOME room exists: a blocking write of a whole frame into a
+	 * nearly full pipe or tty buffer still waits for the rest of it to
+	 * drain. The flag goes back the way it was before this returns, so
+	 * nothing else holding this terminal ever sees a short write it did
+	 * not ask for. */
+	if (write_ms >= 0) {
+		deadline = kb_now_s() + write_ms / 1000.0;
+		int fl = fcntl(out_fd, F_GETFL);
+		if (fl >= 0 && !(fl & O_NONBLOCK) &&
+		    fcntl(out_fd, F_SETFL, fl | O_NONBLOCK) == 0)
+			restore = fl;
+	}
+
 	while (off < obuf_len) {
 		ssize_t w = write(out_fd, obuf + off, obuf_len - off);
 		if (w < 0) {
 			if (errno == EINTR)
 				continue;
-			break;
+			if (errno != EAGAIN && errno != EWOULDBLOCK)
+				break;
+			if (write_ms < 0) {
+				/* Someone else made this fd non-blocking; the
+				 * rest of the frame has nowhere to go. */
+				dropped = 1;
+				break;
+			}
+			double left = deadline - kb_now_s();
+			if (left <= 0) {
+				dropped = 1;
+				break;
+			}
+			struct pollfd pf = { out_fd, POLLOUT, 0 };
+			if (poll(&pf, 1, (int)(left * 1000) + 1) < 0 &&
+			    errno != EINTR)
+				break;
+			continue;
 		}
 		off += (size_t)w;
 	}
+
+	if (restore >= 0)
+		fcntl(out_fd, F_SETFL, restore);
 	obuf_len = 0;
+}
+
+void ktui_term_set_write_timeout(int ms)
+{
+	write_ms = ms;
+}
+
+int ktui_term_flush_dropped(void)
+{
+	int d = dropped;
+	dropped = 0;
+	return d;
 }
 
 static const char CLIP_B64[] =

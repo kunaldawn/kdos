@@ -836,18 +836,18 @@ static void draw(void)
 	for (int i = 0; i < nheads; i++)
 		if (heads[i].enabled)
 			live++;
-	struct sh_button b[DB_N];
-	b[DB_APPLY] = (struct sh_button){ "Apply", nheads > 0 };
-	b[DB_ONOFF] = (struct sh_button){ bh && bh->enabled ? "Turn Off"
+	struct kch_button b[DB_N];
+	b[DB_APPLY] = (struct kch_button){ "Apply", nheads > 0 };
+	b[DB_ONOFF] = (struct kch_button){ bh && bh->enabled ? "Turn Off"
 							   : "Turn On",
 					  bh && bh->proxy &&
 						  (!bh->enabled || live > 1) };
-	b[DB_MODE] = (struct sh_button){ "Mode", bh && bh->proxy &&
+	b[DB_MODE] = (struct kch_button){ "Mode", bh && bh->proxy &&
 							bh->nmodes > 1 };
-	b[DB_SCALE] = (struct sh_button){ "Scale", bh && bh->proxy };
-	b[DB_ROTATE] = (struct sh_button){ "Rotate", bh && bh->proxy };
-	b[DB_CLOSE] = (struct sh_button){ "Close", 1 };
-	int bx = sh_chrome_buttons(w, h - 2, b, DB_N, -1);
+	b[DB_SCALE] = (struct kch_button){ "Scale", bh && bh->proxy };
+	b[DB_ROTATE] = (struct kch_button){ "Rotate", bh && bh->proxy };
+	b[DB_CLOSE] = (struct kch_button){ "Close", 1 };
+	int bx = kch_buttons(w, h - 2, b, DB_N, -1);
 	int room = bx - 3;
 	const char *note = applied_note[0] ? applied_note
 					   : "ENTER apply    ESC cancel";
@@ -1078,7 +1078,7 @@ int display_main(int argc, char **argv)
 				 * selected one, so hover-to-select would move
 				 * the target out from under the hand between
 				 * aiming and clicking. */
-				sh_chrome_hover(ev.mx, ev.my);
+				kch_hover(ev.mx, ev.my);
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS || ev.mx < 0)
@@ -1098,7 +1098,7 @@ int display_main(int argc, char **argv)
 			if (ev.btn != KT_MB_LEFT)
 				continue;
 			int row = ev.my - 1;
-			int bi = sh_chrome_button_at(ev.mx, ev.my);
+			int bi = kch_button_at(ev.mx, ev.my);
 			if (bi >= 0) {
 				struct head *hh = (sel >= 0 && sel < nheads)
 							  ? &heads[order[sel]]

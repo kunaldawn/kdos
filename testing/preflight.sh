@@ -177,13 +177,20 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         fi
         idx=$((idx + 1))
         [ -f "$d/$base" ] || continue
-        if ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
+        # AN EMPTY ARCHIVE IS NOT AN ARCHIVE, and a hash does not catch it:
+        # sha256 of nothing is a stable digest, so a recipe written while the
+        # download was empty verifies clean everywhere and fails only when tar
+        # is handed the file, hours into a build.
+        if [ ! -s "$d/$base" ]; then
+            bad "$p" "ships $base as an empty file"
+            unhashed=$((unhashed + 1))
+        elif ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
             bad "$p" "ships $base with no sha256 line"
             unhashed=$((unhashed + 1))
         fi
     done
 done
-[ "$unhashed" = 0 ] && note "every source is hashed" "ok"
+[ "$unhashed" = 0 ] && note "every source is hashed and non-empty" "ok"
 
 # The escape hatch must be unused in a committed tree.
 if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild src/desktop/*/kpkgbuild 2>/dev/null; then
@@ -285,6 +292,18 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         grep -qE "^$k[[:blank:]]*=" "$d/kpkgbuild" || \
             bad "$(basename "$d")" "no '$k'"
     done
+    # A PACKAGE FILE IS <name>-<version>-<release>.tar.xz AND IS TAKEN APART
+    # FROM THE RIGHT, so a hyphen anywhere in the version makes the split
+    # ambiguous: the tail of the version is read as the version and its head
+    # joins the name. Nothing fails — the package installs under a database
+    # entry named for something that is not a port, which the orphan sweep
+    # then removes. Upstreams that version by date-time are where this comes
+    # up; a dot separates just as well.
+    unset name version
+    eval "$("$SP/kpkg" meta "$d" 2>/dev/null)"
+    case "$version" in
+        *-*) bad "$(basename "$d")" "version '$version' contains a hyphen" ;;
+    esac
 done
 note "recipe fields" "checked $(ls -d ports/core/*/ src/packages/*/ 2>/dev/null | wc -l) ports"
 
@@ -515,7 +534,15 @@ for name, fn in tools.items():
             text.setdefault(name, "")
             text[name] += body
 
-for path in glob.glob(os.path.join(SRC, "*.c")):
+# kdos-res is a separate binary rather than a TOOLS[] name, and the panel and
+# the compositor's keybind both spawn it. Its whole source is the text a flag
+# has to appear in, for the same reason: an unknown option exits 2 before a
+# surface exists, and nothing upstream sees the failure.
+RES = "src/desktop/kdos-res"
+if os.path.isdir(RES):
+    text["kdos-res"] = "".join(open(f).read() for f in glob.glob(os.path.join(RES, "*.c")))
+
+for path in glob.glob(os.path.join(SRC, "*.c")) + glob.glob(os.path.join(RES, "*.c")):
     src = open(path).read()
     # const char *argv[] = { "kdos-foo", "--flag", ... };
     for m in re.finditer(r'argv\[\]\s*=\s*\{(.*?)\}\s*;', src, re.S):
@@ -537,6 +564,31 @@ if [ -s "$SP/badflags" ]; then
     bad "shell tool flags" "$(head -3 "$SP/badflags" | tr '\n' ';')"
 else
     note "shell tool flags" "every spawned flag is accepted"
+fi
+
+echo
+echo "==> every source file in one of OUR ports is compiled by its recipe"
+# A .c that no build.sh names and no glob picks up is a file that passes every
+# gate on this machine and fails to LINK in the build — testing/selftest.sh
+# globs these directories, so a whole page can be exercised by the harness and
+# be absent from the shipped binary. Only our own trees: an upstream tarball
+# is entitled to carry sources its own build system chooses between.
+: > "$SP/uncompiled"
+for d in src/desktop/*/ src/packages/*/; do
+    b="$d/build.sh"
+    [ -f "$b" ] || continue
+    # A recipe that globs *.c compiles whatever is there; nothing to check.
+    grep -q '\*\.c' "$b" && continue
+    for f in "$d"*.c; do
+        [ -e "$f" ] || continue
+        base=$(basename "$f")
+        grep -q "$base" "$b" || echo "$d$base" >> "$SP/uncompiled"
+    done
+done
+if [ -s "$SP/uncompiled" ]; then
+    bad "port sources" "$(head -3 "$SP/uncompiled" | tr '\n' ' ')not compiled by its build.sh"
+else
+    note "port sources" "every .c is named or globbed by its recipe"
 fi
 
 echo

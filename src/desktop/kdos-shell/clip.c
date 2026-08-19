@@ -541,7 +541,7 @@ struct pick_row {
 static struct pick_row rows[CL_MAX];
 static int nrows;
 /* The viewport follows the SELECTION only when the selection is what moved —
- * see sh_list_wheel. A clamp that followed unconditionally would undo a page
+ * see kch_list_wheel. A clamp that followed unconditionally would undo a page
  * scroll on the very next frame. */
 static int sel, top, sel_follow = 1;
 static char why[128];
@@ -622,7 +622,7 @@ static void draw_frame(void)
 		ktui_draw_text(2, 2, w - 4, "nothing has been copied yet",
 			       KT_DIM, KT_BG, KT_A_NONE);
 
-	sh_list_clamp(&top, sel, nrows, body, sel_follow);
+	kch_list_clamp(&top, sel, nrows, body, sel_follow);
 	sel_follow = 0;
 	if (top < 0)
 		top = 0;
@@ -642,11 +642,11 @@ static void draw_frame(void)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_list_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, 1, body, nrows, top, KT_BG);
+	kch_list_scrollbar(w - 1, 1, body, nrows, top, KT_BG);
 
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
 	ktui_draw_text(2, h - 2, w - 4,
@@ -718,7 +718,7 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
 				int body = ktui_h - 2 > 0 ? ktui_h - 2 : 1;
-				if (!sh_list_wheel(up, &top, nrows, body)) {
+				if (!kch_list_wheel(up, &top, nrows, body)) {
 					if (up ? sel > 0 : sel + 1 < nrows)
 						sel += up ? -1 : 1;
 					sel_follow = 1;

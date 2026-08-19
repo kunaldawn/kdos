@@ -1,0 +1,43 @@
+                                                                                                                                    
+  Applications                                                                                                                      
+  5 applications                                                                                                                    
+ ---------------------------------------------------------------------------------------------------------------------------------- 
+  Applications    |APPLICATION                 CPU%   MEMORY    DISK      PROCS                                                     
+  Processes       |firefox-esr [box kdos-apps] 155.0  1.2G      12K+      2                                                         
+  CPU             |foot                        3.0    40M       0B+       1                                                         
+  Memory          |conmon                      1.0    2.0M      0B+       1                                                         
+  GPU             |backup                      0.0    8.0M      450M      1                                                         
+  Drives          |sshd                        0.0    6.0M      0B+       1                                                         
+  Network         |                                                                                                                 
+  Batteries       |                                                                                                                 
+  Energy          |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |15.0% CPU outside the rollup  .  memory is RSS and over-counts shared pages                                      

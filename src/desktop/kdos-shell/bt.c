@@ -575,7 +575,7 @@ enum { BB_CONNECT = 0, BB_PAIR, BB_TRUST, BB_REMOVE, BB_SCAN, BB_POWER,
 static int bt_buttons(int w, int row)
 {
 	const struct btdev *d = sel >= 0 && sel < ndev ? &devs[sel] : NULL;
-	struct sh_button b[BB_N];
+	struct kch_button b[BB_N];
 
 	b[BB_CONNECT].label = d && d->connected ? "Disconnect" : "Connect";
 	b[BB_CONNECT].enabled = d != NULL && powered;
@@ -589,7 +589,7 @@ static int bt_buttons(int w, int row)
 	b[BB_SCAN].enabled = powered;
 	b[BB_POWER].label = powered ? "Turn Off" : "Turn On";
 	b[BB_POWER].enabled = adapter[0] != '\0';
-	return sh_chrome_buttons(w, row, b, BB_N, -1);
+	return kch_buttons(w, row, b, BB_N, -1);
 }
 
 static void draw_frame(void)
@@ -621,7 +621,7 @@ static void draw_frame(void)
 	} else {
 		snprintf(sub, sizeof(sub), "%s", why[0] ? why : "looking…");
 	}
-	int body_y = sh_chrome_header(w, "bluetooth", "Bluetooth", sub,
+	int body_y = kch_header(w, "bluetooth", "Bluetooth", sub,
 				      icons_on);
 	int body = h - body_y - 3;
 	if (body < 1)
@@ -836,8 +836,8 @@ int bt_main(int argc, char **argv)
 				if (in_list)
 					sel = idx;
 				/* The button bar lights under the pointer —
-				 * see sh_chrome_hover. */
-				sh_chrome_hover(ev.mx, ev.my);
+				 * see kch_hover. */
+				kch_hover(ev.mx, ev.my);
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
@@ -854,7 +854,7 @@ int bt_main(int argc, char **argv)
 				break;
 			if (ev.btn != KT_MB_LEFT)
 				continue;
-			int b = ask_msg ? -1 : sh_chrome_button_at(ev.mx, ev.my);
+			int b = ask_msg ? -1 : kch_button_at(ev.mx, ev.my);
 			if (b >= 0) {
 				switch (b) {
 				case BB_CONNECT:

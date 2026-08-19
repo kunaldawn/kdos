@@ -250,7 +250,7 @@ static void draw_frame(void)
 			 dnd ? "   Do Not Disturb is ON" : "");
 	/* The moon is Do Not Disturb — see panel.c: `user-busy` is in a Papirus
 	 * context this theme does not vendor, so it draws nothing at all. */
-	int y0 = sh_chrome_header(w, dnd ? "weather-clear-night"
+	int y0 = kch_header(w, dnd ? "weather-clear-night"
 					 : "dialog-information",
 				  "Notifications", sub, icons_on);
 
@@ -263,7 +263,7 @@ static void draw_frame(void)
 	int follow = sel_follow;
 
 	sel_follow = 0;
-	sh_list_clamp(&top, sel, nrows, rows_vis, follow);
+	kch_list_clamp(&top, sel, nrows, rows_vis, follow);
 
 	int rw = nrows > rows_vis ? w - 3 : w - 2;
 	for (int i = 0; i < rows_vis && top + i < nrows; i++) {
@@ -306,17 +306,17 @@ static void draw_frame(void)
 					 "kept here.",
 			       daemon_down ? KT_WARN : KT_MID, KT_BG,
 			       KT_A_NONE);
-	sh_list_scrollbar(w - 2, y0, rows_vis, nrows, top, KT_BG);
+	kch_list_scrollbar(w - 2, y0, rows_vis, nrows, top, KT_BG);
 
 	/* ── the footer ── */
-	struct sh_button b[NB_N];
+	struct kch_button b[NB_N];
 
-	b[NB_FORGET] = (struct sh_button){ "Forget", nrows > 0 };
-	b[NB_CLEAR] = (struct sh_button){ "Clear All", nrows > 0 };
-	b[NB_DND] = (struct sh_button){ dnd ? "Allow Toasts"
+	b[NB_FORGET] = (struct kch_button){ "Forget", nrows > 0 };
+	b[NB_CLEAR] = (struct kch_button){ "Clear All", nrows > 0 };
+	b[NB_DND] = (struct kch_button){ dnd ? "Allow Toasts"
 					    : "Do Not Disturb", 1 };
-	b[NB_CLOSE] = (struct sh_button){ "Close", 1 };
-	int bx = sh_chrome_buttons(w, h - 2, b, NB_N, -1);
+	b[NB_CLOSE] = (struct kch_button){ "Close", 1 };
+	int bx = kch_buttons(w, h - 2, b, NB_N, -1);
 	int room = bx - 3;
 	static const char HINT[] = "Enter open   f forget   c clear   Esc";
 
@@ -478,7 +478,7 @@ int notify_main(int argc, char **argv)
 					sel = idx;
 					sel_follow = 1;
 				}
-				sh_chrome_hover(ev.mx, ev.my);
+				kch_hover(ev.mx, ev.my);
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
@@ -487,7 +487,7 @@ int notify_main(int argc, char **argv)
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
 
-				if (!sh_list_wheel(up, &top, nrows, rows_vis)) {
+				if (!kch_list_wheel(up, &top, nrows, rows_vis)) {
 					sel += up ? -1 : 1;
 					if (sel < 0)
 						sel = 0;
@@ -502,7 +502,7 @@ int notify_main(int argc, char **argv)
 			if (ev.btn != KT_MB_LEFT)
 				continue;
 
-			int bi = sh_chrome_button_at(ev.mx, ev.my);
+			int bi = kch_button_at(ev.mx, ev.my);
 
 			if (bi == NB_CLOSE)
 				break;

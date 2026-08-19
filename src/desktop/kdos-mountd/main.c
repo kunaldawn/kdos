@@ -106,6 +106,17 @@ static const char *sock_path(void)
 	return p && *p ? p : KM_SOCKET;
 }
 
+/* Overridable for the fixture, like the /sys, /dev and fstab roots. Without
+ * it this one reading comes from the machine running the test rather than
+ * from the recorded one, and any host whose own root is an overlay — a
+ * container, for instance — makes the daemon refuse optical media that the
+ * fixture says it should offer. */
+static const char *mounts_path(void)
+{
+	const char *p = getenv("KDOS_MOUNTD_MOUNTS");
+	return p && *p ? p : "/proc/mounts";
+}
+
 /* The /sys tree, overridable for the fixture — the same seam
  * `kdos stutter --fixture` and KDOS_PRIVACY_PROC use, and the only way the
  * eligibility rules get tested on a machine with no stick in it. */
@@ -205,7 +216,7 @@ static bool fs_supported(const char *fstype)
 /* Where a device is mounted right now, from /proc/mounts. */
 static void find_mount(const char *node, char *out, size_t n)
 {
-	char *data = kb_read_all("/proc/mounts", NULL);
+	char *data = kb_read_all(mounts_path(), NULL);
 
 	out[0] = '\0';
 	if (!data)
@@ -271,7 +282,7 @@ static bool in_fstab(const char *node, const char *label)
  */
 static bool root_is_overlay(void)
 {
-	char *data = kb_read_all("/proc/mounts", NULL);
+	char *data = kb_read_all(mounts_path(), NULL);
 	bool live = false;
 
 	if (!data)
@@ -313,7 +324,7 @@ static bool is_boot_medium(const char *node, const char *fstype)
 	if (fstype && !strcmp(fstype, "iso9660") && root_is_overlay())
 		return true;
 
-	char *data = kb_read_all("/proc/mounts", NULL);
+	char *data = kb_read_all(mounts_path(), NULL);
 	bool boot = false;
 
 	if (!data)
