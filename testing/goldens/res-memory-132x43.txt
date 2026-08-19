@@ -5,11 +5,11 @@
   Applications    | RAM                                                                                                  11G of 16G 
   Processes       |                                                                                                                 
   CPU             |                                                                                                                 
-  Memory          |                                                                                                                 
-  GPU             |                                                                                                                 
-  Drives          |                                                                                                                 
-  Network         |                                                                                                                 
-  Batteries       |                                                                                                                 
+  Memory          |                                                                                                              ## 
+  GPU             |                                                                                                              ## 
+  Drives          |                                                                                                              ## 
+  Network         |                                                                                                              ## 
+  Batteries       |                                                                                                              ## 
   Energy          | swap                                                                                                94M of 3.9G 
                   |                                                                                                                 
                   |                                                                                                                 
@@ -17,7 +17,7 @@
                   |                                                                                                                 
                   |                                                                                                                 
                   |                                                                                                                 
-                  |                                                                                                                 
+                  |                                                                                                              .. 
                   | pressure  some 0.10%  full 0.00% (10s)                                                                          
                   |                                                                                                                 
                   | breakdown ----------------------------------------------------------------------------------------------------- 

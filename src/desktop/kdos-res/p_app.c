@@ -55,6 +55,7 @@ static int g_napp;
 static double g_unmatched_cpu;
 static int g_sel;
 static int g_top;
+static int g_body = 1;		/* body rows the last draw used  */
 
 static struct app *find_app(const char *name)
 {
@@ -170,6 +171,7 @@ void res_draw_apps(int x, int y, int w, int h)
 	int body = bottom - row - 2;
 	if (body < 1)
 		return;
+	g_body = body;
 	kch_list_clamp(&g_top, g_sel, g_napp, body, 1);
 
 	for (int i = 0; i < body && g_top + i < g_napp; i++) {
@@ -227,6 +229,87 @@ void res_draw_apps(int x, int y, int w, int h)
 	ktui_draw_text(x, bottom - 1, w, foot, KT_DIM, KT_BG, 0);
 }
 
+/* The same rule as the process table, and it has to BE the same rule: two
+ * lists on one desktop that scroll differently is a hand that has to learn
+ * each surface separately. */
+int res_app_wheel(int up)
+{
+	if (!kch_list_wheel(up, &g_top, g_napp, g_body)) {
+		if (up && g_sel > 0)
+			g_sel--;
+		else if (!up && g_sel + 1 < g_napp)
+			g_sel++;
+	}
+	return 1;
+}
+
+/*
+ * THE GROUP VERBS, and the confirm is the feature rather than the ceremony.
+ *
+ * "End Firefox" is forty processes on this distro, and the one thing a person
+ * has to be told before it happens is HOW MANY and WHICH BOX — an application
+ * here is a container's worth of work, and unsaved state in it goes with it.
+ * So the modal names the application, the box and the count, and it is the
+ * same modal a single process goes through.
+ */
+static int g_act_kind;			/* the signal a confirmed yes sends */
+
+static void group_signal(void)
+{
+	const struct app *a = g_sel >= 0 && g_sel < g_napp ? &g_app[g_sel]
+							  : NULL;
+
+	if (!a)
+		return;
+	for (int i = 0; i < R.sample.n; i++) {
+		const KprProc *p = &R.sample.p[i];
+
+		if (a->box[0]) {
+			if (strcmp(p->box, a->box))
+				continue;
+		} else if (strcmp(p->comm, a->name)) {
+			continue;
+		}
+		/* Whatever this program may not end, it says so on the detail
+		 * page rather than failing quietly forty times here. */
+		if (!res_act_why_disabled(p))
+			res_act_signal(p, g_act_kind);
+	}
+}
+
+static void ask_group(int sig, const char *verb)
+{
+	const struct app *a = g_sel >= 0 && g_sel < g_napp ? &g_app[g_sel]
+							  : NULL;
+	char msg[224];
+	int n = 0;
+
+	if (!a)
+		return;
+	for (int i = 0; i < R.sample.n; i++) {
+		const KprProc *p = &R.sample.p[i];
+
+		if (a->box[0] ? !strcmp(p->box, a->box)
+			      : !strcmp(p->comm, a->name))
+			n++;
+	}
+	if (!n)
+		return;
+
+	g_act_kind = sig;
+	if (a->box[0])
+		snprintf(msg, sizeof(msg),
+			 "%s %s — %d process%s in appbox %s. Unsaved work in "
+			 "them is lost.", verb, a->name, n,
+			 n == 1 ? "" : "es", a->box);
+	else
+		snprintf(msg, sizeof(msg),
+			 "%s %s — %d process%s. Unsaved work in them is lost.",
+			 verb, a->name, n, n == 1 ? "" : "es");
+	res_confirm(sig == 9 ? "Kill application" : "End application", msg,
+		    verb, group_signal);
+}
+
 int res_app_key(int k)
 {
 	if (k == KT_K_UP && g_sel > 0) {
@@ -235,6 +318,18 @@ int res_app_key(int k)
 	}
 	if (k == KT_K_DOWN && g_sel + 1 < g_napp) {
 		g_sel++;
+		return 1;
+	}
+	if ((k == '\n' || k == '\r') && g_sel >= 0 && g_sel < g_napp) {
+		res_detail_open_app(g_app[g_sel].name, g_app[g_sel].box, 0);
+		return 1;
+	}
+	if (k == 'e') {
+		ask_group(15, "End all");
+		return 1;
+	}
+	if (k == 'k') {
+		ask_group(9, "Kill all");
 		return 1;
 	}
 	return 0;

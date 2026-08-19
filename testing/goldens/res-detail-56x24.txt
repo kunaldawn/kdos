@@ -1,0 +1,24 @@
+                                                        
+  firefox-esr                                           
+  pid 950  kdos  appbox kdos-apps                       
+ ------------------------------------------------------ 
+identity -----------------------------------------------
+ pid         950   ppid 900   threads 42                
+ user        kdos   state S   nice 0                    
+ elapsed     0m 0s   open fds 1                         
+ appbox      kdos-apps                                  
+ cmdline     /usr/lib/firefox-esr/firefox-esr           
+resources ----------------------------------------------
+ memory      880M rss   0B swap                         
+ disk        4.0K read   8.0K written                   
+since this page was opened -----------------------------
+ cpu                                                 0% 
+                                                        
+                                                        
+                                                        
+ memory                                              0B 
+                                                        
+                                                        
+                                                        
+                                                        
+kdos [ End ] [ Kill ] [ Nice - ] [ Nice + ] [ Close ]   

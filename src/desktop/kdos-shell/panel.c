@@ -50,6 +50,7 @@
 #include <unistd.h>
 
 #include "kcell.h"
+#include "kproc.h"
 #include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
@@ -2107,7 +2108,7 @@ static int media_count(int *mounted)
  * HALF A SECOND, not a whole one. The band is around sixty pixels wide and one
  * sample is one pixel: at a second apart a chart takes a minute to fill and
  * creeps a pixel at a time, which reads as a picture that has stopped. Twice
- * that is a plot that visibly moves and a window (MET_HIST samples, so a
+ * that is a plot that visibly moves and a window (KPR_HIST samples, so a
  * little over a minute) that still says something. It is not faster because it
  * is more accurate — a half-second CPU sample is noisier, which is what the
  * smoothing below is for — it is faster because a chart is a thing in motion.
@@ -2119,14 +2120,13 @@ static int media_count(int *mounted)
  * because the point of a chart is the spikes.
  */
 /*
- * A HUNDRED AND TWENTY-EIGHT SAMPLES, which at two a second is a little over a
- * minute — and the number is set by the CHART, not by taste. The tile draws
- * one sample per PIXEL, and a band is around sixty pixels wide at the shipped
- * cell size and twice that at scale 2; thirty-two samples filled half of one
- * and left the rest blank, which reads as a chart that has stopped rather than
- * as a machine that has been quiet.
+ * The ring is KPR_HIST deep — a hundred and twenty-eight samples, which at two
+ * a second is a little over a minute, and the number is set by the CHART
+ * rather than by taste. The tile draws one sample per PIXEL, and a band is
+ * around sixty pixels wide at the shipped cell size and twice that at scale 2;
+ * thirty-two samples filled half of one and left the rest blank, which reads
+ * as a chart that has stopped rather than as a machine that has been quiet.
  */
-#define MET_HIST 128
 #define MET_MS 500		/* the sample interval, in milliseconds */
 /*
  * A GRIDLINE EVERY TEN SECONDS, AND IT IS WHAT MAKES AN IDLE CHART A CHART.
@@ -2151,9 +2151,14 @@ static int media_count(int *mounted)
  */
 static uint64_t met_seq;
 
+/*
+ * The RING is libkproc's; the exponential average is not. They are two
+ * different smoothings answering two different questions — the ring keeps raw
+ * samples and feeds the plot, and `shown` is the label, which would otherwise
+ * change completely twice a second and stop being read.
+ */
 struct meter {
-	double hist[MET_HIST];
-	int n;			/* valid samples, saturating at MET_HIST */
+	KprHist h;
 	double shown;		/* the smoothed value the label prints */
 	int have;		/* a first sample has landed */
 };
@@ -2185,12 +2190,7 @@ static int64_t panel_now_ms(void)
 
 static void meter_push(struct meter *m, double v, double smooth)
 {
-	if (m->n >= MET_HIST) {
-		memmove(m->hist, m->hist + 1,
-			sizeof(m->hist[0]) * (MET_HIST - 1));
-		m->n = MET_HIST - 1;
-	}
-	m->hist[m->n++] = v;
+	kpr_hist_push(&m->h, v);
 	m->shown = m->have ? m->shown + (v - m->shown) * smooth : v;
 	m->have = 1;
 }
@@ -2198,47 +2198,8 @@ static void meter_push(struct meter *m, double v, double smooth)
 /* The most recent `cols` samples, oldest first — what a chart wants. */
 static const double *meter_series(const struct meter *m, int *n)
 {
-	*n = m->n;
-	return m->hist;
-}
-
-/*
- * A NICE SCALE WITH HYSTERESIS, and this is most of what "the graph flickers"
- * was.
- *
- * A rate chart autoscaled to its own window rescales its y-axis on every
- * sample, so a perfectly steady stream still draws a shape that jumps —
- * the DATA is flat and the AXIS is moving. Every system monitor worth
- * copying (GNOME's included) instead snaps the axis to a ladder of round
- * numbers and changes it only when the data genuinely leaves the band.
- *
- * Grow as soon as a sample does not fit, because a clipped chart is a lie.
- * Shrink only when the peak has been under a THIRD of the scale — one
- * threshold in each direction would oscillate between two rungs for a stream
- * sitting on the boundary, which is the same flicker wearing a different hat.
- */
-static double nice_scale(double peak, double cur)
-{
-	static const double LADDER[] = {
-		16e3, 64e3, 256e3, 1e6, 4e6, 16e6, 64e6, 256e6, 1e9, 4e9,
-	};
-	const int n = (int)(sizeof(LADDER) / sizeof(LADDER[0]));
-
-	if (cur <= 0)
-		cur = LADDER[0];
-	if (peak > cur) {
-		for (int i = 0; i < n; i++)
-			if (LADDER[i] > peak)
-				return LADDER[i];
-		return LADDER[n - 1];
-	}
-	if (peak < cur / 3.0) {
-		for (int i = n - 1; i >= 0; i--)
-			if (LADDER[i] < cur && LADDER[i] > peak)
-				return LADDER[i];
-		return LADDER[0];
-	}
-	return cur;
+	*n = m->h.n;
+	return m->h.v;
 }
 
 /* /proc/stat's aggregate line. Returns 0 and fills the pair, or -1. */
@@ -2502,7 +2463,8 @@ static void meters_sample(void)
 		if (read_disk_used(&du) == 0)
 			meter_push(&met_disk, du, 1.0);
 	} else if (met_disk.have) {
-		meter_push(&met_disk, met_disk.hist[met_disk.n - 1], 1.0);
+		meter_push(&met_disk,
+			   kpr_hist_at(&met_disk.h, met_disk.h.n - 1), 1.0);
 	}
 
 	if (dt_ms > 0) {
@@ -3137,7 +3099,13 @@ static int meter_by_key(const char *name)
 	return -1;
 }
 
-/* One kept scale per mirrored meter — see nice_scale for why it is kept. */
+/*
+ * One kept scale per mirrored meter, and it is kept because the axis has
+ * HYSTERESIS: kpr_scale_step() decides the next rung from the last one, so the
+ * last one has to survive the frame. A mirrored pair shares one entry — the
+ * two series are drawn about a midline and an axis taken from either alone
+ * would move under the other one's data.
+ */
 static double met_scale[MT_N];
 
 static void fmt_rate(char *out, size_t n, double bytes_per_s)
@@ -3251,7 +3219,7 @@ static uint64_t met_hash(void)
  * its height. Smoothing the NUMBER instead would be lying about the instant.
  *
  * THE SCALE IS THE CALLER'S. A chart that autoscales to its own window
- * redraws a moving axis under stationary data — see nice_scale.
+ * redraws a moving axis under stationary data — see kpr_scale_step().
  *
  * THE TRACE IS CONTINUOUS, INCLUDING AT ZERO, and that is the other half of
  * what "it goes back and forth one pixel" was. A sample worth less than a pixel
@@ -3435,7 +3403,7 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 				if (v[i] > peak)
 					peak = v[i];
 		}
-		met_scale[id] = nice_scale(peak, met_scale[id]);
+		met_scale[id] = kpr_scale_step(peak, met_scale[id]);
 	}
 
 	int x = right_x - cells;

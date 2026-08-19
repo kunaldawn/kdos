@@ -1254,6 +1254,19 @@ Splitting it out rather than folding it into libktui is what keeps kinstall
 linking zero libraries on the first bootable image; that split IS milestone M3.
 `kdos-shell` and `kdos-lock` link it, and nothing in phase 1 does.
 
+**A TOPLEVEL MUST ASK FOR ITS FRAME.** libkwl binds
+`zxdg_decoration_manager_v1` and sets `SERVER_SIDE` on every xdg toplevel. A
+client that never binds that protocol has not said which side draws the
+decoration and gets whatever the compositor guesses — which here was **no frame
+at all**: no titlebar to drag, no close button, and Maximize and Close
+unreachable by pointer. It went unnoticed because every other surface in this
+desktop is a layer or a lock surface, which have no decoration to negotiate;
+`kdos-res` is the tree's first toplevel and the first thing to need one. The
+default size is 80x**22** cells rather than 80x24 for the same reason: a window
+that asks for the whole screen leaves the frame nowhere to go. It is a default,
+not a demand — the compositor's first configure carries the size it wants and
+`xdg_top_configure()` takes it.
+
 **Bind `zwlr_layer_shell_v1` at 4, and never below it without meaning to.**
 `KEYBOARD_INTERACTIVITY_ON_DEMAND` is a version-4 request, and wlroots answers
 it on an older resource with `!!interactive` — so a client bound at 1 asking for
@@ -1341,11 +1354,16 @@ bug:**
 | `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings — the one library with vendored third-party source (Monocypher) |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
 | `libkcell` | `kcell_` | the fcft glyph cache and the cell painter — a grid of cells into a pixel buffer, the ASCII ramp built out of it, and **`kcell_canvas_*`, the pixel canvas a block of cells can be drawn as**. Needs fcft and pixman |
-| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection, both directions** (`kwl_copy`), **xkb-compose**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`. **The one library with real `-l` dependencies beyond libkcell's** |
+| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg toplevel with a SERVER-side frame, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection, both directions** (`kwl_copy`), **xkb-compose**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`. **The one library with real `-l` dependencies beyond libkcell's** |
+| `libkproc` | `kpr_` | every reading about the running machine, from a root that can be MOVED — `/proc` and `/sys` behind `kpr_root_set`, the process sample, the conmon box identity (`kpr_is_box_boundary`, `kpr_conmon_name`, `kpr_box_of`), cpu/memory/block/net/power/drm/nvml, and **the sample ring and its axis** (`KprHist`, `kpr_scale_step`) |
+| `libkchrome` | `kch_` | the chrome kdos-shell had grown and kdos-res needed — the header band, the group heading, the button bar, the list/wheel/scrollbar rule and the pixel tile |
 
 Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
-libkbase` and `libkbuild → libkbase` and `libksig → libkbase` and `libkwl →
-libkcell → libktui`, and nothing points back up. libkcell is a SEPARATE
+libkbase` and `libkbuild → libkbase` and `libksig → libkbase` and `libkproc →
+libkbase` and `libkchrome → libktui` and `libkwl →
+libkcell → libktui`, and nothing points back up. **libkproc links libkbase and
+nothing else**, which is what lets a root daemon take it: kdos-oomd and
+kdos-energyd both do, and every library they link is code running as root. libkcell is a SEPARATE
 archive from libkwl so that a consumer wanting the cell painter is not made to
 link a Wayland client library to get it.
 
@@ -1977,7 +1995,8 @@ session locked until they all have a surface. libktui has ONE cell buffer, so
 the prompt is on the first output and the rest are filled with `KT_BG`. That is
 a libktui limitation, said out loud, not a protocol one.
 
-**`kdos-checkpass` is the only setuid binary KDOS ships**, and it takes NO
+**KDOS ships TWO setuid binaries and `kdos-checkpass` is one of them** (the
+other is `kdos-resctl` — see **kdos-res**). It takes NO
 ARGUMENTS — not even a user name. The account checked is the caller's real uid,
 so there is nothing to aim at root and nothing an attacker can vary; the
 password arrives on **stdin** (`kb_run_feed`, new in libkbase) because argv is
@@ -2555,6 +2574,118 @@ Five rules, each one a way this goes wrong:
 consequential gets tested. **It has never fired for real**; a genuine PSI stall
 is the test that matters and has not been run.
 
+## The resource monitor — `kdos-res`
+
+`src/desktop/kdos-res/` is nine pages of readings — Applications, Processes,
+CPU, Memory, GPU, Drives, Network, Batteries, Energy — plus a detail page, and
+it exists beside `btop` rather than instead of it.
+
+**What it has that no other monitor on this machine has is IDENTITY.** Every
+fat application here is its own podman container, so a process table shows
+forty rows of `Web Content` and `.firefox-esr-wr` and answers nobody's
+question. libkproc's conmon walk turns a pid into
+`firefox-esr (appbox kdos-apps)`, and the Applications page is that rollup.
+This is the one desktop where that is cheap, because the boundary already
+exists and the supervisor already knows the name.
+
+**ONE RENDERER, THREE FACES.** The same page, the same layout and the same
+numbers on tty1, in a window and in a `--dump`, because there is only a grid of
+character cells: libktui's backend vtable decides who paints it — the terminal,
+libkwl, or an offscreen buffer — and nothing above that line knows which.
+**It is the tree's first `KWL_ROLE_TOPLEVEL` client**; everything else on this
+desktop is a layer surface or a lock surface.
+
+**THE CHARTS ARE CELLS, AND A FULL-WIDTH CHART CANNOT BE A SPRITE TILE.**
+libktui encodes a sprite cell's sub-cell coordinate in four bits each way, so
+`kch_tile_begin()` refuses anything past **16x16 CELLS** — which is what the
+panel's fifteen-cell meters strip is sized around. A page-wide chart here is
+seventy cells and more, so the pixel tier is not merely unused, it is
+unreachable. `graph.c` draws the band itself: whole rows are the full block and
+the top row of each column is the ramp glyph for the remainder, so the
+resolution is `rows × ktui_ramp_levels()` and the shape survives all three
+tiers. Two traps it exists to avoid, both of which shipped:
+**`ktui_sparkline` is ONE ROW** — handed a ten-row band it draws in the first
+of them, on top of the label, and leaves nine empty, which on a real screen
+reads as a chart that is not working; and a tile guarded by
+`if (kch_tile_slot(id) >= 0)` can never be created, because the slot only
+exists after the commit that guard is preventing.
+
+**No number is invented.** Every reader answers `KPR_UNREADABLE` where the
+machine does not publish a value and the cell renders `res_none()`, which is a
+plain ASCII `-` because the console font is 512 glyphs and this has to read on
+tty1. A `0` default is how
+a monitor reports a sensor that does not exist as a machine that is idle, and
+the GPU page is where that bites hardest: only amdgpu and NVML publish a
+utilisation percentage, so every other driver gets ENGINE TIME labelled as
+such, and a driver with no fdinfo stats gets **no column** rather than a column
+of zeroes.
+
+**`kdos-resctl` is the second setuid binary KDOS ships**, and the whole of its
+security argument is that there is nothing to aim: **three verbs, no paths, no
+options** — `dmi`, `signal <pid> <TERM|KILL|STOP|CONT>`, `renice <pid>
+<-20..19>`. The SMBIOS path is compiled in and nothing in argv is ever opened.
+The caller must be in `wheel` by REAL uid (`kb_user_in_group`, the same gate
+kdos-powerd and kdos-energyd apply); `pidfd_open` is taken before
+`pidfd_send_signal` so a signal cannot land on a recycled pid; pid 1 is
+refused; and privilege is dropped before the DMI table is parsed, so the parser
+never runs as root. It is **never on the sampling path** — a setuid fork at
+1 Hz would be a surface with a schedule — and `kdos doctor` checks the bit for
+the same reason it checks `kdos-checkpass`'s.
+
+**The desktop's own chrome is confirmed, not refused.** `kdos-oomd` protects
+`kdos-comp`/`kdos-shell`/`kdos-desk`/`kdos-notifyd` because it acts on its own;
+a human aiming at a wedged panel is entitled to end it and the supervisor will
+bring it back, so the modal names what will happen instead of declining.
+
+**THE VERBS LIVE ON THE DETAIL PAGE AND NOWHERE ELSE.** `Enter` on a process,
+an application, a drive or an interface opens a full-screen page for that one
+subject — identity, its own CPU and memory rings started at the moment it was
+opened, thread count, open descriptors, elapsed — and the End / Kill / Nice
+buttons are there. A key that ended a process from a TABLE would be a key
+pressed while the cursor happens to be on a row, with nothing on the screen
+saying which row that is. The rings start at open deliberately: a ring per pid
+would be hundreds of them, and one back-filled with zeroes would be inventing
+the past.
+
+**One confirm modal, `res_confirm()` in `page.c`, and it NAMES the subject.**
+libktui's `ktui_modal_*` is drawn with `ktui_button()` and belongs to the
+immediate-mode frame protocol this program does not drive, so the modal is
+kdos-res's own. Cancel is preselected — the destructive button under the caret
+turns a reflex Enter into a kill — and the message says what will happen:
+*"End all Firefox — 41 processes in appbox kdos-apps. Unsaved work in them is
+lost."* That count is the whole reason the Applications page's `e` and `k`
+verbs are worth confirming: on this distro an application is a container's
+worth of processes. A **renice is not confirmed**, because it is reversible and
+a dialog on every nudge is what teaches people to click through the one that
+matters.
+
+**A rate is fed from `res_sample()`, never from a page's `prepare()`.** Prepare
+runs once per FRAME and a frame is not an interval; the offscreen dump draws
+exactly once after two samples, so a chart fed from prepare is empty in every
+golden and the arithmetic behind it is never checked. The device interval is
+the sampler's own cadence rather than `R.sample.wall_ms`, which is stamped
+inside `res_sample()`'s `if (want)` branch — and Drives and Network want no
+per-process file at all, so on those two pages that field is never written.
+
+**A counter that went backwards is a GAP, never a spike, and both halves of a
+mirrored pair skip it together.** The fixture's `eth0` wraps a 32-bit counter
+(4294967000 then 200); its chart reads `-  -` while `sda` beside it reads
+`20M  9.8M` at `30%` busy, so the gap is a gap rather than a chart that never
+worked. One half advancing while the other did not would put received and sent
+a sample out of step for the rest of the session.
+
+**`--fixture <dir>` is the seam**, the same one `kdos stutter`, `kdos-oomd` and
+`KDOS_PRIVACY_PROC` use: `testing/fixtures/res` is a recorded `/proc` and
+`/sys`, which is what makes a monitor's output deterministic enough to have
+goldens at all. `testing/goldens/res-<page>-<size>.txt` covers all nine pages,
+and the ids in `enum res_page_id` are the only spelling — `--page` takes them,
+`res.conf`'s sort keys use them and the goldens are named after them.
+
+The ways in: the panel's meters strip (left click), `C-S-Escape`, the Start
+menu, and `kdos-res` at a prompt.
+
+---
+
 ## The shell answers the mouse, everywhere
 
 **`kdos-shell` is one binary under many names, and `TOOLS[]` in `main.c` is the
@@ -2940,12 +3071,13 @@ the shim name and not the desktop id), so the Start menu and the launcher
 cannot disagree about it.
 
 **THE STRIP ANSWERS THREE BUTTONS, because a meter raises three questions and
-answers none of them.** Left is `btop` — which process. MIDDLE is `kdos
+answers none of them.** Left is `kdos-res` — which process, and which
+application, on a page that can be read and sorted. MIDDLE is `kdos
 stutter`, the only thing on this machine that can say why a frame was late and
 who was busy when it was; it had no surface at all and was reachable only by
 knowing the subcommand's name. RIGHT is `kdos-energy`, the same for the per-app
-energy share. Both are real features of this distro that the desktop never
-pointed at.
+energy share. All three are real features of this distro that the desktop never
+pointed at; `btop` keeps its menu entry and its prompt.
 
 **`+N` OPENS THE WINDOW LIST.** It used to STEP the row by one per click, so
 reaching the third hidden window meant three clicks and three reflows, and
@@ -3650,6 +3782,21 @@ through the monitor's `sendkey`** (the session is started by hand on this
 distro, and a compositor launched from ttyS0 gets no seat), waits for
 `kdos-comp`, and reads the framebuffer over RFB.
 
+**Two flags beyond the shot itself, and each answers a question a screenshot
+alone cannot.** `--console-cmd` types on tty1 INSTEAD of starting the session,
+which is the only way to photograph a program at the 512-glyph console font and
+the vt glyph tier it has to read in — a window under a compositor is a
+different renderer answering a different question. `--soak <seconds>` lets the
+session run between the launch and the measurement, because a monitor's own
+cost over four seconds is its startup, and startup is exactly what is not being
+measured.
+
+**The host may not have QEMU at all.** After a distro upgrade this machine had
+no `qemu-system-x86_64`; the rig runs unmodified inside the `kdos-qemu-hw`
+image with `python3` added (`--device /dev/kvm`, the repo bind-mounted), which
+already carries QEMU 10.1 and `/usr/share/ovmf/OVMF.fd` where the script looks
+for it.
+
 Three things it has to get right: `screendump` answers "no surface" under a GL
 display, so the framebuffer is read over RFB, whose `SetEncodings` is
 `type(1) pad(1) count(2)` — an extra padding field desyncs the stream and every
@@ -3736,6 +3883,8 @@ kdos/
 │   │   ├── libkpkg/             # kp_*   db, ports tree, solver, version + hashes
 │   │   ├── libksig/             # ksig_* Ed25519 (vendored Monocypher)
 │   │   ├── libkbuild/           # kbuild_* phases, plans, snapshot inventory
+│   │   ├── libkproc/            # kpr_*  every reading, from a movable root
+│   │   ├── libkchrome/          # kch_*  header band, buttons, lists, tiles
 │   │   └── libkwl/              # kwl_*  libktui's Wayland backend — the one
 │   │                            #   library with real -l dependencies
 │   ├── desktop/                 # the desktop, ours (see docs/KDOS-DESKTOP.md)
@@ -3748,6 +3897,7 @@ kdos/
 │   │   ├── kdos-powerd/         # suspend/poweroff/reboot over a unix socket
 │   │   ├── kdos-energyd/        # per-app Energy Impact from RAPL, relative
 │   │   ├── kdos-oomd/           # PSI-triggered kill before the desktop wedges
+│   │   ├── kdos-res/            # the resource monitor + setuid kdos-resctl
 │   │   ├── kdos-boxsock/        # the security-context-v1 sandbox engine
 │   │   └── xdg-desktop-portal-kdos/  # FileChooser + Settings + OpenURI
 │   ├── build/
@@ -4108,6 +4258,13 @@ and needs a container; this checks the WIRING in seconds:
   empty result, and every token matching what `phases.py` will accept
 - every `# depends` names a port that exists — the gap CLAUDE.md's TODO list
   called "no build-time check that all `# depends` resolve"
+- **every `.c` in one of OUR ports is compiled by its recipe.** A source the
+  `build.sh` neither names nor globs is a file that passes every gate on this
+  machine and fails to LINK in the build — `testing/selftest.sh` globs those
+  directories, so a whole page can be exercised by the harness and be absent
+  from the shipped binary. That is exactly how `kdos-res`'s detail page reached
+  a green selftest and a failed `05_desktop`. Only our own trees: an upstream
+  tarball is entitled to carry sources its own build system chooses between
 - every recipe declares name, version and release
 - all shipped and build shell is syntactically valid
 - nothing still invokes a tool the C consolidation removed
@@ -4174,6 +4331,17 @@ width, and the chooser's hint text and its two buttons both on their row without
 colliding. Six geometry defects have shipped in this toolkit and not one was
 visible to a compiler; this is how they get seen. Verified by breaking it —
 widening the hint row makes the check say so.
+
+**`ports/.kpkgbin`, `ports/.portup-tools`, `ports/.kpkg-meta` and `ports/.portup`
+cache compiled helpers, and a glibc build cannot exec under musl or the other
+way round** — so a host run straight after a container run must clear them
+first. The failure does not say any of that: `kpkg meta` simply fails, so
+`kdos-portup` cannot render a candidate URL and the suite reports **"no current
+outcome reproduced"**, which reads as a regression in the version checker. And
+a container that ran as root leaves those directories ROOT-OWNED, so the `rm`
+that clears them fails on permissions and the stale binary survives — delete
+them from a container (`docker run --rm -v "$PWD":/kdos alpine rm -rf
+/kdos/ports/.portup-tools …`) rather than reaching for sudo.
 
 **Run it sanitized when you touch a parser.** `CC` is the seam and it takes
 more than one word:
