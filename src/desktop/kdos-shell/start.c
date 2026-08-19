@@ -732,7 +732,7 @@ static void draw_frame(void)
 	int follow = sel_follow;
 
 	sel_follow = 0;
-	sh_list_clamp(&top, sel, nleft, body, follow && !focus_right);
+	kch_list_clamp(&top, sel, nleft, body, follow && !focus_right);
 	/* The scrollbar takes a column OF ITS OWN rather than overdrawing the
 	 * rows' last one: a selected row is an accent fill, and a bar drawn on
 	 * top of it puts a notch in the highlight. */
@@ -747,7 +747,7 @@ static void draw_frame(void)
 	/* The column that says there is more. It matters more here than
 	 * anywhere: the wheel moves the PAGE once a list is longer than the
 	 * window, so without it the content moves for no visible reason. */
-	sh_list_scrollbar(lw - 1, 1, body, nleft, top, KT_BG);
+	kch_list_scrollbar(lw - 1, 1, body, nleft, top, KT_BG);
 
 	/*
 	 * ── the right column ──
@@ -757,12 +757,12 @@ static void draw_frame(void)
 	 * been silently invisible — and the wheel already moved a selection
 	 * that the draw could not follow. Same clamp, same bar, same rule.
 	 */
-	sh_list_clamp(&rtop, rsel, nright, body, follow && focus_right);
+	kch_list_clamp(&rtop, rsel, nright, body, follow && focus_right);
 	int rw = nright > body ? w - lw - 4 : w - lw - 3;
 	for (int i = 0; i < body && rtop + i < nright; i++)
 		draw_row(&right[rtop + i], lw + 2, 1 + i, rw,
 			 focus_right && rtop + i == rsel);
-	sh_list_scrollbar(w - 2, 1, body, nright, rtop, KT_BG);
+	kch_list_scrollbar(w - 2, 1, body, nright, rtop, KT_BG);
 
 	/*
 	 * ── the footer: a search FIELD, and the two ways out ──
@@ -773,11 +773,11 @@ static void draw_frame(void)
 	 * reimplement badly. Most useful first: the bar drops Shut Down before
 	 * Log Off, and both are also rows in the right column now.
 	 */
-	struct sh_button fb[2] = {
+	struct kch_button fb[2] = {
 		{ "Log Off", 1 },
 		{ "Shut Down", 1 },
 	};
-	int bx = sh_chrome_buttons(w, h - 2, fb, 2, -1);
+	int bx = kch_buttons(w, h - 2, fb, 2, -1);
 
 	/*
 	 * A FIELD THAT LOOKS LIKE ONE, AND LOOKS DIFFERENT WHEN IT IS ACTIVE.
@@ -1024,7 +1024,7 @@ static void step(int d)
 		return;
 	/* The CURSOR moved, so the viewport follows it. A wheel that scrolled
 	 * the viewport instead deliberately does not set this — see
-	 * sh_list_wheel and draw_frame. */
+	 * kch_list_wheel and draw_frame. */
 	sel_follow = 1;
 	for (int i = 0; i < n; i++) {
 		*s += d;
@@ -1158,7 +1158,7 @@ int start_main(int argc, char **argv)
 				 */
 				/* The buttons light through the shared bar; the
 				 * field is this file's own. */
-				sh_chrome_hover(ev.mx, ev.my);
+				kch_hover(ev.mx, ev.my);
 				hover_btn = ev.my == ktui_h - 2 &&
 						    in_span(ev.mx, search_x, search_end)
 					    ? 2
@@ -1192,7 +1192,7 @@ int start_main(int argc, char **argv)
 				 * right one is a fixed list of places.
 				 */
 				focus_right = !on_left && ev.mx > lw;
-				if (!sh_list_wheel(up,
+				if (!kch_list_wheel(up,
 						   focus_right ? &rtop : &top,
 						   focus_right ? nright : nleft,
 						   body))
@@ -1209,7 +1209,7 @@ int start_main(int argc, char **argv)
 			/* The footer: the shared bar's own hit map, then the
 			 * field. */
 			if (ev.my == ktui_h - 2) {
-				int fb = sh_chrome_button_at(ev.mx, ev.my);
+				int fb = kch_button_at(ev.mx, ev.my);
 
 				if (fb == 0) {
 					log_out();

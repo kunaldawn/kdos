@@ -612,6 +612,14 @@ plain_out:
 		fprintf(stderr, "cannot take over the terminal\n");
 		return 1;
 	}
+	/* THE BUILD MUST NOT BE STOPPABLE BY ITS OWN OUTPUT. A snapshot drains
+	 * tar's member names from a 64 K pipe in the same loop that redraws
+	 * this screen, so a terminal that stops reading — a pager, a paused
+	 * pty, a stalled ssh — would block the redraw, starve the drain, and
+	 * wedge tar against its full pipe with hours of work outstanding. A
+	 * frame is worth two seconds and no more; the archive is worth the
+	 * build. */
+	ktui_term_set_write_timeout(2000);
 	ktui_draw_init();
 	ktui_input_init(1);
 
