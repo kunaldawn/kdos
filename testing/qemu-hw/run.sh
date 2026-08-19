@@ -99,6 +99,19 @@ case "$MODE" in
     *)    echo "unknown mode: $MODE (use iso|disk)"; exit 1 ;;
 esac
 
+#
+# THE FIRMWARE IS THE IMAGE'S, NOT THE HOST'S. This used to bind-mount
+# /usr/share/ovmf over the container's own copy, which is backwards: the whole
+# reason this rig is a container is that it brings its own QEMU and firmware,
+# and the host is not required to have either. A host whose `ovmf` package went
+# away — an upgrade that drops qemu takes it too — leaves an EMPTY directory
+# behind, and mounting that over the image's firmware makes qemu fail with
+# "could not load PC BIOS" while a perfectly good OVMF.fd sits underneath it.
+#
+# The path is probed in the CONTAINER's shell — `\$` below, the same escaping
+# the audio line already uses — so a future image is free to move it: Debian
+# and Ubuntu have shipped it under both spellings.
+
 exec docker run --rm -it \
     --gpus all \
     --device /dev/kvm \
@@ -106,11 +119,14 @@ exec docker run --rm -it \
     --device /dev/udmabuf \
     "${DISP_ARGS[@]}" \
     "${AUDIO_ARGS[@]}" \
-    -v /usr/share/ovmf:/usr/share/ovmf:ro \
     -v "$REPO_ROOT/build:/work/build" \
     -v "$REPO_ROOT/testing:/work/testing:ro" \
-    "$IMAGE" -c "exec qemu-system-x86_64 -enable-kvm \
-        -bios /usr/share/ovmf/OVMF.fd \
+    "$IMAGE" -c "for f in /usr/share/ovmf/OVMF.fd /usr/share/OVMF/OVMF.fd; do
+            [ -f \"\$f\" ] && OVMF=\"\$f\" && break
+        done
+        [ -n \"\$OVMF\" ] || { echo 'no OVMF.fd in the image'; exit 1; }
+        exec qemu-system-x86_64 -enable-kvm \
+        -bios \"\$OVMF\" \
         ${GPU_ARGS[*]} \
         ${SRC_ARGS[*]} \
         -serial stdio \

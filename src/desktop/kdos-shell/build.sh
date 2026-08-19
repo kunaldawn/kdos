@@ -45,6 +45,12 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	xdg-shell-client-protocol.h
 "$SCANNER" private-code  "$PROTO/stable/xdg-shell/xdg-shell.xml" \
 	xdg-shell-protocol.c
+"$SCANNER" client-header \
+	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
+	xdg-decoration-unstable-v1-client-protocol.h
+"$SCANNER" private-code \
+	"$PROTO/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
+	xdg-decoration-unstable-v1-protocol.c
 "$SCANNER" client-header "$PROTO/staging/ext-workspace/ext-workspace-v1.xml" \
 	ext-workspace-v1-client-protocol.h
 "$SCANNER" private-code  "$PROTO/staging/ext-workspace/ext-workspace-v1.xml" \

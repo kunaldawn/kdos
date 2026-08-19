@@ -37,7 +37,7 @@ static void usage(FILE *f)
 {
 	fprintf(f,
 	  "usage: kdos-res [--page <id>] [--tty|--gui]\n"
-	  "                [--fixture <dir>] [--interval <ms>]\n"
+	  "                [--fixture <dir>] [--interval <ms>] [--detail <pid>]\n"
 	  "                [--dump|--dump-cells] [--dump-size WxH] [--json]\n"
 	  "                [--version] [--help]\n"
 	  "\n"
@@ -92,6 +92,7 @@ static void on_hup(int sig)
 int main(int argc, char **argv)
 {
 	const char *page = NULL, *fixture = NULL, *font = NULL;
+	int detail_pid = 0;
 	int want_tty = 0, want_gui = 0, dump = 0, dump_cells = 0, json = 0;
 	int dw = 80, dh = 24, interval = 0;
 
@@ -101,6 +102,15 @@ int main(int argc, char **argv)
 		const char *a = argv[i];
 		if (!strcmp(a, "--page") && i + 1 < argc) {
 			page = argv[++i];
+		} else if (!strcmp(a, "--detail") && i + 1 < argc) {
+			/*
+			 * Dump-only, and it exists so the detail page has a
+			 * golden. Every other surface in this program can be
+			 * reached by --page; this one is opened with Enter on
+			 * a row, and a page with no golden is a page whose
+			 * geometry nothing checks.
+			 */
+			detail_pid = atoi(argv[++i]);
 		} else if (!strcmp(a, "--fixture") && i + 1 < argc) {
 			fixture = argv[++i];
 		} else if (!strcmp(a, "--interval") && i + 1 < argc) {
@@ -200,6 +210,8 @@ int main(int argc, char **argv)
 				kpr_root_set(p2, s2);
 		}
 		res_sample();
+		if (detail_pid)
+			res_detail_open_proc(detail_pid);
 		res_draw_frame();
 		if (json)
 			return 0;
@@ -299,6 +311,10 @@ int main(int argc, char **argv)
 		} else if (ev.type == KT_EVT_MOUSE) {
 			if (ev.press == KT_MP_DRAG)
 				res_frame_motion(ev.mx, ev.my);
+			else if (ev.press == KT_MP_PRESS &&
+				 (ev.btn == KT_MB_WHEEL_UP ||
+				  ev.btn == KT_MB_WHEEL_DOWN))
+				res_frame_wheel(ev.btn == KT_MB_WHEEL_UP);
 			else if (ev.press == KT_MP_PRESS)
 				res_frame_click(ev.mx, ev.my, ev.btn);
 		}
