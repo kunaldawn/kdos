@@ -131,9 +131,12 @@ static const char *hash_for(const Recipe *r, const char *file, char out[65])
 {
 	char list[4096];
 	kb_strlcpy(list, r->sha256, sizeof(list));
-	char *hex = NULL;
+	/* strtok_r: this walk runs inside extract_sources' own walk over the
+	 * source list, and one shared scanner state cannot serve both. */
+	char *hex = NULL, *save = NULL;
 	int k = 0;
-	for (char *t = strtok(list, " \t\n"); t; t = strtok(NULL, " \t\n"), k++) {
+	for (char *t = strtok_r(list, " \t\n", &save); t;
+	     t = strtok_r(NULL, " \t\n", &save), k++) {
 		if (k % 2 == 0) {
 			hex = t;
 		} else if (!strcmp(t, file) && hex) {
@@ -188,7 +191,11 @@ static int extract_sources(const KpConf *c, const Recipe *r, const char *portdir
 	kb_strlcpy(list, r->source, sizeof(list));
 
 	int idx = 0;
-	for (char *t = strtok(list, " \t\n"); t; t = strtok(NULL, " \t\n"), idx++) {
+	/* strtok_r: verify_source() tokenises the hash list from inside this
+	 * loop, so the two walks must not share a scanner state. */
+	char *save = NULL;
+	for (char *t = strtok_r(list, " \t\n", &save); t;
+	     t = strtok_r(NULL, " \t\n", &save), idx++) {
 		char file[512];
 		source_file(r, t, idx == 0, file, sizeof(file));
 

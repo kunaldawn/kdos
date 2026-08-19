@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Resources
+GenericName=System Monitor
+Comment=What is using this machine, how much, and since when
+Exec=kdos-res
+Icon=speedometer
+Terminal=false
+Categories=System;Monitor;
+Keywords=cpu;memory;gpu;disk;network;battery;process;task;monitor;
+StartupWMClass=kdos-res

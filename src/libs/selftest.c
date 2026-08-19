@@ -33,6 +33,7 @@
 #include "kpkg.h"
 #include "ktui.h"
 #include "portup.h"
+#include "kproc.h"
 
 static int failures;
 static int checks;
@@ -54,6 +55,16 @@ static void eq_str(const char *got, const char *want, const char *what)
 	failures++;
 	printf("  FAIL  %s\n        got  '%s'\n        want '%s'\n", what,
 	       got ? got : "(null)", want ? want : "(null)");
+}
+
+static void eq_int(long long got, long long want, const char *what)
+{
+	checks++;
+	if (got == want)
+		return;
+	failures++;
+	printf("  FAIL  %s\n        got  %lld\n        want %lld\n", what,
+	       got, want);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -448,6 +459,264 @@ static void test_pkg(void)
 
 	kb_rmtree(dir);
 	free(repo);
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * libkproc, against testing/fixtures/res.
+ *
+ * Every assertion here is a rule that fails SILENTLY when it is wrong: a
+ * doubled disk rate, a battery at 100% health, a wrapped counter as a spike,
+ * an unreadable io column of zeroes. None of them crashes, and none of them is
+ * visible to the compiler.
+ */
+static void test_proc(void)
+{
+	printf("libkproc\n");
+
+	const char *base = getenv("KDOS_RES_FIXTURE");
+	if (!base)
+		base = "testing/fixtures/res";
+
+	char p0[512], s0[512], p1[512], s1[512];
+	snprintf(p0, sizeof(p0), "%s/proc", base);
+	snprintf(s0, sizeof(s0), "%s/sys", base);
+	snprintf(p1, sizeof(p1), "%s/next/proc", base);
+	snprintf(s1, sizeof(s1), "%s/next/sys", base);
+
+	if (!kb_path_exists(p0)) {
+		printf("  (fixture absent — skipped)\n");
+		return;
+	}
+
+	kpr_root_set(p0, s0);
+
+	/* ── CPU: topology is read, never counted ───────────────────────── */
+	KprCpu c0;
+	ok(kpr_cpu_read(&c0) == 0, "cpu snapshot reads");
+	eq_int(c0.ncpu, 2, "logical cpus from /proc/stat");
+	/* cpuinfo has two blocks and the machine has two CORES; a tree where
+	 * these differ is what catches counting cpuinfo and calling it cores. */
+	eq_int(c0.ncore, 2, "cores from topology/, not from cpuinfo blocks");
+	eq_int(c0.npkg, 1, "packages from topology/");
+	eq_int(c0.virt, KPR_VIRT_QEMU, "virtualisation from DMI sys_vendor");
+	ok(c0.temp_c > 51.9 && c0.temp_c < 52.1, "cpu temperature from hwmon");
+	eq_str(c0.governor, "schedutil", "cpufreq governor");
+
+	kpr_root_set(p1, s1);
+	KprCpu c1;
+	kpr_cpu_read(&c1);
+	double busy = kpr_cpu_busy(&c0.total, &c1.total);
+	/* delta: user+sys 500, idle+iowait 500, total 1000 -> exactly half.
+	 * Computed over the DELTA; over the absolute it would be ~13%. */
+	ok(busy > 0.49 && busy < 0.51, "cpu busy is over the delta, not the total");
+	kpr_cpu_free(&c0);
+	kpr_cpu_free(&c1);
+
+	kpr_root_set(p0, s0);
+
+	/* ── memory: MemAvailable, never total - free ───────────────────── */
+	KprMem m;
+	ok(kpr_mem_read(&m) == 0, "meminfo reads");
+	ok(m.available == 5242880ULL * 1024ULL, "available is MemAvailable");
+	/*
+	 * The fixture's available is deliberately NOT half of total: with
+	 * total/2 the used figure and the available figure come out equal and
+	 * a swapped subtraction renders identically to a correct one.
+	 */
+	ok(m.total - m.available != m.available, "used and available differ");
+	/* total - free would be 15.5 GB of 16 GB — a healthy machine at 97%. */
+	ok(m.total - m.available < m.total - m.free, "used is not total - free");
+
+	/* ── pressure: absent is not zero ───────────────────────────────── */
+	KprPsi psi;
+	ok(kpr_psi_read("io", &psi) == 0 && psi.present, "psi io present");
+	ok(psi.some10 > 11.9 && psi.some10 < 12.1, "psi some avg10");
+	ok(psi.full10 > 7.9 && psi.full10 < 8.1, "psi full avg10");
+	KprPsi none;
+	ok(kpr_psi_read("nosuchfile", &none) != 0 || !none.present,
+	   "a missing pressure file is absent, not a stall of zero");
+
+	/* ── processes ──────────────────────────────────────────────────── */
+	KprSample sm;
+	ok(kpr_sample_take(&sm, KPR_WANT_IO | KPR_WANT_CMDLINE |
+			       KPR_WANT_STATUS) == 0, "sample taken");
+	eq_int(sm.n, 9, "every pid in the fixture");
+	eq_int(sm.nkthread, 2, "kernel threads counted, not dropped");
+
+	const KprProc *fx = kpr_find_pid(&sm, 950);
+	ok(fx != NULL, "the boxed app is in the sample");
+	eq_str(fx ? fx->comm : "", "firefox-esr", "comm parsed");
+	const KprProc *wc = kpr_find_pid(&sm, 951);
+	/* comm carries a space; the split must be on the LAST ')' or every
+	 * field after it is read from the wrong place. */
+	eq_str(wc ? wc->comm : "", "Web Content", "a comm with a space in it");
+	ok(wc && wc->ppid == 950, "ppid survives a comm with a space");
+
+	const KprProc *bk = kpr_find_pid(&sm, 800);
+	ok(bk && bk->state == 'D', "the blocked process is in D");
+	ok(bk && bk->rd_bytes != KPR_UNREADABLE && bk->rd_bytes > 0,
+	   "a readable io counter is a number");
+
+	/* The trap this sentinel exists for: an unreadable counter must never
+	 * reach a column as 0, which would claim root's sshd did no disk io. */
+	const KprProc *sd = kpr_find_pid(&sm, 300);
+	ok(sd && sd->rd_bytes == KPR_UNREADABLE,
+	   "an unreadable io is KPR_UNREADABLE, never 0");
+	ok(sd && sd->wr_bytes == KPR_UNREADABLE, "both io counters, not just one");
+
+	/* ── identity: the box, and its boundary ────────────────────────── */
+	char box[64];
+	ok(kpr_box_of(&sm, 950, box, sizeof(box)) && !strcmp(box, "kdos-apps"),
+	   "a process under conmon is in its box");
+	ok(kpr_box_of(&sm, 951, box, sizeof(box)) && !strcmp(box, "kdos-apps"),
+	   "and so is its child, two hops up");
+	ok(!kpr_box_of(&sm, 700, box, sizeof(box)),
+	   "a process whose parent chain leaves the box is in none");
+	/* conmon runs on the HOST and supervises from outside; reporting it as
+	 * a member would put the supervisor in the app's own rollup. */
+	ok(!kpr_box_of(&sm, 900, box, sizeof(box)),
+	   "conmon itself is not in the box it supervises");
+
+	/* ── cpu% of one core, and the new-process case ─────────────────── */
+	kpr_root_set(p1, s1);
+	KprSample sm1;
+	kpr_sample_take(&sm1, 0);
+	const KprProc *a = kpr_find_pid(&sm, 950), *b = kpr_find_pid(&sm1, 950);
+	double pc = kpr_proc_cpu(a, b, 1000);
+	ok(pc > 0.0, "a process that used cpu reports some");
+	/* No previous sample means no interval to divide by; reporting the
+	 * whole lifetime as this second's usage is how a fresh process shows
+	 * thousands of percent. */
+	ok(kpr_proc_cpu(NULL, b, 1000) == 0.0, "a process first seen reports 0");
+	kpr_sample_free(&sm1);
+	kpr_sample_free(&sm);
+	kpr_root_set(p0, s0);
+
+	/* ── block: whole disks only ────────────────────────────────────── */
+	KprDisk *d = NULL;
+	int nd = kpr_block_list(&d);
+	/* sda1 is in diskstats beside sda. Summing both counts every byte
+	 * twice, which is the defect this count catches. */
+	eq_int(nd, 3, "sda, nvme0n1 and loop0 — sda1 is a partition");
+	int seen_sda = 0, seen_part = 0, seen_loop_virt = 0;
+	for (int i = 0; i < nd; i++) {
+		if (!strcmp(d[i].name, "sda"))
+			seen_sda = 1;
+		if (!strcmp(d[i].name, "sda1"))
+			seen_part = 1;
+		if (!strcmp(d[i].name, "loop0") && d[i].virt)
+			seen_loop_virt = 1;
+	}
+	ok(seen_sda, "the whole disk is kept");
+	ok(!seen_part, "the partition is not");
+	ok(seen_loop_virt, "loop0 is flagged virtual, not dropped");
+	for (int i = 0; i < nd; i++)
+		if (!strcmp(d[i].name, "sda")) {
+			/* A diskstats sector is 512 by definition of that
+			 * interface, whatever the drive's own sector size. */
+			ok(d[i].size == 976773168ULL * 512ULL,
+			   "size is sysfs 512-byte units");
+			ok(d[i].rotational == 1, "rotational read from queue/");
+		}
+	kpr_block_free(d);
+
+	/* ── net: a wrap is a gap, not a negative ───────────────────────── */
+	KprIface *n0 = NULL;
+	int nn = kpr_net_list(&n0);
+	ok(nn == 3, "three interfaces");
+	unsigned long long eth_rx0 = 0;
+	for (int i = 0; i < nn; i++) {
+		if (!strcmp(n0[i].name, "lo")) {
+			/* operstate is "unknown" for loopback for ever; IFF_UP
+			 * out of the flags word is the real answer. */
+			ok(n0[i].up, "lo is up from flags, not from operstate");
+			ok(!n0[i].carrier, "and its operstate is not up");
+			ok(n0[i].loopback && n0[i].virt, "lo is flagged");
+		}
+		if (!strcmp(n0[i].name, "eth0")) {
+			eth_rx0 = n0[i].rx_bytes;
+			ok(n0[i].speed_mbit == 1000, "speed where the driver has one");
+			eq_str(n0[i].driver, "", "no driver link in the fixture");
+		}
+		if (!strcmp(n0[i].name, "wlan0"))
+			ok(n0[i].speed_mbit == -1,
+			   "no speed is -1, never 0 Mbit");
+	}
+	kpr_net_free(n0);
+
+	kpr_root_set(p1, s1);
+	KprIface *n1 = NULL;
+	kpr_net_list(&n1);
+	unsigned long long eth_rx1 = 0;
+	for (int i = 0; i < 3; i++)
+		if (!strcmp(n1[i].name, "eth0"))
+			eth_rx1 = n1[i].rx_bytes;
+	kpr_net_free(n1);
+	/* 4294967000 -> 200 across the interval. A subtraction produces an
+	 * enormous negative; the caller must see the decrease and report a
+	 * gap. The library's job is to hand back both readings faithfully. */
+	ok(eth_rx1 < eth_rx0, "the wrapped counter decreased");
+	kpr_root_set(p0, s0);
+
+	/* ── power: health is wear, capacity is charge ──────────────────── */
+	KprBattery *bt = NULL;
+	int nb = kpr_power_list(&bt);
+	ok(nb == 2, "one battery and one adapter");
+	for (int i = 0; i < nb; i++) {
+		if (!bt[i].is_battery) {
+			ok(bt[i].online == 0, "the adapter is unplugged");
+			continue;
+		}
+		ok(bt[i].capacity == 90, "capacity is the charge");
+		/* 50 Wh of a design 62 Wh. A monitor printing only capacity
+		 * would say this battery is fine. */
+		ok(bt[i].health > 0.80 && bt[i].health < 0.81,
+		   "health is full / full_design, not capacity");
+		ok(bt[i].cycles == 412, "cycle count");
+		ok(bt[i].power_uw == 8500000, "draw from power_now");
+	}
+	kpr_power_free(bt);
+
+	/* ── the ring, the axis and the smoothing ───────────────────────── */
+	KprHist h;
+	kpr_hist_init(&h, 0);
+	for (int i = 0; i < 5; i++)
+		kpr_hist_push(&h, 1000.0);
+	double sc = kpr_hist_scale(&h);
+	ok(sc == 16e3, "a small series sits on the first rung");
+	kpr_hist_push(&h, 100000.0);
+	ok(kpr_hist_scale(&h) == 256e3, "the axis grows the moment a sample does not fit");
+	/*
+	 * Hysteresis. A third of 256e3 is 85.3e3, so a series peaking at 100e3
+	 * is inside the band and must hold the axis still; one peaking at 1e3
+	 * is well under it and must let the axis down. One threshold in each
+	 * direction would oscillate between two rungs for a series sitting on
+	 * the boundary, which is the same flicker wearing a different hat.
+	 */
+	for (int i = 0; i < KPR_HIST; i++)
+		kpr_hist_push(&h, 100e3);
+	ok(kpr_hist_scale(&h) == 256e3, "the axis holds above a third of itself");
+	for (int i = 0; i < KPR_HIST; i++)
+		kpr_hist_push(&h, 1000.0);
+	ok(kpr_hist_scale(&h) < 256e3, "and only comes down below it");
+
+	KprHist pin;
+	kpr_hist_init(&pin, 1);
+	kpr_hist_push(&pin, 3.0);
+	ok(kpr_hist_scale(&pin) == 100.0,
+	   "a percentage ring is pinned 0..100 and never rescales");
+
+	KprHist sm3;
+	kpr_hist_init(&sm3, 0);
+	kpr_hist_push(&sm3, 0.0);
+	kpr_hist_push(&sm3, 30.0);
+	kpr_hist_push(&sm3, 0.0);
+	ok(kpr_hist_smooth(&sm3, 1) == 10.0, "the plotted series is a three-point mean");
+	ok(kpr_hist_at(&sm3, 1) == 30.0, "the stored sample is never smoothed");
+	ok(kpr_hist_peak(&sm3) == 30.0, "peak is of the raw series");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -1188,6 +1457,7 @@ int main(void)
 	test_colour();
 	test_pkg();
 	test_build();
+	test_proc();
 	test_chart();
 	test_grid();
 	test_portup();

@@ -58,7 +58,7 @@ struct row {
 static struct row rows[MAX_ROWS];
 static int nrows, sel, top;
 /* The viewport follows the SELECTION only when the selection is what moved —
- * see sh_list_wheel. A clamp that followed unconditionally would undo a page
+ * see kch_list_wheel. A clamp that followed unconditionally would undo a page
  * scroll on the next frame. */
 static int sel_follow = 1;
 static char cwd[1024];
@@ -574,13 +574,13 @@ static void draw(const char *title)
 	}
 
 	/*
-	 * ONE COLUMN THAT SAYS THERE IS MORE — see sh_list_scrollbar. It goes
+	 * ONE COLUMN THAT SAYS THERE IS MORE — see kch_list_scrollbar. It goes
 	 * on the list pane's own right edge, which is the divider before the
 	 * preview when there is one and the window's border when there is
 	 * not. A directory of forty files gave no sign that thirty of them
 	 * were below the fold.
 	 */
-	sh_list_scrollbar(lw - 1, list_top, list_rows, nrows, top, KT_SURFACE);
+	kch_list_scrollbar(lw - 1, list_top, list_rows, nrows, top, KT_SURFACE);
 
 	if (pane_x < w) {
 		ktui_draw_vline(pane_x - 1, list_top, list_rows, KT_G_VL,
@@ -945,7 +945,7 @@ int pick_main(int argc, char **argv)
 		int list_rows = ktui_h - 5;
 		if (list_rows < 1)
 			list_rows = 1;
-		sh_list_clamp(&top, sel, nrows, list_rows, sel_follow);
+		kch_list_clamp(&top, sel, nrows, list_rows, sel_follow);
 		sel_follow = 0;
 
 		/* What the preview pane wants decoded, from the selection. */
@@ -1028,7 +1028,7 @@ int pick_main(int argc, char **argv)
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
 				int lr = ktui_h - 5 > 0 ? ktui_h - 5 : 1;
-				if (!sh_list_wheel(up, &top, nrows, lr)) {
+				if (!kch_list_wheel(up, &top, nrows, lr)) {
 					sel += up ? -1 : 1;
 					sel_follow = 1;
 				}

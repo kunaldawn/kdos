@@ -2676,12 +2676,12 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 		if (tw_cells >= 3 && tw_cells <= 16 && tw_cells <= ktui_w / 3) {
 			/* Everything the picture depends on, and nothing it
 			 * does not: the accent is folded in through
-			 * sh_tile_reset() on a retint rather than here. */
+			 * kch_tile_reset() on a retint rather than here. */
 			uint64_t content = (uint64_t)lit << 40 |
 					   (uint64_t)tw_cells << 24 |
 					   (uint64_t)fsz << 8 | (uint64_t)h;
 			KCellCanvas *cv =
-				sh_tile_begin(SH_TILE_START, tw_cells, h,
+				kch_tile_begin(SH_TILE_START, tw_cells, h,
 					      content);
 			if (cv) {
 				int bg = lit ? KT_WARN : KT_ACCENT;
@@ -2715,9 +2715,9 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 				kcell_canvas_text(cv, x,
 						  (ch_px - hgt) / 2 + asc, fsz,
 						  word, KT_SURFACE);
-				sh_tile_commit(SH_TILE_START);
+				kch_tile_commit(SH_TILE_START);
 			}
-			int slot = sh_tile_slot(SH_TILE_START);
+			int slot = kch_tile_slot(SH_TILE_START);
 			if (slot >= 0) {
 				ktui_draw_sprite(krect(0, 0, tw_cells, h), slot,
 						 KT_SURFACE,
@@ -3203,7 +3203,7 @@ static int draw_meter(int x, int row, const char *label,
  *
  * The samples are quantised on the way in — a chart redrawn because the third
  * decimal of a byte rate moved is a raster per frame — and the accent is NOT
- * in here: `kdos theme` drops every tile through sh_tile_reset(), which is the
+ * in here: `kdos theme` drops every tile through kch_tile_reset(), which is the
  * same mechanism kicon_retint() uses and one place rather than two.
  */
 static uint64_t met_hash(void)
@@ -3441,7 +3441,7 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 	int x = right_x - cells;
 	/* The set is part of the picture: a tile that went from three meters
 	 * to two without the hash noticing would keep drawing three. */
-	KCellCanvas *cv = sh_tile_begin(SH_TILE_METERS, cells, rows,
+	KCellCanvas *cv = kch_tile_begin(SH_TILE_METERS, cells, rows,
 					met_hash() ^ ((uint64_t)use << 56) ^
 						((uint64_t)hover_meters << 63));
 	if (cv) {
@@ -3547,10 +3547,10 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 			}
 			bx += d->cells * cell;
 		}
-		sh_tile_commit(SH_TILE_METERS);
+		kch_tile_commit(SH_TILE_METERS);
 	}
 
-	int slot = sh_tile_slot(SH_TILE_METERS);
+	int slot = kch_tile_slot(SH_TILE_METERS);
 	if (slot < 0) {
 		if (panel_dbg())
 			fprintf(stderr, "panel: meters tile: no slot "
@@ -4528,7 +4528,7 @@ static void handle_motion(struct sh_state *sh, int cx, int cy)
 		drag_moved = 1;
 		drag_over = hover_fav;
 	}
-	/* The strip opens btop, so it is a control and has to look like one
+	/* The strip opens kdos-res, so it is a control and has to look like one
 	 * under the hand. Its own rows, for the same reason the click test
 	 * needs them. */
 	hover_meters = meter_row0 >= 0 && cy >= meter_row0 &&
@@ -4700,7 +4700,7 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 	case TT_METERS:
 		snprintf(t1, n1, "%s", "System meters");
 		snprintf(t2, n2, "%s",
-			 "left: btop · middle: late frames · right: energy");
+			 "left: resources · middle: late frames · right: energy");
 		return 1;
 	case TT_WS:
 		snprintf(t1, n1, "Workspace %d", idx + 1);
@@ -4846,7 +4846,7 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 			return 1;
 		case SH_AP_CPU:
 			snprintf(t1, n1, "Processor %d%%", panel_cpu);
-			snprintf(t2, n2, "%s", "click for btop");
+			snprintf(t2, n2, "%s", "click for Resources");
 			return 1;
 		default:
 			return 0;
@@ -5086,7 +5086,14 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		sh_mpris_action(sh->mpris, "PlayPause");
 		break;
 	case SH_AP_CPU: {
-		const char *argv[] = { "foot", "-e", "btop", NULL };
+		/*
+		 * kdos-res rather than a terminal running btop: it is this
+		 * distro's own monitor, it is a window rather than a terminal
+		 * that covers the desktop, and it is the only thing here that
+		 * can name a boxed application rather than its processes.
+		 * btop keeps its menu entry and its prompt.
+		 */
+		const char *argv[] = { "kdos-res", NULL };
 		panel_spawn(argv);
 		break;
 	}
@@ -5196,7 +5203,8 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 	    in_span(cx, sh->meter_hit_x, sh->meter_hit_end)) {
 		/*
 		 * THREE QUESTIONS A METER RAISES AND CANNOT ANSWER, one per
-		 * button. Left is `btop` — which process. MIDDLE is
+		 * button. Left is `kdos-res` — which process, and which
+		 * APPLICATION. MIDDLE is
 		 * `kdos stutter`, which is the only thing on this machine that
 		 * can say why a frame was late and who was busy when it was;
 		 * it had no surface at all and was reachable only by knowing
@@ -5531,7 +5539,7 @@ int panel_main(int argc, char **argv)
 	 * request. Off with the icons: a tile is a picture, and `icons = no`
 	 * is a person asking for the character grid. */
 	kcell_canvas_font(font);
-	sh_tile_enable(icons_on);
+	kch_tile_enable(icons_on);
 	load_favorites();
 	load_widgets();
 	/* No session bus is a session with no tray, not a shell that refuses to
@@ -5573,7 +5581,7 @@ int panel_main(int argc, char **argv)
 			kicon_retint();
 			/* Every tile was rasterised in the palette that is
 			 * being replaced — same reason, same moment. */
-			sh_tile_reset();
+			kch_tile_reset();
 			ktui_draw_invalidate();
 		}
 		/* Above the draw branch, not inside it: an autohidden panel

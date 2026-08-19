@@ -1,0 +1,24 @@
+                                                                                
+  Batteries                                                                     
+  90% Discharging                                                               
+ ------------------------------------------------------------------------------ 
+  A   |                                                                         
+  P   |BAT0 --------------------------------------------------------------------
+  C   | charge      90%  (Discharging, 45.0 Wh)                                 
+  M   | health      80.6%  (50.0 Wh of 62.0 Wh by design)                       
+  G   | cycles      412                                                         
+  D   | draw        8.5 W                                                       
+  N   | technology  Li-ion                                                      
+  B   |                                                                         
+  E   | AC0          not connected                                              
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         

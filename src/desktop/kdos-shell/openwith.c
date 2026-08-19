@@ -49,6 +49,7 @@
 
 #include "kbase.h"
 #include "kwl.h"
+#include "kxdg.h"
 #include "shell.h"
 
 #define OW_MAX_CANDS 64
@@ -66,7 +67,7 @@ struct ow_cand {
 static struct ow_cand cands[OW_MAX_CANDS];
 static int ncands;
 /* The viewport follows the SELECTION only when the selection is what moved —
- * see sh_list_wheel. A clamp that followed unconditionally would undo a page
+ * see kch_list_wheel. A clamp that followed unconditionally would undo a page
  * scroll on the very next frame. */
 static int sel, top, sel_follow = 1;
 
@@ -85,63 +86,16 @@ static char edit_buf[512];
 
 /* ── path -> MIME ──────────────────────────────────────────────────────── */
 
-static int mime_from_globs(const char *base, char *out, size_t n)
-{
-	size_t len = 0;
-	char *data = kb_read_all("/usr/share/mime/globs", &len);
-	size_t best = 0;
-	int found = 0;
-
-	if (!data)
-		return 0;
-
-	for (char *p = data; *p;) {
-		char *nl = strchr(p, '\n');
-		if (nl)
-			*nl = '\0';
-		if (*p == '#' || !*p)
-			goto next;
-
-		char *colon = strchr(p, ':');
-		if (!colon)
-			goto next;
-		*colon = '\0';
-		const char *type = p, *glob = colon + 1;
-
-		if (glob[0] == '*' && glob[1] == '.') {
-			const char *suffix = glob + 1;
-			size_t sl = strlen(suffix), bl = strlen(base);
-			if (bl > sl && !strcasecmp(base + bl - sl, suffix) &&
-			    sl > best) {
-				best = sl;
-				snprintf(out, n, "%s", type);
-				found = 1;
-			}
-		} else if (!strchr(glob, '*') && !strchr(glob, '?') &&
-			   !strcasecmp(glob, base) && best == 0) {
-			/* An exact name — `Makefile`, `.bashrc`. Only when no
-			 * suffix matched: a suffix is the more specific claim. */
-			snprintf(out, n, "%s", type);
-			found = 1;
-		}
-next:
-		if (!nl)
-			break;
-		p = nl + 1;
-	}
-	free(data);
-	return found;
-}
-
+/*
+ * libkxdg owns this. It is the same table `kdos-appbox open` resolves against
+ * and the same longest-suffix rule, so the chooser and the opener cannot
+ * disagree about what a file is — and the glob table's path is a compile-time
+ * define there, which is what lets a fixture stand in for the compiled
+ * database that exists only on a booted target.
+ */
 static void mime_for_path(const char *path, char *out, size_t n)
 {
-	if (kb_is_dir(path)) {
-		snprintf(out, n, "inode/directory");
-		return;
-	}
-	if (mime_from_globs(kb_basename(path), out, n))
-		return;
-	snprintf(out, n, "application/octet-stream");
+	kxdg_mime_for_path(path, out, n);
 }
 
 /* ── the search path ───────────────────────────────────────────────────── */
@@ -667,11 +621,11 @@ static void draw(void)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_list_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, list_top, list_rows, nrows(), top,
+	kch_list_scrollbar(w - 1, list_top, list_rows, nrows(), top,
 			  KT_SURFACE);
 	/* On `!ncands`, never `!nrows()`: the Other row is always there, so the
 	 * list is never empty and this said nothing on the one machine that
@@ -912,7 +866,7 @@ int openwith_main(int argc, char **argv)
 		int list_rows = ktui_h - 6;
 		if (list_rows < 1)
 			list_rows = 1;
-		sh_list_clamp(&top, sel, nrows(), list_rows, sel_follow);
+		kch_list_clamp(&top, sel, nrows(), list_rows, sel_follow);
 		sel_follow = 0;
 
 		draw();
@@ -946,7 +900,7 @@ int openwith_main(int argc, char **argv)
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
 				int lr = ktui_h - 6 > 0 ? ktui_h - 6 : 1;
-				if (!sh_list_wheel(up, &top, nrows(), lr)) {
+				if (!kch_list_wheel(up, &top, nrows(), lr)) {
 					sel += up ? -1 : 1;
 					sel_follow = 1;
 				}

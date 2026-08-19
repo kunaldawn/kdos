@@ -1,0 +1,74 @@
+testing/fixtures/res — a recorded machine, chosen to break things
+
+WHAT THIS IS
+
+Two complete {proc,sys} roots one sample interval apart:
+
+    testing/fixtures/res/           the first snapshot
+    testing/fixtures/res/next/      the second
+
+`kpr_root_set(<dir>/proc, <dir>/sys)` points libkproc at either, which is the
+whole of `--fixture`. Every reading in the library is built from that pair, so
+a reader that opens /proc/stat directly is a reader this cannot test.
+
+The tree is synthetic rather than copied off a real machine, because a real
+machine is a plausible machine: it exercises the common path and none of the
+cases below. Each of these is a rule in libkproc that fails silently when it
+is wrong, and each shows up here as a wrong number rather than as a crash.
+
+THE TRAPS, AND WHAT EACH ONE CATCHES
+
+  sda1 beside sda            A partition carries a `partition` attribute and
+                             its parent does not. Summing every diskstats line
+                             counts sda's bytes twice. A regression shows up
+                             as an extra row and a doubled rate.
+
+  loop0                      Flagged virtual, not dropped: which devices are
+                             interesting is the caller's decision, so the
+                             library must report it and mark it.
+
+  eth0 rx_bytes wraps        4294967000 in the first snapshot, 200 in the
+                             second — an unsigned 32-bit counter going round.
+                             A naive subtraction yields one enormous negative
+                             and nothing in the output says so; the reading
+                             must be a gap, never a spike.
+
+  pid 800 `backup` in D      Blocked on disk: almost no CPU and real io
+                             counters. Sorting on CPU alone hides exactly the
+                             process that is holding the machine up.
+
+  pid 300 `sshd` has no io   The file is deliberately absent, which is what
+                             EACCES looks like from an unprivileged reader.
+                             Both counters must come back KPR_UNREADABLE and
+                             render as an em dash. Zero would be a claim that
+                             root's sshd has done no disk io.
+
+  conmon 900 -n kdos-apps    pid 950 (firefox-esr) and 951 (Web Content) are
+                             its descendants and belong to box `kdos-apps`.
+                             pid 700 (foot) has init as its parent and belongs
+                             to no box — the boundary, not just the match.
+
+  BAT0 full < full_design    50 Wh of a design 62 Wh. Health is
+                             full/full_design = 80.6%, and a battery reporting
+                             90% CHARGE is a different fact. A monitor that
+                             prints only capacity says nothing about wear.
+
+  card0 i915, card1 amdgpu   amdgpu publishes gpu_busy_percent; i915 does not
+                             and never will. The i915 page must report ENGINE
+                             TIME from fdinfo (pid 950 fd 7) and must not
+                             invent a utilisation percentage. renderD128 is
+                             present and must be skipped.
+
+  2 logical / 2 cores / 1 pkg   topology/ is the answer. Counting cpuinfo
+                             blocks gives logical CPUs and calling them cores
+                             is wrong on every SMT machine.
+
+REGENERATING
+
+There is no generator script: the tree is small, committed, and readable, and
+a script would be a second place for the traps to live. Edit the files.
+
+  card0 gt_cur_freq_mhz      MHz, not Hz. The file is named for its unit and a
+                             value in the wrong one renders as 1450000000 MHz,
+                             which is the shape of every unit bug: a number
+                             that is right and a unit that is not.

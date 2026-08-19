@@ -468,11 +468,11 @@ static void draw(const char *query, int sel, int top)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_list_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, 3, rows, nmatch, top, KT_SURFACE);
+	kch_list_scrollbar(w - 1, 3, rows, nmatch, top, KT_SURFACE);
 
 	ktui_draw_flush();
 }
@@ -536,7 +536,7 @@ int launcher_main(int argc, char **argv)
 	char query[128] = {0};
 	int qlen = 0, sel = 0, top = 0;
 	/* The viewport follows the SELECTION only when the selection is what
-	 * moved — see sh_list_wheel. Without the flag the clamp below would
+	 * moved — see kch_list_wheel. Without the flag the clamp below would
 	 * undo a page scroll on the very next frame. */
 	int sel_follow = 1;
 	filter(query);
@@ -554,7 +554,7 @@ int launcher_main(int argc, char **argv)
 		int rows = ktui_h - 4;
 		if (rows < 1)
 			rows = 1;
-		sh_list_clamp(&top, sel, nmatch, rows, sel_follow);
+		kch_list_clamp(&top, sel, nmatch, rows, sel_follow);
 		sel_follow = 0;
 
 		draw(query, sel, top);
@@ -599,7 +599,7 @@ int launcher_main(int argc, char **argv)
 				 * it does not — and the cursor stays put then,
 				 * so a hand that scrolls past what it wanted
 				 * can scroll back to it. */
-				if (!sh_list_wheel(up, &top, nmatch,
+				if (!kch_list_wheel(up, &top, nmatch,
 						   ktui_h - 4 > 0 ? ktui_h - 4
 								  : 1)) {
 					sel += up ? -1 : 1;

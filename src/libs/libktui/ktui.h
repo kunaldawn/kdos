@@ -107,6 +107,12 @@ void ktui_term_resume(void);	/* and take it over again                  */
 void ktui_term_size_refresh(void);
 void ktui_term_write(const char *s, size_t n);
 void ktui_term_flush(void);
+/* Bound one flush to `ms` milliseconds, dropping whatever will not go out
+ * in that time; -1 (the default) waits as long as the terminal takes. A
+ * caller that must keep servicing something else while it draws sets this,
+ * and asks ktui_term_flush_dropped() whether the last frame survived. */
+void ktui_term_set_write_timeout(int ms);
+int ktui_term_flush_dropped(void);
 void ktui_term_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void ktui_term_repalette(void);	/* after a live accent switch              */
 /* OSC 52 clipboard write, base64 encoded by hand (this library links nothing

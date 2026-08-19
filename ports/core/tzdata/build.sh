@@ -21,7 +21,16 @@
 # zic is built and RUN here; it is not installed. The target reads the compiled
 # binary database and musl parses those files itself — there is no libc
 # timezone helper that needs to ship beside them.
-make CFLAGS="$CFLAGS -DHAVE_GETTEXT=0" zic
+#
+# CC is named because the Makefile declares `.POSIX:` and never assigns CC
+# itself: GNU make in POSIX mode then defaults it to c99, a compiler name this
+# toolchain does not provide under any prefix.
+#
+# `leapseconds` is GENERATED — leapseconds.awk reduces leap-seconds.list to the
+# file zic reads for the right/ tree — so it is a make target beside zic rather
+# than something the archive ships. AWK is gawk because /usr/bin/awk here is
+# toybox's, and the script is not the subset that guarantees.
+make CC=cc AWK=gawk CFLAGS="$CFLAGS -DHAVE_GETTEXT=0" zic leapseconds
 
 # `backward` carries the historical aliases (US/Eastern, Asia/Calcutta) that a
 # great deal of software and a great many user configs still name. Dropping it
