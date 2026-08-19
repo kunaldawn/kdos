@@ -49,6 +49,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kproc.h"
 #include "kdos-tools.h"
 
 #define ST_MAX_PROC 4096
@@ -216,11 +217,10 @@ static void sample_take(StSample *s, double when_ms)
 /* ── naming ────────────────────────────────────────────────────────────── */
 
 /*
- * An alien app is a process inside a podman container, and the useful name is
- * the CONTAINER's, not `conmon`'s or a pid. podman's supervisor is conmon and
- * its argv carries `-n <name>`; walking up the parent chain to it costs a few
- * file reads and needs no podman call, which matters because this runs while the
- * machine is already struggling.
+ * The container's name, which is the useful one — not `conmon`'s and not a
+ * pid. libkproc owns the walk: it is the same ppid climb to podman's
+ * supervisor that kdos-oomd and kdos-teams need, and it lived in four places
+ * with four different hop bounds before it lived in one.
  *
  * cgroup would be the textbook answer and is not usable here: KDOS has no
  * systemd, rootless podman gets no cgroup delegation, and the whole box
@@ -228,31 +228,7 @@ static void sample_take(StSample *s, double when_ms)
  */
 static int box_of(int pid, char *out, size_t cap)
 {
-	for (int hop = 0; hop < 12 && pid > 1; hop++) {
-		StProc st = {0};
-		if (!read_stat(pid, &st))
-			return 0;
-		if (!strcmp(st.comm, "conmon")) {
-			char *cmd = slurp("%s/%d/cmdline", g_proc, pid);
-			if (!cmd)
-				return 0;
-			/* cmdline is NUL-separated; the name follows "-n". */
-			size_t len = 0;
-			int found = 0;
-			for (char *a = cmd; *a; a += len + 1) {
-				len = strlen(a);
-				if (!strcmp(a, "-n") && a[len + 1]) {
-					kb_strlcpy(out, a + len + 1, cap);
-					found = 1;
-					break;
-				}
-			}
-			free(cmd);
-			return found;
-		}
-		pid = st.ppid;
-	}
-	return 0;
+	return kpr_box_of_pid(pid, out, cap);
 }
 
 static void name_of(const StProc *p, char *out, size_t cap)
@@ -514,9 +490,18 @@ static int run_fixture(const char *dir, int json)
 	char *p0 = kb_path_join(dir, "t0");
 	char *p1 = kb_path_join(dir, "t1");
 
+	/*
+	 * BOTH roots move together. The sampler reads through g_proc and the
+	 * box identity reads through libkproc's own root, so setting one and
+	 * not the other leaves the container walk looking at the REAL /proc
+	 * while everything else replays the recording — and the fixture then
+	 * reports a process with no box on a machine where it has one.
+	 */
 	g_proc = p0;
+	kpr_root_set(p0, NULL);
 	sample_take(&prev, 0.0);
 	g_proc = p1;
+	kpr_root_set(p1, NULL);
 	sample_take(&cur, 500.0);
 
 	char *evp = kb_path_join(dir, "events.jsonl");

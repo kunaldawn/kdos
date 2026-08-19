@@ -55,6 +55,7 @@
 #include <unistd.h>
 
 #include "kbase.h"
+#include "kproc.h"
 
 #define KO_SOCKET   "/run/kdos-oomd.sock"
 #define KO_GROUP    "wheel"
@@ -170,38 +171,16 @@ static int read_stat(int pid, KoProc *out)
 }
 
 /*
- * Which box is this process in? The conmon-argv walk kdos stutter and
- * kdos-energyd already use: no systemd means rootless podman gets no cgroup
- * delegation and the box frequently sits in `0::/`, so the ppid chain up to
- * podman's supervisor — whose argv carries `-n <name>` — is the only identity
- * there is, and it costs a few file reads on a machine already struggling.
+ * Which box is this process in? libkproc owns the walk: the ppid climb to
+ * podman's supervisor, whose argv carries `-n <name>`, is the only identity
+ * there is here — no systemd means rootless podman gets no cgroup delegation
+ * and the box frequently sits in `0::/`. It costs a few file reads on a
+ * machine that is already struggling, which is why it reads /proc directly
+ * rather than holding a table.
  */
 static int box_of(int pid, char *out, size_t cap)
 {
-	for (int hop = 0; hop < 24 && pid > 1; hop++) {
-		KoProc st = {0};
-		if (!read_stat(pid, &st))
-			return 0;
-		if (!strcmp(st.comm, "conmon")) {
-			char *cmd = slurp("%s/%d/cmdline", g_proc, pid);
-			if (!cmd)
-				return 0;
-			size_t len = 0;
-			int found = 0;
-			for (char *a = cmd; *a; a += len + 1) {
-				len = strlen(a);
-				if (!strcmp(a, "-n") && a[len + 1]) {
-					kb_strlcpy(out, a + len + 1, cap);
-					found = 1;
-					break;
-				}
-			}
-			free(cmd);
-			return found;
-		}
-		pid = st.ppid;
-	}
-	return 0;
+	return kpr_box_of_pid(pid, out, cap);
 }
 
 /* ── selection ─────────────────────────────────────────────────────────── */
@@ -303,7 +282,14 @@ static int pick_victim(KoVictim *v)
 		if (is_protected(&p))
 			continue;
 		char box[64] = "";
-		if (box_of(p.ppid, box, sizeof(box))) {
+		/*
+		 * The PID, not its parent. kpr_box_of_pid climbs from the
+		 * process's parent itself — conmon supervises the box from
+		 * outside it and must never be reported as a member — so
+		 * handing it a parent starts the walk one hop too high and
+		 * every boxed process comes back unboxed.
+		 */
+		if (box_of(p.pid, box, sizeof(box))) {
 			if (p.rss_kb > boxed.p.rss_kb) {
 				boxed.p = p;
 				boxed.boxed = 1;
@@ -321,7 +307,7 @@ static int pick_victim(KoVictim *v)
 		*v = boxed;
 	else {
 		*v = any;
-		v->boxed = box_of(v->p.ppid, v->box, sizeof(v->box));
+		v->boxed = box_of(v->p.pid, v->box, sizeof(v->box));
 	}
 	return 1;
 }
@@ -563,7 +549,13 @@ static int serve(void)
  */
 static int fixture(const char *dir)
 {
+	/*
+	 * BOTH roots. The sampler reads through g_proc and the box identity
+	 * through libkproc's own root; moving one and not the other replays a
+	 * recorded machine while asking the REAL /proc who owns its processes.
+	 */
 	g_proc = dir;
+	kpr_root_set(dir, NULL);
 	double some, full;
 	KoVictim v = {0};
 	read_pressure(&some, &full);

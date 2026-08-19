@@ -865,7 +865,7 @@ static int net_buttons(int w, int row)
 {
 	const struct row *r = sel >= 0 && sel < nrows ? &rows[sel] : NULL;
 	const struct net_ap *a = r && r->kind == ROW_AP ? &aps[r->ap] : NULL;
-	struct sh_button b[NB_N];
+	struct kch_button b[NB_N];
 
 	b[NB_CONNECT].label = a && a->active ? "Disconnect" : "Connect";
 	b[NB_CONNECT].enabled = a != NULL;
@@ -877,7 +877,7 @@ static int net_buttons(int w, int row)
 	b[NB_WIFI].enabled = 1;
 	b[NB_CLOSE].label = "Close";
 	b[NB_CLOSE].enabled = 1;
-	return sh_chrome_buttons(w, row, b, NB_N, -1);
+	return kch_buttons(w, row, b, NB_N, -1);
 }
 
 static void draw_frame(void)
@@ -898,7 +898,7 @@ static void draw_frame(void)
 	for (int i = 0; i < ndev; i++)
 		if (devs[i].type == NMDT_WIFI)
 			have_wifi = 1;
-	int body_y = sh_chrome_header(w, have_wifi ? "network-wireless"
+	int body_y = kch_header(w, have_wifi ? "network-wireless"
 						   : "network-wired",
 				      "Network", sub, icons_on);
 	int body = h - body_y - 3;
@@ -1237,8 +1237,8 @@ int net_main(int argc, char **argv)
 							 aps[rows[sel].ap].ssid);
 				}
 				/* The button bar lights under the pointer —
-				 * see sh_chrome_hover. */
-				sh_chrome_hover(ev.mx, ev.my);
+				 * see kch_hover. */
+				kch_hover(ev.mx, ev.my);
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
@@ -1255,7 +1255,7 @@ int net_main(int argc, char **argv)
 				break;
 			if (ev.btn != KT_MB_LEFT)
 				continue;
-			int b = sh_chrome_button_at(ev.mx, ev.my);
+			int b = kch_button_at(ev.mx, ev.my);
 			if (b >= 0) {
 				switch (b) {
 				case NB_CONNECT:

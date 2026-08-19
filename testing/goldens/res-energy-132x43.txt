@@ -1,0 +1,43 @@
+                                                                                                                                    
+  Energy                                                                                                                            
+  unavailable                                                                                                                       
+ ---------------------------------------------------------------------------------------------------------------------------------- 
+  Applications    |                                                                                                                 
+  Processes       | kdos-energyd is not running (the socket at /run/kdos-energyd.sock is not there)                                 
+  CPU             |                                                                                                                 
+  Memory          | RAPL is root-only since Linux 5.10, so this page is the daemon's answer or nothing.                             
+  GPU             |                                                                                                                 
+  Drives          |                                                                                                                 
+  Network         |                                                                                                                 
+  Batteries       |                                                                                                                 
+  Energy          |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 

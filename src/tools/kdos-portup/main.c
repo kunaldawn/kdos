@@ -116,8 +116,25 @@ static void ensure_kpkg_bin(const char *repo_root, char *out, size_t cap)
 	snprintf(dir, sizeof(dir), "%s/ports/.portup-tools", repo_root);
 	kb_mkdir_p(dir);
 	snprintf(out, cap, "%s/kpkg", dir);
-	if (kb_path_exists(out))
-		return;
+	/* A CACHED BINARY IS ONLY A CACHE IF IT RUNS HERE. This directory is
+	 * inside the repo, and the same repo is built both on the host and
+	 * inside the musl build container — so the copy left behind may have
+	 * been linked against the other libc, where execve fails on the
+	 * missing interpreter and every recipe read comes back empty. Probing
+	 * it costs one fork and turns that into a rebuild. */
+	if (kb_path_exists(out)) {
+		KbArgv probe = {0};
+		kb_argv_add(&probe, out);
+		kb_argv_add(&probe, "meta");
+		kb_argv_add(&probe, repo_root);
+		kb_argv_end(&probe);
+		KbBuf sink = {0};
+		int rc = kb_run_capture_buf(&probe, &sink);
+		kb_buf_free(&sink);
+		if (rc != 127)
+			return;
+		unlink(out);
+	}
 
 	/*
 	 * kdos-kpkg links THREE libraries — libkbase, libkpkg and libksig —
@@ -709,7 +726,11 @@ static int accept_group(const char *repo_root, PortEntry **m, int n, int no_fetc
  * spinning. */
 static int read_cmd(void)
 {
-	char buf[64];
+	/* Initialised because musl's fortified fgets is declared
+	 * access(read_write), which makes the compiler treat the buffer as an
+	 * input it may read: an uninitialised one is then a diagnostic on the
+	 * libc this distro actually ships. */
+	char buf[64] = { 0 };
 	if (!fgets(buf, sizeof(buf), stdin))
 		return 'q';
 	for (char *p = buf; *p; p++)

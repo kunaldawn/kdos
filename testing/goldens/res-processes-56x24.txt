@@ -1,0 +1,24 @@
+                                                        
+  Processes                                             
+  7 shown                                               
+ ------------------------------------------------------ 
+PID     USER    CPU%   MEM      NAME                    
+950     kdos    110.0  880M     firefox-esr             
+951     kdos    45.0   392M     Web Content             
+1       root    15.0   8.8M     systemd                 
+700     kdos    3.0    40M      foot                    
+900     kdos    1.0    2.0M     conmon                  
+300     root    0.0    6.0M     sshd                    
+800     kdos    0.0    8.0M     backup                  
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+                                                        
+2 hidden kernel threads  .  sort: cpu                   

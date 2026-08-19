@@ -201,6 +201,13 @@
     <keybind key="W-A-Right"><action name="MoveToEdge" direction="right"/></keybind>
     <keybind key="W-A-Up"><action name="MoveToEdge" direction="up"/></keybind>
     <keybind key="W-A-Down"><action name="MoveToEdge" direction="down"/></keybind>
+    <!--
+      C-S-Escape is the chord every task manager since NT has answered to, and
+      the shipped bindings use no C-S- combination at all, so nothing is
+      displaced. W-i is kdos-settings and W-Escape is the logout prompt; both
+      are taken.
+    -->
+    <keybind key="C-S-Escape"><action name="Execute" command="kdos-res"/></keybind>
     <keybind key="W-C-Left"><action name="GrowToEdge" direction="left"/></keybind>
     <keybind key="W-C-Right"><action name="GrowToEdge" direction="right"/></keybind>
     <keybind key="W-C-Up"><action name="GrowToEdge" direction="up"/></keybind>
