@@ -433,7 +433,7 @@ static void launch(const struct item *it)
 /* ── drawing ───────────────────────────────────────────────────────────── */
 
 /* The viewport follows the SELECTION only when the selection is what moved —
- * see sh_list_wheel. Shared by both menus in this file; only one runs. */
+ * see kch_list_wheel. Shared by both menus in this file; only one runs. */
 static int sel_follow = 1;
 
 struct view {
@@ -518,11 +518,11 @@ static void draw(const struct view *v)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_list_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, 1, rows, v->n, v->top, KT_SURFACE);
+	kch_list_scrollbar(w - 1, 1, rows, v->n, v->top, KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -838,11 +838,11 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_list_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, 1, vis, nrows, top, KT_SURFACE);
+	kch_list_scrollbar(w - 1, 1, vis, nrows, top, KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -1051,7 +1051,7 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 		if (!wrow_pickable(&rows[sel]))
 			sel = win_step(rows, nrows, sel, 1);
 		int rows_vis = ktui_h - 2;
-		sh_list_clamp(&top, sel, nrows, rows_vis, sel_follow);
+		kch_list_clamp(&top, sel, nrows, rows_vis, sel_follow);
 		sel_follow = 0;
 		windows_draw(app, rows, nrows, sel, top);
 
@@ -1077,7 +1077,7 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
-				if (!sh_list_wheel(up, &top, nrows, rows_vis)) {
+				if (!kch_list_wheel(up, &top, nrows, rows_vis)) {
 					sel = win_step(rows, nrows, sel,
 						       up ? -1 : 1);
 					sel_follow = 1;
@@ -1356,7 +1356,7 @@ int menu_main(int argc, char **argv)
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		int rows_vis = ktui_h - 2;
-		sh_list_clamp(&v.top, v.sel, v.n, rows_vis, sel_follow);
+		kch_list_clamp(&v.top, v.sel, v.n, rows_vis, sel_follow);
 		sel_follow = 0;
 		draw(&v);
 
@@ -1399,7 +1399,7 @@ int menu_main(int argc, char **argv)
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
-				if (!sh_list_wheel(up, &v.top, v.n, rows_vis)) {
+				if (!kch_list_wheel(up, &v.top, v.n, rows_vis)) {
 					step(&v, up ? -1 : 1);
 					sel_follow = 1;
 				}

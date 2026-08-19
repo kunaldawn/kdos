@@ -27,7 +27,7 @@
  * content change. The cells covering the tile change slot, the diff repaints
  * exactly those rows, and nothing else on the bar is touched.
  *
- * A TILE IS NEVER REQUIRED. `sh_tile_slot()` answers -1 on a terminal, with
+ * A TILE IS NEVER REQUIRED. `kch_tile_slot()` answers -1 on a terminal, with
  * `icons = no`, when fcft has no font, when the table is full and when the
  * canvas will not allocate — and every caller draws the glyph layout it had
  * before. That is the same contract libkicon keeps, and it is what keeps
@@ -41,7 +41,7 @@
 #include "kcell.h"
 #include "kicon.h"
 #include "kwl.h"
-#include "shell.h"
+#include "kchrome.h"
 
 /* Small on purpose: the Start button and the meters strip are the two that
  * exist, and a bar with a dozen pixel-rendered blocks on it would be a bar
@@ -63,11 +63,11 @@ struct tile {
 static struct tile tiles[TILE_MAX];
 static int tiles_on = 1;
 
-void sh_tile_enable(int on)
+void kch_tile_enable(int on)
 {
 	tiles_on = on;
 	if (!on)
-		sh_tile_reset();
+		kch_tile_reset();
 }
 
 static struct tile *find(int id)
@@ -83,7 +83,7 @@ static struct tile *find(int id)
  * was rasterised in the old one — the same reason kicon_retint() exists, and
  * the same fix.
  */
-void sh_tile_reset(void)
+void kch_tile_reset(void)
 {
 	for (int i = 0; i < TILE_MAX; i++) {
 		struct tile *t = &tiles[i];
@@ -106,7 +106,7 @@ void sh_tile_reset(void)
  * draw; getting it wrong in the direction of "too specific" costs a raster,
  * and in the direction of "too loose" freezes the tile.
  */
-KCellCanvas *sh_tile_begin(int id, int cw, int ch, uint64_t content)
+KCellCanvas *kch_tile_begin(int id, int cw, int ch, uint64_t content)
 {
 	struct tile *t = find(id);
 
@@ -164,8 +164,8 @@ KCellCanvas *sh_tile_begin(int id, int cw, int ch, uint64_t content)
 	return t->cv[next];
 }
 
-/* Publish what sh_tile_begin() handed out. Returns the slot, or -1. */
-int sh_tile_commit(int id)
+/* Publish what kch_tile_begin() handed out. Returns the slot, or -1. */
+int kch_tile_commit(int id)
 {
 	struct tile *t = find(id);
 	int next;
@@ -184,7 +184,7 @@ int sh_tile_commit(int id)
 }
 
 /* What the last commit published, or -1 if this tile has never drawn. */
-int sh_tile_slot(int id)
+int kch_tile_slot(int id)
 {
 	struct tile *t = find(id);
 

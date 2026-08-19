@@ -1,0 +1,43 @@
+                                                                                                                                    
+  Batteries                                                                                                                         
+  90% Discharging                                                                                                                   
+ ---------------------------------------------------------------------------------------------------------------------------------- 
+  Applications    |                                                                                                                 
+  Processes       |BAT0 ------------------------------------------------------------------------------------------------------------
+  CPU             | charge      90%  (Discharging, 45.0 Wh)                                                                         
+  Memory          | health      80.6%  (50.0 Wh of 62.0 Wh by design)                                                               
+  GPU             | cycles      412                                                                                                 
+  Drives          | draw        8.5 W                                                                                               
+  Network         | technology  Li-ion                                                                                              
+  Batteries       |                                                                                                                 
+  Energy          | AC0          not connected                                                                                      
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 

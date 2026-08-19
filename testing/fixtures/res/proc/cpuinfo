@@ -1,0 +1,5 @@
+model name	: KDOS Fixture CPU
+flags		: fpu hypervisor
+
+model name	: KDOS Fixture CPU
+flags		: fpu hypervisor

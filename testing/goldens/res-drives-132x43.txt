@@ -1,0 +1,43 @@
+                                                                                                                                    
+  Drives                                                                                                                            
+  2 drives                                                                                                                          
+ ---------------------------------------------------------------------------------------------------------------------------------- 
+  Applications    |DEVICE     SIZE      TYPE    TEMP    MODEL                                                                       
+  Processes       |sda        466G      HDD     -       KDOS FIXTURE HDD                                                            
+  CPU             |nvme0n1    477G      SSD     41oC    KDOS FIXTURE NVME                                                           
+  Memory          |                                                                                                                 
+  GPU             |                                                                                                                 
+  Drives          |                                                                                                                 
+  Network         |                                                                                                                 
+  Batteries       |                                                                                                                 
+  Energy          |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |1 virtual device hidden  .  whole disks only, never partitions                                                   

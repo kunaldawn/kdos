@@ -1,0 +1,43 @@
+                                                                                                                                    
+  Processes                                                                                                                         
+  7 shown                                                                                                                           
+ ---------------------------------------------------------------------------------------------------------------------------------- 
+  Applications    |PID     USER      CPU%   MEM      DISK       BOX          NAME                                                   
+  Processes       |950     kdos      110.0  880M     12K        kdos-apps    firefox-esr                                            
+  CPU             |951     kdos      45.0   392M     -          kdos-apps    Web Content                                            
+  Memory          |1       root      15.0   8.8M     -                       systemd                                                
+  GPU             |700     kdos      3.0    40M      -                       foot                                                   
+  Drives          |900     kdos      1.0    2.0M     -                       conmon                                                 
+  Network         |300     root      0.0    6.0M     -                       sshd                                                   
+  Batteries       |800     kdos      0.0    8.0M     450M                    backup                                                 
+  Energy          |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |                                                                                                                 
+                  |2 hidden kernel threads  .  sort: cpu                                                                            

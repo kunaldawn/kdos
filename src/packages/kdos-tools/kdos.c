@@ -158,9 +158,14 @@ static void reload_session(void)
 	 * state file's mtime instead (sh_theme_poll), which needs no entry
 	 * here and cannot be got wrong in this direction.
 	 */
+	/*
+	 * `kdos-res` is here and `kdos-resctl` must never be: the exact match
+	 * below is what keeps them apart, since one name is a prefix of the
+	 * other. The setuid helper is short-lived and handles no signals.
+	 */
 	static const char *const who[] = {
 		"kdos-shell", "kdos-desk", "kdos-notifyd", "kdos-slit",
-		"kdos-comp"
+		"kdos-res", "kdos-comp"
 	};
 	for (size_t i = 0; i < sizeof(who) / sizeof(who[0]); i++) {
 		KbArgv a = {0};
@@ -2068,6 +2073,7 @@ static void help_body(FILE *o)
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "kdos-power suspend", "suspend; also poweroff and reboot" },
 		{ "kdos-energy", "which app is spending the battery" },
+		{ "kdos-res", "resources: per-device pages, processes, apps" },
 		{ "sudo kinstall", "install this live image onto a disk" },
 		{ NULL, NULL }
 	};
@@ -2112,6 +2118,7 @@ static void help_body(FILE *o)
 	 * titlebar. */
 	static const char *KEYS[][2] = {
 		{ "Super+D", "open the launcher" },
+		{ "Ctrl+Shift+Esc", "open Resources" },
 		{ "Alt+F2", "run a command" },
 		{ "Super+Return", "terminal (foot)" },
 		{ "Super+E", "files (mc)" },
@@ -3051,6 +3058,22 @@ static int cmd_doctor(int argc, char **argv)
 	else
 		warn_("kdos-checkpass is not setuid root — every password will "
 		      "be refused (fix: chown root and chmod 4755)");
+
+	/*
+	 * The SECOND setuid bit. Losing it is silent in a different way from
+	 * the lock screen's: the monitor still runs and still draws, and only
+	 * the verbs that need privilege stop working — so it presents as a
+	 * task manager that cannot end anything it does not own.
+	 */
+	struct stat rst;
+	if (stat("/usr/bin/kdos-resctl", &rst) != 0)
+		warn_("kdos-resctl missing — kdos-res cannot end a process it "
+		      "does not own, and the Memory page has no DIMM details");
+	else if ((rst.st_mode & S_ISUID) && rst.st_uid == 0)
+		ok("kdos-resctl is setuid root");
+	else
+		warn_("kdos-resctl is not setuid root — kdos-res cannot end a "
+		      "process it does not own (fix: chown root and chmod 4755)");
 
 	/* `service <name>` keys on the init SCRIPT — ksvc strips the numeric
 	 * prefix and the .sh, so 55_powerd.sh is `powerd`. The NAME= inside the
