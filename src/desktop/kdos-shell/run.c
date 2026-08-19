@@ -106,13 +106,21 @@ static void hist_add(const char *cmd)
 		if (strcmp(hist[i], cmd))
 			continue;
 		memcpy(keep, hist[i], MAX_CMD);
-		memmove(hist[i], hist[i + 1],
-			(size_t)(nhist - 1 - i) * MAX_CMD);
+		/*
+		 * Moved by ROW, not by byte: `hist + i` points at a whole
+		 * MAX_CMD row inside the 2-D array, so the extent the compiler
+		 * checks the move against is the array. Writing the same move
+		 * as `hist[i]` hands it a pointer to one row and a length of
+		 * many, which a fortified libc rejects as reading past that
+		 * row's end.
+		 */
+		memmove(hist + i, hist + i + 1,
+			(size_t)(nhist - 1 - i) * sizeof(hist[0]));
 		memcpy(hist[nhist - 1], keep, MAX_CMD);
 		goto write;
 	}
 	if (nhist == MAX_HIST) {
-		memmove(hist[0], hist[1], (MAX_HIST - 1) * MAX_CMD);
+		memmove(hist, hist + 1, (MAX_HIST - 1) * sizeof(hist[0]));
 		nhist--;
 	}
 	snprintf(hist[nhist++], MAX_CMD, "%s", cmd);
@@ -381,12 +389,12 @@ int run_main(int argc, char **argv)
 		 * same three things and can be pressed. Most useful first, so
 		 * the shared bar drops Cancel before it drops Run.
 		 */
-		struct sh_button rb[RB_N];
-		rb[RB_RUN] = (struct sh_button){ "Run", cmd[0] != '\0' };
-		rb[RB_TERM] = (struct sh_button){ "In Terminal",
+		struct kch_button rb[RB_N];
+		rb[RB_RUN] = (struct kch_button){ "Run", cmd[0] != '\0' };
+		rb[RB_TERM] = (struct kch_button){ "In Terminal",
 						  cmd[0] != '\0' };
-		rb[RB_CANCEL] = (struct sh_button){ "Cancel", 1 };
-		int bx = sh_chrome_buttons(w, h - 2, rb, RB_N, -1);
+		rb[RB_CANCEL] = (struct kch_button){ "Cancel", 1 };
+		int bx = kch_buttons(w, h - 2, rb, RB_N, -1);
 		const char *hint = "type a command";
 		if (bx - 3 >= (int)ktui_utf8_width(hint))
 			ktui_draw_text(2, h - 2, bx - 3, hint, KT_DIM,
@@ -415,13 +423,13 @@ int run_main(int argc, char **argv)
 		 */
 		if (ev.type == KT_EVT_MOUSE) {
 			if (ev.press == KT_MP_DRAG) {
-				sh_chrome_hover(ev.mx, ev.my);
+				kch_hover(ev.mx, ev.my);
 				continue;
 			}
 			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_RIGHT)
 				break;
 			if (ev.press == KT_MP_PRESS && ev.btn == KT_MB_LEFT) {
-				int bi = sh_chrome_button_at(ev.mx, ev.my);
+				int bi = kch_button_at(ev.mx, ev.my);
 
 				if (bi == RB_CANCEL)
 					break;

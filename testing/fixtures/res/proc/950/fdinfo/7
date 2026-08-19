@@ -1,0 +1,4 @@
+drm-driver:	i915
+drm-engine-render:	5000000000 ns
+drm-engine-video:	1000000000 ns
+drm-resident-local0:	262144 KiB

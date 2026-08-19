@@ -42,6 +42,7 @@
 #include <unistd.h>
 
 #include "kwl.h"
+#include "kproc.h"
 #include "shell.h"
 
 #define TEAMS_COLS 78
@@ -408,29 +409,6 @@ static int cmd_call(const char *req, char *out, size_t n)
 
 /* ── who owns a pid ────────────────────────────────────────────────────── */
 
-static int proc_ppid(int pid)
-{
-	char path[64], buf[512];
-	FILE *f;
-	size_t n;
-	char *p;
-	int ppid = 0;
-
-	snprintf(path, sizeof(path), "/proc/%d/stat", pid);
-	f = fopen(path, "r");
-	if (!f)
-		return 0;
-	n = fread(buf, 1, sizeof(buf) - 1, f);
-	fclose(f);
-	buf[n] = '\0';
-	/* comm is in parentheses and may itself contain them and spaces, so
-	 * the fields are counted from the LAST ')' and never with sscanf. */
-	p = strrchr(buf, ')');
-	if (!p || sscanf(p + 1, " %*c %d", &ppid) != 1)
-		return 0;
-	return ppid;
-}
-
 static size_t proc_read(const char *path, char *buf, size_t n)
 {
 	FILE *f = fopen(path, "rb");
@@ -444,12 +422,6 @@ static size_t proc_read(const char *path, char *buf, size_t n)
 	return got;
 }
 
-static const char *base(const char *p)
-{
-	const char *s = strrchr(p, '/');
-	return s ? s + 1 : p;
-}
-
 /*
  * The box a pid belongs to, or nothing. conmon is podman's per-container
  * supervisor and carries the container name in its own argv; the process
@@ -459,28 +431,7 @@ static const char *base(const char *p)
  */
 static void box_of_pid(int pid, char *out, size_t n)
 {
-	out[0] = '\0';
-	for (int hop = 0; hop < 8 && pid > 1; hop++) {
-		char path[64], cmd[4096];
-		size_t got;
-
-		snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
-		got = proc_read(path, cmd, sizeof(cmd));
-		if (got && !strcmp(base(cmd), "conmon")) {
-			for (size_t i = 0; i < got;) {
-				const char *tok = cmd + i;
-				i += strlen(tok) + 1;
-				if (i >= got)
-					break;
-				if (!strcmp(tok, "-n") || !strcmp(tok, "--name")) {
-					snprintf(out, n, "%s", cmd + i);
-					return;
-				}
-			}
-			return;
-		}
-		pid = proc_ppid(pid);
-	}
+	kpr_box_of_pid(pid, out, n);
 }
 
 /* This session's own chrome, which must never be on the receiving end of `k`:
@@ -725,11 +676,11 @@ static void draw(int sel, int top)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_list_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, 2, rowsv, nviews, top, KT_SURFACE);
+	kch_list_scrollbar(w - 1, 2, rowsv, nviews, top, KT_SURFACE);
 
 	if (status[0])
 		ktui_draw_text(2, h - 3, w - 4, status, KT_WARN, KT_SURFACE,

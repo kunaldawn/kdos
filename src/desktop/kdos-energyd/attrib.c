@@ -352,6 +352,16 @@ static const KeProc *find_pid(const KeSample *s, int pid)
 /*
  * Which app does this process belong to?
  *
+ * ONE WALK, TWO ANSWERS, and that is why this is not libkproc's.
+ *
+ * kpr_box_of() answers "which container is this pid in", which is a reading
+ * about the machine. This answers "which APPLICATION does this process roll
+ * up to", which is an attribution POLICY: the highest ancestor in the
+ * alien-app table wins, so a helper an app spawned is reported as the app and
+ * not as an app of its own. The two happen to climb the same chain and are
+ * different questions, and moving this into the library would put one
+ * program's policy in every consumer's path.
+ *
  * One walk up the parent chain answers both halves. `conmon` is podman's
  * supervisor and its argv carries `-n <name>`, which is the box; any ancestor
  * whose comm is in the alien-app table is the app, and the HIGHEST such

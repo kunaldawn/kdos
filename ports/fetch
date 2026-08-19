@@ -133,6 +133,16 @@ fetch_port() {
                 ;;
         esac
         
+        # A ZERO-BYTE FILE IS NOT A DOWNLOAD. An interrupted or refused
+        # transfer leaves the -O target created and empty, and treating it as
+        # present makes every later run skip the fetch — while sha256sum of
+        # nothing is a perfectly stable digest, so a recipe written from that
+        # state verifies clean and the build is the first thing to notice.
+        if [ -f "./$filename" ] && [ ! -s "./$filename" ]; then
+            echo "⚠  $portname: $filename is empty — refetching"
+            rm -f "./$filename"
+        fi
+
         if [ -f "./$filename" ]; then
             echo "✓  $portname: $filename exists"
         else
@@ -142,6 +152,12 @@ fetch_port() {
                 rm -f "./$filename"
                 return 1
             }
+            # A server can answer 200 with nothing; wget is content with that.
+            if [ ! -s "./$filename" ]; then
+                echo "✗  $portname: $filename came back empty"
+                rm -f "./$filename"
+                return 1
+            fi
             echo "✓  $portname: Downloaded $filename"
         fi
 

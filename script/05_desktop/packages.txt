@@ -34,10 +34,26 @@ kdos-boxsock
 # ext-workspace-v1 — standard protocols, so waybar works here too.
 kdos-shell
 
-# The lock screen, and the one setuid-root binary KDOS ships: /etc/shadow is
-# root-only and kdos-lock must not be. ext-session-lock-v1 means the compositor
+# The lock screen, and one of the two setuid-root binaries KDOS ships:
+# /etc/shadow is root-only and kdos-lock must not be. ext-session-lock-v1 means the compositor
 # keeps the screen locked even if the client dies.
 kdos-lock
+
+# ---------------------------------
+# The resource monitor
+# ---------------------------------
+# One binary that is a TTY program on tty1 and an xdg-toplevel window on the
+# desktop, because both are the same cell grid: nine per-device pages, a
+# sortable process table, and an application rollup that names a boxed app by
+# the container supervising it — an identity no other Linux monitor can build
+# without systemd cgroup delegation, which this distro does not have.
+#
+# It ships BESIDE btop rather than replacing it: btop is mature, and until this
+# has run on real hardware a fallback is worth keeping.
+#
+# kdos-resctl is built by the same recipe and is the SECOND setuid bit this
+# distro ships — three verbs, no paths in argv, gated on `wheel` by real uid.
+kdos-res
 
 # Suspend, poweroff and reboot for a desktop that is not root. A unix socket in
 # /run, gated by SO_PEERCRED — no setuid, no polkit prompt, no logind.

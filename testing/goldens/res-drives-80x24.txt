@@ -1,0 +1,24 @@
+                                                                                
+  Drives                                                                        
+  2 drives                                                                      
+ ------------------------------------------------------------------------------ 
+  A   |DEVICE     SIZE      TYPE    TEMP    MODEL                               
+  P   |sda        466G      HDD     -       KDOS FIXTURE HDD                    
+  C   |nvme0n1    477G      SSD     41oC    KDOS FIXTURE NVME                   
+  M   |                                                                         
+  G   |                                                                         
+  D   |                                                                         
+  N   |                                                                         
+  B   |                                                                         
+  E   |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |                                                                         
+      |1 virtual device hidden  .  whole disks only, never partitions           
