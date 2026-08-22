@@ -167,6 +167,26 @@ typedef struct {
 	 * dialog the user had not finished with. Same for the yes/no prompt.
 	 */
 	int dismiss_on_unfocus;
+	/*
+	 * A RULE ALONG THE SURFACE'S TOP EDGE, in logical pixels, drawn in
+	 * `rule_slot` and outside the cell grid entirely.
+	 *
+	 * The panel is the reason. Every other surface on this desktop puts a
+	 * double-line box round itself and reads as a framed thing; the bar at
+	 * the bottom of the screen had no edge at all, so on a dark wallpaper
+	 * it read as a region of the desktop rather than as a piece of chrome.
+	 * A box needs four sides and two spare rows, which on a two-row bar is
+	 * the whole bar — but the top edge is the only one a bottom-anchored
+	 * panel has, and it is worth three pixels rather than a row of cells.
+	 *
+	 * Outside the grid because a cell is 32 pixels tall and a rule is
+	 * three: the grid starts BELOW it, the pointer's row is measured from
+	 * below it, and the layer surface asks for those pixels on top of its
+	 * cells. Zero — the default — is exactly what every other surface
+	 * wants.
+	 */
+	int rule;
+	int rule_slot;
 } KwlConfig;
 
 /*
@@ -235,6 +255,16 @@ int kwl_copy(const char *text, size_t len, int primary);
  * cells * kwl_cell_h(). */
 int kwl_cell_w(void);
 int kwl_cell_h(void);
+/* The surface's own height in LOGICAL pixels — the cell grid plus the rule.
+ * What a panel passes as a popup's margin; `rows * cell_h` is short by the
+ * rule. */
+int kwl_px_h(void);
+/*
+ * 1 when the COMPOSITOR is drawing this window's frame, so the program must
+ * not draw a second one round the outside of its own content. False on a
+ * terminal, a panel and every popup — see kwl.c.
+ */
+int kwl_decorated(void);
 /* The integer output scale in force. Anything a consumer rasterises for itself
  * has to be produced at cell * scale — libkicon is the caller. */
 int kwl_scale(void);

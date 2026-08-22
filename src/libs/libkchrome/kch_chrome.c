@@ -249,14 +249,15 @@ void kch_list_clamp(int *top, int sel, int n, int body, int follow)
 		*top = 0;
 }
 
-void kch_list_scrollbar(int x, int y, int rows, int n, int top, int bg)
+/*
+ * The thumb's length and where it sits, shared by the draw and the hit test.
+ * Deriving that twice is how a bar you can see and a bar you can grab end up
+ * in different places.
+ */
+static int scroll_thumb(int rows, int n, int top, int *at)
 {
-	if (rows <= 1 || n <= rows || x < 0 || x >= ktui_w)
-		return;
-
-	/* At least one cell of thumb, and never the whole track: a bar that
-	 * fills its own length says the same thing as no bar at all. */
 	int th = rows * rows / n;
+
 	if (th < 1)
 		th = 1;
 	if (th > rows - 1)
@@ -264,12 +265,116 @@ void kch_list_scrollbar(int x, int y, int rows, int n, int top, int bg)
 
 	int span = rows - th;
 	int max = n - rows;
-	int at = max > 0 ? top * span / max : 0;
+	int a = max > 0 ? top * span / max : 0;
 
-	if (at < 0)
-		at = 0;
-	if (at > span)
-		at = span;
+	if (a < 0)
+		a = 0;
+	if (a > span)
+		a = span;
+	*at = a;
+	return th;
+}
+
+/*
+ * A SCROLLBAR IS A CONTROL, NOT A READOUT — and its hit map is what was
+ * DRAWN, which is why the draw is the thing that records it.
+ *
+ * The bar exists so a list that scrolls says so, and for a release it said so
+ * and then did nothing: the only ways to move a long list were the wheel and
+ * the arrow keys, and the one place a pointer goes when it wants to travel a
+ * page at a time is the bar. Every surface on this desktop drew one and not
+ * one of them could be grabbed.
+ *
+ * `id` is the caller's own small number, one per bar it can have on the screen
+ * at once — a two-column menu draws two. It is recorded on EVERY call,
+ * including the calls that draw nothing, because a list that has stopped
+ * overflowing must stop answering for a bar that is no longer there.
+ */
+static struct {
+	int live;		/* there is a bar to grab            */
+	int x, y, rows, n;
+} kch_bar[KCH_SCROLLBARS];
+static int kch_bar_grab = -1;	/* the bar a press is still down on  */
+
+/* Where a pointer at `my` puts the top of list `b`. The thumb is CENTRED on
+ * the pointer rather than having its top put there: grabbing the middle of a
+ * thumb and watching it jump up by half its own length is the behaviour every
+ * toolkit stopped shipping in the nineties. */
+static int scroll_top_for(int id, int my)
+{
+	int rows = kch_bar[id].rows, n = kch_bar[id].n;
+	int at = 0;
+	int th = scroll_thumb(rows, n, 0, &at);
+	int span = rows - th;
+	int want = my - kch_bar[id].y - th / 2;
+	int top;
+
+	if (want < 0)
+		want = 0;
+	if (want > span)
+		want = span;
+	top = span > 0 ? want * (n - rows) / span : 0;
+	if (top < 0)
+		top = 0;
+	if (top > n - rows)
+		top = n - rows;
+	return top;
+}
+
+int kch_scrollbar_press(int id, int mx, int my)
+{
+	if (id < 0 || id >= KCH_SCROLLBARS || !kch_bar[id].live)
+		return -1;
+	if (mx != kch_bar[id].x || my < kch_bar[id].y ||
+	    my >= kch_bar[id].y + kch_bar[id].rows)
+		return -1;
+	kch_bar_grab = id;
+	return scroll_top_for(id, my);
+}
+
+/*
+ * A DRAG IS A PRESS THAT IS STILL DOWN, and Wayland says nothing about that:
+ * a motion event carries no button state at all, so the PRESS is what has to
+ * be remembered. Answers -1 until one has been.
+ */
+int kch_scrollbar_drag(int my)
+{
+	if (kch_bar_grab < 0 || !kch_bar[kch_bar_grab].live)
+		return -1;
+	return scroll_top_for(kch_bar_grab, my);
+}
+
+void kch_scrollbar_release(void)
+{
+	kch_bar_grab = -1;
+}
+
+/* WHICH bar the drag belongs to, for a surface that draws more than one. -1
+ * when nothing is grabbed. */
+int kch_scrollbar_grabbed(void)
+{
+	return kch_bar_grab;
+}
+
+void kch_scrollbar(int id, int x, int y, int rows, int n, int top, int bg)
+{
+	int live = rows > 1 && n > rows && x >= 0 && x < ktui_w;
+
+	if (id >= 0 && id < KCH_SCROLLBARS) {
+		kch_bar[id].live = live;
+		kch_bar[id].x = x;
+		kch_bar[id].y = y;
+		kch_bar[id].rows = rows;
+		kch_bar[id].n = n;
+	}
+	if (!live)
+		return;
+
+	/* At least one cell of thumb, and never the whole track: a bar that
+	 * fills its own length says the same thing as no bar at all. */
+	int at = 0;
+	int th = scroll_thumb(rows, n, top, &at);
+
 	for (int i = 0; i < rows; i++)
 		ktui_draw_text(x, y + i, 1,
 			       ktui_glyph[i >= at && i < at + th ? KT_G_FULL

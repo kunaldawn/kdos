@@ -74,9 +74,13 @@ ssd_titlebar_create(struct ssd *ssd)
 			width - corner_width, -rc.theme->border_width);
 
 		/* Title */
+		/* KDOS: the PLAIN background behind the title. The titlebar's
+		 * own fill carries the frame rule, and a rule behind a word is
+		 * a word struck through — the title breaks it, exactly as
+		 * `╔══ Title ══╗` does on every other surface here. */
 		subtree->title = scaled_font_buffer_create_for_titlebar(
 			subtree->tree, theme->titlebar_height,
-			theme->window[active].titlebar_pattern);
+			theme->window[active].title_plain_pattern);
 		assert(subtree->title);
 		node_descriptor_create(&subtree->title->scene_buffer->node,
 			LAB_NODE_TITLE, view, /*data*/ NULL);
@@ -95,7 +99,7 @@ ssd_titlebar_create(struct ssd *ssd)
 			struct lab_img **imgs =
 				theme->window[active].button_imgs[type];
 			attach_ssd_button(&subtree->buttons_left, type, parent,
-				imgs, x, y, view);
+				imgs, x, y, view, active);
 			x += theme->window_button_width + theme->window_button_spacing;
 		}
 
@@ -106,7 +110,7 @@ ssd_titlebar_create(struct ssd *ssd)
 			struct lab_img **imgs =
 				theme->window[active].button_imgs[type];
 			attach_ssd_button(&subtree->buttons_right, type, parent,
-				imgs, x, y, view);
+				imgs, x, y, view, active);
 		}
 	}
 
