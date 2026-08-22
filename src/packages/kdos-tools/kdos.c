@@ -743,16 +743,42 @@ static void write_themerc(const KcolScheme *sc)
 		"be overwritten.\n"
 		"# labwc themerc keys; kdos-comp re-reads this on SIGHUP.\n"
 		"\n"
-		"border.width: 1\n"
-		"padding.height: 3\n"
+		/*
+		 * THE FRAME IS A KDOS ASCII WINDOW, and every line of this
+		 * block is one stroke of that picture. `flat kdos` is the
+		 * fork's own texture: the titlebar fill carries the DOUBLE
+		 * HORIZONTAL RULE the cell grid draws with `═`, broken by the
+		 * title and by each button, so an SSD reads
+		 * `════ Title ════[_][=][X]` — the same drawing every other
+		 * surface on this desktop puts round itself. `colorTo` is that
+		 * rule's colour and is ignored by every other texture.
+		 *
+		 * Two pixels of border, not one: a hairline is what a modern
+		 * toolkit draws and it disappears beside a 32-pixel cell. The
+		 * square corners are rc.xml's `<cornerRadius>0`, which is the
+		 * other half of the same decision.
+		 *
+		 * The buttons are 32x32, which is exactly FOUR TIMES the 8x8
+		 * bitmaps the fork ships. A non-integer multiple under a
+		 * nearest-neighbour scale gives one glyph stroke two pixels
+		 * and the next three, which on an `X` is visible as a limp.
+		 */
+		"border.width: 2\n"
+		"window.titlebar.padding.width: 4\n"
+		"window.titlebar.padding.height: 2\n"
+		"window.button.width: 32\n"
+		"window.button.height: 32\n"
+		"window.button.spacing: 0\n"
 		"window.active.border.color: #%s\n"
 		"window.inactive.border.color: #%s\n"
 		"\n"
-		"# flat solid, or the default GRADIENT ignores the colour below\n"
-		"window.active.title.bg: flat solid\n"
-		"window.inactive.title.bg: flat solid\n"
+		"# `flat kdos` — the frame rule; a plain `flat solid` drops it\n"
+		"window.active.title.bg: flat kdos\n"
+		"window.inactive.title.bg: flat kdos\n"
 		"window.active.title.bg.color: #%s\n"
 		"window.inactive.title.bg.color: #%s\n"
+		"window.active.title.bg.colorTo: #%s\n"
+		"window.inactive.title.bg.colorTo: #%s\n"
 		"window.active.label.text.color: #%s\n"
 		"window.inactive.label.text.color: #%s\n"
 		"window.label.text.justify: center\n"
@@ -760,7 +786,17 @@ static void write_themerc(const KcolScheme *sc)
 		"window.active.button.unpressed.image.color: #%s\n"
 		"window.inactive.button.unpressed.image.color: #%s\n"
 		"window.active.button.close.unpressed.image.color: #%s\n"
-		"window.button.hover.bg.color: #%s\n"
+		/*
+		 * AND THE HOVER PLATE HAS TO BE TRANSLUCENT.
+		 *
+		 * labwc has no hover ICONS: it copies the plain one and lays
+		 * `window.button.hover.bg.color` over it. An OPAQUE colour
+		 * there paints the symbol out, so every titlebar button on
+		 * this desktop went BLANK under the pointer — the one moment a
+		 * button most needs to say what it is. labwc's own default
+		 * carries an alpha for exactly this reason; ours has to too.
+		 */
+		"window.button.hover.bg.color: #%s66\n"
 		"\n"
 		/*
 		 * labwc's own default cap is 200 PIXELS, sized for the ~10px
@@ -806,8 +842,8 @@ static void write_themerc(const KcolScheme *sc)
 		"\n"
 		"magnifier.border.width: 2\n"
 		"magnifier.border.color: #%s\n",
-		pdark, dim,
-		var, deep,
+		p, dim,
+		var, deep, p, sepc,
 		p, inactive_text,
 		p, inactive_text, urg, hover,
 		pdark, deep, text, p, deep, var, p, sepc,

@@ -630,7 +630,7 @@ static void draw_frame(void)
 	if (w < 30 || h < 8)
 		return;
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
-	ktui_draw_box(krect(0, 0, w, h), "devices", KT_ACCENT, KT_BG, 1);
+	sh_frame(w, h, "devices", KT_ACCENT, KT_BG, 1);
 
 	for (int i = 0; i < body && i < nrows; i++) {
 		const struct drow *r = &rows[i];
@@ -805,12 +805,25 @@ int devices_main(int argc, char **argv)
 	 * net.c, which is where that split is written down. */
 	int popup = at_x >= 0;
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
 		.cols = popup ? 56 : DV_COLS,
 		.rows = popup ? 18 : DV_ROWS,
 		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Devices",
 		.app_id = "kdos-devices",
 		.font = font,
 		.keyboard = 1,

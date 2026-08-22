@@ -845,3 +845,27 @@ void sh_spawn(const char *const argv[])
 			;
 	}
 }
+
+/*
+ * ── THE FRAME IS DRAWN BY WHOEVER OWNS IT ──────────────────────────────────
+ *
+ * Every surface here used to put its own double-line box round itself, which
+ * was right while every one of them was a layer surface with no decoration of
+ * any kind. The ones that are WINDOWS are xdg toplevels now, and a toplevel
+ * wears the compositor's own `════ Title ════[_][=][X]` — so drawing the box
+ * as well puts a second frame inside the first with the title written twice,
+ * which is what a boxed application beside a native one made obvious.
+ *
+ * So the box is drawn when nobody else is drawing one, and the background is
+ * filled when somebody is. The caller's layout does not move either way: it
+ * still starts at column 1, and that column is a margin inside the SSD instead
+ * of the border it used to be.
+ */
+void sh_frame(int w, int h, const char *title, int fg, int bg, int dbl)
+{
+	if (kwl_decorated()) {
+		ktui_draw_fill(krect(0, 0, w, h), bg);
+		return;
+	}
+	ktui_draw_box(krect(0, 0, w, h), title, fg, bg, dbl);
+}

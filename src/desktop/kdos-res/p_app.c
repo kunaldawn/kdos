@@ -56,6 +56,48 @@ static double g_unmatched_cpu;
 static int g_sel;
 static int g_top;
 static int g_body = 1;		/* body rows the last draw used  */
+static int g_hover = -1;	/* the row under the pointer     */
+static int g_dragbar;		/* a press landed on the scrollbar */
+/*
+ * WHOSE MOVE THE LAST ONE WAS, and it is the load-bearing half of the wheel
+ * rule. `kch_list_clamp` pulls the SELECTION into view when it is told the
+ * selection is what moved — and a draw that tells it that unconditionally
+ * undoes a viewport scroll on the very next frame. This table passed a hard 1,
+ * so the wheel appeared to do nothing at all and the scrollbar drag that came
+ * later did nothing either: both moved `g_top`, and the next draw put it back.
+ * Set by everything that moves the CURSOR, cleared by everything that moves
+ * the PAGE.
+ */
+static int g_follow = 1;
+/*
+ * WHERE THE LAST DRAW PUT THINGS. `g_row0` is the first LIST row, body-
+ * relative — body row 0 is the column header. `g_ox`/`g_oy` are the origin the
+ * frame handed the page, and they are here for one reason: the frame gives a
+ * page its OWN coordinates, and libkchrome records the scrollbar in the
+ * SCREEN's, so the one test that crosses that line has to add them back.
+ */
+static int g_row0 = 1;
+static int g_ox, g_oy;
+static int g_width;		/* the width the last draw had     */
+
+/*
+ * THE COLUMN HEADER IS THE SORT CONTROL, on the page whose whole question is
+ * "which of these is the busiest". It was CPU and nothing else, so the answer
+ * to "what is eating the disk" was to read forty rows. The order is the
+ * columns' own, so the header a pointer lands on IS the key it sets — and a
+ * second click on the same one reverses it, which is what every table on every
+ * desktop has done since the eighties.
+ */
+enum { AS_NAME = 0, AS_CPU, AS_MEM, AS_DISK, AS_PROCS, AS_N };
+static const char *AS_NAMES[AS_N] = { "name", "cpu", "memory", "disk",
+				      "procs" };
+static int g_sort = AS_CPU;
+static int g_rev;
+
+/* The column a header cell belongs to: the x each label was drawn at, and the
+ * one after it. Shared by the draw and the hit test — a table whose header
+ * positions are written twice is a table you click on the wrong column of. */
+static const int AS_X[AS_N] = { 0, 28, 35, 45, 55 };
 
 static struct app *find_app(const char *name)
 {
@@ -73,15 +115,48 @@ static struct app *find_app(const char *name)
 static int cmp_app(const void *x, const void *y)
 {
 	const struct app *a = x, *b = y;
-	if (a->cpu < b->cpu)
-		return 1;
-	if (a->cpu > b->cpu)
-		return -1;
-	return strcmp(a->name, b->name);
+	int d = 0;
+
+	switch (g_sort) {
+	case AS_NAME:
+		d = strcmp(a->name, b->name);
+		break;
+	case AS_MEM:
+		d = a->rss < b->rss ? 1 : a->rss > b->rss ? -1 : 0;
+		break;
+	case AS_DISK: {
+		unsigned long long ia = a->rd + a->wr, ib = b->rd + b->wr;
+		d = ia < ib ? 1 : ia > ib ? -1 : 0;
+		break;
+	}
+	case AS_PROCS:
+		d = a->nproc < b->nproc ? 1 : a->nproc > b->nproc ? -1 : 0;
+		break;
+	case AS_CPU:
+	default:
+		d = a->cpu < b->cpu ? 1 : a->cpu > b->cpu ? -1 : 0;
+		break;
+	}
+	if (!d)
+		d = strcmp(a->name, b->name);
+	return g_rev ? -d : d;
 }
 
 void res_app_prepare(void)
 {
+	/* res.conf's `sort` names a COLUMN, and it names the same columns on
+	 * both tables — applied once, here, because conf.c parses the file and
+	 * this is the only place that knows what these column names mean. */
+	static int applied;
+
+	if (!applied) {
+		applied = 1;
+		for (int i = 0; i < AS_N; i++)
+			if (!strcmp(RC.sort, AS_NAMES[i])) {
+				g_sort = i;
+				break;
+			}
+	}
 	g_napp = 0;
 	g_unmatched_cpu = 0.0;
 
@@ -158,29 +233,46 @@ void res_draw_apps(int x, int y, int w, int h)
 	const int bottom = y + h;
 	int row = y;
 
+	/*
+	 * The header is a row of CONTROLS, and it says which one is in force:
+	 * the sorted column is drawn in the accent with the direction marker
+	 * beside it. A table that sorts and gives no sign of which key it used
+	 * is a table nobody can check.
+	 */
+	static const char *HDR[AS_N] = { "APPLICATION", "CPU%", "MEMORY",
+					 "DISK", "PROCS" };
+	static const int HDR_W[AS_N] = { 26, 6, 8, 8, 6 };
 	ktui_draw_fill(krect(x, row, w, 1), KT_SURFACE);
-	ktui_draw_text(x, row, 26, "APPLICATION", KT_MID, KT_SURFACE, 0);
-	ktui_draw_text(x + 28, row, 6, "CPU%", KT_MID, KT_SURFACE, 0);
-	ktui_draw_text(x + 35, row, 8, "MEMORY", KT_MID, KT_SURFACE, 0);
-	if (w >= 60)
-		ktui_draw_text(x + 45, row, 8, "DISK", KT_MID, KT_SURFACE, 0);
-	if (w >= 72)
-		ktui_draw_text(x + 55, row, 6, "PROCS", KT_MID, KT_SURFACE, 0);
+	for (int i = 0; i < AS_N; i++) {
+		char lab[24];
+
+		if ((i == AS_DISK && w < 60) || (i == AS_PROCS && w < 72))
+			continue;
+		snprintf(lab, sizeof(lab), "%s%s", HDR[i],
+			 i == g_sort ? (g_rev ? ktui_glyph[KT_G_UP]
+					      : ktui_glyph[KT_G_DOWN]) : "");
+		ktui_draw_text(x + AS_X[i], row, HDR_W[i], lab,
+			       i == g_sort ? KT_ACCENT : KT_MID, KT_SURFACE, 0);
+	}
 	row++;
 
 	int body = bottom - row - 2;
 	if (body < 1)
 		return;
 	g_body = body;
-	kch_list_clamp(&g_top, g_sel, g_napp, body, 1);
+	kch_list_clamp(&g_top, g_sel, g_napp, body, g_follow);
 
 	for (int i = 0; i < body && g_top + i < g_napp; i++) {
 		const struct app *a = &g_app[g_top + i];
 		int is_sel = (g_top + i == g_sel);
+		int is_hov = !is_sel && g_top + i == g_hover;
 		int fg = is_sel ? KT_SURFACE : KT_TEXT;
-		int bg = is_sel ? KT_ACCENT : KT_BG;
+		int bg = is_sel ? KT_ACCENT : is_hov ? KT_MID : KT_BG;
 		int ry = row + i;
-		if (is_sel)
+		/* A FILL, never KT_A_REVERSE over the text: the attribute
+		 * inverts only the cells a glyph covers, so a row would come
+		 * out as one lit block per word. */
+		if (is_sel || is_hov)
 			ktui_draw_fill(krect(x, ry, w, 1), bg);
 
 		char nm[80];
@@ -214,7 +306,14 @@ void res_draw_apps(int x, int y, int w, int h)
 			ktui_draw_text(x + 55, ry, 6, buf, fg, bg, 0);
 		}
 	}
-	kch_list_scrollbar(x + w - 1, row, body, g_napp, g_top, KT_BG);
+	/* Recorded from what was DRAWN — the rule the panel's hit map keeps.
+	 * A bar whose column is derived a second time is a bar you cannot
+	 * grab the frame after a resize. */
+	g_row0 = row - y;
+	g_ox = x;
+	g_oy = y;
+	g_width = w;
+	kch_scrollbar(0, x + w - 1, row, body, g_napp, g_top, KT_BG);
 
 	/*
 	 * The residue. Naming it is the difference between a rollup and a
@@ -235,10 +334,13 @@ void res_draw_apps(int x, int y, int w, int h)
 int res_app_wheel(int up)
 {
 	if (!kch_list_wheel(up, &g_top, g_napp, g_body)) {
+		g_follow = 1;
 		if (up && g_sel > 0)
 			g_sel--;
 		else if (!up && g_sel + 1 < g_napp)
 			g_sel++;
+	} else {
+		g_follow = 0;
 	}
 	return 1;
 }
@@ -310,14 +412,117 @@ static void ask_group(int sig, const char *verb)
 		    verb, group_signal);
 }
 
+/*
+ * THE POINTER, and it is the same contract the whole desktop keeps: motion
+ * lights a row, a press selects it, a press on the row that is ALREADY
+ * selected opens it. The second press rather than a double click because
+ * nothing in this toolkit measures a double click, and because opening a
+ * detail page is not destructive — the verbs live there, behind a confirm.
+ */
+static int row_at(int my)
+{
+	int i = my - g_row0 + g_top;	/* body row 0 is the header */
+
+	if (my < g_row0 || i < 0 || i >= g_napp ||
+	    my - g_row0 >= g_body)
+		return -1;
+	return i;
+}
+
+/* Which header cell a column belongs to: the LAST label whose x it is at or
+ * past, which is what makes the whole width of a column clickable rather than
+ * the letters of its name. */
+static int header_at(int mx, int w)
+{
+	int hit = -1;
+
+	for (int i = 0; i < AS_N; i++) {
+		if ((i == AS_DISK && w < 60) || (i == AS_PROCS && w < 72))
+			continue;
+		if (mx >= AS_X[i])
+			hit = i;
+	}
+	return hit;
+}
+
+void res_app_motion(int mx, int my)
+{
+	(void)mx;
+	if (g_dragbar) {
+		/* A DRAG IS A PRESS THAT IS STILL DOWN. Wayland delivers plain
+		 * motion and dragged motion identically — the event carries no
+		 * button state at all — so the press is what has to be
+		 * remembered. */
+		int t = kch_scrollbar_drag(my + g_oy);
+
+		if (t >= 0) {
+			g_top = t;
+			g_follow = 0;
+		}
+		return;
+	}
+	g_hover = row_at(my);
+}
+
+void res_app_release(void)
+{
+	g_dragbar = 0;
+}
+
+int res_app_click(int mx, int my, int btn)
+{
+	(void)btn;
+	if (my == 0) {
+		int c = header_at(mx, g_width);
+
+		if (c >= 0) {
+			if (c == g_sort)
+				g_rev = !g_rev;
+			else {
+				g_sort = c;
+				g_rev = 0;
+			}
+		}
+		return 1;
+	}
+	int t = kch_scrollbar_press(0, mx + g_ox, my + g_oy);
+
+	if (t >= 0) {
+		g_top = t;
+		g_dragbar = 1;
+		g_follow = 0;
+		return 1;
+	}
+	int i = row_at(my);
+
+	if (i < 0)
+		return 1;
+	g_follow = 1;
+	if (i == g_sel)
+		res_detail_open_app(g_app[i].name, g_app[i].box, 0);
+	else
+		g_sel = i;
+	return 1;
+}
+
 int res_app_key(int k)
 {
+	if (k == 's') {
+		g_sort = (g_sort + 1) % AS_N;
+		return 1;
+	}
+	if (k == 'r') {
+		g_rev = !g_rev;
+		return 1;
+	}
 	if (k == KT_K_UP && g_sel > 0) {
 		g_sel--;
+		g_follow = 1;
 		return 1;
 	}
 	if (k == KT_K_DOWN && g_sel + 1 < g_napp) {
 		g_sel++;
+		g_follow = 1;
 		return 1;
 	}
 	if ((k == '\n' || k == '\r') && g_sel >= 0 && g_sel < g_napp) {

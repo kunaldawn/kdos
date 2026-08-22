@@ -520,7 +520,7 @@ static void draw_list(int w, int h)
 			       "Widgets named by `overflow =` in panel.conf "
 			       "live here.",
 			       KT_MID, KT_BG, KT_A_NONE);
-	kch_list_scrollbar(w - 2, y0, vis, nrows, top, KT_BG);
+	kch_scrollbar(0, w - 2, y0, vis, nrows, top, KT_BG);
 
 	struct kch_button b[SB_N];
 
@@ -586,7 +586,7 @@ static void draw_pane(int w, int h)
 			       pane_done ? "it printed nothing"
 					 : "waiting for it to say something…",
 			       KT_MID, KT_BG, KT_A_NONE);
-	kch_list_scrollbar(w - 2, y0, vis, nlines, ltop, KT_BG);
+	kch_scrollbar(1, w - 2, y0, vis, nlines, ltop, KT_BG);
 
 	struct kch_button b[PB_N];
 
@@ -608,7 +608,7 @@ static void draw_frame(void)
 	if (w < 24 || h < 8)
 		return;
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
-	ktui_draw_box(krect(0, 0, w, h), NULL, KT_ACCENT, KT_BG, 1);
+	sh_frame(w, h, NULL, KT_ACCENT, KT_BG, 1);
 	if (pane_on)
 		draw_pane(w, h);
 	else
@@ -672,7 +672,17 @@ int status_main(int argc, char **argv)
 	 * chip and the meters strip use) opens at the report's size directly.
 	 */
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
 		.cols = popup ? (open ? PANE_COLS : LIST_COLS) : ST_COLS,
 		.rows = popup ? (open ? PANE_ROWS : LIST_ROWS) : ST_ROWS,
 		.corner = !popup	? KWL_CORNER_CENTER
@@ -680,6 +690,9 @@ int status_main(int argc, char **argv)
 					: KWL_CORNER_TOP_LEFT,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Status",
 		.app_id = "kdos-status",
 		.font = font,
 		.keyboard = 1,
@@ -730,6 +743,17 @@ int status_main(int argc, char **argv)
 				      idx < nrows;
 
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					if (kch_scrollbar_grabbed() == 0)
+						top = bt;
+					else
+						ltop = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (in_list) {
 					sel = idx;
 					sel_follow = 1;
@@ -737,8 +761,28 @@ int status_main(int argc, char **argv)
 				kch_hover(ev.mx, ev.my);
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt;
+
+				bt = kch_scrollbar_press(0, ev.mx, ev.my);
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+				bt = kch_scrollbar_press(1, ev.mx, ev.my);
+				if (bt >= 0) {
+					ltop = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
