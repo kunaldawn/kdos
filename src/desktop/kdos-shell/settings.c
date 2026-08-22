@@ -929,7 +929,7 @@ static void draw_home(void)
 	int tw = (w - 2) / cols;
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), " Settings ", KT_ACCENT, KT_SURFACE, 1);
+	sh_frame(w, h, " Settings ", KT_ACCENT, KT_SURFACE, 1);
 
 	for (int i = 0; i < NCAT; i++) {
 		int cx = 1 + (i % cols) * tw;
@@ -985,7 +985,7 @@ static void draw_page(void)
 		pane_rows = 1;
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), " Settings ", KT_ACCENT, KT_SURFACE, 1);
+	sh_frame(w, h, " Settings ", KT_ACCENT, KT_SURFACE, 1);
 	ktui_draw_vline(CATW + 1, 1, pane_rows, KT_G_VL, KT_DIM, KT_SURFACE);
 
 	for (int i = 0; i < NCAT && i < pane_rows; i++) {
@@ -1076,12 +1076,12 @@ static void draw_page(void)
 	}
 
 	/*
-	 * ONE COLUMN THAT SAYS THERE IS MORE — see kch_list_scrollbar. The
+	 * ONE COLUMN THAT SAYS THERE IS MORE — see kch_scrollbar. The
 	 * Apps page is every recorded default handler on the machine, which is
 	 * the longest list this window has and the one that gave no sign of
 	 * having a below-the-fold at all.
 	 */
-	kch_list_scrollbar(w - 1, 1, pane_rows, n, top, KT_SURFACE);
+	kch_scrollbar(0, w - 1, 1, pane_rows, n, top, KT_SURFACE);
 
 	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 	/* The junction where the category divider meets the rule under it —
@@ -1342,9 +1342,22 @@ int settings_main(int argc, char **argv)
 	}
 
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = KWL_ROLE_TOPLEVEL,
 		.cols = 72,
 		.rows = 20,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Settings",
 		.app_id = "kdos-settings",
 		.font = font,
 		.keyboard = 1,
@@ -1374,10 +1387,12 @@ int settings_main(int argc, char **argv)
 			sel = n ? n - 1 : 0;
 		if (sel < 0)
 			sel = 0;
-		if (sel < top)
-			top = sel;
-		if (sel >= top + pane_rows)
-			top = sel - pane_rows + 1;
+		/* The viewport follows the SELECTION only when the selection is
+		 * what moved. `sel_follow` was declared for this and read by
+		 * nothing, so a hand-rolled pull sat here instead — which is
+		 * why the wheel and the scrollbar could not move the page: the
+		 * next frame put it straight back. */
+		kch_list_clamp(&top, sel, n, pane_rows, sel_follow);
 
 		draw();
 
@@ -1485,18 +1500,42 @@ int settings_main(int argc, char **argv)
 					ev.my < ktui_h - 4 && row >= 0 &&
 					row < n;
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (in_fields && !editing) {
 					pane = 1;
 					sel = row;
+					sel_follow = 1;
 				}
+				continue;
+			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx, ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP) {
 				sel--;
+				sel_follow = 1;
 			} else if (ev.btn == KT_MB_WHEEL_DOWN) {
 				sel++;
+				sel_follow = 1;
 			} else if (ev.btn == KT_MB_RIGHT) {
 				/* Back one level, the same as Escape. */
 				mode = SM_HOME;

@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "kwl.h"
 #include "res.h"
 
 ResState R;
@@ -51,6 +52,13 @@ static int g_hover = -1;
 static int g_side_w;
 static int g_top;
 static int g_body_x, g_body_y, g_body_w, g_body_h;
+/*
+ * The frame's own inside — the first column and the row count the box left
+ * for everything else. Recorded from what was DRAWN, because a hit test that
+ * derives an origin a second time is a hit test that disagrees with the
+ * picture the frame after a resize.
+ */
+static int g_in_x, g_in_h;
 
 int res_page_index(const char *id)
 {
@@ -195,7 +203,7 @@ static void draw_sidebar(int w, int top, int h)
 	if (!g_side_w)
 		return;
 
-	ktui_draw_fill(krect(0, top, g_side_w, h - top), KT_SURFACE);
+	ktui_draw_fill(krect(g_in_x, top, g_side_w, h - top), KT_SURFACE);
 
 	for (int i = 0; i < RP_NPAGES && top + i < h; i++) {
 		const ResPage *p = &RES_PAGES[i];
@@ -208,17 +216,17 @@ static void draw_sidebar(int w, int top, int h)
 		 */
 		int bg = sel ? KT_ACCENT : hov ? KT_MID : KT_SURFACE;
 		int fg = sel ? KT_SURFACE : KT_TEXT;
-		ktui_draw_fill(krect(0, top + i, g_side_w, 1), bg);
+		ktui_draw_fill(krect(g_in_x, top + i, g_side_w, 1), bg);
 
 		if (g_side_w >= SIDE_WIDE) {
-			ktui_draw_text(2, top + i, g_side_w - 3, p->name,
-				       fg, bg, 0);
+			ktui_draw_text(g_in_x + 1, top + i, g_side_w - 2,
+				       p->name, fg, bg, 0);
 		} else {
 			/* The initial, highlighted — the whole name does not
 			 * fit and a truncation would read as a different
 			 * page. */
 			char ini[2] = { p->name[0], 0 };
-			ktui_draw_text(2, top + i, 1, ini, fg, bg, 0);
+			ktui_draw_text(g_in_x + 1, top + i, 1, ini, fg, bg, 0);
 		}
 	}
 }
@@ -250,6 +258,50 @@ static void draw_modal(int w, int h)
 	}
 }
 
+/*
+ * THE FRAME IS THE SAME BOX EVERY OTHER KDOS SURFACE DRAWS.
+ *
+ * kdos-net, kdos-start, kdos-settings, the launcher and the chooser all put a
+ * double-line box round themselves and hang their title on its top edge; this
+ * program drew a header band floating on bare background with a one-column
+ * margin either side, which is what `kch_header` leaves ROOM for — it starts
+ * at column 1 precisely because it expects a frame there. So kdos-res was the
+ * one KDOS window with the gap and nothing in it, and beside every other
+ * surface on the desktop it read as somebody else's program.
+ *
+ * The box takes column 0, column w-1 and row h-1; the header band already
+ * fits between them, and the body gives up its last row to the bottom edge.
+ */
+static void frame_inside(int w, int h, int *in_x, int *in_w, int *in_h)
+{
+	/* A window too small for a frame keeps the whole surface: a box drawn
+	 * at 6x4 is a box with nothing inside it. */
+	if (w < 12 || h < 8) {
+		*in_x = 0;
+		*in_w = w;
+		*in_h = h;
+		return;
+	}
+	/*
+	 * AND THE FRAME IS DRAWN BY WHOEVER OWNS IT. In a window the
+	 * compositor is already drawing `════ Resources ════[_][=][X]` round
+	 * the outside, so a box here would be a second frame inside the first
+	 * with the title written twice. On tty1 and in `--dump` nothing else
+	 * is drawing one, and then this is the only frame there is — which is
+	 * why the goldens still show it.
+	 */
+	if (kwl_decorated()) {
+		*in_x = 1;
+		*in_w = w - 2;
+		*in_h = h - 1;
+		return;
+	}
+	ktui_draw_box(krect(0, 0, w, h), " Resources ", KT_ACCENT, KT_BG, 1);
+	*in_x = 1;
+	*in_w = w - 2;
+	*in_h = h - 1;
+}
+
 void res_draw_frame(void)
 {
 	int w = ktui_w, h = ktui_h;
@@ -257,6 +309,9 @@ void res_draw_frame(void)
 		return;
 
 	ktui_draw_clear();
+
+	int in_w;
+	frame_inside(w, h, &g_in_x, &in_w, &g_in_h);
 
 	/*
 	 * The band spans the WHOLE window and the sidebar starts under it.
@@ -273,14 +328,14 @@ void res_draw_frame(void)
 	if (res_detail_active()) {
 		int top = kch_header(w, NULL, res_detail_title(),
 				     res_detail_subtitle(), 0);
-		if (top < 1 || top >= h)
-			top = h > 1 ? 1 : 0;
+		if (top < 1 || top >= g_in_h)
+			top = g_in_h > 1 ? 1 : 0;
 		g_side_w = 0;
-		g_body_x = 0;
+		g_body_x = g_in_x;
 		g_body_y = top;
-		g_body_w = w;
-		g_body_h = h - top;
-		res_detail_draw(0, top, w, h - top);
+		g_body_w = in_w;
+		g_body_h = g_in_h - top;
+		res_detail_draw(g_body_x, g_body_y, g_body_w, g_body_h);
 		if (g_conf.active)
 			draw_confirm(w, h);
 		return;
@@ -292,21 +347,23 @@ void res_draw_frame(void)
 	const char *sub = pg->headline ? pg->headline() : NULL;
 	g_top = kch_header(w, RC.icons ? pg->icon : NULL, pg->name, sub,
 			   RC.icons);
-	if (g_top < 1 || g_top >= h)
-		g_top = h > 1 ? 1 : 0;
+	if (g_top < 1 || g_top >= g_in_h)
+		g_top = g_in_h > 1 ? 1 : 0;
 
-	draw_sidebar(w, g_top, h);
+	draw_sidebar(w, g_top, g_in_h);
 
-	g_body_x = g_side_w ? g_side_w + 1 : 0;
+	g_body_x = g_in_x + (g_side_w ? g_side_w + 1 : 0);
 	g_body_y = g_top;
-	g_body_w = w - g_body_x;
-	g_body_h = h - g_top;
+	g_body_w = g_in_x + in_w - g_body_x;
+	g_body_h = g_in_h - g_top;
 	if (g_body_w < 1)
 		g_body_w = 1;
+	if (g_body_h < 1)
+		g_body_h = 1;
 
 	if (g_side_w)
-		ktui_draw_vline(g_side_w, g_top, h - g_top, KT_G_VL, KT_DIM,
-				KT_BG);
+		ktui_draw_vline(g_in_x + g_side_w, g_top, g_in_h - g_top,
+				KT_G_VL, KT_DIM, KT_BG);
 
 	if (RES_PAGES[g_page].draw)
 		RES_PAGES[g_page].draw(g_body_x, g_body_y, g_body_w, g_body_h);
@@ -467,7 +524,7 @@ int res_frame_click(int mx, int my, int btn)
 		g_modal = 0;
 		return 0;
 	}
-	if (g_side_w && mx < g_side_w) {
+	if (g_side_w && mx >= g_in_x && mx < g_in_x + g_side_w) {
 		int i = my - g_top;
 		if (i >= 0 && i < RP_NPAGES) {
 			g_page = i;
@@ -475,14 +532,36 @@ int res_frame_click(int mx, int my, int btn)
 		}
 		return 0;
 	}
+	/*
+	 * A PAGE IS HANDED ITS OWN COORDINATES, not the screen's.
+	 *
+	 * Every page draws from the origin the frame gives it and knows its
+	 * own row 0 is the column header, so handing it a screen row means
+	 * each page subtracting an origin the frame already knows — five
+	 * copies of one arithmetic, four of which are wrong the day the frame
+	 * grows a border. Which is exactly what happened: `res_procs_click`
+	 * tested `my <= 0` for the header row on a page whose first row was
+	 * four.
+	 */
 	if (RES_PAGES[g_page].click)
-		RES_PAGES[g_page].click(mx, my, btn);
+		RES_PAGES[g_page].click(mx - g_body_x, my - g_body_y, btn);
 	return 0;
+}
+
+void res_frame_release(void)
+{
+	if (RES_PAGES[g_page].release)
+		RES_PAGES[g_page].release();
 }
 
 void res_frame_motion(int mx, int my)
 {
 	int i = my - g_top;
-	g_hover = (g_side_w && mx < g_side_w && i >= 0 && i < RP_NPAGES)
-		  ? i : -1;
+
+	g_hover = (g_side_w && mx >= g_in_x && mx < g_in_x + g_side_w &&
+		   i >= 0 && i < RP_NPAGES) ? i : -1;
+	if (g_conf.active || g_modal || res_detail_active())
+		return;
+	if (RES_PAGES[g_page].motion)
+		RES_PAGES[g_page].motion(mx - g_body_x, my - g_body_y);
 }

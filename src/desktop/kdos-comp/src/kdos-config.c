@@ -236,14 +236,20 @@ kdos_conf_load(void)
 	struct kdos_conf *c = &kdos_conf;
 
 	/*
-	 * Defaults. The CRT pass is ON at the pre-fork shipped strength —
-	 * it is the reason the boot splash, the TTY and the desktop look
-	 * like one machine. Curvature stays off: the one effect that
-	 * argues with a character grid. kdos_crt_init() still forces 0 on
-	 * a renderer that is not GLES2.
+	 * Defaults. The phosphor pass is ON — the bleed, the vignette and the
+	 * floor that keeps black from being quite black are what make the boot
+	 * splash, the TTY and the desktop look like one machine.
+	 *
+	 * SCANLINES ARE OFF. They are the one part of the effect that argues
+	 * with the thing underneath it: this desktop is a grid of 16x32 cells
+	 * and a dark line on every third PHYSICAL row lands across the glyphs
+	 * at a period nothing on the screen shares, so text that is drawn
+	 * two-colour and crisp arrives striped. `crt_scanlines = 60` in
+	 * comp.conf is the shipped strength for anyone who wants them back.
+	 * Curvature stays off for the same reason it always did.
 	 */
 	c->crt = 55;
-	c->crt_scanlines = 60;
+	c->crt_scanlines = 0;
 	c->crt_curve = 0;
 	c->crt_fullscreen = true;
 	c->idle_dim_s = 300;

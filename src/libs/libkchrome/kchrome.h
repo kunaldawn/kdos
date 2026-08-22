@@ -149,6 +149,30 @@ void kch_list_clamp(int *top, int sel, int n, int body, int follow);
  * draws on tty1 and in a golden frame exactly as it does under fcft. Nothing
  * at all when everything fits: a full-height thumb is a decoration.
  */
-void kch_list_scrollbar(int x, int y, int rows, int n, int top, int bg);
+/*
+ * `id` is the caller's own small number, one per bar it can have on screen at
+ * once. It is what the press and the drag name, so the hit map is the thing
+ * that was DRAWN rather than a geometry computed a second time somewhere else.
+ * Call it every frame, including the frames where the list fits: a bar that
+ * has stopped being drawn must stop being grabbable.
+ */
+#define KCH_SCROLLBARS 4
+void kch_scrollbar(int id, int x, int y, int rows, int n, int top, int bg);
+/*
+ * AND THE BAR IS A CONTROL. `press` answers the new `top` when the pointer is
+ * on bar `id` and -1 when it is not, and arms the drag; `drag` keeps answering
+ * for whichever bar was grabbed until `release`. A bar that only reports is a
+ * bar people try to drag once and then stop trusting.
+ *
+ * The caller assigns the answer itself — the library holds no pointer into
+ * anybody's state — and clears its own `sel_follow` when it does, or the next
+ * draw pulls the selection back into view and undoes the scroll.
+ */
+int  kch_scrollbar_press(int id, int mx, int my);
+int  kch_scrollbar_drag(int my);
+void kch_scrollbar_release(void);
+/* WHICH bar the live drag belongs to, for a surface with more than one; -1
+ * when nothing is grabbed. */
+int  kch_scrollbar_grabbed(void);
 
 #endif /* KCHROME_H */

@@ -158,13 +158,33 @@ class Monitor:
         self.cmd("sendkey ret")
 
 
-def rfb_shot(host, port, out):
-    """One framebuffer, over RFB, Raw encoding, written as a PPM.
+def rfb_pointer(host, port, moves):
+    """Put the pointer somewhere, and optionally click.
 
-    No compression is negotiated on purpose: a raw 1280x800 frame is 4 MB over
-    a loopback socket, and a decoder for tight/zrle here would be more code
-    than the thing it is testing.
+    WHY OVER RFB RATHER THAN THE MONITOR. qemu's `mouse_move` is RELATIVE and
+    this image presents a usb-tablet, which is ABSOLUTE — the two disagree
+    about what a coordinate means and the pointer ends up somewhere nobody
+    asked for. RFB's PointerEvent is absolute by definition and lands on the
+    pixel it names, which is the whole point: HOVER is a state half this
+    desktop's chrome has, and a photograph of it is the only way to see it.
+
+    `moves` is a list of (x, y, button_mask). A click is three of them —
+    move, press, release — because a press with no move first lands wherever
+    the pointer happened to be.
     """
+    s, _w, _h, _pf = rfb_handshake(host, port)
+    for x, y, mask in moves:
+        s.sendall(struct.pack(">BBHH", 5, mask, x, y))
+        s.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, 1, 1))
+        time.sleep(0.15)
+    # The server processes what it has been sent before the socket closes, and
+    # a close with the last event still in flight loses it.
+    time.sleep(0.5)
+    s.close()
+
+
+def rfb_handshake(host, port):
+    """Connect and negotiate; returns (socket, w, h, pixel-format bytes)."""
     s = socket.create_connection((host, port), timeout=20)
     s.settimeout(30)
 
@@ -196,6 +216,29 @@ def rfb_shot(host, port, out):
     pf = recv_exact(16)
     namelen = struct.unpack(">I", recv_exact(4))[0]
     recv_exact(namelen)
+    # SetEncodings: type(1) pad(1) count(2), then count int32s. The extra pad
+    # everybody adds here is what desyncs the stream.
+    s.sendall(struct.pack(">BBH", 2, 0, 1) + struct.pack(">i", 0))
+    return s, w, h, pf
+
+
+def rfb_shot(host, port, out):
+    """One framebuffer, over RFB, Raw encoding, written as a PPM.
+
+    No compression is negotiated on purpose: a raw 1280x800 frame is 4 MB over
+    a loopback socket, and a decoder for tight/zrle here would be more code
+    than the thing it is testing.
+    """
+    s, w, h, pf = rfb_handshake(host, port)
+
+    def recv_exact(n):
+        out_b = b""
+        while len(out_b) < n:
+            chunk = s.recv(n - len(out_b))
+            if not chunk:
+                raise RuntimeError("VNC closed mid-read")
+            out_b += chunk
+        return out_b
 
     bpp, depth, big_endian, true_colour = pf[0], pf[1], pf[2], pf[3]
     rmax, gmax, bmax = struct.unpack(">HHH", pf[4:10])
@@ -204,9 +247,6 @@ def rfb_shot(host, port, out):
         raise RuntimeError("unhandled pixel format bpp=%d true=%d"
                            % (bpp, true_colour))
 
-    # SetEncodings: type(1) pad(1) count(2), then count int32s. The extra pad
-    # everybody adds here is what desyncs the stream.
-    s.sendall(struct.pack(">BBH", 2, 0, 1) + struct.pack(">i", 0))
     # FramebufferUpdateRequest: type, incremental, x, y, w, h
     s.sendall(struct.pack(">BBHHHH", 3, 0, 0, 0, w, h))
 
@@ -288,6 +328,10 @@ def main():
                     help="wait this many seconds before the next step")
     ap.add_argument("--keys", action=Step,
                     help="monitor sendkey, e.g. meta_l-a")
+    ap.add_argument("--mouse", action=Step,
+                    help="move the pointer to X,Y (absolute pixels)")
+    ap.add_argument("--click", action=Step,
+                    help="X,Y[,BTN] — move there and click; BTN 1/2/3")
     ap.add_argument("--cmd", action=Step,
                     help="run in the kdos session")
     ap.add_argument("--root-cmd", action=Step,
@@ -299,6 +343,10 @@ def main():
                     help="virtio-vga-gl on an egl-headless display, so wlroots "
                          "gets GLES2 and the CRT pass RUNS. Needs /dev/dri; "
                          "without it the shot is of the cell grid underneath")
+    ap.add_argument("--session-env", default=None,
+                    help="prefix the session command, e.g. 'KDOS_PANEL_DEBUG=1 '"
+                         " — the compositor supervises the panel, so a panel"
+                         " variable has to be in ITS environment")
     ap.add_argument("--console-cmd", default=None,
                     help="type this on tty1 INSTEAD of starting the session, "
                          "and photograph the console — the only way to see a "
@@ -418,7 +466,8 @@ def main():
             time.sleep(args.wait)
         else:
             print("starting the session on tty1…", flush=True)
-            mon.type("kdos-desktop")
+            mon.type(args.session_env + "kdos-desktop"
+                     if args.session_env else "kdos-desktop")
 
             print("waiting for the desktop…", flush=True)
             deadline = time.time() + 240
@@ -444,6 +493,20 @@ def main():
             elif kind == "keys":
                 mon.cmd("sendkey " + value)
                 time.sleep(3)
+            elif kind == "mouse":
+                mx, my = (int(v) for v in value.split(","))
+                rfb_pointer("127.0.0.1", args.vnc_port, [(mx, my, 0)])
+                # Longer than the panel's 700 ms tooltip dwell, so a shot
+                # after a move photographs the tip as well as the hover.
+                time.sleep(2)
+            elif kind == "click":
+                parts = value.split(",")
+                mx, my = int(parts[0]), int(parts[1])
+                btn = int(parts[2]) if len(parts) > 2 else 1
+                mask = 1 << (btn - 1)
+                rfb_pointer("127.0.0.1", args.vnc_port,
+                            [(mx, my, 0), (mx, my, mask), (mx, my, 0)])
+                time.sleep(2.5)
             elif kind == "sleep":
                 # Pumped, not slept through: the serial console fills and
                 # blocks the guest while nothing is reading it.

@@ -676,11 +676,11 @@ static void draw(int sel, int top)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see kch_list_scrollbar. It matters more since the wheel started
+	 * see kch_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	kch_list_scrollbar(w - 1, 2, rowsv, nviews, top, KT_SURFACE);
+	kch_scrollbar(0, w - 1, 2, rowsv, nviews, top, KT_SURFACE);
 
 	if (status[0])
 		ktui_draw_text(2, h - 3, w - 4, status, KT_WARN, KT_SURFACE,
@@ -822,6 +822,9 @@ int teams_main(int argc, char **argv)
 	refresh();
 
 	int sel = 0, top = 0;
+	/* Set by everything that moves the CURSOR, cleared by everything that
+	 * moves the PAGE — see kch_list_clamp. */
+	int sel_follow = 1;
 
 	while (!kwl_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
@@ -832,10 +835,11 @@ int teams_main(int argc, char **argv)
 			sel = nviews ? nviews - 1 : 0;
 		if (sel < 0)
 			sel = 0;
-		if (sel < top)
-			top = sel;
-		if (sel >= top + rowsv)
-			top = sel - rowsv + 1;
+		/* The viewport follows the SELECTION only when the selection is
+		 * what moved — the rule kch_list_clamp exists to state once. A
+		 * hand-rolled pull here undid every page scroll on the frame
+		 * after it. */
+		kch_list_clamp(&top, sel, nviews, rowsv, sel_follow);
 
 		draw(sel, top);
 
@@ -854,18 +858,47 @@ int teams_main(int argc, char **argv)
 			int on_row = ev.my >= 2 && ev.my < ktui_h - 3 &&
 				     row >= 0 && row < nviews;
 			if (ev.press == KT_MP_DRAG) {
-				if (on_row)
+				/* THE BAR IS A CONTROL — see kch_scrollbar.
+				 * A drag is a press that is still down, and
+				 * Wayland says nothing about that, so the
+				 * grab is what remembers it. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+				if (on_row) {
 					sel = row;
+					sel_follow = 1;
+				}
+				continue;
+			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx,
+							     ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP) {
 				sel--;
+				sel_follow = 1;
 				continue;
 			}
 			if (ev.btn == KT_MB_WHEEL_DOWN) {
 				sel++;
+				sel_follow = 1;
 				continue;
 			}
 			if (ev.btn == KT_MB_RIGHT)
@@ -882,10 +915,12 @@ int teams_main(int argc, char **argv)
 				refresh();
 			}
 			sel = row;
+			sel_follow = 1;
 			continue;
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		sel_follow = 1;	/* a key moves the cursor; the view follows */
 
 		switch (ev.key) {
 		case KT_K_ESC:

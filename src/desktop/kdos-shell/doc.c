@@ -749,7 +749,7 @@ static void draw(void)
 	}
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), page_label(), KT_ACCENT, KT_SURFACE, 1);
+	sh_frame(w, h, page_label(), KT_ACCENT, KT_SURFACE, 1);
 
 	for (int i = 0; i < rows; i++) {
 		int idx = topline + i;
@@ -990,9 +990,22 @@ int doc_main(int argc, char **argv)
 	}
 
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = KWL_ROLE_TOPLEVEL,
 		.cols = 80,
 		.rows = 24,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Help",
 		.app_id = "kdos-doc",
 		.font = font,
 		.keyboard = 1,

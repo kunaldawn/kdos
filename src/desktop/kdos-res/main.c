@@ -317,6 +317,12 @@ int main(int argc, char **argv)
 				res_frame_wheel(ev.btn == KT_MB_WHEEL_UP);
 			else if (ev.press == KT_MP_PRESS)
 				res_frame_click(ev.mx, ev.my, ev.btn);
+			/* The one gesture on this surface that spans events:
+			 * a scrollbar drag. Wayland reports plain motion and
+			 * dragged motion identically, so the RELEASE is what
+			 * ends it. */
+			else if (ev.press == KT_MP_RELEASE)
+				res_frame_release();
 		}
 	}
 

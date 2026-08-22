@@ -563,7 +563,7 @@ static void draw(void)
 		list_rows = 1;
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), " Open with ", KT_ACCENT, KT_SURFACE, 0);
+	sh_frame(w, h, " Open with ", KT_ACCENT, KT_SURFACE, 0);
 
 	/* What is being opened, and what it was decided to be. The path is
 	 * elided from the LEFT — the end of it is the part that identifies it. */
@@ -621,11 +621,11 @@ static void draw(void)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see kch_list_scrollbar. It matters more since the wheel started
+	 * see kch_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	kch_list_scrollbar(w - 1, list_top, list_rows, nrows(), top,
+	kch_scrollbar(0, w - 1, list_top, list_rows, nrows(), top,
 			  KT_SURFACE);
 	/* On `!ncands`, never `!nrows()`: the Other row is always there, so the
 	 * list is never empty and this said nothing on the one machine that
@@ -844,9 +844,22 @@ int openwith_main(int argc, char **argv)
 	}
 
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = KWL_ROLE_TOPLEVEL,
 		.cols = 64,
 		.rows = 18,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Open with",
 		.app_id = "kdos-openwith",
 		.font = font,
 		.keyboard = 1,
@@ -888,14 +901,39 @@ int openwith_main(int argc, char **argv)
 			int on_row = ev.my >= 3 && ev.my < ktui_h - 3 &&
 				     row >= 0 && row < nrows();
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar.
+				 * A drag is a press that is still down, and
+				 * Wayland says nothing about that, so the
+				 * grab is what remembers it. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (on_row && !editing) {
 					sel = row;
 					sel_follow = 1;
 				}
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx,
+							     ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
