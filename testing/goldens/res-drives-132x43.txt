@@ -1,43 +1,43 @@
-                                                                                                                                    
-  Drives                                                                                                                            
-  2 drives                                                                                                                          
- ---------------------------------------------------------------------------------------------------------------------------------- 
-  Applications    |DEVICE     SIZE      TYPE  BUSY   TEMP    MODEL                                                                  
-  Processes       |sda        466G      HDD   30%    -       KDOS FIXTURE HDD                                                       
-  CPU             |nvme0n1    477G      SSD   80%    41oC    KDOS FIXTURE NVME                                                      
-  Memory          |                                                                                                                 
-  GPU             |                                                                                                                 
-  Drives          |                                                                                                                 
-  Network         |                                                                                                                 
-  Batteries       |                                                                                                                 
-  Energy          |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |sda  read / written                                                                                     20M  9.8M
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                :
-                  |                                                                                                                #
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                #
-                  |1 virtual hidden  .  whole disks only  .  Enter for details                                                      
++=  Resources  ====================================================================================================================+
+| Drives                                                                                                                           |
+| 2 drives                                                                                                                         |
+|----------------------------------------------------------------------------------------------------------------------------------|
+| Applications     |DEVICE     SIZE      TYPE  BUSY   TEMP    MODEL                                                                |
+| Processes        |sda        466G      HDD   30%    -       KDOS FIXTURE HDD                                                     |
+| CPU              |nvme0n1    477G      SSD   80%    41oC    KDOS FIXTURE NVME                                                    |
+| Memory           |                                                                                                               |
+| GPU              |                                                                                                               |
+| Drives           |                                                                                                               |
+| Network          |                                                                                                               |
+| Batteries        |                                                                                                               |
+| Energy           |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |sda  read / written                                                                                   20M  9.8M|
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                              :|
+|                  |                                                                                                              #|
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                              #|
+|                  |1 virtual hidden  .  whole disks only  .  Enter for details                                                    |
++==================================================================================================================================+

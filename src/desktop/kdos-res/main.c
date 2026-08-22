@@ -234,6 +234,15 @@ int main(int argc, char **argv)
 			.app_id = "kdos-res",
 			.font = font,
 			.keyboard = 1,
+			/*
+			 * At or above RES_WIDE, or the window opens in the
+			 * band the sidebar degrades to initials in and the
+			 * footer hint is clipped mid-word. A default, not a
+			 * demand: the compositor's first configure wins on a
+			 * screen too small for it.
+			 */
+			.cols = 104,
+			.rows = 26,
 		};
 		if (kwl_init(&cfg) != 0) {
 			fprintf(stderr, "kdos-res: no compositor — try --tty\n");
@@ -317,6 +326,12 @@ int main(int argc, char **argv)
 				res_frame_wheel(ev.btn == KT_MB_WHEEL_UP);
 			else if (ev.press == KT_MP_PRESS)
 				res_frame_click(ev.mx, ev.my, ev.btn);
+			/* The one gesture on this surface that spans events:
+			 * a scrollbar drag. Wayland reports plain motion and
+			 * dragged motion identically, so the RELEASE is what
+			 * ends it. */
+			else if (ev.press == KT_MP_RELEASE)
+				res_frame_release();
 		}
 	}
 

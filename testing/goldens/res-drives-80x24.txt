@@ -1,24 +1,24 @@
-                                                                                
-  Drives                                                                        
-  2 drives                                                                      
- ------------------------------------------------------------------------------ 
-  A   |DEVICE     SIZE      TYPE  BUSY   TEMP    MODEL                          
-  P   |sda        466G      HDD   30%    -       KDOS FIXTURE HDD               
-  C   |nvme0n1    477G      SSD   80%    41oC    KDOS FIXTURE NVME              
-  M   |                                                                         
-  G   |                                                                         
-  D   |                                                                         
-  N   |                                                                         
-  B   |                                                                         
-  E   |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |sda  read / written                                             20M  9.8M
-      |                                                                         
-      |                                                                        :
-      |                                                                         
-      |                                                                         
-      |                                                                        :
-      |1 virtual hidden  .  whole disks only  .  Enter for details              
++=  Resources  ================================================================+
+| Drives                                                                       |
+| 2 drives                                                                     |
+|------------------------------------------------------------------------------|
+| A    |DEVICE     SIZE      TYPE  BUSY   TEMP    MODEL                        |
+| P    |sda        466G      HDD   30%    -       KDOS FIXTURE HDD             |
+| C    |nvme0n1    477G      SSD   80%    41oC    KDOS FIXTURE NVME            |
+| M    |                                                                       |
+| G    |                                                                       |
+| D    |                                                                       |
+| N    |                                                                       |
+| B    |                                                                       |
+| E    |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |sda  read / written                                           20M  9.8M|
+|      |                                                                       |
+|      |                                                                      :|
+|      |                                                                       |
+|      |                                                                      .|
+|      |1 virtual hidden  .  whole disks only  .  Enter for details            |
++==============================================================================+

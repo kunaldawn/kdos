@@ -119,9 +119,14 @@ lab_img_render(struct lab_img *img, int width, int height, double scale)
 	/* Render the image into the buffer for the given size */
 	switch (img->data->type) {
 	case LAB_IMG_PNG:
-	case LAB_IMG_XBM:
 	case LAB_IMG_XPM:
 		buffer = buffer_resize(img->data->buffer, width, height, scale);
+		break;
+	case LAB_IMG_XBM:
+		/* KDOS: a one-bit bitmap is blown up by a whole number and
+		 * keeps its own pixels — see buffer_resize_pixelated(). */
+		buffer = buffer_resize_pixelated(img->data->buffer, width,
+			height, scale);
 		break;
 #if HAVE_RSVG
 	case LAB_IMG_SVG:

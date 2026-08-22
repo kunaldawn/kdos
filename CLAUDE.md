@@ -862,6 +862,112 @@ erases every small feature.
 
 ---
 
+## The KDOS look — the styling guide, and it is a rule not a taste
+
+Every surface this project ships is a **grid of character cells drawn in one
+palette**, and the whole of the desktop's identity is that they all agree.
+When one does not, it does not look like a variant — it looks like somebody
+else's program, and that is exactly how `kdos-res` was reported: it drew a
+header band floating on bare background with no frame round it, beside a
+Start menu, a network panel and a file chooser that all wear `╔══ Title ══╗`.
+
+**Anything drawn on this desktop follows the list below. A new surface is not
+finished until every line of it is answered.**
+
+### 1. A window is a double-line box, and its title hangs on the top edge
+
+```c
+ktui_draw_box(krect(0, 0, w, h), " Resources ", KT_ACCENT, KT_BG, 1);
+```
+
+Column 0, column `w-1` and row `h-1` belong to the frame; the body starts at
+column 1 and stops one row short of the bottom. **`kch_header()` already draws
+between columns 1 and `w-2` for exactly this reason** — a surface that calls
+it without drawing a box has a one-column margin with nothing in it, which is
+the tell. A window too small for a frame keeps the whole surface rather than
+drawing a box with nothing inside it.
+
+### 2. The chrome is libkchrome's, never a second copy
+
+`kch_header` (the accent band and its subject line), `kch_group` (a heading
+inside the body), `kch_buttons` (verbs, ordered most-useful-first, dropped
+from the RIGHT rather than half-drawn), `kch_list_wheel` / `kch_list_clamp` /
+`kch_list_scrollbar` / `kch_list_scroll_to`. Two implementations of a button
+bar are two button bars, and the one nobody is looking at is the one that
+drifts.
+
+### 3. Colour comes from a slot, never from a literal
+
+`KT_ACCENT KT_WARN KT_TEXT KT_MID KT_DIM KT_SURFACE KT_BG` — libkcolor's
+table, expanded at compile time by everything that draws. Two rules on top of
+that, both of which have already shipped as bugs:
+
+- **`KT_DIM` is a FILL.** It is 1.63–1.70:1 against the background in every
+  accent, below any text floor. A LABEL is `KT_MID`.
+- **Emphasis is a FILL plus swapped slots, never `KT_A_REVERSE` over a
+  label.** The attribute inverts only the cells a glyph covers, so a two-word
+  name comes out as one lit block per word with a hole between them.
+
+### 4. Every control answers the pointer, and it answers it the same way
+
+| | |
+|---|---|
+| motion | lights what is under it (`KT_MID` fill) and selects a list row |
+| left press | activates; on a row that is already selected, opens it |
+| wheel | steps the cursor while the list FITS, moves the viewport when it does not — `kch_list_wheel` and nothing else |
+| right press | backs out one level, then closes |
+| a scrollbar | is dragged, not merely looked at — `kch_list_scroll_to` |
+| a column header | sets the sort, and a second press reverses it |
+
+A surface with rows and no `motion` handler is a picture: the only way to find
+out that a row is a control is to click one. `grep -c KT_EVT_MOUSE` over a new
+file answering 0 is the same defect four surfaces shipped with.
+
+### 5. A hit map is recorded from what was DRAWN
+
+Never derived a second time from the geometry the draw computed. Both copies
+are right until the window is resized, the sidebar collapses or a border is
+added — and then a click lands on the row above the one under the pointer.
+The frame subtracts its body origin ONCE and hands a page its own
+coordinates; a page that subtracts an origin itself is the second copy.
+
+### 6. The glyph set is the vt tier wherever the surface can reach tty1
+
+`░ ▒ █`, the single and double box sets, `· • ■ … ° ↑ ↓ ◀ ▶`. The console font
+is 512 glyphs and carries no eighth blocks, no half blocks, no braille and no
+`← →`; grep `uni/xos4-2.uni` before using anything else. Rich-tier ramps are
+for a surface that only ever runs under fcft.
+
+### 7. Pictures are an ENHANCEMENT layer
+
+`kicon_slot()` answers -1 on a terminal, under `icons = no`, with no atlas and
+with a full sprite table, and **every caller draws correctly then**. The dump
+harness stubs it to exactly that, so a golden frame is the CHARACTER grid: a
+layout that only lines up once the pictures load is a layout that is broken.
+Same for `kch_tile_*`.
+
+### 8. The compositor's own decoration is part of the set
+
+An SSD is the one piece of chrome a KDOS program does not draw for itself, so
+the fork is themed to match rather than left as labwc's: square corners
+(`<cornerRadius>0`), a two-pixel accent border, `flat kdos` — the titlebar
+fill carrying the same double rule the cell grid draws with `═`, broken by the
+title and by each button — and 8x8 bitmap buttons scaled by an integer factor
+with a NEAREST filter, so `_`, `[]` and `X` are hard-edged cells and not grey
+smears. `kdos theme` generates all of it into `themerc-override`.
+
+### 9. The checklist for a new surface
+
+1. `ktui_draw_box` round it, title on the top edge.
+2. `kch_header` for the band; `kch_group` for headings; `kch_buttons` for verbs.
+3. Slots for colour; `KT_MID` for labels; fills for emphasis.
+4. motion / press / wheel / scrollbar / header-sort, all five.
+5. Hit map from the draw, coordinates from the frame.
+6. `--dump` at 80x24 and 132x43, and a golden committed for both.
+7. Read it back at the vt tier before believing it reads on tty1.
+
+---
+
 ## Theming — PHOSPHOR
 
 **The desktop needs no theme file at all.** `kdos-comp` and `kdos-shell` link
@@ -1354,9 +1460,9 @@ bug:**
 | `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings — the one library with vendored third-party source (Monocypher) |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
 | `libkcell` | `kcell_` | the fcft glyph cache and the cell painter — a grid of cells into a pixel buffer, the ASCII ramp built out of it, and **`kcell_canvas_*`, the pixel canvas a block of cells can be drawn as**. Needs fcft and pixman |
-| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg toplevel with a SERVER-side frame, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection, both directions** (`kwl_copy`), **xkb-compose**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`. **The one library with real `-l` dependencies beyond libkcell's** |
+| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg toplevel with a SERVER-side frame, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection, both directions** (`kwl_copy`), **xkb-compose**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`, the panel's top RULE (`KwlConfig.rule` — pixels outside the cell grid, so a bar can be framed without spending a row on it). **The one library with real `-l` dependencies beyond libkcell's** |
 | `libkproc` | `kpr_` | every reading about the running machine, from a root that can be MOVED — `/proc` and `/sys` behind `kpr_root_set`, the process sample, the conmon box identity (`kpr_is_box_boundary`, `kpr_conmon_name`, `kpr_box_of`), cpu/memory/block/net/power/drm/nvml, and **the sample ring and its axis** (`KprHist`, `kpr_scale_step`) |
-| `libkchrome` | `kch_` | the chrome kdos-shell had grown and kdos-res needed — the header band, the group heading, the button bar, the list/wheel/scrollbar rule and the pixel tile |
+| `libkchrome` | `kch_` | the chrome kdos-shell had grown and kdos-res needed — the header band, the group heading, the button bar, the list/wheel/scrollbar rule (`kch_list_scroll_to` — the bar is DRAGGED, not merely looked at) and the pixel tile |
 
 Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
 libkbase` and `libkbuild → libkbase` and `libksig → libkbase` and `libkproc →
@@ -1827,8 +1933,9 @@ accent switch could not reach, and a bar across the top of every window that
 looked like somebody else's desktop. `kdos theme --audit` covers it.
 
 Three traps found live: a `*.title.bg.color` alone changes nothing — the
-default texture is a gradient, so `window.*.title.bg: flat solid` must be set
-too; the grey bar foot showed was foot's own CSD, not labwc's SSD at all (skel
+default texture is a gradient, so a texture keyword must be set too
+(`window.*.title.bg: flat kdos` here — see below); the grey bar foot showed was
+foot's own CSD, not labwc's SSD at all (skel
 `foot.ini` carries `[csd] preferred=server`); and **the SSD font is pango's,
 not the cell grid's** — its default is `sans` 10, which put a 13-pixel
 antialiased title on top of every 32-pixel window. `<theme><font>` in rc.xml
@@ -1850,6 +1957,43 @@ to DejaVu Sans.
 **Telling the two apart takes a measurement, not an eye**: count luminance
 levels in a screenshot. The panel's bitmap text has **3** and zero midtone
 pixels; an antialiased face has **143** and 230.
+
+**AND THE FRAME IS A KDOS ASCII WINDOW, because an SSD is the one piece of
+chrome a KDOS program does not draw for itself.** Every other surface on this
+desktop wears `╔══ Title ══╗`; a toplevel got labwc's own picture — a rounded
+plate, a one-pixel hairline and 6x6 glyphs blown up under a smoothing filter —
+and beside the boxes around it that read as another toolkit. Four changes make
+one picture, and each is in a different half of the tree:
+
+- **`<cornerRadius>0</cornerRadius>`** in the skel rc.xml. A radius is the one
+  thing a cell grid cannot express, so it is the one thing that gives an SSD
+  away. `border.width: 2` is the other half — a hairline disappears beside a
+  32-pixel cell.
+- **`window.*.title.bg: flat kdos`** is the fork's own texture
+  (`LAB_GRADIENT_KDOS_RULE` in `theme.c`). The titlebar fill is one pixel wide
+  and stretched, so anything that varies only with Y is free — and a double
+  horizontal rule varies only with Y. Two hard-edged bands of `colorTo` with a
+  gap between them, centred on the bar: the cross-section of `═`. Hard because
+  the linear gradient carries DUPLICATED offsets, which step rather than fade.
+- **The title and every button get the PLAIN background instead**
+  (`title_plain_pattern`, and the button's own hitbox rect painted in the
+  titlebar colour at full bar height rather than left invisible). A rule behind
+  a word is a word struck through, and a rule behind the minimise button — which
+  IS a horizontal line — is a button with no readable state. Broken round them,
+  it reads `════ Title ════[_][=][X]`.
+- **The glyphs are 8x8 bitmaps ENLARGED by a whole number with a NEAREST
+  filter** (`KDOS_BTN_*` in `theme.c`, `buffer_resize_pixelated` in
+  `buffer.c`). `buffer_resize` only ever SHRINKS — its whole job is fitting
+  something too big into its container — so upstream's glyphs were composited
+  at their own six pixels in the middle of a thirty-two pixel button and came
+  out as a dash and a dot that no theme setting could grow. Photographed on the
+  first build of this arc, with the rest of the frame already right.
+
+**And the hover plate has to carry an ALPHA.** labwc has no hover icons: it
+copies the plain image and lays `window.button.hover.bg.color` over it. An
+opaque colour there paints the symbol out, so every titlebar button on this
+desktop went BLANK under the pointer — the one moment a button most needs to
+say what it is. `write_themerc` appends `66` to it.
 
 **labwc's `menu.width.max` default is 200 PIXELS** and it is sized for a ~10px
 font. At 32px that is eleven characters, and the shipped root menu read
@@ -2592,8 +2736,22 @@ exists and the supervisor already knows the name.
 numbers on tty1, in a window and in a `--dump`, because there is only a grid of
 character cells: libktui's backend vtable decides who paints it — the terminal,
 libkwl, or an offscreen buffer — and nothing above that line knows which.
+
+**AND IT WEARS EXACTLY ONE FRAME.** Undecorated — on tty1, in a `--dump` —
+`ktui_draw_box` goes round the whole surface with ` Resources ` on its top
+edge, the header band between columns 1 and `w-2` where `kch_header` draws it,
+the body one row short of the bottom. Under the compositor the SSD **is** that
+box, so `kwl_decorated()` suppresses the drawn one and the frame keeps only
+its inset: two boxes nested one inside the other is the tell that a program
+drew chrome the compositor had already drawn for it. See **The KDOS look** for
+the list this is the first line of.
 **It is the tree's first `KWL_ROLE_TOPLEVEL` client**; everything else on this
-desktop is a layer surface or a lock surface.
+desktop is a layer surface or a lock surface — and it asks for **104x26
+cells**, at or above the `RES_WIDE` threshold its own sidebar degrades below.
+`make_toplevel`'s fallback is 80x22, which is UNDER it, so a window naming no
+size opens permanently in the narrow band: the sidebar collapsed to one
+initial per page and the footer hint clipped mid-word. It is a default and not
+a demand — the compositor's first configure wins on a screen too small for it.
 
 **THE CHARTS ARE CELLS, AND A FULL-WIDTH CHART CANNOT BE A SPRITE TILE.**
 libktui encodes a sprite cell's sub-cell coordinate in four bits each way, so
@@ -2659,6 +2817,29 @@ worth of processes. A **renice is not confirmed**, because it is reversible and
 a dialog on every nudge is what teaches people to click through the one that
 matters.
 
+**THE POINTER REACHES EVERY VERB THIS PROGRAM HAS, and it did not.** The two
+tables had no click handler at all between them — `res_procs_click` returned 1
+and did nothing, and Applications had none — the four list pages had no hover,
+the scrollbar was a picture, and the column headers were sort controls only if
+you knew that `s` cycled them. So a monitor whose whole surface is rows was one
+a pointer could not use. The contract is the desktop's, stated in **The KDOS
+look**: motion lights a row, a press selects it, a press on the row that is
+ALREADY selected opens its detail page, a press on a header sets the sort and a
+second press reverses it, and `kch_list_scroll_to` makes the bar something you
+drag. A press rather than a double click because nothing in this toolkit
+measures one, and because opening a detail page is not destructive — the verbs
+are there, behind the confirm.
+
+**THE FRAME HANDS A PAGE ITS OWN COORDINATES.** Every page draws from the
+origin it is given and knows its own row 0 is the column header, so a screen
+row would mean five copies of one subtraction — four of which are wrong the day
+the frame grows a border, which is exactly what happened: `res_procs_click`
+tested `my <= 0` for a header row whose real row was four. `res_frame_click`
+and `res_frame_motion` subtract the body origin once. `res_frame_release`
+exists for the one gesture that spans events — a scrollbar drag, which Wayland
+reports as plain motion with no button state at all, so the PRESS is what has
+to be remembered.
+
 **A rate is fed from `res_sample()`, never from a page's `prepare()`.** Prepare
 runs once per FRAME and a frame is not an interval; the offscreen dump draws
 exactly once after two samples, so a chart fed from prepare is empty in every
@@ -2683,6 +2864,10 @@ and the ids in `enum res_page_id` are the only spelling — `--page` takes them,
 
 The ways in: the panel's meters strip (left click), `C-S-Escape`, the Start
 menu, and `kdos-res` at a prompt.
+
+**Known gap, stated rather than hidden:** the Drives and Network lists do not
+scroll — they are short, and their pointer handling is select-and-open with no
+viewport — so the scrollbar and its drag exist on the two tables only.
 
 ---
 
@@ -2781,6 +2966,18 @@ line of floating words. KT_DIM is the palette's FILL colour and is exactly what
 a raised tile wants; the label on it is KT_TEXT at better than 4:1, so nothing
 is traded for the shape. Hover takes KT_MID, which is brighter than rest and
 dimmer than focused so it cannot be misread as "this is the window you are in".
+
+**THE BAR IS FRAMED, and its separators are the window frames' own stroke.**
+Every other KDOS surface puts a double-line box round itself; the taskbar had
+no edge at all, so against a dark wallpaper it read as a region of the desktop
+rather than as chrome. A box wants four sides and two spare rows, and two rows
+is the whole bar — but the only edge a bottom-anchored panel HAS is its top
+one, and libkwl draws that OUTSIDE the cell grid (`KwlConfig.rule`, three
+pixels in the accent) rather than spending a 32-pixel row on it. The separators
+went with it: they were the single vertical in `KT_DIM`, which is 1.63:1
+against the panel's own background — the boundaries the whole layout depends on
+were invisible in a photograph — and are the DOUBLE vertical in `KT_MID` now,
+the same stroke the window frames are drawn in.
 
 **SEPARATORS AT EVERY SEGMENT BOUNDARY** — after Start, after quick-launch,
 before the status wing, before the clock. The bar had two and the right-hand
@@ -2999,7 +3196,11 @@ line, for the two readouts that carry somebody's name (the media title, the
 application holding the microphone). The pager is little SCREENS: one filled
 cell per workspace in its own state colour with its number under it, and the
 second cell of the stride left as background, because filling both turned three
-inactive workspaces into one unbroken dark bar with three digits under it. Tray
+inactive workspaces into one unbroken dark bar with three digits under it —
+**and its HOVER is the width of what was drawn, not of the stride**, or the
+backdrop lights two cells under a square that is one and closes the gap to the
+workspace beside it. Photographed. A workspace whose NAME is two characters
+wide does occupy both, so the width is the label's. Tray
 icons are 2x2 and centred on the wing's full height, since an item is a picture
 with no label.
 
@@ -3192,6 +3393,38 @@ out LEFT TO RIGHT from a computed origin rather than right to left like the
 applet row, because it degrades as a unit — the chart gets shorter, then the
 least important meter goes — and a right-to-left walk would drop the one on the
 left, which is CPU.
+
+**A CHART IS CONTINUOUS IN TIME OR IT IS NOT A CHART.** Two rules, and the
+bar had neither:
+
+- **Every series is pushed on every tick**, with the last value carried forward
+  when a reading is momentarily unavailable — /proc/stat's aggregate not having
+  advanced, an interface that came and went. A series that skips a tick is
+  SHORTER than the one beside it: its columns cover a different span of time,
+  its gridlines sit under a different second, and the two charts creep out of
+  step for the rest of the session. `meter_hold()` is that, and it is what the
+  filesystem meter already did deliberately between its ten-second reads. A
+  series with NO sample at all is left empty rather than held at zero — an
+  absent reading is not a reading of nothing, and `have` is what the applets
+  test before printing a number.
+- **The trace spans the whole band from the first sample.** Drawing only the
+  samples there are and right-aligning them left the band empty on the left —
+  no fill, no line, not even a baseline — for as long as the ring took to fill,
+  which on the seven-cell network band is over a minute. Worse, nothing MOVED
+  while that happened: the newest sample stayed pinned to the right edge and
+  the picture only began to scroll once the ring was full. Reported as "the
+  graphs do not move smoothly". Column `i` is sample `n - w + i`, an index
+  before the oldest sample takes the oldest one, and real data enters at the
+  right and pushes the flat stretch off the left — motion, one pixel per
+  sample, from the first sample onward. `met_grid` draws the whole band for the
+  same reason: a scale that stopped where the samples ran out would say the
+  left of the chart was outside time.
+
+**AND `KPR_HIST` IS 256, NOT 128.** One sample is one pixel, so the ring has to
+be at least as long as the widest band any consumer draws — and the network
+band is 130 pixels at a 20-pixel cell and 214 at the doubled one a HiDPI output
+gets. At 128 the left of that band held a stretch no new sample could ever
+reach.
 
 **THE METERS SAMPLE ON A CLOCK, NOT ON THE DRAW LOOP.** A rate is a difference
 over an elapsed time and this loop is woken by EVENTS: the poll timeout is a
@@ -3516,6 +3749,16 @@ menu is dbusmenu. **Sixty-four columns, not forty-four**: at 44 every tip that
 says what the three buttons do came out cut mid-word (`right-cl`, `mid`),
 photographed. A tip is anchored at the item's own column and `place_clamp`
 pulls it back from the screen edge, so a wide one on the clock is not lost.
+
+**AND A CLICK SPENDS THE DWELL, which killing the tip does not.** `tip_kill`
+clears `tip_shown` because the caller that normally reaches it is a MOTION,
+which has just moved to another thing and owes it a fresh dwell. A CLICK moves
+nothing: the pointer is still on the applet, `tip_kind` still names it and
+`tip_since` is still long past, so the very next frame put the tooltip straight
+back up — over the Start menu, over the volume slider, over whatever the click
+had just opened, photographed on the booted ISO with the whole label and its
+hint line drawn across the top of the popup. `tip_spend()` marks the dwell
+spent; the next tip has to be earned by moving to something else.
 
 **`kdos-settings` writes panel.conf now (`ST_PANEL`), and the panel re-reads it
 on SIGHUP** — the same signal `kdos theme` already sends, so `overflow`,

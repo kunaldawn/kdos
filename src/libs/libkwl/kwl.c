@@ -236,6 +236,14 @@ static struct {
 
 	KwlConfig cfg;
 	int px_w, px_h;		/* surface size in LOGICAL pixels          */
+	/*
+	 * The frame rule, in logical pixels, 0 for none. It sits on the edge
+	 * the panel does NOT touch — under a top-anchored bar and above a
+	 * bottom-anchored one — because the other three edges are the screen's
+	 * and a line drawn against one of those is a line nobody sees.
+	 */
+	int rule;
+	int rule_bottom;
 	int cols, rows;		/* and in cells                            */
 	int configured;
 	int closed;
@@ -371,6 +379,37 @@ flush:
 }
 int kwl_cell_w(void) { return kcell_w(); }
 int kwl_cell_h(void) { return kcell_h(); }
+
+/*
+ * The SURFACE's own height in logical pixels — the cells plus the rule.
+ *
+ * A panel that anchors a popup just above itself has to pass its own
+ * thickness as the margin, and `rows * cell_h` stopped being that the moment
+ * the bar grew a rule outside the grid: every popup would have sat three
+ * pixels low and covered the line it was meant to clear.
+ */
+/*
+ * IS SOMEBODY ELSE DRAWING THIS WINDOW'S FRAME?
+ *
+ * A toplevel gets the compositor's server-side decoration — the same
+ * `════ Title ════[_][=][X]` every alien app wears — so a program that also
+ * drew its own box would be wearing two, one inside the other, with its title
+ * written twice. A popup, a panel and a terminal have no such frame and must
+ * draw their own or they have none at all.
+ *
+ * The question is asked of the SURFACE rather than answered from a flag the
+ * caller keeps, because the caller does not always know: the same program is a
+ * popup when the panel opens it and a window when it is typed by name.
+ */
+int kwl_decorated(void)
+{
+	return K.cfg.role == KWL_ROLE_TOPLEVEL && K.deco != NULL;
+}
+
+int kwl_px_h(void)
+{
+	return K.px_h > 0 ? K.px_h : K.rows * kcell_h() + K.rule;
+}
 /* The integer output scale this surface is being rendered at. A consumer that
  * rasterises anything of its own — libkicon is the one — has to do it at
  * cell * scale, or a HiDPI panel gets a picture upscaled from half its size. */
@@ -875,6 +914,8 @@ static const struct wl_buffer_listener buffer_listener = {
 
 static void buffer_free(KwlBuffer *b)
 {
+	if (b->grid)
+		pixman_image_unref(b->grid);
 	if (b->img)
 		pixman_image_unref(b->img);
 	if (b->wl)
@@ -936,6 +977,23 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 		memset(b, 0, sizeof(*b));
 		return -1;
 	}
+	/*
+	 * THE GRID STARTS BELOW THE RULE, and a second pixman image over the
+	 * SAME memory a few rows down is the whole of how. kcell_paint has no
+	 * y origin — it puts row 0 at pixel 0 of whatever it is handed — and
+	 * giving it one would mean an argument on a call every consumer of
+	 * libkcell makes, for a thing exactly one surface wants. Zero rule and
+	 * the two images are the same picture.
+	 */
+	int rule_px = K.rule * (K.scale > 0 ? K.scale : 1);
+	if (rule_px > 0 && rule_px < h && !K.rule_bottom) {
+		b->grid = pixman_image_create_bits(
+			argb ? PIXMAN_a8r8g8b8 : PIXMAN_x8r8g8b8, w,
+			h - rule_px, (uint32_t *)data + (size_t)rule_px * w,
+			(int)stride);
+	}
+	if (!b->grid)
+		b->grid = pixman_image_ref(b->img);
 	b->data = data;
 	b->size = size;
 	b->w = w;
@@ -1044,8 +1102,47 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 
 	/* kcell_paint updates `prev` (the shadow) with what it painted; a NULL
 	 * shadow — allocation failure — degrades to a full paint every frame. */
-	kcell_paint(b->img, cur, bfull ? NULL : b->shadow, w, h, bfull, scale,
-		    b->w, b->h);
+	int rule_px = K.rule * scale;
+	kcell_paint(b->grid, cur, bfull ? NULL : b->shadow, w, h, bfull, scale,
+		    b->w, b->h - rule_px);
+	/*
+	 * The rule itself, over the WHOLE width and on every paint: it is
+	 * three pixels and it is outside the grid, so nothing in the cell diff
+	 * would ever restore it.
+	 */
+	if (rule_px > 0) {
+		/*
+		 * `═`, NOT A BAR. The rule is the panel's own window edge and
+		 * the compositor draws every other window's with the same
+		 * mark — two thin lines with a gap, which is the cross-section
+		 * of the double box-drawing character this whole desktop is
+		 * framed in. A single solid band is a different picture from
+		 * the one round every window on the screen, and side by side
+		 * that is exactly what "the panel does not match" looks like.
+		 *
+		 * Two lines and the gap between them: `(rule - 1) / 2` each,
+		 * so a 5px rule is 2/1/2 and a 3px one is 1/1/1 — the same
+		 * weight the titlebar's own rule is drawn at, which is the
+		 * point of matching it at all.
+		 */
+		KRgb rgb = ktui_theme->slot[K.cfg.rule_slot & 7];
+		pixman_color_t c = { .red = (uint16_t)(rgb.r * 257),
+				     .green = (uint16_t)(rgb.g * 257),
+				     .blue = (uint16_t)(rgb.b * 257),
+				     .alpha = 0xffff };
+		int t = (rule_px - 1) / 2;
+		int y0 = K.rule_bottom ? b->h - rule_px : 0;
+
+		if (t < 1)
+			t = 1;
+		pixman_image_fill_rectangles(
+			PIXMAN_OP_SRC, b->img, &c, 2,
+			(pixman_rectangle16_t[]){
+				{ 0, (int16_t)y0, (uint16_t)b->w,
+				  (uint16_t)t },
+				{ 0, (int16_t)(y0 + rule_px - t),
+				  (uint16_t)b->w, (uint16_t)t } });
+	}
 	if (b->shadow && bfull)
 		memcpy(b->shadow, cur, n * sizeof(KtuiCell));
 	if (bfull)
@@ -1061,8 +1158,9 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 	wl_surface_attach(K.surface, b->wl, 0, 0);
 	if (!full && dirty_y0 >= 0) {
 		int ch = kcell_h() * scale;
-		int y0 = dirty_y0 * ch;
-		int y1 = (dirty_y1 + 1) * ch;
+		int off = K.rule_bottom ? 0 : rule_px;
+		int y0 = off + dirty_y0 * ch;
+		int y1 = off + (dirty_y1 + 1) * ch;
 		if (y1 > bh)
 			y1 = bh;
 		wl_surface_damage_buffer(K.surface, 0, y0, bw, y1 - y0);
@@ -1529,7 +1627,10 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t time,
 	if (cw <= 0 || ch <= 0)
 		return;
 	int cx = wl_fixed_to_int(sx) / cw;
-	int cy = wl_fixed_to_int(sy) / ch;
+	/* Below the rule when the rule is on top: the grid starts there, so a
+	 * pointer on the rule itself is row -1 and hits nothing, which is what
+	 * a border is. */
+	int cy = (wl_fixed_to_int(sy) - (K.rule_bottom ? 0 : K.rule)) / ch;
 
 	K.ptr_cx = cx;
 	K.ptr_cy = cy;
@@ -1716,7 +1817,8 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
 	int cw = kcell_w(), ch = kcell_h();
 	if (cw > 0 && ch > 0) {
 		K.ptr_cx = wl_fixed_to_int(x) / cw;
-		K.ptr_cy = wl_fixed_to_int(y) / ch;
+		K.ptr_cy = (wl_fixed_to_int(y) -
+			    (K.rule_bottom ? 0 : K.rule)) / ch;
 	}
 	/* This IS the motion for that cell, so the dedup starts from here — an
 	 * enter followed by a real move to the same cell is not two moves. */
@@ -1940,8 +2042,12 @@ static void resize_cells(int px_w, int px_h)
 	K.px_w = px_w;
 	K.px_h = px_h;
 	int cw = kcell_w(), ch = kcell_h();
+	int grid_h = px_h - K.rule;
+	if (grid_h < 0)
+		grid_h = 0;
+	/* The grid is the same size either way; only its ORIGIN moves. */
 	K.cols = cw > 0 ? px_w / cw : 0;
-	K.rows = ch > 0 ? px_h / ch : 0;
+	K.rows = ch > 0 ? grid_h / ch : 0;
 	if (K.cols < 1)
 		K.cols = 1;
 	if (K.rows < 1)
@@ -2383,7 +2489,10 @@ static int make_panel(void)
 		return -1;
 
 	int vertical = K.cfg.edge == KWL_EDGE_TOP || K.cfg.edge == KWL_EDGE_BOTTOM;
-	int thickness = K.cfg.cells * kcell_h();
+	/* The rule is on TOP of the cells, not out of them: a bar that gave up
+	 * three pixels of its own grid would clip the glyphs it was drawn to
+	 * frame. */
+	int thickness = K.cfg.cells * kcell_h() + K.rule;
 	if (!vertical)
 		thickness = K.cfg.cells * kcell_w();
 
@@ -2832,11 +2941,20 @@ static int make_toplevel(void)
 	}
 	/*
 	 * A DEFAULT, not a demand: the compositor's first configure carries
-	 * the size it wants and xdg_top_configure() takes it. 80x24 is only
-	 * what to commit if it declines to choose — and it is deliberately
-	 * short of a whole screen, because a frame needs somewhere to go.
+	 * the size it wants and xdg_top_configure() takes it. This is only
+	 * what to commit if it declines to choose.
+	 *
+	 * The CALLER'S size when it gave one, because these are the same
+	 * programs that open as popups and they were each sized for their own
+	 * content; a network panel that came up at somebody else's 80x22 would
+	 * be a window with its list in the corner. 80x22 remains the fallback,
+	 * and it is deliberately short of a whole screen — a frame needs
+	 * somewhere to go.
 	 */
-	resize_cells(80 * kcell_w(), 22 * kcell_h());
+	int cols = K.cfg.cols > 0 ? K.cfg.cols : 80;
+	int rows = K.cfg.rows > 0 ? K.cfg.rows : 22;
+
+	resize_cells(cols * kcell_w(), rows * kcell_h());
 	return 0;
 }
 
@@ -2867,6 +2985,17 @@ int kwl_init(const KwlConfig *cfg)
 	if (kcell_font_load(cfg->font && *cfg->font ? cfg->font
 						    : "Terminus:pixelsize=32") != 0)
 		return -1;
+	/*
+	 * The rule, once there is a cell to measure it against. Only a
+	 * horizontally-anchored panel has a top edge to rule, and a rule as
+	 * tall as a cell is not a rule.
+	 */
+	K.rule = (cfg->role == KWL_ROLE_PANEL && cfg->rule > 0 &&
+		  cfg->rule < kcell_h() &&
+		  (cfg->edge == KWL_EDGE_TOP || cfg->edge == KWL_EDGE_BOTTOM))
+			 ? cfg->rule
+			 : 0;
+	K.rule_bottom = cfg->edge == KWL_EDGE_TOP;
 
 	K.display = wl_display_connect(NULL);
 	if (!K.display)
@@ -3014,7 +3143,9 @@ void kwl_layer_autohide(bool hidden)
 		       K.cfg.edge == KWL_EDGE_BOTTOM;
 	int cell = vertical ? kcell_h() : kcell_w();
 	int cells = hidden ? 1 : (K.cfg.cells > 0 ? K.cfg.cells : 1);
-	int thickness = cells * cell;
+	/* The rule rides on top of the cells here too, or the hidden strip
+	 * would be a cell tall while the grid inside it believed it had one. */
+	int thickness = cells * cell + K.rule;
 
 	zwlr_layer_surface_v1_set_size(K.layer_surface,
 				       vertical ? 0 : (uint32_t)thickness,

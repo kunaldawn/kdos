@@ -272,52 +272,83 @@ load_button(struct theme *theme, struct button *b, enum ssd_active_state active)
  *
  * ...in the button array definition below.
  */
+/* KDOS */
+/*
+ * THE TITLEBAR GLYPHS, AS EIGHT-BY-EIGHT BITMAPS.
+ *
+ * Upstream's are 6x6 and were drawn for a ~10px button on a ~20px titlebar.
+ * This desktop's buttons are 32 pixels, so every glyph has to be blown up —
+ * and `buffer_resize` only ever SHRINKS, which is why upstream's were
+ * composited at their own six pixels in the middle of the button and came out
+ * as a dash and a dot no theme setting could grow. Two things fix that
+ * together: `buffer_resize_pixelated` enlarges an XBM by a whole number with
+ * a NEAREST filter, and the source is eight pixels rather than six so that
+ * number is 4 rather than 5⅓. Eight is also what lets `[]` have a titlebar of
+ * its own and `X` have clean diagonals.
+ *
+ * XBM bit order is LSB-first, so bit 0 is the LEFTMOST column of the row.
+ * They are drawn as the character-grid marks they stand in for: `_` `[]` `X`
+ * `=`.
+ */
+#define KDOS_BTN_ICONIFY  (const char[]){ 0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x7e, 0x00 }
+#define KDOS_BTN_MAX      (const char[]){ 0x00, 0x7e, 0x7e, 0x42, 0x42, 0x42, 0x7e, 0x00 }
+#define KDOS_BTN_MAX_TOGGLED \
+			  (const char[]){ 0xf8, 0x88, 0xbe, 0xa2, 0xe2, 0x22, 0x3e, 0x00 }
+#define KDOS_BTN_CLOSE    (const char[]){ 0x00, 0xc3, 0x66, 0x3c, 0x3c, 0x66, 0xc3, 0x00 }
+#define KDOS_BTN_MENU     (const char[]){ 0x00, 0x7e, 0x00, 0x7e, 0x00, 0x7e, 0x00, 0x00 }
+#define KDOS_BTN_SHADE    (const char[]){ 0x00, 0x7e, 0x00, 0x18, 0x3c, 0x7e, 0x00, 0x00 }
+#define KDOS_BTN_SHADE_TOGGLED \
+			  (const char[]){ 0x00, 0x7e, 0x00, 0x7e, 0x3c, 0x18, 0x00, 0x00 }
+#define KDOS_BTN_DESK     (const char[]){ 0x00, 0x66, 0x66, 0x00, 0x66, 0x66, 0x00, 0x00 }
+#define KDOS_BTN_DESK_TOGGLED \
+			  (const char[]){ 0x00, 0x7e, 0x42, 0x5a, 0x5a, 0x42, 0x7e, 0x00 }
+
 static void
 load_buttons(struct theme *theme)
 {
 	struct button buttons[] = { {
 		.name = "menu",
-		.fallback_button = (const char[]){ 0x00, 0x21, 0x33, 0x1E, 0x0C, 0x00 },
+		.fallback_button = KDOS_BTN_MENU,
 		.type = LAB_NODE_BUTTON_WINDOW_MENU,
 		.state_set = 0,
 	}, {
 		.name = "iconify",
-		.fallback_button = (const char[]){ 0x00, 0x00, 0x00, 0x00, 0x3f, 0x3f },
+		.fallback_button = KDOS_BTN_ICONIFY,
 		.type = LAB_NODE_BUTTON_ICONIFY,
 		.state_set = 0,
 	}, {
 		.name = "max",
-		.fallback_button = (const char[]){ 0x3f, 0x3f, 0x21, 0x21, 0x21, 0x3f },
+		.fallback_button = KDOS_BTN_MAX,
 		.type = LAB_NODE_BUTTON_MAXIMIZE,
 		.state_set = 0,
 	}, {
 		.name = "max_toggled",
-		.fallback_button = (const char[]){ 0x3e, 0x22, 0x2f, 0x29, 0x39, 0x0f },
+		.fallback_button = KDOS_BTN_MAX_TOGGLED,
 		.type = LAB_NODE_BUTTON_MAXIMIZE,
 		.state_set = LAB_BS_TOGGLED,
 	}, {
 		.name = "shade",
-		.fallback_button = (const char[]){ 0x3f, 0x3f, 0x00, 0x0c, 0x1e, 0x3f },
+		.fallback_button = KDOS_BTN_SHADE,
 		.type = LAB_NODE_BUTTON_SHADE,
 		.state_set = 0,
 	}, {
 		.name = "shade_toggled",
-		.fallback_button = (const char[]){ 0x3f, 0x3f, 0x00, 0x3f, 0x1e, 0x0c },
+		.fallback_button = KDOS_BTN_SHADE_TOGGLED,
 		.type = LAB_NODE_BUTTON_SHADE,
 		.state_set = LAB_BS_TOGGLED,
 	}, {
 		.name = "desk",
-		.fallback_button = (const char[]){ 0x33, 0x33, 0x00, 0x00, 0x33, 0x33 },
+		.fallback_button = KDOS_BTN_DESK,
 		.type = LAB_NODE_BUTTON_OMNIPRESENT,
 		.state_set = 0,
 	}, {
 		.name = "desk_toggled",
-		.fallback_button = (const char[]){ 0x00, 0x1e, 0x1a, 0x16, 0x1e, 0x00 },
+		.fallback_button = KDOS_BTN_DESK_TOGGLED,
 		.type = LAB_NODE_BUTTON_OMNIPRESENT,
 		.state_set = LAB_BS_TOGGLED,
 	}, {
 		.name = "close",
-		.fallback_button = (const char[]){ 0x33, 0x3f, 0x1e, 0x1e, 0x3f, 0x33 },
+		.fallback_button = KDOS_BTN_CLOSE,
 		.type = LAB_NODE_BUTTON_CLOSE,
 		.state_set = 0,
 	}, {
@@ -498,6 +529,9 @@ parse_gradient(const char *str)
 		} else if (strstr(lower, "vertical")) {
 			gradient = LAB_GRADIENT_VERTICAL;
 		}
+	} else if (strstr(lower, "kdos")) {
+		/* KDOS: `flat kdos` — the frame rule, see enum lab_gradient. */
+		gradient = LAB_GRADIENT_KDOS_RULE;
 	}
 
 	g_free(lower);
@@ -1374,6 +1408,42 @@ create_titlebar_pattern(const struct theme_background *bg, int height)
 		add_color_stop_rgba_premult(pattern, 1, bg->color_to_split_to);
 		break;
 
+	case LAB_GRADIENT_KDOS_RULE: {
+		/*
+		 * KDOS: `════` across the titlebar.
+		 *
+		 * The fill is one pixel wide and stretched, so anything that
+		 * varies only with Y is free — and a double horizontal rule
+		 * varies only with Y. Two hard-edged bands of the border
+		 * colour, a gap of the titlebar colour between them, centred
+		 * on the titlebar's own middle, which is exactly the
+		 * cross-section of the `═` the character grid draws.
+		 *
+		 * Duplicated offsets are what make the edges HARD: a linear
+		 * gradient with two stops at the same offset steps rather than
+		 * fades, and a faded rule would be the one soft thing on the
+		 * screen.
+		 */
+		int t = MAX(1, height / 16);	/* the weight of one line */
+		int gap = MAX(1, height / 12);	/* the space between them */
+		double c = height / 2.0;
+		double y0 = c - gap / 2.0 - t, y1 = c - gap / 2.0;
+		double y2 = c + gap / 2.0, y3 = c + gap / 2.0 + t;
+
+		pattern = cairo_pattern_create_linear(0, 0, 0, height);
+		add_color_stop_rgba_premult(pattern, 0, bg->color);
+		add_color_stop_rgba_premult(pattern, y0 / height, bg->color);
+		add_color_stop_rgba_premult(pattern, y0 / height, bg->color_to);
+		add_color_stop_rgba_premult(pattern, y1 / height, bg->color_to);
+		add_color_stop_rgba_premult(pattern, y1 / height, bg->color);
+		add_color_stop_rgba_premult(pattern, y2 / height, bg->color);
+		add_color_stop_rgba_premult(pattern, y2 / height, bg->color_to);
+		add_color_stop_rgba_premult(pattern, y3 / height, bg->color_to);
+		add_color_stop_rgba_premult(pattern, y3 / height, bg->color);
+		add_color_stop_rgba_premult(pattern, 1, bg->color);
+		break;
+	}
+
 	case LAB_GRADIENT_NONE:
 	default:
 		pattern = color_to_pattern(bg->color);
@@ -1409,6 +1479,14 @@ create_backgrounds(struct theme *theme)
 		theme->window[active].titlebar_fill = create_titlebar_fill(
 			theme->window[active].titlebar_pattern,
 			theme->titlebar_height);
+		/*
+		 * KDOS: the plain one, for the title and the buttons. The rule
+		 * belongs to the BAR and everything that sits on it breaks it,
+		 * which is what makes `════ Title ════` read as a frame rather
+		 * than as a word with a line through it.
+		 */
+		theme->window[active].title_plain_pattern =
+			color_to_pattern(theme->window[active].title_bg.color);
 	}
 }
 
@@ -1871,6 +1949,7 @@ theme_finish(struct theme *theme)
 	enum ssd_active_state active;
 	FOR_EACH_ACTIVE_STATE(active) {
 		zfree_pattern(theme->window[active].titlebar_pattern);
+		zfree_pattern(theme->window[active].title_plain_pattern);
 		zdrop(&theme->window[active].titlebar_fill);
 		zdrop(&theme->window[active].corner_top_left_normal);
 		zdrop(&theme->window[active].corner_top_right_normal);

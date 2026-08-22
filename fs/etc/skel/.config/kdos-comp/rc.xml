@@ -65,6 +65,12 @@
     generated — ~/.config/kdos-comp/themerc-override, written by `kdos theme`.
   -->
   <theme>
+    <!-- SQUARE CORNERS. labwc's default is 8px, which puts a rounded plate at
+         the top of every window on a desktop whose every other surface is a
+         double-line box drawn on a character grid. A radius is the one thing
+         a cell grid cannot express, so it is the one thing that makes an SSD
+         read as somebody else's toolkit. -->
+    <cornerRadius>0</cornerRadius>
     <font place="ActiveWindow"><name>Terminus (TTF)</name><size>24</size></font>
     <font place="InactiveWindow"><name>Terminus (TTF)</name><size>24</size></font>
     <font place="MenuHeader"><name>Terminus (TTF)</name><size>24</size></font>

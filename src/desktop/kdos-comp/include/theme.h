@@ -22,6 +22,14 @@ enum lab_gradient {
 	LAB_GRADIENT_NONE, /* i.e. Solid */
 	LAB_GRADIENT_VERTICAL,
 	LAB_GRADIENT_SPLITVERTICAL,
+	/*
+	 * KDOS: the titlebar carries the double horizontal rule the rest of
+	 * this desktop draws its window frames with, so an SSD reads as
+	 * `════ Title ════[_][=][X]` — the same picture kdos-start, kdos-net
+	 * and every other KDOS surface puts round itself with box-drawing
+	 * characters. Written `flat kdos` in themerc.
+	 */
+	LAB_GRADIENT_KDOS_RULE,
 };
 
 enum lab_justification {
@@ -123,6 +131,15 @@ struct theme {
 		 */
 		cairo_pattern_t *titlebar_pattern;
 		struct lab_data_buffer *titlebar_fill;
+
+		/*
+		 * KDOS: the same background WITHOUT the rule, for the two
+		 * things that sit on the titlebar and must break it — the
+		 * title text and the buttons. A rule running behind a word is
+		 * a word with a line struck through it, and one running behind
+		 * `_` is a minimise button nobody can read.
+		 */
+		cairo_pattern_t *title_plain_pattern;
 
 		struct lab_data_buffer *corner_top_left_normal;
 		struct lab_data_buffer *corner_top_right_normal;
