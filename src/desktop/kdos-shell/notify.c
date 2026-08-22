@@ -306,7 +306,7 @@ static void draw_frame(void)
 					 "kept here.",
 			       daemon_down ? KT_WARN : KT_MID, KT_BG,
 			       KT_A_NONE);
-	kch_list_scrollbar(w - 2, y0, rows_vis, nrows, top, KT_BG);
+	kch_scrollbar(0, w - 2, y0, rows_vis, nrows, top, KT_BG);
 
 	/* ── the footer ── */
 	struct kch_button b[NB_N];
@@ -474,6 +474,17 @@ int notify_main(int argc, char **argv)
 				      idx >= 0 && idx < nrows;
 
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar.
+				 * A drag is a press that is still down, and
+				 * Wayland says nothing about that, so the
+				 * grab is what remembers it. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (in_list) {
 					sel = idx;
 					sel_follow = 1;
@@ -481,8 +492,22 @@ int notify_main(int argc, char **argv)
 				kch_hover(ev.mx, ev.my);
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx,
+							     ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;

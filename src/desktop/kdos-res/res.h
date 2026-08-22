@@ -82,6 +82,19 @@ typedef struct ResPage {
 	 */
 	int  (*wheel)(int up);			/* 1 if it consumed it   */
 	int  (*key)(int k);			/* 1 if it consumed it   */
+	/*
+	 * THE POINTER, in the page's OWN coordinates — the frame subtracts its
+	 * body origin once so no page carries a second copy of it.
+	 *
+	 * `motion` is what lets a row light under the hand; without it a table
+	 * of forty rows is a picture, and the only way to find out that a row
+	 * is a control is to click one. `release` exists for the one gesture
+	 * that spans events: a drag of the scrollbar, which Wayland reports as
+	 * plain motion with no button state at all, so the PRESS is what has
+	 * to be remembered.
+	 */
+	void (*motion)(int mx, int my);
+	void (*release)(void);
 } ResPage;
 
 extern const ResPage RES_PAGES[RP_NPAGES];
@@ -143,6 +156,7 @@ int  res_frame_key(int k);
 int  res_frame_click(int mx, int my, int btn);
 int  res_frame_wheel(int up);
 void res_frame_motion(int mx, int my);
+void res_frame_release(void);
 
 /* ── sampling ────────────────────────────────────────────────────────── */
 /*
@@ -166,22 +180,31 @@ void res_draw_procs(int x, int y, int w, int h);
 int  res_procs_key(int k);
 int  res_procs_click(int mx, int my, int btn);
 int  res_procs_wheel(int up);
+void res_procs_motion(int mx, int my);
+void res_procs_release(void);
 void res_procs_prepare(void);
 void res_app_prepare(void);
 const char *res_app_headline(void);
 void res_draw_apps(int x, int y, int w, int h);
 int  res_app_key(int k);
 int  res_app_wheel(int up);
+int  res_app_click(int mx, int my, int btn);
+void res_app_motion(int mx, int my);
+void res_app_release(void);
 void res_drive_prepare(void);
 const char *res_drive_headline(void);
 void res_draw_drives(int x, int y, int w, int h);
 int  res_drive_key(int k);
 int  res_drive_wheel(int up);
+int  res_drive_click(int mx, int my, int btn);
+void res_drive_motion(int mx, int my);
 void res_net_prepare(void);
 const char *res_net_headline(void);
 void res_draw_net(int x, int y, int w, int h);
 int  res_net_key(int k);
 int  res_net_wheel(int up);
+int  res_net_click(int mx, int my, int btn);
+void res_net_motion(int mx, int my);
 /* Fed from res_sample(): a rate needs two readings an interval apart, and a
  * page's prepare() runs once per FRAME. */
 void res_dev_sample(void);

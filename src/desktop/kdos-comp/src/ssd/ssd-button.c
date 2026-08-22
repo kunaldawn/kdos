@@ -18,7 +18,7 @@ struct ssd_button *
 attach_ssd_button(struct wl_list *button_parts, enum lab_node_type type,
 		struct wlr_scene_tree *parent,
 		struct lab_img *imgs[LAB_BS_ALL + 1],
-		int x, int y, struct view *view)
+		int x, int y, struct view *view, enum ssd_active_state active)
 {
 	struct wlr_scene_tree *root = lab_wlr_scene_tree_create(parent);
 	wlr_scene_node_set_position(&root->node, x, y);
@@ -30,10 +30,31 @@ attach_ssd_button(struct wl_list *button_parts, enum lab_node_type type,
 	node_descriptor_create(&root->node, type, view, button);
 	wl_list_append(button_parts, &button->link);
 
-	/* Hitbox */
+	/*
+	 * Hitbox — and, on KDOS, the button's own backdrop.
+	 *
+	 * The titlebar fill carries the frame rule (`flat kdos`), which is a
+	 * double horizontal line running the whole width of the bar. A glyph
+	 * composited straight onto it comes out with a line through it, and
+	 * for the minimise button — which IS a horizontal line — that is a
+	 * button with no readable state at all. So the hitbox, which was an
+	 * invisible rect and had to exist anyway, is painted in the titlebar's
+	 * own colour and made the FULL height of the bar: the rule breaks
+	 * round each button exactly as it breaks round the title.
+	 */
 	float invisible[4] = { 0, 0, 0, 0 };
-	lab_wlr_scene_rect_create(root, rc.theme->window_button_width,
-		rc.theme->window_button_height, invisible);
+	int hit_h = rc.theme->window_button_height;
+	int hit_y = 0;
+	float *plate = invisible;
+	if (rc.theme->window[active].title_bg.gradient
+			== LAB_GRADIENT_KDOS_RULE) {
+		plate = rc.theme->window[active].title_bg.color;
+		hit_h = rc.theme->titlebar_height;
+		hit_y = -y;
+	}
+	struct wlr_scene_rect *hit = lab_wlr_scene_rect_create(root,
+		rc.theme->window_button_width, hit_h, plate);
+	wlr_scene_node_set_position(&hit->node, 0, hit_y);
 
 	/* Icons */
 	int button_width = rc.theme->window_button_width;

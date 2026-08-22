@@ -100,6 +100,11 @@ static void devh_push(struct devh *d, unsigned long long a,
 
 static KprDisk *g_disk;
 static int g_ndisk;
+static int g_dhover = -1;	/* the row under the pointer */
+/* How many rows the last draw actually laid down. The chart takes the bottom
+ * third, so `n` is not the answer: a click down there would otherwise select a
+ * row that is not on the screen. */
+static int g_ddrawn;
 static struct devh g_dh_disk[DEVH_MAX];
 static int g_dsel;
 
@@ -208,6 +213,7 @@ void res_draw_drives(int x, int y, int w, int h)
 
 	if (g_dsel >= n)
 		g_dsel = n ? n - 1 : 0;
+	g_ddrawn = 0;
 
 	/*
 	 * BUSY is io_ticks and it earns its column: a disk at 100% busy while
@@ -237,12 +243,13 @@ void res_draw_drives(int x, int y, int w, int h)
 	for (int k = 0; k < n && row < list_bottom; k++) {
 		const KprDisk *d = &g_disk[idx[k]];
 		int sel = (k == g_dsel);
+		int hov = !sel && k == g_dhover;
 		int fg = sel ? KT_SURFACE : KT_TEXT;
-		int bg = sel ? KT_ACCENT : KT_BG;
+		int bg = sel ? KT_ACCENT : hov ? KT_MID : KT_BG;
 		char busy[16];
 
-		if (sel)
-			ktui_draw_fill(krect(x, row, w, 1), KT_ACCENT);
+		if (sel || hov)
+			ktui_draw_fill(krect(x, row, w, 1), bg);
 		ktui_draw_text(x, row, 10, d->name, fg, bg, 0);
 		ktui_draw_text(x + c_size, row, 9, res_size(d->size), fg, bg, 0);
 		ktui_draw_text(x + c_type, row, 5,
@@ -263,6 +270,7 @@ void res_draw_drives(int x, int y, int w, int h)
 				       d->model[0] ? d->model : res_none(),
 				       sel ? KT_SURFACE : KT_MID, bg, 0);
 		row++;
+		g_ddrawn = k + 1;
 	}
 
 	if (chart_h && n) {
@@ -329,6 +337,41 @@ int res_drive_wheel(int up)
 	return 1;
 }
 
+/*
+ * THE POINTER, the same contract the two tables keep: motion lights a row, a
+ * press selects it, a press on the row that is ALREADY selected opens it.
+ * Both device pages had verbs on keys and NOTHING at all on the pointer, so a
+ * hand that reached this page could pick a drive and then not look at it.
+ */
+void res_drive_motion(int mx, int my)
+{
+	int idx[DEVH_MAX];
+	int n = drive_rows(idx, DEVH_MAX);
+	int k = my - 1;
+
+	(void)mx;
+	(void)n;
+	g_dhover = (my >= 1 && k < g_ddrawn) ? k : -1;
+}
+
+int res_drive_click(int mx, int my, int btn)
+{
+	int idx[DEVH_MAX];
+	int n = drive_rows(idx, DEVH_MAX);
+	int k = my - 1;
+
+	(void)mx;
+	(void)btn;
+	(void)n;
+	if (my < 1 || k >= g_ddrawn)
+		return 1;
+	if (k == g_dsel)
+		drive_facts(idx[k]);
+	else
+		g_dsel = k;
+	return 1;
+}
+
 /* ── Network ─────────────────────────────────────────────────────────── */
 
 static KprIface *g_if;
@@ -336,6 +379,8 @@ static int g_nif;
 
 static struct devh g_dh_if[DEVH_MAX];
 static int g_nsel;
+static int g_nhover = -1;
+static int g_ndrawn;
 
 void res_net_prepare(void)
 {
@@ -480,12 +525,13 @@ void res_draw_net(int x, int y, int w, int h)
 	for (int k = 0; k < n && row < list_bottom; k++) {
 		const KprIface *f = &g_if[idx[k]];
 		int sel = (k == g_nsel);
+		int hov = !sel && k == g_nhover;
 		int fg = sel ? KT_SURFACE : KT_TEXT;
-		int bg = sel ? KT_ACCENT : KT_BG;
+		int bg = sel ? KT_ACCENT : hov ? KT_MID : KT_BG;
 		char sp[24];
 
-		if (sel)
-			ktui_draw_fill(krect(x, row, w, 1), KT_ACCENT);
+		if (sel || hov)
+			ktui_draw_fill(krect(x, row, w, 1), bg);
 		ktui_draw_text(x, row, 12, f->name, fg, bg, 0);
 		ktui_draw_text(x + 13, row, 6, f->up ? "up" : "down",
 			       sel ? KT_SURFACE : (f->up ? KT_ACCENT : KT_DIM),
@@ -581,6 +627,35 @@ int res_net_wheel(int up)
 		g_nsel--;
 	else if (!up && g_nsel + 1 < n)
 		g_nsel++;
+	return 1;
+}
+
+void res_net_motion(int mx, int my)
+{
+	int idx[DEVH_MAX];
+	int n = net_rows(idx, DEVH_MAX);
+	int k = my - 1;
+
+	(void)mx;
+	(void)n;
+	g_nhover = (my >= 1 && k < g_ndrawn) ? k : -1;
+}
+
+int res_net_click(int mx, int my, int btn)
+{
+	int idx[DEVH_MAX];
+	int n = net_rows(idx, DEVH_MAX);
+	int k = my - 1;
+
+	(void)mx;
+	(void)btn;
+	(void)n;
+	if (my < 1 || k >= g_ndrawn)
+		return 1;
+	if (k == g_nsel)
+		net_facts(idx[k]);
+	else
+		g_nsel = k;
 	return 1;
 }
 

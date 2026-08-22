@@ -518,11 +518,11 @@ static void draw(const struct view *v)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see kch_list_scrollbar. It matters more since the wheel started
+	 * see kch_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	kch_list_scrollbar(w - 1, 1, rows, v->n, v->top, KT_SURFACE);
+	kch_scrollbar(0, w - 1, 1, rows, v->n, v->top, KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -838,11 +838,11 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see kch_list_scrollbar. It matters more since the wheel started
+	 * see kch_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	kch_list_scrollbar(w - 1, 1, vis, nrows, top, KT_SURFACE);
+	kch_scrollbar(0, w - 1, 1, vis, nrows, top, KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -1066,14 +1066,35 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 				      row >= 0 && row < nrows &&
 				      wrow_pickable(&rows[row]);
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (on_row) {
 					sel = row;
 					sel_follow = 1;
 				}
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx, ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
@@ -1388,14 +1409,35 @@ int menu_main(int argc, char **argv)
 				      (v.rows[row] <= -2 ||
 				       items[v.rows[row]].submenu != -2);
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					v.top = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (on_row) {
 					v.sel = row;
 					sel_follow = 1;
 				}
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx, ev.my);
+
+				if (bt >= 0) {
+					v.top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;

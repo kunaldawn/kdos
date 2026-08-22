@@ -1,24 +1,24 @@
-                                                                                
-  Energy                                                                        
-  unavailable                                                                   
- ------------------------------------------------------------------------------ 
-  A   |                                                                         
-  P   | kdos-energyd is not running (the socket at /run/kdos-energyd.sock is no 
-  C   |                                                                         
-  M   | RAPL is root-only since Linux 5.10, so this page is the daemon's answer 
-  G   |                                                                         
-  D   |                                                                         
-  N   |                                                                         
-  B   |                                                                         
-  E   |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
-      |                                                                         
++=  Resources  ================================================================+
+| Energy                                                                       |
+| unavailable                                                                  |
+|------------------------------------------------------------------------------|
+| A    |                                                                       |
+| P    | kdos-energyd is not running (the socket at /run/kdos-energyd.sock is  |
+| C    |                                                                       |
+| M    | RAPL is root-only since Linux 5.10, so this page is the daemon's answ |
+| G    |                                                                       |
+| D    |                                                                       |
+| N    |                                                                       |
+| B    |                                                                       |
+| E    |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
++==============================================================================+

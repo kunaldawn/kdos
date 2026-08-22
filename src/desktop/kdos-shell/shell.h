@@ -117,6 +117,12 @@ extern const char *const sh_menu_labels[SH_NMENUS];
  * forked, so the panel neither reaps nor blocks: a menu that takes a moment to
  * scan 400 desktop files must not stop the clock. */
 void sh_spawn_menu(int which, int x, int y);
+/*
+ * The window's outer frame: the double-line box when this surface has no
+ * decoration of its own, and just the background when the COMPOSITOR is
+ * drawing one. Two frames is what a toplevel that also boxed itself wore.
+ */
+void sh_frame(int w, int h, const char *title, int fg, int bg, int dbl);
 
 struct sh_state {
 	void *display;			/* the panel shares libkwl's connection */
