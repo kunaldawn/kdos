@@ -247,7 +247,14 @@ int  kpr_nvml_probe(void);
 int  kpr_nvml_read(int idx, KprGpu *g);
 
 /* ── the sample ring, the axis and the smoothing ─────────────────────────── */
-#define KPR_HIST 128
+/*
+ * ONE SAMPLE IS ONE PIXEL, so the ring has to be at least as long as the
+ * widest band any consumer draws. The panel's network meter is seven cells,
+ * which is 130 pixels at a 20-pixel cell and 214 at the doubled one a HiDPI
+ * output gets — both longer than a 128-sample ring, so the left of that band
+ * held a stretch that no new sample could ever reach.
+ */
+#define KPR_HIST 256
 
 typedef struct {
 	double v[KPR_HIST];

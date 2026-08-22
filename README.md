@@ -204,9 +204,16 @@ symptom is "the mouse does not work".
 wlroots has no shader API, so the pass uses the one documented seam it does
 have: `wlr_scene_output_build_state()` takes a custom swapchain. The scene
 composites into a buffer of ours; our GLES2 program blits that into the output's
-real buffer with scanlines every third *physical* row, a three-tap horizontal
-bleed, a vignette, optional barrel distortion, and a faint phosphor floor so
-black is never quite black.
+real buffer with a three-tap horizontal bleed, a vignette, a faint phosphor
+floor so black is never quite black, and — off by default — scanlines and
+barrel distortion.
+
+**The scanlines are the one part that ships off**, and the reason is the thing
+underneath them: this desktop is a grid of 16×32 cells, and a dark line on
+every third *physical* row shares its period with nothing on the screen, so
+text drawn crisp and two-colour arrives striped. The bleed, the vignette and
+the floor are what carry the look. `crt_scanlines = 60` in `comp.conf` is the
+strength they shipped at, for anyone who wants them.
 
 Three things it gets right, each of which was a bug first:
 
@@ -283,6 +290,24 @@ bar, and most of its defects have been arithmetic:
   because "269 kB/s" does not say which direction the machine is busy in, and the
   axis snaps to a ladder of round numbers with hysteresis, because a chart
   autoscaled to its own window moves its ruler while the data stands still.
+  **The axis is taken over the samples that are on screen**, not over the whole
+  ring: the ring is 256 samples and a band about a hundred pixels, so scanning
+  all of it handed the scale to a spike nobody could see. One burst of traffic
+  at login pinned it at 16 MB/s and held it there while every visible sample was
+  under 120 *bytes*; when the spike finally aged out the scale fell several
+  rungs at once and the whole chart leapt. `KDOS_PANEL_DEBUG=1` prints each
+  meter's ring length, axis and newest value once per sample, which is how that
+  was found after screenshots had failed to show it.
+- **The bar is framed like a window.** Its top edge is two accent lines with a
+  gap — the cross-section of `═`, the same mark the compositor draws every
+  window's frame with. It is painted outside the cell grid, so the bar reads as
+  a piece of chrome rather than a region of the desktop without spending a
+  32-pixel row on a border.
+- **A panel button toggles its popup.** Clicking the clock opened a calendar and
+  clicking it again opened another one, because a popup here is a separate
+  process and the panel never asked whether the last was still up. One record —
+  the pid and which control opened it — and a second click on the same control
+  closes it.
 - **Nothing in the status area comes and goes.** The stutter chip, the restart
   mark, the clipboard depth and the removable-media count appear only when they
   have something to say — four columns at a time, which changed the wing's width
@@ -318,9 +343,9 @@ Applications page is that rollup.
 **One renderer, three faces.** The same page, layout and numbers on tty1, in a
 window, and in `--dump`: there is only a grid of character cells, and libktui's
 backend decides who paints it — the terminal, Wayland, or an offscreen buffer.
-Nothing above that line knows which. It is the tree's first xdg-toplevel client,
-which is how `libkwl` came to bind xdg-decoration and ask for a server-side
-frame.
+Nothing above that line knows which. It was the tree's first xdg-toplevel
+client, which is how `libkwl` came to bind xdg-decoration and ask for a
+server-side frame — the thing every native window here now wears.
 
 **No number is invented.** Every reader answers `KPR_UNREADABLE` where the
 machine publishes no value and the cell renders a plain `-`. A `0` default is
@@ -329,6 +354,16 @@ and the GPU page is where that bites hardest: only amdgpu and NVML publish a
 utilisation percentage, so every other driver gets engine *time*, labelled as
 such, and a driver with no fdinfo stats gets no column rather than a column of
 zeroes. A counter that went backwards is a gap, never a spike.
+
+**And the pointer reaches all of it.** Motion lights a row, a press selects it,
+a press on the row already selected opens its detail page, a press on a column
+header sets the sort and a second press reverses it, and the scrollbar is
+dragged rather than merely looked at. Getting that last one working turned up
+the reason the *wheel* had never worked here either: both tables told
+`kch_list_clamp` on every draw that the selection was what had moved, so the
+next frame pulled the viewport straight back to it. One flag, set by whatever
+moves the cursor and cleared by whatever moves the page, fixes both — and the
+same defect was sitting in `kdos-settings` and `kdos-teams`.
 
 **The verbs live on the detail page and nowhere else.** End, Kill and Nice are
 on the full-screen page for one subject, not on a table row — a key that ended a
@@ -387,6 +422,19 @@ keyboard cannot be paired at all. `kdos-devices` is the fourth and the one that
 has not adopted that chrome; it enumerates cameras by V4L2 ioctl and previews a
 grabbed frame as ASCII. Anchored to the panel they are popups; typed by name they
 are windows, and one flag decides both.
+
+**And a window is an xdg toplevel, which is the whole of why one can be moved.**
+Layer-shell has no move and no resize in the protocol at all, so for a long
+while every native surface here was a rectangle nailed to the screen while
+every containerised one could be dragged and pulled about. The centred form of
+each of these — settings, the four device panels, the chooser, the Open-with
+dialog, the help viewer, the status popup's window form — is a toplevel now,
+and the compositor decorates it with the same
+`════ Title ════[_][=][X]` frame it puts on GIMP. Which is also the answer to
+"why do native and alien windows look different": they no longer do, because it
+is the same frame. `sh_frame()` is the one line that decides — it asks the
+surface whether somebody else is already drawing a border, so a toplevel does
+not wear two of them with its title written twice.
 
 ### Windows
 

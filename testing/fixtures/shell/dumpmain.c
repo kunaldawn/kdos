@@ -54,6 +54,10 @@ void kwl_cursor_set(enum kwl_cursor c) { (void)c; }
 int kwl_fd(void) { return -1; }
 void kwl_pump(void) {}
 int kwl_scale(void) { return 1; }
+/* Nothing is drawing a frame round an offscreen grid, so the surface draws its
+ * own — which is what makes a golden the picture tty1 shows. */
+int kwl_decorated(void) { return 0; }
+int kwl_px_h(void) { return 0; }
 int kwl_copy(const char *t, size_t n, int p)
 {
 	(void)t; (void)n; (void)p;

@@ -1,43 +1,43 @@
-                                                                                                                                    
-  Network                                                                                                                           
-  2 interfaces up                                                                                                                   
- ---------------------------------------------------------------------------------------------------------------------------------- 
-  Applications    |INTERFACE    STATE  SPEED     RX         TX         ADDRESS                                                      
-  Processes       |eth0         up     1000 Mb   200B       1.0M       52:54:00:12:34:56                                            
-  CPU             |wlan0        up     -         1010B      1010B      52:54:00:ab:cd:ef                                            
-  Memory          |                                                                                                                 
-  GPU             |                                                                                                                 
-  Drives          |                                                                                                                 
-  Network         |                                                                                                                 
-  Batteries       |                                                                                                                 
-  Energy          |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |eth0  received / sent                                                                                        -  -
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |                                                                                                                 
-                  |totals since boot  .  Enter for details  .  n opens kdos-net for Wi-Fi and VPN                                   
++=  Resources  ====================================================================================================================+
+| Network                                                                                                                          |
+| 2 interfaces up                                                                                                                  |
+|----------------------------------------------------------------------------------------------------------------------------------|
+| Applications     |INTERFACE    STATE  SPEED     RX         TX         ADDRESS                                                    |
+| Processes        |eth0         up     1000 Mb   200B       1.0M       52:54:00:12:34:56                                          |
+| CPU              |wlan0        up     -         1010B      1010B      52:54:00:ab:cd:ef                                          |
+| Memory           |                                                                                                               |
+| GPU              |                                                                                                               |
+| Drives           |                                                                                                               |
+| Network          |                                                                                                               |
+| Batteries        |                                                                                                               |
+| Energy           |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |eth0  received / sent                                                                                      -  -|
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |totals since boot  .  Enter for details  .  n opens kdos-net for Wi-Fi and VPN                                 |
++==================================================================================================================================+

@@ -28,6 +28,10 @@
 
 #include "res.h"
 
+/* Column layout, computed from the width so a narrow window drops the least
+ * useful column rather than overlapping two. */
+struct cols { int pid, user, cpu, mem, disk, box, name; };
+
 enum { SORT_CPU = 0, SORT_MEM, SORT_PID, SORT_NAME, SORT_DISK, SORT_N };
 static const char *SORT_NAMES[SORT_N] = { "cpu", "memory", "pid", "name", "disk" };
 
@@ -43,6 +47,23 @@ static const KprProc **g_rows;
 static double *g_cpu;
 static int g_nrows, g_cap;
 static int g_body = 1;		/* body rows the last draw used  */
+static int g_hover = -1;	/* the row under the pointer     */
+static int g_dragbar;		/* a press landed on the scrollbar */
+/* Recorded from what the last draw ACTUALLY put on the screen — the rule the
+ * panel's hit map keeps. A geometry derived a second time is a control you
+ * cannot hit the frame after a resize. */
+/* WHOSE MOVE THE LAST ONE WAS — see the same flag in p_app.c. A draw that
+ * tells kch_list_clamp the SELECTION moved undoes a viewport scroll on the
+ * very next frame, which is why the wheel here appeared to do nothing. */
+static int g_follow = 1;
+/* `g_row0` is the first LIST row, body-relative — body row 0 is the header.
+ * `g_ox`/`g_oy` are the origin the frame handed this page: it draws in its own
+ * coordinates and libkchrome records the bar in the screen's, so the one test
+ * that crosses that line adds them back. */
+static int g_row0 = 1;
+static int g_ox, g_oy;
+static struct cols g_hdr;
+static int g_width;
 
 static double cpu_of(const KprProc *p)
 {
@@ -172,10 +193,6 @@ const char *res_proc_headline(void)
 	return s;
 }
 
-/* Column layout, computed from the width so a narrow window drops the least
- * useful column rather than overlapping two. */
-struct cols { int pid, user, cpu, mem, disk, box, name; };
-
 static struct cols layout(int w)
 {
 	struct cols c = { 0 };
@@ -210,6 +227,19 @@ void res_procs_prepare(void)
 	build_rows();
 }
 
+/* One header cell: the label, plus the direction marker when this is the key
+ * the table is sorted on. */
+static void hdr_cell(int x, int y, int w, const char *label, int key)
+{
+	char buf[24];
+
+	snprintf(buf, sizeof(buf), "%s%s", label,
+		 key == g_sort ? (g_rev ? ktui_glyph[KT_G_UP]
+					: ktui_glyph[KT_G_DOWN]) : "");
+	ktui_draw_text(x, y, w, buf, key == g_sort ? KT_ACCENT : KT_MID,
+		       KT_SURFACE, 0);
+}
+
 void res_draw_procs(int x, int y, int w, int h)
 {
 	const int bottom = y + h;
@@ -217,21 +247,26 @@ void res_draw_procs(int x, int y, int w, int h)
 	struct cols c = layout(w);
 	int row = y;
 
-	/* The header row is the sort control. */
+	/*
+	 * The header row is the sort control, and it SAYS which key is in
+	 * force: the sorted column in the accent with the direction beside it.
+	 * It always was the control — `s` cycled it — and it never looked like
+	 * one, so the only way to sort by memory was to read the manual.
+	 */
 	ktui_draw_fill(krect(x, row, w, 1), KT_SURFACE);
-	ktui_draw_text(x + c.pid, row, 7, "PID", KT_MID, KT_SURFACE, 0);
+	hdr_cell(x + c.pid, row, 7, "PID", SORT_PID);
 	ktui_draw_text(x + c.user, row, 9, "USER", KT_MID, KT_SURFACE, 0);
-	ktui_draw_text(x + c.cpu, row, 6,
-		       RC.cpu_of_machine ? "CPU%m" : "CPU%", KT_MID,
-		       KT_SURFACE, 0);
-	ktui_draw_text(x + c.mem, row, 8, "MEM", KT_MID, KT_SURFACE, 0);
+	hdr_cell(x + c.cpu, row, 6, RC.cpu_of_machine ? "CPU%m" : "CPU%",
+		 SORT_CPU);
+	hdr_cell(x + c.mem, row, 8, "MEM", SORT_MEM);
 	if (c.disk > 0)
-		ktui_draw_text(x + c.disk, row, 10, "DISK", KT_MID, KT_SURFACE, 0);
+		hdr_cell(x + c.disk, row, 10, "DISK", SORT_DISK);
 	if (c.box > 0)
 		ktui_draw_text(x + c.box, row, 12, "BOX", KT_MID, KT_SURFACE, 0);
-	ktui_draw_text(x + c.name, row, w - c.name, "NAME", KT_MID,
-		       KT_SURFACE, 0);
+	hdr_cell(x + c.name, row, w - c.name, "NAME", SORT_NAME);
 	row++;
+	g_hdr = c;
+	g_width = w;
 
 	int body = bottom - row - 1;
 	if (body < 1)
@@ -244,16 +279,17 @@ void res_draw_procs(int x, int y, int w, int h)
 	int sel = sel_index();
 	if (sel >= 0)
 		g_sel_pid = g_rows[sel]->pid;
-	kch_list_clamp(&g_top, sel, g_nrows, body, 1);
+	kch_list_clamp(&g_top, sel, g_nrows, body, g_follow);
 
 	for (int i = 0; i < body && g_top + i < g_nrows; i++) {
 		const KprProc *p = g_rows[g_top + i];
 		int is_sel = (g_top + i == sel);
+		int is_hov = !is_sel && g_top + i == g_hover;
 		int fg = is_sel ? KT_SURFACE : KT_TEXT;
-		int bg = is_sel ? KT_ACCENT : KT_BG;
+		int bg = is_sel ? KT_ACCENT : is_hov ? KT_MID : KT_BG;
 		int ry = row + i;
 
-		if (is_sel)
+		if (is_sel || is_hov)
 			ktui_draw_fill(krect(x, ry, w, 1), bg);
 
 		char buf[64];
@@ -278,7 +314,10 @@ void res_draw_procs(int x, int y, int w, int h)
 		ktui_draw_text(x + c.name, ry, w - c.name, p->comm, fg, bg, 0);
 	}
 
-	kch_list_scrollbar(x + w - 1, row, body, g_nrows, g_top, KT_BG);
+	g_row0 = row - y;
+	g_ox = x;
+	g_oy = y;
+	kch_scrollbar(0, x + w - 1, row, body, g_nrows, g_top, KT_BG);
 
 	/* The footer says what is NOT on screen. */
 	char foot[160];
@@ -339,10 +378,12 @@ int res_procs_key(int k)
 			res_detail_open_proc(g_rows[sel]->pid);
 		return 1;
 	case KT_K_UP:
+		g_follow = 1;
 		if (sel > 0)
 			g_sel_pid = g_rows[sel - 1]->pid;
 		return 1;
 	case KT_K_DOWN:
+		g_follow = 1;
 		if (sel >= 0 && sel + 1 < g_nrows)
 			g_sel_pid = g_rows[sel + 1]->pid;
 		return 1;
@@ -366,20 +407,109 @@ int res_procs_wheel(int up)
 {
 	if (!kch_list_wheel(up, &g_top, g_nrows, g_body)) {
 		int sel = sel_index();
+
+		g_follow = 1;
 		if (up && sel > 0)
 			g_sel_pid = g_rows[sel - 1]->pid;
 		else if (!up && sel >= 0 && sel + 1 < g_nrows)
 			g_sel_pid = g_rows[sel + 1]->pid;
+	} else {
+		g_follow = 0;
 	}
 	return 1;
+}
+
+/*
+ * THE POINTER. Motion lights a row, a press selects it, a press on the row
+ * that is ALREADY selected opens its detail page — the same contract the
+ * Applications table keeps, because a hand that has learnt one of these two
+ * tables has learnt both.
+ */
+static int row_at(int my)
+{
+	int i = my - g_row0 + g_top;
+
+	if (my < g_row0 || my - g_row0 >= g_body || i < 0 ||
+	    i >= g_nrows)
+		return -1;
+	return i;
+}
+
+/* Which sort key a header column belongs to, by the x it was drawn at. */
+static int header_at(int mx)
+{
+	const struct cols *c = &g_hdr;
+
+	if (c->name > 0 && mx >= c->name)
+		return SORT_NAME;
+	if (c->box > 0 && mx >= c->box)
+		return -1;		/* BOX is not a sort key */
+	if (c->disk > 0 && mx >= c->disk)
+		return SORT_DISK;
+	if (mx >= c->mem)
+		return SORT_MEM;
+	if (mx >= c->cpu)
+		return SORT_CPU;
+	if (mx >= c->user)
+		return -1;		/* USER is not a sort key */
+	return SORT_PID;
+}
+
+void res_procs_motion(int mx, int my)
+{
+	if (g_dragbar) {
+		/* A DRAG IS A PRESS THAT IS STILL DOWN. Wayland delivers plain
+		 * motion and dragged motion identically, so the press is what
+		 * has to be remembered. */
+		int t = kch_scrollbar_drag(my + g_oy);
+
+		if (t >= 0) {
+			g_top = t;
+			g_follow = 0;
+		}
+		return;
+	}
+	(void)mx;
+	g_hover = row_at(my);
+}
+
+void res_procs_release(void)
+{
+	g_dragbar = 0;
 }
 
 int res_procs_click(int mx, int my, int btn)
 {
 	(void)btn;
-	(void)mx;
-	/* Row 0 of the body is the header: a click there cycles the sort. */
-	if (my <= 0)
-		return 0;
+	if (my == 0) {
+		int k = header_at(mx);
+
+		if (k >= 0) {
+			if (k == g_sort)
+				g_rev = !g_rev;
+			else {
+				g_sort = k;
+				g_rev = 0;
+			}
+		}
+		return 1;
+	}
+	int t = kch_scrollbar_press(0, mx + g_ox, my + g_oy);
+
+	if (t >= 0) {
+		g_top = t;
+		g_dragbar = 1;
+		g_follow = 0;
+		return 1;
+	}
+	int i = row_at(my);
+
+	if (i < 0)
+		return 1;
+	g_follow = 1;
+	if (g_rows[i]->pid == g_sel_pid)
+		res_detail_open_proc(g_rows[i]->pid);
+	else
+		g_sel_pid = g_rows[i]->pid;
 	return 1;
 }

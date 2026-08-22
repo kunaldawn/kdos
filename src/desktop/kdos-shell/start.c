@@ -747,7 +747,7 @@ static void draw_frame(void)
 	/* The column that says there is more. It matters more here than
 	 * anywhere: the wheel moves the PAGE once a list is longer than the
 	 * window, so without it the content moves for no visible reason. */
-	kch_list_scrollbar(lw - 1, 1, body, nleft, top, KT_BG);
+	kch_scrollbar(0, lw - 1, 1, body, nleft, top, KT_BG);
 
 	/*
 	 * ── the right column ──
@@ -762,7 +762,7 @@ static void draw_frame(void)
 	for (int i = 0; i < body && rtop + i < nright; i++)
 		draw_row(&right[rtop + i], lw + 2, 1 + i, rw,
 			 focus_right && rtop + i == rsel);
-	kch_list_scrollbar(w - 2, 1, body, nright, rtop, KT_BG);
+	kch_scrollbar(1, w - 2, 1, body, nright, rtop, KT_BG);
 
 	/*
 	 * ── the footer: a search FIELD, and the two ways out ──
@@ -1148,6 +1148,17 @@ int start_main(int argc, char **argv)
 			int idx = ev.my - 1;
 
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					if (kch_scrollbar_grabbed() == 0)
+						top = bt;
+					else
+						rtop = bt;
+					sel_follow = 0;
+					continue;
+				}
 				/*
 				 * A MOTION IS A REAL MOVE. libkwl reports one
 				 * only when the pointer changed cell, which is
@@ -1178,8 +1189,28 @@ int start_main(int argc, char **argv)
 				}
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt;
+
+				bt = kch_scrollbar_press(0, ev.mx, ev.my);
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+				bt = kch_scrollbar_press(1, ev.mx, ev.my);
+				if (bt >= 0) {
+					rtop = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;

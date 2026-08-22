@@ -82,53 +82,6 @@ static void panel_spawn(const char *const argv[])
 }
 
 /*
- * THE SAME SPAWN, BUT IT TELLS YOU WHEN THE CHILD IS GONE.
- *
- * The Start button has to stay lit for as long as its menu is up, or the bar
- * gives no sign that the click landed and the menu reads as a window that
- * appeared from nowhere. The menu is a SEPARATE PROCESS and the panel
- * deliberately does not reap it, so "is it still open" cannot be a waitpid.
- *
- * A pipe answers it for nothing: the grandchild inherits the write end across
- * both forks and across the exec, the panel keeps the read end, and the fd
- * reports EOF at the moment the last copy of the write end is closed — which
- * is when the menu exits, however it exits. No file, no bus, no signal, and
- * nothing to go stale if the menu is killed.
- *
- * Returns the read end, or -1; the caller owns it.
- */
-static int panel_spawn_watched(const char *const argv[])
-{
-	int fd[2];
-
-	if (pipe(fd) != 0)
-		return -1;
-	pid_t pid = fork();
-	if (pid == 0) {
-		close(fd[0]);
-		if (fork() == 0) {
-			setsid();
-			execvp(argv[0], (char *const *)argv);
-			_exit(127);
-		}
-		_exit(0);
-	}
-	close(fd[1]);
-	if (pid < 0) {
-		close(fd[0]);
-		return -1;
-	}
-	while (waitpid(pid, NULL, 0) < 0 && errno == EINTR)
-		;
-	/* Never block on it: it is polled once a frame and only ever read for
-	 * its EOF. */
-	int fl = fcntl(fd[0], F_GETFL, 0);
-	if (fl >= 0)
-		fcntl(fd[0], F_SETFL, fl | O_NONBLOCK);
-	return fd[0];
-}
-
-/*
  * The same, keeping the pid — because this child has to be KILLED later.
  *
  * panel_spawn double-forks precisely so nothing has to be reaped; a tooltip is
@@ -164,25 +117,89 @@ static const char *panel_at_flag(void)
 }
 
 /* The menu the Start button opened, while it is still up. */
-static int start_menu_fd = -1;
+/*
+ * The Start button's id in the popup record. Negative so it can never collide
+ * with an applet's, which is what every other entry there is keyed on.
+ */
+#define POPUP_START (-2)
 
-/* Closed when the menu exits — see panel_spawn_watched. */
-static int start_menu_open(void)
+/*
+ * ── A PANEL BUTTON TOGGLES ITS POPUP ───────────────────────────────────────
+ *
+ * Clicking the clock opened a calendar; clicking the clock again opened
+ * ANOTHER one. Every button on this bar behaved that way, because a popup is a
+ * separate PROCESS here and the panel spawned one per click without ever
+ * asking whether the last one was still up. That is not what a button that
+ * opens a panel does anywhere else, and it is the reason a hand that wants the
+ * calendar shut has to go looking for Escape.
+ *
+ * ONE POPUP AT A TIME, because that is what the surfaces themselves already
+ * assume: they take the keyboard on demand and close when they lose it, so two
+ * of them on screen is a state neither can be in for long. The panel keeps the
+ * pid and WHICH control opened it; a click on that same control while it is up
+ * kills it and opens nothing.
+ *
+ * The pid, not the watched pipe: the Start menu's fd answers "is it still
+ * there" and cannot CLOSE it, and closing it is the whole point. It is a
+ * single fork, so it is also the one thing on this bar that has to be reaped —
+ * the same trade the tooltip already makes.
+ */
+static pid_t popup_pid = -1;
+static int popup_which = -1;	/* the control that opened it, or -1 */
+
+/* Reap it if it has gone. Called once a frame and before every decision. */
+static int popup_alive(void)
 {
-	char c;
-	ssize_t r;
-
-	if (start_menu_fd < 0)
+	if (popup_pid <= 0)
 		return 0;
-	r = read(start_menu_fd, &c, 1);
-	if (r == 0) {			/* EOF: the menu is gone */
-		close(start_menu_fd);
-		start_menu_fd = -1;
+	if (waitpid(popup_pid, NULL, WNOHANG) == popup_pid) {
+		popup_pid = -1;
+		popup_which = -1;
 		return 0;
 	}
-	/* EAGAIN is the ordinary answer: the write end is open and nobody has
-	 * written anything, which is exactly "still running". */
 	return 1;
+}
+
+static void popup_close(void)
+{
+	if (popup_pid > 0) {
+		kill(popup_pid, SIGTERM);
+		waitpid(popup_pid, NULL, 0);
+	}
+	popup_pid = -1;
+	popup_which = -1;
+}
+
+/*
+ * Open `argv` as THIS control's popup, or — when it is already this control's
+ * popup that is up — close it and open nothing.
+ *
+ * Returns 1 when it toggled something shut, so a caller that has other work to
+ * do on a click can tell the two apart.
+ *
+ * A DIFFERENT control always replaces: clicking the clock while the volume
+ * slider is up is a request for the calendar, not for two popups or for
+ * nothing.
+ */
+static int popup_toggle(int which, const char *const argv[])
+{
+	int up = popup_alive();
+
+	if (up && popup_which == which) {
+		popup_close();
+		return 1;
+	}
+	if (up)
+		popup_close();
+	popup_pid = panel_spawn_pid(argv);
+	popup_which = popup_pid > 0 ? which : -1;
+	return 0;
+}
+
+/* The Start button stays lit for as long as its menu is up. */
+static int start_menu_open(void)
+{
+	return popup_alive() && popup_which == POPUP_START;
 }
 
 /* ── the right wing: clock, battery, and what else is measurable ───────── */
@@ -988,7 +1005,7 @@ static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
 	snprintf(xs, sizeof(xs), "%d",
 		 (sh->task_hit_x + (ci - chip_off) * sh->task_cell_w) *
 			 kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+	snprintf(ys, sizeof(ys), "%d", kwl_px_h());
 	const char *argv[] = { "kdos-menu", ctrl ? "--winmenu" : "--windows",
 			       app_id, panel_at_flag(), xs, ys, NULL };
 	panel_spawn(argv);
@@ -2195,6 +2212,29 @@ static void meter_push(struct meter *m, double v, double smooth)
 	m->have = 1;
 }
 
+/*
+ * A SERIES THAT SKIPS A TICK IS A SERIES ON ITS OWN CLOCK.
+ *
+ * Every band here plots one sample per PIXEL and the gridlines are keyed to
+ * `met_seq`, so a reading that is momentarily unavailable — /proc/stat's
+ * aggregate not having advanced, an interface that came and went, a disk whose
+ * stats could not be read — must not simply go unrecorded. The series would
+ * then be SHORTER than the one beside it: its columns would cover a different
+ * span of time, its gridlines would sit under a different second, and the two
+ * charts would creep out of step for the rest of the session. The last value
+ * is carried forward instead, which is exactly what the filesystem meter
+ * already does deliberately between its ten-second reads.
+ *
+ * A series with no sample AT ALL is left empty rather than held at zero: an
+ * absent reading is not a reading of nothing, and `have` is what the applets
+ * test to decide whether they may print a number.
+ */
+static void meter_hold(struct meter *m)
+{
+	if (m->have)
+		meter_push(m, kpr_hist_at(&m->h, m->h.n - 1), 1.0);
+}
+
 /* The most recent `cols` samples, oldest first — what a chart wants. */
 static const double *meter_series(const struct meter *m, int *n)
 {
@@ -2442,6 +2482,8 @@ static void meters_sample(void)
 		 * enough that the digits are readable while it runs. The CHART
 		 * plots the raw samples; only the number is averaged. */
 		meter_push(&met_cpu, busy, 0.2);
+	} else {
+		meter_hold(&met_cpu);
 	}
 	if (have_cpu) {
 		last_total = total;
@@ -2451,6 +2493,8 @@ static void meters_sample(void)
 	double mem;
 	if (read_mem_used(&mem) == 0)
 		meter_push(&met_ram, mem, 0.35);
+	else
+		meter_hold(&met_ram);
 
 	/*
 	 * The filesystem every ten seconds, not every sample. It moves in
@@ -2462,38 +2506,42 @@ static void meters_sample(void)
 		disk_countdown = 10000 / MET_MS;
 		if (read_disk_used(&du) == 0)
 			meter_push(&met_disk, du, 1.0);
-	} else if (met_disk.have) {
-		meter_push(&met_disk,
-			   kpr_hist_at(&met_disk.h, met_disk.h.n - 1), 1.0);
+		else
+			meter_hold(&met_disk);
+	} else {
+		meter_hold(&met_disk);
 	}
 
-	if (dt_ms > 0) {
+	if (dt_ms > 0 && have_net) {
 		/* A counter that went BACKWARDS is a device that came and went,
 		 * not a negative rate. */
-		if (have_net) {
-			double r = rx >= last_rx
-					   ? (double)(rx - last_rx) * 1000.0 /
-						     (double)dt_ms
-					   : 0;
-			double t = tx >= last_tx
-					   ? (double)(tx - last_tx) * 1000.0 /
-						     (double)dt_ms
-					   : 0;
-			meter_push(&met_rx, r, 0.35);
-			meter_push(&met_tx, t, 0.35);
-		}
-		if (have_dio) {
-			double r = rd >= last_rd
-					   ? (double)(rd - last_rd) * 1000.0 /
-						     (double)dt_ms
-					   : 0;
-			double t = wr >= last_wr
-					   ? (double)(wr - last_wr) * 1000.0 /
-						     (double)dt_ms
-					   : 0;
-			meter_push(&met_rd, r, 0.35);
-			meter_push(&met_wr, t, 0.35);
-		}
+		double r = rx >= last_rx ? (double)(rx - last_rx) * 1000.0 /
+						   (double)dt_ms
+					 : 0;
+		double t = tx >= last_tx ? (double)(tx - last_tx) * 1000.0 /
+						   (double)dt_ms
+					 : 0;
+		meter_push(&met_rx, r, 0.35);
+		meter_push(&met_tx, t, 0.35);
+	} else {
+		/* Both halves of a mirrored pair advance together or neither
+		 * does: one held while the other moved would put received and
+		 * sent a sample out of step for the rest of the session. */
+		meter_hold(&met_rx);
+		meter_hold(&met_tx);
+	}
+	if (dt_ms > 0 && have_dio) {
+		double r = rd >= last_rd ? (double)(rd - last_rd) * 1000.0 /
+						   (double)dt_ms
+					 : 0;
+		double t = wr >= last_wr ? (double)(wr - last_wr) * 1000.0 /
+						   (double)dt_ms
+					 : 0;
+		meter_push(&met_rd, r, 0.35);
+		meter_push(&met_wr, t, 0.35);
+	} else {
+		meter_hold(&met_rd);
+		meter_hold(&met_wr);
 	}
 	if (have_net) {
 		last_rx = rx;
@@ -2503,6 +2551,7 @@ static void meters_sample(void)
 		last_rd = rd;
 		last_wr = wr;
 	}
+
 }
 
 /* The percentage the CPU applet prints, or -1 before the first sample. */
@@ -2719,11 +2768,21 @@ static int draw_start(struct sh_state *sh, int h, int compact)
  * Drawn in KT_DIM against the panel: a full-strength rule would compete with
  * the content it is separating.
  */
+/*
+ * A SEGMENT BOUNDARY IS THE SAME LINE THE WINDOWS ARE DRAWN WITH.
+ *
+ * The bar's separators were the single vertical line in the FILL colour,
+ * which is 1.63:1 against the panel's own background — below any legibility
+ * floor, and the boundaries the bar's layout depends on were therefore
+ * invisible in a photograph. They are the DOUBLE vertical, in KT_MID, which
+ * is the stroke every KDOS window frame is drawn in and reads at better than
+ * four to one.
+ */
 static void draw_sep(int x, int h)
 {
 	if (x < 0 || x >= ktui_w)
 		return;
-	ktui_draw_vline(x, 0, h, KT_G_VL, KT_DIM, KT_SURFACE);
+	ktui_draw_vline(x, 0, h, KT_G_DVL, KT_MID, KT_SURFACE);
 }
 
 /*
@@ -2860,21 +2919,13 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 			 * rule the whole panel keeps: an attribute inverts
 			 * only the cells a glyph covers.
 			 */
-			/* Hover is a backdrop under the WHOLE stride — the
-			 * square plus its number — so a workspace reads as a
-			 * button rather than as a lit block that happens to be
-			 * beside a digit. */
-			if (hover_ws == i)
-				ktui_draw_fill(krect(px + i * 2, ry, 2, 2),
-					       KT_DIM);
-			ktui_draw_fill(krect(px + i * 2, ry, 1, 1), fg);
-			/* The label under it, centred in its two cells: the
-			 * name the workspace was GIVEN when that name FITS —
-			 * `<desktops>` in rc.xml names them "1".."4" by
-			 * default and somebody may have named one "IM" — and
-			 * its number when it does not. Never a truncation: two
-			 * characters of "Workspace 3" is "Wo", and four
-			 * workspaces named that way would all read the same. */
+			/* The label under it: the name the workspace was
+			 * GIVEN when that name FITS — `<desktops>` in rc.xml
+			 * names them "1".."4" by default and somebody may have
+			 * named one "IM" — and its number when it does not.
+			 * Never a truncation: two characters of "Workspace 3"
+			 * is "Wo", and four workspaces named that way would
+			 * all read the same. */
 			char lab[16];
 			const char *nm = sh->ws_name[i];
 			int lw = nm && *nm ? ktui_utf8_width(nm) : 0;
@@ -2883,11 +2934,44 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 			else
 				snprintf(lab, sizeof(lab), "%d", i + 1);
 			lw = ktui_utf8_width(lab);
+			if (lw < 1)
+				lw = 1;
 			if (lw > 2)
 				lw = 2;		/* workspace 100 and up */
+			/*
+			 * HOVER IS THE SHAPE THAT WAS DRAWN, not the stride it
+			 * was drawn in. The stride is two cells and the screen
+			 * and its number occupy the FIRST of them — the second
+			 * is the gap that makes four of them read as four
+			 * things — so a two-cell backdrop lit a block twice as
+			 * wide as the thing under the pointer and closed the
+			 * gap to the workspace beside it. Photographed: one
+			 * square, a highlight of two. A workspace whose NAME
+			 * is two characters wide does occupy both, and then
+			 * the backdrop is two: the width is the label's.
+			 */
+			int hw = lw;
+			/* KT_MID, the same fill every other hover on this bar
+			 * takes — and here it is not a preference: an
+			 * UNOCCUPIED screen is drawn in KT_DIM, so a KT_DIM
+			 * hover behind it is the same colour as the thing it
+			 * is meant to light. Measured on the booted ISO: the
+			 * top row of a hovered empty workspace was pixel-for-
+			 * pixel what it had been. The screen goes on TOP of
+			 * it, so the workspace's own state colour still wins
+			 * the cell it occupies. */
+			if (hover_ws == i)
+				ktui_draw_fill(krect(px + i * 2, ry, hw, 2),
+					       KT_MID);
+			ktui_draw_fill(krect(px + i * 2, ry, 1, 1), fg);
+			/* On the hover fill the number is drawn in the
+			 * SURFACE colour: KT_MID on KT_MID is a digit that
+			 * disappears the moment the pointer reaches it. */
 			ktui_draw_text(px + i * 2, ry + 1, lw, lab,
-				       active ? KT_ACCENT : KT_MID,
-				       hover_ws == i ? KT_DIM : KT_SURFACE,
+				       hover_ws == i ? KT_SURFACE
+				       : active     ? KT_ACCENT
+						    : KT_MID,
+				       hover_ws == i ? KT_MID : KT_SURFACE,
 				       KT_A_NONE);
 		}
 		sh->pager_hit_end = px + pager_w;
@@ -3238,13 +3322,31 @@ static void met_graph(KCellCanvas *cv, int x, int y, int w, int h,
 	if (w <= 0 || h <= 0 || n <= 0 || vmax <= 0)
 		return;
 
-	int from = n > w ? n - w : 0;
-	int cols = n - from;
-	int x0 = x + (w - cols);
+	/*
+	 * THE TRACE SPANS THE WHOLE BAND FROM THE FIRST SAMPLE.
+	 *
+	 * Drawing only the samples there are and right-aligning them leaves
+	 * the left of the band EMPTY — no fill, no line, not even a baseline —
+	 * for as long as the ring takes to fill, which on the seven-cell
+	 * network band is over a minute. Worse, nothing MOVES while that is
+	 * happening: the newest sample stays pinned to the right edge and the
+	 * picture only starts scrolling once the ring is full, so a chart sat
+	 * still and then abruptly began to travel. Reported as "the graphs do
+	 * not move smoothly".
+	 *
+	 * Column i is sample `n - w + i`, and an index before the oldest
+	 * sample there is takes the oldest one. The trace is therefore
+	 * unbroken across the band from the very first frame, and real data
+	 * enters at the right and pushes the flat stretch off the left — which
+	 * is motion, one pixel per sample, from the first sample onward.
+	 */
+	int base = n - w;
 	int prev = -1;
 
-	for (int i = 0; i < cols; i++) {
-		int j = from + i;
+	for (int i = 0; i < w; i++) {
+		int j = base + i;
+		if (j < 0)
+			j = 0;
 		/* Three-point mean, clamped at the ends so the newest sample
 		 * is not held back by a neighbour that does not exist yet. */
 		double a = v[j];
@@ -3264,7 +3366,7 @@ static void met_graph(KCellCanvas *cv, int x, int y, int w, int h,
 
 		/* The area, at a third of the colour's weight. */
 		if (bar > 0)
-			kcell_canvas_fill(cv, x0 + i, flip ? y : y + h - bar,
+			kcell_canvas_fill(cv, x + i, flip ? y : y + h - bar,
 					  1, bar, slot, 90);
 		/* The line: the top pixel of this column, plus the run down to
 		 * the previous column's top so a steep edge is continuous
@@ -3278,7 +3380,7 @@ static void met_graph(KCellCanvas *cv, int x, int y, int w, int h,
 			lo = prev < top ? prev : top;
 			hi = prev < top ? top : prev;
 		}
-		kcell_canvas_fill(cv, x0 + i, lo, 1, hi - lo + 1, slot, 255);
+		kcell_canvas_fill(cv, x + i, lo, 1, hi - lo + 1, slot, 255);
 		prev = top;
 	}
 }
@@ -3289,20 +3391,19 @@ static void met_graph(KCellCanvas *cv, int x, int y, int w, int h,
  * the data instead of standing still under it. Drawn UNDER the trace, which is
  * what makes it a scale rather than a decoration.
  */
-static void met_grid(KCellCanvas *cv, int x, int y, int w, int h, int n)
+static void met_grid(KCellCanvas *cv, int x, int y, int w, int h)
 {
-	if (w <= 0 || h <= 0 || n <= 0)
+	if (w <= 0 || h <= 0)
 		return;
 
-	int from = n > w ? n - w : 0;
-	int cols = n - from;
-	int x0 = x + (w - cols);
-
-	for (int i = 0; i < cols; i++) {
-		uint64_t abs = met_seq - (uint64_t)(n - (from + i));
+	/* The whole band, like the trace over it: a scale that stopped where
+	 * the samples ran out would say the left of the chart was outside
+	 * time. Column w-1 is the newest sample, which is `met_seq`. */
+	for (int i = 0; i < w; i++) {
+		uint64_t abs = met_seq - (uint64_t)(w - 1 - i);
 
 		if (abs % MET_GRID == 0)
-			kcell_canvas_fill(cv, x0 + i, y, 1, h, KT_MID, 60);
+			kcell_canvas_fill(cv, x + i, y, 1, h, KT_MID, 60);
 	}
 }
 
@@ -3394,16 +3495,70 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 			met_scale[id] = 100.0;
 			continue;
 		}
+		/*
+		 * THE AXIS DESCRIBES THE PICTURE, so the peak is taken over
+		 * the samples the band is about to DRAW and not over the whole
+		 * ring.
+		 *
+		 * The ring is 256 samples and a band is about a hundred
+		 * pixels, so more than half of it is history that has already
+		 * scrolled off the left. Scanning all of it hands the axis to
+		 * a spike nobody can see: one burst of traffic at login set
+		 * this to 16 MB/s and held it there for over a minute while
+		 * every sample on screen was under 120 BYTES — a trace pinned
+		 * flat on its baseline under a scale that matched nothing in
+		 * front of it. Then the spike aged out of the ring, the axis
+		 * fell several rungs at once, and the whole chart jumped.
+		 * Measured, with `KDOS_PANEL_DEBUG=1`:
+		 *
+		 *   NET n=146 scale=16000000 shown=27.6 last=0.0
+		 *
+		 * Windowing it is also what makes the hysteresis behave: an
+		 * axis that only shrinks under a third of itself needs the
+		 * peak to be able to fall, and a peak over everything ever
+		 * sampled barely can.
+		 */
+		int span = d->cells * kwl_cell_w() * kwl_scale();
 		double peak = 0;
 		const struct meter *pair[2] = { d->a, d->b };
 		for (int q = 0; q < 2 && pair[q]; q++) {
 			int n = 0;
 			const double *v = meter_series(pair[q], &n);
-			for (int i = 0; i < n; i++)
+			int from = n > span ? n - span : 0;
+			for (int i = from; i < n; i++)
 				if (v[i] > peak)
 					peak = v[i];
 		}
 		met_scale[id] = kpr_scale_step(peak, met_scale[id]);
+	}
+
+	/*
+	 * `KDOS_PANEL_DEBUG=1` TRACES THE SERIES, NOT THE PICTURE.
+	 *
+	 * "The graph goes back and forth" is a report about pixels, and pixels
+	 * are the last place to look for it: a chart is a sample ring, an axis
+	 * and a scale step, and any one of the three can move the trace with
+	 * the other two standing still. One line per SAMPLE — not per frame,
+	 * or a bar that redraws sixty times a second buries the thing being
+	 * looked for — printed here because this is where all three are in
+	 * scope and settled.
+	 */
+	static uint64_t dbg_seq;
+	if (panel_dbg() && met_seq != dbg_seq) {
+		dbg_seq = met_seq;
+		fprintf(stderr, "panel: seq=%llu w=%d",
+			(unsigned long long)met_seq, right_x - x_min);
+		for (int k = 0; k < use; k++) {
+			int id = meters_sel[k];
+			const struct meter *m = MDESC[id].a;
+
+			fprintf(stderr, " | %s n=%d scale=%.0f shown=%.1f "
+					"last=%.1f",
+				MDESC[id].label, m->h.n, met_scale[id],
+				m->shown,
+				m->h.n ? kpr_hist_at(&m->h, m->h.n - 1) : -1.0);
+		}
+		fprintf(stderr, "\n");
 	}
 
 	int x = right_x - cells;
@@ -3443,11 +3598,7 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 			 */
 			kcell_canvas_fill(cv, bx, 0, bw, H, KT_DIM,
 					  hover_meters ? 110 : 55);
-			{
-				int gn = 0;
-				meter_series(d->a, &gn);
-				met_grid(cv, bx, 0, bw, H, gn);
-			}
+			met_grid(cv, bx, 0, bw, H);
 			if (!d->b) {
 				/* The baseline goes down BEFORE the trace: at
 				 * rest the two sit on the same row, and drawn
@@ -4560,6 +4711,27 @@ static void tip_kill(void)
 	tip_shown = 0;
 }
 
+/*
+ * A CLICK SPENDS THE DWELL, and killing the tip is not enough to spend it.
+ *
+ * `tip_kill` clears `tip_shown` because the caller that normally reaches it is
+ * a MOTION, which has just moved to another thing and owes it a fresh dwell.
+ * A click moves nothing: the pointer is still on the applet, `tip_kind` still
+ * names it and `tip_since` is still long past, so the very next frame put the
+ * tooltip straight back up — over the Start menu, over the volume slider, over
+ * whatever the click had just opened. Photographed on the booted ISO: the
+ * whole label and its hint line drawn across the top of the popup.
+ *
+ * So the dwell is marked SPENT and the next tip has to be earned by moving to
+ * something else, which is what `handle_motion` already does for every other
+ * reason.
+ */
+static void tip_spend(void)
+{
+	tip_kill();
+	tip_shown = 1;
+}
+
 /* What the pointer is on, and where its left edge is. */
 static int tip_target(const struct sh_state *sh, int cx, int cy, int *idx,
 		      int *x)
@@ -4842,7 +5014,7 @@ static void tip_tick(struct sh_state *sh)
 	if (!tip_text(sh, tip_kind, tip_idx, t1, sizeof(t1), t2, sizeof(t2)))
 		return;
 	snprintf(xs, sizeof(xs), "%d", (tip_x > 0 ? tip_x : 0) * kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+	snprintf(ys, sizeof(ys), "%d", kwl_px_h());
 	const char *argv[] = { "kdos-tip", panel_at_flag(), xs, ys, t1, t2,
 			       NULL };
 	tip_pid = panel_spawn_pid(argv);
@@ -4919,7 +5091,7 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	 */
 	snprintf(xs, sizeof(xs), "%d",
 		 (id >= 0 && id < SH_AP_N ? sh->ap_x[id] : 0) * kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+	snprintf(ys, sizeof(ys), "%d", kwl_px_h());
 
 	if (id == SH_AP_MPRIS && btn != SH_TRAY_BTN_LEFT) {
 		/* Middle steps back, right steps forward — the transport a
@@ -4992,7 +5164,7 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		 * Middle-click is still the one-gesture mute.
 		 */
 		const char *argv[] = { "kdos-osd", "slider", at, xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_MIC:
@@ -5004,25 +5176,28 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	case SH_AP_CAM: {
 		const char *argv[] = { "kdos-devices", at, xs, ys,
 				       NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_NET: {
 		const char *argv[] = { "kdos-net", at, xs, ys,
 				       NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_CLOCK:
 	case SH_AP_BATT: {
 		const char *argv[] = { "kdos-cal", at, xs, ys,
 				       NULL };
-		panel_spawn(argv);
+		/* The clock and the battery are one popup, so they are one
+		 * toggle: clicking either shuts the calendar the other
+		 * opened. */
+		popup_toggle(SH_AP_CLOCK, argv);
 		break;
 	}
 	case SH_AP_NOTIFY: {
 		const char *argv[] = { "kdos-notify", at, xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_STUTTER: {
@@ -5030,7 +5205,7 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		 * the one thing the popup would have been opened to read. */
 		const char *argv[] = { "kdos-status", "--open", "stutter", at,
 				       xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_MORE: {
@@ -5045,7 +5220,7 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		 */
 		write_overflow();
 		const char *argv[] = { "kdos-status", at, xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_MPRIS:
@@ -5069,21 +5244,21 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		/* Anchored under itself, above the bar — the same trick the
 		 * clock's calendar uses. */
 		snprintf(xs, sizeof(xs), "%d", sh->ap_x[id] * kwl_cell_w());
-		snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+		snprintf(ys, sizeof(ys), "%d", kwl_px_h());
 		const char *argv[] = { "kdos-clip", "--pick", at, xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_MEDIA: {
 		const char *argv[] = { "kdos-devices", at, xs, ys,
 				       NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_RESTART: {
 		const char *argv[] = { "kdos-status", "--open", "restarts", at,
 				       xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	default:
@@ -5127,7 +5302,7 @@ static void start_click(int btn)
 	char ys[16];
 	const char *at = panel_at_flag();
 
-	snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+	snprintf(ys, sizeof(ys), "%d", kwl_px_h());
 	if (btn == SH_TRAY_BTN_MIDDLE) {
 		const char *argv[] = { "kdos-run", NULL };
 		panel_spawn(argv);
@@ -5140,20 +5315,19 @@ static void start_click(int btn)
 		return;
 	}
 	const char *argv[] = { "kdos-start", at, "0", ys, NULL };
-	if (start_menu_fd >= 0) {
-		close(start_menu_fd);
-		start_menu_fd = -1;
-	}
-	start_menu_fd = panel_spawn_watched(argv);
-	if (start_menu_fd < 0)
-		panel_spawn(argv);	/* no pipe is a menu with no highlight */
+
+	/* The same toggle every other button on this bar keeps, and the same
+	 * record: the Start button used to answer "is my menu up" through a
+	 * pipe of its own, which could say so and could not CLOSE it. One
+	 * mechanism, so the highlight and the toggle cannot disagree. */
+	popup_toggle(POPUP_START, argv);
 }
 
 static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 {
 	/* Whatever this opens goes where the tip is, and a hand that has
 	 * clicked has stopped asking what the thing was. */
-	tip_kill();
+	tip_spend();
 	if (in_span(cx, sh->start_x, sh->start_end)) {
 		start_click(btn);
 		return;
@@ -5183,7 +5357,7 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		char mx[16], my[16];
 
 		snprintf(mx, sizeof(mx), "%d", sh->meter_hit_x * kwl_cell_w());
-		snprintf(my, sizeof(my), "%d", ktui_h * kwl_cell_h());
+		snprintf(my, sizeof(my), "%d", kwl_px_h());
 		if (btn == SH_TRAY_BTN_MIDDLE) {
 			/* In a POPUP, not a terminal — see SH_AP_STUTTER. */
 			const char *argv[] = { "kdos-status", "--open", "stutter",
@@ -5256,7 +5430,7 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 */
 		char xs[16], ys[16];
 		snprintf(xs, sizeof(xs), "%d", plusn_x * kwl_cell_w());
-		snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+		snprintf(ys, sizeof(ys), "%d", kwl_px_h());
 		const char *argv[] = { "kdos-teams", panel_at_flag(), xs, ys,
 				       NULL };
 		panel_spawn(argv);
@@ -5434,6 +5608,22 @@ int panel_main(int argc, char **argv)
 		.font = font,
 		.output = output,
 		.exclusive = 1,
+		/*
+		 * THE BAR IS FRAMED, like everything else on this desktop.
+		 *
+		 * Every KDOS surface but this one puts a double-line box round
+		 * itself; the taskbar had no edge at all, so against a dark
+		 * wallpaper it read as a region of the desktop rather than as
+		 * a piece of chrome. A box wants four sides and two rows, and
+		 * two rows is the whole bar — but the only edge a bottom-
+		 * anchored panel HAS is its top one, and libkwl will draw that
+		 * outside the cell grid for three pixels rather than a row.
+		 */
+		/* Five pixels: two of accent, a gap, two of accent — the
+		 * cross-section of `═`, which is the mark the compositor draws
+		 * every other window's frame with. See kwl_present(). */
+		.rule = 5,
+		.rule_slot = KT_ACCENT,
 	};
 
 	sh_theme_from_cache();

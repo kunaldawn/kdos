@@ -1,24 +1,24 @@
-                                                        
-  Drives                                                
-  2 drives                                              
- ------------------------------------------------------ 
-DEVICE     SIZE      TYPE  BUSY   TEMP    MODEL         
-sda        466G      HDD   30%    -       KDOS FIXTURE  
-nvme0n1    477G      SSD   80%    41oC    KDOS FIXTURE  
-                                                        
-                                                        
-                                                        
-                                                        
-                                                        
-                                                        
-                                                        
-                                                        
-                                                        
-                                                        
-sda  read / written                            20M  9.8M
-                                                        
-                                                       :
-                                                        
-                                                        
-                                                       :
-1 virtual hidden  .  whole disks only  .  Enter for deta
++=  Resources  ========================================+
+| Drives                                               |
+| 2 drives                                             |
+|------------------------------------------------------|
+|DEVICE     SIZE      TYPE  BUSY   TEMP    MODEL       |
+|sda        466G      HDD   30%    -       KDOS FIXTUR |
+|nvme0n1    477G      SSD   80%    41oC    KDOS FIXTUR |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|sda  read / written                          20M  9.8M|
+|                                                      |
+|                                                     :|
+|                                                      |
+|                                                     .|
+|1 virtual hidden  .  whole disks only  .  Enter for de|
++======================================================+
