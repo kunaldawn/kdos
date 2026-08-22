@@ -2737,16 +2737,21 @@ numbers on tty1, in a window and in a `--dump`, because there is only a grid of
 character cells: libktui's backend vtable decides who paints it — the terminal,
 libkwl, or an offscreen buffer — and nothing above that line knows which.
 
-**AND IT WEARS THE SAME BOX AS EVERY OTHER KDOS SURFACE** — `ktui_draw_box`
-round the whole frame with ` Resources ` on its top edge, the header band
-between columns 1 and `w-2` where `kch_header` has always drawn it, the body
-one row short of the bottom. Before that it drew the band on bare background
-with a one-column margin either side and nothing in it, which is what
-`kch_header` LEAVES ROOM for; beside a Start menu and a network panel that are
-both boxed, it read as somebody else's program. See **The KDOS look** for the
-list this is the first line of.
+**AND IT WEARS EXACTLY ONE FRAME.** Undecorated — on tty1, in a `--dump` —
+`ktui_draw_box` goes round the whole surface with ` Resources ` on its top
+edge, the header band between columns 1 and `w-2` where `kch_header` draws it,
+the body one row short of the bottom. Under the compositor the SSD **is** that
+box, so `kwl_decorated()` suppresses the drawn one and the frame keeps only
+its inset: two boxes nested one inside the other is the tell that a program
+drew chrome the compositor had already drawn for it. See **The KDOS look** for
+the list this is the first line of.
 **It is the tree's first `KWL_ROLE_TOPLEVEL` client**; everything else on this
-desktop is a layer surface or a lock surface.
+desktop is a layer surface or a lock surface — and it asks for **104x26
+cells**, at or above the `RES_WIDE` threshold its own sidebar degrades below.
+`make_toplevel`'s fallback is 80x22, which is UNDER it, so a window naming no
+size opens permanently in the narrow band: the sidebar collapsed to one
+initial per page and the footer hint clipped mid-word. It is a default and not
+a demand — the compositor's first configure wins on a screen too small for it.
 
 **THE CHARTS ARE CELLS, AND A FULL-WIDTH CHART CANNOT BE A SPRITE TILE.**
 libktui encodes a sprite cell's sub-cell coordinate in four bits each way, so
