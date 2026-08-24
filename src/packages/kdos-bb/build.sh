@@ -17,7 +17,7 @@ cd "$PORT_SRC/src"
 
 SRC="autopilo.c backconv.c bb.c credits.c credits2.c ctrl87.c
      fk1.c fk2.c fk3.c fk4.c formulas.c hh1.c hh2.c hh3.c hh4.c
-     image.c julia.c kt1.c kt2.c kt3.c kt4.c main.c messager.c minilzo.c
+     image.c julia.c kdostux.c kt1.c kt2.c kt3.c kt4.c main.c messager.c minilzo.c
      ms1.c ms2.c ms3.c ms4.c print.c
      scene1.c scene2.c scene3.c scene4.c scene5.c scene7.c scene8.c scene9.c
      tex.c textform.c timers.c uncompfn.c zeb.c zoom.c"

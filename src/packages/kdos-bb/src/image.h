@@ -33,4 +33,5 @@ extern struct image fk1,fk2,fk3,fk4;
 extern struct image hh1,hh2,hh3,hh4;
 extern struct image kt1,kt2,kt3,kt4;
 extern struct image ms1,ms2,ms3,ms4;
+extern struct image kdostux;
 #endif
