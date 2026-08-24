@@ -199,16 +199,39 @@ void bbflushwait(int maxtime)
 
 static int stage = 1;
 
+int bbnosound, bbmixer;
+
 int bbinit(int argc, char **argv)
 {
+    int i;
     aa_defparams.supported|= AA_NORMAL_MASK | AA_BOLD_MASK | AA_DIM_MASK;
     aa_parseoptions(NULL, NULL, &argc, argv);
-    if (argc != 1 && (argc != 2 || ((argv[1][0] <= '0' || argv[1][0] > '8') && strcmp(argv[1], "-loop")))) {
-	printf("Usage: bb [aaoptions] [number]\n\n");
-	printf("Options:\n"
-	       "  -loop          play demo in infinite loop\n\n"
-	       "AAlib options:\n%s\n", aa_help);
-	exit(1);
+    /*
+     * The demo starts on its own. Upstream asked "Music?[Y/n]" and then sat
+     * in the mixer settings table until somebody pressed Continue, which is
+     * two prompts in front of a demo whose whole point is that you start it
+     * and watch it. Both defaults are what everyone picked anyway, so they
+     * are the behaviour and the two escapes are flags.
+     */
+    for (i = 1; i < argc; i++) {
+	if (!strcmp(argv[i], "-loop"))
+	    loopmode = 1;
+	else if (!strcmp(argv[i], "-nosound"))
+	    bbnosound = 1;
+	else if (!strcmp(argv[i], "-mixer"))
+	    bbmixer = 1;
+	else if (argv[i][0] > '0' && argv[i][0] <= '8' && !argv[i][1])
+	    stage = atol(argv[i]);
+	else {
+	    printf("Usage: kdos-bb [aaoptions] [-loop] [-nosound] [-mixer] [number]\n\n");
+	    printf("Options:\n"
+		   "  -loop          play demo in infinite loop\n"
+		   "  -nosound       run silent; the extro scroll falls back to a fixed rate\n"
+		   "  -mixer         show the sample rate and mixing settings before starting\n"
+		   "  number         start at stage 1, 2 or 3\n\n"
+		   "AAlib options:\n%s\n", aa_help);
+	    exit(1);
+	}
     }
     context = aa_autoinit(&aa_defparams);
     if (!context) {
@@ -220,10 +243,6 @@ int bbinit(int argc, char **argv)
 	printf("Failed to initialize keyboard\n");
 	exit(3);
     }
-    if (argc == 2 && !strcmp(argv[1], "-loop"))
-	loopmode = 1;
-    else if (argc == 2)
-	stage = atol(argv[1]);
     aa_hidecursor(context);
     return 1;
 }
