@@ -25,17 +25,67 @@
 #include "kcell.h"
 
 /*
- * When set, cells whose background is KT_BG are left fully transparent instead
- * of filled. It exists for exactly one caller — the desktop, which sits on the
- * BACKGROUND layer above the compositor's wallpaper and must not paint over it.
- * Off everywhere else, because a panel with a see-through background is a panel
- * you cannot read.
+ * Per-slot background alpha. Opaque everywhere until a surface says otherwise:
+ * the desktop clears KT_BG so the compositor's wallpaper shows, and the panel
+ * clears KT_SURFACE so its own pixel backdrop does.
+ *
+ * `any_alpha` is a cached OR of the table. It is read once per buffer
+ * allocation to pick the shm format, and asking it must not mean walking eight
+ * bytes on a path that runs per surface.
  */
-static bool transparent_bg;
+static uint8_t slot_alpha[8] = { 255, 255, 255, 255, 255, 255, 255, 255 };
+static bool any_alpha;
 
-void kcell_set_transparent_bg(bool on)
+/*
+ * WHAT A ZERO-ALPHA BACKGROUND DOES WITH ITS PIXELS, and the two answers are
+ * not interchangeable.
+ *
+ * The row fill is OP_SRC on purpose — the buffer is reused between frames, so
+ * a run that is skipped keeps the LAST frame's pixels. For the desktop, which
+ * has nothing underneath it in its own buffer, clearing to transparent is
+ * therefore right and skipping would smear.
+ *
+ * A surface with a BACKDROP is the opposite case: something has just painted
+ * those pixels this frame, one layer down in the same image, and clearing them
+ * erases it. The bar would come up as text floating on nothing.
+ */
+static bool bg_preserve;
+
+void kcell_set_bg_preserve(bool on)
 {
-	transparent_bg = on;
+	bg_preserve = on;
+}
+
+/* True when this background belongs to a backdrop that has already painted
+ * it. Only ever true for a slot the caller cleared to alpha 0. */
+static inline bool bg_owned(uint8_t slot)
+{
+	return bg_preserve && slot_alpha[slot & 7] == 0;
+}
+
+void kcell_set_slot_alpha(int slot, uint8_t alpha)
+{
+	slot_alpha[slot & 7] = alpha;
+	any_alpha = false;
+	for (int i = 0; i < 8; i++)
+		if (slot_alpha[i] != 255)
+			any_alpha = true;
+}
+
+uint8_t kcell_slot_alpha(int slot)
+{
+	return slot_alpha[slot & 7];
+}
+
+void kcell_reset_slot_alpha(void)
+{
+	memset(slot_alpha, 255, sizeof(slot_alpha));
+	any_alpha = false;
+}
+
+bool kcell_needs_alpha(void)
+{
+	return any_alpha;
 }
 
 static inline pixman_color_t to_pixman(KRgb c)
@@ -54,6 +104,37 @@ static inline pixman_color_t to_pixman(KRgb c)
 pixman_color_t kcell_slot_color(int slot)
 {
 	return to_pixman(ktui_theme->slot[slot & 7]);
+}
+
+/*
+ * A BACKGROUND slot as pixman wants it — the one place the per-slot alpha is
+ * applied, so every fill in this file agrees about what a translucent
+ * background is.
+ *
+ * Premultiplied, because that is what both PIXMAN_a8r8g8b8 and Wayland's
+ * ARGB8888 mean: the channels are already scaled by the alpha. Handing pixman
+ * un-premultiplied channels does not fail, it just paints everything too
+ * bright, which is the kind of wrong that looks like a colour choice.
+ *
+ * The intermediate is 32-bit on purpose: c.r * 257 already reaches 65535, and
+ * multiplying that by the alpha overflows a uint16 by two orders of magnitude.
+ */
+static pixman_color_t bg_color(uint8_t slot)
+{
+	uint8_t a = slot_alpha[slot & 7];
+	KRgb c;
+
+	if (a == 255)
+		return to_pixman(ktui_theme->slot[slot & 7]);
+	if (a == 0)
+		return (pixman_color_t){ 0, 0, 0, 0 };
+	c = ktui_theme->slot[slot & 7];
+	return (pixman_color_t){
+		.red   = (uint16_t)((uint32_t)c.r * 257 * a / 255),
+		.green = (uint16_t)((uint32_t)c.g * 257 * a / 255),
+		.blue  = (uint16_t)((uint32_t)c.b * 257 * a / 255),
+		.alpha = (uint16_t)((uint32_t)a * 257),
+	};
 }
 
 /*
@@ -79,9 +160,11 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		/* Still an OP_SRC fill, so the run is CLEARED to zero rather
 		 * than skipped — the buffer is reused between frames and a skip
 		 * would leave the last frame's pixels behind. */
-		pixman_color_t c = (transparent_bg && bg == KT_BG)
-			? (pixman_color_t){ 0, 0, 0, 0 }
-			: to_pixman(ktui_theme->slot[bg]);
+		if (bg_owned(bg)) {
+			x += run;	/* the backdrop painted it */
+			continue;
+		}
+		pixman_color_t c = bg_color(bg);
 		pixman_image_fill_rectangles(
 			PIXMAN_OP_SRC, dst, &c, 1,
 			&(pixman_rectangle16_t){ (int16_t)(x * cw), (int16_t)y,
@@ -106,9 +189,9 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		 * the continuation to swap its own colours, or a reversed run
 		 * comes out with one un-lit cell per wide character. */
 		if (cp < 0x20) {
-			if (!was_covered && (row[x].attr & KT_A_REVERSE)) {
-				pixman_color_t c =
-					to_pixman(ktui_theme->slot[row[x].fg]);
+			if (!was_covered && (row[x].attr & KT_A_REVERSE)
+					&& !bg_owned(row[x].fg)) {
+				pixman_color_t c = bg_color(row[x].fg);
 				pixman_image_fill_rectangles(
 					PIXMAN_OP_SRC, dst, &c, 1,
 					&(pixman_rectangle16_t){
@@ -139,9 +222,8 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 			/* Reverse under a sprite is a swap like everywhere
 			 * else: the fill that the icon then sits on becomes
 			 * the foreground slot. */
-			if (row[x].attr & KT_A_REVERSE) {
-				pixman_color_t rc =
-					to_pixman(ktui_theme->slot[fg]);
+			if ((row[x].attr & KT_A_REVERSE) && !bg_owned(fg)) {
+				pixman_color_t rc = bg_color(fg);
 				pixman_image_fill_rectangles(
 					PIXMAN_OP_SRC, dst, &rc, 1,
 					&(pixman_rectangle16_t){
@@ -182,7 +264,9 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 			uint8_t t = fg;
 			fg = bg;
 			bg = t;
-			pixman_color_t c = to_pixman(ktui_theme->slot[bg]);
+			if (bg_owned(bg))
+				goto glyph;
+			pixman_color_t c = bg_color(bg);
 			pixman_image_fill_rectangles(
 				PIXMAN_OP_SRC, dst, &c, 1,
 				&(pixman_rectangle16_t){
@@ -191,6 +275,7 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 					(uint16_t)ch });
 		}
 
+glyph:
 		if (!have)
 			continue;
 
@@ -253,8 +338,10 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 static void pad_remainder(pixman_image_t *dst, int used_w, int used_h,
 			  int dst_w, int dst_h)
 {
-	pixman_color_t bg = transparent_bg ? (pixman_color_t){ 0, 0, 0, 0 }
-					   : to_pixman(ktui_theme->slot[KT_BG]);
+	pixman_color_t bg = bg_color(KT_BG);
+
+	if (bg_owned(KT_BG))
+		return;			/* the backdrop reaches it too */
 
 	if (used_w < dst_w)
 		pixman_image_fill_rectangles(

@@ -45,7 +45,7 @@ echo "==> selftest"
 $CC $STD $WARN $INC -o "$OUT/selftest" src/libs/selftest.c \
     src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libkpkg/*.c \
     src/libs/libkbuild/*.c src/libs/libktui/*.c src/libs/libkproc/*.c \
-    src/tools/kdos-portup/extract.c
+    src/libs/libkxdg/*.c src/tools/kdos-portup/extract.c
 ASAN_OPTIONS=detect_leaks=1 "$OUT/selftest"
 
 echo
@@ -1660,7 +1660,9 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     DFRONTS="src/desktop/kdos-shell/cal.c src/desktop/kdos-shell/menu.c
              src/desktop/kdos-shell/launcher.c src/desktop/kdos-shell/pick.c
              src/desktop/kdos-shell/shell.c src/desktop/kdos-shell/apps.c
-             src/desktop/kdos-shell/fav.c src/libs/libkchrome/kch_chrome.c"
+             src/desktop/kdos-shell/fav.c src/desktop/kdos-shell/cells.c
+             src/libs/libkchrome/kch_chrome.c
+             src/libs/libkchrome/kch_tone.c"
     # A new surface may want alsa or an sd-bus; offer them when the host has
     # them rather than making the whole harness conditional on either.
     DEXTRA_PC=""
@@ -1672,7 +1674,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     DNEW=""
     DBAD=""
     for s in keys teams saver slit doc settings openwith audio \
-             start net bt devices notify status tip; do
+             start net bt devices notify status tip panel; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         if $CC $STD $WARN -fsyntax-only -I"$DPROTO" \
                 -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
@@ -1713,7 +1715,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
             "$DPROTO"/*-protocol.c \
             src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkxdg/*.c \
             src/libs/libkbase/*.c src/libs/libkproc/*.c \
-            $(pkg-config --cflags --libs wayland-client $DEXTRA_PC)
+            $(pkg-config --cflags --libs wayland-client pixman-1 $DEXTRA_PC)
     }
     if [ -n "$DNEW" ] && dumpbuild $DNEW 2>"$OUT/dumpnew.err"; then
         DUMPCK="$OUT/dumpcheck"
@@ -1796,8 +1798,6 @@ echo "==> golden frames — the committed cell grid, diffed"
 #   launcher   scans /usr/share/applications, which is the host's
 #   menu apps  likewise
 #   menu places reads /proc/mounts and the $HOME xdg dirs
-#   panel      needs a live compositor to dump at all — it reads real protocol
-#              state on purpose (see panel.c)
 #   saver      seeds from time() ^ getpid(); phosphor rain is never twice the
 #              same picture, which is the point of it
 #   slit       renders the OUTPUT of forked gadget commands, arriving
@@ -1809,9 +1809,19 @@ echo "==> golden frames — the committed cell grid, diffed"
 #   devices    /dev/video* and /proc/asound are the host's
 #
 # What is goldened reads its inputs from testing/fixtures/shell: `tree/` for
-# pick and `config/` for the surfaces that parse one (a frozen rc.xml for the
-# keybind card, a comp.conf for settings), so a golden cannot move because
-# somebody edited skel.
+# pick, `config/` for the surfaces that parse one (a frozen rc.xml for the
+# keybind card, a comp.conf for settings), and `panelroot/` for the taskbar,
+# whose whole right wing is the host's own load, battery and clock. So a golden
+# cannot move because somebody edited skel, ran a build, or looked at it after
+# midnight.
+#
+# THE TASKBAR IS GOLDENED WITH NO COMPOSITOR AND NO WINDOWS. `sh_connect`
+# failing is an empty window list rather than a refusal — which is also the
+# honest picture of a fresh login — so what this asserts is the chrome: the
+# Start button, the separators, the right wing's walk and the meters strip's
+# degradation. The plates, the hover fills and the icons are PIXELS and are
+# absent here by design; a layout that only lines up once they arrive is a
+# layout that is broken.
 #
 # Each is rendered at two sizes: KDOS_DUMP_SIZE overrides the geometry a
 # surface asked for (dumpmain.c wraps ktui_offscreen_init), which is also the
@@ -1834,6 +1844,7 @@ golden() {			# <name> <WxH> <argv…>
           XDG_DATA_HOME=/nonexistent-kdos-data \
           XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
           XDG_RUNTIME_DIR=/nonexistent-kdos-run \
+          KDOS_PANEL_ROOT="$PWD/panelroot" KDOS_PANEL_NOW=1735689600 ${KDOS_PANEL_DEBUG:+KDOS_PANEL_DEBUG=$KDOS_PANEL_DEBUG} \
           KDOS_DUMP_SIZE="$_g_size" "$DUMPCK" "$@" ) > "$_g_got"
     if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
         mkdir -p "$GOLD"
@@ -1929,6 +1940,22 @@ for _s in keys teams doc settings start notify; do
         echo "  $_s (skipped — not linked into the harness)"
     fi
 done
+# THE TASKBAR AT ITS OWN HEIGHT, not the card sizes above. Every other surface
+# here is a window and 24 or 43 rows is a plausible one; the bar is two rows by
+# definition and forcing it to 24 would golden a layout that cannot occur. The
+# two WIDTHS are the point: 80 is the shipped 1280x800 bar at the 20-pixel cell
+# and is where the degradation ladder bites, 132 is the width at which
+# everything fits at once.
+if "$DUMPCK" --have shell; then
+    golden shell 80x2  shell --dump
+    golden shell 132x2 shell --dump
+elif [ -f "$GOLD/shell-80x2.txt" ]; then
+    echo "  shell: a golden is committed but the surface no longer links"
+    golden_fail=1
+else
+    echo "  shell (skipped — not linked into the harness)"
+fi
+
 # The overflow popup reads its list from a FILE the panel writes, so the golden
 # gets a fixture rather than whatever this machine's own panel published a
 # moment ago — three rows, one of them wanting attention and one of them the
@@ -1959,17 +1986,53 @@ if [ "$golden_fail" != 0 ]; then
     exit 1
 fi
 
-# --dump-cells is the other half of the GOLDEN FRAMES contract: one line per
+# --dump-cells is the OTHER HALF of the golden-frame contract: one line per
 # non-blank cell, `row col U+XXXX fg bg attr`, which is what makes a COLOUR
-# regression visible as well as a geometry one. No surface implements it yet;
-# said out loud rather than quietly not run, because a check that silently
-# covers nothing is worse than one that is missing.
-if "$DUMPCK" menu system --dump-cells >"$OUT/cells.txt" 2>/dev/null &&
-   grep -qE '^[0-9]+ [0-9]+ U\+[0-9A-Fa-f]+ ' "$OUT/cells.txt"; then
-    echo "  --dump-cells answers; cell goldens are not committed yet"
-else
-    echo "  --dump-cells: not implemented by any surface — skipped"
-fi
+# regression visible as well as a geometry one. A text dump is byte-identical
+# across a selection that stopped being an accent fill, a label that dropped
+# from KT_MID to the unreadable KT_DIM, and a glyph drawn in the background's
+# own slot — all three have shipped.
+#
+# The surfaces that carry the flag are the ones whose colour is load-bearing:
+# the two menus this desktop is aimed with, the keybind card, the chooser and
+# the help. `cells.c` is the one backend behind all of them, so a golden
+# written for one is a golden in the format every other one prints.
+cells_golden() {		# <name> <argv…>
+    _c_name=$1; shift
+    _c_file="$GOLD/cells-$_c_name.txt"
+    _c_got="$OUT/cells-$_c_name.txt"
+    ( cd testing/fixtures/shell &&
+      env LC_ALL=C TZ=UTC HOME="$PWD" \
+          XDG_CACHE_HOME=/nonexistent-kdos-cache \
+          XDG_CONFIG_HOME="$PWD/config" \
+          XDG_DATA_HOME=/nonexistent-kdos-data \
+          XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
+          XDG_RUNTIME_DIR=/nonexistent-kdos-run \
+          KDOS_PANEL_ROOT="$PWD/panelroot" KDOS_PANEL_NOW=1735689600 \
+          "$DUMPCK" "$@" ) > "$_c_got" 2>/dev/null
+    if ! grep -qE '^[0-9]+ [0-9]+ U\+[0-9A-Fa-f]+ ' "$_c_got"; then
+        echo "  cells-$_c_name: --dump-cells printed no cells"
+        golden_fail=1
+        return 0
+    fi
+    if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
+        cp "$_c_got" "$_c_file"; echo "  wrote cells-$_c_name"; return 0
+    fi
+    if [ ! -f "$_c_file" ]; then
+        echo "  cells-$_c_name: no golden committed"; golden_fail=1; return 0
+    fi
+    if diff -u "$_c_file" "$_c_got" > "$OUT/cells-$_c_name.diff"; then
+        echo "  cells-$_c_name"
+    else
+        echo "  cells-$_c_name DRIFTED:"
+        head -20 "$OUT/cells-$_c_name.diff" | sed 's/^/    /'
+        golden_fail=1
+    fi
+}
+cells_golden start       start --dump-cells
+cells_golden menu-system menu system --dump-cells
+cells_golden keys        keys --dump-cells
+cells_golden doc         doc --dump-cells
 
 # G7's chooser resolves a file the same way `kdos-appbox open` does, so it
 # inherits the same two traps: the LONGEST matching suffix wins (or every
@@ -2062,6 +2125,26 @@ test "$rc" = 2 \
 echo "  fix rows merged, -rN ignored, 'secdb =' honoured, unknown ≠ clean"
 
 echo
+echo "==> the tone ladder gives the bar a legible middle in every accent"
+#
+# The eight VT slots cannot say what a raised button is: `variant` against
+# `backdrop` is 1.00:1, so a panel painted in its own background colour is the
+# same colour as the desktop. libkchrome derives the missing middle, and this
+# is the claim that it works — in all four accents, not just the one anybody
+# looks at.
+#
+TONE_BIN="$OUT/tonecheck"
+if $CC $STD -o "$TONE_BIN" testing/fixtures/tone/tonecheck.c \
+        src/libs/libkchrome/kch_tone.c src/libs/libkcolor/kcolor.c \
+        src/libs/libktui/ktui_theme.c src/libs/libkbase/*.c \
+        -Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui \
+        -Isrc/libs/libkcell -Isrc/libs/libkicon -Isrc/libs/libkchrome \
+        $(pkg-config --cflags pixman-1 2>/dev/null) >/dev/null 2>&1; then
+    "$TONE_BIN" || exit 1
+else
+    echo "  tone ladder (skipped — no pixman headers on this host)"
+fi
+
 echo "==> kdos theme --audit catches artwork that is not the palette's"
 # The palette claim, checked the way the audit checks it: generate a full themed
 # $HOME from the repo's own art, audit it (must be clean), then break one of each

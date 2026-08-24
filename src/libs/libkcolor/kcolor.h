@@ -114,6 +114,20 @@ double kcol_luma(uint32_t rgb);	/* 0..1, Rec.601 */
  * at 4.07 and ice at 4.48. Measured at 56%: 5.73 / 5.07 / 5.35 / 4.82. */
 uint32_t kcol_muted(const KcolScheme *sc);
 
+/*
+ * WCAG relative luminance (x65535) and the contrast ratio between two colours
+ * (x100 — 4.83:1 is 483).
+ *
+ * Integer and table-driven, because this library does not link libm. They
+ * exist so a derived tone can be SOLVED against a legibility floor rather than
+ * picked: see kch_tone(), where the focused plate walks toward the background
+ * until the label on it clears 7:1. The KDOS palette's dark end is compressed
+ * enough — deep, backdrop and variant are within 1.07:1 of each other — that
+ * judging any of this by eye gives the wrong answer.
+ */
+uint32_t kcol_lum(uint32_t rgb);
+int kcol_contrast(uint32_t a, uint32_t b);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Derived semantic values
  *
