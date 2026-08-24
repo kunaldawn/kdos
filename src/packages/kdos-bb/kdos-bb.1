@@ -10,6 +10,17 @@ The
 .BR kdos-bb ,
 command show an high quality audio-visual demonstration for your text
 terminal
+.PP
+It starts on its own: music is on and the mixer takes its defaults, so
+there is nothing to answer before the demo runs.  Use
+.B \-nosound
+and
+.B \-mixer
+to change either.
+.PP
+The closing text scrolls itself, paced by the module rather than by a
+clock, and reaches its last page just before the music does.  Pressing any
+key hands control back to you for the rest of the scene.
 .SH OPTIONS
 A summary of options are included below.
 For a complete description type 
@@ -21,6 +32,17 @@ Show summary of options.
 .TP
 .B \-loop
 play demo in infinite loop
+.TP
+.B \-nosound
+run silent.  With no player to ask, the closing scroll falls back to a
+fixed rate instead of following the music.
+.TP
+.B \-mixer
+show the sample rate and mixing settings before starting, and wait for
+Continue.  This was the startup behaviour before KDOS.
+.TP
+.B number
+start at stage 1, 2 or 3
 .TP
 .B \-driver
 select driver available drivers:linux slang X11 stdout stderr

@@ -25,3 +25,42 @@ KDOS changes, all applied in place because this is our source now:
             musl is free not to. memmove.
   config.h  REGISTERS(n) no longer expands to __attribute__((regparm(n))),
             which is x86-32 only and warns on every declaration here.
+
+Then the rebranding, which is deliberate rather than incidental. The demo is
+the AA-group's and the credits scroll, the greetings and the history stay
+theirs; what changed is everything that would now be FALSE, plus the fork's
+own mark in the two beats that already spend time on a logo.
+
+  bb.c      the arguments are parsed as a list, and -nosound and -mixer join
+            -loop. Usage names kdos-bb.
+  main.c    THE DEMO STARTS BY ITSELF. Upstream asked "Music?[Y/n]" and then
+            held the mixer settings table until Continue was pressed -- two
+            questions whose answers were always yes and default, in front of
+            the one thing the program does. Both are flags now.
+            song_progress() is new: thousandths through the module, which is
+            what paces the extro scroll.
+  scene1.c  blazinec()'s nineteen flash words are reworded and the mascot is
+            drawn in the twelfth, which upstream spent on an empty string.
+            THE COUNT IS THE CLOCK -- one strobe pair each -- so the scene is
+            the same length to the microsecond and the music stays in step.
+  credits.c the same rule: text[] is 166 entries and CSIZE drives TOTAL, so
+            entries are reworded and never added. Every contributor line and
+            every Special Thanks is untouched; the fork's own credit takes
+            the four slots after the last contributor, and the pointer that
+            named README now names this file, which is the one that exists.
+  credits2.c the mascot in the extro's logo beat, and THE CLOSING TEXT
+            SCROLLS ITSELF. It was a pager that waited on a keypress, so the
+            demo ended by sitting still until somebody noticed. It now asks
+            the player where it is and places the text at the same fraction
+            of its own length, landing on the last page just before bb3.s3m
+            ends. Any key hands control back for good -- a scroll that pulled
+            the page out from under a reader would be worse than none.
+            The module LOOPS (update_sound restarts it), so a fraction that
+            went backwards is read as "the song is over".
+  textform.c the closing document gains what KDOS is and what this fork
+            changed, and loses the claims that were no longer true.
+  kdostux.c kdos.png as an LZO-compressed greyscale image in the format
+            image.h describes, so dispimg() draws it with the same scaling,
+            dithering and strobe as the photographs. GENERATED -- see
+            genimg.py, which is host-only, checks its own round trip, and is
+            never run by the build or on the target.

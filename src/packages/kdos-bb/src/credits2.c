@@ -28,6 +28,9 @@
 #include <malloc.h>
 #include <stdlib.h>
 #include "bb.h"
+#include "image.h"
+
+extern int dualmode;
 #define STATE (TIME-starttime)
 #undef MAXTIME
 #define MAXTIME 2500000
@@ -184,6 +187,52 @@ static void displaytext(int p)
 
 }
 
+/*
+ * THE SCROLL IS PACED BY THE MODULE, NOT BY A CLOCK.
+ *
+ * song_progress() answers thousandths through bb3.s3m. The text is placed at
+ * the same fraction of its own length, so it lands on the last page as the
+ * music lands on its last pattern -- at any mixer rate, on a slow terminal,
+ * and without a measured constant that goes stale the day the track changes.
+ *
+ * It stops at SCROLL_ENDS_AT rather than 1000 because the ask is to finish
+ * JUST BEFORE the song does: the last page wants a moment to be read while
+ * the music is still playing.
+ *
+ * bb3.s3m LOOPS -- update_sound() restarts it when the player falls idle --
+ * so the fraction wraps to 0 instead of arriving at 1000. A fraction that
+ * went backwards therefore means the song is over, and the only honest
+ * response is to go straight to the end rather than scroll the whole
+ * document a second time.
+ *
+ * With -nosound there is no player to ask and this falls back to a wall
+ * clock over SCROLL_NOSOUND, which is the one case where the number IS
+ * hardcoded and is allowed to be: nothing is being synchronised to.
+ */
+#define SCROLL_ENDS_AT   940
+#define SCROLL_NOSOUND   150000000
+
+static int scrollbase, scrollprev, scrolldone;
+
+static int scroll_target(int end)
+{
+    int prog = song_progress();
+    if (scrolldone)
+	return end;
+    if (prog < 0) {
+	int el = TIME - scrollbase;
+	if (el >= SCROLL_NOSOUND)
+	    return scrolldone = 1, end;
+	return (int) ((double) end * el / SCROLL_NOSOUND);
+    }
+    if (scrollprev >= 0 && prog + 50 < scrollprev)
+	return scrolldone = 1, end;
+    scrollprev = prog;
+    if (prog >= SCROLL_ENDS_AT)
+	return scrolldone = 1, end;
+    return (int) ((double) end * prog / SCROLL_ENDS_AT);
+}
+
 static void decbright(void)
 {
     params->bright = -(TIME - starttime) * 256 / (endtime - starttime);
@@ -192,7 +241,7 @@ static void decbright(void)
 void credits2(void)
 {
     int i, ch;
-    int p;
+    int p, end, autoscroll;
     int plast = -1;
     clrscr();
 
@@ -249,13 +298,45 @@ void credits2(void)
 	bbflushwait(30000);
     }
 
+    /*
+     * THE FORK'S MARK, and it costs the demo nothing. The scroll below is
+     * paced by the module rather than by a clock, so whatever this beat
+     * spends comes out of the scroll's budget automatically: the text simply
+     * moves faster and the extro still lands on the same note.
+     *
+     * dispimg() is the demo's own picture path -- the one the photographs go
+     * through -- so the mascot arrives scaled, dithered and strobed exactly
+     * like everything else here rather than looking bolted on.
+     */
+    strobikstart();
+    dualmode = 0;
+    clrscr();
+    dispimg(&kdostux, dual);
+    strobikend();
+    bbwait(2500000);
+    strobikstart();
+    clrscr();
+    textclrscr();
+    displogo(1);
+    strobikend();
+
     source = malloc(aa_imgwidth(context) * (aa_imgheight(context)));
     target = malloc(aa_imgwidth(context) * (aa_imgheight(context)));
     params->dither = AA_NONE;
     format(dual ? aa_scrwidth(context) / 2 : aa_scrwidth(context));
     p = 0;
+    end = textsize - (aa_scrheight(context) - YSTART) * (dual + 1);
+    if (end < 0)
+	end = 0;
+    bbupdate();
+    scrollbase = TIME;
+    scrollprev = -1;
+    scrolldone = 0;
+    autoscroll = 1;
     while (1) {
 	if (p != plast) {
+	    bbupdate();
+	    starttime = endtime = TIME;
 	    getsource();
 	    displaytext(p);
 	    gettarget();
@@ -264,14 +345,30 @@ void credits2(void)
 	    aa_flush(context);
 	    plast = p;
 	}
-      again:
-	while ((ch = bbupdate()) == AA_NONE) 
-	  {
-	    int t=tl_process_group (syncgroup, NULL);
-	    if (t>1000000/10)
-	      t=1000000/10;
-	    tl_sleep (t);
-	  }
+	/*
+	 * A KEY TURNS THE AUTOSCROLL OFF FOR GOOD. A scroll that pulled the
+	 * page back under somebody who had just paged up would be worse than
+	 * no scroll at all; once a human is driving, they keep it.
+	 */
+	if (autoscroll) {
+	    int want = scroll_target(end);
+	    if (want > p) {
+		p = want;
+		continue;
+	    }
+	    if (scrolldone && p >= end)
+		break;
+	}
+	ch = bbupdate();
+	if (ch == AA_NONE) {
+	    int t = tl_process_group(syncgroup, NULL);
+	    if (t > 1000000 / 20)
+		t = 1000000 / 20;
+	    tl_sleep(t);
+	    continue;
+	}
+	if (ch != AA_NONE)
+	    autoscroll = 0;
 
 	switch (ch) {
 	case '1':
@@ -327,9 +424,22 @@ void credits2(void)
 	    free(target);
 	    return;
 	default:
-	    goto again;
+	    continue;
 	}
-	bbupdate();
-	starttime = endtime = TIME;
     }
+    /*
+     * The scroll reached the end with the music still playing. Same fade the
+     * q/ESC case does -- there is one way out of this scene, not two.
+     */
+    finish_stuff = 0;
+    backconvert(0, 0, aa_scrwidth(context), aa_scrheight(context));
+    bbupdate();
+    starttime = endtime = TIME;
+    drawptr = decbright;
+    timestuff(0, NULL, draw, 1000000);
+    textclrscr();
+    drawptr = NULL;
+    aa_flush(context);
+    free(source);
+    free(target);
 }

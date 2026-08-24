@@ -44,6 +44,17 @@ extern void (*drawptr) (void);
 extern struct font *font;
 extern void blur(int);
 extern int bbsound, soundcounter;
+extern int bbnosound;			/* -nosound: never open the mixer   */
+extern int bbmixer;			/* -mixer:   show the settings menu */
+
+/*
+ * How far through the module the player is, in thousandths, or -1 when there
+ * is nothing to ask -- no libmikmod, -nosound, or the player stopped. The
+ * extro's scroll is paced by this rather than by a wall clock, because a
+ * measured duration is wrong the day the track or the mixer rate changes and
+ * nothing in the code can notice.
+ */
+int song_progress(void);
 
 
 void dvojprujezd(int, char *, char *);
