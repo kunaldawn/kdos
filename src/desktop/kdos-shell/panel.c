@@ -692,9 +692,12 @@ enum { TL_AUTO = 0, TL_ALWAYS, TL_NEVER };
  * six cells a window and says what the picture already said.
  */
 static int task_labels = TL_NEVER;
-/* panel.conf's `start_label`. Off: the mark alone, which is what an
- * icons-only bar wants and what reclaims seven cells for windows. */
-static int start_label;
+/* panel.conf's `start_label`. ON by default: a Start button that is a picture
+ * the same size as the app icons beside it does not read as the way in, which
+ * is the one thing this control has to do. `no` reclaims the word's cells for
+ * the window list, and `pass 2` takes them back anyway on a bar too narrow to
+ * afford both. */
+static int start_label = 1;
 
 /*
  * WHICH METERS EXIST. The identity is here and the descriptor table is beside
@@ -2226,7 +2229,7 @@ static void load_widgets(void)
 	meters_sel[2] = MT_NET;
 	nmeters_sel = 3;
 	task_labels = TL_NEVER;
-	start_label = 0;
+	start_label = 1;
 	for (int i = 0; i < W_N; i++)
 		in_overflow[i] = 0;
 	ntray_hide = 0;
@@ -2358,9 +2361,8 @@ static void load_widgets(void)
 		 */
 		/*
 		 * `start_label = yes|no` — whether the Start button carries
-		 * the word as well as the mark. Off by default: on an
-		 * icons-only bar a lone word is the odd one out, and the
-		 * seven cells are worth more to the window list.
+		 * the word as well as the mark. On by default; `no` gives the
+		 * cells back to the window list.
 		 */
 		if (!strncmp(p, "start_label", 11)) {
 			char v[32] = "";
@@ -3280,13 +3282,7 @@ static void start_plate(int cx, int cells, int h, int hovered, int open)
 
 static int draw_start(struct sh_state *sh, int h, int compact)
 {
-	const char *word = "start";
-	/*
-	 * ICONS ONLY MEANS THE START BUTTON TOO. A lone word among twenty
-	 * pictures is the odd one out, and Windows 7 dropped it for the same
-	 * reason — the mark is what gets recognised from across the room.
-	 * `start_label = yes` in panel.conf brings it back.
-	 */
+	const char *word = "Start";
 	if (!start_label)
 		compact = 1;
 	/* The KDOS mark: `kdos-launcher` is what kdos-icons installs into the
@@ -3316,6 +3312,14 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	if (icon < 0 && icons_on)
 		icon = kicon_slot("start-here", mark_cells, h);
 	int mark_w = icon >= 0 ? mark_cells : ktui_utf8_width(menu_mark());
+	/*
+	 * A WORDMARK AND A LABEL SAY THE SAME THING TWICE. With no artwork the
+	 * mark falls back to the glyph on a UTF-8 terminal and to the literal
+	 * `KDOS` everywhere else — and `KDOS Start` is the brand printed
+	 * beside itself. Where the mark is the word, the mark IS the button.
+	 */
+	if (icon < 0 && !strcmp(menu_mark(), "KDOS"))
+		compact = 1;
 	int lw = compact ? 0 : ktui_utf8_width(word);
 	int w = mark_w + (lw ? 1 + lw : 0) + 1;
 	/* Lit while the menu is up, not only under the pointer: a Start button
@@ -3371,9 +3375,25 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 		 * this shape came from, and the button grows by one column.
 		 */
 		int mark_px = px_h * 74 / 100;
-		int pad = cell_w * scale / 3;
+		/*
+		 * THREE GAPS, AND THE TWO OUTER ONES ARE EQUAL BY
+		 * CONSTRUCTION.
+		 *
+		 * `pad` is the breathing room at each end and `gap` is the
+		 * space between the mark and the word — a different quantity,
+		 * and making them one number is what made the button look
+		 * cramped at one end. The content is CENTRED in the tile
+		 * below rather than laid out from the left edge, because the
+		 * tile is a whole number of CELLS and the content is not: the
+		 * rounding slack has to go somewhere, and split evenly it is
+		 * invisible while pushed to the right it is the asymmetry you
+		 * can see.
+		 */
+		int gap = cell_w * scale / 2;
+		int pad = cell_w * scale * 3 / 4;
 		int tw = kcell_canvas_text_width(fsz, word);
-		int need_px = pad + mark_px + pad + tw + pad;
+		int content_px = mark_px + gap + tw;
+		int need_px = pad + content_px + pad;
 		int tw_cells = (need_px + cell_w * scale - 1) / (cell_w * scale);
 
 		if (tw_cells >= 3 && tw_cells <= 16 && tw_cells <= ktui_w / 3) {
@@ -3400,7 +3420,10 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 				 * shows through everywhere the mark and the
 				 * word are not.
 				 */
-				int x = pad;
+				/* Centred, so the slack from rounding the tile
+				 * up to whole cells is split between the two
+				 * ends instead of all landing on the right. */
+				int x = (cw_px - content_px) / 2;
 				pixman_image_t *mk =
 					icons_on ? kicon_pixmap("kdos-launcher",
 								mark_px,
@@ -3417,7 +3440,7 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 						(ch_px - mark_px) / 2, mark_px,
 						mark_px);
 					kicon_pixmap_free(mk);
-					x += mark_px + pad;
+					x += mark_px + gap;
 				}
 				/* Centred on the button's own height, which is
 				 * the entire point of drawing it as pixels. */
