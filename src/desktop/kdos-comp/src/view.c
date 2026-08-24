@@ -2319,6 +2319,11 @@ view_set_app_id(struct view *view, const char *app_id)
 	}
 	xstrdup_replace(view->app_id, app_id);
 
+	/* KDOS: a client that maps first and names itself afterwards. Gated on
+	 * `mapped` in the callee — a name with no window is not an
+	 * observation. */
+	kdos_appid_observe_view(view);
+
 	wl_signal_emit_mutable(&view->events.new_app_id, NULL);
 }
 

@@ -56,11 +56,9 @@
  * and the reason is the case a name cannot answer: three terminals called
  * `foot`, or eleven browser windows. A thumbnail says which one.
  *
- * IT IS A GRID OF CELLS LIKE EVERYTHING ELSE HERE. `kcell_ascii_image` is the
- * shape-vector renderer `Super+A`, `kdos-shot --text` and the camera preview
- * already use; pointing it at a window's buffer costs the forty lines below
- * and keeps the one property this desktop is built on — there is no second
- * renderer, and the tip still draws at every glyph tier.
+ * IT IS A GRID OF CELLS LIKE EVERYTHING ELSE HERE — a block per cell in four
+ * levels of the accent, which is the whole of the rendering and is described
+ * where the levels are. The tip draws at every glyph tier.
  *
  * THE COMPOSITOR TAKES THE PICTURE, and it must: a client cannot see another
  * client's buffer, which is the whole point of Wayland. `kdos-comp`'s `thumb`
@@ -81,26 +79,37 @@ static uint32_t pv_tint[PV_MAX];
 static int pv_cols, pv_rows;
 
 /*
- * A CELL THAT IS DARK IS EMPTY, and this is what makes the preview a picture
- * rather than a texture.
+ * IT IS A GAME BOY SCREEN: FOUR SOLID LEVELS, AND THE COLOUR CARRIES THE
+ * PICTURE.
  *
- * The shape matcher normalises each cell by its OWN maximum — it has to, or
- * every cell collapses onto one mid-grey glyph — so a cell with nothing in it
- * has its noise amplified to full scale and comes back with whatever glyph
- * that noise happens to resemble. A terminal is mostly black, so a thumbnail
- * of one came out as a wall of the same letter with the text lost inside it.
+ * `kcell_ascii_image` is the wrong renderer at this size and the reason is
+ * arithmetic rather than taste. It picks a glyph by SHAPE, and a 1280-pixel
+ * window sampled into a 34x9 grid is nine source pixels per cell: a cell of
+ * text is a featureless grey blur with no shape left in it to match. So every
+ * textured cell matched the same glyph and a terminal previewed as a wall of
+ * `b`, a minimised one as a wall of `|` — photographed on the booted ISO. The
+ * shape matcher keeps its other callers (`Super+A`, `kdos-shot --text`, the
+ * camera preview), which run at grids where a cell still holds a shape.
  *
- * THE FLOOR IS RELATIVE TO THIS PICTURE'S OWN BRIGHTEST CELL, not an absolute
- * level. Nine source pixels to one thumbnail pixel means even a lit cell of a
- * terminal averages to a few percent of full — an absolute floor tuned to
- * admit that would admit everything on a photograph, and one tuned for the
- * photograph blanks the terminal completely. Both were measured. A tenth of
- * the brightest cell keeps the structure of either, and the small absolute
- * minimum below it is for a window that is genuinely blank, where a tenth of
- * nothing would let the noise back in.
+ * Every cell here is a FULL BLOCK instead, drawn in one of four slots off the
+ * palette's own brightness ladder. That is a 2-bit LCD: chunky, no stipple
+ * texture pretending to be detail, and it wears whatever accent the desktop
+ * is in, because the ladder is the accent's. It reads at every glyph tier —
+ * the console font has FULL BLOCK, and eight colours is more than four.
  */
-#define PV_INK_MIN 64		/* kcol_lum() units — see kcolor.c */
-#define PV_INK_FRAC 10
+#define PV_LEVELS 4
+static const uint8_t pv_slot[PV_LEVELS] = {
+	KT_SURFACE, KT_DIM, KT_MID, KT_ACCENT
+};
+
+/* The glyph table is UTF-8 strings; a cell holds a codepoint. */
+static uint32_t pv_block(void)
+{
+	uint32_t cp = 0;
+
+	ktui_utf8_next(ktui_glyph[KT_G_FULL], &cp);
+	return cp;
+}
 
 /* A binary P6 with 8-bit channels — the only thing kdos-thumb.c writes, so
  * this reads that and refuses everything else rather than growing a parser for
@@ -210,31 +219,75 @@ static void preview_take(const char *app_id)
 		cw = 1;
 	if (ch < 1)
 		ch = 1;
-	if (kcell_ascii_image(argb, w, h, w, cw, ch, pv_cp, pv_tint, &pv_cols,
-			      &pv_rows) != 0)
-		pv_cols = pv_rows = 0;
+	pv_cols = w / cw;
+	pv_rows = h / ch;
+	if (pv_cols > PV_COLS)
+		pv_cols = PV_COLS;
+	if (pv_rows > PV_ROWS)
+		pv_rows = PV_ROWS;
 	{
-		int n = pv_cols * pv_rows;
-		uint32_t peak = 0, floor_lum;
+		uint32_t peak = 0, blk = pv_block();
 
-		if (n > PV_MAX)
-			n = PV_MAX;
-		for (int i = 0; i < n; i++) {
-			uint32_t l = kcol_lum(pv_tint[i] & 0xffffff);
+		/*
+		 * The mean of the block, which is the whole of the rendering.
+		 * Every cell is a FULL BLOCK and only its colour carries the
+		 * picture, so nothing here has to decide what shape a cell
+		 * resembles — see the note above tip_draw().
+		 */
+		for (int r = 0; r < pv_rows; r++) {
+			for (int c = 0; c < pv_cols; c++) {
+				uint32_t sum = 0;
+				int n = 0;
 
-			pv_tint[i] = l;
-			if (l > peak)
-				peak = l;
+				for (int y = r * ch; y < (r + 1) * ch; y++)
+					for (int x = c * cw; x < (c + 1) * cw;
+					     x++) {
+						sum += kcol_lum(
+							argb[(size_t)y * w + x]
+							& 0xffffff);
+						n++;
+					}
+				sum = n ? sum / (uint32_t)n : 0;
+				pv_tint[(size_t)r * pv_cols + c] = sum;
+				if (sum > peak)
+					peak = sum;
+			}
 		}
-		floor_lum = peak / PV_INK_FRAC;
-		if (floor_lum < PV_INK_MIN)
-			floor_lum = PV_INK_MIN;
-		for (int i = 0; i < n; i++)
-			if (pv_tint[i] < floor_lum)
-				pv_cp[i] = ' ';
+		/*
+		 * NORMALISED AGAINST THIS PICTURE'S OWN BRIGHTEST CELL, AND
+		 * ON A SQUARE-ROOT CURVE.
+		 *
+		 * Both halves are needed. Nine source pixels average into one,
+		 * so even a lit cell of a terminal comes back at a few percent
+		 * of full and an absolute scale puts every window on the
+		 * darkest level — a blank rectangle. But a LINEAR scale
+		 * against the peak is barely better: a window's brightest
+		 * element is usually its titlebar, and at four levels
+		 * everything an order of magnitude below it lands on level 0
+		 * too. Measured on a terminal running `top`: the accent
+		 * titlebar sampled around 200 and the text rows around 15, so
+		 * the whole of the content the preview exists to show
+		 * disappeared under the one bar.
+		 *
+		 * A square root is the usual answer and it is enough here —
+		 * 15/200 lifts from 0.07 to 0.27, which is level 1 rather than
+		 * level 0. No libm: `lv = isqrt(v * L * L / peak)` is the same
+		 * curve in integers.
+		 */
+		for (int i = 0; i < pv_cols * pv_rows; i++) {
+			uint32_t sq = peak ? pv_tint[i] * PV_LEVELS * PV_LEVELS
+						     / (peak + 1)
+					   : 0;
+			uint32_t lv = 0;
+
+			while ((lv + 1) * (lv + 1) <= sq)
+				lv++;
+			if (lv >= PV_LEVELS)
+				lv = PV_LEVELS - 1;
+			pv_tint[i] = lv;
+			pv_cp[i] = blk;
+		}
 	}
-	if (pv_cols > PV_COLS || pv_rows > PV_ROWS)
-		pv_cols = pv_rows = 0;
 	free(argb);
 }
 
@@ -288,16 +341,22 @@ static void tip_draw(const char *t1, const char *t2)
 		if (x0 < 0)
 			x0 = 0;
 		for (int r = 0; r < pv_rows && r < ktui_h; r++)
-			for (int c = 0; c < pv_cols && x0 + c < ktui_w; c++)
-				/* ONE COLOUR, not the frame's own. The tint
-				 * the renderer can hand back is the window's,
-				 * and a full-colour rectangle inside a
-				 * phosphor tooltip is the one thing on screen
-				 * that would not belong to it — the rule the
-				 * camera preview already keeps. */
-				ktui_draw_cell(x0 + c, r,
-					       pv_cp[(size_t)r * pv_cols + c],
-					       KT_MID, KT_DIM, KT_A_NONE);
+			for (int c = 0; c < pv_cols && x0 + c < ktui_w; c++) {
+				size_t i = (size_t)r * pv_cols + c;
+				/*
+				 * THE PALETTE'S LADDER, NOT THE WINDOW'S OWN
+				 * COLOURS. A full-colour rectangle inside a
+				 * phosphor tooltip is the one thing on the
+				 * screen that would not belong to it — the
+				 * rule the camera preview already keeps — so
+				 * the picture is rendered in the accent's four
+				 * steps and comes out looking like the machine
+				 * it is running on.
+				 */
+				ktui_draw_cell(x0 + c, r, pv_cp[i],
+					       pv_slot[pv_tint[i] % PV_LEVELS],
+					       KT_DIM, KT_A_NONE);
+			}
 		y = pv_rows;
 	}
 	ktui_draw_text(1, y, ktui_w - 1, t1, KT_TEXT, KT_DIM, KT_A_NONE);
@@ -401,12 +460,11 @@ int tip_main(int argc, char **argv)
 	/*
 	 * THE PICTURE IS TAKEN AFTER kwl_init, AND THE SURFACE IS THEN GROWN.
 	 *
-	 * `kcell_ascii_image` measures its candidate glyphs against the loaded
-	 * font, and kwl_init is what loads one — asked before it, the renderer
-	 * has no set to match against and answers -1 for every window. So the
-	 * order is init, capture, resize, draw. A capture that came back with
-	 * nothing skips the resize and the tip is the two lines of text it was
-	 * always going to be.
+	 * The tip does not know how tall it is until it knows whether there is
+	 * a thumbnail to put in it, and it cannot resize a surface that does
+	 * not exist yet. So the order is init, capture, resize, draw. A capture
+	 * that came back with nothing skips the resize and the tip is the two
+	 * lines of text it was always going to be.
 	 */
 	if (preview) {
 		preview_take(preview);
