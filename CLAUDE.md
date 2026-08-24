@@ -3158,6 +3158,24 @@ read as an error state, on the one control that is never the thing being looked
 at; the penguin carries the brand without it. Three states, three pictures,
 where there used to be two.
 
+**IT CARRIES THE WORD, and `start_label` is ON.** A Start button that is a
+picture the same size as the app icons beside it does not read as the way in,
+which is the one thing this control has to do — measured on the shipped bar it
+was three cells, identical in size and shape to Firefox's. With the word it is
+ten. The tile lays out `pad | mark | gap | Start | pad`, and `pad` and `gap`
+are DIFFERENT numbers: one number for both is what made it look cramped at one
+end. The content is then CENTRED in the tile rather than laid out from its left
+edge, because a tile is a whole number of CELLS and the content is not — the
+rounding slack has to go somewhere, and split between the two ends it is
+invisible where pushed to the right it is the asymmetry you can see. Measured:
+plate 1..98, content 9..89, eight pixels one side and nine the other.
+
+**A WORDMARK AND A LABEL SAY THE SAME THING TWICE.** With no artwork the mark
+falls back to the `≡` glyph on a UTF-8 terminal and to the literal `KDOS`
+everywhere else, and `KDOS Start` is the brand printed beside itself. Where the
+mark is the word, the mark IS the button — which is also why the panel goldens
+did not move: the dump harness has no icons.
+
 And the plate is a whole-cell box inset by one, like every other plate on this
 row, so the mark is centred in it by construction rather than by arithmetic
 that has to be kept in step. Drawn from x=1 to half a cell short of the
