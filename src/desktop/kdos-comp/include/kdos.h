@@ -167,6 +167,36 @@ struct kdos_conf {
 	 * the rest of the chrome's command line.
 	 */
 	char clock_format[64];
+
+	/*
+	 * THE BAR'S OWN FONT, and it is separate from chrome_font on purpose.
+	 *
+	 * A cell is half as wide as the font is tall, so the panel's thickness
+	 * IS this number: Terminus at 20 gives a 10x20 cell and a two-row bar
+	 * 40 pixels tall, which is what a taskbar has been since Windows 7.
+	 * chrome_font stays at the console's own 32 for the menus and popups,
+	 * which are read rather than glanced at. Empty falls back to
+	 * chrome_font, and then to libkwl's default.
+	 *
+	 * Terminus is a BITMAP face: name a size it actually has
+	 * (12/14/16/18/20/22/24/28/32) or fcft answers with the nearest strike
+	 * and the bar is a pixel off what every arithmetic here assumes.
+	 */
+	char panel_font[128];
+
+	/*
+	 * The gap between the bar and the screen edge, in pixels. 0 is the
+	 * edge-to-edge bar; non-zero floats it, and the exclusive zone grows
+	 * by the same amount so a maximized window does not slide underneath.
+	 */
+	int panel_margin;
+
+	/*
+	 * The bar's body opacity, in percent. Below 100 the panel's background
+	 * slot is painted translucent and the desktop shows through; the text
+	 * and the fills stay ink.
+	 */
+	int panel_opacity;
 };
 
 extern struct kdos_conf kdos_conf;
@@ -318,5 +348,21 @@ struct seat;
 struct wlr_layer_surface_v1;
 void kdos_layer_release_on_demand(struct seat *seat,
 	struct wlr_layer_surface_v1 *pressed);
+
+/*
+ * PEEK — fade every window so the desktop behind them can be seen, for as
+ * long as the pointer dwells on Show Desktop. Transient: it changes no
+ * toplevel state and nothing a client can observe. See kdos-peek.c.
+ */
+void kdos_peek_set(bool on);
+void kdos_peek_finish(void);
+
+/*
+ * A THUMBNAIL of the most recently active window with this app_id, written to
+ * `path` as a binary PPM. False when there is no such window, or when its
+ * pixels are not host-readable — a dmabuf client has none, and every caller
+ * must be built to do without. See kdos-thumb.c.
+ */
+bool kdos_thumb_write(const char *app_id, int w, int h, const char *path);
 
 #endif /* KDOS_H */

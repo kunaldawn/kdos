@@ -689,6 +689,9 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 		return 1;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_BG);
 
 	while (!kwl_should_close()) {
 		sh_theme_poll();

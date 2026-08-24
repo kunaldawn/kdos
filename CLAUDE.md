@@ -3008,15 +3008,21 @@ a dock, ALWAYS keeps the label and lets `+N` carry the overflow.
 
 **The window list answers all three buttons**, as taskbars have since Windows
 95: left toggles (minimise the window you are in, restore the one you are not,
-and open the member list for a group), middle closes politely so an editor
-still gets to ask, and **right opens the WINDOW MENU** — `kdos-menu --winmenu
+and open the member list for a group), **middle opens a NEW INSTANCE** — from
+the pinned entry's Exec, or from the toplevel's app_id through its desktop
+entry, which is the same lookup the button's own name came from, so it can only
+launch something the bar could already name — and **right opens the WINDOW
+MENU** — `kdos-menu --winmenu
 <app_id>`, which carries Restore / Minimize / Maximize↔Restore Down /
 Fullscreen / Close plus Minimize all and Close all for a group, over the
 window titles. Right used to MINIMISE, which is a second way to do what left
 already does on the button every other desktop reserves for these verbs: there
 was no way at all to maximise or restore a window from this bar, which on a
 machine where most windows belong to boxed applications is the bar you are
-holding. The menu reads the toplevel's own state, so `Maximize` says
+holding. **Closing is the menu's, not the middle button's**: middle is the
+button a hand hits by accident on a wheel, and on an icons-only row of
+40-pixel squares what it was closing had no confirmation and no name on it.
+The menu reads the toplevel's own state, so `Maximize` says
 `Restore Down` when the window is maximised rather than being a toggle nobody
 can see the direction of. **Move and Size are deliberately absent**:
 wlr-foreign-toplevel-management has no request for either, and a menu row that
