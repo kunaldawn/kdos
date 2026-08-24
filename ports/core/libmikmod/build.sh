@@ -11,7 +11,6 @@
 
 patch -p1 -i $PORT_SRC/alsa-null-close.patch
 patch -p1 -i $PORT_SRC/alsa-nonblocking-update.patch
-patch -p1 -i $PORT_SRC/alsa-ring-latency.patch
 
 # ALSA is the only output KDOS has on a bare TTY, and --disable-dl links
 # libasound instead of dlopening it, so a missing ALSA is a link error here

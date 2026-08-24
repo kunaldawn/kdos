@@ -142,7 +142,8 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
 **`src/packages/`** is the second port repo (`PORT_REPO="/ports/core
 /kdos/src/packages"`) and holds what is OURS rather than an upstream tarball:
 `kdos-splash`, `kdos-appbox`, `kdos-installer`, `kdos-kpkg`, `kdos-theme`,
-`kdos-tools`, and the three vendored-and-remade art packages `kdos-cursors`
+`kdos-tools`, `kdos-bb`, and the three vendored-and-remade art packages
+`kdos-cursors`
 (Bibata), `kdos-icons` (Papirus), `kdos-gtk-theme` (adw-gtk3). The desktop's own
 packages live one directory over, in `src/desktop/`.
 
@@ -1644,7 +1645,7 @@ cursors it has rather than getting an empty theme.
 
 ---
 
-## bb — the AAlib demo
+## kdos-bb — the AAlib demo, hard-forked
 
 **There is no KDOS demoscene.** One was written (`src/packages/kd`, a
 from-scratch aalib demo with a 3D pipeline, audio-reactive channel taps and
@@ -1652,17 +1653,61 @@ music-as-clock) and then removed at the user's request. Do not resurrect it,
 and do not reintroduce a `kd`/`kk` port on the strength of a stale reference:
 if one turns up, it is a leftover.
 
-What ships is `ports/core/bb` — the 1997 AAlib demo, **upstream and
-unmodified** apart from two musl/x86_64 safety patches. Both defects were
-found with ASan rather than by reading:
+What ships is **`src/packages/kdos-bb`** — bb 1.3rc1, imported wholesale,
+rebranded and FROZEN. No upstream merges and no `.patch` files: it is our
+source now and is edited directly, the same shape as the labwc fork.
+`KDOS-FORK` at its root records the upstream tarball and its sha256.
+
+**Upstream's 81 files are 58 here**: the 42 sources and 16 headers the binary
+is actually built from, plus the three `.s3m` tracks. The whole autotools
+apparatus went — bb's 2001 `configure` probes the compiler with the K&R
+`main(){return(0);}` that GCC 14 rejects, so it failed with the thoroughly
+misleading "C compiler cannot create executables" and needed six `-Wno-` flags
+to answer a question with one answer on this target. `src/aconfig.h` states
+those answers and `build.sh` calls the compiler. `COPYING` and `AUTHORS` stay,
+and so does the demo's own credits scroll: that is the authors' work.
+
+Three defects fixed in place. The first two were found with ASan rather than
+by reading:
 
 - **`tex.c`'s `clear_zbuff()` cleared twice its allocation** — `set_zbuff()`
   allocates `sizeof(int)` per cell and the clear used `sizeof(long)`. Same
   size in 1997, double on x86_64: the heap corrupts and stage 2 aborts with
-  `malloc(): corrupted top size`. (`zbuff-int-not-long.patch`)
+  `malloc(): corrupted top size`.
 - **`messager.c` scrolled the text buffer with `memcpy`**, source and
   destination overlapping by every row but one. glibc survived it; musl is
-  free not to. (`messager-overlapping-copy.patch`)
+  free not to.
+- **The mixer runs on its own thread**, which is the audio fix and is below.
+
+**THE AUDIO STARVED BECAUSE THE MIXER WAS PUMPED BY THE RENDER LOOP.**
+`MikMod_Update` is a pull API and has to be called often enough to keep the
+card's ring full; upstream called it from a 10 ms timer in the `tl_group` that
+`bbwait()` pumps — and `bbwait()`'s caller has just returned from
+`aa_flush()`, which writes the whole frame to the terminal and BLOCKS while
+the terminal drains it. On a bare VT that is invisible. Under a compositor the
+terminal is shaping a screenful of cells and uploading a texture every frame,
+so the pty backs up, `aa_flush` sits in `write()`, no timer runs, the ring
+empties and the music stutters. **Minimise the same window and it is
+perfect** — the tell that it was never a mixer or a buffer-size problem. So
+the mixer gets a thread with its own 10 ms clock and the render loop cannot
+reach it.
+
+**AND MikMod_Lock MUST NOT WRAP A libmikmod CALL.** The obvious defensive
+`MikMod_Lock(); Player_Start(module); MikMod_Unlock();` is a **self-deadlock**:
+libmikmod's mutexes are plain `PTHREAD_MUTEX_INITIALIZER`, not recursive, and
+`Player_Start`, `Player_Active`, `Player_SetPosition` and `MikMod_Update` all
+open with `MUTEX_LOCK(vars)` themselves. The process stops dead with the demo
+frozen mid-frame and one thread. That internal locking IS what
+`MikMod_InitThreads()` promises; `MikMod_Lock` is for protecting your own
+access to libmikmod's exported VARIABLES (`md_mode`, `md_mixfreq`), which is a
+different thing. What the library does not cover is the fork's own `module`
+pointer, so `stop()` joins the thread BEFORE `Player_Free`, and `main()` joins
+before `MikMod_Exit`.
+
+**`KDOS_BB_DEBUG=1` reports which way the mixer is being fed** — thread or
+timer, and whether the module loaded at all. Silent otherwise, because the
+demo's stderr is the terminal it is drawing on. It is what caught the deadlock
+above: the log stopped at `play: starting`.
 
 Two aalib facts that cost a debug cycle each and outlive the demo that found
 them:
@@ -1677,26 +1722,20 @@ them:
   track fails inside `Player_Load` and the program plays silent.
 
 Sound needs `libmikmod` (ALSA only, `--disable-dl` so a missing ALSA is a link
-error rather than a silent runtime failure), with three patches of its own:
+error rather than a silent runtime failure), with two patches of its own:
 `alsa-null-close.patch` guards the `END:` label against closing a NULL pcm
 (otherwise a machine with no card aborts inside `MikMod_Init` on
-`Assertion failed: pcm`), `alsa-nonblocking-update.patch` stops
-`ALSA_Update` blocking its caller's frame loop, and
-`alsa-ring-latency.patch` asks the card for a 100 ms ring instead of
-upstream's 250 ms.
+`Assertion failed: pcm`), and `alsa-nonblocking-update.patch` stops
+`ALSA_Update` blocking its caller's frame loop.
 
-**The last two are one fix and neither works alone.** The driver hardcodes
-`buffer_time` 250 ms and its `ALSA_CommandLine` is an empty function — "no
-options" — so a quarter of a second is what the ring holds and therefore what
-a sample waits between being mixed and being heard. bb pumps `MikMod_Update`
-from a 10 ms timer in the same `tl_group` that steps its scenes, so the picture
-advances on the mixer's clock while the sound arrives a beat late. Upstream's
-blocking write hid that by pinning the caller to the audio clock, and froze the
-animation doing it. Non-blocking so the caller runs; a short ring so what it
-hears is close to what it drew. 100 ms keeps the five-period shape the
-`ALSA_UPDATE_MAX_PERIODS` bound is written against, and is ten of bb's timer
-intervals of slack against a stalled caller — lower trades a delay nobody can
-point at for a crackle everybody can hear.
+**The ring stays at upstream's 250 ms and that is deliberate.** It is the
+margin, not the bug: a shorter ring lowers the delay between a sample being
+mixed and being heard, and buys that by having less slack when something
+starves the feeder. The feeder is what was broken, and kdos-bb's mixer thread
+is the fix; shrinking the ring on top of it would trade a delay nobody can
+point at for a crackle everybody can hear. There is no runtime lever either —
+the driver hardcodes `buffer_time` and its `ALSA_CommandLine` is an empty
+function.
 
 **Audio on a bare TTY took two stacked fixes**, both in `fs/etc/init.d/`:
 
@@ -4089,8 +4128,14 @@ through the monitor's `sendkey`** (the session is started by hand on this
 distro, and a compositor launched from ttyS0 gets no seat), waits for
 `kdos-comp`, and reads the framebuffer over RFB.
 
-**Two flags beyond the shot itself, and each answers a question a screenshot
-alone cannot.** `--console-cmd` types on tty1 INSTEAD of starting the session,
+**Three flags beyond the shot itself, and each answers a question a screenshot
+alone cannot.** `--audio` gives the guest an HDA controller with `-audiodev
+none` behind it — a real device as far as the guest is concerned, with the
+samples going nowhere. Without it `MikMod_Init` fails, kdos-bb sets
+`bbsound = 0`, and every audio path in the guest is untestable, which is not
+the same as untested: it is what let the mixer-thread deadlock be measured.
+The rig container has no sound of its own, so a real backend is not on the
+table anyway. `--console-cmd` types on tty1 INSTEAD of starting the session,
 which is the only way to photograph a program at the 512-glyph console font and
 the vt glyph tier it has to read in — a window under a compositor is a
 different renderer answering a different question. `--soak <seconds>` lets the
@@ -4212,6 +4257,7 @@ kdos/
 │   ├── tools/
 │   │   └── kdos-portup/         # the upstream version checker (C, host-only)
 │   └── packages/                # ports that are OURS (see Three Rings)
+│       ├── kdos-bb/             # the AAlib demo, hard-forked (KDOS-FORK)
 │       ├── kdos-installer/      # the installer (C, zero libraries)
 │       ├── kdos-kpkg/           # kpkg + the four names it answers to
 │       ├── kdos-theme/          # the GTK/icon/cursor generators
