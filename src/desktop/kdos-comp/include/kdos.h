@@ -365,4 +365,13 @@ void kdos_peek_finish(void);
  */
 bool kdos_thumb_write(const char *app_id, int w, int h, const char *path);
 
+/*
+ * THE APP_ID LEDGER `kdos appid` checks a launcher against. Recorded when a
+ * window actually MAPS, which is what makes that tool a measurement rather
+ * than a reading of StartupWMClass. See kdos-appid.c.
+ */
+struct view;
+void kdos_appid_observe(const char *app_id);
+void kdos_appid_observe_view(struct view *view);
+
 #endif /* KDOS_H */

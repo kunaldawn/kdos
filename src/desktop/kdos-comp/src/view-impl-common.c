@@ -10,6 +10,10 @@
 void
 view_impl_map(struct view *view)
 {
+	/* KDOS: the app_id ledger — one funnel, so xdg and xwayland both
+	 * record without a hook in each */
+	kdos_appid_observe(view->app_id);
+
 	view_update_visibility(view);
 
 	/* Leave minimized, if minimized before map */

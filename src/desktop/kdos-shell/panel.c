@@ -3253,6 +3253,31 @@ static int cpu_percent(void)
  * (a picture where there is one, the ≡ glyph where there is not) and the word,
  * and drops the word rather than the mark on a bar too narrow for both.
  */
+/*
+ * THE START BUTTON'S PLATE, in one place because two paths draw it — the pixel
+ * tile with the word on it, and the glyph layout that is the fallback for a
+ * tty, `--dump` and `icons = no`. A button whose two renderings disagree about
+ * its own state is worse than either.
+ *
+ * REST IS THE TONE EVERY OTHER BUTTON ON THIS ROW WEARS. The accent belongs to
+ * hover and to the menu being open. At full strength and forty pixels tall it
+ * was the loudest object on the screen and read as an error state, on the one
+ * control that is never the thing being looked at — and the penguin carries
+ * the brand perfectly well without it. Three states, three pictures: quiet,
+ * accent under the pointer, warn while the menu is up.
+ */
+static void start_plate(int cx, int cells, int h, int hovered, int open)
+{
+	if (!hovered && !open) {
+		kch_px_plate(cx, 0, cells, h, KCH_T_REST, 1);
+		return;
+	}
+	kch_px_grad(cx * kwl_cell_w() + 1, 1, cells * kwl_cell_w() - 2,
+		    h * kwl_cell_h() - 2, KCH_PLATE_RADIUS,
+		    kch_slot_rgb(open ? KT_WARN : KT_ACCENT),
+		    kch_slot_rgb(KT_MID), 0xFF);
+}
+
 static int draw_start(struct sh_state *sh, int h, int compact)
 {
 	const char *word = "start";
@@ -3297,6 +3322,12 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * that looks untouched with its own menu open is the one control on
 	 * the bar whose state the user cannot see. */
 	int lit = sh->hover_start || start_menu_open();
+	/*
+	 * THE INK FOLLOWS THE PLATE. On the accent it is the surface colour,
+	 * which is what reads on a bright fill; on the quiet rest plate that
+	 * same colour is dark ink on a dark plate and the word disappears.
+	 */
+	int ink = lit ? KT_SURFACE : KT_TEXT;
 
 	if (w > ktui_w / 3) {
 		lw = 0;
@@ -3356,11 +3387,19 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 				kch_tile_begin(SH_TILE_START, tw_cells, h,
 					      content);
 			if (cv) {
-				int bg = lit ? KT_WARN : KT_ACCENT;
 				int cw_px = kcell_canvas_w(cv);
 				int ch_px = kcell_canvas_h(cv);
-				kcell_canvas_fill(cv, 0, 0, cw_px, ch_px, bg,
-						  255);
+				/*
+				 * NO BACKGROUND FILL HERE. The plate is the
+				 * pixel layer's, exactly as it is for the
+				 * glyph layout below, so one function decides
+				 * what this button looks like in each of its
+				 * three states. The canvas is cleared to
+				 * transparent and KT_SURFACE is a slot the
+				 * backdrop owns — never filled — so the plate
+				 * shows through everywhere the mark and the
+				 * word are not.
+				 */
 				int x = pad;
 				pixman_image_t *mk =
 					icons_on ? kicon_pixmap("kdos-launcher",
@@ -3386,14 +3425,15 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 				int hgt = kcell_canvas_text_height(fsz);
 				kcell_canvas_text(cv, x,
 						  (ch_px - hgt) / 2 + asc, fsz,
-						  word, KT_SURFACE);
+						  word, ink);
 				kch_tile_commit(SH_TILE_START);
 			}
 			int slot = kch_tile_slot(SH_TILE_START);
 			if (slot >= 0) {
+				start_plate(0, tw_cells, h, sh->hover_start,
+					    start_menu_open());
 				ktui_draw_sprite(krect(0, 0, tw_cells, h), slot,
-						 KT_SURFACE,
-						 lit ? KT_WARN : KT_ACCENT);
+						 KT_SURFACE, KT_SURFACE);
 				sh->start_x = 0;
 				sh->start_end = tw_cells;
 				return tw_cells;
@@ -3402,33 +3442,30 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	}
 
 	/*
-	 * A GRADIENT PLATE, NOT A SLAB OF #39ff14.
+	 * THE PLATE COVERS THE MARK'S OWN CELLS, inset by one like every other
+	 * plate on this row, so the two are centred on each other by
+	 * construction rather than by arithmetic that has to be kept in step.
 	 *
-	 * This is the one control that keeps the accent — it is the brand, and
-	 * the thing a person aims at without reading. But flat full-strength
-	 * accent 40 pixels tall was the loudest object on the screen and read
-	 * as an error state rather than as a button. Graded from `pdark` up to
-	 * the accent it reads as raised, and beside a row of quiet plates it
-	 * is still unmistakably the first thing on the bar.
+	 * Drawn from x=1 to half a cell short of the button's right edge while
+	 * the mark was centred in the cells before that, they were two boxes
+	 * with different centres: measured on the shipped bar, the plate ran
+	 * 1..33 and the penguin's ink 8..21, so the mark sat 2.5px left of the
+	 * middle of its own button.
+	 *
+	 * The trailing cell that `w` counts does not draw. It is the gap
+	 * before the next control — the same one a window button leaves by
+	 * plating `per - 1` of its `per` cells.
 	 */
-	/* INSET BY ONE, like every other plate on this row. Drawn from 0,0 it
-	 * covered the bar's own top edge — the hairline that says where the
-	 * surface starts — for the whole width of the button, so the accent
-	 * line began a Start button in from the left. Half a cell of gap on
-	 * the right, a full pixel everywhere else. */
-	kch_px_grad(1, 1, w * kwl_cell_w() - kwl_cell_w() / 2 - 2,
-		    h * kwl_cell_h() - 2,
-		    KCH_PLATE_RADIUS, kch_slot_rgb(lit ? KT_WARN : KT_ACCENT),
-		    kch_slot_rgb(KT_MID), 0xFF);
+	start_plate(0, w - 1, h, sh->hover_start, start_menu_open());
 	if (icon >= 0)
 		ktui_draw_sprite(krect(0, 0, mark_w, h), icon, KT_SURFACE,
 				 KT_SURFACE);
 	else
-		ktui_draw_text(0, ry, mark_w, menu_mark(), KT_SURFACE,
-			       KT_SURFACE, KT_A_NONE);
+		ktui_draw_text(0, ry, mark_w, menu_mark(), ink, KT_SURFACE,
+			       KT_A_NONE);
 	if (lw)
-		ktui_draw_text(mark_w + 1, ry, lw, word, KT_SURFACE,
-			       KT_SURFACE, KT_A_NONE);
+		ktui_draw_text(mark_w + 1, ry, lw, word, ink, KT_SURFACE,
+			       KT_A_NONE);
 	sh->start_x = 0;
 	sh->start_end = w;
 	return w;
