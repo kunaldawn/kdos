@@ -1,6 +1,6 @@
 title: aalib answers a failed driver by sweeping its list and landing on stdout
-cite: bb
-port: bb
+cite: kdos-bb
+port: kdos-bb
 
 Its `linux` driver writes cells into /dev/vcsa<n>, which a non-root user on
 KDOS cannot open. aa_autoinit then sweeps aa_drivers[] and lands on stdout,

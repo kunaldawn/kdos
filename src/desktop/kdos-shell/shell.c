@@ -25,6 +25,9 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -345,12 +348,15 @@ static int data_dirs(char bases[8][512])
 	return nb;
 }
 
-static void desktop_name(const char *app_id, char *out, size_t n)
+static void desktop_name(const char *app_id, char *out, size_t n, char *did,
+			 size_t ndid)
 {
 	char bases[8][512];
 	int nb;
 
 	*out = '\0';
+	if (did && ndid)
+		*did = '\0';
 	if (!app_id || !*app_id || strchr(app_id, '/'))
 		return;			/* not a desktop id; do not build a path */
 	nb = data_dirs(bases);
@@ -366,8 +372,11 @@ static void desktop_name(const char *app_id, char *out, size_t n)
 		if (name && *name)
 			snprintf(out, n, "%s", name);
 		kxdg_free(&e);
-		if (*out)
+		if (*out) {
+			if (did && ndid)
+				snprintf(did, ndid, "%s", app_id);
 			return;
+		}
 	}
 
 	/*
@@ -404,8 +413,38 @@ static void desktop_name(const char *app_id, char *out, size_t n)
 				continue;
 			const char *wm = kxdg_get(&e, "StartupWMClass", NULL);
 			const char *name = kxdg_get(&e, "Name", NULL);
-			if (wm && !strcasecmp(wm, app_id) && name && *name)
+			/*
+			 * OR THE LAST COMPONENT OF A REVERSE-DNS ID, which is
+			 * the case that actually occurs and which neither of
+			 * the two documented routes covers.
+			 *
+			 * A GTK client on Wayland calls itself `mousepad`; its
+			 * entry is `org.xfce.mousepad.desktop` and carries no
+			 * StartupWMClass naming that, because StartupWMClass
+			 * is an X11 field and this application has no X11 to
+			 * be classed under. Measured on the booted ISO — the
+			 * window resolved to no entry at all, so the taskbar
+			 * showed its TITLE and could not merge it onto the
+			 * pinned Mousepad beside it.
+			 *
+			 * The whole component, not a prefix: `foo.bar.gimp`
+			 * answers to `gimp` and never to `im`.
+			 */
+			size_t stem = len - 8;	/* the id, less `.desktop` */
+			const char *dot = memrchr(de->d_name, '.', stem);
+			const char *tail = dot ? dot + 1 : de->d_name;
+			size_t tlen = stem - (size_t)(tail - de->d_name);
+			int by_tail = tlen == strlen(app_id) &&
+				      !strncasecmp(tail, app_id, tlen);
+			if (((wm && !strcasecmp(wm, app_id)) || by_tail) &&
+			    name && *name) {
 				snprintf(out, n, "%s", name);
+				/* The file's own stem IS the desktop id, and
+				 * it is the half the merge needs. */
+				if (did && ndid)
+					snprintf(did, ndid, "%.*s",
+						 (int)stem, de->d_name);
+			}
 			kxdg_free(&e);
 			if (*out)
 				break;
@@ -464,7 +503,7 @@ static void tl_app_id(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
 	/* Resolved once, here, rather than per frame: this fires when a window
 	 * maps and when it changes its id, which is the only time the answer
 	 * can change, and the panel redraws every second. */
-	desktop_name(app_id, t->name, sizeof(t->name));
+	desktop_name(app_id, t->name, sizeof(t->name), t->did, sizeof(t->did));
 }
 
 static void tl_output_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
@@ -488,12 +527,18 @@ static void tl_state(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
 		return;
 	t->activated = 0;
 	t->minimized = 0;
+	t->maximized = 0;
+	t->fullscreen = 0;
 	uint32_t *st;
 	wl_array_for_each(st, states) {
 		if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED)
 			t->activated = 1;
 		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED)
 			t->minimized = 1;
+		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED)
+			t->maximized = 1;
+		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN)
+			t->fullscreen = 1;
 	}
 }
 
@@ -861,6 +906,95 @@ void sh_spawn(const char *const argv[])
  * still starts at column 1, and that column is a margin inside the SSD instead
  * of the border it used to be.
  */
+/* ── the compositor's command socket ───────────────────────────────────── */
+
+/*
+ * One request, one reply, close — the whole of the protocol on
+ * `$XDG_RUNTIME_DIR/kdos-cmd.sock`.
+ *
+ * BOTH TIMEOUTS ARE SET, and that is not belt and braces: every caller here is
+ * a surface whose own draw loop is what waits for the answer. A compositor
+ * wedged badly enough not to reply is exactly the situation somebody opens the
+ * window list in, and a blocking read there hangs the one program that could
+ * still say what happened.
+ *
+ * Shared because there are three askers now — the window list, the taskbar's
+ * peek and the tooltip's thumbnail — and three copies of connect-write-read
+ * would be three answers to what a timeout is. `err` may be NULL for a caller
+ * that only cares whether it worked.
+ */
+int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn)
+{
+	const char *rt = getenv("XDG_RUNTIME_DIR");
+	struct sockaddr_un a = { 0 };
+	struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+	size_t len = strlen(req), sent = 0, got = 0;
+	int fd;
+
+#define SH_CMD_ERR(...)                                                       \
+	do {                                                                  \
+		if (err && errn)                                              \
+			snprintf(err, errn, __VA_ARGS__);                     \
+	} while (0)
+
+	if (!out || n < 2)
+		return -1;
+	out[0] = '\0';
+	if (!rt || !*rt) {
+		SH_CMD_ERR("no XDG_RUNTIME_DIR — there is no session to ask");
+		return -1;
+	}
+	a.sun_family = AF_UNIX;
+	if ((size_t)snprintf(a.sun_path, sizeof(a.sun_path),
+			     "%s/kdos-cmd.sock", rt) >= sizeof(a.sun_path)) {
+		SH_CMD_ERR("socket path too long");
+		return -1;
+	}
+
+	fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (fd < 0) {
+		SH_CMD_ERR("socket: %s", strerror(errno));
+		return -1;
+	}
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
+		SH_CMD_ERR("the compositor does not expose the command socket");
+		close(fd);
+		return -1;
+	}
+	while (sent < len) {
+		ssize_t w = write(fd, req + sent, len - sent);
+
+		if (w <= 0) {
+			SH_CMD_ERR("write: %s", strerror(errno));
+			close(fd);
+			return -1;
+		}
+		sent += (size_t)w;
+	}
+	/* One line: the reply ends at the newline the server appends, and
+	 * waiting for EOF instead would wait out the whole close. */
+	while (got < n - 1) {
+		ssize_t r = read(fd, out + got, n - 1 - got);
+
+		if (r <= 0)
+			break;
+		got += (size_t)r;
+		if (memchr(out, '\n', got))
+			break;
+	}
+	close(fd);
+	out[got] = '\0';
+	if (!got) {
+		SH_CMD_ERR("the socket answered nothing");
+		return -1;
+	}
+	return 0;
+#undef SH_CMD_ERR
+}
+
 void sh_frame(int w, int h, const char *title, int fg, int bg, int dbl)
 {
 	if (kwl_decorated()) {

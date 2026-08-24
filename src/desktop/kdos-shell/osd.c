@@ -760,6 +760,9 @@ static int slider_main(int at_x, int at_y, const char *font)
 	 * scale. No artwork is a slider with a glyph in it, not a failure. */
 	kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	int hover = 0, dragging = 0;
 	while (!kwl_should_close()) {
@@ -985,6 +988,9 @@ int osd_main(int argc, char **argv)
 	 */
 	kwl_input_cells(NULL, 0);
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	char shown[32];
 	snprintf(shown, sizeof(shown), "%s", what);

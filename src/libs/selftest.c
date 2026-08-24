@@ -34,6 +34,7 @@
 #include "ktui.h"
 #include "portup.h"
 #include "kproc.h"
+#include "kxdg.h"
 
 static int failures;
 static int checks;
@@ -118,6 +119,51 @@ static void test_colour(void)
 	 * sends a half to EVEN). Each generated file was written against exactly
 	 * one of them, so swapping them shifts every mixed colour by a unit. */
 	ok(kcol_mix(0x000000, 0xffffff, 50) == 0x7f7f7f, "integer mix at 50%");
+
+	/*
+	 * kcol_contrast is integer and table-driven because libkcolor may not
+	 * link libm. The claim is that it agrees with the real WCAG formula to
+	 * the two decimals every threshold in this tree is expressed in, and
+	 * the value that matters most is the one nobody would guess: `variant`
+	 * against `backdrop` is 1.00:1 — the panel's own background is the same
+	 * colour as the desktop, which is the whole reason the tone ladder
+	 * exists.
+	 */
+	ok(kcol_contrast(0x04120a, 0x02120a) == 100,
+	   "phosphor SURFACE vs BG is 1.00:1 — the bar has no body of its own");
+	ok(kcol_contrast(0x39ff14, 0x04120a) == 1413, "accent on surface 14.13:1");
+	ok(kcol_contrast(0x12401f, 0x04120a) == 162, "dim is a FILL at 1.62:1");
+	ok(kcol_contrast(0x1f8f0c, 0x04120a) == 455, "mid is a LABEL at 4.55:1");
+	ok(kcol_contrast(0xffffff, 0xffffff) == 100, "a colour against itself");
+
+	/*
+	 * kxdg_recent is a jump list's data, read out of freedesktop's
+	 * recently-used.xbel by a SCANNER rather than an XML parser — this
+	 * tree ships no XML library and one bookmark file is not the reason to
+	 * start. The fixture carries the four things that scanner has to get
+	 * right, and each is a way a jump list misleads rather than fails:
+	 * newest first, a percent-escaped path decoded, a file that has since
+	 * been deleted left out, and another application's entries not
+	 * offered under this one's name.
+	 */
+	{
+		char got[8][512];
+		int n;
+
+		setenv("XDG_DATA_HOME", "testing/fixtures/recent", 1);
+		n = kxdg_recent("nvim", got, 8);
+		ok(n == 2, "recent: the deleted destination is not offered");
+		ok(n == 2 && !strcmp(got[0], "/etc/os-release"),
+		   "recent: newest first, and %2D is decoded");
+		ok(n == 2 && !strcmp(got[1], "/etc/hostname"),
+		   "recent: the older one follows");
+		n = kxdg_recent("gimp", got, 8);
+		ok(n == 1 && !strcmp(got[0], "/etc/passwd"),
+		   "recent: another application's files are its own");
+		n = kxdg_recent("no-such-app", got, 8);
+		ok(n == 0, "recent: an application with no history has none");
+		unsetenv("XDG_DATA_HOME");
+	}
 	ok(kcol_mixf(0x000000, 0xffffff, 0.5) == 0x808080, "float mix at 0.5");
 	ok(kcol_mix(0x000000, 0xffffff, 50) != kcol_mixf(0x000000, 0xffffff, 0.5),
 	   "the two mixes genuinely disagree");
