@@ -1,0 +1,45 @@
+Ask the card for a 100ms ring instead of a 250ms one.
+
+The ALSA driver hardcodes buffer_time 250ms / period_time 50ms and its
+ALSA_CommandLine is an empty function -- "no options" -- so there is no
+runtime lever for either. A quarter of a second is what the ring holds,
+and therefore what a sample waits between being mixed and being heard.
+
+That is latency the caller cannot see and cannot correct. bb pumps
+MikMod_Update from a 10ms timer in the same tl_group that steps its
+scenes, so the picture advances on the mixer's clock while the sound
+comes out 250ms behind it: the music is a beat late against a demo that
+was written to hit its scene changes on the beat. Upstream's blocking
+write hid this by pinning the caller to the audio clock -- and froze the
+animation doing it, which is the defect alsa-nonblocking-update.patch
+fixes. Both halves are needed: non-blocking so the caller runs, and a
+short ring so what it hears is close to what it drew.
+
+100ms/20ms keeps the ring at five periods, so the existing bound of
+ALSA_UPDATE_MAX_PERIODS is still above it and cannot be what ends a real
+call. Five periods is also 100ms of slack against a caller that stalls,
+which is ten of bb's timer intervals and more than two frames of the
+slowest aalib render measured on a VT -- an underrun is a click, and the
+existing xrun_recovery re-prepares.
+
+Lower is possible and is not free: at 60ms the ring stops covering a
+slow frame under a compositor, which trades a delay nobody can point at
+for a crackle everybody can hear.
+
+--- a/drivers/drv_alsa.c
++++ b/drivers/drv_alsa.c
+@@ -252,8 +252,12 @@
+ static int ALSA_Init_internal(void)
+ {
+ 	snd_pcm_format_t pformat;
+-	unsigned int btime = 250000;	/* 250ms */
+-	unsigned int ptime = 50000;	/* 50ms */
++	/* The ring is the latency: a sample sits here between being mixed
++	   and being heard, and ALSA_Update is non-blocking, so the caller
++	   keeps it full and pays the whole depth. Five periods, small
++	   enough that a demo's picture and its music stay together. */
++	unsigned int btime = 100000;	/* 100ms */
++	unsigned int ptime = 20000;	/* 20ms */
+ 	snd_pcm_uframes_t psize;
+ 	snd_pcm_uframes_t bsize;
+ 	unsigned int rate, channels;

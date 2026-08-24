@@ -1303,8 +1303,13 @@ host and box disagree about local time on one machine.
 
 `kdos` is the front door, and by now it is eighteen subcommands: `help`
 (commands + the keybind cheat sheet), `theme`, `status`, `doctor`, `app`,
-`version`, plus `why` / `explain`, `sandbox`, `appid`, `restarts`, `stutter`,
-`march`, `rebuild`, `cve`, **`hey`** (the `$XDG_RUNTIME_DIR/kdos-cmd.sock`
+`version`, plus `why` / `explain`, `sandbox`, `restarts`, `stutter`,
+`march`, `rebuild`, `cve`, **`appid`** (does the launcher's file id match the
+app_id a real window presented — the right-hand side is
+`~/.local/share/kdos/observed-app-ids`, which `kdos-appid.c` in the compositor
+appends to the first time each window maps, falling back to the live
+`{"cmd":"list"}` when no ledger has been recorded yet; the two answer different
+questions and the report says which it used), **`hey`** (the `$XDG_RUNTIME_DIR/kdos-cmd.sock`
 query front end, Haiku's shape: the window manager answers questions from the
 command line, so a window is something a script can find and act on),
 **`oracle`** (the aphorism picker, keyed on `day XOR boot` so the same line can
@@ -1672,11 +1677,26 @@ them:
   track fails inside `Player_Load` and the program plays silent.
 
 Sound needs `libmikmod` (ALSA only, `--disable-dl` so a missing ALSA is a link
-error rather than a silent runtime failure), with two patches of its own:
+error rather than a silent runtime failure), with three patches of its own:
 `alsa-null-close.patch` guards the `END:` label against closing a NULL pcm
 (otherwise a machine with no card aborts inside `MikMod_Init` on
-`Assertion failed: pcm`), and `alsa-nonblocking-update.patch` stops
-`ALSA_Update` blocking its caller's frame loop.
+`Assertion failed: pcm`), `alsa-nonblocking-update.patch` stops
+`ALSA_Update` blocking its caller's frame loop, and
+`alsa-ring-latency.patch` asks the card for a 100 ms ring instead of
+upstream's 250 ms.
+
+**The last two are one fix and neither works alone.** The driver hardcodes
+`buffer_time` 250 ms and its `ALSA_CommandLine` is an empty function — "no
+options" — so a quarter of a second is what the ring holds and therefore what
+a sample waits between being mixed and being heard. bb pumps `MikMod_Update`
+from a 10 ms timer in the same `tl_group` that steps its scenes, so the picture
+advances on the mixer's clock while the sound arrives a beat late. Upstream's
+blocking write hid that by pinning the caller to the audio clock, and froze the
+animation doing it. Non-blocking so the caller runs; a short ring so what it
+hears is close to what it drew. 100 ms keeps the five-period shape the
+`ALSA_UPDATE_MAX_PERIODS` bound is written against, and is ten of bb's timer
+intervals of slack against a stalled caller — lower trades a delay nobody can
+point at for a crackle everybody can hear.
 
 **Audio on a bare TTY took two stacked fixes**, both in `fs/etc/init.d/`:
 
@@ -1851,7 +1871,8 @@ into a small static archive first because the grafts need the palette.
 minimal hooks marked `/* KDOS */`.** Grep for that marker to find every
 touch-point. The graft files: `kdos-config.c` (comp.conf), `kdos-child.c`
 (supervised chrome), `kdos-wallpaper.c`, `kdos-frames.c` (stutter socket),
-`kdos-idle.c` (dim → lock → off policy), `kdos-crt.c` (the CRT pass). What the
+`kdos-idle.c` (dim → lock → off policy), `kdos-crt.c` (the CRT pass),
+`kdos-appid.c` (the app_id ledger). What the
 old from-scratch compositor carried beyond these — window management,
 session-lock, capture and clipboard globals, the input-method wire, Xwayland,
 security-context filtering — is labwc upstream code and needs no graft.
@@ -3087,6 +3108,27 @@ Three rules, and the first is the one that bites:
 Two consumers so far, and a bar with a dozen of these would be a bar that had
 stopped being a character grid: the Start button, and the meters strip.
 
+**THE START BUTTON IS QUIET AT REST, AND ITS PLATE COVERS THE MARK'S OWN
+CELLS.** Two rules, one function — `start_plate()` — because the tile above and
+the glyph layout under it both draw this button and a control whose two
+renderings disagree about its own state is worse than either.
+
+The accent belongs to hover, and the warn colour to the menu being open. At
+full strength and forty pixels tall it was the loudest object on the screen and
+read as an error state, on the one control that is never the thing being looked
+at; the penguin carries the brand without it. Three states, three pictures,
+where there used to be two.
+
+And the plate is a whole-cell box inset by one, like every other plate on this
+row, so the mark is centred in it by construction rather than by arithmetic
+that has to be kept in step. Drawn from x=1 to half a cell short of the
+button's right edge while the mark was centred in the cells before that, they
+were two boxes with different centres: measured on the shipped bar, the plate
+ran 1..33 and the penguin's ink 8..21, so the mark sat 2.5px left of the middle
+of its own button. It is 14.5 against 14.5 now. The trailing cell that the
+button's width counts does not draw — it is the gap before the separator, the
+same one a window button leaves by plating `per - 1` of its `per` cells.
+
 **TWO FONT TRAPS, both measured before the code was written, both silent.**
 
 - **A repeated fontconfig property APPENDS; it does not replace.**
@@ -3755,6 +3797,22 @@ menu is dbusmenu. **Sixty-four columns, not forty-four**: at 44 every tip that
 says what the three buttons do came out cut mid-word (`right-cl`, `mid`),
 photographed. A tip is anchored at the item's own column and `place_clamp`
 pulls it back from the screen edge, so a wide one on the clock is not lost.
+
+**A WINDOW BUTTON'S TIP CARRIES THE WINDOW, AS A GAME BOY SCREEN.** Every
+taskbar since Windows 7 answers the case a name cannot — three terminals all
+called `foot` — and `kdos-comp`'s `thumb` verb is what makes it possible here,
+since a client cannot see another client's buffer. The rendering is four solid
+levels off the palette's own brightness ladder, a FULL BLOCK per cell, and that
+is not a style choice: `kcell_ascii_image` picks a glyph by SHAPE, and a
+1280-pixel window sampled into a 34x9 grid is nine source pixels per cell, so a
+cell of text is a featureless blur with no shape left to match. Every textured
+cell matched the same glyph — a terminal previewed as a wall of `b`, a
+minimised one as a wall of `|`, photographed on the booted ISO. The shape
+matcher keeps its other callers (`Super+A`, `kdos-shot --text`, the camera
+preview), which run at grids where a cell still holds a shape. **The preview is
+never required**: no compositor, no socket, a dmabuf client whose pixels are
+not host-readable, a PPM that does not parse — every one leaves the tip the two
+lines of text it was always going to be.
 
 **AND A CLICK SPENDS THE DWELL, which killing the tip does not.** `tip_kill`
 clears `tip_shown` because the caller that normally reaches it is a MOTION,
