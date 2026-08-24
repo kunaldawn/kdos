@@ -358,6 +358,9 @@ def main():
     ap.add_argument("--wait", type=int, default=25,
                     help="seconds to let the session settle")
     ap.add_argument("--vnc-port", type=int, default=5909)
+    ap.add_argument("--audio", action="store_true",
+                    help="give the guest an HDA controller with a silent "
+                         "backend, so audio paths reach a real device")
     ap.add_argument("--usb", default=None,
                     help="attach a raw disk image as a USB stick")
     ap.add_argument("--keep", action="store_true")
@@ -411,6 +414,16 @@ def main():
         "-monitor", "chardev:mon0",
         "-netdev", "user,id=net0", "-device", "virtio-net-pci,netdev=net0",
     ]
+    if args.audio:
+        # AN HDA CONTROLLER WITH THE SAMPLES GOING NOWHERE. `-audiodev none`
+        # is a real backend as far as the guest is concerned: the kernel binds
+        # snd_hda_intel, ALSA opens the PCM, and anything that asks "is there
+        # a sound card" gets yes. Without it MikMod_Init fails, kdos-bb sets
+        # bbsound = 0, and every audio path in the guest is untestable — which
+        # is not the same as untested. The host in the rig container has no
+        # sound of its own, so a real backend is not on the table anyway.
+        qemu += ["-audiodev", "none,id=snd0", "-device", "intel-hda",
+                 "-device", "hda-output,audiodev=snd0"]
     if args.usb:
         # A real removable device, because kdos-mountd's whole job is one and
         # a fixture cannot mount anything. usb-storage lands as /dev/sdX with

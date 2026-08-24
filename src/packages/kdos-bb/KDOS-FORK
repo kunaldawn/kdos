@@ -1,0 +1,27 @@
+Hard fork of bb 1.3rc1, the AA-project demo (https://aa-project.sourceforge.net/bb/)
+Upstream tarball: bb-1.3rc1.tar.gz  sha256: 793d88c872793b6dab444cf5bab24f283ecb2f3502f1479ebbe41dd8e90b81c4
+Frozen: no upstream merges. License: GPL-2.0 (see COPYING — kept, and AUTHORS
+with it: the demo's own credits scroll is the authors' work and stays).
+
+The tree that upstream ships is 81 files; this carries the 42 sources and 16
+headers the binary is actually built from, the three .s3m tracks, and nothing
+else. What went: the whole autotools apparatus (configure, Makefile.in,
+aclocal.m4, install-sh, missing, mkinstalldirs, acconfig.h, aconfig.h.in,
+stamp-h.in), which is replaced by a static src/aconfig.h and a build.sh that
+calls the compiler; and ChangeLog, NEWS, INSTALL, bb.lsm, README.LZO.
+
+KDOS changes, all applied in place because this is our source now:
+
+  main.c    the mixer runs on its own thread. Upstream pumped MikMod_Update
+            from a 10ms timer in the same group bbwait() pumps, and bbwait()'s
+            caller has just blocked in aa_flush() writing the frame to the
+            terminal — so under a compositor the audio starved whenever the
+            window was actually being drawn, and was perfect when it was
+            minimised.
+  tex.c     clear_zbuff() cleared sizeof(long) per cell against a sizeof(int)
+            allocation. The same size in 1997, double on x86_64: the heap
+            corrupts and stage 2 aborts on "malloc(): corrupted top size".
+  messager.c the scroll used memcpy on overlapping ranges. glibc survived it;
+            musl is free not to. memmove.
+  config.h  REGISTERS(n) no longer expands to __attribute__((regparm(n))),
+            which is x86-32 only and warns on every declaration here.
