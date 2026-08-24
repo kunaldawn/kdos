@@ -160,11 +160,18 @@ static void no_socket(void)
 			"socket (kdos-comp too old, or not running)\n");
 }
 
-static int cmd_socket(void)
+/*
+ * `quiet` is for a caller that is ASKING WHETHER the compositor is there
+ * rather than being told to talk to it — `kdos appid`'s fallback runs on a
+ * machine that may have no session at all, and a diagnostic about a socket
+ * nobody mentioned would be noise in the middle of its report.
+ */
+static int cmd_socket(int quiet)
 {
 	const char *rt = getenv("XDG_RUNTIME_DIR");
 	if (!rt || !*rt) {
-		no_socket();
+		if (!quiet)
+			no_socket();
 		return -1;
 	}
 	struct sockaddr_un addr = { .sun_family = AF_UNIX };
@@ -172,12 +179,14 @@ static int cmd_socket(void)
 
 	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd < 0) {
-		no_socket();
+		if (!quiet)
+			no_socket();
 		return -1;
 	}
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		close(fd);
-		no_socket();
+		if (!quiet)
+			no_socket();
 		return -1;
 	}
 	return fd;
@@ -189,15 +198,16 @@ static int cmd_socket(void)
  * what notices when it did not keep that promise instead of leaving the rest
  * in the socket buffer for nobody.
  */
-static char *ask(const char *req)
+static char *ask_q(const char *req, int quiet)
 {
-	int fd = cmd_socket();
+	int fd = cmd_socket(quiet);
 	if (fd < 0)
 		return NULL;
 
 	size_t len = strlen(req);
 	if (write(fd, req, len) != (ssize_t)len) {
-		fprintf(stderr, "kdos hey: %s\n", strerror(errno));
+		if (!quiet)
+			fprintf(stderr, "kdos hey: %s\n", strerror(errno));
 		close(fd);
 		return NULL;
 	}
@@ -211,13 +221,19 @@ static char *ask(const char *req)
 	close(fd);
 
 	if (!b.n) {
-		fprintf(stderr, "kdos hey: the compositor closed without "
-				"answering\n");
+		if (!quiet)
+			fprintf(stderr, "kdos hey: the compositor closed "
+					"without answering\n");
 		kb_buf_free(&b);
 		return NULL;
 	}
 	kb_buf_add(&b, "", 1);		/* NUL, not counted in b.n */
 	return b.p;
+}
+
+static char *ask(const char *req)
+{
+	return ask_q(req, 0);
 }
 
 /*
@@ -321,6 +337,73 @@ static int usage(void)
 		"<action> is a labwc action name: Close, Focus, Iconify,\n"
 		"ToggleMaximize, ToggleShade, ToggleFullscreen, Raise, ...\n");
 	return 2;
+}
+
+/*
+ * THE app_ids OF THE WINDOWS OPEN RIGHT NOW, which is `kdos appid`'s fallback
+ * when the recorded ledger is not there — a fresh boot, or a home that has
+ * never run this compositor.
+ *
+ * It lives HERE rather than in appid.c because this file already owns the
+ * string-aware object walk, and a window title containing the literal text
+ * `"app_id":"` is not exotic: a scan for that substring would report a window
+ * that does not exist. Two parsers would be two answers.
+ *
+ * Answers -1 when the compositor cannot be reached, which the caller must tell
+ * apart from 0 — "nothing is running" and "nobody asked" are different
+ * verdicts, and folding them is the confident wrong answer that tool exists
+ * not to give.
+ */
+int hey_app_ids(char ***out)
+{
+	char *reply = ask_q("{\"cmd\":\"list\"}\n", 1);
+	const char *p, *beg, *end;
+	char **v = NULL;
+	int n = 0;
+
+	*out = NULL;
+	if (!reply)
+		return -1;
+	/* The envelope is the FIRST object; every one after it is a view. */
+	p = reply;
+	if (!j_object(&p, &beg, &end) || !reply_ok(reply, end)) {
+		free(reply);
+		return -1;
+	}
+	/*
+	 * Counted first, then filled. There is no realloc in libkbase and a
+	 * fixed cap would silently drop a window, which is the one thing a
+	 * checker must not do; two walks of a reply that is a few kilobytes
+	 * cost nothing worth measuring.
+	 */
+	{
+		const char *q = p;
+		int cap = 0;
+
+		while (j_object(&q, &beg, &end))
+			cap++;
+		if (!cap) {
+			free(reply);
+			return 0;
+		}
+		v = kb_calloc((size_t)cap, sizeof(*v));
+	}
+	while (j_object(&p, &beg, &end)) {
+		char id[256];
+		int dup = 0;
+
+		j_str(beg, end, "app_id", id, sizeof(id));
+		if (!id[0])
+			continue;
+		for (int i = 0; i < n; i++)
+			if (!strcmp(v[i], id))
+				dup = 1;
+		if (!dup)
+			v[n++] = kb_strdup(id);
+	}
+	free(reply);
+	*out = v;
+	return n;
 }
 
 int hey_main(int argc, char **argv)
