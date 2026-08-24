@@ -263,12 +263,12 @@ aalib
 aview
 aa3d
 
-# Tracker-module playback for bb, ALSA only — on a bare TTY there is no
+# Tracker-module playback for kdos-bb, ALSA only — on a bare TTY there is no
 # pipewire, and kdos is already in the audio group.
 libmikmod
 
-# bb, the 1997 AAlib demo, upstream and unmodified.
-bb
+# The 1997 AAlib demo, hard-forked as ours: see src/packages/kdos-bb/KDOS-FORK.
+kdos-bb
 
 # ---------------------------------
 # Container Layer (Podman + distrobox)

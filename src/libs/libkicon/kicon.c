@@ -123,14 +123,17 @@ static uint64_t hash64(const char *s, uint64_t h)
 	return h;
 }
 
-static uint64_t pic_key(const char *name, int cw, int ch)
+static uint64_t pic_key(const char *name, int cw, int ch, int pad)
 {
 	uint64_t h = hash64(name, 1469598103934665603ull);
 	char tag[64];
 	/* The accent is part of the identity: a tinted folder is a different
 	 * picture in amber, and a key that ignored it would hand the panel the
-	 * previous accent's icon for the life of the process. */
-	snprintf(tag, sizeof(tag), "|%d|%d|%d|%s", cw, ch, ki_scale,
+	 * previous accent's icon for the life of the process. `pad` for the
+	 * same reason — the same name in the same cells at two paddings is two
+	 * pictures, and one key for both hands the second caller the first
+	 * one's. */
+	snprintf(tag, sizeof(tag), "|%d|%d|%d|%d|%s", cw, ch, pad, ki_scale,
 		 ktui_theme ? ktui_theme->name : "");
 	return hash64(tag, h);
 }
@@ -198,14 +201,26 @@ static void free_bits(pixman_image_t *img)
  * DESTINATION coordinates back into the source, which is the direction
  * everybody gets wrong exactly once.
  */
-static pixman_image_t *fit(pixman_image_t *src, int box_w, int box_h)
+static pixman_image_t *fit(pixman_image_t *src, int box_w, int box_h, int pad)
 {
 	int sw = pixman_image_get_width(src);
 	int sh = pixman_image_get_height(src);
 	if (sw <= 0 || sh <= 0 || box_w <= 0 || box_h <= 0)
 		return NULL;
 
+	/*
+	 * `pad` shrinks the SQUARE and not the box: the sprite still covers
+	 * the cells it was asked for, so the caller's hit map, its plate and
+	 * its layout are all unchanged and only the picture inside gets air.
+	 * Clamped rather than refused — a padding wider than the well is a
+	 * caller asking for something it cannot have, and an icon one pixel
+	 * across still says more than no icon.
+	 */
 	int side = box_w < box_h ? box_w : box_h;
+
+	side -= 2 * pad;
+	if (side < 1)
+		side = box_w < box_h ? box_w : box_h;
 	if (side < 1)
 		return NULL;
 
@@ -445,12 +460,20 @@ static uint32_t fallback_cp(void)
 
 int kicon_slot(const char *name, int cw, int ch)
 {
+	return kicon_slot_pad(name, cw, ch, 0);
+}
+
+int kicon_slot_pad(const char *name, int cw, int ch, int pad)
+{
 	if (!kicon_enabled() || !name || !*name || cw < 1 || ch < 1)
 		return -1;
 	if (cw > 16 || ch > 16)
 		return -1;
+	if (pad < 0)
+		pad = 0;
+	pad *= ki_scale;
 
-	uint64_t key = pic_key(name, cw, ch);
+	uint64_t key = pic_key(name, cw, ch, pad);
 
 	/* The hot path: the same icon at the same size was drawn last frame,
 	 * so there is nothing to do but hand back the slot. */
@@ -466,7 +489,13 @@ int kicon_slot(const char *name, int cw, int ch)
 
 	int box_w = cw * ki_cw * ki_scale;
 	int box_h = ch * ki_ch * ki_scale;
-	int want = box_w < box_h ? box_w : box_h;
+	/* The size the picture will be DRAWN at, not the well's — asking the
+	 * atlas for 40 and then scaling it to 32 is a resample nobody needs,
+	 * and the atlas has a 32 to hand. */
+	int want = (box_w < box_h ? box_w : box_h) - 2 * pad;
+
+	if (want < 1)
+		want = box_w < box_h ? box_w : box_h;
 
 	/*
 	 * THE ATLAS FIRST, and this order is a bug that was already shipped.
@@ -504,7 +533,7 @@ int kicon_slot(const char *name, int cw, int ch)
 	if (!src)
 		return -1;
 
-	pixman_image_t *img = fit(src, box_w, box_h);
+	pixman_image_t *img = fit(src, box_w, box_h, pad);
 	free_bits(src);
 	if (!img)
 		return -1;
@@ -565,7 +594,7 @@ pixman_image_t *kicon_pixmap(const char *name, int box_w, int box_h)
 	if (!src)
 		return NULL;
 
-	pixman_image_t *img = fit(src, box_w, box_h);
+	pixman_image_t *img = fit(src, box_w, box_h, 0);
 	free_bits(src);
 	return img;
 }

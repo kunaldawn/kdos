@@ -84,10 +84,58 @@ bool kcell_has(uint32_t cp);
  * answers to what the background is. */
 pixman_color_t kcell_slot_color(int slot);
 
-/* Leave KT_BG cells transparent instead of filling them. For a surface that
- * sits OVER something — the desktop, above the compositor's wallpaper. The
- * caller must also be using a buffer format that has an alpha channel. */
-void kcell_set_transparent_bg(bool on);
+/*
+ * Per-slot BACKGROUND alpha, 0..255, default 255. A cell whose background is
+ * `slot` is filled at that alpha, PREMULTIPLIED; 0 leaves the cell clear.
+ *
+ * For a surface that sits over something and has to let it through: the
+ * desktop above the compositor's wallpaper (KT_BG at 0), and the panel above
+ * its own pixel backdrop (KT_SURFACE at 0). The caller must ALSO be on a
+ * buffer format that carries alpha — kcell_needs_alpha() is what a backend
+ * asks to decide that, and on an opaque format the alpha is simply lost and
+ * the fill comes out at full strength.
+ *
+ * A FOREGROUND is never affected: a glyph is ink and is always opaque. What a
+ * REVERSE swaps into the background position IS a background and does take the
+ * alpha, or every reversed cell is an opaque hole in a translucent surface.
+ */
+void kcell_set_slot_alpha(int slot, uint8_t alpha);
+uint8_t kcell_slot_alpha(int slot);
+void kcell_reset_slot_alpha(void);
+bool kcell_needs_alpha(void);
+
+/*
+ * Whether a zero-alpha background is CLEARED or LEFT ALONE.
+ *
+ * Off (the default): cleared, which is what a surface with nothing under it in
+ * its own buffer needs — the buffer is reused between frames and a skip keeps
+ * the last frame's pixels. On: left alone, for a surface whose backdrop has
+ * already painted those pixels one layer down this frame. Set by the backend
+ * around a backdrop paint, not by an application.
+ */
+void kcell_set_bg_preserve(bool on);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Pixel chrome (kcell_px.c) — painted UNDER the cell grid
+ *
+ * For the three things a 10x20 cell of one colour cannot say: a softened
+ * plate, a fill that varies continuously down a bar, and a one-pixel line.
+ * The caller clears, then layers body, plates and rules with OVER.
+ *
+ * PAINT ONLY. Layout, hit maps and every --dump stay cells; a surface drawn
+ * with nothing but these has left the toolkit.
+ * ──────────────────────────────────────────────────────────────────────── */
+void kcell_px_clear(pixman_image_t *dst, int x, int y, int w, int h);
+void kcell_px_fill(pixman_image_t *dst, int x, int y, int w, int h,
+		   uint32_t rgb, uint8_t a);
+void kcell_px_round(pixman_image_t *dst, int x, int y, int w, int h, int r,
+		    uint32_t rgb, uint8_t a);
+/* The same plate, graded top to bottom. A gradient reads as a button; a flat
+ * slab of full-strength accent reads as an error state. */
+void kcell_px_round_grad(pixman_image_t *dst, int x, int y, int w, int h,
+			 int r, uint32_t top, uint32_t bot, uint8_t a);
+void kcell_px_vgrad(pixman_image_t *dst, int x, int y, int w, int h,
+		    uint32_t top, uint32_t bot, uint8_t a);
 
 /* A glyph's mask at a given scale, with the offsets already multiplied. The
  * image is owned by the cache and must not be unref'd — and the cache is

@@ -1,4 +1,5 @@
 labwc_sources = files(
+  'kdos-appid.c', # KDOS
   'kdos-config.c', # KDOS
   'kdos-child.c', # KDOS
   'kdos-wallpaper.c', # KDOS
@@ -9,6 +10,8 @@ labwc_sources = files(
   'kdos-idle.c', # KDOS
   'kdos-layerfocus.c', # KDOS
   'kdos-lid.c', # KDOS
+  'kdos-peek.c', # KDOS
+  'kdos-thumb.c', # KDOS
   'kdos-crt.c', # KDOS
   'action.c',
   'buffer.c',

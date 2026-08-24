@@ -142,7 +142,8 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
 **`src/packages/`** is the second port repo (`PORT_REPO="/ports/core
 /kdos/src/packages"`) and holds what is OURS rather than an upstream tarball:
 `kdos-splash`, `kdos-appbox`, `kdos-installer`, `kdos-kpkg`, `kdos-theme`,
-`kdos-tools`, and the three vendored-and-remade art packages `kdos-cursors`
+`kdos-tools`, `kdos-bb`, and the three vendored-and-remade art packages
+`kdos-cursors`
 (Bibata), `kdos-icons` (Papirus), `kdos-gtk-theme` (adw-gtk3). The desktop's own
 packages live one directory over, in `src/desktop/`.
 
@@ -1303,8 +1304,13 @@ host and box disagree about local time on one machine.
 
 `kdos` is the front door, and by now it is eighteen subcommands: `help`
 (commands + the keybind cheat sheet), `theme`, `status`, `doctor`, `app`,
-`version`, plus `why` / `explain`, `sandbox`, `appid`, `restarts`, `stutter`,
-`march`, `rebuild`, `cve`, **`hey`** (the `$XDG_RUNTIME_DIR/kdos-cmd.sock`
+`version`, plus `why` / `explain`, `sandbox`, `restarts`, `stutter`,
+`march`, `rebuild`, `cve`, **`appid`** (does the launcher's file id match the
+app_id a real window presented — the right-hand side is
+`~/.local/share/kdos/observed-app-ids`, which `kdos-appid.c` in the compositor
+appends to the first time each window maps, falling back to the live
+`{"cmd":"list"}` when no ledger has been recorded yet; the two answer different
+questions and the report says which it used), **`hey`** (the `$XDG_RUNTIME_DIR/kdos-cmd.sock`
 query front end, Haiku's shape: the window manager answers questions from the
 command line, so a window is something a script can find and act on),
 **`oracle`** (the aphorism picker, keyed on `day XOR boot` so the same line can
@@ -1639,7 +1645,7 @@ cursors it has rather than getting an empty theme.
 
 ---
 
-## bb — the AAlib demo
+## kdos-bb — the AAlib demo, hard-forked
 
 **There is no KDOS demoscene.** One was written (`src/packages/kd`, a
 from-scratch aalib demo with a 3D pipeline, audio-reactive channel taps and
@@ -1647,17 +1653,61 @@ music-as-clock) and then removed at the user's request. Do not resurrect it,
 and do not reintroduce a `kd`/`kk` port on the strength of a stale reference:
 if one turns up, it is a leftover.
 
-What ships is `ports/core/bb` — the 1997 AAlib demo, **upstream and
-unmodified** apart from two musl/x86_64 safety patches. Both defects were
-found with ASan rather than by reading:
+What ships is **`src/packages/kdos-bb`** — bb 1.3rc1, imported wholesale,
+rebranded and FROZEN. No upstream merges and no `.patch` files: it is our
+source now and is edited directly, the same shape as the labwc fork.
+`KDOS-FORK` at its root records the upstream tarball and its sha256.
+
+**Upstream's 81 files are 58 here**: the 42 sources and 16 headers the binary
+is actually built from, plus the three `.s3m` tracks. The whole autotools
+apparatus went — bb's 2001 `configure` probes the compiler with the K&R
+`main(){return(0);}` that GCC 14 rejects, so it failed with the thoroughly
+misleading "C compiler cannot create executables" and needed six `-Wno-` flags
+to answer a question with one answer on this target. `src/aconfig.h` states
+those answers and `build.sh` calls the compiler. `COPYING` and `AUTHORS` stay,
+and so does the demo's own credits scroll: that is the authors' work.
+
+Three defects fixed in place. The first two were found with ASan rather than
+by reading:
 
 - **`tex.c`'s `clear_zbuff()` cleared twice its allocation** — `set_zbuff()`
   allocates `sizeof(int)` per cell and the clear used `sizeof(long)`. Same
   size in 1997, double on x86_64: the heap corrupts and stage 2 aborts with
-  `malloc(): corrupted top size`. (`zbuff-int-not-long.patch`)
+  `malloc(): corrupted top size`.
 - **`messager.c` scrolled the text buffer with `memcpy`**, source and
   destination overlapping by every row but one. glibc survived it; musl is
-  free not to. (`messager-overlapping-copy.patch`)
+  free not to.
+- **The mixer runs on its own thread**, which is the audio fix and is below.
+
+**THE AUDIO STARVED BECAUSE THE MIXER WAS PUMPED BY THE RENDER LOOP.**
+`MikMod_Update` is a pull API and has to be called often enough to keep the
+card's ring full; upstream called it from a 10 ms timer in the `tl_group` that
+`bbwait()` pumps — and `bbwait()`'s caller has just returned from
+`aa_flush()`, which writes the whole frame to the terminal and BLOCKS while
+the terminal drains it. On a bare VT that is invisible. Under a compositor the
+terminal is shaping a screenful of cells and uploading a texture every frame,
+so the pty backs up, `aa_flush` sits in `write()`, no timer runs, the ring
+empties and the music stutters. **Minimise the same window and it is
+perfect** — the tell that it was never a mixer or a buffer-size problem. So
+the mixer gets a thread with its own 10 ms clock and the render loop cannot
+reach it.
+
+**AND MikMod_Lock MUST NOT WRAP A libmikmod CALL.** The obvious defensive
+`MikMod_Lock(); Player_Start(module); MikMod_Unlock();` is a **self-deadlock**:
+libmikmod's mutexes are plain `PTHREAD_MUTEX_INITIALIZER`, not recursive, and
+`Player_Start`, `Player_Active`, `Player_SetPosition` and `MikMod_Update` all
+open with `MUTEX_LOCK(vars)` themselves. The process stops dead with the demo
+frozen mid-frame and one thread. That internal locking IS what
+`MikMod_InitThreads()` promises; `MikMod_Lock` is for protecting your own
+access to libmikmod's exported VARIABLES (`md_mode`, `md_mixfreq`), which is a
+different thing. What the library does not cover is the fork's own `module`
+pointer, so `stop()` joins the thread BEFORE `Player_Free`, and `main()` joins
+before `MikMod_Exit`.
+
+**`KDOS_BB_DEBUG=1` reports which way the mixer is being fed** — thread or
+timer, and whether the module loaded at all. Silent otherwise, because the
+demo's stderr is the terminal it is drawing on. It is what caught the deadlock
+above: the log stopped at `play: starting`.
 
 Two aalib facts that cost a debug cycle each and outlive the demo that found
 them:
@@ -1677,6 +1727,15 @@ error rather than a silent runtime failure), with two patches of its own:
 (otherwise a machine with no card aborts inside `MikMod_Init` on
 `Assertion failed: pcm`), and `alsa-nonblocking-update.patch` stops
 `ALSA_Update` blocking its caller's frame loop.
+
+**The ring stays at upstream's 250 ms and that is deliberate.** It is the
+margin, not the bug: a shorter ring lowers the delay between a sample being
+mixed and being heard, and buys that by having less slack when something
+starves the feeder. The feeder is what was broken, and kdos-bb's mixer thread
+is the fix; shrinking the ring on top of it would trade a delay nobody can
+point at for a crackle everybody can hear. There is no runtime lever either —
+the driver hardcodes `buffer_time` and its `ALSA_CommandLine` is an empty
+function.
 
 **Audio on a bare TTY took two stacked fixes**, both in `fs/etc/init.d/`:
 
@@ -1851,7 +1910,8 @@ into a small static archive first because the grafts need the palette.
 minimal hooks marked `/* KDOS */`.** Grep for that marker to find every
 touch-point. The graft files: `kdos-config.c` (comp.conf), `kdos-child.c`
 (supervised chrome), `kdos-wallpaper.c`, `kdos-frames.c` (stutter socket),
-`kdos-idle.c` (dim → lock → off policy), `kdos-crt.c` (the CRT pass). What the
+`kdos-idle.c` (dim → lock → off policy), `kdos-crt.c` (the CRT pass),
+`kdos-appid.c` (the app_id ledger). What the
 old from-scratch compositor carried beyond these — window management,
 session-lock, capture and clipboard globals, the input-method wire, Xwayland,
 security-context filtering — is labwc upstream code and needs no graft.
@@ -3008,15 +3068,21 @@ a dock, ALWAYS keeps the label and lets `+N` carry the overflow.
 
 **The window list answers all three buttons**, as taskbars have since Windows
 95: left toggles (minimise the window you are in, restore the one you are not,
-and open the member list for a group), middle closes politely so an editor
-still gets to ask, and **right opens the WINDOW MENU** — `kdos-menu --winmenu
+and open the member list for a group), **middle opens a NEW INSTANCE** — from
+the pinned entry's Exec, or from the toplevel's app_id through its desktop
+entry, which is the same lookup the button's own name came from, so it can only
+launch something the bar could already name — and **right opens the WINDOW
+MENU** — `kdos-menu --winmenu
 <app_id>`, which carries Restore / Minimize / Maximize↔Restore Down /
 Fullscreen / Close plus Minimize all and Close all for a group, over the
 window titles. Right used to MINIMISE, which is a second way to do what left
 already does on the button every other desktop reserves for these verbs: there
 was no way at all to maximise or restore a window from this bar, which on a
 machine where most windows belong to boxed applications is the bar you are
-holding. The menu reads the toplevel's own state, so `Maximize` says
+holding. **Closing is the menu's, not the middle button's**: middle is the
+button a hand hits by accident on a wheel, and on an icons-only row of
+40-pixel squares what it was closing had no confirmation and no name on it.
+The menu reads the toplevel's own state, so `Maximize` says
 `Restore Down` when the window is maximised rather than being a toggle nobody
 can see the direction of. **Move and Size are deliberately absent**:
 wlr-foreign-toplevel-management has no request for either, and a menu row that
@@ -3080,6 +3146,45 @@ Three rules, and the first is the one that bites:
 
 Two consumers so far, and a bar with a dozen of these would be a bar that had
 stopped being a character grid: the Start button, and the meters strip.
+
+**THE START BUTTON IS QUIET AT REST, AND ITS PLATE COVERS THE MARK'S OWN
+CELLS.** Two rules, one function — `start_plate()` — because the tile above and
+the glyph layout under it both draw this button and a control whose two
+renderings disagree about its own state is worse than either.
+
+The accent belongs to hover, and the warn colour to the menu being open. At
+full strength and forty pixels tall it was the loudest object on the screen and
+read as an error state, on the one control that is never the thing being looked
+at; the penguin carries the brand without it. Three states, three pictures,
+where there used to be two.
+
+**IT CARRIES THE WORD, and `start_label` is ON.** A Start button that is a
+picture the same size as the app icons beside it does not read as the way in,
+which is the one thing this control has to do — measured on the shipped bar it
+was three cells, identical in size and shape to Firefox's. With the word it is
+ten. The tile lays out `pad | mark | gap | Start | pad`, and `pad` and `gap`
+are DIFFERENT numbers: one number for both is what made it look cramped at one
+end. The content is then CENTRED in the tile rather than laid out from its left
+edge, because a tile is a whole number of CELLS and the content is not — the
+rounding slack has to go somewhere, and split between the two ends it is
+invisible where pushed to the right it is the asymmetry you can see. Measured:
+plate 1..98, content 9..89, eight pixels one side and nine the other.
+
+**A WORDMARK AND A LABEL SAY THE SAME THING TWICE.** With no artwork the mark
+falls back to the `≡` glyph on a UTF-8 terminal and to the literal `KDOS`
+everywhere else, and `KDOS Start` is the brand printed beside itself. Where the
+mark is the word, the mark IS the button — which is also why the panel goldens
+did not move: the dump harness has no icons.
+
+And the plate is a whole-cell box inset by one, like every other plate on this
+row, so the mark is centred in it by construction rather than by arithmetic
+that has to be kept in step. Drawn from x=1 to half a cell short of the
+button's right edge while the mark was centred in the cells before that, they
+were two boxes with different centres: measured on the shipped bar, the plate
+ran 1..33 and the penguin's ink 8..21, so the mark sat 2.5px left of the middle
+of its own button. It is 14.5 against 14.5 now. The trailing cell that the
+button's width counts does not draw — it is the gap before the separator, the
+same one a window button leaves by plating `per - 1` of its `per` cells.
 
 **TWO FONT TRAPS, both measured before the code was written, both silent.**
 
@@ -3750,6 +3855,22 @@ says what the three buttons do came out cut mid-word (`right-cl`, `mid`),
 photographed. A tip is anchored at the item's own column and `place_clamp`
 pulls it back from the screen edge, so a wide one on the clock is not lost.
 
+**A WINDOW BUTTON'S TIP CARRIES THE WINDOW, AS A GAME BOY SCREEN.** Every
+taskbar since Windows 7 answers the case a name cannot — three terminals all
+called `foot` — and `kdos-comp`'s `thumb` verb is what makes it possible here,
+since a client cannot see another client's buffer. The rendering is four solid
+levels off the palette's own brightness ladder, a FULL BLOCK per cell, and that
+is not a style choice: `kcell_ascii_image` picks a glyph by SHAPE, and a
+1280-pixel window sampled into a 34x9 grid is nine source pixels per cell, so a
+cell of text is a featureless blur with no shape left to match. Every textured
+cell matched the same glyph — a terminal previewed as a wall of `b`, a
+minimised one as a wall of `|`, photographed on the booted ISO. The shape
+matcher keeps its other callers (`Super+A`, `kdos-shot --text`, the camera
+preview), which run at grids where a cell still holds a shape. **The preview is
+never required**: no compositor, no socket, a dmabuf client whose pixels are
+not host-readable, a PPM that does not parse — every one leaves the tip the two
+lines of text it was always going to be.
+
 **AND A CLICK SPENDS THE DWELL, which killing the tip does not.** `tip_kill`
 clears `tip_shown` because the caller that normally reaches it is a MOTION,
 which has just moved to another thing and owes it a fresh dwell. A CLICK moves
@@ -4025,8 +4146,14 @@ through the monitor's `sendkey`** (the session is started by hand on this
 distro, and a compositor launched from ttyS0 gets no seat), waits for
 `kdos-comp`, and reads the framebuffer over RFB.
 
-**Two flags beyond the shot itself, and each answers a question a screenshot
-alone cannot.** `--console-cmd` types on tty1 INSTEAD of starting the session,
+**Three flags beyond the shot itself, and each answers a question a screenshot
+alone cannot.** `--audio` gives the guest an HDA controller with `-audiodev
+none` behind it — a real device as far as the guest is concerned, with the
+samples going nowhere. Without it `MikMod_Init` fails, kdos-bb sets
+`bbsound = 0`, and every audio path in the guest is untestable, which is not
+the same as untested: it is what let the mixer-thread deadlock be measured.
+The rig container has no sound of its own, so a real backend is not on the
+table anyway. `--console-cmd` types on tty1 INSTEAD of starting the session,
 which is the only way to photograph a program at the 512-glyph console font and
 the vt glyph tier it has to read in — a window under a compositor is a
 different renderer answering a different question. `--soak <seconds>` lets the
@@ -4148,6 +4275,7 @@ kdos/
 │   ├── tools/
 │   │   └── kdos-portup/         # the upstream version checker (C, host-only)
 │   └── packages/                # ports that are OURS (see Three Rings)
+│       ├── kdos-bb/             # the AAlib demo, hard-forked (KDOS-FORK)
 │       ├── kdos-installer/      # the installer (C, zero libraries)
 │       ├── kdos-kpkg/           # kpkg + the four names it answers to
 │       ├── kdos-theme/          # the GTK/icon/cursor generators

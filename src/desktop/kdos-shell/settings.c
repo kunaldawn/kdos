@@ -1374,6 +1374,9 @@ int settings_main(int argc, char **argv)
 	if (icons_on)
 		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	while (!kwl_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */

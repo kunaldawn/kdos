@@ -485,6 +485,7 @@ static void draw(const struct view *v)
 {
 	int w = ktui_w, h = ktui_h;
 
+	kch_px_reset();
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 	ktui_draw_box(krect(0, 0, w, h), v->title, KT_ACCENT, KT_SURFACE, 0);
 
@@ -495,10 +496,18 @@ static void draw(const struct view *v)
 			break;
 		int row = v->rows[idx];
 		bool sel = idx == v->sel;
-		uint8_t fg = sel ? KT_SURFACE : KT_TEXT;
-		uint8_t bg = sel ? KT_ACCENT : KT_SURFACE;
+		/*
+		 * A PLATE AND AN ACCENT EDGE, not a slab of full accent — the
+		 * same selection the Start menu and the taskbar wear, from the
+		 * same tone table, so a highlight means one thing on this
+		 * desktop. The cells stay on the page's own slot, which the
+		 * backdrop owns, so the plate shows through under the label.
+		 */
+		uint8_t fg = KT_TEXT;
+		uint8_t bg = KT_SURFACE;
 
-		ktui_draw_fill(krect(1, 1 + r, w - 2, 1), bg);
+		if (sel)
+			kch_px_row(1, 1 + r, w - 2, KCH_T_ACTIVE);
 
 		if (row <= -2) {			/* a group */
 			int g = -row - 2;
@@ -779,11 +788,15 @@ static const struct wl_registry_listener win_registry_listener = {
  * compositor's own titlebar drag and `A-` drag are the move.
  */
 enum { WR_WIN = 0, WR_RULE, WR_RESTORE, WR_MIN, WR_MAX, WR_FULL, WR_CLOSE,
-       WR_MIN_ALL, WR_CLOSE_ALL, WR_PIN };
+       WR_MIN_ALL, WR_CLOSE_ALL, WR_PIN,
+       /* The jump list: a new instance, and the files this application was
+        * last used with. */
+       WR_NEW, WR_RECENT };
 
 struct wrow {
 	int kind;
 	int win;		/* index into wins[], for WR_WIN */
+	int recent;		/* index into recents[], for WR_RECENT */
 	char label[128];
 };
 
@@ -814,6 +827,7 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 {
 	int w = ktui_w, h = ktui_h;
 
+	kch_px_reset();
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 	ktui_draw_box(krect(0, 0, w, h), app, KT_ACCENT, KT_SURFACE, 0);
 
@@ -828,10 +842,12 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 			continue;
 		}
 		bool is_sel = idx == sel;
-		uint8_t fg = is_sel ? KT_SURFACE : KT_TEXT;
-		uint8_t bg = is_sel ? KT_ACCENT : KT_SURFACE;
+		/* The same plate the cascading menu above draws — see there. */
+		uint8_t fg = KT_TEXT;
+		uint8_t bg = KT_SURFACE;
 
-		ktui_draw_fill(krect(1, 1 + r, w - 2, 1), bg);
+		if (is_sel)
+			kch_px_row(1, 1 + r, w - 2, KCH_T_ACTIVE);
 		ktui_draw_text(2, 1 + r, w - 4, rows[idx].label, fg, bg,
 			       KT_A_NONE);
 	}
@@ -854,6 +870,38 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
  * taskbar button means. The `all` rows are the group operations and say so.
  */
 static char pin_id[128];	/* the desktop id behind `app`, or empty */
+/* The jump list. `new_exec` is the entry's own Exec, for New Window; the
+ * destinations come from freedesktop's recent-files store. Both are resolved
+ * ONCE when the menu is built — a lookup per frame would be a file read per
+ * frame, on a surface that redraws for every pointer motion. */
+static char new_exec[256];
+#define WIN_RECENT_MAX 6
+static char recents[WIN_RECENT_MAX][512];
+static int nrecent;
+
+/*
+ * Double fork, so this menu never has to reap and what it started is not
+ * killed when it exits — which it is about to. The same shape launch() uses;
+ * argv, never a command string, for the reason stated there.
+ */
+static void spawn_argv(const char *const *argv)
+{
+	pid_t pid;
+
+	if (!argv[0])
+		return;
+	pid = fork();
+	if (pid == 0) {
+		if (fork() == 0) {
+			setsid();
+			execvp(argv[0], (char *const *)argv);
+			_exit(127);
+		}
+		_exit(0);
+	} else if (pid > 0) {
+		waitpid(pid, NULL, 0);
+	}
+}
 
 static int windows_rows(const char *app, int ctrl, struct wrow *rows,
 			int *ord, int *nwin_out, int *target)
@@ -904,6 +952,45 @@ static int windows_rows(const char *app, int ctrl, struct wrow *rows,
 		 * resolves a NAME — the favorites file is a list of ids and an
 		 * app_id is not always one.
 		 */
+		/*
+		 * A JUMP LIST, which is what a right click on a taskbar button
+		 * opens on every desktop that has one.
+		 *
+		 * NEW WINDOW is here rather than on middle-click, and that is a
+		 * deliberate departure from the plan this came from. Middle on
+		 * this bar already means "close politely", which is documented
+		 * and which people use; a second meaning for the same button
+		 * would be a coin toss. A row in a menu is also the only one of
+		 * the two that says what it does.
+		 */
+		if (pin_id[0] && new_exec[0]) {
+			rows[nrows].kind = WR_NEW;
+			snprintf(rows[nrows].label, sizeof(rows[nrows].label),
+				 "New Window");
+			nrows++;
+		}
+		if (nrecent > 0) {
+			rows[nrows].kind = WR_RULE;
+			rows[nrows].label[0] = '\0';
+			nrows++;
+			for (int i = 0; i < nrecent &&
+					nrows < MAX_WROW - 12; i++) {
+				const char *b = strrchr(recents[i], '/');
+
+				rows[nrows].kind = WR_RECENT;
+				rows[nrows].recent = i;
+				/* The BASENAME: a jump list is read at a
+				 * glance and a full path is mostly the parts
+				 * that are the same for every row. */
+				snprintf(rows[nrows].label,
+					 sizeof(rows[nrows].label), "%s",
+					 b && b[1] ? b + 1 : recents[i]);
+				nrows++;
+			}
+			rows[nrows].kind = WR_RULE;
+			rows[nrows].label[0] = '\0';
+			nrows++;
+		}
 		if (pin_id[0]) {
 			rows[nrows].kind = WR_PIN;
 			snprintf(rows[nrows].label, sizeof(rows[nrows].label),
@@ -987,6 +1074,9 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 		return 1;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	/*
 	 * The desktop id behind this app_id, for the Pin row. `favorites` is a
@@ -998,8 +1088,19 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 	if (ctrl) {
 		char nm[64], ex[256];
 		if (sh_desktop_entry(app, nm, sizeof(nm), ex, sizeof(ex)) == 0 &&
-		    ex[0])
+		    ex[0]) {
 			snprintf(pin_id, sizeof(pin_id), "%s", app);
+			snprintf(new_exec, sizeof(new_exec), "%s", ex);
+		}
+		/*
+		 * The destinations are looked up by the APP_ID, which is what
+		 * a writer of recently-used.xbel conventionally records as the
+		 * application name. An app that records something else simply
+		 * has no jump list, which is the honest failure for a
+		 * convenience: an empty list costs nothing and a wrong one
+		 * sends somebody to the wrong file.
+		 */
+		nrecent = kxdg_recent(app, recents, WIN_RECENT_MAX);
 	}
 
 	struct wl_display *dpy = kwl_display();
@@ -1225,6 +1326,40 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 			if (pin_id[0])
 				sh_fav_set(pin_id, !sh_fav_has(pin_id));
 			break;
+		case WR_NEW: {
+			/* The entry's own Exec, with the field codes gone —
+			 * there is no document to substitute and a stray %U
+			 * opens the application on a file called "%U". */
+			const char *av[32];
+			char buf[512];
+			int na = 0;
+
+			snprintf(buf, sizeof(buf), "%s", new_exec);
+			sh_strip_field_codes(buf);
+			for (char *t = strtok(buf, " \t");
+			     t && na < 31; t = strtok(NULL, " \t"))
+				av[na++] = t;
+			av[na] = NULL;
+			if (na)
+				spawn_argv(av);
+			break;
+		}
+		case WR_RECENT:
+			/*
+			 * `kdos-appbox open` IS what "open this on this
+			 * machine" means here — it is the MIME route the
+			 * portal's OpenURI uses too. Handing the path to the
+			 * application's own Exec would open a text file in
+			 * whatever last touched it rather than in its handler.
+			 */
+			if (rows[act].recent >= 0 &&
+			    rows[act].recent < nrecent) {
+				const char *av[] = { "kdos-appbox", "open",
+						     recents[rows[act].recent],
+						     NULL };
+				spawn_argv(av);
+			}
+			break;
 		case WR_CLOSE_ALL:
 			for (int i = 0; i < n; i++)
 				zwlr_foreign_toplevel_handle_v1_close(
@@ -1253,12 +1388,14 @@ int menu_main(int argc, char **argv)
 	int win_ctrl = 0;			/* --winmenu: with the controls */
 	int which = 0;				/* 0 apps, 1 places, 2 system */
 	int at_x = -1, at_y = 0, at_bottom = 0;
-	int dump = 0;
+	int dump = 0, dump_cells = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
 		/* One frame, offscreen, as text: see kdos-launcher --dump. */
+		else if (!strcmp(argv[i], "--dump-cells"))
+			dump = dump_cells = 1;
 		else if (!strcmp(argv[i], "--dump"))
 			dump = 1;
 		/*
@@ -1344,6 +1481,13 @@ int menu_main(int argc, char **argv)
 
 	if (dump) {
 		sh_theme_from_cache();
+		/* Colours too — see kdos-start's own branch, and cells.c. */
+		if (dump_cells) {
+			ktui_backend_set(sh_cells_backend(42, rows));
+			ktui_draw_init();
+			draw(&v);
+			return 0;
+		}
 		ktui_offscreen_init(42, rows);
 		draw(&v);
 		ktui_draw_dump();
@@ -1372,6 +1516,9 @@ int menu_main(int argc, char **argv)
 		return 1;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	while (!kwl_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
