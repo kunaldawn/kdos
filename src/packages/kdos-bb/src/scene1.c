@@ -244,12 +244,24 @@ void strobikend(void)
     draw();
 }
 
+extern int dualmode;
+
 static void blazinec()
 {
     int i;
 
 #define NTEXT sizeof(text)/sizeof(char *)
 
+    /*
+     * NINETEEN ENTRIES, AND THE COUNT IS THE CLOCK. Each one costs exactly
+     * one strobikstart/strobikend pair, so adding or dropping a line moves
+     * everything after it out of step with the music. Reword freely; do not
+     * change how many there are.
+     *
+     * NULL is the mascot: upstream spent this beat on an empty string, which
+     * is a blank strobe with nothing in it, and that is where the penguin
+     * goes for free.
+     */
     char *text[] =
     {
 	"the",
@@ -263,14 +275,14 @@ static void blazinec()
 	"SVGA",
 	"TEXT",
 	"MODE",
-	"",
-	"DEVELOPED",
+	NULL,
+	"REBUILT",
 	"UNDER",
-	"LINUX",
+	"KDOS",
 	"!",
 	"!",
 	"!",
-	"?",
+	"btw",
     };
     float sizes[] =
     {
@@ -299,15 +311,19 @@ static void blazinec()
     for (i = 0; i < NTEXT; i++) {
 	strobikstart();
 	params->randomval = 0;
-	hlaska(text[i], sizes[i]);
+	if (text[i] == NULL) {
+	    dualmode = 0;
+	    clrscr();
+	    dispimg(&kdostux, dual);
+	}
+	else
+	    hlaska(text[i], sizes[i]);
 	strobikend();
     }
     strobikstart();
     params->dither = AA_FLOYD_S;
     draw();
 }
-
-extern int dualmode;
 
 void vezen(struct image *i1, struct image *i2, struct image *i3, struct image *i4)
 {

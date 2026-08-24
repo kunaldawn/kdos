@@ -270,6 +270,48 @@ ptable ()
 }
 #endif
 
+/*
+ * THE EXTRO SCROLL IS PACED BY THE SONG, NOT BY A CLOCK.
+ *
+ * Answers thousandths through the module, or -1 when there is nothing to
+ * ask. Position is taken as order-plus-row rather than order alone: an order
+ * is several seconds at these tempos, and a scroll that only moved once per
+ * pattern would step rather than flow.
+ *
+ * 64 is nominal, not measured -- S3M patterns are usually 64 rows and may be
+ * shorter. A short pattern makes the fraction run slightly ahead inside that
+ * one pattern and it is correct again at the boundary, which is invisible in
+ * a scroll and not worth a Player_GetRow-against-pattern-length lookup.
+ *
+ * bb3.s3m LOOPS: update_sound() calls Player_SetPosition(0) when the player
+ * falls inactive, so the answer wraps to 0 rather than reaching 1000. The
+ * caller treats a fraction that went BACKWARDS as "the song is over", which
+ * is the only honest reading of it.
+ */
+int
+song_progress (void)
+{
+#ifdef HAVE_LIBMIKMOD
+  int pos, row, n;
+  if (!bbsound || module == NULL || !Player_Active ())
+    return -1;
+  n = module->numpos;
+  if (n <= 0)
+    return -1;
+  pos = Player_GetOrder ();
+  row = Player_GetRow ();
+  if (pos < 0)
+    pos = 0;
+  if (pos > n)
+    pos = n;
+  if (row < 0 || row > 63)
+    row = 0;
+  return (pos * 64 + row) * 1000 / (n * 64);
+#else
+  return -1;
+#endif
+}
+
 int
 main (int argc, char *argv[])
 {
@@ -278,14 +320,20 @@ main (int argc, char *argv[])
 
   bbinit (argc, argv);
 #ifdef HAVE_LIBMIKMOD
-  aa_puts (context, 0, p++, AA_SPECIAL, "Music?[Y/n]");
-  aa_flush (context);
-  if (tolower (aa_getkey (context, 1)) != 'n')
+  /*
+   * MUSIC IS ON AND THE DEMO STARTS. Upstream asked here and then held the
+   * screen in the mixer table until Continue was pressed -- two questions
+   * whose answers were always yes and default, in front of the one thing
+   * this program does. `-nosound` and `-mixer` are the two escapes, and the
+   * scroll in the extro reads the player, so a silent run is a different
+   * pace rather than a broken one.
+   */
+  if (!bbnosound)
     {
       MikMod_RegisterAllDrivers ();
       MikMod_RegisterLoader (&load_s3m);
       /*md_mode |= DMODE_SOFT_MUSIC; */
-      while (1)
+      while (bbmixer)
 	{
 	  int k;
           aa_resize(context);
