@@ -687,52 +687,9 @@ static void draw(void)
 	ktui_draw_flush();
 }
 
-/*
- * `--dump-cells`: one line per painted cell, codepoint and colour SLOT, which
- * is what a golden frame has to compare — a plain text dump proves the layout
- * and says nothing about whether the surface is wearing the palette.
- *
- * Through the backend vtable rather than ktui_offscreen_init(), because the
- * cell buffer is private to libktui and offscreen mode short-circuits the
- * flush entirely. Same seam as keys.c, per front end.
- */
+/* `--dump-cells` — one line per painted cell, colours included. The
+ * backend is cells.c's; these two are what the size flag writes. */
 static int cap_w = 64, cap_h = 18;
-
-static void cap_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h, int ff)
-{
-	(void)prev;
-	(void)ff;
-	for (int y = 0; y < h; y++)
-		for (int x = 0; x < w; x++) {
-			const KtuiCell *c = &cur[y * w + x];
-			if (!c->ch || c->ch == ' ' || c->ch == KTUI_WIDE_CONT)
-				continue;
-			printf("%d %d U+%04X %d %d %d\n", y, x, c->ch, c->fg,
-			       c->bg, c->attr);
-		}
-}
-
-static int cap_poll(KtuiEvent *ev, int timeout_ms)
-{
-	(void)ev;
-	(void)timeout_ms;
-	return 0;
-}
-
-static void cap_size(int *w, int *h)
-{
-	*w = cap_w;
-	*h = cap_h;
-}
-
-static int cap_caps(void)
-{
-	return KT_CAP_UTF8 | KT_CAP_TRUECOLOR;
-}
-
-static const KtuiBackend cap_backend = {
-	"dump-cells", cap_flush, cap_poll, cap_size, cap_caps
-};
 
 /* ── main ──────────────────────────────────────────────────────────────── */
 
@@ -832,7 +789,7 @@ int openwith_main(int argc, char **argv)
 	if (dump || cells) {
 		sh_theme_from_cache();
 		if (cells) {
-			ktui_backend_set(&cap_backend);
+			ktui_backend_set(sh_cells_backend(cap_w, cap_h));
 			ktui_draw_init();
 			draw();
 			return 0;
@@ -871,6 +828,9 @@ int openwith_main(int argc, char **argv)
 		return 2;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	int rc = 1;
 	while (!kwl_should_close()) {

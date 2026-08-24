@@ -330,6 +330,9 @@ int run_main(int argc, char **argv)
 		return 1;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	char cmd[MAX_CMD] = { 0 };
 	size_t len = 0, cur = 0;	/* bytes; cur is the caret */

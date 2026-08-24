@@ -85,8 +85,24 @@ struct sh_task {
 	 * `org.gnome.Meld` is showing an identifier chosen not to collide, in
 	 * the one place a human name belongs. */
 	char name[64];
+	/*
+	 * And the desktop ID that Name came from, which is not always the
+	 * app_id: a GTK client on Wayland calls itself `mousepad` and its entry
+	 * is `org.xfce.mousepad.desktop`. The taskbar merges a running window
+	 * onto its PINNED button by comparing ids, so a window whose app_id is
+	 * not the id appeared twice — once as the pin and once as itself. The
+	 * lookup that finds the Name already knows the answer; it used to throw
+	 * it away. Empty when no entry claims this window.
+	 */
+	char did[128];
 	int activated;
 	int minimized;
+	/* The panel's adaptive-opacity proxy: a maximized or fullscreen window
+	 * is what puts a bright surface behind a translucent bar, and it is the
+	 * case where the plate ladder stops separating. wlr-foreign-toplevel
+	 * carries no geometry, so this is the honest approximation. */
+	int maximized;
+	int fullscreen;
 };
 
 /* Name > title > app_id, the order a person reads them in. */
@@ -123,6 +139,21 @@ void sh_spawn_menu(int which, int x, int y);
  * drawing one. Two frames is what a toplevel that also boxed itself wore.
  */
 void sh_frame(int w, int h, const char *title, int fg, int bg, int dbl);
+
+/*
+ * Ask the compositor something on `$XDG_RUNTIME_DIR/kdos-cmd.sock`: one NDJSON
+ * request line in, one reply line out, connection closed. 0 on a reply, -1 on
+ * anything else with the reason in `err` when one was given. Both socket
+ * timeouts are one second — see shell.c.
+ */
+int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn);
+
+/*
+ * The `--dump-cells` backend — one line per painted cell, colours included.
+ * See cells.c. Pass the size the surface wants; it is what cap_size reports,
+ * so the draw is measured against it exactly as a terminal's would be.
+ */
+const KtuiBackend *sh_cells_backend(int w, int h);
 
 struct sh_state {
 	void *display;			/* the panel shares libkwl's connection */
@@ -332,6 +363,18 @@ struct sh_mpris;
 
 /* `existing_bus` is sh_tray_bus(), or NULL to open one. */
 struct sh_mpris *sh_mpris_init(void *existing_bus);
+
+/*
+ * com.canonical.Unity.LauncherEntry — a count badge and a progress bar on a
+ * task button, from the protocol Nautilus, Thunar, Steam and the browsers
+ * already emit. `bus` is sh_tray_bus(). See unity.c.
+ *
+ * sh_unity_get() answers 0 when this application has nothing to show, which is
+ * the overwhelmingly common case and is why the caller checks it before it
+ * spends any room on a badge.
+ */
+void sh_unity_init(void *bus);
+int sh_unity_get(const char *id, long *count, int *progress, int *urgent);
 void sh_mpris_dispatch(struct sh_mpris *p);
 void sh_mpris_free(struct sh_mpris *p);
 int sh_mpris_have(const struct sh_mpris *p);

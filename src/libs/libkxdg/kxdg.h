@@ -112,4 +112,14 @@ void kxdg_mime_for_path(const char *path, char *out, size_t n);
  * many were written. */
 int kxdg_mime_icon_names(const char *mime, char out[][64], int n);
 
+/*
+ * The files `app` most recently opened, newest first, from freedesktop's
+ * recently-used.xbel. Returns how many were written.
+ *
+ * This is a jump list's data. Only paths that still EXIST are returned — a
+ * destination that has been deleted is not a destination — and duplicates are
+ * collapsed. A missing or unreadable store is simply an empty list.
+ */
+int kxdg_recent(const char *app, char out[][512], int max);
+
 #endif /* KXDG_H */

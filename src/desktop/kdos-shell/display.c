@@ -1001,6 +1001,9 @@ int display_main(int argc, char **argv)
 
 	snap_take();
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	while (!kwl_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */

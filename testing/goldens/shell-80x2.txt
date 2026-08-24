@@ -1,0 +1,2 @@
+KDOS                                                    ^  .  90    00:00      .
+              CPU    . 11%  RAM    . 25%  NET      ?0               Wed 01 Jan .

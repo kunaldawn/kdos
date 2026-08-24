@@ -33,6 +33,16 @@
 
 #include "ktui.h"
 
+/*
+ * pixman_image_t without dragging <pixman.h> onto every consumer's include
+ * path. It is a UNION, not a struct — declaring the wrong tag is a hard error
+ * — and C11 allows a typedef to be repeated with the same type, so this and
+ * pixman's own definition coexist in either order.
+ */
+union pixman_image;
+typedef union pixman_image pixman_image_t;
+
+
 enum kwl_role {
 	KWL_ROLE_TOPLEVEL = 0,	/* an ordinary window (xdg-shell)          */
 	/*
@@ -187,6 +197,20 @@ typedef struct {
 	 */
 	int rule;
 	int rule_slot;
+
+	/*
+	 * The panel's body opacity, in PERCENT. 0 means unset and is treated
+	 * as 100 — a surface that said nothing gets the opaque behaviour it
+	 * has always had, and every consumer but the panel says nothing.
+	 *
+	 * Below 100 this clears KT_SURFACE's alpha in libkcell and forces an
+	 * alpha-capable buffer format, so the wallpaper and the windows show
+	 * through the bar's own background while its text and its fills stay
+	 * ink. It is the BACKGROUND slot only: a translucent glyph is a glyph
+	 * nobody can read, which is the whole reason this is per-slot rather
+	 * than a multiplier on the surface.
+	 */
+	int opacity;
 } KwlConfig;
 
 /*
@@ -206,7 +230,13 @@ void kwl_shutdown(void);
  * desktop for the whole session. The compositor answers with a configure and
  * the cell buffer follows; the caller redraws on the next frame.
  */
-void kwl_overlay_resize(int cols, int rows);
+/*
+ * Ask for a new size and WAIT for it. 0 when the surface really is that size,
+ * -1 when the compositor said otherwise or said nothing — a caller that gets
+ * -1 must draw at the size it already had, because a buffer that disagrees
+ * with the last configure is a protocol error and those disconnect the client.
+ */
+int kwl_overlay_resize(int cols, int rows);
 
 /*
  * Panel only: collapse to a one-cell strip with no exclusive zone, and back.
@@ -259,6 +289,44 @@ int kwl_cell_h(void);
  * What a panel passes as a popup's margin; `rows * cell_h` is short by the
  * rule. */
 int kwl_px_h(void);
+
+/*
+ * The offset a popup of THIS panel passes as its own margin from the same
+ * screen edge: the surface's height plus the panel's gap.
+ *
+ * Use this and never kwl_px_h() for that purpose. They are the same number
+ * only while the bar is flush with the edge; with `margin_y` set they differ
+ * by exactly the gap, and a popup placed with the height opens behind the bar
+ * it belongs to.
+ */
+int kwl_popup_offset(void);
+/* Which side of this surface faces away from the bar — see kwl.c. */
+int kwl_edge_bottom(void);
+/* Print whatever the display has gone wrong with, if anything — see kwl.c. */
+void kwl_report_error(void);
+
+/*
+ * THE BACKDROP — pixel chrome painted UNDER the cell grid, every frame.
+ *
+ * Called with the surface's own pixman image just before the cells go down,
+ * so a caller can lay a body, a plate or a one-pixel rule where a 10x20 cell
+ * of one colour cannot. `w`/`h` are the buffer in real pixels and `scale` is
+ * the output's integer scale: everything the callback draws is in pixels and
+ * must be multiplied by it.
+ *
+ * Two consequences the caller does not get a choice about:
+ *
+ *  - Setting one forces a FULL cell repaint every frame. The row diff cannot
+ *    know which cells the backdrop disturbed, and half a repaint over a fresh
+ *    backdrop is a bar with last frame's text on it.
+ *  - Any slot the caller cleared to alpha 0 is then LEFT ALONE by the cell
+ *    painter rather than cleared, because the clear would erase what this
+ *    just drew. Clear the slot the backdrop owns and no other.
+ *
+ * NULL removes it.
+ */
+typedef void (*KwlBackdropFn)(pixman_image_t *dst, int w, int h, int scale);
+void kwl_set_backdrop(KwlBackdropFn fn);
 /*
  * 1 when the COMPOSITOR is drawing this window's frame, so the program must
  * not draw a second one round the outside of its own content. False on a

@@ -330,6 +330,75 @@ view_by_id(uint64_t id)
 	return NULL;
 }
 
+/*
+ * PEEK. `{"cmd":"peek","on":true}` fades every window; false restores them.
+ *
+ * A verb rather than an action, because it is neither: an action is a thing a
+ * keybind does once, and this is a state that lasts exactly as long as a
+ * pointer dwells somewhere. It takes no view and names nothing, so there is
+ * nothing here to aim.
+ *
+ * ABSENT `on` IS OFF. A caller that says "peek" and nothing else is asking for
+ * something it did not specify, and the safe reading of that is the state that
+ * cannot get stuck — a peek left on is a desktop whose windows have all gone
+ * transparent with no obvious way back.
+ */
+static void
+cmd_peek(struct buf *b, const char *line)
+{
+	uint64_t on = 0;
+
+	req_int(line, "on", &on);
+	if (!on && strstr(line, "\"on\":true")) {
+		on = 1;
+	}
+	kdos_peek_set(on != 0);
+	buf_add(b, "{\"ok\":true}");
+}
+
+/*
+ * THUMB. `{"cmd":"thumb","app_id":"foot","w":64,"h":36}` writes a picture of
+ * that application's front window and answers with the path.
+ *
+ * THE PATH IS THE COMPOSITOR'S TO CHOOSE and is never taken from the request.
+ * A verb that wrote wherever a caller pointed it would be a file-write
+ * primitive with a compositor's privileges, on a socket whose only gate is the
+ * peer's uid — and the appbox shares that uid. One fixed name in
+ * $XDG_RUNTIME_DIR, overwritten every time.
+ *
+ * Answering ok:false for a window whose pixels cannot be read is not a failure
+ * to report loudly: a dmabuf client simply has no host-readable buffer, which
+ * is the common case on real hardware, and the caller's job is to carry on
+ * without a picture.
+ */
+static void
+cmd_thumb(struct buf *b, const char *line)
+{
+	char app[128];
+	uint64_t w = 0, h = 0;
+	const char *run = getenv("XDG_RUNTIME_DIR");
+	char path[512];
+
+	if (!req_str(line, "app_id", app, sizeof(app))) {
+		resp_err(b, "thumb needs an \"app_id\"");
+		return;
+	}
+	if (!run || !*run) {
+		resp_err(b, "no XDG_RUNTIME_DIR");
+		return;
+	}
+	req_int(line, "w", &w);
+	req_int(line, "h", &h);
+	snprintf(path, sizeof(path), "%s/kdos-thumb.ppm", run);
+	if (!kdos_thumb_write(app, (int)w, (int)h, path)) {
+		resp_err(b, "no readable buffer for that window");
+		return;
+	}
+	buf_add(b, "{\"ok\":true,");
+	json_kv_str(b, "path", path);
+	buf_add_char(b, '}');
+}
+
 static void
 cmd_run(struct buf *b, const char *line)
 {
@@ -391,8 +460,13 @@ dispatch(struct buf *b, const char *line)
 		cmd_outputs(b);
 	} else if (!strcmp(cmd, "run")) {
 		cmd_run(b, line);
+	} else if (!strcmp(cmd, "peek")) {
+		cmd_peek(b, line);
+	} else if (!strcmp(cmd, "thumb")) {
+		cmd_thumb(b, line);
 	} else {
-		resp_err(b, "unknown cmd — list, run or outputs");
+		resp_err(b,
+			"unknown cmd — list, run, outputs, peek or thumb");
 	}
 	buf_add_char(b, '\n');
 }
