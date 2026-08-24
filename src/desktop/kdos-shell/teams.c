@@ -337,74 +337,15 @@ static int j_bool(const struct jv *v)
 /* ── the command socket ────────────────────────────────────────────────── */
 
 /*
- * One request, one reply, close — the whole protocol. Both timeouts are set
- * because this surface is drawn by the same loop that is waiting on the
- * answer: a compositor wedged badly enough not to reply is exactly the
- * situation the monitor is opened in, and a blocking read there would hang the
- * one program that could still fix it.
+ * One request, one reply, close. The transport is sh_cmd_call() in shell.c —
+ * three programs in this binary ask the compositor questions now (the window
+ * list here, the peek the taskbar raises, the thumbnail a tooltip draws) and
+ * three copies of a connect-write-read would be three answers to what a
+ * timeout is.
  */
 static int cmd_call(const char *req, char *out, size_t n)
 {
-	const char *rt = getenv("XDG_RUNTIME_DIR");
-	struct sockaddr_un a = { 0 };
-	struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
-	size_t len = strlen(req), sent = 0, got = 0;
-	int fd;
-
-	if (!rt || !*rt) {
-		snprintf(errline, sizeof(errline),
-			 "no XDG_RUNTIME_DIR — there is no session to ask");
-		return -1;
-	}
-	a.sun_family = AF_UNIX;
-	if ((size_t)snprintf(a.sun_path, sizeof(a.sun_path),
-			     "%s/kdos-cmd.sock", rt) >= sizeof(a.sun_path)) {
-		snprintf(errline, sizeof(errline), "socket path too long");
-		return -1;
-	}
-
-	fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	if (fd < 0) {
-		snprintf(errline, sizeof(errline), "socket: %s",
-			 strerror(errno));
-		return -1;
-	}
-	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-
-	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
-		snprintf(errline, sizeof(errline),
-			 "the compositor does not expose the command socket");
-		close(fd);
-		return -1;
-	}
-	while (sent < len) {
-		ssize_t w = write(fd, req + sent, len - sent);
-		if (w <= 0) {
-			snprintf(errline, sizeof(errline), "write: %s",
-				 strerror(errno));
-			close(fd);
-			return -1;
-		}
-		sent += (size_t)w;
-	}
-	/* One line: the reply ends at the newline the server appends, and
-	 * waiting for EOF instead would wait out the whole close. */
-	while (got < n - 1) {
-		ssize_t r = read(fd, out + got, n - 1 - got);
-		if (r <= 0)
-			break;
-		got += (size_t)r;
-		if (memchr(out, '\n', got))
-			break;
-	}
-	close(fd);
-	out[got] = '\0';
-	if (!got) {
-		snprintf(errline, sizeof(errline), "the socket answered nothing");
-		return -1;
-	}
-	return 0;
+	return sh_cmd_call(req, out, n, errline, sizeof(errline));
 }
 
 /* ── who owns a pid ────────────────────────────────────────────────────── */
@@ -818,6 +759,9 @@ int teams_main(int argc, char **argv)
 		return 1;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	refresh();
 

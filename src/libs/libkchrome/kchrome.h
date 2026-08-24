@@ -36,6 +36,16 @@
 #include "kicon.h"
 #include "ktui.h"
 
+/*
+ * pixman_image_t without dragging <pixman.h> onto every consumer's include
+ * path. It is a UNION, not a struct — declaring the wrong tag is a hard error
+ * — and C11 allows a typedef to be repeated with the same type, so this and
+ * pixman's own definition coexist in either order.
+ */
+union pixman_image;
+typedef union pixman_image pixman_image_t;
+
+
 struct KCellCanvas;
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -66,6 +76,117 @@ int kch_tile_slot(int id);
  * was rasterised in the palette that is being replaced. */
 void kch_tile_reset(void);
 void kch_tile_enable(int on);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The tone ladder (kch_tone.c) — what a raised surface is made of
+ *
+ * The eight slots say what a cell is. They cannot say what a BUTTON is: the
+ * palette's dark end is compressed to 1.00-1.05:1, so a panel painted in its
+ * own background is the same colour as the desktop behind it, and the only way
+ * to make anything visible was full accent at 14:1.
+ *
+ * These are derived — every one a kcol_mix() of two scheme colours, so a live
+ * accent switch retints them — and they are the missing middle. One table for
+ * the taskbar and the Start menu both, so a plate means the same thing on each.
+ *
+ * A tone is a colour AND the alpha it is laid on at; ask for both.
+ * ──────────────────────────────────────────────────────────────────────── */
+typedef enum {
+	KCH_T_BODY_TOP = 0,	/* the bar's own fill, top of the gradient  */
+	KCH_T_BODY_BOT,		/* ...and the bottom                        */
+	KCH_T_EDGE,		/* the 1px line that says where the bar is  */
+	KCH_T_LIP,		/* the highlight just inside the edge       */
+	KCH_T_REST,		/* a button at rest                         */
+	KCH_T_HOVER,		/* under the pointer                        */
+	KCH_T_ACTIVE,		/* the focused window — SOLVED, see the .c  */
+	KCH_T_N
+} KchTone;
+
+uint32_t kch_tone(KchTone t);
+uint8_t kch_tone_alpha(KchTone t);
+/* The body alpha a POPUP wears — higher than the bar's, because a menu is
+ * read and a taskbar is glanced at. See kch_tone.c. */
+uint8_t kch_popup_alpha(void);
+/* Drop the cache. Not normally needed — kch_tone() notices a theme swap by
+ * itself — but it is what a retint calls beside kch_tile_reset(). */
+void kch_tone_reset(void);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The pixel display list (kch_px.c) — recorded while drawing, replayed by
+ * the backdrop under the cell grid.
+ *
+ * PIXELS FOR PAINT, CELLS FOR LAYOUT: the degradation passes, the hit maps
+ * and every --dump stay in cells. Coordinates are real pixels at scale 1 and
+ * are multiplied on replay, so a HiDPI output needs nothing from the caller.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Small on purpose. A radius is the one thing a cell grid cannot express, so
+ * it is the one thing that gives pixel chrome away — three pixels softens a
+ * plate, eight puts it beside window frames this distro draws deliberately
+ * square and makes the two look like different toolkits. */
+#define KCH_PLATE_RADIUS 3
+
+void kch_px_reset(void);
+void kch_px_rect(int x, int y, int w, int h, uint32_t rgb, uint8_t a);
+void kch_px_round(int x, int y, int w, int h, int r, uint32_t rgb, uint8_t a);
+void kch_px_grad(int x, int y, int w, int h, int r, uint32_t top,
+		 uint32_t bot, uint8_t a);
+/* CELL coordinates — every caller has them, and one conversion means a plate
+ * and the glyphs on it cannot disagree about where the button is. */
+void kch_px_plate(int cx, int cy, int cw, int ch, KchTone tone, int inset);
+/*
+ * A SELECTED ROW, in the language a task button is drawn in — the plate, plus
+ * an accent bar down its leading edge.
+ *
+ * Shared because "what does a selection look like" is one question and this
+ * desktop was answering it in three places: the Start menu, the cascading
+ * menu and the window menu each drew their own plate-and-bar, and the two
+ * nobody was looking at were the two that would drift. The cells are left on
+ * the page's own slot by the caller, so the plate shows through under the
+ * label.
+ */
+void kch_px_row(int cx, int cy, int cw, KchTone tone);
+void kch_px_vrule(int cx, int y0, int rows);
+void kch_px_replay(pixman_image_t *dst, int scale);
+/*
+ * The body, the edge and the lip — what every KDOS surface sits on.
+ *
+ * `edge` says which side gets the bright line: KCH_EDGE_TOP or _BOTTOM for a
+ * bar, whose only boundary with the desktop is the one it is not anchored to,
+ * and KCH_EDGE_NONE for anything that draws its own `╔══ Title ══╗`. A framed
+ * surface with a pixel edge as well has TWO top borders a few pixels apart,
+ * which reads as a rendering fault rather than as a highlight.
+ */
+enum { KCH_EDGE_NONE = -1, KCH_EDGE_TOP = 0, KCH_EDGE_BOTTOM = 1 };
+void kch_px_body(pixman_image_t *dst, int w, int h, int scale, uint8_t alpha,
+		 int edge);
+/*
+ * Wear that body, in one call: install the backdrop and hand it the slot the
+ * surface fills itself with. Everything a panel opens goes through this, so a
+ * popup cannot come up opaque grey beside a translucent bar.
+ *
+ * `body_slot` is whichever of libktui's eight the surface treats as its
+ * background — the two halves of this desktop disagree, and asking rather than
+ * assuming is what lets both keep their own.
+ *
+ * NO PIXEL EDGE. A popup draws its own `╔══ Title ══╗`, and that box IS where
+ * the surface starts; a bright hairline a few pixels above it is a second top
+ * border. The bar gets one because it has no box to draw.
+ */
+void kch_px_popup(int body_slot);
+/*
+ * The same hand-off with NO body of its own — the surface is nothing but the
+ * plates it recorded, and everything else is see-through.
+ *
+ * For a surface that is not a window: a stack of toasts is a column of
+ * separate cards with desktop between them, so a body painted across the whole
+ * surface would fill the gaps in as well and turn the stack into one slab.
+ */
+void kch_px_bare(int body_slot);
+/* The slot the surface behind this chrome is drawn in — see kch_px.c. */
+int kch_body_slot(void);
+/* One of libktui's eight slots as the packed value the painters take. */
+uint32_t kch_slot_rgb(int slot);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Window chrome (kch_chrome.c)

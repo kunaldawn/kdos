@@ -80,7 +80,10 @@ int kch_header(int w, const char *icon_name, const char *title,
 	if (subtitle && *subtitle)
 		ktui_draw_text(tx, 2, w - tx - 2, subtitle, KT_SURFACE,
 			       KT_ACCENT, KT_A_NONE);
-	ktui_draw_hline(1, 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
+	/* KT_MID, not KT_DIM. `dim` is a FILL at 1.63:1 against the page and a
+	 * rule drawn in it is a rule nobody can see — the same measurement
+	 * that moved every LABEL off it. */
+	ktui_draw_hline(1, 3, w - 2, KT_G_HL, KT_MID, kch_body_slot());
 	return 4;			/* the first body row */
 }
 
@@ -92,12 +95,12 @@ void kch_group(int x, int y, int w, const char *label)
 
 	if (w < lw + 2)
 		return;
-	ktui_draw_text(x, y, lw, label, KT_ACCENT, KT_BG, KT_A_NONE);
+	ktui_draw_text(x, y, lw, label, KT_ACCENT, kch_body_slot(), KT_A_NONE);
 	/* The rule runs to the right margin, so the heading reads as a band
 	 * rather than as another list row that happens to be a colour. */
 	if (w > lw + 2)
-		ktui_draw_hline(x + lw + 1, y, w - lw - 1, KT_G_HL, KT_DIM,
-				KT_BG);
+		ktui_draw_hline(x + lw + 1, y, w - lw - 1, KT_G_HL, KT_MID,
+				kch_body_slot());
 }
 
 /* ── the button bar ────────────────────────────────────────────────────── */
@@ -162,7 +165,10 @@ int kch_buttons(int w, int row, const struct kch_button *b, int n,
 	 * column popup, where the bar now fits and used to be dropped whole.
 	 * The caller draws its status clipped to this column instead.
 	 */
-	ktui_draw_fill(krect(x, row, w - 2 - x, 1), KT_BG);
+	/* To the PAGE, which is not always KT_BG: half this desktop's surfaces
+	 * call their background KT_SURFACE, and with a translucent body a
+	 * hardcoded KT_BG paints an opaque band across the button row. */
+	ktui_draw_fill(krect(x, row, w - 2 - x, 1), kch_body_slot());
 	for (int i = 0; i < n; i++) {
 		int lw = ktui_utf8_width(b[i].label);
 		int on = i == focus;
@@ -177,10 +183,12 @@ int kch_buttons(int w, int row, const struct kch_button *b, int n,
 		 */
 		int hot = enabled && hover_my == row && hover_mx >= x &&
 			  hover_mx < x + lw + 4;
-		int bg = on && enabled ? KT_ACCENT : hot ? KT_DIM : KT_BG;
+		int bg = on && enabled ? KT_ACCENT
+			 : hot		? KT_DIM
+					: kch_body_slot();
 
-		ktui_draw_text(x, row, 1, "[", hot ? KT_TEXT : KT_DIM, KT_BG,
-			       KT_A_NONE);
+		ktui_draw_text(x, row, 1, "[", hot ? KT_TEXT : KT_DIM,
+			       kch_body_slot(), KT_A_NONE);
 		ktui_draw_fill(krect(x + 1, row, lw + 2, 1), bg);
 		ktui_draw_text(x + 2, row, lw, b[i].label,
 			       !enabled	  ? KT_DIM
@@ -188,7 +196,7 @@ int kch_buttons(int w, int row, const struct kch_button *b, int n,
 					  : KT_TEXT,
 			       bg, KT_A_NONE);
 		ktui_draw_text(x + lw + 3, row, 1, "]", hot ? KT_TEXT : KT_DIM,
-			       KT_BG, KT_A_NONE);
+			       kch_body_slot(), KT_A_NONE);
 		/* The span is what was DRAWN, and a disabled button still
 		 * records one: a click on it has to be swallowed rather than
 		 * falling through to whatever is behind it. */

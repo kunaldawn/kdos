@@ -80,6 +80,19 @@ int kicon_enabled(void);
  */
 int kicon_slot(const char *name, int cw, int ch);
 
+/*
+ * The same, with `pad` PIXELS of air on every side of the picture.
+ *
+ * The well is still `cw` x `ch` cells, so the caller's plate, hit map and
+ * layout do not move; only the square inside it shrinks. A 40x40 taskbar
+ * button with a 40x40 icon in it has the picture running into its own
+ * rounded corners and touching the button beside it — Windows 7 puts a 32
+ * in a 40 and that four pixels is the whole difference between a row of
+ * buttons and a row of pictures. `pad` is in unscaled pixels; a HiDPI
+ * output's scale is applied here so a caller states one number.
+ */
+int kicon_slot_pad(const char *name, int cw, int ch, int pad);
+
 /* A file's icon, by MIME type — the same resolution `kdos-appbox open` does
  * (/usr/share/mime/globs, LONGEST matching suffix wins, or every .tar.gz gets
  * the decompressor's icon). `is_dir` short-circuits to the folder icon. */

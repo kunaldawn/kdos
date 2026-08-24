@@ -1,24 +1,24 @@
 += kdos =======================================================================+
-| . All Programs                    > |  . Home                                |
-|                                     |  . Documents                           |
-|                                     |  . Downloads                           |
-|                                     |  . Pictures                            |
-|                                     |  . Files                               |
-|                                     | ---------------------------------------|
-|                                     |  . Settings                            |
-|                                     |  . Network                             |
-|                                     |  . Bluetooth                           |
-|                                     |  . Sound                               |
-|                                     |  . Notifications                       |
-|                                     |  . Devices                             |
-|                                     |  . Displays                            |
-|                                     |  . Terminal                            |
-|                                     |  . Help                                |
-|                                     |  . Lock Screen                         |
-|                                     |  . Suspend                             |
-|                                     |  . Restart                             |
-|                                     |                                        |
-|                                     |                                        |
+| . All Programs              > | --PLACES-------------------------------------|
+|   No frequent apps yet        |  . Home                                      |
+|                               |  . Documents                                 |
+|                               |  . Downloads                                 |
+|                               |  . Pictures                                  |
+|                               |  . Files                                     |
+|                               | --SYSTEM-------------------------------------|
+|                               |  . Settings                                  |
+|                               |  . Network                                   |
+|                               |  . Bluetooth                                 |
+|                               |  . Sound                                     |
+|                               |  . Notifications                             |
+|                               |  . Devices                                   |
+|                               |  . Displays                                  |
+|                               |  . Terminal                                  |
+|                               |  . Help                                      |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
 |------------------------------------------------------------------------------|
-| > Type to search                                  [ Log Off ] [ Shut Down ]  |
+| > Type to search                                         Lck Slp Rst Out Off |
 +==============================================================================+
