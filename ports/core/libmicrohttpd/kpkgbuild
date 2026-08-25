@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libmicrohttpd
+version     = 1.0.10
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.gz
+sha256      = 04bfe8ef75db7d629a33de767599765cecadc56274a39822d5d081030d577685  libmicrohttpd-1.0.10.tar.gz
+description = Embeddable HTTP server — what kiwix-serve listens with
+homepage    = https://www.gnu.org/software/libmicrohttpd/

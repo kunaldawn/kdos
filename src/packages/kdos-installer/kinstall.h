@@ -101,9 +101,10 @@ typedef struct {
 	char kind[16];		/* base | runtime | app | data             */
 	char file[128];
 	char summary[128];
+	char requires[256];	/* `D:` — the ids under this one, by name  */
 	unsigned long long size;
 	int recommended;
-	int chosen;
+	int chosen;		/* ticked, or pulled in by something ticked */
 } KiPack;
 
 extern KiPack ki_pack[MAX_PACKS];
@@ -111,6 +112,10 @@ extern int ki_npack;
 extern int ki_packs_present;	/* a medium with an index on it            */
 
 void probe_packs(void);
+/* Tick everything the ticked packs need, transitively. Called after any change
+ * to the selection — a runtime is carried because something needs it, never
+ * because it exists. */
+void ki_packs_close(void);
 /* Bytes the chosen set costs — what the Summary and `--dump plan` report. */
 unsigned long long ki_packs_bytes(void);
 /* The Applications page's `enter`: scan the medium and apply an answer file's

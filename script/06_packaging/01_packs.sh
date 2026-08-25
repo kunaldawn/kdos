@@ -39,17 +39,56 @@ mkdir -p "$STORE/staging" "$STORE/mnt"
 # and nothing else.
 chmod 01777 "$STORE/staging"
 
+# WHICH RUNTIMES GO IN IS DECIDED BY WHAT NEEDS THEM, not by the `rt-` prefix.
+# Measured on a full bake the seven runtimes are 1.7 GB, of which rt-wine alone
+# is 713 MB — carried onto a machine that may never run a Windows binary. The
+# base plus the runtimes the RECOMMENDED applications need is what a live
+# session can actually launch; everything else arrives with its application.
+#
+# `D:` in the index is where the dependency comes from, and the closure is a
+# repeat-until-nothing-new rather than a recursion, so a chain of any depth
+# resolves and a cycle cannot spin.
+want=" base "
+if [ -f "$SRC/PACKAGES" ]; then
+    want="$want$(awk '
+        /^P:/ { id = substr($0, 3) }
+        /^D:/ { dep[id] = substr($0, 3) }
+        /^R:yes/ { rec[id] = 1 }
+        END { for (i in rec) printf "%s ", i }' "$SRC/PACKAGES")"
+    # pull in what those need, transitively
+    while :; do
+        more=$(awk -v want="$want" '
+            /^P:/ { id = substr($0, 3) }
+            /^D:/ { if (index(want, " " id " ")) print substr($0, 3) }
+        ' "$SRC/PACKAGES" | tr ' ' '\n' | sort -u)
+        added=0
+        for d in $more; do
+            case "$want" in *" $d "*) ;; *) want="$want$d "; added=1 ;; esac
+        done
+        [ "$added" = 0 ] && break
+    done
+fi
+
+# The APPLICATIONS themselves stay on the medium even when recommended: they
+# are already there, and copying one into the squashfs as well would ship it
+# twice on one ISO. What the closure is for is the runtimes UNDER them.
+kinds=$(awk '/^P:/ { id = substr($0, 3) } /^K:/ { printf "%s=%s ", id, substr($0, 3) }' \
+        "$SRC/PACKAGES" 2>/dev/null)
+
 n=0
 for p in "$SRC"/*.kpack; do
     [ -e "$p" ] || continue
     id=$(basename "$p" .kpack)
-    case "$id" in
-        base|rt-*)
+    case " $kinds " in
+        *" $id=app "*|*" $id=data "*) continue ;;
+    esac
+    case "$want" in
+        *" $id "*)
             cp -a "$p" "$STORE/$id.kpack"
             n=$((n + 1))
             ;;
         *)
-            # An application pack stays on the medium.
+            # Everything else stays on the medium until somebody asks for it.
             ;;
     esac
 done
@@ -108,4 +147,5 @@ META
     echo "[packs] kdos base pack: $(du -h "$STORE/kdos.kpack" | cut -f1)"
 fi
 
-echo "[packs] $n base/runtime pack(s) installed; the applications are on the medium"
+echo "[packs] $n pack(s) installed (base + what the recommended set needs);"
+echo "[packs] everything else is on the medium"

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cifs-utils
+version     = 7.7
+release     = 1
+source      = https://ftp.samba.org/pub/linux-cifs/$name/$name-$version.tar.bz2
+sha256      = 2f8aae9aa5ddd73fbaf4d61e2e5e19ef54124cbf2810b626820050e7bd2f6606  cifs-utils-7.7.tar.bz2
+description = mount.cifs and the SMB/CIFS userspace helpers
+homepage    = https://wiki.samba.org/index.php/LinuxCIFS_utils
+depends     = talloc

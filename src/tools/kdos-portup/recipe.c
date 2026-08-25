@@ -283,3 +283,86 @@ int pu_rewrite_version(const char *portdir, const char *newv)
 	kb_buf_free(&out);
 	return rc;
 }
+
+/*
+ * Re-hash every `sha256 =` line whose filename carried the old version.
+ *
+ * A BUMP THAT DOES NOT DO THIS LEAVES THE TREE UNVERIFIABLE. The recipe's
+ * hashes name `<name>-<oldver>.<ext>`; after the version is rewritten the
+ * fetch pulls `<name>-<newver>.<ext>`, finds no line naming it, and downloads
+ * it with a warning and no verification at all — then preflight fails on a
+ * source with no sha256. So the hash is recorded in the same operation as the
+ * version, and the tree is never transiently unverifiable.
+ *
+ * Every line is considered, not just the first: a rust or go port carries a
+ * second hash for `<name>-vendor-<ver>.tar.xz`, which the fetch regenerates
+ * and which moves with the version exactly as the tarball does.
+ *
+ * A line whose file is not on disk is LEFT ALONE rather than guessed at — the
+ * caller reverts on a failed fetch, and a half-rewritten hash list would
+ * survive that revert.
+ */
+int pu_rewrite_sha256(const char *portdir, const char *oldv, const char *newv)
+{
+	char path[600];
+	snprintf(path, sizeof(path), "%s/kpkgbuild", portdir);
+
+	size_t n = 0;
+	char *text = kb_read_all(path, &n);
+	if (!text)
+		return -1;
+
+	KbBuf out = {0};
+	int changed = 0;
+	for (char *line = text, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		next = nl ? nl + 1 : NULL;
+		if (nl)
+			*nl = 0;
+
+		char *eq = strchr(line, '=');
+		char *sub;
+		if (strncmp(line, "sha256", 6) || !eq) {
+			kb_buf_printf(&out, "%s\n", line);
+			continue;
+		}
+		/* "<64 hex>  <filename>" after the '=' */
+		char val[512];
+		kb_strlcpy(val, eq + 1, sizeof(val));
+		char *hex = val;
+		while (*hex == ' ')
+			hex++;
+		char *file = strchr(hex, ' ');
+		if (!file) {
+			kb_buf_printf(&out, "%s\n", line);
+			continue;
+		}
+		*file++ = 0;
+		while (*file == ' ')
+			file++;
+
+		if (!(sub = strstr(file, oldv))) {
+			kb_buf_printf(&out, "%s\n", line);
+			continue;
+		}
+		char nf[512], hash[65], full[900];
+		snprintf(nf, sizeof(nf), "%.*s%s%s", (int)(sub - file), file,
+			 newv, sub + strlen(oldv));
+		snprintf(full, sizeof(full), "%s/%s", portdir, nf);
+		if (kb_sha256_file(full, hash) != 0) {
+			kb_buf_printf(&out, "%s\n", line);
+			continue;
+		}
+		size_t pre = (size_t)(eq - line) + 1;
+		kb_buf_add(&out, line, pre);
+		for (const char *v = eq + 1; *v == ' '; v++)
+			kb_buf_add(&out, " ", 1);
+		kb_buf_printf(&out, "%s  %s\n", hash, nf);
+		changed = 1;
+	}
+	free(text);
+
+	int rc = changed ? write_file_atomic(path, out.p, out.n) : 0;
+	kb_buf_free(&out);
+	return rc;
+}

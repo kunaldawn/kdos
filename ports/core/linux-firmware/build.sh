@@ -30,14 +30,13 @@
 # blobs compressed. Measured on this tree: 1.9 GB extracted -> 921 MB
 # installed, 2307 symlinks, none dangling.
 #
-# No `-j`: upstream's parallel path requires GNU parallel, which is not a port.
-# Serial takes about a minute.
-#
-# No `make dedup` either: dedup-firmware.sh requires rdfind, which is also not
-# a port. It would replace duplicate blobs with links; without it duplicates
-# are stored twice, which is included in the 921 MB above.
+# Serial, and without dedup. GNU parallel and rdfind are both ports, so
+# upstream's `-j` and `make dedup` are reachable; neither is taken because
+# neither has been measured here and both change a 921 MB install: `-j` its
+# build, dedup its on-disk layout (duplicates become hardlinks, and the
+# dangling-symlink check below has to keep passing over the result). Serial
+# takes about a minute and the duplicate blobs are inside the 921 MB.
 
-install -d "$PKG/lib/firmware"
 ./copy-firmware.sh --zstd "$PKG/lib/firmware"
 
 # A dangling firmware symlink is invisible at runtime — request_firmware()

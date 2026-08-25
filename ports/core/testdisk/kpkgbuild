@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = testdisk
+version     = 7.2
+release     = 1
+source      = https://www.cgsecurity.org/$name-$version.tar.bz2
+sha256      = f8343be20cb4001c5d91a2e3bcd918398f00ae6d8310894a5a9f2feb813c283f  testdisk-7.2.tar.bz2
+description = Recover lost partitions and, as photorec, deleted files
+homepage    = https://www.cgsecurity.org/wiki/TestDisk
+depends     = ncurses e2fsprogs libjpeg-turbo

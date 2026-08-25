@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = zip
+version     = 3.0
+release     = 1
+
+_version    = ${version//./}
+
+source      = https://downloads.sourceforge.net/infozip/${name}${_version}.tar.gz
+sha256      = f0e8bb1f9b7eb0b01285495a2699df3a4b766784c1765a8f1aeedf63c0806369  zip-3.0.tar.gz
+description = Info-ZIP archive creation utilities
+homepage    = https://infozip.sourceforge.net/Zip.html
+depends     = bzip2
+bench_setup = dd if=/dev/urandom of=bench.bin bs=1M count=16 status=none
+bench       = zip -q -9 - bench.bin > /dev/null

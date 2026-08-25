@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sd
+version     = 1.1.0
+release     = 1
+source      = https://github.com/chmln/$name/archive/v$version.tar.gz
+sha256      = defdce484f8c92f265e1282490572575028967c2c55d356111d1e49a3ea9a88e  sd-1.1.0.tar.gz
+sha256      = 3d3c7980de75fcc957c4398df2830146ce5f98c94489013ce55ef9b45cd2df0e  sd-vendor-1.1.0.tar.xz
+description = Intuitive find-and-replace, a sed alternative for the common case
+homepage    = https://github.com/chmln/sd
+depends     = rust
+vendoring   = rust

@@ -384,11 +384,19 @@ int kd_install(const char *staged, char *msg, size_t n)
 		break;
 	case KPK_SIG_NONE:
 		/*
-		 * Allowed, and SAID. KDOS ships no key in /etc/kdos/keys —
-		 * shipping one would be asking you to trust whoever built the
-		 * image, which is the question signing exists to let you answer
-		 * yourself. KDOS_REQUIRE_SIG is the stricter rule for a machine
-		 * that installs only from a repository.
+		 * Allowed, and SAID. The medium's own index IS signed and the
+		 * public half of that key ships in /etc/kdos/keys, so a pack
+		 * that came off the medium takes the branch above and never
+		 * reaches here. What reaches here is a pack from somewhere
+		 * else — a stick, a `kdos-box freeze`, a directory in
+		 * pack-sources — and refusing those outright would refuse the
+		 * artefact this system can make for itself.
+		 *
+		 * SHIPPING A KEY IS A CLAIM ABOUT WHO BAKED THE MEDIUM, not
+		 * about who wrote KDOS: it says the packs beside it came from
+		 * the same bake. Replace it and re-sign to make it say
+		 * something about you. KDOS_REQUIRE_SIG is the stricter rule
+		 * for a machine that installs only what it can attribute.
 		 */
 		if (getenv("KDOS_REQUIRE_SIG")) {
 			snprintf(msg, n, "%s is unsigned and KDOS_REQUIRE_SIG is set",

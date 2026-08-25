@@ -241,6 +241,20 @@ static void plan_dump(int json)
 		if (ki_packs_present) {
 			printf("packs         %s\n",
 			       cfg.packs[0] ? cfg.packs : "(none chosen)");
+			/* The line above is the ANSWER FILE's set, which names
+			 * applications; the runtimes under them are derived
+			 * and are most of the cost, so a reader who saw only
+			 * the first line could not account for the second. */
+			printf("packs with    ");
+			for (int i = 0, first = 1; i < ki_npack; i++)
+				if (ki_pack[i].chosen &&
+				    strcmp(ki_pack[i].kind, "app") &&
+				    strcmp(ki_pack[i].kind, "data")) {
+					printf("%s%s", first ? "" : " ",
+					       ki_pack[i].id);
+					first = 0;
+				}
+			printf("\n");
 			printf("packs cost    %s\n",
 			       kb_human_size(ki_packs_bytes()));
 		}

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = chezmoi
+version     = 2.72.0
+release     = 1
+source      = https://github.com/twpayne/$name/archive/v$version.tar.gz
+sha256      = 1d277142b26de2401b495eb883d9eb945a47c2d6edb9fefe2036a9048e39af82  chezmoi-2.72.0.tar.gz
+sha256      = 7cdfe0018882a15d04a0eda0f83686259451e2a5b3c91d38cdcc2935165f046c  chezmoi-vendor-2.72.0.tar.xz
+description = Manage dotfiles across machines from one source of truth
+homepage    = https://www.chezmoi.io/
+depends     = go
+vendoring   = go

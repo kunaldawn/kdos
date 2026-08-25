@@ -611,6 +611,8 @@ void probe_packs(void)
 		case 'T': kb_strlcpy(cur.summary, line + 2, sizeof(cur.summary)); break;
 		case 'S': cur.size = strtoull(line + 2, NULL, 10); break;
 		case 'R': cur.recommended = !strcmp(line + 2, "yes"); break;
+		case 'D': kb_strlcpy(cur.requires, line + 2,
+				     sizeof(cur.requires)); break;
 		/* A delta is a route to a pack rather than a pack, and an
 		 * installer that offered one would offer something it cannot
 		 * apply: `O:` marks the stanza and it is dropped WHOLE at the
@@ -626,17 +628,59 @@ void probe_packs(void)
 	free(text);
 
 	/*
-	 * THE BASE AND THE RUNTIMES ARE NOT A CHOICE. An application pack is a
-	 * diff over a runtime and a runtime is a diff over the base; leaving
-	 * one out installs applications that cannot start, which is the one
-	 * outcome a page of checkboxes must not be able to produce. They are
-	 * carried always, and the page says so rather than drawing a tick
-	 * nobody may clear.
+	 * THE BASE IS NOT A CHOICE; A RUNTIME IS CARRIED BECAUSE SOMETHING
+	 * NEEDS IT. An application pack is a diff over a runtime and a runtime
+	 * is a diff over the base, so leaving a needed one out installs
+	 * applications that cannot start — the one outcome a page of
+	 * checkboxes must not be able to produce. But carrying ALL of them is
+	 * the other error and it is not free: measured on a real bake the
+	 * seven runtimes are 1.7 GB of which rt-wine alone is 713 MB, on a
+	 * machine that may never run a Windows binary.
 	 */
-	for (int i = 0; i < ki_npack; i++) {
-		int required = strcmp(ki_pack[i].kind, "app") &&
-			       strcmp(ki_pack[i].kind, "data");
-		ki_pack[i].chosen = required || ki_pack[i].recommended;
+	for (int i = 0; i < ki_npack; i++)
+		ki_pack[i].chosen = !strcmp(ki_pack[i].kind, "base") ||
+				    ki_pack[i].recommended;
+	ki_packs_close();
+}
+
+/*
+ * Pull in what the ticked packs need, transitively.
+ *
+ * `D:` carries NAMES and no version constraints, deliberately: this reader
+ * links neither libkpack nor a solver. The loop repeats until nothing new is
+ * added rather than recursing, so a chain of any depth resolves and a cycle
+ * cannot spin — a pack already chosen is never chosen twice.
+ */
+void ki_packs_close(void)
+{
+	int added = 1;
+
+	/* IDEMPOTENT, because unticking an application must give its runtime
+	 * back. Every runtime is dropped first and re-pulled by whatever still
+	 * needs it; base and the user's own app choices are untouched. */
+	for (int i = 0; i < ki_npack; i++)
+		if (strcmp(ki_pack[i].kind, "base") &&
+		    strcmp(ki_pack[i].kind, "app") &&
+		    strcmp(ki_pack[i].kind, "data"))
+			ki_pack[i].chosen = 0;
+
+	while (added) {
+		added = 0;
+		for (int i = 0; i < ki_npack; i++) {
+			char req[256], *tok, *save;
+
+			if (!ki_pack[i].chosen || !ki_pack[i].requires[0])
+				continue;
+			kb_strlcpy(req, ki_pack[i].requires, sizeof(req));
+			for (tok = strtok_r(req, " ", &save); tok;
+			     tok = strtok_r(NULL, " ", &save))
+				for (int j = 0; j < ki_npack; j++)
+					if (!ki_pack[j].chosen &&
+					    !strcmp(ki_pack[j].id, tok)) {
+						ki_pack[j].chosen = 1;
+						added = 1;
+					}
+		}
 	}
 }
 

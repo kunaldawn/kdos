@@ -303,6 +303,11 @@ typedef struct {
 	char sha256[65];
 	char from[KPK_PATH];	/* a delta's base file, or ""               */
 	char summary[128];	/* one line, for a reader with no libkpack  */
+	/* The ids this pack needs under it, space separated. Here as well as in
+	 * the pack's own metadata because kinstall reads THIS and links neither
+	 * libkpack nor a solver — without it an installer can only carry every
+	 * runtime, which on a real bake is 1.7 GB where 206 MB would do. */
+	char requires[256];
 	int recommended;
 	unsigned long long size;
 } KpkIndexEnt;

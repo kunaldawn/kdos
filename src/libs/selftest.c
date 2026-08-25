@@ -1745,6 +1745,31 @@ static void test_pack(void)
 		ok(kpk_open(pack, &p) == 0, "a tampered pack still opens");
 		eq_int(kpk_verify(&p, &ring, who), KPK_SIG_HASH,
 		       "one flipped payload byte fails the hash, not the signature");
+
+		/*
+		 * A SUBDIRECTORY IS A REAL BOUNDARY BETWEEN KEYRINGS, and two
+		 * of them depend on it: /etc/kdos/keys is kpkg's binhost ring
+		 * and /etc/kdos/keys/packs is kdos-packd's. A key that attests
+		 * "these packs came off this medium" must not thereby become a
+		 * trusted publisher of HOST packages, and the only thing
+		 * keeping those apart is that the loader does not descend.
+		 */
+		char *subdir = kb_path_join(keydir, "packs");
+		kb_mkdir_p(subdir);
+		char *sub = kb_path_join(subdir, "scoped.pub");
+		ksig_write_public(sub, pub, "scoped");
+		KsigRing outer = {0}, inner = {0};
+		char *bare = kb_path_join(dir, "keys2");
+		kb_mkdir_p(bare);
+		char *bsub = kb_path_join(bare, "packs");
+		kb_mkdir_p(bsub);
+		char *bkey = kb_path_join(bsub, "scoped.pub");
+		ksig_write_public(bkey, pub, "scoped");
+		eq_int(ksig_ring_load(&outer, bare), 0,
+		       "a keyring does not descend into a subdirectory");
+		eq_int(ksig_ring_load(&inner, bsub), 1,
+		       "and the subdirectory is a ring of its own");
+		free(bkey); free(bsub); free(bare); free(sub); free(subdir);
 		free(kf);
 		free(keydir);
 	}
@@ -1872,6 +1897,24 @@ static void test_pack(void)
 		kpk_meta_parse(dgr, strlen(dgr), &m);
 		ok(kpk_meta_valid(&m, err, sizeof(err)) != 0,
 		   "a graft that escapes its root is refused");
+
+		/* env is NOT a data-pack key: which QT_QPA_PLATFORMTHEME works
+		 * is a fact about the runtime that installed the platform
+		 * theme, so the runtime is what declares it. graft and
+		 * boxgraft stay data-only. */
+		const char *renv = "id = rt-kde\nkind = runtime\nversion = 1\n"
+				   "env = QT_QPA_PLATFORMTHEME=kde\n";
+		kpk_meta_parse(renv, strlen(renv), &m);
+		ok(kpk_meta_valid(&m, err, sizeof(err)) == 0,
+		   "a runtime may declare env");
+		eq_str(m.env[0], "QT_QPA_PLATFORMTHEME=kde",
+		       "and it survives the parse");
+
+		const char *rgr = "id = rt-x\nkind = runtime\nversion = 1\n"
+				  "graft = share here\n";
+		kpk_meta_parse(rgr, strlen(rgr), &m);
+		ok(kpk_meta_valid(&m, err, sizeof(err)) != 0,
+		   "but a runtime may not graft");
 	}
 
 	/* ── the solve ──────────────────────────────────────────────── */

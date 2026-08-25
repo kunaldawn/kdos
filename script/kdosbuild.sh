@@ -27,4 +27,18 @@ ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
     src/libs/libkbase/*.c src/libs/libkbuild/*.c \
     src/libs/libktui/*.c src/libs/libkcolor/*.c
 
-exec "$OUT" --script-dir script "$@"
+# THE BUILD RUNS AS THE CONTAINER'S ROOT and everything it writes under build/
+# would stay root's — snapshots the developer cannot delete, logs they cannot
+# read with their own editor, and an ISO `make run` cannot open. HOST_UID and
+# HOST_GID come in from the Makefile for this; a trap rather than a trailing
+# line, so a build that fails hands its logs back too.
+# build/podman is the pack bake's own container store and is root's by design
+# — podman refuses a store whose ownership does not match the user running it.
+hand_back() {
+    [ -n "${HOST_UID:-}" ] || return 0
+    find build -mindepth 1 -maxdepth 1 ! -name podman \
+        -exec chown -R "$HOST_UID:${HOST_GID:-$HOST_UID}" {} + 2>/dev/null || true
+}
+trap hand_back EXIT
+
+"$OUT" --script-dir script "$@"

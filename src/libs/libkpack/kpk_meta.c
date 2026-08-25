@@ -364,11 +364,24 @@ int kpk_meta_valid(const KpkMeta *m, char *err, size_t cap)
 			 "desktop entry or a command", m->id);
 		return -1;
 	}
-	if (m->kind != KPK_KIND_DATA && (m->ngraft || m->nboxgraft || m->nenv)) {
-		snprintf(err, cap, "%s: graft, boxgraft and env are data-pack keys",
+	if (m->kind != KPK_KIND_DATA && (m->ngraft || m->nboxgraft)) {
+		snprintf(err, cap, "%s: graft and boxgraft are data-pack keys",
 			 m->id);
 		return -1;
 	}
+	/*
+	 * `env` IS NOT A DATA-PACK KEY, and a runtime is the reason. A boxed Qt
+	 * application is themed by QT_QPA_PLATFORMTHEME, and which value works
+	 * depends entirely on which platform theme is INSTALLED — which is a
+	 * fact about the runtime under it and about nothing else. Declaring it
+	 * in the pack that installs the packages is what stops the value and
+	 * the packages drifting apart; deriving it anywhere else is a second
+	 * copy of the same fact.
+	 *
+	 * The scope is a box: these are exported into a container the caller
+	 * was already going to start, from a pack whose payload hash and
+	 * signature were checked before it was mounted.
+	 */
 	/* A graft destination is joined onto a directory this daemon owns. */
 	for (int i = 0; i < m->ngraft; i++)
 		if (strstr(m->graft[i].to, "..") ||

@@ -24,12 +24,103 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT_REPO="$SCRIPT_DIR/core"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# OUR OWN ARCHIVE OF EVERY TARBALL WE HAVE EVER USED. A release asset is named
+# `<name>-<version>.<ext>`, which the recipe already determines — so an
+# append-only archive serves every commit ever made with NOTHING TO PIN, and a
+# five-year-old checkout finds the exact tarball it was written against. The
+# guarantee is that an asset is never deleted.
+#
+# SHARDED BY FIRST LETTER, because a release holds at most 1000 assets and this
+# archive only ever grows: 524 tarballs today, ~725 after the catalogue lands,
+# and one more for every version bump forever. A single release would hit the
+# cap inside a year and the never-delete guarantee would be the thing that
+# broke. The shard is computed from the filename, so it costs no pin and no
+# lookup — `curl-8.21.0.tar.xz` is always in `sources-c`.
+#
+# Set KDOS_SOURCES_BASE empty to fetch only from upstream.
+KDOS_SOURCES_BASE="${KDOS_SOURCES_BASE-https://github.com/kunaldawn/kdos/releases/download}"
+
+# The shard a filename belongs to: its first character, lowercased, with
+# anything that is not a letter or a digit collected under `0`.
+src_shard() {
+    printf '%s' "$1" | cut -c1 | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]/0/'
+}
+
+# ── everything below this block runs INSIDE a container ────────────────────
+#
+# Downloading a tarball needs nothing; VENDORING needs cargo, go, npm and pip,
+# at the versions this tree will compile the port with. Carrying four
+# toolchains on the developer's machine to run one script is what this avoids.
+#
+# IT RUNS AS THE CALLER, not as root: every file it writes is committed, and a
+# root-owned tarball in a git tree is somebody else's problem later. That uid
+# has no passwd entry inside, so HOME and each toolchain's cache are pointed at
+# a scratch directory under build/ — cargo and go both refuse to run without a
+# writable home.
+if [ -z "${KDOS_FETCH_INNER:-}" ] && [ -z "${KDOS_FETCH_HOST:-}" ]; then
+    ENGINE_OUT="${ENGINE_OUT:-}"
+    if [ -z "$ENGINE_OUT" ]; then
+        if command -v docker >/dev/null 2>&1; then ENGINE_OUT=docker
+        elif command -v podman >/dev/null 2>&1; then ENGINE_OUT=podman
+        else
+            echo "ports/fetch: no docker or podman — set KDOS_FETCH_HOST=1 to" >&2
+            echo "             use this machine's own toolchains instead" >&2
+            exit 1
+        fi
+    fi
+    ver() { sed -n "s/^version[[:space:]]*=[[:space:]]*//p" \
+                   "$PORT_REPO/$1/kpkgbuild" | head -1; }
+    # RUSTUP_TOOLCHAIN OVERRIDES A PROJECT'S OWN rust-toolchain.toml, and it
+    # has to: atuin pins `channel = "1.93"`, which rustup reads as a toolchain
+    # it does not have and tries to download into a root-owned RUSTUP_HOME. It
+    # is also the correct answer — a bundle must be resolved by the compiler
+    # that will build it, not by the one upstream develops against.
+    echo "==> building the fetch image (rust $(ver rust), go $(ver go), node $(ver nodejs))"
+    $ENGINE_OUT build -q -t kdos-fetch \
+        --build-arg RUST_VERSION="$(ver rust)" \
+        --build-arg GO_VERSION="$(ver go)" \
+        --build-arg NODE_VERSION="$(ver nodejs)" \
+        -f "$SCRIPT_DIR/Containerfile.fetch" "$SCRIPT_DIR" >/dev/null
+    mkdir -p "$REPO_ROOT/build/fetch-home"
+    exec $ENGINE_OUT run --rm --network=host \
+        --user "$(id -u):$(id -g)" \
+        -v "$REPO_ROOT":/kdos \
+        -e KDOS_FETCH_INNER=1 \
+        -e HOME=/kdos/build/fetch-home \
+        -e CARGO_HOME=/kdos/build/fetch-home/cargo \
+        -e GOPATH=/kdos/build/fetch-home/go \
+        -e GOCACHE=/kdos/build/fetch-home/gocache \
+        -e npm_config_cache=/kdos/build/fetch-home/npm \
+        -e KPKG_BIN=/kdos/build/fetch-home/kpkg \
+        -e RUSTUP_TOOLCHAIN="$(ver rust)" \
+        -e KDOS_SOURCES_BASE="$KDOS_SOURCES_BASE" \
+        kdos-fetch bash /kdos/ports/fetch "$@"
+fi
 # kdos-kpkg's PRIMARY dispatch is argv[0]'s basename (main.c's `self`); the
 # argv[1] fallback it also has is one dispatcher refactor away from silently
 # breaking every caller that relies on it, the way it already broke this
 # script's own `.kpkg-meta meta .` once. So the on-demand build's OUTPUT
 # NAME is what has to be "kpkg" — not an extra argv token at the call site.
 KPKG="${KPKG_BIN:-$SCRIPT_DIR/.kpkgbin/kpkg}"
+
+# A VENDOR BUNDLE IS AN ARTEFACT AND MUST HASH THE SAME TWICE. Plain `tar -cJf`
+# records the extraction time and the builder's uid, so two runs of the same
+# `cargo vendor` produce two different files and the `sha256 =` line beside it
+# is a hash of one particular afternoon. These are `roll_package()`'s flags,
+# for the same reason and with the same effect: sorted names, the pinned epoch,
+# uid/gid 0, and single-threaded xz, whose output XZ_OPT=-T0 in the environment
+# would otherwise change.
+vendor_tar() {
+    local out="$1"; shift
+    tar --sort=name \
+        --mtime="@${SOURCE_DATE_EPOCH:-1735689600}" \
+        --owner=0 --group=0 --numeric-owner \
+        --format=gnu \
+        --use-compress-program='xz -9 -T1' \
+        -cf "$out" "$@"
+}
+
 
 if [ ! -x "$KPKG" ]; then
     echo "==> Building the recipe reader..."
@@ -143,19 +234,45 @@ fetch_port() {
             rm -f "./$filename"
         fi
 
+        # The hash for THIS file, if the recipe names one. It decides where we
+        # are allowed to fetch from, so it is resolved before any download.
+        # `kpkg meta` emits $sha256 as alternating "<hex> <name>" tokens.
+        want=""
+        if [ -n "$sha256" ]; then
+            want=$(echo "$sha256" | tr -s ' \t' '\n\n' | awk -v f="$filename" \
+                   'NR%2==1{h=$0} NR%2==0 && $0==f {print h; exit}')
+        fi
+
         if [ -f "./$filename" ]; then
             echo "✓  $portname: $filename exists"
         else
-            echo "⬇  $portname: Downloading $filename..."
-            wget -q --show-progress -O "./$filename" "$url" || {
+            # WHERE WE MAY FETCH FROM DEPENDS ON WHETHER WE KNOW THE HASH.
+            #
+            # With a hash, our own archive and upstream are interchangeable:
+            # the hash is the identity and the URL is advisory, which is what
+            # lets a mirror be added in ten years without invalidating a
+            # commit. Ours is tried FIRST because it is the copy that cannot
+            # 404 when SourceForge finally goes.
+            #
+            # WITHOUT a hash — you have just bumped `version =` and the new
+            # tarball has never existed here — upstream is the ONLY source.
+            # Our archive cannot hold it, and reaching for our own release for
+            # an unverifiable file would be trusting the wrong thing entirely.
+            srcs="$url"
+            if [ -n "$want" ] && [ -n "${KDOS_SOURCES_BASE:-}" ]; then
+                srcs="$KDOS_SOURCES_BASE/sources-$(src_shard "$filename")/$filename $url"
+            fi
+            got_it=0
+            for u in $srcs; do
+                echo "⬇  $portname: $filename <- $u"
+                wget -q --show-progress -O "./$filename" "$u" || { rm -f "./$filename"; continue; }
+                # A server can answer 200 with nothing; wget is content with that.
+                [ -s "./$filename" ] || { rm -f "./$filename"; continue; }
+                got_it=1
+                break
+            done
+            if [ "$got_it" != 1 ]; then
                 echo "✗  $portname: Failed to download $filename"
-                rm -f "./$filename"
-                return 1
-            }
-            # A server can answer 200 with nothing; wget is content with that.
-            if [ ! -s "./$filename" ]; then
-                echo "✗  $portname: $filename came back empty"
-                rm -f "./$filename"
                 return 1
             fi
             echo "✓  $portname: Downloaded $filename"
@@ -167,8 +284,6 @@ fetch_port() {
         # get caught. `kpkg meta` emits $sha256 as alternating
         # "<hex> <name>" tokens.
         if [ -n "$sha256" ]; then
-            want=$(echo "$sha256" | tr -s ' \t' '\n\n' | awk -v f="$filename" \
-                   'NR%2==1{h=$0} NR%2==0 && $0==f {print h; exit}')
             if [ -n "$want" ]; then
                 got=$(sha256sum "./$filename" | cut -d" " -f1)
                 if [ "$got" != "$want" ]; then
@@ -238,14 +353,14 @@ fetch_port() {
 
             # Create vendor tarball
             if [ -f Cargo.lock ]; then
-                tar -cJf "$portdir/$vendor_file" vendor .cargo Cargo.lock || {
+                vendor_tar "$portdir/$vendor_file" vendor .cargo Cargo.lock || {
                     echo "✗  $portname: Failed to create $vendor_file"
                     popd >/dev/null
                     rm -rf "$tmp_dir"
                     return 1
                 }
             else
-                tar -cJf "$portdir/$vendor_file" vendor .cargo || {
+                vendor_tar "$portdir/$vendor_file" vendor .cargo || {
                     echo "✗  $portname: Failed to create $vendor_file"
                     popd >/dev/null
                     rm -rf "$tmp_dir"
@@ -299,7 +414,7 @@ fetch_port() {
                 rm -rf "$tmp_dir"
                 return 1
             }
-            tar -cJf "$portdir/$vendor_file" vendor || {
+            vendor_tar "$portdir/$vendor_file" vendor || {
                 echo "✗  $portname: Failed to create $vendor_file"
                 popd >/dev/null
                 rm -rf "$tmp_dir"
@@ -351,7 +466,7 @@ fetch_port() {
                 rm -rf "$tmp_dir"
                 return 1
             }
-            tar -cJf "$portdir/$vendor_file" node_modules || {
+            vendor_tar "$portdir/$vendor_file" node_modules || {
                 echo "✗  $portname: Failed to create $vendor_file"
                 popd >/dev/null
                 rm -rf "$tmp_dir"
@@ -532,7 +647,7 @@ fetch_port() {
             done
             rm processed.txt
 
-            tar -cJf "$portdir/$vendor_file" vendor || {
+            vendor_tar "$portdir/$vendor_file" vendor || {
                 echo "✗  $portname: Failed to create $vendor_file"
                 popd >/dev/null
                 rm -rf "$tmp_dir"

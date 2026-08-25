@@ -112,6 +112,13 @@ const char *pack_store(void);
 int  packd_ask(const char *req, char *out, size_t n);
 char *pack_list(void);
 int  pack_of_command(const char *cmd, char *id, size_t n);
+
+/* Every `env =` the pack's own stack declares, nearest pack first. The pack
+ * lane's answer to the image label: which QT_QPA_PLATFORMTHEME works is a fact
+ * about the runtime that installed the platform theme, and the runtime is what
+ * declares it. Returns how many were written. */
+#define PACK_ENV_MAX 24
+int  pack_env(const char *id, char out[][256], int max);
 int  pack_compose(const char *box, const char *id, char *merged, size_t n);
 int  pack_decompose(const char *box);
 int  pack_box_create(const Profile *p, const char *merged);

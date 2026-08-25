@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ddrescue
+version     = 1.30
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.lz
+sha256      = 2264622d309d6c87a1cfc19148292b8859a688e9bc02d4702f5cd4f288745542  ddrescue-1.30.tar.lz
+description = Image a failing disk with a resumable mapfile
+homepage    = https://www.gnu.org/software/ddrescue/
+depends     = lzip
