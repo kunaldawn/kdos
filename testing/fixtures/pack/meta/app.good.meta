@@ -1,0 +1,15 @@
+id          = app.good
+kind        = app
+name        = A Working Application
+version     = 3.0.4
+release     = 1
+summary     = Composes over base and rt-gtk
+category    = Graphics
+licence     = GPL-3.0-or-later
+requires    = rt-gtk >= 1
+requires    = base
+desktop     = good.desktop
+mime        = image/png
+command     = good
+launch_cold = 18300
+recommended = yes

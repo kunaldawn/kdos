@@ -40,4 +40,5 @@ const ResPage RES_PAGES[RP_NPAGES] = {
 	{ "network",      "Network",      "network-wired",       res_net_prepare, res_net_headline, res_draw_net, res_net_click, res_net_wheel, res_net_key, res_net_motion, NULL },
 	{ "batteries",    "Batteries",    "battery",             res_batt_prepare, res_batt_headline, res_draw_batt, NULL, NULL, NULL, NULL, NULL },
 	{ "energy",       "Energy",       "speedometer",         res_energy_prepare, res_energy_headline, res_draw_energy, NULL, NULL, res_energy_key, NULL, NULL },
+	{ "boxes",        "Boxes",        "package-x-generic",   res_box_prepare, res_box_headline, res_draw_boxes, res_box_click, res_box_wheel, res_box_key, res_box_motion, res_box_release },
 };

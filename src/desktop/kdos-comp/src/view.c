@@ -77,6 +77,33 @@ security_context_from_view(struct view *view)
 	return NULL;
 }
 
+/* KDOS
+ *
+ * WHICH BOX A WINDOW CAME FROM, and the compositor has known this all along.
+ * kdos-boxsock tags every client it launches with a security context whose
+ * app_id is the BOX NAME and whose instance_id distinguishes two runs of the
+ * same application; server.c already looks the context up to decide what the
+ * client may bind. This is the same lookup, answering the other question.
+ *
+ * NULL for a host window, which is the honest answer and the one every caller
+ * renders as today's label.
+ */
+const char *
+kdos_view_box(struct view *view)
+{
+	const struct wlr_security_context_v1_state *ctx =
+		security_context_from_view(view);
+	return ctx ? ctx->app_id : NULL;
+}
+
+const char *
+kdos_view_instance(struct view *view)
+{
+	const struct wlr_security_context_v1_state *ctx =
+		security_context_from_view(view);
+	return ctx ? ctx->instance_id : NULL;
+}
+
 struct view_query *
 view_query_create(void)
 {
@@ -2502,6 +2529,7 @@ view_destroy(struct view *view)
 	assert(view);
 
 	kdos_winpos_forget(view); /* KDOS: drop a mark left by a view that never mapped */
+	kdos_boxchip_forget(view); /* KDOS: the chip's cached box and colour */
 	wl_signal_emit_mutable(&view->events.destroy, NULL);
 	snap_constraints_invalidate(view);
 

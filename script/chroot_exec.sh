@@ -114,6 +114,13 @@ trap cleanup EXIT
 # KDOS_REPLAY is forwarded: it tells a step that the developer picked it
 # deliberately, so mark-file guards ("already built, exit 0") stand down.
 #
+# SO ARE THE TWO OPT-IN PACKAGING KNOBS, and they have to be named here for the
+# same reason: `env -i` clears the environment, so a variable the Makefile
+# passes into the container reaches every step that runs on the HOST and none
+# that runs in the chroot. 06_packaging is a chroot phase, which is where both
+# of these are read — a `make build KDOS_ISO_SOURCES=1` that arrives here
+# unnamed produces an ordinary stick and says nothing about why.
+#
 # /usr/local/bin is LAST, unlike fs/etc/profile which puts it first. Our own
 # tools install there — kdos, kdos-appbox — and leaving it out entirely made
 # `kdos-appbox image assemble` in 01_appbox.sh die with "command not found",
@@ -124,5 +131,7 @@ chroot "$CHROOT_DIR" /usr/bin/env -i \
     HOME=/root \
     TERM="$TERM" \
     KDOS_REPLAY="${KDOS_REPLAY:-0}" \
+    KDOS_ISO_SOURCES="${KDOS_ISO_SOURCES:-0}" \
+    KDOS_PACK_KDOS="${KDOS_PACK_KDOS:-0}" \
     PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"

@@ -281,17 +281,21 @@ static int list_table(const char *reply)
 	if (!reply_ok(reply, p))
 		return 1;
 
-	printf("  %3s %3s %-6s %-22s %s\n", "id", "ws", "state", "app_id",
-	       "title");
+	printf("  %3s %3s %-6s %-22s %-12s %s\n", "id", "ws", "state", "app_id",
+	       "box", "title");
 	int n = 0;
 	while (j_object(&p, &beg, &end)) {
-		char app[64], title[160], st[8];
+		char app[64], title[160], box[64], st[8];
 		j_str(beg, end, "app_id", app, sizeof(app));
 		j_str(beg, end, "title", title, sizeof(title));
+		/* The box comes from the window's own security context, which
+		 * kdos-boxsock set — not from walking its pid to a conmon. A
+		 * host window has none and prints a dash. */
+		j_str(beg, end, "box", box, sizeof(box));
 		state_letters(beg, end, st);
-		printf("  %3ld %3ld %-6s %-22.22s %.60s\n",
+		printf("  %3ld %3ld %-6s %-22.22s %-12.12s %.48s\n",
 		       j_int(beg, end, "id", -1), j_int(beg, end, "workspace", 0),
-		       st, app[0] ? app : "-", title);
+		       st, app[0] ? app : "-", box[0] ? box : "-", title);
 		n++;
 	}
 	if (!n)
@@ -333,6 +337,7 @@ static int usage(void)
 		"usage: kdos hey list [--json]\n"
 		"       kdos hey run <action> <id>\n"
 		"       kdos hey outputs [--json]\n"
+		"       kdos hey boxes [--json]\n"
 		"\n"
 		"<action> is a labwc action name: Close, Focus, Iconify,\n"
 		"ToggleMaximize, ToggleShade, ToggleFullscreen, Raise, ...\n");
@@ -417,6 +422,48 @@ int hey_main(int argc, char **argv)
 			json = 1;
 
 	const char *what = argv[1];
+
+	if (!strcmp(what, "boxes")) {
+		/* The distinct boxes with a window on the screen. `kdos-box gc`
+		 * asks this before stopping anything: a box whose window is
+		 * mapped is not idle whatever its clock says. */
+		char *reply = ask("{\"cmd\":\"boxes\"}\n");
+		const char *p, *beg, *end;
+		int n = 0;
+
+		if (!reply)
+			return 1;
+		if (json) {
+			fputs(reply, stdout);
+			if (reply[0] && reply[strlen(reply) - 1] != '\n')
+				fputc('\n', stdout);
+			free(reply);
+			return 0;
+		}
+		p = strstr(reply, "\"boxes\"");
+		if (!p || !reply_ok(reply, p)) {
+			free(reply);
+			return 1;
+		}
+		/* A flat array of strings, so the object walk does not apply:
+		 * scan the quoted runs after the key. */
+		for (beg = p + 7; *beg && *beg != '['; beg++)
+			;
+		for (; *beg && *beg != ']'; beg++) {
+			if (*beg != '"')
+				continue;
+			end = strchr(beg + 1, '"');
+			if (!end)
+				break;
+			printf("  %.*s\n", (int)(end - beg - 1), beg + 1);
+			beg = end;
+			n++;
+		}
+		if (!n)
+			printf("  (no boxed windows)\n");
+		free(reply);
+		return 0;
+	}
 
 	if (!strcmp(what, "list") || !strcmp(what, "outputs")) {
 		char req[64];

@@ -94,7 +94,9 @@ struct row {
 	char label[64];
 	const char *icon;		/* an icon NAME, or NULL          */
 	const struct sh_app *app;	/* set for an application         */
-	const char *argv[6];		/* set for a fixed entry          */
+	/* NUL-terminated for sh_spawn, so the last slot is never filled: the
+	 * longest row here is `foot -e kdos app install <id>`, six words. */
+	const char *argv[8];		/* set for a fixed entry          */
 	int rule;			/* a separator, not a row         */
 	int submenu;			/* opens the categories, or a cat */
 	int back;			/* returns to the level above     */
@@ -330,6 +332,59 @@ static int fixed_match(const struct row *r, const char *q)
 	return r->keys && strcasestr(r->keys, q) != NULL;
 }
 
+/*
+ * THE PACKS ON THE MEDIUM, matched by name. `/mnt/iso/packs/PACKAGES` is the
+ * signed index the medium already carries and it is a flat file — read here
+ * rather than asked of kdos-packd, because this runs on every keystroke and a
+ * socket round trip per character is not something a menu does.
+ *
+ * The ids are held so a row's argv can point at one: a row's argv is `const
+ * char *` and a stack buffer would be gone by the time somebody clicked it.
+ */
+#define ST_MEDIUM_MAX 16
+static char medium_id[ST_MEDIUM_MAX][64];
+
+static const char *st_medium_id(int i)
+{
+	return (i >= 0 && i < ST_MEDIUM_MAX) ? medium_id[i] : "";
+}
+
+static int st_medium_match(const char *q, char out[][64], int max)
+{
+	char line[512];
+	FILE *f;
+	int n = 0;
+	char id[64] = "";
+
+	if (!q || !*q)
+		return 0;
+	f = fopen("/mnt/iso/packs/PACKAGES", "r");
+	if (!f)
+		return 0;
+	while (n < max && n < ST_MEDIUM_MAX && fgets(line, sizeof(line), f)) {
+		line[strcspn(line, "\r\n")] = 0;
+		if (!strncmp(line, "P:", 2)) {
+			snprintf(id, sizeof(id), "%s", line + 2);
+			continue;
+		}
+		/* Only an application is worth offering: a runtime is pulled
+		 * in by whatever needs it, and offering one is offering a
+		 * person a library. */
+		if (strcmp(line, "K:app") || !id[0])
+			continue;
+		if (!strcasestr(id, q)) {
+			id[0] = 0;
+			continue;
+		}
+		snprintf(medium_id[n], sizeof(medium_id[0]), "%s", id);
+		snprintf(out[n], 64, "%s", id);
+		n++;
+		id[0] = 0;
+	}
+	fclose(f);
+	return n;
+}
+
 static void build_left(void)
 {
 	nleft = 0;
@@ -380,7 +435,41 @@ static void build_left(void)
 					break;
 				*r = fixed[t][i];
 			}
-		if (!n && !extra)
+		/*
+		 * AND THE MEDIUM. A query with no installed match that DOES
+		 * match a pack on the stick gets a row that installs it. This
+		 * is the whole of what an app store would have been worth on a
+		 * distro whose medium IS the software library: the question is
+		 * never "where do I get this", it is "is it here", and the
+		 * answer is a row rather than a shopfront.
+		 *
+		 * The pack list is read from the medium's own index — a flat
+		 * file, no daemon round trip — because this runs while
+		 * somebody is typing.
+		 */
+		int offered = 0;
+		if (!n) {
+			char ids[16][64];
+			int m = st_medium_match(query, ids, 16);
+
+			for (int i = 0; i < m && nleft < ST_MAX_ROWS; i++) {
+				struct row *r;
+				if (!offered++)
+					rule_named(left, &nleft,
+						   "INSTALL FROM THE MEDIUM");
+				r = push(left, &nleft, ids[i]);
+				if (!r)
+					break;
+				r->icon = "package-x-generic";
+				r->argv[0] = "foot";
+				r->argv[1] = "-e";
+				r->argv[2] = "kdos";
+				r->argv[3] = "app";
+				r->argv[4] = "install";
+				r->argv[5] = st_medium_id(i);
+			}
+		}
+		if (!n && !extra && !offered)
 			push(left, &nleft, "no match");
 		return;
 	}
@@ -587,6 +676,20 @@ static void build_right(void)
 		r->keys = "camera webcam usb stick disk mount eject";
 		r->icon = "camera-web";
 		r->argv[0] = "kdos-devices";
+	}
+	r = push(right, &nright, "Boxes");
+	if (r) {
+		/*
+		 * The environments. Every fat application on this machine is
+		 * already in one, so a row that opens the page where they are
+		 * measured is the way in for a whole lane of the system — and
+		 * a lane with no line in a menu is a lane nothing can reach.
+		 */
+		r->keys = "box container environment distrobox pack apps";
+		r->icon = "package-x-generic";
+		r->argv[0] = "kdos-res";
+		r->argv[1] = "--page";
+		r->argv[2] = "boxes";
 	}
 	r = push(right, &nright, "Displays");
 	if (r) {

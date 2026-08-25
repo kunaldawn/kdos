@@ -118,4 +118,12 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 int kdt_cve(int argc, char **argv, const char *tty_accent,
 	    const char *tty_warn, const char *tty_reset);
 
+/*
+ * `kdos app` (app.c). The applications this machine has and the ones on the
+ * medium beside it — a handful of verbs over kdos-packd, not a store. Every
+ * verb hands the daemon an id out of the list the daemon published.
+ */
+int kdt_app(int argc, char **argv);
+int kdt_trash(int argc, char **argv);
+
 #endif /* KDOS_TOOLS_H */

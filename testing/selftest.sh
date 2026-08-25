@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 CC=${CC:-cc}
 WARN="-Wall -Wextra -Werror"
 STD="-O2 -std=gnu11 -D_GNU_SOURCE"
-INC="-Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/tools/kdos-portup -Isrc/libs/libkproc"
+INC="-Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/tools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
@@ -45,7 +45,8 @@ echo "==> selftest"
 $CC $STD $WARN $INC -o "$OUT/selftest" src/libs/selftest.c \
     src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libkpkg/*.c \
     src/libs/libkbuild/*.c src/libs/libktui/*.c src/libs/libkproc/*.c \
-    src/libs/libkxdg/*.c src/tools/kdos-portup/extract.c
+    src/libs/libkxdg/*.c src/libs/libksig/*.c src/libs/libksig/monocypher/*.c \
+    src/libs/libkpack/*.c src/tools/kdos-portup/extract.c
 ASAN_OPTIONS=detect_leaks=1 "$OUT/selftest"
 
 echo
@@ -61,9 +62,13 @@ echo "  kdos-appbox"
 $CC $STD $WARN $INC -Isrc/packages/kdos-theme -o "$OUT/kdos-theme" \
     src/packages/kdos-theme/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
 echo "  kdos-theme"
-$CC $STD $WARN $INC -Isrc/packages/kdos-tools -o "$OUT/kdos-tools" \
+# libkpack (over libksig) is `kdos app update`: reading a PACKAGES index and
+# picking the delta is the same parser kdos-packd uses.
+$CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/libs/libkpack \
+    -Isrc/packages/kdos-tools -o "$OUT/kdos-tools" \
     src/packages/kdos-tools/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
-    src/libs/libkpkg/*.c src/libs/libkxdg/*.c src/libs/libkproc/*.c
+    src/libs/libkpkg/*.c src/libs/libkxdg/*.c src/libs/libkproc/*.c \
+    src/libs/libksig/*.c src/libs/libksig/monocypher/*.c src/libs/libkpack/*.c
 echo "  kdos-tools"
 $CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/packages/kdos-kpkg \
     -o "$OUT/kdos-kpkg" \
@@ -97,6 +102,120 @@ $CC $STD $WARN $INC -Isrc/tools/kdos-portup -o "$OUT/kdos-portup" \
     src/libs/libkbuild/*.c
 echo "  kdos-portup"
 "$OUT/kdos-portup" --selftest --fixture testing/fixtures/portup
+
+# kdos-packd is the sixth root daemon and the only thing in the tree that
+# mounts. Its ANSWER is checkable without root: --fixture runs the same scan,
+# the same solve and the same graft rules and mounts nothing, which is the seam
+# `kdos stutter`, `kdos-oomd` and `kdos-mountd` all use.
+$CC $STD $WARN $INC -Isrc/desktop/kdos-packd -o "$OUT/kdos-packd" \
+    src/desktop/kdos-packd/*.c src/libs/libkbase/*.c src/libs/libksig/*.c \
+    src/libs/libksig/monocypher/*.c src/libs/libkpkg/*.c src/libs/libkpack/*.c
+echo "  kdos-packd"
+$CC $STD $WARN $INC -o "$OUT/kdos-pack" \
+    src/packages/kdos-pack/main.c src/libs/libkbase/*.c src/libs/libksig/*.c \
+    src/libs/libksig/monocypher/*.c src/libs/libkpkg/*.c src/libs/libkpack/*.c
+echo "  kdos-pack"
+
+echo
+echo "==> boxes: the profile says what it enforced, and what it could not"
+$CC $STD $WARN $INC -Isrc/packages/kdos-appbox -o "$OUT/kdos-box" \
+    src/packages/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
+    src/libs/libkcolor/*.c src/libs/libkxdg/*.c
+BH="$OUT/boxhome"
+mkdir -p "$BH/.config/kdos/boxes"
+cp testing/fixtures/box/*.conf "$BH/.config/kdos/boxes/"
+# The binary dispatches on its own BASENAME, which is what makes the same file
+# kdos-box here and kdos-appbox on the launch path — the property build.sh's
+# symlink relies on, exercised rather than assumed.
+BP="$OUT/box.txt"
+HOME="$BH" "$OUT/kdos-box" profile devbox > "$BP" 2>&1 || true
+grep -q "unknown key 'nonsense'" "$BP" \
+    || { echo "  FAIL  an unknown profile key is reported by name"; cat "$BP"; exit 1; }
+echo "  ok    an unknown key is reported by name, not ignored"
+grep -q "network     = private     --unshare-netns" "$BP" \
+    || { echo "  FAIL  the profile prints the flag it enforced with"; cat "$BP"; exit 1; }
+echo "  ok    every key names the podman flag behind it"
+grep -q "audio=no gpu=yes cannot be enforced separately" "$BP" \
+    || { echo "  FAIL  a key that cannot be enforced must say so"; cat "$BP"; exit 1; }
+echo "  ok    and a key it CANNOT enforce says so rather than reporting success"
+HOME="$BH" "$OUT/kdos-box" profile frozenbox > "$OUT/box2.txt" 2>&1 || true
+grep -q "persistence = frozen      (writes discarded)" "$OUT/box2.txt" \
+    || { echo "  FAIL  an app box is frozen"; cat "$OUT/box2.txt"; exit 1; }
+echo "  ok    an app box and a dev box differ in the profile, not in kind"
+
+# `export` names a secondary box's launcher so it cannot collide with the
+# default box's, which keeps upstream's own desktop id.
+HOME="$BH" "$OUT/kdos-box" export arch gimp > "$OUT/box3.txt" 2>&1 || true
+test -f "$BH/.local/share/applications/gimp.arch.desktop" \
+    || { echo "  FAIL  a secondary box's launcher is <id>.<box>.desktop"; exit 1; }
+test -L "$BH/.local/bin/gimp@arch" \
+    || { echo "  FAIL  and its shim is <app>@<box>"; exit 1; }
+grep -q 'Exec=kdos-box run arch gimp %U' "$BH/.local/share/applications/gimp.arch.desktop" \
+    || { echo "  FAIL  the Exec line"; cat "$BH/.local/share/applications/gimp.arch.desktop"; exit 1; }
+echo "  ok    a second box's launcher and shim cannot collide with the default's"
+HOME="$BH" "$OUT/kdos-box" unexport arch gimp > /dev/null 2>&1 || true
+test ! -e "$BH/.local/share/applications/gimp.arch.desktop" \
+    || { echo "  FAIL  unexport removes exactly what export added"; exit 1; }
+echo "  ok    and unexport removes exactly what export added"
+
+echo
+echo "==> packs: the store, the solve, the graft and the two signature answers"
+# The fixture's packs are ASSEMBLED here rather than committed: a .kpack is a
+# binary nobody can read in a diff, and mkfs.erofs is not on a developer's
+# host. `--fixture` mounts nothing, so a stub image is as good as a filesystem.
+PKS="$OUT/packs"
+mkdir -p "$PKS" "$OUT/keys" "$OUT/medium"
+printf 'this stands in for an EROFS image; --fixture never mounts it' > "$OUT/stub.img"
+for m in testing/fixtures/pack/meta/*.meta; do
+    id=$(basename "$m" .meta)
+    # app.bad goes on the MEDIUM, because that is the origin whose hash is
+    # checked at mount time: a store pack was verified when root wrote it.
+    case "$id" in app.bad) d="$OUT/medium" ;; *) d="$PKS" ;; esac
+    "$OUT/kdos-pack" assemble "$OUT/stub.img" "$m" "$d/$id.kpack" >/dev/null
+done
+"$OUT/kdos-pack" keygen "$OUT/keys/builder" >/dev/null
+"$OUT/kdos-pack" sign "$PKS/app.good.kpack" "$OUT/keys/builder.key" >/dev/null
+# One payload byte, flipped after assembly. It must read as a bad HASH: the
+# hash is checked before the signature, and a caller told "bad signature" here
+# would go looking for a key problem that does not exist.
+printf 'X' | dd of="$OUT/medium/app.bad.kpack" bs=1 seek=4 conv=notrunc status=none
+
+fx() { KDOS_KEYS="$OUT/keys" "$OUT/kdos-packd" --fixture "$PKS" "$OUT/medium"; }
+
+fx > "$OUT/fx.txt"
+check() {
+    if grep -qE "$1" "$OUT/fx.txt"; then
+        echo "  ok    $2"
+    else
+        echo "  FAIL  $2"; sed 's/^/        /' "$OUT/fx.txt"; exit 1
+    fi
+}
+# the solve: base is mounted first, then the runtime, then the app
+check 'app\.good .*/base:?.*rt-gtk|app\.good .*rt-gtk.*base' \
+      "app.good composes over its runtime and base"
+grep -q 'app\.good' "$OUT/fx.txt" || { echo "  FAIL  app.good is listed"; exit 1; }
+LOWER=$(grep '^  app\.good  *lowerdir' "$OUT/fx.txt" || grep '^  app\.good' "$OUT/fx.txt")
+case "$LOWER" in
+    *"mnt/app.good:"*"mnt/rt-gtk:"*"mnt/base"*)
+        echo "  ok    the stack reads app, runtime, base — highest priority first" ;;
+    *)  echo "  FAIL  lowerdir order"; echo "        $LOWER"; exit 1 ;;
+esac
+check 'app\.orphan .*REFUSED.*rt-qt' \
+      "a requirement nothing provides is refused, and the message names it"
+check 'app\.good .*signed' "a signed pack verifies against the ring"
+check 'app\.orphan .*unsigned' "an unsigned pack is unsigned, not bad"
+check 'app\.bad .*bad payload hash' \
+      "one flipped byte is a bad hash, never a bad signature"
+check 'app\.bad .*REFUSED.*bad payload hash' \
+      "and a pack off the medium that fails it is never mounted"
+check 'data\.tiles' "the data pack is in the store"
+check 'graft    tiles -> /usr/share/kdos-tiles' \
+      "a data pack grafts into /usr/share for host consumers"
+check 'boxgraft tiles -> ~/.local/share/kdos/packs/tiles' \
+      "and into \$HOME for a box, which shares nothing else"
+grep -q 'data\.tiles.*REFUSED' "$OUT/fx.txt" && { echo "  FAIL  data pack graft"; exit 1; }
+echo "  ok    a data pack is never composed into a box root"
+
 
 # libkcell and libkwl are the TWO libraries here with real external
 # dependencies — libkcell is the glyph cache and the cell painter, libkwl is
@@ -1022,10 +1141,17 @@ sed -i 's/^plan.*/plan = reuse/; s/^theme.*/theme = amber/' "$OUT/answers.conf"
 "$KI" --config "$OUT/answers.conf" --dump plan --json > "$OUT/plan.json" 2>&1
 # reuse does not repartition, and a non-default accent has to be regenerated:
 # the two skip rules, read back off the plan rather than off the source.
-grep -qE "^  2 +Partition +skipped" "$OUT/plan.txt" \
+# Matched by NAME rather than by step number: the number moves whenever a step
+# is added, and a test that pinned it would fail for the one reason that is not
+# a regression.
+grep -qE "^ +[0-9]+ +Partition +skipped" "$OUT/plan.txt" \
     || { echo "  reuse still plans to partition"; cat "$OUT/plan.txt"; exit 1; }
-grep -qE "^  8 +Theme +pending" "$OUT/plan.txt" \
+grep -qE "^ +[0-9]+ +Theme +pending" "$OUT/plan.txt" \
     || { echo "  a non-default accent is not regenerated"; exit 1; }
+# No medium, so there is nothing to carry and the step says so rather than
+# running and copying nothing.
+grep -qE "^ +[0-9]+ +Packs +skipped" "$OUT/plan.txt" \
+    || { echo "  the packs step ran with no medium"; exit 1; }
 grep -q '"title": "Partition".*"state": "skipped"' "$OUT/plan.json" \
     || { echo "  text and json disagree about Partition"; exit 1; }
 # A dump ends up in bug reports and CI logs, and the answer file carries the
@@ -1047,6 +1173,74 @@ grep -q 'hunter2-sentinel' "$OUT/saved.conf" \
 grep -q '^luks  *= *1' "$OUT/saved.conf" \
     || { echo "  --save lost the luks flag"; exit 1; }
 "$KI" --dump bogus >/dev/null 2>&1 && { echo "  --dump took a bad subject"; exit 1; }
+echo "  no secret reaches a dump or the answer file it writes"
+
+# ── the packs page reads the FLAT index ─────────────────────────────────────
+# kinstall links libkbase, libktui and libkcolor and nothing else, which is what
+# lets it live in phase 1 — so it reads `PACKAGES` itself and `R:`/`T:` are in
+# that file for this reader. The three answers that matter: the recommended set
+# is preselected, an answer file's choice wins, and an UNKNOWN id falls back to
+# the recommended set rather than failing after the point of no return.
+mkdir -p "$OUT/medium"
+cat > "$OUT/medium/PACKAGES" <<'PKGS'
+P:app.gimp
+V:3.0.4-1
+A:x86_64
+K:app
+S:96468992
+C:1111111111111111111111111111111111111111111111111111111111111111
+F:app.gimp.kpack
+R:yes
+T:Create images and edit photographs
+
+P:app.krita
+V:5.2.6-1
+A:x86_64
+K:app
+S:188743680
+C:2222222222222222222222222222222222222222222222222222222222222222
+F:app.krita.kpack
+T:Digital painting
+
+P:app.krita
+V:5.2.5-1
+A:x86_64
+K:app
+S:188000000
+C:4444444444444444444444444444444444444444444444444444444444444444
+F:app.krita-5.2.5.kpack
+O:app.krita-5.2.4.kpack
+
+P:base
+V:1.0-1
+A:x86_64
+K:base
+S:54525952
+C:3333333333333333333333333333333333333333333333333333333333333333
+F:base.kpack
+T:Debian trixie, the whole filesystem
+PKGS
+kipack() { KDOS_PACK_MEDIUM="$OUT/medium" "$KI" --config "$1" --dump plan 2>&1; }
+: > "$OUT/none.conf"
+kipack "$OUT/none.conf" | grep -qE '^packs +app\.gimp$' \
+    || { echo "  the recommended set was not preselected"; exit 1; }
+# The base is carried whatever anybody ticks, and a DELTA stanza is not a pack:
+# offering one would offer something the installer cannot apply.
+KDOS_PACK_MEDIUM="$OUT/medium" "$KI" --config "$OUT/none.conf" --dump plan --json \
+    2>&1 > "$OUT/packs.json"
+grep -q '"id": "base"' "$OUT/packs.json" \
+    || { echo "  the base pack is not carried"; exit 1; }
+grep -q 'app.krita-5.2.5' "$OUT/packs.json" \
+    && { echo "  a delta was offered as a pack"; exit 1; }
+printf 'packs = app.krita\n' > "$OUT/p1.conf"
+kipack "$OUT/p1.conf" | grep -qE '^packs +app\.krita$' \
+    || { echo "  an answer file's pack choice was ignored"; exit 1; }
+printf 'packs = app.nosuch\n' > "$OUT/p2.conf"
+kipack "$OUT/p2.conf" | grep -qE '^packs +app\.gimp$' \
+    || { echo "  an unknown pack id did not fall back to the recommended set"; exit 1; }
+kipack "$OUT/none.conf" | grep -qE "^ +[0-9]+ +Packs +pending" \
+    || { echo "  the packs step is skipped with a medium in the machine"; exit 1; }
+echo "  the medium's packs: recommended preselected, unknown falls back"
 
 # The root filesystem choice, read back as what it actually becomes. The three
 # things that must move together are the mkfs, its overwrite flag and the fstab
@@ -1199,6 +1393,24 @@ grep -q "would kill kdosbuild (pid 950" "$OUT/oomd2.txt" \
 grep -q "appbox" "$OUT/oomd2.txt" \
     && { echo "  an unboxed victim was reported as boxed"; exit 1; }
 echo "  boxed preferred, adj-shielded and protected comms spared, kthreads skipped"
+
+# …and a box that broke its OWN declared budget goes first. This is not a
+# refinement, it is what makes `memory =` mean anything: rootless podman with no
+# systemd frequently has no cgroup delegation, so --memory is accepted and
+# enforces nothing, and a profile key KDOS cannot enforce is one it does not
+# offer. The fixture's host process is LARGER than anything in either box, so
+# only the budget can produce the right answer.
+KDOS_BOX_PROFILES=testing/fixtures/oomd/overbudget/profiles \
+    "$OUT/kdos-oomd" --fixture testing/fixtures/oomd/overbudget > "$OUT/oomd3.txt" \
+    || { echo "  the over-budget fixture found no candidate"; exit 1; }
+grep -q "would kill rustc (appbox arch)" "$OUT/oomd3.txt" \
+    || { echo "  the box over its declared budget was not preferred"
+         cat "$OUT/oomd3.txt"; exit 1; }
+"$OUT/kdos-oomd" --fixture testing/fixtures/oomd/overbudget > "$OUT/oomd4.txt"
+grep -q "would kill kdosbuild" "$OUT/oomd4.txt" \
+    || { echo "  without the profiles the answer should be the larger host process"
+         cat "$OUT/oomd4.txt"; exit 1; }
+echo "  a box over its own declared budget is preferred, and the check is load-bearing"
 
 echo
 echo "==> kdos-mountd offers the stick and refuses everything else"

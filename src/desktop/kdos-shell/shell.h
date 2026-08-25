@@ -95,6 +95,15 @@ struct sh_task {
 	 * it away. Empty when no entry claims this window.
 	 */
 	char did[128];
+	/*
+	 * WHICH BOX THE WINDOW CAME FROM, resolved ONCE when the app_id
+	 * arrives and never again. That is the whole design: a new window is a
+	 * rare event and a frame is not, so asking per frame would be the
+	 * mistake the frames socket exists not to make. Empty for a host
+	 * window and for a compositor that does not answer, and both render
+	 * exactly the label this panel drew before boxes existed.
+	 */
+	char box[64];
 	int activated;
 	int minimized;
 	/* The panel's adaptive-opacity proxy: a maximized or fullscreen window
@@ -396,6 +405,10 @@ void sh_priv_settle(struct sh_state *sh, int ms);
 void sh_priv_free(struct sh_state *sh);
 int sh_priv_count(const struct sh_state *sh, int kind);
 const char *sh_priv_name(const struct sh_state *sh, int kind);
+/* Which BOX the recording application is in, or 0 when it is not in one.
+ * The tooltip's, not the bar's: three cells cannot carry a box name, and on
+ * this distro "firefox-esr is recording" leaves out which firefox. */
+int sh_priv_box(const struct sh_state *sh, int kind, char *out, size_t n);
 
 /* ────────────────────────────────────────────────────────────────────────
  * The application index (apps.c)
@@ -469,8 +482,9 @@ int sh_fav_set(const char *id, int pinned);
 int sh_fav_move(const char *id, int to);
 
 /* One line from a /sys or /proc file, newline stripped. Returns 0 on success.
- * There is no libkbase here — the shell links libktui, libkcolor and libkwl,
- * and one 15-line reader is cheaper than dragging in another archive. */
+ * libkbase's `kb_read_line_file` is the same reader with an allocation and a
+ * different failure convention; this one exists because the panel calls it on
+ * a dozen sysfs files per tick and wants the caller's buffer. */
 int sh_read_line(const char *path, char *buf, size_t len);
 
 /* At most `cells` display columns of `src` into `dst`, never cutting a UTF-8

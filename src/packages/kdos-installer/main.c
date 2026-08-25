@@ -33,6 +33,20 @@ static int last_focus = -1;
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * The index of a page by its id. An unattended install jumps straight to the
+ * install page and used to do it by a literal 8 — which is right until a page
+ * is added in front of it, and then an unattended install lands on the wrong
+ * screen with the child already forked. -1 when there is no such page.
+ */
+int page_index(const char *id)
+{
+	for (int i = 0; i < ki_npages; i++)
+		if (!strcmp(ki_pages[i]->id, id))
+			return i;
+	return -1;
+}
+
 void page_goto(int n)
 {
 	if (n < 0 || n >= ki_npages)
@@ -469,9 +483,13 @@ int main(int argc, char **argv)
 	inst.logfd = 0;
 
 	if (unattended) {
+		/* The wizard reaches the Applications page on its way past;
+		 * an unattended install does not, and would carry no packs at
+		 * all with an answer file that named some. */
+		ki_packs_enter();
 		install_plan();
 		install_start(0);
-		ki_page = 8;
+		ki_page = page_index("install");
 	} else {
 		page_goto(0);
 	}

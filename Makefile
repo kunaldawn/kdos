@@ -36,6 +36,17 @@ updates:
 fetch-apps:
 	bash ports/appbox/fetch
 
+# Build the PACK SET on the host and stash it for the (network-less) ISO build
+# to place on the medium. An application is one signed EROFS image with a KDOS
+# footer on the end; the runtimes underneath are shared, so editing one
+# application rewrites one file rather than a 485 MB blob.
+#
+# ROOT, because mkfs.erofs preserves the overlay whiteouts and the
+# trusted.overlay xattrs only as root, and podman's store only writes real ones
+# as root. See ports/appbox/packs.
+fetch-packs:
+	sudo -E bash ports/appbox/packs
+
 # Rewriting the ISO while a VM boots from it corrupts that VM: QEMU reads the
 # image lazily, so every block the guest has not cached yet turns into an I/O
 # error (bash reports it as "<binary>: I/O error" on the next exec). Refuse,
@@ -64,6 +75,7 @@ build: check-iso-free
 		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \
+		-e KDOS_PACK_KDOS="$(KDOS_PACK_KDOS)" \
 		-v $$(pwd)/build:/workspace/build \
 		-v $$(pwd)/src:/workspace/src:ro \
 		-v $$(pwd)/fs:/workspace/fs:ro \
@@ -123,4 +135,4 @@ cleanbuild:
 clean:
 	rm -rf build
 
-.PHONY: all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates
+.PHONY: fetch-packs all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates

@@ -37,6 +37,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE	/* struct ucred, pipe2 */
 #endif
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -254,6 +255,95 @@ static int is_number(const char *s)
 }
 
 /*
+ * A BOX'S DECLARED BUDGET, and reading it here is what makes the key honest.
+ *
+ * `memory = 4G` in a box profile becomes `podman --memory`, and rootless
+ * podman on a machine with no systemd frequently has no cgroup delegation to
+ * enforce it with — so the flag is accepted and does nothing. A profile key
+ * that cannot be enforced is one KDOS does not offer, so this is the
+ * enforcement: a box over the budget it declared is PREFERRED as a victim,
+ * ahead of the general rule that boxed processes are preferred.
+ *
+ * The profiles live in the user's home, which this daemon reads and never
+ * writes. A box with no budget declared returns 0 and is judged by size alone.
+ */
+static unsigned long long parse_size_kb(const char *v)
+{
+	double n;
+	char unit = 0;
+
+	if (sscanf(v, "%lf%c", &n, &unit) < 1 || n <= 0)
+		return 0;
+	switch (unit) {
+	case 'g': case 'G': return (unsigned long long)(n * 1024 * 1024);
+	case 'm': case 'M': return (unsigned long long)(n * 1024);
+	case 'k': case 'K': return (unsigned long long)n;
+	default:            return (unsigned long long)(n / 1024);  /* bytes */
+	}
+}
+
+/*
+ * Where the box profiles are. One directory when the fixture names one;
+ * otherwise every user's own, because this daemon is root and the budgets it
+ * enforces were declared by whoever owns the box.
+ */
+static const char *profiles_root(void)
+{
+	const char *p = getenv("KDOS_BOX_PROFILES");
+	return p && *p ? p : "";
+}
+
+static unsigned long long box_budget_kb(const char *box)
+{
+	char path[512], buf[4096];
+	char *line, *save;
+	unsigned long long kb = 0;
+
+	/* A box name reaches this from a conmon command line, so it is checked
+	 * before it becomes a path component. */
+	if (!box || !*box || strlen(box) > 63)
+		return 0;
+	for (const char *c = box; *c; c++)
+		if (!isalnum((unsigned char)*c) && *c != '.' && *c != '_' &&
+		    *c != '-')
+			return 0;
+
+	if (profiles_root()[0]) {
+		snprintf(path, sizeof(path), "%s/%s.conf", profiles_root(), box);
+		if (kb_read_file(path, buf, sizeof(buf)) < 0)
+			return 0;
+	} else {
+		char **users = kb_listdir("/home", NULL);
+		int got = 0;
+		for (char **u = users; u && *u && !got; u++) {
+			snprintf(path, sizeof(path),
+				 "/home/%s/.config/kdos/boxes/%s.conf", *u, box);
+			got = kb_read_file(path, buf, sizeof(buf)) >= 0;
+		}
+		kb_strv_free(users);
+		if (!got)
+			return 0;
+	}
+
+	for (line = strtok_r(buf, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char *eq;
+		while (*line == ' ' || *line == '\t')
+			line++;
+		if (strncmp(line, "memory", 6))
+			continue;
+		eq = strchr(line, '=');
+		if (!eq)
+			continue;
+		eq++;
+		while (*eq == ' ')
+			eq++;
+		kb = parse_size_kb(eq);
+	}
+	return kb;
+}
+
+/*
  * The largest-RSS candidate, with boxed processes PREFERRED but not absolute:
  * a boxed victim wins whenever it holds at least half the RSS of the biggest
  * candidate overall. An alien app is the likely culprit and relaunches in
@@ -263,7 +353,11 @@ static int is_number(const char *s)
  */
 static int pick_victim(KoVictim *v)
 {
-	KoVictim any = {0}, boxed = {0};
+	KoVictim any = {0}, boxed = {0}, over = {0};
+	/* Per-box RSS, so "over its budget" is a statement about the BOX and
+	 * not about whichever of its forty processes happens to be largest. */
+	struct { char name[64]; unsigned long long kb; } tally[32] = {{{0},0}};
+	int ntally = 0;
 	int self = getpid();
 
 	int count = 0;
@@ -290,11 +384,22 @@ static int pick_victim(KoVictim *v)
 		 * every boxed process comes back unboxed.
 		 */
 		if (box_of(p.pid, box, sizeof(box))) {
+			int t;
 			if (p.rss_kb > boxed.p.rss_kb) {
 				boxed.p = p;
 				boxed.boxed = 1;
 				kb_strlcpy(boxed.box, box, sizeof(boxed.box));
 			}
+			for (t = 0; t < ntally; t++)
+				if (!strcmp(tally[t].name, box))
+					break;
+			if (t == ntally && ntally < 32) {
+				kb_strlcpy(tally[ntally].name, box, 64);
+				tally[ntally].kb = 0;
+				ntally++;
+			}
+			if (t < 32)
+				tally[t].kb += (unsigned long long)p.rss_kb;
 		}
 		if (p.rss_kb > any.p.rss_kb)
 			any.p = p;
@@ -303,6 +408,50 @@ static int pick_victim(KoVictim *v)
 
 	if (!any.p.pid)
 		return 0;
+
+	/*
+	 * A box over the budget its own profile declared goes first — that is
+	 * the whole of what `memory =` buys on a machine where podman cannot
+	 * enforce it. The victim inside it is still the largest process, so
+	 * the message names something a person recognises.
+	 */
+	for (int t = 0; t < ntally; t++) {
+		unsigned long long budget = box_budget_kb(tally[t].name);
+		if (!budget || tally[t].kb <= budget)
+			continue;
+		if (boxed.p.pid && !strcmp(boxed.box, tally[t].name)) {
+			over = boxed;
+		} else {
+			/* the largest process of THAT box, found on a second
+			 * pass — cheap, and only when a box is over budget */
+			int c2 = 0;
+			char **n2 = kb_listdir(g_proc, &c2);
+			for (int i = 0; n2 && i < c2; i++) {
+				KoProc q = {0};
+				char b2[64] = "";
+				if (!is_number(n2[i]))
+					continue;
+				if (!read_stat(atoi(n2[i]), &q) || q.rss_kb <= 0)
+					continue;
+				if (is_protected(&q))
+					continue;
+				if (!box_of(q.pid, b2, sizeof(b2)) ||
+				    strcmp(b2, tally[t].name))
+					continue;
+				if (q.rss_kb > over.p.rss_kb) {
+					over.p = q;
+					over.boxed = 1;
+					kb_strlcpy(over.box, b2, sizeof(over.box));
+				}
+			}
+			kb_strv_free(n2);
+		}
+		if (over.p.pid) {
+			*v = over;
+			return 1;
+		}
+	}
+
 	if (boxed.p.pid && boxed.p.rss_kb * 2 >= any.p.rss_kb)
 		*v = boxed;
 	else {

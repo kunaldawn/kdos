@@ -29,6 +29,9 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <sys/un.h>
+#include <sys/statfs.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/utsname.h>
 
@@ -2085,13 +2088,31 @@ static void help_body(FILE *o)
 	      "╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝\n", o);
 	fprintf(o, "%s   KD's Homebrew Linux Distro%s\n\n", C_D, C_0);
 
+	/*
+	 * THE THREE LANES, first, because the most common question on this
+	 * machine is which of them a thing belongs to — and the value of a
+	 * list like this was never the commands, it is that one place shows
+	 * the whole system's verbs.
+	 */
+	fprintf(o, "%sWHERE THINGS LIVE%s\n", C_A, C_0);
+	fprintf(o, "  %-24s %s\n", "the host",
+		"kpkg — compiled here from source, against musl");
+	fprintf(o, "  %-24s %s\n", "applications",
+		"kdos app — one signed file each; installing is a mount");
+	fprintf(o, "  %-24s %s\n", "environments",
+		"kdos-box — a box you built is a file you can give away");
+	fprintf(o, "\n");
+
 	fprintf(o, "%sCOMMANDS%s\n", C_A, C_0);
 	static const char *CMDS[][2] = {
 		{ "why <path|port>", "what provides this, and why it is that way" },
 		{ "explain [topic]", "the recorded debug cycles, browsable" },
 		{ "sandbox <prof> -- <cmd>", "run a native app under Landlock" },
 		{ "desktop", "start the KDOS desktop from a tty (kdos-desktop)" },
-		{ "kdos app <name>", "install an alien app (distrobox + export)" },
+		{ "kdos app search <t>", "the applications here and on the medium" },
+		{ "kdos app install <id>", "one signed file, mounted — also remove, rollback" },
+		{ "kdos-box list", "environments: create, enter, freeze, export" },
+		{ "kdos-fetch-app <name>", "install an alien app from a network" },
 		{ "kdos theme [name]", "phosphor | amber | ice | bone | next | prev | list" },
 		{ "kdos theme style <f>", "apply a style file: accent + crt + fonts, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
@@ -2103,6 +2124,7 @@ static void help_body(FILE *o)
 		{ "kdos hey list", "every window, from a prompt; run <action> <id>" },
 		{ "kdos update check", "what the ports tree pins that is not installed" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
+		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
 		{ "kdos-display [--list]", "the screens: mode, scale, rotation, order" },
@@ -2865,6 +2887,137 @@ static void check_dev_access(void)
  * /mnt/iso/sources under it. On an installed system there is no boot medium
  * and this is not a fault.
  */
+/*
+ * BOXES AND PACKS. Half of this cannot be answered in a VM — there is often no
+ * erofs module and no store — so those lines are `skip` with a reason. A green
+ * line for something never tested is worse than an absent one; a `warn` for
+ * every VM would make every VM look broken.
+ */
+static void check_packs(void)
+{
+	char buf[8192];
+	int have_fs = 0;
+
+	/* Can this kernel mount a pack at all? Everything else depends on it,
+	 * and 59_packd.sh skips the daemon rather than respawning one that
+	 * cannot do its job. */
+	if (kb_read_file("/proc/filesystems", buf, sizeof(buf)) >= 0 &&
+	    strstr(buf, "erofs"))
+		have_fs = 1;
+	if (have_fs)
+		ok("erofs is available to the kernel");
+	else if (kb_path_exists("/sbin/modprobe") || kb_path_exists("/usr/sbin/modprobe"))
+		warn_("erofs is not loaded — `modprobe erofs`; without it "
+		      "kdos-packd skips itself and no pack can be mounted");
+	else
+		skip_("no erofs in /proc/filesystems and no modprobe to try — "
+		      "this kernel may not have the module at all");
+
+	/* The daemon. Its absence is not a fault on a machine with no packs. */
+	{
+		struct sockaddr_un a;
+		int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+		int up = 0;
+
+		if (fd >= 0) {
+			memset(&a, 0, sizeof(a));
+			a.sun_family = AF_UNIX;
+			kb_strlcpy(a.sun_path, "/run/kdos-packd.sock",
+				   sizeof(a.sun_path));
+			if (connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0) {
+				up = 1;
+				if (write(fd, "status\n", 7) == 7) {
+					ssize_t n = read(fd, buf, sizeof(buf) - 1);
+					buf[n > 0 ? n : 0] = 0;
+				} else {
+					buf[0] = 0;
+				}
+			}
+			close(fd);
+		}
+		if (up) {
+			char *route = strstr(buf, "route\t");
+			ok("kdos-packd is answering%s%.*s", route ? " — " : "",
+			   route ? (int)strcspn(route + 6, "\n") : 0,
+			   route ? route + 6 : "");
+		} else if (kb_path_exists("/var/lib/kdos/packs/base.kpack")) {
+			warn_("there are packs in /var/lib/kdos/packs and "
+			      "kdos-packd is not answering — `service packd "
+			      "status`");
+		} else {
+			skip_("no packs installed and no kdos-packd — this "
+			      "machine runs the monolithic appbox image");
+		}
+	}
+
+	/*
+	 * THE uid-1000 ASSUMPTION. Packs are built --force-uid=1000, which is
+	 * the one human user this distro ships. A second user's boxes still
+	 * run — their /usr reads as somebody else — and saying so is better
+	 * than leaving it to be discovered.
+	 */
+	if (getuid() != 0 && getuid() != 1000)
+		warn_("you are uid %u and packs are built for uid 1000 — a box "
+		      "will run, but its /usr will not read as yours",
+		      (unsigned)getuid());
+
+	/* An overlay upper cannot live on overlayfs, and a live session's
+	 * $HOME does. The fallback is tmpfs and it is not silent. */
+	{
+		struct statfs st;
+		const char *home = kb_home_dir();
+
+		if (statfs(home, &st) != 0)
+			skip_("cannot stat %s to say where a box's writes would "
+			      "go", home);
+		else if ((unsigned long)st.f_type == 0x794c7630UL)
+			warn_("$HOME is on overlayfs (a live session), so a "
+			      "persistent box cannot exist — its upper falls "
+			      "back to tmpfs and its changes end with the "
+			      "session");
+		else
+			ok("$HOME can hold an overlay upper — a persistent box "
+			   "keeps what you write");
+	}
+
+	/* A mounted pack whose FILE is gone is a box that works until it is
+	 * restarted, which is the worst kind of broken. */
+	{
+		size_t len = 0;
+		char *mounts = kb_read_all("/proc/mounts", &len);
+		int missing = 0, mounted = 0;
+
+		if (mounts) {
+			char *line, *save;
+			for (line = strtok_r(mounts, "\n", &save); line;
+			     line = strtok_r(NULL, "\n", &save)) {
+				char *sp = strchr(line, ' ');
+				char id[128], path[512];
+				if (!sp || strncmp(sp + 1,
+						   "/var/lib/kdos/packs/mnt/", 24))
+					continue;
+				mounted++;
+				kb_strlcpy(id, sp + 25, sizeof(id));
+				id[strcspn(id, " ")] = 0;
+				snprintf(path, sizeof(path),
+					 "/var/lib/kdos/packs/%s.kpack", id);
+				if (!kb_path_exists(path))
+					missing++;
+			}
+			free(mounts);
+		}
+		if (!mounted)
+			skip_("nothing is mounted from the pack store");
+		else if (missing)
+			warn_("%d of %d mounted pack(s) no longer have a file "
+			      "behind them — a box using one works until it is "
+			      "restarted", missing, mounted);
+		else
+			ok("%d pack(s) mounted, every file still present",
+			   mounted);
+	}
+}
+
 static void check_boot_medium(void)
 {
 	char *mounts = kb_read_all("/proc/mounts", NULL);
@@ -2922,12 +3075,18 @@ static int cmd_doctor(int argc, char **argv)
 	check_microcode();
 	doctor_gap();
 
+
+
 	doctor_head("Hardware");
 	check_regdb();
 	check_sof();
 	check_gpu_firmware();
 	check_dev_access();
 	check_boot_medium();
+	doctor_gap();
+
+	doctor_head("Boxes");
+	check_packs();
 	doctor_gap();
 
 	doctor_head("Session");
@@ -3331,11 +3490,10 @@ int kdos_main(int argc, char **argv)
 		return kdt_update(rest, restv, cmd_theme);
 	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
 		return cmd_version();
-	if (!strcmp(cmd, "app")) {
-		/* argv[1] becomes the program name kdos-fetch-app expects. */
-		argv[1] = (char *)"kdos-fetch-app";
-		return fetch_app_main(argc - 1, argv + 1);
-	}
+	if (!strcmp(cmd, "app"))
+		return kdt_app(argc - 2, argv + 2);
+	if (!strcmp(cmd, "trash"))
+		return kdt_trash(argc - 2, argv + 2);
 
 	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
 		C_0, cmd);

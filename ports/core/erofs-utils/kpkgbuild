@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = erofs-utils
+version     = 1.9.4
+release     = 1
+source      = https://git.kernel.org/pub/scm/linux/kernel/git/xiang/erofs-utils.git/snapshot/$name-$version.tar.gz
+sha256      = 7d135aa2550326a5acf20f53c518aea5a8900015ce50700044e40f818c31dd80  erofs-utils-1.9.4.tar.gz
+description = Tools for the EROFS read-only filesystem KDOS packs are built as
+homepage    = https://erofs.docs.kernel.org/
+depends     = autoconf automake libtool pkgconf lz4 zstd xz

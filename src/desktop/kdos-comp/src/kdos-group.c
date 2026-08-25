@@ -180,7 +180,10 @@ kdos_group_ssd_update(struct ssd *ssd)
 	 */
 	int pad = theme->window_titlebar_padding_width;
 	int button = theme->window_button_width + theme->window_button_spacing;
-	int left = pad + button * rc.nr_title_buttons_left;
+	/* The box chip reserves the same room here that get_title_offsets
+	 * gives it, or the first tab is drawn on top of it. */
+	int left = pad + button * rc.nr_title_buttons_left
+		+ kdos_boxchip_width(view);
 	int right = pad + button * rc.nr_title_buttons_right;
 	int strip_w = width - left - right;
 	if (strip_w < nr * 8) {

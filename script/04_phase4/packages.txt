@@ -387,3 +387,10 @@ kdos-gtk-theme
 # Alien app runtime + appbox manager (src/packages, ours) — replaces the
 # shell kdos-appbox; the 91 launchers and kdos-desktop's warmup call it.
 kdos-appbox
+
+# pid 1 inside a pack box, in place of distrobox-init: it creates the user and
+# group matching the host's, sets the PATH that includes /usr/games, and prints
+# the `container_setup_done` marker box_wait_ready() polls for. Static, because
+# it is bind-mounted into a box whose /usr is Debian's and a musl-linked binary
+# would look for its loader there.
+kdos-boxinit

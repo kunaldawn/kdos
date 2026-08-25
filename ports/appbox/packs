@@ -1,0 +1,160 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/appbox/packs — build the pack set on the HOST
+#
+# The sandboxed ISO build has no network, so the packs are produced here and
+# committed, exactly as the monolithic image was. Run via `make fetch-packs`.
+#
+# AN APP PACK IS BUILT BY CAPTURING A CONTAINER'S OWN TOP LAYER, and that is
+# the whole design. Build `FROM <parent>`, `apt-get install` the one
+# application, and the image's top layer diff IS the file set — podman does the
+# diffing and mkfs.erofs does the packing. There is no hand-curated file list
+# anywhere, which is the thing that would rot first.
+#
+# TWO PROPERTIES THIS DEPENDS ON, both measured (testing/notes/packs-w0.txt):
+#
+#   - the on-disk overlay diff uses OVERLAYFS's whiteout convention (a
+#     character device 0:0 with the deleted file's own name) and real
+#     `trusted.overlay.opaque` xattrs. The OCI tar convention `.wh.<name>` is a
+#     different thing and merges with the deleted file STILL PRESENT — so this
+#     reads the layer off disk and never through `podman save`.
+#   - those markers survive mkfs.erofs and are honoured by overlayfs, which is
+#     what makes layering work and the flatten step unnecessary.
+#
+# IT MUST RUN ROOTFUL. mkfs.erofs preserves the xattrs and the device nodes
+# only as root, and podman's overlay store only writes real ones as root.
+
+set -e
+cd "$(dirname "$0")"
+
+REPO="$(cd ../.. && pwd)"
+OUT="${OUT:-$PWD/packs}"
+CONF="${CONF:-$PWD/packs.conf}"
+ONLY="${ONLY:-}"
+SIGN="${SIGN:-}"
+PREFIX="${PREFIX:-localhost/kdos-pack}"
+
+ENGINE="${ENGINE:-}"
+if [ -z "$ENGINE" ]; then
+	if command -v podman >/dev/null 2>&1; then ENGINE=podman
+	elif command -v docker >/dev/null 2>&1; then ENGINE=docker
+	else echo "appbox/packs: need podman or docker" >&2; exit 1
+	fi
+fi
+command -v mkfs.erofs >/dev/null 2>&1 || {
+	echo "appbox/packs: mkfs.erofs is not on this host (erofs-utils)" >&2
+	exit 1
+}
+[ "$(id -u)" = 0 ] || {
+	echo "appbox/packs: must run as root — the layer's whiteouts and" >&2
+	echo "              trusted.overlay xattrs are root's to read and write" >&2
+	exit 1
+}
+
+# kdos-pack is a TARGET binary and this runs on the host, so build a host copy
+# of the one program needed. It links nothing but libc: a two-second compile,
+# the same shape `ports/fetch` uses for kpkg.
+KPACK="$(mktemp -d)/kdos-pack"
+cc -O2 -std=gnu11 -D_GNU_SOURCE -o "$KPACK" \
+	-I"$REPO/src/libs/libkbase" -I"$REPO/src/libs/libksig" \
+	-I"$REPO/src/libs/libkpkg" -I"$REPO/src/libs/libkpack" \
+	"$REPO"/src/packages/kdos-pack/main.c "$REPO"/src/libs/libkbase/*.c \
+	"$REPO"/src/libs/libksig/*.c "$REPO"/src/libs/libksig/monocypher/*.c \
+	"$REPO"/src/libs/libkpkg/*.c "$REPO"/src/libs/libkpack/*.c
+
+mkdir -p "$OUT"
+
+# The top layer's diff directory, which IS what this stage added. podman
+# reports it as UpperDir for the overlay driver; a store on any other driver
+# has no such directory and this says so rather than packing the whole image.
+layer_dir() {
+	local d
+	d=$($ENGINE image inspect --format '{{.GraphDriver.Data.UpperDir}}' "$1" 2>/dev/null)
+	[ -n "$d" ] && [ -d "$d" ] || return 1
+	printf '%s' "$d"
+}
+
+built=0
+while read -r kind id parent rest; do
+	case "$kind" in ''|'#'*) continue ;; esac
+	[ -n "$ONLY" ] && [ "$ONLY" != "$id" ] && continue
+
+	img="$PREFIX/$id:latest"
+	if [ "$parent" = "-" ]; then
+		from="debian:trixie-slim"
+	else
+		from="$PREFIX/$parent:latest"
+	fi
+
+	echo "==> $id  (from ${parent:--}, $(echo "$rest" | wc -w) package(s))"
+	# ONE RUN, so the image has exactly two layers over its parent — the
+	# ENV is free — and the top one is this row's own diff.
+	cat > "$OUT/.Containerfile.$id" <<EOF
+FROM $from
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends $rest \\
+    && rm -rf /var/lib/apt/lists/*
+EOF
+	$ENGINE build -t "$img" -f "$OUT/.Containerfile.$id" "$OUT" >/dev/null
+	rm -f "$OUT/.Containerfile.$id"
+
+	if [ "$parent" = "-" ]; then
+		#
+		# THE BASE IS THE WHOLE FILESYSTEM, NOT A DIFF, and this is the
+		# one row where that is true. Every row above it is packed from
+		# its own top layer, which is a diff over the row below — but a
+		# diff over `debian:trixie-slim` has no bottom, and a stack
+		# composed from one comes up with no /bin, no /lib and no shell
+		# in it. Measured: the merge held etc root run tmp usr var and
+		# nothing that could be executed.
+		#
+		# Exported and re-extracted rather than read out of the store,
+		# because the base's OWN content is spread across the image's
+		# layers and only the export flattens them.
+		#
+		diff="$OUT/.rootfs.$id"
+		rm -rf "$diff"
+		mkdir -p "$diff"
+		cid=$($ENGINE create "$img" /bin/true)
+		$ENGINE export "$cid" | tar -x -C "$diff" \
+			--exclude='dev/*' --exclude='proc/*' --exclude='sys/*'
+		$ENGINE rm -f "$cid" >/dev/null
+	else
+		diff=$(layer_dir "$img") || {
+			echo "    the store does not expose a layer directory —" >&2
+			echo "    the overlay driver is what this needs" >&2
+			exit 1
+		}
+	fi
+
+	meta="$OUT/.$id.meta"
+	icon="$OUT/.$id.png"
+	rm -f "$icon"
+	ver=$(date -u -d "@${SOURCE_DATE_EPOCH:-1735689600}" +%Y.%m.%d)
+	python3 ./harvest.py "$diff" "$id" "$kind" "$parent" \
+		--out "$meta" --icon "$icon" --version "$ver"
+
+	if [ -s "$icon" ]; then
+		"$KPACK" build "$diff" "$meta" "$OUT/$id.kpack" --icon "$icon"
+	else
+		"$KPACK" build "$diff" "$meta" "$OUT/$id.kpack"
+	fi
+	rm -f "$meta" "$icon"
+	[ "$parent" = "-" ] && rm -rf "$diff"
+	[ -n "$SIGN" ] && "$KPACK" sign "$OUT/$id.kpack" "$SIGN"
+	built=$((built + 1))
+done < "$CONF"
+
+echo "==> indexing"
+if [ -n "$SIGN" ]; then
+	"$KPACK" index "$OUT" --sign "$SIGN"
+else
+	"$KPACK" index "$OUT"
+fi
+echo "$built pack(s) in $OUT"

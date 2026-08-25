@@ -52,11 +52,11 @@
 #include "shell.h"
 
 enum { CAT_APPEARANCE = 0, CAT_PANEL, CAT_DESKTOP, CAT_HARDWARE, CAT_SESSION,
-       CAT_INPUT, CAT_APPS, NCAT };
+       CAT_INPUT, CAT_APPS, CAT_BOXES, NCAT };
 
 static const char *const CAT_NAMES[NCAT] = {
 	"Appearance", "Panel", "Desktop", "Hardware", "Session", "Input",
-	"Apps"
+	"Apps", "Boxes"
 };
 
 /*
@@ -91,6 +91,7 @@ static const struct {
 	{ "system-shutdown",   "idle, lock and power" },
 	{ "input-keyboard",    "keyboard and pointer" },
 	{ "preferences-other", "which app opens what" },
+	{ "package-x-generic",  "environments and packs" },
 };
 
 /* Where the app starts and what Escape steps back to. */
@@ -105,7 +106,7 @@ static int home_sel;
  */
 static const char *const PAGE_NAMES[NCAT] = {
 	"appearance", "panel", "desktop", "hardware", "session", "input",
-	"apps"
+	"apps", "boxes"
 };
 
 /* Where a row's value is stored. ST_THEME is the accent, which is not a file
@@ -126,7 +127,12 @@ static const char *const PAGE_NAMES[NCAT] = {
  * panel, so a changed interval or column set reaches the monitor that is on
  * the screen rather than the next one started.
  */
-enum { ST_NONE = 0, ST_COMP, ST_THEME, ST_PANEL, ST_RES };
+/*
+ * ST_BOX is `~/.config/kdos/boxes/<name>.conf` and is the ONE store this
+ * program does not write itself: `kdos-box` is the writer, so a box configured
+ * here and a box configured at a prompt cannot come out different.
+ */
+enum { ST_NONE = 0, ST_COMP, ST_THEME, ST_PANEL, ST_RES, ST_BOX };
 
 /* When a change takes effect. */
 enum { SC_NONE = 0, SC_LIVE, SC_LOGIN };
@@ -413,6 +419,154 @@ struct app_row {
 static struct app_row apps[MAX_APPS];
 static int napps;
 
+/*
+ * ── Boxes ──────────────────────────────────────────────────────────────
+ *
+ * THE CONFIGURATION HALF, where configuration already lives. `kdos-box list`
+ * is the runtime half — what is running, what it has written — and belongs at
+ * a prompt and on kdos-res's Boxes page. What was missing was the other one:
+ * every property of a box could only be set by knowing that
+ * `~/.config/kdos/boxes/<name>.conf` existed.
+ *
+ * THIS PAGE NEVER WRITES A PROFILE. It reads them (they are `key = value`,
+ * the shape every file this program touches uses) and it writes by running
+ * `kdos-box create` and `kdos-box profile`, which is the same writer a person
+ * at a prompt reaches — so a box created here is byte-identical to one created
+ * by hand with the same answers, rather than merely similar. `kdos-box`
+ * additionally KNOWS things this page must not re-derive: which keys podman
+ * can enforce, which cannot, and that a namespace change needs the box
+ * recreating.
+ *
+ * Three states. The list is the boxes; opening one shows its keys; `+ new box`
+ * shows the same keys with nothing created yet, and the button reads Create.
+ * That last distinction is not cosmetic — namespaces and volumes apply at
+ * CREATE time, so a network setting chosen before the box exists takes effect
+ * and the same setting chosen afterwards needs a recreate.
+ */
+enum { BOX_LIST = 0, BOX_EDIT, BOX_NEW };
+
+#define MAX_BOXES 64
+
+struct box_row {
+	char name[64];
+	char base[64];
+	char persist[16];
+	char export[12];
+	int  described;		/* a profile exists; podman may not know it */
+};
+
+static struct box_row boxes[MAX_BOXES];
+static int nboxes;
+static int box_mode = BOX_LIST;
+static char box_cur[64];
+
+static const char *const BASES[] = { "pack:base", "image:debian:trixie",
+				     "box:kdos-apps" };
+static const char *const PERSISTS[] = { "persistent", "ephemeral", "frozen" };
+static const char *const NETS[] = { "host", "private", "none" };
+static const char *const SHARED[] = { "shared", "private" };
+static const char *const EXPORTS[] = { "manual", "auto" };
+static const char *const ACCENTS_OR_SESSION[] = { "session", "phosphor",
+						  "amber", "ice", "bone" };
+
+/*
+ * The keys, in the order `profile_save` writes them, so reading this page and
+ * reading the file are the same experience. `name` is first and is editable
+ * only while creating: renaming a box is a different operation from
+ * configuring one and `kdos-box` has no verb for it.
+ */
+static struct row boxrows[] = {
+	{ CAT_BOXES, FT_TEXT, ST_BOX, SC_LOGIN, "name", "name",
+	  NULL, 0, 0, 0, 0,
+	  "[A-Za-z0-9._-]; it is the container's name, the terminal's title "
+	  "and what kdos stutter, kdos-energyd and kdos-oomd call it",
+	  "", "" },
+	{ CAT_BOXES, FT_TEXT, ST_BOX, SC_LOGIN, "base", "base",
+	  NULL, 0, 0, 0, 0,
+	  "pack:<id> and box:<name> are offline; image:<ref> FETCHES UNSIGNED "
+	  "CONTENT from somebody else's registry",
+	  "", "" },
+	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LIVE, "accent", "accent",
+	  ACCENTS_OR_SESSION, 5, 0, 0, 0,
+	  "the terminal `kdos-box enter` opens wears it, and the window frame "
+	  "carries a chip of it when it is not the session's",
+	  "", "" },
+	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LOGIN, "persistence", "persistence",
+	  PERSISTS, 3, 0, 0, 0,
+	  "persistent keeps what the box writes; ephemeral puts the upper on "
+	  "tmpfs; frozen discards it — the three keys an app box differs by",
+	  "", "" },
+	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LOGIN, "network", "network",
+	  NETS, 3, 0, 0, 0,
+	  "podman --unshare-netns / --network none. Applied at CREATE time: a "
+	  "namespace cannot be re-flagged on a live container",
+	  "", "" },
+	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LOGIN, "ipc", "ipc",
+	  SHARED, 2, 0, 0, 0,
+	  "podman --unshare-ipc", "", "" },
+	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LOGIN, "devices", "devices",
+	  SHARED, 2, 0, 0, 0,
+	  "podman --unshare-devsys — and this is the key audio and gpu ride "
+	  "on: there is no flag that grants a speaker and denies a camera",
+	  "", "" },
+	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LOGIN, "processes", "processes",
+	  SHARED, 2, 0, 0, 0,
+	  "podman --unshare-process", "", "" },
+	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LOGIN, "home", "home",
+	  SHARED, 2, 0, 0, 0,
+	  "a private $HOME, not the user's. Every theme this desktop writes "
+	  "for alien apps goes through $HOME, so a private one is unthemed",
+	  "", "" },
+	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LOGIN, "wayland", "wayland",
+	  YESNO, 2, 0, 0, 0,
+	  "tagged through kdos-boxsock, which is what denies it screen capture "
+	  "and the clipboard managers; no means no display at all",
+	  "", "" },
+	{ CAT_BOXES, FT_CHOICE, ST_BOX, SC_LOGIN, "export", "export",
+	  EXPORTS, 2, 0, 0, 0,
+	  "auto turns the box's applications into host launchers when it is "
+	  "created; manual is `kdos-box export <box> <app>`",
+	  "", "" },
+	{ CAT_BOXES, FT_TEXT, ST_BOX, SC_LIVE, "memory", "memory",
+	  NULL, 0, 0, 0, 0,
+	  "enforced by KDOS-OOMD, not by podman: rootless podman with no "
+	  "systemd usually has no cgroup delegation, so --memory does nothing",
+	  "", "" },
+	{ CAT_BOXES, FT_TEXT, ST_BOX, SC_LOGIN, "cpus", "cpus",
+	  NULL, 0, 0, 0, 0,
+	  "podman --cpus, and it needs the same cgroup delegation --memory "
+	  "does; empty is no limit", "", "" },
+	{ CAT_BOXES, FT_INT, ST_BOX, SC_LIVE, "pids", "pids",
+	  NULL, 0, 0, 8192, 64,
+	  "podman --pids-limit; 0 is unlimited", "", "" },
+	{ CAT_BOXES, FT_INT, ST_BOX, SC_LIVE, "autostop", "autostop",
+	  NULL, 0, 0, 3600, 60,
+	  "idle seconds before `kdos-box gc` stops it — and gc asks the "
+	  "compositor first: a box with a mapped window is not idle. 0 is off",
+	  "", "" },
+};
+
+#define NBOXROWS ((int)(sizeof(boxrows) / sizeof(boxrows[0])))
+
+/* Set a box row's value by key, so the loader below does not care what order
+ * the file is in. */
+static void boxrow_set(const char *key, const char *val)
+{
+	for (int i = 0; i < NBOXROWS; i++)
+		if (!strcmp(boxrows[i].key, key)) {
+			kb_strlcpy(boxrows[i].val, val, sizeof(boxrows[i].val));
+			return;
+		}
+}
+
+static const char *boxrow_get(const char *key)
+{
+	for (int i = 0; i < NBOXROWS; i++)
+		if (!strcmp(boxrows[i].key, key))
+			return boxrows[i].val;
+	return "";
+}
+
 static int cat, sel, top, pane;		/* pane 0 = categories, 1 = fields */
 /* The viewport follows the SELECTION only when the selection is what moved
  * — see kch_list_wheel. */
@@ -519,6 +673,268 @@ static void load_apps(void)
 	free(data);
 }
 
+/* ── the boxes ─────────────────────────────────────────────────────────── */
+
+static void box_conf_path(const char *name, char *out, size_t n)
+{
+	const char *cfg = getenv("XDG_CONFIG_HOME");
+
+	if (cfg && *cfg)
+		snprintf(out, n, "%.400s/kdos/boxes/%.63s.conf", cfg, name);
+	else
+		snprintf(out, n, "%.400s/.config/kdos/boxes/%.63s.conf",
+			 kb_home_dir(), name);
+}
+
+/* One value out of a box profile, or "". */
+static void box_key(const char *name, const char *key, char *out, size_t n)
+{
+	char path[700], *data;
+
+	out[0] = '\0';
+	box_conf_path(name, path, sizeof(path));
+	data = kb_read_all(path, NULL);
+	if (!data)
+		return;
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		char *eq;
+		next = nl ? nl + 1 : line + strlen(line);
+		if (nl)
+			*nl = '\0';
+		while (*line == ' ' || *line == '\t')
+			line++;
+		if (!*line || *line == '#')
+			continue;
+		eq = strchr(line, '=');
+		if (!eq)
+			continue;
+		*eq = '\0';
+		for (char *e = line + strlen(line); e > line &&
+		     (e[-1] == ' ' || e[-1] == '\t'); )
+			*--e = '\0';
+		if (strcmp(line, key))
+			continue;
+		eq++;
+		while (*eq == ' ' || *eq == '\t')
+			eq++;
+		eq[strcspn(eq, "\r")] = '\0';
+		kb_strlcpy(out, eq, n);
+		break;
+	}
+	free(data);
+}
+
+/*
+ * THE PROFILES ARE THE LIST, and that is what makes this the configuration
+ * half. `kdos-box list` additionally asks podman which of them exist and what
+ * state they are in — a fork and a container-engine round trip, for an answer
+ * this page does not act on. A box that is described and not running is still
+ * a row here, for the same reason it is one on kdos-res's Boxes page.
+ */
+static void load_boxes(void)
+{
+	char dir[700];
+	char **names;
+	const char *cfg = getenv("XDG_CONFIG_HOME");
+
+	nboxes = 0;
+	if (cfg && *cfg)
+		snprintf(dir, sizeof(dir), "%.500s/kdos/boxes", cfg);
+	else
+		snprintf(dir, sizeof(dir), "%.500s/.config/kdos/boxes",
+			 kb_home_dir());
+	/*
+	 * THE DEFAULT BOX IS ALWAYS A ROW, profile or not. Every alien app on
+	 * this machine runs in `kdos-apps` and it is the one box nobody ever
+	 * had to describe, so a page listing only the profiles showed NO BOXES
+	 * on a machine with one running — and the one you would most want to
+	 * give a memory budget or an accent to. `kdos-box profile` loads the
+	 * defaults for a name with no file and writes one on the first change,
+	 * so opening this row needs nothing more than the name.
+	 */
+	{
+		struct box_row *b = &boxes[nboxes++];
+		memset(b, 0, sizeof(*b));
+		kb_strlcpy(b->name, "kdos-apps", sizeof(b->name));
+		box_key(b->name, "base", b->base, sizeof(b->base));
+		box_key(b->name, "persistence", b->persist, sizeof(b->persist));
+		box_key(b->name, "export", b->export, sizeof(b->export));
+		b->described = b->persist[0] != '\0';
+		if (!b->base[0])
+			kb_strlcpy(b->base, "(the image lane)", sizeof(b->base));
+		if (!b->persist[0])
+			kb_strlcpy(b->persist, "persistent", sizeof(b->persist));
+		if (!b->export[0])
+			kb_strlcpy(b->export, "manual", sizeof(b->export));
+	}
+
+	names = kb_listdir(dir, NULL);
+	if (!names)
+		return;
+	for (char **nm = names; *nm && nboxes < MAX_BOXES; nm++) {
+		size_t l = strlen(*nm);
+		struct box_row *b;
+
+		if (l < 6 || strcmp(*nm + l - 5, ".conf"))
+			continue;
+		if (l == 15 && !strncmp(*nm, "kdos-apps.conf", 14))
+			continue;	/* already the row above */
+		b = &boxes[nboxes++];
+		memset(b, 0, sizeof(*b));
+		kb_strlcpy(b->name, *nm, l - 4);
+		b->described = 1;
+		box_key(b->name, "base", b->base, sizeof(b->base));
+		box_key(b->name, "persistence", b->persist, sizeof(b->persist));
+		box_key(b->name, "export", b->export, sizeof(b->export));
+		if (!b->base[0])
+			kb_strlcpy(b->base, "(the image lane)", sizeof(b->base));
+		if (!b->persist[0])
+			kb_strlcpy(b->persist, "persistent", sizeof(b->persist));
+		if (!b->export[0])
+			kb_strlcpy(b->export, "manual", sizeof(b->export));
+	}
+	kb_strv_free(names);
+}
+
+/*
+ * Fill `boxrows` from one profile, or from the defaults when creating. The
+ * DEFAULTS ARE STATED HERE and they are `profile_defaults`': an unprofiled
+ * box behaves exactly as a plain `distrobox create` does, so a page that
+ * offered anything else as its starting point would create boxes nobody
+ * asked for.
+ */
+static void box_open(const char *name, int creating)
+{
+	static const char *const DEF[][2] = {
+		{ "name", "" }, { "base", "" }, { "accent", "session" },
+		{ "persistence", "persistent" }, { "network", "host" },
+		{ "ipc", "shared" }, { "devices", "shared" },
+		{ "processes", "shared" }, { "home", "shared" },
+		{ "wayland", "yes" }, { "export", "manual" },
+		{ "memory", "" }, { "cpus", "" }, { "pids", "0" },
+		{ "autostop", "0" },
+	};
+
+	for (size_t i = 0; i < sizeof(DEF) / sizeof(DEF[0]); i++)
+		boxrow_set(DEF[i][0], DEF[i][1]);
+
+	if (!creating) {
+		for (int i = 0; i < NBOXROWS; i++) {
+			char v[192];
+			if (!strcmp(boxrows[i].key, "name"))
+				continue;
+			box_key(name, boxrows[i].key, v, sizeof(v));
+			if (v[0])
+				kb_strlcpy(boxrows[i].val, v,
+					   sizeof(boxrows[i].val));
+		}
+		boxrow_set("name", name);
+		/* `autostop` is written as `120s`; the row is a number. */
+		for (int i = 0; i < NBOXROWS; i++) {
+			size_t l = strlen(boxrows[i].val);
+			if (strcmp(boxrows[i].key, "autostop"))
+				continue;
+			if (l && boxrows[i].val[l - 1] == 's')
+				boxrows[i].val[l - 1] = '\0';
+		}
+	}
+	kb_strlcpy(box_cur, creating ? "" : name, sizeof(box_cur));
+	box_mode = creating ? BOX_NEW : BOX_EDIT;
+	for (int i = 0; i < NBOXROWS; i++)
+		kb_strlcpy(boxrows[i].orig, boxrows[i].val,
+			   sizeof(boxrows[i].orig));
+}
+
+static int box_dirty(void)
+{
+	int n = 0;
+
+	for (int i = 0; i < NBOXROWS; i++)
+		if (strcmp(boxrows[i].val, boxrows[i].orig))
+			n++;
+	return n;
+}
+
+/*
+ * Write by RUNNING `kdos-box`, never by writing the file. That is what makes
+ * the checkpoint's claim true rather than approximately true: a box created
+ * here and a box created at a prompt with the same answers are the same
+ * bytes, because the same program wrote both.
+ *
+ * Only the keys that CHANGED are passed. `kdos-box profile` rewrites the whole
+ * file from what it loaded, so a key left out keeps its value; passing all
+ * fifteen every time would additionally rewrite the two — `image` and any
+ * unknown key somebody added — that this page does not show.
+ */
+static int box_write(void)
+{
+	KbArgv a = {0};
+	const char *name = box_mode == BOX_NEW ? boxrow_get("name") : box_cur;
+	int changed = 0, rc;
+
+	if (!name || !*name) {
+		snprintf(note, sizeof(note), "a box needs a name");
+		return -1;
+	}
+	for (const char *c = name; *c; c++)
+		if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') ||
+		      (*c >= '0' && *c <= '9') || *c == '.' || *c == '-' ||
+		      *c == '_')) {
+			snprintf(note, sizeof(note),
+				 "a box name is [A-Za-z0-9._-]");
+			return -1;
+		}
+
+	kb_argv_add(&a, "kdos-box");
+	kb_argv_add(&a, box_mode == BOX_NEW ? "create" : "profile");
+	kb_argv_add(&a, name);
+	for (int i = 0; i < NBOXROWS; i++) {
+		if (!strcmp(boxrows[i].key, "name"))
+			continue;
+		if (box_mode != BOX_NEW &&
+		    !strcmp(boxrows[i].val, boxrows[i].orig))
+			continue;
+		if (box_mode == BOX_NEW && !boxrows[i].val[0])
+			continue;
+		/* `autostop` round-trips through the file as seconds with an
+		 * `s`, which is what `kdos-box` parses. */
+		if (!strcmp(boxrows[i].key, "autostop"))
+			kb_argv_addf(&a, "autostop=%ss", boxrows[i].val);
+		else
+			kb_argv_addf(&a, "%s=%s", boxrows[i].key,
+				     boxrows[i].val);
+		changed++;
+	}
+	kb_argv_end(&a);
+	if (!changed && box_mode != BOX_NEW) {
+		snprintf(note, sizeof(note), "nothing to apply");
+		return 0;
+	}
+	rc = kb_run(&a);
+	if (rc != 0) {
+		snprintf(note, sizeof(note),
+			 "kdos-box exited %d — run it at a prompt to see why",
+			 rc);
+		return -1;
+	}
+	for (int i = 0; i < NBOXROWS; i++)
+		kb_strlcpy(boxrows[i].orig, boxrows[i].val,
+			   sizeof(boxrows[i].orig));
+	load_boxes();
+	if (box_mode == BOX_NEW) {
+		kb_strlcpy(box_cur, name, sizeof(box_cur));
+		box_mode = BOX_EDIT;
+		snprintf(note, sizeof(note), "%.40s created", name);
+	} else {
+		snprintf(note, sizeof(note),
+			 "%.40s written — a namespace or volume change needs "
+			 "`kdos-box remove %.20s` and creating it again",
+			 name, name);
+	}
+	return 0;
+}
+
 static void load_all(void)
 {
 	char path[700];
@@ -555,6 +971,7 @@ static void load_all(void)
 	load_kv(path, ST_PANEL);
 	cfg_path("res.conf", path, sizeof(path));
 	load_kv(path, ST_RES);
+	load_boxes();
 	load_apps();
 }
 
@@ -808,6 +1225,8 @@ static int cat_rows(void)
 
 	if (cat == CAT_APPS)
 		return napps ? napps : 1;
+	if (cat == CAT_BOXES)
+		return box_mode == BOX_LIST ? nboxes + 1 : NBOXROWS;
 	for (int i = 0; i < NROWS; i++)
 		if (rows[i].cat == cat)
 			n++;
@@ -819,12 +1238,37 @@ static int cat_row(int n)
 {
 	int k = 0;
 
-	if (cat == CAT_APPS)
+	if (cat == CAT_APPS || cat == CAT_BOXES)
 		return -1;
 	for (int i = 0; i < NROWS; i++)
 		if (rows[i].cat == cat && k++ == n)
 			return i;
 	return -1;
+}
+
+/*
+ * The field under the cursor whichever array it lives in. The Boxes page's
+ * keys are `struct row`s of their own so that the editor, the choice cycler
+ * and the help line work on them unchanged; this is the one place that has to
+ * know there are two arrays.
+ */
+static struct row *sel_row(void)
+{
+	int ri;
+
+	if (cat == CAT_BOXES) {
+		if (box_mode == BOX_LIST || sel < 0 || sel >= NBOXROWS)
+			return NULL;
+		/* `name` is set at CREATE time and nowhere else: renaming a
+		 * box is a different operation and kdos-box has no verb for
+		 * it, so a row that could be typed into here would be a
+		 * control that silently does nothing. */
+		if (box_mode != BOX_NEW && !strcmp(boxrows[sel].key, "name"))
+			return NULL;
+		return &boxrows[sel];
+	}
+	ri = cat_row(sel);
+	return ri >= 0 ? &rows[ri] : NULL;
 }
 
 static void cycle(struct row *r, int dir)
@@ -1031,10 +1475,55 @@ static void draw_page(void)
 			continue;
 		}
 
-		int ri = cat_row(idx);
-		if (ri < 0)
+		const struct row *r;
+
+		if (cat == CAT_BOXES && box_mode == BOX_LIST) {
+			/* Row 0 is the way IN, not a box. Every other list on
+			 * this desktop puts its create where the eye lands
+			 * first, and a Boxes page with no boxes and no way to
+			 * make one reads as broken. */
+			if (idx == 0) {
+				char mk[32];
+				snprintf(mk, sizeof(mk), "%s new box",
+					 ktui_glyph[KT_G_RIGHT]);
+				ktui_draw_text(fx, y, fw, mk,
+					       on ? fg : KT_ACCENT, bg,
+					       KT_A_NONE);
+				continue;
+			}
+			const struct box_row *b = &boxes[idx - 1];
+			int c2 = fw / 3, c3 = fw * 2 / 3;
+			ktui_draw_text(fx, y, c2 - 1, b->name, fg, bg,
+				       KT_A_NONE);
+			ktui_draw_text(fx + c2, y, c3 - c2 - 1, b->base,
+				       on ? fg : KT_MID, bg, KT_A_NONE);
+			/* A box with no profile says so rather than showing
+			 * the defaults as though somebody chose them. */
+			ktui_draw_text(fx + c3, y, fw - c3 - 1,
+				       b->described ? b->persist
+						    : "no profile yet",
+				       on ? fg : b->described ? KT_MID : KT_DIM,
+				       bg, KT_A_NONE);
 			continue;
-		const struct row *r = &rows[ri];
+		}
+		if (cat == CAT_BOXES) {
+			r = &boxrows[idx];
+			/* `name` is fixed once the box exists — drawn as what
+			 * it is rather than as a field that will not take. */
+			if (box_mode != BOX_NEW && !strcmp(r->key, "name")) {
+				char t[128];
+				snprintf(t, sizeof(t), "%-18s %s", r->label,
+					 r->val);
+				ktui_draw_text(fx, y, fw, t, on ? fg : KT_MID,
+					       bg, KT_A_NONE);
+				continue;
+			}
+		} else {
+			int ri = cat_row(idx);
+			if (ri < 0)
+				continue;
+			r = &rows[ri];
+		}
 		if (r->type == FT_NOTE) {
 			ktui_draw_text(fx, y, fw, r->label, on ? fg : KT_MID, bg,
 				       KT_A_NONE);
@@ -1093,9 +1582,9 @@ static void draw_page(void)
 	/* The help row: what the selected field is, and what it costs. */
 	if (editing) {
 		char line[320];
+		const struct row *er = sel_row();
 		snprintf(line, sizeof(line), "%s: %s",
-			 cat_row(sel) >= 0 ? rows[cat_row(sel)].label : "value",
-			 edit_buf);
+			 er ? er->label : "value", edit_buf);
 		const char *el = line;
 		if ((int)strlen(line) > w - 4)
 			el = line + strlen(line) - (size_t)(w - 4);
@@ -1109,6 +1598,42 @@ static void draw_page(void)
 			       "Enter opens the chooser for this type — it "
 			       "writes the default itself",
 			       KT_DIM, KT_SURFACE, KT_A_NONE);
+	} else if (cat == CAT_BOXES && box_mode == BOX_LIST) {
+		ktui_draw_text(2, h - 3, w - 4,
+			       sel == 0 ? "Enter describes a new box; nothing "
+					  "is created until you apply"
+					: "Enter opens this box's profile",
+			       KT_DIM, KT_SURFACE, KT_A_NONE);
+	} else if (cat == CAT_BOXES) {
+		/* `sel_row` and not `boxrows[sel]`: it is the one place that
+		 * knows `name` is fixed once the box exists, and a help line
+		 * describing how to type into a row that will not take is
+		 * worse than none. */
+		const struct row *r = sel_row();
+		int fixed_name = !r && sel >= 0 && sel < NBOXROWS &&
+				 !strcmp(boxrows[sel].key, "name");
+		/*
+		 * THE NETWORK WARNING IS A ROW, not a footnote. `base =
+		 * image:<ref>` fetches unsigned content from somebody else's
+		 * registry; KDOS_REQUIRE_SIG does not cover it and pretending
+		 * otherwise would be dishonest — so it beats the selected
+		 * row's own help, which is a description of one key against a
+		 * statement about the whole box.
+		 */
+		if (!strncmp(boxrow_get("base"), "image:", 6))
+			ktui_draw_text(2, h - 3, w - 4,
+				       "an image: base is ONLINE and unsigned "
+				       "— pack: and box: are the offline kinds",
+				       KT_WARN, KT_SURFACE, KT_A_NONE);
+		else if (fixed_name)
+			ktui_draw_text(2, h - 3, w - 4,
+				       "a box is renamed by creating another "
+				       "one — kdos-box has no verb for it",
+				       KT_DIM, KT_SURFACE, KT_A_NONE);
+		else
+			ktui_draw_text(2, h - 3, w - 4,
+				       r && r->help ? r->help : "", KT_DIM,
+				       KT_SURFACE, KT_A_NONE);
 	} else {
 		int ri = cat_row(sel);
 		ktui_draw_text(2, h - 3, w - 4,
@@ -1117,6 +1642,8 @@ static void draw_page(void)
 	}
 
 	int pending = dirty_count(ST_COMP) + dirty_count(ST_THEME);
+	if (cat == CAT_BOXES)
+		pending = box_mode == BOX_LIST ? 0 : box_dirty();
 	/* The arrows come from the glyph table: the console font has ◀ ▶ and
 	 * has no ← →, which is why ktui_glyph carries that pair. */
 	char hint[96];
@@ -1125,6 +1652,14 @@ static void draw_page(void)
 	else if (cat == CAT_APPS)
 		snprintf(hint, sizeof(hint),
 			 "Enter chooser   Tab panes   Esc close");
+	else if (cat == CAT_BOXES && box_mode == BOX_LIST)
+		snprintf(hint, sizeof(hint),
+			 "Enter open   Tab panes   Esc close");
+	else if (cat == CAT_BOXES)
+		snprintf(hint, sizeof(hint),
+			 "%s%s change   Enter edit   a %s   Esc back",
+			 ktui_glyph[KT_G_LEFT], ktui_glyph[KT_G_RIGHT],
+			 box_mode == BOX_NEW ? "create" : "write");
 	else
 		snprintf(hint, sizeof(hint),
 			 "%s%s change   Enter edit   a apply   Esc close",
@@ -1133,7 +1668,13 @@ static void draw_page(void)
 
 	/* One button, and it is the one irreversible thing on the screen. */
 	char blabel[24];
-	snprintf(blabel, sizeof(blabel), " Apply%s ", pending ? " *" : "");
+	if (cat == CAT_BOXES && box_mode == BOX_NEW)
+		snprintf(blabel, sizeof(blabel), " Create ");
+	else if (cat == CAT_BOXES && box_mode == BOX_LIST)
+		snprintf(blabel, sizeof(blabel), " New box ");
+	else
+		snprintf(blabel, sizeof(blabel), " Apply%s ",
+			 pending ? " *" : "");
 	int bw = ktui_utf8_width(blabel) + 2;
 	btn_x = w - 2 - bw;
 	btn_end = btn_x + bw;
@@ -1236,6 +1777,33 @@ static void activate(void)
 		snprintf(note, sizeof(note),
 			 "chooser opened for %.60s — this list re-reads itself",
 			 apps[sel].mime);
+		return;
+	}
+
+	if (cat == CAT_BOXES && box_mode == BOX_LIST) {
+		if (sel == 0) {
+			box_open("", 1);
+			sel = top = 0;
+			note[0] = '\0';
+		} else if (sel - 1 < nboxes) {
+			box_open(boxes[sel - 1].name, 0);
+			sel = top = 0;
+			note[0] = '\0';
+		}
+		return;
+	}
+
+	struct row *sr = sel_row();
+	if (!sr || sr->type == FT_NOTE)
+		return;
+	if (cat == CAT_BOXES) {
+		if (sr->type == FT_CHOICE) {
+			cycle(sr, 1);
+			return;
+		}
+		editing = 1;
+		kb_strlcpy(edit_buf, sr->val, sizeof(edit_buf));
+		note[0] = '\0';
 		return;
 	}
 
@@ -1492,6 +2060,10 @@ int settings_main(int argc, char **argv)
 			mode = SM_PAGE;
 			if (cat == CAT_APPS)
 				load_apps();
+			if (cat == CAT_BOXES) {
+				load_boxes();
+				box_mode = BOX_LIST;
+			}
 			continue;
 		}
 
@@ -1546,7 +2118,14 @@ int settings_main(int argc, char **argv)
 			} else if (ev.btn == KT_MB_LEFT) {
 				if (btn_end > btn_x && ev.my == btn_row &&
 				    ev.mx >= btn_x && ev.mx < btn_end) {
-					apply();
+					if (cat != CAT_BOXES) {
+						apply();
+					} else if (box_mode == BOX_LIST) {
+						box_open("", 1);
+						sel = top = 0;
+					} else {
+						box_write();
+					}
 				} else if (in_cats && !editing) {
 					if (ev.my - 1 != cat) {
 						cat = ev.my - 1;
@@ -1554,6 +2133,10 @@ int settings_main(int argc, char **argv)
 						top = 0;
 						if (cat == CAT_APPS)
 							load_apps();
+						if (cat == CAT_BOXES) {
+							load_boxes();
+							box_mode = BOX_LIST;
+						}
 					}
 					pane = 0;
 				} else if (in_fields && !editing) {
@@ -1574,25 +2157,24 @@ int settings_main(int argc, char **argv)
 		sel_follow = 1;	/* a key moves the cursor; the view follows */
 
 		if (editing) {
-			int ri = cat_row(sel);
+			struct row *er = sel_row();
 			size_t len = strlen(edit_buf);
 			if (ev.key == KT_K_ESC) {
 				editing = 0;
 			} else if (ev.key == KT_K_ENTER) {
-				if (ri >= 0) {
-					if (rows[ri].type == FT_INT) {
+				if (er) {
+					if (er->type == FT_INT) {
 						int v = atoi(edit_buf);
-						if (v < rows[ri].min)
-							v = rows[ri].min;
-						if (v > rows[ri].max)
-							v = rows[ri].max;
-						snprintf(rows[ri].val,
-							 sizeof(rows[ri].val),
+						if (v < er->min)
+							v = er->min;
+						if (v > er->max)
+							v = er->max;
+						snprintf(er->val,
+							 sizeof(er->val),
 							 "%d", v);
 					} else {
-						kb_strlcpy(rows[ri].val,
-							   edit_buf,
-							   sizeof(rows[ri].val));
+						kb_strlcpy(er->val, edit_buf,
+							   sizeof(er->val));
 					}
 				}
 				editing = 0;
@@ -1608,6 +2190,16 @@ int settings_main(int argc, char **argv)
 		}
 
 		if (ev.key == KT_K_ESC) {
+			/* On a box's profile, back one level to the box LIST.
+			 * Escape steps out of exactly one thing at a time,
+			 * which is what makes it usable without thinking. */
+			if (cat == CAT_BOXES && box_mode != BOX_LIST) {
+				box_mode = BOX_LIST;
+				box_cur[0] = '\0';
+				sel = top = 0;
+				note[0] = '\0';
+				continue;
+			}
 			/* Back to the grid, not out of the program. Edits are
 			 * held in `rows[]` and Apply is still one key away, so
 			 * stepping back loses nothing — and the unsaved-changes
@@ -1621,7 +2213,7 @@ int settings_main(int argc, char **argv)
 		}
 		quit_armed = 0;
 
-		int ri = cat_row(sel);
+		struct row *sr = sel_row();
 		switch (ev.key) {
 		case KT_K_TAB:
 			pane = !pane;
@@ -1633,6 +2225,10 @@ int settings_main(int argc, char **argv)
 					sel = top = 0;
 					if (cat == CAT_APPS)
 						load_apps();
+					if (cat == CAT_BOXES) {
+						load_boxes();
+						box_mode = BOX_LIST;
+					}
 				}
 			} else {
 				sel--;
@@ -1645,22 +2241,26 @@ int settings_main(int argc, char **argv)
 					sel = top = 0;
 					if (cat == CAT_APPS)
 						load_apps();
+					if (cat == CAT_BOXES) {
+						load_boxes();
+						box_mode = BOX_LIST;
+					}
 				}
 			} else {
 				sel++;
 			}
 			break;
 		case KT_K_LEFT:
-			if (pane == 1 && ri >= 0)
-				cycle(&rows[ri], -1);
+			if (pane == 1 && sr)
+				cycle(sr, -1);
 			else
 				pane = 0;
 			break;
 		case KT_K_RIGHT:
 			if (pane == 0)
 				pane = 1;
-			else if (ri >= 0)
-				cycle(&rows[ri], 1);
+			else if (sr)
+				cycle(sr, 1);
 			break;
 		case KT_K_PGUP:
 			sel -= pane_rows;
@@ -1681,7 +2281,16 @@ int settings_main(int argc, char **argv)
 				activate();
 			break;
 		case 'a':
-			apply();
+			if (cat == CAT_BOXES) {
+				if (box_mode != BOX_LIST)
+					box_write();
+				else
+					snprintf(note, sizeof(note),
+						 "open a box, or `%s new box`",
+						 ktui_glyph[KT_G_RIGHT]);
+			} else {
+				apply();
+			}
 			break;
 		default:
 			break;

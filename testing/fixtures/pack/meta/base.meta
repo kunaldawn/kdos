@@ -1,0 +1,7 @@
+id          = base
+kind        = base
+name        = Debian base
+version     = 1.0
+release     = 1
+summary     = The bottom of every stack
+licence     = various

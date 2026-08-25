@@ -350,6 +350,7 @@ ssd_titlebar_destroy(struct ssd *ssd)
 	}
 
 	kdos_group_ssd_clear(ssd->view); /* KDOS: the tab strip goes with it */
+	kdos_boxchip_ssd_clear(ssd->view); /* KDOS: and the box chip */
 	zfree(ssd->state.title.text);
 	wlr_scene_node_destroy(&ssd->titlebar.tree->node);
 	ssd->titlebar = (struct ssd_titlebar_scene){0};
@@ -431,6 +432,12 @@ get_title_offsets(struct ssd *ssd, int *offset_left, int *offset_right)
 			*offset_left += button_width + button_spacing;
 		}
 	}
+	/* KDOS: the box chip sits between the left buttons and the title, and
+	 * its width is added HERE because this is the one place both the
+	 * title's wrapping width and its position are computed from — a chip
+	 * placed at a coordinate of its own is correct until a title grows
+	 * long enough to run under it. */
+	*offset_left += kdos_boxchip_width(ssd->view);
 	wl_list_for_each(button, &subtree->buttons_right, link) {
 		if (button->node->enabled) {
 			*offset_right += button_width + button_spacing;
@@ -490,6 +497,9 @@ ssd_update_title(struct ssd *ssd)
 		xstrdup_replace(state->text, view->title);
 	}
 	ssd_update_title_positions(ssd, offset_left, offset_right);
+	/* KDOS: the chip, at the left edge of the room it just reserved. */
+	kdos_boxchip_ssd_update(ssd,
+		offset_left - kdos_boxchip_width(ssd->view));
 	kdos_group_ssd_update(ssd); /* KDOS: tabs over the title, when grouped */
 }
 

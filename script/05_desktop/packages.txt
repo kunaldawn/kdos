@@ -78,6 +78,16 @@ kdos-oomd
 # daemon published, so a client can never name a device or a mountpoint.
 kdos-mountd
 
+# Packs. An application is one signed EROFS image with a KDOS footer on the
+# end, and this is the only thing on the machine that mounts one: it verifies
+# where it mounts, composes a box's root filesystem out of an overlay of them,
+# and takes an id out of the list it published rather than a path. Mounting as
+# ROOT is what makes overlay whiteouts real, which is what removes the flatten
+# step the monolithic image needed.
+erofs-utils
+kdos-pack
+kdos-packd
+
 # The input method. kdos-comp speaks text-input-v3 to applications and
 # input-method-v2 to fcitx5 (the fork's src/input/ime.c); this is the
 # thing on the other end of that second protocol. Built Wayland-only — no X11

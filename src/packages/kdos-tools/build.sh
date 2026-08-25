@@ -13,17 +13,23 @@ LIBS="$PORT_SRC/../../libs"
 
 # libkxdg is here for `kdos appid`, which reads installed desktop entries, and
 # libkproc for `kdos stutter`'s box identity. Both link libkbase and nothing
-# else, so neither costs an external dependency.
+# else, so neither costs an external dependency. libkpack (over libksig) is
+# `kdos app update`: reading a PACKAGES index and picking the delta is the
+# same parser kdos-packd uses, and a second one here would be a second answer
+# to what a source offers.
 # libpng is the wallpaper retint (`kdos theme` writes the accent-tinted copy
 # into ~/.cache); KDOS_HAVE_LIBPNG gates the code so the host selftest, which
 # links without libpng, still builds.
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -DKDOS_HAVE_LIBPNG -Wall -Wextra \
 	-I"$LIBS/libkbase" -I"$LIBS/libkcolor" -I"$LIBS/libkpkg" \
-	-I"$LIBS/libkxdg" -I"$LIBS/libkproc" -I"$PORT_SRC" \
+	-I"$LIBS/libkxdg" -I"$LIBS/libkproc" -I"$LIBS/libksig" \
+	-I"$LIBS/libkpack" -I"$PORT_SRC" \
 	-o kdos-tools \
 	"$PORT_SRC"/*.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libkcolor/*.c "$LIBS"/libkpkg/*.c \
-	"$LIBS"/libkxdg/*.c "$LIBS"/libkproc/*.c -lpng $LDFLAGS
+	"$LIBS"/libkxdg/*.c "$LIBS"/libkproc/*.c \
+	"$LIBS"/libksig/*.c "$LIBS"/libksig/monocypher/*.c \
+	"$LIBS"/libkpack/*.c -lpng $LDFLAGS
 
 install -Dm755 kdos-tools "$PKG/usr/sbin/ksvc"
 

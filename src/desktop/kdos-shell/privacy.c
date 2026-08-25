@@ -53,6 +53,7 @@
 
 #include <pipewire/pipewire.h>
 
+#include "kproc.h"
 #include "shell.h"
 
 /* The camera walk is /proc, not an event source: it costs a readdir per process
@@ -508,6 +509,41 @@ const char *sh_priv_name(const struct sh_state *sh, int kind)
 	if (kind == SH_PRIV_CAM && p->ncam > 0)
 		return p->cam[0].name;
 	return NULL;
+}
+
+/*
+ * WHICH BOX IS RECORDING, for the tooltip and not for the bar.
+ *
+ * On a machine where every fat application is a container, "firefox-esr is
+ * recording" leaves out the half that says WHICH firefox — and with the pack
+ * lane there can legitimately be two. The name is PipeWire's, chosen by the
+ * app; the box is libkproc's conmon walk over the pid the app published, which
+ * is the same identity kdos stutter, kdos-energyd and kdos-oomd use, so a user
+ * box needs nothing added here to be named.
+ *
+ * It is the TOOLTIP's, never the panel row's: the applet is three cells and a
+ * box suffix there would push the meters strip off an eighty-column bar.
+ */
+int sh_priv_box(const struct sh_state *sh, int kind, char *out, size_t n)
+{
+	struct sh_priv *p = sh->priv;
+	struct priv_node *node;
+	int pid = 0;
+
+	if (out && n)
+		*out = '\0';
+	if (!p || !out || !n)
+		return 0;
+	spa_list_for_each(node, &p->nodes, link)
+		if (node->kind == kind && node->running && node->pid > 0) {
+			pid = node->pid;
+			break;
+		}
+	if (!pid && kind == SH_PRIV_CAM && p->ncam > 0)
+		pid = p->cam[0].pid;
+	if (pid <= 0)
+		return 0;
+	return kpr_box_of_pid(pid, out, n) && *out;
 }
 
 void sh_priv_free(struct sh_state *sh)

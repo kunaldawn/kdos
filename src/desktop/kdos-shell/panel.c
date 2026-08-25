@@ -756,7 +756,10 @@ static int icon_ok(void);
 
 struct chip {
 	const char *label;
-	char buf[48];
+	/* Name, the box that disambiguates it, and a member count: `GIMP (arch)
+	 * ×3`. Wider than the 48 it was, because a truncated label is a button
+	 * that says the wrong thing rather than one that says less. */
+	char buf[112];
 	int first;		/* task index of the first member, or -1 */
 	int count;		/* 0 for a pinned application not running  */
 	int active;		/* any member focused */
@@ -786,11 +789,23 @@ static void build_chips(struct sh_state *sh, int launchers)
 			for (int j = 0; j < nchips; j++) {
 				const struct sh_task *f =
 					&sh->tasks[chips[j].first];
-				if (f->app_id[0] &&
-				    !strcmp(f->app_id, t->app_id)) {
-					c = &chips[j];
-					break;
-				}
+				if (!f->app_id[0] ||
+				    strcmp(f->app_id, t->app_id))
+					continue;
+				/*
+				 * THE BOX IS PART OF THE GROUPING KEY. Two
+				 * GIMPs from two boxes are two applications as
+				 * far as a person using them is concerned, and
+				 * merging them onto one button would put both
+				 * behind a member list that cannot say which
+				 * is which. A window with no box groups with
+				 * other windows with no box, which is every
+				 * window on a machine that has none.
+				 */
+				if (strcmp(f->box, t->box))
+					continue;
+				c = &chips[j];
+				break;
 			}
 		}
 		if (!c) {
@@ -908,17 +923,43 @@ static void build_chips(struct sh_state *sh, int launchers)
 	for (int i = 0; i < nchips; i++) {
 		struct chip *c = &chips[i];
 		const struct sh_task *t;
+		int shared = 0;
 
 		if (c->count == 0)
 			continue;	/* a launcher; its label is the pin's */
 		t = &sh->tasks[c->first];
-		if (c->count > 1) {
+
+		/*
+		 * THE BOX GOES IN THE LABEL ONLY WHEN IT DISAMBIGUATES.
+		 * A window whose app_id is unique on the machine shows exactly
+		 * what it showed before boxes existed; one whose app_id exists
+		 * in more than one box gets ` (arch)`. An always-on marker
+		 * would be a badge on every button on a machine where every
+		 * application is boxed, which says nothing.
+		 */
+		for (int j = 0; j < nchips && !shared; j++) {
+			const struct sh_task *o;
+			if (j == i || chips[j].count == 0)
+				continue;
+			o = &sh->tasks[chips[j].first];
+			if (o->app_id[0] && t->app_id[0] &&
+			    !strcmp(o->app_id, t->app_id) &&
+			    strcmp(o->box, t->box))
+				shared = 1;
+		}
+
+		if (c->count > 1 && shared && t->box[0])
+			snprintf(c->buf, sizeof(c->buf), "%s (%s) \xc3\x97%d",
+				 sh_task_label(t), t->box, c->count);
+		else if (c->count > 1)
 			snprintf(c->buf, sizeof(c->buf), "%s \xc3\x97%d",
 				 sh_task_label(t), c->count);
-			c->label = c->buf;
-		} else {
-			c->label = sh_task_label(t);
-		}
+		else if (shared && t->box[0])
+			snprintf(c->buf, sizeof(c->buf), "%s (%s)",
+				 sh_task_label(t), t->box);
+		else
+			c->buf[0] = '\0';
+		c->label = c->buf[0] ? c->buf : sh_task_label(t);
 	}
 
 	/*
@@ -1500,8 +1541,17 @@ static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
 		 (sh->task_hit_x + (ci - chip_off) * sh->task_cell_w) *
 			 kwl_cell_w());
 	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+	/*
+	 * THE BOX GOES WITH IT. The panel groups by (app_id, box), so the
+	 * app_id alone does not say which of two GIMPs this menu is for —
+	 * and the menu's own title is the one place a person can check that
+	 * before closing something.
+	 */
+	const char *box = sh->tasks[chips[ci].first].box;
 	const char *argv[] = { "kdos-menu", ctrl ? "--winmenu" : "--windows",
-			       app_id, panel_at_flag(), xs, ys, NULL };
+			       app_id, panel_at_flag(), xs, ys,
+			       box[0] ? "--box" : NULL, box[0] ? box : NULL,
+			       NULL };
 	panel_spawn(argv);
 }
 
@@ -5843,17 +5893,32 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 			snprintf(t2, n2, "%d mounted - click to mount or eject",
 				 panel_media_mounted);
 			return 1;
-		case SH_AP_MIC:
-			snprintf(t1, n1, "%s is recording",
-				 sh_priv_name(sh, SH_PRIV_MIC));
+		case SH_AP_MIC: {
+			char box[64];
+			/* The box, when there is one: on this distro every fat
+			 * application is a container and the app's own name
+			 * does not say which. */
+			if (sh_priv_box(sh, SH_PRIV_MIC, box, sizeof(box)))
+				snprintf(t1, n1, "%s (box %s) is recording",
+					 sh_priv_name(sh, SH_PRIV_MIC), box);
+			else
+				snprintf(t1, n1, "%s is recording",
+					 sh_priv_name(sh, SH_PRIV_MIC));
 			snprintf(t2, n2, "%s", "click to mute every capture "
 					       "device");
 			return 1;
-		case SH_AP_CAM:
-			snprintf(t1, n1, "%s is using the camera",
-				 sh_priv_name(sh, SH_PRIV_CAM));
+		}
+		case SH_AP_CAM: {
+			char box[64];
+			if (sh_priv_box(sh, SH_PRIV_CAM, box, sizeof(box)))
+				snprintf(t1, n1, "%s (box %s) is using the camera",
+					 sh_priv_name(sh, SH_PRIV_CAM), box);
+			else
+				snprintf(t1, n1, "%s is using the camera",
+					 sh_priv_name(sh, SH_PRIV_CAM));
 			snprintf(t2, n2, "%s", "click for the device manager");
 			return 1;
+		}
 		case SH_AP_MPRIS:
 			snprintf(t1, n1, "%s", sh_mpris_title(sh->mpris));
 			snprintf(t2, n2, "%s",

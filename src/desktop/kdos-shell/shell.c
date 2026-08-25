@@ -493,6 +493,73 @@ int sh_desktop_entry(const char *id, char *name, size_t nname,
 	return found;
 }
 
+/*
+ * THE BOX A WINDOW CAME FROM, asked ONCE.
+ *
+ * The compositor knows it outright — kdos-boxsock tags every client it
+ * launches with a security context whose app_id is the box name — and answers
+ * it in `{"cmd":"list"}`. What this has to solve is WHICH entry is the window
+ * that just mapped, and app_id alone does not say: two boxes running GIMP is
+ * exactly the case this exists for. The creation_id does. It is monotonic, so
+ * among the entries carrying this app_id the NEWEST is the one that just
+ * appeared, which is the one being asked about.
+ *
+ * "No box" is a valid answer and is the common one. A host window has no
+ * security context; a compositor that does not answer within the second
+ * sh_cmd_call allows gives the same result, and the label is what it always
+ * was.
+ */
+static void task_box(struct sh_task *t)
+{
+	char reply[16384];
+	const char *p;
+	long best = -1;
+
+	t->box[0] = '\0';
+	if (!t->app_id[0])
+		return;
+	if (sh_cmd_call("{\"cmd\":\"list\"}\n", reply, sizeof(reply), NULL, 0) != 0)
+		return;
+
+	/*
+	 * A scanner over the reply's own shape rather than a JSON parser: the
+	 * fields are emitted by kdos-cmd.c three files away in this repository
+	 * and every string in them is escaped by json_str, so a `","box":"`
+	 * inside a window TITLE would have to survive that escaping to be
+	 * mistaken for a field, and it cannot — a quote in a title comes out
+	 * as \" and does not close the string.
+	 */
+	for (p = reply; (p = strstr(p, "\"id\":")) != NULL; p++) {
+		const char *obj = p;
+		const char *nextid = strstr(p + 1, "\"id\":");
+		const char *aid = strstr(obj, "\"app_id\":\"");
+		const char *bx = strstr(obj, "\"box\":\"");
+		long id = strtol(p + 5, NULL, 10);
+		size_t alen = strlen(t->app_id);
+		char box[64];
+		const char *end;
+
+		if (!aid || (nextid && aid > nextid))
+			continue;
+		aid += 10;
+		if (strncmp(aid, t->app_id, alen) || aid[alen] != '"')
+			continue;
+		if (id <= best)
+			continue;
+		best = id;
+		t->box[0] = '\0';
+		if (!bx || (nextid && bx > nextid))
+			continue;
+		bx += 7;
+		end = strchr(bx, '"');
+		if (!end || (size_t)(end - bx) >= sizeof(box))
+			continue;
+		memcpy(box, bx, (size_t)(end - bx));
+		box[end - bx] = '\0';
+		snprintf(t->box, sizeof(t->box), "%s", box);
+	}
+}
+
 static void tl_app_id(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
 		      const char *app_id)
 {
@@ -504,6 +571,7 @@ static void tl_app_id(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
 	 * maps and when it changes its id, which is the only time the answer
 	 * can change, and the panel redraws every second. */
 	desktop_name(app_id, t->name, sizeof(t->name), t->did, sizeof(t->did));
+	task_box(t);
 }
 
 static void tl_output_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,

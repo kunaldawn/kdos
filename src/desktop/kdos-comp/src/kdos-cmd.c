@@ -9,6 +9,7 @@
  *   {"cmd":"list"}      -> {"ok":true,"views":[...]}
  *   {"cmd":"run","action":"Close","id":7} -> {"ok":true}
  *   {"cmd":"outputs"}   -> {"ok":true,"outputs":[...]}
+ *   {"cmd":"boxes"}     -> {"ok":true,"boxes":["arch","kdos-apps"]}
  *
  * Rules, each one a way a control socket usually takes a compositor down
  * with it:
@@ -271,6 +272,17 @@ cmd_list(struct buf *b)
 		 */
 		pid_t pid = view->impl->get_pid ? view->impl->get_pid(view) : -1;
 		buf_add_fmt(b, ",\"pid\":%d", (int)pid);
+		/*
+		 * THE BOX, and it is not derived from the pid. The ppid walk to
+		 * conmon is what a client OUTSIDE the compositor has to do;
+		 * here the security context says it outright, which is both
+		 * cheaper and correct for a client that is tagged but not
+		 * containerised. Empty for a host window.
+		 */
+		buf_add_char(b, ',');
+		json_kv_str(b, "box", kdos_view_box(view));
+		buf_add_char(b, ',');
+		json_kv_str(b, "instance", kdos_view_instance(view));
 		buf_add_fmt(b, ",\"focused\":%s",
 			view == server.active_view ? "true" : "false");
 		buf_add_fmt(b, ",\"minimized\":%s", view->minimized ? "true" : "false");
@@ -278,6 +290,46 @@ cmd_list(struct buf *b)
 			view->maximized != VIEW_AXIS_NONE ? "true" : "false");
 		buf_add_fmt(b, ",\"fullscreen\":%s", view->fullscreen ? "true" : "false");
 		buf_add_fmt(b, ",\"shaded\":%s}", view->shaded ? "true" : "false");
+	}
+	buf_add(b, "]}");
+}
+
+/*
+ * BOXES. `{"cmd":"boxes"}` -> the distinct boxes with a window on the screen.
+ * `kdos-box gc` asks this before stopping anything: a box whose window is
+ * mapped is not idle, whatever its clock says, and deriving that from `list`
+ * in the client would put the same reduction in two places.
+ */
+static void
+cmd_boxes(struct buf *b)
+{
+	const char *seen[64];
+	int nseen = 0;
+	struct view *view;
+
+	buf_add(b, "{\"ok\":true,\"boxes\":[");
+	for_each_view(view, &server.views, LAB_VIEW_CRITERIA_NONE) {
+		const char *box = kdos_view_box(view);
+		int i;
+
+		if (!box || !*box) {
+			continue;
+		}
+		for (i = 0; i < nseen; i++) {
+			if (!strcmp(seen[i], box)) {
+				break;
+			}
+		}
+		if (i < nseen || nseen >= 64) {
+			continue;
+		}
+		if (nseen) {
+			buf_add_char(b, ',');
+		}
+		seen[nseen++] = box;
+		buf_add_char(b, '"');
+		buf_add(b, box);
+		buf_add_char(b, '"');
 	}
 	buf_add(b, "]}");
 }
@@ -456,6 +508,8 @@ dispatch(struct buf *b, const char *line)
 	}
 	if (!strcmp(cmd, "list")) {
 		cmd_list(b);
+	} else if (!strcmp(cmd, "boxes")) {
+		cmd_boxes(b);
 	} else if (!strcmp(cmd, "outputs")) {
 		cmd_outputs(b);
 	} else if (!strcmp(cmd, "run")) {

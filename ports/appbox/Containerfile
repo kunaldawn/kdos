@@ -107,10 +107,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends /tmp/codium.deb \
     && rm -f /tmp/codium.deb && rm -rf /var/lib/apt/lists/*
 
-# Utilities, backup & recovery
+# Utilities and backup. NO gparted, gnome-disk-utility, gsmartcontrol or
+# testdisk: they need raw block devices and this box is rootless podman, so
+# each opens a window it cannot do anything in. Partitioning, SMART and
+# recovery are native rows on the host, which is where root is.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        pcmanfm xarchiver keepassxc gparted gnome-disk-utility baobab \
-        gsmartcontrol bleachbit deja-dup testdisk grsync goldendict-ng \
+        pcmanfm xarchiver keepassxc baobab \
+        bleachbit deja-dup grsync goldendict-ng \
     && rm -rf /var/lib/apt/lists/*
 
 # Games (offline classics)
