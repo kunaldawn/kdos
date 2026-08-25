@@ -87,6 +87,16 @@ int ksig_sig_append(const char *path, const uint8_t seed[KSIG_SEED_LEN],
 		    const uint8_t pub[KSIG_PUB_LEN], const void *msg,
 		    size_t len);
 
+/*
+ * The same line, into a buffer rather than onto a file. A pack carries its
+ * signature block INSIDE itself, so the block is assembled before the file it
+ * will live in exists. `out` must hold at least KSIG_LINE_MAX bytes; the line
+ * is NUL-terminated and ends with a newline.
+ */
+#define KSIG_LINE_MAX 160
+void ksig_sig_line(char out[KSIG_LINE_MAX], const uint8_t seed[KSIG_SEED_LEN],
+		   const uint8_t pub[KSIG_PUB_LEN], const void *msg, size_t len);
+
 /* ── keyrings ──────────────────────────────────────────────────────────── */
 
 /* Every `*.pub` in `dir`. Returns how many were loaded; a directory that does
@@ -103,6 +113,14 @@ int ksig_ring_load(KsigRing *ring, const char *dir);
  */
 int ksig_verify_file(const KsigRing *ring, const char *sigpath, const void *msg,
 		     size_t len, char who[KSIG_ID_HEX]);
+
+/*
+ * Verify against a signature block held in MEMORY. `ksig_verify_file` is this
+ * function with the block read off disk first, so there is one parser for the
+ * line format and an embedded block and a sidecar cannot be read differently.
+ */
+int ksig_verify_lines(const KsigRing *ring, const char *text, size_t tlen,
+		      const void *msg, size_t len, char who[KSIG_ID_HEX]);
 
 /* Same, for a file on disk rather than a buffer. */
 int ksig_verify_path(const KsigRing *ring, const char *path,

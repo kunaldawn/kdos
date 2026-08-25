@@ -264,7 +264,10 @@ static void box_env(KbArgv *a, const char *image)
 }
 
 /*
- * One-time rootless storage tuning.
+ * One-time rootless storage tuning, and it governs THE PODMAN STORE ONLY —
+ * which is the image lane and a dev box built from an `image:` base. A pack is
+ * mounted by kdos-packd as root and is not in the store at all, so the driver
+ * question does not arise for an app box.
  *
  * /etc/containers/storage.conf pins fuse-overlayfs, which the live ISO NEEDS:
  * $HOME sits on the boot overlay and the kernel refuses to stack an overlay
@@ -325,6 +328,66 @@ static void tune_storage(void)
 	kb_write_file(conf, "[storage]\ndriver = \"overlay\"\n");
 }
 
+/*
+ * The pack lane's launch. Everything the image lane does that is about the
+ * MACHINE rather than about distrobox is shared: the stuck-in-`stopping`
+ * recovery, the readiness wait on `container_setup_done`, the notification,
+ * the trace lines and the whole of box_env(). What differs is three calls —
+ * compose, create, exec — in place of `distrobox enter`.
+ */
+static int run_pack(int argc, char **argv, const char *app, const char *state)
+{
+	Profile p;
+	KbArgv a = {0};
+	char id[128];
+	int i;
+
+	profile_load(&p, g_box);
+
+	/* The box is named after the pack, so the box name IS the id unless
+	 * somebody aimed --box somewhere else. */
+	kb_strlcpy(id, p.base[0] && !strncmp(p.base, "pack:", 5) ? p.base + 5
+								 : g_box,
+		   sizeof(id));
+
+	if (pack_box_ensure(g_box, id) != 0)
+		kb_die("could not compose box '%s' from packs", g_box);
+	tracef("ensured");
+
+	if (pack_box_start(g_box) != 0)
+		kb_die("could not start box '%s'", g_box);
+
+	/*
+	 * The same readiness contract as the image lane: kdos-boxinit prints
+	 * `container_setup_done` and this waits for it. It is quick here —
+	 * boxinit writes three records and prints — but a launch that raced it
+	 * would exec into a box with no user in it, which is the failure the
+	 * marker exists for.
+	 */
+	if (!box_setup_done(g_box) && box_wait_ready(g_box, 30) != 0)
+		tracef("wait_ready timed out");
+
+	tracef("entering");
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "exec");
+	kb_argv_add(&a, "--interactive");
+	kb_argv_addf(&a, "--user=%u:%u", (unsigned)getuid(), (unsigned)getgid());
+	kb_argv_addf(&a, "--workdir=%s", kb_home_dir());
+	kb_argv_add(&a, g_box);
+	/* box_env writes `env NAME=value …` in front of the command, so the
+	 * environment reaches the app the same way in both lanes and there is
+	 * one place where GTK_USE_PORTAL and the rest are decided. */
+	box_env(&a, p.image);
+	for (i = 0; i < argc; i++)
+		kb_argv_add(&a, argv[i]);
+	kb_argv_end(&a);
+	execvp(a.v[0], (char *const *)a.v);
+	kb_die("podman: not found");
+	(void)state;
+	(void)app;
+	return 1;
+}
+
 int cmd_run(int argc, char **argv)
 {
 	Profile p;
@@ -378,6 +441,8 @@ int cmd_run(int argc, char **argv)
 	}
 
 	tracef("run %s status=%s", app, state);
+	if (pack_mode())
+		return run_pack(argc, argv, app, state);
 	if (box_ensure(g_box) != 0)
 		kb_die("could not create box '%s'", g_box);
 	tracef("ensured");
@@ -454,6 +519,22 @@ int cmd_status(void)
 	char state[64];
 
 	profile_load(&p, g_box);
+	/* WHICH LANE, first line. A migration seam nobody can see is a seam
+	 * that gets debugged from the wrong end. */
+	printf("lane  : %s\n", pack_mode() ? "packs (kdos-packd)"
+					   : "the monolithic image");
+	if (pack_mode()) {
+		char st[4096];
+		if (packd_ask("status", st, sizeof(st)) == 0)
+			fputs(st, stdout);
+		else
+			printf("packd : not answering\n");
+		box_state(g_box, st, sizeof(st));
+		printf("box   : %s (%s)\n",
+		       strcmp(st, "absent") ? "created"
+					    : "not created (first launch will)", st);
+		return 0;
+	}
 	printf("image : %s\n", image_exists(p.image) ? "baked" : "missing");
 	box_state(g_box, state, sizeof(state));
 	printf("box   : %s (%s)\n",
@@ -566,13 +647,21 @@ static void usage(void)
  */
 static int run_as_shim(const char *name, int argc, char **argv)
 {
-	char cmd[512], store[1024];
+	char cmd[512], store[1024], pack[128] = "";
 	const char *slot[KB_MAX_ARGV];
 	char *vec[KB_MAX_ARGV];
 	int n = 0, i;
 
-	if (!app_lookup(name, cmd, sizeof(cmd)))
+	if (!app_lookup_pack(name, cmd, sizeof(cmd), pack, sizeof(pack)))
 		kb_die("unknown alien app '%s' (try: kdos-appbox apps)", name);
+
+	/*
+	 * ONE BOX PER APPLICATION in the pack lane, named after the pack. The
+	 * launch path below is otherwise identical, and `--box` still wins —
+	 * that is how the same application is run in a second box.
+	 */
+	if (pack[0] && pack_mode() && !strcmp(g_box, DEFAULT_BOX))
+		g_box = kb_strdup(pack);
 
 	/*
 	 * kxdg_exec_split, not a `strtok(" ")`: the table's commands come out
@@ -609,6 +698,10 @@ int main(int argc, char **argv)
 	kb_set_progname("kdos-appbox");
 	tune_storage();
 
+	/* kdos-box is a second NAME on this binary, the way kpkg/kpkgadd and
+	 * ksvc/service already are — not a second program. */
+	if (!strcmp(self, "kdos-box"))
+		return box_main(argc - 1, argv + 1);
 	if (strcmp(self, "kdos-appbox"))
 		return run_as_shim(self, argc - 1, argv + 1);
 
@@ -657,9 +750,21 @@ int main(int argc, char **argv)
 	if (CMD("image"))
 		return cmd_image(argc - i - 1, argv + i + 1);
 	if (CMD("genlaunchers")) {
+		/*
+		 * Two sources, one set of outputs. `--packs <fs-root>` walks
+		 * every installed app pack; the two-argument form reads one
+		 * directory, which is what the image lane's bake hands it.
+		 */
+		if (i + 1 < argc && !strcmp(argv[i + 1], "--packs")) {
+			if (i + 2 >= argc)
+				kb_die("usage: kdos-appbox genlaunchers --packs "
+				       "<fs-root>");
+			return cmd_genlaunchers(NULL, argv[i + 2]);
+		}
 		if (i + 2 >= argc)
 			kb_die("usage: kdos-appbox genlaunchers "
-			       "<desktop-dir> <fs-root>");
+			       "<desktop-dir> <fs-root>\n"
+			       "       kdos-appbox genlaunchers --packs <fs-root>");
 		return cmd_genlaunchers(argv[i + 1], argv[i + 2]);
 	}
 	if (CMD("create"))

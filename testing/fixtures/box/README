@@ -1,0 +1,13 @@
+testing/fixtures/box — four profiles, because the profile IS the contract.
+
+A box's behaviour is podman's and cannot be exercised on a host with no
+container runtime. What CAN be exercised, and is the part KDOS wrote, is what
+the profile says: which keys map onto a flag, which key it had to admit it
+cannot enforce, and what an unknown key does.
+
+  devbox     every namespace private, `audio = no` — which cannot be enforced
+             separately from `devices` and must SAY so — and a key that does
+             not exist, which must be reported by name rather than ignored
+  frozenbox  an app box: frozen, no export, a pack base
+  ephemeral  the live-stick case: the upper cannot live on the boot overlay
+  orphan     a base chain nothing satisfies

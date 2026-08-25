@@ -1,0 +1,114 @@
+W0 — the four assumptions the pack format rests on, measured.
+
+Measured 2026-08-25 with erofs-utils 1.8.6 on Linux 7.0.0-29-generic, in a
+privileged container in the host's init user namespace. The KDOS kernel carries
+the same EROFS and overlayfs options (CONFIG_EROFS_FS_BACKED_BY_FILE=y,
+CONFIG_EROFS_FS_ZIP_ZSTD=y, CONFIG_OVERLAY_FS=m), so these are properties of the
+filesystems rather than of one build; W0-3 is the one that still needs the
+target, because "rootless" cannot be reproduced from a root container.
+
+
+W0-1  TRAILING BYTES DO NOT BREAK AN EROFS MOUNT                          PASS
+
+    image 4096 bytes, +65536 bytes of /dev/urandom appended
+    mounted ro, `canary` read back intact
+
+  The superblock records the image's extent, so bytes past it are never
+  referenced. The footer design stands; the `<pack>.meta` sidecar fallback is
+  not needed.
+
+  `--force-uid=1000 --force-gid=1000` was verified in the same mount: /usr
+  reports 1000:1000, which is what presents as root:root inside a rootless
+  container.
+
+
+W0-2  A WHITEOUT IN AN EROFS LOWERDIR IS HONOURED                         PASS
+
+    base  pack: /usr/share/{x,keep}, /usr/share/opa/old
+    app   pack: /usr/share/x as char 0:0, /usr/share/y,
+                /usr/share/opa marked trusted.overlay.opaque=y
+    merge lowerdir=app:base
+
+    x     gone          the whiteout is honoured
+    keep  present       the rest of the base shows through
+    y     present       the app layer's own file
+    opa/  only `new`    the opaque directory shadows the base's `old`
+
+  Both are preserved by mkfs.erofs when it runs as root, and both are read back
+  by overlayfs. This is the capability whose absence forced the flatten step.
+
+  THE WHITEOUT CONVENTION IS OVERLAYFS'S, NOT OCI'S, and the two are not
+  interchangeable. Overlayfs deletes with a character device 0:0 carrying THE
+  SAME NAME as the file; an OCI tar layer deletes with a regular entry named
+  `.wh.<name>`. A pack built from a `.wh.`-style tree merges with the deleted
+  file STILL PRESENT — measured, and silent. So a pack is built from a
+  container's on-disk upper directory, or from a tar whose `.wh.` entries were
+  translated on the way in.
+
+
+W0-4  THE UPPERDIR RULE                                                   PASS
+
+    upper on overlayfs:  refused, and the kernel says why —
+        overlay: filesystem on <path> not supported as upperdir.
+    upper on tmpfs:      accepted
+
+  So a live session, whose $HOME is on the boot overlay, cannot hold a
+  persistent box upper and the fallback is /run/user/<uid>. Detect it by the
+  filesystem of $HOME, the way the storage-driver choice already does — the
+  refusal above arrives at mount time, which is too late to choose.
+
+
+FILE-BACKED MOUNT — NOT REPRODUCED ON THE MEASURING KERNEL
+
+  mount(2) with a regular file as the source answered ENOTBLK rather than
+  taking erofs's file-backed path; the mounts above went through a loop device.
+  The pack format does not depend on which is used, so kdos-packd tries
+  file-backed first and falls back to a loop device, and reports which it got.
+  Re-measure on the target: `kdos-packd status` names the mount route.
+
+
+W0-3  ROOTLESS podman ON A ROOT-MOUNTED OVERLAY                          PASS
+
+  A three-pack stack was baked from real Debian trixie by ports/appbox/packs,
+  mounted as root, and entered by a rootless podman running as uid 1000:
+
+    podman run --rootfs /work/merged                     id -u -> 0
+                                                         /usr   -> root root
+                                                         xterm -version works
+    podman run --userns keep-id --user 1000:1000 ...     id -u -> 1000
+                                                         /usr   -> kdos kdos
+
+  BOTH ROUTES WORK AND THE CHOICE IS ABOUT WHICH APPLICATIONS REFUSE TO RUN AS
+  ROOT. Without keep-id the container's root IS the host user, so a pack built
+  --force-uid=1000 reads as root:root and $HOME still belongs to whoever is
+  using it — tidy, and every application then runs as root, which a great many
+  of them decline to do. keep-id gives a real non-root account and costs only
+  the cosmetic ownership of /usr. kdos-appbox takes keep-id, which is also what
+  distrobox does and for the same reason.
+
+  Ownership grants nothing either way: packs are mounted nosuid.
+
+  THE BASE PACK IS THE WHOLE FILESYSTEM AND EVERY OTHER PACK IS A DIFF. This
+  was found by composing a stack whose base was a diff over debian:trixie-slim
+  and getting a root with `etc root run tmp usr var` in it and no shell —
+  /bin, /lib and /sbin are symlinks the base IMAGE provides and no layer above
+  it re-adds. ports/appbox/packs exports the base row and packs the top layer
+  of every other row.
+
+
+W0-5  SIZE REALITY                                                    PARTIAL
+
+  Measured on a three-pack stack rather than the full catalogue, which needs
+  the ~105-application bake:
+
+    base    debian trixie-slim + ca-certificates, hicolor, shared-mime-info
+            52 MB   — the WHOLE filesystem
+    rt-x    + libgtk-3
+            40 MB   — the diff, and it is shared by every GTK application
+    app.xterm  + xterm
+            1.7 MB  — the diff, and that is the number the whole format is for
+
+  An application that costs 1.7 MB beside a runtime everything shares is what
+  replaces a 3.9 GB image every install pays for whether or not it is ever
+  launched. The taxonomy table in apps.plan.md keeps its (est.) column for the
+  rows this did not bake.

@@ -822,6 +822,13 @@ static int win_step(const struct wrow *rows, int nrows, int sel, int dir)
 	return sel;
 }
 
+/*
+ * The box these windows came from, or "". Set by `--box`, which the panel
+ * passes because IT is the half that grouped them: two GIMPs from two boxes
+ * are two buttons and the app_id alone cannot say which one was clicked.
+ */
+static char win_box[64];
+
 static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 			 int sel, int top)
 {
@@ -829,7 +836,18 @@ static void windows_draw(const char *app, const struct wrow *rows, int nrows,
 
 	kch_px_reset();
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), app, KT_ACCENT, KT_SURFACE, 0);
+	{
+		/* The title on the top edge names the box when there is one:
+		 * ` GIMP (arch) `, the same qualification the taskbar button
+		 * wears, so the two cannot disagree about which window this
+		 * menu will act on. */
+		char t[128];
+		if (win_box[0])
+			snprintf(t, sizeof(t), "%s (%s)", app, win_box);
+		else
+			snprintf(t, sizeof(t), "%s", app);
+		ktui_draw_box(krect(0, 0, w, h), t, KT_ACCENT, KT_SURFACE, 0);
+	}
 
 	int vis = h - 2;
 	for (int r = 0; r < vis; r++) {
@@ -1432,6 +1450,9 @@ int menu_main(int argc, char **argv)
 			win_app = argv[++i];
 		/* The right-click menu: the same window list with the window
 		 * CONTROLS above it. See the rows block. */
+		else if (!strcmp(argv[i], "--box") && i + 1 < argc) {
+			snprintf(win_box, sizeof(win_box), "%s", argv[++i]);
+		}
 		else if (!strcmp(argv[i], "--winmenu") && i + 1 < argc) {
 			win_app = argv[++i];
 			win_ctrl = 1;
@@ -1445,7 +1466,7 @@ int menu_main(int argc, char **argv)
 			fprintf(stderr, "usage: kdos-menu "
 					"[applications|places|system] "
 					"[--windows APP_ID] "
-					"[--winmenu APP_ID]\n"
+					"[--winmenu APP_ID] [--box NAME]\n"
 					"                  "
 					"[--at X Y] [--at-bottom X Y] "
 					"[--dump] [--font NAME]\n");

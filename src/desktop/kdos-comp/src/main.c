@@ -326,6 +326,7 @@ main(int argc, char *argv[])
 	kdos_frames_finish(); /* KDOS */
 	kdos_winpos_finish(); /* KDOS */
 	kdos_group_finish(); /* KDOS */
+	kdos_boxchip_finish(); /* KDOS */
 	kdos_lid_finish(); /* KDOS */
 	kdos_peek_finish(); /* KDOS */
 	kdos_idle_finish(); /* KDOS */

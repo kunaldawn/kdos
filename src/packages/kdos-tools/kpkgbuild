@@ -13,4 +13,4 @@ version     = 1.2.0
 release     = 1
 description = KDOS system tools — kdos, services, getty, screenshots, fetch
 homepage    = https://github.com/kunaldawn/kdos
-depends     = kbd procps-ng libpng alsa-utils
+depends     = kbd procps-ng libpng alsa-utils kdos-pack

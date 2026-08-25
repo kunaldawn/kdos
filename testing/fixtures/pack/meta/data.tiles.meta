@@ -1,0 +1,10 @@
+id          = data.tiles
+kind        = data
+name        = Offline map tiles
+version     = 2026.1
+release     = 1
+summary     = A dataset, not a program
+licence     = ODbL-1.0
+graft       = tiles kdos-tiles
+boxgraft    = tiles tiles
+env         = KDOS_TILES=/usr/share/kdos-tiles

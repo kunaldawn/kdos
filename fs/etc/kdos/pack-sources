@@ -1,0 +1,12 @@
+# Where `kdos app update` looks, one directory per line.
+#
+# A source is a directory with a `PACKAGES` index in it — not a URL. The
+# medium kdos-packd reports is always consulted and does not need a line here;
+# this file is for a second stick, a mounted share, or a directory somebody
+# rsync'd a repository into.
+#
+# The index is what says which packs exist and what their payload hashes are.
+# Nothing here is trusted: kdos-packd hashes and verifies every pack where the
+# mount happens, so a source can offer a file and still not get it installed.
+#
+# /mnt/usb/packs

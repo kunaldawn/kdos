@@ -41,6 +41,10 @@ unsigned res_wanted_flags(void)
 		       KPR_WANT_BOX | extra;
 	case RP_GPU:
 		return KPR_WANT_STATUS | KPR_WANT_GPU | KPR_WANT_BOX | extra;
+	case RP_BOXES:
+		/* The box is the whole key of this page; the rest is what a
+		 * rollup over it needs to add up. */
+		return KPR_WANT_STATUS | KPR_WANT_BOX | extra;
 	default:
 		/*
 		 * Zero: `stat` only. A CPU, memory, drive, network or battery

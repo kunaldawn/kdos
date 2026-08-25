@@ -294,6 +294,23 @@ void kdos_group_ssd_update(struct ssd *ssd);
 void kdos_group_ssd_clear(struct view *view);
 void kdos_group_finish(void);
 
+/*
+ * The box chip — a square of the box's own accent at the left of the title
+ * area, so the frame says what the taskbar button says. The colour is
+ * `accent =` in the box's profile and nothing else: a box that never declared
+ * one wears the session's accent and draws NO chip, because a marker on every
+ * window on a machine where every window is boxed says nothing.
+ */
+int kdos_boxchip_width(struct view *view);	/* 0 when there is no chip  */
+void kdos_boxchip_ssd_update(struct ssd *ssd, int x);
+/* From ssd_titlebar_destroy(): the chip went with the titlebar. */
+void kdos_boxchip_ssd_clear(struct view *view);
+void kdos_boxchip_forget(struct view *view);
+/* From reload_config_and_theme(): an accent switch changes which windows
+ * wear a chip, so the resolved answer is dropped before the SSDs rebuild. */
+void kdos_boxchip_reload(void);
+void kdos_boxchip_finish(void);
+
 /* Idle policy: dim -> lock -> outputs off, from last activity. */
 void kdos_idle_init(void);
 void kdos_idle_finish(void);
@@ -373,5 +390,15 @@ bool kdos_thumb_write(const char *app_id, int w, int h, const char *path);
 struct view;
 void kdos_appid_observe(const char *app_id);
 void kdos_appid_observe_view(struct view *view);
+
+/*
+ * A view's BOX — the app_id of its wp_security_context_v1, which kdos-boxsock
+ * sets to the box name — and the instance that distinguishes two runs of one
+ * application. NULL for a host window. Defined in view.c beside the lookup
+ * server.c already does.
+ */
+struct view;
+const char *kdos_view_box(struct view *view);
+const char *kdos_view_instance(struct view *view);
 
 #endif /* KDOS_H */

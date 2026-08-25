@@ -1,0 +1,23 @@
+testing/fixtures/pack — what kdos-packd would mount, and what it refuses.
+
+THE PACKS ARE NOT COMMITTED; their METADATA is. A .kpack is a binary nobody can
+read in a diff, and the interesting half of this fixture is the six metadata
+blobs below — which stack, which cannot, which is signed. `testing/selftest.sh`
+assembles them with `kdos-pack assemble` over a stub image, because mkfs.erofs
+is not on a developer's host and `--fixture` never mounts anything anyway.
+
+  base.meta      the bottom of every stack
+  rt-gtk.meta    a runtime, requiring base
+  app.good.meta  requires rt-gtk >= 1 and base — must compose, base first
+  app.orphan.meta   requires rt-qt, which is not here — must be REFUSED, and
+                    the message must name rt-qt
+  data.tiles.meta   kind = data: mounted noexec, grafted rather than composed,
+                    and refused if something tries to compose it
+  app.bad.meta   assembled and then CORRUPTED by flipping one payload byte —
+                 must read as `bad payload hash`, never as `bad signature`,
+                 because the hash is checked first and a caller told the wrong
+                 one goes looking in the wrong place
+
+app.good is signed with a key generated into the scratch keyring; app.orphan is
+left unsigned, so one run covers both of the two signature outcomes a pack on a
+booted medium can legitimately have.

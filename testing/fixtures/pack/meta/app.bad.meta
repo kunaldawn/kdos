@@ -1,0 +1,8 @@
+id          = app.bad
+kind        = app
+name        = A Corrupted Application
+version     = 1.0
+release     = 1
+summary     = One payload byte is flipped after it is assembled
+requires    = base
+command     = bad

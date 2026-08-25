@@ -52,6 +52,7 @@ enum res_page_id {
 	RP_NETWORK,
 	RP_BATTERIES,
 	RP_ENERGY,
+	RP_BOXES,
 	RP_NPAGES
 };
 
@@ -262,5 +263,21 @@ void res_confirm(const char *title, const char *msg, const char *yes,
 		 void (*on_yes)(void));
 int  res_confirm_active(void);
 void res_draw_mem(int x, int y, int w, int h);
+
+/*
+ * Boxes (p_box.c). The tenth page, and it needs no new subsystem: libkproc's
+ * conmon walk already turns a pid into a box name and this is a rollup keyed
+ * on that rather than on the application. The ENERGY column is kdos-energyd's
+ * answer, asked for rather than recomputed — and a `-` when it is not running,
+ * never a zero.
+ */
+void res_box_prepare(void);
+const char *res_box_headline(void);
+void res_draw_boxes(int x, int y, int w, int h);
+int  res_box_click(int mx, int my, int btn);
+int  res_box_wheel(int up);
+int  res_box_key(int k);
+void res_box_motion(int mx, int my);
+void res_box_release(void);
 
 #endif /* RES_H */

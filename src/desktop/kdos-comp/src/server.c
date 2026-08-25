@@ -98,6 +98,10 @@ reload_config_and_theme(void)
 	desktop_cancel_pending_auto_raise();
 
 	scaled_buffer_invalidate_sharing();
+	/* KDOS: the chip is drawn only when the box's accent DIFFERS from the
+	 * session's, so an accent switch changes which windows wear one. The
+	 * cache is dropped before the SSD reload below rebuilds every frame. */
+	kdos_boxchip_reload();
 	rcxml_finish();
 	rcxml_read(rc.config_file);
 	theme_finish(rc.theme);

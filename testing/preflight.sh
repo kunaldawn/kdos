@@ -592,6 +592,69 @@ else
 fi
 
 echo
+echo "==> the catalogue's rows against the tree"
+# W8-0 and W9-6. Two lints over apps.plan.md's Part II tables, and both exist
+# because the same rows were written twice: nine of that document's "ground
+# zero" prerequisites had already LANDED when the section was re-read, and
+# twelve of W8's modern-CLI rows were already ports. The check is one listing
+# and it is the difference between a wave and a re-litigation.
+#
+# NEITHER LINT FAILS THE BUILD. A catalogue is a specification, and an
+# outstanding row is not a defect — it is work. What it must not do is go
+# quiet, so the counts are printed either way and a row that ALREADY EXISTS is
+# named, because that is the one that must be struck rather than proposed.
+if [ -f apps.plan.md ]; then
+    python3 - <<'PYCAT' || true
+import os, re
+
+names = set()
+for d in ("ports/core", "src/packages", "src/desktop"):
+    if os.path.isdir(d):
+        names |= {n for n in os.listdir(d)
+                  if os.path.isfile(os.path.join(d, n, "kpkgbuild"))}
+boxed = set()
+if os.path.isfile("ports/appbox/packs.conf"):
+    for line in open("ports/appbox/packs.conf"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        boxed |= set(line.split()[3:])
+
+rows, have = set(), set()
+in_table = False
+for line in open("apps.plan.md"):
+    if line.startswith("| Name |"):
+        in_table = True
+        continue
+    if in_table and not line.startswith("|"):
+        in_table = False
+        continue
+    if not in_table or line.startswith("|---"):
+        continue
+    cells = [c.strip() for c in line.strip().strip("|").split("|")]
+    if len(cells) < 2:
+        continue
+    first = re.split(r"[(]", cells[0])[0]
+    for tok in re.split(r"\s*\+\s*|\s*/\s*", first):
+        tok = tok.strip().strip("`*_").lower()
+        if not tok or " " in tok or len(tok) < 2:
+            continue
+        rows.add(tok)
+        if tok in names or tok in boxed:
+            have.add(tok)
+
+print("  %-58s %d landed, %d outstanding"
+      % ("catalogue rows", len(have), len(rows) - len(have)))
+if have:
+    shown = sorted(have)
+    print("  %-58s %s" % ("already in the tree",
+                          ", ".join(shown[:8]) + (" …" if len(shown) > 8 else "")))
+PYCAT
+else
+    note "catalogue" "apps.plan.md is not here — nothing to lint"
+fi
+
+echo
 if [ "$fail" = 0 ]; then
     echo "preflight clean — the wiring is consistent"
 else

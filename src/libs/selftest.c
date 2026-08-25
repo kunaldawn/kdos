@@ -35,6 +35,7 @@
 #include "portup.h"
 #include "kproc.h"
 #include "kxdg.h"
+#include "kpack.h"
 
 static int failures;
 static int checks;
@@ -383,6 +384,120 @@ static void test_base(void)
 		   "a missing path reports ENOENT rather than being ignored");
 		kb_landlock_free(&ll);
 	}
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * The freedesktop trash. It is libkbase's rather than either front end's
+ * because `kdos trash` at a prompt and `kdos-desk`'s Delete key have to mean
+ * the same thing, and every assertion below is a way the two could quietly
+ * come apart if there were two copies.
+ */
+static void test_trash(void)
+{
+	char dir[] = "/tmp/kdos-selftest-trash.XXXXXX";
+	char oldhome[512] = "", oldcwd[512] = "";
+	char work[200], a[240], b[240], p[400];
+	const char *home = getenv("HOME");
+	KbTrashItem *v;
+	char to[KB_TRASH_PATH];
+	int n;
+
+	printf("libkbase trash\n");
+	if (home)
+		kb_strlcpy(oldhome, home, sizeof(oldhome));
+	if (!getcwd(oldcwd, sizeof(oldcwd)))
+		oldcwd[0] = '\0';
+	ok(mkdtemp(dir) != NULL, "scratch directory");
+	setenv("HOME", dir, 1);
+
+	snprintf(work, sizeof(work), "%s/w", dir);
+	snprintf(a, sizeof(a), "%s/a", work);
+	snprintf(b, sizeof(b), "%s/b", work);
+	kb_mkdir_p(a);
+	kb_mkdir_p(b);
+
+	/*
+	 * TWO FILES OF THE SAME NAME FROM DIFFERENT DIRECTORIES is the ordinary
+	 * case, and the second silently replacing the first is data loss.
+	 */
+	snprintf(p, sizeof(p), "%s/notes.txt", a);
+	kb_write_file(p, "one\n");
+	ok(kb_trash_put(p) == 0, "trash the first notes.txt");
+	snprintf(p, sizeof(p), "%s/notes.txt", b);
+	kb_write_file(p, "two\n");
+	ok(kb_trash_put(p) == 0, "trash the second notes.txt");
+
+	n = kb_trash_list(&v);
+	ok(n == 2, "both are in the trash");
+	free(v);
+
+	/* And each goes back where IT came from, which is the whole reason the
+	 * record exists. */
+	ok(kb_trash_restore("notes.txt", to, sizeof(to)) == 0, "restore the first");
+	snprintf(p, sizeof(p), "%s/notes.txt", a);
+	eq_str(to, p, "the first went back to a/");
+	ok(kb_trash_restore("notes.txt.1", to, sizeof(to)) == 0, "restore the second");
+	snprintf(p, sizeof(p), "%s/notes.txt", b);
+	eq_str(to, p, "the second went back to b/");
+
+	/* A name with a space and a percent in it. The Path= value is a URI, so
+	 * it is escaped on the way in and unescaped on the way out; getting one
+	 * half wrong restores to a path with `%20` in its name. */
+	snprintf(p, sizeof(p), "%s/od%%d file.txt", work);
+	kb_write_file(p, "x\n");
+	ok(kb_trash_put(p) == 0, "trash an awkward name");
+	ok(kb_trash_restore("od%d file.txt", to, sizeof(to)) == 0,
+	   "restore an awkward name");
+	eq_str(to, p, "the escape round-trips");
+
+	/* Restoring onto something that is there NOW would destroy it. */
+	ok(kb_trash_put(p) == 0, "trash it again");
+	kb_write_file(p, "in the way\n");
+	ok(kb_trash_restore("od%d file.txt", to, sizeof(to)) == -1 &&
+	   errno == EEXIST, "restore refuses to overwrite");
+
+	/* Trashing the trash empties it in the worst possible order. */
+	{
+		char files[KB_TRASH_PATH], info[KB_TRASH_PATH];
+		kb_trash_dirs(files, sizeof(files), info, sizeof(info));
+		ok(kb_trash_put(files) == -1, "the trash cannot be trashed");
+	}
+
+	/* A DIRECTORY comes back too, and empty takes both halves of every
+	 * record: an info/ entry outliving its file is the state every other
+	 * implementation ignores. */
+	snprintf(p, sizeof(p), "%s/adir", work);
+	kb_mkdir_p(p);
+	snprintf(a, sizeof(a), "%s/adir/f", work);
+	kb_write_file(a, "y\n");
+	ok(kb_trash_put(p) == 0, "trash a directory");
+	ok(kb_trash_empty() >= 1, "empty removes it");
+	n = kb_trash_list(&v);
+	ok(n == 0, "the trash is empty");
+	free(v);
+	{
+		char files[KB_TRASH_PATH], info[KB_TRASH_PATH];
+		int left = 0;
+		char **nm;
+		kb_trash_dirs(files, sizeof(files), info, sizeof(info));
+		nm = kb_listdir(info, &left);
+		ok(left == 0, "and so is info/");
+		kb_strv_free(nm);
+	}
+
+	if (oldhome[0])
+		setenv("HOME", oldhome, 1);
+	else
+		unsetenv("HOME");
+	/* The chdir back is best effort: the scratch directory is going next
+	 * line either way, and a failure here must not fail the suite. */
+	if (oldcwd[0]) {
+		int rc = chdir(oldcwd);
+		(void)rc;
+	}
+	kb_rmtree(dir);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -1493,6 +1608,364 @@ static void test_portup(void)
 	ok(!dup, "no candidate repeats");
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────── *
+ * libkpack — a pack is a filesystem with a footer, and the footer is the
+ * only thing standing between a corrupt file and a mount as root.
+ *
+ * THE ONE RULE UNDER TEST IS "ABSENT, NEVER PARTIAL". Every malformed shape
+ * below must read as "there is no pack here" rather than as a pack with some
+ * of its fields filled in: a half-read description that looks complete is
+ * what gets mounted.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* A pack whose "filesystem" is arbitrary bytes. Nothing in libkpack looks
+ * inside the image — mkfs.erofs is not a dependency of the library and is not
+ * on the host running this. */
+static char *fake_pack(const char *dir, const char *name, const char *meta,
+		       const char *fs, const char *icon)
+{
+	char *img = kb_path_join(dir, "img.bin");
+	char *out = kb_path_join(dir, name);
+	KpkMeta m;
+
+	kb_write_file(img, fs);
+	kpk_meta_parse(meta, strlen(meta), &m);
+	ok(kpk_write(out, img, &m, icon, icon ? strlen(icon) : 0) == 0,
+	   "kpk_write assembles a pack");
+	free(img);
+	return out;
+}
+
+static void poke(const char *path, long long off, unsigned char v)
+{
+	FILE *f = fopen(path, "r+b");
+	if (!f)
+		return;
+	fseeko(f, (off_t)off, off < 0 ? SEEK_END : SEEK_SET);
+	fwrite(&v, 1, 1, f);
+	fclose(f);
+}
+
+static void test_pack(void)
+{
+	printf("libkpack\n");
+
+	char dir[] = "/tmp/kdos-selftest-pack.XXXXXX";
+	ok(mkdtemp(dir) != NULL, "scratch directory");
+
+	const char *meta =
+		"id          = app.gimp\n"
+		"kind        = app\n"
+		"name        = GNU Image Manipulation Program\n"
+		"version     = 3.0.4\n"
+		"release     = 1\n"
+		"summary     = Create images and edit photographs\n"
+		"description = A raster editor.\n"
+		"description = It has layers.\n"
+		"category    = Graphics\n"
+		"licence     = GPL-3.0-or-later\n"
+		"requires    = rt-gtk >= 1\n"
+		"requires    = base\n"
+		"provides    = gimp\n"
+		"desktop     = gimp.desktop\n"
+		"mime        = image/png\n"
+		"mime        = image/xcf\n"
+		"command     = gimp\n"
+		"launch_cold = 18300\n";
+
+	/* ── round trip ─────────────────────────────────────────────── */
+	char *pack = fake_pack(dir, "app.gimp.kpack", meta,
+			       "not really erofs, and libkpack must not care",
+			       "\x89PNG\r\n\x1a\n" "fake");
+	KpkPack p;
+	ok(kpk_open(pack, &p) == 0, "a written pack opens");
+	eq_str(p.meta.id, "app.gimp", "id survives the round trip");
+	eq_int(p.meta.kind, KPK_KIND_APP, "kind parses");
+	eq_str(p.meta.version, "3.0.4", "version survives");
+	eq_int(p.meta.nreq, 2, "both requirements parsed");
+	eq_str(p.meta.req[0].name, "rt-gtk", "requirement name");
+	eq_str(p.meta.req[0].op, ">=", "requirement operator");
+	eq_str(p.meta.req[0].ver, "1", "requirement version");
+	eq_str(p.meta.req[1].op, "", "a bare requirement has no operator");
+	eq_int(p.meta.nmime, 2, "repeated keys accumulate");
+	eq_str(p.meta.description, "A raster editor.\nIt has layers.",
+	       "repeated description lines become paragraphs");
+	eq_int(p.meta.launch_cold, 18300, "the measured cold launch");
+	eq_int((long long)p.meta.size, (long long)p.fsize,
+	       "size is what the file measures, not what it claims");
+
+	size_t ilen = 0;
+	void *icon = kpk_icon_read(&p, &ilen);
+	ok(icon && ilen == 12 && !memcmp(icon, "\x89PNG", 4),
+	   "the icon comes back byte for byte");
+	free(icon);
+
+	/* Rendering and re-parsing must yield the same struct, or a pack
+	 * cannot survive `extract-meta` and a rebuild. */
+	size_t rlen = 0;
+	char *rendered = kpk_meta_render(&p.meta, &rlen);
+	KpkMeta again;
+	kpk_meta_parse(rendered, rlen, &again);
+	eq_str(again.id, p.meta.id, "render/parse round trip: id");
+	eq_int(again.nmime, p.meta.nmime, "render/parse round trip: mime list");
+	eq_str(again.description, p.meta.description,
+	       "render/parse round trip: description");
+	free(rendered);
+
+	/* ── the payload hash and the signature ─────────────────────── */
+	KsigRing ring = {0};
+	char who[KSIG_ID_HEX];
+	eq_int(kpk_verify(&p, &ring, who), KPK_SIG_NONE,
+	       "a pack nobody signed is unsigned, not bad");
+
+	uint8_t seed[KSIG_SEED_LEN], pub[KSIG_PUB_LEN];
+	if (ksig_keygen(seed, pub) == 0) {
+		char *keydir = kb_path_join(dir, "keys");
+		kb_mkdir_p(keydir);
+		char *kf = kb_path_join(keydir, "b.pub");
+		ksig_write_public(kf, pub, "builder");
+		ok(kpk_sign(pack, seed, pub) == 0, "a pack signs");
+		ok(kpk_open(pack, &p) == 0, "a signed pack still opens");
+		ksig_ring_load(&ring, keydir);
+		eq_int(kpk_verify(&p, &ring, who), KPK_SIG_GOOD,
+		       "and verifies against the ring");
+
+		/* A key the machine does not trust is a BAD signature, not an
+		 * absent one — the distinction kpkgadd already keeps. */
+		KsigRing empty = {0};
+		eq_int(kpk_verify(&p, &empty, who), KPK_SIG_BAD,
+		       "a signature by a key nobody trusts is refused");
+
+		/* One byte of the filesystem, flipped. The hash is checked
+		 * BEFORE the signature, so this is KPK_SIG_HASH — a caller
+		 * that saw KPK_SIG_BAD here would go looking for the wrong
+		 * problem. */
+		poke(pack, 4, 'X');
+		ok(kpk_open(pack, &p) == 0, "a tampered pack still opens");
+		eq_int(kpk_verify(&p, &ring, who), KPK_SIG_HASH,
+		       "one flipped payload byte fails the hash, not the signature");
+		free(kf);
+		free(keydir);
+	}
+	free(pack);
+
+	/* ── absent, never partial ──────────────────────────────────── */
+	char *p2 = fake_pack(dir, "b.kpack", "id = base\nkind = base\nversion = 1\n",
+			     "fs", NULL);
+	KpkFooter f;
+
+	ok(kpk_footer_read(p2, &f, NULL) == 0, "a good footer reads");
+
+	/* the magic */
+	poke(p2, -512, 'X');
+	ok(kpk_footer_read(p2, &f, NULL) != 0, "a wrong magic is refused");
+	poke(p2, -512, 'K');
+	ok(kpk_footer_read(p2, &f, NULL) == 0, "and reads again once restored");
+
+	/* a footer whose offsets point past the end of the file. Without the
+	 * consistency check this is a read of the whole address space — the
+	 * kb_tar base-256 lesson on a different field. */
+	{
+		uint8_t buf[KPK_FOOTER_LEN];
+		KpkFooter bad = f;
+		bad.meta_len = (uint64_t)1 << 62;
+		kpk_footer_pack(&bad, buf);
+		FILE *fp = fopen(p2, "r+b");
+		fseeko(fp, -(off_t)KPK_FOOTER_LEN, SEEK_END);
+		fwrite(buf, 1, sizeof(buf), fp);
+		fclose(fp);
+		ok(kpk_footer_read(p2, &f, NULL) != 0,
+		   "an offset past the end of the file is refused");
+	}
+
+	/* a truncated footer */
+	{
+		char *t = kb_path_join(dir, "short.kpack");
+		kb_write_file(t, "KDOSPACK");
+		ok(kpk_footer_read(t, &f, NULL) != 0,
+		   "a file too short to hold a footer is absent, not partial");
+		free(t);
+	}
+
+	/* a format from the future */
+	{
+		char *fut = kb_path_join(dir, "future.kpack");
+		char *img = kb_path_join(dir, "img.bin");
+		KpkMeta m;
+		uint8_t buf[KPK_FOOTER_LEN];
+		KpkFooter ff;
+		kpk_meta_parse("id = x\nkind = app\nversion = 1\n", 30, &m);
+		kb_write_file(img, "fs");
+		kpk_write(fut, img, &m, NULL, 0);
+		kpk_footer_read(fut, &ff, NULL);
+		ff.format = KPK_FORMAT + 1;
+		kpk_footer_pack(&ff, buf);
+		FILE *fp = fopen(fut, "r+b");
+		fseeko(fp, -(off_t)KPK_FOOTER_LEN, SEEK_END);
+		fwrite(buf, 1, sizeof(buf), fp);
+		fclose(fp);
+		ok(kpk_footer_read(fut, &ff, NULL) != 0,
+		   "a format this build does not know is not guessed at");
+		free(img);
+		free(fut);
+	}
+	free(p2);
+
+	/* ── the metadata parser's own edges ────────────────────────── */
+	{
+		KpkMeta m;
+		/* NOT NUL-terminated: the blob on disk is a span, and the
+		 * parser is bounded by its length. Passing a shorter length
+		 * must cut the value, never read past it. */
+		const char *blob = "id = a\nversion = 9.9.9\nkind = app\n";
+		kpk_meta_parse(blob, 6, &m);
+		eq_str(m.id, "a", "a length-bounded parse stops where told");
+		eq_str(m.version, "", "and does not see past the span");
+
+		char big[2048];
+		memset(big, 'x', sizeof(big));
+		memcpy(big, "summary = ", 10);
+		big[sizeof(big) - 1] = '\n';
+		kpk_meta_parse(big, sizeof(big), &m);
+		eq_str(m.summary, "",
+		       "a line longer than the buffer is dropped, not halved");
+
+		const char *unk = "id = a\nkind = app\nversion = 1\n"
+				  "nonsense = 3\nno-equals-here\n";
+		kpk_meta_parse(unk, strlen(unk), &m);
+		eq_str(m.id, "a", "an unknown key is ignored, not fatal");
+
+		/* An env line is a variable a daemon will export. */
+		const char *envs = "id = d\nkind = data\nversion = 1\n"
+				   "env = PROJ_DATA=/x\nenv = BAD NAME=1\n"
+				   "env = =nope\n";
+		kpk_meta_parse(envs, strlen(envs), &m);
+		eq_int(m.nenv, 1, "only a well-formed env line is kept");
+		eq_str(m.env[0], "PROJ_DATA=/x", "and it is the right one");
+	}
+
+	/* ── what kpk_meta_valid refuses ────────────────────────────── */
+	{
+		KpkMeta m;
+		char err[256];
+
+		kpk_meta_parse("id = ../etc\nkind = app\nversion = 1\n",
+			       strlen("id = ../etc\nkind = app\nversion = 1\n"), &m);
+		ok(kpk_meta_valid(&m, err, sizeof(err)) != 0,
+		   "an id that is a path is refused");
+
+		kpk_meta_parse("id = app.x\nkind = app\nversion = 1\n",
+			       strlen("id = app.x\nkind = app\nversion = 1\n"), &m);
+		ok(kpk_meta_valid(&m, err, sizeof(err)) == 0, "a plain app is valid");
+
+		/* A data pack is mounted noexec, so a command in one names
+		 * something that can never run. */
+		const char *dcmd = "id = d.x\nkind = data\nversion = 1\n"
+				   "command = thing\n";
+		kpk_meta_parse(dcmd, strlen(dcmd), &m);
+		ok(kpk_meta_valid(&m, err, sizeof(err)) != 0,
+		   "a data pack carrying a command is refused");
+
+		const char *dgr = "id = d.y\nkind = data\nversion = 1\n"
+				  "graft = share ../../etc\n";
+		kpk_meta_parse(dgr, strlen(dgr), &m);
+		ok(kpk_meta_valid(&m, err, sizeof(err)) != 0,
+		   "a graft that escapes its root is refused");
+	}
+
+	/* ── the solve ──────────────────────────────────────────────── */
+	{
+		KpkMeta store[5];
+		const KpkMeta *av[5];
+		const char *src[5] = {
+			"id = base\nkind = base\nversion = 1\n",
+			"id = rt-gtk\nkind = runtime\nversion = 2\nrequires = base\n",
+			"id = app.gimp\nkind = app\nversion = 3\n"
+				"requires = rt-gtk >= 1\nrequires = base\n",
+			"id = app.old\nkind = app\nversion = 1\n"
+				"requires = rt-gtk >= 9\n",
+			"id = rt-alias\nkind = runtime\nversion = 1\n"
+				"provides = toolkit\n",
+		};
+		for (int i = 0; i < 5; i++) {
+			kpk_meta_parse(src[i], strlen(src[i]), &store[i]);
+			av[i] = &store[i];
+		}
+
+		int order[8];
+		char err[256];
+		const char *want1[] = { "app.gimp" };
+		int n = kpk_solve(av, 5, want1, 1, order, 8, err, sizeof(err));
+		eq_int(n, 3, "the solve pulls in both runtimes");
+		eq_str(av[order[0]]->id, "base", "base is mounted first");
+		eq_str(av[order[2]]->id, "app.gimp", "and the app last");
+
+		const char *want2[] = { "app.old" };
+		eq_int(kpk_solve(av, 5, want2, 1, order, 8, err, sizeof(err)), -1,
+		       "a requirement nothing satisfies is refused");
+		ok(strstr(err, "rt-gtk") != NULL, "and the message names it");
+
+		/* `provides` satisfies a requirement; an INSTALL REQUEST does
+		 * not resolve through it, or `install gimp` could quietly
+		 * install whatever claimed the name. */
+		KpkReq r = { .name = "toolkit" };
+		ok(kpk_req_met(&r, av[4]), "a provides name satisfies a requirement");
+		const char *want3[] = { "toolkit" };
+		eq_int(kpk_solve(av, 5, want3, 1, order, 8, err, sizeof(err)), -1,
+		       "but a request names an id, never a provides");
+	}
+
+	/* ── the index ──────────────────────────────────────────────── */
+	{
+		KpkIndex ix = {0};
+		char *ipath = kb_path_join(dir, "PACKAGES");
+
+		ix.n = 2;
+		kb_strlcpy(ix.ent[0].id, "rt-gtk", KPK_ID_MAX);
+		kb_strlcpy(ix.ent[0].version, "2", 64);
+		kb_strlcpy(ix.ent[0].release, "1", 16);
+		kb_strlcpy(ix.ent[0].file, "rt-gtk.kpack", KPK_PATH);
+		memset(ix.ent[0].sha256, 'a', 64);
+		ix.ent[0].size = 410;
+		kb_strlcpy(ix.ent[1].id, "app.gimp", KPK_ID_MAX);
+		kb_strlcpy(ix.ent[1].version, "3.0.4", 64);
+		kb_strlcpy(ix.ent[1].release, "1", 16);
+		kb_strlcpy(ix.ent[1].file, "app.gimp.kpack", KPK_PATH);
+		memset(ix.ent[1].sha256, 'b', 64);
+		ix.ent[1].size = 96;
+
+		ix.ent[1].recommended = 1;
+		ok(kpk_index_write(&ix, ipath) == 0, "an index writes");
+		KpkIndex back = {0};
+		eq_int(kpk_index_load(&back, ipath), 2, "and reads back");
+		eq_str(back.ent[0].id, "app.gimp",
+		       "sorted by id, so the same set is always the same bytes");
+		ok(kpk_index_find(&back, "rt-gtk") != NULL, "lookup by id");
+		/* `R:` is in the index and not only in the pack, so kinstall —
+		 * which links libkbase and libktui and nothing else — can
+		 * answer "what does KDOS suggest" from a flat file. */
+		ok(back.ent[0].recommended && !back.ent[1].recommended,
+		   "the recommended flag round-trips through the index");
+		ok(kpk_index_find(&back, "nope") == NULL, "and a miss is a miss");
+
+		/* A version carrying a dash: the release is after the LAST one. */
+		kb_write_file(ipath, "P:x\nV:1.2-rc1-4\nC:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\nF:x.kpack\n\n");
+		kpk_index_load(&back, ipath);
+		eq_str(back.ent[0].version, "1.2-rc1", "version keeps its dash");
+		eq_str(back.ent[0].release, "4", "the release is the last field");
+
+		/* A stanza with no hash cannot be verified, so it is dropped
+		 * rather than recorded as an entry nothing can check. */
+		kb_write_file(ipath, "P:x\nV:1-1\nF:x.kpack\n\nP:y\nV:1-1\n"
+				     "C:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\nF:y.kpack\n\n");
+		eq_int(kpk_index_load(&back, ipath), 1,
+		       "a stanza with no hash is dropped, not half-recorded");
+		eq_str(back.ent[0].id, "y", "and it is the one that had one");
+		free(ipath);
+	}
+}
+
 /* ──────────────────────────────────────────────────────────────────────── */
 
 int main(void)
@@ -1500,12 +1973,14 @@ int main(void)
 	kb_set_progname("selftest");
 
 	test_base();
+	test_trash();
 	test_colour();
 	test_pkg();
 	test_build();
 	test_proc();
 	test_chart();
 	test_grid();
+	test_pack();
 	test_portup();
 
 	printf("\n%d checks, %d failed\n", checks, failures);

@@ -121,6 +121,31 @@ char **kb_listdir(const char *path, int *count);
 void kb_strv_free(char **v);
 
 /* ────────────────────────────────────────────────────────────────────────
+ * the freedesktop trash — one implementation, because `kdos-desk`'s Delete
+ * key and `kdos trash` at a prompt must mean the same thing.
+ *
+ * Every call returns -1 on failure with errno as the syscall left it, so a
+ * caller can say EXDEV ("it is on another filesystem") rather than "failed".
+ */
+#define KB_TRASH_PATH 1024
+#define KB_TRASH_NAME 256
+
+typedef struct {
+	char name[KB_TRASH_NAME];	/* the name inside files/           */
+	char orig[KB_TRASH_PATH];	/* where it came from, unescaped    */
+	char when[32];			/* the record's DeletionDate        */
+	int isdir;
+	unsigned long long bytes;
+} KbTrashItem;
+
+int kb_trash_dirs(char *files, size_t fn, char *info, size_t in);
+int kb_trash_put(const char *path);
+int kb_trash_list(KbTrashItem **out);	/* count; caller free()s *out       */
+int kb_trash_restore(const char *name, char *to, size_t tn);
+int kb_trash_remove(const char *name);
+int kb_trash_empty(void);		/* items removed, or -1             */
+
+/* ────────────────────────────────────────────────────────────────────────
  * tar
  *
  * Enough ustar to take the appbox image apart and put it back together. The
