@@ -95,6 +95,7 @@ if [ -z "${KDOS_BAKE_INNER:-}" ]; then
 		-e KDOS_BAKE_INNER=1 \
 		-e KDOS_UID="$(id -u)" -e KDOS_GID="$(id -g)" \
 		-e ONLY="${ONLY:-}" -e SIGN="${SIGN:-}" -e PREFIX="${PREFIX:-}" \
+		-e PREV="${PREV:-}" \
 		-e SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-}" \
 		-e KDOS_SNAPSHOT="$SNAP_OUT" \
 		$KEYMOUNT \
@@ -105,6 +106,9 @@ OUT="${OUT:-$PWD/packs}"
 CONF="${CONF:-$PWD/packs.conf}"
 ONLY="${ONLY:-}"
 SIGN="${SIGN:-}"
+# The previously published pack set, for deltas. A directory of .kpack files
+# — usually the last release unpacked beside this one.
+PREV="${PREV:-}"
 # ONE SIGNATURE OVER THE INDEX COVERS EVERY PACK, because the index carries
 # each pack's C: hash — which is the property libksig's binhost was designed
 # around and the reason there is no sidecar per pack here. Without it a pack is
@@ -454,6 +458,41 @@ EOF
 		built=$((built + 1))
 	fi
 done < "$CONF"
+
+# ── deltas against the previous published set ──────────────────────────────
+#
+# WITHOUT THESE AN OS UPDATE COSTS THE FULL SIZE OF EVERY CHANGED PACK, and on
+# this set that is 713 MB for rt-wine alone. `kpkg delta` is zstd --patch-from
+# over the UNCOMPRESSED tars and reconstructs byte-for-byte, which is the whole
+# reason `kdos app update` prefers one — and until now nothing generated any,
+# so the cheap path existed and was never reachable.
+#
+# A delta is never trusted and never needs to be: it is applied and the RESULT
+# is hashed against the `C:` the signed index already carries, so a tampered
+# delta produces a pack that fails at the mount and cannot make a machine
+# install something the index did not already name. That is why no signature is
+# written for one.
+#
+# Only against the PREVIOUS set, not every retained one: a user more than one
+# release behind falls back to the whole pack, which is correct and costs
+# nothing to arrange.
+if [ -n "$PREV" ] && [ -d "$PREV" ]; then
+	echo "==> deltas against $PREV"
+	nd=0
+	for new in "$OUT"/*.kpack; do
+		id=$(basename "$new" .kpack)
+		old="$PREV/$id.kpack"
+		[ -f "$old" ] || continue
+		# Identical contents need no delta; skip-unchanged already kept
+		# the file, so there is nothing for a user to fetch either.
+		[ "$("$KPACK" imagehash "$old" 2>/dev/null)" = \
+		  "$("$KPACK" imagehash "$new" 2>/dev/null)" ] && continue
+		if "$KPACK" delta "$old" "$new" >/dev/null 2>&1; then
+			nd=$((nd + 1))
+		fi
+	done
+	echo "    $nd delta(s)"
+fi
 
 echo "==> indexing"
 [ -n "$SIGN" ] || echo "    no signing key — the index will be unsigned"

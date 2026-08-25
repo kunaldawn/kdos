@@ -1,0 +1,7 @@
+#!/bin/bash
+
+
+tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
+
+cargo build --release --frozen --offline
+install -Dm755 target/release/tokei $PKG/usr/bin/tokei

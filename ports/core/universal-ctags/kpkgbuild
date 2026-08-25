@@ -8,10 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
+name        = universal-ctags
+version     = 6.2.1
 release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+source      = $name-$version.tar.gz::https://github.com/universal-ctags/ctags/archive/refs/tags/v$version.tar.gz
+sha256      = f56829e9a576025e98955597ee967099a871987b3476fbd8dbbc2b9dc921f824  universal-ctags-6.2.1.tar.gz
+description = Jump-to-definition index for the languages with no language server
+homepage    = https://ctags.io/
+depends     = autoconf automake pkgconf jansson libxml2 pcre2 yaml

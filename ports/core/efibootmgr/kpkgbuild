@@ -8,10 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
+name        = efibootmgr
+version     = 18
 release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+source      = $name-$version.tar.gz::https://github.com/rhboot/$name/archive/refs/tags/$version.tar.gz
+sha256      = 442867d12f8525034a404fc8af3036dba8e1fc970998af2486c3b940dfad0874  efibootmgr-18.tar.gz
+description = Repair a boot configuration — list, add and reorder EFI entries
+homepage    = https://github.com/rhboot/efibootmgr
+depends     = pkgconf efivar popt mandoc

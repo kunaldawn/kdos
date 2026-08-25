@@ -158,15 +158,22 @@ for d in ports/core/* src/packages/* src/desktop/*; do
     unset name version source vendoring
     eval "$("$SP/kpkg" meta "$d" 2>/dev/null)"
     idx=0
+    resolved=""
     for s in $source; do
-        # source_file() in build.c: a non-URL is its own name, a URL is its
-        # basename, and only the FIRST source is renamed to <name>-<version>
-        # when it carries an archive suffix.
+        # source_file() in build.c, and this must stay its mirror: an
+        # explicit `<name>::<url>` is taken LITERALLY and is not renamed, a
+        # non-URL is its own name, a URL is its basename, and only the FIRST
+        # source is renamed to <name>-<version> when it carries an archive
+        # suffix. The `::` case has to be tested before the URL one — the
+        # right-hand side contains `://`, so a plain URL match claims it and
+        # then derives a filename the recipe deliberately overrode.
+        explicit=0
         case "$s" in
-            *://*) base=${s##*/} ;;
-            *)     base=$s ;;
+            *"::"*) base=${s%%::*}; explicit=1 ;;
+            *://*)  base=${s##*/} ;;
+            *)      base=$s ;;
         esac
-        if [ "$idx" = 0 ]; then
+        if [ "$idx" = 0 ] && [ "$explicit" = 0 ]; then
             case "$base" in
                 *.tar.gz|*.tgz)   base="$name-$version.tar.gz" ;;
                 *.tar.bz2|*.tbz2) base="$name-$version.tar.bz2" ;;
@@ -176,6 +183,7 @@ for d in ports/core/* src/packages/* src/desktop/*; do
             esac
         fi
         idx=$((idx + 1))
+        resolved="$resolved $base"
         [ -f "$d/$base" ] || continue
         # AN EMPTY ARCHIVE IS NOT AN ARCHIVE, and a hash does not catch it:
         # sha256 of nothing is a stable digest, so a recipe written while the
@@ -188,6 +196,23 @@ for d in ports/core/* src/packages/* src/desktop/*; do
             bad "$p" "ships $base with no sha256 line"
             unhashed=$((unhashed + 1))
         fi
+    done
+
+    # AN ARCHIVE THE RECIPE CANNOT NAME IS ONE THE BUILD WILL NOT FIND. The
+    # loop above skips a resolved name that is not on disk, which is right —
+    # tarballs are fetched rather than committed. The consequence is that a
+    # file sitting there under some OTHER name is invisible to every check
+    # here and fails at `Source not found`, minutes into a phase. That is what
+    # a hand-placed download looks like: kpkg renames a FIRST source to
+    # <name>-<version>.<ext> and a `.tgz` saved under the URL's own suffix
+    # matches nothing.
+    for f in "$d"/*.tar.* "$d"/*.tgz "$d"/*.tbz2 "$d"/*.txz "$d"/*.zip; do
+        [ -f "$f" ] || continue
+        fb=${f##*/}
+        case " $resolved " in *" $fb "*) continue ;; esac
+        [ "$fb" = "$name-vendor-$version.tar.xz" ] && continue
+        bad "$p" "ships $fb, which no 'source =' line resolves to"
+        unhashed=$((unhashed + 1))
     done
 
     # A VENDOR BUNDLE IS A SOURCE THIS PORT BUILDS FROM AND IS NOT IN `source`.

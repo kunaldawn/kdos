@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,10 +9,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
-release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+# kdos-resctl parses the SMBIOS table itself for the two fields the monitor
+# shows, deliberately, because a setuid helper must not exec anything. This is
+# the other half: the WHOLE table, for a person trying to find out what memory
+# a machine takes with no model number on the case and no web to look it up in.
+make prefix=/usr
+make prefix=/usr DESTDIR=$PKG install

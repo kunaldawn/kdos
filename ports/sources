@@ -13,6 +13,7 @@
 #   ports/sources pack              build packfiles for anything not yet in one
 #   ports/sources publish           upload the packfiles that are not on the release
 #   ports/sources fetch             download and extract whatever is missing here
+#   ports/sources packs [<tag>]     upload the baked pack set as a dated release
 #
 # WHY PACKFILES AND NOT 535 ASSETS. The tarballs are small, numerous, and
 # almost always wanted together — a developer setting up the tree wants all of
@@ -138,7 +139,7 @@ cmd_fetch() {
     echo "==> $n packfile(s) fetched; every archive is verified against its own recipe by ports/fetch"
 }
 
-cmd_publish() {
+read_token() {
     # A TOKEN FILE, because an exported variable does not cross between shells
     # and a 3.5 GB upload should not have to run in the one you typed it into.
     # Never echoed, never logged, never an argument: /proc/<pid>/cmdline is
@@ -160,7 +161,11 @@ cmd_publish() {
         echo "  it needs Contents: read+write on $REPO and nothing else." >&2
         exit 1
     fi
+    printf '%s' "$tok"
+}
 
+cmd_publish() {
+    local tok; tok=$(read_token) || exit 1
     local api="https://api.github.com/repos/$REPO/releases"
     local json id assets
     json=$(curl -sSL -H "Authorization: Bearer $tok" "$api/tags/$TAG" || true)
@@ -189,9 +194,67 @@ print(" ".join(a["name"] for a in json.load(sys.stdin).get("assets",[])))')
     echo "==> $n packfile(s) uploaded"
 }
 
+
+# ── the pack set ───────────────────────────────────────────────────────────
+#
+# ONE ASSET PER PACK, which is the opposite of what sources get and for the
+# opposite reason: somebody installing GIMP wants GIMP's 300 MB, not a 1.5 GB
+# bundle. Packs are large and fetched individually, so bundling them would make
+# every install pay for the whole catalogue.
+#
+# DATED AND IMMUTABLE. `base.kpack` is one name with different bytes every
+# bake, so unlike a source archive it cannot be append-only under a single tag.
+# `release =` in packs.conf names the set a commit expects; a tag freezes it.
+#
+# RETENTION IS THE LAST THREE, and the set a shipped ISO was built against is
+# never deleted — that is the one an installed machine and an old tag both
+# still need. Deleting is a deliberate act and this never does it.
+cmd_packs() {
+    local tag="${1:-packs-$(date -u +%Y.%m.%d)}"
+    local dir="${KDOS_PACK_DIR:-$SCRIPT_DIR/appbox/packs}"
+    [ -d "$dir" ] || { echo "ports/sources: no pack set at $dir" >&2; exit 1; }
+    [ -f "$dir/PACKAGES" ] || { echo "ports/sources: $dir has no PACKAGES index" >&2; exit 1; }
+
+    local tok; tok=$(read_token) || exit 1
+    local api="https://api.github.com/repos/$REPO/releases"
+    local json id assets n=0
+    json=$(curl -sSL -H "Authorization: Bearer $tok" "$api/tags/$tag" || true)
+    if ! printf '%s' "$json" | grep -q '"id"'; then
+        echo "==> creating release $tag"
+        json=$(curl -sSL -X POST -H "Authorization: Bearer $tok" "$api" \
+            -d "{\"tag_name\":\"$tag\",\"name\":\"Pack set $tag\",
+                 \"body\":\"Applications as EROFS packs. PACKAGES is signed; every pack is verified against its C: where it is mounted.\"}")
+    fi
+    id=$(printf '%s' "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+    assets=$(printf '%s' "$json" | python3 -c '
+import json,sys
+print(" ".join(a["name"] for a in json.load(sys.stdin).get("assets",[])))')
+
+    # The index and its signature travel with the packs, or nothing can be
+    # verified at the other end.
+    for f in "$dir"/*.kpack "$dir"/*.kdelta "$dir/PACKAGES" "$dir/PACKAGES.sig"; do
+        [ -f "$f" ] || continue
+        local name; name=$(basename "$f")
+        case " $assets " in *" $name "*) continue ;; esac
+        local sz; sz=$(stat -c%s "$f")
+        if [ "$sz" -ge 2147483648 ]; then
+            echo "!!  $name is $((sz / 1048576)) MB — over the 2 GiB asset cap" >&2
+            continue
+        fi
+        echo "⬆   $name  ($((sz / 1048576)) MB)"
+        curl -sSL -X POST -H "Authorization: Bearer $tok" \
+            -H "Content-Type: application/octet-stream" --data-binary @"$f" \
+            "https://uploads.github.com/repos/$REPO/releases/$id/assets?name=$name" >/dev/null
+        n=$((n + 1))
+    done
+    echo "==> $n asset(s) uploaded to $tag"
+    echo "    set `release = $tag` in ports/appbox/packs.conf to pin this set"
+}
+
 case "${1:-}" in
     pack)    cmd_pack ;;
+    packs)   shift; cmd_packs "$@" ;;
     fetch)   cmd_fetch ;;
     publish) cmd_publish ;;
-    *) echo "usage: ports/sources {pack|fetch|publish}" >&2; exit 1 ;;
+    *) echo "usage: ports/sources {pack|fetch|publish|packs [tag]}" >&2; exit 1 ;;
 esac

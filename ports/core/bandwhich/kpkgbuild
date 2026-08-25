@@ -1,0 +1,10 @@
+
+
+name        = bandwhich
+version     = 0.23.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/imsnif/bandwhich/archive/refs/tags/v$version.tar.gz
+description = Which process is using the bandwidth, by connection
+homepage    = https://github.com/imsnif/bandwhich
+depends     = rust
+vendoring   = rust

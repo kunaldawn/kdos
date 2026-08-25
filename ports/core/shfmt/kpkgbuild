@@ -1,0 +1,12 @@
+
+
+name        = shfmt
+version     = 3.13.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/mvdan/sh/archive/refs/tags/v$version.tar.gz
+sha256      = b31aad2d4c26b0c6e8ebe894d59022520bbebce33e082d7d29e4325eee35d308  shfmt-3.13.1.tar.gz
+sha256      = 00a01ae80463cff44dc9b3bdc70bba32b6377f5d9b3dc709a023946cba61862c  shfmt-vendor-3.13.1.tar.xz
+description = Parse, format and lint shell — over ~470 build.sh files
+homepage    = https://github.com/mvdan/sh
+depends     = go
+vendoring   = go

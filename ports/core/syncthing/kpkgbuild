@@ -1,0 +1,12 @@
+
+
+name        = syncthing
+version     = 2.1.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/syncthing/syncthing/archive/refs/tags/v$version.tar.gz
+sha256      = 177792c697f61fc25f02d8fc8923dfc57ebb35753bd92c8d32a73d553446d117  syncthing-2.1.3.tar.gz
+sha256      = 52b8a2fdde93a67d5d95dc3ba15ba3d8df3bed6000e78ba3f1320335f09b3fa6  syncthing-vendor-2.1.3.tar.xz
+description = Continuous P2P sync over the LAN — the multi-machine story
+homepage    = https://syncthing.net/
+depends     = go
+vendoring   = go

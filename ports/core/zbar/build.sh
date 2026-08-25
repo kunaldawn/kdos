@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,10 +9,21 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
-release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+autoreconf -f -i
+
+# EVERY GUI FRONT END IS OFF. zbar ships GTK, Qt, Java and Python bindings and
+# an X overlay; the host has none of those by rule, and what is wanted here is
+# zbarimg and zbarcam — a file or a camera in, text out. `--with-x=no` matters
+# even with the toolkits off, or configure links the X overlay for zbarcam.
+./configure \
+	--prefix=/usr \
+	--libdir=/usr/lib \
+	--disable-static \
+	--without-gtk \
+	--without-qt \
+	--without-java \
+	--without-python \
+	--without-x \
+	--with-imagemagick
+make
+make DESTDIR=$PKG install

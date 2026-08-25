@@ -1,0 +1,10 @@
+
+
+name        = xh
+version     = 0.26.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ducaale/xh/archive/refs/tags/v$version.tar.gz
+description = HTTP exploration from a prompt, with a readable request line
+homepage    = https://github.com/ducaale/xh
+depends     = rust
+vendoring   = rust

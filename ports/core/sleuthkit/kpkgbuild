@@ -1,0 +1,10 @@
+
+
+name        = sleuthkit
+version     = 4.15.0
+release     = 1
+source      = https://github.com/sleuthkit/sleuthkit/releases/download/$name-$version/$name-$version.tar.gz
+sha256      = 3a8c1e7d18a9b81f3e5e8aa78313974aceaafc6e051d636bc92cd7168286eca9  sleuthkit-4.15.0.tar.gz
+description = Filesystem forensics — reads images mount(8) refuses
+homepage    = https://www.sleuthkit.org/
+depends     = autoconf automake libtool pkgconf zlib sqlite openssl

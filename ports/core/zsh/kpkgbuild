@@ -8,10 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
+name        = zsh
+version     = 5.9.2
 release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+source      = https://www.zsh.org/pub/$name-$version.tar.xz
+sha256      = 36fa734374b44783582cec09bcd67822e2f992c779ec1624ab5596df078d2f81  zsh-5.9.2.tar.xz
+description = Shell whose completion corpus knows a thousand commands
+homepage    = https://www.zsh.org/
+depends     = ncurses pcre2

@@ -8,10 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
+name        = zbar
+version     = 0.23.93
 release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+source      = $name-$version.tar.gz::https://github.com/mchehab/zbar/archive/refs/tags/$version.tar.gz
+sha256      = 212dfab527894b8bcbcc7cd1d43d63f5604a07473d31a5f02889e372614ebe28  zbar-0.23.93.tar.gz
+description = Read a QR or barcode from an image or a camera
+homepage    = https://github.com/mchehab/zbar
+depends     = autoconf automake libtool pkgconf gettext libjpeg-turbo imagemagick

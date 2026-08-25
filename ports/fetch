@@ -160,7 +160,7 @@ fetch_port() {
     # Ask kpkg for the metadata; it prints shell assignments. $KPKG's own
     # basename is literally "kpkg", so this resolves through kdos-kpkg's
     # PRIMARY dispatch (argv[0] -> front_main), not its argv[1] fallback.
-    unset name version release source sha256 vendoring pypackages
+    unset name version release source sha256 vendoring pypackages vendordir
     local meta
     meta=$("$KPKG" meta . 2>/dev/null) || {
         echo "⚠  $portname: Failed to read kpkgbuild"
@@ -407,7 +407,14 @@ fetch_port() {
                 return 1
             }
 
-            pushd "$tmp_dir" >/dev/null
+            # A GO MODULE IS NOT ALWAYS AT THE TARBALL ROOT. golang.org/x/tools
+            # tags a gopls release and ships gopls as a SUBDIRECTORY with its
+            # own go.mod; vendoring at the root would either fail outright or
+            # — worse — vendor the PARENT module, producing a bundle that
+            # builds something else. `vendordir =` in the recipe is an
+            # ordinary recipe helper (kpkgbuild treats any unknown key as
+            # one), so build.sh reads the same value with no parser change.
+            pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
             go mod vendor || {
                 echo "✗  $portname: go mod vendor failed"
                 popd >/dev/null

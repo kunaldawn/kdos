@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,10 +9,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
-release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+./autogen.sh
+
+# SQL OVER LOG LINES IS WHY THIS IS HERE AND NOT JUST less. Offline you cannot
+# paste a log into a search box, so the machine has to be able to answer a
+# question about its own logs — and lnav's sqlite view is the only thing on
+# this system that can. libarchive is what lets it read a rotated .gz or .xz
+# without unpacking it first.
+./configure --prefix=/usr --disable-static
+make
+make DESTDIR=$PKG install
