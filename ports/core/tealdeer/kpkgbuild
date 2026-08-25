@@ -1,0 +1,11 @@
+
+
+name        = tealdeer
+version     = 1.9.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/tealdeer-rs/tealdeer/archive/refs/tags/v$version.tar.gz
+source      = tldr-pages-2.3.tar.gz::https://github.com/tldr-pages/tldr/archive/refs/tags/v2.3.tar.gz
+description = Example-first help — the tldr pages, pre-seeded and never fetched
+homepage    = https://tealdeer-rs.github.io/tealdeer/
+depends     = rust
+vendoring   = rust

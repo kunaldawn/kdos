@@ -1,0 +1,10 @@
+
+
+name        = hyperfine
+version     = 1.20.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/sharkdp/hyperfine/archive/refs/tags/v$version.tar.gz
+description = Statistical command-line benchmarking with warmup and outliers
+homepage    = https://github.com/sharkdp/hyperfine
+depends     = rust
+vendoring   = rust

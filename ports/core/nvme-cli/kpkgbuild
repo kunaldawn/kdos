@@ -8,10 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
+name        = nvme-cli
+version     = 2.16
 release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+source      = $name-$version.tar.gz::https://github.com/linux-nvme/nvme-cli/archive/refs/tags/v$version.tar.gz
+sha256      = 989682ed7b250a2c7a8127e362ffc5d29f5c370127abe405be09c73216da2b97  nvme-cli-2.16.tar.gz
+description = Is the NVMe dying — the drive's own log pages and self-tests
+homepage    = https://github.com/linux-nvme/nvme-cli
+depends     = meson ninja pkgconf libnvme json-c

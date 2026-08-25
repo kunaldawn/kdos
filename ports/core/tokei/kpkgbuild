@@ -1,0 +1,10 @@
+
+
+name        = tokei
+version     = 14.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/XAMPPRocky/tokei/archive/refs/tags/v$version.tar.gz
+description = Source census — how much code is here, in what
+homepage    = https://github.com/XAMPPRocky/tokei
+depends     = rust
+vendoring   = rust

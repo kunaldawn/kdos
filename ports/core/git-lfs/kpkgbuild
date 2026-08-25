@@ -1,0 +1,12 @@
+
+
+name        = git-lfs
+version     = 3.7.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/git-lfs/git-lfs/archive/refs/tags/v$version.tar.gz
+sha256      = 0e83566a9e2477e03627e7fd6bf81f01fadbf93dcaf6abd2686fca90f6bac7dd  git-lfs-3.7.1.tar.gz
+sha256      = 0ea3df4832d3f15ea9fd911fd9007f4865be3b79d4e468dddd6c3ed69e9ccc6b  git-lfs-vendor-3.7.1.tar.xz
+description = Clone a repository that stores its large files out of band
+homepage    = https://git-lfs.com/
+depends     = go git
+vendoring   = go

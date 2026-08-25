@@ -8,10 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
+name        = qrencode
+version     = 4.1.1
 release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+source      = $name-$version.tar.gz::https://github.com/fukuchi/libqrencode/archive/refs/tags/v$version.tar.gz
+sha256      = 5385bc1b8c2f20f3b91d258bf8ccc8cf62023935df2d2676b5b67049f31a049c  qrencode-4.1.1.tar.gz
+description = Write a QR code, including as terminal characters
+homepage    = https://fukuchi.org/works/qrencode/
+depends     = autoconf automake libtool pkgconf libpng

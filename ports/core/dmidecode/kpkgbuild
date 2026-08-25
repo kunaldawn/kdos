@@ -8,10 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
+name        = dmidecode
+version     = 3.7
 release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+source      = https://download.savannah.gnu.org/releases/$name/$name-$version.tar.xz
+sha256      = 2c3aed12c85a1e6a9410d406d5e417c455466dc1bc7c89278bb32cf7cad91e8a  dmidecode-3.7.tar.xz
+description = What machine is this — the SMBIOS table in words
+homepage    = https://www.nongnu.org/dmidecode/
+depends     =

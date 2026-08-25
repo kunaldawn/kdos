@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,10 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
-release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+# THIS IS A PREREQUISITE, NOT A CONVENIENCE. hostapd cannot be brought up
+# without knowing whether the card does AP mode, and aircrack-ng needs monitor
+# mode set — both are `iw` and there is no other way to ask nl80211 those
+# questions from a shell. It is also what answers "why will this card not
+# associate at 5 GHz", which on a machine whose regdb must stay upstream-signed
+# is a question that comes up.
+#
+# The makefile has no configure; PREFIX and the pkg-config lookups are all it
+# takes. V=1 keeps the compile lines in the port log.
+make V=1 PREFIX=/usr
+make V=1 PREFIX=/usr DESTDIR=$PKG install

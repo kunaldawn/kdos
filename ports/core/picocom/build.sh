@@ -1,3 +1,4 @@
+#!/bin/bash
 # ██╗  ██╗██████╗  ██████╗ ███████╗
 # ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
 # █████╔╝ ██║  ██║██║   ██║███████╗
@@ -8,10 +9,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
-release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+# THE PROJECT'S OWN DEBUG RIG ALREADY DEPENDS ON SERIAL ACCESS IT COULD NOT
+# PROVIDE. Every udev rule this tree ships for FTDI, CP210x, CH341 and CDC-ACM
+# grants the `dialout` group a device with nothing on the host able to open it;
+# this is the program those rules exist for.
+#
+# There is no configure. UUCP_LOCK_DIR must match what everything else on the
+# machine uses or two programs will each believe they hold the port.
+make CC="$CC" CFLAGS="$CFLAGS -DUUCP_LOCK_DIR='\"/run/lock\"' -DHIGH_BAUD"
+install -Dm755 picocom $PKG/usr/bin/picocom
+install -Dm644 picocom.1 $PKG/usr/share/man/man1/picocom.1

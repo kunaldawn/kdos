@@ -8,10 +8,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-name        = ntfs-3g
-version     = 2026.7.7
+name        = picocom
+version     = 3.1
 release     = 1
-source      = https://download.tuxera.com/opensource/${name}_ntfsprogs-$version.tgz
-sha256      = d67b769025d32860549d35c2147e45024d172f81c540d750390ce3602c059dab  ntfs-3g-2026.7.7.tar.gz
-description = NTFS driver and the ntfsprogs filesystem utilities
-homepage    = https://github.com/tuxera/ntfs-3g
+source      = $name-$version.tar.gz::https://github.com/npat-efault/$name/archive/refs/tags/$version.tar.gz
+sha256      = e6761ca932ffc6d09bd6b11ff018bdaf70b287ce518b3282d29e0270e88420bb  picocom-3.1.tar.gz
+description = Serial console to a dead router, BMC or dev board
+homepage    = https://github.com/npat-efault/picocom
+depends     =

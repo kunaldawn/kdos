@@ -227,6 +227,107 @@ libkiwix
 kiwix-tools
 
 # ---------------------------------
+# Keeping the bytes, and moving them between two machines
+# ---------------------------------
+# A backup tool is one static binary or it is not a backup tool: the repository
+# has to restore from a machine that is NOT this one. `rclone check` is the
+# only thing here that compares two trees by content and says what differs.
+restic
+rclone
+# One key format, no options, no key server to be unreachable — an age
+# recipient is a short line somebody can read over a phone.
+age
+# localAnnounce on, global/relay/NAT off: two machines on one LAN find each
+# other with no server anywhere, and nothing reaches outside it.
+syncthing
+# The default relay is a host on the internet and croc falls back to it
+# SILENTLY, so the shipped wrapper is `croc --local`.
+croc
+# There is no dig, drill or nslookup in this tree, on a machine expected to BE
+# the DNS server for an island network.
+doggo
+# preflight runs `bash -n` over ~470 build.sh files, which catches a syntax
+# error and nothing else. shfmt PARSES them.
+shfmt
+# Every documented appbox failure is podman state — a box stuck in `stopping`,
+# a half-built init, a storage driver mismatch.
+podman-tui
+# The KDOS repo no longer uses LFS, but `kdos rebuild` promises this stick can
+# rebuild this stick, and that extends to any other repo cloned on it: without
+# this a clone SUCCEEDS and checks out pointer files.
+git-lfs
+
+# ---------------------------------
+# The machine's own hardware, its GPUs and its damaged disks
+# ---------------------------------
+# The same drm-engine-* fdinfo source kdos-energyd's GPU column reads, so the
+# two agree by construction. NVIDIA_SUPPORT=OFF: NVML is in a driver this
+# distro cannot build.
+nvtop
+# A synthesiser, not a screen reader — what it buys alone is the corpus read
+# aloud on a machine whose 49 GB of documentation needs eyes.
+pcaudiolib
+espeak-ng
+# testdisk repairs a partition table so the kernel will mount the thing; this
+# never asks the kernel at all and walks the metadata out of the image.
+sleuthkit
+# Ships inert and deliberately so: a rule set is somebody's judgement about
+# what is suspicious and it decays from the day it is written.
+yara
+# Redis relicensed source-available in 2024; this is the BSD-3 continuation.
+valkey
+
+# ---------------------------------
+# Is the hardware dying, and can this machine reach it
+# ---------------------------------
+# Every udev rule this tree ships grants `dialout` a device class with nothing
+# on the host able to open it; picocom is the program those rules exist for.
+# libnvme has been a port with no consumer since it landed — nvme-cli is it.
+smartmontools
+nvme-cli
+lm-sensors
+dmidecode
+ethtool
+iw
+picocom
+# A counterfeit stick wraps its writes over the same cells: every copy
+# completes, every checksum at write time passes, and the corpus is gone
+# months later. On a distro whose medium IS the library that is the failure
+# mode f3 exists for.
+f3
+# kinstall writes an EFI entry once. Every later firmware that reorders or
+# drops it needs a tool on the RUNNING system, or a KDOS install that stops
+# booting has no repair path outside a firmware menu.
+efivar
+efibootmgr
+# hostapd completes the island network: dnsmasq is already here, so one
+# wireless card serves addresses, names, the corpus and a PXE boot with no
+# router in it. iw above is its hard prerequisite, not a convenience.
+hostapd
+# Scores a systemd/PAM/auditd machine, which this is not by rule — the value
+# is the report's explanations, not the number.
+lynis
+
+# ---------------------------------
+# Reading a repository, a log, and a code on a screen
+# ---------------------------------
+# ctags indexes the ~140 languages with no language server here; tig READS a
+# repository where lazygit acts on one; lnav is the only thing on this machine
+# that can answer a question about its own logs in SQL, which matters when
+# there is no search box to paste them into.
+universal-ctags
+tig
+lnav
+# zsh is here for Completion/ — embedded knowledge of a thousand commands'
+# arguments, worth more offline than on. bash remains the system shell.
+zsh
+# A QR code is a data path off this machine that needs no network: a device id
+# or a WiFi credential leaves through a phone camera. qrencode -t ANSI draws it
+# in block characters on the cell grid.
+qrencode
+zbar
+
+# ---------------------------------
 # Editors / TUI
 # ---------------------------------
 neovim

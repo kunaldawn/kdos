@@ -1,0 +1,12 @@
+
+
+name        = restic
+version     = 0.19.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/restic/restic/archive/refs/tags/v$version.tar.gz
+sha256      = bb9b1a19040744d26d8a79be029d4e6b189c45ccc9d8831d7fe367d3c33df725  restic-0.19.1.tar.gz
+sha256      = 9ee5edf4e17edea993c81cfe9de96e4bddb3d14709f19af7b49d486ec2c41a1c  restic-vendor-0.19.1.tar.xz
+description = Deduplicating backup — one static binary that restores anywhere
+homepage    = https://restic.net/
+depends     = go
+vendoring   = go

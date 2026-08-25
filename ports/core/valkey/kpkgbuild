@@ -1,0 +1,10 @@
+
+
+name        = valkey
+version     = 9.1.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/valkey-io/valkey/archive/refs/tags/$version.tar.gz
+sha256      = 7d7232acd1b8a49b4e05d07a00b3ca8c801ae06ab633ca6a3423bc5f385ab7ee  valkey-9.1.1.tar.gz
+description = In-memory key-value store — the BSD continuation of Redis
+homepage    = https://valkey.io/
+depends     = openssl
