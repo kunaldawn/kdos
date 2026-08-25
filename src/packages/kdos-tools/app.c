@@ -398,12 +398,17 @@ static int cmd_simple(const char *verb, const char *id)
 /* ── update ────────────────────────────────────────────────────────────── */
 
 /*
- * WHERE AN UPDATE COMES FROM, and it is not a URL. A source is a directory
- * with a `PACKAGES` index in it: the medium under `/mnt/iso/packs`, an
- * installed store's own copy, and whatever `/etc/kdos/pack-sources` lists —
- * one path per line. That is the whole of it, because on a distro whose medium
- * IS the software library the interesting case is "the stick I just wrote is
- * newer than the disk", not "fetch it from somewhere".
+ * WHERE AN UPDATE COMES FROM. A source is a directory with a `PACKAGES` index
+ * in it: the medium under `/mnt/iso/packs`, an installed store's own copy, and
+ * whatever `/etc/kdos/pack-sources` lists — one path per line. On a distro
+ * whose medium IS the software library the interesting case is "the stick I
+ * just wrote is newer than the disk".
+ *
+ * A URL IS NEVER ONE OF THEM AND IS NEVER CONFIGURED. Reaching the network is
+ * `--online <url>` on the command line and nothing else: an argument is
+ * visible at the moment it is used, where a line in a config file is invisible
+ * until the day it surprises somebody. Nothing this machine does by itself
+ * ever leaves it.
  */
 static int sources(char out[8][KPK_PATH])
 {
@@ -466,6 +471,47 @@ static int staging(char *out, size_t n)
  * produces a pack that fails there; it cannot make this machine install
  * something the index did not already name.
  */
+/*
+ * A SOURCE MAY BE A URL, and exactly two places have to know: where the index
+ * is read from and where a file is staged from. Everything between them —
+ * the version compare, the delta choice, the staging directory — is identical,
+ * because a release over HTTP is the same shape as a stick: a directory with a
+ * `PACKAGES` index and the files it names.
+ */
+static int is_url(const char *s)
+{
+	return !strncmp(s, "https://", 8) || !strncmp(s, "http://", 7);
+}
+
+/*
+ * Put `<dir>/<name>` at `dst`, whether dir is a path or a URL.
+ *
+ * NOTHING HERE VERIFIES ANYTHING, and it does not need to: the file lands in
+ * the staging directory and kdos-packd hashes it against the `C:` in the
+ * signed index where it MOUNTS it. A tampered download produces a pack that
+ * fails there and cannot make the machine install something the index did not
+ * already name — the rule the whole format is built on.
+ */
+static int stage_from(const char *dir, const char *name, const char *dst)
+{
+	char src[KPK_PATH * 2];
+
+	if (!is_url(dir)) {
+		snprintf(src, sizeof(src), "%s/%s", dir, name);
+		return kb_copy_file(src, dst);
+	}
+	KbArgv a = {0};
+	kb_argv_add(&a, "curl");
+	kb_argv_add(&a, "-fsSL");
+	kb_argv_add(&a, "--retry");
+	kb_argv_add(&a, "3");
+	kb_argv_add(&a, "-o");
+	kb_argv_add(&a, dst);
+	kb_argv_addf(&a, "%s/%s", dir, name);
+	kb_argv_end(&a);
+	return kb_run(&a);
+}
+
 static int fetch_one(const char *dir, const KpkIndex *ix,
 		     const KpkIndexEnt *want, const char *have_version,
 		     const char *stage, char *file, size_t fn)
@@ -496,7 +542,17 @@ static int fetch_one(const char *dir, const KpkIndex *ix,
 
 	if (d) {
 		KbArgv a = {0};
-		snprintf(src, sizeof(src), "%s/%s", dir, d->file);
+		char dl[KPK_PATH * 2];
+
+		/* A delta is fetched like anything else, then applied against
+		 * the pack already on disk. */
+		snprintf(dl, sizeof(dl), "%s/%s", stage, d->file);
+		if (stage_from(dir, d->file, dl) != 0) {
+			fprintf(stderr, "  %s: cannot fetch the delta\n", want->id);
+			d = NULL;
+			goto whole;
+		}
+		kb_strlcpy(src, dl, sizeof(src));
 		kb_argv_add(&a, "kdos-pack");
 		kb_argv_add(&a, "apply");
 		kb_argv_add(&a, old);
@@ -513,9 +569,10 @@ static int fetch_one(const char *dir, const KpkIndex *ix,
 				"whole pack\n", want->id);
 	}
 
-	snprintf(src, sizeof(src), "%s/%s", dir, want->file);
-	if (kb_copy_file(src, dst) != 0) {
-		fprintf(stderr, "  %s: cannot stage %s\n", want->id, src);
+whole:
+	if (stage_from(dir, want->file, dst) != 0) {
+		fprintf(stderr, "  %s: cannot stage %s from %s\n", want->id,
+			want->file, dir);
 		return -1;
 	}
 	printf("  %-22s %s -> %s  %s\n", want->id, have_version, want->version,
@@ -523,14 +580,35 @@ static int fetch_one(const char *dir, const KpkIndex *ix,
 	return 0;
 }
 
-static int cmd_update(const char *only, int dry)
+static int cmd_update(const char *only, int dry, const char *url)
 {
 	char dirs[8][KPK_PATH];
 	char stage[KPK_PATH];
 	int ndir = sources(dirs), done = 0, seen = 0, failed = 0;
 
+	/*
+	 * `--online` IS THE ONLY WAY TO THE NETWORK, and it is an argument
+	 * rather than a setting: nothing this machine does on its own ever
+	 * leaves it. The URL is a directory holding a `PACKAGES` index and the
+	 * files it names — a release, a mirror, a web server, the same shape
+	 * as a stick.
+	 */
+	if (url) {
+		if (!is_url(url)) {
+			fprintf(stderr, "--online wants an http(s) URL\n");
+			return 1;
+		}
+		if (ndir >= 8) {
+			fprintf(stderr, "too many sources to add one more\n");
+			return 1;
+		}
+		printf("online: %s\n", url);
+		kb_strlcpy(dirs[ndir++], url, KPK_PATH);
+	}
+
 	if (!ndir) {
 		printf("no sources — nothing to update from\n");
+		printf("  a stick with a PACKAGES index on it, or --online <url>\n");
 		return 0;
 	}
 	if (!dry && staging(stage, sizeof(stage)) != 0)
@@ -540,9 +618,20 @@ static int cmd_update(const char *only, int dry)
 		char path[KPK_PATH * 2];
 		KpkIndex *ix;
 
-		snprintf(path, sizeof(path), "%s/PACKAGES", dirs[d]);
-		if (!kb_path_exists(path))
-			continue;
+		if (is_url(dirs[d])) {
+			/* The index comes down first; everything after it is
+			 * decided from what it says. */
+			snprintf(path, sizeof(path), "%s/PACKAGES.online", stage);
+			if (stage_from(dirs[d], "PACKAGES", path) != 0) {
+				fprintf(stderr, "%s: no PACKAGES there\n", dirs[d]);
+				failed++;
+				continue;
+			}
+		} else {
+			snprintf(path, sizeof(path), "%s/PACKAGES", dirs[d]);
+			if (!kb_path_exists(path))
+				continue;
+		}
 		ix = kb_calloc(1, sizeof(*ix));
 		if (kpk_index_load(ix, path) <= 0) {
 			free(ix);
@@ -629,7 +718,7 @@ static int usage(void)
 		"       kdos app install <id>\n"
 		"       kdos app remove <id>\n"
 		"       kdos app rollback <id>\n"
-		"       kdos app update [<id>] [--dry-run]\n"
+		"       kdos app update [<id>] [--dry-run] [--online <url>]\n"
 		"       kdos app sources\n"
 		"\nAn application is one signed file. Installing it is a mount.\n"
 		"To install something that is not packed at all, from a network:\n"
@@ -682,17 +771,21 @@ int kdt_app(int argc, char **argv)
 	if (!strcmp(cmd, "ungraft") && argc > 1)
 		return cmd_simple("ungraft", argv[1]);
 	if (!strcmp(cmd, "update")) {
-		const char *id = NULL;
+		const char *id = NULL, *url = NULL;
 		int dry = 0;
 		for (int i = 1; i < argc; i++) {
 			if (!strcmp(argv[i], "--dry-run"))
 				dry = 1;
-			else if (argv[i][0] != '-')
+			else if (!strcmp(argv[i], "--online")) {
+				if (++i >= argc)
+					return usage();
+				url = argv[i];
+			} else if (argv[i][0] != '-')
 				id = argv[i];
 			else
 				return usage();
 		}
-		return cmd_update(id, dry);
+		return cmd_update(id, dry, url);
 	}
 	if (!strcmp(cmd, "sources"))
 		return cmd_sources();

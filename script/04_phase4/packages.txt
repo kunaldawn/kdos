@@ -56,6 +56,8 @@ e2fsprogs
 # The kernel mounts btrfs, xfs, f2fs, ntfs3 and exfat and could create none of
 # them until these landed. kinstall's filesystem menu depends on them.
 exfatprogs
+f2fs-tools
+ntfs-3g
 liburcu
 btrfs-progs
 xfsprogs
@@ -148,6 +150,10 @@ terminus-ttf
 # this, fontconfig has no fonts: foot fails ("failed to load primary fonts") and
 # the cell-grid shell has nothing to draw glyphs with.
 ttf-dejavu
+# One OpenType Collection covering Chinese, Japanese and Korean. Without a CJK
+# face, fontconfig has nothing to fall back to and every CJK codepoint renders
+# as a box — in foot, in an alien app, and in any filename that carries one.
+noto-cjk
 
 # ---------------------------------
 # Modern CLI tools (Rust / Go)
@@ -171,6 +177,54 @@ duf
 procs
 bottom
 ncdu
+# Shell history in a local SQLite database. Built --no-default-features
+# --features client: no sync, no update check, no daemon and no clipboard, so
+# the history of everything typed on this machine has no route off it.
+atuin
+ouch
+sd
+glow
+chezmoi
+entr
+
+# ---------------------------------
+# Archives, duplicates and recovery
+# ---------------------------------
+# lzip before ddrescue: GNU ships ddrescue as .tar.lz and nothing else, and
+# kpkg unpacks only the extensions it knows.
+lzip
+# ddrescue images a DYING disk sector by sector with a resumable mapfile;
+# partclone images a HEALTHY one by copying the blocks the filesystem says are
+# in use and skipping the rest. Both ship because they answer different
+# questions, and testdisk/photorec is what runs when the partition table is the
+# thing that is gone.
+ddrescue
+partclone
+testdisk
+pv
+# unzip has been a port since the beginning and zip had not, so this system
+# could open an archive it could not make.
+zip
+# rdfind is also what linux-firmware's `make dedup` wants, and parallel its
+# `-j`; both are skipped in that recipe without them.
+rdfind
+parallel
+# PAR2 recovery data: the difference between a bit-rotted archive and a lost
+# one, on a distro whose medium IS the software library.
+par2cmdline-turbo
+
+# ---------------------------------
+# The offline library: index it, search it, serve it
+# ---------------------------------
+# kiwix-serve puts a ZIM on localhost and every reader on the machine reaches
+# it over HTTP — including a boxed browser. On a distro whose medium IS the
+# software library, this is the half that makes the library readable.
+xapian-core
+pugixml
+libmicrohttpd
+libzim
+libkiwix
+kiwix-tools
 
 # ---------------------------------
 # Editors / TUI
@@ -202,6 +256,13 @@ wireguard-tools
 socat
 netcat
 mtr
+# dnsmasq is shipped and there was no way to ask this machine a DNS question;
+# drill comes with the library.
+ldns
+# The two remote filesystems a workstation actually mounts. cifs-utils pulls
+# talloc, which samba requires unconditionally.
+cifs-utils
+sshfs
 
 # ---------------------------------
 # Wayland base

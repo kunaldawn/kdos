@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libkiwix
+version     = 14.2.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/kiwix/libkiwix/archive/refs/tags/$version.tar.gz
+sha256      = cff1eb06d62ab42e1720a49f473b7d9364f02ee77a8a455c9adb26db419e0fff  libkiwix-14.2.1.tar.gz
+description = The library kiwix-serve searches and serves a ZIM with
+homepage    = https://github.com/kiwix/libkiwix
+depends     = meson libzim libmicrohttpd xapian-core icu pugixml curl

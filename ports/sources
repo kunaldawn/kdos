@@ -1,0 +1,197 @@
+#!/bin/bash
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/sources — the upstream archive, as a handful of packfiles
+# ---------------------------------
+#
+#   ports/sources pack              build packfiles for anything not yet in one
+#   ports/sources publish           upload the packfiles that are not on the release
+#   ports/sources fetch             download and extract whatever is missing here
+#
+# WHY PACKFILES AND NOT 535 ASSETS. The tarballs are small, numerous, and
+# almost always wanted together — a developer setting up the tree wants all of
+# them and a CI run wants all of them. 535 separate uploads is 535 chances to
+# fail and a releases page with 26 sources-* entries burying the real releases;
+# three assets is one download each. Packs are the opposite case and stay one
+# asset per pack, because somebody installing GIMP wants GIMP and not 1.5 GB.
+#
+# UNCOMPRESSED tar, deliberately: every member is already a .tar.xz or .tar.gz,
+# so recompressing costs minutes and saves nothing.
+#
+# IMMUTABLE AND APPEND-ONLY, which is what removes the need for an index of
+# byte offsets. A published packfile is never rebuilt: new tarballs accumulate
+# into the next one, so a client fetches only the packfiles it LACKS — a fresh
+# tree takes all of them, a month-old tree takes the one holding that month's
+# additions. Rewriting a 1.5 GB packfile to add one 6 MB tarball would have
+# destroyed exactly that property.
+#
+# THE MANIFEST IS THE ONLY THING IN GIT. It names each packfile, its sha256 and
+# its members — names, never hashes: every tarball's hash is already the
+# `sha256 =` in its recipe, and that is what verifies the extracted file. One
+# copy of a fact, in the place that already had it.
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PORT_REPO="$SCRIPT_DIR/core"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+MANIFEST="$SCRIPT_DIR/sources.manifest"
+OUTDIR="${KDOS_PACKFILE_DIR:-$REPO_ROOT/build/sources}"
+REPO="${KDOS_REPO:-kunaldawn/kdos}"
+TAG="${KDOS_SOURCES_TAG:-sources}"
+BASE="${KDOS_SOURCES_BASE:-https://github.com/$REPO/releases/download}"
+CAP=$((1500 * 1024 * 1024))     # comfortably inside the 2 GiB asset limit
+
+# Every archive a port ships, as `<port>/<file>`, sorted so a packfile's
+# contents are a function of the tree and not of readdir order.
+#
+# LC_ALL=C throughout: `comm` compares bytes while `sort` under a UTF-8 locale
+# collates punctuation differently, so the two disagree about order and comm
+# refuses the input. It also keeps which-file-lands-in-which-packfile the same
+# on every developer's machine, which is the point of sorting at all.
+all_members() {
+    (cd "$PORT_REPO" && find . -maxdepth 2 -type f \
+        \( -name '*.tar.*' -o -name '*.tgz' -o -name '*.zip' \) \
+        | sed 's|^\./||' | LC_ALL=C sort)
+}
+
+# Members already published, read back out of the manifest.
+packed_members() { [ -f "$MANIFEST" ] && sed -n 's/^M://p' "$MANIFEST" || true; }
+manifest_packs() { [ -f "$MANIFEST" ] && sed -n 's/^P://p' "$MANIFEST" || true; }
+
+cmd_pack() {
+    mkdir -p "$OUTDIR"
+    local have new n=0
+    have=$(packed_members)
+    new=$(LC_ALL=C comm -23 <(all_members) <(printf '%s\n' "$have" | LC_ALL=C sort))
+    if [ -z "$new" ]; then
+        echo "==> nothing new to pack"
+        return 0
+    fi
+
+    # The next free number, so an existing packfile is never reopened.
+    local idx=1
+    while [ -n "$(manifest_packs | grep -x "src-$(printf '%04d' $idx).tar" || true)" ]; do
+        idx=$((idx + 1))
+    done
+
+    local cur=() size=0 f sz hdr
+    flush() {
+        [ ${#cur[@]} -eq 0 ] && return 0
+        local name; name="src-$(printf '%04d' $idx).tar"
+        ( cd "$PORT_REPO" && tar --format=ustar --sort=name \
+            --owner=0 --group=0 --numeric-owner --mtime=@0 \
+            -cf "$OUTDIR/$name" "${cur[@]}" )
+        printf 'P:%s\nC:%s\nS:%s\n' "$name" \
+            "$(sha256sum "$OUTDIR/$name" | cut -d' ' -f1)" \
+            "$(stat -c%s "$OUTDIR/$name")" >> "$MANIFEST"
+        printf 'M:%s\n' "${cur[@]}" >> "$MANIFEST"
+        printf '\n' >> "$MANIFEST"
+        echo "    $name  $(du -h "$OUTDIR/$name" | cut -f1)  ${#cur[@]} members"
+        idx=$((idx + 1)); cur=(); size=0; n=$((n + 1))
+    }
+
+    echo "==> packing $(printf '%s\n' "$new" | wc -l) new archive(s)"
+    while read -r f; do
+        [ -z "$f" ] && continue
+        sz=$(stat -c%s "$PORT_REPO/$f")
+        hdr=$(( 512 + (sz + 511) / 512 * 512 ))
+        [ $((size + hdr)) -gt $CAP ] && [ ${#cur[@]} -gt 0 ] && flush
+        cur+=("$f"); size=$((size + hdr))
+    done <<< "$new"
+    flush
+    echo "==> $n packfile(s) in $OUTDIR"
+}
+
+cmd_fetch() {
+    [ -f "$MANIFEST" ] || { echo "ports/sources: no $MANIFEST" >&2; exit 1; }
+    local pack sha want got n=0
+    # A packfile is needed when ANY member of it is missing here. Its members
+    # are named in the manifest, so this costs no network to decide.
+    while read -r line; do
+        case "$line" in
+            P:*) pack=${line#P:}; sha=""; want=0 ;;
+            C:*) sha=${line#C:} ;;
+            M:*) [ -f "$PORT_REPO/${line#M:}" ] || want=1 ;;
+            "")  [ -n "$pack" ] && [ "$want" = 1 ] && {
+                     echo "⬇   $pack"
+                     # A progress meter is worth having on a 1.5 GB download and is unreadable
+                     # in a log file, so it is shown only when stdout is a terminal.
+                     [ -t 1 ] && bar=--progress-bar || bar=--no-progress-meter
+                     curl -fSL $bar --retry 3 -C - -o "$OUTDIR/$pack" "$BASE/$TAG/$pack"
+                     got=$(sha256sum "$OUTDIR/$pack" | cut -d' ' -f1)
+                     [ "$got" = "$sha" ] || {
+                         echo "✗   $pack: sha256 mismatch — refusing to extract" >&2
+                         rm -f "$OUTDIR/$pack"; exit 1; }
+                     tar -xf "$OUTDIR/$pack" -C "$PORT_REPO"
+                     n=$((n + 1))
+                 }
+                 pack="" ;;
+        esac
+    done < <(mkdir -p "$OUTDIR"; cat "$MANIFEST"; echo)
+    echo "==> $n packfile(s) fetched; every archive is verified against its own recipe by ports/fetch"
+}
+
+cmd_publish() {
+    # A TOKEN FILE, because an exported variable does not cross between shells
+    # and a 3.5 GB upload should not have to run in the one you typed it into.
+    # Never echoed, never logged, never an argument: /proc/<pid>/cmdline is
+    # world-readable for the life of a process, which is the same rule
+    # kdos-checkpass keeps about passwords.
+    local tok="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+    local tf="${KDOS_GH_TOKEN_FILE:-$HOME/.config/kdos/gh-token}"
+    if [ -z "$tok" ] && [ -r "$tf" ]; then
+        case "$(stat -c%a "$tf")" in
+            600|400) ;;
+            *) echo "ports/sources: $tf is mode $(stat -c%a "$tf") — chmod 600 it" >&2
+               exit 1 ;;
+        esac
+        tok=$(tr -d ' \t\r\n' < "$tf")
+    fi
+    if [ -z "$tok" ]; then
+        echo "ports/sources: no token." >&2
+        echo "  put a fine-grained PAT in $tf (chmod 600), or export GH_TOKEN." >&2
+        echo "  it needs Contents: read+write on $REPO and nothing else." >&2
+        exit 1
+    fi
+
+    local api="https://api.github.com/repos/$REPO/releases"
+    local json id assets
+    json=$(curl -sSL -H "Authorization: Bearer $tok" "$api/tags/$TAG" || true)
+    if ! printf '%s' "$json" | grep -q '"id"'; then
+        echo "==> creating release $TAG"
+        json=$(curl -sSL -X POST -H "Authorization: Bearer $tok" "$api" \
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"Upstream source archive\",
+                 \"body\":\"Immutable, append-only packfiles. Every member is verified against the sha256 in its own recipe.\"}")
+    fi
+    id=$(printf '%s' "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+    assets=$(printf '%s' "$json" | python3 -c '
+import json,sys
+print(" ".join(a["name"] for a in json.load(sys.stdin).get("assets",[])))')
+
+    local n=0
+    for p in $(manifest_packs); do
+        case " $assets " in *" $p "*) continue ;; esac
+        [ -f "$OUTDIR/$p" ] || { echo "!!  $p is in the manifest and not in $OUTDIR" >&2; continue; }
+        echo "⬆   $p  ($(du -h "$OUTDIR/$p" | cut -f1))"
+        curl -sSL -X POST -H "Authorization: Bearer $tok" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$OUTDIR/$p" \
+            "https://uploads.github.com/repos/$REPO/releases/$id/assets?name=$p" >/dev/null
+        n=$((n + 1))
+    done
+    echo "==> $n packfile(s) uploaded"
+}
+
+case "${1:-}" in
+    pack)    cmd_pack ;;
+    fetch)   cmd_fetch ;;
+    publish) cmd_publish ;;
+    *) echo "usage: ports/sources {pack|fetch|publish}" >&2; exit 1 ;;
+esac

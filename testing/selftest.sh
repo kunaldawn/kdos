@@ -173,6 +173,26 @@ for m in testing/fixtures/pack/meta/*.meta; do
     case "$id" in app.bad) d="$OUT/medium" ;; *) d="$PKS" ;; esac
     "$OUT/kdos-pack" assemble "$OUT/stub.img" "$m" "$d/$id.kpack" >/dev/null
 done
+# A PACK'S IMAGE MUST NOT DEPEND ON ITS VERSION. The EROFS UUID is derived from
+# the pack's id and lands in the superblock, so putting the version in it would
+# make every rebuild a different image even when no file inside had moved —
+# `imagehash` could never answer "unchanged" and a bake would rewrite the whole
+# 7.2 GB set for nothing.
+printf 'id = v.demo\nkind = app\nversion = 1.0\n' > "$OUT/v1.meta"
+printf 'id = v.demo\nkind = app\nversion = 9.9\n' > "$OUT/v2.meta"
+"$OUT/kdos-pack" assemble "$OUT/stub.img" "$OUT/v1.meta" "$OUT/v1.kpack" >/dev/null
+"$OUT/kdos-pack" assemble "$OUT/stub.img" "$OUT/v2.meta" "$OUT/v2.kpack" >/dev/null
+if [ "$("$OUT/kdos-pack" imagehash "$OUT/v1.kpack")" \
+   = "$("$OUT/kdos-pack" imagehash "$OUT/v2.kpack")" ]; then
+    echo "  ok    two versions of one image hash the same — a rebake can skip it"
+else
+    echo "  FAIL  the version leaks into the image; imagehash cannot see 'unchanged'"; exit 1
+fi
+if [ "$(sha256sum < "$OUT/v1.kpack")" = "$(sha256sum < "$OUT/v2.kpack")" ]; then
+    echo "  FAIL  the two packs are byte-identical — the version is not recorded at all"; exit 1
+fi
+echo "  ok    while the packs themselves differ, because the version is in the metadata"
+
 "$OUT/kdos-pack" keygen "$OUT/keys/builder" >/dev/null
 "$OUT/kdos-pack" sign "$PKS/app.good.kpack" "$OUT/keys/builder.key" >/dev/null
 # One payload byte, flipped after assembly. It must read as a bad HASH: the
@@ -1190,6 +1210,7 @@ K:app
 S:96468992
 C:1111111111111111111111111111111111111111111111111111111111111111
 F:app.gimp.kpack
+D:rt-gtk
 R:yes
 T:Create images and edit photographs
 
@@ -1200,7 +1221,44 @@ K:app
 S:188743680
 C:2222222222222222222222222222222222222222222222222222222222222222
 F:app.krita.kpack
+D:rt-kde
 T:Digital painting
+
+P:rt-gtk
+V:1.0-1
+A:x86_64
+K:runtime
+S:24000000
+C:5555555555555555555555555555555555555555555555555555555555555555
+F:rt-gtk.kpack
+D:base
+
+P:rt-qt
+V:1.0-1
+A:x86_64
+K:runtime
+S:83000000
+C:6666666666666666666666666666666666666666666666666666666666666666
+F:rt-qt.kpack
+D:base
+
+P:rt-kde
+V:1.0-1
+A:x86_64
+K:runtime
+S:277000000
+C:7777777777777777777777777777777777777777777777777777777777777777
+F:rt-kde.kpack
+D:rt-qt
+
+P:rt-wine
+V:1.0-1
+A:x86_64
+K:runtime
+S:713000000
+C:8888888888888888888888888888888888888888888888888888888888888888
+F:rt-wine.kpack
+D:base
 
 P:app.krita
 V:5.2.5-1
@@ -1240,6 +1298,26 @@ kipack "$OUT/p2.conf" | grep -qE '^packs +app\.gimp$' \
     || { echo "  an unknown pack id did not fall back to the recommended set"; exit 1; }
 kipack "$OUT/none.conf" | grep -qE "^ +[0-9]+ +Packs +pending" \
     || { echo "  the packs step is skipped with a medium in the machine"; exit 1; }
+# A RUNTIME IS CARRIED BECAUSE SOMETHING NEEDS IT. `D:` is in the index for
+# this reader, which links no solver: the recommended app.gimp pulls rt-gtk and
+# base, and rt-wine — 713 MB on a real bake — is left on the medium. Carrying
+# every runtime because it exists was 1.7 GB where 313 MB does.
+# `cfg.packs` is the ANSWER FILE's key and names applications only — a runtime
+# is derived, never written there. What is CARRIED is the json dump's array.
+kijson() { KDOS_PACK_MEDIUM="$OUT/medium" "$KI" --config "$1" --dump plan --json 2>/dev/null; }
+kijson "$OUT/none.conf" | grep -q '"id": "rt-gtk"' \
+    || { echo "  a needed runtime was not pulled in by its app"; exit 1; }
+kijson "$OUT/none.conf" | grep -q '"id": "rt-wine"' \
+    && { echo "  an unneeded runtime was carried anyway"; exit 1; }
+# app.krita needs rt-kde, which needs rt-qt, which needs base: the closure is
+# transitive or a two-deep chain installs something that cannot start.
+kijson "$OUT/p1.conf" | grep -q '"id": "rt-qt"' \
+    || { echo "  the requires closure is not transitive"; exit 1; }
+# and it is IDEMPOTENT — an answer file that does not name gimp must not leave
+# gimp's runtime ticked from the preselect that ran before it.
+kijson "$OUT/p1.conf" | grep -q '"id": "rt-gtk"' \
+    && { echo "  a runtime survived the app that needed it being unticked"; exit 1; }
+echo "  a runtime is carried because something needs it, transitively"
 echo "  the medium's packs: recommended preselected, unknown falls back"
 
 # The root filesystem choice, read back as what it actually becomes. The three

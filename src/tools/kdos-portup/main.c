@@ -643,6 +643,13 @@ static int accept_one(const char *repo_root, PortEntry *e, int no_fetch)
 			old_ver);
 		return -1;
 	}
+	/* The fetch has the new files on disk now, so this is where the
+	 * recipe's hashes stop naming the old ones. Same operation as the
+	 * version bump from the maintainer's point of view: the tree is never
+	 * left with an archive nothing verifies. */
+	if (!no_fetch && pu_rewrite_sha256(e->r.portdir, old_ver, cand) != 0)
+		kb_warn("%s: bumped and fetched, but the sha256 lines could not be rewritten — record them by hand",
+			e->r.name);
 	printf("  accepted %s -> %s\n", e->r.name, cand);
 	/* The fetch downloads the NEW tarball; nothing here ever deletes the
 	 * old one. Both are LFS-tracked and often tens of megabytes, so the
@@ -1223,12 +1230,64 @@ static void selftest_cache(void)
 	unlink(tmpl2);
 }
 
+/*
+ * The bump's second half. A version rewrite that does not move the hashes with
+ * it leaves the recipe naming tarballs that are no longer there, and the fetch
+ * then downloads the new ones with no verification at all.
+ */
+static void selftest_rehash(void)
+{
+	char dir[] = "/tmp/kdos-portup-rehash.XXXXXX";
+	if (!mkdtemp(dir))
+		return;
+	char path[600], f1[600], f2[600];
+
+	/* Two hashed sources, as a rust port has: the tarball and the vendor
+	 * bundle. Both carry the version in their names. */
+	snprintf(path, sizeof(path), "%s/kpkgbuild", dir);
+	kb_write_file(path,
+		      "name        = demo\n"
+		      "version     = 1.0\n"
+		      "sha256      = " "0000000000000000000000000000000000000000000000000000000000000000"
+		      "  demo-1.0.tar.gz\n"
+		      "sha256      = " "1111111111111111111111111111111111111111111111111111111111111111"
+		      "  demo-vendor-1.0.tar.xz\n"
+		      "description = a port\n");
+	snprintf(f1, sizeof(f1), "%s/demo-2.0.tar.gz", dir);
+	snprintf(f2, sizeof(f2), "%s/demo-vendor-2.0.tar.xz", dir);
+	kb_write_file(f1, "new tarball\n");
+	kb_write_file(f2, "new vendor\n");
+
+	st_ok(pu_rewrite_sha256(dir, "1.0", "2.0") == 0, "the rehash runs");
+
+	size_t n = 0;
+	char *out = kb_read_all(path, &n);
+	if (out) {
+		char want1[65], want2[65];
+		kb_sha256_file(f1, want1);
+		kb_sha256_file(f2, want2);
+		st_ok(strstr(out, "demo-2.0.tar.gz") != NULL,
+		      "the tarball's line names the new version");
+		st_ok(strstr(out, "demo-vendor-2.0.tar.xz") != NULL,
+		      "and so does the vendor bundle's — both move with a bump");
+		st_ok(strstr(out, want1) && strstr(out, want2),
+		      "each line carries the hash of the file that is now there");
+		st_ok(strstr(out, "0000000000000000") == NULL,
+		      "and no stale hash survives");
+		st_ok(strstr(out, "description = a port") != NULL,
+		      "every other line is untouched");
+		free(out);
+	}
+	unlink(path); unlink(f1); unlink(f2); rmdir(dir);
+}
+
 static int run_selftest(void)
 {
 	printf("kdos-portup --selftest\n");
 	selftest_columns();
 	selftest_grouping();
 	selftest_cache();
+	selftest_rehash();
 	printf("\n%d checks, %d failed\n", st_checks, st_failed);
 	return st_failed ? 1 : 0;
 }

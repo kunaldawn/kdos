@@ -155,7 +155,7 @@ unhashed=0
 for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
     p=$(basename "$d")
-    unset name version source
+    unset name version source vendoring
     eval "$("$SP/kpkg" meta "$d" 2>/dev/null)"
     idx=0
     for s in $source; do
@@ -189,6 +189,25 @@ for d in ports/core/* src/packages/* src/desktop/*; do
             unhashed=$((unhashed + 1))
         fi
     done
+
+    # A VENDOR BUNDLE IS A SOURCE THIS PORT BUILDS FROM AND IS NOT IN `source`.
+    # `ports/fetch` generates it from `vendoring =`, build.sh untars it out of
+    # $PORT_SRC, and the loop above enumerates the recipe's own source list —
+    # so a bundle with no sha256 line beside it is invisible here and verified
+    # by nothing, anywhere.
+    if [ -n "${vendoring:-}" ]; then
+        vf="$name-vendor-$version.tar.xz"
+        if [ ! -f "$d/$vf" ]; then
+            bad "$p" "declares vendoring=$vendoring and ships no $vf"
+            unhashed=$((unhashed + 1))
+        elif [ ! -s "$d/$vf" ]; then
+            bad "$p" "ships $vf as an empty file"
+            unhashed=$((unhashed + 1))
+        elif ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$vf\$" "$d/kpkgbuild"; then
+            bad "$p" "ships $vf with no sha256 line"
+            unhashed=$((unhashed + 1))
+        fi
+    fi
 done
 [ "$unhashed" = 0 ] && note "every source is hashed and non-empty" "ok"
 
@@ -590,6 +609,22 @@ if [ -s "$SP/uncompiled" ]; then
 else
     note "port sources" "every .c is named or globbed by its recipe"
 fi
+
+echo
+echo "==> every helper the Makefile runs is on disk, and none shadows its own output"
+# `make fetch-packs` ran `bash ports/appbox/packs`, and `ports/appbox/packs` is
+# ALSO the directory `01_packs.sh` and `02_iso.sh` read .kpack files out of. The
+# script's own `mkdir -p "$OUT"` therefore failed on its first line of work and
+# `set -e` ended the bake before a single row was built — invisible to every
+# other gate, because nothing here runs a bake.
+for _h in $(sed -n 's/^\t.*\bbash \([a-z][a-zA-Z0-9._/-]*\).*/\1/p' Makefile | sort -u); do
+    if [ ! -f "$_h" ]; then
+        bad "makefile helpers" "$_h is invoked by the Makefile and is not a file"
+    fi
+done
+[ -e ports/appbox/packs ] && [ ! -d ports/appbox/packs ] &&
+    bad "pack output" "ports/appbox/packs must be the .kpack directory, not a file"
+note "makefile helpers" "every 'bash <path>' resolves, and the pack output path is free"
 
 echo
 echo "==> the catalogue's rows against the tree"

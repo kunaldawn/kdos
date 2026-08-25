@@ -22,7 +22,15 @@
 #define KD_MANIFEST "/var/lib/kdos/pack-manifest"
 #define KD_ISO      "/mnt/iso/packs"
 #define KD_SHARE    "/usr/share"
-#define KD_KEYS     "/etc/kdos/keys"
+/*
+ * A KEY IS SCOPED TO WHAT IT SIGNS. `/etc/kdos/keys` is kpkg's binhost ring —
+ * whoever is trusted to publish PACKAGES for the HOST — and a pack-bake key
+ * has no business there: it attests that some packs came off one medium, not
+ * that a package repository is sound. ksig_ring_load reads *.pub flat and
+ * never descends, so a subdirectory is a real boundary rather than a
+ * convention.
+ */
+#define KD_KEYS     "/etc/kdos/keys/packs"
 
 /*
  * As many packs as an index can name. The table is a few megabytes of BSS,

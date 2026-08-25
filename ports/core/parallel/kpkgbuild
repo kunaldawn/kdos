@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = parallel
+version     = 20260722
+release     = 1
+source      = https://ftp.gnu.org/gnu/parallel/$name-$version.tar.bz2
+sha256      = afe4b572a4334aac3a002a080ad618249f00b84d7659d03e77412727d18f1ad6  parallel-20260722.tar.bz2
+description = Run shell command lines in parallel across cores and hosts
+homepage    = https://www.gnu.org/software/parallel/
+depends     = perl

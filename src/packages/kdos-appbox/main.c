@@ -138,10 +138,12 @@ static int a11y_wanted(void)
  *                              kdeglobals `kdos theme` writes into the shared
  *                              home, which is the direct route), `gtk3`
  *                              otherwise. Inert without the matching platform
- *                              theme package, hence the label checks.
+ *                              theme package, so the image lane asks the
+ *                              image's labels and the pack lane asks the pack
+ *                              stack's own `env =` lines.
  *   GTK_THEME=KDOS             belt and braces next to gtk-3.0/settings.ini
  */
-static void box_env(KbArgv *a, const char *image)
+static void box_env(KbArgv *a, const char *image, const char *pack)
 {
 	const char *display;
 	const char *sock;
@@ -230,7 +232,27 @@ static void box_env(KbArgv *a, const char *image)
 	 * Fusion with NO platform theme falls back to Qt's built-in LIGHT
 	 * palette, worse than doing nothing — hence the label check.
 	 */
-	if (image_has_label(image, "kdos.qt-kde-theme")) {
+	if (pack && *pack) {
+		/*
+		 * THE PACK LANE ASKS THE PACK, because there is no image to
+		 * label: a pack box is `podman --rootfs`, so `podman image
+		 * inspect` answers no to everything and every Qt app would
+		 * come up grey under an inert QT_QPA_PLATFORMTHEME. The
+		 * runtime that installs the platform theme declares the
+		 * variable that selects it, in its own metadata, which is the
+		 * same "cannot drift" property the label had.
+		 *
+		 * Not only Qt: whatever the stack declares is exported, so a
+		 * runtime can state anything its own packages need without a
+		 * line of C being written for it.
+		 */
+		char env[PACK_ENV_MAX][256];
+		int n = pack_env(pack, env, PACK_ENV_MAX);
+
+		/* kb_argv_add keeps the POINTER, and these are this frame's. */
+		for (int i = 0; i < n; i++)
+			kb_argv_add(a, kb_strdup(env[i]));
+	} else if (image_has_label(image, "kdos.qt-kde-theme")) {
 		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=kde");
 	} else {
 		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=gtk3");
@@ -377,7 +399,7 @@ static int run_pack(int argc, char **argv, const char *app, const char *state)
 	/* box_env writes `env NAME=value …` in front of the command, so the
 	 * environment reaches the app the same way in both lanes and there is
 	 * one place where GTK_USE_PORTAL and the rest are decided. */
-	box_env(&a, p.image);
+	box_env(&a, p.image, id);
 	for (i = 0; i < argc; i++)
 		kb_argv_add(&a, argv[i]);
 	kb_argv_end(&a);
@@ -468,7 +490,7 @@ int cmd_run(int argc, char **argv)
 	kb_argv_add(&a, "enter");
 	kb_argv_add(&a, g_box);
 	kb_argv_add(&a, "--");
-	box_env(&a, p.image);
+	box_env(&a, p.image, NULL);
 	for (i = 0; i < argc; i++)
 		kb_argv_add(&a, argv[i]);
 	kb_argv_end(&a);

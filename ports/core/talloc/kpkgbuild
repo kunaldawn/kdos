@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = talloc
+version     = 2.5.0
+release     = 1
+source      = https://www.samba.org/ftp/$name/$name-$version.tar.gz
+sha256      = 912afa237510ae542a7733998eb18a12bcda35ab6729c8e2ddb43e8d0ebab007  talloc-2.5.0.tar.gz
+description = Hierarchical reference-counted memory pool library from Samba
+homepage    = https://talloc.samba.org/
+depends     = python3

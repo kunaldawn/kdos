@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = glow
+version     = 2.1.2
+release     = 1
+source      = https://github.com/charmbracelet/$name/archive/v$version.tar.gz
+sha256      = 1b933139da1d08647bf5b3f112cab9548fdc2b40c056c7fa3d84d8706de5265a  glow-2.1.2.tar.gz
+sha256      = 951dada32773f6af7e8394ee4ef9130d3fa92ad905a6c230baa25f343f93e441  glow-vendor-2.1.2.tar.xz
+description = Render markdown on the command line
+homepage    = https://github.com/charmbracelet/glow
+depends     = go
+vendoring   = go

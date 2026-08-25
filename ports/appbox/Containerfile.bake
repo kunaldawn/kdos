@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/appbox/Containerfile.bake — the host tooling the bake needs
+# ---------------------------------
+#
+# The bake wants podman, mkfs.erofs, python3 and a C compiler, and it wants
+# them AS ROOT. Carrying that on the developer's machine means four packages
+# installed and a sudo prompt per run; carrying it here means neither, because
+# a rootful docker daemon gives a container root without asking anybody for a
+# password.
+#
+# THE PODMAN STORE MUST NOT LIVE INSIDE THIS IMAGE'S OWN FILESYSTEM. Docker's
+# root is overlay2, and the kernel refuses to stack an overlay upperdir on
+# overlayfs — podman would fall back to vfs, which has no UpperDir at all, and
+# `layer_dir()` reads exactly that. `bake` bind-mounts a real directory over
+# /var/lib/containers for this reason.
+
+FROM debian:trixie-slim
+
+RUN apt-get -o APT::Update::Error-Mode=any update \
+    && apt-get install -y --no-install-recommends \
+        podman erofs-utils python3 gcc libc6-dev \
+        tar xz-utils zstd ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /kdos

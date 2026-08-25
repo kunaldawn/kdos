@@ -243,6 +243,79 @@ int pack_of_command(const char *cmd, char *id, size_t n)
 	return found ? 0 : -1;
 }
 
+/*
+ * Every `env =` line the pack's own stack declares, walked from the app
+ * outwards along `requires`.
+ *
+ * THE NEAREST PACK WINS, which is what makes an override possible: an
+ * application that needs a different platform theme from the runtime under it
+ * says so in its own metadata and is not argued with. Collected by NAME, so a
+ * value from further out is dropped rather than appended — two assignments to
+ * one variable in an exec environment is a coin toss.
+ *
+ * This replaces the image-label question for pack boxes, and it has to: a pack
+ * box is `podman --rootfs`, so `podman image inspect` has no image to inspect
+ * and answers no to every label.
+ */
+int pack_env(const char *id, char out[][256], int max)
+{
+	char todo[8][128];
+	int ntodo = 0, n = 0, i;
+
+	kb_strlcpy(todo[ntodo++], id, sizeof(todo[0]));
+	for (i = 0; i < ntodo && i < 8; i++) {
+		char info[8192], req[256];
+		char *line, *save;
+
+		/* The precision is the element bound: with a variable index
+		 * the compiler reads todo[i] as the whole 2-D array. */
+		snprintf(req, sizeof(req), "info %.*s",
+			 (int)sizeof(todo[0]) - 1, todo[i]);
+		if (packd_ask(req, info, sizeof(info)) != 0)
+			continue;
+		for (line = strtok_r(info, "\n", &save); line;
+		     line = strtok_r(NULL, "\n", &save)) {
+			char *eq = strchr(line, '=');
+			const char *val;
+
+			if (!eq)
+				continue;
+			val = eq + 1;
+			while (*val == ' ')
+				val++;
+			if (!strncmp(line, "env ", 4) || !strncmp(line, "env=", 4)) {
+				const char *name_end = strchr(val, '=');
+				size_t len;
+				int dup = 0;
+
+				if (!name_end)
+					continue;
+				len = (size_t)(name_end - val) + 1;
+				for (int k = 0; k < n; k++)
+					if (!strncmp(out[k], val, len)) {
+						dup = 1;
+						break;
+					}
+				if (!dup && n < max)
+					kb_strlcpy(out[n++], val, 256);
+			} else if (!strncmp(line, "requires", 8) && ntodo < 8) {
+				char name[128];
+				size_t j = 0;
+
+				while (val[j] && val[j] != ' ' && j + 1 < sizeof(name)) {
+					name[j] = val[j];
+					j++;
+				}
+				name[j] = '\0';
+				if (name[0])
+					kb_strlcpy(todo[ntodo++], name,
+						   sizeof(todo[0]));
+			}
+		}
+	}
+	return n;
+}
+
 /* Ask the daemon for a root filesystem. The client names an id; the daemon
  * decides the stack, the mount points and where the upper goes. */
 int pack_compose(const char *box, const char *id, char *merged, size_t n)

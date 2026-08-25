@@ -196,6 +196,89 @@ which creates the distrobox lazily, and `kdos-desktop` backgrounds
 `kdos-appbox warmup` at login (flock-guarded, serialized against `run`'s
 create), so container init normally happens while the desktop is still settling.
 
+### Where the big artefacts live — releases, not LFS
+
+**Git LFS on a free account is 10 GiB of storage and 10 GiB a month of
+bandwidth, shared across every repository the account owns. Release assets are
+2 GiB per file with, in GitHub's own words, "no limit on the total size of a
+release, nor bandwidth usage."** The tarballs alone are 3.6 GB and reach 5.3 GB
+once the catalogue lands, the pack set is 7.2 GB, and the appbox image is
+3.9 GB — one channel cannot hold that and the other does not care. So the
+heavy artefacts are release assets and git holds what identifies them.
+
+**THE HASH IS THE IDENTITY; THE URL IS ADVISORY.** Every artefact class already
+carries its own content-addressed index and no new manifest was added, because
+a second copy of a hash is a second thing to drift:
+
+| artefact | its index | verified by |
+|---|---|---|
+| upstream tarballs | `sha256 =` in the recipe | `ports/fetch`, enforced by preflight |
+| packs | `PACKAGES` with `C:` per pack, plus `PACKAGES.sig` | `kpk_index_verify` |
+| appbox image chunks | `INDEX.json` | `kdos-appbox image assemble` |
+
+That is what makes the arrangement survivable: a mirror can be added in ten
+years without invalidating a commit, because a commit names contents rather
+than a location.
+
+**SOURCES ARE APPEND-ONLY AND NEED NO PIN.** An asset is named
+`<name>-<version>.<ext>`, which the recipe already determines — so a checkout
+from five years ago asks for exactly the tarball it was written against and
+finds it. The guarantee is that an asset is never deleted and never replaced;
+`ports/publish` skips one that is already there rather than clobbering it,
+because replacing an asset silently changes what an old commit builds.
+
+**SHARDED BY FIRST LETTER**, because a release holds at most 1000 assets and
+this archive only grows: 524 tarballs today, ~725 after the catalogue, and one
+more per version bump forever — a single release would hit the cap inside a
+year and the never-delete guarantee would be the thing that broke. The shard is
+computed from the filename (`curl-8.21.0.tar.xz` → `sources-c`), so it costs no
+pin and no lookup. **Packs are the opposite** and get dated immutable releases
+with `release =` in packs.conf, because `base.kpack` is one name with different
+bytes every bake.
+
+**WHERE A FETCH MAY LOOK DEPENDS ON WHETHER THE HASH IS KNOWN.** With a hash,
+our archive and upstream are interchangeable and ours is tried first, being the
+copy that cannot 404 when SourceForge finally goes. **Without one — you have
+just bumped `version =` — upstream is the only source**, because our archive
+cannot hold a tarball that has never existed and reaching for our own release
+for an unverifiable file would be trusting the wrong thing entirely.
+`ports/update` then records the new hash in the same operation as the version,
+for the tarball AND the vendor bundle, so the tree is never left with an
+archive nothing verifies.
+
+### `fetch` and `bake` run in containers, and nothing is installed here
+
+**`ports/fetch` and `ports/appbox/bake` re-exec themselves inside an image and
+do their work there**, so a clone needs docker (or podman) and nothing else —
+no rustup, no go tarball, no npm, no erofs-utils, and no `sudo`.
+
+- **`ports/Containerfile.fetch`** carries rust, go, node and python **at the
+  versions `ports/core/{rust,go,nodejs}` pin**, passed in as build args. That
+  pinning is the point: a cargo newer than the one that will compile the port
+  can write a lockfile version the target's cargo refuses. It runs as the
+  CALLER's uid, because every file it writes is committed, and `HOME`,
+  `CARGO_HOME`, `GOPATH` and the npm cache are pointed at `build/fetch-home`
+  because that uid has no passwd entry inside and cargo will not run without a
+  writable home. `KDOS_FETCH_HOST=1` uses this machine's own toolchains instead.
+- **`ports/appbox/Containerfile.bake`** carries podman, mkfs.erofs, python3 and
+  a compiler, and runs `--privileged` as the container's root — which is what
+  mkfs.erofs needs to write `trusted.overlay.*` and what podman's overlay store
+  needs to write real whiteouts. **Its store must be a bind-mounted host
+  directory** (`build/podman`): docker's own root is overlay2, the kernel
+  refuses an overlay upperdir on overlayfs, and podman would fall back to `vfs`,
+  which publishes no `UpperDir` — which is exactly what `layer_dir()` reads.
+  The packs are chowned back to the caller at the end.
+
+**A VENDOR BUNDLE IS AN ARTEFACT AND HASHES THE SAME TWICE.** `vendor_tar()`
+uses `roll_package()`'s flag set — `--sort=name`, the pinned epoch, uid/gid 0,
+`--format=gnu`, single-threaded `xz -9` — because plain `tar -cJf` records the
+extraction time and the builder's uid, and the `sha256 =` line beside a bundle
+was then a hash of one particular afternoon. Verified by vendoring twice.
+
+`script/kdosbuild.sh` hands `build/` back the same way, from `HOST_UID`/
+`HOST_GID`, which `make build` has always passed and nothing read — `build/podman`
+is excluded, being podman's own store and root's by design.
+
 ### Bake-time traps (each cost a debug cycle)
 
 - **Drop root's runtime paths from the user's libpod database.** The bake runs
@@ -297,22 +380,31 @@ that is already on disk (the bake flattens the appbox to one layer):
   Xwayland rootlessly but exports DISPLAY only to what IT spawned;
   `kdos-appbox` probes `/tmp/.X11-unix/X*` (distrobox shares the host /tmp) and
   adds `DISPLAY=` to BOXENV.
-- **Qt theming has two routes and BOTH are gated on an image label.** With the
-  KDE segment the image carries `plasma-integration`, so `kdos-appbox` exports
-  `QT_QPA_PLATFORMTHEME=kde` and every Qt app reads `~/.config/kdeglobals` —
-  which `kdos theme` writes into the home the box already shares. That is the
-  direct route and it needs no style override.
-  Without it: `QT_QPA_PLATFORMTHEME=gtk3`, which is inert without debian's
-  `qt{5,6}-gtk-platformtheme` (an appbox baked before those were added leaves
-  every Qt app grey — a re-bake, not a config bug), plus
-  `QT_STYLE_OVERRIDE=Fusion`, because the Breeze style kdenlive and shotcut pull
-  in paints from its own colour scheme and ignores what qgtk3 hands it. Fusion
-  with NO platform theme falls back to Qt's built-in LIGHT palette — worse than
-  nothing — so both are gated on `kdos.qt-kde-theme` / `kdos.qt-gtk-theme`,
-  which the Containerfile declares in the same layer that installs each. One
-  `podman image inspect` per label per boot, cached in `$XDG_RUNTIME_DIR`
+- **Qt theming has two routes, and EACH LANE ASKS A DIFFERENT THING WHICH ONE
+  IT HAS.** With `plasma-integration` present, `QT_QPA_PLATFORMTHEME=kde` makes
+  every Qt app read `~/.config/kdeglobals` — which `kdos theme` writes into the
+  home the box already shares. That is the direct route and it needs no style
+  override. Without it: `QT_QPA_PLATFORMTHEME=gtk3`, inert without debian's
+  `qt{5,6}-gtk-platformtheme`, plus `QT_STYLE_OVERRIDE=Fusion`, because the
+  Breeze style kdenlive and shotcut pull in paints from its own colour scheme
+  and ignores what qgtk3 hands it. **Fusion with NO platform theme falls back
+  to Qt's built-in LIGHT palette — worse than nothing**, so neither variable
+  may be exported on a guess.
+
+  The IMAGE lane asks the image: `kdos.qt-kde-theme` / `kdos.qt-gtk-theme`,
+  which the Containerfile declares in the same layer that installs each, one
+  `podman image inspect` per label per boot cached in `$XDG_RUNTIME_DIR`
   (150 ms inspect vs a 300 ms warm launch; the image cannot change without a
   reboot).
+
+  **The PACK lane asks the pack, and has to: a pack box is `podman --rootfs`,
+  so there is no image and `image inspect` answers no to every label** — which
+  exports an inert `gtk3` and leaves every boxed Qt app grey. The runtime that
+  installs the platform theme declares the variable in its own metadata
+  (`env rt-qt QT_QPA_PLATFORMTHEME=gtk3`, `env rt-kde QT_QPA_PLATFORMTHEME=kde`
+  in `packs.conf`), `pack_env()` walks the stack's `requires` chain collecting
+  them, and the NEAREST pack wins so an application can override its runtime.
+  Same "cannot drift" property as the label, stated where the packages are.
 - Audio and OBS screen capture come from the HOST: `kdos-desktop` execs
   `kdos-desktop-start` inside the session bus, which brings up pipewire +
   pipewire-media-session + pipewire-pulse and then execs `kdos-comp`. Portals
@@ -393,8 +485,12 @@ wrapping is an ordinary file operation.
 four flags make it so: `-T $SOURCE_DATE_EPOCH` (the pinned instant every phase
 env already exports), `--force-uid/-gid=1000`, **`-b 4096`** (mkfs.erofs takes
 its block size from the PAGE SIZE, so the same tree on a 16K-page machine is a
-different image) and `-U <derived from the pack's own id and version>`, because
-the default is random. Measured: byte-identical across a rebuild under
+different image) and `-U <derived from the pack's own id>`, because the default is
+random. **The version is deliberately NOT in that UUID**: it lands in the EROFS
+superblock, so a version taken from the bake's clock would make every rebuild a
+different image even when no file inside had moved, and `kdos-pack imagehash`
+— which is what lets a bake keep an unchanged pack's file rather than rewriting
+7.2 GB for nothing — could never answer "unchanged". Measured: byte-identical across a rebuild under
 `umask 077 TZ=Asia/Kolkata`, and a 132-byte delta reconstructs its pack
 byte-for-byte.
 
@@ -404,7 +500,7 @@ byte-for-byte.
 `podman save`.** Overlayfs deletes with a character device 0:0 carrying the
 deleted file's own name; an OCI tar layer deletes with a regular entry called
 `.wh.<name>`. A pack built from the second merges with the deleted file STILL
-PRESENT — measured, and silent. `ports/appbox/packs` reads
+PRESENT — measured, and silent. `ports/appbox/bake` reads
 `{{.GraphDriver.Data.UpperDir}}`, which is exactly what that stage added.
 
 **The `base` row is the WHOLE filesystem and every other row is a diff.** Found
@@ -414,10 +510,24 @@ and `/sbin` are symlinks the base IMAGE provides and no layer above re-adds.
 The base row is exported and re-extracted; everything above it is packed from
 its top layer.
 
-Measured on a three-pack bake from real Debian trixie: base **52 MB** (whole),
-`rt-x` (+libgtk-3) **40 MB**, `app.xterm` **1.7 MB**. An application that costs
-1.7 MB beside a runtime everything shares is what replaces the 3.9 GB image
-every install pays for whether or not it is ever launched.
+**Measured on the full 47-row bake from real Debian trixie**: the set is 7.2 GB
+— base 207 MB, seven runtimes from `rt-electron`'s 4.2 MB to `rt-wine`'s
+713 MB, and 39 application packs totalling 5.4 GB, of which `app.wine` is
+**4.7 KB** because wine itself lives in the runtime and the pack exists only to
+carry `command = wine`.
+
+**WHAT AN INSTALL CARRIES IS 313 MB**, and that number is the whole argument.
+The applications stay on ISO9660; of the runtimes, only the ones something
+needs are copied into `/var/lib/kdos/packs` — base, `rt-gtk` and `rt-qt` for
+the recommended set. Carrying every runtime because it exists was 1.7 GB, and
+`rt-wine` alone was 713 MB of it on a machine that may never run a Windows
+binary. The monolith it replaces is 3.9 GB on every install, launched or not.
+
+`D:` in the flat index is how both readers know: `01_packs.sh` closes over the
+recommended set, `kinstall` closes over what was ticked, and neither links a
+solver — the key carries NAMES with no version constraints, and the closure is
+a repeat-until-nothing-new so any depth resolves and a cycle cannot spin. It is
+idempotent, because unticking an application has to give its runtime back.
 
 ### `kdos-packd` — the sixth root daemon
 
@@ -1014,10 +1124,12 @@ version: 2307 symlinks, none dangling — and `build.sh` fails the build if it
 ever finds a dangling one. `--zstd` because the kernel is
 `CONFIG_FW_LOADER_COMPRESS_ZSTD=y` and loads blobs compressed.
 
-Two upstream conveniences are deliberately not used: `-j` needs GNU parallel
-and `make dedup` needs rdfind, and neither is a port. Serial takes about a
-minute; skipping dedup means duplicate blobs are stored twice, which is inside
-the 921 MB.
+Two upstream conveniences are deliberately not used. `-j` needs GNU parallel
+and `make dedup` needs rdfind; both are ports, so both are reachable, and
+neither is taken because neither has been measured here and each changes a
+921 MB install — `-j` its build, dedup its layout, since duplicates become
+hardlinks and the dangling-symlink check has to keep passing over the result.
+Serial takes about a minute; the duplicate blobs are inside the 921 MB.
 
 **`wireless-regdb` installs the PREBUILT database and must never regenerate
 it.** `CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y`, so the kernel loads
@@ -2301,10 +2413,11 @@ itself. An answer file naming something else (`fstype = zfs`) falls back to
 ext4 rather than failing at the mkfs. `--dump plan` prints the resulting mkfs
 command and fstab line, because "fs btrfs" alone does not say what will run.
 
-Known gaps, each for a missing port rather than a missing feature: no f2fs
-(`CONFIG_F2FS_FS=m` with no mkfs), and the time zone is written as a **POSIX TZ
-string** into `/etc/profile.d/20-timezone.sh` because there is no `tzdata` —
-musl parses those directly, DST rules included.
+One known gap, and it is no longer a missing port: the time zone is written as
+a **POSIX TZ string** into `/etc/profile.d/20-timezone.sh` rather than as a
+link to `/etc/localtime`. musl parses those directly, DST rules included, so
+what it costs is that a program reading the zone NAME cannot learn it. `tzdata`
+is installed and the zoneinfo tree is there to point at.
 
 Iterate without booting: `kinstall --dry-run` logs every command and executes
 none, and `--save`/`--config`/`--unattended` give it an answer file.
@@ -4717,7 +4830,9 @@ kdos/
 │   │   ├── postinstall.sh       # optional install-time hook (4 ports)
 │   │   └── <name>-<ver>.tar.*   # cached upstream tarball (LFS)
 │   ├── appbox/                  # Containerfile + image/ (the monolith), and
-│   │                            #   packs.conf + packs + harvest.py (the packs)
+│   │                            #   packs.conf + bake + harvest.py (the packs);
+│   │                            #   Containerfile.bake carries podman+mkfs.erofs
+│   ├── Containerfile.fetch      # rust/go/node/python at the tree's own pins
 │   └── fetch                    # downloads all source= URLs; vendoring=rust|go|node|python
 ├── src/
 │   ├── libs/                    # our C libraries, static, no external deps
@@ -5494,9 +5609,24 @@ Rules this design exists to keep, each one a way signing usually rots:
 - **The signing key is written `0600` with `O_EXCL`**, and reading it back
   refuses if the mode ever loosened — signing with a key other users can read is
   signing with a key that must be assumed compromised.
-- **KDOS ships no key in `/etc/kdos/keys`.** Shipping one would be asking you to
-  trust whoever built the image, which is the question signing exists to let you
-  answer yourself.
+- **The key in `/etc/kdos/keys/packs` covers the MEDIUM, not the distribution,
+  and the SUBDIRECTORY is the whole point.** `ksig_ring_load` reads `*.pub`
+  flat and never descends, so `/etc/kdos/keys` (kpkg's binhost ring, still
+  empty) and `/etc/kdos/keys/packs` are genuinely separate policies. A
+  pack-bake key attests that some packs came off one medium; leaving it in the
+  binhost ring would silently make it a trusted publisher of HOST packages
+  too — a widening nobody asked for.
+  `ports/appbox/bake` signs `PACKAGES` with `build/keys/kdos-packs.key` — which
+  is gitignored and never committed — and the public half ships. One signature
+  over the index covers every pack transitively through its `C:` hash, which is
+  why there is no sidecar per pack. What it asserts is that the packs beside it
+  came from the same bake; replace the key and re-sign to make it assert
+  something about you. A tree with no key still bakes and says the index is
+  unsigned. **Native ports are not signed and need no signature**: a port is
+  compiled from source on this machine and its integrity is the `sha256 =` in
+  its recipe, which `preflight` requires for every source a port ships and now
+  for its vendor bundle too. Signing answers "who made this binary", and for a
+  port the answer is "you did".
 
 **Measured end to end**: a builder built zlib and uthash, keyed, indexed and
 signed; a client with an empty keyring refused (2); the same client with the
@@ -5893,8 +6023,8 @@ WebFetch.
 `fs/etc/init.d/` uses a numeric-prefix convention:
 
 ```
-01_udev  02_modules  05_hostname  10_sysctl  15_userdirs  20_dmesg  22_syslog
-25_nftables  30_network  35_chrony  40_dbus  42_networkmanager  45_avahi
+01_udev  02_modules  05_hostname  10_sysctl  12_zram  15_userdirs  20_dmesg
+22_syslog  25_nftables  30_network  35_chrony  40_dbus  42_networkmanager  45_avahi
 45_seatd  50_alsa  55_powerd  55_tlp  56_energyd  57_oomd
 58_mountd  59_packd
 60_bluetooth  70_sshd  80_cups
@@ -5938,9 +6068,15 @@ esac
 `supervise` runs the daemon under a respawn loop and writes `/run/<name>.pid`.
 **The daemon must run in the foreground** — no daemonization.
 
-**A one-shot is NOT supervised.** `25_nftables.sh` is the case: `nft` hands a
-ruleset to the kernel and exits, and the kernel holds it, so a respawn loop
-would be wrapped around a program that is supposed to exit. It runs before
+**A one-shot is NOT supervised.** `25_nftables.sh` and `12_zram.sh` are the
+two: `nft` hands a ruleset to the kernel and exits, `12_zram.sh` writes a
+disksize to sysfs and calls `swapon`, and in both cases the KERNEL holds the
+result — so a respawn loop would be wrapped around a program that is supposed
+to exit. zram is `CONFIG_ZRAM=m`, so a kernel without the module is a skip and
+not a failure, and its two knobs are `/etc/kdos/zram.conf`: `algorithm`, and
+`size` as a PERCENTAGE OF RAM. A percentage because the compressed pages live
+in that same memory — the number is how much swap the device may claim to
+hold, never how much it will occupy. nftables runs before
 `30_network.sh` — a firewall applied after the interface is up leaves a window
 — and it runs `nft -c` first, because the ruleset opens with `flush ruleset`
 and a failure partway through would otherwise leave the input chain's drop
@@ -6051,9 +6187,6 @@ and respond with the targeted fix.
   shipped file has them as commented examples.
 - ~~cosmic-comp does not start Xwayland~~ — **closed by the rewrite.** wlroots
   runs Xwayland rootlessly and `kdos-comp` turns it on (`KDOS-DESKTOP.md` §7).
-- **No `f2fs-tools`**, so `CONFIG_F2FS_FS=m` is a filesystem the kernel can
-  mount and nothing here can create. (NTFS needs no port: `CONFIG_NTFS3_FS=m`
-  is read-write in the kernel.)
   (`linux-firmware`, microcode, `man`, the clock, syslog, periodic jobs and
   mDNS were all on this list and are not any more. Source checksums too:
   `sha256 =` is a recipe key, preflight checks every archive against it, and
@@ -6103,7 +6236,7 @@ and respond with the targeted fix.
 - **No corefonts for wine.** winetricks fetches them from the network at run
   time and nothing in the image may depend on that, so a Windows program that
   wants Arial gets a substitute.
-- **THE PACK SET HAS NEVER BEEN BAKED AT FULL SCALE.** `ports/appbox/packs`
+- **THE PACK SET HAS NEVER BEEN BAKED AT FULL SCALE.** `ports/appbox/bake`
   and `harvest.py` are proven on a three-pack bake from real Debian trixie
   (base 52 MB, a GTK runtime 40 MB, `app.xterm` 1.7 MB, composed and entered by
   a rootless podman) — but `packs.conf`'s ~40 application rows need

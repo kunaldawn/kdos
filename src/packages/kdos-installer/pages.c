@@ -1330,7 +1330,12 @@ static void pack_row(int idx, int x, int y, int w, int selected, int focus,
 	(void)focus;
 	(void)u;
 	const KiPack *p = &ki_pack[idx];
-	int required = strcmp(p->kind, "app") && strcmp(p->kind, "data");
+	/* base is carried whatever anybody thinks; a RUNTIME is carried
+	 * because something ticked needs it, which is a fact about the
+	 * selection rather than a choice of its own. Neither is togglable. */
+	int required = !strcmp(p->kind, "base");
+	int pulled = strcmp(p->kind, "app") && strcmp(p->kind, "data") &&
+		     !required;
 	int fg = selected ? KT_BG : KT_TEXT;
 	int bg = selected ? KT_ACCENT : KT_BG;
 	char size[16];
@@ -1344,9 +1349,11 @@ static void pack_row(int idx, int x, int y, int w, int selected, int focus,
 	 * font, which is where this has to read.
 	 */
 	ktui_draw_text(x + 1, y, 2,
-		       required ? ktui_glyph[KT_G_BULLET]
-				: p->chosen ? ktui_glyph[KT_G_FULL] : " ",
-		       selected ? fg : required ? KT_DIM : KT_ACCENT, bg, 0);
+		       required	     ? ktui_glyph[KT_G_BULLET]
+		       : pulled	     ? (p->chosen ? ktui_glyph[KT_G_BULLET] : " ")
+		       : p->chosen   ? ktui_glyph[KT_G_FULL] : " ",
+		       selected ? fg
+		       : (required || pulled) ? KT_DIM : KT_ACCENT, bg, 0);
 	ktui_draw_text(x + 3, y, idw, p->id, fg, bg, 0);
 	if (sumw > 6)
 		ktui_draw_text(x + 3 + idw, y, sumw,
@@ -1383,11 +1390,14 @@ void ki_packs_enter(void)
 		if (!hit) {
 			for (int i = 0; i < ki_npack; i++)
 				ki_pack[i].chosen =
-					strcmp(ki_pack[i].kind, "app") ||
+					!strcmp(ki_pack[i].kind, "base") ||
 					ki_pack[i].recommended;
 			break;
 		}
 	}
+	/* An answer file names APPLICATIONS; the runtimes under them are not
+	 * its business and are pulled in here. */
+	ki_packs_close();
 	/* strtok chewed it; rebuild it from what was actually chosen so the
 	 * summary, the dump and `--save` all report the same set. */
 	packs_collect();
@@ -1438,6 +1448,7 @@ static void packs_draw(KRect b)
 		    (!strcmp(ki_pack[i].kind, "app") ||
 		     !strcmp(ki_pack[i].kind, "data"))) {
 			ki_pack[i].chosen = !ki_pack[i].chosen;
+			ki_packs_close();
 			packs_collect();
 		}
 	}

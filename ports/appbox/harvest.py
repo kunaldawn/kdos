@@ -208,10 +208,23 @@ def main():
     ap.add_argument("--icon")
     ap.add_argument("--version", default="1")
     ap.add_argument("--recommended", action="store_true")
+    ap.add_argument("--env", action="append", default=[],
+                    metavar="NAME=VALUE")
+    ap.add_argument("--command", action="append", default=[],
+                    metavar="NAME")
     a = ap.parse_args()
 
-    entries = desktop_entries(a.diffdir)
-    info = metainfo(a.diffdir)
+    # ONLY AN APP ROW HAS AN APPLICATION'S IDENTITY. A runtime layer holds
+    # whatever its handful of packages dragged in, and the AppStream scan takes
+    # the first component that ships a file — so harvesting one would describe
+    # the Qt runtime as "Video thumbnail generator using FFmpeg", which is
+    # ffmpegthumbs. A runtime is named by its id and says nothing else; the
+    # base says nothing at all.
+    if a.kind == "app":
+        entries = desktop_entries(a.diffdir)
+        info = metainfo(a.diffdir)
+    else:
+        entries, info = [], {}
 
     # THE ENTRY THAT MATCHES THE PACK COMES FIRST, because entries[0] is what
     # names the row and supplies its icon. Debian ships xterm as
@@ -271,8 +284,21 @@ def main():
             if cmd and cmd not in ("env", "sh", "bash") and \
                ("command     = %s" % cmd) not in lines:
                 lines.append("command     = %s" % cmd)
+    # SOME ALIEN SOFTWARE IS A COMMAND, NOT AN APPLICATION. wine is the case:
+    # what you want is `wine setup.exe` at a prompt, and its Debian entries are
+    # NoDisplay, which the parse above correctly drops — so the pack would carry
+    # wine and the host would have no way to reach it. A row names the command
+    # instead; a launcher for `wine` with no arguments opens nothing.
+    for c in a.command:
+        if ("command     = %s" % c) not in lines:
+            lines.append("command     = %s" % c)
     for m in mimes:
         lines.append("mime        = %s" % m)
+    # A pack states the environment its own packages need. kdos-appbox exports
+    # the whole stack's worth on entry, nearest pack winning, so a runtime can
+    # select the platform theme it installed without a line of C anywhere.
+    for e in a.env:
+        lines.append("env         = %s" % e)
     if a.recommended:
         lines.append("recommended = yes")
 

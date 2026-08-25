@@ -60,21 +60,32 @@
 static const char *keydir(void)
 {
 	const char *p = getenv("KDOS_KEYS");
-	return p && *p ? p : "/etc/kdos/keys";
+	/* The PACK ring, not kpkg's binhost ring — see KD_KEYS in packd.h. */
+	return p && *p ? p : "/etc/kdos/keys/packs";
 }
 
 /*
  * The image UUID, derived from the pack's identity rather than generated.
  * Version 4 bits are set so it is a well-formed UUID; the point is not
  * randomness, it is that the same pack is always the same sixteen bytes.
+ *
+ * THE VERSION IS DELIBERATELY NOT IN IT. This lands in the EROFS superblock,
+ * so anything that goes in here is part of the image — and a version derived
+ * from the bake's clock would make every rebuild a different image even when
+ * not one file inside had moved. `kdos-pack imagehash` could then never answer
+ * "unchanged", and a bake would rewrite all 47 packs, 7.2 GB, for nothing.
+ *
+ * The cost is that two VERSIONS of one pack share a UUID. Nothing here mounts
+ * by UUID — kdos-packd mounts a path, through a loop device or the file
+ * backend — so what is given up is the ability to tell two generations of the
+ * same pack apart by superblock alone, which nothing asks for.
  */
 static void derive_uuid(const KpkMeta *m, char out[37])
 {
 	char sub[256], hex[65];
 	KbSha256 s;
 
-	snprintf(sub, sizeof(sub), "kdos-pack-uuid-1\n%s\n%s-%s\n", m->id,
-		 m->version, m->release);
+	snprintf(sub, sizeof(sub), "kdos-pack-uuid-1\n%s\n", m->id);
 	kb_sha256_init(&s);
 	kb_sha256_update(&s, sub, strlen(sub));
 	kb_sha256_final(&s, hex);
@@ -471,6 +482,22 @@ static int cmd_index(int argc, char **argv)
 			kb_strlcpy(e->kind, kpk_kind_name(p.meta.kind),
 				   sizeof(e->kind));
 			e->recommended = p.meta.recommended;
+			/* Names only: the index is read by programs that
+			 * cannot evaluate a version constraint. */
+			{
+				size_t o = 0;
+				e->requires[0] = '\0';
+				for (int r = 0; r < p.meta.nreq; r++) {
+					int w = snprintf(e->requires + o,
+							 sizeof(e->requires) - o,
+							 "%s%s", o ? " " : "",
+							 p.meta.req[r].name);
+					if (w < 0 ||
+					    (size_t)w >= sizeof(e->requires) - o)
+						break;
+					o += (size_t)w;
+				}
+			}
 			kb_strlcpy(e->summary, p.meta.summary,
 				   sizeof(e->summary));
 		}
@@ -638,12 +665,65 @@ static int cmd_keygen(int argc, char **argv)
 	return 0;
 }
 
+static int usage(void);
+
+/*
+ * The sha256 of the EROFS extent alone — the filesystem, without the metadata
+ * blob, the icon, the signature or the footer.
+ *
+ * IT ANSWERS "DID THE CONTENTS CHANGE", WHICH THE FOOTER'S OWN HASH CANNOT.
+ * That one covers the metadata too, and the metadata carries the version — so
+ * two bakes of an identical filesystem always differ by it, and a bake would
+ * rewrite every pack in the set whether or not a single file inside had moved.
+ * At 7.2 GB a set, published as release assets or committed, that is the
+ * difference between a re-bake costing nothing and costing the whole archive.
+ */
+static int cmd_imagehash(int argc, char **argv)
+{
+	KpkFooter f;
+	char hex[65];
+	KbSha256 sh;
+	unsigned char buf[65536];
+	uint64_t left;
+	FILE *fp;
+
+	if (argc < 1)
+		return usage();
+	if (kpk_footer_read(argv[0], &f, NULL) != 0) {
+		kb_warn("%s: no pack footer here", argv[0]);
+		return 1;
+	}
+	if (!(fp = fopen(argv[0], "rb"))) {
+		kb_warn("%s: cannot open", argv[0]);
+		return 1;
+	}
+	kb_sha256_init(&sh);
+	for (left = f.erofs_len; left; ) {
+		size_t want = left < sizeof(buf) ? (size_t)left : sizeof(buf);
+		size_t got = fread(buf, 1, want, fp);
+		if (!got)
+			break;
+		kb_sha256_update(&sh, buf, got);
+		left -= got;
+	}
+	fclose(fp);
+	if (left) {
+		kb_warn("%s: short read — the image extent is not all there",
+			argv[0]);
+		return 1;
+	}
+	kb_sha256_final(&sh, hex);
+	printf("%s\n", hex);
+	return 0;
+}
+
 static int usage(void)
 {
 	fprintf(stderr,
 		"usage: kdos-pack build <dir> <meta> <out.kpack> [--icon FILE]\n"
 		"       kdos-pack assemble <image> <meta> <out.kpack> [--icon FILE]\n"
 		"       kdos-pack info <pack>\n"
+	      "       kdos-pack imagehash <pack>\n"
 		"       kdos-pack extract-meta <pack> [--icon]\n"
 		"       kdos-pack verify <pack> [--keys DIR]\n"
 		"       kdos-pack sign <pack> <key.sec>\n"
@@ -667,6 +747,7 @@ int main(int argc, char **argv)
 	if (!strcmp(cmd, "build"))		return build_or_assemble(n, a, 0);
 	if (!strcmp(cmd, "assemble"))		return build_or_assemble(n, a, 1);
 	if (!strcmp(cmd, "info"))		return cmd_info(n, a);
+	if (!strcmp(cmd, "imagehash"))		return cmd_imagehash(n, a);
 	if (!strcmp(cmd, "extract-meta"))	return cmd_extract_meta(n, a);
 	if (!strcmp(cmd, "verify"))		return cmd_verify(n, a);
 	if (!strcmp(cmd, "sign"))		return cmd_sign(n, a);
