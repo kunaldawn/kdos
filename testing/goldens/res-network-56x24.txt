@@ -1,0 +1,24 @@
++=  Resources  ========================================+
+| Network                                              |
+| 2 interfaces up                                      |
+|------------------------------------------------------|
+|INTERFACE    STATE  SPEED     RX         TX           |
+|eth0         up     1000 Mb   200B       1.0M         |
+|wlan0        up     -         1010B      1010B        |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|eth0  received / sent                             -  -|
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|totals since boot  .  Enter for details  .  n opens kd|
++======================================================+

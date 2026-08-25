@@ -40,8 +40,17 @@ Podman/distrobox glibc rootfs. Session entry: `kdos-desktop` from a tty.
 
 Four properties define the project. Everything else follows from them:
 
-1. **Built from scratch.** Every host byte is compiled here from an upstream
-   tarball by a `kpkgbuild` recipe in `ports/`. 405 ports.
+1. **Built from scratch, with eight named exceptions.** The host is compiled
+   here from upstream tarballs by `kpkgbuild` recipes in `ports/`. 430 ports.
+   What is NOT compiled here, and must not be described as if it were:
+   `linux-firmware`, `intel-ucode`, `sof-firmware` and `wireless-regdb` (vendor
+   binaries with no published source; regdb additionally MUST stay prebuilt or
+   its signature fails), the `rust` and `go` bootstrap toolchains (both
+   languages are written in themselves), and `ttf-dejavu` and `terminus-ttf`
+   (upstream publishes `.ttf` only — `terminus-font`, the console font, IS
+   built from source). Beyond the ports: the vendored artwork in `kdos-icons`,
+   `kdos-cursors` and `kdos-gtk-theme`, Monocypher in libksig, and the 3.9 GB
+   Debian appbox image. README.md carries the full table with sizes.
 2. **KDOS can build KDOS.** Phase 2 is a self-hosting bootstrap — the chroot
    rebuilds tar/musl/zlib/binutils/gcc with itself. The shipped system carries
    gcc, binutils, rust, cmake, meson, ninja, python3, make and `kpkg`, so a
@@ -89,6 +98,36 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
 7. **No source edits with sed/awk.** Use build flags. Patch only when there is
    genuinely no flag, and then ship a real `.patch` beside the kpkgbuild.
 8. **Be terse in responses.** State what changed; the user reads the diff.
+9. **Comments and docs describe the CURRENT state, never the history.** This
+   applies to every code comment, every `build.sh`, every shipped config file
+   and every document under `docs/` — in every patch, without exception.
+
+   Write the **constraint**: what the code does, and what breaks if it is
+   changed. Do not write the **changelog**: what it used to be, what bug this
+   fixed, what "cost a debug cycle", what "was broken for a release", what
+   "used to", "no longer", "now finally". A reader has the file in front of
+   them and needs to know what is true and what they must not break; the story
+   of how it got there belongs in the commit message and in git.
+
+   ```c
+   /* WRONG — narrates a past defect */
+   /* This used to read the buffer size before the offset, which overflowed
+    * on a full buffer and reported EOF. Fixed by clamping first. */
+
+   /* RIGHT — states the rule and its consequence */
+   /* Clamp before the read: a full buffer would otherwise ask for a
+    * zero-length read and take the result for EOF. */
+   ```
+
+   Both sentences carry the same warning. Only the second is still true and
+   useful in five years, and only the second stays correct when the
+   surrounding code is rewritten again.
+
+   The corollary is that a patch which changes behaviour **must** update every
+   comment and document that describes that behaviour, in the same patch. A
+   comment that contradicts its code is worse than no comment: it is a claim
+   the next reader will act on. Stale-optimistic sends them past a bug;
+   stale-pessimistic makes them re-verify something that already works.
 
 ---
 
@@ -98,12 +137,13 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
 |---|---|---|
 | **Core** | `ports/core/` | Hand-compiled host packages (musl + toybox + libs + toolchain) |
 | **Desktop** | `ports/core/` (`wlroots`) + `src/desktop/` (ours) | `kdos-comp`, `kdos-shell`, `kdos-lock` — see `docs/KDOS-DESKTOP.md`. Plus foot and the Wayland CLI utils |
-| **Outer ring** | the baked appbox container | Browsers, IDEs, office, media, CAD, games — full glibc apps |
+| **Outer ring** | packs, and the baked appbox container | Browsers, IDEs, office, media, CAD, games — full glibc apps |
 
 **`src/packages/`** is the second port repo (`PORT_REPO="/ports/core
 /kdos/src/packages"`) and holds what is OURS rather than an upstream tarball:
 `kdos-splash`, `kdos-appbox`, `kdos-installer`, `kdos-kpkg`, `kdos-theme`,
-`kdos-tools`, and the three vendored-and-remade art packages `kdos-cursors`
+`kdos-tools`, `kdos-bb`, and the three vendored-and-remade art packages
+`kdos-cursors`
 (Bibata), `kdos-icons` (Papirus), `kdos-gtk-theme` (adw-gtk3). The desktop's own
 packages live one directory over, in `src/desktop/`.
 
@@ -155,6 +195,89 @@ No container is created at build time. Launchers call `kdos-appbox run <app>`,
 which creates the distrobox lazily, and `kdos-desktop` backgrounds
 `kdos-appbox warmup` at login (flock-guarded, serialized against `run`'s
 create), so container init normally happens while the desktop is still settling.
+
+### Where the big artefacts live — releases, not LFS
+
+**Git LFS on a free account is 10 GiB of storage and 10 GiB a month of
+bandwidth, shared across every repository the account owns. Release assets are
+2 GiB per file with, in GitHub's own words, "no limit on the total size of a
+release, nor bandwidth usage."** The tarballs alone are 3.6 GB and reach 5.3 GB
+once the catalogue lands, the pack set is 7.2 GB, and the appbox image is
+3.9 GB — one channel cannot hold that and the other does not care. So the
+heavy artefacts are release assets and git holds what identifies them.
+
+**THE HASH IS THE IDENTITY; THE URL IS ADVISORY.** Every artefact class already
+carries its own content-addressed index and no new manifest was added, because
+a second copy of a hash is a second thing to drift:
+
+| artefact | its index | verified by |
+|---|---|---|
+| upstream tarballs | `sha256 =` in the recipe | `ports/fetch`, enforced by preflight |
+| packs | `PACKAGES` with `C:` per pack, plus `PACKAGES.sig` | `kpk_index_verify` |
+| appbox image chunks | `INDEX.json` | `kdos-appbox image assemble` |
+
+That is what makes the arrangement survivable: a mirror can be added in ten
+years without invalidating a commit, because a commit names contents rather
+than a location.
+
+**SOURCES ARE APPEND-ONLY AND NEED NO PIN.** An asset is named
+`<name>-<version>.<ext>`, which the recipe already determines — so a checkout
+from five years ago asks for exactly the tarball it was written against and
+finds it. The guarantee is that an asset is never deleted and never replaced;
+`ports/publish` skips one that is already there rather than clobbering it,
+because replacing an asset silently changes what an old commit builds.
+
+**SHARDED BY FIRST LETTER**, because a release holds at most 1000 assets and
+this archive only grows: 524 tarballs today, ~725 after the catalogue, and one
+more per version bump forever — a single release would hit the cap inside a
+year and the never-delete guarantee would be the thing that broke. The shard is
+computed from the filename (`curl-8.21.0.tar.xz` → `sources-c`), so it costs no
+pin and no lookup. **Packs are the opposite** and get dated immutable releases
+with `release =` in packs.conf, because `base.kpack` is one name with different
+bytes every bake.
+
+**WHERE A FETCH MAY LOOK DEPENDS ON WHETHER THE HASH IS KNOWN.** With a hash,
+our archive and upstream are interchangeable and ours is tried first, being the
+copy that cannot 404 when SourceForge finally goes. **Without one — you have
+just bumped `version =` — upstream is the only source**, because our archive
+cannot hold a tarball that has never existed and reaching for our own release
+for an unverifiable file would be trusting the wrong thing entirely.
+`ports/update` then records the new hash in the same operation as the version,
+for the tarball AND the vendor bundle, so the tree is never left with an
+archive nothing verifies.
+
+### `fetch` and `bake` run in containers, and nothing is installed here
+
+**`ports/fetch` and `ports/appbox/bake` re-exec themselves inside an image and
+do their work there**, so a clone needs docker (or podman) and nothing else —
+no rustup, no go tarball, no npm, no erofs-utils, and no `sudo`.
+
+- **`ports/Containerfile.fetch`** carries rust, go, node and python **at the
+  versions `ports/core/{rust,go,nodejs}` pin**, passed in as build args. That
+  pinning is the point: a cargo newer than the one that will compile the port
+  can write a lockfile version the target's cargo refuses. It runs as the
+  CALLER's uid, because every file it writes is committed, and `HOME`,
+  `CARGO_HOME`, `GOPATH` and the npm cache are pointed at `build/fetch-home`
+  because that uid has no passwd entry inside and cargo will not run without a
+  writable home. `KDOS_FETCH_HOST=1` uses this machine's own toolchains instead.
+- **`ports/appbox/Containerfile.bake`** carries podman, mkfs.erofs, python3 and
+  a compiler, and runs `--privileged` as the container's root — which is what
+  mkfs.erofs needs to write `trusted.overlay.*` and what podman's overlay store
+  needs to write real whiteouts. **Its store must be a bind-mounted host
+  directory** (`build/podman`): docker's own root is overlay2, the kernel
+  refuses an overlay upperdir on overlayfs, and podman would fall back to `vfs`,
+  which publishes no `UpperDir` — which is exactly what `layer_dir()` reads.
+  The packs are chowned back to the caller at the end.
+
+**A VENDOR BUNDLE IS AN ARTEFACT AND HASHES THE SAME TWICE.** `vendor_tar()`
+uses `roll_package()`'s flag set — `--sort=name`, the pinned epoch, uid/gid 0,
+`--format=gnu`, single-threaded `xz -9` — because plain `tar -cJf` records the
+extraction time and the builder's uid, and the `sha256 =` line beside a bundle
+was then a hash of one particular afternoon. Verified by vendoring twice.
+
+`script/kdosbuild.sh` hands `build/` back the same way, from `HOST_UID`/
+`HOST_GID`, which `make build` has always passed and nothing read — `build/podman`
+is excluded, being podman's own store and root's by design.
 
 ### Bake-time traps (each cost a debug cycle)
 
@@ -230,6 +353,14 @@ desktop entries. Dropping any one output breaks something visible:
 - **Strip X11-forcing env prefixes** (`X11_FORCING`): debian ships audacity as
   `env GDK_BACKEND=x11 audacity`, which kills it under a compositor whose
   Xwayland the app cannot reach. Those apps run fine on pure Wayland.
+- **ROOTLESS-INERT APPLICATIONS GET NO LAUNCHER** (`SKIP_ROOTLESS_INERT`):
+  gparted, gsmartcontrol, Disks and testdisk need raw block devices and a box
+  is rootless podman, so each opens a window it cannot do anything in. A
+  launcher that opens onto "permission denied" teaches somebody that the
+  machine is broken rather than that they wanted the host tool. They are out of
+  the Containerfile as well, and the skip list is what covers an image baked
+  before that. Partitioning, SMART and recovery are NATIVE rows on the host,
+  which is where root is — the catalogue's ring rule, stated as code.
 - **`EXEC_EXTRA`** carries argv an app needs only because it is containerised.
   VSCodium is there because Electron's chrome-sandbox wants a setuid helper and
   CLONE_NEWUSER, gets neither as a non-root user in an unprivileged podman
@@ -249,22 +380,31 @@ that is already on disk (the bake flattens the appbox to one layer):
   Xwayland rootlessly but exports DISPLAY only to what IT spawned;
   `kdos-appbox` probes `/tmp/.X11-unix/X*` (distrobox shares the host /tmp) and
   adds `DISPLAY=` to BOXENV.
-- **Qt theming has two routes and BOTH are gated on an image label.** With the
-  KDE segment the image carries `plasma-integration`, so `kdos-appbox` exports
-  `QT_QPA_PLATFORMTHEME=kde` and every Qt app reads `~/.config/kdeglobals` —
-  which `kdos theme` writes into the home the box already shares. That is the
-  direct route and it needs no style override.
-  Without it: `QT_QPA_PLATFORMTHEME=gtk3`, which is inert without debian's
-  `qt{5,6}-gtk-platformtheme` (an appbox baked before those were added leaves
-  every Qt app grey — a re-bake, not a config bug), plus
-  `QT_STYLE_OVERRIDE=Fusion`, because the Breeze style kdenlive and shotcut pull
-  in paints from its own colour scheme and ignores what qgtk3 hands it. Fusion
-  with NO platform theme falls back to Qt's built-in LIGHT palette — worse than
-  nothing — so both are gated on `kdos.qt-kde-theme` / `kdos.qt-gtk-theme`,
-  which the Containerfile declares in the same layer that installs each. One
-  `podman image inspect` per label per boot, cached in `$XDG_RUNTIME_DIR`
+- **Qt theming has two routes, and EACH LANE ASKS A DIFFERENT THING WHICH ONE
+  IT HAS.** With `plasma-integration` present, `QT_QPA_PLATFORMTHEME=kde` makes
+  every Qt app read `~/.config/kdeglobals` — which `kdos theme` writes into the
+  home the box already shares. That is the direct route and it needs no style
+  override. Without it: `QT_QPA_PLATFORMTHEME=gtk3`, inert without debian's
+  `qt{5,6}-gtk-platformtheme`, plus `QT_STYLE_OVERRIDE=Fusion`, because the
+  Breeze style kdenlive and shotcut pull in paints from its own colour scheme
+  and ignores what qgtk3 hands it. **Fusion with NO platform theme falls back
+  to Qt's built-in LIGHT palette — worse than nothing**, so neither variable
+  may be exported on a guess.
+
+  The IMAGE lane asks the image: `kdos.qt-kde-theme` / `kdos.qt-gtk-theme`,
+  which the Containerfile declares in the same layer that installs each, one
+  `podman image inspect` per label per boot cached in `$XDG_RUNTIME_DIR`
   (150 ms inspect vs a 300 ms warm launch; the image cannot change without a
   reboot).
+
+  **The PACK lane asks the pack, and has to: a pack box is `podman --rootfs`,
+  so there is no image and `image inspect` answers no to every label** — which
+  exports an inert `gtk3` and leaves every boxed Qt app grey. The runtime that
+  installs the platform theme declares the variable in its own metadata
+  (`env rt-qt QT_QPA_PLATFORMTHEME=gtk3`, `env rt-kde QT_QPA_PLATFORMTHEME=kde`
+  in `packs.conf`), `pack_env()` walks the stack's `requires` chain collecting
+  them, and the NEAREST pack wins so an application can override its runtime.
+  Same "cannot drift" property as the label, stated where the packages are.
 - Audio and OBS screen capture come from the HOST: `kdos-desktop` execs
   `kdos-desktop-start` inside the session bus, which brings up pipewire +
   pipewire-media-session + pipewire-pulse and then execs `kdos-comp`. Portals
@@ -288,6 +428,374 @@ that is already on disk (the bake flattens the appbox to one layer):
   (use `stdbuf -oL` or read `~/.config/obs-studio/logs/*.txt`), and the host has
   no `dbus-monitor` — run debian's from inside the appbox, it shares the session
   bus.
+
+## Packs — an application is one file
+
+**A pack is an EROFS image with KDOS parts appended to it**, and the whole
+format follows from one measured fact: EROFS records its own extent in its
+superblock and never reads past it, so a mountable filesystem with a metadata
+blob, an icon, a signature block and a 512-byte footer stuck on the end is
+still a mountable filesystem. Measured with 64 KiB of junk appended
+(`testing/notes/packs-w0.txt`), which is where every claim in this section was
+taken from.
+
+```
++--------------------+ 0
+|  EROFS image       |  mounted as-is
++--------------------+ erofs_len
+|  metadata blob     |  flat key = value
++--------------------+
+|  icon.png          |  the app's own mark, UNTINTED
++--------------------+
+|  signature block   |  ksig lines, or empty
++--------------------+ sig_off + sig_len
+|  footer, 512 bytes |  magic, offsets, payload sha256
++--------------------+ end
+```
+
+`.kpack`, and a delta is `.kdelta` — the name `kpkg delta` already writes,
+because a delta over a pack and one over a package are the same artefact from
+the same `zstd --patch-from`.
+
+**`src/libs/libkpack/`, prefix `kpk_`**, links libkbase + libksig + libkpkg and
+nothing else, so a root daemon can take it. Three rules it exists to keep:
+
+- **A pack that does not parse WHOLE is absent, never partial.** A short
+  footer, a wrong magic, a format from the future, an offset past the end of
+  the file — each answers "there is no pack here". The libkbuild rule, on a
+  different artefact.
+- **The payload hash is checked BEFORE the signature means anything.** The
+  signature is over `kdos-pack-1\n<id>\n<hex>\n` — small, so verification never
+  holds a 400 MB pack in memory — and that binds it to the bytes only because
+  the bytes were hashed first. A caller told "bad signature" when the truth is
+  "bad hash" goes looking for a key problem that does not exist, so the two are
+  separate states (`KPK_SIG_HASH` / `KPK_SIG_BAD`) and `selftest.c` asserts it.
+- **`kpk_solve` takes an array of POINTERS.** A `KpkMeta` is ~30 KB and an
+  array of them is not something a function puts on its stack; kdos-packd
+  overflowed its own on the first run.
+
+**`kdos-pack`** (`src/packages/kdos-pack/`, and it SHIPS — `kdos-box freeze`
+builds a pack on the machine somebody is working on) builds, inspects, signs, indexes and
+deltas them. `build` runs mkfs.erofs then wraps; **`assemble` wraps an image
+somebody else already made**, and the split is not a convenience — mkfs.erofs
+must run as ROOT to preserve overlay whiteouts and `trusted.overlay.*`, while
+wrapping is an ordinary file operation.
+
+**Reproducibility is a property of that file, not of whoever runs it**, and
+four flags make it so: `-T $SOURCE_DATE_EPOCH` (the pinned instant every phase
+env already exports), `--force-uid/-gid=1000`, **`-b 4096`** (mkfs.erofs takes
+its block size from the PAGE SIZE, so the same tree on a 16K-page machine is a
+different image) and `-U <derived from the pack's own id>`, because the default is
+random. **The version is deliberately NOT in that UUID**: it lands in the EROFS
+superblock, so a version taken from the bake's clock would make every rebuild a
+different image even when no file inside had moved, and `kdos-pack imagehash`
+— which is what lets a bake keep an unchanged pack's file rather than rewriting
+7.2 GB for nothing — could never answer "unchanged". Measured: byte-identical across a rebuild under
+`umask 077 TZ=Asia/Kolkata`, and a 132-byte delta reconstructs its pack
+byte-for-byte.
+
+### The whiteout convention is overlayfs's, not OCI's
+
+**A pack is built from a container's ON-DISK top layer, never from a
+`podman save`.** Overlayfs deletes with a character device 0:0 carrying the
+deleted file's own name; an OCI tar layer deletes with a regular entry called
+`.wh.<name>`. A pack built from the second merges with the deleted file STILL
+PRESENT — measured, and silent. `ports/appbox/bake` reads
+`{{.GraphDriver.Data.UpperDir}}`, which is exactly what that stage added.
+
+**The `base` row is the WHOLE filesystem and every other row is a diff.** Found
+by composing a stack whose base was a diff over `debian:trixie-slim`: the merge
+came up with `etc root run tmp usr var` and no shell, because `/bin`, `/lib`
+and `/sbin` are symlinks the base IMAGE provides and no layer above re-adds.
+The base row is exported and re-extracted; everything above it is packed from
+its top layer.
+
+**Measured on the full 47-row bake from real Debian trixie**: the set is 7.2 GB
+— base 207 MB, seven runtimes from `rt-electron`'s 4.2 MB to `rt-wine`'s
+713 MB, and 39 application packs totalling 5.4 GB, of which `app.wine` is
+**4.7 KB** because wine itself lives in the runtime and the pack exists only to
+carry `command = wine`.
+
+**WHAT AN INSTALL CARRIES IS 313 MB**, and that number is the whole argument.
+The applications stay on ISO9660; of the runtimes, only the ones something
+needs are copied into `/var/lib/kdos/packs` — base, `rt-gtk` and `rt-qt` for
+the recommended set. Carrying every runtime because it exists was 1.7 GB, and
+`rt-wine` alone was 713 MB of it on a machine that may never run a Windows
+binary. The monolith it replaces is 3.9 GB on every install, launched or not.
+
+`D:` in the flat index is how both readers know: `01_packs.sh` closes over the
+recommended set, `kinstall` closes over what was ticked, and neither links a
+solver — the key carries NAMES with no version constraints, and the closure is
+a repeat-until-nothing-new so any depth resolves and a cycle cannot spin. It is
+idempotent, because unticking an application has to give its runtime back.
+
+### `kdos-packd` — the sixth root daemon
+
+`src/desktop/kdos-packd/`, kdos-powerd's shape for the sixth time: foreground
+under `ksvc`, one socket in `/run`, `SO_PEERCRED` to root and `wheel`, one line
+per connection, 0666 with the credential as the real gate. Verbs: `list`,
+`info`, `mount`, `unmount`, `compose`, `decompose`, `install`, `remove`,
+`rollback`, `graft`, `ungraft`, `ping`, `status`. `status` additionally
+PUBLISHES the staging directory and the retention count, so a client writing a
+download into the store does not have to derive either — a second definition of
+where an unprivileged write is allowed is exactly the kind of thing that drifts.
+
+- **The client never names a path.** Every verb takes an id out of the list the
+  daemon itself published; `install` takes a FILENAME in a staging directory
+  the daemon owns (mode 01777, the one place an unprivileged download may
+  land). `mount ../../etc` and `install /etc/shadow` are both `err`.
+- **Verification happens where the mount happens**, and the two ORIGINS are
+  treated differently on purpose: a pack in the store was hashed when root
+  wrote it and only root can write there, so it is not re-hashed; **a pack on
+  the medium has never been verified at all** and is hashed the first time it
+  is mounted, because `kdos app install` on a live session mounts straight off
+  ISO9660 without a copy. Re-hashing a 620 MB base on every mount would cost a
+  full read of a file the kernel was about to read lazily.
+- **Two mount routes, and `status` says which.** With
+  `CONFIG_EROFS_FS_BACKED_BY_FILE` the kernel takes a regular file as the
+  source and there is no loop device; without it mount(2) answers ENOTBLK and
+  the pack goes through one, set up with three ioctls rather than by exec'ing
+  losetup — this is a root daemon and every process it starts runs as root.
+- **Mounts are reference counted and `decompose` does not unmount.** Two boxes
+  legitimately share a runtime; unmounting it because one stopped pulls the
+  lowerdir out from under the other, and the symptom is every path in a running
+  application going ENOENT. A pack nobody is using costs a mount entry and no
+  memory.
+- **`kd_adopt()` rebuilds the table from `/proc/mounts` at startup**, because
+  the daemon can be restarted while boxes are running and one that forgot would
+  unmount a live box's own root.
+- **A socket path that does not fit `sun_path` is refused, not truncated** —
+  truncation binds a socket nobody asked for and answers the next start with
+  "address already in use" for a file that appears not to exist.
+- `--fixture <store> [medium]` prints what it WOULD mount and mounts nothing,
+  the seam `kdos stutter`, `kdos-oomd` and `kdos-mountd` all use.
+
+**A data pack (`kind = data`) is mounted `ro,nosuid,nodev,NOEXEC` and is never
+composed into a box root** — a data pack that ships a binary cannot run it.
+Everything it wants done is DECLARED as `graft` / `boxgraft` / `env` lines the
+daemon interprets; there is no script in a pack and no shell near one. Two
+graft namespaces because `/usr/share` is invisible inside a box: `graft`
+symlinks there for host consumers, `boxgraft` lands under
+`~/.local/share/kdos/packs/<name>`, which a box shares. **Every graft is
+recorded in `/var/lib/kdos/pack-manifest`** so `ungraft` removes exactly what
+it added — the `fs-manifest` lesson applied to data — and only a SYMLINK is
+removed, because a real directory there is somebody else's.
+
+### The box a pack runs in
+
+`podman --rootfs <merged>` over the overlay kdos-packd composed, keeping
+everything that is hard (rootless uid maps, seccomp, cgroups, conmon
+supervision — which `kdos stutter`, `kdos-oomd` and `kdos-energyd` all identify
+boxes by) and replacing only the part that needed an image.
+**`kdos-boxinit`** (`src/packages/kdos-boxinit/`) is pid 1 inside it in place
+of distrobox-init: it creates the user and group matching the host's, sets the
+PATH that includes `/usr/games`, prints `container_setup_done` where
+`box_setup_done()` looks for it, and then stays alive reaping. It is **static**,
+because it is bind-mounted into a box whose `/usr` is Debian's and a
+musl-linked host binary would look for its loader there.
+
+**ONE BOX PER APPLICATION in the pack lane**, named after the pack. The
+alternative — one box composing every installed app pack — hits two walls at
+once: overlayfs cannot add a layer to a live mount, so installing an
+application would restart a container other applications are running in; and a
+hundred lowerdirs do not fit in the 4096 bytes mount(2) gives its option
+string. Per app a stack is three or four layers, installing one disturbs
+nothing else, and a shared runtime's pages are shared because the pack is
+mounted once. Stated cost: one conmon per RUNNING application.
+
+**`--userns keep-id`, so a pack presents as the USER and not as root.** Both
+routes were measured over a real stack: without keep-id the container's root IS
+host uid 1000, so `/usr` reads `root root` and `$HOME` still belongs to whoever
+is using it; with it the box gets a real non-root account and `/usr` reads as
+the user. The second is taken because applications refuse to run as root, which
+is also why distrobox chose it. Ownership grants nothing either way — packs are
+mounted nosuid.
+
+**The dual-mode seam has an end.** `pack_mode()` is true when
+`/var/lib/kdos/packs/base.kpack` exists and kdos-packd answers; otherwise the
+monolithic image lane runs unchanged, and `kdos-appbox status` names which one
+is in use. `KDOS_FORCE_IMAGE` pins the old one. Deleting the monolith is W7-5
+of `apps.plan.md` and is gated on the pack set reaching parity.
+
+**`genlaunchers --packs`** walks every installed app pack, mounts it through
+kdos-packd and parses its own `/usr/share/applications` — a pack carries its
+application's real desktop entries, so the existing parse is reused whole
+rather than reimplemented against the metadata blob. The metadata is for a pack
+that is NOT installed, which the store lists without anything being mounted.
+The `alien-apps` table gains an optional THIRD field naming the pack, and every
+reader splits at the second tab so a two-field table written by an older
+genlaunchers still parses.
+
+### `kdos-box` — a box is a first-class object
+
+A **second name on the kdos-appbox binary**, basename-dispatched the way
+`kpkg`/`kpkgadd` and `ksvc`/`service` already are. `list create enter run apps
+export unexport freeze import clone snapshot snapshots rollback start stop
+restart remove profile gc`.
+
+**An app box and a dev box differ in three profile keys, not in kind** —
+`base`, `persistence`, `export` — which is what makes one manager over two
+lanes honest rather than a wrapper over two systems. The profile is
+`~/.config/kdos/boxes/<name>.conf` and **every key maps 1:1 onto a podman flag
+or onto something KDOS itself enforces**; `profile_print` reports what it
+enforced, names the flag behind each line, and **says out loud what it could
+not**: `audio` and `gpu` ride on `/dev` and `/run/user` being shared, which is
+the `devices` key, and there is no podman flag that grants a box a speaker and
+denies it a camera. An unknown key is reported BY NAME, the promise comp.conf's
+reload already makes.
+
+**`memory` is enforced by kdos-oomd, not by podman**, and that is what makes
+the key honest: rootless podman on a machine with no systemd frequently has no
+cgroup delegation, so `--memory` is accepted and does nothing. So kdos-oomd
+reads the box profiles and **prefers a box that is over its own declared budget
+as a victim**, ahead of the general rule that boxed processes are preferred.
+`testing/fixtures/oomd/overbudget` is arranged so only the budget can produce
+the right answer — its host process is larger than anything in either box — and
+the selftest runs it with and without the profiles to prove the check is
+load-bearing.
+
+**`base = image:<ref>` is an ONLINE operation and says so before it does
+anything.** It fetches unsigned content from somebody else's registry;
+`KDOS_REQUIRE_SIG` does not cover it and pretending otherwise would be
+dishonest. `pack:` and `box:` are the offline kinds.
+
+**`freeze` is the flagship**: the writable upper packed into one EROFS pack
+through `kdos-pack build`, with the base chain in `requires` — so the artefact
+is the DIFF, and it deltas against a previous freeze like any other pack.
+`import` stages it and asks the daemon to install it, because verification
+happens where the mount happens.
+
+**`export` gives a secondary box's app `<upstream-id>.<box>.desktop` and a
+`<app>@<box>` shim**, while the DEFAULT box keeps upstream's own desktop id so
+nothing that works today changes. That is a deliberate refinement of the
+launcher-naming rule: it exists because a dock matches a toplevel to an entry
+by file id, and the panel now has a better key than the filename.
+
+**A snapshot is a COPY of the upper and the cost is stated** — on ext4 that is
+everything the box has written. It is not a pack, because a pack cannot be
+written back into an upper without being mounted, and a rollback that needed
+the daemon would fail exactly when a box is broken.
+
+**`gc` asks the compositor before stopping anything.** A box with a mapped
+window is not idle whatever its clock says, and `kdos hey boxes` is the one
+question that answers it.
+
+### Boxes in the desktop
+
+**The compositor has always known which box a window came from** — kdos-boxsock
+tags every client with a `wp_security_context_v1` whose `app_id` is the box
+name, and `server.c` already looks it up to decide what that client may bind.
+`kdos_view_box()` in `view.c` is the same lookup answering the other question;
+`{"cmd":"list"}` carries `box` and `instance`, and `{"cmd":"boxes"}` lists the
+distinct boxes with a window on the screen.
+
+**The panel asks ONCE, when the window maps.** `task_box()` in `shell.c` runs
+from `tl_app_id`, which fires when a window maps and when it changes its id —
+the only times the answer can change. Among the entries carrying that app_id
+the NEWEST creation_id is the one that just appeared, which is how the right
+window is picked when two boxes run the same application. "No box" is a valid
+answer and renders exactly the label the panel drew before boxes existed. A
+per-frame question about identity would be the mistake the frames socket exists
+not to make.
+
+**The box is part of the grouping key and appears in a label only when it
+disambiguates.** Two GIMPs from two boxes are two buttons, because merging them
+puts both behind a member list that cannot say which is which; but a badge on
+every button on a machine where every application is boxed says nothing, so
+` (arch)` is appended only when the same app_id exists in more than one box.
+The window menu says it too — `kdos-menu --winmenu` takes `--box` from the
+panel (which is the half that did the grouping) and titles itself
+` GIMP (arch) `, the same qualification on the same words.
+
+**AND THE FRAME CARRIES A BOX CHIP** (`src/desktop/kdos-comp/src/kdos-boxchip.c`),
+because a taskbar button says which box a window came from right up until the
+window is raised over the bar. It is a square of the box's accent at the left
+of the title area, the height of the titlebar — two cells on the shipped 16x32
+grid. Four rules, and the first is what keeps it from being noise:
+
+- **A box with the session's own accent draws NO CHIP.** The colour is
+  `accent =` in `~/.config/kdos/boxes/<name>.conf` and nothing else; a box that
+  never declared one wears the session's and gets no chip. So a default install
+  has none, and the first one appears the moment somebody gives a box a colour
+  to tell it apart by — which is exactly when there is more than one box.
+- **The width is added to the title's LEFT OFFSET**, in `get_title_offsets()`,
+  which is the single place both the title's wrapping width and its position
+  are computed from. A chip drawn at a coordinate of its own is correct until a
+  title grows long enough to run under it. `kdos-group`'s tab strip reserves
+  the same room for the same reason.
+- **It is rebuilt, never patched** — kdos-group's rule. `ssd_update_title()`
+  fires on every resize and every title change, so a chip that were merely
+  ADDED would stack a rect per frame of a drag; two trees per view are dropped
+  and recreated, and `kdos_boxchip_ssd_clear()` from `ssd_titlebar_destroy()`
+  nulls the handles rather than freeing nodes the titlebar already took.
+- **The profile is read once per view**, when the box is first resolved.
+  `kdos_boxchip_reload()` drops that answer from `reload_config_and_theme()`,
+  because an accent switch changes WHICH windows wear a chip, and the SSD
+  reload that follows re-reads every one.
+
+The colour is scaled to a third on an inactive window: the chip is an identity,
+not a focus indicator, and four bright squares competing with the frame that
+already says which window is active is the opposite of what it is for.
+
+**`kdos-res` has a Boxes page** — the tenth, and it needs no new subsystem:
+libkproc's conmon walk already turns a pid into a box name and this is a rollup
+keyed on that. Box, state, processes, CPU, memory, energy share, disk, uptime;
+`Enter` opens the detail page. **The energy column is kdos-energyd's answer,
+asked for rather than recomputed**, and a `-` when it is not running — never a
+zero, which is how a monitor reports a sensor that does not exist as a machine
+that is idle. A box that is described and not running is still a row, for the
+same reason `kdos-box list` reads the profiles as well as podman.
+
+**`kdos doctor` has a Boxes section** with `skip` and a reason for everything a
+VM cannot answer — verified on a booted ISO, where it reports erofs loadable,
+kdos-packd answering with its mount route, and **`$HOME is on overlayfs (a live
+session), so a persistent box cannot exist`**, which is W0-4's rule stated to
+the person it affects: is erofs loadable, is kdos-packd answering and by which mount
+route, does `$HOME`'s filesystem accept an overlay upper, is the uid-1000
+assumption holding, does every mounted pack still have a file behind it (a box
+that works until it is restarted is the worst kind of broken).
+
+**`kdos app`** is the front end — `list search show install remove rollback
+update sources` — and there is deliberately **no app store**. On a distro whose medium
+IS the software library the question is never "where do I get this"; what
+remains is disposal, and that belongs where the readings already are. The one
+discovery affordance kept is the Start menu's: a query with no installed match
+that DOES match a pack on the medium gets an `INSTALL FROM THE MEDIUM` row,
+read from `/mnt/iso/packs/PACKAGES` rather than over the socket because it runs
+on every keystroke.
+
+**`kdos app show` prints what a pack NEEDS.** A program whose database is empty
+is not shipped software, it is a broken menu entry, so a pack that is useless
+without a dataset names it in `needs =` and this says whether that data pack is
+here.
+
+**`kdos app update` takes the delta where the old pack is still on disk and
+the whole pack where it is not**, and it is the CLIENT that does it. A source
+is a directory with a `PACKAGES` index in it — the medium kdos-packd reports,
+plus whatever `/etc/kdos/pack-sources` lists, one path per line — never a URL,
+because on a distro whose medium IS the software library the interesting case
+is "the stick I just wrote is newer than the disk".
+
+**Nothing in that path verifies anything, and it does not need to.** The
+reconstruction lands in the staging directory and kdos-packd hashes it against
+the pack's own footer and checks the signature where the mount happens, which
+is the rule the whole format is built on: a tampered delta produces a pack that
+fails there and cannot make the machine install something the index did not
+already name. The staging path is READ OUT OF `status` rather than
+reconstructed — a downloader that derived it would be a second definition of
+where an unprivileged write is allowed. A truncated index says so, because an
+update that silently skipped the tail would report a machine as current that is
+not.
+
+**`retain` in `/etc/kdos/packd.conf` is what makes rollback possible**, and the
+default is 1. `kdos app rollback` is a rename of a file that is still there, so
+a store that kept none could not roll anything back; a store that kept every
+version an application ever had would fill a disk with copies of a 400 MB pack
+nobody will launch again. The sweep runs after an INSTALL and at no other time
+— a sweep on a timer would be a background job deleting somebody's rollback
+while they were deciding whether to use it — and `retain = 0` is an honest off
+that makes rollback answer "no earlier version is kept" rather than fail at a
+rename.
 
 ### `kdos-appbox` is a C program (`src/packages/kdos-appbox`)
 
@@ -600,6 +1108,73 @@ because it CREATES the namespace. Tell-tale: `readlink /proc/<pid>/root` prints
 `/newroot`. `script/06_packaging/01_initramfs.sh` installs
 `/usr/sbin/switch_root` over the toybox symlink — keep it that way.
 
+### Firmware, and the hardware the machine cannot use without it
+
+**`linux-firmware` ships upstream's COMPLETE tree, unpruned.** 619 MB of source
+becomes 921 MB installed, and that is the price of not betting on which
+hardware the machine will have: a curated subset fails silently, because
+`request_firmware()` returning nothing looks like a device that does not work
+rather than like a file that is absent.
+
+The install is upstream's own `copy-firmware.sh --zstd`, not a copy of the
+tree, and that distinction is load-bearing. **The tree on disk is not the
+installed layout**: `WHENCE` carries `Link:` directives naming the aliases
+drivers actually request, and only that script creates them. Measured on this
+version: 2307 symlinks, none dangling — and `build.sh` fails the build if it
+ever finds a dangling one. `--zstd` because the kernel is
+`CONFIG_FW_LOADER_COMPRESS_ZSTD=y` and loads blobs compressed.
+
+Two upstream conveniences are deliberately not used. `-j` needs GNU parallel
+and `make dedup` needs rdfind; both are ports, so both are reachable, and
+neither is taken because neither has been measured here and each changes a
+921 MB install — `-j` its build, dedup its layout, since duplicates become
+hardlinks and the dangling-symlink check has to keep passing over the result.
+Serial takes about a minute; the duplicate blobs are inside the 921 MB.
+
+**`wireless-regdb` installs the PREBUILT database and must never regenerate
+it.** `CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y`, so the kernel loads
+`regulatory.db` only against the `regulatory.db.p7s` upstream signs with the
+key compiled into it. The tarball's own Makefile will rebuild the db from
+`db.txt`, and that result is signed with nothing: the kernel rejects it in
+silence and leaves the radio in the world domain — working, with no 5 GHz DFS
+and reduced TX power, and no diagnostic anywhere.
+
+**`sof-firmware` is not part of linux-firmware.** Upstream ships it as
+`thesofproject/sof-bin`, and `CONFIG_SND_SOC_SOF=m` binds a driver on every
+Tiger Lake and newer laptop that then requests these blobs by name. Both trees
+are required: `sof/` is the DSP firmware and `sof-tplg/` is the topology set
+that binds an image to a machine's codec and speaker layout, and firmware with
+no topology loads and binds nothing, which is still silence.
+
+### The console user can open the hardware — `dialout` and the udev rules
+
+`fs/etc/group` puts `kdos` in `dialout`, and `fs/etc/udev/rules.d/70-kdos-*.rules`
+grant that group the device classes this tree ships tools for: serial bridges
+(FTDI, CP210x, CH341, CDC-ACM), in-circuit debuggers (CMSIS-DAP, ST-Link,
+J-Link, PICkit, the Espressif and RP2040 native-USB modes), SDR front ends,
+USBTMC instruments, PTP cameras and SANE scanners. **Both halves are required**
+— the group membership alone grants nothing, and the rules alone have no group
+to grant to — and without them every serial programmer, dev board, instrument
+and GPS in the tree is installed and unopenable, which presents as a broken
+cable rather than as a permission.
+
+`fs/etc/modprobe.d/kdos-sdr.conf` blacklists `dvb_usb_rtl28xxu`, and that is
+the load-bearing half of the SDR rules: the kernel otherwise claims an RTL2832U
+as a DVB-T tuner on plug-in and librtlsdr cannot open a device that is present,
+enumerated and listed by `lsusb`.
+
+`MODE="0660"` throughout rather than 0666 — these are devices other users on a
+multi-user machine have no business reading.
+
+**`kdos doctor` has a Hardware section for exactly this**, and it carries a
+third report level: `skip`, with a reason. Half of what it asks cannot be
+answered in a VM — no SOF controller, no Wi-Fi, no NVIDIA GPU, no boot medium —
+and reporting those `ok` would be a green line for something never tested while
+`warn` would make every VM look broken. Its most useful check is
+**device-present-but-unopenable**: it walks the attached nodes and reports each
+one the calling user cannot open, naming the owning group, because "add
+yourself to dialout" is an instruction and "permission denied" is not.
+
 ### CPU microcode rides in front of the initramfs
 
 `CONFIG_MICROCODE=y`, `CONFIG_MICROCODE_LATE_LOADING` **off** — so the early
@@ -755,6 +1330,112 @@ must be ~2× wider than tall or the penguin stretches; and the banner must stay
 under ~30 lines or it scrolls off a 33-row TTY. Amber, the bright rim and the
 eyes win their cell on a minority of pixels (`RIM_BIAS`) — a plain majority vote
 erases every small feature.
+
+---
+
+## The KDOS look — the styling guide, and it is a rule not a taste
+
+Every surface this project ships is a **grid of character cells drawn in one
+palette**, and the whole of the desktop's identity is that they all agree.
+When one does not, it does not look like a variant — it looks like somebody
+else's program, and that is exactly how `kdos-res` was reported: it drew a
+header band floating on bare background with no frame round it, beside a
+Start menu, a network panel and a file chooser that all wear `╔══ Title ══╗`.
+
+**Anything drawn on this desktop follows the list below. A new surface is not
+finished until every line of it is answered.**
+
+### 1. A window is a double-line box, and its title hangs on the top edge
+
+```c
+ktui_draw_box(krect(0, 0, w, h), " Resources ", KT_ACCENT, KT_BG, 1);
+```
+
+Column 0, column `w-1` and row `h-1` belong to the frame; the body starts at
+column 1 and stops one row short of the bottom. **`kch_header()` already draws
+between columns 1 and `w-2` for exactly this reason** — a surface that calls
+it without drawing a box has a one-column margin with nothing in it, which is
+the tell. A window too small for a frame keeps the whole surface rather than
+drawing a box with nothing inside it.
+
+### 2. The chrome is libkchrome's, never a second copy
+
+`kch_header` (the accent band and its subject line), `kch_group` (a heading
+inside the body), `kch_buttons` (verbs, ordered most-useful-first, dropped
+from the RIGHT rather than half-drawn), `kch_list_wheel` / `kch_list_clamp` /
+`kch_list_scrollbar` / `kch_list_scroll_to`. Two implementations of a button
+bar are two button bars, and the one nobody is looking at is the one that
+drifts.
+
+### 3. Colour comes from a slot, never from a literal
+
+`KT_ACCENT KT_WARN KT_TEXT KT_MID KT_DIM KT_SURFACE KT_BG` — libkcolor's
+table, expanded at compile time by everything that draws. Two rules on top of
+that, both of which have already shipped as bugs:
+
+- **`KT_DIM` is a FILL.** It is 1.63–1.70:1 against the background in every
+  accent, below any text floor. A LABEL is `KT_MID`.
+- **Emphasis is a FILL plus swapped slots, never `KT_A_REVERSE` over a
+  label.** The attribute inverts only the cells a glyph covers, so a two-word
+  name comes out as one lit block per word with a hole between them.
+
+### 4. Every control answers the pointer, and it answers it the same way
+
+| | |
+|---|---|
+| motion | lights what is under it (`KT_MID` fill) and selects a list row |
+| left press | activates; on a row that is already selected, opens it |
+| wheel | steps the cursor while the list FITS, moves the viewport when it does not — `kch_list_wheel` and nothing else |
+| right press | backs out one level, then closes |
+| a scrollbar | is dragged, not merely looked at — `kch_list_scroll_to` |
+| a column header | sets the sort, and a second press reverses it |
+
+A surface with rows and no `motion` handler is a picture: the only way to find
+out that a row is a control is to click one. `grep -c KT_EVT_MOUSE` over a new
+file answering 0 is the same defect four surfaces shipped with.
+
+### 5. A hit map is recorded from what was DRAWN
+
+Never derived a second time from the geometry the draw computed. Both copies
+are right until the window is resized, the sidebar collapses or a border is
+added — and then a click lands on the row above the one under the pointer.
+The frame subtracts its body origin ONCE and hands a page its own
+coordinates; a page that subtracts an origin itself is the second copy.
+
+### 6. The glyph set is the vt tier wherever the surface can reach tty1
+
+`░ ▒ █`, the single and double box sets, `· • ■ … ° ↑ ↓ ◀ ▶`. The console font
+is 512 glyphs and carries no eighth blocks, no half blocks, no braille and no
+`← →`; grep `uni/xos4-2.uni` before using anything else. Rich-tier ramps are
+for a surface that only ever runs under fcft.
+
+### 7. Pictures are an ENHANCEMENT layer
+
+`kicon_slot()` answers -1 on a terminal, under `icons = no`, with no atlas and
+with a full sprite table, and **every caller draws correctly then**. The dump
+harness stubs it to exactly that, so a golden frame is the CHARACTER grid: a
+layout that only lines up once the pictures load is a layout that is broken.
+Same for `kch_tile_*`.
+
+### 8. The compositor's own decoration is part of the set
+
+An SSD is the one piece of chrome a KDOS program does not draw for itself, so
+the fork is themed to match rather than left as labwc's: square corners
+(`<cornerRadius>0`), a two-pixel accent border, `flat kdos` — the titlebar
+fill carrying the same double rule the cell grid draws with `═`, broken by the
+title and by each button — and 8x8 bitmap buttons scaled by an integer factor
+with a NEAREST filter, so `_`, `[]` and `X` are hard-edged cells and not grey
+smears. `kdos theme` generates all of it into `themerc-override`.
+
+### 9. The checklist for a new surface
+
+1. `ktui_draw_box` round it, title on the top edge.
+2. `kch_header` for the band; `kch_group` for headings; `kch_buttons` for verbs.
+3. Slots for colour; `KT_MID` for labels; fills for emphasis.
+4. motion / press / wheel / scrollbar / header-sort, all five.
+5. Hit map from the draw, coordinates from the frame.
+6. `--dump` at 80x24 and 132x43, and a golden committed for both.
+7. Read it back at the vt tier before believing it reads on tty1.
 
 ---
 
@@ -1045,14 +1726,93 @@ wallpaper is ever re-rendered from a clean source, drop it there.
 
 ---
 
+## Codecs, colour and time on the host
+
+**`ffmpeg` is built with the full codec set and is therefore GPL-2+.**
+`--enable-gpl` is what x264 and x265 require, and it relicenses the shipped
+binary from LGPL-2.1+; `pipewire` and `gst-libav` link it and inherit that, and
+both are GPL-compatible. `ports/core/ffmpeg/LICENSE.notice` is the record — the
+component licence table, the reason the LGPL alternative is not taken, and the
+patent position stated rather than left implicit. That file is what a
+redistributor is expected to read and what `kdos licence --audit` will consult.
+
+One encoder per format, deliberately: `x264` (H.264), `x265` (HEVC), `libvpx`
+(VP8/VP9), `svt-av1` (AV1 encode) against the already-present `dav1d` (AV1
+decode), `lame`, `opus`, `libvorbis`/`libogg`, `flac`, `libass` for subtitle
+burn-in and `libva` for hardware paths. Adding a second encoder for a format
+earns nothing.
+
+**A library nobody links is a library the host does not have**, and three
+recipes are gated on this rather than on the library being installed:
+
+| Port | The flag | Without it |
+|---|---|---|
+| `imagemagick` | `--with-lcms --with-heic --with-openjp2 --with-openexr` | `-profile` is accepted and ignored; HEIC, JPEG 2000 and EXR are unreadable |
+| `libsndfile` | `ENABLE_EXTERNAL_LIBS=ON`, `ENABLE_MPEG=ON` | the whole host reads WAV and nothing else |
+| `gst-plugins-{ugly,bad}` | `-Dgpl=enabled` **and** the per-plugin `enabled` | the packages build and install with no plugins in them |
+
+Each of those build systems answers a missing dependency by disabling the
+feature rather than failing, so the options are `enabled` rather than `auto`
+and the `depends` lines are load-bearing: dropping one produces a build that
+succeeds and is silently narrower than its recipe claims. **`-Dgpl=enabled` is
+required in addition to `-Dx264=enabled`** — GStreamer skips its GPL plugins
+without it even when the library is present.
+
+**`lcms2` is the ICC engine** and nothing else on the host can apply a colour
+profile. `libheif` sits on `libde265`+`x265` for HEIC and `dav1d`+`svt-av1` for
+AVIF; `imv` reads both through it.
+
+**`tzdata` is a compiled zoneinfo tree and musl reads it directly.** The port
+builds from upstream's git tag archive rather than IANA's `tzdata`/`tzcode`
+pair, because those are FLAT tarballs and kpkg passes `--strip-components=1` to
+the first source unconditionally — which on a flat archive discards every
+top-level file. `zic -b fat`, not slim: the appbox's glibc programs read the
+same tree through the shared filesystem, and a format the box misreads makes
+host and box disagree about local time on one machine.
+
 ## The `kdos` command
 
-`kdos` is the front door, and by now it is fifteen subcommands: `help`
+`kdos` is the front door, and by now it is twenty subcommands: `help`
 (commands + the keybind cheat sheet), `theme`, `status`, `doctor`, `app`,
-`version`, plus `why` / `explain`, `sandbox`, `appid`, `restarts`, `stutter`,
-`march`, `rebuild` and `cve` — each documented in its own section here. `kdos
+`version`, plus `why` / `explain`, `sandbox`, `restarts`, `stutter`,
+`march`, `rebuild`, `cve`, **`trash`** (the desktop's own trash from a prompt —
+see below), **`appid`** (does the launcher's file id match the
+app_id a real window presented — the right-hand side is
+`~/.local/share/kdos/observed-app-ids`, which `kdos-appid.c` in the compositor
+appends to the first time each window maps, falling back to the live
+`{"cmd":"list"}` when no ledger has been recorded yet; the two answer different
+questions and the report says which it used), **`hey`** (the `$XDG_RUNTIME_DIR/kdos-cmd.sock`
+query front end, Haiku's shape: the window manager answers questions from the
+command line, so a window is something a script can find and act on),
+**`oracle`** (the aphorism picker, keyed on `day XOR boot` so the same line can
+be quoted an hour later and a machine up for a month is not showing one line
+for a month), **`update`** (orchestration of `kpkg binhost` and the A/B slots —
+no new trust path, the exit code is the answer). The dispatch table in `kdos.c` is the
+authoritative list; this sentence is not. Each is documented in its own section
+here. `kdos
 doctor` checks the things that have actually broken on this distro — including
 `readlink /proc/self/root`, the switch_root trap above.
+
+**`kdos trash` and `kdos-desk`'s Delete key are ONE implementation**, and it is
+libkbase's (`kb_trash_*`). `kdos-desk` has had a Trash icon since it had icons
+and the CLI had no verb for it, so `rm` at a prompt and Delete on the desktop
+were two different operations on one machine — one recoverable, one not. Two
+copies of the freedesktop spec would be two answers to what deleting means, and
+the one nobody is looking at is the one that drifts. The library keeps the
+whole of it (`~/.local/share/Trash/{files,info}`, the `.trashinfo` record, the
+unique name, restore and empty); each front end keeps only the QUESTION — the
+confirm, and the two pinned places on the desktop that are not files.
+
+Four things the shared implementation gets right that a second copy would have
+to re-learn: the info file is written BEFORE the rename, because a file in
+`files/` with no record cannot be restored by anything while a stale record
+with no file is the state every implementation ignores; the recorded path is
+made ABSOLUTE, or `kdos trash notes.txt` records a name nothing can put back;
+the `Path=` value is percent-escaped both ways, and an unescape that hits a
+truncated `%4` copies it through rather than dropping a character; and
+**EXDEV is named out loud** — `rename(2)` cannot cross a filesystem and a
+copy-then-delete here would be a file operation with no undo of its own, so
+the caller is told which filesystem problem it has rather than "failed".
 
 It is C now, in **`src/packages/kdos-tools`**, along with `kdos-banner`,
 `kdos-shot`, `kdos-fetch-app`, `kdos-fetch-static`, `ksvc`/`service` and
@@ -1072,8 +1832,12 @@ Two things that came out of the move:
 
 Verified against the bash version: `kdos theme` produces byte-identical
 `gtk.css` ×2, foot, btop, starship, both panel RON files and the state file
-for **all four accents**, and `kdos help` is byte-identical. `kdos-banner
---plain` is byte-identical too, multi-byte column alignment included.
+for **all four accents**. `kdos-banner --plain` is byte-identical too,
+multi-byte column alignment included. **`kdos help` deliberately is not** — it
+opens with a `WHERE THINGS LIVE` block naming the three lanes (`kpkg` for the
+host, `kdos app` for applications, `kdos-box` for environments), because one
+list showing the whole system's verbs is the only place a reader learns that
+those are three different questions.
 
 `kdos-desktop` and `kdos-desktop-start` are **deliberately still `/bin/sh`**.
 Every line in them is a fix for something that broke — the guid-less bus
@@ -1098,6 +1862,19 @@ Splitting it out rather than folding it into libktui is what keeps kinstall
 linking zero libraries on the first bootable image; that split IS milestone M3.
 `kdos-shell` and `kdos-lock` link it, and nothing in phase 1 does.
 
+**A TOPLEVEL MUST ASK FOR ITS FRAME.** libkwl binds
+`zxdg_decoration_manager_v1` and sets `SERVER_SIDE` on every xdg toplevel. A
+client that never binds that protocol has not said which side draws the
+decoration and gets whatever the compositor guesses — which here was **no frame
+at all**: no titlebar to drag, no close button, and Maximize and Close
+unreachable by pointer. It went unnoticed because every other surface in this
+desktop is a layer or a lock surface, which have no decoration to negotiate;
+`kdos-res` is the tree's first toplevel and the first thing to need one. The
+default size is 80x**22** cells rather than 80x24 for the same reason: a window
+that asks for the whole screen leaves the frame nowhere to go. It is a default,
+not a demand — the compositor's first configure carries the size it wants and
+`xdg_top_configure()` takes it.
+
 **Bind `zwlr_layer_shell_v1` at 4, and never below it without meaning to.**
 `KEYBOARD_INTERACTIVITY_ON_DEMAND` is a version-4 request, and wlroots answers
 it on an older resource with `!!interactive` — so a client bound at 1 asking for
@@ -1108,7 +1885,19 @@ keyboard against every window on the screen and NOTHING TYPED REACHED ANY WINDOW
 until an overlay took the focus and gave it back. Shipped, and invisible to
 everything: the request was right, the protocol was right, the number was 1.
 
-**Three input rules libkwl now keeps, each one a bug that was already there:**
+**Two rules the clipboard and compose paths keep:**
+
+- **A `wl_data_source` is destroyed on `cancelled`, never at set time.**
+  Destroying it when the selection is made cancels the selection just made, and
+  the copy silently does nothing.
+- **A compose table that fails to build is absent, never partial.**
+  `xkb_compose_table_new_from_locale` reads `$LC_CTYPE`; when there is no
+  `Compose` file the state stays NULL and the plain
+  `xkb_state_key_get_utf32` path runs unchanged. Every key press is fed through
+  `xkb_compose_state_feed` before that lookup, so `Compose e '` composes and a
+  layout that types `é` directly is unaffected.
+
+**Three input rules libkwl keeps, each guarding a distinct failure:**
 
 - **The event queue is a RING, not one slot.** libwayland delivers a whole batch
   of callbacks from a single read, so a button PRESS followed in that batch by
@@ -1165,7 +1954,7 @@ bug:**
 
 | Lib | Prefix | Owns |
 |---|---|---|
-| `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, group membership, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach`** |
+| `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, group membership, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach`**, and **the freedesktop trash** (`kb_trash_*`) |
 | `libkcolor` | `kcol_` | **the palette table**, hex/HLS, `kcol_mix`, `kcol_muted` (the derived READABLE muted text colour — `dim` is a fill), the hue-family classifier, `kcol_remap`, `kcol_retint_text`, `kcol_sem` (the shared semantic values gtk.css and the adw-gtk3 recolour both read, so they cannot disagree) |
 | `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, **UTF-8 input and `ktui_wcwidth`/`KTUI_WIDE_CONT`**, `ktui_paste_push`, immediate-mode widgets, modals, text furniture, **the three glyph tiers and the charts drawn out of them**, offscreen rendering |
 | `libkxdg` | `kxdg_` | desktop entries (matching what `RawConfigParser(strict=False)` did with them), the mime glob table, and **`kxdg_exec_split` — the one correct way to turn an `Exec=` line into argv** |
@@ -1173,11 +1962,18 @@ bug:**
 | `libksig` | `ksig_` | Ed25519 signing and verification, key files, keyrings — the one library with vendored third-party source (Monocypher) |
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
 | `libkcell` | `kcell_` | the fcft glyph cache and the cell painter — a grid of cells into a pixel buffer, the ASCII ramp built out of it, and **`kcell_canvas_*`, the pixel canvas a block of cells can be drawn as**. Needs fcft and pixman |
-| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection RECEIVE**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`. **The one library with real `-l` dependencies beyond libkcell's** |
+| `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg toplevel with a SERVER-side frame, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection, both directions** (`kwl_copy`), **xkb-compose**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`, the panel's top RULE (`KwlConfig.rule` — pixels outside the cell grid, so a bar can be framed without spending a row on it). **The one library with real `-l` dependencies beyond libkcell's** |
+| `libkproc` | `kpr_` | every reading about the running machine, from a root that can be MOVED — `/proc` and `/sys` behind `kpr_root_set`, the process sample, the conmon box identity (`kpr_is_box_boundary`, `kpr_conmon_name`, `kpr_box_of`), cpu/memory/block/net/power/drm/nvml, and **the sample ring and its axis** (`KprHist`, `kpr_scale_step`) |
+| `libkpack` | `kpk_` | the pack: the appended footer and its read/write, the metadata blob, the requires/provides solve (over `kp_vercmp`), the payload hash, the signature block, and the `PACKAGES`-shaped index. libkbase + libksig + libkpkg and nothing else, so a root daemon can take it |
+| `libkchrome` | `kch_` | the chrome kdos-shell had grown and kdos-res needed — the header band, the group heading, the button bar, the list/wheel/scrollbar rule (`kch_list_scroll_to` — the bar is DRAGGED, not merely looked at) and the pixel tile |
 
 Dependency direction is `libktui → libkcolor → libkbase` and `libkxdg →
-libkbase` and `libkbuild → libkbase` and `libksig → libkbase` and `libkwl →
-libkcell → libktui`, and nothing points back up. libkcell is a SEPARATE
+libkbase` and `libkbuild → libkbase` and `libksig → libkbase` and `libkproc →
+libkbase` and `libkpack → libksig, libkpkg, libkbase` and
+`libkchrome → libktui` and `libkwl →
+libkcell → libktui`, and nothing points back up. **libkproc links libkbase and
+nothing else**, which is what lets a root daemon take it: kdos-oomd and
+kdos-energyd both do, and every library they link is code running as root. libkcell is a SEPARATE
 archive from libkwl so that a consumer wanting the cell painter is not made to
 link a Wayland client library to get it.
 
@@ -1347,7 +2143,7 @@ cursors it has rather than getting an empty theme.
 
 ---
 
-## bb — the AAlib demo
+## kdos-bb — the AAlib demo, hard-forked
 
 **There is no KDOS demoscene.** One was written (`src/packages/kd`, a
 from-scratch aalib demo with a 3D pipeline, audio-reactive channel taps and
@@ -1355,17 +2151,61 @@ music-as-clock) and then removed at the user's request. Do not resurrect it,
 and do not reintroduce a `kd`/`kk` port on the strength of a stale reference:
 if one turns up, it is a leftover.
 
-What ships is `ports/core/bb` — the 1997 AAlib demo, **upstream and
-unmodified** apart from two musl/x86_64 safety patches. Both defects were
-found with ASan rather than by reading:
+What ships is **`src/packages/kdos-bb`** — bb 1.3rc1, imported wholesale,
+rebranded and FROZEN. No upstream merges and no `.patch` files: it is our
+source now and is edited directly, the same shape as the labwc fork.
+`KDOS-FORK` at its root records the upstream tarball and its sha256.
+
+**Upstream's 81 files are 58 here**: the 42 sources and 16 headers the binary
+is actually built from, plus the three `.s3m` tracks. The whole autotools
+apparatus went — bb's 2001 `configure` probes the compiler with the K&R
+`main(){return(0);}` that GCC 14 rejects, so it failed with the thoroughly
+misleading "C compiler cannot create executables" and needed six `-Wno-` flags
+to answer a question with one answer on this target. `src/aconfig.h` states
+those answers and `build.sh` calls the compiler. `COPYING` and `AUTHORS` stay,
+and so does the demo's own credits scroll: that is the authors' work.
+
+Three defects fixed in place. The first two were found with ASan rather than
+by reading:
 
 - **`tex.c`'s `clear_zbuff()` cleared twice its allocation** — `set_zbuff()`
   allocates `sizeof(int)` per cell and the clear used `sizeof(long)`. Same
   size in 1997, double on x86_64: the heap corrupts and stage 2 aborts with
-  `malloc(): corrupted top size`. (`zbuff-int-not-long.patch`)
+  `malloc(): corrupted top size`.
 - **`messager.c` scrolled the text buffer with `memcpy`**, source and
   destination overlapping by every row but one. glibc survived it; musl is
-  free not to. (`messager-overlapping-copy.patch`)
+  free not to.
+- **The mixer runs on its own thread**, which is the audio fix and is below.
+
+**THE AUDIO STARVED BECAUSE THE MIXER WAS PUMPED BY THE RENDER LOOP.**
+`MikMod_Update` is a pull API and has to be called often enough to keep the
+card's ring full; upstream called it from a 10 ms timer in the `tl_group` that
+`bbwait()` pumps — and `bbwait()`'s caller has just returned from
+`aa_flush()`, which writes the whole frame to the terminal and BLOCKS while
+the terminal drains it. On a bare VT that is invisible. Under a compositor the
+terminal is shaping a screenful of cells and uploading a texture every frame,
+so the pty backs up, `aa_flush` sits in `write()`, no timer runs, the ring
+empties and the music stutters. **Minimise the same window and it is
+perfect** — the tell that it was never a mixer or a buffer-size problem. So
+the mixer gets a thread with its own 10 ms clock and the render loop cannot
+reach it.
+
+**AND MikMod_Lock MUST NOT WRAP A libmikmod CALL.** The obvious defensive
+`MikMod_Lock(); Player_Start(module); MikMod_Unlock();` is a **self-deadlock**:
+libmikmod's mutexes are plain `PTHREAD_MUTEX_INITIALIZER`, not recursive, and
+`Player_Start`, `Player_Active`, `Player_SetPosition` and `MikMod_Update` all
+open with `MUTEX_LOCK(vars)` themselves. The process stops dead with the demo
+frozen mid-frame and one thread. That internal locking IS what
+`MikMod_InitThreads()` promises; `MikMod_Lock` is for protecting your own
+access to libmikmod's exported VARIABLES (`md_mode`, `md_mixfreq`), which is a
+different thing. What the library does not cover is the fork's own `module`
+pointer, so `stop()` joins the thread BEFORE `Player_Free`, and `main()` joins
+before `MikMod_Exit`.
+
+**`KDOS_BB_DEBUG=1` reports which way the mixer is being fed** — thread or
+timer, and whether the module loaded at all. Silent otherwise, because the
+demo's stderr is the terminal it is drawing on. It is what caught the deadlock
+above: the log stopped at `play: starting`.
 
 Two aalib facts that cost a debug cycle each and outlive the demo that found
 them:
@@ -1385,6 +2225,15 @@ error rather than a silent runtime failure), with two patches of its own:
 (otherwise a machine with no card aborts inside `MikMod_Init` on
 `Assertion failed: pcm`), and `alsa-nonblocking-update.patch` stops
 `ALSA_Update` blocking its caller's frame loop.
+
+**The ring stays at upstream's 250 ms and that is deliberate.** It is the
+margin, not the bug: a shorter ring lowers the delay between a sample being
+mixed and being heard, and buys that by having less slack when something
+starves the feeder. The feeder is what was broken, and kdos-bb's mixer thread
+is the fix; shrinking the ring on top of it would trade a delay nobody can
+point at for a crackle everybody can hear. There is no runtime lever either —
+the driver hardcodes `buffer_time` and its `ALSA_CommandLine` is an empty
+function.
 
 **Audio on a bare TTY took two stacked fixes**, both in `fs/etc/init.d/`:
 
@@ -1420,8 +2269,8 @@ a running KDOS can rebuild it natively.
 
 | File | What it owns |
 |---|---|
-| `probe.c` | /sys + superblock + GPT reader; a small blkid |
-| `pages.c` | the ten wizard pages |
+| `probe.c` | /sys + superblock + GPT reader; a small blkid, and the medium's flat pack index |
+| `pages.c` | the eleven wizard pages |
 | `install.c` | the forked install child and its line protocol |
 | `conf.c` | the answer file |
 | `dump.c` | `--dump probe` / `--dump plan`, text or `--json` |
@@ -1467,6 +2316,48 @@ Five decisions carry the design:
   `ui_id()`. The sidebar draws before the page, so claiming real focus ids
   there pushed every control on every page ten places down the Tab ring and
   left the caret parked on a decoration — typing did nothing at all.
+
+**The Applications page lists the packs on the medium**, with the recommended
+set already ticked, and until it existed an install carried whatever the
+squashfs carried while the applications stayed on the stick — which on a distro
+whose medium IS the software library is the one thing an installer must not do.
+Five things about it are decisions rather than plumbing:
+
+- **It reads the FLAT `PACKAGES` index, not libkpack.** kinstall links
+  libkbase, libktui and libkcolor and nothing else, which is the property that
+  keeps it in phase 1; `R:yes` and `T:<summary>` are in that file for exactly
+  this reader, so the installer and `kdos app` cannot disagree about what KDOS
+  suggests or what a pack is. A list of ids and byte counts is not a page
+  anybody can choose from, which is why `T:` was added with `R:`.
+- **The base and the runtimes are not a choice.** An application pack is a diff
+  over a runtime and a runtime is a diff over the base, so leaving one out
+  installs applications that cannot start — the one outcome a page of
+  checkboxes must not be able to produce. They are drawn as facts (a `·`) and
+  carried always.
+- **A DELTA STANZA IS DROPPED WHOLE**, at the stanza boundary rather than by
+  clearing a field when `O:` is seen — clearing depends on `O:` arriving after
+  the field it clears. A delta is a route to a pack rather than a pack, and an
+  installer that offered one would offer something it cannot apply.
+- **An answer file naming an unknown id falls back to the recommended set.** It
+  is read before the point of no return is crossed, and an unattended install
+  that refused here would leave a machine with no operating system on it over
+  the spelling of one application.
+- **`ki_packs_enter()` runs BEFORE `install_plan()`** on every path that plans
+  without walking the wizard — `--dump plan` and `--unattended`. Whether the
+  Packs step runs at all is a question about the medium, and planning first
+  reports it skipped on a machine that would carry three gigabytes.
+
+The copy is its own install step, after the summary, and it is a copy and
+nothing else: kdos-packd verifies a pack where it MOUNTS it, so hashing here
+would do the work twice and drag libkpack into a program that links three
+libraries. It does set the staging directory to 01777, because a first boot
+that inherited 0755 would refuse `kdos app install` until the daemon had run
+once — which reads as the feature not working.
+
+**`page_index("install")` replaced a literal 8.** An unattended install jumps
+straight to the install page, and a magic index is right until a page is added
+in front of it — after which the child is already forked and the wrong screen
+is on the display.
 
 Things the installer needed from the rest of the tree, all now present:
 
@@ -1522,10 +2413,11 @@ itself. An answer file naming something else (`fstype = zfs`) falls back to
 ext4 rather than failing at the mkfs. `--dump plan` prints the resulting mkfs
 command and fstab line, because "fs btrfs" alone does not say what will run.
 
-Known gaps, each for a missing port rather than a missing feature: no f2fs
-(`CONFIG_F2FS_FS=m` with no mkfs), and the time zone is written as a **POSIX TZ
-string** into `/etc/profile.d/20-timezone.sh` because there is no `tzdata` —
-musl parses those directly, DST rules included.
+One known gap, and it is no longer a missing port: the time zone is written as
+a **POSIX TZ string** into `/etc/profile.d/20-timezone.sh` rather than as a
+link to `/etc/localtime`. musl parses those directly, DST rules included, so
+what it costs is that a program reading the zone NAME cannot learn it. `tzdata`
+is installed and the zoneinfo tree is there to point at.
 
 Iterate without booting: `kinstall --dry-run` logs every command and executes
 none, and `--save`/`--config`/`--unattended` give it an answer file.
@@ -1559,7 +2451,8 @@ into a small static archive first because the grafts need the palette.
 minimal hooks marked `/* KDOS */`.** Grep for that marker to find every
 touch-point. The graft files: `kdos-config.c` (comp.conf), `kdos-child.c`
 (supervised chrome), `kdos-wallpaper.c`, `kdos-frames.c` (stutter socket),
-`kdos-idle.c` (dim → lock → off policy), `kdos-crt.c` (the CRT pass). What the
+`kdos-idle.c` (dim → lock → off policy), `kdos-crt.c` (the CRT pass),
+`kdos-appid.c` (the app_id ledger). What the
 old from-scratch compositor carried beyond these — window management,
 session-lock, capture and clipboard globals, the input-method wire, Xwayland,
 security-context filtering — is labwc upstream code and needs no graft.
@@ -1641,8 +2534,9 @@ accent switch could not reach, and a bar across the top of every window that
 looked like somebody else's desktop. `kdos theme --audit` covers it.
 
 Three traps found live: a `*.title.bg.color` alone changes nothing — the
-default texture is a gradient, so `window.*.title.bg: flat solid` must be set
-too; the grey bar foot showed was foot's own CSD, not labwc's SSD at all (skel
+default texture is a gradient, so a texture keyword must be set too
+(`window.*.title.bg: flat kdos` here — see below); the grey bar foot showed was
+foot's own CSD, not labwc's SSD at all (skel
 `foot.ini` carries `[csd] preferred=server`); and **the SSD font is pango's,
 not the cell grid's** — its default is `sans` 10, which put a 13-pixel
 antialiased title on top of every 32-pixel window. `<theme><font>` in rc.xml
@@ -1650,16 +2544,57 @@ sets it at 24 POINTS, which is 32 pixels at 96dpi, so the titlebar is one cell
 tall. The same block covers MenuItem, MenuHeader and OnScreenDisplay, which are
 labwc's root menu and its window switcher.
 
-**It asked for `Terminus` for a release and never got it.** Terminus is a PCF
-bitmap and **pango has not rendered bitmap fonts since 1.44**; this tree ships
-1.57, so every titlebar and every menu silently fell back to DejaVu Sans.
-Measured on a booted ISO rather than reasoned about: the panel's text has **3**
-luminance levels and zero midtone pixels, the titlebar's has **143** and 230 —
-one is a bitmap, the other is not. fontconfig was never the problem
-(`fc-match Terminus` resolves on the target), so no `70-yes-bitmaps` snippet
-would have helped. The block now names `DejaVu Sans Mono`, which pango can
-actually draw; the real fix is a scalable Terminus (terminus-ttf is the same
-shapes as OTB/TTF) and that is a port and a tarball this tree does not carry.
+**The SSD font must name a SCALABLE face, and `Terminus (TTF)` is it.**
+Terminus proper is a PCF bitmap and **pango has not rendered bitmap fonts since
+1.44**; this tree ships 1.57, so naming plain `Terminus` here resolves and then
+silently falls back to DejaVu Sans for every titlebar and every menu.
+fontconfig is not the lever — `fc-match Terminus` succeeds on the target — so
+no `70-yes-bitmaps` snippet changes it. `ports/core/terminus-ttf` (4.49.3, the
+same shapes as OTB/TTF) is what `rc.xml` names, at 24 points for ActiveWindow,
+InactiveWindow, MenuHeader, MenuItem and OnScreenDisplay, so the titlebar is
+the same face as the cell grid under it. A machine without that port falls back
+to DejaVu Sans.
+
+**Telling the two apart takes a measurement, not an eye**: count luminance
+levels in a screenshot. The panel's bitmap text has **3** and zero midtone
+pixels; an antialiased face has **143** and 230.
+
+**AND THE FRAME IS A KDOS ASCII WINDOW, because an SSD is the one piece of
+chrome a KDOS program does not draw for itself.** Every other surface on this
+desktop wears `╔══ Title ══╗`; a toplevel got labwc's own picture — a rounded
+plate, a one-pixel hairline and 6x6 glyphs blown up under a smoothing filter —
+and beside the boxes around it that read as another toolkit. Four changes make
+one picture, and each is in a different half of the tree:
+
+- **`<cornerRadius>0</cornerRadius>`** in the skel rc.xml. A radius is the one
+  thing a cell grid cannot express, so it is the one thing that gives an SSD
+  away. `border.width: 2` is the other half — a hairline disappears beside a
+  32-pixel cell.
+- **`window.*.title.bg: flat kdos`** is the fork's own texture
+  (`LAB_GRADIENT_KDOS_RULE` in `theme.c`). The titlebar fill is one pixel wide
+  and stretched, so anything that varies only with Y is free — and a double
+  horizontal rule varies only with Y. Two hard-edged bands of `colorTo` with a
+  gap between them, centred on the bar: the cross-section of `═`. Hard because
+  the linear gradient carries DUPLICATED offsets, which step rather than fade.
+- **The title and every button get the PLAIN background instead**
+  (`title_plain_pattern`, and the button's own hitbox rect painted in the
+  titlebar colour at full bar height rather than left invisible). A rule behind
+  a word is a word struck through, and a rule behind the minimise button — which
+  IS a horizontal line — is a button with no readable state. Broken round them,
+  it reads `════ Title ════[_][=][X]`.
+- **The glyphs are 8x8 bitmaps ENLARGED by a whole number with a NEAREST
+  filter** (`KDOS_BTN_*` in `theme.c`, `buffer_resize_pixelated` in
+  `buffer.c`). `buffer_resize` only ever SHRINKS — its whole job is fitting
+  something too big into its container — so upstream's glyphs were composited
+  at their own six pixels in the middle of a thirty-two pixel button and came
+  out as a dash and a dot that no theme setting could grow. Photographed on the
+  first build of this arc, with the rest of the frame already right.
+
+**And the hover plate has to carry an ALPHA.** labwc has no hover icons: it
+copies the plain image and lays `window.button.hover.bg.color` over it. An
+opaque colour there paints the symbol out, so every titlebar button on this
+desktop went BLANK under the pointer — the one moment a button most needs to
+say what it is. `write_themerc` appends `66` to it.
 
 **labwc's `menu.width.max` default is 200 PIXELS** and it is sized for a ~10px
 font. At 32px that is eleven characters, and the shipped root menu read
@@ -1805,7 +2740,8 @@ session locked until they all have a surface. libktui has ONE cell buffer, so
 the prompt is on the first output and the rest are filled with `KT_BG`. That is
 a libktui limitation, said out loud, not a protocol one.
 
-**`kdos-checkpass` is the only setuid binary KDOS ships**, and it takes NO
+**KDOS ships TWO setuid binaries and `kdos-checkpass` is one of them** (the
+other is `kdos-resctl` — see **kdos-res**). It takes NO
 ARGUMENTS — not even a user name. The account checked is the caller's real uid,
 so there is nothing to aim at root and nothing an attacker can vary; the
 password arrives on **stdin** (`kb_run_feed`, new in libkbase) because argv is
@@ -2139,8 +3075,10 @@ fcitx5  ──input-method-v2──▶  kdos-comp  ──text-input-v3──▶ 
 **One language per engine, and the Chinese one costs a Boost.**
 `fcitx5-chinese-addons` (pinyin, shuangpin, and the table methods — cangjie,
 wubi, erbi, zhengma…) sits on `libime`, which needs Boost's headers *and*
-`Boost::iostreams`; that is a 188 MB tarball in LFS for one compiled component,
-and the recipe builds `--with-libraries=iostreams` and nothing else. It buys the
+`Boost::iostreams`; that is a 188 MB tarball in LFS for a handful of compiled
+components, and the recipe builds
+`--with-libraries=iostreams,system,filesystem,regex,date_time` — the four
+beside iostreams are what libime's own link line asks for. It buys the
 input method for the largest language population there is, and there is no
 smaller road to pinyin — librime wants Boost too. `fcitx5-anthy` over
 `anthy-unicode` is Japanese, `fcitx5-hangul` over `libhangul` is Korean, and
@@ -2238,6 +3176,14 @@ Three details worth keeping:
   one tick rather than two.
 - **The node record lives in the proxy's user data**, so `pw_registry_bind`
   allocated it and the destroy handler must unlink it and NOT free it.
+- **The TOOLTIP names the box; the bar does not.** On a machine where every fat
+  application is a container, "firefox-esr is recording" leaves out the half
+  that says which firefox — and with the pack lane there can legitimately be
+  two. `sh_priv_box()` resolves it with libkproc's conmon walk over the pid the
+  app published, which is the same identity kdos stutter, kdos-energyd and
+  kdos-oomd use, so a USER box needs nothing added to be named. It is the
+  tooltip's and not the applet's because the applet is three cells and a box
+  suffix there would push the meters strip off an eighty-column bar.
 - **`KDOS_PRIVACY_PROC` moves the `/proc` walk**, the same trick
   `kdos stutter --fixture` uses, which is what makes the camera half testable on
   a machine with no camera. `testing/fixtures/privacy/proc` is three processes:
@@ -2383,6 +3329,159 @@ Five rules, each one a way this goes wrong:
 consequential gets tested. **It has never fired for real**; a genuine PSI stall
 is the test that matters and has not been run.
 
+## The resource monitor — `kdos-res`
+
+`src/desktop/kdos-res/` is nine pages of readings — Applications, Processes,
+CPU, Memory, GPU, Drives, Network, Batteries, Energy — plus a detail page, and
+it exists beside `btop` rather than instead of it.
+
+**What it has that no other monitor on this machine has is IDENTITY.** Every
+fat application here is its own podman container, so a process table shows
+forty rows of `Web Content` and `.firefox-esr-wr` and answers nobody's
+question. libkproc's conmon walk turns a pid into
+`firefox-esr (appbox kdos-apps)`, and the Applications page is that rollup.
+This is the one desktop where that is cheap, because the boundary already
+exists and the supervisor already knows the name.
+
+**ONE RENDERER, THREE FACES.** The same page, the same layout and the same
+numbers on tty1, in a window and in a `--dump`, because there is only a grid of
+character cells: libktui's backend vtable decides who paints it — the terminal,
+libkwl, or an offscreen buffer — and nothing above that line knows which.
+
+**AND IT WEARS EXACTLY ONE FRAME.** Undecorated — on tty1, in a `--dump` —
+`ktui_draw_box` goes round the whole surface with ` Resources ` on its top
+edge, the header band between columns 1 and `w-2` where `kch_header` draws it,
+the body one row short of the bottom. Under the compositor the SSD **is** that
+box, so `kwl_decorated()` suppresses the drawn one and the frame keeps only
+its inset: two boxes nested one inside the other is the tell that a program
+drew chrome the compositor had already drawn for it. See **The KDOS look** for
+the list this is the first line of.
+**It is the tree's first `KWL_ROLE_TOPLEVEL` client**; everything else on this
+desktop is a layer surface or a lock surface — and it asks for **104x26
+cells**, at or above the `RES_WIDE` threshold its own sidebar degrades below.
+`make_toplevel`'s fallback is 80x22, which is UNDER it, so a window naming no
+size opens permanently in the narrow band: the sidebar collapsed to one
+initial per page and the footer hint clipped mid-word. It is a default and not
+a demand — the compositor's first configure wins on a screen too small for it.
+
+**THE CHARTS ARE CELLS, AND A FULL-WIDTH CHART CANNOT BE A SPRITE TILE.**
+libktui encodes a sprite cell's sub-cell coordinate in four bits each way, so
+`kch_tile_begin()` refuses anything past **16x16 CELLS** — which is what the
+panel's fifteen-cell meters strip is sized around. A page-wide chart here is
+seventy cells and more, so the pixel tier is not merely unused, it is
+unreachable. `graph.c` draws the band itself: whole rows are the full block and
+the top row of each column is the ramp glyph for the remainder, so the
+resolution is `rows × ktui_ramp_levels()` and the shape survives all three
+tiers. Two traps it exists to avoid, both of which shipped:
+**`ktui_sparkline` is ONE ROW** — handed a ten-row band it draws in the first
+of them, on top of the label, and leaves nine empty, which on a real screen
+reads as a chart that is not working; and a tile guarded by
+`if (kch_tile_slot(id) >= 0)` can never be created, because the slot only
+exists after the commit that guard is preventing.
+
+**No number is invented.** Every reader answers `KPR_UNREADABLE` where the
+machine does not publish a value and the cell renders `res_none()`, which is a
+plain ASCII `-` because the console font is 512 glyphs and this has to read on
+tty1. A `0` default is how
+a monitor reports a sensor that does not exist as a machine that is idle, and
+the GPU page is where that bites hardest: only amdgpu and NVML publish a
+utilisation percentage, so every other driver gets ENGINE TIME labelled as
+such, and a driver with no fdinfo stats gets **no column** rather than a column
+of zeroes.
+
+**`kdos-resctl` is the second setuid binary KDOS ships**, and the whole of its
+security argument is that there is nothing to aim: **three verbs, no paths, no
+options** — `dmi`, `signal <pid> <TERM|KILL|STOP|CONT>`, `renice <pid>
+<-20..19>`. The SMBIOS path is compiled in and nothing in argv is ever opened.
+The caller must be in `wheel` by REAL uid (`kb_user_in_group`, the same gate
+kdos-powerd and kdos-energyd apply); `pidfd_open` is taken before
+`pidfd_send_signal` so a signal cannot land on a recycled pid; pid 1 is
+refused; and privilege is dropped before the DMI table is parsed, so the parser
+never runs as root. It is **never on the sampling path** — a setuid fork at
+1 Hz would be a surface with a schedule — and `kdos doctor` checks the bit for
+the same reason it checks `kdos-checkpass`'s.
+
+**The desktop's own chrome is confirmed, not refused.** `kdos-oomd` protects
+`kdos-comp`/`kdos-shell`/`kdos-desk`/`kdos-notifyd` because it acts on its own;
+a human aiming at a wedged panel is entitled to end it and the supervisor will
+bring it back, so the modal names what will happen instead of declining.
+
+**THE VERBS LIVE ON THE DETAIL PAGE AND NOWHERE ELSE.** `Enter` on a process,
+an application, a drive or an interface opens a full-screen page for that one
+subject — identity, its own CPU and memory rings started at the moment it was
+opened, thread count, open descriptors, elapsed — and the End / Kill / Nice
+buttons are there. A key that ended a process from a TABLE would be a key
+pressed while the cursor happens to be on a row, with nothing on the screen
+saying which row that is. The rings start at open deliberately: a ring per pid
+would be hundreds of them, and one back-filled with zeroes would be inventing
+the past.
+
+**One confirm modal, `res_confirm()` in `page.c`, and it NAMES the subject.**
+libktui's `ktui_modal_*` is drawn with `ktui_button()` and belongs to the
+immediate-mode frame protocol this program does not drive, so the modal is
+kdos-res's own. Cancel is preselected — the destructive button under the caret
+turns a reflex Enter into a kill — and the message says what will happen:
+*"End all Firefox — 41 processes in appbox kdos-apps. Unsaved work in them is
+lost."* That count is the whole reason the Applications page's `e` and `k`
+verbs are worth confirming: on this distro an application is a container's
+worth of processes. A **renice is not confirmed**, because it is reversible and
+a dialog on every nudge is what teaches people to click through the one that
+matters.
+
+**THE POINTER REACHES EVERY VERB THIS PROGRAM HAS, and it did not.** The two
+tables had no click handler at all between them — `res_procs_click` returned 1
+and did nothing, and Applications had none — the four list pages had no hover,
+the scrollbar was a picture, and the column headers were sort controls only if
+you knew that `s` cycled them. So a monitor whose whole surface is rows was one
+a pointer could not use. The contract is the desktop's, stated in **The KDOS
+look**: motion lights a row, a press selects it, a press on the row that is
+ALREADY selected opens its detail page, a press on a header sets the sort and a
+second press reverses it, and `kch_list_scroll_to` makes the bar something you
+drag. A press rather than a double click because nothing in this toolkit
+measures one, and because opening a detail page is not destructive — the verbs
+are there, behind the confirm.
+
+**THE FRAME HANDS A PAGE ITS OWN COORDINATES.** Every page draws from the
+origin it is given and knows its own row 0 is the column header, so a screen
+row would mean five copies of one subtraction — four of which are wrong the day
+the frame grows a border, which is exactly what happened: `res_procs_click`
+tested `my <= 0` for a header row whose real row was four. `res_frame_click`
+and `res_frame_motion` subtract the body origin once. `res_frame_release`
+exists for the one gesture that spans events — a scrollbar drag, which Wayland
+reports as plain motion with no button state at all, so the PRESS is what has
+to be remembered.
+
+**A rate is fed from `res_sample()`, never from a page's `prepare()`.** Prepare
+runs once per FRAME and a frame is not an interval; the offscreen dump draws
+exactly once after two samples, so a chart fed from prepare is empty in every
+golden and the arithmetic behind it is never checked. The device interval is
+the sampler's own cadence rather than `R.sample.wall_ms`, which is stamped
+inside `res_sample()`'s `if (want)` branch — and Drives and Network want no
+per-process file at all, so on those two pages that field is never written.
+
+**A counter that went backwards is a GAP, never a spike, and both halves of a
+mirrored pair skip it together.** The fixture's `eth0` wraps a 32-bit counter
+(4294967000 then 200); its chart reads `-  -` while `sda` beside it reads
+`20M  9.8M` at `30%` busy, so the gap is a gap rather than a chart that never
+worked. One half advancing while the other did not would put received and sent
+a sample out of step for the rest of the session.
+
+**`--fixture <dir>` is the seam**, the same one `kdos stutter`, `kdos-oomd` and
+`KDOS_PRIVACY_PROC` use: `testing/fixtures/res` is a recorded `/proc` and
+`/sys`, which is what makes a monitor's output deterministic enough to have
+goldens at all. `testing/goldens/res-<page>-<size>.txt` covers all nine pages,
+and the ids in `enum res_page_id` are the only spelling — `--page` takes them,
+`res.conf`'s sort keys use them and the goldens are named after them.
+
+The ways in: the panel's meters strip (left click), `C-S-Escape`, the Start
+menu, and `kdos-res` at a prompt.
+
+**Known gap, stated rather than hidden:** the Drives and Network lists do not
+scroll — they are short, and their pointer handling is select-and-open with no
+viewport — so the scrollbar and its drag exist on the two tables only.
+
+---
+
 ## The shell answers the mouse, everywhere
 
 **`kdos-shell` is one binary under many names, and `TOOLS[]` in `main.c` is the
@@ -2479,6 +3578,18 @@ a raised tile wants; the label on it is KT_TEXT at better than 4:1, so nothing
 is traded for the shape. Hover takes KT_MID, which is brighter than rest and
 dimmer than focused so it cannot be misread as "this is the window you are in".
 
+**THE BAR IS FRAMED, and its separators are the window frames' own stroke.**
+Every other KDOS surface puts a double-line box round itself; the taskbar had
+no edge at all, so against a dark wallpaper it read as a region of the desktop
+rather than as chrome. A box wants four sides and two spare rows, and two rows
+is the whole bar — but the only edge a bottom-anchored panel HAS is its top
+one, and libkwl draws that OUTSIDE the cell grid (`KwlConfig.rule`, three
+pixels in the accent) rather than spending a 32-pixel row on it. The separators
+went with it: they were the single vertical in `KT_DIM`, which is 1.63:1
+against the panel's own background — the boundaries the whole layout depends on
+were invisible in a photograph — and are the DOUBLE vertical in `KT_MID` now,
+the same stroke the window frames are drawn in.
+
 **SEPARATORS AT EVERY SEGMENT BOUNDARY** — after Start, after quick-launch,
 before the status wing, before the clock. The bar had two and the right-hand
 half read as one undifferentiated run of glyphs. The wing's rule goes ONE
@@ -2508,15 +3619,21 @@ a dock, ALWAYS keeps the label and lets `+N` carry the overflow.
 
 **The window list answers all three buttons**, as taskbars have since Windows
 95: left toggles (minimise the window you are in, restore the one you are not,
-and open the member list for a group), middle closes politely so an editor
-still gets to ask, and **right opens the WINDOW MENU** — `kdos-menu --winmenu
+and open the member list for a group), **middle opens a NEW INSTANCE** — from
+the pinned entry's Exec, or from the toplevel's app_id through its desktop
+entry, which is the same lookup the button's own name came from, so it can only
+launch something the bar could already name — and **right opens the WINDOW
+MENU** — `kdos-menu --winmenu
 <app_id>`, which carries Restore / Minimize / Maximize↔Restore Down /
 Fullscreen / Close plus Minimize all and Close all for a group, over the
 window titles. Right used to MINIMISE, which is a second way to do what left
 already does on the button every other desktop reserves for these verbs: there
 was no way at all to maximise or restore a window from this bar, which on a
 machine where most windows belong to boxed applications is the bar you are
-holding. The menu reads the toplevel's own state, so `Maximize` says
+holding. **Closing is the menu's, not the middle button's**: middle is the
+button a hand hits by accident on a wheel, and on an icons-only row of
+40-pixel squares what it was closing had no confirmation and no name on it.
+The menu reads the toplevel's own state, so `Maximize` says
 `Restore Down` when the window is maximised rather than being a toggle nobody
 can see the direction of. **Move and Size are deliberately absent**:
 wlr-foreign-toplevel-management has no request for either, and a menu row that
@@ -2581,6 +3698,45 @@ Three rules, and the first is the one that bites:
 Two consumers so far, and a bar with a dozen of these would be a bar that had
 stopped being a character grid: the Start button, and the meters strip.
 
+**THE START BUTTON IS QUIET AT REST, AND ITS PLATE COVERS THE MARK'S OWN
+CELLS.** Two rules, one function — `start_plate()` — because the tile above and
+the glyph layout under it both draw this button and a control whose two
+renderings disagree about its own state is worse than either.
+
+The accent belongs to hover, and the warn colour to the menu being open. At
+full strength and forty pixels tall it was the loudest object on the screen and
+read as an error state, on the one control that is never the thing being looked
+at; the penguin carries the brand without it. Three states, three pictures,
+where there used to be two.
+
+**IT CARRIES THE WORD, and `start_label` is ON.** A Start button that is a
+picture the same size as the app icons beside it does not read as the way in,
+which is the one thing this control has to do — measured on the shipped bar it
+was three cells, identical in size and shape to Firefox's. With the word it is
+ten. The tile lays out `pad | mark | gap | Start | pad`, and `pad` and `gap`
+are DIFFERENT numbers: one number for both is what made it look cramped at one
+end. The content is then CENTRED in the tile rather than laid out from its left
+edge, because a tile is a whole number of CELLS and the content is not — the
+rounding slack has to go somewhere, and split between the two ends it is
+invisible where pushed to the right it is the asymmetry you can see. Measured:
+plate 1..98, content 9..89, eight pixels one side and nine the other.
+
+**A WORDMARK AND A LABEL SAY THE SAME THING TWICE.** With no artwork the mark
+falls back to the `≡` glyph on a UTF-8 terminal and to the literal `KDOS`
+everywhere else, and `KDOS Start` is the brand printed beside itself. Where the
+mark is the word, the mark IS the button — which is also why the panel goldens
+did not move: the dump harness has no icons.
+
+And the plate is a whole-cell box inset by one, like every other plate on this
+row, so the mark is centred in it by construction rather than by arithmetic
+that has to be kept in step. Drawn from x=1 to half a cell short of the
+button's right edge while the mark was centred in the cells before that, they
+were two boxes with different centres: measured on the shipped bar, the plate
+ran 1..33 and the penguin's ink 8..21, so the mark sat 2.5px left of the middle
+of its own button. It is 14.5 against 14.5 now. The trailing cell that the
+button's width counts does not draw — it is the gap before the separator, the
+same one a window button leaves by plating `per - 1` of its `per` cells.
+
 **TWO FONT TRAPS, both measured before the code was written, both silent.**
 
 - **A repeated fontconfig property APPENDS; it does not replace.**
@@ -2595,9 +3751,10 @@ stopped being a character grid: the Start button, and the meters strip.
   is MEASURED: a font that came back much shorter than what was asked for is
   retried restricted to `:scalable=true`, and whichever is closer wins. A
   machine with no scalable face keeps the bitmap, which is the honest answer
-  and is what a minimal install has. (This is the same fact that made the
-  compositor's SSD font `DejaVu Sans Mono` — pango has not rendered bitmaps
-  since 1.44 — arrived at from the other side.)
+  and is what a minimal install has. (This is the same fact that sent the
+  compositor's SSD font to a scalable face — pango has not rendered bitmaps
+  since 1.44 — arrived at from the other side. `terminus-ttf` is what both
+  halves now use.)
 
 **AN ICON WITH NO LABEL IS CENTRED ON THE BAR'S FULL HEIGHT; an icon with a
 label beside it shares that label's row.** Quick-launch is pictures and nothing
@@ -2695,7 +3852,11 @@ line, for the two readouts that carry somebody's name (the media title, the
 application holding the microphone). The pager is little SCREENS: one filled
 cell per workspace in its own state colour with its number under it, and the
 second cell of the stride left as background, because filling both turned three
-inactive workspaces into one unbroken dark bar with three digits under it. Tray
+inactive workspaces into one unbroken dark bar with three digits under it —
+**and its HOVER is the width of what was drawn, not of the stride**, or the
+backdrop lights two cells under a square that is one and closes the gap to the
+workspace beside it. Photographed. A workspace whose NAME is two characters
+wide does occupy both, so the width is the label's. Tray
 icons are 2x2 and centred on the wing's full height, since an item is a picture
 with no label.
 
@@ -2767,12 +3928,13 @@ the shim name and not the desktop id), so the Start menu and the launcher
 cannot disagree about it.
 
 **THE STRIP ANSWERS THREE BUTTONS, because a meter raises three questions and
-answers none of them.** Left is `btop` — which process. MIDDLE is `kdos
+answers none of them.** Left is `kdos-res` — which process, and which
+application, on a page that can be read and sorted. MIDDLE is `kdos
 stutter`, the only thing on this machine that can say why a frame was late and
 who was busy when it was; it had no surface at all and was reachable only by
 knowing the subcommand's name. RIGHT is `kdos-energy`, the same for the per-app
-energy share. Both are real features of this distro that the desktop never
-pointed at.
+energy share. All three are real features of this distro that the desktop never
+pointed at; `btop` keeps its menu entry and its prompt.
 
 **`+N` OPENS THE WINDOW LIST.** It used to STEP the row by one per click, so
 reaching the third hidden window meant three clicks and three reflows, and
@@ -2887,6 +4049,38 @@ out LEFT TO RIGHT from a computed origin rather than right to left like the
 applet row, because it degrades as a unit — the chart gets shorter, then the
 least important meter goes — and a right-to-left walk would drop the one on the
 left, which is CPU.
+
+**A CHART IS CONTINUOUS IN TIME OR IT IS NOT A CHART.** Two rules, and the
+bar had neither:
+
+- **Every series is pushed on every tick**, with the last value carried forward
+  when a reading is momentarily unavailable — /proc/stat's aggregate not having
+  advanced, an interface that came and went. A series that skips a tick is
+  SHORTER than the one beside it: its columns cover a different span of time,
+  its gridlines sit under a different second, and the two charts creep out of
+  step for the rest of the session. `meter_hold()` is that, and it is what the
+  filesystem meter already did deliberately between its ten-second reads. A
+  series with NO sample at all is left empty rather than held at zero — an
+  absent reading is not a reading of nothing, and `have` is what the applets
+  test before printing a number.
+- **The trace spans the whole band from the first sample.** Drawing only the
+  samples there are and right-aligning them left the band empty on the left —
+  no fill, no line, not even a baseline — for as long as the ring took to fill,
+  which on the seven-cell network band is over a minute. Worse, nothing MOVED
+  while that happened: the newest sample stayed pinned to the right edge and
+  the picture only began to scroll once the ring was full. Reported as "the
+  graphs do not move smoothly". Column `i` is sample `n - w + i`, an index
+  before the oldest sample takes the oldest one, and real data enters at the
+  right and pushes the flat stretch off the left — motion, one pixel per
+  sample, from the first sample onward. `met_grid` draws the whole band for the
+  same reason: a scale that stopped where the samples ran out would say the
+  left of the chart was outside time.
+
+**AND `KPR_HIST` IS 256, NOT 128.** One sample is one pixel, so the ring has to
+be at least as long as the widest band any consumer draws — and the network
+band is 130 pixels at a 20-pixel cell and 214 at the doubled one a HiDPI output
+gets. At 128 the left of that band held a stretch no new sample could ever
+reach.
 
 **THE METERS SAMPLE ON A CLOCK, NOT ON THE DRAW LOOP.** A rate is a difference
 over an elapsed time and this loop is woken by EVENTS: the poll timeout is a
@@ -3024,7 +4218,44 @@ a countdown that quietly stops is one nobody can tell has stopped. Urgent keeps
 its own colour — a warning that changed colour under the hand would be saying
 something it does not mean.
 
-**`kdos-settings` OPENS ON A GRID OF ICONS.** A sidebar of seven words is a
+**`kdos-settings` HAS A BOXES PAGE, and it is the CONFIGURATION half.**
+`kdos-box list` is the runtime half — what is running, what it has written —
+and belongs at a prompt and on kdos-res's Boxes page; what was missing was the
+other one, because every property of a box could only be set by knowing that
+`~/.config/kdos/boxes/<name>.conf` existed. Three states: the boxes, one box's
+keys, and `▶ new box`, which shows the same keys with nothing created yet and
+a button that reads Create.
+
+**IT NEVER WRITES A PROFILE.** It reads them — they are `key = value`, the
+shape every file this program touches uses — and writes by RUNNING `kdos-box
+create` and `kdos-box profile`, which is the writer a person at a prompt
+reaches. That is what makes "a box created here is byte-identical to one
+created by hand with the same answers" true rather than approximately true,
+and it is also what keeps the three things `kdos-box` knows and this page must
+not re-derive: which keys podman can enforce, which it cannot, and that a
+namespace change needs the box recreating. Only the keys that CHANGED are
+passed, because `kdos-box profile` rewrites the file from what it loaded and
+passing all fifteen would additionally rewrite the two — `image`, and any
+unknown key somebody added — that this page does not show.
+
+**THE DEFAULT BOX IS ALWAYS A ROW, profile or not.** Every alien app on this
+machine runs in `kdos-apps` and it is the one box nobody ever had to describe,
+so a page listing only the profile FILES showed no boxes on a machine with one
+running — and the one you would most want to give a memory budget or an accent
+to. `kdos-box profile` loads defaults for a name with no file and writes one on
+the first change, so the row needs nothing more than the name; it reads
+`no profile yet` rather than showing the defaults as though somebody chose
+them.
+
+Two details worth keeping. The `name` row is editable only while CREATING: a
+namespace applies at create time, so a network chosen before the box exists
+takes effect and the same choice afterwards needs a recreate, and renaming is
+an operation `kdos-box` has no verb for. And **the network warning for an
+`image:` base is a row, not a footnote** — it fetches unsigned content from
+somebody else's registry, `KDOS_REQUIRE_SIG` does not cover it, and pretending
+otherwise would be dishonest.
+
+**`kdos-settings` OPENS ON A GRID OF ICONS.** A sidebar of eight words is a
 fine way to move between pages once you know what is on them and a poor way to
 find anything the first time, which is why every control panel worth the name
 opens on a field of labelled pictures. The home screen is a tile per category —
@@ -3211,6 +4442,32 @@ menu is dbusmenu. **Sixty-four columns, not forty-four**: at 44 every tip that
 says what the three buttons do came out cut mid-word (`right-cl`, `mid`),
 photographed. A tip is anchored at the item's own column and `place_clamp`
 pulls it back from the screen edge, so a wide one on the clock is not lost.
+
+**A WINDOW BUTTON'S TIP CARRIES THE WINDOW, AS A GAME BOY SCREEN.** Every
+taskbar since Windows 7 answers the case a name cannot — three terminals all
+called `foot` — and `kdos-comp`'s `thumb` verb is what makes it possible here,
+since a client cannot see another client's buffer. The rendering is four solid
+levels off the palette's own brightness ladder, a FULL BLOCK per cell, and that
+is not a style choice: `kcell_ascii_image` picks a glyph by SHAPE, and a
+1280-pixel window sampled into a 34x9 grid is nine source pixels per cell, so a
+cell of text is a featureless blur with no shape left to match. Every textured
+cell matched the same glyph — a terminal previewed as a wall of `b`, a
+minimised one as a wall of `|`, photographed on the booted ISO. The shape
+matcher keeps its other callers (`Super+A`, `kdos-shot --text`, the camera
+preview), which run at grids where a cell still holds a shape. **The preview is
+never required**: no compositor, no socket, a dmabuf client whose pixels are
+not host-readable, a PPM that does not parse — every one leaves the tip the two
+lines of text it was always going to be.
+
+**AND A CLICK SPENDS THE DWELL, which killing the tip does not.** `tip_kill`
+clears `tip_shown` because the caller that normally reaches it is a MOTION,
+which has just moved to another thing and owes it a fresh dwell. A CLICK moves
+nothing: the pointer is still on the applet, `tip_kind` still names it and
+`tip_since` is still long past, so the very next frame put the tooltip straight
+back up — over the Start menu, over the volume slider, over whatever the click
+had just opened, photographed on the booted ISO with the whole label and its
+hint line drawn across the top of the popup. `tip_spend()` marks the dwell
+spent; the next tip has to be earned by moving to something else.
 
 **`kdos-settings` writes panel.conf now (`ST_PANEL`), and the panel re-reads it
 on SIGHUP** — the same signal `kdos theme` already sends, so `overflow`,
@@ -3477,6 +4734,27 @@ through the monitor's `sendkey`** (the session is started by hand on this
 distro, and a compositor launched from ttyS0 gets no seat), waits for
 `kdos-comp`, and reads the framebuffer over RFB.
 
+**Three flags beyond the shot itself, and each answers a question a screenshot
+alone cannot.** `--audio` gives the guest an HDA controller with `-audiodev
+none` behind it — a real device as far as the guest is concerned, with the
+samples going nowhere. Without it `MikMod_Init` fails, kdos-bb sets
+`bbsound = 0`, and every audio path in the guest is untestable, which is not
+the same as untested: it is what let the mixer-thread deadlock be measured.
+The rig container has no sound of its own, so a real backend is not on the
+table anyway. `--console-cmd` types on tty1 INSTEAD of starting the session,
+which is the only way to photograph a program at the 512-glyph console font and
+the vt glyph tier it has to read in — a window under a compositor is a
+different renderer answering a different question. `--soak <seconds>` lets the
+session run between the launch and the measurement, because a monitor's own
+cost over four seconds is its startup, and startup is exactly what is not being
+measured.
+
+**The host may not have QEMU at all.** After a distro upgrade this machine had
+no `qemu-system-x86_64`; the rig runs unmodified inside the `kdos-qemu-hw`
+image with `python3` added (`--device /dev/kvm`, the repo bind-mounted), which
+already carries QEMU 10.1 and `/usr/share/ovmf/OVMF.fd` where the script looks
+for it.
+
 Three things it has to get right: `screendump` answers "no surface" under a GL
 display, so the framebuffer is read over RFB, whose `SetEncodings` is
 `type(1) pad(1) count(2)` — an extra padding field desyncs the stream and every
@@ -3551,7 +4829,10 @@ kdos/
 │   │   ├── build.sh             # the build; bash, cwd = $SRC
 │   │   ├── postinstall.sh       # optional install-time hook (4 ports)
 │   │   └── <name>-<ver>.tar.*   # cached upstream tarball (LFS)
-│   ├── appbox/                  # Containerfile, fetch, image/ chunks
+│   ├── appbox/                  # Containerfile + image/ (the monolith), and
+│   │                            #   packs.conf + bake + harvest.py (the packs);
+│   │                            #   Containerfile.bake carries podman+mkfs.erofs
+│   ├── Containerfile.fetch      # rust/go/node/python at the tree's own pins
 │   └── fetch                    # downloads all source= URLs; vendoring=rust|go|node|python
 ├── src/
 │   ├── libs/                    # our C libraries, static, no external deps
@@ -3561,8 +4842,11 @@ kdos/
 │   │   ├── libkcell/            # kcell_* the glyph cache and cell painter
 │   │   ├── libkxdg/             # kxdg_* desktop entries
 │   │   ├── libkpkg/             # kp_*   db, ports tree, solver, version + hashes
+│   │   ├── libkpack/            # kpk_*  the pack: footer, metadata, solve, index
 │   │   ├── libksig/             # ksig_* Ed25519 (vendored Monocypher)
 │   │   ├── libkbuild/           # kbuild_* phases, plans, snapshot inventory
+│   │   ├── libkproc/            # kpr_*  every reading, from a movable root
+│   │   ├── libkchrome/          # kch_*  header band, buttons, lists, tiles
 │   │   └── libkwl/              # kwl_*  libktui's Wayland backend — the one
 │   │                            #   library with real -l dependencies
 │   ├── desktop/                 # the desktop, ours (see docs/KDOS-DESKTOP.md)
@@ -3575,6 +4859,8 @@ kdos/
 │   │   ├── kdos-powerd/         # suspend/poweroff/reboot over a unix socket
 │   │   ├── kdos-energyd/        # per-app Energy Impact from RAPL, relative
 │   │   ├── kdos-oomd/           # PSI-triggered kill before the desktop wedges
+│   │   ├── kdos-res/            # the resource monitor + setuid kdos-resctl
+│   │   ├── kdos-packd/          # the only thing that mounts a pack
 │   │   ├── kdos-boxsock/        # the security-context-v1 sandbox engine
 │   │   └── xdg-desktop-portal-kdos/  # FileChooser + Settings + OpenURI
 │   ├── build/
@@ -3582,6 +4868,9 @@ kdos/
 │   ├── tools/
 │   │   └── kdos-portup/         # the upstream version checker (C, host-only)
 │   └── packages/                # ports that are OURS (see Three Rings)
+│       ├── kdos-bb/             # the AAlib demo, hard-forked (KDOS-FORK)
+│       ├── kdos-boxinit/        # pid 1 inside a pack box (static)
+│       ├── kdos-pack/           # build/sign/index packs; ships for `freeze`
 │       ├── kdos-installer/      # the installer (C, zero libraries)
 │       ├── kdos-kpkg/           # kpkg + the four names it answers to
 │       ├── kdos-theme/          # the GTK/icon/cursor generators
@@ -3636,7 +4925,15 @@ last thing built before packaging.
 
 **Phase 4/5 chroot** — `chroot_exec.sh` bind-mounts `$REPO_ROOT` → `/kdos`,
 `$REPO_ROOT/ports` → `/ports`, `$REPO_ROOT/build` → `/kdos/build`, plus
-`/dev /proc /sys /tmp /run`, then chroots with `env -i`. Phase env files
+`/dev /proc /sys /tmp /run`, then chroots with `env -i`.
+
+**`env -i` MEANS EVERY VARIABLE A CHROOT STEP READS MUST BE NAMED THERE.**
+`KDOS_REPLAY`, `KDOS_ISO_SOURCES` and `KDOS_PACK_KDOS` are the three, and the
+last two are read in 06_packaging, which is a chroot phase — a knob the
+Makefile passes into the container and nobody forwards reaches every host step
+and no chroot one, so `make build KDOS_ISO_SOURCES=1` produces an ordinary
+stick and says nothing about why. A new opt-in packaging flag is two edits, not
+one. Phase env files
 (`script/phaseN.env.sh`) export `CHROOT=1`, `CFLAGS`, `LDFLAGS`,
 `PORT_REPO="/ports/core /kdos/src/packages"`.
 
@@ -3756,13 +5053,12 @@ with the recipes; there were no recipes.
 build. Neither is fatal on failure: an orphan with a damaged manifest must not
 stop the ISO from being rolled.
 
-**Skip-if-installed still compares the VERSION, not the recipe** (see **kpkg is
-C**), and the same session found the other half of that: `fastfetch`'s
-`config.jsonc` is a KDOS file installed by the port, its banner footer was
-changed from `cosmic` to `wlroots`, no `release` was bumped, and the shipped
-`/etc/xdg/fastfetch/config.jsonc` still said `cosmic` for every user with no
-home config — root, on tty2. The fix was `release = 2`. Wiring `E:` into the
-skip decision is the real answer and is still not done.
+**Skip-if-installed compares the RECIPE HASH under `KPKG_STRICT_RECIPE=1`,
+which every `script/*.env.sh` sets** — see **kpkg is C**. A port whose recipe
+changed is rebuilt by the build without being named. Note what that does NOT
+cover: a KDOS file the port installs, edited in `fs/` rather than in the port,
+is not part of the recipe hash. `fastfetch`'s `config.jsonc` is such a file,
+and the lever for it is still `release = N`.
 
 ### libkbuild — the deciding half of the orchestrator
 
@@ -3936,6 +5232,13 @@ and needs a container; this checks the WIRING in seconds:
   empty result, and every token matching what `phases.py` will accept
 - every `# depends` names a port that exists — the gap CLAUDE.md's TODO list
   called "no build-time check that all `# depends` resolve"
+- **every `.c` in one of OUR ports is compiled by its recipe.** A source the
+  `build.sh` neither names nor globs is a file that passes every gate on this
+  machine and fails to LINK in the build — `testing/selftest.sh` globs those
+  directories, so a whole page can be exercised by the harness and be absent
+  from the shipped binary. That is exactly how `kdos-res`'s detail page reached
+  a green selftest and a failed `05_desktop`. Only our own trees: an upstream
+  tarball is entitled to carry sources its own build system chooses between
 - every recipe declares name, version and release
 - all shipped and build shell is syntactically valid
 - nothing still invokes a tool the C consolidation removed
@@ -4002,6 +5305,17 @@ width, and the chooser's hint text and its two buttons both on their row without
 colliding. Six geometry defects have shipped in this toolkit and not one was
 visible to a compiler; this is how they get seen. Verified by breaking it —
 widening the hint row makes the check say so.
+
+**`ports/.kpkgbin`, `ports/.portup-tools`, `ports/.kpkg-meta` and `ports/.portup`
+cache compiled helpers, and a glibc build cannot exec under musl or the other
+way round** — so a host run straight after a container run must clear them
+first. The failure does not say any of that: `kpkg meta` simply fails, so
+`kdos-portup` cannot render a candidate URL and the suite reports **"no current
+outcome reproduced"**, which reads as a regression in the version checker. And
+a container that ran as root leaves those directories ROOT-OWNED, so the `rm`
+that clears them fails on permissions and the stale binary survives — delete
+them from a container (`docker run --rm -v "$PWD":/kdos alpine rm -rf
+/kdos/ports/.portup-tools …`) rather than reaching for sudo.
 
 **Run it sanitized when you touch a parser.** `CC` is the seam and it takes
 more than one word:
@@ -4076,31 +5390,42 @@ assumed:
   directories, `<name>-<version>-<release>.tar.xz`, `--root`, the whitespace
   `PORT_REPO` list, env-over-config, and exit codes 0/1.
 
-**Skip-if-installed compares NOTHING — it asks whether a database entry
-exists** (`kp_installed()` is `kb_read_all(<db>/<name>) != NULL`), so an
-installed package is skipped whatever its version, its release or its recipe
-now say. Bumping `version` is therefore worth doing for the binhost and for a
-fresh tree, and does nothing at all for an incremental local build: **the only
-thing that rebuilds a changed port on a built tree is `--rebuild <port>`** (or
-`kpkg install -f`). Get that wrong and a build "succeeds" carrying the old
-binary, which is indistinguishable from a change that did not work.
+**Skip-if-installed compares the RECIPE HASH**, and the comparison has three
+states. `kp_installed_current()` in libkpkg is the predicate: installed, AND
+its recorded recipe hash equal to `kp_recipe_hash()` of the port as it stands
+now — the same SHA-256 over kpkgbuild, build.sh, postinstall.sh and every patch
+that the binhost's `E:` uses, so there is one definition of "the recipe
+changed" rather than two.
 
-This is not theoretical and it cost a build: `ports/core/wlroots/build.sh` gained
-`install -m644 protocol/*.xml "$PKG/usr/share/wlroots/protocols/"` because
-upstream does not install its own protocol XML and three of our recipes read it
-from there. The installed wlroots on the tree predated that line, its manifest
-carried zero `.xml`, and `kdos-shell` — the first genuinely new package of
-`05_desktop` — died at once on wayland-scanner's `Could not open input file`.
-Nothing detects it: the version was unchanged, so kpkg correctly skipped a
-package that no longer matched its own recipe.
+| State | Result |
+|---|---|
+| hashes match | skip |
+| hashes differ | rebuild |
+| **no recorded hash, or a corrupt one** | **skip** |
 
-KDOS already computes the answer — `kp_recipe_hash` is the binhost's `E:`, a
-SHA-256 over kpkgbuild, build.sh, postinstall.sh and every patch — and the
-local install path does not consult it. Until it does, **the fix is
-`--rebuild <port>`**, and the smell is a package whose behaviour disagrees with
-a recipe you just read. Wiring `E:` into the skip decision would rebuild every
-port whose recipe was touched, which is right and is also a mass rebuild, so it
-is a deliberate change rather than an obvious one.
+The third row is what makes this safe on a tree that predates the mechanism:
+absent reads as UNKNOWN, never as "changed", so no package is rebuilt merely
+for lacking a record. A sidecar that is not exactly 64 hex characters is
+treated the same way — reading it as a mismatch would rebuild that one package
+on every run for ever with nothing saying why.
+
+**THE SOLVER CALLS IT, NOT THE INSTALL LOOP.** `kp_resolve()` drops an
+installed package before the loop in `front.c` ever runs, so a test placed
+downstream reaches only packages named on the command line and misses every
+DEPENDENCY whose recipe changed. The loop's own guard — for a package that
+became installed between the resolve and now — must ask the same question, or
+it skips exactly what the solver deliberately queued and the run reports
+"Packages to install: <name>" and builds nothing.
+
+The hash is recorded in `<db>/.recipe/<name>` AFTER a successful install, never
+before: a record written ahead of a build that then fails would claim a recipe
+is installed that is not. It is a sidecar rather than a third field on the
+database entry's first line because that line is `"<version> <release>"` and
+`kp_installed_version()` copies everything after the first space into `rel`.
+
+`KPKG_STRICT_RECIPE=1` turns it on. Every `script/*.env.sh` sets it, so the
+BUILD is strict; an interactive `kpkg install` is not. **`--rebuild <port>` and
+`kpkg install -f` remain the way to force a rebuild for any other reason.**
 
 **A file conflict is between PACKAGES.** A path that exists but that no
 installed package claims is adopted, not refused. That is not a loosening for
@@ -4284,9 +5609,24 @@ Rules this design exists to keep, each one a way signing usually rots:
 - **The signing key is written `0600` with `O_EXCL`**, and reading it back
   refuses if the mode ever loosened — signing with a key other users can read is
   signing with a key that must be assumed compromised.
-- **KDOS ships no key in `/etc/kdos/keys`.** Shipping one would be asking you to
-  trust whoever built the image, which is the question signing exists to let you
-  answer yourself.
+- **The key in `/etc/kdos/keys/packs` covers the MEDIUM, not the distribution,
+  and the SUBDIRECTORY is the whole point.** `ksig_ring_load` reads `*.pub`
+  flat and never descends, so `/etc/kdos/keys` (kpkg's binhost ring, still
+  empty) and `/etc/kdos/keys/packs` are genuinely separate policies. A
+  pack-bake key attests that some packs came off one medium; leaving it in the
+  binhost ring would silently make it a trusted publisher of HOST packages
+  too — a widening nobody asked for.
+  `ports/appbox/bake` signs `PACKAGES` with `build/keys/kdos-packs.key` — which
+  is gitignored and never committed — and the public half ships. One signature
+  over the index covers every pack transitively through its `C:` hash, which is
+  why there is no sidecar per pack. What it asserts is that the packs beside it
+  came from the same bake; replace the key and re-sign to make it assert
+  something about you. A tree with no key still bakes and says the index is
+  unsigned. **Native ports are not signed and need no signature**: a port is
+  compiled from source on this machine and its integrity is the `sha256 =` in
+  its recipe, which `preflight` requires for every source a port ships and now
+  for its vendor bundle too. Signing answers "who made this binary", and for a
+  port the answer is "you did".
 
 **Measured end to end**: a builder built zlib and uthash, keyed, indexed and
 signed; a client with an empty keyring refused (2); the same client with the
@@ -4683,19 +6023,23 @@ WebFetch.
 `fs/etc/init.d/` uses a numeric-prefix convention:
 
 ```
-01_udev  02_modules  05_hostname  10_sysctl  15_userdirs  20_dmesg  22_syslog
-30_network  35_chrony  40_dbus  42_networkmanager  45_avahi  45_seatd  50_alsa
-55_powerd  55_tlp  56_energyd  57_oomd  60_bluetooth  70_sshd  80_cups
+01_udev  02_modules  05_hostname  10_sysctl  12_zram  15_userdirs  20_dmesg
+22_syslog  25_nftables  30_network  35_chrony  40_dbus  42_networkmanager  45_avahi
+45_seatd  50_alsa  55_powerd  55_tlp  56_energyd  57_oomd
+58_mountd  59_packd
+60_bluetooth  70_sshd  80_cups
 rcS  service_helper
 ```
 
 **A daemon that cannot do its job on this machine is SKIPPED before
-`supervise` sees it, never started and left to fail.** Three scripts encode
+`supervise` sees it, never started and left to fail.** Four scripts encode
 that and it is one rule: `56_energyd.sh` checks for a readable RAPL energy
 domain (most VMs have none), `57_oomd.sh` checks that
 `/proc/pressure/memory` is WRITABLE (PSI off, or `psi=0` on the command line —
-and a daemon that cannot arm its trigger protects nothing), and every script
-checks its binary is executable. The reason is the respawn loop: a refusing
+and a daemon that cannot arm its trigger protects nothing), `59_packd.sh`
+checks that the kernel has `erofs` — a pack IS an erofs image, so without it
+the daemon can list packs and mount none of them — and every script checks its
+binary is executable. The reason is the respawn loop: a refusing
 daemon under `supervise` is a boot that never settles, and the check therefore
 belongs *before* the loop exists rather than inside the daemon.
 
@@ -4722,7 +6066,21 @@ esac
 ```
 
 `supervise` runs the daemon under a respawn loop and writes `/run/<name>.pid`.
-**The daemon must run in the foreground** — no daemonization. Note the argv:
+**The daemon must run in the foreground** — no daemonization.
+
+**A one-shot is NOT supervised.** `25_nftables.sh` and `12_zram.sh` are the
+two: `nft` hands a ruleset to the kernel and exits, `12_zram.sh` writes a
+disksize to sysfs and calls `swapon`, and in both cases the KERNEL holds the
+result — so a respawn loop would be wrapped around a program that is supposed
+to exit. zram is `CONFIG_ZRAM=m`, so a kernel without the module is a skip and
+not a failure, and its two knobs are `/etc/kdos/zram.conf`: `algorithm`, and
+`size` as a PERCENTAGE OF RAM. A percentage because the compressed pages live
+in that same memory — the number is how much swap the device may claim to
+hold, never how much it will occupy. nftables runs before
+`30_network.sh` — a firewall applied after the interface is up leaves a window
+— and it runs `nft -c` first, because the ruleset opens with `flush ruleset`
+and a failure partway through would otherwise leave the input chain's drop
+policy with its accept rules missing. Note the argv:
 `supervise "$NAME" "$DAEMON" --foreground`, not one quoted string. The old
 helper did `local command="$@"` and then expanded it unquoted, so the
 word-splitting was load-bearing and a daemon path with a space in it could not
@@ -4801,7 +6159,7 @@ adding users is manual.
 ## Working-state markers
 
 ```bash
-ls ports/core | wc -l                                  # 405 ports
+ls ports/core | wc -l                                  # 430 ports
 ls build/fs/var/lib/kpkg/db/ | wc -l                   # installed packages
 git status --short | wc -l                             # tracked changes
 ls build/logs/04_phase4/*.log                          # which packages have logs
@@ -4817,14 +6175,18 @@ and respond with the targeted fix.
 
 - `libunwind` lacks its assembly files → undefined symbols; consumers work
   around with `--allow-shlib-undefined`.
-- `libinput` still installs to `/usr/local/lib64` (port has no `--prefix`).
-- No firewall rules shipped — `nftables` is installed, `/etc/nftables.conf` is
-  empty.
+- No per-service firewall rules. `fs/etc/nftables.conf` ships a default
+  workstation policy — established/related and loopback accepted, ICMP and
+  **ICMPv6 answered** (dropping ICMPv6 does not harden IPv6, it breaks
+  neighbour discovery and Path MTU), mDNS and DHCPv6 open for the avahi and
+  dhcp clients that are started, everything else on input dropped, forward
+  dropped — and `fs/etc/init.d/25_nftables.sh` loads it before `30_network.sh`,
+  after an `nft -c` check so an unloadable ruleset leaves the previous state
+  standing rather than half-applying a `flush ruleset`. Anything that should be
+  REACHABLE (sshd, a served corpus, a shared printer) needs a rule added; the
+  shipped file has them as commented examples.
 - ~~cosmic-comp does not start Xwayland~~ — **closed by the rewrite.** wlroots
   runs Xwayland rootlessly and `kdos-comp` turns it on (`KDOS-DESKTOP.md` §7).
-- **No `f2fs-tools`**, so `CONFIG_F2FS_FS=m` is a filesystem the kernel can
-  mount and nothing here can create. (NTFS needs no port: `CONFIG_NTFS3_FS=m`
-  is read-write in the kernel.)
   (`linux-firmware`, microcode, `man`, the clock, syslog, periodic jobs and
   mDNS were all on this list and are not any more. Source checksums too:
   `sha256 =` is a recipe key, preflight checks every archive against it, and
@@ -4849,15 +6211,15 @@ and respond with the targeted fix.
   thing:** fractional scale (`wp_fractional_scale_v1` is not bound), and
   `chrome_font` is still one pixel size for every output — right on a machine
   with one screen, wrong on two of different densities.
-- **libkwl PASTES but does not COPY.** `wl_data_device` and
-  `zwp_primary_selection_device_v1` are bound and the receive side is complete
-  (async, `text/plain;charset=utf-8` preferred, delivered into the focused text
-  widget by `ktui_paste_push`) — so Ctrl+V and middle-click work in
-  `kdos-run`, the launcher filter and the file chooser's save name. There is
-  **no `wl_data_source`**, so nothing in the chrome can put anything ON the
-  clipboard, there is no drag-and-drop either way (a file still cannot be
-  dragged off `kdos-desk` into a window), and **`wl_touch` is not bound at
-  all** — a touchscreen drives none of this.
+- **No drag-and-drop, and no `wl_touch`.** The clipboard is complete in both
+  directions — `wl_data_device` and `zwp_primary_selection_device_v1` are bound,
+  the receive side is async with `text/plain;charset=utf-8` preferred and
+  delivered by `ktui_paste_push`, and `kwl_copy(text, len, primary)` offers a
+  `wl_data_source` against the retained serial. What is absent is the drag:
+  `start_drag` is a comment in `kwl.c`, so a file cannot be dragged off
+  `kdos-desk` into a window, and nothing can accept a drop. `wl_touch` is not
+  bound at all — `seat_caps` handles KEYBOARD and POINTER only, so a
+  touchscreen drives none of the chrome.
 - **`kdos-display` lays screens out edge to edge from x=0 in list order.** A
   vertical arrangement, an overlap, or a gap cannot be expressed. That is a
   deliberate narrowing rather than a missing feature: the protocol takes pixel
@@ -4874,6 +6236,40 @@ and respond with the targeted fix.
 - **No corefonts for wine.** winetricks fetches them from the network at run
   time and nothing in the image may depend on that, so a Windows program that
   wants Arial gets a substitute.
+- **THE PACK SET HAS NEVER BEEN BAKED AT FULL SCALE.** `ports/appbox/bake`
+  and `harvest.py` are proven on a three-pack bake from real Debian trixie
+  (base 52 MB, a GTK runtime 40 MB, `app.xterm` 1.7 MB, composed and entered by
+  a rootless podman) — but `packs.conf`'s ~40 application rows need
+  `make fetch-packs`, which needs a network and root, and have not been run.
+  Until they are, `01_packs.sh` says so and the monolithic image lane is what
+  ships. Every pack-lane claim in the **Packs** section above is measured at
+  that small scale unless it says otherwise.
+- **`kdos-box freeze` has not been measured against `podman save`.** It builds
+  and the machinery under it is proven, but the "an order of magnitude smaller"
+  claim the design rests on needs a real box with real work in it, and the
+  plan's own acceptance test for it is that comparison.
+- **No goldens for the Boxes page, nor for kdos-settings' Boxes page.**
+  `testing/goldens/res-boxes-*.txt` and a settings dump of the new page need
+  wayland-client, wayland-scanner and wayland-protocols on the HOST — the dump
+  harness stubs fcft and wlroots but not those — so on a machine without them
+  both are skipped rather than checked. The settings page has been PHOTOGRAPHED
+  on a booted ISO (`testing/vnc-shot.py`) in all three of its states;
+  kdos-res's has not been looked at at all.
+- **NO OFFLINE alpine OR KDOS BASE ON THE MEDIUM.** `KDOS_PACK_KDOS=1` builds
+  the second one — this rootfs wrapped as base pack `kdos`, so
+  `kdos-box create ports base=pack:kdos` gives a running KDOS a clean KDOS to
+  build ports in — and it is OPT-IN, because it is a second `mkfs.erofs` over
+  the whole tree on every build for a base most installs never compose. It has
+  not been run end to end. An **alpine** base is a `packs.conf` row that needs
+  a 3 MB rootfs fetched, so it needs `make fetch-packs` like every other row.
+  That is W5-4 and it is half done.
+- **The box chip and the installer's Applications page have not been seen on a
+  real screen.** A chip needs two boxes with two different accents, and the
+  installer's page needs a medium with a pack index on it — and the pack set
+  has never been baked, which is the gap above. What IS proven for the
+  installer is the arithmetic: `kinstall --dump plan` against a fixture index,
+  asserted in `testing/selftest.sh` for the recommended set, an answer file's
+  choice, an unknown id and a delta stanza.
 - **The baked appbox predates its own Containerfile.** `ports/appbox/image/` was
   packed on 2026-07-29; the KDE segment and the `kdos.qt-kde-theme` /
   `kdos.qt-gtk-theme` labels were added after. The shipped image therefore has
@@ -4894,13 +6290,17 @@ and respond with the targeted fix.
   filter is a fixed allowlist — a client is sandboxed or it is not. Re-adding
   per-box grants means teaching `allow_for_sandbox()` to consult the boxsock
   profile, a deliberate piece of work.
-- **No golden-frame regression test, and it is the gap that let the stale-row
-  bug ship.** `testing/selftest.sh` looks at five surfaces' `--dump` output and
-  asserts SHAPE (every row of a box the same width, the hint row and its buttons
-  not colliding). `run`, `prompt`, `notifyd`, `osd` and `desk` have no `--dump`
-  at all, there is no codepoint+colour-slot serializer, and no goldens are
-  committed. Six geometry defects have shipped in this toolkit and none was
-  visible to a compiler.
+- **Six surfaces have no `--dump`, and no cell goldens are committed.**
+  `testing/goldens/` carries 18 frames — `ktui_draw_dump()`'s cell buffer as
+  padded plain text, at 80x24 and 132x43, for `doc`, `keys`, `menu system`,
+  `notify`, `pick`, `settings`, `start`, `status` and `teams` — and
+  `selftest.sh` diffs against them. Two sizes, because a geometry defect is
+  usually a defect at ONE width. **`run`, `prompt`, `notifyd`, `osd`, `desk`
+  and the panel's own `shell` have no `--dump`**, so they have no golden.
+  `--dump-cells` (one line per painted cell, `row col U+XXXX fg bg attr`,
+  which is what makes a COLOUR regression visible as well as a geometry one)
+  is implemented and **no cell goldens are committed** — selftest says so
+  rather than running a check that covers nothing.
 - **A WHEEL SOURCE IS ALREADY QUANTISED; A FINGER IS NOT.** libkwl's
   accumulator was written for a touchpad, where `wl_pointer.axis` is a stream
   of small continuous values and a tick has to be synthesised from a ten-unit
@@ -4945,12 +6345,6 @@ and respond with the targeted fix.
   volume bezel are all asking to be PLACED, and being kept off the panel is
   right for them. The size clamp takes the same margin as its headroom instead
   of the four rows it used to guess at.
-- **Dead keys yield nothing: libkwl has no xkb-compose.** UTF-8 text entry
-  itself works end to end — `xkb_state_key_get_utf32` hands whole codepoints to
-  libktui, which encodes and moves the caret by SEQUENCE, and kdos-lock takes a
-  multi-byte password — so a layout that types `é` directly is fine. A COMPOSE
-  sequence (`Compose e '`) is not: `xkb_compose_*` is unbound, and xkbcommon is
-  already a libkwl dependency, so this is wiring rather than a new `-l`.
 - **A wide glyph is measured, not guaranteed.** libktui has `ktui_wcwidth` and a
   `KTUI_WIDE_CONT` continuation cell and libkcell clips each composite to its
   cell, so CJK no longer corrupts row layout — but **the console font is 512

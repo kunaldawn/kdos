@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lzip
+version     = 1.26
+release     = 1
+source      = https://download.savannah.gnu.org/releases/$name/$name-$version.tar.gz
+sha256      = c79255f6cb550eaa07d6e90d859b8c1abe81658115ae8175e74b67ac22c7ed87  lzip-1.26.tar.gz
+description = Lossless data compressor, and the only way to read a .tar.lz
+homepage    = https://www.nongnu.org/lzip/
+bench_setup = dd if=/dev/urandom of=bench.bin bs=1M count=16 status=none
+bench       = lzip -9 -c bench.bin > /dev/null

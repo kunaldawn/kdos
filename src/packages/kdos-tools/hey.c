@@ -160,11 +160,18 @@ static void no_socket(void)
 			"socket (kdos-comp too old, or not running)\n");
 }
 
-static int cmd_socket(void)
+/*
+ * `quiet` is for a caller that is ASKING WHETHER the compositor is there
+ * rather than being told to talk to it — `kdos appid`'s fallback runs on a
+ * machine that may have no session at all, and a diagnostic about a socket
+ * nobody mentioned would be noise in the middle of its report.
+ */
+static int cmd_socket(int quiet)
 {
 	const char *rt = getenv("XDG_RUNTIME_DIR");
 	if (!rt || !*rt) {
-		no_socket();
+		if (!quiet)
+			no_socket();
 		return -1;
 	}
 	struct sockaddr_un addr = { .sun_family = AF_UNIX };
@@ -172,12 +179,14 @@ static int cmd_socket(void)
 
 	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd < 0) {
-		no_socket();
+		if (!quiet)
+			no_socket();
 		return -1;
 	}
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		close(fd);
-		no_socket();
+		if (!quiet)
+			no_socket();
 		return -1;
 	}
 	return fd;
@@ -189,15 +198,16 @@ static int cmd_socket(void)
  * what notices when it did not keep that promise instead of leaving the rest
  * in the socket buffer for nobody.
  */
-static char *ask(const char *req)
+static char *ask_q(const char *req, int quiet)
 {
-	int fd = cmd_socket();
+	int fd = cmd_socket(quiet);
 	if (fd < 0)
 		return NULL;
 
 	size_t len = strlen(req);
 	if (write(fd, req, len) != (ssize_t)len) {
-		fprintf(stderr, "kdos hey: %s\n", strerror(errno));
+		if (!quiet)
+			fprintf(stderr, "kdos hey: %s\n", strerror(errno));
 		close(fd);
 		return NULL;
 	}
@@ -211,13 +221,19 @@ static char *ask(const char *req)
 	close(fd);
 
 	if (!b.n) {
-		fprintf(stderr, "kdos hey: the compositor closed without "
-				"answering\n");
+		if (!quiet)
+			fprintf(stderr, "kdos hey: the compositor closed "
+					"without answering\n");
 		kb_buf_free(&b);
 		return NULL;
 	}
 	kb_buf_add(&b, "", 1);		/* NUL, not counted in b.n */
 	return b.p;
+}
+
+static char *ask(const char *req)
+{
+	return ask_q(req, 0);
 }
 
 /*
@@ -265,17 +281,21 @@ static int list_table(const char *reply)
 	if (!reply_ok(reply, p))
 		return 1;
 
-	printf("  %3s %3s %-6s %-22s %s\n", "id", "ws", "state", "app_id",
-	       "title");
+	printf("  %3s %3s %-6s %-22s %-12s %s\n", "id", "ws", "state", "app_id",
+	       "box", "title");
 	int n = 0;
 	while (j_object(&p, &beg, &end)) {
-		char app[64], title[160], st[8];
+		char app[64], title[160], box[64], st[8];
 		j_str(beg, end, "app_id", app, sizeof(app));
 		j_str(beg, end, "title", title, sizeof(title));
+		/* The box comes from the window's own security context, which
+		 * kdos-boxsock set — not from walking its pid to a conmon. A
+		 * host window has none and prints a dash. */
+		j_str(beg, end, "box", box, sizeof(box));
 		state_letters(beg, end, st);
-		printf("  %3ld %3ld %-6s %-22.22s %.60s\n",
+		printf("  %3ld %3ld %-6s %-22.22s %-12.12s %.48s\n",
 		       j_int(beg, end, "id", -1), j_int(beg, end, "workspace", 0),
-		       st, app[0] ? app : "-", title);
+		       st, app[0] ? app : "-", box[0] ? box : "-", title);
 		n++;
 	}
 	if (!n)
@@ -317,10 +337,78 @@ static int usage(void)
 		"usage: kdos hey list [--json]\n"
 		"       kdos hey run <action> <id>\n"
 		"       kdos hey outputs [--json]\n"
+		"       kdos hey boxes [--json]\n"
 		"\n"
 		"<action> is a labwc action name: Close, Focus, Iconify,\n"
 		"ToggleMaximize, ToggleShade, ToggleFullscreen, Raise, ...\n");
 	return 2;
+}
+
+/*
+ * THE app_ids OF THE WINDOWS OPEN RIGHT NOW, which is `kdos appid`'s fallback
+ * when the recorded ledger is not there — a fresh boot, or a home that has
+ * never run this compositor.
+ *
+ * It lives HERE rather than in appid.c because this file already owns the
+ * string-aware object walk, and a window title containing the literal text
+ * `"app_id":"` is not exotic: a scan for that substring would report a window
+ * that does not exist. Two parsers would be two answers.
+ *
+ * Answers -1 when the compositor cannot be reached, which the caller must tell
+ * apart from 0 — "nothing is running" and "nobody asked" are different
+ * verdicts, and folding them is the confident wrong answer that tool exists
+ * not to give.
+ */
+int hey_app_ids(char ***out)
+{
+	char *reply = ask_q("{\"cmd\":\"list\"}\n", 1);
+	const char *p, *beg, *end;
+	char **v = NULL;
+	int n = 0;
+
+	*out = NULL;
+	if (!reply)
+		return -1;
+	/* The envelope is the FIRST object; every one after it is a view. */
+	p = reply;
+	if (!j_object(&p, &beg, &end) || !reply_ok(reply, end)) {
+		free(reply);
+		return -1;
+	}
+	/*
+	 * Counted first, then filled. There is no realloc in libkbase and a
+	 * fixed cap would silently drop a window, which is the one thing a
+	 * checker must not do; two walks of a reply that is a few kilobytes
+	 * cost nothing worth measuring.
+	 */
+	{
+		const char *q = p;
+		int cap = 0;
+
+		while (j_object(&q, &beg, &end))
+			cap++;
+		if (!cap) {
+			free(reply);
+			return 0;
+		}
+		v = kb_calloc((size_t)cap, sizeof(*v));
+	}
+	while (j_object(&p, &beg, &end)) {
+		char id[256];
+		int dup = 0;
+
+		j_str(beg, end, "app_id", id, sizeof(id));
+		if (!id[0])
+			continue;
+		for (int i = 0; i < n; i++)
+			if (!strcmp(v[i], id))
+				dup = 1;
+		if (!dup)
+			v[n++] = kb_strdup(id);
+	}
+	free(reply);
+	*out = v;
+	return n;
 }
 
 int hey_main(int argc, char **argv)
@@ -334,6 +422,48 @@ int hey_main(int argc, char **argv)
 			json = 1;
 
 	const char *what = argv[1];
+
+	if (!strcmp(what, "boxes")) {
+		/* The distinct boxes with a window on the screen. `kdos-box gc`
+		 * asks this before stopping anything: a box whose window is
+		 * mapped is not idle whatever its clock says. */
+		char *reply = ask("{\"cmd\":\"boxes\"}\n");
+		const char *p, *beg, *end;
+		int n = 0;
+
+		if (!reply)
+			return 1;
+		if (json) {
+			fputs(reply, stdout);
+			if (reply[0] && reply[strlen(reply) - 1] != '\n')
+				fputc('\n', stdout);
+			free(reply);
+			return 0;
+		}
+		p = strstr(reply, "\"boxes\"");
+		if (!p || !reply_ok(reply, p)) {
+			free(reply);
+			return 1;
+		}
+		/* A flat array of strings, so the object walk does not apply:
+		 * scan the quoted runs after the key. */
+		for (beg = p + 7; *beg && *beg != '['; beg++)
+			;
+		for (; *beg && *beg != ']'; beg++) {
+			if (*beg != '"')
+				continue;
+			end = strchr(beg + 1, '"');
+			if (!end)
+				break;
+			printf("  %.*s\n", (int)(end - beg - 1), beg + 1);
+			beg = end;
+			n++;
+		}
+		if (!n)
+			printf("  (no boxed windows)\n");
+		free(reply);
+		return 0;
+	}
 
 	if (!strcmp(what, "list") || !strcmp(what, "outputs")) {
 		char req[64];

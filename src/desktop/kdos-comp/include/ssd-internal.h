@@ -4,6 +4,7 @@
 
 #include <wlr/util/box.h>
 #include "common/border.h"
+#include "ssd.h"
 #include "theme.h"
 #include "view.h"
 
@@ -166,7 +167,7 @@ struct wlr_scene_tree;
 struct ssd_button *attach_ssd_button(struct wl_list *button_parts,
 	enum lab_node_type type, struct wlr_scene_tree *parent,
 	struct lab_img *imgs[LAB_BS_ALL + 1], int x, int y,
-	struct view *view);
+	struct view *view, enum ssd_active_state active);
 
 /* SSD internal */
 void ssd_titlebar_create(struct ssd *ssd);

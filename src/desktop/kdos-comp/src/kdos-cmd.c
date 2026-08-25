@@ -9,6 +9,7 @@
  *   {"cmd":"list"}      -> {"ok":true,"views":[...]}
  *   {"cmd":"run","action":"Close","id":7} -> {"ok":true}
  *   {"cmd":"outputs"}   -> {"ok":true,"outputs":[...]}
+ *   {"cmd":"boxes"}     -> {"ok":true,"boxes":["arch","kdos-apps"]}
  *
  * Rules, each one a way a control socket usually takes a compositor down
  * with it:
@@ -271,6 +272,17 @@ cmd_list(struct buf *b)
 		 */
 		pid_t pid = view->impl->get_pid ? view->impl->get_pid(view) : -1;
 		buf_add_fmt(b, ",\"pid\":%d", (int)pid);
+		/*
+		 * THE BOX, and it is not derived from the pid. The ppid walk to
+		 * conmon is what a client OUTSIDE the compositor has to do;
+		 * here the security context says it outright, which is both
+		 * cheaper and correct for a client that is tagged but not
+		 * containerised. Empty for a host window.
+		 */
+		buf_add_char(b, ',');
+		json_kv_str(b, "box", kdos_view_box(view));
+		buf_add_char(b, ',');
+		json_kv_str(b, "instance", kdos_view_instance(view));
 		buf_add_fmt(b, ",\"focused\":%s",
 			view == server.active_view ? "true" : "false");
 		buf_add_fmt(b, ",\"minimized\":%s", view->minimized ? "true" : "false");
@@ -278,6 +290,46 @@ cmd_list(struct buf *b)
 			view->maximized != VIEW_AXIS_NONE ? "true" : "false");
 		buf_add_fmt(b, ",\"fullscreen\":%s", view->fullscreen ? "true" : "false");
 		buf_add_fmt(b, ",\"shaded\":%s}", view->shaded ? "true" : "false");
+	}
+	buf_add(b, "]}");
+}
+
+/*
+ * BOXES. `{"cmd":"boxes"}` -> the distinct boxes with a window on the screen.
+ * `kdos-box gc` asks this before stopping anything: a box whose window is
+ * mapped is not idle, whatever its clock says, and deriving that from `list`
+ * in the client would put the same reduction in two places.
+ */
+static void
+cmd_boxes(struct buf *b)
+{
+	const char *seen[64];
+	int nseen = 0;
+	struct view *view;
+
+	buf_add(b, "{\"ok\":true,\"boxes\":[");
+	for_each_view(view, &server.views, LAB_VIEW_CRITERIA_NONE) {
+		const char *box = kdos_view_box(view);
+		int i;
+
+		if (!box || !*box) {
+			continue;
+		}
+		for (i = 0; i < nseen; i++) {
+			if (!strcmp(seen[i], box)) {
+				break;
+			}
+		}
+		if (i < nseen || nseen >= 64) {
+			continue;
+		}
+		if (nseen) {
+			buf_add_char(b, ',');
+		}
+		seen[nseen++] = box;
+		buf_add_char(b, '"');
+		buf_add(b, box);
+		buf_add_char(b, '"');
 	}
 	buf_add(b, "]}");
 }
@@ -328,6 +380,75 @@ view_by_id(uint64_t id)
 		}
 	}
 	return NULL;
+}
+
+/*
+ * PEEK. `{"cmd":"peek","on":true}` fades every window; false restores them.
+ *
+ * A verb rather than an action, because it is neither: an action is a thing a
+ * keybind does once, and this is a state that lasts exactly as long as a
+ * pointer dwells somewhere. It takes no view and names nothing, so there is
+ * nothing here to aim.
+ *
+ * ABSENT `on` IS OFF. A caller that says "peek" and nothing else is asking for
+ * something it did not specify, and the safe reading of that is the state that
+ * cannot get stuck — a peek left on is a desktop whose windows have all gone
+ * transparent with no obvious way back.
+ */
+static void
+cmd_peek(struct buf *b, const char *line)
+{
+	uint64_t on = 0;
+
+	req_int(line, "on", &on);
+	if (!on && strstr(line, "\"on\":true")) {
+		on = 1;
+	}
+	kdos_peek_set(on != 0);
+	buf_add(b, "{\"ok\":true}");
+}
+
+/*
+ * THUMB. `{"cmd":"thumb","app_id":"foot","w":64,"h":36}` writes a picture of
+ * that application's front window and answers with the path.
+ *
+ * THE PATH IS THE COMPOSITOR'S TO CHOOSE and is never taken from the request.
+ * A verb that wrote wherever a caller pointed it would be a file-write
+ * primitive with a compositor's privileges, on a socket whose only gate is the
+ * peer's uid — and the appbox shares that uid. One fixed name in
+ * $XDG_RUNTIME_DIR, overwritten every time.
+ *
+ * Answering ok:false for a window whose pixels cannot be read is not a failure
+ * to report loudly: a dmabuf client simply has no host-readable buffer, which
+ * is the common case on real hardware, and the caller's job is to carry on
+ * without a picture.
+ */
+static void
+cmd_thumb(struct buf *b, const char *line)
+{
+	char app[128];
+	uint64_t w = 0, h = 0;
+	const char *run = getenv("XDG_RUNTIME_DIR");
+	char path[512];
+
+	if (!req_str(line, "app_id", app, sizeof(app))) {
+		resp_err(b, "thumb needs an \"app_id\"");
+		return;
+	}
+	if (!run || !*run) {
+		resp_err(b, "no XDG_RUNTIME_DIR");
+		return;
+	}
+	req_int(line, "w", &w);
+	req_int(line, "h", &h);
+	snprintf(path, sizeof(path), "%s/kdos-thumb.ppm", run);
+	if (!kdos_thumb_write(app, (int)w, (int)h, path)) {
+		resp_err(b, "no readable buffer for that window");
+		return;
+	}
+	buf_add(b, "{\"ok\":true,");
+	json_kv_str(b, "path", path);
+	buf_add_char(b, '}');
 }
 
 static void
@@ -387,12 +508,19 @@ dispatch(struct buf *b, const char *line)
 	}
 	if (!strcmp(cmd, "list")) {
 		cmd_list(b);
+	} else if (!strcmp(cmd, "boxes")) {
+		cmd_boxes(b);
 	} else if (!strcmp(cmd, "outputs")) {
 		cmd_outputs(b);
 	} else if (!strcmp(cmd, "run")) {
 		cmd_run(b, line);
+	} else if (!strcmp(cmd, "peek")) {
+		cmd_peek(b, line);
+	} else if (!strcmp(cmd, "thumb")) {
+		cmd_thumb(b, line);
 	} else {
-		resp_err(b, "unknown cmd — list, run or outputs");
+		resp_err(b,
+			"unknown cmd — list, run, outputs, peek or thumb");
 	}
 	buf_add_char(b, '\n');
 }

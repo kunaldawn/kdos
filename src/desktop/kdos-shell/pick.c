@@ -58,7 +58,7 @@ struct row {
 static struct row rows[MAX_ROWS];
 static int nrows, sel, top;
 /* The viewport follows the SELECTION only when the selection is what moved —
- * see sh_list_wheel. A clamp that followed unconditionally would undo a page
+ * see kch_list_wheel. A clamp that followed unconditionally would undo a page
  * scroll on the next frame. */
 static int sel_follow = 1;
 static char cwd[1024];
@@ -511,7 +511,7 @@ static void draw(const char *title)
 		list_rows = 1;
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), title, KT_ACCENT, KT_SURFACE, 0);
+	sh_frame(w, h, title, KT_ACCENT, KT_SURFACE, 0);
 
 	/* The path, elided from the LEFT: the end of a path is the part that
 	 * identifies it, and truncating the tail is how a chooser shows you
@@ -574,13 +574,14 @@ static void draw(const char *title)
 	}
 
 	/*
-	 * ONE COLUMN THAT SAYS THERE IS MORE — see sh_list_scrollbar. It goes
+	 * ONE COLUMN THAT SAYS THERE IS MORE — see kch_scrollbar. It goes
 	 * on the list pane's own right edge, which is the divider before the
 	 * preview when there is one and the window's border when there is
 	 * not. A directory of forty files gave no sign that thirty of them
 	 * were below the fold.
 	 */
-	sh_list_scrollbar(lw - 1, list_top, list_rows, nrows, top, KT_SURFACE);
+	kch_scrollbar(0, lw - 1, list_top, list_rows, nrows, top,
+		      KT_SURFACE);
 
 	if (pane_x < w) {
 		ktui_draw_vline(pane_x - 1, list_top, list_rows, KT_G_VL,
@@ -920,9 +921,22 @@ int pick_main(int argc, char **argv)
 	}
 
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = KWL_ROLE_TOPLEVEL,
 		.cols = 64,
 		.rows = 22,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Files",
 		.app_id = "kdos-pick",
 		.font = font,
 		.keyboard = 1,
@@ -934,6 +948,9 @@ int pick_main(int argc, char **argv)
 		return 2;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	int rc = 1;
 	while (!kwl_should_close()) {
@@ -945,7 +962,7 @@ int pick_main(int argc, char **argv)
 		int list_rows = ktui_h - 5;
 		if (list_rows < 1)
 			list_rows = 1;
-		sh_list_clamp(&top, sel, nrows, list_rows, sel_follow);
+		kch_list_clamp(&top, sel, nrows, list_rows, sel_follow);
 		sel_follow = 0;
 
 		/* What the preview pane wants decoded, from the selection. */
@@ -1005,6 +1022,15 @@ int pick_main(int argc, char **argv)
 				     row >= 0 && row < nrows &&
 				     ev.mx < list_w;
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar. */
+				int bt;
+
+				bt = kch_scrollbar_drag(ev.my);
+				if (bt >= 0 && kch_scrollbar_grabbed() == 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (on_row) {
 					sel = row;
 					sel_follow = 1;
@@ -1022,13 +1048,27 @@ int pick_main(int argc, char **argv)
 				}
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt;
+
+				bt = kch_scrollbar_press(0, ev.mx, ev.my);
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
 				int lr = ktui_h - 5 > 0 ? ktui_h - 5 : 1;
-				if (!sh_list_wheel(up, &top, nrows, lr)) {
+				if (!kch_list_wheel(up, &top, nrows, lr)) {
 					sel += up ? -1 : 1;
 					sel_follow = 1;
 				}

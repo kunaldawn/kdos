@@ -1,0 +1,474 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/appbox/bake — build the pack set on the HOST
+#
+# The sandboxed ISO build has no network, so the packs are produced here and
+# committed, exactly as the monolithic image was. Run via `make fetch-packs`.
+#
+# AN APP PACK IS BUILT BY CAPTURING A CONTAINER'S OWN TOP LAYER, and that is
+# the whole design. Build `FROM <parent>`, `apt-get install` the one
+# application, and the image's top layer diff IS the file set — podman does the
+# diffing and mkfs.erofs does the packing. There is no hand-curated file list
+# anywhere, which is the thing that would rot first.
+#
+# TWO PROPERTIES THIS DEPENDS ON, both measured (testing/notes/packs-w0.txt):
+#
+#   - the on-disk overlay diff uses OVERLAYFS's whiteout convention (a
+#     character device 0:0 with the deleted file's own name) and real
+#     `trusted.overlay.opaque` xattrs. The OCI tar convention `.wh.<name>` is a
+#     different thing and merges with the deleted file STILL PRESENT — so this
+#     reads the layer off disk and never through `podman save`.
+#   - those markers survive mkfs.erofs and are honoured by overlayfs, which is
+#     what makes layering work and the flatten step unnecessary.
+#
+# IT MUST RUN ROOTFUL. mkfs.erofs preserves the xattrs and the device nodes
+# only as root, and podman's overlay store only writes real ones as root. That
+# root is a CONTAINER's, not the machine's — see the re-exec below.
+
+set -e
+cd "$(dirname "$0")"
+
+REPO="$(cd ../.. && pwd)"
+
+# ── everything below this block runs INSIDE a container ────────────────────
+#
+# NOTHING IS INSTALLED ON THE DEVELOPER'S MACHINE and there is no sudo prompt:
+# a rootful docker daemon hands a container root, which is what mkfs.erofs and
+# podman's overlay store both need. `KDOS_BAKE_INNER` is what tells the second
+# entry it is already there.
+#
+# Three of the flags are load-bearing:
+#   --privileged      podman inside needs to mount and to write trusted.*
+#   --network=host    so /etc/resolv.conf inside is the one the host resolves
+#                     with, and the loopback the stub names is the host's
+#   -v .../var/lib/containers   a REAL directory for podman's store, because
+#                     an overlay upperdir on docker's own overlay2 root is
+#                     refused by the kernel and podman would silently drop to
+#                     vfs, which publishes no UpperDir for `layer_dir()`
+#
+# KDOS_UID/KDOS_GID come back down so the packs land owned by whoever ran this
+# rather than by root — they are committed, and root-owned files in a git tree
+# are somebody else's problem later.
+if [ -z "${KDOS_BAKE_INNER:-}" ]; then
+	ENGINE_OUT="${ENGINE_OUT:-}"
+	if [ -z "$ENGINE_OUT" ]; then
+		if command -v docker >/dev/null 2>&1; then ENGINE_OUT=docker
+		elif command -v podman >/dev/null 2>&1; then ENGINE_OUT=podman
+		else echo "appbox/bake: need docker or podman on the host" >&2; exit 1
+		fi
+	fi
+	echo "==> building the bake image"
+	$ENGINE_OUT build -q -t kdos-bake -f "$REPO/ports/appbox/Containerfile.bake" \
+		"$REPO/ports/appbox" >/dev/null
+	mkdir -p "$REPO/build/podman"
+
+	# THE SNAPSHOT IS RESOLVED OUT HERE, because the podman inside the bake
+	# container can build but cannot RUN: there are no cgroup controllers
+	# under /sys/fs/cgroup for it, and `podman run` dies on the pids
+	# controller. The outer engine has no such trouble, and what crosses the
+	# boundary is a timestamp.
+	SNAP_OUT=$(sed -n 's/^[[:space:]]*snapshot[[:space:]]*=[[:space:]]*//p' \
+		"$PWD/packs.conf" | tail -1)
+	if [ "$SNAP_OUT" = auto ]; then
+		SNAP_OUT=$($ENGINE_OUT run --rm debian:trixie-slim \
+			sed -n 's|^# *https\?://snapshot.debian.org/archive/debian/\([0-9TZ]*\)$|\1|p' \
+			/etc/apt/sources.list.d/debian.sources 2>/dev/null | head -1)
+		[ -n "$SNAP_OUT" ] || SNAP_OUT=off
+	fi
+
+	# A key outside the repository is not visible to the container, so it
+	# is mounted read-only and the inner run is told where it landed.
+	KEYMOUNT=
+	if [ -n "${KDOS_PACK_KEY:-}" ] && [ -f "$KDOS_PACK_KEY" ]; then
+		KEYMOUNT="-v $KDOS_PACK_KEY:/kdos-signing.key:ro -e KDOS_PACK_KEY=/kdos-signing.key"
+	fi
+	echo "==> entering it"
+	exec $ENGINE_OUT run --rm --privileged --network=host \
+		-v "$REPO":/kdos \
+		-v "$REPO/build/podman":/var/lib/containers \
+		-e KDOS_BAKE_INNER=1 \
+		-e KDOS_UID="$(id -u)" -e KDOS_GID="$(id -g)" \
+		-e ONLY="${ONLY:-}" -e SIGN="${SIGN:-}" -e PREFIX="${PREFIX:-}" \
+		-e SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-}" \
+		-e KDOS_SNAPSHOT="$SNAP_OUT" \
+		$KEYMOUNT \
+		kdos-bake bash /kdos/ports/appbox/bake
+fi
+
+OUT="${OUT:-$PWD/packs}"
+CONF="${CONF:-$PWD/packs.conf}"
+ONLY="${ONLY:-}"
+SIGN="${SIGN:-}"
+# ONE SIGNATURE OVER THE INDEX COVERS EVERY PACK, because the index carries
+# each pack's C: hash — which is the property libksig's binhost was designed
+# around and the reason there is no sidecar per pack here. Without it a pack is
+# verified against a hash in its OWN footer, which a tamperer rewrites as
+# easily as the payload: that is integrity, not authenticity.
+#
+# The private half lives in build/ and is gitignored; the public half is
+# committed to fs/etc/kdos/keys and ships. A tree with no key still bakes, and
+# says the packs are unsigned rather than pretending otherwise.
+# KDOS_PACK_KEY names it wherever it lives; the default is in the tree only
+# because that is the one place both the host and the container can see it, and
+# `make clean` preserves build/keys for exactly this reason.
+if [ -z "$SIGN" ]; then
+	for k in "${KDOS_PACK_KEY:-}" "$REPO/build/keys/kdos-packs.key"; do
+		[ -n "$k" ] && [ -f "$k" ] && { SIGN="$k"; break; }
+	done
+fi
+PREFIX="${PREFIX:-}"
+[ -n "$PREFIX" ] || PREFIX=localhost/kdos-pack
+
+ENGINE="${ENGINE:-}"
+if [ -z "$ENGINE" ]; then
+	if command -v podman >/dev/null 2>&1; then ENGINE=podman
+	elif command -v docker >/dev/null 2>&1; then ENGINE=docker
+	else echo "appbox/bake: need podman or docker" >&2; exit 1
+	fi
+fi
+# THE BUILD CONTAINER NEEDS A NAMESERVER IT CAN REACH, and on a host running
+# systemd-resolved it does not get one: /etc/resolv.conf names the stub
+# 127.0.0.53, the engine copies that file in, and inside a container that
+# address is the container's OWN loopback with nothing listening on it. What
+# apt then prints is thirty "Unable to locate package" lines and never the word
+# DNS. Sharing the host's network namespace makes the stub address correct
+# again, because the loopback is then the host's.
+NETARGS=()
+if [ -r /etc/resolv.conf ] && ! awk '
+	$1 == "nameserver" && $2 !~ /^127\./ && $2 != "::1" { real = 1 }
+	END { exit !real }' /etc/resolv.conf; then
+	echo "==> /etc/resolv.conf names only a loopback resolver — building with --network=host"
+	NETARGS=(--network=host)
+fi
+
+command -v mkfs.erofs >/dev/null 2>&1 || {
+	echo "appbox/bake: mkfs.erofs is not on this host (erofs-utils)" >&2
+	exit 1
+}
+[ "$(id -u)" = 0 ] || {
+	echo "appbox/bake: must run as root — the layer's whiteouts and" >&2
+	echo "              trusted.overlay xattrs are root's to read and write" >&2
+	exit 1
+}
+
+# kdos-pack is a TARGET binary and this runs on the host, so build a host copy
+# of the one program needed. It links nothing but libc: a two-second compile,
+# the same shape `ports/fetch` uses for kpkg.
+KPACK="$(mktemp -d)/kdos-pack"
+cc -O2 -std=gnu11 -D_GNU_SOURCE -o "$KPACK" \
+	-I"$REPO/src/libs/libkbase" -I"$REPO/src/libs/libksig" \
+	-I"$REPO/src/libs/libkpkg" -I"$REPO/src/libs/libkpack" \
+	"$REPO"/src/packages/kdos-pack/main.c "$REPO"/src/libs/libkbase/*.c \
+	"$REPO"/src/libs/libksig/*.c "$REPO"/src/libs/libksig/monocypher/*.c \
+	"$REPO"/src/libs/libkpkg/*.c "$REPO"/src/libs/libkpack/*.c
+
+mkdir -p "$OUT"
+CTX="$(mktemp -d)"
+trap 'rm -rf "$CTX"' EXIT
+
+# The top layer's diff directory, which IS what this stage added. podman
+# reports it as UpperDir for the overlay driver; a store on any other driver
+# has no such directory and this says so rather than packing the whole image.
+layer_dir() {
+	local d
+	d=$($ENGINE image inspect --format '{{.GraphDriver.Data.UpperDir}}' "$1" 2>/dev/null)
+	[ -n "$d" ] && [ -d "$d" ] || return 1
+	printf '%s' "$d"
+}
+
+# WHAT A DEFAULT INSTALL SUGGESTS IS ONE LINE, not a flag repeated down forty
+# rows. It becomes `recommended = yes` in the pack's own metadata and `R:yes`
+# in the index, which is the only thing kinstall's Applications page preselects
+# from — with no row carrying it, that page offers a medium of applications
+# with nothing ticked.
+RECOMMEND=$(sed -n 's/^[[:space:]]*recommended[[:space:]]*=[[:space:]]*//p' "$CONF" | tr '\n' ' ')
+
+# ── every row is checked before a single one is built ──────────────────────
+#
+# A row naming a package Debian does not have costs a full row build to find,
+# and they arrive one at a time: `codium` is not in Debian at all, `spectacle`
+# is `kde-spectacle`, `winetricks` is in contrib. Three partial bakes to learn
+# three names. `apt-get -s install` resolves the lot in about a minute and
+# reports every bad row at once.
+#
+# It is a WARNING, not a refusal: a `deb` row installs something apt cannot see
+# yet, and an operator who knows their row is fine should not be blocked by a
+# check that cannot know it.
+if [ -z "${SKIP_ROWCHECK:-}" ] && [ -z "$ONLY" ]; then
+	echo "==> checking every row's package names against the archive"
+	rowcheck=$(mktemp)
+	{
+		echo "apt-get -o APT::Update::Error-Mode=any update >/dev/null 2>&1"
+		echo "dpkg --add-architecture i386 >/dev/null 2>&1"
+		echo "apt-get update >/dev/null 2>&1"
+		while read -r ck cid cparent crest; do
+			case "$ck" in ''|'#'*|recommended|env|deb|cmd|snapshot) continue ;; esac
+			printf 'apt-get -s install -y --no-install-recommends %s >/dev/null 2>&1 || echo "  %s"\n' \
+				"$crest" "$cid"
+		done < "$CONF"
+	} > "$rowcheck"
+	bad_rows=$($ENGINE run --rm "${NETARGS[@]}" -v "$rowcheck":/c.sh:ro \
+		debian:trixie-slim bash /c.sh 2>/dev/null || true)
+	rm -f "$rowcheck"
+	if [ -n "$bad_rows" ]; then
+		echo "    rows whose packages apt cannot resolve:" >&2
+		echo "$bad_rows" >&2
+		echo "    (a 'deb' row is expected here; anything else is a bad name)" >&2
+	else
+		echo "    every row resolves"
+	fi
+fi
+
+# ── the archive this bake reads from ───────────────────────────────────────
+#
+# WITHOUT A PIN A PACK SET IS NOT REPRODUCIBLE. `apt-get install` resolves
+# against whatever Debian is serving at that moment, so the same packs.conf
+# gives different packs tomorrow — and an upstream rename lands mid-bake, which
+# is how `spectacle`, `codium` and `winetricks` were each discovered by building
+# until it broke.
+#
+# `snapshot = auto` TAKES THE DATE FROM THE BASE IMAGE ITSELF. Debian's official
+# images record the snapshot they were built from as a comment in their own
+# sources file, so reading it means the packages installed on top can never
+# disagree with the rootfs underneath them. A literal timestamp pins explicitly;
+# `off` reads the live archive.
+SNAP="${KDOS_SNAPSHOT:-}"
+if [ -z "$SNAP" ]; then
+	SNAP=$(sed -n 's/^[[:space:]]*snapshot[[:space:]]*=[[:space:]]*//p' "$CONF" | tail -1)
+	[ -n "$SNAP" ] || SNAP=off
+fi
+case "$SNAP" in
+	off|auto) SNAP=off
+		  echo "==> reading the live archive — this bake is not reproducible" ;;
+	*)        echo "==> pinned to snapshot $SNAP" ;;
+esac
+
+built=0
+unchanged=0
+failed=""
+
+# The version a pack already carries, for the "unchanged" line.
+kpk_ver() { "$KPACK" info "$1" 2>/dev/null | sed -n 's/^version *//p' | head -1; }
+
+# A ROW THAT FAILS IS RECORDED AND SKIPPED, not fatal. `set -e` on the whole
+# loop meant one application Debian had renamed threw away every pack built
+# before it — thirty of them, an hour's work, for a row the operator would have
+# dropped in a second. The run still exits non-zero and names what failed, so
+# nothing quietly ships short.
+row_failed() {
+	echo "    !! $1 FAILED — skipping" >&2
+	failed="$failed $1"
+}
+
+while read -r kind id parent rest; do
+	case "$kind" in ''|'#'*|recommended|env|deb|cmd|snapshot) continue ;; esac
+	# ONLY is a LIST, so a run that lost rows to one bad recipe is resumed
+	# with the rows it lost rather than from the top.
+	if [ -n "$ONLY" ]; then
+		case " $ONLY " in *" $id "*) ;; *) continue ;; esac
+	fi
+
+	img="$PREFIX/$id:latest"
+	if [ "$parent" = "-" ]; then
+		from="debian:trixie-slim"
+	else
+		from="$PREFIX/$parent:latest"
+	fi
+
+	echo "==> $id  (from ${parent:--}, $(echo "$rest" | wc -w) package(s))"
+
+	# A `:i386` package needs the architecture enabling first — the image is
+	# amd64 and apt answers "wine32 has no installation candidate", naming
+	# the package rather than the architecture it is not looking in.
+	arch_pre=
+	case "$rest" in *:i386*) arch_pre="dpkg --add-architecture i386 && " ;; esac
+
+	# NOT EVERY APPLICATION IS IN DEBIAN. VSCodium is the case: MIT, no
+	# telemetry, and published only as a .deb on its own releases page. A
+	# `deb <pack> <releases-api> <asset-pattern>` row fetches the newest
+	# asset matching the pattern and lets apt resolve its dependencies,
+	# which is the same thing the monolith's Containerfile does.
+	deb_pre= deb_post=
+	while read -r dk did durl dpat _; do
+		[ "$dk" = deb ] && [ "$did" = "$id" ] || continue
+		deb_pre="curl -fsSL '$durl' \\
+      | grep browser_download_url | grep '$dpat' | head -1 \\
+      | cut -d'\"' -f4 | xargs -r curl -fsSLo /tmp/pack.deb && "
+		deb_post=" /tmp/pack.deb"
+	done < "$CONF"
+	# ONE RUN, so the image has exactly two layers over its parent — the
+	# ENV is free — and the top one is this row's own diff.
+	# THE BUILD CONTEXT IS AN EMPTY DIRECTORY, not $OUT. Nothing here is COPY'd
+	# in, and $OUT is where every finished .kpack lands — handing it as the
+	# context makes each successive row's context the whole pack set built so
+	# far, which by the last application row is gigabytes of already-compressed
+	# image read for nothing.
+	# HTTP AND NOT HTTPS, and it is not laziness. The base row is the one
+	# that INSTALLS ca-certificates, so pinning it over TLS is a
+	# chicken-and-egg: apt cannot verify the certificate and the row dies
+	# on "certificate verify failed". Debian's own default sources are
+	# http for the same reason — an apt repository's integrity is the GPG
+	# signature named by Signed-By, not the transport, and a snapshot is
+	# signed exactly like the live archive.
+	#
+	# The sources file is WRITTEN rather than sed'd: a rewrite that depends
+	# on the base image's exact formatting breaks the day Debian reflows it,
+	# and silently, by leaving the live URI in place. Check-Valid-Until is
+	# off because a snapshot's Release file is stale by definition.
+	pin=
+	if [ "$SNAP" != off ]; then
+		pin="printf '%s\\n' \\
+'Types: deb' \\
+'URIs: http://snapshot.debian.org/archive/debian/$SNAP/' \\
+'Suites: trixie trixie-updates' \\
+'Components: main' \\
+'Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp' \\
+'' \\
+'Types: deb' \\
+'URIs: http://snapshot.debian.org/archive/debian-security/$SNAP/' \\
+'Suites: trixie-security' \\
+'Components: main' \\
+'Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp' \\
+ > /etc/apt/sources.list.d/debian.sources && \\
+    echo 'Acquire::Check-Valid-Until \"false\";' > /etc/apt/apt.conf.d/99snapshot && "
+	fi
+
+	cat > "$CTX/Containerfile" <<EOF
+FROM $from
+ENV DEBIAN_FRONTEND=noninteractive
+RUN ${pin}${arch_pre}${deb_pre}apt-get -o APT::Update::Error-Mode=any update \\
+    && apt-get install -y --no-install-recommends $rest${deb_post} \\
+    && rm -f /tmp/pack.deb && rm -rf /var/lib/apt/lists/*
+EOF
+	if ! $ENGINE build "${NETARGS[@]}" -t "$img" -f "$CTX/Containerfile" \
+	     "$CTX" >/dev/null; then
+		rm -f "$CTX/Containerfile"
+		row_failed "$id"
+		continue
+	fi
+	rm -f "$CTX/Containerfile"
+
+	if [ "$parent" = "-" ]; then
+		#
+		# THE BASE IS THE WHOLE FILESYSTEM, NOT A DIFF, and this is the
+		# one row where that is true. Every row above it is packed from
+		# its own top layer, which is a diff over the row below — but a
+		# diff over `debian:trixie-slim` has no bottom, and a stack
+		# composed from one comes up with no /bin, no /lib and no shell
+		# in it. Measured: the merge held etc root run tmp usr var and
+		# nothing that could be executed.
+		#
+		# Exported and re-extracted rather than read out of the store,
+		# because the base's OWN content is spread across the image's
+		# layers and only the export flattens them.
+		#
+		diff="$OUT/.rootfs.$id"
+		rm -rf "$diff"
+		mkdir -p "$diff"
+		cid=$($ENGINE create "$img" /bin/true)
+		$ENGINE export "$cid" | tar -x -C "$diff" \
+			--exclude='dev/*' --exclude='proc/*' --exclude='sys/*'
+		$ENGINE rm -f "$cid" >/dev/null
+	else
+		diff=$(layer_dir "$img") || {
+			echo "    the store does not expose a layer directory —" >&2
+			echo "    the overlay driver is what this needs" >&2
+			row_failed "$id"
+			continue
+		}
+	fi
+
+	meta="$OUT/.$id.meta"
+	icon="$OUT/.$id.png"
+	rm -f "$icon"
+	# THE VERSION IS THE BAKE'S OWN CLOCK, and it must not be
+	# SOURCE_DATE_EPOCH. That is a PINNED constant — it exists so mkfs.erofs
+	# stamps every file with the same mtime and a pack is byte-identical
+	# across a rebuild — so deriving the version from it gave every pack of
+	# every bake the same `2025.01.01-1`. `kdos app update` compares with
+	# kp_vercmp, so a medium with genuinely newer content was never newer
+	# and the whole update lane was inert.
+	#
+	# Minute precision, not day: two bakes on one afternoon is the ordinary
+	# case while a row is being fixed, and a day-granular version would
+	# reintroduce the same collision in miniature.
+	ver="${KDOS_PACK_VERSION:-$(date -u +%Y.%m.%d.%H%M)}"
+	rec=
+	case " $RECOMMEND " in *" $id "*) rec=--recommended ;; esac
+
+	# `env <pack> NAME=VALUE` rows in packs.conf, for THIS pack. They go
+	# into its metadata so the fact travels with the packages it describes
+	# — the pack lane has no image to hang a label on.
+	envs=
+	while read -r ek eid ev _; do
+		[ "$ek" = env ] && [ "$eid" = "$id" ] && envs="$envs --env $ev"
+		[ "$ek" = cmd ] && [ "$eid" = "$id" ] && envs="$envs --command $ev"
+	done < "$CONF"
+
+	python3 ./harvest.py "$diff" "$id" "$kind" "$parent" \
+		--out "$meta" --icon "$icon" --version "$ver" $rec $envs
+
+	# BUILT BESIDE THE OLD ONE, because whether to keep it is decided by
+	# comparing the two.
+	new="$OUT/.new.$id.kpack"
+	rm -f "$new"
+	if [ -s "$icon" ]; then
+		"$KPACK" build "$diff" "$meta" "$new" --icon "$icon"
+	else
+		"$KPACK" build "$diff" "$meta" "$new"
+	fi
+	rm -f "$meta" "$icon"
+	[ "$parent" = "-" ] && rm -rf "$diff"
+
+	# A PACK WHOSE FILESYSTEM DID NOT CHANGE KEEPS ITS FILE AND ITS VERSION.
+	#
+	# The version is the bake's clock, so every rebake produces a different
+	# metadata blob and therefore a different file — all 47 of them, 7.2 GB,
+	# for a run where nothing inside any pack moved. `imagehash` is the
+	# sha256 of the EROFS extent alone and answers the only question that
+	# matters here: did the CONTENTS change. The footer's own hash cannot,
+	# because it covers the metadata that carries the version.
+	#
+	# Keeping the old file also keeps its version, which is what makes a
+	# version bump mean something: `kdos app update` compares versions, and
+	# one that moved without the contents moving is a download for nothing.
+	keep=0
+	if [ -f "$OUT/$id.kpack" ]; then
+		oldh=$("$KPACK" imagehash "$OUT/$id.kpack" 2>/dev/null || true)
+		newh=$("$KPACK" imagehash "$new" 2>/dev/null || true)
+		[ -n "$oldh" ] && [ "$oldh" = "$newh" ] && keep=1
+	fi
+	if [ "$keep" = 1 ]; then
+		rm -f "$new"
+		echo "    unchanged — keeping $id.kpack $(kpk_ver "$OUT/$id.kpack")"
+		unchanged=$((unchanged + 1))
+	else
+		mv -f "$new" "$OUT/$id.kpack"
+		[ -n "$SIGN" ] && "$KPACK" sign "$OUT/$id.kpack" "$SIGN"
+		built=$((built + 1))
+	fi
+done < "$CONF"
+
+echo "==> indexing"
+[ -n "$SIGN" ] || echo "    no signing key — the index will be unsigned"
+if [ -n "$SIGN" ]; then
+	"$KPACK" index "$OUT" --sign "$SIGN"
+else
+	"$KPACK" index "$OUT"
+fi
+# The packs are committed, so they must not be root's.
+if [ -n "${KDOS_UID:-}" ]; then
+	chown -R "$KDOS_UID:${KDOS_GID:-$KDOS_UID}" "$OUT"
+fi
+
+echo "$built built, $unchanged unchanged, in $OUT"
+if [ -n "$failed" ]; then
+	echo "FAILED:$failed" >&2
+	exit 1
+fi

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kiwix-tools
+version     = 3.8.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/kiwix/kiwix-tools/archive/refs/tags/$version.tar.gz
+sha256      = 7148522730a66cffb58a3b3674c6cbac548a1f95fd08c5f330565aad70c14d14  kiwix-tools-3.8.2.tar.gz
+description = kiwix-serve, kiwix-manage and kiwix-search over ZIM archives
+homepage    = https://github.com/kiwix/kiwix-tools
+depends     = meson libkiwix

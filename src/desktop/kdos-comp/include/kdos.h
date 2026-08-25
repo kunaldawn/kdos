@@ -167,6 +167,36 @@ struct kdos_conf {
 	 * the rest of the chrome's command line.
 	 */
 	char clock_format[64];
+
+	/*
+	 * THE BAR'S OWN FONT, and it is separate from chrome_font on purpose.
+	 *
+	 * A cell is half as wide as the font is tall, so the panel's thickness
+	 * IS this number: Terminus at 20 gives a 10x20 cell and a two-row bar
+	 * 40 pixels tall, which is what a taskbar has been since Windows 7.
+	 * chrome_font stays at the console's own 32 for the menus and popups,
+	 * which are read rather than glanced at. Empty falls back to
+	 * chrome_font, and then to libkwl's default.
+	 *
+	 * Terminus is a BITMAP face: name a size it actually has
+	 * (12/14/16/18/20/22/24/28/32) or fcft answers with the nearest strike
+	 * and the bar is a pixel off what every arithmetic here assumes.
+	 */
+	char panel_font[128];
+
+	/*
+	 * The gap between the bar and the screen edge, in pixels. 0 is the
+	 * edge-to-edge bar; non-zero floats it, and the exclusive zone grows
+	 * by the same amount so a maximized window does not slide underneath.
+	 */
+	int panel_margin;
+
+	/*
+	 * The bar's body opacity, in percent. Below 100 the panel's background
+	 * slot is painted translucent and the desktop shows through; the text
+	 * and the fills stay ink.
+	 */
+	int panel_opacity;
 };
 
 extern struct kdos_conf kdos_conf;
@@ -264,6 +294,23 @@ void kdos_group_ssd_update(struct ssd *ssd);
 void kdos_group_ssd_clear(struct view *view);
 void kdos_group_finish(void);
 
+/*
+ * The box chip — a square of the box's own accent at the left of the title
+ * area, so the frame says what the taskbar button says. The colour is
+ * `accent =` in the box's profile and nothing else: a box that never declared
+ * one wears the session's accent and draws NO chip, because a marker on every
+ * window on a machine where every window is boxed says nothing.
+ */
+int kdos_boxchip_width(struct view *view);	/* 0 when there is no chip  */
+void kdos_boxchip_ssd_update(struct ssd *ssd, int x);
+/* From ssd_titlebar_destroy(): the chip went with the titlebar. */
+void kdos_boxchip_ssd_clear(struct view *view);
+void kdos_boxchip_forget(struct view *view);
+/* From reload_config_and_theme(): an accent switch changes which windows
+ * wear a chip, so the resolved answer is dropped before the SSDs rebuild. */
+void kdos_boxchip_reload(void);
+void kdos_boxchip_finish(void);
+
 /* Idle policy: dim -> lock -> outputs off, from last activity. */
 void kdos_idle_init(void);
 void kdos_idle_finish(void);
@@ -318,5 +365,40 @@ struct seat;
 struct wlr_layer_surface_v1;
 void kdos_layer_release_on_demand(struct seat *seat,
 	struct wlr_layer_surface_v1 *pressed);
+
+/*
+ * PEEK — fade every window so the desktop behind them can be seen, for as
+ * long as the pointer dwells on Show Desktop. Transient: it changes no
+ * toplevel state and nothing a client can observe. See kdos-peek.c.
+ */
+void kdos_peek_set(bool on);
+void kdos_peek_finish(void);
+
+/*
+ * A THUMBNAIL of the most recently active window with this app_id, written to
+ * `path` as a binary PPM. False when there is no such window, or when its
+ * pixels are not host-readable — a dmabuf client has none, and every caller
+ * must be built to do without. See kdos-thumb.c.
+ */
+bool kdos_thumb_write(const char *app_id, int w, int h, const char *path);
+
+/*
+ * THE APP_ID LEDGER `kdos appid` checks a launcher against. Recorded when a
+ * window actually MAPS, which is what makes that tool a measurement rather
+ * than a reading of StartupWMClass. See kdos-appid.c.
+ */
+struct view;
+void kdos_appid_observe(const char *app_id);
+void kdos_appid_observe_view(struct view *view);
+
+/*
+ * A view's BOX — the app_id of its wp_security_context_v1, which kdos-boxsock
+ * sets to the box name — and the instance that distinguishes two runs of one
+ * application. NULL for a host window. Defined in view.c beside the lookup
+ * server.c already does.
+ */
+struct view;
+const char *kdos_view_box(struct view *view);
+const char *kdos_view_instance(struct view *view);
 
 #endif /* KDOS_H */

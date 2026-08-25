@@ -195,6 +195,11 @@ static void plan_services(KbBuf *b, int json)
 
 static void plan_dump(int json)
 {
+	/* The scan FIRST: whether the Packs step runs at all is a question
+	 * about the medium, and install_plan() answers it. Planning before
+	 * scanning reports the step skipped on a machine that would carry
+	 * three gigabytes of applications. */
+	ki_packs_enter();
 	/* The same call the wizard makes on its way to the install page, so
 	 * the steps listed here are the steps that would run — including which
 	 * ones these answers skip. */
@@ -230,6 +235,29 @@ static void plan_dump(int json)
 		printf("theme         %s   appbox %s\n", cfg.theme,
 		       cfg.with_appbox ? "yes" : "no");
 		printf("services off  %s\n", svc.n ? svc.p : "-");
+		/* THE PACKS AND WHAT THEY COST. `plan` is what somebody pastes
+		 * into a bug report, and "the applications" is exactly the
+		 * part an installed system is judged on. */
+		if (ki_packs_present) {
+			printf("packs         %s\n",
+			       cfg.packs[0] ? cfg.packs : "(none chosen)");
+			/* The line above is the ANSWER FILE's set, which names
+			 * applications; the runtimes under them are derived
+			 * and are most of the cost, so a reader who saw only
+			 * the first line could not account for the second. */
+			printf("packs with    ");
+			for (int i = 0, first = 1; i < ki_npack; i++)
+				if (ki_pack[i].chosen &&
+				    strcmp(ki_pack[i].kind, "app") &&
+				    strcmp(ki_pack[i].kind, "data")) {
+					printf("%s%s", first ? "" : " ",
+					       ki_pack[i].id);
+					first = 0;
+				}
+			printf("\n");
+			printf("packs cost    %s\n",
+			       kb_human_size(ki_packs_bytes()));
+		}
 		printf("dry run       %s\n", cfg.dry_run ? "yes" : "no");
 		printf("\nsteps\n");
 		for (int i = 0; i < inst.nsteps; i++)
@@ -277,6 +305,23 @@ static void plan_dump(int json)
 	kb_buf_printf(&b, ", \"appbox\": %s, \"dry_run\": %s",
 		      cfg.with_appbox ? "true" : "false",
 		      cfg.dry_run ? "true" : "false");
+	kb_buf_str(&b, ",\n  \"packs\": [");
+	{
+		int first = 1;
+		for (int i = 0; i < ki_npack; i++) {
+			if (!ki_pack[i].chosen)
+				continue;
+			kb_buf_printf(&b, "%s\n    {\"id\": ", first ? "" : ",");
+			first = 0;
+			kb_json_str(&b, ki_pack[i].id);
+			kb_buf_str(&b, ", \"kind\": ");
+			kb_json_str(&b, ki_pack[i].kind);
+			kb_buf_printf(&b, ", \"bytes\": %llu}",
+				      ki_pack[i].size);
+		}
+		kb_buf_printf(&b, "%s], \"packs_bytes\": %llu",
+			      first ? "" : "\n  ", ki_packs_bytes());
+	}
 	kb_buf_str(&b, ",\n  \"services_off\": [");
 	if (svc.n)
 		kb_buf_str(&b, svc.p);

@@ -190,6 +190,31 @@ int appid_main(int argc, char **argv)
 	}
 	collect_observed(&seen);
 
+	/*
+	 * THE LEDGER IS THE ANSWER; THE LIVE SESSION IS THE FALLBACK. A home
+	 * that has not run this compositor yet has no file, and refusing to
+	 * report on the windows that are on the screen at that moment would be
+	 * a checker that cannot check anything on a fresh boot. What the live
+	 * route cannot do is speak for an application that is not running, so
+	 * it is used only when the recorded set is empty and it says which one
+	 * it used — the two answer different questions and reporting them as
+	 * one would be the confident wrong answer this tool exists to avoid.
+	 */
+	if (seen.n == 0) {
+		char **live = NULL;
+		int n = hey_app_ids(&live);
+
+		for (int i = 0; i < n; i++) {
+			sl_add(&seen, live[i]);
+			free(live[i]);
+		}
+		free(live);
+		if (seen.n)
+			printf("%sNo ledger yet — reporting on the %d window%s "
+			       "open right now.%s\n\n", C_D, seen.n,
+			       seen.n == 1 ? "" : "s", C_0);
+	}
+
 	if (seen.n == 0) {
 		printf("%sNo windows have been observed yet.%s\n", C_D, C_0);
 		printf("kdos-comp records an app_id the first time each window "

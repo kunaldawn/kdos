@@ -1,0 +1,2 @@
+existence-only fixture: pu_http_head only asks whether this URL answers,
+so the body is never read. Recorded as a marker, not as a tarball.

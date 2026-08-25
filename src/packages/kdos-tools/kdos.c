@@ -22,12 +22,16 @@
  */
 
 #include <dirent.h>
+#include <grp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <sys/un.h>
+#include <sys/statfs.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/utsname.h>
 
@@ -157,9 +161,14 @@ static void reload_session(void)
 	 * state file's mtime instead (sh_theme_poll), which needs no entry
 	 * here and cannot be got wrong in this direction.
 	 */
+	/*
+	 * `kdos-res` is here and `kdos-resctl` must never be: the exact match
+	 * below is what keeps them apart, since one name is a prefix of the
+	 * other. The setuid helper is short-lived and handles no signals.
+	 */
 	static const char *const who[] = {
 		"kdos-shell", "kdos-desk", "kdos-notifyd", "kdos-slit",
-		"kdos-comp"
+		"kdos-res", "kdos-comp"
 	};
 	for (size_t i = 0; i < sizeof(who) / sizeof(who[0]); i++) {
 		KbArgv a = {0};
@@ -737,16 +746,42 @@ static void write_themerc(const KcolScheme *sc)
 		"be overwritten.\n"
 		"# labwc themerc keys; kdos-comp re-reads this on SIGHUP.\n"
 		"\n"
-		"border.width: 1\n"
-		"padding.height: 3\n"
+		/*
+		 * THE FRAME IS A KDOS ASCII WINDOW, and every line of this
+		 * block is one stroke of that picture. `flat kdos` is the
+		 * fork's own texture: the titlebar fill carries the DOUBLE
+		 * HORIZONTAL RULE the cell grid draws with `═`, broken by the
+		 * title and by each button, so an SSD reads
+		 * `════ Title ════[_][=][X]` — the same drawing every other
+		 * surface on this desktop puts round itself. `colorTo` is that
+		 * rule's colour and is ignored by every other texture.
+		 *
+		 * Two pixels of border, not one: a hairline is what a modern
+		 * toolkit draws and it disappears beside a 32-pixel cell. The
+		 * square corners are rc.xml's `<cornerRadius>0`, which is the
+		 * other half of the same decision.
+		 *
+		 * The buttons are 32x32, which is exactly FOUR TIMES the 8x8
+		 * bitmaps the fork ships. A non-integer multiple under a
+		 * nearest-neighbour scale gives one glyph stroke two pixels
+		 * and the next three, which on an `X` is visible as a limp.
+		 */
+		"border.width: 2\n"
+		"window.titlebar.padding.width: 4\n"
+		"window.titlebar.padding.height: 2\n"
+		"window.button.width: 32\n"
+		"window.button.height: 32\n"
+		"window.button.spacing: 0\n"
 		"window.active.border.color: #%s\n"
 		"window.inactive.border.color: #%s\n"
 		"\n"
-		"# flat solid, or the default GRADIENT ignores the colour below\n"
-		"window.active.title.bg: flat solid\n"
-		"window.inactive.title.bg: flat solid\n"
+		"# `flat kdos` — the frame rule; a plain `flat solid` drops it\n"
+		"window.active.title.bg: flat kdos\n"
+		"window.inactive.title.bg: flat kdos\n"
 		"window.active.title.bg.color: #%s\n"
 		"window.inactive.title.bg.color: #%s\n"
+		"window.active.title.bg.colorTo: #%s\n"
+		"window.inactive.title.bg.colorTo: #%s\n"
 		"window.active.label.text.color: #%s\n"
 		"window.inactive.label.text.color: #%s\n"
 		"window.label.text.justify: center\n"
@@ -754,7 +789,17 @@ static void write_themerc(const KcolScheme *sc)
 		"window.active.button.unpressed.image.color: #%s\n"
 		"window.inactive.button.unpressed.image.color: #%s\n"
 		"window.active.button.close.unpressed.image.color: #%s\n"
-		"window.button.hover.bg.color: #%s\n"
+		/*
+		 * AND THE HOVER PLATE HAS TO BE TRANSLUCENT.
+		 *
+		 * labwc has no hover ICONS: it copies the plain one and lays
+		 * `window.button.hover.bg.color` over it. An OPAQUE colour
+		 * there paints the symbol out, so every titlebar button on
+		 * this desktop went BLANK under the pointer — the one moment a
+		 * button most needs to say what it is. labwc's own default
+		 * carries an alpha for exactly this reason; ours has to too.
+		 */
+		"window.button.hover.bg.color: #%s66\n"
 		"\n"
 		/*
 		 * labwc's own default cap is 200 PIXELS, sized for the ~10px
@@ -800,8 +845,8 @@ static void write_themerc(const KcolScheme *sc)
 		"\n"
 		"magnifier.border.width: 2\n"
 		"magnifier.border.color: #%s\n",
-		pdark, dim,
-		var, deep,
+		p, dim,
+		var, deep, p, sepc,
 		p, inactive_text,
 		p, inactive_text, urg, hover,
 		pdark, deep, text, p, deep, var, p, sepc,
@@ -2043,13 +2088,31 @@ static void help_body(FILE *o)
 	      "╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝\n", o);
 	fprintf(o, "%s   KD's Homebrew Linux Distro%s\n\n", C_D, C_0);
 
+	/*
+	 * THE THREE LANES, first, because the most common question on this
+	 * machine is which of them a thing belongs to — and the value of a
+	 * list like this was never the commands, it is that one place shows
+	 * the whole system's verbs.
+	 */
+	fprintf(o, "%sWHERE THINGS LIVE%s\n", C_A, C_0);
+	fprintf(o, "  %-24s %s\n", "the host",
+		"kpkg — compiled here from source, against musl");
+	fprintf(o, "  %-24s %s\n", "applications",
+		"kdos app — one signed file each; installing is a mount");
+	fprintf(o, "  %-24s %s\n", "environments",
+		"kdos-box — a box you built is a file you can give away");
+	fprintf(o, "\n");
+
 	fprintf(o, "%sCOMMANDS%s\n", C_A, C_0);
 	static const char *CMDS[][2] = {
 		{ "why <path|port>", "what provides this, and why it is that way" },
 		{ "explain [topic]", "the recorded debug cycles, browsable" },
 		{ "sandbox <prof> -- <cmd>", "run a native app under Landlock" },
 		{ "desktop", "start the KDOS desktop from a tty (kdos-desktop)" },
-		{ "kdos app <name>", "install an alien app (distrobox + export)" },
+		{ "kdos app search <t>", "the applications here and on the medium" },
+		{ "kdos app install <id>", "one signed file, mounted — also remove, rollback" },
+		{ "kdos-box list", "environments: create, enter, freeze, export" },
+		{ "kdos-fetch-app <name>", "install an alien app from a network" },
 		{ "kdos theme [name]", "phosphor | amber | ice | bone | next | prev | list" },
 		{ "kdos theme style <f>", "apply a style file: accent + crt + fonts, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
@@ -2061,12 +2124,14 @@ static void help_body(FILE *o)
 		{ "kdos hey list", "every window, from a prompt; run <action> <id>" },
 		{ "kdos update check", "what the ports tree pins that is not installed" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
+		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
 		{ "kdos-display [--list]", "the screens: mode, scale, rotation, order" },
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "kdos-power suspend", "suspend; also poweroff and reboot" },
 		{ "kdos-energy", "which app is spending the battery" },
+		{ "kdos-res", "resources: per-device pages, processes, apps" },
 		{ "sudo kinstall", "install this live image onto a disk" },
 		{ NULL, NULL }
 	};
@@ -2111,6 +2176,7 @@ static void help_body(FILE *o)
 	 * titlebar. */
 	static const char *KEYS[][2] = {
 		{ "Super+D", "open the launcher" },
+		{ "Ctrl+Shift+Esc", "open Resources" },
 		{ "Alt+F2", "run a command" },
 		{ "Super+Return", "terminal (foot)" },
 		{ "Super+E", "files (mc)" },
@@ -2382,6 +2448,29 @@ static void warn_(const char *fmt, ...)
 	putchar('\n');
 }
 
+/*
+ * The third level, and the Hardware section is what needs it. Half of what that
+ * section asks cannot be answered in a VM: no SOF-capable audio controller, no
+ * Wi-Fi, no NVIDIA GPU, no boot medium. `ok` there would be a green line for
+ * something never tested, and `warn` would make every VM look broken. A check
+ * that could not run says so and says why.
+ */
+static void skip_(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void skip_(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	if (doctor_json) {
+		doctor_record("skip", fmt, ap);
+		va_end(ap);
+		return;
+	}
+	printf("  %s[skip]%s ", C_W, C_0);
+	vprintf(fmt, ap);
+	va_end(ap);
+	putchar('\n');
+}
+
 /* A section header in text mode; a field on every record in JSON mode. A
  * machine consumer wants the grouping attached to the item, not emitted as a
  * separate thing it has to remember. */
@@ -2580,6 +2669,374 @@ static void check_default_password(void)
 	}
 }
 
+
+/* ------------------------------------------------------------------------
+ * The Hardware section.
+ *
+ * Every check here covers a failure that is SILENT. A machine with no
+ * regulatory.db has Wi-Fi; it just has no 5 GHz. A machine with no SOF
+ * firmware has an audio device; it just makes no sound. A user outside
+ * `dialout` has a /dev/ttyUSB0; they just cannot open it. None of those
+ * announces itself, and all three read as broken hardware.
+ * ------------------------------------------------------------------------ */
+
+/* Read one small sysfs/proc file, trimmed. Returns NULL if absent. */
+static char *hw_slurp(const char *path)
+{
+	size_t n = 0;
+	char *d = kb_read_all(path, &n);
+	if (!d)
+		return NULL;
+	while (n && (d[n - 1] == '\n' || d[n - 1] == ' ' || d[n - 1] == '\t'))
+		d[--n] = 0;
+	return d;
+}
+
+/* Does any directory entry under `dir` start with `pfx`? */
+static int hw_dir_has_prefix(const char *dir, const char *pfx)
+{
+	DIR *d = opendir(dir);
+	if (!d)
+		return 0;
+	struct dirent *e;
+	size_t n = strlen(pfx);
+	int found = 0;
+	while ((e = readdir(d))) {
+		if (!strncmp(e->d_name, pfx, n)) {
+			found = 1;
+			break;
+		}
+	}
+	closedir(d);
+	return found;
+}
+
+/*
+ * The wireless regulatory database.
+ *
+ * kdos.config sets CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y, so the kernel will
+ * load regulatory.db ONLY with a valid regulatory.db.p7s beside it. A database
+ * regenerated locally from db.txt fails that check in silence and leaves the
+ * radio exactly where it was: country 00, world-roaming, no 5 GHz DFS, reduced
+ * TX power. So both files are checked, and the SIGNATURE is not optional.
+ */
+static void check_regdb(void)
+{
+	int have_db  = kb_path_exists("/lib/firmware/regulatory.db");
+	int have_sig = kb_path_exists("/lib/firmware/regulatory.db.p7s");
+
+	if (!have_db) {
+		warn_("no /lib/firmware/regulatory.db — every radio is stuck "
+		      "world-roaming: no 5 GHz DFS, reduced TX power");
+		return;
+	}
+	if (!have_sig) {
+		warn_("regulatory.db present but regulatory.db.p7s is not — "
+		      "REQUIRE_SIGNED_REGDB rejects it silently, so this is "
+		      "the same as having none");
+		return;
+	}
+
+	/*
+	 * The files being present is not the same as the kernel having loaded
+	 * them. cfg80211 exposes the alpha2 it settled on; "00" is the world
+	 * regulatory domain, which is what a failed load looks like.
+	 */
+	char *a2 = hw_slurp("/sys/module/cfg80211/parameters/ieee80211_regdom");
+	if (a2 && *a2 && strcmp(a2, "00"))
+		ok("regulatory.db signed and loaded (regdom %s)", a2);
+	else if (!hw_dir_has_prefix("/sys/class/ieee80211", "phy"))
+		skip_("regulatory.db and signature present; no wireless device "
+		      "here to load them");
+	else
+		warn_("regulatory.db present but the regulatory domain is 00 "
+		      "(world) — set one with: iw reg set <CC>");
+	free(a2);
+}
+
+/*
+ * Intel SOF audio firmware.
+ *
+ * CONFIG_SND_SOC_SOF=m binds the driver on every Tiger Lake and newer laptop,
+ * and the firmware it then requests is not part of linux-firmware — upstream
+ * ships it separately as thesofproject/sof-bin. Missing, it leaves a working
+ * audio driver and no sound, which presents as the distro having no audio
+ * support rather than as a missing file.
+ */
+static void check_sof(void)
+{
+	int sof_bound = hw_dir_has_prefix("/sys/bus/pci/drivers/sof-audio-pci-intel-tgl", "0000:")
+		     || hw_dir_has_prefix("/sys/bus/pci/drivers/sof-audio-pci-intel-mtl", "0000:")
+		     || hw_dir_has_prefix("/sys/bus/pci/drivers/sof-audio-pci-intel-icl", "0000:")
+		     || hw_dir_has_prefix("/sys/bus/pci/drivers/sof-audio-pci-intel-skl", "0000:");
+	int have_fw  = kb_path_exists("/lib/firmware/intel/sof");
+	int have_tpl = kb_path_exists("/lib/firmware/intel/sof-tplg");
+
+	if (!sof_bound) {
+		if (have_fw)
+			ok("SOF firmware installed (no SOF audio device here)");
+		else
+			skip_("no SOF audio device on this machine — Intel DSP "
+			      "firmware not required");
+		return;
+	}
+	if (have_fw && have_tpl)
+		ok("SOF firmware and topologies present");
+	else if (have_fw)
+		warn_("SOF firmware present but /lib/firmware/intel/sof-tplg "
+		      "is missing — the DSP loads and no topology binds, which "
+		      "is still silence");
+	else
+		warn_("an Intel SOF audio device is bound and "
+		      "/lib/firmware/intel/sof is absent — this machine has no "
+		      "sound (install the sof-firmware package)");
+}
+
+/*
+ * The GPU firmware. nouveau on Turing and later cannot initialise without the
+ * GSP blobs; without them the machine falls back to efifb, wlroots falls back
+ * to pixman, and kdos_crt_init() declines a fullscreen post-process on
+ * software rendering. The blobs are checked directly because the consequence
+ * — a desktop that renders but does not look like KDOS — is several steps
+ * removed from the cause.
+ */
+static void check_gpu_firmware(void)
+{
+	int nouveau = hw_dir_has_prefix("/sys/bus/pci/drivers/nouveau", "0000:");
+	int have_gsp = kb_path_exists("/lib/firmware/nvidia");
+
+	if (nouveau && !have_gsp)
+		warn_("nouveau is bound and /lib/firmware/nvidia is absent — "
+		      "Turing and later need GSP firmware to initialise at "
+		      "all, so this falls back to efifb, then to the pixman "
+		      "renderer, and the CRT pass declines");
+	else if (nouveau)
+		ok("nouveau bound with NVIDIA firmware present");
+	else if (have_gsp)
+		ok("NVIDIA GSP firmware installed (no nouveau device here)");
+	else
+		skip_("no NVIDIA GPU on this machine — GSP firmware not "
+		      "required");
+}
+
+/*
+ * DEVICE PRESENT BUT UNOPENABLE is the state this looks for, and the only way
+ * to catch a udev rule that has stopped granting: the node exists, `ls -l`
+ * looks plausible, and the program that wanted it reports something that
+ * sounds like broken hardware.
+ *
+ * Walk the classes KDOS ships tools for and report each node the CALLING user
+ * cannot open, naming the group that owns it — "add yourself to dialout" is an
+ * instruction where "permission denied" is not.
+ */
+static void check_dev_access(void)
+{
+	static const char *globs[] = {
+		"/dev/ttyUSB", "/dev/ttyACM", "/dev/video", "/dev/usbtmc", NULL
+	};
+	int checked = 0, denied = 0;
+	char denied_names[512] = "";
+
+	for (int g = 0; globs[g]; g++) {
+		for (int i = 0; i < 8; i++) {
+			char path[64];
+			snprintf(path, sizeof(path), "%s%d", globs[g], i);
+			if (!kb_path_exists(path))
+				continue;
+			checked++;
+			if (access(path, R_OK | W_OK) == 0)
+				continue;
+			denied++;
+			struct stat st;
+			const char *grp = "?";
+			char gbuf[64];
+			if (!stat(path, &st)) {
+				struct group *gr = getgrgid(st.st_gid);
+				if (gr && gr->gr_name)
+					grp = gr->gr_name;
+				else {
+					snprintf(gbuf, sizeof(gbuf), "gid %u",
+						 (unsigned)st.st_gid);
+					grp = gbuf;
+				}
+			}
+			size_t used = strlen(denied_names);
+			snprintf(denied_names + used, sizeof(denied_names) - used,
+				 "%s%s (%s)", used ? ", " : "", path, grp);
+		}
+	}
+
+	if (!checked)
+		skip_("no serial, camera or instrument device plugged in — "
+		      "nothing to check reachability against");
+	else if (!denied)
+		ok("all %d attached device nodes are reachable by this user",
+		   checked);
+	else
+		warn_("%d of %d device nodes cannot be opened: %s — this user "
+		      "is not in the owning group",
+		      denied, checked, denied_names);
+}
+
+/*
+ * The boot medium, after switch_root.
+ *
+ * The initramfs mounts the ISO at /mnt/iso and must MOVE that mount into the
+ * new root; left behind it dies with the initramfs namespace and the booted
+ * system cannot read the medium it is running from — `kdos rebuild` resolves
+ * /mnt/iso/sources under it. On an installed system there is no boot medium
+ * and this is not a fault.
+ */
+/*
+ * BOXES AND PACKS. Half of this cannot be answered in a VM — there is often no
+ * erofs module and no store — so those lines are `skip` with a reason. A green
+ * line for something never tested is worse than an absent one; a `warn` for
+ * every VM would make every VM look broken.
+ */
+static void check_packs(void)
+{
+	char buf[8192];
+	int have_fs = 0;
+
+	/* Can this kernel mount a pack at all? Everything else depends on it,
+	 * and 59_packd.sh skips the daemon rather than respawning one that
+	 * cannot do its job. */
+	if (kb_read_file("/proc/filesystems", buf, sizeof(buf)) >= 0 &&
+	    strstr(buf, "erofs"))
+		have_fs = 1;
+	if (have_fs)
+		ok("erofs is available to the kernel");
+	else if (kb_path_exists("/sbin/modprobe") || kb_path_exists("/usr/sbin/modprobe"))
+		warn_("erofs is not loaded — `modprobe erofs`; without it "
+		      "kdos-packd skips itself and no pack can be mounted");
+	else
+		skip_("no erofs in /proc/filesystems and no modprobe to try — "
+		      "this kernel may not have the module at all");
+
+	/* The daemon. Its absence is not a fault on a machine with no packs. */
+	{
+		struct sockaddr_un a;
+		int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+		int up = 0;
+
+		if (fd >= 0) {
+			memset(&a, 0, sizeof(a));
+			a.sun_family = AF_UNIX;
+			kb_strlcpy(a.sun_path, "/run/kdos-packd.sock",
+				   sizeof(a.sun_path));
+			if (connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0) {
+				up = 1;
+				if (write(fd, "status\n", 7) == 7) {
+					ssize_t n = read(fd, buf, sizeof(buf) - 1);
+					buf[n > 0 ? n : 0] = 0;
+				} else {
+					buf[0] = 0;
+				}
+			}
+			close(fd);
+		}
+		if (up) {
+			char *route = strstr(buf, "route\t");
+			ok("kdos-packd is answering%s%.*s", route ? " — " : "",
+			   route ? (int)strcspn(route + 6, "\n") : 0,
+			   route ? route + 6 : "");
+		} else if (kb_path_exists("/var/lib/kdos/packs/base.kpack")) {
+			warn_("there are packs in /var/lib/kdos/packs and "
+			      "kdos-packd is not answering — `service packd "
+			      "status`");
+		} else {
+			skip_("no packs installed and no kdos-packd — this "
+			      "machine runs the monolithic appbox image");
+		}
+	}
+
+	/*
+	 * THE uid-1000 ASSUMPTION. Packs are built --force-uid=1000, which is
+	 * the one human user this distro ships. A second user's boxes still
+	 * run — their /usr reads as somebody else — and saying so is better
+	 * than leaving it to be discovered.
+	 */
+	if (getuid() != 0 && getuid() != 1000)
+		warn_("you are uid %u and packs are built for uid 1000 — a box "
+		      "will run, but its /usr will not read as yours",
+		      (unsigned)getuid());
+
+	/* An overlay upper cannot live on overlayfs, and a live session's
+	 * $HOME does. The fallback is tmpfs and it is not silent. */
+	{
+		struct statfs st;
+		const char *home = kb_home_dir();
+
+		if (statfs(home, &st) != 0)
+			skip_("cannot stat %s to say where a box's writes would "
+			      "go", home);
+		else if ((unsigned long)st.f_type == 0x794c7630UL)
+			warn_("$HOME is on overlayfs (a live session), so a "
+			      "persistent box cannot exist — its upper falls "
+			      "back to tmpfs and its changes end with the "
+			      "session");
+		else
+			ok("$HOME can hold an overlay upper — a persistent box "
+			   "keeps what you write");
+	}
+
+	/* A mounted pack whose FILE is gone is a box that works until it is
+	 * restarted, which is the worst kind of broken. */
+	{
+		size_t len = 0;
+		char *mounts = kb_read_all("/proc/mounts", &len);
+		int missing = 0, mounted = 0;
+
+		if (mounts) {
+			char *line, *save;
+			for (line = strtok_r(mounts, "\n", &save); line;
+			     line = strtok_r(NULL, "\n", &save)) {
+				char *sp = strchr(line, ' ');
+				char id[128], path[512];
+				if (!sp || strncmp(sp + 1,
+						   "/var/lib/kdos/packs/mnt/", 24))
+					continue;
+				mounted++;
+				kb_strlcpy(id, sp + 25, sizeof(id));
+				id[strcspn(id, " ")] = 0;
+				snprintf(path, sizeof(path),
+					 "/var/lib/kdos/packs/%s.kpack", id);
+				if (!kb_path_exists(path))
+					missing++;
+			}
+			free(mounts);
+		}
+		if (!mounted)
+			skip_("nothing is mounted from the pack store");
+		else if (missing)
+			warn_("%d of %d mounted pack(s) no longer have a file "
+			      "behind them — a box using one works until it is "
+			      "restarted", missing, mounted);
+		else
+			ok("%d pack(s) mounted, every file still present",
+			   mounted);
+	}
+}
+
+static void check_boot_medium(void)
+{
+	char *mounts = kb_read_all("/proc/mounts", NULL);
+	int live = mounts && strstr(mounts, " / overlay ") != NULL;
+	int iso  = mounts && strstr(mounts, " /mnt/iso ") != NULL;
+	free(mounts);
+
+	if (!live) {
+		skip_("installed system — no boot medium to reach");
+		return;
+	}
+	if (iso)
+		ok("boot medium reachable at /mnt/iso");
+	else
+		warn_("live session and /mnt/iso is not mounted — the "
+		      "initramfs did not move it across switch_root, so "
+		      "nothing on the medium is readable by name");
+}
+
 static int cmd_doctor(int argc, char **argv)
 {
 	for (int i = 0; i < argc; i++) {
@@ -2616,6 +3073,20 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("Landlock present but disabled — add it to CONFIG_LSM or "
 		      "the lsm= cmdline");
 	check_microcode();
+	doctor_gap();
+
+
+
+	doctor_head("Hardware");
+	check_regdb();
+	check_sof();
+	check_gpu_firmware();
+	check_dev_access();
+	check_boot_medium();
+	doctor_gap();
+
+	doctor_head("Boxes");
+	check_packs();
 	doctor_gap();
 
 	doctor_head("Session");
@@ -2782,6 +3253,22 @@ static int cmd_doctor(int argc, char **argv)
 	else
 		warn_("kdos-checkpass is not setuid root — every password will "
 		      "be refused (fix: chown root and chmod 4755)");
+
+	/*
+	 * The SECOND setuid bit. Losing it is silent in a different way from
+	 * the lock screen's: the monitor still runs and still draws, and only
+	 * the verbs that need privilege stop working — so it presents as a
+	 * task manager that cannot end anything it does not own.
+	 */
+	struct stat rst;
+	if (stat("/usr/bin/kdos-resctl", &rst) != 0)
+		warn_("kdos-resctl missing — kdos-res cannot end a process it "
+		      "does not own, and the Memory page has no DIMM details");
+	else if ((rst.st_mode & S_ISUID) && rst.st_uid == 0)
+		ok("kdos-resctl is setuid root");
+	else
+		warn_("kdos-resctl is not setuid root — kdos-res cannot end a "
+		      "process it does not own (fix: chown root and chmod 4755)");
 
 	/* `service <name>` keys on the init SCRIPT — ksvc strips the numeric
 	 * prefix and the .sh, so 55_powerd.sh is `powerd`. The NAME= inside the
@@ -3003,11 +3490,10 @@ int kdos_main(int argc, char **argv)
 		return kdt_update(rest, restv, cmd_theme);
 	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
 		return cmd_version();
-	if (!strcmp(cmd, "app")) {
-		/* argv[1] becomes the program name kdos-fetch-app expects. */
-		argv[1] = (char *)"kdos-fetch-app";
-		return fetch_app_main(argc - 1, argv + 1);
-	}
+	if (!strcmp(cmd, "app"))
+		return kdt_app(argc - 2, argv + 2);
+	if (!strcmp(cmd, "trash"))
+		return kdt_trash(argc - 2, argv + 2);
 
 	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
 		C_0, cmd);

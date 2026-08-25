@@ -65,6 +65,12 @@
     generated — ~/.config/kdos-comp/themerc-override, written by `kdos theme`.
   -->
   <theme>
+    <!-- SQUARE CORNERS. labwc's default is 8px, which puts a rounded plate at
+         the top of every window on a desktop whose every other surface is a
+         double-line box drawn on a character grid. A radius is the one thing
+         a cell grid cannot express, so it is the one thing that makes an SSD
+         read as somebody else's toolkit. -->
+    <cornerRadius>0</cornerRadius>
     <font place="ActiveWindow"><name>Terminus (TTF)</name><size>24</size></font>
     <font place="InactiveWindow"><name>Terminus (TTF)</name><size>24</size></font>
     <font place="MenuHeader"><name>Terminus (TTF)</name><size>24</size></font>
@@ -201,6 +207,13 @@
     <keybind key="W-A-Right"><action name="MoveToEdge" direction="right"/></keybind>
     <keybind key="W-A-Up"><action name="MoveToEdge" direction="up"/></keybind>
     <keybind key="W-A-Down"><action name="MoveToEdge" direction="down"/></keybind>
+    <!--
+      C-S-Escape is the chord every task manager since NT has answered to, and
+      the shipped bindings use no C-S- combination at all, so nothing is
+      displaced. W-i is kdos-settings and W-Escape is the logout prompt; both
+      are taken.
+    -->
+    <keybind key="C-S-Escape"><action name="Execute" command="kdos-res"/></keybind>
     <keybind key="W-C-Left"><action name="GrowToEdge" direction="left"/></keybind>
     <keybind key="W-C-Right"><action name="GrowToEdge" direction="right"/></keybind>
     <keybind key="W-C-Up"><action name="GrowToEdge" direction="up"/></keybind>

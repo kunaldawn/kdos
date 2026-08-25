@@ -181,22 +181,36 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 				if (!strcmp(want[j], pkg))
 					forced = 1;
 
-		if (!forced && kp_installed(c, pkg)) {
-			kp_msg("Skipping %s (already installed)", pkg);
-			continue;
-		}
-
 		char *dir = kp_port_dir(c, pkg);
 		if (!dir) {
 			kp_err("Port not found: %s", pkg);
 			return 1;
 		}
+
+		/*
+		 * The guard for a package that became installed between the
+		 * resolve and now.
+		 *
+		 * IT MUST ASK THE SAME QUESTION THE SOLVER ASKED.
+		 * kp_installed_current() is that question — installed AND still
+		 * matching its recipe. Using plain kp_installed() here would
+		 * skip exactly the packages the solver deliberately put in the
+		 * order because their recipe changed, and the run would report
+		 * "Packages to install: <name>" and then build nothing.
+		 */
+		if (!forced && kp_installed_current(c, pkg)) {
+			kp_msg("Skipping %s (already installed)", pkg);
+			free(dir);
+			continue;
+		}
 		kp_msg(forced ? "Rebuilding %s (forced)..." : "Building %s...",
 		       pkg);
+		char *dir_for_hash = kb_strdup(dir);
 		int rc = build_port(dir);
 		free(dir);
 		if (rc != 0) {
 			kp_err("Failed to build %s", pkg);
+			free(dir_for_hash);
 			return 1;
 		}
 
@@ -214,6 +228,7 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 		kb_strv_free(files);
 		if (!found) {
 			kp_err("no package produced for %s", pkg);
+			free(dir_for_hash);
 			return 1;
 		}
 
@@ -224,8 +239,24 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 		if (install_pkgfile(c, found, forced, overwrite) != 0) {
 			kp_err("Failed to install %s", pkg);
 			free(found);
+			free(dir_for_hash);
 			return 1;
 		}
+		/*
+		 * Recorded AFTER the install succeeded, never before: a
+		 * sidecar written ahead of a build that then fails would claim
+		 * a recipe is installed that is not, and the next run would
+		 * skip it. Failure to write is not fatal — the sidecar is an
+		 * optimisation hint, and its absence reads as "unknown", which
+		 * is the safe direction.
+		 */
+		{
+			char h[65];
+			if (kp_recipe_hash(dir_for_hash, h) == 0)
+				kp_record_recipe_hash(c, pkg, h);
+		}
+		free(dir_for_hash);
+
 		if (!keep_cache) {
 			kp_msg("Removing cached package %s...", found);
 			unlink(found);

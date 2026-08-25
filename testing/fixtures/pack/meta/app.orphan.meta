@@ -1,0 +1,9 @@
+id          = app.orphan
+kind        = app
+name        = An Application With A Missing Runtime
+version     = 1.0
+release     = 1
+summary     = Requires a runtime that is not here
+requires    = rt-qt >= 1
+desktop     = orphan.desktop
+command     = orphan

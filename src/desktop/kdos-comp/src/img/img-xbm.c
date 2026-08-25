@@ -257,7 +257,8 @@ struct lab_data_buffer *
 img_xbm_load_from_bitmap(const char *bitmap, float *rgba)
 {
 	uint32_t color = argb32(rgba);
-	struct pixmap pixmap = parse_xbm_builtin(bitmap, 6, color);
+	/* KDOS: 8x8, not upstream's 6x6 — see the bitmap table in theme.c. */
+	struct pixmap pixmap = parse_xbm_builtin(bitmap, 8, color);
 
 	return buffer_create_from_data(pixmap.data, pixmap.width, pixmap.height,
 		pixmap.width * 4);

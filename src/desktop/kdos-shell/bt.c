@@ -575,7 +575,7 @@ enum { BB_CONNECT = 0, BB_PAIR, BB_TRUST, BB_REMOVE, BB_SCAN, BB_POWER,
 static int bt_buttons(int w, int row)
 {
 	const struct btdev *d = sel >= 0 && sel < ndev ? &devs[sel] : NULL;
-	struct sh_button b[BB_N];
+	struct kch_button b[BB_N];
 
 	b[BB_CONNECT].label = d && d->connected ? "Disconnect" : "Connect";
 	b[BB_CONNECT].enabled = d != NULL && powered;
@@ -589,7 +589,7 @@ static int bt_buttons(int w, int row)
 	b[BB_SCAN].enabled = powered;
 	b[BB_POWER].label = powered ? "Turn Off" : "Turn On";
 	b[BB_POWER].enabled = adapter[0] != '\0';
-	return sh_chrome_buttons(w, row, b, BB_N, -1);
+	return kch_buttons(w, row, b, BB_N, -1);
 }
 
 static void draw_frame(void)
@@ -600,7 +600,7 @@ static void draw_frame(void)
 	if (w < 30 || h < 10)
 		return;
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
-	ktui_draw_box(krect(0, 0, w, h), "Bluetooth", KT_ACCENT, KT_BG, 1);
+	sh_frame(w, h, "Bluetooth", KT_ACCENT, KT_BG, 1);
 
 	/*
 	 * The adapter's state, as the header's subject line. It used to be a
@@ -621,7 +621,7 @@ static void draw_frame(void)
 	} else {
 		snprintf(sub, sizeof(sub), "%s", why[0] ? why : "looking…");
 	}
-	int body_y = sh_chrome_header(w, "bluetooth", "Bluetooth", sub,
+	int body_y = kch_header(w, "bluetooth", "Bluetooth", sub,
 				      icons_on);
 	int body = h - body_y - 3;
 	if (body < 1)
@@ -774,12 +774,25 @@ int bt_main(int argc, char **argv)
 	 * net.c, which is where that split is written down. */
 	int popup = at_x >= 0;
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
 		.cols = popup ? 52 : BT_COLS,
 		.rows = popup ? 16 : BT_ROWS,
 		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Bluetooth",
 		.app_id = "kdos-bt",
 		.font = font,
 		.keyboard = 1,
@@ -800,6 +813,9 @@ int bt_main(int argc, char **argv)
 	if (icons_on)
 		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_BG);
 	agent_register();
 
 	time_t last = 0;
@@ -836,8 +852,8 @@ int bt_main(int argc, char **argv)
 				if (in_list)
 					sel = idx;
 				/* The button bar lights under the pointer —
-				 * see sh_chrome_hover. */
-				sh_chrome_hover(ev.mx, ev.my);
+				 * see kch_hover. */
+				kch_hover(ev.mx, ev.my);
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
@@ -854,7 +870,7 @@ int bt_main(int argc, char **argv)
 				break;
 			if (ev.btn != KT_MB_LEFT)
 				continue;
-			int b = ask_msg ? -1 : sh_chrome_button_at(ev.mx, ev.my);
+			int b = ask_msg ? -1 : kch_button_at(ev.mx, ev.my);
 			if (b >= 0) {
 				switch (b) {
 				case BB_CONNECT:

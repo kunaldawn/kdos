@@ -194,6 +194,87 @@ uint32_t kcol_muted(const KcolScheme *sc)
 	return kcol_mix(sc->deep, sc->text, 56);
 }
 
+/*
+ * sRGB channel -> linear light, x65535, as a TABLE.
+ *
+ * The transfer function is a 2.4 power and this library does not link libm —
+ * the phase-1 rule libktui keeps and libkcolor keeps with it. There are only
+ * 256 possible inputs, so the honest answer is to have measured all of them:
+ * generated as round(((c/255 + 0.055) / 1.055) ^ 2.4 * 65535), with the linear
+ * segment c/12.92 below 0.04045, and checked against CPython to two decimals
+ * of the contrast ratios it feeds.
+ */
+static const uint32_t srgb_lin[256] = {
+	    0,    20,    40,    60,    80,    99,   119,   139,
+	  159,   179,   199,   219,   241,   264,   288,   313,
+	  340,   367,   396,   427,   458,   491,   526,   562,
+	  599,   637,   677,   718,   761,   805,   851,   898,
+	  947,   997,  1048,  1101,  1156,  1212,  1270,  1330,
+	 1391,  1453,  1517,  1583,  1651,  1720,  1790,  1863,
+	 1937,  2013,  2090,  2170,  2250,  2333,  2418,  2504,
+	 2592,  2681,  2773,  2866,  2961,  3058,  3157,  3258,
+	 3360,  3464,  3570,  3678,  3788,  3900,  4014,  4129,
+	 4247,  4366,  4488,  4611,  4736,  4864,  4993,  5124,
+	 5257,  5392,  5530,  5669,  5810,  5953,  6099,  6246,
+	 6395,  6547,  6700,  6856,  7014,  7174,  7335,  7500,
+	 7666,  7834,  8004,  8177,  8352,  8528,  8708,  8889,
+	 9072,  9258,  9445,  9635,  9828, 10022, 10219, 10417,
+	10619, 10822, 11028, 11235, 11446, 11658, 11873, 12090,
+	12309, 12530, 12754, 12980, 13209, 13440, 13673, 13909,
+	14146, 14387, 14629, 14874, 15122, 15371, 15623, 15878,
+	16135, 16394, 16656, 16920, 17187, 17456, 17727, 18001,
+	18277, 18556, 18837, 19121, 19407, 19696, 19987, 20281,
+	20577, 20876, 21177, 21481, 21787, 22096, 22407, 22721,
+	23038, 23357, 23678, 24002, 24329, 24658, 24990, 25325,
+	25662, 26001, 26344, 26688, 27036, 27386, 27739, 28094,
+	28452, 28813, 29176, 29542, 29911, 30282, 30656, 31033,
+	31412, 31794, 32179, 32567, 32957, 33350, 33745, 34143,
+	34544, 34948, 35355, 35764, 36176, 36591, 37008, 37429,
+	37852, 38278, 38706, 39138, 39572, 40009, 40449, 40891,
+	41337, 41785, 42236, 42690, 43147, 43606, 44069, 44534,
+	45002, 45473, 45947, 46423, 46903, 47385, 47871, 48359,
+	48850, 49344, 49841, 50341, 50844, 51349, 51858, 52369,
+	52884, 53401, 53921, 54445, 54971, 55500, 56032, 56567,
+	57105, 57646, 58190, 58737, 59287, 59840, 60396, 60955,
+	61517, 62082, 62650, 63221, 63795, 64372, 64952, 65535
+};
+
+/*
+ * WCAG relative luminance, x65535.
+ *
+ * Integer throughout: the weights are 2126/7152/722 per ten thousand, which is
+ * the same 0.2126/0.7152/0.0722 the specification gives and avoids a double on
+ * a path the tone solve runs in a loop.
+ */
+uint32_t kcol_lum(uint32_t rgb)
+{
+	uint32_t r = srgb_lin[(rgb >> 16) & 0xff];
+	uint32_t g = srgb_lin[(rgb >> 8) & 0xff];
+	uint32_t b = srgb_lin[rgb & 0xff];
+
+	return (2126u * r + 7152u * g + 722u * b) / 10000u;
+}
+
+/*
+ * The contrast ratio between two colours, x100 — 4.83:1 comes back as 483.
+ *
+ * Scaled rather than a double because every consumer compares it against a
+ * floor (7.0 for text on a plate, 4.5 for the AA minimum) and a fixed point
+ * with two decimals is finer than any of those thresholds is meaningful.
+ *
+ * 3277 is the specification's 0.05 offset at this scale. It is what stops two
+ * near-blacks reporting an enormous ratio: without it the KDOS palette's
+ * `deep` against `backdrop` would come out around 4:1 instead of the 1.00:1
+ * that is the truth about them.
+ */
+int kcol_contrast(uint32_t a, uint32_t b)
+{
+	uint32_t la = kcol_lum(a) + 3277, lb = kcol_lum(b) + 3277;
+	uint32_t hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+
+	return (int)((hi * 100u) / lo);
+}
+
 void kcol_sem(const KcolScheme *sc, KcolSem *out)
 {
 	uint32_t d = sc->deep, t = sc->text, urg = sc->urgent;

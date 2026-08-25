@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libdeflate
+version     = 1.25
+release     = 1
+source      = https://github.com/ebiggers/libdeflate/archive/refs/tags/v$version.tar.gz
+sha256      = d11473c1ad4c57d874695e8026865e38b47116bbcb872bfc622ec8f37a86017d  libdeflate-1.25.tar.gz
+description = DEFLATE/zlib/gzip compression library
+homepage    = https://github.com/ebiggers/libdeflate
+depends     = cmake

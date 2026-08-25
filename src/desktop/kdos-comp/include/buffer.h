@@ -84,4 +84,12 @@ struct lab_data_buffer *buffer_create_from_wlr_buffer(
 struct lab_data_buffer *buffer_resize(struct lab_data_buffer *src_buffer,
 	int width, int height, double scale);
 
+/*
+ * KDOS: enlarge a one-bit bitmap by a WHOLE number with no smoothing, centred
+ * in the given box. `buffer_resize` only ever shrinks — see buffer.c.
+ */
+struct lab_data_buffer *buffer_resize_pixelated(
+	struct lab_data_buffer *src_buffer, int width, int height,
+	double scale);
+
 #endif /* LABWC_BUFFER_H */

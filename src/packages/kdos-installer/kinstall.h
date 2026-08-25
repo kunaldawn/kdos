@@ -78,6 +78,52 @@ extern SysInfo ki_sys;
 
 void probe_system(void);
 void probe_disks(void);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The packs on the medium.
+ *
+ * An application is one file on the ISO9660 filesystem beside `system.sfs`,
+ * and until this page existed an install carried whatever the squashfs
+ * carried and nothing else — the packs stayed on the stick.
+ *
+ * IT IS READ FROM THE FLAT `PACKAGES` INDEX, not through libkpack. kinstall
+ * links libkbase, libktui and libkcolor and nothing else, which is what lets
+ * it live in phase 1 and exist on every tree from the first bootable image;
+ * `R:yes` is in the index for exactly this reader, so the installer and
+ * `kdos app` cannot disagree about what KDOS suggests.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define MAX_PACKS 128
+
+typedef struct {
+	char id[64];
+	char version[32];
+	char kind[16];		/* base | runtime | app | data             */
+	char file[128];
+	char summary[128];
+	char requires[256];	/* `D:` — the ids under this one, by name  */
+	unsigned long long size;
+	int recommended;
+	int chosen;		/* ticked, or pulled in by something ticked */
+} KiPack;
+
+extern KiPack ki_pack[MAX_PACKS];
+extern int ki_npack;
+extern int ki_packs_present;	/* a medium with an index on it            */
+
+void probe_packs(void);
+/* Tick everything the ticked packs need, transitively. Called after any change
+ * to the selection — a runtime is carried because something needs it, never
+ * because it exists. */
+void ki_packs_close(void);
+/* Bytes the chosen set costs — what the Summary and `--dump plan` report. */
+unsigned long long ki_packs_bytes(void);
+/* The Applications page's `enter`: scan the medium and apply an answer file's
+ * `packs =`. Called by the page, and by every path that plans an install
+ * WITHOUT walking the wizard — `--dump plan` and `--unattended`. Whether the
+ * Packs step runs at all depends on it, so install_plan() must not run first. */
+void ki_packs_enter(void);
+
 void probe_part(const char *path, Part *p);
 Disk *disk_by_path(const char *path);
 
@@ -120,6 +166,9 @@ typedef struct {
 
 	char theme[16];
 	int with_appbox;
+	/* Which packs the answer file named, space separated. Empty means
+	 * "whatever the page chose", which starts as the recommended set. */
+	char packs[1024];
 	unsigned svc_off;	/* bitmask over ki_services                */
 
 	int reboot_after;
@@ -249,6 +298,7 @@ extern Page *ki_pages[];
 extern int ki_npages;
 extern int ki_page;
 
+int page_index(const char *id);
 void page_goto(int n);
 void nav_next(void);
 void nav_back(void);

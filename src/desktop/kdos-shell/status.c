@@ -140,7 +140,11 @@ static void line_push(const char *s)
 
 		sh_utf8_trunc(cut, sizeof(cut), rest, first ? w : w - 2);
 		if (nlines >= ST_LINES) {
-			memmove(lines[0], lines[1],
+			/* By ROW: `lines + 1` points at a whole row inside the
+			 * array, so the extent checked is the array. `lines[1]`
+			 * is a pointer to one row and a fortified libc rejects
+			 * a length that reaches past it. */
+			memmove(lines, lines + 1,
 				sizeof(lines[0]) * (ST_LINES - 1));
 			nlines = ST_LINES - 1;
 		}
@@ -470,7 +474,7 @@ static void draw_list(int w, int h)
 	else
 		snprintf(sub, sizeof(sub), "%d hidden", nrows);
 
-	int y0 = sh_chrome_header(w, warn ? "dialog-warning" : "view-more",
+	int y0 = kch_header(w, warn ? "dialog-warning" : "view-more",
 				  "Status", sub, icons_on);
 	list_y0 = y0;
 
@@ -481,7 +485,7 @@ static void draw_list(int w, int h)
 	int follow = sel_follow;
 
 	sel_follow = 0;
-	sh_list_clamp(&top, sel, nrows, vis, follow);
+	kch_list_clamp(&top, sel, nrows, vis, follow);
 
 	int rw = nrows > vis ? w - 3 : w - 2;
 
@@ -516,16 +520,16 @@ static void draw_list(int w, int h)
 			       "Widgets named by `overflow =` in panel.conf "
 			       "live here.",
 			       KT_MID, KT_BG, KT_A_NONE);
-	sh_list_scrollbar(w - 2, y0, vis, nrows, top, KT_BG);
+	kch_scrollbar(0, w - 2, y0, vis, nrows, top, KT_BG);
 
-	struct sh_button b[SB_N];
+	struct kch_button b[SB_N];
 
-	b[SB_OPEN] = (struct sh_button){ "Open", nrows > 0 };
+	b[SB_OPEN] = (struct kch_button){ "Open", nrows > 0 };
 	/* No ellipsis: the ascii tier draws every non-ASCII codepoint as `?`,
 	 * so `Panel…` reads as `Panel?` on tty1 and in a golden frame. */
-	b[SB_PANEL] = (struct sh_button){ "Panel", 1 };
-	b[SB_CLOSE] = (struct sh_button){ "Close", 1 };
-	int bx = sh_chrome_buttons(w, h - 2, b, SB_N, -1);
+	b[SB_PANEL] = (struct kch_button){ "Panel", 1 };
+	b[SB_CLOSE] = (struct kch_button){ "Close", 1 };
+	int bx = kch_buttons(w, h - 2, b, SB_N, -1);
 	int room = bx - 3;
 	static const char HINT[] = "Enter opens   Esc closes";
 
@@ -545,7 +549,7 @@ static void draw_pane(int w, int h)
 	 * `utilities-system-monitor` is the obvious name and Papirus files it
 	 * in a context vendor.py does not take, so the band would have come up
 	 * with a hole in it. */
-	int y0 = sh_chrome_header(w, "speedometer", pane_title, sub, icons_on);
+	int y0 = kch_header(w, "speedometer", pane_title, sub, icons_on);
 
 	/* Recorded from what was DRAWN, like every list in this shell: the
 	 * scroll arithmetic below reads it, and deriving that origin twice is
@@ -582,14 +586,14 @@ static void draw_pane(int w, int h)
 			       pane_done ? "it printed nothing"
 					 : "waiting for it to say something…",
 			       KT_MID, KT_BG, KT_A_NONE);
-	sh_list_scrollbar(w - 2, y0, vis, nlines, ltop, KT_BG);
+	kch_scrollbar(1, w - 2, y0, vis, nlines, ltop, KT_BG);
 
-	struct sh_button b[PB_N];
+	struct kch_button b[PB_N];
 
-	b[PB_STOP] = (struct sh_button){ "Stop", !pane_done };
-	b[PB_BACK] = (struct sh_button){ "Back", 1 };
-	b[PB_CLOSE] = (struct sh_button){ "Close", 1 };
-	int bx = sh_chrome_buttons(w, h - 2, b, PB_N, -1);
+	b[PB_STOP] = (struct kch_button){ "Stop", !pane_done };
+	b[PB_BACK] = (struct kch_button){ "Back", 1 };
+	b[PB_CLOSE] = (struct kch_button){ "Close", 1 };
+	int bx = kch_buttons(w, h - 2, b, PB_N, -1);
 	int room = bx - 3;
 	static const char HINT[] = "wheel scrolls   End follows   Esc back";
 
@@ -604,7 +608,7 @@ static void draw_frame(void)
 	if (w < 24 || h < 8)
 		return;
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
-	ktui_draw_box(krect(0, 0, w, h), NULL, KT_ACCENT, KT_BG, 1);
+	sh_frame(w, h, NULL, KT_ACCENT, KT_BG, 1);
 	if (pane_on)
 		draw_pane(w, h);
 	else
@@ -668,7 +672,17 @@ int status_main(int argc, char **argv)
 	 * chip and the meters strip use) opens at the report's size directly.
 	 */
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
 		.cols = popup ? (open ? PANE_COLS : LIST_COLS) : ST_COLS,
 		.rows = popup ? (open ? PANE_ROWS : LIST_ROWS) : ST_ROWS,
 		.corner = !popup	? KWL_CORNER_CENTER
@@ -676,6 +690,9 @@ int status_main(int argc, char **argv)
 					: KWL_CORNER_TOP_LEFT,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Status",
 		.app_id = "kdos-status",
 		.font = font,
 		.keyboard = 1,
@@ -690,6 +707,9 @@ int status_main(int argc, char **argv)
 	if (icons_on)
 		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_BG);
 
 	/* `--open KEY` is a deep link and needs no table row: the panel uses it
 	 * for the stutter chip and the meters strip, which are cells on the bar
@@ -726,15 +746,46 @@ int status_main(int argc, char **argv)
 				      idx < nrows;
 
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					if (kch_scrollbar_grabbed() == 0)
+						top = bt;
+					else
+						ltop = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (in_list) {
 					sel = idx;
 					sel_follow = 1;
 				}
-				sh_chrome_hover(ev.mx, ev.my);
+				kch_hover(ev.mx, ev.my);
+				continue;
+			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt;
+
+				bt = kch_scrollbar_press(0, ev.mx, ev.my);
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+				bt = kch_scrollbar_press(1, ev.mx, ev.my);
+				if (bt >= 0) {
+					ltop = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
@@ -751,7 +802,7 @@ int status_main(int argc, char **argv)
 						lfollow = 1;
 					continue;
 				}
-				if (!sh_list_wheel(up, &top, nrows, vis)) {
+				if (!kch_list_wheel(up, &top, nrows, vis)) {
 					sel += up ? -1 : 1;
 					if (sel < 0)
 						sel = 0;
@@ -771,7 +822,7 @@ int status_main(int argc, char **argv)
 			if (ev.btn != KT_MB_LEFT)
 				continue;
 
-			int bi = sh_chrome_button_at(ev.mx, ev.my);
+			int bi = kch_button_at(ev.mx, ev.my);
 
 			if (pane_on) {
 				if (bi == PB_STOP)

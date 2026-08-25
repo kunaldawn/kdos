@@ -49,6 +49,7 @@
 
 #include "kbase.h"
 #include "kwl.h"
+#include "kxdg.h"
 #include "shell.h"
 
 #define OW_MAX_CANDS 64
@@ -66,7 +67,7 @@ struct ow_cand {
 static struct ow_cand cands[OW_MAX_CANDS];
 static int ncands;
 /* The viewport follows the SELECTION only when the selection is what moved —
- * see sh_list_wheel. A clamp that followed unconditionally would undo a page
+ * see kch_list_wheel. A clamp that followed unconditionally would undo a page
  * scroll on the very next frame. */
 static int sel, top, sel_follow = 1;
 
@@ -85,63 +86,16 @@ static char edit_buf[512];
 
 /* ── path -> MIME ──────────────────────────────────────────────────────── */
 
-static int mime_from_globs(const char *base, char *out, size_t n)
-{
-	size_t len = 0;
-	char *data = kb_read_all("/usr/share/mime/globs", &len);
-	size_t best = 0;
-	int found = 0;
-
-	if (!data)
-		return 0;
-
-	for (char *p = data; *p;) {
-		char *nl = strchr(p, '\n');
-		if (nl)
-			*nl = '\0';
-		if (*p == '#' || !*p)
-			goto next;
-
-		char *colon = strchr(p, ':');
-		if (!colon)
-			goto next;
-		*colon = '\0';
-		const char *type = p, *glob = colon + 1;
-
-		if (glob[0] == '*' && glob[1] == '.') {
-			const char *suffix = glob + 1;
-			size_t sl = strlen(suffix), bl = strlen(base);
-			if (bl > sl && !strcasecmp(base + bl - sl, suffix) &&
-			    sl > best) {
-				best = sl;
-				snprintf(out, n, "%s", type);
-				found = 1;
-			}
-		} else if (!strchr(glob, '*') && !strchr(glob, '?') &&
-			   !strcasecmp(glob, base) && best == 0) {
-			/* An exact name — `Makefile`, `.bashrc`. Only when no
-			 * suffix matched: a suffix is the more specific claim. */
-			snprintf(out, n, "%s", type);
-			found = 1;
-		}
-next:
-		if (!nl)
-			break;
-		p = nl + 1;
-	}
-	free(data);
-	return found;
-}
-
+/*
+ * libkxdg owns this. It is the same table `kdos-appbox open` resolves against
+ * and the same longest-suffix rule, so the chooser and the opener cannot
+ * disagree about what a file is — and the glob table's path is a compile-time
+ * define there, which is what lets a fixture stand in for the compiled
+ * database that exists only on a booted target.
+ */
 static void mime_for_path(const char *path, char *out, size_t n)
 {
-	if (kb_is_dir(path)) {
-		snprintf(out, n, "inode/directory");
-		return;
-	}
-	if (mime_from_globs(kb_basename(path), out, n))
-		return;
-	snprintf(out, n, "application/octet-stream");
+	kxdg_mime_for_path(path, out, n);
 }
 
 /* ── the search path ───────────────────────────────────────────────────── */
@@ -609,7 +563,7 @@ static void draw(void)
 		list_rows = 1;
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), " Open with ", KT_ACCENT, KT_SURFACE, 0);
+	sh_frame(w, h, " Open with ", KT_ACCENT, KT_SURFACE, 0);
 
 	/* What is being opened, and what it was decided to be. The path is
 	 * elided from the LEFT — the end of it is the part that identifies it. */
@@ -667,11 +621,11 @@ static void draw(void)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, list_top, list_rows, nrows(), top,
+	kch_scrollbar(0, w - 1, list_top, list_rows, nrows(), top,
 			  KT_SURFACE);
 	/* On `!ncands`, never `!nrows()`: the Other row is always there, so the
 	 * list is never empty and this said nothing on the one machine that
@@ -733,52 +687,9 @@ static void draw(void)
 	ktui_draw_flush();
 }
 
-/*
- * `--dump-cells`: one line per painted cell, codepoint and colour SLOT, which
- * is what a golden frame has to compare — a plain text dump proves the layout
- * and says nothing about whether the surface is wearing the palette.
- *
- * Through the backend vtable rather than ktui_offscreen_init(), because the
- * cell buffer is private to libktui and offscreen mode short-circuits the
- * flush entirely. Same seam as keys.c, per front end.
- */
+/* `--dump-cells` — one line per painted cell, colours included. The
+ * backend is cells.c's; these two are what the size flag writes. */
 static int cap_w = 64, cap_h = 18;
-
-static void cap_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h, int ff)
-{
-	(void)prev;
-	(void)ff;
-	for (int y = 0; y < h; y++)
-		for (int x = 0; x < w; x++) {
-			const KtuiCell *c = &cur[y * w + x];
-			if (!c->ch || c->ch == ' ' || c->ch == KTUI_WIDE_CONT)
-				continue;
-			printf("%d %d U+%04X %d %d %d\n", y, x, c->ch, c->fg,
-			       c->bg, c->attr);
-		}
-}
-
-static int cap_poll(KtuiEvent *ev, int timeout_ms)
-{
-	(void)ev;
-	(void)timeout_ms;
-	return 0;
-}
-
-static void cap_size(int *w, int *h)
-{
-	*w = cap_w;
-	*h = cap_h;
-}
-
-static int cap_caps(void)
-{
-	return KT_CAP_UTF8 | KT_CAP_TRUECOLOR;
-}
-
-static const KtuiBackend cap_backend = {
-	"dump-cells", cap_flush, cap_poll, cap_size, cap_caps
-};
 
 /* ── main ──────────────────────────────────────────────────────────────── */
 
@@ -878,7 +789,7 @@ int openwith_main(int argc, char **argv)
 	if (dump || cells) {
 		sh_theme_from_cache();
 		if (cells) {
-			ktui_backend_set(&cap_backend);
+			ktui_backend_set(sh_cells_backend(cap_w, cap_h));
 			ktui_draw_init();
 			draw();
 			return 0;
@@ -890,9 +801,22 @@ int openwith_main(int argc, char **argv)
 	}
 
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = KWL_ROLE_TOPLEVEL,
 		.cols = 64,
 		.rows = 18,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Open with",
 		.app_id = "kdos-openwith",
 		.font = font,
 		.keyboard = 1,
@@ -904,6 +828,9 @@ int openwith_main(int argc, char **argv)
 		return 2;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	int rc = 1;
 	while (!kwl_should_close()) {
@@ -912,7 +839,7 @@ int openwith_main(int argc, char **argv)
 		int list_rows = ktui_h - 6;
 		if (list_rows < 1)
 			list_rows = 1;
-		sh_list_clamp(&top, sel, nrows(), list_rows, sel_follow);
+		kch_list_clamp(&top, sel, nrows(), list_rows, sel_follow);
 		sel_follow = 0;
 
 		draw();
@@ -934,19 +861,44 @@ int openwith_main(int argc, char **argv)
 			int on_row = ev.my >= 3 && ev.my < ktui_h - 3 &&
 				     row >= 0 && row < nrows();
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar.
+				 * A drag is a press that is still down, and
+				 * Wayland says nothing about that, so the
+				 * grab is what remembers it. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (on_row && !editing) {
 					sel = row;
 					sel_follow = 1;
 				}
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx,
+							     ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
 				int lr = ktui_h - 6 > 0 ? ktui_h - 6 : 1;
-				if (!sh_list_wheel(up, &top, nrows(), lr)) {
+				if (!kch_list_wheel(up, &top, nrows(), lr)) {
 					sel += up ? -1 : 1;
 					sel_follow = 1;
 				}

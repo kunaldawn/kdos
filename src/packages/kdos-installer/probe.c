@@ -548,3 +548,148 @@ void probe_system(void)
 
 	measure_payload();
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+ * The packs on the medium
+ * ════════════════════════════════════════════════════════════════════════ */
+
+KiPack ki_pack[MAX_PACKS];
+int ki_npack;
+int ki_packs_present;
+
+/*
+ * `PACKAGES` is Alpine's shape — single-character keys, one stanza per pack,
+ * a blank line between — and this reads the five fields an installer needs.
+ * An unknown key is skipped rather than refused: the index is written by
+ * `kdos-pack index` and will grow keys this reader does not care about.
+ *
+ * A STANZA WITH NO `P:` OR NO `F:` IS DROPPED, never half-recorded. A pack
+ * whose file this cannot name is a row that would fail at the copy, after the
+ * point of no return.
+ */
+void probe_packs(void)
+{
+	const char *dir = getenv("KDOS_PACK_MEDIUM");
+	char path[512], *text;
+	KiPack cur;
+	int have = 0, is_delta = 0;
+
+	ki_npack = 0;
+	ki_packs_present = 0;
+	if (!dir || !*dir)
+		dir = "/mnt/iso/packs";
+	snprintf(path, sizeof(path), "%.400s/PACKAGES", dir);
+	text = kb_read_all(path, NULL);
+	if (!text)
+		return;
+	ki_packs_present = 1;
+
+	memset(&cur, 0, sizeof(cur));
+	for (char *line = text, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		next = nl ? nl + 1 : line + strlen(line);
+		if (nl)
+			*nl = '\0';
+
+		if (!line[0]) {			/* stanza boundary */
+			if (have && !is_delta && cur.id[0] && cur.file[0] &&
+			    ki_npack < MAX_PACKS)
+				ki_pack[ki_npack++] = cur;
+			memset(&cur, 0, sizeof(cur));
+			have = 0;
+			is_delta = 0;
+			continue;
+		}
+		if (line[1] != ':')
+			continue;
+		have = 1;
+		switch (line[0]) {
+		case 'P': kb_strlcpy(cur.id, line + 2, sizeof(cur.id)); break;
+		case 'V': kb_strlcpy(cur.version, line + 2, sizeof(cur.version)); break;
+		case 'K': kb_strlcpy(cur.kind, line + 2, sizeof(cur.kind)); break;
+		case 'F': kb_strlcpy(cur.file, line + 2, sizeof(cur.file)); break;
+		case 'T': kb_strlcpy(cur.summary, line + 2, sizeof(cur.summary)); break;
+		case 'S': cur.size = strtoull(line + 2, NULL, 10); break;
+		case 'R': cur.recommended = !strcmp(line + 2, "yes"); break;
+		case 'D': kb_strlcpy(cur.requires, line + 2,
+				     sizeof(cur.requires)); break;
+		/* A delta is a route to a pack rather than a pack, and an
+		 * installer that offered one would offer something it cannot
+		 * apply: `O:` marks the stanza and it is dropped WHOLE at the
+		 * boundary. Clearing a field here instead would depend on `O:`
+		 * coming after the field it cleared. */
+		case 'O': is_delta = 1; break;
+		default: break;
+		}
+	}
+	if (have && !is_delta && cur.id[0] && cur.file[0] &&
+	    ki_npack < MAX_PACKS)
+		ki_pack[ki_npack++] = cur;
+	free(text);
+
+	/*
+	 * THE BASE IS NOT A CHOICE; A RUNTIME IS CARRIED BECAUSE SOMETHING
+	 * NEEDS IT. An application pack is a diff over a runtime and a runtime
+	 * is a diff over the base, so leaving a needed one out installs
+	 * applications that cannot start — the one outcome a page of
+	 * checkboxes must not be able to produce. But carrying ALL of them is
+	 * the other error and it is not free: measured on a real bake the
+	 * seven runtimes are 1.7 GB of which rt-wine alone is 713 MB, on a
+	 * machine that may never run a Windows binary.
+	 */
+	for (int i = 0; i < ki_npack; i++)
+		ki_pack[i].chosen = !strcmp(ki_pack[i].kind, "base") ||
+				    ki_pack[i].recommended;
+	ki_packs_close();
+}
+
+/*
+ * Pull in what the ticked packs need, transitively.
+ *
+ * `D:` carries NAMES and no version constraints, deliberately: this reader
+ * links neither libkpack nor a solver. The loop repeats until nothing new is
+ * added rather than recursing, so a chain of any depth resolves and a cycle
+ * cannot spin — a pack already chosen is never chosen twice.
+ */
+void ki_packs_close(void)
+{
+	int added = 1;
+
+	/* IDEMPOTENT, because unticking an application must give its runtime
+	 * back. Every runtime is dropped first and re-pulled by whatever still
+	 * needs it; base and the user's own app choices are untouched. */
+	for (int i = 0; i < ki_npack; i++)
+		if (strcmp(ki_pack[i].kind, "base") &&
+		    strcmp(ki_pack[i].kind, "app") &&
+		    strcmp(ki_pack[i].kind, "data"))
+			ki_pack[i].chosen = 0;
+
+	while (added) {
+		added = 0;
+		for (int i = 0; i < ki_npack; i++) {
+			char req[256], *tok, *save;
+
+			if (!ki_pack[i].chosen || !ki_pack[i].requires[0])
+				continue;
+			kb_strlcpy(req, ki_pack[i].requires, sizeof(req));
+			for (tok = strtok_r(req, " ", &save); tok;
+			     tok = strtok_r(NULL, " ", &save))
+				for (int j = 0; j < ki_npack; j++)
+					if (!ki_pack[j].chosen &&
+					    !strcmp(ki_pack[j].id, tok)) {
+						ki_pack[j].chosen = 1;
+						added = 1;
+					}
+		}
+	}
+}
+
+unsigned long long ki_packs_bytes(void)
+{
+	unsigned long long n = 0;
+
+	for (int i = 0; i < ki_npack; i++)
+		if (ki_pack[i].chosen)
+			n += ki_pack[i].size;
+	return n;
+}

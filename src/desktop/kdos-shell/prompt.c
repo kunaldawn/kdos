@@ -168,6 +168,9 @@ int prompt_main(int argc, char **argv)
 		return EXIT_CANCELLED;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	int sel = 0;			/* 0 = No, 1 = Yes — No is the default */
 	int rc = EXIT_CANCELLED;

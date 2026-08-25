@@ -50,6 +50,7 @@
 #include <unistd.h>
 
 #include "kcell.h"
+#include "kproc.h"
 #include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
@@ -81,53 +82,6 @@ static void panel_spawn(const char *const argv[])
 }
 
 /*
- * THE SAME SPAWN, BUT IT TELLS YOU WHEN THE CHILD IS GONE.
- *
- * The Start button has to stay lit for as long as its menu is up, or the bar
- * gives no sign that the click landed and the menu reads as a window that
- * appeared from nowhere. The menu is a SEPARATE PROCESS and the panel
- * deliberately does not reap it, so "is it still open" cannot be a waitpid.
- *
- * A pipe answers it for nothing: the grandchild inherits the write end across
- * both forks and across the exec, the panel keeps the read end, and the fd
- * reports EOF at the moment the last copy of the write end is closed — which
- * is when the menu exits, however it exits. No file, no bus, no signal, and
- * nothing to go stale if the menu is killed.
- *
- * Returns the read end, or -1; the caller owns it.
- */
-static int panel_spawn_watched(const char *const argv[])
-{
-	int fd[2];
-
-	if (pipe(fd) != 0)
-		return -1;
-	pid_t pid = fork();
-	if (pid == 0) {
-		close(fd[0]);
-		if (fork() == 0) {
-			setsid();
-			execvp(argv[0], (char *const *)argv);
-			_exit(127);
-		}
-		_exit(0);
-	}
-	close(fd[1]);
-	if (pid < 0) {
-		close(fd[0]);
-		return -1;
-	}
-	while (waitpid(pid, NULL, 0) < 0 && errno == EINTR)
-		;
-	/* Never block on it: it is polled once a frame and only ever read for
-	 * its EOF. */
-	int fl = fcntl(fd[0], F_GETFL, 0);
-	if (fl >= 0)
-		fcntl(fd[0], F_SETFL, fl | O_NONBLOCK);
-	return fd[0];
-}
-
-/*
  * The same, keeping the pid — because this child has to be KILLED later.
  *
  * panel_spawn double-forks precisely so nothing has to be reaped; a tooltip is
@@ -147,6 +101,91 @@ static pid_t panel_spawn_pid(const char *const argv[])
 }
 
 /*
+ * WHERE THE MACHINE IS READ FROM — `/`, unless KDOS_PANEL_ROOT says otherwise.
+ *
+ * The same seam `kdos stutter --fixture`, `kdos-oomd --fixture`, `kdos-res
+ * --fixture` and KDOS_PRIVACY_PROC all use, and it is here for one reason: a
+ * `--dump` of this bar is the only committed picture of the most
+ * geometry-dense surface in the tree, and a picture whose right wing carries
+ * the host's load, its battery and the time of day cannot be diffed against
+ * anything. Pointed at a recorded tree the wing is fixed and the golden is a
+ * check of the LAYOUT, which is the half that has actually shipped broken.
+ *
+ * Reads only. Nothing in this file writes under either root, and a missing
+ * file under a fixture reads exactly as it does on a machine that has no
+ * battery: the applet is not drawn.
+ */
+static int panel_step;		/* which recorded snapshot a fixture is on */
+
+static const char *panel_base(void)
+{
+	static const char *base;
+
+	if (!base) {
+		base = getenv("KDOS_PANEL_ROOT");
+		if (!base)
+			base = "";
+	}
+	return base;
+}
+
+static const char *panel_root(void)
+{
+	static char buf[512];
+
+	if (!*panel_base())
+		return "";
+	snprintf(buf, sizeof(buf), "%s/%d", panel_base(), panel_step);
+	return buf;
+}
+
+/*
+ * A RECORDED MACHINE IS A SEQUENCE, because a rate is a difference.
+ *
+ * `/0`, `/1`, … under the root — the shape testing/fixtures/energy already
+ * has. One snapshot can only ever produce "no reading yet": the CPU meter
+ * diffs two reads of /proc/stat and holds when they are equal, so a fixture
+ * with a single state golden a bar whose whole meters strip is absent, which
+ * is the half of the layout most worth asserting. Advancing stops at the last
+ * snapshot there is, so a fixture may carry as few as one.
+ */
+static void panel_root_advance(void)
+{
+	char probe[512];
+	struct stat st;
+
+	if (!*panel_base())
+		return;
+	snprintf(probe, sizeof(probe), "%s/%d", panel_base(), panel_step + 1);
+	if (stat(probe, &st) == 0 && S_ISDIR(st.st_mode))
+		panel_step++;
+}
+
+/* `fopen` under that root. */
+static FILE *panel_fopen(const char *path)
+{
+	char full[512];
+
+	if (!*panel_root())
+		return fopen(path, "r");
+	snprintf(full, sizeof(full), "%s%s", panel_root(), path);
+	return fopen(full, "r");
+}
+
+/*
+ * The clock, frozen by KDOS_PANEL_NOW for the same reason. A dump of a bar
+ * whose right-hand end says 19:12 is a golden that fails a minute later.
+ */
+static time_t panel_wall(void)
+{
+	const char *e = getenv("KDOS_PANEL_NOW");
+
+	if (e && *e)
+		return (time_t)strtoll(e, NULL, 10);
+	return time(NULL);
+}
+
+/*
  * WHICH EDGE THE BAR IS ON, because a popup belonging to it has to grow the
  * other way. Layer-shell has no coordinates: `--at-bottom` is an anchor to the
  * BOTTOM edge plus a margin, which is the only way a client can say "just
@@ -163,25 +202,89 @@ static const char *panel_at_flag(void)
 }
 
 /* The menu the Start button opened, while it is still up. */
-static int start_menu_fd = -1;
+/*
+ * The Start button's id in the popup record. Negative so it can never collide
+ * with an applet's, which is what every other entry there is keyed on.
+ */
+#define POPUP_START (-2)
 
-/* Closed when the menu exits — see panel_spawn_watched. */
-static int start_menu_open(void)
+/*
+ * ── A PANEL BUTTON TOGGLES ITS POPUP ───────────────────────────────────────
+ *
+ * Clicking the clock opened a calendar; clicking the clock again opened
+ * ANOTHER one. Every button on this bar behaved that way, because a popup is a
+ * separate PROCESS here and the panel spawned one per click without ever
+ * asking whether the last one was still up. That is not what a button that
+ * opens a panel does anywhere else, and it is the reason a hand that wants the
+ * calendar shut has to go looking for Escape.
+ *
+ * ONE POPUP AT A TIME, because that is what the surfaces themselves already
+ * assume: they take the keyboard on demand and close when they lose it, so two
+ * of them on screen is a state neither can be in for long. The panel keeps the
+ * pid and WHICH control opened it; a click on that same control while it is up
+ * kills it and opens nothing.
+ *
+ * The pid, not the watched pipe: the Start menu's fd answers "is it still
+ * there" and cannot CLOSE it, and closing it is the whole point. It is a
+ * single fork, so it is also the one thing on this bar that has to be reaped —
+ * the same trade the tooltip already makes.
+ */
+static pid_t popup_pid = -1;
+static int popup_which = -1;	/* the control that opened it, or -1 */
+
+/* Reap it if it has gone. Called once a frame and before every decision. */
+static int popup_alive(void)
 {
-	char c;
-	ssize_t r;
-
-	if (start_menu_fd < 0)
+	if (popup_pid <= 0)
 		return 0;
-	r = read(start_menu_fd, &c, 1);
-	if (r == 0) {			/* EOF: the menu is gone */
-		close(start_menu_fd);
-		start_menu_fd = -1;
+	if (waitpid(popup_pid, NULL, WNOHANG) == popup_pid) {
+		popup_pid = -1;
+		popup_which = -1;
 		return 0;
 	}
-	/* EAGAIN is the ordinary answer: the write end is open and nobody has
-	 * written anything, which is exactly "still running". */
 	return 1;
+}
+
+static void popup_close(void)
+{
+	if (popup_pid > 0) {
+		kill(popup_pid, SIGTERM);
+		waitpid(popup_pid, NULL, 0);
+	}
+	popup_pid = -1;
+	popup_which = -1;
+}
+
+/*
+ * Open `argv` as THIS control's popup, or — when it is already this control's
+ * popup that is up — close it and open nothing.
+ *
+ * Returns 1 when it toggled something shut, so a caller that has other work to
+ * do on a click can tell the two apart.
+ *
+ * A DIFFERENT control always replaces: clicking the clock while the volume
+ * slider is up is a request for the calendar, not for two popups or for
+ * nothing.
+ */
+static int popup_toggle(int which, const char *const argv[])
+{
+	int up = popup_alive();
+
+	if (up && popup_which == which) {
+		popup_close();
+		return 1;
+	}
+	if (up)
+		popup_close();
+	popup_pid = panel_spawn_pid(argv);
+	popup_which = popup_pid > 0 ? which : -1;
+	return 0;
+}
+
+/* The Start button stays lit for as long as its menu is up. */
+static int start_menu_open(void)
+{
+	return popup_alive() && popup_which == POPUP_START;
 }
 
 /* ── the right wing: clock, battery, and what else is measurable ───────── */
@@ -204,7 +307,12 @@ static int start_menu_open(void)
  */
 static int battery_percent(int *charging, int *discharging)
 {
-	DIR *d = opendir("/sys/class/power_supply");
+	char rootp[256];
+	DIR *d;
+
+	snprintf(rootp, sizeof(rootp), "%s/sys/class/power_supply",
+		 panel_root());
+	d = opendir(rootp);
 	struct dirent *e;
 	long now_sum = 0, full_sum = 0;
 	long cap_sum = 0;
@@ -218,14 +326,15 @@ static int battery_percent(int *charging, int *discharging)
 		char path[512], buf[64];
 		if (e->d_name[0] == '.')
 			continue;
-		snprintf(path, sizeof(path), "/sys/class/power_supply/%s/type",
-			 e->d_name);
+		snprintf(path, sizeof(path), "%s/sys/class/power_supply/%s/type",
+			 panel_root(), e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) != 0)
 			continue;
 		if (strcmp(buf, "Battery")) {
 			/* Mains/USB/Wireless: online means wall power. */
 			snprintf(path, sizeof(path),
-				 "/sys/class/power_supply/%s/online", e->d_name);
+				 "%s/sys/class/power_supply/%s/online",
+				 panel_root(), e->d_name);
 			if (sh_read_line(path, buf, sizeof(buf)) == 0 &&
 			    atoi(buf))
 				powered = 1;
@@ -233,7 +342,8 @@ static int battery_percent(int *charging, int *discharging)
 		}
 
 		snprintf(path, sizeof(path),
-			 "/sys/class/power_supply/%s/scope", e->d_name);
+			 "%s/sys/class/power_supply/%s/scope", panel_root(),
+			 e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) == 0 &&
 		    !strcmp(buf, "Device"))
 			continue;	/* a mouse's cell, not the machine's */
@@ -241,11 +351,13 @@ static int battery_percent(int *charging, int *discharging)
 
 		long bnow = -1, bfull = -1;
 		snprintf(path, sizeof(path),
-			 "/sys/class/power_supply/%s/charge_now", e->d_name);
+			 "%s/sys/class/power_supply/%s/charge_now",
+			 panel_root(), e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) == 0)
 			bnow = atol(buf);
 		snprintf(path, sizeof(path),
-			 "/sys/class/power_supply/%s/charge_full", e->d_name);
+			 "%s/sys/class/power_supply/%s/charge_full",
+			 panel_root(), e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) == 0)
 			bfull = atol(buf);
 		if (bnow >= 0 && bfull > 0) {
@@ -253,8 +365,8 @@ static int battery_percent(int *charging, int *discharging)
 			full_sum += bfull;
 		} else {
 			snprintf(path, sizeof(path),
-				 "/sys/class/power_supply/%s/capacity",
-				 e->d_name);
+				 "%s/sys/class/power_supply/%s/capacity",
+				 panel_root(), e->d_name);
 			if (sh_read_line(path, buf, sizeof(buf)) == 0) {
 				cap_sum += atoi(buf);
 				ncap++;
@@ -262,7 +374,8 @@ static int battery_percent(int *charging, int *discharging)
 		}
 
 		snprintf(path, sizeof(path),
-			 "/sys/class/power_supply/%s/status", e->d_name);
+			 "%s/sys/class/power_supply/%s/status", panel_root(),
+			 e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) == 0) {
 			if (!strcmp(buf, "Charging")) {
 				*charging = 1;
@@ -329,7 +442,11 @@ static void battery_policy(struct sh_state *sh, int pct, int discharging)
  */
 static int net_state(char *out, size_t n, int *wireless)
 {
-	DIR *d = opendir("/sys/class/net");
+	char rootp[256];
+	DIR *d;
+
+	snprintf(rootp, sizeof(rootp), "%s/sys/class/net", panel_root());
+	d = opendir(rootp);
 	struct dirent *e;
 	int up = 0;
 
@@ -342,16 +459,16 @@ static int net_state(char *out, size_t n, int *wireless)
 		char path[512], buf[64];
 		if (e->d_name[0] == '.' || !strcmp(e->d_name, "lo"))
 			continue;
-		snprintf(path, sizeof(path), "/sys/class/net/%s/operstate",
-			 e->d_name);
+		snprintf(path, sizeof(path), "%s/sys/class/net/%s/operstate",
+			 panel_root(), e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) != 0)
 			continue;
 		if (strcmp(buf, "up"))
 			continue;
 		/* A wireless interface wins a tie: on a laptop with both, the
 		 * one people ask about is the one that drops. */
-		snprintf(path, sizeof(path), "/sys/class/net/%s/wireless",
-			 e->d_name);
+		snprintf(path, sizeof(path), "%s/sys/class/net/%s/wireless",
+			 panel_root(), e->d_name);
 		int wifi = access(path, F_OK) == 0;
 		if (!up || wifi) {
 			snprintf(out, n, "%.*s", (int)n - 1, e->d_name);
@@ -404,6 +521,9 @@ struct fav {
 #define FAV_ANIM_MS 1100
 static int64_t panel_now_ms(void);	/* the meters' clock, shared */
 static int hover_fav = -1;
+/* The overflow cell. It opens the window list and had no hover at all —
+ * the one control on the chip row that looked like a readout. */
+static int hover_plusn;
 /*
  * A DRAG ON THE QUICK-LAUNCH ROW REORDERS IT.
  *
@@ -508,13 +628,76 @@ static void fav_launch(int i)
 
 /* Set by panel_main from `--cells`; comp.conf's `panel_cells`. */
 static int tb_rows = 2;
+/* From `--margin` / `--opacity`; comp.conf's `panel_margin` / `panel_opacity`.
+ * Edge to edge and translucent is the shipped default. */
+static int panel_margin;
+static int panel_opacity = 80;
+
+/*
+ * The pixel layer is libkchrome's — see kch_px.c. It is shared with the Start
+ * menu (and with anything else that grows one) for the reason every other
+ * piece of chrome here is shared: two answers to what a plate looks like is
+ * one answer too many, and the one nobody is looking at is the one that
+ * drifts.
+ *
+ * What stays here is the panel's own policy: which slot the backdrop owns, and
+ * when the bar has to stop being translucent.
+ */
+
+/* Set by draw_taskbar from the toplevel list: a window is touching the bar. */
+static int px_occluded;
+/*
+ * Whether the pixel layer is actually going to be REPLAYED — true only once
+ * the backdrop is installed, which is the live surface and never a `--dump`.
+ * The same question `kicon_slot()` answers with -1, asked of the other half of
+ * the paint: a caller that draws only pixels would draw nothing at all in a
+ * golden frame.
+ */
+static int px_live;
+
+/*
+ * The bar's backdrop.
+ *
+ * ADAPTIVE OPACITY IS CORRECTNESS HERE, NOT POLISH. Measured over a white
+ * maximized window at 80%, the state ladder collapses — rest 1.05:1, hover
+ * 1.30:1, focused 1.52:1 — and it stops being possible to see which window you
+ * are in, which is the one thing a taskbar exists to say. The text survives at
+ * better than 7:1, so this is not about reading the labels. The trigger is any
+ * toplevel maximized or fullscreen, which is not an approximation of the
+ * problem: a maximized window IS what puts a bright surface behind the bar.
+ */
+static void panel_backdrop(pixman_image_t *dst, int w, int h, int scale)
+{
+	uint8_t a = px_occluded ? 255
+				: (uint8_t)(panel_opacity * 255 / 100);
+
+	/* The edge goes on the side the DESKTOP is, which for a bottom bar is
+	 * its top. libkwl knows which edge the surface is anchored to, so the
+	 * derivation lives there rather than being `panel_top` spelled a
+	 * second way. */
+	kch_px_body(dst, w, h, scale, a,
+		    kwl_edge_bottom() ? KCH_EDGE_BOTTOM : KCH_EDGE_TOP);
+	kch_px_replay(dst, scale);
+}
 /*
  * Whether a window button carries its name — `task_labels` in panel.conf.
  * AUTO is the adaptive ladder the bar has always used; ALWAYS keeps the label
  * even when it means hiding windows behind `+N`; NEVER is a dock.
  */
 enum { TL_AUTO = 0, TL_ALWAYS, TL_NEVER };
-static int task_labels = TL_AUTO;
+/*
+ * ICONS ONLY. The bar is 40 pixels and a button is a 40x40 square with a 32px
+ * picture in it — Windows 7's default and for its reason: large icons are
+ * "a richer icon language" and the label is what a hover is for. A label costs
+ * six cells a window and says what the picture already said.
+ */
+static int task_labels = TL_NEVER;
+/* panel.conf's `start_label`. ON by default: a Start button that is a picture
+ * the same size as the app icons beside it does not read as the way in, which
+ * is the one thing this control has to do. `no` reclaims the word's cells for
+ * the window list, and `pass 2` takes them back anyway on a bar too narrow to
+ * afford both. */
+static int start_label = 1;
 
 /*
  * WHICH METERS EXIST. The identity is here and the descriptor table is beside
@@ -560,7 +743,11 @@ static int icon_ok(void)
 /* What a window button needs in ICON MODE — the picture, the state marker and
  * a column of air. It is the floor the RIGHT WING measures against, because
  * the list gives up its labels before the bar gives up a chart. */
-#define CHIP_MINW_ICON 3
+/* FOUR CELLS. At the bar's 10x20 cell that is 40x40 — a square, and the same
+ * 32px large icon Windows 7 settled on. Both the wing's reservation and the
+ * pass's acceptance test measure against this one figure; two floors for one
+ * decision is how a pass throws away the layout it was measured for. */
+#define CHIP_MINW_ICON 4
 
 /* Whether the row may collapse to pictures — `task_labels = always` is
  * somebody saying it may not, and a bar with no artwork cannot. Asked in two
@@ -569,11 +756,15 @@ static int icon_ok(void);
 
 struct chip {
 	const char *label;
-	char buf[48];
-	int first;		/* task index of the first member */
-	int count;
+	/* Name, the box that disambiguates it, and a member count: `GIMP (arch)
+	 * ×3`. Wider than the 48 it was, because a truncated label is a button
+	 * that says the wrong thing rather than one that says less. */
+	char buf[112];
+	int first;		/* task index of the first member, or -1 */
+	int count;		/* 0 for a pinned application not running  */
 	int active;		/* any member focused */
 	int allmin;		/* every member minimized */
+	int fav;		/* index into favs[], or -1 */
 };
 static struct chip chips[SH_MAX_TASKS];
 static int nchips;
@@ -582,7 +773,13 @@ static int chip_vis;		/* chips drawn last frame */
 static int plusn_x, plusn_end;	/* the +N overflow cell's span */
 static int list_x0, list_x1;	/* the whole row's span, for the wheel */
 
-static void build_chips(struct sh_state *sh)
+/*
+ * `launchers` is pass 3's rung: with the quick-launch row merged into this
+ * one, the thing a narrow bar gives up last is no longer a separate strip, it
+ * is the pinned applications that are NOT running. A running window is never
+ * dropped — that is what the `+N` cell and icon mode are for.
+ */
+static void build_chips(struct sh_state *sh, int launchers)
 {
 	nchips = 0;
 	for (int i = 0; i < sh->ntasks; i++) {
@@ -592,11 +789,23 @@ static void build_chips(struct sh_state *sh)
 			for (int j = 0; j < nchips; j++) {
 				const struct sh_task *f =
 					&sh->tasks[chips[j].first];
-				if (f->app_id[0] &&
-				    !strcmp(f->app_id, t->app_id)) {
-					c = &chips[j];
-					break;
-				}
+				if (!f->app_id[0] ||
+				    strcmp(f->app_id, t->app_id))
+					continue;
+				/*
+				 * THE BOX IS PART OF THE GROUPING KEY. Two
+				 * GIMPs from two boxes are two applications as
+				 * far as a person using them is concerned, and
+				 * merging them onto one button would put both
+				 * behind a member list that cannot say which
+				 * is which. A window with no box groups with
+				 * other windows with no box, which is every
+				 * window on a machine that has none.
+				 */
+				if (strcmp(f->box, t->box))
+					continue;
+				c = &chips[j];
+				break;
 			}
 		}
 		if (!c) {
@@ -605,6 +814,7 @@ static void build_chips(struct sh_state *sh)
 			c->count = 0;
 			c->active = 0;
 			c->allmin = 1;
+			c->fav = -1;
 		}
 		c->count++;
 		if (t->activated)
@@ -613,16 +823,143 @@ static void build_chips(struct sh_state *sh)
 			c->allmin = 0;
 	}
 
+	/*
+	 * ONE BUTTON TO RULE THEM ALL — the pinned launcher and the running
+	 * window are the SAME button.
+	 *
+	 * There were two rows: a quick-launch strip and a window list, so a
+	 * pinned Firefox that was running appeared twice, in two different
+	 * shapes, a separator apart. Windows 7 unified them for the reason its
+	 * own designers gave — "under many scenarios of single-instance
+	 * programs, launching and switching were equivalent" — and it buys
+	 * this bar the whole quick-launch segment and one of its separators.
+	 *
+	 * Pinned entries come first and IN PIN ORDER, so the row a person has
+	 * arranged does not reshuffle itself when something starts. A running
+	 * application that is also pinned occupies its pinned slot rather than
+	 * appending; everything else follows.
+	 *
+	 * The match is the app_id against the pinned desktop id, then the
+	 * resolved Name against the toplevel's. Two tests because a Wayland
+	 * app_id is not always the desktop id — `org.xfce.mousepad` is pinned
+	 * and `mousepad` is what the toplevel calls itself — and getting it
+	 * wrong shows the application twice, which is the bug being removed.
+	 */
+	{
+		struct chip merged[FAV_MAX + 64];
+		int nm = 0;
+		int taken[64];
+
+		for (int i = 0; i < nchips && i < 64; i++)
+			taken[i] = 0;
+
+		for (int fi = 0; fi < nfavs && nm < (int)(sizeof(merged) /
+							 sizeof(merged[0]));
+		     fi++) {
+			int hit = -1;
+
+			for (int j = 0; j < nchips && j < 64; j++) {
+				const struct sh_task *t;
+
+				if (taken[j])
+					continue;
+				t = &sh->tasks[chips[j].first];
+				if (t->app_id[0] &&
+				    !strcasecmp(t->app_id, favs[fi].id)) {
+					hit = j;
+					break;
+				}
+				/*
+				 * THE ENTRY THE WINDOW RESOLVED TO, which is
+				 * the test that catches the common case: a GTK
+				 * client on Wayland calls itself `mousepad`
+				 * and its entry is `org.xfce.mousepad`, so
+				 * neither the id nor — when the entry has no
+				 * Name to compare — anything else matched, and
+				 * a pinned Mousepad that was running appeared
+				 * twice. Photographed on the booted ISO.
+				 */
+				if (t->did[0] &&
+				    !strcasecmp(t->did, favs[fi].id)) {
+					hit = j;
+					break;
+				}
+				if (t->name[0] && favs[fi].name[0] &&
+				    !strcasecmp(t->name, favs[fi].name)) {
+					hit = j;
+					break;
+				}
+			}
+			if (hit >= 0) {
+				merged[nm] = chips[hit];
+				taken[hit] = 1;
+			} else if (!launchers) {
+				continue;	/* pass 3 */
+			} else {
+				/* Pinned and not running: a launcher wearing a
+				 * task button's shape, with no state marker
+				 * and nothing to activate. */
+				memset(&merged[nm], 0, sizeof(merged[nm]));
+				merged[nm].first = -1;
+				merged[nm].count = 0;
+				merged[nm].allmin = 1;
+				merged[nm].label = favs[fi].name;
+			}
+			merged[nm].fav = fi;
+			nm++;
+		}
+		for (int j = 0; j < nchips && j < 64; j++) {
+			if (taken[j] || nm >= (int)(sizeof(merged) /
+						    sizeof(merged[0])))
+				continue;
+			merged[nm] = chips[j];
+			merged[nm].fav = -1;
+			nm++;
+		}
+		memcpy(chips, merged, (size_t)nm * sizeof(chips[0]));
+		nchips = nm;
+	}
+
 	for (int i = 0; i < nchips; i++) {
 		struct chip *c = &chips[i];
-		const struct sh_task *t = &sh->tasks[c->first];
-		if (c->count > 1) {
+		const struct sh_task *t;
+		int shared = 0;
+
+		if (c->count == 0)
+			continue;	/* a launcher; its label is the pin's */
+		t = &sh->tasks[c->first];
+
+		/*
+		 * THE BOX GOES IN THE LABEL ONLY WHEN IT DISAMBIGUATES.
+		 * A window whose app_id is unique on the machine shows exactly
+		 * what it showed before boxes existed; one whose app_id exists
+		 * in more than one box gets ` (arch)`. An always-on marker
+		 * would be a badge on every button on a machine where every
+		 * application is boxed, which says nothing.
+		 */
+		for (int j = 0; j < nchips && !shared; j++) {
+			const struct sh_task *o;
+			if (j == i || chips[j].count == 0)
+				continue;
+			o = &sh->tasks[chips[j].first];
+			if (o->app_id[0] && t->app_id[0] &&
+			    !strcmp(o->app_id, t->app_id) &&
+			    strcmp(o->box, t->box))
+				shared = 1;
+		}
+
+		if (c->count > 1 && shared && t->box[0])
+			snprintf(c->buf, sizeof(c->buf), "%s (%s) \xc3\x97%d",
+				 sh_task_label(t), t->box, c->count);
+		else if (c->count > 1)
 			snprintf(c->buf, sizeof(c->buf), "%s \xc3\x97%d",
 				 sh_task_label(t), c->count);
-			c->label = c->buf;
-		} else {
-			c->label = sh_task_label(t);
-		}
+		else if (shared && t->box[0])
+			snprintf(c->buf, sizeof(c->buf), "%s (%s)",
+				 sh_task_label(t), t->box);
+		else
+			c->buf[0] = '\0';
+		c->label = c->buf[0] ? c->buf : sh_task_label(t);
 	}
 
 	/*
@@ -661,20 +998,94 @@ static void build_chips(struct sh_state *sh)
  * says `Icon=firefox-esr`, but plenty of entries name something else entirely,
  * and the entry is the thing that knows.
  */
-static int chip_icon(const struct sh_state *sh, const struct chip *c, int h)
+/*
+ * A chip's picture. `cells` wide and centred on the bar's full height, because
+ * an icons-only button has no label to share a row with.
+ *
+ * A PINNED APPLICATION THAT IS NOT RUNNING HAS NO TOPLEVEL TO ASK, so its
+ * artwork comes from the pin — which is where the name comes from too. Without
+ * this the merged row would show a picture for everything that is running and
+ * a letter for everything that is not, which is the opposite of what a pinned
+ * launcher is for.
+ */
+/*
+ * The desktop id a LauncherEntry names this button by: the pin when there is
+ * one, the app_id otherwise. Unity's `application://<id>.desktop` is a desktop
+ * id, and a Wayland app_id is only sometimes the same string — which is the
+ * same mismatch the merge itself has to bridge.
+ */
+static const char *chip_unity_id(const struct sh_state *sh,
+				 const struct chip *c)
 {
-	const struct sh_task *t = &sh->tasks[c->first];
+	if (c->fav >= 0 && c->fav < nfavs)
+		return favs[c->fav].id;
+	if (c->count > 0 && sh->tasks[c->first].app_id[0])
+		return sh->tasks[c->first].app_id;
+	return NULL;
+}
+
+/*
+ * THE AIR ROUND A PICTURE IN A BUTTON-SIZED WELL.
+ *
+ * A four-cell well on the 40-pixel bar is 40x40, and libkicon draws the
+ * largest square that fits — so the picture ran edge to edge: Firefox's circle
+ * touched the top and bottom of its own plate, GIMP's head was cut off by it,
+ * and the row read as a strip of pictures rather than as a row of buttons.
+ * Photographed. Windows 7 puts a 32 in a 40 and that four pixels is the whole
+ * difference. A fifth of the cell's height, so the proportion holds at every
+ * `panel_font`; libkicon multiplies it by the output scale.
+ */
+static int icon_air(void)
+{
+	int a = kwl_cell_h() / 5;
+
+	return a < 1 ? 1 : a;
+}
+
+static int chip_icon(const struct sh_state *sh, const struct chip *c,
+		     int cells, int rows)
+{
+	const struct sh_task *t;
 	const char *name;
 	int s;
+	int pad = rows > 1 ? icon_air() : 0;
 
-	(void)h;
+	/*
+	 * THE PIN'S OWN ARTWORK FIRST, when there is a pin.
+	 *
+	 * A merged button is one application in two records: the pinned entry,
+	 * whose `Icon=` was resolved once at load, and a toplevel whose app_id
+	 * is often not a desktop id at all. Asking the app_id first meant a
+	 * pinned Mousepad kept its picture right up until it was launched and
+	 * then fell back to the letter `M` — the button changed appearance on
+	 * the one event that must not change it. Photographed on the booted
+	 * ISO.
+	 */
+	if (c->fav >= 0 && c->fav < nfavs && favs[c->fav].icon[0]) {
+		s = kicon_slot_pad(favs[c->fav].icon, cells, rows, pad);
+		if (s >= 0)
+			return s;
+	}
+	if (c->count == 0)
+		return -1;
+	t = &sh->tasks[c->first];
+	/* Then the entry the window itself resolved to, which is the id an
+	 * `Icon=` can be looked up under; `mousepad` is not one and
+	 * `org.xfce.mousepad` is. */
+	if (t->did[0]) {
+		name = kicon_app_icon(t->did);
+		s = name ? kicon_slot_pad(name, cells, rows, pad) : -1;
+		if (s < 0)
+			s = kicon_slot_pad(t->did, cells, rows, pad);
+		if (s >= 0)
+			return s;
+	}
 	if (!t->app_id[0])
 		return -1;
-	/* 2x1 — a 32x32 square on the label's own row. See draw_start. */
 	name = kicon_app_icon(t->app_id);
-	s = name ? kicon_slot(name, 2, 1) : -1;
+	s = name ? kicon_slot_pad(name, cells, rows, pad) : -1;
 	if (s < 0)
-		s = kicon_slot(t->app_id, 2, 1);
+		s = kicon_slot_pad(t->app_id, cells, rows, pad);
 	return s;
 }
 
@@ -690,6 +1101,60 @@ static int chip_icon(const struct sh_state *sh, const struct chip *c, int h)
  * spare go behind a `+N` cell and the wheel (or a click on the cell) shifts
  * the window. That is the contract the old per-window list broke.
  */
+/*
+ * THE BADGE AND THE PROGRESS BAR — see unity.c for where the numbers come
+ * from.
+ *
+ * The badge is the top-right CELL of the button: one digit, or `+` past nine,
+ * on a filled plate. A cell rather than a pixel-drawn circle because the digit
+ * has to be a glyph the cell grid drew, and because at a 10x20 cell a badge
+ * that fits a two-digit number would cover a third of the icon.
+ *
+ * The progress bar replaces the running underline for as long as it runs —
+ * they occupy the same two pixels, and a button doing something is better
+ * described by how far along it is than by the fact that it is open. The
+ * track is drawn as well as the fill, or a bar at 5% is indistinguishable
+ * from no bar at all.
+ */
+static void chip_badge(const struct sh_state *sh, const struct chip *c, int x,
+		       int iw, int h)
+{
+	const char *id = chip_unity_id(sh, c);
+	long count = 0;
+	int prog = -1, urgent = 0;
+	int cw = kwl_cell_w(), chh = kwl_cell_h();
+
+	if (!id || !sh_unity_get(id, &count, &prog, &urgent))
+		return;
+
+	if (prog >= 0) {
+		int bw = iw * cw - 2;
+		int bx = x * cw + 1;
+
+		kch_px_rect(bx, h * chh - 3, bw, 2, kch_tone(KCH_T_EDGE),
+			    0xFF);
+		if (prog > 0)
+			kch_px_rect(bx, h * chh - 3, bw * prog / 100, 2,
+				    kch_slot_rgb(KT_WARN), 0xFF);
+	}
+	if (count > 0) {
+		char b[4];
+
+		snprintf(b, sizeof(b), "%s", count > 9 ? "+" : "1");
+		if (count <= 9)
+			b[0] = (char)('0' + count);
+		/* Its own plate so the digit is never read against whatever
+		 * corner of the icon happens to be under it. */
+		/* Inside the button's plate, which is itself inset by one: a
+		 * badge drawn on the cell boundary overhangs the plate on the
+		 * right and paints over the bar's top edge above it. */
+		kch_px_round((x + iw - 1) * cw + 1, 1, cw - 2, chh - 2, 2,
+			     kch_slot_rgb(urgent ? KT_ERR : KT_WARN), 0xFF);
+		ktui_draw_text(x + iw - 1, 0, 1, b, KT_SURFACE, KT_SURFACE,
+			       KT_A_NONE);
+	}
+}
+
 static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 {
 	int avail = limit - x;
@@ -751,9 +1216,9 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 	int icon_mode = icon_ok() &&
 			(task_labels == TL_NEVER ||
 			 (task_labels == TL_AUTO && nchips * minw > avail)) &&
-			nchips * 3 <= avail;
+			nchips * CHIP_MINW_ICON <= avail;
 	if (icon_mode)
-		minw = 3;
+		minw = CHIP_MINW_ICON;
 
 	int nvis, hidden;
 	if (nchips * minw <= avail) {
@@ -779,8 +1244,8 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 	/* Equal widths are what makes "the Nth cell is chip N" true, and in
 	 * icon mode the whole point is that they are narrow — so the cap is
 	 * the mode's own, not the label row's. */
-	if (icon_mode && per > 4)
-		per = 4;
+	if (icon_mode && per > CHIP_MINW_ICON + 1)
+		per = CHIP_MINW_ICON + 1;
 	sh->task_cell_w = per;
 	chip_vis = nvis;
 	list_x0 = x;
@@ -814,22 +1279,94 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		 */
 		int hovered = sh->hover_task == chip_off + k;
 		int fg, bg;
+
+		/*
+		 * THE PLATE IS PIXELS AND THE STATE IS AN UNDERLINE.
+		 *
+		 * The focused window used to be a slab of full accent — 14:1
+		 * against the bar, several hundred pixels wide, competing with
+		 * the Start button and the clock and the top rule, all of which
+		 * were also at 14:1. It is a raised plate plus a two-pixel
+		 * accent underline now, which is what Windows 7, Plasma and
+		 * Windows 11 all do, and the state reads BETTER for it because
+		 * nothing else on the bar is shouting any more.
+		 *
+		 * The underline is also what says RUNNING at all: on the merged
+		 * row a button may be a pinned application that is not running,
+		 * and the only difference between the two is this line.
+		 *
+		 * Recorded, not painted — see the pixel layer. The cells above
+		 * keep KT_SURFACE, which the backdrop owns, so the plate shows
+		 * through wherever the button is not drawing a glyph.
+		 */
+		kch_px_plate(x, 0, per - 1, h,
+			 c->active ? KCH_T_ACTIVE
+				   : hovered ? KCH_T_HOVER : KCH_T_REST, 1);
+		/*
+		 * A GROUP IS A STACK OF PLATES, and without it an icons-only
+		 * row cannot say that a button is three windows.
+		 *
+		 * The `×3` this replaces is in the LABEL, and the shipped bar
+		 * has no labels — so a button holding three terminals was
+		 * pixel-for-pixel a button holding one, on the one desktop
+		 * where a click on it opens a MENU instead of a window.
+		 * Windows 7's cue is the same: a second and third plate
+		 * peeking out from behind the first. Two at most, because a
+		 * third is not a number anybody counts and the sliver would be
+		 * a pixel wide.
+		 */
+		if (c->count > 1) {
+			int cw = kwl_cell_w(), chh = kwl_cell_h();
+			int px = (x + per - 1) * cw - 1;
+			int n = c->count > 2 ? 2 : 1;
+
+			for (int k = 1; k <= n; k++)
+				kch_px_rect(px + k * 2, 1 + k * 2,
+					    2, h * chh - 2 - 4 * k,
+					    kch_tone(c->active ? KCH_T_ACTIVE
+							       : KCH_T_REST),
+					    kch_tone_alpha(KCH_T_REST));
+		}
+		if (c->count > 0) {
+			int cw = kwl_cell_w(), chh = kwl_cell_h();
+			int uw = c->active ? (per - 1) * cw - 2 : (per - 1) * cw / 2;
+			int ux = x * cw + 1 + ((per - 1) * cw - 2 - uw) / 2;
+
+			kch_px_rect(ux, h * chh - 3, uw, 2,
+				    c->allmin ? kch_tone(KCH_T_EDGE)
+					      : kch_slot_rgb(KT_ACCENT),
+				    c->allmin ? 0xC0 : 0xFF);
+		}
+		/*
+		 * The pinned row is dragged to reorder, and the spans it is
+		 * dragged by are recorded HERE now that the quick-launch strip
+		 * is gone. Same array, same handlers: a merged button that
+		 * carries a pin is the thing that used to be a quick-launch
+		 * icon.
+		 */
+		if (c->fav >= 0 && c->fav < FAV_MAX) {
+			fav_x[c->fav] = x;
+			fav_end[c->fav] = x + per;
+		}
+
 		if (c->active) {
-			fg = KT_SURFACE;
-			bg = KT_ACCENT;
+			fg = KT_TEXT;
+			bg = KT_SURFACE;
 		} else if (hovered) {
 			/* Brighter than at rest and dimmer than focused, so
 			 * hover cannot be misread as "this is the window you
 			 * are in": an affordance, not a state. */
-			fg = KT_SURFACE;
-			bg = KT_MID;
+			fg = KT_TEXT;
+			bg = KT_SURFACE;
 		} else {
-			fg = c->allmin ? KT_MID : KT_TEXT;
-			bg = KT_DIM;
+			fg = c->allmin || c->count == 0 ? KT_MID : KT_TEXT;
+			bg = KT_SURFACE;
 		}
-		ktui_draw_fill(krect(x, 0, per - 1, h), bg);
+		/* No fill: the plate recorded above IS the fill, and a cell
+		 * fill here would paint over it. KT_SURFACE is the slot the
+		 * backdrop owns. */
 
-		int icon = (icon_mode || per >= 6) ? chip_icon(sh, c, h) : -1;
+		int icon = per >= 6 ? chip_icon(sh, c, 2, 1) : -1;
 		/* Where the label starts: after the picture, after the state
 		 * marker, or at the edge. The sub-line below has to begin in
 		 * the same column or the button reads as two unrelated pieces
@@ -844,24 +1381,30 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		 * narrow one.
 		 */
 		if (icon_mode) {
-			int iy = h > 1 ? ry : 0;
-			if (icon >= 0) {
-				ktui_draw_sprite(krect(x, iy, 2, 1), icon, fg,
+			/*
+			 * The picture fills the plate and is centred on the
+			 * bar's FULL height — there is no label to share a row
+			 * with, which is the whole of what icons-only means.
+			 *
+			 * No state glyph under it any more: running, focused
+			 * and minimised are the underline recorded above, and
+			 * a marker cell as well would be the same fact said
+			 * twice in a button 40 pixels wide.
+			 */
+			int iw = per - 1 > 0 ? per - 1 : 1;
+			int ic = chip_icon(sh, c, iw, h);
+
+			if (ic >= 0) {
+				ktui_draw_sprite(krect(x, 0, iw, h), ic, fg,
 						 bg);
 			} else {
 				char one[8];
 				snprintf(one, sizeof(one), "%.1s",
 					 c->label && *c->label ? c->label : "?");
-				ktui_draw_text(x, iy, 2, one, fg, bg,
+				ktui_draw_text(x + iw / 2, ry, 1, one, fg, bg,
 					       KT_A_NONE);
 			}
-			if (h > 1)
-				ktui_draw_text(x, ry + 1, 2,
-					       c->allmin
-						       ? ktui_glyph[KT_G_DOT]
-						       : ktui_glyph[KT_G_SQUARE],
-					       c->allmin ? KT_DIM : fg, bg,
-					       KT_A_NONE);
+			chip_badge(sh, c, x, iw, h);
 			x += per;
 			continue;
 		}
@@ -877,7 +1420,7 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		 * the half a one-row taskbar has to throw away, and for a
 		 * group it says how many windows are behind the button.
 		 */
-		if (h > 1 && per - label_x > 3) {
+		if (h > 1 && per - label_x > 3 && c->count > 0) {
 			const struct sh_task *t0 = &sh->tasks[c->first];
 			char sub[96];
 			if (c->count > 1)
@@ -924,7 +1467,11 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		 * cannot afford even one full chip, and what was left over then
 		 * held the sign and none of the number. */
 		if (limit - x >= (int)strlen(pn)) {
+			int pnw = (int)strlen(pn);
+
 			plusn_x = x;
+			if (hover_plusn)
+				kch_px_plate(x, 0, pnw, h, KCH_T_HOVER, 1);
 			x += ktui_draw_text(x, ry, limit - x, pn, KT_WARN,
 					    KT_SURFACE, KT_A_NONE);
 			plusn_end = x;
@@ -982,14 +1529,29 @@ static void chips_wheel(struct sh_state *sh, int up)
 static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
 {
 	char xs[16], ys[16];
-	const char *app_id = sh->tasks[chips[ci].first].app_id;
+	const char *app_id;
+
+	/* A pinned application that is not running has no toplevel, so there
+	 * is no window menu to open and nothing for kdos-menu to list. */
+	if (ci < 0 || ci >= nchips || chips[ci].count == 0)
+		return;
+	app_id = sh->tasks[chips[ci].first].app_id;
 
 	snprintf(xs, sizeof(xs), "%d",
 		 (sh->task_hit_x + (ci - chip_off) * sh->task_cell_w) *
 			 kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+	/*
+	 * THE BOX GOES WITH IT. The panel groups by (app_id, box), so the
+	 * app_id alone does not say which of two GIMPs this menu is for —
+	 * and the menu's own title is the one place a person can check that
+	 * before closing something.
+	 */
+	const char *box = sh->tasks[chips[ci].first].box;
 	const char *argv[] = { "kdos-menu", ctrl ? "--winmenu" : "--windows",
-			       app_id, panel_at_flag(), xs, ys, NULL };
+			       app_id, panel_at_flag(), xs, ys,
+			       box[0] ? "--box" : NULL, box[0] ? box : NULL,
+			       NULL };
 	panel_spawn(argv);
 }
 
@@ -1008,26 +1570,82 @@ static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
  * most windows belong to boxed applications that is the bar you are holding.
  * See kdos-menu's `--winmenu`.
  */
+/*
+ * A SECOND WINDOW OF THE SAME APPLICATION, for a chip that is running but is
+ * not pinned — the pinned ones already have their Exec in `favs`.
+ *
+ * Resolved from the toplevel's app_id through the desktop entry, which is the
+ * same lookup the button's own NAME came from, so a middle click can only
+ * launch something the bar was already able to name. A window whose app_id
+ * resolves to no entry gets nothing rather than a guess: there is no command
+ * to run, and running the app_id as one would be a shell injection with a
+ * window title in it.
+ */
+static void chip_launch_again(const struct sh_state *sh, const struct chip *c)
+{
+	char exec[256], buf[256];
+	const char *argv[32];
+	int n = 0;
+
+	if (c->first < 0 || c->first >= sh->ntasks)
+		return;
+	if (sh_desktop_entry(sh->tasks[c->first].app_id, NULL, 0, exec,
+			     sizeof(exec)) != 0)
+		return;
+	sh_strip_field_codes(exec);
+	snprintf(buf, sizeof(buf), "%s", exec);
+	for (char *p = strtok(buf, " \t"); p && n < 31; p = strtok(NULL, " \t"))
+		argv[n++] = p;
+	argv[n] = NULL;
+	if (n)
+		panel_spawn(argv);
+}
+
 static void chip_click(struct sh_state *sh, int ci, int btn)
 {
 	if (ci < 0 || ci >= nchips)
 		return;
 	const struct chip *c = &chips[ci];
 
+	/*
+	 * NOTHING IS RUNNING BEHIND THIS BUTTON. On the merged row that is a
+	 * pinned application, and the only verb it has is start. Every path
+	 * below reads sh->tasks[c->first], which for a launcher is -1.
+	 */
+	if (c->count == 0) {
+		if (btn == SH_TRAY_BTN_LEFT && c->fav >= 0)
+			fav_launch(c->fav);
+		if (btn == SH_TRAY_BTN_MIDDLE && c->fav >= 0)
+			fav_launch(c->fav);
+		return;
+	}
+
 	if (btn == SH_TRAY_BTN_RIGHT) {
 		spawn_windows_menu(sh, ci, 1);
 		return;
 	}
-	if (c->count == 1) {
-		if (btn == SH_TRAY_BTN_MIDDLE)
-			sh_close_task(sh, c->first);
+	/*
+	 * MIDDLE IS A NEW INSTANCE, NOT A CLOSE.
+	 *
+	 * Every taskbar of this lineage since Windows 7 opens a second window
+	 * on a middle click, and it is the wrong button for a destructive verb
+	 * on a row of 40-pixel squares: middle is the button a hand hits by
+	 * accident on a wheel, and the thing it was closing had no
+	 * confirmation and, on an icons-only bar, no name on it either.
+	 * Closing is on the window menu — Close and Close all, over the
+	 * window's own title, which is where a verb that loses work belongs.
+	 */
+	if (btn == SH_TRAY_BTN_MIDDLE) {
+		if (c->fav >= 0)
+			fav_launch(c->fav);
 		else
-			sh_toggle_task(sh, c->first);
+			chip_launch_again(sh, c);
 		return;
 	}
-	/* A group's middle click does nothing rather than closing every window
-	 * of an application at once: the member menu carries Close all, where
-	 * the row says how many. */
+	if (c->count == 1) {
+		sh_toggle_task(sh, c->first);
+		return;
+	}
 	if (btn == SH_TRAY_BTN_LEFT)
 		spawn_windows_menu(sh, ci, 0);
 }
@@ -1059,6 +1677,35 @@ static int hover_ap = -1;	/* a notification-area applet */
 static int hover_ws = -1;	/* a workspace square         */
 static int hover_tray = -1;	/* a tray item                */
 static int hover_show;		/* the show-desktop column    */
+/*
+ * PEEK — the show-desktop column fades every window while the pointer rests on
+ * it, and puts them back when it leaves.
+ *
+ * Windows 7's Aero Peek, in the place Windows 7 put it: the far corner of the
+ * bar, the same control whose CLICK minimises everything. Looking is what a
+ * hover should cost; committing is what a click is for.
+ *
+ * The compositor owns it (kdos-peek.c) because it is scene-graph opacity and
+ * no client can see another's windows. `peek_set` remembers what it last sent
+ * so a stationary pointer is not a socket round trip per frame, and the OFF is
+ * sent from the same place the hover is computed — a peek left on is a desktop
+ * whose windows have all gone faint, which is the one state this must never
+ * be able to get stuck in.
+ */
+static int peek_on;
+
+static void peek_set(int on)
+{
+	char rep[128];
+
+	if (on == peek_on)
+		return;
+	peek_on = on;
+	sh_cmd_call(on ? "{\"cmd\":\"peek\",\"on\":true}\n"
+		       : "{\"cmd\":\"peek\",\"on\":false}\n",
+		    rep, sizeof(rep), NULL, 0);
+}
+
 /* The pointer is over it: the plot backdrop lifts, so a chart looks like the
  * control it is. Part of the tile's content hash, or nothing is redrawn. */
 static int hover_meters;
@@ -1108,9 +1755,8 @@ static int applet(struct sh_state *sh, int id, int *right_x, int x_min,
 		return 0;
 	*right_x -= lw + 1;
 	if (hover_ap == id)
-		ktui_draw_fill(krect(*right_x, applet_row, lw, 1), KT_DIM);
-	ktui_draw_text(*right_x, applet_row, lw, label, fg,
-		       hover_ap == id ? KT_DIM : KT_SURFACE, attr);
+		kch_px_plate(*right_x, applet_row, lw, 1, KCH_T_HOVER, 1);
+	ktui_draw_text(*right_x, applet_row, lw, label, fg, KT_SURFACE, attr);
 	sh->ap_x[id] = *right_x;
 	sh->ap_end[id] = *right_x + lw;
 	return 1;
@@ -1130,8 +1776,10 @@ static int applet_lit(struct sh_state *sh, int id, int *right_x, int x_min,
 	if (!lw || *right_x - x_min < lw + 2)
 		return 0;
 	*right_x -= lw + 1;
-	ktui_draw_fill(krect(*right_x, applet_row, lw, 1), bg);
-	ktui_draw_text(*right_x, applet_row, lw, label, KT_SURFACE, bg,
+	kch_px_round(*right_x * kwl_cell_w() + 1, applet_row * kwl_cell_h() + 1,
+		     lw * kwl_cell_w() - 2, kwl_cell_h() - 2, KCH_PLATE_RADIUS,
+		     kch_slot_rgb(bg), 0xFF);
+	ktui_draw_text(*right_x, applet_row, lw, label, KT_SURFACE, KT_SURFACE,
 		       KT_A_NONE);
 	sh->ap_x[id] = *right_x;
 	sh->ap_end[id] = *right_x + lw;
@@ -1208,10 +1856,20 @@ static int applet2(struct sh_state *sh, int id, int *right_x, int x_min,
 	*right_x -= width + 1;
 
 	int x = *right_x;
-	if (bg == KT_SURFACE && hover_ap == id)
-		bg = KT_DIM;
+	/*
+	 * A PLATE, NOT A CELL FILL — the same rounded, inset shape a window
+	 * button wears, so one hand learns one affordance. A cell fill is
+	 * square, reaches the bar's own edges and is a different colour
+	 * besides; two hover treatments on one bar is the drift this arc
+	 * exists to remove. The cells stay KT_SURFACE, which the backdrop
+	 * owns, so the plate shows through everywhere the applet is not
+	 * drawing a glyph.
+	 */
 	if (bg != KT_SURFACE)
-		ktui_draw_fill(krect(x, applet_row, width, 2), bg);
+		kch_px_plate(x, applet_row, width, 2, KCH_T_ACTIVE, 1);
+	else if (hover_ap == id)
+		kch_px_plate(x, applet_row, width, 2, KCH_T_HOVER, 1);
+	bg = KT_SURFACE;
 	if (slot >= 0)
 		ktui_draw_sprite(krect(x, applet_row, 2, 2), slot, fg1, bg);
 	if (w1)
@@ -1274,10 +1932,35 @@ static int applet_tile(struct sh_state *sh, int id, int *right_x, int x_min,
 		return applet(sh, id, right_x, x_min, val, fg1, KT_A_NONE);
 
 	int width = AP_TILE_W;
-	int slot = icons_on && icon ? kicon_slot(icon, width, 1) : -1;
-
 	if (vw > width)
 		vw = width;		/* clipped, never wider than the tile */
+
+	/*
+	 * NOTHING TO REPORT IS A PICTURE ON ITS OWN, CENTRED.
+	 *
+	 * An icon pinned to the top row with an empty row under it is a tile
+	 * that reads as half-drawn, and it does not line up with the tray
+	 * items or the overflow chevron beside it, which are 2x2 and centred
+	 * on the wing's full height — three baselines in one wing,
+	 * photographed. The value's row exists only while there is a value.
+	 */
+	int irows = vw ? 1 : 2;
+	int slot = icons_on && icon ? kicon_slot(icon, width, irows) : -1;
+	char idle[8];
+
+	/*
+	 * AND WITH NO ARTWORK IT FALLS BACK TO A MARK, because otherwise an
+	 * idle applet on a terminal, under `icons = no` or with no atlas
+	 * DISAPPEARS: the picture was carrying the whole readout and there is
+	 * no picture. A dot is what this said before the icon layer existed
+	 * and it is still the honest answer to "the link is up and quiet".
+	 */
+	if (slot < 0 && !vw) {
+		snprintf(idle, sizeof(idle), "%s", ktui_glyph[KT_G_DOT]);
+		val = idle;
+		vw = ktui_utf8_width(val);
+		irows = 1;
+	}
 
 	sh->ap_x[id] = sh->ap_end[id] = 0;
 	if (slot < 0 && !vw)
@@ -1290,11 +1973,12 @@ static int applet_tile(struct sh_state *sh, int id, int *right_x, int x_min,
 	/* The affordance goes BEHIND the tile — the quick-launch row's rule,
 	 * for the same reason: tinting the picture would change what the thing
 	 * being pointed at looks like. */
-	int bg = hover_ap == id ? KT_DIM : KT_SURFACE;
-	if (bg != KT_SURFACE)
-		ktui_draw_fill(krect(x, applet_row, width, 2), bg);
+	int bg = KT_SURFACE;
+	if (hover_ap == id)
+		kch_px_plate(x, applet_row, width, 2, KCH_T_HOVER, 1);
 	if (slot >= 0) {
-		ktui_draw_sprite(krect(x, applet_row, width, 1), slot, fg1, bg);
+		ktui_draw_sprite(krect(x, applet_row, width, irows), slot, fg1,
+				 bg);
 		if (vw)
 			ktui_draw_text(x + (width - vw) / 2, applet_row + 1, vw,
 				       val, fg2, bg, KT_A_NONE);
@@ -1401,6 +2085,7 @@ static void panel_measure(void)
 	panel_media = media_count(&panel_media_mounted);
 	notify_poll();
 	frames_poll();
+	panel_root_advance();
 }
 
 static void panel_tick(struct sh_state *sh)
@@ -1593,7 +2278,8 @@ static void load_widgets(void)
 	meters_sel[1] = MT_RAM;
 	meters_sel[2] = MT_NET;
 	nmeters_sel = 3;
-	task_labels = TL_AUTO;
+	task_labels = TL_NEVER;
+	start_label = 1;
 	for (int i = 0; i < W_N; i++)
 		in_overflow[i] = 0;
 	ntray_hide = 0;
@@ -1723,6 +2409,25 @@ static void load_widgets(void)
 		 * is what it has always done; the other two are somebody who
 		 * knows what they want.
 		 */
+		/*
+		 * `start_label = yes|no` — whether the Start button carries
+		 * the word as well as the mark. On by default; `no` gives the
+		 * cells back to the window list.
+		 */
+		if (!strncmp(p, "start_label", 11)) {
+			char v[32] = "";
+
+			sscanf(eq + 1, "%31s", v);
+			if (!strcmp(v, "yes") || !strcmp(v, "on"))
+				start_label = 1;
+			else if (!strcmp(v, "no") || !strcmp(v, "off"))
+				start_label = 0;
+			else
+				fprintf(stderr,
+					"kdos-shell: panel.conf: start_label "
+					"takes yes|no, not `%s`\n", v);
+			continue;
+		}
 		if (!strncmp(p, "task_labels", 11)) {
 			char v[32] = "";
 			sscanf(eq + 1, "%31s", v);
@@ -1957,7 +2662,7 @@ static int clip_depth(void)
  */
 static int media_is_system(const char *disk)
 {
-	FILE *f = fopen("/proc/mounts", "r");
+	FILE *f = panel_fopen("/proc/mounts");
 	char line[512];
 	size_t dl = strlen(disk);
 	int sys = 0;
@@ -1988,7 +2693,11 @@ next:
 
 static int media_count(int *mounted)
 {
-	DIR *d = opendir("/sys/block");
+	char rootp[256];
+	DIR *d;
+
+	snprintf(rootp, sizeof(rootp), "%s/sys/block", panel_root());
+	d = opendir(rootp);
 	struct dirent *e;
 	int n = 0;
 
@@ -2007,7 +2716,7 @@ static int media_count(int *mounted)
 	 * what it did: `2`, on a machine with nothing plugged in.
 	 */
 	int live = 0;
-	FILE *mf = fopen("/proc/mounts", "r");
+	FILE *mf = panel_fopen("/proc/mounts");
 
 	if (mf) {
 		char line[512];
@@ -2043,14 +2752,14 @@ static int media_count(int *mounted)
 		 * system — see `live` above. */
 		if (live && !strncmp(e->d_name, "sr", 2))
 			continue;
-		snprintf(path, sizeof(path), "/sys/block/%s/removable",
-			 e->d_name);
+		snprintf(path, sizeof(path), "%s/sys/block/%s/removable",
+			 panel_root(), e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) != 0 ||
 		    atoi(buf) != 1)
 			continue;
 		/* An empty drive is a drive, not a medium: a CD reader with no
 		 * disc in it reports removable=1 and a size of zero. */
-		snprintf(path, sizeof(path), "/sys/block/%s/size", e->d_name);
+		snprintf(path, sizeof(path), "%s/sys/block/%s/size", panel_root(), e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) == 0 && atoll(buf) <= 0)
 			continue;
 		if (media_is_system(e->d_name))
@@ -2061,7 +2770,7 @@ static int media_count(int *mounted)
 
 	/* Mounted means "mounted where the daemon puts them": /media. Anything
 	 * else is somebody's own fstab entry and not this widget's business. */
-	FILE *f = fopen("/proc/mounts", "r");
+	FILE *f = panel_fopen("/proc/mounts");
 	if (f) {
 		char line[512];
 		while (fgets(line, sizeof(line), f)) {
@@ -2107,7 +2816,7 @@ static int media_count(int *mounted)
  * HALF A SECOND, not a whole one. The band is around sixty pixels wide and one
  * sample is one pixel: at a second apart a chart takes a minute to fill and
  * creeps a pixel at a time, which reads as a picture that has stopped. Twice
- * that is a plot that visibly moves and a window (MET_HIST samples, so a
+ * that is a plot that visibly moves and a window (KPR_HIST samples, so a
  * little over a minute) that still says something. It is not faster because it
  * is more accurate — a half-second CPU sample is noisier, which is what the
  * smoothing below is for — it is faster because a chart is a thing in motion.
@@ -2119,14 +2828,13 @@ static int media_count(int *mounted)
  * because the point of a chart is the spikes.
  */
 /*
- * A HUNDRED AND TWENTY-EIGHT SAMPLES, which at two a second is a little over a
- * minute — and the number is set by the CHART, not by taste. The tile draws
- * one sample per PIXEL, and a band is around sixty pixels wide at the shipped
- * cell size and twice that at scale 2; thirty-two samples filled half of one
- * and left the rest blank, which reads as a chart that has stopped rather than
- * as a machine that has been quiet.
+ * The ring is KPR_HIST deep — a hundred and twenty-eight samples, which at two
+ * a second is a little over a minute, and the number is set by the CHART
+ * rather than by taste. The tile draws one sample per PIXEL, and a band is
+ * around sixty pixels wide at the shipped cell size and twice that at scale 2;
+ * thirty-two samples filled half of one and left the rest blank, which reads
+ * as a chart that has stopped rather than as a machine that has been quiet.
  */
-#define MET_HIST 128
 #define MET_MS 500		/* the sample interval, in milliseconds */
 /*
  * A GRIDLINE EVERY TEN SECONDS, AND IT IS WHAT MAKES AN IDLE CHART A CHART.
@@ -2142,6 +2850,13 @@ static int media_count(int *mounted)
  * the samples they were drawn beside rather than sitting at fixed columns.
  */
 #define MET_GRID 20		/* samples between gridlines — ten seconds */
+/*
+ * The widest a tile can be, and it is libktui's limit rather than a taste: a
+ * sprite cell encodes its sub-cell coordinate in four bits each way, so
+ * kch_tile_begin() refuses anything past 16x16 CELLS. MDESC's widths are
+ * chosen to sum to exactly this for the default set.
+ */
+#define MET_TILE_MAX 16
 
 /*
  * Every sample ever taken, which is what a gridline's phase is measured in and
@@ -2151,9 +2866,14 @@ static int media_count(int *mounted)
  */
 static uint64_t met_seq;
 
+/*
+ * The RING is libkproc's; the exponential average is not. They are two
+ * different smoothings answering two different questions — the ring keeps raw
+ * samples and feeds the plot, and `shown` is the label, which would otherwise
+ * change completely twice a second and stop being read.
+ */
 struct meter {
-	double hist[MET_HIST];
-	int n;			/* valid samples, saturating at MET_HIST */
+	KprHist h;
 	double shown;		/* the smoothed value the label prints */
 	int have;		/* a first sample has landed */
 };
@@ -2185,60 +2905,39 @@ static int64_t panel_now_ms(void)
 
 static void meter_push(struct meter *m, double v, double smooth)
 {
-	if (m->n >= MET_HIST) {
-		memmove(m->hist, m->hist + 1,
-			sizeof(m->hist[0]) * (MET_HIST - 1));
-		m->n = MET_HIST - 1;
-	}
-	m->hist[m->n++] = v;
+	kpr_hist_push(&m->h, v);
 	m->shown = m->have ? m->shown + (v - m->shown) * smooth : v;
 	m->have = 1;
+}
+
+/*
+ * A SERIES THAT SKIPS A TICK IS A SERIES ON ITS OWN CLOCK.
+ *
+ * Every band here plots one sample per PIXEL and the gridlines are keyed to
+ * `met_seq`, so a reading that is momentarily unavailable — /proc/stat's
+ * aggregate not having advanced, an interface that came and went, a disk whose
+ * stats could not be read — must not simply go unrecorded. The series would
+ * then be SHORTER than the one beside it: its columns would cover a different
+ * span of time, its gridlines would sit under a different second, and the two
+ * charts would creep out of step for the rest of the session. The last value
+ * is carried forward instead, which is exactly what the filesystem meter
+ * already does deliberately between its ten-second reads.
+ *
+ * A series with no sample AT ALL is left empty rather than held at zero: an
+ * absent reading is not a reading of nothing, and `have` is what the applets
+ * test to decide whether they may print a number.
+ */
+static void meter_hold(struct meter *m)
+{
+	if (m->have)
+		meter_push(m, kpr_hist_at(&m->h, m->h.n - 1), 1.0);
 }
 
 /* The most recent `cols` samples, oldest first — what a chart wants. */
 static const double *meter_series(const struct meter *m, int *n)
 {
-	*n = m->n;
-	return m->hist;
-}
-
-/*
- * A NICE SCALE WITH HYSTERESIS, and this is most of what "the graph flickers"
- * was.
- *
- * A rate chart autoscaled to its own window rescales its y-axis on every
- * sample, so a perfectly steady stream still draws a shape that jumps —
- * the DATA is flat and the AXIS is moving. Every system monitor worth
- * copying (GNOME's included) instead snaps the axis to a ladder of round
- * numbers and changes it only when the data genuinely leaves the band.
- *
- * Grow as soon as a sample does not fit, because a clipped chart is a lie.
- * Shrink only when the peak has been under a THIRD of the scale — one
- * threshold in each direction would oscillate between two rungs for a stream
- * sitting on the boundary, which is the same flicker wearing a different hat.
- */
-static double nice_scale(double peak, double cur)
-{
-	static const double LADDER[] = {
-		16e3, 64e3, 256e3, 1e6, 4e6, 16e6, 64e6, 256e6, 1e9, 4e9,
-	};
-	const int n = (int)(sizeof(LADDER) / sizeof(LADDER[0]));
-
-	if (cur <= 0)
-		cur = LADDER[0];
-	if (peak > cur) {
-		for (int i = 0; i < n; i++)
-			if (LADDER[i] > peak)
-				return LADDER[i];
-		return LADDER[n - 1];
-	}
-	if (peak < cur / 3.0) {
-		for (int i = n - 1; i >= 0; i--)
-			if (LADDER[i] < cur && LADDER[i] > peak)
-				return LADDER[i];
-		return LADDER[0];
-	}
-	return cur;
+	*n = m->h.n;
+	return m->h.v;
 }
 
 /* /proc/stat's aggregate line. Returns 0 and fills the pair, or -1. */
@@ -2246,7 +2945,7 @@ static int read_cpu_jiffies(unsigned long long *total, unsigned long long *idle)
 {
 	unsigned long long v[8] = { 0 };
 	char buf[256];
-	FILE *f = fopen("/proc/stat", "r");
+	FILE *f = panel_fopen("/proc/stat");
 
 	if (!f)
 		return -1;
@@ -2277,7 +2976,7 @@ static int read_mem_used(double *pct)
 {
 	char line[256];
 	double total = 0, avail = 0;
-	FILE *f = fopen("/proc/meminfo", "r");
+	FILE *f = panel_fopen("/proc/meminfo");
 
 	if (!f)
 		return -1;
@@ -2330,7 +3029,11 @@ static int read_disk_used(double *pct)
  */
 static int read_net_bytes(unsigned long long *rx, unsigned long long *tx)
 {
-	DIR *d = opendir("/sys/class/net");
+	char rootp[256];
+	DIR *d;
+
+	snprintf(rootp, sizeof(rootp), "%s/sys/class/net", panel_root());
+	d = opendir(rootp);
 	struct dirent *e;
 	unsigned long long rsum = 0, tsum = 0;
 	int any = 0;
@@ -2342,13 +3045,13 @@ static int read_net_bytes(unsigned long long *rx, unsigned long long *tx)
 		if (e->d_name[0] == '.' || !strcmp(e->d_name, "lo"))
 			continue;
 		snprintf(path, sizeof(path),
-			 "/sys/class/net/%s/statistics/rx_bytes", e->d_name);
+			 "%s/sys/class/net/%s/statistics/rx_bytes", panel_root(), e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) == 0) {
 			rsum += strtoull(buf, NULL, 10);
 			any = 1;
 		}
 		snprintf(path, sizeof(path),
-			 "/sys/class/net/%s/statistics/tx_bytes", e->d_name);
+			 "%s/sys/class/net/%s/statistics/tx_bytes", panel_root(), e->d_name);
 		if (sh_read_line(path, buf, sizeof(buf)) == 0) {
 			tsum += strtoull(buf, NULL, 10);
 			any = 1;
@@ -2379,7 +3082,7 @@ static int read_net_bytes(unsigned long long *rx, unsigned long long *tx)
  */
 static int read_disk_io(unsigned long long *rd, unsigned long long *wr)
 {
-	FILE *f = fopen("/proc/diskstats", "r");
+	FILE *f = panel_fopen("/proc/diskstats");
 	char line[512];
 	unsigned long long rs = 0, ws = 0;
 	int any = 0;
@@ -2398,8 +3101,8 @@ static int read_disk_io(unsigned long long *rd, unsigned long long *wr)
 		    !strncmp(name, "zram", 4))
 			continue;
 		char path[256];
-		snprintf(path, sizeof(path), "/sys/class/block/%s/partition",
-			 name);
+		snprintf(path, sizeof(path), "%s/sys/class/block/%s/partition",
+			 panel_root(), name);
 		if (access(path, F_OK) == 0)
 			continue;		/* a partition of a disk above */
 		rs += rsec;
@@ -2481,6 +3184,8 @@ static void meters_sample(void)
 		 * enough that the digits are readable while it runs. The CHART
 		 * plots the raw samples; only the number is averaged. */
 		meter_push(&met_cpu, busy, 0.2);
+	} else {
+		meter_hold(&met_cpu);
 	}
 	if (have_cpu) {
 		last_total = total;
@@ -2490,6 +3195,8 @@ static void meters_sample(void)
 	double mem;
 	if (read_mem_used(&mem) == 0)
 		meter_push(&met_ram, mem, 0.35);
+	else
+		meter_hold(&met_ram);
 
 	/*
 	 * The filesystem every ten seconds, not every sample. It moves in
@@ -2501,37 +3208,42 @@ static void meters_sample(void)
 		disk_countdown = 10000 / MET_MS;
 		if (read_disk_used(&du) == 0)
 			meter_push(&met_disk, du, 1.0);
-	} else if (met_disk.have) {
-		meter_push(&met_disk, met_disk.hist[met_disk.n - 1], 1.0);
+		else
+			meter_hold(&met_disk);
+	} else {
+		meter_hold(&met_disk);
 	}
 
-	if (dt_ms > 0) {
+	if (dt_ms > 0 && have_net) {
 		/* A counter that went BACKWARDS is a device that came and went,
 		 * not a negative rate. */
-		if (have_net) {
-			double r = rx >= last_rx
-					   ? (double)(rx - last_rx) * 1000.0 /
-						     (double)dt_ms
-					   : 0;
-			double t = tx >= last_tx
-					   ? (double)(tx - last_tx) * 1000.0 /
-						     (double)dt_ms
-					   : 0;
-			meter_push(&met_rx, r, 0.35);
-			meter_push(&met_tx, t, 0.35);
-		}
-		if (have_dio) {
-			double r = rd >= last_rd
-					   ? (double)(rd - last_rd) * 1000.0 /
-						     (double)dt_ms
-					   : 0;
-			double t = wr >= last_wr
-					   ? (double)(wr - last_wr) * 1000.0 /
-						     (double)dt_ms
-					   : 0;
-			meter_push(&met_rd, r, 0.35);
-			meter_push(&met_wr, t, 0.35);
-		}
+		double r = rx >= last_rx ? (double)(rx - last_rx) * 1000.0 /
+						   (double)dt_ms
+					 : 0;
+		double t = tx >= last_tx ? (double)(tx - last_tx) * 1000.0 /
+						   (double)dt_ms
+					 : 0;
+		meter_push(&met_rx, r, 0.35);
+		meter_push(&met_tx, t, 0.35);
+	} else {
+		/* Both halves of a mirrored pair advance together or neither
+		 * does: one held while the other moved would put received and
+		 * sent a sample out of step for the rest of the session. */
+		meter_hold(&met_rx);
+		meter_hold(&met_tx);
+	}
+	if (dt_ms > 0 && have_dio) {
+		double r = rd >= last_rd ? (double)(rd - last_rd) * 1000.0 /
+						   (double)dt_ms
+					 : 0;
+		double t = wr >= last_wr ? (double)(wr - last_wr) * 1000.0 /
+						   (double)dt_ms
+					 : 0;
+		meter_push(&met_rd, r, 0.35);
+		meter_push(&met_wr, t, 0.35);
+	} else {
+		meter_hold(&met_rd);
+		meter_hold(&met_wr);
 	}
 	if (have_net) {
 		last_rx = rx;
@@ -2541,6 +3253,7 @@ static void meters_sample(void)
 		last_rd = rd;
 		last_wr = wr;
 	}
+
 }
 
 /* The percentage the CPU applet prints, or -1 before the first sample. */
@@ -2592,9 +3305,36 @@ static int cpu_percent(void)
  * (a picture where there is one, the ≡ glyph where there is not) and the word,
  * and drops the word rather than the mark on a bar too narrow for both.
  */
+/*
+ * THE START BUTTON'S PLATE, in one place because two paths draw it — the pixel
+ * tile with the word on it, and the glyph layout that is the fallback for a
+ * tty, `--dump` and `icons = no`. A button whose two renderings disagree about
+ * its own state is worse than either.
+ *
+ * REST IS THE TONE EVERY OTHER BUTTON ON THIS ROW WEARS. The accent belongs to
+ * hover and to the menu being open. At full strength and forty pixels tall it
+ * was the loudest object on the screen and read as an error state, on the one
+ * control that is never the thing being looked at — and the penguin carries
+ * the brand perfectly well without it. Three states, three pictures: quiet,
+ * accent under the pointer, warn while the menu is up.
+ */
+static void start_plate(int cx, int cells, int h, int hovered, int open)
+{
+	if (!hovered && !open) {
+		kch_px_plate(cx, 0, cells, h, KCH_T_REST, 1);
+		return;
+	}
+	kch_px_grad(cx * kwl_cell_w() + 1, 1, cells * kwl_cell_w() - 2,
+		    h * kwl_cell_h() - 2, KCH_PLATE_RADIUS,
+		    kch_slot_rgb(open ? KT_WARN : KT_ACCENT),
+		    kch_slot_rgb(KT_MID), 0xFF);
+}
+
 static int draw_start(struct sh_state *sh, int h, int compact)
 {
-	const char *word = "start";
+	const char *word = "Start";
+	if (!start_label)
+		compact = 1;
 	/* The KDOS mark: `kdos-launcher` is what kdos-icons installs into the
 	 * hicolor tree as a real PNG, and `start-here` is the name every other
 	 * desktop's theme uses for the same thing. Try ours, then theirs, then
@@ -2615,16 +3355,33 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * band of empty pixels under the text.
 	 */
 	int ry = (h - 1) / 2;
-	int icon = icons_on ? kicon_slot("kdos-launcher", 2, 1) : -1;
+	int mark_cells = 3;
+	int icon = icons_on ? kicon_slot_pad("kdos-launcher", mark_cells, h,
+					     h > 1 ? icon_air() : 0)
+			    : -1;
 	if (icon < 0 && icons_on)
-		icon = kicon_slot("start-here", 2, 1);
-	int mark_w = icon >= 0 ? 2 : ktui_utf8_width(menu_mark());
+		icon = kicon_slot("start-here", mark_cells, h);
+	int mark_w = icon >= 0 ? mark_cells : ktui_utf8_width(menu_mark());
+	/*
+	 * A WORDMARK AND A LABEL SAY THE SAME THING TWICE. With no artwork the
+	 * mark falls back to the glyph on a UTF-8 terminal and to the literal
+	 * `KDOS` everywhere else — and `KDOS Start` is the brand printed
+	 * beside itself. Where the mark is the word, the mark IS the button.
+	 */
+	if (icon < 0 && !strcmp(menu_mark(), "KDOS"))
+		compact = 1;
 	int lw = compact ? 0 : ktui_utf8_width(word);
 	int w = mark_w + (lw ? 1 + lw : 0) + 1;
 	/* Lit while the menu is up, not only under the pointer: a Start button
 	 * that looks untouched with its own menu open is the one control on
 	 * the bar whose state the user cannot see. */
 	int lit = sh->hover_start || start_menu_open();
+	/*
+	 * THE INK FOLLOWS THE PLATE. On the accent it is the surface colour,
+	 * which is what reads on a bright fill; on the quiet rest plate that
+	 * same colour is dark ink on a dark plate and the word disappears.
+	 */
+	int ink = lit ? KT_SURFACE : KT_TEXT;
 
 	if (w > ktui_w / 3) {
 		lw = 0;
@@ -2668,28 +3425,55 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 		 * this shape came from, and the button grows by one column.
 		 */
 		int mark_px = px_h * 74 / 100;
-		int pad = cell_w * scale / 3;
+		/*
+		 * THREE GAPS, AND THE TWO OUTER ONES ARE EQUAL BY
+		 * CONSTRUCTION.
+		 *
+		 * `pad` is the breathing room at each end and `gap` is the
+		 * space between the mark and the word — a different quantity,
+		 * and making them one number is what made the button look
+		 * cramped at one end. The content is CENTRED in the tile
+		 * below rather than laid out from the left edge, because the
+		 * tile is a whole number of CELLS and the content is not: the
+		 * rounding slack has to go somewhere, and split evenly it is
+		 * invisible while pushed to the right it is the asymmetry you
+		 * can see.
+		 */
+		int gap = cell_w * scale / 2;
+		int pad = cell_w * scale * 3 / 4;
 		int tw = kcell_canvas_text_width(fsz, word);
-		int need_px = pad + mark_px + pad + tw + pad;
+		int content_px = mark_px + gap + tw;
+		int need_px = pad + content_px + pad;
 		int tw_cells = (need_px + cell_w * scale - 1) / (cell_w * scale);
 
 		if (tw_cells >= 3 && tw_cells <= 16 && tw_cells <= ktui_w / 3) {
 			/* Everything the picture depends on, and nothing it
 			 * does not: the accent is folded in through
-			 * sh_tile_reset() on a retint rather than here. */
+			 * kch_tile_reset() on a retint rather than here. */
 			uint64_t content = (uint64_t)lit << 40 |
 					   (uint64_t)tw_cells << 24 |
 					   (uint64_t)fsz << 8 | (uint64_t)h;
 			KCellCanvas *cv =
-				sh_tile_begin(SH_TILE_START, tw_cells, h,
+				kch_tile_begin(SH_TILE_START, tw_cells, h,
 					      content);
 			if (cv) {
-				int bg = lit ? KT_WARN : KT_ACCENT;
 				int cw_px = kcell_canvas_w(cv);
 				int ch_px = kcell_canvas_h(cv);
-				kcell_canvas_fill(cv, 0, 0, cw_px, ch_px, bg,
-						  255);
-				int x = pad;
+				/*
+				 * NO BACKGROUND FILL HERE. The plate is the
+				 * pixel layer's, exactly as it is for the
+				 * glyph layout below, so one function decides
+				 * what this button looks like in each of its
+				 * three states. The canvas is cleared to
+				 * transparent and KT_SURFACE is a slot the
+				 * backdrop owns — never filled — so the plate
+				 * shows through everywhere the mark and the
+				 * word are not.
+				 */
+				/* Centred, so the slack from rounding the tile
+				 * up to whole cells is split between the two
+				 * ends instead of all landing on the right. */
+				int x = (cw_px - content_px) / 2;
 				pixman_image_t *mk =
 					icons_on ? kicon_pixmap("kdos-launcher",
 								mark_px,
@@ -2706,7 +3490,7 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 						(ch_px - mark_px) / 2, mark_px,
 						mark_px);
 					kicon_pixmap_free(mk);
-					x += mark_px + pad;
+					x += mark_px + gap;
 				}
 				/* Centred on the button's own height, which is
 				 * the entire point of drawing it as pixels. */
@@ -2714,14 +3498,15 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 				int hgt = kcell_canvas_text_height(fsz);
 				kcell_canvas_text(cv, x,
 						  (ch_px - hgt) / 2 + asc, fsz,
-						  word, KT_SURFACE);
-				sh_tile_commit(SH_TILE_START);
+						  word, ink);
+				kch_tile_commit(SH_TILE_START);
 			}
-			int slot = sh_tile_slot(SH_TILE_START);
+			int slot = kch_tile_slot(SH_TILE_START);
 			if (slot >= 0) {
+				start_plate(0, tw_cells, h, sh->hover_start,
+					    start_menu_open());
 				ktui_draw_sprite(krect(0, 0, tw_cells, h), slot,
-						 KT_SURFACE,
-						 lit ? KT_WARN : KT_ACCENT);
+						 KT_SURFACE, KT_SURFACE);
 				sh->start_x = 0;
 				sh->start_end = tw_cells;
 				return tw_cells;
@@ -2729,16 +3514,31 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 		}
 	}
 
-	ktui_draw_fill(krect(0, 0, w, h), lit ? KT_WARN : KT_ACCENT);
+	/*
+	 * THE PLATE COVERS THE MARK'S OWN CELLS, inset by one like every other
+	 * plate on this row, so the two are centred on each other by
+	 * construction rather than by arithmetic that has to be kept in step.
+	 *
+	 * Drawn from x=1 to half a cell short of the button's right edge while
+	 * the mark was centred in the cells before that, they were two boxes
+	 * with different centres: measured on the shipped bar, the plate ran
+	 * 1..33 and the penguin's ink 8..21, so the mark sat 2.5px left of the
+	 * middle of its own button.
+	 *
+	 * The trailing cell that `w` counts does not draw. It is the gap
+	 * before the next control — the same one a window button leaves by
+	 * plating `per - 1` of its `per` cells.
+	 */
+	start_plate(0, w - 1, h, sh->hover_start, start_menu_open());
 	if (icon >= 0)
-		ktui_draw_sprite(krect(0, ry, 2, 1), icon, KT_SURFACE,
-				 lit ? KT_WARN : KT_ACCENT);
+		ktui_draw_sprite(krect(0, 0, mark_w, h), icon, KT_SURFACE,
+				 KT_SURFACE);
 	else
-		ktui_draw_text(0, ry, mark_w, menu_mark(), KT_SURFACE,
-			       lit ? KT_WARN : KT_ACCENT, KT_A_NONE);
+		ktui_draw_text(0, ry, mark_w, menu_mark(), ink, KT_SURFACE,
+			       KT_A_NONE);
 	if (lw)
-		ktui_draw_text(mark_w + 1, ry, lw, word, KT_SURFACE,
-			       lit ? KT_WARN : KT_ACCENT, KT_A_NONE);
+		ktui_draw_text(mark_w + 1, ry, lw, word, ink, KT_SURFACE,
+			       KT_A_NONE);
 	sh->start_x = 0;
 	sh->start_end = w;
 	return w;
@@ -2757,87 +3557,31 @@ static int draw_start(struct sh_state *sh, int h, int compact)
  * Drawn in KT_DIM against the panel: a full-strength rule would compete with
  * the content it is separating.
  */
+/*
+ * A SEGMENT BOUNDARY IS THE SAME LINE THE WINDOWS ARE DRAWN WITH.
+ *
+ * The bar's separators were the single vertical line in the FILL colour,
+ * which is 1.63:1 against the panel's own background — below any legibility
+ * floor, and the boundaries the bar's layout depends on were therefore
+ * invisible in a photograph. They are the DOUBLE vertical, in KT_MID, which
+ * is the stroke every KDOS window frame is drawn in and reads at better than
+ * four to one.
+ */
 static void draw_sep(int x, int h)
 {
 	if (x < 0 || x >= ktui_w)
 		return;
-	ktui_draw_vline(x, 0, h, KT_G_VL, KT_DIM, KT_SURFACE);
-}
-
-/*
- * Quick launch: the pinned entries from ~/.config/kdos/favorites, as pictures
- * when there is artwork and as names when there is not. Two cells each either
- * way, so the row does not reflow when an icon theme is installed.
- */
-static int draw_quicklaunch(int x, int limit, int h)
-{
-	int ry = (h - 1) / 2;
-	int drew = 0;
-
 	/*
-	 * AN ICON WITH NO LABEL IS CENTRED ON THE BAR'S FULL HEIGHT; an icon
-	 * with a label beside it shares that label's row. Both halves of that
-	 * rule are visible here: the quick-launch row is pictures and nothing
-	 * else, so a 2x2 box (libkicon centres a 32x32 square in 32x64) puts
-	 * them on the same optical line as the Start button's own centred
-	 * content — while a task button's icon stays on its label's row,
-	 * because an icon floating between a name and a title is the
-	 * misalignment this bar was reported for.
+	 * ONE PIXEL, IN THE BACKDROP, NOT A COLUMN OF GLYPHS.
+	 *
+	 * The double vertical read as three or four strokes once the fills
+	 * either side of it were counted, at the same weight as the content it
+	 * was separating, and it spent a whole cell doing it. A hairline in the
+	 * gap between two cells costs no columns at all and says the same
+	 * thing more quietly — and it is drawn short of the bar's full height
+	 * so it reads as a divider rather than as a wall.
 	 */
-	for (int i = 0; i < nfavs; i++) {
-		int icon = icons_on ? kicon_slot(favs[i].icon, 2, h) : -1;
-		int w = icon >= 0 ? 2 : ktui_utf8_width(favs[i].name);
-
-		if (w > 10)
-			w = 10;
-		if (x + w + 1 > limit)
-			break;	/* spans past here stay empty: not drawn */
-		fav_x[i] = x;
-		/*
-		 * The affordance goes BEHIND the picture, because an icon is
-		 * its own shape and tinting it would change what the app looks
-		 * like. A hover is the fill colour; a launch alternates
-		 * between the fill and the accent at about four hertz, which
-		 * reads as a pulse rather than as a flicker.
-		 */
-		int lit = 0;
-		if (fav_anim == i) {
-			int64_t age = panel_now_ms() - fav_anim_at;
-			if (age < FAV_ANIM_MS)
-				lit = ((age / 130) & 1) ? KT_ACCENT : KT_MID;
-			else
-				fav_anim = -1;
-		}
-		/* Mid-drag the ROW says where the icon would land: the target
-		 * takes the accent and the one being carried goes dim, which
-		 * is the whole of the feedback a two-cell picture can give. */
-		if (drag_moved && drag_fav >= 0) {
-			if (drag_over == i)
-				lit = KT_ACCENT;
-			else if (drag_fav == i)
-				lit = KT_DIM;
-		}
-		if (!lit && hover_fav == i)
-			lit = KT_DIM;
-		if (lit)
-			ktui_draw_fill(krect(x, 0, 2, h), lit);
-		if (icon >= 0) {
-			ktui_draw_sprite(krect(x, 0, 2, h), icon, KT_TEXT,
-					 lit ? lit : KT_SURFACE);
-			x += 2;
-		} else {
-			x += ktui_draw_text(x, ry, w, favs[i].name, KT_MID,
-					    KT_SURFACE, KT_A_NONE);
-		}
-		fav_end[i] = x;
-		x += 1;
-		drew = 1;
-	}
-	if (drew) {
-		draw_sep(x, h);
-		x += 2;
-	}
-	return x;
+	kch_px_vrule(x, 0, h);
 }
 
 /*
@@ -2898,21 +3642,13 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 			 * rule the whole panel keeps: an attribute inverts
 			 * only the cells a glyph covers.
 			 */
-			/* Hover is a backdrop under the WHOLE stride — the
-			 * square plus its number — so a workspace reads as a
-			 * button rather than as a lit block that happens to be
-			 * beside a digit. */
-			if (hover_ws == i)
-				ktui_draw_fill(krect(px + i * 2, ry, 2, 2),
-					       KT_DIM);
-			ktui_draw_fill(krect(px + i * 2, ry, 1, 1), fg);
-			/* The label under it, centred in its two cells: the
-			 * name the workspace was GIVEN when that name FITS —
-			 * `<desktops>` in rc.xml names them "1".."4" by
-			 * default and somebody may have named one "IM" — and
-			 * its number when it does not. Never a truncation: two
-			 * characters of "Workspace 3" is "Wo", and four
-			 * workspaces named that way would all read the same. */
+			/* The label under it: the name the workspace was
+			 * GIVEN when that name FITS — `<desktops>` in rc.xml
+			 * names them "1".."4" by default and somebody may have
+			 * named one "IM" — and its number when it does not.
+			 * Never a truncation: two characters of "Workspace 3"
+			 * is "Wo", and four workspaces named that way would
+			 * all read the same. */
 			char lab[16];
 			const char *nm = sh->ws_name[i];
 			int lw = nm && *nm ? ktui_utf8_width(nm) : 0;
@@ -2921,12 +3657,96 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 			else
 				snprintf(lab, sizeof(lab), "%d", i + 1);
 			lw = ktui_utf8_width(lab);
+			if (lw < 1)
+				lw = 1;
 			if (lw > 2)
 				lw = 2;		/* workspace 100 and up */
+			/*
+			 * HOVER IS THE SHAPE THAT WAS DRAWN, not the stride it
+			 * was drawn in. The stride is two cells and the screen
+			 * and its number occupy the FIRST of them — the second
+			 * is the gap that makes four of them read as four
+			 * things — so a two-cell backdrop lit a block twice as
+			 * wide as the thing under the pointer and closed the
+			 * gap to the workspace beside it. Photographed: one
+			 * square, a highlight of two. A workspace whose NAME
+			 * is two characters wide does occupy both, and then
+			 * the backdrop is two: the width is the label's.
+			 */
+			int hw = lw;
+			/* KT_MID, the same fill every other hover on this bar
+			 * takes — and here it is not a preference: an
+			 * UNOCCUPIED screen is drawn in KT_DIM, so a KT_DIM
+			 * hover behind it is the same colour as the thing it
+			 * is meant to light. Measured on the booted ISO: the
+			 * top row of a hovered empty workspace was pixel-for-
+			 * pixel what it had been. The screen goes on TOP of
+			 * it, so the workspace's own state colour still wins
+			 * the cell it occupies. */
+			/*
+			 * RECORDED, NOT FILLED, and the order is why. A cell
+			 * fill is painted AFTER the backdrop is replayed, so a
+			 * KT_MID fill over the little screen below wipes it —
+			 * a hovered workspace lost the very thing the hover
+			 * was pointing at. Both are backdrop ops now and the
+			 * screen is recorded second, which is what puts it on
+			 * top.
+			 */
+			if (hover_ws == i)
+				kch_px_plate(px + i * 2, ry, hw, 2,
+					     KCH_T_HOVER, 1);
+			/*
+			 * A LITTLE SCREEN, NOT A FULL CELL.
+			 *
+			 * A cell filled edge to edge is 10x20 — twice as tall
+			 * as it is wide — and the pager sits immediately
+			 * beside the network chart, which is a column graph.
+			 * Four tall filled columns next to a column graph read
+			 * as more of the graph; that is what they were
+			 * reported as. Inset to a landscape rectangle they
+			 * read as what they are, which is four screens.
+			 *
+			 * The hover backdrop above stays a cell fill: it is
+			 * the thing being lit, and it should light the whole
+			 * target.
+			 */
+			{
+				/*
+				 * LANDSCAPE, AND IT IS MEASURED RATHER THAN
+				 * INSET. The first version took a cell and
+				 * shaved a couple of pixels off each side,
+				 * which was roughly square on the 16x32 cell
+				 * it was written for and is a TALL 6x10 on the
+				 * 10x20 one this bar wears — four tall bars
+				 * beside a column chart, which is exactly the
+				 * "more of the graph" read the inset was
+				 * supposed to remove. A screen is wider than
+				 * it is high, so the height is derived from
+				 * the width.
+				 */
+				int cw = kwl_cell_w(), chh = kwl_cell_h();
+				int sw = hw * cw - 2;
+				int sh_px = sw * 3 / 4;
+				int sx = (px + i * 2) * cw + 1;
+
+				if (sh_px > chh - 2)
+					sh_px = chh - 2;
+				if (sh_px < 2)
+					sh_px = 2;
+				kch_px_rect(sx, ry * chh + (chh - sh_px) / 2,
+					    sw, sh_px, kch_slot_rgb(fg), 0xFF);
+			}
+			/* On the hover fill the number is drawn in the
+			 * SURFACE colour: KT_MID on KT_MID is a digit that
+			 * disappears the moment the pointer reaches it. */
+			/* KT_SURFACE for the background whatever the state: it
+			 * is the slot the backdrop owns, so the plate recorded
+			 * above shows through instead of being filled over. */
 			ktui_draw_text(px + i * 2, ry + 1, lw, lab,
-				       active ? KT_ACCENT : KT_MID,
-				       hover_ws == i ? KT_DIM : KT_SURFACE,
-				       KT_A_NONE);
+				       hover_ws == i ? KT_TEXT
+				       : active     ? KT_ACCENT
+						    : KT_MID,
+				       KT_SURFACE, KT_A_NONE);
 		}
 		sh->pager_hit_end = px + pager_w;
 		sh->ws_hit_x = px;
@@ -3001,6 +3821,20 @@ static const char *tray_themed(const char *id)
 static int tray_map[SH_MAX_TRAY];
 static int tray_nvis;
 
+/*
+ * THREE CELLS PER ITEM, NOT TWO, and the number is measured rather than
+ * inherited.
+ *
+ * Two cells was 32 pixels when a cell was 16 wide, which matched every other
+ * picture on the bar. The bar's cell is 10 wide now, so two cells is a 20x40
+ * box and libkicon's largest square in it is TWENTY pixels — two thirds the
+ * size of the 32-pixel task buttons and the 30-pixel applet tiles beside it,
+ * on the one row where the pictures are all a person has. Three is what the
+ * applet tiles already use, and for the same reason: an odd width centres a
+ * square in the TILE rather than in its left half.
+ */
+#define TRAY_W 3
+
 static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 {
 	int ntray = sh_tray_count(sh);
@@ -3012,10 +3846,10 @@ static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 		if (!in_overflow[W_TRAY] && !tray_hidden(sh_tray_get(sh, i)->id))
 			tray_map[shown++] = i;
 	tray_nvis = shown;
-	if (shown <= 0 || right_x - x_min < shown * 2 + 2)
+	if (shown <= 0 || right_x - x_min < shown * TRAY_W + 2)
 		return right_x;
 
-	int tx = right_x - shown * 2;
+	int tx = right_x - shown * TRAY_W;
 	sh->tray_hit_x = tx;
 	for (int k = 0; k < shown; k++) {
 		int i = tray_map[k];
@@ -3040,13 +3874,13 @@ static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 		 * this is the same 32x32 picture, not a stretched one. */
 		int irows = h > 1 && ry + 1 < h ? 2 : 1;
 		/* `k`, not `i`: hover_tray counts the cells that were DRAWN. */
-		int tbg = hover_tray == k ? KT_DIM : KT_SURFACE;
-		if (tbg != KT_SURFACE)
-			ktui_draw_fill(krect(tx, ry, 2, irows), tbg);
+		int tbg = KT_SURFACE;
+		if (hover_tray == k)
+			kch_px_plate(tx, ry, TRAY_W, irows, KCH_T_HOVER, 1);
 		const char *themed = icons_on ? tray_themed(it->id) : NULL;
-		int icon = themed ? kicon_slot(themed, 2, irows) : -1;
+		int icon = themed ? kicon_slot(themed, TRAY_W, irows) : -1;
 		if (icon < 0 && icons_on && it->icon[0])
-			icon = kicon_slot(it->icon, 2, irows);
+			icon = kicon_slot(it->icon, TRAY_W, irows);
 		/*
 		 * THEN THE ID, LOWERCASED — because the letter fallback is
 		 * what a person actually sees and it says nothing.
@@ -3069,11 +3903,12 @@ static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 						   ? (char)(it->id[n] - 'A' + 'a')
 						   : it->id[n];
 			lower[n] = '\0';
-			icon = kicon_slot(lower, 2, irows);
+			icon = kicon_slot(lower, TRAY_W, irows);
 		}
 		if (icon >= 0) {
-			ktui_draw_sprite(krect(tx, ry, 2, irows), icon, fg, tbg);
-			tx += 2;
+			ktui_draw_sprite(krect(tx, ry, TRAY_W, irows), icon, fg,
+					 tbg);
+			tx += TRAY_W;
 			continue;
 		}
 		/*
@@ -3084,9 +3919,10 @@ static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 		 * drew a row of identical 'O's until the properties arrived.
 		 */
 		if (!it->id[0]) {
-			ktui_draw_text(tx, ry, 1, ktui_glyph[KT_G_DOT], KT_DIM,
-				       tbg, KT_A_NONE);
-			tx += 2;
+			ktui_draw_text(tx + TRAY_W / 2, ry, 1,
+				       ktui_glyph[KT_G_DOT], KT_DIM, tbg,
+				       KT_A_NONE);
+			tx += TRAY_W;
 			continue;
 		}
 		/* One BYTE, not one codepoint: ids are program names — ascii
@@ -3096,10 +3932,10 @@ static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 			 (unsigned char)it->id[0] < 0x80 ? it->id[0] : '.');
 		if (cell[0] >= 'a' && cell[0] <= 'z')
 			cell[0] = (char)(cell[0] - 'a' + 'A');
-		ktui_draw_text(tx, ry, 1, cell, fg, tbg,
+		ktui_draw_text(tx + TRAY_W / 2, ry, 1, cell, fg, tbg,
 			       it->status == SH_TRAY_ATTENTION ? KT_A_REVERSE
 							       : KT_A_NONE);
-		tx += 2;
+		tx += TRAY_W;
 	}
 	sh->tray_hit_end = tx;
 	return sh->tray_hit_x - 1;
@@ -3122,11 +3958,27 @@ static const struct mdesc {
 	const struct meter *b;	/* the lower half, mirrored, or NULL      */
 	const char *up, *dn;	/* what the two halves are called         */
 } MDESC[MT_N] = {
-	{ "cpu",    "CPU", 4, 1, &met_cpu,  NULL,     NULL, NULL },
-	{ "ram",    "RAM", 4, 1, &met_ram,  NULL,     NULL, NULL },
-	{ "disk",   "SSD", 4, 1, &met_disk, NULL,     NULL, NULL },
-	{ "net",    "NET", 7, 0, &met_rx,   &met_tx,  "\xe2\x86\x93", "\xe2\x86\x91" },
-	{ "diskio", "I/O", 7, 0, &met_rd,   &met_wr,  "\xe2\x86\x93", "\xe2\x86\x91" },
+	/*
+	 * THE WIDTHS ADD UP TO EXACTLY MET_TILE_MAX, AND THAT IS THE WHOLE
+	 * CONSTRAINT.
+	 *
+	 * A sprite cell carries its sub-cell coordinate in four bits each way,
+	 * so a tile can never be wider than sixteen cells — and the set that
+	 * has to fit is the default one, `cpu ram net`. Five cells is what a
+	 * percentage band needs to hold `RAM` and `100%` side by side with air
+	 * between them at this cell size (measured: 18 + 6 + 24 pixels against
+	 * a 50-pixel band); the mirrored band needs less, because its two
+	 * numbers are STACKED rather than laid side by side and only the label
+	 * and one of them share a line.
+	 *
+	 * Widening any of these past the sum drops the LAST meter instead —
+	 * silently, and the network is the one people watch.
+	 */
+	{ "cpu",    "CPU", 5, 1, &met_cpu,  NULL,     NULL, NULL },
+	{ "ram",    "RAM", 5, 1, &met_ram,  NULL,     NULL, NULL },
+	{ "disk",   "SSD", 5, 1, &met_disk, NULL,     NULL, NULL },
+	{ "net",    "NET", 6, 0, &met_rx,   &met_tx,  "\xe2\x86\x93", "\xe2\x86\x91" },
+	{ "diskio", "I/O", 6, 0, &met_rd,   &met_wr,  "\xe2\x86\x93", "\xe2\x86\x91" },
 };
 
 static int meter_by_key(const char *name)
@@ -3137,7 +3989,13 @@ static int meter_by_key(const char *name)
 	return -1;
 }
 
-/* One kept scale per mirrored meter — see nice_scale for why it is kept. */
+/*
+ * One kept scale per mirrored meter, and it is kept because the axis has
+ * HYSTERESIS: kpr_scale_step() decides the next rung from the last one, so the
+ * last one has to survive the frame. A mirrored pair shares one entry — the
+ * two series are drawn about a midline and an axis taken from either alone
+ * would move under the other one's data.
+ */
 static double met_scale[MT_N];
 
 static void fmt_rate(char *out, size_t n, double bytes_per_s)
@@ -3203,7 +4061,7 @@ static int draw_meter(int x, int row, const char *label,
  *
  * The samples are quantised on the way in — a chart redrawn because the third
  * decimal of a byte rate moved is a raster per frame — and the accent is NOT
- * in here: `kdos theme` drops every tile through sh_tile_reset(), which is the
+ * in here: `kdos theme` drops every tile through kch_tile_reset(), which is the
  * same mechanism kicon_retint() uses and one place rather than two.
  */
 static uint64_t met_hash(void)
@@ -3251,7 +4109,7 @@ static uint64_t met_hash(void)
  * its height. Smoothing the NUMBER instead would be lying about the instant.
  *
  * THE SCALE IS THE CALLER'S. A chart that autoscales to its own window
- * redraws a moving axis under stationary data — see nice_scale.
+ * redraws a moving axis under stationary data — see kpr_scale_step().
  *
  * THE TRACE IS CONTINUOUS, INCLUDING AT ZERO, and that is the other half of
  * what "it goes back and forth one pixel" was. A sample worth less than a pixel
@@ -3270,13 +4128,31 @@ static void met_graph(KCellCanvas *cv, int x, int y, int w, int h,
 	if (w <= 0 || h <= 0 || n <= 0 || vmax <= 0)
 		return;
 
-	int from = n > w ? n - w : 0;
-	int cols = n - from;
-	int x0 = x + (w - cols);
+	/*
+	 * THE TRACE SPANS THE WHOLE BAND FROM THE FIRST SAMPLE.
+	 *
+	 * Drawing only the samples there are and right-aligning them leaves
+	 * the left of the band EMPTY — no fill, no line, not even a baseline —
+	 * for as long as the ring takes to fill, which on the seven-cell
+	 * network band is over a minute. Worse, nothing MOVES while that is
+	 * happening: the newest sample stays pinned to the right edge and the
+	 * picture only starts scrolling once the ring is full, so a chart sat
+	 * still and then abruptly began to travel. Reported as "the graphs do
+	 * not move smoothly".
+	 *
+	 * Column i is sample `n - w + i`, and an index before the oldest
+	 * sample there is takes the oldest one. The trace is therefore
+	 * unbroken across the band from the very first frame, and real data
+	 * enters at the right and pushes the flat stretch off the left — which
+	 * is motion, one pixel per sample, from the first sample onward.
+	 */
+	int base = n - w;
 	int prev = -1;
 
-	for (int i = 0; i < cols; i++) {
-		int j = from + i;
+	for (int i = 0; i < w; i++) {
+		int j = base + i;
+		if (j < 0)
+			j = 0;
 		/* Three-point mean, clamped at the ends so the newest sample
 		 * is not held back by a neighbour that does not exist yet. */
 		double a = v[j];
@@ -3296,7 +4172,7 @@ static void met_graph(KCellCanvas *cv, int x, int y, int w, int h,
 
 		/* The area, at a third of the colour's weight. */
 		if (bar > 0)
-			kcell_canvas_fill(cv, x0 + i, flip ? y : y + h - bar,
+			kcell_canvas_fill(cv, x + i, flip ? y : y + h - bar,
 					  1, bar, slot, 90);
 		/* The line: the top pixel of this column, plus the run down to
 		 * the previous column's top so a steep edge is continuous
@@ -3310,7 +4186,20 @@ static void met_graph(KCellCanvas *cv, int x, int y, int w, int h,
 			lo = prev < top ? prev : top;
 			hi = prev < top ? top : prev;
 		}
-		kcell_canvas_fill(cv, x0 + i, lo, 1, hi - lo + 1, slot, 255);
+		/*
+		 * A COLUMN AT ZERO DRAWS AT THE FILL'S WEIGHT, not the line's.
+		 *
+		 * It still draws — the head says why, and a chart with gaps in
+		 * it is a chart that has stopped. But a mirrored band at rest
+		 * has BOTH traces sitting on the midline, so an idle network
+		 * meter came out as three hard rules across the whole band, one
+		 * of them full-strength amber, and that was the loudest object
+		 * in the meters strip while nothing at all was happening. At
+		 * the fill's weight it reads as the baseline it is, and the
+		 * first real sample lifts off it at full strength.
+		 */
+		kcell_canvas_fill(cv, x + i, lo, 1, hi - lo + 1, slot,
+				  bar > 0 ? 255 : 90);
 		prev = top;
 	}
 }
@@ -3321,20 +4210,19 @@ static void met_graph(KCellCanvas *cv, int x, int y, int w, int h,
  * the data instead of standing still under it. Drawn UNDER the trace, which is
  * what makes it a scale rather than a decoration.
  */
-static void met_grid(KCellCanvas *cv, int x, int y, int w, int h, int n)
+static void met_grid(KCellCanvas *cv, int x, int y, int w, int h)
 {
-	if (w <= 0 || h <= 0 || n <= 0)
+	if (w <= 0 || h <= 0)
 		return;
 
-	int from = n > w ? n - w : 0;
-	int cols = n - from;
-	int x0 = x + (w - cols);
-
-	for (int i = 0; i < cols; i++) {
-		uint64_t abs = met_seq - (uint64_t)(n - (from + i));
+	/* The whole band, like the trace over it: a scale that stopped where
+	 * the samples ran out would say the left of the chart was outside
+	 * time. Column w-1 is the newest sample, which is `met_seq`. */
+	for (int i = 0; i < w; i++) {
+		uint64_t abs = met_seq - (uint64_t)(w - 1 - i);
 
 		if (abs % MET_GRID == 0)
-			kcell_canvas_fill(cv, x0 + i, y, 1, h, KT_MID, 60);
+			kcell_canvas_fill(cv, x + i, y, 1, h, KT_MID, 60);
 	}
 }
 
@@ -3386,7 +4274,7 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 		int tot = 0;
 		for (int i = 0; i < want; i++)
 			tot += MDESC[meters_sel[i]].cells;
-		if (tot <= 16 && right_x - tot >= x_min) {
+		if (tot <= MET_TILE_MAX && right_x - tot >= x_min) {
 			cells = tot;
 			use = want;
 		}
@@ -3406,8 +4294,26 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 	 * fifty-eight and touched — `CPU10%`. The reading has to have air
 	 * round it or the band reads as one word.
 	 */
+	/*
+	 * THE LABEL MUST BE A SIZE TERMINUS ACTUALLY HAS.
+	 *
+	 * 23% of the band is nine pixels on a 40-pixel bar, and Terminus's
+	 * smallest strike is TWELVE. A bitmap face asked for a size it does
+	 * not carry answers with the nearest one it does, whose bearings need
+	 * not agree with the ascent it reports — so the baseline came out
+	 * above the top of the canvas and every label was rendered with its
+	 * upper third cut off. Photographed: `CPU 0% RAM 10%` sliced through
+	 * the middle of the glyphs.
+	 *
+	 * The floor is the strike, and the extra pixel of headroom is for the
+	 * same disagreement on any face that is not this one.
+	 */
 	int fsz = H * 23 / 100;
-	int asc = kcell_canvas_text_ascent(fsz);
+	int asc;
+
+	if (fsz < 12)
+		fsz = 12;
+	asc = kcell_canvas_text_ascent(fsz) + 1;
 
 	if (H < 16 || fsz < 6) {
 		if (panel_dbg())
@@ -3426,22 +4332,76 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 			met_scale[id] = 100.0;
 			continue;
 		}
+		/*
+		 * THE AXIS DESCRIBES THE PICTURE, so the peak is taken over
+		 * the samples the band is about to DRAW and not over the whole
+		 * ring.
+		 *
+		 * The ring is 256 samples and a band is about a hundred
+		 * pixels, so more than half of it is history that has already
+		 * scrolled off the left. Scanning all of it hands the axis to
+		 * a spike nobody can see: one burst of traffic at login set
+		 * this to 16 MB/s and held it there for over a minute while
+		 * every sample on screen was under 120 BYTES — a trace pinned
+		 * flat on its baseline under a scale that matched nothing in
+		 * front of it. Then the spike aged out of the ring, the axis
+		 * fell several rungs at once, and the whole chart jumped.
+		 * Measured, with `KDOS_PANEL_DEBUG=1`:
+		 *
+		 *   NET n=146 scale=16000000 shown=27.6 last=0.0
+		 *
+		 * Windowing it is also what makes the hysteresis behave: an
+		 * axis that only shrinks under a third of itself needs the
+		 * peak to be able to fall, and a peak over everything ever
+		 * sampled barely can.
+		 */
+		int span = d->cells * kwl_cell_w() * kwl_scale();
 		double peak = 0;
 		const struct meter *pair[2] = { d->a, d->b };
 		for (int q = 0; q < 2 && pair[q]; q++) {
 			int n = 0;
 			const double *v = meter_series(pair[q], &n);
-			for (int i = 0; i < n; i++)
+			int from = n > span ? n - span : 0;
+			for (int i = from; i < n; i++)
 				if (v[i] > peak)
 					peak = v[i];
 		}
-		met_scale[id] = nice_scale(peak, met_scale[id]);
+		met_scale[id] = kpr_scale_step(peak, met_scale[id]);
+	}
+
+	/*
+	 * `KDOS_PANEL_DEBUG=1` TRACES THE SERIES, NOT THE PICTURE.
+	 *
+	 * "The graph goes back and forth" is a report about pixels, and pixels
+	 * are the last place to look for it: a chart is a sample ring, an axis
+	 * and a scale step, and any one of the three can move the trace with
+	 * the other two standing still. One line per SAMPLE — not per frame,
+	 * or a bar that redraws sixty times a second buries the thing being
+	 * looked for — printed here because this is where all three are in
+	 * scope and settled.
+	 */
+	static uint64_t dbg_seq;
+	if (panel_dbg() && met_seq != dbg_seq) {
+		dbg_seq = met_seq;
+		fprintf(stderr, "panel: seq=%llu w=%d",
+			(unsigned long long)met_seq, right_x - x_min);
+		for (int k = 0; k < use; k++) {
+			int id = meters_sel[k];
+			const struct meter *m = MDESC[id].a;
+
+			fprintf(stderr, " | %s n=%d scale=%.0f shown=%.1f "
+					"last=%.1f",
+				MDESC[id].label, m->h.n, met_scale[id],
+				m->shown,
+				m->h.n ? kpr_hist_at(&m->h, m->h.n - 1) : -1.0);
+		}
+		fprintf(stderr, "\n");
 	}
 
 	int x = right_x - cells;
 	/* The set is part of the picture: a tile that went from three meters
 	 * to two without the hash noticing would keep drawing three. */
-	KCellCanvas *cv = sh_tile_begin(SH_TILE_METERS, cells, rows,
+	KCellCanvas *cv = kch_tile_begin(SH_TILE_METERS, cells, rows,
 					met_hash() ^ ((uint64_t)use << 56) ^
 						((uint64_t)hover_meters << 63));
 	if (cv) {
@@ -3475,11 +4435,7 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 			 */
 			kcell_canvas_fill(cv, bx, 0, bw, H, KT_DIM,
 					  hover_meters ? 110 : 55);
-			{
-				int gn = 0;
-				meter_series(d->a, &gn);
-				met_grid(cv, bx, 0, bw, H, gn);
-			}
+			met_grid(cv, bx, 0, bw, H);
 			if (!d->b) {
 				/* The baseline goes down BEFORE the trace: at
 				 * rest the two sit on the same row, and drawn
@@ -3491,9 +4447,29 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 						  255);
 				met_graph(cv, bx, 0, bw, H, d->a,
 					  met_scale[id], KT_ACCENT, 0);
-				kcell_canvas_text(cv, bx, asc, fsz, d->label,
-						  warn ? KT_WARN : KT_MID);
+				/*
+				 * THE LABEL GIVES WAY, NOT THE READING — the
+				 * same rule the mirrored band below already
+				 * keeps, and it was missing here. `RAM` and
+				 * `10%` come to exactly the band's width at
+				 * this cell size, so the two ran together as
+				 * `RAM10%`: photographed on the 40-pixel bar,
+				 * where a cell is half as wide as the one this
+				 * arithmetic was written for. Half a character
+				 * of air is the gap; without room for it the
+				 * name goes and the number stays, because a
+				 * chart with no number says nothing and a
+				 * chart with no name is still a chart.
+				 */
 				int vw = kcell_canvas_text_width(fsz, v1);
+				int lw = kcell_canvas_text_width(fsz,
+								 d->label);
+
+				if (lw + vw + fsz / 2 <= bw)
+					kcell_canvas_text(cv, bx, asc, fsz,
+							  d->label,
+							  warn ? KT_WARN
+							       : KT_MID);
 				kcell_canvas_text(cv, bx + bw - vw, asc, fsz,
 						  v1,
 						  warn ? KT_WARN : KT_TEXT);
@@ -3547,10 +4523,10 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 			}
 			bx += d->cells * cell;
 		}
-		sh_tile_commit(SH_TILE_METERS);
+		kch_tile_commit(SH_TILE_METERS);
 	}
 
-	int slot = sh_tile_slot(SH_TILE_METERS);
+	int slot = kch_tile_slot(SH_TILE_METERS);
 	if (slot < 0) {
 		if (panel_dbg())
 			fprintf(stderr, "panel: meters tile: no slot "
@@ -3941,21 +4917,54 @@ static int draw_more(struct sh_state *sh, int right_x, int x_min, int h)
 	int irows = h > 1 && ry + 1 < h ? 2 : 1;
 	int x = right_x - 2;
 	int fg = ov_warn ? KT_WARN : nov > 0 ? KT_TEXT : KT_MID;
-	int bg = hover_ap == SH_AP_MORE ? KT_DIM : KT_SURFACE;
+	int bg = KT_SURFACE;
 
-	if (bg != KT_SURFACE)
-		ktui_draw_fill(krect(x, ry, 2, irows), bg);
-	/* The chevron points the way the popup opens: up from a bottom bar,
-	 * down from a top one. */
-	int slot = icons_on ? kicon_slot(panel_top ? "pan-down" : "pan-up", 2,
-					 irows)
-			    : -1;
-	if (slot >= 0)
-		ktui_draw_sprite(krect(x, ry, 2, irows), slot, fg, bg);
-	else
+	if (hover_ap == SH_AP_MORE)
+		kch_px_plate(x, ry, 2, irows, KCH_T_HOVER, 1);
+	/*
+	 * DRAWN, NOT A SPRITE AND NOT A GLYPH, and this control is the one
+	 * place on the bar where that is the right answer.
+	 *
+	 * A tray item's picture is the APPLICATION's and must not be
+	 * recoloured — an accented Firefox mark is vandalism. A chevron is
+	 * CHROME: it belongs to this bar and has to wear its accent. Papirus's
+	 * `pan-up` is a near-grey and the atlas leaves near-greys faintly
+	 * tinted by design, so the sprite came out at (221,225,223) — a white
+	 * triangle in a row of phosphor, measured on the booted ISO. And a
+	 * GLYPH is one cell tall, so it sits on the top row while the tray
+	 * items and the applets beside it are centred on both: the same three
+	 * baselines in one wing this arc already removed once.
+	 *
+	 * Four stacked rows is a triangle, in the palette, centred on the
+	 * wing's full height. The glyph stays as the fallback, because the
+	 * pixel layer is absent on a terminal and in every golden frame.
+	 */
+	if (px_live) {
+		int cw = kwl_cell_w(), chh = kwl_cell_h();
+		int bh = irows * chh;
+		/* SIZED FROM THE WIDTH. The box is two cells and the height is
+		 * two rows, so a triangle derived from the height overflows
+		 * the box sideways — it came out fifty pixels across a twenty
+		 * pixel cell pair and ran into the separator beside it. */
+		int bw = 2 * cw - 6;
+		int rows_t = 5;
+		int cx = x * cw + cw;		/* the 2-cell box's centre */
+		int y0 = ry * chh + (bh - rows_t) / 2;
+
+		if (bw < 4)
+			bw = 4;
+		for (int k = 0; k < rows_t; k++) {
+			int run = bw * (k + 1) / rows_t;
+			int yy = panel_top ? y0 + rows_t - 1 - k : y0 + k;
+
+			kch_px_rect(cx - run / 2, yy, run, 1,
+				    kch_slot_rgb(fg), 0xFF);
+		}
+	} else {
 		ktui_draw_text(x, ry, 2,
 			       ktui_glyph[panel_top ? KT_G_DOWN : KT_G_UP], fg,
 			       bg, KT_A_NONE);
+	}
 	sh->ap_x[SH_AP_MORE] = x;
 	sh->ap_end[SH_AP_MORE] = x + 2;
 	/*
@@ -3980,13 +4989,12 @@ static void draw_taskbar(struct sh_state *sh)
 	if (w < 20 || h < 1)
 		return;
 
-	build_chips(sh);
 	/* Before the passes: the chevron's own label is the COUNT, so the list
 	 * has to exist before anything is laid out. */
 	build_overflow(sh);
 
 	/* ── measurements, once per frame, before any layout pass ── */
-	time_t now = time(NULL);
+	time_t now = panel_wall();
 	struct tm tm;
 	localtime_r(&now, &tm);
 
@@ -4003,6 +5011,19 @@ static void draw_taskbar(struct sh_state *sh)
 		date[0] = '\0';
 
 	applet_row = (h - 1) / 2;
+
+	/*
+	 * Is something bright behind the bar? Any window maximized or
+	 * fullscreen and not minimized. See panel_backdrop() — below the
+	 * translucent body this is the difference between a taskbar that can
+	 * say which window is focused and one that cannot.
+	 */
+	px_occluded = 0;
+	for (int i = 0; i < sh->ntasks; i++)
+		if (!sh->tasks[i].minimized
+				&& (sh->tasks[i].maximized
+					|| sh->tasks[i].fullscreen))
+			px_occluded = 1;
 
 	/*
 	 * THREE PASSES, AND THE ORDER IS THE PRIORITY.
@@ -4025,14 +5046,19 @@ static void draw_taskbar(struct sh_state *sh)
 		int compact = pass >= 2;	/* the Start button's word */
 		int show_favs = pass < 3;	/* the quick-launch row */
 		clear_hits(sh);
+		/* Beside clear_hits for the same reason: four passes run and
+		 * only the last one kept has drawn anything real. */
+		kch_px_reset();
+		/* Inside the loop, because pass 3 builds a SHORTER row: the
+		 * hit map has to describe the buttons that were drawn, and
+		 * chips[] is what both the draw and every click test read. */
+		build_chips(sh, show_favs);
 		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 
 		/* ── the left wing ── */
 		int x = draw_start(sh, h, compact);
 		draw_sep(x, h);
 		x += 2;
-		if (show_favs)
-			x = draw_quicklaunch(x, w / 2, h);
 
 		/*
 		 * Occupancy is DERIVED: ext-workspace-v1 carries ACTIVE,
@@ -4074,6 +5100,8 @@ static void draw_taskbar(struct sh_state *sh)
 		 * this. */
 		sh->show_hit_x = w - 1;
 		sh->show_hit_end = w;
+		if (hover_show)
+			kch_px_plate(w - 1, 0, 1, h, KCH_T_HOVER, 1);
 		for (int r = 0; r < h; r++)
 			ktui_draw_text(w - 1, r, 1, ktui_glyph[KT_G_SHADE],
 				       hover_show ? KT_ACCENT : KT_DIM,
@@ -4097,12 +5125,11 @@ static void draw_taskbar(struct sh_state *sh)
 				if (right_x - clockw <= floor_x)
 					break;
 				right_x -= clockw;
-				int cbg = hover_ap == SH_AP_CLOCK ? KT_DIM
-								  : KT_SURFACE;
-				if (cbg != KT_SURFACE)
-					ktui_draw_fill(krect(right_x, applet_row,
-							     clockw, h - applet_row),
-						       cbg);
+				int cbg = KT_SURFACE;
+				if (hover_ap == SH_AP_CLOCK)
+					kch_px_plate(right_x, applet_row,
+						     clockw, h - applet_row,
+						     KCH_T_HOVER, 1);
 				ktui_draw_text(right_x, applet_row, clockw,
 					       clock, KT_TEXT, cbg, KT_A_NONE);
 				if (dw)
@@ -4187,8 +5214,10 @@ static void draw_taskbar(struct sh_state *sh)
 				if (!up)
 					snprintf(label, sizeof(label), "off");
 				else if (rx < 1 && tx < 1)
-					snprintf(label, sizeof(label), "%s",
-						 ktui_glyph[KT_G_DOT]);
+					/* An idle link is the icon, centred —
+					 * a lone `·` under it reads as dirt on
+					 * the screen rather than as a state. */
+					label[0] = '\0';
 				else {
 					fmt_rate(rate, sizeof(rate),
 						 rx >= tx ? rx : tx);
@@ -4306,8 +5335,7 @@ static void draw_taskbar(struct sh_state *sh)
 					snprintf(label, sizeof(label), "%d",
 						 notify_unseen);
 				else
-					snprintf(label, sizeof(label), "%s",
-						 ktui_glyph[KT_G_DOT]);
+					label[0] = '\0';	/* see the NET tile */
 				/*
 				 * A MOON FOR DO NOT DISTURB, which is what
 				 * every phone made since 2015 uses — and,
@@ -4528,7 +5556,7 @@ static void handle_motion(struct sh_state *sh, int cx, int cy)
 		drag_moved = 1;
 		drag_over = hover_fav;
 	}
-	/* The strip opens btop, so it is a control and has to look like one
+	/* The strip opens kdos-res, so it is a control and has to look like one
 	 * under the hand. Its own rows, for the same reason the click test
 	 * needs them. */
 	hover_meters = meter_row0 >= 0 && cy >= meter_row0 &&
@@ -4537,9 +5565,14 @@ static void handle_motion(struct sh_state *sh, int cx, int cy)
 	hover_ap = applet_at(sh, cx);
 	hover_ws = ws_at(sh, cx);
 	hover_tray = in_span(cx, sh->tray_hit_x, sh->tray_hit_end)
-			     ? (cx - sh->tray_hit_x) / 2
+			     ? (cx - sh->tray_hit_x) / TRAY_W
 			     : -1;
 	hover_show = in_span(cx, sh->show_hit_x, sh->show_hit_end);
+	hover_plusn = in_span(cx, plusn_x, plusn_end);
+	/* Here rather than in the draw: a leave arrives as an off-grid x and
+	 * produces no further event at all, so the OFF has to be sent by
+	 * whatever heard about the pointer last. */
+	peek_set(hover_show);
 
 	/*
 	 * THE DWELL RESTARTS WHENEVER THE THING CHANGES — including on a leave,
@@ -4556,6 +5589,12 @@ static void handle_motion(struct sh_state *sh, int cx, int cy)
 		tip_idx = idx;
 		tip_x = tx;
 		tip_since = panel_now_ms();
+		/* A tooltip that never appears is indistinguishable from a
+		 * pointer the bar never heard about, and the two are fixed in
+		 * different files. This says which. */
+		if (panel_dbg())
+			fprintf(stderr, "kdos-shell: hover %d,%d -> kind %d "
+					"idx %d x %d\n", cx, cy, kind, idx, tx);
 	}
 }
 
@@ -4578,7 +5617,7 @@ static void handle_motion(struct sh_state *sh, int cx, int cy)
 #define TIP_DELAY_MS 700
 
 enum {
-	TT_NONE = 0, TT_START, TT_FAV, TT_CHIP, TT_PLUSN, TT_METERS, TT_AP,
+	TT_NONE = 0, TT_START, TT_CHIP, TT_PLUSN, TT_METERS, TT_AP,
 	TT_WS, TT_TRAY, TT_SHOW
 };
 
@@ -4590,6 +5629,27 @@ static void tip_kill(void)
 		tip_pid = -1;
 	}
 	tip_shown = 0;
+}
+
+/*
+ * A CLICK SPENDS THE DWELL, and killing the tip is not enough to spend it.
+ *
+ * `tip_kill` clears `tip_shown` because the caller that normally reaches it is
+ * a MOTION, which has just moved to another thing and owes it a fresh dwell.
+ * A click moves nothing: the pointer is still on the applet, `tip_kind` still
+ * names it and `tip_since` is still long past, so the very next frame put the
+ * tooltip straight back up — over the Start menu, over the volume slider, over
+ * whatever the click had just opened. Photographed on the booted ISO: the
+ * whole label and its hint line drawn across the top of the popup.
+ *
+ * So the dwell is marked SPENT and the next tip has to be earned by moving to
+ * something else, which is what `handle_motion` already does for every other
+ * reason.
+ */
+static void tip_spend(void)
+{
+	tip_kill();
+	tip_shown = 1;
 }
 
 /* What the pointer is on, and where its left edge is. */
@@ -4604,12 +5664,14 @@ static int tip_target(const struct sh_state *sh, int cx, int cy, int *idx,
 		*x = sh->start_x;
 		return TT_START;
 	}
-	for (int i = 0; i < nfavs; i++)
-		if (in_span(cx, fav_x[i], fav_end[i])) {
-			*idx = i;
-			*x = fav_x[i];
-			return TT_FAV;
-		}
+	/*
+	 * NO SEPARATE FAVOURITE HIT. The pinned row IS the chip row now, so a
+	 * pinned span and a chip span are the same cells — and testing the pin
+	 * first meant a pinned application that was RUNNING got the launcher's
+	 * tooltip, offering "click to launch" for a window that is already
+	 * open. One button, one hit test, one tooltip that reads the button's
+	 * actual state.
+	 */
 	if (meter_row0 >= 0 && cy >= meter_row0 &&
 	    cy < meter_row0 + meter_rows &&
 	    in_span(cx, sh->meter_hit_x, sh->meter_hit_end)) {
@@ -4629,11 +5691,11 @@ static int tip_target(const struct sh_state *sh, int cx, int cy, int *idx,
 		return TT_WS;
 	}
 	if (in_span(cx, sh->tray_hit_x, sh->tray_hit_end)) {
-		int k = (cx - sh->tray_hit_x) / 2;
+		int k = (cx - sh->tray_hit_x) / TRAY_W;
 
 		if (k >= 0 && k < tray_nvis) {
 			*idx = k;
-			*x = sh->tray_hit_x + k * 2;
+			*x = sh->tray_hit_x + k * TRAY_W;
 			return TT_TRAY;
 		}
 	}
@@ -4670,27 +5732,31 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 			 "applications, places and power - right-click for the "
 			 "window manager");
 		return 1;
-	case TT_FAV:
-		if (idx < 0 || idx >= nfavs)
-			return 0;
-		snprintf(t1, n1, "%s", favs[idx].name[0] ? favs[idx].name
-							 : favs[idx].id);
-		snprintf(t2, n2, "%s",
-			 "click to launch · drag to reorder · right-click to "
-			 "unpin");
-		return 1;
 	case TT_CHIP: {
 		if (idx < 0 || idx >= nchips)
 			return 0;
-		const struct sh_task *t = &sh->tasks[chips[idx].first];
+		const struct chip *c = &chips[idx];
 
-		snprintf(t1, n1, "%s", chips[idx].label ? chips[idx].label : "");
-		if (chips[idx].count > 1)
-			snprintf(t2, n2, "%d windows - left lists them, middle "
-					 "closes them all", chips[idx].count);
+		snprintf(t1, n1, "%s", c->label ? c->label : "");
+		/*
+		 * THREE STATES, AND THE BAR IS ICONS-ONLY, so this line is the
+		 * only thing that says which one a button is in. A launcher
+		 * has no toplevel to ask — sh->tasks[c->first] would be
+		 * tasks[-1] — and it is also the one whose verbs differ.
+		 */
+		if (c->count == 0)
+			snprintf(t2, n2, "%s",
+				 "not running - click to launch - drag to "
+				 "reorder - right-click to unpin");
+		else if (c->count > 1)
+			snprintf(t2, n2,
+				 "%d windows - left lists them, right for the "
+				 "window menu", c->count);
 		else
-			snprintf(t2, n2, "%s", t->title[0] ? t->title
-							   : "no title");
+			snprintf(t2, n2, "%s",
+				 sh->tasks[c->first].title[0]
+					 ? sh->tasks[c->first].title
+					 : "no title");
 		return 1;
 	}
 	case TT_PLUSN:
@@ -4700,7 +5766,7 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 	case TT_METERS:
 		snprintf(t1, n1, "%s", "System meters");
 		snprintf(t2, n2, "%s",
-			 "left: btop · middle: late frames · right: energy");
+			 "left: resources · middle: late frames · right: energy");
 		return 1;
 	case TT_WS:
 		snprintf(t1, n1, "Workspace %d", idx + 1);
@@ -4827,17 +5893,32 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 			snprintf(t2, n2, "%d mounted - click to mount or eject",
 				 panel_media_mounted);
 			return 1;
-		case SH_AP_MIC:
-			snprintf(t1, n1, "%s is recording",
-				 sh_priv_name(sh, SH_PRIV_MIC));
+		case SH_AP_MIC: {
+			char box[64];
+			/* The box, when there is one: on this distro every fat
+			 * application is a container and the app's own name
+			 * does not say which. */
+			if (sh_priv_box(sh, SH_PRIV_MIC, box, sizeof(box)))
+				snprintf(t1, n1, "%s (box %s) is recording",
+					 sh_priv_name(sh, SH_PRIV_MIC), box);
+			else
+				snprintf(t1, n1, "%s is recording",
+					 sh_priv_name(sh, SH_PRIV_MIC));
 			snprintf(t2, n2, "%s", "click to mute every capture "
 					       "device");
 			return 1;
-		case SH_AP_CAM:
-			snprintf(t1, n1, "%s is using the camera",
-				 sh_priv_name(sh, SH_PRIV_CAM));
+		}
+		case SH_AP_CAM: {
+			char box[64];
+			if (sh_priv_box(sh, SH_PRIV_CAM, box, sizeof(box)))
+				snprintf(t1, n1, "%s (box %s) is using the camera",
+					 sh_priv_name(sh, SH_PRIV_CAM), box);
+			else
+				snprintf(t1, n1, "%s is using the camera",
+					 sh_priv_name(sh, SH_PRIV_CAM));
 			snprintf(t2, n2, "%s", "click for the device manager");
 			return 1;
+		}
 		case SH_AP_MPRIS:
 			snprintf(t1, n1, "%s", sh_mpris_title(sh->mpris));
 			snprintf(t2, n2, "%s",
@@ -4846,7 +5927,7 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 			return 1;
 		case SH_AP_CPU:
 			snprintf(t1, n1, "Processor %d%%", panel_cpu);
-			snprintf(t2, n2, "%s", "click for btop");
+			snprintf(t2, n2, "%s", "click for Resources");
 			return 1;
 		default:
 			return 0;
@@ -4874,10 +5955,43 @@ static void tip_tick(struct sh_state *sh)
 	if (!tip_text(sh, tip_kind, tip_idx, t1, sizeof(t1), t2, sizeof(t2)))
 		return;
 	snprintf(xs, sizeof(xs), "%d", (tip_x > 0 ? tip_x : 0) * kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
-	const char *argv[] = { "kdos-tip", panel_at_flag(), xs, ys, t1, t2,
-			       NULL };
+	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+	/*
+	 * A WINDOW BUTTON'S TIP CARRIES THE WINDOW.
+	 *
+	 * The case a name cannot answer is three terminals all called `foot`,
+	 * and an icons-only bar produces it constantly. Only for a chip that
+	 * HAS a window: a pinned application that is not running has no buffer
+	 * to photograph, and asking would be a socket round trip for a "no".
+	 *
+	 * The picture is an enhancement and kdos-tip treats it as one — a
+	 * capture that fails, a compositor that will not grow the surface, a
+	 * client whose pixels are not host-readable all leave the two lines of
+	 * text exactly as they would have been.
+	 */
+	const char *app = NULL;
+	const char *argv[9];
+	int n = 0;
+
+	if (tip_kind == TT_CHIP && tip_idx >= 0 && tip_idx < nchips &&
+	    chips[tip_idx].count > 0)
+		app = sh->tasks[chips[tip_idx].first].app_id;
+
+	argv[n++] = "kdos-tip";
+	argv[n++] = panel_at_flag();
+	argv[n++] = xs;
+	argv[n++] = ys;
+	if (app && *app) {
+		argv[n++] = "--preview";
+		argv[n++] = app;
+	}
+	argv[n++] = t1;
+	argv[n++] = t2;
+	argv[n] = NULL;
 	tip_pid = panel_spawn_pid(argv);
+	if (panel_dbg())
+		fprintf(stderr, "kdos-shell: tip %s %s %s \"%s\" pid %d\n",
+			argv[1], xs, ys, t1, (int)tip_pid);
 }
 
 /* How long until the tip is due, for the poll's own deadline. */
@@ -4904,7 +6018,7 @@ static void handle_wheel(struct sh_state *sh, int cx, int up)
 		return;
 	}
 	if (in_span(cx, sh->tray_hit_x, sh->tray_hit_end)) {
-		int k = (cx - sh->tray_hit_x) / 2;
+		int k = (cx - sh->tray_hit_x) / TRAY_W;
 
 		if (k >= 0 && k < tray_nvis)
 			sh_tray_scroll(sh, tray_map[k], up ? 1 : -1);
@@ -4951,7 +6065,7 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	 */
 	snprintf(xs, sizeof(xs), "%d",
 		 (id >= 0 && id < SH_AP_N ? sh->ap_x[id] : 0) * kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
 
 	if (id == SH_AP_MPRIS && btn != SH_TRAY_BTN_LEFT) {
 		/* Middle steps back, right steps forward — the transport a
@@ -5024,7 +6138,7 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		 * Middle-click is still the one-gesture mute.
 		 */
 		const char *argv[] = { "kdos-osd", "slider", at, xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_MIC:
@@ -5036,25 +6150,28 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	case SH_AP_CAM: {
 		const char *argv[] = { "kdos-devices", at, xs, ys,
 				       NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_NET: {
 		const char *argv[] = { "kdos-net", at, xs, ys,
 				       NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_CLOCK:
 	case SH_AP_BATT: {
 		const char *argv[] = { "kdos-cal", at, xs, ys,
 				       NULL };
-		panel_spawn(argv);
+		/* The clock and the battery are one popup, so they are one
+		 * toggle: clicking either shuts the calendar the other
+		 * opened. */
+		popup_toggle(SH_AP_CLOCK, argv);
 		break;
 	}
 	case SH_AP_NOTIFY: {
 		const char *argv[] = { "kdos-notify", at, xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_STUTTER: {
@@ -5062,7 +6179,7 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		 * the one thing the popup would have been opened to read. */
 		const char *argv[] = { "kdos-status", "--open", "stutter", at,
 				       xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_MORE: {
@@ -5077,7 +6194,7 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		 */
 		write_overflow();
 		const char *argv[] = { "kdos-status", at, xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_MPRIS:
@@ -5086,7 +6203,14 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		sh_mpris_action(sh->mpris, "PlayPause");
 		break;
 	case SH_AP_CPU: {
-		const char *argv[] = { "foot", "-e", "btop", NULL };
+		/*
+		 * kdos-res rather than a terminal running btop: it is this
+		 * distro's own monitor, it is a window rather than a terminal
+		 * that covers the desktop, and it is the only thing here that
+		 * can name a boxed application rather than its processes.
+		 * btop keeps its menu entry and its prompt.
+		 */
+		const char *argv[] = { "kdos-res", NULL };
 		panel_spawn(argv);
 		break;
 	}
@@ -5094,21 +6218,21 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 		/* Anchored under itself, above the bar — the same trick the
 		 * clock's calendar uses. */
 		snprintf(xs, sizeof(xs), "%d", sh->ap_x[id] * kwl_cell_w());
-		snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+		snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
 		const char *argv[] = { "kdos-clip", "--pick", at, xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_MEDIA: {
 		const char *argv[] = { "kdos-devices", at, xs, ys,
 				       NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	case SH_AP_RESTART: {
 		const char *argv[] = { "kdos-status", "--open", "restarts", at,
 				       xs, ys, NULL };
-		panel_spawn(argv);
+		popup_toggle(id, argv);
 		break;
 	}
 	default:
@@ -5130,7 +6254,7 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
  * Anything else (released off the row) is a cancelled drag and does nothing,
  * which is what dragging an icon into empty space means everywhere else.
  */
-static void fav_release(void)
+static void fav_release(struct sh_state *sh)
 {
 	int from = drag_fav, to = drag_over;
 
@@ -5139,8 +6263,26 @@ static void fav_release(void)
 	if (from < 0 || from >= nfavs)
 		return;
 	if (to < 0 || to == from) {
-		if (to == from)
+		/*
+		 * A PRESS THAT DID NOT MOVE IS A CLICK, and on the merged row
+		 * what that click means depends on whether the application is
+		 * already running: launch it, or do what a task button does.
+		 * One button, two meanings, exactly as Windows 7 unified them —
+		 * "program launchers turn into window switchers when they are
+		 * launched".
+		 */
+		if (to == from) {
+			for (int i = 0; i < nchips; i++)
+				if (chips[i].fav == from) {
+					if (chips[i].count > 0) {
+						chip_click(sh, i,
+							   SH_TRAY_BTN_LEFT);
+						return;
+					}
+					break;
+				}
 			fav_launch(from);
+		}
 		return;
 	}
 	if (sh_fav_move(favs[from].id, to) == 0)
@@ -5152,7 +6294,7 @@ static void start_click(int btn)
 	char ys[16];
 	const char *at = panel_at_flag();
 
-	snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
 	if (btn == SH_TRAY_BTN_MIDDLE) {
 		const char *argv[] = { "kdos-run", NULL };
 		panel_spawn(argv);
@@ -5165,20 +6307,19 @@ static void start_click(int btn)
 		return;
 	}
 	const char *argv[] = { "kdos-start", at, "0", ys, NULL };
-	if (start_menu_fd >= 0) {
-		close(start_menu_fd);
-		start_menu_fd = -1;
-	}
-	start_menu_fd = panel_spawn_watched(argv);
-	if (start_menu_fd < 0)
-		panel_spawn(argv);	/* no pipe is a menu with no highlight */
+
+	/* The same toggle every other button on this bar keeps, and the same
+	 * record: the Start button used to answer "is my menu up" through a
+	 * pipe of its own, which could say so and could not CLOSE it. One
+	 * mechanism, so the highlight and the toggle cannot disagree. */
+	popup_toggle(POPUP_START, argv);
 }
 
 static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 {
 	/* Whatever this opens goes where the tip is, and a hand that has
 	 * clicked has stopped asking what the thing was. */
-	tip_kill();
+	tip_spend();
 	if (in_span(cx, sh->start_x, sh->start_end)) {
 		start_click(btn);
 		return;
@@ -5196,7 +6337,8 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 	    in_span(cx, sh->meter_hit_x, sh->meter_hit_end)) {
 		/*
 		 * THREE QUESTIONS A METER RAISES AND CANNOT ANSWER, one per
-		 * button. Left is `btop` — which process. MIDDLE is
+		 * button. Left is `kdos-res` — which process, and which
+		 * APPLICATION. MIDDLE is
 		 * `kdos stutter`, which is the only thing on this machine that
 		 * can say why a frame was late and who was busy when it was;
 		 * it had no surface at all and was reachable only by knowing
@@ -5207,7 +6349,7 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		char mx[16], my[16];
 
 		snprintf(mx, sizeof(mx), "%d", sh->meter_hit_x * kwl_cell_w());
-		snprintf(my, sizeof(my), "%d", ktui_h * kwl_cell_h());
+		snprintf(my, sizeof(my), "%d", kwl_popup_offset());
 		if (btn == SH_TRAY_BTN_MIDDLE) {
 			/* In a POPUP, not a terminal — see SH_AP_STUTTER. */
 			const char *argv[] = { "kdos-status", "--open", "stutter",
@@ -5231,7 +6373,7 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 	}
 
 	if (in_span(cx, sh->tray_hit_x, sh->tray_hit_end)) {
-		int k = (cx - sh->tray_hit_x) / 2;
+		int k = (cx - sh->tray_hit_x) / TRAY_W;
 		/* The item is told where the pointer was in PIXELS: an app
 		 * that pops a menu at the cursor gets the cursor, and one that
 		 * ignores the argument loses nothing. */
@@ -5243,25 +6385,36 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 
 	int ci = chip_at(sh, cx);
 	if (ci >= 0) {
+		const struct chip *c = &chips[ci];
+
+		/*
+		 * A PINNED BUTTON IS DRAGGED TO REORDER, so its LEFT press
+		 * only arms — the release decides between a launch, an
+		 * activate and a reorder. That gesture used to live on the
+		 * quick-launch strip; the strip is this row now, so the press
+		 * that starts it has to be this one. A press that launched
+		 * would fire before a drag could begin.
+		 */
+		if (btn == SH_TRAY_BTN_LEFT && c->fav >= 0) {
+			drag_fav = c->fav;
+			drag_over = c->fav;
+			drag_moved = 0;
+			return;
+		}
+		/*
+		 * RIGHT on a pinned button that is NOT running unpins it —
+		 * the only way back from a pin, and the row would otherwise
+		 * be a one-way door. Running, it opens the window menu
+		 * instead, which carries Unpin among the window verbs.
+		 */
+		if (btn == SH_TRAY_BTN_RIGHT && c->fav >= 0 && c->count == 0) {
+			sh_fav_set(favs[c->fav].id, 0);
+			load_favorites();
+			hover_fav = -1;
+			return;
+		}
 		chip_click(sh, ci, btn);
 		return;
-	}
-
-	/*
-	 * A RIGHT CLICK ON A PINNED ICON UNPINS IT, and it is the only way to.
-	 * Pinning is reachable from the window menu, so the reverse has to be
-	 * reachable from the pinned icon or the row is a one-way door. No
-	 * confirmation: it puts back a line in a text file and the same menu
-	 * pins it again.
-	 */
-	if (btn == SH_TRAY_BTN_RIGHT) {
-		for (int i = 0; i < nfavs; i++)
-			if (in_span(cx, fav_x[i], fav_end[i])) {
-				sh_fav_set(favs[i].id, 0);
-				load_favorites();
-				hover_fav = -1;
-				return;
-			}
 	}
 
 	if (btn != SH_TRAY_BTN_LEFT)
@@ -5280,21 +6433,12 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 */
 		char xs[16], ys[16];
 		snprintf(xs, sizeof(xs), "%d", plusn_x * kwl_cell_w());
-		snprintf(ys, sizeof(ys), "%d", ktui_h * kwl_cell_h());
+		snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
 		const char *argv[] = { "kdos-teams", panel_at_flag(), xs, ys,
 				       NULL };
 		panel_spawn(argv);
 		return;
 	}
-	for (int i = 0; i < nfavs; i++)
-		if (in_span(cx, fav_x[i], fav_end[i])) {
-			/* Armed, not launched: the release decides, because
-			 * this icon can also be dragged. See drag_fav. */
-			drag_fav = i;
-			drag_over = i;
-			drag_moved = 0;
-			return;
-		}
 	/* A half-open span like every other hit test here, and this is the one
 	 * that has to be: the glyph is one cell at the very edge, and an
 	 * open-ended comparison made the blank column beside it minimise the
@@ -5416,6 +6560,31 @@ int panel_main(int argc, char **argv)
 			autohide = 1;
 		else if (!strcmp(argv[i], "--no-icons"))
 			icons_on = 0;
+		/*
+		 * comp.conf's `panel_margin` — the gap to the screen edge. 0 is
+		 * the edge-to-edge bar; non-zero floats it and libkwl grows the
+		 * exclusive zone to match.
+		 */
+		else if (!strcmp(argv[i], "--margin") && i + 1 < argc) {
+			panel_margin = atoi(argv[++i]);
+			if (panel_margin < 0)
+				panel_margin = 0;
+			if (panel_margin > 64)
+				panel_margin = 64;
+		}
+		/*
+		 * comp.conf's `panel_opacity`, percent. Floored at 20 the same
+		 * way the compositor floors it: a bar at zero is not
+		 * see-through, it is a row of invisible controls that still
+		 * swallow the pointer.
+		 */
+		else if (!strcmp(argv[i], "--opacity") && i + 1 < argc) {
+			panel_opacity = atoi(argv[++i]);
+			if (panel_opacity < 20)
+				panel_opacity = 20;
+			if (panel_opacity > 100)
+				panel_opacity = 100;
+		}
 		else if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
 		/* strftime, straight through — the panel guards the call, not
@@ -5436,6 +6605,7 @@ int panel_main(int argc, char **argv)
 				"[--autohide] [--no-icons]\n"
 				"                  [--output NAME] [--font NAME] "
 				"[--clock FMT]\n"
+				"                  [--margin PX] [--opacity PCT]\n"
 				"       kdos-shell --dump [--dump-width N]\n");
 			return 2;
 		}
@@ -5458,6 +6628,35 @@ int panel_main(int argc, char **argv)
 		.font = font,
 		.output = output,
 		.exclusive = 1,
+		/*
+		 * THE BAR IS FRAMED, like everything else on this desktop.
+		 *
+		 * Every KDOS surface but this one puts a double-line box round
+		 * itself; the taskbar had no edge at all, so against a dark
+		 * wallpaper it read as a region of the desktop rather than as
+		 * a piece of chrome. A box wants four sides and two rows, and
+		 * two rows is the whole bar — but the only edge a bottom-
+		 * anchored panel HAS is its top one, and libkwl will draw that
+		 * outside the cell grid for three pixels rather than a row.
+		 */
+		/*
+		 * NO RULE. The bar's top edge is a pixel of the BACKDROP now —
+		 * see panel_backdrop() — which keeps it inside the surface
+		 * instead of costing a row's worth of extra height, and lets it
+		 * carry a highlight under it that a single flat band cannot.
+		 * The five pixels of full accent this replaces were 14:1 across
+		 * the whole width of the screen.
+		 */
+		.rule = 0,
+		/*
+		 * Translucent body, and a gap only if one was asked for. Both
+		 * reach libkwl rather than being painted here because both
+		 * change the SURFACE — the buffer's pixel format and the layer
+		 * surface's margins — and neither is something a cell can say.
+		 */
+		.opacity = panel_opacity,
+		.margin_x = panel_margin,
+		.margin_y = panel_margin,
 	};
 
 	sh_theme_from_cache();
@@ -5471,16 +6670,24 @@ int panel_main(int argc, char **argv)
 	 * connection; it just does not need a surface.
 	 */
 	if (dump) {
+		/*
+		 * A COMPOSITOR IS NOT REQUIRED TO DUMP THE BAR, and refusing
+		 * for want of one is why this is the only surface in the tree
+		 * with no committed golden.
+		 *
+		 * The window list is ONE segment of it. The Start button, the
+		 * separators, the right wing's walk and the meters strip's
+		 * degradation are the geometry that has actually shipped
+		 * broken, and none of it needs a toplevel. No compositor is an
+		 * EMPTY window list — which is also the honest picture of a
+		 * fresh login — and no font is the cell size libkwl floors to,
+		 * because a dump is a grid of CELLS and the pixel layer under
+		 * it is never replayed without a surface to replay it onto.
+		 */
 		cfg.role = KWL_ROLE_NONE;
-		if (kwl_init(&cfg) != 0) {
-			fprintf(stderr, "kdos-shell: no compositor to dump\n");
-			return 1;
-		}
-		if (sh_connect(&sh) != 0) {
-			fprintf(stderr, "kdos-shell: no window list to dump\n");
-			kwl_shutdown();
-			return 1;
-		}
+		kwl_init(&cfg);
+		if (sh_connect(&sh) != 0)
+			sh.ntasks = 0;
 		/* The tray too: a dump that omits it is a dump of a panel
 		 * nobody has. Failing to reach a bus is not an error here. */
 		sh_tray_init(&sh);
@@ -5492,10 +6699,25 @@ int panel_main(int argc, char **argv)
 			dump_w = 100;
 		/* Read the numbers, run no policy: a dump on a laptop below 3%
 		 * used to suspend the machine it was diagnosing. */
+		/*
+		 * TWICE, BECAUSE A RATE IS A DIFFERENCE — and once past the
+		 * rate limiter, which is a frame-loop concern and not this
+		 * one.
+		 *
+		 * `meters_sample()` returns without reading anything inside
+		 * MET_MS of the last call, so a dump that measured once had
+		 * every rate at "no reading yet" and drew no meters strip at
+		 * all. Two calls with the limiter stood down is one interval
+		 * of a recorded machine — see panel_root_advance(), which is
+		 * what makes the second reading DIFFER from the first.
+		 */
+		panel_measure();
+		meters_last_ms = 0;
 		panel_measure();
 		load_favorites();
 		load_widgets();
 		sh.mpris = sh_mpris_init(sh_tray_bus(&sh));
+		sh_unity_init(sh_tray_bus(&sh));
 		sh_mpris_dispatch(sh.mpris);
 		ktui_offscreen_init(dump_w, tb_rows);
 		draw_taskbar(&sh);
@@ -5512,6 +6734,21 @@ int panel_main(int argc, char **argv)
 				"layer-shell — not starting\n");
 		return 1;
 	}
+
+	/*
+	 * THE BODY BELONGS TO THE BACKDROP, so the cell painter must not touch
+	 * it. KT_SURFACE at alpha 0 means "leave these pixels alone" once a
+	 * backdrop is installed — kwl_set_backdrop() is what flips that sense —
+	 * and every cell the bar does not draw on then shows the gradient,
+	 * the plates and the rules underneath.
+	 *
+	 * The order matters: the slot has to be clear before the first paint,
+	 * and the backdrop has to exist before the slot is cleared, or one
+	 * frame goes out with a hole where the bar should be.
+	 */
+	kwl_set_backdrop(panel_backdrop);
+	px_live = 1;
+	kcell_set_slot_alpha(KT_SURFACE, 0);
 	if (sh_connect(&sh) != 0) {
 		fprintf(stderr, "kdos-shell: the compositor exposes no window "
 				"list; the panel would be blank\n");
@@ -5531,7 +6768,7 @@ int panel_main(int argc, char **argv)
 	 * request. Off with the icons: a tile is a picture, and `icons = no`
 	 * is a person asking for the character grid. */
 	kcell_canvas_font(font);
-	sh_tile_enable(icons_on);
+	kch_tile_enable(icons_on);
 	load_favorites();
 	load_widgets();
 	/* No session bus is a session with no tray, not a shell that refuses to
@@ -5543,6 +6780,7 @@ int panel_main(int argc, char **argv)
 	/* AFTER the tray: it shares that connection rather than opening a
 	 * second one, and sh_tray_bus() is NULL until the tray has one. */
 	sh.mpris = sh_mpris_init(sh_tray_bus(&sh));
+	sh_unity_init(sh_tray_bus(&sh));
 	ktui_draw_init();
 	/* `kdos theme <accent>` SIGHUPs us; see sh_theme_watch(). */
 	sh_theme_watch();
@@ -5573,7 +6811,9 @@ int panel_main(int argc, char **argv)
 			kicon_retint();
 			/* Every tile was rasterised in the palette that is
 			 * being replaced — same reason, same moment. */
-			sh_tile_reset();
+			kch_tile_reset();
+			/* And every derived tone was mixed from it. */
+			kch_tone_reset();
 			ktui_draw_invalidate();
 		}
 		/* Above the draw branch, not inside it: an autohidden panel
@@ -5676,7 +6916,7 @@ int panel_main(int argc, char **argv)
 				 * reorders. Everything else acts on the press,
 				 * which is what a panel button should do. */
 				if (drag_fav >= 0)
-					fav_release();
+					fav_release(&sh);
 			}
 		}
 		/* The deadline is spent here rather than in the event branch:

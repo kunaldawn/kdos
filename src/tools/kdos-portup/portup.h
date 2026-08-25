@@ -78,6 +78,11 @@ int pu_render_candidate(const char *kpkg_bin, const PuRecipe *r,
  * version back after a failed fetch. */
 int pu_rewrite_version(const char *portdir, const char *newv);
 
+/* Re-hash every sha256 line whose filename carried the old version, after the
+ * fetch has put the new files on disk. Without it a bump leaves the tree with
+ * an archive nothing verifies. Returns 0 when nothing needed changing too. */
+int pu_rewrite_sha256(const char *portdir, const char *oldv, const char *newv);
+
 /* True when `line` is the recipe's `version =` key line — the one line
  * pu_rewrite_version is allowed to touch. Exported so a read-only preview
  * (main.c's `d` command) can recognise the same line pu_rewrite_version

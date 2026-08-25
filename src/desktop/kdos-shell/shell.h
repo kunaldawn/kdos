@@ -85,8 +85,33 @@ struct sh_task {
 	 * `org.gnome.Meld` is showing an identifier chosen not to collide, in
 	 * the one place a human name belongs. */
 	char name[64];
+	/*
+	 * And the desktop ID that Name came from, which is not always the
+	 * app_id: a GTK client on Wayland calls itself `mousepad` and its entry
+	 * is `org.xfce.mousepad.desktop`. The taskbar merges a running window
+	 * onto its PINNED button by comparing ids, so a window whose app_id is
+	 * not the id appeared twice — once as the pin and once as itself. The
+	 * lookup that finds the Name already knows the answer; it used to throw
+	 * it away. Empty when no entry claims this window.
+	 */
+	char did[128];
+	/*
+	 * WHICH BOX THE WINDOW CAME FROM, resolved ONCE when the app_id
+	 * arrives and never again. That is the whole design: a new window is a
+	 * rare event and a frame is not, so asking per frame would be the
+	 * mistake the frames socket exists not to make. Empty for a host
+	 * window and for a compositor that does not answer, and both render
+	 * exactly the label this panel drew before boxes existed.
+	 */
+	char box[64];
 	int activated;
 	int minimized;
+	/* The panel's adaptive-opacity proxy: a maximized or fullscreen window
+	 * is what puts a bright surface behind a translucent bar, and it is the
+	 * case where the plate ladder stops separating. wlr-foreign-toplevel
+	 * carries no geometry, so this is the honest approximation. */
+	int maximized;
+	int fullscreen;
 };
 
 /* Name > title > app_id, the order a person reads them in. */
@@ -117,6 +142,27 @@ extern const char *const sh_menu_labels[SH_NMENUS];
  * forked, so the panel neither reaps nor blocks: a menu that takes a moment to
  * scan 400 desktop files must not stop the clock. */
 void sh_spawn_menu(int which, int x, int y);
+/*
+ * The window's outer frame: the double-line box when this surface has no
+ * decoration of its own, and just the background when the COMPOSITOR is
+ * drawing one. Two frames is what a toplevel that also boxed itself wore.
+ */
+void sh_frame(int w, int h, const char *title, int fg, int bg, int dbl);
+
+/*
+ * Ask the compositor something on `$XDG_RUNTIME_DIR/kdos-cmd.sock`: one NDJSON
+ * request line in, one reply line out, connection closed. 0 on a reply, -1 on
+ * anything else with the reason in `err` when one was given. Both socket
+ * timeouts are one second — see shell.c.
+ */
+int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn);
+
+/*
+ * The `--dump-cells` backend — one line per painted cell, colours included.
+ * See cells.c. Pass the size the surface wants; it is what cap_size reports,
+ * so the draw is measured against it exactly as a terminal's would be.
+ */
+const KtuiBackend *sh_cells_backend(int w, int h);
 
 struct sh_state {
 	void *display;			/* the panel shares libkwl's connection */
@@ -326,6 +372,18 @@ struct sh_mpris;
 
 /* `existing_bus` is sh_tray_bus(), or NULL to open one. */
 struct sh_mpris *sh_mpris_init(void *existing_bus);
+
+/*
+ * com.canonical.Unity.LauncherEntry — a count badge and a progress bar on a
+ * task button, from the protocol Nautilus, Thunar, Steam and the browsers
+ * already emit. `bus` is sh_tray_bus(). See unity.c.
+ *
+ * sh_unity_get() answers 0 when this application has nothing to show, which is
+ * the overwhelmingly common case and is why the caller checks it before it
+ * spends any room on a badge.
+ */
+void sh_unity_init(void *bus);
+int sh_unity_get(const char *id, long *count, int *progress, int *urgent);
 void sh_mpris_dispatch(struct sh_mpris *p);
 void sh_mpris_free(struct sh_mpris *p);
 int sh_mpris_have(const struct sh_mpris *p);
@@ -347,6 +405,10 @@ void sh_priv_settle(struct sh_state *sh, int ms);
 void sh_priv_free(struct sh_state *sh);
 int sh_priv_count(const struct sh_state *sh, int kind);
 const char *sh_priv_name(const struct sh_state *sh, int kind);
+/* Which BOX the recording application is in, or 0 when it is not in one.
+ * The tooltip's, not the bar's: three cells cannot carry a box name, and on
+ * this distro "firefox-esr is recording" leaves out which firefox. */
+int sh_priv_box(const struct sh_state *sh, int kind, char *out, size_t n);
 
 /* ────────────────────────────────────────────────────────────────────────
  * The application index (apps.c)
@@ -404,118 +466,7 @@ const char *sh_app_group_name(int g);
  * shell anywhere in it. Every surface here spawns the same way. */
 void sh_spawn(const char *const argv[]);
 
-/* ────────────────────────────────────────────────────────────────────────
- * Tiles (tile.c) — a block of cells the shell paints as PIXELS
- *
- * The escape hatch from "a control is one row of text tall", without a second
- * renderer: libkcell rasterises a canvas of N x M cells and libktui's sprite
- * table carries it, so layout, damage, palette and the text fallback are
- * unchanged. See tile.c for the two-slot alternation that keeps the row diff
- * precise, and kcell_canvas.c for why this shape rather than another.
- *
- * EVERY CALLER MUST DRAW WITHOUT IT. `sh_tile_begin`/`sh_tile_slot` answer
- * NULL/-1 on a terminal, under `icons = no`, with no font, and when the table
- * is full — and the caller then draws the glyph layout it always had.
- * ──────────────────────────────────────────────────────────────────────── */
-
-struct KCellCanvas;
-
-/* Stable ids, one per tile the shell owns. */
-enum { SH_TILE_START = 0, SH_TILE_METERS };
-
-/* The canvas to draw into, or NULL when the tile already shows exactly this
- * content. `content` is the caller's hash of everything it is about to draw. */
-struct KCellCanvas *sh_tile_begin(int id, int cw, int ch, uint64_t content);
-int sh_tile_commit(int id);
-int sh_tile_slot(int id);
-/* Drop every tile — what a live `kdos theme <accent>` needs, because each one
- * was rasterised in the palette that is being replaced. */
-void sh_tile_reset(void);
-void sh_tile_enable(int on);
-
-/* ────────────────────────────────────────────────────────────────────────
- * Window chrome (chrome.c)
- *
- * The header band, group headings and button bar the device apps share.
- * See chrome.c for what these are for and why they are not four copies.
- * ──────────────────────────────────────────────────────────────────────── */
-
-#define SH_MAX_BTN 6
-
-struct sh_button {
-	const char *label;
-	int enabled;		/* drawn dim and never the focus when 0 */
-};
-
-/* Draws into rows 1..3 of a boxed window and returns the first BODY row. */
-int sh_chrome_header(int w, const char *icon_name, const char *title,
-		     const char *subtitle, int icons_on);
-void sh_chrome_group(int x, int y, int w, const char *label);
-/*
- * Right-aligned on `row`, recording the span each button actually got. Never
- * half a button: a bar too wide for the window drops them from the RIGHT — the
- * callers order them most-useful-first — until what is left fits.
- *
- * Returns the leftmost column the bar took, which is where the caller's status
- * text on that row has to stop.
- */
-int sh_chrome_buttons(int w, int row, const struct sh_button *b, int n,
-		      int focus);
-/* Which button the last frame drew at this cell, or -1. */
-int sh_chrome_button_at(int mx, int my);
-/*
- * WHERE THE POINTER IS, so a button can light under it.
- *
- * A button bar that looks identical whether or not the pointer is on it is a
- * row of words with brackets round them: the only way to find out that
- * `[ Connect ]` is a control was to click it. Fed from the same motion branch
- * that already moves the list selection; (-1, -1) — libkwl's leave — clears it.
- */
-void sh_chrome_hover(int mx, int my);
-
-/* ────────────────────────────────────────────────────────────────────────
- * Scrolling lists (chrome.c)
- *
- * ONE ANSWER TO "WHAT DOES THE WHEEL DO", because it was answered fifteen
- * times. The rule is what a mature list toolkit does and it has two halves:
- *
- *   - The list FITS: the wheel is a cursor step, the same as ↑ and ↓.
- *   - The list SCROLLS: the wheel moves the VIEWPORT and the cursor stays on
- *     the row it was on, travelling with the content.
- *
- * The other half of it is in libkwl (pt_motion): hover re-selects only when
- * the pointer has actually MOVED to another cell. Without that, a wheel notch
- * — which on every absolute pointing device arrives with the position repeated
- * — put the highlight straight back on the row under a stationary pointer, so
- * the selection appeared to snap back the instant it moved. Reported as "the
- * highlight jumps"; it was two correct behaviours fighting.
- * ──────────────────────────────────────────────────────────────────────── */
-
-/* Rows per notch when the wheel is scrolling a viewport. */
-#define SH_WHEEL_ROWS 3
-
-/*
- * Returns 1 when the viewport was scrolled — the caller must NOT move its
- * cursor — and 0 when the list fits, which means the wheel is a cursor step.
- */
-int sh_list_wheel(int up, int *top, int n, int body);
-/*
- * Clamp `top` into the list, pulling `sel` into view only when `follow` says
- * the SELECTION is what moved. A draw that pulls unconditionally undoes the
- * scroll on the very next frame, which is the whole reason this is a flag.
- */
-void sh_list_clamp(int *top, int sel, int n, int body, int follow);
-/*
- * ONE COLUMN THAT SAYS THERE IS MORE.
- *
- * A list that scrolls and gives no sign of it is a list people believe they
- * have seen all of — and the wheel rule above made that worse rather than
- * better, because the page can now move without the cursor. The track is the
- * shade glyph and the thumb is the full block, both in the vt tier, so it
- * draws on tty1 and in a golden frame exactly as it does under fcft. Nothing
- * at all when everything fits: a full-height thumb is a decoration.
- */
-void sh_list_scrollbar(int x, int y, int rows, int n, int top, int bg);
+#include "kchrome.h"
 
 /* ── the pinned list (chrome.c) ────────────────────────────────────────────
  * `~/.config/kdos/favorites`, one desktop-entry id per line — what the
@@ -531,8 +482,9 @@ int sh_fav_set(const char *id, int pinned);
 int sh_fav_move(const char *id, int to);
 
 /* One line from a /sys or /proc file, newline stripped. Returns 0 on success.
- * There is no libkbase here — the shell links libktui, libkcolor and libkwl,
- * and one 15-line reader is cheaper than dragging in another archive. */
+ * libkbase's `kb_read_line_file` is the same reader with an allocation and a
+ * different failure convention; this one exists because the panel calls it on
+ * a dozen sysfs files per tick and wants the caller's buffer. */
 int sh_read_line(const char *path, char *buf, size_t len);
 
 /* At most `cells` display columns of `src` into `dst`, never cutting a UTF-8

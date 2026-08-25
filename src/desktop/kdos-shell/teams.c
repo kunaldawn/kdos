@@ -42,6 +42,7 @@
 #include <unistd.h>
 
 #include "kwl.h"
+#include "kproc.h"
 #include "shell.h"
 
 #define TEAMS_COLS 78
@@ -336,100 +337,18 @@ static int j_bool(const struct jv *v)
 /* ── the command socket ────────────────────────────────────────────────── */
 
 /*
- * One request, one reply, close — the whole protocol. Both timeouts are set
- * because this surface is drawn by the same loop that is waiting on the
- * answer: a compositor wedged badly enough not to reply is exactly the
- * situation the monitor is opened in, and a blocking read there would hang the
- * one program that could still fix it.
+ * One request, one reply, close. The transport is sh_cmd_call() in shell.c —
+ * three programs in this binary ask the compositor questions now (the window
+ * list here, the peek the taskbar raises, the thumbnail a tooltip draws) and
+ * three copies of a connect-write-read would be three answers to what a
+ * timeout is.
  */
 static int cmd_call(const char *req, char *out, size_t n)
 {
-	const char *rt = getenv("XDG_RUNTIME_DIR");
-	struct sockaddr_un a = { 0 };
-	struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
-	size_t len = strlen(req), sent = 0, got = 0;
-	int fd;
-
-	if (!rt || !*rt) {
-		snprintf(errline, sizeof(errline),
-			 "no XDG_RUNTIME_DIR — there is no session to ask");
-		return -1;
-	}
-	a.sun_family = AF_UNIX;
-	if ((size_t)snprintf(a.sun_path, sizeof(a.sun_path),
-			     "%s/kdos-cmd.sock", rt) >= sizeof(a.sun_path)) {
-		snprintf(errline, sizeof(errline), "socket path too long");
-		return -1;
-	}
-
-	fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	if (fd < 0) {
-		snprintf(errline, sizeof(errline), "socket: %s",
-			 strerror(errno));
-		return -1;
-	}
-	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-
-	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
-		snprintf(errline, sizeof(errline),
-			 "the compositor does not expose the command socket");
-		close(fd);
-		return -1;
-	}
-	while (sent < len) {
-		ssize_t w = write(fd, req + sent, len - sent);
-		if (w <= 0) {
-			snprintf(errline, sizeof(errline), "write: %s",
-				 strerror(errno));
-			close(fd);
-			return -1;
-		}
-		sent += (size_t)w;
-	}
-	/* One line: the reply ends at the newline the server appends, and
-	 * waiting for EOF instead would wait out the whole close. */
-	while (got < n - 1) {
-		ssize_t r = read(fd, out + got, n - 1 - got);
-		if (r <= 0)
-			break;
-		got += (size_t)r;
-		if (memchr(out, '\n', got))
-			break;
-	}
-	close(fd);
-	out[got] = '\0';
-	if (!got) {
-		snprintf(errline, sizeof(errline), "the socket answered nothing");
-		return -1;
-	}
-	return 0;
+	return sh_cmd_call(req, out, n, errline, sizeof(errline));
 }
 
 /* ── who owns a pid ────────────────────────────────────────────────────── */
-
-static int proc_ppid(int pid)
-{
-	char path[64], buf[512];
-	FILE *f;
-	size_t n;
-	char *p;
-	int ppid = 0;
-
-	snprintf(path, sizeof(path), "/proc/%d/stat", pid);
-	f = fopen(path, "r");
-	if (!f)
-		return 0;
-	n = fread(buf, 1, sizeof(buf) - 1, f);
-	fclose(f);
-	buf[n] = '\0';
-	/* comm is in parentheses and may itself contain them and spaces, so
-	 * the fields are counted from the LAST ')' and never with sscanf. */
-	p = strrchr(buf, ')');
-	if (!p || sscanf(p + 1, " %*c %d", &ppid) != 1)
-		return 0;
-	return ppid;
-}
 
 static size_t proc_read(const char *path, char *buf, size_t n)
 {
@@ -444,12 +363,6 @@ static size_t proc_read(const char *path, char *buf, size_t n)
 	return got;
 }
 
-static const char *base(const char *p)
-{
-	const char *s = strrchr(p, '/');
-	return s ? s + 1 : p;
-}
-
 /*
  * The box a pid belongs to, or nothing. conmon is podman's per-container
  * supervisor and carries the container name in its own argv; the process
@@ -459,28 +372,7 @@ static const char *base(const char *p)
  */
 static void box_of_pid(int pid, char *out, size_t n)
 {
-	out[0] = '\0';
-	for (int hop = 0; hop < 8 && pid > 1; hop++) {
-		char path[64], cmd[4096];
-		size_t got;
-
-		snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
-		got = proc_read(path, cmd, sizeof(cmd));
-		if (got && !strcmp(base(cmd), "conmon")) {
-			for (size_t i = 0; i < got;) {
-				const char *tok = cmd + i;
-				i += strlen(tok) + 1;
-				if (i >= got)
-					break;
-				if (!strcmp(tok, "-n") || !strcmp(tok, "--name")) {
-					snprintf(out, n, "%s", cmd + i);
-					return;
-				}
-			}
-			return;
-		}
-		pid = proc_ppid(pid);
-	}
+	kpr_box_of_pid(pid, out, n);
 }
 
 /* This session's own chrome, which must never be on the receiving end of `k`:
@@ -725,11 +617,11 @@ static void draw(int sel, int top)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, 2, rowsv, nviews, top, KT_SURFACE);
+	kch_scrollbar(0, w - 1, 2, rowsv, nviews, top, KT_SURFACE);
 
 	if (status[0])
 		ktui_draw_text(2, h - 3, w - 4, status, KT_WARN, KT_SURFACE,
@@ -867,10 +759,16 @@ int teams_main(int argc, char **argv)
 		return 1;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	refresh();
 
 	int sel = 0, top = 0;
+	/* Set by everything that moves the CURSOR, cleared by everything that
+	 * moves the PAGE — see kch_list_clamp. */
+	int sel_follow = 1;
 
 	while (!kwl_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
@@ -881,10 +779,11 @@ int teams_main(int argc, char **argv)
 			sel = nviews ? nviews - 1 : 0;
 		if (sel < 0)
 			sel = 0;
-		if (sel < top)
-			top = sel;
-		if (sel >= top + rowsv)
-			top = sel - rowsv + 1;
+		/* The viewport follows the SELECTION only when the selection is
+		 * what moved — the rule kch_list_clamp exists to state once. A
+		 * hand-rolled pull here undid every page scroll on the frame
+		 * after it. */
+		kch_list_clamp(&top, sel, nviews, rowsv, sel_follow);
 
 		draw(sel, top);
 
@@ -903,18 +802,47 @@ int teams_main(int argc, char **argv)
 			int on_row = ev.my >= 2 && ev.my < ktui_h - 3 &&
 				     row >= 0 && row < nviews;
 			if (ev.press == KT_MP_DRAG) {
-				if (on_row)
+				/* THE BAR IS A CONTROL — see kch_scrollbar.
+				 * A drag is a press that is still down, and
+				 * Wayland says nothing about that, so the
+				 * grab is what remembers it. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+				if (on_row) {
 					sel = row;
+					sel_follow = 1;
+				}
+				continue;
+			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx,
+							     ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP) {
 				sel--;
+				sel_follow = 1;
 				continue;
 			}
 			if (ev.btn == KT_MB_WHEEL_DOWN) {
 				sel++;
+				sel_follow = 1;
 				continue;
 			}
 			if (ev.btn == KT_MB_RIGHT)
@@ -931,10 +859,12 @@ int teams_main(int argc, char **argv)
 				refresh();
 			}
 			sel = row;
+			sel_follow = 1;
 			continue;
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		sel_follow = 1;	/* a key moves the cursor; the view follows */
 
 		switch (ev.key) {
 		case KT_K_ESC:

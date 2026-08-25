@@ -736,6 +736,12 @@ static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 
 	ktui_term_write("\033[0m", 4);
 	ktui_term_flush();
+
+	/* The diff above has already recorded this frame as what the screen
+	 * shows. If the flush dropped part of it, that belief is wrong for
+	 * every cell after the cut, and only a full paint can restore it. */
+	if (ktui_term_flush_dropped())
+		force_full = 1;
 }
 
 static void tty_size(int *w, int *h)

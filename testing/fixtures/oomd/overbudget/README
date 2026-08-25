@@ -1,0 +1,18 @@
+oomd/overbudget — a declared budget is a policy the system acts on.
+
+`memory = 4G` in a box profile becomes `podman --memory`, and rootless podman
+on a machine with no systemd frequently has no cgroup delegation to enforce it
+with: the flag is accepted and does nothing. KDOS does not offer a key it
+cannot enforce, so THIS is the enforcement — a box over the budget its own
+profile declared is preferred as a victim, ahead of the general rule that boxed
+processes are preferred.
+
+The tree is arranged so that only the budget can produce the right answer:
+
+  arch          512M declared, 1.2 G held across cargo (600 M) and rustc (640 M)
+  kdos-apps     nothing declared, firefox-esr at 480 M
+  kdosbuild     a HOST process at 2 G — larger than anything in either box
+
+Without the budget check the answer is kdosbuild, because the boxed preference
+is not absolute and 2 G is more than twice 640 M. With it the answer is rustc:
+the largest process of the box that broke its own promise.

@@ -35,6 +35,7 @@
 #include "primary-selection-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
+#include "xdg-decoration-unstable-v1-client-protocol.h"
 
 /*
  * Every output gets a lock surface, because the protocol will not report the
@@ -162,6 +163,17 @@ static struct {
 	struct wl_surface *surface;
 	struct xdg_surface *xdg_surface;
 	struct xdg_toplevel *xdg_toplevel;
+	/*
+	 * SERVER-SIDE DECORATION, asked for explicitly. A toplevel that never
+	 * binds this protocol has not said which side draws its frame, and it
+	 * gets whatever the compositor guesses — which here was no frame at
+	 * all: no titlebar to drag, no close button, and the window manager's
+	 * own Close/Maximize unreachable by pointer. Every other surface in
+	 * this library is a layer or a lock surface and has no decoration to
+	 * negotiate, so this is the toplevel path's alone.
+	 */
+	struct zxdg_decoration_manager_v1 *deco_mgr;
+	struct zxdg_toplevel_decoration_v1 *deco;
 	struct zwlr_layer_surface_v1 *layer_surface;
 	/*
 	 * What the compositor offered for zwlr_layer_shell_v1. It matters:
@@ -224,8 +236,30 @@ static struct {
 
 	KwlConfig cfg;
 	int px_w, px_h;		/* surface size in LOGICAL pixels          */
+	/*
+	 * The frame rule, in logical pixels, 0 for none. It sits on the edge
+	 * the panel does NOT touch — under a top-anchored bar and above a
+	 * bottom-anchored one — because the other three edges are the screen's
+	 * and a line drawn against one of those is a line nobody sees.
+	 */
+	int rule;
+	int rule_bottom;
+	/* Pixel chrome under the cell grid, or NULL. See kwl_set_backdrop(). */
+	KwlBackdropFn backdrop;
 	int cols, rows;		/* and in cells                            */
 	int configured;
+	/*
+	 * Whether a buffer has ever been attached to K.surface.
+	 *
+	 * A COMMIT WITH NO BUFFER IS AN UNMAP, and wlroots answers it by
+	 * resetting a layer surface to uninitialised — after which the next
+	 * paint waits for a configure that only an initial-commit handshake
+	 * will produce, so the surface is accepted, given an id, and drawn
+	 * nowhere. kwl_overlay_hide() documents that from the other side; this
+	 * flag is what keeps a state change made BEFORE the first paint from
+	 * doing it by accident.
+	 */
+	int attached;
 	int closed;
 	int kb_entered;		/* the keyboard has been here at least once */
 
@@ -357,8 +391,123 @@ flush:
 	if (wl_display_flush(K.display) < 0 && errno != EAGAIN)
 		K.closed = 1;
 }
-int kwl_cell_w(void) { return kcell_w(); }
-int kwl_cell_h(void) { return kcell_h(); }
+/*
+ * A CELL IS NEVER ZERO WIDE. With no font loaded — kwl_init having failed, or
+ * a `--dump` that never had a compositor to load one from — kcell answers 0,
+ * and the callers that turn cells into pixels divide by this. Flooring here
+ * costs nothing on a real surface and keeps a caller from having to check a
+ * number that cannot legitimately be zero.
+ */
+int kwl_cell_w(void) { int w = kcell_w(); return w > 0 ? w : 8; }
+int kwl_cell_h(void) { int h = kcell_h(); return h > 0 ? h : 16; }
+
+/*
+ * The SURFACE's own height in logical pixels — the cells plus the rule.
+ *
+ * A panel that anchors a popup just above itself has to pass its own
+ * thickness as the margin, and `rows * cell_h` stopped being that the moment
+ * the bar grew a rule outside the grid: every popup would have sat three
+ * pixels low and covered the line it was meant to clear.
+ */
+/*
+ * IS SOMEBODY ELSE DRAWING THIS WINDOW'S FRAME?
+ *
+ * A toplevel gets the compositor's server-side decoration — the same
+ * `════ Title ════[_][=][X]` every alien app wears — so a program that also
+ * drew its own box would be wearing two, one inside the other, with its title
+ * written twice. A popup, a panel and a terminal have no such frame and must
+ * draw their own or they have none at all.
+ *
+ * The question is asked of the SURFACE rather than answered from a flag the
+ * caller keeps, because the caller does not always know: the same program is a
+ * popup when the panel opens it and a window when it is typed by name.
+ */
+int kwl_decorated(void)
+{
+	return K.cfg.role == KWL_ROLE_TOPLEVEL && K.deco != NULL;
+}
+
+/*
+ * The gap between a panel and the edge it is anchored to — a floating dock's
+ * inset, and 0 for every ordinary bar.
+ *
+ * It has a sibling: for a horizontal bar `margin_y` is this gap and
+ * `margin_x` insets the two ends, and for a vertical one they swap. One
+ * function because TWO places set the exclusive zone (here and
+ * kwl_layer_autohide) and a zone that disagrees with the margin is a strip of
+ * screen that windows are allowed to sit in and the panel is drawn over.
+ */
+static int panel_gap(void)
+{
+	if (K.cfg.role != KWL_ROLE_PANEL)
+		return 0;
+	return (K.cfg.edge == KWL_EDGE_TOP || K.cfg.edge == KWL_EDGE_BOTTOM)
+		       ? K.cfg.margin_y : K.cfg.margin_x;
+}
+
+int kwl_px_h(void)
+{
+	return K.px_h > 0 ? K.px_h : K.rows * kcell_h() + K.rule;
+}
+
+/*
+ * What a popup belonging to THIS panel passes as its own margin from the same
+ * screen edge.
+ *
+ * NOT kwl_px_h(), and the difference is exactly the panel's gap. The two are
+ * the same number only while the bar is flush with the edge, which is why
+ * seven call sites in the taskbar could pass the height and be right. Give the
+ * bar a margin and every one of them opens its popup `gap` pixels too low —
+ * the Start menu, the calendar and the volume slider all half-behind the bar
+ * they belong to. Same shape as the exclusive-zone trap above: a second
+ * derivation of one distance, correct right up until the distance changes.
+ *
+ * Horizontal panels, like kwl_px_h() itself: on a left or right bar the
+ * surface's height is the whole output and neither number means anything.
+ */
+int kwl_popup_offset(void)
+{
+	return kwl_px_h() + panel_gap();
+}
+
+/*
+ * Which side of THIS surface faces away from the bar that opened it.
+ *
+ * The bright edge is what says where a translucent surface starts, so it
+ * belongs on the outward side: the top of a popup that grew up off a bottom
+ * bar, the bottom of one that hung down off a top bar. The caller could pass
+ * it and twenty callers passing the same derivation is twenty chances to
+ * derive it differently — the anchor already carries the answer, and the
+ * anchor is here. A surface that named no position at all is a dialog rather
+ * than a popup and gets the top edge, which is what every framed thing in
+ * this desktop wears.
+ */
+int kwl_edge_bottom(void)
+{
+	if (K.cfg.role == KWL_ROLE_PANEL)
+		return K.cfg.edge == KWL_EDGE_TOP;
+	if (!K.cfg.margin_x && !K.cfg.margin_y)
+		return 0;
+	return K.cfg.corner == KWL_CORNER_TOP_LEFT ||
+	       K.cfg.corner == KWL_CORNER_TOP_RIGHT;
+}
+
+void kwl_set_backdrop(KwlBackdropFn fn)
+{
+	K.backdrop = fn;
+	/*
+	 * The two halves of one decision, so a caller cannot get one without
+	 * the other: with a backdrop, a slot cleared to alpha 0 is the
+	 * backdrop's to paint and the cell painter must not clear it; without
+	 * one, the same slot has nothing underneath and must be cleared or it
+	 * keeps the last frame.
+	 */
+	kcell_set_bg_preserve(fn != NULL);
+	/* The next paint has to be a full one whatever the diff thinks: the
+	 * surface's pixels are about to be owned by somebody else. */
+	for (size_t i = 0; i < sizeof(K.buf) / sizeof(K.buf[0]); i++)
+		K.buf[i].stale = true;
+}
 /* The integer output scale this surface is being rendered at. A consumer that
  * rasterises anything of its own — libkicon is the one — has to do it at
  * cell * scale, or a HiDPI panel gets a picture upscaled from half its size. */
@@ -863,6 +1012,8 @@ static const struct wl_buffer_listener buffer_listener = {
 
 static void buffer_free(KwlBuffer *b)
 {
+	if (b->grid)
+		pixman_image_unref(b->grid);
 	if (b->img)
 		pixman_image_unref(b->img);
 	if (b->wl)
@@ -899,12 +1050,17 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 		return -1;
 	}
 	/*
-	 * ARGB for the background role, XRGB for everything else. XRGB has no
-	 * alpha at all, so a desktop surface in it paints an opaque rectangle
-	 * over the compositor's wallpaper no matter what is in the cells — the
-	 * wallpaper vanished the moment kdos-desk started.
+	 * ARGB wherever a slot is not opaque, XRGB otherwise. XRGB has no alpha
+	 * at all, so a surface in it paints an opaque rectangle over whatever
+	 * is behind it no matter what the cells say — the wallpaper vanished
+	 * the moment kdos-desk started, and a translucent panel would come out
+	 * at full strength the same way.
+	 *
+	 * Asked of libkcell rather than of the role, because the role no longer
+	 * decides it: the desktop clears KT_BG and the panel dims KT_SURFACE,
+	 * and both need the same format for the same reason.
 	 */
-	bool argb = K.cfg.role == KWL_ROLE_BACKGROUND;
+	bool argb = kcell_needs_alpha();
 	b->wl = wl_shm_pool_create_buffer(pool, 0, w, h, (int32_t)stride,
 					  argb ? WL_SHM_FORMAT_ARGB8888
 					       : WL_SHM_FORMAT_XRGB8888);
@@ -924,6 +1080,23 @@ static int buffer_alloc(KwlBuffer *b, int w, int h)
 		memset(b, 0, sizeof(*b));
 		return -1;
 	}
+	/*
+	 * THE GRID STARTS BELOW THE RULE, and a second pixman image over the
+	 * SAME memory a few rows down is the whole of how. kcell_paint has no
+	 * y origin — it puts row 0 at pixel 0 of whatever it is handed — and
+	 * giving it one would mean an argument on a call every consumer of
+	 * libkcell makes, for a thing exactly one surface wants. Zero rule and
+	 * the two images are the same picture.
+	 */
+	int rule_px = K.rule * (K.scale > 0 ? K.scale : 1);
+	if (rule_px > 0 && rule_px < h && !K.rule_bottom) {
+		b->grid = pixman_image_create_bits(
+			argb ? PIXMAN_a8r8g8b8 : PIXMAN_x8r8g8b8, w,
+			h - rule_px, (uint32_t *)data + (size_t)rule_px * w,
+			(int)stride);
+	}
+	if (!b->grid)
+		b->grid = pixman_image_ref(b->img);
 	b->data = data;
 	b->size = size;
 	b->w = w;
@@ -1032,8 +1205,60 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 
 	/* kcell_paint updates `prev` (the shadow) with what it painted; a NULL
 	 * shadow — allocation failure — degrades to a full paint every frame. */
-	kcell_paint(b->img, cur, bfull ? NULL : b->shadow, w, h, bfull, scale,
-		    b->w, b->h);
+	int rule_px = K.rule * scale;
+	/*
+	 * The backdrop goes down first and the cells composite over it.
+	 *
+	 * bfull, unconditionally: the row diff tracks CELLS and knows nothing
+	 * about the pixels a backdrop just rewrote, so a partial repaint here
+	 * leaves the previous frame's text standing on a fresh body. A bar is
+	 * a few dozen rows and only repaints when something changed, so the
+	 * cost is a full paint a couple of times a second.
+	 */
+	if (K.backdrop) {
+		bfull = 1;
+		K.backdrop(b->img, b->w, b->h, scale);
+	}
+	kcell_paint(b->grid, cur, bfull ? NULL : b->shadow, w, h, bfull, scale,
+		    b->w, b->h - rule_px);
+	/*
+	 * The rule itself, over the WHOLE width and on every paint: it is
+	 * three pixels and it is outside the grid, so nothing in the cell diff
+	 * would ever restore it.
+	 */
+	if (rule_px > 0) {
+		/*
+		 * `═`, NOT A BAR. The rule is the panel's own window edge and
+		 * the compositor draws every other window's with the same
+		 * mark — two thin lines with a gap, which is the cross-section
+		 * of the double box-drawing character this whole desktop is
+		 * framed in. A single solid band is a different picture from
+		 * the one round every window on the screen, and side by side
+		 * that is exactly what "the panel does not match" looks like.
+		 *
+		 * Two lines and the gap between them: `(rule - 1) / 2` each,
+		 * so a 5px rule is 2/1/2 and a 3px one is 1/1/1 — the same
+		 * weight the titlebar's own rule is drawn at, which is the
+		 * point of matching it at all.
+		 */
+		KRgb rgb = ktui_theme->slot[K.cfg.rule_slot & 7];
+		pixman_color_t c = { .red = (uint16_t)(rgb.r * 257),
+				     .green = (uint16_t)(rgb.g * 257),
+				     .blue = (uint16_t)(rgb.b * 257),
+				     .alpha = 0xffff };
+		int t = (rule_px - 1) / 2;
+		int y0 = K.rule_bottom ? b->h - rule_px : 0;
+
+		if (t < 1)
+			t = 1;
+		pixman_image_fill_rectangles(
+			PIXMAN_OP_SRC, b->img, &c, 2,
+			(pixman_rectangle16_t[]){
+				{ 0, (int16_t)y0, (uint16_t)b->w,
+				  (uint16_t)t },
+				{ 0, (int16_t)(y0 + rule_px - t),
+				  (uint16_t)b->w, (uint16_t)t } });
+	}
 	if (b->shadow && bfull)
 		memcpy(b->shadow, cur, n * sizeof(KtuiCell));
 	if (bfull)
@@ -1047,10 +1272,12 @@ static void flush_commit(const KtuiCell *cur, int w, int h, int full)
 		K.scale_sent = scale;
 	}
 	wl_surface_attach(K.surface, b->wl, 0, 0);
+	K.attached = 1;
 	if (!full && dirty_y0 >= 0) {
 		int ch = kcell_h() * scale;
-		int y0 = dirty_y0 * ch;
-		int y1 = (dirty_y1 + 1) * ch;
+		int off = K.rule_bottom ? 0 : rule_px;
+		int y0 = off + dirty_y0 * ch;
+		int y1 = off + (dirty_y1 + 1) * ch;
 		if (y1 > bh)
 			y1 = bh;
 		wl_surface_damage_buffer(K.surface, 0, y0, bw, y1 - y0);
@@ -1517,7 +1744,10 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t time,
 	if (cw <= 0 || ch <= 0)
 		return;
 	int cx = wl_fixed_to_int(sx) / cw;
-	int cy = wl_fixed_to_int(sy) / ch;
+	/* Below the rule when the rule is on top: the grid starts there, so a
+	 * pointer on the rule itself is row -1 and hits nothing, which is what
+	 * a border is. */
+	int cy = (wl_fixed_to_int(sy) - (K.rule_bottom ? 0 : K.rule)) / ch;
 
 	K.ptr_cx = cx;
 	K.ptr_cy = cy;
@@ -1704,7 +1934,8 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
 	int cw = kcell_w(), ch = kcell_h();
 	if (cw > 0 && ch > 0) {
 		K.ptr_cx = wl_fixed_to_int(x) / cw;
-		K.ptr_cy = wl_fixed_to_int(y) / ch;
+		K.ptr_cy = (wl_fixed_to_int(y) -
+			    (K.rule_bottom ? 0 : K.rule)) / ch;
 	}
 	/* This IS the motion for that cell, so the dedup starts from here — an
 	 * enter followed by a real move to the same cell is not two moves. */
@@ -1928,8 +2159,12 @@ static void resize_cells(int px_w, int px_h)
 	K.px_w = px_w;
 	K.px_h = px_h;
 	int cw = kcell_w(), ch = kcell_h();
+	int grid_h = px_h - K.rule;
+	if (grid_h < 0)
+		grid_h = 0;
+	/* The grid is the same size either way; only its ORIGIN moves. */
 	K.cols = cw > 0 ? px_w / cw : 0;
-	K.rows = ch > 0 ? px_h / ch : 0;
+	K.rows = ch > 0 ? grid_h / ch : 0;
 	if (K.cols < 1)
 		K.cols = 1;
 	if (K.rows < 1)
@@ -2195,6 +2430,9 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 	} else if (!strcmp(iface, xdg_wm_base_interface.name)) {
 		K.wm_base = wl_registry_bind(r, name, &xdg_wm_base_interface, 1);
 		xdg_wm_base_add_listener(K.wm_base, &wm_base_listener, NULL);
+	} else if (!strcmp(iface, zxdg_decoration_manager_v1_interface.name)) {
+		K.deco_mgr = wl_registry_bind(
+			r, name, &zxdg_decoration_manager_v1_interface, 1);
 	} else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name)) {
 		/*
 		 * FOUR, not one. See K.layer_version: ON_DEMAND keyboard
@@ -2368,7 +2606,10 @@ static int make_panel(void)
 		return -1;
 
 	int vertical = K.cfg.edge == KWL_EDGE_TOP || K.cfg.edge == KWL_EDGE_BOTTOM;
-	int thickness = K.cfg.cells * kcell_h();
+	/* The rule is on TOP of the cells, not out of them: a bar that gave up
+	 * three pixels of its own grid would clip the glyphs it was drawn to
+	 * frame. */
+	int thickness = K.cfg.cells * kcell_h() + K.rule;
 	if (!vertical)
 		thickness = K.cfg.cells * kcell_w();
 
@@ -2562,13 +2803,53 @@ static int make_panel(void)
 					       vertical ? 0 : (uint32_t)thickness,
 					       vertical ? (uint32_t)thickness : 0);
 		/*
-		 * The exclusive zone is what makes a panel a panel rather than
-		 * something floating over the windows: it tells the compositor
-		 * to keep that strip out of every other surface's area.
+		 * A FLOATING DOCK IS MARGINS ON AN EDGE-ANCHORED SURFACE.
+		 *
+		 * The surface stays anchored to three sides, so it still
+		 * stretches with the output and still knows which way is out;
+		 * the margins inset it. `gap` is the distance from the anchored
+		 * edge and `run` insets the two ends. Both zero — the default —
+		 * is the edge-to-edge bar, and (0,0,0,0) is what the protocol
+		 * already assumes, so that costs nothing.
 		 */
-		if (K.cfg.exclusive)
-			zwlr_layer_surface_v1_set_exclusive_zone(K.layer_surface,
-								 thickness);
+		{
+			int gap = panel_gap();
+			int run = vertical ? K.cfg.margin_x : K.cfg.margin_y;
+
+			switch (K.cfg.edge) {
+			case KWL_EDGE_BOTTOM:
+				zwlr_layer_surface_v1_set_margin(
+					K.layer_surface, 0, run, gap, run);
+				break;
+			case KWL_EDGE_TOP:
+				zwlr_layer_surface_v1_set_margin(
+					K.layer_surface, gap, run, 0, run);
+				break;
+			case KWL_EDGE_LEFT:
+				zwlr_layer_surface_v1_set_margin(
+					K.layer_surface, run, 0, run, gap);
+				break;
+			case KWL_EDGE_RIGHT:
+				zwlr_layer_surface_v1_set_margin(
+					K.layer_surface, run, gap, run, 0);
+				break;
+			}
+			/*
+			 * The exclusive zone is what makes a panel a panel
+			 * rather than something floating over the windows: it
+			 * tells the compositor to keep that strip out of every
+			 * other surface's area.
+			 *
+			 * IT MUST INCLUDE THE GAP. The zone is measured from
+			 * the output edge, not from the surface, so a floating
+			 * bar that reserved only its own thickness leaves the
+			 * gap available — and a maximized window is then placed
+			 * with its last `gap` pixels underneath the dock.
+			 */
+			if (K.cfg.exclusive)
+				zwlr_layer_surface_v1_set_exclusive_zone(
+					K.layer_surface, thickness + gap);
+		}
 	}
 
 	/*
@@ -2598,10 +2879,29 @@ static int make_panel(void)
 	 * and says so — a menu that holds the keyboard is bad, a menu that
 	 * never receives a keystroke is worse.
 	 */
+	/*
+	 * NONE IS SENT EXPLICITLY, and leaving it to the protocol's default is
+	 * how kdos-tip spent this whole arc spawning a process per hover and
+	 * never showing a tooltip.
+	 *
+	 * A layer surface that requests nothing about its keyboard commits no
+	 * KEYBOARD_INTERACTIVITY state, and labwc arranges a layer off the back
+	 * of the state a commit CARRIES. Every other overlay in this desktop
+	 * asks for ON_DEMAND and so gets arranged; the one surface that wanted
+	 * no keyboard at all was created, mapped, given a buffer and left with
+	 * no box — no error anywhere, and a client that cannot tell. Measured:
+	 * the same binary with `keyboard = 1` draws the tip in the right place.
+	 *
+	 * NONE is the default, so this changes nothing else about any surface.
+	 */
 	if (K.cfg.keyboard && K.layer_version >= 4) {
 		zwlr_layer_surface_v1_set_keyboard_interactivity(
 			K.layer_surface,
 			ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND);
+	} else if (!K.cfg.keyboard) {
+		zwlr_layer_surface_v1_set_keyboard_interactivity(
+			K.layer_surface,
+			ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
 	} else if (K.cfg.keyboard) {
 		fprintf(stderr, "kwl: layer-shell v%d has no on-demand keyboard; "
 				"this surface holds the seat's keyboard until it "
@@ -2802,8 +3102,66 @@ static int make_toplevel(void)
 	 */
 	if (K.cfg.app_id)
 		xdg_toplevel_set_app_id(K.xdg_toplevel, K.cfg.app_id);
-	resize_cells(80 * kcell_w(), 24 * kcell_h());
+	/*
+	 * Ask for a SERVER frame. A compositor that does not offer the
+	 * protocol simply has no manager to bind and the window is undecorated
+	 * as before, which is the honest fallback rather than a failure.
+	 */
+	if (K.deco_mgr) {
+		K.deco = zxdg_decoration_manager_v1_get_toplevel_decoration(
+			K.deco_mgr, K.xdg_toplevel);
+		if (K.deco)
+			zxdg_toplevel_decoration_v1_set_mode(
+				K.deco,
+				ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	}
+	/*
+	 * A DEFAULT, not a demand: the compositor's first configure carries
+	 * the size it wants and xdg_top_configure() takes it. This is only
+	 * what to commit if it declines to choose.
+	 *
+	 * The CALLER'S size when it gave one, because these are the same
+	 * programs that open as popups and they were each sized for their own
+	 * content; a network panel that came up at somebody else's 80x22 would
+	 * be a window with its list in the corner. 80x22 remains the fallback,
+	 * and it is deliberately short of a whole screen — a frame needs
+	 * somewhere to go.
+	 */
+	int cols = K.cfg.cols > 0 ? K.cfg.cols : 80;
+	int rows = K.cfg.rows > 0 ? K.cfg.rows : 22;
+
+	resize_cells(cols * kcell_w(), rows * kcell_h());
 	return 0;
+}
+
+/*
+ * A PROTOCOL ERROR IS SILENT UNLESS THE CLIENT ASKS.
+ *
+ * libwayland records it, returns -1 from every later dispatch and prints
+ * nothing. A client that commits something the compositor refuses is
+ * DISCONNECTED, so from the outside it is a program that drew nothing and
+ * exited for no reason — which is what every surface this library has failed
+ * to bring up has looked like. Called from the one place a surface can fail to
+ * start and from the one place every client ends.
+ */
+void kwl_report_error(void)
+{
+	int e;
+
+	if (!K.display)
+		return;
+	e = wl_display_get_error(K.display);
+	if (e == EPROTO) {
+		const struct wl_interface *iface = NULL;
+		uint32_t id = 0;
+		uint32_t code = wl_display_get_protocol_error(K.display, &iface,
+							      &id);
+
+		fprintf(stderr, "kwl: protocol error %u on %s#%u\n", code,
+			iface ? iface->name : "?", id);
+	} else if (e) {
+		fprintf(stderr, "kwl: display error: %s\n", strerror(e));
+	}
 }
 
 int kwl_init(const KwlConfig *cfg)
@@ -2819,7 +3177,24 @@ int kwl_init(const KwlConfig *cfg)
 	K.scale_sent = 1;	/* the protocol's own default */
 	K.on_output = -1;
 
-	kcell_set_transparent_bg(cfg->role == KWL_ROLE_BACKGROUND);
+	/*
+	 * WHICH SLOT LETS WHAT THROUGH.
+	 *
+	 * Reset first: this runs per kwl_init(), the table is file-static in
+	 * libkcell, and a surface that comes back opaque must not inherit the
+	 * last one's holes.
+	 *
+	 * The desktop clears KT_BG so the compositor's wallpaper shows. The
+	 * panel dims KT_SURFACE — its own background — so the desktop shows
+	 * through the bar. Nothing else clears anything, and the foreground is
+	 * never touched in either case.
+	 */
+	kcell_reset_slot_alpha();
+	if (cfg->role == KWL_ROLE_BACKGROUND)
+		kcell_set_slot_alpha(KT_BG, 0);
+	else if (cfg->opacity > 0 && cfg->opacity < 100)
+		kcell_set_slot_alpha(KT_SURFACE,
+				     (uint8_t)(cfg->opacity * 255 / 100));
 	/*
 	 * THE CHROME FONT DEFAULT LIVES HERE, and it is Terminus at the
 	 * console's own cell — the same default kdos-comp uses for the window
@@ -2833,6 +3208,17 @@ int kwl_init(const KwlConfig *cfg)
 	if (kcell_font_load(cfg->font && *cfg->font ? cfg->font
 						    : "Terminus:pixelsize=32") != 0)
 		return -1;
+	/*
+	 * The rule, once there is a cell to measure it against. Only a
+	 * horizontally-anchored panel has a top edge to rule, and a rule as
+	 * tall as a cell is not a rule.
+	 */
+	K.rule = (cfg->role == KWL_ROLE_PANEL && cfg->rule > 0 &&
+		  cfg->rule < kcell_h() &&
+		  (cfg->edge == KWL_EDGE_TOP || cfg->edge == KWL_EDGE_BOTTOM))
+			 ? cfg->rule
+			 : 0;
+	K.rule_bottom = cfg->edge == KWL_EDGE_TOP;
 
 	K.display = wl_display_connect(NULL);
 	if (!K.display)
@@ -2922,10 +3308,29 @@ int kwl_init(const KwlConfig *cfg)
 		if (wl_display_dispatch(K.display) < 0)
 			goto fail_xkb;
 
+	/*
+	 * A SURFACE THE COMPOSITOR CLOSED DURING THE HANDSHAKE IS A FAILURE,
+	 * and returning 0 for it is how a front end exits 0 having drawn
+	 * nothing at all.
+	 *
+	 * The wait above ends on EITHER condition, so a `closed` arriving
+	 * before the first configure fell straight through to success: the
+	 * caller then drew into a buffer nobody would ever see, entered its
+	 * loop, found kwl_should_close() already true and returned — no
+	 * window, no message, exit 0. Indistinguishable from a program that
+	 * decided there was nothing to show.
+	 */
+	if (!K.configured) {
+		fprintf(stderr, "kwl: the compositor closed the surface before "
+				"it was configured\n");
+		goto fail_xkb;
+	}
+
 	ktui_backend_set(&kwl_backend);
 	return 0;
 
 fail_xkb:
+	kwl_report_error();
 	if (K.xkb_ctx)
 		xkb_context_unref(K.xkb_ctx);
 fail_display:
@@ -2936,6 +3341,35 @@ fail_font:
 	return -1;
 }
 
+/*
+ * Make a surface-state change take effect — and NOT before the first buffer.
+ *
+ * Committed here rather than left for the next frame because a surface whose
+ * content did not change is deliberately not committed by kwl_flush (the
+ * flicker fix), so a region set on an idle desktop would otherwise never take
+ * effect.
+ *
+ * BUT A COMMIT BEFORE THE FIRST BUFFER IS AN UNMAP. kwl_init ends its
+ * handshake with a configured surface that has no buffer on it yet, so a
+ * caller that set its input region between init and its first draw — which is
+ * the order every one of them uses, because the region is a property of the
+ * surface rather than of the picture — unmapped the surface it had just
+ * brought up. wlroots then waits for an initial-commit handshake that will not
+ * come, and the program runs its whole life drawing into a surface nobody can
+ * see: no error, no message, exit 0. Measured on kdos-tip, whose hover
+ * produced a process and never a tooltip.
+ *
+ * Skipping the commit is safe precisely because there IS no buffer: the state
+ * is double-buffered and rides the caller's first flush.
+ */
+static void region_commit(void)
+{
+	if (!K.attached)
+		return;
+	wl_surface_commit(K.surface);
+	wl_display_flush(K.display);
+}
+
 void kwl_input_cells(const KRect *rects, int n)
 {
 	if (!K.surface || !K.compositor)
@@ -2944,8 +3378,7 @@ void kwl_input_cells(const KRect *rects, int n)
 		/* NULL is layer-shell/wl_surface for "all of me", which is the
 		 * default a surface starts with. */
 		wl_surface_set_input_region(K.surface, NULL);
-		wl_surface_commit(K.surface);
-		wl_display_flush(K.display);
+		region_commit();
 		return;
 	}
 
@@ -2958,14 +3391,7 @@ void kwl_input_cells(const KRect *rects, int n)
 			      rects[i].w * cw, rects[i].h * ch);
 	wl_surface_set_input_region(K.surface, reg);
 	wl_region_destroy(reg);
-	/*
-	 * Committed here rather than left for the next frame: a surface whose
-	 * content did not change is deliberately NOT committed by kwl_flush
-	 * (the flicker fix), so a region set on an idle desktop would never
-	 * take effect.
-	 */
-	wl_surface_commit(K.surface);
-	wl_display_flush(K.display);
+	region_commit();
 }
 
 void kwl_layer_autohide(bool hidden)
@@ -2980,19 +3406,57 @@ void kwl_layer_autohide(bool hidden)
 		       K.cfg.edge == KWL_EDGE_BOTTOM;
 	int cell = vertical ? kcell_h() : kcell_w();
 	int cells = hidden ? 1 : (K.cfg.cells > 0 ? K.cfg.cells : 1);
-	int thickness = cells * cell;
+	/* The rule rides on top of the cells here too, or the hidden strip
+	 * would be a cell tall while the grid inside it believed it had one. */
+	int thickness = cells * cell + K.rule;
 
 	zwlr_layer_surface_v1_set_size(K.layer_surface,
 				       vertical ? 0 : (uint32_t)thickness,
 				       vertical ? (uint32_t)thickness : 0);
 	/*
-	 * The zone is the whole point: a hidden panel that still reserved its
-	 * strip would hide nothing — every window would stay exactly where it
-	 * was and the screen would simply have a blank line across it.
+	 * A HIDDEN PANEL GOES FLUSH, whatever its margin is.
+	 *
+	 * The reveal target is the screen edge — that is the whole gesture,
+	 * and it is the only reason an edge is a Fitts's-law target. A
+	 * floating dock that kept its gap while hidden would leave its
+	 * one-cell strip `gap` pixels INSIDE the screen, with dead desktop
+	 * between it and the edge the pointer is being slammed into, so the
+	 * bar could not be brought back by the one motion that is supposed to
+	 * do it.
 	 */
-	zwlr_layer_surface_v1_set_exclusive_zone(
-		K.layer_surface,
-		(!hidden && K.cfg.exclusive) ? thickness : 0);
+	{
+		int gap = hidden ? 0 : panel_gap();
+		int run = hidden ? 0
+				 : (vertical ? K.cfg.margin_x : K.cfg.margin_y);
+
+		switch (K.cfg.edge) {
+		case KWL_EDGE_BOTTOM:
+			zwlr_layer_surface_v1_set_margin(K.layer_surface, 0,
+							 run, gap, run);
+			break;
+		case KWL_EDGE_TOP:
+			zwlr_layer_surface_v1_set_margin(K.layer_surface, gap,
+							 run, 0, run);
+			break;
+		case KWL_EDGE_LEFT:
+			zwlr_layer_surface_v1_set_margin(K.layer_surface, run,
+							 0, run, gap);
+			break;
+		case KWL_EDGE_RIGHT:
+			zwlr_layer_surface_v1_set_margin(K.layer_surface, run,
+							 gap, run, 0);
+			break;
+		}
+		/*
+		 * The zone is the whole point: a hidden panel that still
+		 * reserved its strip would hide nothing — every window would
+		 * stay exactly where it was and the screen would simply have a
+		 * blank line across it.
+		 */
+		zwlr_layer_surface_v1_set_exclusive_zone(
+			K.layer_surface,
+			(!hidden && K.cfg.exclusive) ? thickness + gap : 0);
+	}
 
 	/*
 	 * Staged content is content for the OLD size. Attaching it against the
@@ -3025,20 +3489,82 @@ void kwl_layer_autohide(bool hidden)
 	ktui_resized = 1;
 }
 
-void kwl_overlay_resize(int cols, int rows)
+/*
+ * IT WAITS FOR THE CONFIGURE, and a resize that does not is a resize that has
+ * not happened when it returns.
+ *
+ * `set_size` is a REQUEST. The surface's real size arrives later, in the
+ * compositor's configure, and `ktui_w`/`ktui_h` follow it — so a caller that
+ * resized and then drew painted the new picture into the OLD buffer: the rows
+ * past the old height were silently dropped, which for kdos-tip's window
+ * preview meant a tooltip showing two rows of thumbnail and none of its text.
+ *
+ * Bounded, and skipped entirely when the size did not change: wlroots sends a
+ * configure only when it has something new to say, so an unconditional wait
+ * would hang on a no-op resize. 250 ms is far longer than a compositor takes
+ * and short enough that a wedged one costs a frame rather than the program.
+ */
+int kwl_overlay_resize(int cols, int rows)
 {
+	uint32_t w, h;
+
 	if (K.cfg.role != KWL_ROLE_OVERLAY || !K.layer_surface)
-		return;
+		return -1;
 	if (cols < 1)
 		cols = 1;
 	if (rows < 1)
 		rows = 1;
-	zwlr_layer_surface_v1_set_size(K.layer_surface,
-				       (uint32_t)(cols * kcell_w()),
-				       (uint32_t)(rows * kcell_h()));
-	/* The commit is what makes the compositor send a configure back; without
-	 * it the request sits in the queue and nothing on screen changes. */
+	w = (uint32_t)(cols * kcell_w());
+	h = (uint32_t)(rows * kcell_h());
+	if ((int)w == K.px_w && (int)h == K.px_h)
+		return 0;
+	zwlr_layer_surface_v1_set_size(K.layer_surface, w, h);
+	/*
+	 * IT WAITS FOR THE CONFIGURE, AND IT FAILS RATHER THAN GUESSING.
+	 *
+	 * `set_size` is a REQUEST. The surface's real size arrives in the
+	 * compositor's configure, and a buffer attached before that one lands
+	 * does not match what the compositor last told the surface it was —
+	 * which is a protocol error, and a protocol error DISCONNECTS the
+	 * client. From the outside that is a program that drew nothing and
+	 * exited: no window, no message. So the cell grid is only resized once
+	 * the configure that carries the new size has actually arrived, and a
+	 * caller that gets -1 must draw at the size it already had.
+	 *
+	 * The commit is what asks for the configure. Before the first buffer
+	 * that is the initial-commit handshake — the same one kwl_init does —
+	 * and after it, a re-configure.
+	 *
+	 * Bounded, and skipped entirely when the size did not change: wlroots
+	 * sends a configure only when it has something new to say, so an
+	 * unconditional wait would hang on a no-op. 250 ms is far longer than
+	 * a compositor takes and short enough that a wedged one costs a frame
+	 * rather than the program.
+	 */
+	K.configured = 0;
 	wl_surface_commit(K.surface);
+	wl_display_flush(K.display);
+
+	for (int spent = 0; !K.configured && !K.closed && spent < 250;
+	     spent += 10) {
+		struct pollfd pfd = { .fd = wl_display_get_fd(K.display),
+				      .events = POLLIN };
+
+		if (poll(&pfd, 1, 10) > 0 &&
+		    wl_display_dispatch(K.display) < 0) {
+			K.closed = 1;
+			return -1;
+		}
+		wl_display_dispatch_pending(K.display);
+	}
+	if (!K.configured) {
+		/* Nothing arrived. The surface is still whatever it was, and
+		 * saying so is the only way a caller can draw something that
+		 * fits it. */
+		K.configured = 1;
+		return -1;
+	}
+	return (int)w == K.px_w && (int)h == K.px_h ? 0 : -1;
 }
 
 /*
@@ -3071,6 +3597,9 @@ void kwl_overlay_hide(void)
 	/* The next surface starts at the protocol defaults and shows nothing:
 	 * neither the sent scale nor the on-screen record survives it. */
 	K.scale_sent = 1;
+	/* And it has no buffer on it, so a state change made before the next
+	 * paint must not commit — see region_commit(). */
+	K.attached = 0;
 	free(K.screen);
 	K.screen = NULL;
 	K.screen_w = K.screen_h = 0;
@@ -3115,6 +3644,9 @@ int kwl_overlay_show(int cols, int rows)
 
 void kwl_shutdown(void)
 {
+	/* Before anything is torn down: an error is why most clients get
+	 * here. */
+	kwl_report_error();
 	if (K.cfg.role != KWL_ROLE_NONE)
 		ktui_backend_set(NULL);
 	if (K.paste_fd >= 0)

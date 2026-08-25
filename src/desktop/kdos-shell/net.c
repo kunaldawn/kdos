@@ -865,7 +865,7 @@ static int net_buttons(int w, int row)
 {
 	const struct row *r = sel >= 0 && sel < nrows ? &rows[sel] : NULL;
 	const struct net_ap *a = r && r->kind == ROW_AP ? &aps[r->ap] : NULL;
-	struct sh_button b[NB_N];
+	struct kch_button b[NB_N];
 
 	b[NB_CONNECT].label = a && a->active ? "Disconnect" : "Connect";
 	b[NB_CONNECT].enabled = a != NULL;
@@ -877,7 +877,7 @@ static int net_buttons(int w, int row)
 	b[NB_WIFI].enabled = 1;
 	b[NB_CLOSE].label = "Close";
 	b[NB_CLOSE].enabled = 1;
-	return sh_chrome_buttons(w, row, b, NB_N, -1);
+	return kch_buttons(w, row, b, NB_N, -1);
 }
 
 static void draw_frame(void)
@@ -888,7 +888,7 @@ static void draw_frame(void)
 	if (w < 30 || h < 10)
 		return;
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
-	ktui_draw_box(krect(0, 0, w, h), "Network", KT_ACCENT, KT_BG, 1);
+	sh_frame(w, h, "Network", KT_ACCENT, KT_BG, 1);
 
 	net_subtitle(sub, sizeof(sub));
 	/* `network-wireless` when there is a radio to talk about, the wired
@@ -898,7 +898,7 @@ static void draw_frame(void)
 	for (int i = 0; i < ndev; i++)
 		if (devs[i].type == NMDT_WIFI)
 			have_wifi = 1;
-	int body_y = sh_chrome_header(w, have_wifi ? "network-wireless"
+	int body_y = kch_header(w, have_wifi ? "network-wireless"
 						   : "network-wired",
 				      "Network", sub, icons_on);
 	int body = h - body_y - 3;
@@ -1166,12 +1166,25 @@ int net_main(int argc, char **argv)
 	 */
 	int popup = at_x >= 0;
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
 		.cols = popup ? 52 : NET_COLS,
 		.rows = popup ? 16 : NET_ROWS,
 		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Network",
 		.app_id = "kdos-net",
 		.font = font,
 		.keyboard = 1,
@@ -1192,6 +1205,9 @@ int net_main(int argc, char **argv)
 	if (icons_on)
 		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_BG);
 
 	time_t last = 0;
 	while (!kwl_should_close()) {
@@ -1237,8 +1253,8 @@ int net_main(int argc, char **argv)
 							 aps[rows[sel].ap].ssid);
 				}
 				/* The button bar lights under the pointer —
-				 * see sh_chrome_hover. */
-				sh_chrome_hover(ev.mx, ev.my);
+				 * see kch_hover. */
+				kch_hover(ev.mx, ev.my);
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
@@ -1255,7 +1271,7 @@ int net_main(int argc, char **argv)
 				break;
 			if (ev.btn != KT_MB_LEFT)
 				continue;
-			int b = sh_chrome_button_at(ev.mx, ev.my);
+			int b = kch_button_at(ev.mx, ev.my);
 			if (b >= 0) {
 				switch (b) {
 				case NB_CONNECT:

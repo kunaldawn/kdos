@@ -270,6 +270,18 @@ int ksig_sig_append(const char *path, const uint8_t seed[KSIG_SEED_LEN],
 	return rc;
 }
 
+void ksig_sig_line(char out[KSIG_LINE_MAX], const uint8_t seed[KSIG_SEED_LEN],
+		   const uint8_t pub[KSIG_PUB_LEN], const void *msg, size_t len)
+{
+	uint8_t sig[KSIG_SIG_LEN];
+	char hex[KSIG_SIG_LEN * 2 + 1], id[KSIG_ID_HEX];
+
+	ksig_sign(seed, pub, msg, len, sig);
+	hex_encode(sig, KSIG_SIG_LEN, hex);
+	ksig_keyid(pub, id);
+	snprintf(out, KSIG_LINE_MAX, "kdos-sig-1 %s %s\n", id, hex);
+}
+
 /* ── keyrings ──────────────────────────────────────────────────────────── */
 
 int ksig_ring_load(KsigRing *ring, const char *dir)
@@ -292,48 +304,75 @@ int ksig_ring_load(KsigRing *ring, const char *dir)
 	return ring->n;
 }
 
+int ksig_verify_lines(const KsigRing *ring, const char *text, size_t tlen,
+		      const void *msg, size_t len, char who[KSIG_ID_HEX])
+{
+	if (who)
+		who[0] = 0;
+	if (!text)
+		return -1;
+
+	for (size_t off = 0; off < tlen;) {
+		size_t end = off;
+		while (end < tlen && text[end] != '\n')
+			end++;
+
+		char line[512];
+		size_t n = end - off;
+		if (n < sizeof(line)) {
+			memcpy(line, text + off, n);
+			line[n] = 0;
+			line[strcspn(line, "\r")] = 0;
+			if (!strncmp(line, "kdos-sig-1 ", 11)) {
+				const char *id = line + 11;
+				if (strlen(id) >= 16 + 1 + KSIG_SIG_LEN * 2) {
+					const char *hex = id + 17;
+					uint8_t sig[KSIG_SIG_LEN];
+					if (hex_decode(hex, sig, KSIG_SIG_LEN) == 0) {
+						/*
+						 * The id in the block picks WHICH
+						 * key to try. Every key in the ring
+						 * is still an acceptable answer, so
+						 * a block naming an unknown id is
+						 * not fatal — it just selects
+						 * nothing, and the signature is
+						 * tried against every trusted key.
+						 * What matters is that nothing
+						 * outside the ring is ever used.
+						 */
+						for (int i = 0; i < ring->n; i++) {
+							if (ksig_verify(ring->key[i].pub,
+									msg, len, sig) != 0)
+								continue;
+							if (who)
+								kb_strlcpy(who,
+									   ring->key[i].id,
+									   KSIG_ID_HEX);
+							return 0;
+						}
+					}
+				}
+			}
+		}
+		off = end + 1;
+	}
+	return -1;
+}
+
 int ksig_verify_file(const KsigRing *ring, const char *sigpath, const void *msg,
 		     size_t len, char who[KSIG_ID_HEX])
 {
-	char line[512];
-	FILE *f = fopen(sigpath, "r");
+	size_t tlen = 0;
+	char *text = kb_read_all(sigpath, &tlen);
+	int rc;
 
 	if (who)
 		who[0] = 0;
-	if (!f)
+	if (!text)
 		return -1;
-
-	int ok = -1;
-	while (ok != 0 && fgets(line, sizeof(line), f)) {
-		line[strcspn(line, "\r\n")] = 0;
-		if (strncmp(line, "kdos-sig-1 ", 11))
-			continue;
-		const char *id = line + 11;
-		if (strlen(id) < 16 + 1 + KSIG_SIG_LEN * 2)
-			continue;
-		const char *hex = id + 17;
-		uint8_t sig[KSIG_SIG_LEN];
-		if (hex_decode(hex, sig, KSIG_SIG_LEN) != 0)
-			continue;
-
-		/*
-		 * The id in the file picks WHICH key to try. Every key in the
-		 * ring is still an acceptable answer, so a file naming an
-		 * unknown id is not fatal — it just does not select anything,
-		 * and the signature is then tried against every trusted key.
-		 * What matters is that nothing outside the ring is ever used.
-		 */
-		for (int i = 0; i < ring->n; i++) {
-			if (ksig_verify(ring->key[i].pub, msg, len, sig) != 0)
-				continue;
-			ok = 0;
-			if (who)
-				kb_strlcpy(who, ring->key[i].id, KSIG_ID_HEX);
-			break;
-		}
-	}
-	fclose(f);
-	return ok;
+	rc = ksig_verify_lines(ring, text, tlen, msg, len, who);
+	free(text);
+	return rc;
 }
 
 int ksig_verify_path(const KsigRing *ring, const char *path,

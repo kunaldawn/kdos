@@ -40,6 +40,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kbase.h"
 #include "kicon.h"
 #include "kwl.h"
 #include "shell.h"
@@ -144,106 +145,14 @@ static int edit_mode;
 static int edit_for;		/* the entry Rename targets */
 static char edit_buf[256];
 
-/* ── the trash, which nothing in this tree had ─────────────────────────── */
+/* ── the trash ─────────────────────────────────────────────────────────── */
 
 /*
- * freedesktop.org's trash spec, the part of it a desktop actually needs.
- *
- * `~/.local/share/Trash/files/NAME` is the file and
- * `~/.local/share/Trash/info/NAME.trashinfo` records where it came from and
- * when. BOTH are required: a file in `files/` with no `info/` entry cannot be
- * restored by anything, which makes "move to trash" a delete with extra steps —
- * and every other trash implementation on the machine, mc's included, will read
- * these.
- *
- * The name is made unique before either is written. Trashing two files called
- * `notes.txt` from different directories is the ordinary case, and the second
- * one silently replacing the first is data loss.
+ * The freedesktop trash is libkbase's (`kb_trash_*`), not this file's, because
+ * `kdos trash` at a prompt has to mean exactly what the Delete key here means.
+ * What stays local is the QUESTION — the confirm, the two pinned places that
+ * are not files, and the status line.
  */
-static int trash_dirs(char *files, size_t fn, char *info, size_t in)
-{
-	const char *home = getenv("HOME");
-	if (!home)
-		return -1;
-	snprintf(files, fn, "%s/.local/share/Trash/files", home);
-	snprintf(info, in, "%s/.local/share/Trash/info", home);
-
-	char tmp[1024];
-	snprintf(tmp, sizeof(tmp), "%s/.local/share/Trash", home);
-	mkdir(tmp, 0700);
-	mkdir(files, 0700);
-	mkdir(info, 0700);
-	return 0;
-}
-
-/* Percent-encode for the Path= line. The spec says the value is a URI, so a
- * name with a space or a percent in it must be escaped or the record cannot be
- * parsed back. */
-static void uri_escape(const char *in, char *out, size_t n)
-{
-	static const char *hex = "0123456789ABCDEF";
-	size_t o = 0;
-	for (const unsigned char *p = (const unsigned char *)in; *p && o + 4 < n; p++) {
-		if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-		    (*p >= '0' && *p <= '9') || strchr("/-_.~", *p)) {
-			out[o++] = (char)*p;
-		} else {
-			out[o++] = '%';
-			out[o++] = hex[*p >> 4];
-			out[o++] = hex[*p & 0xf];
-		}
-	}
-	out[o] = '\0';
-}
-
-static int trash_put(const char *path, const char *name)
-{
-	char files[1024], info[1024];
-	if (trash_dirs(files, sizeof(files), info, sizeof(info)) != 0)
-		return -1;
-
-	char dest[2048], meta[2400];
-	char unique[300];
-	snprintf(unique, sizeof(unique), "%s", name);
-	for (int n = 1; n < 1000; n++) {
-		snprintf(dest, sizeof(dest), "%s/%s", files, unique);
-		if (access(dest, F_OK) != 0)
-			break;
-		snprintf(unique, sizeof(unique), "%.100s.%d", name, n);
-	}
-	snprintf(dest, sizeof(dest), "%s/%s", files, unique);
-	snprintf(meta, sizeof(meta), "%s/%s.trashinfo", info, unique);
-
-	/*
-	 * The info file is written FIRST. If the rename then fails there is a
-	 * stale record and no file, which every trash implementation ignores;
-	 * the other order leaves a file nothing can restore.
-	 */
-	FILE *f = fopen(meta, "w");
-	if (!f)
-		return -1;
-	char escaped[2048];
-	uri_escape(path, escaped, sizeof(escaped));
-	time_t now = time(NULL);
-	struct tm tm;
-	localtime_r(&now, &tm);
-	fprintf(f, "[Trash Info]\nPath=%s\nDeletionDate=%04d-%02d-%02dT%02d:%02d:%02d\n",
-		escaped, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-		tm.tm_hour, tm.tm_min, tm.tm_sec);
-	fclose(f);
-
-	if (rename(path, dest) != 0) {
-		/*
-		 * Across a filesystem boundary rename() cannot work, and a
-		 * copy-then-delete here would be a file operation this program
-		 * has no business doing. The record is removed so it does not
-		 * outlive the attempt, and the caller is told.
-		 */
-		unlink(meta);
-		return -1;
-	}
-	return 0;
-}
 
 /* ── reading the desktop directory ─────────────────────────────────────── */
 
@@ -436,25 +345,6 @@ static void spawn(const char *const argv[])
 	}
 }
 
-/* Like spawn(), but WAITS for the command itself. Empty Trash is the caller:
- * reporting an async `rm -rf` as done was a lie — the next rescan showed the
- * trash still full. A short block on a menu action is acceptable. */
-static int spawn_wait(const char *const argv[])
-{
-	pid_t pid = fork();
-
-	if (pid < 0)
-		return -1;
-	if (pid == 0) {
-		execvp(argv[0], (char *const *)argv);
-		_exit(127);
-	}
-	int st = 0;
-	if (waitpid(pid, &st, 0) < 0 || !WIFEXITED(st))
-		return -1;
-	return WEXITSTATUS(st) == 0 ? 0 : -1;
-}
-
 /*
  * Ask before doing something that cannot be undone.
  *
@@ -513,47 +403,6 @@ static void open_entry(const struct entry *it)
 	 */
 	const char *argv[] = { "kdos-appbox", "open", it->path, NULL };
 	spawn(argv);
-}
-
-/* Delete everything in the trash, both halves of every record. The spec's
- * `info/` entry outliving its file is the state every implementation ignores,
- * so files go first and the records follow. */
-static int empty_trash(void)
-{
-	char files[1024], info[1024], p[2100];
-	if (trash_dirs(files, sizeof(files), info, sizeof(info)) != 0)
-		return -1;
-
-	int n = 0;
-	for (int pass = 0; pass < 2; pass++) {
-		const char *dir = pass ? info : files;
-		DIR *d = opendir(dir);
-		struct dirent *e;
-		if (!d)
-			continue;
-		while ((e = readdir(d))) {
-			if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
-				continue;
-			snprintf(p, sizeof(p), "%s/%s", dir, e->d_name);
-			struct stat st;
-			if (!pass && stat(p, &st) == 0 && S_ISDIR(st.st_mode)) {
-				/* A trashed DIRECTORY needs a recursive
-				 * removal, which is a file operation this
-				 * program has no business writing by hand.
-				 * rm is toybox's, exec'd with argv — and
-				 * WAITED for, so the count reported is what
-				 * actually happened. */
-				const char *argv[] = { "rm", "-rf", p, NULL };
-				if (spawn_wait(argv) == 0)
-					n++;
-				continue;
-			}
-			if (unlink(p) == 0 && !pass)
-				n++;
-		}
-		closedir(d);
-	}
-	return n;
 }
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
@@ -868,13 +717,11 @@ static void trash_selected(char *status, size_t n)
 	if (!confirmed(q))
 		return;
 	/*
-	 * The FILE's name, not the row's. They differ for a `.desktop`, whose
-	 * row reads `Firefox` — and a trash that renamed it on the way in would
+	 * The PATH, not the row's name. They differ for a `.desktop`, whose row
+	 * reads `Firefox` — and a trash that renamed it on the way in would
 	 * restore it to a file called Firefox that nothing launches.
 	 */
-	const char *base = strrchr(entries[sel].path, '/');
-	base = base ? base + 1 : entries[sel].path;
-	if (trash_put(entries[sel].path, base) == 0)
+	if (kb_trash_put(entries[sel].path) == 0)
 		snprintf(status, n, "moved %s to the trash", entries[sel].name);
 	else
 		snprintf(status, n, "could not trash %s: %s", entries[sel].name,
@@ -1043,7 +890,7 @@ static void ctx_run(int row, char *status, size_t n)
 		break;
 	case CT_EMPTY: {
 		int k = confirmed("Empty the trash? This cannot be undone.")
-			? empty_trash() : -1;
+			? kb_trash_empty() : -1;
 		if (k >= 0)
 			snprintf(status, n, "emptied the trash (%d items)", k);
 		reload();

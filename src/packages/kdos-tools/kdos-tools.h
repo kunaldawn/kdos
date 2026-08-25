@@ -65,6 +65,10 @@ int oracle_main(int argc, char **argv);		/* kdos oracle              */
 /* `kdos hey` (hey.c): the compositor answering questions from a prompt, over
  * $XDG_RUNTIME_DIR/kdos-cmd.sock. */
 int hey_main(int argc, char **argv);
+/* The app_ids of the windows open right now, deduplicated: `kdos appid`'s
+ * fallback when no ledger has been recorded yet. -1 when the compositor is
+ * not reachable, which is NOT the same answer as 0. See hey.c. */
+int hey_app_ids(char ***out);
 /* kdos-sfx (sfx.c): four synthesized noises. Its own basename, because the
  * things that play them are init scripts and keybinds, not `kdos` users. */
 int sfx_main(int argc, char **argv);
@@ -113,5 +117,13 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
  */
 int kdt_cve(int argc, char **argv, const char *tty_accent,
 	    const char *tty_warn, const char *tty_reset);
+
+/*
+ * `kdos app` (app.c). The applications this machine has and the ones on the
+ * medium beside it — a handful of verbs over kdos-packd, not a store. Every
+ * verb hands the daemon an id out of the list the daemon published.
+ */
+int kdt_app(int argc, char **argv);
+int kdt_trash(int argc, char **argv);
 
 #endif /* KDOS_TOOLS_H */

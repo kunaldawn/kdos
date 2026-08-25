@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = noto-cjk
+version     = 2.004
+release     = 1
+source      = $name-$version.zip::https://github.com/notofonts/noto-cjk/releases/download/Sans$version/00_NotoSansCJK.ttc.zip
+sha256      = a56077736038875f3a5b1e6715b2713a2bd049cc0bf0dfdf645927b070d38bfc  noto-cjk-2.004.zip
+description = Noto Sans CJK — Chinese, Japanese and Korean coverage in one collection
+homepage    = https://github.com/notofonts/noto-cjk
+depends     = unzip
