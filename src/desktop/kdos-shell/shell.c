@@ -25,6 +25,9 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -345,12 +348,15 @@ static int data_dirs(char bases[8][512])
 	return nb;
 }
 
-static void desktop_name(const char *app_id, char *out, size_t n)
+static void desktop_name(const char *app_id, char *out, size_t n, char *did,
+			 size_t ndid)
 {
 	char bases[8][512];
 	int nb;
 
 	*out = '\0';
+	if (did && ndid)
+		*did = '\0';
 	if (!app_id || !*app_id || strchr(app_id, '/'))
 		return;			/* not a desktop id; do not build a path */
 	nb = data_dirs(bases);
@@ -366,8 +372,11 @@ static void desktop_name(const char *app_id, char *out, size_t n)
 		if (name && *name)
 			snprintf(out, n, "%s", name);
 		kxdg_free(&e);
-		if (*out)
+		if (*out) {
+			if (did && ndid)
+				snprintf(did, ndid, "%s", app_id);
 			return;
+		}
 	}
 
 	/*
@@ -404,8 +413,38 @@ static void desktop_name(const char *app_id, char *out, size_t n)
 				continue;
 			const char *wm = kxdg_get(&e, "StartupWMClass", NULL);
 			const char *name = kxdg_get(&e, "Name", NULL);
-			if (wm && !strcasecmp(wm, app_id) && name && *name)
+			/*
+			 * OR THE LAST COMPONENT OF A REVERSE-DNS ID, which is
+			 * the case that actually occurs and which neither of
+			 * the two documented routes covers.
+			 *
+			 * A GTK client on Wayland calls itself `mousepad`; its
+			 * entry is `org.xfce.mousepad.desktop` and carries no
+			 * StartupWMClass naming that, because StartupWMClass
+			 * is an X11 field and this application has no X11 to
+			 * be classed under. Measured on the booted ISO — the
+			 * window resolved to no entry at all, so the taskbar
+			 * showed its TITLE and could not merge it onto the
+			 * pinned Mousepad beside it.
+			 *
+			 * The whole component, not a prefix: `foo.bar.gimp`
+			 * answers to `gimp` and never to `im`.
+			 */
+			size_t stem = len - 8;	/* the id, less `.desktop` */
+			const char *dot = memrchr(de->d_name, '.', stem);
+			const char *tail = dot ? dot + 1 : de->d_name;
+			size_t tlen = stem - (size_t)(tail - de->d_name);
+			int by_tail = tlen == strlen(app_id) &&
+				      !strncasecmp(tail, app_id, tlen);
+			if (((wm && !strcasecmp(wm, app_id)) || by_tail) &&
+			    name && *name) {
 				snprintf(out, n, "%s", name);
+				/* The file's own stem IS the desktop id, and
+				 * it is the half the merge needs. */
+				if (did && ndid)
+					snprintf(did, ndid, "%.*s",
+						 (int)stem, de->d_name);
+			}
 			kxdg_free(&e);
 			if (*out)
 				break;
@@ -454,6 +493,73 @@ int sh_desktop_entry(const char *id, char *name, size_t nname,
 	return found;
 }
 
+/*
+ * THE BOX A WINDOW CAME FROM, asked ONCE.
+ *
+ * The compositor knows it outright — kdos-boxsock tags every client it
+ * launches with a security context whose app_id is the box name — and answers
+ * it in `{"cmd":"list"}`. What this has to solve is WHICH entry is the window
+ * that just mapped, and app_id alone does not say: two boxes running GIMP is
+ * exactly the case this exists for. The creation_id does. It is monotonic, so
+ * among the entries carrying this app_id the NEWEST is the one that just
+ * appeared, which is the one being asked about.
+ *
+ * "No box" is a valid answer and is the common one. A host window has no
+ * security context; a compositor that does not answer within the second
+ * sh_cmd_call allows gives the same result, and the label is what it always
+ * was.
+ */
+static void task_box(struct sh_task *t)
+{
+	char reply[16384];
+	const char *p;
+	long best = -1;
+
+	t->box[0] = '\0';
+	if (!t->app_id[0])
+		return;
+	if (sh_cmd_call("{\"cmd\":\"list\"}\n", reply, sizeof(reply), NULL, 0) != 0)
+		return;
+
+	/*
+	 * A scanner over the reply's own shape rather than a JSON parser: the
+	 * fields are emitted by kdos-cmd.c three files away in this repository
+	 * and every string in them is escaped by json_str, so a `","box":"`
+	 * inside a window TITLE would have to survive that escaping to be
+	 * mistaken for a field, and it cannot — a quote in a title comes out
+	 * as \" and does not close the string.
+	 */
+	for (p = reply; (p = strstr(p, "\"id\":")) != NULL; p++) {
+		const char *obj = p;
+		const char *nextid = strstr(p + 1, "\"id\":");
+		const char *aid = strstr(obj, "\"app_id\":\"");
+		const char *bx = strstr(obj, "\"box\":\"");
+		long id = strtol(p + 5, NULL, 10);
+		size_t alen = strlen(t->app_id);
+		char box[64];
+		const char *end;
+
+		if (!aid || (nextid && aid > nextid))
+			continue;
+		aid += 10;
+		if (strncmp(aid, t->app_id, alen) || aid[alen] != '"')
+			continue;
+		if (id <= best)
+			continue;
+		best = id;
+		t->box[0] = '\0';
+		if (!bx || (nextid && bx > nextid))
+			continue;
+		bx += 7;
+		end = strchr(bx, '"');
+		if (!end || (size_t)(end - bx) >= sizeof(box))
+			continue;
+		memcpy(box, bx, (size_t)(end - bx));
+		box[end - bx] = '\0';
+		snprintf(t->box, sizeof(t->box), "%s", box);
+	}
+}
+
 static void tl_app_id(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
 		      const char *app_id)
 {
@@ -464,7 +570,8 @@ static void tl_app_id(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
 	/* Resolved once, here, rather than per frame: this fires when a window
 	 * maps and when it changes its id, which is the only time the answer
 	 * can change, and the panel redraws every second. */
-	desktop_name(app_id, t->name, sizeof(t->name));
+	desktop_name(app_id, t->name, sizeof(t->name), t->did, sizeof(t->did));
+	task_box(t);
 }
 
 static void tl_output_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
@@ -488,12 +595,18 @@ static void tl_state(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
 		return;
 	t->activated = 0;
 	t->minimized = 0;
+	t->maximized = 0;
+	t->fullscreen = 0;
 	uint32_t *st;
 	wl_array_for_each(st, states) {
 		if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED)
 			t->activated = 1;
 		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED)
 			t->minimized = 1;
+		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED)
+			t->maximized = 1;
+		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN)
+			t->fullscreen = 1;
 	}
 }
 
@@ -844,4 +957,117 @@ void sh_spawn(const char *const argv[])
 		while (waitpid(pid, NULL, 0) < 0 && errno == EINTR)
 			;
 	}
+}
+
+/*
+ * ── THE FRAME IS DRAWN BY WHOEVER OWNS IT ──────────────────────────────────
+ *
+ * Every surface here used to put its own double-line box round itself, which
+ * was right while every one of them was a layer surface with no decoration of
+ * any kind. The ones that are WINDOWS are xdg toplevels now, and a toplevel
+ * wears the compositor's own `════ Title ════[_][=][X]` — so drawing the box
+ * as well puts a second frame inside the first with the title written twice,
+ * which is what a boxed application beside a native one made obvious.
+ *
+ * So the box is drawn when nobody else is drawing one, and the background is
+ * filled when somebody is. The caller's layout does not move either way: it
+ * still starts at column 1, and that column is a margin inside the SSD instead
+ * of the border it used to be.
+ */
+/* ── the compositor's command socket ───────────────────────────────────── */
+
+/*
+ * One request, one reply, close — the whole of the protocol on
+ * `$XDG_RUNTIME_DIR/kdos-cmd.sock`.
+ *
+ * BOTH TIMEOUTS ARE SET, and that is not belt and braces: every caller here is
+ * a surface whose own draw loop is what waits for the answer. A compositor
+ * wedged badly enough not to reply is exactly the situation somebody opens the
+ * window list in, and a blocking read there hangs the one program that could
+ * still say what happened.
+ *
+ * Shared because there are three askers now — the window list, the taskbar's
+ * peek and the tooltip's thumbnail — and three copies of connect-write-read
+ * would be three answers to what a timeout is. `err` may be NULL for a caller
+ * that only cares whether it worked.
+ */
+int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn)
+{
+	const char *rt = getenv("XDG_RUNTIME_DIR");
+	struct sockaddr_un a = { 0 };
+	struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+	size_t len = strlen(req), sent = 0, got = 0;
+	int fd;
+
+#define SH_CMD_ERR(...)                                                       \
+	do {                                                                  \
+		if (err && errn)                                              \
+			snprintf(err, errn, __VA_ARGS__);                     \
+	} while (0)
+
+	if (!out || n < 2)
+		return -1;
+	out[0] = '\0';
+	if (!rt || !*rt) {
+		SH_CMD_ERR("no XDG_RUNTIME_DIR — there is no session to ask");
+		return -1;
+	}
+	a.sun_family = AF_UNIX;
+	if ((size_t)snprintf(a.sun_path, sizeof(a.sun_path),
+			     "%s/kdos-cmd.sock", rt) >= sizeof(a.sun_path)) {
+		SH_CMD_ERR("socket path too long");
+		return -1;
+	}
+
+	fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (fd < 0) {
+		SH_CMD_ERR("socket: %s", strerror(errno));
+		return -1;
+	}
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
+		SH_CMD_ERR("the compositor does not expose the command socket");
+		close(fd);
+		return -1;
+	}
+	while (sent < len) {
+		ssize_t w = write(fd, req + sent, len - sent);
+
+		if (w <= 0) {
+			SH_CMD_ERR("write: %s", strerror(errno));
+			close(fd);
+			return -1;
+		}
+		sent += (size_t)w;
+	}
+	/* One line: the reply ends at the newline the server appends, and
+	 * waiting for EOF instead would wait out the whole close. */
+	while (got < n - 1) {
+		ssize_t r = read(fd, out + got, n - 1 - got);
+
+		if (r <= 0)
+			break;
+		got += (size_t)r;
+		if (memchr(out, '\n', got))
+			break;
+	}
+	close(fd);
+	out[got] = '\0';
+	if (!got) {
+		SH_CMD_ERR("the socket answered nothing");
+		return -1;
+	}
+	return 0;
+#undef SH_CMD_ERR
+}
+
+void sh_frame(int w, int h, const char *title, int fg, int bg, int dbl)
+{
+	if (kwl_decorated()) {
+		ktui_draw_fill(krect(0, 0, w, h), bg);
+		return;
+	}
+	ktui_draw_box(krect(0, 0, w, h), title, fg, bg, dbl);
 }

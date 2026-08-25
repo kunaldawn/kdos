@@ -31,6 +31,7 @@
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/util/log.h>
 #include "common/box.h"
+#include "common/macros.h"
 #include "common/mem.h"
 
 static struct lab_data_buffer *data_buffer_from_buffer(
@@ -201,6 +202,63 @@ buffer_resize(struct lab_data_buffer *src_buffer, int width, int height,
 	cairo_scale(cairo, scene_scale, scene_scale);
 	cairo_set_source_surface(cairo, surface, 0, 0);
 	cairo_pattern_set_filter(cairo_get_source(cairo), CAIRO_FILTER_GOOD);
+	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
+	cairo_paint(cairo);
+
+	cairo_surface_flush(buffer->surface);
+	cairo_destroy(cairo);
+
+	return buffer;
+}
+
+/* KDOS */
+/*
+ * A ONE-BIT BITMAP IS BLOWN UP BY A WHOLE NUMBER, WITH NO SMOOTHING.
+ *
+ * `box_fit_within` never ENLARGES — its whole job is to shrink something too
+ * big for its container — so the titlebar glyphs were composited at their own
+ * eight pixels in the middle of a thirty-two pixel button and came out as a
+ * dash, a dot and a smudge that no theme setting could grow. And a fractional
+ * enlargement under a smoothing filter is the other half of the same problem:
+ * it makes each of them a soft grey blur, which is the one antialiased thing
+ * on a desktop that draws everything else as hard cells.
+ *
+ * So the factor is `min(w/src_w, h/src_h)` — a WHOLE number, or one stroke of
+ * an `X` gets two pixels and the next three — and the filter is NEAREST, which
+ * is what makes `_`, `[]` and `X` read as the same drawing set as the box round
+ * the window. A source too big for its container falls back to the shrinking
+ * path, which is the only case `buffer_resize` was written for.
+ *
+ * Only the XBM path asks for this. An application ICON is a photograph of
+ * somebody else's mark and keeps its own resampling.
+ */
+struct lab_data_buffer *
+buffer_resize_pixelated(struct lab_data_buffer *src_buffer, int width,
+		int height, double scale)
+{
+	assert(src_buffer);
+	cairo_surface_t *surface = src_buffer->surface;
+
+	int src_w = cairo_image_surface_get_width(surface);
+	int src_h = cairo_image_surface_get_height(surface);
+
+	if (src_w <= 0 || src_h <= 0) {
+		return buffer_resize(src_buffer, width, height, scale);
+	}
+	int f = MIN(width / src_w, height / src_h);
+	if (f < 1) {
+		return buffer_resize(src_buffer, width, height, scale);
+	}
+
+	struct lab_data_buffer *buffer =
+		buffer_create_cairo(width, height, scale);
+	cairo_t *cairo = cairo_create(buffer->surface);
+
+	cairo_translate(cairo, (width - src_w * f) / 2,
+		(height - src_h * f) / 2);
+	cairo_scale(cairo, f, f);
+	cairo_set_source_surface(cairo, surface, 0, 0);
+	cairo_pattern_set_filter(cairo_get_source(cairo), CAIRO_FILTER_NEAREST);
 	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
 	cairo_paint(cairo);
 

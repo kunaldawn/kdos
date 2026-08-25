@@ -541,7 +541,7 @@ struct pick_row {
 static struct pick_row rows[CL_MAX];
 static int nrows;
 /* The viewport follows the SELECTION only when the selection is what moved —
- * see sh_list_wheel. A clamp that followed unconditionally would undo a page
+ * see kch_list_wheel. A clamp that followed unconditionally would undo a page
  * scroll on the very next frame. */
 static int sel, top, sel_follow = 1;
 static char why[128];
@@ -622,7 +622,7 @@ static void draw_frame(void)
 		ktui_draw_text(2, 2, w - 4, "nothing has been copied yet",
 			       KT_DIM, KT_BG, KT_A_NONE);
 
-	sh_list_clamp(&top, sel, nrows, body, sel_follow);
+	kch_list_clamp(&top, sel, nrows, body, sel_follow);
 	sel_follow = 0;
 	if (top < 0)
 		top = 0;
@@ -642,11 +642,11 @@ static void draw_frame(void)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, 1, body, nrows, top, KT_BG);
+	kch_scrollbar(0, w - 1, 1, body, nrows, top, KT_BG);
 
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
 	ktui_draw_text(2, h - 2, w - 4,
@@ -689,6 +689,9 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 		return 1;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_BG);
 
 	while (!kwl_should_close()) {
 		sh_theme_poll();
@@ -706,19 +709,44 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 		if (ev.type == KT_EVT_MOUSE) {
 			int idx = top + ev.my - 1;
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar.
+				 * A drag is a press that is still down, and
+				 * Wayland says nothing about that, so the
+				 * grab is what remembers it. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (ev.my >= 1 && idx >= 0 && idx < nrows) {
 					sel = idx;
 					sel_follow = 1;
 				}
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx,
+							     ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
 				int body = ktui_h - 2 > 0 ? ktui_h - 2 : 1;
-				if (!sh_list_wheel(up, &top, nrows, body)) {
+				if (!kch_list_wheel(up, &top, nrows, body)) {
 					if (up ? sel > 0 : sel + 1 < nrows)
 						sel += up ? -1 : 1;
 					sel_follow = 1;

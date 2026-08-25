@@ -74,9 +74,13 @@ ssd_titlebar_create(struct ssd *ssd)
 			width - corner_width, -rc.theme->border_width);
 
 		/* Title */
+		/* KDOS: the PLAIN background behind the title. The titlebar's
+		 * own fill carries the frame rule, and a rule behind a word is
+		 * a word struck through — the title breaks it, exactly as
+		 * `╔══ Title ══╗` does on every other surface here. */
 		subtree->title = scaled_font_buffer_create_for_titlebar(
 			subtree->tree, theme->titlebar_height,
-			theme->window[active].titlebar_pattern);
+			theme->window[active].title_plain_pattern);
 		assert(subtree->title);
 		node_descriptor_create(&subtree->title->scene_buffer->node,
 			LAB_NODE_TITLE, view, /*data*/ NULL);
@@ -95,7 +99,7 @@ ssd_titlebar_create(struct ssd *ssd)
 			struct lab_img **imgs =
 				theme->window[active].button_imgs[type];
 			attach_ssd_button(&subtree->buttons_left, type, parent,
-				imgs, x, y, view);
+				imgs, x, y, view, active);
 			x += theme->window_button_width + theme->window_button_spacing;
 		}
 
@@ -106,7 +110,7 @@ ssd_titlebar_create(struct ssd *ssd)
 			struct lab_img **imgs =
 				theme->window[active].button_imgs[type];
 			attach_ssd_button(&subtree->buttons_right, type, parent,
-				imgs, x, y, view);
+				imgs, x, y, view, active);
 		}
 	}
 
@@ -346,6 +350,7 @@ ssd_titlebar_destroy(struct ssd *ssd)
 	}
 
 	kdos_group_ssd_clear(ssd->view); /* KDOS: the tab strip goes with it */
+	kdos_boxchip_ssd_clear(ssd->view); /* KDOS: and the box chip */
 	zfree(ssd->state.title.text);
 	wlr_scene_node_destroy(&ssd->titlebar.tree->node);
 	ssd->titlebar = (struct ssd_titlebar_scene){0};
@@ -427,6 +432,12 @@ get_title_offsets(struct ssd *ssd, int *offset_left, int *offset_right)
 			*offset_left += button_width + button_spacing;
 		}
 	}
+	/* KDOS: the box chip sits between the left buttons and the title, and
+	 * its width is added HERE because this is the one place both the
+	 * title's wrapping width and its position are computed from — a chip
+	 * placed at a coordinate of its own is correct until a title grows
+	 * long enough to run under it. */
+	*offset_left += kdos_boxchip_width(ssd->view);
 	wl_list_for_each(button, &subtree->buttons_right, link) {
 		if (button->node->enabled) {
 			*offset_right += button_width + button_spacing;
@@ -486,6 +497,9 @@ ssd_update_title(struct ssd *ssd)
 		xstrdup_replace(state->text, view->title);
 	}
 	ssd_update_title_positions(ssd, offset_left, offset_right);
+	/* KDOS: the chip, at the left edge of the room it just reserved. */
+	kdos_boxchip_ssd_update(ssd,
+		offset_left - kdos_boxchip_width(ssd->view));
 	kdos_group_ssd_update(ssd); /* KDOS: tabs over the title, when grouped */
 }
 

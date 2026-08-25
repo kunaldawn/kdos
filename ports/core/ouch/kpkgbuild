@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ouch
+version     = 0.8.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ouch-org/$name/archive/$version.tar.gz
+sha256      = 920f73d4b162bd1814b67c57906b7322345f198d763f28d04722a406f8352246  ouch-0.8.1.tar.gz
+sha256      = d06e1b409a32dbab51f67a65dbde9aa79234514146389184cbd107de0573b262  ouch-vendor-0.8.1.tar.xz
+description = Compress and decompress any archive format with one command
+homepage    = https://github.com/ouch-org/ouch
+depends     = rust
+vendoring   = rust

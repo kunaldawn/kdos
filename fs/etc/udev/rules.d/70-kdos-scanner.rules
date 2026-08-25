@@ -1,0 +1,14 @@
+# KDOS — flatbed and sheet-fed scanners, for SANE.
+#
+# Class 255 subclass 255 is the vendor-specific bucket most scanners sit in, so
+# this is deliberately narrower than "everything unclassified": the match also
+# requires the device to be one udev has already tagged as a scanner, or a
+# member of the small set of vendors that ship nothing else on that class.
+
+SUBSYSTEM=="usb", ENV{libsane_matched}=="yes", GROUP="dialout", MODE="0660"
+# Canon, Epson, HP, Brother, Fujitsu scanner vendor ids
+SUBSYSTEM=="usb", ATTR{idVendor}=="04a9", ENV{DEVTYPE}=="usb_device", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b8", ENV{DEVTYPE}=="usb_device", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ENV{DEVTYPE}=="usb_device", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ENV{DEVTYPE}=="usb_device", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04c5", ENV{DEVTYPE}=="usb_device", GROUP="dialout", MODE="0660"

@@ -12,6 +12,16 @@ A key id (16 hex characters, printed by kpkg) identifies a key. It is NOT a
 credential: a signature file names the id so a person can be told which key
 signed, and verification always uses the key from THIS directory.
 
-KDOS ships no key here. A distro that shipped its own trusted key in the image
-would be asking you to trust whoever built the image, which is exactly the
-question signing exists to let you answer for yourself.
+KDOS ships no key HERE, and that is deliberate: a distro that shipped its own
+trusted key for the host's packages would be asking you to trust whoever built
+the image, which is exactly the question signing exists to let you answer for
+yourself. Nothing signs KDOS packages today either — a port is built from
+source on this machine and its integrity comes from the `sha256 =` in the
+recipe, so there is no third party to attest to. This ring is for a binhost you
+choose to trust.
+
+`packs/` IS SHIPPED WITH A KEY, and it is a different question. It verifies the
+signed index beside the packs on the medium, and what it asserts is only that
+those packs came from the same bake. It is a subdirectory because a keyring is
+a flat read of `*.pub`: a key that vouches for a medium must not thereby vouch
+for a package repository.

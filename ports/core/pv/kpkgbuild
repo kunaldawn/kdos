@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pv
+version     = 1.7.24
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/a-j-wood/pv/archive/refs/tags/v$version.tar.gz
+sha256      = 70e5dc4915f1ef679b2090d3fc1d71dadb3c620443de8f97886236253102f9a7  pv-1.7.24.tar.gz
+description = Pipe viewer — progress, throughput and ETA for any stream
+homepage    = https://www.ivarch.com/programs/pv.shtml
+depends     = autoconf automake

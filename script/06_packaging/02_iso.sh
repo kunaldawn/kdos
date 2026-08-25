@@ -52,6 +52,30 @@ mksquashfs / $ISO_ROOT/system.sfs \
     -p "media d 755 0 0" \
     -noappend -comp xz
 
+# 2a. The packs, on ISO9660 BESIDE system.sfs rather than inside it.
+#
+# They are already compressed and squashing them again buys nothing, and on the
+# medium they are readable from /mnt/iso the moment the live image is up — so a
+# live stick carries every application while an installed system carries what
+# somebody chose. That is the same argument the sources below are placed by,
+# and it is what makes `kdos app install` on a live session a MOUNT rather than
+# a copy.
+#
+# The store excludes /var/lib/kdos/packs for the same reason: a pack that is on
+# the medium must not also be inside the squashfs, or every install pays for it
+# twice.
+if [ -d /kdos/ports/appbox/packs ] && \
+   ls /kdos/ports/appbox/packs/*.kpack >/dev/null 2>&1; then
+    echo "Packs onto the medium..."
+    mkdir -p $ISO_ROOT/packs
+    cp -a /kdos/ports/appbox/packs/*.kpack $ISO_ROOT/packs/
+    [ -f /kdos/ports/appbox/packs/PACKAGES ] && \
+        cp -a /kdos/ports/appbox/packs/PACKAGES* $ISO_ROOT/packs/
+    echo "Packs: $(ls $ISO_ROOT/packs/*.kpack | wc -l), $(du -sh $ISO_ROOT/packs | cut -f1)"
+else
+    echo "Packs: none baked — `make fetch-packs` builds them (needs a network)"
+fi
+
 # 2b. The sources, when asked for.
 #
 # N13: a booted stick that can rebuild its own ISO. The tree goes on the ISO9660

@@ -570,10 +570,28 @@ if [ "\$FOUND" == "1" ]; then
             mount --move /proc /newroot/proc
             mount --move /sys /newroot/sys
 
-            # Backing mounts (squashfs /mnt/system, overlay tmpfs /mnt/overlay, ISO
-            # /mnt/iso) stay in the old rootfs; switch_root leaves them alone (its
-            # wipe skips anything on another device) and the overlay keeps an
+            # Backing mounts (squashfs /mnt/system, overlay tmpfs /mnt/overlay)
+            # stay in the old rootfs; switch_root leaves them alone (its wipe
+            # skips anything on another device) and the overlay keeps an
             # internal kernel ref to the squashfs, so / stays valid.
+            #
+            # /mnt/iso is the EXCEPTION and has to be MOVED. Left behind it
+            # dies with the initramfs namespace, and everything the booted
+            # system reads off the boot medium becomes unreachable BY NAME
+            # while the bytes are still on the disk: \`kdos rebuild\` looks in
+            # /mnt/iso/sources, and would report a stick empty that is carrying
+            # the sources it was built with.
+            #
+            # Guarded on the mount existing: a boot that found system.sfs some
+            # other way must not fail here, and \`mount --move\` on a path that
+            # is not a mountpoint is an error rather than a no-op. The test is a
+            # shell builtin against the file this branch has already proven is
+            # there — nothing on the boot path should need a second binary to
+            # answer a question it already knows.
+            if [ -e /mnt/iso/system.sfs ]; then
+                mkdir -p /newroot/mnt/iso
+                mount --move /mnt/iso /newroot/mnt/iso
+            fi
 
             # Switch Root
             echo "Switching to new root..."

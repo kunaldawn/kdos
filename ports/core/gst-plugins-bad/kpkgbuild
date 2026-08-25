@@ -10,9 +10,9 @@
 
 name        = gst-plugins-bad
 version     = 1.28.0
-release     = 1
+release     = 2
 source      = https://gstreamer.freedesktop.org/src/$name/$name-$version.tar.xz
 sha256      = 32d825041e5775fc9bf9e8c38e3a5c46c1441eee67f8112572450a9c23c835f0  gst-plugins-bad-1.28.0.tar.xz
 description = GStreamer "bad" plugin set (less mature plugins; auto-detects deps)
 homepage    = https://gstreamer.freedesktop.org/
-depends     = gst-plugins-base
+depends     = gst-plugins-base x265 svt-av1 openjpeg libass

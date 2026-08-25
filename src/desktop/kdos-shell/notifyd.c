@@ -802,7 +802,7 @@ static void draw_body_line(const struct toast *t, int start, int len, int x,
 			rn = (int)sizeof(run) - 1;
 		memcpy(run, t->body + i, (size_t)rn);
 		run[rn] = '\0';
-		int fg = KT_DIM, bg = KT_SURFACE, attr = KT_A_NONE;
+		int fg = KT_DIM, bg = KT_BG, attr = KT_A_NONE;
 		if (st & ST_A)
 			fg = KT_ACCENT;
 		if (st & ST_U)
@@ -823,6 +823,9 @@ static void draw_toasts(void)
 		return;
 
 	ktui_draw_clear();
+	/* Last frame's plates go with it — the stack changes shape whenever a
+	 * toast arrives or expires. */
+	kch_px_reset();
 	memset(act_hit, 0, sizeof(act_hit));
 	int y = 0;
 	for (int i = 0; i < ntoasts && y + 3 <= h; i++) {
@@ -856,13 +859,31 @@ static void draw_toasts(void)
 		if (i == hover_toast && !t->urgent)
 			accent = KT_WARN;
 
-		ktui_draw_fill(r, KT_SURFACE);
+		/*
+		 * A CARD, NOT A SLAB — and the gaps between cards belong to the
+		 * desktop.
+		 *
+		 * The surface is the whole stack, so a body painted across it
+		 * would fill the space between two toasts as well and the
+		 * column would read as one tall box with rules in it. Each
+		 * toast records its own plate instead, in the same gradient
+		 * every popup on this desktop wears, and KT_BG — the slot the
+		 * backdrop owns — leaves everything else see-through.
+		 */
+		{
+			int cw = kwl_cell_w(), ch = kwl_cell_h();
+
+			kch_px_grad(r.x * cw + 1, r.y * ch + 1,
+				    r.w * cw - 2, r.h * ch - 2,
+				    KCH_PLATE_RADIUS, kch_tone(KCH_T_BODY_TOP),
+				    kch_tone(KCH_T_BODY_BOT),
+				    kch_popup_alpha());
+		}
 		/* The application's own name in the border, where a title goes.
 		 * It was captured and never drawn, and "which program is
 		 * telling me this" is half of what a toast has to say. */
-		ktui_draw_box(r, t->app[0] ? t->app : NULL, accent, KT_SURFACE,
-			      1);
-		ktui_draw_text(2, y + 1, w - 4, t->summary, KT_TEXT, KT_SURFACE,
+		ktui_draw_box(r, t->app[0] ? t->app : NULL, accent, KT_BG, 1);
+		ktui_draw_text(2, y + 1, w - 4, t->summary, KT_TEXT, KT_BG,
 			       KT_A_NONE);
 		int ry = y + 2;
 		if (t->body[0]) {
@@ -883,12 +904,12 @@ static void draw_toasts(void)
 				int lw = ktui_utf8_width(lab);
 				if (x + lw + 2 > w - 2)
 					break;
-				ktui_draw_text(x, ry, 1, "[", KT_DIM,
-					       KT_SURFACE, KT_A_NONE);
+				ktui_draw_text(x, ry, 1, "[", KT_DIM, KT_BG,
+					       KT_A_NONE);
 				ktui_draw_text(x + 1, ry, lw, lab, KT_SURFACE,
 					       accent, KT_A_NONE);
 				ktui_draw_text(x + 1 + lw, ry, 1, "]", KT_DIM,
-					       KT_SURFACE, KT_A_NONE);
+					       KT_BG, KT_A_NONE);
 				act_hit[i].x[a] = x;
 				act_hit[i].end[a] = x + lw + 2;
 				x = act_hit[i].end[a] + 1;
@@ -1021,6 +1042,9 @@ int notifyd_main(int argc, char **argv)
 		return 1;
 	}
 	ktui_draw_init();
+	/* No body of its own: the stack is separate cards with desktop between
+	 * them — see the plate in draw_toasts(). */
+	kch_px_bare(KT_BG);
 
 	int wl_fd = kwl_fd();
 	int bus_fd = sd_bus_get_fd(bus);

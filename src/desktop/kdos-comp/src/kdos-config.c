@@ -186,6 +186,18 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 		}
 	} else if (!strcmp(key, "panel_cells")) {
 		set_int(path, lineno, value, 1, 4, &c->panel_cells);
+	} else if (!strcmp(key, "panel_font")) {
+		snprintf(c->panel_font, sizeof(c->panel_font), "%s", value);
+	} else if (!strcmp(key, "panel_margin")) {
+		set_int(path, lineno, value, 0, 64, &c->panel_margin);
+	} else if (!strcmp(key, "panel_opacity")) {
+		/*
+		 * Floored at 20 rather than 0. A bar at zero is not a
+		 * see-through bar, it is a bar that is not there — every
+		 * control on it invisible with the pointer still hitting it,
+		 * and no way back except editing this file from a tty.
+		 */
+		set_int(path, lineno, value, 20, 100, &c->panel_opacity);
 	} else if (!strcmp(key, "icons")) {
 		set_bool(path, lineno, value, &c->icons);
 	} else if (!strcmp(key, "slit")) {
@@ -236,14 +248,20 @@ kdos_conf_load(void)
 	struct kdos_conf *c = &kdos_conf;
 
 	/*
-	 * Defaults. The CRT pass is ON at the pre-fork shipped strength —
-	 * it is the reason the boot splash, the TTY and the desktop look
-	 * like one machine. Curvature stays off: the one effect that
-	 * argues with a character grid. kdos_crt_init() still forces 0 on
-	 * a renderer that is not GLES2.
+	 * Defaults. The phosphor pass is ON — the bleed, the vignette and the
+	 * floor that keeps black from being quite black are what make the boot
+	 * splash, the TTY and the desktop look like one machine.
+	 *
+	 * SCANLINES ARE OFF. They are the one part of the effect that argues
+	 * with the thing underneath it: this desktop is a grid of 16x32 cells
+	 * and a dark line on every third PHYSICAL row lands across the glyphs
+	 * at a period nothing on the screen shares, so text that is drawn
+	 * two-colour and crisp arrives striped. `crt_scanlines = 60` in
+	 * comp.conf is the shipped strength for anyone who wants them back.
+	 * Curvature stays off for the same reason it always did.
 	 */
 	c->crt = 55;
-	c->crt_scanlines = 60;
+	c->crt_scanlines = 0;
 	c->crt_curve = 0;
 	c->crt_fullscreen = true;
 	c->idle_dim_s = 300;
@@ -261,6 +279,10 @@ kdos_conf_load(void)
 	c->panel_autohide = false;
 	c->window_memory = true;
 	c->chrome_font[0] = '\0';	/* libkwl's Terminus:pixelsize=32 */
+	/* A 10x20 cell: two rows is a 40px bar. */
+	snprintf(c->panel_font, sizeof(c->panel_font), "Terminus:pixelsize=20");
+	c->panel_margin = 0;		/* edge to edge */
+	c->panel_opacity = 80;
 	c->clock_format[0] = '\0';	/* the panel's own %H:%M */
 	snprintf(c->wallpaper, sizeof(c->wallpaper), "%s",
 		"/usr/share/backgrounds/kdos/default-wallpaper.png");
@@ -324,10 +346,12 @@ kdos_conf_reload(void)
 			|| old.slit != kdos_conf.slit
 			|| old.clipboard != kdos_conf.clipboard
 			|| old.desktop_icons != kdos_conf.desktop_icons
-			|| old.panel_autohide != kdos_conf.panel_autohide) {
+			|| old.panel_autohide != kdos_conf.panel_autohide
+			|| old.panel_margin != kdos_conf.panel_margin
+			|| old.panel_opacity != kdos_conf.panel_opacity) {
 		wlr_log(WLR_INFO, "comp.conf: panel/panel_cells/icons/slit/"
-			"desktop_icons/panel_autohide changed — applies at the "
-			"next login");
+			"desktop_icons/panel_autohide/panel_margin/"
+			"panel_opacity changed — applies at the next login");
 		kdos_conf.panel_edge = old.panel_edge;
 		kdos_conf.panel_cells = old.panel_cells;
 		kdos_conf.icons = old.icons;
@@ -335,6 +359,14 @@ kdos_conf_reload(void)
 		kdos_conf.clipboard = old.clipboard;
 		kdos_conf.desktop_icons = old.desktop_icons;
 		kdos_conf.panel_autohide = old.panel_autohide;
+		kdos_conf.panel_margin = old.panel_margin;
+		kdos_conf.panel_opacity = old.panel_opacity;
+	}
+	if (strcmp(old.panel_font, kdos_conf.panel_font)) {
+		wlr_log(WLR_INFO, "comp.conf: panel_font changed — applies "
+			"at the next login");
+		snprintf(kdos_conf.panel_font, sizeof(kdos_conf.panel_font),
+			"%s", old.panel_font);
 	}
 	if (strcmp(old.chrome_font, kdos_conf.chrome_font)) {
 		wlr_log(WLR_INFO, "comp.conf: chrome_font changed — applies "

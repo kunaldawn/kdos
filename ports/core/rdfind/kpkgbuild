@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rdfind
+version     = 1.8.0
+release     = 1
+source      = https://rdfind.pauldreik.se/$name-$version.tar.gz
+sha256      = 0a2d0d32002cc2dc0134ee7b649bcc811ecfb2f8d9f672aa476a851152e7af35  rdfind-1.8.0.tar.gz
+description = Find duplicate files and replace them with hardlinks or symlinks
+homepage    = https://rdfind.pauldreik.se/
+depends     = nettle
+bench_setup = mkdir -p bench.d && dd if=/dev/urandom of=bench.d/a bs=1M count=8 status=none && cp bench.d/a bench.d/b && cp bench.d/a bench.d/c
+bench       = rdfind -dryrun true -checksum sha256 bench.d > /dev/null

@@ -116,13 +116,42 @@ static void ensure_kpkg_bin(const char *repo_root, char *out, size_t cap)
 	snprintf(dir, sizeof(dir), "%s/ports/.portup-tools", repo_root);
 	kb_mkdir_p(dir);
 	snprintf(out, cap, "%s/kpkg", dir);
-	if (kb_path_exists(out))
-		return;
+	/* A CACHED BINARY IS ONLY A CACHE IF IT RUNS HERE. This directory is
+	 * inside the repo, and the same repo is built both on the host and
+	 * inside the musl build container — so the copy left behind may have
+	 * been linked against the other libc, where execve fails on the
+	 * missing interpreter and every recipe read comes back empty. Probing
+	 * it costs one fork and turns that into a rebuild. */
+	if (kb_path_exists(out)) {
+		KbArgv probe = {0};
+		kb_argv_add(&probe, out);
+		kb_argv_add(&probe, "meta");
+		kb_argv_add(&probe, repo_root);
+		kb_argv_end(&probe);
+		KbBuf sink = {0};
+		int rc = kb_run_capture_buf(&probe, &sink);
+		kb_buf_free(&sink);
+		if (rc != 127)
+			return;
+		unlink(out);
+	}
 
-	char kdir[1536], lbase[1536], lpkg[1536];
+	/*
+	 * kdos-kpkg links THREE libraries — libkbase, libkpkg and libksig —
+	 * because kdos-kpkg.h includes ksig.h. This command line is duplicated
+	 * in ports/fetch and testing/selftest.sh; all three must list the same
+	 * set, or the ones that do not fail to compile the recipe reader and
+	 * the tool exits before doing any work.
+	 *
+	 * monocypher is a separate add_c_files: it is vendored third-party
+	 * source in a subdirectory of libksig rather than beside it.
+	 */
+	char kdir[1536], lbase[1536], lpkg[1536], lsig[1536], lmono[1600];
 	snprintf(kdir, sizeof(kdir), "%s/src/packages/kdos-kpkg", repo_root);
 	snprintf(lbase, sizeof(lbase), "%s/src/libs/libkbase", repo_root);
 	snprintf(lpkg, sizeof(lpkg), "%s/src/libs/libkpkg", repo_root);
+	snprintf(lsig, sizeof(lsig), "%s/src/libs/libksig", repo_root);
+	snprintf(lmono, sizeof(lmono), "%s/src/libs/libksig/monocypher", repo_root);
 
 	fprintf(stderr, "==> Building the recipe reader...\n");
 
@@ -134,11 +163,14 @@ static void ensure_kpkg_bin(const char *repo_root, char *out, size_t cap)
 	kb_argv_addf(&a, "-I%s", kdir);
 	kb_argv_addf(&a, "-I%s", lbase);
 	kb_argv_addf(&a, "-I%s", lpkg);
+	kb_argv_addf(&a, "-I%s", lsig);
 	kb_argv_add(&a, "-o");
 	kb_argv_add(&a, out);
 	add_c_files(&a, kdir);
 	add_c_files(&a, lbase);
 	add_c_files(&a, lpkg);
+	add_c_files(&a, lsig);
+	add_c_files(&a, lmono);
 	kb_argv_end(&a);
 
 	if (kb_run_tty(&a) != 0)
@@ -611,6 +643,13 @@ static int accept_one(const char *repo_root, PortEntry *e, int no_fetch)
 			old_ver);
 		return -1;
 	}
+	/* The fetch has the new files on disk now, so this is where the
+	 * recipe's hashes stop naming the old ones. Same operation as the
+	 * version bump from the maintainer's point of view: the tree is never
+	 * left with an archive nothing verifies. */
+	if (!no_fetch && pu_rewrite_sha256(e->r.portdir, old_ver, cand) != 0)
+		kb_warn("%s: bumped and fetched, but the sha256 lines could not be rewritten — record them by hand",
+			e->r.name);
 	printf("  accepted %s -> %s\n", e->r.name, cand);
 	/* The fetch downloads the NEW tarball; nothing here ever deletes the
 	 * old one. Both are LFS-tracked and often tens of megabytes, so the
@@ -694,7 +733,11 @@ static int accept_group(const char *repo_root, PortEntry **m, int n, int no_fetc
  * spinning. */
 static int read_cmd(void)
 {
-	char buf[64];
+	/* Initialised because musl's fortified fgets is declared
+	 * access(read_write), which makes the compiler treat the buffer as an
+	 * input it may read: an uninitialised one is then a diagnostic on the
+	 * libc this distro actually ships. */
+	char buf[64] = { 0 };
 	if (!fgets(buf, sizeof(buf), stdin))
 		return 'q';
 	for (char *p = buf; *p; p++)
@@ -1187,12 +1230,64 @@ static void selftest_cache(void)
 	unlink(tmpl2);
 }
 
+/*
+ * The bump's second half. A version rewrite that does not move the hashes with
+ * it leaves the recipe naming tarballs that are no longer there, and the fetch
+ * then downloads the new ones with no verification at all.
+ */
+static void selftest_rehash(void)
+{
+	char dir[] = "/tmp/kdos-portup-rehash.XXXXXX";
+	if (!mkdtemp(dir))
+		return;
+	char path[600], f1[600], f2[600];
+
+	/* Two hashed sources, as a rust port has: the tarball and the vendor
+	 * bundle. Both carry the version in their names. */
+	snprintf(path, sizeof(path), "%s/kpkgbuild", dir);
+	kb_write_file(path,
+		      "name        = demo\n"
+		      "version     = 1.0\n"
+		      "sha256      = " "0000000000000000000000000000000000000000000000000000000000000000"
+		      "  demo-1.0.tar.gz\n"
+		      "sha256      = " "1111111111111111111111111111111111111111111111111111111111111111"
+		      "  demo-vendor-1.0.tar.xz\n"
+		      "description = a port\n");
+	snprintf(f1, sizeof(f1), "%s/demo-2.0.tar.gz", dir);
+	snprintf(f2, sizeof(f2), "%s/demo-vendor-2.0.tar.xz", dir);
+	kb_write_file(f1, "new tarball\n");
+	kb_write_file(f2, "new vendor\n");
+
+	st_ok(pu_rewrite_sha256(dir, "1.0", "2.0") == 0, "the rehash runs");
+
+	size_t n = 0;
+	char *out = kb_read_all(path, &n);
+	if (out) {
+		char want1[65], want2[65];
+		kb_sha256_file(f1, want1);
+		kb_sha256_file(f2, want2);
+		st_ok(strstr(out, "demo-2.0.tar.gz") != NULL,
+		      "the tarball's line names the new version");
+		st_ok(strstr(out, "demo-vendor-2.0.tar.xz") != NULL,
+		      "and so does the vendor bundle's — both move with a bump");
+		st_ok(strstr(out, want1) && strstr(out, want2),
+		      "each line carries the hash of the file that is now there");
+		st_ok(strstr(out, "0000000000000000") == NULL,
+		      "and no stale hash survives");
+		st_ok(strstr(out, "description = a port") != NULL,
+		      "every other line is untouched");
+		free(out);
+	}
+	unlink(path); unlink(f1); unlink(f2); rmdir(dir);
+}
+
 static int run_selftest(void)
 {
 	printf("kdos-portup --selftest\n");
 	selftest_columns();
 	selftest_grouping();
 	selftest_cache();
+	selftest_rehash();
 	printf("\n%d checks, %d failed\n", st_checks, st_failed);
 	return st_failed ? 1 : 0;
 }

@@ -36,6 +36,12 @@ int kwl_keysym_to_ktui(xkb_keysym_t sym, struct xkb_state *state,
 /* The shm buffer the cells are painted into. */
 typedef struct {
 	pixman_image_t *img;
+	/*
+	 * The same memory, offset past the top rule — what the cell grid is
+	 * painted into. Identical to `img` when there is no rule. See
+	 * buffer_alloc() for why a second image rather than an origin.
+	 */
+	pixman_image_t *grid;
 	void *data;
 	int w, h;		/* pixels */
 	size_t size;

@@ -1,0 +1,24 @@
++=  Resources  ================================================================+
+| Applications                                                                 |
+| 5 applications                                                               |
+|------------------------------------------------------------------------------|
+| A    |APPLICATION                 CPU%v  MEMORY    DISK                      |
+| P    |firefox-esr [box kdos-apps] 155.0  1.2G      12K+                      |
+| C    |foot                        3.0    40M       0B+                       |
+| M    |conmon                      1.0    2.0M      0B+                       |
+| G    |backup                      0.0    8.0M      450M                      |
+| D    |sshd                        0.0    6.0M      0B+                       |
+| N    |                                                                       |
+| B    |                                                                       |
+| E    |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |                                                                       |
+|      |15.0% CPU outside the rollup  .  memory is RSS and over-counts shared p|
++==============================================================================+

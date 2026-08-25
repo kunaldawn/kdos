@@ -56,6 +56,8 @@ e2fsprogs
 # The kernel mounts btrfs, xfs, f2fs, ntfs3 and exfat and could create none of
 # them until these landed. kinstall's filesystem menu depends on them.
 exfatprogs
+f2fs-tools
+ntfs-3g
 liburcu
 btrfs-progs
 xfsprogs
@@ -148,6 +150,10 @@ terminus-ttf
 # this, fontconfig has no fonts: foot fails ("failed to load primary fonts") and
 # the cell-grid shell has nothing to draw glyphs with.
 ttf-dejavu
+# One OpenType Collection covering Chinese, Japanese and Korean. Without a CJK
+# face, fontconfig has nothing to fall back to and every CJK codepoint renders
+# as a box — in foot, in an alien app, and in any filename that carries one.
+noto-cjk
 
 # ---------------------------------
 # Modern CLI tools (Rust / Go)
@@ -171,6 +177,54 @@ duf
 procs
 bottom
 ncdu
+# Shell history in a local SQLite database. Built --no-default-features
+# --features client: no sync, no update check, no daemon and no clipboard, so
+# the history of everything typed on this machine has no route off it.
+atuin
+ouch
+sd
+glow
+chezmoi
+entr
+
+# ---------------------------------
+# Archives, duplicates and recovery
+# ---------------------------------
+# lzip before ddrescue: GNU ships ddrescue as .tar.lz and nothing else, and
+# kpkg unpacks only the extensions it knows.
+lzip
+# ddrescue images a DYING disk sector by sector with a resumable mapfile;
+# partclone images a HEALTHY one by copying the blocks the filesystem says are
+# in use and skipping the rest. Both ship because they answer different
+# questions, and testdisk/photorec is what runs when the partition table is the
+# thing that is gone.
+ddrescue
+partclone
+testdisk
+pv
+# unzip has been a port since the beginning and zip had not, so this system
+# could open an archive it could not make.
+zip
+# rdfind is also what linux-firmware's `make dedup` wants, and parallel its
+# `-j`; both are skipped in that recipe without them.
+rdfind
+parallel
+# PAR2 recovery data: the difference between a bit-rotted archive and a lost
+# one, on a distro whose medium IS the software library.
+par2cmdline-turbo
+
+# ---------------------------------
+# The offline library: index it, search it, serve it
+# ---------------------------------
+# kiwix-serve puts a ZIM on localhost and every reader on the machine reaches
+# it over HTTP — including a boxed browser. On a distro whose medium IS the
+# software library, this is the half that makes the library readable.
+xapian-core
+pugixml
+libmicrohttpd
+libzim
+libkiwix
+kiwix-tools
 
 # ---------------------------------
 # Editors / TUI
@@ -202,6 +256,13 @@ wireguard-tools
 socat
 netcat
 mtr
+# dnsmasq is shipped and there was no way to ask this machine a DNS question;
+# drill comes with the library.
+ldns
+# The two remote filesystems a workstation actually mounts. cifs-utils pulls
+# talloc, which samba requires unconditionally.
+cifs-utils
+sshfs
 
 # ---------------------------------
 # Wayland base
@@ -263,12 +324,12 @@ aalib
 aview
 aa3d
 
-# Tracker-module playback for bb, ALSA only — on a bare TTY there is no
+# Tracker-module playback for kdos-bb, ALSA only — on a bare TTY there is no
 # pipewire, and kdos is already in the audio group.
 libmikmod
 
-# bb, the 1997 AAlib demo, upstream and unmodified.
-bb
+# The 1997 AAlib demo, hard-forked as ours: see src/packages/kdos-bb/KDOS-FORK.
+kdos-bb
 
 # ---------------------------------
 # Container Layer (Podman + distrobox)
@@ -300,6 +361,65 @@ xwayland
 # icon renders as the missing-texture checkerboard.
 hicolor-icon-theme
 
+# ---------------------------------
+# Firmware (regulatory database, Intel SOF audio)
+# ---------------------------------
+# Neither is part of linux-firmware; both are separate upstreams. The kernel
+# builds a driver for each — CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y and
+# CONFIG_SND_SOC_SOF=m — and requests these blobs by name at probe time.
+# Without them the failures are silent: a radio stuck in the world domain with
+# no 5 GHz, and a bound audio driver that makes no sound.
+wireless-regdb
+sof-firmware
+
+# ---------------------------------
+# Time zones
+# ---------------------------------
+# musl reads /usr/share/zoneinfo directly. The appbox installs debian's own
+# tzdata, so without this the host and the box disagree about local time on one
+# machine in one session; a POSIX TZ string alone stays correct only until a
+# DST rule changes.
+tzdata
+
+# ---------------------------------
+# Device access libraries (serial, HID, USB)
+# ---------------------------------
+# What the flashing, SDR and instrument tools link against. Listed here rather
+# than arriving through a `depends` because those consumers are not in the tree
+# yet, and a library built only once something needs it is not a prerequisite.
+# Reachability is the other half: fs/etc/group and fs/etc/udev/rules.d.
+libserialport
+libftdi1
+hidapi
+libzip
+eigen3
+
+# ---------------------------------
+# Colour management and codecs
+# ---------------------------------
+# ffmpeg, imagemagick, libsndfile and the gst plugin packages are all
+# configured against these and are only as capable as what is installed here:
+# each of those build systems answers a missing library by disabling the
+# feature rather than failing. One encoder per format — adding a second earns
+# nothing. See ports/core/ffmpeg/LICENSE.notice for what --enable-gpl does to
+# the shipped binary's licence.
+lcms2
+openjpeg
+openexr
+libogg
+libvorbis
+flac
+opus
+lame
+x264
+x265
+libvpx
+svt-av1
+libass
+libva
+libde265
+libheif
+
 # Boot splash. Lives in src/packages rather than ports/core because the source
 # is ours, not an upstream tarball. Draws the CRT power-on animation straight
 # to /dev/fb0 from the initramfs and keeps running until rcS hands the console
@@ -328,3 +448,10 @@ kdos-gtk-theme
 # Alien app runtime + appbox manager (src/packages, ours) — replaces the
 # shell kdos-appbox; the 91 launchers and kdos-desktop's warmup call it.
 kdos-appbox
+
+# pid 1 inside a pack box, in place of distrobox-init: it creates the user and
+# group matching the host's, sets the PATH that includes /usr/games, and prints
+# the `container_setup_done` marker box_wait_ready() polls for. Static, because
+# it is bind-mounted into a box whose /usr is Debian's and a musl-linked binary
+# would look for its loader there.
+kdos-boxinit

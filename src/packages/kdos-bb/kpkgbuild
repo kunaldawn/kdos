@@ -1,0 +1,16 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdos-bb
+version     = 1.3.0
+release     = 1
+description = The AAlib demo, hard-forked and rebranded, with a threaded mixer
+homepage    = https://github.com/kunaldawn/kdos
+depends     = aalib libmikmod ncurses

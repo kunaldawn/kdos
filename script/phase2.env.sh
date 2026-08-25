@@ -46,4 +46,22 @@ export LDFLAGS="$LDFLAGS -Wl,--build-id=sha1"
 export MAKEFLAGS="-j12"
 export TERM=dumb
 
+# ── strict recipe matching ────────────────────────────────────────────────
+#
+# kpkg's skip-if-installed compares the RECIPE, not merely the presence of a
+# database entry: a port whose kpkgbuild, build.sh, postinstall.sh or patches
+# have changed is rebuilt without having to be named on the command line.
+# Without it, an edited recipe on an incremental tree installs nothing and the
+# build reports success.
+#
+# The comparison is kp_recipe_hash(), the same SHA-256 the binhost's `E:` uses,
+# so there is one definition of "the recipe changed". A package with no
+# recorded hash reads as UNKNOWN and is left alone, so a tree that predates the
+# record is not rebuilt wholesale.
+#
+# Set for the build; an interactive `kpkg install` is unaffected. It does NOT
+# cover a file under fs/ that a port installs — that is not part of the recipe
+# hash, and `release = N` is still the lever for those.
+export KPKG_STRICT_RECIPE=1
+
 rm -rf /var/cache/kpkg/work

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libva
+version     = 2.22.0
+release     = 1
+source      = https://github.com/intel/libva/archive/refs/tags/$version.tar.gz
+sha256      = 467c418c2640a178c6baad5be2e00d569842123763b80507721ab87eb7af8735  libva-2.22.0.tar.gz
+description = VA-API — hardware video decode and encode
+homepage    = https://github.com/intel/libva
+depends     = meson ninja libdrm wayland libxkbcommon

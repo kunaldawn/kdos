@@ -143,24 +143,73 @@ done
 note "init.d services" "$daemons checked"
 
 echo
-echo "==> every archive a port ships is named by a sha256 in its recipe"
+echo "==> every source a port ships is named by a sha256 in its recipe"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
-# port that cannot build. The hashes were bootstrapped from the git-LFS
+# port that cannot build. The enumeration is the RECIPE's own source list
+# read through the same parser the build uses, NOT a glob of archive
+# extensions: that glob knew about six suffixes, so ca-certificates' .pem
+# and iana-etc's four plain files were invisible here and failed instead
+# two hours into phase 3. The hashes were bootstrapped from the git-LFS
 # pointers, where the oid IS the file's sha256.
 unhashed=0
 for d in ports/core/* src/packages/* src/desktop/*; do
     [ -f "$d/kpkgbuild" ] || continue
-    for a in "$d"/*.tar.gz "$d"/*.tar.xz "$d"/*.tar.bz2 "$d"/*.tar.zst \
-             "$d"/*.tgz "$d"/*.zip; do
-        [ -f "$a" ] || continue
-        base=$(basename "$a")
-        if ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
-            bad "$(basename "$d")" "ships $base with no sha256 line"
+    p=$(basename "$d")
+    unset name version source vendoring
+    eval "$("$SP/kpkg" meta "$d" 2>/dev/null)"
+    idx=0
+    for s in $source; do
+        # source_file() in build.c: a non-URL is its own name, a URL is its
+        # basename, and only the FIRST source is renamed to <name>-<version>
+        # when it carries an archive suffix.
+        case "$s" in
+            *://*) base=${s##*/} ;;
+            *)     base=$s ;;
+        esac
+        if [ "$idx" = 0 ]; then
+            case "$base" in
+                *.tar.gz|*.tgz)   base="$name-$version.tar.gz" ;;
+                *.tar.bz2|*.tbz2) base="$name-$version.tar.bz2" ;;
+                *.tar.xz|*.txz)   base="$name-$version.tar.xz" ;;
+                *.tar.zst)        base="$name-$version.tar.zst" ;;
+                *.zip)            base="$name-$version.zip" ;;
+            esac
+        fi
+        idx=$((idx + 1))
+        [ -f "$d/$base" ] || continue
+        # AN EMPTY ARCHIVE IS NOT AN ARCHIVE, and a hash does not catch it:
+        # sha256 of nothing is a stable digest, so a recipe written while the
+        # download was empty verifies clean everywhere and fails only when tar
+        # is handed the file, hours into a build.
+        if [ ! -s "$d/$base" ]; then
+            bad "$p" "ships $base as an empty file"
+            unhashed=$((unhashed + 1))
+        elif ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
+            bad "$p" "ships $base with no sha256 line"
             unhashed=$((unhashed + 1))
         fi
     done
+
+    # A VENDOR BUNDLE IS A SOURCE THIS PORT BUILDS FROM AND IS NOT IN `source`.
+    # `ports/fetch` generates it from `vendoring =`, build.sh untars it out of
+    # $PORT_SRC, and the loop above enumerates the recipe's own source list —
+    # so a bundle with no sha256 line beside it is invisible here and verified
+    # by nothing, anywhere.
+    if [ -n "${vendoring:-}" ]; then
+        vf="$name-vendor-$version.tar.xz"
+        if [ ! -f "$d/$vf" ]; then
+            bad "$p" "declares vendoring=$vendoring and ships no $vf"
+            unhashed=$((unhashed + 1))
+        elif [ ! -s "$d/$vf" ]; then
+            bad "$p" "ships $vf as an empty file"
+            unhashed=$((unhashed + 1))
+        elif ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$vf\$" "$d/kpkgbuild"; then
+            bad "$p" "ships $vf with no sha256 line"
+            unhashed=$((unhashed + 1))
+        fi
+    fi
 done
-[ "$unhashed" = 0 ] && note "every archive is hashed" "ok"
+[ "$unhashed" = 0 ] && note "every source is hashed and non-empty" "ok"
 
 # The escape hatch must be unused in a committed tree.
 if grep -rq "KDOS_ALLOW_UNVERIFIED" ports/core/*/kpkgbuild src/packages/*/kpkgbuild src/desktop/*/kpkgbuild 2>/dev/null; then
@@ -262,6 +311,18 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         grep -qE "^$k[[:blank:]]*=" "$d/kpkgbuild" || \
             bad "$(basename "$d")" "no '$k'"
     done
+    # A PACKAGE FILE IS <name>-<version>-<release>.tar.xz AND IS TAKEN APART
+    # FROM THE RIGHT, so a hyphen anywhere in the version makes the split
+    # ambiguous: the tail of the version is read as the version and its head
+    # joins the name. Nothing fails — the package installs under a database
+    # entry named for something that is not a port, which the orphan sweep
+    # then removes. Upstreams that version by date-time are where this comes
+    # up; a dot separates just as well.
+    unset name version
+    eval "$("$SP/kpkg" meta "$d" 2>/dev/null)"
+    case "$version" in
+        *-*) bad "$(basename "$d")" "version '$version' contains a hyphen" ;;
+    esac
 done
 note "recipe fields" "checked $(ls -d ports/core/*/ src/packages/*/ 2>/dev/null | wc -l) ports"
 
@@ -295,14 +356,27 @@ hits=$(grep -rln 'python3 .*genlaunchers\|python3 .*pack \|python3 .*assemble\|p
 
 echo
 echo "==> the rootfs carries no script whose interpreter is gone"
+# The question is whether the interpreter EXISTS on the target, not whether it
+# is a shell: a shipped file whose `#!` names something the tree does not build
+# is a file that cannot run. bash and toybox's sh are always there; anything
+# else has to be a binary some port installs, and is listed here with the port
+# that provides it so the list cannot drift into an unchecked allowlist.
+#
+#   /usr/sbin/nft   nftables   — fs/etc/nftables.conf carries nft's own `-f`
+#                                shebang; 25_nftables.sh runs it explicitly, so
+#                                the shebang documents the format rather than
+#                                being the execution path.
 for f in $(grep -rl '^#!' fs/ 2>/dev/null); do
     interp=$(head -1 "$f" | sed 's|^#!||; s| .*||')
     case "$interp" in
         /bin/bash|/bin/sh) ;;
+        /usr/sbin/nft)
+            [ -d ports/core/nftables ] \
+                || bad "$f" "interpreter $interp has no port" ;;
         *) bad "$f" "unexpected interpreter $interp" ;;
     esac
 done
-note "rootfs interpreters" "bash and sh only"
+note "rootfs interpreters" "every #! is provided by the tree"
 
 # ── the build tree still carries packages whose port is gone ───────────────
 #
@@ -479,7 +553,15 @@ for name, fn in tools.items():
             text.setdefault(name, "")
             text[name] += body
 
-for path in glob.glob(os.path.join(SRC, "*.c")):
+# kdos-res is a separate binary rather than a TOOLS[] name, and the panel and
+# the compositor's keybind both spawn it. Its whole source is the text a flag
+# has to appear in, for the same reason: an unknown option exits 2 before a
+# surface exists, and nothing upstream sees the failure.
+RES = "src/desktop/kdos-res"
+if os.path.isdir(RES):
+    text["kdos-res"] = "".join(open(f).read() for f in glob.glob(os.path.join(RES, "*.c")))
+
+for path in glob.glob(os.path.join(SRC, "*.c")) + glob.glob(os.path.join(RES, "*.c")):
     src = open(path).read()
     # const char *argv[] = { "kdos-foo", "--flag", ... };
     for m in re.finditer(r'argv\[\]\s*=\s*\{(.*?)\}\s*;', src, re.S):
@@ -501,6 +583,110 @@ if [ -s "$SP/badflags" ]; then
     bad "shell tool flags" "$(head -3 "$SP/badflags" | tr '\n' ';')"
 else
     note "shell tool flags" "every spawned flag is accepted"
+fi
+
+echo
+echo "==> every source file in one of OUR ports is compiled by its recipe"
+# A .c that no build.sh names and no glob picks up is a file that passes every
+# gate on this machine and fails to LINK in the build — testing/selftest.sh
+# globs these directories, so a whole page can be exercised by the harness and
+# be absent from the shipped binary. Only our own trees: an upstream tarball
+# is entitled to carry sources its own build system chooses between.
+: > "$SP/uncompiled"
+for d in src/desktop/*/ src/packages/*/; do
+    b="$d/build.sh"
+    [ -f "$b" ] || continue
+    # A recipe that globs *.c compiles whatever is there; nothing to check.
+    grep -q '\*\.c' "$b" && continue
+    for f in "$d"*.c; do
+        [ -e "$f" ] || continue
+        base=$(basename "$f")
+        grep -q "$base" "$b" || echo "$d$base" >> "$SP/uncompiled"
+    done
+done
+if [ -s "$SP/uncompiled" ]; then
+    bad "port sources" "$(head -3 "$SP/uncompiled" | tr '\n' ' ')not compiled by its build.sh"
+else
+    note "port sources" "every .c is named or globbed by its recipe"
+fi
+
+echo
+echo "==> every helper the Makefile runs is on disk, and none shadows its own output"
+# `make fetch-packs` ran `bash ports/appbox/packs`, and `ports/appbox/packs` is
+# ALSO the directory `01_packs.sh` and `02_iso.sh` read .kpack files out of. The
+# script's own `mkdir -p "$OUT"` therefore failed on its first line of work and
+# `set -e` ended the bake before a single row was built — invisible to every
+# other gate, because nothing here runs a bake.
+for _h in $(sed -n 's/^\t.*\bbash \([a-z][a-zA-Z0-9._/-]*\).*/\1/p' Makefile | sort -u); do
+    if [ ! -f "$_h" ]; then
+        bad "makefile helpers" "$_h is invoked by the Makefile and is not a file"
+    fi
+done
+[ -e ports/appbox/packs ] && [ ! -d ports/appbox/packs ] &&
+    bad "pack output" "ports/appbox/packs must be the .kpack directory, not a file"
+note "makefile helpers" "every 'bash <path>' resolves, and the pack output path is free"
+
+echo
+echo "==> the catalogue's rows against the tree"
+# W8-0 and W9-6. Two lints over apps.plan.md's Part II tables, and both exist
+# because the same rows were written twice: nine of that document's "ground
+# zero" prerequisites had already LANDED when the section was re-read, and
+# twelve of W8's modern-CLI rows were already ports. The check is one listing
+# and it is the difference between a wave and a re-litigation.
+#
+# NEITHER LINT FAILS THE BUILD. A catalogue is a specification, and an
+# outstanding row is not a defect — it is work. What it must not do is go
+# quiet, so the counts are printed either way and a row that ALREADY EXISTS is
+# named, because that is the one that must be struck rather than proposed.
+if [ -f apps.plan.md ]; then
+    python3 - <<'PYCAT' || true
+import os, re
+
+names = set()
+for d in ("ports/core", "src/packages", "src/desktop"):
+    if os.path.isdir(d):
+        names |= {n for n in os.listdir(d)
+                  if os.path.isfile(os.path.join(d, n, "kpkgbuild"))}
+boxed = set()
+if os.path.isfile("ports/appbox/packs.conf"):
+    for line in open("ports/appbox/packs.conf"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        boxed |= set(line.split()[3:])
+
+rows, have = set(), set()
+in_table = False
+for line in open("apps.plan.md"):
+    if line.startswith("| Name |"):
+        in_table = True
+        continue
+    if in_table and not line.startswith("|"):
+        in_table = False
+        continue
+    if not in_table or line.startswith("|---"):
+        continue
+    cells = [c.strip() for c in line.strip().strip("|").split("|")]
+    if len(cells) < 2:
+        continue
+    first = re.split(r"[(]", cells[0])[0]
+    for tok in re.split(r"\s*\+\s*|\s*/\s*", first):
+        tok = tok.strip().strip("`*_").lower()
+        if not tok or " " in tok or len(tok) < 2:
+            continue
+        rows.add(tok)
+        if tok in names or tok in boxed:
+            have.add(tok)
+
+print("  %-58s %d landed, %d outstanding"
+      % ("catalogue rows", len(have), len(rows) - len(have)))
+if have:
+    shown = sorted(have)
+    print("  %-58s %s" % ("already in the tree",
+                          ", ".join(shown[:8]) + (" …" if len(shown) > 8 else "")))
+PYCAT
+else
+    note "catalogue" "apps.plan.md is not here — nothing to lint"
 fi
 
 echo

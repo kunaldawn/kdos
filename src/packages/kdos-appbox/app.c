@@ -62,7 +62,14 @@ static char *user_bin_dir(void)
 }
 
 /* One "name\tcommand" line, in either table. */
-static int table_lookup(const char *path, const char *name, char *cmd, size_t n)
+/*
+ * `name<TAB>command` — and, since the pack lane, an optional third field
+ * naming the pack that provides it. Readers split at the SECOND tab and a
+ * two-field line still parses, because a table written by an older
+ * genlaunchers must not stop working the day the third field exists.
+ */
+static int table_lookup(const char *path, const char *name, char *cmd, size_t n,
+			char *pack, size_t pn)
 {
 	char *buf = kb_calloc(1, 1 << 18);
 	char *line, *save;
@@ -72,19 +79,27 @@ static int table_lookup(const char *path, const char *name, char *cmd, size_t n)
 		free(buf);
 		return 0;
 	}
+	if (pack && pn)
+		pack[0] = '\0';
 	for (line = strtok_r(buf, "\n", &save); line && !found;
 	     line = strtok_r(NULL, "\n", &save)) {
-		char *tab;
+		char *tab, *tab2;
 		if (*line == '#')
 			continue;
 		tab = strchr(line, '\t');
 		if (!tab)
 			continue;
 		*tab = '\0';
-		if (!strcmp(line, name)) {
-			snprintf(cmd, n, "%s", tab + 1);
-			found = 1;
+		if (strcmp(line, name))
+			continue;
+		tab2 = strchr(tab + 1, '\t');
+		if (tab2) {
+			*tab2 = '\0';
+			if (pack && pn)
+				snprintf(pack, pn, "%s", tab2 + 1);
 		}
+		snprintf(cmd, n, "%s", tab + 1);
+		found = 1;
 	}
 	free(buf);
 	return found;
@@ -92,11 +107,18 @@ static int table_lookup(const char *path, const char *name, char *cmd, size_t n)
 
 int app_lookup(const char *name, char *cmd, size_t n)
 {
+	return app_lookup_pack(name, cmd, n, NULL, 0);
+}
+
+/* The same lookup, also answering which pack provides it. User entries win, as
+ * they always have. */
+int app_lookup_pack(const char *name, char *cmd, size_t n, char *pack, size_t pn)
+{
 	char *ut = user_table();
-	int found = table_lookup(ut, name, cmd, n);
+	int found = table_lookup(ut, name, cmd, n, pack, pn);
 	free(ut);
 	if (!found)
-		found = table_lookup(APP_TABLE, name, cmd, n);
+		found = table_lookup(APP_TABLE, name, cmd, n, pack, pn);
 	return found;
 }
 
@@ -418,6 +440,11 @@ int app_table_load(App **out)
 			if (!tab)
 				continue;
 			*tab = '\0';
+			{
+				char *tab2 = strchr(tab + 1, '\t');
+				if (tab2)
+					*tab2 = '\0';
+			}
 			if (n == cap) {
 				cap = cap ? cap * 2 : 64;
 				apps = realloc(apps, (size_t)cap * sizeof(*apps));

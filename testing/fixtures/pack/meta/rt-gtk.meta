@@ -1,0 +1,9 @@
+id          = rt-gtk
+kind        = runtime
+name        = GTK runtime
+version     = 2.1
+release     = 1
+summary     = gtk3, gtk4 and libadwaita
+requires    = base
+provides    = toolkit
+licence     = LGPL-2.1-or-later

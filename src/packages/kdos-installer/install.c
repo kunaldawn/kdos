@@ -49,6 +49,7 @@ enum {
 	S_FORMAT,
 	S_MOUNT,
 	S_COPY,
+	S_PACKS,
 	S_CONFIG,
 	S_ACCOUNTS,
 	S_THEME,
@@ -66,6 +67,7 @@ static const struct {
 	{ "Format",      "encrypt if asked, then create the filesystems" },
 	{ "Mount",       "attach the target at /mnt" },
 	{ "Copy system", "the live tree, verbatim" },
+	{ "Packs",       "the applications chosen from the medium" },
 	{ "Configure",   "fstab, hostname, keymap, services" },
 	{ "Accounts",    "users, passwords, autologin" },
 	{ "Theme",       "regenerate the accent for the new home" },
@@ -82,6 +84,11 @@ static int step_skipped(int i)
 	if (i == S_PARTITION && cfg.plan != PLAN_WIPE)
 		return 1;
 	if (i == S_THEME && !strcmp(cfg.theme, "phosphor"))
+		return 1;
+	/* Nothing chosen, or a medium with no index on it — the step says
+	 * SKIPPED rather than running and copying nothing, because a step that
+	 * always succeeds having done nothing is a step nobody reads. */
+	if (i == S_PACKS && (!ki_packs_present || ki_packs_bytes() == 0))
 		return 1;
 	return 0;
 }
@@ -1011,6 +1018,60 @@ static void do_copy(void)
 	emit('P', "1");
 }
 
+/*
+ * The chosen packs, from the medium into the target's store.
+ *
+ * A COPY AND NOTHING ELSE. kdos-packd verifies a pack where it MOUNTS it, so
+ * an install that hashed and checked signatures here would be doing the work
+ * twice and would additionally have to carry libkpack into a program that
+ * links three libraries. What this must get right is that the store ends up
+ * owned by root and mode 0755, which is the whole of why the daemon does not
+ * re-hash what is in it.
+ *
+ * The base and the runtimes come across whatever was ticked — an application
+ * pack is a diff over a runtime and installing one without the other installs
+ * something that cannot start.
+ */
+static void do_packs(void)
+{
+	const char *dir = getenv("KDOS_PACK_MEDIUM");
+	unsigned long long total = ki_packs_bytes(), done = 0;
+	int n = 0;
+
+	if (!dir || !*dir)
+		dir = "/mnt/iso/packs";
+	emit('N', "copying %s of packs", kb_human_size(total));
+	mkpath("%s/var/lib/kdos/packs", TARGET);
+	mkpath("%s/var/lib/kdos/packs/staging", TARGET);
+	mkpath("%s/var/lib/kdos/packs/mnt", TARGET);
+
+	for (int i = 0; i < ki_npack; i++) {
+		char src[512], dst[640];
+
+		if (!ki_pack[i].chosen)
+			continue;
+		snprintf(src, sizeof(src), "%s/%s", dir, ki_pack[i].file);
+		snprintf(dst, sizeof(dst), "%s/var/lib/kdos/packs/%s", TARGET,
+			 ki_pack[i].file);
+		logf_("pack %s -> %s", ki_pack[i].id, dst);
+		if (!cfg.dry_run && kb_copy_file(src, dst) != 0)
+			fail("cannot copy %s", ki_pack[i].file);
+		done += ki_pack[i].size;
+		n++;
+		emit('P', "%.4f", total ? (double)done / (double)total : 1.0);
+	}
+	/*
+	 * The staging directory is the ONE place an unprivileged download may
+	 * land and the daemon sets its mode at startup — but a first boot that
+	 * inherited 0755 would refuse a `kdos app install` until the daemon had
+	 * run once, which reads as the feature not working.
+	 */
+	if (!cfg.dry_run)
+		chmod(TARGET "/var/lib/kdos/packs/staging", 01777);
+	emit('L', "%d pack(s) installed", n);
+	emit('P', "1");
+}
+
 static void do_config(void)
 {
 	char buf[65536];
@@ -1451,7 +1512,7 @@ int install_child_main(int fd, int from_step)
 
 	static void (*const fns[S_COUNT])(void) = {
 		do_prepare, do_partition, do_format, do_mount, do_copy,
-		do_config, do_accounts, do_theme, do_boot, do_finish,
+		do_packs, do_config, do_accounts, do_theme, do_boot, do_finish,
 	};
 
 	if (cfg.dry_run)

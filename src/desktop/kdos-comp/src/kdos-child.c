@@ -73,6 +73,8 @@
  */
 static bool kdos_want_panel = true;
 static char kdos_panel_cells_arg[16] = "2";
+static char kdos_panel_margin_arg[16] = "0";
+static char kdos_panel_opacity_arg[16] = "80";
 
 static const struct {
 	const char *cmd;
@@ -120,7 +122,14 @@ struct kdos_child {
 	/* cmd + --output N + --font N + --top/--bottom + --cells N +
 	 * --clock N + --autohide + --no-icons + NULL = 13 at the widest, and
 	 * an overrun here writes past the slot into the next child's. */
-	const char *argv[20];
+	/*
+	 * The worst case is the taskbar at 18: name, --output NAME,
+	 * --font NAME, --bottom, --cells N, --clock FMT, --autohide,
+	 * --margin N, --opacity N, --no-icons, and the NULL. Nothing here
+	 * bounds-checks `n`, so this has to stay ahead of that list by more
+	 * than the one argument somebody is about to add.
+	 */
+	const char *argv[28];
 	pid_t pid;
 	int fails;
 	time_t since;
@@ -170,9 +179,25 @@ child_build_argv(struct kdos_child *c)
 	 * every child, so pointing into it is safe — the same rule the output
 	 * name follows by living in the slot.
 	 */
-	if (kdos_conf.chrome_font[0]) {
-		c->argv[n++] = "--font";
-		c->argv[n++] = kdos_conf.chrome_font;
+	/*
+	 * The BAR has its own font and everything else has the chrome's.
+	 *
+	 * The panel's thickness is its font size — a cell is half as wide as
+	 * it is tall — so this is the knob that makes the taskbar 40 pixels
+	 * while the menus it opens stay at the console's own 32. The panel
+	 * does not forward --font to the popups it spawns, so setting it here
+	 * reaches the bar and nothing else.
+	 */
+	{
+		const char *font = kdos_conf.chrome_font;
+
+		if (!strcmp(TEMPLATES[c->tmpl].cmd, "kdos-shell")
+				&& kdos_conf.panel_font[0])
+			font = kdos_conf.panel_font;
+		if (font[0]) {
+			c->argv[n++] = "--font";
+			c->argv[n++] = font;
+		}
 	}
 	/* clock_format and panel_autohide are the panel's, not the desk's or
 	 * the notifyd's */
@@ -188,6 +213,10 @@ child_build_argv(struct kdos_child *c)
 		if (kdos_conf.panel_autohide) {
 			c->argv[n++] = "--autohide";
 		}
+		c->argv[n++] = "--margin";
+		c->argv[n++] = kdos_panel_margin_arg;
+		c->argv[n++] = "--opacity";
+		c->argv[n++] = kdos_panel_opacity_arg;
 	}
 	/*
 	 * `icons = no` reaches every surface that can draw one — and ONLY
@@ -387,6 +416,10 @@ kdos_children_start(void)
 	kdos_want_panel = kdos_conf.panel_edge != KDOS_PANEL_OFF;
 	snprintf(kdos_panel_cells_arg, sizeof(kdos_panel_cells_arg), "%d",
 		 kdos_conf.panel_cells > 0 ? kdos_conf.panel_cells : 2);
+	snprintf(kdos_panel_margin_arg, sizeof(kdos_panel_margin_arg), "%d",
+		 kdos_conf.panel_margin);
+	snprintf(kdos_panel_opacity_arg, sizeof(kdos_panel_opacity_arg), "%d",
+		 kdos_conf.panel_opacity > 0 ? kdos_conf.panel_opacity : 100);
 
 	for (int t = 0; t < NTEMPLATES; t++) {
 		if (TEMPLATES[t].want && !*TEMPLATES[t].want) {

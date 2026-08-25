@@ -1060,7 +1060,7 @@ static int au_buttons(struct au_ui *u, int w, int row)
 					 u->sel[AU_PANE_OUT] < au_ndev
 					 ? &au_dev[u->sel[AU_PANE_OUT]]
 					 : NULL;
-	struct sh_button b[AB_N];
+	struct kch_button b[AB_N];
 
 	b[AB_MUTE].label = d && d->muted ? "Unmute" : "Mute";
 	b[AB_MUTE].enabled = d != NULL && d->vol >= 0;
@@ -1072,7 +1072,7 @@ static int au_buttons(struct au_ui *u, int w, int row)
 	b[AB_PAIR].enabled = au_nbt > 0 && u->sel[AU_PANE_BT] < au_nbt;
 	b[AB_CLOSE].label = "Close";
 	b[AB_CLOSE].enabled = 1;
-	return sh_chrome_buttons(w, row, b, AB_N, -1);
+	return kch_buttons(w, row, b, AB_N, -1);
 }
 
 static void au_draw(struct au_ui *u)
@@ -1086,7 +1086,7 @@ static void au_draw(struct au_ui *u)
 	}
 
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
-	ktui_draw_box(krect(0, 0, w, h), "Sound", KT_ACCENT, KT_SURFACE, 1);
+	sh_frame(w, h, "Sound", KT_ACCENT, KT_SURFACE, 1);
 
 	/*
 	 * The header says what is playing out of what, and how loud. That was
@@ -1112,7 +1112,7 @@ static void au_draw(struct au_ui *u)
 	else
 		snprintf(sub, sizeof(sub), "%s",
 			 au_ndev ? "no default output" : "no sound card");
-	int body_y = sh_chrome_header(w, "audio-speakers", "Sound", sub,
+	int body_y = kch_header(w, "audio-speakers", "Sound", sub,
 				      au_icons_on);
 
 	int out_y = body_y + 1, out_rows = (h - body_y - 6) / 2;
@@ -1129,10 +1129,10 @@ static void au_draw(struct au_ui *u)
 	au_bt_y = bt_y;
 	au_bt_rows = bt_rows;
 
-	sh_chrome_group(2, body_y, w - 4, "Outputs");
+	kch_group(2, body_y, w - 4, "Outputs");
 	au_draw_outputs(u, out_y, out_rows, w);
 
-	sh_chrome_group(2, bt_hdr, w - 4, "Bluetooth");
+	kch_group(2, bt_hdr, w - 4, "Bluetooth");
 	if (au_adapter[0])
 		ktui_draw_text_right(0, bt_hdr, w - 2,
 				     au_bt_discovering ? "scanning"
@@ -1238,7 +1238,17 @@ int audio_main(int argc, char **argv)
 	 * net.c, which is where that split is written down. */
 	int popup = at_x >= 0;
 	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+		/*
+		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
+		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
+		 * move and no resize in the protocol at all, so every native
+		 * app on this desktop was a rectangle nailed to the screen
+		 * while every boxed one could be dragged and pulled about. A
+		 * toplevel also gets the compositor's own frame, which is the
+		 * other half of it: the decoration then MATCHES an alien app's
+		 * because it IS an alien app's.
+		 */
+		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
 		.cols = popup ? 56 : AU_COLS,
 		.rows = popup ? 18 : AU_ROWS,
 		/* Above the applet that opened it, or centred when nobody
@@ -1246,6 +1256,9 @@ int audio_main(int argc, char **argv)
 		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
+		/* The SSD shows this: a toplevel with no title gets an
+		 * empty titlebar, which is a frame that says nothing. */
+		.title = "Sound",
 		.app_id = "kdos-audio",
 		.font = font,
 		.keyboard = 1,
@@ -1266,6 +1279,9 @@ int audio_main(int argc, char **argv)
 	if (au_icons_on)
 		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	time_t last_bt = time(NULL), last_dev = last_bt;
 
@@ -1336,8 +1352,8 @@ int audio_main(int argc, char **argv)
 					u.sel[pane] = row;
 				}
 				/* The button bar lights under the pointer —
-				 * see sh_chrome_hover. */
-				sh_chrome_hover(ev.mx, ev.my);
+				 * see kch_hover. */
+				kch_hover(ev.mx, ev.my);
 				continue;
 			}
 			if (ev.press != KT_MP_PRESS)
@@ -1354,7 +1370,7 @@ int audio_main(int argc, char **argv)
 				break;
 			if (ev.btn != KT_MB_LEFT)
 				continue;
-			int bi = sh_chrome_button_at(ev.mx, ev.my);
+			int bi = kch_button_at(ev.mx, ev.my);
 			if (bi >= 0) {
 				switch (bi) {
 				case AB_MUTE:

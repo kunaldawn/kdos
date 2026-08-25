@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = atuin
+version     = 18.12.0
+release     = 1
+source      = https://github.com/atuinsh/$name/archive/v$version.tar.gz
+sha256      = d64f62d11cab68c1a27008550782873af54ad55833c637cd8542071071004983  atuin-18.12.0.tar.gz
+sha256      = 4319ec07ec85d22166d1c008175636c961270d09768fef5463aee63c61d156a0  atuin-vendor-18.12.0.tar.xz
+description = Shell history in a searchable SQLite database, local only
+homepage    = https://atuin.sh/
+depends     = rust
+vendoring   = rust

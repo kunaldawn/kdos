@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = openexr
+version     = 3.3.2
+release     = 1
+source      = https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v$version.tar.gz
+sha256      = 5013e964de7399bff1dd328cbf65d239a989a7be53255092fa10b85a8715744d  openexr-3.3.2.tar.gz
+description = High dynamic range image format — gives the already-ported imath a consumer
+homepage    = https://openexr.com/
+depends     = cmake imath zlib libdeflate

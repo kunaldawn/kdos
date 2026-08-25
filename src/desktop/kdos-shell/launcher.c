@@ -468,11 +468,11 @@ static void draw(const char *query, int sel, int top)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see sh_list_scrollbar. It matters more since the wheel started
+	 * see kch_scrollbar. It matters more since the wheel started
 	 * moving the PAGE rather than the cursor: without it the content
 	 * slides for no visible reason.
 	 */
-	sh_list_scrollbar(w - 1, 3, rows, nmatch, top, KT_SURFACE);
+	kch_scrollbar(0, w - 1, 3, rows, nmatch, top, KT_SURFACE);
 
 	ktui_draw_flush();
 }
@@ -530,13 +530,16 @@ int launcher_main(int argc, char **argv)
 		return 1;
 	}
 	ktui_draw_init();
+	/* The bar's own body, so a popup over the taskbar is the
+	 * same surface the taskbar is — see kch_px_popup(). */
+	kch_px_popup(KT_SURFACE);
 
 	gather();
 
 	char query[128] = {0};
 	int qlen = 0, sel = 0, top = 0;
 	/* The viewport follows the SELECTION only when the selection is what
-	 * moved — see sh_list_wheel. Without the flag the clamp below would
+	 * moved — see kch_list_wheel. Without the flag the clamp below would
 	 * undo a page scroll on the very next frame. */
 	int sel_follow = 1;
 	filter(query);
@@ -554,7 +557,7 @@ int launcher_main(int argc, char **argv)
 		int rows = ktui_h - 4;
 		if (rows < 1)
 			rows = 1;
-		sh_list_clamp(&top, sel, nmatch, rows, sel_follow);
+		kch_list_clamp(&top, sel, nmatch, rows, sel_follow);
 		sel_follow = 0;
 
 		draw(query, sel, top);
@@ -584,14 +587,39 @@ int launcher_main(int argc, char **argv)
 			int on_row = ev.my >= 3 && ev.my < ktui_h - 1 &&
 				     row >= 0 && row < nmatch;
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar.
+				 * A drag is a press that is still down, and
+				 * Wayland says nothing about that, so the
+				 * grab is what remembers it. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
 				if (on_row) {
 					sel = row;
 					sel_follow = 1;
 				}
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt = kch_scrollbar_press(0, ev.mx,
+							     ev.my);
+
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
@@ -599,7 +627,7 @@ int launcher_main(int argc, char **argv)
 				 * it does not — and the cursor stays put then,
 				 * so a hand that scrolls past what it wanted
 				 * can scroll back to it. */
-				if (!sh_list_wheel(up, &top, nmatch,
+				if (!kch_list_wheel(up, &top, nmatch,
 						   ktui_h - 4 > 0 ? ktui_h - 4
 								  : 1)) {
 					sel += up ? -1 : 1;

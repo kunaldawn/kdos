@@ -57,12 +57,23 @@
 #include <unistd.h>
 
 #include "kicon.h"
+#include "kcell.h"
 #include "kwl.h"
 #include "shell.h"
 
-#define ST_COLS 66
-#define ST_ROWS 22
-#define ST_LEFT_W 38
+/* 56, not 66. At the chrome cell that is 896 pixels — seventy per cent of a
+ * 1280 screen rather than eighty-two, which is a menu and not a takeover. */
+#define ST_COLS 56
+#define ST_ROWS 20
+/*
+ * THE TWO COLUMNS SHARE THE WIDTH, so narrowing the menu has to narrow this
+ * too. Left at 38 in a 56-column menu leaves the right column fifteen columns
+ * — three for the icon and twelve for the label — and `Notifications` and
+ * `Lock Screen` came out as `Notificat` and `Lock Scre`. At 32 the right
+ * column has eighteen columns of label, which is the longest entry it carries,
+ * and the left still fits `GNU Image Manipulation P`.
+ */
+#define ST_LEFT_W 32
 #define ST_MAX_ROWS 128
 
 /* What the left column is showing. */
@@ -83,7 +94,9 @@ struct row {
 	char label[64];
 	const char *icon;		/* an icon NAME, or NULL          */
 	const struct sh_app *app;	/* set for an application         */
-	const char *argv[6];		/* set for a fixed entry          */
+	/* NUL-terminated for sh_spawn, so the last slot is never filled: the
+	 * longest row here is `foot -e kdos app install <id>`, six words. */
+	const char *argv[8];		/* set for a fixed entry          */
 	int rule;			/* a separator, not a row         */
 	int submenu;			/* opens the categories, or a cat */
 	int back;			/* returns to the level above     */
@@ -116,6 +129,20 @@ static int icons_on = 1;
 /* Which footer button the pointer is on, or -1 — the same three-state rule the
  * shared button bar keeps: focus is one thing, hover is another. */
 static int hover_btn = -1;
+
+/* The power row — see build_power(). Declared here because the SEARCH walks
+ * it, and the search is built long before the footer is drawn. */
+static struct row power_row[8];
+static int npower;
+static int hover_power = -1;
+static int pow_x;		/* where the power row was DRAWN, for the hit test */
+/* Three cells each: a 32-pixel square in a 48-pixel box, the same odd width
+ * the panel's applet tiles use and for the same reason — an even one leaves
+ * the picture half a cell off centre. */
+#define POW_W 3
+/* A cell of air between them. The pictures do not need it — a sprite has its
+ * own bounds — but the no-artwork tags do: `LckSlpRstOutOff` is one word. */
+#define POW_STRIDE (POW_W + 1)
 /* Where the search field and its clear mark were drawn, and whether the field
  * is ACTIVE — clicked, or holding a query. A field that looks the same before
  * and after a click is one people click again. */
@@ -141,11 +168,27 @@ static struct row *push(struct row *v, int *n, const char *label)
 	return r;
 }
 
-static void rule(struct row *v, int *n)
+/*
+ * A separator, optionally CAPTIONED.
+ *
+ * The right column was fifteen ungrouped rows mixing three kinds of thing —
+ * places, settings and power. A caption on the rule that already sits between
+ * them groups the list for NO extra row, which matters here: the menu's body
+ * is exactly as tall as its content, so a heading drawn as its own row would
+ * push the last entry below the fold, and growing the menu to fit fights the
+ * whole point of shrinking it.
+ */
+static void rule_named(struct row *v, int *n, const char *caption)
 {
-	struct row *r = push(v, n, "");
+	struct row *r = push(v, n, caption ? caption : "");
+
 	if (r)
 		r->rule = 1;
+}
+
+static void rule(struct row *v, int *n)
+{
+	rule_named(v, n, NULL);
 }
 
 /*
@@ -289,6 +332,59 @@ static int fixed_match(const struct row *r, const char *q)
 	return r->keys && strcasestr(r->keys, q) != NULL;
 }
 
+/*
+ * THE PACKS ON THE MEDIUM, matched by name. `/mnt/iso/packs/PACKAGES` is the
+ * signed index the medium already carries and it is a flat file — read here
+ * rather than asked of kdos-packd, because this runs on every keystroke and a
+ * socket round trip per character is not something a menu does.
+ *
+ * The ids are held so a row's argv can point at one: a row's argv is `const
+ * char *` and a stack buffer would be gone by the time somebody clicked it.
+ */
+#define ST_MEDIUM_MAX 16
+static char medium_id[ST_MEDIUM_MAX][64];
+
+static const char *st_medium_id(int i)
+{
+	return (i >= 0 && i < ST_MEDIUM_MAX) ? medium_id[i] : "";
+}
+
+static int st_medium_match(const char *q, char out[][64], int max)
+{
+	char line[512];
+	FILE *f;
+	int n = 0;
+	char id[64] = "";
+
+	if (!q || !*q)
+		return 0;
+	f = fopen("/mnt/iso/packs/PACKAGES", "r");
+	if (!f)
+		return 0;
+	while (n < max && n < ST_MEDIUM_MAX && fgets(line, sizeof(line), f)) {
+		line[strcspn(line, "\r\n")] = 0;
+		if (!strncmp(line, "P:", 2)) {
+			snprintf(id, sizeof(id), "%s", line + 2);
+			continue;
+		}
+		/* Only an application is worth offering: a runtime is pulled
+		 * in by whatever needs it, and offering one is offering a
+		 * person a library. */
+		if (strcmp(line, "K:app") || !id[0])
+			continue;
+		if (!strcasestr(id, q)) {
+			id[0] = 0;
+			continue;
+		}
+		snprintf(medium_id[n], sizeof(medium_id[0]), "%s", id);
+		snprintf(out[n], 64, "%s", id);
+		n++;
+		id[0] = 0;
+	}
+	fclose(f);
+	return n;
+}
+
 static void build_left(void)
 {
 	nleft = 0;
@@ -319,17 +415,61 @@ static void build_left(void)
 		 * fixed row carries its own synonyms; see build_right.
 		 */
 		int extra = 0;
-		for (int i = 0; i < nright && nleft < ST_MAX_ROWS; i++) {
-			if (right[i].rule || !fixed_match(&right[i], query))
-				continue;
-			if (!extra++)
-				rule(left, &nleft);
-			struct row *r = push(left, &nleft, right[i].label);
-			if (!r)
-				break;
-			*r = right[i];
+		struct row *fixed[2] = { right, power_row };
+		int nfixed[2] = { nright, npower };
+
+		/* The power verbs are in the footer rather than the column, so
+		 * a search that walked only `right` would have taken Lock,
+		 * Suspend and Restart off the keyboard entirely. */
+		for (int t = 0; t < 2; t++)
+			for (int i = 0; i < nfixed[t] &&
+					nleft < ST_MAX_ROWS; i++) {
+				if (fixed[t][i].rule ||
+				    !fixed_match(&fixed[t][i], query))
+					continue;
+				if (!extra++)
+					rule(left, &nleft);
+				struct row *r = push(left, &nleft,
+						     fixed[t][i].label);
+				if (!r)
+					break;
+				*r = fixed[t][i];
+			}
+		/*
+		 * AND THE MEDIUM. A query with no installed match that DOES
+		 * match a pack on the stick gets a row that installs it. This
+		 * is the whole of what an app store would have been worth on a
+		 * distro whose medium IS the software library: the question is
+		 * never "where do I get this", it is "is it here", and the
+		 * answer is a row rather than a shopfront.
+		 *
+		 * The pack list is read from the medium's own index — a flat
+		 * file, no daemon round trip — because this runs while
+		 * somebody is typing.
+		 */
+		int offered = 0;
+		if (!n) {
+			char ids[16][64];
+			int m = st_medium_match(query, ids, 16);
+
+			for (int i = 0; i < m && nleft < ST_MAX_ROWS; i++) {
+				struct row *r;
+				if (!offered++)
+					rule_named(left, &nleft,
+						   "INSTALL FROM THE MEDIUM");
+				r = push(left, &nleft, ids[i]);
+				if (!r)
+					break;
+				r->icon = "package-x-generic";
+				r->argv[0] = "foot";
+				r->argv[1] = "-e";
+				r->argv[2] = "kdos";
+				r->argv[3] = "app";
+				r->argv[4] = "install";
+				r->argv[5] = st_medium_id(i);
+			}
 		}
-		if (!n && !extra)
+		if (!n && !extra && !offered)
 			push(left, &nleft, "no match");
 		return;
 	}
@@ -404,6 +544,24 @@ static void build_left(void)
 		r->submenu = -1;
 		r->icon = "folder";
 	}
+	/*
+	 * THE COLD-START COLUMN SAYS WHY IT IS EMPTY.
+	 *
+	 * Below the pins this column is the most-frequently-used list, and
+	 * that list is built from a usage count which does not exist yet on a
+	 * session a minute old. The result was four hundred pixels of nothing
+	 * under `All Programs`, which does not read as "no history yet", it
+	 * reads as a menu that failed to draw its lower half.
+	 *
+	 * One dim line, and it goes away the moment there is anything to put
+	 * there. A rule is not drawn above it for the same reason there is
+	 * none above the pins: it would be separating something from nothing.
+	 */
+	if (nf <= 0) {
+		r = push(left, &nleft, "No frequent apps yet");
+		if (r)
+			r->rule = 2;	/* a caption, not a control */
+	}
 }
 
 /*
@@ -419,6 +577,11 @@ static void build_right(void)
 	struct row *r;
 
 	nright = 0;
+	/* Three groups, not one long run mixing places, settings and power.
+	 * The first heading is not redundant: without it the column starts
+	 * with five rows and then acquires a caption, which reads as the
+	 * SECOND group being the only one that was labelled. */
+	rule_named(right, &nright, "PLACES");
 
 	if (home && *home) {
 		snprintf(docs, sizeof(docs), "%s/Documents", home);
@@ -467,7 +630,7 @@ static void build_right(void)
 		r->argv[2] = "mc";
 	}
 
-	rule(right, &nright);
+	rule_named(right, &nright, "SYSTEM");
 
 	/*
 	 * The names below are the ones the SHIPPED ATLAS carries, checked
@@ -514,6 +677,20 @@ static void build_right(void)
 		r->icon = "camera-web";
 		r->argv[0] = "kdos-devices";
 	}
+	r = push(right, &nright, "Boxes");
+	if (r) {
+		/*
+		 * The environments. Every fat application on this machine is
+		 * already in one, so a row that opens the page where they are
+		 * measured is the way in for a whole lane of the system — and
+		 * a lane with no line in a menu is a lane nothing can reach.
+		 */
+		r->keys = "box container environment distrobox pack apps";
+		r->icon = "package-x-generic";
+		r->argv[0] = "kdos-res";
+		r->argv[1] = "--page";
+		r->argv[2] = "boxes";
+	}
 	r = push(right, &nright, "Displays");
 	if (r) {
 		r->keys = "monitor screen resolution scale rotate";
@@ -532,35 +709,123 @@ static void build_right(void)
 		r->icon = "help";
 		r->argv[0] = "kdos-doc";
 	}
-	r = push(right, &nright, "Lock Screen");
+}
+
+/*
+ * ── the power row ───────────────────────────────────────────────────────
+ *
+ * ALL FIVE VERBS IN ONE PLACE, and out of the list.
+ *
+ * They were split: Log Off and Shut Down were footer buttons and Lock,
+ * Suspend and Restart were rows near the bottom of the right column — five
+ * things of one kind in two places, and the three rows were what made that
+ * column exactly full. Taking them out is what buys the third group heading
+ * and four rows of height; a menu that is shorter is the point of this shape.
+ *
+ * THREE CELLS EACH AND NO LABEL, which is a trade this file can only make
+ * because it already has somewhere to put the name: with nothing typed, the
+ * search field explains the SELECTION, and a pointer resting on a power icon
+ * is a selection. Hovering one turns the field into `Shut Down — turn this
+ * machine off`, so the icons are self-describing without a second surface and
+ * without a tooltip process.
+ *
+ * AND THEY ARE STILL REACHABLE FROM THE KEYBOARD, because a search walks this
+ * table beside the right column's: typing `sleep` or `reboot` finds them and
+ * Enter runs them. An icon row that could only be clicked would have taken
+ * three verbs off the keyboard to buy four rows.
+ */
+static void build_power(void)
+{
+	struct row *r;
+
+	npower = 0;
+	r = push(power_row, &npower, "Lock Screen");
 	if (r) {
-		r->keys = "lock away";
+		r->keys = "lock away screen";
 		r->icon = "system-lock-screen";
 		r->argv[0] = "kdos-lock";
 	}
-	/*
-	 * SUSPEND AND RESTART WERE IN NO MENU A POINTER COULD REACH. The
-	 * footer carries Log Off and Shut Down, and the other two verbs lived
-	 * only in the compositor's own System menu — a RIGHT click on the
-	 * Start button, which is not a gesture anybody guesses. Suspend asks
-	 * nothing, because it is the one power action that undoes itself;
-	 * Restart asks, because it does not.
-	 */
-	r = push(right, &nright, "Suspend");
+	/* Suspend asks nothing, because it is the one power action that undoes
+	 * itself. Everything below it asks, because none of them does. */
+	r = push(power_row, &npower, "Suspend");
 	if (r) {
-		r->keys = "sleep power";
-		r->icon = "system-suspend";
+		r->keys = "sleep power suspend";
+		/* A MOON, not Papirus's `system-suspend`, which is a circle
+		 * with a minus in it and reads as "blocked" rather than as
+		 * "asleep" — and sat two icons from `system-reboot`, which is
+		 * also a ring. The moon is what every phone made since 2015
+		 * uses, and it is the same name the notification applet
+		 * already borrows for Do Not Disturb. */
+		r->icon = "weather-clear-night";
 		r->argv[0] = "kdos-power";
 		r->argv[1] = "suspend";
 	}
-	r = push(right, &nright, "Restart");
+	r = push(power_row, &npower, "Restart");
 	if (r) {
-		r->keys = "reboot power";
+		r->keys = "reboot restart power";
 		r->icon = "system-reboot";
 		r->argv[0] = "kdos-power";
 		r->argv[1] = "reboot";
 		r->confirm = "Restart this machine?";
 	}
+	/*
+	 * SIGTERM to the compositor, not a kdos-power verb: kdos-powerd knows
+	 * suspend, poweroff and reboot and nothing about a session. `-x` is
+	 * load-bearing — `kdos-desk` was a substring of `kdos-desktop`, which
+	 * is exactly how a signal ends the wrong process.
+	 */
+	r = push(power_row, &npower, "Log Off");
+	if (r) {
+		r->keys = "logout log off session exit quit";
+		/* A DOOR, not `system-log-out`: Papirus draws that as a ring
+		 * with an arrow, which beside `system-reboot`'s ring with an
+		 * arrow is the same picture twice — measured on the booted
+		 * ISO, the third and fourth buttons were indistinguishable. */
+		r->icon = "application-exit";
+		r->argv[0] = "pkill";
+		r->argv[1] = "-TERM";
+		r->argv[2] = "-x";
+		r->argv[3] = "kdos-comp";
+		r->confirm = "Log out of this session?";
+	}
+	r = push(power_row, &npower, "Shut Down");
+	if (r) {
+		r->keys = "shutdown poweroff halt off power";
+		r->icon = "system-shutdown";
+		r->argv[0] = "kdos-power";
+		r->argv[1] = "poweroff";
+		r->confirm = "Shut down this machine?";
+	}
+}
+
+/*
+ * A THREE-LETTER TAG WHEN THERE IS NO ARTWORK, not the first letter.
+ *
+ * `icons = no`, a tty and a machine with no atlas all draw the fallback, and
+ * five verbs whose initials are L S R L S came out as two pairs a person
+ * cannot tell apart — on the row that shuts the machine down. Three cells is
+ * exactly three characters, which is enough to be unambiguous, and the field
+ * beside them still spells the whole name out on hover.
+ */
+static const char *power_tag(int i)
+{
+	static const char *const t[] = { "Lck", "Slp", "Rst", "Out", "Off" };
+
+	return i >= 0 && i < 5 ? t[i] : "?";
+}
+
+/* What the search field says while the pointer is on one of them. */
+static const char *power_blurb(int i)
+{
+	static const char *const b[] = {
+		"lock the session; the windows stay where they are",
+		"sleep now, and resume where you were",
+		"restart this machine",
+		"end this session and return to the login prompt",
+		"turn this machine off",
+	};
+
+	return i >= 0 && i < 5 ? b[i] : "";
 }
 
 /* ── drawing ───────────────────────────────────────────────────────────── */
@@ -578,6 +843,12 @@ static void build_right(void)
  */
 #define PIN_W 2
 
+/* Cut to `room` columns with an ellipsis — see below, beside the search field
+ * it was written for. A row's LABEL needs it just as much: `GNU Image
+ * Manipulation Program` came out as `GNU Image Manipula`, which is not the
+ * name of anything and reads as a rendering fault rather than as a cut. */
+static void fit_words(char *dst, size_t n, const char *src, int room);
+
 static int pin_col(int x, int w)
 {
 	return x + w - PIN_W - 1;
@@ -585,17 +856,54 @@ static int pin_col(int x, int w)
 
 static void draw_row(const struct row *r, int x, int y, int w, int selected)
 {
-	int fg = selected ? KT_SURFACE : KT_TEXT;
-	int bg = selected ? KT_ACCENT : KT_BG;
+	int fg = KT_TEXT;
+	int bg = KT_BG;
 
-	if (r->rule) {
-		ktui_draw_hline(x, y, w, KT_G_HL, KT_DIM, KT_BG);
+	if (r->rule == 2) {
+		/* A caption row: it explains, it is not a control and it never
+		 * takes the selection. */
+		ktui_draw_text(x + 3, y, w - 3, r->label, KT_MID, KT_BG,
+			       KT_A_NONE);
 		return;
 	}
-	/* FILL, then draw with the slots swapped — not KT_A_REVERSE over the
-	 * label, which inverts only the cells the text covers and turns a
-	 * two-word entry into two lit blocks. */
-	ktui_draw_fill(krect(x, y, w, 1), bg);
+	if (r->rule) {
+		/*
+		 * KT_MID, NOT KT_DIM. `dim` is a FILL at 1.63:1 against the
+		 * body, so the rules this menu's whole structure rests on were
+		 * the least visible thing in it.
+		 *
+		 * Still a GLYPH and not the pixel hairline the taskbar
+		 * separates with, and the difference is what each buys. The
+		 * bar's hairline reclaims a whole COLUMN on an eighty-column
+		 * strip; here the row is already the rule's and nothing is
+		 * saved, while `─` tiles into the same continuous line, draws
+		 * at every glyph tier and keeps the committed golden a picture
+		 * of the layout rather than of half of it.
+		 */
+		ktui_draw_hline(x, y, w, KT_G_HL, KT_MID, KT_BG);
+		if (r->label[0]) {
+			int lw = ktui_utf8_width(r->label);
+
+			/* Inset by two so the rule runs into the caption from
+			 * both sides rather than stopping dead at it. */
+			if (lw + 4 <= w)
+				ktui_draw_text(x + 2, y, lw, r->label, KT_MID,
+					       KT_BG, KT_A_NONE);
+		}
+		return;
+	}
+	/*
+	 * THE SELECTED ROW IS A PLATE AND AN ACCENT EDGE, not a slab of full
+	 * accent — the same change the taskbar's focused window got, from the
+	 * same tone table, so a selection means one thing on this desktop.
+	 *
+	 * A full-width 14:1 fill was the loudest object in the menu, louder
+	 * than the title and the pinned marks and the thing it was pointing
+	 * at. A raised plate with a two-pixel accent bar down its left edge
+	 * says the same thing and lets the row's own contents be read.
+	 */
+	if (selected)
+		kch_px_row(x, y, w, KCH_T_ACTIVE);
 
 	/*
 	 * THE LABEL STARTS IN THE SAME COLUMN WHETHER OR NOT THERE IS A
@@ -634,7 +942,12 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 		room = 1;
 		tagw = 0;	/* the NAME is what the row is for */
 	}
-	ktui_draw_text(tx, y, room, r->label, fg, bg, KT_A_NONE);
+	{
+		char shown[160];
+
+		fit_words(shown, sizeof(shown), r->label, room);
+		ktui_draw_text(tx, y, room, shown, fg, bg, KT_A_NONE);
+	}
 	if (tagw)
 		ktui_draw_text(pin_col(x, w) - tagw, y, tagw - 1, "[box]",
 			       selected ? fg : KT_DIM, bg, KT_A_NONE);
@@ -643,27 +956,30 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 			       KT_A_NONE);
 	else if (r->app && (r->pinned || selected)) {
 		int px = pin_col(x, w);
-		int pin = icons_on ? kicon_slot(r->pinned ? "starred"
-							  : "non-starred",
-						PIN_W, 1)
-				   : -1;
-		if (pin >= 0)
-			ktui_draw_sprite(krect(px, y, PIN_W, 1), pin,
-					 r->pinned ? (selected ? KT_SURFACE
-							       : KT_WARN)
-						   : fg,
-					 bg);
-		else
-			/* The console font has no star; a filled block against
-			 * a hollow one is the same two states in the vt tier. */
-			ktui_draw_text(px + 1, y, 1,
-				       ktui_glyph[r->pinned ? KT_G_FULL
-							    : KT_G_SHADE],
-				       r->pinned ? (selected ? KT_SURFACE
-							     : KT_WARN)
-						 : (selected ? KT_SURFACE
-							     : KT_DIM),
-				       bg, KT_A_NONE);
+
+		/*
+		 * THE PIN MARKER IS A GLYPH, NEVER THE ICON THEME'S STAR.
+		 *
+		 * Papirus's `starred` is a gold star and the atlas maps yellow
+		 * onto the palette's SECONDARY, so it came out entirely correct
+		 * and entirely wrong: saturated amber at 10.5:1, four of them
+		 * in a vertical run down a green menu, out-shouting the
+		 * application names they annotate. A pin is metadata.
+		 *
+		 * Recolouring the sprite is not on the table either — a sprite
+		 * carries its own pixels and the fg/bg handed to
+		 * ktui_draw_sprite reach only the fallback, which is why
+		 * changing that colour did nothing.
+		 *
+		 * ■ AND ·, NOT █. The full block is a whole cell, so four
+		 * pinned rows in a run merge into one unbroken column down the
+		 * edge of the menu and read as a scrollbar — which the menu
+		 * also has, two columns over. A mark has to have air around it
+		 * to be a mark.
+		 */
+		ktui_draw_text(px + 1, y, 1,
+			       ktui_glyph[r->pinned ? KT_G_SQUARE : KT_G_DOT],
+			       r->pinned ? KT_MID : KT_DIM, bg, KT_A_NONE);
 	}
 }
 
@@ -696,6 +1012,50 @@ static const char *title_text(void)
 	return buf;
 }
 
+/*
+ * Fit `src` into `room` columns, cutting at the last word boundary and marking
+ * the cut with an ellipsis.
+ *
+ * The boundary matters more than the ellipsis: a clip at the column drops the
+ * reader mid-word, which reads as a rendering fault rather than as text that
+ * carries on. Falls back to a hard cut when the first word is itself too long,
+ * because half a word is still better than nothing at all.
+ */
+static void fit_words(char *dst, size_t n, const char *src, int room)
+{
+	int w = 0, cut = -1, cutw = 0, i;
+
+	if (room < 2 || ktui_utf8_width(src) <= room) {
+		snprintf(dst, n, "%s", src);
+		return;
+	}
+	/*
+	 * `i` COUNTS BYTES AND `w` COUNTS COLUMNS, and the word boundary has
+	 * to be remembered in both. Comparing a byte index against a column
+	 * budget is the `%.14s` mistake in another shape: one em dash in the
+	 * string and the two run three apart, so the cut lands earlier than
+	 * the room allows and a line that would have fitted is truncated.
+	 */
+	for (i = 0; src[i]; i++) {
+		/* A continuation byte is part of the character before it and
+		 * occupies no column of its own. */
+		if (((unsigned char)src[i] & 0xC0) == 0x80)
+			continue;
+		if (w >= room - 1)
+			break;
+		if (src[i] == ' ') {
+			cut = i;
+			cutw = w;
+		}
+		w++;
+	}
+	if (cut > 0 && cutw > room / 2)
+		i = cut;
+	if ((size_t)i + 4 >= n)
+		i = (int)n - 4;
+	snprintf(dst, n, "%.*s\xe2\x80\xa6", i, src);
+}
+
 static void draw_frame(void)
 {
 	int w = ktui_w, h = ktui_h;
@@ -714,12 +1074,30 @@ static void draw_frame(void)
 	if (w < 24 || h < 6)
 		return;
 
+	/*
+	 * A SLOT THE BACKDROP OWNS STILL HAS TO BE FILLED.
+	 *
+	 * The alpha decides whether the PAINTER puts pixels down; the fill is
+	 * what resets the CELL's glyph, and dropping it because "KT_BG is
+	 * transparent now" left every cell this frame does not write to
+	 * holding what the last one put there. Measured: the search field
+	 * explains the selection, so its text changes on every pointer move —
+	 * a shorter line left the tail of the longer one behind it and the
+	 * field read `Suspend — sleep now, and……`, with two ellipses because
+	 * one of them was last frame's.
+	 *
+	 * ktui_draw_box draws a BORDER and nothing inside it, so this is the
+	 * only clear this surface gets.
+	 */
+	kch_px_reset();
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 	ktui_draw_box(krect(0, 0, w, h), title_text(), KT_ACCENT, KT_BG, 1);
 
-	/* The divider between the columns, and the one above the footer. */
-	ktui_draw_vline(lw, 1, body, KT_G_VL, KT_DIM, KT_BG);
-	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
+	/* The divider between the columns, and the one above the footer. Both
+	 * in KT_MID: `dim` is a fill at 1.63:1 against the body, and these two
+	 * lines are what the whole layout rests on. */
+	ktui_draw_vline(lw, 1, body, KT_G_VL, KT_MID, KT_BG);
+	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_MID, KT_BG);
 
 	/*
 	 * ── the left column ──
@@ -732,7 +1110,7 @@ static void draw_frame(void)
 	int follow = sel_follow;
 
 	sel_follow = 0;
-	sh_list_clamp(&top, sel, nleft, body, follow && !focus_right);
+	kch_list_clamp(&top, sel, nleft, body, follow && !focus_right);
 	/* The scrollbar takes a column OF ITS OWN rather than overdrawing the
 	 * rows' last one: a selected row is an accent fill, and a bar drawn on
 	 * top of it puts a notch in the highlight. */
@@ -747,7 +1125,7 @@ static void draw_frame(void)
 	/* The column that says there is more. It matters more here than
 	 * anywhere: the wheel moves the PAGE once a list is longer than the
 	 * window, so without it the content moves for no visible reason. */
-	sh_list_scrollbar(lw - 1, 1, body, nleft, top, KT_BG);
+	kch_scrollbar(0, lw - 1, 1, body, nleft, top, KT_BG);
 
 	/*
 	 * ── the right column ──
@@ -757,27 +1135,41 @@ static void draw_frame(void)
 	 * been silently invisible — and the wheel already moved a selection
 	 * that the draw could not follow. Same clamp, same bar, same rule.
 	 */
-	sh_list_clamp(&rtop, rsel, nright, body, follow && focus_right);
+	kch_list_clamp(&rtop, rsel, nright, body, follow && focus_right);
 	int rw = nright > body ? w - lw - 4 : w - lw - 3;
 	for (int i = 0; i < body && rtop + i < nright; i++)
 		draw_row(&right[rtop + i], lw + 2, 1 + i, rw,
 			 focus_right && rtop + i == rsel);
-	sh_list_scrollbar(w - 2, 1, body, nright, rtop, KT_BG);
+	kch_scrollbar(1, w - 2, 1, body, nright, rtop, KT_BG);
 
 	/*
-	 * ── the footer: a search FIELD, and the two ways out ──
+	 * ── the footer: a search FIELD and the five power verbs ──
 	 *
-	 * The buttons are the shared bar, so they hover, they drop from the
-	 * right when the menu is narrow, and they hand back the column the
-	 * field has to stop at — three behaviours this footer used to
-	 * reimplement badly. Most useful first: the bar drops Shut Down before
-	 * Log Off, and both are also rows in the right column now.
+	 * Right-aligned, three cells each, most-destructive LAST so that Shut
+	 * Down is the one against the frame and a hand that overshoots hits
+	 * the border rather than the machine's power. Their names are in the
+	 * field beside them — see build_power().
 	 */
-	struct sh_button fb[2] = {
-		{ "Log Off", 1 },
-		{ "Shut Down", 1 },
-	};
-	int bx = sh_chrome_buttons(w, h - 2, fb, 2, -1);
+	int bx = w - 2 - (npower * POW_STRIDE - 1);
+
+	pow_x = bx;
+	for (int i = 0; i < npower; i++) {
+		int px = bx + i * POW_STRIDE;
+		int slot = icons_on && power_row[i].icon
+				   ? kicon_slot(power_row[i].icon, POW_W, 1)
+				   : -1;
+
+		if (hover_power == i)
+			kch_px_plate(px, h - 2, POW_W, 1, KCH_T_HOVER, 1);
+		if (slot >= 0) {
+			ktui_draw_sprite(krect(px, h - 2, POW_W, 1), slot,
+					 KT_TEXT, KT_BG);
+			continue;
+		}
+		ktui_draw_text(px, h - 2, POW_W, power_tag(i),
+			       hover_power == i ? KT_TEXT : KT_MID, KT_BG,
+			       KT_A_NONE);
+	}
 
 	/*
 	 * A FIELD THAT LOOKS LIKE ONE, AND LOOKS DIFFERENT WHEN IT IS ACTIVE.
@@ -802,8 +1194,15 @@ static void draw_frame(void)
 	 * it is active, and the ACCENT saved for the caret and the magnifier,
 	 * which is where the eye goes anyway.
 	 */
+	/*
+	 * THE WELL IS A PLATE, not a cell fill. A KT_SURFACE fill is opaque —
+	 * a solid rectangle in the middle of a translucent menu — and it is a
+	 * square-cornered shape beside a row of rounded ones. Recorded like
+	 * every other plate here, with the cells left on the slot the backdrop
+	 * owns so it shows through.
+	 */
 	int lit = search_lit || query[0];
-	int fbg = lit || hover_btn == 2 ? KT_DIM : KT_SURFACE;
+	int fbg = KT_BG;
 	int ffg = query[0] ? KT_TEXT : KT_MID;
 	int fmark = lit ? KT_ACCENT : KT_MID;
 
@@ -814,7 +1213,10 @@ static void draw_frame(void)
 		int fw = search_end - search_x;
 		int tx = search_x;
 
-		ktui_draw_fill(krect(search_x, h - 2, fw, 1), fbg);
+		kch_px_plate(search_x, h - 2, fw, 1,
+			     lit ? KCH_T_ACTIVE
+				 : hover_btn == 2 ? KCH_T_HOVER : KCH_T_REST,
+			     1);
 		int mag = icons_on ? kicon_slot("edit-find", 2, 1) : -1;
 		if (mag >= 0) {
 			ktui_draw_sprite(krect(search_x, h - 2, 2, 1), mag,
@@ -845,10 +1247,7 @@ static void draw_frame(void)
 		if (room < 1)
 			room = 1;
 
-		/* Wide enough for a desktop entry's whole Comment: the draw
-		 * clips to the field, and a truncation here would be the one
-		 * the compiler warns about rather than the one that matters. */
-		char field[192];
+		char field[192], shown[192];
 		if (query[0]) {
 			snprintf(field, sizeof(field), "%s", query);
 		} else {
@@ -869,10 +1268,29 @@ static void draw_frame(void)
 			const char *why = cur && cur->app && cur->app->comment[0]
 						  ? cur->app->comment
 						  : NULL;
-			snprintf(field, sizeof(field), "%s",
-				 why ? why : "Type to search");
+			/*
+			 * A POWER ICON UNDER THE POINTER IS A SELECTION, and
+			 * this is what makes five unlabelled pictures
+			 * self-describing without a second surface. It wins
+			 * over the list's own comment because the pointer is
+			 * the more recent statement of what somebody is
+			 * looking at.
+			 */
+			if (hover_power >= 0 && hover_power < npower)
+				snprintf(field, sizeof(field), "%s — %s",
+					 power_row[hover_power].label,
+					 power_blurb(hover_power));
+			else
+				snprintf(field, sizeof(field), "%s",
+					 why ? why : "Type to search");
 		}
-		ktui_draw_text(tx, h - 2, room, field, ffg, fbg, KT_A_NONE);
+		/* CUT ON A WORD BOUNDARY. ktui_draw_text clips at the column,
+		 * which turned every comment that did not fit into a sentence
+		 * stopped mid-syllable — `A wayland native terminal emula`,
+		 * photographed. An ellipsis says the text continues; a severed
+		 * word says the program is broken. */
+		fit_words(shown, sizeof(shown), field, room);
+		ktui_draw_text(tx, h - 2, room, shown, ffg, fbg, KT_A_NONE);
 		/* The caret is its own draw so it can be the accent — a block,
 		 * the same one the launcher's query line uses, because a cell
 		 * grid has no hardware cursor to place and `_` is a character a
@@ -911,30 +1329,14 @@ static int confirm(const char *msg)
 }
 
 /*
- * Log Out is `pkill -TERM -x kdos-comp`, which looks blunt and is the
- * accurate description of what logging out means here: the compositor IS the
- * session, labwc handles SIGTERM through its own event loop and tears down in
- * order, and kdos-desktop returns to the tty. The `-x` is load-bearing —
- * `kdos-comp` is a prefix of nothing today and `kdos-desk` was a substring of
- * `kdos-desktop` yesterday, which is exactly how a signal ends the wrong
- * process.
+ * Log Out is `pkill -TERM -x kdos-comp`, which looks blunt and is the accurate
+ * description of what logging out means here: the compositor IS the session,
+ * labwc handles SIGTERM through its own event loop and tears down in order,
+ * and kdos-desktop returns to the tty. It is an ordinary power row's argv now
+ * — see build_power() — because every one of the five carries its own command
+ * and its own question, and two of them being special cases in the footer is
+ * what kept them out of the search.
  */
-static void log_out(void)
-{
-	const char *argv[] = { "pkill", "-TERM", "-x", "kdos-comp", NULL };
-
-	if (!confirm("Log out of this session?"))
-		return;
-	sh_spawn(argv);
-}
-
-static void power(const char *what, const char *question)
-{
-	if (!confirm(question))
-		return;
-	const char *argv[] = { "kdos-power", what, NULL };
-	sh_spawn(argv);
-}
 
 static int back(void);
 
@@ -1024,7 +1426,7 @@ static void step(int d)
 		return;
 	/* The CURSOR moved, so the viewport follows it. A wheel that scrolled
 	 * the viewport instead deliberately does not set this — see
-	 * sh_list_wheel and draw_frame. */
+	 * kch_list_wheel and draw_frame. */
 	sel_follow = 1;
 	for (int i = 0; i < n; i++) {
 		*s += d;
@@ -1060,7 +1462,7 @@ static void typeahead(int ch)
 int start_main(int argc, char **argv)
 {
 	const char *font = NULL;
-	int at_x = -1, at_y = 0, dump = 0;
+	int at_x = -1, at_y = 0, dump = 0, dump_cells = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
@@ -1071,6 +1473,8 @@ int start_main(int argc, char **argv)
 			font = argv[++i];
 		} else if (!strcmp(argv[i], "--no-icons")) {
 			icons_on = 0;
+		} else if (!strcmp(argv[i], "--dump-cells")) {
+			dump = dump_cells = 1;
 		} else if (!strcmp(argv[i], "--dump")) {
 			dump = 1;
 		} else {
@@ -1084,12 +1488,25 @@ int start_main(int argc, char **argv)
 	/* The fixed rows first: a search reads them, and the one at startup
 	 * would otherwise run against an empty right column. */
 	build_right();
+	build_power();
 	build_left();
 
 	if (dump) {
 		sh_theme_from_cache();
 		dumping = 1;
 		icons_on = 0;
+		/*
+		 * `--dump-cells` prints the COLOURS as well, which is what a
+		 * text dump cannot: the selection here went from a slab of
+		 * accent to a plate this arc, and the character grid is
+		 * byte-identical across that change.
+		 */
+		if (dump_cells) {
+			ktui_backend_set(sh_cells_backend(ST_COLS, ST_ROWS));
+			ktui_draw_init();
+			draw_frame();
+			return 0;
+		}
 		ktui_offscreen_init(ST_COLS, ST_ROWS);
 		draw_frame();
 		ktui_draw_dump();
@@ -1122,6 +1539,14 @@ int start_main(int argc, char **argv)
 	}
 	if (icons_on)
 		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+	/*
+	 * The Start menu wears the SAME body as the taskbar it opens from —
+	 * they are on screen together, touching, and two surfaces of one
+	 * desktop painted from two different palettes is exactly the "somebody
+	 * else's program" read this arc exists to remove. One call, shared
+	 * with every other popup the bar opens.
+	 */
+	kch_px_popup(KT_BG);
 	ktui_draw_init();
 
 	while (!kwl_should_close()) {
@@ -1148,6 +1573,17 @@ int start_main(int argc, char **argv)
 			int idx = ev.my - 1;
 
 			if (ev.press == KT_MP_DRAG) {
+				/* THE BAR IS A CONTROL — see kch_scrollbar. */
+				int bt = kch_scrollbar_drag(ev.my);
+
+				if (bt >= 0) {
+					if (kch_scrollbar_grabbed() == 0)
+						top = bt;
+					else
+						rtop = bt;
+					sel_follow = 0;
+					continue;
+				}
 				/*
 				 * A MOTION IS A REAL MOVE. libkwl reports one
 				 * only when the pointer changed cell, which is
@@ -1158,11 +1594,25 @@ int start_main(int argc, char **argv)
 				 */
 				/* The buttons light through the shared bar; the
 				 * field is this file's own. */
-				sh_chrome_hover(ev.mx, ev.my);
+				kch_hover(ev.mx, ev.my);
 				hover_btn = ev.my == ktui_h - 2 &&
 						    in_span(ev.mx, search_x, search_end)
 					    ? 2
 					    : -1;
+				hover_power = -1;
+				if (ev.my == ktui_h - 2 && npower > 0 &&
+				    ev.mx >= pow_x &&
+				    ev.mx < pow_x + npower * POW_STRIDE) {
+					int k = (ev.mx - pow_x) / POW_STRIDE;
+
+					/* The gap column belongs to neither
+					 * button: a click there must do
+					 * nothing rather than the thing on
+					 * its left. */
+					if ((ev.mx - pow_x) % POW_STRIDE
+							< POW_W && k < npower)
+						hover_power = k;
+				}
 				if (ev.my >= 1 && ev.my - 1 < body) {
 					if (on_left && top + idx < nleft &&
 					    !left[top + idx].rule) {
@@ -1178,8 +1628,28 @@ int start_main(int argc, char **argv)
 				}
 				continue;
 			}
+			if (ev.press == KT_MP_RELEASE) {
+				kch_scrollbar_release();
+				continue;
+			}
 			if (ev.press != KT_MP_PRESS)
 				continue;
+			if (ev.btn == KT_MB_LEFT) {
+				int bt;
+
+				bt = kch_scrollbar_press(0, ev.mx, ev.my);
+				if (bt >= 0) {
+					top = bt;
+					sel_follow = 0;
+					continue;
+				}
+				bt = kch_scrollbar_press(1, ev.mx, ev.my);
+				if (bt >= 0) {
+					rtop = bt;
+					sel_follow = 0;
+					continue;
+				}
+			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
 				int up = ev.btn == KT_MB_WHEEL_UP;
@@ -1192,7 +1662,7 @@ int start_main(int argc, char **argv)
 				 * right one is a fixed list of places.
 				 */
 				focus_right = !on_left && ev.mx > lw;
-				if (!sh_list_wheel(up,
+				if (!kch_list_wheel(up,
 						   focus_right ? &rtop : &top,
 						   focus_right ? nright : nleft,
 						   body))
@@ -1209,16 +1679,11 @@ int start_main(int argc, char **argv)
 			/* The footer: the shared bar's own hit map, then the
 			 * field. */
 			if (ev.my == ktui_h - 2) {
-				int fb = sh_chrome_button_at(ev.mx, ev.my);
-
-				if (fb == 0) {
-					log_out();
-					break;
-				}
-				if (fb == 1) {
-					power("poweroff",
-					      "Shut down this machine?");
-					break;
+				if (hover_power >= 0 &&
+				    hover_power < npower) {
+					if (activate(&power_row[hover_power]))
+						break;
+					continue;
 				}
 				/* `x` empties it — the pointer's backspace.
 				 * Anywhere else in the field makes it ACTIVE,
