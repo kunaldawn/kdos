@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = nco
+version     = 5.3.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/nco/nco/archive/refs/tags/$version.tar.gz
+sha256      = f23b0b95525473d305ab15b96266d1458e3dfa193b9ee701af826913602d473d  nco-5.3.8.tar.gz
+description = Subset, regrid and do arithmetic on gridded data without loading it
+homepage    = https://nco.sourceforge.net/
+depends     = netcdf-c hdf5 zlib gsl udunits expat autoconf automake libtool

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = coolprop
+version     = 6.8.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/CoolProp/coolprop-$version.tar.gz
+sha256      = 927f982c7160311d8653520004f80c4166addcb978348c9d5999d1f115df6961  coolprop-6.8.0.tar.gz
+description = Thermophysical properties for 122 fluids, IAPWS-95 water/steam and humid air
+homepage    = http://www.coolprop.org/
+depends     = python3 python3-setuptools python3-pip python3-cython numpy cmake

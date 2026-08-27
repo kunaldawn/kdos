@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = prosody
+version     = 13.0.6
+release     = 1
+_lv         = 5.4
+source      = https://prosody.im/downloads/source/$name-$version.tar.gz
+sha256      = ec696f9cf562c3af4a04b07d3fb36a1cedcc4e69a392fddcfc524bc67d93050f  prosody-13.0.6.tar.gz
+description = An XMPP server small enough to run on the machine in front of you
+homepage    = https://prosody.im/
+depends     = lua54 lua54-luasocket lua54-luasec lua54-luaexpat lua54-luafilesystem openssl libidn

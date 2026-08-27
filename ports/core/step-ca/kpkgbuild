@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = step-ca
+version     = 0.30.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/smallstep/certificates/archive/refs/tags/v$version.tar.gz
+sha256      = 327391f301b79818f2418302516b4f6b41bdf08e38edc9011cc7f1b351e19452  step-ca-0.30.2.tar.gz
+sha256      = c1049df49ee6ec3bd9c8c060b49c5a470451a845caf2eda9ba9bd516737d4747  step-ca-vendor-0.30.2.tar.xz
+description = A private CA with ACME, so internal TLS works with no internet
+homepage    = https://smallstep.com/docs/step-ca/
+depends     = go
+vendoring   = go

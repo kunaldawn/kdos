@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = samtools
+version     = 1.24
+release     = 1
+source      = https://github.com/samtools/samtools/releases/download/$version/$name-$version.tar.bz2
+sha256      = 89b2a440123eeaa400392ce1736e7d60ce9041843027d76819753c5a8246bfdd  samtools-1.24.tar.bz2
+description = Sort, index and view alignments
+homepage    = https://www.htslib.org/
+depends     = pkgconf htslib ncurses zlib

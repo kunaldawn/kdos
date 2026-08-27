@@ -1,5 +1,13 @@
 #!/bin/bash
-
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
 
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
@@ -12,8 +20,12 @@ install -Dm644 completion/bash_tealdeer $PKG/usr/share/bash-completion/completio
 # first use: on this machine that is a tool whose whole value — an example when
 # you are trying to recover data and cannot remember tar's flags — appears only
 # when there is a network, which is the case it was chosen FOR.
+#
+# kpkg ALREADY EXTRACTED IT. An extra `source =` that is an archive is unpacked
+# into $SRC_ROOT unstripped — only a NON-archive source stays a file, and then
+# in $PORT_SRC rather than here. Untarring it again looks for a .tar.gz that
+# was never copied and fails after the whole rust build has succeeded.
 install -dm755 $PKG/usr/share/tldr
-tar xf $SRC_ROOT/tldr-pages-2.3.tar.gz -C $SRC_ROOT
 cp -a $SRC_ROOT/tldr-2.3/pages $PKG/usr/share/tldr/pages
 
 install -Dm644 /dev/stdin $PKG/etc/skel/.config/tealdeer/config.toml <<'TOML'

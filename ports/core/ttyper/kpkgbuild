@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ttyper
+version     = 1.6.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/max-niederman/ttyper/archive/refs/tags/v$version.tar.gz
+sha256      = f7e4ff2f803483b17f35aa0c02977326a0546a95f5b465b4dd34ff17e45b4021  ttyper-1.6.0.tar.gz
+sha256      = 9204250e1852c4b0a675696be3d2040ed8b683d5c94294635c88be3640cbf945  ttyper-vendor-1.6.0.tar.xz
+description = Touch typing practice on the grid, with real texts and per-key stats
+homepage    = https://github.com/max-niederman/ttyper
+depends     = rust
+vendoring   = rust

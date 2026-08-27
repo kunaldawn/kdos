@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gocryptfs
+version     = 2.6.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/rfjakob/gocryptfs/archive/refs/tags/v$version.tar.gz
+sha256      = 8b293c77703e9a45b629a47ce16aad701a9f2f53af5a8fb6200abe274f08051c  gocryptfs-2.6.1.tar.gz
+sha256      = b2daff09bb55aef307a29496f79d6a77bcb149b908a7e733465c498d61c069b4  gocryptfs-vendor-2.6.1.tar.xz
+description = An encrypted directory that syncs as ordinary files
+homepage    = https://nuetzlich.net/gocryptfs/
+depends     = go fuse3 openssl
+vendoring   = go

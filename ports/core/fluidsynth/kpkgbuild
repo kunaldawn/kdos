@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fluidsynth
+version     = 2.6.0
+release     = 1
+_gcem       = 012ae73c6d0a2cb09ffe86475f5c6fba3926e200
+source      = $name-$version.tar.gz::https://github.com/FluidSynth/fluidsynth/archive/refs/tags/v$version.tar.gz
+source      = gcem-$_gcem.tar.gz::https://github.com/kthohr/gcem/archive/$_gcem.tar.gz
+sha256      = 6d17570ea2086dd6fbcac995465773a6f316e689089b7fb7ba0b34c2ec6f680d  fluidsynth-2.6.0.tar.gz
+sha256      = 34ab0ee87a9eb26d3087fa9b49c2572ea8ee03db0c9705b83648301a3a3fc172  gcem-012ae73c6d0a2cb09ffe86475f5c6fba3926e200.tar.gz
+description = Play a MIDI file — the synthesiser that makes notes into sound
+homepage    = https://www.fluidsynth.org/
+depends     = cmake ninja pkgconf glib alsa-lib pipewire libsndfile readline

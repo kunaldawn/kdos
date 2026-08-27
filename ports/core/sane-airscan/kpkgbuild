@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sane-airscan
+version     = 0.99.38
+release     = 1
+source      = sane-airscan-0.99.38.tar.gz::https://github.com/alexpevzner/sane-airscan/archive/refs/tags/0.99.38.tar.gz
+sha256      = 1e5b3b8373141caa37bf42fe74ae1950de3ff15c84966d8a415485d334ba5507  sane-airscan-0.99.38.tar.gz
+description = Driverless scanning over eSCL and WSD — the protocol a modern scanner actually speaks
+homepage    = https://github.com/alexpevzner/sane-airscan
+depends     = meson sane-backends avahi libxml2 libjpeg-turbo libpng

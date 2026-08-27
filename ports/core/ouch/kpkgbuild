@@ -16,5 +16,5 @@ sha256      = 920f73d4b162bd1814b67c57906b7322345f198d763f28d04722a406f8352246  
 sha256      = d06e1b409a32dbab51f67a65dbde9aa79234514146389184cbd107de0573b262  ouch-vendor-0.8.1.tar.xz
 description = Compress and decompress any archive format with one command
 homepage    = https://github.com/ouch-org/ouch
-depends     = rust
+depends     = rust clang
 vendoring   = rust

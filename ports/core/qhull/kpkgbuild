@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qhull
+version     = 8.0.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/qhull/qhull/archive/v$version/qhull-$version.tar.gz
+sha256      = 8774e9a12c70b0180b95d6b0b563c5aa4bea8d5960c15e18ae3b6d2521d64f8b  qhull-8.0.2.tar.gz
+description = Convex hulls, Delaunay triangulation and Voronoi diagrams
+homepage    = http://www.qhull.org/
+depends     = cmake

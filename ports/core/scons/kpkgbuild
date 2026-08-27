@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = scons
+version     = 4.11.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/dd/82/3c4e089ac8df2eaee8a7f14e489b2a76f94f4c1d8defa4e46c8ad15cae86/scons-4.11.0.tar.gz
+sha256      = 5ba48f9e2eb6b9178cabdc9893792418e6970c84f43f4b027e4468e20616a89c  scons-4.11.0.tar.gz
+sha256      = 326ea5eff35b1572037e05f5900d8bd3d1654d1c30f8ea6b571bb752488fb6e3  scons-vendor-4.11.0.tar.xz
+description = The python build tool gpsd is written against
+homepage    = https://scons.org/
+depends     = python3 python3-setuptools python3-pip
+vendoring   = python

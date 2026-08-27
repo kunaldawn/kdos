@@ -142,6 +142,171 @@ for f in fs/etc/init.d/*.sh; do
 done
 note "init.d services" "$daemons checked"
 
+# THE FIRST SOURCE IS THE RECIPE'S FIRST, NOT THE DIRECTORY'S ALPHABETICAL
+# FIRST — kpkg strips a component from that one and no other. libime ships a
+# dictionary tarball that sorts before its own, so a glob picks the wrong
+# archive and reports a shape the build never sees. Mirrors source_file() in
+# build.c, the same way the sha256 check above does.
+first_source_file() {
+    unset name version source
+    eval "$("$SP/kpkg" meta "$1" 2>/dev/null)"
+    for s in $source; do
+        case "$s" in
+            *"::"*) printf '%s\n' "${s%%::*}"; return ;;
+            *://*)  base=${s##*/} ;;
+            *)      printf '%s\n' "$s"; return ;;
+        esac
+        case "$base" in
+            *.tar.gz|*.tgz)   base="$name-$version.tar.gz" ;;
+            *.tar.bz2|*.tbz2) base="$name-$version.tar.bz2" ;;
+            *.tar.xz|*.txz)   base="$name-$version.tar.xz" ;;
+            *.tar.zst)        base="$name-$version.tar.zst" ;;
+            *.zip)            base="$name-$version.zip" ;;
+        esac
+        printf '%s\n' "$base"; return
+    done
+}
+
+echo
+echo "==> a first source whose members are ./-prefixed is accounted for"
+# kpkg extracts the FIRST source into $SRC with --strip-components=1, which
+# removes one path component. When a tarball's members are written `./dir/…`
+# — GNU tar does this for `tar -c ./dir`, and HDF5's release is built that way
+# — the component removed is the DOT, so the tree lands at $SRC/<dir> instead
+# of at $SRC. The build then reports whatever it could not find at the top
+# level (`does not appear to contain CMakeLists.txt`), which points at the
+# wrong thing entirely. One port in 656 is like this; the check exists so the
+# second one costs a preflight run rather than a build.
+dotp=0
+for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
+    [ -f "$d/build.sh" ] || continue
+    t="$d$(first_source_file "$d")"
+    case "$t" in *.tar.*|*.tgz|*.tbz2|*.txz) ;; *) continue ;; esac
+    [ -f "$t" ] || continue
+    first=$(tar tf "$t" 2>/dev/null | head -1)
+    case "$first" in
+    ./*)
+        dotp=$((dotp + 1))
+        # Accounted for means the recipe descends into the directory the strip
+        # left behind. Anything else is the silent one-level-down failure.
+        grep -qE '^[[:space:]]*cd[[:space:]]+"?[A-Za-z0-9_.-]*\$\{?(name|version)' "$d/build.sh" \
+            || bad "$(basename "$d")" "first source is ./-prefixed and build.sh never cds into the stripped directory"
+        ;;
+    esac
+done
+note "./-prefixed sources" "$dotp found, each accounted for"
+
+echo
+echo "==> a FLAT first source is unpacked by its own recipe"
+# The mirror of the check above, and the worse of the two. kpkg strips one
+# component from the first source unconditionally; on an archive with NO
+# wrapping directory that removes every TOP-LEVEL FILE outright and promotes
+# every subdirectory's contents into its place — yosys lost its Makefile and
+# got `docs/Makefile` in the same breath, failing on a target that Makefile
+# does not have. tzdata is why the rule is already written down; yosys is why
+# it is now checked. A recipe accounts for it by unpacking the tarball itself.
+flatp=0
+for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
+    [ -f "$d/build.sh" ] || continue
+    t="$d$(first_source_file "$d")"
+    case "$t" in *.tar.*|*.tgz|*.tbz2|*.txz) ;; *) continue ;; esac
+    [ -f "$t" ] || continue
+    tops=$(tar tf "$t" 2>/dev/null | head -300 | awk -F/ 'NF>1 || $1!="" {print $1}' | sort -u | wc -l)
+    [ "$tops" -le 1 ] && continue
+    flatp=$((flatp + 1))
+    grep -qE '^[[:space:]]*tar x[a-z]* +"?\$(PORT_SRC|\{PORT_SRC\})' "$d/build.sh" \
+        || bad "$(basename "$d")" "first source is FLAT ($tops top-level entries) and build.sh never re-unpacks it"
+done
+note "flat first sources" "$flatp found, each unpacked by its recipe"
+
+echo
+echo "==> every meson -D a recipe passes is an option that port defines"
+# MESON FAILS AT SETUP ON AN UNKNOWN OPTION, before a line is compiled — and
+# there is no universal spelling, so `-Dtests=disabled` is right for one port
+# and fatal for the next. Three found this the slow way (libkiwix, lxi-tools,
+# mpd), each an hour-long round trip through a container. The authority is the
+# tarball's own meson_options.txt / meson.options; a BUILT-IN option (werror,
+# default_library, b_*, and the rest meson defines for every project) is
+# always valid and is not in that file, so the known set is listed here.
+#
+# A port whose tarball is absent (a release asset, not in git) is SKIPPED
+# rather than failed — `make bootstrap` is what puts it there.
+meson_checked=0
+meson_builtin="auto_features backend b_asneeded b_colorout b_coverage b_lto \
+b_lundef b_ndebug b_pch b_pgo b_sanitize b_staticpic b_vscrt buildtype \
+debug default_both_libraries default_library errorlogs install_umask \
+layout optimization pkg_config_path prefer_static strip unity unity_size \
+warning_level werror wrap_mode"
+for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
+    [ -f "$d/build.sh" ] || continue
+    grep -q 'meson setup' "$d/build.sh" || continue
+    # EVERY tarball the port ships, not the first: a port with two sources
+    # (pipewire carries media-session beside it) would otherwise be checked
+    # against the wrong project's options and fail on all of its own.
+    set -- "$d"/*.tar.*
+    [ -e "$1" ] || continue
+    defined=""
+    deftypes=""
+    for t in "$@"; do
+        flat=$(tar -xOf "$t" --wildcards '*/meson_options.txt' '*/meson.options' \
+               2>/dev/null | tr '\n' ' ' || true)
+        defined="$defined
+$(printf '%s' "$flat" | grep -oE "option\([[:space:]]*'[a-zA-Z0-9_-]+" \
+          | sed "s/.*'//" || true)"
+        deftypes="$deftypes
+$(printf '%s' "$flat" \
+          | grep -oE "option\([[:space:]]*'[a-zA-Z0-9_-]+'[[:space:]]*,[[:space:]]*type[[:space:]]*:[[:space:]]*'[a-z]+'" \
+          | sed -E "s/option\([[:space:]]*'([a-zA-Z0-9_-]+)'.*'([a-z]+)'\$/\\1\t\\2/" || true)"
+    done
+    # No options file at all means the port defines none; every -D it is
+    # handed then has to be a built-in, which the same comparison covers.
+    known=$(printf '%s\n%s\n' "$defined" "$(echo $meson_builtin | tr ' ' '\n')" | sort -u)
+    # A subproject-scoped option (-Dsubproj:opt) belongs to a project whose
+    # option file is not here, so it is not something this check can answer.
+    # COMMENT LINES ARE NOT COMMAND LINES. A recipe routinely NAMES a flag in
+    # prose — libraqm's explains why matplotlib passes `-Dsystem-libraqm=true`
+    # — and reading that as something this port passes reports a defect in the
+    # port that documented the fix. `install -Dm644` is not a meson option
+    # either, and `option(` may be followed by a NEWLINE before its name, which
+    # fcft does, so the option file is flattened before it is read.
+    cmdlines=$(grep -v '^[[:space:]]*#' "$d/build.sh" | grep -v 'install ')
+    passed=$(printf '%s\n' "$cmdlines" \
+             | grep -oE '[-]D[a-zA-Z0-9_-]+[a-zA-Z0-9_:-]*' \
+             | sed 's/^-D//' | grep -v ':' | sort -u)
+    valued=$(printf '%s\n' "$cmdlines" \
+             | grep -oE "[-]D[a-zA-Z0-9_-]+=[^ 	'\"]+" \
+             | sed 's/^-D//' | grep -v ':' | sort -u)
+    for opt in $passed; do
+        printf '%s\n' "$known" | grep -qx "$opt" && continue
+        bad "$(basename "$d")" "passes -D$opt, which its meson_options.txt does not define"
+    done
+
+    # AND THE VALUE HAS TO SUIT THE TYPE. meson refuses a boolean for a
+    # `feature` outright — `Value "false" for option "gd" is not one of the
+    # choices` — and that is a configure-time error two hours into a phase, on
+    # a line that reads perfectly. Only the two types with a CLOSED, universal
+    # value set are checked: a combo's choices are the project's own and a
+    # string's are anything. An option whose `type:` does not immediately
+    # follow its name records no type and is left alone — unknown is not wrong.
+    for pair in $valued; do
+        opt=${pair%%=*}; val=${pair#*=}
+        case "$val" in *'$'*) continue ;; esac
+        ty=$(printf '%s\n' "$deftypes" | grep -m1 "^$opt	" | cut -f2)
+        case "$ty" in
+            feature)
+                case "$val" in enabled|disabled|auto) ;; *)
+                    bad "$(basename "$d")" "passes -D$opt=$val, but $opt is a meson 'feature' (enabled/disabled/auto)" ;;
+                esac ;;
+            boolean)
+                case "$val" in true|false) ;; *)
+                    bad "$(basename "$d")" "passes -D$opt=$val, but $opt is a meson 'boolean' (true/false)" ;;
+                esac ;;
+        esac
+    done
+    meson_checked=$((meson_checked + 1))
+done
+note "meson options" "$meson_checked meson ports checked against their own option files"
+
 echo
 echo "==> every source a port ships is named by a sha256 in its recipe"
 # kpkg refuses to extract a source it has no hash for, so a gap here is a
@@ -195,6 +360,26 @@ for d in ports/core/* src/packages/* src/desktop/*; do
         elif ! grep -q "^sha256[[:blank:]]*=.*[[:blank:]]$base\$" "$d/kpkgbuild"; then
             bad "$p" "ships $base with no sha256 line"
             unhashed=$((unhashed + 1))
+        # AND A HASH DOES NOT PROVE IT IS AN ARCHIVE. A mirror that answers a
+        # download with a 502 page writes an HTML file under the tarball's
+        # name; hashing THAT and recording the result gives a recipe that
+        # verifies perfectly and dies at `tar: Error is not recoverable`
+        # minutes into a phase — with a checksum line that looks deliberate.
+        # Real, on lzip, whose recorded sha256 was the hash of a Savannah
+        # error page.
+        else
+            # ONLY A NAME THAT CLAIMS TO BE AN ARCHIVE IS JUDGED AS ONE. A
+            # `source =` list may legitimately carry a bare .c or a .patch —
+            # netcat's does — and those are not archives and must not be
+            # reported as broken ones.
+            case "$base" in
+            *.tar.*|*.tgz|*.tbz2|*.txz|*.zip)
+                if ! file -b "$d/$base" | grep -qiE 'compress|archive|Zip'; then
+                    bad "$p" "ships $base, which is $(file -b "$d/$base" | cut -c1-40), not an archive"
+                    unhashed=$((unhashed + 1))
+                fi
+                ;;
+            esac
         fi
     done
 
@@ -447,6 +632,55 @@ fi
 # drawn on every frame, `Border Left Drag` is the edges, and `Root Right Press`
 # is the desktop menu.
 #
+# THE BANNER IS "KEEP VERBATIM" IN CLAUDE.md AND NOTHING ENFORCED IT. It is
+# the one marker that says a file is ours rather than upstream's, and it is
+# lost the way every boilerplate is lost: a generator whose header variable
+# went out of scope writes 120 recipes without it, every one of which parses,
+# builds and installs correctly. Nothing else here would ever notice.
+echo
+echo "==> every recipe and build script carries the KDOS banner"
+noban=0
+for f in ports/core/*/kpkgbuild ports/core/*/build.sh ports/core/*/postinstall.sh \
+         src/packages/*/kpkgbuild src/packages/*/build.sh src/packages/*/postinstall.sh \
+         src/desktop/*/kpkgbuild src/desktop/*/build.sh src/desktop/*/postinstall.sh; do
+    [ -f "$f" ] || continue
+    grep -q "KD's Homebrew Linux Distro" "$f" || {
+        bad "${f#ports/core/}" "has no KDOS banner header"
+        noban=$((noban + 1))
+    }
+done
+[ "$noban" = 0 ] && note "banner header" "present in every recipe and build script"
+
+# A ROOT FILESYSTEM THE INITRAMFS CANNOT MOUNT INSTALLS PERFECTLY AND NEVER
+# BOOTS AGAIN, and nothing else here would see it: `ki_filesystems[]` is what
+# the installer OFFERS and `01_initramfs.sh`'s MODULES line is what makes the
+# offer bootable. The two are edited in different languages in different
+# directories, so a row added to one and not the other compiles, passes every
+# other gate, and bricks exactly the machine that picked it.
+#
+# ext4 and btrfs are built into this kernel, so they are not expected in
+# MODULES; anything else in the table must be there by name.
+echo
+echo "==> every filesystem the installer offers, the initramfs can mount"
+fs_conf=src/packages/kdos-installer/conf.c
+fs_ini=script/06_packaging/01_initramfs.sh
+if [ -f "$fs_conf" ] && [ -f "$fs_ini" ]; then
+    fs_mods=$(grep -E '^MODULES=' "$fs_ini")
+    fs_missing=""
+    for fs in $(sed -n '/^const Filesystem ki_filesystems\[\]/,/^};/p' "$fs_conf" \
+                | grep -oE '^\s*\{ "[a-z0-9]+"' | grep -oE '"[a-z0-9]+"' | tr -d '"'); do
+        case "$fs" in ext4|btrfs) continue ;; esac
+        case "$fs_mods" in *" $fs "*|*" $fs\""*) ;; *) fs_missing="$fs_missing $fs" ;; esac
+    done
+    if [ -n "$fs_missing" ]; then
+        bad "01_initramfs.sh" "ki_filesystems[] offers$fs_missing, which the initramfs does not carry"
+    else
+        note "installer filesystems" "every offered root fs is in the initramfs"
+    fi
+else
+    note "installer filesystems" "skipped — conf.c or 01_initramfs.sh not found"
+fi
+
 # KDOS shipped exactly that file for a release. The symptom on a booted ISO is
 # "the mouse does not work" and it is invisible to every other check here: the
 # XML is valid, the recipe parses, the build succeeds.

@@ -1,9 +1,19 @@
-
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
 
 name        = xh
 version     = 0.26.2
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/ducaale/xh/archive/refs/tags/v$version.tar.gz
+sha256      = 61a88a5b3beac225b75a11d6ed32659af78db7ff29c825def0ab7f4a2906cbd7  xh-0.26.2.tar.gz
+sha256      = f438568ab4ead8b94c48900f389ea6e8d9c7a96c83cebd83b335ee94fcbd4c20  xh-vendor-0.26.2.tar.xz
 description = HTTP exploration from a prompt, with a readable request line
 homepage    = https://github.com/ducaale/xh
 depends     = rust

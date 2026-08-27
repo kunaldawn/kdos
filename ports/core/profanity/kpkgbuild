@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = profanity
+version     = 0.18.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/profanity-im/profanity/archive/refs/tags/$version.tar.gz
+sha256      = d5431065b4d966a745284e64337ec7e11a3fd20179de00b0f98b9cf6004e2ab5  profanity-0.18.2.tar.gz
+description = A console XMPP client — the client half of the LAN comms pair
+homepage    = https://profanity-im.github.io/
+depends     = libstrophe ncurses glib openssl readline sqlite gpgme libgcrypt meson pkgconf python3 curl

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = resvg
+version     = 0.48.1
+release     = 1
+source      = resvg-0.48.1.tar.gz::https://github.com/linebender/resvg/archive/refs/tags/v0.48.1.tar.gz
+sha256      = 40dafea6b4b9d01e9d28b6d49f1e912daf3e9055676ad9179a5a2db6e7386945  resvg-0.48.1.tar.gz
+sha256      = 0472d414b119cd0c9f79194b757dafe40eff783590d7e32b43e71247d98c257d  resvg-vendor-0.48.1.tar.xz
+description = SVG to PNG with no browser engine behind it, and a real conformance record
+homepage    = https://github.com/linebender/resvg
+depends     = rust
+vendoring   = rust

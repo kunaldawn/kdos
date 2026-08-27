@@ -1,9 +1,19 @@
-
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
 
 name        = bandwhich
 version     = 0.23.1
 release     = 1
 source      = $name-$version.tar.gz::https://github.com/imsnif/bandwhich/archive/refs/tags/v$version.tar.gz
+sha256      = aafb96d059cf9734da915dca4f5940c319d2e6b54e2ffb884332e9f5e820e6d7  bandwhich-0.23.1.tar.gz
+sha256      = a78e3222e44d12b8b6208845966be70ed56103f70ea909f026cb5ea6a92c883c  bandwhich-vendor-0.23.1.tar.xz
 description = Which process is using the bandwidth, by connection
 homepage    = https://github.com/imsnif/bandwhich
 depends     = rust

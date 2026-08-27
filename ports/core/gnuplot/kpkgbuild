@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gnuplot
+version     = 6.0.5
+release     = 1
+source      = https://downloads.sourceforge.net/$name/$name-$version.tar.gz
+sha256      = 73237f37f03306d68bfae133a9a50d5e9341384e198d5ab37eeca9ab534deed8  gnuplot-6.0.5.tar.gz
+description = Plot a file on a cell grid, or into a PNG, from a script
+homepage    = http://www.gnuplot.info/
+depends     = readline pkgconf libpng cairo pango

@@ -1408,6 +1408,21 @@ static void do_boot(void)
 			  TARGET "/boot/efi/EFI/refind/icons/os_kdos.png");
 		icon = "    icon /EFI/refind/icons/os_kdos.png\n";
 	}
+
+	/* memtest86+ is a payload rather than a program: bad RAM is the one
+	 * fault no tool running under an OS can honestly diagnose, because the
+	 * OS is in the memory being tested. It has to be BOOTABLE from the
+	 * installed machine, not just from the medium — the fault it finds is
+	 * usually reported as "this install is unstable" months later. Absent
+	 * is a skipped menu entry and not an error. */
+	const char *memtest = "";
+	if (kb_path_exists("/usr/share/kdos/memtest86plus/memtest.efi")) {
+		copy_file("/usr/share/kdos/memtest86plus/memtest.efi",
+			  TARGET "/boot/efi/EFI/kdos/memtest.efi");
+		memtest = "\nmenuentry \"Memory Test (memtest86+)\" {\n"
+			  "    loader /EFI/kdos/memtest.efi\n"
+			  "}\n";
+	}
 	emit('P', "0.7");
 
 	wr("/boot/efi/EFI/refind/refind.conf",
@@ -1431,9 +1446,10 @@ static void do_boot(void)
 	   "    submenuentry \"Single user\" {\n"
 	   "        options \"%s%sroot=UUID=%s rw console=tty0 loglevel=7 single\"\n"
 	   "    }\n"
-	   "}\n",
+	   "}\n"
+	   "%s",
 	   slot_opt, crypt_opt, root_uuid, icon, slot_opt, crypt_opt, root_uuid,
-	   slot_opt, crypt_opt, root_uuid);
+	   slot_opt, crypt_opt, root_uuid, memtest);
 
 	/*
 	 * The initial boot state, so the machine starts life as slot A with

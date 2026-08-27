@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = whisper.cpp
+version     = 1.9.3
+release     = 1
+source      = whisper.cpp-1.9.3.tar.gz::https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.9.3.tar.gz
+sha256      = 1650f884effba487025143bd8facd2f9fb40a83b3737a732803c67a8d659d9c0  whisper.cpp-1.9.3.tar.gz
+description = Speech to text on the CPU, with the model on the disk and nothing sent anywhere
+homepage    = https://github.com/ggml-org/whisper.cpp
+depends     = cmake

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyproject-metadata
+version     = 0.12.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/4f/76/1cae539918a7b1746d624c2f01560b793c22cd8c081157505bb9bbf0e34d/pyproject_metadata-0.12.1.tar.gz
+sha256      = 8809a4df6fe08279b39a8890669506ed3158e0617855ac9aff098fcbe772ae4c  python3-pyproject-metadata-0.12.1.tar.gz
+description = PEP 621 metadata, which meson-python reads
+homepage    = https://pypi.org/project/pyproject-metadata/
+depends     = python3 python3-setuptools python3-pip

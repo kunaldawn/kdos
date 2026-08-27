@@ -41,3 +41,14 @@
 
 make
 make DESTDIR=$PKG install
+
+# A PUBLIC HEADER MUST BE VALID UTF-8, and upstream's is ISO-8859-1: an "á"
+# in a comment in avahi-common/domain.h. Anything that reads a header AS TEXT
+# rather than as bytes then fails — brltty's Tcl dependency scanner opens every
+# include it follows and stops on `invalid or incomplete multibyte or wide
+# character`, from a file it never named. Re-encoding is lossless and is done
+# here rather than worked around in each consumer.
+find "$PKG" -name '*.h' | while read -r h; do
+	iconv -f UTF-8 -t UTF-8 "$h" >/dev/null 2>&1 && continue
+	iconv -f ISO-8859-1 -t UTF-8 "$h" > "$h.utf8" && mv -f "$h.utf8" "$h"
+done

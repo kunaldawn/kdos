@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-versioneer
+version     = 0.29
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/v/versioneer/versioneer-$version.tar.gz
+sha256      = 5ab283b9857211d61b53318b7c792cf68e798e765ee17c27ade9f6c924235731  python3-versioneer-0.29.tar.gz
+description = Derives a package version from git metadata — a build-time import pandas needs
+homepage    = https://github.com/python-versioneer/python-versioneer
+depends     = python3 python3-setuptools python3-pip

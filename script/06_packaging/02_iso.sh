@@ -161,6 +161,29 @@ menuentry "KDOS Live (verbose)" {
 }
 EOF
 
+# 3b. memtest86+, and it is a MENU ENTRY rather than a program because bad RAM
+# is the one fault no tool running under an OS can honestly diagnose — the OS
+# is itself in the memory being tested. It boots INSTEAD of the kernel, owns
+# the machine, and tests everything.
+#
+# The port installs the payload to /usr/share/kdos/memtest86plus/; a missing
+# one is a warning and not a failure, exactly as the appbox image is, so an
+# ISO still rolls on a tree where that port has not been built.
+MEMTEST=/usr/share/kdos/memtest86plus/memtest.efi
+if [ -f "$MEMTEST" ]; then
+    echo "Adding memtest86+..."
+    cp "$MEMTEST" $ISO_ROOT/EFI/BOOT/memtest.efi
+    cat >> $ISO_ROOT/EFI/BOOT/refind.conf <<EOF
+
+menuentry "Memory Test (memtest86+)" {
+    loader /EFI/BOOT/memtest.efi
+    icon /EFI/BOOT/icons/os_linux.png
+}
+EOF
+else
+    echo "memtest86+: no payload at $MEMTEST — skipping the menu entry"
+fi
+
 # 4. Create EFI Boot Image
 echo "Creating EFI Boot Image..."
 ISO_BUILD=/kdos/build/iso-build

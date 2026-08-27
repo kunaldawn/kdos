@@ -1,0 +1,16 @@
+--- a/picocom.c
++++ b/picocom.c
+@@ -57,6 +57,13 @@
+ 
+ #include "custbaud.h"
+ 
++/* pinfo() is defined below, after its first use inside the UUCP_LOCK_DIR
++ * block. Upstream's own Makefile builds with USE_FLOCK instead, so that
++ * caller is never compiled there and the missing prototype has gone
++ * unnoticed; a compiler that rejects implicit declarations then reports both
++ * the call and the definition as conflicting. */
++int pinfo(const char *format, ...);
++
+ /**********************************************************************/
+ 
+ /* parity modes names */

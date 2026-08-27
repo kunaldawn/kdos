@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qemu
+version     = 11.1.0
+release     = 1
+source      = https://download.qemu.org/$name-$version.tar.xz
+sha256      = 6ee1d1a61f68212476b27108c26da5f449dc09b626d42f8279ba0dc2e08fa858  qemu-11.1.0.tar.xz
+description = Run another operating system — the one thing a container cannot
+homepage    = https://www.qemu.org/
+depends     = meson ninja pkgconf python3 glib pixman zlib zstd libslirp libaio ncurses libpng libjpeg-turbo gnutls libusb libcap-ng python3-wheel dtc

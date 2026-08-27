@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = autoconf-archive
+version     = 2024.10.16
+release     = 1
+source      = https://ftp.gnu.org/gnu/autoconf-archive/$name-$version.tar.xz
+sha256      = 7bcd5d001916f3a50ed7436f4f700e3d2b1bade3ed803219c592d62502a57363  autoconf-archive-2024.10.16.tar.xz
+description = The AX_* m4 macros a configure.ac reaches for and autoconf does not carry
+homepage    = https://www.gnu.org/software/autoconf-archive/
+depends     = autoconf

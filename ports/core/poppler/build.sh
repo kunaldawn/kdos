@@ -1,5 +1,13 @@
 #!/bin/bash
-
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
 
 # EVERY GUI BINDING IS OFF AND THAT IS THE HARD RULE, NOT A PREFERENCE.
 # -DENABLE_QT5/QT6=OFF and -DENABLE_GLIB=OFF: there is no Qt and no GTK on this

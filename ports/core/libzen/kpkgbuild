@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libzen
+version     = 0.4.41
+release     = 1
+source      = libzen-0.4.41.tar.gz::https://github.com/MediaArea/ZenLib/archive/refs/tags/v0.4.41.tar.gz
+sha256      = 45d5173fa0278f5264daa6836ae297aa303984482227d00b35c4f03929494c8f  libzen-0.4.41.tar.gz
+description = ZenLib, the portability layer libmediainfo is written on
+homepage    = https://github.com/MediaArea/ZenLib
+depends     = cmake

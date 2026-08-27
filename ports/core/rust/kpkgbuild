@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = rust
-version     = 1.93.0
+version     = 1.98.0
 release     = 1
 
-_date       = 2025-12-11
-_rust       = 1.92.0
+_date       = 2026-07-16
+_rust       = 1.97.1
 _cargo      = $_rust
 _triplet    = x86_64-unknown-linux-musl
 
@@ -21,9 +21,9 @@ source      = https://static.rust-lang.org/dist/rustc-$version-src.tar.xz
 source      = https://static.rust-lang.org/dist/$_date/rust-std-$_rust-$_triplet.tar.xz
 source      = https://static.rust-lang.org/dist/$_date/rustc-$_rust-$_triplet.tar.xz
 source      = https://static.rust-lang.org/dist/$_date/cargo-$_cargo-$_triplet.tar.xz
-sha256      = b37ef0ce8c49103a904559f17c83c6e5a182f0f165f158e7be00e9036ca8c6d5  cargo-1.92.0-x86_64-unknown-linux-musl.tar.xz
-sha256      = e30d898272c587a22f77679f03c5e8192b5645c7c9ccc3407ad1106761507cea  rust-1.93.0.tar.xz
-sha256      = 11f0b7efccdb5e7972e3c0fc23693a487abc28b624675c08161d055a016d527e  rust-std-1.92.0-x86_64-unknown-linux-musl.tar.xz
-sha256      = f1a037c367d29d329d041f0bf1d271e60440adc961b6eaa9ea902018a672d4a3  rustc-1.92.0-x86_64-unknown-linux-musl.tar.xz
+sha256      = 271fa73d8174f53d713c46a8310da7bf7cfdcfb8b7cfd1c2b74b84a83ae9fb1e  rust-1.98.0.tar.xz
+sha256      = 623a1315bdbddc5e7a807aaf7e1911d1435a294758e170b8758f49fc57a3e67c  cargo-1.97.1-x86_64-unknown-linux-musl.tar.xz
+sha256      = 51d83178680556f73a5fa8ad865b76a1ff541867445c00fc65dc67246bc2de66  rust-std-1.97.1-x86_64-unknown-linux-musl.tar.xz
+sha256      = 1b1f926d3b5bf8036c858180dbc9518c6c317154718ee5c5460bb23d23bacf5d  rustc-1.97.1-x86_64-unknown-linux-musl.tar.xz
 description = The Rust programming language is designed to be a safe, concurrent, practical language
 depends     = curl cmake python3 llvm libssh2 xz

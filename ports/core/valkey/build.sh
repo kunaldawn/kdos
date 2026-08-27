@@ -1,5 +1,13 @@
 #!/bin/bash
-
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
 
 # REDIS RELICENSED SOURCE-AVAILABLE IN 2024 AND VALKEY IS THE BSD-3
 # CONTINUATION. That is not a preference: a distro that compiles everything it

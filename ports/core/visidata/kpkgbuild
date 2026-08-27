@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = visidata
+version     = 3.4
+release     = 1
+source      = https://files.pythonhosted.org/packages/eb/dd/682ac00672daf1325a3174d5cb5f32b9d9a2aeb42d3baa18e669278308d0/visidata-3.4.tar.gz
+sha256      = f5afcdb6823c570760be9692f33d0642a20cd86925b4cab721d108050d0f8201  visidata-3.4.tar.gz
+sha256      = 24ca31e0cfd2b2a4db19ba854edeac46a19c05635b3c52f8cd4798ef6c7ecd66  visidata-vendor-3.4.tar.xz
+description = A terminal spreadsheet for any tabular file, without loading it into a GUI
+homepage    = https://pypi.org/project/visidata/
+depends     = python3 python3-setuptools python3-pip
+vendoring   = python
+pyrequirements = no

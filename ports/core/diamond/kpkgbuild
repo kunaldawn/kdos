@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = diamond
+version     = 2.2.5
+release     = 1
+source      = diamond-2.2.5.tar.gz::https://github.com/bbuchfink/diamond/archive/refs/tags/v2.2.5.tar.gz
+sha256      = ca58297af1c60e02a36363f11d161a27f5bd4fed8b172cc56fab65805f37056a  diamond-2.2.5.tar.gz
+description = BLASTP/BLASTX at a thousand times the speed, which is what makes it usable
+homepage    = https://github.com/bbuchfink/diamond
+depends     = cmake zlib zstd

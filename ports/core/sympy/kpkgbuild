@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sympy
+version     = 1.14.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz
+sha256      = d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517  sympy-1.14.0.tar.gz
+description = Symbolic algebra — and the answer to the SageMath hole
+homepage    = https://pypi.org/project/sympy/
+depends     = python3 python3-setuptools python3-pip python3-mpmath

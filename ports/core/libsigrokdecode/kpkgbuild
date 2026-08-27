@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libsigrokdecode
+version     = 0.5.3
+release     = 1
+source      = https://sigrok.org/download/source/$name/$name-$version.tar.gz
+sha256      = c50814aa6743cd8c4e88c84a0cdd8889d883c3be122289be90c63d7d67883fc0  libsigrokdecode-0.5.3.tar.gz
+description = About a hundred protocol decoders, written in python
+homepage    = https://sigrok.org/wiki/Libsigrokdecode
+depends     = autoconf automake libtool pkgconf glib python3

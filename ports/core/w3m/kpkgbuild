@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = w3m
+version     = 0.5.3+git20230121
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/tats/w3m/archive/refs/tags/v$version.tar.gz
+sha256      = fdc7d55d3c0104db26aa9759db34f37e5eee03f44c868796e3bbfb8935c96e39  w3m-0.5.3+git20230121.tar.gz
+description = Read HTML on a cell grid, including tables
+homepage    = https://github.com/tats/w3m
+depends     = autoconf automake pkgconf ncurses openssl zlib bdwgc

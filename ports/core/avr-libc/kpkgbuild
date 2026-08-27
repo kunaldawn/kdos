@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = avr-libc
+version     = 2.2.1
+release     = 1
+_tag        = avr-libc-2_2_1-release
+source      = $name-$version.tar.bz2::https://github.com/avrdudes/avr-libc/releases/download/$_tag/$name-$version.tar.bz2
+sha256      = 006a6306cbbc938c3bdb583ac54f93fe7d7c8cf97f9cde91f91c6fb0273ab465  avr-libc-2.2.1.tar.bz2
+description = The C library for AVR — every ATmega and ATtiny
+homepage    = https://github.com/avrdudes/avr-libc
+depends     = gcc-avr binutils-avr

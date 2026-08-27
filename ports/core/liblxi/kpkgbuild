@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = liblxi
+version     = 1.22
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/lxi-tools/liblxi/archive/refs/tags/v$version.tar.gz
+sha256      = d33ca3990513223880ec238eb2e5aa1cc93aff51c470ef0db9df3e0c332493d5  liblxi-1.22.tar.gz
+description = Discover and talk to an LXI instrument
+homepage    = https://lxi-tools.github.io/
+depends     = meson ninja pkgconf avahi libxml2 libtirpc
