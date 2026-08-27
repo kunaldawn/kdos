@@ -552,13 +552,13 @@ static void draw(int sel, int top)
 			ktui_draw_text(2, 4, w - 4,
 				       "kdos-comp serves "
 				       "$XDG_RUNTIME_DIR/kdos-cmd.sock",
-				       KT_DIM, KT_SURFACE, KT_A_NONE);
+				       KT_MID, KT_SURFACE, KT_A_NONE);
 		/* Closing the LAST window lands here, and the answer to the
 		 * action that emptied the list belongs on the screen with it. */
 		if (status[0])
 			ktui_draw_text(2, h - 3, w - 4, status, KT_WARN,
 				       KT_SURFACE, KT_A_NONE);
-		ktui_draw_text(2, h - 2, w - 4, "r retry   Esc close", KT_DIM,
+		ktui_draw_text(2, h - 2, w - 4, "r retry   Esc close", KT_MID,
 			       KT_SURFACE, KT_A_NONE);
 		ktui_draw_flush();
 		return;
@@ -628,7 +628,7 @@ static void draw(int sel, int top)
 			       KT_A_NONE);
 	ktui_draw_text(2, h - 2, w - 4,
 		       "Enter close   k SIGTERM   r refresh   Esc quit",
-		       KT_DIM, KT_SURFACE, KT_A_NONE);
+		       KT_MID, KT_SURFACE, KT_A_NONE);
 	ktui_draw_flush();
 }
 

@@ -814,7 +814,7 @@ static void draw(void)
 			       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
 	}
 	if (!nheads)
-		ktui_draw_text(2, 1, w - 4, "no screens reported", KT_DIM,
+		ktui_draw_text(2, 1, w - 4, "no screens reported", KT_MID,
 			       KT_SURFACE, KT_A_NONE);
 
 	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
@@ -822,7 +822,7 @@ static void draw(void)
 		       confirm_deadline > 0.0
 			       ? "K keep   R revert now"
 			       : "SPACE on/off   m/M mode   s scale   t rotate   [ ] order",
-		       KT_DIM, KT_SURFACE, KT_A_NONE);
+		       KT_MID, KT_SURFACE, KT_A_NONE);
 	/*
 	 * EVERY VERB IN THIS WINDOW WAS A KEY, and the row of keys above is a
 	 * legend, not a control: a pointer could select a screen and then do

@@ -370,6 +370,23 @@ desktop entries. Dropping any one output breaks something visible:
   container, and exits rather than falling back:
   `--no-sandbox --ozone-platform-hint=auto --disable-gpu-compositing`.
 
+- **THE SHIM SWEEP SPARES `RESERVED`, AND `kdos-box` IS WHY.** Every shim in
+  `/usr/local/bin` is removed before the set is rewritten, and the marker for
+  one this program wrote is a RELATIVE symlink — on the reasoning that the
+  hand-written entries there are real files. `kdos-box` is not: it is the box
+  manager's name on this same binary, installed by the recipe as a relative
+  link, so a sweep going by the marker alone deleted the front door to every
+  box on the machine and left `kdos-box: command not found` on a system where
+  nothing was missing but a link. `RESERVED` is consulted by the sweep as well
+  as at create time.
+- **THE LAUNCHER TABLE GROWS AND HAS NO CEILING.** It held 256, which covered
+  the monolith's ~105 launchers with room to spare; the pack lane parses each
+  pack's OWN desktop entries and 108 app packs go well past it (LibreOffice
+  alone carries eight). What a fixed table did was drop the tail — a warning
+  per app, an exit status of 0, and a Start menu missing whatever sorted last.
+  It is on the heap, so the dispatcher — this same binary, on every launch —
+  carries no fixed cost for a table only `genlaunchers` fills.
+
 Regenerating needs the image's `/usr/share/applications`. After an ISO build
 that is already on disk (the bake flattens the appbox to one layer):
 `build/fs/home/kdos/.local/share/containers/storage/overlay/*/diff/usr/share/applications`
@@ -473,6 +490,14 @@ nothing else, so a root daemon can take it. Three rules it exists to keep:
   the bytes were hashed first. A caller told "bad signature" when the truth is
   "bad hash" goes looking for a key problem that does not exist, so the two are
   separate states (`KPK_SIG_HASH` / `KPK_SIG_BAD`) and `selftest.c` asserts it.
+  **`KPK_SIG_NOKEY` is the third of that family**: a pack that carries a block
+  against a machine holding no key that could ever check it is a question about
+  the MACHINE, not the artefact, and reporting it as a forgery sends the reader
+  to inspect the pack instead of the drawer it is checked against. It is
+  refused exactly where `KPK_SIG_BAD` is, so what may be mounted is unchanged —
+  only the sentence. Note the asymmetry it leaves standing: `KPK_SIG_NONE`
+  mounts, so a pack that is signed and uncheckable is treated more harshly than
+  the same pack with no block at all.
 - **`kpk_solve` takes an array of POINTERS.** A `KpkMeta` is ~30 KB and an
   array of them is not something a function puts on its stack; kdos-packd
   overflowed its own on the first run.
@@ -1487,8 +1512,18 @@ drifts.
 table, expanded at compile time by everything that draws. Two rules on top of
 that, both of which have already shipped as bugs:
 
-- **`KT_DIM` is a FILL.** It is 1.63–1.70:1 against the background in every
-  accent, below any text floor. A LABEL is `KT_MID`.
+- **`KT_DIM` is a FILL.** Measured against libkcolor's own table it is
+  **1.54–1.63:1** as a foreground — on `KT_SURFACE` and on `KT_BG` alike, in
+  every accent — where `KT_MID` is 3.40–5.41:1. A LABEL is `KT_MID`, and
+  `grep` for `KT_DIM` in a foreground argument is how a new surface is checked:
+  hint rows, empty-state messages, help text and the brackets round a button
+  had all shipped in it. **A two-state colour is a different question**: where
+  `KT_DIM` is one branch of a pair (a scrollbar's track against its thumb, an
+  unpinned star against a pinned one) it is carrying the distinction, and
+  flattening it onto `KT_MID` deletes the state rather than making it readable.
+  Those pairs are still `KT_DIM`; a palette with only one legible step below
+  `KT_TEXT` is what makes them awkward, and that is a design question rather
+  than a defect.
 - **Emphasis is a FILL plus swapped slots, never `KT_A_REVERSE` over a
   label.** The attribute inverts only the cells a glyph covers, so a two-word
   name comes out as one lit block per word with a hole between them.
@@ -3614,6 +3649,11 @@ libkproc's movable root so a fixture answers it, and a start later than the
 uptime renders `-` rather than wrapping. Found by rendering the page for the
 first time, which is what the golden harness is for.
 
+**`--help`'s page list is READ OUT OF `RES_PAGES`, never spelled again.** A
+hand-written copy stopped at `energy` while `boxes` was the tenth row of the
+registry for a release: the page existed, `--page boxes` worked, and the only
+way to find that out was to already know.
+
 **The narrow sidebar carries THREE characters, not one, and `Batteries` and
 `Boxes` are why.** A single initial made two different pages the same control,
 which is worse than a truncation — a truncation at least reads as incomplete.
@@ -4902,6 +4942,17 @@ image with `python3` added (`--device /dev/kvm`, the repo bind-mounted), which
 already carries QEMU 10.1 and `/usr/share/ovmf/OVMF.fd` where the script looks
 for it.
 
+**`--root-script <file>` sends a LOCAL script into the guest and runs it as
+root**, which is the form for a check too long to be one `--root-cmd` line. It
+travels as base64 in short lines — a tty in canonical mode drops everything
+past its line limit, silently, and an encoded payload contains nothing the
+shell acts on before `base64 -d` hands it back — and the rig waits for a marker
+the GUEST echoes, so a step that takes four minutes to install a pack is waited
+for rather than truncated. **`testing/packlane.sh` is the consumer**: the pack
+lane end to end on a machine that has actually booted — the daemon, the
+keyring, an install off the medium, the launchers, a box and the telemetry —
+reporting pass/fail/skip with a reason on every skip.
+
 Three things it has to get right: `screendump` answers "no surface" under a GL
 display, so the framebuffer is read over RFB, whose `SetEncodings` is
 `type(1) pad(1) count(2)` — an extra padding field desyncs the stream and every
@@ -5030,7 +5081,8 @@ kdos/
 │   ├── usr/local/bin/           # kdos-desktop, alien-app shims
 │   └── usr/share/{kdos,backgrounds}
 ├── script/                      # phase dirs + util/ + kdosbuild.sh
-├── testing/                     # per-port build tests, qemu-hw runner
+├── testing/                     # per-port build tests, qemu-hw runner,
+│                                #   packlane.sh — the pack lane on a booted ISO
 ├── docs/screenshots/            # README images (captured from QEMU)
 ├── Dockerfile                   # Alpine build sandbox
 └── Makefile
@@ -5616,6 +5668,22 @@ DEPENDENCY whose recipe changed. The loop's own guard — for a package that
 became installed between the resolve and now — must ask the same question, or
 it skips exactly what the solver deliberately queued and the run reports
 "Packages to install: <name>" and builds nothing.
+
+**AND A SOURCE-LESS PORT'S OWN FILES ARE ITS RECIPE.** The four recipe files
+are the whole answer for a port that names a `source =`, because the
+`sha256 =` beside it covers the content. A port with no `source =` builds out
+of `$PORT_SRC`, and nothing names those files at all — so editing a `.c` under
+`src/` changed nothing the build could see, the port read as installed and
+current, and the tree kept the binary it had. That is never a build error; it
+is a shipped program behaving like an older one, and it is how an ISO came to
+carry a `kdos-packd` looking for its keyring in the wrong directory eleven
+hours after that directory changed. `kp_recipe_hash()` therefore walks a
+source-less port's directory as well, sorted at every level, **and all of
+`src/libs` with it**: a `build.sh` names which libraries it compiles and
+parsing that would be a shell parser inside the package manager. Stated cost —
+editing one library rebuilds every port of ours rather than only its consumers;
+measured, that is 21 ports in about two minutes, and an upstream port's hash is
+byte-identical to what it was.
 
 The hash is recorded in `<db>/.recipe/<name>` AFTER a successful install, never
 before: a record written ahead of a build that then fails would claim a recipe
@@ -6616,18 +6684,23 @@ and respond with the targeted fix.
 - **No corefonts for wine.** winetricks fetches them from the network at run
   time and nothing in the image may depend on that, so a Windows program that
   wants Arial gets a substitute.
-- **THE PACK SET IS BAKED AND HAS NEVER BOOTED.** Those are two different
-  gaps and only the second is still open. `ports/appbox/bake` has produced the
+- **THE PACK SET IS BAKED AND HAS NOW BOOTED**, and what is left of this row
+  is narrower than it was. `ports/appbox/bake` has produced the
   full set from real Debian trixie — **135 packs, 19 GB in
   `ports/appbox/packs/`**, with a `PACKAGES` index signed by
   `build/keys/kdos-packs.key`, deltas generating (979 bytes for an unchanged
   pack, reconstructing byte-for-byte) and skip-unchanged firing off
-  `kdos-pack imagehash`. What has NOT happened is a machine booting on that
-  lane: nothing in the pack path — `kdos-packd` mounting off the medium,
-  `kdos app install`, `kdos-box` composing an overlay, the installer's
-  Applications page — has run anywhere but a fixture. Until it does,
-  `01_packs.sh` still says so and the monolithic image lane is what ships;
-  **that boot is what gates W7-5**, not another bake.
+  `kdos-pack imagehash`. A 33 GB ISO carrying `/packs` boots and
+  `testing/packlane.sh` drives it: `kdos-packd` mounts a pack straight off
+  ISO9660 `ro,nosuid,nodev` with **no loop device** (so this kernel has
+  `CONFIG_EROFS_FS_BACKED_BY_FILE`), `kdos app install` works, `genlaunchers
+  --packs` writes the row, the shim and the mime types, and `kdos-res`'s Boxes
+  page lists a box. **What has still not run is a box that STARTS**: an overlay
+  upper cannot sit on overlayfs and a live session's `$HOME` does, which is
+  `kdos doctor`'s own warning — so composing, `kdos-box freeze` and telemetry
+  naming a running box all need an INSTALLED system. The monolithic lane still
+  ships: W7-5 is now gated on parity across 130 app packs rather than on a
+  boot.
 - **`kdos-box freeze` has not been measured against `podman save`.** It builds
   and the machinery under it is proven, but the "an order of magnitude smaller"
   claim the design rests on needs a real box with real work in it, and the
@@ -6687,8 +6760,13 @@ and respond with the targeted fix.
   and the panel's own `shell` have no `--dump`**, so they have no golden.
   `--dump-cells` (one line per painted cell, `row col U+XXXX fg bg attr`,
   which is what makes a COLOUR regression visible as well as a geometry one)
-  is implemented and **no cell goldens are committed** — selftest says so
-  rather than running a check that covers nothing.
+  carries **four committed cell goldens** — `start`, `menu-system`, `keys` and
+  `doc` — and **their verdict is now acted on**. It was not: `golden_fail` is
+  checked once, and every `cells_golden` ran AFTER that check, so a colour
+  drift printed its diff and the suite exited 0. A comparison whose answer
+  nothing reads is a comparison that cannot fail; the cell half has its own
+  check now, with its own message, because a colour drift and a geometry drift
+  are fixed by looking at different things. Verified by breaking one cell.
 - **A WHEEL SOURCE IS ALREADY QUANTISED; A FINGER IS NOT.** libkwl's
   accumulator was written for a touchpad, where `wl_pointer.axis` is a stream
   of small continuous values and a tick has to be synthesised from a ten-unit

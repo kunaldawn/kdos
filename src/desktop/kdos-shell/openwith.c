@@ -634,7 +634,7 @@ static void draw(void)
 	if (!ncands && list_rows > 1)
 		ktui_draw_text(2, list_top + 1, w - 4,
 			       "nothing on this machine claims this type",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 
 	check_row = h - 3;
 	if (editing) {
@@ -661,7 +661,7 @@ static void draw(void)
 		ktui_draw_text(2, h - 2, w - 26,
 			       editing ? "Enter run   Esc cancel"
 				       : "Enter open   d default   Esc cancel",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 
 	/* The same two buttons pick.c carries, in the same place: this dialog
 	 * arrives in front of a person holding a mouse. */
@@ -675,11 +675,11 @@ static void draw(void)
 	if (btn_cancel_x > 26) {
 		ktui_draw_text(btn_cancel_x, btn_row, cw, "[ Cancel ]", KT_TEXT,
 			       KT_SURFACE, KT_A_NONE);
-		ktui_draw_text(btn_ok_x, btn_row, 1, "[", KT_DIM, KT_SURFACE,
+		ktui_draw_text(btn_ok_x, btn_row, 1, "[", KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 		ktui_draw_text(btn_ok_x + 1, btn_row, okw - 2, ok, KT_SURFACE,
 			       KT_ACCENT, KT_A_NONE);
-		ktui_draw_text(btn_ok_end - 1, btn_row, 1, "]", KT_DIM,
+		ktui_draw_text(btn_ok_end - 1, btn_row, 1, "]", KT_MID,
 			       KT_SURFACE, KT_A_NONE);
 	} else {
 		btn_ok_x = btn_ok_end = btn_cancel_x = btn_cancel_end = 0;

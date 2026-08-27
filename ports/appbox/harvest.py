@@ -75,9 +75,32 @@ def desktop_entries(root):
     return out
 
 
-def metainfo(root):
+def component_rank(cid, want):
+    """How well an AppStream component id names the pack we are building.
+
+    THE SAME RULE THE DESKTOP ENTRIES GET, and it belongs here for the same
+    reason: a stage's layer carries the metainfo of every package it pulled in,
+    not just the application. Taking the first file alphabetically named
+    `app.bcnc` and `app.digikam` both after libgphoto2, and `app.cantor` after
+    the URW font set — a shop window describing somebody else's program.
+    """
+    cid = cid.lower()
+    if cid.endswith(".desktop"):
+        cid = cid[: -len(".desktop")]
+    leaf = cid.rsplit(".", 1)[-1]
+    if leaf == want or cid == want:
+        return 0
+    if leaf.startswith(want) or leaf.endswith(want):
+        return 1
+    if want in cid:
+        return 2
+    return 3
+
+
+def metainfo(root, want=""):
     """summary, description and licence, from AppStream when there is any."""
     got = {}
+    found = []
     for d in METAINFO_DIRS:
         full = os.path.join(root, d)
         if not os.path.isdir(full):
@@ -91,27 +114,36 @@ def metainfo(root):
                 # A component this build cannot parse is ABSENT, not partial.
                 continue
             r = tree.getroot()
-            def text(tag):
-                for el in r.iter(tag):
-                    if el.get("{http://www.w3.org/XML/1998/namespace}lang"):
+            cid = ""
+            for el in r.iter("id"):
+                cid = " ".join((el.text or "").split())
+                break
+            # The filename is the tiebreak, so the order is still total and a
+            # re-bake of an unchanged layer produces the same metadata.
+            found.append((component_rank(cid, want) if want else 3, name, r))
+    found.sort(key=lambda t: (t[0], t[1]))
+    for _rank, _name, r in found:
+        def text(tag):
+            for el in r.iter(tag):
+                if el.get("{http://www.w3.org/XML/1998/namespace}lang"):
+                    continue
+                return " ".join((el.text or "").split())
+            return ""
+        if not got.get("summary"):
+            got["summary"] = text("summary")
+        if not got.get("licence"):
+            got["licence"] = text("project_license")
+        if not got.get("description"):
+            paras = []
+            for desc in r.iter("description"):
+                if desc.get("{http://www.w3.org/XML/1998/namespace}lang"):
+                    continue
+                for p in desc.iter("p"):
+                    if p.get("{http://www.w3.org/XML/1998/namespace}lang"):
                         continue
-                    return " ".join((el.text or "").split())
-                return ""
-            if not got.get("summary"):
-                got["summary"] = text("summary")
-            if not got.get("licence"):
-                got["licence"] = text("project_license")
-            if not got.get("description"):
-                paras = []
-                for desc in r.iter("description"):
-                    if desc.get("{http://www.w3.org/XML/1998/namespace}lang"):
-                        continue
-                    for p in desc.iter("p"):
-                        if p.get("{http://www.w3.org/XML/1998/namespace}lang"):
-                            continue
-                        paras.append(" ".join((p.text or "").split()))
-                    break
-                got["description"] = [p for p in paras if p]
+                    paras.append(" ".join((p.text or "").split()))
+                break
+            got["description"] = [p for p in paras if p]
     return got
 
 
@@ -222,7 +254,7 @@ def main():
     # base says nothing at all.
     if a.kind == "app":
         entries = desktop_entries(a.diffdir)
-        info = metainfo(a.diffdir)
+        info = metainfo(a.diffdir, a.id.split(".")[-1])
     else:
         entries, info = [], {}
 

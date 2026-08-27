@@ -914,7 +914,7 @@ static void draw_frame(void)
 		ktui_draw_text(2, body_y, w - 4,
 			       pending ? "asking NetworkManager…"
 				       : "no network devices",
-			       KT_DIM, KT_BG, KT_A_NONE);
+			       KT_MID, KT_BG, KT_A_NONE);
 	}
 
 	if (sel < top)

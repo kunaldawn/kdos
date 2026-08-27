@@ -30,15 +30,98 @@
 
 #include "kpkg.h"
 
-/* The files that DEFINE a build. Anything else in a port directory — a tarball,
- * a vendor bundle — is content the recipe names and the source hash already
- * covers, so hashing it here would only make the key change for no reason. */
+/* The files that DEFINE a build. For a port that names a `source =`, anything
+ * else in its directory — a tarball, a vendor bundle — is content the recipe
+ * names and the `sha256 =` beside it already covers, so hashing it here would
+ * only make the key change for no reason. */
 static int recipe_file(const char *name)
 {
 	size_t n = strlen(name);
 	return !strcmp(name, "kpkgbuild") || !strcmp(name, "build.sh") ||
 	       !strcmp(name, "postinstall.sh") ||
 	       (n > 6 && !strcmp(name + n - 6, ".patch"));
+}
+
+/*
+ * A SOURCE-LESS PORT'S OWN FILES ARE ITS RECIPE, and this is the half that
+ * makes `E:` true for the ports in `src/`. A port with no `source =` builds
+ * out of `$PORT_SRC`: nothing names those files and no `sha256 =` covers
+ * them, so with only the four recipe files hashed, editing a `.c` changes
+ * nothing the build can see — the port is reported installed and current, and
+ * the tree keeps the binary it already had. The symptom is never a build
+ * error; it is a shipped program that behaves like an older one.
+ *
+ * Sorted at EVERY level, because readdir order is the filesystem's and two
+ * machines would otherwise disagree about the same tree. Directories are
+ * descended into, since a fork keeps its sources under `src/`.
+ */
+static void hash_tree(KbSha256 *s, const char *root, const char *rel, int depth)
+{
+	char here[1024];
+	char **names;
+	int n = 0;
+
+	/* A port is a directory somebody wrote, not an arbitrary filesystem:
+	 * a bound depth means a symlink that points upward cannot spin. */
+	if (depth > 8)
+		return;
+	if (*rel)
+		snprintf(here, sizeof(here), "%s/%s", root, rel);
+	else
+		snprintf(here, sizeof(here), "%s", root);
+
+	names = kb_listdir(here, NULL);
+	if (!names)
+		return;
+	for (char **p = names; *p; p++)
+		n++;
+	for (int i = 0; i < n; i++)
+		for (int j = i + 1; j < n; j++)
+			if (strcmp(names[i], names[j]) > 0) {
+				char *t = names[i];
+				names[i] = names[j];
+				names[j] = t;
+			}
+
+	for (int i = 0; i < n; i++) {
+		char sub[1024], *path;
+		size_t len = 0;
+		char *data;
+
+		/* Hashed already by the caller, and hashing them twice would
+		 * make the two loops' order load-bearing. */
+		if (!*rel && recipe_file(names[i]))
+			continue;
+		if (*rel)
+			snprintf(sub, sizeof(sub), "%s/%s", rel, names[i]);
+		else
+			snprintf(sub, sizeof(sub), "%s", names[i]);
+		path = kb_path_join(root, sub);
+		if (kb_is_dir(path)) {
+			free(path);
+			hash_tree(s, root, sub, depth + 1);
+			continue;
+		}
+		data = kb_read_all(path, &len);
+		free(path);
+		if (!data)
+			continue;
+		char hdr[1152];
+		int hn = snprintf(hdr, sizeof(hdr), "%s %zu\n", sub, len);
+		kb_sha256_update(s, hdr, (size_t)hn);
+		kb_sha256_update(s, data, len);
+		free(data);
+	}
+	kb_strv_free(names);
+}
+
+/* Does this recipe name any upstream source at all? */
+static int has_source(const char *portdir)
+{
+	char v[4096] = {0};
+
+	kp_recipe_key(portdir, "source", v, sizeof(v));
+	return v[0] != 0;
 }
 
 int kp_recipe_hash(const char *portdir, char out[65])
@@ -85,6 +168,26 @@ int kp_recipe_hash(const char *portdir, char out[65])
 	kb_strv_free(names);
 	if (!any)
 		return -1;
+	if (!has_source(portdir)) {
+		char libs[1024];
+
+		hash_tree(&s, portdir, "", 0);
+		/*
+		 * AND THE SHARED LIBRARIES, because a source-less port
+		 * compiles them into itself. `build.sh` names which — a glob
+		 * under $LIBS naming one library's sources — and parsing that
+		 * would be a shell parser in the package manager, so all of
+		 * `src/libs` is hashed instead. The cost is that editing one
+		 * library rebuilds every port of ours rather than only its
+		 * consumers; every one of them takes seconds, and the
+		 * alternative is shipping a binary compiled against a library
+		 * this tree no longer has. Ports under `ports/core` name a
+		 * `source =` and never reach here, so the walk is ours alone.
+		 */
+		snprintf(libs, sizeof(libs), "%s/../../libs", portdir);
+		if (kb_is_dir(libs))
+			hash_tree(&s, libs, "", 0);
+	}
 	kb_sha256_final(&s, out);
 	return 0;
 }

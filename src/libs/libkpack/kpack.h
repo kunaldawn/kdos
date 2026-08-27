@@ -215,6 +215,7 @@ typedef enum {
 	KPK_SIG_GOOD,		/* verified against a key in the ring         */
 	KPK_SIG_BAD,		/* a block that no trusted key verifies       */
 	KPK_SIG_HASH,		/* the payload does not hash to the footer    */
+	KPK_SIG_NOKEY,		/* signed, and this machine has no key at all */
 } KpkSigState;
 
 /*
@@ -227,6 +228,15 @@ typedef enum {
  * trust whoever built it — which is the question signing exists to let you
  * answer yourself. So KPK_SIG_NONE is a state a caller may accept, and
  * KPK_SIG_BAD never is.
+ *
+ * AND AN EMPTY RING IS NOT A BAD SIGNATURE. `KPK_SIG_NOKEY` is a pack that
+ * carries a block against a machine holding no key that could ever check it,
+ * which is a question about THIS MACHINE and not about the pack. Folding it
+ * into KPK_SIG_BAD reports a forgery when the truth is an empty keyring, and
+ * sends the reader to inspect the artefact instead of the drawer it is
+ * checked against — the same separation KPK_SIG_HASH keeps from KPK_SIG_BAD,
+ * for the same reason. A caller must still refuse it: unverifiable is not
+ * verified.
  */
 KpkSigState kpk_verify(const KpkPack *p, const KsigRing *ring,
 		       char who[KSIG_ID_HEX]);

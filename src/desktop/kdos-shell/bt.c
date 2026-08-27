@@ -686,7 +686,7 @@ static void draw_frame(void)
 		ktui_draw_text(2, body_y, w - 4,
 			       powered ? "nothing found yet — press Scan"
 				       : "the adapter is off — press Turn On",
-			       KT_DIM, KT_BG, KT_A_NONE);
+			       KT_MID, KT_BG, KT_A_NONE);
 
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
 	if (ask_text[0]) {

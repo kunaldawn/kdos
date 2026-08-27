@@ -713,6 +713,33 @@ H2=$(cat "$SIDE")
 kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
     || { echo "  it rebuilt again after the hash was brought up to date"; exit 1; }
 
+# A SOURCE-LESS PORT'S OWN FILES ARE ITS RECIPE. `demo` names no `source =`,
+# which is what every port under src/ does: it builds out of $PORT_SRC, so
+# nothing names those files and no `sha256 =` covers them. With only the four
+# recipe files hashed, editing a .c changed nothing the build could see — the
+# port read as installed and current and the tree kept the binary it had. That
+# is not a build error, it is a shipped program behaving like an older one, and
+# it is how an ISO came to carry a kdos-packd that looked for its keyring in
+# the wrong directory.
+#
+# It runs HERE, while the sidecar is still valid: the corrupt-sidecar case
+# below leaves the port reading as UNKNOWN, which correctly skips for ever.
+H3=$(cat "$SIDE")
+printf 'int demo_probe(void) { return 1; }\n' > "$SR/ports/demo/probe.c"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+    || { echo "  a source-less port did not rebuild after its own .c changed"
+         exit 1; }
+[ "$H3" != "$(cat "$SIDE")" ] \
+    || { echo "  the sidecar did not move when a source file changed"; exit 1; }
+# And it settles: a hash that kept moving would rebuild for ever.
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+    || { echo "  the source-aware hash is not stable across runs"; exit 1; }
+rm -f "$SR/ports/demo/probe.c"
+kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+    || { echo "  REMOVING a source file did not rebuild it either"; exit 1; }
+kstrict KPKG_STRICT_RECIPE=1 >/dev/null
+echo "  a source-less port's own sources are part of its recipe"
+
 # UNKNOWN, both ways. An absent sidecar is every package on a tree that
 # predates the mechanism; a corrupt one is a truncated write. Neither may read
 # as "changed".
@@ -2413,6 +2440,20 @@ cells_golden start       start --dump-cells
 cells_golden menu-system menu system --dump-cells
 cells_golden keys        keys --dump-cells
 cells_golden doc         doc --dump-cells
+
+# THE CELL VERDICT IS ITS OWN CHECK, because the frame check above has already
+# run: a `golden_fail` raised by a cells_golden after it would be recorded and
+# never read, and a comparison whose answer nothing acts on is a comparison
+# that cannot fail. The message names the CELL half specifically — a colour
+# drift and a geometry drift are fixed by looking at different things.
+if [ "$golden_fail" != 0 ]; then
+    echo
+    echo "  A cell golden changed — a glyph, a colour slot or an attribute."
+    echo "  If the change is intended:"
+    echo "      KDOS_GOLDEN_UPDATE=1 testing/selftest.sh"
+    echo "  then read the diff in git before committing it."
+    exit 1
+fi
 
 # G7's chooser resolves a file the same way `kdos-appbox open` does, so it
 # inherits the same two traps: the LONGEST matching suffix wins (or every

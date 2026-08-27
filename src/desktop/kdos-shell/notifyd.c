@@ -904,11 +904,11 @@ static void draw_toasts(void)
 				int lw = ktui_utf8_width(lab);
 				if (x + lw + 2 > w - 2)
 					break;
-				ktui_draw_text(x, ry, 1, "[", KT_DIM, KT_BG,
+				ktui_draw_text(x, ry, 1, "[", KT_MID, KT_BG,
 					       KT_A_NONE);
 				ktui_draw_text(x + 1, ry, lw, lab, KT_SURFACE,
 					       accent, KT_A_NONE);
-				ktui_draw_text(x + 1 + lw, ry, 1, "]", KT_DIM,
+				ktui_draw_text(x + 1 + lw, ry, 1, "]", KT_MID,
 					       KT_BG, KT_A_NONE);
 				act_hit[i].x[a] = x;
 				act_hit[i].end[a] = x + lw + 2;
