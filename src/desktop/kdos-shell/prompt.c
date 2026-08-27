@@ -205,14 +205,14 @@ int prompt_main(int argc, char **argv)
 			bool on = sel == b;
 			int fg = on ? KT_SURFACE : KT_TEXT;
 			int bg = on ? KT_ACCENT : KT_SURFACE;
-			ktui_draw_text(x, by, 1, "[", KT_DIM, KT_SURFACE,
+			ktui_draw_text(x, by, 1, "[", KT_MID, KT_SURFACE,
 				       KT_A_NONE);
 			ktui_draw_fill(krect(x + 1, by,
 					     ktui_utf8_width(label), 1), bg);
 			ktui_draw_text(x + 1, by, ktui_utf8_width(label), label,
 				       fg, bg, KT_A_NONE);
 			ktui_draw_text(x + 1 + ktui_utf8_width(label), by, 1, "]",
-				       KT_DIM, KT_SURFACE, KT_A_NONE);
+				       KT_MID, KT_SURFACE, KT_A_NONE);
 		}
 		ktui_draw_flush();
 

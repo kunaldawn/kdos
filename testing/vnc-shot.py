@@ -44,6 +44,7 @@ section before this file existed:
 """
 
 import argparse
+import base64
 import os
 import socket
 import struct
@@ -92,9 +93,9 @@ class Serial:
             self.pump()
         return False
 
-    def send(self, line):
+    def send(self, line, pace=0.3):
         self.s.sendall(line.encode() + b"\n")
-        time.sleep(0.3)
+        time.sleep(pace)
 
     def tail(self, n=2000):
         return self.buf[-n:].decode("utf-8", "replace")
@@ -303,6 +304,36 @@ def rfb_shot(host, port, out):
     return w, h
 
 
+def send_script(ser, path, timeout=600):
+    """Run a LOCAL script inside the guest, as root, and return what it said.
+
+    There is no shared filesystem with the guest — the repo is not on the ISO
+    unless KDOS_ISO_SOURCES was set — so the file travels down the serial
+    console. It goes as BASE64 IN SHORT LINES for two separate reasons: a tty
+    in canonical mode drops everything past its line limit, silently, so a
+    script long enough to be worth keeping cannot be one line; and an encoded
+    payload contains nothing the shell would act on before `base64 -d` hands it
+    back, which a heredoc of arbitrary text does not promise.
+
+    The marker is echoed by the guest, so what comes back is delimited by the
+    guest's own output rather than by a timeout: a step that takes four minutes
+    to install a pack is waited for rather than truncated.
+    """
+    blob = base64.b64encode(open(path, "rb").read()).decode()
+    ser.send(": > /tmp/kdos-step.b64")
+    for i in range(0, len(blob), 512):
+        ser.send("printf %%s '%s' >> /tmp/kdos-step.b64" % blob[i:i + 512],
+                 pace=0.05)
+    ser.buf = b""
+    ser.send("base64 -d /tmp/kdos-step.b64 > /tmp/kdos-step.sh; "
+             "echo ===KDOSSCRIPT-BEGIN===; sh /tmp/kdos-step.sh 2>&1; "
+             "echo ===KDOSSCRIPT-END===")
+    if not ser.expect("===KDOSSCRIPT-END===", timeout=timeout):
+        return ser.tail(60000) + "\n[rig] the script never finished"
+    ser.pump()
+    return ser.tail(60000)
+
+
 class Step(argparse.Action):
     """Append (kind, value) to one ORDERED list shared by every action flag.
 
@@ -336,6 +367,9 @@ def main():
                     help="run in the kdos session")
     ap.add_argument("--root-cmd", action=Step,
                     help="run as root on the serial console and print it")
+    ap.add_argument("--root-script", action=Step,
+                    help="send this LOCAL file into the guest and run it as "
+                         "root — the form for a check too long to be one line")
     ap.add_argument("--size", default="1280x800",
                     help="the guest's screen, WxH — the virtio-gpu default is "
                          "1280x800 and nothing in the guest overrides it")
@@ -357,6 +391,9 @@ def main():
                          "last; --sleep is the same wait placed by hand")
     ap.add_argument("--wait", type=int, default=25,
                     help="seconds to let the session settle")
+    ap.add_argument("--script-timeout", type=int, default=900,
+                    help="how long a --root-script may take. Installing a "
+                         "pack off the medium is minutes, not seconds")
     ap.add_argument("--vnc-port", type=int, default=5909)
     ap.add_argument("--audio", action="store_true",
                     help="give the guest an HDA controller with a silent "
@@ -535,6 +572,9 @@ def main():
                 time.sleep(2)
                 ser.pump()
                 print("$ %s\n%s" % (value, ser.tail(8000)), flush=True)
+            elif kind == "root_script":
+                out = send_script(ser, value, timeout=args.script_timeout)
+                print("$ sh %s\n%s" % (value, out), flush=True)
             elif kind == "shot":
                 w, h = rfb_shot("127.0.0.1", args.vnc_port, value)
                 print("wrote %s (%dx%d)" % (value, w, h), flush=True)

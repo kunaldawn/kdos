@@ -77,7 +77,7 @@ static void draw(int year, int mon, int today_y, int today_m, int today_d)
 	snprintf(title, sizeof(title), " %s %d ", MONTHS[mon], year);
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 	ktui_draw_box(krect(0, 0, w, h), title, KT_ACCENT, KT_SURFACE, 0);
-	ktui_draw_text(2, 1, w - 4, "Mo Tu We Th Fr Sa Su", KT_DIM, KT_SURFACE,
+	ktui_draw_text(2, 1, w - 4, "Mo Tu We Th Fr Sa Su", KT_MID, KT_SURFACE,
 		       KT_A_NONE);
 
 	/*
@@ -182,7 +182,7 @@ static void draw(int year, int mon, int today_y, int today_m, int today_d)
 	localtime_r(&now, &nt);
 	snprintf(line, sizeof(line), "%d %s %d   %02d:%02d", nt.tm_mday,
 		 MONTHS[nt.tm_mon], nt.tm_year + 1900, nt.tm_hour, nt.tm_min);
-	ktui_draw_text(2, h - 2, w - 4, line, KT_DIM, KT_SURFACE, KT_A_NONE);
+	ktui_draw_text(2, h - 2, w - 4, line, KT_MID, KT_SURFACE, KT_A_NONE);
 	ktui_draw_flush();
 }
 

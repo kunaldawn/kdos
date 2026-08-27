@@ -33,16 +33,36 @@
 #include "kwl.h"
 #include "res.h"
 
+/*
+ * THE PAGE LIST IS READ OUT OF THE REGISTRY, never spelled again here. A
+ * hand-written copy stopped at `energy` while `boxes` was the tenth row of
+ * RES_PAGES for a release — so the page existed, `--page boxes` worked, and
+ * the only way to find that out was to already know. The ids in
+ * `enum res_page_id` are the one spelling: `--page` takes them, res.conf's
+ * sort keys use them and the goldens are named after them.
+ */
 static void usage(FILE *f)
 {
+	int col;
+
 	fprintf(f,
 	  "usage: kdos-res [--page <id>] [--tty|--gui]\n"
 	  "                [--fixture <dir>] [--interval <ms>] [--detail <pid>]\n"
 	  "                [--dump|--dump-cells] [--dump-size WxH] [--json]\n"
 	  "                [--version] [--help]\n"
 	  "\n"
-	  "pages: applications processes cpu memory gpu drives network\n"
-	  "       batteries energy\n");
+	  "pages:");
+	col = 6;
+	for (int i = 0; i < RP_NPAGES; i++) {
+		int w = (int)strlen(RES_PAGES[i].id) + 1;
+		if (col + w > 72) {
+			fprintf(f, "\n      ");
+			col = 6;
+		}
+		fprintf(f, " %s", RES_PAGES[i].id);
+		col += w;
+	}
+	fputc('\n', f);
 }
 
 /*

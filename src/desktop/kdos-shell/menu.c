@@ -518,7 +518,7 @@ static void draw(const struct view *v)
 		} else if (items[row].submenu == -2) {	/* a separator */
 			for (int x = 1; x < w - 1; x++)
 				ktui_draw_text(x, 1 + r, 1, ktui_glyph[KT_G_HL],
-					       KT_DIM, KT_SURFACE, KT_A_NONE);
+					       KT_MID, KT_SURFACE, KT_A_NONE);
 		} else {
 			ktui_draw_text(2, 1 + r, w - 4, items[row].name, fg, bg,
 				       KT_A_NONE);

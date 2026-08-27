@@ -61,9 +61,13 @@ mksquashfs / $ISO_ROOT/system.sfs \
 # and it is what makes `kdos app install` on a live session a MOUNT rather than
 # a copy.
 #
-# The store excludes /var/lib/kdos/packs for the same reason: a pack that is on
-# the medium must not also be inside the squashfs, or every install pays for it
-# twice.
+# THE STORE IS NOT EXCLUDED FROM THE SQUASHFS, AND MUST NOT BE. `pack_mode()`
+# is `/var/lib/kdos/packs/base.kpack` existing, so a live session whose store
+# was empty falls back to the monolithic image lane with 135 packs sitting on
+# the medium beside it. What 01_packs.sh put there is the base plus the
+# runtimes the recommended set needs — 314 MB, which is exactly what an install
+# carries — and those three files are the only ones that ride twice. Every
+# application and every data pack is on ISO9660 alone.
 # /ports, NOT /kdos/ports — see the note in 01_packs.sh: chroot_exec's bind of
 # $REPO_ROOT onto /kdos is non-recursive, so /kdos/ports is an empty shadow.
 if [ -d /ports/appbox/packs ] && \

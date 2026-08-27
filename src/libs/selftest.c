@@ -1731,11 +1731,32 @@ static void test_pack(void)
 		eq_int(kpk_verify(&p, &ring, who), KPK_SIG_GOOD,
 		       "and verifies against the ring");
 
-		/* A key the machine does not trust is a BAD signature, not an
-		 * absent one — the distinction kpkgadd already keeps. */
+		/*
+		 * THREE WAYS TO FAIL A SIGNATURE AND THEY ARE DIFFERENT
+		 * QUESTIONS. An EMPTY ring is a fact about this machine — it
+		 * holds no key that could check anything — and reporting it as
+		 * a bad signature sends the reader to inspect the artefact
+		 * instead of the drawer. A ring holding SOMEBODY ELSE'S key is
+		 * a fact about the pack: a block that no trusted key verifies.
+		 * Both are refused; only one of them is about the pack.
+		 */
 		KsigRing empty = {0};
-		eq_int(kpk_verify(&p, &empty, who), KPK_SIG_BAD,
-		       "a signature by a key nobody trusts is refused");
+		eq_int(kpk_verify(&p, &empty, who), KPK_SIG_NOKEY,
+		       "an empty ring is 'no key here', not a bad signature");
+
+		uint8_t oseed[KSIG_SEED_LEN], opub[KSIG_PUB_LEN];
+		if (ksig_keygen(oseed, opub) == 0) {
+			char *odir = kb_path_join(dir, "otherkeys");
+			kb_mkdir_p(odir);
+			char *of = kb_path_join(odir, "other.pub");
+			ksig_write_public(of, opub, "stranger");
+			KsigRing other = {0};
+			ksig_ring_load(&other, odir);
+			eq_int(kpk_verify(&p, &other, who), KPK_SIG_BAD,
+			       "a signature by a key nobody trusts is refused");
+			free(of);
+			free(odir);
+		}
 
 		/* One byte of the filesystem, flipped. The hash is checked
 		 * BEFORE the signature, so this is KPK_SIG_HASH — a caller

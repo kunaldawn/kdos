@@ -768,7 +768,7 @@ static void draw_frame(void)
 				ktui_draw_cell(x0 + x, 1 + y, pv_cp[o],
 					       KT_ACCENT, KT_BG, KT_A_NONE);
 			}
-		ktui_draw_text(x0, h - 4, pv_w, pv_from, KT_DIM, KT_BG,
+		ktui_draw_text(x0, h - 4, pv_w, pv_from, KT_MID, KT_BG,
 			       KT_A_NONE);
 	}
 

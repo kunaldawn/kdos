@@ -638,7 +638,7 @@ static void draw_frame(void)
 		ktui_draw_text(2, 2, w - 4, why, KT_ERR, KT_BG, KT_A_NONE);
 	else if (!nrows)
 		ktui_draw_text(2, 2, w - 4, "nothing has been copied yet",
-			       KT_DIM, KT_BG, KT_A_NONE);
+			       KT_MID, KT_BG, KT_A_NONE);
 
 	kch_list_clamp(&top, sel, nrows, body, sel_follow);
 	sel_follow = 0;
@@ -669,7 +669,7 @@ static void draw_frame(void)
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
 	ktui_draw_text(2, h - 2, w - 4,
 		       "Enter put it back   d forget   c clear   Esc",
-		       KT_DIM, KT_BG, KT_A_NONE);
+		       KT_MID, KT_BG, KT_A_NONE);
 	ktui_draw_flush();
 }
 

@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/vfs.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -230,8 +231,33 @@ static int cmd_box_create(int argc, char **argv)
 			kb_die("%s", merged);
 		}
 		rc = pack_box_create(&p, merged);
-		if (rc != 0)
+		if (rc != 0) {
 			pack_decompose(box);
+			/*
+			 * A CREATE THAT FAILS MUST SAY SO. podman's own
+			 * diagnostic goes to stderr and there are runs where
+			 * it prints nothing at all — a bare exit 125 with a
+			 * profile left on disk reads as a box that exists and
+			 * will not start. The one cause this program can name
+			 * for itself is the live session: an overlay upper
+			 * cannot sit on overlayfs, which is what $HOME is on a
+			 * booted ISO, and it is the same reading `kdos doctor`
+			 * already reports. Anything else is podman's to
+			 * explain and this says which exit status it gave.
+			 */
+			struct statfs st;
+			const char *h = kb_home_dir();
+
+			if (statfs(h, &st) == 0 &&
+			    (unsigned long)st.f_type == 0x794c7630UL)
+				kb_warn("%s: $HOME is on overlayfs (a live "
+					"session), so a box's overlay upper "
+					"has nowhere to go — a persistent box "
+					"needs an installed system", box);
+			else
+				kb_warn("%s: podman could not create the box "
+					"(exit %d)", box, rc);
+		}
 	} else if (!strncmp(p.base, "image:", 6)) {
 		if (base_pull(p.base + 6) != 0)
 			kb_die("could not fetch %s", p.base + 6);

@@ -591,14 +591,14 @@ static void draw(const char *title)
 		if (kind == 2 || (have && pv_state == 3)) {
 			ktui_draw_text(pane_x + (pw2 > 10 ? (pw2 - 10) / 2 : 0),
 				       list_top + list_rows / 2, pw2,
-				       "no preview", KT_DIM, KT_SURFACE,
+				       "no preview", KT_MID, KT_SURFACE,
 				       KT_A_NONE);
 		} else if (!have) {
 			/* Still pending: the decode runs in the idle slot and
 			 * may render a frame late, never block a click. */
 			ktui_draw_text(pane_x + pw2 / 2,
 				       list_top + list_rows / 2, pw2,
-				       ktui_glyph[KT_G_ELLIPSIS], KT_DIM,
+				       ktui_glyph[KT_G_ELLIPSIS], KT_MID,
 				       KT_SURFACE, KT_A_NONE);
 		} else {
 			int x0 = pane_x + (pw2 - pv_cols) / 2;
@@ -644,7 +644,7 @@ static void draw(const char *title)
 		char line[320];
 		snprintf(line, sizeof(line), "Filter: %s",
 			 filter_off ? "*" : filter_label);
-		ktui_draw_text(2, y, w - 4, line, KT_DIM, KT_SURFACE, KT_A_NONE);
+		ktui_draw_text(2, y, w - 4, line, KT_MID, KT_SURFACE, KT_A_NONE);
 	}
 
 	/* The note takes the hint row when there is one: "that file exists" is
@@ -662,7 +662,7 @@ static void draw(const char *title)
 			       : multi_mode
 				       ? "Space mark   ^H hidden   Esc cancel"
 				       : "Enter open   ^H hidden   Esc cancel",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 
 	/*
 	 * TWO REAL BUTTONS, right-aligned on the hint row.

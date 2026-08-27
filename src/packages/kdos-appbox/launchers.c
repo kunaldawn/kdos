@@ -62,7 +62,8 @@
 static const char *RESERVED[] = {
 	"sh", "bash", "env", "ls", "cp", "mv", "rm", "cat", "sed", "awk", "grep",
 	"find", "tar", "gzip", "python3", "perl", "make", "gcc", "kdos", "foot",
-	"kdos-appbox", "kdos-banner", "kdos-desktop", "kdos-desktop-start",
+	"kdos-appbox", "kdos-box", "kdos-banner", "kdos-desktop",
+	"kdos-desktop-start",
 	"kdos-shot", "kdos-fetch-app", "kdos-fetch-static", "kdos-getty",
 	"kdos-theme", "kdos-theme-helper", "kinstall", "kpkg", "kpkgadd",
 	"kpkgbuild", "kpkgdel", "kpkgdepends", "ksvc", "service", NULL
@@ -234,8 +235,6 @@ static const char *lookup(const char *table[][2], const char *key)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-#define MAX_APPS 256
-
 typedef struct {
 	char id[96];
 	char base[128];
@@ -251,8 +250,34 @@ typedef struct {
 	int cmdonly;		/* a command, not an application: no launcher */
 } Launcher;
 
-static Launcher apps[MAX_APPS];
-static int napps;
+/*
+ * THE TABLE GROWS, because a fixed one silently loses applications. It held
+ * 256, which covered the monolith's ~105 launchers with room to spare — and
+ * the pack lane parses each pack's OWN desktop entries, so 108 app packs
+ * produce well past that (LibreOffice alone carries eight). What the ceiling
+ * did was drop the tail: no error, an exit status of 0, and a Start menu
+ * missing whatever sorted last. It is on the heap so the dispatcher, which is
+ * this same binary and runs on every launch, carries no fixed cost for a
+ * table only `genlaunchers` fills.
+ */
+static Launcher *apps;
+static int napps, appcap;
+
+static Launcher *app_new(void)
+{
+	if (napps == appcap) {
+		int cap = appcap ? appcap * 2 : 128;
+		Launcher *grown = kb_calloc((size_t)cap, sizeof(*grown));
+		if (apps) {
+			memcpy(grown, apps, (size_t)napps * sizeof(*grown));
+			free(apps);
+		}
+		apps = grown;
+		appcap = cap;
+	}
+	memset(&apps[napps], 0, sizeof(apps[napps]));
+	return &apps[napps++];
+}
 
 /* Stamped onto every launcher parsed while it is set. The pack lane walks one
  * mounted pack at a time, and this is what ties a shim to the box it should
@@ -387,13 +412,7 @@ static void parse_dir(const char *srcdir)
 			continue;
 		}
 
-		if (napps >= MAX_APPS) {
-			kxdg_free(&e);
-			kb_warn("more than %d apps; the rest are ignored", MAX_APPS);
-			break;
-		}
-		Launcher *a = &apps[napps++];
-		memset(a, 0, sizeof(*a));
+		Launcher *a = app_new();
 
 		kb_strlcpy(a->pack, cur_pack, sizeof(a->pack));
 		kb_strlcpy(a->base, base, sizeof(a->base));
@@ -465,10 +484,7 @@ static void add_commands(const char *srcdir)
 		snprintf(probe, sizeof(probe), "%s/usr/bin/%s", root, COMMANDS[i]);
 		if (!kb_path_exists(probe))
 			continue;
-		if (napps >= MAX_APPS)
-			return;
-		Launcher *a = &apps[napps++];
-		memset(a, 0, sizeof(*a));
+		Launcher *a = app_new();
 		a->cmdonly = 1;
 		kb_strlcpy(a->id, COMMANDS[i], sizeof(a->id));
 		kb_strlcpy(a->base, COMMANDS[i], sizeof(a->base));
@@ -624,16 +640,24 @@ static int write_shims(const char *fsroot)
 	char *bindir = kb_path_join(fsroot, "usr/local/bin");
 	kb_mkdir_p(bindir);
 
-	/* Every shim goes, whatever it used to point at — the dispatcher has
+	/*
+	 * Every shim goes, whatever it used to point at — the dispatcher has
 	 * changed name once already and a stale symlink is a dead command. A
-	 * RELATIVE link target is the marker: the hand-written entries in this
-	 * directory are real files. */
+	 * RELATIVE link target is the marker for one this program wrote.
+	 *
+	 * RESERVED IS CONSULTED HERE AS WELL AS AT CREATE TIME, and that is
+	 * what keeps `kdos-box` alive: it is the box manager's name on this
+	 * same binary, installed by the recipe as a relative symlink, so a
+	 * sweep that went by the marker alone deleted the front door to every
+	 * box on the machine — leaving `kdos-box: command not found` on a
+	 * system where nothing was missing but a link.
+	 */
 	char **old = kb_listdir(bindir, NULL);
 	for (char **f = old; f && *f; f++) {
 		char *p = kb_path_join(bindir, *f);
 		char target[256];
-		ssize_t n = kb_is_link(p) ? readlink(p, target, sizeof(target) - 1)
-					  : -1;
+		ssize_t n = (!in_list(RESERVED, *f) && kb_is_link(p))
+			  ? readlink(p, target, sizeof(target) - 1) : -1;
 		if (n > 0) {
 			target[n] = 0;
 			if (target[0] != '/')
