@@ -47,6 +47,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 #include <dirent.h>
+#include <limits.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <stdio.h>
@@ -74,9 +75,19 @@
 #define DV_MAX_MEDIA 16
 #define DV_NAME 64
 #define DV_MOUNTD_SOCKET "/run/kdos-mountd.sock"
+/*
+ * A `/dev` node's path. Sized for what a V4L2 node actually is — `/dev/video0`
+ * — rather than for what readdir may return, because widening it pushes
+ * 260-byte paths through every row and label in this file for a name that
+ * cannot occur. The scan REFUSES a name that would not fit instead; see
+ * scan_cams(). One definition, because the scan buffer and the row that keeps
+ * the result have to agree.
+ */
+#define DV_DEVPATH 32
+#define DV_DEVNAME (int)(DV_DEVPATH - sizeof("/dev/"))
 
 struct dv_cam {
-	char path[32];
+	char path[DV_DEVPATH];
 	char name[DV_NAME];
 	char driver[24];
 	char holder[DV_NAME];	/* empty when nothing has it open */
@@ -158,7 +169,11 @@ static void find_holder(struct dv_cam *c)
 		if (!fd)
 			continue;
 		while ((f = readdir(fd))) {
-			char link[600], target[256];
+			/* A directory plus a name is a path, so it is sized
+			 * as one: `dpath` is itself built from sysfs and a
+			 * short buffer here silently compares the wrong
+			 * link against the device it is looking for. */
+			char link[PATH_MAX], target[PATH_MAX];
 			ssize_t n;
 
 			if (f->d_name[0] == '.')
@@ -204,8 +219,20 @@ static void scan_cameras(void)
 	while ((e = readdir(d)) && ncam < DV_MAX_CAM) {
 		if (strncmp(e->d_name, "video", 5))
 			continue;
-		char path[32];
-		snprintf(path, sizeof(path), "/dev/%s", e->d_name);
+		/*
+		 * REFUSED, NOT TRUNCATED — kdos-packd's rule, and it bites
+		 * harder here: a truncated name still open()s, just the WRONG
+		 * node, so the preview shows a device nobody asked for. The
+		 * explicit precision is what lets the compiler see that the
+		 * copy fits; the refusal above it is what makes that true
+		 * rather than merely quiet.
+		 */
+		char path[DV_DEVPATH];
+
+		if (strlen(e->d_name) > (size_t)DV_DEVNAME)
+			continue;
+		snprintf(path, sizeof(path), "/dev/%.*s", DV_DEVNAME,
+			 e->d_name);
 
 		int fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
 		if (fd < 0)

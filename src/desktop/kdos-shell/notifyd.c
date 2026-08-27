@@ -1002,7 +1002,7 @@ int notifyd_main(int argc, char **argv)
 	 * job and the history is the extra, and a session with no
 	 * XDG_RUNTIME_DIR should still get its notifications drawn.
 	 */
-	char spath[256];
+	char spath[SH_SOCK_MAX];
 	int srv = -1;
 	if (notify_sock_path(spath, sizeof(spath)) == 0) {
 		srv = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);

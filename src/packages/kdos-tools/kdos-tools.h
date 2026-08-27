@@ -51,6 +51,14 @@ int rebuild_main(int argc, char **argv);
  * recipe is unmeasurable and is never counted as a winner.
  */
 int march_main(int argc, char **argv);
+
+/*
+ * `kdos clone` (clone.c): the stick writes the stick. A raw copy of the boot
+ * medium onto another device, verified by reading it back — so the boot
+ * arrangement is whatever the medium already carries and there is no second
+ * opinion about how a KDOS stick is laid out.
+ */
+int clone_main(int argc, char **argv);
 int shot_main(int argc, char **argv);		/* kdos-shot                */
 int banner_main(int argc, char **argv);		/* kdos-banner              */
 int fetch_app_main(int argc, char **argv);	/* kdos-fetch-app           */

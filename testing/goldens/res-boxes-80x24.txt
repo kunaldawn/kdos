@@ -1,11 +1,11 @@
 +=  Resources  ================================================================+
-| Energy                                                                       |
-| unavailable                                                                  |
+| Boxes                                                                        |
+| 1 box, 1 running                                                             |
 |------------------------------------------------------------------------------|
-| App  |                                                                       |
-| Pro  | kdos-energyd is not running (the socket at /run/kdos-energyd.sock is  |
+| App  |BOX                 CPU%v   MEMORY    DISK      PROCS  ENERGY  UPTIME  |
+| Pro  |kdos-apps           155.0   1.2G      -         2      -       1d02h   |
 | CPU  |                                                                       |
-| Mem  | RAPL is root-only since Linux 5.10, so this page is the daemon's answ |
+| Mem  |                                                                       |
 | GPU  |                                                                       |
 | Dri  |                                                                       |
 | Net  |                                                                       |
@@ -20,5 +20,5 @@
 |      |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
-|      |                                                                       |
+|      |Enter for one box: its profile, its processes and the verbs            |
 +==============================================================================+

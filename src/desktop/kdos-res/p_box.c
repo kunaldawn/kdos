@@ -235,11 +235,16 @@ void res_box_prepare(void)
 {
 	static int applied;
 	/*
-	 * `starttime` is in clock ticks since boot and `wall_ms` is measured
-	 * from the same moment, so the difference is the process's age without
-	 * needing the boot wall time at all.
+	 * A process's age is the SYSTEM UPTIME minus its `starttime`, both in
+	 * seconds since boot. `wall_ms` is the sample's monotonic stamp and is
+	 * the rate divisor; it is not a boot-relative clock and must not stand
+	 * in for one here.
+	 *
+	 * Both are read once per rebuild rather than per process, so every
+	 * member of every box is measured against the same instant.
 	 */
 	long hz = kpr_hz();
+	unsigned long long up_s = kpr_uptime_s();
 
 	if (!applied) {
 		applied = 1;
@@ -267,17 +272,30 @@ void res_box_prepare(void)
 		b->cpu += kpr_proc_cpu(prev, p, R.sample.wall_ms - R.prev.wall_ms);
 		b->rss += p->rss;
 		/*
-		 * `starttime` is in clock ticks since BOOT, so a box's uptime
-		 * is the boot time plus the earliest member's start. The
-		 * oldest process in the box is the box's own age, because
+		 * The oldest process in the box is the box's own age, because
 		 * kdos-boxinit is pid 1 inside it and outlives everything.
+		 *
+		 * BOTH SIDES OF THIS SUBTRACTION ARE SECONDS SINCE BOOT.
+		 * `starttime` is clock ticks since boot, so the only thing it
+		 * may be taken from is the system's own uptime; `wall_ms` is
+		 * the sample's MONOTONIC stamp — the rate divisor — and belongs
+		 * to a different epoch. Under --fixture it belongs to a
+		 * different MACHINE, so the difference underflowed the unsigned
+		 * and the column drew the first eight digits of a 20-digit
+		 * number.
+		 *
+		 * A start later than the uptime means the two disagree, and the
+		 * honest answer to that is UNKNOWN — which `uptime_s` 0 renders
+		 * as `-`, the same rule the rest of this page keeps.
 		 */
-		if (p->starttime && hz > 0) {
-			unsigned long long age =
-				R.sample.wall_ms / 1000 -
+		if (p->starttime && hz > 0 && up_s) {
+			unsigned long long start_s =
 				p->starttime / (unsigned long long)hz;
-			if (age > b->uptime_s)
-				b->uptime_s = age;
+			if (start_s <= up_s) {
+				unsigned long long age = up_s - start_s;
+				if (age > b->uptime_s)
+					b->uptime_s = age;
+			}
 		}
 	}
 

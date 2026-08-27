@@ -460,8 +460,6 @@ static int nboxes;
 static int box_mode = BOX_LIST;
 static char box_cur[64];
 
-static const char *const BASES[] = { "pack:base", "image:debian:trixie",
-				     "box:kdos-apps" };
 static const char *const PERSISTS[] = { "persistent", "ephemeral", "frozen" };
 static const char *const NETS[] = { "host", "private", "none" };
 static const char *const SHARED[] = { "shared", "private" };
