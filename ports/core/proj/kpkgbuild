@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = proj
+version     = 9.8.1
+release     = 1
+source      = https://download.osgeo.org/proj/$name-$version.tar.gz
+sha256      = af5b731c145c1d13c4e3b4eeb7d167e94e845e440f71e3496b4ed8dae0291960  proj-9.8.1.tar.gz
+description = The coordinate engine under everything geospatial
+homepage    = https://proj.org/
+depends     = cmake ninja sqlite libtiff curl

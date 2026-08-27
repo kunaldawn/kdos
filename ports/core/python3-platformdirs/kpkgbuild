@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-platformdirs
+version     = 4.5.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/platformdirs/platformdirs-$version.tar.gz
+sha256      = 70ddccdd7c99fc5942e9fc25636a8b34d04c24b335100223152c2803e4063312  python3-platformdirs-4.5.0.tar.gz
+sha256      = ce42de64309766bc47a406b09be72bafc20c8da231708849d7e4225f4609c623  python3-platformdirs-vendor-4.5.0.tar.xz
+description = Where a python program's config, cache and data directories are
+homepage    = https://github.com/tox-dev/platformdirs
+depends     = python3 python3-setuptools python3-pip
+vendoring   = python
+pyrequirements = no
+pyruntime   = no

@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = prjtrellis
+version     = 1.4
+release     = 1
+_db         = ce8cdafe7a8c718f0ec43895894b668a479ba33f
+source      = $name-$version.tar.gz::https://github.com/YosysHQ/prjtrellis/archive/refs/tags/$version.tar.gz
+source      = prjtrellis-db-$_db.tar.gz::https://github.com/YosysHQ/prjtrellis-db/archive/$_db.tar.gz
+sha256      = 46fe9d98676953e0cccf1d6332755d217a0861e420f1a12dabfda74d81ccc147  prjtrellis-1.4.tar.gz
+sha256      = 49c8c1a2dbe5dc4eff7449dd57653f71494f98fe6ee36f4554590afeb3e3f355  prjtrellis-db-ce8cdafe7a8c718f0ec43895894b668a479ba33f.tar.gz
+description = The ECP5 bitstream database and packer
+homepage    = https://github.com/YosysHQ/prjtrellis
+depends     = cmake ninja pkgconf boost python3

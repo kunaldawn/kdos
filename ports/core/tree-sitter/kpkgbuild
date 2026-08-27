@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tree-sitter
+version     = 0.26.13
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/tree-sitter/tree-sitter/archive/refs/tags/v$version.tar.gz
+sha256      = ece24c3c5e2a76384075e830c7139b59fce8fb01e4ef8436fab08bbe10444c89  tree-sitter-0.26.13.tar.gz
+sha256      = a208b6db6255a1eae9be5f41996f9e97b7e5754d4f2e9169c4b401a55525c89d  tree-sitter-vendor-0.26.13.tar.xz
+description = The parser library and CLI — grammars compiled here, never fetched
+homepage    = https://tree-sitter.github.io/
+depends     = rust clang
+vendoring   = rust

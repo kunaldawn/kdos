@@ -1,5 +1,22 @@
 #!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
 
+# -Wno-error, and the same reason as stlink: upstream compiles with -Werror,
+# which is a promise about the libc it builds against. musl's <sys/fcntl.h> is
+# a compat shim whose whole body is a `#warning` redirecting to <fcntl.h>, and
+# -Werror=cpp makes that fatal in a header sleuthkit does not include directly.
+# Every warning is still printed; upstream just stops deciding which of them
+# ends this build.
+export CFLAGS="$CFLAGS -Wno-error"
+export CXXFLAGS="$CXXFLAGS -Wno-error"
 
 autoreconf -f -i
 

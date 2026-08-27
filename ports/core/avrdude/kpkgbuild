@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = avrdude
+version     = 8.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/avrdudes/avrdude/archive/refs/tags/v$version.tar.gz
+sha256      = 72fbe49d3e3ea2f48a750e7f2c16287b163a580e020f745af39d45ba68d9d6ae  avrdude-8.2.tar.gz
+description = Flash an AVR — an Arduino, an ATtiny, a fuse byte
+homepage    = https://github.com/avrdudes/avrdude
+depends     = cmake ninja pkgconf flex bison libusb libftdi hidapi libserialport readline elfutils

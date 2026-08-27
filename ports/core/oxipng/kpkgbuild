@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = oxipng
+version     = 10.2.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/oxipng/oxipng/archive/refs/tags/v$version.tar.gz
+sha256      = 0d0da5f245ed3a669bce63d3ca368d476bae67b0014a927c00df912c9d964a44  oxipng-10.2.0.tar.gz
+sha256      = a13dc221b153c888b8548251206f853ab8814962364ac7383d1a1ea67ffd4265  oxipng-vendor-10.2.0.tar.xz
+description = Make a PNG smaller without changing a pixel
+homepage    = https://github.com/oxipng/oxipng
+depends     = rust
+vendoring   = rust

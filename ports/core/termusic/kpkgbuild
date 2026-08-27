@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = termusic
+version     = 0.13.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/tramhao/termusic/archive/refs/tags/v$version.tar.gz
+sha256      = 661e1c39135f6eeb01cb6df199b8dcdd902ac456e96bd204ea4fda7ec6ae41ef  termusic-0.13.2.tar.gz
+sha256      = 7d800a19f4b68cfa8265e6b686eba85d2958958fb47c01dbf402f8330e446f8d  termusic-vendor-0.13.2.tar.xz
+description = A terminal music player drawn in ratatui, with its own playback daemon
+homepage    = https://github.com/tramhao/termusic
+depends     = rust alsa-lib pkgconf
+vendoring   = rust

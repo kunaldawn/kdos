@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-jinja2
+version     = 3.1.6
+release     = 1
+source      = https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz
+sha256      = 0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d  python3-jinja2-3.1.6.tar.gz
+sha256      = 4b50686a542345049b24436f5312a970e92313db5d0af1a3445175f5b0b87d06  python3-jinja2-vendor-3.1.6.tar.xz
+description = The template engine libplacebo generates its shader sources with
+homepage    = https://pypi.org/project/Jinja2/
+depends     = python3 python3-setuptools python3-pip python3-markupsafe
+vendoring   = python

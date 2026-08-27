@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qpdf
+version     = 12.4.0
+release     = 1
+source      = https://github.com/qpdf/qpdf/releases/download/v$version/$name-$version.tar.gz
+sha256      = 2783a032f443cc886dad41aa6d5fae3dabf23dec00ee7ec2cfb27ef67ebcf529  qpdf-12.4.0.tar.gz
+description = Restructure a PDF — split, merge, decrypt, repair
+homepage    = https://qpdf.sourceforge.io/
+depends     = cmake ninja pkgconf zlib libjpeg-turbo gnutls

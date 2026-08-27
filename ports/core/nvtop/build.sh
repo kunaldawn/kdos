@@ -1,5 +1,13 @@
 #!/bin/bash
-
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
 
 # -DNVIDIA_SUPPORT=OFF, AND THAT IS NOT A LIMITATION HERE. The NVIDIA backend
 # links NVML out of the proprietary driver, which this distro does not ship and

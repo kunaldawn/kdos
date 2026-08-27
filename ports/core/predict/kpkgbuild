@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = predict
+version     = 3.0.2
+release     = 1
+source      = https://www.qsl.net/kd2bd/$name-$version.tar.gz
+sha256      = e1385de66c4740336be4c6bfabd3d5d4270dce4ba36642d608aa9787d6c3ae61  predict-3.0.2.tar.gz
+description = Curses satellite tracker — passes, doppler and footprints from a TLE
+homepage    = https://www.qsl.net/kd2bd/predict.html
+depends     = ncurses alsa-lib curl

@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ocrmypdf
+version     = 16.11.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/o/$name/$name-$version.tar.gz
+sha256      = d89077e503238dac35c6e565925edc8d98b71e5289853c02cacbc1d0901f1be7  ocrmypdf-16.11.0.tar.gz
+sha256      = 9fb354242e17a6bf5b5393a0d1a5dfcfb47e92bbc9871d2762d941a133a0b442  ocrmypdf-vendor-16.11.0.tar.xz
+description = Adds an invisible OCR text layer to a scanned PDF, in place
+homepage    = https://github.com/ocrmypdf/OCRmyPDF
+depends     = python3 python3-setuptools python3-pip python3-setuptools-scm python3-pillow python3-pikepdf python3-pi-heif python3-lxml python3-cryptography python3-packaging tesseract ghostscript qpdf
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = deprecation img2pdf pdfminer.six pluggy rich markdown-it-py mdurl Pygments charset-normalizer Deprecated wrapt

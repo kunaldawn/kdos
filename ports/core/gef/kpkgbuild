@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gef
+version     = 2025.01
+release     = 1
+source      = $name-$version.py::https://raw.githubusercontent.com/hugsy/gef/$version/gef.py
+sha256      = cf5795a042585d3791e5d63880050364f6338c10a91b409e530391c2391fe48d  gef-2025.01.py
+description = A gdb extension that makes a crash readable — context, heap and ROP
+homepage    = https://hugsy.github.io/gef/
+depends     = gdb python3

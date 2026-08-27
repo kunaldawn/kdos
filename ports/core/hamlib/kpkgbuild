@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hamlib
+version     = 4.7.2
+release     = 1
+source      = https://github.com/Hamlib/Hamlib/releases/download/$version/$name-$version.tar.gz
+sha256      = ae1fcf2dbc80ea0786ea8f047b09399c3f7737d1930442f61a031708ed33e88f  hamlib-4.7.2.tar.gz
+description = One control protocol for 200 radios and rotators
+homepage    = https://hamlib.github.io/
+depends     = autoconf automake libtool pkgconf libusb readline

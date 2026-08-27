@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sigrok-cli
+version     = 0.7.2
+release     = 1
+source      = https://sigrok.org/download/source/$name/$name-$version.tar.gz
+sha256      = 71d0443f36897bf565732dec206830dbea0f2789b6601cf10536b286d1140ab8  sigrok-cli-0.7.2.tar.gz
+description = Capture from bench hardware and decode the protocol, at a prompt
+homepage    = https://sigrok.org/wiki/Sigrok-cli
+depends     = autoconf automake pkgconf glib libsigrok libsigrokdecode

@@ -41,7 +41,7 @@ Podman/distrobox glibc rootfs. Session entry: `kdos-desktop` from a tty.
 Four properties define the project. Everything else follows from them:
 
 1. **Built from scratch, with eight named exceptions.** The host is compiled
-   here from upstream tarballs by `kpkgbuild` recipes in `ports/`. 430 ports.
+   here from upstream tarballs by `kpkgbuild` recipes in `ports/`. 759 ports.
    What is NOT compiled here, and must not be described as if it were:
    `linux-firmware`, `intel-ucode`, `sof-firmware` and `wireless-regdb` (vendor
    binaries with no published source; regdb additionally MUST stay prebuilt or
@@ -57,8 +57,11 @@ Four properties define the project. Everything else follows from them:
    running KDOS can rebuild every port in the tree.
 3. **The repo builds offline.** `make build` runs `--network none`. Every
    upstream tarball, every `cargo vendor` bundle and the whole ~4 GB alien-app
-   container image live in-tree under Git LFS. Clone, `make build`, get an ISO,
-   no network.
+   container image is reachable with no network AT BUILD TIME — but they are
+   **not in git**: they are release assets, and `make bootstrap` is the one
+   step that fetches them before the first build. Git holds what IDENTIFIES
+   them (`sha256 =`, `ports/sources.manifest`, `C:` in `PACKAGES`), never the
+   bytes. Clone, `make bootstrap`, `make build`, get an ISO.
 4. **Alien apps.** **KDOS builds the desktop; applications live in boxes.**
    No native-porting of browsers, office suites or IDEs — ~105 GUI apps ship
    pre-baked in a Debian container and behave like ordinary system apps
@@ -181,13 +184,13 @@ distrobox-init never apt-gets anything on first enter.
 ### How the image ships in-tree
 
 `make build` runs `--network none`, so the image is built on the HOST with
-`make fetch-apps` → `ports/appbox/appbox.tar` (gitignored, over LFS's 2G/file
-limit), which `kdos-appbox image pack` immediately explodes into
-**`ports/appbox/image/`**: one zstd file per docker-archive member (layer blobs
-split at 1.5 G), all LFS-tracked, plus `INDEX.json`. That directory and
-`icons/` ARE committed — the repo alone must build the full ISO. The
-Containerfile is one `RUN` per segment, so editing a segment only rewrites that
-layer's blob in git. `script/06_packaging/01_appbox.sh` loads the tar directly
+`make fetch-apps` → `ports/appbox/appbox.tar`, which `kdos-appbox image pack`
+immediately explodes into **`ports/appbox/image/`**: one zstd file per
+docker-archive member (layer blobs split at 1.5 G, the release-asset ceiling
+being 2 GiB), plus `INDEX.json`. That directory is a RELEASE ASSET and is
+gitignored; `icons/` is small and IS committed. `make bootstrap` restores the
+chunks, and `INDEX.json` is what identifies them. The Containerfile is one
+`RUN` per segment, so editing a segment only rewrites that layer's blob. `script/06_packaging/01_appbox.sh` loads the tar directly
 if present, else `kdos-appbox image assemble` streams it out of the chunks into
 `podman load`. A missing image is a warning; the ISO still builds.
 
@@ -1692,7 +1695,8 @@ split:
   dropped), five sizes (24 32 48 64 96 of fourteen), and every third animation
   frame with the delay tripled. `wait` and `progress` ship 54 frames at 9 MB
   each upstream — over two thirds of the theme — so that decimation is most of
-  the 27 MB → 4.4 MB cut. `art/` is LFS-tracked; `art/UPSTREAM` records the
+  the 27 MB → 4.4 MB cut. `art/` is committed as ordinary files — it is 4.4 MB,
+  which is small enough to live in git; `art/UPSTREAM` records the
   release.
 - **`kdos-theme cursors`** recolours `art/` into the palette. Luminance maps onto a
   dark-green→accent ramp, except `wait`/`progress`, which ramp to **amber** —
@@ -2389,7 +2393,7 @@ QUESTIONNAIRE when the image has no cryptsetup, not at the install step — afte
 the point of no return is the wrong place to discover it.
 
 **The root filesystem is a table, not a branch** (`ki_filesystems[]` in
-`conf.c`): ext4, btrfs or xfs, and every consumer reads the same row — the
+`conf.c`): ext4, btrfs, xfs or f2fs, and every consumer reads the same row — the
 menu, the mkfs argv, the fstab line and the swapfile step. Three things it
 encodes that are each a way this goes wrong later:
 
@@ -2400,11 +2404,13 @@ encodes that are each a way this goes wrong later:
   extents and `swapon` refuses those on xfs (*"swapfile has holes"*), and btrfs
   needs the file NOCOW and uncompressed, which is what `btrfs filesystem
   mkswapfile` is for. The failure is at the NEXT boot's `swapon -a`, with no
-  swap and nothing saying why — so ext4 gets `fallocate`, xfs gets `dd`, btrfs
-  gets `mkswapfile`.
-- **`CONFIG_XFS_FS=m`**, so `01_initramfs.sh` carries the `xfs` module. ext4 and
-  btrfs are built in. An xfs root the initramfs cannot mount installs perfectly
-  and never boots again.
+  swap and nothing saying why — so ext4 gets `fallocate`, xfs and f2fs get
+  `dd`, btrfs gets `mkswapfile`.
+- **`CONFIG_XFS_FS=m` and `CONFIG_F2FS_FS=m`**, so `01_initramfs.sh` carries
+  the `xfs` and `f2fs` modules. ext4 and btrfs are built in. A root on either
+  module that the initramfs cannot mount installs perfectly and never boots
+  again — so **every row of `ki_filesystems[]` has to appear in that MODULES
+  line**, and the comment there says so.
 
 A filesystem whose mkfs is missing is still listed and still selectable, with
 the row saying so and `do_prepare` refusing it *before* anything is written —
@@ -3075,10 +3081,14 @@ fcitx5  ──input-method-v2──▶  kdos-comp  ──text-input-v3──▶ 
 **One language per engine, and the Chinese one costs a Boost.**
 `fcitx5-chinese-addons` (pinyin, shuangpin, and the table methods — cangjie,
 wubi, erbi, zhengma…) sits on `libime`, which needs Boost's headers *and*
-`Boost::iostreams`; that is a 188 MB tarball in LFS for a handful of compiled
+`Boost::iostreams`; that is a 188 MB tarball for a handful of compiled
 components, and the recipe builds
-`--with-libraries=iostreams,system,filesystem,regex,date_time` — the four
-beside iostreams are what libime's own link line asks for. It buys the
+`iostreams,system,filesystem,regex,date_time,test` — the five beside iostreams
+are what the rest of the Boost-using catalogue asks for (ledger names four of
+them REQUIRED). **The list has to be on BOTH the bootstrap and the b2 line**:
+bootstrap decides what b2 CAN build and b2's own `--with-` flags decide what it
+DOES, so with it on bootstrap alone exactly one component is built and every
+other consumer fails at `find_package` naming a missing cmake config. It buys the
 input method for the largest language population there is, and there is no
 smaller road to pinyin — librime wants Boost too. `fcitx5-anthy` over
 `anthy-unicode` is Japanese, `fcitx5-hangul` over `libhangul` is Korean, and
@@ -4828,7 +4838,8 @@ kdos/
 │   │   ├── kpkgbuild            # declarative metadata — parsed, never sourced
 │   │   ├── build.sh             # the build; bash, cwd = $SRC
 │   │   ├── postinstall.sh       # optional install-time hook (4 ports)
-│   │   └── <name>-<ver>.tar.*   # cached upstream tarball (LFS)
+│   │   └── <name>-<ver>.tar.*   # upstream tarball (a release asset,
+│   │                            #   gitignored; make bootstrap fetches it)
 │   ├── appbox/                  # Containerfile + image/ (the monolith), and
 │   │                            #   packs.conf + bake + harvest.py (the packs);
 │   │                            #   Containerfile.bake carries podman+mkfs.erofs
@@ -4934,8 +4945,10 @@ Makefile passes into the container and nobody forwards reaches every host step
 and no chroot one, so `make build KDOS_ISO_SOURCES=1` produces an ordinary
 stick and says nothing about why. A new opt-in packaging flag is two edits, not
 one. Phase env files
-(`script/phaseN.env.sh`) export `CHROOT=1`, `CFLAGS`, `LDFLAGS`,
-`PORT_REPO="/ports/core /kdos/src/packages"`.
+(`script/phaseN.env.sh`) export `CHROOT=1`, `CC=gcc`, `CXX=g++`, `CFLAGS`,
+`LDFLAGS`, `PORT_REPO="/ports/core /kdos/src/packages"`. **The compiler is
+NAMED there and not discovered** — see the `AC_PROG_CC` note in **Recurring
+build fixes**.
 
 **Anything a chroot command prints is parsed.** `kpkgdepends` writes the install
 order to stdout and nothing else, so `chroot_exec.sh` logs diagnostics to
@@ -5239,6 +5252,16 @@ and needs a container; this checks the WIRING in seconds:
   from the shipped binary. That is exactly how `kdos-res`'s detail page reached
   a green selftest and a failed `05_desktop`. Only our own trees: an upstream
   tarball is entitled to carry sources its own build system chooses between
+- **every meson `-D` a recipe passes is an option that port actually defines.**
+  meson fails at SETUP on an unknown option, before a line is compiled, and
+  there is no universal spelling — `-Dtests=disabled` is right for one port and
+  fatal for the next. The authority is the tarball's own
+  `meson_options.txt`/`meson.options`, unioned across EVERY archive the port
+  ships (pipewire carries media-session beside it), plus meson's built-ins,
+  which are always valid and are in no such file. A subproject-scoped
+  `-Dsub:opt` is skipped — its option file is not here. Six were found the slow
+  way before this existed, each an hour-long round trip; three of those
+  (libvips, mpv, nvme-cli) had never reached the compiler at all
 - every recipe declares name, version and release
 - all shipped and build shell is syntactically valid
 - nothing still invokes a tool the C consolidation removed
@@ -5837,6 +5860,14 @@ make DESTDIR=$PKG install
 - **`vendoring = rust`** makes `ports/fetch` run `cargo vendor` and package
   `vendor/` + `.cargo/config.toml` as `<name>-vendor-<version>.tar.xz` beside
   the tarball; `build.sh` extracts it into `$SRC` and builds `--frozen --offline`.
+- **`pyrequirements = no` says a `requirements.txt` IS NOT THE DEPENDENCY
+  SET.** The name is a convention with no defined meaning and projects
+  routinely use it for the OPTIONAL list; `ports/fetch` vendors the whole file
+  when it is there, which for visidata reached pandas and then scipy — thirty
+  megabytes and a Fortran compiler, for a terminal spreadsheet whose
+  `install_requires` is `python-dateutil` alone. With the key set, the sdist's
+  own metadata is what gets vendored, and the fetch SAYS it skipped the file
+  rather than going quiet.
 - **`ports/fetch` cannot source a recipe any more.** It compiles kpkg on the
   host (a two-second `cc`, gitignored at `ports/.kpkg-meta`) and evals
   `kpkg meta`. One parser, in C, shared with the build.
@@ -5966,11 +5997,169 @@ Apply the canonical fix when a build fails for one of these.
 Affects librsvg, pipewire-sys and wayland-rs; it was first hit on the cosmic-*
 ports, which are gone.
 
+**A GNU-sed extension on a toybox system — an EMPTY generated file, and an
+error naming something else.** `sed` here is toybox's and is POSIX; upstream
+build systems routinely assume GNU. Toybox does not implement `0,/re/d`, `\U`,
+`-z` or in-place with a suffix, and it does not fail loudly — the pipeline
+produces NOTHING and the generated header, config or script is written zero
+bytes long. The build then gets as far as the compiler and reports a missing
+type. **`ports/core/sed` is GNU sed** and installs over toybox's applet in
+phase 3, beside `gawk` and `findutils`, which are there for the same reason.
+A port that needs it puts `sed` in `depends`; xapian-core is the worked
+example and its recipe records the whole chain.
+
+**`ports/core/coreutils` INSTALLS TWO APPLETS OVER TOYBOX AND NO MORE**, for
+the same reason and by the same rule: toybox `expr` has no `length` (brltty's
+Tcl gendeps), and toybox `ln` has no `--relative` (sshfs's meson install script,
+which makes a symlink inside DESTDIR that is still correct once the tree moves).
+`INSTALL_PROGRAMS` in that recipe is the whole list; adding to it takes another
+path off toybox, which is the opposite of what this distro is.
+
+**A BUILD THAT REACHES PyPI UNDER `--network none`, and blames the wrong
+package.** qemu's `configure` builds a python venv and, with downloads
+enabled (its DEFAULT), passes `--online` to `mkvenv`, which drops pip's
+`--no-index`. pip then goes to the network for packages that are vendored in
+the tarball's own `python/wheels/` and fails naming whichever it asked for
+first. **`--disable-download` is the flag**, and it has a second consequence
+worth knowing before it bites: it also stops the dtc submodule being fetched,
+so `aarch64-softmmu` and `riscv64-softmmu` fail meson setup on *"fdt disabled
+but required"* — hence `ports/core/dtc`. And mkvenv installs a group in ONE
+pip invocation, so one genuinely missing package (`wheel`, here) fails every
+vendored wheel beside it; `ports/core/python3-wheel` is that half.
+
+**A meson port whose `meson_options.txt` does not carry the option you passed
+fails at SETUP, before a line is compiled.** `-Dtests=false` is not a
+universal spelling — libkiwix has only `static-linkage` and `doc`. Read the
+options file out of the tarball rather than guessing, and reach for the
+BUILT-IN options (`-Dwerror=false`, `-Ddefault_library=`) when what you want
+is a meson-level knob: those are always valid.
+
+**`go build -o <name> ./<name>` writes the binary INSIDE the directory.** A Go
+repo whose command lives in a subdirectory of its own name — gocryptfs's
+`gocryptfs-xray` — leaves `install` reporting *"Skipped dir"* on a path that
+looks exactly like the binary it wanted. Build into a directory of your own
+(`-o out/<name>`) and install from there.
+
 **CMake 4.x — "Compatibility with CMake < 3.5 has been removed".** Add
 `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
 
+**A RUST PORT'S VERSION IS PINNED BY THIS TREE'S rustc, AND UPSTREAM'S
+DECLARED `rust-version` IS NOT THE REAL FLOOR.** `ports/core/rust` is 1.93.0
+and `ports/Containerfile.fetch` pins the same toolchain; cargo REFUSES a crate
+whose `rust-version` is higher rather than degrading — `rustc 1.93.0 is not
+supported by the following packages`. Pin the port to the newest release that
+builds and say so in the recipe, because bumping one means bumping the
+toolchain, the fetch container and every vendored bundle together — a wave,
+not a version bump. rust-analyzer and hurl are the worked examples, and
+**rust-analyzer is also the warning that the manifest is not an oracle**: its
+2026-05-04 release declares 1.91 and still fails, because `hir-ty` uses `if
+let` match guards, stabilised later. The manifest gates cargo's refusal; it
+says nothing about what the code uses. The only reliable test is compiling.
+
+**A VENDOR BUNDLE GOES WHERE CARGO'S CWD IS, NOT BESIDE THE MANIFEST.** Cargo
+finds `.cargo/config` by walking up from the CURRENT DIRECTORY, and a build
+that invokes it with `--manifest-path` from a parent never reads a config next
+to that manifest. lnav's Makefile does it from `src/`, and cryptography's
+maturin does it from the project root; unpacked beside the manifest, every
+crate in the bundle resolves as MISSING under `--offline` (`no matching package
+named 'base64'`) while sitting in `vendor/` the whole time. Unpack where cargo
+will be standing — the config's own relative `directory = "vendor"` then
+resolves correctly too. **`vendordir =` in the recipe is the other half**: it
+says where `cargo vendor` / `go mod vendor` must RUN, which is beside the
+manifest, and the two directories are not the same place.
+
+**PIP BUILDS METADATA WHILE IT DOWNLOADS, AND A BACKEND THAT CANNOT FIND cmake
+RESOLVES IT AS THE PyPI `cmake` PACKAGE** — CMake's whole source tree, compiled
+from scratch, inside a step that is supposed to be downloading. Twice now:
+matplotlib through meson-python, and pikepdf through nanobind. Two answers, and
+the second is what `ports/Containerfile.fetch` carries cmake, ninja,
+python3-dev, libffi-dev and libssl-dev for:
+
+- **name the backends as ports and pass `--no-build-isolation`**, when they are
+  packages this tree should have anyway;
+- **give the FETCH IMAGE what a metadata build needs**, so `pip download` never
+  reaches for PyPI's copy of a system tool.
+
+And **`pypackages =` downloads `--no-deps`**, because that key IS the closure
+the recipe wants: letting pip resolve from there drags in every dependency that
+is already a port and builds each one's metadata to find that out, which is how
+the fetch image ends up needing the development headers of every library any of
+them binds.
+
+**A PYTHON PACKAGE'S DECLARED BUILD BACKEND IS PART OF ITS VERSION PIN.**
+pikepdf 10 moved to scikit-build-core + nanobind and 9.10 moved to pybind11 3;
+9.9.0 is the last release this tree can build, and ocrmypdf only wants
+`>= 8.10.1`. Read `[build-system] requires` before picking a version — it
+decides how many ports the choice costs.
+
+**A MESON `feature` TAKES enabled/disabled/auto AND REFUSES A BOOLEAN.**
+`-Dgd=false` is a configure-time ERROR, not a coercion, and it reads perfectly
+on the line. `testing/preflight.sh` checks every `-D<name>=<value>` a recipe
+passes against the type its option file declares, for the two types with a
+closed universal value set.
+
+**A MESON SUBPROJECT WRAP, A CMAKE `file(DOWNLOAD)` AND A
+`FetchContent_Declare(GIT_REPOSITORY …)` ARE ONE BUG: A BUILD THAT REACHES THE
+NETWORK.** Six so far — fcitx5's spell dictionary was the first, then
+fluidsynth downloading GCEM, mpd and mpv falling back to `fmt` and
+`libplacebo` wraps, taskwarrior cloning corrosion, and qemu's venv going to
+PyPI. They fail as *"is the internet available?"*, *"cannot compute hash on
+failed download"* or *"Could not resolve host"*, hours in. Three answers, and
+which one is right depends on what the thing IS:
+
+- **a real library → a PORT** (`fmt`, `libplacebo`, `corrosion`), and look for
+  the project's own escape hatch first: taskwarrior has `-DSYSTEM_CORROSION=ON`
+  and mosquitto-style `WITH_*` switches are common. `FETCHCONTENT_SOURCE_DIR_<NAME>`
+  is the generic one when there is none.
+- **a header-only submodule nobody else uses → a second `source =`** extracted
+  where the probe already looks (GCEM into `gcem/`, libime's three data
+  tarballs into `data/`).
+- **a build-time generator → a HOST dependency** (`python3-jinja2`, which
+  libplacebo generates every file under `src/shaders/` with).
+
+**A release ARCHIVE carries a git submodule's directory EMPTY**, which is why
+libplacebo has no Vulkan-Headers and no glad and is built with no GPU backend
+at all. **A non-archive `source =` is NOT unpacked into `$SRC_ROOT`** — it
+stays in the port directory, so a recipe reads it from `$PORT_SRC`
+(tesseract's `eng.traineddata`).
+
+**`AC_PROG_CC` WALKS A PREFERENCE LIST, AND SOME PUT clang FIRST.** potrace's
+configure tries `clang gcc cc c99 …` in that order, so the moment clang became
+a port every such recipe silently changed toolchain and failed with *"C
+compiler cannot create executables"* — from a configure with a working gcc in
+`$PATH` the whole time. Every native phase env now exports `CC=gcc` / `CXX=g++`:
+a distro that builds itself cannot have its toolchain depend on which ports
+happen to be installed.
+
+**A MISSPELT `-D` IS A WARNING, NOT AN ERROR — so a cmake option that does
+nothing looks exactly like one that worked.** cmake prints *"Manually-specified
+variables were not used by the project"* and carries on; mosquitto's switch is
+`WITH_DOCS` and `-DDOCUMENTATION=OFF` built the man pages anyway. Read that
+warning in the log rather than the exit status, and take the option names from
+the project's own `option(...)` lines. meson is the opposite and fails at
+setup — see the meson_options note above.
+
 **GCC 15 — incompatible-pointer-types is an error.**
 `export CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"`.
+
+**AN UPSTREAM `-Werror` IS A PROMISE ABOUT UPSTREAM'S COMPILER AND LIBC, NOT
+ABOUT THESE.** Two diagnostics fire here that upstream has never seen: GCC 14's
+`-Wcalloc-transposed-args`, where `calloc(sizeof(x), n)` is the transposed
+spelling and is correct; and musl's own `#warning` inside `<sys/poll.h>`, which
+`-Werror=cpp` makes fatal in a header the code does not include directly.
+Chasing them one `-Wno-` at a time is a round trip per diagnostic — `-Wno-error`
+keeps every warning printed and stops upstream deciding which of them ends the
+build. stlink is the worked example; `-Dwerror=false` is the meson spelling.
+
+**`make VAR=…` ON THE COMMAND LINE BEATS BOTH THE ENVIRONMENT AND THE
+MAKEFILE'S OWN `VAR =` / `VAR +=`.** That is make's precedence order, and it is
+the wrong end of it for CFLAGS: a Makefile's `-D`s are its CONFIGURATION, and
+overriding them fails somewhere else entirely. memtest86+ lost `-DARCH_BITS=64`
+and compiled its 32-bit word paths against a 64-bit `testword_t`; sc-im lost
+`-DHELP_PATH`, `-DCONFIG_DIR` and a dozen more and failed on
+`'CONFIG_DIR' undeclared`, which reads as a missing header. **EXPORT CFLAGS,
+never pass it as a make argument** — then a `+=` Makefile appends to ours and a
+plain `=` Makefile has already discarded the environment and needs nothing.
 
 **"C compiler cannot create executables" from an old autotools port.** That
 message blames the toolchain and is almost never about it: read
@@ -5991,10 +6180,18 @@ a prefix, delete the old files *and* the old `.pc`, then rebuild the consumers.
 Still outstanding: `libinput` installs to `/usr/local/lib64` and works only
 because its consumers were linked against that path.
 
-**libunwind — undefined `__unw_getcontext`.** The port builds without the
-assembly files. Consumer workaround:
-`export LDFLAGS="$LDFLAGS -Wl,--allow-shlib-undefined"`. Real fix (TODO):
-rebuild `ports/core/libunwind` with the assembly enabled.
+**A CMakeLists WITH NO `project()` GETS AN IMPLICIT ONE — C AND CXX ONLY.**
+LLVM's libunwind is written to be a subdirectory of `runtimes`, whose own line
+is `project(Runtimes C CXX ASM)`. Built directly, CMake supplies the implicit
+project, silently drops `UnwindRegistersSave.S` and `UnwindRegistersRestore.S`,
+and produces a `libunwind.a` that compiles, installs, and then fails EVERY
+static link on `__unw_getcontext` and `__libunwind_Registers_x86_64_jumpto`.
+`-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=<file>` is included BY `project()`, the
+implicit one included, so one line of `enable_language(ASM)` fixes it and
+nothing upstream is touched. The `runtimes` entry point is NOT the answer: it
+includes AddLLVM, HandleLLVMOptions and GetHostTriple from
+`../llvm/cmake/modules`, which is the 140 MB llvm source tarball, for three
+files.
 
 **ICU split — `ubrk_*` missing at link.** `libicuio.pc` doesn't propagate
 `icu-uc`. `export LDFLAGS="$LDFLAGS -licuuc"`.
@@ -6159,7 +6356,7 @@ adding users is manual.
 ## Working-state markers
 
 ```bash
-ls ports/core | wc -l                                  # 430 ports
+ls ports/core | wc -l                                  # 759 ports
 ls build/fs/var/lib/kpkg/db/ | wc -l                   # installed packages
 git status --short | wc -l                             # tracked changes
 ls build/logs/04_phase4/*.log                          # which packages have logs
@@ -6173,8 +6370,6 @@ and respond with the targeted fix.
 
 ## Outstanding gaps / TODO
 
-- `libunwind` lacks its assembly files → undefined symbols; consumers work
-  around with `--allow-shlib-undefined`.
 - No per-service firewall rules. `fs/etc/nftables.conf` ships a default
   workstation policy — established/related and loopback accepted, ICMP and
   **ICMPv6 answered** (dropping ICMPv6 does not harden IPv6, it breaks
@@ -6236,14 +6431,18 @@ and respond with the targeted fix.
 - **No corefonts for wine.** winetricks fetches them from the network at run
   time and nothing in the image may depend on that, so a Windows program that
   wants Arial gets a substitute.
-- **THE PACK SET HAS NEVER BEEN BAKED AT FULL SCALE.** `ports/appbox/bake`
-  and `harvest.py` are proven on a three-pack bake from real Debian trixie
-  (base 52 MB, a GTK runtime 40 MB, `app.xterm` 1.7 MB, composed and entered by
-  a rootless podman) — but `packs.conf`'s ~40 application rows need
-  `make fetch-packs`, which needs a network and root, and have not been run.
-  Until they are, `01_packs.sh` says so and the monolithic image lane is what
-  ships. Every pack-lane claim in the **Packs** section above is measured at
-  that small scale unless it says otherwise.
+- **THE PACK SET IS BAKED AND HAS NEVER BOOTED.** Those are two different
+  gaps and only the second is still open. `ports/appbox/bake` has produced the
+  full set from real Debian trixie — **135 packs, 19 GB in
+  `ports/appbox/packs/`**, with a `PACKAGES` index signed by
+  `build/keys/kdos-packs.key`, deltas generating (979 bytes for an unchanged
+  pack, reconstructing byte-for-byte) and skip-unchanged firing off
+  `kdos-pack imagehash`. What has NOT happened is a machine booting on that
+  lane: nothing in the pack path — `kdos-packd` mounting off the medium,
+  `kdos app install`, `kdos-box` composing an overlay, the installer's
+  Applications page — has run anywhere but a fixture. Until it does,
+  `01_packs.sh` still says so and the monolithic image lane is what ships;
+  **that boot is what gates W7-5**, not another bake.
 - **`kdos-box freeze` has not been measured against `podman save`.** It builds
   and the machinery under it is proven, but the "an order of magnitude smaller"
   claim the design rests on needs a real box with real work in it, and the

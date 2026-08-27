@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = coreutils
+version     = 9.9
+release     = 1
+source      = https://mirrors.ocf.berkeley.edu/gnu/coreutils/$name-$version.tar.xz
+sha256      = 19bcb6ca867183c57d77155eae946c5eced88183143b45ca51ad7d26c628ca75  coreutils-9.9.tar.xz
+description = The GNU utilities toybox implements too narrowly — today, expr
+homepage    = https://www.gnu.org/software/coreutils/
+depends     = gmp

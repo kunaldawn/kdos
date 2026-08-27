@@ -1425,8 +1425,24 @@ fi
 # root-only since PLATYPUS — and which one a machine gives depends on the
 # machine. Both name the interface, and the claim under test is that it
 # refuses and says why, not which of the two it hit.
-"$OUT/kdos-energyd" 2>&1 | grep -q "powercap" \
-    || { echo "  an unreadable counter did not stop the daemon"; exit 1; }
+#
+# AND IT IS SKIPPED WHERE THE PREMISE IS FALSE, which is a host whose RAPL
+# counter this user CAN read — some machines grant it to the console user, and
+# there the daemon is right to start and the refusal cannot be provoked. Asking
+# for it anyway made a correct daemon fail the suite: it got past the counter
+# and stopped at `bind /run/kdos-energyd.sock: Permission denied`, which names
+# neither powercap nor anything the assertion was about.
+en_readable=no
+for d in /sys/class/powercap/*/energy_uj; do
+    [ -r "$d" ] && head -c1 "$d" >/dev/null 2>&1 && en_readable=yes
+done
+if [ "$en_readable" = yes ]; then
+    echo "  the refusal is skipped — this host's RAPL counter is readable, so"
+    echo "    the daemon is correct to start and the path cannot be exercised"
+else
+    "$OUT/kdos-energyd" 2>&1 | grep -q "powercap" \
+        || { echo "  an unreadable counter did not stop the daemon"; exit 1; }
+fi
 KDOS_ENERGYD_SOCKET="$OUT/nothing.sock" "$OUT/kdos-energy" 2>&1 \
     | grep -q "no kdos-energyd" || { echo "  no message for a dead daemon"; exit 1; }
 echo "  the fixture replays: nesting, the wrap, the roll-up and the residue"

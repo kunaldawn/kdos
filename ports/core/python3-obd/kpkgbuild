@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-obd
+version     = 0.7.3
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/o/obd/obd-$version.tar.gz
+sha256      = 27b8f043376ca700edb98bf5216e2912295ecde0e735b260999f2d9ddf342522  python3-obd-0.7.3.tar.gz
+description = Read and clear engine fault codes over a $10 ELM327 adapter
+homepage    = https://github.com/brendan-w/python-OBD
+depends     = python3 python3-setuptools python3-pip python3-pyserial

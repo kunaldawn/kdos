@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libsixel
+version     = 1.10.5
+release     = 1
+source      = libsixel-1.10.5.tar.gz::https://github.com/libsixel/libsixel/archive/refs/tags/v1.10.5.tar.gz
+sha256      = b6654928bd423f92e6da39eb1f40f10000ae2cc6247247fc1882dcff6acbdfc8  libsixel-1.10.5.tar.gz
+description = Sixel — pictures in a terminal, on the one graphics protocol a VT understands
+homepage    = https://github.com/libsixel/libsixel
+depends     = meson libjpeg-turbo libpng curl

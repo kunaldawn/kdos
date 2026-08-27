@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mbpoll
+version     = 1.5.4
+release     = 1
+source      = mbpoll-1.5.4.tar.gz::https://github.com/epsilonrt/mbpoll/archive/refs/tags/v1.5.4.tar.gz
+sha256      = a9bcc3afa3b85b3794505d07827873ead280d96a94769d236892eb8a4fb9956f  mbpoll-1.5.4.tar.gz
+description = Read and write Modbus registers from a prompt, over RTU or TCP
+homepage    = https://github.com/epsilonrt/mbpoll
+depends     = cmake pkgconf libmodbus

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rtl-sdr
+version     = 2.0.3
+release     = 1
+source      = rtl-sdr-2.0.3.tar.gz::https://github.com/osmocom/rtl-sdr/archive/refs/tags/v2.0.3.tar.gz
+sha256      = 23dec530f40456a8396e7c897f313859877e18b4c6432c6d323645871e351f6f  rtl-sdr-2.0.3.tar.gz
+description = The RTL2832U front end, and the rtl_* tools every cheap SDR starts with
+homepage    = https://osmocom.org/projects/rtl-sdr
+depends     = cmake libusb

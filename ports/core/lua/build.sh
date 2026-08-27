@@ -24,9 +24,17 @@ make INSTALL_TOP=$PKG/usr \
      INSTALL_MAN=$PKG/usr/share/man/man1 install
 
 install -d $PKG/usr/lib/pkgconfig
-cat > $PKG/usr/lib/pkgconfig/lua.pc << "EOF"
+# TWO HEREDOCS, AND THE SPLIT IS THE POINT. Only V and R are ours to expand;
+# every ${prefix}, ${libdir} and ${V} below is a pkg-config VARIABLE and must
+# reach the file literally. One quoted heredoc froze V and R too, so
+# `Version:` read as the literal ${R} and every consumer asking for a version
+# — tio's `dependency('lua', version: '>=5.1')` — was told lua is absent while
+# it sat installed with this file in place.
+cat > $PKG/usr/lib/pkgconfig/lua.pc << EOF
 V=$_majorver
 R=$version
+EOF
+cat >> $PKG/usr/lib/pkgconfig/lua.pc << "EOF"
 
 prefix=/usr
 INSTALL_BIN=${prefix}/bin

@@ -9,7 +9,10 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-./autogen.sh
+# NOT ./autogen.sh: the release tarball ships Makefile.am and no autogen.sh —
+# that script is only in the git tree. autoreconf does the same work from what
+# is here.
+autoreconf -fi
 
 # The four optional libraries are what the parsers need and each is answered by
 # silently dropping support rather than by failing: without jansson there is no

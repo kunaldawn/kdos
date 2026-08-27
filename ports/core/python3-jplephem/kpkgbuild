@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-jplephem
+version     = 2.24
+release     = 1
+source      = https://files.pythonhosted.org/packages/90/8b/a50514f000fcd0207cd281370b0db66e7712a5db9f96b77a0301a7205f96/jplephem-2.24.tar.gz
+sha256      = 354fe1adae022264ab46f18afb6af26211277cfd7b3ef90400755fcabe93bc11  python3-jplephem-2.24.tar.gz
+description = Read a JPL ephemeris kernel — where a planet actually was
+homepage    = https://pypi.org/project/jplephem/
+depends     = python3 python3-setuptools python3-pip numpy

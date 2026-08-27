@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-cffi
+version     = 2.0.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/cffi/cffi-$version.tar.gz
+sha256      = 44d1b5909021139fe36001ae048dbdde8214afa20200eda0f64c068cac5d5529  python3-cffi-2.0.0.tar.gz
+description = Calling C from python — what cryptography and half of PyPI bind through
+homepage    = https://cffi.readthedocs.io/
+depends     = python3 python3-setuptools python3-pip python3-pycparser libffi

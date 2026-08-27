@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pikepdf
+version     = 9.9.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pikepdf/pikepdf-$version.tar.gz
+sha256      = 948620612c5ee70c14b262a352b1db927386eab741d6ed77fdb1c4c8772734b9  python3-pikepdf-9.9.0.tar.gz
+description = qpdf bindings — read and rewrite a PDF without rasterising it
+homepage    = https://github.com/pikepdf/pikepdf
+depends     = python3 python3-setuptools python3-pip python3-pybind11 python3-pillow python3-lxml python3-packaging qpdf

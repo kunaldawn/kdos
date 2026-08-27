@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = routino
+version     = 3.4.3
+release     = 1
+source      = routino-3.4.3.tar.gz::https://www.routino.org/download/routino-3.4.3.tgz
+sha256      = 4eba067d32c97ca9388ad6e97c0f5a3c10d48829367240d78c51375d8cc11e54  routino-3.4.3.tar.gz
+description = Offline route planning over an OSM extract
+homepage    = https://www.routino.org/
+depends     = zlib xz bzip2

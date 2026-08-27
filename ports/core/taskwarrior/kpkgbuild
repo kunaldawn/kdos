@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = taskwarrior
+version     = 3.5.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/GothenburgBitFactory/taskwarrior/releases/download/v$version/task-$version.tar.gz
+sha256      = 9ea64b411f8314414f440ec765dfdf5a86c9f6159df47e2f60cff3db6b31157a  taskwarrior-3.5.0.tar.gz
+sha256      = 09b0766528db061730af57a65a05187c0a51d44d14789e29020fe60d71f9c4ad  taskwarrior-vendor-3.5.0.tar.xz
+description = Tasks with dates, dependencies and a query language
+homepage    = https://taskwarrior.org/
+depends     = cmake ninja pkgconf rust util-linux corrosion cxxbridge-cmd
+vendoring   = rust

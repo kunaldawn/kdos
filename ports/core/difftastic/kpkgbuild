@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = difftastic
+version     = 0.70.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Wilfred/difftastic/archive/refs/tags/$version.tar.gz
+sha256      = 4f89fdce7f58eb0521c14c14a7f76144dab5aa01400b332dd8710b550d32dc4c  difftastic-0.70.0.tar.gz
+sha256      = 84739eb4efe5200b29130002759a17c439d615be83d741c383ccb446bb1cddf6  difftastic-vendor-0.70.0.tar.xz
+description = Syntax-aware diff — makes a refactor reviewable with no CI
+homepage    = https://difftastic.wilfred.me.uk/
+depends     = rust
+vendoring   = rust

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libmodbus
+version     = 3.1.12
+release     = 1
+source      = libmodbus-3.1.12.tar.gz::https://github.com/stephane/libmodbus/archive/refs/tags/v3.1.12.tar.gz
+sha256      = 4151177f5223625c6be94230affb096aa8b1cdb0df00fe1f74ce53878a25d15d  libmodbus-3.1.12.tar.gz
+description = Modbus RTU and TCP, the protocol every PLC and instrument on a bus speaks
+homepage    = https://libmodbus.org/
+depends     = autoconf automake libtool

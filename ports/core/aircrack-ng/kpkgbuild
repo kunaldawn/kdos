@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = aircrack-ng
+version     = 1.7
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/aircrack-ng/aircrack-ng/archive/refs/tags/$version.tar.gz
+sha256      = 05a704e3c8f7792a17315080a21214a4448fd2452c1b0dd5226a3a55f90b58c3  aircrack-ng-1.7.tar.gz
+description = 802.11 auditing and physical-layer diagnosis of your own network
+homepage    = https://www.aircrack-ng.org/
+depends     = autoconf automake libtool pkgconf openssl libpcap sqlite zlib iw

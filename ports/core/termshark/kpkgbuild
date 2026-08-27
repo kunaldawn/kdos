@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = termshark
+version     = 2.4.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/gcla/termshark/archive/refs/tags/v$version.tar.gz
+sha256      = 949c71866fcd2f9ed71a754ea9e3d1bdc23dee85969dcdc78180f1d18ca8b087  termshark-2.4.0.tar.gz
+sha256      = 0fb1adb5efe2a53ef4a07e92b0522bbf9b591d87d55695271171a282b7cca8ac  termshark-vendor-2.4.0.tar.xz
+description = A packet analyser on a cell grid, with zero Qt
+homepage    = https://termshark.io/
+depends     = go wireshark
+vendoring   = go

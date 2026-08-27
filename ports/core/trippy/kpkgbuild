@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = trippy
+version     = 0.13.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/fujiapple852/trippy/archive/refs/tags/$version.tar.gz
+sha256      = 72e598d2e0b947e8bc46706021c511f169b7e7634a734c326e492e0f30725c35  trippy-0.13.0.tar.gz
+sha256      = 9b5cfce1a0df0c3db76da9fb0db5e3f4f502e661d1e3f8b80d6df68b81671fa5  trippy-vendor-0.13.0.tar.xz
+description = Per-hop loss and jitter — traceroute and ping in one screen
+homepage    = https://trippy.rs/
+depends     = rust
+vendoring   = rust

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyvisa
+version     = 1.15.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pyvisa/pyvisa-$version.tar.gz
+sha256      = cec3cb91703a2849f6faa42b1ecd7689a0175baabff8ca33fce9f45934ce45e6  python3-pyvisa-1.15.0.tar.gz
+description = The standard instrument-automation API, with no NI-VISA anywhere
+homepage    = https://pyvisa.readthedocs.io/
+depends     = python3 python3-setuptools python3-pip python3-setuptools-scm

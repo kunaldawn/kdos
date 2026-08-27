@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = probe-rs
+version     = 0.29.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/probe-rs/probe-rs/archive/refs/tags/v$version.tar.gz
+sha256      = d0c7e8fe4d8b5795ba9cd3e7f09f91ae1373a3226f106ab09776ec6dc646b8ab  probe-rs-0.29.1.tar.gz
+sha256      = bf4a63f20c2255f7c42a91d59d711453c269f6809d1eaeba28a6a7b1131954d4  probe-rs-vendor-0.29.1.tar.xz
+description = ARM and RISC-V flash and debug over CMSIS-DAP, ST-Link and J-Link, with RTT
+homepage    = https://probe.rs/
+depends     = rust libusb pkgconf openssl
+vendoring   = rust

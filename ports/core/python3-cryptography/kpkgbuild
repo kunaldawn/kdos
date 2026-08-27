@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-cryptography
+version     = 50.0.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/cryptography/cryptography-$version.tar.gz
+sha256      = 5dd9bda1c12b4162f6ff568eeb5e0ff956c28d14406e875cfe8a63a2d414ff20  python3-cryptography-50.0.1.tar.gz
+sha256      = c65206c3b124d1b790a6461d5ebc1b466aaa685f37a2b949e01bba9793028fcd  python3-cryptography-vendor-50.0.1.tar.xz
+description = The compiled crypto layer half of PyPI binds through
+homepage    = https://cryptography.io/
+depends     = python3 python3-setuptools python3-pip python3-cffi python3-maturin openssl rust
+vendoring   = rust
+vendordir   = src/rust

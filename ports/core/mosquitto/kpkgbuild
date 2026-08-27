@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mosquitto
+version     = 2.1.2
+release     = 1
+source      = mosquitto-2.1.2.tar.gz::https://github.com/eclipse-mosquitto/mosquitto/archive/refs/tags/v2.1.2.tar.gz
+sha256      = 20e998aae86d1629e787a924c044bb912d21ac8f5d1c1b707f2af06eb4c6016d  mosquitto-2.1.2.tar.gz
+description = MQTT broker and the mosquitto_pub/sub clients every sensor network needs
+homepage    = https://mosquitto.org/
+depends     = cmake openssl cjson

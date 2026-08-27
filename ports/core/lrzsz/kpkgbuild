@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lrzsz
+version     = 0.12.20
+release     = 1
+source      = https://ohse.de/uwe/releases/lrzsz-0.12.20.tar.gz
+sha256      = c28b36b14bddb014d9e9c97c52459852f97bd405f89113f30bee45ed92728ff1  lrzsz-0.12.20.tar.gz
+description = X/Y/ZMODEM — the way a file reaches a board that has only a serial line
+homepage    = https://ohse.de/uwe/software/lrzsz.html
+depends     = 

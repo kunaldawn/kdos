@@ -18,6 +18,23 @@
 # version the target's cargo refuses, and a `go mod vendor` from a newer go can
 # record a module graph the target's go rejects. Pinning here is what keeps the
 # bundle and the compiler in step.
+#
+# cmake AND ninja-build ARE HERE BECAUSE PIP BUILDS METADATA WHILE DOWNLOADING.
+# `pip download --no-binary :all:` runs each sdist's build backend to get its
+# metadata, and a backend that wants cmake and cannot find one on PATH resolves
+# it as the PyPI `cmake` package — which is CMake's whole source tree, compiled
+# from scratch, inside a step that is supposed to be downloading. It then fails
+# and the bundle comes out empty. The target's cmake and ninja are ports; these
+# exist only so the download step never reaches for PyPI's copies. patchelf is
+# there for the same reason one level along: scikit-build-core asks for it when
+# it is not on PATH, and the PyPI `patchelf` package is patchelf's own source
+# tree with an autotools build inside it.
+#
+# python3-dev, libffi-dev AND libssl-dev ARE HERE FOR THE SAME REASON, one
+# level down: a
+# package that depends on cffi or cryptography makes pip resolve THEIR sdists
+# too, and building their metadata compiles against those headers. The target's
+# libffi and openssl are ports; these exist only so a download resolves.
 
 FROM debian:trixie-slim
 
@@ -29,8 +46,9 @@ RUN apt-get -o APT::Update::Error-Mode=any update \
     && apt-get install -y --no-install-recommends \
         ca-certificates curl wget git \
         build-essential pkg-config \
-        python3 python3-pip python3-venv \
+        python3 python3-pip python3-venv python3-dev \
         tar xz-utils bzip2 zstd unzip \
+        cmake ninja-build patchelf libffi-dev libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo

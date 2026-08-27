@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-meshtastic
+version     = 2.7.11
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/m/meshtastic/meshtastic-$version.tar.gz
+sha256      = 41a8c84b577daff173d36db9fdbc8bf2c7228b58e580474e9f53802ed8ea7d4a  python3-meshtastic-2.7.11.tar.gz
+sha256      = 0996a1e852e772e0ae94b1919c116171c3b075ca358734b2abc6d75153252969  python3-meshtastic-vendor-2.7.11.tar.xz
+description = LoRa mesh text and position — the rung between a LAN and an amateur licence
+homepage    = https://meshtastic.org/
+depends     = python3 python3-setuptools python3-pip python3-pyserial python3-packaging
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = protobuf pypubsub PyYAML requests tabulate certifi charset-normalizer idna urllib3 hatchling flit-core poetry-core hatch-vcs setuptools-scm packaging pathspec pluggy trove-classifiers calver vcs-versioning tomlkit hatchling flit-core hatch-vcs packaging pathspec pluggy trove-classifiers calver setuptools-scm vcs-versioning tomlkit

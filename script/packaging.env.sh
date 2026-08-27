@@ -20,6 +20,15 @@ export KDOS_SNAPSHOT_EXCLUDE="fs/tmp/* fs/var/cache/kpkg/work/* fs/dev/* fs/proc
 
 export CHROOT=1
 
+# THE COMPILER IS NAMED, NOT DISCOVERED. autoconf's AC_PROG_CC walks a
+# preference list, and some of them put clang FIRST — potrace's does. clang is
+# a port now, so the moment it is installed those recipes silently change
+# toolchain, and the failure is `C compiler cannot create executables` from a
+# configure that had a working gcc in $PATH the whole time. A distro that
+# builds itself cannot have its toolchain depend on which ports are installed.
+export CC=gcc
+export CXX=g++
+
 export CFLAGS="-O2 -pipe -std=gnu11 -fPIC"
 export CXXFLAGS="-O2 -pipe -fPIC"
 export LDFLAGS=""

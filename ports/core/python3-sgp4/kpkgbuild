@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-sgp4
+version     = 2.27
+release     = 1
+source      = https://files.pythonhosted.org/packages/a8/62/e1282ea86299c76159e182cd36046e6d7980b120fef14c101757e1f650b3/sgp4-2.27.tar.gz
+sha256      = 06d37247c6985739b707b8b39b6b83e06e8af783b2531e31965501ba983985f9  python3-sgp4-2.27.tar.gz
+description = Propagate a satellite TLE — the model every tracker uses
+homepage    = https://pypi.org/project/sgp4/
+depends     = python3 python3-setuptools python3-pip numpy

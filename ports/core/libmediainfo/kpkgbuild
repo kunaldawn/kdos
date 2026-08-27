@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libmediainfo
+version     = 26.05
+release     = 1
+source      = libmediainfo-26.05.tar.gz::https://github.com/MediaArea/MediaInfoLib/archive/refs/tags/v26.05.tar.gz
+sha256      = f3fa9faa5623a5bacf6bed30c1d4c7434852be1654e655d458f964f597d98b8e  libmediainfo-26.05.tar.gz
+description = What is actually inside a media file — codec, profile, bit depth, every track
+homepage    = https://mediaarea.net/en/MediaInfo
+depends     = cmake libzen zlib curl
