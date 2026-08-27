@@ -2,16 +2,16 @@
 | Applications                                                                 |
 | 5 applications                                                               |
 |------------------------------------------------------------------------------|
-| A    |APPLICATION                 CPU%v  MEMORY    DISK                      |
-| P    |firefox-esr [box kdos-apps] 155.0  1.2G      12K+                      |
-| C    |foot                        3.0    40M       0B+                       |
-| M    |conmon                      1.0    2.0M      0B+                       |
-| G    |backup                      0.0    8.0M      450M                      |
-| D    |sshd                        0.0    6.0M      0B+                       |
-| N    |                                                                       |
-| B    |                                                                       |
-| E    |                                                                       |
-|      |                                                                       |
+| App  |APPLICATION                 CPU%v  MEMORY    DISK                      |
+| Pro  |firefox-esr [box kdos-apps] 155.0  1.2G      12K+                      |
+| CPU  |foot                        3.0    40M       0B+                       |
+| Mem  |conmon                      1.0    2.0M      0B+                       |
+| GPU  |backup                      0.0    8.0M      450M                      |
+| Dri  |sshd                        0.0    6.0M      0B+                       |
+| Net  |                                                                       |
+| Bat  |                                                                       |
+| Ene  |                                                                       |
+| Box  |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
 |      |                                                                       |

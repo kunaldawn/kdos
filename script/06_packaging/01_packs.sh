@@ -30,7 +30,13 @@
 
 set -e
 
-SRC=/kdos/ports/appbox/packs
+# /ports, NOT /kdos/ports. chroot_exec binds $REPO_ROOT onto /kdos with a
+# non-recursive `mount --bind`, so the docker mounts UNDER it do not come along
+# — /kdos/ports is the empty directory that sat there before docker shadowed it,
+# and `ports` is bound separately at /ports for exactly this reason. Reading the
+# wrong one made this step find no PACKAGES, exit 2 from awk on a missing file
+# with `set -e`, and log nothing at all.
+SRC=/ports/appbox/packs
 STORE=/var/lib/kdos/packs
 
 mkdir -p "$STORE/staging" "$STORE/mnt"

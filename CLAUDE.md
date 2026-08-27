@@ -513,6 +513,19 @@ and `/sbin` are symlinks the base IMAGE provides and no layer above re-adds.
 The base row is exported and re-extracted; everything above it is packed from
 its top layer.
 
+**A BASE MAY NAME ITS OWN IMAGE, AND A ROW WITH NO PACKAGES GETS NO `RUN`.**
+`image <pack> <ref>` in packs.conf points a base at something other than
+`debian:trixie-slim` — which is what makes a second, non-Debian base cost one
+line instead of a second bake. The two go together: everything the generated
+Containerfile emits below `FROM` is apt, so against an alpine rootfs it dies on
+`apt-get: not found` rather than on anything a reader could act on. A base
+whose whole value is the image as it stands declares no packages, and the image
+IS the pack. **`alpine` is that row** — pinned to a point release like every
+other version here, because `alpine:3` and `latest` are one name for different
+bytes on different days. Measured: **4.7 MB**, signed and indexed with the
+rest, `kdos-box create scratch base=pack:alpine` being the point — a clean
+scratch userland that needs no network, where `base=image:<ref>` does.
+
 **Measured on the full 47-row bake from real Debian trixie**: the set is 7.2 GB
 — base 207 MB, seven runtimes from `rt-electron`'s 4.2 MB to `rt-wine`'s
 713 MB, and 39 application packs totalling 5.4 GB, of which `app.wine` is
@@ -569,7 +582,13 @@ where an unprivileged write is allowed is exactly the kind of thing that drifts.
   unmount a live box's own root.
 - **A socket path that does not fit `sun_path` is refused, not truncated** —
   truncation binds a socket nobody asked for and answers the next start with
-  "address already in use" for a file that appears not to exist.
+  "address already in use" for a file that appears not to exist. **The rule is
+  kdos-clip's too**, which was breaking it: it bounded the path against its own
+  256-byte buffer rather than against `sun_path`'s 108, so a long
+  `XDG_RUNTIME_DIR` produced a name both `bind` and `connect` quietly cut down
+  — and two different runtime directories could land on one socket. The buffer
+  IS a `sun_path` now, so the copy provably fits and the compiler stops warning
+  about a truncation the code had actually left in.
 - `--fixture <store> [medium]` prints what it WOULD mount and mounts nothing,
   the seam `kdos stutter`, `kdos-oomd` and `kdos-mountd` all use.
 
@@ -1022,6 +1041,98 @@ less than 25 GB or when a build tool is missing. Everything after the checks is
 the same orchestrator `make build` runs, compiled on demand out of the tree being
 built (the `ports/fetch` shape) so the build is driven by the sources on the
 machine rather than by a binary from somewhere else.
+
+### The stick writes the stick — `kdos clone`
+
+```
+$ kdos clone
+source  /dev/sda  9.5G
+
+  DEVICE            SIZE  MODEL
+  /dev/sdb          32G   Ultra Fit
+  /dev/sdc         8.0G   DataTraveler   (too small)
+
+  kdos clone <device>
+
+$ sudo kdos clone /dev/sdb
+```
+
+`kdos rebuild` reproduces the ISO from the sources on the medium; this
+reproduces the MEDIUM, which is the operation somebody standing in front of two
+sticks actually wants. It is a **raw copy of the image and deliberately nothing
+cleverer**: the boot arrangement is whatever the medium already carries, so a
+copy boots exactly what the original boots and there is no second opinion about
+how a KDOS stick is laid out.
+
+**THE IMAGE'S LENGTH COMES FROM THE IMAGE, AND TWO RECORDS DESCRIBE IT.** A
+3 GB image written to a 64 GB stick leaves the device reporting 64 GB, so
+copying the DEVICE copies 61 GB of whatever was on it before. Same principle as
+the pack format reading EROFS's own superblock extent — except that here the
+obvious record is a trap:
+
+| record | where | spans an appended partition? |
+|---|---|---|
+| ISO9660 volume space | the Primary Volume Descriptor, sector 16, `+80` and `+128` | **no** |
+| GPT `alternate_lba` | the header at LBA 1, `+32`; the image ends one sector past it | yes |
+
+Measured on the shipped ISO, which is optical-only: `4970509 × 2048` is its
+byte-for-byte file size, so the PVD is exact there. Measured on a hybrid image
+built with `-append_partition`, the PVD stopped **4.5 MB short** — and those
+4.5 MB were precisely the EFI System Partition. Trusting the PVD alone
+truncates away the thing that makes the copy boot. Both are read and **the
+larger wins**, which is right for an image carrying either or both.
+
+**A READ-BACK THAT READS THE PAGE CACHE VERIFIES NOTHING**, and this is the
+whole reason the verify is worth having. Everything just written is still in
+the block device's buffer cache, so re-reading hands back the bytes this
+process produced rather than the bytes the flash stored — which is exactly what
+a counterfeit stick does and exactly what the verify exists to catch. `fsync`
+then **`BLKFLSBUF`** drops it. Confirmed to bite by building without it: against
+a `dm-flakey` device set to corrupt every read, the cache-dropping build refuses
+with the two hashes printed, and the identical build without it **reports
+success with exit 0**.
+
+**Four refusals, before a byte is written**, and they are wider than
+kdos-mountd's on purpose — mountd is choosing something to MOUNT and this is
+choosing something to DESTROY: the medium this system booted from (the device at
+`/mnt/iso`, which exists in the running namespace only because the initramfs
+MS_MOVEs it across `switch_root`), any disk with a filesystem mounted anywhere,
+anything named in `/etc/fstab`, and anything smaller than the image. Each is
+matched on the **parent disk**, because the target of a clone is a whole disk
+while everything that identifies the running system names a partition — a check
+that compared node for node would overwrite the disk it is running from because
+the mount says `/dev/sda2` and the target says `/dev/sda`. `f3probe --destructive`
+runs by default: a counterfeit device reports a capacity it does not have and
+wraps silently, so the copy succeeds and the verify fails somewhere in the
+middle, which reads as a broken image rather than a bad stick.
+
+Confirmation is typing the device NAME, not `y`. `-y` means it, `--no-probe`
+and `--no-verify` each say out loud what they gave up, and `--extent` prints the
+image's exact byte count and stops — the seam `testing/selftest.sh` asserts the
+two-record rule through, against hand-built headers in
+`testing/fixtures/clone/`.
+
+**THE SHIPPED ISO CARRIES NO PARTITION TABLE, AND THAT IS NOT WHAT THE RECIPE
+SAYS.** `02_iso.sh` passes `-isohybrid-gpt-basdat`, which in xorriso's mkisofs
+emulation modifies an isohybrid MBR that `-isohybrid-mbr` would have supplied —
+and with no `-isohybrid-mbr` it is **silently inert**, no warning of any kind.
+Measured on the shipped image: the whole 32 KB system area is zero, `fdisk -l`
+reports no partition table, and there is no El Torito BIOS entry either (there
+never was one — nothing here boots a BIOS machine, ISO or stick).
+
+A raw copy of it nevertheless boots. Verified under OVMF with rEFInd as the
+payload, attached as a **virtio disk** rather than a CD: the firmware reaches
+the rEFInd menu, because EDK2's partition driver recognises **El Torito on any
+block device** and exposes the boot image as a logical partition. That is the
+mechanism `kdos clone` relies on, and it is EDK2 behaviour rather than anything
+the UEFI specification requires of removable media — so it is recorded as
+measured on this firmware, not as a general claim. The tested alternative is
+`-e '--interval:appended_partition_2:all::' -append_partition 2
+C12A7328-F81F-11D2-BA4B-00A0C93EC93B <esp> -appended_part_as_gpt`, which
+produces a real GPT with an EFI System partition, boots the same way, and is
+SMALLER — El Torito and the GPT then point at one copy of the EFI image instead
+of the two the current recipe stores. It is not applied: it changes the boot
+path and needs a real ISO re-roll to confirm.
 
 ### A/B root slots — `kdos-bootctl`
 
@@ -1776,10 +1887,12 @@ host and box disagree about local time on one machine.
 
 ## The `kdos` command
 
-`kdos` is the front door, and by now it is twenty subcommands: `help`
+`kdos` is the front door, and by now it is twenty-one subcommands: `help`
 (commands + the keybind cheat sheet), `theme`, `status`, `doctor`, `app`,
 `version`, plus `why` / `explain`, `sandbox`, `restarts`, `stutter`,
-`march`, `rebuild`, `cve`, **`trash`** (the desktop's own trash from a prompt —
+`march`, `rebuild`, **`clone`** (the stick writes the stick — a raw copy of the
+boot medium, its length taken from the image's own two self-descriptions and
+verified by a read-back that drops the page cache first), `cve`, **`trash`** (the desktop's own trash from a prompt —
 see below), **`appid`** (does the launcher's file id match the
 app_id a real window presented — the right-hand side is
 `~/.local/share/kdos/observed-app-ids`, which `kdos-appid.c` in the compositor
@@ -1967,7 +2080,7 @@ bug:**
 | `libkbuild` | `kbuild_`, `kj_` | phase discovery, the phase-env metadata block, the build plan, the snapshot inventory, a read-only JSON scanner |
 | `libkcell` | `kcell_` | the fcft glyph cache and the cell painter — a grid of cells into a pixel buffer, the ASCII ramp built out of it, and **`kcell_canvas_*`, the pixel canvas a block of cells can be drawn as**. Needs fcft and pixman |
 | `libkwl` | `kwl_`, `KWL_` | libktui's Wayland backend — surface roles (layer-shell, xdg toplevel with a SERVER-side frame, session-lock), shm buffers + per-buffer shadow, integer output scale (`set_buffer_scale`), output naming, input (queue, key repeat, wheel accumulation, modifiers, serials), **clipboard + primary selection, both directions** (`kwl_copy`), **xkb-compose**, `kwl_cursor_set` (cursor-shape-v1), frame-callback throttling, `kwl_input_cells`, the panel's top RULE (`KwlConfig.rule` — pixels outside the cell grid, so a bar can be framed without spending a row on it). **The one library with real `-l` dependencies beyond libkcell's** |
-| `libkproc` | `kpr_` | every reading about the running machine, from a root that can be MOVED — `/proc` and `/sys` behind `kpr_root_set`, the process sample, the conmon box identity (`kpr_is_box_boundary`, `kpr_conmon_name`, `kpr_box_of`), cpu/memory/block/net/power/drm/nvml, and **the sample ring and its axis** (`KprHist`, `kpr_scale_step`) |
+| `libkproc` | `kpr_` | every reading about the running machine, from a root that can be MOVED — `/proc` and `/sys` behind `kpr_root_set`, the process sample, **`kpr_uptime_s()` (the only thing a process's `starttime` may be subtracted from — both are seconds since boot)**, the conmon box identity (`kpr_is_box_boundary`, `kpr_conmon_name`, `kpr_box_of`), cpu/memory/block/net/power/drm/nvml, and **the sample ring and its axis** (`KprHist`, `kpr_scale_step`) |
 | `libkpack` | `kpk_` | the pack: the appended footer and its read/write, the metadata blob, the requires/provides solve (over `kp_vercmp`), the payload hash, the signature block, and the `PACKAGES`-shaped index. libkbase + libksig + libkpkg and nothing else, so a root daemon can take it |
 | `libkchrome` | `kch_` | the chrome kdos-shell had grown and kdos-res needed — the header band, the group heading, the button bar, the list/wheel/scrollbar rule (`kch_list_scroll_to` — the bar is DRAGGED, not merely looked at) and the pixel tile |
 
@@ -3479,9 +3592,33 @@ a sample out of step for the rest of the session.
 **`--fixture <dir>` is the seam**, the same one `kdos stutter`, `kdos-oomd` and
 `KDOS_PRIVACY_PROC` use: `testing/fixtures/res` is a recorded `/proc` and
 `/sys`, which is what makes a monitor's output deterministic enough to have
-goldens at all. `testing/goldens/res-<page>-<size>.txt` covers all nine pages,
-and the ids in `enum res_page_id` are the only spelling — `--page` takes them,
-`res.conf`'s sort keys use them and the goldens are named after them.
+goldens at all. `testing/goldens/res-<page>-<size>.txt` covers all **ten**
+pages, and the ids in `enum res_page_id` are the only spelling — `--page` takes
+them, `res.conf`'s sort keys use them and the goldens are named after them.
+
+**A GOLDEN THAT READS THE HOST'S FILESYSTEM IS NOT A GOLDEN.** The detail
+page's footer carries `res_act_helper_why()`, which stats `/usr/bin/kdos-resctl`
+— so the same fixture rendered on two machines produced two different frames,
+one saying `Esc  back to the list` and the other `kdos-resctl is not
+installed`. Under a fixture the question is not asked: a fixture is a RECORDED
+machine and the helper is a property of the running one, and nothing is
+executed on a fixture anyway — the verbs are drawn, never run.
+
+**AND `starttime` MAY ONLY BE SUBTRACTED FROM `/proc/uptime`.** Both are
+seconds since boot. The Boxes page paired it with the sample's MONOTONIC stamp
+— which is the rate divisor and a different epoch, and under a fixture belongs
+to a different MACHINE — so the difference underflowed the unsigned and the
+column drew the first eight digits of `18446744073709551608`. It looked like a
+formatting gap and was an underflow; `kpr_uptime_s()` is the reader, through
+libkproc's movable root so a fixture answers it, and a start later than the
+uptime renders `-` rather than wrapping. Found by rendering the page for the
+first time, which is what the golden harness is for.
+
+**The narrow sidebar carries THREE characters, not one, and `Batteries` and
+`Boxes` are why.** A single initial made two different pages the same control,
+which is worse than a truncation — a truncation at least reads as incomplete.
+Three is the shortest prefix keeping all ten distinct: `App Pro CPU Mem GPU Dri
+Net Bat Ene Box`.
 
 The ways in: the panel's meters strip (left click), `C-S-Escape`, the Start
 menu, and `kdos-res` at a prompt.
@@ -5372,6 +5509,46 @@ most machines the blocks that would catch a break in them print `skipped`.
 _GNU_SOURCE` collided with the `-D_GNU_SOURCE` libkbase needs, under `-Werror`
 — and now compiles wherever wayland-client does, which is nearly everywhere.
 
+**A SKIP THAT CANNOT BE LIFTED IS A TEST NOBODY RUNS**, and three lines in this
+file made whole blocks unreachable on any ordinary host:
+
+- **The sd-bus name is decided ONCE, at the top.** `TRAY_SDBUS` is basu here
+  and libsystemd nearly everywhere else, and the API is the same one — but it
+  was assigned a thousand lines BELOW the kdos-shell block that reads it, so
+  that block saw an empty string and skipped itself everywhere, taking every
+  front-end golden behind it. The gate also named `basu` outright, which no
+  development host has.
+- **`cpio` is not universal.** The microcode block is the only thing here that
+  needs it, and without a guard its subshell exits 127 and takes the rest of
+  the suite with it. A missing tool is a skip WITH A NAME, which is the rule
+  every other conditional block keeps.
+- **An include path that only one host has is not a build.** The tray check
+  compiles `shell.h`, which reaches `kchrome.h`; the block lacked
+  `-Isrc/libs/libkchrome` and had never been compiled anywhere that got far
+  enough to notice.
+
+Two more once it did run: `dumpmain.c` stubs the whole `sh_priv_*` API and was
+missing **`sh_priv_box`**, which panel.c calls — an `undefined reference`
+reported as *"the new front ends do not link"*, taking every front-end golden
+with it; and neither the candidate loop nor the privacy check offered
+`libpipewire-0.3` or `libkproc`, so `audio.c` read as "does not compile" and
+the recording-indicator test had never run at all. **The dump harness builds
+all twenty front ends now.**
+
+What lifting them found: the `sun_path` truncations above in four files, a
+`/dev` node built in 32 bytes from a name that can be 255 (`kdos-devices` —
+truncating there OPENS THE WRONG NODE), a dead choice list in `settings.c`, and
+goldens stale by a whole page.
+
+**kdos-shell and kdos-res compile here with `-Wno-format-truncation` and
+nothing else relaxed.** This program truncates on purpose: every label goes
+into a fixed number of CELLS, so a `%s` into a fixed field is the intended
+behaviour and the warning fires on a dozen of them. Where truncating IS a
+defect it is not a label — a socket path, a device node — and those are held by
+`SH_SOCK_MAX` and `DV_DEVPATH` rather than by a warning that cannot tell the
+two apart. The shipped recipes build with `-Wall -Wextra` and no `-Werror` at
+all; everything else in `$WARN` stays on, which is what caught the dead list.
+
 There used to be a **libkbuild ↔ buildlib differential** here: `pdump.c` and
 `pdump.py` printed the same lines from the C and python implementations of the
 same decision, and `diff` was the whole test. It did its job — the port was
@@ -6092,6 +6269,14 @@ pikepdf 10 moved to scikit-build-core + nanobind and 9.10 moved to pybind11 3;
 `>= 8.10.1`. Read `[build-system] requires` before picking a version — it
 decides how many ports the choice costs.
 
+**A BACKTICK INSIDE DOUBLE QUOTES IS A COMMAND, NOT A NAME.** An echo that
+tells somebody to run `make fetch-packs`, written with backticks inside a
+double-quoted string, does not print that instruction — the shell RUNS it.
+`02_iso.sh` therefore invoked make from inside a chroot with no Makefile and
+printed `No rule to make target` from the middle of a clean ISO build. Quote a
+command a diagnostic is naming with SINGLE quotes; `testing/preflight.sh`
+checks every echo under `script/`.
+
 **A MESON `feature` TAKES enabled/disabled/auto AND REFUSES A BOOLEAN.**
 `-Dgd=false` is a configure-time ERROR, not a coercion, and it reads perfectly
 on the line. `testing/preflight.sh` checks every `-D<name>=<value>` a recipe
@@ -6447,15 +6632,19 @@ and respond with the targeted fix.
   and the machinery under it is proven, but the "an order of magnitude smaller"
   claim the design rests on needs a real box with real work in it, and the
   plan's own acceptance test for it is that comparison.
-- **No goldens for the Boxes page, nor for kdos-settings' Boxes page.**
-  `testing/goldens/res-boxes-*.txt` and a settings dump of the new page need
-  wayland-client, wayland-scanner and wayland-protocols on the HOST — the dump
-  harness stubs fcft and wlroots but not those — so on a machine without them
-  both are skipped rather than checked. The settings page has been PHOTOGRAPHED
-  on a booted ISO (`testing/vnc-shot.py`) in all three of its states;
-  kdos-res's has not been looked at at all.
-- **NO OFFLINE alpine OR KDOS BASE ON THE MEDIUM.** `KDOS_PACK_KDOS=1` builds
-  the second one — this rootfs wrapped as base pack `kdos`, so
+- ~~No goldens for the Boxes page~~ — **closed, and the reason they were
+  missing was the harness rather than the host.** `res-boxes-*.txt` is
+  committed at all three widths, the settings and Start goldens carry their
+  Boxes tile and row, and every stale `res-*` frame (they showed NINE sidebar
+  entries for a program with TEN pages) was regenerated. What had made it
+  unreachable is in **What the gate does NOT cover** — an sd-bus name decided
+  too late, a `cpio` that is not universal, a missing include path, a missing
+  `sh_priv_box` stub and an unoffered libpipewire. Looking at the page for the
+  first time found the uptime underflow and the `Batteries`/`Boxes` sidebar
+  collision, both fixed above.
+- **NO OFFLINE KDOS BASE ON THE MEDIUM.** *(alpine is done: `alpine.kpack`,
+  4.7 MB, baked, signed and indexed — see the base-row note under the pack
+  taxonomy.)* `KDOS_PACK_KDOS=1` builds the second one — this rootfs wrapped as base pack `kdos`, so
   `kdos-box create ports base=pack:kdos` gives a running KDOS a clean KDOS to
   build ports in — and it is OPT-IN, because it is a second `mkfs.erofs` over
   the whole tree on every build for a base most installs never compose. It has

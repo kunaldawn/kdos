@@ -271,7 +271,7 @@ row_failed() {
 }
 
 while read -r kind id parent rest; do
-	case "$kind" in ''|'#'*|recommended|env|deb|cmd|snapshot) continue ;; esac
+	case "$kind" in ''|'#'*|recommended|env|deb|cmd|image|snapshot) continue ;; esac
 	# ONLY is a LIST, so a run that lost rows to one bad recipe is resumed
 	# with the rows it lost rather than from the top.
 	if [ -n "$ONLY" ]; then
@@ -280,7 +280,16 @@ while read -r kind id parent rest; do
 
 	img="$PREFIX/$id:latest"
 	if [ "$parent" = "-" ]; then
+		# A BASE MAY NAME ITS OWN IMAGE. `debian:trixie-slim` is the one
+		# every application row is a diff over, but it is not the only
+		# userland worth carrying: an `image <pack> <ref>` row points a
+		# base at something else, which is how a 3 MB alpine rootfs
+		# costs one line rather than a second bake.
 		from="debian:trixie-slim"
+		while read -r ik iid iref _; do
+			[ "$ik" = image ] && [ "$iid" = "$id" ] || continue
+			from="$iref"
+		done < "$CONF"
 	else
 		from="$PREFIX/$parent:latest"
 	fi
@@ -343,13 +352,25 @@ while read -r kind id parent rest; do
     echo 'Acquire::Check-Valid-Until \"false\";' > /etc/apt/apt.conf.d/99snapshot && "
 	fi
 
-	cat > "$CTX/Containerfile" <<EOF
+	# A ROW WITH NO PACKAGES GETS NO `RUN`, AND THAT IS WHAT MAKES A
+	# NON-DEBIAN BASE POSSIBLE. Everything below the FROM line is apt, so
+	# emitting it against an alpine rootfs fails on `apt-get: not found`
+	# rather than on anything a reader could act on. A base whose whole
+	# value is the image as it stands — alpine is exactly that, 3 MB of
+	# busybox and musl — declares no packages and the image IS the pack.
+	if [ -z "${rest// /}" ]; then
+		cat > "$CTX/Containerfile" <<EOF
+FROM $from
+EOF
+	else
+		cat > "$CTX/Containerfile" <<EOF
 FROM $from
 ENV DEBIAN_FRONTEND=noninteractive
 RUN ${pin}${arch_pre}${deb_pre}apt-get -o APT::Update::Error-Mode=any update \\
     && apt-get install -y --no-install-recommends $rest${deb_post} \\
     && rm -f /tmp/pack.deb && rm -rf /var/lib/apt/lists/*
 EOF
+	fi
 	if ! $ENGINE build "${NETARGS[@]}" -t "$img" -f "$CTX/Containerfile" \
 	     "$CTX" >/dev/null; then
 		rm -f "$CTX/Containerfile"

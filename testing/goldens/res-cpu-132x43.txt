@@ -11,7 +11,7 @@
 | Network          |                                                                                                             # |
 | Batteries        |                                                                                                             # |
 | Energy           |                                                                                                             # |
-|                  |                                                                                                             # |
+| Boxes            |                                                                                                             # |
 |                  | pressure  some 1.25% (10s)  0.80% (60s)                                                                       |
 |                  |                                                                                                               |
 |                  | KDOS Fixture CPU                                                                                              |

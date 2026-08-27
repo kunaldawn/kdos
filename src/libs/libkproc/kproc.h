@@ -72,6 +72,20 @@ const char *kpr_sys(void);
  * report st_size 0, so these read to real EOF rather than trusting stat. */
 char *kpr_slurp_proc(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 char *kpr_slurp_sys(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+/*
+ * Seconds since boot, from /proc/uptime's first field, through the root above.
+ *
+ * THIS IS THE ONLY THING A PROCESS'S `starttime` MAY BE SUBTRACTED FROM. That
+ * field is clock ticks since BOOT, so pairing it with a monotonic or wall
+ * clock subtracts two different epochs — and on a fixture, where the recorded
+ * starttime belongs to another machine entirely, the difference underflows an
+ * unsigned and comes out as a 20-digit age.
+ *
+ * 0 when /proc/uptime is absent or unparseable, which callers must treat as
+ * UNKNOWN rather than as a machine that just booted.
+ */
+unsigned long long kpr_uptime_s(void);
+
 /* First line as a long long; def when absent or unparseable. */
 long long kpr_num_sys(long long def, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));

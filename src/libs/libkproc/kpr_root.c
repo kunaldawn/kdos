@@ -72,6 +72,21 @@ char *kpr_slurp_sys(const char *fmt, ...)
 	return r;
 }
 
+unsigned long long kpr_uptime_s(void)
+{
+	char *d = kpr_slurp_proc("uptime");
+	unsigned long long v = 0;
+
+	if (!d)
+		return 0;
+	/* "2678.97 28518.85" — the first field, whole seconds. The fraction is
+	 * dropped rather than rounded: this is compared against a tick count
+	 * that has already been truncated by the same division. */
+	v = strtoull(d, NULL, 10);
+	free(d);
+	return v;
+}
+
 long long kpr_num_sys(long long def, const char *fmt, ...)
 {
 	va_list ap;

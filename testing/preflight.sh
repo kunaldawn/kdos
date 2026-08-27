@@ -886,6 +886,50 @@ done
 note "makefile helpers" "every 'bash <path>' resolves, and the pack output path is free"
 
 echo
+echo "==> no build script NAMES a command inside double quotes and RUNS it"
+# `echo "Packs: none baked — `make fetch-packs` builds them"` is not a message,
+# it is a command substitution: 02_iso.sh executed `make fetch-packs` in the
+# middle of packaging, inside a chroot with no Makefile, and printed `No rule to
+# make target` from a step that was otherwise fine. A diagnostic that names a
+# command the reader should run must quote it so the shell does not.
+#
+# Only ECHO lines are checked, and only in the build tree: a backtick elsewhere
+# is ordinary (00_toolchain/01_gcc.sh uses one to place limits.h) and rewriting
+# those buys nothing. `shellcheck` would flag SC2006 on every one of them.
+_bt=0
+for _f in script/*.sh script/*/*.sh; do
+    [ -f "$_f" ] || continue
+    while IFS= read -r _line; do
+        case "$_line" in
+            *'`'*) bad "$(basename "$_f")" "an echo names a command in backticks inside double quotes — the shell RUNS it: ${_line#"${_line%%[![:space:]]*}"}"
+                   _bt=$((_bt + 1)) ;;
+        esac
+    done <<EOF
+$(grep -nE '^[[:space:]]*echo[[:space:]]+"[^"]*`' "$_f" 2>/dev/null || true)
+EOF
+done
+note "echo backticks" "$((_bt)) build scripts run a command they meant to name"
+
+echo
+echo "==> no chroot step reads the ports tree through /kdos/ports"
+# chroot_exec binds $REPO_ROOT onto /kdos with a NON-RECURSIVE `mount --bind`,
+# so the container's own mounts underneath it do not come along: /kdos/ports is
+# the empty directory that sat there before docker shadowed it, and the ports
+# tree is bound separately at /ports. Every env file and 01_appbox.sh already
+# say /ports; 01_packs.sh and 02_iso.sh said /kdos/ports and therefore found no
+# packs on a machine with 135 of them — exit 2 out of awk under `set -e`, with
+# an empty step log and nothing naming the path.
+_kp=0
+for _f in script/*/*.sh; do
+    [ -f "$_f" ] || continue
+    if grep -qE '(^|[^#])/kdos/ports/' "$_f" 2>/dev/null; then
+        bad "$(basename "$_f")" "reads /kdos/ports — that is an empty shadow in the chroot; use /ports"
+        _kp=$((_kp + 1))
+    fi
+done
+note "chroot ports path" "$((_kp)) steps read the ports tree through the shadowed path"
+
+echo
 echo "==> the catalogue's rows against the tree"
 # W8-0 and W9-6. Two lints over apps.plan.md's Part II tables, and both exist
 # because the same rows were written twice: nine of that document's "ground

@@ -2125,6 +2125,7 @@ static void help_body(FILE *o)
 		{ "kdos update check", "what the ports tree pins that is not installed" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
+		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
 		{ "kdos-display [--list]", "the screens: mode, scale, rotation, order" },
@@ -3480,6 +3481,8 @@ int kdos_main(int argc, char **argv)
 		return march_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "rebuild"))
 		return rebuild_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "clone"))
+		return clone_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "cve"))
 		return kdt_cve(rest, restv, C_A, C_W, C_0);
 	if (!strcmp(cmd, "hey"))

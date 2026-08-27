@@ -2472,7 +2472,7 @@ static void notify_poll(void)
 	static time_t asked;
 	time_t now = time(NULL);
 	const char *run = getenv("XDG_RUNTIME_DIR");
-	char path[256], buf[64] = { 0 };
+	char path[SH_SOCK_MAX], buf[64] = { 0 };
 	int fd;
 
 	if (asked == now)
@@ -2551,7 +2551,7 @@ static void frames_poll(void)
 	if (frames_fd < 0) {
 		const char *run = getenv("XDG_RUNTIME_DIR");
 		time_t now = time(NULL);
-		char path[256];
+		char path[SH_SOCK_MAX];
 
 		if (!run || !*run || now - frames_try < 10)
 			goto tally;
@@ -2610,7 +2610,7 @@ static int clip_depth(void)
 	static int cached = -1;
 	time_t now = time(NULL);
 	const char *run = getenv("XDG_RUNTIME_DIR");
-	char path[256], buf[32] = {0};
+	char path[SH_SOCK_MAX], buf[32] = {0};
 	int fd;
 
 	if (asked == now)

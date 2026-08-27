@@ -64,16 +64,22 @@ mksquashfs / $ISO_ROOT/system.sfs \
 # The store excludes /var/lib/kdos/packs for the same reason: a pack that is on
 # the medium must not also be inside the squashfs, or every install pays for it
 # twice.
-if [ -d /kdos/ports/appbox/packs ] && \
-   ls /kdos/ports/appbox/packs/*.kpack >/dev/null 2>&1; then
+# /ports, NOT /kdos/ports — see the note in 01_packs.sh: chroot_exec's bind of
+# $REPO_ROOT onto /kdos is non-recursive, so /kdos/ports is an empty shadow.
+if [ -d /ports/appbox/packs ] && \
+   ls /ports/appbox/packs/*.kpack >/dev/null 2>&1; then
     echo "Packs onto the medium..."
     mkdir -p $ISO_ROOT/packs
-    cp -a /kdos/ports/appbox/packs/*.kpack $ISO_ROOT/packs/
-    [ -f /kdos/ports/appbox/packs/PACKAGES ] && \
-        cp -a /kdos/ports/appbox/packs/PACKAGES* $ISO_ROOT/packs/
+    cp -a /ports/appbox/packs/*.kpack $ISO_ROOT/packs/
+    [ -f /ports/appbox/packs/PACKAGES ] && \
+        cp -a /ports/appbox/packs/PACKAGES* $ISO_ROOT/packs/
     echo "Packs: $(ls $ISO_ROOT/packs/*.kpack | wc -l), $(du -sh $ISO_ROOT/packs | cut -f1)"
 else
-    echo "Packs: none baked — `make fetch-packs` builds them (needs a network)"
+    # SINGLE QUOTES: backticks inside a double-quoted string are command
+    # substitution, so this line RAN `make fetch-packs` during packaging — in a
+    # chroot with no Makefile, which reported `No rule to make target
+    # 'fetch-packs'` from the middle of an ISO build that was otherwise fine.
+    echo 'Packs: none baked — `make fetch-packs` builds them (needs a network)'
 fi
 
 # 2b. The sources, when asked for.
@@ -101,7 +107,7 @@ if [ "${KDOS_ISO_SOURCES:-0}" = "1" ]; then
     # A stamp, so `kdos rebuild` can say what it is about to rebuild FROM.
     cat > $ISO_ROOT/sources/SOURCES <<EOS
 # The KDOS tree that built this image.
-ports    $(ls /kdos/ports/core | wc -l) ports
+ports    $(ls /ports/core | wc -l) ports
 size     $(du -sh $ISO_ROOT/sources 2>/dev/null | cut -f1)
 built    $(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOS

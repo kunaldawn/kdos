@@ -23,6 +23,32 @@ WARN="-Wall -Wextra -Werror"
 STD="-O2 -std=gnu11 -D_GNU_SOURCE"
 INC="-Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/tools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
 OUT=$(mktemp -d)
+
+# WHICH sd-bus THIS HOST HAS, decided ONCE and up here because two blocks a
+# thousand lines apart both ask. KDOS ships basu; nearly every development host
+# has libsystemd, and the API is the same one. Deciding it late meant the
+# kdos-shell block read an unset variable and skipped itself on every host,
+# which is why the front-end goldens behind it went unlooked-at.
+TRAY_SDBUS=""
+pkg-config --exists basu 2>/dev/null && TRAY_SDBUS=basu
+[ -z "$TRAY_SDBUS" ] && pkg-config --exists libsystemd 2>/dev/null && \
+    TRAY_SDBUS=libsystemd
+
+#
+# THE FLAGS FOR kdos-shell AND kdos-res, and they are $WARN minus exactly one
+# thing. This program TRUNCATES ON PURPOSE: every label it draws goes into a
+# fixed number of CELLS, so a `%s` into a fixed field is the intended
+# behaviour and -Wformat-truncation fires on a dozen of them. The cases where
+# truncating IS a defect are not label fields — a socket path, a device node —
+# and those are held by a rule (`SH_SOCK_MAX`, `DV_DEVPATH`) rather than by a
+# warning that cannot tell the two apart. The shipped recipes build with
+# `-Wall -Wextra` and no `-Werror` at all; everything else in $WARN stays on
+# here, which is what caught a dead choice list in settings.c.
+#
+# Defined once, up here: the kdos-shell block and the dump harness compile the
+# same sources a thousand lines apart, and flags that disagree mean one of them
+# fails on what the other accepted.
+SHWARN="$WARN -Wno-format-truncation"
 trap 'rm -rf "$OUT"' EXIT
 
 # Worth running this whole script as
@@ -406,7 +432,13 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # libpipewire for the recording indicator. Gated separately so a host
         # that has fcft but not those still gets the libkwl and kdos-lock
         # checks above rather than an error.
-        if pkg-config --exists basu alsa libpipewire-0.3 2>/dev/null &&
+        # $TRAY_SDBUS, NOT `basu`: sd-bus ships as basu on this distro and as
+        # libsystemd nearly everywhere else, and the API is the same one. The
+        # hardcoded name meant this whole block — the kdos-shell compile and
+        # every front-end golden behind it — was skipped on any ordinary
+        # development host, which is why those goldens went unlooked-at.
+        if [ -n "$TRAY_SDBUS" ] &&
+           pkg-config --exists alsa libpipewire-0.3 2>/dev/null &&
            [ -f "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/ext-workspace/ext-workspace-v1.xml" ]; then
             "$SCANNER" client-header \
                 "$(pkg-config --variable=pkgdatadir wayland-protocols)/staging/ext-workspace/ext-workspace-v1.xml" \
@@ -425,12 +457,12 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                     "$PROTO/$wp-client-protocol.h"
             done
             for f in src/desktop/kdos-shell/*.c; do
-                $CC $STD $WARN -c -I"$PROTO" -Isrc/desktop/kdos-shell \
+                $CC $STD $SHWARN -c -I"$PROTO" -Isrc/desktop/kdos-shell \
                     -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
                     -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkxdg \
                     -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
                     $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client \
-                                 basu alsa libpipewire-0.3) \
+                                 "$TRAY_SDBUS" alsa libpipewire-0.3) \
                     -o "$OUT/shell-$(basename "$f" .c).o" "$f"
             done
             echo "  kdos-shell ($(ls src/desktop/kdos-shell/*.c | wc -l) files)"
@@ -439,7 +471,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
             # one program here that is a TTY program and a window from the
             # same source. Built whole rather than syntax-checked, because its
             # goldens are rendered by running it.
-            $CC $STD $WARN -o "$OUT/kdos-res" -I"$PROTO" \
+            $CC $STD $SHWARN -o "$OUT/kdos-res" -I"$PROTO" \
                 -DKDOS_RES_VERSION='"'"'"selftest"'"'"' \
                 -Isrc/desktop/kdos-res \
                 -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
@@ -464,7 +496,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                 src/desktop/kdos-res/resctl.c src/libs/libkbase/*.c
             echo "  kdos-resctl"
         else
-            echo "  kdos-shell (skipped — basu/alsa/libpipewire-0.3 or ext-workspace-v1.xml missing)"
+            echo "  kdos-shell (skipped — an sd-bus, alsa, libpipewire-0.3 or ext-workspace-v1.xml missing)"
         fi
     fi
 else
@@ -862,6 +894,13 @@ echo "  no tree, a wrong tree and a work directory in RAM are all refused"
 
 echo
 echo "==> doctor can tell whether the initrd carries this CPU's microcode"
+# `cpio` is not on every host — Debian's slim images have none — and this is
+# the only block that needs it. A missing tool is a SKIP WITH A NAME, the rule
+# every other conditional block here keeps; without the guard the subshell
+# exits 127 and takes the rest of the suite with it.
+if ! command -v cpio >/dev/null 2>&1; then
+    echo "  microcode (skipped — no cpio on this host)"
+else
 # The early loader does not mount anything: it scans the raw initrd for one
 # literal path before decompression. So this builds an initrd shaped exactly
 # like 01_initramfs.sh's output -- an uncompressed cpio carrying both vendors'
@@ -889,6 +928,7 @@ KDOS_INITRD="$UC/nosuch.img" "$OUT/kdos" doctor 2>/dev/null \
     | grep -q "cannot tell whether microcode is carried" \
     || { echo "  a missing initrd was not reported honestly"; exit 1; }
 echo "  found when carried, reported when not, honest when there is no image"
+fi
 
 echo
 echo "==> a bad update boots three times and rolls itself back"
@@ -1556,6 +1596,35 @@ echo "  the stick and the disc are offered; the internal disk and an fstab"
 echo "  entry are not"
 
 unset KDOS_MOUNTD_MOUNTS
+
+echo
+echo "==> kdos clone takes an image's length from the image, not from the device"
+# The copy itself needs root and a real block device, so the WRITE cannot be
+# summoned here. The decision in front of it can, and it is the whole design: a
+# 3 GB image written to a 64 GB stick leaves the device reporting 64 GB, and
+# copying that copies 61 GB of whatever was there before.
+#
+# TWO RECORDS DESCRIBE THE IMAGE AND THE OBVIOUS ONE IS SHORT. ISO9660's
+# Primary Volume Descriptor is exact on an optical-only image — measured
+# against the shipped ISO, 4970509 blocks x 2048 is its byte-for-byte file
+# size. On a hybrid image the EFI System Partition is APPENDED after the
+# ISO9660 volume and the PVD does not count it, so the PVD alone truncates away
+# the partition that makes the copy boot. The GPT's backup header is the record
+# that spans it. Both are read and the larger wins.
+#
+# The fixtures are hand-built headers, the kdos-mountd shape: `hybrid.img`
+# carries a PVD claiming 40960 bytes and a GPT claiming 51200, so a reader that
+# preferred either one alone gives a different answer and the test says which.
+ln -sf kdos-tools "$OUT/kdos"
+CF=testing/fixtures/clone
+[ "$("$OUT/kdos" clone --source "$CF/iso-only.img" --extent)" = "40960" ] \
+    || { echo "  an optical-only image's PVD is not being read"; exit 1; }
+[ "$("$OUT/kdos" clone --source "$CF/hybrid.img" --extent)" = "51200" ] \
+    || { echo "  the appended partition was truncated away — the PVD won"; exit 1; }
+# Neither record is not "copy it anyway": a device is about to be destroyed.
+"$OUT/kdos" clone --source "$CF/not-a-medium.img" --extent >/dev/null 2>&1 \
+    && { echo "  a file that is not a medium was accepted"; exit 1; }
+echo "  the PVD alone, the GPT over a short PVD, and neither are three answers"
 echo
 echo "==> genlaunchers turns an image's desktop entries into host commands"
 # Four outputs, and dropping any one of them breaks something visible: the
@@ -1772,14 +1841,11 @@ echo "==> the tray host talks to a real StatusNotifierItem"
 #
 # Skipped rather than failed where there is no sd-bus or no dbus-daemon: this
 # script runs on a bare host, and basu is a KDOS port.
-TRAY_SDBUS=""
-pkg-config --exists basu 2>/dev/null && TRAY_SDBUS=basu
-[ -z "$TRAY_SDBUS" ] && pkg-config --exists libsystemd 2>/dev/null && \
-    TRAY_SDBUS=libsystemd
 if [ -n "$TRAY_SDBUS" ] && command -v dbus-daemon >/dev/null 2>&1; then
     $CC $STD $WARN -o "$OUT/traycheck" \
         -Isrc/desktop/kdos-shell -Isrc/libs/libktui -Isrc/libs/libkcolor \
-        -Isrc/libs/libkxdg -Isrc/libs/libkbase \
+        -Isrc/libs/libkxdg -Isrc/libs/libkbase -Isrc/libs/libkchrome \
+        -Isrc/libs/libkproc -Isrc/libs/libkicon -Isrc/libs/libkcell \
         $(pkg-config --cflags $TRAY_SDBUS) \
         testing/fixtures/tray/traycheck.c src/desktop/kdos-shell/tray.c \
         $(pkg-config --libs $TRAY_SDBUS)
@@ -1963,6 +2029,9 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     # candidate loop — a surface that uses them would otherwise fail to LINK,
     # which the harness reports as "the new front ends do not link" and which
     # reads as a defect in those files.
+    # privacy.c is NOT here and must not be: dumpmain.c stubs the whole
+    # sh_priv_* API, so compiling the real one in is a multiple definition.
+    # A privacy symbol panel.c calls belongs in that stub set.
     DFRONTS="src/desktop/kdos-shell/cal.c src/desktop/kdos-shell/menu.c
              src/desktop/kdos-shell/launcher.c src/desktop/kdos-shell/pick.c
              src/desktop/kdos-shell/shell.c src/desktop/kdos-shell/apps.c
@@ -1974,6 +2043,11 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     DEXTRA_PC=""
     pkg-config --exists alsa 2>/dev/null && DEXTRA_PC="alsa"
     [ -n "$TRAY_SDBUS" ] && DEXTRA_PC="$DEXTRA_PC $TRAY_SDBUS"
+    # libpipewire is audio.c's, which the candidate loop was reporting as
+    # "does not compile" when what it lacked was a header nobody had offered
+    # it. privacy.c itself is stubbed by dumpmain.c and is not compiled here.
+    pkg-config --exists libpipewire-0.3 2>/dev/null && \
+        DEXTRA_PC="$DEXTRA_PC libpipewire-0.3"
 
     # Each candidate is admitted on its OWN compile, not the batch's: one file
     # that does not build must cost its own golden and nobody else's.
@@ -1982,7 +2056,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
-        if $CC $STD $WARN -fsyntax-only -I"$DPROTO" \
+        if $CC $STD $SHWARN -fsyntax-only -I"$DPROTO" \
                 -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
                 -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
@@ -2009,7 +2083,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
         # resolves every file to application/octet-stream and the two traps
         # the fixture carries — longest suffix wins, and the default beats the
         # cache's first entry — are never exercised.
-        $CC $STD $WARN -o "$OUT/dumpcheck" -I"$DPROTO" \
+        $CC $STD $SHWARN -o "$OUT/dumpcheck" -I"$DPROTO" \
             -DKXDG_MIME_GLOBS="\"$PWD/testing/fixtures/openwith/data/mime/globs\"" \
             -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
@@ -2207,7 +2281,7 @@ if [ -n "${RESBIN:-}" ] && [ -x "$RESBIN" ]; then
     # showed itself. The height is held at 24 across 56 and 80 so that a diff
     # between them is a response to WIDTH and nothing else.
     for _p in applications processes cpu memory gpu drives network \
-              batteries energy; do
+              batteries energy boxes; do
         [ -f "$GOLD/res-$_p-80x24.txt" ] || continue
         res_golden "$_p" 56x24  --page "$_p"
         res_golden "$_p" 80x24  --page "$_p"
@@ -2382,9 +2456,10 @@ if pkg-config --exists libpipewire-0.3 2>/dev/null; then
     $CC $STD $WARN -o "$OUT/privacycheck" \
         -Isrc/desktop/kdos-shell -Isrc/libs/libktui -Isrc/libs/libkcolor \
         -Isrc/libs/libkxdg -Isrc/libs/libkbase -Isrc/libs/libkicon \
-        -Isrc/libs/libkchrome \
+        -Isrc/libs/libkchrome -Isrc/libs/libkproc \
         $(pkg-config --cflags libpipewire-0.3) \
         testing/fixtures/privacy/privacycheck.c src/desktop/kdos-shell/privacy.c \
+        src/libs/libkproc/*.c src/libs/libkbase/*.c \
         $(pkg-config --libs libpipewire-0.3)
     KDOS_PRIVACY_PROC=testing/fixtures/privacy/proc \
         PIPEWIRE_RUNTIME_DIR=/nonexistent-pipewire "$OUT/privacycheck" || exit 1

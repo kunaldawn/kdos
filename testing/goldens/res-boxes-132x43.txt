@@ -1,35 +1,22 @@
 +=  Resources  ====================================================================================================================+
-| Memory                                                                                                                           |
-| 11G of 16G                                                                                                                       |
+| Boxes                                                                                                                            |
+| 1 box, 1 running                                                                                                                 |
 |----------------------------------------------------------------------------------------------------------------------------------|
-| Applications     | RAM                                                                                                11G of 16G |
-| Processes        |                                                                                                               |
+| Applications     |BOX                 CPU%v   MEMORY    DISK      PROCS  ENERGY  UPTIME                                          |
+| Processes        |kdos-apps           155.0   1.2G      -         2      -       1d02h                                           |
 | CPU              |                                                                                                               |
-| Memory           |                                                                                                            ## |
-| GPU              |                                                                                                            ## |
-| Drives           |                                                                                                            ## |
-| Network          |                                                                                                            ## |
-| Batteries        |                                                                                                            ## |
-| Energy           | swap                                                                                              94M of 3.9G |
+| Memory           |                                                                                                               |
+| GPU              |                                                                                                               |
+| Drives           |                                                                                                               |
+| Network          |                                                                                                               |
+| Batteries        |                                                                                                               |
+| Energy           |                                                                                                               |
 | Boxes            |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
-|                  |                                                                                                            .. |
-|                  | pressure  some 0.10%  full 0.00% (10s)                                                                        |
-|                  |                                                                                                               |
-|                  | breakdown --------------------------------------------------------------------------------------------------- |
-|                  |  available      5.0G                                                                                          |
-|                  |  free           500M                                                                                          |
-|                  |  cached         5.9G                                                                                          |
-|                  |  buffers        250M                                                                                          |
-|                  |  shared         125M                                                                                          |
-|                  |  dirty          4.0M                                                                                          |
-|                  |  reclaimable    500M                                                                                          |
-|                  |                                                                                                               |
-|                  | memory device details need kdos-resctl                                                                        |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
@@ -40,4 +27,17 @@
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |                                                                                                               |
+|                  |Enter for one box: its profile, its processes and the verbs                                                    |
 +==================================================================================================================================+
