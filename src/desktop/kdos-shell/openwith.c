@@ -577,9 +577,30 @@ static void draw(void)
 	if (hw < 1)
 		hw = 1;
 	const char *shown = head;
-	if ((int)strlen(head) > hw)
-		shown = head + strlen(head) - (size_t)hw;
-	ktui_draw_text(2, 1, hw, shown, KT_MID, KT_SURFACE, KT_A_NONE);
+	int elided = 0;
+	if (ktui_utf8_width(head) > hw && hw > 1) {
+		/*
+		 * THE CUT IS MARKED, and it lands on a character boundary.
+		 * A subject line that begins mid-word — `sting/fixtures/…` for
+		 * a path under `testing/` — reads as a corrupt string rather
+		 * than a shortened one, which is the opposite of what eliding
+		 * is for; and a pointer bumped by bytes can start inside a
+		 * UTF-8 sequence, so the first glyph after it is whatever the
+		 * tail of one decodes to.
+		 */
+		shown = head + strlen(head) - (size_t)(hw - 1);
+		while ((*shown & 0xc0) == 0x80)
+			shown++;
+		elided = 1;
+	}
+	if (elided) {
+		ktui_draw_text(2, 1, 1, ktui_glyph[KT_G_ELLIPSIS], KT_MID,
+			       KT_SURFACE, KT_A_NONE);
+		ktui_draw_text(3, 1, hw - 1, shown, KT_MID, KT_SURFACE,
+			       KT_A_NONE);
+	} else {
+		ktui_draw_text(2, 1, hw, shown, KT_MID, KT_SURFACE, KT_A_NONE);
+	}
 	ktui_draw_hline(1, 2, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 
 	for (int i = 0; i < list_rows; i++) {

@@ -734,6 +734,30 @@ static int usage(void)
 	return 2;
 }
 
+/* `uuid <id>` prints what mkfs() would pass to -U for a pack of that id.
+ *
+ * It exists because 01_packs.sh builds the KDOS base pack with mkfs.erofs
+ * DIRECTLY — `assemble` wraps an image somebody else made, and the excludes
+ * that keep the repository bind mounts out of it are that script's, not this
+ * program's. Everything else in mkfs()'s flag set is a literal a script can
+ * repeat; the UUID is a derivation, and a second copy of it in shell would be
+ * a second thing to drift from `derive_uuid`.
+ */
+static int cmd_uuid(int n, char **a)
+{
+	KpkMeta m = {0};
+	char uuid[37];
+
+	if (n < 1) {
+		fprintf(stderr, "usage: kdos-pack uuid <id>\n");
+		return 2;
+	}
+	snprintf(m.id, sizeof(m.id), "%s", a[0]);
+	derive_uuid(&m, uuid);
+	printf("%s\n", uuid);
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	kb_set_progname("kdos-pack");
@@ -748,6 +772,7 @@ int main(int argc, char **argv)
 	if (!strcmp(cmd, "assemble"))		return build_or_assemble(n, a, 1);
 	if (!strcmp(cmd, "info"))		return cmd_info(n, a);
 	if (!strcmp(cmd, "imagehash"))		return cmd_imagehash(n, a);
+	if (!strcmp(cmd, "uuid"))		return cmd_uuid(n, a);
 	if (!strcmp(cmd, "extract-meta"))	return cmd_extract_meta(n, a);
 	if (!strcmp(cmd, "verify"))		return cmd_verify(n, a);
 	if (!strcmp(cmd, "sign"))		return cmd_sign(n, a);

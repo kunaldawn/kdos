@@ -2347,6 +2347,44 @@ for _s in keys teams doc settings start notify; do
         echo "  $_s (skipped — not linked into the harness)"
     fi
 done
+# THE THREE SURFACES THAT WERE DUMPABLE AND UNGOLDENED. Each has had `--dump`
+# since it landed and nothing has ever looked at one: the launcher is the
+# full-screen search `W-d` opens, the chooser is what every "Open with" goes
+# through, and the tooltip is the only thing on this desktop that explains an
+# icon with no label. Their inputs are fixed here for the same reason the rest
+# are — the launcher's app index comes from the XDG variables above, which
+# point at nothing, so it renders its empty state; the chooser is given the
+# openwith fixture's own tar.gz, which is the longest-suffix case it already
+# asserts on; and the tip is given the two strings a panel passes it.
+for _s in launcher tip; do
+    if "$DUMPCK" --have "$_s"; then
+        :
+    elif [ -f "$GOLD/$_s-80x24.txt" ]; then
+        echo "  $_s: a golden is committed but the surface no longer links"
+        golden_fail=1
+    else
+        echo "  $_s (skipped — not linked into the harness)"
+    fi
+done
+if "$DUMPCK" --have launcher; then
+    golden launcher 80x24  launcher --dump
+    golden launcher 132x43 launcher --dump
+fi
+if "$DUMPCK" --have tip; then
+    golden tip 80x24  tip --dump "Firefox" "left-click opens   middle-click a new window"
+    golden tip 132x43 tip --dump "Firefox" "left-click opens   middle-click a new window"
+fi
+# The chooser is rendered with the SHELL fixture's XDG variables, which point
+# at nothing — so what is goldened is its EMPTY state, the branch that says
+# nothing on this machine claims this type. That is the reading worth holding:
+# the resolution itself is asserted a few lines down against the openwith
+# fixture, and a layout is only ever wrong at the size where the content runs
+# out.
+if "$DUMPCK" --have openwith; then
+    golden openwith 80x24  openwith --dump "$PWD/testing/fixtures/openwith/files/roll.tar.gz"
+    golden openwith 132x43 openwith --dump "$PWD/testing/fixtures/openwith/files/roll.tar.gz"
+fi
+
 # THE TASKBAR AT ITS OWN HEIGHT, not the card sizes above. Every other surface
 # here is a window and 24 or 43 rows is a plausible one; the bar is two rows by
 # definition and forcing it to 24 would golden a layout that cannot occur. The

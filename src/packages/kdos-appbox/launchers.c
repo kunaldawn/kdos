@@ -48,6 +48,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -632,7 +633,14 @@ static int write_shims(const char *fsroot)
 			kb_buf_printf(&t, "%s\t%s\n", apps[i].id, apps[i].exec);
 	}
 	char *table = kb_path_join(share, "alien-apps");
-	kb_write_all(table, t.p, t.n);
+	/* A WRITE THAT FAILED MUST NOT REPORT A LAUNCHER SET. Every output
+	 * here is under /usr, so a run as anyone but root writes nothing at
+	 * all — and this program went on to print "11 launchers, 188 mime
+	 * types, 0 shims" and exit 0, which reads as the pack lane having
+	 * taken over when the shipped table is still whoever wrote it last. */
+	if (kb_write_all(table, t.p, t.n) != 0)
+		kb_die("cannot write %s: %s (genlaunchers writes under /usr — "
+		       "run it as root)", table, strerror(errno));
 	free(table);
 	free(share);
 	kb_buf_free(&t);
@@ -676,6 +684,8 @@ static int write_shims(const char *fsroot)
 		char *p = kb_path_join(bindir, apps[i].id);
 		if (symlink("kdos-appbox", p) == 0)
 			n++;
+		else if (errno != EEXIST)
+			kb_warn("shim %s: %s", apps[i].id, strerror(errno));
 		free(p);
 	}
 	free(bindir);

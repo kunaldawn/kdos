@@ -34,9 +34,26 @@ ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 # line, so a build that fails hands its logs back too.
 # build/podman is the pack bake's own container store and is root's by design
 # — podman refuses a store whose ownership does not match the user running it.
+#
+# AND `build/fs` IS THE TARGET ROOTFS, WHOSE OWNERSHIP IS THE SHIPPED SYSTEM'S.
+# Handing it back does not make a developer's life easier, it corrupts the
+# distribution: `chown` CLEARS THE SETUID BIT, so every privileged binary in
+# the image loses it — `kdos-checkpass`, whose loss refuses every password and
+# locks the user out of their own session; `kdos-resctl`; and
+# `newuidmap`/`newgidmap`, without which no rootless container can be created
+# and no box on the machine starts. It also rewrites every file's OWNER, so a
+# tree that `make install` correctly left to root comes out owned by uid 1000 —
+# `/etc/shadow` and `/etc/sudoers` included, on a system where uid 1000 is the
+# desktop user.
+#
+# It bites on the SECOND build and every one after: the squashfs is made inside
+# the chroot before this trap runs, so a single-pass build ships correct bits
+# and an incremental one squashes what the previous build's exit stripped.
+# Reading `build/fs` from the host now needs a container or sudo, which is the
+# correct price for a rootfs.
 hand_back() {
     [ -n "${HOST_UID:-}" ] || return 0
-    find build -mindepth 1 -maxdepth 1 ! -name podman \
+    find build -mindepth 1 -maxdepth 1 ! -name podman ! -name fs \
         -exec chown -R "$HOST_UID:${HOST_GID:-$HOST_UID}" {} + 2>/dev/null || true
 }
 trap hand_back EXIT

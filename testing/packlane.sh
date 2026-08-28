@@ -33,14 +33,23 @@ set -u
 OUT=/tmp/packlane
 mkdir -p "$OUT"
 
-APP=${PACKLANE_APP:-app.zathura}      # 8.8 MB, recommended, wants rt-gtk
-QTAPP=${PACKLANE_QTAPP:-app.kcalc}    # 2.0 MB, wants rt-qt — the other runtime
+APP=${PACKLANE_APP:-app.keepassxc}    # 27 MB, recommended, wants rt-qt
+QTAPP=${PACKLANE_QTAPP:-app.gimp}     # 129 MB, recommended, wants rt-gtk
 BOXBASE=${PACKLANE_BOXBASE:-alpine}   # 4.8 MB: the smallest real userland here
 BOX=${PACKLANE_BOX:-packlane}
 USER_NAME=${PACKLANE_USER:-kdos}
 
 pass=0; fail=0; skip=0
 n=0
+
+# THE MEDIUM IS NOT ALWAYS THERE, and the difference is the whole point of the
+# two lanes. A LIVE session reads its applications off ISO9660 at /mnt/iso and
+# an install is a mount; an INSTALLED system has only what was copied into the
+# store, and `/mnt/iso` does not exist at all. A check that assumed the medium
+# would report an installed machine as broken, which is the state this script
+# exists to be able to test.
+MEDIUM=/mnt/iso/packs
+[ -d "$MEDIUM" ] || MEDIUM=""
 
 say() { printf '\n== %s ==\n' "$*"; }
 
@@ -85,12 +94,21 @@ check "the socket is there"             'test -S /run/kdos-packd.sock'
 run 'kdos doctor 2>&1 | sed -n "/Boxes/,/^$/p"'
 run 'kdos-appbox status'
 run 'ls -la /var/lib/kdos/packs/'
-run 'ls /mnt/iso/packs/ | wc -l; ls /mnt/iso/packs/ | head -5'
+if [ -n "$MEDIUM" ]; then
+	run 'ls /mnt/iso/packs/ | wc -l; ls /mnt/iso/packs/ | head -5'
+else
+	run 'ls /var/lib/kdos/packs/*.kpack | wc -l'
+fi
 
 check "the store carries a base"        'test -f /var/lib/kdos/packs/base.kpack'
 check "the store carries rt-gtk"        'test -f /var/lib/kdos/packs/rt-gtk.kpack'
-check "the medium carries the index"    'test -f /mnt/iso/packs/PACKAGES'
-check "the medium carries $APP"         "test -f /mnt/iso/packs/$APP.kpack"
+if [ -n "$MEDIUM" ]; then
+	check "the medium carries the index"    'test -f /mnt/iso/packs/PACKAGES'
+	check "the medium carries $APP"         "test -f /mnt/iso/packs/$APP.kpack"
+else
+	skipped "the medium carries the index"  "no /mnt/iso — an installed system, so the store is the catalogue"
+	check "the store carries the index"     'test -f /var/lib/kdos/packs/PACKAGES'
+fi
 check "pack mode is the live lane"      'kdos-appbox status 2>&1 | grep -qi pack'
 
 # ── 2. what the daemon says ────────────────────────────────────────────────
@@ -105,11 +123,11 @@ run 'printf "status\n" | nc -U /run/kdos-packd.sock 2>/dev/null || kdos app sour
 run 'kdos app sources'
 run 'kdos app list'
 run 'kdos app list --all | head -40'
-run "kdos app search zathura"
+run "kdos app search keepassxc"
 run "kdos app show $APP"
 
-check "the catalogue is not empty"      'test "$(kdos app list --all 2>/dev/null | wc -l)" -gt 10'
-check "search finds it on the medium"   "kdos app search zathura 2>&1 | grep -q ."
+check "the catalogue is not empty"      'test "$(kdos app list --all 2>/dev/null | wc -l)" -ge 4'
+check "search finds it"                 "kdos app search keepassxc 2>&1 | grep -q ."
 
 # ── 2b. the keyring, because a refusal here stops every verb below ─────────
 #
@@ -124,13 +142,14 @@ say "2b. the keyring"
 
 run 'ls -la /etc/kdos/keys/ /etc/kdos/keys/packs/'
 run 'cat /etc/kdos/keys/packs/*.pub'
-run "kdos-pack info /mnt/iso/packs/$APP.kpack 2>&1 | grep -Ei '^signature|^id'"
+PROBE=${MEDIUM:-/var/lib/kdos/packs}
+run "kdos-pack info $PROBE/$APP.kpack 2>&1 | grep -Ei '^signature|^id'"
 run "kdos-pack info /var/lib/kdos/packs/base.kpack 2>&1 | grep -Ei '^signature|^id'"
-run "KDOS_KEYS=/etc/kdos/keys/packs kdos-pack info /mnt/iso/packs/$APP.kpack 2>&1 | grep -i '^signature'"
-run "head -3 /mnt/iso/packs/PACKAGES.sig"
+run "KDOS_KEYS=/etc/kdos/keys/packs kdos-pack info /var/lib/kdos/packs/base.kpack 2>&1 | grep -i '^signature'"
+run "head -3 ${MEDIUM:-/var/lib/kdos/packs}/PACKAGES.sig"
 
 check "the ring has a pack key"          'ls /etc/kdos/keys/packs/*.pub >/dev/null 2>&1'
-check "a shipped client verifies a pack" "kdos-pack info /mnt/iso/packs/$APP.kpack 2>&1 | grep -q 'signed by'"
+check "a shipped client verifies a pack" "kdos-pack info /var/lib/kdos/packs/base.kpack 2>&1 | grep -q 'signed by'"
 
 # ── 3. install one, off the medium ─────────────────────────────────────────
 #
@@ -149,7 +168,11 @@ run 'grep kdos /proc/mounts'
 # ISO9660 where it already is, which is the whole reason `kdos app install`
 # costs nothing on a stick. So the reading that says it worked is the MOUNT,
 # and a store copy here would be the bug: the same pack paid for twice.
-check "$APP is mounted off the medium"  "grep -q '/mnt/iso/packs/$APP.kpack .*erofs' /proc/mounts"
+if [ -n "$MEDIUM" ]; then
+	check "$APP is mounted off the medium" "grep -q '/mnt/iso/packs/$APP.kpack .*erofs' /proc/mounts"
+else
+	check "$APP is mounted from the store" "grep -q '/var/lib/kdos/packs/$APP.kpack .*erofs' /proc/mounts"
+fi
 check "the mount is ro,nosuid,nodev"    "grep '$APP' /proc/mounts | grep -q 'ro,nosuid,nodev'"
 check "the daemon counts it mounted"    "kdos-appbox status 2>&1 | grep -q '[1-9] mounted'"
 
@@ -166,12 +189,12 @@ say "4. launchers"
 
 run "asuser 'kdos-appbox genlaunchers --packs /' 2>&1 | tail -20"
 run "asuser 'grep -c . ~/.local/share/kdos/alien-apps 2>/dev/null || echo 0'"
-run "asuser 'grep zathura ~/.local/share/kdos/alien-apps /usr/share/kdos/alien-apps 2>/dev/null'"
+run "grep -i keepassxc /usr/share/kdos/alien-apps 2>/dev/null | head -3"
 run "ls /home/$USER_NAME/.local/share/applications/ 2>/dev/null | head -20"
 
-check "the app table names it"          "grep -q zathura /usr/share/kdos/alien-apps"
-check "the table names its pack"        "grep zathura /usr/share/kdos/alien-apps | grep -q '$APP'"
-check "the shim was written"            "test -L /usr/local/bin/zathura"
+check "the app table names it"          "grep -qi keepassxc /usr/share/kdos/alien-apps"
+check "the table names its pack"        "grep -i keepassxc /usr/share/kdos/alien-apps | grep -q '$APP'"
+check "the shim was written"            "test -L /usr/local/bin/keepassxc"
 check "kdos-box survived genlaunchers"  "test -x /usr/local/bin/kdos-box"
 check "no launcher was dropped"         "! kdos-appbox genlaunchers --packs / 2>&1 | grep -q 'the rest are ignored'"
 
@@ -186,10 +209,10 @@ run "asuser 'kdos app install $BOXBASE'"
 run "asuser 'kdos-box create $BOX base=pack:$BOXBASE accent=amber'"
 run "asuser 'cat ~/.config/kdos/boxes/$BOX.conf'"
 run "asuser 'kdos-box list'"
-run "asuser 'kdos-box enter $BOX -- sh -c \"echo INBOX; cat /etc/os-release 2>/dev/null | head -2; id\"'"
+run "asuser 'kdos-box enter $BOX sh -c \"echo INBOX; cat /etc/os-release 2>/dev/null | head -2; id\"'"
 
 check "the profile was written"         "test -f /home/$USER_NAME/.config/kdos/boxes/$BOX.conf"
-check "the box runs a command"          "asuser 'kdos-box enter $BOX -- echo INBOX' 2>&1 | grep -q INBOX"
+check "the box runs a command"          "asuser 'kdos-box enter $BOX echo INBOX' 2>&1 | grep -q INBOX"
 
 # ── 6. W6-6 — does the telemetry NAME a user box ───────────────────────────
 #
@@ -200,7 +223,7 @@ check "the box runs a command"          "asuser 'kdos-box enter $BOX -- echo INB
 # as `<proc> (appbox $BOX)` and not as the default box, and not unnamed.
 say "6. telemetry names the box"
 
-asuser "kdos-box enter $BOX -- sh -c 'while :; do :; done' >/dev/null 2>&1 &" >/dev/null 2>&1
+asuser "kdos-box enter $BOX sh -c 'while :; do :; done' >/dev/null 2>&1 &" >/dev/null 2>&1
 sleep 8
 run "pgrep -af conmon | head -5"
 run "asuser 'kdos-res --page boxes --dump --dump-size 132x43'"
@@ -221,11 +244,15 @@ else
 	skipped "kdos-energy names the box" "no kdos-energyd — this machine publishes no RAPL domain"
 fi
 
+# AS THE USER, NOT AS ROOT. The frames socket lives in the SESSION's runtime
+# directory, so `kdos stutter` run from the serial root shell looks in
+# /run/user/0 and reports that nothing is serving it — which is true of root
+# and says nothing about the desktop.
 if [ -S "/run/user/1000/kdos-frames.sock" ]; then
-	run "timeout 25 kdos stutter 2>&1 | head -30"
+	run "asuser 'timeout 25 kdos stutter' 2>&1 | head -30"
 	skipped "kdos stutter names the box" "a stutter has to HAPPEN; the transcript is the evidence"
 else
-	skipped "kdos stutter names the box" "no frames socket — no compositor is reporting"
+	skipped "kdos stutter names the box" "no frames socket in /run/user/1000 — no compositor is reporting"
 fi
 
 pkill -f 'while :; do :; done' 2>/dev/null

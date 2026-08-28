@@ -463,8 +463,7 @@ int cmd_run(int argc, char **argv)
 	}
 
 	tracef("run %s status=%s", app, state);
-	if (pack_mode())
-		return run_pack(argc, argv, app, state);
+	return run_pack(argc, argv, app, state);
 	if (box_ensure(g_box) != 0)
 		kb_die("could not create box '%s'", g_box);
 	tracef("ensured");
@@ -538,39 +537,17 @@ int cmd_warmup(void)
 int cmd_status(void)
 {
 	Profile p;
-	char state[64];
+	char state[64], st[4096];
 
 	profile_load(&p, g_box);
-	/* WHICH LANE, first line. A migration seam nobody can see is a seam
-	 * that gets debugged from the wrong end. */
-	printf("lane  : %s\n", pack_mode() ? "packs (kdos-packd)"
-					   : "the monolithic image");
-	if (pack_mode()) {
-		char st[4096];
-		if (packd_ask("status", st, sizeof(st)) == 0)
-			fputs(st, stdout);
-		else
-			printf("packd : not answering\n");
-		box_state(g_box, st, sizeof(st));
-		printf("box   : %s (%s)\n",
-		       strcmp(st, "absent") ? "created"
-					    : "not created (first launch will)", st);
-		return 0;
-	}
-	printf("image : %s\n", image_exists(p.image) ? "baked" : "missing");
+	if (packd_ask("status", st, sizeof(st)) == 0)
+		fputs(st, stdout);
+	else
+		printf("packd : not answering\n");
 	box_state(g_box, state, sizeof(state));
 	printf("box   : %s (%s)\n",
-	       strcmp(state, "absent") ? "created" : "not created (first launch will)",
-	       state);
-	/* Which route Qt apps take to the KDOS palette, in the order box_env
-	 * picks them. "absent" for both means an image baked before either
-	 * platform theme was added — a re-bake, not a config bug. */
-	printf("qt    : %s\n",
-	       image_has_label(p.image, "kdos.qt-kde-theme")
-		       ? "kde platform theme (reads ~/.config/kdeglobals)"
-	       : image_has_label(p.image, "kdos.qt-gtk-theme")
-		       ? "qgtk3 + Fusion (reads the GTK theme)"
-		       : "absent (Qt apps keep their own palette)");
+	       strcmp(state, "absent") ? "created"
+				       : "not created (first launch will)", state);
 	return 0;
 }
 
@@ -682,7 +659,7 @@ static int run_as_shim(const char *name, int argc, char **argv)
 	 * launch path below is otherwise identical, and `--box` still wins —
 	 * that is how the same application is run in a second box.
 	 */
-	if (pack[0] && pack_mode() && !strcmp(g_box, DEFAULT_BOX))
+	if (pack[0] && !strcmp(g_box, DEFAULT_BOX))
 		g_box = kb_strdup(pack);
 
 	/*
@@ -769,8 +746,6 @@ int main(int argc, char **argv)
 		return box_list();
 	if (CMD("apps"))
 		return app_list();
-	if (CMD("image"))
-		return cmd_image(argc - i - 1, argv + i + 1);
 	if (CMD("genlaunchers")) {
 		/*
 		 * Two sources, one set of outputs. `--packs <fs-root>` walks
@@ -778,9 +753,18 @@ int main(int argc, char **argv)
 		 * directory, which is what the image lane's bake hands it.
 		 */
 		if (i + 1 < argc && !strcmp(argv[i + 1], "--packs")) {
-			if (i + 2 >= argc)
+			/* AN EXTRA ARGUMENT IS REFUSED RATHER THAN IGNORED.
+			 * The two forms differ by one argument, so
+			 * `--packs <desktop-dir> <fs-root>` — the image lane's
+			 * shape with the flag added — reads the DESKTOP-DIR as
+			 * the fs-root and writes the whole set under it:
+			 * a table at <dir>/usr/share/kdos/alien-apps that
+			 * nothing reads, no shims swept, and the real table
+			 * left as whoever wrote it last. It exits 0. */
+			if (i + 2 >= argc || i + 3 < argc)
 				kb_die("usage: kdos-appbox genlaunchers --packs "
-				       "<fs-root>");
+				       "<fs-root>   (no desktop-dir: the packs "
+				       "are the source)");
 			return cmd_genlaunchers(NULL, argv[i + 2]);
 		}
 		if (i + 2 >= argc)

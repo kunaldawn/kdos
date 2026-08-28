@@ -17,7 +17,7 @@ gcc $CFLAGS -O2 -std=c11 -D_GNU_SOURCE -Wall -Wextra \
 	-I"$LIBS/libkxdg" -I"$PORT_SRC" -o kdos-appbox \
 	"$PORT_SRC/main.c" "$PORT_SRC/util.c" "$PORT_SRC/box.c" \
 	"$PORT_SRC/app.c" "$PORT_SRC/tui.c" "$PORT_SRC/launchers.c" \
-	"$PORT_SRC/image.c" "$PORT_SRC/open.c" "$PORT_SRC/pack.c" \
+	"$PORT_SRC/open.c" "$PORT_SRC/pack.c" \
 	"$PORT_SRC/box_cmd.c" \
 	"$LIBS"/libkbase/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkxdg/*.c $LDFLAGS

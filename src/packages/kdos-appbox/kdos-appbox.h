@@ -91,6 +91,10 @@ char *profile_home(const char *box);
 
 int  box_exists(const char *box);
 int  box_state(const char *box, char *buf, size_t n);
+/* Wait a `stopping` container out, then force it back to a startable state.
+ * Answers 0 (it was not stuck), 1 (it settled on its own), 2 (killed) or
+ * 3 (removed, so the caller must create it again). */
+int  box_unstick(const char *box, char *state, size_t n);
 int  box_create(const Profile *p);
 int  box_remove(const char *box, int force);
 int  box_list(void);
@@ -104,7 +108,6 @@ int  image_has_label(const char *image, const char *label);
 
 /* Is the pack lane in use? The store has a `base` and kdos-packd answers.
  * The migration seam, and W7-5 deletes it once packs are what ships. */
-int  pack_mode(void);
 const char *pack_store(void);
 
 /* 0 the daemon said ok, 1 it said err, -1 there is no daemon. A caller must

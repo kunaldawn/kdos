@@ -154,34 +154,6 @@ int packd_ask(const char *req, char *out, size_t n)
 	return rc;
 }
 
-/*
- * THE DUAL-MODE SEAM, and it has an end: W7-5 deletes it once the packs are
- * what ships. The pack lane is in use when the store has a `base` pack and the
- * daemon answers; anything else is the monolithic image, unchanged.
- */
-int pack_mode(void)
-{
-	static int known = -1;
-	char buf[64];
-
-	if (known >= 0)
-		return known;
-	if (getenv("KDOS_FORCE_IMAGE")) {
-		known = 0;
-		return known;
-	}
-	{
-		char *p = kb_path_join(pack_store(), "base.kpack");
-		int have = kb_path_exists(p);
-		free(p);
-		if (!have) {
-			known = 0;
-			return known;
-		}
-	}
-	known = packd_ask("ping", buf, sizeof(buf)) == 0;
-	return known;
-}
 
 /* Every pack the daemon knows, one `id\tversion\tkind\tstate\tsize\torigin`
  * line each. */
@@ -320,7 +292,11 @@ int pack_env(const char *id, char out[][256], int max)
  * decides the stack, the mount points and where the upper goes. */
 int pack_compose(const char *box, const char *id, char *merged, size_t n)
 {
-	char req[512];
+	/* Sized so the request provably fits whatever either caller hands it:
+	 * an id comes from a profile's `base` field and a box name from a
+	 * path, and a buffer that merely looks big enough is the truncation
+	 * this file has to be free of — the daemon parses one line. */
+	char req[MAX_LINE];
 
 	snprintf(req, sizeof(req), "compose %s %s", box, id);
 	return packd_ask(req, merged, n);
@@ -363,8 +339,6 @@ int pack_box_create(const Profile *p, const char *merged)
 	kb_argv_add(&a, "create");
 	kb_argv_add(&a, "--name");
 	kb_argv_add(&a, p->name);
-	kb_argv_add(&a, "--rootfs");
-	kb_argv_add(&a, merged);
 
 	gethostname(hostname, sizeof(hostname) - 1);
 	kb_argv_addf(&a, "--hostname=%s.%s", p->name, hostname);
@@ -467,6 +441,22 @@ int pack_box_create(const Profile *p, const char *merged)
 
 	kb_argv_add(&a, "--entrypoint");
 	kb_argv_add(&a, "/usr/libexec/kdos-boxinit");
+	/*
+	 * THE ROOTFS PATH IS THE LAST ARGUMENT, and it has to be.
+	 * podman's `--rootfs` is a BOOLEAN — it says "the first positional is
+	 * an exploded rootfs, not an image" — and `create` parses its flags
+	 * NON-INTERSPERSED so that everything after that positional is the
+	 * container's own command. Passing the path early therefore made every
+	 * later flag the command, and the box was created and then died on
+	 *
+	 *   crun: executable file `--hostname=<box>.<host>` not found in $PATH
+	 *
+	 * which names a flag as if it were a program. `--entrypoint` supplies
+	 * the command, so there is nothing to put after the path.
+	 */
+	kb_argv_add(&a, "--rootfs");
+	kb_argv_add(&a, merged);
+
 	kb_argv_end(&a);
 	return kb_run(&a);
 }
@@ -510,6 +500,17 @@ int pack_box_ensure(const char *box, const char *id)
 
 	fprintf(stderr, "==> First launch: composing '%s' from packs...\n", box);
 	rc = pack_box_create(&p, merged);
+	if (rc == 0 && !p.base[0]) {
+		/* RECORD WHAT THE BOX IS MADE OF. A box the launch path
+		 * composed has no profile, so every reader that asks what its
+		 * base is — `kdos-box list`, kdos-res's Boxes page,
+		 * kdos-settings' — falls back to podman's image and reports
+		 * `localhost/kdos-appbox:latest` for a box with no image in
+		 * it at all. The profile is the answer to that question and
+		 * this is the only place that knows it. */
+		snprintf(p.base, sizeof(p.base), "pack:%s", id);
+		profile_save(&p);
+	}
 	if (rc != 0)
 		pack_decompose(box);
 	if (fd >= 0)
@@ -527,10 +528,51 @@ int pack_box_start(const char *box)
 {
 	KbArgv a = {0};
 	char state[64];
+	Profile p;
+
+	/* The profile is what says which pack this box is made of, and both
+	 * the recovery and the compose below need it. */
+	profile_load(&p, box);
 
 	box_state(box, state, sizeof(state));
 	if (!strcmp(state, "running"))
 		return 0;
+
+	/* A STOPPED BOX IS OFTEN STILL `stopping`. `podman stop` sends SIGTERM
+	 * and waits out its timeout while kdos-boxinit stays alive reaping, so
+	 * `kdos-box stop x` followed by `kdos-box enter x` asks podman to start
+	 * a container it will refuse — `container state improper`, which names
+	 * nothing a reader can act on, and the box then looks permanently
+	 * broken. The app-launch path in main.c has recovered from this since
+	 * the image lane; `box_unstick` is that recovery, shared. A container
+	 * it had to REMOVE is gone, so the create path runs again. */
+	if (box_unstick(box, state, sizeof(state)) == 3)
+		return strncmp(p.base, "pack:", 5)
+			     ? 1 : pack_box_ensure(box, p.base + 5);
+
+	/*
+	 * COMPOSE FIRST, BECAUSE THE OVERLAY DOES NOT SURVIVE A REBOOT.
+	 * kdos-packd mounts a box's stack under `$XDG_RUNTIME_DIR`, which is
+	 * tmpfs: after a restart the container is still there, still `created`,
+	 * and the rootfs it was created over is gone. `podman start` then says
+	 *
+	 *   unable to start container "…": open mount point: no such file or
+	 *   directory
+	 *
+	 * which is a box that worked until it was restarted — the worst kind of
+	 * broken, and the one `kdos doctor` already asks about from the other
+	 * end. Composing is idempotent: the daemon reference-counts its mounts,
+	 * so a box that IS composed costs one round trip and nothing else.
+	 */
+	{
+		char merged[MAX_LINE];
+
+		if (!strncmp(p.base, "pack:", 5) &&
+		    pack_compose(box, p.base + 5, merged, sizeof(merged)) != 0)
+			kb_warn("%s: could not compose its packs: %s", box,
+				merged);
+	}
+
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "start");
 	kb_argv_add(&a, box);

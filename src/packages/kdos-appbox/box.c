@@ -213,6 +213,61 @@ int profile_load(Profile *p, const char *box)
 	return 1;
 }
 
+/*
+ * A CONTAINER IN `stopping` IS NOT STARTABLE, AND PODMAN SAYS SO IN A WAY
+ * THAT NAMES NOTHING USEFUL: "must be in Created or Stopped state to be
+ * started: container state improper". `podman stop` sends SIGTERM and waits
+ * out its timeout, and kdos-boxinit stays alive reaping, so a stop followed
+ * promptly by a start lands exactly here — as does a hung app holding D-state
+ * I/O, which can wedge a box in `stopping` for good.
+ *
+ * Wait it out, then force the way back. A box is stateless — its packs are
+ * mounted read-only and its writable upper is on disk — so nothing is lost by
+ * recreating the container over the same stack.
+ */
+int box_unstick(const char *box, char *state, size_t n)
+{
+	int i;
+
+	box_state(box, state, n);
+	if (strcmp(state, "stopping"))
+		return 0;
+
+	for (i = 0; i < 15 && !strcmp(state, "stopping"); i++) {
+		sleep(1);
+		box_state(box, state, n);
+	}
+	if (strcmp(state, "stopping"))
+		return 1;
+
+	{
+		KbArgv k = {0};
+		kb_argv_add(&k, "podman");
+		kb_argv_add(&k, "kill");
+		kb_argv_add(&k, box);
+		kb_argv_end(&k);
+		kb_run(&k);
+	}
+	sleep(2);
+	box_state(box, state, n);
+	if (strcmp(state, "stopping"))
+		return 2;
+
+	{
+		KbArgv r = {0};
+		kb_argv_add(&r, "podman");
+		kb_argv_add(&r, "rm");
+		kb_argv_add(&r, "-f");
+		kb_argv_add(&r, "-t");
+		kb_argv_add(&r, "0");
+		kb_argv_add(&r, box);
+		kb_argv_end(&r);
+		kb_run(&r);
+	}
+	box_state(box, state, n);
+	return 3;
+}
+
 int profile_save(const Profile *p)
 {
 	char *path = profile_path(p->name);
