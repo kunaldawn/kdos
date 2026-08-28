@@ -311,7 +311,9 @@ int profile_save(const Profile *p)
 		 p->gpu ? "yes" : "no",
 		 p->autoexport ? "auto" : "manual",
 		 p->memory, p->cpus, p->pids, p->autostop_s);
-	rc = kb_write_file(path, buf);
+	/* ATOMIC: a profile that comes back empty has lost `base`, and a box
+	 * whose base is unknown cannot be composed or started again. */
+	rc = kb_write_file_atomic(path, buf);
 	free(path);
 	return rc;
 }

@@ -1813,12 +1813,14 @@ static void theme_commit(const KcolScheme *sc)
 
 	/* The state file is the desktop's ONLY input, so it is written before
 	 * the session is signalled — a SIGHUP that arrives first would make the
-	 * shell re-read the accent it already had. */
+	 * shell re-read the accent it already had. ATOMIC for the other half of
+	 * that race: a plain O_TRUNC write is zero bytes until it finishes, and
+	 * four processes re-read this file the moment the signal lands. */
 	char *state = cache_home("kdos/theme");
 	mkparent(state);
 	char line[40];
 	snprintf(line, sizeof(line), "%s\n", sc->name);
-	kb_write_file(state, line);
+	kb_write_file_atomic(state, line);
 	free(state);
 
 	reload_session();

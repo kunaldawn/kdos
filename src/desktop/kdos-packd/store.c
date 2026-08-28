@@ -99,7 +99,11 @@ int kd_retain(void)
 	if (cached >= 0)
 		return cached;
 	cached = 1;
-	if (kb_read_file("/etc/kdos/packd.conf", buf, sizeof(buf)) == 0) {
+	/* `> 0`, not `== 0`: kb_read_file answers the BYTE COUNT, so `== 0`
+	 * parses the file only when it is empty — `retain =` was read from a
+	 * zero-byte packd.conf and from nothing else, and rollback silently
+	 * kept the default on every machine that had configured it. */
+	if (kb_read_file("/etc/kdos/packd.conf", buf, sizeof(buf)) > 0) {
 		char *line, *save;
 		for (line = strtok_r(buf, "\n", &save); line;
 		     line = strtok_r(NULL, "\n", &save)) {

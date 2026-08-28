@@ -60,56 +60,91 @@ static const char *env_or(const char *name, const char *dflt)
 }
 
 /*
- * Add a line to a colon-separated database, unless a record with that name or
- * that id is already there. The container's /etc is the overlay's writable
- * upper, so this is an ordinary file edit — but a pack may already carry the
- * record, and appending a second one for the same uid makes every lookup
- * ambiguous.
+ * Put a record into a colon-separated database, REPLACING one that is already
+ * there for the same name or id rather than leaving it alone.
+ *
+ * A pack may carry its own entry for this user, and a WRONG one is worse than
+ * none: the base pack ships `kdos:*:1000:1000:KDOS Test:/:/bin/sh`, whose home
+ * is `/`, so `podman exec --user=1000` gives every application HOME=/ and none
+ * of them reads ~/.config, ~/.themes or ~/.icons. Measured as a boxed GTK4 app
+ * in libadwaita's own light theme on a phosphor desktop, with the palette
+ * sitting correctly in a $HOME the app never looked at.
+ *
+ * Matching this user's HOST record is the whole reason this program creates
+ * the account at all, so it wins over whatever the image put there. Appending
+ * a second line instead would make every lookup ambiguous, which is what the
+ * name/id check was there to prevent.
+ *
+ * Written atomically: /etc/passwd with a failed write in the middle of it is a
+ * container with no users in it.
  */
 static int ensure_record(const char *path, const char *name, const char *id,
 			 const char *line)
 {
 	size_t len = 0;
 	char *text = kb_read_all(path, &len);
-	char *cur, *save;
-	int have = 0;
-	FILE *f;
+	char *out, *cur, *save;
+	size_t cap;
+	int replaced = 0;
+	int rc;
 
-	if (text) {
-		for (cur = strtok_r(text, "\n", &save); cur;
-		     cur = strtok_r(NULL, "\n", &save)) {
-			char *colon = strchr(cur, ':');
-			char *second, *third;
+	if (!text) {
+		FILE *f = fopen(path, "a");
+		if (!f)
+			return -1;
+		fputs(line, f);
+		return fclose(f) == 0 ? 0 : -1;
+	}
 
-			if (!colon)
-				continue;
+	cap = len + strlen(line) + 2;
+	out = calloc(1, cap);
+	if (!out) {
+		free(text);
+		return -1;
+	}
+
+	for (cur = strtok_r(text, "\n", &save); cur;
+	     cur = strtok_r(NULL, "\n", &save)) {
+		char probe[512];
+		char *colon, *second, *third;
+		int match = 0;
+
+		kb_strlcpy(probe, cur, sizeof(probe));
+		colon = strchr(probe, ':');
+		if (colon) {
 			*colon = 0;
-			if (!strcmp(cur, name)) {
-				have = 1;
-				break;
-			}
-			/* name:x:<id>: — the third field */
-			second = strchr(colon + 1, ':');
-			if (!second)
-				continue;
-			third = strchr(second + 1, ':');
-			if (third)
-				*third = 0;
-			if (!strcmp(second + 1, id)) {
-				have = 1;
-				break;
+			if (!strcmp(probe, name)) {
+				match = 1;
+			} else {
+				/* name:x:<id>: — the third field */
+				second = strchr(colon + 1, ':');
+				if (second) {
+					third = strchr(second + 1, ':');
+					if (third)
+						*third = 0;
+					if (!strcmp(second + 1, id))
+						match = 1;
+				}
 			}
 		}
-		free(text);
+		if (match) {
+			if (!replaced) {
+				strcat(out, line);
+				replaced = 1;
+			}
+			/* a duplicate for the same user is dropped */
+		} else {
+			strcat(out, cur);
+			strcat(out, "\n");
+		}
 	}
-	if (have)
-		return 0;
+	if (!replaced)
+		strcat(out, line);
 
-	f = fopen(path, "a");
-	if (!f)
-		return -1;
-	fputs(line, f);
-	return fclose(f) == 0 ? 0 : -1;
+	rc = kb_write_file_atomic(path, out);
+	free(out);
+	free(text);
+	return rc;
 }
 
 static void reap(int sig)

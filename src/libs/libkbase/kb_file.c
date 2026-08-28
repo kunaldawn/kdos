@@ -61,6 +61,73 @@ int kb_write_file(const char *path, const char *data)
 	return 0;
 }
 
+/*
+ * A STATE FILE IS REPLACED, NEVER TRUNCATED IN PLACE. `kb_write_file` opens
+ * O_TRUNC and then writes, so between those two the file is ZERO BYTES and a
+ * failure anywhere after the truncate — ENOSPC, EIO, a signal, a crash, a
+ * reader arriving mid-write — leaves it that way. Measured: a box profile
+ * found 0 bytes with every key gone, which loses `base` and makes the box
+ * unstartable, on a machine where nothing was wrong but the write.
+ *
+ * Temp file, fsync the FILE, fsync the DIRECTORY, rename. The directory fsync
+ * is the step people leave out, and without it the rename can be lost while
+ * the data survives — the same rule `kdos-bootctl` keeps for the A/B state
+ * file on the ESP, applied to every state file that cannot afford to come
+ * back empty.
+ */
+int kb_write_file_atomic(const char *path, const char *data)
+{
+	char tmp[4096], dirbuf[4096];
+	size_t n = strlen(data), off = 0;
+	int fd, dfd;
+	char *slash;
+
+	if (snprintf(tmp, sizeof(tmp), "%s.tmpXXXXXX", path) >= (int)sizeof(tmp))
+		return -1;
+	fd = mkstemp(tmp);
+	if (fd < 0)
+		return -1;
+	if (fchmod(fd, 0644) != 0)
+		goto fail;
+	while (off < n) {
+		ssize_t w = write(fd, data + off, n - off);
+		if (w <= 0) {
+			if (w < 0 && errno == EINTR)
+				continue;
+			goto fail;
+		}
+		off += (size_t)w;
+	}
+	if (fsync(fd) != 0)
+		goto fail;
+	if (close(fd) != 0) {
+		fd = -1;
+		goto fail;
+	}
+	fd = -1;
+	if (rename(tmp, path) != 0)
+		goto fail;
+
+	/* The rename is only durable once the DIRECTORY entry is. */
+	kb_strlcpy(dirbuf, path, sizeof(dirbuf));
+	slash = strrchr(dirbuf, '/');
+	if (slash) {
+		*slash = 0;
+		dfd = open(slash == dirbuf ? "/" : dirbuf,
+			   O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+		if (dfd >= 0) {
+			fsync(dfd);
+			close(dfd);
+		}
+	}
+	return 0;
+fail:
+	if (fd >= 0)
+		close(fd);
+	unlink(tmp);
+	return -1;
+}
+
 int kb_path_exists(const char *p)
 {
 	struct stat st;

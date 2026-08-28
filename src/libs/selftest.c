@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "kbase.h"
@@ -417,6 +418,36 @@ static void test_trash(void)
 	snprintf(b, sizeof(b), "%s/b", work);
 	kb_mkdir_p(a);
 	kb_mkdir_p(b);
+
+	/*
+	 * A STATE FILE IS REPLACED, NEVER TRUNCATED. `kb_write_file` opens
+	 * O_TRUNC and then writes, so the file is zero bytes in between and any
+	 * failure there leaves it that way — measured as a box profile found
+	 * empty, which loses `base` and makes the box unstartable. The atomic
+	 * writer must land the whole content, keep 0644, shrink cleanly when
+	 * the new content is shorter, and leave no temp file behind.
+	 */
+	{
+		struct stat st;
+		char rd[64];
+		snprintf(p, sizeof(p), "%s/state.conf", work);
+		ok(kb_write_file_atomic(p, "base=pack:kdos\nimage=x\n") == 0,
+		   "atomic write lands");
+		ok(stat(p, &st) == 0 && st.st_size == 23,
+		   "the whole content is there");
+		ok((st.st_mode & 0777) == 0644, "and it is 0644");
+		ok(kb_write_file_atomic(p, "x\n") == 0, "replace with less");
+		ok(stat(p, &st) == 0 && st.st_size == 2,
+		   "no tail of the old content survives");
+		ok(kb_read_file(p, rd, sizeof(rd)) == 2, "and it reads back");
+		{
+			/* the temp file is named <path>.tmpXXXXXX */
+			char g[512];
+			snprintf(g, sizeof(g), "%s.tmp", p);
+			ok(!kb_path_exists(g), "no temp file left behind");
+		}
+		unlink(p);
+	}
 
 	/*
 	 * TWO FILES OF THE SAME NAME FROM DIFFERENT DIRECTORIES is the ordinary

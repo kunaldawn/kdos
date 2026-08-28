@@ -425,7 +425,10 @@ static int sources(char out[8][KPK_PATH])
 			kb_strlcpy(out[n++], tab + 1, KPK_PATH);
 		}
 	}
-	if (kb_read_file("/etc/kdos/pack-sources", buf, sizeof(buf)) == 0) {
+	/* `> 0`, not `== 0`: kb_read_file answers the BYTE COUNT, so `== 0` is
+	 * true only for an EMPTY file — every path somebody listed here was
+	 * skipped, and `kdos app update` saw the medium and nothing else. */
+	if (kb_read_file("/etc/kdos/pack-sources", buf, sizeof(buf)) > 0) {
 		char *line, *save;
 		for (line = strtok_r(buf, "\n", &save); line && n < 8;
 		     line = strtok_r(NULL, "\n", &save)) {
