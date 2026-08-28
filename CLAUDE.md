@@ -63,10 +63,11 @@ Four properties define the project. Everything else follows from them:
    them (`sha256 =`, `ports/sources.manifest`, `C:` in `PACKAGES`), never the
    bytes. Clone, `make bootstrap`, `make build`, get an ISO.
 4. **Alien apps.** **KDOS builds the desktop; applications live in boxes.**
-   No native-porting of browsers, office suites or IDEs — ~105 GUI apps ship
-   pre-baked in a Debian container and behave like ordinary system apps
-   (launchers, MIME handlers, terminal commands). The boundary is now in the
-   same place as the build cost, with no per-app arguments.
+   No native-porting of browsers, office suites or IDEs — ~130 GUI apps ship
+   as PACKS on the medium (one signed EROFS image each, over shared runtimes)
+   and behave like ordinary system apps (launchers, MIME handlers, terminal
+   commands). The boundary is in the same place as the build cost, with no
+   per-app arguments, and an install carries only what was ticked.
 
 Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.png`.
 
@@ -158,46 +159,35 @@ against artwork.
 
 ---
 
-## The appbox — offline alien apps
+## The application catalogue — offline alien apps
 
-`ports/appbox/Containerfile` defines a **debian trixie** `kdos-apps` image:
-the best open-source GUI app per segment, ~105 launchers (libreoffice, calibre,
-gimp, krita, blender, freecad, prusa-slicer, openscad, kicad+gtkwave+ngspice,
-octave, maxima, stellarium, ardour, hydrogen, lmms, kdenlive, obs-studio,
-vscodium, wireshark, keepassxc, backup tools, games, emulators, wine,
-firefox-esr, …),
-plus a **KDE segment** — dolphin, konsole, kate, okular, gwenview, ark, kcalc,
-spectacle, digikam, elisa, kdeconnect, kdevelop, k3b, filelight, kwalletmanager.
-Not `kde-full`: that is Plasma itself plus everything and would roughly double a
-~4 G image. The applications are the half with no equal elsewhere; none of them
-needs Plasma running. `plasma-integration` comes with them, which is what makes
-`QT_QPA_PLATFORMTHEME=kde` work at all, and `kio-extras`/`ffmpegthumbs`/
-`kdegraphics-thumbnailers` are what make dolphin show thumbnails rather than
-generic icons.
+`ports/appbox/packs.conf` defines the catalogue: a **debian trixie** base, a
+handful of shared runtimes (`rt-gtk`, `rt-qt`, `rt-kde`, `rt-electron`,
+`rt-wine`, …) and ~130 application rows — the best open-source GUI app per
+segment (libreoffice, calibre, gimp, krita, blender, freecad, prusa-slicer,
+openscad, kicad+gtkwave+ngspice, octave, maxima, stellarium, ardour, hydrogen,
+lmms, kdenlive, obs-studio, vscodium, wireshark, keepassxc, backup tools,
+games, emulators, wine, firefox-esr, …), plus a **KDE segment** — dolphin,
+konsole, kate, okular, gwenview, ark, kcalc, kde-spectacle, digikam, elisa,
+kdeconnect, kdevelop, k3b, filelight, kwalletmanager. Not `kde-full`: that is
+Plasma itself plus everything. The applications are the half with no equal
+elsewhere; none of them needs Plasma running. `plasma-integration` rides in
+`rt-kde`, which is what makes `QT_QPA_PLATFORMTHEME=kde` work at all, and
+`kio-extras`/`ffmpegthumbs`/`kdegraphics-thumbnailers` are what make dolphin
+show thumbnails rather than generic icons.
+
 Debian rather than alpine because alpine has no slicer, no VSCode build, no
-calibre/gtkwave in stable. Heavy is deliberate — **the image IS the offline
+calibre/gtkwave in stable. Heavy is deliberate — **the medium IS the offline
 software library** (Knoppix-style fat stick). `--no-install-recommends`
 everywhere, with the data packages that matter re-added explicitly
-(kicad-packages3d's 5 GB stays out). `/.containersetupdone` is pre-baked so
-distrobox-init never apt-gets anything on first enter.
+(kicad-packages3d's 5 GB stays out).
 
-### How the image ships in-tree
-
-`make build` runs `--network none`, so the image is built on the HOST with
-`make fetch-apps` → `ports/appbox/appbox.tar`, which `kdos-appbox image pack`
-immediately explodes into **`ports/appbox/image/`**: one zstd file per
-docker-archive member (layer blobs split at 1.5 G, the release-asset ceiling
-being 2 GiB), plus `INDEX.json`. That directory is a RELEASE ASSET and is
-gitignored; `icons/` is small and IS committed. `make bootstrap` restores the
-chunks, and `INDEX.json` is what identifies them. The Containerfile is one
-`RUN` per segment, so editing a segment only rewrites that layer's blob. `script/06_packaging/01_appbox.sh` loads the tar directly
-if present, else `kdos-appbox image assemble` streams it out of the chunks into
-`podman load`. A missing image is a warning; the ISO still builds.
-
-No container is created at build time. Launchers call `kdos-appbox run <app>`,
-which creates the distrobox lazily, and `kdos-desktop` backgrounds
-`kdos-appbox warmup` at login (flock-guarded, serialized against `run`'s
-create), so container init normally happens while the desktop is still settling.
+**One pack per application, shared runtimes underneath**, so an install carries
+only what was ticked rather than a single blob. `make fetch-packs` bakes the
+set on the host; `01_packs.sh` places the base and the runtimes the recommended
+applications need, and `02_iso.sh` puts every application pack on ISO9660
+beside `system.sfs`. See **Packs — an application is one file** below for the
+format, the daemon and the box a pack runs in.
 
 ### Where the big artefacts live — releases, not LFS
 
@@ -217,7 +207,6 @@ a second copy of a hash is a second thing to drift:
 |---|---|---|
 | upstream tarballs | `sha256 =` in the recipe | `ports/fetch`, enforced by preflight |
 | packs | `PACKAGES` with `C:` per pack, plus `PACKAGES.sig` | `kpk_index_verify` |
-| appbox image chunks | `INDEX.json` | `kdos-appbox image assemble` |
 
 That is what makes the arrangement survivable: a mirror can be added in ten
 years without invalidating a commit, because a commit names contents rather
@@ -282,28 +271,26 @@ was then a hash of one particular afternoon. Verified by vendoring twice.
 `HOST_GID`, which `make build` has always passed and nothing read — `build/podman`
 is excluded, being podman's own store and root's by design.
 
-### Bake-time traps (each cost a debug cycle)
-
-- **Drop root's runtime paths from the user's libpod database.** The bake runs
-  rootful podman with `--runroot /tmp/appbox-runroot`, and podman RECORDS the
-  runroot and tmpdir. Rootless podman then honours them, dies on
-  `mkdir /run/libpod: permission denied`, and EVERY podman call fails — silently,
-  because the launcher swallows stderr. Tell-tale: `podman images` as kdos fails
-  while the same command as root works. `01_appbox.sh` removes `$STORAGE/libpod`
-  and `db.sql` after the load; the first rootless call recreates them.
-- **Wipe `$STORAGE` before loading**, and keep the uid remap idempotent.
-  Re-baking onto an existing store used to remap already-remapped uids (clamped
-  at 165535) and every `distrobox enter` died with `crun: readlink ''`.
-- **Flatten the loaded image to one layer** (rootful `podman create` + `export`
-  + `import`). The rootful unpack records whiteout/opaque markers as
-  `trusted.overlay.*`, which the ROOTLESS runtime mount cannot see, so
-  multi-layer-rebuilt dirs like `/etc/alternatives` come up EMPTY in the box.
-- **Packaging snapshots exclude** `fs/home/kdos/.local/share/containers/*`.
+**AND SO IS `build/fs`, WHICH IS THE TARGET ROOTFS.** `chown` CLEARS THE SETUID
+BIT and rewrites every owner, so handing that tree back strips exactly the
+privileges the distribution depends on — `kdos-checkpass` (the lock screen then
+refuses every password), `kdos-resctl`, and `newuidmap`/`newgidmap` (no
+rootless container can be created, so no box starts) — and leaves `/etc/shadow`
+and `/etc/sudoers` owned by uid 1000, which on the shipped system is the
+desktop user. It bites on the SECOND build and every one after: the squashfs is
+made inside the chroot before the trap runs, so a single-pass build ships
+correct bits and an incremental one squashes what the previous build's exit
+stripped. Reading `build/fs` from the host needs a container or sudo now, which
+is the correct price for a rootfs.
 
 ### `kdos-appbox genlaunchers` writes four things
 
-`kdos-appbox genlaunchers <desktop-dir> <fs-root>` parses the image's own
-desktop entries. Dropping any one output breaks something visible:
+`kdos-appbox genlaunchers --packs <fs-root>` walks every installed app pack,
+mounts it through kdos-packd and parses its own desktop entries. **An extra
+argument is REFUSED**: the two forms differ by one, so `--packs <dir> <root>`
+would read the directory as the fs-root and write the whole set underneath it —
+a table nothing reads, no shims swept, exit 0. Dropping any one output breaks
+something visible:
 
 | Output | Why |
 |---|---|
@@ -387,10 +374,10 @@ desktop entries. Dropping any one output breaks something visible:
   It is on the heap, so the dispatcher — this same binary, on every launch —
   carries no fixed cost for a table only `genlaunchers` fills.
 
-Regenerating needs the image's `/usr/share/applications`. After an ISO build
-that is already on disk (the bake flattens the appbox to one layer):
-`build/fs/home/kdos/.local/share/containers/storage/overlay/*/diff/usr/share/applications`
-— no `make fetch-apps` required.
+Regenerating needs the packs mounted, which is kdos-packd's job, so it runs on
+the target: `kdos-appbox genlaunchers --packs /` as ROOT — every output is
+under `/usr`, and a run as anyone else now dies rather than reporting a
+launcher set it did not write.
 
 ### Runtime plumbing
 
@@ -557,6 +544,56 @@ scratch userland that needs no network, where `base=image:<ref>` does.
 **4.7 KB** because wine itself lives in the runtime and the pack exists only to
 carry `command = wine`.
 
+**A BASE PACK MUST KEEP ITS MOUNT POINTS, so the pseudo-filesystems are
+excluded BY REGEX and not by path.** `--exclude-path=proc` removes the
+DIRECTORY, and a container rootfs with no `/proc`, `/sys`, `/dev`, `/tmp` or
+`/run` to bind-mount onto cannot be started at all — podman answers `open mount
+point: no such file or directory` for a box that created perfectly.
+`--exclude-regex='^(proc|sys|dev|tmp|run|mnt|media|var/cache|var/log)/'`
+matches everything inside them and not the directories themselves. A pack built
+from a container IMAGE never shows this, because the image already has them.
+
+**`mkfs.erofs --exclude-path` IS RELATIVE TO THE TREE BEING PACKED AND MUST
+CARRY NO LEADING SLASH.** It matches an exact literal, so `--exclude-path=/kdos`
+matches nothing, is not an error, and excludes NOTHING — measured against a
+fixture, `--exclude-path=/drop` produces an image byte-identical to passing no
+exclusion at all while `--exclude-path=drop` produces 4 KB. `01_packs.sh`'s
+`KDOS_PACK_KDOS` path carried slashes on all eleven and packed the repository
+bind mount to 107 GB the first time it was run over a real rootfs. It **probes
+the flag against a throwaway tree before trusting it**, nested and top-level,
+because a silently-inert exclude here fills the disk rather than printing a
+warning. The store and `home/kdos/.local/share/containers` are excluded too:
+the artefact lands in the store, so a second run would pack the first run's
+pack inside it.
+
+**AND A HAND-ROLLED `mkfs.erofs` MUST STILL FORCE uid/gid 1000.** A box runs
+`--userns keep-id`, so the process inside it is uid 1000; every pack that comes
+out of `kdos-pack build` is forced to that uid and the user therefore owns the
+tree. `01_packs.sh` calls mkfs.erofs directly — the excludes are the script's
+and `build` takes no such argument — and packed with REAL ownership the KDOS
+rootfs is root's from `/` down, so the container user can create nothing
+anywhere in it. It fails in two stages and neither says "ownership": first
+`creating /etc/mtab symlink: permission denied`, then, once that exists,
+`crun: open '…/usr/libexec/kdos-boxinit': No such file or directory` — the bind
+destination podman could not create. `pack:alpine` is unaffected throughout,
+which is what makes it read as a KDOS-base bug rather than a packaging one.
+Ownership grants nothing either way: a pack is mounted nosuid.
+
+**`kdos-pack uuid <id>` is the other half of that call.** mkfs.erofs's default
+UUID is RANDOM, so an image built by hand differs on every run and
+`kdos-pack imagehash` can never answer "unchanged". The derivation is
+`derive_uuid`'s and the script asks for it rather than keeping a second copy in
+shell.
+
+**THE STORE IS ROOT'S, AND THAT IS WHAT LETS THE DAEMON SKIP RE-HASHING IT.**
+`01_packs.sh` copies packs out of `/ports`, a bind mount of the repository —
+`cp -a` preserves the SOURCE's owner, so without an explicit `chown 0:0` the
+store ships owned by whoever cloned the tree, which on the target is uid 1000:
+the desktop user. They could then replace a pack in the store and kdos-packd
+would mount it unverified, because a pack in the store "was hashed when root
+wrote it and only root can write there" is exactly the reasoning that skips the
+check.
+
 **WHAT AN INSTALL CARRIES IS 313 MB**, and that number is the whole argument.
 The applications stay on ISO9660; of the runtimes, only the ones something
 needs are copied into `/var/lib/kdos/packs` — base, `rt-gtk` and `rt-qt` for
@@ -605,6 +642,27 @@ where an unprivileged write is allowed is exactly the kind of thing that drifts.
 - **`kd_adopt()` rebuilds the table from `/proc/mounts` at startup**, because
   the daemon can be restarted while boxes are running and one that forgot would
   unmount a live box's own root.
+- **AND A STOPPED BOX IS OFTEN STILL `stopping`, WHICH IS NOT STARTABLE.**
+  `podman stop` sends SIGTERM and `kdos-boxinit` stays alive reaping, so a stop
+  followed promptly by a start asks podman to start a container it refuses:
+  *"must be in Created or Stopped state to be started: container state
+  improper"* — a sentence naming nothing a reader can act on, for a box whose
+  profile, overlay and merged root are all intact. A hung app holding D-state
+  I/O wedges a box there for good. `box_unstick()` in `box.c` is the recovery —
+  wait it out, `podman kill`, then `podman rm -f` — and it is SHARED with the
+  app-launch path in `main.c`, which has had it since the image lane and is why
+  a launched application was never affected while `kdos-box enter` was. A
+  container it had to remove is recreated over the same stack: a box is
+  stateless, its packs are read-only and its writable upper is on disk.
+
+- **AND A BOX IS RE-COMPOSED BEFORE IT IS STARTED, because the overlay is on
+  tmpfs.** The stack is mounted under `$XDG_RUNTIME_DIR`, so a reboot leaves
+  the container `created` with the rootfs it was created over deleted, and
+  `podman start` answers `open mount point: no such file or directory` — a box
+  that works until it is restarted, which is what `kdos doctor` asks about from
+  the other end. `pack_box_start()` composes first; composing is idempotent
+  because the mounts are reference counted, so a box already composed pays one
+  round trip.
 - **A socket path that does not fit `sun_path` is refused, not truncated** —
   truncation binds a socket nobody asked for and answers the next start with
   "address already in use" for a file that appears not to exist. **The rule is
@@ -630,7 +688,13 @@ removed, because a real directory there is somebody else's.
 
 ### The box a pack runs in
 
-`podman --rootfs <merged>` over the overlay kdos-packd composed, keeping
+`podman --rootfs <merged>` — and **`--rootfs` IS A BOOLEAN, so the merged path
+is the first POSITIONAL and must be the LAST argument.** `podman create` parses
+non-interspersed: everything after that positional is the container's own
+command, so a flag placed after it becomes the program crun tries to exec and
+the box is created and then dies on `executable file '--hostname=…' not found
+in $PATH`. `--entrypoint` supplies the command, so nothing follows the path.
+Over the overlay kdos-packd composed, this keeps
 everything that is hard (rootless uid maps, seccomp, cgroups, conmon
 supervision — which `kdos stutter`, `kdos-oomd` and `kdos-energyd` all identify
 boxes by) and replacing only the part that needed an image.
@@ -657,12 +721,6 @@ is using it; with it the box gets a real non-root account and `/usr` reads as
 the user. The second is taken because applications refuse to run as root, which
 is also why distrobox chose it. Ownership grants nothing either way — packs are
 mounted nosuid.
-
-**The dual-mode seam has an end.** `pack_mode()` is true when
-`/var/lib/kdos/packs/base.kpack` exists and kdos-packd answers; otherwise the
-monolithic image lane runs unchanged, and `kdos-appbox status` names which one
-is in use. `KDOS_FORCE_IMAGE` pins the old one. Deleting the monolith is W7-5
-of `apps.plan.md` and is gated on the pack set reaching parity.
 
 **`genlaunchers --packs`** walks every installed app pack, mounts it through
 kdos-packd and parses its own `/usr/share/applications` — a pack carries its
@@ -2106,7 +2164,7 @@ bug:**
 
 | Lib | Prefix | Owns |
 |---|---|---|
-| `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, group membership, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach`**, and **the freedesktop trash** (`kb_trash_*`) |
+| `libkbase` | `kb_` | alloc + OOM hook, `die`/`warn`, strings, files, paths, flock, monotonic time, group membership, **the `KbArgv` builder and `kb_run`/`kb_run_capture`/`kb_run_detach` — which send a child's stderr to `/dev/null` unless `kb_proc_verbose` is set, so anything whose FAILURE is diagnosed by the child's own sentence has to set it**, and **the freedesktop trash** (`kb_trash_*`). **`kb_copy_file` STREAMS** — it is what moves packs, and `base.kpack` is 207 MB, an app pack reaches 465 MB and `rt-wine` 713 MB, with kdos-packd copying one into the store as ROOT on every install; reading a file whole to write it whole asks for its size in anonymous memory for no reason |
 | `libkcolor` | `kcol_` | **the palette table**, hex/HLS, `kcol_mix`, `kcol_muted` (the derived READABLE muted text colour — `dim` is a fill), the hue-family classifier, `kcol_remap`, `kcol_retint_text`, `kcol_sem` (the shared semantic values gtk.css and the adw-gtk3 recolour both read, so they cannot disagree) |
 | `libktui` | `ktui_`, `KT_`, `KRect`/`KRgb`/`KtuiEvent` | terminal ownership, cell buffer + diff flush, key/mouse decoding, **UTF-8 input and `ktui_wcwidth`/`KTUI_WIDE_CONT`**, `ktui_paste_push`, immediate-mode widgets, modals, text furniture, **the three glyph tiers and the charts drawn out of them**, offscreen rendering |
 | `libkxdg` | `kxdg_` | desktop entries (matching what `RawConfigParser(strict=False)` did with them), the mime glob table, and **`kxdg_exec_split` — the one correct way to turn an `Exec=` line into argv** |
@@ -2258,42 +2316,6 @@ accents** — 10792 icons, 12462 symlinks, 6 stylesheets, 32 cursor shapes,
 both are noted in the source: python's `round()` is half-to-**even**, and
 `re.sub`'s greedy `\s*$` **swallows the file's trailing newline** after the
 last `@define-color`.
-
-### The appbox image tools
-
-`kdos-appbox image` replaces `ports/appbox/pack`, `ports/appbox/assemble` and
-the python heredoc that used to sit inside `01_appbox.sh`:
-
-| Subcommand | Runs where | Was |
-|---|---|---|
-| `image pack <tar> <dir>` | host, from `ports/appbox/fetch` | `ports/appbox/pack` |
-| `image assemble <dir>` | **inside the chroot**, from `01_appbox.sh` | `ports/appbox/assemble` |
-| `image remap-uids <store>` | inside the chroot | the inline `python3 - <<EOF` |
-
-`assemble` is why this mattered: it ran in the chroot, so python3 was a
-*packaging* dependency as well as a runtime one. `libkbase`'s `kb_tar_*` is a
-minimal ustar reader/writer — the only archives it ever sees are `podman save`
-output — and `zstd` is still exec'd rather than linked, so kdos-appbox keeps
-its zero-`-l` property.
-
-The INDEX.json format is unchanged and was verified **both ways**: the C
-`assemble` reads a python-written index, and the python `assemble` reads a
-C-written one. The committed `ports/appbox/image/` chunks do not need
-regenerating.
-
-`ports/appbox/fetch` runs on the host, where no target binary exists, so it
-compiles kdos-appbox itself for the one subcommand it needs. That is a
-two-second `cc` of a program that links nothing.
-
-**The cursors follow an accent switch now.** That was the one artefact
-`kdos theme <accent>` could not reach — the generator was always parameterised,
-but the art it needs was not on the target. `kdos-cursors` installs its `art/` to
-`/usr/share/kdos/cursors/art` (4.4 MB, the same shape kdos-icons already used),
-which is exactly `CURSOR_ART_DEFAULT`, and `kdos theme` regenerates
-`~/.icons/KDOS-cursors` with the rest. An install without the art keeps the
-cursors it has rather than getting an empty theme.
-
----
 
 ## kdos-bb — the AAlib demo, hard-forked
 
@@ -2572,6 +2594,43 @@ a **POSIX TZ string** into `/etc/profile.d/20-timezone.sh` rather than as a
 link to `/etc/localtime`. musl parses those directly, DST rules included, so
 what it costs is that a program reading the zone NAME cannot learn it. `tzdata`
 is installed and the zoneinfo tree is there to point at.
+
+**THE ESP IS vfat, SO NOTHING IS COPIED ONTO IT WITH `cp -a`.** vfat has no
+ownership to preserve: `cp -a` calls chown on every file it writes there, the
+kernel answers EPERM for each, and cp exits 1 with a page of `Operation not
+permitted` naming the SOURCE paths — which reads as a permissions problem with
+rEFInd rather than as a filesystem that cannot hold what was asked of it.
+`cp -r` is the call, and `copy_file()`'s own open/read/write is the other one.
+
+**THE MEDIUM IS BOUND OUT OF THE TARGET'S WAY BEFORE THE TARGET IS MOUNTED.**
+`TARGET` is `/mnt` and the live medium is at `/mnt/iso`, so `mount <root> /mnt`
+hides the very directory the packs are copied FROM — every path into it then
+resolves inside the filesystem that was created empty a moment earlier, and
+`do_packs` reports `cannot copy alpine.kpack` for a file sitting on the medium
+the machine booted from. `do_mount` binds `/mnt/iso` to `/run/kdos-medium`
+first. A BIND rather than a second mount of the device: the device is not the
+installer's to name — the initramfs mounted it and MS_MOVEd it across
+`switch_root`, and a path is the only handle anything has on it.
+
+**AN UNATTENDED RUN ENDS BY ITSELF, WHICHEVER WAY IT WENT.** The event loop
+has two exits — a key, and the reboot branch — and the reboot branch is gated
+on `reboot = 1` in the answer file. So an unattended install told not to reboot
+did all its work and then spun on its own last screen for ever, which is a
+scripted install that never returns and the one outcome "unattended" must not
+have. It shows the finished screen for a beat, then reboots or quits, and
+**exits 1 when the install failed**: an unattended install that returned 0
+having failed is worse than one that never returned. **The test is
+`inst.done || inst.failed`, and the second half is not decoration** — `done` is
+set only by a run that reached the last step, so testing it alone leaves
+exactly the install that went wrong spinning on its own error screen.
+
+**Give it a VT of its own when something else owns the console.**
+`kinstall < /dev/tty3 > /dev/tty3` puts the UI where nothing competes for it —
+kinstall owns a terminal, and pointing it at a serial console makes its
+full-screen redraw the only thing on that wire for as long as the install runs.
+`testing/install-to-disk.sh` does exactly that, and prints a heartbeat, because
+a run that says nothing until it finishes cannot be told from one that never
+will.
 
 Iterate without booting: `kinstall --dry-run` logs every command and executes
 none, and `--save`/`--config`/`--unattended` give it an answer file.
@@ -2894,8 +2953,23 @@ session locked until they all have a surface. libktui has ONE cell buffer, so
 the prompt is on the first output and the rest are filled with `KT_BG`. That is
 a libktui limitation, said out loud, not a protocol one.
 
-**KDOS ships TWO setuid binaries and `kdos-checkpass` is one of them** (the
-other is `kdos-resctl` — see **kdos-res**). It takes NO
+**KDOS ships SEVENTEEN setuid binaries, and exactly TWO of them are ours** —
+`kdos-checkpass` and `kdos-resctl`. The rest come with the software that needs
+them: `sudo`, `su`, `passwd`, `chage`, `expiry`, `gpasswd`, `chfn`, `chsh`,
+`newgrp`, `pkexec`, `polkit-agent-helper-1`, `ssh-keysign`,
+`dbus-daemon-launch-helper`, and **`newuidmap`/`newgidmap`, without which no
+rootless container can be created at all.** podman runs them to write
+`/proc/<pid>/uid_map` for a box's user namespace, the kernel allows that only
+from a process already holding CAP_SETUID, and podman checks the binary first
+and refuses with *"should have setuid or have filecaps setuid"* — then exits
+125 having printed nothing else, so every alien application on the machine
+stops starting and nothing says why. `/etc/subuid` and `/etc/subgid` are a
+separate requirement and are not a substitute. Mode bits rather than file
+capabilities, because they survive the same three hops with no xattr anywhere
+in the chain: mksquashfs, the installer's `rsync -aHAX`, and mkfs.erofs.
+`kdos doctor` checks all four for the same reason it checks the first.
+
+`kdos-checkpass` is the one that locks you out. It takes NO
 ARGUMENTS — not even a user name. The account checked is the caller's real uid,
 so there is nothing to aim at root and nothing an attacker can vary; the
 password arrives on **stdin** (`kb_run_feed`, new in libkbase) because argv is
@@ -3018,7 +3092,7 @@ Three sources, none of them an answer alone, joined:
 The closest prior art (Latency Lens) reads PSI and says outright it *"cannot
 identify which specific process caused a frame miss"*. That sentence is what this
 finishes: **"7 frames dropped on eDP-1 (133 ms) — the busiest just then:
-calibre-idx (appbox kdos-apps) waiting on the disk, calibre (appbox kdos-apps) at
+calibre-idx (appbox app.firefox-esr) waiting on the disk, calibre (appbox app.firefox-esr) at
 92% of a core."**
 
 **The compositor reports on `$XDG_RUNTIME_DIR/kdos-frames.sock`**, one NDJSON
@@ -3365,7 +3439,7 @@ here.
 ```
 KDOS energy  —  2.1 h of samples, RAPL package-0
 
-  firefox-esr (appbox kdos-apps)          75.5%  ███████████████       gpu 75.0%
+  firefox-esr (appbox app.firefox-esr)          75.5%  ███████████████       gpu 75.0%
   kdos-comp                               15.4%  ███                   gpu 25.0%
   short-lived and exited processes          8.7%
 
@@ -3437,7 +3511,7 @@ respawn loop is a boot that never settles.
 `KDOS_PRIVACY_PROC`: `testing/fixtures/energy/{0..3}/` are recorded `proc` and
 `powercap` trees, and `testing/selftest.sh` asserts the floor (the nesting), the
 attributable fraction (the wrap), that `Web Content` is rolled onto
-`firefox-esr (appbox kdos-apps)` and appears nowhere itself, and that the
+`firefox-esr (appbox app.firefox-esr)` and appears nowhere itself, and that the
 short-lived residue is its own line. Both traps were confirmed to bite by
 building the daemon with each one disabled.
 
@@ -3473,7 +3547,7 @@ Five rules, each one a way this goes wrong:
 - **Identity is the conmon ppid-walk**, the same one `kdos stutter` and
   `kdos-energyd` use — no systemd means no cgroup delegation and a rootless box
   frequently sits in `0::/`, which says nothing. The message names the box:
-  `firefox-esr (appbox kdos-apps)`.
+  `firefox-esr (appbox app.firefox-esr)`.
 - **`process_mrelease(2)` after the SIGKILL, through a pidfd taken FIRST** so
   the reclaim cannot land on a recycled pid. The pages come back now rather
   than whenever the zombie is reaped, which under a stall is the whole point. A
@@ -3497,7 +3571,7 @@ it exists beside `btop` rather than instead of it.
 fat application here is its own podman container, so a process table shows
 forty rows of `Web Content` and `.firefox-esr-wr` and answers nobody's
 question. libkproc's conmon walk turns a pid into
-`firefox-esr (appbox kdos-apps)`, and the Applications page is that rollup.
+`firefox-esr (appbox app.firefox-esr)`, and the Applications page is that rollup.
 This is the one desktop where that is cheap, because the boundary already
 exists and the supervisor already knows the name.
 
@@ -3579,7 +3653,7 @@ libktui's `ktui_modal_*` is drawn with `ktui_button()` and belongs to the
 immediate-mode frame protocol this program does not drive, so the modal is
 kdos-res's own. Cancel is preselected — the destructive button under the caret
 turns a reflex Enter into a kill — and the message says what will happen:
-*"End all Firefox — 41 processes in appbox kdos-apps. Unsaved work in them is
+*"End all Firefox — 41 processes in appbox app.firefox-esr. Unsaved work in them is
 lost."* That count is the whole reason the Applications page's `e` and `k`
 verbs are worth confirming: on this distro an application is a container's
 worth of processes. A **renice is not confirmed**, because it is reversible and
@@ -4425,11 +4499,11 @@ passed, because `kdos-box profile` rewrites the file from what it loaded and
 passing all fifteen would additionally rewrite the two — `image`, and any
 unknown key somebody added — that this page does not show.
 
-**THE DEFAULT BOX IS ALWAYS A ROW, profile or not.** Every alien app on this
-machine runs in `kdos-apps` and it is the one box nobody ever had to describe,
-so a page listing only the profile FILES showed no boxes on a machine with one
-running — and the one you would most want to give a memory budget or an accent
-to. `kdos-box profile` loads defaults for a name with no file and writes one on
+**A BOX A LAUNCH CREATED IS ALWAYS A ROW, profile or not.** An application
+pack gets a box named after itself at first launch, and nobody ever had to
+describe it, so a page listing only the profile FILES showed no boxes on a
+machine with several running — and exactly the ones you would most want to give
+a memory budget or an accent to. `kdos-box profile` loads defaults for a name with no file and writes one on
 the first change, so the row needs nothing more than the name; it reads
 `no profile yet` rather than showing the defaults as though somebody chose
 them.
@@ -4948,8 +5022,25 @@ travels as base64 in short lines — a tty in canonical mode drops everything
 past its line limit, silently, and an encoded payload contains nothing the
 shell acts on before `base64 -d` hands it back — and the rig waits for a marker
 the GUEST echoes, so a step that takes four minutes to install a pack is waited
-for rather than truncated. **`testing/packlane.sh` is the consumer**: the pack
-lane end to end on a machine that has actually booted — the daemon, the
+for rather than truncated. **`--disk PATH`, `--no-cdrom` and `--no-session`** are the other half: attach a
+qcow2 as a virtio disk, leave the ISO off so the DISK is what boots, and skip
+starting a compositor for a run whose steps are the whole point. Whichever
+medium is attached is what boots and it is SAID rather than left to the
+firmware — with a CD present the run is the install, without one it is the run
+that boots what was installed. Leaving that to the default worked only while
+the disk was blank, which is the one case where getting it wrong is invisible.
+**`--data-disk` is how a large artefact reaches a guest that has no network**:
+a plain virtio-blk drive carrying one file's bytes, read back with `dd bs=1M`
+and `truncate`d to the exact length, because a raw drive is rounded up to a
+sector boundary. `--usb` is the wrong transport for it — usb-storage is
+emulated at USB 2.0 and measured **1.8 MB/s** against virtio's 718, so a 9.2 GB
+pack took 85 minutes there and 13 seconds here. It is `--usb` only when the
+test needs a REMOVABLE device, which is kdos-mountd's whole subject.
+**And `--root-cmd` waits 20 seconds**, so anything longer is a `--root-script`,
+which waits on a marker the guest itself echoes.
+
+`testing/install-to-disk.sh` is the install half and **`testing/packlane.sh`
+the other**: the pack lane end to end on a machine that has actually booted — the daemon, the
 keyring, an install off the medium, the launchers, a box and the telemetry —
 reporting pass/fail/skip with a reason on every skip.
 
@@ -5028,8 +5119,7 @@ kdos/
 │   │   ├── postinstall.sh       # optional install-time hook (4 ports)
 │   │   └── <name>-<ver>.tar.*   # upstream tarball (a release asset,
 │   │                            #   gitignored; make bootstrap fetches it)
-│   ├── appbox/                  # Containerfile + image/ (the monolith), and
-│   │                            #   packs.conf + bake + harvest.py (the packs);
+│   ├── appbox/                  # packs.conf + bake + harvest.py (the packs);
 │   │                            #   Containerfile.bake carries podman+mkfs.erofs
 │   ├── Containerfile.fetch      # rust/go/node/python at the tree's own pins
 │   └── fetch                    # downloads all source= URLs; vendoring=rust|go|node|python
@@ -6684,23 +6774,16 @@ and respond with the targeted fix.
 - **No corefonts for wine.** winetricks fetches them from the network at run
   time and nothing in the image may depend on that, so a Windows program that
   wants Arial gets a substitute.
-- **THE PACK SET IS BAKED AND HAS NOW BOOTED**, and what is left of this row
-  is narrower than it was. `ports/appbox/bake` has produced the
-  full set from real Debian trixie — **135 packs, 19 GB in
-  `ports/appbox/packs/`**, with a `PACKAGES` index signed by
-  `build/keys/kdos-packs.key`, deltas generating (979 bytes for an unchanged
-  pack, reconstructing byte-for-byte) and skip-unchanged firing off
-  `kdos-pack imagehash`. A 33 GB ISO carrying `/packs` boots and
-  `testing/packlane.sh` drives it: `kdos-packd` mounts a pack straight off
-  ISO9660 `ro,nosuid,nodev` with **no loop device** (so this kernel has
-  `CONFIG_EROFS_FS_BACKED_BY_FILE`), `kdos app install` works, `genlaunchers
-  --packs` writes the row, the shim and the mime types, and `kdos-res`'s Boxes
-  page lists a box. **What has still not run is a box that STARTS**: an overlay
-  upper cannot sit on overlayfs and a live session's `$HOME` does, which is
-  `kdos doctor`'s own warning — so composing, `kdos-box freeze` and telemetry
-  naming a running box all need an INSTALLED system. The monolithic lane still
-  ships: W7-5 is now gated on parity across 130 app packs rather than on a
-  boot.
+- ~~The pack lane has never launched an application~~ — **closed, and the
+  monolith is deleted with it.** The set is **192 packs, 23 GB**, signed with
+  `build/keys/kdos-packs.key`, with deltas and skip-unchanged working. On an
+  INSTALLED machine: a pack box starts, is entered, and RESTARTS; `app.ghex`
+  draws a real window and the compositor reports it as
+  `org.gnome.GHex … box app.ghex`; `genlaunchers --packs /` writes the
+  three-field table, the shims and the mime types; and `kdos stutter` names a
+  spinner as `sh (appbox y1)`. A LIVE session still cannot compose a box — an
+  overlay upper cannot sit on overlayfs and `$HOME` does there — which is
+  `kdos doctor`'s own warning rather than a defect.
 - **`kdos-box freeze` has not been measured against `podman save`.** It builds
   and the machinery under it is proven, but the "an order of magnitude smaller"
   claim the design rests on needs a real box with real work in it, and the
@@ -6715,15 +6798,13 @@ and respond with the targeted fix.
   `sh_priv_box` stub and an unoffered libpipewire. Looking at the page for the
   first time found the uptime underflow and the `Batteries`/`Boxes` sidebar
   collision, both fixed above.
-- **NO OFFLINE KDOS BASE ON THE MEDIUM.** *(alpine is done: `alpine.kpack`,
-  4.7 MB, baked, signed and indexed — see the base-row note under the pack
-  taxonomy.)* `KDOS_PACK_KDOS=1` builds the second one — this rootfs wrapped as base pack `kdos`, so
-  `kdos-box create ports base=pack:kdos` gives a running KDOS a clean KDOS to
-  build ports in — and it is OPT-IN, because it is a second `mkfs.erofs` over
-  the whole tree on every build for a base most installs never compose. It has
-  not been run end to end. An **alpine** base is a `packs.conf` row that needs
-  a 3 MB rootfs fetched, so it needs `make fetch-packs` like every other row.
-  That is W5-4 and it is half done.
+- ~~No offline KDOS base on the medium~~ — **closed. `KDOS_PACK_KDOS=1` builds
+  this rootfs as base pack `kdos` and a box on it RUNS**: measured on a machine
+  booted from disk, `kdos-box enter` gives a shell with `kpkg` and `gcc` on its
+  PATH, `uname` Linux x86_64, uid 1000, `NAME="KDOS"`. It stays OPT-IN, being a
+  second `mkfs.erofs` over the whole tree for a base most installs never
+  compose. `alpine.kpack` (4.7 MB) is the other base and is baked, signed and
+  indexed.
 - **The box chip and the installer's Applications page have not been seen on a
   real screen.** A chip needs two boxes with two different accents, and the
   installer's page needs a medium with a pack index on it — and the pack set
@@ -6731,14 +6812,6 @@ and respond with the targeted fix.
   installer is the arithmetic: `kinstall --dump plan` against a fixture index,
   asserted in `testing/selftest.sh` for the recommended set, an answer file's
   choice, an unknown id and a delta stanza.
-- **The baked appbox predates its own Containerfile.** `ports/appbox/image/` was
-  packed on 2026-07-29; the KDE segment and the `kdos.qt-kde-theme` /
-  `kdos.qt-gtk-theme` labels were added after. The shipped image therefore has
-  91 apps, no KDE, and no labels — so `kdos-appbox` takes the
-  `QT_QPA_PLATFORMTHEME=gtk3` branch and every Qt app in the box is grey. This
-  is a re-bake (`make fetch-apps`, needs network), not a config bug, and until
-  it happens the **appbox** section here describes the Containerfile rather than
-  the ISO.
 - **Occupancy in the panel's workspace strip is derived, not reported.**
   ext-workspace-v1 has ACTIVE, URGENT and HIDDEN and no "there are windows
   here", so `panel.c` marks the workspace being shown occupied when a toplevel

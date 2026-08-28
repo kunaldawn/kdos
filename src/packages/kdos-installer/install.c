@@ -954,9 +954,50 @@ static void do_format(void)
 	emit('P', "1");
 }
 
+/*
+ * WHERE THE PACKS ARE READ FROM, and it cannot be `/mnt/iso`.
+ *
+ * TARGET is `/mnt` and the live medium is mounted at `/mnt/iso` — so the
+ * moment the target root is mounted, the medium is UNDERNEATH it and every
+ * path into it resolves inside the filesystem that was just created empty.
+ * `do_packs` then reports `cannot copy alpine.kpack` for a file that is
+ * sitting on the medium the installer booted from.
+ *
+ * The medium is bind-mounted somewhere the target cannot cover BEFORE that
+ * happens, and `do_packs` reads from there. A bind rather than a second
+ * mount of the device because the device is not the installer's to name: it
+ * was mounted by the initramfs and MS_MOVEd across switch_root, and the only
+ * handle anything has on it is the path.
+ */
+#define MEDIUM_BIND "/run/kdos-medium"
+
+static char medium_dir[256];
+
+static void bind_medium(void)
+{
+	const char *src = getenv("KDOS_PACK_MEDIUM");
+
+	if (src && *src) {			/* a fixture names its own */
+		kb_strlcpy(medium_dir, src, sizeof(medium_dir));
+		return;
+	}
+	kb_strlcpy(medium_dir, "/mnt/iso/packs", sizeof(medium_dir));
+	if (!kb_path_exists("/mnt/iso/packs"))
+		return;
+	mkpath(MEDIUM_BIND);
+	char *b[] = { "mount", "--bind", "/mnt/iso", (char *)MEDIUM_BIND, NULL };
+	if (run(b) == 0)
+		kb_strlcpy(medium_dir, MEDIUM_BIND "/packs",
+			   sizeof(medium_dir));
+	else
+		logf_("could not bind the medium; packs will be unreadable "
+		      "once %s is mounted", TARGET);
+}
+
 static void do_mount(void)
 {
 	resolve_parts();
+	bind_medium();
 	mkpath(TARGET);
 	emit('N', "mounting %s at %s", part_root, TARGET);
 	char *m[] = { "mount", part_root, TARGET, NULL };
@@ -1034,10 +1075,14 @@ static void do_copy(void)
  */
 static void do_packs(void)
 {
-	const char *dir = getenv("KDOS_PACK_MEDIUM");
+	const char *dir = medium_dir[0] ? medium_dir : NULL;
 	unsigned long long total = ki_packs_bytes(), done = 0;
 	int n = 0;
 
+	/* `do_mount` put the medium somewhere the target does not cover; a
+	 * plan that never mounts (a dump, a dry run) still has the live one. */
+	if (!dir)
+		dir = getenv("KDOS_PACK_MEDIUM");
 	if (!dir || !*dir)
 		dir = "/mnt/iso/packs";
 	emit('N', "copying %s of packs", kb_human_size(total));
@@ -1381,9 +1426,18 @@ static void do_boot(void)
 	mkpath(TARGET "/boot/efi/EFI/BOOT");
 	mkpath(TARGET "/boot/efi/EFI/kdos");
 
+	/*
+	 * `-r`, NOT `-a`, AND THE DESTINATION IS WHY. The ESP is vfat, which
+	 * has no ownership to preserve: `cp -a` calls chown on every file it
+	 * writes there, the kernel answers EPERM for each one, and cp exits 1
+	 * with a page of `Operation not permitted` naming the SOURCE paths —
+	 * which reads as a permissions problem with rEFInd rather than as a
+	 * filesystem that cannot hold what was asked of it. Nothing on an ESP
+	 * has a meaningful mode or owner anyway; the mount options decide.
+	 */
 	char src[320];
 	snprintf(src, sizeof(src), "%s/.", refind);
-	char *cp[] = { "cp", "-a", src, TARGET "/boot/efi/EFI/refind/", NULL };
+	char *cp[] = { "cp", "-r", src, TARGET "/boot/efi/EFI/refind/", NULL };
 	must(cp);
 
 	snprintf(src, sizeof(src), "%s/refind_x64.efi", refind);
@@ -1503,6 +1557,12 @@ static void do_finish(void)
 	emit('N', "flushing");
 	if (!cfg.dry_run)
 		sync();
+	/* The medium's bind is OUTSIDE the target on purpose, so
+	 * `unmount_below(TARGET)` cannot reach it and it would keep the medium
+	 * busy for whatever unmounts it next. */
+	char *um[] = { "umount", (char *)MEDIUM_BIND, NULL };
+	if (kb_path_exists(MEDIUM_BIND))
+		try_(um);
 	unmount_below(TARGET "/");
 	char *u[] = { "umount", TARGET, NULL };
 	try_(u);

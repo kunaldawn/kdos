@@ -209,6 +209,14 @@ static int cmd_box_create(int argc, char **argv)
 		fprintf(stderr, "usage: kdos-box create <name> [key=value ...]\n");
 		return 2;
 	}
+	/*
+	 * As with `create`: this verb is a person at a prompt, and when the
+	 * container refuses to start, podman's own sentence is the diagnosis.
+	 * `kb_run` swallows a child's stderr by default, which is right for
+	 * the LAUNCH path and leaves `could not start <box>` as the only thing
+	 * anybody sees here.
+	 */
+	kb_proc_verbose = 1;
 	box = argv[0];
 	if (!name_ok(box))
 		kb_die("a box name is [A-Za-z0-9._-]");
@@ -222,6 +230,18 @@ static int cmd_box_create(int argc, char **argv)
 		if (profile_set(&p, argv[i]) != 0)
 			kb_warn("unknown key in '%s'", argv[i]);
 	profile_save(&p);
+
+	/*
+	 * PODMAN'S OWN ERROR IS THE POINT OF THIS VERB. `kb_run` sends a
+	 * child's stderr to /dev/null unless kb_proc_verbose is set, which is
+	 * right for the launch path — a click must not spray container
+	 * plumbing at a desktop — and exactly wrong here: `kdos-box create` is
+	 * a person asking for a box once, and when podman refuses, its
+	 * sentence is the whole diagnosis. Four separate failures in this lane
+	 * presented as `exit 125` and nothing else because of this line.
+	 * `pack_box_ensure`, which is what a launch calls, is left quiet.
+	 */
+	kb_proc_verbose = 1;
 
 	if (!strncmp(p.base, "pack:", 5)) {
 		rc = pack_compose(box, p.base + 5, merged, sizeof(merged));

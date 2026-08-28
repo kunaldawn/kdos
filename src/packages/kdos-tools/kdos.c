@@ -3271,6 +3271,36 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("kdos-resctl is not setuid root — kdos-res cannot end a "
 		      "process it does not own (fix: chown root and chmod 4755)");
 
+	/*
+	 * AND THE TWO THIS DISTRO DOES NOT OWN, which are the ones every BOX
+	 * depends on. podman runs `newuidmap` to write /proc/<pid>/uid_map for
+	 * the user namespace a rootless container needs; without the bit it
+	 * refuses with "should have setuid or have filecaps setuid" and exits
+	 * 125 having printed nothing else, so every alien application on the
+	 * machine stops starting and nothing says why. `/etc/subuid` is
+	 * checked with them because an empty one fails at the same call for a
+	 * different reason.
+	 */
+	static const char *const uidmap[] = { "/usr/bin/newuidmap",
+					      "/usr/bin/newgidmap", NULL };
+	for (int i = 0; uidmap[i]; i++) {
+		struct stat ust;
+		if (stat(uidmap[i], &ust) != 0)
+			warn_("%s missing — no rootless container can map a "
+			      "uid, so no box will start", uidmap[i]);
+		else if ((ust.st_mode & S_ISUID) && ust.st_uid == 0)
+			ok("%s is setuid root", uidmap[i]);
+		else
+			warn_("%s is not setuid root — podman exits 125 and no "
+			      "box starts (fix: chown root and chmod 4755)",
+			      uidmap[i]);
+	}
+	if (kb_path_exists("/etc/subuid") && kb_path_exists("/etc/subgid"))
+		ok("/etc/subuid and /etc/subgid are present");
+	else
+		warn_("/etc/subuid or /etc/subgid is missing — a rootless box "
+		      "has no subordinate range to map into");
+
 	/* `service <name>` keys on the init SCRIPT — ksvc strips the numeric
 	 * prefix and the .sh, so 55_powerd.sh is `powerd`. The NAME= inside the
 	 * script is the pidfile, not the lookup key, and naming that here

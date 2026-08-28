@@ -86,6 +86,19 @@ else
     echo 'Packs: none baked — `make fetch-packs` builds them (needs a network)'
 fi
 
+# The KDOS base pack, when KDOS_PACK_KDOS built one. It goes here rather than
+# into /var/lib/kdos/packs for the reason 01_packs.sh records: that directory
+# is inside the rootfs, and squashing a compressed image of the rootfs into
+# system.sfs makes the medium carry the tree twice. It is not in the medium's
+# PACKAGES index — that file is the bake's, and this pack is built here — but
+# kdos-packd scans the medium for *.kpack rather than reading the index, so
+# `kdos-box create ports base=pack:kdos` finds it with nothing installed.
+if [ -f /kdos/build/kdos-base/kdos.kpack ]; then
+    mkdir -p $ISO_ROOT/packs
+    cp -a /kdos/build/kdos-base/kdos.kpack $ISO_ROOT/packs/
+    echo "KDOS base pack: $(du -h $ISO_ROOT/packs/kdos.kpack | cut -f1) on the medium"
+fi
+
 # 2b. The sources, when asked for.
 #
 # N13: a booted stick that can rebuild its own ISO. The tree goes on the ISO9660

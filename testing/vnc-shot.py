@@ -398,8 +398,21 @@ def main():
     ap.add_argument("--audio", action="store_true",
                     help="give the guest an HDA controller with a silent "
                          "backend, so audio paths reach a real device")
+    ap.add_argument("--disk", default=None,
+                    help="attach this qcow2 as a virtio disk — the target an "
+                         "unattended kinstall writes to")
+    ap.add_argument("--no-cdrom", action="store_true",
+                    help="leave the ISO off entirely, so the DISK is what "
+                         "boots. The second half of an install test")
+    ap.add_argument("--no-session", action="store_true",
+                    help="do not start the desktop: the steps are all this "
+                         "run wants and a compositor is 40s of nothing")
     ap.add_argument("--usb", default=None,
                     help="attach a raw disk image as a USB stick")
+    ap.add_argument("--data-disk", default=None,
+                    help="attach a raw file as a plain virtio disk — how a "
+                         "large artefact reaches a guest with no network. Far "
+                         "faster than --usb, and not removable")
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--serial-log", default="/tmp/kdos-serial.log")
     args = ap.parse_args()
@@ -440,7 +453,6 @@ def main():
         "qemu-system-x86_64", "-enable-kvm", "-cpu", "host",
         "-smp", str(min(8, os.cpu_count() or 4)), "-m", "4G",
         "-bios", ovmf,
-        "-cdrom", ISO,
         "-vga", "none", "-device", video,
         "-display", display,
         "-vnc", "127.0.0.1:%d" % (args.vnc_port - 5900),
@@ -451,6 +463,22 @@ def main():
         "-monitor", "chardev:mon0",
         "-netdev", "user,id=net0", "-device", "virtio-net-pci,netdev=net0",
     ]
+    if not args.no_cdrom:
+        qemu += ["-cdrom", ISO]
+    if args.disk:
+        # virtio-blk, so it lands as /dev/vda and kinstall's probe sees a plain
+        # whole disk rather than something behind a USB bridge.
+        #
+        # WHICHEVER IS ATTACHED IS WHAT BOOTS, and the order has to be said
+        # rather than left to the firmware. With a CD present this run is the
+        # INSTALL — boot the medium, or the second run tests the disk the first
+        # one wrote and the first tests nothing. With no CD it is the run that
+        # boots what was installed. Leaving the default worked only while the
+        # disk was blank, which is the one case where getting it wrong is
+        # invisible.
+        qemu += ["-drive", "if=none,id=hd0,format=qcow2,file=%s" % args.disk,
+                 "-device", "virtio-blk-pci,drive=hd0",
+                 "-boot", "order=c" if args.no_cdrom else "order=d"]
     if args.audio:
         # AN HDA CONTROLLER WITH THE SAMPLES GOING NOWHERE. `-audiodev none`
         # is a real backend as far as the guest is concerned: the kernel binds
@@ -461,6 +489,18 @@ def main():
         # sound of its own, so a real backend is not on the table anyway.
         qemu += ["-audiodev", "none,id=snd0", "-device", "intel-hda",
                  "-device", "hda-output,audiodev=snd0"]
+    if args.data_disk:
+        # A PLAIN VIRTIO DISK CARRYING ONE FILE'S BYTES, for getting a large
+        # artefact INTO a guest that has no network. `--usb` is the wrong
+        # transport for it: usb-storage is emulated at USB 2.0 and measured
+        # 1.8 MB/s here, so a 9.2 GB pack took 85 minutes and outran any
+        # timeout worth setting. This is the same virtio-blk the target disk
+        # uses. It lands as the next /dev/vdX, has no partition table and no
+        # filesystem — the guest reads the device itself, with `dd bs=1M` and
+        # a `truncate` to the artefact's exact length, because a raw drive is
+        # rounded up to a sector boundary.
+        qemu += ["-drive", "if=none,id=dd0,format=raw,file=%s" % args.data_disk,
+                 "-device", "virtio-blk-pci,drive=dd0"]
     if args.usb:
         # A real removable device, because kdos-mountd's whole job is one and
         # a fixture cannot mount anything. usb-storage lands as /dev/sdX with
@@ -506,7 +546,9 @@ def main():
         # tty1 autologins as `kdos` and stops at a prompt: the session is
         # started by hand on this distro, which is the documented entry point
         # (`kdos-desktop` from a tty) and not something to work around.
-        if args.console_cmd:
+        if args.no_session:
+            print("not starting a session — the steps are the run", flush=True)
+        elif args.console_cmd:
             # tty1 autologins as `kdos` and stops at a prompt. Typing here
             # rather than starting the session is what photographs a program
             # on the CONSOLE — the 512-glyph font, the vt glyph tier, and no
@@ -595,7 +637,10 @@ def main():
 
         # `--out` is the one-shot form and stays the default: a run that asked
         # for no picture at all is a run that booted the ISO for nothing.
-        if not shots:
+        # A run that asked for no picture at all is a run that booted the ISO
+        # for nothing — unless it deliberately started no session, where the
+        # only thing on the screen is a login prompt.
+        if not shots and not args.no_session:
             time.sleep(2)
             print("reading the framebuffer over VNC…", flush=True)
             w, h = rfb_shot("127.0.0.1", args.vnc_port, args.out)
