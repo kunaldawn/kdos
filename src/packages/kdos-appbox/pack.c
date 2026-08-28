@@ -332,7 +332,6 @@ int pack_box_create(const Profile *p, const char *merged)
 	KbArgv a = {0};
 	struct passwd *pw = getpwuid(getuid());
 	char hostname[128] = "kdos";
-	char vol[MAX_LINE];
 	const char *home = kb_home_dir();
 
 	kb_argv_add(&a, "podman");
@@ -390,20 +389,30 @@ int pack_box_create(const Profile *p, const char *merged)
 	kb_argv_add(&a, "--mount");
 	kb_argv_add(&a, "type=tmpfs,destination=/run/lock");
 
-	snprintf(vol, sizeof(vol), "/tmp:/tmp:rslave");
+	/*
+	 * EVERY VOLUME IS FORMATTED INTO THE ARGV, NOT THROUGH ONE BUFFER.
+	 * `kb_argv_add` STORES THE POINTER — it does not copy — so five
+	 * `--volume` arguments built in one reused stack buffer all pointed at
+	 * the same bytes and podman received the LAST value five times.
+	 * Measured on a booted machine: `podman inspect` listed
+	 * `/run/user/1000` alone, so $HOME, /tmp, /dev and /sys were silently
+	 * unshared. A boxed app then has no home — it reads no gtk.css, no
+	 * icon theme, no kdeglobals — and the whole "alien apps are themed
+	 * through $HOME" arrangement is inert with nothing reporting a fault.
+	 */
 	kb_argv_add(&a, "--volume");
-	kb_argv_add(&a, vol);
+	kb_argv_add(&a, "/tmp:/tmp:rslave");
 
 	if (p->privhome) {
 		char *h = profile_home(p->name);
 		kb_mkdir_p(h);
-		snprintf(vol, sizeof(vol), "%s:%s:rslave", h, h);
+		kb_argv_add(&a, "--volume");
+		kb_argv_addf(&a, "%s:%s:rslave", h, h);
 		free(h);
 	} else {
-		snprintf(vol, sizeof(vol), "%s:%s:rslave", home, home);
+		kb_argv_add(&a, "--volume");
+		kb_argv_addf(&a, "%s:%s:rslave", home, home);
 	}
-	kb_argv_add(&a, "--volume");
-	kb_argv_add(&a, vol);
 
 	if (!p->devsys) {
 		kb_argv_add(&a, "--volume");
@@ -411,10 +420,9 @@ int pack_box_create(const Profile *p, const char *merged)
 		kb_argv_add(&a, "--volume");
 		kb_argv_add(&a, "/sys:/sys:rslave");
 	}
-	snprintf(vol, sizeof(vol), "/run/user/%u:/run/user/%u:rslave",
-		 (unsigned)getuid(), (unsigned)getuid());
 	kb_argv_add(&a, "--volume");
-	kb_argv_add(&a, vol);
+	kb_argv_addf(&a, "/run/user/%u:/run/user/%u:rslave",
+		     (unsigned)getuid(), (unsigned)getuid());
 	kb_argv_add(&a, "--volume");
 	kb_argv_add(&a, "/dev/shm:/dev/shm");
 	/* The host's cups socket, so a boxed app's own print dialog works.

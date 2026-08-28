@@ -68,6 +68,9 @@ int kb_read_file(const char *path, char *buf, size_t cap);
 int kb_read_line_file(const char *path, char *buf, size_t cap);
 
 int kb_write_file(const char *path, const char *data);
+/* Replace a state file atomically: temp, fsync the file, rename, fsync the
+ * directory. Use this wherever an empty file is a LOSS rather than a retry. */
+int kb_write_file_atomic(const char *path, const char *data);
 int kb_path_exists(const char *p);
 int kb_have_prog(const char *name);
 
