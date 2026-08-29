@@ -448,20 +448,19 @@ static int medium_in_group(int g)
 	return n;
 }
 
-/* One row per medium pack: the name, the package mark, and an install. */
+/* One row per medium pack: the name, the package mark, and a LAUNCH — the
+ * row is "open this"; `kdos app launch` installs on the way. */
 static void push_medium(int i)
 {
 	struct row *r = push(left, &nleft, medium[i].name);
 	if (!r)
 		return;
-	r->icon = "package-x-generic";
+	r->icon = "media-optical-data";	/* the medium it is on; in the atlas at every size */
 	r->keys = medium[i].summary;
-	r->argv[0] = "foot";
-	r->argv[1] = "-e";
-	r->argv[2] = "kdos";
-	r->argv[3] = "app";
-	r->argv[4] = "install";
-	r->argv[5] = medium[i].id;
+	r->argv[0] = "kdos";
+	r->argv[1] = "app";
+	r->argv[2] = "launch";
+	r->argv[3] = medium[i].id;
 }
 
 static void build_left(void)
@@ -1536,6 +1535,7 @@ int start_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	int at_x = -1, at_y = 0, dump = 0, dump_cells = 0;
+	const char *dump_view = NULL;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
@@ -1548,6 +1548,13 @@ int start_main(int argc, char **argv)
 			icons_on = 0;
 		} else if (!strcmp(argv[i], "--dump-cells")) {
 			dump = dump_cells = 1;
+		} else if (!strcmp(argv[i], "--dump-view") && i + 1 < argc) {
+			/* `cats`, `cat:<Group>` or `search:<query>` — which view
+			 * the dump draws, because the medium's rows live one
+			 * level below the main one and a golden of the main
+			 * view alone would never see them. */
+			dump_view = argv[++i];
+			dump = 1;
 		} else if (!strcmp(argv[i], "--dump")) {
 			dump = 1;
 		} else {
@@ -1563,6 +1570,17 @@ int start_main(int argc, char **argv)
 	 * would otherwise run against an empty right column. */
 	build_right();
 	build_power();
+	if (dump_view && !strcmp(dump_view, "cats")) {
+		mode = ST_CATS;
+	} else if (dump_view && !strncmp(dump_view, "cat:", 4)) {
+		mode = ST_CAT;
+		for (int g = 0; g < sh_app_ngroups(); g++)
+			if (!strcmp(sh_app_group_name(g), dump_view + 4))
+				cat = g;
+	} else if (dump_view && !strncmp(dump_view, "search:", 7)) {
+		mode = ST_SEARCH;
+		snprintf(query, sizeof(query), "%s", dump_view + 7);
+	}
 	build_left();
 
 	if (dump) {
