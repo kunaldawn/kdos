@@ -50,7 +50,6 @@ void profile_defaults(Profile *p, const char *box)
 {
 	memset(p, 0, sizeof(*p));
 	snprintf(p->name, sizeof(p->name), "%s", box);
-	snprintf(p->image, sizeof(p->image), "%s", DEFAULT_IMAGE);
 	/* Everything shared: exactly what a plain `distrobox create` does, so a
 	 * box with no profile file behaves identically to one with a default. */
 	p->persist = PERSIST_PERSISTENT;
@@ -135,6 +134,8 @@ int profile_set(Profile *p, const char *kv)
 		snprintf(p->base, sizeof(p->base), "%s", eq);
 	else if (!strcmp(key, "accent"))
 		snprintf(p->accent, sizeof(p->accent), "%s", eq);
+	else if (!strcmp(key, "grant"))
+		snprintf(p->grant, sizeof(p->grant), "%s", eq);
 	else if (!strcmp(key, "persistence")) {
 		if (!strcmp(eq, "ephemeral"))
 			p->persist = PERSIST_EPHEMERAL;
@@ -282,6 +283,7 @@ int profile_save(const Profile *p)
 		 "base=%s\n"
 		 "image=%s\n"
 		 "accent=%s\n"
+		 "grant=%s\n"
 		 "persistence=%s\n"
 		 "network=%s\n"
 		 "ipc=%s\n"
@@ -299,6 +301,7 @@ int profile_save(const Profile *p)
 		 "autostop=%ds\n",
 		 p->name, p->base, p->image,
 		 p->accent[0] ? p->accent : "session",
+		 p->grant,
 		 persist_name(p->persist),
 		 p->netnone ? "none" : p->netns ? "private" : "host",
 		 p->ipc ? "private" : "shared",
@@ -329,9 +332,13 @@ void profile_print(const Profile *p)
 	printf("box         = %s\n", p->name);
 	if (p->base[0])
 		printf("base        = %s\n", p->base);
-	else
+	else if (p->image[0])
 		printf("image       = %s\n", p->image);
+	else
+		printf("base        = (none yet — the first launch records the pack)\n");
 	printf("accent      = %s\n", p->accent[0] ? p->accent : "the session's");
+	printf("grant       = %s\n", p->grant[0] ? p->grant
+		: "none        (screencopy, data-control, … past the sandbox allowlist)");
 	printf("persistence = %-11s %s\n", persist_name(p->persist),
 	       p->persist == PERSIST_FROZEN	? "(writes discarded)"
 	       : p->persist == PERSIST_EPHEMERAL ? "(upper on tmpfs)"
@@ -535,40 +542,6 @@ int box_remove(const char *box, int force)
 		kb_argv_add(&a, "--force");
 	kb_argv_end(&a);
 	return kb_run(&a);
-}
-
-/*
- * Create the box if it is missing, serialized against the login-time warmup so
- * two creates can never race.
- */
-int box_ensure(const char *box)
-{
-	Profile p;
-	char *lockpath;
-	int fd, rc = 0;
-
-	if (box_exists(box))
-		return 0;
-
-	profile_load(&p, box);
-	if (!image_exists(p.image))
-		kb_die("the appbox image is not baked into this system — build the "
-		    "ISO after 'make fetch-apps', or when online: kdos app <name>");
-
-	lockpath = kb_path_join(kb_runtime_dir(), "kdos-appbox.create.lock");
-	fd = kb_lock_file(lockpath, 0);
-	free(lockpath);
-	if (box_exists(box)) {          /* someone else won the race */
-		if (fd >= 0)
-			close(fd);
-		return 0;
-	}
-	fprintf(stderr, "==> First launch: creating distrobox '%s' from the "
-			"baked image...\n", box);
-	rc = box_create(&p);
-	if (fd >= 0)
-		close(fd);
-	return rc;
 }
 
 /*

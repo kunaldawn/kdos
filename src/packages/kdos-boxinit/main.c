@@ -24,6 +24,9 @@
  *   - makes sure that home exists and is on the PATH's mind;
  *   - exports a PATH that includes /usr/games, because Debian's games live
  *     there and a launcher for one otherwise dies on "not found";
+ *   - writes /usr/local/bin/xdg-open, so a boxed program that opens a link
+ *     or a file reaches the HOST through the OpenURI portal — the box's own
+ *     xdg-open would look for a browser inside the container and find none;
  *   - prints `container_setup_done` on stdout, where podman logs keep it, and
  *     `box_setup_done()` looks for it;
  *   - then stays alive as pid 1, reaping whatever the box's processes orphan.
@@ -50,8 +53,8 @@
 
 #include "kbase.h"
 
-#define BOXINIT_PATH \
-	"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games"
+/* libkbase's, so pid 1's children and `podman exec` cannot disagree. */
+#define BOXINIT_PATH KB_BOX_PATH
 
 static const char *env_or(const char *name, const char *dflt)
 {
@@ -147,6 +150,59 @@ static int ensure_record(const char *path, const char *name, const char *id,
 	return rc;
 }
 
+/*
+ * "OPEN THIS" FROM INSIDE A BOX MEANS ON THE HOST. jupyter opens its notebook
+ * in a browser, every help menu opens a URL, a file manager double-click opens
+ * a document — all through xdg-open, which inside a Debian rootfs walks a list
+ * of browsers the box does not carry and gives up. The session bus is shared
+ * (`/run/user/<uid>/bus`), so the OpenURI portal on the host is one method
+ * call away, and `xdg-desktop-portal-kdos` answers it with `kdos-appbox
+ * open`. A file path is made absolute and passed as file://: $HOME and /tmp
+ * are the same directories on both sides, which is where an application's
+ * own files are.
+ *
+ * gdbus carries the call (`libglib2.0-bin` in the base pack); a base without
+ * it — alpine — gets a script that says so rather than one that fails inside
+ * a browser lookup. /usr/local/bin is first on the box PATH, so this shadows
+ * the packaged xdg-open; x-www-browser and sensible-browser are the other two
+ * names Debian software opens a URL through.
+ */
+static const char XDG_OPEN[] =
+"#!/bin/sh\n"
+"# KDOS: a box opens things on the host, through the OpenURI portal.\n"
+"[ $# -ge 1 ] || { echo \"usage: xdg-open <file|url>\" >&2; exit 1; }\n"
+"u=$1\n"
+"case \"$u\" in\n"
+"  *://*|mailto:*) ;;\n"
+"  /*) u=\"file://$u\" ;;\n"
+"  *) u=\"file://$(pwd)/$u\" ;;\n"
+"esac\n"
+"command -v gdbus >/dev/null 2>&1 ||\n"
+"  { echo \"xdg-open: no gdbus in this box, cannot reach the host portal\" >&2; exit 3; }\n"
+"exec gdbus call --session --dest org.freedesktop.portal.Desktop \\\n"
+"  --object-path /org/freedesktop/portal/desktop \\\n"
+"  --method org.freedesktop.portal.OpenURI.OpenURI \"\" \"$u\" \"{}\" >/dev/null\n";
+
+static void install_xdg_open(void)
+{
+	static const char *const names[] = {
+		"/usr/local/bin/x-www-browser", "/usr/local/bin/sensible-browser",
+		NULL };
+	const char *path = "/usr/local/bin/xdg-open";
+
+	kb_mkdir_p("/usr/local/bin");
+	if (kb_write_file_atomic(path, XDG_OPEN) != 0) {
+		kb_warn("could not write %s", path);
+		return;
+	}
+	chmod(path, 0755);
+	for (int i = 0; names[i]; i++) {
+		unlink(names[i]);
+		if (symlink("xdg-open", names[i]) != 0)
+			kb_warn("could not link %s", names[i]);
+	}
+}
+
 static void reap(int sig)
 {
 	(void)sig;
@@ -197,6 +253,7 @@ int main(int argc, char **argv)
 	 * covers the private-home case, where the profile pointed somewhere
 	 * that does not exist yet. */
 	kb_mkdir_p(home);
+	install_xdg_open();
 
 	setenv("PATH", BOXINIT_PATH, 1);
 	setenv("HOME", home, 1);

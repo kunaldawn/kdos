@@ -93,7 +93,12 @@ fi
 # PACKAGES index — that file is the bake's, and this pack is built here — but
 # kdos-packd scans the medium for *.kpack rather than reading the index, so
 # `kdos-box create ports base=pack:kdos` finds it with nothing installed.
-if [ -f /kdos/build/kdos-base/kdos.kpack ]; then
+# GATED ON THE FLAG, NOT ON THE FILE. `build/` is not cleaned between runs, so
+# testing whether the artefact EXISTS carries a 9.1 GB pack from an earlier
+# opt-in build onto every ISO after it — measured, on a build that never set
+# KDOS_PACK_KDOS at all. The flag is what the user asked for; the file is just
+# what is lying around.
+if [ "${KDOS_PACK_KDOS:-0}" = "1" ] && [ -f /kdos/build/kdos-base/kdos.kpack ]; then
     mkdir -p $ISO_ROOT/packs
     cp -a /kdos/build/kdos-base/kdos.kpack $ISO_ROOT/packs/
     echo "KDOS base pack: $(du -h $ISO_ROOT/packs/kdos.kpack | cut -f1) on the medium"

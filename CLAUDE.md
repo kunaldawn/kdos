@@ -89,6 +89,13 @@ Mascot: `kdos.png`. Wallpaper: `fs/usr/share/backgrounds/kdos/default-wallpaper.
    -Dplatforms=wayland`, so Xwayland is built `-Dglx=false`: X clients get no
    OpenGL. Enabling it means rebuilding mesa with `glx=dri,platforms=wayland,x11`
    plus libXext/libXfixes/libXdamage/libXrandr/libXxf86vm — not done.
+   **The X core fonts are the server's too** — `font-misc-misc`,
+   `font-adobe-75dpi` and `font-cursor-misc` are on the host and named in
+   Xwayland's `default_font_path`, because a boxed Xt/Motif program (grace,
+   xastir, anything spawning xterm) asks Xwayland for `-misc-fixed` and
+   `-adobe-helvetica`, and a font directory inside the box is invisible to a
+   server on the host. Measured on the sweep: `Couldn't get font
+   -adobe-helvetica` with the fonts installed in the box.
 3. **No GTK and no Qt on the host.** GUI apps go in a container. The desktop
    is `kdos-comp` + `kdos-shell`, drawn by libktui, which needs neither.
    `libcanberra`, if it ever lands, builds `--disable-gtk`.
@@ -168,7 +175,7 @@ segment (libreoffice, calibre, gimp, krita, blender, freecad, prusa-slicer,
 openscad, kicad+gtkwave+ngspice, octave, maxima, stellarium, ardour, hydrogen,
 lmms, kdenlive, obs-studio, vscodium, wireshark, keepassxc, backup tools,
 games, emulators, wine, firefox-esr, …), plus a **KDE segment** — dolphin,
-konsole, kate, okular, gwenview, ark, kcalc, kde-spectacle, digikam, elisa,
+konsole, kate, okular, gwenview, ark, kcalc, digikam, elisa,
 kdeconnect, kdevelop, k3b, filelight, kwalletmanager. Not `kde-full`: that is
 Plasma itself plus everything. The applications are the half with no equal
 elsewhere; none of them needs Plasma running. `plasma-integration` rides in
@@ -183,7 +190,24 @@ everywhere, with the data packages that matter re-added explicitly
 (kicad-packages3d's 5 GB stays out).
 
 **One pack per application, shared runtimes underneath**, so an install carries
-only what was ticked rather than a single blob. `make fetch-packs` bakes the
+only what was ticked rather than a single blob.
+
+**THE ISO'S LAUNCHERS FOR THE RECOMMENDED SET ARE WRITTEN AT BUILD TIME BY
+READING INSIDE THE PACKS, WITHOUT A MOUNT.** The build is a chroot in an
+unprivileged container: no kdos-packd, no loop device, nothing can be mounted.
+`01_packs.sh` therefore runs `kdos-pack image` (the EROFS bytes alone — the
+`.kpack` footer makes the file something `fsck.erofs` refuses), then OUR
+`fsck.erofs --extract --path=usr/share/applications` (built `--with-libzstd`;
+Alpine's is not, and answers a `-zzstd` image with "Failed to extract
+filesystem"), then `genlaunchers --packs-dir`, which reads one directory per
+pack, the directory name being the pack id the table's third field carries.
+Without this the ISO shipped the image lane's stale two-field table and every
+launcher dispatched to a box called `kdos-apps` that no longer exists —
+"click Firefox, nothing opens" on a live session. **The launchers are then
+copied into the already-materialised live home**, because `00_user.sh` sorts
+before this step and a launcher that lands in skel after the home was made is
+on the ISO for every future home and absent from the one the session logs
+into: the shim works from a prompt and the Start menu shows nothing. `make fetch-packs` bakes the
 set on the host; `01_packs.sh` places the base and the runtimes the recommended
 applications need, and `02_iso.sh` puts every application pack on ISO9660
 beside `system.sfs`. See **Packs — an application is one file** below for the
@@ -285,8 +309,22 @@ is the correct price for a rootfs.
 
 ### `kdos-appbox genlaunchers` writes four things
 
-`kdos-appbox genlaunchers --packs <fs-root>` walks every installed app pack,
-mounts it through kdos-packd and parses its own desktop entries. **An extra
+`kdos-appbox genlaunchers --packs <fs-root>` walks every INSTALLED app pack,
+mounts it through kdos-packd and parses its own desktop entries. **Two trees,
+and which is whose decision**: the ROOT tree (`/etc/skel`,
+`/usr/share/kdos/alien-apps`, `/usr/local/bin`) is what the BUILD writes for
+the recommended set; the USER tree (`~/.local/share/applications`,
+`~/.local/share/kdos/alien-apps`, `~/.local/bin`) is what
+`genlaunchers --packs --user` writes, as the user, and **`kdos app install`
+runs it as its last act** — so an installed application is in the Start menu
+before the command returns, with no root anywhere. Before that, install
+mounted the pack and stopped; the menu's own INSTALL FROM THE MEDIUM row led
+to an application nobody could launch. **It reads installed packs ONLY**: the
+daemon's list carries every pack on the medium as `available`, and mounting
+one to read its entries is what makes it installed, so an unfiltered pass
+turned 163 available packs into 163 mounted ones. `kdos app remove` on a
+medium-mounted pack UNMOUNTS it (the daemon's `remove` refuses a pack that is
+not in the store) and regenerates, so the launcher goes with it. **An extra
 argument is REFUSED**: the two forms differ by one, so `--packs <dir> <root>`
 would read the directory as the fs-root and write the whole set underneath it —
 a table nothing reads, no shims swept, exit 0. Dropping any one output breaks
@@ -343,6 +381,41 @@ something visible:
 - **Strip X11-forcing env prefixes** (`X11_FORCING`): debian ships audacity as
   `env GDK_BACKEND=x11 audacity`, which kills it under a compositor whose
   Xwayland the app cannot reach. Those apps run fine on pure Wayland.
+- **A SHIM IS NAMED AFTER THE PROGRAM ITS ENTRY RUNS**, through
+  `app_exec_key()` — the one definition of "which program a command line
+  runs", which skips `env X=y` and reads inside `sh -c "…"`. It is also what
+  `run` and the warmup key the pack lookup on, so a wrapped Exec resolves to
+  the program and not to `sh`. `org.kde.rkward.desktop` therefore gets a shim
+  called `rkward`, not `org.kde.rkward`; `RENAME` still wins where upstream's
+  program name is not the one people know (`firefox-esr` → `firefox`), and a
+  reserved or odd name falls back to the lowercased id. Measured cost of the
+  old rule: the sweep, asking for a shim named after the pack, fell through
+  to the pack's OTHER entry and scored rkward against `R`.
+- **A `Terminal=true` ENTRY STAYS ONE.** The generated launcher carries
+  upstream's `Terminal=` value; the shell wraps such an entry in `foot -e`.
+  Written as `false`, R was started with a pipe for stdin and exited on
+  *"you must specify '--save', '--no-save' or '--vanilla'"* — from the Start
+  menu, with no window and no sentence anywhere. And `kdos-appbox run` execs
+  with `--tty` when its OWN stdin is a tty, so `R` at a prompt gets a prompt
+  and a launcher, which has none, takes the plain exec.
+- **A BOX OPENS THINGS ON THE HOST.** `kdos-boxinit` writes
+  `/usr/local/bin/xdg-open` (with `x-www-browser` and `sensible-browser` as
+  links) into every box it starts: the argument is made absolute and handed
+  to the OpenURI portal over the shared session bus, which
+  `xdg-desktop-portal-kdos` answers with `kdos-appbox open`. Debian's own
+  xdg-open walks a list of browsers the container does not carry — jupyter's
+  notebook, every help link and every "open containing folder" went nowhere.
+  gdbus carries the call, so `libglib2.0-bin` is in the base pack; alpine's
+  script says it has no gdbus rather than failing inside a browser lookup.
+- **A KWIN-ONLY APPLICATION IS OUT** (`SKIP_NEEDS_KWIN`): Spectacle on
+  Wayland asks KWin's screenshot interface and opens an error dialog on any
+  other compositor. Screenshots are the host's `kdos-shot`. The row is gone
+  from packs.conf and the skip covers a medium baked before it went.
+- **COMPUTATIONAL SCIENCE IS `cmd` ROWS.** cp2k, gromacs, nwchem, openfoam,
+  quantum-espresso, xtb, openbabel, gmt, eccodes and astrometry ship no
+  desktop entry — they are solvers driven from a prompt — and a pack with
+  neither an entry nor a `cmd` row is one nothing on the host can reach. The
+  sweep scores that "no launcher", which is the right word for it.
 - **ROOTLESS-INERT APPLICATIONS GET NO LAUNCHER** (`SKIP_ROOTLESS_INERT`):
   gparted, gsmartcontrol, Disks and testdisk need raw block devices and a box
   is rootless podman, so each opens a window it cannot do anything in. A
@@ -496,6 +569,14 @@ somebody else already made**, and the split is not a convenience — mkfs.erofs
 must run as ROOT to preserve overlay whiteouts and `trusted.overlay.*`, while
 wrapping is an ordinary file operation.
 
+**A pack is kept only when its IMAGE AND ITS METADATA are unchanged.** The
+bake keeps an old file when `imagehash` matches, which is what stops a
+rebake rewriting 7 GB for nothing — but an `env`, `cmd`, `needs` or `graft`
+line changes what the pack DECLARES and no byte of its filesystem, so the
+decision compares `kdos-pack info` (version aside) as well. Measured: a `cmd`
+row added to a pack whose packages had not moved shipped a medium with no
+such command on it.
+
 **Reproducibility is a property of that file, not of whoever runs it**, and
 four flags make it so: `-T $SOURCE_DATE_EPOCH` (the pinned instant every phase
 env already exports), `--force-uid/-gid=1000`, **`-b 4096`** (mkfs.erofs takes
@@ -634,6 +715,14 @@ where an unprivileged write is allowed is exactly the kind of thing that drifts.
   source and there is no loop device; without it mount(2) answers ENOTBLK and
   the pack goes through one, set up with three ioctls rather than by exec'ing
   losetup — this is a root daemon and every process it starts runs as root.
+- **An install drops the old version's idle mount, and refuses one that is
+  composed.** The mount table is keyed by id and survives the rescan an
+  install triggers, so without this every compose after `kdos app update`
+  put the NEW app diff over the OLD runtime's mounted bytes — measured:
+  kicad dying on `libSM.so.6`, a library the new rt-gtk carries and the
+  mounted one did not. Idle, the old mount goes before the file swap; in
+  use, the install is refused by the rule `remove` already applies, and
+  `kdos app update` has named the boxes to stop first.
 - **Mounts are reference counted and `decompose` does not unmount.** Two boxes
   legitimately share a runtime; unmounting it because one stopped pulls the
   lowerdir out from under the other, and the symptom is every path in a running
@@ -675,7 +764,11 @@ where an unprivileged write is allowed is exactly the kind of thing that drifts.
 - `--fixture <store> [medium]` prints what it WOULD mount and mounts nothing,
   the seam `kdos stutter`, `kdos-oomd` and `kdos-mountd` all use.
 
-**A data pack (`kind = data`) is mounted `ro,nosuid,nodev,NOEXEC` and is never
+**`kdos app install` of a data pack grafts it in the same breath, and
+`remove` ungrafts first** — a data pack is mounted noexec and never composed,
+so what it is FOR is its grafts, and a mount with none made is a dataset
+nothing can find (measured: `~/.stellarium` with no `stars` after the
+install). **A data pack (`kind = data`) is mounted `ro,nosuid,nodev,NOEXEC` and is never
 composed into a box root** — a data pack that ships a binary cannot run it.
 Everything it wants done is DECLARED as `graft` / `boxgraft` / `env` lines the
 daemon interprets; there is no script in a pack and no shell near one. Two
@@ -684,7 +777,16 @@ symlinks there for host consumers, `boxgraft` lands under
 `~/.local/share/kdos/packs/<name>`, which a box shares. **Every graft is
 recorded in `/var/lib/kdos/pack-manifest`** so `ungraft` removes exactly what
 it added — the `fs-manifest` lesson applied to data — and only a SYMLINK is
-removed, because a real directory there is somebody else's.
+removed, because a real directory there is somebody else's. **The lines come
+from packs.conf** — `graft <data> <from> <to>` and `boxgraft <data> <from>
+<to>` rows, carried into the metadata by `bake`/`harvest.py` exactly as
+`needs` is — and a `boxgraft` `to` beginning with `~/` lands at that place in
+the home, for a program that reads its own directory and takes no variable
+(stellarium's `~/.stellarium/stars`); the rest land under
+`~/.local/share/kdos/packs/<to>`, where an `env` line names them — and an env
+VALUE may begin with `$HOME`, which `box_env()` expands, because the pack
+cannot know the user's name and the box shares the home under the same path
+(`KICAD9_3DMODEL_DIR=$HOME/.local/share/kdos/packs/kicad-3dmodels`).
 
 ### The box a pack runs in
 
@@ -698,6 +800,40 @@ Over the overlay kdos-packd composed, this keeps
 everything that is hard (rootless uid maps, seccomp, cgroups, conmon
 supervision — which `kdos stutter`, `kdos-oomd` and `kdos-energyd` all identify
 boxes by) and replacing only the part that needed an image.
+**A BOXED APPLICATION GETS A LOGIN'S ENVIRONMENT FROM `box_env()`, AND FROM
+NOWHERE ELSE.** `podman exec` inherits nothing — not pid 1's environment, not
+the caller's — so every variable a launch needs is stated there: `PATH`
+(`KB_BOX_PATH`, with `/usr/games`, one definition shared with kdos-boxinit),
+`HOME`, `USER`, `LOGNAME`, `LANG` (`C.UTF-8` unless the host's is UTF-8),
+`XDG_RUNTIME_DIR`, `XDG_SESSION_TYPE`, `DBUS_SESSION_BUS_ADDRESS`, and the GTK,
+Qt and portal set. Measured across the catalogue when it was not: 67 of 72 GTK
+applications failed to map a window, three of them saying why (`Non UTF-8
+locale`, `KeyError: 'USER'`), every game dying on `env: 'sol': No such file`,
+and a GApplication with no bus address blocking in single-instance
+negotiation with no window and no message. The image lane never had this
+problem because distrobox-enter passed a whole environment; replacing it with
+a bare exec kept only what this function had always added.
+
+**EVERY `--volume` IS FORMATTED INTO THE ARGV, NEVER THROUGH ONE BUFFER.**
+`kb_argv_add` stores the POINTER and does not copy, so five volumes built one
+after another in a single `char vol[MAX_LINE]` all point at the same bytes and
+podman is handed the LAST value five times. Measured with `podman inspect` on a
+booted machine: a pack box had `/run/user/1000` and nothing else, so `$HOME`,
+`/tmp`, `/dev` and `/sys` were silently unshared — the box started, the
+application ran, and every path it wanted was simply absent. `kb_argv_addf`
+formats into the argv itself. This is the same trap the orchestrator hit three
+times; it is a property of the builder, not of any one caller.
+
+**AND A WRONG passwd RECORD IN THE PACK MUST BE REPLACED, NOT LEFT ALONE.** The
+base pack carries `kdos:*:1000:1000:KDOS Test:/:/bin/sh`, whose home is `/`, so
+`podman exec --user=1000` gives every application `HOME=/` and none of them
+reads `~/.config`, `~/.themes` or `~/.icons` — a boxed GTK4 app comes up in
+libadwaita's own LIGHT theme on a phosphor desktop, with the palette sitting
+correctly in a `$HOME` it never looked at. Matching the HOST's account is the
+whole reason `kdos-boxinit` creates the user, so its record wins; a duplicate
+for the same uid is dropped rather than appended, which is what the original
+name/id check existed to prevent.
+
 **`kdos-boxinit`** (`src/packages/kdos-boxinit/`) is pid 1 inside it in place
 of distrobox-init: it creates the user and group matching the host's, sets the
 PATH that includes `/usr/games`, prints `container_setup_done` where
@@ -759,6 +895,37 @@ the right answer — its host process is larger than anything in either box — 
 the selftest runs it with and without the profiles to prove the check is
 load-bearing.
 
+**Warmup is the PINNED set.** One box per application means the image lane's
+single login warmup covers nothing, so `kdos-appbox warmup` reads
+`~/.config/kdos/favorites` — desktop ids — resolves each through its entry's
+`Exec=` to the shim the table is keyed by, and composes and starts that pack's
+box at nice 10. **`kdos-box gc` is run every ten minutes by `kdos-desktop`**;
+it existed and nothing called it, so a warmed box was a leak. It asks the
+compositor first and never stops a box with a window.
+
+**`grant = screencopy, data-control` in a profile opens a global the sandbox
+allowlist refuses** — `kdos-grant.c` in the compositor consults the box's
+profile once per client and caches on the app_id; SIGHUP drops the cache. The
+names map onto BOTH generations of each protocol, and `input-method` has to be
+spelled out because it is a keylogger by design.
+
+**`15_userdirs.sh` delegates a cgroup2 subtree to each human uid**, enabling
+`cpu memory pids` at the root, at `user.slice` and in `user-<uid>` itself — a
+child cannot enable what its parent does not offer — and creates the LEAF
+`user-<uid>/session`, which **`kdos-getty` moves the autologin session
+into** before it execs agetty. The move is the load-bearing half: rootless
+podman's cgroupfs manager creates a container's cgroup as a SIBLING of the
+cgroup it is called from, so a session left in `/` gets `--memory` accepted
+and ignored (measured: `memory.max` reads `max`), while one in the leaf gives
+every box `user-<uid>/<id>` with the limit applied (measured: `67108864`
+inside the box, `podman inspect` reporting `cgroupfs`). The session has to be
+a leaf because a cgroup with processes in it may not enable controllers for
+children, and the move needs root because a process cannot write itself out
+of the root cgroup — which is why it is the last root process before login
+that does it. An interactive tty login and an ssh session are not moved and
+stay unlimited. This is the arrangement systemd's user slice provides and
+this distribution never had.
+
 **`base = image:<ref>` is an ONLINE operation and says so before it does
 anything.** It fetches unsigned content from somebody else's registry;
 `KDOS_REQUIRE_SIG` does not cover it and pretending otherwise would be
@@ -767,6 +934,11 @@ dishonest. `pack:` and `box:` are the offline kinds.
 **`freeze` is the flagship**: the writable upper packed into one EROFS pack
 through `kdos-pack build`, with the base chain in `requires` — so the artefact
 is the DIFF, and it deltas against a previous freeze like any other pack.
+Measured on a debian-base box with real work in it: **2.1 MB against a 432 MB
+merged root**, 195×. **`podman save` is not the alternative it is compared to —
+there isn't one**: a pack box is `podman --rootfs`, so `podman commit` answers
+*"cannot commit a container that uses an exploded rootfs"* and there is no
+image to save. Freeze is the only way to capture a pack box's state.
 `import` stages it and asks the daemon to install it, because verification
 happens where the mount happens.
 
@@ -790,7 +962,12 @@ question that answers it.
 **The compositor has always known which box a window came from** — kdos-boxsock
 tags every client with a `wp_security_context_v1` whose `app_id` is the box
 name, and `server.c` already looks it up to decide what that client may bind.
-`kdos_view_box()` in `view.c` is the same lookup answering the other question;
+`kdos_view_box()` in `view.c` is the same lookup answering the other question
+— **and for an X11 window it reads `/proc/<pid>/environ` instead.** An
+Xwayland window's Wayland client is Xwayland, on the host, with no context, so
+the lookup answered NULL for every GTK2, Tk, FLTK, Swing and wx application in
+the catalogue; the window does carry its client's PID, and every process a box
+starts carries `KDOS_BOX=<name>`, so that is the fallback, cached per view;
 `{"cmd":"list"}` carries `box` and `instance`, and `{"cmd":"boxes"}` lists the
 distinct boxes with a window on the screen.
 
@@ -905,10 +1082,17 @@ rename.
 ### `kdos-appbox` is a C program (`src/packages/kdos-appbox`)
 
 `/usr/local/bin/kdos-appbox` is C: `main.c` (CLI + launch path), `box.c`
-(boxes and profiles), `app.c` (app table, install/refresh), `tui.c` (the
-front end), `launchers.c` (`genlaunchers`), `image.c` (`image
-pack|assemble|remap-uids`), `open.c` (`open`), `util.c` (the trace file and the
-notification).
+(profiles, podman state, the `stopping` recovery), `box_cmd.c` (`kdos-box`),
+`pack.c` (compose, create and start a pack box), `app.c` (the alien-apps
+table), `launchers.c` (`genlaunchers`), `open.c` (`open`), `util.c` (the trace
+file and the notification). **There is no image lane left in it**: the verbs
+that apt-installed into a distrobox over the baked image (`install`,
+`uninstall`, `refresh`, `ensure`, `create`, `recreate`, `security`, `tui`)
+went with the image, and a `run` whose exec no installed pack carries is
+refused by name rather than composed into a box called `kdos-apps`. Boxes are
+`kdos-box`'s; the System menu's `Boxes…` row opens `kdos-settings --page
+boxes`. A profile with no `base` reads `-` in `kdos-box list` until the first
+launch records `pack:<id>`, and `kdos-box create` with none is refused.
 It links
 **libkbase + libktui + libkcolor + libkxdg and nothing else** — the process/path/lock
 helpers `util.c` used to carry are libkbase's now, and `tui.c` is libktui, so
@@ -930,6 +1114,11 @@ Two rules it exists to keep:
 
 Invoked through a symlink named after an app, it dispatches on its own basename
 busybox-style, so `gimp photo.png` works from a terminal with no shell wrapper.
+**`kdos-appbox run <exec>` — the form every desktop entry uses — resolves its
+pack from the EXEC**, `app_pack_by_exec()` matching the table's command column
+whole and then by basename. It did not: only the shim path looked the pack up,
+and the Start menu launched every application into the default box `kdos-apps`
+the pack lane never had, while the same application worked from a prompt.
 The name → command table is `/usr/share/kdos/alien-apps` (baked) plus
 `~/.local/share/kdos/alien-apps` (runtime); user entries win.
 
@@ -958,13 +1147,12 @@ the file, and dropping it opens the application with an empty document.
 `testing/selftest.sh` asserts on; `xdg-open` is the last resort, because it
 knows about URL schemes this does not read.
 
-**Sandbox profiles** live in `~/.config/kdos/boxes/<name>.conf` and every key
-maps 1:1 onto a distrobox flag — `network`/`ipc`/`devices`/`processes` to
-`--unshare-{netns,ipc,devsys,process}`, `home` to `--home`. That mapping is the
-point: **KDOS does not offer confinement it cannot enforce.** Defaults are
-exactly what a plain `distrobox create` does. A profile applies at CREATE time —
-namespaces cannot be re-flagged on a live container, so changing one tells you
-to run `kdos-appbox recreate <box>` rather than silently doing nothing.
+**Sandbox profiles** live in `~/.config/kdos/boxes/<name>.conf` and are
+`kdos-box profile`'s — see **`kdos-box` — a box is a first-class object**: every
+key maps 1:1 onto a podman flag or onto something KDOS enforces itself, and
+**KDOS does not offer confinement it cannot enforce.** A namespace key applies
+at CREATE time — it cannot be re-flagged on a live container, so changing one
+says to recreate the box rather than silently doing nothing.
 
 **Rootless storage: fuse-overlayfs on live, native overlay when installed.**
 `/etc/containers/storage.conf` pins `mount_program = fuse-overlayfs` and the
@@ -1993,7 +2181,10 @@ appends to the first time each window maps, falling back to the live
 `{"cmd":"list"}` when no ledger has been recorded yet; the two answer different
 questions and the report says which it used), **`hey`** (the `$XDG_RUNTIME_DIR/kdos-cmd.sock`
 query front end, Haiku's shape: the window manager answers questions from the
-command line, so a window is something a script can find and act on),
+command line, so a window is something a script can find and act on — **and
+its box column is never truncated**: it was `%-12.12s`, a box is named after
+its pack, and every name past twelve characters came out cut, so the app
+sweep scored half the catalogue as "no window"),
 **`oracle`** (the aphorism picker, keyed on `day XOR boot` so the same line can
 be quoted an hour later and a machine up for a month is not showing one line
 for a month), **`update`** (orchestration of `kpkg binhost` and the A/B slots —
@@ -3198,7 +3389,7 @@ rather than lazy, because the usual second backend is xdg-desktop-portal-gtk and
 nobody — plus ScreenCast and Screenshot to `wlr` and FileChooser and Settings
 to `kdos`.
 
-**FileChooser, Settings and OpenURI are ours:
+**FileChooser, Settings and AppChooser are ours:
 `src/desktop/xdg-desktop-portal-kdos`.**
 It is a bus adapter and nothing more — it spawns `kdos-pick` and reads its
 stdout, so the chooser stays a normal program that can be run by hand,
@@ -3221,20 +3412,22 @@ the handler returns "handled" without replying, the pipe joins the main loop's
 poll set, and the reply is built at EOF. A portal backend is a server, and a
 server that stops serving while it thinks is a server that is down.
 
-**`OpenURI` is "open this on the host for me", and it had no backend at all.**
-That is the request every containerised application makes when a link or a
-downloaded file is clicked, `default=none` answered not-supported, and the click
-therefore did nothing — silently. There is nothing to write beyond the
-plumbing: **`kdos-appbox open` IS the implementation** of what opens a thing on
-this machine, so the method decodes the URI's percent-escapes and forwards a
-path to it, and hands anything that is a scheme rather than a path to
-`xdg-open`. `OpenFile`/`OpenDirectory` take an FD because the application may
-not be able to NAME the file in terms the host would recognise — it is in a
-container with its own mounts — and `/proc/self/fd` is the only translation
-there is; a link ending in ` (deleted)` is refused rather than opened as a file
-of that literal name. No chooser and no prompt: the front end has already
-decided the application may ask, and a second dialog here would be a permission
-question asked by the half of the stack that does not know the answer.
+**`OpenURI` is the FRONT END's own portal, and what it needs from a back end
+is `AppChooser`.** "Open this on the host for me" is what every containerised
+application asks when a link or a downloaded file is clicked;
+xdg-desktop-portal implements it itself — it resolves the host's handlers for
+the type and launches the chosen one through GAppInfo, on the host, from the
+host's desktop entries, so a boxed app's link opens in the Firefox launcher
+this desktop generated — and it exports the interface ONLY when a back end
+answers `org.freedesktop.impl.portal.AppChooser`. A back end implementing
+`impl.portal.OpenURI`, an interface the spec does not have, left every boxed
+`xdg-open` answering *No such interface* (measured, twice, on the rig).
+`ChooseApplication` here answers `last_choice` when it is among the choices,
+else the first — there is no dialog, because a chooser drawn on the grid is
+`kdos-openwith` and a second copy of that resolution would drift — and when
+the front end found NO handler it opens the thing itself through
+`kdos-appbox open` (a path) or `xdg-open` (a scheme) and answers cancelled,
+which is true.
 
 **And none of that is reached unless the app thinks it is sandboxed** — which
 is why `kdos-appbox` exports `GTK_USE_PORTAL=1`; see the appbox section.
@@ -5151,7 +5344,7 @@ kdos/
 │   │   ├── kdos-res/            # the resource monitor + setuid kdos-resctl
 │   │   ├── kdos-packd/          # the only thing that mounts a pack
 │   │   ├── kdos-boxsock/        # the security-context-v1 sandbox engine
-│   │   └── xdg-desktop-portal-kdos/  # FileChooser + Settings + OpenURI
+│   │   └── xdg-desktop-portal-kdos/  # FileChooser + Settings + AppChooser
 │   ├── build/
 │   │   └── kdosbuild/           # the build orchestrator (C, host-only)
 │   ├── tools/
@@ -6784,10 +6977,15 @@ and respond with the targeted fix.
   spinner as `sh (appbox y1)`. A LIVE session still cannot compose a box — an
   overlay upper cannot sit on overlayfs and `$HOME` does there — which is
   `kdos doctor`'s own warning rather than a defect.
-- **`kdos-box freeze` has not been measured against `podman save`.** It builds
-  and the machinery under it is proven, but the "an order of magnitude smaller"
-  claim the design rests on needs a real box with real work in it, and the
-  plan's own acceptance test for it is that comparison.
+- ~~`kdos-box freeze` has not been measured against `podman save`~~ —
+  **closed, and the answer is better than the claim.** On a `pack:base` box
+  with `/usr/share/doc` and `/etc` copied into it: the freeze is **2,216,646
+  bytes** against a merged root of **432,583,068** and a `base.kpack` of
+  **216,556,313** — 195× and 98×, where the design said "an order of
+  magnitude". And `podman commit` REFUSES a pack box outright (*"cannot commit
+  a container that uses an exploded rootfs"*), so for this lane freeze is not
+  the smaller option, it is the only one. The pack parses and `kdos-box import`
+  installs it back.
 - ~~No goldens for the Boxes page~~ — **closed, and the reason they were
   missing was the harness rather than the host.** `res-boxes-*.txt` is
   committed at all three widths, the settings and Start goldens carry their

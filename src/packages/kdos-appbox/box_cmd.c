@@ -132,7 +132,8 @@ static int cmd_box_list(void)
 		profile_load(&p, line);
 		bd = box_dir(line);
 		printf("%-16s %-24s %-10s %-11s %8s  %s\n", line,
-		       p.base[0] ? p.base : p.image, tab, persist_name(p.persist),
+		       p.base[0] ? p.base : p.image[0] ? p.image : "-",
+		       tab, persist_name(p.persist),
 		       kb_human_size(dir_bytes(bd)),
 		       p.accent[0] ? p.accent : "session");
 		free(bd);
@@ -167,7 +168,8 @@ static int cmd_box_list(void)
 			continue;
 		profile_load(&p, nm);
 		printf("%-16s %-24s %-10s %-11s %8s  %s\n", nm,
-		       p.base[0] ? p.base : p.image, "not created",
+		       p.base[0] ? p.base : p.image[0] ? p.image : "-",
+		       "not created",
 		       persist_name(p.persist), "-",
 		       p.accent[0] ? p.accent : "session");
 	}
@@ -299,7 +301,8 @@ static int cmd_box_create(int argc, char **argv)
 		profile_save(&p);
 		return cmd_box_create(argc, argv);
 	} else {
-		rc = box_create(&p);
+		kb_die("%s: a box is made of something — base=pack:<id>, "
+		       "base=image:<ref> or base=box:<name>", box);
 	}
 	if (rc != 0)
 		return rc;

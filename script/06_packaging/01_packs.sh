@@ -123,6 +123,72 @@ for f in PACKAGES PACKAGES.sig; do
     chmod 0644 "$STORE/$f"
 done
 
+# ── Launchers for the recommended set ──────────────────────────────────────
+#
+# THE ISO HAS TO SHIP A START MENU WITH APPLICATIONS IN IT, and nothing had
+# written one since the monolith went: `01_appbox.sh` used to run genlaunchers
+# against the image, the pack lane's `genlaunchers --packs` needs kdos-packd
+# and a mount, and the build is a chroot in an unprivileged container that has
+# neither. What shipped was the stale two-field table from the image lane, so
+# every launcher on the live ISO dispatched to a box called `kdos-apps` that
+# no longer exists — measured: `could not compose box 'kdos-apps' from packs`
+# on the first click of Firefox.
+#
+# The build reads INSIDE each recommended pack without mounting it:
+# `kdos-pack image` writes the EROFS bytes, `fsck.erofs --extract` (our
+# erofs-utils, built with zstd — the distro's images are -zzstd and a
+# fsck.erofs without it says "Failed to extract filesystem") pulls out
+# /usr/share/applications, and `genlaunchers --packs-dir` reads one directory
+# per pack, the directory NAME being the pack id the table's third field
+# carries. The result is byte-for-byte what a runtime regeneration would write
+# for the same packs, so a launcher clicked on the live ISO composes the same
+# box the installed system would.
+#
+# Only the RECOMMENDED set: those are the applications the medium promises at
+# first sight; everything else is a `kdos app install` away and gets its
+# launcher from the user tree at that moment.
+if [ -f "$SRC/PACKAGES" ] && command -v fsck.erofs >/dev/null 2>&1 \
+   && command -v kdos-pack >/dev/null 2>&1; then
+    LDIR=/kdos/build/launchers
+    rm -rf "$LDIR"; mkdir -p "$LDIR"
+    nrec=0
+    for id in $(awk '/^P:/ { id = substr($0, 3) } /^R:yes/ { print id }' "$SRC/PACKAGES"); do
+        [ -f "$SRC/$id.kpack" ] || continue
+        # an app pack only; a runtime's applications directory is whatever its
+        # libraries dropped there and is not this desktop's business
+        case " $kinds " in *" $id=app "*) ;; *) continue ;; esac
+        img=$(mktemp /tmp/kpack-XXXXXX)   # toybox mktemp takes no suffix after the Xs
+        if kdos-pack image "$SRC/$id.kpack" "$img" 2>/dev/null \
+           && mkdir -p "$LDIR/$id/usr/share/applications" \
+           && fsck.erofs --extract="$LDIR/$id/usr/share/applications" \
+                         --path=usr/share/applications "$img" >/dev/null 2>&1; then
+            nrec=$((nrec + 1))
+        else
+            echo "[packs] $id: could not read its desktop entries — no launcher" >&2
+            rm -rf "$LDIR/$id"
+        fi
+        rm -f "$img"
+    done
+    if [ "$nrec" -gt 0 ]; then
+        kdos-appbox genlaunchers --packs-dir "$LDIR" / 2>&1 | sed 's/^/[packs] /'
+        # THE LIVE USER'S HOME WAS MATERIALISED FROM SKEL BEFORE THIS STEP RAN
+        # (00_user.sh sorts first), so the launchers written into skel just
+        # now are on the ISO for every FUTURE home and absent from the one
+        # the live session logs into — the shim works from a prompt and the
+        # Start menu shows nothing. Measured. The same copy 00_user.sh does,
+        # for the one directory this step is responsible for.
+        for h in /home/*; do
+            [ -d "$h/.local/share" ] || continue
+            mkdir -p "$h/.local/share/applications"
+            cp -a /etc/skel/.local/share/applications/. "$h/.local/share/applications/"
+            chown -R "$(stat -c %u:%g "$h")" "$h/.local/share/applications"
+        done
+    else
+        echo "[packs] no recommended pack readable — the ISO ships no launchers" >&2
+    fi
+    rm -rf "$LDIR"
+fi
+
 # ── KDOS itself, as a base pack ────────────────────────────────────────────
 #
 # `kdos-box create ports base=pack:kdos` gives a running KDOS a clean KDOS to
@@ -170,6 +236,11 @@ done
 # was accepted for as long as this had never been run over a real rootfs, and
 # the first run that was swallowed the repository bind mount and reached
 # 107 GB before it was stopped.
+# A STALE ONE IS REMOVED WHEN THE FLAG IS OFF, or 02_iso.sh has a 9.1 GB file
+# sitting there from an earlier opt-in run and no way to know it was not asked
+# for. `build/` survives between builds; the flag does not.
+[ "${KDOS_PACK_KDOS:-0}" = "1" ] || rm -rf /kdos/build/kdos-base
+
 if [ "${KDOS_PACK_KDOS:-0}" = "1" ] && command -v mkfs.erofs >/dev/null 2>&1 \
    && command -v kdos-pack >/dev/null 2>&1; then
     echo "[packs] packing this rootfs as base pack 'kdos'..."

@@ -318,7 +318,7 @@ static void load_system(void)
 	add("Theme — ice",      "foot -e kdos theme ice", -1);
 	add("Theme — bone",     "foot -e kdos theme bone", -1);
 	add("",                 NULL, -2);		/* separator */
-	add("Applications…",    "kdos-appbox tui", -1);
+	add("Boxes…",           "kdos-settings --page boxes", -1);
 	add("Displays",         "kdos-display", -1);
 	add("Network",          "foot -e nmtui", -1);
 	add("Files",            "foot -e mc", -1);

@@ -1726,7 +1726,9 @@ rm -rf "$FSR"; mkdir -p "$FSR"
 grep -q '^gsmart	"/usr/bin/gsmart root"$' "$FSR/usr/share/kdos/alien-apps" \
     || { echo "  a quoted Exec did not survive the rewrite as one argument"
          grep '^gsmart' "$FSR/usr/share/kdos/alien-apps"; exit 1; }
-grep -q '^wesnoth	sh -c "wesnoth-1.18 >/dev/null 2>&1"$' \
+# The shim is named after the PROGRAM the entry runs — `wesnoth-1.18`, read
+# out of the `sh -c` string — not after the entry's file id.
+grep -q '^wesnoth-1.18	sh -c "wesnoth-1.18 >/dev/null 2>&1"$' \
     "$FSR/usr/share/kdos/alien-apps" \
     || { echo "  a quoted shell argument was split by the rewrite"
          grep '^wesnoth' "$FSR/usr/share/kdos/alien-apps"; exit 1; }

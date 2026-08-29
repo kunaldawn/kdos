@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "view.h"
+#include <fcntl.h>
+#include <unistd.h>
 #include <assert.h>
 #include <strings.h>
 #include <wlr/types/wlr_cursor.h>
@@ -88,12 +90,62 @@ security_context_from_view(struct view *view)
  * NULL for a host window, which is the honest answer and the one every caller
  * renders as today's label.
  */
+/*
+ * AN X11 WINDOW'S WAYLAND CLIENT IS XWAYLAND, ON THE HOST, WITH NO SECURITY
+ * CONTEXT — so the lookup above answers NULL for every application drawn
+ * through it, and the box chip, the taskbar's grouping, `kdos hey list` and
+ * the app sweep all lose the box for exactly the toolkits that still speak
+ * X11: GTK2, Tk, FLTK, Swing, wx. What an X11 window does carry is the PID
+ * of the client that made it, and every process a box starts has
+ * `KDOS_BOX=<name>` in its environment — the same marker the sweep kills by.
+ * A same-uid /proc read, cached on the view for its life, is the whole cost.
+ */
+static const char *
+xwayland_box_from_pid(struct view *view)
+{
+	static char cache[8][64];
+	static struct view *owner[8];
+	static int next;
+	pid_t pid = xwayland_view_get_pid(view);
+	char path[64], buf[8192];
+	ssize_t n;
+	int fd;
+
+	if (pid <= 0)
+		return NULL;
+	for (int i = 0; i < 8; i++)
+		if (owner[i] == view)
+			return cache[i][0] ? cache[i] : NULL;
+	snprintf(path, sizeof(path), "/proc/%d/environ", (int)pid);
+	fd = open(path, O_RDONLY | O_CLOEXEC);
+	int slot = next++ % 8;
+	owner[slot] = view;
+	cache[slot][0] = 0;
+	if (fd < 0)
+		return NULL;
+	n = read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n <= 0)
+		return NULL;
+	buf[n] = 0;
+	for (char *p = buf; p < buf + n; p += strlen(p) + 1)
+		if (!strncmp(p, "KDOS_BOX=", 9) && p[9]) {
+			snprintf(cache[slot], sizeof(cache[slot]), "%s", p + 9);
+			return cache[slot];
+		}
+	return NULL;
+}
+
 const char *
 kdos_view_box(struct view *view)
 {
 	const struct wlr_security_context_v1_state *ctx =
 		security_context_from_view(view);
-	return ctx ? ctx->app_id : NULL;
+	if (ctx)
+		return ctx->app_id;
+	if (view->type == LAB_XWAYLAND_VIEW)
+		return xwayland_box_from_pid(view);
+	return NULL;
 }
 
 const char *
