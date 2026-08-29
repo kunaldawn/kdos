@@ -100,15 +100,55 @@ int kb_is_link(const char *p)
 	return lstat(p, &st) == 0 && S_ISLNK(st.st_mode);
 }
 
+/*
+ * STREAMED, NOT SLURPED, and the size of what this copies is why. The pack
+ * lane moves this function's output around: `base.kpack` is 207 MB, an
+ * application pack reaches 465 MB and `rt-wine` 713 MB, and kdos-packd —
+ * which runs as ROOT — copies one into the store on every install. Reading a
+ * file whole to write it whole asks for its size in anonymous memory, so on a
+ * 4 GB machine the copy becomes a thrash and on a smaller one an OOM, in a
+ * process that had no reason to hold a byte of it.
+ *
+ * A fixed buffer costs nothing here: the destination is written sequentially
+ * and nothing between the two ends needs the middle.
+ */
 int kb_copy_file(const char *src, const char *dst)
 {
-	size_t n = 0;
-	char *buf = kb_read_all(src, &n);
-	if (!buf)
+	char buf[65536];
+	int in = open(src, O_RDONLY | O_CLOEXEC);
+	if (in < 0)
 		return -1;
-	int rc = kb_write_all(dst, buf, n);
-	free(buf);
-	return rc;
+	int out = open(dst, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+	if (out < 0) {
+		close(in);
+		return -1;
+	}
+	for (;;) {
+		ssize_t n = read(in, buf, sizeof(buf));
+		if (n == 0)
+			break;
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			close(in);
+			close(out);
+			return -1;
+		}
+		ssize_t off = 0;
+		while (off < n) {
+			ssize_t w = write(out, buf + off, (size_t)(n - off));
+			if (w <= 0) {
+				if (w < 0 && errno == EINTR)
+					continue;
+				close(in);
+				close(out);
+				return -1;
+			}
+			off += w;
+		}
+	}
+	close(in);
+	return close(out) == 0 ? 0 : -1;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

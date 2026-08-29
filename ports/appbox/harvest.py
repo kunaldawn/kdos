@@ -75,9 +75,32 @@ def desktop_entries(root):
     return out
 
 
-def metainfo(root):
+def component_rank(cid, want):
+    """How well an AppStream component id names the pack we are building.
+
+    THE SAME RULE THE DESKTOP ENTRIES GET, and it belongs here for the same
+    reason: a stage's layer carries the metainfo of every package it pulled in,
+    not just the application. Taking the first file alphabetically named
+    `app.bcnc` and `app.digikam` both after libgphoto2, and `app.cantor` after
+    the URW font set — a shop window describing somebody else's program.
+    """
+    cid = cid.lower()
+    if cid.endswith(".desktop"):
+        cid = cid[: -len(".desktop")]
+    leaf = cid.rsplit(".", 1)[-1]
+    if leaf == want or cid == want:
+        return 0
+    if leaf.startswith(want) or leaf.endswith(want):
+        return 1
+    if want in cid:
+        return 2
+    return 3
+
+
+def metainfo(root, want=""):
     """summary, description and licence, from AppStream when there is any."""
     got = {}
+    found = []
     for d in METAINFO_DIRS:
         full = os.path.join(root, d)
         if not os.path.isdir(full):
@@ -91,27 +114,38 @@ def metainfo(root):
                 # A component this build cannot parse is ABSENT, not partial.
                 continue
             r = tree.getroot()
-            def text(tag):
-                for el in r.iter(tag):
-                    if el.get("{http://www.w3.org/XML/1998/namespace}lang"):
+            cid = ""
+            for el in r.iter("id"):
+                cid = " ".join((el.text or "").split())
+                break
+            # The filename is the tiebreak, so the order is still total and a
+            # re-bake of an unchanged layer produces the same metadata.
+            found.append((component_rank(cid, want) if want else 3, name, r))
+    found.sort(key=lambda t: (t[0], t[1]))
+    if found:
+        got["_rank"] = found[0][0]
+    for _rank, _name, r in found:
+        def text(tag):
+            for el in r.iter(tag):
+                if el.get("{http://www.w3.org/XML/1998/namespace}lang"):
+                    continue
+                return " ".join((el.text or "").split())
+            return ""
+        if not got.get("summary"):
+            got["summary"] = text("summary")
+        if not got.get("licence"):
+            got["licence"] = text("project_license")
+        if not got.get("description"):
+            paras = []
+            for desc in r.iter("description"):
+                if desc.get("{http://www.w3.org/XML/1998/namespace}lang"):
+                    continue
+                for p in desc.iter("p"):
+                    if p.get("{http://www.w3.org/XML/1998/namespace}lang"):
                         continue
-                    return " ".join((el.text or "").split())
-                return ""
-            if not got.get("summary"):
-                got["summary"] = text("summary")
-            if not got.get("licence"):
-                got["licence"] = text("project_license")
-            if not got.get("description"):
-                paras = []
-                for desc in r.iter("description"):
-                    if desc.get("{http://www.w3.org/XML/1998/namespace}lang"):
-                        continue
-                    for p in desc.iter("p"):
-                        if p.get("{http://www.w3.org/XML/1998/namespace}lang"):
-                            continue
-                        paras.append(" ".join((p.text or "").split()))
-                    break
-                got["description"] = [p for p in paras if p]
+                    paras.append(" ".join((p.text or "").split()))
+                break
+            got["description"] = [p for p in paras if p]
     return got
 
 
@@ -212,6 +246,12 @@ def main():
                     metavar="NAME=VALUE")
     ap.add_argument("--command", action="append", default=[],
                     metavar="NAME")
+    ap.add_argument("--needs", action="append", default=[],
+                    metavar="PACK", help="a data pack this app is useless without")
+    ap.add_argument("--graft", action="append", default=[],
+                    metavar="FROM TO", help="data pack: symlink under /usr/share")
+    ap.add_argument("--boxgraft", action="append", default=[],
+                    metavar="FROM TO", help="data pack: symlink a box can see")
     a = ap.parse_args()
 
     # ONLY AN APP ROW HAS AN APPLICATION'S IDENTITY. A runtime layer holds
@@ -222,7 +262,14 @@ def main():
     # base says nothing at all.
     if a.kind == "app":
         entries = desktop_entries(a.diffdir)
-        info = metainfo(a.diffdir)
+        info = metainfo(a.diffdir, a.id.split(".")[-1])
+        # A COMPONENT THAT NAMES NOBODY'S PROGRAM IS NO COMPONENT. A pack with
+        # no desktop entry of its own — gmic, ngspice — has only its layer's
+        # libraries to choose from, and the best of those by rank was
+        # libgphoto2, so `app.gmic` described itself as a camera library.
+        # Nothing is better than somebody else's sentence.
+        if not entries and info.get("_rank", 3) >= 3:
+            info = {}
     else:
         entries, info = [], {}
 
@@ -269,6 +316,16 @@ def main():
                 break
     if a.parent and a.parent != "-":
         lines.append("requires    = %s" % a.parent)
+    # A DATA PACK IS NOT COMPOSED INTO A BOX ROOT — it is mounted noexec and
+    # grafted — so an app that needs one names it here rather than requiring
+    # it. `needs` is the honest word: without it the program opens with an
+    # empty database, which is a broken menu entry rather than software.
+    for n in a.needs:
+        lines.append("needs       = %s" % n)
+    for g in a.graft:
+        lines.append("graft       = %s" % g)
+    for g in a.boxgraft:
+        lines.append("boxgraft    = %s" % g)
 
     mimes = []
     for e in entries:

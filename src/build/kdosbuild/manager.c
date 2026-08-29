@@ -649,6 +649,9 @@ static void fail_expansion(Manager *m, BStep *s, const char *what,
 	m->is_running = 0;
 }
 
+/* The clamp below must stay UNREACHABLE: KB_MAX_STEPS is sized to hold every
+ * phase plus KB_MAX_PKGS from each packages.txt, and a build that hit it would
+ * drop steps off the end of its own order with nothing said. */
 static void order_insert(Manager *m, int at, BStep **nodes, int n)
 {
 	if (m->norder + n > KB_MAX_STEPS)
@@ -757,6 +760,7 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 	kb_argv_end(&a);
 
 	/* `line` stays alive across the run: the argv holds its pointer. */
+	BStep **nodes = NULL;
 	KbBuf out = {0}, err = {0};
 	int rc = run_capture2(&a, &out, &err);
 	kb_buf_free(&line);
@@ -769,7 +773,7 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 		goto fail;
 	}
 
-	BStep *nodes[KB_MAX_STEPS / 8];
+	nodes = kb_calloc(KB_MAX_PKGS, sizeof(*nodes));
 	int n = 0;
 	char *save = out.p ? out.p : (char *)"";
 	for (char *tok = strtok(save, " \t\r\n"); tok;
@@ -783,8 +787,20 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 			fail_expansion(m, g, "package resolution", detail);
 			goto fail;
 		}
-		if (n == (int)(sizeof(nodes) / sizeof(nodes[0])))
-			break;
+		/* A CAP HERE IS A PHASE THAT SILENTLY BUILDS PART OF ITSELF.
+		 * This used to `break`, so a packages.txt whose resolved order
+		 * outgrew the array lost every package past it with nothing
+		 * said — the phase reported COMPLETE having never reached the
+		 * tail of its own list. */
+		if (n == KB_MAX_PKGS) {
+			snprintf(detail, sizeof(detail),
+				 "kpkgdepends resolved more than %d packages; "
+				 "raise KB_MAX_PKGS (and libkpkg's KP_MAX_ORDER "
+				 "with it) rather than building part of the phase",
+				 KB_MAX_PKGS);
+			fail_expansion(m, g, "package resolution", detail);
+			goto fail;
+		}
 
 		char nodepath[600];
 		snprintf(nodepath, sizeof(nodepath), "%s/%02d_%s.install",
@@ -843,11 +859,13 @@ static int expand_packages(Manager *m, BStep *g, int idx)
 	order_insert(m, idx + 1, nodes, n);
 	renumber(m);
 
+	free(nodes);
 	kb_buf_free(&out);
 	kb_buf_free(&err);
 	g->status = ST_DONE;
 	return 1;
 fail:
+	free(nodes);
 	kb_buf_free(&out);
 	kb_buf_free(&err);
 	return 0;

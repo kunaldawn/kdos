@@ -11,7 +11,7 @@
 | Network          | utilisation  46%                                                                                              |
 | Batteries        | memory       1.2G of 8.0G                                                                                     |
 | Energy           |                                                                                                               |
-|                  |                                                                                                               |
+| Boxes            |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |

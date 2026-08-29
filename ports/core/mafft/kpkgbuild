@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mafft
+version     = 7.525
+release     = 1
+source      = mafft-7.525.tar.gz::https://mafft.cbrc.jp/alignment/software/mafft-7.525-without-extensions-src.tgz
+sha256      = edb34ae9b26d6b55328c18fa060ed741bca8cd599c2f4f8fad0e0871c8082265  mafft-7.525.tar.gz
+description = Multiple sequence alignment that scales past a handful of sequences
+homepage    = https://mafft.cbrc.jp/alignment/software/
+depends     = 

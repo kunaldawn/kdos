@@ -234,6 +234,13 @@ int sh_priv_count(const struct sh_state *sh, int kind)
 { (void)sh; (void)kind; return 0; }
 const char *sh_priv_name(const struct sh_state *sh, int kind)
 { (void)sh; (void)kind; return ""; }
+/* The tooltip's "which box is recording" answer. 0 is "no box", which is a
+ * valid answer and the one a dump must give: the real one walks conmon over a
+ * live /proc. Missing it was an `undefined reference` from panel.c that took
+ * EVERY front end's golden down with it, reported as "the new front ends do
+ * not link". */
+int sh_priv_box(const struct sh_state *sh, int kind, char *out, size_t n)
+{ (void)sh; (void)kind; if (out && n) out[0] = '\0'; return 0; }
 
 /* -1 is "no mixer", which is what every readout here has to survive. */
 int sh_volume_get(int *muted) { if (muted) *muted = 0; return -1; }

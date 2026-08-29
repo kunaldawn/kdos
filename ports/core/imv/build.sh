@@ -9,7 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export LDFLAGS="$LDFLAGS -licuuc -Wl,--allow-shlib-undefined"
+# -licuuc: libicuio.pc does not propagate icu-uc, so ubrk_* is unresolved.
+export LDFLAGS="$LDFLAGS -licuuc"
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \

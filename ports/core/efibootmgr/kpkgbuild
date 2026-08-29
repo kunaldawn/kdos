@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = efibootmgr
+version     = 18
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/rhboot/$name/archive/refs/tags/$version.tar.gz
+sha256      = 442867d12f8525034a404fc8af3036dba8e1fc970998af2486c3b940dfad0874  efibootmgr-18.tar.gz
+description = Repair a boot configuration — list, add and reorder EFI entries
+homepage    = https://github.com/rhboot/efibootmgr
+depends     = pkgconf efivar popt mandoc

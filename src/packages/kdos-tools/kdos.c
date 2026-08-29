@@ -1813,12 +1813,14 @@ static void theme_commit(const KcolScheme *sc)
 
 	/* The state file is the desktop's ONLY input, so it is written before
 	 * the session is signalled — a SIGHUP that arrives first would make the
-	 * shell re-read the accent it already had. */
+	 * shell re-read the accent it already had. ATOMIC for the other half of
+	 * that race: a plain O_TRUNC write is zero bytes until it finishes, and
+	 * four processes re-read this file the moment the signal lands. */
 	char *state = cache_home("kdos/theme");
 	mkparent(state);
 	char line[40];
 	snprintf(line, sizeof(line), "%s\n", sc->name);
-	kb_write_file(state, line);
+	kb_write_file_atomic(state, line);
 	free(state);
 
 	reload_session();
@@ -2125,6 +2127,7 @@ static void help_body(FILE *o)
 		{ "kdos update check", "what the ports tree pins that is not installed" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
+		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
 		{ "kdos-display [--list]", "the screens: mode, scale, rotation, order" },
@@ -3270,6 +3273,36 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("kdos-resctl is not setuid root — kdos-res cannot end a "
 		      "process it does not own (fix: chown root and chmod 4755)");
 
+	/*
+	 * AND THE TWO THIS DISTRO DOES NOT OWN, which are the ones every BOX
+	 * depends on. podman runs `newuidmap` to write /proc/<pid>/uid_map for
+	 * the user namespace a rootless container needs; without the bit it
+	 * refuses with "should have setuid or have filecaps setuid" and exits
+	 * 125 having printed nothing else, so every alien application on the
+	 * machine stops starting and nothing says why. `/etc/subuid` is
+	 * checked with them because an empty one fails at the same call for a
+	 * different reason.
+	 */
+	static const char *const uidmap[] = { "/usr/bin/newuidmap",
+					      "/usr/bin/newgidmap", NULL };
+	for (int i = 0; uidmap[i]; i++) {
+		struct stat ust;
+		if (stat(uidmap[i], &ust) != 0)
+			warn_("%s missing — no rootless container can map a "
+			      "uid, so no box will start", uidmap[i]);
+		else if ((ust.st_mode & S_ISUID) && ust.st_uid == 0)
+			ok("%s is setuid root", uidmap[i]);
+		else
+			warn_("%s is not setuid root — podman exits 125 and no "
+			      "box starts (fix: chown root and chmod 4755)",
+			      uidmap[i]);
+	}
+	if (kb_path_exists("/etc/subuid") && kb_path_exists("/etc/subgid"))
+		ok("/etc/subuid and /etc/subgid are present");
+	else
+		warn_("/etc/subuid or /etc/subgid is missing — a rootless box "
+		      "has no subordinate range to map into");
+
 	/* `service <name>` keys on the init SCRIPT — ksvc strips the numeric
 	 * prefix and the .sh, so 55_powerd.sh is `powerd`. The NAME= inside the
 	 * script is the pidfile, not the lookup key, and naming that here
@@ -3480,6 +3513,8 @@ int kdos_main(int argc, char **argv)
 		return march_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "rebuild"))
 		return rebuild_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "clone"))
+		return clone_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "cve"))
 		return kdt_cve(rest, restv, C_A, C_W, C_0);
 	if (!strcmp(cmd, "hey"))

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = scipy
+version     = 1.18.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/s/$name/$name-$version.tar.gz
+sha256      = 52c4b7422442aba924d03ad4019852b08a92e64ea187b933135687bfe2747307  scipy-1.18.1.tar.gz
+description = Optimisation, integration, signal, sparse and stats — and scipy.constants IS CODATA
+homepage    = https://scipy.org/
+depends     = python3 python3-setuptools python3-pip python3-meson-python python3-cython python3-pybind11 numpy meson ninja openblas gcc pkgconf

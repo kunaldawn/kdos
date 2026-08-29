@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = htslib
+version     = 1.24
+release     = 1
+source      = https://github.com/samtools/htslib/releases/download/$version/$name-$version.tar.bz2
+sha256      = 28a8de191381c7a97a35675ceac76fa1ea95e7b678d6a2e9d600a7874e4077de  htslib-1.24.tar.bz2
+description = The SAM/BAM/CRAM/VCF reader samtools and bcftools are built on
+homepage    = https://www.htslib.org/
+depends     = pkgconf zlib bzip2 xz curl openssl

@@ -400,7 +400,7 @@ int run_main(int argc, char **argv)
 		int bx = kch_buttons(w, h - 2, rb, RB_N, -1);
 		const char *hint = "type a command";
 		if (bx - 3 >= (int)ktui_utf8_width(hint))
-			ktui_draw_text(2, h - 2, bx - 3, hint, KT_DIM,
+			ktui_draw_text(2, h - 2, bx - 3, hint, KT_MID,
 				       KT_SURFACE, KT_A_NONE);
 		ktui_draw_flush();
 

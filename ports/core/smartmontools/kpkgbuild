@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = smartmontools
+version     = 7.5
+release     = 1
+source      = https://downloads.sourceforge.net/smartmontools/$name-$version.tar.gz
+sha256      = 690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e  smartmontools-7.5.tar.gz
+description = Is the disk dying — SMART attributes and self-tests
+homepage    = https://www.smartmontools.org/
+depends     = autoconf automake libtool pkgconf

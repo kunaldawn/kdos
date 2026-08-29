@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = usql
+version     = 0.21.4
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/xo/usql/archive/refs/tags/v$version.tar.gz
+sha256      = 6dfe613eff669606ba52f8c4a046d70677c47b2af61e87dc471ae2c44e50cca7  usql-0.21.4.tar.gz
+sha256      = ab857c1a4700f4919907727011b7a0e2b352bdb706b1c265b3fc3d2a6755e53c  usql-vendor-0.21.4.tar.xz
+description = One psql-class client for postgres, sqlite and the rest
+homepage    = https://github.com/xo/usql
+depends     = go
+vendoring   = go

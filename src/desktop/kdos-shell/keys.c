@@ -612,7 +612,7 @@ static void draw(int top, int welcome)
 			 ktui_glyph[KT_G_UP], ktui_glyph[KT_G_DOWN]);
 	else
 		snprintf(hint, sizeof(hint), "any key closes");
-	ktui_draw_text(2, h - 2, w - 4, hint, KT_DIM, KT_SURFACE, KT_A_NONE);
+	ktui_draw_text(2, h - 2, w - 4, hint, KT_MID, KT_SURFACE, KT_A_NONE);
 	ktui_draw_flush();
 }
 

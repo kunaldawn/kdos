@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fmt
+version     = 12.2.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/fmtlib/fmt/archive/refs/tags/$version.tar.gz
+sha256      = 8b852bb5aa6e7d8564f9e81394055395dd1d1936d38dfd3a17792a02bebd7af0  fmt-12.2.0.tar.gz
+description = The C++ formatting library std::format was standardised from
+homepage    = https://fmt.dev/
+depends     = cmake

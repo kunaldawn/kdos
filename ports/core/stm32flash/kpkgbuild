@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = stm32flash
+version     = 0.7
+release     = 1
+source      = stm32flash-0.7.tar.gz::https://gitlab.com/stm32flash/stm32flash/-/archive/v0.7/stm32flash-v0.7.tar.gz
+sha256      = 726238c33568fd8c84d35fe7d755289ae1350cf1e86a12baff7ed42356bda6ff  stm32flash-0.7.tar.gz
+description = Flash an STM32 over its own ROM bootloader, with no debugger attached
+homepage    = https://gitlab.com/stm32flash/stm32flash
+depends     = 

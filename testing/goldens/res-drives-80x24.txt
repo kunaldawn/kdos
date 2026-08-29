@@ -2,16 +2,16 @@
 | Drives                                                                       |
 | 2 drives                                                                     |
 |------------------------------------------------------------------------------|
-| A    |DEVICE     SIZE      TYPE  BUSY   TEMP    MODEL                        |
-| P    |sda        466G      HDD   30%    -       KDOS FIXTURE HDD             |
-| C    |nvme0n1    477G      SSD   80%    41oC    KDOS FIXTURE NVME            |
-| M    |                                                                       |
-| G    |                                                                       |
-| D    |                                                                       |
-| N    |                                                                       |
-| B    |                                                                       |
-| E    |                                                                       |
-|      |                                                                       |
+| App  |DEVICE     SIZE      TYPE  BUSY   TEMP    MODEL                        |
+| Pro  |sda        466G      HDD   30%    -       KDOS FIXTURE HDD             |
+| CPU  |nvme0n1    477G      SSD   80%    41oC    KDOS FIXTURE NVME            |
+| Mem  |                                                                       |
+| GPU  |                                                                       |
+| Dri  |                                                                       |
+| Net  |                                                                       |
+| Bat  |                                                                       |
+| Ene  |                                                                       |
+| Box  |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
 |      |                                                                       |

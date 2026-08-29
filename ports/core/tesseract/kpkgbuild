@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tesseract
+version     = 5.5.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/tesseract-ocr/tesseract/archive/refs/tags/$version.tar.gz
+sha256      = 9218e62793116d42a9f6d14cd9348518b27f382096eea3d0f2d1a24616bb5884  tesseract-5.5.3.tar.gz
+source      = tessdata-eng-4.1.0.traineddata::https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/eng.traineddata
+sha256      = 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2  tessdata-eng-4.1.0.traineddata
+description = Turn a scan into text — the OCR engine
+homepage    = https://github.com/tesseract-ocr/tesseract
+depends     = cmake ninja pkgconf leptonica libarchive curl icu

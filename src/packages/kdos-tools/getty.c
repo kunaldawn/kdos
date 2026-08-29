@@ -36,6 +36,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <pwd.h>
 #include <sys/ioctl.h>
 #include <sys/klog.h>
 #include <sys/wait.h>
@@ -241,6 +242,44 @@ int getty_main(int argc, char **argv)
 	}
 	if (vt >= 0)
 		close(vt);
+
+	/*
+	 * PUT THE AUTOLOGIN SESSION INSIDE ITS DELEGATED CGROUP. 15_userdirs.sh
+	 * delegates `user.slice/user-<uid>` to each human user, and that is
+	 * decoration until a session actually runs in it: rootless podman with
+	 * the cgroupfs manager creates a container's cgroup as a SIBLING of
+	 * the one it is called from, so a session left in the root cgroup gets
+	 * `--memory` accepted and ignored. Measured: a shell moved into
+	 * `user-1000/session` gives every box `user-1000/<id>` with
+	 * memory.max set; the same box from the root cgroup reads `max`. The
+	 * move needs root — a process cannot write itself out of `/` — and
+	 * this is the last root process before login, so it is done here,
+	 * for the user `--autologin` names. `session` is a LEAF: a cgroup
+	 * with processes in it may not enable controllers for children, and
+	 * the container cgroups have to be siblings of the shell's, not
+	 * children. A tty that logs in interactively and an ssh session are
+	 * not covered and stay in the root cgroup.
+	 */
+	for (int i = 3; i + 1 < argc; i++) {
+		if (strcmp(argv[i], "--autologin") && strcmp(argv[i], "-a"))
+			continue;
+		struct passwd *pw = getpwnam(argv[i + 1]);
+		char cgp[256], pid[32];
+		int fd;
+		if (!pw)
+			break;
+		snprintf(cgp, sizeof(cgp),
+			 "/sys/fs/cgroup/user.slice/user-%u/session/cgroup.procs",
+			 (unsigned)pw->pw_uid);
+		snprintf(pid, sizeof(pid), "%ld\n", (long)getpid());
+		fd = open(cgp, O_WRONLY | O_CLOEXEC);
+		if (fd < 0 || write(fd, pid, strlen(pid)) < 0)
+			fprintf(stderr, "kdos-getty: not moved into %s: %s\n",
+				cgp, strerror(errno));
+		if (fd >= 0)
+			close(fd);
+		break;
+	}
 
 	execvp(argv[2], argv + 2);
 	fprintf(stderr, "kdos-getty: cannot exec %s: %s\n", argv[2],

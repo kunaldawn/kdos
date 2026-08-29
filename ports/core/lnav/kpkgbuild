@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lnav
+version     = 0.14.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/tstack/lnav/archive/refs/tags/v$version.tar.gz
+sha256      = bf142441fc85e99c256ebe661e4199768acbd340da1344554da49a9e867a49ea  lnav-0.14.0.tar.gz
+sha256      = d6fb85d895ca16a2a5cab4e190a76cfa3004c3cda9846386ed9fbc4eecff36c1  lnav-vendor-0.14.0.tar.xz
+description = Log navigator with SQL over log lines
+homepage    = https://lnav.org/
+vendoring   = rust
+vendordir   = src/third-party/lnav-rs-ext
+depends     = autoconf automake libtool pkgconf ncurses pcre2 sqlite zlib bzip2 libarchive curl rust

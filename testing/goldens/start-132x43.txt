@@ -12,10 +12,10 @@
 |                               |  . Sound                                                                                         |
 |                               |  . Notifications                                                                                 |
 |                               |  . Devices                                                                                       |
+|                               |  . Boxes                                                                                         |
 |                               |  . Displays                                                                                      |
 |                               |  . Terminal                                                                                      |
 |                               |  . Help                                                                                          |
-|                               |                                                                                                  |
 |                               |                                                                                                  |
 |                               |                                                                                                  |
 |                               |                                                                                                  |

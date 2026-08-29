@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rclone
+version     = 1.75.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/rclone/rclone/archive/refs/tags/v$version.tar.gz
+sha256      = 1292c5fae9d10d6df3ea0c2ba96de42336e96e2e878729af1f02f86900434ee0  rclone-1.75.0.tar.gz
+sha256      = 43e5abbf6d40bba16e8114e0a4c9a66ab6bacc1e3f5c54674e33b6ac88fb5f60  rclone-vendor-1.75.0.tar.xz
+description = Did every byte reach the second stick — rclone check
+homepage    = https://rclone.org/
+depends     = go
+vendoring   = go

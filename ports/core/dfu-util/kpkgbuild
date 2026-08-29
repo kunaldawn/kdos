@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dfu-util
+version     = 0.11
+release     = 1
+source      = https://dfu-util.sourceforge.net/releases/$name-$version.tar.gz
+sha256      = b4b53ba21a82ef7e3d4c47df2952adf5fa494f499b6b0b57c58c5d04ae8ff19e  dfu-util-0.11.tar.gz
+description = Flash a device over USB with no programmer at all
+homepage    = https://dfu-util.sourceforge.net/
+depends     = autoconf automake pkgconf libusb

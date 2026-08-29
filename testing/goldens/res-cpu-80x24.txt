@@ -2,16 +2,16 @@
 | CPU                                                                          |
 | 50% busy                                                                     |
 |------------------------------------------------------------------------------|
-| A    | utilisation                                                       50% |
-| P    |                                                                       |
-| C    |                                                                       |
-| M    |                                                                       |
-| G    |                                                                       |
-| D    |                                                                     # |
-| N    |                                                                     # |
-| B    |                                                                     # |
-| E    |                                                                     # |
-|      | pressure  some 1.25% (10s)  0.80% (60s)                               |
+| App  | utilisation                                                       50% |
+| Pro  |                                                                       |
+| CPU  |                                                                       |
+| Mem  |                                                                       |
+| GPU  |                                                                       |
+| Dri  |                                                                     # |
+| Net  |                                                                     # |
+| Bat  |                                                                     # |
+| Ene  |                                                                     # |
+| Box  | pressure  some 1.25% (10s)  0.80% (60s)                               |
 |      |                                                                       |
 |      | KDOS Fixture CPU                                                      |
 |      | 2 logical . 2 cores . 1 package                                       |

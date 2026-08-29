@@ -672,7 +672,7 @@ static void draw(const char *status)
 				 nentries - drawn);
 			ktui_draw_text(cx, cy, 2, ktui_glyph[KT_G_ELLIPSIS],
 				       KT_MID, KT_BG, KT_A_NONE);
-			ktui_draw_text(cx + 2, cy, CELL_W - 3, more, KT_DIM,
+			ktui_draw_text(cx + 2, cy, CELL_W - 3, more, KT_MID,
 				       KT_BG, KT_A_NONE);
 		}
 	}

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = picolibc-arm-none-eabi
+version     = 1.8.10
+release     = 1
+_up         = picolibc-$version
+source      = $name-$version.tar.xz::https://github.com/picolibc/picolibc/releases/download/$version/$_up.tar.xz
+sha256      = 0ce5ee3bde81256633644d7b3bd25f5a6ccfd8b0590fd4ee543df2c3ede6e27e  picolibc-arm-none-eabi-1.8.10.tar.xz
+description = The C library for arm-none-eabi — newlib trimmed for a microcontroller
+homepage    = https://github.com/picolibc/picolibc
+depends     = meson ninja gcc-arm-none-eabi binutils-arm-none-eabi

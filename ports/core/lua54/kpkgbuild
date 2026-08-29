@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lua54
+version     = 5.4.8
+release     = 1
+
+_majorver   = ${version%.*}
+
+source      = lua54-$version.tar.gz::https://www.lua.org/ftp/lua-$version.tar.gz
+sha256      = 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae  lua54-5.4.8.tar.gz
+description = Lua 5.4, installed beside 5.5 for software that has not moved yet
+homepage    = https://www.lua.org/

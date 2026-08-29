@@ -13,10 +13,25 @@
 #define KDOS_SHELL_H
 
 #include <signal.h>	/* sig_atomic_t, for the live-retint flag below */
+#include <sys/un.h>	/* sockaddr_un, for SH_SOCK_MAX below */
 #include <time.h>	/* time_t, for the tray's retry backoff */
 
 #include "ktui.h"
 #include "kxdg.h"
+
+/*
+ * THE SIZE OF A UNIX SOCKET PATH, and every buffer that will become one is
+ * declared with it.
+ *
+ * A path that does not fit `sun_path` is REFUSED, not truncated — kdos-packd's
+ * rule. The way to keep it is to make the buffer a `sun_path` in the first
+ * place: a larger one accepts a name that `bind` and `connect` then quietly
+ * cut down, which binds a socket nobody asked for and lets two different
+ * XDG_RUNTIME_DIRs collide on one file. It is also what lets the compiler see
+ * that the copy fits, rather than warning about a truncation the code really
+ * had left in.
+ */
+#define SH_SOCK_MAX sizeof(((struct sockaddr_un *)0)->sun_path)
 
 #define SH_MAX_TASKS 64
 #define SH_MAX_WS    16
@@ -461,6 +476,8 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 			 int nfiles);
 int sh_app_ngroups(void);
 const char *sh_app_group_name(int g);
+/* The group a Categories= list (or one category word) files under. */
+int sh_app_group_for(const char *categories);
 
 /* Double-forked spawn: the caller neither reaps nor waits, and there is no
  * shell anywhere in it. Every surface here spawns the same way. */

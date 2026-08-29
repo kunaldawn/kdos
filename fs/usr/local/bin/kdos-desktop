@@ -94,6 +94,13 @@ fi
 # wait for it to finish.
 (nice -n 10 /usr/local/bin/kdos-appbox warmup >/dev/null 2>&1 &)
 
+# AND GIVE THE IDLE ONES BACK. `kdos-box gc` stops a box that has sat past its
+# profile's `autostop` with no window on the screen; it existed and nothing
+# called it, so a warmed box was a leak. Ten minutes, from the session rather
+# than from a root service, because the boxes are the user's and so is the
+# question the compositor is asked before any is stopped.
+(while sleep 600; do nice -n 10 /usr/local/bin/kdos-box gc >/dev/null 2>&1; done &)
+
 # ONE session bus per user, at a fixed runtime path — not dbus-run-session.
 # dbus-run-session listens on unix:tmpdir=/tmp: a pathname socket in the
 # host's /tmp, which the appbox does NOT share — alien apps then see a

@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/vfs.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -131,7 +132,8 @@ static int cmd_box_list(void)
 		profile_load(&p, line);
 		bd = box_dir(line);
 		printf("%-16s %-24s %-10s %-11s %8s  %s\n", line,
-		       p.base[0] ? p.base : p.image, tab, persist_name(p.persist),
+		       p.base[0] ? p.base : p.image[0] ? p.image : "-",
+		       tab, persist_name(p.persist),
 		       kb_human_size(dir_bytes(bd)),
 		       p.accent[0] ? p.accent : "session");
 		free(bd);
@@ -166,7 +168,8 @@ static int cmd_box_list(void)
 			continue;
 		profile_load(&p, nm);
 		printf("%-16s %-24s %-10s %-11s %8s  %s\n", nm,
-		       p.base[0] ? p.base : p.image, "not created",
+		       p.base[0] ? p.base : p.image[0] ? p.image : "-",
+		       "not created",
 		       persist_name(p.persist), "-",
 		       p.accent[0] ? p.accent : "session");
 	}
@@ -208,6 +211,14 @@ static int cmd_box_create(int argc, char **argv)
 		fprintf(stderr, "usage: kdos-box create <name> [key=value ...]\n");
 		return 2;
 	}
+	/*
+	 * As with `create`: this verb is a person at a prompt, and when the
+	 * container refuses to start, podman's own sentence is the diagnosis.
+	 * `kb_run` swallows a child's stderr by default, which is right for
+	 * the LAUNCH path and leaves `could not start <box>` as the only thing
+	 * anybody sees here.
+	 */
+	kb_proc_verbose = 1;
 	box = argv[0];
 	if (!name_ok(box))
 		kb_die("a box name is [A-Za-z0-9._-]");
@@ -222,6 +233,18 @@ static int cmd_box_create(int argc, char **argv)
 			kb_warn("unknown key in '%s'", argv[i]);
 	profile_save(&p);
 
+	/*
+	 * PODMAN'S OWN ERROR IS THE POINT OF THIS VERB. `kb_run` sends a
+	 * child's stderr to /dev/null unless kb_proc_verbose is set, which is
+	 * right for the launch path — a click must not spray container
+	 * plumbing at a desktop — and exactly wrong here: `kdos-box create` is
+	 * a person asking for a box once, and when podman refuses, its
+	 * sentence is the whole diagnosis. Four separate failures in this lane
+	 * presented as `exit 125` and nothing else because of this line.
+	 * `pack_box_ensure`, which is what a launch calls, is left quiet.
+	 */
+	kb_proc_verbose = 1;
+
 	if (!strncmp(p.base, "pack:", 5)) {
 		rc = pack_compose(box, p.base + 5, merged, sizeof(merged));
 		if (rc != 0) {
@@ -230,8 +253,33 @@ static int cmd_box_create(int argc, char **argv)
 			kb_die("%s", merged);
 		}
 		rc = pack_box_create(&p, merged);
-		if (rc != 0)
+		if (rc != 0) {
 			pack_decompose(box);
+			/*
+			 * A CREATE THAT FAILS MUST SAY SO. podman's own
+			 * diagnostic goes to stderr and there are runs where
+			 * it prints nothing at all — a bare exit 125 with a
+			 * profile left on disk reads as a box that exists and
+			 * will not start. The one cause this program can name
+			 * for itself is the live session: an overlay upper
+			 * cannot sit on overlayfs, which is what $HOME is on a
+			 * booted ISO, and it is the same reading `kdos doctor`
+			 * already reports. Anything else is podman's to
+			 * explain and this says which exit status it gave.
+			 */
+			struct statfs st;
+			const char *h = kb_home_dir();
+
+			if (statfs(h, &st) == 0 &&
+			    (unsigned long)st.f_type == 0x794c7630UL)
+				kb_warn("%s: $HOME is on overlayfs (a live "
+					"session), so a box's overlay upper "
+					"has nowhere to go — a persistent box "
+					"needs an installed system", box);
+			else
+				kb_warn("%s: podman could not create the box "
+					"(exit %d)", box, rc);
+		}
 	} else if (!strncmp(p.base, "image:", 6)) {
 		if (base_pull(p.base + 6) != 0)
 			kb_die("could not fetch %s", p.base + 6);
@@ -253,7 +301,8 @@ static int cmd_box_create(int argc, char **argv)
 		profile_save(&p);
 		return cmd_box_create(argc, argv);
 	} else {
-		rc = box_create(&p);
+		kb_die("%s: a box is made of something — base=pack:<id>, "
+		       "base=image:<ref> or base=box:<name>", box);
 	}
 	if (rc != 0)
 		return rc;

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = can-utils
+version     = 2025.01
+release     = 1
+source      = can-utils-2025.01.tar.gz::https://github.com/linux-can/can-utils/archive/refs/tags/v2025.01.tar.gz
+sha256      = 88b30feace372c4a61e6adb2534791c0cfba6123ebcca7f59bbb76580d4a6915  can-utils-2025.01.tar.gz
+description = candump, cansend, cangen and the rest of the SocketCAN command set
+homepage    = https://github.com/linux-can/can-utils
+depends     = cmake

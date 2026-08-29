@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-wheel
+version     = 0.48.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/w/${name#*-}/${name#*-}-$version.tar.gz
+sha256      = 94800765601e9171bf5d58d066e640662842bcedcbab982b2c90787a2c987322  python3-wheel-0.48.0.tar.gz
+sha256      = f03768c312a93b6713fe596687928ae13b9722ffe9f3857065470c70728f64c3  python3-wheel-vendor-0.48.0.tar.xz
+description = The reference implementation of the Python wheel format
+homepage    = https://github.com/pypa/wheel
+depends     = python3 python3-setuptools python3-pip
+vendoring   = python

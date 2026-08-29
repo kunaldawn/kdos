@@ -206,9 +206,11 @@ MODULES="overlay squashfs isofs cdrom sr_mod loop sd_mod ata_piix ahci libahci v
 # vfat, so the initramfs can read the boot state off the ESP.
 MODULES="$MODULES vfat nls_cp437 nls_iso8859-1"
 # Root filesystems the installer can create. ext4 and btrfs are built in and
-# copy_module is a no-op for them; xfs is CONFIG_XFS_FS=m, and an xfs root the
-# initramfs cannot mount installs perfectly and never boots again.
-MODULES="$MODULES xfs"
+# copy_module is a no-op for them; xfs and f2fs are CONFIG_*_FS=m, and a root
+# on either that the initramfs cannot mount installs perfectly and never boots
+# again. EVERY ROW OF ki_filesystems[] MUST APPEAR HERE — the installer's table
+# is what offers the choice and this is what makes the choice bootable.
+MODULES="$MODULES xfs f2fs"
 MODULES="$MODULES dm-crypt dm-mod aes_generic aes_x86_64 aesni-intel xts sha256_generic sha512_generic crypto_null algif_skcipher"
 
 for MOD in $MODULES; do

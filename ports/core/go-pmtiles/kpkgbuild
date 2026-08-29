@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = go-pmtiles
+version     = 1.31.2
+release     = 1
+source      = go-pmtiles-1.31.2.tar.gz::https://github.com/protomaps/go-pmtiles/archive/refs/tags/v1.31.2.tar.gz
+sha256      = 022386795fae441dd35927e4061daaed8cda7e21ba0a2e2253c8fd0d85bc482f  go-pmtiles-1.31.2.tar.gz
+sha256      = c6e0df86d3520b561d24c2b0c13ea8a39e1a8d4e941d652e36b313e3c3dd5db3  go-pmtiles-vendor-1.31.2.tar.xz
+description = Create, inspect and serve PMTiles archives — one file per map, locally
+homepage    = https://github.com/protomaps/go-pmtiles
+depends     = go
+vendoring   = go

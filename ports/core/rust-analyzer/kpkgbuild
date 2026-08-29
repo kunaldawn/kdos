@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rust-analyzer
+version     = 2026.08.24
+release     = 1
+_tag        = ${version//./-}
+source      = $name-$version.tar.gz::https://github.com/rust-lang/rust-analyzer/archive/refs/tags/$_tag.tar.gz
+sha256      = 1101498074f16eb032af2556d9e18855045f2b1a3dd042efb7fd08408c724c55  rust-analyzer-2026.08.24.tar.gz
+sha256      = 9d94f84c73a9a2115d845d7bb12cb0e6fe697492a2752b35392f8acf615e24ed  rust-analyzer-vendor-2026.08.24.tar.xz
+description = The Rust language server
+homepage    = https://rust-analyzer.github.io/
+depends     = rust
+vendoring   = rust

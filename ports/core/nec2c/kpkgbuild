@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = nec2c
+version     = 1.3.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/KJ7LNW/nec2c/archive/refs/tags/v$version.tar.gz
+sha256      = 73cb820c2d00abb97e5d43819a12ebc49729df639557e911fb65df0c094d9231  nec2c-1.3.3.tar.gz
+description = NEC-2 antenna simulation from a card deck
+homepage    = https://github.com/KJ7LNW/nec2c
+depends     = autoconf automake

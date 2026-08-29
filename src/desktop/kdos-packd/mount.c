@@ -215,7 +215,20 @@ int kd_mount(int idx, char *msg, size_t n)
 		}
 		ksig_ring_load(&ring, KD_KEYS);
 		sig = kpk_verify(&chk, &ring, who);
-		if (sig == KPK_SIG_HASH || sig == KPK_SIG_BAD) {
+		/*
+		 * KPK_SIG_NOKEY is refused with the other two, which keeps
+		 * what this daemon PERMITS exactly as it was: before the state
+		 * existed an empty ring answered KPK_SIG_BAD and landed here.
+		 * Only the sentence changed, and the sentence was the defect —
+		 * "bad signature" sends a reader to inspect the pack when the
+		 * missing thing is the key. Note the asymmetry it leaves
+		 * standing: KPK_SIG_NONE mounts, so a pack that is signed and
+		 * uncheckable is treated more harshly than the same pack with
+		 * no block at all. Loosening that is a policy decision about
+		 * what unattributed means, not a bug fix.
+		 */
+		if (sig == KPK_SIG_HASH || sig == KPK_SIG_BAD ||
+		    sig == KPK_SIG_NOKEY) {
 			snprintf(msg, n, "%s: %s", p->meta.id,
 				 kpk_sig_state_name(sig));
 			return -1;

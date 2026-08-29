@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = yara
+version     = 4.5.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/VirusTotal/yara/archive/refs/tags/v$version.tar.gz
+sha256      = c322414975ff6f701149856613afdcd92a7e6939c284c798ae3c85618197efaa  yara-4.5.8.tar.gz
+description = Rule-based artefact classification — rules you can read
+homepage    = https://virustotal.github.io/yara/
+depends     = autoconf automake libtool pkgconf openssl

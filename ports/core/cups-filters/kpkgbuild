@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cups-filters
+version     = 1.28.17
+release     = 1
+source      = https://github.com/OpenPrinting/$name/releases/download/$version/$name-$version.tar.xz
+sha256      = 270a3752a960368aa99d431fb5d34f4039b2ac943c576d840612d1d8185c9bb9  cups-filters-1.28.17.tar.xz
+description = The filters CUPS needs to turn a job into something a printer prints
+homepage    = https://github.com/OpenPrinting/cups-filters
+depends     = cups poppler qpdf ghostscript fontconfig freetype2 lcms2 libjpeg-turbo libpng libtiff glib dbus pkgconf

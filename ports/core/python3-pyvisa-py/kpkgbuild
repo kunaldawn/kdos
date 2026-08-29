@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyvisa-py
+version     = 0.8.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pyvisa-py/pyvisa_py-$version.tar.gz
+sha256      = cfadb9faeb9499e53ce52d9d7f1558e6663e78f7f0431c775aa49ce925e08917  python3-pyvisa-py-0.8.0.tar.gz
+description = The pure-python VISA backend — USBTMC, TCPIP and serial with no vendor library
+homepage    = https://pyvisa.readthedocs.io/projects/pyvisa-py/
+depends     = python3 python3-setuptools python3-pip python3-setuptools-scm python3-pyvisa python3-pyserial

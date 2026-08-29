@@ -5,8 +5,8 @@
 | Hardware                                   Session                                    Input                                      |
 | screens, net, sound                        idle, lock and power                       keyboard and pointer                       |
 |                                                                                                                                  |
-| Apps                                                                                                                             |
-| which app opens what                                                                                                             |
+| Apps                                       Boxes                                                                                 |
+| which app opens what                       environments and packs                                                                |
 |                                                                                                                                  |
 |                                                                                                                                  |
 |                                                                                                                                  |

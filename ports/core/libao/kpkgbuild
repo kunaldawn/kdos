@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libao
+version     = 1.2.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/xiph/libao/archive/refs/tags/$version.tar.gz
+sha256      = df8a6d0e238feeccb26a783e778716fb41a801536fe7b6fce068e313c0e2bf4d  libao-1.2.2.tar.gz
+description = One audio output API over ALSA, so ogg123 and friends need no backend each
+homepage    = https://xiph.org/ao/
+depends     = alsa-lib autoconf automake libtool

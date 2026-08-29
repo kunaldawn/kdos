@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mpd
+version     = 0.24.14
+release     = 1
+source      = https://www.musicpd.org/download/$name/0.24/$name-$version.tar.xz
+sha256      = 367e85debb4427605cccb5415f2858ebb401d849a80615553f59520f4640811e  mpd-0.24.14.tar.xz
+description = A music daemon your player is only a client of
+homepage    = https://www.musicpd.org/
+depends     = meson ninja pkgconf ffmpeg alsa-lib pipewire libsndfile flac libvorbis opus sqlite icu boost fmt

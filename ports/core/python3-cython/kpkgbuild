@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-cython
+version     = 3.3.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/a9/d8/4981ef716ad0e3ff0d3ef383aefc6b03c4a88dee33b272bf8e0d833001ca/cython-3.3.0.tar.gz
+sha256      = eed0d93fbca7087f143b42c34b05a825849bdf17f101572c2105acfa49aa88b8  python3-cython-3.3.0.tar.gz
+description = The C extension compiler numpy is written against
+homepage    = https://pypi.org/project/Cython/
+depends     = python3 python3-setuptools python3-pip

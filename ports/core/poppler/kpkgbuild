@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = poppler
+version     = 26.08.0
+release     = 1
+source      = https://poppler.freedesktop.org/$name-$version.tar.xz
+sha256      = dc906e68cea698109706ac6aa3d2c9d4512fcfcac42d90b8afcda486d1b9abd0  poppler-26.08.0.tar.xz
+description = PDF rendering library, and the pdftotext every indexer shells out to
+homepage    = https://poppler.freedesktop.org/
+depends     = cmake ninja pkgconf freetype2 fontconfig libjpeg-turbo libpng openjpeg lcms2 zlib libtiff

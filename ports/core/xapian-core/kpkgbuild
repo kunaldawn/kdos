@@ -15,4 +15,4 @@ source      = https://oligarchy.co.uk/xapian/$version/$name-$version.tar.xz
 sha256      = 8e1259586d342e3d12b5e1f772e9185a10f2ba16e541566b5c3c239f71b8aacc  xapian-core-2.1.0.tar.xz
 description = The search engine library recoll indexes into
 homepage    = https://xapian.org/
-depends     = zlib
+depends     = zlib sed

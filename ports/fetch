@@ -160,7 +160,7 @@ fetch_port() {
     # Ask kpkg for the metadata; it prints shell assignments. $KPKG's own
     # basename is literally "kpkg", so this resolves through kdos-kpkg's
     # PRIMARY dispatch (argv[0] -> front_main), not its argv[1] fallback.
-    unset name version release source sha256 vendoring pypackages
+    unset name version release source sha256 vendoring pypackages vendordir pyrequirements pyruntime
     local meta
     meta=$("$KPKG" meta . 2>/dev/null) || {
         echo "⚠  $portname: Failed to read kpkgbuild"
@@ -341,8 +341,13 @@ fetch_port() {
                 return 1
             }
 
-            # Vendor dependencies
-            pushd "$tmp_dir" >/dev/null
+            # A CARGO PROJECT IS NOT ALWAYS AT THE TARBALL ROOT. lnav ships
+            # its Rust extension as src/third-party/lnav-rs-ext with its own
+            # Cargo.toml; `cargo vendor` at the root finds no manifest at all.
+            # `vendordir =` is an ordinary recipe helper — kpkgbuild treats
+            # any unknown key as one — so build.sh reads the same value with
+            # no parser change, exactly as the Go branch already does.
+            pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
             mkdir -p .cargo
             cargo vendor > .cargo/config.toml || {
                 echo "✗  $portname: cargo vendor failed"
@@ -350,6 +355,23 @@ fetch_port() {
                 rm -rf "$tmp_dir"
                 return 1
             }
+
+            # A VENDORED bindgen IS A BUILD THAT dlopens libclang, AND A
+            # STATIC-MUSL RUST BINARY CANNOT dlopen ANYTHING. The failure
+            # arrives from inside bindgen rather than from the linker —
+            # "Unable to find libclang: ... Dynamic loading not supported" —
+            # so it reads as a missing library on a machine where libclang is
+            # right there, and it costs a full rebuild to find. The two lines
+            # that fix it are in CLAUDE.md's recurring-fixes table; this says
+            # so HERE, where the vendor tree is unpacked and the answer is one
+            # `test -d` rather than a decompression of somebody's bundle.
+            if [ -d vendor/bindgen ] &&
+               ! grep -q 'crt-static' "$portdir/build.sh" 2>/dev/null; then
+                echo "⚠  $portname: vendors bindgen, and build.sh does not set"
+                echo "   RUSTFLAGS=-C target-feature=-crt-static — the build"
+                echo "   will fail inside bindgen with 'Dynamic loading not"
+                echo "   supported'. Add that and LIBCLANG_PATH=/usr/lib."
+            fi
 
             # Create vendor tarball
             if [ -f Cargo.lock ]; then
@@ -407,13 +429,21 @@ fetch_port() {
                 return 1
             }
 
-            pushd "$tmp_dir" >/dev/null
+            # A GO MODULE IS NOT ALWAYS AT THE TARBALL ROOT. golang.org/x/tools
+            # tags a gopls release and ships gopls as a SUBDIRECTORY with its
+            # own go.mod; vendoring at the root would either fail outright or
+            # — worse — vendor the PARENT module, producing a bundle that
+            # builds something else. `vendordir =` in the recipe is an
+            # ordinary recipe helper (kpkgbuild treats any unknown key as
+            # one), so build.sh reads the same value with no parser change.
+            pushd "$tmp_dir${vendordir:+/$vendordir}" >/dev/null
             go mod vendor || {
                 echo "✗  $portname: go mod vendor failed"
                 popd >/dev/null
                 rm -rf "$tmp_dir"
                 return 1
             }
+
             vendor_tar "$portdir/$vendor_file" vendor || {
                 echo "✗  $portname: Failed to create $vendor_file"
                 popd >/dev/null
@@ -554,25 +584,55 @@ fetch_port() {
                     req=$(echo "$pkg" | sed 's/:/==/g' | sed 's/=/==/g' | sed 's/====/==/g')
                     reqs="$reqs $req"
                 done
-                pip3 download --no-binary :all: --dest vendor $reqs || {
+                # --no-deps, BECAUSE `pypackages` IS THE CLOSURE. The recipe
+                # names exactly what it wants vendored; letting pip resolve
+                # from there drags in every dependency that is ALREADY A PORT
+                # and then builds each one's metadata to find that out — which
+                # means this image would need the development headers of every
+                # library any of them binds. ocrmypdf is the case: nine pure
+                # python packages, and resolving them reached cffi, then
+                # cryptography, then lxml, each failing on a missing header for
+                # a package the target builds from its own port.
+                pip3 download --no-binary :all: --no-deps --dest vendor $reqs || {
                     echo "✗  $portname: pypackages download failed"
                     popd >/dev/null
                     rm -rf "$tmp_dir"
                     return 1
                 }
             elif [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
-                echo "   Downloading runtime dependencies (source only)..."
-                pip3 download --no-binary :all: --dest vendor . || {
-                    echo "✗  $portname: runtime dependency download failed"
-                    popd >/dev/null
-                    rm -rf "$tmp_dir"
-                    return 1
-                }
+                # A RUNTIME DEPENDENCY THAT IS ITSELF A PORT MUST NOT BE
+                # VENDORED. Every recipe here installs `--no-deps`, so the
+                # runtime set in this bundle is never used — and downloading it
+                # anyway means pip resolving those packages' own build chains.
+                # skyfield's `numpy` is the case: a port, and its sdist reaches
+                # the PyPI `ninja` wrapper whose build compiles CMake from
+                # source. `pyruntime = no` says the runtime set is satisfied by
+                # ports, leaving only what the BUILD needs.
+                if [ "${pyruntime:-yes}" = "no" ]; then
+                    echo "   'pyruntime = no' — runtime deps are ports, downloading build deps only"
+                else
+                    echo "   Downloading runtime dependencies (source only)..."
+                    pip3 download --no-binary :all: --dest vendor . || {
+                        echo "✗  $portname: runtime dependency download failed"
+                        popd >/dev/null
+                        rm -rf "$tmp_dir"
+                        return 1
+                    }
+                fi
             fi
             
-            if [ -f "requirements.txt" ]; then
+            # A requirements.txt IS NOT A DECLARED DEPENDENCY SET. The name is a
+            # convention with no defined meaning, and projects routinely use it
+            # for the OPTIONAL set: visidata's lists pandas and, through it,
+            # scipy — thirty megabytes and a Fortran compiler, for a terminal
+            # spreadsheet whose install_requires is python-dateutil alone.
+            # `pyrequirements = no` in a recipe says the file is not the list,
+            # and the sdist's own metadata is then what is vendored.
+            if [ -f "requirements.txt" ] && [ "${pyrequirements:-yes}" != "no" ]; then
                 echo "   Found requirements.txt, downloading dependencies..."
                 pip3 download --no-binary :all: --dest vendor -r requirements.txt || echo "⚠  requirements.txt dependency download failed"
+            elif [ -f "requirements.txt" ]; then
+                echo "   requirements.txt present but 'pyrequirements = no' — using the sdist metadata"
             fi
 
             # Check main package build dependencies
@@ -646,6 +706,19 @@ fetch_port() {
                 echo "   Fetched new build dependencies (total: $final_count)..."
             done
             rm processed.txt
+
+            # AN EMPTY VENDOR DIRECTORY IS A FAILED FETCH, NOT A SMALL ONE.
+            # Every pip step above reports its own failure and carries on, so a
+            # requirements.txt that could not be downloaded leaves nothing here
+            # and the bundle is written anyway — a recipe that then builds
+            # `--no-index --find-links=vendor` fails on the target instead,
+            # naming whichever dependency pip asked for first.
+            if [ -z "$(ls -A vendor 2>/dev/null)" ]; then
+                echo "✗  $portname: vendor/ is empty — nothing was downloaded"
+                popd >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            fi
 
             vendor_tar "$portdir/$vendor_file" vendor || {
                 echo "✗  $portname: Failed to create $vendor_file"

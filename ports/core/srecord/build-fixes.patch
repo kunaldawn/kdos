@@ -1,0 +1,27 @@
+--- a/etc/configure.cmake
++++ b/etc/configure.cmake
+@@ -104,7 +104,12 @@
+ option(__EXTENSIONS__ ON)
+ 
+ # Doxygen configuration
+-find_package(Doxygen REQUIRED doxygen dot)
++#
++# NO `dot` COMPONENT. That is graphviz, and it is REQUIRED here purely to draw
++# call and collaboration graphs into API documentation that is installed under
++# the `website` component and never packaged. Asking for it makes a whole
++# graph-drawing toolchain a hard build dependency of a file-format converter.
++find_package(Doxygen REQUIRED doxygen)
+ 
+ set(DOXYGEN_DOT_GRAPH_MAX_NODES 150)
+ set(DOXYGEN_ALPHABETICAL_INDEX NO)
+--- a/srecord/input/file/hp64k.h
++++ b/srecord/input/file/hp64k.h
+@@ -20,6 +20,8 @@
+ #ifndef LIB_INPUT_FILE_HP64K
+ #define LIB_INPUT_FILE_HP64K
+ 
++#include <cstdint>
++
+ #include <srecord/input/file.h>
+ 
+ namespace srecord {

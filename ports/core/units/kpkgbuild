@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = units
+version     = 2.24
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.gz
+sha256      = 1e502c4edfacf20b29284716c72e5ddb51a495a2365d7b03e7960494c4a0c902  units-2.24.tar.gz
+description = A 3000-entry unit conversion database that is itself a reference document
+homepage    = https://www.gnu.org/software/units/
+depends     = readline

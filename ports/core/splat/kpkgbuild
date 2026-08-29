@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = splat
+version     = 1.4.2
+release     = 1
+source      = https://www.qsl.net/kd2bd/$name-$version.tar.bz2
+sha256      = 39b0b314e2e927bdf00d1eda4b9865efd128ba850305f987aec049c4fd58a29c  splat-1.4.2.tar.bz2
+description = Terrain-aware VHF/UHF path loss and coverage over Longley-Rice
+homepage    = https://www.qsl.net/kd2bd/splat.html
+depends     = zlib bzip2

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hyperfine
+version     = 1.20.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/sharkdp/hyperfine/archive/refs/tags/v$version.tar.gz
+sha256      = f90c3b096af568438be7da52336784635a962c9822f10f98e5ad11ae8c7f5c64  hyperfine-1.20.0.tar.gz
+sha256      = b8a66105491613a628e80184d0c61c8f0c2bd1508df773990506bc54e963729d  hyperfine-vendor-1.20.0.tar.xz
+description = Statistical command-line benchmarking with warmup and outliers
+homepage    = https://github.com/sharkdp/hyperfine
+depends     = rust
+vendoring   = rust

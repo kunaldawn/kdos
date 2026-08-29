@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = duckdb
+version     = 1.5.5
+release     = 1
+source      = duckdb-1.5.5.tar.gz::https://github.com/duckdb/duckdb/archive/refs/tags/v1.5.5.tar.gz
+sha256      = f33155ff962e6e1e08fd1e9caffa487d4325aa60999e2eabc76feff534d6558b  duckdb-1.5.5.tar.gz
+description = SQL directly over CSV, JSON and Parquet — larger than RAM, and no server
+homepage    = https://duckdb.org/
+depends     = cmake ninja

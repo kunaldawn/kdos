@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libax25
+version     = 1.2.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ve7fet/linuxax25/archive/refs/tags/libax25-$version.tar.gz
+sha256      = 019a6e6d938b7613ed0adbb6a41f28661908ddb50b9004806b351dce372d747e  libax25-1.2.2.tar.gz
+description = The AX.25 socket library the tools and apps link against
+homepage    = https://github.com/ve7fet/linuxax25
+depends     = autoconf automake libtool

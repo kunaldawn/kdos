@@ -904,11 +904,11 @@ static void draw_toasts(void)
 				int lw = ktui_utf8_width(lab);
 				if (x + lw + 2 > w - 2)
 					break;
-				ktui_draw_text(x, ry, 1, "[", KT_DIM, KT_BG,
+				ktui_draw_text(x, ry, 1, "[", KT_MID, KT_BG,
 					       KT_A_NONE);
 				ktui_draw_text(x + 1, ry, lw, lab, KT_SURFACE,
 					       accent, KT_A_NONE);
-				ktui_draw_text(x + 1 + lw, ry, 1, "]", KT_DIM,
+				ktui_draw_text(x + 1 + lw, ry, 1, "]", KT_MID,
 					       KT_BG, KT_A_NONE);
 				act_hit[i].x[a] = x;
 				act_hit[i].end[a] = x + lw + 2;
@@ -1002,7 +1002,7 @@ int notifyd_main(int argc, char **argv)
 	 * job and the history is the extra, and a session with no
 	 * XDG_RUNTIME_DIR should still get its notifications drawn.
 	 */
-	char spath[256];
+	char spath[SH_SOCK_MAX];
 	int srv = -1;
 	if (notify_sock_path(spath, sizeof(spath)) == 0) {
 		srv = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);

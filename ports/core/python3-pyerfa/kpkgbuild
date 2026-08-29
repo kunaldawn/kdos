@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyerfa
+version     = 2.0.1.5
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pyerfa/pyerfa-$version.tar.gz
+sha256      = 17d6b24fe4846c65d5e7d8c362dcb08199dc63b30a236aedd73875cc83e1f6c0  python3-pyerfa-2.0.1.5.tar.gz
+description = The python binding for ERFA — fundamental astronomy, and astropy's floor
+homepage    = https://github.com/liberfa/pyerfa
+depends     = python3 python3-setuptools python3-pip python3-setuptools-scm numpy erfa

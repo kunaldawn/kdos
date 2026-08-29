@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = timewarrior
+version     = 1.10.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/GothenburgBitFactory/timewarrior/releases/download/v$version/timew-$version.tar.gz
+sha256      = a9c9966cfd9fed6c4d4895dc2de530902e736608f4033799af4fe06edf0dd438  timewarrior-1.10.0.tar.gz
+description = Where the time actually went, in a text file
+homepage    = https://timewarrior.net/
+depends     = cmake ninja python3

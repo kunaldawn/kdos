@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = astropy
+version     = 8.0.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/a/$name/$name-$version.tar.gz
+sha256      = 45ca31d5b91fa294cd590a4791a32db94de7f9c8a343155f4d5877baa82351da  astropy-8.0.1.tar.gz
+description = Coordinates, times, FITS, WCS and cosmology
+homepage    = https://www.astropy.org/
+depends     = python3 python3-setuptools python3-pip python3-setuptools-scm python3-cython python3-extension-helpers numpy python3-pyerfa python3-packaging erfa wcslib cfitsio

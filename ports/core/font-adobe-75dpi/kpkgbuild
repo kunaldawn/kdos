@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = font-adobe-75dpi
+version     = 1.0.4
+release     = 1
+_repo       = adobe-75dpi
+source      = https://gitlab.freedesktop.org/xorg/font/$_repo/-/archive/$name-$version/$_repo-$name-$version.tar.gz
+sha256      = ee9421f62ecab3ad21bb04c28a01ad35c66c2de20565d959de83ea8f3ab41523  font-adobe-75dpi-1.0.4.tar.gz
+description = X.org core bitmap fonts, served by Xwayland to its X11 clients
+homepage    = https://gitlab.freedesktop.org/xorg/font
+depends     = util-macros bdftopcf font-util mkfontscale encodings

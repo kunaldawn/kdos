@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = direwolf
+version     = 1.8.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/wb2osz/direwolf/archive/refs/tags/$version.tar.gz
+sha256      = 89d5f7992ae1e74d8cf26ec6479dde74d1f480bde950043756e875a689d065d7  direwolf-1.8.1.tar.gz
+description = A soundcard TNC — AX.25, APRS and KISS from a cable instead of a $200 box
+homepage    = https://github.com/wb2osz/direwolf
+depends     = cmake alsa-lib hamlib eudev gpsd

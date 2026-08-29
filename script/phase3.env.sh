@@ -22,6 +22,15 @@ export CHROOT=1
 
 export LD_LIBRARY_PATH="/usr/lib:/usr/local/lib:/usr/lib64:/usr/local/lib64"${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 export PKG_CONFIG_PATH="/usr/local/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig:/usr/lib64/pkgconfig"${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+# THE COMPILER IS NAMED, NOT DISCOVERED. autoconf's AC_PROG_CC walks a
+# preference list, and some of them put clang FIRST — potrace's does. clang is
+# a port now, so the moment it is installed those recipes silently change
+# toolchain, and the failure is `C compiler cannot create executables` from a
+# configure that had a working gcc in $PATH the whole time. A distro that
+# builds itself cannot have its toolchain depend on which ports are installed.
+export CC=gcc
+export CXX=g++
+
 export CFLAGS="-O2 -pipe -std=gnu11 -fPIC"
 export CXXFLAGS="-O2 -pipe -fPIC"
 export LDFLAGS=""

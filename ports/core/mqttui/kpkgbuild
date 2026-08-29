@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mqttui
+version     = 0.24.0
+release     = 1
+source      = mqttui-0.24.0.tar.gz::https://github.com/EdJoPaTo/mqttui/archive/refs/tags/v0.24.0.tar.gz
+sha256      = 287de6901f43bf1d879be25acffb02f7601e023afc90b11c8e0504e757a6589f  mqttui-0.24.0.tar.gz
+sha256      = f9f4c693a8b772fb5f0ed35cf1df115d979979fe7f7d82598797a2ae0887e28d  mqttui-vendor-0.24.0.tar.xz
+description = Subscribe to an MQTT broker and watch the topic tree, in the terminal
+homepage    = https://github.com/EdJoPaTo/mqttui
+depends     = rust openssl
+vendoring   = rust

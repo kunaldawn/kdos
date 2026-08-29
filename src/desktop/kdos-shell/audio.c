@@ -988,19 +988,19 @@ static void au_draw_outputs(struct au_ui *u, int y0, int rows, int w)
 					     d->muted ? KT_DIM : KT_ACCENT,
 					     KT_SURFACE, KT_A_NONE);
 		} else if (d->card < 0) {
-			ktui_draw_text_right(0, y, w - 2, "[pipewire]", KT_DIM,
+			ktui_draw_text_right(0, y, w - 2, "[pipewire]", KT_MID,
 					     KT_SURFACE, KT_A_NONE);
 		}
 	}
 	if (!au_ndev)
-		ktui_draw_text(4, y0, w - 6, "no playback device", KT_DIM,
+		ktui_draw_text(4, y0, w - 6, "no playback device", KT_MID,
 			       KT_SURFACE, KT_A_NONE);
 }
 
 static void au_draw_bt(struct au_ui *u, int y0, int rows, int w)
 {
 	if (au_bt_why[0]) {
-		ktui_draw_text(4, y0, w - 6, au_bt_why, KT_DIM, KT_SURFACE,
+		ktui_draw_text(4, y0, w - 6, au_bt_why, KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 		return;
 	}
@@ -1008,7 +1008,7 @@ static void au_draw_bt(struct au_ui *u, int y0, int rows, int w)
 		ktui_draw_text(4, y0, w - 6,
 			       au_bt_discovering ? "scanning"
 						 : "no devices - press s to scan",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 		return;
 	}
 
@@ -1041,7 +1041,7 @@ static void au_draw_bt(struct au_ui *u, int y0, int rows, int w)
 			       on ? KT_TEXT : KT_MID, KT_SURFACE, KT_A_NONE);
 		if (show_addr)
 			ktui_draw_text_right(0, y, w - 2 - status_w, d->addr,
-					     KT_DIM, KT_SURFACE, KT_A_NONE);
+					     KT_MID, KT_SURFACE, KT_A_NONE);
 		ktui_draw_text_right(0, y, w - 2,
 				     d->connected ? "connected"
 				     : d->paired  ? "paired"

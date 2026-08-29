@@ -337,7 +337,7 @@ Batteries, Energy — plus a detail page per subject. It exists beside `btop`
 rather than instead of it, because what it has that no other monitor on this
 machine has is **identity**: every fat application here is its own container, so
 a process table shows forty rows of `Web Content` and answers nobody's question.
-A conmon walk turns a pid into `firefox-esr (appbox kdos-apps)`, and the
+A conmon walk turns a pid into `firefox-esr (appbox app.firefox-esr)`, and the
 Applications page is that rollup.
 
 **One renderer, three faces.** The same page, layout and numbers on tty1, in a
@@ -369,7 +369,7 @@ same defect was sitting in `kdos-settings` and `kdos-teams`.
 on the full-screen page for one subject, not on a table row — a key that ended a
 process from a table is a key pressed while the cursor happens to be somewhere.
 The confirm modal names what will happen (*"End all Firefox — 41 processes in
-appbox kdos-apps"*) with Cancel preselected; a renice is not confirmed, because
+appbox app.firefox-esr"*) with Cancel preselected; a renice is not confirmed, because
 it is reversible and a dialog on every nudge teaches people to click through the
 one that matters. `kdos-resctl` is the second setuid binary KDOS ships and the
 whole of its security argument is that there is nothing to aim: three verbs, no
@@ -500,8 +500,8 @@ boxed apps that need one most.
 
 ```
 7 frames dropped on eDP-1 (133 ms) — the busiest just then:
-  calibre-idx (appbox kdos-apps)  waiting on the disk
-  calibre     (appbox kdos-apps)  92% of a core
+  calibre-idx (appbox app.firefox-esr)  waiting on the disk
+  calibre     (appbox app.firefox-esr)  92% of a core
 ```
 
 `kdos stutter` joins three sources that are each useless alone: the compositor's
@@ -695,11 +695,6 @@ Every sandbox profile key maps 1:1 onto a container namespace flag — `network`
 does not offer confinement it cannot enforce.** Profiles apply at creation time,
 because namespaces cannot be re-flagged on a live container, and the tool says so
 instead of silently doing nothing.
-
-> The committed image is one bake behind its own `Containerfile`: the KDE
-> application segment and the Qt platform-theme labels were added after it was
-> packed, so the shipped box has 91 apps and takes the GTK theming route. That
-> is a re-bake (`make fetch-apps`, needs network), not a config bug.
 
 ---
 
@@ -957,7 +952,7 @@ no cryptsetup — after the point of no return is the wrong place to discover it
 
 ```sh
 make fetch        # every upstream tarball + vendor bundle (LFS)
-make fetch-apps   # bake the Debian app image (needs network; only when it changes)
+make fetch-packs  # bake the application packs (needs network; only when they change)
 make build        # cross toolchain → userland → desktop → kernel → ISO
 make run          # boot the ISO in QEMU
 ```

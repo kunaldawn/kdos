@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libgpiod
+version     = 2.3.1
+release     = 1
+source      = https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git/snapshot/$name-$version.tar.gz
+sha256      = 2e33d17f74cefadf85825f601829a68156f669348071be8470dcd700029a14af  libgpiod-2.3.1.tar.gz
+description = The chardev GPIO ABI — gpioset, gpioget and gpiomon
+homepage    = https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git/
+depends     = meson pkgconf

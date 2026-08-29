@@ -1,0 +1,24 @@
++-  Open with  ----------------------------------------------------------------+
+| .ting/fixtures/openwith/files/roll.tar.gz   *   application/x-compressed-tar |
+|------------------------------------------------------------------------------|
+| Other command...                                                             |
+| nothing on this machine claims this type                                     |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+| [ ] Always use this application                                              |
+| Enter open   d default   Esc cancel                      [ Cancel ] [ Open ] |
++------------------------------------------------------------------------------+

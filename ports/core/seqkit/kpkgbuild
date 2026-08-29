@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = seqkit
+version     = 2.13.0
+release     = 1
+source      = seqkit-2.13.0.tar.gz::https://github.com/shenwei356/seqkit/archive/refs/tags/v2.13.0.tar.gz
+sha256      = 55405cc338962f770279d718c1dabec293a51dde4989c0c2590da3c303105471  seqkit-2.13.0.tar.gz
+sha256      = e438f3a72e35b30f37daabfefd91f699de1c1c4802f5a637683582472824eb5d  seqkit-vendor-2.13.0.tar.xz
+description = FASTA/FASTQ manipulation at speed — the one tool a sequence pipeline starts with
+homepage    = https://bioinf.shenwei.me/seqkit/
+depends     = go
+vendoring   = go

@@ -460,8 +460,6 @@ static int nboxes;
 static int box_mode = BOX_LIST;
 static char box_cur[64];
 
-static const char *const BASES[] = { "pack:base", "image:debian:trixie",
-				     "box:kdos-apps" };
 static const char *const PERSISTS[] = { "persistent", "ephemeral", "frozen" };
 static const char *const NETS[] = { "host", "private", "none" };
 static const char *const SHARED[] = { "shared", "private" };
@@ -1412,7 +1410,7 @@ static void draw_home(void)
 	 * ◀ ▶ — so a literal `↑↓←→` here came out as `????` in the golden
 	 * frame and would come out as four blanks on tty1. */
 	ktui_draw_text(2, h - 3, w - 4,
-		       "Enter opens a page   arrows move   Esc closes", KT_DIM,
+		       "Enter opens a page   arrows move   Esc closes", KT_MID,
 		       KT_SURFACE, KT_A_NONE);
 	ktui_draw_text(2, h - 2, w - 4, CAT_TILE[home_sel].blurb, KT_MID,
 		       KT_SURFACE, KT_A_NONE);
@@ -1464,7 +1462,7 @@ static void draw_page(void)
 				ktui_draw_text(fx, y, fw,
 					       "no default handlers are "
 					       "recorded yet",
-					       KT_DIM, KT_SURFACE, KT_A_NONE);
+					       KT_MID, KT_SURFACE, KT_A_NONE);
 				break;
 			}
 			ktui_draw_text(fx, y, fw / 2, apps[idx].mime, fg, bg,
@@ -1597,13 +1595,13 @@ static void draw_page(void)
 		ktui_draw_text(2, h - 3, w - 4,
 			       "Enter opens the chooser for this type — it "
 			       "writes the default itself",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 	} else if (cat == CAT_BOXES && box_mode == BOX_LIST) {
 		ktui_draw_text(2, h - 3, w - 4,
 			       sel == 0 ? "Enter describes a new box; nothing "
 					  "is created until you apply"
 					: "Enter opens this box's profile",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 	} else if (cat == CAT_BOXES) {
 		/* `sel_row` and not `boxrows[sel]`: it is the one place that
 		 * knows `name` is fixed once the box exists, and a help line
@@ -1629,16 +1627,16 @@ static void draw_page(void)
 			ktui_draw_text(2, h - 3, w - 4,
 				       "a box is renamed by creating another "
 				       "one — kdos-box has no verb for it",
-				       KT_DIM, KT_SURFACE, KT_A_NONE);
+				       KT_MID, KT_SURFACE, KT_A_NONE);
 		else
 			ktui_draw_text(2, h - 3, w - 4,
-				       r && r->help ? r->help : "", KT_DIM,
+				       r && r->help ? r->help : "", KT_MID,
 				       KT_SURFACE, KT_A_NONE);
 	} else {
 		int ri = cat_row(sel);
 		ktui_draw_text(2, h - 3, w - 4,
 			       ri >= 0 && rows[ri].help ? rows[ri].help : "",
-			       KT_DIM, KT_SURFACE, KT_A_NONE);
+			       KT_MID, KT_SURFACE, KT_A_NONE);
 	}
 
 	int pending = dirty_count(ST_COMP) + dirty_count(ST_THEME);
@@ -1664,7 +1662,7 @@ static void draw_page(void)
 		snprintf(hint, sizeof(hint),
 			 "%s%s change   Enter edit   a apply   Esc close",
 			 ktui_glyph[KT_G_LEFT], ktui_glyph[KT_G_RIGHT]);
-	ktui_draw_text(2, h - 2, w - 16, hint, KT_DIM, KT_SURFACE, KT_A_NONE);
+	ktui_draw_text(2, h - 2, w - 16, hint, KT_MID, KT_SURFACE, KT_A_NONE);
 
 	/* One button, and it is the one irreversible thing on the screen. */
 	char blabel[24];
@@ -1680,12 +1678,12 @@ static void draw_page(void)
 	btn_end = btn_x + bw;
 	btn_row = h - 2;
 	if (btn_x > 24) {
-		ktui_draw_text(btn_x, btn_row, 1, "[", KT_DIM, KT_SURFACE,
+		ktui_draw_text(btn_x, btn_row, 1, "[", KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 		ktui_draw_text(btn_x + 1, btn_row, bw - 2, blabel,
 			       pending ? KT_SURFACE : KT_DIM,
 			       pending ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
-		ktui_draw_text(btn_end - 1, btn_row, 1, "]", KT_DIM, KT_SURFACE,
+		ktui_draw_text(btn_end - 1, btn_row, 1, "]", KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 	} else {
 		btn_x = btn_end = 0;

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-mpmath
+version     = 1.4.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/c5/b0/6de8e78014ff1842a90cc9a56da6ccfb598a5390ed0257fcdb7d9680c18b/mpmath-1.4.1.tar.gz
+sha256      = efd6d1b75f09d69524a67609949812668b28e81ecbfe0ab449ced8c13e92642e  python3-mpmath-1.4.1.tar.gz
+sha256      = 43c2591ecd06e745e9a13f877282be5c81b75df8cfcf0327f0ceb0e7bc7c59bc  python3-mpmath-vendor-1.4.1.tar.xz
+description = Arbitrary-precision floating point — sympy computes numerically through it
+homepage    = https://pypi.org/project/mpmath/
+depends     = python3 python3-setuptools python3-pip
+vendoring   = python

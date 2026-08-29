@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = symbiyosys
+version     = 0.47
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/YosysHQ/sby/archive/refs/tags/yosys-$version.tar.gz
+sha256      = 3e4512983d674742fcaf3df84ff205b634c4edbf6a72afe28969e484d7215ca6  symbiyosys-0.47.tar.gz
+description = Formal property verification over yosys — sby, and the solvers behind it
+homepage    = https://github.com/YosysHQ/sby
+depends     = python3 yosys yices2

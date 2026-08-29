@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = bcftools
+version     = 1.24
+release     = 1
+source      = https://github.com/samtools/bcftools/releases/download/$version/$name-$version.tar.bz2
+sha256      = 8caddc22610ee2851666047c859bb91da0c1e32d0c2ec553db6f153ad130e46f  bcftools-1.24.tar.bz2
+description = Call and filter variants
+homepage    = https://www.htslib.org/
+depends     = pkgconf htslib zlib gsl

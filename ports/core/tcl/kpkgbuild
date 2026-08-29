@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tcl
+version     = 9.0.3
+release     = 1
+source      = $name-$version.tar.gz::https://downloads.sourceforge.net/tcl/tcl$version-src.tar.gz
+sha256      = 2537ba0c86112c8c953f7c09d33f134dd45c0fb3a71f2d7f7691fd301d2c33a6  tcl-9.0.3.tar.gz
+description = The scripting engine yosys embeds for its own command language
+homepage    = https://www.tcl.tk/
+depends     = zlib libtommath

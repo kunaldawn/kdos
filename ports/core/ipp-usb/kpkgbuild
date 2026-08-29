@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ipp-usb
+version     = 0.9.34
+release     = 1
+source      = ipp-usb-0.9.34.tar.gz::https://github.com/OpenPrinting/ipp-usb/archive/refs/tags/0.9.34.tar.gz
+sha256      = 4f0ada8593fda3f4239a50fcf24a625842143039de97708281e7b8c0cdff201a  ipp-usb-0.9.34.tar.gz
+sha256      = d852543aba954b6916b4a42d1e302be52c55ebc45257f985c8e97454be0a027a  ipp-usb-vendor-0.9.34.tar.xz
+description = A USB printer that speaks IPP-over-USB, presented to cups as a network one
+homepage    = https://github.com/OpenPrinting/ipp-usb
+depends     = go libusb avahi
+vendoring   = go

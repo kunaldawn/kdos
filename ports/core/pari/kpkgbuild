@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pari
+version     = 2.17.4
+release     = 1
+source      = https://pari.math.u-bordeaux.fr/pub/$name/unix/$name-$version.tar.gz
+sha256      = 02651d99c391007d384b3fadbc20abc6916b77036f9e496c99e9ce8688ca4b53  pari-2.17.4.tar.gz
+description = Number theory and arbitrary-precision arithmetic, at a prompt
+homepage    = https://pari.math.u-bordeaux.fr/
+depends     = gmp readline perl

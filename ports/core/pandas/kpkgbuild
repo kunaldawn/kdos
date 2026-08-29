@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pandas
+version     = 3.0.5
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/$name/$name-$version.tar.gz
+sha256      = dca3734d6ab7c906e6730f0788b0a1dbb9f2467731f9711f77995c8e9d62d712  pandas-3.0.5.tar.gz
+description = Tables, joins and group-bys over the array type
+homepage    = https://pandas.pydata.org/
+depends     = python3 python3-setuptools python3-pip python3-meson-python python3-cython python3-versioneer numpy meson ninja

@@ -1,0 +1,26 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = zls
+version     = 0.16.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/zigtools/zls/archive/refs/tags/$version.tar.gz
+sha256      = e7c5936f5b3a057ce851be0876e4e259b5c4d02f9aae038cd24a5d6b586b029f  zls-0.16.0.tar.gz
+source      = zlsdep-known_folders.tar.gz::https://github.com/ziglibs/known-folders/archive/d6d03830968cca6b7b9f24fd97ee348346a6905d.tar.gz
+source      = zlsdep-diffz.tar.gz::https://github.com/ziglibs/diffz/archive/b39fe07e7fdbcf56e43ba2890b9f484f16969f90.tar.gz
+source      = zlsdep-lsp_kit.tar.gz::https://github.com/zigtools/lsp-kit/archive/b886a2b0d5cee85ecbcc3089b863f7517cc9ff7f.tar.gz
+source      = zlsdep-tracy.tar.gz::https://github.com/wolfpld/tracy/archive/refs/tags/v0.13.1.tar.gz
+sha256      = 969a38a43bfde75ad4a72b0ed639953788d4383f20a235fd7a7ec3a11f664896  zlsdep-known_folders.tar.gz
+sha256      = df7454517b746d3782ec662da5c32d44578b02479b23ce59f066259591f2f343  zlsdep-diffz.tar.gz
+sha256      = 11e34ecf050fc888dff416d6bbe4664183b85770bd86eb6ed0d3c632c1bb193b  zlsdep-lsp_kit.tar.gz
+sha256      = d4efc50ebcb0bfcfdbba148995aeb75044c0d80f5d91223aebfaa8fa9e563d2b  zlsdep-tracy.tar.gz
+description = The Zig language server
+homepage    = https://github.com/zigtools/zls
+depends     = zig

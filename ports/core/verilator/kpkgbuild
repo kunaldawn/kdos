@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = verilator
+version     = 5.042
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/verilator/verilator/archive/refs/tags/v$version.tar.gz
+sha256      = bec14f17de724851b110b698f3bd25e22effaaced7265b26d2bc13075dbfb4bf  verilator-5.042.tar.gz
+description = Fast Verilog simulation and the best free RTL lint
+homepage    = https://verilator.org/
+depends     = autoconf automake perl help2man bison flex python3 zlib

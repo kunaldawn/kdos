@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = typst
+version     = 0.15.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/typst/typst/archive/refs/tags/v$version.tar.gz
+sha256      = c07909e01a2a6941e52c9b616e48c209c755eed416d62bcf5583c37a4aca01a3  typst-0.15.1.tar.gz
+sha256      = 9ca92c3e18b586dbfee7bd0c1160038d104fe6ce4a4cf1212179ff3a96c142c7  typst-vendor-0.15.1.tar.xz
+description = Typesetting that compiles in milliseconds and reports real errors
+homepage    = https://typst.app/
+depends     = rust openssl zlib pkgconf
+vendoring   = rust

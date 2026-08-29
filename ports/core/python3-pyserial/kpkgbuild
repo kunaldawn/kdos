@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pyserial
+version     = 3.5
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pyserial/pyserial-$version.tar.gz
+sha256      = 3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb  python3-pyserial-3.5.tar.gz
+description = Serial port access from python — the transport every 3D printer and dev board speaks
+homepage    = https://github.com/pyserial/pyserial
+depends     = python3 python3-setuptools python3-pip

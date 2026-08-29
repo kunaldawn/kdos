@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libvips
+version     = 8.18.6
+release     = 1
+source      = libvips-8.18.6.tar.xz::https://github.com/libvips/libvips/releases/download/v8.18.6/vips-8.18.6.tar.xz
+sha256      = 3c41e1d5458081bfa4a5bc54e116c46259c75c6760a18027764555632b9dda3e  libvips-8.18.6.tar.xz
+description = Image processing at a fraction of the memory, because it streams rather than loads
+homepage    = https://www.libvips.org/
+depends     = meson glib expat libjpeg-turbo libpng libtiff libwebp lcms2 libexif librsvg

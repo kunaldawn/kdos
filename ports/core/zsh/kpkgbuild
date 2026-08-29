@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = zsh
+version     = 5.9.2
+release     = 1
+source      = https://www.zsh.org/pub/$name-$version.tar.xz
+sha256      = 36fa734374b44783582cec09bcd67822e2f992c779ec1624ab5596df078d2f81  zsh-5.9.2.tar.xz
+description = Shell whose completion corpus knows a thousand commands
+homepage    = https://www.zsh.org/
+depends     = ncurses pcre2

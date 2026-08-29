@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = wcslib
+version     = 8.9
+release     = 1
+source      = wcslib-8.9.tar.bz2::ftp://ftp.atnf.csiro.au/pub/software/wcslib/wcslib-8.9.tar.bz2
+sha256      = 82ac09ce5091b0bf06cec8f5cdeec1dabe1d06ba5dfb7ff2bdb0c1680488807b  wcslib-8.9.tar.bz2
+description = The FITS World Coordinate System — pixel to sky, and back
+homepage    = https://www.atnf.csiro.au/people/mcalabre/WCS/
+depends     = cfitsio flex

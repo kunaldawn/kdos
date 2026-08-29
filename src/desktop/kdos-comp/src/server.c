@@ -102,6 +102,7 @@ reload_config_and_theme(void)
 	 * session's, so an accent switch changes which windows wear one. The
 	 * cache is dropped before the SSD reload below rebuilds every frame. */
 	kdos_boxchip_reload();
+	kdos_grant_reload();
 	rcxml_finish();
 	rcxml_read(rc.config_file);
 	theme_finish(rc.theme);
@@ -293,7 +294,8 @@ allow_for_sandbox(const struct wlr_security_context_v1_state *security_state,
 			return true;
 		}
 	}
-	return false;
+	/* KDOS: a box may be GRANTED a global the allowlist refuses. */
+	return kdos_box_grant(security_state->app_id, iface->name);
 }
 
 static bool

@@ -57,6 +57,7 @@ const char *kpk_sig_state_name(KpkSigState s)
 	case KPK_SIG_NONE:	return "unsigned";
 	case KPK_SIG_BAD:	return "bad signature";
 	case KPK_SIG_HASH:	return "bad payload hash";
+	case KPK_SIG_NOKEY:	return "signed, but this machine has no key to check it with";
 	}
 	return "unknown";
 }
@@ -95,6 +96,13 @@ KpkSigState kpk_verify(const KpkPack *p, const KsigRing *ring,
 
 	if (!p->foot.sig_len)
 		return KPK_SIG_NONE;
+	/*
+	 * Asked before the block is even read: with nothing to check against,
+	 * every signature fails and every failure looks the same. The ring is
+	 * a property of the machine, so this answer names the machine.
+	 */
+	if (!ring || ring->n == 0)
+		return KPK_SIG_NOKEY;
 
 	block = kb_calloc(1, (size_t)p->foot.sig_len + 1);
 	fp = fopen(p->path, "rb");

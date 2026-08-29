@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = vorbis-tools
+version     = 1.4.2
+release     = 1
+source      = https://downloads.xiph.org/releases/vorbis/vorbis-tools-1.4.2.tar.gz
+sha256      = db7774ec2bf2c939b139452183669be84fda5774d6400fc57fde37f77624f0b0  vorbis-tools-1.4.2.tar.gz
+description = oggenc, oggdec, ogginfo and vorbiscomment
+homepage    = https://xiph.org/vorbis/
+depends     = libvorbis libogg flac libao curl

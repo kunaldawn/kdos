@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = espflash
+version     = 4.5.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/esp-rs/espflash/archive/refs/tags/v$version.tar.gz
+sha256      = 78ca6413759329b850221486a2cbb8372f2907d39b4ae6a1bbab2aa5ef3f57cd  espflash-4.5.0.tar.gz
+sha256      = fdc6a9f0d1f066b8b5b66685336054c06e304df9fa99ae3a01c4edef2cd83d90  espflash-vendor-4.5.0.tar.xz
+description = Flash an ESP32 or ESP8266 over its own ROM bootloader, and watch its serial output
+homepage    = https://github.com/esp-rs/espflash
+depends     = rust eudev
+vendoring   = rust

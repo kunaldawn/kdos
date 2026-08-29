@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = netcdf-c
+version     = 4.9.3
+release     = 1
+source      = https://downloads.unidata.ucar.edu/netcdf-c/4.9.3/netcdf-c-4.9.3.tar.gz
+sha256      = a474149844e6144566673facf097fea253dc843c37bc0a7d3de047dc8adda5dd  netcdf-c-4.9.3.tar.gz
+description = The self-describing array format climate, ocean and atmosphere data ships in
+homepage    = https://www.unidata.ucar.edu/software/netcdf/
+depends     = cmake hdf5 zlib curl
