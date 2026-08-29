@@ -476,6 +476,8 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 			 int nfiles);
 int sh_app_ngroups(void);
 const char *sh_app_group_name(int g);
+/* The group a Categories= list (or one category word) files under. */
+int sh_app_group_for(const char *categories);
 
 /* Double-forked spawn: the caller neither reaps nor waits, and there is no
  * shell anywhere in it. Every surface here spawns the same way. */

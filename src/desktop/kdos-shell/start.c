@@ -333,56 +333,135 @@ static int fixed_match(const struct row *r, const char *q)
 }
 
 /*
- * THE PACKS ON THE MEDIUM, matched by name. `/mnt/iso/packs/PACKAGES` is the
- * signed index the medium already carries and it is a flat file — read here
- * rather than asked of kdos-packd, because this runs on every keystroke and a
- * socket round trip per character is not something a menu does.
+ * THE PACKS ON THE MEDIUM ARE IN THE MENU. On a distro whose medium IS the
+ * software library, a Start menu that listed only what was installed showed
+ * the eleven recommended applications on a live stick carrying a hundred and
+ * fifty — and the rest were reachable only by typing a name into the search
+ * and knowing there was something to find. So every category lists, under
+ * an `ON THE MEDIUM` rule, the application packs it would hold, and a row
+ * installs one (`kdos app install`, in a foot window that shows the mount and
+ * the launcher count); the next open of this menu lists it as installed.
  *
- * The ids are held so a row's argv can point at one: a row's argv is `const
- * char *` and a stack buffer would be gone by the time somebody clicked it.
+ * `/mnt/iso/packs/PACKAGES` is the signed index the medium already carries
+ * and it is a flat file — read here rather than asked of kdos-packd, because
+ * the search half runs on every keystroke and a socket round trip per
+ * character is not something a menu does. `N:` is the application's own
+ * name and `G:` its category; a pack from a medium baked before those keys
+ * existed lists under its id, in Accessories.
+ *
+ * WHAT IS INSTALLED IS READ FROM THE ALIEN-APPS TABLES, whose third field is
+ * the pack: a pack named there has a launcher and is already in the list
+ * above the rule, and offering it a second time would be a menu that says
+ * "install GIMP" under GIMP.
  */
-#define ST_MEDIUM_MAX 16
-static char medium_id[ST_MEDIUM_MAX][64];
+#define ST_MEDIUM_MAX 256
+static struct {
+	char id[64];
+	char name[64];
+	char summary[128];
+	int group;
+} medium[ST_MEDIUM_MAX];
+static int nmedium;
 
-static const char *st_medium_id(int i)
+static int pack_installed(const char *id)
 {
-	return (i >= 0 && i < ST_MEDIUM_MAX) ? medium_id[i] : "";
+	static const char *const tables[] = {
+		"/usr/share/kdos/alien-apps", NULL };
+	char user[512];
+	const char *home = getenv("HOME");
+	snprintf(user, sizeof(user), "%s/.local/share/kdos/alien-apps",
+		 home ? home : "/root");
+	for (int t = 0; t < 2; t++) {
+		FILE *f = fopen(t ? user : tables[0], "r");
+		char line[1024];
+		if (!f)
+			continue;
+		while (fgets(line, sizeof(line), f)) {
+			char *tab = strchr(line, '\t'), *tab2;
+			if (*line == '#' || !tab || !(tab2 = strchr(tab + 1, '\t')))
+				continue;
+			tab2++;
+			tab2[strcspn(tab2, "\r\n")] = 0;
+			if (!strcmp(tab2, id)) {
+				fclose(f);
+				return 1;
+			}
+		}
+		fclose(f);
+	}
+	return 0;
 }
 
-static int st_medium_match(const char *q, char out[][64], int max)
+static void st_medium_load(void)
 {
 	char line[512];
 	FILE *f;
-	int n = 0;
-	char id[64] = "";
+	char id[64] = "", name[64] = "", summary[128] = "", cat[64] = "";
+	int isapp = 0;
 
-	if (!q || !*q)
-		return 0;
+	nmedium = 0;
 	f = fopen("/mnt/iso/packs/PACKAGES", "r");
 	if (!f)
-		return 0;
-	while (n < max && n < ST_MEDIUM_MAX && fgets(line, sizeof(line), f)) {
-		line[strcspn(line, "\r\n")] = 0;
-		if (!strncmp(line, "P:", 2)) {
+		return;
+	for (;;) {
+		int end = !fgets(line, sizeof(line), f);
+		if (!end)
+			line[strcspn(line, "\r\n")] = 0;
+		if (end || !line[0]) {
+			/* a stanza ends: an application not yet installed
+			 * is a row */
+			if (id[0] && isapp && nmedium < ST_MEDIUM_MAX &&
+			    !pack_installed(id)) {
+				snprintf(medium[nmedium].id, 64, "%s", id);
+				snprintf(medium[nmedium].name, 64, "%s",
+					 name[0] ? name : id);
+				snprintf(medium[nmedium].summary, 128, "%s",
+					 summary);
+				medium[nmedium].group = sh_app_group_for(cat);
+				nmedium++;
+			}
+			id[0] = name[0] = summary[0] = cat[0] = 0;
+			isapp = 0;
+			if (end)
+				break;
+			continue;
+		}
+		if (!strncmp(line, "P:", 2))
 			snprintf(id, sizeof(id), "%s", line + 2);
-			continue;
-		}
-		/* Only an application is worth offering: a runtime is pulled
-		 * in by whatever needs it, and offering one is offering a
-		 * person a library. */
-		if (strcmp(line, "K:app") || !id[0])
-			continue;
-		if (!strcasestr(id, q)) {
-			id[0] = 0;
-			continue;
-		}
-		snprintf(medium_id[n], sizeof(medium_id[0]), "%s", id);
-		snprintf(out[n], 64, "%s", id);
-		n++;
-		id[0] = 0;
+		else if (!strcmp(line, "K:app"))
+			isapp = 1;
+		else if (!strncmp(line, "N:", 2))
+			snprintf(name, sizeof(name), "%s", line + 2);
+		else if (!strncmp(line, "T:", 2))
+			snprintf(summary, sizeof(summary), "%s", line + 2);
+		else if (!strncmp(line, "G:", 2))
+			snprintf(cat, sizeof(cat), "%s", line + 2);
 	}
 	fclose(f);
+}
+
+static int medium_in_group(int g)
+{
+	int n = 0;
+	for (int i = 0; i < nmedium; i++)
+		n += medium[i].group == g;
 	return n;
+}
+
+/* One row per medium pack: the name, the package mark, and an install. */
+static void push_medium(int i)
+{
+	struct row *r = push(left, &nleft, medium[i].name);
+	if (!r)
+		return;
+	r->icon = "package-x-generic";
+	r->keys = medium[i].summary;
+	r->argv[0] = "foot";
+	r->argv[1] = "-e";
+	r->argv[2] = "kdos";
+	r->argv[3] = "app";
+	r->argv[4] = "install";
+	r->argv[5] = medium[i].id;
 }
 
 static void build_left(void)
@@ -448,26 +527,14 @@ static void build_left(void)
 		 * somebody is typing.
 		 */
 		int offered = 0;
-		if (!n) {
-			char ids[16][64];
-			int m = st_medium_match(query, ids, 16);
-
-			for (int i = 0; i < m && nleft < ST_MAX_ROWS; i++) {
-				struct row *r;
-				if (!offered++)
-					rule_named(left, &nleft,
-						   "INSTALL FROM THE MEDIUM");
-				r = push(left, &nleft, ids[i]);
-				if (!r)
-					break;
-				r->icon = "package-x-generic";
-				r->argv[0] = "foot";
-				r->argv[1] = "-e";
-				r->argv[2] = "kdos";
-				r->argv[3] = "app";
-				r->argv[4] = "install";
-				r->argv[5] = st_medium_id(i);
-			}
+		for (int i = 0; i < nmedium && nleft < ST_MAX_ROWS; i++) {
+			if (!strcasestr(medium[i].name, query) &&
+			    !strcasestr(medium[i].id, query) &&
+			    !strcasestr(medium[i].summary, query))
+				continue;
+			if (!offered++)
+				rule_named(left, &nleft, "INSTALL FROM THE MEDIUM");
+			push_medium(i);
 		}
 		if (!n && !extra && !offered)
 			push(left, &nleft, "no match");
@@ -480,7 +547,7 @@ static void build_left(void)
 		push_back("Back");
 		for (int g = 0; g < sh_app_ngroups(); g++) {
 			const struct sh_app *tmp[1];
-			if (!sh_apps_in_group(g, tmp, 1))
+			if (!sh_apps_in_group(g, tmp, 1) && !medium_in_group(g))
 				continue;	/* an empty category is noise */
 			struct row *r = push(left, &nleft,
 					     sh_app_group_name(g));
@@ -508,6 +575,12 @@ static void build_left(void)
 			r->app = tmp[i];
 			r->icon = tmp[i]->icon[0] ? tmp[i]->icon : tmp[i]->id;
 			r->pinned = sh_fav_has(tmp[i]->id);
+		}
+		if (medium_in_group(cat)) {
+			rule_named(left, &nleft, "ON THE MEDIUM");
+			for (int i = 0; i < nmedium && nleft < ST_MAX_ROWS; i++)
+				if (medium[i].group == cat)
+					push_medium(i);
 		}
 		return;
 	}
@@ -1485,6 +1558,7 @@ int start_main(int argc, char **argv)
 	}
 
 	sh_apps_load();
+	st_medium_load();
 	/* The fixed rows first: a search reads them, and the one at startup
 	 * would otherwise run against an empty right column. */
 	build_right();

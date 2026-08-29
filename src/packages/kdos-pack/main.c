@@ -483,6 +483,9 @@ static int cmd_index(int argc, char **argv)
 			kb_strlcpy(e->kind, kpk_kind_name(p.meta.kind),
 				   sizeof(e->kind));
 			e->recommended = p.meta.recommended;
+			kb_strlcpy(e->name, p.meta.name, sizeof(e->name));
+			kb_strlcpy(e->category, p.meta.category,
+				   sizeof(e->category));
 			/* Names only: the index is read by programs that
 			 * cannot evaluate a version constraint. */
 			{

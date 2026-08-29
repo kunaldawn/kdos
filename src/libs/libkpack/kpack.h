@@ -313,6 +313,12 @@ typedef struct {
 	char sha256[65];
 	char from[KPK_PATH];	/* a delta's base file, or ""               */
 	char summary[128];	/* one line, for a reader with no libkpack  */
+	/* The application's own Name and its first real desktop category,
+	 * because a menu that lists what is ON THE MEDIUM needs a word a
+	 * person recognises and a page to file it under — and the Start menu
+	 * reads this flat file on every keystroke, never a mounted pack. */
+	char name[128];
+	char category[64];
 	/* The ids this pack needs under it, space separated. Here as well as in
 	 * the pack's own metadata because kinstall reads THIS and links neither
 	 * libkpack nor a solver — without it an installer can only carry every

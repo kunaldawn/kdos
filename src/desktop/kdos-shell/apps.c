@@ -83,7 +83,7 @@ const char *sh_app_group_name(int g)
 	return g >= 0 && g < NGROUPS ? GROUPS[g].name : "";
 }
 
-static int group_for(const char *categories)
+int sh_app_group_for(const char *categories)
 {
 	if (!categories)
 		return 0;
@@ -254,7 +254,7 @@ static void add_desktop_file(const char *path)
 	snprintf(a->keywords, sizeof(a->keywords), "%s %s",
 		 kxdg_get(&e, "Keywords", ""), kxdg_get(&e, "GenericName", ""));
 	sh_strip_field_codes(a->exec);
-	a->group = group_for(kxdg_get(&e, "Categories", NULL));
+	a->group = sh_app_group_for(kxdg_get(&e, "Categories", NULL));
 	a->terminal = kxdg_bool(&e, "Terminal", 0);
 	/*
 	 * WHICH ENTRIES COST A CONTAINER START, which is a question only this
