@@ -951,11 +951,16 @@ no cryptsetup — after the point of no return is the wrong place to discover it
 ## Building it
 
 ```sh
-make fetch        # every upstream tarball + vendor bundle (LFS)
-make fetch-packs  # bake the application packs (needs network; only when they change)
-make build        # cross toolchain → userland → desktop → kernel → ISO
-make run          # boot the ISO in QEMU
+make bootstrap        # every upstream tarball + vendor bundle, from the sources-* release
+make bootstrap-packs  # the baked application packs, from the newest packs-* release
+make build            # cross toolchain → userland → desktop → kernel → ISO, offline
+make run              # boot the ISO in QEMU
 ```
+
+`make fetch-packs` bakes the packs yourself instead (needs network, docker and
+about an hour); `make publish-sources` and `make publish-packs` are what the
+machine that added sources or baked packs runs, with a GitHub token in
+`~/.config/kdos/gh-token`.
 
 The build runs inside an Alpine container with `--network none`, so it cannot
 contaminate — or depend on — your host.

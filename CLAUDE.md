@@ -243,6 +243,15 @@ finds it. The guarantee is that an asset is never deleted and never replaced;
 `ports/publish` skips one that is already there rather than clobbering it,
 because replacing an asset silently changes what an old commit builds.
 
+**A CLONE FETCHES THE BAKED PACKS RATHER THAN BAKING THEM.** `ports/sources
+packs` uploads a set as a dated `packs-<date>` release (194 assets plus the
+signed index); `ports/sources fetch-packs [tag]` — `make bootstrap-packs` —
+downloads the newest such release into `ports/appbox/packs`, every pack
+checked against the `C:` the index carries and one already here with the
+right hash kept. Public releases, so no token. `make fetch-packs` is the
+other route, for the machine that changes packs.conf; it needs docker,
+network, the signing key in `build/keys` and about an hour.
+
 **SHARDED BY FIRST LETTER**, because a release holds at most 1000 assets and
 this archive only grows: 524 tarballs today, ~725 after the catalogue, and one
 more per version bump forever — a single release would hit the cap inside a
