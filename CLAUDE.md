@@ -1037,14 +1037,24 @@ route, does `$HOME`'s filesystem accept an overlay upper, is the uid-1000
 assumption holding, does every mounted pack still have a file behind it (a box
 that works until it is restarted is the worst kind of broken).
 
-**`kdos app`** is the front end — `list search show install remove rollback
-update sources` — and there is deliberately **no app store**. On a distro whose medium
+**`kdos app`** is the front end — `list search show install launch remove
+rollback update sources` — and there is deliberately **no app store**. On a distro whose medium
 IS the software library the question is never "where do I get this"; what
-remains is disposal, and that belongs where the readings already are. The one
-discovery affordance kept is the Start menu's: a query with no installed match
-that DOES match a pack on the medium gets an `INSTALL FROM THE MEDIUM` row,
-read from `/mnt/iso/packs/PACKAGES` rather than over the socket because it runs
-on every keystroke.
+remains is disposal, and that belongs where the readings already are. The
+discovery affordance is the Start menu's: **every category lists the
+application packs the medium would put there, under an `ON THE MEDIUM` rule**,
+and a search matches them by name, id and summary under `INSTALL FROM THE
+MEDIUM`; **a row is "open this"** — `kdos app launch <id>` installs the pack
+when it is not (a mount off the medium on a live session) and execs the
+pack's own shim, so the click that installed Blender is the click that opened
+it, and the next open of the menu lists it as installed. The rows wear
+`media-optical-data`, the medium they are on, which the atlas carries at
+every size the shell draws. Read from
+`/mnt/iso/packs/PACKAGES` — whose `N:` and `G:` carry the application's own
+name and its category for exactly this reader — rather than over the socket,
+because the search runs on every keystroke; what is installed is the
+alien-apps tables' third field. Measured on the live ISO before this: eleven
+applications in the menu on a stick carrying a hundred and fifty.
 
 **`kdos app show` prints what a pack NEEDS.** A program whose database is empty
 is not shipped software, it is a broken menu entry, so a pack that is useless
