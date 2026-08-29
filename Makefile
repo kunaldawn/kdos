@@ -58,6 +58,17 @@ publish-sources:
 bootstrap:
 	ports/sources fetch
 
+# The baked pack set, from the newest packs-* release (or PACKS_TAG=packs-…):
+# what a clone runs instead of `make fetch-packs` when it has no podman, or
+# no hour, or wants exactly the set a published ISO carried.
+bootstrap-packs:
+	ports/sources fetch-packs $(PACKS_TAG)
+
+# What this machine runs to publish: the sources it added and the packs it
+# baked. Both need a token in ~/.config/kdos/gh-token (mode 600).
+publish-packs:
+	ports/sources packs $(PACKS_TAG)
+
 fetch-packs:
 	bash ports/appbox/bake
 
@@ -157,4 +168,4 @@ clean:
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name keys -exec rm -rf {} + || true
 
-.PHONY: fetch-packs publish-sources bootstrap all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates
+.PHONY: fetch-packs publish-sources bootstrap bootstrap-packs publish-packs all build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch updates
