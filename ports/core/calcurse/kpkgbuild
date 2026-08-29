@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = calcurse
+version     = 4.8.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/lfos/calcurse/archive/refs/tags/v$version.tar.gz
+sha256      = 9876e2f40d60fe3cb3b34104dc9b679131b88a98e449422dab1140a7a5a3861c  calcurse-4.8.2.tar.gz
+description = A calendar and todo list whose storage is two text files
+homepage    = https://calcurse.org/
+depends     = autoconf autoconf-archive automake gettext pkgconf ncurses asciidoc docbook-xsl libxslt

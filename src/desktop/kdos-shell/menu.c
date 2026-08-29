@@ -318,7 +318,7 @@ static void load_system(void)
 	add("Theme — ice",      "foot -e kdos theme ice", -1);
 	add("Theme — bone",     "foot -e kdos theme bone", -1);
 	add("",                 NULL, -2);		/* separator */
-	add("Applications…",    "kdos-appbox tui", -1);
+	add("Boxes…",           "kdos-settings --page boxes", -1);
 	add("Displays",         "kdos-display", -1);
 	add("Network",          "foot -e nmtui", -1);
 	add("Files",            "foot -e mc", -1);
@@ -518,7 +518,7 @@ static void draw(const struct view *v)
 		} else if (items[row].submenu == -2) {	/* a separator */
 			for (int x = 1; x < w - 1; x++)
 				ktui_draw_text(x, 1 + r, 1, ktui_glyph[KT_G_HL],
-					       KT_DIM, KT_SURFACE, KT_A_NONE);
+					       KT_MID, KT_SURFACE, KT_A_NONE);
 		} else {
 			ktui_draw_text(2, 1 + r, w - 4, items[row].name, fg, bg,
 				       KT_A_NONE);

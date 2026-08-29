@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mupdf
+version     = 1.26.7
+release     = 1
+source      = mupdf-1.26.7.tar.gz::https://mupdf.com/downloads/archive/mupdf-1.26.7-source.tar.gz
+sha256      = 52014fcecac48ae3ead947eb90572ff7da9acf9550711675872944e8ef8c4966  mupdf-1.26.7.tar.gz
+description = mutool — the PDF the command line can take apart, and a viewer with no toolkit
+homepage    = https://mupdf.com/
+depends     = freetype2 libjpeg-turbo openjpeg harfbuzz zlib jbig2dec curl brotli leptonica tesseract

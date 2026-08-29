@@ -1,0 +1,29 @@
+--- a/printrun/settings.py
++++ b/printrun/settings.py
+@@ -20,10 +20,24 @@
+ 
+ from functools import wraps
+ 
+-import wx
+ from pathlib import Path
+ from .utils import parse_build_dimensions, check_rgb_color, check_rgba_color
+-from .gui.widgets import get_space
++
++# wx IS A GUI DEPENDENCY AND THIS MODULE IS ON THE CONSOLE PATH. pronsole
++# imports Settings from here, and an unguarded `import wx` therefore makes the
++# terminal client refuse to start on a machine with no wxPython — which is
++# every machine that has only the console client installed. Every use of wx in
++# this file is inside a method that builds a widget, so the import is deferred
++# to that point: a GUI build reaches it exactly as before, and a console
++# session never does.
++try:
++    import wx
++    from .gui.widgets import get_space
++except ImportError:
++    wx = None
++
++    def get_space(*args, **kwargs):
++        raise ImportError('wxPython is required to build settings widgets')
+ 
+ def setting_add_tooltip(func):
+     @wraps(func)

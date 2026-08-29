@@ -278,7 +278,7 @@ static void sl_draw(void)
 		if (g->failed) {
 			/* Dim, and its own glyph: a gadget that is broken must
 			 * not look like a gadget that is reporting a value. */
-			ktui_draw_text(0, i, gw, "!", KT_DIM, KT_SURFACE,
+			ktui_draw_text(0, i, gw, "!", KT_MID, KT_SURFACE,
 				       KT_A_NONE);
 			continue;
 		}

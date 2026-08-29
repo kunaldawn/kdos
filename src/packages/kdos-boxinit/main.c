@@ -24,6 +24,9 @@
  *   - makes sure that home exists and is on the PATH's mind;
  *   - exports a PATH that includes /usr/games, because Debian's games live
  *     there and a launcher for one otherwise dies on "not found";
+ *   - writes /usr/local/bin/xdg-open, so a boxed program that opens a link
+ *     or a file reaches the HOST through the OpenURI portal — the box's own
+ *     xdg-open would look for a browser inside the container and find none;
  *   - prints `container_setup_done` on stdout, where podman logs keep it, and
  *     `box_setup_done()` looks for it;
  *   - then stays alive as pid 1, reaping whatever the box's processes orphan.
@@ -50,8 +53,8 @@
 
 #include "kbase.h"
 
-#define BOXINIT_PATH \
-	"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games"
+/* libkbase's, so pid 1's children and `podman exec` cannot disagree. */
+#define BOXINIT_PATH KB_BOX_PATH
 
 static const char *env_or(const char *name, const char *dflt)
 {
@@ -60,56 +63,144 @@ static const char *env_or(const char *name, const char *dflt)
 }
 
 /*
- * Add a line to a colon-separated database, unless a record with that name or
- * that id is already there. The container's /etc is the overlay's writable
- * upper, so this is an ordinary file edit — but a pack may already carry the
- * record, and appending a second one for the same uid makes every lookup
- * ambiguous.
+ * Put a record into a colon-separated database, REPLACING one that is already
+ * there for the same name or id rather than leaving it alone.
+ *
+ * A pack may carry its own entry for this user, and a WRONG one is worse than
+ * none: the base pack ships `kdos:*:1000:1000:KDOS Test:/:/bin/sh`, whose home
+ * is `/`, so `podman exec --user=1000` gives every application HOME=/ and none
+ * of them reads ~/.config, ~/.themes or ~/.icons. Measured as a boxed GTK4 app
+ * in libadwaita's own light theme on a phosphor desktop, with the palette
+ * sitting correctly in a $HOME the app never looked at.
+ *
+ * Matching this user's HOST record is the whole reason this program creates
+ * the account at all, so it wins over whatever the image put there. Appending
+ * a second line instead would make every lookup ambiguous, which is what the
+ * name/id check was there to prevent.
+ *
+ * Written atomically: /etc/passwd with a failed write in the middle of it is a
+ * container with no users in it.
  */
 static int ensure_record(const char *path, const char *name, const char *id,
 			 const char *line)
 {
 	size_t len = 0;
 	char *text = kb_read_all(path, &len);
-	char *cur, *save;
-	int have = 0;
-	FILE *f;
+	char *out, *cur, *save;
+	size_t cap;
+	int replaced = 0;
+	int rc;
 
-	if (text) {
-		for (cur = strtok_r(text, "\n", &save); cur;
-		     cur = strtok_r(NULL, "\n", &save)) {
-			char *colon = strchr(cur, ':');
-			char *second, *third;
+	if (!text) {
+		FILE *f = fopen(path, "a");
+		if (!f)
+			return -1;
+		fputs(line, f);
+		return fclose(f) == 0 ? 0 : -1;
+	}
 
-			if (!colon)
-				continue;
+	cap = len + strlen(line) + 2;
+	out = calloc(1, cap);
+	if (!out) {
+		free(text);
+		return -1;
+	}
+
+	for (cur = strtok_r(text, "\n", &save); cur;
+	     cur = strtok_r(NULL, "\n", &save)) {
+		char probe[512];
+		char *colon, *second, *third;
+		int match = 0;
+
+		kb_strlcpy(probe, cur, sizeof(probe));
+		colon = strchr(probe, ':');
+		if (colon) {
 			*colon = 0;
-			if (!strcmp(cur, name)) {
-				have = 1;
-				break;
-			}
-			/* name:x:<id>: — the third field */
-			second = strchr(colon + 1, ':');
-			if (!second)
-				continue;
-			third = strchr(second + 1, ':');
-			if (third)
-				*third = 0;
-			if (!strcmp(second + 1, id)) {
-				have = 1;
-				break;
+			if (!strcmp(probe, name)) {
+				match = 1;
+			} else {
+				/* name:x:<id>: — the third field */
+				second = strchr(colon + 1, ':');
+				if (second) {
+					third = strchr(second + 1, ':');
+					if (third)
+						*third = 0;
+					if (!strcmp(second + 1, id))
+						match = 1;
+				}
 			}
 		}
-		free(text);
+		if (match) {
+			if (!replaced) {
+				strcat(out, line);
+				replaced = 1;
+			}
+			/* a duplicate for the same user is dropped */
+		} else {
+			strcat(out, cur);
+			strcat(out, "\n");
+		}
 	}
-	if (have)
-		return 0;
+	if (!replaced)
+		strcat(out, line);
 
-	f = fopen(path, "a");
-	if (!f)
-		return -1;
-	fputs(line, f);
-	return fclose(f) == 0 ? 0 : -1;
+	rc = kb_write_file_atomic(path, out);
+	free(out);
+	free(text);
+	return rc;
+}
+
+/*
+ * "OPEN THIS" FROM INSIDE A BOX MEANS ON THE HOST. jupyter opens its notebook
+ * in a browser, every help menu opens a URL, a file manager double-click opens
+ * a document — all through xdg-open, which inside a Debian rootfs walks a list
+ * of browsers the box does not carry and gives up. The session bus is shared
+ * (`/run/user/<uid>/bus`), so the OpenURI portal on the host is one method
+ * call away, and `xdg-desktop-portal-kdos` answers it with `kdos-appbox
+ * open`. A file path is made absolute and passed as file://: $HOME and /tmp
+ * are the same directories on both sides, which is where an application's
+ * own files are.
+ *
+ * gdbus carries the call (`libglib2.0-bin` in the base pack); a base without
+ * it — alpine — gets a script that says so rather than one that fails inside
+ * a browser lookup. /usr/local/bin is first on the box PATH, so this shadows
+ * the packaged xdg-open; x-www-browser and sensible-browser are the other two
+ * names Debian software opens a URL through.
+ */
+static const char XDG_OPEN[] =
+"#!/bin/sh\n"
+"# KDOS: a box opens things on the host, through the OpenURI portal.\n"
+"[ $# -ge 1 ] || { echo \"usage: xdg-open <file|url>\" >&2; exit 1; }\n"
+"u=$1\n"
+"case \"$u\" in\n"
+"  *://*|mailto:*) ;;\n"
+"  /*) u=\"file://$u\" ;;\n"
+"  *) u=\"file://$(pwd)/$u\" ;;\n"
+"esac\n"
+"command -v gdbus >/dev/null 2>&1 ||\n"
+"  { echo \"xdg-open: no gdbus in this box, cannot reach the host portal\" >&2; exit 3; }\n"
+"exec gdbus call --session --dest org.freedesktop.portal.Desktop \\\n"
+"  --object-path /org/freedesktop/portal/desktop \\\n"
+"  --method org.freedesktop.portal.OpenURI.OpenURI \"\" \"$u\" \"{}\" >/dev/null\n";
+
+static void install_xdg_open(void)
+{
+	static const char *const names[] = {
+		"/usr/local/bin/x-www-browser", "/usr/local/bin/sensible-browser",
+		NULL };
+	const char *path = "/usr/local/bin/xdg-open";
+
+	kb_mkdir_p("/usr/local/bin");
+	if (kb_write_file_atomic(path, XDG_OPEN) != 0) {
+		kb_warn("could not write %s", path);
+		return;
+	}
+	chmod(path, 0755);
+	for (int i = 0; names[i]; i++) {
+		unlink(names[i]);
+		if (symlink("xdg-open", names[i]) != 0)
+			kb_warn("could not link %s", names[i]);
+	}
 }
 
 static void reap(int sig)
@@ -162,6 +253,7 @@ int main(int argc, char **argv)
 	 * covers the private-home case, where the profile pointed somewhere
 	 * that does not exist yet. */
 	kb_mkdir_p(home);
+	install_xdg_open();
 
 	setenv("PATH", BOXINIT_PATH, 1);
 	setenv("HOME", home, 1);

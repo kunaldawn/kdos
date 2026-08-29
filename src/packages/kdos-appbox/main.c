@@ -10,26 +10,17 @@
  *
  * Alien app runtime and box manager.
  *
- *   kdos-appbox run <app> [args...]   run an app from a box
- *   kdos-appbox ensure [box]          create the box if missing
- *   kdos-appbox warmup [box]          create + start it in advance
- *   kdos-appbox status                image / box state
- *
+ *   kdos-appbox run <app> [args...]   run an app from its pack's box
+ *   kdos-appbox open <path>           open a file in whatever opens it
+ *   kdos-appbox warmup                compose + start the pinned set
+ *   kdos-appbox status                daemon / store / box state
  *   kdos-appbox list                  boxes
  *   kdos-appbox apps                  known alien apps
- *   kdos-appbox create <box> [k=v..]  new box with a sandbox profile
- *   kdos-appbox remove <box>          delete a box
- *   kdos-appbox recreate <box>        re-create it with the current profile
- *   kdos-appbox install <pkg> [-b B]  apt install into a box, add launchers
- *   kdos-appbox uninstall <pkg>       apt remove
- *   kdos-appbox refresh [box]         re-scan a box for new desktop entries
- *   kdos-appbox security <box> [k=v]  show or change the sandbox profile
- *   kdos-appbox tui                   full-screen manager
+ *   kdos-appbox genlaunchers …        launchers, shims, mime cache, table
  *
- * The launch path (run/ensure/warmup) is a straight port of the shell script
- * this replaced, down to the ordering, because 91 .desktop launchers and the
- * login warmup all depend on its exact behaviour. Every comment marked "cost a
- * debug cycle" below describes something that actually broke.
+ * Boxes themselves are `kdos-box`'s — a second name on this binary. The launch
+ * path keeps the ordering the launchers and the login warmup depend on; every
+ * comment marked "cost a debug cycle" below describes something that broke.
  */
 
 #include "kdos-appbox.h"
@@ -38,6 +29,7 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <pwd.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -50,7 +42,7 @@ const char *g_box = DEFAULT_BOX;
  * security-context-v1, so every client on it is tagged with this box's name and
  * gets the capability policy from the SAME ~/.config/kdos/boxes/<box>.conf that
  * decided the container's namespaces. It must be started detached and must
- * outlive us: `run` execs distrobox, and the context lives exactly as long as
+ * outlive us: `run` execs podman, and the context lives exactly as long as
  * kdos-boxsock holds its close fd. It is idempotent under a flock, so starting
  * it on every launch costs one failed lock after the first.
  *
@@ -159,6 +151,50 @@ static void box_env(KbArgv *a, const char *image, const char *pack)
 	sock = box_wayland_socket();
 	if (sock)
 		kb_argv_addf(a, "WAYLAND_DISPLAY=%s", sock);
+	/* PODMAN EXEC DOES NOT INHERIT PID 1's ENVIRONMENT. kdos-boxinit sets
+	 * this PATH for what IT starts; a launch is a separate exec and gets
+	 * podman's default, which has no /usr/games — so every Debian game in
+	 * the catalogue died on `env: 'sol': No such file or directory`. */
+	kb_argv_add(a, "PATH=" KB_BOX_PATH);
+
+	/*
+	 * THE REST OF WHAT A LOGIN GIVES YOU, because `podman exec` gives none
+	 * of it and distrobox-enter used to. The image lane inherited a full
+	 * environment from distrobox; the pack lane replaced that with a bare
+	 * exec and kept only the variables this function had always added, so a
+	 * boxed application came up with no locale, no USER and no
+	 * XDG_RUNTIME_DIR. Measured across the catalogue:
+	 *
+	 *   aisleriot   Non UTF-8 locale (ANSI_X3.4-1968) is not supported!
+	 *   solvespace  Sorry, only UTF-8 locales are supported.
+	 *   bleachbit   KeyError: 'USER'
+	 *
+	 * and those are only the ones that SAY so — most of the rest simply
+	 * never mapped a window. `C.UTF-8` rather than the host's own LANG:
+	 * it exists in every Debian without a locale being generated, and the
+	 * box's userland is Debian's whatever the host is set to.
+	 */
+	kb_argv_addf(a, "XDG_RUNTIME_DIR=/run/user/%u", (unsigned)getuid());
+	/* The session bus is at a FIXED path the box shares (see kdos-desktop);
+	 * GLib would find it from XDG_RUNTIME_DIR alone, but a GApplication
+	 * that cannot reach the bus blocks in single-instance negotiation with
+	 * no window and no message, so the address is stated rather than
+	 * left to a fallback. */
+	kb_argv_addf(a, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%u/bus",
+		     (unsigned)getuid());
+	kb_argv_add(a, "XDG_SESSION_TYPE=wayland");
+	kb_argv_addf(a, "HOME=%s", kb_home_dir());
+	{
+		struct passwd *me = getpwuid(getuid());
+		const char *who = me && me->pw_name ? me->pw_name : "kdos";
+		kb_argv_addf(a, "USER=%s", who);
+		kb_argv_addf(a, "LOGNAME=%s", who);
+	}
+	if (!getenv("LANG") || !strstr(getenv("LANG"), "UTF-8"))
+		kb_argv_add(a, "LANG=C.UTF-8");
+	else
+		kb_argv_addf(a, "LANG=%s", getenv("LANG"));
+
 	kb_argv_add(a, "GSETTINGS_BACKEND=keyfile");
 	if (!a11y_wanted()) {
 		kb_argv_add(a, "NO_AT_BRIDGE=1");
@@ -249,9 +285,21 @@ static void box_env(KbArgv *a, const char *image, const char *pack)
 		char env[PACK_ENV_MAX][256];
 		int n = pack_env(pack, env, PACK_ENV_MAX);
 
-		/* kb_argv_add keeps the POINTER, and these are this frame's. */
-		for (int i = 0; i < n; i++)
-			kb_argv_add(a, kb_strdup(env[i]));
+		/* kb_argv_add keeps the POINTER, and these are this frame's.
+		 * A value may say `$HOME` for the directory a boxgraft lands
+		 * in: the pack cannot know the user's name and the box shares
+		 * the home under the same path. */
+		for (int i = 0; i < n; i++) {
+			char *eq = strchr(env[i], '=');
+			if (eq && !strncmp(eq + 1, "$HOME", 5)) {
+				char *v = kb_calloc(1, 1024);
+				snprintf(v, 1024, "%.*s=%s%s", (int)(eq - env[i]),
+					 env[i], kb_home_dir(), eq + 6);
+				kb_argv_add(a, v);
+			} else {
+				kb_argv_add(a, kb_strdup(env[i]));
+			}
+		}
 	} else if (image_has_label(image, "kdos.qt-kde-theme")) {
 		kb_argv_add(a, "QT_QPA_PLATFORMTHEME=kde");
 	} else {
@@ -393,6 +441,12 @@ static int run_pack(int argc, char **argv, const char *app, const char *state)
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "exec");
 	kb_argv_add(&a, "--interactive");
+	/* A terminal program asked for from a terminal gets one. Without
+	 * `--tty` the app's stdin is a pipe: R refuses to start, and every
+	 * REPL in the catalogue loses line editing and its prompt. A launcher
+	 * has no tty and takes the plain exec. */
+	if (isatty(0))
+		kb_argv_add(&a, "--tty");
 	kb_argv_addf(&a, "--user=%u:%u", (unsigned)getuid(), (unsigned)getgid());
 	kb_argv_addf(&a, "--workdir=%s", kb_home_dir());
 	kb_argv_add(&a, g_box);
@@ -413,10 +467,29 @@ static int run_pack(int argc, char **argv, const char *app, const char *state)
 int cmd_run(int argc, char **argv)
 {
 	Profile p;
-	KbArgv a = {0};
 	char state[64];
 	const char *app = argv[0];
 	int i;
+
+	/* The desktop entry's form: resolve the pack from the exec. An exec no
+	 * installed pack carries is refused by name — composing a box called
+	 * "kdos-apps" out of a pack of that name fails a step later with a
+	 * sentence about a box nobody asked for. */
+	if (!strcmp(g_box, DEFAULT_BOX)) {
+		char pack[128] = "", joined[1024] = "";
+		/* The whole argv, so `sh -c "…"` and `env X=y prog` resolve
+		 * to the program they run rather than to the wrapper. */
+		for (i = 0; i < argc; i++) {
+			size_t l = strlen(joined);
+			snprintf(joined + l, sizeof(joined) - l, "%s\"%s\"",
+				 i ? " " : "", argv[i]);
+		}
+		if (app_pack_by_exec(joined, pack, sizeof(pack)) && pack[0])
+			g_box = kb_strdup(pack);
+		else
+			kb_die("no installed pack carries '%s' — "
+			       "kdos app list, then kdos app install <pack>", app);
+	}
 
 	profile_load(&p, g_box);
 	box_state(g_box, state, sizeof(state));
@@ -463,73 +536,107 @@ int cmd_run(int argc, char **argv)
 	}
 
 	tracef("run %s status=%s", app, state);
-	if (pack_mode())
-		return run_pack(argc, argv, app, state);
-	if (box_ensure(g_box) != 0)
-		kb_die("could not create box '%s'", g_box);
-	tracef("ensured");
-
-	/*
-	 * Only wait when someone ELSE already started the box: then
-	 * distrobox-enter will not wait for setup itself. When the box is
-	 * stopped we hand straight over — distrobox-enter starts it and does its
-	 * own (progress-printing) wait.
-	 *
-	 * This used to be a blind 120-second lock on the warmup, which
-	 * serialized every launch behind the whole login warmup: on a slow disk
-	 * that is minutes of a dead-looking desktop for the first click.
-	 */
-	if (!strcmp(state, "running") && !box_setup_done(g_box)) {
-		notify("Starting app", "Finishing app container setup…");
-		if (box_wait_ready(g_box, 120) != 0)
-			tracef("wait_ready timed out");
-	}
-
-	tracef("entering");
-	kb_argv_add(&a, "distrobox");
-	kb_argv_add(&a, "enter");
-	kb_argv_add(&a, g_box);
-	kb_argv_add(&a, "--");
-	box_env(&a, p.image, NULL);
-	for (i = 0; i < argc; i++)
-		kb_argv_add(&a, argv[i]);
-	kb_argv_end(&a);
-	execvp(a.v[0], (char *const *)a.v);
-	kb_die("distrobox: not found");
-	return 1;
+	return run_pack(argc, argv, app, state);
 }
 
-int cmd_ensure(void)
-{
-	return box_ensure(g_box);
-}
-
+/*
+ * WARM THE PINNED SET. One box per application means the image lane's single
+ * warmup no longer covers anything: every application's first launch of the
+ * session paid compose + create + boxinit + its own start, measured at 18 s
+ * cold, and the warmup that used to hide that started a box nothing runs any
+ * more. `~/.config/kdos/favorites` is the set the user CHOSE, so those are the
+ * boxes worth having running before the first click — resolved through the
+ * alien-apps table to their packs, composed and started one at a time.
+ *
+ * Non-blocking lock, so a second warmup is a no-op and never a queue; `nice`
+ * is the caller's (kdos-desktop runs this at 10). A box that is started and
+ * idle costs a conmon and nothing else, and `kdos-box gc` — run on a timer
+ * by the same session — is what gives it back.
+ */
 int cmd_warmup(void)
 {
-	Profile p;
-	KbArgv a = {0};
-	char *lockpath;
-	int fd;
+	char *lockpath, *fav;
+	char buf[4096], *line, *save;
+	int fd, n = 0;
 
-	profile_load(&p, g_box);
-	if (!image_exists(p.image))
-		return 0;
-
-	/* Non-blocking: a second warmup is a no-op, never a queue. */
 	lockpath = kb_path_join(kb_runtime_dir(), "kdos-appbox.warmup.lock");
 	fd = kb_lock_file(lockpath, 1);
 	free(lockpath);
 	if (fd < 0)
 		return 0;
 
-	if (box_ensure(g_box) == 0) {
-		kb_argv_add(&a, "distrobox");
-		kb_argv_add(&a, "enter");
-		kb_argv_add(&a, g_box);
-		kb_argv_add(&a, "--");
-		kb_argv_add(&a, "true");
-		kb_argv_end(&a);
-		kb_run(&a);
+	fav = kb_path_join(kb_home_dir(), ".config/kdos/favorites");
+	if (kb_read_file(fav, buf, sizeof(buf)) <= 0) {
+		tracef("warmup: no favorites at %s", fav);
+		free(fav);
+		close(fd);
+		return 0;
+	}
+	tracef("warmup: reading %s", fav);
+	free(fav);
+
+	for (line = strtok_r(buf, "\n", &save); line && n < 8;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char pack[128] = "", cmd[512];
+
+		while (*line == ' ' || *line == '\t')
+			line++;
+		if (!*line || *line == '#')
+			continue;
+		/*
+		 * A FAVORITE IS A DESKTOP ID AND THE TABLE IS KEYED BY SHIM.
+		 * `org.gnome.GHex` is the launcher's file id; its Exec= names
+		 * the shim, `ghex`, which is the table's key and carries the
+		 * pack in its third field. The desktop entry is the one place
+		 * both names meet, so it is read rather than guessed at.
+		 */
+		/*
+		 * A GENERATED LAUNCHER'S EXEC IS `kdos-appbox run <exec>`, and
+		 * the pack is resolved from that <exec> exactly as `run` does
+		 * (app_pack_by_exec: the table's command column, whole then by
+		 * basename). Taking the first word as the shim answered
+		 * 'kdos-appbox' for every entry genlaunchers writes, and the
+		 * warmup skipped the whole pinned set while exiting 0. An entry
+		 * somebody wrote by hand naming the shim itself still resolves
+		 * through the table by name.
+		 */
+		char shim[128] = "";
+		{
+			char path[MAX_LINE];
+			KxdgEntry e;
+			snprintf(path, sizeof(path),
+				 "%s/.local/share/applications/%s.desktop",
+				 kb_home_dir(), line);
+			if (!kb_path_exists(path))
+				snprintf(path, sizeof(path),
+					 "/usr/share/applications/%s.desktop", line);
+			if (kxdg_load(&e, path, "Desktop Entry") == 0) {
+				const char *ex = kxdg_get(&e, "Exec", "");
+				const char *b = strrchr(ex, '/');
+				b = b ? b + 1 : ex;
+				snprintf(shim, sizeof(shim), "%.*s",
+					 (int)strcspn(b, " \t"), b);
+				if (!strcmp(shim, "kdos-appbox")) {
+					const char *r = strstr(ex, " run ");
+					if (r)
+						app_pack_by_exec(r + 5, pack,
+								 sizeof(pack));
+					shim[0] = 0;
+				}
+				kxdg_free(&e);
+			}
+		}
+		if (shim[0] &&
+		    (!app_lookup_pack(shim, cmd, sizeof(cmd), pack, sizeof(pack))))
+			pack[0] = 0;
+		if (!pack[0]) {
+			tracef("warmup: %s -> pack '%s': skipped", line, pack);
+			continue;
+		}
+		tracef("warmup %s -> %s", line, pack);
+		if (pack_box_ensure(pack, pack) == 0)
+			pack_box_start(pack);
+		n++;
 	}
 	close(fd);
 	return 0;
@@ -538,127 +645,37 @@ int cmd_warmup(void)
 int cmd_status(void)
 {
 	Profile p;
-	char state[64];
+	char state[64], st[4096];
 
 	profile_load(&p, g_box);
-	/* WHICH LANE, first line. A migration seam nobody can see is a seam
-	 * that gets debugged from the wrong end. */
-	printf("lane  : %s\n", pack_mode() ? "packs (kdos-packd)"
-					   : "the monolithic image");
-	if (pack_mode()) {
-		char st[4096];
-		if (packd_ask("status", st, sizeof(st)) == 0)
-			fputs(st, stdout);
-		else
-			printf("packd : not answering\n");
-		box_state(g_box, st, sizeof(st));
-		printf("box   : %s (%s)\n",
-		       strcmp(st, "absent") ? "created"
-					    : "not created (first launch will)", st);
-		return 0;
-	}
-	printf("image : %s\n", image_exists(p.image) ? "baked" : "missing");
+	if (packd_ask("status", st, sizeof(st)) == 0)
+		fputs(st, stdout);
+	else
+		printf("packd : not answering\n");
 	box_state(g_box, state, sizeof(state));
 	printf("box   : %s (%s)\n",
-	       strcmp(state, "absent") ? "created" : "not created (first launch will)",
-	       state);
-	/* Which route Qt apps take to the KDOS palette, in the order box_env
-	 * picks them. "absent" for both means an image baked before either
-	 * platform theme was added — a re-bake, not a config bug. */
-	printf("qt    : %s\n",
-	       image_has_label(p.image, "kdos.qt-kde-theme")
-		       ? "kde platform theme (reads ~/.config/kdeglobals)"
-	       : image_has_label(p.image, "kdos.qt-gtk-theme")
-		       ? "qgtk3 + Fusion (reads the GTK theme)"
-		       : "absent (Qt apps keep their own palette)");
-	return 0;
-}
-
-static int cmd_security(int argc, char **argv)
-{
-	Profile p;
-	int i, changed = 0;
-
-	if (argc < 1)
-		kb_die("usage: kdos-appbox security <box> [key=value ...]");
-	profile_load(&p, argv[0]);
-	for (i = 1; i < argc; i++) {
-		if (profile_set(&p, argv[i]) != 0)
-			kb_die("unknown setting '%s' (try: network=private, "
-			    "ipc=private, devices=private, processes=private, "
-			    "home=private, init=yes, image=<ref>)", argv[i]);
-		changed = 1;
-	}
-	if (!changed) {
-		profile_print(&p);
-		return 0;
-	}
-	if (profile_save(&p) != 0)
-		kb_die("could not write the profile");
-	profile_print(&p);
-	if (box_exists(p.name))
-		printf("\nNamespaces cannot be re-flagged on a live container.\n"
-		       "Run: kdos-appbox recreate %s\n", p.name);
-	return 0;
-}
-
-static int cmd_create(int argc, char **argv)
-{
-	Profile p;
-	int i;
-
-	if (argc < 1)
-		kb_die("usage: kdos-appbox create <box> [key=value ...]");
-	profile_defaults(&p, argv[0]);
-	for (i = 1; i < argc; i++)
-		if (profile_set(&p, argv[i]) != 0)
-			kb_die("unknown setting '%s'", argv[i]);
-	if (box_exists(p.name))
-		kb_die("box '%s' already exists", p.name);
-	if (profile_save(&p) != 0)
-		kb_die("could not write the profile");
-	if (box_create(&p) != 0)
-		kb_die("could not create box '%s'", p.name);
-	printf("created %s\n", p.name);
-	return 0;
-}
-
-static int cmd_recreate(const char *box)
-{
-	Profile p;
-	profile_load(&p, box);
-	if (box_exists(box) && box_remove(box, 1) != 0)
-		kb_die("could not remove box '%s'", box);
-	if (box_create(&p) != 0)
-		kb_die("could not create box '%s'", box);
-	printf("recreated %s\n", box);
+	       strcmp(state, "absent") ? "created"
+				       : "not created (first launch will)", state);
 	return 0;
 }
 
 static void usage(void)
 {
 	fputs(
-"Usage: kdos-appbox run <app> [args...]     run an app from a box\n"
+"Usage: kdos-appbox run <app> [args...]     run an app from its pack's box\n"
 "       kdos-appbox open [--print|--choose] <path>\n"
 "                                           open a file in whatever opens it\n"
-"       kdos-appbox ensure | warmup | status\n"
-"\n"
+"       kdos-appbox warmup | status\n"
 "       kdos-appbox list                    boxes and their profiles\n"
 "       kdos-appbox apps                    known alien apps\n"
-"       kdos-appbox create <box> [k=v...]   new box with a sandbox profile\n"
-"       kdos-appbox remove <box>            delete a box\n"
-"       kdos-appbox recreate <box>          re-create with the saved profile\n"
-"       kdos-appbox install <pkg>           apt install into the box\n"
-"       kdos-appbox uninstall <pkg>         apt remove\n"
-"       kdos-appbox refresh                 re-scan the box for new apps\n"
-"       kdos-appbox security <box> [k=v...] show or change confinement\n"
-"       kdos-appbox tui                     full-screen manager\n"
+"       kdos-appbox genlaunchers --packs <fs-root> | --packs --user\n"
+"                               --packs-dir <dir> <fs-root>\n"
+"                               <desktop-dir> <fs-root>\n"
 "\n"
-"  -b, --box <name>   operate on <name> instead of " DEFAULT_BOX "\n"
-"  -v, --verbose      let podman/distrobox print to stderr\n"
+"  -b, --box <name>   run in <name> instead of the app's own pack box\n"
+"  -v, --verbose      let podman print to stderr\n"
 "\n"
-"Profile keys: network, ipc, devices, processes, home (shared|private),\n"
-"              init (yes|no), image (<ref>). Applied when a box is created.\n",
+"Boxes are kdos-box's: kdos-box list|create|enter|profile|remove ...\n",
 	      stderr);
 }
 
@@ -682,7 +699,7 @@ static int run_as_shim(const char *name, int argc, char **argv)
 	 * launch path below is otherwise identical, and `--box` still wins —
 	 * that is how the same application is run in a second box.
 	 */
-	if (pack[0] && pack_mode() && !strcmp(g_box, DEFAULT_BOX))
+	if (pack[0] && !strcmp(g_box, DEFAULT_BOX))
 		g_box = kb_strdup(pack);
 
 	/*
@@ -759,8 +776,6 @@ int main(int argc, char **argv)
 			       "<path> [path...]");
 		return cmd_open(argc - i - 1, argv + i + 1);
 	}
-	if (CMD("ensure"))
-		return cmd_ensure();
 	if (CMD("warmup"))
 		return cmd_warmup();
 	if (CMD("status"))
@@ -769,54 +784,45 @@ int main(int argc, char **argv)
 		return box_list();
 	if (CMD("apps"))
 		return app_list();
-	if (CMD("image"))
-		return cmd_image(argc - i - 1, argv + i + 1);
 	if (CMD("genlaunchers")) {
 		/*
 		 * Two sources, one set of outputs. `--packs <fs-root>` walks
 		 * every installed app pack; the two-argument form reads one
 		 * directory, which is what the image lane's bake hands it.
 		 */
+		/* `--packs --user` writes the USER tree — no fs-root, no root:
+		 * this is what `kdos app install` runs as the calling user. */
+		if (i + 2 < argc && !strcmp(argv[i + 1], "--packs") &&
+		    !strcmp(argv[i + 2], "--user")) {
+			if (i + 3 < argc)
+				kb_die("usage: kdos-appbox genlaunchers --packs --user");
+			return cmd_genlaunchers(NULL, NULL, 1, 0);
+		}
+		/* `--packs-dir <root> <fs-root>`: the BUILD's form — one extracted
+		 * pack per subdirectory of <root>, named after the pack. */
+		if (i + 3 < argc && !strcmp(argv[i + 1], "--packs-dir"))
+			return cmd_genlaunchers(argv[i + 2], argv[i + 3], 0, 1);
 		if (i + 1 < argc && !strcmp(argv[i + 1], "--packs")) {
-			if (i + 2 >= argc)
+			/* AN EXTRA ARGUMENT IS REFUSED RATHER THAN IGNORED.
+			 * The two forms differ by one argument, so
+			 * `--packs <desktop-dir> <fs-root>` — the image lane's
+			 * shape with the flag added — reads the DESKTOP-DIR as
+			 * the fs-root and writes the whole set under it:
+			 * a table at <dir>/usr/share/kdos/alien-apps that
+			 * nothing reads, no shims swept, and the real table
+			 * left as whoever wrote it last. It exits 0. */
+			if (i + 2 >= argc || i + 3 < argc)
 				kb_die("usage: kdos-appbox genlaunchers --packs "
-				       "<fs-root>");
-			return cmd_genlaunchers(NULL, argv[i + 2]);
+				       "<fs-root>   (no desktop-dir: the packs "
+				       "are the source)");
+			return cmd_genlaunchers(NULL, argv[i + 2], 0, 0);
 		}
 		if (i + 2 >= argc)
 			kb_die("usage: kdos-appbox genlaunchers "
 			       "<desktop-dir> <fs-root>\n"
 			       "       kdos-appbox genlaunchers --packs <fs-root>");
-		return cmd_genlaunchers(argv[i + 1], argv[i + 2]);
+		return cmd_genlaunchers(argv[i + 1], argv[i + 2], 0, 0);
 	}
-	if (CMD("create"))
-		return cmd_create(argc - i - 1, argv + i + 1);
-	if (CMD("remove")) {
-		if (i + 1 >= argc)
-			kb_die("usage: kdos-appbox remove <box>");
-		return box_remove(argv[i + 1], 1);
-	}
-	if (CMD("recreate")) {
-		if (i + 1 >= argc)
-			kb_die("usage: kdos-appbox recreate <box>");
-		return cmd_recreate(argv[i + 1]);
-	}
-	if (CMD("install")) {
-		if (i + 1 >= argc)
-			kb_die("usage: kdos-appbox install <pkg>");
-		return app_install(g_box, argv[i + 1]);
-	}
-	if (CMD("uninstall")) {
-		if (i + 1 >= argc)
-			kb_die("usage: kdos-appbox uninstall <pkg>");
-		return app_uninstall(g_box, argv[i + 1]);
-	}
-	if (CMD("refresh"))
-		return app_refresh(g_box);
-	if (CMD("security"))
-		return cmd_security(argc - i - 1, argv + i + 1);
-	if (CMD("tui"))
-		return tui_main();
 #undef CMD
 
 	usage();

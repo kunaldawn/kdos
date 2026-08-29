@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = caddy
+version     = 2.11.4
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/caddyserver/caddy/archive/refs/tags/v$version.tar.gz
+sha256      = 2c3d02078286a6282cdb4d1d8744077788d556659dac0b64d8ed5886a7e5aeb9  caddy-2.11.4.tar.gz
+sha256      = 2fb48e35bde7c5e5ec7e49a50689189be3744e275e70b468fabe64a4bf800616  caddy-vendor-2.11.4.tar.xz
+description = A web server for the corpus, with TLS that works with no internet
+homepage    = https://caddyserver.com/
+depends     = go
+vendoring   = go

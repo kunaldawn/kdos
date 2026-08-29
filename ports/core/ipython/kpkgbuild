@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ipython
+version     = 9.16.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/06/96/b150fe7e25a5a29ae9ac1374e71488639605d39a1ea4abb74c9ce33af235/ipython-9.16.1.tar.gz
+sha256      = 5a3d1f9a47ff216d6cf9cf863124f6a2c1a198d1354c546a4d24a370a283b64c  ipython-9.16.1.tar.gz
+sha256      = 51c55658f62db4376467c3b851b55799f394aaa6f391cee3b5e9ecbcd0c5a34d  ipython-vendor-9.16.1.tar.xz
+description = The REPL people actually compute in
+homepage    = https://pypi.org/project/ipython/
+depends     = python3 python3-setuptools python3-pip python3-pygments
+vendoring   = python

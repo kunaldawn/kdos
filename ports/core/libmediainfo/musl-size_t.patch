@@ -1,0 +1,19 @@
+--- a/Source/MediaInfoDLL/MediaInfoDLL.h
++++ b/Source/MediaInfoDLL/MediaInfoDLL.h
+@@ -142,6 +142,16 @@
+         #define MEDIAINFODLL_NAME "libmediainfo.so.0"
+     #endif //MEDIAINFODLL_NAME
+     #define __stdcall
++    /* size_t is used throughout this header and nothing here declares it. On
++       glibc <dlfcn.h> pulls it in transitively; musl's does not, so every C or
++       C++ consumer of this header fails on the first prototype that names it.
++       The macOS branch above already includes exactly this for the same
++       reason. */
++    #ifdef __cplusplus
++        #include <cstddef> //for size_t
++    #else /* __cplusplus */
++        #include <stddef.h> //for size_t
++    #endif /* __cplusplus */
+ #endif //!defined(_WIN32) || defined(WIN32)
+ 
+ /*-------------------------------------------------------------------------*/

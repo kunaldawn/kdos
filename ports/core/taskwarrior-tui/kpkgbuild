@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = taskwarrior-tui
+version     = 0.26.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/kdheepak/taskwarrior-tui/archive/refs/tags/v$version.tar.gz
+sha256      = 76f053e2e3c9e71b8106e3fc3c18fd4400a98c09a8cde5972305e0eeaecc08d3  taskwarrior-tui-0.26.3.tar.gz
+sha256      = e9caf8edd3dca9800f697c605e3972e8e3008f6245f8cd58d3f5bd85bd2149b8  taskwarrior-tui-vendor-0.26.3.tar.xz
+description = The front end that makes taskwarrior something you look at rather than query
+homepage    = https://github.com/kdheepak/taskwarrior-tui
+depends     = rust taskwarrior
+vendoring   = rust

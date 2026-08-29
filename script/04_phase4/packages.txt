@@ -186,6 +186,23 @@ sd
 glow
 chezmoi
 entr
+# Colours by byte class, so structure in a binary is visible without a legend.
+hexyl
+# Inspect, subset and convert a font file. The desktop's own chrome_font
+# question — which faces exist and what is in them — is otherwise answered by
+# opening one in something that has no place on this host.
+fonttools
+# A terminal spreadsheet for any tabular file. `pyrequirements = no`: its
+# requirements.txt is the OPTIONAL loader set and reaches pandas and scipy,
+# where its install_requires is python-dateutil.
+visidata
+# awk for CSV, TSV and JSON: named fields instead of column numbers, which is
+# the difference between a one-liner and a script.
+miller
+# SVG to PNG with no browser engine behind it. resvg is what the desktop's own
+# artwork pipeline would reach for; the atlas is rasterised on the host, but a
+# machine that has the file should be able to render it too.
+resvg
 
 # ---------------------------------
 # Archives, duplicates and recovery
@@ -222,9 +239,796 @@ par2cmdline-turbo
 xapian-core
 pugixml
 libmicrohttpd
+mustache
 libzim
 libkiwix
+docopt.cpp
 kiwix-tools
+
+# ---------------------------------
+# Secrets, another operating system, and the memory under all of it
+# ---------------------------------
+# 900 lines of bash frozen since 2021: a file per entry in a git repo with gpg
+# over each, readable with `gpg -d` if pass itself vanished. `tree` is a hard
+# dependency — `pass` with no argument lists the store by running it.
+pass
+# A container format is one enormous file that changes on every write, so
+# syncing it resends the whole thing and two writers corrupt it. gocryptfs
+# keeps a ciphertext file per plaintext file, which is why it is the one that
+# works inside syncthing.
+gocryptfs
+# Containers share the host kernel, so nothing here could run another OS —
+# test a kernel, open an untrusted disk image, boot the installer of the
+# distro being migrated from. On a distro whose own test rig IS qemu.
+# qemu's aarch64 and riscv64 targets require libfdt, and --disable-download
+# means its own submodule copy is never fetched.
+dtc
+qemu
+# Not a program, an EFI payload: bad RAM is the one fault a tool running under
+# an OS cannot honestly diagnose, because it is in the memory being tested.
+memtest86plus
+
+# ---------------------------------
+# Putting firmware on a chip, and talking to it while it runs
+# ---------------------------------
+# Everything else here debugs a PROCESS; openocd halts a microcontroller
+# through its debug port — the only way to find out why a board does not boot
+# far enough to print anything. Its adapter list and the 70-kdos-*.rules list
+# are the same list on purpose.
+openocd
+# Also the only thing that writes a FUSE byte, which bricks a chip when it
+# goes wrong and cannot be undone from software after.
+avrdude
+# The one flashing route needing no second piece of hardware: a device held in
+# bootloader mode takes its own firmware over the standard USB class.
+dfu-util
+# The probe is soldered to every Nucleo and Discovery board, and
+# `st-flash write firmware.bin 0x8000000` is one command where openocd is
+# three config files.
+stlink
+
+# ---------------------------------
+# Cross toolchains — native, because flashing a board must not need podman
+# ---------------------------------
+# THE ORDER IS THE DEPENDENCY. binutils first, then a gcc built
+# --without-headers so libgcc can exist before a libc does, then the libc
+# built WITH that gcc. One recipe cannot do the last two: the compiler has to
+# be installed before the library it compiles can configure against it.
+#
+# Cortex-M and Cortex-R. --with-multilib-list=rmprofile is what keeps this to
+# the profiles a microcontroller actually is, rather than every ARM variant
+# since 1985.
+binutils-arm-none-eabi
+gcc-arm-none-eabi
+picolibc-arm-none-eabi
+# RV32 and RV64 — the MCUs and the soft cores the FPGA flow above synthesises.
+binutils-riscv64-unknown-elf
+gcc-riscv64-unknown-elf
+picolibc-riscv64-unknown-elf
+# The spare-parts drawer. avr-libc rather than picolibc: AVR is a Harvard
+# machine with its own address spaces and picolibc does not target it.
+binutils-avr
+gcc-avr
+avr-libc
+# The recovery path for a machine that will not POST, and the way a router's
+# flash gets read. The most destructive program in the tree; its own safety is
+# that nothing happens without naming a programmer.
+flashrom
+# It RECONNECTS, which is the whole difference from picocom: a board being
+# flashed leaves USB and comes back, and picocom exits every time.
+tio
+# The bootloader route for an STM32 with no debugger on the desk: the ROM
+# loader is on the chip already and answers over the same serial line the
+# board is being watched on.
+stm32flash
+# The ESP ROM bootloader is in mask ROM and cannot be bricked, which is what
+# makes esptool the one flashing tool that always answers.
+python3-esptool
+# The chardev GPIO ABI — /sys/class/gpio is gone, and gpiomon on this is a poor
+# man's logic analyzer needing no hardware beyond the header pins.
+libgpiod
+# The standard instrument-automation API with no proprietary VISA anywhere:
+# pyvisa is the API and pyvisa-py is the backend that actually speaks USBTMC.
+python3-pyvisa
+python3-pyvisa-py
+# The same route for an ESP32 or ESP8266. Espressif's own esptool is the
+# reference and is python reaching `cryptography` — seven new python ports and
+# a compiled crypto stack to write a binary down a serial line; espflash is
+# Espressif's Rust flasher, one binary, driving the same ROM bootloader.
+espflash
+# The terminal a board bring-up starts at, and the file transfer that reaches
+# a machine which has only that line. The rz/sz aliases are what every other
+# terminal program looks for, so lrzsz installs them too.
+minicom
+lrzsz
+
+# ---------------------------------
+# Buses — I2C, CAN and MQTT
+# ---------------------------------
+# The dialout group and the 70-kdos-*.rules grant these device classes; without
+# the tools the permission opens nothing.
+i2c-tools
+# SocketCAN is in the kernel and these are the commands that use it. A vehicle
+# or a machine bus is otherwise a device node with nothing to point at it.
+can-utils
+# candump puts raw frames on the screen; cantools turns them into named signals
+# against a DBC and generates the C the MCU side decodes them with.
+python3-cantools
+# LoRa mesh text and position: no licence, no infrastructure, no subscription.
+python3-meshtastic
+# The protocol every PLC and bench instrument speaks over RS-485 or TCP.
+libmodbus
+# cJSON is here for mosquitto's control plane rather than for its own sake.
+cjson
+# A broker on the machine is what makes a sensor network testable without a
+# cloud account, which is the whole point on a distro that builds offline.
+mosquitto
+# Watching a topic tree is how an MQTT problem is diagnosed; mosquitto_sub
+# prints a stream and this shows the tree it belongs to.
+mqttui
+
+# ---------------------------------
+# Software radio
+# ---------------------------------
+# fs/etc/modprobe.d/kdos-sdr.conf blacklists dvb_usb_rtl28xxu and this is the
+# other half: without both, the kernel claims an RTL2832U as a DVB-T tuner on
+# plug-in and librtlsdr cannot open a device lsusb happily lists.
+rtl-sdr
+# One API in front of every radio, so rtl_433 and anything after it is written
+# once rather than per front end.
+soapysdr
+# What is actually on 433 and 868 MHz: weather stations, tyre monitors, door
+# sensors — hardware people already own and cannot otherwise read.
+rtl-433
+# POCSAG, FLEX, AFSK and DTMF out of a stream of samples. No Qt on the host,
+# so the ALSA input is the only one built.
+multimon-ng
+
+# ---------------------------------
+# Position
+# ---------------------------------
+# gpsd has no Makefile and no meson.build — scons IS its build system, so this
+# is the price of a GPS daemon rather than a preference between build tools.
+scons
+# One daemon in front of every receiver, so a GPS is a socket rather than a
+# serial protocol every program reimplements. The 70-kdos-*.rules already grant
+# the serial classes one arrives on.
+gpsd
+
+# ---------------------------------
+# The bench — instruments, protocols and a calculator that parses units
+# ---------------------------------
+# Opening /dev/ttyUSB0 is trivial; knowing it exists, that it is an FTDI, and
+# which of three identical adapters it is, is sysfs walking every bench
+# program would otherwise reimplement.
+libserialport
+# A hundred hardware drivers behind one interface, so a program reads samples
+# without knowing which box produced them. The decoders are python modules —
+# adding one for an undecoded chip is writing a file, not patching C.
+libsigrok
+libsigrokdecode
+sigrok-cli
+# An LXI device announces itself over mDNS, which avahi is already running —
+# so `lxi discover` finds a scope nobody typed an address for. VXI-11 is ONC
+# RPC, hence libtirpc.
+liblxi
+lxi-tools
+# numbat REFUSES a nonsensical unit combination by construction; qalc is the
+# forgiving one with a far larger definition set. Currency rates are the one
+# online feature and they fail quietly rather than inventing a number.
+libqalculate
+
+# ---------------------------------
+# Raw pixels, curves, and sound with no window
+# ---------------------------------
+# The JPEG beside a raw file is a lossy preview the camera made — an archive
+# of raws with no decoder is one nobody can open in ten years.
+libraw
+# Everything else here rasterises; this goes the other way, which is what
+# turns a scanned logo or a photographed sketch into something a laser cutter
+# or a CNC can use.
+potrace
+# Lossless, which is the only reason it is safe to point at an archive: the
+# output decodes bit-identical, so nobody has to judge acceptable quality loss.
+oxipng
+# A MIDI file is a SCORE, not a recording — a few kilobytes of "which note,
+# how hard, when", worthless without a synthesiser. No SoundFont is shipped:
+# picking one is picking a sound.
+fluidsynth
+# libopus encodes a FRAME; libopusenc encodes a FILE — Ogg muxing, comment
+# headers and the delay bookkeeping that makes a decode line up sample for
+# sample. opusenc does not build without it.
+libopusenc
+# And opusfile is the READ half — opusdec and opusinfo link it, so without it
+# opus-tools builds an encoder and nothing that can play the result back.
+opusfile
+opus-tools
+# The player and the playback are separate processes: the music survives the
+# terminal closing, the session locking and the client dying, and any client
+# can attach — including one over ssh from another machine on the LAN.
+# mpd reaches for an fmt SUBPROJECT WRAP when the system one is absent, which
+# is a download in a build that has no network.
+fmt
+mpd
+# The other half of the pair: mpd is the daemon, termusic is a full player with
+# its own. ratatui rather than ncurses, which this tree deliberately removed.
+termusic
+
+# ---------------------------------
+# Words, notes, and where the time went
+# ---------------------------------
+# StarDict is the one dictionary format with a large body of freely
+# redistributable data already converted into it. Shipping a dictionary would
+# be picking a language for everybody.
+sdcv
+# rga is an adapter layer over ripgrep and its dependencies are PROGRAMS: each
+# missing helper is a file type it silently declines to search.
+ripgrep-all
+# One bash script over a git repo of markdown: the notes outlive nb itself and
+# sync with anything that syncs a directory.
+nb
+# The half taskwarrior does not do — it records what should happen, this
+# records the interval it took.
+timewarrior
+
+# ---------------------------------
+# Playing, reading, scanning and keeping a record
+# ---------------------------------
+# The one media player that needs NO toolkit — it draws with its own renderer
+# straight onto a Wayland surface, so watching something costs no container
+# and no 18-second cold start.
+# Every file under libplacebo's src/shaders/ is GENERATED from a jinja
+# template at build time, and its vendored copy of jinja is an empty submodule
+# in the release archive.
+python3-jinja2
+# mpv 0.41 has a bare dependency() on it — no port, no mpv, and its fallback
+# is a subproject wrap, which is a download.
+libplacebo
+mpv
+# 40 000 photos on a stick are 40 000 files named DSC_* until something reads
+# the date, the lens and the position out of them.
+exiv2
+# poppler turns a PDF into pixels; qpdf works on the FILE — split, merge,
+# remove a password you own, repair an xref so something else can open it.
+qpdf
+
+# ---------------------------------
+# Mail — indexed once, read by anything
+# ---------------------------------
+# Here for its m4 MACRO, not its documentation: a GNOME-lineage configure.ac
+# calls GTK_DOC_CHECK, and a missing m4 macro survives into the generated
+# configure as a literal rather than failing at aclocal time.
+gtk-doc
+# MIME parsing that verifies a signature and decrypts a part correctly, which
+# is the whole value over a hand-rolled parser.
+gmime
+# notmuch does not fetch, send or store mail: it INDEXES a Maildir something
+# else put there. That split is what lets aerc, mutt and a shell script see the
+# same tags — and it rides the xapian the kiwix and recoll stacks already need.
+notmuch
+# The client. Its notmuch binding is cgo, which is why this is the one Go port
+# built with CGO_ENABLED=1.
+aerc
+
+# It renders TABLES, which is why it is here and not lynx: technical HTML is
+# full of them and lynx flattens them into unreadable runs of text.
+# w3m allocates through the Boehm collector and its configure refuses to run
+# without gc.h.
+bdwgc
+w3m
+# Its database is two plain text files — greppable, diffable, syncable with
+# the rest of $HOME, and a backup is a copy.
+# A missing AX_* macro does not fail at aclocal time — it survives into the
+# generated configure as a literal word. calcurse needs AX_WITH_CURSES.
+autoconf-archive
+calcurse
+# The ledger IS a text file and the program only reads it. The data survives
+# the tool, which is not true of any accounting app with a database.
+ledger
+# leptonica answers a missing image library by dropping that format silently,
+# and the one it drops is usually multi-page TIFF — what every document feeder
+# writes. tesseract with no .traineddata starts and fails, which reads as a
+# broken build, so the English model is a `source =` line.
+leptonica
+tesseract
+# 3.x moved its storage layer to a Rust crate, which is why a C++ program has
+# a cargo vendor bundle. Sync needs a server and is off by construction.
+# taskwarrior 3 builds its Rust core through corrosion and fetches it with a
+# git clone unless SYSTEM_CORROSION finds one.
+corrosion
+# And corrosion runs `cargo install cxxbridge-cmd` — another download — unless
+# find_program turns up one at EXACTLY the cxx version the project locks.
+cxxbridge-cmd
+taskwarrior
+# taskwarrior is a query language; this is the half you look at. It shells out
+# to the same `task` binary, so the two cannot disagree about what a task is.
+taskwarrior-tui
+# A TeX Live install is gigabytes and answers a mistake with forty lines of
+# macro expansion; this is one binary that says which line is wrong. Where
+# nobody can search for the error text, that is whether a document gets
+# written.
+typst
+
+# ---------------------------------
+# Sequences, coordinates, and exact arithmetic
+# ---------------------------------
+# The three move together on one version number and each checks the library it
+# was built against — a mismatch is a runtime complaint, not a link error.
+# samtools bundles its own htslib, which is why --with-htslib=system matters.
+htslib
+samtools
+bcftools
+# A runtime dispatcher that the makefile still needs telling about: the default
+# target puts -msse4.1 on EVERYTHING, so a build here SIGILLs elsewhere.
+minimap2
+# geos links nothing, which is why it is first in the GIS chain — proj and
+# gdal are both built against it.
+geos
+# The high-accuracy datum grids are a CDN download and that path is dead here,
+# so transformations fall back to the coarse analytic method: metres, not
+# kilometres, and `projinfo` says which pipeline it chose.
+proj
+# 150+ raster and vector formats behind one API. GDAL_USE_CURL=OFF for proj's
+# reason: /vsicurl/ turns a dataset path into an HTTP client.
+gdal
+# One file per map, and `pmtiles show` reads it off the disk. `extract` against
+# the hosted planet is the network verb and is not why this is here.
+go-pmtiles
+# Marble's "offline routing" IS this or it does not exist. planetsplitter
+# turns an OSM extract into the database the router reads.
+routino
+# PARI answers exact integer and number-theoretic questions; maxima answers
+# symbolic ones. Neither substitutes for the other.
+pari
+# A spreadsheet is a grid of cells, which is what this whole desktop is — so
+# it runs on tty1 at the console font with no compromise. libxml2 and libzip
+# are what let it read the .xlsx a spreadsheet actually arrives as.
+sc-im
+# SQL over CSV, JSON and Parquet with no server and no import step. The two
+# autoload flags are the point: by default it DOWNLOADS an extension from
+# duckdb.org the first time a query needs one, so reading a Parquet file
+# offline fails at run time with a message about an extension.
+duckdb
+
+# ---------------------------------
+# The numeric foundation — everything in C2 stands on these
+# ---------------------------------
+# DYNAMIC_ARCH is the OPPOSITE of `kdos march`'s discipline and is right here
+# for one reason: OpenBLAS carries a kernel per microarchitecture and picks by
+# cpuid at RUNTIME. That is the dispatch musl closes off everywhere else, and
+# upstream has maintained it for twenty years.
+openblas
+# GSL's own reference CBLAS is correct and ~10x slower, so --with-external-cblas
+# is what stops every consumer silently getting the slow one.
+gsl
+# Three precisions, three configure runs: double for octave and scipy, single
+# for every SDR and audio path, long double for a few C2 solvers.
+fftw
+# The 1.14 line, not 2.x — netcdf, octave and the python wheels here are built
+# against it, and a data format library is the wrong place to be first.
+hdf5
+# GMP is what makes the exact simplex exact; without it a mixed-integer answer
+# is optimal-looking and occasionally wrong at the last bit, silently.
+glpk
+# glpk is a decade behind on mixed-integer problems; HiGHS is the one an open
+# toolchain can put against a commercial solver.
+highs
+
+# ---------------------------------
+# The python numeric stack
+# ---------------------------------
+# THE BUILD BACKENDS ARE PORTS, NOT VENDORED WHEELS. numpy and matplotlib build
+# through `mesonpy`, and under pip's build isolation each would fetch that
+# backend from PyPI — whose own chain ends at the `ninja` wrapper, whose sdist
+# COMPILES CMAKE FROM SOURCE. This tree has cmake, ninja and meson already.
+python3-flit-core
+python3-packaging
+python3-pyproject-metadata
+python3-meson-python
+python3-cython
+python3-pybind11
+python3-setuptools-scm
+# The array type, and what makes the shipped python a calculator. No wheels
+# exist for musl+3.14, so this is a from-source meson build; openblas is what
+# the linear algebra lands on rather than numpy's bundled reference kernels.
+numpy
+# Once the array type exists these are cheap and each closes a real hole:
+# scipy.constants IS the CODATA table, and a join or a group-by wants pandas.
+scipy
+python3-versioneer
+pandas
+# Thermophysical properties as a compiled-in lookup, not a download.
+coolprop
+# Coordinates, times, FITS and WCS, over the ERFA the tree already builds.
+python3-extension-helpers
+python3-pyerfa
+astropy
+# Complex text layout over harfbuzz. matplotlib 3.11 REQUIRES it and fetches
+# libraqm, harfbuzz and sheenbidi as wraps otherwise — two of which are ports.
+libraqm
+# Delaunay triangulation. matplotlib downloads v8.0.2 by URL when
+# system-qhull is off, so the version here is the one its meson names.
+qhull
+# Agg only — matplotlib's first import otherwise probes for GUI toolkits that
+# must not exist here. A plot is a PNG, and libsixel puts it in a terminal.
+matplotlib
+# The REPL people actually compute in.
+ipython
+# Arbitrary precision, and how sympy evaluates numerically.
+python3-mpmath
+# Symbolic algebra, and the answer to the SageMath hole — Sage is gone from
+# trixie and this is what is left that runs on a terminal.
+sympy
+# Where a planet, moon or satellite actually is. The JPL kernel is NOT shipped:
+# `load()` downloads it, which is the one thing this machine will not do.
+python3-jplephem
+python3-sgp4
+python3-certifi
+skyfield
+# Its `dumb` terminal draws into the same character grid everything else here
+# does, so a plot works over ssh and on tty1 with no toolkit.
+gnuplot
+# `bc` will add a voltage to a resistance. On a bench the arithmetic mistake
+# that actually happens is a unit one.
+numbat
+# Bit-level manipulation and base conversion watched live, which is the other
+# arithmetic a bench actually does.
+bitwise
+# Read and write Modbus registers from a prompt — libmodbus with a front end.
+mbpoll
+# netCDF is the array format climate, ocean and atmosphere data ships in, and
+# it is HDF5 underneath. DAP and NCZarr are network clients and are off — on a
+# distro that builds offline they are the half nobody here can reach.
+netcdf-c
+# A unit is metadata until something can convert it.
+udunits
+# Subset, regrid and do arithmetic on a grid larger than memory.
+nco
+
+# ---------------------------------
+# Astronomy — the sky, in the formats telescopes write
+# ---------------------------------
+# Every instrument writes FITS and nothing else reads it.
+cfitsio
+# Pixel to sky and back. Without --disable-fortran configure builds a library
+# that is silently missing half its interface when no Fortran wrapper is made.
+wcslib
+# The IAU's own SOFA routines, relicensed so they can be shipped here at all.
+erfa
+# Arithmetic, cropping, warping and photometry over FITS, from a prompt —
+# which is the shape the rest of this distro is already in.
+gnuastro
+
+# ---------------------------------
+# Sequences — the bioinformatics core
+# ---------------------------------
+# Profile HMMs: the search Pfam is built on, and the one that finds a remote
+# homologue a pairwise aligner walks straight past.
+hmmer
+# BLASTP/BLASTX at a thousand times the speed, which is the difference between
+# a search that runs on this machine and one that does not.
+diamond
+# Multiple alignment that scales past a handful of sequences.
+mafft
+# FASTA/FASTQ manipulation at speed — the tool a sequence pipeline starts with,
+# before anything is aligned or searched.
+seqkit
+
+# ---------------------------------
+# Synthesise, place, route and flash — the open FPGA flow, natively
+# ---------------------------------
+# Native, because flashing a board must not need podman. Order matters and is
+# not alphabetical: nextpnr compiles each fabric description INTO its binary,
+# so both chip databases must be installed before it is built.
+libftdi
+capstone
+eigen
+# tcl vendors libtommath and RENAMES every symbol in it; yosys calls the plain
+# names against tcl's public headers, so the external copy is what makes it
+# compile at all — see the tcl recipe.
+libtommath
+tcl
+# SPICE, Verilog simulation and the file formats a bootloader argues about.
+# ngspice is the analogue half of a bench that already synthesises and places.
+ngspice
+iverilog
+# The lint as much as the simulator: verilator catches the width mismatches and
+# inferred latches iverilog will happily simulate and a real part will not do.
+verilator
+# The 8-bit families gcc has no back end for at all: 8051, STM8, Z80 and PDK.
+sdcc
+srecord
+# An antenna model is a card deck in and a pattern out, with no Fortran runtime.
+nec2c
+# Terrain-aware path loss, and the converters that turn an elevation model into
+# something it can read. A satellite tracker beside it, honest about TLE age.
+splat
+predict
+# A soundcard TNC and the network above it: direwolf is the modem, libax25 and
+# ax25-tools are what turn its KISS output into an interface the kernel routes.
+libax25
+direwolf
+ax25-tools
+# The SMT solver a formal proof over yosys is actually answered by.
+yices2
+# And the front end that turns a SystemVerilog assertion into a problem for it.
+symbiyosys
+# A single .py file that makes a gdb crash readable; the ported gdb is already
+# --with-python, so it costs one file and nothing else.
+gef
+# RP2040/RP2350 UF2 inspection and USB loading — a host program that reads and
+# writes those images, needing the SDK's headers and no cross toolchain.
+picotool
+# RTT is the best embedded printf channel there is, and probe-rs is the one
+# free implementation that also flashes over CMSIS-DAP, ST-Link and J-Link.
+probe-rs
+# HF propagation from a model rather than a guess, and a contest logger whose
+# deliverable — the Cabrillo file — is entirely local.
+voacapl
+tlf
+# A 3000-entry conversion database that is itself a reference document.
+units
+yosys
+icestorm
+prjtrellis
+nextpnr
+# iceprog programs one family over FTDI; this knows a hundred boards, which is
+# what makes the flow usable on hardware somebody actually has.
+openfpgaloader
+# One control protocol for 200 radios — the program the CP210x/FTDI udev rules
+# exist for on the radio side, as picocom is on the console side.
+hamlib
+# Disassembly, cross-references and patching in a terminal with no JVM. Its
+# decompiler is weak and Ghidra is the boxed row that answers that.
+rizin
+
+# ---------------------------------
+# Grammars compiled here, a Rust server that can see std, and a private CA
+# ---------------------------------
+# nvim-treesitter and Helix download and compile a grammar on FIRST USE, which
+# offline is a permanently broken feature that looks like a config bug.
+tree-sitter
+# Without the rust-src component it fails silently: navigation into std
+# reports nothing rather than erroring. ports/core/rust installs that source.
+rust-analyzer
+# Let's Encrypt needs the internet and a self-signed cert per host means a
+# warning per host that people learn to click through. One root, trusted once,
+# speaking ACME so caddy renews against it with its public config.
+step-ca
+
+# ---------------------------------
+# Two people talking, and two machines sharing a filesystem
+# ---------------------------------
+# The comms ladder skipped VOICE, which is what people default to under
+# stress: this tree could already carry text, serve documents and stand up a
+# network with no router, and had no way for two people on it to talk.
+# libre's version is pinned to baresip's — a mismatch aborts at call time,
+# not at link time.
+libre
+baresip
+# samba is the INTEROPERABILITY answer (a Windows laptop, a phone or a printer
+# speaks SMB and often nothing else); nfs-utils is the CORRECTNESS one — SMB
+# does not carry POSIX ownership, symlinks or byte-range locks the way a Linux
+# program expects. --disable-nfsv3 removes rpcbind and two more daemons.
+nfs-utils
+# samba builds pidl, its IDL compiler, with Parse::Yapp, and stops rather than
+# degrading when the module is absent.
+perl-parse-yapp
+samba
+
+# ---------------------------------
+# Inside the kernel, on the air, and against your own hashes
+# ---------------------------------
+# Every kernel prerequisite is already set in kdos.config — DEBUG_INFO_BTF,
+# BPF_SYSCALL, BPF_JIT, KPROBES, UPROBES — which is what makes bpftrace a port
+# rather than a kernel change plus a port. libbpf and cereal exist for it;
+# bcc's `find_package(LibBcc REQUIRED)` is unconditional.
+libbpf
+cereal
+bcc
+bpftrace
+# With hostapd shipped, this machine can BE the access point — and the
+# questions that then matter (which channel is congested, why does this client
+# keep deauthenticating) are physical-layer ones nothing else here answers.
+# `iw` is a hard prerequisite: airmon-ng calls it to set monitor mode.
+aircrack-ng
+# Reads a hash out of a LUKS header, a KeePass database, an encrypted PDF or
+# ZIP, or /etc/shadow, and answers "how long would this take" — about your own
+# material. No breach corpus is shipped.
+john
+# Fifty drivers for two engines that are actually here is the default build;
+# this one is `no_base` plus postgres, sqlite3 and mysql.
+usql
+
+# ---------------------------------
+# The wire, the database, the web server, and reading the screen aloud
+# ---------------------------------
+# tcpdump prints packets; tshark understands about three thousand protocols,
+# which is the difference between seeing a TLS handshake and reading why it
+# failed. The GUI is Qt and is off — that is what makes this legal here.
+# ~250 MB installed, almost all of it dissectors, and that is the price.
+# wireshark's FindSpeexDSP is a hard find_package: no resampler, no configure.
+speexdsp
+wireshark
+# termshark does no dissection itself: it drives `tshark -T pdml` and draws
+# the result, so the two ship together or neither is worth having.
+termshark
+# musl's collation is essentially byte order, so ORDER BY, LIKE and unique
+# indexes on case-folded text all quietly disagree with every other machine
+# the data touches. --with-icu is what makes them correct.
+postgresql
+# Caddy's default config asks Let's Encrypt and fails at every start, so the
+# shipped Caddyfile uses `tls internal` — its own local CA, needing nothing
+# outside this machine.
+caddy
+# xh explores and hurl asserts: a request plus what the answer must contain,
+# in a file that diffs. On a machine with no CI, that file IS the CI.
+hurl
+# A character-cell desktop is the ideal thing to read — tty1, the installer
+# and every kdos-shell surface is a grid BRLTTY takes verbatim out of
+# /dev/vcsa, with none of the guessing a toolkit tree needs. Boxed GUI apps
+# stay unreachable; docs/ACCESSIBILITY.md is the statement of record.
+# `expr length` is a GNU extension toybox does not implement — it yields the
+# empty string, and brltty's configure then reports a driver that is present
+# as unknown. One program, for the same reason sed and gawk are ports.
+coreutils
+brltty
+
+# ---------------------------------
+# Language servers, a diff you can read, and a repository you can undo
+# ---------------------------------
+# The module is not at the tarball root: x/tools tags a gopls release and
+# ships gopls as a subdirectory with its own go.mod, which is what the
+# `vendordir =` helper exists for.
+gopls
+# zls and zig are pinned to each other on purpose — zls parses Zig with the
+# compiler's own AST, so a mismatch reports syntax errors on correct code.
+zls
+# Every tree-sitter consumer in an editor downloads and compiles a grammar on
+# first use; difftastic links ~50 of them in at build time, so a syntax-aware
+# diff works on a machine that has never had a network.
+difftastic
+# `jj op restore` puts the repository back to any earlier moment. The usual
+# recovery from a bad rebase is to re-clone from the remote, and there is no
+# remote.
+jujutsu
+# foot supports sixel, so yazi draws real thumbnails in a window that is
+# otherwise a character grid — the one place here a picture beats a filename.
+yazi
+# Which hop is losing packets and by how much, continuously — the question on
+# a link that works except when it does not. Needs CAP_NET_RAW, granted
+# deliberately rather than shipped setuid.
+trippy
+
+# ---------------------------------
+# Statistics, census, HTTP, bandwidth, and example-first help
+# ---------------------------------
+# `kdos march` already encodes this discipline for one question: several runs,
+# the median, the machine's own noise, and no "win" that does not clear it.
+hyperfine
+tokei
+# rustls rather than native-tls: a TLS stack chosen at build time by a probe
+# silently changes between two builds of one recipe.
+xh
+# Needs CAP_NET_RAW and is not given it — there is no third setuid program on
+# this system and a packet sniffer is not the one to add.
+bandwhich
+# The pages are seeded and auto-update is off: out of the box `tldr` downloads
+# on first use, so its whole value appears only where there is a network —
+# which is the case it was chosen FOR.
+tealdeer
+
+# ---------------------------------
+# One index over the corpus
+# ---------------------------------
+# recoll indexes a PDF by running pdftotext. With no poppler it walks a
+# directory of PDFs, reports success, and produces an index containing none of
+# them — and it rides the xapian the kiwix stack already needs.
+poppler
+# recoll stores its index metadata through it, by pkg-config.
+jsoncpp
+recoll
+
+# ---------------------------------
+# Keeping the bytes, and moving them between two machines
+# ---------------------------------
+# A backup tool is one static binary or it is not a backup tool: the repository
+# has to restore from a machine that is NOT this one. `rclone check` is the
+# only thing here that compares two trees by content and says what differs.
+restic
+rclone
+# One key format, no options, no key server to be unreachable — an age
+# recipient is a short line somebody can read over a phone.
+age
+# localAnnounce on, global/relay/NAT off: two machines on one LAN find each
+# other with no server anywhere, and nothing reaches outside it.
+syncthing
+# The default relay is a host on the internet and croc falls back to it
+# SILENTLY, so the shipped wrapper is `croc --local`.
+croc
+# There is no dig, drill or nslookup in this tree, on a machine expected to BE
+# the DNS server for an island network.
+doggo
+# preflight runs `bash -n` over ~470 build.sh files, which catches a syntax
+# error and nothing else. shfmt PARSES them.
+shfmt
+# Every documented appbox failure is podman state — a box stuck in `stopping`,
+# a half-built init, a storage driver mismatch.
+podman-tui
+# The KDOS repo no longer uses LFS, but `kdos rebuild` promises this stick can
+# rebuild this stick, and that extends to any other repo cloned on it: without
+# this a clone SUCCEEDS and checks out pointer files.
+git-lfs
+
+# ---------------------------------
+# The machine's own hardware, its GPUs and its damaged disks
+# ---------------------------------
+# The same drm-engine-* fdinfo source kdos-energyd's GPU column reads, so the
+# two agree by construction. NVIDIA_SUPPORT=OFF: NVML is in a driver this
+# distro cannot build.
+nvtop
+# A synthesiser, not a screen reader — what it buys alone is the corpus read
+# aloud on a machine whose 49 GB of documentation needs eyes.
+pcaudiolib
+espeak-ng
+# testdisk repairs a partition table so the kernel will mount the thing; this
+# never asks the kernel at all and walks the metadata out of the image.
+sleuthkit
+# Ships inert and deliberately so: a rule set is somebody's judgement about
+# what is suspicious and it decays from the day it is written.
+yara
+# Redis relicensed source-available in 2024; this is the BSD-3 continuation.
+valkey
+
+# ---------------------------------
+# Is the hardware dying, and can this machine reach it
+# ---------------------------------
+# Every udev rule this tree ships grants `dialout` a device class with nothing
+# on the host able to open it; picocom is the program those rules exist for.
+# libnvme has been a port with no consumer since it landed — nvme-cli is it.
+smartmontools
+nvme-cli
+lm-sensors
+dmidecode
+ethtool
+iw
+picocom
+# A counterfeit stick wraps its writes over the same cells: every copy
+# completes, every checksum at write time passes, and the corpus is gone
+# months later. On a distro whose medium IS the library that is the failure
+# mode f3 exists for.
+f3
+# kinstall writes an EFI entry once. Every later firmware that reorders or
+# drops it needs a tool on the RUNNING system, or a KDOS install that stops
+# booting has no repair path outside a firmware menu.
+efivar
+efibootmgr
+# hostapd completes the island network: dnsmasq is already here, so one
+# wireless card serves addresses, names, the corpus and a PXE boot with no
+# router in it. iw above is its hard prerequisite, not a convenience.
+hostapd
+# Scores a systemd/PAM/auditd machine, which this is not by rule — the value
+# is the report's explanations, not the number.
+lynis
+
+# ---------------------------------
+# Reading a repository, a log, and a code on a screen
+# ---------------------------------
+# ctags indexes the ~140 languages with no language server here; tig READS a
+# repository where lazygit acts on one; lnav is the only thing on this machine
+# that can answer a question about its own logs in SQL, which matters when
+# there is no search box to paste them into.
+universal-ctags
+tig
+lnav
+# zsh is here for Completion/ — embedded knowledge of a thousand commands'
+# arguments, worth more offline than on. bash remains the system shell.
+zsh
+# A QR code is a data path off this machine that needs no network: a device id
+# or a WiFi credential leaves through a phone camera. qrencode -t ANSI draws it
+# in block characters on the cell grid.
+qrencode
+zbar
 
 # ---------------------------------
 # Editors / TUI
@@ -310,7 +1114,125 @@ dav1d
 # ---------------------------------
 imagemagick
 ffmpeg
+# A still out of a video, which is what a file manager shows for one, and what
+# kdos-pick's preview asks for.
+ffmpegthumbnailer
+# Pictures in a terminal, on the one graphics protocol a VT understands. It is
+# the honest answer to "show me this image" on tty1, where no compositor is.
+libsixel
+# The camera classes 70-kdos-*.rules already grant: without the library the
+# permission opens a device nothing can talk to.
+libgphoto2
+gphoto2
+# Check and repair an STL before a slicer refuses it — the failure that
+# otherwise appears as a print that starts and stops.
+admesh
+# The compiled python bindings a document pipeline needs: an XML parser, an
+# imaging library, a PDF rewriter and a HEIF decoder. Each binds a system
+# library this tree already builds, which is why they are ports rather than
+# entries in somebody's vendor bundle.
+python3-lxml
+python3-pillow
+python3-pycparser
+python3-cffi
+python3-pikepdf
+python3-pi-heif
+# cryptography is what pdfminer.six binds through, and half of PyPI with it.
+# maturin is its build backend and bootstraps itself with setuptools-rust,
+# which is why three of these five exist only to compile the fourth.
+python3-semantic-version
+python3-setuptools-rust
+python3-maturin
+python3-cryptography
+# A scanned page is an image until something puts text behind it. tesseract
+# reads it and ghostscript rewrites the file; ocrmypdf is the one command that
+# adds an invisible text layer and leaves the scan itself alone.
+ocrmypdf
+
+# The stick can slice and had no way to send: pronsole pushes the gcode down a
+# USB serial line. Needs the dialout group, which fs/etc/group already grants.
+python3-pyserial
+python3-platformdirs
+printrun
+# On a keyboard-driven desktop typing speed is throughput. ttyper rather than
+# gtypist, whose last release was 2011.
+ttyper
+# The one manufacturer-independent engine diagnostic there is, over a serial
+# adapter the dialout group and the CH341/CP210x udev rules already reach.
+python3-obd
+# The only entry in this tree that CREATES comms rather than reading somebody
+# else's archive: a LAN XMPP server, two people on one stick with no network
+# beyond the room. dino-im is already the GUI client in the box.
+prosody
+# And the client. A server nobody can connect to from the machine it runs on
+# is a daemon, not a way to talk to somebody.
+libstrophe
+profanity
+# Speech to text with the model on the disk and nothing sent anywhere, which
+# is the whole reason it is here rather than in a box. The models are NOT
+# shipped: hundreds of megabytes each, and picking one picks a language.
+whisper.cpp
 fastfetch
+
+# ---------------------------------
+# Audio from a prompt
+# ---------------------------------
+# One output API over ALSA, so the players below need no backend each.
+libao
+# The converter with a published error floor. rubberband takes it rather than
+# its own builtin, which is correct and audibly worse on a long stretch.
+libsamplerate
+# Convert, resample, filter and analyse. `--without-ffmpeg` because sox's own
+# ffmpeg glue is written against an API two major versions old.
+sox
+# oggenc, oggdec, ogginfo, vorbiscomment.
+vorbis-tools
+# Time-stretch and pitch-shift that keeps a transient a transient — the thing
+# a naive resampler destroys and nobody can un-hear.
+rubberband
+
+# ---------------------------------
+# PostScript and PDF
+# ---------------------------------
+# Where every print queue and every OCR pipeline ends. --with-system-libtiff
+# and friends, because the bundled copies build fine and then the machine
+# carries two of each and only one gets a security fix.
+ghostscript
+# Without filters cups accepts a job, spools it, runs the paper through and
+# prints nothing on it; without gutenprint a consumer inkjet prints washed-out
+# garbage. The queue existing is not the same as the page coming out right.
+cups-filters
+gutenprint
+# mutool is the half of mupdf a scriptable machine wants: split, merge, draw,
+# extract, and a text dump a grep can reach. The X11 and GLUT viewers are out.
+# jbig2dec is the JBIG2 codec a scanned page in a PDF is encoded with, taken as
+# a port so mupdf does not carry a second copy of it.
+jbig2dec
+mupdf
+
+# ---------------------------------
+# Scanning, and what is inside a media file
+# ---------------------------------
+# The udev rules already grant the scanner classes to dialout; without the
+# backends the permission opens nothing. saned stays off — an unauthenticated
+# scanner daemon is an open port for a feature nothing here starts.
+sane-backends
+# THE SCANNER ON THE NETWORK HAS NO DRIVER AND DOES NOT NEED ONE: eSCL and WSD
+# over IP, announced by the mDNS avahi is already running.
+sane-airscan
+# And the same for a printer on a cable — IPP-over-USB presents the device's
+# own IPP service to cups, so a modern printer needs no driver either way.
+ipp-usb
+# Codec, profile, bit depth and every track, which is the question `ffprobe`
+# answers in a page and this answers in a line.
+libzen
+libmediainfo
+mediainfo
+# Image processing that STREAMS rather than loads, so a 20000x20000 scan is a
+# few megabytes of memory instead of a few gigabytes.
+libvips
+# Record the screen from a prompt, through the wlr-screencopy the fork serves.
+wf-recorder
 
 # ---------------------------------
 # ASCII art (aa-project)
@@ -355,6 +1277,13 @@ fuse
 # kdos-comp runs Xwayland rootlessly itself (wlroots does the work).
 # The libX11/libxcb chain is here only because Xwayland and xkbcomp need it.
 xwayland
+# The X core fonts Xwayland serves to its X11 clients. They are the SERVER's:
+# a boxed Motif or Xt program asks Xwayland, on the host, for
+# -adobe-helvetica and -misc-fixed, and a font directory inside the box is
+# invisible to it. Three families cover xterm, grace and xastir.
+font-misc-misc
+font-adobe-75dpi
+font-cursor-misc
 
 # Icon-theme skeleton: the index.theme that makes /usr/share/icons/hicolor a
 # real theme. Qt/Quickshell icon lookup silently fails without it — every app

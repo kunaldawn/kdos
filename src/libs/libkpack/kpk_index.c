@@ -101,6 +101,8 @@ int kpk_index_load(KpkIndex *ix, const char *path)
 			case 'S': e.size = strtoull(v, NULL, 10); break;
 			case 'R': e.recommended = !strcmp(v, "yes"); break;
 			case 'T': kb_strlcpy(e.summary, v, sizeof(e.summary)); break;
+			case 'N': kb_strlcpy(e.name, v, sizeof(e.name)); break;
+			case 'G': kb_strlcpy(e.category, v, sizeof(e.category)); break;
 			case 'D': kb_strlcpy(e.requires, v, sizeof(e.requires));
 				  break;
 			default: break;
@@ -183,6 +185,10 @@ int kpk_index_write(const KpkIndex *ix, const char *path)
 			kb_buf_str(&b, "R:yes\n");
 		if (e->summary[0])
 			kb_buf_printf(&b, "T:%s\n", e->summary);
+		if (e->name[0])
+			kb_buf_printf(&b, "N:%s\n", e->name);
+		if (e->category[0])
+			kb_buf_printf(&b, "G:%s\n", e->category);
 		if (e->requires[0])
 			kb_buf_printf(&b, "D:%s\n", e->requires);
 		kb_buf_str(&b, "\n");

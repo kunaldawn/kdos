@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = yosys
+version     = 0.68
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/YosysHQ/yosys/releases/download/v$version/yosys.tar.gz
+sha256      = ad8d2198e1a486e9089cc51a3158ecc764669267879518723fb98acc6fb24787  yosys-0.68.tar.gz
+description = Verilog synthesis — the first stage of the open FPGA flow
+homepage    = https://yosyshq.net/yosys/
+depends     = cmake ninja pkgconf bison flex readline zlib libffi tcl libtommath

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lynis
+version     = 3.1.7
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/CISOfy/$name/archive/refs/tags/$version.tar.gz
+sha256      = 48d829d0dc2c583a3e838cc09a7190b69a3af844bcb913c7cf9c0226b04b95c5  lynis-3.1.7.tar.gz
+description = Host security audit whose report explains why
+homepage    = https://cisofy.com/lynis/
+depends     = bash

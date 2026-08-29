@@ -44,6 +44,17 @@
 const char *res_act_helper_why(void)
 {
 	struct stat st;
+	/*
+	 * A FIXTURE IS A RECORDED MACHINE AND THIS IS A QUESTION ABOUT THE
+	 * RUNNING ONE. Stat'ing the real filesystem here makes the detail
+	 * page's footer — and therefore its golden frame — depend on whether
+	 * the host happens to have the helper installed, so the same dump
+	 * renders differently on two machines and the golden belongs to
+	 * whoever generated it. Nothing is executed on a fixture anyway: the
+	 * verbs are drawn, never run.
+	 */
+	if (R.fixture)
+		return NULL;
 	if (stat(RESCTL, &st) != 0)
 		return "kdos-resctl is not installed";
 	if (!(st.st_mode & S_ISUID))

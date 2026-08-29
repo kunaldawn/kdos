@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = stlink
+version     = 1.8.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/stlink-org/stlink/archive/refs/tags/v$version.tar.gz
+sha256      = cff760b5c212c2cc480f705b9ca7f3828d6b9c267950c6a547002cd0a1f5f6ac  stlink-1.8.0.tar.gz
+description = The ST-Link tools — flash and debug an STM32 directly
+homepage    = https://github.com/stlink-org/stlink
+depends     = cmake ninja pkgconf libusb

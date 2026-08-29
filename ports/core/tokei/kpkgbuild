@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tokei
+version     = 14.0.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/XAMPPRocky/tokei/archive/refs/tags/v$version.tar.gz
+sha256      = 4e561dbb83ef1b46359714fc623fd45eddfb14821ece63a219470500fdd1cd26  tokei-14.0.0.tar.gz
+sha256      = 8fd6787a5c0c4aabb80c2d0b7b7928edc3ce15a591dac33caa0598985a511383  tokei-vendor-14.0.0.tar.xz
+description = Source census — how much code is here, in what
+homepage    = https://github.com/XAMPPRocky/tokei
+depends     = rust
+vendoring   = rust

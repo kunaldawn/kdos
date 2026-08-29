@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = leptonica
+version     = 1.87.0
+release     = 1
+source      = https://github.com/DanBloomberg/leptonica/releases/download/$version/$name-$version.tar.gz
+sha256      = c73363397f96eb1295602bf44d708a994ad42046c791bf03ea0505d829bdb6a7  leptonica-1.87.0.tar.gz
+description = The image processing tesseract does its page analysis with
+homepage    = http://www.leptonica.org/
+depends     = pkgconf libpng libjpeg-turbo libtiff libwebp zlib openjpeg

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = matplotlib
+version     = 3.11.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/49/64/f9a391af28f518b11ad45a8a712353c94a0aefce09d3703200e5c54b610a/matplotlib-3.11.1.tar.gz
+sha256      = 69647db5746941c793d6e445a4cd349323ffb87d9cc958c2ad84a659b4832d30  matplotlib-3.11.1.tar.gz
+description = Publication 2D plotting, Agg only
+homepage    = https://pypi.org/project/matplotlib/
+depends     = python3 python3-setuptools python3-pip python3-meson-python python3-pybind11 python3-setuptools-scm numpy freetype2 libpng libraqm harfbuzz fribidi qhull

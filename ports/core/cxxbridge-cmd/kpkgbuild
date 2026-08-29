@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cxxbridge-cmd
+version     = 1.0.199
+release     = 1
+source      = $name-$version.tar.gz::https://static.crates.io/crates/$name/$name-$version.crate
+sha256      = fb05f91d3fb8435d9bab6ac5ce6ac1868be774325fb7fb2a91be39393b21388e  cxxbridge-cmd-1.0.199.tar.gz
+sha256      = b1402ee167b359585ffe6ad478ceadca2968e85352cb70c18a89e31098bccfa1  cxxbridge-cmd-vendor-1.0.199.tar.xz
+description = The cxx bridge generator corrosion runs to bind Rust to C++
+homepage    = https://cxx.rs/
+depends     = rust
+vendoring   = rust

@@ -11,7 +11,7 @@
 | Network          | technology  Li-ion                                                                                            |
 | Batteries        |                                                                                                               |
 | Energy           | AC0          not connected                                                                                    |
-|                  |                                                                                                               |
+| Boxes            |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |

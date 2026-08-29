@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = baresip
+version     = 4.11.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/baresip/baresip/archive/refs/tags/v$version.tar.gz
+sha256      = e170ad5857994dfed0c84c4c04eb904fa410f3ec2d5a6c789b50b3fda47ba98c  baresip-4.11.0.tar.gz
+description = SIP softphone — the rung of the comms ladder that is voice
+homepage    = https://github.com/baresip/baresip
+depends     = cmake ninja pkgconf libre openssl alsa-lib opus libvpx zlib

@@ -1,0 +1,20 @@
+--- a/ax25tools/Makefile.am
++++ b/ax25tools/Makefile.am
+@@ -1,4 +1,16 @@
+-SUBDIRS = ax25 hdlcutil kiss 6pack netrom rose tcpip user_call yamdrv dmascc man doc etc
++# TWO DIRECTORIES ARE OUT, AND NEITHER IS WHY THIS PACKAGE IS INSTALLED.
++#
++# tcpip/ holds exactly `ttylinkd`, which includes <protocols/talkd.h> — a glibc
++# header musl does not have — and `rip98d`, which passes the wrong pointer type
++# to bind(2).
++#
++# dmascc/ configures an ISA SCC card from the 1990s. Its dmascc_cfg.c names
++# caddr_t while including no header that declares it on musl, and -D_GNU_SOURCE
++# does not reach it because the file pulls <linux/if.h> rather than <net/if.h>.
++#
++# kissattach, the NET/ROM tools and the connected-mode links are all in the
++# directories that remain.
++SUBDIRS = ax25 hdlcutil kiss 6pack netrom rose user_call yamdrv man doc etc
+ 
+ EXTRA_DIST = pathnames.h ax25tools.spec
+ 

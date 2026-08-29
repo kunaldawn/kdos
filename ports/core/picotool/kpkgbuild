@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = picotool
+version     = 2.2.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/raspberrypi/picotool/archive/refs/tags/$version.tar.gz
+sha256      = dbd8db79015aced4ef35cbaa88051b0d451775010d20202e1c7d2bee69c25b35  pico-sdk-2.2.0.tar.gz
+sha256      = aab3d82fb1e576d97156ddcb962ae7cf290518a5f20d9002ac27e628dc657620  picotool-2.2.0.tar.gz
+source      = pico-sdk-$version.tar.gz::https://github.com/raspberrypi/pico-sdk/archive/refs/tags/$version.tar.gz
+description = RP2040 and RP2350 UF2 inspection and USB loading
+homepage    = https://github.com/raspberrypi/picotool
+depends     = cmake libusb pkgconf

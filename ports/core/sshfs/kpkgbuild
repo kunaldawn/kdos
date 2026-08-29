@@ -15,4 +15,4 @@ source      = https://github.com/libfuse/$name/releases/download/$name-$version/
 sha256      = 6a1bcb31450a077e9cb1b7ff158c71de34db697c3c0da6cb362502131e495893  sshfs-3.7.6.tar.xz
 description = Mount a remote directory over SSH with FUSE
 homepage    = https://github.com/libfuse/sshfs
-depends     = meson fuse3 glib openssh
+depends     = meson fuse3 glib openssh coreutils

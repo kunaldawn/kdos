@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tlf
+version     = 1.4.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Tlf/tlf/archive/refs/tags/tlf-$version.tar.gz
+sha256      = a5a4d0492d206fe67d324271c50c48801236a955c36edddc198289330cb17386  tlf-1.4.1.tar.gz
+description = Curses contest logger with hamlib and Cabrillo output
+homepage    = https://tlf.github.io/
+depends     = autoconf automake libtool pkgconf ncurses hamlib glib pcre2 argp-standalone

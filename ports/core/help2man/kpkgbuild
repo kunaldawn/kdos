@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = help2man
+version     = 1.49.3
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.xz
+sha256      = 4d7e4fdef2eca6afe07a2682151cea78781e0a4e8f9622142d9f70c083a2fd4f  help2man-1.49.3.tar.xz
+description = Turns a program's own --help into a man page
+homepage    = https://www.gnu.org/software/help2man/
+depends     = perl

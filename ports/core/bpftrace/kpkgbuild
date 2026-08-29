@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = bpftrace
+version     = 0.26.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/bpftrace/bpftrace/archive/refs/tags/v$version.tar.gz
+sha256      = 555368f32f94bfcb74b119a3d9c67b68200be6375b8f452f794a2d3f6ebbcd16  bpftrace-0.26.1.tar.gz
+description = Why is this slow, when the cause is inside the kernel
+homepage    = https://bpftrace.org/
+depends     = cmake ninja pkgconf flex bison llvm clang elfutils zlib zstd libbpf bcc cereal

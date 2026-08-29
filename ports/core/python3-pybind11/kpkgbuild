@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-pybind11
+version     = 2.13.6
+release     = 1
+source      = https://files.pythonhosted.org/packages/d2/c1/72b9622fcb32ff98b054f724e213c7f70d6898baa714f4516288456ceaba/pybind11-2.13.6.tar.gz
+sha256      = ba6af10348c12b24e92fa086b39cfba0eff619b61ac77c406167d813b096d39a  python3-pybind11-2.13.6.tar.gz
+description = C++11 bindings — matplotlib and libtrellis-style projects generate through it
+homepage    = https://pypi.org/project/pybind11/
+depends     = python3 python3-setuptools python3-pip

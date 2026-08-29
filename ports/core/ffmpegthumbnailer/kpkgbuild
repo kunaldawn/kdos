@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ffmpegthumbnailer
+version     = 2.3.0
+release     = 1
+source      = ffmpegthumbnailer-2.3.0.tar.gz::https://github.com/dirkvdb/ffmpegthumbnailer/archive/refs/tags/v2.3.0.tar.gz
+sha256      = ddf561e294385f07d0bd5a28d0aab9de79b8dbaed29b576f206d58f3df79b508  ffmpegthumbnailer-2.3.0.tar.gz
+description = A still out of a video file, which is what a file manager shows for one
+homepage    = https://github.com/dirkvdb/ffmpegthumbnailer
+depends     = cmake ffmpeg libjpeg-turbo libpng

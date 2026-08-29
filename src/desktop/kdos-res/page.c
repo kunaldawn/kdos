@@ -222,11 +222,19 @@ static void draw_sidebar(int w, int top, int h)
 			ktui_draw_text(g_in_x + 1, top + i, g_side_w - 2,
 				       p->name, fg, bg, 0);
 		} else {
-			/* The initial, highlighted — the whole name does not
-			 * fit and a truncation would read as a different
-			 * page. */
-			char ini[2] = { p->name[0], 0 };
-			ktui_draw_text(g_in_x + 1, top + i, 1, ini, fg, bg, 0);
+			/*
+			 * THREE CHARACTERS, NOT ONE, AND THE REASON IS
+			 * `Batteries` AND `Boxes`. A single initial makes two
+			 * different pages the same control — worse than a
+			 * truncation, which at least reads as incomplete.
+			 * Three is the shortest prefix that keeps all ten
+			 * distinct (App Pro CPU Mem GPU Dri Net Bat Ene Box)
+			 * and it fits: the column is SIDE_ICON wide with one
+			 * of padding either side.
+			 */
+			char ini[4] = { p->name[0], p->name[1], p->name[2], 0 };
+			ktui_draw_text(g_in_x + 1, top + i, SIDE_ICON - 2, ini,
+				       fg, bg, 0);
 		}
 	}
 }

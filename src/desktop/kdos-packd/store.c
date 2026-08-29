@@ -99,7 +99,11 @@ int kd_retain(void)
 	if (cached >= 0)
 		return cached;
 	cached = 1;
-	if (kb_read_file("/etc/kdos/packd.conf", buf, sizeof(buf)) == 0) {
+	/* `> 0`, not `== 0`: kb_read_file answers the BYTE COUNT, so `== 0`
+	 * parses the file only when it is empty — `retain =` was read from a
+	 * zero-byte packd.conf and from nothing else, and rollback silently
+	 * kept the default on every machine that had configured it. */
+	if (kb_read_file("/etc/kdos/packd.conf", buf, sizeof(buf)) > 0) {
 		char *line, *save;
 		for (line = strtok_r(buf, "\n", &save); line;
 		     line = strtok_r(NULL, "\n", &save)) {
@@ -411,6 +415,31 @@ int kd_install(const char *staged, char *msg, size_t n)
 	}
 
 accepted:
+	/*
+	 * A MOUNTED OLD VERSION MUST NOT OUTLIVE THE INSTALL. The mount table
+	 * is keyed by id and survives the rescan, so with the old version
+	 * still mounted every compose after this would put the NEW app diff
+	 * over the OLD runtime's bytes — measured after an update of rt-gtx:
+	 * kicad dying on `libSM.so.6: cannot open`, a library the new runtime
+	 * carries and the mounted one did not. Idle, the old mount is dropped
+	 * here so the next mount reads the new file; composed into a box, the
+	 * install is refused by the same rule `remove` applies, and
+	 * `kdos app update` has already named the boxes to stop.
+	 */
+	{
+		int cur = kd_find(p.meta.id);
+		if (cur >= 0 && kd_pack[cur].origin == KD_ORIGIN_STORE &&
+		    kd_pack[cur].mnt[0]) {
+			if (kd_pack[cur].refs) {
+				snprintf(msg, n, "%s is composed into %d box(es) — "
+					 "stop them, then install", p.meta.id,
+					 kd_pack[cur].refs);
+				return -1;
+			}
+			if (kd_unmount(cur, msg, n) != 0)
+				return -1;
+		}
+	}
 	kb_mkdir_p(kd_store_dir());
 	snprintf(dst, sizeof(dst), "%s/%s.kpack", kd_store_dir(), p.meta.id);
 

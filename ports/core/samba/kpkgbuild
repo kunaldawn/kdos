@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = samba
+version     = 4.24.6
+release     = 1
+source      = https://download.samba.org/pub/samba/stable/$name-$version.tar.gz
+sha256      = 810cc955acb367e9bde556dccfb50db177a02b7c553aa1629a0b905fa7616267  samba-4.24.6.tar.gz
+description = The interoperability layer — a Windows laptop or a printer speaks SMB
+homepage    = https://www.samba.org/
+depends     = python3 perl pkgconf gnutls libtasn1 zlib jansson readline popt libarchive icu ncurses e2fsprogs util-linux libtirpc rpcsvc-proto perl-parse-yapp

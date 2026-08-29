@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libraw
+version     = 0.22.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/LibRaw/LibRaw/archive/refs/tags/$version.tar.gz
+sha256      = 627928088300ecde6ca91ffd202e189203f04ad61ad12f0fe9dc57b9a7a0fb3c  libraw-0.22.2.tar.gz
+description = Decode a camera raw file — the format the picture actually is
+homepage    = https://www.libraw.org/
+depends     = autoconf automake libtool pkgconf libjpeg-turbo lcms2 zlib

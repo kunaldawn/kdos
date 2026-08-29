@@ -36,7 +36,12 @@
 #include "kbuild.h"
 #include "ktui.h"
 
-#define KB_MAX_STEPS   4096	/* phases + every package they expand to    */
+#define KB_MAX_STEPS   8192	/* phases + every package they expand to    */
+/* The ceiling on ONE packages.txt phase's resolved order, and it is libkpkg's
+ * KP_MAX_ORDER rather than a fraction of KB_MAX_STEPS: kpkgdepends cannot
+ * return more than that, so a phase that reaches this has already been
+ * truncated upstream and the build must say so rather than carry on. */
+#define KB_MAX_PKGS    2048
 #define KB_MAX_LOG     2000	/* lines kept per step, as in build.py      */
 #define KB_MAX_NOTICE  50
 
@@ -67,7 +72,7 @@ typedef struct BStep {
 	int return_code;
 
 	struct BStep *parent;
-	struct BStep *child[KB_MAX_STEPS / 8];
+	struct BStep *child[KB_MAX_PKGS];
 	int nchild;
 
 	/* Groups only. */

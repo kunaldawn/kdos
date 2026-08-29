@@ -11,8 +11,8 @@
 name        = libserialport
 version     = 0.1.2
 release     = 1
-source      = https://sigrok.org/download/source/libserialport/$name-$version.tar.gz
+source      = https://sigrok.org/download/source/$name/$name-$version.tar.gz
 sha256      = 5deb92b5ca72c0347b07b786848350deca2dcfd975ce613b8e0e1d947a4b4ca9  libserialport-0.1.2.tar.gz
-description = Cross-platform serial port library — the flashing and instrument ring depends on it
+description = Enumerate and open a serial port, portably
 homepage    = https://sigrok.org/wiki/Libserialport
-depends     =
+depends     = pkgconf libusb

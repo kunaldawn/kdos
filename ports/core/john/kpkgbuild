@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = john
+# A HYPHEN CANNOT APPEAR IN A VERSION: a package is
+# `<name>-<version>-<release>.tar.xz`, so `1.9.0-jumbo-1` makes that filename
+# ambiguous and preflight refuses it. Upstream's tag is the hyphenated form and
+# `_tag` carries it verbatim, so the URL is still upstream's own.
+version     = 1.9.0.jumbo1
+release     = 1
+_tag        = 1.9.0-Jumbo-1
+source      = $name-$version.tar.gz::https://github.com/openwall/john/archive/refs/tags/$_tag.tar.gz
+sha256      = 16bfecad0cddad146564abb76b6e6b28a71653670c2799d60ca4035db5f3b9c4  john-1.9.0.jumbo1.tar.gz
+description = Prove your own hashes are weak; recover your own encrypted archive
+homepage    = https://www.openwall.com/john/
+depends     = autoconf pkgconf openssl zlib bzip2 gmp libpcap

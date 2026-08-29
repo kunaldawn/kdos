@@ -831,7 +831,7 @@ static void draw(void)
 			snprintf(hint, sizeof(hint),
 				 "Tab link   Enter follow   Bksp back   "
 				 "/ search   Esc close");
-		ktui_draw_text(2, h - 2, w - 4, hint, KT_DIM, KT_SURFACE,
+		ktui_draw_text(2, h - 2, w - 4, hint, KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 	}
 	ktui_draw_flush();

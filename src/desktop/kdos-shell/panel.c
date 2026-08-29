@@ -2472,7 +2472,7 @@ static void notify_poll(void)
 	static time_t asked;
 	time_t now = time(NULL);
 	const char *run = getenv("XDG_RUNTIME_DIR");
-	char path[256], buf[64] = { 0 };
+	char path[SH_SOCK_MAX], buf[64] = { 0 };
 	int fd;
 
 	if (asked == now)
@@ -2551,7 +2551,7 @@ static void frames_poll(void)
 	if (frames_fd < 0) {
 		const char *run = getenv("XDG_RUNTIME_DIR");
 		time_t now = time(NULL);
-		char path[256];
+		char path[SH_SOCK_MAX];
 
 		if (!run || !*run || now - frames_try < 10)
 			goto tally;
@@ -2610,7 +2610,7 @@ static int clip_depth(void)
 	static int cached = -1;
 	time_t now = time(NULL);
 	const char *run = getenv("XDG_RUNTIME_DIR");
-	char path[256], buf[32] = {0};
+	char path[SH_SOCK_MAX], buf[32] = {0};
 	int fd;
 
 	if (asked == now)
@@ -3765,7 +3765,7 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 	int rw = ktui_utf8_width(ro);
 	if (right_x - rw - 2 < x_min)
 		return right_x;
-	ktui_draw_text(right_x - rw, ry, rw, ro, KT_DIM, KT_SURFACE, KT_A_NONE);
+	ktui_draw_text(right_x - rw, ry, rw, ro, KT_MID, KT_SURFACE, KT_A_NONE);
 	return right_x - rw - 2;
 }
 
@@ -3912,7 +3912,7 @@ static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 			continue;
 		}
 		/*
-		 * An item whose Id has not been read yet gets a dim
+		 * An item whose Id has not been read yet gets a muted
 		 * placeholder, never a letter mined from its bus address:
 		 * every Qt item registers as
 		 * org.kde.StatusNotifierItem-<pid>-<n>, so a KDE-ish login
@@ -3920,7 +3920,7 @@ static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 		 */
 		if (!it->id[0]) {
 			ktui_draw_text(tx + TRAY_W / 2, ry, 1,
-				       ktui_glyph[KT_G_DOT], KT_DIM, tbg,
+				       ktui_glyph[KT_G_DOT], KT_MID, tbg,
 				       KT_A_NONE);
 			tx += TRAY_W;
 			continue;

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = icestorm
+version     = 1.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/YosysHQ/icestorm/archive/refs/tags/v$version.tar.gz
+sha256      = 928dd541d15540a796a3d320122794d8d76acff90783de8c5747f613e474652f  icestorm-1.1.tar.gz
+description = The iCE40 bitstream database, packer and programmer
+homepage    = https://github.com/YosysHQ/icestorm
+depends     = pkgconf libftdi python3

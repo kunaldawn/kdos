@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tealdeer
+version     = 1.9.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/tealdeer-rs/tealdeer/archive/refs/tags/v$version.tar.gz
+sha256      = 1387a04ddba714668ff0925377a2de0d0ab14533d44dd0766d673fbbd71e3119  tealdeer-1.9.0.tar.gz
+sha256      = 43603441aed2b4ec46bf46bd6120a7b524b3479e27e4be9889de69ad602eb596  tealdeer-vendor-1.9.0.tar.xz
+source      = tldr-pages-2.3.tar.gz::https://github.com/tldr-pages/tldr/archive/refs/tags/v2.3.tar.gz
+sha256      = a49c520fa0545286c268c907d6534503ed818a6e5c73cb5cb0c018e237b1f1c4  tldr-pages-2.3.tar.gz
+description = Example-first help — the tldr pages, pre-seeded and never fetched
+homepage    = https://tealdeer-rs.github.io/tealdeer/
+depends     = rust
+vendoring   = rust

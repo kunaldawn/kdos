@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = exiftool
+version     = 13.59
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/exiftool/exiftool/archive/refs/tags/$version.tar.gz
+sha256      = 87d3317882fdae9cb4dcfe57a96a378d0132ffc02c731315bf128b19ddcf7aac  exiftool-13.59.tar.gz
+description = Read and write the metadata of essentially every image, audio and video format
+homepage    = https://exiftool.org/
+depends     = perl

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = glpk
+version     = 5.0
+release     = 1
+source      = https://ftp.gnu.org/gnu/$name/$name-$version.tar.gz
+sha256      = 4a1013eebb50f728fc601bdd833b0b2870333c3b3e5a816eeba921d95bec6f15  glpk-5.0.tar.gz
+description = Linear and mixed-integer programming, with its own modelling language
+homepage    = https://www.gnu.org/software/glpk/
+depends     = gmp

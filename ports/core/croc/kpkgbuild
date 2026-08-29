@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = croc
+version     = 11.3.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/schollz/croc/archive/refs/tags/v$version.tar.gz
+sha256      = 441f751cc45d0a66312a54bf5374a6f30e95992e0d71c808d5aaadb62f74cd67  croc-11.3.2.tar.gz
+sha256      = 9f126c5aa5c2a7dccdda83b16de3d1a7f2a4e5df4ad3ddac77904966d6a8596f  croc-vendor-11.3.2.tar.xz
+description = One-off file transfer by code phrase, kept on this network
+homepage    = https://github.com/schollz/croc
+depends     = go
+vendoring   = go

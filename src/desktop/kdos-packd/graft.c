@@ -155,8 +155,28 @@ int kd_graft(int idx, uid_t uid, char *msg, size_t n)
 
 		snprintf(src, sizeof(src), "%s/%s", p->mnt,
 			 p->meta.boxgraft[i].from);
-		snprintf(dir, sizeof(dir), "%s/.local/share/kdos/packs", home);
-		snprintf(dst, sizeof(dst), "%s/%s", dir, p->meta.boxgraft[i].to);
+		/*
+		 * `to` is a name under ~/.local/share/kdos/packs, where a
+		 * program told by an `env` line finds it — or, beginning with
+		 * `~/`, a place in the home the program looks in by itself:
+		 * stellarium reads ~/.stellarium/stars and takes no variable
+		 * naming another directory. The parent is made; the link is
+		 * the only thing written, and only a link is ever removed.
+		 */
+		if (!strncmp(p->meta.boxgraft[i].to, "~/", 2)) {
+			char *slash;
+			snprintf(dst, sizeof(dst), "%s/%s", home,
+				 p->meta.boxgraft[i].to + 2);
+			kb_strlcpy(dir, dst, sizeof(dir));
+			slash = strrchr(dir, '/');
+			if (slash)
+				*slash = 0;
+		} else {
+			snprintf(dir, sizeof(dir), "%s/.local/share/kdos/packs",
+				 home);
+			snprintf(dst, sizeof(dst), "%s/%s", dir,
+				 p->meta.boxgraft[i].to);
+		}
 		if (kd_fixture) {
 			kd_log("boxgraft %s -> %s", src, dst);
 			made++;

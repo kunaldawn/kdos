@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = docopt.cpp
+version     = 0.6.3
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/docopt/docopt.cpp/archive/refs/tags/v$version.tar.gz
+sha256      = 28af5a0c482c6d508d22b14d588a3b0bd9ff97135f99c2814a5aa3cbff1d6632  docopt.cpp-0.6.3.tar.gz
+description = Command-line parser that derives the interface from the usage text
+homepage    = https://github.com/docopt/docopt.cpp
+depends     = cmake

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = hdf5
+version     = 1.14.6
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/HDFGroup/hdf5/releases/download/hdf5_$version/$name-$version.tar.gz
+sha256      = e4defbac30f50d64e1556374aa49e574417c9e72c6b1de7a4ff88c4b1bea6e9b  hdf5-1.14.6.tar.gz
+description = The self-describing container scientific data actually arrives in
+homepage    = https://www.hdfgroup.org/
+depends     = cmake ninja zlib

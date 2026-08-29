@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = exiv2
+version     = 0.28.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/Exiv2/exiv2/archive/refs/tags/v$version.tar.gz
+sha256      = ea51b0609f58a9afa063b60daa1539948b62247721e154f4fff0ad3aec9f9756  exiv2-0.28.8.tar.gz
+description = Read and write image metadata — EXIF, IPTC and XMP
+homepage    = https://exiv2.org/
+depends     = cmake ninja pkgconf expat zlib brotli inih

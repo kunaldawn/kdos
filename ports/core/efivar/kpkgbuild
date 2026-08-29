@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = efivar
+version     = 39
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/rhboot/$name/archive/refs/tags/$version.tar.gz
+sha256      = c9edd15f2eeeea63232f3e669a48e992c7be9aff57ee22672ac31f5eca1609a6  efivar-39.tar.gz
+description = Read and write EFI variables — the library efibootmgr needs
+homepage    = https://github.com/rhboot/efivar
+depends     = pkgconf mandoc

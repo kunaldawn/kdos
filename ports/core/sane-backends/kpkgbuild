@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sane-backends
+version     = 1.4.0
+release     = 1
+source      = sane-backends-1.4.0.tar.gz::https://gitlab.com/sane-project/backends/-/archive/1.4.0/backends-1.4.0.tar.gz
+sha256      = 9c50ee76e35d98d7ae0cbb97d4c2a3c15663a78fdd74b0ed2bf2fe8e1a73f63a  sane-backends-1.4.0.tar.gz
+description = The scanner driver set, and the udev rules 70-kdos-*.rules already grant
+homepage    = http://www.sane-project.org/
+depends     = autoconf automake libtool libusb libjpeg-turbo libtiff libpng avahi

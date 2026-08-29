@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lm-sensors
+version     = 3.6.2
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/lm-sensors/lm-sensors/archive/refs/tags/V${version//./-}.tar.gz
+sha256      = c6a0587e565778a40d88891928bf8943f27d353f382d5b745a997d635978a8f0  lm-sensors-3.6.2.tar.gz
+description = Is it cooking — temperatures, fans and voltages from hwmon
+homepage    = https://github.com/lm-sensors/lm-sensors
+depends     = bison flex

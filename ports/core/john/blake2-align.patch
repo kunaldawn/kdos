@@ -1,0 +1,38 @@
+--- a/src/blake2.h
++++ b/src/blake2.h
+@@ -57,7 +57,7 @@
+     uint8_t  personal[BLAKE2S_PERSONALBYTES];  // 32
+   } blake2s_param;
+ 
+-  JTR_ALIGN( 64 ) typedef struct __blake2s_state
++  typedef struct __blake2s_state
+   {
+     uint32_t h[8];
+     uint32_t t[2];
+@@ -65,7 +65,7 @@
+     uint8_t  buf[2 * BLAKE2S_BLOCKBYTES];
+     size_t   buflen;
+     uint8_t  last_node;
+-  } blake2s_state ;
++  } JTR_ALIGN( 64 ) blake2s_state ;
+ 
+   typedef struct __blake2b_param
+   {
+@@ -82,7 +82,7 @@
+     uint8_t  personal[BLAKE2B_PERSONALBYTES];  // 64
+   } blake2b_param;
+ 
+-  JTR_ALIGN( 64 ) typedef struct __blake2b_state
++  typedef struct __blake2b_state
+   {
+     uint64_t h[8];
+     uint64_t t[2];
+@@ -90,7 +90,7 @@
+     uint8_t  buf[2 * BLAKE2B_BLOCKBYTES];
+     size_t   buflen;
+     uint8_t  last_node;
+-  } blake2b_state;
++  } JTR_ALIGN( 64 ) blake2b_state;
+ #if defined(JOHN_NO_SIMD) || (!defined(__SSE2__) && !defined(__SSE4_1__) && !defined(__XOP__))
+   typedef struct __blake2sp_state
+ #else

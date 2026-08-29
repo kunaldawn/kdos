@@ -463,7 +463,7 @@ static void draw(const char *query, int sel, int top)
 	}
 
 	if (nmatch == 0)
-		ktui_draw_text(2, 3, w - 4, "no match", KT_DIM, KT_SURFACE,
+		ktui_draw_text(2, 3, w - 4, "no match", KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 
 	/*

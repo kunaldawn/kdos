@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gcc-arm-none-eabi
+version     = 15.2.0
+release     = 1
+_up         = gcc-$version
+source      = $name-$version.tar.xz::https://mirrors.ocf.berkeley.edu/gnu/gcc/$_up/$_up.tar.xz
+sha256      = 438fd996826b0c82485a29da03a72d71d6e3541a83ec702df4271f6fe025d24e  gcc-arm-none-eabi-15.2.0.tar.xz
+description = The bare-metal Cortex-M and Cortex-R compiler
+homepage    = https://gcc.gnu.org/
+depends     = binutils-arm-none-eabi gmp mpfr mpc zlib texinfo

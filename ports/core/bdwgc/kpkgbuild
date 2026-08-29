@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = bdwgc
+version     = 8.2.12
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/bdwgc/bdwgc/releases/download/v$version/gc-$version.tar.gz
+sha256      = 42e5194ad06ab6ffb806c83eb99c03462b495d979cda782f3c72c08af833cd4e  bdwgc-8.2.12.tar.gz
+description = The Boehm conservative garbage collector — w3m allocates through it
+homepage    = https://www.hboehm.info/gc/
+depends     = pkgconf

@@ -44,6 +44,7 @@ section before this file existed:
 """
 
 import argparse
+import base64
 import os
 import socket
 import struct
@@ -92,9 +93,9 @@ class Serial:
             self.pump()
         return False
 
-    def send(self, line):
+    def send(self, line, pace=0.3):
         self.s.sendall(line.encode() + b"\n")
-        time.sleep(0.3)
+        time.sleep(pace)
 
     def tail(self, n=2000):
         return self.buf[-n:].decode("utf-8", "replace")
@@ -303,6 +304,36 @@ def rfb_shot(host, port, out):
     return w, h
 
 
+def send_script(ser, path, timeout=600):
+    """Run a LOCAL script inside the guest, as root, and return what it said.
+
+    There is no shared filesystem with the guest — the repo is not on the ISO
+    unless KDOS_ISO_SOURCES was set — so the file travels down the serial
+    console. It goes as BASE64 IN SHORT LINES for two separate reasons: a tty
+    in canonical mode drops everything past its line limit, silently, so a
+    script long enough to be worth keeping cannot be one line; and an encoded
+    payload contains nothing the shell would act on before `base64 -d` hands it
+    back, which a heredoc of arbitrary text does not promise.
+
+    The marker is echoed by the guest, so what comes back is delimited by the
+    guest's own output rather than by a timeout: a step that takes four minutes
+    to install a pack is waited for rather than truncated.
+    """
+    blob = base64.b64encode(open(path, "rb").read()).decode()
+    ser.send(": > /tmp/kdos-step.b64")
+    for i in range(0, len(blob), 512):
+        ser.send("printf %%s '%s' >> /tmp/kdos-step.b64" % blob[i:i + 512],
+                 pace=0.05)
+    ser.buf = b""
+    ser.send("base64 -d /tmp/kdos-step.b64 > /tmp/kdos-step.sh; "
+             "echo ===KDOSSCRIPT-BEGIN===; sh /tmp/kdos-step.sh 2>&1; "
+             "echo ===KDOSSCRIPT-END===")
+    if not ser.expect("===KDOSSCRIPT-END===", timeout=timeout):
+        return ser.tail(60000) + "\n[rig] the script never finished"
+    ser.pump()
+    return ser.tail(60000)
+
+
 class Step(argparse.Action):
     """Append (kind, value) to one ORDERED list shared by every action flag.
 
@@ -336,6 +367,9 @@ def main():
                     help="run in the kdos session")
     ap.add_argument("--root-cmd", action=Step,
                     help="run as root on the serial console and print it")
+    ap.add_argument("--root-script", action=Step,
+                    help="send this LOCAL file into the guest and run it as "
+                         "root — the form for a check too long to be one line")
     ap.add_argument("--size", default="1280x800",
                     help="the guest's screen, WxH — the virtio-gpu default is "
                          "1280x800 and nothing in the guest overrides it")
@@ -357,12 +391,37 @@ def main():
                          "last; --sleep is the same wait placed by hand")
     ap.add_argument("--wait", type=int, default=25,
                     help="seconds to let the session settle")
+    ap.add_argument("--script-timeout", type=int, default=900,
+                    help="how long a --root-script may take. Installing a "
+                         "pack off the medium is minutes, not seconds")
     ap.add_argument("--vnc-port", type=int, default=5909)
     ap.add_argument("--audio", action="store_true",
                     help="give the guest an HDA controller with a silent "
                          "backend, so audio paths reach a real device")
+    ap.add_argument("--disk", default=None,
+                    help="attach this qcow2 as a virtio disk — the target an "
+                         "unattended kinstall writes to")
+    ap.add_argument("--no-cdrom", action="store_true",
+                    help="leave the ISO off entirely, so the DISK is what "
+                         "boots. The second half of an install test")
+    ap.add_argument("--boot-disk", action="store_true",
+                    help="boot the DISK with the ISO still attached — an "
+                         "installed system that can still reach the medium. "
+                         "The app sweep needs both: boxes run on the disk and "
+                         "packs are installed off /mnt/iso/packs")
+    ap.add_argument("--scratch", default=None,
+                    help="attach a raw file as a virtio disk the GUEST writes "
+                         "a tar onto, which is how files come back out. "
+                         "--data-disk is input only")
+    ap.add_argument("--no-session", action="store_true",
+                    help="do not start the desktop: the steps are all this "
+                         "run wants and a compositor is 40s of nothing")
     ap.add_argument("--usb", default=None,
                     help="attach a raw disk image as a USB stick")
+    ap.add_argument("--data-disk", default=None,
+                    help="attach a raw file as a plain virtio disk — how a "
+                         "large artefact reaches a guest with no network. Far "
+                         "faster than --usb, and not removable")
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--serial-log", default="/tmp/kdos-serial.log")
     args = ap.parse_args()
@@ -403,7 +462,6 @@ def main():
         "qemu-system-x86_64", "-enable-kvm", "-cpu", "host",
         "-smp", str(min(8, os.cpu_count() or 4)), "-m", "4G",
         "-bios", ovmf,
-        "-cdrom", ISO,
         "-vga", "none", "-device", video,
         "-display", display,
         "-vnc", "127.0.0.1:%d" % (args.vnc_port - 5900),
@@ -414,6 +472,23 @@ def main():
         "-monitor", "chardev:mon0",
         "-netdev", "user,id=net0", "-device", "virtio-net-pci,netdev=net0",
     ]
+    if not args.no_cdrom:
+        qemu += ["-cdrom", ISO]
+    if args.disk:
+        # virtio-blk, so it lands as /dev/vda and kinstall's probe sees a plain
+        # whole disk rather than something behind a USB bridge.
+        #
+        # WHICHEVER IS ATTACHED IS WHAT BOOTS, and the order has to be said
+        # rather than left to the firmware. With a CD present this run is the
+        # INSTALL — boot the medium, or the second run tests the disk the first
+        # one wrote and the first tests nothing. With no CD it is the run that
+        # boots what was installed. Leaving the default worked only while the
+        # disk was blank, which is the one case where getting it wrong is
+        # invisible.
+        qemu += ["-drive", "if=none,id=hd0,format=qcow2,file=%s" % args.disk,
+                 "-device", "virtio-blk-pci,drive=hd0",
+                 "-boot", "order=c" if (args.no_cdrom or args.boot_disk)
+                          else "order=d"]
     if args.audio:
         # AN HDA CONTROLLER WITH THE SAMPLES GOING NOWHERE. `-audiodev none`
         # is a real backend as far as the guest is concerned: the kernel binds
@@ -424,6 +499,28 @@ def main():
         # sound of its own, so a real backend is not on the table anyway.
         qemu += ["-audiodev", "none,id=snd0", "-device", "intel-hda",
                  "-device", "hda-output,audiodev=snd0"]
+    if args.scratch:
+        # A RAW DISK THE GUEST WRITES A TAR ONTO, and the only path OUT of a
+        # guest with no network. `--data-disk` carries files IN; nothing
+        # carried them back, and 183 screenshots do not fit through a serial
+        # console. The guest runs `tar cf /dev/vdX <dir>` — no filesystem and
+        # no mkfs, because tar on a block device starts at offset 0 and the
+        # host reads it with a plain `tar xf`, which stops at the archive's own
+        # end marker and never looks at the trailing megabytes.
+        qemu += ["-drive", "if=none,id=scr0,format=raw,file=%s" % args.scratch,
+                 "-device", "virtio-blk-pci,drive=scr0"]
+    if args.data_disk:
+        # A PLAIN VIRTIO DISK CARRYING ONE FILE'S BYTES, for getting a large
+        # artefact INTO a guest that has no network. `--usb` is the wrong
+        # transport for it: usb-storage is emulated at USB 2.0 and measured
+        # 1.8 MB/s here, so a 9.2 GB pack took 85 minutes and outran any
+        # timeout worth setting. This is the same virtio-blk the target disk
+        # uses. It lands as the next /dev/vdX, has no partition table and no
+        # filesystem — the guest reads the device itself, with `dd bs=1M` and
+        # a `truncate` to the artefact's exact length, because a raw drive is
+        # rounded up to a sector boundary.
+        qemu += ["-drive", "if=none,id=dd0,format=raw,file=%s" % args.data_disk,
+                 "-device", "virtio-blk-pci,drive=dd0"]
     if args.usb:
         # A real removable device, because kdos-mountd's whole job is one and
         # a fixture cannot mount anything. usb-storage lands as /dev/sdX with
@@ -469,7 +566,9 @@ def main():
         # tty1 autologins as `kdos` and stops at a prompt: the session is
         # started by hand on this distro, which is the documented entry point
         # (`kdos-desktop` from a tty) and not something to work around.
-        if args.console_cmd:
+        if args.no_session:
+            print("not starting a session — the steps are the run", flush=True)
+        elif args.console_cmd:
             # tty1 autologins as `kdos` and stops at a prompt. Typing here
             # rather than starting the session is what photographs a program
             # on the CONSOLE — the 512-glyph font, the vt glyph tier, and no
@@ -535,6 +634,9 @@ def main():
                 time.sleep(2)
                 ser.pump()
                 print("$ %s\n%s" % (value, ser.tail(8000)), flush=True)
+            elif kind == "root_script":
+                out = send_script(ser, value, timeout=args.script_timeout)
+                print("$ sh %s\n%s" % (value, out), flush=True)
             elif kind == "shot":
                 w, h = rfb_shot("127.0.0.1", args.vnc_port, value)
                 print("wrote %s (%dx%d)" % (value, w, h), flush=True)
@@ -555,7 +657,10 @@ def main():
 
         # `--out` is the one-shot form and stays the default: a run that asked
         # for no picture at all is a run that booted the ISO for nothing.
-        if not shots:
+        # A run that asked for no picture at all is a run that booted the ISO
+        # for nothing — unless it deliberately started no session, where the
+        # only thing on the screen is a login prompt.
+        if not shots and not args.no_session:
             time.sleep(2)
             print("reading the framebuffer over VNC…", flush=True)
             w, h = rfb_shot("127.0.0.1", args.vnc_port, args.out)

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = universal-ctags
+version     = 6.2.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/universal-ctags/ctags/archive/refs/tags/v$version.tar.gz
+sha256      = f56829e9a576025e98955597ee967099a871987b3476fbd8dbbc2b9dc921f824  universal-ctags-6.2.1.tar.gz
+description = Jump-to-definition index for the languages with no language server
+homepage    = https://ctags.io/
+depends     = autoconf automake pkgconf jansson libxml2 pcre2 yaml

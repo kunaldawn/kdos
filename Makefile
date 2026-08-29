@@ -18,7 +18,7 @@ BUILD_ARGS ?=
 
 fetch:
 	bash ports/fetch
-	@test -f ports/appbox/appbox.tar || echo "hint: 'make fetch-apps' builds the offline alien-app image (needs network + docker/podman)"
+	@test -d ports/appbox/packs || echo "hint: 'make fetch-packs' bakes the application packs (needs network + docker/podman)"
 
 # Checks every port (or PORTUP_ARGS's own selection) for a newer upstream
 # release. Needs network; never touches git. See CLAUDE.md's "kdos-portup"
@@ -30,11 +30,6 @@ fetch:
 # fail the target.
 updates:
 	@ports/update $(PORTUP_ARGS); rc=$$?; [ $$rc -le 1 ] || exit $$rc
-
-# Build the kdos-apps distrobox image on the host and stash it for the
-# (network-less) ISO build to bake in. See ports/appbox/.
-fetch-apps:
-	bash ports/appbox/fetch
 
 # Build the PACK SET on the host and stash it for the (network-less) ISO build
 # to place on the medium. An application is one signed EROFS image with a KDOS

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ax25-tools
+version     = 1.1.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/ve7fet/linuxax25/archive/refs/tags/ax25tools-$version.tar.gz
+sha256      = 83937ecfec7f302598dd5a2b90e98bcc3d5af4e975145c64e762b630b1dc6490  ax25-tools-1.1.0.tar.gz
+description = kissattach, NET/ROM and connected-mode AX.25 links
+homepage    = https://github.com/ve7fet/linuxax25
+depends     = libax25 autoconf automake libtool

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = f3
+version     = 10.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/AltraMayor/$name/archive/refs/tags/v$version.tar.gz
+sha256      = ce54275b7793f97391583ede33c1d87590901d8da20cce604b1f07a029aefc67  f3-10.0.tar.gz
+description = Prove a stick is not counterfeit before writing an archive to it
+homepage    = https://fight-flash-fraud.readthedocs.io/
+depends     = pkgconf parted eudev argp-standalone

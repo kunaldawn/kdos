@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = numbat
+version     = 1.24.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/sharkdp/numbat/archive/refs/tags/v$version.tar.gz
+sha256      = 03c84d1d30bce73f2fcbfa79c8df51e580293918fef9c35966b158eaae234a08  numbat-1.24.0.tar.gz
+sha256      = 3c0926424c97b28bb8ddfa82b40d8f41dc3823b65b419698db14aaa9c1308805  numbat-vendor-1.24.0.tar.xz
+description = A calculator that knows units, and refuses to add metres to seconds
+homepage    = https://numbat.dev/
+depends     = rust
+vendoring   = rust

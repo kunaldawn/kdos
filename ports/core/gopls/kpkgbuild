@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = gopls
+version     = 0.23.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/golang/tools/archive/refs/tags/gopls/v$version.tar.gz
+sha256      = 1ba41875b918db73c6a409ad8f552b85f72dfeea43ffb541b798322ff6b4152b  gopls-0.23.0.tar.gz
+sha256      = a31b71f90a2d519a30501eeaaa4873da87d7c8210dcd1981ce0fee9d9e48a9b1  gopls-vendor-0.23.0.tar.xz
+description = The Go language server
+homepage    = https://pkg.go.dev/golang.org/x/tools/gopls
+depends     = go
+vendoring   = go
+vendordir   = gopls

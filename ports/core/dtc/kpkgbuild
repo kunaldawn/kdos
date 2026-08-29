@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dtc
+version     = 1.8.1
+release     = 1
+source      = $name-$version.tar.gz::https://git.kernel.org/pub/scm/utils/dtc/dtc.git/snapshot/dtc-$version.tar.gz
+sha256      = c25a3426feab8d6cf57f54a6f02a358cc95a574ad91a4f76601074e633bd1bd8  dtc-1.8.1.tar.gz
+description = The device tree compiler, and libfdt — what qemu needs for arm and riscv
+homepage    = https://git.kernel.org/pub/scm/utils/dtc/dtc.git
+depends     = meson flex bison

@@ -67,7 +67,26 @@ int kb_read_file(const char *path, char *buf, size_t cap);
 /* First line, newline stripped. Returns its length, or -1. */
 int kb_read_line_file(const char *path, char *buf, size_t cap);
 
+/*
+ * THE PATH A KDOS BOX PRESENTS, and it has to be one string because TWO
+ * programs set it for two different sets of processes: kdos-boxinit exports it
+ * for pid 1's children, and kdos-appbox puts it in front of the command it
+ * execs — `podman exec` does NOT inherit pid 1's environment, so a PATH set
+ * only by boxinit leaves every `podman exec` with podman's own default.
+ *
+ * `/usr/games` is the reason the list is written out rather than left to the
+ * container: Debian puts aisleriot, supertux, wesnoth and the rest there, and
+ * without it the shim dies on `env: 'sol': No such file or directory` for
+ * every game in the catalogue.
+ */
+#define KB_BOX_PATH \
+	"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" \
+	"/usr/games:/usr/local/games"
+
 int kb_write_file(const char *path, const char *data);
+/* Replace a state file atomically: temp, fsync the file, rename, fsync the
+ * directory. Use this wherever an empty file is a LOSS rather than a retry. */
+int kb_write_file_atomic(const char *path, const char *data);
 int kb_path_exists(const char *p);
 int kb_have_prog(const char *name);
 

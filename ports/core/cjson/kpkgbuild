@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cjson
+version     = 1.7.19
+release     = 1
+source      = cjson-1.7.19.tar.gz::https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.19.tar.gz
+sha256      = 7fa616e3046edfa7a28a32d5f9eacfd23f92900fe1f8ccd988c1662f30454562  cjson-1.7.19.tar.gz
+description = cJSON, the small ANSI C JSON parser mosquitto and friends link
+homepage    = https://github.com/DaveGamble/cJSON
+depends     = cmake

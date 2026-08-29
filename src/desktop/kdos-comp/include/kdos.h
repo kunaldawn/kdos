@@ -401,4 +401,11 @@ struct view;
 const char *kdos_view_box(struct view *view);
 const char *kdos_view_instance(struct view *view);
 
+/*
+ * Per-box grants beyond the sandbox allowlist: `grant = screencopy, …` in the
+ * box's profile. Read once per client and cached; the reload drops the cache.
+ */
+bool kdos_box_grant(const char *box, const char *iface);
+void kdos_grant_reload(void);
+
 #endif /* KDOS_H */

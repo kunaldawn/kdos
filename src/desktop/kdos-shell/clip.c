@@ -388,13 +388,31 @@ static const struct wl_registry_listener registry_listener = {
 
 /* ── the socket ────────────────────────────────────────────────────────── */
 
+/*
+ * A PATH THAT DOES NOT FIT `sun_path` IS REFUSED, NOT TRUNCATED — kdos-packd's
+ * rule, and this is the only place that builds the name so it is the only
+ * place that has to keep it. The bound is `sun_path`'s 108 bytes and NOT the
+ * caller's buffer: bounding against the buffer accepts a 200-byte path that
+ * both `bind` and `connect` then quietly cut down, which binds a socket nobody
+ * asked for and makes two different XDG_RUNTIME_DIRs collide on one name.
+ */
 static int sock_path(char *out, size_t n)
 {
 	const char *run = getenv("XDG_RUNTIME_DIR");
+	struct sockaddr_un probe;
+	int len;
 
 	if (!run || !*run)
 		return -1;
-	return snprintf(out, n, "%s/kdos-clip.sock", run) < (int)n ? 0 : -1;
+	len = snprintf(out, n, "%s/kdos-clip.sock", run);
+	if (len < 0 || (size_t)len >= n)
+		return -1;
+	if ((size_t)len >= sizeof(probe.sun_path)) {
+		fprintf(stderr, "kdos-clip: socket path is longer than %zu "
+				"bytes: %s\n", sizeof(probe.sun_path) - 1, out);
+		return -1;
+	}
+	return 0;
 }
 
 static void serve_client(int c)
@@ -442,7 +460,7 @@ static void serve_client(int c)
 
 static int daemon_main(void)
 {
-	char path[256];
+	char path[SH_SOCK_MAX];
 	int srv;
 
 	dpy = wl_display_connect(NULL);
@@ -551,7 +569,7 @@ static char why[128];
  * afford a blocking round trip. */
 static int ask(const char *req, char *out, size_t n)
 {
-	char path[256];
+	char path[SH_SOCK_MAX];
 	int fd;
 	size_t got = 0;
 	ssize_t r;
@@ -620,7 +638,7 @@ static void draw_frame(void)
 		ktui_draw_text(2, 2, w - 4, why, KT_ERR, KT_BG, KT_A_NONE);
 	else if (!nrows)
 		ktui_draw_text(2, 2, w - 4, "nothing has been copied yet",
-			       KT_DIM, KT_BG, KT_A_NONE);
+			       KT_MID, KT_BG, KT_A_NONE);
 
 	kch_list_clamp(&top, sel, nrows, body, sel_follow);
 	sel_follow = 0;
@@ -651,7 +669,7 @@ static void draw_frame(void)
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
 	ktui_draw_text(2, h - 2, w - 4,
 		       "Enter put it back   d forget   c clear   Esc",
-		       KT_DIM, KT_BG, KT_A_NONE);
+		       KT_MID, KT_BG, KT_A_NONE);
 	ktui_draw_flush();
 }
 

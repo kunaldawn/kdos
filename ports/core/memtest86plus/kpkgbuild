@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = memtest86plus
+version     = 8.10
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/memtest86plus/memtest86plus/archive/refs/tags/v$version.tar.gz
+sha256      = 5617bc42ae4572158988efd466954d08f25cbb78f1714164280064784c484f4d  memtest86plus-8.10.tar.gz
+description = The one hardware fault no tool inside a running OS can diagnose
+homepage    = https://www.memtest.org/
+depends     =

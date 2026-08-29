@@ -502,17 +502,33 @@ int main(int argc, char **argv)
 		install_pump();
 		render(&ev);
 
-		/* An unattended run has nobody to press Reboot. It still shows
-		 * the finished screen for a beat, so a watcher sees what
-		 * happened rather than a machine that blinked and restarted. */
-		if (unattended && inst.done && !inst.running && cfg.reboot_after) {
+		/*
+		 * AN UNATTENDED RUN ENDS BY ITSELF, WHICHEVER WAY IT WENT.
+		 * There is nobody to press Reboot and nobody to press
+		 * anything else either, so a finished install that only knew
+		 * how to reboot sat on its own last screen for ever — which
+		 * is a scripted install that never returns, and the one
+		 * outcome "unattended" must not have. It still shows the
+		 * finished screen for a beat, so a watcher sees what happened
+		 * rather than a machine that blinked and restarted.
+		 *
+		 * THE FAILED CASE COUNTS AS ENDED. `inst.done` is only set by
+		 * a run that reached the last step, so a test for it alone
+		 * leaves exactly the install that went wrong spinning on its
+		 * own error screen — which is the run somebody most needs the
+		 * exit status of.
+		 */
+		if (unattended && !inst.running && (inst.done || inst.failed)) {
 			static double at;
 			if (!at)
 				at = kb_now_s();
 			else if (kb_now_s() - at > 5.0) {
-				ktui_term_shutdown();
-				execlp("reboot", "reboot", NULL);
-				_exit(0);
+				if (cfg.reboot_after) {
+					ktui_term_shutdown();
+					execlp("reboot", "reboot", NULL);
+					_exit(0);
+				}
+				ki_quit = 1;
 			}
 		}
 	}
@@ -522,5 +538,7 @@ int main(int argc, char **argv)
 
 	ktui_input_shutdown();
 	ktui_term_shutdown();
-	return 0;
+	/* The exit status is the answer a script reads: an install that failed
+	 * and returned 0 is worse than one that never returned. */
+	return unattended && inst.failed ? 1 : 0;
 }

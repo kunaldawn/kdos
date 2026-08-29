@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = minimap2
+version     = 2.31
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/lh3/minimap2/archive/refs/tags/v$version.tar.gz
+sha256      = bff334a0e4512644e2f3e29944aeec408f49450f4f74dc39fe89e5273869255b  minimap2-2.31.tar.gz
+description = Align long reads to a reference
+homepage    = https://lh3.github.io/minimap2/
+depends     = zlib

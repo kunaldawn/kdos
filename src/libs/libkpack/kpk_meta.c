@@ -389,11 +389,20 @@ int kpk_meta_valid(const KpkMeta *m, char *err, size_t cap)
 			snprintf(err, cap, "%s: graft path escapes its root", m->id);
 			return -1;
 		}
-	for (int i = 0; i < m->nboxgraft; i++)
-		if (!id_ok(m->boxgraft[i].to) || strstr(m->boxgraft[i].from, "..")) {
-			snprintf(err, cap, "%s: boxgraft name is not an id", m->id);
+	/* A boxgraft lands under ~/.local/share/kdos/packs/<id>, or — as
+	 * `~/<path>` — at that place in the home, for a program that reads its
+	 * own directory. Either way it may not climb out. */
+	for (int i = 0; i < m->nboxgraft; i++) {
+		const char *to = m->boxgraft[i].to;
+		int home = !strncmp(to, "~/", 2);
+		if (strstr(m->boxgraft[i].from, "..") ||
+		    (home ? (to[2] == 0 || to[2] == '/' || strstr(to, ".."))
+			  : !id_ok(to))) {
+			snprintf(err, cap, "%s: boxgraft name is not an id or a "
+				 "~/path", m->id);
 			return -1;
 		}
+	}
 	if (err && cap)
 		err[0] = 0;
 	return 0;

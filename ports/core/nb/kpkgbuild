@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = nb
+version     = 7.25.5
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/xwmx/nb/archive/refs/tags/$version.tar.gz
+sha256      = c1127e7e168558afed7a2eccd99b0bdb9779d81134e739d15ef1cc65e8bb3a67  nb-7.25.5.tar.gz
+description = Notes and bookmarks in a git repository, from one command
+homepage    = https://xwmx.github.io/nb/
+depends     = bash git

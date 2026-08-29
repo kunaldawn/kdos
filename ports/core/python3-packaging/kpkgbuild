@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-packaging
+version     = 26.3
+release     = 1
+source      = https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz
+sha256      = 94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79  python3-packaging-26.3.tar.gz
+description = Version and marker parsing every build backend uses
+homepage    = https://pypi.org/project/packaging/
+depends     = python3 python3-setuptools python3-pip python3-flit-core

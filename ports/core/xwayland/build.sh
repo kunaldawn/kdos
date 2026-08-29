@@ -23,6 +23,7 @@ meson setup build \
 	-Dxkb_dir=/usr/share/X11/xkb \
 	-Dxkb_output_dir=/var/lib/xkb \
 	-Dxkb_bin_dir=/usr/bin \
+	-Ddefault_font_path=/usr/share/fonts/misc/,/usr/share/fonts/75dpi/ \
 	-Ddocs=false \
 	-Ddevel-docs=false
 meson compile -C build

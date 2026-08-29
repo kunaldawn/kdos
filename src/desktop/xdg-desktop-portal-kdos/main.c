@@ -472,29 +472,30 @@ static int method_save_files(sd_bus_message *m, void *userdata, sd_bus_error *er
 	return 1;
 }
 
-/* ── OpenURI ───────────────────────────────────────────────────────────────
+/* ── AppChooser — the back end OpenURI actually asks for ──────────────────
  *
- * "Open this for me on the host", which is the request every containerised
- * application makes when you click a link or a downloaded file. There was no
- * backend for it at all — `default=none` in kdos-portals.conf — so a boxed
- * app's link and its "open containing folder" did nothing whatsoever, silently,
- * because a portal with no backend answers not-supported and toolkits treat
- * that as "the desktop cannot do this".
+ * "Open this for me on the host" is what every containerised application
+ * asks when a link or a downloaded file is clicked. The FRONT END owns that
+ * request: `org.freedesktop.portal.OpenURI` is implemented inside
+ * xdg-desktop-portal itself, which resolves the host's handlers for the type
+ * and launches the chosen one through GAppInfo — on the host, from the host's
+ * desktop entries, so a boxed app's link opens in the Firefox launcher this
+ * desktop generated. What it needs from a back end is a CHOICE: the
+ * `org.freedesktop.impl.portal.AppChooser` interface, and the front end
+ * exports OpenURI only when a back end provides it. Measured: a back end
+ * implementing `impl.portal.OpenURI` — an interface the spec does not have —
+ * left every boxed `xdg-open` answering "No such interface".
  *
- * There is nothing to write here beyond the plumbing: `kdos-appbox open` IS the
- * implementation of "what opens this on this machine", down to the MIME lookup
- * and the field-code substitution. This forwards to it and to `xdg-open` for
- * anything that is not a path, which is the split those two programs already
- * have.
+ * NO DIALOG. The front end passes the handlers it found, best first, and
+ * `last_choice` when the user has picked before; this answers that or the
+ * first one. A chooser drawn on a phosphor grid would be `kdos-openwith`,
+ * which "open with" from the desktop already runs — a second copy of that
+ * resolution here would be the drift this file exists to avoid.
  *
- * NO PERMISSION PROMPT. The front end has already decided the application is
- * allowed to ask; a second dialog here would be a permission question asked by
- * the half of the stack that does not know the answer.
- *
- * There is no handler choice here either, and that is not the same statement:
- * `kdos-appbox open` puts up its own "open with" chooser when more than one
- * handler claims the type and nobody has set a default (G7). Deciding that
- * here would be a second copy of a resolution this file does not do.
+ * NO HANDLER AT ALL is the one case the front end cannot finish — it has
+ * nothing to launch — so that is opened HERE, through `kdos-appbox open` for
+ * a path and `xdg-open` for a scheme, and answered as cancelled: the thing
+ * opens and the application is told nothing was chosen, which is true.
  */
 
 static int reply_empty(sd_bus_message *call, uint32_t code)
@@ -562,84 +563,97 @@ static int uri_to_path(const char *uri, char *out, size_t n)
 	return o > 0;
 }
 
-static int method_open_uri(sd_bus_message *m, void *userdata, sd_bus_error *err)
+static int method_choose_application(sd_bus_message *m, void *userdata,
+				     sd_bus_error *err)
 {
-	const char *handle, *app_id, *parent, *uri;
-	char path[2048];
+	const char *handle, *app_id, *parent, *c;
+	char choices[16][256];
+	char last[256] = "", uri[2048] = "", file[2048] = "";
+	int n = 0, r;
 	(void)userdata;
 	(void)err;
 
-	if (sd_bus_message_read(m, "osss", &handle, &app_id, &parent, &uri) < 0)
+	if (sd_bus_message_read(m, "oss", &handle, &app_id, &parent) < 0)
 		return reply_empty(m, 2);
+	if ((r = sd_bus_message_enter_container(m, 'a', "s")) < 0)
+		return reply_empty(m, 2);
+	while ((r = sd_bus_message_read(m, "s", &c)) > 0)
+		if (n < 16)
+			snprintf(choices[n++], sizeof(choices[0]), "%s", c);
+	sd_bus_message_exit_container(m);
 
-	if (uri_to_path(uri, path, sizeof(path))) {
-		const char *argv[] = { "kdos-appbox", "open", path, NULL };
-		open_detached(argv);
-	} else {
-		/* A scheme rather than a path. xdg-open knows about those and
-		 * `kdos-appbox open` deliberately does not. */
-		const char *argv[] = { "xdg-open", uri, NULL };
-		open_detached(argv);
+	/* options: last_choice, content_type, uri, filename, modal */
+	if (sd_bus_message_enter_container(m, 'a', "{sv}") >= 0) {
+		while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
+			const char *key;
+			if (sd_bus_message_read(m, "s", &key) < 0)
+				break;
+			if (!strcmp(key, "last_choice") || !strcmp(key, "uri") ||
+			    !strcmp(key, "filename")) {
+				const char *v;
+				if (sd_bus_message_read(m, "v", "s", &v) >= 0) {
+					if (!strcmp(key, "uri"))
+						snprintf(uri, sizeof(uri), "%s", v);
+					else if (!strcmp(key, "filename"))
+						snprintf(file, sizeof(file), "%s", v);
+					else
+						snprintf(last, sizeof(last), "%s", v);
+				}
+			} else {
+				sd_bus_message_skip(m, "v");
+			}
+			sd_bus_message_exit_container(m);
+		}
+		sd_bus_message_exit_container(m);
 	}
-	return reply_empty(m, 0);
-}
 
-/*
- * OpenFile and OpenDirectory take an FD rather than a name, because the point
- * of them is that the application may not be able to NAME the file in terms
- * the host would recognise — it is inside a container with its own mount
- * namespace. /proc/self/fd is the translation, and it is the only one there is.
- */
-static int open_fd(sd_bus_message *m, int directory)
-{
-	const char *handle, *app_id, *parent;
-	int fd = -1;
-	char link[64], path[2048];
-	ssize_t k;
+	const char *pick = NULL;
+	for (int i = 0; i < n && last[0]; i++)
+		if (!strcmp(choices[i], last))
+			pick = choices[i];
+	if (!pick && n > 0)
+		pick = choices[0];
 
-	if (sd_bus_message_read(m, "ossh", &handle, &app_id, &parent, &fd) < 0)
-		return reply_empty(m, 2);
-	if (fd < 0)
-		return reply_empty(m, 2);
-
-	snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
-	k = readlink(link, path, sizeof(path) - 1);
-	if (k <= 0)
-		return reply_empty(m, 2);
-	path[k] = '\0';
-	/* A deleted file still has a link, with ` (deleted)` on the end of it —
-	 * opening that path would open a file of that literal name or nothing. */
-	if (strstr(path, " (deleted)"))
-		return reply_empty(m, 2);
-
-	if (directory) {
-		/*
-		 * "Show me where this is." The portal's OpenDirectory is given
-		 * the FILE and is expected to open its FOLDER — an application
-		 * asking for it has the document open, not the directory.
-		 */
-		char *slash = strrchr(path, '/');
-		if (slash && slash != path)
-			*slash = '\0';
+	if (!pick) {
+		/* nothing on the host claims the type: open it ourselves */
+		char path[2048];
+		if (file[0]) {
+			const char *argv[] = { "kdos-appbox", "open", file, NULL };
+			open_detached(argv);
+		} else if (uri[0] && uri_to_path(uri, path, sizeof(path))) {
+			const char *argv[] = { "kdos-appbox", "open", path, NULL };
+			open_detached(argv);
+		} else if (uri[0]) {
+			const char *argv[] = { "xdg-open", uri, NULL };
+			open_detached(argv);
+		}
+		return reply_empty(m, 1);
 	}
-	const char *argv[] = { "kdos-appbox", "open", path, NULL };
-	open_detached(argv);
-	return reply_empty(m, 0);
+
+	sd_bus_message *reply = NULL;
+	if ((r = sd_bus_message_new_method_return(m, &reply)) < 0)
+		return r;
+	if ((r = sd_bus_message_append(reply, "u", (uint32_t)0)) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'a', "{sv}")) < 0 ||
+	    (r = sd_bus_message_append(reply, "{sv}", "choice", "s", pick)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0)
+		goto out;
+	r = sd_bus_send(NULL, reply, NULL);
+out:
+	sd_bus_message_unref(reply);
+	return r;
 }
 
-static int method_open_fd(sd_bus_message *m, void *u, sd_bus_error *e)
+/* The front end re-sends the list when it changes; there is no dialog here
+ * to update, so it is acknowledged and nothing else. */
+static int method_update_choices(sd_bus_message *m, void *userdata,
+				 sd_bus_error *err)
 {
-	(void)u;
-	(void)e;
-	return open_fd(m, 0);
+	(void)userdata;
+	(void)err;
+	return sd_bus_reply_method_return(m, NULL);
 }
 
-static int method_open_dir(sd_bus_message *m, void *u, sd_bus_error *e)
-{
-	(void)u;
-	(void)e;
-	return open_fd(m, 1);
-}
 
 /*
  * The chooser has closed its stdout. Read what is left, reap it, and answer
@@ -883,13 +897,11 @@ static int prop_version(sd_bus *bus, const char *path, const char *iface,
 	return sd_bus_message_append(reply, "u", (uint32_t)3);
 }
 
-static const sd_bus_vtable open_uri_vtable[] = {
+static const sd_bus_vtable app_chooser_vtable[] = {
 	SD_BUS_VTABLE_START(0),
-	SD_BUS_METHOD("OpenURI", "osssa{sv}", "ua{sv}", method_open_uri,
-		      SD_BUS_VTABLE_UNPRIVILEGED),
-	SD_BUS_METHOD("OpenFile", "ossha{sv}", "ua{sv}", method_open_fd,
-		      SD_BUS_VTABLE_UNPRIVILEGED),
-	SD_BUS_METHOD("OpenDirectory", "ossha{sv}", "ua{sv}", method_open_dir,
+	SD_BUS_METHOD("ChooseApplication", "ossasa{sv}", "ua{sv}",
+		      method_choose_application, SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_METHOD("UpdateChoices", "oas", "", method_update_choices,
 		      SD_BUS_VTABLE_UNPRIVILEGED),
 	SD_BUS_PROPERTY("version", "u", prop_version, 0,
 			SD_BUS_VTABLE_PROPERTY_CONST),
@@ -947,8 +959,8 @@ int main(int argc, char **argv)
 	if (r < 0)
 		goto fail;
 	r = sd_bus_add_object_vtable(bus, &ou, PORTAL_PATH,
-				     "org.freedesktop.impl.portal.OpenURI",
-				     open_uri_vtable, NULL);
+				     "org.freedesktop.impl.portal.AppChooser",
+				     app_chooser_vtable, NULL);
 	if (r < 0)
 		goto fail;
 

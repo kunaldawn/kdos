@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = jsoncpp
+version     = 1.9.8
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/$version.tar.gz
+sha256      = 51828cf3574281d2b79ec2a1c56a9e4c20cc1103711321ea96384cffb8d2d904  jsoncpp-1.9.8.tar.gz
+description = JSON for C++ — recoll stores its index metadata through it
+homepage    = https://github.com/open-source-parsers/jsoncpp
+depends     = meson ninja pkgconf

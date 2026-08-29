@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = speexdsp
+version     = 1.2.1
+release     = 1
+source      = https://downloads.xiph.org/releases/speex/$name-$version.tar.gz
+sha256      = 8c777343e4a6399569c72abc38a95b24db56882c83dbdb6c6424a5f4aeb54d3d  speexdsp-1.2.1.tar.gz
+description = Resampling, echo cancellation and jitter buffering — wireshark decodes RTP with it
+homepage    = https://www.speex.org/
+depends     = pkgconf

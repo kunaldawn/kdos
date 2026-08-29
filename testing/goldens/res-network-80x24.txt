@@ -2,16 +2,16 @@
 | Network                                                                      |
 | 2 interfaces up                                                              |
 |------------------------------------------------------------------------------|
-| A    |INTERFACE    STATE  SPEED     RX         TX         ADDRESS            |
-| P    |eth0         up     1000 Mb   200B       1.0M       52:54:00:12:34:56  |
-| C    |wlan0        up     -         1010B      1010B      52:54:00:ab:cd:ef  |
-| M    |                                                                       |
-| G    |                                                                       |
-| D    |                                                                       |
-| N    |                                                                       |
-| B    |                                                                       |
-| E    |                                                                       |
-|      |                                                                       |
+| App  |INTERFACE    STATE  SPEED     RX         TX         ADDRESS            |
+| Pro  |eth0         up     1000 Mb   200B       1.0M       52:54:00:12:34:56  |
+| CPU  |wlan0        up     -         1010B      1010B      52:54:00:ab:cd:ef  |
+| Mem  |                                                                       |
+| GPU  |                                                                       |
+| Dri  |                                                                       |
+| Net  |                                                                       |
+| Bat  |                                                                       |
+| Ene  |                                                                       |
+| Box  |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
 |      |                                                                       |

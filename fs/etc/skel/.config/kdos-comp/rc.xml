@@ -345,10 +345,11 @@
 
       <windowRule identifier="gimp" type="utility" serverDecoration="no"/>
 
-    Every alien app opens on workspace 4 (misc) — the box name is the
-    sandboxAppId kdos-boxsock registers; follow="no" keeps you where you are:
+    An alien app opens on workspace 4 (misc) — the box name is the
+    sandboxAppId kdos-boxsock registers, and a pack box is named after its
+    pack; follow="no" keeps you where you are:
 
-      <windowRule sandboxEngine="io.kdos.appbox" sandboxAppId="kdos-apps">
+      <windowRule sandboxEngine="io.kdos.appbox" sandboxAppId="app.gimp">
         <action name="SendToDesktop" to="4" follow="no"/>
       </windowRule>
 

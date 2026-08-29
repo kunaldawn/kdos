@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "kbase.h"
@@ -417,6 +418,36 @@ static void test_trash(void)
 	snprintf(b, sizeof(b), "%s/b", work);
 	kb_mkdir_p(a);
 	kb_mkdir_p(b);
+
+	/*
+	 * A STATE FILE IS REPLACED, NEVER TRUNCATED. `kb_write_file` opens
+	 * O_TRUNC and then writes, so the file is zero bytes in between and any
+	 * failure there leaves it that way — measured as a box profile found
+	 * empty, which loses `base` and makes the box unstartable. The atomic
+	 * writer must land the whole content, keep 0644, shrink cleanly when
+	 * the new content is shorter, and leave no temp file behind.
+	 */
+	{
+		struct stat st;
+		char rd[64];
+		snprintf(p, sizeof(p), "%s/state.conf", work);
+		ok(kb_write_file_atomic(p, "base=pack:kdos\nimage=x\n") == 0,
+		   "atomic write lands");
+		ok(stat(p, &st) == 0 && st.st_size == 23,
+		   "the whole content is there");
+		ok((st.st_mode & 0777) == 0644, "and it is 0644");
+		ok(kb_write_file_atomic(p, "x\n") == 0, "replace with less");
+		ok(stat(p, &st) == 0 && st.st_size == 2,
+		   "no tail of the old content survives");
+		ok(kb_read_file(p, rd, sizeof(rd)) == 2, "and it reads back");
+		{
+			/* the temp file is named <path>.tmpXXXXXX */
+			char g[512];
+			snprintf(g, sizeof(g), "%s.tmp", p);
+			ok(!kb_path_exists(g), "no temp file left behind");
+		}
+		unlink(p);
+	}
 
 	/*
 	 * TWO FILES OF THE SAME NAME FROM DIFFERENT DIRECTORIES is the ordinary
@@ -1731,11 +1762,32 @@ static void test_pack(void)
 		eq_int(kpk_verify(&p, &ring, who), KPK_SIG_GOOD,
 		       "and verifies against the ring");
 
-		/* A key the machine does not trust is a BAD signature, not an
-		 * absent one — the distinction kpkgadd already keeps. */
+		/*
+		 * THREE WAYS TO FAIL A SIGNATURE AND THEY ARE DIFFERENT
+		 * QUESTIONS. An EMPTY ring is a fact about this machine — it
+		 * holds no key that could check anything — and reporting it as
+		 * a bad signature sends the reader to inspect the artefact
+		 * instead of the drawer. A ring holding SOMEBODY ELSE'S key is
+		 * a fact about the pack: a block that no trusted key verifies.
+		 * Both are refused; only one of them is about the pack.
+		 */
 		KsigRing empty = {0};
-		eq_int(kpk_verify(&p, &empty, who), KPK_SIG_BAD,
-		       "a signature by a key nobody trusts is refused");
+		eq_int(kpk_verify(&p, &empty, who), KPK_SIG_NOKEY,
+		       "an empty ring is 'no key here', not a bad signature");
+
+		uint8_t oseed[KSIG_SEED_LEN], opub[KSIG_PUB_LEN];
+		if (ksig_keygen(oseed, opub) == 0) {
+			char *odir = kb_path_join(dir, "otherkeys");
+			kb_mkdir_p(odir);
+			char *of = kb_path_join(odir, "other.pub");
+			ksig_write_public(of, opub, "stranger");
+			KsigRing other = {0};
+			ksig_ring_load(&other, odir);
+			eq_int(kpk_verify(&p, &other, who), KPK_SIG_BAD,
+			       "a signature by a key nobody trusts is refused");
+			free(of);
+			free(odir);
+		}
 
 		/* One byte of the filesystem, flipped. The hash is checked
 		 * BEFORE the signature, so this is KPK_SIG_HASH — a caller

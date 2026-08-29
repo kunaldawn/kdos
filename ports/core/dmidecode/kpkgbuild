@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dmidecode
+version     = 3.7
+release     = 1
+source      = https://download.savannah.gnu.org/releases/$name/$name-$version.tar.xz
+sha256      = 2c3aed12c85a1e6a9410d406d5e417c455466dc1bc7c89278bb32cf7cad91e8a  dmidecode-3.7.tar.xz
+description = What machine is this — the SMBIOS table in words
+homepage    = https://www.nongnu.org/dmidecode/
+depends     =

@@ -50,7 +50,6 @@ void profile_defaults(Profile *p, const char *box)
 {
 	memset(p, 0, sizeof(*p));
 	snprintf(p->name, sizeof(p->name), "%s", box);
-	snprintf(p->image, sizeof(p->image), "%s", DEFAULT_IMAGE);
 	/* Everything shared: exactly what a plain `distrobox create` does, so a
 	 * box with no profile file behaves identically to one with a default. */
 	p->persist = PERSIST_PERSISTENT;
@@ -135,6 +134,8 @@ int profile_set(Profile *p, const char *kv)
 		snprintf(p->base, sizeof(p->base), "%s", eq);
 	else if (!strcmp(key, "accent"))
 		snprintf(p->accent, sizeof(p->accent), "%s", eq);
+	else if (!strcmp(key, "grant"))
+		snprintf(p->grant, sizeof(p->grant), "%s", eq);
 	else if (!strcmp(key, "persistence")) {
 		if (!strcmp(eq, "ephemeral"))
 			p->persist = PERSIST_EPHEMERAL;
@@ -213,6 +214,61 @@ int profile_load(Profile *p, const char *box)
 	return 1;
 }
 
+/*
+ * A CONTAINER IN `stopping` IS NOT STARTABLE, AND PODMAN SAYS SO IN A WAY
+ * THAT NAMES NOTHING USEFUL: "must be in Created or Stopped state to be
+ * started: container state improper". `podman stop` sends SIGTERM and waits
+ * out its timeout, and kdos-boxinit stays alive reaping, so a stop followed
+ * promptly by a start lands exactly here — as does a hung app holding D-state
+ * I/O, which can wedge a box in `stopping` for good.
+ *
+ * Wait it out, then force the way back. A box is stateless — its packs are
+ * mounted read-only and its writable upper is on disk — so nothing is lost by
+ * recreating the container over the same stack.
+ */
+int box_unstick(const char *box, char *state, size_t n)
+{
+	int i;
+
+	box_state(box, state, n);
+	if (strcmp(state, "stopping"))
+		return 0;
+
+	for (i = 0; i < 15 && !strcmp(state, "stopping"); i++) {
+		sleep(1);
+		box_state(box, state, n);
+	}
+	if (strcmp(state, "stopping"))
+		return 1;
+
+	{
+		KbArgv k = {0};
+		kb_argv_add(&k, "podman");
+		kb_argv_add(&k, "kill");
+		kb_argv_add(&k, box);
+		kb_argv_end(&k);
+		kb_run(&k);
+	}
+	sleep(2);
+	box_state(box, state, n);
+	if (strcmp(state, "stopping"))
+		return 2;
+
+	{
+		KbArgv r = {0};
+		kb_argv_add(&r, "podman");
+		kb_argv_add(&r, "rm");
+		kb_argv_add(&r, "-f");
+		kb_argv_add(&r, "-t");
+		kb_argv_add(&r, "0");
+		kb_argv_add(&r, box);
+		kb_argv_end(&r);
+		kb_run(&r);
+	}
+	box_state(box, state, n);
+	return 3;
+}
+
 int profile_save(const Profile *p)
 {
 	char *path = profile_path(p->name);
@@ -227,6 +283,7 @@ int profile_save(const Profile *p)
 		 "base=%s\n"
 		 "image=%s\n"
 		 "accent=%s\n"
+		 "grant=%s\n"
 		 "persistence=%s\n"
 		 "network=%s\n"
 		 "ipc=%s\n"
@@ -244,6 +301,7 @@ int profile_save(const Profile *p)
 		 "autostop=%ds\n",
 		 p->name, p->base, p->image,
 		 p->accent[0] ? p->accent : "session",
+		 p->grant,
 		 persist_name(p->persist),
 		 p->netnone ? "none" : p->netns ? "private" : "host",
 		 p->ipc ? "private" : "shared",
@@ -256,7 +314,9 @@ int profile_save(const Profile *p)
 		 p->gpu ? "yes" : "no",
 		 p->autoexport ? "auto" : "manual",
 		 p->memory, p->cpus, p->pids, p->autostop_s);
-	rc = kb_write_file(path, buf);
+	/* ATOMIC: a profile that comes back empty has lost `base`, and a box
+	 * whose base is unknown cannot be composed or started again. */
+	rc = kb_write_file_atomic(path, buf);
 	free(path);
 	return rc;
 }
@@ -272,9 +332,13 @@ void profile_print(const Profile *p)
 	printf("box         = %s\n", p->name);
 	if (p->base[0])
 		printf("base        = %s\n", p->base);
-	else
+	else if (p->image[0])
 		printf("image       = %s\n", p->image);
+	else
+		printf("base        = (none yet — the first launch records the pack)\n");
 	printf("accent      = %s\n", p->accent[0] ? p->accent : "the session's");
+	printf("grant       = %s\n", p->grant[0] ? p->grant
+		: "none        (screencopy, data-control, … past the sandbox allowlist)");
 	printf("persistence = %-11s %s\n", persist_name(p->persist),
 	       p->persist == PERSIST_FROZEN	? "(writes discarded)"
 	       : p->persist == PERSIST_EPHEMERAL ? "(upper on tmpfs)"
@@ -478,40 +542,6 @@ int box_remove(const char *box, int force)
 		kb_argv_add(&a, "--force");
 	kb_argv_end(&a);
 	return kb_run(&a);
-}
-
-/*
- * Create the box if it is missing, serialized against the login-time warmup so
- * two creates can never race.
- */
-int box_ensure(const char *box)
-{
-	Profile p;
-	char *lockpath;
-	int fd, rc = 0;
-
-	if (box_exists(box))
-		return 0;
-
-	profile_load(&p, box);
-	if (!image_exists(p.image))
-		kb_die("the appbox image is not baked into this system — build the "
-		    "ISO after 'make fetch-apps', or when online: kdos app <name>");
-
-	lockpath = kb_path_join(kb_runtime_dir(), "kdos-appbox.create.lock");
-	fd = kb_lock_file(lockpath, 0);
-	free(lockpath);
-	if (box_exists(box)) {          /* someone else won the race */
-		if (fd >= 0)
-			close(fd);
-		return 0;
-	}
-	fprintf(stderr, "==> First launch: creating distrobox '%s' from the "
-			"baked image...\n", box);
-	rc = box_create(&p);
-	if (fd >= 0)
-		close(fd);
-	return rc;
 }
 
 /*
