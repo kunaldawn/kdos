@@ -1277,6 +1277,13 @@ fuse
 # kdos-comp runs Xwayland rootlessly itself (wlroots does the work).
 # The libX11/libxcb chain is here only because Xwayland and xkbcomp need it.
 xwayland
+# The X core fonts Xwayland serves to its X11 clients. They are the SERVER's:
+# a boxed Motif or Xt program asks Xwayland, on the host, for
+# -adobe-helvetica and -misc-fixed, and a font directory inside the box is
+# invisible to it. Three families cover xterm, grace and xastir.
+font-misc-misc
+font-adobe-75dpi
+font-cursor-misc
 
 # Icon-theme skeleton: the index.theme that makes /usr/share/icons/hicolor a
 # real theme. Qt/Quickshell icon lookup silently fails without it — every app

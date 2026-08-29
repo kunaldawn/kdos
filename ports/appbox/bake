@@ -212,7 +212,7 @@ if [ -z "${SKIP_ROWCHECK:-}" ] && [ -z "$ONLY" ]; then
 		echo "dpkg --add-architecture i386 >/dev/null 2>&1"
 		echo "apt-get update >/dev/null 2>&1"
 		while read -r ck cid cparent crest; do
-			case "$ck" in ''|'#'*|recommended|env|deb|cmd|snapshot) continue ;; esac
+			case "$ck" in ''|'#'*|recommended|env|deb|cmd|snapshot|needs|graft|boxgraft) continue ;; esac
 			printf 'apt-get -s install -y --no-install-recommends %s >/dev/null 2>&1 || echo "  %s"\n' \
 				"$crest" "$cid"
 		done < "$CONF"
@@ -271,7 +271,7 @@ row_failed() {
 }
 
 while read -r kind id parent rest; do
-	case "$kind" in ''|'#'*|recommended|env|deb|cmd|image|snapshot) continue ;; esac
+	case "$kind" in ''|'#'*|recommended|env|deb|cmd|image|snapshot|needs|graft|boxgraft) continue ;; esac
 	# ONLY is a LIST, so a run that lost rows to one bad recipe is resumed
 	# with the rows it lost rather than from the top.
 	if [ -n "$ONLY" ]; then
@@ -436,7 +436,27 @@ EOF
 		[ "$ek" = cmd ] && [ "$eid" = "$id" ] && envs="$envs --command $ev"
 	done < "$CONF"
 
-	python3 ./harvest.py "$diff" "$id" "$kind" "$parent" \
+	# `needs <app> <data …>` names the data packs an application is useless
+	# without; it becomes `needs =` in that app's metadata, which is what
+	# `kdos app show` and the Start menu's half-installed marker read.
+	needs_args=()
+	while read -r nk nid nrest; do
+		[ "$nk" = needs ] && [ "$nid" = "$id" ] || continue
+		for n in $nrest; do needs_args+=(--needs "$n"); done
+	done < "$CONF"
+	# `graft <data> <from> <to>` and `boxgraft <data> <from> <to>` are what
+	# a data pack DECLARES and kdos-packd interprets — there is no script in
+	# a pack. `graft` symlinks under /usr/share for host consumers; `boxgraft`
+	# lands under ~/.local/share/kdos/packs (or at `~/…` when `to` says so),
+	# which a box shares.
+	while read -r gk gid gfrom gto _; do
+		[ "$gid" = "$id" ] || continue
+		case "$gk" in
+			graft)    needs_args+=(--graft "$gfrom $gto") ;;
+			boxgraft) needs_args+=(--boxgraft "$gfrom $gto") ;;
+		esac
+	done < "$CONF"
+	python3 ./harvest.py "$diff" "$id" "$kind" "$parent" "${needs_args[@]}" \
 		--out "$meta" --icon "$icon" --version "$ver" $rec $envs
 
 	# BUILT BESIDE THE OLD ONE, because whether to keep it is decided by
@@ -463,11 +483,21 @@ EOF
 	# Keeping the old file also keeps its version, which is what makes a
 	# version bump mean something: `kdos app update` compares versions, and
 	# one that moved without the contents moving is a download for nothing.
+	# AND THE METADATA MUST MATCH TOO, version aside. An `env`, `cmd`,
+	# `needs` or `graft` line changes what a pack DECLARES and not one byte
+	# of its filesystem, and a keep decided on the image alone throws the
+	# declaration away — measured: a `cmd` row added to a pack whose
+	# packages had not moved shipped a medium with no such command on it.
 	keep=0
 	if [ -f "$OUT/$id.kpack" ]; then
 		oldh=$("$KPACK" imagehash "$OUT/$id.kpack" 2>/dev/null || true)
 		newh=$("$KPACK" imagehash "$new" 2>/dev/null || true)
-		[ -n "$oldh" ] && [ "$oldh" = "$newh" ] && keep=1
+		# version, size and signature are properties of the FILE, not of
+		# what the pack declares; the old one is signed and the new one is
+		# not yet, so a compare that kept them rebuilt the whole set.
+		oldm=$("$KPACK" info "$OUT/$id.kpack" 2>/dev/null | grep -Ev '^(version|size|image|signature) ' || true)
+		newm=$("$KPACK" info "$new" 2>/dev/null | grep -Ev '^(version|size|image|signature) ' || true)
+		[ -n "$oldh" ] && [ "$oldh" = "$newh" ] && [ "$oldm" = "$newm" ] && keep=1
 	fi
 	if [ "$keep" = 1 ]; then
 		rm -f "$new"

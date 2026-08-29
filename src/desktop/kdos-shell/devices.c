@@ -127,6 +127,10 @@ static int ninput;
 static struct dv_media media[DV_MAX_MEDIA];
 static int nmedia;
 static char media_why[96];
+/* What `kdos app update --check` said, once per refresh: a stick that IS
+ * newer than the disk is the offline update story, and it had no surface. */
+static char updates_line[96];
+static int updates_n;
 static int sel;
 static char status[128];
 
@@ -550,6 +554,8 @@ static int mountd_ask(const char *req, char *out, size_t n)
 	return 0;
 }
 
+static void scan_updates(void);
+
 static void scan_media(void)
 {
 	char buf[8192];
@@ -598,11 +604,39 @@ static void media_action(int i, const char *verb)
 	buf[strcspn(buf, "\r\n")] = '\0';
 	snprintf(status, sizeof(status), "%.100s", buf);
 	scan_media();
+	scan_updates();
+}
+
+/*
+ * A STICK THAT IS NEWER THAN THE DISK. `kdos app update --check` answers in
+ * one line and an exit status; it reads the medium's own index and costs one
+ * daemon round trip, which is fine for a program that is already waiting for a
+ * keystroke and would not be fine on a panel tick. Run once per refresh.
+ */
+static void scan_updates(void)
+{
+	char buf[256];
+	KbArgv a = {0};
+
+	updates_line[0] = 0;
+	updates_n = 0;
+	kb_argv_add(&a, "kdos");
+	kb_argv_add(&a, "app");
+	kb_argv_add(&a, "update");
+	kb_argv_add(&a, "--check");
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, buf, sizeof(buf)) < 0)
+		return;
+	buf[strcspn(buf, "\r\n")] = 0;
+	if (sscanf(buf, "%d update", &updates_n) != 1)
+		updates_n = 0;
+	if (updates_n > 0)
+		snprintf(updates_line, sizeof(updates_line), "%s — Enter to apply", buf);
 }
 
 /* ── the row list ──────────────────────────────────────────────────────── */
 
-enum { R_HEAD = 0, R_CAM, R_MIC, R_INPUT, R_MEDIA };
+enum { R_HEAD = 0, R_CAM, R_MIC, R_INPUT, R_MEDIA, R_UPDATE };
 
 struct drow {
 	int kind;
@@ -610,7 +644,7 @@ struct drow {
 	const char *head;
 };
 
-static struct drow rows[DV_MAX_CAM + DV_MAX_MIC + DV_MAX_INPUT +
+static struct drow rows[2 + DV_MAX_CAM + DV_MAX_MIC + DV_MAX_INPUT +
 			DV_MAX_MEDIA + 6];
 static int nrows;
 
@@ -634,6 +668,12 @@ static void build_rows(void)
 	for (int i = 0; i < nmedia; i++) {
 		rows[nrows].kind = R_MEDIA;
 		rows[nrows++].idx = i;
+	}
+	rows[nrows].kind = R_HEAD;
+	rows[nrows++].head = "UPDATES ON THE MEDIUM";
+	if (updates_n > 0) {
+		rows[nrows].kind = R_UPDATE;
+		rows[nrows++].idx = 0;
 	}
 	rows[nrows].kind = R_HEAD;
 	rows[nrows++].head = "INPUT";
@@ -686,6 +726,8 @@ static void draw_frame(void)
 			else if (!strcmp(r->head, "REMOVABLE MEDIA") && !nmedia)
 				empty = media_why[0] ? media_why
 						     : "nothing plugged in";
+			else if (!strcmp(r->head, "UPDATES ON THE MEDIUM") && !updates_n)
+				empty = "up to date";
 			else if (!strcmp(r->head, "INPUT") && !ninput)
 				empty = "none";
 			if (empty)
@@ -742,6 +784,9 @@ static void draw_frame(void)
 				       : m->mnt[0] ? KT_ACCENT
 						   : KT_MID,
 				       bg, KT_A_NONE);
+		} else if (r->kind == R_UPDATE) {
+			ktui_draw_text(3, y, list_w - 5, updates_line,
+				       on ? KT_SURFACE : KT_ACCENT, bg, KT_A_NONE);
 		} else {
 			const struct dv_input *d = &inputs[r->idx];
 			ktui_draw_text(3, y, 10, d->kind,
@@ -787,6 +832,7 @@ static void rescan(void)
 	scan_mics();
 	scan_inputs();
 	scan_media();
+	scan_updates();
 	build_rows();
 }
 
@@ -968,6 +1014,10 @@ int devices_main(int argc, char **argv)
 		case 'p':
 			if (sel < nrows && rows[sel].kind == R_CAM) {
 				preview(&cams[rows[sel].idx]);
+			} else if (sel < nrows && rows[sel].kind == R_UPDATE) {
+				const char *argv[] = { "foot", "-e", "kdos", "app",
+						       "update", NULL };
+				sh_spawn(argv);
 			} else if (sel < nrows && rows[sel].kind == R_MEDIA) {
 				/* Enter is the obvious verb for the state it
 				 * is in: mount what is not mounted, open what

@@ -404,6 +404,15 @@ def main():
     ap.add_argument("--no-cdrom", action="store_true",
                     help="leave the ISO off entirely, so the DISK is what "
                          "boots. The second half of an install test")
+    ap.add_argument("--boot-disk", action="store_true",
+                    help="boot the DISK with the ISO still attached — an "
+                         "installed system that can still reach the medium. "
+                         "The app sweep needs both: boxes run on the disk and "
+                         "packs are installed off /mnt/iso/packs")
+    ap.add_argument("--scratch", default=None,
+                    help="attach a raw file as a virtio disk the GUEST writes "
+                         "a tar onto, which is how files come back out. "
+                         "--data-disk is input only")
     ap.add_argument("--no-session", action="store_true",
                     help="do not start the desktop: the steps are all this "
                          "run wants and a compositor is 40s of nothing")
@@ -478,7 +487,8 @@ def main():
         # invisible.
         qemu += ["-drive", "if=none,id=hd0,format=qcow2,file=%s" % args.disk,
                  "-device", "virtio-blk-pci,drive=hd0",
-                 "-boot", "order=c" if args.no_cdrom else "order=d"]
+                 "-boot", "order=c" if (args.no_cdrom or args.boot_disk)
+                          else "order=d"]
     if args.audio:
         # AN HDA CONTROLLER WITH THE SAMPLES GOING NOWHERE. `-audiodev none`
         # is a real backend as far as the guest is concerned: the kernel binds
@@ -489,6 +499,16 @@ def main():
         # sound of its own, so a real backend is not on the table anyway.
         qemu += ["-audiodev", "none,id=snd0", "-device", "intel-hda",
                  "-device", "hda-output,audiodev=snd0"]
+    if args.scratch:
+        # A RAW DISK THE GUEST WRITES A TAR ONTO, and the only path OUT of a
+        # guest with no network. `--data-disk` carries files IN; nothing
+        # carried them back, and 183 screenshots do not fit through a serial
+        # console. The guest runs `tar cf /dev/vdX <dir>` — no filesystem and
+        # no mkfs, because tar on a block device starts at offset 0 and the
+        # host reads it with a plain `tar xf`, which stops at the archive's own
+        # end marker and never looks at the trailing megabytes.
+        qemu += ["-drive", "if=none,id=scr0,format=raw,file=%s" % args.scratch,
+                 "-device", "virtio-blk-pci,drive=scr0"]
     if args.data_disk:
         # A PLAIN VIRTIO DISK CARRYING ONE FILE'S BYTES, for getting a large
         # artefact INTO a guest that has no network. `--usb` is the wrong

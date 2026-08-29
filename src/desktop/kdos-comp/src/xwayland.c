@@ -946,7 +946,7 @@ xwayland_view_set_fullscreen(struct view *view, bool fullscreen)
 		fullscreen);
 }
 
-static pid_t
+pid_t
 xwayland_view_get_pid(struct view *view)
 {
 	assert(view);

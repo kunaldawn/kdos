@@ -20,8 +20,9 @@
 
 #include "kbase.h"
 
+/* g_box's "nothing chosen yet" value: a launch resolves the real box from the
+ * app's pack, and one that cannot is refused by name rather than composed. */
 #define DEFAULT_BOX   "kdos-apps"
-#define DEFAULT_IMAGE "localhost/kdos-appbox:latest"
 #define APP_TABLE     "/usr/share/kdos/alien-apps"
 /* The security-context-v1 engine. Absent on a tree built before M2.5, which is
  * why every use of it is guarded rather than assumed. */
@@ -54,9 +55,11 @@ typedef enum {
 typedef struct {
 	char name[64];
 	char image[256];
-	/* pack:<id> | image:<ref> | box:<name>, or empty for the image lane */
+	/* pack:<id> | image:<ref> | box:<name>; empty until the first launch
+	 * composes the box and records what it is made of */
 	char base[256];
 	char accent[16];	/* phosphor | amber | ice | bone            */
+	char grant[128];	/* globals a box may bind past the sandbox allowlist */
 	Persistence persist;
 	int  netns;      /* 1 = private network namespace (--unshare-netns)  */
 	int  netnone;    /* 1 = no network at all         (--network none)   */
@@ -98,7 +101,6 @@ int  box_unstick(const char *box, char *state, size_t n);
 int  box_create(const Profile *p);
 int  box_remove(const char *box, int force);
 int  box_list(void);
-int  box_ensure(const char *box);
 int  box_setup_done(const char *box);
 int  box_wait_ready(const char *box, int seconds);
 int  image_exists(const char *image);
@@ -139,33 +141,24 @@ int  app_table_load(App **out);
 int  app_lookup(const char *name, char *cmd, size_t n);
 /* The same, also answering which pack provides it — the third field of the
  * alien-apps table, empty on a table written before the pack lane. */
+int  app_pack_by_exec(const char *exec, char *pack, size_t pn);
+/* The basename of the program a command line runs, `env`/`sh -c` skipped. */
+void app_exec_key(const char *cmdline, char *out, size_t n);
 int  app_lookup_pack(const char *name, char *cmd, size_t n, char *pack,
 		     size_t pn);
-int  app_install(const char *box, const char *pkg);
-int  app_uninstall(const char *box, const char *pkg);
-int  app_refresh(const char *box);
 int  app_list(void);
-
-/* ----------------------------------------------------------------- tui.c */
-
-int tui_main(void);
 
 /* ----------------------------------------------------------- launchers.c */
 
 /* Regenerate the launchers, the mime cache, the alien-apps table and the
  * /usr/local/bin shims from an image's /usr/share/applications. */
-int cmd_genlaunchers(const char *srcdir, const char *fsroot);
+int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packsdir);
 
 /* ---------------------------------------------------------------- open.c */
 
 /* A path, opened by whatever the freedesktop association says opens it —
  * host app or boxed app, since both are ordinary desktop entries here. */
 int cmd_open(int argc, char **argv);
-
-/* --------------------------------------------------------------- image.c */
-
-/* pack / assemble / remap-uids — the appbox image in and out of the repo. */
-int cmd_image(int argc, char **argv);
 
 /* ------------------------------------------------------------- box_cmd.c */
 
@@ -177,7 +170,6 @@ int box_main(int argc, char **argv);
 extern const char *g_box;
 
 int cmd_run(int argc, char **argv);
-int cmd_ensure(void);
 int cmd_warmup(void);
 int cmd_status(void);
 

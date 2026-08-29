@@ -433,6 +433,20 @@ int pack_box_create(const Profile *p, const char *merged)
 	}
 
 	/*
+	 * A BOXGRAFT IS A SYMLINK INTO THE DAEMON'S MOUNT DIRECTORY, and the
+	 * box shares the home the link sits in but not the directory it points
+	 * at — measured: kicad's 3D models grafted under ~/.local/share/kdos
+	 * and `No such file` inside the box. The mount tree is read-only,
+	 * nosuid and (for data) noexec on the host, and it is the same path on
+	 * both sides, so the links resolve. Only when it exists: an install
+	 * that never mounted a pack has no directory to share.
+	 */
+	if (kb_path_exists("/var/lib/kdos/packs/mnt")) {
+		kb_argv_add(&a, "--volume");
+		kb_argv_add(&a, "/var/lib/kdos/packs/mnt:/var/lib/kdos/packs/mnt:ro,rslave");
+	}
+
+	/*
 	 * kdos-boxinit is STATIC and is bind-mounted in from the host: the
 	 * box's /usr is Debian's, and a musl-linked host binary would look for
 	 * its loader there and not find it.

@@ -82,7 +82,17 @@ static const char *RESERVED[] = {
  */
 static const char *SKIP_ROOTLESS_INERT[] = {
 	"gparted", "gsmartcontrol", "org.gnome.DiskUtility", "org.gnome.Disks",
-	"gnome-disks", "testdisk", "org.gnome.baobab-root", NULL
+	"gnome-disks", "testdisk", "org.gnome.baobab-root", "timeshift-gtk", NULL
+};
+
+/*
+ * KWIN-ONLY. Spectacle on Wayland asks KWin's own screenshot interface and
+ * opens an error dialog on any other compositor — measured on this desktop:
+ * "On Wayland, Spectacle requires KDE Plasma's KWin compositor". Screenshots
+ * are the host's, `kdos-shot`, which is where the capture globals are.
+ */
+static const char *SKIP_NEEDS_KWIN[] = {
+	"org.kde.spectacle", NULL
 };
 
 static const char *SKIP_BASENAMES[] = {
@@ -249,6 +259,7 @@ typedef struct {
 	char wmclass[160];
 	char pack[96];		/* the pack that provides it, or "" for an image */
 	int cmdonly;		/* a command, not an application: no launcher */
+	int terminal;		/* upstream's Terminal=true: it draws in one */
 } Launcher;
 
 /*
@@ -370,6 +381,24 @@ static int starts_with_any(const char *const *list, const char *s)
 	return 0;
 }
 
+/* `Categories=` is `;`-separated tokens; a token is matched whole —
+ * `X-GNOME-NetworkSettings` contains the word Settings and is not the category,
+ * and a substring test dropped Remmina's launcher for it. */
+static int has_category(const char *cats, const char *want)
+{
+	size_t wl = strlen(want);
+	for (const char *p = cats; p && *p; ) {
+		const char *e = strchr(p, ';');
+		size_t l = e ? (size_t)(e - p) : strlen(p);
+		if (l == wl && !strncmp(p, want, wl))
+			return 1;
+		if (!e)
+			break;
+		p = e + 1;
+	}
+	return 0;
+}
+
 static void parse_dir(const char *srcdir)
 {
 	char **files = kb_listdir(srcdir, NULL);
@@ -389,6 +418,7 @@ static void parse_dir(const char *srcdir)
 
 		if (in_list(SKIP_BASENAMES, base) ||
 		    in_list(SKIP_ROOTLESS_INERT, base) ||
+		    in_list(SKIP_NEEDS_KWIN, base) ||
 		    starts_with_any(SKIP_PREFIXES, base))
 			continue;
 
@@ -408,7 +438,7 @@ static void parse_dir(const char *srcdir)
 		    !name || !*ex ||
 		    /* A Settings-only entry belongs to the box's own desktop,
 		     * not to ours; one that is also System is a real tool. */
-		    (strstr(cats, "Settings") && !strstr(cats, "System"))) {
+		    (has_category(cats, "Settings") && !has_category(cats, "System"))) {
 			kxdg_free(&e);
 			continue;
 		}
@@ -417,9 +447,26 @@ static void parse_dir(const char *srcdir)
 
 		kb_strlcpy(a->pack, cur_pack, sizeof(a->pack));
 		kb_strlcpy(a->base, base, sizeof(a->base));
+		/*
+		 * THE SHIM IS NAMED AFTER THE PROGRAM, not after the desktop
+		 * id. `org.kde.rkward.desktop` runs `rkward`, and `rkward` is
+		 * what a person types and what Debian put in /usr/bin — a shim
+		 * called `org.kde.rkward` is one nobody finds, and the whole
+		 * KDE segment is reverse-DNS. RENAME still wins where upstream's
+		 * program name is not the one people know (firefox-esr →
+		 * firefox); a program name that is reserved, empty or odd falls
+		 * back to the lowercased id, which is unique by construction.
+		 */
 		const char *ren = lookup(RENAME, base);
+		char key[128];
+		app_exec_key(ex, key, sizeof(key));
 		if (ren) {
 			kb_strlcpy(a->id, ren, sizeof(a->id));
+		} else if (key[0] && !in_list(RESERVED, key) &&
+			   strspn(key, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+				       "abcdefghijklmnopqrstuvwxyz0123456789._+-")
+			   == strlen(key)) {
+			kb_strlcpy(a->id, key, sizeof(a->id));
 		} else {
 			kb_strlcpy(a->id, base, sizeof(a->id));
 			for (char *p = a->id; *p; p++)
@@ -439,6 +486,11 @@ static void parse_dir(const char *srcdir)
 		 * app back to any desktop entry. */
 		kb_strlcpy(a->wmclass, kxdg_get(&e, "StartupWMClass", base),
 			   sizeof(a->wmclass));
+		/* R, octave-cli and the like say `Terminal=true`, and the Start
+		 * menu wraps such an entry in `foot -e`. Written as false, the
+		 * program was started with a pipe for stdin, and R answers that
+		 * with "you must specify --save" and exits. */
+		a->terminal = kxdg_bool(&e, "Terminal", 0);
 
 		char cleaned[1024];
 		clean_exec(ex, cleaned, sizeof(cleaned));
@@ -529,9 +581,10 @@ static void write_launchers(const char *dir)
 			      "Comment=%s (alien app, kdos-apps box)\n"
 			      "Exec=kdos-appbox run %s\n"
 			      "Icon=%s\n"
-			      "Terminal=false\n"
+			      "Terminal=%s\n"
 			      "Categories=%s\n",
-			      a->name, a->name, a->exec, a->icon, a->cats);
+			      a->name, a->name, a->exec, a->icon,
+			      a->terminal ? "true" : "false", a->cats);
 		if (a->generic[0])
 			kb_buf_printf(&b, "GenericName=%s\n", a->generic);
 		if (a->mime[0])
@@ -614,9 +667,8 @@ static int write_mimeinfo(const char *dir)
 	return nrows;
 }
 
-static int write_shims(const char *fsroot)
+static int write_shims(const char *share, const char *bindir)
 {
-	char *share = kb_path_join(fsroot, "usr/share/kdos");
 	kb_mkdir_p(share);
 
 	KbBuf t = {0};
@@ -639,13 +691,10 @@ static int write_shims(const char *fsroot)
 	 * types, 0 shims" and exit 0, which reads as the pack lane having
 	 * taken over when the shipped table is still whoever wrote it last. */
 	if (kb_write_all(table, t.p, t.n) != 0)
-		kb_die("cannot write %s: %s (genlaunchers writes under /usr — "
-		       "run it as root)", table, strerror(errno));
+		kb_die("cannot write %s: %s", table, strerror(errno));
 	free(table);
-	free(share);
 	kb_buf_free(&t);
 
-	char *bindir = kb_path_join(fsroot, "usr/local/bin");
 	kb_mkdir_p(bindir);
 
 	/*
@@ -668,7 +717,10 @@ static int write_shims(const char *fsroot)
 			  ? readlink(p, target, sizeof(target) - 1) : -1;
 		if (n > 0) {
 			target[n] = 0;
-			if (target[0] != '/')
+			/* ours: a relative `kdos-appbox` (the root tree) or the
+			 * absolute dispatcher path (the user tree) */
+			if (target[0] != '/' ||
+			    !strcmp(target, "/usr/local/bin/kdos-appbox"))
 				unlink(p);
 		}
 		free(p);
@@ -682,13 +734,18 @@ static int write_shims(const char *fsroot)
 			continue;
 		}
 		char *p = kb_path_join(bindir, apps[i].id);
-		if (symlink("kdos-appbox", p) == 0)
+		/* ABSOLUTE in the user's tree: `~/.local/bin/gimp -> kdos-appbox`
+		 * resolves nothing, since the dispatcher is not beside it. The
+		 * root tree's shims stay relative — that is the marker for one
+		 * this program wrote, and there the dispatcher IS beside them. */
+		const char *tgt = bindir[0] == '/' && strstr(bindir, "/.local/")
+				? "/usr/local/bin/kdos-appbox" : "kdos-appbox";
+		if (symlink(tgt, p) == 0)
 			n++;
 		else if (errno != EEXIST)
 			kb_warn("shim %s: %s", apps[i].id, strerror(errno));
 		free(p);
 	}
-	free(bindir);
 	return n;
 }
 
@@ -733,6 +790,14 @@ static int genlaunchers_packs(void)
 		 * dropped there and is not this desktop's business. */
 		if (strcmp(kind, "app"))
 			continue;
+		/* AND ONLY AN INSTALLED ONE. The list carries every pack on the
+		 * medium as `available`, and mounting each to read its entries
+		 * makes it installed — so one regeneration turned 163 available
+		 * packs into 163 mounted ones, and `kdos app remove` could never
+		 * take a launcher away because the regeneration that followed
+		 * put the pack straight back. The fourth field is the state. */
+		if (nf < 4 || (strcmp(f[3], "installed") && strcmp(f[3], "mounted")))
+			continue;
 
 		snprintf(req, sizeof(req), "mount %s", id);
 		if (packd_ask(req, mnt, sizeof(mnt)) != 0) {
@@ -752,10 +817,69 @@ static int genlaunchers_packs(void)
 	return packs;
 }
 
-int cmd_genlaunchers(const char *srcdir, const char *fsroot)
+/*
+ * TWO TREES, AND WHICH ONE IS WHOSE DECISION.
+ *
+ * The ROOT tree — /etc/skel, /usr/share/kdos/alien-apps, /usr/local/bin — is
+ * what the BUILD writes for the recommended set. It is a system decision and
+ * it is root's.
+ *
+ * The USER tree — ~/.local/share/applications, ~/.local/share/kdos/alien-apps,
+ * ~/.local/bin — is what `kdos app install` writes, AS THE USER, the moment a
+ * pack is installed. Every reader already looks there first: the Start menu
+ * reads the user's applications directory, the dispatcher reads the user's
+ * alien-apps table before the system one, and ~/.local/bin is on the PATH the
+ * skel profile sets. So an installed application is in the menu before the
+ * install command returns, with no root anywhere.
+ *
+ * Without this the pack lane's install ended in an application nobody could
+ * launch: `genlaunchers` was a separate program that had to be run BY HAND, AS
+ * ROOT, and nothing ran it at boot, at login or after an install. The Start
+ * menu's own INSTALL FROM THE MEDIUM row ran the install and then showed the
+ * same menu it showed before, with the application still absent from it.
+ */
+/*
+ * THE BUILD'S SOURCE IS EXTRACTED PACKS, ONE DIRECTORY EACH. The ISO has to
+ * ship launchers for the recommended set — a Start menu with nothing in it is
+ * a distribution with no applications — and at packaging time there is no
+ * kdos-packd and no mount: the build is a chroot in an unprivileged container.
+ * `kdos-pack image` + `fsck.erofs --extract` put each pack's desktop entries
+ * under <root>/<pack-id>/, and the directory NAME is what the table's third
+ * field carries, so a launcher written here dispatches to the same box a
+ * runtime regeneration would. A pack whose entries are absent contributes
+ * nothing rather than failing the set.
+ */
+static int genlaunchers_dirs(const char *root)
+{
+	char **subs = kb_listdir(root, NULL);
+	int packs = 0;
+
+	for (char **s = subs; s && *s; s++) {
+		/* <root>/<pack>/usr/share/applications — the pack's own layout,
+		 * so the parser sees exactly what a mount would show it. */
+		char *sub = kb_path_join(root, *s);
+		char *dir = kb_path_join(sub, "usr/share/applications");
+		if (kb_is_dir(dir)) {
+			kb_strlcpy(cur_pack, *s, sizeof(cur_pack));
+			parse_dir(dir);
+			add_commands(dir);
+			cur_pack[0] = 0;
+			packs++;
+		}
+		free(dir);
+		free(sub);
+	}
+	kb_strv_free(subs);
+	return packs;
+}
+
+int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packsdir)
 {
 	napps = 0;
-	if (srcdir) {
+	if (srcdir && packsdir) {
+		int n = genlaunchers_dirs(srcdir);
+		fprintf(stderr, "%d extracted pack(s) read\n", n);
+	} else if (srcdir) {
 		parse_dir(srcdir);
 		add_commands(srcdir);
 	} else {
@@ -763,12 +887,24 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot)
 		fprintf(stderr, "%d app pack(s) read\n", n);
 	}
 
-	char *skel = kb_path_join(fsroot, "etc/skel/.local/share/applications");
-	write_launchers(skel);
-	int mimes = write_mimeinfo(skel);
-	free(skel);
+	char *apps_dir, *share, *bindir;
+	if (user) {
+		const char *home = kb_home_dir();
+		apps_dir = kb_path_join(home, ".local/share/applications");
+		share = kb_path_join(home, ".local/share/kdos");
+		bindir = kb_path_join(home, ".local/bin");
+	} else {
+		apps_dir = kb_path_join(fsroot, "etc/skel/.local/share/applications");
+		share = kb_path_join(fsroot, "usr/share/kdos");
+		bindir = kb_path_join(fsroot, "usr/local/bin");
+	}
+	write_launchers(apps_dir);
+	int mimes = write_mimeinfo(apps_dir);
+	free(apps_dir);
 
-	int shims = write_shims(fsroot);
+	int shims = write_shims(share, bindir);
+	free(share);
+	free(bindir);
 	int cmds = 0;
 	for (int i = 0; i < napps; i++)
 		cmds += apps[i].cmdonly;

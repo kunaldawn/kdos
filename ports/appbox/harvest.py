@@ -122,6 +122,8 @@ def metainfo(root, want=""):
             # re-bake of an unchanged layer produces the same metadata.
             found.append((component_rank(cid, want) if want else 3, name, r))
     found.sort(key=lambda t: (t[0], t[1]))
+    if found:
+        got["_rank"] = found[0][0]
     for _rank, _name, r in found:
         def text(tag):
             for el in r.iter(tag):
@@ -244,6 +246,12 @@ def main():
                     metavar="NAME=VALUE")
     ap.add_argument("--command", action="append", default=[],
                     metavar="NAME")
+    ap.add_argument("--needs", action="append", default=[],
+                    metavar="PACK", help="a data pack this app is useless without")
+    ap.add_argument("--graft", action="append", default=[],
+                    metavar="FROM TO", help="data pack: symlink under /usr/share")
+    ap.add_argument("--boxgraft", action="append", default=[],
+                    metavar="FROM TO", help="data pack: symlink a box can see")
     a = ap.parse_args()
 
     # ONLY AN APP ROW HAS AN APPLICATION'S IDENTITY. A runtime layer holds
@@ -255,6 +263,13 @@ def main():
     if a.kind == "app":
         entries = desktop_entries(a.diffdir)
         info = metainfo(a.diffdir, a.id.split(".")[-1])
+        # A COMPONENT THAT NAMES NOBODY'S PROGRAM IS NO COMPONENT. A pack with
+        # no desktop entry of its own — gmic, ngspice — has only its layer's
+        # libraries to choose from, and the best of those by rank was
+        # libgphoto2, so `app.gmic` described itself as a camera library.
+        # Nothing is better than somebody else's sentence.
+        if not entries and info.get("_rank", 3) >= 3:
+            info = {}
     else:
         entries, info = [], {}
 
@@ -301,6 +316,16 @@ def main():
                 break
     if a.parent and a.parent != "-":
         lines.append("requires    = %s" % a.parent)
+    # A DATA PACK IS NOT COMPOSED INTO A BOX ROOT — it is mounted noexec and
+    # grafted — so an app that needs one names it here rather than requiring
+    # it. `needs` is the honest word: without it the program opens with an
+    # empty database, which is a broken menu entry rather than software.
+    for n in a.needs:
+        lines.append("needs       = %s" % n)
+    for g in a.graft:
+        lines.append("graft       = %s" % g)
+    for g in a.boxgraft:
+        lines.append("boxgraft    = %s" % g)
 
     mimes = []
     for e in entries:

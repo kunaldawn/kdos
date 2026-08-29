@@ -83,4 +83,8 @@ void xwayland_update_workarea(void);
 void xwayland_flush(void);
 
 #endif /* HAVE_XWAYLAND */
+/* KDOS: the client pid behind an X11 window, or -1; kdos_view_box() reads
+ * its environment for the box marker, since Xwayland carries no context. */
+pid_t xwayland_view_get_pid(struct view *view);
+
 #endif /* LABWC_XWAYLAND_H */

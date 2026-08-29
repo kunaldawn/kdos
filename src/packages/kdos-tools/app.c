@@ -341,6 +341,72 @@ static void warn_needs(const char *id)
 	}
 }
 
+/*
+ * AN INSTALLED APPLICATION IS IN THE MENU BEFORE THIS COMMAND RETURNS. The
+ * launchers, the shim and the mime rows for installed packs are written into
+ * the USER's tree by `genlaunchers --packs --user`, as the calling user, so
+ * nothing here needs root and nothing has to be remembered afterwards. A
+ * failure is reported and does not fail the install: the pack IS installed,
+ * and "installed but not in the menu" with a sentence saying so is better than
+ * "install failed" over a launcher.
+ */
+static void relaunchers(void)
+{
+	KbArgv a = {0};
+	/* Its stderr is the diagnosis when it fails — `cannot write X` names
+	 * the path — and kb_run drops a child's stderr unless told not to. */
+	kb_proc_verbose = 1;
+	kb_argv_add(&a, "kdos-appbox");
+	kb_argv_add(&a, "genlaunchers");
+	kb_argv_add(&a, "--packs");
+	kb_argv_add(&a, "--user");
+	kb_argv_end(&a);
+	if (kb_run(&a) != 0)
+		fprintf(stderr, "kdos app: launchers not regenerated — run "
+				"`kdos-appbox genlaunchers --packs --user`\n");
+}
+
+/*
+ * A RUNNING BOX KEEPS THE OLD BYTES. Mounts are reference-counted, so a pack
+ * that is replaced stays mounted under every box composed on it — correct, or
+ * the running application's paths would go ENOENT — and the box runs the
+ * previous version until it is restarted, with nothing saying so. This says
+ * so, by name, so an update the user cannot see take effect is at least an
+ * update the user was told about.
+ */
+static void warn_running(const char *id)
+{
+	char buf[8192];
+	KbArgv a = {0};
+	char *line, *save;
+	int n = 0;
+
+	kb_argv_add(&a, "kdos-box");
+	kb_argv_add(&a, "list");
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, buf, sizeof(buf)) != 0)
+		return;
+	for (line = strtok_r(buf, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char name[64], base[64], state[32];
+		if (sscanf(line, "%63s %63s %31s", name, base, state) != 3)
+			continue;
+		if (strcmp(state, "running"))
+			continue;
+		/* the box IS the app pack, or it composes the runtime */
+		if (!strcmp(base + (strncmp(base, "pack:", 5) ? 0 : 5), id) ||
+		    !strcmp(name, id)) {
+			if (!n)
+				printf("  running on the previous version — restart "
+				       "to pick this up:");
+			printf(" %s", name);
+			n++;
+		}
+	}
+	if (n)
+		printf("\n");
+}
+
 static int cmd_install(const char *id)
 {
 	const AppRow *r = find(id);
@@ -365,7 +431,18 @@ static int cmd_install(const char *id)
 		if (rc == 0) {
 			printf("%s mounted from the medium — not copied, so it "
 			       "is gone when this session ends\n", id);
+			/* A data pack is mounted noexec and never composed: what
+			 * it is FOR is its grafts, and a mount with none made is
+			 * a dataset nothing can find. */
+			if (!strcmp(r->kind, "data")) {
+				snprintf(req, sizeof(req), "graft %s", id);
+				if (ask(req, msg, sizeof(msg)) == 0)
+					printf("%s\n", msg);
+				else
+					fprintf(stderr, "kdos app: %s\n", msg);
+			}
 			warn_needs(id);
+			relaunchers();
 			return 0;
 		}
 		if (rc < 0)
@@ -583,6 +660,11 @@ whole:
 	return 0;
 }
 
+/* `--check`: dry, one line, exit 1 when something is newer. The seam a panel
+ * or a device manager asks — a stick that IS newer than the disk had no
+ * surface at all before this, only a verb somebody had to know to type. */
+static int check_mode;
+
 static int cmd_update(const char *only, int dry, const char *url)
 {
 	char dirs[8][KPK_PATH];
@@ -662,6 +744,10 @@ static int cmd_update(const char *only, int dry, const char *url)
 			e = kpk_index_find(ix, rows[i].id);
 			if (!e || kp_vercmp(e->version, rows[i].version) <= 0)
 				continue;
+			if (check_mode) {
+				done++;
+				continue;
+			}
 			if (dry) {
 				printf("  %-22s %s -> %s\n", rows[i].id,
 				       rows[i].version, e->version);
@@ -681,10 +767,18 @@ static int cmd_update(const char *only, int dry, const char *url)
 				continue;
 			}
 			done++;
+			warn_running(rows[i].id);
 		}
 		free(ix);
 	}
 
+	if (check_mode) {
+		if (done)
+			printf("%d update%s on the medium\n", done, done == 1 ? "" : "s");
+		else
+			printf("up to date\n");
+		return done ? 1 : 0;
+	}
 	if (only && !seen) {
 		fprintf(stderr, "kdos app: %s is not installed here\n", only);
 		return 1;
@@ -765,8 +859,21 @@ int kdt_app(int argc, char **argv)
 		return cmd_show(argv[1]);
 	if (!strcmp(cmd, "install") && argc > 1)
 		return cmd_install(argv[1]);
-	if (!strcmp(cmd, "remove") && argc > 1)
-		return cmd_simple("remove", argv[1]);
+	if (!strcmp(cmd, "remove") && argc > 1) {
+		/* A PACK MOUNTED OFF THE MEDIUM IS NOT IN THE STORE, so the
+		 * daemon's `remove` refuses it — "on the medium, not
+		 * installed" — and the launchers it got at install time stayed
+		 * behind. What "remove" means for a live mount is unmount. */
+		const AppRow *r = find(argv[1]);
+		int rc;
+		if (r && !strcmp(r->kind, "data"))
+			cmd_simple("ungraft", argv[1]);
+		rc = cmd_simple(r && !strcmp(r->state, "mounted") ? "unmount"
+								  : "remove", argv[1]);
+		if (rc == 0)
+			relaunchers();
+		return rc;
+	}
 	if (!strcmp(cmd, "rollback") && argc > 1)
 		return cmd_simple("rollback", argv[1]);
 	if (!strcmp(cmd, "graft") && argc > 1)
@@ -779,6 +886,8 @@ int kdt_app(int argc, char **argv)
 		for (int i = 1; i < argc; i++) {
 			if (!strcmp(argv[i], "--dry-run"))
 				dry = 1;
+			else if (!strcmp(argv[i], "--check"))
+				dry = check_mode = 1;
 			else if (!strcmp(argv[i], "--online")) {
 				if (++i >= argc)
 					return usage();

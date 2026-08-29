@@ -46,6 +46,7 @@
  */
 
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -758,6 +759,46 @@ static int cmd_uuid(int n, char **a)
 	return 0;
 }
 
+/*
+ * `image <pack> <out.erofs>` writes the pack's EROFS bytes and nothing else —
+ * [0, erofs_len) as the footer records it. It exists for the one place that
+ * has to read INSIDE a pack without a mount: the build, which is a chroot in an
+ * unprivileged container and cannot mount anything, and which needs the
+ * desktop entries out of the recommended packs to write the ISO's launchers.
+ * `fsck.erofs --extract` then reads a plain image, which the .kpack with its
+ * footer is not.
+ */
+static int cmd_image(int n, char **a)
+{
+	KpkFooter f;
+	uint64_t fsize;
+	FILE *in, *out;
+	char buf[1 << 16];
+	uint64_t left;
+
+	if (n < 2) {
+		fprintf(stderr, "usage: kdos-pack image <pack> <out.erofs>\n");
+		return 2;
+	}
+	if (kpk_footer_read(a[0], &f, &fsize) != 0)
+		kb_die("%s is not a pack", a[0]);
+	in = fopen(a[0], "rb");
+	out = fopen(a[1], "wb");
+	if (!in || !out)
+		kb_die("%s: %s", in ? a[1] : a[0], strerror(errno));
+	for (left = f.erofs_len; left; ) {
+		size_t want = left < sizeof(buf) ? (size_t)left : sizeof(buf);
+		size_t got = fread(buf, 1, want, in);
+		if (!got || fwrite(buf, 1, got, out) != got)
+			kb_die("%s: short copy", a[1]);
+		left -= got;
+	}
+	fclose(in);
+	if (fclose(out) != 0)
+		kb_die("%s: %s", a[1], strerror(errno));
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	kb_set_progname("kdos-pack");
@@ -773,6 +814,7 @@ int main(int argc, char **argv)
 	if (!strcmp(cmd, "info"))		return cmd_info(n, a);
 	if (!strcmp(cmd, "imagehash"))		return cmd_imagehash(n, a);
 	if (!strcmp(cmd, "uuid"))		return cmd_uuid(n, a);
+	if (!strcmp(cmd, "image"))		return cmd_image(n, a);
 	if (!strcmp(cmd, "extract-meta"))	return cmd_extract_meta(n, a);
 	if (!strcmp(cmd, "verify"))		return cmd_verify(n, a);
 	if (!strcmp(cmd, "sign"))		return cmd_sign(n, a);
