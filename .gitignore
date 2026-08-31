@@ -44,8 +44,13 @@ testing/test_results.json
 
 # Claude Code local settings and notes
 .claude/
+
+# docs/ is ignored by default so scratch notes can live there, with the two
+# things that ARE the documentation named back in. A new documentation
+# directory needs a line here or it is silently uncommittable.
 docs/*
 !docs/screenshots/
+!docs/kdos/
 
 # ── the artefacts that live in releases, not in git ────────────────────────
 #
