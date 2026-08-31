@@ -14,6 +14,8 @@
 #   ports/sources publish           upload the packfiles that are not on the release
 #   ports/sources fetch             download and extract whatever is missing here
 #   ports/sources packs [<tag>]     upload the baked pack set as a dated release
+#   ports/sources fetch-packs [<tag>]  download a pack set into ports/appbox/packs
+#                                   (the newest packs-* release when no tag is given)
 #
 # WHY PACKFILES AND NOT 535 ASSETS. The tarballs are small, numerous, and
 # almost always wanted together — a developer setting up the tree wants all of
@@ -251,10 +253,58 @@ print(" ".join(a["name"] for a in json.load(sys.stdin).get("assets",[])))')
     echo "    set `release = $tag` in ports/appbox/packs.conf to pin this set"
 }
 
+# THE OTHER HALF OF `packs`: a clone on a machine with no podman, no hour to
+# spare and no interest in re-baking 23 GB downloads the set a release holds.
+# No token — releases are public. Every pack is checked against the `C:` the
+# signed index carries, which is the same check kdos-packd makes where it
+# mounts one; `PACKAGES.sig` travels too, so the build verifies the index
+# against the key in fs/etc/kdos/keys/packs. A pack already here with the
+# right hash is kept, so a second run costs the index and nothing else.
+cmd_fetch_packs() {
+    local tag="${1:-}"
+    local dir="${KDOS_PACK_DIR:-$SCRIPT_DIR/appbox/packs}"
+    local api="https://api.github.com/repos/$REPO/releases"
+    if [ -z "$tag" ]; then
+        tag=$(curl -fsSL "$api?per_page=50" | python3 -c '
+import json,sys
+r=[x["tag_name"] for x in json.load(sys.stdin) if x["tag_name"].startswith("packs-")]
+print(sorted(r)[-1] if r else "")')
+        [ -n "$tag" ] || { echo "ports/sources: no packs-* release on $REPO" >&2; exit 1; }
+    fi
+    echo "==> pack set $tag"
+    mkdir -p "$dir"
+    [ -t 1 ] && bar=--progress-bar || bar=--no-progress-meter
+    for f in PACKAGES PACKAGES.sig; do
+        curl -fSL --no-progress-meter --retry 3 -o "$dir/$f" "$BASE/$tag/$f" ||
+            { echo "ports/sources: $tag has no $f" >&2; exit 1; }
+    done
+    local id file sha n=0 kept=0
+    while read -r line; do
+        case "$line" in
+            P:*) id=${line#P:}; file=""; sha="" ;;
+            F:*) file=${line#F:} ;;
+            C:*) sha=${line#C:} ;;
+            "")  [ -n "$file" ] || continue
+                 if [ -f "$dir/$file" ] &&
+                    [ "$(sha256sum "$dir/$file" | cut -d' ' -f1)" = "$sha" ]; then
+                     kept=$((kept + 1)); file=""; continue
+                 fi
+                 echo "⬇   $file"
+                 curl -fSL $bar --retry 3 -C - -o "$dir/$file" "$BASE/$tag/$file"
+                 [ "$(sha256sum "$dir/$file" | cut -d' ' -f1)" = "$sha" ] || {
+                     echo "✗   $file: sha256 does not match the index — removed" >&2
+                     rm -f "$dir/$file"; exit 1; }
+                 n=$((n + 1)); file="" ;;
+        esac
+    done < <(cat "$dir/PACKAGES"; echo)
+    echo "==> $n pack(s) fetched, $kept already here, in $dir"
+}
+
 case "${1:-}" in
     pack)    cmd_pack ;;
     packs)   shift; cmd_packs "$@" ;;
     fetch)   cmd_fetch ;;
+    fetch-packs) shift; cmd_fetch_packs "$@" ;;
     publish) cmd_publish ;;
-    *) echo "usage: ports/sources {pack|fetch|publish|packs [tag]}" >&2; exit 1 ;;
+    *) echo "usage: ports/sources {pack|fetch|publish|packs [tag]|fetch-packs [tag]}" >&2; exit 1 ;;
 esac
