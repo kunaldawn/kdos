@@ -407,6 +407,81 @@ static void warn_running(const char *id)
 		printf("\n");
 }
 
+/*
+ * THE START MENU'S ROW FOR A PACK ON THE MEDIUM IS "OPEN THIS", not "install
+ * this and come back": a person who clicked Blender wants Blender, and a row
+ * that mounted it and left them to find the new entry was a row that did
+ * nothing they could see. Install when it is not installed (a mount off the
+ * medium on a live session), then exec the pack's own shim — the launcher
+ * table's first row for the pack, preferring the one named after it, which is
+ * the sweep's rule too. The exec replaces this process, so the caller's
+ * spawn is the application's.
+ */
+static int cmd_install(const char *id);
+
+/* The user's launcher table — `genlaunchers --packs --user` writes it, and
+ * its third field is the pack. */
+static char *user_table(void)
+{
+	char *p = kb_calloc(1, 512);
+	const char *data = getenv("XDG_DATA_HOME");
+	if (data && *data)
+		snprintf(p, 512, "%s/kdos/alien-apps", data);
+	else
+		snprintf(p, 512, "%s/.local/share/kdos/alien-apps", kb_home_dir());
+	return p;
+}
+
+static int cmd_launch(const char *id)
+{
+	const AppRow *r = find(id);
+	char *ut, *buf, *line, *save;
+	char shim[128] = "", first[128] = "";
+	const char *want = !strncmp(id, "app.", 4) ? id + 4 : id;
+	char path[512];
+
+	if (!r) {
+		fprintf(stderr, "kdos app: no pack '%s'\n", id);
+		return 1;
+	}
+	if (strcmp(r->state, "installed") && strcmp(r->state, "mounted")) {
+		int rc = cmd_install(id);
+		if (rc != 0)
+			return rc;
+	}
+	ut = user_table();
+	buf = kb_calloc(1, 1 << 18);
+	if (kb_read_file(ut, buf, 1 << 18) > 0)
+		for (line = strtok_r(buf, "\n", &save); line;
+		     line = strtok_r(NULL, "\n", &save)) {
+			char *tab = strchr(line, '\t'), *tab2;
+			if (*line == '#' || !tab || !(tab2 = strchr(tab + 1, '\t')))
+				continue;
+			*tab = 0;
+			if (strcmp(tab2 + 1, id))
+				continue;
+			if (!first[0])
+				snprintf(first, sizeof(first), "%s", line);
+			if (!strcmp(line, want)) {
+				snprintf(shim, sizeof(shim), "%s", line);
+				break;
+			}
+		}
+	free(buf);
+	free(ut);
+	if (!shim[0])
+		snprintf(shim, sizeof(shim), "%s", first);
+	if (!shim[0]) {
+		fprintf(stderr, "kdos app: %s carries no launcher — it is a "
+				"command; see `kdos app show %s`\n", id, id);
+		return 1;
+	}
+	snprintf(path, sizeof(path), "%s/.local/bin/%s", kb_home_dir(), shim);
+	execl(path, shim, (char *)NULL);
+	fprintf(stderr, "kdos app: cannot run %s: %s\n", path, strerror(errno));
+	return 1;
+}
+
 static int cmd_install(const char *id)
 {
 	const AppRow *r = find(id);
@@ -813,6 +888,7 @@ static int usage(void)
 		"       kdos app search <text>\n"
 		"       kdos app show <id>\n"
 		"       kdos app install <id>\n"
+		"       kdos app launch <id>       install if needed, then run it\n"
 		"       kdos app remove <id>\n"
 		"       kdos app rollback <id>\n"
 		"       kdos app update [<id>] [--dry-run] [--online <url>]\n"
@@ -859,6 +935,8 @@ int kdt_app(int argc, char **argv)
 		return cmd_show(argv[1]);
 	if (!strcmp(cmd, "install") && argc > 1)
 		return cmd_install(argv[1]);
+	if (!strcmp(cmd, "launch") && argc > 1)
+		return cmd_launch(argv[1]);
 	if (!strcmp(cmd, "remove") && argc > 1) {
 		/* A PACK MOUNTED OFF THE MEDIUM IS NOT IN THE STORE, so the
 		 * daemon's `remove` refuses it — "on the medium, not
