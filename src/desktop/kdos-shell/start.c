@@ -42,7 +42,7 @@
  * every desktop since has kept.
  *
  * IT IS ANCHORED TO THE BOTTOM-LEFT CORNER, which is a libkwl addition
- * (KWL_CORNER_BOTTOM_LEFT): a menu belonging to a bar on the bottom edge has
+ * (KDISP_CORNER_BOTTOM_LEFT): a menu belonging to a bar on the bottom edge has
  * to grow upwards from it, and a client cannot express that by anchoring TOP
  * with a computed margin because it does not know the output's pixel height.
  * ---------------------------------
@@ -59,6 +59,7 @@
 #include "kicon.h"
 #include "kcell.h"
 #include "kwl.h"
+#include "kcon.h"
 #include "shell.h"
 
 /* 56, not 66. At the chrome cell that is 896 pixels — seventy per cent of a
@@ -107,6 +108,10 @@ struct row {
 	const char *keys;
 	const char *confirm;		/* ask first — the three that end
 					 * the session or the machine     */
+	/* This row's program IS a compositor, so on the console desktop it
+	 * goes on a terminal of its own WITHOUT a kiosk compositor round it.
+	 * The graphical session is the only one. */
+	int bare;
 };
 
 static struct row left[ST_MAX_ROWS];
@@ -695,11 +700,16 @@ static void build_right(void)
 	}
 	r = push(right, &nright, "Files");
 	if (r) {
+		/* Static: the row outlives this function and argv points into
+		 * it. One row needs one, so there is one. */
+		static char id[160];
+		int k;
+
 		r->keys = "manager mc browse";
 		r->icon = "folder-open";
-		r->argv[0] = "foot";
-		r->argv[1] = "-e";
-		r->argv[2] = "mc";
+		k = sh_term_argv(r->argv, 0, 8, "mc", id, sizeof(id));
+		r->argv[k++] = "mc";
+		r->argv[k] = NULL;
 	}
 
 	rule_named(right, &nright, "SYSTEM");
@@ -769,11 +779,28 @@ static void build_right(void)
 		r->icon = "video-display";
 		r->argv[0] = "kdos-display";
 	}
+	const char *con = getenv("KDOS_CON");
+
 	r = push(right, &nright, "Terminal");
 	if (r) {
 		r->keys = "shell console foot prompt";
 		r->icon = "system-run";
-		r->argv[0] = "foot";
+		r->argv[0] = sh_term();
+	}
+	/*
+	 * THE GRAPHICAL SESSION, and only from the console — on the graphical
+	 * desktop you are already in it, and a row that started a second one
+	 * would be a row that starts a second compositor on a second terminal
+	 * for no reason anybody has.
+	 */
+	if (con && *con) {
+		r = push(right, &nright, "Desktop");
+		if (r) {
+			r->keys = "wayland graphical gui session compositor";
+			r->icon = "video-display";
+			r->argv[0] = "kdos-desktop";
+			r->bare = 1;
+		}
 	}
 	r = push(right, &nright, "Help");
 	if (r) {
@@ -857,7 +884,7 @@ static void build_power(void)
 		r->argv[0] = "pkill";
 		r->argv[1] = "-TERM";
 		r->argv[2] = "-x";
-		r->argv[3] = "kdos-comp";
+		r->argv[3] = sh_session_prog();
 		r->confirm = "Log out of this session?";
 	}
 	r = push(power_row, &npower, "Shut Down");
@@ -1401,13 +1428,13 @@ static int confirm(const char *msg)
 }
 
 /*
- * Log Out is `pkill -TERM -x kdos-comp`, which looks blunt and is the accurate
- * description of what logging out means here: the compositor IS the session,
- * labwc handles SIGTERM through its own event loop and tears down in order,
- * and kdos-desktop returns to the tty. It is an ordinary power row's argv now
- * — see build_power() — because every one of the five carries its own command
- * and its own question, and two of them being special cases in the footer is
- * what kept them out of the search.
+ * Log Out is `pkill -TERM -x` on whatever sh_session_prog() names, which looks
+ * blunt and is the accurate description of what logging out means here: that
+ * program IS the session, it handles SIGTERM through its own event loop and
+ * tears down in order, and the starter returns to the tty. It is an ordinary
+ * power row's argv — see build_power() — because every one of the five carries
+ * its own command and its own question, and a row that is a special case in
+ * the footer is a row the search cannot find.
  */
 
 static int back(void);
@@ -1454,6 +1481,21 @@ static int activate(struct row *r)
 		 * Suspend become ordinary entries. */
 		if (r->confirm && !confirm(r->confirm))
 			return 0;
+
+		/*
+		 * A COMPOSITOR CANNOT BE A CELL SURFACE. On the console desktop
+		 * it goes on a terminal of its own; everywhere else the row is
+		 * not built at all, so this branch is unreachable there.
+		 */
+		const char *con = getenv("KDOS_CON");
+
+		if (r->bare && con && *con) {
+			if (kcon_run(con, r->argv, r->label,
+					KCON_RUN_BARE) < 0)
+				fprintf(stderr, "kdos-start: no free terminal "
+						"for '%s'\n", r->label);
+			return 1;
+		}
 		sh_spawn(r->argv);
 		return 1;
 	}
@@ -1605,8 +1647,8 @@ int start_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = ST_COLS,
 		.rows = ST_ROWS,
 		/*
@@ -1614,7 +1656,7 @@ int start_main(int argc, char **argv)
 		 * computed margin cannot express this: the client does not
 		 * know the output's pixel height.
 		 */
-		.corner = at_x >= 0 ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = at_x >= 0 ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-start",
@@ -1625,12 +1667,12 @@ int start_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-start: no compositor or no layer-shell\n");
 		return 1;
 	}
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	/*
 	 * The Start menu wears the SAME body as the taskbar it opens from —
 	 * they are on screen together, touching, and two surfaces of one
@@ -1641,7 +1683,7 @@ int start_main(int argc, char **argv)
 	kch_px_popup(KT_BG);
 	ktui_draw_init();
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		sh_theme_poll();
 		draw_frame();
 
@@ -1871,6 +1913,6 @@ int start_main(int argc, char **argv)
 	}
 done:
 	kicon_finish();
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

@@ -17,3 +17,18 @@ export CGO_ENABLED=1
 # is why CGO_ENABLED is on for this port and off for every other Go one.
 make PREFIX=/usr GOFLAGS="-mod=vendor -tags=notmuch"
 make PREFIX=/usr DESTDIR=$PKG install
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/aerc.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Mail
+GenericName=Email Client
+Comment=Read and send mail
+Exec=aerc
+Icon=mail-message
+Terminal=true
+Categories=Network;Email;
+Keywords=mail;email;imap;smtp;aerc;
+EOF
+chmod 644 "$PKG/usr/share/applications/aerc.desktop"

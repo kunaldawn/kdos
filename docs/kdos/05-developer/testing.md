@@ -14,6 +14,7 @@ machine rig that drives a real session.
 | Reference frames | That a surface's geometry and colours have not drifted | That it is usable | Included above |
 | Fixtures | That a reading or a decision is correct against recorded state | That the reading is correct live | Included above |
 | `testing/vnc-shot.py` | That a **real session** does a thing, photographed | Anything the renderer used cannot show | Minutes per boot |
+| `testing/docscheck.sh` | That the book still links up and states the present | Anything a reader has to judge for themselves | Seconds |
 | `testing/packlane.sh` | The application lane end to end on a booted machine | | Minutes |
 | `testing/install-to-disk.sh` | That the installer installs | | Minutes |
 
@@ -76,16 +77,40 @@ Two are worth knowing because they are counter-intuitive:
   written against exactly one of them.
 - **The archive writer is checked by handing its output to the real archive tool.**
 
+### The window-model contract
+
+`libkwm`'s block asserts nothing of its own. It **replays
+`testing/fixtures/wm/geometry.txt`**, every row of which was derived by reading a named line of
+`kdos-comp` and cites it. A failure means the library and the compositor have parted company, which
+is the one thing sharing a window model between two desktops exists to prevent.
+
+**Add a case by adding a row and citing its line**, never by writing an assertion in
+`selftest.c`. A row whose expected value came from taste rather than from the source is worse than
+no row: it makes the library authoritative over the behaviour it was supposed to reproduce.
+
+The file is also self-checking in one direction — the `geom` rows are pure arithmetic over the
+formula in `view_get_edge_snap_box`, so they can be re-derived mechanically. Doing that caught a row
+computed wrong by hand; replaying them against the library then caught four rows transcribed with a
+flag inverted. **Both times the fixture was wrong and was fixed, not the code.**
+
 ### Run it sanitized when you touch a parser
 
 ```sh
 CC="cc -fsanitize=address,undefined -g" testing/selftest.sh
 ```
 
-The suite is clean that way and stays that way. It found two real defects a plain run could not
+The suite is clean that way and stays that way. It found three real defects a plain run could not
 see: an archive size field overflowing a signed type — where the negative became an unsigned length
-and a read was asked for an impossible number of bytes into a small stack buffer — and a copy called
-with a null source on every entry's first key.
+and a read was asked for an impossible number of bytes into a small stack buffer; a copy called with
+a null source on every entry's first key; and a read past the end of the cell buffer in the sprite
+table's eviction check, which walked `ktui_w * ktui_h` cells of a buffer that is only as large as it
+was last resized to.
+
+**A variadic printf wrapper guards its own format**, in libkbase and in the two programs with one
+of their own. A null format is undefined in `vfprintf` anyway, and the sanitiser build's
+interprocedural pass cannot prove one non-null across a whole program compiled in a single line —
+so without the guard `-Wformat-overflow` refuses to build the suite at all, and the sanitiser run
+becomes a run nobody can do.
 
 **Leak checking is off by default and on for the library assertions alone.** Every program here owns
 its parsed state until it exits, which a leak checker reports as a leak and turns into a false
@@ -133,13 +158,27 @@ elevated privileges.
 
 Committed reference frames: a surface rendered offscreen and compared byte for byte.
 
-**Sixty-three frames** across five sizes, covering the shell's front ends, all ten monitor pages
-plus its detail page, and the cell-level frames.
+**Seventy-six frames** across six sizes, covering the shell's front ends, all ten monitor pages plus
+its detail page, the console desktop, the terminal, the cell-level frames, and the six replayed
+terminal recordings.
+
+**One of them is the same surface on the other desktop.** `start-console` is the Start menu with
+`$KDOS_CON` set, which is what a program started inside a console session inherits — and two rows
+differ because of it. A menu whose console-only entries no frame ever drew would be a menu whose
+console-only entries nothing checks.
 
 | Kind | Catches | Count |
 |---|---|---|
 | Text frames (`--dump`) | Geometry: overflow, misalignment, a control drawn past its rectangle | Most |
 | Cell frames (`--dump-cells`) | **Colour** and attribute drift as well | Four |
+| Replayed streams (`vt-*`) | A change in the state machine, against bytes real programs wrote | Six |
+
+**A terminal's frame is taken by running a command to completion.** `kdos-term --dump` settles the
+child and consumes everything it wrote before drawing — a frame taken while a program is still
+writing is a different frame every time it is taken. One of the three holds a **picture**: a dump
+has no pixels, so a sprite renders as its fallback in the picture's top-left cell and as blanks
+under the rest, which is exactly what a tty and a view with no pixel library show. What the frame
+asserts is the shape — how many rows the picture took, and where the cursor was left afterwards.
 
 **Two sizes minimum for anything with a layout**, because a geometry defect is usually a defect at
 one width. The monitor's pages carry three, including a narrow one that forces its sidebar to
@@ -155,11 +194,55 @@ harness must stub the **whole** interface a front end calls: a missing stub is a
 reads as "the front ends do not compile" and takes every frame behind it.
 
 Regenerating is a variable on the self-test, and must be done where the Wayland dependencies exist
-— a build container, not a bare host.
+— a build container, not a bare host. The terminal's are the exception: it builds console-only on
+any host, which is the point of that build.
 
 **Six surfaces have no dump and therefore no frame**: the panel itself, the run box, the prompt,
 the notification daemon, the on-screen display and the desktop. That is a stated gap, not an
 oversight in this page.
+
+### embedcheck
+
+The parent half of `kdos-cage --embed`, as a test — and a **second process** for the reason
+`decocheck` is one: a headless wlroots output, a software renderer, a `memfd` and `SCM_RIGHTS` are
+real kernel and library behaviours, and a mock would only assert about itself.
+
+```sh
+embedcheck --size 640x480 --out frame.ppm -- kdos-term -e /bin/sh -c '...'
+embedcheck --size 640x480 --key 28     -- kdos-term -e /bin/sh -c 'read x; ...'
+```
+
+Two assertions, and neither is the obvious one:
+
+- **Not "the frame is not black".** The compositor paints a background, so a frame with nothing
+  rendered into it is a uniform colour that is not black either. What proves a guest drew is that
+  the frame has **more than one colour** in it.
+- **Input is a frame that changed.** The key is typed into a frame that was already drawn, and a
+  later frame must differ from it. "The guest changed" is the only thing a parent holding pixels can
+  observe about input having arrived — and it is enough, because nothing else moves in a still
+  terminal.
+
+Running it needs a linked `kdos-cage` and a guest to render. The suite compiles it, which is what
+stops it rotting.
+
+**A guest that draws nothing is a passing compositor and a failing test**, so pick one whose output
+you know: a client painting a checkerboard tells you the frame is right pixel for pixel, and a
+terminal whose window happens to be the theme's own background colour tells you nothing at all. That
+is worth knowing before spending an afternoon on the compositor.
+
+### The sprite wire
+
+A picture crossing `libkcon` is checked **byte for byte**, in the surface test, against a source
+buffer whose stride is wider than its width. Checking the metadata is not enough: a picture that
+arrives one pixel out of step, or with a length field where its first pixel should be, still has the
+right size, the right slot and the right fallback — so a test that looked only at those would pass
+while every photograph on the desktop was shifted.
+
+### Goldens and the decoders they need
+
+A golden holding a **sixel** picture is guarded on the sixel decoder being compiled in, not on
+`libkimg` being compiled at all. pixman alone builds a `libkimg` with no sixel in it, and running the
+picture test against that build produces a diff that blames the terminal.
 
 ## Fixtures
 
@@ -182,6 +265,7 @@ a variable moves one walk.
 | `clone` | Hand-built image headers | The two-record length rule |
 | `tray` | A second **process** that behaves like a real tray item | The whole protocol conversation |
 | `shell` | The dump harness and its stubs | Every front end's layout |
+| `vt` | What `vim`, `htop`, `mc`, `less` and `tmux` wrote to an 80x24 pty, plus a hand-written malformed stream | That the libtsm fork's state machine still produces the same screen |
 | `pack`, `box`, `deco`, `openwith`, `recent`, `tone`, `cellclip`, `ascii` | | Their respective units |
 
 **Both traps a fixture guards were confirmed to bite** by building the daemon with each check
@@ -191,18 +275,96 @@ disabled — which is the only way to know a test is testing something.
 peers on a message bus, and a mock of either side would have passed on both of the silent bugs that
 implementation had.
 
+**The terminal fixtures are never re-derived.** A re-recording picks up a different program
+version, a different terminfo and a different hostname, so a fixture that regenerated itself would
+be a test that changed its own question — the hostname and the clock inside them are part of the
+recording, not something live. Each stops on a **live frame** rather than on the program's exit: a
+stream ending with the alternate screen being restored renders to an empty grid, and so does a
+parser that gave up on the first byte, so the self-test refuses an empty grid outright.
+`vtrender.c` replays one in **small uneven chunks**, because a pty splits escape sequences across
+reads and a parser that only works on a whole sequence passes a single-write test and corrupts a
+real terminal.
+
 `testing/fixtures/be` is an empty leftover and records nothing.
 
+## The machine where nothing is skipped
+
+`selftest.sh` runs everywhere and skips what it cannot build, saying so each time. What it skips on
+a bare host is most of the interesting half — `libkimg`'s four decoders, the sd-bus blocks, `fcft`,
+the Wayland consumers, `libkkms` — and a block that is skipped on every machine is a block nobody
+runs.
+
+```sh
+testing/devdeps-image.sh                    # builds the image, then runs the suite in it
+testing/devdeps-image.sh bash               # or a shell in it
+```
+
+`testing/Dockerfile.devdeps` carries exactly what the script probes for. It is Alpine because the
+target is musl and a feature-test difference is worth meeting here rather than in a phase build.
+**Two guards it still does not satisfy, named in the file rather than left to be found:** `wlroots`,
+which no distribution packages and which the next section builds, and `busctl`, which Alpine ships
+in no package — so the portal block stays skipped there even though both its other halves are
+present.
+
+## Compiling the compositor without a full build
+
+`kdos-comp` needs `wlroots-0.20`, which no distribution packages and which the self-test therefore
+reports as skipped. That is not the same as unbuildable: **the tree already carries the source**.
+
+```sh
+# ports/core/wlroots/wlroots-0.20.2.tar.gz is a release asset, fetched by bootstrap
+FROM kdos-devdeps:latest
+RUN apk add --no-cache meson ninja pango-dev libdrm-dev libinput-dev libseat-dev \
+      mesa-dev libxkbcommon-dev wayland-dev wayland-protocols hwdata-dev \
+      libdisplay-info-dev libxcb-dev xcb-util-wm-dev xcb-util-renderutil-dev \
+      xcb-util-image-dev libx11-dev xcb-util-dev xwayland xwayland-dev
+# then meson setup / compile / install the tarball with -Dxwayland=enabled
+```
+
+`kdos-comp` then configures, compiles and **links** in that image. Two concessions, and both matter
+when reading a failure:
+
+- **`-Dicon=disabled`.** `libsfdo` is packaged nowhere available, and the `icon` feature is what
+  requires it. Anything guarded by `HAVE_LIBSFDO` is not compiled, so a change in that code is not
+  covered here.
+- **`-D_GNU_SOURCE`.** `kdos-thumb.c` calls `fileno`, and musl's feature-test defaults differ from
+  the ones the real phase build gets.
+
+**Build the unmodified tree first.** With a baseline binary in hand, every error after a change
+belongs to the change. What this proves is that a port is type-correct and links; it does not prove
+a window lands where a person expects, which is still the rig's job.
+
 ## The QEMU rig
+
+**For a cell surface, prefer `kdos-view --dump` over a photograph.** A console session hands out its
+exact composited grid, so a check on what a surface drew is a text diff rather than an image
+comparison — no boot, no framebuffer, no tolerance for antialiasing. Without a size it takes the
+session's own grid, so taking the picture does not resize the desktop. The rig stays necessary for
+anything the renderer cannot show: the phosphor pass, a real modeset, a Wayland client.
 
 `testing/vnc-shot.py` boots a real image, drives it, and reads the framebuffer. It is how anything
 a dump cannot see gets looked at: the compositor, the wallpaper, the icon layer, a popup anchored to
 the wrong corner.
 
-It boots headless with a serial socket and a monitor socket, **types the session start on the first
-terminal through the monitor** — the session is started by hand on this distribution, and a
-compositor launched from a serial line gets no seat — waits for the compositor, and reads the
-framebuffer over the remote-framebuffer protocol.
+It boots headless with a serial socket and a monitor socket, types on the first terminal through the
+monitor, and reads the framebuffer over the remote-framebuffer protocol.
+
+**Which session is already there decides how the rig is driven.** `tty1` runs `kdos-con-login`,
+which autologins and starts `kdos-con-start`, so **the cell desktop is up before any step runs**:
+
+```sh
+# the console desktop, which is already running — photograph and drive it
+$R --no-session --sleep 25 --shot build/shots/con-desktop.ppm \
+   --keys meta_l-ret --sleep 3 --shot build/shots/con-terminal.ppm
+```
+
+`--keys` is a monitor `sendkey`, so it reaches whatever owns the **active VT** — which is that
+desktop. `--cmd` runs on the serial console as the desktop user, and `--root-cmd` as root, so
+neither disturbs what is on screen.
+
+**The graphical session is started on a VT and never down the serial line**: a compositor launched
+from a serial console gets no seat and dies asking for one. Its entry point from the console desktop
+is the Start-menu row that allocates a free terminal and switches to it.
 
 ### The flags
 
@@ -258,8 +420,20 @@ rounded up to a sector boundary.
 
 ### The host may not have an emulator
 
-The rig runs unmodified inside a container image that already carries one, with the repository bind
-mounted and hardware virtualisation passed through.
+The rig runs unmodified inside a container image that carries one, with the repository bind mounted
+and hardware virtualisation passed through. **The image is built from this tree**, by
+`testing/rig-image.sh` out of `testing/Dockerfile.qemu`:
+
+```sh
+testing/rig-image.sh          # network, once; everything after it is offline
+```
+
+It carries QEMU, the OVMF firmware an EFI boot needs, and python3 — and nothing else, because
+`vnc-shot.py` speaks the remote-framebuffer protocol out of the standard library. There is no pip
+step and no wheel to pin, so the only versions that matter are the distribution's QEMU and OVMF.
+
+Building it here rather than describing a machine's history is what makes a photograph reproducible
+from a clone: an image that exists only where it was first built is a test nobody else can run.
 
 ### Harness traps
 

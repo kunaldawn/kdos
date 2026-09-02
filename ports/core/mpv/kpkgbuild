@@ -15,4 +15,4 @@ source      = $name-$version.tar.gz::https://github.com/mpv-player/mpv/archive/r
 sha256      = ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209  mpv-0.41.0.tar.gz
 description = Play anything, on Wayland, with no toolkit
 homepage    = https://mpv.io/
-depends     = meson ninja pkgconf python3 ffmpeg wayland wayland-protocols libxkbcommon mesa alsa-lib pipewire libass lcms2 libdrm libplacebo
+depends     = meson ninja pkgconf python3 ffmpeg wayland wayland-protocols libxkbcommon mesa alsa-lib pipewire libass lcms2 libdrm libplacebo libdisplay-info

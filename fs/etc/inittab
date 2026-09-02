@@ -13,13 +13,24 @@
 # Serial Console (root, for debugging)
 ttyS0::askfirst:/bin/bash -l
 
-# Local Console (QEMU Window / Physical) — autologin as kdos.
-# agetty, not toybox getty: only agetty implements --autologin.
-# kdos-getty loads the console font/palette after fbcon's deferred take-over —
-# doing it in rcS is futile, the take-over resets every VT's font.
-tty1::respawn:/usr/local/sbin/kdos-getty tty1 /sbin/agetty --autologin kdos --noclear tty1 38400 linux
+# Local Console (QEMU Window / Physical) — the console desktop's login.
+#
+# kdos-con-login reads /etc/kdos/con.conf: `greet = no` hands the tty to
+# `agetty --autologin kdos`, which is the live medium's answer and keeps utmp,
+# lastlog and the shell profile on the path they take everywhere else; `greet =
+# yes` draws the login surface instead. agetty, not toybox getty, because only
+# agetty implements --autologin.
+#
+# kdos-getty stays in the chain and stays FIRST: it loads the console font and
+# palette after fbcon's deferred take-over, and doing that in rcS is futile
+# because the take-over resets every VT's font. It also falls back to the plain
+# autologin getty if the program named here is missing, so an image built
+# without the console desktop still gives a console.
+tty1::respawn:/usr/local/sbin/kdos-getty tty1 /usr/local/sbin/kdos-con-login tty1
 
-# Second console, root login prompt
+# Second console, root login prompt. THE RECOVERY CONSOLE: it is a plain getty
+# and nothing above may be allowed to make it one too, because it is what is
+# left when the desktop on tty1 does not come up.
 tty2::respawn:/usr/local/sbin/kdos-getty tty2 /sbin/getty 38400 tty2
 
 # Restart

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fx
+version     = 39.2.0
+release     = 1
+source      = https://github.com/antonmedv/fx/archive/$version.tar.gz
+sha256      = cdb98177f956615c961bc615fab0b30e73167295152d4f2d4cb70b16cdf47d6e  fx-39.2.0.tar.gz
+sha256      = a5e2789a2f7052c21d3c2f88bfaffebf57134d92195fa3704470afee189110d9  fx-vendor-39.2.0.tar.xz
+description = fx — an interactive viewer and processor for JSON and YAML
+homepage    = https://fx.wtf/
+depends     = go
+vendoring   = go

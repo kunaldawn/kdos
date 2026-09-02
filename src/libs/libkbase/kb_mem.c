@@ -36,12 +36,19 @@ const char *kb_progname(void)
 	return prog;
 }
 
+/*
+ * The format is GUARDED in both of these. vfprintf with a null format is
+ * undefined, and the sanitiser build's interprocedural pass cannot prove one
+ * non-null across a whole program compiled in a single line — so without the
+ * guard `-Wformat-overflow` refuses to build the self-test at all.
+ */
 void kb_die(const char *fmt, ...)
 {
 	va_list ap;
 	fprintf(stderr, "%s: ", prog);
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
+	if (fmt)
+		vfprintf(stderr, fmt, ap);
 	va_end(ap);
 	fputc('\n', stderr);
 	exit(1);
@@ -52,7 +59,8 @@ void kb_warn(const char *fmt, ...)
 	va_list ap;
 	fprintf(stderr, "%s: ", prog);
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
+	if (fmt)
+		vfprintf(stderr, fmt, ap);
 	va_end(ap);
 	fputc('\n', stderr);
 }

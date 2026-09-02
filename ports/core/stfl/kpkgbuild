@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = stfl
+version     = 0.24
+release     = 1
+commit      = bbb2404580e845df2556560112c8aefa27494d66
+source      = https://github.com/newsboat/stfl/archive/$commit.tar.gz
+sha256      = c5e77dd2e40e14f0e68dd08df1f21cd1378d88d5001e7c1926ceb7c4a977ab86  stfl-0.24.tar.gz
+description = STFL — a curses-based structured terminal forms library
+homepage    = https://github.com/newsboat/stfl
+depends     = ncurses

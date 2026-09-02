@@ -46,3 +46,18 @@ meson setup build \
 	-Dlibaudit=no
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/nmtui.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Network
+GenericName=Network Settings
+Comment=Wi-Fi, Ethernet and VPN connections
+Exec=nmtui
+Icon=gtk-network
+Terminal=true
+Categories=Settings;Network;
+Keywords=network;wifi;wireless;ethernet;vpn;nmtui;
+EOF
+chmod 644 "$PKG/usr/share/applications/nmtui.desktop"

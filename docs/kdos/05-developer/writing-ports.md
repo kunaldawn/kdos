@@ -180,6 +180,46 @@ that precedence for flags, because a makefile's own definitions are its **config
 them as arguments discards those, and the build then fails somewhere else entirely, on an
 undeclared constant that reads as a missing header.
 
+## A desktop entry belongs to the port, not to `fs/`
+
+A program that draws in a terminal is an application on this desktop, and almost none of them ship
+a `.desktop` file — upstream writes one for a GUI or writes none at all. **Write it in `build.sh`,
+into `$PKG/usr/share/applications/`.** A package owns its entry, so installing the port adds the
+menu row and removing the port takes it away; the same file under `fs/` is owned by nothing and
+outlives the program it names.
+
+```bash
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/btop.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=System Monitor
+GenericName=Resource Monitor
+Comment=Processes, CPU, memory, disks and network
+Exec=btop
+Icon=speedometer
+Terminal=true
+Categories=System;Monitor;
+Keywords=process;cpu;memory;task;monitor;btop;
+EOF
+chmod 644 "$PKG/usr/share/applications/btop.desktop"
+```
+
+Four rules, each with a consequence:
+
+- **`Terminal=true` and a bare `Exec`.** Naming an emulator in `Exec` pins the entry to one
+  desktop: `foot` is a Wayland client and cannot run on the console. The launcher picks the
+  emulator and supplies the identity — see [`kdos-shell`](../04-programs/kdos-shell.md).
+- **Check `Icon=` against the shipped atlas**, `src/packages/kdos-icons/art`. The set is
+  Papirus-derived and does not carry the freedesktop names you would guess: there is `file-manager`
+  but no `system-file-manager`, `help-contents` but no `help-browser`. A name that misses still
+  draws — the glyph tier is underneath — so this is polish, not correctness.
+- **`MimeType=` only where nothing else claims the type.** Two entries claiming one type is how a
+  machine opens folders in whichever of them sorted first, which is not a decision anybody made.
+  `mimeapps.list` is where a default is chosen.
+- **`Keywords=` is what the menu searches.** A row nobody can find by the word they know it by is
+  a row that is not there.
+
 ## postinstall.sh
 
 The install-time hook, becoming a marker inside the package. Six ports have one.

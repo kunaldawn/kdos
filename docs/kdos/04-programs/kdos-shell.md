@@ -1,6 +1,6 @@
 # kdos-shell
 
-One binary providing twenty-eight commands, dispatched on the name it was invoked as: the panel,
+One binary providing twenty-nine commands, dispatched on the name it was invoked as: the panel,
 and every surface that pops up from it or is reached by a key. This is the largest program in
 KDOS and the one most of the desktop actually is.
 
@@ -34,6 +34,7 @@ half of the same mistake.
 | `kdos-clip` | Clipboard history | [The small surfaces](#the-small-surfaces) |
 | `kdos-status` | The overflow popup | [The overflow chevron](#the-overflow-chevron) |
 | `kdos-tip` | Tooltips | [Tooltips](#tooltips) |
+| `kdos-ime` | The input-method candidate window | [The candidate window](#the-candidate-window) |
 | `kdos-teams` | The window list | [The small surfaces](#the-small-surfaces) |
 | `kdos-display` | Screen configuration | [The small surfaces](#the-small-surfaces) |
 | `kdos-keys` | The keybinding card | [The small surfaces](#the-small-surfaces) |
@@ -42,7 +43,7 @@ half of the same mistake.
 | `kdos-run` | The run box | [The small surfaces](#the-small-surfaces) |
 | `kdos-prompt` | Yes/no, answering by exit status | [The small surfaces](#the-small-surfaces) |
 | `kdos-slit` | The dockapp column | [The small surfaces](#the-small-surfaces) |
-| `kdos-saver` | Attract mode between dim and lock | [The small surfaces](#the-small-surfaces) |
+| `kdos-saver` | Attract mode between idle and lock | [The small surfaces](#the-small-surfaces) |
 | `kdos-ascii` | A picture, as characters | [The small surfaces](#the-small-surfaces) |
 
 ## The panel
@@ -389,6 +390,32 @@ verb is reachable with a pointer, without knowing a key or a right-click.
 The category you were last in is preselected — it does not *open*, which costs nobody a keystroke
 and saves one for somebody who lives in Graphics.
 
+**Two rows change on the console desktop**, and both because a Wayland client's surface is pixels
+and that desktop is a grid of characters. Terminal starts `kdos-term` — a cell surface, so it opens
+as a window there — instead of `foot`, and a **Desktop** row appears that starts the full graphical
+session on a terminal of its own. The Desktop row is not built at all under the compositor: you are
+already in it.
+
+The same rule runs one level down. **Launching a graphical application from the console asks the
+session for a terminal**, which wraps it in `kdos-cage`; a `Terminal=true` entry becomes a
+`kdos-term` window instead.
+
+**Nothing here names a terminal emulator.** `sh_term()` answers with `kdos-term` when `$KDOS_CON` is
+set and `foot` otherwise, and every place that opens one — the root menu's rows, Places, Open
+Terminal Here, the manual-page link, the CPU tile, Open With, the run box's *In Terminal*, the
+launcher, the desktop icons and the key card — asks it. Both emulators take `-e CMD` and `-D DIR`
+with the same meaning, so naming the program is the whole of the difference. A call site that spells
+`"foot"` instead is a row that does nothing on the console desktop, where there is no compositor for
+a Wayland client to be under.
+
+**A terminal running somebody else's program is given that program's name.** The compositor matches
+a window to its desktop entry by app-id, so a `Terminal=true` entry started as a bare `foot -e btop`
+is a taskbar row called foot, wearing foot's icon, however many are open. `sh_term_argv()` writes
+the emulator, the identity and the `-e` together: `--app-id` for foot, `--title` for `kdos-term`,
+taken from the first word of the entry's `Exec`. The two rows that open a terminal *as itself* —
+the menu's Terminal, Open Terminal Here — pass no identity, because there the emulator is the
+application.
+
 ![kdos-start](../../screenshots/start-menu.png)
 
 
@@ -612,7 +639,7 @@ Per-manager:
 | `kdos-prompt` | Yes or no, answering by **exit status** — which is what the compositor reads |
 | `kdos-status` | The overflow popup; see below |
 | `kdos-slit` | The dockapp column. Off by default: a slit nobody configured is a column of marks |
-| `kdos-saver` | Attract mode, between dim and lock |
+| `kdos-saver` | Attract mode, between idle and lock |
 | `kdos-ascii` | A picture, as characters |
 
 **`kdos-status` has a second half worth knowing about.** The hidden-widget list is published **by
@@ -675,3 +702,35 @@ invisible to the compiler, to the committed frames and to a running session.
 - [Writing desktop software](../05-developer/writing-desktop-software.md) — adding a surface
 - [kdos-comp](kdos-comp.md) — what supervises it, and the sockets it reads
 - [Configuration](../06-reference/configuration.md) — `panel.conf` and the rest
+
+
+## The candidate window
+
+`kdos-ime` is the twenty-ninth name, and it exists because the candidate window was **the one thing
+on this desktop that was not cells**: an input engine draws its own with its own renderer, which on
+a character grid is a rounded antialiased panel sitting on top of a text-mode desktop.
+
+It speaks **kimpanel**, the generic D-Bus panel protocol of the input-method framework and the same
+mechanism KDE's plasmoid and the GNOME extension use. So this is not an input method and knows
+nothing about any language: the engine decides what the candidates are and this draws them, with
+`libkchrome` furniture and `libkcolor` slots through `libkdisp` — one surface on the Wayland desktop
+and one on the console.
+
+**Both halves of the protocol, because it is two.** The preedit, the auxiliary string and the show
+and enable flags arrive as *signals* on `org.kde.kimpanel.inputmethod`; the candidate list arrives
+as a *method call*, `org.kde.impanel2.SetLookupTable`, on the panel's own object. A panel that only
+listened would show a preedit with nothing under it. The signal match names no path — fcitx5 5.1
+exports `/kimpanel` and older panels documented `/kimpanel/inputmethod` — and only the methods this
+can actually answer are declared, because the engine reads the introspection to decide what to send.
+
+**Starting it IS selecting it.** fcitx5's kimpanel module has a UI priority above its own classic
+interface and becomes available the moment `org.kde.impanel` has an owner, so the session bring-up
+starting `kdos-ime` is the whole of the configuration. Nothing is written to a config file.
+
+**There can be only one, and the protocol cannot hand the name back.** A second `kdos-ime` therefore
+refuses to start and names the program that owns it, rather than taking the name and leaving
+whatever was drawing the candidates believing it is still the panel.
+
+**On the console the window is drawn and the engine is not running.** fcitx5 speaks
+`input-method-v2` to a compositor and there is none on that path, which is why
+[known-gaps](../06-reference/known-gaps.md) still records no input method there.

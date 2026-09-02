@@ -9,6 +9,8 @@
  * ---------------------------------
  */
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "kbase.h"
@@ -444,4 +446,54 @@ char *kcol_retint_text(const char *in, size_t len, const KcolScheme *sc,
 	if (outlen)
 		*outlen = o;
 	return out;
+}
+
+/*
+ * The accent in force, from the one word `kdos theme` writes to
+ * $XDG_CACHE_HOME/kdos/theme.
+ *
+ * READING IS SHARED, APPLYING IS NOT. Every front end resolves the same two
+ * paths in the same order and every one of them got the same fallback wrong at
+ * least once; what it then does with the name differs — a cell surface calls
+ * ktui_theme_set, the compositor rebuilds its own tables — so only the read is
+ * here. No colours are read: the palette is compiled in, and this file names
+ * which of its schemes is in force.
+ *
+ * Returns 0 and leaves `out` empty when there is no state file, which means
+ * the default scheme and is not an error.
+ */
+int kcol_theme_name(char *out, size_t cap)
+{
+	const char *cache = getenv("XDG_CACHE_HOME");
+	const char *home = getenv("HOME");
+	char path[512];
+	FILE *f;
+	size_t n;
+
+	if (!out || cap == 0)
+		return 0;
+	out[0] = '\0';
+
+	if (cache && *cache)
+		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
+	else if (home && *home)
+		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
+	else
+		return 0;
+
+	f = fopen(path, "re");
+	if (!f)
+		return 0;
+	if (!fgets(out, (int)cap, f)) {
+		fclose(f);
+		out[0] = '\0';
+		return 0;
+	}
+	fclose(f);
+
+	/* One word: the file is a name and a newline, and a name with a
+	 * newline in it matches no scheme. */
+	n = strcspn(out, "\r\n \t");
+	out[n] = '\0';
+	return out[0] != '\0';
 }

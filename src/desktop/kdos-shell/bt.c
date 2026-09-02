@@ -773,7 +773,7 @@ int bt_main(int argc, char **argv)
 	/* Anchored means popup, centred means window — see the same block in
 	 * net.c, which is where that split is written down. */
 	int popup = at_x >= 0;
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -784,10 +784,10 @@ int bt_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
+		.role = popup ? KDISP_ROLE_OVERLAY : KDISP_ROLE_TOPLEVEL,
 		.cols = popup ? 52 : BT_COLS,
 		.rows = popup ? 16 : BT_ROWS,
-		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = popup ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -805,13 +805,13 @@ int bt_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-bt: no compositor or no layer-shell\n");
 		return 1;
 	}
-	/* AFTER kwl_init: the icon layer needs the cell size and the scale. */
+	/* AFTER kdisp_init: the icon layer needs the cell size and the scale. */
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
@@ -819,7 +819,7 @@ int bt_main(int argc, char **argv)
 	agent_register();
 
 	time_t last = 0;
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		sh_theme_poll();
 		time_t now = time(NULL);
 		if (now - last >= BT_REFRESH_S) {
@@ -971,6 +971,6 @@ done:
 	answer(0);
 	if (bus)
 		sd_bus_unref(bus);
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

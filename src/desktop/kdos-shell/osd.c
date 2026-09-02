@@ -734,16 +734,16 @@ static int slider_main(int at_x, int at_y, const char *font)
 		return 1;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = SL_COLS,
 		.rows = SL_ROWS,
 		/* Above the applet that opened it, or centred when nobody
 		 * said where — the anchor kdos-cal and kdos-start already
 		 * use, and the reason a popup reads as belonging to the thing
 		 * it came from. */
-		.corner = at_x >= 0 ? KWL_CORNER_BOTTOM_LEFT
-				    : KWL_CORNER_CENTER,
+		.corner = at_x >= 0 ? KDISP_CORNER_BOTTOM_LEFT
+				    : KDISP_CORNER_CENTER,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-osd",
@@ -754,18 +754,18 @@ static int slider_main(int at_x, int at_y, const char *font)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0)
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0)
 		return 1;
-	/* AFTER kwl_init: the icon layer needs the cell size and the output
+	/* AFTER kdisp_init: the icon layer needs the cell size and the output
 	 * scale. No artwork is a slider with a glyph in it, not a failure. */
-	kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+	kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
 	int hover = 0, dragging = 0;
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		pct = sh_volume_get(&muted);
 		if (pct < 0)
 			pct = 0;
@@ -868,7 +868,7 @@ static int slider_main(int at_x, int at_y, const char *font)
 	}
 done:
 	kicon_finish();
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }
 
@@ -967,26 +967,26 @@ int osd_main(int argc, char **argv)
 	if (!osd_claim())
 		return 0;		/* another OSD is up; it will refresh */
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		/*
 		 * Bottom-centre, where a volume bezel goes — dead centre put
 		 * it on top of whatever the media key was pressed OVER.
 		 */
-		.corner = KWL_CORNER_BOTTOM_CENTER,
+		.corner = KDISP_CORNER_BOTTOM_CENTER,
 		.cols = OSD_COLS,
 		.rows = OSD_ROWS,
 		.app_id = "kdos-osd",
 	};
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0)
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0)
 		return 0;
 	/*
 	 * NO pointer input, ever: this overlay sat mid-screen with the default
 	 * input region and ate every click under it for 1.2 s per keypress.
 	 * It changes nothing on a click and must be transparent to one.
 	 */
-	kwl_input_cells(NULL, 0);
+	kdisp_input_cells(NULL, 0);
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
@@ -1009,7 +1009,7 @@ int osd_main(int argc, char **argv)
 	 */
 	KtuiEvent ev;
 	int64_t until = osd_now_ms() + OSD_MS;
-	while (osd_now_ms() < until && !kwl_should_close()) {
+	while (osd_now_ms() < until && !kdisp_should_close()) {
 		int rem = (int)(until - osd_now_ms());
 		ktui_backend()->poll_event(&ev, rem > 100 ? 100 : rem);
 		if (!poked)
@@ -1023,6 +1023,6 @@ int osd_main(int argc, char **argv)
 		until = osd_now_ms() + OSD_MS;
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

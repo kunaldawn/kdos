@@ -67,6 +67,35 @@ do.
 Without its setuid bit it cannot read the shadow file, so it **refuses every password** and locks
 the user out of their own session.
 
+**The console greeter uses it too, and holds no hash of its own.** `kdos-con-login` runs as root
+from `/etc/inittab`; on submit it forks, and the child does `initgroups`, `setgid`, `setuid` — in
+that order, because `setuid` first would drop the privilege the other two need — and then executes
+`kdos-checkpass`. After the drop the caller **is** the candidate, so the "no arguments, own uid"
+rule above covers the greeter without a second mechanism, and no crypt implementation is linked
+into a program that draws on a screen.
+
+## The console session's two sockets
+
+`$XDG_RUNTIME_DIR/kdos/<name>.sock` admits **surfaces** — programs that place windows.
+`<name>.view` admits **views** — a display, which holds no window state at all.
+
+**Which socket a client reached decides what it is allowed to be.** The kind in a client's
+handshake is a claim and is overridden by the listener's. That is the entire reason there are two:
+only the view socket is ever forwarded, and forwarding one that admitted surfaces would hand the
+far end the right to place windows in a session rather than the right to display it.
+
+Both are gated by `SO_PEERCRED` against the session's owner, inside a directory the session creates
+`0700`. A directory that already exists with the wrong mode or owner is **a refusal to start, not a
+`chmod`**: if it is not ours, taking it over puts the socket in a path another account chose, after
+which the credential check is guarding the wrong door.
+
+**There is no TCP listener.** A remote desktop is a forwarded unix socket and inherits ssh's
+authentication, which is why it needs none of its own — and that argument holds only while there is
+no other way in, so the self-test asserts the absence by grepping those sources for `AF_INET`.
+`remote = no` is enforced where the tunnel is built rather than where a connection arrives: a
+forwarded socket's peer is the local ssh process running as the same user and cannot be told from a
+local view by credentials, so `kdos con forward` refuses to build the tunnel at all.
+
 ## kdos-resctl
 
 The second setuid binary, and its whole security argument is that **there is nothing to aim**:
@@ -198,6 +227,53 @@ copying a file in, removing trust is deleting one. A key id is not a credential 
 trusted key to try, and verification always uses a key from the directory.
 
 The rest of the signing design is in [Packaging](packaging.md).
+
+## Untrusted image bytes
+
+**Anything that can write to a terminal can reach an image decoder.** A shell script, a program
+inside a box, `cat` on a file somebody sent you — three escape sequences carry a picture, and
+behind them are four large C libraries with long memory-safety histories.
+
+That is why `libkimg` is a library with **one entry point** rather than four calls scattered
+through a terminal: one place to audit, one place the budget is enforced, one place a fifth format
+would be added.
+
+- **The budget is enforced before any allocation**, from the size the format itself declares. A
+  length field is an allocation request from an untrusted peer: a decompression bomb is four lines
+  of sixel, and a PNG saying 65535x65535 is eight bytes on the wire and sixteen gigabytes in memory.
+  Refusing after decoding is not refusing.
+- **A declared type that disagrees with the bytes is a refusal, not a re-sniff.** A peer that says
+  PNG and sends sixel is not making a mistake worth accommodating.
+- **The payload is capped, and a payload over the cap is dropped entirely rather than truncated.**
+  Half an image is not a smaller image; it is a malformed file, and handing one to a decoder is
+  handing it exactly what an attacker would have sent on purpose.
+- **Both decoders are silenced.** libpng and libjpeg write to stderr by default, which is untrusted
+  bytes deciding what appears on a terminal.
+- **Every failure returns the same nothing.** The caller cannot tell a truncated file from an
+  unsupported format from a budget refusal, on purpose: there is nothing useful to do differently,
+  and a reason string reaching a log is a reason string an attacker chose.
+- **The corpus is fuzzed**, every fixture truncated at every length and with every byte flipped,
+  under the address and undefined-behaviour sanitizers.
+
+**A build without the decoders turns the three protocols off in the parser**, rather than parsing
+them and dropping the result. Parsing bytes nobody can use is a buffer somebody can fill.
+
+## The one descriptor, and the two protocols that carry none
+
+**The surface protocol and the view protocol carry no file descriptors, ever.** That is not a
+minimalism: it is what lets the view socket be forwarded over `ssh`, so a desktop reached from
+another machine is the same desktop rather than a second implementation. A sprite travels as its
+pixels and is cached by key; nothing on either socket is a handle to anything.
+
+**One descriptor exists, on a third channel that is neither.** An embedded application's compositor
+is a child of the session, and its frames come back over a `socketpair` created *before* the fork
+and inherited — never a path anything can connect to, never a name in a directory, never reachable
+by a process that is not that child. The shared mapping it passes is what a frame is; passing it any
+other way would mean copying every frame through the session, which is the process whose whole
+purpose is to hold no pixels.
+
+So the rule is stated as a boundary rather than as a habit: **a descriptor may cross a channel with
+exactly one peer that this process forked.** Anything a stranger can connect to carries bytes.
 
 ## What is not protected
 

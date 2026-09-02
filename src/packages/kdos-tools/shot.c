@@ -90,6 +90,75 @@ static int grim_works(void)
 	return kb_run(&a) == 0;
 }
 
+/*
+ * The console desktop's screenshot: the composited grid, as text.
+ *
+ * The view socket is the surface socket's name with its suffix changed —
+ * they are one session's pair, and deriving it is what keeps the caller from
+ * having to know the layout. There is no clipboard step: the console's
+ * clipboard is the session's, and wl-copy is a Wayland client.
+ */
+static int shot_console(const char *sock, const char *dir)
+{
+	char view[256];
+	size_t n = strlen(sock);
+
+	if (n < 6 || strcmp(sock + n - 5, ".sock")) {
+		fprintf(stderr, "kdos-shot: $KDOS_CON is not a session socket\n");
+		return 1;
+	}
+	snprintf(view, sizeof(view), "%.*s.view", (int)(n - 5), sock);
+
+	time_t now = time(NULL);
+	struct tm tm;
+
+	localtime_r(&now, &tm);
+
+	char leaf[64];
+
+	strftime(leaf, sizeof(leaf), "kdos-%Y%m%d-%H%M%S.txt", &tm);
+
+	char *file = kb_path_join(dir, leaf);
+	int fd = open(file, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+
+	if (fd < 0) {
+		fprintf(stderr, "kdos-shot: cannot write %s\n", file);
+		free(file);
+		return 1;
+	}
+
+	pid_t p = fork();
+
+	if (p == 0) {
+		dup2(fd, 1);
+		close(fd);
+		execlp("kdos-view", "kdos-view", "--dump", "--socket", view,
+		       (char *)NULL);
+		_exit(127);
+	}
+	close(fd);
+	if (p < 0) {
+		free(file);
+		return 1;
+	}
+
+	int st = 0;
+
+	waitpid(p, &st, 0);
+	if (!WIFEXITED(st) || WEXITSTATUS(st) != 0) {
+		unlink(file);
+		fprintf(stderr, "kdos-shot: could not attach a view to %s\n",
+			view);
+		free(file);
+		return 1;
+	}
+
+	printf("%s\n", file);
+	toast("Screenshot", leaf);
+	free(file);
+	return 0;
+}
+
 int shot_main(int argc, char **argv)
 {
 	const char *mode = argc > 1 ? argv[1] : "region";
@@ -108,6 +177,20 @@ int shot_main(int argc, char **argv)
 	char *dir = kb_path_join(base, "Screenshots");
 	free(base);
 	kb_mkdir_p(dir);
+
+	/*
+	 * THE CONSOLE DESKTOP HAS NO WAYLAND AND NO grim. Its frame is cells,
+	 * so its screenshot is cells: a second view attaches, asks for no size
+	 * of its own — so taking the picture does not resize the desktop — and
+	 * writes the grid it is sent.
+	 *
+	 * Not an image. Rendering cells to a PNG is libkcell's, which needs
+	 * fcft and pixman, and kdos-tools is on every image and links neither.
+	 */
+	const char *con = getenv("KDOS_CON");
+
+	if (con && *con)
+		return shot_console(con, dir);
 
 	if (!kb_have_prog("grim"))
 		kb_die("grim is not installed");

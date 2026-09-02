@@ -639,6 +639,7 @@ static void follow(const struct doc_link *L)
 {
 	struct doc_page next = { 0, "" };
 	const char *argv[8];
+	char id[160];			/* argv points into it until the exec */
 
 	note[0] = '\0';
 
@@ -650,11 +651,11 @@ static void follow(const struct doc_link *L)
 		}
 		/* The one link kind that leaves the grid: a manual page is
 		 * somebody else's formatter and belongs in a terminal. */
-		argv[0] = "foot";
-		argv[1] = "-e";
-		argv[2] = "man";
-		argv[3] = L->target;
-		argv[4] = NULL;
+		int k = sh_term_argv(argv, 0, 8, "man", id, sizeof(id));
+
+		argv[k++] = "man";
+		argv[k++] = L->target;
+		argv[k] = NULL;
 		spawn_detached(argv);
 		snprintf(note, sizeof(note), "man %.120s opened in a terminal",
 			 L->target);
@@ -946,7 +947,7 @@ int doc_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -957,7 +958,7 @@ int doc_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = KWL_ROLE_TOPLEVEL,
+		.role = KDISP_ROLE_TOPLEVEL,
 		.cols = 80,
 		.rows = 24,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -969,7 +970,7 @@ int doc_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-doc: no compositor or no layer-shell\n");
 		return 2;
 	}
@@ -978,7 +979,7 @@ int doc_main(int argc, char **argv)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		clamp_scroll();
@@ -1123,7 +1124,7 @@ int doc_main(int argc, char **argv)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	free(source);
 	source = NULL;
 	return 0;

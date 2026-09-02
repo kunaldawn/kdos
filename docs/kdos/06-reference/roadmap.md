@@ -41,10 +41,38 @@ with the desktop session, rather than a phone interface stretched across it.
 
 Themes the tree shows work heading toward, each with what would have to be true for it to land.
 
-**Closing the input gaps.** Drag and drop and touch are both absent from the toolkit's Wayland
-backend, and touch is a prerequisite for the mobile work above. Drag and drop needs a data-source
-implementation on the send side and a drop target on the receive side, plus a decision about what
-dragging means between a cell grid and a boxed application.
+**Exercising the new input paths.** Touch and drag and drop are both implemented now — one
+gesture recogniser in the toolkit, fed by `wl_touch`; a data source and an accepted offer in the
+Wayland backend — and neither has been run against real hardware. What would move them off
+[Status](status.md)'s experimental line is a rig pass with a virtual touch device and a real drag
+between a KDOS surface and a boxed application.
+
+**Widening what a drag can carry.** `text/plain` and `text/uri-list` only, with no MIME
+negotiation and no deferred transfer, and only the trash accepts a drop on the desktop. Dropping
+onto a folder means deciding what a move that half-succeeds across filesystems should do.
+
+**Booting the console desktop.** Everything it is made of compiles, self-tests and reproduces its
+goldens, and much of it has now been driven end to end between real processes — but none of it has
+been booted into. What would move it off [Status](status.md)'s experimental line is one rig pass on
+the ISO: log in, open a terminal, run `htop`, open `kdos-res` as a window, tile a pair, switch a
+workspace, lock and unlock, come back from `tty2`, and start a boxed graphical application as a
+window.
+
+**Two specifics about a graphical application on the cell grid.** It is an ordinary window there —
+`kdos-cage --embed` composites it in a process of its own and the session cuts the frames into
+sprites — and two things about pointing at one are worth doing. A drag inside a single cell moves
+its pointer nowhere, because a view reports a move when the cell changes; and an application that
+needs acceleration a software renderer cannot give it has to be pinned to a terminal by hand,
+rather than being detected.
+
+**A second screen on the console.** `libkkms` takes the first card with a connected output and its
+preferred mode. Multi-output means a view per output or a view that spans them, and the session
+already treats the grid as one rectangle — which is the decision, not the code.
+
+**A still screenshot of the console as a picture.** `kdos-view --cast` records the session into a
+PipeWire stream — a view rasterises, so a recording is a view nobody looks at — and `kdos-shot`
+still writes the grid as text. Rendering cells to a single image needs `libkcell`, which `kdos-tools`
+does not link.
 
 **Per-output rendering settings.** The font size is one number for every screen, and fractional
 scaling is not negotiated. Both matter on a machine with two displays of different densities, and

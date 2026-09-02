@@ -446,13 +446,14 @@ static int write_default(const char *mime, const char *id)
 static int build_argv(const char *exec, int terminal, const char *file,
 		      char *buf, size_t bufsz, const char **argv, int max)
 {
+	/* argv points into it: static, because the vector outlives this call
+	 * and is exec'd by the one caller before another is built. */
+	static char id[160];
 	int n = 0;
 
 	kb_strlcpy(buf, exec, bufsz);
-	if (terminal && n + 2 < max) {
-		argv[n++] = "foot";
-		argv[n++] = "-e";
-	}
+	if (terminal)
+		n = sh_term_argv(argv, n, max, exec, id, sizeof(id));
 	for (char *w = strtok(buf, " \t"); w && n < max - 1;
 	     w = strtok(NULL, " \t")) {
 		if (w[0] != '%' || !w[1] || w[2]) {
@@ -821,7 +822,7 @@ int openwith_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -832,7 +833,7 @@ int openwith_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = KWL_ROLE_TOPLEVEL,
+		.role = KDISP_ROLE_TOPLEVEL,
 		.cols = 64,
 		.rows = 18,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -844,7 +845,7 @@ int openwith_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-openwith: no compositor or no layer-shell\n");
 		return 2;
 	}
@@ -854,7 +855,7 @@ int openwith_main(int argc, char **argv)
 	kch_px_popup(KT_SURFACE);
 
 	int rc = 1;
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		int list_rows = ktui_h - 6;
@@ -1014,6 +1015,6 @@ int openwith_main(int argc, char **argv)
 			sel = nrows() ? nrows() - 1 : 0;
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return rc;
 }

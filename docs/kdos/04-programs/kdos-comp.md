@@ -51,6 +51,15 @@ Two conventions make the additions greppable:
 | `kdos-layerfocus.c` | Click-away for on-demand layer surfaces |
 | `kdos-winpos.c` | Window placement decisions |
 
+**The compositor owns no window-model arithmetic.** Where a new window lands, what a tiled state
+becomes and what rectangle it occupies, which edge a moving edge stops against, and how workspace
+stepping skips empty workspaces all come from `libkwm`, which `kdos-con` calls too — so a defect in
+any of them is one fix rather than two that drift. What stays here is everything only a compositor
+can do: walking its own view list, asking the decoration how thick it is, working out which edges
+are actually visible, and how a drag *feels* as it crosses one.
+
+See [The window model](../03-architecture/window-model.md).
+
 ## Configuration
 
 The split matters: **`comp.conf` holds only the KDOS keys**, and everything else is `rc.xml`.

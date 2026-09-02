@@ -958,9 +958,9 @@ int display_main(int argc, char **argv)
 	 * on — and --apply runs at session start and on hotplug, where there
 	 * is nobody to draw for.
 	 */
-	KwlConfig cfg = {
-		.role = (list_only || apply_only) ? KWL_ROLE_NONE
-						  : KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = (list_only || apply_only) ? KDISP_ROLE_NONE
+						  : KDISP_ROLE_OVERLAY,
 		.cols = 60,
 		.rows = 14,
 		.app_id = "kdos-display",
@@ -969,7 +969,7 @@ int display_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-display: no compositor\n");
 		return 1;
 	}
@@ -984,18 +984,18 @@ int display_main(int argc, char **argv)
 	if (!mgr) {
 		fprintf(stderr, "kdos-display: this compositor has no "
 				"wlr-output-management\n");
-		kwl_shutdown();
+		kdisp_shutdown();
 		return 1;
 	}
 
 	if (list_only) {
 		print_list();
-		kwl_shutdown();
+		kdisp_shutdown();
 		return 0;
 	}
 	if (apply_only) {
 		int rc = apply_saved(dpy);
-		kwl_shutdown();
+		kdisp_shutdown();
 		return rc;
 	}
 
@@ -1005,7 +1005,7 @@ int display_main(int argc, char **argv)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		/*
@@ -1199,6 +1199,6 @@ int display_main(int argc, char **argv)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return applied < 0 ? 1 : 0;
 }

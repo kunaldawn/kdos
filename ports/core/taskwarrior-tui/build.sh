@@ -19,3 +19,18 @@ export CARGO_NET_OFFLINE=true
 
 cargo build --release --frozen --offline
 install -Dm755 target/release/$name $PKG/usr/bin/$name
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/taskwarrior-tui.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Tasks
+GenericName=Task Manager
+Comment=Taskwarrior's tasks, on a grid
+Exec=taskwarrior-tui
+Icon=x-office-document
+Terminal=true
+Categories=Office;ProjectManagement;
+Keywords=task;todo;project;taskwarrior;
+EOF
+chmod 644 "$PKG/usr/share/applications/taskwarrior-tui.desktop"

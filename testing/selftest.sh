@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 CC=${CC:-cc}
 WARN="-Wall -Wextra -Werror"
 STD="-O2 -std=gnu11 -D_GNU_SOURCE"
-INC="-Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/tools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
+INC="-Isrc/libs/libkbase -Isrc/libs/libkwm -Isrc/libs/libkvt -Isrc/libs/libkcon -Isrc/libs/libkdisp -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/tools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
 OUT=$(mktemp -d)
 
 # WHICH sd-bus THIS HOST HAS, decided ONCE and up here because two blocks a
@@ -67,13 +67,57 @@ trap 'rm -rf "$OUT"' EXIT
 # strategy. Both settings are inert without a sanitized CC.
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
 
+#
+# libkimg is OPTIONAL in this build, and guarded the way the kdos-shell block
+# is. Its four decoders are ports and none of them is on a bare host, so the
+# corpus is checked wherever they exist and the rest of the suite still runs
+# where they do not — a library nobody can build is a library nobody runs the
+# assertions for, which is worse than a skip that says so.
+#
+KIMG_SRC=""
+KIMG_FLAGS=""
+if pkg-config --exists pixman-1 2>/dev/null; then
+    KIMG_FLAGS="-DHAVE_KIMG -Isrc/libs/libkimg $(pkg-config --cflags pixman-1)"
+    KIMG_SRC="src/libs/libkimg/kimg.c"
+    KIMG_LIBS="$(pkg-config --libs pixman-1)"
+    for f in PNG:libpng JPEG:libjpeg WEBP:libwebp SIXEL:libsixel; do
+        _d=${f%%:*}
+        _p=${f#*:}
+        pkg-config --exists "$_p" 2>/dev/null || continue
+        KIMG_FLAGS="$KIMG_FLAGS -DKIMG_HAVE_$_d $(pkg-config --cflags "$_p")"
+        KIMG_LIBS="$KIMG_LIBS $(pkg-config --libs "$_p")"
+    done
+fi
+
 echo "==> selftest"
-$CC $STD $WARN $INC -o "$OUT/selftest" src/libs/selftest.c \
+$CC $STD $WARN $INC $KIMG_FLAGS -o "$OUT/selftest" src/libs/selftest.c $KIMG_SRC \
     src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libkpkg/*.c \
     src/libs/libkbuild/*.c src/libs/libktui/*.c src/libs/libkproc/*.c \
     src/libs/libkxdg/*.c src/libs/libksig/*.c src/libs/libksig/monocypher/*.c \
-    src/libs/libkpack/*.c src/tools/kdos-portup/extract.c
+    src/libs/libkpack/*.c src/libs/libkwm/*.c src/libs/libkvt/*.c \
+    src/libs/libkcon/*.c src/libs/libkdisp/*.c \
+    src/tools/kdos-portup/extract.c $KIMG_LIBS
 ASAN_OPTIONS=detect_leaks=1 "$OUT/selftest"
+
+#
+# THE CORPUS, MUTATED. The block inside selftest.c checks that libkimg gives
+# the right answer for files somebody wrote by hand; this checks that it gives
+# SOME answer, and reads nothing it was not given, for bytes nobody wrote — every
+# fixture truncated at every length and with every byte flipped three ways.
+#
+# Its own binary because it is worth running under the sanitisers on its own:
+# this is the only place in KDOS where untrusted image bytes reach a decoder,
+# and a corpus of valid files exercises none of the paths that matter.
+#
+if [ -n "$KIMG_SRC" ]; then
+    echo
+    echo "==> libkimg under mutation"
+    $CC $STD $WARN $KIMG_FLAGS -o "$OUT/kimgfuzz" \
+        testing/fixtures/img/fuzz.c $KIMG_SRC $KIMG_LIBS
+    ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
+        "$OUT/kimgfuzz" testing/fixtures/img/*.png testing/fixtures/img/*.jpg \
+        testing/fixtures/img/*.webp testing/fixtures/img/*.six | sed 's/^/  /'
+fi
 
 echo
 echo "==> every consumer still compiles against the libraries"
@@ -336,7 +380,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
             "$_wp/unstable/primary-selection/primary-selection-unstable-v1.xml" \
             "$PROTO/primary-selection-unstable-v1-protocol.c"
         KCINC="-Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
--Isrc/libs/libkcell -Isrc/libs/libkwl"
+-Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm"
         # libkcell first and on its OWN: it must compile with no Wayland
         # header anywhere on the command line, because that is the property
         # that lets kdos-comp link it. Handing it $PROTO would let a stray
@@ -388,6 +432,9 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         $CC $STD $WARN -c -I"$PROTO" $KCINC \
             $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
             -o "$OUT/kwl.o" src/libs/libkwl/kwl.c
+        $CC $STD $WARN -c -I"$PROTO" $KCINC \
+            $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
+            -o "$OUT/kdisp.o" src/libs/libkdisp/kdisp.c
         for f in src/libs/libkwl/kwl_key.c; do
             $CC $STD $WARN -c -I"$PROTO" $KCINC \
                 $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
@@ -398,7 +445,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         # kdos-lock's client half draws through exactly the headers just
         # generated, so it costs one more compile and is the only gate it has.
         $CC $STD $WARN -c -I"$PROTO" -Isrc/libs/libkbase -Isrc/libs/libktui \
-            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkwl \
+            -Isrc/libs/libkcolor -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm \
             $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client) \
             -o "$OUT/kdos-lock.o" src/desktop/kdos-lock/main.c
         echo "  kdos-lock"
@@ -459,7 +506,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
             for f in src/desktop/kdos-shell/*.c; do
                 $CC $STD $SHWARN -c -I"$PROTO" -Isrc/desktop/kdos-shell \
                     -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
-                    -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkxdg \
+                    -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libkxdg \
                     -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
                     $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client \
                                  "$TRAY_SDBUS" alsa libpipewire-0.3) \
@@ -475,10 +522,10 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                 -DKDOS_RES_VERSION='"'"'"selftest"'"'"' \
                 -Isrc/desktop/kdos-res \
                 -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
-                -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkxdg \
+                -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libkxdg \
                 -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
                 $(ls src/desktop/kdos-res/*.c | grep -v resctl.c) \
-                src/libs/libkwl/*.c src/libs/libkcell/*.c src/libs/libktui/*.c \
+                src/libs/libkwl/*.c src/libs/libkdisp/*.c src/libs/libkcon/*.c src/libs/libkwm/*.c src/libs/libkcell/*.c src/libs/libktui/*.c \
                 src/libs/libkcolor/*.c src/libs/libkbase/*.c \
                 src/libs/libkxdg/*.c src/libs/libkicon/*.c \
                 src/libs/libkchrome/*.c src/libs/libkproc/*.c \
@@ -487,6 +534,25 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                              wayland-client libpng)
             RESBIN="$OUT/kdos-res"
             echo "  kdos-res"
+
+            # kdos-term AS A WINDOW. The console-only build below is the one
+            # the goldens run, because a `--dump` needs no display at all; this
+            # one exists to prove the SAME source still links the Wayland half,
+            # which is the half a bare host cannot check.
+            $CC $STD $SHWARN -o "$OUT/kdos-term-wl" -I"$PROTO" $KIMG_FLAGS \
+                -Isrc/desktop/kdos-term \
+                -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
+                -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp \
+                -Isrc/libs/libkcon -Isrc/libs/libkvt -Isrc/libs/libkxdg \
+                src/desktop/kdos-term/*.c \
+                src/libs/libkwl/*.c src/libs/libkdisp/*.c src/libs/libkcon/*.c \
+                src/libs/libkcell/*.c src/libs/libktui/*.c src/libs/libkvt/*.c \
+                src/libs/libkcolor/*.c src/libs/libkbase/*.c \
+                src/libs/libkxdg/*.c $KIMG_SRC \
+                "$PROTO"/*-protocol.c \
+                $(pkg-config --cflags --libs fcft pixman-1 xkbcommon \
+                             wayland-client) $KIMG_LIBS
+            echo "  kdos-term (as a Wayland window)"
 
             # The setuid helper, built SEPARATELY and linking libkbase alone:
             # giving a setuid binary the Wayland stack would be handing root a
@@ -516,25 +582,72 @@ fi
 # suite may assume. The graft files (src/kdos-*.c) still get a compile
 # gate here, because they are the KDOS-owned code and each includes
 # labwc.h + wlroots headers, which is where version drift would bite.
+# libxml2, cairo, pango and glib are in the list because labwc.h reaches
+# rcxml.h and font.h, which include them. Without their include paths the graft
+# files fail to COMPILE, and on a host that has wlroots that is a hard stop
+# rather than a skip — the guard has to name every header the compile needs,
+# not only the libraries the object would link.
 if pkg-config --exists wlroots-0.20 glesv2 egl wayland-server pixman-1 \
-        libdrm libpng 2>/dev/null; then
+        libdrm libpng libxml-2.0 cairo pango glib-2.0 2>/dev/null; then
     KC=src/desktop/kdos-comp
+    #
+    # wlr_layer_shell_v1.h includes a GENERATED protocol header, which a meson
+    # build of wlroots produces and an installed wlroots does not ship. It is
+    # generated here from the same XML the client side already uses, because
+    # without it this block does not skip: it fails to COMPILE on every host
+    # that has wlroots, which is the only host it was written to run on.
+    #
+    "$SCANNER" server-header "$PROTO/wlr-layer-shell-unstable-v1.xml" \
+        "$PROTO/wlr-layer-shell-unstable-v1-protocol.h"
     # labwc.h includes the meson-generated config.h; the graft files read
     # none of its flags, so a stub with the defaults is enough here.
     mkdir -p "$OUT/compconf"
-    printf '#pragma once\n#define HAVE_XWAYLAND 0\n#define HAVE_NLS 0\n#define HAVE_RSVG 0\n#define HAVE_LIBSFDO 0\n#define HAVE_LIBINPUT_CONFIG_3FG_DRAG_ENABLED_3FG 0\n#define HAVE_LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_STICKY 0\n' \
+    printf '#pragma once\n#define HAVE_XWAYLAND 0\n#define HAVE_NLS 0\n#define HAVE_RSVG 0\n#define HAVE_LIBSFDO 0\n#define HAVE_LIBINPUT_CONFIG_3FG_DRAG_ENABLED_3FG 0\n#define HAVE_LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_STICKY 0\n#define LABWC_VERSION "selftest"\n' \
         > "$OUT/compconf/config.h"
     for f in "$KC"/src/kdos-*.c; do
         $CC $STD -Wall -Wextra -Wno-unused-parameter -c -DWLR_USE_UNSTABLE \
-            -I"$KC/include" -I"$OUT/compconf" \
+            -I"$KC/include" -I"$OUT/compconf" -I"$PROTO" \
             -Isrc/libs/libkcolor -Isrc/libs/libkbase \
             $(pkg-config --cflags wlroots-0.20 glesv2 egl wayland-server \
-                pixman-1 libdrm libpng) \
+                pixman-1 libdrm libpng libxml-2.0 cairo pango glib-2.0) \
             -o "$OUT/comp-$(basename "$f" .c).o" "$f"
     done
     echo "  kdos-comp grafts ($(ls "$KC"/src/kdos-*.c | wc -l) files)"
+
+    #
+    # kdos-cage, the kiosk fork, compiled whole. It is small enough to compile
+    # rather than sample, and this is the only automated check it has: wlroots
+    # breaks API every release and a fork that is not compiled is a fork that
+    # discovers that during a four-hour build.
+    #
+    mkdir -p "$OUT/cageconf"
+    printf '#pragma once\n#define CAGE_HAS_XWAYLAND 1\n#define CAGE_VERSION "selftest"\n#define CAGE_UPSTREAM "selftest"\n' \
+        > "$OUT/cageconf/config.h"
+    for f in src/desktop/kdos-cage/*.c; do
+        $CC $STD -Wall -Wextra -Wno-unused-parameter -c -DWLR_USE_UNSTABLE \
+            -I"$OUT/cageconf" -Isrc/desktop/kdos-cage \
+            -Isrc/libs/libkcolor -Isrc/libs/libkbase \
+            $(pkg-config --cflags wlroots-0.20 wayland-server xkbcommon) \
+            -o "$OUT/cage-$(basename "$f" .c).o" "$f"
+    done
+    echo "  kdos-cage ($(ls src/desktop/kdos-cage/*.c | wc -l) files)"
+
+    #
+    # embedcheck is the PARENT half of `kdos-cage --embed`, and it is a second
+    # process for the reason decocheck is: the mechanism is a headless wlroots
+    # output, a software renderer, a memfd and SCM_RIGHTS, every part of which
+    # is a real kernel and library behaviour a mock would only assert about
+    # itself. Running it needs a linked kdos-cage and a guest to render;
+    # compiling it here is what stops it rotting.
+    #
+    #   embedcheck --size 640x480 --out f.ppm -- kdos-term -e ...
+    #   embedcheck --size 640x480 --key 28 -- kdos-term -e 'read x; ...'
+    #
+    $CC $STD $WARN -Isrc/desktop/kdos-cage -o "$OUT/embedcheck" \
+        testing/fixtures/embed/embedcheck.c
+    echo "  embedcheck"
 else
-    echo "  kdos-comp grafts (skipped — wlroots-0.20/glesv2/egl not on this host)"
+    echo "  kdos-comp grafts (skipped — wlroots-0.20, glesv2, egl, libxml2, cairo or pango not on this host)"
 fi
 
 # kdos-boxsock is the enforcement half of N1: it is what hands a box a socket
@@ -557,6 +670,306 @@ if pkg-config --exists wayland-client 2>/dev/null &&
     echo "  kdos-boxsock"
 else
     echo "  kdos-boxsock (skipped — no wayland-client or no security-context-v1.xml)"
+fi
+
+echo
+#
+# REAL PROGRAMS, RECORDED ONCE, REPLAYED FOR EVER.
+#
+# testing/fixtures/vt/*.esc are what vim, htop, mc, less and tmux actually
+# wrote to a 80x24 pty, captured once and committed as bytes. They are NOT
+# re-derived: a re-recording picks up a different program version, a different
+# terminfo and a different hostname, so a fixture that regenerated would be a
+# test that changed its own question. The malformed stream beside them is
+# written by hand, because no program emits it.
+#
+# What this proves that the hand-written escapes in the libkvt block cannot:
+# real programs use the alternate screen, scroll regions, charset switches,
+# mouse modes and SGR in combinations nobody writes on purpose.
+#
+echo "==> libkvt replays what real programs wrote to a terminal"
+$CC $STD $SHWARN $INC -o "$OUT/vtrender" testing/fixtures/vt/vtrender.c \
+    src/libs/libkvt/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c \
+    src/libs/libkbase/*.c
+vt_fail=0
+vt_golden() {
+    _v_name=$1
+    _v_file="testing/goldens/vt-$_v_name.txt"
+    "$OUT/vtrender" "testing/fixtures/vt/$_v_name.esc" > "$OUT/vt-$_v_name.txt"
+    # A GRID WITH NOTHING ON IT IS A FAILURE, not a golden. A parser that gave
+    # up on the first byte renders an empty screen, and so does a recording
+    # that ended with the alternate screen being restored — which is why the
+    # fixtures stop on a live frame.
+    if ! grep -q '[^ ]' "$OUT/vt-$_v_name.txt"; then
+        echo "  vt-$_v_name: the stream rendered an empty grid"
+        vt_fail=1
+        return 0
+    fi
+    if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
+        cp "$OUT/vt-$_v_name.txt" "$_v_file"
+        echo "  wrote vt-$_v_name"
+        return 0
+    fi
+    if [ ! -f "$_v_file" ]; then
+        echo "  vt-$_v_name: no golden committed"; vt_fail=1; return 0
+    fi
+    if diff -u "$_v_file" "$OUT/vt-$_v_name.txt" > "$OUT/vt-$_v_name.diff"; then
+        echo "  vt-$_v_name"
+    else
+        echo "  vt-$_v_name DRIFTED:"
+        head -20 "$OUT/vt-$_v_name.diff" | sed 's/^/    /'
+        vt_fail=1
+    fi
+}
+for _v in vim htop mc less tmux malformed; do vt_golden "$_v"; done
+if [ "$vt_fail" != 0 ]; then
+    echo
+    echo "  A recorded stream renders differently than it did. The fixture did"
+    echo "  not change — it is bytes — so the state machine did."
+    echo "      KDOS_GOLDEN_UPDATE=1 testing/selftest.sh"
+    echo "  then read the diff in git before committing it."
+    exit 1
+fi
+
+echo "==> kdos-con composites a desktop, and it is the committed one"
+#
+# The console session links no Wayland, no font renderer and no pixel library,
+# so unlike every other desktop program it compiles ANYWHERE — which is why its
+# goldens are checked here rather than behind a pkg-config guard.
+#
+# `--dump` settles every terminal before compositing: a frame taken while a
+# program is still writing is a different frame every time it is taken.
+#
+# kembed.h comes from the kdos-cage tree: the private channel between the
+# session and the compositor it forks for an embedded window. It is a header
+# with no code, so this pulls in nothing Wayland — which is the property that
+# lets the session still compile anywhere.
+$CC $STD $SHWARN $INC -Isrc/desktop/kdos-con -Isrc/desktop/kdos-cage \
+    -o "$OUT/kdos-con" \
+    src/desktop/kdos-con/*.c \
+    src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libktui/*.c \
+    src/libs/libkdisp/*.c src/libs/libkcon/*.c src/libs/libkvt/*.c \
+    src/libs/libkwm/*.c src/libs/libkxdg/*.c
+echo "  kdos-con"
+
+con_golden() {
+    _name=$1; shift
+    "$OUT/kdos-con" "$@" > "$OUT/$_name.txt"
+    if diff -u "testing/goldens/$_name.txt" "$OUT/$_name.txt" > "$OUT/$_name.diff"; then
+        echo "  $_name"
+    else
+        echo "  $_name DIFFERS from its golden:"
+        head -20 "$OUT/$_name.diff" | sed 's/^/    /'
+        exit 1
+    fi
+}
+con_golden con-desktop-80x24 --dump 80x24 --term "/bin/echo hello"
+con_golden con-two-132x43 --dump 132x43 --term "/bin/echo first" --term "/bin/echo second"
+
+#
+# THE SAME DESKTOP, THROUGH A VIEW. Two processes and a real socket: the
+# session composites and holds no display, kdos-view attaches and holds no
+# window state, and what the view prints is what a person would see.
+#
+# It is a SEPARATE golden from the ones above on purpose. `--dump` renders
+# offscreen, and the offscreen backend reports no UTF-8, so the glyph tier
+# falls back to ASCII; a live view reports UTF-8 and gets the rich one. Two
+# honest pictures of two different backends, and one golden could only ever
+# describe one of them.
+#
+$CC $STD $SHWARN $INC -Isrc/desktop/kdos-view -o "$OUT/kdos-view" \
+    src/desktop/kdos-view/*.c \
+    src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libktui/*.c \
+    src/libs/libkdisp/*.c src/libs/libkcon/*.c
+echo "  kdos-view"
+
+#
+# kdos-term, CONSOLE ONLY — the same source with the Wayland half left out.
+#
+# It builds anywhere for the same reason kdos-con does, and that is the point:
+# the state machine, the frame, the keys and the image path are what a `--dump`
+# exercises, and none of them wants a display. The Wayland build above is the
+# one that proves the other half still links.
+#
+$CC $STD $SHWARN $INC $KIMG_FLAGS -DKDOS_TERM_CONSOLE_ONLY \
+    -Isrc/desktop/kdos-term -o "$OUT/kdos-term" \
+    src/desktop/kdos-term/*.c \
+    src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libktui/*.c \
+    src/libs/libkdisp/*.c src/libs/libkcon/*.c src/libs/libkvt/*.c \
+    src/libs/libkxdg/*.c $KIMG_SRC $KIMG_LIBS
+echo "  kdos-term (console only)"
+
+#
+# AND RUN, because a `--dump` is the whole terminal short of a display: the
+# state machine, the frame, the child on its pty and — where the decoders
+# exist — a picture.
+#
+# THE PICTURE IS PART OF THE ASSERTION, in the only way a text golden can hold
+# one. `--dump` has no pixels, so a sprite renders as its fallback in the
+# picture's top-left cell and as blanks under the rest — which is exactly what
+# a tty and a view with no pixel library show. What the golden holds is the
+# SHAPE: how many rows the picture took and where the cursor was left.
+#
+term_golden() {
+    _name=$1; _size=$2; shift 2
+    XDG_CONFIG_HOME=/nonexistent-kdos-config \
+    XDG_CACHE_HOME=/nonexistent-kdos-cache \
+        "$OUT/kdos-term" --dump "$_size" "$@" > "$OUT/$_name.txt" 2>/dev/null
+    if diff -u "testing/goldens/$_name.txt" "$OUT/$_name.txt" \
+            > "$OUT/$_name.diff"; then
+        echo "  $_name"
+    else
+        echo "  $_name DIFFERS from its golden:"
+        head -20 "$OUT/$_name.diff" | sed 's/^/    /'
+        exit 1
+    fi
+}
+term_golden term-hello-44x8 44x8 -e /bin/echo hello
+# Colour, cursor addressing and an attribute, which is the whole of what a
+# curses program does to a screen — driven by printf so the golden needs no
+# program installed.
+term_golden term-ansi-44x10 44x10 -e /bin/sh -c \
+    'printf "\033[31mred\033[0m \033[1mbold\033[0m\n\033[3;10Hmoved\n"'
+# THE SIXEL DECODER, not "some decoder": pixman alone compiles libkimg with no
+# sixel in it, and this golden holds a sixel picture. Guarding on the wrong one
+# runs a picture test against a build that cannot decode the picture, and the
+# diff blames the terminal.
+case "$KIMG_FLAGS" in
+*-DKIMG_HAVE_SIXEL*)
+    term_golden term-sixel-44x10 44x10 -e /bin/sh -c \
+        'printf "\033P"; cat testing/fixtures/img/valid.six; printf "\033\\\\after\n"'
+    ;;
+*)
+    echo "  term-sixel-44x10 (skipped — no sixel decoder on this host)"
+    ;;
+esac
+
+# A short path: sun_path is 108 bytes and $OUT can be longer than that.
+# Six X's, not four: busybox mktemp takes only the six-character template, and
+# a shorter one is "Invalid argument" rather than a shorter directory.
+VSOCK=$(mktemp -d /tmp/kdos-st.XXXXXX)
+# KDOS_CON_DUMP freezes the clock. A golden with a real time in it passes the
+# minute it is taken and fails every minute after.
+KDOS_CON_DUMP=1 "$OUT/kdos-con" --serve --socket "$VSOCK/s" \
+    --term "/bin/echo hello" &
+VPID=$!
+for _ in $(seq 1 100); do [ -S "$VSOCK/s" ] && break; sleep 0.05; done
+"$OUT/kdos-view" --dump 80x24 --socket "$VSOCK/s" > "$OUT/con-view-80x24.txt" 2>/dev/null
+# `wait` reports the status of a process we KILLED, which is 143 — and under
+# `set -e` that ends the suite with no message at all.
+kill $VPID 2>/dev/null || true
+wait $VPID 2>/dev/null || true
+rm -rf "$VSOCK"
+if diff -u testing/goldens/con-view-80x24.txt "$OUT/con-view-80x24.txt" \
+        > "$OUT/con-view.diff"; then
+    echo "  con-view-80x24 (a session and a view, two processes)"
+else
+    echo "  con-view-80x24 DIFFERS from its golden:"
+    head -20 "$OUT/con-view.diff" | sed 's/^/    /'
+    exit 1
+fi
+
+#
+# A VIEW THAT IMPOSES NO SIZE, which is what a screenshot and a screencast both
+# are: taking a picture of the desktop must not resize the desktop. It attaches
+# asking for nothing, is told the grid, and gets a frame — and for a long time
+# it got none at all, because a size of zero was refused at the attach and the
+# view was never counted as attached.
+#
+VSOCK=$(mktemp -d /tmp/kdos-cv.XXXXXX)
+KDOS_CON_DUMP=1 "$OUT/kdos-con" --serve --socket "$VSOCK/s" \
+    --term "/bin/echo hello" &
+VPID=$!
+for _ in $(seq 1 100); do [ -S "$VSOCK/s" ] && break; sleep 0.05; done
+"$OUT/kdos-view" --dump --socket "$VSOCK/s" > "$OUT/con-view-auto.txt" 2>/dev/null
+kill $VPID 2>/dev/null || true
+wait $VPID 2>/dev/null || true
+rm -rf "$VSOCK"
+if diff -u testing/goldens/con-view-80x24.txt "$OUT/con-view-auto.txt" \
+        > "$OUT/con-view-auto.diff"; then
+    echo "  con-view, no size imposed (the session's own grid)"
+else
+    echo "  a view that imposed no size got a DIFFERENT frame:"
+    head -20 "$OUT/con-view-auto.diff" | sed 's/^/    /'
+    exit 1
+fi
+
+echo
+echo "==> the console desktop opens no network socket, anywhere"
+#
+# A REMOTE DESKTOP HERE IS A FORWARDED UNIX SOCKET AND NOTHING ELSE. `kdos con
+# forward` carries the view socket over ssh, so the remote case inherits ssh's
+# authentication and needs none of its own — and that argument only holds while
+# there is no other way in. A TCP listener appearing in any of these sources
+# would silently turn "off by default" into "off unless somebody connects".
+#
+_net=$(grep -rn 'AF_INET\|SOCK_DGRAM\|getaddrinfo\|htons' \
+    src/libs/libkcon src/desktop/kdos-con src/desktop/kdos-view 2>/dev/null || true)
+if [ -z "$_net" ]; then
+    echo "  no AF_INET, no getaddrinfo — a unix socket is the only door"
+else
+    echo "  A NETWORK SOCKET APPEARED in the console desktop:"
+    echo "$_net" | sed 's/^/    /'
+    exit 1
+fi
+
+echo
+echo "==> libkkms takes a screen, where there is one to take"
+#
+# The only thing on the console path that needs a GPU device, and the reason it
+# is a separate archive: kdos-con links none of it. There is no display in a
+# build container, so what is proved here is that it COMPILES and LINKS against
+# the real drm, input, seat and xkb — not that a mode gets set.
+#
+if pkg-config --exists libdrm libinput libseat xkbcommon libudev fcft pixman-1 \
+        2>/dev/null; then
+    KKMS_PC="libdrm libinput libseat xkbcommon libudev fcft pixman-1"
+    $CC $STD $WARN -c -Isrc/libs/libkbase -Isrc/libs/libkcolor \
+        -Isrc/libs/libktui -Isrc/libs/libkcell -Isrc/libs/libkkms \
+        $(pkg-config --cflags $KKMS_PC) \
+        -o "$OUT/kkms.o" src/libs/libkkms/kkms.c
+    $CC $STD $WARN -c -Isrc/libs/libkbase -Isrc/libs/libkcolor \
+        -Isrc/libs/libktui -Isrc/libs/libkcell -Isrc/libs/libkkms \
+        $(pkg-config --cflags $KKMS_PC) \
+        -o "$OUT/kkms_input.o" src/libs/libkkms/kkms_input.c
+    echo "  libkkms"
+
+    # And the view that uses it, linked for real.
+    #
+    # WITH THE CAST MODE where PipeWire is here: a recording rasterises through
+    # the same cell painter and writes into a stream instead of onto a screen,
+    # so it is the same binary and the same code path short of the last copy.
+    CAST_FLAGS=""
+    CAST_PC=""
+    if pkg-config --exists libpipewire-0.3 2>/dev/null; then
+        CAST_FLAGS="-DKDOS_VIEW_CAST"
+        CAST_PC="libpipewire-0.3"
+    fi
+    $CC $STD $WARN -DKDOS_VIEW_KMS $CAST_FLAGS -Isrc/desktop/kdos-view \
+        -Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui \
+        -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkcell \
+        -Isrc/libs/libkkms $(pkg-config --cflags $KKMS_PC $CAST_PC) \
+        -o "$OUT/kdos-view-kms" src/desktop/kdos-view/*.c \
+        src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libktui/*.c \
+        src/libs/libkdisp/*.c src/libs/libkcon/*.c src/libs/libkcell/*.c \
+        src/libs/libkkms/*.c $(pkg-config --libs $KKMS_PC $CAST_PC)
+    if [ -n "$CAST_FLAGS" ]; then
+        echo "  kdos-view --kms --cast"
+        #
+        # castcheck is the CONSUMER half of --cast, and a second process for the
+        # reason embedcheck is one: a PipeWire node, a format negotiation and a
+        # shared buffer are real daemon behaviours. Running it needs a running
+        # PipeWire; compiling it is what stops it rotting.
+        #
+        $CC $STD $WARN $(pkg-config --cflags libpipewire-0.3) \
+            -o "$OUT/castcheck" testing/fixtures/cast/castcheck.c \
+            $(pkg-config --libs libpipewire-0.3)
+        echo "  castcheck"
+    else
+        echo "  kdos-view --kms (no PipeWire: cast mode not compiled)"
+    fi
+else
+    echo "  libkkms (skipped — no drm, input, seat or xkb on this host)"
 fi
 
 echo
@@ -1872,7 +2285,8 @@ echo "==> the tray host talks to a real StatusNotifierItem"
 # script runs on a bare host, and basu is a KDOS port.
 if [ -n "$TRAY_SDBUS" ] && command -v dbus-daemon >/dev/null 2>&1; then
     $CC $STD $WARN -o "$OUT/traycheck" \
-        -Isrc/desktop/kdos-shell -Isrc/libs/libktui -Isrc/libs/libkcolor \
+        -Isrc/desktop/kdos-shell -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwl \
+        -Isrc/libs/libktui -Isrc/libs/libkcolor \
         -Isrc/libs/libkxdg -Isrc/libs/libkbase -Isrc/libs/libkchrome \
         -Isrc/libs/libkproc -Isrc/libs/libkicon -Isrc/libs/libkcell \
         $(pkg-config --cflags $TRAY_SDBUS) \
@@ -2021,6 +2435,11 @@ echo "==> the shell's front ends draw offscreen, and the boxes line up"
 # only visible when somebody LOOKS at the grid — so the grid is printed, without
 # a compositor, and the shape of it is asserted.
 #
+# libkcon is linked REAL rather than stubbed. It brings no dependency — it links
+# libktui and nothing else — and the shell calls into it on the launch path,
+# where the console desktop's answer differs from the graphical one. A stub
+# there would be a second implementation of that decision.
+#
 # libkwl is stubbed (testing/fixtures/shell/dumpmain.c), which is what makes it
 # runnable on a host with no fcft and no wlroots — the dump path touches
 # neither.
@@ -2086,7 +2505,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
              start net bt devices notify status tip panel; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         if $CC $STD $SHWARN -fsyntax-only -I"$DPROTO" \
-                -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
+                -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
                 -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
                 -Isrc/libs/libkcell \
@@ -2114,7 +2533,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
         # cache's first entry — are never exercised.
         $CC $STD $SHWARN -o "$OUT/dumpcheck" -I"$DPROTO" \
             -DKXDG_MIME_GLOBS="\"$PWD/testing/fixtures/openwith/data/mime/globs\"" \
-            -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libktui \
+            -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
             -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
             -Isrc/libs/libkcell \
@@ -2124,6 +2543,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
             "$DPROTO"/*-protocol.c \
             src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkxdg/*.c \
             src/libs/libkbase/*.c src/libs/libkproc/*.c \
+            src/libs/libkcon/*.c \
             $(pkg-config --cflags --libs wayland-client pixman-1 $DEXTRA_PC)
     }
     if [ -n "$DNEW" ] && dumpbuild $DNEW 2>"$OUT/dumpnew.err"; then
@@ -2254,6 +2674,7 @@ golden() {			# <name> <WxH> <argv…>
           XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
           XDG_RUNTIME_DIR=/nonexistent-kdos-run \
           KDOS_PANEL_ROOT="$PWD/panelroot" KDOS_PANEL_NOW=1735689600 ${KDOS_PANEL_DEBUG:+KDOS_PANEL_DEBUG=$KDOS_PANEL_DEBUG} \
+          ${KDOS_GOLDEN_CON:+KDOS_CON=$KDOS_GOLDEN_CON} \
           KDOS_DUMP_SIZE="$_g_size" "$DUMPCK" "$@" ) > "$_g_got"
     if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
         mkdir -p "$GOLD"
@@ -2327,6 +2748,19 @@ if [ -n "${RESBIN:-}" ] && [ -x "$RESBIN" ]; then
 else
     echo "  kdos-res goldens (skipped — the binary was not built on this host)"
 fi
+
+
+#
+# THE START MENU AS THE CONSOLE DESKTOP SEES IT. $KDOS_CON is what a program
+# started inside a console session inherits, and two rows differ because of it:
+# Terminal becomes kdos-term, which is a cell surface and can be a window here,
+# and a Desktop row appears — the graphical session, on a terminal of its own.
+#
+# The socket path is a name and nothing connects to it: a dump draws a menu, it
+# does not launch out of one.
+#
+KDOS_GOLDEN_CON=/nonexistent-kdos-con \
+    golden start-console 80x24 start --dump
 
 golden menu-system 80x24  menu system --dump
 golden menu-system 132x43 menu system --dump
@@ -2535,7 +2969,8 @@ echo "==> the recording indicator names the app holding the camera"
 # here PIPEWIRE_RUNTIME_DIR points nowhere, so its absence is what gets checked.
 if pkg-config --exists libpipewire-0.3 2>/dev/null; then
     $CC $STD $WARN -o "$OUT/privacycheck" \
-        -Isrc/desktop/kdos-shell -Isrc/libs/libktui -Isrc/libs/libkcolor \
+        -Isrc/desktop/kdos-shell -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwl \
+        -Isrc/libs/libktui -Isrc/libs/libkcolor \
         -Isrc/libs/libkxdg -Isrc/libs/libkbase -Isrc/libs/libkicon \
         -Isrc/libs/libkchrome -Isrc/libs/libkproc \
         $(pkg-config --cflags libpipewire-0.3) \

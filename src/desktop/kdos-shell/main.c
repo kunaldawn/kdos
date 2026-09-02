@@ -19,6 +19,14 @@
 #include <string.h>
 
 #include "shell.h"
+#include "kcon.h"	/* kcon_impl */
+#include "kwl.h"	/* kwl_impl — naming these is what links each one in */
+
+/* See the declaration: naming kwl_impl is what links Wayland into this
+ * program. A console-only build would name a different one, or none. */
+const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
+const int kdos_disp_n = 2;
+
 
 static const struct {
 	const char *name;
@@ -52,6 +60,7 @@ static const struct {
 	{ "kdos-clip", clip_main },
 	{ "kdos-status", status_main },
 	{ "kdos-tip", tip_main },
+	{ "kdos-ime", ime_main },
 };
 #define NTOOLS ((int)(sizeof(TOOLS) / sizeof(TOOLS[0])))
 

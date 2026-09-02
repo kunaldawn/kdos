@@ -1,6 +1,6 @@
 # The C libraries
 
-Thirteen static libraries under `src/libs/`, the constraint they are built under, the dependency
+Nineteen static libraries under `src/libs/`, the constraint they are built under, the dependency
 direction that must not be violated, and the invariants each one exists to protect.
 
 Everything KDOS writes is built on these. Adding one is a small decision; giving one a new
@@ -36,6 +36,12 @@ painter is not made to link a Wayland client library to get it.
 | `libkbuild` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only structured-data scanner | `libkbase` |
 | `libkproc` | `kpr_` | Every reading about the running machine, from a **movable root**: processes, uptime, container identity, processor, memory, block devices, network, power, graphics — and the sample ring | `libkbase` |
 | `libkpack` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` |
+| `libkvt` | `kvt_` | The terminal: the VT100-VT520 state machine, the screen, scrollback, selection, the pty, and one render boundary that turns it all into cells. **A hard fork of libtsm 4.7.1** | `libktui` |
+| `libkimg` | `kimg_` | **The only place untrusted image bytes are decoded**, and reachable by anything that can write to a terminal. One entry point, four optional decoders, and a budget enforced from the header the format declares *before* any allocation | pixman, plus png/jpeg/webp/sixel where present |
+| `libkkms` | `kkms_` | **The cell grid on a screen**: seat, connector, mode, a dumb buffer, libinput and xkb. The one thing on the console path that needs a GPU device, which is why only the view links it | `libkcell`, plus drm, input, seat, xkb, udev |
+| `libkcon` | `kcon_` | **A surface over a socket**, both ends: the wire, the client's `KDispImpl` and `KtuiBackend`, and the server side a display composites. **No file descriptors cross it**, which is what makes it forwardable | `libkdisp`, `libktui` |
+| `libkwm` | `kwm_` | **The window model both desktops obey**: placement, the tiled-state transition and its geometry, the neighbour-edge search, ring walks for cycling and workspaces | `libkbase` |
+| `libkdisp` | `kdisp_` | **Which display server, decided once**: the surface config, the six roles, and the lifecycle every surface asks for — init, close, resize, autohide, cell size, scale, clipboard, cursor | `libktui` |
 | `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui` |
 | `libkicon` | `kicon_` | **A name becomes a sprite slot, or −1** | `libktui` |
 | `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, and the pixel canvas | A font renderer, a pixel library |
@@ -45,15 +51,86 @@ painter is not made to link a Wayland client library to get it.
 
 ```
 libkwl → libkcell → libktui → libkcolor → libkbase
+libkwl → libkdisp → libktui
 libkchrome → libktui
 libkicon   → libktui
+libkdisp   → libktui
 libkxdg    → libkbase
 libkpkg    → libkbase
 libksig    → libkbase
 libkbuild  → libkbase
 libkproc   → libkbase
+libkwm     → libkbase
 libkpack   → libksig, libkpkg, libkbase
 ```
+
+## libkwm
+
+The window model, and only the model. `kdos-comp` draws windows in pixels and
+`kdos-con` draws them in cells; a defect in placement, tiling, the edge search
+or the ring walks is **one fix**, because there is one implementation.
+
+It is handed rectangles and told what is being asked. What a window *is*, which
+output it is on, whether a client accepted its size and whether it is maximised
+all stay with the caller — which is what lets a compositor and a cell grid share
+it at all.
+
+**The contract is `testing/fixtures/wm/geometry.txt`**, every row of which cites
+the line of `kdos-comp` it was derived from, and the self-test replays the file
+rather than asserting anything of its own. Adding a case means adding a row and
+citing its line.
+
+Three things that file pins, each of which reads as a bug and is not:
+
+- **A quarter snapped towards the edge it already occupies collapses to a
+  half.** The parallel component is then neither the inverse of the request nor
+  absent, so no branch of the transition matches and the orthogonal component is
+  discarded.
+- **The two halves of an axis come from different expressions** — `(size + gap) / 2`
+  and `(size - gap) / 2` — which is what puts a whole gap between two tiled
+  windows rather than half a gap each. An odd dimension therefore gives the right
+  or bottom half one extra pixel.
+- **Occupancy is an input, not a derivation.** The compositor counts views that
+  are not omnipresent; the panel counts windows that are not minimised, because
+  the workspace protocol has active, urgent and hidden but no "there is something
+  here". Two rules, two right answers, and this library picks neither.
+
+**No maths library**, the constraint `libkcolor` and `kcell_ascii.c` are already
+written under. The edge sweep interpolates with doubles, which is plain
+arithmetic and calls nothing.
+
+## libkdisp
+
+Which display server a surface reaches, decided in one place.
+
+`kdos-shell` alone opens a surface from **more than twenty** call sites, and each
+then asks whether it should close, resizes itself, or hides its panel. Branching
+on the server at every one of those is the same decision written twenty times in
+one program and again in the next.
+
+**The consumer decides what it links.** This library names no implementation and
+pulls in none; a caller hands over the ones it compiled, in preference order, so
+a console-only program never sees Wayland:
+
+```c
+extern const KDispImpl kwl_impl;   /* libkwl */
+static const KDispImpl *const have[] = { &kwl_impl };
+kdisp_init(&cfg, have, 1);
+```
+
+Each program states that list once, and it is the single line that changes when
+a second server is added.
+
+**A server that cannot answer an entry leaves it NULL** and the forwarder
+returns the neutral answer rather than crashing — a console has no server-side
+decoration to report and no Wayland handle to hand out. `kwl_display` and
+`kwl_seat` are deliberately *not* in the vtable for that reason: they hand out a
+Wayland object and nothing else can stand in for one.
+
+**Two edge vocabularies in this tree, and they must not be conflated.**
+`KDISP_EDGE_*` is a sequence naming which edge a panel is anchored to.
+`KWM_EDGE_*` is a bitmask whose values match the compositor's own enum, so that
+corners are combinations. They are different questions.
 
 **Nothing points back up.**
 
@@ -132,6 +209,30 @@ against stale dimensions and silently fail its own bounds checks.
 terminal at all. Every geometry defect this toolkit has shipped was invisible to the compiler and
 to a test suite that cannot draw; this is how they get looked at.
 
+**A sprite table entry is a borrowed pointer, so eviction is what the owner told it to do.** The
+table does no pixel work and cannot free a picture; an owner registers an evictor and the table
+calls it whenever it stops naming a picture — a slot taken back under the byte budget, a slot
+reused for a *different* picture under the same key, or a tile refused part-way through a tiled put.
+Without an evictor a full table simply answers -1, which every consumer already handles by drawing
+its glyph. That is right for icons, which are owned for the life of the session, and wrong for
+photographs, which are megabytes each.
+
+**Whether a sprite is still on screen is asked of the CELL BUFFER'S own size**, not of `ktui_w` and
+`ktui_h`. A backend reports a new size the moment it is resized and the buffer is reallocated only
+when the consumer calls the resize function, so between those two points the globals describe a
+grid larger than the allocation.
+
+**One rule for reducing a colour that came from outside the palette.** A terminal's SGR and a
+picture's average tint both land on the nearest of the theme's slots by squared distance, through
+one function here. A second implementation would drift, and a table saying "red means the error
+slot" would be a second set of colour decisions beside the palette — one that would stop following
+the accent, so `kdos theme amber` would move some colours and not others.
+
+**A pointer event carries where in the cell it landed**, as an offset from the cell's centre in
+1/256ths, and zero — what a backend with no pixel geometry leaves behind — means the centre.
+Nothing drawn in cells reads it. It exists for the one thing on this desktop that is not cells: a
+pixel guest embedded in a window, whose buttons are smaller than the grid pointing at them.
+
 Three rules the extraction from its original single consumer exists to keep:
 
 - **Symbols are prefixed.** The generic names it once used collided with a consumer's own
@@ -141,6 +242,77 @@ Three rules the extraction from its original single consumer exists to keep:
   field; it is behind accessors now.
 - **Chrome identifiers are the library's business.** Chrome registers with caller-local
   identifiers in a reserved range that never joins the focus ring and never drags the page scroll.
+
+## libkvt
+
+The terminal as a state machine — a hard fork of libtsm 4.7.1, kmscon's own. What a *consumer*
+touches is `struct kvt_term`: a screen, a state machine and a child on a pty as one object, with a
+descriptor to poll and a grid to draw.
+
+**The bytes a key produces are decided in here, never by the caller.** The escape an arrow sends
+depends on application cursor mode, on keypad mode and on the modifier encoding, and all three are
+state machine state. A caller hands over a libktui key and modifier set; `kvt_term_key` turns it
+into a keysym and lets the machine answer. Both terminals in this tree go through it, so there is
+one implementation rather than two that drift.
+
+**A picture is written into the SCREEN as sprite cells.** `kvt_term_place` names tiles the caller
+already registered in libktui's table and writes their codepoints at the cursor. In the screen
+rather than in an overlay beside it, because that is what makes a picture scroll with its output,
+clear with it and reach the scrollback — three behaviours an overlay would have to reimplement
+against a screen already doing all three. A tile the table has since dropped becomes a blank.
+
+**It decodes nothing.** The three image protocols are delimited by one collector — they differ only
+in how they are framed — and the payload goes to a callback the consumer set. That is what keeps
+this library free of image decoders, and it has to stay free of them because `kdos-con` links it
+and links no pixel code at all.
+
+## libkcon
+
+A surface over a socket, both ends in one file so the two cannot drift.
+
+**No file descriptor crosses it, ever.** That is the whole reason the view socket can be forwarded
+over `ssh`: a desktop reached from another machine is the same desktop. The one descriptor anywhere
+near this design goes over a different channel — a `socketpair` between the session and the
+`kdos-cage` it forked — which is private, local and parent-to-child, and is not this protocol.
+
+**A field at a time, little-endian.** A struct written whole is a struct whose padding and alignment
+become protocol, and the two ends of a forwarded socket are not always the same build.
+
+**Two ways to put bytes, and the difference is what a reader has to know.** `kcon_put_blob` writes a
+length first, for a payload whose size the message does not otherwise give. `kcon_put_bytes` writes
+none, for one it does — a sprite's pixels are `pw * ph * 4` and nothing else. A second length is a
+second thing that can disagree with the first, and a reader computing the size from the header would
+then be four bytes out for every picture on the desktop.
+
+**A string is valid only until the next get.** The payload's bytes are not terminated where a string
+ends, so one scratch buffer is shared by every call; a reader taking several strings copies each
+before it reads the next, or every pointer it kept names the last one.
+
+**A message may gain optional trailing fields**, and `kcon_rd_left` is how a reader tells a peer that
+predates them from a truncated message. A view's pixel geometry and a pointer's position inside its
+cell arrived that way.
+
+**A surface's slot numbers are its own.** Two surfaces both using slot 0 is the normal case, so the
+server assigns a session slot on first sight and a compositing session rewrites the slot in every
+sprite cell it copies out. A session that owns a picture itself — an embedded application's frame —
+takes slots from the same rotation, because a second numbering would eventually hand a view a number
+a surface is already using.
+
+**A picture is sent when its PIXELS change, not once per slot.** An animation registers a new frame
+under the same key and therefore in the same slot, without touching a single cell — so a client that
+remembered "slot sent" would leave the display holding the first frame for ever. The client tracks
+the picture behind each slot and compares the pointer.
+
+**And a display that attached late is told to start again.** `KCON_OP_SPRITE_RESEND` asks every
+surface to forget what the display has: cells that name a slot do not change, so a view that arrived
+after a picture was placed would show the fallback mark for the rest of its life.
+
+**A surface with nothing to show says so.** `KCON_OP_HIDE` is not a close — the connection, the
+sprites and the clipboard all survive it — and it is what an overlay needs on this desktop: a
+candidate window or a stack of toasts is up for a fraction of the time its program runs, and a
+surface that could not say so would park an empty box on somebody's desktop. **A different size is a
+second attach**, because the session already reads a requested size out of one and a separate resize
+message would be a second place for the two to disagree.
 
 ## libkxdg
 

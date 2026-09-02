@@ -563,20 +563,36 @@ def main():
         time.sleep(1)
         ser.pump()
 
-        # tty1 autologins as `kdos` and stops at a prompt: the session is
-        # started by hand on this distro, which is the documented entry point
-        # (`kdos-desktop` from a tty) and not something to work around.
+        # TTY1 IS THE CONSOLE DESKTOP, not a prompt. It autologins as `kdos`
+        # through kdos-con-login, and .bash_profile starts kdos-con-start
+        # there — so on this boot path the cell desktop is already up before
+        # any step runs, and `--no-session` is what photographs it. `--keys`
+        # then drives that desktop, because sendkey goes to the active VT.
+        #
+        # The graphical session is still started by hand, and it has to be
+        # started somewhere that IS a shell: tty2 has a getty, and the serial
+        # console is root. Typing it on tty1 types into the cell desktop.
         if args.no_session:
             print("not starting a session — the steps are the run", flush=True)
         elif args.console_cmd:
-            # tty1 autologins as `kdos` and stops at a prompt. Typing here
-            # rather than starting the session is what photographs a program
-            # on the CONSOLE — the 512-glyph font, the vt glyph tier, and no
-            # compositor between the program and the screen.
+            # Typing on tty1 reaches whatever OWNS it, and on this boot path
+            # that is the cell desktop rather than a shell — so a command only
+            # runs if a terminal window already has the focus. Open one first
+            # (`--keys meta_l-ret`) or the keystrokes go to the desktop, which
+            # is not the same as nothing happening.
             print("running on tty1: %s" % args.console_cmd, flush=True)
             mon.type(args.console_cmd)
             time.sleep(args.wait)
         else:
+            # THE GRAPHICAL SESSION NEEDS A SEAT, so it is typed on a VT and
+            # never sent down the serial line: a compositor launched from a
+            # serial console gets no seat and dies asking for one.
+            #
+            # On this boot path tty1 is the CELL DESKTOP, so typing here reaches
+            # that rather than a shell. The graphical session's own entry point
+            # from the console is its Start-menu row, which allocates a free VT
+            # and switches to it. Use --no-session and drive that, or --cmd,
+            # which runs on the serial console as the desktop user.
             print("starting the session on tty1…", flush=True)
             mon.type(args.session_env + "kdos-desktop"
                      if args.session_env else "kdos-desktop")

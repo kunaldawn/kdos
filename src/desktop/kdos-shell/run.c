@@ -264,14 +264,14 @@ static size_t cur_at_col(const char *s, int want)
 
 static void launch(const char *cmd, bool in_term)
 {
-	char buf[MAX_CMD + 32];
+	char buf[MAX_CMD + SH_TERM_PREFIX_MAX];
 	char *argv[32];
 	int n = 0;
 
 	if (!*cmd)
 		return;
 	if (in_term)
-		snprintf(buf, sizeof(buf), "foot -e %s", cmd);
+		sh_term_cmd(buf, sizeof(buf), cmd);
 	else
 		snprintf(buf, sizeof(buf), "%s", cmd);
 
@@ -309,8 +309,8 @@ int run_main(int argc, char **argv)
 		}
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		/* Fifty-six, not fifty-two: the three buttons come to
 		 * thirty-five columns and the hint beside them is drawn whole
 		 * or not at all, so four more cells are the difference between
@@ -325,7 +325,7 @@ int run_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-run: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -344,7 +344,7 @@ int run_main(int argc, char **argv)
 	 * back through what was run before. */
 	int hpos = nhist;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		int w = ktui_w, h = ktui_h;
 		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 		ktui_draw_box(krect(0, 0, w, h), "Run", KT_ACCENT, KT_SURFACE, 0);
@@ -578,6 +578,6 @@ int run_main(int argc, char **argv)
 		}
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return rc;
 }

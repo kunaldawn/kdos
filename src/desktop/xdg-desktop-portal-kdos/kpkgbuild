@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = xdg-desktop-portal-kdos
-version     = 0.2.0
-release     = 3
+version     = 0.3.0
+release     = 1
 source      =
-description = FileChooser and Settings portal backend for KDOS
+description = FileChooser, Settings, AppChooser and ScreenCast portal backend for KDOS
 homepage    = https://github.com/kunaldawn/kdos
-depends     = basu xdg-desktop-portal kdos-shell
+depends     = basu xdg-desktop-portal kdos-shell kdos-view

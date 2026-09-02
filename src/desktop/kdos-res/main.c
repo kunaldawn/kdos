@@ -30,8 +30,15 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include "kcon.h"
 #include "kwl.h"
 #include "res.h"
+
+/* See the declaration: naming kwl_impl is what links Wayland into this
+ * program. A console-only build would name a different one, or none. */
+const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
+const int kdos_disp_n = 2;
+
 
 /*
  * THE PAGE LIST IS READ OUT OF THE REGISTRY, never spelled again here. A
@@ -248,8 +255,8 @@ int main(int argc, char **argv)
 	}
 
 	if (gui) {
-		KwlConfig cfg = {
-			.role = KWL_ROLE_TOPLEVEL,
+		KDispConfig cfg = {
+			.role = KDISP_ROLE_TOPLEVEL,
 			.title = "Resources",
 			.app_id = "kdos-res",
 			.font = font,
@@ -264,7 +271,7 @@ int main(int argc, char **argv)
 			.cols = 104,
 			.rows = 26,
 		};
-		if (kwl_init(&cfg) != 0) {
+		if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 			fprintf(stderr, "kdos-res: no compositor — try --tty\n");
 			return 1;
 		}
@@ -288,7 +295,7 @@ int main(int argc, char **argv)
 	unsigned long long next = 0;
 
 	for (;;) {
-		if (gui && kwl_should_close())
+		if (gui && kdisp_should_close())
 			break;
 
 		if (g_reload) {
@@ -356,7 +363,7 @@ int main(int argc, char **argv)
 	}
 
 	if (gui)
-		kwl_shutdown();
+		kdisp_shutdown();
 	else
 		ktui_term_shutdown();
 	return 0;

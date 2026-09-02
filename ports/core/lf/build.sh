@@ -16,3 +16,18 @@ go build -ldflags "-s -w -X main.gVersion=r$version" -o lf
 install -Dm755 lf $PKG/usr/bin/lf
 install -Dm644 lf.1 $PKG/usr/share/man/man1/lf.1
 install -Dm644 etc/lfcd.sh $PKG/usr/share/lf/lfcd.sh
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/lf.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Files (lf)
+GenericName=File Manager
+Comment=Browse files with lf
+Exec=lf %f
+Icon=file-manager
+Terminal=true
+Categories=System;FileTools;FileManager;
+Keywords=file;manager;browser;lf;
+EOF
+chmod 644 "$PKG/usr/share/applications/lf.desktop"

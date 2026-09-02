@@ -71,6 +71,52 @@ char *kdt_cfg_home(const char *rest)
 	return p;
 }
 
+/*
+ * One key out of con.conf, or NULL. The user's file first, then the shipped
+ * one — the same order libkcon reads them in, stated here because this binary
+ * links no libkcon and must not: `kdos` is on every image and the console
+ * desktop is not.
+ */
+static char *con_conf_key(const char *key)
+{
+	char *user = kdt_cfg_home("kdos-con/con.conf");
+	const char *files[2];
+	char *out = NULL;
+
+	files[0] = user;
+	files[1] = "/etc/kdos/con.conf";
+
+	for (int f = 0; f < 2 && !out; f++) {
+		char *data = kb_read_all(files[f], NULL);
+
+		if (!data)
+			continue;
+		for (char *line = data, *next; line && *line; line = next) {
+			char *nl = strchr(line, '\n');
+			char *eq;
+
+			next = nl ? nl + 1 : line + strlen(line);
+			if (nl)
+				*nl = '\0';
+			while (*line == ' ' || *line == '\t')
+				line++;
+			if (strncmp(line, key, strlen(key)))
+				continue;
+			eq = strchr(line, '=');
+			if (!eq)
+				continue;
+			eq++;
+			while (*eq == ' ' || *eq == '\t')
+				eq++;
+			out = kb_strdup(eq);
+			break;
+		}
+		free(data);
+	}
+	free(user);
+	return out;
+}
+
 char *kdt_data_home(const char *rest)
 {
 	const char *x = getenv("XDG_DATA_HOME");
@@ -165,10 +211,21 @@ static void reload_session(void)
 	 * `kdos-res` is here and `kdos-resctl` must never be: the exact match
 	 * below is what keeps them apart, since one name is a prefix of the
 	 * other. The setuid helper is short-lived and handles no signals.
+	 *
+	 * Both halves of the console desktop are here and both have to be.
+	 * `kdos-con` holds the cells and `kdos-view` holds the palette its
+	 * backend paints them with, so signalling one and not the other
+	 * retints half a screen. `kdos-con-login` and `kdos-con-start` are NOT
+	 * reached: the match is exact, and one is a login and the other a
+	 * /bin/sh script that would die of a signal it does not handle.
+	 *
+	 * `kdos-term` handles it and redraws; foot cannot reload its config at
+	 * all, which is why the note below says a foot window keeps the accent
+	 * it opened in and this one does not.
 	 */
 	static const char *const who[] = {
 		"kdos-shell", "kdos-desk", "kdos-notifyd", "kdos-slit",
-		"kdos-res", "kdos-comp"
+		"kdos-res", "kdos-comp", "kdos-con", "kdos-view", "kdos-term"
 	};
 	for (size_t i = 0; i < sizeof(who) / sizeof(who[0]); i++) {
 		KbArgv a = {0};
@@ -2127,6 +2184,7 @@ static void help_body(FILE *o)
 		{ "kdos update check", "what the ports tree pins that is not installed" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
+		{ "kdos con ls", "console sessions: new, attach, detach, kill, forward, run" },
 		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
@@ -3138,6 +3196,62 @@ static int cmd_doctor(int argc, char **argv)
 	else
 		warn_("wlr portal not running — screen capture and file pickers "
 		      "degraded");
+
+	/*
+	 * HOW A GRAPHICAL APPLICATION WILL BE SHOWN on the console desktop.
+	 * The two answers look nothing alike — a window among the cells, or a
+	 * full-screen guest on a terminal of its own — and which one a person
+	 * gets is decided by files rather than by anything they can see. So the
+	 * inputs are reported, not the decision: kdos-con makes that, and a
+	 * second implementation here would be a second thing to be wrong.
+	 */
+	const char *kcon = getenv("KDOS_CON");
+
+	if (kcon && *kcon) {
+		char *ce = con_conf_key("embed");
+		int off = ce && (!strcmp(ce, "false") || !strcmp(ce, "0") ||
+				 !strcmp(ce, "no"));
+
+		if (off)
+			ok("graphical applications take a terminal of their "
+			   "own — con.conf says embed = false");
+		else
+			ok("graphical applications are windows — kdos-cage "
+			   "composites each in a process of its own");
+		free(ce);
+
+		char *bd = kdt_cfg_home("kdos/boxes");
+		DIR *bdd = bd ? opendir(bd) : NULL;
+		char pinned[256] = { 0 };
+
+		if (bdd) {
+			struct dirent *be;
+
+			while ((be = readdir(bdd))) {
+				char path[600], *dv;
+				size_t nl = strlen(be->d_name);
+
+				if (nl < 6 || strcmp(be->d_name + nl - 5, ".conf"))
+					continue;
+				snprintf(path, sizeof(path), "%s/%s", bd,
+					 be->d_name);
+				dv = kb_read_all(path, NULL);
+				if (dv && strstr(dv, "display = vt")) {
+					size_t at = strlen(pinned);
+
+					snprintf(pinned + at,
+						 sizeof(pinned) - at, "%s%.*s",
+						 at ? ", " : "",
+						 (int)(nl - 5), be->d_name);
+				}
+				free(dv);
+			}
+			closedir(bdd);
+		}
+		free(bd);
+		if (*pinned)
+			ok("pinned to a terminal of their own: %s", pinned);
+	}
 	doctor_gap();
 
 	doctor_head("Containers");
@@ -3430,6 +3544,10 @@ static int cmd_doctor(int argc, char **argv)
 	 * has never heard of KDOS — so without that file ScreenCast comes back
 	 * with no backend and the app says "no capture sources available",
 	 * which sounds like a driver problem and is not.
+	 *
+	 * TWO FILES, BECAUSE THERE ARE TWO DESKTOPS. The compositor's backend is
+	 * a Wayland client and there is none on the console, where the backend
+	 * is a second kdos-view rasterising into a stream instead.
 	 */
 	if (!kb_path_exists("/usr/lib/xdg-desktop-portal-wlr"))
 		warn_("xdg-desktop-portal-wlr missing — no screen sharing and "
@@ -3440,6 +3558,13 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("kdos-portals.conf missing — the portal is installed but "
 		      "nothing selects it, so ScreenCast will report no "
 		      "backend");
+
+	if (kb_path_exists("/usr/share/xdg-desktop-portal/kdos-console-portals.conf"))
+		ok("the console session records through kdos-view --cast");
+	else
+		warn_("kdos-console-portals.conf missing — recording the "
+		      "console session would look for a Wayland backend that "
+		      "cannot run there");
 
 	const char *path = getenv("PATH");
 	char *want = kb_path_join(kb_home_dir(), ".local/bin");
@@ -3480,6 +3605,175 @@ static int cmd_version(void)
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * `kdos con …` — the console desktop's sessions.
+ *
+ * EXECS kdos-con RATHER THAN LINKING THE PROTOCOL. kdos-tools is on every
+ * image and must stay thin; libkcon would drag libktui and the cell model in
+ * behind it for the sake of five verbs that are one argument each.
+ *
+ * `forward` is the exception and lives here, because it is entirely an ssh
+ * command line and kdos-con has no business knowing about ssh.
+ */
+static int cmd_con_forward(int argc, char **argv)
+{
+	const char *host = argc > 0 ? argv[0] : NULL;
+	const char *run = getenv("XDG_RUNTIME_DIR");
+	const char *name = argc > 1 ? argv[1] : "con";
+	char local[256];
+
+	if (!host) {
+		fprintf(stderr, "usage: kdos con forward <host> [session]\n");
+		return 2;
+	}
+	if (!run || !*run) {
+		fprintf(stderr, "kdos con: no XDG_RUNTIME_DIR\n");
+		return 1;
+	}
+
+	/*
+	 * REMOTE IS OFF BY DEFAULT AND THIS IS WHERE IT IS ENFORCED. There is
+	 * no TCP listener anywhere in this desktop, so a remote view can only
+	 * arrive through a tunnel somebody set up — and refusing to set one up
+	 * is a complete refusal, not a check that can be bypassed by connecting
+	 * some other way.
+	 */
+	char conf[4096];
+	int allow = 0;
+
+	if (kb_read_file("/etc/kdos/con.conf", conf, sizeof(conf)) > 0) {
+		char *line, *save;
+
+		for (line = strtok_r(conf, "\n", &save); line;
+		     line = strtok_r(NULL, "\n", &save)) {
+			char *hash = strchr(line, '#'), *eq;
+
+			if (hash)
+				*hash = '\0';
+			eq = strchr(line, '=');
+			if (!eq || strncmp(line, "remote", 6))
+				continue;
+			allow = strstr(eq, "yes") || strstr(eq, "1");
+			break;
+		}
+	}
+	if (!allow) {
+		fprintf(stderr,
+			"kdos con: remote is off. Set `remote = yes` in\n"
+			"          /etc/kdos/con.conf (or ~/.config/kdos-con/con.conf)\n"
+			"          to allow a view on another machine.\n");
+		return 1;
+	}
+
+	snprintf(local, sizeof(local), "%s/kdos/%s.view", run, name);
+	if (!kb_path_exists(local)) {
+		fprintf(stderr, "kdos con: no session '%s'\n", name);
+		return 1;
+	}
+
+	/*
+	 * THE VIEW SOCKET AND ONLY THE VIEW SOCKET. A display is handed cells
+	 * and reports events; forwarding the surface socket would hand the far
+	 * end the right to place windows in this session, which is a different
+	 * thing entirely from showing it.
+	 *
+	 * The tunnel dies with the ssh process, so there is nothing to tear
+	 * down on a dropped connection — that is the whole reason it is a
+	 * foreground ssh rather than a daemon and a lock file.
+	 */
+	char spec[512];
+
+	snprintf(spec, sizeof(spec), "/tmp/kdos-%s-%d.view:%s", name,
+		 (int)getuid(), local);
+
+	char cmd[768];
+
+	snprintf(cmd, sizeof(cmd),
+		 "kdos-view --tty --socket /tmp/kdos-%s-%d.view", name,
+		 (int)getuid());
+
+	printf("forwarding %s to %s — the session ends when this exits\n",
+	       local, host);
+
+	execlp("ssh", "ssh", "-t", "-R", spec, host, cmd, (char *)NULL);
+	fprintf(stderr, "kdos con: cannot run ssh\n");
+	return 127;
+}
+
+/* The longest guest command line this front end passes on. It matches
+ * KCON_MAX_ARGV, which is what the session's wire carries — a longer one is
+ * refused there, and refusing it here as well would be a second limit to keep
+ * in step. */
+#define KDT_RUN_MAX 32
+
+static int cmd_con(int argc, char **argv)
+{
+	static const struct { const char *verb, *flag; } V[] = {
+		{ "ls",     "--ls" },
+		{ "new",    "--new" },
+		{ "attach", "--attach" },
+		{ "detach", "--detach" },
+		{ "kill",   "--kill" },
+	};
+	const char *verb = argc > 0 ? argv[0] : "ls";
+
+	if (!strcmp(verb, "forward"))
+		return cmd_con_forward(argc - 1, argv + 1);
+
+	/*
+	 * `run` IS the argument tunnel the five verbs below are not, and
+	 * deliberately: everything after it is the guest's argument vector,
+	 * passed on whole. Re-joining it into a string here would be inventing
+	 * a quoting rule for something that already had none.
+	 */
+	if (!strcmp(verb, "run")) {
+		const char *av[KDT_RUN_MAX + 4];
+		int n = 0, i = 1;
+
+		if (argc > 1 && !strcmp(argv[1], "--"))
+			i = 2;
+		if (i >= argc) {
+			fprintf(stderr, "usage: kdos con run [--] CMD [ARG...]\n");
+			return 2;
+		}
+		av[n++] = "kdos-con";
+		av[n++] = "--run";
+		for (; i < argc && n < KDT_RUN_MAX + 3; i++)
+			av[n++] = argv[i];
+		av[n] = NULL;
+		execvp(av[0], (char *const *)av);
+		fprintf(stderr, "kdos con: kdos-con is not installed\n");
+		return 127;
+	}
+
+	for (int i = 0; i < (int)(sizeof(V) / sizeof(V[0])); i++) {
+		if (strcmp(verb, V[i].verb))
+			continue;
+
+		const char *av[8];
+		int n = 0;
+
+		av[n++] = "kdos-con";
+		av[n++] = V[i].flag;
+		/* A name, if one was given. Anything else is not passed on:
+		 * this is a five-verb front end, not an argument tunnel. */
+		if (argc > 1 && n + 2 < (int)(sizeof(av) / sizeof(av[0]))) {
+			av[n++] = "-t";
+			av[n++] = argv[1];
+		}
+		av[n] = NULL;
+		execvp(av[0], (char *const *)av);
+		fprintf(stderr, "kdos con: kdos-con is not installed\n");
+		return 127;
+	}
+
+	fprintf(stderr,
+		"usage: kdos con {ls|new|attach|detach|kill} [session]\n"
+		"       kdos con forward <host> [session]\n"
+		"       kdos con run [--] CMD [ARG...]\n");
+	return 2;
+}
 
 int kdos_main(int argc, char **argv)
 {
@@ -3529,6 +3823,8 @@ int kdos_main(int argc, char **argv)
 		return kdt_app(argc - 2, argv + 2);
 	if (!strcmp(cmd, "trash"))
 		return kdt_trash(argc - 2, argv + 2);
+	if (!strcmp(cmd, "con"))
+		return cmd_con(argc - 2, argv + 2);
 
 	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
 		C_0, cmd);

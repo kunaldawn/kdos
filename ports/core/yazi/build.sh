@@ -29,3 +29,18 @@ export YAZI_GEN_COMPLETIONS=1
 cargo build --release --frozen --offline
 install -Dm755 target/release/yazi $PKG/usr/bin/yazi
 install -Dm755 target/release/ya   $PKG/usr/bin/ya
+
+install -d "$PKG/usr/share/applications"
+cat > "$PKG/usr/share/applications/yazi.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Files (yazi)
+GenericName=File Manager
+Comment=Browse files with yazi
+Exec=yazi %f
+Icon=file-manager
+Terminal=true
+Categories=System;FileTools;FileManager;
+Keywords=file;manager;browser;yazi;preview;
+EOF
+chmod 644 "$PKG/usr/share/applications/yazi.desktop"

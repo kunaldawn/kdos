@@ -1,0 +1,54 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   testing/Dockerfile.devdeps — the image the GUARDED self-test blocks need
+#
+# testing/selftest.sh runs everywhere and skips what it cannot build. What it
+# skips on a bare host is most of the interesting half: libkimg's four
+# decoders, the sd-bus blocks, the fcft renderer, the Wayland consumers. Each
+# skip says so, which is honest, but a block that is skipped on every machine
+# is a block nobody runs.
+#
+# This is the machine where none of them skip. It is Alpine because the target
+# is musl and a feature-test difference is worth meeting here rather than in a
+# phase build, and it carries exactly what the script probes for:
+#
+#     pkg-config: alsa basu fcft libdrm libinput libpipewire-0.3 libseat
+#                 pixman-1 wayland-client xkbcommon — and the four decoders
+#     command -v: cpio dbus-daemon python3 xz zstd
+#
+# mesa, libxml2, cairo and pango are here for the compositor's graft block,
+# which needs them beside wlroots.
+#
+# vim, htop, mc, tmux and less are here to be DRIVEN. The self-test opens each
+# on a real pty, presses a key and resizes the window — which is the half of
+# "kdos-term handles the catalogue" that a recorded stream cannot show, because
+# it is what the program does in response to us rather than what it once did.
+#
+# TWO THINGS STILL SKIP HERE, and they are named rather than left to be found:
+#
+#   - wlroots. No distribution packages 0.20; the tree carries the tarball and
+#     building it is a second layer on top of this one — see "Compiling the
+#     compositor without a full build" in 05-developer/testing.md.
+#   - busctl, which gates the portal block. Alpine ships it in no package, so
+#     that one block stays skipped on this image even though its sd-bus and
+#     dbus-daemon halves are both here.
+
+FROM alpine:3.23
+
+RUN apk add --no-cache \
+        bash build-base pkgconf python3 \
+        pixman-dev libpng-dev libjpeg-turbo-dev libwebp-dev libsixel-dev \
+        fcft-dev libdrm-dev wayland-dev wayland-protocols \
+        libxkbcommon-dev libinput-dev libseat-dev \
+        mesa-dev libxml2-dev cairo-dev pango-dev \
+        basu-dev pipewire-dev alsa-lib-dev \
+        dbus cpio xz zstd \
+        vim htop mc tmux less ncurses
+
+WORKDIR /kdos
+CMD ["bash", "testing/selftest.sh"]

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = newsboat
+version     = 2.44
+release     = 1
+source      = https://newsboat.org/releases/$version/$name-$version.tar.xz
+sha256      = 8cb376b14c44809750a41b74c239a47092edb8e496f657c38af9b852dd8e4ea4  newsboat-2.44.tar.xz
+sha256      = b71b4c5ba321df39d6f050c1c03552243dbe9280ea8c5c66bece99f66b2eb770  newsboat-vendor-2.44.tar.xz
+description = newsboat — an RSS and Atom feed reader for the terminal
+homepage    = https://newsboat.org/
+depends     = rust stfl sqlite curl libxml2 json-c ncurses gettext libintl openssl
+vendoring   = rust

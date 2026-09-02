@@ -676,7 +676,7 @@ static void panel_backdrop(pixman_image_t *dst, int w, int h, int scale)
 	 * derivation lives there rather than being `panel_top` spelled a
 	 * second way. */
 	kch_px_body(dst, w, h, scale, a,
-		    kwl_edge_bottom() ? KCH_EDGE_BOTTOM : KCH_EDGE_TOP);
+		    kdisp_edge_bottom() ? KCH_EDGE_BOTTOM : KCH_EDGE_TOP);
 	kch_px_replay(dst, scale);
 }
 /*
@@ -1037,7 +1037,7 @@ static const char *chip_unity_id(const struct sh_state *sh,
  */
 static int icon_air(void)
 {
-	int a = kwl_cell_h() / 5;
+	int a = kdisp_cell_h() / 5;
 
 	return a < 1 ? 1 : a;
 }
@@ -1122,7 +1122,7 @@ static void chip_badge(const struct sh_state *sh, const struct chip *c, int x,
 	const char *id = chip_unity_id(sh, c);
 	long count = 0;
 	int prog = -1, urgent = 0;
-	int cw = kwl_cell_w(), chh = kwl_cell_h();
+	int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 
 	if (!id || !sh_unity_get(id, &count, &prog, &urgent))
 		return;
@@ -1316,7 +1316,7 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 		 * a pixel wide.
 		 */
 		if (c->count > 1) {
-			int cw = kwl_cell_w(), chh = kwl_cell_h();
+			int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 			int px = (x + per - 1) * cw - 1;
 			int n = c->count > 2 ? 2 : 1;
 
@@ -1328,7 +1328,7 @@ static void draw_chips(struct sh_state *sh, int x, int limit, int marker, int h)
 					    kch_tone_alpha(KCH_T_REST));
 		}
 		if (c->count > 0) {
-			int cw = kwl_cell_w(), chh = kwl_cell_h();
+			int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 			int uw = c->active ? (per - 1) * cw - 2 : (per - 1) * cw / 2;
 			int ux = x * cw + 1 + ((per - 1) * cw - 2 - uw) / 2;
 
@@ -1539,8 +1539,8 @@ static void spawn_windows_menu(struct sh_state *sh, int ci, int ctrl)
 
 	snprintf(xs, sizeof(xs), "%d",
 		 (sh->task_hit_x + (ci - chip_off) * sh->task_cell_w) *
-			 kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+			 kdisp_cell_w());
+	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 	/*
 	 * THE BOX GOES WITH IT. The panel groups by (app_id, box), so the
 	 * app_id alone does not say which of two GIMPs this menu is for —
@@ -1776,8 +1776,8 @@ static int applet_lit(struct sh_state *sh, int id, int *right_x, int x_min,
 	if (!lw || *right_x - x_min < lw + 2)
 		return 0;
 	*right_x -= lw + 1;
-	kch_px_round(*right_x * kwl_cell_w() + 1, applet_row * kwl_cell_h() + 1,
-		     lw * kwl_cell_w() - 2, kwl_cell_h() - 2, KCH_PLATE_RADIUS,
+	kch_px_round(*right_x * kdisp_cell_w() + 1, applet_row * kdisp_cell_h() + 1,
+		     lw * kdisp_cell_w() - 2, kdisp_cell_h() - 2, KCH_PLATE_RADIUS,
 		     kch_slot_rgb(bg), 0xFF);
 	ktui_draw_text(*right_x, applet_row, lw, label, KT_SURFACE, KT_SURFACE,
 		       KT_A_NONE);
@@ -3324,8 +3324,8 @@ static void start_plate(int cx, int cells, int h, int hovered, int open)
 		kch_px_plate(cx, 0, cells, h, KCH_T_REST, 1);
 		return;
 	}
-	kch_px_grad(cx * kwl_cell_w() + 1, 1, cells * kwl_cell_w() - 2,
-		    h * kwl_cell_h() - 2, KCH_PLATE_RADIUS,
+	kch_px_grad(cx * kdisp_cell_w() + 1, 1, cells * kdisp_cell_w() - 2,
+		    h * kdisp_cell_h() - 2, KCH_PLATE_RADIUS,
 		    kch_slot_rgb(open ? KT_WARN : KT_ACCENT),
 		    kch_slot_rgb(KT_MID), 0xFF);
 }
@@ -3400,8 +3400,8 @@ static int draw_start(struct sh_state *sh, int h, int compact)
 	 * and a full sprite table are all unaffected.
 	 */
 	if (h > 1 && !compact && lw) {
-		int cell_w = kwl_cell_w(), cell_h = kwl_cell_h();
-		int scale = kwl_scale();
+		int cell_w = kdisp_cell_w(), cell_h = kdisp_cell_h();
+		int scale = kdisp_scale();
 		/* The word at ~62% of the button's height, which is the
 		 * proportion a label has to a button on every desktop this
 		 * shape came from — and the mark square at the same height. */
@@ -3724,7 +3724,7 @@ static int draw_pager(struct sh_state *sh, int right_x, int x_min, int h)
 				 * it is high, so the height is derived from
 				 * the width.
 				 */
-				int cw = kwl_cell_w(), chh = kwl_cell_h();
+				int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 				int sw = hw * cw - 2;
 				int sh_px = sw * 3 / 4;
 				int sx = (px + i * 2) * cw + 1;
@@ -4287,7 +4287,7 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 		return -1;
 	}
 
-	int H = rows * kwl_cell_h() * kwl_scale();
+	int H = rows * kdisp_cell_h() * kdisp_scale();
 	/*
 	 * 23%, not 26. A four-cell band is sixty-two pixels wide and the two
 	 * strings on its top line are `CPU` and `100%`; at 26% they came to
@@ -4355,7 +4355,7 @@ static int draw_meters_tile(struct sh_state *sh, int right_x, int x_min,
 		 * peak to be able to fall, and a peak over everything ever
 		 * sampled barely can.
 		 */
-		int span = d->cells * kwl_cell_w() * kwl_scale();
+		int span = d->cells * kdisp_cell_w() * kdisp_scale();
 		double peak = 0;
 		const struct meter *pair[2] = { d->a, d->b };
 		for (int q = 0; q < 2 && pair[q]; q++) {
@@ -4940,7 +4940,7 @@ static int draw_more(struct sh_state *sh, int right_x, int x_min, int h)
 	 * pixel layer is absent on a terminal and in every golden frame.
 	 */
 	if (px_live) {
-		int cw = kwl_cell_w(), chh = kwl_cell_h();
+		int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 		int bh = irows * chh;
 		/* SIZED FROM THE WIDTH. The box is two cells and the height is
 		 * two rows, so a triangle derived from the height overflows
@@ -5954,8 +5954,8 @@ static void tip_tick(struct sh_state *sh)
 	tip_shown = 1;			/* one attempt per dwell, whatever happens */
 	if (!tip_text(sh, tip_kind, tip_idx, t1, sizeof(t1), t2, sizeof(t2)))
 		return;
-	snprintf(xs, sizeof(xs), "%d", (tip_x > 0 ? tip_x : 0) * kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+	snprintf(xs, sizeof(xs), "%d", (tip_x > 0 ? tip_x : 0) * kdisp_cell_w());
+	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 	/*
 	 * A WINDOW BUTTON'S TIP CARRIES THE WINDOW.
 	 *
@@ -6064,8 +6064,8 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	 * readout" is an anchor plus a margin.
 	 */
 	snprintf(xs, sizeof(xs), "%d",
-		 (id >= 0 && id < SH_AP_N ? sh->ap_x[id] : 0) * kwl_cell_w());
-	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+		 (id >= 0 && id < SH_AP_N ? sh->ap_x[id] : 0) * kdisp_cell_w());
+	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 
 	if (id == SH_AP_MPRIS && btn != SH_TRAY_BTN_LEFT) {
 		/* Middle steps back, right steps forward — the transport a
@@ -6217,8 +6217,8 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	case SH_AP_CLIP: {
 		/* Anchored under itself, above the bar — the same trick the
 		 * clock's calendar uses. */
-		snprintf(xs, sizeof(xs), "%d", sh->ap_x[id] * kwl_cell_w());
-		snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+		snprintf(xs, sizeof(xs), "%d", sh->ap_x[id] * kdisp_cell_w());
+		snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 		const char *argv[] = { "kdos-clip", "--pick", at, xs, ys, NULL };
 		popup_toggle(id, argv);
 		break;
@@ -6294,7 +6294,7 @@ static void start_click(int btn)
 	char ys[16];
 	const char *at = panel_at_flag();
 
-	snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+	snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 	if (btn == SH_TRAY_BTN_MIDDLE) {
 		const char *argv[] = { "kdos-run", NULL };
 		panel_spawn(argv);
@@ -6348,8 +6348,8 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 */
 		char mx[16], my[16];
 
-		snprintf(mx, sizeof(mx), "%d", sh->meter_hit_x * kwl_cell_w());
-		snprintf(my, sizeof(my), "%d", kwl_popup_offset());
+		snprintf(mx, sizeof(mx), "%d", sh->meter_hit_x * kdisp_cell_w());
+		snprintf(my, sizeof(my), "%d", kdisp_popup_offset());
 		if (btn == SH_TRAY_BTN_MIDDLE) {
 			/* In a POPUP, not a terminal — see SH_AP_STUTTER. */
 			const char *argv[] = { "kdos-status", "--open", "stutter",
@@ -6360,7 +6360,13 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 					       panel_at_flag(), mx, my, NULL };
 			panel_spawn(argv);
 		} else {
-			const char *argv[] = { "foot", "-e", "btop", NULL };
+			const char *argv[8];
+			char id[160];
+			int k = sh_term_argv(argv, 0, 8, "btop", id,
+					     sizeof(id));
+
+			argv[k++] = "btop";
+			argv[k] = NULL;
 			panel_spawn(argv);
 		}
 		return;
@@ -6379,7 +6385,7 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 * ignores the argument loses nothing. */
 		if (k >= 0 && k < tray_nvis)
 			sh_tray_activate(sh, tray_map[k], btn,
-					 cx * kwl_cell_w(), kwl_cell_h());
+					 cx * kdisp_cell_w(), kdisp_cell_h());
 		return;
 	}
 
@@ -6432,8 +6438,8 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 		 * row still steps, which is the gesture that wanted stepping.
 		 */
 		char xs[16], ys[16];
-		snprintf(xs, sizeof(xs), "%d", plusn_x * kwl_cell_w());
-		snprintf(ys, sizeof(ys), "%d", kwl_popup_offset());
+		snprintf(xs, sizeof(xs), "%d", plusn_x * kdisp_cell_w());
+		snprintf(ys, sizeof(ys), "%d", kdisp_popup_offset());
 		const char *argv[] = { "kdos-teams", panel_at_flag(), xs, ys,
 				       NULL };
 		panel_spawn(argv);
@@ -6495,7 +6501,7 @@ static void ah_show(void)
 	if (!ah_hidden)
 		return;
 	ah_hidden = 0;
-	kwl_layer_autohide(false);
+	kdisp_layer_autohide(false);
 	ktui_draw_invalidate();
 }
 
@@ -6505,7 +6511,7 @@ static void ah_hide(void)
 	if (ah_hidden)
 		return;
 	ah_hidden = 1;
-	kwl_layer_autohide(true);
+	kdisp_layer_autohide(true);
 	ktui_draw_invalidate();
 }
 
@@ -6524,7 +6530,7 @@ int panel_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	const char *output = NULL;
-	int edge = KWL_EDGE_BOTTOM;
+	int edge = KDISP_EDGE_BOTTOM;
 	int dump = 0, dump_w = 100;
 
 	for (int i = 1; i < argc; i++) {
@@ -6538,9 +6544,9 @@ int panel_main(int argc, char **argv)
 		 * login on somebody's edited comp.conf. `--top` is the whole
 		 * of what `panel = top` does. */
 		else if (!strcmp(argv[i], "--bottom"))
-			edge = KWL_EDGE_BOTTOM;
+			edge = KDISP_EDGE_BOTTOM;
 		else if (!strcmp(argv[i], "--top")) {
-			edge = KWL_EDGE_TOP;
+			edge = KDISP_EDGE_TOP;
 			/* Which way this bar's own popups have to grow — see
 			 * panel_at_flag(). */
 			panel_top = 1;
@@ -6617,8 +6623,8 @@ int panel_main(int argc, char **argv)
 	sh.menu_open = -1;
 	sh.hover_menu = -1;
 	sh.hover_task = -1;
-	KwlConfig cfg = {
-		.role = KWL_ROLE_PANEL,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_PANEL,
 		.edge = edge,
 		.cells = tb_rows,
 		/* Must equal the .desktop id or the shell shows a second, unnamed
@@ -6684,8 +6690,8 @@ int panel_main(int argc, char **argv)
 		 * because a dump is a grid of CELLS and the pixel layer under
 		 * it is never replayed without a surface to replay it onto.
 		 */
-		cfg.role = KWL_ROLE_NONE;
-		kwl_init(&cfg);
+		cfg.role = KDISP_ROLE_NONE;
+		kdisp_init(&cfg, kdos_disp, kdos_disp_n);
 		if (sh_connect(&sh) != 0)
 			sh.ntasks = 0;
 		/* The tray too: a dump that omits it is a dump of a panel
@@ -6725,11 +6731,11 @@ int panel_main(int argc, char **argv)
 		sh_priv_free(&sh);
 		sh_tray_free(&sh);
 		sh_disconnect(&sh);
-		kwl_shutdown();
+		kdisp_shutdown();
 		return 0;
 	}
 
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-shell: no compositor, no font, or no "
 				"layer-shell — not starting\n");
 		return 1;
@@ -6738,7 +6744,7 @@ int panel_main(int argc, char **argv)
 	/*
 	 * THE BODY BELONGS TO THE BACKDROP, so the cell painter must not touch
 	 * it. KT_SURFACE at alpha 0 means "leave these pixels alone" once a
-	 * backdrop is installed — kwl_set_backdrop() is what flips that sense —
+	 * backdrop is installed — kdisp_set_backdrop() is what flips that sense —
 	 * and every cell the bar does not draw on then shows the gradient,
 	 * the plates and the rules underneath.
 	 *
@@ -6746,23 +6752,23 @@ int panel_main(int argc, char **argv)
 	 * and the backdrop has to exist before the slot is cleared, or one
 	 * frame goes out with a hole where the bar should be.
 	 */
-	kwl_set_backdrop(panel_backdrop);
+	kdisp_set_backdrop(panel_backdrop);
 	px_live = 1;
 	kcell_set_slot_alpha(KT_SURFACE, 0);
 	if (sh_connect(&sh) != 0) {
 		fprintf(stderr, "kdos-shell: the compositor exposes no window "
 				"list; the panel would be blank\n");
-		kwl_shutdown();
+		kdisp_shutdown();
 		return 1;
 	}
 	/*
-	 * The icon layer, AFTER kwl_init because it needs the cell size and the
+	 * The icon layer, AFTER kdisp_init because it needs the cell size and the
 	 * output scale, and BEFORE the favorites because those resolve an icon
 	 * name each. Failing is a desktop with no pictures, which is the one it
 	 * had last week — every draw path here falls back to its glyph tier.
 	 */
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	/* Canvas text is the chrome's own family at whatever pixel size a tile
 	 * asks for — the size in `--font` is the CELL's and is replaced per
 	 * request. Off with the icons: a tile is a picture, and `icons = no`
@@ -6789,7 +6795,7 @@ int panel_main(int argc, char **argv)
 	if (autohide)
 		ah_hide();
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		if (sh_theme_dirty) {
 			sh_theme_dirty = 0;
 			sh_theme_from_cache();
@@ -6943,6 +6949,6 @@ int panel_main(int argc, char **argv)
 	sh_tray_free(&sh);
 	sh_disconnect(&sh);
 	kicon_finish();
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

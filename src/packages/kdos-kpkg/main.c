@@ -15,12 +15,19 @@
 
 #include "kdos-kpkg.h"
 
+/*
+ * The format is GUARDED in both of these, as it is in libkbase's pair. A null
+ * format is undefined in vprintf, and the sanitiser build's interprocedural
+ * pass cannot prove one non-null across a whole program compiled in a single
+ * line — so without the guard `-Wformat-overflow` refuses to build at all.
+ */
 void kp_msg(const char *fmt, ...)
 {
 	va_list ap;
 	fputs("==> ", stdout);
 	va_start(ap, fmt);
-	vprintf(fmt, ap);
+	if (fmt)
+		vprintf(fmt, ap);
 	va_end(ap);
 	putchar('\n');
 }
@@ -30,7 +37,8 @@ void kp_err(const char *fmt, ...)
 	va_list ap;
 	fputs("ERROR: ", stderr);
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
+	if (fmt)
+		vfprintf(stderr, fmt, ap);
 	va_end(ap);
 	fputc('\n', stderr);
 }

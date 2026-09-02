@@ -20,10 +20,14 @@ Read the map below before touching anything.
 | Ports, packages, the solver, reproducibility, the binhost, deltas | [`03-architecture/packaging.md`](docs/kdos/03-architecture/packaging.md) |
 | The pack format, the bake, mounting, composition, grafts | [`03-architecture/packs-and-boxes.md`](docs/kdos/03-architecture/packs-and-boxes.md) |
 | Signing, setuid, daemon authorisation, the sandbox | [`03-architecture/security-model.md`](docs/kdos/03-architecture/security-model.md) |
+| Where a window goes, tiling, snapping, workspaces | [`03-architecture/window-model.md`](docs/kdos/03-architecture/window-model.md) |
 | **Drawing anything** — colour, chrome, the pointer contract, glyph tiers | [`03-architecture/design-language.md`](docs/kdos/03-architecture/design-language.md) |
 | The compositor and its grafts | [`04-programs/kdos-comp.md`](docs/kdos/04-programs/kdos-comp.md) |
-| The panel and its 28 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
+| The console desktop, its two sockets, the greeter | [`04-programs/kdos-con.md`](docs/kdos/04-programs/kdos-con.md) |
+| The panel and its 29 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
 | The resource monitor | [`04-programs/kdos-res.md`](docs/kdos/04-programs/kdos-res.md) |
+| The terminal, its keys and clipboards, and pictures in one | [`04-programs/kdos-term.md`](docs/kdos/04-programs/kdos-term.md) |
+| A graphical application on the console, and the kiosk that holds it | [`04-programs/kdos-cage.md`](docs/kdos/04-programs/kdos-cage.md) |
 | Launching boxed apps, launcher generation, box profiles | [`04-programs/kdos-appbox.md`](docs/kdos/04-programs/kdos-appbox.md) |
 | Any root daemon | [`04-programs/daemons.md`](docs/kdos/04-programs/daemons.md) |
 | The installer | [`04-programs/kinstall.md`](docs/kdos/04-programs/kinstall.md) |
@@ -196,6 +200,7 @@ CC="cc -fsanitize=address,undefined -g" testing/selftest.sh   # when you touch a
 ## The rig
 
 ```sh
+testing/rig-image.sh          # builds kdos-qemu-py:latest; network, once
 R="docker run --rm --device /dev/kvm -v $PWD:/kdos -w /kdos kdos-qemu-py:latest \
    python3 testing/vnc-shot.py --audio --size 1920x1080"
 $R --wait 24 --cmd 'kdos-res' --sleep 4 --shot build/shots/x.png
@@ -240,7 +245,7 @@ ls build/fs/var/lib/kpkg/db/ | wc -l                   # installed packages
 git status --short | wc -l                             # tracked changes
 ls build/logs/04_phase4/*.log                          # which packages have logs
 tail -40 build/logs/04_phase4/<N>_<pkg>.install.log    # debug a failure
-bash build/docscheck.sh                                # documentation, if present
+bash testing/docscheck.sh                              # the book: links, prose, page contract
 ```
 
 ---

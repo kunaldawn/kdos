@@ -74,6 +74,7 @@ How the system is put together, and the models a change has to respect.
 | [Packs and boxes](03-architecture/packs-and-boxes.md) | The pack format, mounting, composition, grafts, the catalogue, one box per application |
 | [Security model](03-architecture/security-model.md) | Signing, setuid, daemon authorisation, sandboxing, containers — and what is not protected |
 | [Design language](03-architecture/design-language.md) | The character grid as a specification: frame, chrome, colour, pointer, glyph tiers |
+| [The window model](03-architecture/window-model.md) | Placement, tiling, the edge search and the ring walks — one implementation, obeyed by both desktops |
 
 ### IV — Programs and applications
 
@@ -83,8 +84,11 @@ A page per program KDOS itself ships.
 |---|---|
 | [Program map](04-programs/README.md) | Every KDOS binary, what it is, and which name it answers to |
 | [kdos-comp](04-programs/kdos-comp.md) | The compositor: configuration, decorations, the CRT pass, wallpaper, idle, sockets |
+| [kdos-con](04-programs/kdos-con.md) | The console desktop: the default session, the session/view split, both sockets, the greeter, a graphical application as a window, and recording one |
 | [kdos-shell](04-programs/kdos-shell.md) | One binary under many names: the panel, Start menu, desktop, chooser, notifications, applets |
 | [kdos-res](04-programs/kdos-res.md) | The resource monitor: its pages, identity by box, and what it refuses to invent |
+| [kdos-term](04-programs/kdos-term.md) | The terminal: one binary on both desktops, its keys and clipboards, the three image protocols and animation |
+| [kdos-cage](04-programs/kdos-cage.md) | The kiosk: one application embedded in the cell desktop or full screen on a VT, and what the fork of cage changed |
 | [kdos-appbox](04-programs/kdos-appbox.md) | Launching alien apps, generating launchers, and boxes as first-class objects |
 | [The root daemons](04-programs/daemons.md) | powerd, energyd, oomd, mountd, packd, boxsock, and the portal backend |
 | [kinstall](04-programs/kinstall.md) | The installer's design: the probe, the page model, the install child, answer files |

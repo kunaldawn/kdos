@@ -871,7 +871,7 @@ static void draw_toasts(void)
 		 * backdrop owns — leaves everything else see-through.
 		 */
 		{
-			int cw = kwl_cell_w(), ch = kwl_cell_h();
+			int cw = kdisp_cell_w(), ch = kdisp_cell_h();
 
 			kch_px_grad(r.x * cw + 1, r.y * ch + 1,
 				    r.w * cw - 2, r.h * ch - 2,
@@ -1028,16 +1028,16 @@ int notifyd_main(int argc, char **argv)
 	 * covers the middle of the screen covers the thing the user was doing
 	 * when it arrived.
 	 */
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
-		.corner = KWL_CORNER_TOP_RIGHT,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
+		.corner = KDISP_CORNER_TOP_RIGHT,
 		.cols = TOAST_COLS,
 		.rows = 3,
 		.app_id = "kdos-notifyd",
 		.font = font,
 	};
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-notifyd: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -1046,7 +1046,7 @@ int notifyd_main(int argc, char **argv)
 	 * them — see the plate in draw_toasts(). */
 	kch_px_bare(KT_BG);
 
-	int wl_fd = kwl_fd();
+	int wl_fd = kdisp_fd();
 	int bus_fd = sd_bus_get_fd(bus);
 
 	/* Same live retint as the panel: this daemon outlives an accent
@@ -1055,7 +1055,7 @@ int notifyd_main(int argc, char **argv)
 	sh_theme_watch();
 
 	int shown_rows = -1;
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		if (sh_theme_dirty) {
 			sh_theme_dirty = 0;
 			sh_theme_from_cache();
@@ -1092,18 +1092,18 @@ int notifyd_main(int argc, char **argv)
 		if (want != shown_rows) {
 			/*
 			 * With nothing to show the surface is DESTROYED, not
-			 * shrunk: kwl_overlay_hide()/show() replace the old
+			 * shrunk: kdisp_overlay_hide()/show() replace the old
 			 * one-cell workaround, and the show path completes the
 			 * initial-commit handshake before returning, so the
 			 * first toast after an idle period is drawn on a
 			 * surface that exists. The resize lesson still holds:
-			 * the configure lands in kwl_pump() below and the cell
+			 * the configure lands in kdisp_pump() below and the cell
 			 * buffer follows only through ktui_draw_resize().
 			 */
 			if (want > 0)
-				kwl_overlay_show(TOAST_COLS, want);
+				kdisp_overlay_show(TOAST_COLS, want);
 			else
-				kwl_overlay_hide();
+				kdisp_overlay_hide();
 			shown_rows = want;
 			/*
 			 * show() has already dispatched the configure, so the
@@ -1201,7 +1201,7 @@ int notifyd_main(int argc, char **argv)
 			}
 		}
 		/*
-		 * The configure that answers kwl_overlay_resize() lands here, and
+		 * The configure that answers kdisp_overlay_resize() lands here, and
 		 * the cell buffer does NOT follow by itself — `ktui_w`/`ktui_h`
 		 * come from ktui_draw_resize(), exactly as panel.c and
 		 * launcher.c already do it. Without this the surface grew and
@@ -1246,6 +1246,6 @@ int notifyd_main(int argc, char **argv)
 		unlink(spath);
 	}
 	sd_bus_unref(bus);
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

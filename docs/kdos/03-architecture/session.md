@@ -1,14 +1,42 @@
 # The session
 
-What happens between typing `kdos-desktop` and having a desktop: the session message bus, audio,
-the portal stack, the compositor's supervised chrome, screen capture and the clipboard, input
-methods, and the environment a containerised application receives. This is the layer where the
-host and a box meet, so most of it exists to make that meeting work.
+What happens between a login and having a desktop: the session message bus, audio, the portal
+stack, the supervised chrome, screen capture and the clipboard, input methods, and the environment
+a containerised application receives. This is the layer where the host and a box meet, so most of
+it exists to make that meeting work.
+
+**There are two sessions and they share this layer.** The console desktop (`kdos-con`) is the
+default — a login on tty1 reaches it — and the graphical one (`kdos-comp`) is started with
+`kdos-desktop`. Where a page below says "the compositor" without qualification it means whichever
+one is running.
 
 ## Starting a session
 
-Two shell scripts, deliberately still shell. Every line in them is a fix for something specific,
-they take no untrusted input, and rewriting them would buy nothing but risk.
+**Two sessions, one bring-up.** The console desktop is what a login on tty1 reaches without anyone
+typing a command; the graphical one is started by hand with `kdos-desktop`. What they share is in
+`/usr/local/lib/kdos/session-common.sh`, which is **sourced, never executed**:
+
+| Function | Does |
+|---|---|
+| `kdos_session_runtime` | `XDG_RUNTIME_DIR`, before anything uses it |
+| `kdos_session_keymap` | The console keymap as XKB variables |
+| `kdos_session_boxes` | The appbox warmup, and giving idle ones back |
+| `kdos_session_bus` | One session bus per user, at a fixed path |
+| `kdos_session_audio` | PipeWire, once per user rather than once per session |
+| `kdos_session_once` | The login sound, the first-run card, the session restore |
+
+It is one file rather than two copies because each of those blocks carries a trap that cost a
+debugging session to find — the `flock 7>&-` in the bus function above all — and a second copy is a
+second place to lose one. **The keymap function especially:** `libkkms` reads the same
+`XKB_DEFAULT_LAYOUT` that every Wayland client does, so leaving that table in the graphical script
+gave the console desktop US QWERTY on a machine whose owner does not type it.
+
+`kdos_session_once` takes its **readiness test as a command**, because what "up" means differs: a
+Wayland socket for one session, a session socket for the other. The command must block until the
+display is there and export whatever the children need to reach it.
+
+Both start scripts are deliberately still shell. Every line in them is a fix for something
+specific, they take no untrusted input, and rewriting them would buy nothing but risk.
 
 **`kdos-desktop`** prepares the environment and hands over:
 
@@ -17,22 +45,32 @@ they take no untrusted input, and rewriting them would buy nothing but risk.
    from the kernel log — the log is root-only under `dmesg_restrict`, so reading it there would
    force software rendering for every ordinary user and silently disable the CRT pass. It also
    disables hardware cursors on virtio, where the cursor plane misreports what it supports.
-3. **Translates the console keymap into an XKB layout.** These are two different vocabularies for
-   the same layouts, so there is a table, with a fallback to the first two letters. A derived name
-   is only exported when the keyboard data really carries it, because a layout the library cannot
-   compile does not fail loudly — it silently falls back to US for the whole session, lock prompt
-   included.
-4. **Warms the pinned applications** in the background at `nice 10`, so the first launcher click
-   does not pay for a container start. Not `nice 19`: at 19 the warmup loses every slice to the
-   starting desktop and is still mid-initialisation minutes later.
-5. Starts a ten-minute loop that stops idle boxes, from the session rather than from a root
-   service, because the boxes are the user's.
-6. Starts or reuses the session bus.
-7. Executes `kdos-desktop-start`.
+3. The shared bring-up above, then executes `kdos-desktop-start`.
 
-**`kdos-desktop-start`** brings up the services that must exist before or beside the compositor:
-the audio stack, then the compositor itself with its log kept and a restart offer if it dies, and
-— in a subshell that waits for the compositor's socket to appear — the portal stack.
+**`kdos-desktop-start`** brings up what must exist before or beside the compositor: the compositor
+itself with its log kept and a restart offer if it dies, and — in subshells that wait for the
+compositor's socket — the portal stack, the input method, and the once-per-session block.
+
+**`kdos-con-start`** is the console session's equivalent, and **nothing on its path opens a Wayland
+socket** — which is what makes it the session that still comes up on a machine whose GPU driver
+does not. After the shared bring-up it:
+
+1. Creates the session socket at a **fixed** path, `$XDG_RUNTIME_DIR/kdos/con.sock`. Fixed, because
+   `kdos con attach` and every surface started later find the session by that name, and a name that
+   changed every login could only be discovered by guessing.
+2. Starts **only** the KDOS portal backend. `xdg-desktop-portal-wlr` is a Wayland client and there
+   is no compositor here for it to connect to, so starting it would leave a backend that dies at
+   once and a front-end that has already snapshotted it.
+3. **Supervises the view, not the session.** A view holds a DRM device and a seat and is the half
+   that can lose them; the session holds every window and must outlive that. A view that exits
+   cleanly is a detach and is not restarted; one that crashes is, three times in sixty seconds.
+4. Runs `kdos-con --serve` under the same crash harness `kdos-desktop-start` uses.
+
+**Both harnesses write stderr to a file and follow it with `tail -f`, never a pipe.** Every
+descendant inherits fd 2, and a pipe's reader sees EOF only when the last write end closes — so one
+surviving grandchild, such as the `conmon` that lives for the whole life of a boxed application,
+would hold the reader open forever. The symptom is a terminal that sits there with no desktop, no
+error and nothing in a log.
 
 ## The session message bus
 
@@ -86,6 +124,16 @@ org.freedesktop.impl.portal.Settings=kdos
 org.freedesktop.impl.portal.AppChooser=kdos
 ```
 
+**TWO SESSIONS, TWO BACKENDS, ONE INTERFACE.** `XDG_CURRENT_DESKTOP` is a list, most specific
+first, and the front end reads the first configuration file it finds for any name in it. The
+console session sets `KDOS-Console:KDOS` and gets `kdos-console-portals.conf`; the compositor keeps
+`KDOS` and gets the file above. The one line that differs is `ScreenCast`, which on the console is
+`kdos` — `xdg-desktop-portal-wlr` is a Wayland client and there is no compositor on that path, so it
+would start, fail to connect, and leave the interface with a backend that is not there.
+
+A semicolon-separated list would not do it. A backend that is D-Bus activatable is always
+"available", so `wlr;kdos` starts `wlr` and fails rather than falling through.
+
 **`default=none` is honest rather than lazy.** The backend every other desktop falls back to is a
 GTK program, and there is no GTK on this host — so Print, Email, Wallpaper and the rest genuinely
 have nobody to serve them. A portal that would only ever fail is not advertised.
@@ -107,9 +155,22 @@ then restart the front end. Get the order wrong and ScreenCast stays empty for t
 
 ### The KDOS backend
 
-`src/desktop/xdg-desktop-portal-kdos` serves FileChooser, Settings and AppChooser. It is a bus
-adapter and nothing more: it spawns `kdos-pick` and reads its output, so the file chooser stays an
-ordinary program you can run by hand, script or replace.
+`src/desktop/xdg-desktop-portal-kdos` serves FileChooser, Settings, AppChooser and — on the console
+— ScreenCast. It is a bus adapter and nothing more: it spawns `kdos-pick` and reads its output, so
+the file chooser stays an ordinary program you can run by hand, script or replace, and it spawns
+`kdos-view --cast` and reads the node id that view registered.
+
+**A recording is a view nobody looks at.** The session holds cells and a view is what turns them
+into pixels, so ScreenCast on the console is a second `kdos-view` rasterising into a PipeWire
+stream. The backend opens no device, renders nothing and holds no frame; the view prints the node
+and the stream's pixel size on one line, because the backend never rasterises and cannot work the
+size out.
+
+**One source, the whole desktop.** There is one grid and no notion of a monitor inside it, and a
+"window" there is a rectangle of cells with nothing behind it to capture separately — so
+`AvailableSourceTypes` is MONITOR and nothing else. The cursor mode is EMBEDDED for the same kind of
+reason: the caret is a cell the toolkit draws in reverse video, so it is already in the frame and
+there is no separate image to send alongside.
 
 Three rules it exists to keep:
 
@@ -119,6 +180,10 @@ Three rules it exists to keep:
   asked for it needs cross-process window referencing that is not wired up, so dialogs open
   centred.
 - **The chooser is executed with an argument vector, never a command string.**
+
+**And a cast completes on a LINE, not on end-of-file.** The chooser exits and its output ends; the
+cast view does not exit — it *is* the stream — so the reply is built when its first line arrives and
+the process is left running until the session is closed.
 
 **And the bus loop does not block on the dialog.** The fork happens in the handler, the request
 message is retained, the handler returns "handled" *without* replying, the pipe joins the main

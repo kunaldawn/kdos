@@ -57,6 +57,32 @@ static uint32_t glyph_cp[KT_G_N];
 
 static KtuiCell *front, *back;
 static int bw, bh;
+
+/*
+ * The buffer being composed, for the one caller that needs to ask what is
+ * currently on the screen: the sprite table, deciding whether a slot is safe
+ * to take back. It is `front` rather than `back` because a sprite referenced
+ * by the frame being built is in use even though it has not been presented.
+ *
+ * NOT a general accessor. Nothing draws through this — every drawing path
+ * above goes through ktui_draw_cell, so the clip, the wide-glyph rules and the
+ * damage diff all hold.
+ */
+/*
+ * The buffer's OWN size, not ktui_w by ktui_h. A backend reports a new size
+ * the moment it is resized and the buffer is only reallocated when the
+ * consumer calls ktui_draw_resize(), so between those two points the globals
+ * describe a grid larger than the allocation — and a caller that walked
+ * ktui_w * ktui_h cells would read past the end of it.
+ */
+const KtuiCell *ktui_cells(int *w, int *h)
+{
+	if (w)
+		*w = front ? bw : 0;
+	if (h)
+		*h = front ? bh : 0;
+	return front;
+}
 static int force_full;
 static int offscreen;
 static int ptr_x = -1, ptr_y = -1;
@@ -792,9 +818,27 @@ void ktui_draw_flush(void)
 	 * describe, and ktui_draw_dump() reads `back` directly. */
 	if (offscreen)
 		return;
-	if (ptr_x >= 0 && ptr_x < bw && ptr_y >= 0 && ptr_y < bh)
-		back[ptr_y * bw + ptr_x].attr ^= KT_A_REVERSE;
+	/*
+	 * THE POINTER IS AN OVERLAY, NOT CONTENT, so it goes on for the flush
+	 * and comes straight back off. `back` is what the session's cells are
+	 * accumulated into and it survives between frames — leaving the
+	 * reverse in it would make the pointer a stain the next frame draws
+	 * around, one per cell it was ever over.
+	 *
+	 * Taking it off again is also what erases it: `front` keeps the
+	 * reversed cell, `back` does not, so the cell differs and repaints
+	 * when the pointer leaves. The same XOR does both jobs.
+	 */
+	int pt = -1;
+
+	if (ptr_x >= 0 && ptr_x < bw && ptr_y >= 0 && ptr_y < bh) {
+		pt = ptr_y * bw + ptr_x;
+		back[pt].attr ^= KT_A_REVERSE;
+	}
 
 	cur_backend()->flush(back, front, bw, bh, force_full);
+
+	if (pt >= 0)
+		back[pt].attr ^= KT_A_REVERSE;
 	force_full = 0;
 }

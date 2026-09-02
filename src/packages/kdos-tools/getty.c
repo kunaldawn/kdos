@@ -282,7 +282,19 @@ int getty_main(int argc, char **argv)
 	}
 
 	execvp(argv[2], argv + 2);
-	fprintf(stderr, "kdos-getty: cannot exec %s: %s\n", argv[2],
-		strerror(errno));
+
+	/*
+	 * A CONSOLE ALWAYS COMES UP. The program named here is whichever login
+	 * path the image was built with, and an image built without it — a
+	 * desktop package that did not land, a partially installed system —
+	 * would otherwise leave init respawning a failing exec forever and no
+	 * way to log in at all. The fallback is the plain autologin getty,
+	 * which needs nothing but util-linux.
+	 */
+	fprintf(stderr, "kdos-getty: cannot exec %s: %s — falling back\n",
+		argv[2], strerror(errno));
+	execl("/sbin/agetty", "agetty", "--autologin", "kdos", "--noclear",
+	      tty, "38400", "linux", (char *)NULL);
+	fprintf(stderr, "kdos-getty: no agetty either: %s\n", strerror(errno));
 	return 127;
 }

@@ -5,32 +5,30 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-saver — attract mode, between dim and lock
+ *   kdos-saver — attract mode, between idle and lock
  *
  *   ░ ▒     █        ▒
  *   ▒ █  ░  ▒     ░  █   ░
  *   █    ▒  ░  ▒  ▒  ░   ▒
  *
- * The gap the idle policy left. kdos-comp dims, then locks, then powers the
- * outputs off; between the dim and the lock there was a dimmed desktop sitting
- * there being read over somebody's shoulder. This covers it with something that
- * is unmistakably not the desktop.
+ * The step between a desktop being left alone and it being locked. What is
+ * there otherwise is a desktop sitting on screen being read over somebody's
+ * shoulder; this covers it with something that is unmistakably not the desktop.
  *
- * NOTHING STARTS IT YET, and saying so is the point: kdos-idle.c spawns
- * kdos-lock and no saver, and TEMPLATES[] in kdos-child.c does not carry one —
- * a feature with no line there does not run, whatever a comment says. So today
- * this is a program you run by hand or from a keybind; wiring it to the dim
- * stage (spawn on dim, SIGTERM on activity, one per output) is a change to the
- * compositor, not to this file.
+ * STARTED BY THE DISPLAY'S IDLE POLICY, not by itself. kdos-con spawns it at
+ * `idle_saver` and asks it to close on the first keystroke. On the graphical
+ * desktop kdos-idle.c spawns kdos-lock and no saver, and TEMPLATES[] in
+ * kdos-child.c does not carry one — a feature with no line there does not run,
+ * whatever a comment says — so there it is a program you run by hand.
  *
  * IT NEVER WATCHES INPUT, and that is the whole of its safety story. A
  * screensaver that decides for itself when to go away is a screensaver that can
  * decide wrong — and one that took the keyboard would be a lock screen with no
  * password. This surface asks for NO keyboard interactivity and claims NO
- * pointer region at all (kwl_input_cells(NULL, 0)), so every keystroke and every
+ * pointer region at all (kdisp_input_cells(NULL, 0)), so every keystroke and every
  * click goes to whatever is underneath exactly as if this were not here.
- * Activity detection stays where it already is, in the compositor's idle policy,
- * which kills this process on the first event.
+ * Activity detection stays with the display, which takes the surface away on
+ * the first event.
  *
  * ONE PROCESS PER OUTPUT, named with `--output`, the same convention the panel
  * and the desktop already follow: libktui has a single cell buffer, so a second
@@ -47,9 +45,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <wayland-client.h>
-
-#include "kwl.h"
 #include "shell.h"
 
 #define SV_FPS_MAX	15
@@ -332,169 +327,6 @@ static void sv_logo_draw(int cols, int rows)
 	}
 }
 
-/* ── how big the output actually is ──────────────────────────────────────
- *
- * layer-shell sizes an unanchored overlay in pixels and libkwl has no output
- * geometry to hand out, so the surface is measured before it is created: a
- * registry of our own on libkwl's connection, one wl_output listener, one
- * roundtrip. wl_output version 4 is bound for the `name` event — a registry id
- * cannot be written on a command line, and `--output eDP-1` is the whole
- * interface a supervisor has.
- *
- * Doing it under KWL_ROLE_NONE (connect, bind, no surface) is what keeps this
- * from being visible: the alternative is creating a small overlay and resizing
- * it, which flashes a box in the middle of the screen on every idle timeout.
- */
-#define SV_MAX_OUT 16
-
-struct sv_output {
-	char name[64];
-	int w, h;
-};
-
-static struct sv_output sv_outs[SV_MAX_OUT];
-static int sv_nouts;
-
-static void sv_out_geometry(void *d, struct wl_output *o, int32_t x, int32_t y,
-			    int32_t pw, int32_t ph, int32_t sub,
-			    const char *make, const char *model, int32_t tr)
-{ (void)d; (void)o; (void)x; (void)y; (void)pw; (void)ph; (void)sub;
-  (void)make; (void)model; (void)tr; }
-
-static void sv_out_mode(void *d, struct wl_output *o, uint32_t flags, int32_t w,
-			int32_t h, int32_t refresh)
-{
-	int i = (int)(intptr_t)d;
-	(void)o;
-	(void)refresh;
-	/* CURRENT only: a monitor advertises every mode it can do, and the
-	 * last one in the list is not the one it is running. */
-	if (!(flags & WL_OUTPUT_MODE_CURRENT) || i < 0 || i >= SV_MAX_OUT)
-		return;
-	sv_outs[i].w = w;
-	sv_outs[i].h = h;
-}
-
-static void sv_out_done(void *d, struct wl_output *o) { (void)d; (void)o; }
-static void sv_out_scale(void *d, struct wl_output *o, int32_t f)
-{ (void)d; (void)o; (void)f; }
-
-static void sv_out_name(void *d, struct wl_output *o, const char *name)
-{
-	int i = (int)(intptr_t)d;
-	(void)o;
-	if (i < 0 || i >= SV_MAX_OUT || !name)
-		return;
-	snprintf(sv_outs[i].name, sizeof(sv_outs[0].name), "%s", name);
-}
-
-static void sv_out_description(void *d, struct wl_output *o, const char *s)
-{ (void)d; (void)o; (void)s; }
-
-static const struct wl_output_listener sv_output_listener = {
-	.geometry = sv_out_geometry,
-	.mode = sv_out_mode,
-	.done = sv_out_done,
-	.scale = sv_out_scale,
-	.name = sv_out_name,
-	.description = sv_out_description,
-};
-
-static void sv_reg_global(void *data, struct wl_registry *reg, uint32_t id,
-			  const char *iface, uint32_t ver)
-{
-	(void)data;
-	if (strcmp(iface, "wl_output") || sv_nouts >= SV_MAX_OUT)
-		return;
-	struct wl_output *o = wl_registry_bind(reg, id, &wl_output_interface,
-					       ver < 4 ? ver : 4);
-	if (!o)
-		return;
-	wl_output_add_listener(o, &sv_output_listener,
-			       (void *)(intptr_t)sv_nouts);
-	sv_nouts++;
-}
-
-static void sv_reg_remove(void *data, struct wl_registry *reg, uint32_t id)
-{ (void)data; (void)reg; (void)id; }
-
-static const struct wl_registry_listener sv_registry_listener = {
-	.global = sv_reg_global,
-	.global_remove = sv_reg_remove,
-};
-
-/*
- * Measure the named output (or the first one) in CELLS. Returns 0 on success;
- * a failure is not fatal, it just leaves the caller with its fallback size.
- */
-static int sv_measure(const char *want, const char *font, int *cols, int *rows)
-{
-	/* The SAME font the surface will be created with: cells are what this
-	 * converts pixels into, and measuring with libkwl's default while
-	 * drawing at `--font Terminus:pixelsize=16` covers a quarter of the
-	 * screen and leaves the desktop showing around it. */
-	KwlConfig probe = { .role = KWL_ROLE_NONE, .font = font };
-	struct wl_display *dpy;
-	struct wl_registry *reg;
-	int cw, ch, pick = -1, rc = -1;
-
-	if (kwl_init(&probe) != 0)
-		return -1;
-	dpy = kwl_display();
-	cw = kwl_cell_w();
-	ch = kwl_cell_h();
-	if (!dpy || cw < 1 || ch < 1) {
-		kwl_shutdown();
-		return -1;
-	}
-
-	sv_nouts = 0;
-	memset(sv_outs, 0, sizeof(sv_outs));
-	reg = wl_display_get_registry(dpy);
-	if (reg) {
-		wl_registry_add_listener(reg, &sv_registry_listener, NULL);
-		wl_display_roundtrip(dpy);	/* the globals   */
-		wl_display_roundtrip(dpy);	/* and their events */
-	}
-
-	/*
-	 * The named output, then ANY output. An unknown name falls back to the
-	 * compositor's own choice in libkwl (a screen unplugged between the
-	 * supervisor deciding and this process starting is a race, not a
-	 * mistake), so measuring it as 80x24 would leave a small box in the
-	 * middle of a screen that is otherwise showing the desktop.
-	 */
-	for (int pass = 0; pass < 2 && pick < 0; pass++)
-		for (int i = 0; i < sv_nouts; i++) {
-			if (sv_outs[i].w < 1 || sv_outs[i].h < 1)
-				continue;
-			if (pass == 0 && want && *want &&
-			    strcmp(sv_outs[i].name, want))
-				continue;
-			pick = i;
-			break;
-		}
-	if (pick >= 0) {
-		/*
-		 * Rounded UP, not down. A screen 1080 pixels tall with a 32
-		 * pixel cell is 33.75 rows: 33 rows leaves a strip of the
-		 * desktop showing along the bottom edge of a saver whose whole
-		 * job is to cover it. The compositor crops the overflow.
-		 */
-		*cols = (sv_outs[pick].w + cw - 1) / cw;
-		*rows = (sv_outs[pick].h + ch - 1) / ch;
-		if (*cols > SV_MAX_COLS)
-			*cols = SV_MAX_COLS;
-		if (*rows > SV_MAX_ROWS)
-			*rows = SV_MAX_ROWS;
-		rc = 0;
-	}
-
-	if (reg)
-		wl_registry_destroy(reg);
-	kwl_shutdown();
-	return rc;
-}
 
 /* ── main ──────────────────────────────────────────────────────────────── */
 
@@ -573,16 +405,15 @@ int saver_main(int argc, char **argv)
 	if (!sv_seed)
 		sv_seed = 1;
 
-	/* Measured first, created at the right size: see sv_measure(). A
-	 * machine whose outputs cannot be read still gets a saver, just a
-	 * conservatively sized one. */
-	int cols = 80, rows = 24;
-	sv_measure(output, font, &cols, &rows);
-
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
-		.cols = cols,
-		.rows = rows,
+	/*
+	 * NO SIZE IS ASKED FOR. KDISP_ROLE_SAVER is the whole screen and the
+	 * display says how big that is — a client that measured it would have
+	 * to round pixels into cells, and a row rounded down is a strip of
+	 * desktop along the bottom edge of a surface whose whole job is to
+	 * cover it. The first configure arrives before anything is drawn.
+	 */
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_SAVER,
 		.app_id = "kdos-saver",
 		.font = font,
 		.output = output,
@@ -592,13 +423,13 @@ int saver_main(int argc, char **argv)
 		 * that swallowed input would be a lock screen with no password.
 		 */
 	};
-	if (kwl_init(&cfg) != 0) {
-		fprintf(stderr, "kdos-saver: no compositor or no layer-shell\n");
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
+		fprintf(stderr, "kdos-saver: no display\n");
 		return 1;
 	}
 	/* And no pointer region at all — a click goes through to the desktop,
-	 * where the compositor's idle policy sees it and kills this. */
-	kwl_input_cells(NULL, 0);
+	 * where the display's idle policy sees it and takes this away. */
+	kdisp_input_cells(NULL, 0);
 	ktui_draw_init();
 	sv_ramp_init();
 
@@ -618,7 +449,7 @@ int saver_main(int argc, char **argv)
 
 	const int frame_ms = 1000 / fps;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		if (mode == SV_MODE_LOGO)
 			sv_logo_draw(cw, ch);
 		else
@@ -651,6 +482,6 @@ int saver_main(int argc, char **argv)
 			sv_rain_step(ch);
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

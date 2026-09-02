@@ -1237,7 +1237,7 @@ int audio_main(int argc, char **argv)
 	/* Anchored means popup, centred means window — see the same block in
 	 * net.c, which is where that split is written down. */
 	int popup = at_x >= 0;
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -1248,12 +1248,12 @@ int audio_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
+		.role = popup ? KDISP_ROLE_OVERLAY : KDISP_ROLE_TOPLEVEL,
 		.cols = popup ? 56 : AU_COLS,
 		.rows = popup ? 18 : AU_ROWS,
 		/* Above the applet that opened it, or centred when nobody
 		 * said where. */
-		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = popup ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -1267,7 +1267,7 @@ int audio_main(int argc, char **argv)
 		 * like every other panel popup. */
 		.dismiss_on_unfocus = popup,
 	};
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-audio: no compositor or no layer-shell\n");
 		if (au_bus)
 			sd_bus_unref(au_bus);
@@ -1275,9 +1275,9 @@ int audio_main(int argc, char **argv)
 		au_mixer_close_all();
 		return 1;
 	}
-	/* AFTER kwl_init: the icon layer needs the cell size and the scale. */
+	/* AFTER kdisp_init: the icon layer needs the cell size and the scale. */
 	if (au_icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
@@ -1285,7 +1285,7 @@ int audio_main(int argc, char **argv)
 
 	time_t last_bt = time(NULL), last_dev = last_bt;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		/* The geometry the LAST frame drew. On the very first turn the
@@ -1503,7 +1503,7 @@ int audio_main(int argc, char **argv)
 	}
 
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	if (au_bus)
 		sd_bus_unref(au_bus);
 	au_pw_free();

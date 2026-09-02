@@ -56,7 +56,7 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code  "$PROTO/staging/ext-workspace/ext-workspace-v1.xml" \
 	ext-workspace-v1-protocol.c
 # The panel is not a lock screen and binds no lock role — but it compiles the
-# WHOLE of libkwl, and libkwl carries KWL_ROLE_LOCK for kdos-lock, so kwl.c
+# WHOLE of libkwl, and libkwl carries KDISP_ROLE_LOCK for kdos-lock, so kwl.c
 # includes this header unconditionally. Generating it only in kdos-lock's
 # recipe is what made kdos-shell the first package of this phase to fail.
 "$SCANNER" client-header \
@@ -86,13 +86,13 @@ PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I. -I"$PORT_SRC" \
-	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" \
+	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkwm" \
 	-I"$LIBS/libkxdg" -I"$LIBS/libkicon" -I"$LIBS/libkchrome" \
 	-I"$LIBS/libkproc" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-shell \
 	"$PORT_SRC"/*.c \
-	"$LIBS"/libkwl/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
+	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcon/*.c "$LIBS"/libkwm/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c "$LIBS"/libkicon/*.c \
 	"$LIBS"/libkchrome/*.c "$LIBS"/libkproc/*.c \
 	./*-protocol.c \
@@ -150,3 +150,6 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-status"
 # The tooltip. Half the bar is 32-pixel pictures with no words beside them, and
 # a control nobody can name is a control nobody clicks.
 ln -s kdos-shell "$PKG/usr/bin/kdos-tip"
+# The input-method candidate window, drawn as cells rather than by the engine's
+# own toolkit. It owns org.kde.impanel and speaks kimpanel.
+ln -s kdos-shell "$PKG/usr/bin/kdos-ime"
