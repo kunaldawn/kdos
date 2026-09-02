@@ -23,9 +23,12 @@ For the user-facing view of the same path, see
 | 12 | The numbered service scripts | `rcS` |
 | 13 | `kdos-bootctl mark-good` | `rcS`, last |
 | 14 | `kdos-getty` on tty1 and tty2 | init, as `respawn` |
-| 15 | A login shell, autologin on tty1 | agetty |
+| 15 | `kdos-con-login`, which greets or autologins | `kdos-getty` on tty1 |
+| 16 | The console desktop | `~/.bash_profile`, on tty1 only |
 
-Everything after step 15 is [the session](session.md), and is started by hand.
+Step 16 is [the session](session.md). **The console desktop is the default one** — a login on tty1
+reaches it without anyone typing a command, and it needs no Wayland, so it comes up on a machine
+whose GPU driver does not. The graphical session is still started by hand, with `kdos-desktop`.
 
 ## rEFInd and the kernel command line
 
@@ -211,7 +214,13 @@ The tell-tale is that `readlink /proc/<pid>/root` prints `/newroot`. `kdos docto
 4. Runs each `NN_name.sh` in numeric order, logging each to `/run/kdos-init.<name>.log`, showing
    the splash a step per script and its failure detail if one fails.
 5. Runs `kdos-bootctl mark-good`.
-6. Quits the splash, which runs the power-off animation and leaves a clean framebuffer for agetty.
+6. Quits the splash, which runs the power-off animation and leaves a clean framebuffer for the
+   tty1 login.
+
+   **The quit is synchronous**, and the console desktop depends on it twice: init starts the tty1
+   login on a framebuffer nothing else owns, and `kdos-view`'s KMS modeset further down that chain
+   acquires a device the splash has already released. A splash that quit asynchronously would race
+   a modeset, and the loser of that race is a black screen with a running session behind it.
 
 **A service is disabled by a marker file**, not by editing anything:
 
@@ -272,8 +281,29 @@ takeover, load the font and palette, verify, then execute the getty.
 
 Do not move font or palette setup back into `rcS`.
 
-`/etc/inittab` gives `tty1` an autologin as `kdos`, `tty2` an ordinary login, and `ttyS0` a serial
+`/etc/inittab` gives `tty1` to `kdos-con-login`, `tty2` an ordinary login, and `ttyS0` a serial
 login on demand.
+
+`kdos-con-login` is `kdos-con` under a third name, and it reads `greet` from
+[`con.conf`](../06-reference/configuration.md):
+
+- **`greet = no`** — the live medium's answer — executes `agetty --autologin kdos`. Going through
+  agetty keeps utmp, lastlog and the shell profile on the path they take everywhere else, and a
+  machine with one account and no password has nothing to ask.
+- **`greet = yes`** — what the installer writes — draws the login surface on the tty. It uses the
+  **tty backend**, not a modeset: `kdos-getty` has already loaded the console font and palette, and
+  a greeter that opened a DRM device would make the session binary depend on the one thing the
+  session/view split exists to survive. The modeset is `kdos-view`'s, after the login.
+
+The greeter never handles a password hash. On submit it forks, the child drops to the candidate
+account, and it executes `kdos-checkpass` with the password on stdin — the same setuid helper the
+lock screen uses, which takes no arguments and checks the caller's own real uid, so nothing on this
+path can be aimed at root.
+
+**`kdos-getty` falls back to the plain autologin getty** when the program named in `/etc/inittab`
+cannot be executed. An image built without the console desktop still gives a console; without the
+fallback, init would respawn a failing exec forever and there would be no way to log in at all.
+`tty2` is the recovery console and stays a plain getty whatever tty1 does.
 
 ## The login banner
 

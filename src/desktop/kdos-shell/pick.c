@@ -920,7 +920,7 @@ int pick_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -931,7 +931,7 @@ int pick_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = KWL_ROLE_TOPLEVEL,
+		.role = KDISP_ROLE_TOPLEVEL,
 		.cols = 64,
 		.rows = 22,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -943,7 +943,7 @@ int pick_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-pick: no compositor or no layer-shell\n");
 		return 2;
 	}
@@ -953,7 +953,7 @@ int pick_main(int argc, char **argv)
 	kch_px_popup(KT_SURFACE);
 
 	int rc = 1;
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). The
 		 * file chooser is the dialog most likely to be open when one
 		 * happens — every boxed app's Open reaches it through the
@@ -1291,7 +1291,7 @@ int pick_main(int argc, char **argv)
 			sel = nrows ? nrows - 1 : 0;
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	fflush(stdout);
 	return rc;
 }

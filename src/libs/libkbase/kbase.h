@@ -195,6 +195,12 @@ int kb_tar_finish(int fd);		/* the two zero blocks that end it */
 
 const char *kb_runtime_dir(void);	/* $XDG_RUNTIME_DIR, or /tmp       */
 const char *kb_home_dir(void);		/* $HOME, or /root                 */
+
+/* A virtual machine, by the DMI vendor string. The idle timers and the lid
+ * policy both default to off here: a blanked screen over VNC cannot be told
+ * from a crash, and a VM's lid event is a stray ACPI report. Misses a
+ * hypervisor not on its list, which fails in the safe direction. */
+int kb_in_vm(void);
 char *kb_path_join(const char *a, const char *b);	/* malloc'd        */
 int kb_mkdir_p(const char *path);
 

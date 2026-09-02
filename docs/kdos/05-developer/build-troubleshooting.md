@@ -31,6 +31,10 @@ that is why they are worth a catalogue.
 | A stale package-config file shadowing a fixed one | [A missing meson prefix](#a-missing-meson-prefix-or-library-directory) |
 | Every static link failing on unwinder symbols | [A CMake file with no project declaration](#a-cmake-file-with-no-project-declaration) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
+| `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
+| `No rule to make target '\'` during an install | [A parallel install race](#a-parallel-install-race) |
+| A BSD header missing on a fresh build only | [A dependency the list happened to satisfy](#a-dependency-the-list-happened-to-satisfy) |
+| A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | A time-protocol helper failing to link | [The time-protocol helper](#the-time-protocol-helper) |
 | A submodule directory present but empty | [An empty submodule in a release archive](#an-empty-submodule-in-a-release-archive) |
 | A configuration script picking a different compiler | [A configuration script preferring another compiler](#a-configuration-script-preferring-another-compiler) |
@@ -305,6 +309,69 @@ package many times the size, for a handful of files.
 **Cause:** the package-config file for one ICU component does not propagate the core one.
 
 **Fix:** `export LDFLAGS="$LDFLAGS -licuuc"`.
+
+## A parallel install race
+
+**Symptom:** `No rule to make target '\'`, naming an object that compiled a moment earlier, during
+`make install`.
+
+**Cause:** every phase exports `MAKEFLAGS=-j12`, so the **install** runs parallel as well as the
+build. A project whose install targets regenerate their own dependency files races itself: a
+half-written `.dep` ends on a bare line continuation, and make reads the backslash as a target.
+
+**Fix:** `make -j1 … install` for that project. A `-j` on the command line overrides the one in
+`MAKEFLAGS`, and only that invocation is serialised — the compile keeps its parallelism.
+
+Being a race, it passes as often as it fails, so a recipe that has built before is not evidence
+against it.
+
+## A dependency the list happened to satisfy
+
+**Symptom:** a header that is plainly missing — `sys/queue.h` is the one to expect on musl — in a
+port that has built many times before, on a **fresh** build only.
+
+**Cause:** the port never declared the dependency, and was satisfied by whatever else had already
+pulled it in. `sys/queue.h` comes from `libbsd`, which nothing lists directly; it arrives as a
+dependency of other ports. Rebuild incrementally and it is already there. `make clean` first and the
+order decides, so a port earlier in the list than its accidental provider fails.
+
+**Fix:** name it in `depends`. The point of the key is that the solver orders the build, and a
+dependency that is only ever true by accident is one `make clean` away from not being.
+
+## Gettext on musl
+
+**Symptom:** `undefined reference to libintl_gettext` (or `libintl_ngettext`) at link, from a
+program that compiled without complaint.
+
+**Cause:** glibc answers `gettext()` from libc and musl does not. Upstream build systems routinely
+test `uname -s` and take Linux to mean glibc, so the one platform that needs `-lintl` is the one
+their test excludes.
+
+**Fix:** depend on `libintl` and put `-lintl` where that project's link line will keep it. Check
+which variable survives before choosing one: a `LIBS`-style variable set with `=` is clobbered by
+the Makefile, while `LDFLAGS` is usually appended to with `+=` and sits last on the link line, which
+is where a library reference belongs. Do not add `-liconv` alongside it out of habit — musl carries
+iconv in libc and there is no library of that name.
+
+`libintl` exists because the `gettext` port is built `--disable-nls` and installs the header without
+the library, which is right for a system that ships no message catalogues. It is the same tarball
+and version, so a caller's header and library cannot describe two different gettexts.
+
+## The wide curses API
+
+**Symptom:** `wget_wch`, `mvwaddnwstr` or another wide-character curses function reported as an
+implicit declaration, against an ncurses that certainly has it.
+
+**Cause:** this tree builds one ncurses, widec, with its headers **flat** in `/usr/include` and no
+`ncursesw/` directory. Two things follow. An include of `<ncursesw/ncurses.h>` resolves nowhere. And
+`curses.h` declares the wide functions only when `NCURSES_WIDECHAR` is 1, which it derives from
+`_XOPEN_SOURCE_EXTENDED`; without that define you get the narrow API from the wide library.
+
+**Fix:** `-D_XOPEN_SOURCE_EXTENDED`, and for the include path a directory of one symlink —
+`mkdir -p compat/ncursesw && ln -sf /usr/include/ncurses.h compat/ncursesw/ncurses.h` — added with
+`-I`. Both are build flags; neither edits the source. Pass them through the **environment** when the
+Makefile appends its own with `+=`, because a command-line assignment replaces that variable
+instead of extending it and takes `-fPIC` with it.
 
 ## The time-protocol helper
 

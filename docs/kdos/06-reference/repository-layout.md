@@ -43,6 +43,8 @@ kdos/
 │   ├── libs/              our C libraries — static, and see the rule below
 │   │   ├── libkbase/          allocation, strings, files, processes, the trash
 │   │   ├── libkcolor/         the palette table and colour maths
+│   │   ├── libkwm/            the window model both desktops obey
+│   │   ├── libkdisp/          which display server, and the surface lifecycle
 │   │   ├── libktui/           the terminal, the cell buffer, widgets, charts
 │   │   ├── libkcell/          the glyph cache and the cell painter
 │   │   ├── libkchrome/        the window furniture
@@ -54,6 +56,10 @@ kdos/
 │   │   ├── libksig/           signing — the one vendored third-party source
 │   │   ├── libkbuild/         phases, plans, the snapshot inventory
 │   │   ├── libkproc/          every reading, from a movable root
+│   │   ├── libkvt/            the terminal state machine — a fork of libtsm
+│   │   ├── libkimg/           the only place untrusted image bytes are decoded
+│   │   ├── libkkms/           a screen, where there is one to take
+│   │   ├── libkcon/           the console session's wire, both ends
 │   │   └── selftest.c         the shared assertion program
 │   │
 │   ├── desktop/           the desktop — a port repository
@@ -66,6 +72,9 @@ kdos/
 │   │   ├── kdos-oomd/         memory-pressure protection
 │   │   ├── kdos-mountd/       removable media
 │   │   ├── kdos-packd/        the only thing that mounts a pack
+│   │   ├── kdos-con/          the console session: windows, terminals, surfaces
+│   │   ├── kdos-view/         the display half: cells arrive, input leaves
+│   │   ├── kdos-term/         the terminal, on both desktops
 │   │   ├── kdos-boxsock/      one tagged compositor socket per box
 │   │   └── xdg-desktop-portal-kdos/  the file chooser, settings, app chooser
 │   │
@@ -99,10 +108,14 @@ kdos/
 │
 ├── testing/
 │   ├── preflight.sh          the wiring, in seconds
+│   ├── docscheck.sh          the book: dead links, history, the page contract
 │   ├── selftest.sh           the libraries and their consumers
 │   ├── fixtures/             recorded system state
 │   ├── goldens/              committed reference frames
 │   ├── vnc-shot.py           drive and photograph a real session
+│   ├── rig-image.sh          builds kdos-qemu-py, the image vnc-shot.py runs in
+│   ├── devdeps-image.sh      builds kdos-devdeps, where nothing in selftest skips
+│   ├── Dockerfile.qemu, Dockerfile.devdeps   what those two images are
 │   ├── packlane.sh           the application lane on a booted machine
 │   ├── install-to-disk.sh    run the installer into a disk image
 │   ├── appsweep.sh, appreport.sh   launch every application and report
@@ -130,8 +143,10 @@ compiled by their consumers' recipes, and the two tools are host-only and compil
 
 ## The library rule
 
-Everything under `src/libs/` links **nothing but the C library**, with one declared exception — the
-Wayland backend, which is a separate archive precisely so the rule survives it. Adding a dependency
+Everything under `src/libs/` links **nothing but the C library**, with two declared exceptions —
+`libkwl`, the Wayland backend, and `libkkms`, the KMS one. Both are separate archives precisely so
+the rule survives them, and both are named only by the consumers that want a display: `kdos-con`
+holds every window and links neither. Adding a dependency
 to any of the others moves every phase-1 consumer with it. See
 [The C libraries](../05-developer/c-libraries.md).
 

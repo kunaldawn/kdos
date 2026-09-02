@@ -34,6 +34,42 @@ kdos-boxsock
 # ext-workspace-v1 — standard protocols, so waybar works here too.
 kdos-shell
 
+# The console session: windows, terminals and native surfaces on a character
+# grid, with NO display of its own. It rasterises no glyph and opens no device
+# — that is kdos-view's half — which is what lets it come up on a machine whose
+# GPU driver does not. Placement, tiling and the edge search are libkwm's, the
+# same ones kdos-comp calls.
+kdos-con
+
+# The display half, and the reason the session has none. A view holds no
+# window list, no focus and no clipboard: cells arrive and input leaves. That
+# is what makes detach and reattach, a second seat, a desktop over ssh and the
+# rig's exact-cell screenshots all fall out of one split rather than be built
+# four times.
+kdos-view
+
+# The terminal. ONE BINARY, TWO DESKTOPS: libkdisp picks between libkwl and
+# libkcon at startup, so the same source is an xdg-toplevel under kdos-comp and
+# a cell surface under kdos-con. libkvt is the state machine — kmscon's, forked
+# — and libkimg is what turns sixel, iTerm2's OSC 1337 and kitty's APC into
+# pixels.
+#
+# It ships BESIDE foot and changes nothing: foot is still the default terminal
+# in rc.xml, menu.xml, the .desktop files, favorites and tmux.conf. foot is
+# battle-tested and this is not, which is the same trade kdos-res made beside
+# btop.
+kdos-term
+
+# One application, full screen, on a VT of its own — a hard fork of cage 0.3.1,
+# which is MIT and is built on the same wlroots 0.20 the compositor fork pins.
+# It is how a Wayland application reaches the console desktop: that desktop
+# composites character cells and a Wayland client's surface is pixels, so the
+# guest gets a terminal rather than a window.
+#
+# It links wlroots and, of ours, only libkcolor — statically, for the palette
+# its background is painted in.
+kdos-cage
+
 # The lock screen, and one of the two setuid-root binaries KDOS ships:
 # /etc/shadow is root-only and kdos-lock must not be. ext-session-lock-v1 means the compositor
 # keeps the screen locked even if the client dies.

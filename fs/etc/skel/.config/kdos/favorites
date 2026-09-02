@@ -18,11 +18,17 @@
 # An id with no entry is skipped in silence: an alien app that is not in this
 # image's appbox bake must not leave a launcher that opens nothing.
 #
-# This file used to ship ABSENT, on the argument that absent is a working
-# default. It is not one any more: with a Start menu and a quick-launch row,
-# an empty list makes both of them look broken on a machine somebody has just
-# booted. Delete every line for the old behaviour.
+# SHIP A LIST, not an empty file. The quick-launch row and the pinned column
+# both read this, and both of them look broken on a freshly booted machine
+# when it is empty. Delete every line for a bare desktop.
+#
+# The first three are terminal entries, which is what makes them the right
+# default: they are the same rows on the console desktop as under the
+# compositor, where `foot` is a Wayland client and the boxed three need a bake.
 
+mc
+btop
+lazygit
 foot
 firefox-esr
 org.xfce.mousepad

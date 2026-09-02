@@ -6,7 +6,15 @@ drawn as a grid of character cells — see
 [the design language](../03-architecture/design-language.md) for why, and
 [kdos-shell](../04-programs/kdos-shell.md) for how.
 
-The desktop starts with `kdos-desktop` from a terminal. There is no display manager.
+**There are two desktops and this page describes both.** The console desktop (`kdos-con`) is what a
+login on `tty1` reaches, and it needs no Wayland; the graphical one (`kdos-comp`) starts with
+`kdos-desktop` from a terminal and takes a terminal of its own. There is no display manager for
+either.
+
+The chords, the Start menu, the applications and the window model are the **same** on both — the
+placement and tiling arithmetic is literally the same code. Where they differ is called out below;
+the short version is that a Wayland application needs the graphical one, and everything KDOS ships
+runs on either.
 
 ![The KDOS desktop: the panel along the bottom, desktop icons on the wallpaper, and a terminal](../../screenshots/desktop.png)
 
@@ -93,6 +101,19 @@ container start and you are entitled to know before you click.
 
 The star at the right edge of a row pins the application to the quick-launch row.
 
+**Terminal programs are applications here.** btop, lazygit, yazi, aerc, calcurse, visidata, nmtui
+and the rest of the installed catalogue carry a desktop entry each, so they are rows in the menu,
+answer to the search, pin to the quick-launch row and open with a double-click — the same as
+anything with a window of its own. Each entry names the program and not an emulator, and the
+desktop supplies the terminal: `kdos-term` on the console, `foot` under the compositor. The entry
+belongs to the package, so installing the program adds the row and removing it takes the row away.
+
+**On the console desktop two rows are different.** Terminal opens `kdos-term`, which draws on the
+character grid directly. And a **Desktop** row appears, which starts the full graphical session on a
+virtual terminal of its own — under the compositor that row is not built, because you are already in
+it. Every other row opens an ordinary window there, the same as here: a graphical application is
+composited in a process of its own and its picture goes into the cells.
+
 ![The Start menu: pinned applications on the left with `[box]` markers, Places and System on the right, and the search field showing the selected row's description](../../screenshots/start-menu.png)
 
 
@@ -116,11 +137,16 @@ the border, or `Super+Alt` and drag.
 
 The complete set, from the shipped `~/.config/kdos-comp/rc.xml`. `Super` is written `W` there.
 
+**The console desktop binds the same chords**, from `~/.config/kdos-con/keys.conf` — a different
+file because `rc.xml` is labwc's XML and the console reads no XML. It implements the window and
+workspace half of the table below; a chord it has no action for does nothing rather than something
+else.
+
 ### Applications and the shell
 
 | Key | Action |
 |---|---|
-| `Super+Return` | Terminal (`foot`) |
+| `Super+Return` | Terminal (`foot`; `kdos-term` on the console desktop) |
 | `Super+grave` | Focus the terminal, or start one |
 | `Super+A` | Start menu |
 | `Super+D` | Launcher |
@@ -229,18 +255,21 @@ different one.
 
 ## Lock, idle and power
 
-`Super+L` locks. The lock screen asks the compositor to hold every output, and the compositor —
-not the lock client — owns the locked state: if the lock program crashes, the screens stay
-covered and a new lock client can replace it.
+`Super+L` locks. The lock screen asks the **session** to hold every output, and the session — not
+the lock client — owns the locked state: if the lock program crashes, the screen stays covered and
+a new lock client can replace it. That is true on both desktops, and on both the unlock is a
+message the lock client sends, never something inferred from it exiting.
 
-The idle policy is one timer with three stages, each measured from your last activity rather than
-from the previous stage: **dim**, then **lock**, then **outputs off**. Activity ends the dim and
-powers the screens back on. It never unlocks. An application holding an idle inhibitor stops the
-policy entirely.
+The idle policy is one timer, measured from your last activity rather than from the previous stage:
+**dim**, then **lock**, then **outputs off**. Activity ends the dim and powers the screen back on.
+It never unlocks. An application holding an idle inhibitor stops the policy entirely.
 
-All three timers **default to zero in a virtual machine**, because a blanked screen over a remote
-display is indistinguishable from a crashed compositor. Set any `idle_*` key in
-`~/.config/kdos/comp.conf` to turn them on anyway. See
+**The console desktop has no dim** — two stages, not three. A dim is a brightness, and that desktop's
+colours are eight palette slots with no brightness between them.
+
+The timers **default to zero in a virtual machine**, because a blanked screen over a remote display
+is indistinguishable from a crashed session. Set any `idle_*` key in `~/.config/kdos/comp.conf` or
+`~/.config/kdos-con/con.conf` to turn them on anyway. See
 [Configuration](../06-reference/configuration.md).
 
 Suspend, restart and shut down are in the Start menu's footer and in the System menu. Each asks

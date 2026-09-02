@@ -1,0 +1,203 @@
+#!/bin/sh
+# kdos-con-start — bring up the console desktop. Run from a tty after login.
+#
+# NO WAYLAND ANYWHERE ON THIS PATH. The session is kdos-con, the display is
+# kdos-view, and neither opens a Wayland socket — which is what makes this the
+# session that still comes up on a machine whose GPU driver does not.
+#
+# The two halves are separate processes on purpose: a view that crashes takes
+# the screen, not the session, and the supervisor below gives the screen back
+# with every window still where it was.
+. /usr/local/lib/kdos/session-common.sh
+
+if [ ! -x /usr/bin/kdos-con ]; then
+	echo "kdos-con-start: no console desktop installed (kdos-con missing)." >&2
+	exit 1
+fi
+
+kdos_session_runtime
+kdos_session_keymap
+kdos_session_boxes
+kdos_session_bus
+kdos_session_audio
+
+# THE SESSION SOCKET, at a fixed path rather than a per-pid one: `kdos con
+# attach` and every surface that starts later find the session by this name,
+# and a name that changed every login could only be discovered by guessing.
+mkdir -p "$XDG_RUNTIME_DIR/kdos" 2>/dev/null
+chmod 700 "$XDG_RUNTIME_DIR/kdos" 2>/dev/null
+_sock="$XDG_RUNTIME_DIR/kdos/con.sock"
+_view="$XDG_RUNTIME_DIR/kdos/con.view"
+
+# THE SURFACE SOCKET, never the view socket. A program started inside the
+# session inherits this and opens a window with it; a display connects to the
+# other one, and only the other one is ever forwarded off this machine.
+export KDOS_CON="$_sock"
+
+# THE DESKTOP NAME, most specific first. xdg-desktop-portal reads the first
+# configuration file it finds for any name in this list, so the console gets
+# kdos-console-portals.conf and the compositor gets kdos-portals.conf — which
+# is how one portal interface is served by two backends. KDOS stays in the list
+# because every toolkit and every `UseIn=` line already knows that name.
+export XDG_CURRENT_DESKTOP="KDOS-Console:KDOS"
+
+# Blocks until the session is accepting, exporting nothing — KDOS_CON is
+# already in the environment every child inherits. Non-zero if it never comes,
+# which is how the callers below decline to start into a session that failed.
+# Waits on the VIEW socket, which the session binds second — so a view socket
+# that exists proves the surface socket does too, and one test covers both.
+_wait_con() {
+	for _ in $(seq 1 150); do
+		[ -S "$_view" ] && return 0
+		sleep 0.2
+	done
+	return 1
+}
+
+# The portal, so a boxed application's file chooser reaches kdos-pick. ONLY the
+# KDOS backend: xdg-desktop-portal-wlr is a Wayland client and there is no
+# compositor here for it to connect to, so starting it would leave a backend
+# that dies at once and a main portal that snapshotted it.
+(
+	_wait_con || exit 0
+	dbus-update-activation-environment KDOS_CON XDG_CURRENT_DESKTOP \
+		XDG_SESSION_TYPE >/dev/null 2>&1
+	[ -x /usr/lib/xdg-desktop-portal-kdos ] && \
+		/usr/lib/xdg-desktop-portal-kdos >/dev/null 2>&1 &
+	for _ in $(seq 1 100); do
+		dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+			/org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
+			string:org.freedesktop.impl.portal.desktop.kdos 2>/dev/null \
+			| grep -q 'boolean true' && break
+		sleep 0.2
+	done
+	# The main portal snapshots its backends at startup, so one that raced
+	# ahead of the backend has to be replaced rather than left with an
+	# empty list for the whole session.
+	MAIN=$(pgrep -f '^/usr/lib/xdg-desktop-portal$')
+	if [ -n "$MAIN" ]; then
+		kill $MAIN 2>/dev/null
+		sleep 0.5
+	fi
+	/usr/lib/xdg-desktop-portal >/dev/null 2>&1 &
+) &
+
+# THE VIEW IS SUPERVISED, THE SESSION IS NOT. A view holds a DRM device and a
+# seat and is the half that can lose them; the session holds every window and
+# must outlive that. Restarted with the same cap the session gets, because a
+# view that cannot open the device fails in milliseconds and would otherwise
+# spin for as long as the machine is on.
+(
+	_wait_con || exit 0
+	# THE VIEW'S STDERR IS KEPT. stdout is not: with --kms the view draws
+	# on the screen, and the only thing it writes to stdout is the glyph
+	# stream of the terminal fallback, which would fill this file with
+	# escape sequences. A view that cannot take the screen says so on
+	# stderr, and a failure nobody can read is a desktop that is simply
+	# absent with no way to ask why.
+	_vlog="$XDG_RUNTIME_DIR/kdos-view.log"
+	: > "$_vlog" 2>/dev/null
+	_vt0=0
+	_vn=0
+	while :; do
+		_t0=$(date +%s)
+		kdos-view --kms --socket "$_view" >/dev/null 2>>"$_vlog"
+		_rc=$?
+		_now=$(date +%s)
+		# A DETACH IS SOMETHING A PERSON DOES, and nobody does it in
+		# under two seconds: they ask for their screen back after using
+		# the desktop. A view that could not take the screen exits in
+		# milliseconds AND exits 0, because falling back to a terminal
+		# it was never given is a clean run that drew nothing. Reading
+		# that 0 as a detach leaves the session with no display for the
+		# rest of the login, which is indistinguishable from a desktop
+		# that does not start.
+		if [ "$_rc" -eq 0 ] && [ $((_now - _t0)) -ge 2 ]; then
+			exit 0
+		fi
+		# The session went away, so there is nothing left to display.
+		[ -S "$_view" ] || exit 0
+		if [ $((_now - _vt0)) -gt 60 ]; then
+			_vt0=$_now
+			_vn=0
+		fi
+		_vn=$((_vn + 1))
+		if [ "$_vn" -ge 3 ]; then
+			echo "" >&2
+			echo "kdos-view: failed $_vn times in 60s — no display." >&2
+			echo "last 20 lines of $_vlog:" >&2
+			[ -f "$_vlog" ] && tail -n 20 "$_vlog" >&2
+			exit "$_rc"
+		fi
+		sleep 1
+	done
+) &
+
+#
+# THE CANDIDATE WINDOW, on this desktop too. kdos-ime is a cell surface here and
+# a layer surface under the compositor — one program, because the rule this
+# project adopted does not allow the two desktops to look different.
+#
+# fcitx5 ITSELF IS NOT STARTED HERE. It is a Wayland client and speaks
+# `input-method-v2` to a compositor, and there is none on this path — so the
+# panel is drawn and the engine that would fill it is not running. That is why
+# `known-gaps.md` still says there is no input method in the console session.
+if command -v fcitx5 >/dev/null 2>&1; then
+	(
+		_wait_con || exit 0
+		kdos-ime >/dev/null 2>&1
+	) &
+fi
+
+# The login sound, the first-run card and the session restore — the same three
+# the graphical session does, with this session's readiness test.
+kdos_session_once _wait_con
+
+# EVERY DESCENDANT OF THE SESSION INHERITS FD 2. A pipe's reader sees EOF only
+# when the LAST write end closes, so a single surviving grandchild — rootless
+# podman's `conmon`, which lives for the whole life of a boxed application, or
+# anything else con_spawn() left behind — would hold `tee` open forever and
+# this script would never reach the restart prompt or give the tty back. A log
+# file and a follower have no such reader.
+#
+# The follower is killed once the session is reaped; the failure path below
+# re-prints the log's tail, so nothing is lost to whatever it had not polled.
+_log="$XDG_RUNTIME_DIR/kdos-con.log"
+[ -f "$_log" ] && mv -f "$_log" "$_log.old"
+: > "$_log"
+tail -f "$_log" >&2 2>/dev/null &
+_tail=$!
+kdos-con --new -t con 2>>"$_log"
+rc=$?
+kill "$_tail" 2>/dev/null
+wait "$_tail" 2>/dev/null
+
+# A clean exit is a logout.
+[ "$rc" -eq 0 ] && exit 0
+
+echo "" >&2
+echo "kdos-con exited with status $rc — last 20 lines of $_log:" >&2
+[ -f "$_log" ] && tail -n 20 "$_log" >&2
+
+# Restart by re-exec'ing this script, which re-arms everything above — the
+# audio block is pgrep-guarded and the portal block MUST re-run, because the
+# backend is a session client and died with the session. The 3-in-60s cap rides
+# in exported variables, which survive the exec; a crash loop faster than a
+# human can read the log is not one a human should keep feeding.
+_now=$(date +%s)
+if [ $((_now - ${KDOS_CON_FAIL_T0:-0})) -gt 60 ]; then
+	KDOS_CON_FAIL_T0=$_now
+	KDOS_CON_FAIL_N=0
+fi
+KDOS_CON_FAIL_N=$((${KDOS_CON_FAIL_N:-0} + 1))
+export KDOS_CON_FAIL_T0 KDOS_CON_FAIL_N
+if [ "$KDOS_CON_FAIL_N" -ge 3 ]; then
+	echo "kdos-con: crashed $KDOS_CON_FAIL_N times in 60s — not restarting again." >&2
+	exit "$rc"
+fi
+printf 'r=restart session, anything else=exit to tty: ' >&2
+if ! read -r _ans </dev/tty; then
+	_ans=
+fi
+[ "$_ans" = "r" ] || exit "$rc"
+exec "$0"

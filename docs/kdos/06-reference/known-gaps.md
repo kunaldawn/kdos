@@ -11,12 +11,44 @@ Where something is deliberately absent rather than merely missing, the reason is
 
 ## Desktop
 
-**No drag and drop.** The clipboard is complete in both directions, including the primary
-selection, but a drag cannot be started and nothing can accept a drop. A file cannot be dragged
-from the desktop into a window.
+**Drag and drop carries text and files, and nothing else.** `text/plain` and `text/uri-list` are
+offered and accepted; there is no MIME negotiation, no deferred transfer and no image payload.
+Only the trash accepts a drop on the desktop — dropping onto a folder would be a move, and a move
+that half-succeeds across filesystems is worse than not offering it. Both directions work between
+a KDOS surface and a boxed application. See [Status](status.md) for what that rests on.
 
-**No touch input.** The seat's touch capability is not bound at all, so a touchscreen drives none
-of the chrome. Pointer and keyboard only.
+**The console desktop does not come up on its own.** `kdos-con` starts and is healthy — it binds
+`con.sock`, `con.view` and `con.windows` and logs nothing — but no view ever attaches, so the screen
+keeps the last thing the framebuffer console drew and the desktop is invisible. Every `kdos-view`
+run against that socket exits inside a second having written a screen's worth of glyphs to **stdout**
+and nothing to stderr, including the supervised one. `kkms_init()` is not the failure: a run against
+a socket that does not exist prints only `cannot attach`, and the screen is taken before the attach
+is tried. A view started by hand with `--tty` draws the desktop correctly, so the session, the
+protocol and the drawing all work — what does not work is the view keeping the screen it took.
+Reproduce with `testing/vnc-shot.py --no-session`, then `pgrep -c kdos-view`.
+
+**A picture's default handler is a Wayland viewer, on both desktops.** `mimeapps.list` sends every
+`image/*` to `imv`, which needs a compositor, so opening a picture from the console desktop's file
+manager does nothing. `timg` is installed and is a terminal entry, so *Open With* reaches it and a
+launcher row starts it; what is missing is a default that follows the desktop, and one
+`mimeapps.list` for one user cannot express two.
+
+**The key card never reads the console keymap.** `kdos-keys` parses `~/.config/kdos-comp/rc.xml`,
+which is the compositor's file. On a console session the chords come from
+`~/.config/kdos-con/keys.conf`, so a chord rebound there is shown as its default. The two files ship
+the same defaults, which is why this is a gap and not a wrong answer. The **programs** the card
+names are corrected for the desktop it is read on — a row that said `foot` on the console named a
+Wayland client that cannot start there — but the chords themselves still come from the wrong file.
+
+**No multi-seat.** `seat0` only. The session and view split makes a second seat
+reachable — a second session with a second view — and nothing implements it, so
+the claim is not made.
+
+**A console session ends with the login that started it.** `kdos con new` makes a session the
+service supervisor owns for the length of that login, so logging out takes every session with it
+and there is nothing to attach to on the next one. Sessions that outlive a logout need a lingering
+policy, a per-user enable and an answer for what the greeter does when you log back in; none of
+the three is decided, so the mechanism is not built.
 
 **No fractional scaling.** The toolkit adopts an output's **integer** scale and renders glyphs at
 that scale, so a high-density display gets a sharp grid rather than a stretched one. Fractional
@@ -50,12 +82,47 @@ deliberate narrowing — what people usually want is an order.
 a dialog over the window that asked for it needs cross-process window referencing that is not
 wired up.
 
-**The input-method candidate window is not a character grid.** It is drawn by the input engine with
-its own toolkit — the one thing on this desktop that is not cells. Making it one would mean writing
-an input method.
-
 **No input-method configuration tool.** The one upstream ships is built on a toolkit this host does
 not have. Configuration is text files.
+
+**No input method in the console session.** fcitx5 is a Wayland client and speaks
+`input-method-v2` to the compositor; there is no compositor on that path. The candidate *window* is
+drawn there — `kdos-ime` is a cell surface on both desktops — but the engine that would fill it is
+not running.
+
+**No VT has ever been allocated.** Embedding is what a graphical application gets and it has been
+run end to end; `--vt` is the exception for something that needs acceleration, and that path — the
+session allocates a terminal, activates it, starts `kdos-cage` there and supervises it, and the
+guest appears in the taskbar marked with its terminal — has **never been run**. It needs an ISO
+carrying `kdos-cage` and a machine with real terminals. What exists is the mechanism and the
+reasoning behind its ordering; what is missing is the evidence that a guest ever appeared on a
+screen that way.
+
+**An embedded application is pointed at a cell at a time.** A press and a release carry where in the
+cell they landed, so a small button is clickable; a drag that stays inside one cell moves the
+guest's pointer nowhere, because a view reports a move when the cell changes. Nothing on this
+desktop that is drawn in cells needs finer, and the one thing that is not is the thing that has to
+live with it.
+
+**An embedded application is typed at through a US keymap.** A view resolves the person's own layout
+to a character before the session sees it, and the session maps that character back to the key that
+produces it on a US keyboard — which is the keymap the guest is given. An application reading raw
+scancodes therefore sees US positions.
+
+**A picture needs `kdos-term`, not `kdos-con`'s own terminal windows.** The session links no pixel
+code by design, so a terminal window it opens itself shows the fallback shade where a picture is.
+`kdos-term` is the terminal that joins the parser to the decoder, and it is a surface like any
+other — so a picture on the console desktop means opening one of those.
+
+**No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing in
+the catalogue emits either. The three raster protocols are what a modern program reaches for.
+
+**The console screenshot is cells, not an image.** `kdos-shot` writes the grid as text. Rendering
+cells to a picture is `libkcell`'s, which needs fcft and pixman, and `kdos-tools` is on every image
+and links neither.
+
+**One output on the console.** `libkkms` takes the first card with a connected output and its
+preferred mode. A second screen is not composited onto.
 
 ## Applications and boxes
 

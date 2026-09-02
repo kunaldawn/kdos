@@ -111,6 +111,9 @@ avahi
 dhcpcd
 openssh
 alsa-utils
+# PipeWire is the audio stack and alsamixer cannot see it: this is the mixer
+# that shows the graph — every stream, its device and where it is routed.
+wiremix
 bluez
 cups
 
@@ -165,6 +168,10 @@ bat
 eza
 jq
 yq
+# jq answers a question; this BROWSES the document — fold, search, and a JS
+# expression when the shape is not known yet. Go, so no X clipboard crate
+# follows it in.
+fx
 delta
 lazygit
 gh
@@ -483,6 +490,11 @@ timewarrior
 python3-jinja2
 # mpv 0.41 has a bare dependency() on it — no port, no mpv, and its fallback
 # is a subproject wrap, which is a download.
+#
+# It names vulkan-headers AND vulkan-loader itself: the loader sits far later
+# in this file, so on a FRESH build libplacebo configured with no graphics API
+# at all — meson says so and carries on — and mpv lost its Vulkan output. An
+# incremental build had the loader already and did not.
 libplacebo
 mpv
 # 40 000 photos on a stick are 40 000 files named DSC_* until something reads
@@ -491,6 +503,15 @@ exiv2
 # poppler turns a PDF into pixels; qpdf works on the FILE — split, merge,
 # remove a password you own, repair an xref so something else can open it.
 qpdf
+
+# THE OTHER HALF OF THE PICTURE PATH. kdos-term decodes sixel, kitty and
+# iTerm2 pictures and nothing in this tree emitted one, so an image on the
+# console desktop was a filename. chafa converts anything to whichever of those
+# the terminal admits to; timg adds video frames and is the entry the file
+# managers' previewers call. Neither renders a PDF: that wants poppler's glib
+# binding, which the poppler port does not build.
+chafa
+timg
 
 # ---------------------------------
 # Mail — indexed once, read by anything
@@ -516,6 +537,13 @@ aerc
 # without gc.h.
 bdwgc
 w3m
+# The forms library newsboat draws through. Upstream died in 2015; this is
+# newsboat's own fork, which is the copy that still compiles. libintl is the
+# gettext runtime: musl has no gettext in libc and the gettext port is built
+# --disable-nls, so newsboat's libintl_gettext resolves nowhere without it.
+stfl
+libintl
+newsboat
 # Its database is two plain text files — greppable, diffable, syncable with
 # the rest of $HOME, and a backup is a copy.
 # A missing AX_* macro does not fail at aclocal time — it survives into the

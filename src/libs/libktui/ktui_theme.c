@@ -45,3 +45,29 @@ int ktui_theme_set(const char *name)
 	}
 	return -1;
 }
+
+/* No sqrt: comparing squares orders identically to comparing roots, and this
+ * library links no maths library. */
+int ktui_theme_nearest(uint32_t rgb)
+{
+	int best = KT_TEXT;
+	long bd = -1;
+	int r = (int)((rgb >> 16) & 0xff);
+	int g = (int)((rgb >> 8) & 0xff);
+	int b = (int)(rgb & 0xff);
+
+	for (int i = 0; i < KT_NCOLOR; i++) {
+		KRgb s = ktui_theme->slot[i];
+		long dr = r - (long)s.r;
+		long dg = g - (long)s.g;
+		long db = b - (long)s.b;
+		long d = dr * dr + dg * dg + db * db;
+
+		if (bd < 0 || d < bd) {
+			bd = d;
+			best = i;
+		}
+	}
+
+	return best;
+}

@@ -100,7 +100,7 @@ static struct {
 	 * buffer of our own. */
 	struct wp_cursor_shape_manager_v1 *shape_mgr;
 	struct wp_cursor_shape_device_v1 *shape_dev;
-	int cursor;		/* enum kwl_cursor, re-sent on every enter */
+	int cursor;		/* enum kdisp_cursor, re-sent on every enter */
 	uint32_t ptr_serial;	/* the pointer-enter serial set_shape needs */
 
 	/*
@@ -116,7 +116,10 @@ static struct {
 	struct zwp_primary_selection_device_v1 *primary_dev;
 	struct wl_data_offer *sel_offer;	/* the clipboard, or NULL   */
 	struct zwp_primary_selection_offer_v1 *prim_offer;
-	struct wl_data_offer *drag_offer;	/* held only to destroy it  */
+	struct wl_data_offer *drag_offer;
+	uint32_t drag_serial;		/* what dd_enter arrived with       */
+	int drop_cx, drop_cy;		/* where the drop landed, in cells  */
+	int paste_is_drop;		/* the in-flight receive is a DROP  */
 	int paste_fd;				/* in-flight receive, or -1 */
 	char *paste_buf;
 	size_t paste_len;
@@ -234,7 +237,7 @@ static struct {
 	int scale, scale_sent;
 	int on_output;		/* index of the output last entered, or -1 */
 
-	KwlConfig cfg;
+	KDispConfig cfg;
 	int px_w, px_h;		/* surface size in LOGICAL pixels          */
 	/*
 	 * The frame rule, in logical pixels, 0 for none. It sits on the edge
@@ -245,7 +248,7 @@ static struct {
 	int rule;
 	int rule_bottom;
 	/* Pixel chrome under the cell grid, or NULL. See kwl_set_backdrop(). */
-	KwlBackdropFn backdrop;
+	KDispBackdropFn backdrop;
 	int cols, rows;		/* and in cells                            */
 	int configured;
 	/*
@@ -296,6 +299,8 @@ static struct {
 	 * is why holding an arrow key did nothing in the launcher, the menu,
 	 * the file chooser, the run box and the desktop.
 	 */
+	struct wl_touch *touch;
+
 	int32_t rep_rate, rep_delay;
 	uint32_t rep_code;		/* the key held, or 0 for none */
 	KtuiEvent rep_ev;
@@ -424,7 +429,7 @@ int kwl_cell_h(void) { int h = kcell_h(); return h > 0 ? h : 16; }
  */
 int kwl_decorated(void)
 {
-	return K.cfg.role == KWL_ROLE_TOPLEVEL && K.deco != NULL;
+	return K.cfg.role == KDISP_ROLE_TOPLEVEL && K.deco != NULL;
 }
 
 /*
@@ -439,9 +444,9 @@ int kwl_decorated(void)
  */
 static int panel_gap(void)
 {
-	if (K.cfg.role != KWL_ROLE_PANEL)
+	if (K.cfg.role != KDISP_ROLE_PANEL)
 		return 0;
-	return (K.cfg.edge == KWL_EDGE_TOP || K.cfg.edge == KWL_EDGE_BOTTOM)
+	return (K.cfg.edge == KDISP_EDGE_TOP || K.cfg.edge == KDISP_EDGE_BOTTOM)
 		       ? K.cfg.margin_y : K.cfg.margin_x;
 }
 
@@ -484,15 +489,15 @@ int kwl_popup_offset(void)
  */
 int kwl_edge_bottom(void)
 {
-	if (K.cfg.role == KWL_ROLE_PANEL)
-		return K.cfg.edge == KWL_EDGE_TOP;
+	if (K.cfg.role == KDISP_ROLE_PANEL)
+		return K.cfg.edge == KDISP_EDGE_TOP;
 	if (!K.cfg.margin_x && !K.cfg.margin_y)
 		return 0;
-	return K.cfg.corner == KWL_CORNER_TOP_LEFT ||
-	       K.cfg.corner == KWL_CORNER_TOP_RIGHT;
+	return K.cfg.corner == KDISP_CORNER_TOP_LEFT ||
+	       K.cfg.corner == KDISP_CORNER_TOP_RIGHT;
 }
 
-void kwl_set_backdrop(KwlBackdropFn fn)
+void kwl_set_backdrop(KDispBackdropFn fn)
 {
 	K.backdrop = fn;
 	/*
@@ -603,15 +608,47 @@ static const char *const paste_mime[] = {
 	"text/plain",
 };
 
+/*
+ * A DRAG WANTS A DIFFERENT ANSWER FROM THE SAME OFFER. Dropping a file should
+ * yield the file, so a uri-list beats plain text here and does not appear in
+ * the paste table at all — pasting a uri-list into a text field would put a
+ * URI there instead of a name.
+ */
+static const char *const drag_mime[] = {
+	"text/uri-list",
+	"text/plain;charset=utf-8",
+	"text/plain",
+};
+
+/*
+ * One listener serves selection offers and drag offers alike — the offer's
+ * mimes arrive long before anybody knows which it will be — so BOTH ranks are
+ * packed into the one user-data word: paste in the low half, drag in the high.
+ */
+#define RANK_PASTE(v) ((int)((v) & 0xffff))
+#define RANK_DRAG(v) ((int)(((v) >> 16) & 0xffff))
+
 static void offer_rank(struct wl_proxy *o, const char *mime)
 {
 	intptr_t cur = (intptr_t)wl_proxy_get_user_data(o);
+	int pr = RANK_PASTE(cur);
+	int dr = RANK_DRAG(cur);
+
 	for (int i = 0; i < (int)(sizeof(paste_mime) / sizeof(*paste_mime)); i++)
 		if (!strcmp(mime, paste_mime[i])) {
-			if (!cur || (intptr_t)i + 1 < cur)
-				wl_proxy_set_user_data(o, (void *)(intptr_t)(i + 1));
-			return;
+			if (!pr || i + 1 < pr)
+				pr = i + 1;
+			break;
 		}
+
+	for (int i = 0; i < (int)(sizeof(drag_mime) / sizeof(*drag_mime)); i++)
+		if (!strcmp(mime, drag_mime[i])) {
+			if (!dr || i + 1 < dr)
+				dr = i + 1;
+			break;
+		}
+
+	wl_proxy_set_user_data(o, (void *)(intptr_t)((dr << 16) | pr));
 }
 
 /*
@@ -642,8 +679,35 @@ static void paste_pump(void)
 	}
 	close(K.paste_fd);
 	K.paste_fd = -1;
-	if (K.paste_len)
+
+	if (K.paste_is_drop) {
+		/*
+		 * The payload arrives well after the drop, so WHERE it landed
+		 * was remembered at drop time. The event carries the position
+		 * and the payload is taken separately.
+		 */
+		if (K.paste_len)
+			ktui_drop_push(K.paste_buf, K.paste_len);
+
+		KtuiEvent ev = { .type = KT_EVT_DROP,
+				 .mx = K.drop_cx, .my = K.drop_cy };
+
+		push_event(&ev);
+		K.paste_is_drop = 0;
+
+		if (K.drag_offer) {
+			/* finish() is version 3; without it a v3 source is
+			 * never told the drop succeeded and may sit waiting. */
+			if (wl_proxy_get_version(
+				    (struct wl_proxy *)K.drag_offer) >= 3)
+				wl_data_offer_finish(K.drag_offer);
+			wl_data_offer_destroy(K.drag_offer);
+			K.drag_offer = NULL;
+		}
+	} else if (K.paste_len) {
 		ktui_paste_push(K.paste_buf, K.paste_len);
+	}
+
 	K.paste_len = 0;
 }
 
@@ -656,13 +720,13 @@ static void paste_start(int primary)
 	if (primary) {
 		if (!K.prim_offer)
 			return;
-		rank = (int)(intptr_t)wl_proxy_get_user_data(
-			(struct wl_proxy *)K.prim_offer);
+		rank = RANK_PASTE((intptr_t)wl_proxy_get_user_data(
+			(struct wl_proxy *)K.prim_offer));
 	} else {
 		if (!K.sel_offer)
 			return;
-		rank = (int)(intptr_t)wl_proxy_get_user_data(
-			(struct wl_proxy *)K.sel_offer);
+		rank = RANK_PASTE((intptr_t)wl_proxy_get_user_data(
+			(struct wl_proxy *)K.sel_offer));
 	}
 	if (!rank)
 		return;			/* nothing textual on offer */
@@ -911,15 +975,55 @@ static void dd_data_offer(void *d, struct wl_data_device *dev,
 	wl_data_offer_add_listener(o, &data_offer_listener, NULL);
 }
 
-/* No drag-and-drop: the offer a drag announces is held only so it can be
- * destroyed when the drag ends, as the protocol requires. */
+/*
+ * ACCEPTING IS NOT OPTIONAL. A drag whose offer is never accepted shows the
+ * "no" cursor over this surface and its drop is never delivered, which is what
+ * an offer held only to be destroyed produced.
+ */
+static void drag_accept(uint32_t serial)
+{
+	if (!K.drag_offer)
+		return;
+
+	int rank = RANK_DRAG((intptr_t)wl_proxy_get_user_data(
+		(struct wl_proxy *)K.drag_offer));
+
+	/* Accepting NULL is how a client says "not this one", and it is the
+	 * honest answer for a drag carrying nothing we can read. */
+	wl_data_offer_accept(K.drag_offer, serial,
+			     rank ? drag_mime[rank - 1] : NULL);
+
+	if (wl_proxy_get_version((struct wl_proxy *)K.drag_offer) >= 3) {
+		wl_data_offer_set_actions(K.drag_offer,
+			WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY,
+			WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY);
+	}
+}
+
+static void drag_cell(wl_fixed_t x, wl_fixed_t y)
+{
+	int cw = kcell_w(), ch = kcell_h();
+
+	if (cw <= 0 || ch <= 0)
+		return;
+
+	K.drop_cx = wl_fixed_to_int(x) / cw;
+	K.drop_cy = (wl_fixed_to_int(y) - (K.rule_bottom ? 0 : K.rule)) / ch;
+}
+
 static void dd_enter(void *d, struct wl_data_device *dev, uint32_t serial,
 		     struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y,
 		     struct wl_data_offer *o)
 {
-	(void)d; (void)dev; (void)serial; (void)sf; (void)x; (void)y;
+	(void)d;
+	(void)dev;
+	(void)sf;
 	K.drag_offer = o;
+	K.drag_serial = serial;
+	drag_cell(x, y);
+	drag_accept(serial);
 }
+
 static void dd_leave(void *d, struct wl_data_device *dev)
 {
 	(void)d;
@@ -929,17 +1033,65 @@ static void dd_leave(void *d, struct wl_data_device *dev)
 		K.drag_offer = NULL;
 	}
 }
+
 static void dd_motion(void *d, struct wl_data_device *dev, uint32_t time,
 		      wl_fixed_t x, wl_fixed_t y)
-{ (void)d; (void)dev; (void)time; (void)x; (void)y; }
+{
+	(void)d;
+	(void)dev;
+	(void)time;
+	drag_cell(x, y);
+	/* Re-accepted on every motion: a compositor is entitled to forget, and
+	 * the cost of saying it again is one request. */
+	drag_accept(K.drag_serial);
+}
+
 static void dd_drop(void *d, struct wl_data_device *dev)
 {
 	(void)d;
 	(void)dev;
-	if (K.drag_offer) {
+
+	if (!K.drag_offer)
+		return;
+
+	int rank = RANK_DRAG((intptr_t)wl_proxy_get_user_data(
+		(struct wl_proxy *)K.drag_offer));
+
+	if (!rank || K.paste_fd >= 0) {
+		/* Nothing readable, or a receive already in flight: refuse
+		 * rather than leave the source waiting on a pipe. */
 		wl_data_offer_destroy(K.drag_offer);
 		K.drag_offer = NULL;
+		return;
 	}
+
+	if (!K.paste_buf) {
+		K.paste_buf = malloc(KWL_PASTE_MAX);
+		if (!K.paste_buf) {
+			wl_data_offer_destroy(K.drag_offer);
+			K.drag_offer = NULL;
+			return;
+		}
+	}
+
+	int fds[2];
+
+	if (pipe2(fds, O_CLOEXEC) < 0) {
+		wl_data_offer_destroy(K.drag_offer);
+		K.drag_offer = NULL;
+		return;
+	}
+
+	wl_data_offer_receive(K.drag_offer, drag_mime[rank - 1], fds[1]);
+	/* The write end is the source's now — see paste_start. */
+	close(fds[1]);
+	fcntl(fds[0], F_SETFL, O_NONBLOCK);
+	K.paste_fd = fds[0];
+	K.paste_len = 0;
+	K.paste_is_drop = 1;
+	K.paste_deadline = now_ms() + KWL_PASTE_TIMEOUT_MS;
+	/* The offer is destroyed by paste_pump, after finish(). */
+	wl_display_flush(K.display);
 }
 
 static void dd_selection(void *d, struct wl_data_device *dev,
@@ -1370,6 +1522,23 @@ static void kwl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 	flush_commit(cur, w, h, full);
 }
 
+/* Touch state, declared here because kwl_poll_event below polls for a long
+ * press; the handlers that fill it live beside the seat further down. */
+#define KWL_TOUCH_SLOTS 10
+
+static struct {
+	int active;
+	int cx, cy;	/* wl_touch.up carries no coordinates, so keep them */
+} tc_slot[KWL_TOUCH_SLOTS];
+
+static int tc_down_count;
+
+/* Nothing is emitted from the individual handlers: a frame is one physical
+ * state of the hand, and reporting each finger separately makes a two-finger
+ * gesture look like two one-finger ones for as long as the frame lasts. */
+static KtuiEvent tc_pend[KWL_TOUCH_SLOTS * 2];
+static int tc_npend;
+
 static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 {
 	/* The documented libwayland read sequence. Anything simpler races: two
@@ -1408,6 +1577,17 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 		if (wait < 0 || rem < wait)
 			wait = (int)rem;
 	}
+	if (tc_down_count > 0) {
+		/*
+		 * A LONG PRESS HAS NO EVENT TO ARRIVE ON: the finger is down
+		 * and nothing is moving, so the wait is shortened and the
+		 * recogniser asked. Without this it would fire at whatever
+		 * cadence the consumer happened to poll at, which is one
+		 * second in every one of these loops.
+		 */
+		if (wait < 0 || wait > 40)
+			wait = 40;
+	}
 	if (K.paste_fd >= 0) {
 		/* An in-flight paste has its own deadline — a source that
 		 * wedged must be abandoned even when no event ever comes. */
@@ -1426,6 +1606,23 @@ static int kwl_poll_event(KtuiEvent *ev, int timeout_ms)
 	if (K.paste_fd >= 0 && (n <= 0 || pfd[1].revents))
 		paste_pump();
 	send_pump();
+	if (tc_down_count > 0) {
+		KtuiGesture g;
+
+		/* wl_touch timestamps are CLOCK_MONOTONIC milliseconds, which
+		 * is what now_ms() reads, so the two are comparable. */
+		if (ktui_gesture_tick((unsigned)now_ms(), &g)) {
+			KtuiEvent ge;
+
+			memset(&ge, 0, sizeof(ge));
+			ge.type = KT_EVT_TOUCH;
+			ge.phase = KT_TOUCH_MOVE;
+			ge.mx = g.x;
+			ge.my = g.y;
+			ge.gesture = g.type;
+			push_event(&ge);
+		}
+	}
 	if (n <= 0 || !(pfd[0].revents & (POLLIN | POLLHUP | POLLERR))) {
 		wl_display_cancel_read(K.display);
 		if (n < 0 && errno != EINTR)
@@ -1690,7 +1887,7 @@ static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s,
 	 * see released — repeating it would run until something else stopped
 	 * it. */
 	K.rep_code = 0;
-	if (K.kb_entered && K.cfg.role == KWL_ROLE_OVERLAY &&
+	if (K.kb_entered && K.cfg.role == KDISP_ROLE_OVERLAY &&
 	    K.cfg.dismiss_on_unfocus)
 		K.closed = 1;
 }
@@ -1913,9 +2110,9 @@ static void pt_axis(void *d, struct wl_pointer *p, uint32_t time,
 static uint32_t shape_of(int cursor)
 {
 	switch (cursor) {
-	case KWL_CUR_TEXT:	return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT;
-	case KWL_CUR_POINTER:	return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER;
-	case KWL_CUR_PROGRESS:	return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_PROGRESS;
+	case KDISP_CUR_TEXT:	return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT;
+	case KDISP_CUR_POINTER:	return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER;
+	case KDISP_CUR_PROGRESS:	return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_PROGRESS;
 	default:		return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT;
 	}
 }
@@ -1964,7 +2161,7 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial,
 	}
 }
 
-void kwl_cursor_set(enum kwl_cursor c)
+void kwl_cursor_set(enum kdisp_cursor c)
 {
 	if ((int)c == K.cursor)
 		return;
@@ -2119,6 +2316,168 @@ static const struct wl_pointer_listener pointer_listener = {
 	.axis_discrete = pt_axis_disc,
 };
 
+/* ── touch ─────────────────────────────────────────────────────────────── */
+
+/*
+ * WHAT IS HERE IS ONLY WHAT wl_touch KNOWS: which slot, where in cells, and
+ * that `frame` is the commit point exactly as it is for the pointer.
+ *
+ * The disambiguation is libktui's — ktui_gesture_feed — because the console
+ * desktop's KMS backend feeds the same recogniser from libinput. A
+ * disambiguator written inside a backend is written twice and disagrees twice,
+ * and the two desktops would then differ on what a long press is.
+ */
+
+static int tc_cell(wl_fixed_t sx, wl_fixed_t sy, int *cx, int *cy)
+{
+	int cw = kcell_w(), ch = kcell_h();
+
+	if (cw <= 0 || ch <= 0)
+		return 0;
+
+	*cx = wl_fixed_to_int(sx) / cw;
+	/* Below the rule when the rule is on top, as pt_motion does. */
+	*cy = (wl_fixed_to_int(sy) - (K.rule_bottom ? 0 : K.rule)) / ch;
+	return 1;
+}
+
+static void tc_queue(int phase, int32_t id, int cx, int cy, uint32_t time)
+{
+	if (tc_npend >= (int)(sizeof(tc_pend) / sizeof(tc_pend[0])))
+		return;
+
+	KtuiEvent *e = &tc_pend[tc_npend++];
+
+	memset(e, 0, sizeof(*e));
+	e->type = KT_EVT_TOUCH;
+	e->phase = phase;
+	e->slot = (int)id;
+	e->mx = cx;
+	e->my = cy;
+	e->ms = time;
+}
+
+static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
+		    struct wl_surface *sf, int32_t id,
+		    wl_fixed_t sx, wl_fixed_t sy)
+{
+	(void)d;
+	(void)t;
+	(void)sf;
+	int cx, cy;
+
+	/* A touch is an input event, so it can serve as the serial a menu or a
+	 * selection is later set with. */
+	K.input_serial = serial;
+
+	if (id < 0 || id >= KWL_TOUCH_SLOTS || !tc_cell(sx, sy, &cx, &cy))
+		return;
+
+	tc_slot[id].active = 1;
+	tc_slot[id].cx = cx;
+	tc_slot[id].cy = cy;
+	tc_down_count++;
+	tc_queue(KT_TOUCH_DOWN, id, cx, cy, time);
+}
+
+static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
+		  int32_t id)
+{
+	(void)d;
+	(void)t;
+
+	K.input_serial = serial;
+
+	if (id < 0 || id >= KWL_TOUCH_SLOTS || !tc_slot[id].active)
+		return;
+
+	tc_slot[id].active = 0;
+	if (tc_down_count > 0)
+		tc_down_count--;
+	tc_queue(KT_TOUCH_UP, id, tc_slot[id].cx, tc_slot[id].cy, time);
+}
+
+static void tc_motion(void *d, struct wl_touch *t, uint32_t time, int32_t id,
+		      wl_fixed_t sx, wl_fixed_t sy)
+{
+	(void)d;
+	(void)t;
+	int cx, cy;
+
+	if (id < 0 || id >= KWL_TOUCH_SLOTS || !tc_slot[id].active)
+		return;
+	if (!tc_cell(sx, sy, &cx, &cy))
+		return;
+
+	tc_slot[id].cx = cx;
+	tc_slot[id].cy = cy;
+	tc_queue(KT_TOUCH_MOVE, id, cx, cy, time);
+}
+
+static void tc_frame(void *d, struct wl_touch *t)
+{
+	(void)d;
+	(void)t;
+
+	for (int i = 0; i < tc_npend; i++) {
+		KtuiGesture g;
+		KtuiEvent mouse;
+		int have = 0;
+		int got = ktui_gesture_feed(&tc_pend[i], &g, &mouse, &have);
+
+		/*
+		 * A motion that recognised nothing says nothing: the queue is
+		 * bounded, and a finger dragged across the screen would
+		 * otherwise fill it with events no widget reads.
+		 */
+		if (got || tc_pend[i].phase != KT_TOUCH_MOVE) {
+			tc_pend[i].gesture = got ? g.type : KT_GEST_NONE;
+			push_event(&tc_pend[i]);
+		}
+
+		/* The synthesised pointer event is what every existing widget
+		 * actually acts on. */
+		if (have)
+			push_event(&mouse);
+	}
+
+	tc_npend = 0;
+}
+
+static void tc_cancel(void *d, struct wl_touch *t)
+{
+	(void)d;
+	(void)t;
+
+	/*
+	 * Taken away, not finished. Anything half-recognised is abandoned and
+	 * no synthesised release is sent — a widget that saw the press will see
+	 * the pointer leave instead.
+	 */
+	tc_npend = 0;
+	tc_down_count = 0;
+	memset(tc_slot, 0, sizeof(tc_slot));
+	ktui_gesture_reset();
+}
+
+static void tc_shape(void *d, struct wl_touch *t, int32_t id,
+		     wl_fixed_t major, wl_fixed_t minor)
+{ (void)d; (void)t; (void)id; (void)major; (void)minor; }
+
+static void tc_orientation(void *d, struct wl_touch *t, int32_t id,
+			   wl_fixed_t o)
+{ (void)d; (void)t; (void)id; (void)o; }
+
+static const struct wl_touch_listener touch_listener = {
+	.down = tc_down,
+	.up = tc_up,
+	.motion = tc_motion,
+	.frame = tc_frame,
+	.cancel = tc_cancel,
+	.shape = tc_shape,
+	.orientation = tc_orientation,
+};
+
 static void seat_caps(void *d, struct wl_seat *seat, uint32_t caps)
 {
 	(void)d;
@@ -2130,6 +2489,10 @@ static void seat_caps(void *d, struct wl_seat *seat, uint32_t caps)
 		K.pointer = wl_seat_get_pointer(seat);
 		wl_pointer_add_listener(K.pointer, &pointer_listener, NULL);
 	}
+	if ((caps & WL_SEAT_CAPABILITY_TOUCH) && !K.touch) {
+		K.touch = wl_seat_get_touch(seat);
+		wl_touch_add_listener(K.touch, &touch_listener, NULL);
+	}
 }
 
 static void seat_name(void *d, struct wl_seat *s, const char *n)
@@ -2139,6 +2502,137 @@ static const struct wl_seat_listener seat_listener = {
 	.capabilities = seat_caps,
 	.name = seat_name,
 };
+
+
+/* ── drag ────────────────────────────────────────────────────────────────
+ *
+ * The other half libkwl did not have. Nothing on this desktop could START a
+ * drag, so a file could be dropped INTO a KDOS surface from a boxed
+ * application and never out of one.
+ *
+ * THE PAYLOAD IS COPIED. A drag outlives the frame that began it by as long as
+ * the hand takes, and the caller's buffer does not.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+static struct wl_data_source *drag_src;
+static char *drag_payload;
+static size_t drag_payload_len;
+static char drag_offer_mime[64];
+
+static void drag_release(void)
+{
+	if (drag_src) {
+		wl_data_source_destroy(drag_src);
+		drag_src = NULL;
+	}
+	free(drag_payload);
+	drag_payload = NULL;
+	drag_payload_len = 0;
+}
+
+static void dsrc_target(void *d, struct wl_data_source *src, const char *mime)
+{ (void)d; (void)src; (void)mime; }
+
+static void dsrc_send(void *d, struct wl_data_source *src, const char *mime,
+		      int32_t fd)
+{
+	(void)d;
+	(void)src;
+	(void)mime;
+
+	/*
+	 * Written here rather than queued, because a drag payload is a path or
+	 * a line — far inside a pipe's buffer, so this does not block. The fd
+	 * is made non-blocking anyway and the write abandoned if it would: a
+	 * receiver that never reads must not stop the panel.
+	 */
+	fcntl(fd, F_SETFL, O_NONBLOCK);
+
+	size_t off = 0;
+
+	while (off < drag_payload_len) {
+		ssize_t w = write(fd, drag_payload + off,
+				  drag_payload_len - off);
+
+		if (w > 0) {
+			off += (size_t)w;
+			continue;
+		}
+		break;
+	}
+
+	close(fd);
+}
+
+static void dsrc_cancelled(void *d, struct wl_data_source *src)
+{
+	(void)d;
+	(void)src;
+	/* The compositor has taken the drag away, or a second source replaced
+	 * this one. Either way it is over and nothing was delivered. */
+	drag_release();
+}
+
+static void dsrc_dnd_drop_performed(void *d, struct wl_data_source *src)
+{ (void)d; (void)src; }
+
+static void dsrc_dnd_finished(void *d, struct wl_data_source *src)
+{
+	(void)d;
+	(void)src;
+	drag_release();
+}
+
+static void dsrc_action(void *d, struct wl_data_source *src, uint32_t action)
+{ (void)d; (void)src; (void)action; }
+
+static const struct wl_data_source_listener drag_source_listener = {
+	.target = dsrc_target,
+	.send = dsrc_send,
+	.cancelled = dsrc_cancelled,
+	.dnd_drop_performed = dsrc_dnd_drop_performed,
+	.dnd_finished = dsrc_dnd_finished,
+	.action = dsrc_action,
+};
+
+int kwl_drag_start(const char *mime, const char *data, size_t len)
+{
+	if (!K.data_mgr || !K.data_dev || !K.surface || !mime || !data || !len)
+		return -1;
+	/* A drag has to be rooted in a real input event, and the compositor
+	 * checks the serial. Without one there is nothing to start from. */
+	if (!K.input_serial)
+		return -1;
+
+	drag_release();
+
+	drag_payload = malloc(len);
+	if (!drag_payload)
+		return -1;
+	memcpy(drag_payload, data, len);
+	drag_payload_len = len;
+	snprintf(drag_offer_mime, sizeof(drag_offer_mime), "%s", mime);
+
+	drag_src = wl_data_device_manager_create_data_source(K.data_mgr);
+	if (!drag_src) {
+		drag_release();
+		return -1;
+	}
+
+	wl_data_source_add_listener(drag_src, &drag_source_listener, NULL);
+	wl_data_source_offer(drag_src, drag_offer_mime);
+	if (wl_proxy_get_version((struct wl_proxy *)drag_src) >= 3) {
+		wl_data_source_set_actions(drag_src,
+			WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY);
+	}
+
+	/* No drag icon: this desktop draws its own pointer feedback, and a
+	 * surface handed to the compositor here would be a second one. */
+	wl_data_device_start_drag(K.data_dev, drag_src, K.surface, NULL,
+				  K.input_serial);
+	wl_display_flush(K.display);
+	return 0;
+}
 
 /* ── surface roles ─────────────────────────────────────────────────────── */
 
@@ -2588,16 +3082,16 @@ static void place_clamp(int surf_w, int surf_h, int *mx, int *my)
 static int make_panel(void)
 {
 	static const uint32_t ANCHOR[] = {
-		[KWL_EDGE_TOP] = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+		[KDISP_EDGE_TOP] = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
 				 ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
 				 ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT,
-		[KWL_EDGE_BOTTOM] = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+		[KDISP_EDGE_BOTTOM] = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
 				    ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
 				    ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT,
-		[KWL_EDGE_LEFT] = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+		[KDISP_EDGE_LEFT] = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
 				  ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
 				  ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
-		[KWL_EDGE_RIGHT] = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT |
+		[KDISP_EDGE_RIGHT] = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT |
 				   ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
 				   ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
 	};
@@ -2605,7 +3099,7 @@ static int make_panel(void)
 	if (!K.layer_shell)
 		return -1;
 
-	int vertical = K.cfg.edge == KWL_EDGE_TOP || K.cfg.edge == KWL_EDGE_BOTTOM;
+	int vertical = K.cfg.edge == KDISP_EDGE_TOP || K.cfg.edge == KDISP_EDGE_BOTTOM;
 	/* The rule is on TOP of the cells, not out of them: a bar that gave up
 	 * three pixels of its own grid would clip the glyphs it was drawn to
 	 * frame. */
@@ -2614,9 +3108,9 @@ static int make_panel(void)
 		thickness = K.cfg.cells * kcell_w();
 
 	uint32_t layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
-	if (K.cfg.role == KWL_ROLE_OVERLAY)
+	if (K.cfg.role == KDISP_ROLE_OVERLAY || K.cfg.role == KDISP_ROLE_SAVER)
 		layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
-	else if (K.cfg.role == KWL_ROLE_BACKGROUND)
+	else if (K.cfg.role == KDISP_ROLE_BACKGROUND)
 		layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
 
 	/*
@@ -2632,12 +3126,15 @@ static int make_panel(void)
 	if (!K.layer_surface)
 		return -1;
 
-	if (K.cfg.role == KWL_ROLE_BACKGROUND) {
+	if (K.cfg.role == KDISP_ROLE_BACKGROUND ||
+	    K.cfg.role == KDISP_ROLE_SAVER) {
 		/*
 		 * Anchored on ALL FOUR edges with a size of 0x0, which is how
 		 * layer-shell spells "the whole output": a surface anchored on
 		 * both ends of an axis is stretched to fill it, and 0 means
-		 * "you decide" rather than "no pixels".
+		 * "you decide" rather than "no pixels". The saver shares this
+		 * with the desktop and differs only in its layer: both are the
+		 * whole screen, one under every window and one over them.
 		 *
 		 * NO EXCLUSIVE ZONE, and that is the point of the role. The
 		 * desktop is what windows sit ON — reserving space for it would
@@ -2677,7 +3174,7 @@ static int make_panel(void)
 		return 0;
 	}
 
-	if (K.cfg.role == KWL_ROLE_OVERLAY) {
+	if (K.cfg.role == KDISP_ROLE_OVERLAY) {
 		/*
 		 * No anchor at all, which is how layer-shell says "centre me":
 		 * a surface anchored to nothing is placed in the middle of the
@@ -2735,7 +3232,7 @@ static int make_panel(void)
 		if (mx || my)
 			zwlr_layer_surface_v1_set_exclusive_zone(K.layer_surface,
 								 -1);
-		if (K.cfg.corner == KWL_CORNER_TOP_RIGHT) {
+		if (K.cfg.corner == KDISP_CORNER_TOP_RIGHT) {
 			zwlr_layer_surface_v1_set_anchor(
 				K.layer_surface,
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
@@ -2745,7 +3242,7 @@ static int make_panel(void)
 				my ? my : KWL_OVERLAY_MARGIN,
 				mx ? mx : KWL_OVERLAY_MARGIN,
 				0, 0);
-		} else if (K.cfg.corner == KWL_CORNER_TOP_LEFT) {
+		} else if (K.cfg.corner == KDISP_CORNER_TOP_LEFT) {
 			/*
 			 * The dropdown case. margin_y is normally the panel's
 			 * own height, so the menu hangs off the bar rather
@@ -2763,7 +3260,7 @@ static int make_panel(void)
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
 			zwlr_layer_surface_v1_set_margin(K.layer_surface,
 							 my, 0, 0, mx);
-		} else if (K.cfg.corner == KWL_CORNER_BOTTOM_LEFT) {
+		} else if (K.cfg.corner == KDISP_CORNER_BOTTOM_LEFT) {
 			/*
 			 * The Start menu's case, and it is the TOP_LEFT one
 			 * measured from the other end — a menu belonging to a
@@ -2780,7 +3277,7 @@ static int make_panel(void)
 				ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
 			zwlr_layer_surface_v1_set_margin(K.layer_surface, 0, 0,
 							 my, mx);
-		} else if (K.cfg.corner == KWL_CORNER_BOTTOM_CENTER) {
+		} else if (K.cfg.corner == KDISP_CORNER_BOTTOM_CENTER) {
 			/*
 			 * ONE edge, not two: anchoring left and right as well
 			 * would stretch the bezel across the whole output.
@@ -2817,19 +3314,19 @@ static int make_panel(void)
 			int run = vertical ? K.cfg.margin_x : K.cfg.margin_y;
 
 			switch (K.cfg.edge) {
-			case KWL_EDGE_BOTTOM:
+			case KDISP_EDGE_BOTTOM:
 				zwlr_layer_surface_v1_set_margin(
 					K.layer_surface, 0, run, gap, run);
 				break;
-			case KWL_EDGE_TOP:
+			case KDISP_EDGE_TOP:
 				zwlr_layer_surface_v1_set_margin(
 					K.layer_surface, gap, run, 0, run);
 				break;
-			case KWL_EDGE_LEFT:
+			case KDISP_EDGE_LEFT:
 				zwlr_layer_surface_v1_set_margin(
 					K.layer_surface, run, 0, run, gap);
 				break;
-			case KWL_EDGE_RIGHT:
+			case KDISP_EDGE_RIGHT:
 				zwlr_layer_surface_v1_set_margin(
 					K.layer_surface, run, gap, run, 0);
 				break;
@@ -3164,7 +3661,7 @@ void kwl_report_error(void)
 	}
 }
 
-int kwl_init(const KwlConfig *cfg)
+int kwl_init(const KDispConfig *cfg)
 {
 	memset(&K, 0, sizeof(K));
 	K.cfg = *cfg;
@@ -3190,7 +3687,7 @@ int kwl_init(const KwlConfig *cfg)
 	 * never touched in either case.
 	 */
 	kcell_reset_slot_alpha();
-	if (cfg->role == KWL_ROLE_BACKGROUND)
+	if (cfg->role == KDISP_ROLE_BACKGROUND)
 		kcell_set_slot_alpha(KT_BG, 0);
 	else if (cfg->opacity > 0 && cfg->opacity < 100)
 		kcell_set_slot_alpha(KT_SURFACE,
@@ -3213,12 +3710,12 @@ int kwl_init(const KwlConfig *cfg)
 	 * horizontally-anchored panel has a top edge to rule, and a rule as
 	 * tall as a cell is not a rule.
 	 */
-	K.rule = (cfg->role == KWL_ROLE_PANEL && cfg->rule > 0 &&
+	K.rule = (cfg->role == KDISP_ROLE_PANEL && cfg->rule > 0 &&
 		  cfg->rule < kcell_h() &&
-		  (cfg->edge == KWL_EDGE_TOP || cfg->edge == KWL_EDGE_BOTTOM))
+		  (cfg->edge == KDISP_EDGE_TOP || cfg->edge == KDISP_EDGE_BOTTOM))
 			 ? cfg->rule
 			 : 0;
-	K.rule_bottom = cfg->edge == KWL_EDGE_TOP;
+	K.rule_bottom = cfg->edge == KDISP_EDGE_TOP;
 
 	K.display = wl_display_connect(NULL);
 	if (!K.display)
@@ -3256,7 +3753,7 @@ int kwl_init(const KwlConfig *cfg)
 				K.primary_dev, &primary_device_listener, NULL);
 	}
 
-	if (cfg->role == KWL_ROLE_NONE) {
+	if (cfg->role == KDISP_ROLE_NONE) {
 		/* No surface, no backend: the caller draws offscreen. The
 		 * connection and the seat are still live, which is the whole
 		 * point — a dump of a panel with no window list would be a
@@ -3272,10 +3769,10 @@ int kwl_init(const KwlConfig *cfg)
 
 	int rc;
 	switch (cfg->role) {
-	case KWL_ROLE_TOPLEVEL:
+	case KDISP_ROLE_TOPLEVEL:
 		rc = make_toplevel();
 		break;
-	case KWL_ROLE_LOCK:
+	case KDISP_ROLE_LOCK:
 		rc = make_lock();
 		break;
 	default:
@@ -3299,7 +3796,7 @@ int kwl_init(const KwlConfig *cfg)
 	 * The lock surface is configured the moment it is created, so there is
 	 * nothing to ask for.
 	 */
-	if (cfg->role != KWL_ROLE_LOCK)
+	if (cfg->role != KDISP_ROLE_LOCK)
 		wl_surface_commit(K.surface);
 	/* Wait for the first configure: the surface has no size until the
 	 * compositor gives it one, and painting before that is painting into a
@@ -3396,14 +3893,14 @@ void kwl_input_cells(const KRect *rects, int n)
 
 void kwl_layer_autohide(bool hidden)
 {
-	if (K.cfg.role != KWL_ROLE_PANEL || !K.layer_surface || !K.surface)
+	if (K.cfg.role != KDISP_ROLE_PANEL || !K.layer_surface || !K.surface)
 		return;
 	if (K.autohidden == (hidden ? 1 : 0))
 		return;
 	K.autohidden = hidden ? 1 : 0;
 
-	int vertical = K.cfg.edge == KWL_EDGE_TOP ||
-		       K.cfg.edge == KWL_EDGE_BOTTOM;
+	int vertical = K.cfg.edge == KDISP_EDGE_TOP ||
+		       K.cfg.edge == KDISP_EDGE_BOTTOM;
 	int cell = vertical ? kcell_h() : kcell_w();
 	int cells = hidden ? 1 : (K.cfg.cells > 0 ? K.cfg.cells : 1);
 	/* The rule rides on top of the cells here too, or the hidden strip
@@ -3430,19 +3927,19 @@ void kwl_layer_autohide(bool hidden)
 				 : (vertical ? K.cfg.margin_x : K.cfg.margin_y);
 
 		switch (K.cfg.edge) {
-		case KWL_EDGE_BOTTOM:
+		case KDISP_EDGE_BOTTOM:
 			zwlr_layer_surface_v1_set_margin(K.layer_surface, 0,
 							 run, gap, run);
 			break;
-		case KWL_EDGE_TOP:
+		case KDISP_EDGE_TOP:
 			zwlr_layer_surface_v1_set_margin(K.layer_surface, gap,
 							 run, 0, run);
 			break;
-		case KWL_EDGE_LEFT:
+		case KDISP_EDGE_LEFT:
 			zwlr_layer_surface_v1_set_margin(K.layer_surface, run,
 							 0, run, gap);
 			break;
-		case KWL_EDGE_RIGHT:
+		case KDISP_EDGE_RIGHT:
 			zwlr_layer_surface_v1_set_margin(K.layer_surface, run,
 							 gap, run, 0);
 			break;
@@ -3508,7 +4005,7 @@ int kwl_overlay_resize(int cols, int rows)
 {
 	uint32_t w, h;
 
-	if (K.cfg.role != KWL_ROLE_OVERLAY || !K.layer_surface)
+	if (K.cfg.role != KDISP_ROLE_OVERLAY || !K.layer_surface)
 		return -1;
 	if (cols < 1)
 		cols = 1;
@@ -3581,7 +4078,7 @@ int kwl_overlay_resize(int cols, int rows)
  */
 void kwl_overlay_hide(void)
 {
-	if (K.cfg.role != KWL_ROLE_OVERLAY || !K.layer_surface)
+	if (K.cfg.role != KDISP_ROLE_OVERLAY || !K.layer_surface)
 		return;
 	if (K.frame_cb) {
 		wl_callback_destroy(K.frame_cb);
@@ -3611,7 +4108,7 @@ void kwl_overlay_hide(void)
 
 int kwl_overlay_show(int cols, int rows)
 {
-	if (K.cfg.role != KWL_ROLE_OVERLAY)
+	if (K.cfg.role != KDISP_ROLE_OVERLAY)
 		return -1;
 	if (K.surface) {
 		kwl_overlay_resize(cols, rows);
@@ -3647,7 +4144,7 @@ void kwl_shutdown(void)
 	/* Before anything is torn down: an error is why most clients get
 	 * here. */
 	kwl_report_error();
-	if (K.cfg.role != KWL_ROLE_NONE)
+	if (K.cfg.role != KDISP_ROLE_NONE)
 		ktui_backend_set(NULL);
 	if (K.paste_fd >= 0)
 		close(K.paste_fd);
@@ -3678,3 +4175,53 @@ void kwl_shutdown(void)
 	kcell_font_free();
 	memset(&K, 0, sizeof(K));
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+ * libkwl as a libkdisp implementation
+ *
+ * The vtable names this library's own functions; nothing here is new
+ * behaviour. libkdisp does not name this symbol, so a program that never
+ * mentions it never links Wayland.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Cheap, and with no side effects: kdisp_init() probes implementations it will
+ * not go on to use. An empty WAYLAND_DISPLAY is the same as an absent one —
+ * some session scripts export it before a compositor exists.
+ */
+static int kwl_probe(void)
+{
+	const char *wd = getenv("WAYLAND_DISPLAY");
+
+	return wd && *wd;
+}
+
+const KDispImpl kwl_impl = {
+	.name = "wayland",
+	.probe = kwl_probe,
+	.init = kwl_init,
+	.shutdown = kwl_shutdown,
+	.should_close = kwl_should_close,
+	.fd = kwl_fd,
+	.pump = kwl_pump,
+	.overlay_resize = kwl_overlay_resize,
+	.overlay_show = kwl_overlay_show,
+	.overlay_hide = kwl_overlay_hide,
+	.layer_autohide = kwl_layer_autohide,
+	.copy = kwl_copy,
+	.drag_start = kwl_drag_start,
+	.cell_w = kwl_cell_w,
+	.cell_h = kwl_cell_h,
+	.px_h = kwl_px_h,
+	.scale = kwl_scale,
+	.decorated = kwl_decorated,
+	.popup_offset = kwl_popup_offset,
+	.edge_bottom = kwl_edge_bottom,
+	.cursor_set = kwl_cursor_set,
+	.set_backdrop = kwl_set_backdrop,
+	.input_cells = kwl_input_cells,
+	.report_error = kwl_report_error,
+	.lock_engaged = kwl_lock_engaged,
+	.lock_finished = kwl_lock_finished,
+	.unlock = kwl_unlock,
+};

@@ -611,8 +611,18 @@ int cmd_warmup(void)
 				snprintf(path, sizeof(path),
 					 "/usr/share/applications/%s.desktop", line);
 			if (kxdg_load(&e, path, "Desktop Entry") == 0) {
+				/* kxdg_get answers `def` or a stored value, and
+				 * every stored value is allocated — so this is
+				 * never NULL. Said out loud because the
+				 * compiler cannot see through the allocator,
+				 * and the alternative to saying it is a
+				 * strrchr on NULL if that ever changes. */
 				const char *ex = kxdg_get(&e, "Exec", "");
-				const char *b = strrchr(ex, '/');
+				const char *b;
+
+				if (!ex)
+					ex = "";
+				b = strrchr(ex, '/');
 				b = b ? b + 1 : ex;
 				snprintf(shim, sizeof(shim), "%.*s",
 					 (int)strcspn(b, " \t"), b);

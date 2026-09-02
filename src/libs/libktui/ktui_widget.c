@@ -400,6 +400,30 @@ void ktui_paste_push(const char *utf8, size_t len)
 	paste_buf[paste_len] = 0;
 }
 
+/*
+ * Take the pending paste, for a consumer that is not a text field. A terminal
+ * is the case: its "caret" is a child process on a pty, so it cannot go
+ * through ktui_input and has to be handed the bytes.
+ *
+ * The same TTL as the input path, and the same filter: newlines arrived as
+ * spaces, so a paste cannot press Enter in a shell any more than it can in a
+ * field. Returns the length and clears the queue — a paste is taken once.
+ */
+size_t ktui_paste_take(const char **out)
+{
+	if (paste_len && kb_now_s() - paste_at > PASTE_TTL)
+		paste_len = 0;
+	if (!paste_len)
+		return 0;
+
+	size_t n = paste_len;
+
+	if (out)
+		*out = paste_buf;
+	paste_len = 0;
+	return n;
+}
+
 /* The caret is a BYTE index into a UTF-8 buffer; it only ever rests on a
  * sequence boundary, and these two walk between boundaries. */
 static int in_prev_bound(const char *buf, int at)

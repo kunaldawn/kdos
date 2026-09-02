@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   testing/Dockerfile.qemu — the rig image, `kdos-qemu-py`
+#
+# What testing/vnc-shot.py needs and nothing else: a QEMU that can take
+# /dev/kvm, the OVMF firmware an EFI boot needs, and python3. The harness
+# speaks RFB by hand out of the standard library, so there is no pip step and
+# no wheel to pin — the only versions that matter are QEMU's and OVMF's, and
+# they come from the distribution.
+#
+# Built by testing/rig-image.sh, which is also what CLAUDE.md's `$R` line
+# assumes has been run. Keeping the definition here is what makes a rig
+# photograph reproducible from a clone rather than from one machine's history.
+
+FROM debian:trixie-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        qemu-system-x86 \
+        ovmf \
+        python3 \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# vnc-shot.py looks for OVMF.fd under three spellings; Debian ships
+# OVMF_CODE.fd and OVMF.fd under /usr/share/OVMF, which is one of them.
+WORKDIR /kdos
+CMD ["python3", "testing/vnc-shot.py", "--help"]

@@ -1,0 +1,113 @@
+#ifndef CG_SERVER_H
+#define CG_SERVER_H
+
+#include "config.h"
+
+#include <wayland-server-core.h>
+#include <wlr/config.h>
+#include <wlr/types/wlr_drm_lease_v1.h>
+#include <wlr/types/wlr_idle_inhibit_v1.h>
+#include <wlr/types/wlr_idle_notify_v1.h>
+#include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_relative_pointer_v1.h>
+#include <wlr/types/wlr_scene.h>
+#include <stddef.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/util/log.h>
+
+#if CAGE_HAS_XWAYLAND
+#include <wlr/xwayland.h>
+#endif
+
+enum cg_multi_output_mode {
+	CAGE_MULTI_OUTPUT_MODE_EXTEND,
+	CAGE_MULTI_OUTPUT_MODE_LAST,
+};
+
+/*
+ * --embed: the guest's pixels leave through a shared mapping instead of a
+ * screen, and its input arrives from the parent instead of a device. See
+ * embed.c and kembed.h.
+ */
+struct cg_embed {
+	bool active;
+	bool focused;
+	bool asleep;
+
+	int fd;				/* the socketpair to kdos-con        */
+	struct wl_event_source *source;
+
+	void *map;			/* KEMBED_SLOTS frames               */
+	size_t map_len;
+	size_t slot_len;
+	size_t stride;
+	int width, height;
+	int slot;			/* the one the parent is reading     */
+};
+
+struct cg_server {
+	struct wl_display *wl_display;
+	struct wl_list views;
+	struct wlr_backend *backend;
+	struct wlr_renderer *renderer;
+	struct wlr_allocator *allocator;
+	struct wlr_session *session;
+	struct wl_listener display_destroy;
+
+	struct cg_seat *seat;
+	struct wlr_idle_notifier_v1 *idle;
+	struct wlr_idle_inhibit_manager_v1 *idle_inhibit_v1;
+	struct wl_listener new_idle_inhibitor_v1;
+	struct wl_list inhibitors;
+
+	enum cg_multi_output_mode output_mode;
+	struct wlr_output_layout *output_layout;
+	struct wlr_scene_output_layout *scene_output_layout;
+
+	struct wlr_scene *scene;
+	/*
+	 * The palette's deep colour, behind everything. Resized on every layout
+	 * change: a rectangle sized once stops covering the screen the moment a
+	 * monitor is plugged in.
+	 */
+	struct wlr_scene_rect *background;
+	/* Includes disabled outputs; depending on the output_mode
+	 * some outputs may be disabled. */
+	struct wl_list outputs; // cg_output::link
+	struct wl_listener new_output;
+	struct wl_listener output_layout_change;
+
+	struct wl_listener xdg_toplevel_decoration;
+	struct wl_listener new_xdg_toplevel;
+	struct wl_listener new_xdg_popup;
+
+	struct wl_listener new_virtual_keyboard;
+	struct wl_listener new_virtual_pointer;
+#if CAGE_HAS_XWAYLAND
+	struct wl_listener new_xwayland_surface;
+#endif
+	struct wlr_output_manager_v1 *output_manager_v1;
+	struct wl_listener output_manager_apply;
+	struct wl_listener output_manager_test;
+
+#if WLR_HAS_DRM_BACKEND
+	struct wlr_drm_lease_v1_manager *drm_lease_v1;
+	struct wl_listener drm_lease_request;
+#endif
+
+	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
+
+	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
+
+	struct cg_embed embed;
+
+	bool xdg_decoration;
+	bool allow_vt_switch;
+	bool return_app_code;
+	bool terminated;
+	enum wlr_log_importance log_level;
+};
+
+void server_terminate(struct cg_server *server);
+
+#endif

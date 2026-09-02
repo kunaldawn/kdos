@@ -572,3 +572,48 @@ int ktui_input_next(KtuiEvent *ev, int timeout_ms)
 	ev->type = KT_EVT_TICK;
 	return 0;
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Drops
+ *
+ * Held rather than delivered in the event, because a drop is a position AND a
+ * payload. The event carries the position; this carries the payload, once.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+static char *drop_buf;
+static size_t drop_len;
+
+void ktui_drop_push(const char *utf8, size_t len)
+{
+	free(drop_buf);
+	drop_buf = NULL;
+	drop_len = 0;
+
+	if (!utf8 || !len)
+		return;
+
+	drop_buf = malloc(len + 1);
+	if (!drop_buf)
+		return;
+
+	memcpy(drop_buf, utf8, len);
+	drop_buf[len] = '\0';
+	drop_len = len;
+}
+
+const char *ktui_drop_take(size_t *len)
+{
+	static char *held;
+
+	/* The previous take's buffer is freed HERE rather than by the caller:
+	 * a surface that acts on a drop and returns to its loop has no other
+	 * moment to do it, and freeing on the next take is that moment. */
+	free(held);
+	held = drop_buf;
+	drop_buf = NULL;
+
+	if (len)
+		*len = drop_len;
+	drop_len = 0;
+	return held;
+}

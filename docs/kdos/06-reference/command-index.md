@@ -52,21 +52,31 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-power` | Client for the power daemon | [The daemons](../04-programs/daemons.md#kdos-powerd) |
 | `kdos-powerd` | Suspend, poweroff, reboot | [The daemons](../04-programs/daemons.md#kdos-powerd) |
 | `kdos-prompt` | Yes or no, by exit status | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-con` | The console session server | [kdos-con](../04-programs/kdos-con.md) |
+| `kdos-con-login` | The tty1 login: greeter or autologin | [kdos-con](../04-programs/kdos-con.md#the-login) |
+| `kdos-con-start` | Bring up the console session | [The session](../03-architecture/session.md#starting-a-session) |
+| `kdos-grid` | A console session and a view, in one command | [kdos-con](../04-programs/kdos-con.md#four-names-one-binary) |
 | `kdos-res` | The resource monitor | [kdos-res](../04-programs/kdos-res.md) |
+| `kdos-term` | The terminal: `-e`, `--title`, `--font`, `-D DIR`, `--tty`, `--dump WxH` | [kdos-term](../04-programs/kdos-term.md) |
+| `kdos-cage` | One application full screen, or embedded: `-d`, `-D`, `-m extend\|last`, `-s`, `-v`, `--embed WxH` | [kdos-cage](../04-programs/kdos-cage.md) |
+| `kdos con run` | Run a graphical program on the console desktop. Prints the terminal it was given, or `0` for a window | [kdos-con](../04-programs/kdos-con.md#reaching-it) |
+| `kdos-view --cast` | Rasterise the console session into a PipeWire stream. Prints the node id and the stream's pixel size | [kdos-con](../04-programs/kdos-con.md#recording-it) |
 | `kdos-resctl` | Signal or renice a process. **setuid** | [The security model](../03-architecture/security-model.md#kdos-resctl) |
 | `kdos-run` | The run box | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
-| `kdos-saver` | Attract mode between dim and lock | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-saver` | Attract mode between idle and lock | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-settings` | Settings | [kdos-shell](../04-programs/kdos-shell.md#kdos-settings) |
 | `kdos-sfx` | Sound effects | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
 | `kdos-shell` | The panel | [kdos-shell](../04-programs/kdos-shell.md#the-panel) |
-| `kdos-shot` | Screenshots | [The desktop](../02-user-guide/desktop.md) |
+| `kdos-shot` | Screenshots. On the console, cells rather than an image | [The desktop](../02-user-guide/desktop.md) |
 | `kdos-slit` | The dockapp column | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-view` | A display for a console session: `--kms`, `--tty`, `--dump`, `--cast` | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
 | `kdos-start` | The Start menu | [kdos-shell](../04-programs/kdos-shell.md#kdos-start) |
 | `kdos-status` | The overflow popup | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-teams` | The window list | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-theme` | Generate the GTK, icon and cursor themes | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
 | `kdos-tip` | Tooltips | [kdos-shell](../04-programs/kdos-shell.md#tooltips) |
+| `kdos-ime` | The input-method candidate window, as cells | [kdos-shell](../04-programs/kdos-shell.md#the-candidate-window) |
 | `kinstall` | The installer | [kinstall](../04-programs/kinstall.md) |
 | `kpkg` | The package manager | [Packaging](../03-architecture/packaging.md#kpkg) |
 | `kpkgadd` | Install a prebuilt package file | [Packaging](../03-architecture/packaging.md#kpkg) |
@@ -101,6 +111,7 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos cve` | Which pins carry known vulnerabilities, offline |
 | `kdos trash` | The freedesktop trash |
 | `kdos hey` | Ask the compositor about windows, outputs and boxes |
+| `kdos con` | Console sessions: `ls`, `new`, `attach`, `detach`, `kill`, `forward` |
 | `kdos oracle` | An aphorism |
 | `kdos update` | Orchestrate a system update |
 

@@ -47,6 +47,8 @@ weaker than the verdict would suggest, the row says so.
 | **The phosphor pass** | Stable | On by default; its input and output can be dumped without a screen. **Not in any rig photograph** — the rig's display puts the compositor on software rendering, where the pass declines |
 | **kdos-shell** | Stable | 28 surfaces, with committed reference frames for most; the panel itself has none |
 | **kdos-res** | Stable | Ten pages, reference frames at three widths for all of them plus the detail page, against a recorded system state |
+| **kdos-term** | **Experimental** | One binary that links as a Wayland window and as a console surface, with three committed reference frames taken by running it: a command's output, colour and cursor addressing, and a sixel. The state machine is a fork of a mature one and the image path is fuzzed. **No rig pass** — it has not been driven through `vim`, `htop`, `mc`, `tmux` or `lf`, which is why `foot` is still the default terminal everywhere |
+| **kdos-cage** | **Experimental** | A hard fork of cage 0.3.1 on the wlroots this tree already pins. It builds through its own recipe, links wlroots and XWayland and none of ours dynamically, and the self-test compiles all eight files wherever wlroots exists. `--embed` is exercised for real by a second process: a guest renders into a shared mapping and an injected keycode changes a later frame. It has also been driven by `kdos-con` end to end — a guest's frames become sprites in the cell grid, a click reaches it at the pixel inside the cell, and snapping, workspaces and closing behave as for any window. **No guest has run on a VT** |
 | **kinstall** | Stable | Installs; exercised by the disk-install harness; its plan and probe can be dumped without running |
 | **kdos-powerd** | Stable | In daily use by the desktop's power actions |
 | **kdos-mountd** | Stable | Acceptance and both refusals asserted against a recorded device tree with hand-built superblocks |
@@ -54,7 +56,17 @@ weaker than the verdict would suggest, the row says so.
 | **kdos-oomd** | **Experimental** | Victim selection asserted against a recorded tree arranged so only the memory budget can produce the right answer. **It has never fired for real** — a genuine memory-pressure stall is the test that matters and has not been run |
 | **kdos-boxsock** | Stable | Every boxed client is tagged through it; the compositor's sandbox denial verified against a real capture client |
 | **The portal backend** | Stable | Every boxed application's file dialog goes through it |
-| **The C libraries** | Stable | 13 libraries, compiled under warnings-as-errors, with a shared assertion program and a consumer compile check; clean under address and undefined-behaviour sanitizers |
+| **The C libraries** | Stable | 19 libraries, compiled under warnings-as-errors, with a shared assertion program and a consumer compile check; the whole suite — assertions, consumer builds and every committed reference frame — runs clean under address and undefined-behaviour sanitizers |
+| **The window model** | In progress | `libkwm` reproduces a 124-row contract taken by reading the compositor line by line, replayed by the self-test and clean under both sanitizers. `kdos-comp` calls it for placement, tiling, the edge search and workspace stepping, and **builds and links**. **No rig pass** — that a window lands where a person expects is not yet shown |
+| **The display interface** | In progress | `libkdisp` is the one place a surface picks a display server. The conversion moved 33 `kdisp_init` call sites and 174 other calls across `kdos-shell`, `kdos-res` and `kdos-lock`, and every committed reference frame came back byte-identical afterwards. Only one implementation exists so far, so the seam is proved by construction rather than by use |
+| **The console desktop** | **Experimental** | `kdos-con` composites windows, terminals and native surfaces on a character grid, checked against three committed goldens — one offscreen, one two-window, and one taken through a real session and a real view in two processes. Placement and tiling are `libkwm`'s, so they are the compositor's. A graphical application is a window: `kdos-cage --embed` composites it in a process of its own, the session cuts the frames into sprites, and a view with no pixels prints them as characters — run end to end against a real guest, with clicks, keys, snapping, workspaces and closing all observed. **It has never been booted into.** No rig pass, and the KMS path has never set a mode |
+| **kdos-view** | **Experimental** | Compiles and **links** against real drm, input, seat, xkb, udev, fcft and pixman. The KMS mode is unproved — there is no display in a build container, so no mode has been set and no key read from libinput — but `--cast` has been: it registers a PipeWire node and a real consumer captured a frame of the console desktop, chrome, taskbar, clock and all. `--dump` and `--tty` turn a picture into characters by shape, which is how an embedded application and an animation are checked |
+| **The console protocol** | In progress | `libkcon` carries surfaces and views over two typed unix sockets, asserted by the self-test including what it refuses. The kind of a client comes from which socket it reached rather than from its handshake, and the sources are grepped for `AF_INET` so the no-network claim cannot rot. **Attach, detach and forward have not been exercised between two machines** |
+| **kdos-ime** | **Experimental** | The candidate window as cells, on both desktops. It owns `org.kde.impanel`, answers both halves of kimpanel — signals for the preedit, a method call for the candidate list — and has been driven with the exact shapes fcitx5 5.1.21 sends, read out of its source. **fcitx5 itself has not been run against it**: it is a large CMake port and is not in the build container |
+| **Screen capture on the console** | **Experimental** | `kdos-view --cast` and a ScreenCast backend in `xdg-desktop-portal-kdos`, exercised against a real session bus, a real PipeWire and a real session: `CreateSession`, `SelectSources`, `Start` returning the node and its size, a frame taken out of it, and the view stopping when the session closes. **No application has recorded through it** — OBS in a box is a rig pass |
+| **The console login** | **Experimental** | `kdos-con-login` reads `con.conf` and either hands the tty to `agetty --autologin` or draws a greeter that drops privilege and asks `kdos-checkpass`. **Neither path has been booted.** `kdos-getty` falls back to a plain autologin getty if it cannot be executed, so the failure mode is a console rather than none |
+| **Touch** | **Experimental** | One recogniser in `libktui` — tap, long press, drag, scroll, pinch, edge swipe — asserted against driven sequences with the timestamp supplied, so a long press is tested without waiting for one. `wl_touch` is bound and feeds it. **Never run against a real touchscreen**, and no rig pass with a virtual touch device |
+| **Drag and drop** | **Experimental** | Both directions implemented in `libkwl`: a data source on the send side, an accepted offer on the receive side, `text/plain` and `text/uri-list`. The desktop is a drag source and the trash a target. **Compiles and has never been dragged.** No rig pass |
 | **The theme system** | Stable | Generator output verified byte-identical across all four accents; the audit re-runs the generators and compares, and its four failure modes are asserted |
 | **Boot and init** | Stable | Boots. The A/B state machine is asserted by running selection past its attempt limit without confirming, and requiring the rollback |
 | **A/B root slots** | In progress | The state machine is complete and asserted. **Nothing fills the second slot** — that is an updater, and there is no updater |
@@ -75,11 +87,11 @@ Counted from the tree at the time of writing.
 | Applications in the catalogue | 181 |
 | Packs baked | 194, 24 GB |
 | Kernel | 7.0.10 |
-| C libraries written here | 13 |
+| C libraries written here | 19 |
 | Names `kdos-shell` answers to | 28 |
 | `kdos` subcommands | 19 |
 | Preflight checks | 28 |
-| Committed reference frames | 63 |
+| Committed reference frames | 70 |
 | Recorded fixtures | 20 |
 
 ## The honest summary

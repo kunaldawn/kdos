@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   xdg-desktop-portal-kdos — FileChooser and Settings
+ *   xdg-desktop-portal-kdos — FileChooser, Settings, AppChooser and ScreenCast
  *
  * THE GAP THIS CLOSES. xdg-desktop-portal-wlr implements ScreenCast and
  * Screenshot and nothing else, and the usual second backend is
@@ -868,7 +868,409 @@ out:
 	return r;
 }
 
+
+/* ── ScreenCast ────────────────────────────────────────────────────────────
+ *
+ * A SCREENCAST IS A VIEW NOBODY LOOKS AT. The console session holds cells and a
+ * view is what turns them into pixels, so recording is a second `kdos-view`
+ * rasterising into a PipeWire stream. This backend starts one and hands back
+ * the node it registered; it opens no device, renders nothing and holds no
+ * frame.
+ *
+ * ONE STREAM, THE WHOLE DESKTOP. There is one grid and no notion of a monitor
+ * inside it, so a window picker would be a picker with one entry — and a
+ * "window" here is a rectangle of cells with nothing behind it to capture
+ * separately.
+ *
+ * `xdg-desktop-portal-wlr` remains the Wayland session's backend and is
+ * untouched. Two sessions, two backends, one portal interface, chosen by the
+ * desktop name in the portal configuration.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+struct cast_session {
+	struct cast_session *next;
+	char handle[256];	/* the Session object path */
+	sd_bus_slot *slot;	/* its exported vtable */
+	pid_t pid;		/* the view holding the stream, or 0 */
+};
+
+static struct cast_session *cast_sessions;
+
+/*
+ * A `Start` waiting for the view to say which node it registered. The bus loop
+ * must not block on it for the reason it must not block on a chooser, and the
+ * view does NOT exit — it is the stream — so the completion is a LINE rather
+ * than end-of-file.
+ */
+struct cast_pending {
+	struct cast_pending *next;
+	sd_bus_message *call;
+	int fd;
+	char buf[64];
+	size_t len;
+	struct cast_session *sess;
+};
+
+static struct cast_pending *cast_pendings;
+
+static struct cast_session *cast_find(const char *handle)
+{
+	for (struct cast_session *c = cast_sessions; c; c = c->next)
+		if (!strcmp(c->handle, handle))
+			return c;
+	return NULL;
+}
+
+static void cast_drop(struct cast_session *c)
+{
+	if (!c)
+		return;
+	if (c->pid > 0) {
+		kill(c->pid, SIGTERM);
+		waitpid(c->pid, NULL, 0);
+		c->pid = 0;
+	}
+	for (struct cast_session **pp = &cast_sessions; *pp; pp = &(*pp)->next)
+		if (*pp == c) {
+			*pp = c->next;
+			break;
+		}
+	sd_bus_slot_unref(c->slot);
+	free(c);
+}
+
+static int method_session_close(sd_bus_message *m, void *userdata,
+				sd_bus_error *err)
+{
+	(void)err;
+	cast_drop(userdata);
+	return sd_bus_reply_method_return(m, NULL);
+}
+
+/*
+ * The Session object the front end closes when the recording ends. Exported at
+ * the path the front end chose — a backend that did not export it would leave
+ * the view running after the application stopped recording, which is a desktop
+ * that keeps rasterising for nobody.
+ */
+static const sd_bus_vtable session_vtable[] = {
+	SD_BUS_VTABLE_START(0),
+	SD_BUS_METHOD("Close", "", "", method_session_close,
+		      SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_SIGNAL("Closed", "", 0),
+	SD_BUS_VTABLE_END
+};
+
+static int method_cast_create_session(sd_bus_message *m, void *userdata,
+				      sd_bus_error *err)
+{
+	const char *handle, *session_handle, *app_id;
+	int r;
+
+	(void)userdata;
+	(void)err;
+
+	r = sd_bus_message_read(m, "oos", &handle, &session_handle, &app_id);
+	if (r < 0)
+		return r;
+
+	if (cast_find(session_handle))
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)1,
+						  0);
+
+	struct cast_session *c = calloc(1, sizeof(*c));
+
+	if (!c)
+		return -ENOMEM;
+	snprintf(c->handle, sizeof(c->handle), "%s", session_handle);
+
+	if (sd_bus_add_object_vtable(sd_bus_message_get_bus(m), &c->slot,
+				     session_handle,
+				     "org.freedesktop.impl.portal.Session",
+				     session_vtable, c) < 0) {
+		free(c);
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+
+	c->next = cast_sessions;
+	cast_sessions = c;
+	return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)0, 0);
+}
+
+/*
+ * WHAT THERE IS TO CHOOSE FROM IS ONE THING. The options carry a source type,
+ * a cursor mode and a restore token; none of them changes what this can offer,
+ * so they are read past and the answer is yes.
+ */
+static int method_cast_select_sources(sd_bus_message *m, void *userdata,
+				      sd_bus_error *err)
+{
+	const char *handle, *session_handle, *app_id;
+	int r;
+
+	(void)userdata;
+	(void)err;
+
+	r = sd_bus_message_read(m, "oos", &handle, &session_handle, &app_id);
+	if (r < 0)
+		return r;
+	if (!cast_find(session_handle))
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)0, 0);
+}
+
+/* The reply `Start` owes: one stream, its node id and its size. */
+static int cast_reply(sd_bus_message *call, uint32_t node, int w, int h)
+{
+	sd_bus_message *reply = NULL;
+	int r = sd_bus_message_new_method_return(call, &reply);
+
+	if (r < 0)
+		return r;
+
+	if ((r = sd_bus_message_append(reply, "u", (uint32_t)0)) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'a', "{sv}")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'e', "sv")) < 0 ||
+	    (r = sd_bus_message_append(reply, "s", "streams")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'v', "a(ua{sv})")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'a', "(ua{sv})")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'r', "ua{sv}")) < 0 ||
+	    (r = sd_bus_message_append(reply, "u", node)) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'a', "{sv}")) < 0)
+		goto out;
+
+	/*
+	 * `size` and `position` are what a consumer lays the stream out with.
+	 * The position is 0,0 because there is one grid and it is the whole
+	 * desktop; a second output would be a second stream, not an offset.
+	 */
+	if ((r = sd_bus_message_open_container(reply, 'e', "sv")) < 0 ||
+	    (r = sd_bus_message_append(reply, "s", "size")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'v', "(ii)")) < 0 ||
+	    (r = sd_bus_message_append(reply, "(ii)", w, h)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0)
+		goto out;
+
+	if ((r = sd_bus_message_open_container(reply, 'e', "sv")) < 0 ||
+	    (r = sd_bus_message_append(reply, "s", "position")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'v', "(ii)")) < 0 ||
+	    (r = sd_bus_message_append(reply, "(ii)", 0, 0)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0)
+		goto out;
+
+	if ((r = sd_bus_message_open_container(reply, 'e', "sv")) < 0 ||
+	    (r = sd_bus_message_append(reply, "s", "source_type")) < 0 ||
+	    (r = sd_bus_message_open_container(reply, 'v', "u")) < 0 ||
+	    (r = sd_bus_message_append(reply, "u", (uint32_t)1)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0 ||
+	    (r = sd_bus_message_close_container(reply)) < 0)
+		goto out;
+
+	if ((r = sd_bus_message_close_container(reply)) < 0 ||	/* a{sv} */
+	    (r = sd_bus_message_close_container(reply)) < 0 ||	/* (ua{sv}) */
+	    (r = sd_bus_message_close_container(reply)) < 0 ||	/* a(ua{sv}) */
+	    (r = sd_bus_message_close_container(reply)) < 0 ||	/* v */
+	    (r = sd_bus_message_close_container(reply)) < 0 ||	/* {sv} */
+	    (r = sd_bus_message_close_container(reply)) < 0)	/* a{sv} */
+		goto out;
+
+	r = sd_bus_send(NULL, reply, NULL);
+out:
+	sd_bus_message_unref(reply);
+	return r;
+}
+
+static void cast_pending_free(struct cast_pending *cp)
+{
+	if (!cp)
+		return;
+	if (cp->fd >= 0)
+		close(cp->fd);
+	sd_bus_message_unref(cp->call);
+	free(cp);
+}
+
+/*
+ * One line, then the reply. Returns 1 when the view has answered — with a node
+ * id, or with nothing because it died, which is the same message to the caller
+ * and a different one in the log.
+ */
+static int cast_pending_read(struct cast_pending *cp)
+{
+	for (;;) {
+		ssize_t n;
+
+		if (cp->len + 1 >= sizeof(cp->buf))
+			return 1;
+		n = read(cp->fd, cp->buf + cp->len, sizeof(cp->buf) - 1 - cp->len);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				return 0;
+			return 1;
+		}
+		if (n == 0)
+			return 1;	/* the view exited without answering */
+		cp->len += (size_t)n;
+		cp->buf[cp->len] = '\0';
+		if (strchr(cp->buf, '\n'))
+			return 1;
+	}
+}
+
+static void cast_pending_finish(struct cast_pending *cp)
+{
+	unsigned long node = 0;
+	int w = 0, h = 0;
+
+	cp->buf[cp->len] = '\0';
+
+	/*
+	 * THE SIZE COMES FROM THE VIEW, on the same line as the node. This
+	 * backend never rasterises and cannot work it out — the cell size is
+	 * the view's font's — and a consumer told a size of zero has to guess
+	 * one before the stream's format arrives.
+	 */
+	if (sscanf(cp->buf, "%lu %d %d", &node, &w, &h) < 1 || node == 0) {
+		fprintf(stderr, "xdg-desktop-portal-kdos: the cast view "
+				"registered no node\n");
+		if (cp->sess)
+			cast_drop(cp->sess);
+		sd_bus_reply_method_return(cp->call, "ua{sv}", (uint32_t)2, 0);
+		return;
+	}
+
+	cast_reply(cp->call, (uint32_t)node, w, h);
+}
+
+/*
+ * Start the recording: one `kdos-view --cast` on the session named by
+ * $KDOS_CON, which this process inherited from the console session that
+ * started it.
+ */
+static int method_cast_start(sd_bus_message *m, void *userdata,
+			     sd_bus_error *err)
+{
+	const char *handle, *session_handle, *app_id, *parent;
+	int fds[2];
+	int r;
+
+	(void)userdata;
+	(void)err;
+
+	r = sd_bus_message_read(m, "ooss", &handle, &session_handle, &app_id,
+				&parent);
+	if (r < 0)
+		return r;
+
+	struct cast_session *c = cast_find(session_handle);
+
+	if (!c)
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+
+	const char *con = getenv("KDOS_CON");
+
+	if (!con || !*con) {
+		fprintf(stderr, "xdg-desktop-portal-kdos: no console session "
+				"to record ($KDOS_CON unset)\n");
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+
+	if (pipe(fds) != 0)
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+
+	pid_t pid = fork();
+
+	if (pid < 0) {
+		close(fds[0]);
+		close(fds[1]);
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+	if (pid == 0) {
+		close(fds[0]);
+		dup2(fds[1], STDOUT_FILENO);
+		close(fds[1]);
+		execlp("kdos-view", "kdos-view", "--cast", "--socket", con,
+		       (char *)NULL);
+		_exit(127);
+	}
+	close(fds[1]);
+	fcntl(fds[0], F_SETFL, O_NONBLOCK);
+
+	struct cast_pending *cp = calloc(1, sizeof(*cp));
+
+	if (!cp) {
+		close(fds[0]);
+		kill(pid, SIGTERM);
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+
+	c->pid = pid;
+	cp->call = sd_bus_message_ref(m);
+	cp->fd = fds[0];
+	cp->sess = c;
+	cp->next = cast_pendings;
+	cast_pendings = cp;
+	return 1;	/* answered later, when the view names its node */
+}
+
+static int prop_cast_source_types(sd_bus *bus, const char *path,
+				  const char *iface, const char *prop,
+				  sd_bus_message *reply, void *userdata,
+				  sd_bus_error *err)
+{
+	(void)bus; (void)path; (void)iface; (void)prop; (void)userdata;
+	(void)err;
+	/* MONITOR only. There is one grid and no window behind a window. */
+	return sd_bus_message_append(reply, "u", (uint32_t)1);
+}
+
+static int prop_cast_cursor_modes(sd_bus *bus, const char *path,
+				  const char *iface, const char *prop,
+				  sd_bus_message *reply, void *userdata,
+				  sd_bus_error *err)
+{
+	(void)bus; (void)path; (void)iface; (void)prop; (void)userdata;
+	(void)err;
+	/*
+	 * EMBEDDED only. The caret is a cell drawn in reverse video by the
+	 * toolkit, so it is already in the frame and there is no separate
+	 * cursor image to hide or to send alongside.
+	 */
+	return sd_bus_message_append(reply, "u", (uint32_t)2);
+}
+
+static int prop_cast_version(sd_bus *bus, const char *path, const char *iface,
+			     const char *prop, sd_bus_message *reply,
+			     void *userdata, sd_bus_error *err)
+{
+	(void)bus; (void)path; (void)iface; (void)prop; (void)userdata;
+	(void)err;
+	return sd_bus_message_append(reply, "u", (uint32_t)2);
+}
+
+static const sd_bus_vtable screen_cast_vtable[] = {
+	SD_BUS_VTABLE_START(0),
+	SD_BUS_METHOD("CreateSession", "oosa{sv}", "ua{sv}",
+		      method_cast_create_session, SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_METHOD("SelectSources", "oosa{sv}", "ua{sv}",
+		      method_cast_select_sources, SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_METHOD("Start", "oossa{sv}", "ua{sv}", method_cast_start,
+		      SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_PROPERTY("AvailableSourceTypes", "u", prop_cast_source_types, 0,
+			SD_BUS_VTABLE_PROPERTY_CONST),
+	SD_BUS_PROPERTY("AvailableCursorModes", "u", prop_cast_cursor_modes, 0,
+			SD_BUS_VTABLE_PROPERTY_CONST),
+	SD_BUS_PROPERTY("version", "u", prop_cast_version, 0,
+			SD_BUS_VTABLE_PROPERTY_CONST),
+	SD_BUS_VTABLE_END
+};
+
 /* ── vtables ───────────────────────────────────────────────────────────── */
+
 
 static const sd_bus_vtable file_chooser_vtable[] = {
 	SD_BUS_VTABLE_START(0),
@@ -921,7 +1323,7 @@ static const sd_bus_vtable settings_vtable[] = {
 int main(int argc, char **argv)
 {
 	sd_bus *bus = NULL;
-	sd_bus_slot *fc = NULL, *st = NULL, *ou = NULL;
+	sd_bus_slot *fc = NULL, *st = NULL, *ou = NULL, *sc = NULL;
 	int r;
 
 	for (int i = 1; i < argc; i++) {
@@ -961,6 +1363,11 @@ int main(int argc, char **argv)
 	r = sd_bus_add_object_vtable(bus, &ou, PORTAL_PATH,
 				     "org.freedesktop.impl.portal.AppChooser",
 				     app_chooser_vtable, NULL);
+	if (r < 0)
+		goto fail;
+	r = sd_bus_add_object_vtable(bus, &sc, PORTAL_PATH,
+				     "org.freedesktop.impl.portal.ScreenCast",
+				     screen_cast_vtable, NULL);
 	if (r < 0)
 		goto fail;
 
@@ -1006,6 +1413,18 @@ int main(int argc, char **argv)
 			nfds++;
 		}
 
+		struct cast_pending *cwatch[8];
+		int ncw = 0;
+
+		for (struct cast_pending *cp = cast_pendings;
+		     cp && ncw < 8 && nfds < 1 + 16; cp = cp->next) {
+			fds[nfds].fd = cp->fd;
+			fds[nfds].events = POLLIN;
+			fds[nfds].revents = 0;
+			cwatch[ncw++] = cp;
+			nfds++;
+		}
+
 		uint64_t usec = 0;
 		int timeout = -1;
 		if (sd_bus_get_timeout(bus, &usec) >= 0 &&
@@ -1022,6 +1441,22 @@ int main(int argc, char **argv)
 			if (errno == EINTR)
 				continue;
 			break;
+		}
+
+		for (int i = 0; i < ncw; i++) {
+			if (!fds[1 + nw + i].revents)
+				continue;
+			if (!cast_pending_read(cwatch[i]))
+				continue;
+			cast_pending_finish(cwatch[i]);
+			for (struct cast_pending **pp = &cast_pendings; *pp;
+			     pp = &(*pp)->next) {
+				if (*pp == cwatch[i]) {
+					*pp = cwatch[i]->next;
+					break;
+				}
+			}
+			cast_pending_free(cwatch[i]);
 		}
 
 		for (int i = 0; i < nw; i++) {
@@ -1047,6 +1482,7 @@ int main(int argc, char **argv)
 fail:
 	if (r < 0)
 		fprintf(stderr, "xdg-desktop-portal-kdos: %s\n", strerror(-r));
+	sd_bus_slot_unref(sc);
 	sd_bus_slot_unref(ou);
 	sd_bus_slot_unref(st);
 	sd_bus_slot_unref(fc);

@@ -1,0 +1,25 @@
+Recorded terminal streams, and the grid libkvt makes of them.
+
+Each `.esc` is the raw bytes a real program wrote to an 80x24 pty with
+TERM=xterm-256color: vim on this repository's README, htop, mc, less paged once,
+and tmux with a horizontal split. `malformed.esc` is written by hand — an
+unterminated CSI, a parameter past any bound, an OSC with no terminator, a
+truncated UTF-8 lead byte, a surrogate, a DCS carrying rubbish — because no
+program emits those and the parser has to survive them anyway.
+
+THEY ARE NEVER RE-DERIVED. A re-recording picks up a different program version,
+a different terminfo and a different hostname, so a fixture that regenerated
+itself would be a test that changed its own question. The hostname and the clock
+inside them are part of the recording, not something live.
+
+EACH ENDS ON A LIVE FRAME, never on the program's exit. A stream that ended with
+the alternate screen being restored renders to an empty grid — and so does a
+parser that gave up on the first byte, which is why the self-test refuses an
+empty grid outright.
+
+`vtrender.c` replays one into the 80x24 screen it produces, in small uneven
+chunks so that escape sequences are split across reads the way a pty splits
+them. `testing/goldens/vt-*.txt` are its output.
+
+`record.py` is how they were made. It is here so that the knowledge is
+recoverable, not because anything re-runs it.

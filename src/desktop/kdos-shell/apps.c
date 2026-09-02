@@ -39,6 +39,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kcon.h"
 #include "kxdg.h"
 #include "shell.h"
 
@@ -524,6 +525,7 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 			 int nfiles)
 {
 	char store[SH_APP_EXEC * 2];
+	char id[160];			/* argv points into it until the exec */
 	const char *argv[48];
 	int n = 0;
 
@@ -539,10 +541,17 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 		usage_save();
 	}
 
-	if (a->terminal) {
-		argv[n++] = "foot";
-		argv[n++] = "-e";
-	}
+	/*
+	 * WHICH DESKTOP THIS IS. $KDOS_CON is the console session's surface
+	 * socket, set by the session for everything started inside it, and it
+	 * decides how a NON-terminal entry is started below. A terminal entry
+	 * needs no branch: sh_term() already names the right emulator.
+	 */
+	const char *con = getenv("KDOS_CON");
+
+	if (a->terminal)
+		n = sh_term_argv(argv, n, (int)(sizeof(argv) / sizeof(*argv)),
+				 a->exec, id, sizeof(id));
 	int got = kxdg_exec_split(a->exec, files, nfiles, store, sizeof(store),
 				  argv + n, (int)(sizeof(argv) / sizeof(*argv))
 						    - n - 1 - nfiles);
@@ -557,5 +566,26 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 		for (int i = 0; i < nfiles && n < 47; i++)
 			argv[n++] = files[i];
 	argv[n] = NULL;
+
+	/*
+	 * A GRAPHICAL APPLICATION ON THE CONSOLE GETS A TERMINAL OF ITS OWN.
+	 * This desktop composites character cells and a Wayland client's
+	 * surface is pixels; the session allocates a VT, kdos-cage holds it,
+	 * and the guest is full screen there. Everything else about the launch
+	 * — the desktop entry, kdos-appbox, the box's tagged socket — is the
+	 * same path the graphical desktop uses, which is the point.
+	 *
+	 * A terminal entry is not one of these: it became a kdos-term window
+	 * above and belongs on this grid.
+	 */
+	if (con && *con && !a->terminal) {
+		if (kcon_run(con, argv, a->name[0] ? a->name : argv[0], 0) < 0)
+			fprintf(stderr,
+				"kdos-shell: cannot start '%s' — the session "
+				"has no free terminal to give it\n",
+				a->name[0] ? a->name : argv[0]);
+		return;
+	}
+
 	sh_spawn(argv);
 }

@@ -251,6 +251,28 @@ static const char *edge_word(const char *dir)
 /* The action, in words. An action this table has not heard of is printed by
  * NAME rather than dropped: a row that says `ToggleTearing` is still a row the
  * user can go and look up, and a missing row is a key nobody knows exists. */
+/*
+ * rc.xml IS THE COMPOSITOR'S FILE and names the compositor's terminal. This
+ * card is read on both desktops, and on the console `foot` is a Wayland client
+ * that cannot run — a row naming it points the reader at a program that will
+ * not start. Only the leading word is rewritten, because that word is the
+ * program and everything after it is arguments both emulators take alike.
+ */
+static void retermize(char *cmd, size_t n)
+{
+	const char *t = sh_term();
+	char rest[192];
+
+	if (strncmp(cmd, "foot", 4) != 0)
+		return;
+	if (cmd[4] != '\0' && cmd[4] != ' ')
+		return;
+	if (strcmp(t, "foot") == 0)
+		return;
+	snprintf(rest, sizeof(rest), "%s", cmd + 4);
+	snprintf(cmd, n, "%s%s", t, rest);
+}
+
 static void describe(const char *act, const char *cmd, const char *to,
 		     const char *dir, const char *menu, char *out, size_t n)
 {
@@ -414,6 +436,7 @@ static int parse_rc(const char *path)
 
 		struct kbind *b = &binds[nbinds];
 		pretty_key(key, b->key, sizeof(b->key));
+		retermize(cmd, sizeof(cmd));
 		describe(act, cmd, to, dir, menu, b->desc, sizeof(b->desc));
 		b->sect = classify(key, act, cmd, menu);
 		nbinds++;
@@ -430,23 +453,35 @@ static void builtin_table(void)
 {
 	static const struct { const char *k, *d; int s; } tbl[] = {
 		{ "Super+d", "kdos-launcher", SEC_LAUNCH },
-		{ "Super+Enter", "foot", SEC_LAUNCH },
+		/* NULL: the terminal is not the same program on the two
+		 * desktops, and the card names the one that will open. */
+		{ "Super+Enter", NULL, SEC_LAUNCH },
 		{ "Alt+F2", "kdos-run", SEC_LAUNCH },
 		{ "Super+Space", "the root menu", SEC_LAUNCH },
 		{ "Super+q", "close the window", SEC_WINDOW },
 		{ "Super+Tab", "next window", SEC_WINDOW },
 		{ "Super+m", "maximise / restore", SEC_WINDOW },
+		{ "Super+f", "fullscreen", SEC_WINDOW },
 		{ "Super+n", "minimise", SEC_WINDOW },
 		{ "Super+1..4", "workspace 1 to 4", SEC_WS },
 		{ "Super+l", "kdos-lock", SEC_SYSTEM },
 		{ "Super+F1", "this card", SEC_SYSTEM },
-		{ "Super+Escape", "end the session", SEC_SYSTEM },
+		/* The one default the two desktops do not share: the console
+		 * puts Shift on it, so the chord that closes a window and the
+		 * chord that ends the desktop are not one slip apart. */
+		{ NULL, "end the session", SEC_SYSTEM },
 	};
+
+	const char *con = getenv("KDOS_CON");
 
 	nbinds = 0;
 	for (size_t i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++) {
-		snprintf(binds[nbinds].key, sizeof(binds[0].key), "%s", tbl[i].k);
-		snprintf(binds[nbinds].desc, sizeof(binds[0].desc), "%s", tbl[i].d);
+		snprintf(binds[nbinds].key, sizeof(binds[0].key), "%s",
+			 tbl[i].k ? tbl[i].k
+				  : (con && *con) ? "Super+Shift+q"
+						  : "Super+Escape");
+		snprintf(binds[nbinds].desc, sizeof(binds[0].desc), "%s",
+			 tbl[i].d ? tbl[i].d : sh_term());
 		binds[nbinds].sect = tbl[i].s;
 		nbinds++;
 	}
@@ -699,8 +734,8 @@ int keys_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = KEYS_COLS,
 		.rows = KEYS_ROWS,
 		.app_id = "kdos-keys",
@@ -711,7 +746,7 @@ int keys_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-keys: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -722,7 +757,7 @@ int keys_main(int argc, char **argv)
 
 	int top = 0;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		int rowsv = list_rows(welcome) - (parse_note[0] ? 1 : 0);
@@ -790,7 +825,7 @@ int keys_main(int argc, char **argv)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	if (welcome)
 		marker_write();
 	return 0;

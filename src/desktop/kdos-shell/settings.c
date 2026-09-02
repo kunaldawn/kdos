@@ -1907,7 +1907,7 @@ int settings_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -1918,7 +1918,7 @@ int settings_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = KWL_ROLE_TOPLEVEL,
+		.role = KDISP_ROLE_TOPLEVEL,
 		.cols = 72,
 		.rows = 20,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -1930,21 +1930,21 @@ int settings_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-settings: no compositor or no "
 				"layer-shell\n");
 		return 2;
 	}
-	/* AFTER kwl_init: the icon layer needs the cell size and the output
+	/* AFTER kdisp_init: the icon layer needs the cell size and the output
 	 * scale, and neither exists until the surface does. */
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		int pane_rows = ktui_h - 5;
@@ -2295,6 +2295,6 @@ int settings_main(int argc, char **argv)
 		}
 	}
 out:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

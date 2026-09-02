@@ -1193,6 +1193,54 @@ static void do_config(void)
 	}
 
 	wr("/etc/keymap", "%s\n", cfg.keymap);
+
+	/*
+	 * con.conf's `greet`, edited in place rather than rewritten: the
+	 * shipped file is mostly the explanation of what each key does, and a
+	 * one-line replacement would leave the installed system with a
+	 * configuration file nobody can read. Only the line is replaced; a
+	 * file that has none gains one, and a missing file is left missing
+	 * because the default already matches what would be written.
+	 */
+	{
+		char cc[8192];
+		int n = slurp(TARGET "/etc/kdos/con.conf", cc, sizeof(cc));
+
+		if (n > 0) {
+			char out[8192];
+			size_t o = 0;
+			int done = 0;
+
+			for (char *line = strtok(cc, "\n"); line;
+			     line = strtok(NULL, "\n")) {
+				const char *p = line;
+
+				while (*p == ' ' || *p == '\t')
+					p++;
+				if (!strncmp(p, "greet", 5) &&
+				    (p[5] == ' ' || p[5] == '\t' ||
+				     p[5] == '=')) {
+					o += (size_t)snprintf(out + o,
+							      sizeof(out) - o,
+							      "greet = %s\n",
+							      cfg.greet ? "yes"
+									: "no");
+					done = 1;
+					continue;
+				}
+				o += (size_t)snprintf(out + o, sizeof(out) - o,
+						      "%s\n", line);
+				if (o >= sizeof(out) - 64)
+					break;
+			}
+			if (!done)
+				snprintf(out + o, sizeof(out) - o,
+					 "greet = %s\n",
+					 cfg.greet ? "yes" : "no");
+			wr("/etc/kdos/con.conf", "%s", out);
+		}
+	}
+
 	emit('P', "0.6");
 
 	if (kb_path_exists("/etc/resolv.conf") && !cfg.dry_run) {

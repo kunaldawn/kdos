@@ -1,0 +1,24 @@
+
+## Status
+
+This is the **v0.2** line: it installs, boots, runs a desktop and runs
+applications, and its interfaces are stable enough to document. It is not a
+release with a support commitment or a tested hardware matrix . you are the
+integrator.
+
+Maturity per subsystem, with the evidence behind each verdict, is in
+[Status](docs/kdos/06-reference/status.md).
+
+---
+
+## License
+
+MIT for the KDOS-authored parts. Vendored artwork keeps its upstream license .
+see `LICENSE.notice` in `src/packages/kdos-cursors/`, `kdos-icons/` and
+`kdos-gtk-theme/`, each of which records exactly what was changed. Monocypher is
+public domain. `kdos-comp` and `kdos-bb` are forks of GPL-2.0 projects and keep
+that license and their upstream copyright headers. Every port under
+`ports/core/` is upstream's own code under upstream's own terms.
+
+Go forth and segfault.
+"README.md" 262 lines, 10331 bytes

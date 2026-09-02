@@ -364,6 +364,7 @@ static void filter(const char *query)
 static void launch(const struct entry *e)
 {
 	char buf[256];
+	char id[160];			/* argv points into it until the exec */
 	const char *argv[32];
 	int n = 0;
 
@@ -383,10 +384,8 @@ static void launch(const struct entry *e)
 	 */
 	/* Terminal=true is a program with no window of its own — the same
 	 * wrapping kdos-menu does, and for the same reason. */
-	if (e->terminal) {
-		argv[n++] = "foot";
-		argv[n++] = "-e";
-	}
+	if (e->terminal)
+		n = sh_term_argv(argv, n, 32, e->exec, id, sizeof(id));
 	snprintf(buf, sizeof(buf), "%s", e->exec);
 	char *save = NULL;
 	for (char *tok = strtok_r(buf, " \t", &save);
@@ -512,8 +511,8 @@ int launcher_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = 64,
 		.rows = 18,
 		.app_id = "kdos-launcher",
@@ -524,7 +523,7 @@ int launcher_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-launcher: no compositor or no "
 				"layer-shell\n");
 		return 1;
@@ -544,7 +543,7 @@ int launcher_main(int argc, char **argv)
 	int sel_follow = 1;
 	filter(query);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		/* Keep the selection on screen and inside the list — every one
@@ -700,6 +699,6 @@ int launcher_main(int argc, char **argv)
 	}
 
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

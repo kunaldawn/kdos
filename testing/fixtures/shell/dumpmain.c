@@ -40,29 +40,47 @@
 
 /* libkwl, stubbed. A dump never reaches any of it; the symbols exist only
  * because the same translation units carry the interactive path. */
-int kwl_init(const KwlConfig *cfg) { (void)cfg; return -1; }
-void kwl_shutdown(void) {}
-int kwl_should_close(void) { return 1; }
-int kwl_cell_w(void) { return 16; }
-int kwl_cell_h(void) { return 32; }
-void kwl_input_cells(const KRect *r, int n) { (void)r; (void)n; }
+/*
+ * The stub stands in for libkdisp, not for libkwl: the front ends reach a
+ * display through the interface now, so that is what has to be absent here.
+ * Returning -1 is what it always did — no compositor — and the front ends take
+ * their non-Wayland path exactly as before.
+ */
+int kdisp_init(const KDispConfig *cfg, const KDispImpl *const *impls, int n)
+{
+	(void)cfg;
+	(void)impls;
+	(void)n;
+	return -1;
+}
+
+const KDispImpl *kdisp_current(void) { return NULL; }
+
+/* The front ends name this list; nothing in it is reachable from here. */
+const KDispImpl *const kdos_disp[] = { NULL };
+const int kdos_disp_n = 0;
+void kdisp_shutdown(void) {}
+int kdisp_should_close(void) { return 1; }
+int kdisp_cell_w(void) { return 16; }
+int kdisp_cell_h(void) { return 32; }
+void kdisp_input_cells(const KRect *r, int n) { (void)r; (void)n; }
 void *kwl_display(void) { return NULL; }
 void *kwl_seat(void) { return NULL; }
-void kwl_overlay_hide(void) {}
-int kwl_overlay_show(int c, int r) { (void)c; (void)r; return 0; }
-int kwl_overlay_resize(int c, int r) { (void)c; (void)r; return -1; }
-void kwl_cursor_set(enum kwl_cursor c) { (void)c; }
-int kwl_fd(void) { return -1; }
-void kwl_pump(void) {}
-int kwl_scale(void) { return 1; }
+void kdisp_overlay_hide(void) {}
+int kdisp_overlay_show(int c, int r) { (void)c; (void)r; return 0; }
+int kdisp_overlay_resize(int c, int r) { (void)c; (void)r; return -1; }
+void kdisp_cursor_set(enum kdisp_cursor c) { (void)c; }
+int kdisp_fd(void) { return -1; }
+void kdisp_pump(void) {}
+int kdisp_scale(void) { return 1; }
 /* Nothing is drawing a frame round an offscreen grid, so the surface draws its
  * own — which is what makes a golden the picture tty1 shows. */
-int kwl_decorated(void) { return 0; }
-int kwl_px_h(void) { return 0; }
-int kwl_popup_offset(void) { return 0; }
-void kwl_report_error(void) {}
-void kwl_set_backdrop(KwlBackdropFn fn) { (void)fn; }
-int kwl_copy(const char *t, size_t n, int p)
+int kdisp_decorated(void) { return 0; }
+int kdisp_px_h(void) { return 0; }
+int kdisp_popup_offset(void) { return 0; }
+void kdisp_report_error(void) {}
+void kdisp_set_backdrop(KDispBackdropFn fn) { (void)fn; }
+int kdisp_copy(const char *t, size_t n, int p)
 {
 	(void)t; (void)n; (void)p;
 	return -1;
@@ -94,9 +112,9 @@ int kcell_ascii_image(const uint32_t *argb, int w, int h, int stride_px,
 	return -1;
 }
 
-int kwl_lock_engaged(void) { return 0; }
-int kwl_lock_finished(void) { return 1; }
-void kwl_unlock(void) {}
+int kdisp_lock_engaged(void) { return 0; }
+int kdisp_lock_finished(void) { return 1; }
+void kdisp_unlock(void) {}
 
 /*
  * libkicon, stubbed to "there are no icons".
@@ -183,8 +201,8 @@ int kch_body_slot(void) { return KT_BG; }
  * grid, and a layout that only lines up once the pictures rasterise is a
  * layout that is broken.
  */
-int kwl_edge_bottom(void) { return 0; }
-void kwl_layer_autohide(bool hidden) { (void)hidden; }
+int kdisp_edge_bottom(void) { return 0; }
+void kdisp_layer_autohide(bool hidden) { (void)hidden; }
 
 int kicon_slot_pad(const char *n, int cw, int ch, int pad)
 { (void)n; (void)cw; (void)ch; (void)pad; return -1; }

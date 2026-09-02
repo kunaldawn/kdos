@@ -148,8 +148,8 @@ int prompt_main(int argc, char **argv)
 	int nlines = wrap(msg, cols - 4, lines);
 	int rows = nlines + 4;
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = cols,
 		.rows = rows,
 		.app_id = "kdos-prompt",
@@ -158,7 +158,7 @@ int prompt_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		/*
 		 * No compositor is not an answer. Cancelled is the only honest
 		 * status: taking the `then` branch here would mean a dialog
@@ -176,7 +176,7 @@ int prompt_main(int argc, char **argv)
 	int rc = EXIT_CANCELLED;
 	int no_x = 0, no_end = 0, yes_x = 0, yes_end = 0;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		int w = ktui_w, h = ktui_h;
 		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 		ktui_draw_box(krect(0, 0, w, h), "KDOS", KT_ACCENT, KT_SURFACE, 1);
@@ -298,6 +298,6 @@ int prompt_main(int argc, char **argv)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return rc;
 }

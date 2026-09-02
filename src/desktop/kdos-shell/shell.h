@@ -307,6 +307,9 @@ int status_main(int argc, char **argv);		/* kdos-status   */
 /* The tooltip, which is a surface and therefore a process. Half this bar is
  * pictures with no words; this is what says what they are. */
 int tip_main(int argc, char **argv);		/* kdos-tip      */
+/* The candidate window, drawn as cells rather than by the input engine's own
+ * toolkit — the last thing on this desktop that was not. It speaks kimpanel. */
+int ime_main(int argc, char **argv);		/* kdos-ime      */
 
 /*
  * The ALSA mixer, shared with the panel (osd.c).
@@ -483,7 +486,39 @@ int sh_app_group_for(const char *categories);
  * shell anywhere in it. Every surface here spawns the same way. */
 void sh_spawn(const char *const argv[]);
 
+/* The terminal emulator on THIS desktop: kdos-term on the console, foot under
+ * the compositor. Both take `-e CMD` and `-D DIR`. */
+const char *sh_term(void);
+
+/* The terminal, the identity it wears and the `-e` that ends it, appended to
+ * argv from n; returns the new n. `id` is scratch that must outlive the exec. */
+int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
+		 char *id, size_t idsz);
+
+/* The same as one command string, for the callers that re-split one. The
+ * buffer must be the command's length plus SH_TERM_PREFIX_MAX: what goes in
+ * front is an emulator's name, an identity taken from the command, and `-e`,
+ * and a buffer sized for the bare command truncates all three into it. */
+#define SH_TERM_PREFIX_MAX 160
+void sh_term_cmd(char *out, size_t n, const char *cmd);
+
+/* The program that IS this session: `kdos-con` on the console, `kdos-comp`
+ * under the compositor. Log Out sends it SIGTERM. */
+const char *sh_session_prog(void);
+
 #include "kchrome.h"
+
+#include "kdisp.h"
+
+/*
+ * WHICH DISPLAY SERVERS THIS PROGRAM LINKS, in preference order — the console
+ * first, so a surface started FROM the console desktop attaches to it even on a
+ * machine that also has a compositor running. libkdisp names no implementation;
+ * this list is what links each one in.
+ */
+extern const KDispImpl *const kdos_disp[];
+extern const int kdos_disp_n;
+
 
 /* ── the pinned list (chrome.c) ────────────────────────────────────────────
  * `~/.config/kdos/favorites`, one desktop-entry id per line — what the

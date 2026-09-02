@@ -1,0 +1,24 @@
+
+<p align="center">
+  <img src="docs/screenshots/desktop.png" alt="The KDOS desktop: the panel along
+ the bottom with live meters, desktop icons on the wallpaper, and a terminal" wi
+dth="100%"/>
+</p>
+
+<p align="center">
+<sub>Screenshots are 1920.1080, taken on the current image in a QEMU guest.
+The phosphor shader is not in them . that renderer path declines on software
+rendering, so what you see is the cell grid underneath it.</sub>
+</p>
+
+---
+
+## What KDOS is
+
+Four properties. Everything else in this repository follows from them, and each
+is covered in [Why KDOS](docs/kdos/01-philosophy/why-kdos.md).
+
+**Built from source, with named exceptions.** The host is compiled here from
+upstream tarballs by 764 recipes: cross toolchain . musl userland .
+self-hosting bootstrap . libraries . desktop . kernel. No base image, no b
+:

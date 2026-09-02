@@ -1,0 +1,337 @@
+# The window model as kdos-comp implements it. See README beside this file.
+#
+# Edge names are the bits of enum lab_edge (include/common/edge.h):
+#   T=TOP B=BOTTOM L=LEFT R=RIGHT C=CENTER N=NONE, combined by juxtaposition.
+
+# ─────────────────────────────────────────────────────────────────────────
+# tile — the tiled-state transition
+#   src/view.c view_snap_to_edge(), lines 2105-2175
+#
+# tile <current> <edge> <combine> <across> -> <new>
+#
+# The transition is a decomposition of the current tiled mask into the
+# component parallel to the snap axis and the component orthogonal to it.
+# It is pure logic over a bitmask and no geometry enters it.
+# ─────────────────────────────────────────────────────────────────────────
+
+# Untiled: the requested edge is taken as-is. parallel_tiled == NONE takes the
+# third branch, which ORs an empty mask.
+tile N  L 1 0 -> L
+tile N  R 1 0 -> R
+tile N  T 1 0 -> T
+tile N  B 1 0 -> B
+
+# A half plus an orthogonal edge is a quarter. Third branch: parallel_tiled is
+# NONE because LEFT does not intersect TOP|BOTTOM.
+tile L  T 1 0 -> TL
+tile L  B 1 0 -> BL
+tile R  T 1 0 -> TR
+tile R  B 1 0 -> BR
+
+# A quarter snapped against its own vertical component becomes the half that
+# remains. Second branch: parallel_tiled == invert(edge) and the orthogonal
+# component survives as the new edge.
+tile TL B 1 0 -> L
+tile TR B 1 0 -> R
+tile BL T 1 0 -> L
+tile BR T 1 0 -> R
+
+# THE NON-OBVIOUS ONE. A quarter snapped towards the edge it already occupies
+# matches no branch at all: parallel_tiled equals the requested edge, so it is
+# neither invert nor NONE. The requested edge is used unchanged and the
+# orthogonal component is DISCARDED — the quarter collapses to a half.
+tile TL T 1 0 -> T
+tile TR T 1 0 -> T
+tile BL B 1 0 -> B
+tile BR B 1 0 -> B
+
+# A half snapped to its opposite edge crosses over. Second branch needs a
+# surviving orthogonal component and there is none, so no branch fires.
+tile L  R 1 0 -> R
+tile R  L 1 0 -> L
+tile T  B 1 0 -> B
+tile B  T 1 0 -> T
+
+# combine=0 disables both combining branches, so the request always wins and a
+# quarter is never built. This is what SnapToEdge without combine="yes" does.
+tile L  T 0 0 -> T
+tile TL B 0 0 -> B
+tile N  L 0 0 -> L
+
+# CENTER is excluded by the guard `view->tiled != LAB_EDGE_CENTER`, so the whole
+# combining block is skipped and the request is taken as-is.
+tile C  L 1 0 -> L
+tile C  T 1 0 -> T
+
+# across_outputs, and it is the only case that moves a window between screens.
+# tiled == edge sends the window to the adjacent output and INVERTS the edge, so
+# a left-tiled window snapped left again lands right-tiled on the screen to the
+# left. With no adjacent usable output the call returns and nothing changes.
+tile L  L 1 1 -> R  @adjacent
+tile L  L 1 1 -> L  @no-adjacent-output-unchanged
+tile T  T 1 1 -> B  @adjacent
+
+# ─────────────────────────────────────────────────────────────────────────
+# geom — a tiled state becomes a rect
+#   src/view.c view_get_edge_snap_box(), lines 480-519
+#
+# geom <usable x,y,w,h> <gap> <margin l,t,r,b> <tiled> -> <x,y,w,h>
+#
+#   x1 = gap                        x2 = usable.w - gap
+#   y1 = gap                        y2 = usable.h - gap
+#   RIGHT  -> x1 = (usable.w + gap) / 2
+#   LEFT   -> x2 = (usable.w - gap) / 2
+#   BOTTOM -> y1 = (usable.h + gap) / 2
+#   TOP    -> y2 = (usable.h - gap) / 2
+#   rect = { x1 + usable.x, y1 + usable.y, x2 - x1, y2 - y1 }, then inset by
+#   the SSD margin on all four sides.
+#
+# The two halves of an axis are computed from DIFFERENT expressions, which is
+# what puts a full gap between them rather than half a gap each.
+# ─────────────────────────────────────────────────────────────────────────
+
+# No gap, no margin. The simple case, and the one everything else is read against.
+geom 0,0,1920,1080 0 0,0,0,0 L  -> 0,0,960,1080
+geom 0,0,1920,1080 0 0,0,0,0 R  -> 960,0,960,1080
+geom 0,0,1920,1080 0 0,0,0,0 T  -> 0,0,1920,540
+geom 0,0,1920,1080 0 0,0,0,0 B  -> 0,540,1920,540
+geom 0,0,1920,1080 0 0,0,0,0 TL -> 0,0,960,540
+geom 0,0,1920,1080 0 0,0,0,0 TR -> 960,0,960,540
+geom 0,0,1920,1080 0 0,0,0,0 BL -> 0,540,960,540
+geom 0,0,1920,1080 0 0,0,0,0 BR -> 960,540,960,540
+
+# CENTER and NONE match none of the four bits, so both give the whole usable
+# area inset by the gap. CENTER is therefore maximise-shaped, not centred.
+geom 0,0,1920,1080 0 0,0,0,0 C  -> 0,0,1920,1080
+geom 0,0,1920,1080 0 0,0,0,0 N  -> 0,0,1920,1080
+
+# With a gap. The distance between the two halves is a full gap, not two halves
+# of one: 964 - 956 = 8.
+geom 0,0,1920,1080 8 0,0,0,0 L  -> 8,8,948,1064
+geom 0,0,1920,1080 8 0,0,0,0 R  -> 964,8,948,1064
+geom 0,0,1920,1080 8 0,0,0,0 T  -> 8,8,1904,528
+geom 0,0,1920,1080 8 0,0,0,0 B  -> 8,544,1904,528
+geom 0,0,1920,1080 8 0,0,0,0 TL -> 8,8,948,528
+geom 0,0,1920,1080 8 0,0,0,0 C  -> 8,8,1904,1064
+
+# An odd dimension is not split evenly: integer division floors both halves from
+# the same expression, so the right half is one pixel wider. Recorded because it
+# is behaviour, not a rounding bug to be tidied up.
+geom 0,0,1921,1080 0 0,0,0,0 L  -> 0,0,960,1080
+geom 0,0,1921,1080 0 0,0,0,0 R  -> 960,0,961,1080
+geom 0,0,1920,1081 0 0,0,0,0 T  -> 0,0,1920,540
+geom 0,0,1920,1081 0 0,0,0,0 B  -> 0,540,1920,541
+
+# A usable area offset by a panel. x1/y1 are gap-relative and the output origin
+# is added last, so a left-tiled window starts below the panel, not at zero.
+geom 0,28,1920,1052 0 0,0,0,0 L  -> 0,28,960,1052
+geom 0,28,1920,1052 8 0,0,0,0 L  -> 8,36,948,1036
+geom 100,28,1920,1052 0 0,0,0,0 R -> 1060,28,960,1052
+
+# Server-side decoration. The margin insets the rect on all four sides after the
+# split, so two tiled windows still have exactly one gap between their frames.
+geom 0,0,1920,1080 0 1,26,1,1 L  -> 1,26,958,1053
+geom 0,0,1920,1080 0 1,26,1,1 R  -> 961,26,958,1053
+geom 0,0,1920,1080 8 1,26,1,1 TL -> 9,34,946,501
+
+# ─────────────────────────────────────────────────────────────────────────
+# place — where a new window lands
+#   src/placement.c placement_find_best(), lines 400-560
+#
+# place <usable x,y,w,h> <gap> <margin l,t,r,b> <w>x<h> [<x,y,w,h> ...] -> <x,y>
+#
+# This is Openbox's minimal-overlap placement, NOT a cascade: it builds an
+# irregular grid by extending every existing window's edges to infinity, counts
+# how many windows cover each interval, then convolves the candidate over the
+# grid in four directions and takes the position of least total overlap. The
+# search exits the moment an overlap of zero is found.
+#
+# Only cases whose answer is determinate by inspection are recorded here. The
+# convolution's tie-breaking depends on iteration order over the grid, and a row
+# asserting a hand-simulated result would be asserting my arithmetic rather than
+# the compositor's. libkwm PORTS this algorithm rather than reimplementing it,
+# and these rows are what prove the port did not change its boundaries.
+# ─────────────────────────────────────────────────────────────────────────
+
+# No other windows: build_grid() returns early on nviews < 1, so the default
+# upper-left placement stands. It is inset by BOTH the margin and the gap.
+place 0,0,1920,1080 0 0,0,0,0 800x600 -> 0,0
+place 0,0,1920,1080 8 0,0,0,0 800x600 -> 8,8
+place 0,0,1920,1080 8 1,26,1,1 800x600 -> 9,34
+place 0,28,1920,1052 8 0,0,0,0 800x600 -> 8,36
+
+# One window in a corner, and room to the side with zero overlap. The search
+# stops at the first zero it finds, which is the interval walked first.
+place 0,0,1920,1080 0 0,0,0,0 800x600 0,0,960,1080 -> 960,0
+place 0,0,1920,1080 0 0,0,0,0 800x600 0,0,1920,480 -> 0,480
+
+# The candidate cannot fit anywhere without overlap, so the least-overlap
+# position wins rather than the default. Recorded as "not the default corner":
+# the assertion is that placement moved at all, which is what distinguishes this
+# algorithm from a cascade.
+place 0,0,1000,800 0 0,0,0,0 900x700 0,0,900,700 -> @not-0,0
+
+# A candidate larger than the usable area: every position returns INT_MAX from
+# compute_overlap(), min_overlap is never beaten, and the default stands.
+place 0,0,1000,800 0 0,0,0,0 1200x900 -> 0,0
+place 0,0,1000,800 8 0,0,0,0 1200x900 0,0,500,400 -> 8,8
+
+# An output that is not usable: placement_find_best() returns false before
+# touching the geometry, and the caller keeps whatever it had.
+place unusable 0 0,0,0,0 800x600 -> @unchanged
+
+# ─────────────────────────────────────────────────────────────────────────
+# edge — the neighbour-edge search
+#   src/edges.c, include/edges.h, and check_edge() in src/snap.c
+#
+# The primitives MoveToEdge, GrowToEdge and ShrinkToEdge are all built on.
+# INT_MIN and INT_MAX mean "no edge here" and are written UNB below.
+#
+# clip <a> <b> -> <sum>            saturating add, include/edges.h clipped_add
+# best <next> <edge> <decreasing> -> <winner>    edge_get_best()
+# btwn <cur> <tgt> <other> -> <yes|no>           check_edge(), src/snap.c
+#
+# edges_traverse_edge() interpolates with DOUBLES — plain arithmetic, no libm
+# call — so libkwm still links no maths library. Do not "tidy" it to integers:
+# the sweep is a quadrilateral and an integer midpoint is a different answer.
+# ─────────────────────────────────────────────────────────────────────────
+
+# Saturating arithmetic. An edge at a bound stays at that bound rather than
+# wrapping, which is what lets UNB propagate through an offset calculation.
+clip 0 5 -> 5
+clip 0 -5 -> -5
+clip INT_MAX 1 -> INT_MAX
+clip INT_MAX -1 -> INT_MAX-1
+clip INT_MIN -1 -> INT_MIN
+clip 10 0 -> 10
+
+# Choosing between candidate edges. A bounded edge always beats an unbounded
+# one in either direction; between two bounded edges the nearest in the
+# direction of travel wins, which is MAX going down and MIN going up.
+best UNB 100 0 -> 100
+best UNB 100 1 -> 100
+best 100 UNB 0 -> 100
+best 100 UNB 1 -> 100
+best UNB UNB 0 -> UNB
+best 100 200 0 -> 100
+best 100 200 1 -> 200
+best 200 100 0 -> 100
+best 200 100 1 -> 200
+
+# Whether a candidate edge lies between where a moving edge is and where it is
+# going. The target is INCLUSIVE and the current position is EXCLUSIVE, in both
+# directions — an edge you are already sitting on is not a snap point, and an
+# edge exactly at the target is.
+btwn 500 100 300 -> yes
+btwn 500 100 100 -> yes
+btwn 500 100 500 -> no
+btwn 500 100 600 -> no
+btwn 100 500 300 -> yes
+btwn 100 500 500 -> yes
+btwn 100 500 100 -> no
+btwn 100 500 50 -> no
+btwn 300 300 300 -> no
+
+# The gap rule, and it is asymmetric on purpose. Snapping to a region's
+# OPPOSING edge (left meets right) keeps the configured gap between the two
+# windows; snapping to its ALIGNED edge (left meets left) keeps none, because
+# the two windows are being lined up rather than placed beside each other.
+gaprule oppose -> gap
+gaprule align  -> none
+
+# ─────────────────────────────────────────────────────────────────────────
+# ring — cycling windows, and finding an occupied workspace
+#   src/cycle/cycle.c get_next_selected_view()
+#   src/workspaces.c get_adjacent_occupied()
+#
+# ring  <n> <cur> <dir> -> <index>
+# wsadj <occupied> <cur> <reverse> <wrap> -> <index>
+#
+# `occupied` is one character per workspace, '1' occupied and '0' empty.
+#
+# Occupancy is an INPUT. The compositor counts views that are not omnipresent;
+# the panel counts windows that are not minimised, because the workspace
+# protocol has active, urgent and hidden but no "there is something here".
+# Two rules, two right answers, and this library picks neither.
+# ─────────────────────────────────────────────────────────────────────────
+
+# The sentinel between the last item and the first is stepped over, so the ring
+# always closes and a single window cycles to itself.
+ring 4 0 1 -> 1
+ring 4 3 1 -> 0
+ring 4 0 -1 -> 3
+ring 4 2 -1 -> 1
+ring 1 0 1 -> 0
+ring 1 0 -1 -> 0
+ring 0 0 1 -> -1
+ring 4 4 1 -> -1
+ring 4 -1 1 -> -1
+
+# The nearest occupied workspace in one direction. The current one is never the
+# answer even when it is occupied.
+wsadj 1010 0 0 1 -> 2
+wsadj 1010 0 1 1 -> 2
+wsadj 1010 2 0 1 -> 0
+wsadj 1000 0 0 1 -> -1
+wsadj 0100 0 0 0 -> 1
+wsadj 0001 0 0 0 -> 3
+wsadj 1000 1 0 0 -> -1
+wsadj 1000 1 1 0 -> 0
+
+# Wrapping happens AT MOST ONCE. Without it the boundary ends the search; with
+# it the far end is tried and then the search stops rather than circling a set
+# of empty workspaces forever.
+wsadj 1000 3 0 1 -> 0
+wsadj 1000 3 0 0 -> -1
+wsadj 0000 0 0 1 -> -1
+wsadj 0000 2 1 1 -> -1
+
+# ─────────────────────────────────────────────────────────────────────────
+# drag — when a press has become a drag
+#   src/libs/libkwm/kwm.h kwm_drag_threshold()
+#
+# drag <dx> <dy> -> <yes|no>
+#
+# One cell. Both desktops must agree, or the same gesture picks a file up on
+# one and only selects it on the other.
+# ─────────────────────────────────────────────────────────────────────────
+
+drag 0 0 -> no
+drag 1 0 -> yes
+drag 0 1 -> yes
+drag -1 0 -> yes
+drag 0 -1 -> yes
+drag 3 -2 -> yes
+
+# ─────────────────────────────────────────────────────────────────────────
+# fit — bringing a window back inside a work area
+#   src/libs/libkwm/kwm_geom.c kwm_fit()
+#
+# fit <work x,y,w,h> <want x,y,w,h> -> <x,y,w,h>
+#
+# It MOVES BEFORE IT SHRINKS. A window pushed off the edge by a smaller screen
+# comes back the same size, because the screen may grow again and a window that
+# was quietly made smaller never grows back.
+#
+# This is the console's rule and has no kdos-comp call site: the compositor
+# leaves output layout to wlroots. It is here because the session has to refit
+# every window when a view detaches and a smaller one is promoted.
+# ─────────────────────────────────────────────────────────────────────────
+
+# Already inside: untouched.
+fit 0,0,80,24 10,5,20,10 -> 10,5,20,10
+fit 0,0,80,24 0,0,80,24 -> 0,0,80,24
+
+# Off an edge: moved back, same size.
+fit 0,0,80,24 70,5,20,10 -> 60,5,20,10
+fit 0,0,80,24 10,20,20,10 -> 10,14,20,10
+fit 0,0,80,24 -5,-5,20,10 -> 0,0,20,10
+
+# Too big for the area: shrunk to it, and to the origin.
+fit 0,0,80,24 10,5,100,10 -> 0,5,80,10
+fit 0,0,80,24 10,5,20,40 -> 10,0,20,24
+fit 0,0,80,24 10,5,100,40 -> 0,0,80,24
+
+# A work area that does not start at the origin — a panel above it.
+fit 0,2,80,22 0,0,20,10 -> 0,2,20,10
+fit 0,2,80,22 10,20,20,10 -> 10,14,20,10

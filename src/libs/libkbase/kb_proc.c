@@ -322,3 +322,39 @@ int kb_user_in_group(const char *user, gid_t primary, const char *group)
 	fclose(f);
 	return ok;
 }
+
+/*
+ * Is this machine virtual, by the DMI vendor string?
+ *
+ * The idle timers and the lid policy both default to OFF here, and both for
+ * the same reason: a blanked screen over VNC is indistinguishable from a
+ * crashed session, and a VM's lid event is a stray ACPI report rather than
+ * somebody closing a laptop.
+ *
+ * The vendor string is the only test that works from an unprivileged process
+ * with no hypervisor-specific code. It is a list of names and it will miss a
+ * hypervisor nobody here has run — which fails in the safe direction: the
+ * timers stay on, as they would on hardware.
+ */
+int kb_in_vm(void)
+{
+	static const char *const V[] = {
+		"QEMU", "Bochs", "VirtualBox", "VMware", "innotek",
+		"Microsoft Corporation",	/* Hyper-V */
+		"Parallels", "Amazon EC2",
+		"Google",			/* GCE */
+	};
+	char vendor[128] = { 0 };
+	FILE *f = fopen("/sys/class/dmi/id/sys_vendor", "re");
+
+	if (!f)
+		return 0;
+	if (!fgets(vendor, sizeof(vendor), f))
+		vendor[0] = '\0';
+	fclose(f);
+
+	for (size_t i = 0; i < sizeof(V) / sizeof(V[0]); i++)
+		if (strstr(vendor, V[i]))
+			return 1;
+	return 0;
+}

@@ -24,6 +24,15 @@ screenshots. `build/docscheck.sh` (throwaway, gitignored) for link and prose ver
 
 **Spec:** `docs.design.md`
 
+**Status: done.** The book is under `docs/kdos/`, `README.md` is the front door and `CLAUDE.md` is
+272 lines. Every acceptance criterion below was measured rather than assumed: `build/docscheck.sh`
+reports ok, which is criteria 2, 3 and 4 — no dead relative link, no named path or port or binary or
+configuration key that does not exist, no page that narrates history, and every count matching the
+tree. Criterion 5 is the line count above; criterion 6 holds for every page in the book; criterion 7
+finds no `kdos-be`, `KDOS_SESSION`, `kdos-bar` or `kdos-files` anywhere in it. The book has since
+grown four pages this plan never named — `kdos-con.md`, `kdos-cage.md`, `kdos-term.md` and
+`window-model.md` — which the console specs added.
+
 ---
 
 ## Global Constraints
@@ -266,14 +275,14 @@ titled heading, find the title with `grep -n`.
   and pages missing the contract's opening paragraph or `## See also`.
 - Produces: `docs/kdos/README.md`, whose table every later task links its page into.
 
-- [ ] **Step 1: Create the directory tree**
+- [x] **Step 1: Create the directory tree**
 
 ```bash
 cd /home/kunaldawn/workspace/repos/kdos
 mkdir -p docs/kdos/{01-philosophy,02-user-guide,03-architecture,04-programs,05-developer,06-reference}
 ```
 
-- [ ] **Step 2: Write the verifier**
+- [x] **Step 2: Write the verifier**
 
 ```bash
 cat > build/docscheck.sh <<'SH'
@@ -336,7 +345,7 @@ SH
 chmod +x build/docscheck.sh
 ```
 
-- [ ] **Step 3: Write the table of contents**
+- [x] **Step 3: Write the table of contents**
 
 `docs/kdos/README.md` carries, in this order:
 
@@ -358,7 +367,7 @@ chmod +x build/docscheck.sh
 Every row links a file that does not exist yet; `docscheck.sh` will report those as `MISSING`
 until the page is written. That is the intended signal of remaining work.
 
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/README.md
@@ -409,11 +418,11 @@ done
 - `## Scale` — the verified counts, each labelled with what it counts.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands above and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Add its row to `docs/kdos/README.md` if the scaffold left it unlinked**
-- [ ] **Step 5: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands above and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Add its row to `docs/kdos/README.md` if the scaffold left it unlinked**
+- [x] **Step 5: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/01-philosophy/why-kdos.md
@@ -450,9 +459,9 @@ what it costs:
 - `## Documentation describes the present`
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/01-philosophy/principles.md
@@ -486,9 +495,9 @@ rejected and why*:
 - `## The build shell lives beside the recipe, not inside it`
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/01-philosophy/decisions.md
@@ -537,10 +546,10 @@ grep -n 'kdos:' fs/etc/passwd fs/etc/group
   `kdos help`, `kdos doctor`, `kdos status`, `kdos app list`, `kdos theme amber`.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/02-user-guide/getting-started.md
@@ -590,10 +599,10 @@ grep -n 'fs_passno\|mkswapfile\|fallocate' src/packages/kdos-installer/*.c | hea
 - `## What the installer writes where`
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/02-user-guide/installation.md
@@ -643,10 +652,10 @@ cat fs/etc/skel/.config/kdos/panel.conf
 - `## When the desktop misbehaves` — the stutter chip, `kdos-res`, and what each answers.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/02-user-guide/desktop.md
@@ -693,10 +702,10 @@ grep -oE '"(list|search|show|install|launch|remove|rollback|update|sources)"' sr
 - `## What does not work` — printing from a box, rootless-inert applications, corefonts for wine.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/02-user-guide/applications.md
@@ -742,10 +751,10 @@ grep -rn 'theme_commit' src/packages/kdos-tools/kdos.c | head -3
   `kdos theme --audit`.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/02-user-guide/theming.md
@@ -795,10 +804,10 @@ grep -cE '^\s*(tcp|udp|ip|icmp)' fs/etc/nftables.conf
 - `## Tuning for this machine` — `kdos march`, and why a win inside the noise is not a win.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/02-user-guide/*.md
@@ -838,10 +847,10 @@ grep -rn 'PORT_REPO' script/*.env.sh | head -3
   they are not one system.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/03-architecture/overview.md
@@ -893,10 +902,10 @@ grep -n 'kdos-getty\|autologin' fs/etc/inittab
   and the login banner.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/03-architecture/boot-and-init.md
@@ -944,10 +953,10 @@ cat fs/usr/share/xdg-desktop-portal/kdos-portals.conf
 - `## Ending a session`
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/03-architecture/session.md
@@ -996,10 +1005,10 @@ grep -rn 'A:\|B:\|E:\|C:\|D:\|O:' src/libs/libkpkg/*.c | head -10
   database does not carry is unknown rather than clean.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/03-architecture/packaging.md
@@ -1050,10 +1059,10 @@ grep -n 'exclude-regex\|exclude-path\|force-uid\|-b 4096\|-U ' ports/appbox/bake
 - `## Launchers` — what `genlaunchers` produces and why each output is required. Depth is task 23.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/03-architecture/packs-and-boxes.md
@@ -1105,10 +1114,10 @@ ls fs/etc/kdos/keys 2>/dev/null || echo "no keys dir shipped"
   the asymmetry that an unsigned pack mounts where an unverifiable signed one does not.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/03-architecture/security-model.md
@@ -1157,10 +1166,10 @@ grep -n 'ktui_ramp_levels\|KTUI_CAP\|LINUXVT' src/libs/libktui/*.h | head
 - `## The checklist` — the numbered list a new surface is not finished without.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/03-architecture/*.md
@@ -1198,9 +1207,9 @@ grep -rn 'ln -s\|install -' src/packages/kdos-tools/build.sh | head -20
   verification above, so a reader who finds `kdos-pick` on their PATH can find its page.
 - `## See also`
 
-- [ ] **Step 1: Run the verification commands and record the values**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Run the verification commands and record the values**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/04-programs/README.md
@@ -1257,10 +1266,10 @@ grep -oE 'name="[A-Za-z]+"' fs/etc/skel/.config/kdos-comp/menu.xml | sort -u | h
 - `## Debugging` — `KDOS_COMP_DEBUG`, `KDOS_CRT_DUMP`, the log level.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/04-programs/kdos-comp.md
@@ -1319,10 +1328,10 @@ This is the longest page in the book. Keep each H3 to what a reader needs to und
 that surface; the shared rules live once under `## Shared chrome` and in
 [`design-language.md`](../03-architecture/design-language.md), not repeated per tool.
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/04-programs/kdos-shell.md
@@ -1366,10 +1375,10 @@ grep -rn 'resctl' src/desktop/kdos-res/*.c | head -5
 - `## Known limits` — the two lists that do not scroll.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/04-programs/kdos-res.md
@@ -1416,10 +1425,10 @@ grep -n 'kxdg_exec_split\|kxdg_exec_quote' src/libs/libkxdg/*.h
 - `## Tracing a launch` — the trace file and the measured timings.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/04-programs/kdos-appbox.md
@@ -1463,10 +1472,10 @@ ls fs/etc/kdos/
 - `## Adding a root daemon` — the checklist a new one must satisfy to match the family.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/04-programs/daemons.md
@@ -1520,10 +1529,10 @@ grep -n 'ki_packs_enter\|install_plan\|page_index' src/packages/kdos-installer/*
   appears.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/04-programs/kinstall.md
@@ -1560,10 +1569,10 @@ grep -n 'usage\|Usage' src/packages/kdos-tools/kdos.c | head -5
   `kdos-shot`, `kdos-fetch-app`, `kdos-fetch-static`, `kdos-theme`, verified against the tree.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/04-programs/kdos-command.md
@@ -1606,10 +1615,10 @@ grep -n 'action=add\|alsactl' fs/etc/init.d/01_udev.sh fs/etc/init.d/50_alsa.sh
 - `## Debugging` — `KDOS_BB_DEBUG`.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/04-programs/*.md
@@ -1653,10 +1662,10 @@ head -20 Dockerfile
   not re-run an early phase on a tree already ahead of it.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/05-developer/developing.md
@@ -1712,10 +1721,10 @@ grep -n 'KDOS_SNAPSHOT_PATHS\|KDOS_PHASE_TITLE' script/*.env.sh | head
   the ownership rules on the way out.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/05-developer/build-system.md
@@ -1775,10 +1784,10 @@ ls ports/ | head
   defines.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/05-developer/writing-ports.md
@@ -1820,9 +1829,9 @@ dropping the narration of when each was discovered.
   concluding it is a KDOS problem.
 - `## See also`
 
-- [ ] **Step 1: Read the source range in full**
-- [ ] **Step 2: Write the page to the contract, one entry per failure class**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Read the source range in full**
+- [x] **Step 2: Write the page to the contract, one entry per failure class**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/05-developer/build-troubleshooting.md
@@ -1868,10 +1877,10 @@ grep -rn 'libkicon\|libkchrome' CLAUDE.md | head -3   # expect libkicon absent: 
 - `## Adding a library` — the checklist, including the selftest and the consumer compile.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/05-developer/c-libraries.md
@@ -1923,10 +1932,10 @@ ls testing/goldens | head -20
 - `## The checklist` — the seven-point list, restated as a procedure with the command for each.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/05-developer/writing-desktop-software.md
@@ -1973,10 +1982,10 @@ grep -oE "add_argument\(['\"]--[a-z-]+" testing/vnc-shot.py | sed "s/.*--/--/" |
 - `## Traps` — the measured harness traps, each as a rule and its consequence.
 - `## See also`
 
-- [ ] **Step 1: Read the sources**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the page to the contract**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the sources**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the page to the contract**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/05-developer/*.md
@@ -2006,9 +2015,9 @@ Written first in this pass: every other reference page uses its vocabulary.
   vocabulary: no "app store", no "distro" in prose where "distribution" is meant, no "just".
 - `## See also`
 
-- [ ] **Step 1: Collect every term used in Parts I–V that a reader could misread**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Collect every term used in Parts I–V that a reader could misread**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/06-reference/glossary.md
@@ -2043,9 +2052,9 @@ ls src/desktop src/packages
   `ports/appbox/bake`, and the `testing/` harnesses.
 - `## See also`
 
-- [ ] **Step 1: Run the verification commands and record the values**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Run the verification commands and record the values**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/06-reference/command-index.md
@@ -2092,9 +2101,9 @@ Any file found by the verification that this list does not name must be added ra
 dropped. Any key found in the sources that the shipped file does not carry must be listed with
 its default from the code.
 
-- [ ] **Step 1: Run the verification commands and record the values**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Run the verification commands and record the values**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/06-reference/configuration.md
@@ -2135,9 +2144,9 @@ grep -rhoE '/etc/kdos/[a-zA-Z0-9._/-]+' src/ fs/ script/ 2>/dev/null | sort -u
   does. Include the debug variables.
 - `## See also`
 
-- [ ] **Step 1: Run the verification commands and record the values**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Run the verification commands and record the values**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/06-reference/filesystem-and-ipc.md
@@ -2174,9 +2183,9 @@ ls script/*/ -d
 - `## What must never exist` — `fs/etc/X11/`, and why.
 - `## See also`
 
-- [ ] **Step 1: Run the verification commands and record the values**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Run the verification commands and record the values**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/06-reference/repository-layout.md
@@ -2212,9 +2221,9 @@ a closed gap is history.
 Each entry is one short paragraph: what is missing, what that means in practice, and — where one
 exists — what to use instead.
 
-- [ ] **Step 1: Read the source range and collect gaps stated elsewhere in the book**
-- [ ] **Step 2: Write the page to the contract, dropping every closed entry**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Read the source range and collect gaps stated elsewhere in the book**
+- [x] **Step 2: Write the page to the contract, dropping every closed entry**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/06-reference/known-gaps.md
@@ -2253,9 +2262,9 @@ ls *.plan.md
   one-line reason and a link to `../01-philosophy/decisions.md`.
 - `## See also`
 
-- [ ] **Step 1: Read the sources and run the verification commands**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Read the sources and run the verification commands**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/06-reference/roadmap.md
@@ -2296,9 +2305,9 @@ ls testing/fixtures
 - `## Scale` — the verified counts, each labelled with what it counts and when it was counted.
 - `## See also`
 
-- [ ] **Step 1: Run the verification commands and record the values**
-- [ ] **Step 2: Write the page to the contract**
-- [ ] **Step 3: Checkpoint**
+- [x] **Step 1: Run the verification commands and record the values**
+- [x] **Step 2: Write the page to the contract**
+- [x] **Step 3: Checkpoint**
 
 ```bash
 bash build/docscheck.sh docs/kdos/06-reference/*.md
@@ -2350,28 +2359,28 @@ with All Programs open; the Start menu searching, showing an `ON THE MEDIUM` row
 the root menu; the desktop context menu; a window menu from a task button; two windows snapped;
 a window with the frame and its buttons filling the shot.
 
-- [ ] **Step 1: Boot once and take an orientation shot**
+- [x] **Step 1: Boot once and take an orientation shot**
 
 ```bash
 mkdir -p build/shots
 $R --wait 14 --shot build/shots/orient.png > build/shots-a-orient.log 2>&1; echo "rc=$?"
 ```
 
-- [ ] **Step 2: Read the panel geometry off `build/shots/orient.png`** and record the pixel
+- [x] **Step 2: Read the panel geometry off `build/shots/orient.png`** and record the pixel
   coordinates of the Start button, a task button, the clock and the notification wing.
-- [ ] **Step 3: Write `build/shots-a.sh`** chaining the shots with the recorded coordinates,
+- [x] **Step 3: Write `build/shots-a.sh`** chaining the shots with the recorded coordinates,
   using `--mouse` to hover, `--click` to press, `--keys` to type and `--sleep` between steps.
   Open two applications with `--root-script` before the panel shots so the taskbar is not empty.
-- [ ] **Step 4: Run it and inspect every frame**
+- [x] **Step 4: Run it and inspect every frame**
 
 ```bash
 bash build/shots-a.sh; ls -la build/shots/
 ```
 
-- [ ] **Step 5: Copy the good frames into `docs/screenshots/`** with descriptive names
+- [x] **Step 5: Copy the good frames into `docs/screenshots/`** with descriptive names
   (`panel.png`, `start-menu.png`, `start-programs.png`, `start-search-medium.png`,
   `root-menu.png`, `desktop-menu.png`, `window-menu.png`, `window-frame.png`).
-- [ ] **Step 6: Checkpoint**
+- [x] **Step 6: Checkpoint**
 
 ```bash
 ls docs/screenshots/*.png | wc -l
@@ -2391,19 +2400,19 @@ Expected: more images than the eleven that existed, and every new file non-empty
 `kdos-display`; `kdos-keys`; `kdos-settings` at its grid and at its Boxes page; `kdos-res` on
 Applications, on Boxes and on a detail page.
 
-- [ ] **Step 1: Boot once and take an orientation shot** as in task 42.
-- [ ] **Step 2: Write `build/shots-b.sh`.** Prefer starting each front end by name through
+- [x] **Step 1: Boot once and take an orientation shot** as in task 42.
+- [x] **Step 2: Write `build/shots-b.sh`.** Prefer starting each front end by name through
   `--root-script` running it as the desktop user, rather than clicking through the panel: a
   named launch is reproducible and a click depends on coordinates. Use the panel click only for
   the shots that must show a popup anchored to its applet.
-- [ ] **Step 3: Run it and inspect every frame**
+- [x] **Step 3: Run it and inspect every frame**
 
 ```bash
 bash build/shots-b.sh; ls -la build/shots/
 ```
 
-- [ ] **Step 4: Copy the good frames into `docs/screenshots/`**
-- [ ] **Step 5: Checkpoint**
+- [x] **Step 4: Copy the good frames into `docs/screenshots/`**
+- [x] **Step 5: Checkpoint**
 
 ```bash
 ls docs/screenshots/*.png | wc -l
@@ -2422,7 +2431,7 @@ Expected: the applet and monitor shots present and non-empty.
 real stall; `kdos-energy`; `kdos app list`; `kdos-res` on tty1 at the console font; the installer
 at three of its pages; the two accents not yet photographed.
 
-- [ ] **Step 1: Console shots.** Use `--console-cmd` rather than starting a session, so the
+- [x] **Step 1: Console shots.** Use `--console-cmd` rather than starting a session, so the
   picture is the 512-glyph console font at the vt glyph tier — which is what those pages describe.
 
 ```bash
@@ -2430,15 +2439,15 @@ $R --no-session --console-cmd 'kdos doctor' --sleep 3 --shot build/shots/doctor-
    > build/shots-c1.log 2>&1; echo "rc=$?"
 ```
 
-- [ ] **Step 2: The installer.** Run `kinstall --dry-run` on a spare tty and photograph its
+- [x] **Step 2: The installer.** Run `kinstall --dry-run` on a spare tty and photograph its
   pages, stepping with `--keys`. It writes nothing.
-- [ ] **Step 3: A real stutter.** `kdos stutter` reports nothing on a static screen, because a
+- [x] **Step 3: A real stutter.** `kdos stutter` reports nothing on a static screen, because a
   static screen produces no late frames. Start something animating — `foot -e kdos-bb` — before
   stalling the compositor, then capture the report.
-- [ ] **Step 4: The accents.** For each accent not already photographed, run `kdos theme <accent>`
+- [x] **Step 4: The accents.** For each accent not already photographed, run `kdos theme <accent>`
   and shoot the desktop; the retint is live, so one boot covers all of them.
-- [ ] **Step 5: Copy the good frames into `docs/screenshots/`**
-- [ ] **Step 6: Checkpoint**
+- [x] **Step 5: Copy the good frames into `docs/screenshots/`**
+- [x] **Step 6: Checkpoint**
 
 ```bash
 ls docs/screenshots/
@@ -2493,10 +2502,10 @@ ls docs/screenshots/
 
 Target 250–350 lines. Anything that is a manual belongs in the book, not here.
 
-- [ ] **Step 1: Read the current `README.md` in full and mark what is worth keeping**
-- [ ] **Step 2: Run the verification commands and record the values**
-- [ ] **Step 3: Write the new `README.md`**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 1: Read the current `README.md` in full and mark what is worth keeping**
+- [x] **Step 2: Run the verification commands and record the values**
+- [x] **Step 3: Write the new `README.md`**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 bash build/docscheck.sh README.md
@@ -2552,13 +2561,13 @@ incantations from 5397-5728 and the harness traps that are about *working*, not 
 
 Target 350–450 lines. Every removed section must be findable through the map in section 2.
 
-- [ ] **Step 1: List every section of the current `CLAUDE.md` and mark each `stays` or `moved`**
+- [x] **Step 1: List every section of the current `CLAUDE.md` and mark each `stays` or `moved`**
 
 ```bash
 awk '/^#{2,3} /{if(p)print p" :: "pl"-"NR-1; p=$0; pl=NR} END{print p" :: "pl"-"NR}' CLAUDE.md | sed 's/^#\+ //'
 ```
 
-- [ ] **Step 2: For every `moved` section, confirm its content reached the book**
+- [x] **Step 2: For every `moved` section, confirm its content reached the book**
 
 ```bash
 # Take each distinctive term from a moved section and require it somewhere in docs/kdos.
@@ -2573,8 +2582,8 @@ done
 Expected: no `NOT MIGRATED` line. Anything reported is a section whose content did not survive
 the migration and must be written into its destination page before continuing.
 
-- [ ] **Step 3: Write the new `CLAUDE.md`**
-- [ ] **Step 4: Checkpoint**
+- [x] **Step 3: Write the new `CLAUDE.md`**
+- [x] **Step 4: Checkpoint**
 
 ```bash
 wc -l CLAUDE.md
@@ -2590,7 +2599,7 @@ Expected: `CLAUDE.md` between 300 and 500 lines; `docscheck: ok`; no historical 
 
 **Files:** none created. This task only checks and fixes.
 
-- [ ] **Step 1: Every link resolves and every page keeps the contract**
+- [x] **Step 1: Every link resolves and every page keeps the contract**
 
 ```bash
 bash build/docscheck.sh
@@ -2599,7 +2608,7 @@ bash build/docscheck.sh
 Expected: `docscheck: ok`, with no `MISSING`, `DEADLINK`, `HISTORY`, `NOTITLE`, `NOSEEALSO` or
 `UNLISTED` line.
 
-- [ ] **Step 2: Every count in the book matches the tree**
+- [x] **Step 2: Every count in the book matches the tree**
 
 ```bash
 echo "ports:    $(ls ports/core | wc -l)"
@@ -2616,7 +2625,7 @@ grep -rhoE '\b[0-9]{2,4}\b' docs/kdos/*/*.md README.md | sort -u | head -40
 
 Cross-check every number the book asserts against these. Correct the page, never the command.
 
-- [ ] **Step 3: Every path, binary and port the book names exists**
+- [x] **Step 3: Every path, binary and port the book names exists**
 
 ```bash
 grep -rhoE '`[a-z][a-zA-Z0-9._/-]*\.(c|h|sh|py|conf|xml|md|txt)`' docs/kdos README.md |
@@ -2629,7 +2638,7 @@ grep -rhoE '`ports/core/[a-z0-9+.-]+`' docs/kdos README.md | tr -d '`' | sort -u
 
 Expected: no `NOT FOUND` and no `NO PORT`.
 
-- [ ] **Step 4: Nothing mentions the removed session**
+- [x] **Step 4: Nothing mentions the removed session**
 
 ```bash
 grep -rniE 'kdos-be|kdos-bar|kdos-files|KDOS_SESSION|second desktop|two desktops' docs/kdos README.md CLAUDE.md
@@ -2637,12 +2646,12 @@ grep -rniE 'kdos-be|kdos-bar|kdos-files|KDOS_SESSION|second desktop|two desktops
 
 Expected: no output.
 
-- [ ] **Step 5: No knowledge is duplicated between `CLAUDE.md` and the book**
+- [x] **Step 5: No knowledge is duplicated between `CLAUDE.md` and the book**
 
 Read `CLAUDE.md` end to end. Any paragraph explaining how a subsystem works, rather than
 instructing how to work on it, belongs in the book: move it and leave a link.
 
-- [ ] **Step 6: Report**
+- [x] **Step 6: Report**
 
 Print a summary for the user: pages written, screenshots added, `CLAUDE.md` before and after line
 counts, and anything the acceptance criteria in `docs.design.md` do not yet satisfy.

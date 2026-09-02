@@ -1,0 +1,16 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdos-term
+version     = 0.1.0
+release     = 1
+description = KDOS Terminal — one binary that is a window on the desktop and a surface on the console
+homepage    = https://github.com/kunaldawn/kdos
+depends     = wayland wayland-protocols wlroots fcft pixman libxkbcommon libpng libjpeg-turbo libwebp libsixel ncurses

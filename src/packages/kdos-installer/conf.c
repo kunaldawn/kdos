@@ -70,6 +70,7 @@ void conf_defaults(void)
 {
 	memset(&cfg, 0, sizeof(cfg));
 	kb_strlcpy(cfg.keymap, "us", sizeof(cfg.keymap));
+	cfg.greet = 1;
 	kb_strlcpy(cfg.tz, "UTC0", sizeof(cfg.tz));
 	kb_strlcpy(cfg.tz_label, "UTC", sizeof(cfg.tz_label));
 	kb_strlcpy(cfg.fstype, "ext4", sizeof(cfg.fstype));
@@ -97,6 +98,8 @@ static void set_kv(const char *k, const char *v)
 {
 	if (!strcmp(k, "keymap"))
 		kb_strlcpy(cfg.keymap, v, sizeof(cfg.keymap));
+	else if (!strcmp(k, "greet"))
+		cfg.greet = !strcmp(v, "yes") || !strcmp(v, "1");
 	else if (!strcmp(k, "timezone"))
 		kb_strlcpy(cfg.tz, v, sizeof(cfg.tz));
 	else if (!strcmp(k, "timezone_label"))
@@ -215,6 +218,7 @@ int conf_save(const char *path)
 		 "# on the medium this file lives on.\n"
 		 "\n"
 		 "keymap         = %s\n"
+		 "greet          = %s\n"
 		 "timezone       = %s\n"
 		 "timezone_label = %s\n"
 		 "\n"
@@ -238,7 +242,7 @@ int conf_save(const char *path)
 		 "packs          = %s\n"
 		 "services       = %s\n"
 		 "reboot         = %d\n",
-		 cfg.keymap, cfg.tz, cfg.tz_label,
+		 cfg.keymap, cfg.greet ? "yes" : "no", cfg.tz, cfg.tz_label,
 		 cfg.disk,
 		 cfg.plan == PLAN_REUSE ? "reuse"
 					: cfg.plan == PLAN_MANUAL ? "manual" : "wipe",

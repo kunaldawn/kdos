@@ -17,9 +17,13 @@ screen. Plus the thing only this distro can offer: **the same phone drives an ex
 with the DESKTOP shell at the same time**, so a smartphone running KDOS is a complete
 touchscreen workstation.
 
-**Architecture:** `wl_touch` is bound in libkwl and disambiguated there — tap, drag, long-press,
-kinetic scroll and pinch — and re-emitted as the ordinary mouse events every libktui widget
-already handles, so the whole existing toolkit inherits touch without being rewritten. System
+**Architecture:** `wl_touch` is bound in libkwl and **disambiguated in libktui** —
+`ktui_gesture_feed`, a pure state machine over `KT_EVT_TOUCH` — which emits tap, long press,
+drag, scroll, pinch and edge swipe AND re-emits the ordinary mouse events every libktui widget
+already handles, so the whole existing toolkit inherits touch without being rewritten. The
+recogniser is in the toolkit rather than in libkwl because the console desktop's KMS backend
+feeds the same one from libinput: a disambiguator written inside a backend is written twice and
+disagrees twice. See `con.plan.md` wave 4, which builds it. System
 gestures are recognised in the compositor (`kdos-gesture.c`) because only the compositor can take
 a touch away from a client. `kdos-osk` is a layer-shell surface with an exclusive zone, so
 windows are genuinely resized rather than covered. `kdos-mobile` is one binary under seven names,
@@ -526,6 +530,13 @@ backlight: <path>  min=<n> max=<n>  write verified
 ---
 
 ## Wave 2 — Touch in libkwl
+
+> **The recogniser is not built here.** `con.plan.md` wave 4 puts `KT_EVT_TOUCH` and
+> `ktui_gesture_feed` in libktui, with tap, long press, drag, scroll, pinch and edge swipe, and
+> synthesises the mouse events beneath them. What this wave owes is the half only libkwl can do:
+> binding `wl_touch`, tracking the slots, choosing `frame` as the commit point, and recording the
+> output's physical size. Every task below that describes disambiguation is satisfied by calling
+> the recogniser and asserting against it, not by writing a second one.
 
 **Gate: a finger drives every existing kdos-shell surface correctly, with no change to any of
 them.** That is the acceptance test for this wave and it is deliberately about the OLD code:

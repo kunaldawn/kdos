@@ -877,7 +877,7 @@ int devices_main(int argc, char **argv)
 	/* Anchored means popup, centred means window — see the same block in
 	 * net.c, which is where that split is written down. */
 	int popup = at_x >= 0;
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
@@ -888,10 +888,10 @@ int devices_main(int argc, char **argv)
 		 * other half of it: the decoration then MATCHES an alien app's
 		 * because it IS an alien app's.
 		 */
-		.role = popup ? KWL_ROLE_OVERLAY : KWL_ROLE_TOPLEVEL,
+		.role = popup ? KDISP_ROLE_OVERLAY : KDISP_ROLE_TOPLEVEL,
 		.cols = popup ? 56 : DV_COLS,
 		.rows = popup ? 18 : DV_ROWS,
-		.corner = popup ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = popup ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = popup ? at_x : 0,
 		.margin_y = popup ? at_y : 0,
 		/* The SSD shows this: a toplevel with no title gets an
@@ -904,7 +904,7 @@ int devices_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr,
 			"kdos-devices: no compositor or no layer-shell\n");
 		return 1;
@@ -914,7 +914,7 @@ int devices_main(int argc, char **argv)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_BG);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		sh_theme_poll();
 		draw_frame();
 
@@ -1015,8 +1015,15 @@ int devices_main(int argc, char **argv)
 			if (sel < nrows && rows[sel].kind == R_CAM) {
 				preview(&cams[rows[sel].idx]);
 			} else if (sel < nrows && rows[sel].kind == R_UPDATE) {
-				const char *argv[] = { "foot", "-e", "kdos", "app",
-						       "update", NULL };
+				const char *argv[10];
+				char id[160];
+				int k = sh_term_argv(argv, 0, 10, "kdos", id,
+						     sizeof(id));
+
+				argv[k++] = "kdos";
+				argv[k++] = "app";
+				argv[k++] = "update";
+				argv[k] = NULL;
 				sh_spawn(argv);
 			} else if (sel < nrows && rows[sel].kind == R_MEDIA) {
 				/* Enter is the obvious verb for the state it
@@ -1052,6 +1059,6 @@ int devices_main(int argc, char **argv)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

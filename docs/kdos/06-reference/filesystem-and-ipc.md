@@ -84,6 +84,11 @@ Every key is documented in [Configuration](configuration.md).
 | `kdos-comp.log` | The compositor's output |
 | `kdos-appbox.trace` | Stage timings for the last launches |
 | `kdos-dnd` | Do-not-disturb state |
+| `kdos/` | The console desktop's sockets, mode **0700** |
+| `kdos/<name>.sock` | A console session's **surface** socket |
+| `kdos/<name>.view` | The same session's **view** socket |
+| `kdos/<name>.windows` | What has a window there, one app id per line |
+| `kdos-con.log` | The console session's output |
 
 ## Sockets
 
@@ -206,6 +211,46 @@ that. The frame loop is what this must never slow.
 | `clear` | Empties the history |
 | `dnd` | Toggles do not disturb |
 
+### `$XDG_RUNTIME_DIR/kdos/<name>.sock` and `.view` — a console session
+
+Not a line protocol: this pair is the console desktop's own framed protocol, and the two sockets
+exist so that **only one of them is safe to forward**.
+
+| Socket | Admits | May leave the machine |
+|---|---|---|
+| `<name>.sock` | Surfaces — programs that place windows | **never** |
+| `<name>.view` | Views — a display, which holds no window state | over ssh, with `kdos con forward` |
+
+**Which socket a client reached decides what it is allowed to be.** The kind in its handshake is a
+claim and is overridden; a forwarded socket that admitted surfaces would give the far end the right
+to place windows in your session, which is a different thing entirely from showing you yours.
+
+`$KDOS_CON` names the **surface** socket, so a program started inside the session inherits an
+address that opens a window. A view is told its socket on the command line.
+
+**A shell may also ask the session to run a graphical application** — the one message on this socket
+that is not about a window. The answer is `0` when it became an ordinary window, the terminal's
+number when it was pinned to one, and a refusal when it could not be started at all. It is
+restricted to shell-kind clients the way "detach every view" is, and for the same reason: not because it is a privilege boundary — a client that reached this socket is
+already the session's own user and can fork and exec whatever it likes — but so the message has one
+caller and one meaning.
+
+The directory is created `0700` by the session server, and one that already exists with the wrong
+mode or owner is **a refusal to start, not a `chmod`** — if it is not ours, quietly taking it over
+puts the socket in a path another account chose, after which the peer-credential check is guarding
+the wrong door.
+
+**One descriptor crosses one channel, and it is neither of these.** An embedded application's
+compositor is a child of the session, and the frames come back over a `socketpair` created before
+the fork — never a path anything can connect to. That is what keeps both published protocols
+descriptor-free, and descriptor-free is what lets the view socket be forwarded.
+
+**There is no TCP listener.** A remote desktop is a forwarded unix socket and inherits ssh's
+authentication, which is why it needs none of its own; the self-test asserts the absence by
+grepping these sources for `AF_INET`. `remote = no` in `con.conf` is enforced by `kdos con forward`
+refusing to build the tunnel — a complete refusal rather than a check something could connect
+around.
+
 ### `$XDG_RUNTIME_DIR/kdos-clip.sock` — the clipboard
 
 The daemon owns the history and the front end draws it — the same split notifications use.
@@ -213,6 +258,21 @@ The daemon owns the history and the front end draws it — the same split notifi
 **A socket path that does not fit the address structure is refused, not truncated.** Truncation
 binds a socket nobody asked for and answers the next start with an address-in-use error for a file
 that appears not to exist — and two different runtime directories can land on one socket.
+
+### `$XDG_RUNTIME_DIR/kdos/<name>.windows`
+
+One application id per line, for every mapped, non-minimised window in that console session.
+Rewritten only when the set changes — a desktop that rewrote a file every frame would be doing IO
+for as long as it is switched on.
+
+It exists for `kdos-box gc`, which must know whether a box still has something on screen before it
+stops it. On Wayland that is a question for the compositor's command socket; here it is a file,
+because teaching `kdos-appbox` this session's protocol would pull `libkcon` and the whole cell model
+into a binary that is on every image.
+
+**"Cannot tell" is not "no window".** `box_has_window` answers 1, 0 or **-1**, and the collector
+leaves a box alone on -1. A collector that read the third as the second would stop every warmed box
+on a desktop it did not know how to question.
 
 ## Files used as an interface
 
@@ -239,6 +299,10 @@ Shared by every daemon here:
   and not the socket's mode.
 - **No verb takes a path.** Identifiers come from a list the daemon published.
 - **A fixture mode** on every daemon prints what it *would* do and does nothing.
+
+The console session's protocol shares only the third of these: authorisation is the peer's real
+user id. It is framed rather than line-based, it is stateful, and **it passes no file
+descriptors** — which is what lets the whole of it survive being forwarded down an ssh channel.
 
 ## Environment variables
 

@@ -686,11 +686,11 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 		return 0;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = CL_COLS,
 		.rows = CL_ROWS,
-		.corner = at_x >= 0 ? KWL_CORNER_BOTTOM_LEFT : KWL_CORNER_CENTER,
+		.corner = at_x >= 0 ? KDISP_CORNER_BOTTOM_LEFT : KDISP_CORNER_CENTER,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-clip",
@@ -702,7 +702,7 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-clip: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -711,7 +711,7 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_BG);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		sh_theme_poll();
 		draw_frame();
 
@@ -826,7 +826,7 @@ static int show_picker(const char *font, int at_x, int at_y, int dump)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }
 

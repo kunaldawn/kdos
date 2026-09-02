@@ -34,6 +34,48 @@ with no patch application step between the two.
 applied by hand. That is accepted deliberately: the alternative was maintaining a compositor
 outright.
 
+## A second fork for the kiosk, not a mode of the first
+
+**The question.** The console desktop composites character cells, and a Wayland client's surface is
+pixels. A graphical application launched there needs *something* holding a display for it — an
+output in memory it renders into, or a VT of its own. `kdos-comp` is already a compositor this
+project owns — give it a kiosk mode, or take a second one?
+
+**Chosen: a hard fork of cage 0.3.1**, MIT, in `src/desktop/kdos-cage`. Seven `.c` files, built on
+`wlroots-0.20` — the branch this tree already pins for the labwc fork, so there is one wlroots to
+keep current and not two.
+
+**Rejected: a `--kiosk` flag on `kdos-comp`.** The compositor is a *desktop*: window management,
+workspaces, tiling, the panel's foreign-toplevel feed, the phosphor pass, per-box identity, the
+session lock. A kiosk is the negation of nearly all of it, and a flag that turns most of a program
+off is a second program sharing a binary — with every code path in it now answering "and what does
+this do in kiosk mode?". The parts a guest on a VT actually needs are the parts cage already is.
+
+**Rejected: writing one.** It is the same argument the labwc fork made and it holds harder here,
+because the job is smaller: a kiosk compositor is roughly three thousand lines of somebody else's
+tested XWayland integration, output layout, seat handling and idle inhibition.
+
+**And the compositing happens in a SEPARATE PROCESS, which is what makes the whole thing safe to
+have.** One `kdos-cage --embed` per embedded window renders into a shared mapping and the session
+puts the bytes in its cells. So `kdos-con` links no wlroots, no mesa and no pixel library at all: a
+machine whose GPU driver is broken still boots into its desktop, and a graphical toolkit that
+crashes takes one window with it rather than the session. A compositor built into the session would
+have traded exactly that away for one fewer process.
+
+**What the fork changed.** The name, in what a person sees. `security-context-v1`, so
+`kdos-boxsock` can tag a box's socket exactly as it does under the compositor — one launch path for
+a boxed application rather than two. And a background in the palette's deep colour, because a guest
+that has not painted yet is otherwise a black rectangle in the middle of a phosphor screen.
+
+**Upstream's internal names are left alone**, which is the one place this fork differs in style
+from the labwc one: `cg_server` and `CAGE_HAS_XWAYLAND` still say cage. A fork whose identifiers
+stop matching upstream's is a fork nobody can read a security fix against, and this one is small
+enough that reading upstream's diffs by hand is the maintenance plan.
+
+**What it costs.** A second wlroots consumer to move whenever wlroots breaks API, which it does
+every release. The self-test compiles all seven files wherever wlroots exists, so that breakage is
+a failed check rather than a four-hour build that ends in an error.
+
 ## One pack per application, not one image
 
 **The question.** Roughly 180 graphical applications have to reach the medium. Ship them as one

@@ -298,7 +298,7 @@ static void frame_inside(int w, int h, int *in_x, int *in_w, int *in_h)
 	 * is drawing one, and then this is the only frame there is — which is
 	 * why the goldens still show it.
 	 */
-	if (kwl_decorated()) {
+	if (kdisp_decorated()) {
 		*in_x = 1;
 		*in_w = w - 2;
 		*in_h = h - 1;

@@ -1,0 +1,24 @@
+  Left     File     Command     Options     Right
+.<. /kdos .........................[^]>..<. /kdos .........................[^]>.
+..n     Name      . Size  .Modify time ...n     Name      . Size  .Modify time .
+./..              .UP--DIR.Sep  1 19:14../..              .UP--DIR.Sep  1 19:14.
+./.git            .   4096.Sep  1 16:38../.git            .   4096.Sep  1 16:38.
+./build           .  36864.Sep  1 07:36../build           .  36864.Sep  1 07:36.
+./docs            .   4096.Aug 31 11:01../docs            .   4096.Aug 31 11:01.
+./fs              .   4096.Aug 18 10:15../fs              .   4096.Aug 18 10:15.
+./ports           .   4096.Aug 29 10:28../ports           .   4096.Aug 29 10:28.
+./script          .   4096.Aug 18 13:09../script          .   4096.Aug 18 13:09.
+./src             .   4096.Aug 18 10:15../src             .   4096.Aug 18 10:15.
+./testing         .   4096.Aug 31 05:03../testing         .   4096.Aug 31 05:03.
+. .README.md.swp  .   4096.Sep  1 19:14.. .README.md.swp  .   4096.Sep  1 19:14.
+. .dockerignore   .    689.Aug 18 10:15.. .dockerignore   .    689.Aug 18 10:15.
+. .gitattributes  .   1840.Aug 25 18:14.. .gitattributes  .   1840.Aug 25 18:14.
+. .gitignore      .   3251.Aug 31 12:43.. .gitignore      .   3251.Aug 31 12:43.
+. CLAUDE.md       .  13554.Sep  1 15:03.. CLAUDE.md       .  13554.Sep  1 15:03.
+. Dockerfile      .   1164.Aug 18 10:15.. Dockerfile      .   1164.Aug 18 10:15.
+................................................................................
+.UP--DIR                               ..UP--DIR                               .
+..................... 58G / 937G (6%) ....................... 58G / 937G (6%) ..
+Hint: Please send any bug reports to mc-devel@lists.midnight-commander.org
+/kdos #
+ 1Help   2Menu   3View   4Edit   5Copy   6RenMov 7Mkdir  8Delete 9PullDn10Quit

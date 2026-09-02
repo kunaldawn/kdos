@@ -837,7 +837,7 @@ void sh_dispatch(struct sh_state *sh)
 
 void sh_disconnect(struct sh_state *sh)
 {
-	/* The connection is libkwl's; kwl_shutdown() closes it. Only the
+	/* The connection is libkwl's; kdisp_shutdown() closes it. Only the
 	 * objects bound here are this file's to release. */
 	sh->ftl_mgr = NULL;
 	sh->ws_mgr = NULL;
@@ -960,6 +960,109 @@ void sh_spawn(const char *const argv[])
 }
 
 /*
+ * THE TERMINAL EMULATOR ON THIS DESKTOP, which is not the same program on the
+ * two of them. foot is a Wayland client and there is no compositor on the
+ * console path to be one under; kdos-term is a cell surface and opens as a
+ * window on either. $KDOS_CON is the console session's surface socket and is
+ * set by the session for everything started inside it, so its presence is the
+ * question "am I on the console desktop" already answered.
+ *
+ * Both accept `-e CMD` and `-D DIR` with the same meaning, so a call site
+ * picks the name here and needs no other branch.
+ */
+const char *sh_term(void)
+{
+	const char *con = getenv("KDOS_CON");
+
+	return (con && *con) ? "kdos-term" : "foot";
+}
+
+/*
+ * THE TERMINAL AND THE IDENTITY IT WEARS, written into argv from n; returns
+ * the new n. `cmd` is the command that will draw inside it and `id` is the
+ * caller's scratch, which must outlive the exec.
+ *
+ * A terminal running somebody else's program must not answer to its own name.
+ * The compositor matches a window to a desktop entry by app-id, so every
+ * terminal entry started as a bare `foot -e …` is a taskbar row called foot,
+ * wearing foot's icon, however many of them are open. The identity is the
+ * first word of `cmd` without its directory, which is the desktop id for
+ * everything that ships one. foot takes it as `--app-id`; kdos-term as the
+ * `--title` the panel shows until the program sets one.
+ */
+int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
+		 char *id, size_t idsz)
+{
+	const char *con = getenv("KDOS_CON");
+	char word[128];
+	size_t i = 0;
+
+	if (n + 3 >= max)
+		return n;
+	while (cmd && cmd[i] && cmd[i] != ' ' && cmd[i] != '\t' &&
+	       i < sizeof(word) - 1) {
+		word[i] = cmd[i];
+		i++;
+	}
+	word[i] = '\0';
+	const char *base = strrchr(word, '/');
+
+	base = base ? base + 1 : word;
+	if (con && *con) {
+		argv[n++] = "kdos-term";
+		if (*base) {
+			snprintf(id, idsz, "%s", base);
+			argv[n++] = "--title";
+			argv[n++] = id;
+		}
+	} else {
+		argv[n++] = "foot";
+		if (*base) {
+			snprintf(id, idsz, "--app-id=%s", base);
+			argv[n++] = id;
+		}
+	}
+	argv[n++] = "-e";
+	return n;
+}
+
+/*
+ * The same, as the single command string the callers that re-split one need.
+ * No argument here may contain a space: the identity is one word and `--app-id`
+ * is joined to it with `=` for exactly that reason.
+ */
+void sh_term_cmd(char *out, size_t n, const char *cmd)
+{
+	const char *argv[8];
+	char id[160];
+	int k = sh_term_argv(argv, 0, 8, cmd, id, sizeof(id));
+	size_t len = 0;
+
+	out[0] = '\0';
+	for (int i = 0; i < k && len < n; i++)
+		len += (size_t)snprintf(out + len, n - len, "%s ", argv[i]);
+	if (len < n)
+		snprintf(out + len, n - len, "%s", cmd);
+}
+
+/*
+ * THE PROGRAM THAT IS THE SESSION, and killing it is what logging out means.
+ * The compositor is the graphical session and `kdos-con` is the console one;
+ * both end on SIGTERM and tear down in order, and neither publishes its pid,
+ * so an exact-name `pkill` is the route. Exact, not a pattern: a pattern that
+ * matched `kdos-con` would match `kdos-con-login` and `kdos-con-start` too.
+ *
+ * Both names are inside the 15 characters `pkill -x` compares against, which
+ * is the length at which an exact-name kill silently matches nothing.
+ */
+const char *sh_session_prog(void)
+{
+	const char *con = getenv("KDOS_CON");
+
+	return (con && *con) ? "kdos-con" : "kdos-comp";
+}
+
+/*
  * ── THE FRAME IS DRAWN BY WHOEVER OWNS IT ──────────────────────────────────
  *
  * Every surface here used to put its own double-line box round itself, which
@@ -1065,7 +1168,7 @@ int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn)
 
 void sh_frame(int w, int h, const char *title, int fg, int bg, int dbl)
 {
-	if (kwl_decorated()) {
+	if (kdisp_decorated()) {
 		ktui_draw_fill(krect(0, 0, w, h), bg);
 		return;
 	}

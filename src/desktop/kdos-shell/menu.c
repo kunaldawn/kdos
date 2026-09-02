@@ -29,7 +29,7 @@
  * ITS OWN PROCESS, like kdos-launcher, and for the same reason: the panel's
  * event loop owns one surface and one cell buffer. A second surface inside it
  * would mean libktui rendering two grids from one buffer, which it cannot do —
- * see the KWL_ROLE_LOCK note in kwl.h about exactly that limitation. Spawning
+ * see the KDISP_ROLE_LOCK note in kwl.h about exactly that limitation. Spawning
  * is cheaper than the alternative and it means a menu that wedges cannot take
  * the panel with it.
  * ---------------------------------
@@ -302,6 +302,16 @@ static void load_places(void)
 	fclose(f);
 }
 
+/* Same as add(), for a command that draws in a terminal: the emulator's name
+ * is this desktop's, not a constant. See sh_term(). */
+static void add_term(const char *name, const char *cmd)
+{
+	char buf[128 + SH_TERM_PREFIX_MAX];
+
+	sh_term_cmd(buf, sizeof(buf), cmd);
+	add(name, buf, -1);
+}
+
 /* Same as add(), plus the question to ask first. */
 static void add_confirmed(const char *name, const char *exec,
 			  const char *question)
@@ -313,31 +323,35 @@ static void add_confirmed(const char *name, const char *exec,
 
 static void load_system(void)
 {
-	add("Theme — phosphor", "foot -e kdos theme phosphor", -1);
-	add("Theme — amber",    "foot -e kdos theme amber", -1);
-	add("Theme — ice",      "foot -e kdos theme ice", -1);
-	add("Theme — bone",     "foot -e kdos theme bone", -1);
+	char logout[64];
+
+	add_term("Theme — phosphor", "kdos theme phosphor");
+	add_term("Theme — amber",    "kdos theme amber");
+	add_term("Theme — ice",      "kdos theme ice");
+	add_term("Theme — bone",     "kdos theme bone");
 	add("",                 NULL, -2);		/* separator */
 	add("Boxes…",           "kdos-settings --page boxes", -1);
 	add("Displays",         "kdos-display", -1);
-	add("Network",          "foot -e nmtui", -1);
-	add("Files",            "foot -e mc", -1);
-	add("Task Manager",     "foot -e btop", -1);
+	add_term("Network",          "nmtui");
+	add_term("Files",            "mc");
+	add_term("Task Manager",     "btop");
 	add("",                 NULL, -2);		/* separator */
-	add("System status",    "foot -e kdos status", -1);
-	add("Energy Impact",    "foot -e kdos-energy", -1);
-	add("Doctor",           "foot -e kdos doctor", -1);
-	add("Help — keys and commands", "foot -e kdos help --pager", -1);
-	add("Terminal",         "foot", -1);
+	add_term("System status",    "kdos status");
+	add_term("Energy Impact",    "kdos-energy");
+	add_term("Doctor",           "kdos doctor");
+	add_term("Help — keys and commands", "kdos help --pager");
+	add("Terminal",         sh_term(), -1);
 	add("",                 NULL, -2);		/* separator */
 	add("Lock Screen",      "kdos-lock", -1);
 	/*
-	 * Log Out is `pkill -TERM -x kdos-comp`, which looks blunt and is the
-	 * honest route: the compositor ends the session on SIGTERM — the same
-	 * path Super+Escape takes — and nothing publishes its pid. An exec of
-	 * pkill is not a shell, so the no-shell rule holds.
+	 * Log Out is `pkill -TERM -x` on the program that IS this session,
+	 * which looks blunt and is the honest route: it ends on SIGTERM — the
+	 * same path the quit chord takes — and nothing publishes its pid. An
+	 * exec of pkill is not a shell, so the no-shell rule holds.
 	 */
-	add_confirmed("Log Out", "pkill -TERM -x kdos-comp",
+	snprintf(logout, sizeof(logout), "pkill -TERM -x %s",
+		 sh_session_prog());
+	add_confirmed("Log Out", logout,
 		      "End the KDOS session? Unsaved work will be lost.");
 	add("Suspend",          "kdos-power suspend", -1);
 	add_confirmed("Restart", "kdos-power reboot",
@@ -385,7 +399,8 @@ static int confirmed(const char *question)
 
 static void launch(const struct item *it)
 {
-	char buf[EXEC_MAX_LEN + 16];
+	char buf[EXEC_MAX_LEN + SH_TERM_PREFIX_MAX];
+	char id[160];			/* argv points into it until the exec */
 	const char *argv[32];
 	int n = 0;
 
@@ -397,13 +412,12 @@ static void launch(const struct item *it)
 	if (it->path[0]) {
 		/* A Places row: the path travels as ONE argument, whatever is
 		 * in it — no re-split, no truncation. */
-		argv[n++] = "foot";
-		argv[n++] = "-e";
+		n = sh_term_argv(argv, n, 32, "mc", id, sizeof(id));
 		argv[n++] = "mc";
 		argv[n++] = it->path;
 	} else {
 		if (it->terminal)
-			snprintf(buf, sizeof(buf), "foot -e %s", it->exec);
+			sh_term_cmd(buf, sizeof(buf), it->exec);
 		else
 			snprintf(buf, sizeof(buf), "%s", it->exec);
 
@@ -1070,13 +1084,13 @@ static int windows_rows(const char *app, int ctrl, struct wrow *rows,
 static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 			int at_bottom, const char *font)
 {
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = 42,
 		.rows = 7,		/* provisional; resized once counted */
-		.corner = at_x < 0	? KWL_CORNER_CENTER
-			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
-					: KWL_CORNER_TOP_LEFT,
+		.corner = at_x < 0	? KDISP_CORNER_CENTER
+			  : at_bottom	? KDISP_CORNER_BOTTOM_LEFT
+					: KDISP_CORNER_TOP_LEFT,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-menu",
@@ -1087,7 +1101,7 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-menu: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -1128,14 +1142,14 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 	wl_display_roundtrip(dpy);		/* and the toplevels they announce */
 	if (!win_mgr) {
 		fprintf(stderr, "kdos-menu: no foreign-toplevel manager\n");
-		kwl_shutdown();
+		kdisp_shutdown();
 		return 1;
 	}
 
 	int sel = 0, top = 0, want_rows = -1;
 	int done = 0;
 
-	while (!kwl_should_close() && !done) {
+	while (!kdisp_should_close() && !done) {
 		wl_display_dispatch_pending(dpy);
 		if (ktui_resized) {
 			ktui_resized = 0;
@@ -1160,7 +1174,7 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 			wr = 24;
 		if (wr != want_rows) {
 			want_rows = wr;
-			kwl_overlay_resize(42, wr);
+			kdisp_overlay_resize(42, wr);
 		}
 
 		if (sel >= nrows)
@@ -1395,7 +1409,7 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 		break;
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }
 
@@ -1492,7 +1506,7 @@ int menu_main(int argc, char **argv)
 	 * Sized to the content, capped so it cannot be taller than a small
 	 * screen. Anchored top-left under the word it came from when the panel
 	 * said where that was — layer-shell has no coordinates, so "at x" is
-	 * an anchor plus a margin, which is what KWL_CORNER_TOP_LEFT is.
+	 * an anchor plus a margin, which is what KDISP_CORNER_TOP_LEFT is.
 	 */
 	int rows = v.n + 2;
 	if (rows > 24)
@@ -1515,13 +1529,13 @@ int menu_main(int argc, char **argv)
 		return 0;
 	}
 
-	KwlConfig cfg = {
-		.role = KWL_ROLE_OVERLAY,
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
 		.cols = 42,
 		.rows = rows,
-		.corner = at_x < 0	? KWL_CORNER_CENTER
-			  : at_bottom	? KWL_CORNER_BOTTOM_LEFT
-					: KWL_CORNER_TOP_LEFT,
+		.corner = at_x < 0	? KDISP_CORNER_CENTER
+			  : at_bottom	? KDISP_CORNER_BOTTOM_LEFT
+					: KDISP_CORNER_TOP_LEFT,
 		.margin_x = at_x >= 0 ? at_x : 0,
 		.margin_y = at_x >= 0 ? at_y : 0,
 		.app_id = "kdos-menu",
@@ -1532,7 +1546,7 @@ int menu_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-menu: no compositor or no layer-shell\n");
 		return 1;
 	}
@@ -1541,7 +1555,7 @@ int menu_main(int argc, char **argv)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
 		int rows_vis = ktui_h - 2;
@@ -1696,7 +1710,7 @@ int menu_main(int argc, char **argv)
 		}
 	}
 done:
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }
 

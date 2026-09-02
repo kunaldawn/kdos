@@ -8,16 +8,56 @@ specification; this page is how to implement it.
 
 ## What a surface is
 
-A grid of character cells drawn by `libktui` onto one of three backends:
+A grid of character cells drawn by `libktui` onto one of four backends:
 
 | Backend | Used by |
 |---|---|
-| A terminal | Anything run at a prompt or on a console |
+| A terminal | Anything run at a prompt |
 | `libkwl` | Anything under the compositor |
+| `libkcon` | Anything on the console desktop — a window in `kdos-con` |
 | An offscreen buffer | `--dump`, and the committed reference frames |
 
 **Nothing above that line knows which.** That is what makes a program identical on a console, in a
 window and in a test fixture.
+
+### Reaching a display
+
+A surface does not call a backend by name. `libkdisp` owns the choice and the whole surface
+lifecycle — open, close, resize, autohide, cell size, scale, clipboard, cursor — and each program
+states **once** which implementations it links:
+
+```c
+extern const KDispImpl kcon_impl;           /* libkcon */
+extern const KDispImpl kwl_impl;            /* libkwl  */
+const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
+const int kdos_disp_n = 2;
+```
+
+**Order is the policy.** The first whose `probe` succeeds is used, and the console goes first so a
+surface started *from* the console desktop attaches to it even on a machine that is also running a
+compositor. A probe must be cheap and free of side effects — `kcon_probe` tests `$KDOS_CON` and does
+not connect, because `kdisp_init` probes implementations it will not go on to use.
+
+Then every call site is the same three lines regardless of server:
+
+```c
+KDispConfig cfg = { .role = KDISP_ROLE_TOPLEVEL, .app_id = "kdos-thing", … };
+if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0)
+        return 1;                            /* say so and exit, do not run blind */
+```
+
+**libkdisp names no implementation and links none**, so that array is what pulls Wayland — or the
+console client — into a program, and it is the one line that changed when the second display server
+was added. Every other line in `kdos-shell`, `kdos-res` and `kdos-lock` stayed as it was. Passing zero
+implementations selects the terminal backend, which is what a `--tty` flag means.
+
+`kdos-shell` alone opens a surface from more than twenty places. Branching on the display server at
+each of them is the same decision written twenty times in one program and again in the next, which
+is why the lifecycle is an interface.
+
+**A cell dump does not go through it.** `--dump-cells` installs its own `KtuiBackend` with
+`ktui_backend_set`, because the cell buffer is private to `libktui` and the vtable is its documented
+seam. Routing a dump through `kdisp_init` would change every committed golden.
 
 ## The frame protocol
 
@@ -57,6 +97,7 @@ Three rules:
 | `OVERLAY` | A layer surface above windows | Menus, popups, tooltips |
 | `TOPLEVEL` | An ordinary window | See below |
 | `LOCK` | A session-lock surface | Covers every output |
+| `SAVER` | The whole screen, above windows, taking nothing | See below |
 
 ### A toplevel must ask for its frame
 
@@ -88,6 +129,21 @@ normal elsewhere. The backend skips it for that role.
 **The lock role covers every output**, because the protocol will not report the session locked
 until they all have a surface. The toolkit has one cell buffer, so the prompt is on the first
 output and the rest are filled with the background colour — a toolkit limitation, said out loud.
+
+### A saver asks for no size and takes no input
+
+`SAVER` is neither a big `OVERLAY` nor a soft `LOCK`.
+
+**It asks for no size.** An overlay is centred and sized in cells by the client, and a client cannot
+see the output; one that measured the screen itself would have to round pixels into cells, and a row
+rounded down is a strip of desktop along the bottom edge of a surface whose whole job is to cover
+it. The display sends the size in the first configure, exactly as it does for `BACKGROUND`.
+
+**It takes no keyboard and claims no pointer region** — `kdisp_input_cells(NULL, 0)`. Every
+keystroke and every click goes to what is underneath, which is what lets the display's idle policy
+see the activity and take the surface away. A saver that swallowed input would be a lock screen with
+no password. It is asked to close rather than killed, so exiting on `kdisp_should_close()` is not
+optional: a saver that ignores the request stays on the screen.
 
 ### Anchoring a popup
 

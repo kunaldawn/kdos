@@ -33,6 +33,7 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -43,6 +44,7 @@
 #include "kbase.h"
 #include "kicon.h"
 #include "kwl.h"
+#include "kwm.h"
 #include "shell.h"
 
 #define MAX_ENTRIES 256
@@ -153,6 +155,111 @@ static char edit_buf[256];
  * What stays local is the QUESTION — the confirm, the two pinned places that
  * are not files, and the status line.
  */
+
+/* ── dragging a file off the desktop, and onto the trash ───────────────── */
+
+/* Which icon is at a cell, or -1. The gap column beside an icon and the name
+ * row below it are wallpaper: a drop there belongs to nothing. */
+static int icon_at(int mx, int my);
+static void reload(void);
+
+static int drag_from = -1;	/* the icon a press went down on */
+static int drag_cx, drag_cy;
+static int dragging;
+
+/*
+ * A file:// URI, percent-encoding only what would otherwise end the URI or
+ * start a fragment. Anything else is left alone: a uri-list is read by
+ * programs that show the name, and over-encoding makes it unreadable there.
+ */
+static void uri_of(const char *path, char *out, size_t n)
+{
+	static const char hex[] = "0123456789ABCDEF";
+	size_t o = 0;
+
+	o += (size_t)snprintf(out, n, "file://");
+	for (const unsigned char *p = (const unsigned char *)path;
+	     *p && o + 4 < n; p++) {
+		if (*p <= 0x20 || *p >= 0x7f || strchr("%#?[]", *p)) {
+			out[o++] = '%';
+			out[o++] = hex[*p >> 4];
+			out[o++] = hex[*p & 0x0f];
+		} else {
+			out[o++] = (char)*p;
+		}
+	}
+	out[o] = '\0';
+}
+
+static void unpercent(const char *in, char *out, size_t n)
+{
+	size_t o = 0;
+
+	for (; *in && o + 1 < n; in++) {
+		if (in[0] == '%' && isxdigit((unsigned char)in[1]) &&
+		    isxdigit((unsigned char)in[2])) {
+			char b[3] = { in[1], in[2], 0 };
+
+			out[o++] = (char)strtol(b, NULL, 16);
+			in += 2;
+		} else {
+			out[o++] = *in;
+		}
+	}
+	out[o] = '\0';
+}
+
+static int drag_begin(int i)
+{
+	char uri[1600];
+
+	/* Home and Trash are places, not files: there is nothing to pick up. */
+	if (i < 0 || i >= nentries || entries[i].pinned)
+		return 0;
+
+	uri_of(entries[i].path, uri, sizeof(uri) - 3);
+	/* CRLF terminates EVERY line of a uri-list, the last one included. */
+	strncat(uri, "\r\n", sizeof(uri) - strlen(uri) - 1);
+
+	return kdisp_drag_start("text/uri-list", uri, strlen(uri)) == 0;
+}
+
+static void drop_to_trash(const char *uris, char *status, size_t n)
+{
+	int done = 0, failed = 0;
+	const char *p = uris;
+
+	while (*p) {
+		char line[1600], path[1400];
+		size_t k = 0;
+
+		while (*p && *p != '\r' && *p != '\n' && k + 1 < sizeof(line))
+			line[k++] = *p++;
+		line[k] = '\0';
+		while (*p == '\r' || *p == '\n')
+			p++;
+
+		/* A comment line is part of the format, not a file. */
+		if (!k || line[0] == '#')
+			continue;
+		/* Anything that is not a local file is not ours to move, and
+		 * silently doing nothing is better than reporting a failure
+		 * for something that was never a file. */
+		if (strncmp(line, "file://", 7))
+			continue;
+
+		unpercent(line + 7, path, sizeof(path));
+		if (kb_trash_put(path) == 0)
+			done++;
+		else
+			failed++;
+	}
+
+	if (done || failed)
+		snprintf(status, n, "moved %d to the trash%s", done,
+			 failed ? " — some could not be moved" : "");
+	reload();
+}
 
 /* ── reading the desktop directory ─────────────────────────────────────── */
 
@@ -378,12 +485,12 @@ static void open_entry(const struct entry *it)
 	 */
 	if (it->is_app) {
 		char buf[288];
+		char id[160];		/* argv points into it until the exec */
 		const char *argv[34];
 		int n = 0;
-		if (it->terminal) {
-			argv[n++] = "foot";
-			argv[n++] = "-e";
-		}
+		if (it->terminal)
+			n = sh_term_argv(argv, n, 34, it->exec, id,
+					 sizeof(id));
 		snprintf(buf, sizeof(buf), "%s", it->exec);
 		char *save = NULL;
 		for (char *tok = strtok_r(buf, " \t", &save);
@@ -428,6 +535,24 @@ static int drawn_count(void)
 {
 	int fit = cells_fit();
 	return nentries > fit ? fit - 1 : nentries;
+}
+
+/*
+ * DRAWN entries only: the cells past the overflow marker belong to nothing.
+ * The row BELOW an icon and the gap column beside it are wallpaper, and a menu
+ * or a drop that landed on the icon above would act on something the pointer is
+ * not over.
+ */
+static int icon_at(int mx, int my)
+{
+	int i = ((my - 1) / CELL_H) * columns() + (mx - 1) / CELL_W;
+
+	if (mx < 1 || my < 1 || (my - 1) % CELL_H != 0 ||
+	    (mx - 1) % CELL_W >= CELL_W - 1 ||
+	    i < 0 || i >= drawn_count())
+		return -1;
+
+	return i;
 }
 
 /* Split out so the draw loop reads as layout rather than as a lookup. */
@@ -484,7 +609,7 @@ static void input_region(void)
 	 * regression, and the menu is the replacement. `W-space` still opens
 	 * the compositor's own menu for anyone who wants it.
 	 */
-	kwl_input_cells(NULL, -1);
+	kdisp_input_cells(NULL, -1);
 }
 
 /*
@@ -606,7 +731,7 @@ static void draw(const char *status)
 	 * no alpha at all: whatever KT_BG is, it lands opaque and the wallpaper
 	 * disappears the moment kdos-desk starts.
 	 *
-	 * So KWL_ROLE_BACKGROUND asks libkwl for an ARGB surface and turns on
+	 * So KDISP_ROLE_BACKGROUND asks libkwl for an ARGB surface and turns on
 	 * libkcell's transparent-KT_BG mode: every cell the desktop does not
 	 * write is cleared to zero and the wallpaper shows through. Cells that
 	 * DO carry something — an icon glyph, a label, the selection bar — are
@@ -795,7 +920,7 @@ static void ctx_run(int row, char *status, size_t n)
 		desktop_dir(dir, sizeof(dir));
 		switch (CTX[row].id) {
 		case CT_TERM: {
-			const char *argv[] = { "foot", "-D", dir, NULL };
+			const char *argv[] = { sh_term(), "-D", dir, NULL };
 			spawn(argv);
 			break;
 		}
@@ -861,7 +986,7 @@ static void ctx_run(int row, char *status, size_t n)
 			if (slash && slash != dir)
 				*slash = '\0';
 		}
-		const char *argv[] = { "foot", "-D", dir, NULL };
+		const char *argv[] = { sh_term(), "-D", dir, NULL };
 		spawn(argv);
 		break;
 	}
@@ -929,14 +1054,14 @@ int desk_main(int argc, char **argv)
 		}
 	}
 
-	KwlConfig cfg = {
+	KDispConfig cfg = {
 		/*
 		 * The background layer, anchored on all four edges, with no
-		 * exclusive zone — see KWL_ROLE_BACKGROUND in kwl.h. A panel
+		 * exclusive zone — see KDISP_ROLE_BACKGROUND in kwl.h. A panel
 		 * role with the zone turned off would still be on the TOP
 		 * layer, which would put the desktop over every window.
 		 */
-		.role = KWL_ROLE_BACKGROUND,
+		.role = KDISP_ROLE_BACKGROUND,
 		.app_id = "kdos-desk",
 		.font = font,
 		.output = output,
@@ -949,12 +1074,12 @@ int desk_main(int argc, char **argv)
 	};
 
 	sh_theme_from_cache();
-	if (kwl_init(&cfg) != 0) {
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-desk: no compositor or no layer-shell\n");
 		return 1;
 	}
 	if (icons_on)
-		kicon_init(kwl_cell_w(), kwl_cell_h(), kwl_scale());
+		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
 	/*
 	 * `kdos theme <accent>` SIGHUPs this too. The desktop is as long-lived
@@ -970,7 +1095,7 @@ int desk_main(int argc, char **argv)
 	time_t last_scan = time(NULL);
 	time_t status_at = 0;
 
-	while (!kwl_should_close()) {
+	while (!kdisp_should_close()) {
 		/*
 		 * A message about a file that was trashed a minute ago is a
 		 * message about nothing. Cleared on a timer rather than on the
@@ -1035,6 +1160,21 @@ int desk_main(int argc, char **argv)
 		 * it, moving the pointer over an already-selected icon launched
 		 * it. Wheel ticks arrive as buttons too and must not select.
 		 */
+		if (ev.type == KT_EVT_DROP) {
+			size_t dn = 0;
+			const char *uris = ktui_drop_take(&dn);
+			int at = icon_at(ev.mx, ev.my);
+
+			/* Only the trash accepts, for now: dropping onto a
+			 * folder is a MOVE, and a move that half-succeeds
+			 * across filesystems is worse than not offering it. */
+			if (uris && at >= 0 && entries[at].is_trash) {
+				drop_to_trash(uris, status, sizeof(status));
+				status_at = time(NULL);
+			}
+			continue;
+		}
+
 		if (ev.type == KT_EVT_MOUSE) {
 			if (ev.mx < 0 || ev.my < 0)
 				continue;	/* the pointer left the surface */
@@ -1064,21 +1204,24 @@ int desk_main(int argc, char **argv)
 				continue;
 			}
 
-			if (ev.press != KT_MP_PRESS)
+			/*
+			 * A press that leaves its cell is a drag, not a click.
+			 * The threshold is libkwm's, so the console desktop
+			 * picks a file up on exactly the same gesture.
+			 */
+			if (ev.press == KT_MP_DRAG) {
+				if (drag_from >= 0 && !dragging &&
+				    kwm_drag_threshold(ev.mx - drag_cx,
+						       ev.my - drag_cy))
+					dragging = drag_begin(drag_from);
 				continue;
-			int cols = columns();
-			int i = ((ev.my - 1) / CELL_H) * cols +
-				(ev.mx - 1) / CELL_W;
-			/* DRAWN entries only: the cells past the overflow
-			 * marker belong to nothing. The row BELOW an icon and
-			 * the gap column beside it are wallpaper, and a menu
-			 * that opened for the icon above would act on
-			 * something the pointer is not on. */
-			if (ev.mx < 1 || ev.my < 1 ||
-			    (ev.my - 1) % CELL_H != 0 ||
-			    (ev.mx - 1) % CELL_W >= CELL_W - 1 ||
-			    i < 0 || i >= drawn_count())
-				i = -1;
+			}
+			if (ev.press != KT_MP_PRESS) {
+				drag_from = -1;
+				dragging = 0;
+				continue;
+			}
+			int i = icon_at(ev.mx, ev.my);
 			if (ev.btn == KT_MB_RIGHT && i < 0) {
 				/* Bare wallpaper. This used to fall through to
 				 * the compositor's root menu, which is a
@@ -1111,6 +1254,10 @@ int desk_main(int argc, char **argv)
 			}
 			if (ev.btn != KT_MB_LEFT)
 				continue;
+			drag_from = i;
+			drag_cx = ev.mx;
+			drag_cy = ev.my;
+			dragging = 0;
 			/* One click selects, a second on the same icon opens —
 			 * the spatial model GNOME 2 shipped, and the one that
 			 * does not open a folder every time somebody brushes
@@ -1203,6 +1350,6 @@ int desk_main(int argc, char **argv)
 		}
 	}
 
-	kwl_shutdown();
+	kdisp_shutdown();
 	return 0;
 }

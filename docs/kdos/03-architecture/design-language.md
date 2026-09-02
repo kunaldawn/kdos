@@ -26,6 +26,12 @@ The consequence to internalise: **a control is as tall as one row of text**. Whe
 wrong, the answer is a picture drawn into whole cells, not a second renderer. See
 [Pictures](#pictures-are-an-enhancement-layer).
 
+**And nothing on this desktop is drawn by another toolkit.** The last thing that was is the
+input-method candidate window: an engine draws its own with its own renderer, which on a character
+grid is a rounded antialiased panel sitting on top of a text-mode desktop. `kdos-ime` draws it here
+instead — the same chrome, the same slots, one program on both desktops — by speaking the
+input-method framework's own generic panel protocol rather than by writing an input method.
+
 ## A window is a double-line box
 
 ```
@@ -141,6 +147,74 @@ handler is a *picture*: the only way to discover that a row is a control is to c
 | Column header | Sets the sort; a second press reverses it |
 | Click away | Closes a transient surface |
 
+### Drawing the pointer
+
+**The view draws it, never the session.** The session owns the windows and the view owns the
+screen, so a pointer the session drew would cost a round trip for every motion event and trail the
+hand moving it. The view already holds the device and already knows where it is.
+
+It is drawn at the resolution the view has, which is the same rule as the glyph tiers:
+
+| View | The pointer is |
+|---|---|
+| A screen of its own (`--kms`) | An arrow composited in **pixels** over the painted cells |
+| A terminal, or one over `ssh` | The cell under it, reversed |
+
+The arrow is the interesting half. Everything else on that screen is a character on a fixed grid,
+and the arrow is not — it sits at whatever pixel the mouse is on and moves smoothly across a
+desktop made of text. That is what the sub-cell offsets in the wire format are for, biased so that
+zero is the centre of a cell.
+
+Two consequences a reader will otherwise meet as bugs. **The cells the arrow covered must be forced
+to repaint** before the next paint, because a cell whose content did not change is not redrawn and
+the arrow would leave a trail of itself. And **the arrow moving is a change even when no cell is**,
+so the framebuffer is marked dirty for it — otherwise the pointer only moves when something else on
+the screen happens to.
+
+Nothing is drawn before the first motion: a machine with no pointing device would otherwise wear an
+arrow in its corner for the life of the session.
+
+## Touch
+
+A touchscreen answers the same contract, because **one recogniser turns a finger into the pointer
+events above**. `ktui_gesture_feed` in `libktui` is fed by `wl_touch` on the graphical desktop and
+by `libinput` on the console; a disambiguator written inside a backend would be written twice and
+would disagree twice.
+
+| Gesture | Reported as | And also arrives as |
+|---|---|---|
+| Tap | `KT_GEST_TAP` | a left press and release |
+| Long press | `KT_GEST_LONG` | nothing — a surface that wants a context menu reads the gesture |
+| Drag | `KT_GEST_DRAG` | motion with the button held |
+| Two-finger scroll | `KT_GEST_SCROLL` | a wheel tick |
+| Pinch | `KT_GEST_PINCH` | nothing |
+| Edge swipe | `KT_GEST_SWIPE_EDGE` | motion, and it says which edge it came from |
+
+So **a surface written before touch existed already works under a finger**, and one that wants more
+reads `ev.gesture` on a `KT_EVT_TOUCH`.
+
+Two rules that are each a defect if missed:
+
+- **Movement is measured in CELLS.** A drag begins when the finger leaves the cell it went down in.
+  Coarse on purpose: everything here is a grid, and a threshold in pixels is a number the console
+  cannot see. The same threshold decides when a pointer press became a drag, from `libkwm`, so both
+  desktops pick a file up on the same gesture.
+- **One finger of two says nothing.** Moving away from a stationary finger is a pinch and a scroll
+  at the same time; the answer arrives when the second finger agrees or disagrees. Guessing makes
+  the two flip back and forth mid-gesture, which is unusable.
+
+Long press has no event to arrive on — the finger is down and nothing is moving — so it is polled
+with `ktui_gesture_tick` from the backend's idle wait, and reported **once**.
+
+## Drops
+
+A drop is a position **and** a payload, and an event has room for one of them. `KT_EVT_DROP`
+carries where; `ktui_drop_take` yields the payload, once, so two surfaces in one process cannot both
+act on one drop.
+
+`text/uri-list` arrives as it came — CRLF-separated URIs, comment lines and all — because what a URI
+means differs per surface.
+
 Three subtleties that are each a defect if missed:
 
 - **Motion arrives as a drag event.** The Wayland protocol reports plain movement and dragged
@@ -229,6 +303,21 @@ Two rules for pixel tiles:
   slots on every content change repaints exactly the rows it covers.
 - **The geometry is decided before the tile is claimed.** Bailing out after claiming it leaves the
   tile believing it drew that content, and the next frame presents a stale slot.
+
+**A picture from a terminal is the same sprite**, which is why nothing new was invented to draw
+one. A picture wider or taller than sixteen cells becomes a grid of sprites sharing a key prefix,
+all-or-nothing, so it evicts and re-registers as a unit rather than leaving three quarters of a
+photograph on the screen. Each backend does what it can:
+
+| Backend | What a picture is |
+|---|---|
+| Wayland, KMS | Real pixels, scaled to the cells it occupies |
+| The console wire | The bytes, forwarded once per slot; the **display** scales them to its own cell size, because a client has no way to know what that is |
+| A tty, or a display built without a pixel library | The fallback shade, in every cell of the picture |
+
+**A picture that renders as nothing is worse than one that renders as a mark.** Blank cells are
+indistinguishable from output that never arrived, which is why the tiled path carries a fallback
+codepoint rather than a space.
 
 **A sprite is two cells wide and one tall** wherever it sits beside text. A cell is twice as tall
 as it is wide, so two cells across one row is a square on the same optical line as the text. Asking

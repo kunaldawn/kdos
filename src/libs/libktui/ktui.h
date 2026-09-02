@@ -83,6 +83,17 @@ extern const KtuiTheme *ktui_theme;
 
 int ktui_theme_set(const char *name);
 
+/*
+ * THE NEAREST SLOT TO AN ARBITRARY COLOUR, by squared distance.
+ *
+ * The one rule for reducing a colour that came from outside the palette — a
+ * terminal's SGR, a picture's average — to something this desktop can draw. A
+ * table mapping "red means the error slot" would be a second set of colour
+ * decisions beside the palette, and it would stop following the accent:
+ * `kdos theme amber` has to move every colour with it.
+ */
+int ktui_theme_nearest(uint32_t rgb);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Terminal
  * ──────────────────────────────────────────────────────────────────────── */
@@ -163,7 +174,15 @@ typedef struct {
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define KTUI_SPRITE_BASE  0x02000000u
-#define KTUI_MAX_SPRITES  256
+/*
+ * FOUR THOUSAND, and the number comes from a full screen. A picture is tiled
+ * into 16x16-cell sprites, so a 240x67 grid covered edge to edge is
+ * ceil(240/16) * ceil(67/16) = 75 of them — and a terminal showing several
+ * pictures, plus every icon the panel and the desktop hold, is the case that
+ * has to fit. The slot encoding already carries sixteen bits, so this is the
+ * table's size and nothing else.
+ */
+#define KTUI_MAX_SPRITES  4096
 #define KTUI_IS_SPRITE(ch) (((ch) & 0xff000000u) == KTUI_SPRITE_BASE)
 #define KTUI_SPRITE_SLOT(ch) (((ch) >> 8) & 0xffffu)
 #define KTUI_SPRITE_SX(ch) ((ch) & 0xfu)
@@ -184,8 +203,74 @@ int ktui_sprite_put(uint64_t key, const void *pix, int cw, int ch,
 int ktui_sprite_find(uint64_t key);
 const KtuiSprite *ktui_sprite_get(int slot);
 int ktui_sprite_slots(void);
-/* Call BEFORE freeing the picture. There is no refcount and no eviction. */
+/* Call BEFORE freeing the picture. */
 void ktui_sprite_drop(uint64_t key);
+
+/*
+ * EVICTION IS OPT-IN, and it is opt-in because of what a sprite is: the table
+ * holds a borrowed pointer and this library does no pixel work, so it cannot
+ * free a picture and must not drop one somebody is still drawing. Both
+ * problems are solved by the owner saying how:
+ *
+ *   - `fn` is called with the key and the picture when a slot is taken back,
+ *     so the owner frees it at the moment the table stops naming it. It is
+ *     also called for a picture the table REFUSED mid-way through a tiled
+ *     put, which carries the same message: nothing here will ever name it.
+ *   - Only a sprite NOT referenced by the current cell buffer is evictable.
+ *     The table can check that because the cell buffer is this library's.
+ *   - Least recently used first, where "used" means put or found.
+ *
+ * With no evictor registered the table fills and `ktui_sprite_put` answers -1,
+ * which every consumer already handles by drawing its glyph. That is the right
+ * behaviour for icons, which are owned for the life of the session.
+ */
+typedef void (*KtuiSpriteFree)(uint64_t key, const void *pix, void *user);
+
+void ktui_sprite_evictor(KtuiSpriteFree fn, void *user);
+
+/*
+ * A byte budget on top of the slot count, for pictures rather than icons: a
+ * full-screen photograph is megabytes and a hundred of them is a leak with a
+ * cap. `cell_px` is how many pixels one cell is at the current scale — the
+ * table does no pixel work, so it cannot know that and has to be told. Zero
+ * bytes, or an unset cell size, means the slot count is the only limit.
+ */
+void ktui_sprite_budget(size_t max_bytes, int cell_w_px, int cell_h_px);
+size_t ktui_sprite_bytes(void);
+
+/* The cell buffer being composed, and its OWN size — which is not ktui_w by
+ * ktui_h between a backend resize and the consumer's ktui_draw_resize(). For
+ * the sprite table's eviction check and nothing else: every drawing path goes
+ * through ktui_draw_cell. */
+const KtuiCell *ktui_cells(int *w, int *h);
+
+/*
+ * A picture larger than one slot is a GRID of slots sharing a key prefix, so
+ * it evicts and re-registers as a unit rather than leaving three quarters of a
+ * photograph on the screen. The stride is XORed rather than added, because two
+ * pictures with adjacent keys — a file path and a frame number is exactly that
+ * — would otherwise collide on their tiles.
+ */
+#define KTUI_TILE_STRIDE 0x9e3779b97f4a7c15ULL
+
+/* Called once per tile with the sub-rectangle it covers, in CELLS. Returns the
+ * picture for that tile, already scaled, or NULL to abandon the whole thing. */
+typedef const void *(*KtuiSpriteTile)(void *user, int cell_x, int cell_y,
+				      int cw, int ch);
+
+/*
+ * Tiles registered, or -1. All or nothing: a partial picture draws a hole.
+ *
+ * `fallback` is what EVERY tile shows where pixels cannot be drawn — a tty, a
+ * view with no pixel library, a dump. A picture is worth a mark there: a
+ * photograph that renders as nothing at all is indistinguishable from output
+ * that never arrived.
+ */
+int ktui_sprite_put_tiled(uint64_t key, int cw, int ch, uint32_t fallback,
+			  KtuiSpriteTile tile, void *user);
+void ktui_sprite_drop_tiled(uint64_t key, int cw, int ch);
+int ktui_sprite_tile_at(uint64_t key, int cw, int cell_x, int cell_y,
+			int *sx, int *sy);
 void ktui_sprite_clear(void);
 void ktui_draw_sprite(KRect r, int slot, int fg, int bg);
 /* A text backend's substitute for a sprite cell. */
@@ -334,8 +419,14 @@ enum {
 	KT_EVT_KEY,
 	KT_EVT_MOUSE,
 	KT_EVT_RESIZE,
-	KT_EVT_TICK
+	KT_EVT_TICK,
+	KT_EVT_TOUCH,
+	KT_EVT_DROP
 };
+
+/* Touch phases. CANCEL is not UP: the compositor or the driver has taken the
+ * sequence away, and a gesture in progress is abandoned rather than completed. */
+enum { KT_TOUCH_DOWN = 0, KT_TOUCH_MOVE, KT_TOUCH_UP, KT_TOUCH_CANCEL };
 
 enum {
 	KT_K_ESC = 27,
@@ -350,7 +441,16 @@ enum {
 	KT_K_F7, KT_K_F8, KT_K_F9, KT_K_F10, KT_K_F11, KT_K_F12
 };
 
-enum { KT_MOD_SHIFT = 1, KT_MOD_ALT = 2, KT_MOD_CTRL = 4 };
+/* KT_MOD_SUPER is the desktop's own modifier — the one every window-management
+ * chord is on, so that none of them can collide with what a program inside a
+ * window wants. A backend that cannot report it leaves it clear, and those
+ * chords simply do not fire. */
+enum {
+	KT_MOD_SHIFT = 1,
+	KT_MOD_ALT = 2,
+	KT_MOD_CTRL = 4,
+	KT_MOD_SUPER = 8
+};
 
 enum {
 	KT_MB_LEFT = 0, KT_MB_MIDDLE, KT_MB_RIGHT,
@@ -365,9 +465,93 @@ struct KtuiEvent {
 	int key;		/* codepoint or KT_K_*                     */
 	int mods;
 	int mx, my;
+	/*
+	 * WHERE IN THE CELL, as an offset from its CENTRE in 1/256ths of a
+	 * cell width and height, -128..127. Zero is the centre — which is what
+	 * a backend with no pixel geometry leaves behind, and is the right
+	 * answer for one, because a cell's corner is a pixel that belongs to
+	 * its neighbour.
+	 *
+	 * Nothing drawn in cells reads these. They exist for the one thing on
+	 * this desktop that is not cells: a pixel guest embedded in a window,
+	 * whose buttons are smaller than the grid pointing at them.
+	 */
+	int subx, suby;
 	int btn;
 	int press;
+	/* Touch only. `ms` is the BACKEND'S timestamp, not a clock read here:
+	 * both libinput and wl_touch carry one, and taking theirs is what lets
+	 * the recogniser be a pure function of its input and the test suite
+	 * drive it without sleeping. */
+	int slot;
+	int phase;
+	unsigned ms;
+	/* What the recogniser made of it, KT_GEST_*, or KT_GEST_NONE. Filled by
+	 * whichever backend fed ktui_gesture_feed, so a surface that wants the
+	 * gesture reads it here instead of running a second recogniser. */
+	int gesture;
 };
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Gestures
+ *
+ * ONE recogniser, fed by every backend that has touch: libinput under the KMS
+ * backend and wl_touch under the Wayland one. Putting the disambiguation in a
+ * backend would mean writing it twice and having it disagree twice.
+ *
+ * It emits a gesture AND synthesises the ordinary mouse events every existing
+ * widget already handles, so the toolkit inherits touch without being
+ * rewritten. A widget that wants the gesture reads it; a widget that does not
+ * sees a mouse.
+ *
+ * KT_GEST_, not KT_G_: the glyph tiers above own that prefix, and a collision
+ * there is a compile error in every consumer at once.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum {
+	KT_GEST_NONE = 0,
+	KT_GEST_TAP,
+	KT_GEST_LONG,
+	KT_GEST_DRAG,
+	KT_GEST_SCROLL,
+	KT_GEST_PINCH,
+	KT_GEST_SWIPE_EDGE
+};
+
+/* Milliseconds. A press shorter than TAP that never left its cell is a tap; one
+ * held past LONG without leaving it is a long press, reported ONCE. */
+enum { KT_TAP_MS = 250, KT_LONG_MS = 500 };
+
+typedef struct {
+	int type;		/* KT_GEST_*                               */
+	int x, y;		/* cell the gesture is at                  */
+	int dx, dy;		/* cells moved since the last report       */
+	int fingers;
+	int edge;		/* KT_K_LEFT/RIGHT/UP/DOWN for an edge swipe */
+} KtuiGesture;
+
+/*
+ * Feed one touch event. Returns 1 when `g` holds a gesture.
+ *
+ * `mouse` is filled with the synthesised pointer event when one is due and
+ * `*have_mouse` set; a caller that only wants gestures may pass NULL for both.
+ *
+ * MOVEMENT IS MEASURED IN CELLS, so a drag begins when the finger leaves the
+ * cell it started in. That is coarse on purpose: everything above this line is
+ * a grid, and a threshold in pixels would be a number this library cannot see.
+ */
+int ktui_gesture_feed(const KtuiEvent *ev, KtuiGesture *g,
+		      KtuiEvent *mouse, int *have_mouse);
+
+/* Abandon anything in progress. A backend calls this when it loses the seat. */
+void ktui_gesture_reset(void);
+
+/*
+ * Long press has no event of its own to arrive on: the finger is still down and
+ * nothing is moving. A caller that wants it polls with the current timestamp,
+ * from its own idle tick.
+ */
+int ktui_gesture_tick(unsigned ms, KtuiGesture *g);
 
 int ktui_input_init(int want_mouse);
 void ktui_input_shutdown(void);
@@ -442,6 +626,23 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret,
  * clipboard receive completes; the tty backend has no paste channel and
  * simply never calls it. */
 void ktui_paste_push(const char *utf8, size_t len);
+
+/* Take the pending paste instead, for a consumer with no text field to insert
+ * into — a terminal, whose caret is a child on a pty. Returns the length and
+ * clears the queue; the text stays valid until the next push. */
+size_t ktui_paste_take(const char **out);
+
+/* A drop that landed on this surface. KT_EVT_DROP carries WHERE in mx/my and
+ * the payload is taken separately, because a drop is a position and a payload
+ * and an event has room for one of them. The text is held until taken and
+ * replaced by the next drop; taking it twice returns NULL the second time, so
+ * two surfaces in one process cannot both act on one drop.
+ *
+ * text/uri-list arrives as it came: CRLF-separated URIs, comment lines and all.
+ * Unpicking that is the caller's, because what a URI means differs per
+ * surface. */
+void ktui_drop_push(const char *utf8, size_t len);
+const char *ktui_drop_take(size_t *len);
 /* Bar styles. SOLID is the original: whole cells only. TIP adds one
  * fractional cell from the horizontal ramp, so a 40-column bar carries 320
  * positions on a rich terminal instead of 40 — a solid bar quantises to 2.5%

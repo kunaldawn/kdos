@@ -13,8 +13,11 @@ bottom of this page.
 | Command | What it is | Page |
 |---|---|---|
 | `kdos-comp` | The compositor: a frozen fork of labwc with KDOS additions | [kdos-comp](kdos-comp.md) |
+| `kdos-con` | The console desktop: the default session, and no Wayland on its path | [kdos-con](kdos-con.md) |
 | `kdos-shell` | The panel, and twenty-seven other surfaces under other names | [kdos-shell](kdos-shell.md) |
 | `kdos-res` | The resource monitor | [kdos-res](kdos-res.md) |
+| `kdos-term` | The terminal: one binary, both desktops, and the three image protocols | [kdos-term](kdos-term.md) |
+| `kdos-cage` | One application, embedded in the cell desktop or full screen on a VT — a hard fork of cage | [kdos-cage](kdos-cage.md) |
 | `kdos-lock` | The lock screen | [The daemons](daemons.md) |
 | `kdos-desktop` | Starts a session. A shell script | [The session](../03-architecture/session.md) |
 | `kdos-desktop-start` | Brings up audio and portals, then the compositor. A shell script | [The session](../03-architecture/session.md) |
@@ -113,6 +116,17 @@ authoritative list is the name table in its own `main.c`.
 | `kdos-devices` | `kdos-clip` | `kdos-status` | `kdos-tip` |
 
 All are documented in [kdos-shell](kdos-shell.md).
+
+### `kdos-con` — 3 names
+
+The console session, plus the two ways in. `kdos-view` is a **separate binary**, because it links
+the display libraries the session must not.
+
+| | | |
+|---|---|---|
+| `kdos-con` | `kdos-grid` | `kdos-con-login` |
+
+Documented in [kdos-con](kdos-con.md).
 
 ### `ksvc` — 9 names
 
