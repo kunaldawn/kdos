@@ -3337,7 +3337,7 @@ static void test_kcon(void)
 	/* ── the caps are what they claim ──────────────────────────────── */
 	eq_int((long long)KCON_MAX_PAYLOAD, 1ll << 20,
 	       "a payload is refused above a megabyte");
-	eq_int(KCON_VERSION, 3, "and the version the two ends agree on");
+	eq_int(KCON_VERSION, 5, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -3705,6 +3705,42 @@ static KconConn *srv_client(const char *path)
 	return kcon_conn_new(fd);
 }
 
+static KconSurface *srv_attached;
+static char srv_pasted[256];
+static int srv_bells;
+
+static void srv_on_paste(KconSurface *v, const char *text, void *user)
+{
+	(void)v;
+	(void)user;
+	snprintf(srv_pasted, sizeof(srv_pasted), "%s", text);
+}
+
+static void srv_on_attached(KconSurface *f, void *user)
+{
+	(void)user;
+	srv_attached = f;
+}
+
+static void srv_attach(KconConn *c, unsigned role, unsigned edge,
+		       unsigned cells, unsigned cols, unsigned rows)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)role);
+	kcon_put_u16(&b, (uint16_t)edge);
+	kcon_put_u16(&b, (uint16_t)cells);
+	kcon_put_u16(&b, (uint16_t)cols);
+	kcon_put_u16(&b, (uint16_t)rows);
+	kcon_put_u8(&b, 1);			/* exclusive */
+	kcon_put_str(&b, "probe");
+	kcon_put_str(&b, "probe");
+	kcon_put_str(&b, "");
+	kcon_send(c, KCON_OP_ATTACH, &b);
+	kcon_flush(c);
+	kcon_buf_free(&b);
+}
+
 static void srv_hello(KconConn *c, unsigned ver, unsigned kind)
 {
 	KconBuf b = { 0 };
@@ -3714,6 +3750,462 @@ static void srv_hello(KconConn *c, unsigned ver, unsigned kind)
 	kcon_send(c, KCON_OP_HELLO, &b);
 	kcon_flush(c);
 	kcon_buf_free(&b);
+}
+
+/*
+ * THE CHORDS A TERMINAL CAN CARRY.
+ *
+ * A view in a terminal reads its keys as escape sequences, and Super arrives
+ * only in the kitty form `CSI <codepoint> ; <modifiers>[:<event>] u`. Without
+ * that form fifteen of this desktop's seventeen chords cannot be typed over
+ * ssh at all, which is the display mode the two-socket split exists for. The
+ * decoder reads standard input, so a pipe standing in for the terminal feeds
+ * it the real bytes.
+ */
+static void feed_seq(int w, const char *bytes)
+{
+	ssize_t n = write(w, bytes, strlen(bytes));
+
+	(void)n;
+}
+
+/*
+ * OSC 52 AND THE BUFFER THAT CARRIES IT.
+ *
+ * `osc_arg` was a fixed 128 bytes — enough for a title or a colour and nothing
+ * else — so every useful OSC would have truncated silently. A truncated base64
+ * selection decodes to garbage and is pasted as garbage, which is why the rule
+ * is to drop the payload whole.
+ */
+static char clip52[512];
+static size_t clip52_len;
+static int clip52_primary;
+static int clip52_calls;
+
+static void vt_on_clip(struct kvt_vte *vte, const char *text, size_t len,
+		       int primary, void *data)
+{
+	(void)vte;
+	(void)data;
+	clip52_calls++;
+	if (len >= sizeof(clip52))
+		len = sizeof(clip52) - 1;
+	memcpy(clip52, text, len);
+	clip52[len] = '\0';
+	clip52_len = len;
+	clip52_primary = primary;
+}
+
+/*
+ * A LITERAL'S LENGTH IS THE COMPILER'S TO COUNT. This block passed 18 and 11
+ * by hand for sequences of 16 and 9, and read past both — which only the
+ * sanitized run notices, because the bytes after a string literal are usually
+ * another literal.
+ */
+#define vt_feed_clip(s) vt_feed_clip_n((s), sizeof(s) - 1)
+
+static void vt_feed_clip_n(const char *bytes, size_t n)
+{
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+
+	clip52[0] = '\0';
+	clip52_len = 0;
+	clip52_primary = -1;
+	clip52_calls = 0;
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0)
+		return;
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		return;
+	}
+	kvt_vte_set_clip_cb(vte, vt_on_clip, NULL);
+	for (size_t i = 0; i < n; i++)
+		kvt_vte_input(vte, bytes + i, 1);
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+}
+
+/*
+ * A TERMINAL WINDOW SET UP THE WAY THE SESSION SETS ONE UP.
+ *
+ * `kdos-con` opens a terminal, gives it a scrollback and two callbacks, pumps
+ * it and renders it — and a photograph of one on the ISO shows an empty
+ * window while its title still changes, so the bytes reach the parser and
+ * something between the screen and the cells does not. This drives that exact
+ * order and reads the cells back.
+ */
+static void test_term_render(void)
+{
+	printf("\n==> a session terminal renders what its child wrote\n");
+
+	const char *const argv[] = { "/bin/sh", "-c",
+				     "printf 'HELLOWORLD\\n'", NULL };
+	struct kvt_term *t = kvt_term_open(argv, 40, 6);
+
+	if (!t) {
+		ok(0, "a terminal opens");
+		return;
+	}
+
+	/* The session's own order: scrollback, then the callbacks. */
+	kvt_term_scrollback(t, 2000);
+
+	KtuiCell cells[40 * 6];
+	char row[41];
+	int found = 0;
+
+	for (int spin = 0; spin < 2000 && !found; spin++) {
+		kvt_term_pump(t);
+		kvt_term_render(t, cells, 40, 6);
+		for (int y = 0; y < 6 && !found; y++) {
+			for (int x = 0; x < 40; x++)
+				row[x] = cells[y * 40 + x].ch >= 32 &&
+						 cells[y * 40 + x].ch < 127
+						 ? (char)cells[y * 40 + x].ch
+						 : ' ';
+			row[40] = '\0';
+			if (strstr(row, "HELLOWORLD"))
+				found = 1;
+		}
+		if (!found)
+			usleep(1000);
+	}
+
+	ok(found, "the child's output reaches the rendered cells");
+	kvt_term_close(t);
+
+	/*
+	 * NOW THE WAY THE SESSION ACTUALLY DOES IT: a bare interactive shell
+	 * at the geometry a 182x61 screen gives a window, driven by writing to
+	 * its pty the way a keystroke does. Those are the only two differences
+	 * between the case above, which passes, and a window on the ISO, which
+	 * shows nothing.
+	 */
+	const char *const shargv[] = { "sh", NULL };
+	struct kvt_term *s = kvt_term_open(shargv, 121, 40);
+
+	if (!s) {
+		ok(0, "a bare interactive shell opens");
+		return;
+	}
+	kvt_term_scrollback(s, 2000);
+
+	static KtuiCell wide[121 * 40];
+	int saw = 0;
+
+	kvt_term_write(s, "echo HELLOWORLD\n", 16);
+	for (int spin = 0; spin < 3000 && !saw; spin++) {
+		kvt_term_pump(s);
+		kvt_term_render(s, wide, 121, 40);
+		for (int y = 0; y < 40 && !saw; y++) {
+			char r[122];
+
+			for (int x = 0; x < 121; x++)
+				r[x] = wide[y * 121 + x].ch >= 32 &&
+					       wide[y * 121 + x].ch < 127
+					       ? (char)wide[y * 121 + x].ch
+					       : ' ';
+			r[121] = '\0';
+			if (strstr(r, "HELLOWORLD"))
+				saw = 1;
+		}
+		if (!saw)
+			usleep(1000);
+	}
+
+	ok(saw, "a bare shell's output reaches the cells at a window's size");
+
+	/*
+	 * AND IT HAS TO BE LEGIBLE. A cell whose foreground reduces to the same
+	 * theme slot as its background holds the character and shows nothing —
+	 * which a dump cannot reveal, because a dump prints the character and
+	 * throws the colour away. That is the difference between a terminal
+	 * that works and a window a person sees as empty.
+	 */
+	if (saw) {
+		int fg = -1, bg = -1;
+
+		for (int y = 0; y < 40 && fg < 0; y++) {
+			char r[122];
+
+			for (int x = 0; x < 121; x++)
+				r[x] = wide[y * 121 + x].ch >= 32 &&
+					       wide[y * 121 + x].ch < 127
+					       ? (char)wide[y * 121 + x].ch
+					       : ' ';
+			r[121] = '\0';
+
+			char *hit = strstr(r, "HELLOWORLD");
+
+			if (hit) {
+				int x = (int)(hit - r);
+
+				fg = wide[y * 121 + x].fg;
+				bg = wide[y * 121 + x].bg;
+			}
+		}
+		ok(fg != bg,
+		   "and its foreground is not the slot its background is");
+	}
+
+	kvt_term_close(s);
+}
+
+static void test_osc52(void)
+{
+	printf("\n==> a child puts something on the clipboard\n");
+
+	/* ── base64, refused whole rather than half-decoded ─────────────── */
+	char out[64];
+	size_t n = 0;
+
+	eq_int(kb_b64_decode("aGVsbG8=", 8, out, sizeof(out), &n), 5,
+	       "base64 decodes, padding and all");
+	ok(!strcmp(out, "hello"), "  to the bytes that went in");
+	eq_int(kb_b64_decode("aGVs\nbG8=", 9, out, sizeof(out), &n), 5,
+	       "a wrapped payload decodes, because a long one arrives wrapped");
+	eq_int(kb_b64_decode("not base64!", 11, out, sizeof(out), &n), -1,
+	       "and one that is not base64 is refused");
+	eq_int(kb_b64_decode("aGVsbG8=", 8, out, 3, &n), -1,
+	       "a payload that would not fit is refused WHOLE, not truncated");
+
+	/* ── the sequence ───────────────────────────────────────────────── */
+	vt_feed_clip("\033]52;c;aGVsbG8=\007");
+	eq_int(clip52_calls, 1, "OSC 52 reaches the clipboard callback");
+	ok(!strcmp(clip52, "hello"), "  with the decoded selection");
+	eq_int(clip52_primary, 0, "  and names the clipboard");
+
+	vt_feed_clip("\033]52;p;aGVsbG8=\007");
+	eq_int(clip52_primary, 1, "`p` in the targets means the primary");
+
+	/*
+	 * THE READ FORM IS REFUSED. `52;c;?` asks the terminal to hand the
+	 * clipboard to the program running inside it, which would let anything
+	 * that can write to a terminal read whatever was last copied anywhere
+	 * on the desktop.
+	 */
+	vt_feed_clip("\033]52;c;?\007");
+	eq_int(clip52_calls, 0, "the read form is refused and calls nothing");
+
+	/*
+	 * A PAYLOAD PAST WHAT A TITLE NEEDS. The old fixed buffer stopped at
+	 * 128 bytes, so this is the case that could not work before.
+	 */
+	{
+		char big[1024];
+		char seq[1400];
+		size_t i;
+
+		for (i = 0; i < 600; i++)
+			big[i] = 'A';
+		big[i] = '\0';
+		/* "QUFB..." is base64 for a run of 'A's; 600 base64 chars is
+		 * 450 decoded bytes, well past the old ceiling. */
+		int len = snprintf(seq, sizeof(seq), "\033]52;c;%s\007", big);
+
+		vt_feed_clip_n(seq, (size_t)len);
+		eq_int(clip52_calls, 1,
+		       "a selection far past a title's length still arrives");
+		ok(clip52_len > 128,
+		   "  decoded whole rather than cut at the old buffer");
+	}
+}
+
+/*
+ * BRACKETED PASTE, THROUGH THE REAL INPUT PATH.
+ *
+ * `ktui_input_next` reads descriptor 0, so a pipe standing in for the terminal
+ * is the whole fixture. Two writes on purpose: a paste is not one read, and
+ * the terminator split across two of them is the case that turns a paste into
+ * a session-long one if the tail is taken for text.
+ */
+static void test_bracketed_paste(void)
+{
+	printf("\n==> a paste from the host terminal is text, not keys\n");
+
+	int pfd[2];
+	int saved = dup(0);
+
+	if (pipe(pfd) != 0 || saved < 0) {
+		ok(0, "a pipe standing in for the terminal");
+		return;
+	}
+	dup2(pfd[0], 0);
+
+	KtuiEvent ev;
+	const char *out = NULL;
+
+	/* Whole, in one write. */
+	const char *p1 = "\033[200~pasted line\033[201~";
+	ssize_t w = write(pfd[1], p1, strlen(p1));
+
+	(void)w;
+	for (int i = 0; i < 20 && !ktui_paste_take(&out); i++)
+		ktui_input_next(&ev, 5);
+	eq_str(out ? out : "", "pasted line",
+	       "the bytes between the brackets are the paste");
+
+	/*
+	 * The terminator in pieces. `\033[20` at the tail of one read is not
+	 * text: taken as text it leaves a `1~` that ends nothing, and the
+	 * paste runs to the end of the session.
+	 */
+	out = NULL;
+	const char *p2 = "\033[200~split\033[20";
+
+	w = write(pfd[1], p2, strlen(p2));
+	for (int i = 0; i < 5; i++)
+		ktui_input_next(&ev, 5);
+	ok(ktui_paste_take(&out) == 0, "an unterminated paste is not delivered");
+	w = write(pfd[1], "1~", 2);
+	out = NULL;
+	for (int i = 0; i < 20 && !ktui_paste_take(&out); i++)
+		ktui_input_next(&ev, 5);
+	eq_str(out ? out : "", "split",
+	       "and a terminator split across two reads still ends it");
+
+	/*
+	 * AND A CHORD INSIDE A PASTE IS NOT A CHORD. This is the whole point:
+	 * a pasted line beginning with Ctrl+A would otherwise arm the leader
+	 * key and swallow the character after it.
+	 */
+	out = NULL;
+	const char *p3 = "\033[200~\001a\033[201~";
+
+	w = write(pfd[1], p3, strlen(p3));
+	for (int i = 0; i < 20 && !ktui_paste_take(&out); i++)
+		ktui_input_next(&ev, 5);
+	ok(out != NULL, "a control byte inside a paste stays in the paste");
+
+	dup2(saved, 0);
+	close(saved);
+	close(pfd[0]);
+	close(pfd[1]);
+}
+
+static void test_ktui_csi_u(void)
+{
+	printf("\n==> Super reaches a view that is a terminal\n");
+
+	int pv[2];
+
+	if (pipe(pv) != 0) {
+		ok(0, "a pipe standing in for the terminal");
+		return;
+	}
+
+	int saved = dup(0);
+
+	if (saved < 0 || dup2(pv[0], 0) < 0) {
+		ok(0, "standard input redirected to it");
+		close(pv[0]);
+		close(pv[1]);
+		return;
+	}
+
+	KtuiEvent ev;
+
+	feed_seq(pv[1], "\x1b[13;9u");
+	eq_int(ktui_input_next(&ev, 50), 1, "CSI 13;9u decodes");
+	eq_int(ev.key, KT_K_ENTER, "  as Return");
+	eq_int(ev.mods, KT_MOD_SUPER, "  with Super, which is bit 8");
+
+	feed_seq(pv[1], "\x1b[113;9u");
+	eq_int(ktui_input_next(&ev, 50), 1, "CSI 113;9u decodes");
+	eq_int(ev.key, 'q', "  as the letter the chord table was written with");
+	eq_int(ev.mods, KT_MOD_SUPER, "  and Super");
+
+	/*
+	 * A RELEASE IS NOT A CHORD. Both halves of a keypress reaching the
+	 * table fires every chord twice — once down, once up.
+	 */
+	feed_seq(pv[1], "\x1b[13;9:3u");
+	eq_int(ktui_input_next(&ev, 50), 0, "a release is consumed and not reported");
+
+	/* A repeat is a press: holding Super+Left tiles more than once. */
+	feed_seq(pv[1], "\x1b[13;9:2u");
+	eq_int(ktui_input_next(&ev, 50), 1, "a repeat is");
+	eq_int(ev.key, KT_K_ENTER, "  the same key");
+
+	/*
+	 * THE SUB-PARAMETER MUST BE EATEN WHOLE. A parser that stops at the
+	 * colon leaves the rest of the sequence in the buffer, and it is then
+	 * decoded as characters typed into whatever has the focus.
+	 */
+	feed_seq(pv[1], "\x1b[13;9:3u\x1b[113;9u");
+	eq_int(ktui_input_next(&ev, 50), 0, "a release before another chord is dropped");
+	eq_int(ktui_input_next(&ev, 50), 1, "and the chord behind it still decodes");
+	eq_int(ev.key, 'q', "  intact");
+	eq_int(ev.mods, KT_MOD_SUPER, "  with its modifier");
+
+	/* The older mask still means what it did: 5 is 4+1, ctrl and shift. */
+	feed_seq(pv[1], "\x1b[1;5A");
+	eq_int(ktui_input_next(&ev, 50), 1, "CSI 1;5A still decodes");
+	eq_int(ev.key, KT_K_UP, "  as Up");
+	eq_int(ev.mods, KT_MOD_CTRL, "  with Ctrl and nothing else");
+
+	dup2(saved, 0);
+	close(saved);
+	close(pv[0]);
+	close(pv[1]);
+}
+
+/*
+ * `kdos con kill` REACHES THE SESSION AS A MESSAGE, and only from a shell
+ * surface: a client with a window in the session has no business ending it for
+ * the person using it.
+ */
+static int srv_quits;
+
+/* What the session was told, for the clipboard round trip below. */
+static char clip_text[64];
+static int clip_primary = -1;
+static int clip_asked = -1;
+
+/* What a shell asked the session to do, for the management block below. */
+static unsigned srv_activated, srv_closed;
+
+static void srv_on_activate(KconSurface *f, unsigned id, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_activated = id;
+}
+
+static void srv_on_close_req(KconSurface *f, unsigned id, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_closed = id;
+}
+
+static void srv_on_clip_offer(KconSurface *f, const char *text, size_t len,
+			      int primary, void *user)
+{
+	(void)f;
+	(void)user;
+	if (len >= sizeof(clip_text))
+		len = sizeof(clip_text) - 1;
+	memcpy(clip_text, text, len);
+	clip_text[len] = '\0';
+	clip_primary = primary;
+}
+
+static void srv_on_clip_request(KconSurface *f, int primary, void *user)
+{
+	(void)f;
+	(void)user;
+	clip_asked = primary;
+}
+
+static void srv_on_quit(KconSurface *f, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_quits++;
 }
 
 static void test_kcon_server(void)
@@ -3802,6 +4294,516 @@ static void test_kcon_server(void)
 		ok(kcon_server_count(s) <= before,
 		   "a peer whose first message is not a hello is dropped");
 		kcon_conn_free(rude);
+	}
+
+	/* ── a docked panel names a thickness and no size ──────────────── */
+	{
+		KconServerHooks h = { 0 };
+
+		h.attached = srv_on_attached;
+		kcon_server_hooks(s, &h, NULL);
+
+		KconConn *bar = srv_client(path);
+
+		if (bar) {
+			srv_attached = NULL;
+			srv_hello(bar, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach(bar, KDISP_ROLE_PANEL, KDISP_EDGE_RIGHT,
+				   10, 0, 0);
+			for (int i = 0; i < 20 && !srv_attached; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+
+			/*
+			 * THE EXTENT ALONG THE EDGE IS THE SESSION'S. A panel
+			 * refused for asking nothing would be a slit that
+			 * never appears, and one let through at a made-up
+			 * 80x24 is a column drawn where it was not asked for:
+			 * both are silent, so the thickness is asserted here.
+			 */
+			ok(srv_attached != NULL,
+			   "a panel attaches asking only for a thickness");
+			if (srv_attached) {
+				eq_int(kcon_surface_want_cells(srv_attached),
+				       10, "and the session is told how thick");
+				eq_int(kcon_surface_edge(srv_attached),
+				       KDISP_EDGE_RIGHT, "and which edge");
+				eq_int(kcon_surface_cols(srv_attached), 0,
+				       "with no size of its own to override it");
+			}
+			kcon_conn_free(bar);
+		}
+
+		/* An ordinary window has no such answer coming. */
+		KconConn *win0 = srv_client(path);
+
+		if (win0) {
+			srv_attached = NULL;
+			srv_hello(win0, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach(win0, KDISP_ROLE_TOPLEVEL, 0, 0, 0, 0);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_attached == NULL,
+			   "a window with neither size nor thickness is refused");
+			kcon_conn_free(win0);
+		}
+		kcon_server_hooks(s, NULL, NULL);
+	}
+
+	/* ── the paste verb: a display may hand the session text, a surface
+	 *    may not, and a bell reaches every view ─────────────────────── */
+	{
+		KconServerHooks h = { 0 };
+
+		h.paste = srv_on_paste;
+		kcon_server_hooks(s, &h, NULL);
+
+		KconConn *v = srv_client(path);
+		KconConn *win1 = srv_client(path);
+
+		if (v && win1) {
+			KconBuf b = { 0 };
+
+			srv_hello(v, KCON_VERSION, KCON_KIND_VIEW);
+			srv_hello(win1, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+
+			srv_pasted[0] = 0;
+			kcon_put_str(&b, "from the host terminal");
+			kcon_send(v, KCON_OP_PASTE, &b);
+			kcon_flush(v);
+			for (int i = 0; i < 20 && !srv_pasted[0]; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(!strcmp(srv_pasted, "from the host terminal"),
+			   "a display hands the session pasted text");
+
+			/*
+			 * A SURFACE MAY NOT. A client that could paste could
+			 * type into whatever has the focus without the person
+			 * touching a key, which is the one thing nothing on
+			 * this socket is allowed to do.
+			 */
+			srv_pasted[0] = 0;
+			kcon_buf_reset(&b);
+			kcon_put_str(&b, "typed by a client");
+			kcon_send(win1, KCON_OP_PASTE, &b);
+			kcon_flush(win1);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_pasted[0] == 0,
+			   "and a surface pasting into the session is ignored");
+			kcon_buf_free(&b);
+
+			/* The bell goes the other way, and only to displays. */
+			srv_bells = 0;
+			kcon_view_bell(s);
+			kcon_flush(v);
+
+			KconMsg m;
+
+			for (int i = 0; i < 50 && !srv_bells; i++) {
+				if (kcon_recv(v, &m) == 1 &&
+				    m.op == KCON_OP_BELL)
+					srv_bells++;
+				else
+					usleep(1000);
+			}
+			ok(srv_bells == 1, "a bell reaches an attached view");
+		}
+		if (v)
+			kcon_conn_free(v);
+		if (win1)
+			kcon_conn_free(win1);
+		kcon_server_hooks(s, NULL, NULL);
+	}
+
+	/* ── the quit verb: a shell surface ends the session, a window does
+	 *    not ────────────────────────────────────────────────────────── */
+	{
+		KconServerHooks h = { 0 };
+
+		h.quit = srv_on_quit;
+		kcon_server_hooks(s, &h, NULL);
+		srv_quits = 0;
+
+		KconConn *win = srv_client(path);
+
+		if (win) {
+			KconBuf b = { 0 };
+
+			srv_hello(win, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			kcon_send(win, KCON_OP_QUIT, &b);
+			kcon_flush(win);
+			kcon_buf_free(&b);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			eq_int(srv_quits, 0,
+			       "a window asking the session to quit is ignored");
+			kcon_conn_free(win);
+		}
+
+		KconConn *sh = srv_client(path);
+
+		if (sh) {
+			KconBuf b = { 0 };
+
+			srv_hello(sh, KCON_VERSION, KCON_KIND_SHELL);
+			kcon_server_pump(s);
+			kcon_send(sh, KCON_OP_QUIT, &b);
+			kcon_flush(sh);
+			kcon_buf_free(&b);
+			for (int i = 0; i < 20 && !srv_quits; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			eq_int(srv_quits, 1,
+			       "and a shell surface's quit reaches the session");
+			kcon_conn_free(sh);
+		}
+
+		/*
+		 * A COPY REACHES THE SESSION AND A REQUEST IS ANSWERED.
+		 *
+		 * Both hooks were unset and `kcon_surface_clip_data()` had no
+		 * caller, so a copy crossed the wire and was dropped and a
+		 * paste could never fire: there was no clipboard on this
+		 * desktop at all. Sent as real messages rather than asserted
+		 * on the struct, because the defect was that nothing carried
+		 * them end to end.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.clip_offer = srv_on_clip_offer;
+			h.clip_request = srv_on_clip_request;
+			kcon_server_hooks(s, &h, NULL);
+			clip_text[0] = '\0';
+			clip_primary = -1;
+			clip_asked = -1;
+
+			KconConn *cc = srv_client(path);
+
+			if (cc) {
+				KconBuf b = { 0 };
+
+				srv_hello(cc, KCON_VERSION, KCON_KIND_SURFACE);
+				kcon_server_pump(s);
+
+				kcon_put_u8(&b, 1);	/* the primary */
+				kcon_put_blob(&b, "hello", 5);
+				kcon_send(cc, KCON_OP_CLIP_OFFER, &b);
+				kcon_flush(cc);
+				kcon_buf_reset(&b);
+				for (int i = 0; i < 30 && !clip_text[0]; i++) {
+					kcon_server_pump(s);
+					usleep(1000);
+				}
+				ok(!strcmp(clip_text, "hello"),
+				   "a copy reaches the session with its bytes");
+				eq_int(clip_primary, 1,
+				   "  and says which selection it means");
+
+				kcon_put_u8(&b, 0);	/* the clipboard */
+				kcon_send(cc, KCON_OP_CLIP_REQUEST, &b);
+				kcon_flush(cc);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30 && clip_asked < 0; i++) {
+					kcon_server_pump(s);
+					usleep(1000);
+				}
+				eq_int(clip_asked, 0,
+				   "a request reaches it, naming the other one");
+
+				/* And the answer crosses back, which is the
+				 * half that had no sender at all. */
+				kcon_surface_clip_data(
+					kcon_server_at(s, kcon_server_count(s) - 1),
+					"served");
+				KconMsg m;
+				int got = 0;
+
+				for (int i = 0; i < 60 && !got; i++) {
+					if (kcon_recv(cc, &m) == 1 &&
+					    m.op == KCON_OP_CLIP_DATA)
+						got = 1;
+					else
+						usleep(1000);
+				}
+				ok(got, "and the session's answer crosses back");
+				if (got) {
+					KconRd rr;
+
+					kcon_rd_init(&rr, m.payload, m.len);
+					ok(!strcmp(kcon_get_str(&rr), "served"),
+					   "  carrying the selection");
+				}
+				kcon_conn_free(cc);
+			}
+		}
+
+		/*
+		 * THE LOCK GRANT HAS A SENDER AND A READER.
+		 *
+		 * `kdos-lock` refuses every keystroke until the display server
+		 * reports the session locked, so an implementation that
+		 * answers neither question leaves a lock screen nobody can
+		 * type into and an idle timeout that strands the machine. The
+		 * entries are what make the answer come from the session
+		 * rather than from libkdisp's default of zero.
+		 */
+		ok(kcon_impl.lock_engaged != NULL,
+		   "the console display answers whether the lock is engaged");
+		ok(kcon_impl.lock_finished != NULL,
+		   "and whether it was refused");
+		ok((KCON_LOCK_ENGAGED & KCON_LOCK_FINISHED) == 0,
+		   "engaged and refused are separate bits, so both can be told apart");
+
+		/*
+		 * EVERY CLIENT HAS A DESCRIPTOR A CALLER CAN POLL.
+		 *
+		 * The session's poll loop pushed -1 for each client under a
+		 * comment saying it was polling them, so it woke on none of
+		 * them AND consumed a fixed budget the terminal and embed
+		 * loops below it needed. Forty is past that old budget of
+		 * thirty-four, which is the case that used to lose descriptors
+		 * silently.
+		 */
+		{
+			KconConn *many[40];
+			int opened = 0;
+
+			/*
+			 * PUMPED BETWEEN CONNECTIONS. The listener's backlog is
+			 * sixteen, so forty connects with nothing accepting
+			 * them fills it and the seventeenth blocks in
+			 * `connect()` for ever. A real session pumps its loop
+			 * between arrivals; a test that does not is testing a
+			 * situation that cannot occur.
+			 */
+			for (int i = 0; i < 40; i++) {
+				many[i] = srv_client(path);
+				if (!many[i])
+					break;
+				srv_hello(many[i], KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				kcon_server_pump(s);
+				opened++;
+			}
+			for (int i = 0; i < 60; i++) {
+				kcon_server_pump(s);
+				usleep(200);
+			}
+
+			int seen = kcon_server_count(s);
+			int bad = 0, dupes = 0;
+
+			for (int i = 0; i < seen; i++) {
+				int fd = kcon_surface_fd(
+					kcon_server_at(s, i));
+
+				if (fd < 0) {
+					bad++;
+					continue;
+				}
+				for (int j = 0; j < i; j++)
+					if (fd == kcon_surface_fd(
+						    kcon_server_at(s, j)))
+						dupes++;
+			}
+
+			ok(opened == 40, "forty clients attach to one session");
+			ok(seen >= 40, "and the session counts them all");
+			eq_int(bad, 0,
+			       "every one has a descriptor a poll can wait on");
+			eq_int(dupes, 0, "and no two share it");
+
+			for (int i = 0; i < opened; i++)
+				kcon_conn_free(many[i]);
+			for (int i = 0; i < 40; i++) {
+				kcon_server_pump(s);
+				usleep(200);
+			}
+		}
+
+		/*
+		 * A SHELL CAN STILL BE A SHELL ONCE A VIEW SOCKET EXISTS.
+		 *
+		 * Adding the view listener demotes the surface listener from
+		 * ANY to SURFACE, and fixing the kind there made
+		 * KCON_KIND_SHELL unreachable on every session that has a
+		 * display — which is every real one. Every shell-only verb
+		 * then did nothing at all: `kdos con run`, `detach`, `kill`,
+		 * activate, close, and the whole window list.
+		 *
+		 * The test that missed it used one ANY listener. This one has
+		 * both sockets, which is the shape a session actually runs in.
+		 */
+		{
+			char vpath[256];
+
+			snprintf(vpath, sizeof(vpath), "%s/session.view", dir);
+			eq_int(kcon_server_listen(s, vpath, KCON_LISTEN_VIEW),
+			       0, "a session listens on a view socket too");
+
+			KconConn *sh2 = srv_client(path);
+
+			if (sh2) {
+				srv_hello(sh2, KCON_VERSION, KCON_KIND_SHELL);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				int found = 0;
+
+				for (int i = 0; i < kcon_server_count(s); i++)
+					if (kcon_surface_kind(
+						    kcon_server_at(s, i)) ==
+					    KCON_KIND_SHELL)
+						found = 1;
+				ok(found,
+				   "and a shell on the surface socket is still a shell");
+				kcon_conn_free(sh2);
+			}
+
+			/* And the refusal the surface socket must keep: a
+			 * client there is not a display, whatever it claims. */
+			KconConn *liar = srv_client(path);
+
+			if (liar) {
+				srv_hello(liar, KCON_VERSION, KCON_KIND_VIEW);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int(kcon_server_view_count(s), 0,
+				   "a surface-socket client claiming to be a display is refused");
+				kcon_conn_free(liar);
+			}
+			kcon_server_unlisten(s, vpath);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/* ── the window list: who is told, and who may ask ──────── */
+		{
+			KconServerHooks h = { 0 };
+
+			h.activate = srv_on_activate;
+			h.close_request = srv_on_close_req;
+			kcon_server_hooks(s, &h, NULL);
+			srv_activated = srv_closed = 0;
+
+			KconConn *shell = srv_client(path);
+			KconConn *plain = srv_client(path);
+
+			if (shell && plain) {
+				srv_hello(shell, KCON_VERSION,
+					  KCON_KIND_SHELL);
+				srv_hello(plain, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				kcon_mgmt_add(s, 7, "term", "a title");
+				kcon_mgmt_state(s, 7, KCON_TL_FOCUSED, 2);
+				kcon_mgmt_remove(s, 7);
+
+				/*
+				 * THE SHELL IS TOLD AND THE WINDOW IS NOT. A
+				 * program with a window in the session has no
+				 * business knowing what else is open.
+				 */
+				int add = 0, state = 0, rem = 0, leaked = 0;
+				KconMsg m;
+
+				for (int i = 0; i < 200; i++) {
+					if (kcon_recv(shell, &m) == 1) {
+						if (m.op == KCON_OP_TOPLEVEL_ADD)
+							add = 1;
+						else if (m.op == KCON_OP_TOPLEVEL_STATE)
+							state = 1;
+						else if (m.op == KCON_OP_TOPLEVEL_REMOVE)
+							rem = 1;
+					} else {
+						usleep(500);
+					}
+					if (add && state && rem)
+						break;
+				}
+				for (int i = 0; i < 40; i++) {
+					if (kcon_recv(plain, &m) == 1 &&
+					    (m.op == KCON_OP_TOPLEVEL_ADD ||
+					     m.op == KCON_OP_TOPLEVEL_STATE ||
+					     m.op == KCON_OP_TOPLEVEL_REMOVE))
+						leaked = 1;
+					usleep(500);
+				}
+				ok(add, "a shell surface is sent a window as it appears");
+				ok(state, "  its state as it changes");
+				ok(rem, "  and its removal as it goes");
+				ok(!leaked,
+				   "and a plain surface is told none of it");
+
+				/* And the two requests, from a shell only. */
+				KconBuf b = { 0 };
+
+				kcon_put_u32(&b, 42);
+				kcon_send(plain, KCON_OP_ACTIVATE, &b);
+				kcon_flush(plain);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int((int)srv_activated, 0,
+				   "a window asking to raise another is ignored");
+
+				kcon_send(shell, KCON_OP_ACTIVATE, &b);
+				kcon_flush(shell);
+				kcon_buf_reset(&b);
+				kcon_put_u32(&b, 43);
+				kcon_send(shell, KCON_OP_CLOSE_REQUEST, &b);
+				kcon_flush(shell);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 60 &&
+				     (!srv_activated || !srv_closed); i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int((int)srv_activated, 42,
+				   "and a shell's raise names the window");
+				eq_int((int)srv_closed, 43,
+				   "as does its close request");
+			}
+			if (shell)
+				kcon_conn_free(shell);
+			if (plain)
+				kcon_conn_free(plain);
+		}
+
+		/* A stopped listener unlinks its own path, so nothing new
+		 * attaches to a session on its way out and `kdos con ls` stops
+		 * reporting it as alive. */
+		eq_int(kcon_server_unlisten(s, path), 0,
+		       "the listener is stopped by path");
+		ok(access(path, F_OK) != 0,
+		   "and stopping it takes the socket file with it");
 	}
 
 	if (good)
@@ -4110,6 +5112,10 @@ int main(void)
 	test_kvt_drive();
 	test_kimg();
 	test_kcon();
+	test_term_render();
+	test_osc52();
+	test_ktui_csi_u();
+	test_bracketed_paste();
 	test_kcon_server();
 
 	printf("\n%d checks, %d failed\n", checks, failures);

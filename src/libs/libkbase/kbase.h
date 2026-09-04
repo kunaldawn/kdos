@@ -338,4 +338,12 @@ int kb_landlock_allow_tcp(KbLandlock *ll, uint16_t port, int connect);
 int kb_landlock_enforce(KbLandlock *ll);
 void kb_landlock_free(KbLandlock *ll);
 
+/*
+ * Base64, decode only. Returns the byte count, or -1 when the input is not
+ * base64 or would not fit — refused whole rather than partially decoded, so a
+ * caller never pastes half a selection.
+ */
+int kb_b64_decode(const char *in, size_t inlen, char *out, size_t outsz,
+		  size_t *outlen);
+
 #endif /* KBASE_H */

@@ -38,8 +38,11 @@ kdos-slit renders the output of forked commands, the panel needs a live
 compositor. A golden pinned with a hack nobody can reproduce is worse than a
 missing one.
 
-The dumps are ASCII: `ktui_caps` is 0 with no terminal, so every surface draws
-in the ascii tier here. The rich and vt tiers are covered by the ramp
+Most dumps are ASCII: `ktui_caps` is 0 with no terminal, so a surface drawing
+straight to a buffer gets the ascii tier. `con-view-80x24.txt` is the exception
+and is not ASCII — it comes through a real view process, which reports UTF-8
+and is given the rich tier. A dump's tier follows whoever painted it, not the
+fact that it is a dump. The rich and vt tiers are covered by the ramp
 assertions in `src/libs/selftest.c`.
 
 WHAT IS STILL MISSING

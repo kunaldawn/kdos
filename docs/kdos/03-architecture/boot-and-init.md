@@ -302,8 +302,17 @@ path can be aimed at root.
 
 **`kdos-getty` falls back to the plain autologin getty** when the program named in `/etc/inittab`
 cannot be executed. An image built without the console desktop still gives a console; without the
-fallback, init would respawn a failing exec forever and there would be no way to log in at all.
-`tty2` is the recovery console and stays a plain getty whatever tty1 does.
+fallback, init would respawn a failing exec forever and there would be no way to log in at all. It
+logs in the account `/etc/kdos/con.conf` names rather than a hardcoded one: the desktop's account
+is named in one place, and a second copy here would log in a user a renamed installation does not
+have.
+
+`tty2` is the recovery console and stays a plain getty whatever tty1 does. **Reaching it from the
+console desktop is `libkkms`'s job**, not the kernel's: once `libseat` puts tty1 into graphics mode
+the kernel stops answering Ctrl+Alt+F<n>. xkb resolves that chord to an `XF86Switch_VT_<n>` keysym,
+so `kkms_input.c` — which holds the seat and is the only place the keysym exists — calls
+`libseat_switch_session`. A desktop that forwarded it instead would guarantee a recovery console
+nothing can reach.
 
 ## The login banner
 

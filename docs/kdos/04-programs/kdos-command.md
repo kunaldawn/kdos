@@ -75,7 +75,7 @@ Sections and their most valuable checks:
 | setuid | The password checker, the resource helper, and **both user-namespace mapping helpers** — losing any is silent and catastrophic |
 | Hardware | **Device present but unopenable**: it walks the attached devices and reports each one the calling user cannot open, **naming the owning group** |
 | Boxes | Whether the pack filesystem is loadable, whether the pack daemon answers and by which mount route, whether the home directory's filesystem can host a container layer, and whether every mounted pack still has a file behind it |
-| Desktop | Whether the frame-reporting socket exists |
+| Desktop | Whether the frame-reporting socket exists, and **the checks that belong to the session that is running**: a graphical session is asked about `kdos-comp`, its panel and the wlroots portal; a console session about `kdos-con` and whether a view is attached. `$KDOS_CON` decides, and reporting a missing compositor on a cell desktop would fail a working machine |
 
 "Add yourself to this group" is an instruction; "permission denied" is not. That difference is why
 the hardware check names the group.
@@ -83,6 +83,9 @@ the hardware check names the group.
 The box check reports, on a live session, that the home directory is on an overlay **so a
 persistent box cannot exist** — which is a real rule stated to the person it affects rather than a
 failure.
+
+`kdos version` names the session from the same test, so it reports the desktop a person is sitting
+at rather than the one the image happens to ship.
 
 ## app
 
@@ -346,6 +349,58 @@ hour later and a machine up for a month is not showing one line for a month.
 
 Orchestration of the binary host and the A/B slots. **No new trust path** — it drives `kpkg` and
 the slot state machine, and the exit code is the answer.
+
+## con
+
+```sh
+kdos con ls
+kdos con {new|attach|detach|kill} [session]
+kdos con forward <host> [session]
+kdos con run [--] CMD [ARG...]
+```
+
+**The session is a bare name, not a flag.** `kdos con new work` — not `-t work`, which names a
+session `-t`. This front end execs `kdos-con` and supplies the `-t` itself; it is five verbs and a
+name, deliberately not an argument tunnel.
+
+The console desktop's sessions — the verb that reaches the **default** session, since `tty1` runs
+`kdos-con-login` and everything else is started from there.
+
+| Verb | Does |
+|---|---|
+| `ls` | The sessions that exist, by name |
+| `new [session]` | Start one. **It holds the session and does not return** — nothing is displayed until a view attaches |
+| `attach [session]` | Put a display on one |
+| `detach [session]` | Take every display off one, leaving it and its windows running |
+| `kill [session]` | Ask one to end. It stops its listeners and drains its clients |
+| `forward` | Carry a session's view socket to another machine over `ssh` |
+
+**A session and a display are separate processes, and that is the whole design.** The session holds
+every window and draws nothing; the view holds a screen and no window state. So a view that crashes
+loses nothing, a detach leaves the work running, and a display at the far end of an `ssh` connection
+is trusted with nothing but the cells it is sent.
+
+**Two sockets, and only one may leave the machine.**
+
+| Socket | Admits | May be forwarded |
+|---|---|---|
+| `<name>.sock` | Surfaces — programs that place windows | **never** |
+| `<name>.view` | Views — a display | yes, with `forward` |
+
+Which socket a client reached decides what it is allowed to be; the kind in its handshake is a claim
+and is overridden. Forwarding a socket that admitted surfaces would hand the far end the right to
+place windows in your session, which is a different thing entirely from showing you yours.
+
+**`remote = no` is enforced where the tunnel is built, not where a connection arrives.** `kdos con
+forward` refuses. It cannot be enforced at the far end: a forwarded socket's peer is the local `ssh`
+process running as the same user, so it is indistinguishable from a local view by credentials. A
+check at the accepting end would be a check that cannot tell the two apart, which is worse than
+none because it reads as protection.
+
+**`kill` asks; it does not unlink.** Removing the socket files would leave the session running on
+listeners it still holds — every attached view keeps its display and the session is unreachable and
+alive. There is no pid in a socket path either, so looking one up by name would end whichever
+process happened to match.
 
 ## The other names on this binary
 

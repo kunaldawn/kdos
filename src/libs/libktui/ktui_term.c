@@ -322,19 +322,127 @@ static void emit(const char *s)
 	ktui_term_write(s, strlen(s));
 }
 
+/*
+ * WHETHER THE KITTY KEYBOARD PROTOCOL WAS PUSHED ONTO THIS TERMINAL'S STACK.
+ *
+ * Popped exactly where it was pushed and only if it was. A pop that never had
+ * a push corrupts the stack of a terminal that was already using the protocol
+ * for something else; a push that is never popped leaves the person's terminal
+ * in a mode their shell does not understand, with no way back short of
+ * `reset` — which is a worse failure than a chord that does not fire.
+ */
+static int kkbd_pushed;
+
+/*
+ * ASK FIRST, AND PUSH ONLY WHAT ANSWERS.
+ *
+ * `CSI ? u` asks a terminal which flags it has set. A terminal that
+ * implements the protocol replies `CSI ? <flags> u`; one that does not replies
+ * nothing at all, and the xterm modifier encoding stays as the fallback. There
+ * is no capability database entry for this and no TERM value that implies it,
+ * so asking is the only way to know.
+ *
+ * THE REPLY IS CONSUMED HERE OR IT IS TYPED INTO THE DESKTOP. It arrives on
+ * standard input like any other key, and the decoder has no case for it, so a
+ * reply left in the buffer reaches the session as stray characters.
+ *
+ * The Linux VT answers nothing and is skipped outright rather than waited on:
+ * it is what a `--tty` view on tty1 runs in, so this timeout would be paid on
+ * the most common console of all.
+ */
+static void kkbd_push(void)
+{
+	char buf[64];
+	size_t n = 0;
+
+	kkbd_pushed = 0;
+	if (ktui_caps & KT_CAP_LINUXVT)
+		return;
+
+	emit("\033[?u");
+	ktui_term_flush();
+
+	while (n < sizeof(buf) - 1) {
+		struct pollfd p = { 0, POLLIN, 0 };
+		int r = poll(&p, 1, 60);
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		if (read(0, buf + n, 1) != 1)
+			break;
+		if (buf[n++] == 'u')
+			break;
+	}
+
+	if (n >= 4 && buf[0] == 0x1b && buf[1] == '[' && buf[2] == '?' &&
+	    buf[n - 1] == 'u') {
+		/* Flag 1: disambiguate escape codes. It is the one this
+		 * desktop needs — it is what makes Super arrive at all — and
+		 * asking for more would be asking for reports nothing reads. */
+		emit("\033[>1u");
+		ktui_term_flush();
+		kkbd_pushed = 1;
+	}
+}
+
 static void enter_screen(void)
 {
 	/* The Linux VT has no alternate buffer and ignores 1049; harmless. */
 	emit("\033[?1049h\033[?25l\033[2J\033[H");
+	/*
+	 * BRACKETED PASTE, ALWAYS. Without it a paste arrives as the keys it
+	 * spells and a line beginning with a chord runs the chord — and a view
+	 * in somebody's terminal has no other way to be handed text at all,
+	 * because the host terminal owns the clipboard and this program never
+	 * sees the menu. A terminal that does not implement it ignores the
+	 * mode and nothing changes.
+	 */
+	emit("\033[?2004h");
 	if (ktui_caps & KT_CAP_MOUSE)
 		emit("\033[?1000h\033[?1002h\033[?1006h");
+	ktui_term_flush();
+	kkbd_push();
+}
+
+/*
+ * THE CURSOR IS HIDDEN BY enter_screen AND SHOWN ONLY FOR A CARET. A terminal
+ * cursor parked wherever the last write left it is a distraction on a screen
+ * this library is painting cell by cell; one placed deliberately is the caret.
+ */
+void ktui_term_caret(int x, int y)
+{
+	static int last_x = -2, last_y = -2;
+	char seq[48];
+
+	if (x == last_x && y == last_y)
+		return;
+	last_x = x;
+	last_y = y;
+
+	if (x < 0 || y < 0) {
+		emit("\033[?25l");
+		ktui_term_flush();
+		return;
+	}
+
+	/* One-based, row first, which is what every terminal has meant by CUP
+	 * since the VT100. */
+	snprintf(seq, sizeof(seq), "\033[%d;%dH\033[?25h", y + 1, x + 1);
+	emit(seq);
 	ktui_term_flush();
 }
 
 static void leave_screen(void)
 {
+	if (kkbd_pushed) {
+		emit("\033[<1u");
+		kkbd_pushed = 0;
+	}
 	if (ktui_caps & KT_CAP_MOUSE)
 		emit("\033[?1006l\033[?1002l\033[?1000l");
+	emit("\033[?2004l");
 	emit("\033[0m\033[?25h\033[2J\033[H\033[?1049l");
 	ktui_term_flush();
 }

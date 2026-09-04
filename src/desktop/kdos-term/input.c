@@ -43,109 +43,29 @@ int term_key(const KtuiEvent *ev)
  * is drawing its own idea of what is selected, and a second selection drawn on
  * top of it belongs to nobody.
  *
- * Shift is the override, as it is in every terminal: it hands the pointer back
- * to the terminal so text can be taken out of a program that captured it.
+ * ALL OF THAT IS `kvt_ui_mouse`, in libkvt, because the console session runs
+ * terminals of its own and must decide the same things. Two copies would
+ * drift, and the difference would be a terminal that behaves differently
+ * depending on which desktop it is on. What is left here is the one thing
+ * that IS this program's: where a completed selection goes.
  */
 void term_mouse(const KtuiEvent *ev)
 {
-	struct kvt_screen *sc;
+	char *text = NULL;
 
-	if (!T.t || ev->type != KT_EVT_MOUSE)
+	if (!T.t)
 		return;
 
-	sc = kvt_term_screen(T.t);
-
-	if (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN) {
-		int up = ev->btn == KT_MB_WHEEL_UP;
-
-		/* The wheel goes to the child first: an alternate-screen
-		 * program has its own idea of scrolling and the scrollback is
-		 * empty while it is up. */
-		if (!(ev->mods & KT_MOD_SHIFT) &&
-		    kvt_term_mouse(T.t, ev->mx, ev->my,
-				   up ? KVT_MOUSE_BUTTON_WHEEL_UP
-				      : KVT_MOUSE_BUTTON_WHEEL_DOWN,
-				   ev->mods, KVT_MOUSE_EVENT_PRESSED))
-			return;
-		kvt_term_scroll(T.t, up ? -3 : 3);
-		return;
-	}
-
-	if (!(ev->mods & KT_MOD_SHIFT) && kvt_term_mouse_mode(T.t)) {
-		int btn = ev->btn == KT_MB_MIDDLE ? KVT_MOUSE_BUTTON_MIDDLE
-			  : ev->btn == KT_MB_RIGHT ? KVT_MOUSE_BUTTON_RIGHT
-			  : KVT_MOUSE_BUTTON_LEFT;
-		int event = ev->press == KT_MP_PRESS ? KVT_MOUSE_EVENT_PRESSED
-			    : ev->press == KT_MP_RELEASE ? KVT_MOUSE_EVENT_RELEASED
-			    : KVT_MOUSE_EVENT_MOVED;
-
-		if (kvt_term_mouse(T.t, ev->mx, ev->my, btn, ev->mods, event))
-			return;
-	}
-
-	if (ev->btn != KT_MB_LEFT)
+	if (!kvt_ui_mouse(T.t, &T.ui, ev, kb_now_s(), &text))
 		return;
 
-	if (ev->press == KT_MP_PRESS) {
-		double now = kb_now_s();
-
-		/*
-		 * A second click in the same cell inside the double-click
-		 * window takes the word. Measured in CELLS rather than pixels:
-		 * a cell surface has no pixels, and a person who moved half a
-		 * character did not mean a new selection.
-		 */
-		if (now - T.click_at < 0.4 && ev->mx == T.click_x &&
-		    ev->my == T.click_y) {
-			kvt_screen_selection_word(sc, (unsigned)ev->mx,
-						  (unsigned)ev->my);
-			T.selecting = 0;
-			T.click_at = 0;
-			return;
-		}
-		T.click_x = ev->mx;
-		T.click_y = ev->my;
-		T.click_at = now;
-
-		kvt_screen_selection_reset(sc);
-		kvt_screen_selection_start(sc, (unsigned)ev->mx,
-					   (unsigned)ev->my);
-		T.sel_x = ev->mx;
-		T.sel_y = ev->my;
-		T.selecting = 1;
-		return;
-	}
-
-	if (ev->press == KT_MP_DRAG && T.selecting) {
-		kvt_screen_selection_target(sc, (unsigned)ev->mx,
-					    (unsigned)ev->my);
-		return;
-	}
-
-	if (ev->press == KT_MP_RELEASE && T.selecting) {
-		T.selecting = 0;
-		/*
-		 * A press and a release in the same cell is a CLICK, and a
-		 * click selects nothing. Without this every click left a
-		 * one-character selection on the primary clipboard, which is
-		 * what middle-click would then paste.
-		 */
-		if (ev->mx == T.sel_x && ev->my == T.sel_y) {
-			kvt_screen_selection_reset(sc);
-			return;
-		}
-		/*
-		 * ONTO THE PRIMARY SELECTION, which is what a drag means on
-		 * every X and Wayland desktop there has ever been. The
-		 * clipboard is Ctrl+Shift+C and is a separate decision.
-		 */
-		char *text = NULL;
-
-		if (kvt_screen_selection_copy(sc, &text) >= 0 && text) {
-			kdisp_copy(text, strlen(text), 1);
-			free(text);
-		}
-	}
+	/*
+	 * ONTO THE PRIMARY SELECTION, which is what a drag means on every X
+	 * and Wayland desktop there has ever been. The clipboard is
+	 * Ctrl+Shift+C and is a separate decision.
+	 */
+	kdisp_copy(text, strlen(text), 1);
+	free(text);
 }
 
 void term_paste_pending(void)

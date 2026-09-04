@@ -49,6 +49,8 @@ static void usage(FILE *f)
 "  --detach [-t NAME] take every view off one, leaving it running\n"
 "  --kill   [-t NAME] end one\n"
 "  --greet            the login surface, as kdos-con-login\n"
+"  --keys             the chord table after keys.conf, one action and chord\n"
+"                     per line — what the key card reads on this desktop\n"
 "  --dump COLSxROWS   composite one frame and write it as cells\n"
 "  --run [--bare] -- CMD...\n"
 "                     run a graphical program. It becomes a window; the\n"
@@ -130,7 +132,6 @@ static void settle(void)
 	for (int spin = 0; spin < 4000; spin++) {
 		int live = 0;
 		struct pollfd p[32];
-		Win *pw[32];
 		int n = 0;
 
 		term_pump_all();
@@ -143,7 +144,6 @@ static void settle(void)
 			p[n].fd = kvt_term_fd(w->term);
 			p[n].events = POLLIN;
 			p[n].revents = 0;
-			pw[n] = w;
 			n++;
 		}
 
@@ -158,8 +158,6 @@ static void settle(void)
 			term_pump_all();
 			return;
 		}
-
-		(void)pw;
 	}
 }
 
@@ -249,6 +247,46 @@ static void con_size(int *w, int *h)
 
 	*w = S.cols > 0 ? S.cols : 80;
 	*h = S.rows > 0 ? S.rows : 24;
+}
+
+/*
+ * WHERE THE CARET IS, told to every view.
+ *
+ * A view holds no window state, so it cannot know where the text cursor of the
+ * focused window is — and a display that does not know cannot put a real
+ * cursor there. On a `--tty` view that costs a person the one thing their own
+ * terminal could have shown them: a blinking cursor at the place they are
+ * typing, drawn by the terminal they are sitting at rather than by a cell this
+ * desktop painted.
+ *
+ * ONLY THE SESSION'S OWN TERMINALS REPORT ONE so far. A `libkcon` surface
+ * knows its caret and has no message to say so, which is the other half of
+ * this and is not pretended at here: a surface with the focus reports nothing
+ * and the caret stays where the last terminal put it rather than moving to a
+ * position nobody sent.
+ */
+static void publish_caret(void)
+{
+	static int last_x = -1, last_y = -1;
+	Win *w = win_focused();
+	int x = -1, y = -1;
+
+	if (w && w->kind == WIN_TERM && w->term && !S.locked && !S.saver) {
+		struct kvt_screen *sc = kvt_term_screen(w->term);
+
+		if (sc) {
+			x = w->geom.x + (int)kvt_screen_get_cursor_x(sc);
+			y = w->geom.y + (int)kvt_screen_get_cursor_y(sc);
+		}
+	}
+
+	if (x == last_x && y == last_y)
+		return;
+	last_x = x;
+	last_y = y;
+
+	for (int i = 0; i < kcon_server_view_count(S.server); i++)
+		kcon_view_cursor(kcon_server_view_at(S.server, i), x, y);
 }
 
 static void con_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
@@ -353,12 +391,24 @@ void con_spawn(const char *cmd)
  * A backend that cannot report Super leaves those chords unreachable rather
  * than stealing a key.
  */
+/*
+ * THE LEADER HAS BEEN PRESSED AND THE NEXT KEY IS A CHORD.
+ *
+ * One key deep and no timeout: a prefix that expired would fire a chord or a
+ * literal depending on how fast somebody typed, and a person who pressed it by
+ * mistake presses any key that names nothing to be rid of it.
+ */
+static int leader_armed;
+
 static int session_key(const KtuiEvent *ev)
 {
 	Win *w = win_focused();
 	int arg;
 
 	switch (keys_action(ev->key, ev->mods, &arg)) {
+	case CON_ACT_LEADER:
+		leader_armed = 1;
+		return 1;
 	case CON_ACT_TERM: {
 		/* No shell and no system(): the command is split into an
 		 * argument vector, which is the only way a program is started
@@ -386,6 +436,9 @@ static int session_key(const KtuiEvent *ev)
 	case CON_ACT_FULL:
 		win_fullscreen(w);
 		return 1;
+	case CON_ACT_RESTORE:
+		win_restore(win_last_minimised());
+		return 1;
 	case CON_ACT_MIN:
 		win_minimise(w);
 		return 1;
@@ -402,8 +455,23 @@ static int session_key(const KtuiEvent *ev)
 		win_snap(w, (unsigned)arg, 1);
 		return 1;
 	case CON_ACT_WS:
-		if (arg < S.nworkspace)
-			S.workspace = arg;
+		win_workspace(arg);
+		return 1;
+	case CON_ACT_FOCUS_DIR: {
+		Win *t = win_dir((unsigned)arg);
+
+		/* Raising is what focusing is here: the front of the list is
+		 * the top of the stack, so a focus that did not raise would
+		 * put the keyboard on a window still behind another one. */
+		if (t)
+			win_raise(t->id);
+		return 1;
+	}
+	case CON_ACT_SWAP_DIR:
+		win_swap(w, win_dir((unsigned)arg));
+		return 1;
+	case CON_ACT_WS_STEP:
+		win_workspace_step(arg);
 		return 1;
 	case CON_ACT_SEND:
 		win_send(w, arg);
@@ -428,8 +496,34 @@ static void route_key(const KtuiEvent *ev)
 		return;
 	}
 
-	if (session_key(ev))
+	if (leader_armed) {
+		int arg;
+
+		leader_armed = 0;
+		/*
+		 * THE LEADER TWICE IS THE LITERAL. Falling through to the
+		 * window is what gives the key back — Ctrl+A is the start of
+		 * the line in every shell on this image, and a desktop that
+		 * took it outright would be one people turn off.
+		 */
+		if (keys_action(ev->key, ev->mods, &arg) != CON_ACT_LEADER) {
+			KtuiEvent e = *ev;
+
+			/*
+			 * Looked up as though Super were held, which is the
+			 * whole of the mechanism: one chord table, reached two
+			 * ways. A key that names no chord is swallowed rather
+			 * than typed — a prefix that leaked its second key
+			 * would put a stray character in a document every time
+			 * somebody mistyped a chord.
+			 */
+			e.mods |= KT_MOD_SUPER;
+			session_key(&e);
+			return;
+		}
+	} else if (session_key(ev)) {
 		return;
+	}
 
 	Win *w = win_focused();
 
@@ -443,6 +537,98 @@ static void route_key(const KtuiEvent *ev)
 		kcon_surface_key(w->surf, ev->key, ev->mods);
 }
 
+/*
+ * A DRAG IN PROGRESS.
+ *
+ * `route_ptr` held no state at all, so the pointer could raise a window and
+ * click inside it and nothing else — no move, no resize. The grab records
+ * where the pointer was and what the window's rectangle was when the button
+ * went down, and every frame is computed from those rather than accumulated
+ * from each motion: accumulating drifts, and a window that ends up somewhere
+ * other than under the hand is one nobody trusts the mouse with again.
+ */
+static struct {
+	int id;			/* the window, or 0 for no grab            */
+	int resizing;		/* 0 moves the window, 1 resizes it        */
+	int ox, oy;		/* the pointer when the button went down   */
+	KwmRect og;		/* its rectangle then                      */
+	unsigned edges;		/* which edges a resize moves              */
+} grab;
+
+/*
+ * WHICH EDGES A RESIZE TAKES, from where in the window the press landed. The
+ * nearest edge in each axis, so a press near a corner takes both and a press
+ * in the middle of one side takes only that side.
+ */
+static unsigned grab_edges(const Win *w, int x, int y)
+{
+	unsigned e = 0;
+	int third_w = w->geom.w / 3, third_h = w->geom.h / 3;
+
+	if (third_w < 1)
+		third_w = 1;
+	if (third_h < 1)
+		third_h = 1;
+
+	if (x < w->geom.x + third_w)
+		e |= KWM_EDGE_LEFT;
+	else if (x >= w->geom.x + w->geom.w - third_w)
+		e |= KWM_EDGE_RIGHT;
+	if (y < w->geom.y + third_h)
+		e |= KWM_EDGE_TOP;
+	else if (y >= w->geom.y + w->geom.h - third_h)
+		e |= KWM_EDGE_BOTTOM;
+
+	/* A press in the exact middle still resizes: the bottom-right corner
+	 * is what a hand expects when nothing else is nearer. */
+	return e ? e : (KWM_EDGE_RIGHT | KWM_EDGE_BOTTOM);
+}
+
+static void grab_apply(const KtuiEvent *ev)
+{
+	Win *w = win_find(grab.id);
+	int dx = ev->mx - grab.ox, dy = ev->my - grab.oy;
+	KwmRect g = grab.og;
+
+	if (!w)
+		return;
+
+	if (!grab.resizing) {
+		g.x += dx;
+		g.y += dy;
+	} else {
+		if (grab.edges & KWM_EDGE_LEFT) {
+			g.x += dx;
+			g.w -= dx;
+		} else if (grab.edges & KWM_EDGE_RIGHT) {
+			g.w += dx;
+		}
+		if (grab.edges & KWM_EDGE_TOP) {
+			g.y += dy;
+			g.h -= dy;
+		} else if (grab.edges & KWM_EDGE_BOTTOM) {
+			g.h += dy;
+		}
+		/* A window narrower than its own frame has no content and no
+		 * title, and cannot be grabbed again to undo it. */
+		if (g.w < 12)
+			g.w = 12;
+		if (g.h < 4)
+			g.h = 4;
+	}
+
+	/*
+	 * THROUGH kwm_fit, exactly as snapping is. A dragged window and a
+	 * snapped one obeying different work-area rules is two answers to one
+	 * question, and the panel's exclusive zone is in that answer.
+	 */
+	w->geom = kwm_fit(g, win_workarea());
+	/* A dragged window is no longer where a tile put it. */
+	w->tiled = 0;
+	win_resized(w);
+	ktui_draw_invalidate();
+}
+
 static void route_ptr(const KtuiEvent *ev)
 {
 	/* While locked the pointer reaches the lock surface and nothing else,
@@ -454,6 +640,85 @@ static void route_ptr(const KtuiEvent *ev)
 		return;
 	}
 
+	/*
+	 * THE PANEL ROW IS ASKED FIRST, because it is not a window and
+	 * `win_at()` cannot see it. Without this the bar is painted and
+	 * nothing more: Start, every window row and the clock are drawn, look
+	 * pressable, and answer nothing.
+	 *
+	 * Only when the session draws its own bar. A docked shell panel is a
+	 * real window with its own hit testing, and answering for it here
+	 * would take every click before its client saw one.
+	 */
+	if (!panel_have_shell()) {
+		int arg;
+
+		switch (panel_hit(ev->mx, ev->my, &arg)) {
+		case PANEL_HIT_START:
+			if (ev->press == KT_MP_PRESS)
+				con_spawn(con_command(CON_CMD_MENU));
+			return;
+		case PANEL_HIT_WIN:
+			if (ev->press == KT_MP_PRESS) {
+				Win *t = win_find(arg);
+
+				/* One row, two meanings, and the window's own
+				 * state picks: a row is how a minimised window
+				 * comes back, and how a visible one is
+				 * raised. */
+				if (t && t->minimised)
+					win_restore(t);
+				else if (t)
+					win_raise(t->id);
+			}
+			return;
+		case PANEL_HIT_CLOCK:
+			if (ev->press == KT_MP_PRESS)
+				con_spawn("kdos-cal");
+			return;
+		case PANEL_HIT_WS:
+			if (ev->press == KT_MP_PRESS)
+				win_workspace(arg);
+			return;
+		default:
+			break;
+		}
+	}
+
+	/* A grab owns the pointer until the button comes up, wherever it goes:
+	 * a drag that stopped at the window's edge could not make it smaller. */
+	if (grab.id) {
+		if (ev->press == KT_MP_DRAG)
+			grab_apply(ev);
+		else if (ev->press == KT_MP_RELEASE)
+			grab.id = 0;
+		return;
+	}
+
+	/*
+	 * A FRAME BUTTON IS ASKED BEFORE THE WINDOW UNDER IT. The buttons sit
+	 * on the frame, which is inside the window's own rectangle, so
+	 * `win_at()` answers for both and a click would raise the window and
+	 * do nothing else.
+	 */
+	if (ev->press == KT_MP_PRESS) {
+		int id;
+
+		switch (win_button_at(ev->mx, ev->my, &id)) {
+		case WIN_BTN_MIN:
+			win_minimise(win_find(id));
+			return;
+		case WIN_BTN_MAX:
+			win_maximise(win_find(id));
+			return;
+		case WIN_BTN_CLOSE:
+			win_close(win_find(id));
+			return;
+		default:
+			break;
+		}
+	}
+
 	Win *w = win_at(ev->mx, ev->my);
 
 	/* A press raises and focuses; motion is delivered where it landed
@@ -461,8 +726,45 @@ static void route_ptr(const KtuiEvent *ev)
 	if (w && ev->press == KT_MP_PRESS)
 		win_raise(w->id);
 
-	if (!w || w->kind == WIN_TERM)
+	/*
+	 * WHERE A DRAG STARTS. The title row moves the window and the right
+	 * button resizes it, and Super with either does the same from anywhere
+	 * inside — which is what makes a window that is all content, a
+	 * terminal or an embedded application, still movable without hunting
+	 * for its one draggable row.
+	 *
+	 * A panel is neither: it is docked, its rectangle is its exclusive
+	 * zone, and dragging it would move the work area out from under every
+	 * other window.
+	 */
+	if (w && !w->panel && !w->full && ev->press == KT_MP_PRESS) {
+		int on_title = ev->my == w->geom.y;
+		int super = (ev->mods & KT_MOD_SUPER) != 0;
+		int right = ev->btn == KT_MB_RIGHT;
+
+		if (on_title || super || right) {
+			grab.id = w->id;
+			grab.resizing = right || (super && ev->btn == KT_MB_MIDDLE);
+			grab.ox = ev->mx;
+			grab.oy = ev->my;
+			grab.og = w->geom;
+			grab.edges = grab_edges(w, ev->mx, ev->my);
+			return;
+		}
+	}
+
+	if (!w)
 		return;
+	if (w->kind == WIN_TERM) {
+		/* Middle-click pastes the primary before the terminal sees the
+		 * button, the same order libkwl keeps: the click is still
+		 * offered below, so a program tracking the mouse still gets
+		 * it. */
+		if (ev->btn == KT_MB_MIDDLE && ev->press == KT_MP_PRESS)
+			term_paste(w, 1);
+		term_mouse(w, ev);
+		return;
+	}
 	if (w->kind == WIN_EMBED) {
 		embed_ptr(w, ev);
 		return;
@@ -518,13 +820,15 @@ static void adopt_surfaces(void)
 		 * hello and nothing more, and adopting it would put an empty
 		 * window on the desktop for the rest of the round trip.
 		 *
-		 * A SAVER IS THE ONE EXCEPTION, because it attaches asking for
-		 * nothing: the session owns the answer and sends it in the
+		 * A SAVER AND A DOCKED PANEL ARE THE EXCEPTIONS, because they
+		 * attach asking for nothing — the panel naming only its
+		 * thickness: the session owns the answer and sends it in the
 		 * configure below. The server refuses a zero size from every
 		 * other role, so nothing else can reach here that way.
 		 */
-		if (known ||
-		    (!kcon_surface_cols(f) && role != KDISP_ROLE_SAVER))
+		if (known || (!kcon_surface_cols(f) &&
+			      role != KDISP_ROLE_SAVER &&
+			      role != KDISP_ROLE_PANEL))
 			continue;
 
 		Win *w = calloc(1, sizeof(*w));
@@ -548,6 +852,26 @@ static void adopt_surfaces(void)
 			w->exclusive = kcon_surface_exclusive(f);
 			w->geom.w = kcon_surface_cols(f);
 			w->geom.h = kcon_surface_rows(f);
+			/*
+			 * A PANEL THAT NAMED A THICKNESS IS SIZED HERE, along
+			 * its edge by the screen and across it by what it
+			 * asked for. Clamped to the screen because a bar
+			 * longer than the display leaves no work area at all
+			 * and the desktop underneath becomes unreachable.
+			 */
+			if (!w->geom.w || !w->geom.h) {
+				int c = kcon_surface_want_cells(f);
+				int horiz =
+					w->panel_edge == KDISP_EDGE_TOP ||
+					w->panel_edge == KDISP_EDGE_BOTTOM;
+
+				if (c < 1)
+					c = 1;
+				w->geom.w = horiz ? S.cols :
+					(c < S.cols ? c : S.cols);
+				w->geom.h = horiz ?
+					(c < S.rows ? c : S.rows) : S.rows;
+			}
 			win_dock(w);
 			/* A panel never takes the keyboard by attaching. */
 			kcon_surface_configure(f, w->geom.w, w->geom.h);
@@ -555,6 +879,24 @@ static void adopt_surfaces(void)
 		}
 
 		if (role == KDISP_ROLE_LOCK) {
+			/*
+			 * ONE LOCK AT A TIME. A second client is refused and
+			 * told so rather than replacing the first: it would
+			 * otherwise take a screen it does not own, and the
+			 * person typing would be answering a different program
+			 * from the one that locked the session.
+			 */
+			if (S.locked && S.lock && S.lock->surf != f) {
+				/* The refusal before the close, and on the
+				 * same connection: they are read in order, so
+				 * the client knows why it was closed rather
+				 * than exiting 0 on a session it never got. */
+				kcon_surface_lock_state(f,
+							KCON_LOCK_FINISHED);
+				win_close(w);
+				continue;
+			}
+
 			/*
 			 * THE WHOLE GRID, no frame, above everything. It is
 			 * configured to the screen rather than placed: a lock
@@ -570,6 +912,58 @@ static void adopt_surfaces(void)
 			S.lock = w;
 			S.focus = w->id;
 			kcon_surface_configure(f, S.cols, S.rows);
+
+			/*
+			 * THE GRANT, AND IT IS THE SESSION'S TO GIVE. The
+			 * client refuses every keystroke until this arrives —
+			 * attaching is a request, and a lock program that
+			 * accepted input on its own say-so would take a
+			 * password while the desktop was still on screen.
+			 */
+			kcon_surface_lock_state(f, KCON_LOCK_ENGAGED);
+			continue;
+		}
+
+		/*
+		 * A LAYER, NOT A TOPLEVEL. Twenty files in `kdos-shell` ask for
+		 * OVERLAY — the Start menu, the launcher, the run box, toasts,
+		 * the OSD, tooltips, the candidate window, the calendar — and
+		 * `desk.c` asks for BACKGROUND. Both roles are declared with
+		 * these semantics and every one of those surfaces means them.
+		 *
+		 * The size is the client's: a menu knows how big it is, and a
+		 * layer that was placed like a window would be given a
+		 * two-thirds rectangle it never asked for. A background that
+		 * asks for nothing is given the grid, the way a saver is.
+		 */
+		if (role == KDISP_ROLE_OVERLAY ||
+		    role == KDISP_ROLE_BACKGROUND) {
+			int cw = kcon_surface_cols(f);
+			int ch = kcon_surface_rows(f);
+
+			if (role == KDISP_ROLE_BACKGROUND) {
+				w->background = 1;
+				if (!cw || !ch) {
+					cw = S.cols;
+					ch = S.rows;
+				}
+			} else {
+				w->overlay = 1;
+			}
+			win_place(w, cw, ch);
+			kcon_surface_configure(f, w->geom.w, w->geom.h);
+			/*
+			 * AN OVERLAY TAKES THE KEYBOARD; A BACKGROUND DOES
+			 * NOT. The Start menu, the launcher and the run box
+			 * are overlays and are answered by typing, so an
+			 * overlay that did not focus would be a menu nobody
+			 * could drive. The icon layer covers the whole grid
+			 * and is behind everything — focusing it would take
+			 * the keyboard away from the window a person is
+			 * working in, every time the desktop redraws.
+			 */
+			if (role == KDISP_ROLE_OVERLAY)
+				S.focus = w->id;
 			continue;
 		}
 
@@ -642,6 +1036,76 @@ static void retint(void)
  * the ONLY path that clears the lock; a lock client that crashes reaches
  * win_gc() instead, which leaves `locked` standing.
  */
+/*
+ * `kdos con kill` REACHED THIS SESSION. Set the flag the loop reads and let
+ * teardown run: the listeners are stopped and the clients drained on the way
+ * out, which is the same path a logout takes. Ending here — closing
+ * descriptors from inside a handler the pump is walking — would free surfaces
+ * the caller is still iterating.
+ */
+/*
+ * TEXT A DISPLAY WAS HANDED, into the focused window.
+ *
+ * Into the WINDOW rather than onto the clipboard: a person who pressed paste
+ * in their own terminal means it to arrive, and leaving it in a selection they
+ * would then have to paste again is asking twice for one gesture. It also goes
+ * to the session's clipboard, so the next window can have it without the
+ * far-end terminal being asked a second time.
+ *
+ * A terminal window takes it bracketed when its child asked for that, which is
+ * `kvt_term_paste`'s whole job; a surface is handed it as clipboard data,
+ * which is the only text channel a surface has.
+ */
+static void on_paste(KconSurface *v, const char *text, void *user)
+{
+	Win *w = win_focused();
+
+	(void)v;
+	(void)user;
+	clip_put(text, strlen(text), 0);
+	if (!w)
+		return;
+	if (w->kind == WIN_TERM && w->term)
+		kvt_term_paste(w->term, text);
+	else if (w->kind == WIN_SURFACE && w->surf)
+		kcon_surface_clip_data(w->surf, text);
+}
+
+static void on_quit(KconSurface *f, void *user)
+{
+	(void)f;
+	(void)user;
+	con_quit();
+}
+
+/*
+ * A SHELL ASKED FOR A WINDOW. Raising and closing stay the session's: it owns
+ * the stack and the lifetime, and a panel that could do either itself would be
+ * a second implementation of both.
+ */
+static void on_activate(KconSurface *f, unsigned id, void *user)
+{
+	Win *w = win_find((int)id);
+
+	(void)f;
+	(void)user;
+	if (!w)
+		return;
+	/* A row for a minimised window is how it comes back, on the shell's
+	 * bar exactly as on the session's own. */
+	if (w->minimised)
+		win_restore(w);
+	else
+		win_raise(w->id);
+}
+
+static void on_close_request(KconSurface *f, unsigned id, void *user)
+{
+	(void)f;
+	(void)user;
+	win_close(win_find((int)id));
+}
+
 static void on_unlock(KconSurface *f, void *user)
 {
 	(void)user;
@@ -649,6 +1113,10 @@ static void on_unlock(KconSurface *f, void *user)
 		S.locked = 0;
 		S.lock = NULL;
 		S.focus = 0;
+		/* The grant is withdrawn where it was given. A client that
+		 * unlocked and stayed up would otherwise still believe it
+		 * holds the session. */
+		kcon_surface_lock_state(f, 0);
 	}
 }
 
@@ -682,6 +1150,25 @@ static unsigned long long mono_ms(void)
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (unsigned long long)ts.tv_sec * 1000 +
 	       (unsigned long long)ts.tv_nsec / 1000000;
+}
+
+unsigned long long con_now_ms(void)
+{
+	return mono_ms();
+}
+
+/*
+ * 120ms: long enough to be seen and short enough that a program ringing in a
+ * loop is a flicker rather than a window that stays lit.
+ */
+#define BELL_MS 120
+
+void con_bell(Win *w)
+{
+	if (w)
+		w->bell_until = mono_ms() + BELL_MS;
+	kcon_view_bell(S.server);
+	ktui_draw_invalidate();
 }
 
 static struct {
@@ -877,6 +1364,17 @@ static int on_run(KconSurface *f, const char *const argv[], const char *title,
 				"a terminal of its own\n", argv[0]);
 	}
 
+	/*
+	 * SAY WHY IT TOOK A TERMINAL. `con_display_mode` computes the reason
+	 * and it was thrown away, so a person who asked for an application and
+	 * got a full-screen guest on another terminal had no way to learn what
+	 * decided that — a box profile, a configuration key, or the program
+	 * being a compositor itself.
+	 */
+	if (why && *why)
+		fprintf(stderr, "kdos-con: '%s' takes a terminal of its own: "
+				"%s\n", argv[0] ? argv[0] : "?", why);
+
 	Win *w = vt_open(argv, title, 1);
 
 	return w ? w->vt : -1;
@@ -917,6 +1415,12 @@ static int serve(const char *sock, const char *view)
 	h.unlock = on_unlock;
 	h.sprite = on_sprite;
 	h.run = on_run;
+	h.quit = on_quit;
+	h.paste = on_paste;
+	h.clip_offer = clip_offer;
+	h.clip_request = clip_request;
+	h.activate = on_activate;
+	h.close_request = on_close_request;
 	kcon_server_hooks(S.server, &h, NULL);
 
 	ktui_backend_set(&con_backend);
@@ -925,10 +1429,46 @@ static int serve(const char *sock, const char *view)
 	idle_init();
 
 	while (!quit) {
-		struct pollfd p[34];
+		/*
+		 * SIZED FROM WHAT THERE IS, not from a constant.
+		 *
+		 * A fixed array of thirty-four made the count a silent budget:
+		 * every listener, every client, every terminal and every
+		 * embedded guest competed for it, and the loops written last
+		 * were the ones squeezed out. A session with enough surfaces
+		 * open simply stopped polling its terminals, so a window's
+		 * output arrived at the tick rate however fast the program was
+		 * writing.
+		 *
+		 * The buffer is kept between turns because the counts barely
+		 * change, and grown when they do.
+		 */
+		static struct pollfd *p;
+		static int pcap;
+		int want = kcon_server_nfds(S.server) +
+			   kcon_server_count(S.server) + 16;
 		int n = 0;
 
-		for (int i = 0; i < kcon_server_nfds(S.server) && n < 34;
+		for (Win *w = S.wins; w; w = w->next)
+			if (w->kind == WIN_TERM && w->term)
+				want++;
+
+		if (want > pcap) {
+			struct pollfd *bigger =
+				realloc(p, sizeof(*p) * (size_t)want);
+
+			/* Out of memory keeps the array it has: polling fewer
+			 * descriptors is slow, and polling a freed one is a
+			 * crash. */
+			if (bigger) {
+				p = bigger;
+				pcap = want;
+			}
+		}
+		if (!p)
+			continue;
+
+		for (int i = 0; i < kcon_server_nfds(S.server) && n < pcap;
 		     i++) {
 			p[n].fd = kcon_server_fd_at(S.server, i);
 			p[n].events = POLLIN;
@@ -936,19 +1476,26 @@ static int serve(const char *sock, const char *view)
 			n++;
 		}
 
-		for (int i = 0; i < kcon_server_count(S.server) && n < 33; i++) {
+		/*
+		 * EVERY CLIENT'S DESCRIPTOR, so a commit wakes the session
+		 * instead of waiting for the next tick. It used to push -1,
+		 * which poll ignores — so the loop consumed the budget and
+		 * woke on nothing.
+		 */
+		for (int i = 0; i < kcon_server_count(S.server) && n < pcap;
+		     i++) {
 			KconSurface *f = kcon_server_at(S.server, i);
+			int fd = kcon_surface_fd(f);
 
-			(void)f;
-			/* Every client's descriptor, so a commit wakes the
-			 * session instead of waiting for the next tick. */
-			p[n].fd = -1;
+			if (fd < 0)
+				continue;
+			p[n].fd = fd;
 			p[n].events = POLLIN;
 			p[n].revents = 0;
 			n++;
 		}
 
-		for (Win *w = S.wins; w && n < 34; w = w->next)
+		for (Win *w = S.wins; w && n < pcap; w = w->next)
 			if (w->kind == WIN_TERM && w->term) {
 				p[n].fd = kvt_term_fd(w->term);
 				p[n].events = POLLIN;
@@ -957,7 +1504,7 @@ static int serve(const char *sock, const char *view)
 			}
 
 		int efd[16];
-		int en = n < 34 ? embed_fds(efd, 34 - n) : 0;
+		int en = n < pcap ? embed_fds(efd, pcap - n) : 0;
 
 		for (int i = 0; i < en && i < 16; i++) {
 			p[n].fd = efd[i];
@@ -967,6 +1514,19 @@ static int serve(const char *sock, const char *view)
 		}
 
 		poll(p, (nfds_t)n, 20);
+
+		/*
+		 * A FLASH ENDS ON A FRAME, so there has to be one. Nothing
+		 * else changes when the deadline passes, and a bell whose end
+		 * waited for the next unrelated repaint would be a window left
+		 * lit for as long as the desktop was quiet.
+		 */
+		for (Win *bw = S.wins; bw; bw = bw->next)
+			if (bw->bell_until) {
+				if (bw->bell_until <= mono_ms())
+					bw->bell_until = 0;
+				ktui_draw_invalidate();
+			}
 
 		if (g_retint) {
 			g_retint = 0;
@@ -981,12 +1541,31 @@ static int serve(const char *sock, const char *view)
 		embed_reap();
 		win_gc();
 		publish_windows();
+		mgmt_publish(0);
+		publish_caret();
 
 		/*
 		 * A VIEW THAT JUST ATTACHED HAS BEEN SENT NO PICTURES. Its
 		 * cells will name sprites it has never heard of, so every
 		 * embedded window resends its blocks.
 		 */
+		/*
+		 * A SHELL THAT HAS JUST ATTACHED MISSED EVERY ADD. It cannot
+		 * ask for the list — there is no request verb, deliberately,
+		 * because a client that could ask could ask repeatedly — so
+		 * the session notices the arrival and sends it again.
+		 */
+		static int last_shells;
+		int shells = 0;
+
+		for (int i = 0; i < kcon_server_count(S.server); i++)
+			if (kcon_surface_kind(kcon_server_at(S.server, i)) ==
+			    KCON_KIND_SHELL)
+				shells++;
+		if (shells > last_shells)
+			mgmt_resend();
+		last_shells = shells;
+
 		static int last_views;
 		int views = kcon_server_view_count(S.server);
 
@@ -1011,6 +1590,26 @@ static int serve(const char *sock, const char *view)
 			S.cols = vw;
 			S.rows = vh;
 
+			/*
+			 * PANELS ARE RE-DOCKED BEFORE THE WORK AREA IS TAKEN.
+			 * A docked rectangle is measured from an edge of the
+			 * grid, so a panel left at its old place is off the
+			 * screen or short of it — and its exclusive zone is
+			 * what every window below is about to be fitted
+			 * against, so the stale one moves them all wrong.
+			 * Each keeps the thickness it asked for and gets the
+			 * new extent; the configure tells it so.
+			 */
+			for (Win *w = S.wins; w; w = w->next) {
+				if (!w->panel)
+					continue;
+				win_dock(w);
+				if (w->surf)
+					kcon_surface_configure(w->surf,
+							       w->geom.w,
+							       w->geom.h);
+			}
+
 			KwmRect area = win_workarea();
 
 			for (Win *w = S.wins; w; w = w->next) {
@@ -1026,11 +1625,7 @@ static int serve(const char *sock, const char *view)
 					w->geom.w = S.cols;
 					w->geom.h = S.rows;
 				} else if (w->tiled) {
-					KwmBorder m = { CON_FRAME, CON_FRAME,
-							CON_FRAME, CON_FRAME };
-
-					w->geom = kwm_tile_geom(area, S.gap, m,
-								w->tiled);
+					w->geom = win_tile_rect(w->tiled);
 				} else {
 					w->geom = kwm_fit(w->geom, area);
 				}
@@ -1061,9 +1656,18 @@ static int serve(const char *sock, const char *view)
 		ktui_draw_flush();
 	}
 
+	/*
+	 * STOP LISTENING BEFORE DRAINING. A client that connects while the
+	 * session is on its way out gets a window on a desktop that is about
+	 * to stop drawing, and its socket file outlives the process that owned
+	 * it — which is what `kdos con ls` reads to decide a session is alive.
+	 */
+	kcon_server_unlisten(S.server, sock);
+	if (view && *view)
+		kcon_server_unlisten(S.server, view);
+
 	teardown();
 	kcon_server_free(S.server);
-	unlink(sock);
 	return 0;
 }
 
@@ -1165,6 +1769,15 @@ int main(int argc, char **argv)
 		if (!strcmp(argv[i], "--ls")) {
 			do_ls = 1;
 			continue;
+		}
+		/*
+		 * ANSWERED HERE AND NOW. It reads no socket and starts no
+		 * session — the chords are a file and a table, and the card
+		 * asks for them on a desktop that may not be running.
+		 */
+		if (!strcmp(argv[i], "--keys")) {
+			keys_print();
+			return 0;
 		}
 		if (!strcmp(argv[i], "--attach")) {
 			do_attach = 1;

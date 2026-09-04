@@ -23,6 +23,15 @@ The same page, the same layout and the same numbers on a console, in a window, a
 because there is only a grid of character cells, and the toolkit's backend decides who paints it.
 Nothing above that line knows which.
 
+**Which display server it reaches is `libkdisp`'s decision, not this program's.** It registers both
+implementations — `kcon_impl` for a console session and `kwl_impl` for the compositor — and calls
+`kdisp_init`, so the same binary is a window on the graphical desktop and a window on the console
+desktop with no branch of its own. The console is offered first: a program started inside a console
+session must not find a Wayland display left over from elsewhere and attach to that instead.
+
+That is why nothing below says "under Wayland" where it means "when decorated": the question a
+surface asks is whether its server draws chrome, not which server it is.
+
 **It wears exactly one frame.** Undecorated — on a console, in a dump — it draws a box around the
 whole surface with its title on the top edge. Under the compositor the **server-side decoration
 is that box**, so the drawn one is suppressed and only its inset is kept. Two boxes nested one

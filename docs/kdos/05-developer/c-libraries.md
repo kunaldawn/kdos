@@ -41,7 +41,7 @@ painter is not made to link a Wayland client library to get it.
 | `libkkms` | `kkms_` | **The cell grid on a screen**: seat, connector, mode, a dumb buffer, libinput and xkb. The one thing on the console path that needs a GPU device, which is why only the view links it | `libkcell`, plus drm, input, seat, xkb, udev |
 | `libkcon` | `kcon_` | **A surface over a socket**, both ends: the wire, the client's `KDispImpl` and `KtuiBackend`, and the server side a display composites. **No file descriptors cross it**, which is what makes it forwardable | `libkdisp`, `libktui` |
 | `libkwm` | `kwm_` | **The window model both desktops obey**: placement, the tiled-state transition and its geometry, the neighbour-edge search, ring walks for cycling and workspaces | `libkbase` |
-| `libkdisp` | `kdisp_` | **Which display server, decided once**: the surface config, the six roles, and the lifecycle every surface asks for — init, close, resize, autohide, cell size, scale, clipboard, cursor | `libktui` |
+| `libkdisp` | `kdisp_` | **Which display server, decided once**: the surface config, the seven roles, and the lifecycle every surface asks for — init, close, resize, autohide, cell size, scale, clipboard, cursor | `libktui` |
 | `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui` |
 | `libkicon` | `kicon_` | **A name becomes a sprite slot, or −1** | `libktui` |
 | `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, and the pixel canvas | A font renderer, a pixel library |
@@ -62,7 +62,21 @@ libkbuild  → libkbase
 libkproc   → libkbase
 libkwm     → libkbase
 libkpack   → libksig, libkpkg, libkbase
+
+libkvt     → libktui, libkcolor, libkbase
+libkcon    → libkdisp, libktui, libkcolor, libkbase
+libkimg    → libkbase
+libkkms    → libkcell, libktui, libkcolor, libkbase
 ```
+
+**The four edges worth stating are the console's.** `libkvt` is a terminal's
+private screen and reaches libktui only at its render boundary, in one file.
+`libkcon` carries cells over a socket and links **no** pixel library, which is
+what lets the session come up on a machine whose GPU driver does not. `libkimg`
+decodes untrusted bytes and depends on nothing but libkbase, so the decoder
+cannot reach the toolkit. `libkkms` is the only one of the four that opens a
+device, and it is a separate archive for exactly that reason: `kdos-con` links
+none of it and only the view does.
 
 ## libkwm
 
@@ -113,13 +127,21 @@ pulls in none; a caller hands over the ones it compiled, in preference order, so
 a console-only program never sees Wayland:
 
 ```c
-extern const KDispImpl kwl_impl;   /* libkwl */
-static const KDispImpl *const have[] = { &kwl_impl };
-kdisp_init(&cfg, have, 1);
+extern const KDispImpl kcon_impl;  /* libkcon — the console session   */
+extern const KDispImpl kwl_impl;   /* libkwl  — the Wayland compositor */
+static const KDispImpl *const have[] = { &kcon_impl, &kwl_impl };
+kdisp_init(&cfg, have, 2);
 ```
 
+**Both, and the console first.** Every shipped surface registers this pair: a
+program that offered only `kwl_impl` compiles and runs and simply cannot be
+opened on the console desktop, which is the default session. The order is the
+preference order, and the console comes first because a program started inside
+a console session must not find a Wayland display left over from somewhere else
+and attach to that instead.
+
 Each program states that list once, and it is the single line that changes when
-a second server is added.
+a third server is added.
 
 **A server that cannot answer an entry leaves it NULL** and the forwarder
 returns the neutral answer rather than crashing — a console has no server-side

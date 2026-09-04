@@ -116,9 +116,13 @@ becomes a run nobody can do.
 its parsed state until it exits, which a leak checker reports as a leak and turns into a false
 failure; the library suite is the one binary whose subject is code called repeatedly.
 
-A coverage-guided fuzzer over the parsers is what found both defects above, in minutes. It is not
-committed — the corpus is worth more than the driver, and neither has a home in a tree that ships
-no test binaries — but it is worth rewriting after any change to a parser.
+A fuzzer over the image parsers is what found both defects above, in minutes, and it **is**
+committed: `testing/fixtures/img/fuzz.c`. Its own driver rather than a block in `selftest.c`,
+because the corpus has to run under ASan and UBSan and the rest of the suite does not need
+rebuilding to do that. Two passes — every fixture decoded under a budget, then every fixture
+mutated a byte at a time and truncated at every length, because a corpus somebody wrote by hand
+only ever exercises the paths they thought of. A decoder must answer NULL or an image for any bytes
+at all, and must never read past the end of them.
 
 ### What it does not cover
 
@@ -267,6 +271,9 @@ a variable moves one walk.
 | `shell` | The dump harness and its stubs | Every front end's layout |
 | `vt` | What `vim`, `htop`, `mc`, `less` and `tmux` wrote to an 80x24 pty, plus a hand-written malformed stream | That the libtsm fork's state machine still produces the same screen |
 | `pack`, `box`, `deco`, `openwith`, `recent`, `tone`, `cellclip`, `ascii` | | Their respective units |
+| `img` | Images, and `fuzz.c` beside them | `libkimg` — every fixture decoded, then mutated and truncated |
+| `cast` | A recorded PipeWire stream | `kdos-view --cast`, which rasterises through the same cell painter |
+| `embed` | A guest's frames | `kdos-cage --embed` cutting them into sprites |
 
 **Both traps a fixture guards were confirmed to bite** by building the daemon with each check
 disabled — which is the only way to know a test is testing something.
@@ -284,6 +291,12 @@ parser that gave up on the first byte, so the self-test refuses an empty grid ou
 `vtrender.c` replays one in **small uneven chunks**, because a pty splits escape sequences across
 reads and a parser that only works on a whole sequence passes a single-write test and corrupts a
 real terminal.
+
+**The same rule applies to the terminal's own input.** `ktui_input_next` reads descriptor 0, so the
+bracketed-paste block stands a pipe there and writes the sequence in pieces on purpose: a
+terminator split across two reads is the case that turns a paste into a session-long one when the
+tail is taken for text. **It restores descriptor 0 before it returns** — a block that redirected
+stdin and left it redirected takes every later block that reads a terminal with it.
 
 `testing/fixtures/be` is an empty leftover and records nothing.
 
@@ -336,6 +349,12 @@ a window lands where a person expects, which is still the rig's job.
 
 ## The QEMU rig
 
+**A dump proves a character, never a colour.** `kdos-view --dump` writes the codepoint in each cell
+and throws the foreground and background away, so text drawn in the background's own slot — present,
+and invisible on every screen — dumps identically to text a person can read. A check on what a
+surface *drew* asserts the cell's colours as well as its character; a dump answers "is it there",
+not "can it be seen".
+
 **For a cell surface, prefer `kdos-view --dump` over a photograph.** A console session hands out its
 exact composited grid, so a check on what a surface drew is a text diff rather than an image
 comparison — no boot, no framebuffer, no tolerance for antialiasing. Without a size it takes the
@@ -350,17 +369,51 @@ It boots headless with a serial socket and a monitor socket, types on the first 
 monitor, and reads the framebuffer over the remote-framebuffer protocol.
 
 **Which session is already there decides how the rig is driven.** `tty1` runs `kdos-con-login`,
-which autologins and starts `kdos-con-start`, so **the cell desktop is up before any step runs**:
-
-```sh
-# the console desktop, which is already running — photograph and drive it
-$R --no-session --sleep 25 --shot build/shots/con-desktop.ppm \
-   --keys meta_l-ret --sleep 3 --shot build/shots/con-terminal.ppm
-```
+which autologins and starts `kdos-con-start`, so **the cell desktop is up before any step runs**.
 
 `--keys` is a monitor `sendkey`, so it reaches whatever owns the **active VT** — which is that
 desktop. `--cmd` runs on the serial console as the desktop user, and `--root-cmd` as root, so
 neither disturbs what is on screen.
+
+### Photographing the console desktop
+
+Every wave of console work verifies this way, so the recipe is here once rather than rediscovered
+each time:
+
+```sh
+R="docker run --rm --device /dev/kvm -v $PWD:/kdos -w /kdos kdos-qemu-py:latest \
+   python3 testing/vnc-shot.py --size 1280x800"
+
+$R --no-session \
+   --sleep 40 --keys esc --sleep 2 --shot /kdos/build/shots/con-desktop.png \
+   --keys meta_l-ret --sleep 4 --shot /kdos/build/shots/con-terminal.png
+```
+
+Five rules, each with the consequence of getting it wrong:
+
+- **`--no-session`, and the wait is a `--sleep`.** `--wait` settles a *graphical* session and is
+  skipped entirely when none is started, so a `--wait 45` before the first `--shot` photographs the
+  boot banner at seven seconds of uptime. Forty seconds of `--sleep` is what the ISO takes to reach
+  a drawn desktop.
+- **`esc` closes the welcome card, and nothing else does.** It opens focused on first login over
+  the top-left of the grid. It says *any key closes*, and the key has to reach it: a chord the
+  session binds is taken by the session first.
+- **The harness writes raw PPM whatever the extension says.** Convert before comparing, or an image
+  library reads the file by its magic and the diff is against a header.
+- **Read the display's own report before reading the screen.** `$XDG_RUNTIME_DIR/kdos-view.log`
+  carries one line naming the mode, the CRTC, the connector, the seat state, the cell size and the
+  grid — a desktop that comes up on the wrong output or at the wrong size says so there, where the
+  photograph only shows that it looks wrong.
+- **A grid that is not redrawn looks identical to one that is.** Two shots a minute apart with the
+  clock reading different minutes is the cheapest proof that flushes are reaching the screen.
+- **`pkill -t tty1` selects nothing** — toybox's `pkill` has no terminal predicate, and it fails
+  silently. Find the pid with `ps -eo pid,tty,comm` and kill that.
+- **Restarting the login chain does not free the screen.** The session and its view outlive the
+  login shell by design, and the view holds DRM master — so a new `kdos-con-login` draws its
+  greeter onto a screen it does not own and the photograph shows the old desktop. End `kdos-view`,
+  `kdos-con` and `kdos-con-start` alongside the shell.
+- **`greet` cannot be tested on the live medium by editing `/etc`**: the setting is read at login,
+  and the overlay resets on reboot, so a boot-time test of the greeter needs an installed system.
 
 **The graphical session is started on a VT and never down the serial line**: a compositor launched
 from a serial console gets no seat and dies asking for one. Its entry point from the console desktop

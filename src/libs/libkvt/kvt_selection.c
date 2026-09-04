@@ -385,3 +385,115 @@ int kvt_screen_selection_copy(struct kvt_screen *con, char **out)
 
 	return pos;
 }
+
+/*
+ * ── the pointer over a terminal ──────────────────────────────────────────
+ *
+ * One implementation for both desktops. See kvt.h for why it is here rather
+ * than in either program.
+ */
+
+int kvt_ui_mouse(struct kvt_term *t, KvtUi *ui, const KtuiEvent *ev,
+		 double now, char **copied)
+{
+	struct kvt_screen *sc;
+
+	if (!t || !ui || !ev || ev->type != KT_EVT_MOUSE)
+		return 0;
+
+	sc = kvt_term_screen(t);
+	if (!sc)
+		return 0;
+
+	if (ev->btn == KT_MB_WHEEL_UP || ev->btn == KT_MB_WHEEL_DOWN) {
+		int up = ev->btn == KT_MB_WHEEL_UP;
+
+		/*
+		 * THE WHEEL GOES TO THE CHILD FIRST. A program on the
+		 * alternate screen has its own idea of scrolling and the
+		 * scrollback is empty while it is up, so scrolling the
+		 * scrollback there moves nothing and eats the event.
+		 *
+		 * Shift is the override every terminal keeps: it hands the
+		 * pointer back so text can be taken out of a program that
+		 * captured it.
+		 */
+		if (!(ev->mods & KT_MOD_SHIFT) &&
+		    kvt_term_mouse(t, ev->mx, ev->my,
+				   up ? KVT_MOUSE_BUTTON_WHEEL_UP
+				      : KVT_MOUSE_BUTTON_WHEEL_DOWN,
+				   ev->mods, KVT_MOUSE_EVENT_PRESSED))
+			return 0;
+		kvt_term_scroll(t, up ? -3 : 3);
+		return 0;
+	}
+
+	if (!(ev->mods & KT_MOD_SHIFT) && kvt_term_mouse_mode(t)) {
+		int btn = ev->btn == KT_MB_MIDDLE ? KVT_MOUSE_BUTTON_MIDDLE
+			  : ev->btn == KT_MB_RIGHT ? KVT_MOUSE_BUTTON_RIGHT
+						   : KVT_MOUSE_BUTTON_LEFT;
+		int event = ev->press == KT_MP_PRESS ? KVT_MOUSE_EVENT_PRESSED
+			    : ev->press == KT_MP_RELEASE
+				      ? KVT_MOUSE_EVENT_RELEASED
+				      : KVT_MOUSE_EVENT_MOVED;
+
+		if (kvt_term_mouse(t, ev->mx, ev->my, btn, ev->mods, event))
+			return 0;
+	}
+
+	if (ev->btn != KT_MB_LEFT)
+		return 0;
+
+	if (ev->press == KT_MP_PRESS) {
+		/*
+		 * A second click in the same cell inside the double-click
+		 * window takes the word. Measured in CELLS rather than pixels:
+		 * a cell surface has no pixels, and a person who moved half a
+		 * character did not mean a new selection.
+		 */
+		if (now - ui->click_at < 0.4 && ev->mx == ui->click_x &&
+		    ev->my == ui->click_y) {
+			kvt_screen_selection_word(sc, (unsigned)ev->mx,
+						  (unsigned)ev->my);
+			ui->selecting = 0;
+			ui->click_at = 0;
+			return 0;
+		}
+		ui->click_x = ev->mx;
+		ui->click_y = ev->my;
+		ui->click_at = now;
+
+		kvt_screen_selection_reset(sc);
+		kvt_screen_selection_start(sc, (unsigned)ev->mx,
+					   (unsigned)ev->my);
+		ui->sel_x = ev->mx;
+		ui->sel_y = ev->my;
+		ui->selecting = 1;
+		return 0;
+	}
+
+	if (ev->press == KT_MP_DRAG && ui->selecting) {
+		kvt_screen_selection_target(sc, (unsigned)ev->mx,
+					    (unsigned)ev->my);
+		return 0;
+	}
+
+	if (ev->press == KT_MP_RELEASE && ui->selecting) {
+		ui->selecting = 0;
+		/*
+		 * A press and a release in the same cell is a CLICK, and a
+		 * click selects nothing. Without this every click leaves a
+		 * one-character selection on the primary, which is what
+		 * middle-click then pastes.
+		 */
+		if (ev->mx == ui->sel_x && ev->my == ui->sel_y) {
+			kvt_screen_selection_reset(sc);
+			return 0;
+		}
+		if (copied && kvt_screen_selection_copy(sc, copied) >= 0 &&
+		    *copied)
+			return 1;
+	}
+
+	return 0;
+}

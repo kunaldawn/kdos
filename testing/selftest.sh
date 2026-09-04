@@ -767,6 +767,50 @@ con_golden con-desktop-80x24 --dump 80x24 --term "/bin/echo hello"
 con_golden con-two-132x43 --dump 132x43 --term "/bin/echo first" --term "/bin/echo second"
 
 #
+# EVERY CHORD THE SHIPPED FILE NAMES IS AN ACTION THE SESSION HAS.
+#
+# keys.conf's overlay keeps the default for an action no line names, which is
+# what lets a person rebind one key without restating the rest — and is also
+# what makes a typo silent: `focus-rihgt = ...` rebinds nothing and reports
+# nothing, and the chord goes on doing what it did before. `--keys` prints the
+# table after the overlay, so the action names on the left are the whole set.
+#
+"$OUT/kdos-con" --keys | cut -f1 | sort -u > "$OUT/con-actions.txt"
+sed -e 's/#.*//' -e 's/[[:space:]]*$//' \
+    fs/etc/skel/.config/kdos-con/keys.conf \
+    | grep '=' | sed 's/.*=[[:space:]]*//' | sort -u > "$OUT/con-shipped.txt"
+if comm -13 "$OUT/con-actions.txt" "$OUT/con-shipped.txt" \
+        > "$OUT/con-unknown.txt" && [ ! -s "$OUT/con-unknown.txt" ]; then
+    echo "  keys.conf names only actions the session has"
+else
+    echo "  keys.conf names actions kdos-con does not have:"
+    sed 's/^/    /' "$OUT/con-unknown.txt"
+    exit 1
+fi
+
+#
+# AND EVERY CHORD IS ON THE CARD.
+#
+# `kdos-keys` describes and groups what `kdos-con --keys` prints, and an action
+# its table has no row for returns -1 and is DROPPED. A new chord then works
+# and appears nowhere a person would look for it, which for a keyboard-first
+# desktop is the same as not having it. The table is source rather than
+# something this host can run — the card links Wayland — so the check is that
+# each action name appears in it.
+#
+_nocard=""
+while read -r _act; do
+    grep -q "\"$_act\"" src/desktop/kdos-shell/keys.c || _nocard="$_nocard $_act"
+done < "$OUT/con-actions.txt"
+if [ -z "$_nocard" ]; then
+    echo "  every chord kdos-con binds has a row on the key card"
+else
+    echo "  CHORDS THE KEY CARD WOULD DROP:$_nocard"
+    echo "  add a row to con_section() in src/desktop/kdos-shell/keys.c"
+    exit 1
+fi
+
+#
 # THE SAME DESKTOP, THROUGH A VIEW. Two processes and a real socket: the
 # session composites and holds no display, kdos-view attaches and holds no
 # window state, and what the view prints is what a person would see.
@@ -860,12 +904,16 @@ for _ in $(seq 1 100); do [ -S "$VSOCK/s" ] && break; sleep 0.05; done
 kill $VPID 2>/dev/null || true
 wait $VPID 2>/dev/null || true
 rm -rf "$VSOCK"
-if diff -u testing/goldens/con-view-80x24.txt "$OUT/con-view-80x24.txt" \
+if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
+    cp "$OUT/con-view-80x24.txt" testing/goldens/con-view-80x24.txt
+    echo "  wrote con-view-80x24"
+elif diff -u testing/goldens/con-view-80x24.txt "$OUT/con-view-80x24.txt" \
         > "$OUT/con-view.diff"; then
     echo "  con-view-80x24 (a session and a view, two processes)"
 else
     echo "  con-view-80x24 DIFFERS from its golden:"
     head -20 "$OUT/con-view.diff" | sed 's/^/    /'
+    echo "      KDOS_GOLDEN_UPDATE=1 testing/selftest.sh"
     exit 1
 fi
 
@@ -910,6 +958,27 @@ if [ -z "$_net" ]; then
 else
     echo "  A NETWORK SOCKET APPEARED in the console desktop:"
     echo "$_net" | sed 's/^/    /'
+    exit 1
+fi
+
+#
+# AND NEITHER PUBLISHED PROTOCOL CARRIES A FILE DESCRIPTOR.
+#
+# `kdos con forward` sends the view socket over ssh, and a descriptor passed on
+# it would arrive as a number meaning something on the other machine — so the
+# wire is cells, keys and strings, and nothing that is only valid in one
+# process. The ONE socketpair that does pass descriptors is private and local:
+# kdos-cage hands the session a compositor's, over a pair neither protocol
+# reaches, so the two ends of that pair are the only SCM_RIGHTS allowed.
+#
+_fds=$(grep -rn 'SCM_RIGHTS' src/libs/libkcon src/desktop/kdos-con \
+    src/desktop/kdos-view 2>/dev/null \
+    | grep -v 'kdos-con/embed.c' || true)
+if [ -z "$_fds" ]; then
+    echo "  no SCM_RIGHTS outside the private embed pair"
+else
+    echo "  A DESCRIPTOR IS BEING PASSED on a forwardable socket:"
+    echo "$_fds" | sed 's/^/    /'
     exit 1
 fi
 

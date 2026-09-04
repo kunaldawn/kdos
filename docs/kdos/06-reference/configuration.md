@@ -101,6 +101,28 @@ so an application this image's catalogue does not carry leaves no launcher that 
 
 Written by the panel and the menus when you pin, unpin or reorder.
 
+## `~/.config/kdos/slit.conf`
+
+One gadget per line, three fields:
+
+```
+<interval> <width> <command and its arguments>
+```
+
+`<interval>` is seconds between runs, `<width>` the cells the gadget is given, and the rest is the
+command — split the way a desktop entry is, so no shell is involved. **The first line of its output
+is what is drawn**, clipped to the width. Up to 32 gadgets; blank lines and `#` comments are
+skipped, an interval below one second is raised to one, and a width is clamped to 1-64.
+
+```
+60 8 date +%H:%M
+10 8 kdos-res --line cpu
+```
+
+**Ships absent, and its absence is why `kdos-slit` exits.** A column of empty marks says less than
+no column. The slit's own width is the widest gadget's, and it docks with an **exclusive zone**: a
+maximised window stops short of it rather than covering it.
+
 ## `~/.config/kdos/session-restore`
 
 **Ships absent.** Its existence is the setting: with it, the windows open when the session ended
@@ -231,7 +253,7 @@ file takes the built-in default — a machine with no file at all boots a workin
 | `menu` | `kdos-start` | What `Super+space` starts |
 | `launcher` | `kdos-launcher` | What `Super+d` starts |
 | `lock` | `kdos-lock` | What `Super+l` starts |
-| `saver` | `kdos-saver` | What `idle_saver` starts; no chord starts it |
+| `saver` | `kdos-saver` | What `idle_saver` and `Super+Shift+l` start |
 | `embed` | `yes` | Whether a graphical application becomes a window. `no` gives every one of them a terminal of its own |
 
 **`remote = yes` opens no port.** There is no TCP listener anywhere in this desktop. It permits
@@ -274,19 +296,40 @@ Changing a default in one file changes it in the other.
 | `maximise` | `Super+m` | `next-alt` | `Alt+Tab` |
 | `fullscreen` | `Super+f` | `prev-alt` | `Alt+Shift+Tab` |
 | `minimise` | `Super+n` | `snap-left` … `snap-down` | `Super+`arrow |
+| `restore` | `Super+Shift+n` | `focus-left` … `focus-down` | `Super+Shift+`arrow |
+| `workspace-prev` | `Super+PageUp` | `swap-left` … `swap-down` | `Super+Alt+`arrow |
+| `workspace-next` | `Super+PageDown` | | |
 | `menu` | `Super+space` | `launcher` | `Super+d` |
 | `lock` | `Super+l` | `quit` | `Super+Shift+q` |
+| `saver` | `Super+Shift+l` | `leader` | `Ctrl+a` |
 
 Modifiers are `Super`, `Shift`, `Alt` and `Ctrl`, joined with `+`. An action no line names keeps
 its default, so rebinding one key does not mean restating the rest.
 
-**Workspaces are not in the file.** `Super+1..9` switches and `Super+Shift+1..9` sends the focused
-window; eighteen lines saying one thing is not a configuration format.
+**Workspaces by number are not in the file.** `Super+1..9` switches and `Super+Shift+1..9` sends the
+focused window; eighteen lines saying one thing is not a configuration format. `workspace-prev` and
+`workspace-next` are, because they are two chords rather than eighteen — they step to the next
+workspace that has a window on it, skipping the empty ones, and wrap once.
+
+**`focus-*` moves the focus and `swap-*` moves the window.** A directional focus goes to the
+nearest window that starts past the focused one *and* shares rows or columns with it; nothing
+overlapping means the focus stays where it is, and Alt-Tab is the way to a window the arrows cannot
+see. A swap trades two rectangles, maximise and tile state included, and the focus follows the
+window rather than the place.
+
+**`Super+Shift+`arrow is unbound on the graphical desktop**, which has no directional-focus action.
+Every other family in this table means the same thing on both.
 
 **`Super` is the desktop's own modifier** — a chord without it belongs to whatever program has the
-focus, and the two `Alt+Tab` lines are the exception a lifetime of muscle memory earns. A backend
-that cannot report `Super` leaves those chords unreachable rather than stealing a key: that is a
-view running inside a terminal, where the terminal never saw the modifier.
+focus, and the two `Alt+Tab` lines are the exception a lifetime of muscle memory earns.
+
+**`leader` is the other exception, and it cannot be on `Super`**: it exists for the views where
+`Super` never arrives. A terminal reports it only through the kitty keyboard protocol, and one that
+does not implement it — xterm, most VTEs, and the Linux VT a `--tty` view runs in — would otherwise
+leave every chord above unreachable. The leader followed by a chord's own key runs that chord;
+pressing it twice sends the literal to the focused window, so the key it occupies is not taken
+away. It is one key deep with no timeout, and a second key naming no chord is swallowed rather than
+typed.
 
 Applies at **next start** of the session.
 

@@ -69,7 +69,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-shell` | The panel | [kdos-shell](../04-programs/kdos-shell.md#the-panel) |
 | `kdos-shot` | Screenshots. On the console, cells rather than an image | [The desktop](../02-user-guide/desktop.md) |
 | `kdos-slit` | The dockapp column | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
-| `kdos-view` | A display for a console session: `--kms`, `--tty`, `--dump`, `--cast` | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
+| `kdos-view` | A display for a console session: `--kms`, `--kms-only`, `--tty`, `--dump`, `--cast` | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
 | `kdos-start` | The Start menu | [kdos-shell](../04-programs/kdos-shell.md#kdos-start) |
 | `kdos-status` | The overflow popup | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
@@ -111,7 +111,7 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos cve` | Which pins carry known vulnerabilities, offline |
 | `kdos trash` | The freedesktop trash |
 | `kdos hey` | Ask the compositor about windows, outputs and boxes |
-| `kdos con` | Console sessions: `ls`, `new`, `attach`, `detach`, `kill`, `forward` |
+| `kdos con` | Console sessions: `ls`, `new`, `attach`, `detach`, `kill` (asks the session to end, and it drains), `forward` |
 | `kdos oracle` | An aphorism |
 | `kdos update` | Orchestrate a system update |
 

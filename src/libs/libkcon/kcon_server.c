@@ -27,10 +27,10 @@
 struct KconSurface {
 	KconServer *server;
 	KconConn *conn;
-	unsigned id;
 
 	int hello;		/* the handshake completed */
 	int kind_fixed;		/* the listener decided; the hello cannot */
+	int no_view;		/* reached the surface socket: never a display */
 	int attached;
 	unsigned kind;
 	unsigned role;
@@ -92,7 +92,6 @@ typedef struct {
 struct KconServer {
 	KconListen l[KCON_MAX_LISTEN];
 	int nl;
-	unsigned next_id;
 	unsigned next_slot;
 	KconSurface *s[KCON_MAX_CLIENTS];
 	int n;
@@ -170,7 +169,14 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		 * model; honouring a hello that said "surface" would undo
 		 * it. A single-listener server has nothing to decide and
 		 * takes the claim. */
-		if (!f->kind_fixed)
+		/*
+		 * A claim of VIEW on the surface socket is refused and the
+		 * client stays a surface: that socket admits programs that
+		 * place windows and programs that drive the session, and
+		 * nothing that shows one.
+		 */
+		if (!f->kind_fixed &&
+		    !(f->no_view && claimed == KCON_KIND_VIEW))
 			f->kind = claimed;
 		if (r.err || ver != KCON_VERSION) {
 			/*
@@ -230,6 +236,50 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		}
 		break;
 
+	case KCON_OP_ACTIVATE: {
+		unsigned id = kcon_get_u32(&r);
+
+		/* A SHELL SURFACE ONLY, the rule every management verb keeps:
+		 * a program with a window in the session must not be able to
+		 * raise or close another one. */
+		if (!r.err && f->kind == KCON_KIND_SHELL && s->hooks.activate)
+			s->hooks.activate(f, id, s->user);
+		break;
+	}
+	case KCON_OP_CLOSE_REQUEST: {
+		unsigned id = kcon_get_u32(&r);
+
+		if (!r.err && f->kind == KCON_KIND_SHELL &&
+		    s->hooks.close_request)
+			s->hooks.close_request(f, id, s->user);
+		break;
+	}
+	case KCON_OP_QUIT:
+		/*
+		 * A SHELL SURFACE ONLY, the same rule KCON_OP_DETACH keeps: a
+		 * client with a window in the session has no business ending
+		 * it for the person using it.
+		 */
+		if (f->kind == KCON_KIND_SHELL && s->hooks.quit)
+			s->hooks.quit(f, s->user);
+		break;
+
+	case KCON_OP_PASTE: {
+		const char *text = kcon_get_str(&r);
+
+		/*
+		 * ONLY FROM A DISPLAY, and only text. A surface with a paste
+		 * verb could type into whatever has the focus without the
+		 * person touching a key, which is the one thing a client on
+		 * this socket must never be able to do.
+		 */
+		if (r.err || f->kind != KCON_KIND_VIEW || !*text)
+			return;
+		if (s->hooks.paste)
+			s->hooks.paste(f, text, s->user);
+		break;
+	}
+
 	case KCON_OP_VIEW_SIZE: {
 		int cols = (int)kcon_get_u16(&r);
 		int rows = (int)kcon_get_u16(&r);
@@ -273,10 +323,12 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		(void)kcon_get_str(&r);		/* output, chosen by the display */
 
 		/*
-		 * A SIZE OF ZERO IS A QUESTION, AND ONLY FROM A SAVER. That
-		 * role covers the screen and cannot know how big the screen is,
-		 * so it asks for nothing and the session answers with a
-		 * CONFIGURE, which is what allocates the cells.
+		 * A SIZE OF ZERO IS A QUESTION, AND ONLY WHERE THE SESSION
+		 * OWNS THE ANSWER. A saver covers the screen and a docked panel
+		 * spans its edge; neither can know how big the screen is, so
+		 * they ask for nothing — the panel naming only its thickness —
+		 * and the session answers with a CONFIGURE, which is what
+		 * allocates the cells.
 		 *
 		 * FROM ANY OTHER ROLE IT IS STILL FATAL. Nothing is going to
 		 * tell them a size, so a surface let through would wait for a
@@ -284,8 +336,10 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		 * where refusing the attach says which half is wrong.
 		 */
 		int nosize = cols <= 0 || rows <= 0;
+		int asks = f->role == KDISP_ROLE_SAVER ||
+			   (f->role == KDISP_ROLE_PANEL && f->want_cells > 0);
 
-		if (r.err || (nosize && f->role != KDISP_ROLE_SAVER) ||
+		if (r.err || (nosize && !asks) ||
 		    (!nosize && resize(f, cols, rows) != 0)) {
 			f->gone = 1;
 			return;
@@ -599,7 +653,6 @@ KconServer *kcon_server_new(const char *path)
 		return NULL;
 	}
 
-	s->next_id = 1;
 	return s;
 }
 
@@ -701,13 +754,36 @@ int kcon_server_pump(KconServer *s)
 			}
 
 			f->server = s;
-			f->id = s->next_id++;
 			for (int k = 0; k < KCON_MAX_SPRITE_MAP; k++)
 				f->slotmap[k] = -1;
-			if (s->l[li].kind != KCON_LISTEN_ANY) {
-				f->kind = s->l[li].kind == KCON_LISTEN_VIEW
-					? KCON_KIND_VIEW : KCON_KIND_SURFACE;
+			/*
+			 * THE LISTENER DECIDES WHAT A CLIENT MAY BE, and the
+			 * two sockets do not decide it the same way.
+			 *
+			 * A VIEW listener is absolute: whatever a client
+			 * claims, it is a display. That socket is the one that
+			 * may be forwarded, and the far end must never be able
+			 * to place a window or drive the session.
+			 *
+			 * A SURFACE listener sets the DEFAULT and no more. It
+			 * never leaves the machine, so a program that reached
+			 * it is already this session's own user — and a shell
+			 * surface is exactly that: `kdos con run`, `detach`
+			 * and `kill`, the panel asking for the window list.
+			 * Fixing the kind here made KCON_KIND_SHELL
+			 * unreachable on any session that had a view socket,
+			 * which is every real one, and every shell-only verb
+			 * silently did nothing.
+			 *
+			 * What it must still refuse is a claim of VIEW: a
+			 * client on the surface socket is not a display.
+			 */
+			if (s->l[li].kind == KCON_LISTEN_VIEW) {
+				f->kind = KCON_KIND_VIEW;
 				f->kind_fixed = 1;
+			} else if (s->l[li].kind == KCON_LISTEN_SURFACE) {
+				f->kind = KCON_KIND_SURFACE;
+				f->no_view = 1;
 			}
 			s->s[s->n++] = f;
 		}
@@ -948,6 +1024,111 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 	kcon_buf_free(&b);
 }
 
+/*
+ * TELL EVERY VIEW WHAT WAS COPIED, so a view that is itself a terminal can put
+ * it on the clipboard of the desktop it is running on.
+ *
+ * Every view rather than one: a session may be looked at from two places, and
+ * a copy that reached only the first is a copy that depends on which display
+ * happened to attach first.
+ */
+/*
+ * OUT TO EVERY SHELL SURFACE, and to no other kind.
+ *
+ * One helper because the four messages differ only in their payload, and
+ * because "who is told" is a rule that must be stated once: a plain surface
+ * has no business knowing the window list, and a view is a display and asks
+ * nothing about what it is showing.
+ */
+static void mgmt_send(KconServer *s, uint16_t op, KconBuf *b)
+{
+	if (!s)
+		return;
+	for (int i = 0; i < s->n; i++) {
+		KconSurface *f = s->s[i];
+
+		if (f->kind != KCON_KIND_SHELL)
+			continue;
+		kcon_send(f->conn, op, b);
+	}
+}
+
+void kcon_mgmt_add(KconServer *s, unsigned id, const char *app_id,
+		   const char *title)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u32(&b, id);
+	kcon_put_str(&b, app_id ? app_id : "");
+	kcon_put_str(&b, title ? title : "");
+	mgmt_send(s, KCON_OP_TOPLEVEL_ADD, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_mgmt_state(KconServer *s, unsigned id, unsigned flags, int workspace)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u32(&b, id);
+	kcon_put_u16(&b, (uint16_t)flags);
+	kcon_put_u16(&b, (uint16_t)(workspace < 0 ? 0 : workspace));
+	mgmt_send(s, KCON_OP_TOPLEVEL_STATE, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_mgmt_remove(KconServer *s, unsigned id)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u32(&b, id);
+	mgmt_send(s, KCON_OP_TOPLEVEL_REMOVE, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_mgmt_workspace(KconServer *s, int current, int count,
+			 unsigned occupied)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)(current < 0 ? 0 : current));
+	kcon_put_u16(&b, (uint16_t)(count < 0 ? 0 : count));
+	kcon_put_u32(&b, occupied);
+	mgmt_send(s, KCON_OP_WORKSPACE, &b);
+	kcon_buf_free(&b);
+}
+
+int kcon_surface_fd(const KconSurface *f)
+{
+	return f ? kcon_conn_fd(f->conn) : -1;
+}
+
+void kcon_view_clip(KconServer *s, const char *text)
+{
+	if (!s || !text)
+		return;
+
+	for (int i = 0; i < s->n; i++) {
+		KconSurface *v = s->s[i];
+		KconBuf b = { 0 };
+
+		if (v->kind != KCON_KIND_VIEW)
+			continue;
+		kcon_put_str(&b, text);
+		kcon_send(v->conn, KCON_OP_VIEW_CLIP, &b);
+		kcon_buf_free(&b);
+	}
+}
+
+void kcon_view_bell(KconServer *s)
+{
+	if (!s)
+		return;
+
+	for (int i = 0; i < s->n; i++)
+		if (s->s[i]->kind == KCON_KIND_VIEW)
+			kcon_send(s->s[i]->conn, KCON_OP_BELL, NULL);
+}
+
 void kcon_view_cursor(KconSurface *v, int x, int y)
 {
 	if (!v || v->kind != KCON_KIND_VIEW)
@@ -961,7 +1142,6 @@ void kcon_view_cursor(KconSurface *v, int x, int y)
 	kcon_buf_free(&b);
 }
 
-unsigned kcon_surface_id(const KconSurface *f) { return f ? f->id : 0; }
 unsigned kcon_surface_kind(const KconSurface *f)
 {
 	return f ? f->kind : (unsigned)KCON_KIND_SURFACE;
@@ -972,6 +1152,7 @@ const char *kcon_surface_title(const KconSurface *f) { return f ? f->title : "";
 int kcon_surface_cols(const KconSurface *f) { return f ? f->cols : 0; }
 int kcon_surface_rows(const KconSurface *f) { return f ? f->rows : 0; }
 int kcon_surface_edge(const KconSurface *f) { return f ? f->edge : 0; }
+int kcon_surface_want_cells(const KconSurface *f) { return f ? f->want_cells : 0; }
 int kcon_surface_hidden(const KconSurface *f)
 {
 	return f ? f->hidden : 0;
@@ -979,14 +1160,6 @@ int kcon_surface_hidden(const KconSurface *f)
 
 int kcon_surface_exclusive(const KconSurface *f) { return f ? f->exclusive : 0; }
 const KtuiCell *kcon_surface_cells(const KconSurface *f) { return f ? f->cells : NULL; }
-
-int kcon_surface_take_dirty(KconSurface *f)
-{
-	if (!f || !f->dirty)
-		return 0;
-	f->dirty = 0;
-	return 1;
-}
 
 void kcon_surface_configure(KconSurface *f, int cols, int rows)
 {
@@ -1053,6 +1226,26 @@ void kcon_surface_clip_data(KconSurface *f, const char *text)
 	kcon_put_str(&b, text);
 	kcon_send(f->conn, KCON_OP_CLIP_DATA, &b);
 	kcon_buf_free(&b);
+}
+
+/*
+ * TELL A LOCK SURFACE WHETHER IT HOLDS THE SESSION.
+ *
+ * Flushed rather than queued: the client refuses every keystroke until this
+ * arrives, so a byte sitting in a send buffer is a lock screen that cannot be
+ * answered.
+ */
+void kcon_surface_lock_state(KconSurface *f, unsigned flags)
+{
+	if (!f)
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_u8(&b, (uint8_t)flags);
+	kcon_send(f->conn, KCON_OP_LOCK_STATE, &b);
+	kcon_buf_free(&b);
+	kcon_flush(f->conn);
 }
 
 void kcon_surface_close(KconSurface *f)

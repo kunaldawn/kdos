@@ -25,6 +25,14 @@
  * seatd does, on the guest's behalf, once it binds. Finding one is VT_OPENQRY
  * and taking it is VT_ACTIVATE, and neither needs the terminal itself: the
  * activate is what allocates the console, so the next query steps past it.
+ *
+ * BOTH STILL NEED A DESCRIPTOR ON A CONSOLE DEVICE to carry the ioctl, and
+ * that is what the desktop account's membership of `tty` is for. /dev/tty0 is
+ * 0620 root:tty and /dev/console is 0600 root:root, and a session that has
+ * been backgrounded has no controlling terminal for /dev/tty to resolve to —
+ * so without the group every candidate fails, `vt_alloc()` returns -1, and a
+ * guest that needs a terminal is refused with "no free terminal" on a machine
+ * that has plenty.
  * ---------------------------------
  */
 
@@ -59,9 +67,19 @@ static int console_fd(void)
 
 	fd = -1;
 	for (size_t i = 0; i < sizeof(cand) / sizeof(cand[0]); i++) {
-		int f = open(cand[i], O_RDWR | O_CLOEXEC);
 		struct vt_stat st;
+		int f = open(cand[i], O_RDWR | O_CLOEXEC);
 
+		/*
+		 * WRITE-ONLY IS ENOUGH, and it is the only way in for a
+		 * non-root process. /dev/tty0 is 0620 root:tty, so a member of
+		 * `tty` has WRITE and not read — an O_RDWR open fails for
+		 * exactly the account this desktop runs as. The ioctls below
+		 * carry their answer in the argument and read nothing from the
+		 * descriptor, so a write-only one serves them.
+		 */
+		if (f < 0)
+			f = open(cand[i], O_WRONLY | O_CLOEXEC);
 		if (f < 0)
 			continue;
 		if (ioctl(f, VT_GETSTATE, &st) == 0) {

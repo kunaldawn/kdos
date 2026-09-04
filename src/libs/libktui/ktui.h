@@ -625,6 +625,17 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret,
  * multi-line paste cannot fake an Enter. libkwl calls this when an async
  * clipboard receive completes; the tty backend has no paste channel and
  * simply never calls it. */
+/*
+ * PUT THE TERMINAL'S OWN CURSOR AT A CELL, or hide it with a negative x.
+ *
+ * Only a terminal backend has one to place; a screen this library paints
+ * itself draws its caret as a cell like everything else. It is what lets a
+ * `--tty` view show a person their caret in the cursor their own terminal
+ * draws — and what a screen reader following a terminal reads to know where
+ * the focus is.
+ */
+void ktui_term_caret(int x, int y);
+
 void ktui_paste_push(const char *utf8, size_t len);
 
 /* Take the pending paste instead, for a consumer with no text field to insert

@@ -18,6 +18,7 @@
 #include <libudev.h>
 #include <linux/input-event-codes.h>
 #include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "kcell.h"
 #include "kkms.h"
@@ -169,6 +170,30 @@ static void on_key(struct libinput_event *ev)
 	if (down) {
 		int key = key_of(sym);
 		KtuiEvent e;
+
+		/*
+		 * Ctrl+Alt+F<n> IS A KEYSYM, NOT A CHORD.
+		 *
+		 * xkb resolves it to XF86Switch_VT_<n> before any modifier
+		 * reaches a caller, so a desktop that looked for F<n> plus two
+		 * modifiers would find neither and the switch would silently
+		 * do nothing. It is answered here because this is where the
+		 * keysym is, and taken rather than forwarded because
+		 * `libseat` putting this VT into graphics mode is what stops
+		 * the kernel answering it — without this the tty2 recovery
+		 * console `/etc/inittab` guarantees cannot be reached while
+		 * the desktop holds the screen.
+		 *
+		 * It is deliberately not rebindable and not a session chord:
+		 * a chord that could be rebound away is a machine that can be
+		 * locked out of its own console.
+		 */
+		if (sym >= XKB_KEY_XF86Switch_VT_1 &&
+		    sym <= XKB_KEY_XF86Switch_VT_12) {
+			kkms_switch_vt((int)(sym - XKB_KEY_XF86Switch_VT_1) + 1);
+			xkb_state_update_key(K.state, code, XKB_KEY_DOWN);
+			return;
+		}
 
 		if (key) {
 			memset(&e, 0, sizeof(e));

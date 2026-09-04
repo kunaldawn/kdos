@@ -17,28 +17,11 @@ Only the trash accepts a drop on the desktop — dropping onto a folder would be
 that half-succeeds across filesystems is worse than not offering it. Both directions work between
 a KDOS surface and a boxed application. See [Status](status.md) for what that rests on.
 
-**The console desktop does not come up on its own.** `kdos-con` starts and is healthy — it binds
-`con.sock`, `con.view` and `con.windows` and logs nothing — but no view ever attaches, so the screen
-keeps the last thing the framebuffer console drew and the desktop is invisible. Every `kdos-view`
-run against that socket exits inside a second having written a screen's worth of glyphs to **stdout**
-and nothing to stderr, including the supervised one. `kkms_init()` is not the failure: a run against
-a socket that does not exist prints only `cannot attach`, and the screen is taken before the attach
-is tried. A view started by hand with `--tty` draws the desktop correctly, so the session, the
-protocol and the drawing all work — what does not work is the view keeping the screen it took.
-Reproduce with `testing/vnc-shot.py --no-session`, then `pgrep -c kdos-view`.
-
 **A picture's default handler is a Wayland viewer, on both desktops.** `mimeapps.list` sends every
 `image/*` to `imv`, which needs a compositor, so opening a picture from the console desktop's file
 manager does nothing. `timg` is installed and is a terminal entry, so *Open With* reaches it and a
 launcher row starts it; what is missing is a default that follows the desktop, and one
 `mimeapps.list` for one user cannot express two.
-
-**The key card never reads the console keymap.** `kdos-keys` parses `~/.config/kdos-comp/rc.xml`,
-which is the compositor's file. On a console session the chords come from
-`~/.config/kdos-con/keys.conf`, so a chord rebound there is shown as its default. The two files ship
-the same defaults, which is why this is a gap and not a wrong answer. The **programs** the card
-names are corrected for the desktop it is read on — a row that said `foot` on the console named a
-Wayland client that cannot start there — but the chords themselves still come from the wrong file.
 
 **No multi-seat.** `seat0` only. The session and view split makes a second seat
 reachable — a second session with a second view — and nothing implements it, so

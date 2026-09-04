@@ -55,7 +55,16 @@ enum {
 	CON_ACT_TERM, CON_ACT_CLOSE, CON_ACT_QUIT,
 	CON_ACT_MAX, CON_ACT_FULL, CON_ACT_MIN, CON_ACT_EXEC,
 	CON_ACT_NEXT, CON_ACT_PREV,
-	CON_ACT_SNAP, CON_ACT_WS, CON_ACT_SEND
+	CON_ACT_SNAP, CON_ACT_WS, CON_ACT_SEND, CON_ACT_RESTORE,
+	CON_ACT_FOCUS_DIR, CON_ACT_SWAP_DIR, CON_ACT_WS_STEP,
+
+	/*
+	 * NOT AN ACTION — A PREFIX. The next key is looked up as though Super
+	 * were held, which is the only way the chord table can be reached from
+	 * a view whose terminal never reports Super. Pressing it twice sends
+	 * the literal on to the window, so the key it occupies is not lost.
+	 */
+	CON_ACT_LEADER
 };
 
 /*
@@ -85,8 +94,28 @@ typedef struct Win {
 	KwmRect restore;	/* what an untile returns to */
 	unsigned tiled;
 	int minimised;
+
+	/*
+	 * THE SELECTION IN THIS TERMINAL, for WIN_TERM only. libkvt decides
+	 * what a drag means — the same code `kdos-term` runs — and this is the
+	 * per-window state it keeps for the caller.
+	 */
+	KvtUi ui;
 	int full;
 	int workspace;
+
+	/*
+	 * LAYERS, NOT TOPLEVELS. Both roles are declared in `kdisp.h` with
+	 * these semantics and every surface that asks for one already means
+	 * them: an OVERLAY is a menu, a toast, a tooltip or a candidate
+	 * window, and a BACKGROUND is the desktop's own icon layer.
+	 *
+	 * A surface given neither flag arrives framed, shadowed, listed in the
+	 * taskbar and in the cycle ring — which for a toast is worse than no
+	 * toast at all.
+	 */
+	int overlay;		/* above every window, out of the ring */
+	int background;		/* below every window, out of the ring */
 
 	char title[128];
 	char app_id[64];
@@ -110,6 +139,14 @@ typedef struct Win {
 	int panel;
 	int panel_edge;
 	int exclusive;
+
+	/*
+	 * WHEN THIS WINDOW'S BELL STOPS SHOWING, in con_now_ms() terms, or 0.
+	 * A visible bell is a deadline rather than a countdown because the
+	 * frame loop is the only clock: a counter decremented per frame stops
+	 * being milliseconds the moment a frame takes longer than one.
+	 */
+	unsigned long long bell_until;
 } Win;
 
 typedef struct {
@@ -160,7 +197,23 @@ void win_resized(Win *w);
 void win_maximise(Win *w);
 void win_fullscreen(Win *w);
 void win_minimise(Win *w);
+void win_restore(Win *w);
+Win *win_last_minimised(void);
 void win_send(Win *w, int ws);
+void win_workspace(int ws);
+/* The session's monotonic clock, in milliseconds. */
+unsigned long long con_now_ms(void);
+/*
+ * A TERMINAL RANG. The window is marked for the flash and every attached view
+ * is told, because the audible half belongs to whichever display the person is
+ * sitting at and the visible half belongs to whoever owns the cells.
+ */
+void con_bell(Win *w);
+/* The rectangle a tiled state asks for, maximise included. See windows.c. */
+KwmRect win_tile_rect(unsigned tiled);
+Win *win_dir(unsigned dir);
+void win_swap(Win *a, Win *b);
+void win_workspace_step(int reverse);
 void win_cycle(int dir);
 void win_draw_all(void);
 void win_gc(void);
@@ -199,13 +252,74 @@ void vt_close_all(void);
 
 /* term.c */
 Win *term_open(const char *const argv[]);
+void term_mouse(Win *w, const KtuiEvent *ev);
+void term_paste(Win *w, int primary);
 void term_pump_all(void);
 int term_key(Win *w, const KtuiEvent *ev);
 
 /* panel.c */
+/*
+ * WHAT A CLICK ON THE PANEL ROW LANDED ON. The row is painted by the session
+ * and is not a window, so `win_at()` cannot answer for it and the spans are
+ * recorded as each element is drawn rather than re-derived afterwards.
+ */
+enum {
+	PANEL_HIT_NONE = 0,
+	PANEL_HIT_START,	/* arg unused                              */
+	PANEL_HIT_WIN,		/* arg is the window id                    */
+	PANEL_HIT_CLOCK,	/* arg unused                              */
+	PANEL_HIT_WS		/* arg is the workspace index              */
+};
+
+#define PANEL_HITS 72
+
+typedef struct {
+	int x0, x1;
+	int kind, arg;
+} PanelHit;
+
+/*
+ * THE THREE BUTTONS ON A WINDOW FRAME, and where each one was drawn.
+ *
+ * Recorded as the frame is painted rather than re-derived from the window's
+ * rectangle, which is the rule every hit map in this tree follows: a title is
+ * truncated to what fits and a frame is clipped to the work area, so a second
+ * calculation is a second thing to get wrong.
+ */
+enum {
+	WIN_BTN_NONE = 0,
+	WIN_BTN_MIN,
+	WIN_BTN_MAX,
+	WIN_BTN_CLOSE
+};
+
+int win_button_at(int x, int y, int *id);
+
+/*
+ * THE SELECTION, held by the session because nothing else can hold it: a
+ * client that owned its own bytes would take them with it when it exited,
+ * which is not what a person means by copying.
+ */
+void clip_offer(KconSurface *f, const char *text, size_t len, int primary,
+		void *user);
+void clip_request(KconSurface *f, int primary, void *user);
+void clip_put(const char *text, size_t len, int primary);
+const char *clip_get(int primary, size_t *len);
+void clip_free(void);
+
+/*
+ * THE WINDOW LIST, out to the shell. Published by comparing a snapshot against
+ * the last one rather than by a call at every place window state changes:
+ * a diff has one place to be wrong, and it cannot miss a path that did not
+ * exist when it was written.
+ */
+void mgmt_publish(int force);
+void mgmt_resend(void);
+
 void panel_draw(void);
 int panel_rows(void);
 int panel_have_shell(void);
+int panel_hit(int x, int y, int *arg);
 
 /* sessions.c */
 int con_rundir(char *out, size_t cap);
@@ -219,6 +333,7 @@ int con_login(const char *tty);
 
 /* keys.c */
 int keys_action(int key, int mods, int *arg);
+void keys_print(void);
 
 /* main.c */
 void con_quit(void);

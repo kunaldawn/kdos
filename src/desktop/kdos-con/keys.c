@@ -38,9 +38,17 @@ static Bind binds[] = {
 	{ "maximise",	CON_ACT_MAX,	 0, 'm',	KT_MOD_SUPER },
 	{ "fullscreen",	CON_ACT_FULL,	 0, 'f',	KT_MOD_SUPER },
 	{ "minimise",	CON_ACT_MIN,	 0, 'n',	KT_MOD_SUPER },
+	/* The way back. A minimise with no restore is a one-way door, and the
+	 * shifted form of the chord that closed it is where a hand looks. */
+	{ "restore",	CON_ACT_RESTORE, 0, 'n',	KT_MOD_SUPER | KT_MOD_SHIFT },
 	{ "menu",	CON_ACT_EXEC,	 CON_CMD_MENU,	  ' ', KT_MOD_SUPER },
 	{ "launcher",	CON_ACT_EXEC,	 CON_CMD_LAUNCHER, 'd', KT_MOD_SUPER },
 	{ "lock",	CON_ACT_EXEC,	 CON_CMD_LOCK,	  'l', KT_MOD_SUPER },
+	/* Blanking without locking, on the shifted form of the chord that
+	 * locks: the idle timer is otherwise the only thing that can draw the
+	 * saver, so a person leaving the machine has no way to ask. */
+	{ "saver",	CON_ACT_EXEC,	 CON_CMD_SAVER,	  'l',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
 	{ "next",	CON_ACT_NEXT,	 0, KT_K_TAB,	KT_MOD_SUPER },
 	{ "prev",	CON_ACT_PREV,	 0, KT_K_BTAB,	KT_MOD_SUPER | KT_MOD_SHIFT },
 	{ "next-alt",	CON_ACT_NEXT,	 0, KT_K_TAB,	KT_MOD_ALT },
@@ -49,6 +57,50 @@ static Bind binds[] = {
 	{ "snap-right",	CON_ACT_SNAP,	 KWM_EDGE_RIGHT,  KT_K_RIGHT, KT_MOD_SUPER },
 	{ "snap-up",	CON_ACT_SNAP,	 KWM_EDGE_TOP,	  KT_K_UP,    KT_MOD_SUPER },
 	{ "snap-down",	CON_ACT_SNAP,	 KWM_EDGE_BOTTOM, KT_K_DOWN,  KT_MOD_SUPER },
+
+	/*
+	 * THE ARROW FAMILIES ARE SHARED WITH `rc.xml` AND EACH MEANS ONE
+	 * THING. Super+arrow snaps on both desktops, Super+Alt+arrow moves the
+	 * focused window — MoveToEdge there and a swap with the neighbour here
+	 * — and Super+Ctrl+arrow grows a window on the compositor, so nothing
+	 * here may take it.
+	 *
+	 * SUPER+SHIFT+ARROW IS UNBOUND ON THE COMPOSITOR because it has no
+	 * directional-focus action at all. An unbound chord is the right
+	 * answer there: pressing it does nothing rather than something else.
+	 */
+	{ "focus-left",	CON_ACT_FOCUS_DIR, KWM_EDGE_LEFT,   KT_K_LEFT,
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "focus-right", CON_ACT_FOCUS_DIR, KWM_EDGE_RIGHT, KT_K_RIGHT,
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "focus-up",	CON_ACT_FOCUS_DIR, KWM_EDGE_TOP,    KT_K_UP,
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "focus-down",	CON_ACT_FOCUS_DIR, KWM_EDGE_BOTTOM, KT_K_DOWN,
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "swap-left",	CON_ACT_SWAP_DIR, KWM_EDGE_LEFT,    KT_K_LEFT,
+	  KT_MOD_SUPER | KT_MOD_ALT },
+	{ "swap-right",	CON_ACT_SWAP_DIR, KWM_EDGE_RIGHT,   KT_K_RIGHT,
+	  KT_MOD_SUPER | KT_MOD_ALT },
+	{ "swap-up",	CON_ACT_SWAP_DIR, KWM_EDGE_TOP,	    KT_K_UP,
+	  KT_MOD_SUPER | KT_MOD_ALT },
+	{ "swap-down",	CON_ACT_SWAP_DIR, KWM_EDGE_BOTTOM,  KT_K_DOWN,
+	  KT_MOD_SUPER | KT_MOD_ALT },
+
+	/* Past the empty ones. Super+1..9 reaches a workspace by number and
+	 * these reach the next one somebody is using. */
+	{ "workspace-prev", CON_ACT_WS_STEP, 1, KT_K_PGUP, KT_MOD_SUPER },
+	{ "workspace-next", CON_ACT_WS_STEP, 0, KT_K_PGDN, KT_MOD_SUPER },
+
+	/*
+	 * THE ONE CHORD THAT IS NOT ON SUPER, and it cannot be: it exists for
+	 * the views where Super never arrives. A terminal that does not
+	 * implement the kitty keyboard protocol — xterm, most VTEs, and the
+	 * Linux VT a `--tty` view on tty1 runs in — reports no Super at all,
+	 * which leaves every chord above unreachable. Ctrl+A is the prefix a
+	 * lifetime of `screen` has taught; press it twice to send the literal
+	 * to the window that has the focus.
+	 */
+	{ "leader",	CON_ACT_LEADER,	 0, 'a',	KT_MOD_CTRL },
 };
 
 #define NBINDS ((int)(sizeof(binds) / sizeof(binds[0])))
@@ -217,6 +269,74 @@ static int digit_of(int key, int *shifted)
  * same thing, and a user who rebinds Super to something else wants all of them
  * moved together, which a table cannot express and this can.
  */
+/*
+ * A CHORD AS A PERSON READS IT — the inverse of chord_parse, and the reason
+ * the key card can be right.
+ *
+ * The card is a different program and must not carry a second copy of this
+ * table: a copy is a copy that goes stale, and a card that names a chord the
+ * session does not bind is worse than no card. So the table that binds the
+ * chords is the table that prints them.
+ */
+static void chord_name(int key, int mods, char *out, size_t n)
+{
+	static const struct { int k; const char *n; } named[] = {
+		{ KT_K_ENTER, "Return" }, { ' ', "Space" },
+		{ KT_K_TAB, "Tab" }, { KT_K_BTAB, "Tab" },
+		{ KT_K_ESC, "Escape" },
+		{ KT_K_LEFT, "Left" }, { KT_K_RIGHT, "Right" },
+		{ KT_K_UP, "Up" }, { KT_K_DOWN, "Down" },
+		{ KT_K_HOME, "Home" }, { KT_K_END, "End" },
+		{ KT_K_PGUP, "PageUp" }, { KT_K_PGDN, "PageDown" },
+		{ KT_K_INS, "Insert" }, { KT_K_DEL, "Delete" },
+		{ KT_K_F1, "F1" }, { KT_K_F2, "F2" }, { KT_K_F3, "F3" },
+		{ KT_K_F4, "F4" }, { KT_K_F5, "F5" }, { KT_K_F6, "F6" },
+		{ KT_K_F7, "F7" }, { KT_K_F8, "F8" }, { KT_K_F9, "F9" },
+		{ KT_K_F10, "F10" }, { KT_K_F11, "F11" }, { KT_K_F12, "F12" },
+	};
+	const char *kn = NULL;
+	char one[2] = { 0, 0 };
+	size_t o = 0;
+
+	out[0] = '\0';
+	if (mods & KT_MOD_SUPER)
+		o += (size_t)snprintf(out + o, n - o, "Super+");
+	if (mods & KT_MOD_CTRL)
+		o += (size_t)snprintf(out + o, n - o, "Ctrl+");
+	if (mods & KT_MOD_ALT)
+		o += (size_t)snprintf(out + o, n - o, "Alt+");
+	/* Back-tab carries Shift in the key itself; naming it twice would
+	 * print Super+Shift+Shift+Tab. */
+	if ((mods & KT_MOD_SHIFT) || key == KT_K_BTAB)
+		o += (size_t)snprintf(out + o, n - o, "Shift+");
+
+	for (size_t i = 0; i < sizeof(named) / sizeof(named[0]); i++)
+		if (named[i].k == key) {
+			kn = named[i].n;
+			break;
+		}
+	if (!kn && key > 0x20 && key < 0x7f) {
+		one[0] = (char)key;
+		kn = one;
+	}
+	snprintf(out + o, n - o, "%s", kn ? kn : "?");
+}
+
+/*
+ * `kdos-con --keys` — the bindings, after the keys.conf overlay, one per line
+ * as `action<TAB>chord`. It is what the key card reads on this desktop.
+ */
+void keys_print(void)
+{
+	char chord[64];
+
+	keys_load();
+	for (int i = 0; i < NBINDS; i++) {
+		chord_name(binds[i].key, binds[i].mods, chord, sizeof(chord));
+		printf("%s\t%s\n", binds[i].name, chord);
+	}
+}
+
 int keys_action(int key, int mods, int *arg)
 {
 	keys_load();

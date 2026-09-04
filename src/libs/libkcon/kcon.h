@@ -39,8 +39,14 @@
  * The version on the wire. A mismatch is refused at hello with BOTH numbers in
  * the message, because "protocol error" tells the person nothing about which
  * half to rebuild.
+ *
+ * IT IS BUMPED BY ANY CHANGE TO THE ENUM BELOW, not only by a change to a
+ * payload. The opcodes are positions, so an entry inserted anywhere but the
+ * end renumbers every one after it — and a peer built before the insertion
+ * would not fail, which is the dangerous outcome: it would act on the wrong
+ * verb.
  */
-#define KCON_VERSION 3
+#define KCON_VERSION 5
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -93,6 +99,19 @@ enum {
 	KCON_OP_DETACH,
 
 	/*
+	 * END THE SESSION. From a SHELL surface only, the same rule
+	 * KCON_OP_DETACH keeps.
+	 *
+	 * A QUIT IS A MESSAGE, NOT A MISSING SOCKET. Unlinking the two socket
+	 * files leaves the serve loop running on listeners it still holds, so
+	 * every attached view keeps its display, the supervisor keeps waiting,
+	 * and the session is unreachable and alive. There is no pid in a
+	 * socket path either, and looking one up by name would end whichever
+	 * process happened to match.
+	 */
+	KCON_OP_QUIT,
+
+	/*
 	 * THE PASSWORD WAS ACCEPTED. The one message that lifts a lock, and it
 	 * is separate from KCON_OP_CLOSE on purpose: closing is what a client
 	 * does when it exits for any reason at all, and a lock that lifted on
@@ -131,11 +150,60 @@ enum {
 	KCON_OP_DRAG_MOTION,
 	KCON_OP_DRAG_LEAVE,
 	KCON_OP_DRAG_DROP,
+	/*
+	 * THE WINDOW LIST, to a SHELL surface only.
+	 *
+	 * This is the channel that carries on the console what
+	 * `wlr-foreign-toplevel-management` and `ext-workspace-v1` carry on
+	 * Wayland: a panel cannot draw a taskbar, and nothing can raise or
+	 * close another program's window, without it.
+	 *
+	 * A plain surface is not told. A program with a window in the session
+	 * has no business knowing what else is open, and the two-socket split
+	 * means a forwarded display cannot ask either.
+	 *
+	 * ADD carries the id, the app id and the title; STATE the id, a flag
+	 * set and the workspace; REMOVE the id alone. STATE rather than a
+	 * fresh ADD because a title that changes is not a window that closed
+	 * and reopened, and a taskbar that redrew its whole row on every
+	 * keystroke in a terminal would flicker on every keystroke.
+	 */
 	KCON_OP_TOPLEVEL_ADD,
 	KCON_OP_TOPLEVEL_STATE,
 	KCON_OP_TOPLEVEL_REMOVE,
 	KCON_OP_WORKSPACE,
 	KCON_OP_CURSOR,		/* where the caret is, for a view          */
+
+	/*
+	 * PUT THIS ON THE HOST TERMINAL'S CLIPBOARD, for a view that is one.
+	 *
+	 * A view inside `foot`, or one at the far end of `ssh`, is a window on
+	 * somebody's own desktop — and a copy inside this session that did not
+	 * reach that desktop's clipboard is a copy they cannot paste into
+	 * their editor. The view writes OSC 52; the session encodes nothing.
+	 *
+	 * It buys nothing on `tty1`: `ktui_clip_copy()` is a deliberate no-op
+	 * on a Linux console, which has no clipboard to write to. There the
+	 * session's own selection is the whole answer.
+	 */
+	KCON_OP_VIEW_CLIP,
+
+	/*
+	 * WHETHER THE SESSION IS LOCKED, told to the lock surface itself.
+	 *
+	 * A lock client must not accept a keystroke before the session has
+	 * confirmed the lock: until then the desktop is still on screen and
+	 * still taking input, and a password typed into that is a password
+	 * typed into whatever has the focus. The client cannot know on its
+	 * own — attaching is a request, and the session is what grants it.
+	 *
+	 * One byte of flags: KCON_LOCK_ENGAGED means the session is locked by
+	 * this surface, KCON_LOCK_FINISHED that it will not be — the session
+	 * was already locked by another client. The two are separate because
+	 * a client that is refused must exit non-zero rather than sit on a
+	 * screen it does not own.
+	 */
+	KCON_OP_LOCK_STATE,
 
 	/*
 	 * POWER THE SCREEN DOWN. Sent to a view, because the device belongs to
@@ -154,6 +222,27 @@ enum {
 	KCON_OP_SPRITE_RESEND,
 
 	KCON_OP_BLANK,
+
+	/*
+	 * A TERMINAL RANG. It carries nothing: what a bell means is the
+	 * display's to decide, and the two displays decide differently — a
+	 * view in somebody's terminal writes BEL and lets that terminal do
+	 * whatever it is configured to do, and a view on a screen has no
+	 * sound to make. The VISIBLE half is the session's, because inverting
+	 * a window means owning its cells.
+	 */
+	KCON_OP_BELL,
+
+	/*
+	 * A VIEW WAS HANDED TEXT. A view in somebody's terminal is the only
+	 * thing that can be: the host terminal owns that machine's clipboard
+	 * and reports a paste in brackets, and this desktop never sees the
+	 * menu it came from. The session decides where it goes, which is the
+	 * focused window and not the view — a display holds no window state,
+	 * so it cannot know what it would be pasting into.
+	 */
+	KCON_OP_PASTE,
+
 	KCON_OP_BYE,		/* with a reason, so a log says why        */
 
 	KCON_OP_N
@@ -363,6 +452,14 @@ int kcon_server_listen(KconServer *s, const char *path, int kind);
 int kcon_server_unlisten(KconServer *s, const char *path);
 int kcon_server_nfds(const KconServer *s);
 int kcon_server_fd_at(const KconServer *s, int i);
+
+/*
+ * A CLIENT'S OWN DESCRIPTOR, so a caller's poll can wake on a commit rather
+ * than on its next tick. Without it a session polls its listeners only and a
+ * window's redraw waits for the timeout — which is a window that updates at
+ * the tick rate however fast the program inside it is writing.
+ */
+int kcon_surface_fd(const KconSurface *f);
 void kcon_server_free(KconServer *s);
 int kcon_server_fd(const KconServer *s);
 
@@ -377,7 +474,6 @@ int kcon_server_pump(KconServer *s);
 int kcon_server_count(const KconServer *s);
 KconSurface *kcon_server_at(KconServer *s, int i);
 
-unsigned kcon_surface_id(const KconSurface *f);
 /*
  * KCON_KIND_*. A VIEW IS NOT A WINDOW, and it lives in the same client list —
  * so anything walking that list to find windows must ask. A session that
@@ -390,6 +486,13 @@ const char *kcon_surface_title(const KconSurface *f);
 int kcon_surface_cols(const KconSurface *f);
 int kcon_surface_rows(const KconSurface *f);
 int kcon_surface_edge(const KconSurface *f);
+/*
+ * A PANEL'S THICKNESS ACROSS ITS EDGE, in cells, and zero from anything else.
+ * It is the whole size a docked surface asks for: the extent along the edge is
+ * the screen's, which the client cannot know, so the session answers with a
+ * configure. A surface that named a thickness attaches with no size.
+ */
+int kcon_surface_want_cells(const KconSurface *f);
 int kcon_surface_exclusive(const KconSurface *f);
 /* True while the surface says it has nothing to show. A display draws it
  * nowhere and lists it nowhere; it is still a client and still attached. */
@@ -397,16 +500,22 @@ int kcon_surface_hidden(const KconSurface *f);
 /* The surface's own grid, cols by rows. Borrowed, and valid until the next
  * pump — a configure reallocates it. */
 const KtuiCell *kcon_surface_cells(const KconSurface *f);
-/* True once per change, and clears. */
-int kcon_surface_take_dirty(KconSurface *f);
 
 void kcon_surface_configure(KconSurface *f, int cols, int rows);
 void kcon_surface_key(KconSurface *f, int key, int mods);
 void kcon_surface_ptr(KconSurface *f, int x, int y, int btn, int press);
+/*
+ * A DROP LANDED ON THIS SURFACE. The client receives it already; what has no
+ * caller is this, because nothing on the console starts a drag yet. It stays
+ * because the receiving half is real and the two must be written together —
+ * a wire with one end is a wire nobody can test.
+ */
 void kcon_surface_drop(KconSurface *f, int x, int y, const char *text);
 void kcon_surface_clip_data(KconSurface *f, const char *text);
 /* Ask the surface to go away. It closes itself; a display that killed the
  * connection instead would lose whatever the program wanted to say first. */
+void kcon_surface_lock_state(KconSurface *f, unsigned flags);
+void kcon_view_clip(KconServer *s, const char *text);
 void kcon_surface_close(KconSurface *f);
 
 /* ── views ───────────────────────────────────────────────────────────────
@@ -439,6 +548,12 @@ void kcon_view_cursor(KconSurface *v, int x, int y);
 
 /* Ask a view to power its screen down (1) or back up (0). */
 void kcon_view_blank(KconSurface *v, int on);
+
+/*
+ * Ring every attached view. A bell is not addressed to one display: the person
+ * is sitting at whichever of them they are sitting at.
+ */
+void kcon_view_bell(KconServer *s);
 
 /*
  * Ask every surface to send its pictures again. What a display does when one
@@ -502,12 +617,86 @@ typedef struct {
 	 */
 	int (*run)(KconSurface *f, const char *const argv[], const char *title,
 		   unsigned flags, void *user);
+
+	/*
+	 * END THE SESSION. The server does not decide this: it holds the
+	 * listeners and the surfaces, and what a quit means — draining, saying
+	 * goodbye, leaving the run directory clean — belongs to whoever runs
+	 * the loop.
+	 */
+	void (*quit)(KconSurface *f, void *user);
+
+	/*
+	 * A SHELL ASKED FOR A WINDOW. Raising and closing are the session's to
+	 * do — it owns the stack and the lifetime — so these carry the request
+	 * rather than performing it.
+	 */
+	void (*activate)(KconSurface *f, unsigned id, void *user);
+	void (*close_request)(KconSurface *f, unsigned id, void *user);
+
+	/*
+	 * TEXT ARRIVED AT A DISPLAY. `text` is borrowed and NUL-terminated;
+	 * where it lands is the session's, because only the session knows
+	 * which window has the focus.
+	 */
+	void (*paste)(KconSurface *v, const char *text, void *user);
 } KconServerHooks;
 
 void kcon_server_hooks(KconServer *s, const KconServerHooks *h, void *user);
 
+enum {
+	KCON_LOCK_ENGAGED = 1u << 0,
+	KCON_LOCK_FINISHED = 1u << 1,
+};
+
+/* What a toplevel is doing, carried by KCON_OP_TOPLEVEL_STATE. */
+enum {
+	KCON_TL_FOCUSED = 1u << 0,
+	KCON_TL_MINIMISED = 1u << 1,
+	KCON_TL_MAXIMISED = 1u << 2,
+	KCON_TL_FULLSCREEN = 1u << 3,
+};
+
+/*
+ * The window list, out to every shell surface. Sent by the session when its
+ * own state changes; a shell that has just attached is sent the whole list.
+ */
+void kcon_mgmt_add(KconServer *s, unsigned id, const char *app_id,
+		   const char *title);
+void kcon_mgmt_state(KconServer *s, unsigned id, unsigned flags,
+		     int workspace);
+void kcon_mgmt_remove(KconServer *s, unsigned id);
+void kcon_mgmt_workspace(KconServer *s, int current, int count,
+			 unsigned occupied);
+
+/*
+ * The client half: what a panel has been told, and what it can ask for. The
+ * list is the library's, so every consumer sees the same one.
+ */
+typedef struct {
+	unsigned id;
+	unsigned flags;
+	int workspace;
+	char app_id[64];
+	char title[128];
+} KconToplevel;
+
+int kcon_toplevel_count(void);
+const KconToplevel *kcon_toplevel_at(int i);
+int kcon_workspace_current(void);
+int kcon_workspace_count(void);
+unsigned kcon_workspace_occupied(void);
+
+/* Raise it, or ask it to close. Both are requests: the session decides. */
+void kcon_toplevel_activate(unsigned id);
+void kcon_toplevel_close(unsigned id);
+
 /* Ask a session to release every view. Connects, asks and closes. */
 int kcon_detach_all(const char *sock);
+
+/* Ask a session to end. Connects, asks and closes; the session drains its own
+ * clients. Returns -1 when nothing is listening on `sock`. */
+int kcon_quit_session(const char *sock);
 
 /*
  * Ask a session to run `argv` as a graphical application, and wait for the

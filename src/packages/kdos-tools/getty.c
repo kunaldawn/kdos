@@ -149,6 +149,53 @@ static int run(const char *const *argv, char *out, size_t outcap)
 	return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
 }
 
+/*
+ * THE ACCOUNT `greet = no` LOGS IN, from /etc/kdos/con.conf.
+ *
+ * Parsed here rather than linked: this binary runs before anything else on
+ * tty1 and stays thin, and the key is one word after an equals sign. The
+ * default matches the shipped file, so a missing or unreadable file gives the
+ * same answer the shipped one would.
+ */
+static const char *autologin_user(void)
+{
+	static char name[64];
+	FILE *f = fopen("/etc/kdos/con.conf", "r");
+	char line[256];
+
+	if (!f)
+		return "kdos";
+
+	while (fgets(line, sizeof(line), f)) {
+		char *p = line;
+		char *v;
+
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (*p == '#' || strncmp(p, "autologin", 9))
+			continue;
+		p += 9;
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (*p != '=')
+			continue;
+		v = p + 1;
+		while (*v == ' ' || *v == '\t')
+			v++;
+		for (p = v; *p && !isspace((unsigned char)*p); p++)
+			;
+		*p = '\0';
+		if (*v) {
+			snprintf(name, sizeof(name), "%s", v);
+			fclose(f);
+			return name;
+		}
+	}
+
+	fclose(f);
+	return "kdos";
+}
+
 int getty_main(int argc, char **argv)
 {
 	if (argc < 3) {
@@ -290,11 +337,18 @@ int getty_main(int argc, char **argv)
 	 * would otherwise leave init respawning a failing exec forever and no
 	 * way to log in at all. The fallback is the plain autologin getty,
 	 * which needs nothing but util-linux.
+	 *
+	 * IT LOGS IN THE ACCOUNT con.conf NAMES, not a hardcoded one. The
+	 * desktop's account is named in one place and an installer that
+	 * renames it rewrites that place; a second copy of the name here logs
+	 * in a user the installed system does not have, leaving the machine
+	 * reachable only from tty2 — which is what the configuration file's
+	 * own comment warns about.
 	 */
 	fprintf(stderr, "kdos-getty: cannot exec %s: %s — falling back\n",
 		argv[2], strerror(errno));
-	execl("/sbin/agetty", "agetty", "--autologin", "kdos", "--noclear",
-	      tty, "38400", "linux", (char *)NULL);
+	execl("/sbin/agetty", "agetty", "--autologin", autologin_user(),
+	      "--noclear", tty, "38400", "linux", (char *)NULL);
 	fprintf(stderr, "kdos-getty: no agetty either: %s\n", strerror(errno));
 	return 127;
 }

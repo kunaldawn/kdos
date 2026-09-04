@@ -2,7 +2,7 @@ root:x:0:
 bin:x:1:
 sys:x:2:
 kmem:x:3:
-tty:x:5:
+tty:x:5:kdos
 tape:x:6:
 daemon:x:7:
 floppy:x:8:

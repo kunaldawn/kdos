@@ -275,6 +275,11 @@ purpose is to hold no pixels.
 So the rule is stated as a boundary rather than as a habit: **a descriptor may cross a channel with
 exactly one peer that this process forked.** Anything a stranger can connect to carries bytes.
 
+**`testing/selftest.sh` holds the boundary.** It greps `libkcon`, `kdos-con` and `kdos-view` for
+`SCM_RIGHTS` and allows exactly one file — the session's end of that private pair. A descriptor
+added to either published protocol is a broken build rather than a property somebody has to
+remember, which is the only form a rule like this survives in.
+
 ## What is not protected
 
 Stated plainly, because a reader who assumes otherwise is worse off than one who knows.

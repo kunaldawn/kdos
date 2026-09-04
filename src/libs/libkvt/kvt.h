@@ -628,6 +628,28 @@ void kvt_vte_ref(struct kvt_vte *vte);
 void kvt_vte_unref(struct kvt_vte *vte);
 
 void kvt_vte_set_osc_cb(struct kvt_vte *vte, kvt_vte_osc_cb osc_cb, void *osc_data);
+
+/*
+ * A CHILD PUT SOMETHING ON THE CLIPBOARD, through OSC 52. `text` is the
+ * decoded bytes and is borrowed. `primary` says which selection.
+ *
+ * THE READ DIRECTION IS NOT HERE. `52;c;?` asks a terminal to hand the
+ * clipboard back to the program running inside it, which is the one direction
+ * that has to be opted into: a program that can read the clipboard can read
+ * whatever was last copied anywhere on the desktop. It is refused in the state
+ * machine and there is no callback to enable it by mistake.
+ */
+typedef void (*kvt_vte_clip_cb)(struct kvt_vte *vte, const char *text,
+				size_t len, int primary, void *data);
+
+void kvt_vte_set_clip_cb(struct kvt_vte *vte, kvt_vte_clip_cb cb, void *data);
+void kvt_term_clip_cb(struct kvt_term *t, kvt_vte_clip_cb cb, void *user);
+/*
+ * BEL, for a consumer that can show one. The state machine calls it and
+ * decides nothing: what a bell looks like is a window's question, and a
+ * terminal with no callback set swallows it exactly as it did before.
+ */
+void kvt_term_bell_cb(struct kvt_term *t, kvt_vte_bell_cb cb, void *user);
 /* The same, for a terminal that owns its state machine (kvt_term.c). */
 void kvt_term_osc_cb(struct kvt_term *t, kvt_vte_osc_cb cb, void *user);
 
@@ -747,5 +769,36 @@ void kvt_vte_paste(struct kvt_vte *vte, const char *data);
 #ifdef __cplusplus
 }
 #endif
+
+/*
+ * THE POINTER OVER A TERMINAL, and the selection it makes.
+ *
+ * IT LIVES HERE BECAUSE TWO PROGRAMS NEED IT. `kdos-term` is a window on the
+ * graphical desktop and `kdos-con` runs terminals of its own inside the
+ * session, and both must decide the same things: when the wheel belongs to the
+ * child rather than to the scrollback, when a drag is a selection rather than
+ * a mouse report, and that a press and a release in one cell is a click and
+ * selects nothing. Written twice, the two would drift, and the difference
+ * would be a terminal that behaves differently depending on which desktop it
+ * is on.
+ *
+ * `KvtUi` is the caller's — one per terminal, zeroed once. Nothing in libkvt
+ * keeps it, so a program with many terminals keeps many.
+ */
+typedef struct {
+	double click_at;
+	int click_x, click_y;
+	int sel_x, sel_y;
+	int selecting;
+} KvtUi;
+
+/*
+ * Returns 1 when a selection was completed, and then `*copied` is a
+ * malloc'd string the caller owns and must free. 0 otherwise, `*copied`
+ * untouched. `now` is a monotonic seconds value — passed in rather than read
+ * here so a test can drive a double click without waiting for one.
+ */
+int kvt_ui_mouse(struct kvt_term *t, KvtUi *ui, const KtuiEvent *ev,
+		 double now, char **copied);
 
 #endif /* KVT_KVT_H */

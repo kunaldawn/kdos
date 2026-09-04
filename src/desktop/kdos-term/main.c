@@ -49,7 +49,9 @@ const KDispImpl *const kdos_disp[] = { &kcon_impl, &kwl_impl };
 const int kdos_disp_n = 2;
 #endif
 
-Term T = { .sel_x = -1, .sel_y = -1 };
+/* Zeroed: `selecting` is what says whether a drag is in progress, so the
+ * sentinel the cell coordinates used to carry is not needed. */
+Term T;
 
 static volatile sig_atomic_t g_reload;
 static char g_title[128] = "Terminal";
@@ -117,6 +119,19 @@ static void on_hup(int sig)
 /* OSC 0 and OSC 2, which is how a program names its own window. Only the
  * undecorated frame can show it: an xdg-toplevel's title was set at
  * initialisation and libkdisp has no path to change it. */
+/*
+ * A CHILD PUT SOMETHING ON THE CLIPBOARD, through OSC 52. It goes wherever
+ * this program's display server puts a selection — the compositor's data
+ * device under Wayland, the session's own buffer on the console.
+ */
+static void on_clip(struct kvt_vte *vte, const char *text, size_t len,
+		    int primary, void *data)
+{
+	(void)vte;
+	(void)data;
+	kdisp_copy(text, len, primary);
+}
+
 static void on_osc(struct kvt_vte *vte, const char *u8, size_t len, void *data)
 {
 	(void)vte;
@@ -438,6 +453,7 @@ int main(int argc, char **argv)
 	}
 	kvt_term_scrollback(T.t, (unsigned)TC.scrollback);
 	kvt_term_osc_cb(T.t, on_osc, NULL);
+	kvt_term_clip_cb(T.t, on_clip, NULL);
 
 #ifdef HAVE_KIMG
 	kcon_set_sprite_bits(sprite_bits, NULL);

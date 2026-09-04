@@ -635,8 +635,8 @@ static const char *hash_password(const char *plain)
 
 /* Rewrite one colon-separated database in place, field by field. Renaming
  * the live user touches passwd, shadow, group (as a member AND as the
- * primary group name) and the autologin line in inittab — miss any one of
- * them and the installed system logs nobody in. */
+ * primary group name) and con.conf's `autologin` — miss any one of them and
+ * the installed system logs nobody in. */
 static void rewrite_accounts(const char *oldu, const char *newu,
 			     const char *fullname, const char *userhash,
 			     const char *roothash)
@@ -741,28 +741,46 @@ static void rewrite_accounts(const char *oldu, const char *newu,
 		logf_("updated %s", path);
 	}
 
-	/* inittab: tty1 autologs in by name, so a rename has to reach it */
-	snprintf(path, sizeof(path), "%s/etc/inittab", TARGET);
+	/*
+	 * con.conf's `autologin`: tty1 logs in the account this key names, so
+	 * a rename has to reach it. It is the ONLY place the desktop's account
+	 * is named — `/etc/inittab` runs `kdos-getty tty1 kdos-con-login tty1`
+	 * and carries no account at all — so missing this key leaves the key
+	 * naming a user the installed system does not have and the machine
+	 * reachable only from tty2.
+	 *
+	 * Edited in place and after the `greet` rewrite, for the same reason
+	 * that one is: the shipped file is mostly the explanation of what each
+	 * key does, and replacing it wholesale leaves a configuration file
+	 * nobody can read.
+	 */
+	snprintf(path, sizeof(path), "%s/etc/kdos/con.conf", TARGET);
 	if (strcmp(oldu, newu) && slurp(path, buf, sizeof(buf)) > 0) {
-		char needle[80], repl[80];
-		snprintf(needle, sizeof(needle), "--autologin %s", oldu);
-		snprintf(repl, sizeof(repl), "--autologin %s", newu);
-		out[0] = 0;
 		size_t o = 0;
-		const char *src = buf;
-		const char *hit;
-		while ((hit = strstr(src, needle)) && o + 128 < sizeof(out)) {
-			size_t n = (size_t)(hit - src);
-			if (o + n >= sizeof(out))
+		int done = 0;
+
+		out[0] = 0;
+		for (char *line = strtok(buf, "\n"); line;
+		     line = strtok(NULL, "\n")) {
+			const char *p = line;
+
+			while (*p == ' ' || *p == '\t')
+				p++;
+			if (!strncmp(p, "autologin", 9) &&
+			    (p[9] == ' ' || p[9] == '\t' || p[9] == '=')) {
+				o += (size_t)snprintf(out + o, sizeof(out) - o,
+						      "autologin = %s\n", newu);
+				done = 1;
+				continue;
+			}
+			o += (size_t)snprintf(out + o, sizeof(out) - o, "%s\n",
+					      line);
+			if (o >= sizeof(out) - 64)
 				break;
-			memcpy(out + o, src, n);
-			o += n;
-			out[o] = 0;
-			cat(out, sizeof(out), repl);
-			o = strlen(out);
-			src = hit + strlen(needle);
 		}
-		cat(out, sizeof(out), src);
+		if (!done)
+			snprintf(out + o, sizeof(out) - o, "autologin = %s\n",
+				 newu);
 		if (!cfg.dry_run && kb_write_file(path, out) < 0)
 			fail("cannot write %s", path);
 		logf_("updated %s (autologin -> %s)", path, newu);

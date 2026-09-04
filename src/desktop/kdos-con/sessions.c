@@ -170,12 +170,17 @@ int con_session_kill(const char *name)
 	}
 
 	/*
-	 * UNLINK, DO NOT SIGNAL. There is no pid in a socket path and looking
-	 * one up by name would kill whichever process happened to match. A
-	 * session whose sockets are gone loses its clients and its supervisor
-	 * ends it — the same path a logout takes.
+	 * ASK, DO NOT UNLINK AND DO NOT SIGNAL. There is no pid in a socket
+	 * path and looking one up by name would end whichever process happened
+	 * to match; unlinking the files leaves the loop running on listeners it
+	 * still holds, so every attached view keeps its display and the
+	 * supervisor keeps waiting on a session that is unreachable and alive.
+	 * The session stops its own listeners and drains its own clients.
 	 */
-	unlink(sock);
-	unlink(view);
+	if (kcon_quit_session(sock) != 0) {
+		fprintf(stderr, "kdos-con: session '%s' did not answer\n", name);
+		return 1;
+	}
+	(void)view;
 	return 0;
 }

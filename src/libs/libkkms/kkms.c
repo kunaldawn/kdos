@@ -19,6 +19,35 @@
 
 struct kkms K;
 
+/* ── why the screen was not taken ─────────────────────────────────────────
+ *
+ * KEPT OUTSIDE `K`. kkms_init() clears that struct on entry and its failure
+ * path runs kkms_shutdown(), so a reason stored there is erased by the cleanup
+ * that follows the failure it describes. A caller reads this after -1.
+ *
+ * Eight steps can fail and one return value carries all of them, so a
+ * supervisor that only sees -1 learns nothing it can act on: a missing driver,
+ * a seat that never went active, a monitor that is not plugged in and a
+ * modeset the driver rejected each want a different answer from whoever is
+ * standing at the machine.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+static char reason[192];
+
+static int fail_with(const char *step, const char *detail)
+{
+	if (detail && *detail)
+		snprintf(reason, sizeof(reason), "%s: %s", step, detail);
+	else
+		snprintf(reason, sizeof(reason), "%s", step);
+	return -1;
+}
+
+const char *kkms_reason(void)
+{
+	return reason[0] ? reason : "no failure recorded";
+}
+
 /* ── the seat ────────────────────────────────────────────────────────────
  *
  * Enable and disable are a VT switch. On disable every device this holds is
@@ -65,6 +94,8 @@ static int open_drm(void)
 	 * a machine with a discrete card and an integrated one is not
 	 * necessarily the one with a screen on it.
 	 */
+	int opened = 0;
+
 	for (int i = 0; i < 8; i++) {
 		char path[64];
 
@@ -75,6 +106,8 @@ static int open_drm(void)
 
 		if (id < 0 || fd < 0)
 			continue;
+
+		opened++;
 
 		drmModeRes *res = drmModeGetResources(fd);
 
@@ -90,7 +123,9 @@ static int open_drm(void)
 		libseat_close_device(K.seat, id);
 	}
 
-	return -1;
+	return fail_with("open_drm",
+			 opened ? "a DRM device opened and reports no connectors"
+				: "the seat opened no /dev/dri/card0..7");
 }
 
 static int pick_mode(void)
@@ -160,7 +195,8 @@ static int pick_mode(void)
 		return 0;
 	}
 
-	return -1;
+	return fail_with("pick_mode",
+			 "no connector is connected with a mode and a CRTC that can drive it");
 }
 
 /*
@@ -182,7 +218,7 @@ static int make_fb(void)
 	create.bpp = 32;
 
 	if (drmIoctl(K.drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) != 0)
-		return -1;
+		return fail_with("create dumb buffer", strerror(errno));
 
 	K.handle = create.handle;
 	K.stride = create.pitch;
@@ -190,17 +226,17 @@ static int make_fb(void)
 
 	if (drmModeAddFB(K.drm_fd, K.width, K.height, 24, 32, K.stride,
 			 K.handle, &K.fb) != 0)
-		return -1;
+		return fail_with("drmModeAddFB", strerror(errno));
 
 	map.handle = K.handle;
 	if (drmIoctl(K.drm_fd, DRM_IOCTL_MODE_MAP_DUMB, &map) != 0)
-		return -1;
+		return fail_with("map dumb buffer", strerror(errno));
 
 	K.pixels = mmap(NULL, K.size, PROT_READ | PROT_WRITE, MAP_SHARED,
 			K.drm_fd, (off_t)map.offset);
 	if (K.pixels == MAP_FAILED) {
 		K.pixels = NULL;
-		return -1;
+		return fail_with("mmap the framebuffer", strerror(errno));
 	}
 
 	memset(K.pixels, 0, K.size);
@@ -208,7 +244,7 @@ static int make_fb(void)
 	K.image = pixman_image_create_bits(PIXMAN_x8r8g8b8, K.width, K.height,
 					   K.pixels, (int)K.stride);
 	if (!K.image)
-		return -1;
+		return fail_with("pixman_image_create_bits", "out of memory");
 
 	return 0;
 }
@@ -310,33 +346,48 @@ int kkms_init(const char *seat_name, const char *font)
 	memset(&K, 0, sizeof(K));
 	K.drm_fd = -1;
 	K.drm_dev = -1;
+	reason[0] = '\0';
 
 	(void)seat_name;	/* libseat takes the seat from the environment */
 
 	K.seat = libseat_open_seat(&seat_listener, NULL);
-	if (!K.seat)
-		return -1;
+	if (!K.seat) {
+		/* No shutdown: nothing was opened, and libseat_close_seat on a
+		 * null seat is not a call this makes. */
+		return fail_with("libseat_open_seat",
+				 "no seat daemon and no direct-session privilege");
+	}
 
 	/* The first dispatch is what delivers the initial enable, and nothing
 	 * can be opened before the session is active. */
-	if (libseat_dispatch(K.seat, -1) < 0)
+	if (libseat_dispatch(K.seat, -1) < 0) {
+		fail_with("libseat_dispatch",
+			  "the seat never delivered its initial enable");
 		goto fail;
+	}
 
 	if (open_drm() != 0)
 		goto fail;
 	if (pick_mode() != 0)
 		goto fail;
-	if (kcell_font_load(font) != 0)
+	if (kcell_font_load(font) != 0) {
+		fail_with("kcell_font_load", font ? font : "the default console font");
 		goto fail;
+	}
 	if (make_fb() != 0)
 		goto fail;
 
 	if (drmModeSetCrtc(K.drm_fd, K.crtc, K.fb, 0, 0, &K.connector, 1,
-			   &K.mode) != 0)
+			   &K.mode) != 0) {
+		fail_with("drmModeSetCrtc", strerror(errno));
 		goto fail;
+	}
 
-	if (kkms_input_init() != 0)
+	if (kkms_input_init() != 0) {
+		fail_with("kkms_input_init",
+			  "libinput opened none of the seat's devices");
 		goto fail;
+	}
 
 	K.force_full = 1;
 	ktui_backend_set(&kkms_backend);
@@ -415,6 +466,13 @@ void kkms_shutdown(void)
  * Does nothing while the session is switched away: the device is not ours to
  * program then, and the VT we switched to has already taken the screen.
  */
+int kkms_switch_vt(int n)
+{
+	if (!K.seat || n < 1 || n > 63)
+		return -1;
+	return libseat_switch_session(K.seat, n) == 0 ? 0 : -1;
+}
+
 void kkms_blank(int on)
 {
 	if (K.drm_fd < 0 || !K.crtc || !kkms_active())

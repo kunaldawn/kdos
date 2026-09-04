@@ -50,6 +50,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "kbase.h"
 #include "kvt.h"
 #include "kvt_int.h"
 #include "kvt_llog.h"
@@ -119,7 +120,25 @@ enum parser_action {
 #define CSI_ARG_MAX 16
 
 /* max length of an OSC code */
-#define OSC_MAX_LEN 128
+/*
+ * THE OSC PAYLOAD BUFFER GROWS, UNDER A CAP.
+ *
+ * A title and a colour fit in a hundred and twenty-eight bytes and every other
+ * useful OSC does not — a base64 selection, a hyperlink target, a prompt mark
+ * — which is why they could not be added one at a time.
+ *
+ * DROPPED WHOLE, NEVER TRUNCATED, the rule the picture collector beside it
+ * already follows. A truncated base64 selection decodes to garbage and is
+ * pasted as garbage; a dropped one is a paste that did not happen, which a
+ * person can see and repeat.
+ *
+ * The buffer is RETAINED between payloads so a program writing a title on
+ * every prompt does not allocate on every prompt — which means a later payload
+ * starts with a large allocation already in hand, and the cap has to be
+ * checked against the length rather than against the allocation.
+ */
+#define OSC_MAX_LEN (256u * 1024u)
+#define OSC_INIT_LEN 128u
 
 /* terminal flags */
 #define FLAG_CURSOR_KEY_MODE			0x00000001 /* DEC cursor key mode */
@@ -173,7 +192,11 @@ struct kvt_vte {
 	kvt_vte_osc_cb osc_cb;
 	void *osc_data;
 	unsigned int osc_len;
-	char osc_arg[OSC_MAX_LEN];
+	unsigned int osc_cap;
+	char *osc_arg;
+
+	kvt_vte_clip_cb clip_cb;
+	void *clip_data;
 
 	/*
 	 * THE IMAGE PAYLOAD, and it is one buffer for all three protocols
@@ -587,6 +610,7 @@ void kvt_vte_unref(struct kvt_vte *vte)
 	kvt_utf8_mach_free(vte->mach);
 	free(vte->custom_palette_storage);
 	free(vte->img_buf);
+	free(vte->osc_arg);
 	free(vte);
 }
 
@@ -710,6 +734,14 @@ void kvt_vte_set_img_cb(struct kvt_vte *vte, kvt_vte_img_cb img_cb,
 }
 
 KVT_SHL_EXPORT
+void kvt_vte_set_clip_cb(struct kvt_vte *vte, kvt_vte_clip_cb cb, void *data)
+{
+	if (!vte)
+		return;
+	vte->clip_cb = cb;
+	vte->clip_data = data;
+}
+
 void kvt_vte_set_osc_cb(struct kvt_vte *vte, kvt_vte_osc_cb osc_cb, void *osc_data)
 {
 	if (!vte)
@@ -1165,7 +1197,8 @@ static void do_clear(struct kvt_vte *vte)
 	vte->csi_flags = 0;
 
 	vte->osc_len = 0;
-	memset(vte->osc_arg, 0, sizeof(vte->osc_arg));
+	if (vte->osc_arg && vte->osc_cap)
+		vte->osc_arg[0] = '\0';
 }
 
 static void do_collect(struct kvt_vte *vte, uint32_t data)
@@ -2354,11 +2387,11 @@ static uint32_t vte_map(struct kvt_vte *vte, uint32_t val)
 }
 
 /*
- * OSC 1337 CARRIES A WHOLE FILE, base64'd, and osc_arg is 128 bytes because
- * every other OSC is a title or a colour. So the small buffer stays the
- * ordinary path and this switches to the growable one the moment the code
- * turns out to be 1337 — which cannot be known until the first `;` has been
- * seen, so the bytes collected before that are copied across.
+ * OSC 1337 CARRIES A WHOLE FILE and has a collector of its own, because a
+ * picture is megabytes and this buffer is capped in the hundreds of kilobytes.
+ * It switches the moment the code turns out to be 1337 — which cannot be known
+ * until the first `;` has been seen, so the bytes collected before that are
+ * copied across.
  */
 static void do_osc_collect(struct kvt_vte *vte, uint32_t val) {
 	char buf[4];
@@ -2370,15 +2403,38 @@ static void do_osc_collect(struct kvt_vte *vte, uint32_t val) {
 		return;
 	}
 
-	if (vte->osc_len + len > sizeof(vte->osc_arg) - 1) {
+	/*
+	 * THE CAP IS ON THE LENGTH, not on the allocation: the buffer is kept
+	 * between payloads, so a run that has already grown would otherwise
+	 * accept anything up to whatever the largest payload so far was.
+	 */
+	if (vte->osc_len + (unsigned int)len > OSC_MAX_LEN - 1)
 		return;
+
+	if (vte->osc_len + (unsigned int)len + 1 > vte->osc_cap) {
+		unsigned int want = vte->osc_cap ? vte->osc_cap * 2
+						 : OSC_INIT_LEN;
+
+		while (want < vte->osc_len + (unsigned int)len + 1)
+			want *= 2;
+		if (want > OSC_MAX_LEN)
+			want = OSC_MAX_LEN;
+
+		char *bigger = realloc(vte->osc_arg, want);
+
+		/* Out of memory drops the payload, exactly as passing the cap
+		 * does: half an escape sequence is worse than none. */
+		if (!bigger)
+			return;
+		vte->osc_arg = bigger;
+		vte->osc_cap = want;
 	}
 
 	memcpy(vte->osc_arg + vte->osc_len, buf, len);
 	vte->osc_len += len;
 
 	if (vte->img_cb && !vte->img_active && vte->osc_len >= 5 &&
-	    !memcmp(vte->osc_arg, "1337;", 5)) {
+	    vte->osc_arg && !memcmp(vte->osc_arg, "1337;", 5)) {
 		img_reset(vte);
 		vte->img_kind = KVT_IMG_OSC1337;
 		vte->img_active = true;
@@ -2440,6 +2496,54 @@ static bool do_osc_internal(struct kvt_vte *vte, const char *end_seq)
 	// 4-bit (SGR 90-97 & 100-107), and 256-color (SGR 38;5 & 48;5) indexed
 	// color tables. We don't support changing the tables, but we do support
 	// querying them.
+	if (!vte->osc_arg || !vte->osc_len)
+		return false;
+
+	/*
+	 * OSC 52 — THE SELECTION, base64'd.
+	 *
+	 * `52;<targets>;<base64>`. The targets are a set of single letters and
+	 * `p` is the primary; everything else is treated as the clipboard,
+	 * because a desktop with two selections has no use for the other ten
+	 * X11 names and answering them would be inventing behaviour.
+	 *
+	 * `?` IS REFUSED HERE AND HAS NO CALLBACK. It asks the terminal to
+	 * hand the clipboard to the program running inside it, which would let
+	 * anything that can write to a terminal read whatever was last copied
+	 * anywhere on the desktop. Refusing it in the state machine means
+	 * there is no key to turn it on by mistake.
+	 */
+	if (!strncmp(vte->osc_arg, "52;", 3)) {
+		const char *p = vte->osc_arg + 3;
+		const char *semi = strchr(p, ';');
+		int primary = 0;
+
+		if (!semi)
+			return true;		/* malformed: swallowed */
+		for (const char *q = p; q < semi; q++)
+			if (*q == 'p')
+				primary = 1;
+		semi++;
+		if (*semi == '?')
+			return true;		/* the read form, refused */
+		if (vte->clip_cb) {
+			size_t inlen = vte->osc_len -
+				       (size_t)(semi - vte->osc_arg);
+			size_t outsz = inlen / 4 * 3 + 4;
+			char *out = malloc(outsz);
+			size_t n = 0;
+
+			if (out) {
+				if (kb_b64_decode(semi, inlen, out, outsz,
+						  &n) >= 0 && n)
+					vte->clip_cb(vte, out, n, primary,
+						     vte->clip_data);
+				free(out);
+			}
+		}
+		return true;
+	}
+
 	if (!strncmp(vte->osc_arg, "4;", 2)) {
 		do_osc_4(vte, vte->osc_arg + 2, end_seq);
 		return true;

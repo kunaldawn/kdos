@@ -90,28 +90,34 @@ _wait_con() {
 (
 	_wait_con || exit 0
 	# THE VIEW'S STDERR IS KEPT. stdout is not: with --kms the view draws
-	# on the screen, and the only thing it writes to stdout is the glyph
-	# stream of the terminal fallback, which would fill this file with
-	# escape sequences. A view that cannot take the screen says so on
-	# stderr, and a failure nobody can read is a desktop that is simply
-	# absent with no way to ask why.
+	# on the screen and writes nothing to stdout. A view that cannot take
+	# the screen says which step failed on stderr, and a failure nobody can
+	# read is a desktop that is simply absent with no way to ask why.
 	_vlog="$XDG_RUNTIME_DIR/kdos-view.log"
 	: > "$_vlog" 2>/dev/null
 	_vt0=0
 	_vn=0
 	while :; do
 		_t0=$(date +%s)
-		kdos-view --kms --socket "$_view" >/dev/null 2>>"$_vlog"
+		# --kms-only, NOT --kms. The terminal fallback is right for
+		# somebody running the view by hand on a machine whose GPU
+		# driver is broken; here there is no terminal to fall back
+		# into, so it would draw a desktop into a log file and exit 0
+		# in milliseconds. The check below reads a fast exit 0 as a
+		# failure for that reason, and --kms-only makes it a non-zero
+		# exit carrying the step that failed.
+		kdos-view --kms-only --socket "$_view" >/dev/null 2>>"$_vlog"
 		_rc=$?
 		_now=$(date +%s)
 		# A DETACH IS SOMETHING A PERSON DOES, and nobody does it in
 		# under two seconds: they ask for their screen back after using
-		# the desktop. A view that could not take the screen exits in
-		# milliseconds AND exits 0, because falling back to a terminal
-		# it was never given is a clean run that drew nothing. Reading
-		# that 0 as a detach leaves the session with no display for the
-		# rest of the login, which is indistinguishable from a desktop
-		# that does not start.
+		# the desktop. The two-second floor stands even with
+		# --kms-only, because a view can still exit 0 quickly for a
+		# reason that is not a detach — the session going away between
+		# the attach and the first frame. Reading that 0 as a detach
+		# leaves the session with no display for the rest of the login,
+		# which is indistinguishable from a desktop that does not
+		# start.
 		if [ "$_rc" -eq 0 ] && [ $((_now - _t0)) -ge 2 ]; then
 			exit 0
 		fi
@@ -132,6 +138,32 @@ _wait_con() {
 		sleep 1
 	done
 ) &
+
+#
+# THE SHELL'S LAYER SURFACES, which are not the panel.
+#
+# kdos-notifyd and kdos-desk need no window list — they draw toasts and the
+# icon layer and ask the session nothing about what else is open — and both
+# name kcon_impl first, so they come up here exactly as they do under the
+# compositor. kdos-slit docks through the session's exclusive zone, which is
+# working machinery that has had no caller on this path.
+#
+# THE PANEL IS NOT STARTED HERE. `sh_connect()` requires a foreign-toplevel
+# manager and the console has no protocol for one yet, so it would print that
+# and exit; the session's own one-row taskbar is the bar until it does.
+#
+# NOT SUPERVISED, and that is the difference from the view. A view holds a DRM
+# device and a seat and is the half that can lose them; these hold nothing a
+# restart would recover, and a crash loop on a toast daemon would be a desktop
+# that spends its life restarting something nobody is looking at.
+for _svc in kdos-notifyd kdos-desk kdos-slit; do
+	if command -v "$_svc" >/dev/null 2>&1; then
+		(
+			_wait_con || exit 0
+			"$_svc" >/dev/null 2>&1
+		) &
+	fi
+done
 
 #
 # THE CANDIDATE WINDOW, on this desktop too. kdos-ime is a cell surface here and

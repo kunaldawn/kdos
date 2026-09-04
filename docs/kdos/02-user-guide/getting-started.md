@@ -144,9 +144,10 @@ The terminals are laid out like this:
 
 Switch between them with `Alt+F1` and `Alt+F2`.
 
-On `tty1` the **console desktop** comes up on its own. It is a full desktop — windows you can move,
-tile and stack, terminals, a taskbar, and the KDOS applications as real windows — made of character
-cells rather than pixels, and it needs no Wayland at all. If it does not start, you are left at a
+On `tty1` the **console desktop** comes up on its own. It is a full desktop — windows you can snap,
+maximise, minimise and cycle, terminals, a taskbar with a clock, and the KDOS applications as real
+windows — made of character cells rather than pixels, and it needs no Wayland at all. Windows are
+placed and sized by chord; there is no drag to move and no drag to resize. If it does not start, you are left at a
 shell rather than at nothing, which is the point: a session that fails is a machine you can still
 fix.
 

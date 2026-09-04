@@ -974,8 +974,27 @@ int display_main(int argc, char **argv)
 		return 1;
 	}
 
+	/*
+	 * NULL ON THE CONSOLE, and this is the guard that stops it being a
+	 * crash. `kdisp_init` succeeds there — the console backend probes
+	 * first and takes it — so reaching past libkdisp for a Wayland
+	 * display hands `wl_display_get_registry` a null pointer, from a Start
+	 * menu row a person can click.
+	 *
+	 * Output management is Wayland's. The console desktop has one grid at
+	 * one size, so there is nothing here for this program to arrange.
+	 */
 	struct wl_display *dpy = kwl_display();
+
+	if (!dpy) {
+		fprintf(stderr, "kdos-display: the console desktop has one "
+				"screen and no output management\n");
+		kdisp_shutdown();
+		return 1;
+	}
+
 	struct wl_registry *reg = wl_display_get_registry(dpy);
+
 	wl_registry_add_listener(reg, &registry_listener, NULL);
 	wl_display_roundtrip(dpy);		/* the manager */
 	wl_display_roundtrip(dpy);		/* its heads */
