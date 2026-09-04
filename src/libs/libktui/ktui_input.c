@@ -303,16 +303,107 @@ static void ibuf_drop(int n)
 	ilen -= n;
 }
 
+/*
+ * BRACKETED PASTE.
+ *
+ * Between `CSI 200~` and `CSI 201~` the bytes are TEXT, not keys. Decoding
+ * them as keys is what makes a pasted line run: a leader chord in the first
+ * column, a tab that completes something, an escape that leaves the mode. The
+ * host terminal is the only thing that knows a paste happened, and these two
+ * sequences are how it says so.
+ *
+ * The text is accumulated rather than scanned in place because a paste is not
+ * one read: it arrives in whatever pieces the tty gives, and the terminator
+ * can be split across two of them.
+ */
+#define PASTE_END	"\033[201~"
+#define PASTE_END_LEN	6
+
+static int paste_on;
+static char pbuf[4096];
+static size_t plen;
+
+static void paste_feed(void)
+{
+	while (ilen > 0) {
+		int end = -1;
+
+		for (int i = 0; i + PASTE_END_LEN <= ilen; i++)
+			if (!memcmp(ibuf + i, PASTE_END, PASTE_END_LEN)) {
+				end = i;
+				break;
+			}
+
+		int take = end >= 0 ? end : ilen;
+
+		/*
+		 * A PARTIAL TERMINATOR AT THE TAIL IS NOT TEXT YET. Taking it
+		 * would put `\033[20` into the paste and leave a `1~` that
+		 * ends nothing, so the paste would run to the end of the
+		 * session.
+		 */
+		if (end < 0)
+			for (int k = PASTE_END_LEN - 1; k > 0; k--)
+				if (take >= k &&
+				    !memcmp(ibuf + take - k, PASTE_END,
+					    (size_t)k)) {
+					take -= k;
+					break;
+				}
+
+		if (take > 0) {
+			size_t room = sizeof(pbuf) - plen;
+			size_t n = (size_t)take < room ? (size_t)take : room;
+
+			/* Past the cap the rest is dropped rather than
+			 * wrapped: half a paste in the wrong order is worse
+			 * than a short one. */
+			memcpy(pbuf + plen, ibuf, n);
+			plen += n;
+			ibuf_drop(take);
+		}
+		if (end >= 0) {
+			ibuf_drop(PASTE_END_LEN);
+			paste_on = 0;
+			ktui_paste_push(pbuf, plen);
+			plen = 0;
+			return;
+		}
+		if (take == 0)
+			return;		/* only a partial terminator left */
+	}
+}
+
+/*
+ * THE TRANSMITTED MODIFIER VALUE IS THE MASK PLUS ONE, which is why a bare
+ * `1` means no modifier at all and why the subtraction comes first.
+ *
+ * BIT 8 IS SUPER in the kitty keyboard protocol and META under xterm's
+ * modifyOtherKeys. Both are mapped to KT_MOD_SUPER: a terminal calling the key
+ * beside Alt "meta" is describing the same physical key this desktop's chords
+ * are bound to, and refusing it would leave the chords unreachable on the
+ * terminals that use the older name.
+ *
+ * 16 AND ABOVE ARE DROPPED — hyper, meta-as-a-fifth-modifier, caps lock and
+ * num lock. The chord table has no name for any of them, so letting their
+ * state reach it would mean a chord that fires with caps lock off and not with
+ * it on.
+ */
 static int csi_mods(int p)
 {
 	int m = 0;
+
 	p -= 1;
+	if (p < 0)
+		return 0;
 	if (p & 1)
 		m |= KT_MOD_SHIFT;
 	if (p & 2)
 		m |= KT_MOD_ALT;
 	if (p & 4)
 		m |= KT_MOD_CTRL;
+	if (p & 8)
+		m |= KT_MOD_SUPER;
 	return m;
 }
 
@@ -320,6 +411,11 @@ static int csi_mods(int p)
  * -1 if the buffer holds a lone ESC that is not (yet) a sequence. */
 static int decode(KtuiEvent *ev)
 {
+	if (paste_on) {
+		paste_feed();
+		if (paste_on || !ilen)
+			return 0;
+	}
 	if (!ilen)
 		return 0;
 
@@ -403,18 +499,47 @@ static int decode(KtuiEvent *ev)
 		sgr_mouse = 1;
 		i++;
 	}
+	/*
+	 * SUB-PARAMETERS ARE READ AND ALL BUT ONE DISCARDED.
+	 *
+	 * A parameter may carry `:`-separated parts — `CSI 13;9:3u` is Return
+	 * with Super, release. A loop that accepts digits and `;` only stops at
+	 * the colon, so the rest of the sequence is left in the buffer and
+	 * decoded as garbage: every key repeat and every release turns into
+	 * stray characters typed into whatever has the focus.
+	 *
+	 * The one sub-parameter that is kept is the event type on the second
+	 * parameter, because a release must not reach the chord table — every
+	 * chord would fire twice, once on the way down and once on the way up.
+	 * 1 is press, 2 repeat, 3 release; absent means press.
+	 */
 	int par[6] = { 0, 0, 0, 0, 0, 0 }, np = 0, seen = 0;
-	while (i < ilen && ((ibuf[i] >= '0' && ibuf[i] <= '9') || ibuf[i] == ';')) {
+	int sub = 0, in_sub = 0, ev_type = 1;
+
+	while (i < ilen && ((ibuf[i] >= '0' && ibuf[i] <= '9') ||
+			    ibuf[i] == ';' || ibuf[i] == ':')) {
 		if (ibuf[i] == ';') {
+			if (in_sub && np == 1)
+				ev_type = sub;
+			in_sub = 0;
+			sub = 0;
 			if (np < 5)
 				np++;
 			seen = 1;
+		} else if (ibuf[i] == ':') {
+			in_sub = 1;
+			sub = 0;
+			seen = 1;
+		} else if (in_sub) {
+			sub = sub * 10 + (ibuf[i] - '0');
 		} else {
 			par[np] = par[np] * 10 + (ibuf[i] - '0');
 			seen = 1;
 		}
 		i++;
 	}
+	if (in_sub && np == 1)
+		ev_type = sub;
 	if (i >= ilen)
 		return 0;
 	if (seen)
@@ -457,6 +582,33 @@ static int decode(KtuiEvent *ev)
 	ev->mods = np >= 2 ? csi_mods(par[1]) : 0;
 
 	switch (fin) {
+	/*
+	 * `CSI <codepoint> ; <modifiers>[:<event>] u` — the kitty form, and the
+	 * only one that carries Super with an ordinary letter. Without it
+	 * Super+q and Super+Return arrive as nothing at all, which is fifteen
+	 * of this desktop's seventeen chords on any view that is a terminal.
+	 */
+	case 'u': {
+		int cp = par[0];
+
+		if (ev_type == 3) {
+			/* A release. The desktop acts on the press. */
+			ibuf_drop(seqlen);
+			return 0;
+		}
+		if (cp <= 0 || cp > 0x10ffff) {
+			ibuf_drop(seqlen);
+			return 0;
+		}
+		/*
+		 * The codepoint is the key WITHOUT its modifiers applied, so
+		 * Super+Q arrives as 'q' plus shift and the chord table sees
+		 * the letter it was written with.
+		 */
+		ev->key = cp;
+		ibuf_drop(seqlen);
+		return 1;
+	}
 	case 'A': ev->key = KT_K_UP; break;
 	case 'B': ev->key = KT_K_DOWN; break;
 	case 'C': ev->key = KT_K_RIGHT; break;
@@ -484,6 +636,14 @@ static int decode(KtuiEvent *ev)
 		case 21: ev->key = KT_K_F10; break;
 		case 23: ev->key = KT_K_F11; break;
 		case 24: ev->key = KT_K_F12; break;
+		case 200:
+			paste_on = 1;
+			plen = 0;
+			ibuf_drop(seqlen);
+			return 0;
+		/* A close with no open: the text is gone and dropping the
+		 * marker is all that is left to do about it. */
+		case 201: ibuf_drop(seqlen); return 0;
 		default: ibuf_drop(seqlen); return 0;
 		}
 		break;

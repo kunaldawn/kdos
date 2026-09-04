@@ -36,6 +36,26 @@ static struct {
 	char app_id[128], title[256], output[64];
 
 	/*
+	 * WHETHER THE SESSION CONFIRMED THE LOCK. Both start at 0 and neither
+	 * is inferred: a lock client refuses every keystroke until `engaged`
+	 * arrives, because until then the desktop is still on screen and a
+	 * password typed at it goes to whatever has the focus. `finished` is
+	 * the refusal — the session was already locked by somebody else — and
+	 * is read on the way out to decide the exit status.
+	 */
+	int lock_engaged, lock_finished;
+
+	/*
+	 * THE WINDOW LIST, as the session has told it. Kept by the library so
+	 * every consumer in a process sees one list rather than each keeping
+	 * its own and drifting.
+	 */
+	KconToplevel tl[64];
+	int ntl;
+	int ws_current, ws_count;
+	unsigned ws_occupied;
+
+	/*
 	 * WHICH PICTURE WAS LAST SENT FOR EACH SLOT, as the pointer the sprite
 	 * table holds. A flag saying "sent" would be wrong for an animation:
 	 * every frame registers new pixels under the SAME key and therefore in
@@ -107,6 +127,22 @@ static int pop(KtuiEvent *ev)
 	return 1;
 }
 
+/*
+ * ASK THE SESSION FOR THE SELECTION. The answer comes back as
+ * KCON_OP_CLIP_DATA and is pushed into libktui's paste queue, so every widget
+ * that already handles a paste handles this one with no change.
+ */
+static void clip_request(int primary)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn)
+		return;
+	kcon_put_u8(&b, (uint8_t)(primary ? 1 : 0));
+	kcon_send(C.conn, KCON_OP_CLIP_REQUEST, &b);
+	kcon_buf_free(&b);
+}
+
 static void handle(const KconMsg *m)
 {
 	KconRd r;
@@ -143,8 +179,20 @@ static void handle(const KconMsg *m)
 		ev.type = KT_EVT_KEY;
 		ev.key = kcon_get_i32(&r);
 		ev.mods = (int)kcon_get_u8(&r);
-		if (!r.err)
+		if (!r.err) {
+			/*
+			 * Ctrl+V ARRIVES AS U+0016 and asks the session for
+			 * the clipboard. The same rule libkwl keeps: the key
+			 * is still delivered, so a client with nothing on the
+			 * clipboard sees exactly what it always saw, and the
+			 * text arrives later as KCON_OP_CLIP_DATA rather than
+			 * as a reply — a client must not block on a selection
+			 * whose owner may be busy compositing.
+			 */
+			if (ev.key == 0x16)
+				clip_request(0);
 			push(&ev);
+		}
 		break;
 	case KCON_OP_PTR:
 		ev.type = KT_EVT_MOUSE;
@@ -152,8 +200,13 @@ static void handle(const KconMsg *m)
 		ev.my = (int)kcon_get_i32(&r);
 		ev.btn = (int)kcon_get_u8(&r);
 		ev.press = (int)kcon_get_u8(&r);
-		if (!r.err)
+		if (!r.err) {
+			/* Middle-click pastes the primary selection, the X11
+			 * tradition every terminal keeps. */
+			if (ev.btn == KT_MB_MIDDLE && ev.press == KT_MP_PRESS)
+				clip_request(1);
 			push(&ev);
+		}
 		break;
 	case KCON_OP_TOUCH:
 		ev.type = KT_EVT_TOUCH;
@@ -194,6 +247,78 @@ static void handle(const KconMsg *m)
 		memset(C.sent_pix, 0, sizeof(C.sent_pix));
 		ktui_draw_invalidate();
 		break;
+	case KCON_OP_TOPLEVEL_ADD: {
+		unsigned id = kcon_get_u32(&r);
+		const char *app = kcon_get_str(&r);
+		char keep[64];
+
+		/* kcon_get_str returns ONE shared scratch buffer, so the first
+		 * string is copied before the second is read. */
+		snprintf(keep, sizeof(keep), "%s", app);
+
+		const char *ttl = kcon_get_str(&r);
+
+		if (r.err || C.ntl >= (int)(sizeof(C.tl) / sizeof(C.tl[0])))
+			break;
+		for (int i = 0; i < C.ntl; i++)
+			if (C.tl[i].id == id)
+				goto tl_done;
+		memset(&C.tl[C.ntl], 0, sizeof(C.tl[0]));
+		C.tl[C.ntl].id = id;
+		snprintf(C.tl[C.ntl].app_id, sizeof(C.tl[0].app_id), "%s", keep);
+		snprintf(C.tl[C.ntl].title, sizeof(C.tl[0].title), "%s", ttl);
+		C.ntl++;
+tl_done:
+		break;
+	}
+	case KCON_OP_TOPLEVEL_STATE: {
+		unsigned id = kcon_get_u32(&r);
+		unsigned fl = kcon_get_u16(&r);
+		int ws = (int)kcon_get_u16(&r);
+
+		if (r.err)
+			break;
+		for (int i = 0; i < C.ntl; i++)
+			if (C.tl[i].id == id) {
+				C.tl[i].flags = fl;
+				C.tl[i].workspace = ws;
+				break;
+			}
+		break;
+	}
+	case KCON_OP_TOPLEVEL_REMOVE: {
+		unsigned id = kcon_get_u32(&r);
+
+		if (r.err)
+			break;
+		for (int i = 0; i < C.ntl; i++)
+			if (C.tl[i].id == id) {
+				C.tl[i] = C.tl[--C.ntl];
+				break;
+			}
+		break;
+	}
+	case KCON_OP_WORKSPACE: {
+		int cur = (int)kcon_get_u16(&r);
+		int cnt = (int)kcon_get_u16(&r);
+		unsigned occ = kcon_get_u32(&r);
+
+		if (r.err)
+			break;
+		C.ws_current = cur;
+		C.ws_count = cnt;
+		C.ws_occupied = occ;
+		break;
+	}
+	case KCON_OP_LOCK_STATE: {
+		unsigned fl = kcon_get_u8(&r);
+
+		if (r.err)
+			break;
+		C.lock_engaged = (fl & KCON_LOCK_ENGAGED) != 0;
+		C.lock_finished = (fl & KCON_LOCK_FINISHED) != 0;
+		break;
+	}
 	case KCON_OP_CLOSE:
 	case KCON_OP_BYE:
 		C.should_close = 1;
@@ -404,8 +529,21 @@ static int kcon_init(const KDispConfig *cfg)
 	const char *path = getenv("KDOS_CON");
 
 	memset(&C, 0, sizeof(C));
-	C.cols = cfg && cfg->cols > 0 ? cfg->cols : 80;
-	C.rows = cfg && cfg->rows > 0 ? cfg->rows : 24;
+	/*
+	 * A SURFACE WHOSE EXTENT THE SESSION OWNS ATTACHES WITH NO SIZE. A
+	 * saver covers the screen and a docked panel spans its edge, and
+	 * neither dimension is the client's to pick — a made-up 80x24 would be
+	 * a panel a tenth of the screen long, drawn where it was never asked
+	 * for. The configure that answers the attach sets both fields; until
+	 * it lands cl_size() reports the fallback grid, which is what the
+	 * first frame is drawn into and immediately resized out of.
+	 */
+	int sized = !cfg || !(cfg->role == KDISP_ROLE_SAVER ||
+			      (cfg->role == KDISP_ROLE_PANEL &&
+			       cfg->cells > 0));
+
+	C.cols = sized ? (cfg && cfg->cols > 0 ? cfg->cols : 80) : 0;
+	C.rows = sized ? (cfg && cfg->rows > 0 ? cfg->rows : 24) : 0;
 
 	int fd = connect_to(path);
 
@@ -620,6 +758,68 @@ static void kcon_overlay_hide(void)
 	kcon_hide(1);
 }
 
+int kcon_toplevel_count(void)
+{
+	return C.ntl;
+}
+
+const KconToplevel *kcon_toplevel_at(int i)
+{
+	return (i >= 0 && i < C.ntl) ? &C.tl[i] : NULL;
+}
+
+int kcon_workspace_current(void)
+{
+	return C.ws_current;
+}
+
+int kcon_workspace_count(void)
+{
+	return C.ws_count;
+}
+
+unsigned kcon_workspace_occupied(void)
+{
+	return C.ws_occupied;
+}
+
+/*
+ * A REQUEST, NOT AN ACTION. The session owns the stack and the lifetime of
+ * every window; a panel says what it wants and reads the answer out of the
+ * list it is then sent, which is the same shape the Wayland side has.
+ */
+static void mgmt_ask(uint16_t op, unsigned id)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn)
+		return;
+	kcon_put_u32(&b, id);
+	kcon_send(C.conn, op, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
+}
+
+void kcon_toplevel_activate(unsigned id)
+{
+	mgmt_ask(KCON_OP_ACTIVATE, id);
+}
+
+void kcon_toplevel_close(unsigned id)
+{
+	mgmt_ask(KCON_OP_CLOSE_REQUEST, id);
+}
+
+static int kcon_lock_engaged(void)
+{
+	return C.lock_engaged;
+}
+
+static int kcon_lock_finished(void)
+{
+	return C.lock_finished;
+}
+
 const KDispImpl kcon_impl = {
 	.name = "console",
 	.probe = kcon_probe,
@@ -638,6 +838,8 @@ const KDispImpl kcon_impl = {
 	.overlay_show = kcon_overlay_show,
 	.overlay_hide = kcon_overlay_hide,
 	.unlock = kcon_unlock,
+	.lock_engaged = kcon_lock_engaged,
+	.lock_finished = kcon_lock_finished,
 };
 
 /*
@@ -751,6 +953,35 @@ int kcon_run(const char *sock, const char *const argv[], const char *title,
 
 	kcon_conn_free(c);
 	return vt;
+}
+
+int kcon_quit_session(const char *sock)
+{
+	int fd = connect_to(sock);
+
+	if (fd < 0)
+		return -1;
+
+	KconConn *c = kcon_conn_new(fd);
+
+	if (!c) {
+		close(fd);
+		return -1;
+	}
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_SHELL);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+	kcon_send(c, KCON_OP_QUIT, &b);
+	kcon_buf_free(&b);
+
+	int rc = kcon_flush(c) < 0 ? -1 : 0;
+
+	kcon_conn_free(c);
+	return rc;
 }
 
 int kcon_detach_all(const char *sock)

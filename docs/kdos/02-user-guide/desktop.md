@@ -109,7 +109,7 @@ desktop supplies the terminal: `kdos-term` on the console, `foot` under the comp
 belongs to the package, so installing the program adds the row and removing it takes the row away.
 
 **On the console desktop two rows are different.** Terminal opens `kdos-term`, which draws on the
-character grid directly. And a **Desktop** row appears, which starts the full graphical session on a
+character grid directly and can show a picture in a cell. And a **Desktop** row appears, which starts the full graphical session on a
 virtual terminal of its own — under the compositor that row is not built, because you are already in
 it. Every other row opens an ordinary window there, the same as here: a graphical application is
 composited in a process of its own and its picture goes into the cells.
@@ -146,7 +146,7 @@ else.
 
 | Key | Action |
 |---|---|
-| `Super+Return` | Terminal (`foot`; `kdos-term` on the console desktop) |
+| `Super+Return` | Terminal (`foot`; on the console desktop, whatever `con.conf`'s `terminal` names — `sh` by default, in a window the session runs itself) |
 | `Super+grave` | Focus the terminal, or start one |
 | `Super+A` | Start menu |
 | `Super+D` | Launcher |

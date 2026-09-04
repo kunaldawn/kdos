@@ -65,6 +65,15 @@ does not. After the shared bring-up it:
    that can lose them; the session holds every window and must outlive that. A view that exits
    cleanly is a detach and is not restarted; one that crashes is, three times in sixty seconds.
 4. Runs `kdos-con --serve` under the same crash harness `kdos-desktop-start` uses.
+5. Starts the shell's **layer** surfaces — `kdos-notifyd`, `kdos-desk` and `kdos-slit`. None needs a
+   window list, and all three name the console display implementation first, so they run here
+   exactly as they do under the compositor. They are **not** supervised: unlike a view they hold
+   nothing a restart would recover, and a crash loop on a toast daemon is a desktop that spends its
+   life restarting something nobody is looking at. `kdos-slit` exits silently when no slit is
+   configured, which is why it is started unconditionally.
+
+   **The panel is not among them.** It needs a foreign-toplevel manager, and the console has no
+   protocol for one yet; the session's own one-row taskbar is the bar until it does.
 
 **Both harnesses write stderr to a file and follow it with `tail -f`, never a pipe.** Every
 descendant inherits fd 2, and a pipe's reader sees EOF only when the last write end closes — so one

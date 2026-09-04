@@ -92,12 +92,17 @@ Three rules:
 
 | Role | Is | Notes |
 |---|---|---|
-| `PANEL` | A layer surface with an exclusive zone | Per output |
+| `PANEL` | A layer surface with an exclusive zone | Per output; set `.cells`, not `.cols`/`.rows` |
 | `BACKGROUND` | A layer surface behind everything | Per output |
 | `OVERLAY` | A layer surface above windows | Menus, popups, tooltips |
 | `TOPLEVEL` | An ordinary window | See below |
 | `LOCK` | A session-lock surface | Covers every output |
 | `SAVER` | The whole screen, above windows, taking nothing | See below |
+
+**A panel gives its thickness and nothing else.** `.cells` is the depth across the edge; the extent
+along it belongs to the display, on both backends — a layer surface is anchored to three sides and
+the console session docks it to the screen. Set `.cols`/`.rows` on a panel and the console attaches
+at that size instead, which is a bar the length of a window sitting where nobody put it.
 
 ### A toplevel must ask for its frame
 

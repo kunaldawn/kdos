@@ -359,6 +359,10 @@ def main():
                     help="wait this many seconds before the next step")
     ap.add_argument("--keys", action=Step,
                     help="monitor sendkey, e.g. meta_l-a")
+    ap.add_argument("--type", action=Step,
+                    help="type this into whatever has the focus, then Return "
+                         "— unlike --console-cmd this is a step, so it can "
+                         "follow a --keys that opened a window")
     ap.add_argument("--mouse", action=Step,
                     help="move the pointer to X,Y (absolute pixels)")
     ap.add_argument("--click", action=Step,
@@ -621,6 +625,15 @@ def main():
             elif kind == "keys":
                 mon.cmd("sendkey " + value)
                 time.sleep(3)
+            elif kind == "type":
+                # TYPED AS A STEP, so it reaches whatever has the focus AT
+                # THIS POINT of the run. `--console-cmd` types during
+                # start-up, before any step, and is skipped entirely under
+                # `--no-session` — so there was no way to type into a window
+                # the run had just opened, which is what every check on the
+                # cell desktop's own terminals needs.
+                mon.type(value)
+                time.sleep(2)
             elif kind == "mouse":
                 mx, my = (int(v) for v in value.split(","))
                 rfb_pointer("127.0.0.1", args.vnc_port, [(mx, my, 0)])

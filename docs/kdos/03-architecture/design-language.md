@@ -153,26 +153,32 @@ handler is a *picture*: the only way to discover that a row is a control is to c
 screen, so a pointer the session drew would cost a round trip for every motion event and trail the
 hand moving it. The view already holds the device and already knows where it is.
 
-It is drawn at the resolution the view has, which is the same rule as the glyph tiers:
+**The pointer is the cell under it, reversed** — on a screen of its own, in a terminal, and over
+`ssh` alike. It is the pointer every text mode has drawn. It needs no artwork, no pixel layer and
+no second code path, and a person looking at the same session through two displays sees the same
+picture in both.
 
-| View | The pointer is |
-|---|---|
-| A screen of its own (`--kms`) | An arrow composited in **pixels** over the painted cells |
-| A terminal, or one over `ssh` | The cell under it, reversed |
+`ktui_draw_cursor(x, y)` names the cell; `ktui_draw_flush()` does the drawing, and how it does it
+is the whole of the contract:
 
-The arrow is the interesting half. Everything else on that screen is a character on a fixed grid,
-and the arrow is not — it sits at whatever pixel the mouse is on and moves smoothly across a
-desktop made of text. That is what the sub-cell offsets in the wire format are for, biased so that
-zero is the centre of a cell.
+- **The reverse goes on for the flush and comes straight back off.** `back` is where the session's
+  cells accumulate and it survives between frames, so a reverse left in it is a stain the next
+  frame draws around — one per cell the pointer was ever over.
+- **Taking it off again is what erases it.** `front` keeps the reversed cell and `back` does not,
+  so the cell differs and repaints as itself the moment the pointer leaves. One XOR does both jobs.
+- **A cell with no glyph still honours the reverse.** A space and a control cell carry colour and
+  nothing to draw, and the fill pass has already painted each in its background slot — so a painter
+  that skips them loses the swap, and the pointer becomes visible only where it happens to sit over
+  text. `kcell_paint` fills those cells with the foreground slot instead.
+- **Motion is a change even when no cell's content is**, so the framebuffer is marked dirty for it.
+  Otherwise the pointer moves only when something else on the screen happens to.
 
-Two consequences a reader will otherwise meet as bugs. **The cells the arrow covered must be forced
-to repaint** before the next paint, because a cell whose content did not change is not redrawn and
-the arrow would leave a trail of itself. And **the arrow moving is a change even when no cell is**,
-so the framebuffer is marked dirty for it — otherwise the pointer only moves when something else on
-the screen happens to.
+Nothing is drawn before the first motion — the named cell starts at no cell at all — so a machine
+with no pointing device does not wear a pointer in its corner for the life of the session.
 
-Nothing is drawn before the first motion: a machine with no pointing device would otherwise wear an
-arrow in its corner for the life of the session.
+The sub-cell offsets in the wire format, biased so that zero is the centre of a cell, are not for
+this. They are for the one thing on the desktop that can be pointed at more finely than a cell: an
+embedded pixel guest, which is told where inside the cell the press landed.
 
 ## Touch
 

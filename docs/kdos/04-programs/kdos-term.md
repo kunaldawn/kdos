@@ -38,6 +38,13 @@ already ships an entry for. A private `TERM` breaks the first time somebody type
 Colours are reduced to the theme's eight slots by nearest distance — one rule for the ANSI sixteen,
 the 256 and truecolor alike — so `kdos theme` moves a terminal's colours with everything else.
 
+**The two DEFAULT colours are not reduced; they are slots.** A terminal's default foreground is a
+light grey and its default background is black, and reducing both by distance against eight phosphor
+greens lands them on the same slot — which draws every character in the colour of the screen behind
+it. "Default" means whatever this desktop calls text and background, so it is answered with
+`KT_TEXT` and `KT_BG` directly. A colour a program actually asked for is still reduced, including
+one that reduces to its own background, because a program writing black on black meant to.
+
 ## Selection and the two clipboards
 
 | Gesture | What it does |

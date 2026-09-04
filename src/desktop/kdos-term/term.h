@@ -55,16 +55,12 @@ typedef struct {
 	struct kvt_term *t;
 	int cols, rows;
 
-	/* Where the button went down, in cells. -1 when nothing is being
-	 * dragged: a click that selected nothing must not copy the cell under
-	 * the pointer. */
-	int sel_x, sel_y;
-	int selecting;
-
-	/* Where the last click landed and when, for the double-click that
-	 * selects a word. */
-	int click_x, click_y;
-	double click_at;
+	/*
+	 * The selection in progress, and where the last click landed. It is
+	 * libkvt's shape because libkvt decides what a drag means — this
+	 * program only says where a finished selection goes.
+	 */
+	KvtUi ui;
 } Term;
 
 extern Term T;

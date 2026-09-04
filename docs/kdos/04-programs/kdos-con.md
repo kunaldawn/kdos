@@ -23,12 +23,17 @@ clipboard — cells arrive and input leaves. Four things follow from that withou
 - **Detach and reattach.** A view that exits cleanly leaves the session running with every window
   where it was.
 - **A view that crashes loses nothing.** `kdos-con-start` supervises the view and not the session,
-  because the view is the half that holds a DRM device and a seat and can lose them. **A detach is
-  told from a failure by how long the view lived, not by its status alone:** a view that cannot take
-  the screen falls back to a terminal it was never given, draws nothing and exits *0* in
-  milliseconds, so reading 0 as a detach would end the display for the rest of the login. Its stderr
-  is kept in `$XDG_RUNTIME_DIR/kdos-view.log` and the tail is printed when the supervisor gives up
-  — a view that fails silently is a desktop that is simply absent with no way to ask why.
+  because the view is the half that holds a DRM device and a seat and can lose them. It supervises
+  with **`--kms-only`**, which makes a screen it cannot take a non-zero exit carrying the step that
+  failed: the terminal fallback is right for somebody running `kdos-view --kms` by hand and wrong
+  here, where there is no terminal to fall back into and the fallback would draw a desktop into a
+  log file and exit *0* in milliseconds. **A detach is told from a failure by how long the view
+  lived, not by its status alone** — a view can still exit 0 quickly for a reason that is not a
+  detach, so a clean exit under two seconds is a failure. Its stderr is kept in
+  `$XDG_RUNTIME_DIR/kdos-view.log` and the tail is printed when the supervisor gives up — a view
+  that fails silently is a desktop that is simply absent with no way to ask why. `kkms_reason()`
+  names which of the eight steps failed, so the log says *no connector is connected* rather than
+  repeating that there is no screen.
 - **A desktop over ssh.** The view socket is forwardable and the view is trusted with nothing.
 - **Exact-cell screenshots.** `kdos-view --dump` is a view like any other.
 
@@ -72,6 +77,14 @@ A directory that already exists with the wrong mode or owner is **a refusal to s
 `chmod`**: if it is not ours, quietly taking it over puts the socket in a path another account
 chose, and the peer-credential check is then guarding the wrong door.
 
+**Ending a session is a message, not a missing socket.** `kdos con kill` connects to the surface
+socket and asks; the session sets its quit flag, stops its listeners — which takes both socket
+files with them, so nothing new attaches and `kdos con ls` stops reporting it — and drains its
+clients on the way out. Unlinking the files instead would leave the loop running on listeners it
+still holds, so every attached view keeps its display and the session is unreachable and alive; and
+there is no pid in a socket path, so looking one up by name would end whichever process matched.
+Only a shell surface may ask, the same rule `detach` keeps.
+
 **There is no TCP listener anywhere.** A remote desktop is a forwarded unix socket and inherits
 ssh's authentication, which is why it needs none of its own. `remote = no` is enforced where the
 tunnel is built — `kdos con forward` refuses — rather than where a connection arrives, because a
@@ -85,13 +98,24 @@ a local view by credentials. The self-test asserts the absence by grepping the s
 the first whose probe succeeds — console first, so a surface started *from* this desktop attaches
 to it even on a machine that is also running a compositor.
 
-**A panel docks.** A panel-role surface takes the edge and thickness it asked for, carries no frame
-and no shadow, and when it reserves an exclusive zone it genuinely shrinks the work area rather
-than covering it. `kdos-con` draws its own taskbar only while no shell has attached one — a second
-menu that appeared only when the real one was missing would be a second menu to keep in step.
+**A panel docks.** A panel-role surface names an edge and a **thickness** and attaches with **no
+size**: the extent along the edge is the screen's, which no client can know, so the session answers
+with the configure that allocates the cells. It carries no frame and no shadow, and when it
+reserves an exclusive zone it genuinely shrinks the work area rather than covering it.
 
-**A saver covers.** A saver-role surface attaches with **no size** — the session owns the answer and
-sends it in the first configure, so a saver never has to guess how big the grid is — and is then
+**A panel is re-docked when the grid changes**, before the work area is taken and before any window
+is fitted against it: a rectangle measured from an edge is wrong at a new size, and the exclusive
+zone it reserves is what every window below is moved by. The thickness is kept, the extent is the
+new screen's, and the configure tells the client.
+
+**Only the shell's own panel replaces the built-in taskbar.** `kdos-con` draws its taskbar until a
+panel whose app id is `kdos-shell` docks — a second menu that appeared only when the real one was
+missing would be a second menu to keep in step. Every other docked surface is a panel too:
+`kdos-slit` is a column of gadgets, and standing down for it would leave a desktop with no Start,
+no window list, no clock and no pager.
+
+**A saver covers.** A saver-role surface attaches with **no size** for the same reason a panel does
+— the session owns the answer and sends it in the first configure — and is then
 drawn *instead of* the desktop rather than over it: nothing else is painted, taskbar included, and a
 cell it did not write shows the theme background rather than the window that was there. It is in no
 taskbar, no cycle order and no hit test, so it can never take the focus and never swallows a click.
@@ -102,6 +126,38 @@ all follow, and here it is load-bearing rather than merely honest: a surface sta
 list until its client goes, so an entry removed at the request is one the session builds again on
 the very next pass — as a fresh window, and for a role it configures on adopt as a fresh lock or a
 fresh saver.
+
+## Roles, and the three layers
+
+A surface says what it is when it attaches, and the session answers with a layer rather than a
+window. Five roles get a branch of their own:
+
+| Role | Drawn | Frame | Taskbar | Alt-Tab | Keyboard |
+|---|---|---|---|---|---|
+| `TOPLEVEL` | with the windows | yes | yes | yes | on focus |
+| `PANEL` | docked, with an exclusive zone | no | no | no | never on attach |
+| `OVERLAY` | above every window | no | no | no | takes it |
+| `BACKGROUND` | below every window | no | no | no | never |
+| `LOCK` / `SAVER` | instead of everything | no | no | no | lock only |
+
+**Three passes, because there are three layers.** Stacking inside a layer is the window list's own;
+between them it is fixed and has to be — a menu a window could be raised above is a menu that
+disappears behind the thing it was opened from, and desktop icons drawn last would cover every
+window on the screen.
+
+**An overlay takes the keyboard and a background does not.** The Start menu, the launcher and the
+run box are overlays and are answered by typing. The icon layer covers the whole grid and sits
+behind everything; focusing it would take the keyboard from the window a person is working in every
+time the desktop redrew.
+
+**A layer belongs to no workspace.** A toast that belonged to the workspace it was raised on would
+be invisible to somebody who had just switched away from it.
+
+**A background is not hit-tested.** It covers the grid, so testing it before the windows would take
+every click on the desktop. An overlay *is*: a menu is there to be clicked.
+
+Without this, every one of those surfaces arrived framed, shadowed, listed in the taskbar and in the
+Alt-Tab ring — which for a toast is worse than no toast at all.
 
 ## The lock
 
@@ -115,6 +171,15 @@ fresh saver.
   says so. That is the entire reason a lock screen is not a fullscreen window.
 - **Unlock is its own message**, never an inference from the client exiting. Closing is what a
   client does when it exits for *any* reason, including an error it did not expect.
+- **The grant is the session's to give, and it is told.** A lock client refuses every keystroke
+  until the session confirms the lock, because until then the desktop is still on screen and a
+  password typed at it goes to whatever has the focus. Attaching is a request; `KCON_OP_LOCK_STATE`
+  is the answer, and it is flushed rather than queued — a byte sitting in a send buffer is a lock
+  screen nobody can type into.
+- **One lock at a time.** A second client is refused with the same message, carrying the refusal bit
+  instead of the grant, and closed. It is not allowed to replace the first: the person typing would
+  then be answering a different program from the one that locked the session. A refused client
+  exits non-zero, so a caller cannot read *0* as "the session is locked".
 
 ## Idle
 
@@ -122,7 +187,9 @@ Three steps — `idle_saver`, `idle_lock`, `idle_off` — each measured from the
 from the step before it, so they read as they look and want to be written in increasing order.
 
 At `idle_saver` the session starts the program named by `saver`, which attaches with the saver role
-and covers the grid. **It takes no keyboard and claims no pointer region**, so every keystroke and
+and covers the grid. **`Super+Shift+l` starts the same program**, so blanking the screen before
+walking away is a chord rather than a wait — the shifted form of the one that locks, because the
+two are the same gesture with and without the password on the way back. **It takes no keyboard and claims no pointer region**, so every keystroke and
 every click reaches what is underneath — which is what lets the idle policy see the activity that
 takes it away. It is *asked* to close, never killed: the session double-forks everything it starts
 and does not know the process, and asking is what lets a saver put its own affairs in order.
@@ -175,6 +242,14 @@ is why the two live in different files.
 `kvt_`. A terminal window is a `kvt_term` and a pty; `vim`, `htop`, `mc`, `less` and `tmux` are what
 it is for. Scrollback is set by the caller — a library that read a program's configuration file
 would answer differently in every consumer.
+
+**A bell is two halves, because a bell is two things.** `BEL` from a child flashes that window's
+frame and title in the accent slot for 120 ms — the chrome and not the content, so the line that
+rang is still readable — and the session sends the `bell` verb to every attached view. A view in
+somebody's terminal writes `BEL` on and lets *that* terminal do whatever it is configured to do; a
+view with a screen of its own has no sound to make and does nothing, the flash having already
+happened where the cells are. A window with no frame — fullscreen, a panel, a layer — shows no
+flash, and the ring is the whole of what it gets.
 
 ## Pictures
 
@@ -335,6 +410,167 @@ It prints the node id and the stream's pixel size on one line, which is what
 | The Start menu, **Desktop** | The full `kdos-desktop` session, on a terminal of its own and **not** in a cage — it is its own compositor |
 | A terminal entry (`Terminal=true`) | `kdos-term`, which is a cell surface and opens as a window here |
 | A command line | `kdos con run [--] CMD [ARG…]`, which prints the terminal the guest was given or **0** when it became a window |
+
+## Two kinds of terminal, and why
+
+`Super+Return` opens what `con.conf`'s `terminal` names — `sh` by default — as a window the session
+runs **itself**, with `libkvt` driving a pty and no separate process. `kdos-term` is the other kind:
+a full terminal that attaches as a client over `libkcon`.
+
+They differ in one visible way. **`kdos-con` links no `libkimg`**, so a picture arriving in a
+session-run terminal draws as a fallback shade, while the same picture in `kdos-term` is shown. That
+is a decision, not an oversight: the session links no decoder and no pixel code at all, which is
+exactly what lets it come up on a machine whose GPU driver does not. Putting an image decoder in the
+process that holds every window would trade that property for a picture in the one terminal that
+does not need to be the one showing pictures.
+
+So: the session's own terminal is the one that always works, and `kdos-term` is the one that shows
+everything. A person who wants pictures in the terminal `Super+Return` opens sets `terminal` to a
+command that runs `kdos-term`, or opens it from the menu.
+
+## Copy and paste
+
+**The session owns the selection**, because nothing else can. On Wayland a compositor arbitrates
+between data devices and a source stays alive to serve its own bytes — which is why a copy there
+vanishes when the program that made it exits. Here `kdos-con` *is* the server, so a copy is a client
+handing over bytes and a paste is a client asking for them back, and the selection outlives the
+program that made it. That is what a person means by copying.
+
+One CLIPBOARD and one PRIMARY, both text and only text. A picture on the clipboard would be a
+payload this desktop has nowhere to put.
+
+| Doing | Reaches |
+|---|---|
+| A drag in any terminal | the PRIMARY selection, on release |
+| Middle-click | pastes the PRIMARY |
+| A paste in the terminal a view runs in | the focused window, and the CLIPBOARD |
+| `Ctrl+V` | asks for the CLIPBOARD; the text arrives as a message, not a reply |
+| `Shift+PageUp` / `PageDown` | ten lines of scrollback; any other key ends the view |
+
+**Capped at 64 KB.** `libkcon` refuses a payload above a megabyte and drops a client whose queue
+passes four, so a selection that reached either limit would be a copy that killed the window it came
+from.
+
+**A request is answered even when the selection is empty.** A client that asked and heard nothing
+cannot tell a slow session from an empty clipboard, and would wait for a paste that is never coming.
+
+**A child can copy, through OSC 52.** `52;c;<base64>` from any program running in a terminal
+reaches the session's selection, so a `vim` yank is pastable into every other window. The decoded
+selection then goes **out to every view that is a terminal**, which writes OSC 52 to the desktop it
+is running on: a view inside `foot` or at the far end of `ssh` is a window on somebody's own
+desktop, and a copy that did not reach their clipboard is one they cannot paste into their own
+editor. It buys nothing on `tty1`, where `ktui_clip_copy()` is a deliberate no-op because a Linux
+console has no clipboard — there the session's own selection is the whole answer.
+
+Only the CLIPBOARD goes out. The primary changes on every drag, and a desktop whose clipboard was
+rewritten by every mouse gesture in a remote session is one nobody would leave attached.
+
+**And a paste comes back in.** A view in somebody's terminal asks that terminal for bracketed paste
+(`CSI ?2004h`), so text pasted there arrives between `CSI 200~` and `CSI 201~` as text rather than
+as the keys it spells — a pasted line beginning with `Ctrl+A` would otherwise arm the leader key
+and swallow the character after it. The view forwards it whole on the `paste` verb, and the session
+puts it into the **focused window**: a terminal window gets it through `kvt_term_paste`, bracketed
+again when its own child asked for that, and a surface gets it as clipboard data, which is the only
+text channel a surface has. It also lands on the session's CLIPBOARD, so the next window can have
+it without the far-end terminal being asked twice for one gesture.
+
+**Only a display may paste.** The verb is refused from a surface. A client that could paste could
+type into whatever has the focus without the person touching a key, which is the one thing nothing
+on this socket is allowed to do.
+
+**`52;c;?` is refused, and there is no key to turn it on.** It asks the terminal to hand the
+clipboard back to the program running inside it, which would let anything that can write to a
+terminal read whatever was last copied anywhere on the desktop. It is refused in the state machine,
+so there is no callback to enable it by mistake.
+
+**No `Ctrl+Shift+C` is bound in `keys.c`.** Selection is a property of the focused surface, and a
+session chord would take that key from every guest terminal and from `kdos-term` itself.
+
+**What a drag means is `libkvt`'s, not this program's.** `kvt_ui_mouse` decides when the wheel
+belongs to the child rather than to the scrollback, when a drag is a selection rather than a mouse
+report, and that a press and a release in one cell is a click and selects nothing. `kdos-term` calls
+the same function: written twice, the two would drift, and the difference would be a terminal that
+behaves differently depending on which desktop it is on.
+
+## What the pointer does
+
+The panel row and every window frame answer a click, and both answer it from a **hit map recorded
+as they were drawn** — never re-derived from geometry afterwards. A title is truncated to what fits
+and the clock is right-aligned, so a second calculation of where an element ended up is a second
+thing to get wrong, and a click that lands one entry off is worse than one that lands nowhere.
+
+| Where | Press | Does |
+|---|---|---|
+| `Start` | left | opens `con.conf`'s `menu` |
+| A taskbar row | left | raises it, or **restores it** when it is minimised — the row is the way back |
+| A pager cell | left | switches to that workspace |
+| The clock | left | opens `kdos-cal` |
+| `_` `■` `X` on a frame | left | minimise, maximise / restore, close |
+| A title row | left drag | moves the window |
+| Anywhere in a window | Super + left drag | moves it, so a window that is all content is still movable |
+| Anywhere in a window | right drag | resizes it from the **nearest** edge or corner |
+
+**A minimised window keeps its taskbar row**, because the row is how it comes back: it is drawn
+nowhere, cycled past and not hit-testable on the desktop, so a bar that dropped it would leave
+`Super+Shift+n` as the only route to it.
+
+**The keyboard reaches a window by pointing at it.** `Super+Shift+`arrow moves the focus to the
+nearest window that starts past the focused one and shares rows or columns with it, and
+`Super+Alt+`arrow trades the two rectangles — maximise and tile state with them, so neither window
+ends up at a size nothing asked for — with the focus following the window rather than the place.
+When nothing overlaps, the focus stays put: the ring is the way to a window the arrows cannot see.
+
+**Every dragged rectangle goes through `kwm_fit`**, exactly as a snap does. A dragged window and a
+snapped one obeying different work-area rules would be two answers to one question, and the panel's
+exclusive zone is in that answer.
+
+**The panel is not draggable and neither is a fullscreen window.** The panel's rectangle *is* the
+exclusive zone, so moving it would move the work area out from under every other window.
+
+## The chords, and the leader that reaches them
+
+Every window-management chord is on Super, so none of them can collide with what a program inside a
+window wants. A view with a screen of its own reads Super from `libinput` and they all work.
+
+**A view that is a terminal is the harder half, and it is the one the two-socket split exists for.**
+A terminal reports modifiers as escape sequences, and Super arrives only in the kitty keyboard
+protocol's `CSI <codepoint> ; <modifiers> u` form. `libktui` asks for it with `CSI ? u` on entering
+the screen and pushes `CSI > 1 u` only if the terminal answers — there is no capability database
+entry for this and no `TERM` value that implies it, so asking is the only way to know. The push is
+popped on every path that restores the terminal, including the signal routes: a view that died with
+the mode pushed would leave a terminal its own shell does not understand.
+
+**A terminal that never answers gets the leader instead.** xterm, most VTEs and the Linux VT — which
+is what a `--tty` view on `tty1` runs in — report no Super at all, so without a fallback the remote
+desktop would be `Alt+Tab` and nothing else. The leader, `Ctrl+A` by default and rebindable in
+`keys.conf` like any other chord, makes the next key run as though Super were held: `Ctrl+A` then
+`Return` opens a terminal, `Ctrl+A` then `Space` the Start menu.
+
+Three rules it keeps, each with what breaks without it:
+
+- **Pressing it twice sends the literal.** `Ctrl+A` is the start of the line in every shell on this
+  image, and a desktop that took it outright is one people turn off.
+- **One key deep and no timeout.** A prefix that expired would fire a chord or a literal depending
+  on how fast somebody typed.
+- **A second key that names no chord is swallowed, not typed.** A prefix that leaked would put a
+  stray character in a document every time somebody mistyped a chord.
+
+## Reaching another terminal
+
+**Ctrl+Alt+F1 to F12 switch virtual terminals, and `libkkms` acts on them.** `libseat` putting this
+VT into graphics mode is what stops the kernel answering the chord, so a desktop that did not offer
+the switch itself would take away the tty2 recovery console `/etc/inittab` exists to guarantee.
+
+**It is a keysym, not a chord.** xkb resolves Ctrl+Alt+F2 to `XF86Switch_VT_2` before any modifier
+reaches a caller, so code looking for F2 with two modifiers held finds neither and the switch
+silently does nothing. It is answered in `kkms_input.c`, which is the only place the keysym exists —
+and that is also the half holding the seat, so the session keeps its property of linking no device
+code and coming up on a machine whose GPU driver does not.
+
+The chord is not a session binding and is not in `keys.conf`: it is not rebindable here for the
+same reason it is not rebindable on a bare console. Coming back finds every window where it was —
+the session never stopped, and a view that lost its devices to the switch gets them back and
+repaints in full.
 
 ## Known limits
 

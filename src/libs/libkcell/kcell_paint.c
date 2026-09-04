@@ -179,16 +179,24 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		uint32_t cp = row[x].ch ? row[x].ch : ' ';
 		int was_covered = covered;
 		covered = 0;
-		if (cp == ' ')
-			continue;		/* the fill already drew it */
-		/* Control cells carry colour only, never a glyph.
+		/*
+		 * A CELL WITH NO GLYPH STILL HAS TO HONOUR REVERSE. A space and
+		 * a control cell both carry colour and nothing to draw, and the
+		 * fill pass has already painted each in its background slot —
+		 * so a swap that is not painted here is lost. That swap is the
+		 * mouse pointer over empty desktop and the blank tail of a
+		 * selected line: both are entirely blank cells, and skipping
+		 * them makes the pointer visible only where it happens to sit
+		 * over text.
+		 *
 		 * KTUI_WIDE_CONT marks the continuation half of a double-width
 		 * glyph; its lead cell paints across it below — but only when
 		 * the lead's glyph really was two cells wide. A codepoint no
 		 * font has, or one a fallback face renders single-width, leaves
 		 * the continuation to swap its own colours, or a reversed run
-		 * comes out with one un-lit cell per wide character. */
-		if (cp < 0x20) {
+		 * comes out with one un-lit cell per wide character.
+		 */
+		if (cp == ' ' || cp < 0x20) {
 			if (!was_covered && (row[x].attr & KT_A_REVERSE)
 					&& !bg_owned(row[x].fg)) {
 				pixman_color_t c = bg_color(row[x].fg);

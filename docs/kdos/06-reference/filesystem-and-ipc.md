@@ -228,6 +228,22 @@ to place windows in your session, which is a different thing entirely from showi
 `$KDOS_CON` names the **surface** socket, so a program started inside the session inherits an
 address that opens a window. A view is told its socket on the command line.
 
+**Three kinds of client, and what each is told.** A *surface* places a window and hears about its
+own. A *view* is a display and is sent frames. A *shell* is the panel and its family, and it alone
+is sent the **window list** — `TOPLEVEL_ADD`, `TOPLEVEL_STATE`, `TOPLEVEL_REMOVE` and `WORKSPACE`,
+which carry on the console what `wlr-foreign-toplevel-management` and `ext-workspace-v1` carry on
+Wayland. A program with a window in the session has no business knowing what else is open, and
+because the surface socket never leaves the machine a forwarded display cannot ask either.
+
+The two requests back — `ACTIVATE` and `CLOSE_REQUEST` — are **requests**. The session owns the
+stack and every window's lifetime, so a panel says which window it means and reads the answer out
+of the list it is then sent; a panel that raised a window itself would be a second implementation of
+raising.
+
+**There is no "send me the list" message, deliberately.** A client that could ask could ask
+repeatedly. The session notices a shell attaching and sends the list again, which is the same shape
+as the sprite resend a newly attached view gets.
+
 **A shell may also ask the session to run a graphical application** — the one message on this socket
 that is not about a window. The answer is `0` when it became an ordinary window, the terminal's
 number when it was pinned to one, and a refusal when it could not be started at all. It is

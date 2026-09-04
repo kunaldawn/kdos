@@ -41,7 +41,7 @@ what the shipping compositor already does, taken by reading it, so that adopting
 `libkwm` is a behaviour change only where a row says the old behaviour was
 wrong.
 
-Six sections: `tile`, `geom`, `place`, and the `clip`, `best` and `btwn`
+Eleven kinds of row: `tile`, `geom`, `place`, `fit`, `drag`, `ring`, `wsadj`, `gaprule`, and the `clip`, `best` and `btwn`
 primitives the edge search is built from.
 
 ## Tiling is two steps
@@ -68,6 +68,17 @@ right or bottom half one extra pixel.
 A state matching none of the four cardinal bits is the whole usable area inset
 by the gap, so the centre state is maximise-shaped rather than centred.
 
+**A state holding BOTH edges of an axis collapses that axis.** Left sets the
+axis's far bound to the midpoint and right sets its near bound to the same
+midpoint, so the two together give a width of zero — a negative one once the
+margins come off. That is not a tile the model defines: the transition above
+never produces an opposing pair, so the contract fixture has no row for one and
+none may be invented for it. **A caller that means "fill the area" must ask for
+the area**, not for all four edges at once. `kdos-con`'s maximise is that
+caller: it keeps the four-edge mask as its own *state* — so one restore
+rectangle serves every tile — and computes the rectangle from the work area
+itself.
+
 ## Placement is a search, not a cascade
 
 A new window is placed by **minimising overlap**: an irregular grid is built by
@@ -82,7 +93,16 @@ upper-left corner, inset by both the decoration margin and the configured gap.
 ## The edge search is one question
 
 *Moving this edge in this direction, which other edge does it meet first?*
-`MoveToEdge`, `GrowToEdge` and `ShrinkToEdge` are all built on it.
+`MoveToEdge`, `GrowToEdge` and `ShrinkToEdge` are all built on it, and so is the console desktop's
+directional focus — `kwm_edge_best` is the whole of "which of these two candidates is nearer the
+way I am pointing", and the caller supplies the rest.
+
+**Directional focus is that question with an overlap test in front of it.** A candidate has to start
+past where the focused window starts — its leading edge, not its trailing one, so a window that
+merely overlaps a little is still to the right of the one it overlaps — and it has to share rows
+with it going sideways, or columns going up and down. Nothing overlapping means the focus does not
+move: a window that shares no rows with the focused one is not to its right in any sense a hand
+means, and the ring is the way to a window the arrows cannot see.
 
 An **opposing** edge keeps the gap and an **aligned** edge does not — the first
 is two windows placed beside each other, the second is two windows lined up — so
@@ -106,6 +126,12 @@ urgent and hidden but never *there is something here*.
 Two rules, two right answers. `libkwm` picks neither: it is told which
 workspaces are occupied and finds the nearest one, wrapping **at most once** so
 that a set of empty workspaces terminates the search rather than circling it.
+
+The console desktop is the third caller and has a third rule: a minimised window still holds its
+workspace, because it has a taskbar row and comes back to where it was, while a panel, a toast and
+the icon layer are nobody's work. `Super+PageUp` and `Super+PageDown` step over the empty ones —
+with nine workspaces and two in use, an arrow that stopped on every empty one between them is an
+arrow nobody presses twice.
 
 ## What cannot be expressed
 

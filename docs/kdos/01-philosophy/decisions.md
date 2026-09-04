@@ -264,6 +264,58 @@ fixed in place, including a heap corruption that only appears on 64-bit.
 **Rejected: a demo of our own.** One was written and then removed at the maintainer's request.
 It is not coming back, and a stale reference to one is a leftover rather than a plan.
 
+## Forking libtsm rather than writing a terminal
+
+`libkvt` is a hard fork of libtsm 4.7.1, kmscon's VT100–VT520 state machine, rebranded `tsm_` →
+`kvt_`. A terminal emulator is a decade of edge cases — charsets, the alternate screen, DEC private
+modes, wrapping rules that differ between terminals that both claim VT100 — and none of that is a
+place to be original. What is original here is the boundary, not the parser.
+
+**Upstream's cell stays.** `kcell.h` refuses a second cell type, and that refusal is about two
+libraries of the *toolkit* disagreeing — not about a terminal's private screen buffer, which nothing
+outside the library ever sees. Upstream's cell earns its place: it carries 24-bit colour, a per-cell
+age that drives damage tracking, and a symbol-table handle that is what makes combining characters
+possible at all. Reducing it to `KtuiCell` at the boundary loses none of that until the moment the
+screen is drawn.
+
+**The conversion happens in one file.** `kvt_grid.c` is the render boundary and is where a terminal
+cell becomes a `KtuiCell`. Three other files touch the toolkit and each for one narrow reason:
+`kvt_term.c` maps `KT_K_*` key codes into the escape bytes a child expects, `kvt_unicode.c` asks
+`ktui_wcwidth` so the library and the grid agree how wide a codepoint is, and `kvt_selection.c`
+holds `kvt_ui_mouse` — what a drag over a terminal means — because both desktops need that decision
+and two copies would drift.
+
+**`kvt_htable.c` and `kvt_grid.c` are the two files carrying no upstream copyright.** Every other
+file in the library carries libtsm's; the grid is this tree's render boundary, and the hash table
+was written here rather than carried.
+
+**Colour reduces to the palette's eight slots by nearest distance** — one rule for the ANSI sixteen,
+the 256 and truecolour alike. A table saying "red means the error slot" would be a second set of
+colour decisions sitting beside the palette, and `kdos theme` would move one of them. The two
+*default* colours are the exception and are slots outright: a terminal's default foreground is a
+light grey and its background black, and reducing both by distance against eight phosphor greens
+lands them on the same slot — which draws every character in the colour of the screen behind it.
+
+## Twin as prior art, not as a dependency
+
+Twin — the text-mode window manager that has drawn overlapping windows in a terminal since the
+nineties — was read closely and forked from not at all. It was mined for four questions this design
+had to answer, and answering them is what the two-socket split is:
+
+- **What happens when the last display detaches?** The session keeps every window and goes on
+  running. That is why the session holds all state and the display holds none.
+- **How does a display of a different size attach?** It says what grid it can show, and the session
+  composites to that. A view imposes a size or takes the session's own.
+- **How does input from several displays reach one session?** Through the same queue, because a view
+  decides nothing — it forwards keys and pointers and is not consulted about them.
+- **What does the wire carry when a client is remote?** Cells and input, and nothing else. No
+  window state crosses, which is what makes a forwarded display trustworthy with nothing.
+
+**Forking it was refused** for the reason the compositor is not forked either: Twin is its own window
+model, its own widget set and its own protocol, and taking it would mean two window models in one
+tree. `libkwm` exists so that a window lands in the same place on both desktops, and a second model
+would make that false by construction.
+
 ## See also
 
 - [Why KDOS](why-kdos.md) — the properties these decisions serve

@@ -1135,8 +1135,29 @@ static int windows_main(const char *app, int ctrl, int at_x, int at_y,
 		nrecent = kxdg_recent(app, recents, WIN_RECENT_MAX);
 	}
 
+	/*
+	 * NULL ON THE CONSOLE, and unguarded this is a null dereference from a
+	 * chord a person can press. `kdisp_init` succeeds there — the console
+	 * backend probes first and takes it — so a Wayland display asked for
+	 * afterwards is simply absent.
+	 *
+	 * The console session HAS a window list; it is carried by libkcon's
+	 * management messages rather than by `wlr-foreign-toplevel`. Reaching
+	 * it from here means routing this whole list through libkdisp, which
+	 * is the other half of this work and is not done by pretending the
+	 * list is missing.
+	 */
 	struct wl_display *dpy = kwl_display();
+
+	if (!dpy) {
+		fprintf(stderr, "kdos-menu: the window list is not reachable "
+				"from this desktop yet\n");
+		kdisp_shutdown();
+		return 1;
+	}
+
 	struct wl_registry *reg = wl_display_get_registry(dpy);
+
 	wl_registry_add_listener(reg, &win_registry_listener, NULL);
 	wl_display_roundtrip(dpy);		/* the globals */
 	wl_display_roundtrip(dpy);		/* and the toplevels they announce */

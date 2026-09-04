@@ -277,6 +277,18 @@ kvt_term_osc_cb(struct kvt_term *t, kvt_vte_osc_cb cb, void *user)
 		kvt_vte_set_osc_cb(t->vte, cb, user);
 }
 
+void kvt_term_clip_cb(struct kvt_term *t, kvt_vte_clip_cb cb, void *user)
+{
+	if (t)
+		kvt_vte_set_clip_cb(t->vte, cb, user);
+}
+
+void kvt_term_bell_cb(struct kvt_term *t, kvt_vte_bell_cb cb, void *user)
+{
+	if (t)
+		kvt_vte_set_bell_cb(t->vte, cb, user);
+}
+
 /*
  * The three image protocols, switched on for this terminal. Off is the
  * default and stays the default: a consumer that links no decoder must parse

@@ -41,6 +41,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "kbase.h"
 #include "kwl.h"
 #include "shell.h"
 
@@ -487,6 +488,119 @@ static void builtin_table(void)
 	}
 }
 
+/*
+ * THE CONSOLE'S CHORDS COME FROM THE SESSION THAT BINDS THEM.
+ *
+ * `rc.xml` is the compositor's file. A card that parsed it on the console
+ * would show the compositor's chords and call them this desktop's, and a chord
+ * rebound in `keys.conf` would appear as its compositor default — a card that
+ * is confidently wrong is worse than one that is absent.
+ *
+ * `kdos-con --keys` prints the table after the overlay parse, so there is one
+ * reader and one writer: the table that binds the chords is the table that
+ * prints them. This side owns only how they are described and grouped, which
+ * is presentation and belongs to the card.
+ */
+static int con_section(const char *act, const char **desc)
+{
+	static const struct { const char *act, *desc; int sect; } tbl[] = {
+		{ "terminal",	NULL,			SEC_LAUNCH },
+		{ "launcher",	"kdos-launcher",	SEC_LAUNCH },
+		{ "menu",	"the root menu",	SEC_LAUNCH },
+		{ "close",	"close the window",	SEC_WINDOW },
+		{ "maximise",	"maximise / restore",	SEC_WINDOW },
+		{ "fullscreen",	"fullscreen",		SEC_WINDOW },
+		{ "minimise",	"minimise",		SEC_WINDOW },
+		{ "restore",	"bring back the last minimised",	SEC_WINDOW },
+		{ "next",	"next window",		SEC_WINDOW },
+		{ "prev",	"previous window",	SEC_WINDOW },
+		{ "next-alt",	"next window",		SEC_WINDOW },
+		{ "prev-alt",	"previous window",	SEC_WINDOW },
+		{ "snap-left",	"snap left",		SEC_WINDOW },
+		{ "snap-right",	"snap right",		SEC_WINDOW },
+		{ "snap-up",	"snap up",		SEC_WINDOW },
+		{ "snap-down",	"snap down",		SEC_WINDOW },
+		{ "focus-left",	 "focus left",		SEC_WINDOW },
+		{ "focus-right", "focus right",		SEC_WINDOW },
+		{ "focus-up",	 "focus up",		SEC_WINDOW },
+		{ "focus-down",	 "focus down",		SEC_WINDOW },
+		{ "swap-left",	 "swap with the window left",	SEC_WINDOW },
+		{ "swap-right",	 "swap with the window right",	SEC_WINDOW },
+		{ "swap-up",	 "swap with the window above",	SEC_WINDOW },
+		{ "swap-down",	 "swap with the window below",	SEC_WINDOW },
+		{ "workspace-prev", "previous workspace in use",	SEC_WS },
+		{ "workspace-next", "next workspace in use",	SEC_WS },
+		{ "lock",	"kdos-lock",		SEC_SYSTEM },
+		{ "saver",	"kdos-saver",		SEC_SYSTEM },
+		{ "quit",	"end the session",	SEC_SYSTEM },
+		{ "leader",	"then a chord's own key, where Super does not arrive",
+							SEC_SYSTEM },
+	};
+
+	for (size_t i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++)
+		if (!strcmp(tbl[i].act, act)) {
+			/* The terminal is not the same program on the two
+			 * desktops, and the card names the one that opens. */
+			*desc = tbl[i].desc ? tbl[i].desc : sh_term();
+			return tbl[i].sect;
+		}
+	return -1;
+}
+
+static int parse_con_keys(void)
+{
+	char buf[4096];
+	KbArgv a = { 0 };
+
+	kb_argv_add(&a, "kdos-con");
+	kb_argv_add(&a, "--keys");
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, buf, sizeof(buf)) != 0 || !buf[0])
+		return -1;
+
+	nbinds = 0;
+	for (char *line = strtok(buf, "\n"); line && nbinds < KEYS_MAX;
+	     line = strtok(NULL, "\n")) {
+		char *tab = strchr(line, '\t');
+		const char *desc = NULL;
+		int sect;
+
+		if (!tab)
+			continue;
+		*tab = '\0';
+		sect = con_section(line, &desc);
+		if (sect < 0)
+			continue;
+		snprintf(binds[nbinds].key, sizeof(binds[0].key), "%s",
+			 tab + 1);
+		snprintf(binds[nbinds].desc, sizeof(binds[0].desc), "%s", desc);
+		binds[nbinds].sect = sect;
+		nbinds++;
+	}
+
+	/*
+	 * THE WORKSPACE CHORDS ARE NOT IN THE TABLE. The session answers a
+	 * digit directly rather than binding nine actions, so they have no
+	 * line to print and the card would otherwise show a desktop with no
+	 * workspaces at all.
+	 */
+	if (nbinds && nbinds + 2 <= KEYS_MAX) {
+		snprintf(binds[nbinds].key, sizeof(binds[0].key), "Super+1..9");
+		snprintf(binds[nbinds].desc, sizeof(binds[0].desc),
+			 "switch workspace");
+		binds[nbinds].sect = SEC_WS;
+		nbinds++;
+		snprintf(binds[nbinds].key, sizeof(binds[0].key),
+			 "Super+Shift+1..9");
+		snprintf(binds[nbinds].desc, sizeof(binds[0].desc),
+			 "send the window there");
+		binds[nbinds].sect = SEC_WS;
+		nbinds++;
+	}
+
+	return nbinds ? 0 : -1;
+}
+
 static int rc_path(char *buf, size_t n)
 {
 	const char *cfg = getenv("XDG_CONFIG_HOME");
@@ -698,7 +812,15 @@ int keys_main(int argc, char **argv)
 	if (first_run && !dump && !dump_cells && marker_seen())
 		return 0;
 
-	if (rc_path(path, sizeof(path)) != 0 || parse_rc(path) != 0) {
+	const char *on_con = getenv("KDOS_CON");
+
+	if (on_con && *on_con) {
+		if (parse_con_keys() != 0) {
+			builtin_table();
+			snprintf(parse_note, sizeof(parse_note),
+				 "kdos-con --keys gave nothing - built-in defaults shown");
+		}
+	} else if (rc_path(path, sizeof(path)) != 0 || parse_rc(path) != 0) {
 		/* /etc/skel's copy is what a home with no rc.xml is running:
 		 * the compositor reads its own default from the same file the
 		 * user's would have been copied from. */

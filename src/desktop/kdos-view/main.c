@@ -12,10 +12,14 @@
  * crashes lose nothing, a view that is remote trustworthy with nothing, and
  * detach and reattach fall out rather than be built.
  *
+ * FOUR MODES, EXACTLY ONE PER RUN. Each dispatches on its own flag rather than
+ * on the absence of the others: a chain that ends in a fall-through catches
+ * whichever mode is added next and sends it somewhere it was never meant to go.
+ *
+ *   --kms     a screen of its own: modeset, seat and input, through libkkms
  *   --tty     inside foot, tmux, or over ssh
  *   --dump    the rig: exact cells, no PPM and no VNC
- *
- * The KMS mode is libkkms's and is not here yet.
+ *   --cast    a PipeWire stream — a view nobody looks at
  * ---------------------------------
  */
 
@@ -102,6 +106,8 @@ static void usage(FILE *f)
 "\n"
 "  --socket PATH      the session to attach to; $KDOS_CON otherwise\n"
 "  --kms              take a screen: modeset, seat and input of its own\n"
+"  --kms-only         --kms, and a failure to take the screen is an error\n"
+"                     rather than a fall back to this terminal\n"
 "  --tty              draw in this terminal\n"
 "  --dump [COLSxROWS] take one frame and write it as cells; without a\n"
 "                     size it takes the session's own grid\n"
@@ -288,6 +294,13 @@ static void sprite_free(uint64_t key, const void *pix, void *user)
  * theme` moves both.
  * ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * TRUE WHEN THIS VIEW HAS A SCREEN OF ITS OWN. A terminal view can place its
+ * host terminal's cursor and a screen cannot: on a framebuffer the caret is
+ * already a cell in the frame the session sent.
+ */
+static int own_screen;
+
 #ifdef KDOS_VIEW_KMS
 typedef struct {
 	int cw, ch;		/* the picture's size in cells */
@@ -298,6 +311,7 @@ typedef struct {
 static AsciiPic *ascii_pic[KCON_MAX_SPRITE_MAP];
 /* Set when the view has no pixels of its own: --tty, and --dump. */
 static int ascii_mode;
+
 /* 0 untried, 1 measured, -1 refused. A machine with no font at all draws the
  * fallback mark, which is what a picture has always looked like here. */
 static int ascii_font;
@@ -637,6 +651,62 @@ static int take_frame(int timeout_ms)
 		if (m.op == KCON_OP_BYE)
 			return -1;
 
+		/*
+		 * WHAT THE SESSION COPIED, onto the clipboard of the desktop
+		 * this view is running on. `ktui_clip_copy` writes OSC 52 and
+		 * is a deliberate no-op on a Linux console, so this does
+		 * nothing on tty1 and everything in `foot` or over ssh — which
+		 * is where a person has another desktop to paste into.
+		 */
+		if (m.op == KCON_OP_VIEW_CLIP) {
+			KconRd b;
+
+			kcon_rd_init(&b, m.payload, m.len);
+
+			const char *text = kcon_get_str(&b);
+
+			if (!b.err && *text)
+				ktui_clip_copy(text);
+			continue;
+		}
+
+		/*
+		 * WHERE THE CARET IS. A view holds no window state, so it is
+		 * told; a terminal view puts its own cursor there, which is
+		 * the one thing the person's own terminal can draw better
+		 * than this desktop can paint. A view with a screen of its own
+		 * ignores it — the caret is already a cell in the frame it was
+		 * sent.
+		 */
+		if (m.op == KCON_OP_CURSOR) {
+			KconRd b;
+
+			kcon_rd_init(&b, m.payload, m.len);
+
+			int cx = (int)kcon_get_i32(&b);
+			int cy = (int)kcon_get_i32(&b);
+
+			if (!b.err && !own_screen)
+				ktui_term_caret(cx, cy);
+			continue;
+		}
+
+		/*
+		 * A BELL RINGS WHERE THE PERSON IS. A view in somebody's
+		 * terminal writes BEL and lets that terminal do whatever it is
+		 * configured to do — a sound, a flash, or nothing; a view with
+		 * a screen of its own has no sound to make, and the session
+		 * has already inverted the window that rang.
+		 */
+		if (m.op == KCON_OP_BELL) {
+			if (!own_screen) {
+				ssize_t r = write(1, "\a", 1);
+
+				(void)r;
+			}
+			continue;
+		}
+
 		if (m.op == KCON_OP_BLANK) {
 			KconRd b;
 
@@ -712,6 +782,32 @@ static void send_key(const KtuiEvent *ev)
 	kcon_buf_free(&b);
 }
 
+/*
+ * TEXT THE HOST TERMINAL HANDED THIS VIEW. It is forwarded rather than typed:
+ * a paste turned back into keystrokes is a pasted line that runs its own first
+ * word, and a view decides nothing about where text goes in any case.
+ */
+static void send_paste(void)
+{
+	const char *text = NULL;
+	size_t n = ktui_paste_take(&text);
+
+	if (!n || !text)
+		return;
+
+	KconBuf b = { 0 };
+	char *z = malloc(n + 1);
+
+	if (!z)
+		return;
+	memcpy(z, text, n);
+	z[n] = 0;
+	kcon_put_str(&b, z);
+	kcon_send(conn, KCON_OP_PASTE, &b);
+	kcon_buf_free(&b);
+	free(z);
+}
+
 static void send_ptr(const KtuiEvent *ev)
 {
 	KconBuf b = { 0 };
@@ -763,6 +859,7 @@ int main(int argc, char **argv)
 	const char *sock = getenv("KDOS_CON");
 	const char *font = getenv("KDOS_CON_FONT");
 	int cols = 0, rows = 0, tty = 0, kms = 0, dump = 0, cast = 0;
+	int kms_only = 0;
 
 	signal(SIGHUP, on_hup);
 
@@ -781,6 +878,11 @@ int main(int argc, char **argv)
 		}
 		if (!strcmp(argv[i], "--kms")) {
 			kms = 1;
+			continue;
+		}
+		if (!strcmp(argv[i], "--kms-only")) {
+			kms = 1;
+			kms_only = 1;
 			continue;
 		}
 		if (!strcmp(argv[i], "--cast")) {
@@ -873,6 +975,21 @@ int main(int argc, char **argv)
 			cap_flags = KCON_VIEW_PIXELS;
 			cols = ktui_w;
 			rows = ktui_h;
+			own_screen = 1;
+		} else if (kms_only) {
+			/*
+			 * A SUPERVISED VIEW MUST NOT FALL BACK. It has no
+			 * terminal to fall back into — its stdout is a log
+			 * file — so the fallback draws a desktop nobody can
+			 * see and then exits 0 in milliseconds. A clean exit
+			 * reads as a detach, so the supervisor's crash cap
+			 * never fires and the screen keeps whatever the
+			 * framebuffer console last drew, with every check
+			 * reporting success.
+			 */
+			fprintf(stderr, "kdos-view: no screen to take — %s\n",
+				kkms_reason());
+			return 1;
 		} else {
 			/*
 			 * NO DRM DEVICE, OR THE SEAT REFUSED. Falling back is
@@ -881,11 +998,13 @@ int main(int argc, char **argv)
 			 * the case the console exists for.
 			 */
 			fprintf(stderr,
-				"kdos-view: no screen to take — falling back to this terminal\n");
+				"kdos-view: no screen to take (%s) — falling back to this terminal\n",
+				kkms_reason());
 			kms = 0;
 			tty = 1;
 		}
 #else
+		(void)kms_only;
 		fprintf(stderr,
 			"kdos-view: this build has no KMS mode (built without libkkms)\n");
 		return 1;
@@ -1138,9 +1257,16 @@ int main(int argc, char **argv)
 			KtuiEvent ev;
 
 			while (ktui_backend()->poll_event(&ev, 0)) {
-				if (ev.type == KT_EVT_KEY)
+				if (ev.type == KT_EVT_KEY) {
+					/*
+					 * Ctrl+Alt+F<n> NEVER ARRIVES HERE.
+					 * xkb resolves it to a switch keysym
+					 * and libkkms acts on it where the
+					 * keysym is, because that is the only
+					 * place it exists.
+					 */
 					send_key(&ev);
-				else if (ev.type == KT_EVT_MOUSE) {
+				} else if (ev.type == KT_EVT_MOUSE) {
 					/*
 					 * THE POINTER IS A REVERSED CELL, on
 					 * this screen exactly as on a terminal
@@ -1199,6 +1325,9 @@ int main(int argc, char **argv)
 			else if (ev.type == KT_EVT_RESIZE)
 				break;	/* the grid is the session's to remake */
 		}
+		/* A paste produces no event of its own — the backend queues
+		 * it and whoever wants it takes it. */
+		send_paste();
 
 		if (kcon_conn_dead(conn))
 			break;

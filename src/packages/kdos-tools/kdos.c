@@ -2570,6 +2570,75 @@ static int has_line_prefix(const char *path, const char *prefix)
 	return hit;
 }
 
+/*
+ * WHICH SESSION IS RUNNING. $KDOS_CON is set by the console session and by
+ * nothing else, so it is the test and it is asked once: a check that reports a
+ * missing compositor on a machine whose desktop is a cell grid teaches people
+ * to ignore the tool that reported it.
+ *
+ * Returns "kdos-con", "kdos-comp", or NULL where neither is running — a shell
+ * on tty2 has no session and saying so is the true answer.
+ */
+/*
+ * `display` OUT OF A BOX PROFILE, by the same rule `kdos-con` reads it with.
+ *
+ * The parse is duplicated for the reason `con_conf_key` above it is: this
+ * binary is on every image and links no libkcon, which would drag libktui and
+ * the cell model in with it. What must NOT be duplicated is the rule, so this
+ * matches `profile_display()` in `src/desktop/kdos-con/embed.c` line for line:
+ * leading whitespace skipped, the key matched at the start of the line so a
+ * commented-out `# display = vt` is not one, and whitespace after the `=`
+ * skipped so `display=vt` is.
+ *
+ * A `strstr` for "display = vt" got both of those backwards: it reported a
+ * commented-out line as pinned and missed the spaceless form the session
+ * honours — a diagnostic disagreeing with the thing it is diagnosing.
+ */
+static int box_pinned_to_vt(const char *path)
+{
+	char *data = kb_read_all(path, NULL);
+	int vt = 0;
+
+	if (!data)
+		return 0;
+
+	for (char *line = data, *next; line && *line; line = next) {
+		char *nl = strchr(line, '\n');
+		char *eq;
+
+		next = nl ? nl + 1 : line + strlen(line);
+		if (nl)
+			*nl = '\0';
+		while (*line == ' ' || *line == '\t')
+			line++;
+		if (strncmp(line, "display", 7))
+			continue;
+		eq = strchr(line, '=');
+		if (!eq)
+			continue;
+		eq++;
+		while (*eq == ' ' || *eq == '\t')
+			eq++;
+		vt = !strncmp(eq, "vt", 2);
+		break;
+	}
+
+	free(data);
+	return vt;
+}
+
+static const char *session_name(void)
+{
+	const char *kcon = getenv("KDOS_CON");
+	const char *wl = getenv("WAYLAND_DISPLAY");
+
+	if (kcon && *kcon)
+		return "kdos-con";
+	if (wl && *wl)
+		return "kdos-comp";
+	return NULL;
+}
+
 static int running(const char *exact, const char *contains)
 {
 	char buf[4096];
@@ -3182,20 +3251,44 @@ static int cmd_doctor(int argc, char **argv)
 		warn_("XDG_RUNTIME_DIR missing — pipewire and podman will "
 		      "misbehave");
 
-	if (running("kdos-comp", NULL))
-		ok("kdos-comp running");
-	else
-		warn_("kdos-comp not running — no desktop (start with: "
-		      "kdos-desktop)");
-	if (running("kdos-shell", NULL))
-		ok("kdos-shell running");
-	else
-		warn_("kdos-shell not running — no panel or launcher");
-	if (running(NULL, "xdg-desktop-portal-wlr"))
-		ok("wlr portal running");
-	else
-		warn_("wlr portal not running — screen capture and file pickers "
-		      "degraded");
+	/*
+	 * THREE CHECKS THAT ONLY APPLY TO ONE OF THE TWO DESKTOPS. The
+	 * compositor, its panel and the wlroots portal are absent by design on
+	 * a console session — the panel needs a foreign-toplevel manager the
+	 * console does not offer, and the console starts a portal backend of
+	 * its own — so reporting them as faults there fails a working machine.
+	 */
+	const char *sess = session_name();
+	int on_console = sess && !strcmp(sess, "kdos-con");
+
+	if (on_console) {
+		if (running("kdos-con", NULL))
+			ok("kdos-con running");
+		else
+			warn_("kdos-con not running — no session (start with: "
+			      "kdos-con-start)");
+		if (running("kdos-view", NULL))
+			ok("kdos-view attached — the session has a display");
+		else
+			warn_("no kdos-view attached — the session is running "
+			      "and nothing is showing it. See "
+			      "$XDG_RUNTIME_DIR/kdos-view.log");
+	} else {
+		if (running("kdos-comp", NULL))
+			ok("kdos-comp running");
+		else
+			warn_("kdos-comp not running — no desktop (start with: "
+			      "kdos-desktop)");
+		if (running("kdos-shell", NULL))
+			ok("kdos-shell running");
+		else
+			warn_("kdos-shell not running — no panel or launcher");
+		if (running(NULL, "xdg-desktop-portal-wlr"))
+			ok("wlr portal running");
+		else
+			warn_("wlr portal not running — screen capture and "
+			      "file pickers degraded");
+	}
 
 	/*
 	 * HOW A GRAPHICAL APPLICATION WILL BE SHOWN on the console desktop.
@@ -3205,9 +3298,7 @@ static int cmd_doctor(int argc, char **argv)
 	 * inputs are reported, not the decision: kdos-con makes that, and a
 	 * second implementation here would be a second thing to be wrong.
 	 */
-	const char *kcon = getenv("KDOS_CON");
-
-	if (kcon && *kcon) {
+	if (on_console) {
 		char *ce = con_conf_key("embed");
 		int off = ce && (!strcmp(ce, "false") || !strcmp(ce, "0") ||
 				 !strcmp(ce, "no"));
@@ -3228,15 +3319,14 @@ static int cmd_doctor(int argc, char **argv)
 			struct dirent *be;
 
 			while ((be = readdir(bdd))) {
-				char path[600], *dv;
+				char path[600];
 				size_t nl = strlen(be->d_name);
 
 				if (nl < 6 || strcmp(be->d_name + nl - 5, ".conf"))
 					continue;
 				snprintf(path, sizeof(path), "%s/%s", bd,
 					 be->d_name);
-				dv = kb_read_all(path, NULL);
-				if (dv && strstr(dv, "display = vt")) {
+				if (box_pinned_to_vt(path)) {
 					size_t at = strlen(pinned);
 
 					snprintf(pinned + at,
@@ -3244,7 +3334,6 @@ static int cmd_doctor(int argc, char **argv)
 						 at ? ", " : "",
 						 (int)(nl - 5), be->d_name);
 				}
-				free(dv);
 			}
 			closedir(bdd);
 		}
@@ -3600,7 +3689,12 @@ static int cmd_version(void)
 	printf("  kernel   %s\n", u.release);
 	printf("  libc     musl\n");
 	printf("  userland toybox\n");
-	printf("  session  kdos-comp (%s)\n", current_theme());
+	const char *sess = session_name();
+
+	if (sess)
+		printf("  session  %s (%s)\n", sess, current_theme());
+	else
+		printf("  session  none (%s)\n", current_theme());
 	return 0;
 }
 

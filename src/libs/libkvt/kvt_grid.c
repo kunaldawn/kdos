@@ -72,8 +72,26 @@ static uint8_t nearest_slot(uint32_t rgb)
 	return (uint8_t)ktui_theme_nearest(rgb);
 }
 
+/*
+ * THE DEFAULT COLOURS ARE SLOTS, NOT LITERALS — the rule the whole tree is
+ * written under, and here it is load-bearing rather than tidy.
+ *
+ * A terminal's default foreground is a light grey and its default background
+ * is black. Reducing that grey by RGB distance against eight phosphor greens
+ * can land on the very slot the black reduces to, and then every character a
+ * program writes is drawn in the colour of the screen behind it: the cells
+ * hold the text, the window looks empty, and a dump still prints it because a
+ * dump throws the colour away.
+ *
+ * "Default" means whatever THIS desktop calls text and background, so it is
+ * answered with the theme's own slots and no arithmetic. A colour a program
+ * actually asked for is still reduced — including one that reduces to its own
+ * background, because a program that writes black on black meant to.
+ */
 static uint8_t attr_fg(const struct kvt_screen_attr *a)
 {
+	if (a->fccode == KVT_COLOR_FOREGROUND)
+		return KT_TEXT;
 	if (a->fccode >= 0)
 		return nearest_slot(xterm_rgb(a->fccode));
 
@@ -83,6 +101,8 @@ static uint8_t attr_fg(const struct kvt_screen_attr *a)
 
 static uint8_t attr_bg(const struct kvt_screen_attr *a)
 {
+	if (a->bccode == KVT_COLOR_BACKGROUND)
+		return KT_BG;
 	if (a->bccode >= 0)
 		return nearest_slot(xterm_rgb(a->bccode));
 

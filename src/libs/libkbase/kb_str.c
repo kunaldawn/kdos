@@ -59,3 +59,75 @@ const char *kb_human_size(unsigned long long bytes)
 		snprintf(b, 32, "%.0f%s", v, u[i]);
 	return b;
 }
+
+/*
+ * ── base64 ───────────────────────────────────────────────────────────────
+ *
+ * Here rather than in a state machine or a terminal: OSC 52 carries a base64
+ * selection and the clipboard is not the only thing that will ever want this.
+ *
+ * DECODE ONLY. The encode side has one caller — `ktui_clip_copy` writes the
+ * sequence as it goes, without a buffer — and a second implementation of the
+ * same table would be a second thing to keep in step.
+ */
+
+static int b64_val(unsigned char c)
+{
+	if (c >= 'A' && c <= 'Z')
+		return c - 'A';
+	if (c >= 'a' && c <= 'z')
+		return c - 'a' + 26;
+	if (c >= '0' && c <= '9')
+		return c - '0' + 52;
+	if (c == '+')
+		return 62;
+	if (c == '/')
+		return 63;
+	return -1;
+}
+
+/*
+ * Decodes `in` into `out`, writing at most `outsz` bytes and NUL-terminating.
+ * Returns the number of bytes written, or -1 when the input is not base64 or
+ * would not fit.
+ *
+ * REFUSED WHOLE, NEVER PARTIAL. A half-decoded selection is a paste of
+ * garbage; a refusal is a paste that did not happen, which is visible.
+ * Whitespace is skipped, because a long payload may arrive wrapped.
+ */
+int kb_b64_decode(const char *in, size_t inlen, char *out, size_t outsz,
+		  size_t *outlen)
+{
+	unsigned int acc = 0;
+	int bits = 0;
+	size_t n = 0;
+
+	if (!in || !out || !outsz)
+		return -1;
+
+	for (size_t i = 0; i < inlen; i++) {
+		unsigned char c = (unsigned char)in[i];
+		int v;
+
+		if (c == '\n' || c == '\r' || c == ' ' || c == '\t')
+			continue;
+		if (c == '=')
+			break;		/* padding: nothing follows it */
+		v = b64_val(c);
+		if (v < 0)
+			return -1;
+		acc = (acc << 6) | (unsigned int)v;
+		bits += 6;
+		if (bits >= 8) {
+			bits -= 8;
+			if (n + 1 >= outsz)
+				return -1;
+			out[n++] = (char)((acc >> bits) & 0xff);
+		}
+	}
+
+	out[n] = '\0';
+	if (outlen)
+		*outlen = n;
+	return (int)n;
+}

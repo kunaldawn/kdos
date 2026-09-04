@@ -40,6 +40,15 @@
 int kkms_init(const char *seat, const char *font);
 void kkms_shutdown(void);
 
+/*
+ * WHICH STEP FAILED, valid after kkms_init() returns -1 and until the next
+ * call to it. Eight steps share one return value — a missing driver, a seat
+ * that never went active, a monitor that is not plugged in, a font that would
+ * not load, a modeset the driver rejected — and a supervisor that cannot tell
+ * them apart cannot tell a person which one to fix. Never NULL.
+ */
+const char *kkms_reason(void);
+
 /* Descriptors a caller polls beside its own: the seat and libinput. */
 int kkms_seat_fd(void);
 int kkms_input_fd(void);
@@ -58,5 +67,19 @@ int kkms_active(void);
 /* Power the screen down (1) or back up (0). The mode is re-set on the way
  * back: a CRTC that was turned off has no mode to return to. */
 void kkms_blank(int on);
+
+/*
+ * SWITCH TO ANOTHER VIRTUAL TERMINAL, 1-based, as Ctrl+Alt+F<n> does.
+ *
+ * It belongs here because the seat is here. Once libseat puts this VT into
+ * graphics mode the kernel's own chord stops working, so a desktop that does
+ * not offer the switch itself takes away the recovery console `/etc/inittab`
+ * exists to guarantee. The session must not gain this: it links no device code
+ * and comes up on a machine whose GPU driver does not.
+ *
+ * Returns 0 when the seat accepted the request. The switch itself is
+ * asynchronous — the disable arrives on the seat's own descriptor.
+ */
+int kkms_switch_vt(int n);
 
 #endif /* KKMS_H */

@@ -1,5 +1,6 @@
 /* kdos-con — the window list, and compositing it into the grid. See con.h. */
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -170,6 +171,37 @@ void win_place(Win *w, int want_w, int want_h)
 	w->geom.h = want_h;
 }
 
+/*
+ * THE RECTANGLE A TILED STATE ASKS FOR, which is not always a tile.
+ *
+ * `kwm_tile_geom` halves an axis for each edge snapped on it, so a state
+ * holding BOTH edges of an axis collapses that axis to nothing — left and
+ * right together put x1 and x2 on the same midpoint, and the window comes back
+ * with a NEGATIVE width and is drawn nowhere. The window model defines no such
+ * tile: the compositor's transition never produces an opposing pair, so the
+ * contract fixture has no row for one and libkwm is right to answer as it
+ * does. Maximise is this program's own state, and the work area is what it
+ * means.
+ */
+KwmRect win_tile_rect(unsigned tiled)
+{
+	KwmRect a = win_workarea();
+	KwmBorder m = { CON_FRAME, CON_FRAME, CON_FRAME, CON_FRAME };
+
+	if (tiled != KWM_EDGES_CARDINAL)
+		return kwm_tile_geom(a, S.gap, m, tiled);
+
+	a.x += CON_FRAME;
+	a.y += CON_FRAME;
+	a.w -= CON_FRAME * 2;
+	a.h -= CON_FRAME * 2;
+	if (a.w < 1)
+		a.w = 1;
+	if (a.h < 1)
+		a.h = 1;
+	return a;
+}
+
 void win_snap(Win *w, unsigned edge, int combine)
 {
 	if (!w)
@@ -189,11 +221,7 @@ void win_snap(Win *w, unsigned edge, int combine)
 		w->restore = w->geom;
 
 	w->tiled = next;
-
-	KwmBorder m = { CON_FRAME, CON_FRAME, CON_FRAME, CON_FRAME };
-	KwmRect g = kwm_tile_geom(win_workarea(), S.gap, m, next);
-
-	w->geom = g;
+	w->geom = win_tile_rect(next);
 	win_resized(w);
 }
 
@@ -214,7 +242,7 @@ void win_resized(Win *w)
 }
 
 /*
- * Maximise is the four-edge tile, so an untile from it returns where an untile
+ * Maximise is the four-edge state, so an untile from it returns where an untile
  * from any other tile does and there is no second restore rectangle to keep in
  * step with the first.
  */
@@ -231,10 +259,7 @@ void win_maximise(Win *w)
 	if (!w->tiled)
 		w->restore = w->geom;
 	w->tiled = KWM_EDGES_CARDINAL;
-
-	KwmBorder m = { CON_FRAME, CON_FRAME, CON_FRAME, CON_FRAME };
-
-	w->geom = kwm_tile_geom(win_workarea(), S.gap, m, w->tiled);
+	w->geom = win_tile_rect(w->tiled);
 	win_resized(w);
 }
 
@@ -274,6 +299,67 @@ void win_minimise(Win *w)
 }
 
 /*
+ * BRING ONE BACK, focused and on top.
+ *
+ * A minimise with no restore is a one-way door in a desktop's most ordinary
+ * verb: the window is drawn nowhere, cycled past, and not hit-testable, so
+ * nothing a person can do reaches it again. It also comes back onto the
+ * workspace they are on rather than the one it left — a window restored onto
+ * a workspace nobody is looking at has not been restored.
+ */
+void win_restore(Win *w)
+{
+	if (!w || !w->minimised)
+		return;
+	w->minimised = 0;
+	w->workspace = S.workspace;
+	win_raise(w->id);
+	S.focus = w->id;
+	ktui_draw_invalidate();
+}
+
+/*
+ * The most recently minimised window on this workspace, or the last one
+ * anywhere when this workspace has none. The list is in stacking order, so the
+ * first match walking down is the one that went away last — which is the one a
+ * person means by "bring it back".
+ */
+Win *win_last_minimised(void)
+{
+	Win *any = NULL;
+
+	for (Win *w = S.wins; w; w = w->next) {
+		if (!w->minimised || w->panel)
+			continue;
+		if (w->workspace == S.workspace)
+			return w;
+		if (!any)
+			any = w;
+	}
+	return any;
+}
+
+/*
+ * SWITCH TO A WORKSPACE, and it is the one place that does.
+ *
+ * The chord and the pager cell reach the same code: two paths that each set
+ * the field themselves is two chances for one of them to forget the focus, and
+ * a switch that leaves the focus on a window the person can no longer see
+ * sends their next keystroke somewhere invisible.
+ */
+void win_workspace(int ws)
+{
+	if (ws < 0 || ws >= S.nworkspace || ws == S.workspace)
+		return;
+	S.workspace = ws;
+	/* Nothing here is focused until the cycle picks the topmost window
+	 * that is: the old focus belongs to a workspace nobody is looking at. */
+	S.focus = 0;
+	win_cycle(1);
+	ktui_draw_invalidate();
+}
+
+/*
  * Send to another workspace and follow nothing: the window leaves and the view
  * stays where it is, which is what makes this the move rather than a switch.
  */
@@ -298,6 +384,16 @@ Win *win_at(int x, int y)
 		 * the idle policy see the activity that takes it away. */
 		if (w == S.saver)
 			continue;
+		/*
+		 * A BACKGROUND CLAIMS NOTHING EITHER. It is the desktop's icon
+		 * layer and it covers the whole grid, so hit-testing it before
+		 * the windows would take every click on the desktop.
+		 *
+		 * An overlay is NOT excluded: a menu is there to be clicked,
+		 * and it is first in the list because it is drawn last.
+		 */
+		if (w->background)
+			continue;
 		/* Nor on a surface that says it has nothing to show: it is
 		 * drawn nowhere, and a rectangle that swallows clicks without
 		 * drawing anything is worse than one that does. */
@@ -315,6 +411,25 @@ Win *win_at(int x, int y)
 	return NULL;
 }
 
+/*
+ * A WINDOW A PERSON CAN MOVE THE FOCUS TO. The ring, the directional search
+ * and the swap all mean the same set, and three copies of the rule is three
+ * chances for one of them to stop on a tooltip.
+ *
+ * A saver is never in it: one that could be given the focus is one that can be
+ * left on screen with a window behind it taking the keyboard. Nor is a layer —
+ * a toast, a menu and the icon layer are not things a person has open — and
+ * nor is a panel, which is docked rather than placed.
+ */
+static int reachable(const Win *w)
+{
+	if (!w || w->minimised || w->workspace != S.workspace)
+		return 0;
+	if (w == S.saver || w->overlay || w->background || w->panel)
+		return 0;
+	return 1;
+}
+
 /* Alt-Tab, over the windows on this workspace, through libkwm's ring. */
 void win_cycle(int dir)
 {
@@ -322,12 +437,7 @@ void win_cycle(int dir)
 	int n = 0, cur = -1;
 
 	for (Win *w = S.wins; w && n < 64; w = w->next) {
-		if (w->minimised || w->workspace != S.workspace)
-			continue;
-		/* Never in the cycle: a saver that could be given the focus is
-		 * a saver that can be left on screen with a window behind it
-		 * taking the keyboard. */
-		if (w == S.saver)
+		if (!reachable(w))
 			continue;
 		if (w->id == S.focus)
 			cur = n;
@@ -343,6 +453,129 @@ void win_cycle(int dir)
 
 	if (next >= 0)
 		win_raise(ids[next]);
+}
+
+/*
+ * THE NEAREST WINDOW IN ONE DIRECTION, or NULL.
+ *
+ * A candidate has to START past where the focused window starts — its own
+ * leading edge, not its trailing one, so a window that merely overlaps a
+ * little is still to the right of one it overlaps — and it has to SHARE ROWS
+ * (or columns) with it. Without the overlap test, Super+Alt+Right on a
+ * two-column layout lands on whatever happens to be furthest down the other
+ * column, which is not what the arrow was pointing at. Nothing overlapping
+ * means the focus does not move; Alt-Tab is the way to a window this search
+ * cannot see, and a focus that jumped somewhere unrelated would be worse than
+ * one that stayed.
+ *
+ * `kwm_edge_best` picks between two candidates: the smallest leading edge
+ * going right or down, the largest going left or up.
+ */
+Win *win_dir(unsigned dir)
+{
+	Win *cur = win_focused(), *best = NULL;
+	int decreasing = dir == KWM_EDGE_LEFT || dir == KWM_EDGE_TOP;
+	int horiz = dir == KWM_EDGE_LEFT || dir == KWM_EDGE_RIGHT;
+	int edge = decreasing ? INT_MIN : INT_MAX;
+
+	if (!cur || !reachable(cur))
+		return NULL;
+
+	for (Win *w = S.wins; w; w = w->next) {
+		if (w == cur || !reachable(w))
+			continue;
+
+		int lead = horiz ? w->geom.x : w->geom.y;
+		int from = horiz ? cur->geom.x : cur->geom.y;
+
+		if (decreasing ? lead >= from : lead <= from)
+			continue;
+
+		/* The spans across the direction of travel, which must meet. */
+		int a0 = horiz ? cur->geom.y : cur->geom.x;
+		int a1 = a0 + (horiz ? cur->geom.h : cur->geom.w);
+		int b0 = horiz ? w->geom.y : w->geom.x;
+		int b1 = b0 + (horiz ? w->geom.h : w->geom.w);
+
+		if (b1 <= a0 || b0 >= a1)
+			continue;
+
+		int pick = kwm_edge_best(edge, lead, decreasing);
+
+		if (pick != edge || !best) {
+			edge = pick;
+			best = w;
+		}
+	}
+	return best;
+}
+
+/*
+ * TWO WINDOWS TRADE RECTANGLES, and the focus follows the window rather than
+ * the place. A swap that left the focus where it was would move the window out
+ * from under the person's own keystrokes.
+ *
+ * A maximised or fullscreen window is fitted to the grid rather than placed,
+ * so trading its rectangle would give the other window a size nothing asked
+ * for; both flags travel with it.
+ *
+ * SO DOES `restore`, WHICH IS PART OF THE SAME STATE. It is where an untile
+ * puts a window back, and a tile flag that moved without it would send the
+ * receiving window to a rectangle it was never at — a maximised window
+ * swapped, then unmaximised, landing on the other one's old place.
+ */
+void win_swap(Win *a, Win *b)
+{
+	if (!a || !b || a == b)
+		return;
+
+	KwmRect g = a->geom, rest = a->restore;
+	int full = a->full, tiled = a->tiled;
+
+	a->geom = b->geom;
+	a->restore = b->restore;
+	a->full = b->full;
+	a->tiled = b->tiled;
+	b->geom = g;
+	b->restore = rest;
+	b->full = full;
+	b->tiled = tiled;
+	win_resized(a);
+	win_resized(b);
+	ktui_draw_invalidate();
+}
+
+/*
+ * THE NEXT WORKSPACE THAT HAS SOMETHING ON IT, wrapping once.
+ *
+ * Occupancy is counted here rather than in libkwm because "there is something
+ * here" is this desktop's own rule: a minimised window still holds its
+ * workspace — it has a taskbar row and comes back to where it was — and a
+ * panel, a toast and the icon layer are not somebody's work.
+ *
+ * Stepping past an empty workspace is the point. With nine of them and two in
+ * use, an arrow that stopped on every empty one in between would be an arrow
+ * nobody presses twice.
+ */
+void win_workspace_step(int reverse)
+{
+	unsigned char occupied[9] = { 0 };
+	int n = S.nworkspace;
+
+	if (n > (int)sizeof(occupied))
+		n = (int)sizeof(occupied);
+
+	for (Win *w = S.wins; w; w = w->next) {
+		if (w->panel || w->overlay || w->background || w == S.saver)
+			continue;
+		if (w->workspace >= 0 && w->workspace < n)
+			occupied[w->workspace] = 1;
+	}
+
+	int ws = kwm_ws_adjacent(occupied, n, S.workspace, reverse, 1);
+
+	if (ws >= 0)
+		win_workspace(ws);
 }
 
 /*
@@ -531,8 +764,82 @@ void win_lock_draw(void)
 		       S.cols, how, KT_DIM, KT_BG, 0);
 }
 
+/*
+ * WHERE EACH FRAME'S BUTTONS LANDED, in draw order — back to front, so the
+ * last match is the frame on top and that is the one a click belongs to.
+ */
+typedef struct {
+	int x0, x1, y, kind, id;
+} WinBtnHit;
+
+static WinBtnHit btn_hits[96];
+static int nbtn_hits;
+
+int win_button_at(int x, int y, int *id)
+{
+	*id = 0;
+	for (int i = nbtn_hits - 1; i >= 0; i--)
+		if (btn_hits[i].y == y && x >= btn_hits[i].x0 &&
+		    x <= btn_hits[i].x1) {
+			*id = btn_hits[i].id;
+			return btn_hits[i].kind;
+		}
+	return WIN_BTN_NONE;
+}
+
+/*
+ * `_ ■ X` at the right of the title row.
+ *
+ * INSIDE THE VT TIER. The console font is 512 glyphs and renders anything it
+ * does not carry as a blank, so a hollow square would be an invisible button
+ * on `tty1` — `■` is on the font's list and `_` and `X` are ASCII.
+ *
+ * Drawn here rather than by `ktui_draw_box`: that function has thirty-two call
+ * sites across twenty-five files, including the installer and the build tool,
+ * and giving it buttons would put them on every box in the tree and move
+ * goldens that have nothing to do with this desktop. Buttons are a property of
+ * a managed window, so the window manager draws them.
+ */
+static void draw_buttons(Win *w, KRect r, int focused)
+{
+	/*
+	 * THE SQUARE COMES FROM THE GLYPH TABLE, not written literally: the
+	 * table picks per tier, so the console font's square is used where it
+	 * exists and a terminal without UTF-8 gets the tier's own stand-in
+	 * rather than the '?' every unmapped codepoint becomes.
+	 *
+	 * `_` and `X` are ASCII and need no such care.
+	 */
+	const struct { const char *g; int kind; } b[] = {
+		{ "_", WIN_BTN_MIN },
+		{ ktui_glyph[KT_G_SQUARE], WIN_BTN_MAX },
+		{ "X", WIN_BTN_CLOSE }
+	};
+	int x = r.x + r.w - 7;
+
+	/* A frame too narrow for its title and three buttons gets the title:
+	 * a button nobody can read is not a button. */
+	if (r.w < 16 || nbtn_hits + 3 > 96)
+		return;
+
+	for (int i = 0; i < 3; i++) {
+		ktui_draw_text(x, r.y, 2, b[i].g,
+			       focused ? KT_ACCENT : KT_DIM, KT_SURFACE,
+			       KT_A_NONE);
+		btn_hits[nbtn_hits].x0 = x;
+		btn_hits[nbtn_hits].x1 = x;
+		btn_hits[nbtn_hits].y = r.y;
+		btn_hits[nbtn_hits].kind = b[i].kind;
+		btn_hits[nbtn_hits].id = w->id;
+		nbtn_hits++;
+		x += 2;
+	}
+}
+
 void win_draw_all(void)
 {
+	nbtn_hits = 0;
+
 	/*
 	 * WHILE LOCKED, ONLY THE LOCK IS DRAWN. Not the windows under it and
 	 * not the panel: a lock screen composited over a desktop shows the
@@ -573,43 +880,81 @@ void win_draw_all(void)
 	for (Win *w = S.wins; w && n < 128; w = w->next)
 		order[n++] = w;
 
-	for (int i = n - 1; i >= 0; i--) {
-		Win *w = order[i];
+	/*
+	 * THREE PASSES, BECAUSE THERE ARE THREE LAYERS. The stacking order
+	 * inside each is the list's own; between them it is fixed, and it has
+	 * to be: a menu that a window could be raised above is a menu that
+	 * disappears behind the thing it was opened from, and desktop icons
+	 * drawn last would cover every window on the screen.
+	 */
+	for (int layer = 0; layer < 3; layer++) {
+		for (int i = n - 1; i >= 0; i--) {
+			Win *w = order[i];
+			int wl = w->background ? 0 : w->overlay ? 2 : 1;
 
-		/* A guest is on another terminal entirely; the taskbar is the
-		 * only place it appears on this one. */
-		if (w->kind == WIN_VT)
-			continue;
-		/*
-		 * A SURFACE THAT SAYS IT HAS NOTHING TO SHOW IS DRAWN NOWHERE.
-		 * An overlay — a candidate window, a stack of toasts — is up
-		 * for a fraction of the time its program is running, and one
-		 * that could not say so would leave an empty box on the desktop
-		 * for the rest of the session.
-		 */
-		if (w->kind == WIN_SURFACE && w->surf &&
-		    kcon_surface_hidden(w->surf))
-			continue;
-		/* A panel is on a workspace of its own — every one of them. */
-		if (w->minimised || (!w->panel && w->workspace != S.workspace))
-			continue;
+			if (wl != layer)
+				continue;
 
-		/* A panel has no frame and casts no shadow: it is part of the
-		 * desktop rather than something sitting on it. */
-		if (w->panel || w->full) {
+			/* A guest is on another terminal entirely; the taskbar
+			 * is the only place it appears on this one. */
+			if (w->kind == WIN_VT)
+				continue;
+			/*
+			 * A SURFACE THAT SAYS IT HAS NOTHING TO SHOW IS DRAWN
+			 * NOWHERE. An overlay — a candidate window, a stack of
+			 * toasts — is up for a fraction of the time its program
+			 * is running, and one that could not say so would leave
+			 * an empty box on the desktop for the rest of the
+			 * session.
+			 */
+			if (w->kind == WIN_SURFACE && w->surf &&
+			    kcon_surface_hidden(w->surf))
+				continue;
+			/* A panel is on a workspace of its own — every one of
+			 * them, and so is a layer: a toast that belonged to the
+			 * workspace it was raised on would be invisible to
+			 * somebody who had just switched away from it. */
+			if (w->minimised ||
+			    (!w->panel && !w->overlay && !w->background &&
+			     w->workspace != S.workspace))
+				continue;
+
+			/*
+			 * NO FRAME AND NO SHADOW on a panel, a layer or a
+			 * fullscreen window. Each is part of the desktop rather
+			 * than something sitting on it, and a chrome-wrapped
+			 * toast is the clearest case: it would arrive with a
+			 * title bar and a close button nobody asked for.
+			 */
+			if (w->panel || w->full || w->overlay ||
+			    w->background) {
+				draw_content(w);
+				continue;
+			}
+
+			KwmRect f = win_frame(w);
+			KRect r = krect(f.x, f.y, f.w, f.h);
+			int focused = w->id == S.focus;
+			/*
+			 * THE VISIBLE BELL IS THE CHROME, INVERTED. The
+			 * content is the program's and must not be repainted
+			 * in colours it did not choose — a flash that covered
+			 * the text would hide the line that rang — so the
+			 * frame and the title carry it, which is also where a
+			 * person's eye already is when they are told a window
+			 * wants them.
+			 */
+			int rung = w->bell_until > con_now_ms();
+
+			ktui_draw_shadow(r);
+			ktui_draw_fill(r, rung ? KT_ACCENT : KT_SURFACE);
+			ktui_draw_box(r, w->title,
+				      rung ? KT_SURFACE :
+				      focused ? KT_ACCENT : KT_DIM,
+				      rung ? KT_ACCENT : KT_SURFACE,
+				      /* dbl */ focused || rung);
+			draw_buttons(w, r, focused);
 			draw_content(w);
-			continue;
 		}
-
-		KwmRect f = win_frame(w);
-		KRect r = krect(f.x, f.y, f.w, f.h);
-		int focused = w->id == S.focus;
-
-		ktui_draw_shadow(r);
-		ktui_draw_fill(r, KT_SURFACE);
-		ktui_draw_box(r, w->title,
-			      focused ? KT_ACCENT : KT_DIM, KT_SURFACE,
-			      /* dbl */ focused);
-		draw_content(w);
 	}
 }

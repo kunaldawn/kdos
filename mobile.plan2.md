@@ -23,7 +23,7 @@ drag, scroll, pinch and edge swipe AND re-emits the ordinary mouse events every 
 already handles, so the whole existing toolkit inherits touch without being rewritten. The
 recogniser is in the toolkit rather than in libkwl because the console desktop's KMS backend
 feeds the same one from libinput: a disambiguator written inside a backend is written twice and
-disagrees twice. See `con.plan.md` wave 4, which builds it. System
+disagrees twice. It is `ktui_gesture_feed()` in `src/libs/libktui/ktui_gesture.c`. System
 gestures are recognised in the compositor (`kdos-gesture.c`) because only the compositor can take
 a touch away from a client. `kdos-osk` is a layer-shell surface with an exclusive zone, so
 windows are genuinely resized rather than covered. `kdos-mobile` is one binary under seven names,
@@ -531,9 +531,9 @@ backlight: <path>  min=<n> max=<n>  write verified
 
 ## Wave 2 — Touch in libkwl
 
-> **The recogniser is not built here.** `con.plan.md` wave 4 puts `KT_EVT_TOUCH` and
-> `ktui_gesture_feed` in libktui, with tap, long press, drag, scroll, pinch and edge swipe, and
-> synthesises the mouse events beneath them. What this wave owes is the half only libkwl can do:
+> **The recogniser is not built here.** `KT_EVT_TOUCH` and `ktui_gesture_feed` live in libktui
+> (`src/libs/libktui/ktui_gesture.c`), with tap, long press, drag, scroll, pinch and edge swipe,
+> and synthesise the mouse events beneath them. What this wave owes is the half only libkwl can do:
 > binding `wl_touch`, tracking the slots, choosing `frame` as the commit point, and recording the
 > output's physical size. Every task below that describes disambiguation is satisfied by calling
 > the recogniser and asserting against it, not by writing a second one.

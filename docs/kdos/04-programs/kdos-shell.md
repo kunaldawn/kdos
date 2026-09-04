@@ -632,7 +632,7 @@ Per-manager:
 | `kdos-clip` | Clipboard history. The daemon owns the list; this draws it |
 | `kdos-teams` | The window list, and what the panel's overflow cell opens — previously that cell stepped the row by one per click, so reaching the third hidden window took three clicks and three reflows |
 | `kdos-display` | Screens. It grew a button bar, because a pointer could select a screen and then not switch it off or apply anything |
-| `kdos-keys` | The keybinding card |
+| `kdos-keys` | The keybinding card. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that |
 | `kdos-doc` | The documentation viewer |
 | `kdos-openwith` | Choose a handler, and optionally always use it |
 | `kdos-run` | The run box. It takes a click to place its caret, and grew a button bar because its one feature beyond a prompt was a **modifier** that nothing announced |
