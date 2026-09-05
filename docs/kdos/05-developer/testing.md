@@ -210,6 +210,12 @@ change that lands with them — so `git checkout --` on one throws away the very
 the next run reports a difference that looks like a flake. `git diff HEAD` on the **source** is what
 tells the two apart; run the dump twice if you still cannot.
 
+**A front end that needs a library the harness does not offer is skipped BY NAME.** `kdos-peek`
+decodes with `libkimg` and probes archives with `libarchive`, so both the shell-wide compile and the
+dump harness admit it only when `libarchive`, `libpng`, `libjpeg` and `libwebp` are all present, and
+say so out loud when they are not. Gating the *whole* shell compile on them instead would take the
+other forty files with it on a host that simply lacks one dev package.
+
 **`libkdisp` is stubbed, not linked, and adding a `kdisp_` entry point breaks the harness.** The
 stubs are in `testing/fixtures/shell/dumpmain.c` and there is no compiler check that they cover the
 header — a new one links as "undefined reference" and every front-end frame behind it is skipped.

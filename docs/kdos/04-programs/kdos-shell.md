@@ -49,6 +49,7 @@ half of the same mistake.
 | `kdos-note` | The scratch pad | [The small surfaces](#the-small-surfaces) |
 | `kdos-ascii` | A picture, as characters | [The small surfaces](#the-small-surfaces) |
 | `kdos-trash` | What was deleted, and the way back | [kdos-trash](#kdos-trash) |
+| `kdos-peek` | What is in a file, without its application | [kdos-peek](#kdos-peek) |
 
 ## Places
 
@@ -76,6 +77,13 @@ column is opened — one process, not one per frame — and is silent when zoxid
 absent, which is the same answer either way. It is a **separate call** from the places themselves:
 *Add to Places* decides whether a folder is already a place by asking for the column, and a
 frecency guess folded into that answer would make it refuse a folder somebody had merely visited.
+
+**An archive opens two ways, and they are different questions.** `mc` mounts a tar, a cpio, a zip or
+an `ar` as a **directory** through its own VFS — the right answer when you want one file out of one,
+and a view no MIME type expresses. Everything its VFS cannot reach on this image goes to
+`kdos-openarchive`, which extracts beside the file. Only 7z and rar get a row: that is the
+intersection of what `ouch` reads and what shared-mime-info can name, and a row for a type the image
+cannot produce is one nobody can tell is dead.
 
 **The desktop's menu is the same table with its own rows under it.** `kdos-desk` draws libkxdg's
 file verbs, a rule, then what only a desktop can answer — New Folder, Sort Icons, Change Wallpaper
@@ -267,6 +275,45 @@ was drawn**, not of the stride, or the highlight lights two cells under a square
 **The window list stops at the wing.** The wing's left edge is whichever of its two rows reaches
 further left, and the meters strip is handed the room the window list needs as its floor — so on a
 narrow bar the strip degrades rather than the window list overwriting the charts.
+
+### The disk warning
+
+The `disk` meter charts `/`, because a chart has room for one number. The **warning** reads every
+writable filesystem, so it reaches a separate `/home` or the stick somebody is copying onto.
+
+`/proc/mounts` and `statvfs`, on the meter's ten-second cadence — one `statvfs` per mount, and one
+on a network mount can block. `kdos-mountd` cannot answer this: it is wheel-gated, its reply
+carries no free-space field, and it lists the media that are *not* mounted, which is the complement
+of the set that can be full.
+
+- **Pseudo-filesystems are skipped.** A tmpfs is sized from RAM, which the memory meter already
+  charts, and calling one "disk almost full" names the wrong resource.
+- **Read-only mounts are skipped.** A squashfs is 100% full by construction and a warning nobody
+  can act on is noise.
+- **Deduplicated by the source device.** A btrfs subvolume and a bind mount are further names for
+  one filesystem; without this a single full disk warns three times.
+- **Full means full FOR THIS USER** — `f_bavail`, which excludes the blocks a filesystem reserves
+  for root. `df` on this image is toybox's and reports the reserve as available, so on an `ext4`
+  whose reserve is intact `df` says 92% where the panel says 100%. The panel's number is the one
+  that matters: those blocks are not yours to write.
+- **A fixture root gets no reading at all.** `statvfs` cannot be pointed at a recorded machine, so
+  `KDOS_PANEL_ROOT` suppresses the walk rather than measuring the machine running the dump.
+
+At 90% a mark appears **one column inside the clock's own segment** — an exclamation mark, warning
+coloured, error coloured past 95%. A letter and not a glyph slot, because nothing in the tiers is
+a warning sign and a missing glyph draws a box. The clock is the one landmark on the bar that
+never moves, and the warning is about the machine rather than about whichever applet is next to it.
+
+**One notification per step past 90**, so 90, 95 and 100 speak and nothing between them does. The
+step each mountpoint has already been warned about is latched in
+`~/.local/state/kdos/diskwarn` — **on disk, not in memory**, or a disk that stays full warns again
+at every login. A step that falls is recorded too, so emptying the disk and filling it again warns
+again.
+
+The chevron's popup carries the row whatever `overflow =` says, since the mark has no widget of its
+own and cannot say which filesystem or by how much. Opening it runs `ncdu -x` **on that
+mountpoint**: the question a full disk asks is where the space went, which is a recursive sum no
+listing shows, and `-x` keeps the scan off every other filesystem.
 
 ### The overflow chevron
 
@@ -603,6 +650,55 @@ means on every other surface here.
 **A folder's size is named, not measured.** `bytes` in a record is the directory inode, not a
 recursive total, so the column reads `folder`: a number that is wrong is worse than one that is
 missing.
+
+
+## kdos-peek
+
+What is in a file, without starting the application that owns it. *Peek* in the file verbs, `k` on
+`mc`'s `F2`, and the handler for the five document types nothing else on this image opens.
+
+**Four kinds and one decision**, taken in this order because the cheap and certain tests come first:
+
+| Test | Kind | Shown as |
+|---|---|---|
+| The magic bytes of a PNG, JPEG or WebP | Picture | The picture, tiled into the cell grid |
+| A `.pdf`, `.epub`, `.cbz`, `.xps` or `.fb2` | Document | One page at a time, rendered by `mutool` |
+| `libarchive` agrees to open it | Archive | The entries, name and size |
+| No NUL in the first four kilobytes | Text | `less`, in a terminal — and this exits |
+
+Anything left is refused **by name**, in the middle of the window, rather than shown as mojibake.
+
+**Nothing here decodes a picture.** `libkimg` is the one place in KDOS that turns untrusted image
+bytes into pixels, under a budget checked before any allocation, and a page from `mutool` arrives as
+a PNG and goes through the same call. The scale and the cut into sprite tiles are `libkcell`'s one
+implementation, shared with the terminal's inline pictures.
+
+**The magic is sniffed here as well as inside `libkimg`**, because the decision is taken before the
+file is read: a two-gigabyte video must not be loaded into memory to discover that it is not a PNG.
+
+**A document is chosen by extension and rendered at the pane's pixel size.** `mutool draw -w -h`
+with no `-r` fits the page inside that box and keeps its aspect, so a resize is a re-render rather
+than a rescale of what was already drawn. The page count comes from one `mutool info` at open; when
+it says nothing usable the title shows a page number without a total, because a total this program
+guessed would be a number that is wrong rather than missing.
+
+**`libarchive` opening the file is the test for whether it is an archive** — the format probe is the
+same code that would read it, rather than a table of extensions that would disagree with it. The
+listing stops at 4096 entries, because the entry count is the archive's choice.
+
+**Text is the pager's.** A pager inside this window would be a second implementation of scrolling,
+searching and line wrapping, and the one on the machine is better than the one this file would
+grow. `--dump` never forks it: it draws what it would have done, the same split between measuring
+and acting the panel keeps.
+
+**On the console the picture's bytes are offered to `libkcon` explicitly**, after `kdisp_init` and
+never before — the console backend clears its client state when it connects. A sprite the session
+was never sent maps to −1 and its cells become spaces, so the failure is a blank pane rather than
+the fallback codepoint. The cell size there is nominal for the same reason `kdos-term`'s is: a console surface has no
+pixels of its own, and the display scales what arrives.
+
+**A directory is refused.** A file manager inside a viewer that was opened from a file manager is a
+circle; `mc` shows directories and this shows files.
 
 
 ## Notifications

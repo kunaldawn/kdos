@@ -20,6 +20,7 @@
  * ---------------------------------
  */
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,7 +45,10 @@ int kdt_places(int argc, char **argv)
 	int n;
 
 	if (argc && !strcmp(argv[0], "add")) {
-		char real[512];
+		/* PATH_MAX and not a smaller round number: realpath writes up
+		 * to that whatever the argument's length, and glibc's fortified
+		 * form aborts on a buffer that cannot hold it. */
+		char real[PATH_MAX];
 		const char *dir, *name;
 		int r;
 

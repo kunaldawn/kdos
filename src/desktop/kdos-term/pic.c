@@ -38,6 +38,7 @@
 #ifdef HAVE_KIMG
 #include <pixman.h>
 
+#include "kcell.h"
 #include "kimg.h"
 
 /*
@@ -240,13 +241,6 @@ static uint32_t fallback_cp(void)
 	return (ktui_caps & KT_CAP_UTF8) ? 0x2593u : (uint32_t)'#';
 }
 
-static void sprite_free(uint64_t key, const void *pix, void *user)
-{
-	(void)key;
-	(void)user;
-	pixman_image_unref((pixman_image_t *)pix);
-}
-
 /* FNV-1a over the payload, which is what makes the same picture sent twice
  * reuse its slots instead of taking a second set. */
 static uint64_t hash_bytes(const uint8_t *p, size_t n, int cw, int ch)
@@ -262,36 +256,6 @@ static uint64_t hash_bytes(const uint8_t *p, size_t n, int cw, int ch)
 	return h;
 }
 
-/* The whole picture, scaled to the cell grid it was given. Kept for the length
- * of the tiling and unreffed after: every tile is a copy of a piece of it. */
-static pixman_image_t *scaled;
-
-static const void *tile_of(void *user, int cell_x, int cell_y, int tw, int th)
-{
-	(void)user;
-
-	int pw = tw * cell_w(), ph = th * cell_h();
-	uint32_t *bits = calloc((size_t)pw * (size_t)ph, 4);
-
-	if (!bits)
-		return NULL;
-
-	pixman_image_t *t = pixman_image_create_bits(PIXMAN_a8r8g8b8, pw, ph,
-						     bits, pw * 4);
-
-	if (!t) {
-		free(bits);
-		return NULL;
-	}
-	/* The tile owns its bits: the sprite table holds the image and the
-	 * evictor unrefs it, which is what frees them. */
-	pixman_image_set_destroy_function(t, free_bits, bits);
-	pixman_image_composite32(PIXMAN_OP_SRC, scaled, NULL, t,
-				 cell_x * cell_w(), cell_y * cell_h(), 0, 0,
-				 0, 0, pw, ph);
-	return t;
-}
-
 /*
  * Scale a picture to `cw` by `ch` cells and register its tiles under `key`.
  * Returns what the table said: > 0 when every tile took a slot.
@@ -302,47 +266,8 @@ static const void *tile_of(void *user, int cell_x, int cell_y, int tw, int th)
  */
 static int register_tiles(pixman_image_t *img, uint64_t key, int cw, int ch)
 {
-	int sw = pixman_image_get_width(img);
-	int sh = pixman_image_get_height(img);
-	int dw = cw * cell_w(), dh = ch * cell_h();
-
-	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
-		return -1;
-
-	uint32_t *bits = calloc((size_t)dw * (size_t)dh, 4);
-
-	if (!bits)
-		return -1;
-	scaled = pixman_image_create_bits(PIXMAN_a8r8g8b8, dw, dh, bits,
-					  dw * 4);
-	if (!scaled) {
-		free(bits);
-		return -1;
-	}
-
-	if (sw != dw || sh != dh) {
-		/* 16.16 fixed point, and the transform maps DESTINATION back
-		 * to source — so the ratio is source over destination.
-		 * Inverting it scales by the reciprocal. */
-		struct pixman_transform t;
-
-		pixman_transform_init_scale(&t,
-			(pixman_fixed_t)(((int64_t)sw << 16) / dw),
-			(pixman_fixed_t)(((int64_t)sh << 16) / dh));
-		pixman_image_set_transform(img, &t);
-		pixman_image_set_filter(img, PIXMAN_FILTER_BILINEAR, NULL, 0);
-	}
-	pixman_image_composite32(PIXMAN_OP_SRC, img, NULL, scaled,
-				 0, 0, 0, 0, 0, 0, dw, dh);
-	pixman_image_set_transform(img, NULL);
-
-	int r = ktui_sprite_put_tiled(key, cw, ch, fallback_cp(), tile_of,
-				      NULL);
-
-	pixman_image_unref(scaled);
-	scaled = NULL;
-	free(bits);
-	return r;
+	return kcell_tile_picture(img, key, cw, ch, cell_w(), cell_h(),
+				  fallback_cp());
 }
 
 /*
@@ -1159,7 +1084,7 @@ void term_pic_init(void)
 		return;
 	}
 
-	ktui_sprite_evictor(sprite_free, NULL);
+	ktui_sprite_evictor(kcell_tile_free, NULL);
 	ktui_sprite_budget(SPRITE_BUDGET, cell_w(), cell_h());
 	kvt_term_img_cb(T.t, on_image, (size_t)TC.image_max * 1024, NULL);
 	term_pic_geom();

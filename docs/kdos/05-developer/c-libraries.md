@@ -44,7 +44,7 @@ painter is not made to link a Wayland client library to get it.
 | `libkdisp` | `kdisp_` | **Which display server, decided once**: the surface config, the seven roles, the lifecycle every surface asks for — init, close, resize, autohide, cell size, scale, clipboard, cursor — and the window list a panel manages | `libktui` |
 | `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui` |
 | `libkicon` | `kicon_` | **A name becomes a sprite slot, or −1** | `libktui` |
-| `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, and the pixel canvas | A font renderer, a pixel library |
+| `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, the pixel canvas, and the one scale-and-cut of a decoded picture into sprite tiles | A font renderer, a pixel library |
 | `libkwl` | `kwl_` | The toolkit's **Wayland backend**: surface roles, buffers, scale, input, clipboard, compose, cursors, frame throttling | `libkcell`, plus Wayland client libraries |
 
 ## Dependency direction

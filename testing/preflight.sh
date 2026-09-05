@@ -1051,6 +1051,29 @@ for _f in fs/etc/skel/.config/mc/mc.ext.ini fs/etc/skel/.config/mc/menu; do
 done
 note "mc rows" "$_mcp program(s) named, each on the image"
 
+# ── every KDOS handler a mimeapps table names is shipped ────────────────
+#
+# A row whose desktop id nothing provides falls through to the next candidate
+# in SILENCE, so a type the image claims to handle simply opens something else.
+# Only the `kdos-*` ids are checked: those are ours to ship, and a row naming a
+# port's own entry is the port's to provide.
+echo
+echo "==> mimeapps rows: every kdos-* handler is shipped"
+_mh=0
+for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
+          fs/etc/xdg/kdos-console-mimeapps.list \
+          fs/etc/skel/.config/mimeapps.list; do
+    [ -f "$_f" ] || continue
+    for _id in $(sed -n 's/^[^#=][^=]*=//p' "$_f" | tr ';' '\n' |
+                 grep '^kdos-.*\.desktop$' | sort -u); do
+        _mh=$((_mh + 1))
+        [ -f "fs/usr/share/applications/$_id" ] ||
+            find src -name "$_id" 2>/dev/null | grep -q . ||
+            bad "mimeapps $_id" "$_f names $_id, which nothing installs"
+    done
+done
+note "mimeapps handlers" "$_mh kdos-* row(s), each with an entry"
+
 # ── every claimed help page exists ──────────────────────────────────────
 #
 # `KtuiKeys.doc` names a document in /usr/share/kdos/doc and F1 opens it. A

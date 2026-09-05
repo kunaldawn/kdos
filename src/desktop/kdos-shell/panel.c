@@ -2082,6 +2082,7 @@ static void meters_sample(void);
 static int cpu_percent(void);
 static int clip_depth(void);
 static int media_count(int *mounted);
+static void disk_policy(struct sh_state *sh);
 static void notify_poll(void);
 static void frames_poll(void);
 
@@ -2116,6 +2117,7 @@ static void panel_tick(struct sh_state *sh)
 	}
 	panel_measure();
 	battery_policy(sh, panel_pct, panel_discharging);
+	disk_policy(sh);
 
 	/*
 	 * A pin made from a MENU is made in another process, so the only way
@@ -2218,7 +2220,9 @@ struct ovitem {
 	char label[48];
 	char detail[96];
 	int warn;
-	char service[SH_TRAY_NAME];	/* tray items only */
+	char service[SH_TRAY_NAME];	/* the tray item's bus name */
+	/* What the key acts ON: a tray item's object path, a disk row's
+	 * mountpoint. `key` is 24 bytes and neither of those is a name. */
 	char path[SH_TRAY_NAME];
 };
 
@@ -3033,6 +3037,265 @@ static int read_disk_used(double *pct)
 }
 
 /*
+ * EVERY WRITABLE FILESYSTEM, because the one that fills is not always `/`.
+ *
+ * The meter beside this has room for one number and takes the root; a warning
+ * has to reach a separate /home or a stick somebody is copying onto. The
+ * source is /proc/mounts and statvfs — kdos-mountd cannot answer it, being
+ * wheel-gated, carrying no free-space field in its reply, and listing the
+ * media that are NOT mounted, which is the complement of the set that can be
+ * full.
+ *
+ * Pseudo-filesystems are skipped: a tmpfs is sized from RAM and the panel
+ * already charts that, and calling one "disk almost full" names the wrong
+ * resource. Read-only mounts are skipped because a squashfs is 100% full by
+ * construction and a warning nobody can act on is noise. Deduplicated by the
+ * SOURCE DEVICE — a btrfs subvolume and a bind mount are further names for one
+ * filesystem, and without this one full disk warns three times.
+ *
+ * On the ten-second cadence of the meter beside it: this performs one statvfs
+ * per mount and a statvfs on a network mount can block.
+ */
+#define DISK_WARN_PCT 90	/* the first warning */
+#define DISK_WARN_STEP 5	/* and one more every this much past it */
+#define DISK_WARN_MAX 16	/* mounts tracked; a desktop has a handful */
+
+struct disk_mount {
+	char mnt[128];
+	int pct;
+};
+static struct disk_mount disk_mounts[DISK_WARN_MAX];
+static int ndisk_mounts;
+/* The worst step any mount has reached, which is what the bar marks. */
+static int panel_disk_warn;
+
+/* Zero while there is nothing to say, otherwise the step past the threshold
+ * counted from 1, so the mark, the popup row and the latch all agree. */
+static int disk_level(int pct)
+{
+	int lv, max;
+
+	if (pct < DISK_WARN_PCT)
+		return 0;
+	lv = (pct - DISK_WARN_PCT) / DISK_WARN_STEP + 1;
+	max = (100 - DISK_WARN_PCT) / DISK_WARN_STEP + 1;
+	return lv > max ? max : lv;
+}
+
+/* /proc/mounts writes a space as `\040`; a mountpoint used without decoding
+ * them names a directory that is not there. */
+static void mount_unescape(char *s)
+{
+	char *o = s;
+
+	for (const char *q = s; *q;) {
+		if (q[0] == '\\' && q[1] >= '0' && q[1] <= '3' &&
+		    q[2] >= '0' && q[2] <= '7' && q[3] >= '0' && q[3] <= '7') {
+			*o++ = (char)(((q[1] - '0') << 6) |
+				      ((q[2] - '0') << 3) | (q[3] - '0'));
+			q += 4;
+		} else {
+			*o++ = *q++;
+		}
+	}
+	*o = '\0';
+}
+
+static int mount_is_pseudo(const char *type)
+{
+	static const char *const pseudo[] = {
+		"autofs", "binfmt_misc", "bpf", "cgroup", "cgroup2",
+		"configfs", "debugfs", "devpts", "devtmpfs", "efivarfs",
+		"fusectl", "hugetlbfs", "iso9660", "mqueue", "nsfs", "proc",
+		"pstore", "ramfs", "securityfs", "squashfs", "sysfs", "tmpfs",
+		"tracefs", NULL
+	};
+
+	for (int i = 0; pseudo[i]; i++)
+		if (!strcmp(type, pseudo[i]))
+			return 1;
+	return 0;
+}
+
+/* The first option is `ro` or `rw`; a comma walk rather than strstr, which
+ * would find the `ro` inside `errors=remount-ro`. */
+static int mount_is_ro(const char *opts)
+{
+	const char *o = opts;
+
+	while (*o) {
+		const char *e = strchr(o, ',');
+		size_t n = e ? (size_t)(e - o) : strlen(o);
+
+		if (n == 2 && !strncmp(o, "ro", 2))
+			return 1;
+		if (!e)
+			break;
+		o = e + 1;
+	}
+	return 0;
+}
+
+static void disk_scan(void)
+{
+	char seen[DISK_WARN_MAX][256];
+	char line[512];
+	int nseen = 0;
+	FILE *f;
+
+	ndisk_mounts = 0;
+	panel_disk_warn = 0;
+	/* A fixture describes a machine that is not this one and statvfs
+	 * cannot be pointed at it, so a recorded root gets no reading at all
+	 * rather than this machine's. */
+	if (*panel_root())
+		return;
+	f = fopen("/proc/mounts", "r");
+	if (!f)
+		return;
+	while (ndisk_mounts < DISK_WARN_MAX && fgets(line, sizeof(line), f)) {
+		char dev[256], mnt[256], type[64], opts[256];
+		struct statvfs vfs;
+		double total, avail;
+		int dup = 0, lv;
+
+		if (sscanf(line, "%255s %255s %63s %255s", dev, mnt, type,
+			   opts) != 4)
+			continue;
+		if (mount_is_pseudo(type) || mount_is_ro(opts))
+			continue;
+		for (int i = 0; i < nseen; i++)
+			if (!strcmp(seen[i], dev))
+				dup = 1;
+		if (dup)
+			continue;
+		mount_unescape(mnt);
+		if (statvfs(mnt, &vfs) != 0 || vfs.f_blocks == 0)
+			continue;
+		snprintf(seen[nseen++], sizeof(seen[0]), "%s", dev);
+		total = (double)vfs.f_blocks;
+		avail = (double)vfs.f_bavail;
+		if (avail > total)
+			avail = total;
+		snprintf(disk_mounts[ndisk_mounts].mnt,
+			 sizeof(disk_mounts[0].mnt), "%s", mnt);
+		disk_mounts[ndisk_mounts].pct =
+			(int)((total - avail) * 100.0 / total + 0.5);
+		lv = disk_level(disk_mounts[ndisk_mounts].pct);
+		if (lv > panel_disk_warn)
+			panel_disk_warn = lv;
+		ndisk_mounts++;
+	}
+	fclose(f);
+}
+
+static int diskwarn_path(char *buf, size_t n)
+{
+	const char *state = getenv("XDG_STATE_HOME");
+	const char *home = getenv("HOME");
+
+	if (state && *state)
+		return snprintf(buf, n, "%s/kdos/diskwarn", state) < (int)n;
+	if (home && *home)
+		return snprintf(buf, n, "%s/.local/state/kdos/diskwarn",
+				home) < (int)n;
+	return 0;
+}
+
+/*
+ * ONE NOTIFICATION PER STEP, LATCHED ON DISK.
+ *
+ * A latch in memory warns once per login, which for a disk that stays full is
+ * a notification every morning saying what the person already declined to fix.
+ * The file records the step each mountpoint has already been warned about;
+ * only a mount that has crossed a HIGHER one speaks. A step that falls is
+ * recorded too, so emptying the disk and filling it again warns again.
+ *
+ * Written plainly rather than through apps.c's temp-and-rename: a lost latch
+ * costs one repeated warning, and this writes to a filesystem that is by
+ * definition nearly full, where a second file is one more thing to fail.
+ */
+static void disk_policy(struct sh_state *sh)
+{
+	static struct { char mnt[128]; int level; } latch[DISK_WARN_MAX];
+	static int nlatch, loaded;
+	char path[512], dir[512];
+	int changed = 0;
+
+	if (!diskwarn_path(path, sizeof(path)))
+		return;
+	if (!loaded) {
+		FILE *f = fopen(path, "r");
+		char line[256];
+
+		loaded = 1;
+		if (f) {
+			while (nlatch < DISK_WARN_MAX &&
+			       fgets(line, sizeof(line), f)) {
+				int lv = 0;
+				char mnt[128];
+
+				if (sscanf(line, "%d %127[^\n]", &lv, mnt) != 2)
+					continue;
+				latch[nlatch].level = lv;
+				snprintf(latch[nlatch].mnt,
+					 sizeof(latch[0].mnt), "%s", mnt);
+				nlatch++;
+			}
+			fclose(f);
+		}
+	}
+
+	for (int i = 0; i < ndisk_mounts; i++) {
+		int lv = disk_level(disk_mounts[i].pct);
+		int j;
+
+		for (j = 0; j < nlatch; j++)
+			if (!strcmp(latch[j].mnt, disk_mounts[i].mnt))
+				break;
+		if (j == nlatch) {
+			if (!lv)
+				continue;
+			if (nlatch >= DISK_WARN_MAX)
+				continue;
+			latch[nlatch].level = 0;
+			snprintf(latch[nlatch].mnt, sizeof(latch[0].mnt), "%s",
+				 disk_mounts[i].mnt);
+			nlatch++;
+		}
+		if (lv == latch[j].level)
+			continue;
+		if (lv > latch[j].level) {
+			char body[192];
+
+			snprintf(body, sizeof(body), "%s is %d%% full.",
+				 disk_mounts[i].mnt, disk_mounts[i].pct);
+			sh_tray_notify(sh, "Disk almost full", body);
+		}
+		latch[j].level = lv;
+		changed = 1;
+	}
+	if (!changed)
+		return;
+
+	snprintf(dir, sizeof(dir), "%s", path);
+	char *slash = strrchr(dir, '/');
+	if (!slash)
+		return;
+	*slash = '\0';
+	/* mkdir -p of one level, as apps.c does: $XDG_STATE_HOME itself
+	 * belongs to the session and 15_userdirs.sh already made it. */
+	mkdir(dir, 0700);
+	FILE *f = fopen(path, "w");
+	if (!f)
+		return;
+	for (int i = 0; i < nlatch; i++)
+		if (latch[i].level > 0)
+			fprintf(f, "%d %s\n", latch[i].level, latch[i].mnt);
+	fclose(f);
+}
+
+/*
  * Bytes over every real interface, summed, as two directions.
  *
  * Loopback is excluded — it is this machine talking to itself, and a desktop
@@ -3222,6 +3485,7 @@ static void meters_sample(void)
 			meter_push(&met_disk, du, 1.0);
 		else
 			meter_hold(&met_disk);
+		disk_scan();
 	} else {
 		meter_hold(&met_disk);
 	}
@@ -4784,6 +5048,27 @@ static void build_overflow(struct sh_state *sh)
 					     : "dialog-information",
 			"Notifications", buf, 0);
 	}
+	/*
+	 * Not gated on in_overflow: the disk warning has no widget of its own
+	 * on the bar, only the mark by the clock, and a mark cannot say WHICH
+	 * filesystem or by how much. This row is where that sentence lives.
+	 */
+	if (panel_disk_warn > 0) {
+		int worst = 0;
+
+		for (int i = 1; i < ndisk_mounts; i++)
+			if (disk_mounts[i].pct > disk_mounts[worst].pct)
+				worst = i;
+		if (ndisk_mounts > 0) {
+			snprintf(buf, sizeof(buf), "%s is %d%% full",
+				 disk_mounts[worst].mnt,
+				 disk_mounts[worst].pct);
+			ov_push("disk", "drive-harddisk", "Disk", buf, 1);
+			if (nov > 0 && !strcmp(ov[nov - 1].key, "disk"))
+				snprintf(ov[nov - 1].path, sizeof(ov[0].path),
+					 "%s", disk_mounts[worst].mnt);
+		}
+	}
 	if (in_overflow[W_CPU] && panel_cpu >= 0) {
 		snprintf(buf, sizeof(buf), "%d%% of the machine", panel_cpu);
 		ov_push("cpu", "speedometer", "Processor", buf, panel_cpu > 90);
@@ -5153,6 +5438,26 @@ static void draw_taskbar(struct sh_state *sh)
 						       cbg, KT_A_NONE);
 				sh->ap_x[SH_AP_CLOCK] = right_x;
 				sh->ap_end[SH_AP_CLOCK] = right_x + clockw;
+				/*
+				 * A FULL DISK, one column inside the clock's
+				 * own segment. The clock is the only landmark
+				 * on this bar that never moves, and the
+				 * warning is about the machine rather than
+				 * about whichever applet happens to be next
+				 * to it. A letter and not a glyph slot:
+				 * nothing in the tiers is a warning sign, and
+				 * a missing one draws a box.
+				 */
+				if (panel_disk_warn > 0
+				    && right_x - 1 > floor_x) {
+					right_x -= 1;
+					ktui_draw_text(right_x, applet_row, 1,
+						       "!",
+						       panel_disk_warn > 1
+							       ? KT_ERR
+							       : KT_WARN,
+						       cbg, KT_A_NONE);
+				}
 				right_x -= 1;
 				/* The clock is its own segment — it is the one
 				 * thing on this bar that is never a control

@@ -55,6 +55,7 @@ static const struct {
 	{ KXDG_VERB_PLACE, "Add to &Places",     NULL,          KXDG_V_DIR  },
 	{ KXDG_VERB_SHARE, "&Share",             "kdos-share",  KXDG_V_BOTH },
 	{ KXDG_VERB_GIT,   "&Git Status Here",   "lazygit",     KXDG_V_BOTH },
+	{ KXDG_VERB_EXTRACT, "E&xtract Here",    "kdos-openarchive", KXDG_V_FILE },
 	{ KXDG_VERB_TRASH, "&Move to Trash",     NULL,          KXDG_V_BOTH },
 };
 #define NVERBS ((int)(sizeof(VERBS) / sizeof(VERBS[0])))
@@ -177,6 +178,13 @@ int kxdg_verb_argv(int id, const char *path, int isdir, const char *term,
 		argv[n++] = store;
 		argv[n++] = "-e";
 		argv[n++] = "lazygit";
+		break;
+	case KXDG_VERB_EXTRACT:
+		/* THE ARCHIVE, NOT THE DIRECTORY. `kdos-openarchive` extracts
+		 * beside the file it is given and sets its own working
+		 * directory, so this hands it the path and nothing else. */
+		argv[n++] = "kdos-openarchive";
+		argv[n++] = path;
 		break;
 	case KXDG_VERB_TRASH:
 		argv[n++] = "kdos";

@@ -540,7 +540,26 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                     "$PROTO/$wp-client-protocol.h"
             done
             for f in src/desktop/kdos-shell/*.c; do
-                $CC $STD $SHWARN -c -I"$PROTO" -Isrc/desktop/kdos-shell \
+                # kdos-peek is the one front end with a decoder and an archive
+                # reader behind it. Absent either, it is skipped BY NAME rather
+                # than the whole shell compile being gated on libraries the
+                # other forty files do not need.
+                _pk=""
+                case "$f" in
+                */peek.c)
+                    if pkg-config --exists libarchive libpng libjpeg libwebp \
+                            2>/dev/null; then
+                        _pk="-Isrc/libs/libkimg -DKIMG_HAVE_PNG"
+                        _pk="$_pk -DKIMG_HAVE_JPEG -DKIMG_HAVE_WEBP"
+                        _pk="$_pk $(pkg-config --cflags libarchive libpng \
+                                                libjpeg libwebp)"
+                    else
+                        echo "  peek.c (skipped — no libarchive)"
+                        continue
+                    fi
+                    ;;
+                esac
+                $CC $STD $SHWARN -c -I"$PROTO" -Isrc/desktop/kdos-shell $_pk \
                     -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
                     -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libkxdg \
                     -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
@@ -1006,12 +1025,30 @@ echo "  kdos-view"
 # exercises, and none of them wants a display. The Wayland build above is the
 # one that proves the other half still links.
 #
-$CC $STD $SHWARN $INC $KIMG_FLAGS -DKDOS_TERM_CONSOLE_ONLY \
+# The picture path tiles through libkcell's one scaler, so it needs that
+# archive's header — fcft, for the declaration alone; no fcft symbol is called
+# from the tiler — and its one file. Without fcft the decoders are left out of
+# THIS build rather than half-linked; libkimg's own blocks above still run.
+TERM_KIMG_FLAGS="$KIMG_FLAGS"
+TERM_KIMG_SRC="$KIMG_SRC"
+TERM_KIMG_LIBS="$KIMG_LIBS"
+if [ -n "$KIMG_SRC" ]; then
+    if pkg-config --exists fcft 2>/dev/null; then
+        TERM_KIMG_FLAGS="$KIMG_FLAGS -Isrc/libs/libkcell $(pkg-config --cflags fcft)"
+        TERM_KIMG_SRC="$KIMG_SRC src/libs/libkcell/kcell_tile.c"
+    else
+        TERM_KIMG_FLAGS=""
+        TERM_KIMG_SRC=""
+        TERM_KIMG_LIBS=""
+        echo "  kdos-term: pictures left out — no fcft for the tiler's header"
+    fi
+fi
+$CC $STD $SHWARN $INC $TERM_KIMG_FLAGS -DKDOS_TERM_CONSOLE_ONLY \
     -Isrc/desktop/kdos-term -o "$OUT/kdos-term" \
     src/desktop/kdos-term/*.c \
     src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libktui/*.c \
     src/libs/libkdisp/*.c src/libs/libkcon/*.c src/libs/libkvt/*.c \
-    src/libs/libkxdg/*.c $KIMG_SRC $KIMG_LIBS
+    src/libs/libkxdg/*.c $TERM_KIMG_SRC $TERM_KIMG_LIBS
 echo "  kdos-term (console only)"
 
 #
@@ -2914,14 +2951,34 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     pkg-config --exists libpipewire-0.3 2>/dev/null && \
         DEXTRA_PC="$DEXTRA_PC libpipewire-0.3"
 
+    # kdos-peek decodes with libkimg and asks libarchive whether a file is an
+    # archive, and it tiles the result through libkcell's one scaler. All four
+    # decoders or none: kimg.c is compiled with the KIMG_HAVE_* its build
+    # declares, and a half-configured decoder set is a link error rather than a
+    # smaller feature. Absent any of them the surface is not offered here and
+    # says so, like every other candidate.
+    DPEEK_PC=""
+    DPEEK_SRC=""
+    DPEEK_CF=""
+    if pkg-config --exists libarchive libpng libjpeg libwebp 2>/dev/null; then
+        DPEEK_PC="libarchive libpng libjpeg libwebp"
+        DPEEK_SRC="src/libs/libkimg/kimg.c src/libs/libkcell/kcell_tile.c"
+        DPEEK_CF="-Isrc/libs/libkimg -DKIMG_HAVE_PNG -DKIMG_HAVE_JPEG -DKIMG_HAVE_WEBP"
+        DEXTRA_PC="$DEXTRA_PC $DPEEK_PC"
+    fi
+
     # Each candidate is admitted on its OWN compile, not the batch's: one file
     # that does not build must cost its own golden and nobody else's.
     DNEW=""
     DBAD=""
     for s in keys teams saver slit doc settings openwith audio \
-             start net bt devices notify status tip panel trash; do
+             start net bt devices notify status tip panel trash peek; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
-        if $CC $STD $SHWARN -fsyntax-only -I"$DPROTO" \
+        [ "$s" = peek ] && [ -z "$DPEEK_PC" ] && {
+            DBAD="$DBAD peek(no libarchive)"
+            continue
+        }
+        if $CC $STD $SHWARN -fsyntax-only -I"$DPROTO" $DPEEK_CF \
                 -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
                 -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
@@ -2948,7 +3005,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
         # resolves every file to application/octet-stream and the two traps
         # the fixture carries — longest suffix wins, and the default beats the
         # cache's first entry — are never exercised.
-        $CC $STD $SHWARN -o "$OUT/dumpcheck" -I"$DPROTO" \
+        $CC $STD $SHWARN -o "$OUT/dumpcheck" -I"$DPROTO" $DPEEK_CF \
             -DKXDG_MIME_GLOBS="\"$PWD/testing/fixtures/openwith/data/mime/globs\"" \
             -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
@@ -2963,10 +3020,16 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
             src/libs/libkcon/*.c \
             $(pkg-config --cflags --libs wayland-client pixman-1 $DEXTRA_PC)
     }
+    # The libraries kdos-peek pulls in are added only when it was admitted:
+    # a harness that linked four decoders for a surface it does not carry
+    # would fail on a host that has them and nothing that needs them.
+    case " $DNEW " in
+    *peek.c*) DNEW="$DNEW $DPEEK_SRC" ;;
+    esac
     if [ -n "$DNEW" ] && dumpbuild $DNEW 2>"$OUT/dumpnew.err"; then
         DUMPCK="$OUT/dumpcheck"
         echo "  harness: cal menu launcher pick $(echo $DNEW | \
-            sed 's,src/desktop/kdos-shell/,,g; s,\.c,,g')"
+            sed 's,src/libs/[^ ]*,,g; s,src/desktop/kdos-shell/,,g; s,\.c,,g')"
     elif dumpbuild; then
         # Every candidate compiled on its own, so a failure here is a LINK
         # failure — a surface wanting a library this harness does not offer.
@@ -3207,6 +3270,22 @@ for _s in keys teams doc settings start notify trash; do
         echo "  $_s (skipped — not linked into the harness)"
     fi
 done
+# kdos-peek takes a FILE, so it cannot ride the loop above. The fixture is a
+# committed tar built with a fixed mtime and uid: the listing draws names and
+# sizes only, so the frame is the same on every machine.
+if "$DUMPCK" --have peek; then
+    golden peek-archive 80x24  peek peek.tar --dump
+    golden peek-archive 132x43 peek peek.tar --dump
+    # Text is the OTHER half of the contract: a dump must not fork the pager,
+    # so it draws what it would have done instead.
+    golden peek-text 80x24 peek panelroot/0/proc/meminfo --dump
+elif [ -f "$GOLD/peek-archive-80x24.txt" ]; then
+    echo "  peek: a golden is committed but the surface no longer links"
+    golden_fail=1
+else
+    echo "  peek (skipped — not linked into the harness)"
+fi
+
 # THE THREE SURFACES THAT WERE DUMPABLE AND UNGOLDENED. Each has had `--dump`
 # since it landed and nothing has ever looked at one: the launcher is the
 # full-screen search `W-d` opens, the chooser is what every "Open with" goes

@@ -326,6 +326,7 @@ int __wrap_ktui_offscreen_init(int w, int h)
 #define FRONT_END(sym) __attribute__((weak)) int sym(int argc, char **argv)
 
 FRONT_END(cal_main);
+FRONT_END(peek_main);
 FRONT_END(menu_main);
 FRONT_END(launcher_main);
 FRONT_END(pick_main);
@@ -353,6 +354,7 @@ static const struct {
 } fronts[] = {
 	{ "cal",	cal_main },
 	{ "trash",	trash_main },
+	{ "peek",	peek_main },
 	{ "menu",	menu_main },
 	{ "launcher",	launcher_main },
 	{ "pick",	pick_main },

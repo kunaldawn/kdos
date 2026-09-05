@@ -201,7 +201,7 @@ int kxdg_places_add(const char *name, const char *path);
 
 enum { KXDG_VERB_OPEN = 0, KXDG_VERB_PEEK, KXDG_VERB_EDIT, KXDG_VERB_TERM,
        KXDG_VERB_FIND, KXDG_VERB_PLACE, KXDG_VERB_SHARE, KXDG_VERB_GIT,
-       KXDG_VERB_TRASH, KXDG_VERB_MAX };
+       KXDG_VERB_EXTRACT, KXDG_VERB_TRASH, KXDG_VERB_MAX };
 
 /* Which kind of thing a verb is offered on. */
 #define KXDG_V_FILE 1

@@ -310,6 +310,7 @@ int bt_main(int argc, char **argv);		/* kdos-bt       */
 int devices_main(int argc, char **argv);	/* kdos-devices  */
 int clip_main(int argc, char **argv);		/* kdos-clip     */
 int trash_main(int argc, char **argv);		/* kdos-trash    */
+int peek_main(int argc, char **argv);		/* kdos-peek     */
 /* What the notification area's chevron opens — the widgets that are hidden
  * behind it, and the two KDOS tools (`kdos stutter`, `kdos-energy`) that used
  * to be reachable only as a terminal nobody could get rid of. */
