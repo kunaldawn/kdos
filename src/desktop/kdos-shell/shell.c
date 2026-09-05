@@ -284,23 +284,7 @@ void sh_theme_watch(void)
 	sigaction(SIGHUP, &sa, NULL);
 }
 
-static struct sh_task *task_for(struct sh_state *sh, void *handle)
-{
-	for (int i = 0; i < sh->ntasks; i++)
-		if (sh->tasks[i].handle == handle)
-			return &sh->tasks[i];
-	return NULL;
-}
-
-/* ── foreign-toplevel ──────────────────────────────────────────────────── */
-
-static void tl_title(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
-		     const char *title)
-{
-	struct sh_task *t = task_for(data, h);
-	if (t)
-		snprintf(t->title, sizeof(t->title), "%s", title);
-}
+/* ── the window list ───────────────────────────────────────────────────── */
 
 /*
  * The name a person would recognise, from the app's own desktop entry.
@@ -560,115 +544,64 @@ static void task_box(struct sh_task *t)
 	}
 }
 
-static void tl_app_id(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
-		      const char *app_id)
-{
-	struct sh_task *t = task_for(data, h);
-	if (!t)
-		return;
-	snprintf(t->app_id, sizeof(t->app_id), "%s", app_id);
-	/* Resolved once, here, rather than per frame: this fires when a window
-	 * maps and when it changes its id, which is the only time the answer
-	 * can change, and the panel redraws every second. */
-	desktop_name(app_id, t->name, sizeof(t->name), t->did, sizeof(t->did));
-	task_box(t);
-}
-
-static void tl_output_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
-			    struct wl_output *o)
-{ (void)d; (void)h; (void)o; }
-static void tl_output_leave(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
-			    struct wl_output *o)
-{ (void)d; (void)h; (void)o; }
-
 /*
- * State arrives as an ARRAY of enum values, not as a bitmask — the protocol
- * sends the complete set every time, so a state that is absent is a state that
- * is off. Reading it as flags to OR together would make a window that was once
- * activated stay highlighted forever.
+ * REBUILT FROM libkdisp, not accumulated from events.
+ *
+ * The list is short and the panel redraws on a change rather than on a timer,
+ * so a copy of at most sixty-four rows is cheaper than a cache to keep in step
+ * with the one the display server already keeps. It is also the only shape
+ * that works on both desktops: the console publishes whole rows and announces
+ * no per-window events for a listener to accumulate.
+ *
+ * THE RESOLVED FIELDS ARE CARRIED OVER, not recomputed. `name`, `did` and
+ * `box` cost a desktop-entry lookup and a read of the box registry, and they
+ * can only change when the window's application id does — so they are copied
+ * from the previous list whenever the id and the app id both match, and looked
+ * up otherwise. Resolving per refresh would put that work on every state
+ * change of every window.
+ *
+ * ORDER IS THE SERVER'S. Position N in the panel is tasks[N] and the click map
+ * is dense, so a list that reordered itself between the draw and the click
+ * would activate the wrong window.
  */
-static void tl_state(void *data, struct zwlr_foreign_toplevel_handle_v1 *h,
-		     struct wl_array *states)
+void sh_tasks_refresh(struct sh_state *sh)
 {
-	struct sh_task *t = task_for(data, h);
-	if (!t)
-		return;
-	t->activated = 0;
-	t->minimized = 0;
-	t->maximized = 0;
-	t->fullscreen = 0;
-	uint32_t *st;
-	wl_array_for_each(st, states) {
-		if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED)
-			t->activated = 1;
-		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED)
-			t->minimized = 1;
-		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED)
-			t->maximized = 1;
-		else if (*st == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN)
-			t->fullscreen = 1;
+	static struct sh_task prev[SH_MAX_TASKS];
+	int nprev = sh->ntasks;
+	KDispWin w;
+
+	memcpy(prev, sh->tasks, sizeof(prev[0]) * (size_t)nprev);
+	sh->ntasks = 0;
+	for (int i = 0; sh->ntasks < SH_MAX_TASKS && kdisp_win_at(i, &w); i++) {
+		struct sh_task *t = &sh->tasks[sh->ntasks++];
+		int carried = 0;
+
+		memset(t, 0, sizeof(*t));
+		t->id = w.id;
+		snprintf(t->title, sizeof(t->title), "%s", w.title);
+		snprintf(t->app_id, sizeof(t->app_id), "%s", w.app_id);
+		t->activated = (w.flags & KDISP_WIN_FOCUSED) != 0;
+		t->minimized = (w.flags & KDISP_WIN_MINIMISED) != 0;
+		t->maximized = (w.flags & KDISP_WIN_MAXIMISED) != 0;
+		t->fullscreen = (w.flags & KDISP_WIN_FULLSCREEN) != 0;
+
+		for (int j = 0; j < nprev; j++) {
+			if (prev[j].id != w.id ||
+			    strcmp(prev[j].app_id, t->app_id))
+				continue;
+			snprintf(t->name, sizeof(t->name), "%s", prev[j].name);
+			snprintf(t->did, sizeof(t->did), "%s", prev[j].did);
+			snprintf(t->box, sizeof(t->box), "%s", prev[j].box);
+			carried = 1;
+			break;
+		}
+		if (!carried && t->app_id[0]) {
+			desktop_name(t->app_id, t->name, sizeof(t->name),
+				     t->did, sizeof(t->did));
+			task_box(t);
+		}
 	}
 }
-
-static void tl_done(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
-{ (void)d; (void)h; }
-
-static void tl_closed(void *data, struct zwlr_foreign_toplevel_handle_v1 *h)
-{
-	struct sh_state *sh = data;
-	for (int i = 0; i < sh->ntasks; i++) {
-		if (sh->tasks[i].handle != h)
-			continue;
-		/* Compact the array so the click map stays dense: position N in
-		 * the panel must always be tasks[N]. */
-		memmove(&sh->tasks[i], &sh->tasks[i + 1],
-			(size_t)(sh->ntasks - i - 1) * sizeof(sh->tasks[0]));
-		sh->ntasks--;
-		break;
-	}
-	zwlr_foreign_toplevel_handle_v1_destroy(h);
-}
-
-static void tl_parent(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
-		      struct zwlr_foreign_toplevel_handle_v1 *p)
-{ (void)d; (void)h; (void)p; }
-
-static const struct zwlr_foreign_toplevel_handle_v1_listener toplevel_listener = {
-	.title = tl_title,
-	.app_id = tl_app_id,
-	.output_enter = tl_output_enter,
-	.output_leave = tl_output_leave,
-	.state = tl_state,
-	.done = tl_done,
-	.closed = tl_closed,
-	.parent = tl_parent,
-};
-
-static void ftl_toplevel(void *data, struct zwlr_foreign_toplevel_manager_v1 *m,
-			 struct zwlr_foreign_toplevel_handle_v1 *h)
-{
-	struct sh_state *sh = data;
-	(void)m;
-	if (sh->ntasks >= SH_MAX_TASKS) {
-		/* Dropped rather than wrapped. A panel that silently replaces
-		 * one window's entry with another's is worse than one that
-		 * stops adding at 64 — and nobody has 64 windows open. */
-		zwlr_foreign_toplevel_handle_v1_destroy(h);
-		return;
-	}
-	struct sh_task *t = &sh->tasks[sh->ntasks++];
-	memset(t, 0, sizeof(*t));
-	t->handle = h;
-	zwlr_foreign_toplevel_handle_v1_add_listener(h, &toplevel_listener, sh);
-}
-
-static void ftl_finished(void *d, struct zwlr_foreign_toplevel_manager_v1 *m)
-{ (void)d; (void)m; }
-
-static const struct zwlr_foreign_toplevel_manager_v1_listener ftl_listener = {
-	.toplevel = ftl_toplevel,
-	.finished = ftl_finished,
-};
 
 /* ── ext-workspace ─────────────────────────────────────────────────────── */
 
@@ -789,12 +722,10 @@ static void reg_global(void *data, struct wl_registry *r, uint32_t name,
 {
 	struct sh_state *sh = data;
 	(void)version;
-	if (!strcmp(iface, zwlr_foreign_toplevel_manager_v1_interface.name)) {
-		sh->ftl_mgr = wl_registry_bind(
-			r, name, &zwlr_foreign_toplevel_manager_v1_interface, 3);
-		zwlr_foreign_toplevel_manager_v1_add_listener(sh->ftl_mgr,
-							      &ftl_listener, sh);
-	} else if (!strcmp(iface, ext_workspace_manager_v1_interface.name)) {
+	/* The window list is libkdisp's on both desktops; only the workspace
+	 * pager is still asked for here, because ext-workspace has no console
+	 * equivalent and the session draws its own pager there. */
+	if (!strcmp(iface, ext_workspace_manager_v1_interface.name)) {
 		sh->ws_mgr = wl_registry_bind(
 			r, name, &ext_workspace_manager_v1_interface, 1);
 		ext_workspace_manager_v1_add_listener(sh->ws_mgr, &wsm_listener,
@@ -812,34 +743,58 @@ static const struct wl_registry_listener registry_listener = {
 
 int sh_connect(struct sh_state *sh)
 {
+	/*
+	 * The window list is what a panel IS. Without it there is a clock and
+	 * a row of workspace numbers, which is not worth a layer-shell surface
+	 * and an exclusive zone taken off every other window. Asked of
+	 * libkdisp, so the answer is the same question on both desktops.
+	 *
+	 * SUPPORTED, NOT NON-EMPTY. A freshly booted session has no windows
+	 * open and a panel must still start on it.
+	 */
+	if (!kdisp_win_supported())
+		return -1;
+	sh_tasks_refresh(sh);
+
+	/*
+	 * The workspace pager is the compositor's alone. NULL on the console,
+	 * and unguarded that is a null dereference from a chord a person can
+	 * press: `kdisp_init` succeeds there because the console backend
+	 * probes first, so a Wayland display asked for afterwards is simply
+	 * absent. The session draws its own pager on that desktop.
+	 */
 	sh->display = kwl_display();
 	if (!sh->display)
-		return -1;
+		return 0;
 
 	struct wl_registry *r = wl_display_get_registry(sh->display);
 	wl_registry_add_listener(r, &registry_listener, sh);
 	wl_display_roundtrip(sh->display);	/* the globals */
 	wl_display_roundtrip(sh->display);	/* and what they then send us */
-
-	/*
-	 * The window list is what a panel IS. Without it there is a clock and a
-	 * row of workspace numbers, which is not worth a layer-shell surface
-	 * and an exclusive zone taken off every other window.
-	 */
-	return sh->ftl_mgr ? 0 : -1;
+	return 0;
 }
 
+/*
+ * TAKE IN WHAT THE SERVERS SAID, once per turn.
+ *
+ * The window list is re-read rather than accumulated from events, and it is
+ * re-read HERE rather than from a callback inside a pump: on the console the
+ * only pump that reads the socket is the one that also delivers key events, so
+ * a pump added for the list would swallow the panel's input. The refresh is a
+ * copy of at most sixty-four short rows and carries the resolved fields over,
+ * so it costs no desktop-entry lookup on a frame where nothing changed.
+ */
 void sh_dispatch(struct sh_state *sh)
 {
 	if (sh->display)
 		wl_display_dispatch_pending(sh->display);
+	sh_tasks_refresh(sh);
 }
 
 void sh_disconnect(struct sh_state *sh)
 {
 	/* The connection is libkwl's; kdisp_shutdown() closes it. Only the
 	 * objects bound here are this file's to release. */
-	sh->ftl_mgr = NULL;
 	sh->ws_mgr = NULL;
 	sh->display = NULL;
 }
@@ -856,8 +811,7 @@ void sh_minimize_task(struct sh_state *sh, int i)
 {
 	if (i < 0 || i >= sh->ntasks || sh->tasks[i].minimized)
 		return;
-	zwlr_foreign_toplevel_handle_v1_set_minimized(sh->tasks[i].handle);
-	wl_display_flush(sh->display);
+	kdisp_win_minimise(sh->tasks[i].id, 1);
 }
 
 /*
@@ -869,8 +823,7 @@ void sh_close_task(struct sh_state *sh, int i)
 {
 	if (i < 0 || i >= sh->ntasks)
 		return;
-	zwlr_foreign_toplevel_handle_v1_close(sh->tasks[i].handle);
-	wl_display_flush(sh->display);
+	kdisp_win_close(sh->tasks[i].id);
 }
 
 /*
@@ -884,13 +837,12 @@ void sh_toggle_task(struct sh_state *sh, int i)
 	if (i < 0 || i >= sh->ntasks)
 		return;
 	if (sh->tasks[i].minimized) {
-		zwlr_foreign_toplevel_handle_v1_unset_minimized(sh->tasks[i].handle);
+		kdisp_win_minimise(sh->tasks[i].id, 0);
 		sh_activate_task(sh, i);
 		return;
 	}
 	if (sh->tasks[i].activated) {
-		zwlr_foreign_toplevel_handle_v1_set_minimized(sh->tasks[i].handle);
-		wl_display_flush(sh->display);
+		kdisp_win_minimise(sh->tasks[i].id, 1);
 		return;
 	}
 	sh_activate_task(sh, i);
@@ -901,16 +853,12 @@ void sh_activate_task(struct sh_state *sh, int i)
 	if (i < 0 || i >= sh->ntasks)
 		return;
 	/*
-	 * The seat is required: the compositor uses it to decide whether the
-	 * request came from something the user is actually driving, which is
-	 * what stops a background client raising itself over what you are
-	 * typing into.
+	 * Under a compositor this carries the seat, which is how it decides
+	 * the request came from something the person is actually driving —
+	 * that is what stops a background client raising itself over what
+	 * they are typing into. libkdisp holds the seat, so nothing here does.
 	 */
-	struct wl_seat *seat = kwl_seat();
-	if (!seat)
-		return;
-	zwlr_foreign_toplevel_handle_v1_activate(sh->tasks[i].handle, seat);
-	wl_display_flush(sh->display);
+	kdisp_win_activate(sh->tasks[i].id);
 }
 
 void sh_activate_workspace(struct sh_state *sh, int i)
@@ -939,6 +887,16 @@ void sh_activate_workspace(struct sh_state *sh, int i)
  *
  * No shell. argv is exec'd as given.
  */
+void sh_help(const char *doc, void *user)
+{
+	const char *argv[] = { "kdos-doc", doc, NULL };
+
+	(void)user;
+	if (!doc || !*doc)
+		return;
+	sh_spawn(argv);
+}
+
 void sh_spawn(const char *const argv[])
 {
 	pid_t pid;
@@ -1009,14 +967,14 @@ int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
 
 	base = base ? base + 1 : word;
 	if (con && *con) {
-		argv[n++] = "kdos-term";
+		argv[n++] = kb_terminal();
 		if (*base) {
 			snprintf(id, idsz, "%s", base);
 			argv[n++] = "--title";
 			argv[n++] = id;
 		}
 	} else {
-		argv[n++] = "foot";
+		argv[n++] = kb_terminal();
 		if (*base) {
 			snprintf(id, idsz, "--app-id=%s", base);
 			argv[n++] = id;

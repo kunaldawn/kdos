@@ -141,6 +141,24 @@ static uint32_t pv_tint[PV_MAX];
 static int pv_cols, pv_rows;
 static char pv_from[32];
 
+/* ONE RUNG: the camera preview. Esc over it goes back to the list and Esc on
+ * the list closes the window, and the row says which — the reason the old
+ * two-case arm becomes a declaration. */
+static KtuiKeys keys;
+
+static int pv_up(void *user)
+{
+	(void)user;
+	return pv_cols != 0;
+}
+
+static void pv_hide(void *user)
+{
+	(void)user;
+	pv_cols = pv_rows = 0;
+	status[0] = '\0';
+}
+
 /* `$KDOS_PRIVACY_PROC` moves the /proc walk, the same seam privacy.c uses —
  * which is what makes the "who holds the camera" half testable on a machine
  * with no camera. */
@@ -818,11 +836,42 @@ static void draw_frame(void)
 	}
 
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_DIM, KT_BG);
-	ktui_draw_text(2, h - 2, w - 4,
-		       status[0] ? status
-				 : "Enter mount  u eject  p preview  "
-				   "r rescan  Esc",
-		       status[0] ? KT_MID : KT_DIM, KT_BG, KT_A_NONE);
+
+	/*
+	 * WHAT ENTER DOES DEPENDS ON THE ROW, which is why the old constant
+	 * string was wrong: it read `Enter mount` while the caret sat on a
+	 * camera. The verb is computed from the selection, and the key is
+	 * named only on a row that answers it.
+	 */
+	const struct drow *sr = sel < nrows ? &rows[sel] : NULL;
+	const struct dv_media *sm = sr && sr->kind == R_MEDIA
+					    ? &media[sr->idx]
+					    : NULL;
+	const char *ev_verb = "apply";
+
+	if (sr && sr->kind == R_CAM)
+		ev_verb = "preview";
+	else if (sm)
+		ev_verb = sm->mnt[0] ? "open" : "mount";
+
+	if (status[0]) {
+		/* A MESSAGE OUTRANKS THE ROW and they share the cells. The row
+		 * is still called, with an empty rect: it clears the pool as
+		 * its first act, and a frame that skipped it would carry these
+		 * hints into the next one. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
+		ktui_draw_text(2, h - 2, w - 4, status, KT_MID, KT_BG,
+			       KT_A_NONE);
+	} else {
+		ktui_hint_if(sr && (sr->kind == R_CAM || sr->kind == R_MEDIA ||
+				    sr->kind == R_UPDATE),
+			     "Enter", ev_verb);
+		ktui_hint_if(sm && sm->mnt[0], "u", "unmount");
+		ktui_hint("m", sh_mic_muted() ? "unmute mics" : "mute all mics");
+		ktui_hint("r", "rescan");
+		ktui_hint("Esc", ktui_esc_verb(&keys));
+		ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_BG);
+	}
 	ktui_draw_flush();
 }
 
@@ -865,6 +914,13 @@ int devices_main(int argc, char **argv)
 	rescan();
 	/* The first selectable row, not the heading above it. */
 	sel = ncam ? 1 : 0;
+	/* BEFORE the dump branch: that path draws — and so calls
+	 * ktui_esc_verb — and returns without ever reaching kdisp_init. */
+	/* The page in /usr/share/kdos/doc that F1 opens. A name with no
+	 * file there is refused by testing/preflight.sh. */
+	keys.doc = "devices";
+	keys.help = sh_help;
+	ktui_keys_layer(&keys, "Back", pv_up, pv_hide, NULL);
 
 	if (dump) {
 		sh_theme_from_cache();
@@ -994,14 +1050,16 @@ int devices_main(int argc, char **argv)
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		switch (ev.key) {
-		case KT_K_ESC:
-			if (pv_cols) {
-				pv_cols = pv_rows = 0;
-				status[0] = '\0';
-				break;
-			}
-			goto done;
 		case KT_K_UP:
 			while (sel > 0 && rows[--sel].kind == R_HEAD)
 				;
@@ -1028,8 +1086,11 @@ int devices_main(int argc, char **argv)
 			} else if (sel < nrows && rows[sel].kind == R_MEDIA) {
 				/* Enter is the obvious verb for the state it
 				 * is in: mount what is not mounted, open what
-				 * is. Ejecting is `u`, because a key that
-				 * sometimes unmounts is a key nobody trusts. */
+				 * is. Unmounting is `u`, on its own key,
+				 * because a key that sometimes unmounts is a
+				 * key nobody trusts. EJECT is a separate verb
+				 * on the daemon and is not bound here: the
+				 * surface that offers it is kdos-disks. */
 				const struct dv_media *m = &media[rows[sel].idx];
 				if (!m->mnt[0]) {
 					media_action(rows[sel].idx, "mount");

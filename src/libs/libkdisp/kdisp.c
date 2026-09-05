@@ -81,6 +81,7 @@ FWD_INT(decorated, decorated, 0)
 FWD_INT(popup_offset, popup_offset, 0)
 FWD_INT(edge_bottom, edge_bottom, 0)
 FWD_INT(lock_engaged, lock_engaged, 0)
+FWD_INT(focused, focused, 1)
 FWD_INT(lock_finished, lock_finished, 0)
 
 int
@@ -141,4 +142,70 @@ kdisp_input_cells(const KRect *rects, int n)
 {
 	if (cur && cur->input_cells)
 		cur->input_cells(rects, n);
+}
+
+/*
+ * SOMEBODY ELSE'S WINDOWS. The neutral answer is an empty list and a verb
+ * that does nothing, so a surface written against these runs unchanged on a
+ * server that cannot enumerate anything — a panel with no task row rather
+ * than a panel that will not start.
+ */
+int
+kdisp_win_supported(void)
+{
+	return cur && cur->win_count && cur->win_at ? 1 : 0;
+}
+
+int
+kdisp_win_count(void)
+{
+	if (cur && cur->win_count)
+		return cur->win_count();
+	return 0;
+}
+
+int
+kdisp_win_at(int i, KDispWin *out)
+{
+	if (cur && cur->win_at && out)
+		return cur->win_at(i, out);
+	return 0;
+}
+
+void
+kdisp_win_activate(unsigned id)
+{
+	if (cur && cur->win_activate)
+		cur->win_activate(id);
+}
+
+void
+kdisp_win_close(unsigned id)
+{
+	if (cur && cur->win_close)
+		cur->win_close(id);
+}
+
+/* The three named states, each one bit through the same entry: a backend that
+ * had to implement three would be three places for the two desktops to end up
+ * disagreeing about what "restore" does. */
+void
+kdisp_win_minimise(unsigned id, int on)
+{
+	if (cur && cur->win_set_state)
+		cur->win_set_state(id, KDISP_WIN_MINIMISED, on);
+}
+
+void
+kdisp_win_maximise(unsigned id, int on)
+{
+	if (cur && cur->win_set_state)
+		cur->win_set_state(id, KDISP_WIN_MAXIMISED, on);
+}
+
+void
+kdisp_win_fullscreen(unsigned id, int on)
+{
+	if (cur && cur->win_set_state)
+		cur->win_set_state(id, KDISP_WIN_FULLSCREEN, on);
 }

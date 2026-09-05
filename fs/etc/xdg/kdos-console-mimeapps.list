@@ -1,0 +1,41 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   What opens a file on the CONSOLE desktop.
+#
+# The console session exports XDG_CURRENT_DESKTOP=KDOS-Console:KDOS, so this
+# file is consulted for it and never under the compositor — which is the whole
+# point: a picture opens in `timg` inside a terminal here and in a boxed viewer
+# there, and neither desktop edits the other's choices.
+#
+# AT /etc/xdg AND NOT IN A HOME. A person's own choice, wherever they make it,
+# lives in their config directory and is searched first; a shipped default that
+# outranked it would be a chooser that appears to do nothing. This is the
+# fallback, which is what a distribution default is.
+#
+# ONLY WHAT THE TWO DESKTOPS ANSWER DIFFERENTLY. A type both would open the
+# same way — a directory in `mc` — belongs in the plain `mimeapps.list` beside
+# this file, or the same decision is written twice and drifts.
+#
+# EVERY ROW NAMES AN ENTRY THAT IS INSTALLED. An id nothing provides falls
+# through to the next candidate silently, so a row for a program that is not
+# here is a row nobody can tell is dead.
+# ---------------------------------
+
+[Default Applications]
+text/plain=micro.desktop
+text/markdown=micro.desktop
+text/x-shellscript=micro.desktop
+application/json=micro.desktop
+application/xml=micro.desktop
+image/png=timg.desktop
+image/jpeg=timg.desktop
+image/gif=timg.desktop
+image/webp=timg.desktop
+image/bmp=timg.desktop
+image/tiff=timg.desktop
+text/csv=visidata.desktop

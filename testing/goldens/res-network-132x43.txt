@@ -38,6 +38,6 @@
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
-|                  |                                                                                                               |
 |                  |totals since boot  .  Enter for details  .  n opens kdos-net for Wi-Fi and VPN                                 |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                                                                                |
 +==================================================================================================================================+

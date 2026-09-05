@@ -17,12 +17,6 @@ Only the trash accepts a drop on the desktop — dropping onto a folder would be
 that half-succeeds across filesystems is worse than not offering it. Both directions work between
 a KDOS surface and a boxed application. See [Status](status.md) for what that rests on.
 
-**A picture's default handler is a Wayland viewer, on both desktops.** `mimeapps.list` sends every
-`image/*` to `imv`, which needs a compositor, so opening a picture from the console desktop's file
-manager does nothing. `timg` is installed and is a terminal entry, so *Open With* reaches it and a
-launcher row starts it; what is missing is a default that follows the desktop, and one
-`mimeapps.list` for one user cannot express two.
-
 **No multi-seat.** `seat0` only. The session and view split makes a second seat
 reachable — a second session with a second view — and nothing implements it, so
 the claim is not made.

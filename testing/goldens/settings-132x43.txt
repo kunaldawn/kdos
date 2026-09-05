@@ -5,8 +5,8 @@
 | Hardware                                   Session                                    Input                                      |
 | screens, net, sound                        idle, lock and power                       keyboard and pointer                       |
 |                                                                                                                                  |
-| Apps                                       Boxes                                                                                 |
-| which app opens what                       environments and packs                                                                |
+| Apps                                       Boxes                                      System                                     |
+| which app opens what                       environments and packs                     disks, jobs, services                      |
 |                                                                                                                                  |
 |                                                                                                                                  |
 |                                                                                                                                  |
@@ -38,6 +38,6 @@
 |                                                                                                                                  |
 |                                                                                                                                  |
 |----------------------------------------------------------------------------------------------------------------------------------|
-| Enter opens a page   arrows move   Esc closes                                                                                    |
+| F1 help  Enter open  Arrows move  Esc Close                                                                                      |
 | accent, CRT, wallpaper                                                                                                           |
 +==================================================================================================================================+

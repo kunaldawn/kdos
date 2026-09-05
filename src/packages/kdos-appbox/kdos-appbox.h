@@ -58,7 +58,7 @@ typedef struct {
 	/* pack:<id> | image:<ref> | box:<name>; empty until the first launch
 	 * composes the box and records what it is made of */
 	char base[256];
-	char accent[16];	/* phosphor | amber | ice | bone            */
+	char accent[16];	/* phosphor | amber | ice | bone | norton | borland | perfect            */
 	char grant[128];	/* globals a box may bind past the sandbox allowlist */
 	Persistence persist;
 	int  netns;      /* 1 = private network namespace (--unshare-netns)  */

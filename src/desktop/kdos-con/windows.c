@@ -1,6 +1,7 @@
 /* kdos-con — the window list, and compositing it into the grid. See con.h. */
 
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -167,6 +168,75 @@ void win_place(Win *w, int want_w, int want_h)
 
 	w->geom.x = g.x;
 	w->geom.y = g.y;
+	w->geom.w = want_w;
+	w->geom.h = want_h;
+}
+
+/*
+ * WHERE A LAYER ASKED TO SIT.
+ *
+ * An overlay is not placed by the minimal-overlap search: a menu belongs to the
+ * button that opened it, a toast belongs in the corner, and a search that put
+ * either wherever there happened to be room is a surface a person has to hunt
+ * for. `corner` is `enum kdisp_corner` and the margins are the distances from
+ * the two edges that corner names, in cells — the same field libkwl reads as
+ * pixels, which is the same number in a caller because `kdisp_cell_w()` answers
+ * 1 on this transport.
+ *
+ * CLAMPED TO THE WORK AREA, NEVER PLACED OFF IT. A margin is what the caller
+ * would like and the grid is what exists; a bottom-anchored menu taller than
+ * the screen above the taskbar is drawn from the top of the work area rather
+ * than from a negative row.
+ */
+void win_place_corner(Win *w, int want_w, int want_h, int corner, int mx,
+		      int my)
+{
+	KwmRect a = win_workarea();
+	int x, y;
+
+	if (want_w > a.w)
+		want_w = a.w;
+	if (want_h > a.h)
+		want_h = a.h;
+	if (mx < 0)
+		mx = 0;
+	if (my < 0)
+		my = 0;
+
+	switch (corner) {
+	case KDISP_CORNER_TOP_RIGHT:
+		x = a.x + a.w - want_w - (mx ? mx : 1);
+		y = a.y + (my ? my : 1);
+		break;
+	case KDISP_CORNER_TOP_LEFT:
+		x = a.x + mx;
+		y = a.y + my;
+		break;
+	case KDISP_CORNER_BOTTOM_LEFT:
+		x = a.x + mx;
+		y = a.y + a.h - want_h - my;
+		break;
+	case KDISP_CORNER_BOTTOM_CENTER:
+		x = a.x + (a.w - want_w) / 2;
+		y = a.y + a.h - want_h - (my ? my : 1);
+		break;
+	default:	/* KDISP_CORNER_CENTER */
+		x = a.x + (a.w - want_w) / 2;
+		y = a.y + (a.h - want_h) / 2;
+		break;
+	}
+
+	if (x + want_w > a.x + a.w)
+		x = a.x + a.w - want_w;
+	if (y + want_h > a.y + a.h)
+		y = a.y + a.h - want_h;
+	if (x < a.x)
+		x = a.x;
+	if (y < a.y)
+		y = a.y;
+
+	w->geom.x = x;
+	w->geom.y = y;
 	w->geom.w = want_w;
 	w->geom.h = want_h;
 }
@@ -453,6 +523,204 @@ void win_cycle(int dir)
 
 	if (next >= 0)
 		win_raise(ids[next]);
+}
+
+/*
+ * ── THE RING, BY NUMBER ─────────────────────────────────────────────────
+ *
+ * Every window on this workspace carries its position in the Alt-Tab ring,
+ * drawn in its title bar and in its taskbar row, and `Super+Alt+N` raises the
+ * one that number names. The index is the RING'S rather than an id of its own:
+ * it is the order cycling already walks, it renumbers when a window closes,
+ * and a second numbering would be a second thing to keep in agreement.
+ *
+ * The text desks this comes from — Turbo Vision's Alt+N, DESQview's Open
+ * Window codes — all numbered windows, and for the same reason: on a keyboard
+ * a number is the shortest way to say which one.
+ */
+Win *win_nth(int n)
+{
+	int i = 0;
+
+	if (n < 1)
+		return NULL;
+	for (Win *w = S.wins; w; w = w->next) {
+		if (!reachable(w))
+			continue;
+		if (++i == n)
+			return w;
+	}
+	return NULL;
+}
+
+int win_index(const Win *w)
+{
+	int i = 0;
+
+	if (!w)
+		return 0;
+	for (Win *o = S.wins; o; o = o->next) {
+		if (!reachable(o))
+			continue;
+		i++;
+		if (o == w)
+			return i;
+	}
+	return 0;
+}
+
+/*
+ * ── ARRANGEMENTS ────────────────────────────────────────────────────────
+ *
+ * Tile fills the work area with a grid of ceil(sqrt(n)) columns, the last row
+ * absorbing whatever does not divide; cascade offsets each window by one title
+ * row and two columns from the last, at two thirds of the work area. Both are
+ * what the Window menu of every text desk of the era did, and both are what a
+ * person with five terminals open actually wants.
+ *
+ * NEITHER IS A TILE STATE. `tiled` is cleared, so a Super+arrow afterwards
+ * snaps from the rectangle the arrangement made rather than from a half the
+ * window is not in — an arrangement is where the windows are put, and a snap
+ * state is a claim about which edges they hold.
+ *
+ * A FULLSCREEN WINDOW IS LEFT ALONE by both. It was put there on purpose and
+ * covers the grid; folding it into a grid of five would be undoing a request
+ * nobody withdrew.
+ */
+static int arrange_set(Win **out, int max)
+{
+	int n = 0;
+
+	for (Win *w = S.wins; w && n < max; w = w->next)
+		if (reachable(w) && !w->full)
+			out[n++] = w;
+	return n;
+}
+
+void win_tile_all(void)
+{
+	Win *set[32];
+	int n = arrange_set(set, 32);
+
+	if (n < 1)
+		return;
+
+	KwmRect a = win_workarea();
+	int cols = 1;
+
+	while (cols * cols < n)
+		cols++;
+
+	int rows = (n + cols - 1) / cols;
+	int cw = a.w / cols, ch = a.h / rows;
+
+	if (cw < 2 * CON_FRAME + 5 || ch < 2 * CON_FRAME + 4)
+		return;		/* a grid nothing could be read in */
+
+	for (int i = 0; i < n; i++) {
+		int r = i / cols, c = i % cols;
+		int wide = (r == rows - 1) ? n - r * cols : cols;
+		/* The last row spreads across the width rather than leaving a
+		 * gap where the grid ran out: a lone window sitting in the
+		 * left third under four others reads as a mistake. */
+		int lw = a.w / wide;
+		KwmRect g;
+
+		/*
+		 * ONE CELL SHORT ON EACH FAR EDGE, FOR THE SHADOW. A window's
+		 * drop shadow is a column to its right and a row below it, so
+		 * tiles that touched put every window's shadow across its
+		 * neighbour's TITLE BAR — a grid whose titles cannot be read,
+		 * which is most of what a tiled grid is for.
+		 */
+		g.x = (r == rows - 1 ? a.x + c * lw : a.x + c * cw) + CON_FRAME;
+		g.y = a.y + r * ch + CON_FRAME;
+		g.w = (r == rows - 1 ? lw : cw) - 2 * CON_FRAME - 1;
+		g.h = ch - 2 * CON_FRAME - 1;
+
+		set[i]->tiled = 0;
+		set[i]->restore = set[i]->geom;
+		set[i]->geom = kwm_fit(g, a);
+		win_resized(set[i]);
+	}
+}
+
+void win_cascade(void)
+{
+	Win *set[32];
+	int n = arrange_set(set, 32);
+
+	if (n < 1)
+		return;
+
+	KwmRect a = win_workarea();
+	int cw = a.w * 2 / 3, ch = a.h * 2 / 3;
+
+	if (cw < 8 || ch < 5)
+		return;
+
+	for (int i = 0; i < n; i++) {
+		KwmRect g;
+		/* The staircase wraps rather than walking off the bottom
+		 * right: with more windows than steps the later ones start
+		 * again from the top left, which is what every desk that had
+		 * this did once the screen ran out. */
+		int steps = (a.h - ch) / 2;
+		int k = steps > 0 ? i % steps : 0;
+
+		g.x = a.x + CON_FRAME + k * 2;
+		g.y = a.y + CON_FRAME + k;
+		g.w = cw;
+		g.h = ch;
+		set[i]->tiled = 0;
+		set[i]->restore = set[i]->geom;
+		set[i]->geom = kwm_fit(g, a);
+		win_resized(set[i]);
+		win_raise(set[i]->id);
+	}
+}
+
+/*
+ * ── SHOW THE DESKTOP ────────────────────────────────────────────────────
+ *
+ * Norton Commander's Ctrl+O hid both panels to show the shell behind them;
+ * this hides every window to show the icons. The SET is remembered rather than
+ * "unminimise everything": a window that was already minimised before the
+ * chord was pressed was minimised on purpose, and bringing it back would be
+ * the desktop undoing something a person asked for.
+ */
+void win_show_desktop(void)
+{
+	static int hidden[64];
+	static int nhidden;
+	static int shown;
+
+	if (shown) {
+		for (int i = 0; i < nhidden; i++) {
+			Win *w = win_find(hidden[i]);
+
+			if (w && w->minimised) {
+				w->minimised = 0;
+				win_raise(w->id);
+			}
+		}
+		nhidden = 0;
+		shown = 0;
+		return;
+	}
+
+	nhidden = 0;
+	for (Win *w = S.wins; w && nhidden < 64; w = w->next) {
+		if (!reachable(w))
+			continue;
+		hidden[nhidden++] = w->id;
+		w->minimised = 1;
+	}
+	shown = nhidden > 0;
+	if (shown) {
+		S.focus = 0;
+		ktui_draw_invalidate();
+	}
 }
 
 /*
@@ -945,10 +1213,27 @@ void win_draw_all(void)
 			 * wants them.
 			 */
 			int rung = w->bell_until > con_now_ms();
+			/*
+			 * THE RING POSITION, IN THE TITLE. `Super+Alt+N` names
+			 * a window by it, and a number a person cannot see is
+			 * a number they cannot use. It is the ring's own index
+			 * rather than an id: it renumbers when a window closes,
+			 * which is what Alt-Tab does too, so the two cannot
+			 * disagree about what "the second window" means.
+			 */
+			char titled[160];
+			int idx = win_index(w);
+
+			if (idx > 0 && idx < 10)
+				snprintf(titled, sizeof(titled), "%d:%s", idx,
+					 w->title);
+			else
+				snprintf(titled, sizeof(titled), "%s",
+					 w->title);
 
 			ktui_draw_shadow(r);
 			ktui_draw_fill(r, rung ? KT_ACCENT : KT_SURFACE);
-			ktui_draw_box(r, w->title,
+			ktui_draw_box(r, titled,
 				      rung ? KT_SURFACE :
 				      focused ? KT_ACCENT : KT_DIM,
 				      rung ? KT_ACCENT : KT_SURFACE,
@@ -957,4 +1242,142 @@ void win_draw_all(void)
 			draw_content(w);
 		}
 	}
+
+	win_list_draw();
+	/* The mark is drawn over everything, including the list: it is a
+	 * selection of what is on the screen, and the screen is what has just
+	 * been composed. */
+	con_mark_draw();
+}
+
+/*
+ * ── THE WINDOW LIST ─────────────────────────────────────────────────────
+ *
+ * Turbo Vision's Alt+0. Every window on this workspace with its ring number,
+ * `Enter` to raise, `Delete` to close, `m` to minimise, `Escape` to leave.
+ *
+ * DRAWN BY THE SESSION AND NOT BY A SURFACE, for now. `kdos-teams` is the
+ * program that shows a window list, and it reads the list over the management
+ * protocol that Task 6.4 routes through `libkdisp`; until that lands it draws
+ * nothing here. A list the session paints out of the list it already holds is
+ * fifty lines and works today — and it goes when the surface can do it, rather
+ * than staying as a second window list nobody maintains.
+ */
+static int list_open, list_sel;
+
+void win_list_toggle(void)
+{
+	list_open = !list_open;
+	list_sel = 0;
+	ktui_draw_invalidate();
+}
+
+int win_list_active(void)
+{
+	return list_open;
+}
+
+void win_list_draw(void)
+{
+	Win *set[32];
+	int n = 0;
+
+	if (!list_open)
+		return;
+	for (Win *w = S.wins; w && n < 32; w = w->next)
+		if (reachable(w))
+			set[n++] = w;
+
+	int rows = (n ? n : 1) + 4;
+	int cols = 44;
+	KwmRect a = win_workarea();
+
+	if (cols > a.w)
+		cols = a.w;
+	if (rows > a.h)
+		rows = a.h;
+
+	KRect r = krect(a.x + (a.w - cols) / 2, a.y + (a.h - rows) / 2, cols,
+			rows);
+
+	if (list_sel >= n)
+		list_sel = n ? n - 1 : 0;
+
+	ktui_draw_shadow(r);
+	ktui_draw_fill(r, KT_SURFACE);
+	ktui_draw_box(r, "Windows", KT_ACCENT, KT_SURFACE, 1);
+
+	if (!n) {
+		ktui_draw_text(r.x + 2, r.y + 2, cols - 4, "no windows",
+			       KT_MID, KT_SURFACE, KT_A_NONE);
+	} else {
+		for (int i = 0; i < n && 2 + i < rows - 2; i++) {
+			char row[64];
+			int on = i == list_sel;
+
+			snprintf(row, sizeof(row), " %d  %.34s", i + 1,
+				 set[i]->title);
+			if (on)
+				ktui_draw_fill(krect(r.x + 1, r.y + 1 + i,
+						     cols - 2, 1), KT_ACCENT);
+			ktui_draw_text(r.x + 1, r.y + 1 + i, cols - 2, row,
+				       on ? KT_BG : KT_TEXT,
+				       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+		}
+	}
+	ktui_draw_text(r.x + 2, r.y + rows - 2, cols - 4,
+		       "Enter raise  Del close  m minimise  Esc", KT_MID,
+		       KT_SURFACE, KT_A_NONE);
+}
+
+/* True when the key was the list's. It owns the keyboard while it is up. */
+int win_list_key(int key)
+{
+	Win *set[32];
+	int n = 0;
+
+	if (!list_open)
+		return 0;
+	for (Win *w = S.wins; w && n < 32; w = w->next)
+		if (reachable(w))
+			set[n++] = w;
+	if (list_sel >= n)
+		list_sel = n ? n - 1 : 0;
+
+	switch (key) {
+	case KT_K_ESC:
+		list_open = 0;
+		break;
+	case KT_K_UP:
+		if (list_sel > 0)
+			list_sel--;
+		break;
+	case KT_K_DOWN:
+		if (list_sel + 1 < n)
+			list_sel++;
+		break;
+	case KT_K_ENTER:
+		if (n)
+			win_raise(set[list_sel]->id);
+		list_open = 0;
+		break;
+	case KT_K_DEL:
+		if (n)
+			win_close(set[list_sel]);
+		break;
+	case 'm':
+		if (n)
+			win_minimise(set[list_sel]);
+		break;
+	default:
+		/* A digit picks directly, which is the whole point of a
+		 * numbered list. */
+		if (key >= '1' && key <= '9' && key - '1' < n) {
+			win_raise(set[key - '1']->id);
+			list_open = 0;
+		}
+		break;
+	}
+	ktui_draw_invalidate();
+	return 1;
 }

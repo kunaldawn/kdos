@@ -29,6 +29,19 @@
  *
  * Field order is the one `kdos theme` has always used:
  *   primary  dim  secondary  urgent  deep  text  variant  pdark  backdrop
+ *
+ * `deep` is the surface a scheme is read against and `text` is what is read on
+ * it, so those two carry the legibility of everything: the self-test asserts
+ * 7:1 between them and 4.5:1 between the accent and the same ground, for every
+ * scheme. A scheme is not a set of colours somebody liked, it is a set that
+ * clears those two floors.
+ *
+ * EVERY SCHEME HERE IS DARK, and that is a limit of the chrome rather than a
+ * preference. `libkchrome` solves the focused plate along `dim`-to-`pdark` and
+ * writes `text` on it — one label colour for every plate — so on a light ground
+ * the plate darkens away from a dark label and no mix clears both the
+ * separation floor and the legibility one. A light scheme needs the ladder to
+ * choose its label per plate first.
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define KCOL_SCHEMES(X)                                                       \
@@ -39,7 +52,13 @@
 	X(ice, "ICE", "KDOS-Ice",                                             \
 	  4dd7ff, 123a4a, 7aa2ff, ff4d6d, 00080d, bfeeff, 031420, 1f7fa0, 021a26) \
 	X(bone, "BONE", "KDOS-Bone",                                          \
-	  f4f0e2, 3a3833, b9b3a1, ff5a5a, 0a0a09, ded9cb, 141412, 8f8b7e, 161512)
+	  f4f0e2, 3a3833, b9b3a1, ff5a5a, 0a0a09, ded9cb, 141412, 8f8b7e, 161512) \
+	X(norton, "NORTON", "KDOS-Norton",                                    \
+	  ffd75f, 1c3f8f, 5fd7ff, ff5f5f, 00021a, f0f6ff, 000f3c, a88a20, 000214) \
+	X(borland, "BORLAND", "KDOS-Borland",                                 \
+	  5fd7d7, 24494d, ffd75f, ff5f5f, 020e12, f0fcfc, 07181c, 2f8f8f, 010c0f) \
+	X(perfect, "PERFECT", "KDOS-Perfect",                                 \
+	  ffffff, 1a3a7a, b8cdf0, ff8080, 000f42, eef4ff, 001c5e, 6f8fc8, 000c38)
 
 #define KCOL_HEX(x) ((uint32_t)0x##x)
 

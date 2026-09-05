@@ -106,6 +106,14 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-menu"
 ln -s kdos-shell "$PKG/usr/bin/kdos-desk"
 ln -s kdos-shell "$PKG/usr/bin/kdos-pick"
 ln -s kdos-shell "$PKG/usr/bin/kdos-ascii"
+# What this machine is, read out of /proc and /etc rather than fetched by a
+# second program: an About window that shelled out to a screenfetch would
+# draw somebody else's colours on a surface that paints in slots.
+ln -s kdos-shell "$PKG/usr/bin/kdos-about"
+# The desk accessory Sidekick had. It forks `qalc` rather than linking
+# libqalculate, which is C++ and would put libstdc++ on the panel package.
+ln -s kdos-shell "$PKG/usr/bin/kdos-calc"
+ln -s kdos-shell "$PKG/usr/bin/kdos-note"
 ln -s kdos-shell "$PKG/usr/bin/kdos-run"
 # kdos-comp's <core><promptCommand> — the yes/no dialog labwc's If/prompt
 # action needs. Upstream's labnag is not built (-Dlabnag=disabled).
@@ -142,6 +150,9 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-devices"
 # The clipboard history: the daemon the compositor supervises, and the picker
 # `W-v` opens. One binary, one name, two roles.
 ln -s kdos-shell "$PKG/usr/bin/kdos-clip"
+# The way BACK out of the trash. `kdos trash` puts a file in and lists what is
+# there; this is the surface that takes one out again.
+ln -s kdos-shell "$PKG/usr/bin/kdos-trash"
 # The notification area's overflow: the occasional widgets live behind one
 # chevron of fixed width so the right wing stops changing size, and this is
 # what the chevron opens. It also runs `kdos stutter` and `kdos-energy` inside

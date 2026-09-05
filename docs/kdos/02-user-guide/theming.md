@@ -1,17 +1,25 @@
 # Theming
 
-Changing how KDOS looks: the four accents, the phosphor shader, the wallpaper, fonts, and how
+Changing how KDOS looks: the seven accents, the phosphor shader, the wallpaper, fonts, and how
 applications inside boxes get the same palette. One command does almost all of it, and most of
 the result appears without restarting anything.
 
-## The four accents
+## The seven accents
 
 | Accent | Character |
 |---|---|
 | `phosphor` | Green on near-black. The default, and the project's own colour |
 | `amber` | Amber on warm black |
 | `ice` | Cyan and blue on deep blue-black |
-| `bone` | Warm off-white on near-black — the least saturated of the four |
+| `bone` | Warm off-white on near-black — the least saturated of them |
+| `norton` | Yellow and cyan on deep blue. The two-pane file manager's own colours |
+| `borland` | Cyan and yellow on dark teal. The blue-box IDEs of the late eighties |
+| `perfect` | White on blue, and almost nothing else. The word processor that showed a blank screen |
+
+**Every accent is dark, and that is the chrome rather than a preference.** The focused plate is
+solved along one axis and carries one label colour, so on a light ground the plate darkens away
+from its own label and no mix clears both the separation floor and the legibility one. A light
+accent needs the plate ladder to choose its label per plate first.
 
 An accent is not a colour, it is a small palette: a primary, a dim variant of it, a secondary, an
 urgent colour, a background, a text colour, a surface, and two more derived shades. Everything

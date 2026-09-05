@@ -39,6 +39,9 @@ TermConf TC = {
 	/* Wider than a screen is wider than anything can be seen at, and it
 	 * bounds what one sequence can ask this program to scale. */
 	.image_cells = 200,
+	/* On: an unbracketed paste carrying a newline executes, and a person
+	 * who meant it is one keystroke away from agreeing. */
+	.paste_guard = 1,
 };
 
 const char *term_conf_path(void)
@@ -122,6 +125,8 @@ void term_conf_load(void)
 			TC.image_max = clamp(atoi(v), 4, 65536);
 		} else if (!strcmp(k, "image_cells")) {
 			TC.image_cells = clamp(atoi(v), 1, 1000);
+		} else if (!strcmp(k, "paste_guard")) {
+			TC.paste_guard = yes(v);
 		} else {
 			fprintf(stderr, "kdos-term: %s: unknown key '%s'\n",
 				path, k);

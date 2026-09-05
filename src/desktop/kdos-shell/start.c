@@ -49,6 +49,7 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -102,6 +103,15 @@ struct row {
 	int submenu;			/* opens the categories, or a cat */
 	int back;			/* returns to the level above     */
 	int pinned;			/* on the quick-launch row        */
+	/*
+	 * DESQview's two-letter code, or empty. Typing both letters with
+	 * nothing else in the field opens the row — no arrows, no Enter, and
+	 * no waiting to see whether the search narrowed to one. It is a
+	 * PROPERTY OF THE PINNED ROW rather than of the program, because the
+	 * codes are the person's own shorthand and the file they pin with is
+	 * where they say so.
+	 */
+	char code[3];
 	/* What this row answers to besides its label, so a search for `wifi`
 	 * finds Network. Resolved at BUILD time — a lookup per row per frame
 	 * would be a file open per row per frame. */
@@ -201,6 +211,19 @@ static void rule(struct row *v, int *n)
  * quick-launch row reads. Two lists of favourites is two things to keep in
  * agreement and one of them always loses.
  */
+/*
+ * THE PINNED ROWS, KEPT ASIDE FOR THEIR CODES.
+ *
+ * `left[]` is rebuilt on every keystroke — the first letter of a code turns it
+ * into the search results — so by the time the second letter arrives the
+ * pinned rows are no longer in it and a scan there finds nothing. The codes
+ * belong to the FILE rather than to whatever the list is showing, so they are
+ * held where the file put them.
+ */
+#define PIN_MAX 8
+static struct row pins[PIN_MAX];
+static int npins;
+
 static int load_pinned(void)
 {
 	char path[512], line[256];
@@ -209,6 +232,7 @@ static int load_pinned(void)
 	FILE *f;
 	int n = 0;
 
+	npins = 0;
 	if (cfg && *cfg)
 		snprintf(path, sizeof(path), "%s/kdos/favorites", cfg);
 	else if (home && *home)
@@ -225,15 +249,37 @@ static int load_pinned(void)
 			s++;
 		if (!*s || *s == '#')
 			continue;
-		const struct sh_app *a = sh_apps_find(s);
+		/*
+		 * `id` or `id code=XX`. The code is optional and anything else
+		 * after the id is ignored rather than refused: a favourites
+		 * file is edited by hand, and a line a future version
+		 * understands must not stop this one from launching it.
+		 */
+		char code[3] = { 0 };
+		char *sp = strchr(s, ' ');
+
+		if (sp) {
+			*sp = '\0';
+			char *c = strstr(sp + 1, "code=");
+
+			if (c && c[5] && c[6]) {
+				code[0] = (char)toupper((unsigned char)c[5]);
+				code[1] = (char)toupper((unsigned char)c[6]);
+			}
+		}
+
+		const struct sh_app *a = sh_apps_find(sh_fav_id(s));
 		if (!a)
 			continue;	/* an id with no entry launches nothing */
 		struct row *r = push(left, &nleft, a->name);
 		if (!r)
 			break;
+		snprintf(r->code, sizeof(r->code), "%s", code);
 		r->app = a;
 		r->icon = a->icon[0] ? a->icon : a->id;
 		r->pinned = 1;
+		if (npins < PIN_MAX)
+			pins[npins++] = *r;
 		n++;
 	}
 	fclose(f);
@@ -647,11 +693,24 @@ static void build_left(void)
  * machine, and a string that got interpolated into a command line here would
  * be the worst possible place for it.
  */
+/* Six. The column carries three groups and a screen holds about twenty rows;
+ * a Recent list longer than this pushes SYSTEM off the bottom, and the rows
+ * that end a session are the ones that must always be reachable. */
+#define START_RECENT 6
+
 static void build_right(void)
 {
-	const char *home = getenv("HOME");
-	static char docs[512], dl[512], pics[512];
+	/*
+	 * THE PATHS OUTLIVE THIS FUNCTION and every row's argv points into
+	 * them, so they are static — one slot per place and one per recent
+	 * file, which is the most either list can hold.
+	 */
+	static char pbuf[KXDG_PLACES_MAX][512];
+	static char rbuf[START_RECENT][512];
+	static char rlabel[START_RECENT][96];
+	KxdgPlace places[KXDG_PLACES_MAX];
 	struct row *r;
+	int np, nr;
 
 	nright = 0;
 	/* Three groups, not one long run mixing places, settings and power.
@@ -660,44 +719,55 @@ static void build_right(void)
 	 * SECOND group being the only one that was labelled. */
 	rule_named(right, &nright, "PLACES");
 
-	if (home && *home) {
-		snprintf(docs, sizeof(docs), "%s/Documents", home);
-		snprintf(dl, sizeof(dl), "%s/Downloads", home);
-		snprintf(pics, sizeof(pics), "%s/Pictures", home);
-
-		r = push(right, &nright, "Home");
-		if (r) {
-			r->keys = "files folder browse";
-			r->icon = "user-home";
-			r->argv[0] = "kdos-pick";
-			r->argv[1] = "--browse";
-			r->argv[2] = home;
-		}
-		r = push(right, &nright, "Documents");
-		if (r) {
-			r->keys = "docs files";
-			r->icon = "folder-documents";
-			r->argv[0] = "kdos-pick";
-			r->argv[1] = "--browse";
-			r->argv[2] = docs;
-		}
-		r = push(right, &nright, "Downloads");
-		if (r) {
-			r->keys = "files";
-			r->icon = "folder-download";
-			r->argv[0] = "kdos-pick";
-			r->argv[1] = "--browse";
-			r->argv[2] = dl;
-		}
-		r = push(right, &nright, "Pictures");
-		if (r) {
-			r->keys = "photos images files";
-			r->icon = "folder-pictures";
-			r->argv[0] = "kdos-pick";
-			r->argv[1] = "--browse";
-			r->argv[2] = pics;
-		}
+	/*
+	 * FROM libkxdg, WHICH IS THE ONLY READER. This column used to name
+	 * Documents, Downloads and Pictures under `$HOME` outright — a third
+	 * copy of a list `kdos-desk` and `kdos-menu` each had their own of, and
+	 * the one place a renamed user directory showed as a row that opened
+	 * the wrong folder.
+	 */
+	np = kxdg_places(places, KXDG_PLACES_MAX);
+	for (int i = 0; i < np; i++) {
+		snprintf(pbuf[i], sizeof(pbuf[0]), "%s", places[i].path);
+		r = push(right, &nright, places[i].name);
+		if (!r)
+			break;
+		r->keys = "files folder browse";
+		r->icon = !strcmp(places[i].name, "Home") ? "user-home"
+							  : "folder";
+		r->argv[0] = "kdos-pick";
+		r->argv[1] = "--browse";
+		r->argv[2] = pbuf[i];
 	}
+	/*
+	 * RECENT, from the store every open writes through `kdos-appbox open`.
+	 * The group is only drawn when there is something in it: a heading over
+	 * nothing reads as a list that failed to load rather than as a machine
+	 * nobody has opened anything on yet.
+	 */
+	nr = kxdg_recent_all(rbuf, START_RECENT);
+	if (nr > 0)
+		rule_named(right, &nright, "RECENT");
+	for (int i = 0; i < nr; i++) {
+		const char *base = strrchr(rbuf[i], '/');
+
+		/* The basename, because a column twenty cells wide cannot show
+		 * a path and a person recognises the file by its name. */
+		snprintf(rlabel[i], sizeof(rlabel[0]), "%s",
+			 base && base[1] ? base + 1 : rbuf[i]);
+		r = push(right, &nright, rlabel[i]);
+		if (!r)
+			break;
+		r->keys = "recent files";
+		r->icon = "document-open-recent";
+		/* Through the SAME opener the desktop uses, so a recent file
+		 * opens with what its type is bound to rather than with
+		 * whatever last touched it. */
+		r->argv[0] = "kdos-appbox";
+		r->argv[1] = "open";
+		r->argv[2] = rbuf[i];
+	}
+
 	r = push(right, &nright, "Files");
 	if (r) {
 		/* Static: the row outlives this function and argv points into
@@ -807,6 +877,12 @@ static void build_right(void)
 		r->keys = "docs manual guide keys";
 		r->icon = "help";
 		r->argv[0] = "kdos-doc";
+	}
+	r = push(right, &nright, "About");
+	if (r) {
+		r->keys = "version kernel memory uptime system info";
+		r->icon = "help-about";
+		r->argv[0] = "kdos-about";
 	}
 }
 
@@ -1035,7 +1111,13 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 	 * so the two cannot disagree.
 	 */
 	int tagw = r->app && r->app->alien ? 6 : 0;
-	int room = pin_col(x, w) - tx - (r->app ? 1 : 0) - tagw;
+	/*
+	 * AND THE TWO-LETTER CODE, in the same right-hand strip. A code a
+	 * person cannot see is a code they cannot learn, and the whole point
+	 * of one is that it is faster than reading the row.
+	 */
+	int codew = r->code[0] ? 3 : 0;
+	int room = pin_col(x, w) - tx - (r->app ? 1 : 0) - tagw - codew;
 
 	if (room < 1) {
 		room = 1;
@@ -1050,6 +1132,10 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 	if (tagw)
 		ktui_draw_text(pin_col(x, w) - tagw, y, tagw - 1, "[box]",
 			       selected ? fg : KT_DIM, bg, KT_A_NONE);
+	if (codew)
+		ktui_draw_text(pin_col(x, w) - tagw - codew, y, codew - 1,
+			       r->code, selected ? fg : KT_MID, bg,
+			       KT_A_BOLD);
 	if (r->submenu)
 		ktui_draw_text(x + w - 2, y, 1, ktui_glyph[KT_G_RIGHT], fg, bg,
 			       KT_A_NONE);
@@ -1553,6 +1639,31 @@ static void step(int d)
 	}
 }
 
+/*
+ * DID THOSE TWO LETTERS NAME A ROW?
+ *
+ * DESQview's Open Window menu listed every program with a two-letter code and
+ * typing it opened the program — no arrows, no Enter, and no waiting to see
+ * whether the search had narrowed to one. It is the fastest thing on a
+ * keyboard that a menu can offer, and it costs one comparison per pinned row.
+ *
+ * ONLY WITH EXACTLY TWO CHARACTERS TYPED. A code is a shorthand for a row a
+ * person pinned, and a search that happened to be two letters long must still
+ * be a search — so this runs on the way in, before the query grows a third
+ * character, and never afterwards.
+ */
+static const struct row *code_hit(const char *two)
+{
+	if (!two[0] || !two[1] || two[2])
+		return NULL;
+	for (int i = 0; i < npins; i++)
+		if (pins[i].code[0] &&
+		    toupper((unsigned char)two[0]) == pins[i].code[0] &&
+		    toupper((unsigned char)two[1]) == pins[i].code[1])
+			return &pins[i];
+	return NULL;
+}
+
 static void typeahead(int ch)
 {
 	size_t n = strlen(query);
@@ -1563,6 +1674,23 @@ static void typeahead(int ch)
 	} else if (ch >= 0x20 && ch < 0x7f && n + 1 < sizeof(query)) {
 		query[n] = (char)ch;
 		query[n + 1] = '\0';
+
+		/*
+		 * AND IF THOSE TWO LETTERS ARE A CODE, THE ROW OPENS. Checked
+		 * here rather than in the draw, so a code fires the moment its
+		 * second letter lands and a third letter is an ordinary search
+		 * that has already passed this point.
+		 */
+		const struct row *hit = code_hit(query);
+
+		if (hit) {
+			struct row copy = *hit;
+
+			query[0] = '\0';
+			if (activate(&copy))
+				return;
+			return;
+		}
 	} else {
 		return;
 	}

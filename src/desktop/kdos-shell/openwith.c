@@ -84,6 +84,22 @@ static int row_is_other(int i) { return i == ncands; }
 static int editing;
 static char edit_buf[512];
 
+/* ONE RUNG: the inline command editor. Esc in it goes back to the list and
+ * Esc on the list cancels the dialog. */
+static KtuiKeys keys;
+
+static int ow_edit_up(void *user)
+{
+	(void)user;
+	return editing;
+}
+
+static void ow_edit_close(void *user)
+{
+	(void)user;
+	editing = 0;
+}
+
 /* ── path -> MIME ──────────────────────────────────────────────────────── */
 
 /*
@@ -145,14 +161,24 @@ static int desktop_find(const char *id, char *out, size_t n)
 	return 0;
 }
 
-static void mimeapps_path(char *out, size_t n)
+/*
+ * The user's list, or the DESKTOP'S own when `pre` names one. A desktop's list
+ * is searched first at each level so the console and the compositor can hold
+ * different answers for the same type without either editing the other's.
+ */
+static void mimeapps_path(char *out, size_t n, const char *pre)
 {
 	const char *cfg = getenv("XDG_CONFIG_HOME");
+	char dir[512];
 
 	if (cfg && *cfg)
-		snprintf(out, n, "%.500s/mimeapps.list", cfg);
+		snprintf(dir, sizeof(dir), "%.500s", cfg);
 	else
-		snprintf(out, n, "%.500s/.config/mimeapps.list", kb_home_dir());
+		snprintf(dir, sizeof(dir), "%.500s/.config", kb_home_dir());
+	if (pre && *pre)
+		snprintf(out, n, "%.500s/%.40s-mimeapps.list", dir, pre);
+	else
+		snprintf(out, n, "%.500s/mimeapps.list", dir);
 }
 
 /* ── candidates ────────────────────────────────────────────────────────── */
@@ -298,10 +324,30 @@ static void gather(const char *mime)
 	int nd = ow_data_dirs(dirs, 16);
 
 	/* In the order `kdos-appbox open` consults them, so the first row is
-	 * the handler that would open the file right now. */
-	mimeapps_path(path, sizeof(path));
-	add_from_section(path, "Default Applications", mime, 1);
+	 * the handler that would open the file right now. The two must not
+	 * drift: a chooser that showed a different default from the one the
+	 * opener uses is a chooser that lies about what is in force. */
+	char pre[80];
+	int have_pre = kb_desktop_prefix(pre, sizeof(pre));
+
+	if (have_pre) {
+		mimeapps_path(path, sizeof(path), pre);
+		add_from_section(path, "Default Applications", mime, 1);
+	}
+	mimeapps_path(path, sizeof(path), NULL);
+	add_from_section(path, "Default Applications", mime, ncands == 0);
+	if (have_pre) {
+		mimeapps_path(path, sizeof(path), pre);
+		add_from_section(path, "Added Associations", mime, 0);
+	}
+	mimeapps_path(path, sizeof(path), NULL);
 	add_from_section(path, "Added Associations", mime, 0);
+	if (have_pre) {
+		snprintf(path, sizeof(path), "/etc/xdg/%.40s-mimeapps.list",
+			 pre);
+		add_from_section(path, "Default Applications", mime,
+				 ncands == 0);
+	}
 	add_from_section("/etc/xdg/mimeapps.list", "Default Applications", mime,
 			 ncands == 0);
 	for (int i = 0; i < nd; i++) {
@@ -337,7 +383,13 @@ static int write_default(const char *mime, const char *id)
 	KbBuf out = {0};
 	int in_sec = 0, wrote = 0, have_sec = 0, rc = -1;
 
-	mimeapps_path(path, sizeof(path));
+	/*
+	 * WRITTEN TO THE PLAIN LIST, never to a desktop's own. A person
+	 * choosing a handler is choosing it, not choosing it here — and the
+	 * desktop lists are searched FIRST, so a choice written into one would
+	 * be invisible on the other desktop while silently outranking it here.
+	 */
+	mimeapps_path(path, sizeof(path), NULL);
 	kb_strlcpy(dir, path, sizeof(dir));
 	char *slash = strrchr(dir, '/');
 	if (slash) {
@@ -676,14 +728,27 @@ static void draw(void)
 			       KT_A_NONE);
 	}
 
-	if (note[0])
+	/* What Enter does depends on the row: the last one is `Other command`
+	 * and opens the editor rather than a program. */
+	ktui_hint_if(!editing && !row_is_other(sel), "Enter", "open");
+	ktui_hint_if(!editing && row_is_other(sel), "Enter", "command");
+	ktui_hint_if(editing, "Enter", "run");
+	ktui_hint_if(!editing && nrows() > 1, "Up/Down", "select");
+	/* Not on the `Other command` row: the default cannot be recorded for
+	 * a command that is not a desktop entry, and open_command() refuses. */
+	ktui_hint_if(!editing && !row_is_other(sel), "d", "default");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+
+	if (note[0]) {
+		/* The note outranks the row and shares its cells; the row is
+		 * still called, with an empty rect, because it is what clears
+		 * the pool. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_SURFACE);
 		ktui_draw_text(2, h - 2, w - 26, note, KT_WARN, KT_SURFACE,
 			       KT_A_NONE);
-	else
-		ktui_draw_text(2, h - 2, w - 26,
-			       editing ? "Enter run   Esc cancel"
-				       : "Enter open   d default   Esc cancel",
-			       KT_MID, KT_SURFACE, KT_A_NONE);
+	} else {
+		ktui_hint_row(&keys, krect(2, h - 2, w - 26, 1), KT_SURFACE);
+	}
 
 	/* The same two buttons pick.c carries, in the same place: this dialog
 	 * arrives in front of a person holding a mouse. */
@@ -795,6 +860,10 @@ int openwith_main(int argc, char **argv)
 	}
 
 	gather(ow_mime);
+	/* BEFORE the print and dump returns: both draw, and a frame that read
+	 * the Esc verb through an empty ladder would say something the live
+	 * surface does not. */
+	ktui_keys_layer(&keys, "Cancel", ow_edit_up, ow_edit_close, NULL);
 
 	if (print) {
 		/* Resolves and prints, launching nothing — open.c's --print,
@@ -962,11 +1031,18 @@ int openwith_main(int argc, char **argv)
 		 * the viewport to follow. */
 		sel_follow = 1;
 
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				break;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		if (editing) {
 			size_t n = strlen(edit_buf);
-			if (ev.key == KT_K_ESC) {
-				editing = 0;
-			} else if (ev.key == KT_K_ENTER) {
+			if (ev.key == KT_K_ENTER) {
 				if (open_command(edit_buf) == 0) {
 					rc = 0;
 					break;
@@ -986,8 +1062,6 @@ int openwith_main(int argc, char **argv)
 		if (page < 1)
 			page = 1;
 
-		if (ev.key == KT_K_ESC)
-			break;
 		if (ev.key == KT_K_ENTER) {
 			if (activate()) {
 				rc = 0;

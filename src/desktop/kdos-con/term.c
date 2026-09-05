@@ -57,6 +57,27 @@ static void term_bell(struct kvt_vte *vte, void *data)
 	con_bell(data);
 }
 
+/*
+ * A PROGRAM IN A WINDOW SAYS IT FINISHED — OSC 9, 777 or 99.
+ *
+ * `make && notify-send done` does not work on this image: `libnotify` is not a
+ * port and `notify-send` is not here. The escape is, and it costs a parse
+ * rather than a dependency — so a long job says so from inside the terminal it
+ * is running in, and the desktop's own notification daemon shows it like any
+ * other toast.
+ *
+ * The window's title is the application name, so a person with four builds
+ * running can tell which one spoke.
+ */
+static void term_notify(struct kvt_vte *vte, const char *summary,
+			const char *body, void *user)
+{
+	Win *w = user;
+
+	(void)vte;
+	kb_notify(w && w->title[0] ? w->title : "terminal", summary, body);
+}
+
 Win *term_open(const char *const argv[])
 {
 	Win *w = calloc(1, sizeof(*w));
@@ -93,6 +114,7 @@ Win *term_open(const char *const argv[])
 		kvt_term_osc_cb(w->term, term_osc, w);
 		kvt_term_clip_cb(w->term, term_clip, w);
 		kvt_term_bell_cb(w->term, term_bell, w);
+		kvt_term_notify_cb(w->term, term_notify, w);
 	}
 	if (!w->term) {
 		win_close(w);
@@ -144,7 +166,7 @@ void term_paste(Win *w, int primary)
 		return;
 	text = clip_get(primary, &n);
 	if (n)
-		kvt_term_paste(w->term, text);
+		con_paste_win(w, text);
 }
 
 void term_pump_all(void)

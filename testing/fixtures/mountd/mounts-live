@@ -1,0 +1,3 @@
+overlay / overlay rw,lowerdir=/mnt/iso 0 0
+proc /proc proc rw 0 0
+/dev/sdd1 /mnt/iso iso9660 ro 0 0

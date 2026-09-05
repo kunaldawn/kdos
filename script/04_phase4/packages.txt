@@ -1142,8 +1142,9 @@ dav1d
 # ---------------------------------
 imagemagick
 ffmpeg
-# A still out of a video, which is what a file manager shows for one, and what
-# kdos-pick's preview asks for.
+# A still out of a video, which is what a file manager shows for one. It is the
+# video backend `kdos thumb` forks; the chooser's preview asks that command for
+# a P6 rather than decoding anything itself.
 ffmpegthumbnailer
 # Pictures in a terminal, on the one graphics protocol a VT understands. It is
 # the honest answer to "show me this image" on tty1, where no compositor is.

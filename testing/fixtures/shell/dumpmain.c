@@ -204,6 +204,21 @@ int kch_body_slot(void) { return KT_BG; }
 int kdisp_edge_bottom(void) { return 0; }
 void kdisp_layer_autohide(bool hidden) { (void)hidden; }
 
+/*
+ * THE WINDOW LIST IS EMPTY HERE, and answering `supported` with 0 is the point:
+ * a dump renders one frame with no compositor, so a surface that draws window
+ * rows must draw the state it has on a machine with no window manager. A stub
+ * that invented two windows would make the goldens assert a fiction.
+ */
+int kdisp_win_supported(void) { return 0; }
+int kdisp_win_count(void) { return 0; }
+int kdisp_win_at(int i, KDispWin *out) { (void)i; (void)out; return 0; }
+void kdisp_win_activate(unsigned id) { (void)id; }
+void kdisp_win_close(unsigned id) { (void)id; }
+void kdisp_win_minimise(unsigned id, int on) { (void)id; (void)on; }
+void kdisp_win_maximise(unsigned id, int on) { (void)id; (void)on; }
+void kdisp_win_fullscreen(unsigned id, int on) { (void)id; (void)on; }
+
 int kicon_slot_pad(const char *n, int cw, int ch, int pad)
 { (void)n; (void)cw; (void)ch; (void)pad; return -1; }
 pixman_image_t *kicon_pixmap(const char *n, int w, int h)
@@ -330,12 +345,14 @@ FRONT_END(notify_main);
 FRONT_END(status_main);
 FRONT_END(tip_main);
 FRONT_END(panel_main);
+FRONT_END(trash_main);
 
 static const struct {
 	const char *name;
 	int (*fn)(int, char **);
 } fronts[] = {
 	{ "cal",	cal_main },
+	{ "trash",	trash_main },
 	{ "menu",	menu_main },
 	{ "launcher",	launcher_main },
 	{ "pick",	pick_main },

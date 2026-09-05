@@ -26,28 +26,7 @@
 /* Best effort — a screenshot must never fail on a notification. */
 static void toast(const char *summary, const char *body)
 {
-	if (!kb_have_prog("gdbus"))
-		return;
-	KbArgv a = {0};
-	kb_argv_add(&a, "gdbus");
-	kb_argv_add(&a, "call");
-	kb_argv_add(&a, "--session");
-	kb_argv_add(&a, "--dest");
-	kb_argv_add(&a, "org.freedesktop.Notifications");
-	kb_argv_add(&a, "--object-path");
-	kb_argv_add(&a, "/org/freedesktop/Notifications");
-	kb_argv_add(&a, "--method");
-	kb_argv_add(&a, "org.freedesktop.Notifications.Notify");
-	kb_argv_add(&a, "kdos-shot");
-	kb_argv_add(&a, "0");
-	kb_argv_add(&a, "");
-	kb_argv_add(&a, summary);
-	kb_argv_add(&a, body);
-	kb_argv_add(&a, "[]");
-	kb_argv_add(&a, "{}");
-	kb_argv_add(&a, "5000");
-	kb_argv_end(&a);
-	kb_run(&a);
+	kb_notify("kdos-shot", summary, body);
 }
 
 /* wl-copy reads the image on stdin. */
@@ -91,7 +70,12 @@ static int grim_works(void)
 }
 
 /*
- * The console desktop's screenshot: the composited grid, as text.
+ * The console desktop's screenshot: the composited grid, as a picture.
+ *
+ * THE RASTERISING IS THE VIEW'S, not this program's. Turning cells into
+ * pixels needs a font, fcft and pixman; `kdos-tools` is on every image and
+ * links none of them, while a view already loads a font to put the same cells
+ * on a screen. `kdos-view --shot` is that view taking one frame.
  *
  * The view socket is the surface socket's name with its suffix changed —
  * they are one session's pair, and deriving it is what keeps the caller from
@@ -116,27 +100,18 @@ static int shot_console(const char *sock, const char *dir)
 
 	char leaf[64];
 
-	strftime(leaf, sizeof(leaf), "kdos-%Y%m%d-%H%M%S.txt", &tm);
+	strftime(leaf, sizeof(leaf), "kdos-%Y%m%d-%H%M%S.png", &tm);
 
 	char *file = kb_path_join(dir, leaf);
-	int fd = open(file, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-
-	if (fd < 0) {
-		fprintf(stderr, "kdos-shot: cannot write %s\n", file);
-		free(file);
-		return 1;
-	}
-
 	pid_t p = fork();
 
 	if (p == 0) {
-		dup2(fd, 1);
-		close(fd);
-		execlp("kdos-view", "kdos-view", "--dump", "--socket", view,
-		       (char *)NULL);
+		/* The view writes the file itself, so there is no descriptor
+		 * to hand it and nothing on stdout to redirect. */
+		execlp("kdos-view", "kdos-view", "--shot", file, "--socket",
+		       view, (char *)NULL);
 		_exit(127);
 	}
-	close(fd);
 	if (p < 0) {
 		free(file);
 		return 1;

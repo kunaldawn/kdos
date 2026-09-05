@@ -502,6 +502,33 @@ static void snap_restore(void)
 		memcpy(order, snap_order, sizeof(order));
 }
 
+/*
+ * ONE RUNG: the fifteen-second countdown. Esc there means revert, which is
+ * what the timeout does on its own — so it cannot lose work, and the row can
+ * say `Esc revert` instead of promising a close the countdown refuses.
+ *
+ * The display is the layer's `user` because the revert has to reach the
+ * compositor before the frame ends.
+ */
+static KtuiKeys keys;
+
+static int cd_up(void *user)
+{
+	(void)user;
+	return confirm_deadline > 0.0;
+}
+
+static void cd_revert(void *user)
+{
+	struct wl_display *dpy = user;
+
+	confirm_deadline = 0.0;
+	snap_restore();
+	reverting = 1;
+	apply_now();
+	wl_display_flush(dpy);
+}
+
 static int conf_path(char *out, size_t n)
 {
 	const char *home = getenv("HOME");
@@ -818,11 +845,6 @@ static void draw(void)
 			       KT_SURFACE, KT_A_NONE);
 
 	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
-	ktui_draw_text(2, h - 3, w - 4,
-		       confirm_deadline > 0.0
-			       ? "K keep   R revert now"
-			       : "SPACE on/off   m/M mode   s scale   t rotate   [ ] order",
-		       KT_MID, KT_SURFACE, KT_A_NONE);
 	/*
 	 * EVERY VERB IN THIS WINDOW WAS A KEY, and the row of keys above is a
 	 * legend, not a control: a pointer could select a screen and then do
@@ -849,16 +871,35 @@ static void draw(void)
 	b[DB_CLOSE] = (struct kch_button){ "Close", 1 };
 	int bx = kch_buttons(w, h - 2, b, DB_N, -1);
 	int room = bx - 3;
-	const char *note = applied_note[0] ? applied_note
-					   : "ENTER apply    ESC cancel";
-	/* A MESSAGE takes whatever room is left; a HINT is drawn whole or not
-	 * at all, because half a sentence is worse than none. */
-	if (room > 0 && (applied_note[0]
-				 ? 1
-				 : room >= (int)ktui_utf8_width(note)))
-		ktui_draw_text(2, h - 2, room, note,
+	/* A MESSAGE takes whatever room is left. The keys are the row's now,
+	 * one row up, where the legend used to be written by hand. */
+	if (applied_note[0] && room > 0)
+		ktui_draw_text(2, h - 2, room, applied_note,
 			       applied < 0 ? KT_ERR : KT_DIM, KT_SURFACE,
 			       KT_A_NONE);
+
+	/*
+	 * `s` SCALE AND `t` ROTATE ARE DELIBERATELY NOT PUSHED. This window is
+	 * sixty columns and eight hints need seventy-four; the row stops at
+	 * the first that does not fit, and what it would drop is the Esc hint
+	 * that must always be there. The Scale and Rotate buttons name those
+	 * two actions on the bar. Widening the window is the fix if they are
+	 * wanted here — never reordering Esc.
+	 */
+	ktui_hint_if(confirm_deadline > 0.0, "K", "keep");
+	ktui_hint_if(confirm_deadline > 0.0, "R", "revert");
+	/* The bar is drawn with focus -1 and so pushes no Enter hint of its
+	 * own; this surface names its own Apply. */
+	ktui_hint_if(confirm_deadline == 0.0 && nheads > 0, "Enter", "apply");
+	ktui_hint_if(confirm_deadline == 0.0 && bh && bh->proxy &&
+			     (!bh->enabled || live > 1),
+		     "Space", "on/off");
+	ktui_hint_if(confirm_deadline == 0.0 && bh && bh->proxy &&
+			     bh->nmodes > 1,
+		     "m", "mode");
+	ktui_hint_if(confirm_deadline == 0.0 && nheads > 1, "[/]", "order");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 3, w - 4, 1), KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -1023,6 +1064,11 @@ int display_main(int argc, char **argv)
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
+	/* The page in /usr/share/kdos/doc that F1 opens. A name with no
+	 * file there is refused by testing/preflight.sh. */
+	keys.doc = "display";
+	keys.help = sh_help;
+	ktui_keys_layer(&keys, "revert", cd_up, cd_revert, dpy);
 
 	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
@@ -1070,6 +1116,15 @@ int display_main(int argc, char **argv)
 				ktui_draw_invalidate();
 			}
 			continue;
+		}
+
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
 		}
 
 		/* The countdown answers two keys and nothing else: editing a
@@ -1169,8 +1224,6 @@ int display_main(int argc, char **argv)
 		if (h && !h->proxy)
 			h = NULL;
 		switch (ev.key) {
-		case KT_K_ESC:
-			goto done;
 		case KT_K_UP:
 			if (sel > 0)
 				sel--;

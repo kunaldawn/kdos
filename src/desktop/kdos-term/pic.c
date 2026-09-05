@@ -842,6 +842,35 @@ static void kitty_apply(const char *ctl, const uint8_t *payload, size_t len)
 		return;
 	}
 
+	/*
+	 * `a=q` IS A QUESTION, AND SILENCE IS THE ONE ANSWER THAT BREAKS IT.
+	 *
+	 * A picture program sends a tiny transmission with `a=q` and waits: an
+	 * `OK` means it may use this protocol, an error code means it must
+	 * fall back, and NOTHING means it waits for its own timeout and then
+	 * draws as though the terminal were a teletype. Dropping the query is
+	 * therefore the most expensive way to not support something.
+	 *
+	 * NOTHING IS STORED. A query names an id so the reply can be matched
+	 * to it, and it must not leave an image behind — which is exactly why
+	 * this returns here rather than falling into the transmit path.
+	 */
+	if (action == 'q') {
+		char reply[64];
+		int n;
+
+		/*
+		 * The id is echoed so a program with several in flight knows
+		 * which it is hearing about. A query that named none is
+		 * answered anyway, with i=0: the alternative is silence, which
+		 * is the failure this branch exists to prevent.
+		 */
+		n = snprintf(reply, sizeof(reply), "\033_Gi=%u;OK\033\\",
+			     (unsigned)id);
+		kvt_term_write(T.t, reply, (size_t)n);
+		return;
+	}
+
 	if (action != 'T' && action != 't' && action != 'f')
 		return;		/* a query, or an action this does not have */
 
@@ -1017,6 +1046,31 @@ static void do_kitty(const char *ctl, const uint8_t *payload, size_t len)
 	}
 }
 
+/*
+ * ANSWER A KITTY QUERY WITH A REFUSAL. Used only where pictures are off; the
+ * reply shape is the protocol's own `<code>:<message>`, which a client reads
+ * as "do not use this protocol here" rather than as a transient failure.
+ *
+ * Only a QUERY is answered. Every other action is silently dropped, because a
+ * transmission that was never going to be shown has no reply in the protocol
+ * and a client sending one is not waiting for one.
+ */
+static void kitty_refuse(const char *ctl)
+{
+	char v[64], reply[96];
+	uint32_t id = 0;
+	int n;
+
+	if (!ctl || ctl_get(ctl, "a", ',', v, sizeof(v)) <= 0 || v[0] != 'q')
+		return;
+	if (ctl_get(ctl, "i", ',', v, sizeof(v)) > 0)
+		id = (uint32_t)strtoul(v, NULL, 10);
+	n = snprintf(reply, sizeof(reply),
+		     "\033_Gi=%u;ENOTSUP:pictures are off in this terminal"
+		     "\033\\", (unsigned)id);
+	kvt_term_write(T.t, reply, (size_t)n);
+}
+
 /* ── the one callback ──────────────────────────────────────────────────── */
 
 static void on_image(struct kvt_vte *vte, enum kvt_img_kind kind,
@@ -1026,8 +1080,23 @@ static void on_image(struct kvt_vte *vte, enum kvt_img_kind kind,
 	(void)vte;
 	(void)data;
 
-	if (!TC.images || !T.t)
+	if (!T.t)
 		return;
+	/*
+	 * PICTURES OFF STILL ANSWERS THE KITTY QUESTION, and refuses it.
+	 *
+	 * `a=q` asks whether this terminal will take a picture. A terminal
+	 * with pictures turned off that says nothing is one the program waits
+	 * on and then times out against — the same cost as not implementing
+	 * the protocol at all, paid by a person who turned pictures off on
+	 * purpose. An error reply is instant and is what the fallback path is
+	 * written for.
+	 */
+	if (!TC.images) {
+		if (kind == KVT_IMG_KITTY)
+			kitty_refuse(params);
+		return;
+	}
 
 	switch (kind) {
 	case KVT_IMG_SIXEL: {
@@ -1058,14 +1127,42 @@ static void on_image(struct kvt_vte *vte, enum kvt_img_kind kind,
 	}
 }
 
+/*
+ * WHAT A PROGRAM IS TOLD IT MAY SEND, in pixels, and it is the same bound
+ * `fit()` above actually enforces: `image_cells` cells in each direction, and
+ * never more of them than the grid has. Reporting the decoder's own pixel
+ * budget instead would name a size this terminal then clamps, and a picture
+ * clipped after the terminal said it would fit is worse than one refused.
+ *
+ * RE-STATED WHENEVER THE GRID CHANGES, because half the bound is the number of
+ * columns and rows — a geometry answered from the size the window opened at is
+ * wrong for every size after the first.
+ */
+void term_pic_geom(void)
+{
+	int cw = TC.image_cells < T.cols ? TC.image_cells : T.cols;
+	int ch = TC.image_cells < T.rows ? TC.image_cells : T.rows;
+
+	if (!TC.images) {
+		/* A build or a session with pictures off answers the query
+		 * with a failure, which is what "no geometry" means. */
+		kvt_term_img_geom(T.t, 0, 0);
+		return;
+	}
+	kvt_term_img_geom(T.t, cw * cell_w(), ch * cell_h());
+}
+
 void term_pic_init(void)
 {
-	if (!TC.images)
+	if (!TC.images) {
+		term_pic_geom();
 		return;
+	}
 
 	ktui_sprite_evictor(sprite_free, NULL);
 	ktui_sprite_budget(SPRITE_BUDGET, cell_w(), cell_h());
 	kvt_term_img_cb(T.t, on_image, (size_t)TC.image_max * 1024, NULL);
+	term_pic_geom();
 }
 
 void term_pic_shutdown(void)
@@ -1079,8 +1176,15 @@ void term_pic_shutdown(void)
 
 #else	/* no libkimg in this build */
 
+/* Nothing decodes, so there is no geometry to report and the query says so. */
+void term_pic_geom(void)
+{
+	kvt_term_img_geom(T.t, 0, 0);
+}
+
 void term_pic_init(void)
 {
+	term_pic_geom();
 }
 
 void term_pic_shutdown(void)

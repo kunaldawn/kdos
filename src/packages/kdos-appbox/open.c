@@ -9,7 +9,7 @@
  *   kdos-appbox open — a file, in whatever opens it
  *
  *     $ kdos-appbox open report.odt        -> libreoffice, in the box
- *     $ kdos-appbox open ~/Pictures        -> mc, in foot
+ *     $ kdos-appbox open ~/Pictures        -> mc, in the desktop's terminal
  *
  * WHY THIS IS HERE AND NOT xdg-open. kdos-appbox owns the alien-app table and
  * every launcher in /usr/local/bin is a symlink to it, so it is already the
@@ -249,31 +249,63 @@ static int collect_in(const char *path, const char *section, const char *mime,
 static int handlers_for_mime(const char *mime, OpenCand *c, int max,
 			     int *defaulted)
 {
-	char dirs[16][512], path[600];
+	char dirs[16][512], path[600], dpre[80];
 	int nd = data_dirs(dirs, 16);
 	int n = 0;
 	const char *cfg = getenv("XDG_CONFIG_HOME");
+	char cfgdir[512];
 
 	*defaulted = 0;
 
+	if (cfg && *cfg)
+		snprintf(cfgdir, sizeof(cfgdir), "%.500s", cfg);
+	else
+		snprintf(cfgdir, sizeof(cfgdir), "%.500s/.config",
+			 kb_home_dir());
+
+	/*
+	 * THE DESKTOP'S OWN LIST FIRST, at each level, which is what the spec
+	 * says and what makes one image open in `timg` on the console and in a
+	 * boxed viewer under the compositor without either desktop editing the
+	 * other's choices.
+	 */
+	int have_pre = kb_desktop_prefix(dpre, sizeof(dpre));
+
+	if (have_pre) {
+		snprintf(path, sizeof(path), "%.500s/%s-mimeapps.list", cfgdir,
+			 dpre);
+		collect_in(path, "Default Applications", mime, c, &n, max);
+		if (n) {
+			*defaulted = 1;
+			return n;
+		}
+	}
+
 	/* The user's declared default beats everything, including a launcher
 	 * the box shipped a moment ago. */
-	if (cfg && *cfg)
-		snprintf(path, sizeof(path), "%.500s/mimeapps.list", cfg);
-	else
-		snprintf(path, sizeof(path), "%.500s/.config/mimeapps.list",
-			 kb_home_dir());
+	snprintf(path, sizeof(path), "%.500s/mimeapps.list", cfgdir);
 	collect_in(path, "Default Applications", mime, c, &n, max);
 	if (n) {
 		*defaulted = 1;
 		return n;
 	}
+	if (have_pre) {
+		snprintf(path, sizeof(path), "%.500s/%s-mimeapps.list", cfgdir,
+			 dpre);
+		collect_in(path, "Added Associations", mime, c, &n, max);
+	}
+	snprintf(path, sizeof(path), "%.500s/mimeapps.list", cfgdir);
 	collect_in(path, "Added Associations", mime, c, &n, max);
 
 	/* The distro's default counts as a decision too, whatever the user's
 	 * additions found: XDG puts Default Applications ahead of Added
 	 * Associations at every level, so an association that masked one would
 	 * turn a type somebody had decided into a chooser prompt. */
+	if (have_pre) {
+		snprintf(path, sizeof(path), "/etc/xdg/%s-mimeapps.list", dpre);
+		if (collect_in(path, "Default Applications", mime, c, &n, max))
+			*defaulted = 1;
+	}
 	if (collect_in("/etc/xdg/mimeapps.list", "Default Applications",
 		       mime, c, &n, max))
 		*defaulted = 1;
@@ -318,7 +350,10 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 	kb_strlcpy(buf, exec, sizeof(buf));
 
 	if (terminal) {
-		kb_argv_add(a, "foot");
+		/* THE TERMINAL FOLLOWS THE DESKTOP. `foot` needs a compositor,
+		 * so a console session that wrapped an entry in it would pick
+		 * the right program and then fail to open a window for it. */
+		kb_argv_add(a, kb_terminal());
 		kb_argv_add(a, "-e");
 	}
 
@@ -486,6 +521,35 @@ int cmd_open(int argc, char **argv)
 	}
 
 	tracef("open: %s -> %s", mime, kb_basename(entry));
+
+	/*
+	 * RECORDED HERE AND NOWHERE ELSE. Every open on this desktop passes
+	 * through this function — the desktop's icons, the file chooser, a
+	 * menu, `xdg-open` — so this is the one place a recent-files store can
+	 * be written without a second copy of the rule going stale beside it.
+	 *
+	 * BEFORE the exec, which never returns. Only an absolute path is
+	 * recorded: a URL has no file to go back to, and a relative one means
+	 * nothing to whatever reads the store next.
+	 *
+	 * A failed write is ignored on purpose. A convenience list is not a
+	 * reason to refuse to open a file.
+	 */
+	{
+		/* The ENTRY'S STEM, not its filename: the store's convention
+		 * is the program's own name, and `kxdg_recent("nvim", …)` is
+		 * what a jump list asks with. */
+		char who[128], *dot;
+
+		kb_strlcpy(who, kb_basename(entry), sizeof(who));
+		dot = strrchr(who, '.');
+		if (dot && !strcmp(dot, ".desktop"))
+			*dot = '\0';
+		for (int i = 0; i < argc; i++)
+			if (argv[i][0] == '/')
+				kxdg_recent_add(who, argv[i], mime);
+	}
+
 	/*
 	 * exec, not fork: `open` is a one-shot command and the caller — a
 	 * double-forked kdos-desk, a menu, a shell — already decided what

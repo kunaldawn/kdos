@@ -22,6 +22,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -40,6 +41,10 @@ struct kvt_term {
 	int status;		/* kept after the child is gone */
 
 	int cols, rows;
+
+	/* When synchronized output went on, for the watchdog. Zero when it is
+	 * off. See kvt_term_sync_hold(). */
+	unsigned long long sync_since;
 };
 
 /* The child's output. Straight into the state machine; the screen is what
@@ -102,6 +107,29 @@ kvt_term_open(const char *const argv[], int cols, int rows)
 		 * ssh.
 		 */
 		setenv("TERM", "xterm-256color", 1);
+		/*
+		 * AND COLORTERM, which is the only way a program learns that
+		 * the sixteen-colour entry `TERM` names is an understatement.
+		 * `libktui`'s own `detect_caps()` reads it, so a KDOS surface
+		 * running inside a KDOS terminal detected 256 colours and drew
+		 * the theme approximately — the palette is truecolour at both
+		 * ends and the variable is what says so.
+		 */
+		setenv("COLORTERM", "truecolor", 1);
+		/*
+		 * WHICH TERMINAL, BY NAME, which is the third tier of every
+		 * picture program's capability probe — after the kitty query
+		 * and after DA1 — and the only one that works over a pipe. A
+		 * terminal that answers neither of the first two and does not
+		 * name itself is one such a program treats as a teletype.
+		 *
+		 * ONE NAME FOR BOTH TERMINALS. `kdos-term` and the console
+		 * session's own windows are the same engine with the same
+		 * capabilities, so a program that changed behaviour between
+		 * them would be reacting to a difference that is not there.
+		 */
+		setenv("TERM_PROGRAM", "kdos-term", 1);
+		setenv("TERM_PROGRAM_VERSION", KVT_TERM_VERSION, 1);
 		unsetenv("COLUMNS");
 		unsetenv("LINES");
 		execvp(argv[0], (char *const *)argv);
@@ -289,6 +317,74 @@ void kvt_term_bell_cb(struct kvt_term *t, kvt_vte_bell_cb cb, void *user)
 		kvt_vte_set_bell_cb(t->vte, cb, user);
 }
 
+void kvt_term_sync_cb(struct kvt_term *t, kvt_vte_sync_cb cb, void *user)
+{
+	if (t)
+		kvt_vte_set_sync_cb(t->vte, cb, user);
+}
+
+void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user)
+{
+	if (t)
+		kvt_vte_set_notify_cb(t->vte, cb, user);
+}
+
+/*
+ * The focus moved. Both desktops call this from the one place each decides
+ * focus, so a window on a workspace somebody left is told it lost it — which
+ * it did, and an editor that is not told does not reload a changed file.
+ */
+void kvt_term_focus(struct kvt_term *t, int in)
+{
+	if (t)
+		kvt_vte_focus(t->vte, in != 0);
+}
+
+int kvt_term_sync_output(struct kvt_term *t)
+{
+	return t ? kvt_vte_sync_output(t->vte) : 0;
+}
+
+static unsigned long long kvt_mono_ms(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (unsigned long long)ts.tv_sec * 1000 +
+	       (unsigned long long)ts.tv_nsec / 1000000;
+}
+
+/*
+ * SHOULD THIS FRAME BE HELD BACK?
+ *
+ * True while the child has synchronized output on and has not held it too
+ * long. A frame drawn as an unbracketed row diff tears on a slow link, which
+ * is the link this desktop is sold on, so a program that brackets its screen
+ * is never seen half-drawn.
+ *
+ * THE WATCHDOG IS WHY THIS IS A FUNCTION RATHER THAN A FLAG. A child that sets
+ * the mode and dies would freeze its window forever, and the terminal cannot
+ * tell that from a program taking its time — 150 ms is longer than any frame
+ * and shorter than a person notices. It lives here rather than in each
+ * renderer because both terminals need the same rule and two copies of a
+ * timeout is two timeouts.
+ */
+int kvt_term_sync_hold(struct kvt_term *t)
+{
+	if (!t)
+		return 0;
+	if (!kvt_vte_sync_output(t->vte)) {
+		t->sync_since = 0;
+		return 0;
+	}
+
+	unsigned long long now = kvt_mono_ms();
+
+	if (!t->sync_since)
+		t->sync_since = now;
+	return now - t->sync_since < 150;
+}
+
 /*
  * The three image protocols, switched on for this terminal. Off is the
  * default and stays the default: a consumer that links no decoder must parse
@@ -301,6 +397,12 @@ kvt_term_img_cb(struct kvt_term *t, kvt_vte_img_cb cb, size_t max_bytes,
 {
 	if (t)
 		kvt_vte_set_img_cb(t->vte, cb, max_bytes, user);
+}
+
+void kvt_term_img_geom(struct kvt_term *t, int max_w_px, int max_h_px)
+{
+	if (t)
+		kvt_vte_set_img_geom(t->vte, max_w_px, max_h_px);
 }
 
 /*
@@ -375,6 +477,11 @@ kvt_term_place(struct kvt_term *t, uint64_t key, int cw, int ch)
  * and ends, and a terminal that ignored it would let a paste run as if it had
  * been typed.
  */
+int kvt_term_paste_needs_confirm(struct kvt_term *t, const char *text)
+{
+	return t ? kvt_vte_paste_needs_confirm(t->vte, text) : 0;
+}
+
 void
 kvt_term_paste(struct kvt_term *t, const char *text)
 {

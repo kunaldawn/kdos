@@ -103,6 +103,46 @@ static void teardown(void)
 	}
 }
 
+/*
+ * ── WHO HAS THE KEYBOARD, PUBLISHED BY A DIFF ───────────────────────────
+ *
+ * Compared against the last turn of the loop rather than called from the
+ * places focus changes — a raise, a minimise, a workspace switch, a window
+ * closing, a surface being adopted, a lock going up. That is six call sites
+ * to remember and it is the shape `mgmt.c` already uses for the window list:
+ * one place to be wrong, and it cannot miss a path that did not exist when it
+ * was written.
+ *
+ * A TERMINAL TELLS ITS CHILD (`CSI I` / `CSI O`, and only while the child
+ * asked with DECSET 1004) and a surface is sent `KCON_OP_FOCUS`. An editor
+ * that is not told it lost the focus does not reload a file changed underneath
+ * it, and its next write is over somebody else's work.
+ */
+static void focus_publish(void)
+{
+	static int last = -1;
+
+	if (S.focus == last)
+		return;
+
+	Win *lost = win_find(last);
+	Win *got = win_find(S.focus);
+
+	last = S.focus;
+	if (lost) {
+		if (lost->kind == WIN_TERM && lost->term)
+			kvt_term_focus(lost->term, 0);
+		else if (lost->kind == WIN_SURFACE && lost->surf)
+			kcon_surface_focus(lost->surf, 0);
+	}
+	if (got) {
+		if (got->kind == WIN_TERM && got->term)
+			kvt_term_focus(got->term, 1);
+		else if (got->kind == WIN_SURFACE && got->surf)
+			kcon_surface_focus(got->surf, 1);
+	}
+}
+
 static void composite(void)
 {
 	KRect all = krect(0, 0, S.cols, S.rows);
@@ -341,6 +381,20 @@ const char *con_command(int which)
 		[CON_CMD_LAUNCHER] = { "launcher", "kdos-launcher" },
 		[CON_CMD_LOCK]     = { "lock",     "kdos-lock" },
 		[CON_CMD_SAVER]    = { "saver",    "kdos-saver" },
+		[CON_CMD_KEYS]     = { "keys",     "kdos-keys" },
+		[CON_CMD_AUDIO]    = { "audio",    "kdos-audio" },
+		[CON_CMD_NET]      = { "net",      "kdos-net" },
+		[CON_CMD_BT]       = { "bluetooth", "kdos-bt" },
+		[CON_CMD_DEVICES]  = { "devices",  "kdos-devices" },
+		[CON_CMD_SETTINGS] = { "settings", "kdos-settings" },
+		[CON_CMD_CAL]      = { "calendar", "kdos-cal" },
+		[CON_CMD_DOC]      = { "docs",     "kdos-doc" },
+		[CON_CMD_DISPLAY]  = { "displays", "kdos-display" },
+		[CON_CMD_ENERGY]   = { "power",    "kdos-energy" },
+		[CON_CMD_RES]      = { "monitor",  "kdos-res" },
+		[CON_CMD_CALC]     = { "calculator", "kdos-calc" },
+		[CON_CMD_NOTE]     = { "notes",    "kdos-note" },
+		[CON_CMD_CLIP]     = { "clipboard", "kdos-clip" },
 	};
 
 	if (which < 0 || which >= CON_CMD_N)
@@ -384,6 +438,32 @@ void con_spawn(const char *cmd)
 }
 
 /*
+ * THE SAME, FOR A SURFACE THAT BELONGS TO A PLACE ON THE PANEL.
+ *
+ * `kdos-start` and `kdos-cal` both take `--at-bottom X Y`, which becomes the
+ * corner and the margins in their attach — so a menu opened by a click on the
+ * bar lands above the thing that was clicked, and one opened by a chord names
+ * no position and is centred. The unit is a cell here and a pixel on Wayland,
+ * and the caller's number is the same on both because `kdisp_cell_w()` answers
+ * 1 on this transport.
+ */
+void con_spawn_at(const char *cmd, int x)
+{
+	char buf[256];
+	char at[32];
+
+	if (!cmd || !*cmd)
+		return;
+	snprintf(at, sizeof(at), " --at-bottom %d %d", x < 0 ? 0 : x,
+		 panel_rows());
+	if (snprintf(buf, sizeof(buf), "%s%s", cmd, at) >= (int)sizeof(buf)) {
+		con_spawn(cmd);
+		return;
+	}
+	con_spawn(buf);
+}
+
+/*
  * The chords the desktop keeps for itself, nearly all on KT_MOD_SUPER so none
  * of them can collide with what a program inside a window wants. WHICH chord
  * runs which action is keys.c's; this is only what the actions do.
@@ -399,6 +479,274 @@ void con_spawn(const char *cmd)
  * mistake presses any key that names nothing to be rid of it.
  */
 static int leader_armed;
+
+/*
+ * ── REARRANGE: THE KEYBOARD MOVES A WINDOW ──────────────────────────────
+ *
+ * Turbo Vision's Ctrl+F5 and DESQview's Rearrange. Arrows move by a cell,
+ * Shift+arrows resize from the bottom-right corner, Ctrl+arrows move by eight,
+ * Return keeps and Escape puts back the rectangle from before the mode.
+ *
+ * POINTER RESISTANCE IS NOT APPLIED. A drag has resist and attract zones
+ * because a hand is imprecise; a keyboard is exact, and a key that moved a
+ * window by one cell except near an edge would be a key that lies.
+ *
+ * Every intermediate rectangle still goes through `kwm_fit`, so the work area
+ * binds here exactly as it binds a snap and a drag.
+ */
+static struct {
+	int id;			/* the window being rearranged, or 0 */
+	KwmRect from;		/* what Escape puts back */
+} rear;
+
+static void rearrange_end(int keep)
+{
+	Win *w = win_find(rear.id);
+
+	if (w && !keep) {
+		w->geom = rear.from;
+		win_resized(w);
+	}
+	rear.id = 0;
+	ktui_draw_invalidate();
+}
+
+/* True when the key was the mode's. The mode owns every key while it is on:
+ * a window being moved must not also be typed into. */
+static int rearrange_key(const KtuiEvent *ev)
+{
+	Win *w = win_find(rear.id);
+	int step = (ev->mods & KT_MOD_CTRL) ? 8 : 1;
+	int size = (ev->mods & KT_MOD_SHIFT) != 0;
+	int dx = 0, dy = 0;
+
+	if (!w) {
+		rear.id = 0;
+		return 0;
+	}
+	switch (ev->key) {
+	case KT_K_ESC:
+		rearrange_end(0);
+		return 1;
+	case KT_K_ENTER:
+		rearrange_end(1);
+		return 1;
+	case KT_K_LEFT:  dx = -step; break;
+	case KT_K_RIGHT: dx =  step; break;
+	case KT_K_UP:    dy = -step; break;
+	case KT_K_DOWN:  dy =  step; break;
+	default:
+		/* Anything else ends the mode and is not passed on: a stray
+		 * key while a window is being moved is a mistake, and putting
+		 * it into the window underneath is the worse of the two
+		 * answers. */
+		rearrange_end(1);
+		return 1;
+	}
+
+	KwmRect g = w->geom;
+
+	if (size) {
+		g.w += dx;
+		g.h += dy;
+		if (g.w < 8)
+			g.w = 8;
+		if (g.h < 3)
+			g.h = 3;
+	} else {
+		g.x += dx;
+		g.y += dy;
+	}
+	w->tiled = 0;
+	w->geom = kwm_fit(g, win_workarea());
+	win_resized(w);
+	ktui_draw_invalidate();
+	return 1;
+}
+
+int con_rearranging(void)
+{
+	return rear.id != 0;
+}
+
+/*
+ * ── MARK AND TRANSFER ───────────────────────────────────────────────────
+ *
+ * DESQview's, and it is cheaper here than it was there or anywhere since: the
+ * session composes every window into one grid of cells, so the text on the
+ * screen IS text, and marking a rectangle of it is a read of a buffer that
+ * already exists. No protocol between two programs, no selection ownership,
+ * and no cooperation from the program being marked — which is the point. It
+ * works over a terminal, a surface, and an embedded graphical application
+ * rendered as characters, because all three are cells by the time they are
+ * here.
+ *
+ * The rectangle is the SCREEN'S, not a window's. A person marking a column of
+ * numbers out of two windows side by side means the column, and a mark that
+ * stopped at a frame would be a mark that knew better than they did.
+ */
+static struct {
+	int on;
+	int ax, ay;		/* the anchor: where the mark started */
+	int cx, cy;		/* the caret */
+} mark;
+
+int con_marking(void)
+{
+	return mark.on;
+}
+
+static void mark_begin(void)
+{
+	Win *w = win_focused();
+
+	/* Over the focused window's first content cell, which is where a
+	 * person is looking; over the middle of the grid when there is no
+	 * window, because the desktop is what they can see. */
+	if (w) {
+		mark.cx = w->geom.x;
+		mark.cy = w->geom.y;
+	} else {
+		mark.cx = S.cols / 2;
+		mark.cy = S.rows / 2;
+	}
+	mark.ax = mark.cx;
+	mark.ay = mark.cy;
+	mark.on = 1;
+	ktui_draw_invalidate();
+}
+
+/*
+ * The marked text, trailing spaces trimmed per row and rows joined with a
+ * newline — the same shape `kvt_selection.c` gives a dragged selection, so a
+ * paste of either arrives looking the same.
+ */
+static void mark_copy(void)
+{
+	int w, h;
+	/*
+	 * THE COMPOSED FRAME, not `ktui_cells()`. This session's own backend
+	 * ignores libktui's `prev` — each view diffs against its own previous
+	 * frame — so the buffer that call hands out is never written and a copy
+	 * taken from it is a rectangle of zeroes indistinguishable from a
+	 * rectangle of spaces.
+	 */
+	const KtuiCell *cells = ktui_draw_cells(&w, &h);
+	int x0 = mark.ax < mark.cx ? mark.ax : mark.cx;
+	int x1 = mark.ax < mark.cx ? mark.cx : mark.ax;
+	int y0 = mark.ay < mark.cy ? mark.ay : mark.cy;
+	int y1 = mark.ay < mark.cy ? mark.cy : mark.ay;
+	char *buf;
+	size_t cap, len = 0;
+
+	if (!cells || w <= 0 || h <= 0)
+		return;
+	if (x1 >= w)
+		x1 = w - 1;
+	if (y1 >= h)
+		y1 = h - 1;
+	/* Four bytes a cell is the widest a codepoint encodes, plus a newline
+	 * a row and a terminator. */
+	cap = (size_t)(x1 - x0 + 1) * (size_t)(y1 - y0 + 1) * 4 +
+	      (size_t)(y1 - y0 + 1) + 1;
+	buf = malloc(cap);
+	if (!buf)
+		return;
+
+	for (int y = y0; y <= y1; y++) {
+		size_t rowstart = len;
+		size_t lastink = len;
+
+		for (int x = x0; x <= x1; x++) {
+			const KtuiCell *c = &cells[y * w + x];
+			uint32_t ch = c->ch ? c->ch : ' ';
+
+			/* A sprite's cell carries a slot number rather than a
+			 * character; it is a picture and it marks as a
+			 * space, which is what a person copying text around
+			 * one means. */
+			if (KTUI_IS_SPRITE(ch))
+				ch = ' ';
+			len += (size_t)ktui_utf8_encode(ch, buf + len);
+			if (ch != ' ')
+				lastink = len;
+		}
+		len = lastink > rowstart ? lastink : rowstart;
+		if (y < y1)
+			buf[len++] = '\n';
+	}
+	buf[len] = '\0';
+	clip_put(buf, len, 0);
+	free(buf);
+}
+
+void con_mark_draw(void)
+{
+	if (!mark.on)
+		return;
+
+	int x0 = mark.ax < mark.cx ? mark.ax : mark.cx;
+	int x1 = mark.ax < mark.cx ? mark.cx : mark.ax;
+	int y0 = mark.ay < mark.cy ? mark.ay : mark.cy;
+	int y1 = mark.ay < mark.cy ? mark.cy : mark.ay;
+
+	/*
+	 * REVERSED, NOT REPAINTED. The cells under the mark belong to whatever
+	 * program drew them and are what is being copied; drawing the mark in
+	 * a colour of its own would hide the text a person is trying to see
+	 * the extent of.
+	 */
+	ktui_draw_reverse(krect(x0, y0, x1 - x0 + 1, y1 - y0 + 1));
+}
+
+/* True when the key was the mark's. It owns the keyboard while it is on. */
+static int mark_key(const KtuiEvent *ev)
+{
+	int step = (ev->mods & KT_MOD_CTRL) ? 8 : 1;
+	int extend = (ev->mods & KT_MOD_SHIFT) != 0;
+	int dx = 0, dy = 0;
+
+	switch (ev->key) {
+	case KT_K_ESC:
+		mark.on = 0;
+		ktui_draw_invalidate();
+		return 1;
+	case KT_K_ENTER:
+		mark_copy();
+		mark.on = 0;
+		ktui_draw_invalidate();
+		return 1;
+	case KT_K_LEFT:  dx = -step; break;
+	case KT_K_RIGHT: dx =  step; break;
+	case KT_K_UP:    dy = -step; break;
+	case KT_K_DOWN:  dy =  step; break;
+	case KT_K_HOME:  mark.cx = 0; goto moved;
+	case KT_K_END:   mark.cx = S.cols - 1; goto moved;
+	default:
+		return 1;	/* swallowed: the mode owns the keyboard */
+	}
+
+	mark.cx += dx;
+	mark.cy += dy;
+moved:
+	if (mark.cx < 0)
+		mark.cx = 0;
+	if (mark.cy < 0)
+		mark.cy = 0;
+	if (mark.cx >= S.cols)
+		mark.cx = S.cols - 1;
+	if (mark.cy >= S.rows)
+		mark.cy = S.rows - 1;
+	/* WITHOUT SHIFT THE ANCHOR FOLLOWS, so the arrows place the corner and
+	 * Shift+arrows drag the other one out of it — which is how every text
+	 * selection since the eighties has worked. */
+	if (!extend) {
+		mark.ax = mark.cx;
+		mark.ay = mark.cy;
+	}
+	ktui_draw_invalidate();
+	return 1;
+}
 
 static int session_key(const KtuiEvent *ev)
 {
@@ -476,6 +824,54 @@ static int session_key(const KtuiEvent *ev)
 	case CON_ACT_SEND:
 		win_send(w, arg);
 		return 1;
+	case CON_ACT_TILE:
+		win_tile_all();
+		ktui_draw_invalidate();
+		return 1;
+	case CON_ACT_CASCADE:
+		win_cascade();
+		ktui_draw_invalidate();
+		return 1;
+	case CON_ACT_REARRANGE:
+		if (w && !w->full) {
+			rear.id = w->id;
+			rear.from = w->geom;
+			ktui_draw_invalidate();
+		}
+		return 1;
+	case CON_ACT_SHOW_DESKTOP:
+		win_show_desktop();
+		ktui_draw_invalidate();
+		return 1;
+	case CON_ACT_WIN_N: {
+		Win *t = win_nth(arg);
+
+		if (t)
+			win_raise(t->id);
+		return 1;
+	}
+	case CON_ACT_WINLIST:
+		win_list_toggle();
+		return 1;
+	case CON_ACT_MARK:
+		mark_begin();
+		return 1;
+	case CON_ACT_PASTE: {
+		/*
+		 * THE SESSION'S CLIPBOARD INTO THE FOCUSED WINDOW, which is
+		 * DESQview's Transfer. A view can already hand the session a
+		 * paste over KCON_OP_PASTE, but a `--kms` view has no host
+		 * terminal to take one from, so on tty1 this chord is the
+		 * whole of it.
+		 */
+		size_t n = 0;
+		const char *t = clip_get(0, &n);
+
+		if (!t || !n || !w)
+			return 1;
+		con_paste_win(w, t);
+		return 1;
+	}
 	default:
 		break;
 	}
@@ -495,6 +891,31 @@ static void route_key(const KtuiEvent *ev)
 			kcon_surface_key(S.lock->surf, ev->key, ev->mods);
 		return;
 	}
+
+	/*
+	 * REARRANGE OWNS THE KEYBOARD WHILE IT IS ON, ahead of the chord table
+	 * and ahead of the window: the arrows are the mode's, and a chord that
+	 * fired underneath it would move the window and switch the workspace in
+	 * one keystroke.
+	 */
+	if (con_rearranging() && rearrange_key(ev))
+		return;
+
+	/*
+	 * AND SO DOES THE MARK. Its arrows place a corner, and a chord firing
+	 * underneath would snap a window while somebody was selecting out of
+	 * it.
+	 */
+	if (con_marking() && mark_key(ev))
+		return;
+
+	/*
+	 * THE WINDOW LIST OWNS THE KEYBOARD WHILE IT IS UP, for the same
+	 * reason: its arrows move the selection, and a chord firing underneath
+	 * would snap a window while somebody was choosing one.
+	 */
+	if (win_list_active() && win_list_key(ev->key))
+		return;
 
 	if (leader_armed) {
 		int arg;
@@ -656,7 +1077,8 @@ static void route_ptr(const KtuiEvent *ev)
 		switch (panel_hit(ev->mx, ev->my, &arg)) {
 		case PANEL_HIT_START:
 			if (ev->press == KT_MP_PRESS)
-				con_spawn(con_command(CON_CMD_MENU));
+				con_spawn_at(con_command(CON_CMD_MENU),
+					     panel_span_x0(PANEL_HIT_START));
 			return;
 		case PANEL_HIT_WIN:
 			if (ev->press == KT_MP_PRESS) {
@@ -674,11 +1096,29 @@ static void route_ptr(const KtuiEvent *ev)
 			return;
 		case PANEL_HIT_CLOCK:
 			if (ev->press == KT_MP_PRESS)
-				con_spawn("kdos-cal");
+				con_spawn_at("kdos-cal",
+					     panel_span_x0(PANEL_HIT_CLOCK));
 			return;
 		case PANEL_HIT_WS:
 			if (ev->press == KT_MP_PRESS)
 				win_workspace(arg);
+			return;
+		case PANEL_HIT_FKEY:
+			/*
+			 * THE CLICK IS THE CHORD, synthesised and fed to the
+			 * same handler. Dispatching the action directly here
+			 * would be a second copy of the mapping, and the row
+			 * exists to teach the chord — so the day the two
+			 * disagreed, the row would be teaching the wrong one.
+			 */
+			if (ev->press == KT_MP_PRESS) {
+				KtuiEvent k = { 0 };
+
+				k.type = KT_EVT_KEY;
+				k.key = KT_K_F1 + (arg - 1);
+				k.mods = KT_MOD_SUPER;
+				session_key(&k);
+			}
 			return;
 		default:
 			break;
@@ -805,8 +1245,29 @@ static void adopt_surfaces(void)
 				if (!w->panel && !w->full &&
 				    (kcon_surface_cols(f) != w->geom.w ||
 				     kcon_surface_rows(f) != w->geom.h)) {
-					win_place(w, kcon_surface_cols(f),
-						  kcon_surface_rows(f));
+					/*
+					 * AN ANCHORED OVERLAY IS RE-ANCHORED,
+					 * not re-placed. `win_place` is the
+					 * minimal-overlap search, and running
+					 * a corner surface through it throws
+					 * the anchor away: a stack of toasts
+					 * that grew by one row walked out of
+					 * the corner it asked for and into
+					 * the middle of the screen.
+					 */
+					if (w->overlay &&
+					    kcon_surface_corner(f))
+						win_place_corner(
+							w,
+							kcon_surface_cols(f),
+							kcon_surface_rows(f),
+							kcon_surface_corner(f),
+							kcon_surface_margin_x(f),
+							kcon_surface_margin_y(f));
+					else
+						win_place(w,
+							  kcon_surface_cols(f),
+							  kcon_surface_rows(f));
 					/* And say what it got: the client is
 					 * waiting for the answer and draws at
 					 * its old size until it arrives. */
@@ -935,6 +1396,13 @@ static void adopt_surfaces(void)
 		 * layer that was placed like a window would be given a
 		 * two-thirds rectangle it never asked for. A background that
 		 * asks for nothing is given the grid, the way a saver is.
+		 *
+		 * AND SO IS THE POSITION. An overlay names a corner and its
+		 * margins from that corner's two edges — the same field libkwl
+		 * reads — so the Start menu opens above the Start button and a
+		 * toast opens in the top right on both desktops. Placing a
+		 * layer with the minimal-overlap search put the menu wherever
+		 * there happened to be room, which for a menu is nowhere.
 		 */
 		if (role == KDISP_ROLE_OVERLAY ||
 		    role == KDISP_ROLE_BACKGROUND) {
@@ -947,10 +1415,14 @@ static void adopt_surfaces(void)
 					cw = S.cols;
 					ch = S.rows;
 				}
+				win_place(w, cw, ch);
 			} else {
 				w->overlay = 1;
+				win_place_corner(w, cw, ch,
+						 kcon_surface_corner(f),
+						 kcon_surface_margin_x(f),
+						 kcon_surface_margin_y(f));
 			}
-			win_place(w, cw, ch);
 			kcon_surface_configure(f, w->geom.w, w->geom.h);
 			/*
 			 * AN OVERLAY TAKES THE KEYBOARD; A BACKGROUND DOES
@@ -1056,6 +1528,56 @@ static void retint(void)
  * `kvt_term_paste`'s whole job; a surface is handed it as clipboard data,
  * which is the only text channel a surface has.
  */
+/*
+ * ── PASTE INTO A WINDOW, GUARDED ────────────────────────────────────────
+ *
+ * With bracketed paste on, the child sees the text as text and decides for
+ * itself. With it off, a newline EXECUTES — at a plain shell, at an `ssh`
+ * password prompt, inside `read`. That is the one place a terminal can be made
+ * to act as the user, and a clipboard that can arrive from a forwarded view is
+ * what makes it something other than a thought experiment.
+ *
+ * THE SESSION CANNOT RAISE A MODAL over a window it does not own the toolkit
+ * of, so the answer here is not a dialog: the paste is refused and the taskbar
+ * says so, and the person presses the chord again within five seconds to mean
+ * it. A confirmation nobody can see would be a refusal with no way past it.
+ */
+static struct {
+	int win;
+	unsigned long long until;
+} paste_arm;
+
+void con_paste_win(Win *w, const char *text)
+{
+	if (!w || !text || !*text)
+		return;
+	if (w->kind == WIN_SURFACE && w->surf) {
+		kcon_surface_clip_data(w->surf, text);
+		return;
+	}
+	if (w->kind != WIN_TERM || !w->term)
+		return;
+	if (kcon_conf_bool("paste_guard", 1) &&
+	    kvt_term_paste_needs_confirm(w->term, text)) {
+		unsigned long long now = con_now_ms();
+
+		if (paste_arm.win != w->id || now > paste_arm.until) {
+			paste_arm.win = w->id;
+			paste_arm.until = now + 5000;
+			ktui_draw_invalidate();
+			return;
+		}
+	}
+	paste_arm.win = 0;
+	kvt_term_paste(w->term, text);
+}
+
+/* True while a paste is waiting to be meant twice, so the taskbar can say so. */
+int con_paste_armed(void)
+{
+	return paste_arm.win && con_now_ms() <= paste_arm.until;
+}
+
 static void on_paste(KconSurface *v, const char *text, void *user)
 {
 	Win *w = win_focused();
@@ -1063,12 +1585,7 @@ static void on_paste(KconSurface *v, const char *text, void *user)
 	(void)v;
 	(void)user;
 	clip_put(text, strlen(text), 0);
-	if (!w)
-		return;
-	if (w->kind == WIN_TERM && w->term)
-		kvt_term_paste(w->term, text);
-	else if (w->kind == WIN_SURFACE && w->surf)
-		kcon_surface_clip_data(w->surf, text);
+	con_paste_win(w, text);
 }
 
 static void on_quit(KconSurface *f, void *user)
@@ -1104,6 +1621,48 @@ static void on_close_request(KconSurface *f, unsigned id, void *user)
 	(void)f;
 	(void)user;
 	win_close(win_find((int)id));
+}
+
+/*
+ * A SHELL ASKED FOR A WINDOW STATE. The session's own verbs are TOGGLES, so
+ * each is called only when the window is not already in the state asked for:
+ * a panel redraws its rows from the list it was sent, and two clicks racing
+ * one publication would otherwise leave the window in the state nobody chose.
+ */
+static void on_win_state(KconSurface *f, unsigned id, unsigned flag, int on,
+			 void *user)
+{
+	Win *w = win_find((int)id);
+
+	(void)f;
+	(void)user;
+	if (!w)
+		return;
+	switch (flag) {
+	case KCON_TL_MINIMISED:
+		if (on && !w->minimised)
+			win_minimise(w);
+		else if (!on && w->minimised)
+			win_restore(w);
+		break;
+	case KCON_TL_MAXIMISED:
+		/* A minimised window cannot show itself maximised, so it comes
+		 * back first — otherwise Maximize on a minimised row does
+		 * nothing a person can see. */
+		if (on && w->minimised)
+			win_restore(w);
+		if (on != (w->tiled == KWM_EDGES_CARDINAL))
+			win_maximise(w);
+		break;
+	case KCON_TL_FULLSCREEN:
+		if (on && w->minimised)
+			win_restore(w);
+		if (on != (w->full != 0))
+			win_fullscreen(w);
+		break;
+	default:
+		break;
+	}
 }
 
 static void on_unlock(KconSurface *f, void *user)
@@ -1211,9 +1770,29 @@ static void idle_poke(void)
 		kcon_view_blank(kcon_server_view_at(S.server, i), 0);
 }
 
+/*
+ * IS THE MACHINE ALLOWED TO GO IDLE? The `stay-awake` toggle says no while it
+ * is on. `kb_toggle_on` is the one reader of these in the tree — a second copy
+ * of the path is a second place for the toggle a person set to be looked for
+ * where nothing wrote it.
+ */
+static int stay_awake(void)
+{
+	return kb_toggle_on("stay-awake");
+}
+
 static void idle_tick(void)
 {
 	unsigned long long idle = mono_ms() - I.last_ms;
+
+	/*
+	 * BEFORE ALL THREE STEPS, not the first only: somebody who suppressed
+	 * the saver did not ask to be locked either, and a machine that locked
+	 * during the presentation they turned the saver off for is the failure
+	 * this toggle exists to prevent.
+	 */
+	if (stay_awake())
+		return;
 
 	/*
 	 * STARTED ONCE, not once a tick. A saver that has been asked to close
@@ -1421,6 +2000,7 @@ static int serve(const char *sock, const char *view)
 	h.clip_request = clip_request;
 	h.activate = on_activate;
 	h.close_request = on_close_request;
+	h.win_state = on_win_state;
 	kcon_server_hooks(S.server, &h, NULL);
 
 	ktui_backend_set(&con_backend);
@@ -1651,6 +2231,7 @@ static int serve(const char *sock, const char *view)
 
 		/* A view that has just attached has seen nothing, and its own
 		 * previous frame is what decides how much it is sent. */
+		focus_publish();
 		ktui_draw_resize();
 		composite();
 		ktui_draw_flush();

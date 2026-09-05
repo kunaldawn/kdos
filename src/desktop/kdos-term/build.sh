@@ -57,6 +57,12 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	/usr/share/wlroots/protocols/wlr-layer-shell-unstable-v1.xml \
 	wlr-layer-shell-unstable-v1-protocol.c
+"$SCANNER" client-header \
+	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
+	wlr-foreign-toplevel-management-unstable-v1-client-protocol.h
+"$SCANNER" private-code \
+	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
+	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
 PKGCFG="fcft pixman-1 xkbcommon wayland-client libpng libjpeg libwebp libsixel"
 

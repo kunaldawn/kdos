@@ -163,6 +163,20 @@ static int unseen;
  */
 static int dnd;
 
+/*
+ * IS DO NOT DISTURB ON? Either the socket flag above, which the notification
+ * centre sets for the session it is in, or the `dnd` toggle, which is what
+ * `kdos toggle dnd` writes and what a chord or a script sets.
+ *
+ * BOTH, because they answer different questions and neither can see the other:
+ * the socket flag dies with this daemon and the toggle outlives it. Reading
+ * only the flag is what made `kdos toggle dnd` silence nothing at all.
+ */
+static int dnd_on(void)
+{
+	return dnd || kb_toggle_on("dnd");
+}
+
 static void hist_push(const struct toast *t)
 {
 	struct hentry *h;
@@ -215,7 +229,7 @@ static void serve_client(int c)
 	if (!strcmp(buf, "count")) {
 		/* `<unseen> <total> <dnd>` — everything the panel's badge
 		 * needs in one line, because it asks once a second. */
-		dprintf(c, "%d %d %d\n", unseen, nhist, dnd);
+		dprintf(c, "%d %d %d\n", unseen, nhist, dnd_on());
 	} else if (!strcmp(buf, "list")) {
 		/*
 		 * NEWEST FIRST, which is the order a list of things that
@@ -610,28 +624,6 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	if (r < 0)
 		return r;
 
-	/*
-	 * DND: while $XDG_RUNTIME_DIR/kdos-dnd exists (the panel creates and
-	 * removes it), a non-critical notification is answered — an id, and
-	 * NotificationClosed so no client waits on it — and never stored.
-	 * Nothing is queued for later either: a DND that ambushes on exit is
-	 * worse than one that drops. Critical still shows; that is what the
-	 * urgency byte is FOR.
-	 */
-	if (urgency < 2) {
-		const char *rt = getenv("XDG_RUNTIME_DIR");
-		char dnd[512];
-		struct stat st;
-		if (rt && *rt) {
-			snprintf(dnd, sizeof(dnd), "%s/kdos-dnd", rt);
-			if (stat(dnd, &st) == 0) {
-				uint32_t id = replaces ? replaces : next_id++;
-				emit_closed(id, 1);
-				return sd_bus_reply_method_return(m, "u", id);
-			}
-		}
-	}
-
 	struct toast *t = NULL;
 	if (replaces) {
 		for (int i = 0; i < ntoasts; i++)
@@ -696,7 +688,7 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	 * routine", and a Do Not Disturb that hid a battery-critical warning
 	 * would be a switch nobody dares leave on.
 	 */
-	if (dnd && !t->urgent) {
+	if (dnd_on() && !t->urgent) {
 		uint32_t id = t->id;
 
 		drop_at((int)(t - toasts), 1);

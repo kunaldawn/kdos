@@ -29,8 +29,8 @@ painter is not made to link a Wayland client library to get it.
 |---|---|---|---|
 | `libkbase` | `kb_` | Allocation and its failure hook, fatal and warning output, strings, files, paths, locking, monotonic time, group membership, the argument-vector builder and process helpers, and the freedesktop trash | Nothing |
 | `libkcolor` | `kcol_` | **The palette table**, colour-space conversion, mixing, the readable muted colour, the hue-family classifier, remapping and retinting | Nothing |
-| `libktui` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, character width, paste, immediate-mode widgets, modals, the three glyph tiers, charts, offscreen rendering | Nothing |
-| `libkxdg` | `kxdg_` | Desktop entries, the MIME glob table, and **the one correct way to turn a command line into an argument vector** | `libkbase` |
+| `libktui` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, character width, paste, immediate-mode widgets, modals, **the keys contract — the hint row, the Esc ladder and the menu**, the three glyph tiers, charts, offscreen rendering | Nothing |
+| `libkxdg` | `kxdg_` | Desktop entries, the MIME glob table, **the one correct way to turn a command line into an argument vector**, and the places column | `libkbase` |
 | `libkpkg` | `kp_` | The package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` |
 | `libksig` | `ksig_` | Signing and verification, key files, keyrings. **The one library with vendored third-party source** | `libkbase` |
 | `libkbuild` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory, a read-only structured-data scanner | `libkbase` |
@@ -41,7 +41,7 @@ painter is not made to link a Wayland client library to get it.
 | `libkkms` | `kkms_` | **The cell grid on a screen**: seat, connector, mode, a dumb buffer, libinput and xkb. The one thing on the console path that needs a GPU device, which is why only the view links it | `libkcell`, plus drm, input, seat, xkb, udev |
 | `libkcon` | `kcon_` | **A surface over a socket**, both ends: the wire, the client's `KDispImpl` and `KtuiBackend`, and the server side a display composites. **No file descriptors cross it**, which is what makes it forwardable | `libkdisp`, `libktui` |
 | `libkwm` | `kwm_` | **The window model both desktops obey**: placement, the tiled-state transition and its geometry, the neighbour-edge search, ring walks for cycling and workspaces | `libkbase` |
-| `libkdisp` | `kdisp_` | **Which display server, decided once**: the surface config, the seven roles, and the lifecycle every surface asks for — init, close, resize, autohide, cell size, scale, clipboard, cursor | `libktui` |
+| `libkdisp` | `kdisp_` | **Which display server, decided once**: the surface config, the seven roles, the lifecycle every surface asks for — init, close, resize, autohide, cell size, scale, clipboard, cursor — and the window list a panel manages | `libktui` |
 | `libkchrome` | `kch_` | The window furniture: the header band, group headings, the button bar, the list and scrollbar rule, the pixel tile | `libktui` |
 | `libkicon` | `kicon_` | **A name becomes a sprite slot, or −1** | `libktui` |
 | `libkcell` | `kcell_` | The glyph cache and the cell painter — a grid of cells into a pixel buffer, the character ramp built from it, and the pixel canvas | A font renderer, a pixel library |
@@ -148,6 +148,18 @@ returns the neutral answer rather than crashing — a console has no server-side
 decoration to report and no Wayland handle to hand out. `kwl_display` and
 `kwl_seat` are deliberately *not* in the vtable for that reason: they hand out a
 Wayland object and nothing else can stand in for one.
+
+**Somebody else's windows are five entries, and they are asked for.** `win_count`, `win_at`,
+`win_activate`, `win_close` and `win_set_state` are what a panel, a task switcher
+and a window menu need — enough to draw a row and act on the one that was clicked. A surface only
+receives them if it set `manage` on its configuration, which on the console makes it a shell in the
+session's eyes and under a compositor is what `wlr-foreign-toplevel-management` grants anyway. An
+**id** crosses the interface, never a handle: a caller draws a list in one frame and acts on a row
+in a later one, and a stale handle is a request to a destroyed proxy that kills the connection.
+
+**The Wayland side binds foreign-toplevel on first use, not at start-up.** A compositor announces
+every window to whoever binds it, and a terminal, a lock screen and a resource monitor all link
+this library and want none of that traffic.
 
 **Two edge vocabularies in this tree, and they must not be conflated.**
 `KDISP_EDGE_*` is a sequence naming which edge a panel is anchored to.
@@ -347,6 +359,37 @@ than running one. Its inverse re-quotes, so a generator's output round-trips.
 
 Every launch path in the system goes through it. See
 [kdos-appbox](../04-programs/kdos-appbox.md#exec-lines).
+
+**`kxdg_places()` is one reader for the whole desktop**, and it replaced two. `kdos-desk` read
+`~/.config/user-dirs.dirs` for the desktop folder while `kdos-menu`'s Places list assumed six names
+under `$HOME`, so on a machine where somebody had renamed one the icons were in the folder the file
+named and the menu opened an empty one beside it — which reads as a broken menu rather than as two
+readers. The desktop folder, the Places menu, the chooser's `Ctrl+P` list and *Add to Places* now
+resolve through the same call.
+
+There is no `xdg-user-dirs` on this system: KDOS **seeds** `user-dirs.dirs` from `/etc/skel` and it
+is the user's to edit. `$HOME` is the only expansion the reader understands, because it is the only
+one that file's format defines — a reader that guessed at the rest would be a shell.
+
+**A place that is not there is not a place.** The user directories are created on demand, and every
+row is checked before it is returned: a row that opens an error is worse than a row that is not
+offered.
+
+**`kxdg_recent_add()` is written from one place**, `kdos-appbox open` — the function every open on
+this desktop passes through, so a recent-files store can be kept without a second copy of the rule
+going stale beside it. It is the same scanner run backwards: the bookmark this URI already had is
+cut out whole and a fresh one appended, so a file opened twice is one entry and it is the newest.
+The oldest past the cap are dropped on the same pass, because nothing else on this system prunes
+`recently-used.xbel`, and the rewrite is temp-and-rename because the store is shared with every
+other program on the machine that keeps recents.
+
+**`kxdg_verb_*` is one table of what can be done to a file**, read by the desktop's icons, the file
+chooser and — in the one form a text file allows — `mc`'s `F2`. Three tables meant a verb landed on
+one surface and not the others, which reads as a surface being incomplete rather than as three
+lists. A row whose program is absent is not offered, so a verb still being built turns on when it
+ships with no edit to any caller; the resolution is repeated on every call rather than cached,
+because a surface is long-lived and a table resolved once would hide a verb for the life of the
+desktop. Every verb builds an **argument vector**, never a command line.
 
 ## libkpkg
 

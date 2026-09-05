@@ -38,6 +38,6 @@
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
-|                  |                                                                                                               |
 |                  |15.0% CPU outside the rollup  .  memory is RSS and over-counts shared pages                                    |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                                                                                |
 +==================================================================================================================================+

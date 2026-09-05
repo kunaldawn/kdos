@@ -67,6 +67,9 @@ static int nentries;
 static int order[MAX_ENTRIES];	/* filtered, in match order */
 static int nmatch;
 
+/* No layers: Esc closes the launcher. */
+static KtuiKeys keys;
+
 /* ── gathering ─────────────────────────────────────────────────────────── */
 
 static int have_id(const char *id)
@@ -269,13 +272,45 @@ static void gather(void)
 {
 	char path[1024];
 	const char *home = getenv("HOME");
+	const char *dh = getenv("XDG_DATA_HOME");
+	const char *dirs = getenv("XDG_DATA_DIRS");
 
-	if (home && *home) {
-		snprintf(path, sizeof(path), "%s/.local/share/applications", home);
+	/*
+	 * THE XDG DIRECTORIES, NOT TWO HARDCODED PATHS. This walked
+	 * `/usr/local/share` and `/usr/share` outright and ignored
+	 * `XDG_DATA_DIRS`, so a session that sets it — a box, a graft, a test
+	 * fixture — got a launcher that could not find applications every
+	 * other surface here lists. `apps.c` reads the same rule; this file
+	 * keeps its own storage because it carries frecency and the alien
+	 * mark, but not its own idea of where applications live.
+	 *
+	 * User first, because the dedupe keeps the FIRST entry per id and that
+	 * order is what makes an override an override.
+	 */
+	if (dh && *dh) {
+		snprintf(path, sizeof(path), "%s/applications", dh);
+		add_desktop_dir(path);
+	} else if (home && *home) {
+		snprintf(path, sizeof(path), "%s/.local/share/applications",
+			 home);
 		add_desktop_dir(path);
 	}
-	add_desktop_dir("/usr/local/share/applications");
-	add_desktop_dir("/usr/share/applications");
+
+	if (!dirs || !*dirs)
+		dirs = "/usr/local/share:/usr/share";
+	while (*dirs) {
+		const char *c = strchr(dirs, ':');
+		size_t l = c ? (size_t)(c - dirs) : strlen(dirs);
+
+		if (l && l < sizeof(path) - 16) {
+			snprintf(path, sizeof(path), "%.*s/applications",
+				 (int)l, dirs);
+			add_desktop_dir(path);
+		}
+		if (!c)
+			break;
+		dirs = c + 1;
+	}
 
 	mark_alien("/usr/share/kdos/alien-apps");
 	if (home && *home) {
@@ -433,7 +468,9 @@ static void draw(const char *query, int sel, int top)
 	ktui_draw_text(2, 1, w - 4, line, KT_TEXT, KT_SURFACE, KT_A_NONE);
 	ktui_draw_hline(1, 2, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 
-	int rows = h - 4;
+	/* FIVE, not four: border, query, rule, list, HINT ROW, border. Every
+	 * other viewport sum in this file counts the same rows. */
+	int rows = h - 5;
 	for (int i = 0; i < rows && top + i < nmatch; i++) {
 		const struct entry *e = &entries[order[top + i]];
 		int y = 3 + i;
@@ -472,6 +509,11 @@ static void draw(const char *query, int sel, int top)
 	 * slides for no visible reason.
 	 */
 	kch_scrollbar(0, w - 1, 3, rows, nmatch, top, KT_SURFACE);
+
+	ktui_hint_if(nmatch > 0, "Enter", "launch");
+	ktui_hint_if(nmatch > 1, "Up/Down", "select");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
 
 	ktui_draw_flush();
 }
@@ -553,7 +595,7 @@ int launcher_main(int argc, char **argv)
 			sel = nmatch ? nmatch - 1 : 0;
 		if (sel < 0)
 			sel = 0;
-		int rows = ktui_h - 4;
+		int rows = ktui_h - 5;
 		if (rows < 1)
 			rows = 1;
 		kch_list_clamp(&top, sel, nmatch, rows, sel_follow);
@@ -580,10 +622,11 @@ int launcher_main(int argc, char **argv)
 		 */
 		if (ev.type == KT_EVT_MOUSE) {
 			int row = ev.my - 3 + top;
-			/* Bounded above as well as below: the bottom border is
-			 * ktui_h - 1, and a click there used to launch the
+			/* Bounded above as well as below. The list ends at
+			 * ktui_h - 3: below it are the hint row and the
+			 * border, and a click on either must not launch the
 			 * first entry scrolled OFF the screen. */
-			int on_row = ev.my >= 3 && ev.my < ktui_h - 1 &&
+			int on_row = ev.my >= 3 && ev.my < ktui_h - 2 &&
 				     row >= 0 && row < nmatch;
 			if (ev.press == KT_MP_DRAG) {
 				/* THE BAR IS A CONTROL — see kch_scrollbar.
@@ -627,7 +670,7 @@ int launcher_main(int argc, char **argv)
 				 * so a hand that scrolls past what it wanted
 				 * can scroll back to it. */
 				if (!kch_list_wheel(up, &top, nmatch,
-						   ktui_h - 4 > 0 ? ktui_h - 4
+						   ktui_h - 5 > 0 ? ktui_h - 5
 								  : 1)) {
 					sel += up ? -1 : 1;
 					sel_follow = 1;
@@ -644,12 +687,19 @@ int launcher_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		/* Every key below either moves the cursor or refills the list,
 		 * and both want the viewport to come along. */
 		sel_follow = 1;
 		switch (ev.key) {
-		case KT_K_ESC:
-			goto done;
 		case KT_K_ENTER:
 			if (sel < nmatch)
 				launch(&entries[order[sel]]);
@@ -664,10 +714,10 @@ int launcher_main(int argc, char **argv)
 		 * on the machine — a hundred of them before a query narrows it
 		 * — and one row per keystroke is not a way through that. */
 		case KT_K_PGUP:
-			sel -= ktui_h - 4;
+			sel -= ktui_h - 5;
 			break;
 		case KT_K_PGDN:
-			sel += ktui_h - 4;
+			sel += ktui_h - 5;
 			break;
 		case KT_K_HOME:
 			sel = 0;

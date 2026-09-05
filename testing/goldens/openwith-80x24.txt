@@ -20,5 +20,5 @@
 |                                                                              |
 |                                                                              |
 | [ ] Always use this application                                              |
-| Enter open   d default   Esc cancel                      [ Cancel ] [ Open ] |
+| Enter command  Esc Close                                 [ Cancel ] [ Open ] |
 +------------------------------------------------------------------------------+

@@ -588,6 +588,11 @@ static void load_favorites(void)
 		if (!*s || *s == '#')
 			continue;
 		struct fav *fv = &favs[nfavs];
+
+		/* The terminal follows the desktop — see sh_fav_id(). The
+		 * RESOLVED id is what is stored, so Unpin removes the line the
+		 * row actually stands for. */
+		s = (char *)sh_fav_id(s);
 		snprintf(fv->id, sizeof(fv->id), "%s", s);
 		if (sh_desktop_entry(s, fv->name, sizeof(fv->name),
 				     fv->exec, sizeof(fv->exec)) != 0 ||
@@ -717,7 +722,14 @@ static int icons_on = 1;
 
 static int icon_ok(void)
 {
-	return icons_on && task_labels != TL_ALWAYS;
+	/*
+	 * NOT WHERE A CELL IS A CHARACTER. Icon mode gives a chip four cells
+	 * and spends them on a picture, which the console has no way to draw
+	 * at that size — `kdisp_cell_w()` is 1 there, so a two-by-two icon is
+	 * two pixels by two. The chip then holds a label one letter wide and
+	 * no picture, which is a taskbar that names nothing.
+	 */
+	return icons_on && task_labels != TL_ALWAYS && kdisp_cell_w() > 1;
 }
 
 /* ── the window list: one chip per APP, not per window ─────────────────── */
@@ -6634,6 +6646,9 @@ int panel_main(int argc, char **argv)
 		.font = font,
 		.output = output,
 		.exclusive = 1,
+		/* The task list is what a bar IS, and asking is what grants it:
+		 * see KDispConfig.manage. */
+		.manage = 1,
 		/*
 		 * THE BAR IS FRAMED, like everything else on this desktop.
 		 *
@@ -6756,8 +6771,10 @@ int panel_main(int argc, char **argv)
 	px_live = 1;
 	kcell_set_slot_alpha(KT_SURFACE, 0);
 	if (sh_connect(&sh) != 0) {
-		fprintf(stderr, "kdos-shell: the compositor exposes no window "
-				"list; the panel would be blank\n");
+		fprintf(stderr, "kdos-shell: %s offers no window list; the "
+				"panel would be blank\n",
+			kdisp_current() ? kdisp_current()->name
+					: "no display server");
 		kdisp_shutdown();
 		return 1;
 	}

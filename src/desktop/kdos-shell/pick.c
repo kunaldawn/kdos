@@ -106,6 +106,128 @@ enum { ED_NONE = 0, ED_NEWDIR, ED_PATH };
 static int edit_mode;
 static char edit_buf[1024];
 
+/*
+ * TWO RUNGS: the places list over the file list, and the line editor over
+ * everything. Esc in either goes back one level and Esc on the list cancels
+ * the dialog.
+ *
+ * PLACES IS A LIST, NOT A COLUMN, and that is the width talking. This dialog
+ * is sixty-four columns and already spends its right-hand column on a preview
+ * pane; a third column would leave the file names about thirty cells, and a
+ * chooser that cannot show a file's name is not a chooser. It opens over the
+ * file list on Ctrl+P, which costs no width and is on the row.
+ */
+static KtuiKeys keys;
+
+static KxdgPlace places[KXDG_PLACES_MAX];
+static int nplaces, place_sel, places_open;
+/* Where the frecency rows start in `places[]`. A caption is drawn above them
+ * and is NOT an entry: `place_sel` indexes the array, so a caption counted as
+ * a row would move the selection off the place it names. */
+static int nfixed;
+
+/*
+ * THE VERBS, FROM libkxdg'S TABLE. The desktop's icons and `mc`'s F2 offer the
+ * same list on the same thing; a table written here would be a third answer,
+ * and a verb added to one surface would quietly be missing from the others.
+ * The rows a program is missing for are not offered, so an unbuilt verb turns
+ * on when it ships with no edit here.
+ */
+static KtuiMenuItem ctx_item[16];
+/* `n` is filled once the table has been read: the count is libkxdg's and
+ * not a number written twice. */
+static KtuiMenuPane ctx_pane = { NULL, ctx_item, 0 };
+static KtuiMenu menu;
+static int nctx;
+
+/* Which row the menu belongs to, so a click on one icon cannot run a verb on
+ * whatever the keyboard had selected. */
+static int ctx_for;
+
+static const char *ctx_path(char *buf, size_t n, int *isdir)
+{
+	if (ctx_for < 0 || ctx_for >= nrows)
+		return NULL;
+	snprintf(buf, n, "%s%s%s", cwd, strcmp(cwd, "/") ? "/" : "",
+		 rows[ctx_for].name);
+	if (isdir)
+		*isdir = rows[ctx_for].dir;
+	return buf;
+}
+
+static void load_dir(void);
+
+/* One verb, on the row the menu belongs to. The argument vector is libkxdg's;
+ * this function decides nothing about what a verb IS. */
+static void run_verb(int id)
+{
+	char path[1400], store[1024];
+	const char *argv[12];
+	int isdir = 0;
+
+	if (!ctx_path(path, sizeof(path), &isdir))
+		return;
+	if (!kxdg_verb_argv(id, path, isdir, kb_terminal(), store,
+			    sizeof(store), argv, 12))
+		return;
+	sh_spawn(argv);
+	/* A verb can change what is on the panel — a trash, a new place — and
+	 * the cheapest way to be right about that is to look again. */
+	load_dir();
+}
+
+static int ctx_show(int i, void *user)
+{
+	char path[1400];
+	KxdgVerb v;
+	int isdir = 0;
+
+	(void)user;
+	if (!ctx_path(path, sizeof(path), &isdir))
+		return 0;
+	if (!kxdg_verb_at(i, &v))
+		return 0;
+	return kxdg_verb_shown(&v, path, isdir);
+}
+
+/* Where Shift+F10 pops it: on the selected row's own cell. A menu at the
+ * origin names a row nobody is looking at. */
+static int ctx_at(int *x, int *y, void *user)
+{
+	(void)user;
+	if (sel < 0 || sel >= nrows)
+		return 0;
+	ctx_for = sel;
+	*x = 2;
+	*y = 2 + (sel - top);
+	return 1;
+}
+
+static int places_up(void *user)
+{
+	(void)user;
+	return places_open;
+}
+
+static void places_close(void *user)
+{
+	(void)user;
+	places_open = 0;
+}
+
+static int pk_edit_up(void *user)
+{
+	(void)user;
+	return edit_mode != ED_NONE;
+}
+
+static void pk_edit_close(void *user)
+{
+	(void)user;
+	edit_mode = ED_NONE;
+	note[0] = '\0';
+}
+
 /* Ctrl+F: the portal's filter, or everything. The patterns another
  * application handed the portal are which files IT wants; '*' is which files
  * the user can see anyway, and a chooser that cannot show them cannot open
@@ -324,12 +446,21 @@ static void emit_path(const char *name)
 
 /* ── image preview (D7.9) ──────────────────────────────────────────────────
  *
- * P6 only. The parser is asciicmd.c's, copied rather than shared: the
- * offscreen --dump build links this file WITHOUT libkcell (see
- * testing/selftest.sh's dumpcheck line), so the preview cannot reference the
- * glyph matcher — and grim writes `-t ppm`, which makes P6 the format
- * screenshots actually arrive in. PNG and JPG say "no preview"; decoding
- * them is a future piece of work, not a missing include.
+ * P6 IS THE ONLY FORMAT THIS FILE PARSES, and everything else becomes one.
+ * The parser is asciicmd.c's, copied rather than shared: the offscreen --dump
+ * build links this file WITHOUT libkcell (see testing/selftest.sh's dumpcheck
+ * line), so the preview cannot reference the glyph matcher — and grim writes
+ * `-t ppm`, which makes P6 the format screenshots arrive in already.
+ *
+ * ANYTHING ELSE GOES THROUGH `kdos thumb --ppm`, which owns the decoders and
+ * the helper forks and hands back a small P6. That is what lets a chooser
+ * show a photograph, a PDF's first page or a frame of a video without linking
+ * an image library into a dialog that has to build on a bare host.
+ *
+ * THE FORK IS SYNCHRONOUS AND IT IS IN THE IDLE SLOT, which is where the
+ * twenty-megabyte read it replaced already was. A slow helper stalls the
+ * dialog for as long as it runs; the budget below bounds the file, not the
+ * program.
  *
  * The glyphs are ktui's own vt-tier ramp — ░ ▒ █, which the console font and
  * Terminus both carry — not the rich tier's eighth blocks, which are BAR
@@ -345,17 +476,28 @@ static int pv_state;		/* 2 ready, 3 unreadable/over budget         */
 static unsigned char pv_lum[PV_COLS * PV_ROWS];
 static int pv_cols, pv_rows;
 
-/* 1 = previewable here, 2 = an image this cannot decode, 0 = not an image. */
+/* 1 = a P6 this file parses, 2 = something `kdos thumb` can turn into one,
+ * 0 = nothing to preview. */
 static int pv_kind(const char *name)
 {
+	/* The list `kdos thumb` answers for — see source_kind() there. A row
+	 * this claims and that command refuses is a preview pane that carves
+	 * itself out and then says nothing. */
+	static const char *const THUMBABLE[] = {
+		".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff",
+		".webp", ".xpm", ".ico", ".pdf",
+		".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v",
+		".cr2", ".nef", ".arw", ".dng", ".raf", ".orf", NULL
+	};
 	const char *dot = strrchr(name, '.');
+
 	if (!dot)
 		return 0;
 	if (!strcasecmp(dot, ".ppm") || !strcasecmp(dot, ".pnm"))
 		return 1;
-	if (!strcasecmp(dot, ".png") || !strcasecmp(dot, ".jpg") ||
-	    !strcasecmp(dot, ".jpeg"))
-		return 2;
+	for (int i = 0; THUMBABLE[i]; i++)
+		if (!strcasecmp(dot, THUMBABLE[i]))
+			return 2;
 	return 0;
 }
 
@@ -407,32 +549,74 @@ static int pv_next_int(FILE *f, int *out)
 
 static void pv_decode(const char *path)
 {
+	char tmp[512];
+	int made = 0;
+
 	snprintf(pv_path, sizeof(pv_path), "%s", path);
 	pv_state = 3;
 	pv_cols = pv_rows = 0;
+	tmp[0] = '\0';
 
 	/* Over budget is "no preview", never a stall: this runs in the poll
 	 * loop's idle slot and a 2 GB file must not own the dialog. */
 	struct stat st;
 	if (stat(path, &st) != 0 || st.st_size > PV_MAX_BYTES)
 		return;
+
+	/*
+	 * NOT A P6 MEANS ASK FOR ONE. `kdos thumb` owns every decoder and
+	 * every helper fork; this file owns the parser and the glyph ramp,
+	 * and the two meet at a temporary P6.
+	 */
+	if (pv_kind(path) == 2) {
+		KbArgv a = { 0 };
+
+		if (!kb_have_prog("kdos"))
+			return;
+		snprintf(tmp, sizeof(tmp), "%s/kdos-pick-%d.ppm",
+			 kb_runtime_dir(), (int)getpid());
+		kb_argv_add(&a, "kdos");
+		kb_argv_add(&a, "thumb");
+		kb_argv_add(&a, "--ppm");
+		kb_argv_add(&a, path);
+		kb_argv_add(&a, tmp);
+		kb_argv_end(&a);
+		if (kb_run(&a) != 0) {
+			unlink(tmp);
+			return;
+		}
+		path = tmp;
+		made = 1;
+	}
+
 	FILE *f = fopen(path, "rb");
-	if (!f)
+	if (!f) {
+		if (made)
+			unlink(tmp);
 		return;
+	}
 	int w = 0, h = 0, maxv = 0;
 	if (fgetc(f) != 'P' || fgetc(f) != '6' || pv_next_int(f, &w) ||
 	    pv_next_int(f, &h) || pv_next_int(f, &maxv) || w <= 0 || h <= 0 ||
 	    maxv != 255 || (long long)w * h * 3 > (long long)PV_MAX_BYTES) {
 		fclose(f);
+		if (made)
+			unlink(tmp);
 		return;
 	}
 	unsigned char *rgb = malloc((size_t)w * h * 3);
 	if (!rgb || fread(rgb, 3, (size_t)w * h, f) != (size_t)w * h) {
 		free(rgb);
 		fclose(f);
+		if (made)
+			unlink(tmp);
 		return;
 	}
 	fclose(f);
+	/* The temporary is this call's and nothing else reads it: the pane
+	 * keeps the luminance grid, not the picture. */
+	if (made)
+		unlink(tmp);
 
 	/* Fit into the pane. A cell is twice as tall as wide, so the vertical
 	 * scale carries a factor of two or the picture stretches — the same
@@ -583,6 +767,43 @@ static void draw(const char *title)
 	kch_scrollbar(0, lw - 1, list_top, list_rows, nrows, top,
 		      KT_SURFACE);
 
+	/*
+	 * PLACES, OVER THE FILE LIST. Drawn after it and inside the same
+	 * columns: it is a way OUT of the directory on the screen, so covering
+	 * that directory while it is up is the honest shape.
+	 */
+	if (places_open) {
+		/* One extra drawn row for the caption, and only when there is
+		 * a group under it to caption. */
+		int cap = nplaces > nfixed ? 1 : 0;
+		int pr = nplaces + cap < list_rows ? nplaces + cap : list_rows;
+		KRect r = krect(1, list_top, lw - 2, pr + 2);
+		int y = r.y + 1;
+
+		if (r.h > list_rows)
+			r.h = list_rows;
+		ktui_draw_fill(r, KT_SURFACE);
+		ktui_draw_box(r, "Places", KT_ACCENT, KT_SURFACE, 0);
+		for (int i = 0; i < nplaces && y < r.y + r.h - 1; i++) {
+			int on = i == place_sel;
+
+			if (cap && i == nfixed) {
+				ktui_draw_text(r.x + 2, y, r.w - 4,
+					       "Recent directories", KT_MID,
+					       KT_SURFACE, KT_A_NONE);
+				y++;
+				if (y >= r.y + r.h - 1)
+					break;
+			}
+			ktui_draw_fill(krect(r.x + 1, y, r.w - 2, 1),
+				       on ? KT_ACCENT : KT_SURFACE);
+			ktui_draw_text(r.x + 2, y, r.w - 4, places[i].name,
+				       on ? KT_SURFACE : KT_TEXT,
+				       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
+			y++;
+		}
+	}
+
 	if (pane_x < w) {
 		ktui_draw_vline(pane_x - 1, list_top, list_rows, KT_G_VL,
 				KT_DIM, KT_SURFACE);
@@ -650,19 +871,51 @@ static void draw(const char *title)
 	/* The note takes the hint row when there is one: "that file exists" is
 	 * worth more than a reminder of what Escape does, and it is the only
 	 * row a dialog this size can spare. */
-	if (note[0])
+	/*
+	 * FOUR HINTS AT MOST, and that is the width talking rather than a
+	 * choice. Measured: `Ctrl+P places` beside `Ctrl+H hidden` came to
+	 * forty-two cells against thirty-eight, and what the row drops is its
+	 * TAIL — which is the Esc hint that must never be missing.
+	 *
+	 * `Shift+F10` IS NOT NAMED HERE EITHER, for the same arithmetic: it is
+	 * fifteen more cells and this row has none. It is the one verb with a
+	 * POINTER path — the right button on a row opens the same menu — and
+	 * this dialog is what every boxed application's Open reaches, so the
+	 * person in front of it is usually holding a mouse.
+	 *
+	 * SO `Ctrl+H` IS THE ONE THAT GOES. Going somewhere is what a person
+	 * does in a chooser every time; showing dotfiles is occasional and
+	 * already known to whoever wants it. It stays bound, beside Ctrl+L,
+	 * Ctrl+F, the arrows and the type-ahead, which are bound and unnamed
+	 * for the same reason. The row is thirty-eight cells at this dialog's own size and
+	 * a hint that does not fit takes every one after it — so a fifth push
+	 * would delete the Esc hint. Ctrl+L, Ctrl+F, the arrows and the
+	 * type-ahead stay bound and unnamed.
+	 */
+	ktui_hint_if(places_open, "Enter", "go");
+	ktui_hint_if(!places_open && !edit_mode, "Ctrl+P", "places");
+	ktui_hint_if(!places_open && edit_mode, "Enter", "ok");
+	ktui_hint_if(!places_open && !edit_mode && save_mode, "Enter", "save");
+	ktui_hint_if(!places_open && !edit_mode && save_mode, "Ctrl+N", "folder");
+	ktui_hint_if(!places_open && !edit_mode && !save_mode && multi_mode,
+		     "Space", "mark");
+	ktui_hint_if(!places_open && !edit_mode && !save_mode && !multi_mode && dir_mode,
+		     "Enter", "choose");
+	ktui_hint_if(!places_open && !edit_mode && !save_mode && !multi_mode && !dir_mode,
+		     "Enter", "open");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+
+	/* Over the list and the preview both, and drawn before the hint row
+	 * because that row is what clears the pool. */
+	ktui_menu_draw(&menu);
+
+	if (note[0]) {
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_SURFACE);
 		ktui_draw_text(2, h - 2, w - 26, note, KT_WARN, KT_SURFACE,
 			       KT_A_NONE);
-	else
-		ktui_draw_text(2, h - 2, w - 26,
-			       edit_mode ? "Enter ok   Esc cancel"
-			       : save_mode ? "Enter save   ^N folder   Esc cancel"
-			       : browse_mode
-				       ? "Enter open   ^H hidden   Esc close"
-			       : multi_mode
-				       ? "Space mark   ^H hidden   Esc cancel"
-				       : "Enter open   ^H hidden   Esc cancel",
-			       KT_MID, KT_SURFACE, KT_A_NONE);
+	} else {
+		ktui_hint_row(&keys, krect(2, h - 2, w - 26, 1), KT_SURFACE);
+	}
 
 	/*
 	 * TWO REAL BUTTONS, right-aligned on the hint row.
@@ -911,6 +1164,29 @@ int pick_main(int argc, char **argv)
 		title = btitle;
 	}
 	load_dir();
+	/* BEFORE the dump branch: it draws, and a golden that read the Esc
+	 * verb through an empty ladder would not match the live surface. */
+	for (int i = 0; i < kxdg_verb_count() && i < (int)(sizeof(ctx_item) /
+							 sizeof(ctx_item[0]));
+	     i++) {
+		KxdgVerb v;
+
+		if (!kxdg_verb_at(i, &v))
+			break;
+		ctx_item[i].label = v.label;
+		ctx_item[i].id = v.id;
+		ctx_item[i].enabled = 1;
+		nctx++;
+	}
+	ctx_pane.n = nctx;
+	menu.pane = &ctx_pane;
+	menu.npane = 1;
+	menu.show = ctx_show;
+	keys.menu = &menu;
+	keys.ctx_at = ctx_at;
+
+	ktui_keys_layer(&keys, "Back", places_up, places_close, NULL);
+	ktui_keys_layer(&keys, "Cancel", pk_edit_up, pk_edit_close, NULL);
 
 	if (dump) {
 		sh_theme_from_cache();
@@ -1012,6 +1288,24 @@ int pick_main(int argc, char **argv)
 		 * A right press goes UP, which is where a right click in a
 		 * file list has gone since Norton Commander.
 		 */
+		/*
+		 * THE CONTRACT FIRST, and for the pointer too: the menu is on
+		 * this call, and a second call site for it in the mouse path
+		 * would be a second copy of "is the menu up" to get wrong.
+		 */
+		if (!edit_mode && !places_open) {
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_MENU) {
+				run_verb(keys.menu_id);
+				continue;
+			}
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+			if (r == KTUI_KEY_CLOSE)
+				break;
+		}
+
 		if (ev.type == KT_EVT_MOUSE) {
 			/* The editor is keyboard-owned; a click mid-edit must
 			 * not change the directory under a half-typed path. */
@@ -1073,7 +1367,17 @@ int pick_main(int argc, char **argv)
 					sel_follow = 1;
 				}
 			} else if (ev.btn == KT_MB_RIGHT) {
-				enter_dir("..");
+				/* ON A ROW it is that row's verbs; on the
+				 * empty space below the list it still means
+				 * "up", which is where a right click in a file
+				 * list has gone since Norton Commander. */
+				if (on_row) {
+					sel = row;
+					ctx_for = row;
+					ktui_menu_open(&menu, 0, ev.mx, ev.my);
+				} else {
+					enter_dir("..");
+				}
 			} else if (ev.btn == KT_MB_MIDDLE && multi_mode &&
 				   on_row && !rows[row].dir) {
 				sel = row;
@@ -1127,12 +1431,39 @@ int pick_main(int argc, char **argv)
 		if (page < 1)
 			page = 1;
 
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				break;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
+		/*
+		 * PLACES OWNS THE KEYBOARD while it is up: it is a list over a
+		 * list, and arrows that reached the file list underneath would
+		 * scroll the thing the person is leaving.
+		 */
+		if (places_open) {
+			if (ev.key == KT_K_UP && place_sel > 0)
+				place_sel--;
+			else if (ev.key == KT_K_DOWN &&
+				 place_sel + 1 < nplaces)
+				place_sel++;
+			else if (ev.key == KT_K_ENTER && place_sel < nplaces) {
+				snprintf(cwd, sizeof(cwd), "%s",
+					 places[place_sel].path);
+				places_open = 0;
+				sel = top = 0;
+				load_dir();
+			}
+			continue;
+		}
+
 		if (edit_mode) {
 			size_t n = strlen(edit_buf);
-			if (ev.key == KT_K_ESC) {
-				edit_mode = ED_NONE;
-				note[0] = '\0';
-			} else if (ev.key == KT_K_ENTER) {
+			if (ev.key == KT_K_ENTER) {
 				if (edit_mode == ED_NEWDIR) {
 					if (!edit_buf[0] ||
 					    strchr(edit_buf, '/')) {
@@ -1197,10 +1528,25 @@ int pick_main(int argc, char **argv)
 			continue;
 		}
 
-		if (ev.key == KT_K_ESC)
-			break;
 		if (ev.key == KT_K_UP) {
 			sel--;
+		} else if (ev.key == 0x10) {		/* Ctrl+P */
+			/* READ AT THE OPEN, not once at start: a directory
+			 * added to the places file while this dialog is up is
+			 * on the list the next time it is asked for. */
+			nplaces = kxdg_places(places, KXDG_PLACES_MAX);
+			nfixed = nplaces;
+			/* AT THE OPEN, and one fork: `zoxide query -l` is a
+			 * process, so it is read when the list is asked for
+			 * rather than on every frame or on every menu build. */
+			nplaces += kxdg_places_recent(places + nplaces,
+						      KXDG_PLACES_MAX - nplaces,
+						      places, nplaces);
+			place_sel = 0;
+			places_open = nplaces > 0;
+			if (!places_open)
+				snprintf(note, sizeof(note),
+					 "no places to go to");
 		} else if (ev.key == KT_K_DOWN) {
 			sel++;
 		} else if (ev.key == KT_K_PGUP) {

@@ -216,6 +216,12 @@ struct kvt_vte {
 	size_t img_len;
 	size_t img_cap;
 	size_t img_max;
+	/* The largest picture this terminal will show, in PIXELS, as
+	 * XTSMGRAPHICS reports it. Zero means the consumer has not said, and
+	 * the query then answers "failure" rather than inventing a size — a
+	 * program told a geometry that is not true sends a picture that is
+	 * clipped or refused, and neither failure names this. */
+	int img_max_w, img_max_h;
 	bool img_over;
 	bool img_active;
 
@@ -226,9 +232,29 @@ struct kvt_vte {
 	unsigned int mouse_last_col;
 	unsigned int mouse_last_row;
 	bool bracketed_paste;
+	/*
+	 * DECSET 1004. An editor that is not told it lost the focus does not
+	 * reload a file changed underneath it, so the next write is over
+	 * somebody else's work — nearer data loss than polish. Off by default
+	 * and reported through DECRQM, because a terminal that emitted CSI I
+	 * unasked would put two stray characters into every program that did
+	 * not ask for them.
+	 */
+	bool focus_events;
+	/*
+	 * DECSET 2026. A frame drawn as an unbracketed row diff tears on a
+	 * slow link, which is the link this desktop is sold on. The renderer
+	 * skips a frame while it is set; the WATCHDOG is the renderer's,
+	 * because a child that sets it and dies must not freeze its window.
+	 */
+	bool sync_output;
 
 	kvt_vte_bell_cb bell_cb;
 	void *bell_data;
+	kvt_vte_sync_cb sync_cb;
+	void *sync_data;
+	kvt_vte_notify_cb notify_cb;
+	void *notify_data;
 
 	kvt_vte_led_cb led_cb;
 	void *led_data;
@@ -733,6 +759,24 @@ void kvt_vte_set_img_cb(struct kvt_vte *vte, kvt_vte_img_cb img_cb,
 	img_reset(vte);
 }
 
+/*
+ * WHAT XTSMGRAPHICS REPORTS AS THE SIXEL GEOMETRY.
+ *
+ * The library cannot work it out: the ceiling is the consumer's `image_cells`
+ * multiplied by its cell size, and libkvt knows neither. A terminal that does
+ * not call this answers the query with a failure, which is the honest reply —
+ * a program told a geometry the terminal will not honour sends a picture that
+ * comes back clipped, and nothing in that failure names the terminal.
+ */
+KVT_SHL_EXPORT
+void kvt_vte_set_img_geom(struct kvt_vte *vte, int max_w_px, int max_h_px)
+{
+	if (!vte)
+		return;
+	vte->img_max_w = max_w_px > 0 ? max_w_px : 0;
+	vte->img_max_h = max_h_px > 0 ? max_h_px : 0;
+}
+
 KVT_SHL_EXPORT
 void kvt_vte_set_clip_cb(struct kvt_vte *vte, kvt_vte_clip_cb cb, void *data)
 {
@@ -770,6 +814,29 @@ void kvt_vte_set_bell_cb(struct kvt_vte *vte, kvt_vte_bell_cb bell_cb, void *bel
 	vte->bell_cb = bell_cb;
 	vte->bell_data = bell_data;
 }
+
+KVT_SHL_EXPORT
+void kvt_vte_set_sync_cb(struct kvt_vte *vte, kvt_vte_sync_cb cb, void *data)
+{
+	if (!vte)
+		return;
+
+	vte->sync_cb = cb;
+	vte->sync_data = data;
+}
+
+KVT_SHL_EXPORT
+void kvt_vte_set_notify_cb(struct kvt_vte *vte, kvt_vte_notify_cb cb,
+			   void *data)
+{
+	if (!vte)
+		return;
+
+	vte->notify_cb = cb;
+	vte->notify_data = data;
+}
+
+
 
 KVT_SHL_EXPORT
 void kvt_vte_set_led_cb(struct kvt_vte *vte, kvt_vte_led_cb led_cb, void *led_data)
@@ -1076,10 +1143,44 @@ void kvt_vte_hard_reset(struct kvt_vte *vte)
 	kvt_screen_move_to(vte->con, 0, 0);
 }
 
+/*
+ * THE PRIMARY DEVICE ATTRIBUTES, and `4` in it is the whole of "this terminal
+ * draws pictures".
+ *
+ * `chafa`, `img2sixel`, `lsix`, `mpv --vo=sixel` and `timg` all probe with
+ * DA1 and read parameter 4 as sixel support; without it every one of them
+ * concludes it is talking to a terminal that cannot, and falls back to half
+ * blocks — on a terminal that decodes sixel, OSC 1337 and the kitty protocol.
+ * The level stays 60: raising it would claim conformance this state machine
+ * has not been measured against, which is a different promise.
+ */
 static void send_primary_da(struct kvt_vte *vte)
 {
-	static const char str[] = "\e[?60;1;6;9;15c";
+	static const char str[] = "\e[?60;1;4;6;9;15c";
 	vte_write(vte, str, sizeof(str) - 1);
+}
+
+/*
+ * TELL THE CHILD THE FOCUS MOVED — `CSI I` in, `CSI O` out — and only while it
+ * asked with DECSET 1004.
+ *
+ * An editor that is not told it lost the focus does not reload a file changed
+ * underneath it, so its next write is over somebody else's work. That is
+ * nearer to data loss than to polish, which is why it is here rather than in a
+ * list of things a terminal might one day do.
+ */
+KVT_SHL_EXPORT
+void kvt_vte_focus(struct kvt_vte *vte, bool in)
+{
+	if (!vte || !vte->focus_events)
+		return;
+	vte_write(vte, in ? "\e[I" : "\e[O", 3);
+}
+
+KVT_SHL_EXPORT
+bool kvt_vte_sync_output(struct kvt_vte *vte)
+{
+	return vte && vte->sync_output;
 }
 
 /* execute control character (C0 or C1) */
@@ -2017,12 +2118,142 @@ static void csi_mode(struct kvt_vte *vte, bool set)
 		case KVT_VTE_BRACKETED_PASTE:
 			vte->bracketed_paste = set;
 			continue;
+		case 1004: /* focus reporting */
+			vte->focus_events = set;
+			continue;
+		case 2026: /* synchronized output */
+			vte->sync_output = set;
+			if (vte->sync_cb)
+				vte->sync_cb(vte, set, vte->sync_data);
+			continue;
 		default:
 			llog_debug(vte, "unknown DEC %set-Mode %d",
 				   set?"S":"Res", vte->csi_argv[i]);
 			continue;
 		}
 	}
+}
+
+/*
+ * ── DECRQM: WHAT A PROBE IS TOLD ────────────────────────────────────────
+ *
+ * `CSI ? <mode> $ p` asks whether a DEC private mode is on, and the answer is
+ * `CSI ? <mode> ; <value> $ y`. The values are the standard's:
+ *
+ *   0  the mode is not recognised
+ *   1  set
+ *   2  reset
+ *   3  permanently set
+ *   4  permanently reset
+ *
+ * ZERO FOR EVERYTHING ELSE, AND NEVER SILENCE. A probing program is built to
+ * handle "not recognised" and is not built to handle no answer at all: it
+ * waits, times out, and falls back to whatever it does on a terminal from
+ * 1978. Answering 0 is what makes every later mode safe to add — the program
+ * asks, is told no, and moves on.
+ */
+static void csi_report_mode(struct kvt_vte *vte)
+{
+	char reply[32];
+	unsigned mode = vte->csi_argc > 0 && vte->csi_argv[0] > 0 ?
+			(unsigned)vte->csi_argv[0] : 0;
+	int value = 0;
+	int known = 1;
+
+	switch (mode) {
+	case 1:		/* DECCKM, application cursor keys */
+		value = (vte->flags & KVT_VTE_FLAG_CURSOR_KEY_MODE) ? 1 : 2;
+		break;
+	case 7:		/* DECAWM, auto wrap */
+		value = (vte->flags & KVT_VTE_FLAG_AUTO_WRAP_MODE) ? 1 : 2;
+		break;
+	case 25:	/* DECTCEM, the cursor is visible */
+		value = (vte->flags & KVT_VTE_FLAG_TEXT_CURSOR_MODE) ? 1 : 2;
+		break;
+	case KVT_VTE_MOUSE_MODE_VT200:
+	case KVT_VTE_MOUSE_MODE_SGR:
+	case KVT_VTE_MOUSE_MODE_PIXEL:
+		value = vte->mouse_mode == mode ? 1 : 2;
+		break;
+	case KVT_VTE_MOUSE_EVENT_BTN:
+	case KVT_VTE_MOUSE_EVENT_ANY:
+		value = vte->mouse_event == mode ? 1 : 2;
+		break;
+	case 1004:	/* focus reporting */
+		value = vte->focus_events ? 1 : 2;
+		break;
+	case 1049:	/* the alternate screen */
+		value = (kvt_screen_get_flags(vte->con) &
+			 KVT_SCREEN_ALTERNATE) ? 1 : 2;
+		break;
+	case KVT_VTE_BRACKETED_PASTE:
+		value = vte->bracketed_paste ? 1 : 2;
+		break;
+	case 2026:	/* synchronized output */
+		value = vte->sync_output ? 1 : 2;
+		break;
+	default:
+		known = 0;
+		break;
+	}
+	(void)known;
+	snprintf(reply, sizeof(reply), "\e[?%u;%d$y", mode, value);
+	vte_write(vte, reply, strlen(reply));
+}
+
+/*
+ * XTSMGRAPHICS — `CSI ? Pi ; Pa ; Pv S`.
+ *
+ * Pi says which resource: 1 colour registers, 2 sixel geometry, 3 ReGIS
+ * geometry. Pa says what to do with it: 1 read, 2 reset, 3 set, 4 read the
+ * maximum. The reply is `CSI ? Pi ; Ps ; <values> S` with Ps 0 for success,
+ * 1 for a resource this terminal does not have, 2 for a bad argument and
+ * 3 for a request that failed.
+ *
+ * NOTHING HERE IS SETTABLE, AND SAYING SO IS THE POINT. The geometry is the
+ * consumer's `image_cells` and the register count is the decoder's; a set that
+ * silently did nothing would leave a program believing it had negotiated a
+ * larger picture than it will get. A set is answered Ps=3, which is what a
+ * program checks before it sends anything.
+ */
+static void csi_graphics_attr(struct kvt_vte *vte)
+{
+	char reply[64];
+	int pi = vte->csi_argc > 0 ? vte->csi_argv[0] : 0;
+	int pa = vte->csi_argc > 1 ? vte->csi_argv[1] : 0;
+
+	switch (pi) {
+	case 1:		/* colour registers */
+		if (pa != 1 && pa != 4) {
+			snprintf(reply, sizeof(reply), "\e[?1;3;S");
+			break;
+		}
+		/* 256, which is what the sixel decoder carries. Reported
+		 * rather than derived here: a number this reply invented would
+		 * be one a picture is quantised against and then not shown in. */
+		snprintf(reply, sizeof(reply), "\e[?1;0;256S");
+		break;
+	case 2:		/* sixel geometry */
+	case 3:		/* ReGIS geometry — the same ceiling; nothing draws ReGIS */
+		if (pa != 1 && pa != 4) {
+			snprintf(reply, sizeof(reply), "\e[?%d;3;S", pi);
+			break;
+		}
+		if (vte->img_max_w <= 0 || vte->img_max_h <= 0) {
+			/* The consumer never said. A geometry of zero is not a
+			 * geometry, so this is a failure and not a size. */
+			snprintf(reply, sizeof(reply), "\e[?%d;3;S", pi);
+			break;
+		}
+		snprintf(reply, sizeof(reply), "\e[?%d;0;%d;%dS", pi,
+			 vte->img_max_w, vte->img_max_h);
+		break;
+	default:
+		/* A resource this terminal does not have. */
+		snprintf(reply, sizeof(reply), "\e[?%d;1;S", pi);
+		break;
+	}
+	vte_write(vte, reply, strlen(reply));
 }
 
 static void csi_dev_attr(struct kvt_vte *vte)
@@ -2219,13 +2450,8 @@ static void do_csi(struct kvt_vte *vte, uint32_t data)
 			/* DECSTR: Soft Reset */
 			csi_soft_reset(vte);
 		} else if (vte->csi_flags & CSI_CASH) {
-			/* DECRQM: Request DEC Private Mode */
-			/* If CSI_WHAT is set, then enable,
-			 * otherwise disable */
-
-			/* Ignore */
-
-			/* FIXME: Implement DECRQM */
+			/* DECRQM: what a probing program is told. */
+			csi_report_mode(vte);
 		} else {
 			/* DECSCL: Compatibility Level */
 			/* Sometimes CSI_DQUOTE is set here, too */
@@ -2308,8 +2534,18 @@ static void do_csi(struct kvt_vte *vte, uint32_t data)
 		/* device status reports */
 		csi_dsr(vte);
 		break;
-	case 'S': /* SU */
-		/* scroll up */
+	case 'S':
+		/*
+		 * TWO SEQUENCES, AND THE PRIVATE MARKER IS THE WHOLE
+		 * DIFFERENCE. `CSI Ps S` scrolls up; `CSI ? Pi;Pa;Pv S` is
+		 * XTSMGRAPHICS and asks about pictures. Answering the second
+		 * by scrolling is what this did, so a program probing for
+		 * sixel support scrolled the screen and learned nothing.
+		 */
+		if (vte->csi_flags & CSI_WHAT) {
+			csi_graphics_attr(vte);
+			break;
+		}
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
@@ -2542,6 +2778,58 @@ static bool do_osc_internal(struct kvt_vte *vte, const char *end_seq)
 			}
 		}
 		return true;
+	}
+
+	/*
+	 * ── A PROGRAM SAYING IT FINISHED ────────────────────────────────
+	 *
+	 * Three spellings, because three are what programs emit and none of
+	 * them won:
+	 *
+	 *   OSC 9 ; <text>                    iTerm2's, and the common one
+	 *   OSC 777 ; notify ; <sum> ; <body> urxvt's, which tmux forwards
+	 *   OSC 99 ; <params> ; <text>        kitty's, params before the body
+	 *
+	 * `make && notify-send done` does not work here — `libnotify` is not a
+	 * port and `notify-send` is not on the image — so a long job had no way
+	 * to say it was done from inside the terminal it was running in. These
+	 * are that way, and they cost a parse rather than a dependency.
+	 *
+	 * THE CALLBACK IS THE TERMINAL'S, not this library's: raising a toast
+	 * means a session bus, and `libkvt` links nothing and must not start.
+	 * A terminal with no handler set drops them, which is what a terminal
+	 * with no desktop behind it should do.
+	 */
+	if (vte->notify_cb) {
+		const char *sum = NULL, *body = "";
+
+		if (!strncmp(vte->osc_arg, "9;", 2)) {
+			sum = vte->osc_arg + 2;
+		} else if (!strncmp(vte->osc_arg, "777;notify;", 11)) {
+			char *s = vte->osc_arg + 11;
+			char *semi = strchr(s, ';');
+
+			/* The summary is cut out of the OSC buffer in place:
+			 * that buffer is this message's and is rebuilt for the
+			 * next one, so there is nothing to restore. */
+			if (semi) {
+				*semi = '\0';
+				body = semi + 1;
+			}
+			sum = s;
+		} else if (!strncmp(vte->osc_arg, "99;", 3)) {
+			/* The parameter list runs to the first `;` and is
+			 * ignored: this terminal has no notification identity,
+			 * no replacement and no progress, so honouring `d=0`
+			 * would be claiming a facility that is not here. */
+			const char *semi = strchr(vte->osc_arg + 3, ';');
+
+			sum = semi ? semi + 1 : NULL;
+		}
+		if (sum && *sum) {
+			vte->notify_cb(vte, sum, body, vte->notify_data);
+			return true;
+		}
 	}
 
 	if (!strncmp(vte->osc_arg, "4;", 2)) {
@@ -3889,6 +4177,35 @@ bool kvt_vte_handle_mouse(struct kvt_vte *vte, unsigned int cell_x,
 	}
 
 	return false;
+}
+
+/*
+ * ── THE PASTE GUARD ─────────────────────────────────────────────────────
+ *
+ * Does this payload need a person to agree to it?
+ *
+ * With bracketed paste ON the child sees the text as text and decides for
+ * itself, which is the whole point of the mode. With it OFF the bytes go
+ * straight to the pty, so a newline in them EXECUTES: at a plain shell, at an
+ * `ssh` password prompt, inside `read`. That is the one place a terminal can
+ * be made to act as the user, and it stopped being theoretical the moment a
+ * remote clipboard became reachable.
+ *
+ * A control byte other than tab counts too. `\r` submits at the same prompts
+ * `\n` does, and an escape can put a terminal into a mode the person did not
+ * choose.
+ *
+ * Returns 1 when the caller must confirm before pasting.
+ */
+KVT_SHL_EXPORT
+int kvt_vte_paste_needs_confirm(struct kvt_vte *vte, const char *data)
+{
+	if (!vte || !data || vte->bracketed_paste)
+		return 0;
+	for (const unsigned char *p = (const unsigned char *)data; *p; p++)
+		if (*p < 0x20 && *p != '\t')
+			return 1;
+	return 0;
 }
 
 void kvt_vte_paste(struct kvt_vte *vte, const char *data)

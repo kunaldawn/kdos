@@ -1,0 +1,45 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   F2 — the verbs this desktop has, on the file under the cursor.
+#
+# NORTON COMMANDER'S F2 WAS A TEXT FILE OF COMMANDS a person had written, and
+# mc's is this one. It is empty on a stock image, which means F2 opens a menu
+# with nothing in it — a key that does nothing teaches that the key is broken.
+#
+# EVERY LINE NAMES A PROGRAM THAT IS ON THE IMAGE, and `testing/preflight.sh`
+# refuses one that is not. A text file has no `show` callback: a row here
+# cannot hide itself when its program is missing, so a verb that is still being
+# built belongs in the surfaces' own table and not in this file until it ships.
+#
+# ONE LETTER, THEN THE TITLE, THEN TAB-INDENTED COMMAND LINES. mc runs the
+# block as `/bin/sh` and WAITS for it, so anything that opens a window of its
+# own is backgrounded — the same rule the extension file keeps.
+#
+# `%f` is the file under the cursor and `%d` the panel's directory; both are
+# quoted by mc before the script sees them.
+# ---------------------------------
+
+shell_patterns=0
+
+o       Open with the desktop's handler
+        (kdos-appbox open %f &)
+
+e       Edit here
+        ${EDITOR-nano} %f
+
+t       Terminal here
+        (kdos-term -D %d &)
+
+p       Add this folder to Places
+        kdos places add %d
+
+r       Move to trash
+        kdos trash %f
+
+g       Git status here
+        cd %d && lazygit

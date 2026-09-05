@@ -47,6 +47,28 @@ int sh_fav_path(char *out, size_t n)
 	return 0;
 }
 
+/*
+ * THE TERMINAL FOLLOWS THE DESKTOP, so one favourites file serves both.
+ *
+ * `foot` is a Wayland client and the console session has no compositor to run
+ * it on, so a pinned row naming it there is a row that launches nothing; the
+ * mirror case is `kdos-term` on the graphical desktop, where `foot` is the
+ * terminal that has run on real hardware. The file names *the terminal* and
+ * this resolves which one — the same decision `sh_term()` makes for every
+ * chord, menu row and `Terminal=true` entry.
+ *
+ * Two favourites files would be two things to keep in agreement, and the one
+ * nobody is looking at is the one that goes stale.
+ */
+const char *sh_fav_id(const char *id)
+{
+	if (!id)
+		return NULL;
+	if (!strcmp(id, "foot") || !strcmp(id, "kdos-term"))
+		return sh_term();
+	return id;
+}
+
 int sh_fav_has(const char *id)
 {
 	char path[512], line[256];

@@ -1,0 +1,23 @@
+KDOS NET
+
+Wireless and wired in one list, through NetworkManager. The device rows come
+first and the access points under them, strongest first.
+
+  Enter     joins the selected network. On a device row it rescans instead.
+            A network you are already on answers nothing — the row is where
+            you see that you are on it.
+  f         forgets a saved network, so the next join asks again.
+  c         copies the network's name.
+  a         turns wireless off, or back on.
+
+A network that needs a passphrase asks for one on the bottom row. Escape there
+abandons the join and leaves the list as it was; Escape on the list closes the
+window.
+
+What this window does not do
+
+  Static addresses, VPNs and per-connection routing are NetworkManager's and
+  are edited with `nmcli`. This window is the two things a person does at a
+  desk: join something, and stop being on something.
+
+  [[doc:index]]

@@ -64,6 +64,9 @@ static int mon_first(int tm_wday)
 static int hov_x = -1, hov_y = -1;		/* the pointer, in cells */
 static int prev_x, prev_end, next_x, next_end, today_x, today_end, nav_row;
 
+/* No layers: Esc closes the dropdown. */
+static KtuiKeys keys;
+
 static int cal_in(int v, int a, int b)
 {
 	return b > a && v >= a && v < b;
@@ -183,6 +186,17 @@ static void draw(int year, int mon, int today_y, int today_m, int today_d)
 	snprintf(line, sizeof(line), "%d %s %d   %02d:%02d", nt.tm_mday,
 		 MONTHS[nt.tm_mon], nt.tm_year + 1900, nt.tm_hour, nt.tm_min);
 	ktui_draw_text(2, h - 2, w - 4, line, KT_MID, KT_SURFACE, KT_A_NONE);
+
+	/*
+	 * THE ROW DROPS ITS TAIL, and Esc is the tail — so the month hint is
+	 * gated on there being room for BOTH. Twenty-six columns is what this
+	 * dropdown asks for and "Left/Right month  Esc Close" needs thirty-one;
+	 * without the gate the wider hint would push the only one a person
+	 * cannot guess off the end.
+	 */
+	ktui_hint_if(w >= 31, "Left/Right", "month");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 4, w - 4, 1), KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -308,8 +322,10 @@ int cal_main(int argc, char **argv)
 				continue;
 			}
 		} else if (ev.type == KT_EVT_KEY) {
+			if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
+				goto done;
+
 			switch (ev.key) {
-			case KT_K_ESC:
 			case KT_K_ENTER:
 				goto done;
 			case KT_K_LEFT:

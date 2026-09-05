@@ -33,6 +33,14 @@ static struct {
 	 * disagree.
 	 */
 	int role, edge, cells, exclusive;
+	/* Where an overlay asked to sit, and its margins from the two edges
+	 * that corner names — kept for the same reason as the rest of the
+	 * attach: a resize repeats it. */
+	int corner, margin_x, margin_y;
+	/* Close when the keyboard focus goes elsewhere — an overlay's own
+	 * choice, kept here because the surface made it. */
+	int dismiss_on_unfocus;
+	int focused;
 	char app_id[128], title[256], output[64];
 
 	/*
@@ -319,6 +327,28 @@ tl_done:
 		C.lock_finished = (fl & KCON_LOCK_FINISHED) != 0;
 		break;
 	}
+	case KCON_OP_FOCUS: {
+		int in = kcon_get_u8(&r) != 0;
+
+		if (r.err)
+			break;
+		C.focused = in;
+		/*
+		 * AN OVERLAY THAT ASKED TO BE DISMISSED IS DISMISSED — the
+		 * same rule `libkwl` keeps on `wl_keyboard.leave`, and the
+		 * reason it is the client's rather than the session's: the
+		 * config field belongs to the surface, and a session deciding
+		 * for it would be a second copy of that decision.
+		 *
+		 * Without this, clicking a window while the Start menu was
+		 * open left the menu floating over it on the console until
+		 * somebody found Escape, while the same menu closed correctly
+		 * on the compositor.
+		 */
+		if (!in && C.dismiss_on_unfocus)
+			C.should_close = 1;
+		break;
+	}
 	case KCON_OP_CLOSE:
 	case KCON_OP_BYE:
 		C.should_close = 1;
@@ -524,6 +554,37 @@ static const KtuiBackend kcon_backend = {
 
 /* ── the display implementation ──────────────────────────────────────── */
 
+/*
+ * THE ATTACH PAYLOAD, WRITTEN IN ONE PLACE.
+ *
+ * There are two senders — the first attach and the resize that is a second one
+ * — and a field added to only one of them is a message the server reads three
+ * u16s past the end of. It refuses that attach and drops the surface, so the
+ * symptom is a toast that vanishes the moment it grows rather than anything
+ * that looks like a protocol error. That happened; this is why there is a
+ * function.
+ *
+ * A MARGIN IS A DISTANCE FROM AN EDGE AND IS NEVER NEGATIVE. A caller that has
+ * not worked out a position says so with the corner — KDISP_CORNER_CENTER —
+ * and passes whatever it likes here; clamping rather than widening the wire to
+ * a signed field keeps one meaning for the number the session reads.
+ */
+static void put_attach(KconBuf *b, int cols, int rows)
+{
+	kcon_put_u16(b, (uint16_t)C.role);
+	kcon_put_u16(b, (uint16_t)C.edge);
+	kcon_put_u16(b, (uint16_t)C.cells);
+	kcon_put_u16(b, (uint16_t)cols);
+	kcon_put_u16(b, (uint16_t)rows);
+	kcon_put_u8(b, (uint8_t)C.exclusive);
+	kcon_put_str(b, C.app_id);
+	kcon_put_str(b, C.title);
+	kcon_put_str(b, C.output);
+	kcon_put_u16(b, (uint16_t)C.corner);
+	kcon_put_u16(b, (uint16_t)(C.margin_x > 0 ? C.margin_x : 0));
+	kcon_put_u16(b, (uint16_t)(C.margin_y > 0 ? C.margin_y : 0));
+}
+
 static int kcon_init(const KDispConfig *cfg)
 {
 	const char *path = getenv("KDOS_CON");
@@ -557,7 +618,11 @@ static int kcon_init(const KDispConfig *cfg)
 	KconBuf b = { 0 };
 
 	kcon_put_u16(&b, KCON_VERSION);
-	kcon_put_u16(&b, KCON_KIND_SURFACE);
+	/* A SHELL claim is what the management verbs and the window list are
+	 * gated on, and it is made here because the kind is fixed at hello and
+	 * cannot be raised afterwards. See KDispConfig.manage. */
+	kcon_put_u16(&b, cfg && cfg->manage ? KCON_KIND_SHELL
+					    : KCON_KIND_SURFACE);
 	if (kcon_send(C.conn, KCON_OP_HELLO, &b) != 0)
 		goto fail;
 
@@ -565,20 +630,16 @@ static int kcon_init(const KDispConfig *cfg)
 	C.edge = cfg ? cfg->edge : 0;
 	C.cells = cfg ? cfg->cells : 0;
 	C.exclusive = cfg ? cfg->exclusive : 0;
+	C.corner = cfg ? cfg->corner : 0;
+	C.dismiss_on_unfocus = cfg ? cfg->dismiss_on_unfocus : 0;
+	C.margin_x = cfg ? cfg->margin_x : 0;
+	C.margin_y = cfg ? cfg->margin_y : 0;
 	snprintf(C.app_id, sizeof(C.app_id), "%s", cfg && cfg->app_id ? cfg->app_id : "");
 	snprintf(C.title, sizeof(C.title), "%s", cfg && cfg->title ? cfg->title : "");
 	snprintf(C.output, sizeof(C.output), "%s", cfg && cfg->output ? cfg->output : "");
 
 	kcon_buf_reset(&b);
-	kcon_put_u16(&b, (uint16_t)C.role);
-	kcon_put_u16(&b, (uint16_t)C.edge);
-	kcon_put_u16(&b, (uint16_t)C.cells);
-	kcon_put_u16(&b, (uint16_t)C.cols);
-	kcon_put_u16(&b, (uint16_t)C.rows);
-	kcon_put_u8(&b, (uint8_t)C.exclusive);
-	kcon_put_str(&b, C.app_id);
-	kcon_put_str(&b, C.title);
-	kcon_put_str(&b, C.output);
+	put_attach(&b, C.cols, C.rows);
 	if (kcon_send(C.conn, KCON_OP_ATTACH, &b) != 0)
 		goto fail;
 
@@ -663,6 +724,8 @@ static int kcon_drag_start(const char *mime, const char *data, size_t len)
  * A cell is a cell here: there are no pixels on this side of the socket, so
  * the size of one is the far end's business and one is the honest answer.
  */
+static int kcon_focused(void) { return C.focused; }
+
 static int kcon_cell_w(void) { return 1; }
 static int kcon_cell_h(void) { return 1; }
 static int kcon_scale(void) { return 1; }
@@ -703,15 +766,7 @@ static int kcon_overlay_resize(int cols, int rows)
 	 * so setting them to the request first makes the answer look like no
 	 * change at all, and the surface draws for ever at the size it had.
 	 */
-	kcon_put_u16(&b, (uint16_t)C.role);
-	kcon_put_u16(&b, (uint16_t)C.edge);
-	kcon_put_u16(&b, (uint16_t)C.cells);
-	kcon_put_u16(&b, (uint16_t)cols);
-	kcon_put_u16(&b, (uint16_t)rows);
-	kcon_put_u8(&b, (uint8_t)C.exclusive);
-	kcon_put_str(&b, C.app_id);
-	kcon_put_str(&b, C.title);
-	kcon_put_str(&b, C.output);
+	put_attach(&b, cols, rows);
 	kcon_send(C.conn, KCON_OP_ATTACH, &b);
 	kcon_buf_free(&b);
 	kcon_flush(C.conn);
@@ -810,6 +865,20 @@ void kcon_toplevel_close(unsigned id)
 	mgmt_ask(KCON_OP_CLOSE_REQUEST, id);
 }
 
+void kcon_toplevel_state(unsigned id, unsigned flag, int on)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn)
+		return;
+	kcon_put_u32(&b, id);
+	kcon_put_u16(&b, (uint16_t)flag);
+	kcon_put_u8(&b, (uint8_t)(on ? 1 : 0));
+	kcon_send(C.conn, KCON_OP_WIN_STATE, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
+}
+
 static int kcon_lock_engaged(void)
 {
 	return C.lock_engaged;
@@ -818,6 +887,54 @@ static int kcon_lock_engaged(void)
 static int kcon_lock_finished(void)
 {
 	return C.lock_finished;
+}
+
+/*
+ * THE WINDOW LIST, AS libkdisp ASKS FOR IT.
+ *
+ * The two flag sets are the same numbers and are checked here rather than
+ * translated: a mapping loop would be four lines that silently pass the wrong
+ * bit the day either enum grows a member in the middle. If this fails, the
+ * enums have diverged and the fix is to realign them, not to add a switch.
+ */
+_Static_assert((unsigned)KDISP_WIN_FOCUSED == (unsigned)KCON_TL_FOCUSED &&
+	       (unsigned)KDISP_WIN_MINIMISED == (unsigned)KCON_TL_MINIMISED &&
+	       (unsigned)KDISP_WIN_MAXIMISED == (unsigned)KCON_TL_MAXIMISED &&
+	       (unsigned)KDISP_WIN_FULLSCREEN == (unsigned)KCON_TL_FULLSCREEN,
+	       "KDISP_WIN_* and KCON_TL_* must be the same bits");
+
+static int kcon_win_count(void)
+{
+	return kcon_toplevel_count();
+}
+
+static int kcon_win_at(int i, KDispWin *out)
+{
+	const KconToplevel *t = kcon_toplevel_at(i);
+
+	if (!t)
+		return 0;
+	out->id = t->id;
+	out->flags = t->flags;
+	out->workspace = t->workspace;
+	snprintf(out->app_id, sizeof(out->app_id), "%s", t->app_id);
+	snprintf(out->title, sizeof(out->title), "%s", t->title);
+	return 1;
+}
+
+static void kcon_win_activate(unsigned id)
+{
+	kcon_toplevel_activate(id);
+}
+
+static void kcon_win_close(unsigned id)
+{
+	kcon_toplevel_close(id);
+}
+
+static void kcon_win_set_state(unsigned id, unsigned flag, int on)
+{
+	kcon_toplevel_state(id, flag, on);
 }
 
 const KDispImpl kcon_impl = {
@@ -830,6 +947,7 @@ const KDispImpl kcon_impl = {
 	.pump = kcon_pump,
 	.copy = kcon_copy,
 	.drag_start = kcon_drag_start,
+	.focused = kcon_focused,
 	.cell_w = kcon_cell_w,
 	.cell_h = kcon_cell_h,
 	.scale = kcon_scale,
@@ -840,6 +958,11 @@ const KDispImpl kcon_impl = {
 	.unlock = kcon_unlock,
 	.lock_engaged = kcon_lock_engaged,
 	.lock_finished = kcon_lock_finished,
+	.win_count = kcon_win_count,
+	.win_at = kcon_win_at,
+	.win_activate = kcon_win_activate,
+	.win_close = kcon_win_close,
+	.win_set_state = kcon_win_set_state,
 };
 
 /*

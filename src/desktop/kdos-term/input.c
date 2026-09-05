@@ -18,6 +18,7 @@
  * cannot express: copy, and looking at what has scrolled away.
  */
 
+#include <stdio.h>
 #include <string.h>
 
 #include "term.h"
@@ -68,11 +69,53 @@ void term_mouse(const KtuiEvent *ev)
 	free(text);
 }
 
+/*
+ * THE PASTE GUARD.
+ *
+ * With bracketed paste on, the child sees the text as text and decides for
+ * itself. With it off, the bytes go straight to the pty and a newline in them
+ * EXECUTES — at a plain shell, at an `ssh` password prompt, inside `read`. It
+ * is the one place a terminal can be made to act as the user, and a remote
+ * clipboard is what makes it something other than a thought experiment.
+ *
+ * The pending text is held rather than dropped: a paste a person meant is one
+ * keystroke away, and a paste they did not meant is refused by walking away.
+ */
+static char *paste_held;
+
+static void paste_confirmed(void)
+{
+	if (paste_held) {
+		kvt_term_paste(T.t, paste_held);
+		free(paste_held);
+		paste_held = NULL;
+	}
+}
+
 void term_paste_pending(void)
 {
 	const char *text = NULL;
 	size_t n = ktui_paste_take(&text);
 
-	if (n && text)
-		kvt_term_paste(T.t, text);
+	if (!n || !text)
+		return;
+	if (TC.paste_guard && kvt_term_paste_needs_confirm(T.t, text)) {
+		char msg[160];
+		int lines = 1;
+
+		for (const char *p = text; *p; p++)
+			if (*p == '\n')
+				lines++;
+		free(paste_held);
+		paste_held = strdup(text);
+		if (!paste_held)
+			return;
+		snprintf(msg, sizeof(msg),
+			 "%d line%s would run as if typed.", lines,
+			 lines == 1 ? "" : "s");
+		ktui_modal_confirm("Paste", msg, "Paste", "Cancel",
+				   paste_confirmed);
+		return;
+	}
+	kvt_term_paste(T.t, text);
 }

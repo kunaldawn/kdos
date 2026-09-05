@@ -14,11 +14,11 @@
 |                                                      |
 |                                                      |
 |                                                      |
-|                                                      |
 |eth0  received / sent                             -  -|
 |                                                      |
 |                                                      |
 |                                                      |
 |                                                      |
 |totals since boot  .  Enter for details  .  n opens kd|
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close    |
 +======================================================+

@@ -240,11 +240,39 @@
          keyboard, and it is deliberately NOT W-d — the launcher is a search
          box and this is a menu, and conflating them would cost one of them. -->
     <keybind key="W-a"><action name="Execute" command="kdos-start"/></keybind>
+    <!-- And the F-key twins the console's function-key taskbar names. That row
+         labels the chord rather than binding a bare key — a bare F7 belongs to
+         the program in the window — so the chord it labels has to exist on
+         both desktops or the label is true on one of them only. -->
+    <keybind key="W-F10"><action name="Execute" command="kdos-start"/></keybind>
+    <keybind key="W-F7"><action name="Execute" command="kdos-launcher"/></keybind>
     <!-- The device managers. Everything they drive has been running here
          since before there was a desktop; what was missing was a way in. -->
     <keybind key="W-F4"><action name="Execute" command="kdos-net"/></keybind>
     <keybind key="W-F5"><action name="Execute" command="kdos-bt"/></keybind>
     <keybind key="W-F6"><action name="Execute" command="kdos-devices"/></keybind>
+
+    <!-- The two surfaces that had no chord on either desktop. A power page and
+         a system monitor are what a person reaches for while something is
+         going wrong, and both were reachable only from the Start menu. The
+         console binds the same two, so there is one key card. -->
+    <!-- Tile, cascade and keyboard rearrange are the CONSOLE'S ALONE and the
+         card says so. labwc has no tile-all or cascade action and its
+         MoveResize is not the same interaction, so binding W-S-t to the
+         nearest thing here would make one chord mean two different things on
+         the two desktops — which is the one rule this file and keys.conf
+         exist to keep. W-F2 already opens kdos-teams above, which is the
+         window list the console's Super+F2 draws for itself. -->
+    <keybind key="W-C-p"><action name="Execute" command="kdos-energy"/></keybind>
+    <keybind key="W-C-t"><action name="Execute" command="kdos-res"/></keybind>
+
+    <!-- The desk accessories, the same chords the console binds. Summoned over
+         whatever is on the screen and dismissed leaving it untouched, which is
+         what Sidekick sold a million copies of in 1984 and what a layer
+         surface already is. -->
+    <keybind key="W-C-q"><action name="Execute" command="kdos-calc"/></keybind>
+    <keybind key="W-C-n"><action name="Execute" command="kdos-note"/></keybind>
+    <keybind key="W-C-v"><action name="Execute" command="kdos-clip"/></keybind>
 
     <!-- Run-or-raise, for anyone who wants one key per app. ForEach runs its
          <then> on every view matching the <query> (identifier is the app_id,

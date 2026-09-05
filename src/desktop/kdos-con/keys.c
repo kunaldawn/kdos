@@ -42,7 +42,9 @@ static Bind binds[] = {
 	 * shifted form of the chord that closed it is where a hand looks. */
 	{ "restore",	CON_ACT_RESTORE, 0, 'n',	KT_MOD_SUPER | KT_MOD_SHIFT },
 	{ "menu",	CON_ACT_EXEC,	 CON_CMD_MENU,	  ' ', KT_MOD_SUPER },
+	{ "menu-fkey",	CON_ACT_EXEC,	 CON_CMD_MENU,	  KT_K_F10, KT_MOD_SUPER },
 	{ "launcher",	CON_ACT_EXEC,	 CON_CMD_LAUNCHER, 'd', KT_MOD_SUPER },
+	{ "launcher-fkey", CON_ACT_EXEC, CON_CMD_LAUNCHER, KT_K_F7, KT_MOD_SUPER },
 	{ "lock",	CON_ACT_EXEC,	 CON_CMD_LOCK,	  'l', KT_MOD_SUPER },
 	/* Blanking without locking, on the shifted form of the chord that
 	 * locks: the idle timer is otherwise the only thing that can draw the
@@ -92,6 +94,71 @@ static Bind binds[] = {
 	{ "workspace-next", CON_ACT_WS_STEP, 0, KT_K_PGDN, KT_MOD_SUPER },
 
 	/*
+	 * THE KEYBOARD'S OWN WINDOW MANAGEMENT.
+	 *
+	 * Every one of these was a menu item on the text desks this desktop
+	 * descends from, and every chord is free on BOTH desktops today —
+	 * `rc.xml` already binds `Super+t` to ToggleAlwaysOnTop, `Super+.` to a
+	 * workspace step and `Super+Shift+d` to ToggleShowDesktop, so tile
+	 * takes the shifted form, show-desktop takes the compositor's own, and
+	 * the F-key twins are what the taskbar's function-key row names.
+	 */
+	{ "tile",	CON_ACT_TILE,	 0, 't', KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "tile-fkey",	CON_ACT_TILE,	 0, KT_K_F8, KT_MOD_SUPER },
+	{ "cascade",	CON_ACT_CASCADE, 0, 't', KT_MOD_SUPER | KT_MOD_ALT },
+	{ "rearrange",	CON_ACT_REARRANGE, 0, 'r', KT_MOD_SUPER },
+	{ "rearrange-fkey", CON_ACT_REARRANGE, 0, KT_K_F9, KT_MOD_SUPER },
+	{ "show-desktop", CON_ACT_SHOW_DESKTOP, 0, 'd',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "windows",	CON_ACT_WINLIST, 0, KT_K_F2, KT_MOD_SUPER },
+	/*
+	 * MARK AND TRANSFER. Not `Super+Shift+c`: the terminal's own copy is
+	 * Ctrl+Shift+C inside the window and mark mode is the session's, and a
+	 * third copy chord would be a third thing to explain.
+	 */
+	{ "mark",	CON_ACT_MARK,	 0, 'm', KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "paste",	CON_ACT_PASTE,	 0, 'v', KT_MOD_SUPER | KT_MOD_SHIFT },
+
+	/*
+	 * THE SURFACES, ON THE CHORDS `rc.xml` ALREADY BINDS THEM TO.
+	 *
+	 * Every one of these programs runs on this desktop today and none of
+	 * them could be reached without the Start menu — the panel that hangs
+	 * them off its applets is the graphical desktop's, and it does not run
+	 * here. The chords are the compositor's own rather than new ones,
+	 * because a chord a person already knows is worth more than a chord
+	 * that is locally tidy, and the key card is then one card.
+	 *
+	 * `displays` reaches a surface that cannot configure a console screen
+	 * yet — libkkms has no mode selection — so it says so and exits. That
+	 * is a stated limit, and it is better than a chord that is missing.
+	 */
+	{ "keys",	CON_ACT_EXEC,	 CON_CMD_KEYS,	   KT_K_F1, KT_MOD_SUPER },
+	{ "audio",	CON_ACT_EXEC,	 CON_CMD_AUDIO,	   KT_K_F3, KT_MOD_SUPER },
+	{ "net",	CON_ACT_EXEC,	 CON_CMD_NET,	   KT_K_F4, KT_MOD_SUPER },
+	{ "bluetooth",	CON_ACT_EXEC,	 CON_CMD_BT,	   KT_K_F5, KT_MOD_SUPER },
+	{ "devices",	CON_ACT_EXEC,	 CON_CMD_DEVICES,  KT_K_F6, KT_MOD_SUPER },
+	{ "settings",	CON_ACT_EXEC,	 CON_CMD_SETTINGS, 'i',	 KT_MOD_SUPER },
+	{ "calendar",	CON_ACT_EXEC,	 CON_CMD_CAL,	   'c',	 KT_MOD_SUPER },
+	{ "docs",	CON_ACT_EXEC,	 CON_CMD_DOC,	   '/',	 KT_MOD_SUPER },
+	{ "displays",	CON_ACT_EXEC,	 CON_CMD_DISPLAY,  'p',	 KT_MOD_SUPER },
+	/* The two this document adds on both desktops: neither had a chord
+	 * anywhere, and a power page and a system monitor are things people
+	 * reach for while something is going wrong. */
+	{ "power",	CON_ACT_EXEC,	 CON_CMD_ENERGY,   'p',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	{ "monitor",	CON_ACT_EXEC,	 CON_CMD_RES,	   't',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+
+	/* The accessories, on Omarchy's chords where they are free here. */
+	{ "calculator",	CON_ACT_EXEC,	 CON_CMD_CALC,	   'q',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	{ "notes",	CON_ACT_EXEC,	 CON_CMD_NOTE,	   'n',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	{ "clipboard",	CON_ACT_EXEC,	 CON_CMD_CLIP,	   'v',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+
+	/*
 	 * THE ONE CHORD THAT IS NOT ON SUPER, and it cannot be: it exists for
 	 * the views where Super never arrives. A terminal that does not
 	 * implement the kitty keyboard protocol — xterm, most VTEs, and the
@@ -121,6 +188,11 @@ static int key_named(const char *s)
 		{ "F4", KT_K_F4 }, { "F5", KT_K_F5 }, { "F6", KT_K_F6 },
 		{ "F7", KT_K_F7 }, { "F8", KT_K_F8 }, { "F9", KT_K_F9 },
 		{ "F10", KT_K_F10 }, { "F11", KT_K_F11 }, { "F12", KT_K_F12 },
+		/* rc.xml's spelling for the punctuation it binds, so a chord
+		 * reads the same in both files and neither has to be
+		 * translated by hand. */
+		{ "slash", '/' }, { "comma", ',' }, { "period", '.' },
+		{ "grave", '`' }, { "minus", '-' }, { "equal", '=' },
 	};
 
 	for (int i = 0; i < (int)(sizeof(tab) / sizeof(tab[0])); i++)
@@ -342,8 +414,28 @@ int keys_action(int key, int mods, int *arg)
 	keys_load();
 	*arg = 0;
 
+	/*
+	 * A LETTER IS ITSELF, LOWERCASED — the same rule `key_named()` applies
+	 * when it parses `keys.conf`, and the matcher has to agree with it.
+	 *
+	 * A backend delivers the character the layout produces, so `Super+
+	 * Shift+t` arrives as `T` and an exact comparison against the table's
+	 * `t` matched nothing: the chord fell through to the focused window,
+	 * which typed a capital letter into it. That silently disabled every
+	 * Super+Shift+letter chord this desktop has — quit, restore, the
+	 * saver, tile and show-desktop — while the arrow and function-key
+	 * forms beside them worked, which is what made it look like a chord
+	 * problem rather than a matching one.
+	 *
+	 * Shift is still matched as a MODIFIER, so `Super+t` and `Super+Shift+t`
+	 * remain two different chords; only the character is normalised.
+	 * Digits have their own answer in `digit_of()`, because a shifted digit
+	 * is a different symbol rather than a different case.
+	 */
+	int k = (key >= 'A' && key <= 'Z') ? key + 32 : key;
+
 	for (int i = 0; i < NBINDS; i++) {
-		if (binds[i].key == key &&
+		if (binds[i].key == k &&
 		    mods_match(binds[i].mods, mods, key)) {
 			*arg = binds[i].arg;
 			return binds[i].action;
@@ -354,6 +446,20 @@ int keys_action(int key, int mods, int *arg)
 		int shifted, ws = digit_of(key, &shifted);
 
 		if (ws >= 0) {
+			/*
+			 * A DIGIT WITH ALT NAMES A WINDOW, not a workspace.
+			 * `Super+Alt+2` raises the second window of the ring —
+			 * the numbering the frame and the taskbar row already
+			 * draw — which is Turbo Vision's Alt+N and DESQview's
+			 * window codes. It is in this branch rather than in
+			 * the table for the same reason the workspaces are:
+			 * nine rows saying one thing is not a table.
+			 */
+			if ((mods & KT_MOD_ALT) && !shifted &&
+			    !(mods & KT_MOD_SHIFT)) {
+				*arg = ws + 1;	/* digit_of is 0-based */
+				return CON_ACT_WIN_N;
+			}
 			*arg = ws;
 			return (shifted || (mods & KT_MOD_SHIFT)) ?
 				CON_ACT_SEND : CON_ACT_WS;

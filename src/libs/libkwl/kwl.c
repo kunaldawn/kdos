@@ -33,6 +33,7 @@
 #include "kwl_priv.h"
 #include "cursor-shape-v1-client-protocol.h"
 #include "primary-selection-unstable-v1-client-protocol.h"
+#include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
@@ -265,6 +266,10 @@ static struct {
 	int attached;
 	int closed;
 	int kb_entered;		/* the keyboard has been here at least once */
+	/* And whether it is here NOW, which is a different question: a
+	 * terminal tells its child when the focus moved and needs the
+	 * current state, not whether it ever had it. */
+	int kb_here;
 
 	/* Filled by the wl listeners, drained by poll_event. See KWL_EVQ. */
 	KtuiEvent q[KWL_EVQ];
@@ -305,6 +310,18 @@ static struct {
 	uint32_t rep_code;		/* the key held, or 0 for none */
 	KtuiEvent rep_ev;
 	int64_t rep_at_ms;
+
+	/*
+	 * SOMEBODY ELSE'S WINDOWS, bound only when asked for. The registry
+	 * name is kept and the manager is not: a compositor announces every
+	 * window to whoever binds this, and a terminal, a lock screen and a
+	 * resource monitor all link this library and want none of it. Binding
+	 * on the first call keeps that traffic to the one surface — a panel —
+	 * that has a use for it.
+	 */
+	uint32_t win_mgr_name;
+	uint32_t win_mgr_ver;
+	struct zwlr_foreign_toplevel_manager_v1 *win_mgr;
 } K;
 
 static int64_t now_ms(void)
@@ -319,6 +336,10 @@ static int64_t now_ms(void)
 
 int kwl_should_close(void) { return K.closed; }
 int kwl_lock_engaged(void) { return K.lock_engaged; }
+/* A surface that has never been given the keyboard is treated as focused:
+ * a panel is never entered and its terminal-less content does not care,
+ * and the neutral answer is what every program did before this existed. */
+static int kwl_focused(void) { return K.kb_entered ? K.kb_here : 1; }
 int kwl_lock_finished(void) { return K.lock_finished; }
 void *kwl_display(void) { return K.display; }
 void *kwl_seat(void) { return K.seat; }
@@ -1878,6 +1899,7 @@ static void kb_enter(void *d, struct wl_keyboard *k, uint32_t s,
 	(void)d; (void)k; (void)sf; (void)keys;
 	K.input_serial = s;
 	K.kb_entered = 1;
+	K.kb_here = 1;
 }
 static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s,
 		     struct wl_surface *sf)
@@ -1887,6 +1909,7 @@ static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s,
 	 * see released — repeating it would run until something else stopped
 	 * it. */
 	K.rep_code = 0;
+	K.kb_here = 0;
 	if (K.kb_entered && K.cfg.role == KDISP_ROLE_OVERLAY &&
 	    K.cfg.dismiss_on_unfocus)
 		K.closed = 1;
@@ -2908,7 +2931,6 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 		       const char *iface, uint32_t version)
 {
 	(void)d;
-	(void)version;
 	if (!strcmp(iface, wl_compositor_interface.name))
 		K.compositor = wl_registry_bind(r, name, &wl_compositor_interface, 4);
 	else if (!strcmp(iface, wl_shm_interface.name))
@@ -2988,6 +3010,12 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
 	else if (!strcmp(iface, ext_session_lock_manager_v1_interface.name))
 		K.lock_mgr = wl_registry_bind(
 			r, name, &ext_session_lock_manager_v1_interface, 1);
+	else if (!strcmp(iface,
+			 zwlr_foreign_toplevel_manager_v1_interface.name)) {
+		/* Recorded, not bound. See K.win_mgr_name. */
+		K.win_mgr_name = name;
+		K.win_mgr_ver = version < 3 ? version : 3;
+	}
 }
 
 /*
@@ -4196,6 +4224,300 @@ static int kwl_probe(void)
 	return wd && *wd;
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Somebody else's windows
+ *
+ * wlr-foreign-toplevel-management, behind libkdisp's window-list entries so a
+ * panel is written once and runs on either server. The manager is bound on
+ * the first call rather than at start-up: see K.win_mgr_name.
+ *
+ * AN ID, NOT A HANDLE, CROSSES THE INTERFACE. A caller draws a list in one
+ * frame and acts on a row in a later one, and a toplevel can close in
+ * between — an id that no longer matches finds nothing, where a stale handle
+ * is a request to a destroyed proxy and kills the connection.
+ *
+ * THERE IS NO WORKSPACE HERE. This protocol does not carry one, so every row
+ * reports -1 and a caller that groups by workspace puts them in one group.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+#define KWL_WIN_MAX 64
+
+static struct kwl_win {
+	struct zwlr_foreign_toplevel_handle_v1 *h;
+	unsigned id;
+	unsigned flags;
+	/* What has arrived since the last `done`. The protocol sends title,
+	 * app_id and state as separate events and marks the end of a batch, so
+	 * a list rebuilt on any one of them shows a window with a title and no
+	 * application, which is the row a task bar cannot label. */
+	unsigned pending;
+	char app_id[64];
+	char title[128];
+} kwl_wins[KWL_WIN_MAX];
+static int kwl_nwins;
+static unsigned kwl_win_next_id = 1;
+
+static struct kwl_win *kwl_win_for(struct zwlr_foreign_toplevel_handle_v1 *h)
+{
+	for (int i = 0; i < kwl_nwins; i++)
+		if (kwl_wins[i].h == h)
+			return &kwl_wins[i];
+	return NULL;
+}
+
+static void wtl_title(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+		      const char *title)
+{
+	struct kwl_win *w = kwl_win_for(h);
+
+	(void)d;
+	if (w)
+		snprintf(w->title, sizeof(w->title), "%s", title ? title : "");
+}
+
+static void wtl_app_id(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+		       const char *app_id)
+{
+	struct kwl_win *w = kwl_win_for(h);
+
+	(void)d;
+	if (w)
+		snprintf(w->app_id, sizeof(w->app_id), "%s",
+			 app_id ? app_id : "");
+}
+
+static void wtl_output_enter(void *d,
+			     struct zwlr_foreign_toplevel_handle_v1 *h,
+			     struct wl_output *o)
+{
+	(void)d; (void)h; (void)o;
+}
+
+static void wtl_output_leave(void *d,
+			     struct zwlr_foreign_toplevel_handle_v1 *h,
+			     struct wl_output *o)
+{
+	(void)d; (void)h; (void)o;
+}
+
+static void wtl_state(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+		      struct wl_array *st)
+{
+	struct kwl_win *w = kwl_win_for(h);
+	unsigned f = 0;
+	uint32_t *v;
+
+	(void)d;
+	if (!w)
+		return;
+	/* The array is the WHOLE state, so it is rebuilt rather than merged:
+	 * a state that stops being sent is a state that ended, and merging
+	 * would leave a restored window minimised for the rest of the
+	 * session. */
+	wl_array_for_each(v, st) {
+		switch (*v) {
+		case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED:
+			f |= KDISP_WIN_MAXIMISED;
+			break;
+		case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED:
+			f |= KDISP_WIN_MINIMISED;
+			break;
+		case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED:
+			f |= KDISP_WIN_FOCUSED;
+			break;
+		case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN:
+			f |= KDISP_WIN_FULLSCREEN;
+			break;
+		default:
+			break;
+		}
+	}
+	w->flags = f;
+}
+
+static void wtl_done(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
+{
+	struct kwl_win *w = kwl_win_for(h);
+
+	(void)d;
+	if (w)
+		w->pending = 0;
+}
+
+static void wtl_closed(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
+{
+	struct kwl_win *w = kwl_win_for(h);
+
+	(void)d;
+	if (w) {
+		*w = kwl_wins[--kwl_nwins];
+	}
+	/* Destroyed HERE and nowhere else: the compositor has said this
+	 * handle is finished, and a proxy kept past that is a request nothing
+	 * will answer. */
+	zwlr_foreign_toplevel_handle_v1_destroy(h);
+}
+
+static void wtl_parent(void *d, struct zwlr_foreign_toplevel_handle_v1 *h,
+		       struct zwlr_foreign_toplevel_handle_v1 *parent)
+{
+	(void)d; (void)h; (void)parent;
+}
+
+static const struct zwlr_foreign_toplevel_handle_v1_listener kwl_tl_listener = {
+	.title = wtl_title,
+	.app_id = wtl_app_id,
+	.output_enter = wtl_output_enter,
+	.output_leave = wtl_output_leave,
+	.state = wtl_state,
+	.done = wtl_done,
+	.closed = wtl_closed,
+	.parent = wtl_parent,
+};
+
+static void wmgr_toplevel(void *d, struct zwlr_foreign_toplevel_manager_v1 *m,
+			  struct zwlr_foreign_toplevel_handle_v1 *h)
+{
+	(void)d;
+	(void)m;
+	if (kwl_nwins >= KWL_WIN_MAX) {
+		/* Refused rather than dropped silently: a handle nobody
+		 * listens to still costs the compositor an object, and a
+		 * desktop with more than this many windows has a task list
+		 * nobody can read anyway. */
+		zwlr_foreign_toplevel_handle_v1_destroy(h);
+		return;
+	}
+	memset(&kwl_wins[kwl_nwins], 0, sizeof(kwl_wins[0]));
+	kwl_wins[kwl_nwins].h = h;
+	kwl_wins[kwl_nwins].id = kwl_win_next_id++;
+	kwl_wins[kwl_nwins].pending = 1;
+	kwl_nwins++;
+	zwlr_foreign_toplevel_handle_v1_add_listener(h, &kwl_tl_listener, NULL);
+}
+
+static void wmgr_finished(void *d, struct zwlr_foreign_toplevel_manager_v1 *m)
+{
+	(void)d;
+	(void)m;
+	K.win_mgr = NULL;
+	kwl_nwins = 0;
+}
+
+static const struct zwlr_foreign_toplevel_manager_v1_listener kwl_mgr_listener = {
+	.toplevel = wmgr_toplevel,
+	.finished = wmgr_finished,
+};
+
+/* Bind on first use, and wait for the windows the compositor announces in
+ * reply — a count taken before that round trip is always zero. */
+static void kwl_win_ensure(void)
+{
+	if (K.win_mgr || !K.registry || !K.win_mgr_name || !K.display)
+		return;
+	K.win_mgr = wl_registry_bind(K.registry, K.win_mgr_name,
+				     &zwlr_foreign_toplevel_manager_v1_interface,
+				     K.win_mgr_ver);
+	if (!K.win_mgr)
+		return;
+	zwlr_foreign_toplevel_manager_v1_add_listener(K.win_mgr,
+						      &kwl_mgr_listener, NULL);
+	wl_display_roundtrip(K.display);
+}
+
+static struct kwl_win *kwl_win_by_id(unsigned id)
+{
+	for (int i = 0; i < kwl_nwins; i++)
+		if (kwl_wins[i].id == id)
+			return &kwl_wins[i];
+	return NULL;
+}
+
+static int kwl_win_count(void)
+{
+	kwl_win_ensure();
+	return kwl_nwins;
+}
+
+static int kwl_win_at(int i, KDispWin *out)
+{
+	kwl_win_ensure();
+	if (i < 0 || i >= kwl_nwins)
+		return 0;
+	out->id = kwl_wins[i].id;
+	out->flags = kwl_wins[i].flags;
+	out->workspace = -1;
+	snprintf(out->app_id, sizeof(out->app_id), "%s", kwl_wins[i].app_id);
+	snprintf(out->title, sizeof(out->title), "%s", kwl_wins[i].title);
+	return 1;
+}
+
+static void kwl_win_activate(unsigned id)
+{
+	struct kwl_win *w = kwl_win_by_id(id);
+
+	if (!w || !K.seat)
+		return;
+	/* Unminimised first: activating a minimised window on wlroots raises
+	 * it without showing it, so the row a person clicked takes the focus
+	 * and stays off the screen. */
+	zwlr_foreign_toplevel_handle_v1_unset_minimized(w->h);
+	zwlr_foreign_toplevel_handle_v1_activate(w->h, K.seat);
+	wl_display_flush(K.display);
+}
+
+static void kwl_win_close(unsigned id)
+{
+	struct kwl_win *w = kwl_win_by_id(id);
+
+	if (!w)
+		return;
+	zwlr_foreign_toplevel_handle_v1_close(w->h);
+	wl_display_flush(K.display);
+}
+
+static void kwl_win_set_state(unsigned id, unsigned flag, int on)
+{
+	struct kwl_win *w = kwl_win_by_id(id);
+
+	if (!w)
+		return;
+	switch (flag) {
+	case KDISP_WIN_MINIMISED:
+		if (on)
+			zwlr_foreign_toplevel_handle_v1_set_minimized(w->h);
+		else
+			zwlr_foreign_toplevel_handle_v1_unset_minimized(w->h);
+		break;
+	case KDISP_WIN_MAXIMISED:
+		/* Unminimised first: a minimised window cannot show itself
+		 * maximised, so a Maximize on a minimised row would appear to
+		 * do nothing at all. */
+		if (on) {
+			zwlr_foreign_toplevel_handle_v1_unset_minimized(w->h);
+			zwlr_foreign_toplevel_handle_v1_set_maximized(w->h);
+		} else {
+			zwlr_foreign_toplevel_handle_v1_unset_maximized(w->h);
+		}
+		break;
+	case KDISP_WIN_FULLSCREEN:
+		if (on) {
+			zwlr_foreign_toplevel_handle_v1_unset_minimized(w->h);
+			/* No output named: the compositor picks the one the
+			 * window is on, which is the only answer this library
+			 * could give it anyway. */
+			zwlr_foreign_toplevel_handle_v1_set_fullscreen(w->h,
+								       NULL);
+		} else {
+			zwlr_foreign_toplevel_handle_v1_unset_fullscreen(w->h);
+		}
+		break;
+	default:
+		break;
+	}
+	wl_display_flush(K.display);
+}
+
 const KDispImpl kwl_impl = {
 	.name = "wayland",
 	.probe = kwl_probe,
@@ -4221,7 +4543,13 @@ const KDispImpl kwl_impl = {
 	.set_backdrop = kwl_set_backdrop,
 	.input_cells = kwl_input_cells,
 	.report_error = kwl_report_error,
+	.focused = kwl_focused,
 	.lock_engaged = kwl_lock_engaged,
 	.lock_finished = kwl_lock_finished,
 	.unlock = kwl_unlock,
+	.win_count = kwl_win_count,
+	.win_at = kwl_win_at,
+	.win_activate = kwl_win_activate,
+	.win_close = kwl_win_close,
+	.win_set_state = kwl_win_set_state,
 };

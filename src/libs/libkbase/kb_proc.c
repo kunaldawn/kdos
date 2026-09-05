@@ -197,6 +197,71 @@ int kb_run_tty(const KbArgv *a)
 	return reap(pid);
 }
 
+/*
+ * A DESKTOP NOTIFICATION, over `gdbus`, detached and best effort.
+ *
+ * DOUBLE-FORKED so nothing here waits: the caller is a terminal that has just
+ * been told a program finished, and one that stopped drawing to raise a toast
+ * about it would be a terminal that stops when anything says anything. The
+ * middle process exits at once and `init` reaps the grandchild, which is the
+ * same shape `con_spawn()` uses for the same reason.
+ *
+ * No bus library is linked. `gdbus` is on every image for the portal, and a
+ * machine without it raises nothing rather than failing.
+ */
+void kb_notify(const char *app, const char *summary, const char *body)
+{
+	if (!summary || !*summary || !kb_have_prog("gdbus"))
+		return;
+
+	pid_t p = fork();
+
+	if (p < 0)
+		return;
+	if (p == 0) {
+		if (fork() == 0) {
+			const char *av[20];
+			int n = 0;
+
+			av[n++] = "gdbus";
+			av[n++] = "call";
+			av[n++] = "--session";
+			av[n++] = "--dest";
+			av[n++] = "org.freedesktop.Notifications";
+			av[n++] = "--object-path";
+			av[n++] = "/org/freedesktop/Notifications";
+			av[n++] = "--method";
+			av[n++] = "org.freedesktop.Notifications.Notify";
+			av[n++] = app && *app ? app : "kdos";
+			av[n++] = "0";
+			av[n++] = "";
+			av[n++] = summary;
+			av[n++] = body ? body : "";
+			av[n++] = "[]";
+			av[n++] = "{}";
+			/*
+			 * THE TIMEOUT IS NOT OPTIONAL and must be POSITIVE.
+			 *
+			 * `Notify`'s signature ends in an int32, so a call
+			 * without it is refused for a signature mismatch —
+			 * silently, because nothing here reads the reply. And
+			 * `-1`, which is how the protocol spells "the daemon
+			 * decides", cannot be written here: `gdbus` parses an
+			 * argument beginning with a dash as one of its own
+			 * options and rejects the call the same silent way.
+			 * Five seconds is what every other toast on this
+			 * desktop asks for.
+			 */
+			av[n++] = "5000";
+			av[n] = NULL;
+			execvp(av[0], (char *const *)av);
+			_exit(127);
+		}
+		_exit(0);
+	}
+	waitpid(p, NULL, 0);
+}
+
 int kb_run_capture(const KbArgv *a, char *buf, size_t n)
 {
 	int fd[2];

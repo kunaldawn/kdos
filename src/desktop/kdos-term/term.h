@@ -42,6 +42,15 @@ typedef struct {
 	int images;		/* decode pictures at all                    */
 	int image_max;		/* the cap on ONE payload, in kilobytes      */
 	int image_cells;	/* the widest a picture may be, in cells     */
+	/*
+	 * Ask before an UNBRACKETED paste that carries a newline. With
+	 * bracketed paste on the child decides for itself; with it off the
+	 * bytes execute, which is the one place a terminal can be made to act
+	 * as the user. On by default, and a key rather than a constant because
+	 * somebody pasting into a program that never enables bracketing all
+	 * day will want it off.
+	 */
+	int paste_guard;
 } TermConf;
 
 extern TermConf TC;
@@ -79,6 +88,9 @@ void term_paste_pending(void);
 /* Register the image callback on the terminal, or leave the three protocols
  * off. Off is what a build with no decoder and `images = no` both mean. */
 void term_pic_init(void);
+/* Re-state the picture geometry XTSMGRAPHICS reports. Called whenever the grid
+ * changes: half the bound is the number of columns and rows. */
+void term_pic_geom(void);
 /* Hand every sprite this program registered back to pixman. */
 void term_pic_shutdown(void);
 /*

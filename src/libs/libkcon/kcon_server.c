@@ -35,6 +35,9 @@ struct KconSurface {
 	unsigned kind;
 	unsigned role;
 	int edge, want_cells, exclusive;
+	/* An overlay's requested corner and its margins from the two edges
+	 * that corner names, in cells. See kcon_surface_corner(). */
+	int corner, margin_x, margin_y;
 	int hidden;
 
 	char app_id[128];
@@ -254,6 +257,15 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 			s->hooks.close_request(f, id, s->user);
 		break;
 	}
+	case KCON_OP_WIN_STATE: {
+		unsigned id = kcon_get_u32(&r);
+		unsigned flag = kcon_get_u16(&r);
+		int on = kcon_get_u8(&r) != 0;
+
+		if (!r.err && f->kind == KCON_KIND_SHELL && s->hooks.win_state)
+			s->hooks.win_state(f, id, flag, on, s->user);
+		break;
+	}
 	case KCON_OP_QUIT:
 		/*
 		 * A SHELL SURFACE ONLY, the same rule KCON_OP_DETACH keeps: a
@@ -321,6 +333,9 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		snprintf(f->app_id, sizeof(f->app_id), "%s", kcon_get_str(&r));
 		snprintf(f->title, sizeof(f->title), "%s", kcon_get_str(&r));
 		(void)kcon_get_str(&r);		/* output, chosen by the display */
+		f->corner = (int)kcon_get_u16(&r);
+		f->margin_x = (int)kcon_get_u16(&r);
+		f->margin_y = (int)kcon_get_u16(&r);
 
 		/*
 		 * A SIZE OF ZERO IS A QUESTION, AND ONLY WHERE THE SESSION
@@ -1159,6 +1174,9 @@ int kcon_surface_hidden(const KconSurface *f)
 }
 
 int kcon_surface_exclusive(const KconSurface *f) { return f ? f->exclusive : 0; }
+int kcon_surface_corner(const KconSurface *f) { return f ? f->corner : 0; }
+int kcon_surface_margin_x(const KconSurface *f) { return f ? f->margin_x : 0; }
+int kcon_surface_margin_y(const KconSurface *f) { return f ? f->margin_y : 0; }
 const KtuiCell *kcon_surface_cells(const KconSurface *f) { return f ? f->cells : NULL; }
 
 void kcon_surface_configure(KconSurface *f, int cols, int rows)
@@ -1171,6 +1189,30 @@ void kcon_surface_configure(KconSurface *f, int cols, int rows)
 	kcon_put_u16(&b, (uint16_t)cols);
 	kcon_put_u16(&b, (uint16_t)rows);
 	kcon_send(f->conn, KCON_OP_CONFIGURE, &b);
+	kcon_buf_free(&b);
+}
+
+/*
+ * THE KEYBOARD FOCUS ARRIVED OR LEFT.
+ *
+ * Sent on every transition the session makes — a raise, a minimise, a
+ * workspace switch, a window closing — so a surface that asked to be dismissed
+ * when it loses the focus is, and so a terminal can tell its child (`CSI I` /
+ * `CSI O`) that a file it has open may have changed underneath it.
+ *
+ * A WINDOW ON A WORKSPACE YOU LEFT HAS LOST THE FOCUS and is told so. It is
+ * not on the screen and cannot be typed into, and a client that believed it
+ * still had the focus would keep drawing a caret nobody can see.
+ */
+void kcon_surface_focus(KconSurface *f, int in)
+{
+	if (!f)
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_u8(&b, (uint8_t)(in ? 1 : 0));
+	kcon_send(f->conn, KCON_OP_FOCUS, &b);
 	kcon_buf_free(&b);
 }
 

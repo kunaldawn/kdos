@@ -131,3 +131,40 @@ int kb_b64_decode(const char *in, size_t inlen, char *out, size_t outsz,
 		*outlen = n;
 	return (int)n;
 }
+
+/*
+ * A path as a `file://` URI, escaped the way every other program on the
+ * machine escapes it.
+ *
+ * THE ESCAPE SET IS NOT A CHOICE. The thumbnail cache is named by the MD5 of
+ * this string, and the cache is SHARED — a file manager, an image viewer and
+ * this desktop all write into it. Escape one character differently and every
+ * thumbnail misses: the entry is there, under a name nothing else computes.
+ * The set is glib's `G_URI_RESERVED_CHARS_ALLOWED_IN_PATH` plus the unreserved
+ * characters, which is what `g_filename_to_uri()` produces.
+ *
+ * Uppercase hex, for the same reason: `%2F` and `%2f` are the same URI and
+ * different strings, and the hash is over the string.
+ */
+void kb_uri_file(const char *path, char *out, size_t n)
+{
+	static const char hex[] = "0123456789ABCDEF";
+	static const char keep[] = "-_.~!$&'()*+,;=:@/";
+	size_t o = 0;
+
+	if (!out || n < 8)
+		return;
+	o += (size_t)snprintf(out, n, "file://");
+	for (const unsigned char *p = (const unsigned char *)path;
+	     *p && o + 4 < n; p++) {
+		if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+		    (*p >= '0' && *p <= '9') || strchr(keep, *p)) {
+			out[o++] = (char)*p;
+			continue;
+		}
+		out[o++] = '%';
+		out[o++] = hex[*p >> 4];
+		out[o++] = hex[*p & 0x0f];
+	}
+	out[o] = '\0';
+}

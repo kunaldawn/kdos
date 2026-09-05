@@ -75,14 +75,20 @@ static int icons_on = 1;
  *
  * kdos-desk owns the whole output, so a popup here is not a second surface —
  * it is a box painted over the icons, and while it is up the desktop claims
- * the whole surface for input again (see input_region()).
+ * the whole surface for input again (see input_region()). Its width is
+ * libktui's: the widget measures its own rows and clamps itself on screen.
  */
-#define MENU_W 26
 /* Rows carry an ID and the run switch dispatches on it, so a row that is
  * hidden for this entry can never be run by its position. */
-enum { CT_OPEN, CT_TERM, CT_RENAME, CT_NEWDIR, CT_NEWFILE, CT_TRASH, CT_EMPTY,
-       CT_REFRESH, CT_SORT, CT_APPS, CT_WALL, CT_DISPLAY, CT_SETTINGS,
-       CT_RULE };
+enum { CT_RENAME, CT_NEWDIR, CT_NEWFILE, CT_EMPTY, CT_REFRESH, CT_SORT,
+       CT_APPS, CT_WALL, CT_DISPLAY, CT_SETTINGS, CT_RULE };
+
+/*
+ * THE TWO ID SPACES MUST NOT COLLIDE. The shared verbs are `KXDG_VERB_*` and
+ * these are `CT_*`, both small and both starting at zero, so the local ones
+ * are offset on the way into the menu and taken apart again on the way out.
+ */
+#define DESK_LOCAL 100
 
 /*
  * WHO the row is for. Right-clicking an icon and right-clicking the wallpaper
@@ -106,31 +112,56 @@ static const struct {
 	int scope;
 	int trash_only;		/* Empty Trash is not offered on a photo */
 	int no_pin;		/* Rename: Home and Trash are places */
+	int dir_only;		/* Add to Places: a file is not a place */
 } CTX[] = {
-	{ "Open",                CT_OPEN,     SC_ITEM, 0, 0 },
-	{ "Open Terminal Here",  CT_TERM,     SC_BOTH, 0, 0 },
-	{ "Rename",              CT_RENAME,   SC_ITEM, 0, 1 },
-	{ "Move to Trash",       CT_TRASH,    SC_ITEM, 0, 1 },
-	{ "Empty Trash",         CT_EMPTY,    SC_ITEM, 1, 0 },
-	{ "New Folder",          CT_NEWDIR,   SC_BOTH, 0, 0 },
-	{ "New File",            CT_NEWFILE,  SC_BOTH, 0, 0 },
-	{ "",                    CT_RULE,     SC_DESK, 0, 0 },
-	{ "Sort Icons",          CT_SORT,     SC_DESK, 0, 0 },
-	{ "Refresh",             CT_REFRESH,  SC_BOTH, 0, 0 },
-	{ "",                    CT_RULE,     SC_DESK, 0, 0 },
+	/*
+	 * The `&` marks the accelerator, and the marks must be unique WITHIN A
+	 * SCOPE rather than within the table: the desktop menu and an icon's
+	 * menu are different sets of rows, and the letter picks the first
+	 * SHOWN row that carries it.
+	 *
+	 * THE SHARED VERBS ARE IN BOTH SCOPES AND HAVE THE FIRST CLAIM on a
+	 * letter — o k e t f p s g m — so these are lettered around them. `s`
+	 * is Settings' here and Share's there, and the two never appear on one
+	 * menu: Share is a verb on a THING and the wallpaper has none.
+	 */
+	/* Open, Open Terminal Here, Add to Places, Move to Trash and the rest
+	 * of the FILE verbs are libkxdg's — see the pane built below. What is
+	 * left here is what only a DESKTOP can answer. */
+	{ "&Rename",             CT_RENAME,   SC_ITEM, 0, 1, 0 },
+	{ "Empt&y Trash",        CT_EMPTY,    SC_ITEM, 1, 0, 0 },
+	{ "&New Folder",         CT_NEWDIR,   SC_BOTH, 0, 0, 0 },
+	{ "Ne&w File",           CT_NEWFILE,  SC_BOTH, 0, 0, 0 },
+	{ "",                    CT_RULE,     SC_DESK, 0, 0, 0 },
+	{ "Sort &Icons",         CT_SORT,     SC_DESK, 0, 0, 0 },
+	{ "Refres&h",            CT_REFRESH,  SC_BOTH, 0, 0, 0 },
+	{ "",                    CT_RULE,     SC_DESK, 0, 0, 0 },
 	/* The compositor's root menu used to own this corner of the screen and
 	 * now does not, so everything it offered has to be reachable here or
 	 * the change is a regression. */
-	{ "Applications",        CT_APPS,     SC_DESK, 0, 0 },
-	{ "Change Wallpaper",    CT_WALL,     SC_DESK, 0, 0 },
-	{ "Display Settings",    CT_DISPLAY,  SC_DESK, 0, 0 },
-	{ "Settings",            CT_SETTINGS, SC_DESK, 0, 0 },
+	{ "&Applications",       CT_APPS,     SC_DESK, 0, 0, 0 },
+	{ "&Change Wallpaper",   CT_WALL,     SC_DESK, 0, 0, 0 },
+	{ "&Display Settings",   CT_DISPLAY,  SC_DESK, 0, 0, 0 },
+	{ "&Settings",           CT_SETTINGS, SC_DESK, 0, 0, 0 },
 };
 #define NCTX ((int)(sizeof(CTX) / sizeof(CTX[0])))
 
-static int ctx_open;		/* the menu is up */
-static int ctx_x, ctx_y;	/* its top-left, in cells */
-static int ctx_sel;
+/*
+ * THE MENU IS libktui's, and the geometry, the caret, the arrows, the hit test
+ * and the click-away are all its. What stays here is the part only the desktop
+ * knows: which rows are on the menu for the thing that was clicked.
+ *
+ * `ctx_item` is DERIVED from CTX rather than written beside it. The widget
+ * needs a contiguous KtuiMenuItem array and the scope columns have nowhere to
+ * live in one, and a second hand-maintained table is the drift this desktop
+ * already paid for once.
+ */
+/* The shared verbs, a rule, then this file's own rows — see ctx_show(). */
+static KtuiMenuItem ctx_item[KXDG_VERB_MAX + 1 + NCTX];
+static KtuiMenuPane ctx_pane = { NULL, ctx_item, 0 };
+static int nverb;
+static KtuiMenu menu;
+static KtuiKeys keys;
 static int ctx_for;		/* which entry it belongs to, or -1: the desktop */
 
 /* How the grid is ordered. Cycled by the desktop menu's Sort Icons and kept
@@ -174,21 +205,10 @@ static int dragging;
  */
 static void uri_of(const char *path, char *out, size_t n)
 {
-	static const char hex[] = "0123456789ABCDEF";
-	size_t o = 0;
-
-	o += (size_t)snprintf(out, n, "file://");
-	for (const unsigned char *p = (const unsigned char *)path;
-	     *p && o + 4 < n; p++) {
-		if (*p <= 0x20 || *p >= 0x7f || strchr("%#?[]", *p)) {
-			out[o++] = '%';
-			out[o++] = hex[*p >> 4];
-			out[o++] = hex[*p & 0x0f];
-		} else {
-			out[o++] = (char)*p;
-		}
-	}
-	out[o] = '\0';
+	/* libkbase's, because the thumbnail cache is named by the MD5 of this
+	 * exact string and a second escaper here would make every thumbnail
+	 * this desktop wrote invisible to everything else. */
+	kb_uri_file(path, out, n);
 }
 
 static void unpercent(const char *in, char *out, size_t n)
@@ -264,50 +284,14 @@ static void drop_to_trash(const char *uris, char *status, size_t n)
 /* ── reading the desktop directory ─────────────────────────────────────── */
 
 /*
- * WHICH directory, from `~/.config/user-dirs.dirs`.
- *
- * KDOS seeds that file rather than generating it (there is no xdg-user-dirs),
- * and every other consumer on the machine honours it — a desktop that ignored
- * it would be the one program insisting the folder is called Desktop after the
- * user said otherwise. The value is written as `XDG_DESKTOP_DIR="$HOME/Desktop"`,
- * so `$HOME` is the one expansion that has to be understood.
+ * WHICH directory. `libkxdg` owns the answer, because the Places menu and the
+ * chooser's sidebar ask the same question — a second reader here is how the
+ * icons ended up in the folder `user-dirs.dirs` named while the menu opened an
+ * empty one beside it.
  */
 static void desktop_dir(char *out, size_t n)
 {
-	const char *home = getenv("HOME");
-	const char *cfg = getenv("XDG_CONFIG_HOME");
-	char path[1024], line[512];
-	FILE *f;
-
-	snprintf(out, n, "%s/Desktop", home ? home : "");
-	if (cfg && *cfg)
-		snprintf(path, sizeof(path), "%s/user-dirs.dirs", cfg);
-	else if (home)
-		snprintf(path, sizeof(path), "%s/.config/user-dirs.dirs", home);
-	else
-		return;
-
-	f = fopen(path, "r");
-	if (!f)
-		return;
-	while (fgets(line, sizeof(line), f)) {
-		char *v = strchr(line, '=');
-		if (strncmp(line, "XDG_DESKTOP_DIR", 15) || !v)
-			continue;
-		v++;
-		if (*v == '"')
-			v++;
-		line[strcspn(line, "\n")] = '\0';
-		char *end = strchr(v, '"');
-		if (end)
-			*end = '\0';
-		if (!strncmp(v, "$HOME", 5) && home)
-			snprintf(out, n, "%s%s", home, v + 5);
-		else if (*v)
-			snprintf(out, n, "%s", v);
-		break;
-	}
-	fclose(f);
+	kxdg_user_dir("DESKTOP", out, n);
 }
 
 /*
@@ -502,6 +486,19 @@ static void open_entry(const struct entry *it)
 		return;
 	}
 	/*
+	 * THE TRASH IS NOT A DIRECTORY TO BROWSE. Its path is one, and a file
+	 * manager opened on it shows the escaped names in `files/` with no
+	 * origin, no deletion date and no way back — the record that carries
+	 * all three lives in `info/` beside it. `kdos-trash` reads the pair.
+	 */
+	if (it->is_trash) {
+		const char *tv[] = { "kdos-trash", NULL };
+
+		spawn(tv);
+		return;
+	}
+
+	/*
 	 * Everything else — a file AND a directory — goes to the MIME handler,
 	 * which on this machine is kdos-appbox. A directory used to be a
 	 * hardcoded `foot -e mc` here, which is a SECOND answer to a question
@@ -585,7 +582,9 @@ static void input_region(void)
 	 */
 	static long shown = -1;
 	int cols = columns();
-	long sig = ctx_open ? -2 : (long)nentries * 100000 + cols * 100 + ktui_h;
+	long sig = ktui_menu_active(&menu)
+			   ? -2
+			   : (long)nentries * 100000 + cols * 100 + ktui_h;
 
 	(void)claim;
 	(void)cols;
@@ -612,108 +611,164 @@ static void input_region(void)
 	kdisp_input_cells(NULL, -1);
 }
 
+/* Whether the local half has any row on this menu, which is what decides
+ * whether the rule between the halves is drawn. */
+static int ctx_local_any(void);
+
 /*
- * Whether a row is on this menu at all. `ctx_sel` indexes CTX, not the drawn
- * rows — so every walk over it has to skip the same rows the drawing does, or
- * the selection lands on `Empty Trash` for a photograph: nothing highlighted,
- * and Enter doing nothing.
+ * WHAT THE MENU IS ABOUT: the entry under the pointer, or — on bare wallpaper
+ * — the desktop folder itself, which is what "here" means when there is no
+ * icon under the cursor.
  */
-static bool ctx_shown(int i)
+static int ctx_target(char *out, size_t n, int *isdir)
 {
+	if (ctx_for < 0) {
+		desktop_dir(out, n);
+		*isdir = 1;
+		return 1;
+	}
+	if (ctx_for >= nentries)
+		return 0;
+	snprintf(out, n, "%s", entries[ctx_for].path);
+	*isdir = entries[ctx_for].dir;
+	return 1;
+}
+
+/*
+ * Whether a row is on this menu at all — the desktop's half of the widget's
+ * contract, asked by its drawing and by its hit test from one walk.
+ *
+ * TWO HALVES, ONE WALK. The first `nverb` rows are libkxdg's file verbs, then
+ * a rule, then this file's own. The rule is drawn only when both halves have
+ * something: a separator with nothing on one side is a line for its own sake.
+ */
+static int ctx_show(int i, void *user)
+{
+	char path[1400];
+	int isdir = 0;
+
+	(void)user;
+	if (i < nverb) {
+		KxdgVerb v;
+
+		if (!ctx_target(path, sizeof(path), &isdir) ||
+		    !kxdg_verb_at(i, &v) || !kxdg_verb_shown(&v, path, isdir))
+			return 0;
+		/*
+		 * ON BARE WALLPAPER, ONLY THE VERBS THAT MEAN "HERE". Open,
+		 * Share and Move to Trash read as acting on THE THING, and on
+		 * the wallpaper there is no thing — a Move to Trash there
+		 * would act on the desktop folder itself.
+		 */
+		if (ctx_for < 0 && v.id != KXDG_VERB_TERM &&
+		    v.id != KXDG_VERB_FIND && v.id != KXDG_VERB_PLACE &&
+		    v.id != KXDG_VERB_GIT)
+			return 0;
+		/*
+		 * HOME AND TRASH ARE PLACES, NOT FILES. The shared table has
+		 * no notion of a pinned grid cell and must not grow one — two
+		 * other surfaces read it and neither has pins — so the mask
+		 * lives here, where the pin does.
+		 */
+		if (v.id == KXDG_VERB_TRASH && ctx_for >= 0 &&
+		    entries[ctx_for].pinned)
+			return 0;
+		return 1;
+	}
+	if (i == nverb)
+		return ctx_local_any();
+	i -= nverb + 1;
 	if (i < 0 || i >= NCTX)
-		return false;
+		return 0;
 	if (ctx_for < 0)
 		return (CTX[i].scope & SC_DESK) != 0;
 	if (ctx_for >= nentries)
-		return false;
+		return 0;
 	if (!(CTX[i].scope & SC_ITEM))
-		return false;
+		return 0;
 	if (CTX[i].trash_only && !entries[ctx_for].is_trash)
-		return false;
+		return 0;
 	if (CTX[i].no_pin && entries[ctx_for].pinned)
-		return false;
-	return true;
+		return 0;
+	/* A file is not a place. The row is offered on a folder only, so the
+	 * column cannot grow an entry that opens a document. */
+	if (CTX[i].dir_only && !entries[ctx_for].dir)
+		return 0;
+	return 1;
 }
 
-/* A rule is drawn and is never selected — the same rule kdos-start keeps, and
- * for the same reason: a separator that can hold the caret is a menu with a
- * row that does nothing. */
-static bool ctx_pickable(int i)
+static int ctx_local_any(void)
 {
-	return ctx_shown(i) && CTX[i].id != CT_RULE;
-}
-
-static void ctx_step(int dir)
-{
-	for (int k = 0; k < NCTX; k++) {
-		ctx_sel = (ctx_sel + dir + NCTX) % NCTX;
-		if (ctx_pickable(ctx_sel))
-			return;
-	}
-}
-
-static void draw_ctx(void)
-{
-	int rows = 0;
 	for (int i = 0; i < NCTX; i++)
-		if (ctx_shown(i))
-			rows++;
-
-	KRect r = krect(ctx_x, ctx_y, MENU_W, rows + 2);
-	if (r.x + r.w > ktui_w)
-		r.x = ktui_w - r.w;
-	if (r.y + r.h > ktui_h)
-		r.y = ktui_h - r.h;
-	if (r.x < 0)
-		r.x = 0;
-	if (r.y < 0)
-		r.y = 0;
-	ctx_x = r.x;
-	ctx_y = r.y;
-
-	ktui_draw_fill(r, KT_SURFACE);
-	ktui_draw_box(r, NULL, KT_ACCENT, KT_SURFACE, 0);
-
-	int y = r.y + 1;
-	for (int i = 0; i < NCTX; i++) {
-		if (!ctx_shown(i))
-			continue;
-		if (CTX[i].id == CT_RULE) {
-			ktui_draw_hline(r.x + 1, y, r.w - 2, KT_G_HL, KT_DIM,
-					KT_SURFACE);
-			y++;
-			continue;
-		}
-		bool on = i == ctx_sel;
-		ktui_draw_fill(krect(r.x + 1, y, r.w - 2, 1),
-			       on ? KT_ACCENT : KT_SURFACE);
-		ktui_draw_text(r.x + 2, y, r.w - 4, CTX[i].label,
-			       on ? KT_SURFACE : KT_TEXT,
-			       on ? KT_ACCENT : KT_SURFACE, KT_A_NONE);
-		y++;
-	}
+		if (ctx_show(nverb + 1 + i, NULL))
+			return 1;
+	return 0;
 }
 
-/* Which menu row a cell is on, or -1. Walks the same skip the drawing does, so
- * the two cannot disagree about whether Empty Trash is there. */
-static int ctx_row_at(int mx, int my)
+/*
+ * Open the menu for what was clicked. `ctx_for` is set BEFORE the open,
+ * because the widget asks `ctx_show` for its first selectable row while it
+ * opens and that answer depends on which entry the menu belongs to.
+ */
+static void ctx_popup(int for_entry, int x, int y)
 {
-	int rows = 0;
-	for (int i = 0; i < NCTX; i++)
-		if (ctx_shown(i))
-			rows++;
-	if (mx < ctx_x || mx >= ctx_x + MENU_W || my <= ctx_y ||
-	    my > ctx_y + rows)
-		return -1;
+	ctx_for = for_entry;
+	ktui_menu_open(&menu, 0, x, y);
+}
 
-	int want = my - ctx_y - 1, seen = 0;
-	for (int i = 0; i < NCTX; i++) {
-		if (!ctx_shown(i))
-			continue;
-		if (seen++ == want)
-			return i;
+/*
+ * THE SELECTION IS THE ONE THING Esc TAKES DOWN HERE. The desktop does not
+ * close, so declaring the highlight as a layer is what keeps the row from
+ * offering "Esc Close" on a surface that has no close.
+ */
+static int sel_up(void *user)
+{
+	(void)user;
+	return sel > 0;
+}
+
+static void sel_clear(void *user)
+{
+	(void)user;
+	sel = 0;
+}
+
+/* The name editor is the inner rung. It owns every printable key while it is
+ * up, and none of the three the ladder answers, so declaring it costs the
+ * editor nothing and buys the row an honest verb. */
+static int edit_up(void *user)
+{
+	(void)user;
+	return edit_mode != ED_NONE;
+}
+
+static void edit_cancel(void *user)
+{
+	(void)user;
+	edit_mode = ED_NONE;
+}
+
+/* Where Shift+F10 pops it: on the selected icon, or the top-left of the grid
+ * when nothing is selected. A menu at the origin names a row nobody is
+ * looking at. */
+static int ctx_at(int *x, int *y, void *user)
+{
+	(void)user;
+	if (sel >= 0 && sel < drawn_count()) {
+		int cols = columns();
+
+		/* The icon's own cell, from the same arithmetic the grid is
+		 * drawn with — a menu that popped one row off would cover the
+		 * thing it acts on. */
+		*x = (sel % cols) * CELL_W + 1;
+		*y = (sel / cols) * CELL_H + 2;
+		ctx_for = sel;
+	} else {
+		*x = 1;
+		*y = 1;
+		ctx_for = -1;
 	}
-	return -1;
+	return 1;
 }
 
 static void draw(const char *status)
@@ -802,6 +857,19 @@ static void draw(const char *status)
 		}
 	}
 
+	ktui_hint_if(edit_mode != ED_NONE, "Enter", "rename");
+	ktui_hint_if(!edit_mode && sel >= 0 && sel < nentries, "Enter", "open");
+	ktui_hint_if(!edit_mode && sel >= 0 && sel < nentries &&
+			     !entries[sel].pinned,
+		     "Del", "trash");
+	ktui_hint_if(!edit_mode && !ktui_menu_active(&menu), "Shift+F10",
+		     "menu");
+	/* Only where Esc DOES something: the desktop never closes, so an
+	 * unconditional hint here would read "Esc Close" on the one surface
+	 * that has no close. */
+	ktui_hint_if(edit_mode || ktui_menu_active(&menu) || sel > 0, "Esc",
+		     ktui_esc_verb(&keys));
+
 	if (edit_mode) {
 		/* pick.c's line editor, on the status row. */
 		char line[320];
@@ -815,8 +883,18 @@ static void draw(const char *status)
 	} else if (status && *status)
 		ktui_draw_text(1, h - 1, w - 2, status, KT_WARN, KT_BG,
 			       KT_A_NONE);
-	if (ctx_open)
-		draw_ctx();
+	/*
+	 * ALWAYS CALLED, open or not: it is what pushes the menu's own hints,
+	 * and the row below is what drains the pool. A draw that skipped it
+	 * while the menu was down would leave a frame's hints in the pool for
+	 * the next one.
+	 */
+	ktui_menu_draw(&menu);
+	/* The status row is shared. The hints have it only while nothing else
+	 * is saying anything — a message about a failed rename outranks a
+	 * reminder of which key opens a file. */
+	if (!edit_mode && !(status && *status))
+		ktui_hint_row(&keys, krect(1, h - 1, w - 2, 1), KT_BG);
 	ktui_draw_flush();
 }
 
@@ -903,12 +981,75 @@ static void edit_commit(char *status, size_t n)
 	reload();
 }
 
-/* One context-menu row. Dispatches on the row's ID, so a row that is skipped
- * for this entry can never be run by its position. */
-static void ctx_run(int row, char *status, size_t n)
+/* One context-menu row, named by its VERB rather than by its position: a row
+ * that is skipped for this entry can then never be run by the index of the one
+ * that took its place. */
+static void ctx_run(int id, char *status, size_t n)
 {
-	if (!ctx_pickable(row))
+	/*
+	 * THE SHARED VERBS FIRST, and they are the ones this file no longer
+	 * decides anything about: what "Open Terminal Here" runs and where is
+	 * libkxdg's answer, and the chooser and `mc` get the same one.
+	 */
+	if (id < DESK_LOCAL) {
+		char path[1400], store[1024];
+		const char *argv[12];
+		int isdir = 0;
+
+		if (!ctx_target(path, sizeof(path), &isdir))
+			return;
+		/*
+		 * TWO VERBS KEEP A LOCAL ACTION, and the row, its label and
+		 * its position are still the shared table's — only what
+		 * happens is this file's.
+		 *
+		 * OPEN, because `open_entry()` answers two things a MIME
+		 * lookup cannot: a `.desktop` icon is an APPLICATION and is
+		 * run rather than opened, and the Trash icon is a place whose
+		 * directory holds escaped names with no origin. Handing either
+		 * to `kdos-appbox open` would make this row mean something
+		 * different from Enter on the same icon.
+		 */
+		if (id == KXDG_VERB_OPEN && ctx_for >= 0 &&
+		    ctx_for < nentries) {
+			open_entry(&entries[ctx_for]);
+			return;
+		}
+		/*
+		 * TRASH, because deleting asks first and refuses the two
+		 * pinned places. `kdos trash <file>` confirms nothing — which
+		 * is right for a prompt and for `mc`, and wrong for the key
+		 * that sits beside Delete on the same surface.
+		 */
+		if (id == KXDG_VERB_TRASH && ctx_for >= 0) {
+			sel = ctx_for;
+			trash_selected(status, n);
+			return;
+		}
+		if (id == KXDG_VERB_PLACE) {
+			/* The one verb whose ANSWER belongs on the screen: it
+			 * writes a file and says nothing, and a row that looks
+			 * like it did nothing is a row people press twice. */
+			const char *base = strrchr(path, '/');
+			int r = kxdg_places_add(base && base[1] ? base + 1
+								: path, path);
+
+			snprintf(status, n,
+				 r == 0	  ? "%s is on the places list"
+				 : r == 1 ? "%s is already a place"
+					  : "cannot add %s to places",
+				 base && base[1] ? base + 1 : path);
+			return;
+		}
+		if (kxdg_verb_argv(id, path, isdir, sh_term(), store,
+				   sizeof(store), argv, 12))
+			spawn(argv);
+		/* Trash moves a file out from under the grid. */
+		if (id == KXDG_VERB_TRASH)
+			reload();
 		return;
+	}
+	id -= DESK_LOCAL;
 
 	/*
 	 * The DESKTOP's own menu: no entry under the pointer, so every row
@@ -918,12 +1059,7 @@ static void ctx_run(int row, char *status, size_t n)
 	if (ctx_for < 0) {
 		char dir[1024];
 		desktop_dir(dir, sizeof(dir));
-		switch (CTX[row].id) {
-		case CT_TERM: {
-			const char *argv[] = { sh_term(), "-D", dir, NULL };
-			spawn(argv);
-			break;
-		}
+		switch (id) {
 		case CT_NEWDIR:
 			edit_mode = ED_NEWDIR;
 			edit_buf[0] = '\0';
@@ -971,25 +1107,7 @@ static void ctx_run(int row, char *status, size_t n)
 
 	const struct entry *it = &entries[ctx_for];
 
-	switch (CTX[row].id) {
-	case CT_OPEN:
-		open_entry(it);
-		break;
-	case CT_TERM: {
-		/* In the directory itself, or in the one holding the file —
-		 * which is what "here" means when the pointer is on a
-		 * document. */
-		char dir[1400];
-		snprintf(dir, sizeof(dir), "%s", it->path);
-		if (!it->dir) {
-			char *slash = strrchr(dir, '/');
-			if (slash && slash != dir)
-				*slash = '\0';
-		}
-		const char *argv[] = { sh_term(), "-D", dir, NULL };
-		spawn(argv);
-		break;
-	}
+	switch (id) {
 	case CT_RENAME: {
 		/* Prefill with the FILE's basename, not the row label — a
 		 * .desktop row reads `Firefox` and renaming renames the
@@ -1008,10 +1126,6 @@ static void ctx_run(int row, char *status, size_t n)
 	case CT_NEWFILE:
 		edit_mode = ED_NEWFILE;
 		edit_buf[0] = '\0';
-		break;
-	case CT_TRASH:
-		sel = ctx_for;
-		trash_selected(status, n);
 		break;
 	case CT_EMPTY: {
 		int k = confirmed("Empty the trash? This cannot be undone.")
@@ -1072,6 +1186,38 @@ int desk_main(int argc, char **argv)
 		 * keyboard while the user is actually on the desktop. */
 		.keyboard = 1,
 	};
+
+	/*
+	 * THE PANE IS BUILT ONCE and filtered per open. Which verbs a machine
+	 * HAS cannot change while the desktop runs; which of them apply to the
+	 * thing under the pointer changes on every click, and that is what
+	 * `ctx_show` is for.
+	 */
+	for (int i = 0; i < kxdg_verb_count() && i < KXDG_VERB_MAX; i++) {
+		KxdgVerb v;
+
+		if (!kxdg_verb_at(i, &v))
+			break;
+		ctx_item[nverb].label = v.label;
+		ctx_item[nverb].id = v.id;
+		ctx_item[nverb].enabled = 1;
+		nverb++;
+	}
+	ctx_item[nverb].label = "";		/* the rule between the halves */
+	ctx_item[nverb].id = 0;
+	for (int i = 0; i < NCTX; i++) {
+		ctx_item[nverb + 1 + i].label = CTX[i].label;
+		ctx_item[nverb + 1 + i].id = CTX[i].id + DESK_LOCAL;
+		ctx_item[nverb + 1 + i].enabled = 1;
+	}
+	ctx_pane.n = nverb + 1 + NCTX;
+	menu.pane = &ctx_pane;
+	menu.npane = 1;
+	menu.show = ctx_show;
+	keys.menu = &menu;
+	keys.ctx_at = ctx_at;
+	ktui_keys_layer(&keys, "Deselect", sel_up, sel_clear, NULL);
+	ktui_keys_layer(&keys, "Cancel", edit_up, edit_cancel, NULL);
 
 	sh_theme_from_cache();
 	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
@@ -1138,7 +1284,8 @@ int desk_main(int argc, char **argv)
 			 * fd and the event plumbing an inotify watch costs.
 			 */
 			time_t now = time(NULL);
-			if (now - last_scan >= 2 && !ctx_open && !edit_mode) {
+			if (now - last_scan >= 2 && !ktui_menu_active(&menu) &&
+			    !edit_mode) {
 				last_scan = now;
 				reload();	/* sel is reclamped at the top */
 			}
@@ -1175,6 +1322,24 @@ int desk_main(int argc, char **argv)
 			continue;
 		}
 
+		/*
+		 * THE CONTRACT, FIRST AND FOR EVERY EVENT — keys and pointer
+		 * alike, because the menu is on this call and a second call
+		 * site for it in the pointer path would be a second copy of
+		 * "is the menu up" to get wrong.
+		 */
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_MENU) {
+				ctx_run(keys.menu_id, status, sizeof(status));
+				status_at = time(NULL);
+				continue;
+			}
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		if (ev.type == KT_EVT_MOUSE) {
 			if (ev.mx < 0 || ev.my < 0)
 				continue;	/* the pointer left the surface */
@@ -1183,26 +1348,6 @@ int desk_main(int argc, char **argv)
 			 * name. */
 			if (edit_mode)
 				continue;
-
-			if (ctx_open) {
-				int row = ctx_row_at(ev.mx, ev.my);
-				if (ev.press == KT_MP_DRAG) {
-					if (row >= 0)
-						ctx_sel = row;
-					continue;
-				}
-				if (ev.press != KT_MP_PRESS)
-					continue;
-				if (row < 0) {
-					ctx_open = 0;	/* click away */
-					continue;
-				}
-				ctx_sel = row;
-				ctx_run(row, status, sizeof(status));
-				status_at = time(NULL);
-				ctx_open = 0;
-				continue;
-			}
 
 			/*
 			 * A press that leaves its cell is a drag, not a click.
@@ -1228,13 +1373,7 @@ int desk_main(int argc, char **argv)
 				 * compositor's menu rather than a desktop's —
 				 * and the desktop's own New Folder was then
 				 * reachable only by right-clicking an icon. */
-				ctx_for = -1;
-				ctx_sel = 0;
-				while (ctx_sel < NCTX && !ctx_pickable(ctx_sel))
-					ctx_sel++;
-				ctx_x = ev.mx;
-				ctx_y = ev.my;
-				ctx_open = 1;
+				ctx_popup(-1, ev.mx, ev.my);
 				continue;
 			}
 			if (i < 0)
@@ -1245,11 +1384,7 @@ int desk_main(int argc, char **argv)
 				 * a menu acting on something other than what
 				 * was right-clicked is how files get deleted. */
 				sel = i;
-				ctx_for = i;
-				ctx_sel = 0;
-				ctx_x = ev.mx;
-				ctx_y = ev.my;
-				ctx_open = 1;
+				ctx_popup(i, ev.mx, ev.my);
 				continue;
 			}
 			if (ev.btn != KT_MB_LEFT)
@@ -1277,9 +1412,7 @@ int desk_main(int argc, char **argv)
 
 		if (edit_mode) {
 			size_t n2 = strlen(edit_buf);
-			if (ev.key == KT_K_ESC) {
-				edit_mode = ED_NONE;
-			} else if (ev.key == KT_K_ENTER) {
+			if (ev.key == KT_K_ENTER) {
 				edit_commit(status, sizeof(status));
 				status_at = time(NULL);
 				edit_mode = ED_NONE;
@@ -1293,28 +1426,6 @@ int desk_main(int argc, char **argv)
 				 * stays within the desktop dir. */
 				edit_buf[n2] = (char)ev.key;
 				edit_buf[n2 + 1] = '\0';
-			}
-			continue;
-		}
-
-		if (ctx_open) {
-			switch (ev.key) {
-			case KT_K_ESC:
-				ctx_open = 0;
-				break;
-			case KT_K_UP:
-				ctx_step(-1);
-				break;
-			case KT_K_DOWN:
-				ctx_step(1);
-				break;
-			case KT_K_ENTER:
-				ctx_run(ctx_sel, status, sizeof(status));
-				status_at = time(NULL);
-				ctx_open = 0;
-				break;
-			default:
-				break;
 			}
 			continue;
 		}
@@ -1339,11 +1450,6 @@ int desk_main(int argc, char **argv)
 		case KT_K_F5:
 		case 'r':
 			reload();
-			break;
-		case KT_K_ESC:
-			/* Nothing to close, but the selection is a highlight
-			 * the user may want gone. */
-			sel = 0;
 			break;
 		default:
 			break;

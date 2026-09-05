@@ -20,5 +20,5 @@
 |                                                                              |
 |                                                                              |
 |                                                                              |
-|                       [ Forget ] [ Clear All ] [ Do Not Disturb ] [ Close ]  |
+| Esc Close             [ Forget ] [ Clear All ] [ Do Not Disturb ] [ Close ]  |
 +==============================================================================+

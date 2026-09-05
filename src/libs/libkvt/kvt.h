@@ -401,6 +401,9 @@ int kvt_term_place(struct kvt_term *t, uint64_t key, int cw, int ch);
 
 /* Pasted text, bracketed when the child asked for it. */
 void kvt_term_paste(struct kvt_term *t, const char *text);
+/* True when this payload would execute if pasted. See
+ * kvt_vte_paste_needs_confirm(). */
+int kvt_term_paste_needs_confirm(struct kvt_term *t, const char *text);
 
 /*
  * One libktui key event, as the bytes this terminal is in the mode to send.
@@ -611,6 +614,29 @@ typedef void (*kvt_vte_mouse_cb) (struct kvt_vte *vte,
 typedef void (*kvt_vte_bell_cb) (struct kvt_vte *vte,
 				 void *data);
 
+/*
+ * SYNCHRONIZED OUTPUT (DECSET 2026) WENT ON OR OFF.
+ *
+ * The renderer skips a frame while it is on, so a program that draws its
+ * screen in one bracket is never seen half-drawn — which on a slow link is the
+ * difference between a frame and a tear. **The watchdog is the renderer's**: a
+ * child that sets the mode and dies would otherwise freeze its window forever,
+ * and the terminal cannot tell that from a program taking its time.
+ */
+typedef void (*kvt_vte_sync_cb) (struct kvt_vte *vte, bool on, void *data);
+
+/*
+ * A PROGRAM INSIDE THE TERMINAL SAYS IT FINISHED — OSC 9, OSC 777 and OSC 99,
+ * the three spellings that exist because none of them won.
+ *
+ * The callback is the TERMINAL'S rather than this library's: raising a toast
+ * means a session bus, and `libkvt` links nothing and must not start. A
+ * terminal that sets no handler drops them, which is right for one with no
+ * desktop behind it.
+ */
+typedef void (*kvt_vte_notify_cb) (struct kvt_vte *vte, const char *summary,
+				   const char *body, void *data);
+
 enum kvt_vte_led {
 	KVT_VTE_LED_SCROLL_LOCK = (1 << 0),
 	KVT_VTE_LED_NUM_LOCK    = (1 << 1),
@@ -650,6 +676,15 @@ void kvt_term_clip_cb(struct kvt_term *t, kvt_vte_clip_cb cb, void *user);
  * terminal with no callback set swallows it exactly as it did before.
  */
 void kvt_term_bell_cb(struct kvt_term *t, kvt_vte_bell_cb cb, void *user);
+void kvt_term_sync_cb(struct kvt_term *t, kvt_vte_sync_cb cb, void *user);
+void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user);
+/* The focus moved. Sends CSI I / CSI O only while the child asked for them. */
+void kvt_term_focus(struct kvt_term *t, int in);
+/* True while the child has synchronized output on. */
+int kvt_term_sync_output(struct kvt_term *t);
+/* True while this frame should be held back — synchronized output is on and
+ * the child has not held it past the watchdog. */
+int kvt_term_sync_hold(struct kvt_term *t);
 /* The same, for a terminal that owns its state machine (kvt_term.c). */
 void kvt_term_osc_cb(struct kvt_term *t, kvt_vte_osc_cb cb, void *user);
 
@@ -664,8 +699,28 @@ void kvt_vte_set_img_cb(struct kvt_vte *vte, kvt_vte_img_cb img_cb,
 /* The same, for a terminal that owns its state machine (kvt_term.c). */
 void kvt_term_img_cb(struct kvt_term *t, kvt_vte_img_cb cb, size_t max_bytes,
 		     void *user);
+
+/*
+ * WHAT `CSI ? 2 ; 1 ; S` (XTSMGRAPHICS) REPORTS AS THE SIXEL GEOMETRY, in
+ * pixels. The library cannot derive it: the ceiling is the consumer's own
+ * `image_cells` multiplied by its cell size, and libkvt knows neither.
+ *
+ * A TERMINAL THAT DOES NOT CALL THIS ANSWERS THE QUERY WITH A FAILURE, which
+ * is the honest reply. A program told a geometry the terminal will not honour
+ * sends a picture that comes back clipped, and nothing in that failure names
+ * the terminal that lied about its size.
+ */
+void kvt_vte_set_img_geom(struct kvt_vte *vte, int max_w_px, int max_h_px);
+void kvt_term_img_geom(struct kvt_term *t, int max_w_px, int max_h_px);
 void kvt_vte_set_mouse_cb(struct kvt_vte *vte, kvt_vte_mouse_cb mouse_cb, void *mouse_data);
 void kvt_vte_set_bell_cb(struct kvt_vte *vte, kvt_vte_bell_cb bell_cb, void *bell_data);
+void kvt_vte_set_sync_cb(struct kvt_vte *vte, kvt_vte_sync_cb cb, void *data);
+void kvt_vte_set_notify_cb(struct kvt_vte *vte, kvt_vte_notify_cb cb, void *data);
+/* CSI I / CSI O to the child, and only while it asked with DECSET 1004. */
+void kvt_vte_focus(struct kvt_vte *vte, bool in);
+/* True while the child has synchronized output on. The renderer skips a frame
+ * while it is, under a watchdog of its own. */
+bool kvt_vte_sync_output(struct kvt_vte *vte);
 void kvt_vte_set_led_cb(struct kvt_vte *vte, kvt_vte_led_cb led_cb, void *led_data);
 
 /**
@@ -740,6 +795,20 @@ unsigned int kvt_vte_get_flags(struct kvt_vte *vte);
 unsigned int kvt_vte_get_mouse_mode(struct kvt_vte *vte);
 unsigned int kvt_vte_get_mouse_event(struct kvt_vte *vte);
 
+/*
+ * What the child is told this terminal is called, in `TERM_PROGRAM_VERSION`.
+ * A consumer that passes -DKDOS_TERM_VERSION gets its own package version;
+ * anything else gets "0", which is a version a probe can compare and not a
+ * variable it finds missing.
+ */
+#ifdef KDOS_TERM_VERSION
+#define KVT_TERM_VERSION KDOS_TERM_VERSION
+#elif defined(KDOS_CON_VERSION)
+#define KVT_TERM_VERSION KDOS_CON_VERSION
+#else
+#define KVT_TERM_VERSION "0"
+#endif
+
 void kvt_vte_reset(struct kvt_vte *vte);
 void kvt_vte_hard_reset(struct kvt_vte *vte);
 void kvt_vte_input(struct kvt_vte *vte, const char *u8, size_t len);
@@ -764,6 +833,9 @@ bool kvt_vte_handle_mouse(struct kvt_vte *vte, unsigned int cell_x,
         unsigned int button, unsigned int event, unsigned char flags);
 
 void kvt_vte_paste(struct kvt_vte *vte, const char *data);
+/* True when an unbracketed payload carries a control byte other than tab —
+ * a newline in one EXECUTES at a shell. The caller confirms first. */
+int kvt_vte_paste_needs_confirm(struct kvt_vte *vte, const char *data);
 /** @} */
 
 #ifdef __cplusplus

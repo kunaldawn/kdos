@@ -197,6 +197,27 @@ grid**, and a layout that only lines up once the pictures load is a layout that 
 harness must stub the **whole** interface a front end calls: a missing stub is a link failure that
 reads as "the front ends do not compile" and takes every frame behind it.
 
+**`kdos-view --shot` draws at the font's MAX advance, so a container photograph is spaced out.**
+`libkcell` takes its cell width from `max_advance.x`, which for a font with CJK coverage — the
+fontconfig default on a build container — is about twice the Latin advance. The glyphs are then
+drawn at the left of a cell twice their width. The shipped image's console font has one advance for
+everything, so this is the borrowed font talking and not the painter; judge a shot on the image, or
+pass `--font`.
+
+**A golden that differs from `HEAD` may be uncommitted work, not drift.** These frames are
+regenerated as the tree changes and are often modified in the working tree ahead of the source
+change that lands with them — so `git checkout --` on one throws away the very thing it records, and
+the next run reports a difference that looks like a flake. `git diff HEAD` on the **source** is what
+tells the two apart; run the dump twice if you still cannot.
+
+**`libkdisp` is stubbed, not linked, and adding a `kdisp_` entry point breaks the harness.** The
+stubs are in `testing/fixtures/shell/dumpmain.c` and there is no compiler check that they cover the
+header — a new one links as "undefined reference" and every front-end frame behind it is skipped.
+Linking the real `libkdisp` beside them is not the fix; it is thirty *multiple definition* errors.
+Add the stub. A stub answers the state a dump actually has: `kdisp_win_supported()` is 0 because a
+dump renders one frame with no compositor, and a stub that invented two windows would make the
+frames assert a fiction.
+
 Regenerating is a variable on the self-test, and must be done where the Wayland dependencies exist
 — a build container, not a bare host. The terminal's are the exception: it builds console-only on
 any host, which is the point of that build.
@@ -375,6 +396,57 @@ which autologins and starts `kdos-con-start`, so **the cell desktop is up before
 desktop. `--cmd` runs on the serial console as the desktop user, and `--root-cmd` as root, so
 neither disturbs what is on screen.
 
+### The fast loop, for iterating
+
+**`make build` with packaging is seven and a half minutes and five and a half of them are the ISO.**
+Repacking 32 GB to carry a 200 KB binary made every look-at-it-on-screen cycle twelve minutes.
+
+```sh
+testing/quick.sh kdos-con,kdos-shell -- --keys meta_l-ret --sleep 3 \
+                                        --shot /kdos/build/shots/x.png
+```
+
+It builds the named ports into `build/fs` with **no packaging** (measured 1m09s), tars exactly the
+files those ports own, and hands them to a booted ISO on a raw disk, where `quickpatch.sh` untars
+them over the live medium's RAM overlay and restarts the session. **Measured 3 minutes**, or
+**1m37s** with `KDOS_QUICK_KEEP=1` and `KDOS_QUICK_NOBUILD=1`.
+
+| Variable | Does |
+|---|---|
+| `KDOS_QUICK_PHASES` | widen the build, e.g. `04_phase4,05_desktop` |
+| `KDOS_QUICK_NOBUILD=1` | reuse what is already in `build/fs` |
+| `KDOS_QUICK_KEEP=1` | do not restart the session |
+
+**The file list is the package database's** — `build/fs/var/lib/kpkg/db/<port>` is what that port
+installed — so a program that grew a new name or a new data file is carried without anyone
+remembering to add it.
+
+**`KDOS_QUICK_KEEP=1` is right whenever the program under test is spawned.** Every `kdos-shell`
+surface is started fresh by the chord that opens it, so the new binary runs with no restart at all
+and the run is a minute shorter. It is wrong for `kdos-con` and `kdos-view`, which are the session.
+
+Four things it cannot carry, each with what to do instead:
+
+- **Anything under `fs/`** — a config file, a chord table, a service script. Those are installed by
+  `01_phase1:00_file_system.sh` and are in no package's file list. Use the real build.
+- **A new port, a kernel or an initramfs change.** Same reason.
+- **Anything that owns a D-Bus name.** `quickpatch.sh` restarts the session and kills the shell
+  surfaces, and even so a notification raised in a restarted session has never been seen to draw
+  while the same call on a booted ISO does. Verify the bus on a real boot.
+- **Evidence about the shipped image.** What `make build` writes is the ISO; this is the loop you
+  iterate in *before* you take the photograph a wave's verify line asks for.
+
+Two traps it removes, both measured the hard way:
+
+- **The session's socket file outlives the process that bound it**, so "the socket exists" is true
+  one millisecond after the kill and the steps then run against the binaries the patch replaced.
+  The wait is for a *different pid*, and the stale sockets are removed — `kdos-con-start`'s own
+  readiness test is that file, so leaving it makes the icon layer and the notification daemon start
+  before the new session has bound anything, and they are not supervised.
+- **`/etc/inittab` respawns `tty1` and it does not come back** when the chain is killed. The script
+  starts `kdos-con-login` itself, which is `kdos-con` under another name and does exactly what the
+  getty would.
+
 ### Photographing the console desktop
 
 Every wave of console work verifies this way, so the recipe is here once rather than rediscovered
@@ -396,8 +468,8 @@ Five rules, each with the consequence of getting it wrong:
   boot banner at seven seconds of uptime. Forty seconds of `--sleep` is what the ISO takes to reach
   a drawn desktop.
 - **`esc` closes the welcome card, and nothing else does.** It opens focused on first login over
-  the top-left of the grid. It says *any key closes*, and the key has to reach it: a chord the
-  session binds is taken by the session first.
+  the top-left of the grid. Its hint row says *Any key close*, and the key has to reach it: a chord
+  the session binds is taken by the session first.
 - **The harness writes raw PPM whatever the extension says.** Convert before comparing, or an image
   library reads the file by its magic and the diff is against a header.
 - **Read the display's own report before reading the screen.** `$XDG_RUNTIME_DIR/kdos-view.log`
@@ -502,6 +574,24 @@ Each is a rule with its consequence:
   keeps the pipe open.
 - **A static screen produces no frame events**, so anything about dropped frames needs something
   animating first.
+- **Surface goldens regenerate in `kdos-devdeps`, with the host's fonts bound in.** The image
+  carries the Wayland dependencies the front-end dumps need but no fonts at all, and `asciicheck`
+  aborts the run before it reaches them — so `fcft: monospace: failed to match font` reads as a
+  libkcell failure when it is a missing mount:
+
+  ```sh
+  docker run --rm -v /usr/share/fonts:/usr/share/fonts:ro -v "$PWD:/kdos" -w /kdos \
+      kdos-devdeps:latest sh -c 'fc-cache -f; KDOS_GOLDEN_UPDATE=1 testing/selftest.sh'
+  ```
+
+  `os-dev` has the packaging toolchain and no `wayland-client`, so it skips the front-end dumps
+  entirely; neither image runs the whole suite, and `kdos-devdeps` still has no `fakeroot` for the
+  reproducible-build check.
+- **A `--root-cmd` or `--root-script` round trip outlives a five-second toast.** It runs over the
+  serial console and waits for a prompt, which takes longer than the notification it raised stays
+  on screen, so the shot that follows photographs an empty desktop and the notification path reads
+  as broken. Raise a toast with `--type`, which goes over the keyboard and is quick, or ask for a
+  timeout longer than the rest of the run.
 
 ## The other harnesses
 
@@ -522,6 +612,10 @@ Stated so nobody assumes otherwise:
 - **The memory daemon has never fired for real.** Its victim selection is exercised against recorded
   state; a genuine pressure stall is the test that matters.
 - **Six shell surfaces have no dump and no reference frame.**
+- **`kdos-settings` has its `golden` calls and no committed goldens.** The first run in a container
+  that can reach the front-end dumps writes them. **A golden no `golden` call drives is worse than
+  none:** nothing compares it, so it agrees with the surface only until the surface changes, and it
+  reads to the next person as evidence that was checked.
 - **The compositor and the shell are not compiled by the self-test on a bare host.**
 - **Nothing here tests the build**, which takes hours and a container.
 

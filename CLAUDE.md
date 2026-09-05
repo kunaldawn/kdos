@@ -206,6 +206,19 @@ R="docker run --rm --device /dev/kvm -v $PWD:/kdos -w /kdos kdos-qemu-py:latest 
 $R --wait 24 --cmd 'kdos-res' --sleep 4 --shot build/shots/x.png
 ```
 
+**Do not rebuild the ISO to look at a changed program.** Packaging is five and a half of a
+seven-and-a-half-minute build, to carry a 200 KB binary:
+
+```sh
+testing/quick.sh kdos-shell -- --keys meta_l-ctrl-q --sleep 3 --shot build/shots/x.png
+KDOS_QUICK_KEEP=1 KDOS_QUICK_NOBUILD=1 testing/quick.sh kdos-shell -- ...   # 1m37s
+```
+
+It builds without packaging, tars what the port owns and patches a booted ISO's RAM overlay. It
+cannot carry anything under `fs/`, a new port, or anything owning a D-Bus name, and it is not
+evidence about the shipped image — see
+[`testing.md`](docs/kdos/05-developer/testing.md).
+
 Boot the **ISO** (`build/iso-build/kdos.iso`), not the installed disk images
 under `build/`: both are leftover testbeds and boot software that is not in this
 tree. The ISO is the pristine shipped system.

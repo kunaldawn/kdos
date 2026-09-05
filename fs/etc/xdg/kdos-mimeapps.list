@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   What opens a file under the COMPOSITOR.
+#
+# The compositor session exports XDG_CURRENT_DESKTOP=KDOS, so this file is
+# consulted there and never on the console — where the same types open in a
+# terminal instead. Every program named here needs a Wayland display, which is
+# exactly why the console cannot share the list.
+#
+# A person's own choices live in their config directory and outrank every row
+# here.
+# ---------------------------------
+
+[Default Applications]
+image/png=imv.desktop
+image/jpeg=imv.desktop
+image/gif=imv.desktop
+image/webp=imv.desktop
+image/bmp=imv.desktop
+image/tiff=imv.desktop
+image/svg+xml=imv.desktop
+text/plain=nvim.desktop
+text/markdown=nvim.desktop
+text/x-shellscript=nvim.desktop
+application/json=nvim.desktop
+application/x-shellscript=nvim.desktop

@@ -35,7 +35,13 @@ clipboard — cells arrive and input leaves. Four things follow from that withou
   names which of the eight steps failed, so the log says *no connector is connected* rather than
   repeating that there is no screen.
 - **A desktop over ssh.** The view socket is forwardable and the view is trusted with nothing.
-- **Exact-cell screenshots.** `kdos-view --dump` is a view like any other.
+- **Screenshots, as cells or as a picture.** `kdos-view --dump` is a view like any other and
+  `--shot FILE.png` is the same frame rasterised. The rasterising is the **view's**, not
+  `kdos-shot`'s: turning cells into pixels needs a font, fcft and pixman, and `kdos-tools` is on
+  every image and links none of them — while a view already loads a font to put the same cells on a
+  screen. It settles the same way `--dump` does and takes the same frame, and it declares
+  `KCON_VIEW_PIXELS`, so the pictures a program drew are in the photograph rather than missing
+  from it.
 
 ## Four names, one binary
 
@@ -85,6 +91,35 @@ still holds, so every attached view keeps its display and the session is unreach
 there is no pid in a socket path, so looking one up by name would end whichever process matched.
 Only a shell surface may ask, the same rule `detach` keeps.
 
+### Managing somebody else's windows
+
+**A surface asks for the privilege when it attaches, and is a plain surface if it does not.** A
+panel, a task switcher and a window menu set `manage` on the display configuration; the client
+declares itself a **shell** in its opening message, and the kind is fixed there and cannot be
+raised afterwards. Everything a surface may do to another program's window is gated on it: being
+sent the window list at all, and `ACTIVATE`, `CLOSE_REQUEST` and `MINIMISE`. A launcher or a
+calculator never asks, so neither can close somebody's editor.
+
+**The list is pushed and the surface re-reads it.** The session sends `TOPLEVEL_ADD`,
+`TOPLEVEL_STATE`, `TOPLEVEL_REMOVE` and `WORKSPACE` when its own state changes, and sends the whole
+list to a shell that has just attached. A surface re-reads the list on each turn rather than being
+called back: both consumers already have a poll loop, and the only pump that reads this socket is
+the one that also delivers key events, so a pump added for a callback would swallow the panel's
+input.
+
+**Every verb is a request and none of them reports.** The session owns the stack and the lifetime;
+what happened arrives as a new list, which is the only account either display server can give.
+`MINIMISE` carries the state asked for rather than a toggle — a panel draws the rows it was sent
+and a person clicks the one they can see, so a toggle would act on whatever the session believed a
+round trip later.
+
+**A surface reaches all of this through `libkdisp`, never through either protocol.** The same six
+calls are answered on the console from these messages and under a compositor from
+`wlr-foreign-toplevel-management`, so a panel is written once. Neither list carries a window
+handle across the interface: a caller holds an **id** and asks again, because a window can close
+between the frame that drew the row and the click on it. The Wayland side reports no workspace,
+because that protocol does not carry one.
+
 **There is no TCP listener anywhere.** A remote desktop is a forwarded unix socket and inherits
 ssh's authentication, which is why it needs none of its own. `remote = no` is enforced where the
 tunnel is built — `kdos con forward` refuses — rather than where a connection arrives, because a
@@ -108,7 +143,28 @@ is fitted against it: a rectangle measured from an edge is wrong at a new size, 
 zone it reserves is what every window below is moved by. The thickness is kept, the extent is the
 new screen's, and the configure tells the client.
 
-**Only the shell's own panel replaces the built-in taskbar.** `kdos-con` draws its taskbar until a
+**The session's bar has two shapes, and `taskbar` in `con.conf` picks.** `windows` is a row of the
+open windows. `fkeys` is Norton Commander's row — `F1` to `F10` and what each does, which a person's
+hands learn in a week.
+
+**The function-key row names the chord and does not bind the key.** A bare `F7` belongs to whatever
+is running in the focused window, which is the whole reason a terminal desktop can carry a
+function-key row at all. Every cell is a **pointer target** that fires `Super+F<n>`, and the row
+says `Super+` once — ten copies of the word do not fit beside ten labels in eighty columns. A click
+is turned back into the chord and fed to the same handler a key press reaches, so the row cannot
+teach a chord that does something else.
+
+**A cell is drawn whole or not at all**, and none is drawn into the clock's width: half a label is
+a target that names the wrong chord, and a cell the clock overwrites is one a person aims at and
+misses. A row too narrow for the tenth ends at the ninth.
+
+**Eight of the ten are bound on both desktops; tile and rearrange are the console's alone.** labwc
+has no tile-all and its `MoveResize` is not the same interaction, so the row names them as this
+desktop's own rather than pretending they are shared. `selftest` fails the build if any cell names
+a chord nothing is bound to — the row is drawn from one table and bound from another, and nothing
+else makes the two agree.
+
+**One bar, and the session's is the fallback.** `kdos-con` draws its taskbar until a
 panel whose app id is `kdos-shell` docks — a second menu that appeared only when the real one was
 missing would be a second menu to keep in step. Every other docked surface is a panel too:
 `kdos-slit` is a column of gadgets, and standing down for it would leave a desktop with no Start,
@@ -149,6 +205,18 @@ window on the screen.
 run box are overlays and are answered by typing. The icon layer covers the whole grid and sits
 behind everything; focusing it would take the keyboard from the window a person is working in every
 time the desktop redrew.
+
+**An overlay is placed where it asked to be, not where there was room.** A surface names a corner
+and its margins from that corner's two edges — the same `corner`, `margin_x` and `margin_y` a
+Wayland client passes, because layer-shell has no coordinates either and a corner plus a margin is
+how it says "at x". The unit is a cell here and a pixel there, and a caller's number is the same on
+both: `kdisp_cell_w()` answers 1 on this transport. So a menu opened by a click on `Start` lands
+above the Start button, a toast lands in the top right, and one opened by a chord names no position
+and is centred. Placing a layer with the minimal-overlap search that windows use put the Start menu
+a third of the way across the top of the screen, which for a menu is nowhere.
+
+Margins are clamped to the work area rather than honoured off it: a bottom-anchored menu taller
+than the space above the taskbar is drawn from the top of the work area, never from a negative row.
 
 **A layer belongs to no workspace.** A toast that belonged to the workspace it was raised on would
 be invisible to somebody who had just switched away from it.
@@ -532,6 +600,41 @@ exclusive zone, so moving it would move the work area out from under every other
 Every window-management chord is on Super, so none of them can collide with what a program inside a
 window wants. A view with a screen of its own reads Super from `libinput` and they all work.
 
+**Eleven of them start a surface, and nine are the chords `rc.xml` already binds.** The panel that
+hangs these off its applets is the graphical desktop's and does not run here, so without a chord
+they were reachable only from the Start menu. Taking the compositor's own chords rather than
+inventing new ones means a person who learns one desktop knows the other, and that there is one key
+card rather than two.
+
+| Chord | Surface | `con.conf` key |
+|---|---|---|
+| `Super+F1` | the keybinding card | `keys` |
+| `Super+F3` | audio devices | `audio` |
+| `Super+F4` | networking | `net` |
+| `Super+F5` | Bluetooth | `bluetooth` |
+| `Super+F6` | cameras, microphones and removable media | `devices` |
+| `Super+i` | settings | `settings` |
+| `Super+c` | the calendar | `calendar` |
+| `Super+/` | the documentation viewer | `docs` |
+| `Super+p` | screen configuration | `displays` |
+| `Super+Ctrl+p` | power and battery | `power` |
+| `Super+Ctrl+t` | the system monitor | `monitor` |
+| `Super+Ctrl+q` | the calculator | `calculator` |
+| `Super+Ctrl+n` | the scratch pad | `notes` |
+| `Super+Ctrl+v` | the clipboard history | `clipboard` |
+
+The last two are new on both desktops: neither had a chord anywhere, and a power page and a system
+monitor are what a person reaches for while something is going wrong.
+
+**`Super+p` reaches a surface that cannot configure a console screen.** `libkkms` takes the first
+connected output at its preferred mode and has no mode selection, so `kdos-display` says so and
+exits. The chord is bound because a stated limit is better than a missing key.
+
+**Which program each chord runs is `con.conf`'s, and the table above is the whole list.** They are
+keys rather than literals in the chord table for the same reason `menu` and `lock` are: one place
+says what a chord starts, and `kdos-con --keys` prints it, so the card cannot name a program the
+session does not start.
+
 **A view that is a terminal is the harder half, and it is the one the two-socket split exists for.**
 A terminal reports modifiers as escape sequences, and Super arrives only in the kitty keyboard
 protocol's `CSI <codepoint> ; <modifiers> u` form. `libktui` asks for it with `CSI ? u` on entering
@@ -554,6 +657,83 @@ Three rules it keeps, each with what breaks without it:
   on how fast somebody typed.
 - **A second key that names no chord is swallowed, not typed.** A prefix that leaked would put a
   stray character in a document every time somebody mistyped a chord.
+
+## The keyboard's own window management
+
+Every one of these was a menu item on the text desks this desktop descends from, and each is a rule
+over state the session already holds.
+
+| Chord | Does |
+|---|---|
+| `Super+Alt+1`…`9` | raise the window that number names |
+| `Super+F2` | the window list |
+| `Super+Shift+t`, `Super+F8` | tile this workspace |
+| `Super+Alt+t` | cascade this workspace |
+| `Super+r`, `Super+F9` | move and size the focused window from the keyboard |
+| `Super+Shift+d` | hide every window; the same chord brings them back |
+| `Super+Shift+m` | mark a rectangle of the screen |
+| `Super+Shift+v` | paste what was marked into the focused window |
+
+**A window's number is its position in the Alt-Tab ring**, drawn in its title bar and in its taskbar
+row. It is the ring's own index rather than an identity: it renumbers when a window closes, which is
+what cycling does too, so the two cannot disagree about what "the second window" means. Windows past
+nine have no digit and none is drawn.
+
+**Tile and cascade are arrangements, not tile states.** Both clear the snapped mask, so a
+`Super+`arrow afterwards snaps from the rectangle the arrangement made rather than from a half the
+window is not in. Tile fills the work area with a grid of `ceil(sqrt(n))` columns and spreads the
+last row across the width; cascade offsets each window by a row and two columns at two thirds of the
+work area, wrapping when the screen runs out. **A fullscreen window is left out of both** — it was
+put there on purpose, and folding it into a grid would undo a request nobody withdrew.
+
+**Rearrange owns the keyboard while it is on**, ahead of the chord table and ahead of the window:
+arrows move by a cell, `Shift+`arrows size from the bottom-right corner, `Ctrl+`arrows move by
+eight, `Return` keeps and `Escape` puts back the rectangle from before. The taskbar names those keys
+for as long as the mode is up, because a mode that took every key and said nothing would be one
+nobody could get out of. **Pointer resistance is not applied**: a drag has resist and attract zones
+because a hand is imprecise, and a key that moved a window by one cell except near an edge would be
+a key that lies. Every intermediate rectangle still goes through `kwm_fit`.
+
+## Mark and transfer
+
+**The session composes every window into one grid, so the text on the screen is text.** Marking a
+rectangle of it is a read of a buffer that already exists — no protocol between two programs, no
+selection ownership, and no cooperation from the program being marked. It works over a session
+terminal, a `libkcon` surface and an embedded graphical application rendered as characters, because
+all three are cells by the time they are here. DESQview had this in 1985 and it is cheaper on this
+desktop than it was there.
+
+`Super+Shift+m` starts it over the focused window's first content cell. Arrows place the corner,
+`Shift+`arrows drag the other one out of it, `Ctrl+`arrows move by eight, `Home` and `End` reach the
+edges, `Return` copies and `Escape` leaves. The taskbar names those keys while the mode is up.
+
+**The rectangle is the screen's, not a window's.** Somebody marking a column of numbers out of two
+windows side by side means the column, and a mark that stopped at a frame would be a mark that knew
+better than they did.
+
+**The mark is drawn by reversing the cells under it, never by repainting them.** Those cells belong
+to whatever program drew them and are what is being copied; a mark in a colour of its own would hide
+the text a person is trying to see the extent of. A picture's cells mark as spaces.
+
+`Super+Shift+v` puts the session clipboard into the focused window — `kvt_term_paste` for a
+terminal, `KCON_OP_CLIP_DATA` for a surface. A view can already hand the session a paste, but a
+`--kms` view has no host terminal to take one from, so on `tty1` this chord is the whole of it.
+There is no `Super+Shift+c`: the terminal's own copy is `Ctrl+Shift+C` inside the window and the
+mark is the session's, and a third copy chord would be a third thing to explain.
+
+**Show desktop remembers the set it hid.** A window already minimised when the chord was pressed was
+minimised on purpose and is not brought back, and a window opened while the desktop is showing is
+left alone.
+
+**The session's own window list is the fallback, not the desktop's.** Arrows and digits pick,
+`Enter` raises, `Delete` closes, `m` minimises, `Escape` leaves. It is what a session with no shell
+running has, and it is drawn from the list the session already holds. `kdos-teams` shows the same
+windows through `libkdisp`, which is the list every other surface reads.
+
+**Tile, cascade and rearrange are the console's alone.** labwc has no tile-all or cascade action and
+its `MoveResize` is not the same interaction, so binding the nearest thing there would make one
+chord mean two different things on the two desktops — which is the one rule `keys.conf` and
+`rc.xml` exist to keep.
 
 ## Reaching another terminal
 
@@ -590,10 +770,6 @@ repaints in full.
 - **No VT has ever been allocated.** The `--vt` path compiles and links and has never been run: it
   needs an ISO with `kdos-cage` in it and a machine with real terminals. Embedding, which is the
   default, has been run end to end.
-- **The screenshot is cells rather than an image.** `kdos-shot` writes the grid as text; rendering
-  cells to a picture is `libkcell`'s, which needs fcft and pixman, and `kdos-tools` is on every
-  image and links neither. A *recording* is a picture — `kdos-view --cast` rasterises through
-  exactly that library — so a still image is the thing that is missing and not the moving one.
 - **No input method.** fcitx5 is a Wayland client.
 - **Single output.** `libkkms` takes the first card with a connected output and its preferred mode.
 

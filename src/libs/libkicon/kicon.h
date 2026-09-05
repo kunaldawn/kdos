@@ -31,7 +31,7 @@
  *       kdos-icons/genatlas.py, because there is no SVG parser anywhere in
  *       this tree and there is not going to be one. Shipped in upstream's own
  *       colours and tinted at load through kcol_remap — the wallpaper's
- *       pipeline — so one atlas serves all four accents and `kdos theme amber`
+ *       pipeline — so one atlas serves all seven accents and `kdos theme amber`
  *       retints it live.
  * ---------------------------------
  */

@@ -83,6 +83,26 @@ const KtuiCell *ktui_cells(int *w, int *h)
 		*h = front ? bh : 0;
 	return front;
 }
+
+/*
+ * THE FRAME BEING COMPOSED — what `ktui_draw_cell` writes and what the next
+ * flush will send. Read it to find out what is on the screen.
+ *
+ * NOT `ktui_cells()`, WHICH IS A DIFFERENT BUFFER AND OFTEN AN EMPTY ONE. That
+ * one hands out `front`, the frame a backend last diffed against, and a
+ * backend is free never to maintain it: `kdos-con`'s own ignores `prev`
+ * entirely, because there may be several views and each diffs against its own.
+ * A caller that read `ktui_cells()` there got a screenful of zeroes and could
+ * not tell that from a screenful of spaces.
+ */
+const KtuiCell *ktui_draw_cells(int *w, int *h)
+{
+	if (w)
+		*w = back ? bw : 0;
+	if (h)
+		*h = back ? bh : 0;
+	return back;
+}
 static int force_full;
 static int offscreen;
 static int ptr_x = -1, ptr_y = -1;
@@ -606,6 +626,33 @@ void ktui_draw_shadow(KRect r)
 	}
 }
 
+/*
+ * XOR the reverse attribute over a rectangle of the frame being composed.
+ *
+ * A SELECTION IS NOT A REPAINT. The cells under it belong to whatever drew
+ * them — a terminal's output, a surface, a picture's fallback — and a caller
+ * that filled them with a colour of its own would hide the text a person is
+ * selecting the extent of. Reversing is the one transform that leaves the
+ * content and changes only how it reads.
+ *
+ * It works on `back`, the frame being composed, and must be called after
+ * everything under it is drawn. `ktui_cells()` is the wrong source for this:
+ * it hands out `front`, which is the frame that was last FLUSHED, so a caller
+ * reading it mid-compose reverses the cells of the previous picture.
+ */
+void ktui_draw_reverse(KRect r)
+{
+	for (int y = r.y; y < r.y + r.h; y++) {
+		if (y < 0 || y >= bh)
+			continue;
+		for (int x = r.x; x < r.x + r.w; x++) {
+			if (x < 0 || x >= bw)
+				continue;
+			back[y * bw + x].attr ^= KT_A_REVERSE;
+		}
+	}
+}
+
 void ktui_draw_cursor(int x, int y)
 {
 	ptr_x = x;
@@ -646,7 +693,11 @@ static void emit_sgr(int fg, int bg, int attr)
 
 	if (attr & KT_A_REVERSE)
 		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";7");
-	if (attr & KT_A_UNDERLINE)
+	/* A Linux VT has no underline attribute: it remaps SGR 4 onto a COLOUR
+	 * the palette does not own, so an underlined row there comes out a
+	 * shade nothing else on the screen uses. The guard is the same one
+	 * bold keeps three lines down, and for the same class of reason. */
+	if ((attr & KT_A_UNDERLINE) && !(ktui_caps & KT_CAP_LINUXVT))
 		n += snprintf(buf + n, sizeof(buf) - (size_t)n, ";4");
 	/* Bold on a VT sets the intensity bit, which a 512-glyph font has
 	 * repurposed as the 9th glyph bit — it changes the FONT PAGE, not the

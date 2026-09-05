@@ -15,7 +15,7 @@
  *   ║ ─────────────────────────────────────────────────────────────── ║
  *   ║ eth0                                       cable unplugged      ║
  *   ╟─────────────────────────────────────────────────────────────────╢
- *   ║ Enter join   f forget   r rescan   a wifi on/off   Esc          ║
+ *   ║ Enter join  f forget  c copy  a wifi off  Esc Close             ║
  *   ╚═════════════════════════════════════════════════════════════════╝
  *
  * WHAT WAS HERE BEFORE: `foot -e nmtui`. NetworkManager has been running on
@@ -174,6 +174,23 @@ static char sel_ssid[64];	/* what the selection FOLLOWS across a refresh */
 static int asking;		/* the prompt is up */
 static char pass[128];
 static char ask_ssid[64];
+
+/* ONE RUNG: the passphrase prompt. Esc in it abandons the join and Esc on the
+ * list closes the window. */
+static KtuiKeys keys;
+
+static int ask_up(void *user)
+{
+	(void)user;
+	return asking;
+}
+
+static void ask_cancel(void *user)
+{
+	(void)user;
+	asking = 0;
+	pass[0] = '\0';
+}
 
 /* ── sd-bus helpers ────────────────────────────────────────────────────── */
 
@@ -1006,6 +1023,10 @@ static void draw_frame(void)
 			masked[i] = '*';
 		masked[n] = '_';
 		masked[n + 1] = '\0';
+		/* The field owns the row whole; the pool is still drained,
+		 * because a frame that skipped the call would carry its hints
+		 * into the next one. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
 		ktui_draw_textf(2, h - 2, w - 4, KT_TEXT, KT_BG, KT_A_NONE,
 				"passphrase for %s: %s", ask_ssid, masked);
 	} else {
@@ -1029,15 +1050,35 @@ static void draw_frame(void)
 		 * another. A message is different: it is what the user just
 		 * did, so it takes whatever room there is.
 		 */
-		static const char HINT[] = "Enter join   f forget   c copy   "
-					   "r rescan   Esc";
 		int room = bx - 3;
-		if (status[0] ? room >= 8
-			      : room >= (int)ktui_utf8_width(HINT))
-			ktui_draw_text(2, h - 2, room,
-				       status[0] ? status : HINT,
-				       status[0] ? KT_MID : KT_DIM, KT_BG,
-				       KT_A_NONE);
+		const struct row *sr = sel >= 0 && sel < nrows ? &rows[sel]
+							      : NULL;
+		const struct net_ap *sa = sr && sr->kind == ROW_AP
+						  ? &aps[sr->ap]
+						  : NULL;
+
+		if (status[0]) {
+			ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
+			if (room >= 8)
+				ktui_draw_text(2, h - 2, room, status, KT_MID,
+					       KT_BG, KT_A_NONE);
+		} else {
+			/* An ACTIVE network gets no Enter hint: joining it
+			 * answers "already on", so naming the key would
+			 * advertise one that does nothing. */
+			ktui_hint_if(sa && !sa->active, "Enter", "join");
+			ktui_hint_if(sr && sr->kind == ROW_DEV, "Enter",
+				     "rescan");
+			ktui_hint_if(sa && sa->saved, "f", "forget");
+			ktui_hint_if(sa != NULL, "c", "copy");
+			ktui_hint_if(have_wifi, "a",
+				     wifi_enabled ? "wifi off" : "wifi on");
+			ktui_hint("Esc", ktui_esc_verb(&keys));
+			/* UNCONDITIONALLY, even where `room` is negative: the
+			 * popup's button bar can start at column two, and the
+			 * row is what clears the pool. */
+			ktui_hint_row(&keys, krect(2, h - 2, room, 1), KT_BG);
+		}
 	}
 	ktui_draw_flush();
 }
@@ -1208,6 +1249,11 @@ int net_main(int argc, char **argv)
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_BG);
+	/* The page in /usr/share/kdos/doc that F1 opens. A name with no
+	 * file there is refused by testing/preflight.sh. */
+	keys.doc = "net";
+	keys.help = sh_help;
+	ktui_keys_layer(&keys, "Cancel", ask_up, ask_cancel, NULL);
 
 	time_t last = 0;
 	while (!kdisp_should_close()) {
@@ -1304,11 +1350,17 @@ int net_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		if (asking) {
-			if (ev.key == KT_K_ESC) {
-				asking = 0;
-				pass[0] = '\0';
-			} else if (ev.key == KT_K_ENTER) {
+			if (ev.key == KT_K_ENTER) {
 				for (int i = 0; i < nap; i++)
 					if (!strcmp(aps[i].ssid, ask_ssid)) {
 						join_new(&aps[i], pass);
@@ -1333,8 +1385,6 @@ int net_main(int argc, char **argv)
 		}
 
 		switch (ev.key) {
-		case KT_K_ESC:
-			goto done;
 		case KT_K_UP:
 			step(-1);
 			break;

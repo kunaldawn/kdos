@@ -168,6 +168,13 @@ static void become(const Account *a)
 	setenv("XDG_SESSION_TYPE", "tty", 1);
 	setenv("XDG_CURRENT_DESKTOP", "KDOS", 1);
 	setenv("TERM", "xterm-256color", 1);
+	/* The same reason as the terminal's own child: libktui reads this to
+	 * decide whether the palette is truecolour, and the session's is. */
+	setenv("COLORTERM", "truecolor", 1);
+	/* And which terminal, the third tier of a picture program's probe. The
+	 * greeter's shell is the same engine as every other window here. */
+	setenv("TERM_PROGRAM", "kdos-term", 1);
+	setenv("TERM_PROGRAM_VERSION", KVT_TERM_VERSION, 1);
 
 	if (chdir(a->home) != 0 && chdir("/") != 0)
 		_exit(1);
