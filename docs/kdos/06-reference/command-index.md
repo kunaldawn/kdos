@@ -27,6 +27,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-trash` | What was deleted, and the way back; the Trash icon opens it | [kdos-shell](../04-programs/kdos-shell.md#kdos-trash) |
 | `kdos-comp` | The compositor | [kdos-comp](../04-programs/kdos-comp.md) |
 | `kdos-desk` | The desktop and its icons | [kdos-shell](../04-programs/kdos-shell.md#kdos-desk) |
+| `kdos-peek` | What is in a file, without starting its application | [kdos-shell](../04-programs/kdos-shell.md#kdos-peek) |
 | `kdos-desktop` | Start a session | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-desktop-start` | Bring up services, then the compositor | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-devices` | Cameras, microphones, removable media | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
@@ -115,6 +116,7 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos trash` | The freedesktop trash |
 | `kdos places [add DIR]` | The places column the desktop shows, and the way to keep one from a prompt | [kdos-command](../04-programs/kdos-command.md#places) |
 | `kdos thumb <file>` | A thumbnail in the shared freedesktop cache — also `--path` and `--ppm` | [kdos-command](../04-programs/kdos-command.md#thumb) |
+| `kdos-openarchive ARCHIVE` | Extract an archive `mc` cannot browse as a directory, beside itself | [kdos-shell](../04-programs/kdos-shell.md) |
 | `kdos hey` | Ask the compositor about windows, outputs and boxes |
 | `kdos con` | Console sessions: `ls`, `new`, `attach`, `detach`, `kill` (asks the session to end, and it drains), `forward` |
 | `kdos oracle` | An aphorism |

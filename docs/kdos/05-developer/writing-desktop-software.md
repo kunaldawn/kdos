@@ -336,6 +336,22 @@ Three rules:
 each way. A page-wide chart is past that and must be drawn as cells — see
 [kdos-res](../04-programs/kdos-res.md#the-charts).
 
+### A picture on the console needs its bytes offered
+
+`libkcon` links no pixel library and must not — it is linked by `kdos-con`, which links none either.
+So a sprite crosses to the display as **metadata** unless the surface registers
+`kcon_set_sprite_bits()`, which hands libkcon the ARGB the picture already holds.
+
+**Register it AFTER `kdisp_init()`, never before.** The console backend clears its whole client
+state when it connects, so a callback registered earlier is erased — and the failure does not look
+like a missing picture: the session maps a slot it was never sent to −1 and the cell becomes a
+**space**, so the pane is blank rather than showing the fallback codepoint.
+
+**The cell's pixel size is nominal there.** A console surface has no pixels of its own — the display
+it is eventually drawn on has them and scales what arrives — so `kdisp_cell_w()` answers nothing
+usable and a picture is rendered at a fixed nominal cell, which bounds what goes on the wire without
+pretending to know the font at the other end. `kdos-term` and `kdos-peek` take the same two numbers.
+
 ### Two font traps, both silent
 
 - **A repeated font property appends; it does not replace.** Appending a size to a pattern that

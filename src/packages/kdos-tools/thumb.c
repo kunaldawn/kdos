@@ -38,6 +38,7 @@
  * ---------------------------------
  */
 
+#include <limits.h>
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,6 +59,15 @@
  * draws. */
 #define THUMB_PX 128
 
+/*
+ * A resolved path is PATH_MAX — realpath writes up to that whatever the
+ * argument's length, and glibc's fortified form aborts on a buffer that cannot
+ * hold it. The URI is three times that plus the scheme, which is what every
+ * byte percent-escaping costs: a URI that TRUNCATED would hash to a name no
+ * other reader computes, which is the one thing this cache cannot get wrong.
+ */
+#define THUMB_URI (PATH_MAX * 3 + 8)
+
 static int usage(void)
 {
 	fprintf(stderr,
@@ -73,7 +83,7 @@ static int usage(void)
 /* The cache path for a source file: the MD5 of its escaped URI. */
 static char *thumb_path(const char *abs)
 {
-	char uri[2048], md5[33];
+	char uri[THUMB_URI], md5[33];
 	KbBuf b = { 0 };
 	char *cache = kdt_cache_home("thumbnails/normal");
 
@@ -411,7 +421,7 @@ int kdt_thumb(int argc, char **argv)
 		return usage();
 
 	if (!strcmp(argv[0], "--path")) {
-		char abs[1024];
+		char abs[PATH_MAX];
 		char *p;
 
 		if (argc < 2 || !realpath(argv[1], abs))
@@ -427,7 +437,7 @@ int kdt_thumb(int argc, char **argv)
 	return 1;
 #else
 	if (!strcmp(argv[0], "--ppm")) {
-		char abs[1024];
+		char abs[PATH_MAX];
 		uint8_t *rgb;
 		int w = 0, h = 0, rc;
 
@@ -447,7 +457,7 @@ int kdt_thumb(int argc, char **argv)
 	int bad = 0;
 
 	for (int i = 0; i < argc; i++) {
-		char abs[1024], uri[2048], mtime[32];
+		char abs[PATH_MAX], uri[THUMB_URI], mtime[32];
 		struct stat st;
 		uint8_t *rgb;
 		char *out;

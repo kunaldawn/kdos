@@ -15,6 +15,7 @@ not, which is the trade [`kdos-res`](kdos-res.md) already made beside `btop`.
 | `libkdisp` | Which display server, decided once at startup |
 | `libkimg` | The one place untrusted image bytes become a picture |
 | `libktui` | The cell grid, the sprite table and its budget |
+| `libkcell` | The one scale-and-cut from a decoded picture into sprite tiles |
 
 Naming `kwl_impl` is what links the Wayland half in, and naming `kcon_impl` is what makes the same
 source a console surface. `libkdisp` picks the first whose probe succeeds, so the console is tried
@@ -172,8 +173,9 @@ is a chord no program running inside it can use.
 
 The three protocols — sixel (`DCS`), iTerm2's `OSC 1337` and kitty's `APC G` — are delimited by
 `libkvt`, which decodes none of them, and handed here. This program strips the transport encoding,
-decides how many **cells** the picture occupies, scales it to them, and writes sprite cells into the
-screen.
+decides how many **cells** the picture occupies, and writes sprite cells into the screen. The scale
+and the cut into tiles are `libkcell`'s, shared with `kdos-peek` — two implementations of it would
+be two answers to how a photograph is resampled.
 
 **Into the SCREEN, not into an overlay beside it.** That is what makes a picture scroll with its
 output, disappear on `clear` and reach the scrollback — three behaviours an overlay would have to

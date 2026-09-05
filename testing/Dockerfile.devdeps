@@ -17,8 +17,9 @@
 # is musl and a feature-test difference is worth meeting here rather than in a
 # phase build, and it carries exactly what the script probes for:
 #
-#     pkg-config: alsa basu fcft libdrm libinput libpipewire-0.3 libseat
-#                 pixman-1 wayland-client xkbcommon — and the four decoders
+#     pkg-config: alsa basu fcft libarchive libdrm libinput libpipewire-0.3
+#                 libseat pixman-1 wayland-client xkbcommon — and the four
+#                 decoders
 #     command -v: cpio dbus-daemon python3 xz zstd
 #
 # mesa, libxml2, cairo and pango are here for the compositor's graft block,
@@ -43,6 +44,7 @@ FROM alpine:3.23
 RUN apk add --no-cache \
         bash build-base pkgconf python3 \
         pixman-dev libpng-dev libjpeg-turbo-dev libwebp-dev libsixel-dev \
+        libarchive-dev \
         fcft-dev libdrm-dev wayland-dev wayland-protocols \
         libxkbcommon-dev libinput-dev libseat-dev \
         mesa-dev libxml2-dev cairo-dev pango-dev \

@@ -65,6 +65,7 @@ Every key is documented in [Configuration](configuration.md).
 | `~/.local/share/applications/` | Launchers for applications you installed |
 | `~/.local/bin/` | Shims for applications you installed |
 | `~/.local/state/kdos/appusage` | Launch counts, which order the Start menu's frequent column |
+| `~/.local/state/kdos/diskwarn` | `<step> <mountpoint>` per line: which disk-full step the panel has already warned about |
 | `~/.cache/kdos/theme` | **One word**: the accent name. The entire theme state the desktop reads |
 | `~/.cache/kdos/wallpaper.png` | The retinted wallpaper the compositor prefers |
 | `~/.local/share/Trash/` | The freedesktop trash |

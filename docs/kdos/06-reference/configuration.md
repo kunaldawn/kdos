@@ -570,8 +570,8 @@ account gets a working setup rather than each program's own defaults. These are 
 | `/etc/xdg/mimeapps.list` | What both desktops open the same way | Last, and a type belongs in exactly one of these three |
 | `~/.config/user-dirs.dirs` | The standard user directories | Seeded from `/etc/skel`; there is no `xdg-user-dirs` here. `$HOME` is the only expansion read |
 | `~/.config/kdos/places` | Extra rows on the places column, `Name = /path` one per line | Merged over the user directories; a row whose path is already listed is dropped, and one pointing at nothing is never shown. Written by *Add to Places* on the desktop |
-| `~/.config/mc/mc.ext.ini` | What `Enter` does on a file in `mc` | Replaces the system file wholesale — mc does not merge them. The archive rows are carried; everything else falls to `[Default]`, which is `kdos-appbox open` |
-| `~/.config/mc/menu` | `mc`'s `F2` user menu | Six verbs, each naming a program on the image; `testing/preflight.sh` refuses one that is not |
+| `~/.config/mc/mc.ext.ini` | What `Enter` does on a file in `mc` | Replaces the system file wholesale — mc does not merge them. Only the archive rows whose VFS helper is on this image are carried; everything else falls to the catch-all, which is `kdos-appbox open` |
+| `~/.config/mc/menu` | `mc`'s `F2` user menu | Seven verbs, each naming a program on the image; `testing/preflight.sh` refuses one that is not |
 | `~/.config/xdg-desktop-portal-wlr/config` | The screen-capture backend | Uses an output picker; the alternative silently captures the first output, which is wrong the moment a second screen is plugged in |
 
 ## Generated files you should not edit

@@ -432,6 +432,23 @@ static int act_key(const char *key, const struct srow *r)
 		sh_spawn(argv);
 		return 1;
 	}
+	if (!strcmp(key, "disk")) {
+		/* ncdu and not a file manager: the question a full disk asks
+		 * is WHERE the space went, and that is a recursive sum no
+		 * listing shows. On the mountpoint the panel named, and `-x`
+		 * so it stays there: a scan that wandered onto a network mount
+		 * would answer about the wrong filesystem and take all day. */
+		const char *argv[10];
+		char id[160];
+		int n = sh_term_argv(argv, 0, 10, "ncdu", id, sizeof(id));
+
+		argv[n++] = "ncdu";
+		argv[n++] = "-x";
+		argv[n++] = r && r->path[0] ? r->path : "/";
+		argv[n] = NULL;
+		sh_spawn(argv);
+		return 1;
+	}
 	if (!strcmp(key, "clip")) {
 		const char *argv[] = { "kdos-clip", "--pick", NULL };
 

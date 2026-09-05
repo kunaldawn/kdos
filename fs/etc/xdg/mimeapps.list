@@ -18,3 +18,24 @@
 
 [Default Applications]
 inode/directory=mc.desktop
+# THE ARCHIVES mc CANNOT BROWSE. Its VFS mounts a tar, a cpio, a zip or an `ar`
+# as a directory, which is the right answer when you want one file out of one —
+# and there is no helper on this image for 7z or rar, so Enter on those would
+# open an empty panel. `kdos-openarchive` extracts them instead. Only these two
+# families are listed: they are what `ouch` reads AND what shared-mime-info can
+# name, and a row for a type the image cannot produce is one nobody can tell is
+# dead.
+application/x-7z-compressed=kdos-openarchive.desktop
+application/vnd.rar=kdos-openarchive.desktop
+application/x-cb7=kdos-openarchive.desktop
+application/vnd.comicbook-rar=kdos-openarchive.desktop
+
+# THE DOCUMENTS NOTHING ELSE ON THIS IMAGE OPENS. `kdos-peek` renders a page
+# through `mutool`, which reads exactly these five, and it is the same surface
+# on both desktops — a viewer that draws into a cell grid needs no compositor,
+# so this row belongs here rather than being written twice.
+application/pdf=kdos-peek.desktop
+application/epub+zip=kdos-peek.desktop
+application/vnd.comicbook+zip=kdos-peek.desktop
+application/oxps=kdos-peek.desktop
+application/x-fictionbook+xml=kdos-peek.desktop

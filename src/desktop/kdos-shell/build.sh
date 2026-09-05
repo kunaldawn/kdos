@@ -82,19 +82,27 @@ done
 # libpng is libkicon's: the icon layer decodes the alien apps' own PNGs out of
 # /usr/share/icons/hicolor and the theme's atlas, and there is no SVG parser
 # anywhere in this tree.
-PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng"
+#
+# libjpeg, libwebp and libarchive are kdos-peek's, through libkimg and its own
+# listing: the viewer decodes a picture or a rendered page with the one decoder
+# this tree has, and asks libarchive whether a file is an archive by opening it.
+# No libsixel — a file on disk is not an escape sequence, and kdos-term is where
+# sixel arrives.
+PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libarchive"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
+	-DKIMG_HAVE_PNG -DKIMG_HAVE_JPEG -DKIMG_HAVE_WEBP \
 	-I. -I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkwm" \
 	-I"$LIBS/libkxdg" -I"$LIBS/libkicon" -I"$LIBS/libkchrome" \
+	-I"$LIBS/libkimg" \
 	-I"$LIBS/libkproc" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-shell \
 	"$PORT_SRC"/*.c \
 	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcon/*.c "$LIBS"/libkwm/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c "$LIBS"/libkicon/*.c \
-	"$LIBS"/libkchrome/*.c "$LIBS"/libkproc/*.c \
+	"$LIBS"/libkchrome/*.c "$LIBS"/libkproc/*.c "$LIBS"/libkimg/*.c \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
 
@@ -105,6 +113,7 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-launcher"
 ln -s kdos-shell "$PKG/usr/bin/kdos-menu"
 ln -s kdos-shell "$PKG/usr/bin/kdos-desk"
 ln -s kdos-shell "$PKG/usr/bin/kdos-pick"
+ln -s kdos-shell "$PKG/usr/bin/kdos-peek"
 ln -s kdos-shell "$PKG/usr/bin/kdos-ascii"
 # What this machine is, read out of /proc and /etc rather than fetched by a
 # second program: an About window that shelled out to a screenfetch would
