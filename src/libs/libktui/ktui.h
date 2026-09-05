@@ -238,11 +238,20 @@ void ktui_sprite_evictor(KtuiSpriteFree fn, void *user);
 void ktui_sprite_budget(size_t max_bytes, int cell_w_px, int cell_h_px);
 size_t ktui_sprite_bytes(void);
 
-/* The cell buffer being composed, and its OWN size — which is not ktui_w by
- * ktui_h between a backend resize and the consumer's ktui_draw_resize(). For
- * the sprite table's eviction check and nothing else: every drawing path goes
- * through ktui_draw_cell. */
+/*
+ * The buffer a backend last diffed against, and its OWN size — which is not
+ * ktui_w by ktui_h between a backend resize and the consumer's
+ * ktui_draw_resize(). For the sprite table's eviction check and nothing else.
+ *
+ * IT IS NOT WHAT IS ON THE SCREEN, and a backend need not maintain it at all:
+ * `kdos-con`'s ignores it, because a session with several views has one
+ * previous frame per view rather than one between them. Read
+ * `ktui_draw_cells()` for the composed frame.
+ */
 const KtuiCell *ktui_cells(int *w, int *h);
+/* The frame being composed: what ktui_draw_cell writes and what the next flush
+ * sends. This is what is on the screen. */
+const KtuiCell *ktui_draw_cells(int *w, int *h);
 
 /*
  * A picture larger than one slot is a GRID of slots sharing a key prefix, so
@@ -341,6 +350,10 @@ void ktui_draw_flush(void);
 void ktui_draw_invalidate(void);	/* force a full repaint next flush */
 
 void ktui_draw_cell(int x, int y, uint32_t ch, int fg, int bg, int attr);
+/* XOR the reverse attribute over a rectangle of the frame being composed —
+ * a selection, which leaves the content and changes only how it reads. Not
+ * expressible through ktui_cells(), which hands out the flushed frame. */
+void ktui_draw_reverse(KRect r);
 void ktui_draw_fill(KRect r, int bg);
 int ktui_draw_text(int x, int y, int maxw, const char *s, int fg, int bg,
 		   int attr);
@@ -690,6 +703,160 @@ int ktui_pw_score(const char *p);
 
 /* Terminal too small for the application to draw at all. */
 void ktui_toosmall(const char *title, int min_w, int min_h);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The contract every surface answers
+ *
+ * A hint row that names the keys that do something RIGHT NOW, and the keys
+ * themselves. A surface holds one KtuiKeys, calls ktui_keys() first in the
+ * dispatch it already has and ktui_hint_row() last in the draw it already has.
+ * ktui_keys() returns PASS for everything it does not own, so a surface that
+ * has not adopted it behaves exactly as it did.
+ *
+ * THE ROW IS PUSHED DURING THE DRAW by whatever holds the focus, which is why
+ * it is a toolkit function and not a string a surface writes: a fixed string
+ * cannot follow the focus, and a row naming keys the focused control does not
+ * answer is worse than no row at all.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The menu — a bar with panes, or one pane popped at a point
+ *
+ * One widget for both, because they are the same list drawn in two places.
+ * `F10` opens a bar, `Alt+letter` opens a pane by its mark, `Shift+F10` pops
+ * the context pane where the surface says its focus is, and `Esc` closes what
+ * is down before it touches the Esc ladder.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum { KTUI_MENU_PANE_MAX = 8 };
+enum { KTUI_MENU_NONE = 0, KTUI_MENU_TAKEN, KTUI_MENU_PICKED };
+
+typedef struct {
+	/* `&` marks the accelerator and `&&` is a literal one. NULL or an
+	 * empty label is a RULE: drawn, never selected — a separator that can
+	 * hold the caret is a menu with a row that does nothing. */
+	const char *label;
+	int id;			/* handed back when picked; a rule has none */
+	const char *accel;	/* "Ctrl+N", drawn right-aligned, or NULL   */
+	int enabled;
+} KtuiMenuItem;
+
+/* Is item i on the menu right now? NULL means every one is. Asked by the draw
+ * AND by the hit test from the same walk: two copies of a visibility rule
+ * disagree eventually, and a click then runs the row above the one under the
+ * pointer. */
+typedef int (*KtuiMenuShow)(int i, void *user);
+
+typedef struct {
+	const char *title;	/* "&File" — only a bar draws it            */
+	const KtuiMenuItem *item;
+	int n;
+} KtuiMenuPane;
+
+typedef struct {
+	/* Declared by the surface, once. */
+	const KtuiMenuPane *pane;
+	int npane;
+	KtuiMenuShow show;
+	void *user;
+	/* A BAR IS OPT-IN, not a row number that defaults to zero: a menu
+	 * declared for a popup alone would otherwise draw a bar across the top
+	 * of a surface that never asked for one. */
+	int has_bar;
+	int bar_row;
+	int bar_bg;
+	/* Owned here. `sel` indexes item[], NEVER a drawn row — a selection
+	 * counted in drawn rows moves to a different item the moment `show`
+	 * hides one. */
+	int open;		/* 0 closed, else 1 + the pane that is down */
+	int sel;
+	int x, y, w, rows;	/* the popup AS DRAWN, clamped on screen    */
+	int bar_x[KTUI_MENU_PANE_MAX], bar_w[KTUI_MENU_PANE_MAX];
+} KtuiMenu;
+
+void ktui_menu_open(KtuiMenu *m, int pane, int x, int y);
+void ktui_menu_close(KtuiMenu *m);
+int ktui_menu_active(const KtuiMenu *m);
+/* Draws the bar (where there is one) and the open pane, and pushes its own
+ * hints — so no surface writes them. */
+void ktui_menu_draw(KtuiMenu *m);
+/* One event, keys and pointer alike. PICKED writes the item's id through
+ * `id`. A surface that calls ktui_keys() need not call this: ktui_keys()
+ * routes into it. */
+int ktui_menu_event(KtuiMenu *m, const KtuiEvent *ev, int *id);
+int ktui_menu_alt(KtuiMenu *m, const KtuiEvent *ev);
+/* The accelerator letter of a label, lowercased, or 0 — read from the same
+ * string the drawing reads, so a title cannot advertise a letter that opens
+ * nothing. */
+int ktui_menu_accel_of(const char *s);
+/* A label with its accelerator marked: underlined where the tier has
+ * underline, bracketed where it does not. Returns the cells written. */
+int ktui_menu_label(int x, int y, int w, const char *s, int fg, int bg);
+
+/* Is this Esc layer up RIGHT NOW? Asked at the instant the key arrives and
+ * never cached: a dialog that dismissed itself from a click would otherwise
+ * leave a raised bit that swallows the next Esc. */
+typedef int (*KtuiLayerUp)(void *user);
+typedef void (*KtuiLayerClose)(void *user);	/* take down exactly one   */
+
+enum { KTUI_LAYER_MAX = 6 };
+
+typedef struct {
+	const char *verb;	/* what Esc reads as here: "Back", "Cancel" */
+	KtuiLayerUp up;
+	KtuiLayerClose close;
+	void *user;
+} KtuiLayer;
+
+typedef struct {
+	/* Declared by the surface. `doc` NULL means F1 is neither advertised
+	 * nor answered — a key that opens an index saying "no such document"
+	 * teaches that help is broken. */
+	const char *doc;
+	void (*help)(const char *doc, void *user);
+	void *user;
+	KtuiLayer layer[KTUI_LAYER_MAX];
+	int nlayer;
+	/* The surface's menu, or NULL. Routed into FIRST, so a pane that is
+	 * down owns the arrows and Esc before the ladder sees them. */
+	KtuiMenu *menu;
+	/* Where Shift+F10 pops the context pane. ONLY THE SURFACE KNOWS where
+	 * its focus is drawn; a menu that opened at the origin would name a
+	 * row nobody is looking at. Returns 0 to refuse — nothing is focused. */
+	int (*ctx_at)(int *x, int *y, void *user);
+	int ctx_pane;
+	/* The item KTUI_KEY_MENU is reporting. Read only after that return. */
+	int menu_id;
+} KtuiKeys;
+
+enum { KTUI_KEY_PASS = 0, KTUI_KEY_TAKEN, KTUI_KEY_CLOSE, KTUI_KEY_MENU };
+
+/* Registered ONCE at surface start, INNERMOST LAST: the walk runs from the
+ * end, so registration order is the order Esc unwinds. */
+void ktui_keys_layer(KtuiKeys *k, const char *verb, KtuiLayerUp up,
+		     KtuiLayerClose close, void *user);
+
+/* Called FIRST in the surface's dispatch, above its own switch. Classifies;
+ * it neither polls nor draws. Takes any event, not only a key: a surface with
+ * a menu would otherwise need a second call site in its pointer path, and the
+ * two would drift. KTUI_KEY_MENU means an item was picked and `k->menu_id`
+ * names it. */
+int ktui_keys(KtuiKeys *k, const KtuiEvent *ev);
+
+/* Pushed during the draw. Both strings are COPIED, so no lifetime rule
+ * reaches the caller. */
+void ktui_hint(const char *key, const char *verb);
+void ktui_hint_if(int on, const char *key, const char *verb);
+
+/* Draws the pushed hints into `r` and CLEARS THE POOL as its first act — a
+ * pool emptied at flush time would carry one surface's hints into the next
+ * dump in the same process. Returns 1 if a row was drawn, 0 on a window
+ * shorter than eight rows or too narrow for one whole hint. */
+int ktui_hint_row(const KtuiKeys *k, KRect r, int bg);
+
+/* The verb of the topmost OPEN layer, or "Close". Read when building the row,
+ * so it cannot say Close on a screen where Esc goes back. */
+const char *ktui_esc_verb(const KtuiKeys *k);
 
 /* Drop out of the TUI, run a program on the real terminal, come back. */
 int ktui_run_console(char *const argv[]);

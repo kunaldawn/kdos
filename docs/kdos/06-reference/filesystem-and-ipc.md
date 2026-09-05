@@ -83,7 +83,6 @@ Every key is documented in [Configuration](configuration.md).
 | `kdos-panel.overflow` | What the panel has hidden behind the chevron |
 | `kdos-comp.log` | The compositor's output |
 | `kdos-appbox.trace` | Stage timings for the last launches |
-| `kdos-dnd` | Do-not-disturb state |
 | `kdos/` | The console desktop's sockets, mode **0700** |
 | `kdos/<name>.sock` | A console session's **surface** socket |
 | `kdos/<name>.view` | The same session's **view** socket |

@@ -210,6 +210,30 @@ applications, the added associations, and each MIME cache. That last file is the
 already writes beside a box's launchers, so **a boxed application is found by exactly the same
 lookup as a host one**.
 
+**Each of those levels is searched twice, the running desktop's list first.**
+`<desktop>-mimeapps.list` — the first name in `XDG_CURRENT_DESKTOP`, lowercased, so
+`kdos-console-mimeapps.list` on the console — comes before the plain `mimeapps.list` beside it.
+That is what lets one picture open in `timg` inside a terminal on the console and in a boxed viewer
+under the compositor **without either desktop editing the other's choices**, which one list for one
+user cannot express.
+
+**Every shipped table is at `/etc/xdg` and a home starts with none.** Three files:
+`kdos-mimeapps.list` for the compositor, `kdos-console-mimeapps.list` for the console, and the
+plain `mimeapps.list` for what both desktops answer the same way. A person's own choice is searched
+before all three wherever they made it, so *Open With* can always change what is in force — a
+default shipped into `~/.config` would have outranked it and the chooser would have appeared to do
+nothing. *Open With* consults these in the opener's order and writes to the plain user list, so
+what it shows as current is what the opener would actually run.
+
+**A `Terminal=true` entry is wrapped in the desktop's own terminal.** `foot` under the compositor,
+`kdos-term` inside a console session — one rule in `kb_terminal()`, because the console resolving a
+handler correctly and then wrapping it in a Wayland client would look like the handler being wrong
+rather than the terminal being unreachable.
+
+**A type goes in exactly one of them.** One both desktops open the same way belongs in the plain
+file; writing it in each desktop's is the same decision recorded twice, which is a decision that
+drifts.
+
 Field codes are **substituted** rather than stripped: the code *is* the file, and dropping it
 opens the application with an empty document.
 

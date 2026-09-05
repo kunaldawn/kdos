@@ -333,6 +333,17 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
             2>/dev/null || true
         "$SCANNER" client-header "$PROTO/wlr-layer-shell-unstable-v1.xml" \
             "$PROTO/wlr-layer-shell-unstable-v1-client-protocol.h"
+        # The window list libkdisp exposes. libkwl includes this header
+        # unconditionally — the manager is bound on the first call, not at
+        # start-up, but the include is not conditional — so every consumer
+        # generates it whether or not it asks for a window list, and so does
+        # this harness. `preflight.sh` fails the build when a build.sh forgets;
+        # nothing but a container run catches it forgotten HERE.
+        tar xf "$LS" -C "$PROTO" --strip-components=2 \
+            "$(tar tf "$LS" | grep 'protocol/wlr-foreign-toplevel-management-unstable-v1.xml$' | head -1)"
+        "$SCANNER" client-header \
+            "$PROTO/wlr-foreign-toplevel-management-unstable-v1.xml" \
+            "$PROTO/wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
         "$SCANNER" client-header "$XDG" "$PROTO/xdg-shell-client-protocol.h"
         # The toplevel's frame. libkwl asks for a SERVER decoration, so this
         # is as mandatory as the lock role's protocol.
@@ -363,6 +374,9 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
         _wp="$(pkg-config --variable=pkgdatadir wayland-protocols)"
         "$SCANNER" private-code "$PROTO/wlr-layer-shell-unstable-v1.xml" \
             "$PROTO/wlr-layer-shell-unstable-v1-protocol.c"
+        "$SCANNER" private-code \
+            "$PROTO/wlr-foreign-toplevel-management-unstable-v1.xml" \
+            "$PROTO/wlr-foreign-toplevel-management-unstable-v1-protocol.c"
         "$SCANNER" private-code "$XDG" "$PROTO/xdg-shell-protocol.c"
         "$SCANNER" private-code \
             "$_wp/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" \
@@ -392,6 +406,28 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                 -c -o "$OUT/$(basename "$f" .c).o" "$f"
         done
         echo "  libkcell"
+
+        #
+        # AND A VIEW THAT CAN RASTERISE, where libpng is here too. The view
+        # built below with the con family links no fcft and no pixman on
+        # purpose — that is what lets it build on a bare host — so `--shot`
+        # cannot be exercised there. This second binary is the same source
+        # with the rasteriser compiled in, and it is what the shot assertion
+        # runs; the same shape the terminal keeps, where one build proves the
+        # console half and another proves the Wayland half.
+        #
+        if pkg-config --exists libpng 2>/dev/null; then
+            $CC $STD $SHWARN -DKDOS_VIEW_SHOT $INC \
+                -Isrc/desktop/kdos-view -Isrc/libs/libkcell \
+                -o "$OUT/kdos-view-shot" \
+                src/desktop/kdos-view/*.c src/libs/libkcell/*.c \
+                src/libs/libkbase/*.c src/libs/libkcolor/*.c \
+                src/libs/libktui/*.c src/libs/libkdisp/*.c \
+                src/libs/libkcon/*.c \
+                $(pkg-config --cflags --libs fcft pixman-1 libpng)
+            VIEWSHOT="$OUT/kdos-view-shot"
+            echo "  kdos-view --shot (the same source, with the rasteriser)"
+        fi
 
         # The whole of libktui is on both link lines below, not a chosen file
         # or two: kcell_paint.c resolves a sprite cell through
@@ -752,19 +788,151 @@ $CC $STD $SHWARN $INC -Isrc/desktop/kdos-con -Isrc/desktop/kdos-cage \
     src/libs/libkwm/*.c src/libs/libkxdg/*.c
 echo "  kdos-con"
 
+# Raised by any golden that drifted, anywhere in the suite, and read at the end.
+# It is initialised HERE rather than beside the second family of goldens,
+# because the first family runs above that point and a later `golden_fail=0`
+# would clear what this one had already recorded.
+golden_fail=0
+
+# The same shape as golden_dump() above, and for the same two reasons: one flag
+# updates every golden in this suite rather than some of them, and a difference
+# RECORDS a failure instead of ending the run — an `exit 1` here took the whole
+# suite with it, so a golden that drifted hid every check below it, including
+# the one that says every chord is on the key card.
 con_golden() {
     _name=$1; shift
     "$OUT/kdos-con" "$@" > "$OUT/$_name.txt"
+    if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
+        cp "$OUT/$_name.txt" "testing/goldens/$_name.txt"
+        echo "  wrote $_name"
+        return 0
+    fi
     if diff -u "testing/goldens/$_name.txt" "$OUT/$_name.txt" > "$OUT/$_name.diff"; then
         echo "  $_name"
     else
         echo "  $_name DIFFERS from its golden:"
         head -20 "$OUT/$_name.diff" | sed 's/^/    /'
-        exit 1
+        golden_fail=1
     fi
 }
 con_golden con-desktop-80x24 --dump 80x24 --term "/bin/echo hello"
 con_golden con-two-132x43 --dump 132x43 --term "/bin/echo first" --term "/bin/echo second"
+
+# THE FUNCTION-KEY ROW, which is a con.conf mode rather than a flag — so the
+# golden is driven by pointing XDG_CONFIG_HOME at a config that asks for it.
+# The row names ten chords and every one must be bound, or the bar teaches a
+# key that does nothing; the golden is what notices when a chord is renamed.
+mkdir -p "$OUT/fkeys-home/kdos-con"
+printf 'taskbar = fkeys\n' > "$OUT/fkeys-home/kdos-con/con.conf"
+XDG_CONFIG_HOME="$OUT/fkeys-home" \
+    con_golden con-fkeys-80x24 --dump 80x24 --term "/bin/echo hello"
+
+#
+# ONE WRITER FOR THE ATTACH PAYLOAD.
+#
+# `libkcon`'s client sends KCON_OP_ATTACH twice: once on init and once as the
+# resize, which IS a second attach. A field added to only one of them makes the
+# server read past the end of the message, refuse the attach and drop the
+# surface — and the symptom is a toast that vanishes the moment it has
+# something to say, which looks like anything but a protocol error. That
+# happened when the corner and its margins were added.
+#
+# The server-side test beside it cannot see this: it builds its own payload.
+# What holds the property is that every send goes through one writer.
+#
+_att=$(grep -c 'KCON_OP_ATTACH' src/libs/libkcon/kcon_client.c)
+_put=$(grep -c 'put_attach(&b' src/libs/libkcon/kcon_client.c)
+if [ "$_att" = "$_put" ]; then
+    echo "  every attach the client sends is written in one place ($_att)"
+else
+    echo "  THE ATTACH PAYLOAD HAS $_att SENDERS AND $_put WRITERS"
+    echo "  a sender that builds its own is a field away from dropping surfaces"
+    exit 1
+fi
+
+#
+# A CHORD A REAL KEYPRESS CAN PRODUCE.
+#
+# `keys.conf` spells a chord with the plain letter — `Super+Shift+t` — and a
+# backend delivers the character the LAYOUT produces, which with Shift held is
+# `T`. An exact comparison against the table's `t` matched nothing, so five
+# chords fell through to the focused window and typed a capital letter into it:
+# quit, restore, the saver, tile and show-desktop. The checks above could not
+# see it — the table was spelled right and every action had a card row — so the
+# guard has to drive the matcher with the character a keyboard actually sends.
+#
+# keys.c links only libkbase, which is why this can be a driver rather than a
+# whole session.
+#
+cat > "$OUT/chorddrv.c" <<'CHORDEOF'
+#include <stdio.h>
+#include "con.h"
+
+int main(void)
+{
+	struct { int key, mods, want, arg; } c[] = {
+		{ 'T', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_TILE, 0 },
+		{ 't', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_TILE, 0 },
+		{ 'D', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_SHOW_DESKTOP, 0 },
+		{ 'Q', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_QUIT, 0 },
+		{ 'N', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_RESTORE, 0 },
+		{ 'L', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_EXEC, CON_CMD_SAVER },
+		{ 'q', KT_MOD_SUPER, CON_ACT_CLOSE, 0 },
+		/* Shift is still a MODIFIER: only the character is normalised,
+		 * so these two remain different chords. */
+		{ 'T', KT_MOD_SUPER, CON_ACT_NONE, 0 },
+		{ 'R', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_NONE, 0 },
+		/* A window by number, which rides the digit branch. */
+		{ '3', KT_MOD_SUPER | KT_MOD_ALT, CON_ACT_WIN_N, 3 },
+		{ '3', KT_MOD_SUPER, CON_ACT_WS, 2 },
+	};
+	int bad = 0;
+
+	for (unsigned i = 0; i < sizeof(c) / sizeof(c[0]); i++) {
+		int arg = 0;
+		int act = keys_action(c[i].key, c[i].mods, &arg);
+
+		if (act != c[i].want || (c[i].want != CON_ACT_NONE &&
+					 arg != c[i].arg)) {
+			printf("    '%c' mods %d -> action %d arg %d, "
+			       "want action %d arg %d\n", c[i].key, c[i].mods,
+			       act, arg, c[i].want, c[i].arg);
+			bad = 1;
+		}
+	}
+
+	/*
+	 * EVERY CELL OF THE FUNCTION-KEY ROW NAMES A CHORD THAT EXISTS.
+	 *
+	 * The row is a pointer target that fires `Super+F<n>`, and a cell
+	 * naming an unbound chord is a label a person clicks, learns, and then
+	 * presses to no effect — which teaches them the desktop is broken. Ten
+	 * cells, ten chords, checked here because the row is drawn from a table
+	 * in panel.c and bound from a table in keys.c and nothing else makes
+	 * the two agree.
+	 */
+	for (int n = 1; n <= 10; n++) {
+		int arg = 0;
+		int act = keys_action(KT_K_F1 + (n - 1), KT_MOD_SUPER, &arg);
+
+		if (act == CON_ACT_NONE) {
+			printf("    the function-key row names Super+F%d "
+			       "and nothing is bound to it\n", n);
+			bad = 1;
+		}
+	}
+	return bad;
+}
+CHORDEOF
+$CC $STD $SHWARN $INC -Isrc/desktop/kdos-con -o "$OUT/chorddrv" \
+    "$OUT/chorddrv.c" src/desktop/kdos-con/keys.c src/libs/libkbase/*.c
+if HOME=/nonexistent-kdos "$OUT/chorddrv"; then
+    echo "  a shifted letter reaches the chord it is bound to"
+    echo "  and every cell of the function-key row names a bound chord"
+else
+    echo "  A CHORD A KEYBOARD SENDS DOES NOT REACH ITS ACTION"
+    exit 1
+fi
 
 #
 # EVERY CHORD THE SHIPPED FILE NAMES IS AN ACTION THE SESSION HAS.
@@ -798,9 +966,12 @@ fi
 # something this host can run — the card links Wayland — so the check is that
 # each action name appears in it.
 #
+# The row SHAPE, not the name anywhere in the file: `net`, `power` and
+# `settings` are ordinary words that appear in that source as other strings, so
+# a bare name grep passed for eleven chords the card was in fact dropping.
 _nocard=""
 while read -r _act; do
-    grep -q "\"$_act\"" src/desktop/kdos-shell/keys.c || _nocard="$_nocard $_act"
+    grep -q "{ \"$_act\"," src/desktop/kdos-shell/keys.c || _nocard="$_nocard $_act"
 done < "$OUT/con-actions.txt"
 if [ -z "$_nocard" ]; then
     echo "  every chord kdos-con binds has a row on the key card"
@@ -899,6 +1070,17 @@ KDOS_CON_DUMP=1 "$OUT/kdos-con" --serve --socket "$VSOCK/s" \
 VPID=$!
 for _ in $(seq 1 100); do [ -S "$VSOCK/s" ] && break; sleep 0.05; done
 "$OUT/kdos-view" --dump 80x24 --socket "$VSOCK/s" > "$OUT/con-view-80x24.txt" 2>/dev/null
+#
+# AND THE SAME FRAME AS A PICTURE. `--shot` settles exactly as `--dump` does
+# and takes the same one; what it adds is the rasteriser, so this asserts the
+# artefact rather than the pixels: a real PNG signature, and an IHDR whose
+# geometry is the grid times the cell — a shot that came out one cell wide
+# would still be a valid PNG.
+#
+# NOT A GOLDEN. The rasterising depends on the font this host happens to have,
+# and a byte comparison would be asserting fontconfig.
+[ -n "${VIEWSHOT:-}" ] &&
+    "$VIEWSHOT" --shot "$OUT/con-view.png" --socket "$VSOCK/s" 2>/dev/null || true
 # `wait` reports the status of a process we KILLED, which is 143 — and under
 # `set -e` that ends the suite with no message at all.
 kill $VPID 2>/dev/null || true
@@ -915,6 +1097,34 @@ else
     head -20 "$OUT/con-view.diff" | sed 's/^/    /'
     echo "      KDOS_GOLDEN_UPDATE=1 testing/selftest.sh"
     exit 1
+fi
+
+if [ -s "$OUT/con-view.png" ]; then
+    # The eight-byte signature, then IHDR's width and height as big-endian
+    # 32-bit words at offsets 16 and 20.
+    # Byte at a time and assembled here: busybox od has no --endian, and a
+    # host one reading a big-endian word natively would answer differently on
+    # each. Four hex bytes is the same arithmetic everywhere.
+    _be32() {
+        set -- $(od -An -tx1 -j"$2" -N4 "$1" | tr -d '\n')
+        printf '%d' "0x$1$2$3$4"
+    }
+    _pngmagic=$(dd if="$OUT/con-view.png" bs=1 skip=1 count=3 2>/dev/null)
+    _pngw=$(_be32 "$OUT/con-view.png" 16)
+    _pngh=$(_be32 "$OUT/con-view.png" 20)
+    [ "$_pngmagic" = "PNG" ] || {
+        echo "  kdos-view --shot did not write a PNG"; exit 1; }
+    # 80 columns and 24 rows, times a cell that is at least 4x8 on any font
+    # this could have loaded.
+    [ "${_pngw:-0}" -ge 320 ] && [ "${_pngh:-0}" -ge 192 ] || {
+        echo "  kdos-view --shot wrote ${_pngw}x${_pngh}, which is not the grid"
+        exit 1; }
+    echo "  con-view --shot: a ${_pngw}x${_pngh} picture of the same frame"
+elif [ -n "${VIEWSHOT:-}" ]; then
+    echo "  kdos-view --shot wrote nothing"
+    exit 1
+else
+    echo "  con-view --shot (skipped — no libpng or fcft on this host)"
 fi
 
 #
@@ -1343,6 +1553,35 @@ else
 fi
 
 echo
+#
+# THE THUMBNAIL CACHE'S NAME, which is the whole interop claim: a file
+# manager, an image viewer and this desktop all have to compute the SAME path
+# or each writes a thumbnail the others cannot find. `--path` needs no image
+# library, so it is checkable on any host — the decoding half is not.
+#
+echo "==> a thumbnail lands where every other program looks for it"
+ln -sf kdos-tools "$OUT/kdos"
+_thumbdir=$(mktemp -d)
+: > "$_thumbdir/me.png"
+_tp=$(HOME="$_thumbdir" XDG_CACHE_HOME="$_thumbdir/.cache" \
+      "$OUT/kdos" thumb --path "$_thumbdir/me.png")
+case "$_tp" in
+*/thumbnails/normal/*.png) ;;
+*) echo "  kdos thumb --path answered $_tp"; exit 1 ;;
+esac
+# The leaf is the md5 of the escaped URI: thirty-two lowercase hex digits and
+# nothing else. A name of any other shape is one no other program computes.
+_leaf=$(basename "$_tp" .png)
+printf '%s' "$_leaf" | grep -Eq '^[0-9a-f]{32}$' \
+    || { echo "  the cache name is not an md5: $_leaf"; exit 1; }
+# And it is the md5 of THAT uri, not of the path — checked against the value
+# `md5sum` gives for the same string, which is what interop means here.
+_want=$(printf 'file://%s' "$_thumbdir/me.png" | md5sum | cut -d' ' -f1)
+[ "$_leaf" = "$_want" ] \
+    || { echo "  cache name $_leaf is not md5(file://$_thumbdir/me.png)"; exit 1; }
+rm -rf "$_thumbdir"
+echo "  the name is md5(file://<path>), which is what every reader computes"
+
 echo "==> -march is kept only where the win beat the noise"
 # N14's whole claim is the DECISION, and it is testable without building
 # anything twice: `kdos march decide <baseline> <optimised> <noise%>` is the
@@ -2080,8 +2319,11 @@ export KDOS_MOUNTD_MOUNTS="$MF/mounts"
 "$OUT/kdos-mountd" --fixture "$MF/sys" "$MF/dev" > "$MO" 2>&1
 grep -q "sdb1	KDOSSTICK	vfat" "$MO" \
     || { echo "  the removable stick was not offered"; cat "$MO"; exit 1; }
-grep -q "^2 eligible" "$MO" \
-    || { echo "  the stick and the disc were not the whole answer"
+# Five: the stick, the encrypted stick, the live medium's two partitions and
+# the data disc. The count is asserted so a rule that started offering the
+# INTERNAL disk shows up as an extra row rather than as nothing.
+grep -q "^5 eligible" "$MO" \
+    || { echo "  the eligible set is not the five the fixture carries"
          cat "$MO"; exit 1; }
 grep -q "sda1" "$MO" \
     && { echo "  the INTERNAL disk was offered"; cat "$MO"; exit 1; }
@@ -2103,6 +2345,111 @@ grep -q "sr0" "$MO" \
     || { echo "  the fstab entry took the disc with it"; cat "$MO"; exit 1; }
 echo "  the stick and the disc are offered; the internal disk and an fstab"
 echo "  entry are not"
+
+# ── THE PRIVILEGED VERBS, AND THE REFUSALS THAT MATTER MORE ───────────────
+#
+# This daemon spawns children now — eject, cryptsetup, mkfs — which it never
+# did before, and one of its verbs writes a filesystem. Every assertion below
+# is a REFUSAL except three, because the failure that costs a person their data
+# is a verb that runs when it should not have.
+#
+# THE LIVE-MEDIUM CASE IS THE ONE TO KEEP. `sdd` is a boot medium: an iso9660
+# partition AND a vfat ESP beside it. Every per-partition rule offers the ESP —
+# it is removable, it probes as vfat, it is unmounted and no fstab claims it —
+# so a format there destroys the running session, and the typed-name
+# confirmation does not help because the person genuinely typed the name of the
+# row they meant. The refusal has to be by the DISK.
+#
+# `--fixture-serve` runs the real dispatch over a real socket with the
+# fixture's roots, and km_exec PRINTS the argv instead of running it. Nothing
+# it decides to do is done.
+KMSOCK="$OUT/km.sock"
+cat > "$OUT/kmask.py" <<'KMASKEOF'
+import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sys.argv[1])
+s.sendall(sys.argv[2].encode())
+s.shutdown(socket.SHUT_WR)
+b = b''
+while True:
+    d = s.recv(4096)
+    if not d:
+        break
+    b += d
+sys.stdout.write(b.decode(errors='replace'))
+KMASKEOF
+printf 'format = yes\n' > "$OUT/mountd.conf"
+rm -f "$KMSOCK"
+KDOS_MOUNTD_SOCKET="$KMSOCK" KDOS_MOUNTD_MOUNTS="$MF/mounts-live" \
+KDOS_MOUNTD_CONF="$OUT/mountd.conf" \
+    "$OUT/kdos-mountd" --fixture-serve "$MF/sys" "$MF/dev" > "$OUT/km.exec" 2>&1 &
+KMPID=$!
+for _i in $(seq 1 50); do [ -S "$KMSOCK" ] && break; sleep 0.1; done
+kmask() { python3 "$OUT/kmask.py" "$KMSOCK" "$1"; }
+kmwant() {  # <request> <expected substring> <what it proves>
+    _got=$(kmask "$1")
+    case "$_got" in
+    *"$2"*) echo "  ok    $3" ;;
+    *) echo "  FAIL  $3"; echo "        sent: $(printf '%s' "$1" | tr '\n' '|')"
+       echo "        got:  $_got"; echo "        want: $2"; mountd_fail=1 ;;
+    esac
+}
+mountd_fail=0
+
+kmwant 'list
+' 'crypto_LUKS' "a LUKS container is probed as one, not as what it replaced"
+kmwant 'list
+' 'SAFEBOX' "and its LUKS2 label is read"
+
+# The live medium. sdd2 is the ESP on the disk this session booted from.
+kmwant 'eject 2
+' 'booted from' "eject refuses a partition of the boot DISK, not just the iso"
+kmwant 'format 2 vfat 4
+sdd2' 'booted from' "and so does format, even with the right name typed"
+
+# The typed confirmation is the row's own kernel name.
+kmwant 'format 0 vfat 4
+sdc1' 'type sdb1 to confirm' "a format confirmed with another row's name is refused"
+kmwant 'format 0 ext4 4
+sdb1' 'ok sdb1' "and the row's own name confirms it"
+kmwant 'format 0 reiserfs 4
+sdb1' 'unknown filesystem' "a filesystem outside the allowlist is refused"
+
+# The allowlist. The dispatch this replaced read an index with atoi() and threw
+# the rest of the line away, so `mount 0 rm -rf /` was a well-formed mount.
+kmwant 'mount 0 rm -rf /
+' 'unknown command' "a verb with a token nobody named is not a verb"
+kmwant 'mount 0zzz
+' 'no such device' "an index that is not a number is not index zero"
+kmwant 'mount 99
+' 'no such device' "and an index past the list is refused"
+
+# The passphrase is a FRAME, not a token: a tokeniser splits on spaces and a
+# passphrase may contain them.
+kmwant 'unlock 1 21
+correct horse battery' 'ok kdos-sdc1' "a passphrase with spaces in it survives the wire"
+kmwant 'unlock 0 4
+abcd' 'not an encrypted volume' "unlock refuses a plain filesystem"
+kmwant 'unlock 1 99
+tooshort' 'short frame' "a frame shorter than it declared is refused"
+
+# THE PASSPHRASE NEVER REACHES ARGV. /proc/<pid>/cmdline is world-readable for
+# the life of the process, so a secret passed as an argument is one every user
+# on the machine can read. Read while the daemon is still up — km_exec flushes
+# each line as it prints it, so there is nothing to wait for.
+if grep -q -e '--key-file=-' "$OUT/km.exec" 2>/dev/null; then
+    echo "  ok    cryptsetup is fed the passphrase on stdin"
+else
+    echo "  FAIL  cryptsetup was not given --key-file=-"; mountd_fail=1
+fi
+if grep -q 'correct horse' "$OUT/km.exec" 2>/dev/null; then
+    echo "  FAIL  the passphrase appeared in an argument vector"; mountd_fail=1
+else
+    echo "  ok    and it appears in no argument vector"
+fi
+kill $KMPID 2>/dev/null || true
+wait $KMPID 2>/dev/null || true
+[ "$mountd_fail" = 0 ] || exit 1
 
 unset KDOS_MOUNTD_MOUNTS
 
@@ -2553,6 +2900,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
              src/desktop/kdos-shell/launcher.c src/desktop/kdos-shell/pick.c
              src/desktop/kdos-shell/shell.c src/desktop/kdos-shell/apps.c
              src/desktop/kdos-shell/fav.c src/desktop/kdos-shell/cells.c
+             src/desktop/kdos-shell/logo.c
              src/libs/libkchrome/kch_chrome.c
              src/libs/libkchrome/kch_tone.c"
     # A new surface may want alsa or an sd-bus; offer them when the host has
@@ -2571,7 +2919,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     DNEW=""
     DBAD=""
     for s in keys teams saver slit doc settings openwith audio \
-             start net bt devices notify status tip panel; do
+             start net bt devices notify status tip panel trash; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         if $CC $STD $SHWARN -fsyntax-only -I"$DPROTO" \
                 -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libktui \
@@ -2679,7 +3027,7 @@ grep -q "\[ Open \]" "$OUT/dump-pick.txt" || {
     echo "  kdos-pick has no Open button"; exit 1; }
 grep -q "\[ Cancel \].*\[ Open \]" "$OUT/dump-pick.txt" || {
     echo "  kdos-pick's buttons are not both on their row"; exit 1; }
-grep -q "Esc cancel.*\[ Cancel \]" "$OUT/dump-pick.txt" || {
+grep -q "Esc Close.*\[ Cancel \]" "$OUT/dump-pick.txt" || {
     echo "  kdos-pick's hint row and its buttons collide"; exit 1; }
 echo "  cal, menu, launcher and pick draw square boxes with their controls in them"
 
@@ -2730,7 +3078,6 @@ echo "==> golden frames — the committed cell grid, diffed"
 # in the ascii tier here. The rich and vt tiers are covered by the ramp
 # assertions in src/libs/selftest.c instead.
 GOLD="$PWD/testing/goldens"
-golden_fail=0
 golden() {			# <name> <WxH> <argv…>
     _g_name=$1; _g_size=$2; shift 2
     _g_file="$GOLD/$_g_name-$_g_size.txt"
@@ -2835,10 +3182,18 @@ golden menu-system 80x24  menu system --dump
 golden menu-system 132x43 menu system --dump
 golden pick        80x24  pick --dir tree --dump
 golden pick        132x43 pick --dir tree --dump
+# THE CONTROL CENTRE'S FRONT DOOR. Two settings goldens were committed and
+# driven by nothing, so a category added to the grid left them describing a
+# surface that no longer existed. A golden nothing runs is a file that agrees
+# with the tree only by accident.
+if "$DUMPCK" --have settings; then
+    golden settings 80x24  settings --dump
+    golden settings 132x43 settings --dump
+fi
 # The Phase B surfaces, each only if it linked in. `--have` is dumpmain.c
 # answering for its own weak symbols, so a surface that has not landed is a
 # skip with a name on it rather than a silent gap.
-for _s in keys teams doc settings start notify; do
+for _s in keys teams doc settings start notify trash; do
     if "$DUMPCK" --have "$_s"; then
         golden "$_s" 80x24  "$_s" --dump
         golden "$_s" 132x43 "$_s" --dump
@@ -3091,6 +3446,20 @@ test "$rc" = 2 \
 echo "  fix rows merged, -rN ignored, 'secdb =' honoured, unknown ≠ clean"
 
 echo
+echo "==> the key card can be printed without a display server"
+# `--print` exists so the card reaches a printer, a wall and an ssh session. It
+# is only useful if it returns BEFORE a display server is opened — a print mode
+# that needed a session would fail in exactly the cases it was added for. The
+# structural check is that the branch comes before the KDispConfig.
+_pl=$(grep -n 'print_rows()' src/desktop/kdos-shell/keys.c | tail -1 | cut -d: -f1)
+_kl=$(grep -n 'KDispConfig cfg = {' src/desktop/kdos-shell/keys.c | head -1 | cut -d: -f1)
+if [ -n "$_pl" ] && [ -n "$_kl" ] && [ "$_pl" -lt "$_kl" ]; then
+    echo "  --print returns before any display server is opened"
+else
+    echo "  FAIL  --print does not return before kdisp_init"
+    exit 1
+fi
+
 echo "==> the tone ladder gives the bar a legible middle in every accent"
 #
 # The eight VT slots cannot say what a raised button is: `variant` against

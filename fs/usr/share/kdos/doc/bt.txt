@@ -1,0 +1,21 @@
+KDOS BT
+
+Bluetooth through bluez. One row per device the adapter knows about.
+
+  Enter     connects the selected device, or disconnects it.
+  p         pairs a device that is not paired yet.
+  t         trusts it, or stops trusting it. A trusted device reconnects on
+            its own; an untrusted one asks every time.
+  x         removes a paired device entirely.
+  s         starts a scan, or stops one.
+  o         powers the adapter on or off.
+  d         makes this machine discoverable, or hides it again.
+
+Pairing
+
+  A device that wants confirmation puts its question on the bottom row and
+  bluez waits for the answer. Press `y` to confirm and `n` to refuse; Escape
+  refuses too, because the question has to be answered one way or the other —
+  leaving it unanswered would leave bluez blocked.
+
+  [[doc:index]]

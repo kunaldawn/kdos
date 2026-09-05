@@ -56,6 +56,16 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 "$SCANNER" private-code \
 	/usr/share/wlroots/protocols/wlr-layer-shell-unstable-v1.xml \
 	wlr-layer-shell-unstable-v1-protocol.c
+# foreign-toplevel: libkwl answers libkdisp's window list from it, and the
+# header is included unconditionally, so every consumer generates it whether or
+# not it asks for a window list. The lock screen never binds the manager — that
+# happens on the first call, and the lock screen makes none.
+"$SCANNER" client-header \
+	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
+	wlr-foreign-toplevel-management-unstable-v1-client-protocol.h
+"$SCANNER" private-code \
+	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
+	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
 PKGCFG="fcft pixman-1 xkbcommon wayland-client"
 

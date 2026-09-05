@@ -19,6 +19,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "kbase.h"
 #include "kcon.h"	/* kcon_impl */
 #ifndef KDOS_TERM_CONSOLE_ONLY
 #include "kwl.h"	/* kwl_impl — naming these is what links each one in */
@@ -191,6 +192,18 @@ static void inner(int *x, int *y, int *w, int *h)
 	*h = ktui_h - 2;
 }
 
+/*
+ * A PROGRAM IN THIS TERMINAL SAYS IT FINISHED — OSC 9, 777 or 99. `make &&
+ * notify-send done` does not work on this image, and this is what does.
+ */
+static void on_notify(struct kvt_vte *vte, const char *summary,
+		      const char *body, void *user)
+{
+	(void)vte;
+	(void)user;
+	kb_notify("kdos-term", summary, body);
+}
+
 static void draw(void)
 {
 	static KtuiCell *buf;
@@ -304,6 +317,9 @@ static void resize_to_frame(void)
 	T.cols = w;
 	T.rows = h;
 	kvt_term_resize(T.t, w, h);
+	/* Half the picture bound is the grid, so the geometry a program is
+	 * told has to move with it. */
+	term_pic_geom();
 }
 
 /*
@@ -453,6 +469,7 @@ int main(int argc, char **argv)
 	}
 	kvt_term_scrollback(T.t, (unsigned)TC.scrollback);
 	kvt_term_osc_cb(T.t, on_osc, NULL);
+	kvt_term_notify_cb(T.t, on_notify, NULL);
 	kvt_term_clip_cb(T.t, on_clip, NULL);
 
 #ifdef HAVE_KIMG
@@ -491,6 +508,24 @@ int main(int argc, char **argv)
 		term_paste_pending();
 
 		/*
+		 * THE FOCUS MOVED, AND THE CHILD IS TOLD — by a diff against
+		 * the last turn rather than from an event, because both
+		 * display servers already hold the answer and neither delivers
+		 * it as one. `CSI I` / `CSI O` go out only while the child
+		 * asked with DECSET 1004; an editor that is not told does not
+		 * reload a file changed underneath it.
+		 */
+		{
+			static int had = -1;
+			int now = tty ? 1 : kdisp_focused();
+
+			if (now != had) {
+				had = now;
+				kvt_term_focus(T.t, now);
+			}
+		}
+
+		/*
 		 * THE CHILD IS GONE AND ITS LAST OUTPUT IS ON THE SCREEN. One
 		 * more draw so the exit message is visible, then out: a window
 		 * that stayed open on a dead shell is a window with no way to
@@ -503,8 +538,14 @@ int main(int argc, char **argv)
 			break;
 		}
 
-		draw();
-		ktui_draw_flush();
+		if (!kvt_term_sync_hold(T.t)) {
+			draw();
+			/* The paste guard's dialog, over the grid. This is the
+			 * only modal this program raises, and without it the
+			 * confirmation would be a question nobody could see. */
+			ktui_modal_draw();
+			ktui_draw_flush();
+		}
 
 		struct pollfd p[2];
 		int n = 0;
@@ -539,6 +580,17 @@ int main(int argc, char **argv)
 		while (ktui_backend()->poll_event(&ev, 0)) {
 			if (ev.type == KT_EVT_RESIZE) {
 				resize_to_frame();
+				continue;
+			}
+			/*
+			 * A MODAL OWNS THE KEYBOARD WHILE IT IS UP, ahead of
+			 * the child: a question about whether to paste must
+			 * not be answered by typing into the thing the paste
+			 * would run in.
+			 */
+			if (ktui_modal_active()) {
+				ktui_modal_event(&ev);
+				ktui_draw_invalidate();
 				continue;
 			}
 			if (ev.type == KT_EVT_MOUSE) {

@@ -17,10 +17,13 @@
 # painter and writes into a PipeWire stream instead of onto a screen, which is
 # why PipeWire is here and not in the session.
 LIBS="$PORT_SRC/../../libs"
-PKGCFG="libdrm libinput libseat xkbcommon libudev fcft pixman-1 libpipewire-0.3"
+# libpng is `--shot`'s: one frame of the composited grid, written as a picture
+# rather than as the text a `--dump` prints.
+PKGCFG="libdrm libinput libseat xkbcommon libudev fcft pixman-1 libpipewire-0.3 libpng"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKDOS_VIEW_VERSION="\"$version\"" -DKDOS_VIEW_KMS -DKDOS_VIEW_CAST \
+	-DKDOS_VIEW_SHOT \
 	-I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libkcolor" -I"$LIBS/libktui" \
 	-I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkcell" \

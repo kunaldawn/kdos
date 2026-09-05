@@ -1,0 +1,22 @@
+KDOS DOC
+
+Every surface on this desktop that can explain itself, and the pages behind
+the F1 key. A link is followed with Enter or a click; Backspace goes back.
+
+The desktop
+
+  [[doc:settings]]     the control centre, and what each page writes
+  [[doc:display]]      screens, modes, order, and the fifteen seconds
+  [[doc:net]]          wireless and wired, through NetworkManager
+  [[doc:bt]]           Bluetooth, through bluez
+  [[doc:devices]]      cameras, microphones, removable media
+
+The keys
+
+  Every surface answers the same five: F1 opens the page it has, F10 opens
+  its menu bar, Shift+F10 the menu of the thing under the caret, Esc steps
+  back one level, and the bottom row names whatever else the surface answers
+  right now. A key that is not on that row is a key the surface does not
+  answer in the state it is in.
+
+  [[key:W-d]]          the full keybind card

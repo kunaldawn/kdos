@@ -22,7 +22,7 @@ reader learns that those are **three different questions**, rather than three to
 ## theme
 
 ```sh
-kdos theme <phosphor|amber|ice|bone>
+kdos theme <phosphor|amber|ice|bone|norton|borland|perfect>
 kdos theme list | next | prev
 kdos theme style <file>
 kdos theme --audit [accent]
@@ -297,18 +297,65 @@ Offline vulnerability tracking against a vendored security database. Covered in
 **A package the database does not carry is unknown, never clean**, and the summary says how many
 are in that state.
 
+## thumb
+
+A small picture of a file, in the cache everything else reads.
+
+**The cache is shared and its name is a hash.** A thumbnail lives at
+`$XDG_CACHE_HOME/thumbnails/normal/<md5>.png`, where the hash is over the file's escaped `file://`
+URI — so a file manager, an image viewer and this desktop find each other's work. That is the whole
+value of the standard, and it is why the escaper and the hash are `libkbase`'s rather than each
+caller's: **one character escaped differently is a thumbnail nothing else can find.**
+
+**`Thumb::URI` and `Thumb::MTime` are required, not decoration.** A reader checks them before
+trusting the picture: without the mtime a thumbnail of an edited file is served forever, and without
+the URI a hash collision is undetectable. libpng's simplified writer cannot attach a text chunk, so
+the cache file goes out through the full one — mode `0600`, because a thumbnail can reveal the
+content of a file whose own permissions hide it, and renamed into place, because a reader sharing
+the cache must not find half a picture.
+
+**It decodes nothing it does not have to.** A video is `ffmpegthumbnailer`, a PDF is `pdftoppm`, and
+every other still — JPEG, GIF, WebP, a camera raw — is `magick`. Each is a program on this image
+that does one thing well.
+
+**A helper must hand back a file at the name it was given**, which is why `exiv2` is not one: `-ep1`
+writes `<file>-preview1.<ext>` with an extension it picks, so a caller can neither name the result
+nor read it. `dcraw_emu` is not on the image at all — `libraw` builds with `--disable-examples`.
+
+`--ppm FILE OUT` writes a small P6 instead of touching the cache. That is for a caller with no image
+library: `kdos-pick`'s preview pane is built without one so its offscreen build stays
+dependency-free, and it already parses P6.
+
+## places
+
+The places column, from a prompt — and the way to keep one.
+
+**The same reader the surfaces use.** `kxdg_places()` answers the desktop's Places menu, the Start
+menu's column and the chooser's `Ctrl+P`; a command that walked `user-dirs.dirs` itself would be a
+fourth answer to where a person's directories are.
+
+`kdos places add DIR` is why it exists: the desktop can keep a folder from its context menu and
+`mc` could not, so `F2` in the file manager had no way to say *keep this one* — and the whole point
+of the column is that it holds the places somebody said rather than the ones a program guessed. The
+path is made absolute, because the row is read back by a program standing somewhere else.
+
 ## trash
 
 The freedesktop trash, from a prompt.
 
-**This and the desktop's `Delete` key are one implementation.** The desktop has had a trash icon
-since it had icons and the command line had no verb for it, so removing at a prompt and deleting on
-the desktop were two different operations on one machine — one recoverable, one not. Two copies of
-the specification would be two answers to what deleting means.
+**This, the desktop's `Delete` key and `kdos-trash` are one implementation.** The desktop has had a
+trash icon since it had icons and the command line had no verb for it, so removing at a prompt and
+deleting on the desktop were two different operations on one machine — one recoverable, one not.
+Two copies of the specification would be two answers to what deleting means.
 
 The library keeps the whole of it — the trash directories, the record file, the unique name,
 restore and empty — and each front end keeps only the **question**: the confirmation, and the two
 pinned places on the desktop that are not files.
+
+**The way back is [`kdos-trash`](kdos-shell.md#kdos-trash)**, which the Trash icon opens. Its path
+is a directory, but a file manager opened on it shows the escaped names in `files/` with no origin
+and no deletion date — the record carrying both lives in `info/` beside it, and reading the pair is
+what the surface is for.
 
 Four things the shared implementation gets right that a second copy would have to re-learn:
 
@@ -349,6 +396,17 @@ hour later and a machine up for a month is not showing one line for a month.
 
 Orchestration of the binary host and the A/B slots. **No new trust path** — it drives `kpkg` and
 the slot state machine, and the exit code is the answer.
+
+## settings
+
+```sh
+kdos settings           # the grid
+kdos settings hardware  # straight to a page
+```
+
+Execs `kdos-settings`, passing a page word through as `--page`. **The page name is not checked
+here**: `kdos-settings` owns the list, and a second copy would be a second list to keep in step —
+whose failure is a page that exists and cannot be reached from a prompt.
 
 ## con
 

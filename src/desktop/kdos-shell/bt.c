@@ -14,7 +14,7 @@
  *   ║   · Keyboard K380     C4:2C:03:…   paired                       ║
  *   ║   · JBL Flip 5        A0:11:22:…                                ║
  *   ╟─────────────────────────────────────────────────────────────────╢
- *   ║ Enter connect  p pair  t trust  x remove  s scan  o power  Esc  ║
+ *   ║ Enter connect  p pair  t trust  x remove  Esc Close             ║
  *   ╚═════════════════════════════════════════════════════════════════╝
  *
  * kdos-audio has a read-only bluetooth pane, which answers "is my headset
@@ -109,6 +109,27 @@ static int icons_on = 1;
 /* The agent's pending question, if any. */
 static sd_bus_message *ask_msg;
 static char ask_text[128];
+
+/*
+ * ONE RUNG: the agent's pairing question. Its close body is `answer(0)` and
+ * not a cleared string — `ask_msg` is a refcounted, deferred bus message and
+ * bluez is blocked on it until a reply or an error goes out.
+ */
+static KtuiKeys keys;
+
+static void answer(int yes);
+
+static int ask_up(void *user)
+{
+	(void)user;
+	return ask_msg != NULL;
+}
+
+static void ask_reject(void *user)
+{
+	(void)user;
+	answer(0);
+}
 
 /* ── the object tree ───────────────────────────────────────────────────── */
 
@@ -694,21 +715,41 @@ static void draw_frame(void)
 		 * bluez is blocked on, and a row of buttons about something
 		 * else beside it would be an invitation to answer the wrong
 		 * one. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
 		ktui_draw_text(2, h - 2, w - 4, ask_text, KT_WARN, KT_BG,
 			       KT_A_NONE);
 	} else {
 		/* The bar first, the text clipped to where it starts, and the
 		 * hints drawn whole or not at all — see the same pair in
 		 * net.c, which is where both rules are written down. */
-		static const char HINT[] = "Enter connect   p pair   t trust   "
-					   "Esc";
 		int bx = bt_buttons(w, h - 2);
 		int room = bx - 3;
-		if (status[0] ? room >= 8 : room >= (int)ktui_utf8_width(HINT))
-			ktui_draw_text(2, h - 2, room,
-				       status[0] ? status : HINT,
-				       status[0] ? KT_MID : KT_DIM, KT_BG,
-				       KT_A_NONE);
+		const struct btdev *d = sel >= 0 && sel < ndev ? &devs[sel]
+							      : NULL;
+
+		if (status[0]) {
+			ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
+			if (room >= 8)
+				ktui_draw_text(2, h - 2, room, status, KT_MID,
+					       KT_BG, KT_A_NONE);
+		} else {
+			ktui_hint_if(d && powered, "Enter",
+				     d && d->connected ? "disconnect"
+						       : "connect");
+			ktui_hint_if(d && !d->paired && powered, "p", "pair");
+			ktui_hint_if(d != NULL, "t",
+				     d && d->trusted ? "untrust" : "trust");
+			ktui_hint_if(d && d->paired && adapter[0], "x",
+				     "remove");
+			ktui_hint_if(adapter[0] && powered, "s",
+				     discovering ? "stop scan" : "scan");
+			ktui_hint_if(adapter[0] != '\0', "o",
+				     powered ? "power off" : "power on");
+			ktui_hint_if(adapter[0] && powered, "d",
+				     discoverable ? "hide" : "visible");
+			ktui_hint("Esc", ktui_esc_verb(&keys));
+			ktui_hint_row(&keys, krect(2, h - 2, room, 1), KT_BG);
+		}
 	}
 	ktui_draw_flush();
 }
@@ -816,6 +857,11 @@ int bt_main(int argc, char **argv)
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_BG);
+	/* The page in /usr/share/kdos/doc that F1 opens. A name with no
+	 * file there is refused by testing/preflight.sh. */
+	keys.doc = "bt";
+	keys.help = sh_help;
+	ktui_keys_layer(&keys, "Reject", ask_up, ask_reject, NULL);
 	agent_register();
 
 	time_t last = 0;
@@ -913,20 +959,28 @@ int bt_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
+		/* ABOVE the question's own block, which ends in `continue` and
+		 * would otherwise swallow the Esc the ladder owns. */
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		/* The agent's question owns the keyboard while it is up. */
 		if (ask_msg) {
 			if (ev.key == 'y' || ev.key == 'Y' ||
 			    ev.key == KT_K_ENTER)
 				answer(1);
-			else if (ev.key == 'n' || ev.key == 'N' ||
-				 ev.key == KT_K_ESC)
+			else if (ev.key == 'n' || ev.key == 'N')
 				answer(0);
 			continue;
 		}
 
 		switch (ev.key) {
-		case KT_K_ESC:
-			goto done;
 		case KT_K_UP:
 			if (sel > 0)
 				sel--;

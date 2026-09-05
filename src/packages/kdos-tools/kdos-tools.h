@@ -64,6 +64,17 @@ int banner_main(int argc, char **argv);		/* kdos-banner              */
 int fetch_app_main(int argc, char **argv);	/* kdos-fetch-app           */
 int fetch_static_main(int argc, char **argv);	/* kdos-fetch-static        */
 int sandbox_main(int argc, char **argv);	/* kdos sandbox             */
+/*
+ * The switches a desktop needs at hand, as flag files under
+ * ~/.local/state/kdos/toggles/. Present means on; see toggle.c for why they
+ * are state rather than configuration keys.
+ */
+int cmd_toggle(int argc, char **argv);
+/* A toast is `kb_notify()` in libkbase — one sender for the whole tree, so a
+ * terminal's OSC 9 and `kdos notify` cannot drift apart. `kdos-notify` is the
+ * notification CENTRE, a viewer, and is not the sender. */
+int kdt_toggle_on(const char *name);
+
 int why_main(int argc, char **argv);		/* kdos why                 */
 int explain_main(int argc, char **argv);		/* kdos explain             */
 int appid_main(int argc, char **argv);		/* kdos appid               */
@@ -133,5 +144,13 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
  */
 int kdt_app(int argc, char **argv);
 int kdt_trash(int argc, char **argv);
+int kdt_places(int argc, char **argv);
+int kdt_thumb(int argc, char **argv);
+
+/* $XDG_CACHE_HOME/<rest>, and the parent of a path. Shared because `kdos
+ * theme` and `kdos thumb` write into the same cache root, and two answers to
+ * where that is would put one program's files where nothing else looks. */
+char *kdt_cache_home(const char *rest);
+void kdt_mkparent(const char *path);
 
 #endif /* KDOS_TOOLS_H */

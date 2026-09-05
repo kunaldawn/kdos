@@ -85,6 +85,52 @@ what is left.
 another is worse than an empty half-row. A **message** takes whatever room there is, because it is
 what the user just did.
 
+## The keys every surface answers
+
+Five keys mean the same thing on every surface here, and the bottom row says what the rest of them
+do **right now**.
+
+| Key | What it does | Where it comes from |
+|---|---|---|
+| `F1` | Opens this surface's page in `kdos-doc` | `KtuiKeys.doc`, drawn first in the row |
+| `F10` | Opens the surface's menu bar | `KtuiMenu.has_bar` |
+| `Shift+F10` | Opens the menu of the thing under the caret | `KtuiKeys.ctx_at` |
+| `Alt+letter` | Opens a menu pane by its underlined letter | the `&` in a pane title |
+| `Esc` | Steps back **one** level, and only then closes | the Esc ladder |
+
+**A key with nothing behind it is neither advertised nor answered.** A surface with no page in
+`/usr/share/kdos/doc` leaves `doc` NULL, and `F1` then returns PASS: a key that opens an index
+reading *no such document* teaches that help is broken, which is worse than never offering it.
+`testing/preflight.sh` refuses a `.doc` naming a file that does not ship. The same rule holds for
+`F10` on a surface with no bar and `Shift+F10` on one with nothing focused.
+
+**Esc is a ladder of declared layers, asked at the instant the key arrives and never cached.** A
+surface registers each raised state once with `ktui_keys_layer()`, outermost first, and
+`ktui_keys()` takes exactly one rung per press. A dialog dismissed by a click leaves no raised bit
+behind — the predicate is a question, not a flag — which is the defect that makes a hand-written
+ladder swallow the next keystroke. `ktui_esc_verb()` names the topmost open rung, so the row
+cannot read *Esc Close* on a screen where Escape goes back.
+
+**The row is pushed during the draw, by whatever holds the focus.** `ktui_hint(key, verb)` and
+`ktui_hint_if(cond, …)` push; `ktui_hint_row()` draws and clears the pool. A fixed string cannot
+follow the focus, and a row naming keys the focused control does not answer is worse than no row:
+the whole value of the line is that a key on it works.
+
+**The row drops its tail.** A hint that does not fit takes every hint after it, and `Esc` is
+pushed last — so on a narrow surface it is the first thing lost. Where a surface is too narrow for
+everything it answers, drop a hint deliberately rather than reordering `Esc`; widening the surface
+is the other honest fix.
+
+**A menu's `sel` indexes its items, never its drawn rows.** A caller's `show` callback hides rows,
+and a selection counted in drawn rows lands on a different item the moment one is hidden. The same
+callback answers the drawing and the hit test, from one walk: two copies of a visibility rule
+disagree eventually, and a click then runs the row above the one under the pointer.
+
+**An accelerator is marked, not assumed.** `&` before a letter in a label or a pane title marks
+it; `&&` is a literal ampersand. The letter is underlined where the tier has underline and
+bracketed where it does not — a Linux VT has none, and drawing one there puts an unowned colour on
+the screen.
+
 ## Colour
 
 Colour comes from a **slot**, never from a literal value:
@@ -359,6 +405,9 @@ A new surface is not finished until every line is answered.
 5. Hit map recorded from the draw; coordinates handed down by the frame.
 6. `--dump` at 80x24 and 132x43, with a reference frame committed for both.
 7. Read it back at the **vt** tier before believing it reads on `tty1`.
+8. One `KtuiKeys`, `ktui_keys()` first in the dispatch and `ktui_hint_row()` last in the draw —
+   on **every** path, the `--dump` one included, because the row is what clears the pool.
+9. Every raised state declared with `ktui_keys_layer()` rather than written into an `Esc` arm.
 
 `grep -c KT_EVT_MOUSE` returning zero for a new file is the same defect four surfaces have
 shipped with.

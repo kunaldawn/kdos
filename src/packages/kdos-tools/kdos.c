@@ -16,7 +16,7 @@
  *   kdos version
  *
  * The palette is libkcolor's and nothing else's. This file used to carry a
- * second copy of the table — four schemes, nine colours, hand-kept in step
+ * second copy of the table — seven schemes, nine colours, hand-kept in step
  * with the installer's — and the two were edited separately.
  * ---------------------------------
  */
@@ -127,7 +127,10 @@ char *kdt_data_home(const char *rest)
 	return p;
 }
 
-static char *cache_home(const char *rest)
+/* Exported because `kdos thumb` writes into the same cache root and a second
+ * answer to where that is would put its thumbnails somewhere nothing else
+ * looks. */
+char *kdt_cache_home(const char *rest)
 {
 	const char *x = getenv("XDG_CACHE_HOME");
 	char *base = (x && *x) ? kb_strdup(x)
@@ -140,7 +143,7 @@ static char *cache_home(const char *rest)
 static const char *current_theme(void)
 {
 	static char name[32];
-	char *p = cache_home("kdos/theme");
+	char *p = kdt_cache_home("kdos/theme");
 	name[0] = 0;
 	if (kb_read_line_file(p, name, sizeof(name)) > 0 && kcol_find(name)) {
 		free(p);
@@ -157,7 +160,7 @@ const char *kdt_current_accent(void)
 	return current_theme();
 }
 
-static void mkparent(const char *path)
+void kdt_mkparent(const char *path)
 {
 	char *copy = kb_strdup(path);
 	char *slash = strrchr(copy, '/');
@@ -443,7 +446,7 @@ static void write_icons(const KcolScheme *sc)
 	if (!kb_have_prog("kdos-theme"))
 		return;
 	char *out = kb_path_join(kb_home_dir(), ".icons/KDOS");
-	mkparent(out);
+	kdt_mkparent(out);
 	KbArgv a = {0};
 	kb_argv_add(&a, "kdos-theme");
 	kb_argv_add(&a, "icons");
@@ -475,7 +478,7 @@ static void write_cursors(const KcolScheme *sc)
 	if (!(art && *art && kb_is_dir(art)) && !kb_is_dir(CURSOR_ART_PATH))
 		return;
 	char *out = kb_path_join(kb_home_dir(), ".icons/KDOS-cursors");
-	mkparent(out);
+	kdt_mkparent(out);
 	KbArgv a = {0};
 	kb_argv_add(&a, "kdos-theme");
 	kb_argv_add(&a, "cursors");
@@ -583,7 +586,7 @@ static void ansi_all(const KcolScheme *sc, AnsiDerived *o)
 static void write_foot(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("foot/themes/kdos");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	AnsiDerived a;
 	ansi_all(sc, &a);
@@ -652,7 +655,7 @@ static void write_foot(const KcolScheme *sc)
 static void write_tmux(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("tmux/themes/kdos.conf");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], mut[8];
 	kcol_format(sc->primary, p);
@@ -721,7 +724,7 @@ static void write_tmux(const KcolScheme *sc)
 static void write_lscolors(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("kdos/ls-colors");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	AnsiDerived a;
 	ansi_all(sc, &a);
@@ -755,7 +758,7 @@ static void write_lscolors(const KcolScheme *sc)
  *
  * This was the LAST thing on the desktop that an accent switch could not
  * reach. The file shipped as a fixed neutral grey precisely so it would read
- * acceptably under all four accents without being regenerated, and the cost of
+ * acceptably under all seven accents without being regenerated, and the cost of
  * that was a desktop where `kdos theme amber` retinted the panel, the shader,
  * the icons, the cursors, GTK, Qt, foot, btop, mc and starship — and left the
  * bar across the top of every window looking like somebody else's desktop.
@@ -777,7 +780,7 @@ static void write_lscolors(const KcolScheme *sc)
 static void write_themerc(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("kdos-comp/themerc-override");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	char p[8], dim[8], sec[8], urg[8], deep[8], text[8], var[8], pdark[8];
 	kcol_format(sc->primary, p);
@@ -1055,7 +1058,7 @@ static void write_mc(const KcolScheme *sc)
 	 * find — it falls back to `default` and reports nothing.
 	 */
 	char *f = kdt_data_home("mc/skins/kdos.ini");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	KbBuf b = {0};
 	kb_buf_printf(&b,
@@ -1171,7 +1174,7 @@ static void write_mc(const KcolScheme *sc)
 	 * you own — is not specific to KDE.
 	 */
 	char *ini = kdt_cfg_home("mc/ini");
-	mkparent(ini);
+	kdt_mkparent(ini);
 	kdt_ini_set(ini, "Midnight-Commander", "skin", "kdos");
 	free(ini);
 }
@@ -1179,7 +1182,7 @@ static void write_mc(const KcolScheme *sc)
 static void write_btop(const KcolScheme *sc)
 {
 	char *f = kdt_cfg_home("btop/themes/kdos.theme");
-	mkparent(f);
+	kdt_mkparent(f);
 
 	AnsiDerived a;
 	ansi_all(sc, &a);
@@ -1620,7 +1623,7 @@ static void write_kde(const KcolScheme *sc)
 			kb_buf_printf(&b, "%s=%s\n", kv[i].key, kv[i].val);
 		}
 	}
-	mkparent(colors);
+	kdt_mkparent(colors);
 	kb_write_all(colors, b.p, b.n);
 	kb_buf_free(&b);
 
@@ -1634,7 +1637,7 @@ static void write_kde(const KcolScheme *sc)
 		"yours and is kept.\n");
 	kde_merge(&b, old ? old : "", kv, n);
 	free(old);
-	mkparent(globals);
+	kdt_mkparent(globals);
 	kb_write_all(globals, b.p, b.n);
 	kb_buf_free(&b);
 
@@ -1809,8 +1812,8 @@ static void write_wallpaper(const KcolScheme *sc)
 	free(ck);
 	free(cv);
 
-	char *out = cache_home("kdos/wallpaper.png");
-	mkparent(out);
+	char *out = kdt_cache_home("kdos/wallpaper.png");
+	kdt_mkparent(out);
 	KbBuf tb = {0};
 	kb_buf_printf(&tb, "%s.tmp", out);
 
@@ -1873,8 +1876,8 @@ static void theme_commit(const KcolScheme *sc)
 	 * shell re-read the accent it already had. ATOMIC for the other half of
 	 * that race: a plain O_TRUNC write is zero bytes until it finishes, and
 	 * four processes re-read this file the moment the signal lands. */
-	char *state = cache_home("kdos/theme");
-	mkparent(state);
+	char *state = kdt_cache_home("kdos/theme");
+	kdt_mkparent(state);
 	char line[40];
 	snprintf(line, sizeof(line), "%s\n", sc->name);
 	kb_write_file_atomic(state, line);
@@ -1926,7 +1929,7 @@ static const char *const STYLE_COMP_KEYS[] = {
 static void style_write_comp(char *const *val)
 {
 	char *f = kdt_cfg_home("kdos/comp.conf");
-	mkparent(f);
+	kdt_mkparent(f);
 	char *old = kb_read_all(f, NULL);
 	KbBuf out = {0};
 	int done[NSTYLE_COMP] = {0};
@@ -2056,7 +2059,7 @@ static int cmd_theme_style(const char *path)
 	 * a style is a whole look, not a patch on the last one. */
 	{
 		char *f = kdt_cfg_home("kdos/style-themerc");
-		mkparent(f);
+		kdt_mkparent(f);
 		if (trc.n)
 			kb_write_all(f, trc.p, trc.n);
 		else
@@ -2172,7 +2175,7 @@ static void help_body(FILE *o)
 		{ "kdos app install <id>", "one signed file, mounted — also remove, rollback" },
 		{ "kdos-box list", "environments: create, enter, freeze, export" },
 		{ "kdos-fetch-app <name>", "install an alien app from a network" },
-		{ "kdos theme [name]", "phosphor | amber | ice | bone | next | prev | list" },
+		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | next | prev | list" },
 		{ "kdos theme style <f>", "apply a style file: accent + crt + fonts, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
 		{ "kdos status", "packages, containers, exported apps" },
@@ -2184,7 +2187,11 @@ static void help_body(FILE *o)
 		{ "kdos update check", "what the ports tree pins that is not installed" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
+		{ "kdos places", "the places column the desktop shows — also `add DIR`" },
+		{ "kdos toggle [name]", "stay-awake, night-light, dnd — list, flip or set" },
+		{ "kdos notify <text>", "raise a toast: `make && kdos notify done`" },
 		{ "kdos con ls", "console sessions: new, attach, detach, kill, forward, run" },
+		{ "kdos settings [page]", "the control centre — appearance, panel, hardware, system…" },
 		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
@@ -2314,6 +2321,9 @@ static int cmd_help(int argc, char **argv)
 /* Is this process up? Defined with doctor's other probes below; declared here
  * because `kdos status` names the compositor and asks the same question. */
 static int running(const char *exact, const char *contains);
+/* Which session this process is in, or NULL. One place decides, so `kdos
+ * info`, `kdos version` and `kdos doctor` cannot disagree. */
+static const char *session_name(void);
 
 /* Non-empty, non-comment lines. The alien-apps table is one line per app. */
 static int count_lines(const char *path)
@@ -2398,13 +2408,17 @@ static int cmd_status(int argc, char **argv)
 	 * created, which is every machine before the first launch. */
 	printf("%s%-16s%s %d\n", C_B, "Alien apps", C_0,
 	       count_lines("/usr/share/kdos/alien-apps"));
-	/* Naming the compositor rather than saying "wayland": on KDOS the
-	 * answer is normally kdos-comp, and "wayland" would hide the case where
-	 * the session is something else entirely. */
+	/* Naming the session rather than saying "wayland": on KDOS the answer
+	 * is kdos-con or kdos-comp, and "wayland" would hide the case where the
+	 * session is something else entirely. `session_name()` is the one place
+	 * that decides, so this line cannot disagree with `kdos version`. */
+	const char *sn = session_name();
+
 	printf("%s%-16s%s %s\n", C_B, "Session", C_0,
-	       !getenv("WAYLAND_DISPLAY") ? "tty"
-	       : running("kdos-comp", NULL) ? "kdos-comp"
-					  : "wayland (not kdos-comp)");
+	       !sn			      ? "tty"
+	       : strcmp(sn, "kdos-comp")      ? sn
+	       : running("kdos-comp", NULL)   ? "kdos-comp"
+					      : "wayland (not kdos-comp)");
 	putchar('\n');
 
 	printf("%sCONTAINERS%s\n", C_A, C_0);
@@ -3228,8 +3242,25 @@ static int cmd_doctor(int argc, char **argv)
 	 */
 	const char *wd = getenv("WAYLAND_DISPLAY");
 	const char *wl_rt = getenv("XDG_RUNTIME_DIR");
+	const char *con_sock = getenv("KDOS_CON");
+
+	/*
+	 * THE CONSOLE SESSION IS A SESSION. Its surface socket is what a child
+	 * inherits, and it is checked the same way the Wayland one is — the
+	 * socket rather than the variable, because a variable that outlived
+	 * its session is exactly the state this block exists to catch.
+	 */
+	if (con_sock && *con_sock) {
+		if (kb_path_exists(con_sock))
+			ok("KDOS_CON=%s", con_sock);
+		else
+			warn_("KDOS_CON=%s but the socket is gone — the "
+			      "session it names has ended", con_sock);
+	}
 	if (!wd || !*wd) {
-		warn_("no WAYLAND_DISPLAY — not inside the desktop session");
+		if (!con_sock || !*con_sock)
+			warn_("neither KDOS_CON nor WAYLAND_DISPLAY — not "
+			      "inside a desktop session");
 	} else {
 		char sock[512];
 		if (*wd == '/')
@@ -3380,7 +3411,7 @@ static int cmd_doctor(int argc, char **argv)
 	/* The accent NAME in the cache is what kdos-comp and kdos-shell read;
 	 * they carry the palette itself in libkcolor. No colours are written
 	 * for the desktop, so this file is the whole of its theme state. */
-	char *ct = cache_home("kdos/theme");
+	char *ct = kdt_cache_home("kdos/theme");
 	if (kb_path_exists(ct))
 		ok("accent applied (%s)", current_theme());
 	else
@@ -3801,6 +3832,33 @@ static int cmd_con_forward(int argc, char **argv)
  * in step. */
 #define KDT_RUN_MAX 32
 
+/*
+ * `kdos settings [page]` — the control centre from a prompt.
+ *
+ * THE PAGE NAME IS NOT VALIDATED HERE. `kdos-settings` owns the list and
+ * already refuses a name it does not have; a second copy of it in this file is
+ * a second list to keep in step, and the failure mode of the copy going stale
+ * is a page that exists and cannot be reached from the command line.
+ *
+ * No shell: the page word comes from a command line and reaches execvp as one
+ * argument, so a name with a space in it is a name, not two arguments.
+ */
+static int cmd_settings(int argc, char **argv)
+{
+	const char *av[4];
+	int n = 0;
+
+	av[n++] = "kdos-settings";
+	if (argc > 0 && argv[0][0]) {
+		av[n++] = "--page";
+		av[n++] = argv[0];
+	}
+	av[n] = NULL;
+	execvp(av[0], (char *const *)av);
+	fprintf(stderr, "kdos settings: kdos-settings is not installed\n");
+	return 127;
+}
+
 static int cmd_con(int argc, char **argv)
 {
 	static const struct { const char *verb, *flag; } V[] = {
@@ -3869,6 +3927,29 @@ static int cmd_con(int argc, char **argv)
 	return 2;
 }
 
+/*
+ * ── A TOAST FROM A PROMPT ───────────────────────────────────────────────
+ *
+ *   make && kdos notify "the build finished"
+ *
+ * `notify-send` is not on this image and `libnotify` is not a port, so a long
+ * job had no way to say it was done.
+ *
+ * `kdos-notify` IS NOT THE SENDER — it is the notification centre, a viewer of
+ * what has already arrived. A toast comes from the bus, which is what
+ * `kb_notify()` speaks, and that is the one sender in the whole tree: the same
+ * call a terminal makes for a child's OSC 9, so the two cannot drift apart.
+ */
+static int cmd_notify(int argc, char **argv)
+{
+	if (argc < 1) {
+		fprintf(stderr, "usage: kdos notify <summary> [body]\n");
+		return 2;
+	}
+	kb_notify("kdos", argv[0], argc > 1 ? argv[1] : "");
+	return 0;
+}
+
 int kdos_main(int argc, char **argv)
 {
 	colours();
@@ -3885,6 +3966,10 @@ int kdos_main(int argc, char **argv)
 		return cmd_status(rest, restv);
 	if (!strcmp(cmd, "doctor"))
 		return cmd_doctor(rest, restv);
+	if (!strcmp(cmd, "toggle"))
+		return cmd_toggle(rest, restv);
+	if (!strcmp(cmd, "notify"))
+		return cmd_notify(rest, restv);
 	if (!strcmp(cmd, "why"))
 		return why_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "explain"))
@@ -3917,8 +4002,14 @@ int kdos_main(int argc, char **argv)
 		return kdt_app(argc - 2, argv + 2);
 	if (!strcmp(cmd, "trash"))
 		return kdt_trash(argc - 2, argv + 2);
+	if (!strcmp(cmd, "places"))
+		return kdt_places(argc - 2, argv + 2);
+	if (!strcmp(cmd, "thumb"))
+		return kdt_thumb(argc - 2, argv + 2);
 	if (!strcmp(cmd, "con"))
 		return cmd_con(argc - 2, argv + 2);
+	if (!strcmp(cmd, "settings"))
+		return cmd_settings(argc - 2, argv + 2);
 
 	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
 		C_0, cmd);

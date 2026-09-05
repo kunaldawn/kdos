@@ -211,6 +211,10 @@ int main(int argc, char **argv)
 	}
 
 	res_theme_from_cache();
+	/* BEFORE the dump face, which draws and reads the Esc verb: a dumped
+	 * frame that consulted an empty ladder would say something the live
+	 * window does not. */
+	res_keys_init();
 
 	/* ── the dump face ─────────────────────────────────────────────── */
 	if (dump) {
@@ -248,10 +252,23 @@ int main(int argc, char **argv)
 	}
 
 	/* ── the window, or the terminal ───────────────────────────────── */
+	/*
+	 * WHICH DISPLAY SERVER IS THERE, and there are two.
+	 *
+	 * `WAYLAND_DISPLAY` alone was the test, so on the console session this
+	 * program took the terminal path — it registered `kcon_impl`, never
+	 * offered it a chance to probe, and drew its process table over
+	 * whatever terminal it had been started from instead of opening a
+	 * window. `$KDOS_CON` is the console session's surface socket and is in
+	 * every child's environment there, which is the same fact `sh_term()`
+	 * and `kdos doctor` decide on.
+	 */
 	int gui = want_gui;
 	if (!want_tty && !want_gui) {
 		const char *wd = getenv("WAYLAND_DISPLAY");
-		gui = wd && *wd;
+		const char *con = getenv("KDOS_CON");
+
+		gui = (wd && *wd) || (con && *con);
 	}
 
 	if (gui) {
@@ -272,7 +289,8 @@ int main(int argc, char **argv)
 			.rows = 26,
 		};
 		if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
-			fprintf(stderr, "kdos-res: no compositor — try --tty\n");
+			fprintf(stderr, "kdos-res: no display server reachable "
+					"— try --tty\n");
 			return 1;
 		}
 	} else {

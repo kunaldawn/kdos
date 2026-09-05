@@ -140,23 +140,23 @@ _wait_con() {
 ) &
 
 #
-# THE SHELL'S LAYER SURFACES, which are not the panel.
+# THE SHELL'S LAYER SURFACES, THE PANEL AMONG THEM.
 #
-# kdos-notifyd and kdos-desk need no window list — they draw toasts and the
-# icon layer and ask the session nothing about what else is open — and both
-# name kcon_impl first, so they come up here exactly as they do under the
-# compositor. kdos-slit docks through the session's exclusive zone, which is
-# working machinery that has had no caller on this path.
+# kdos-notifyd and kdos-desk ask the session nothing about what else is open;
+# kdos-slit docks through the session's exclusive zone. The PANEL asks for the
+# window list, which it gets from libkdisp — the session answers it from its
+# management messages here and a compositor from foreign-toplevel there, so one
+# program is the bar on both desktops.
 #
-# THE PANEL IS NOT STARTED HERE. `sh_connect()` requires a foreign-toplevel
-# manager and the console has no protocol for one yet, so it would print that
-# and exit; the session's own one-row taskbar is the bar until it does.
+# THE PANEL DOCKS AND THE SESSION'S OWN BAR STANDS DOWN, by app id, exactly as
+# it already does for the slit. One bar: a fallback that stayed up beside the
+# real one would be a second Start menu to keep in step.
 #
 # NOT SUPERVISED, and that is the difference from the view. A view holds a DRM
 # device and a seat and is the half that can lose them; these hold nothing a
 # restart would recover, and a crash loop on a toast daemon would be a desktop
 # that spends its life restarting something nobody is looking at.
-for _svc in kdos-notifyd kdos-desk kdos-slit; do
+for _svc in kdos-notifyd kdos-desk kdos-slit kdos-shell; do
 	if command -v "$_svc" >/dev/null 2>&1; then
 		(
 			_wait_con || exit 0

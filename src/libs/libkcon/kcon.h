@@ -46,7 +46,7 @@
  * would not fail, which is the dangerous outcome: it would act on the wrong
  * verb.
  */
-#define KCON_VERSION 5
+#define KCON_VERSION 7
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -76,6 +76,19 @@ enum {
 	KCON_OP_DRAG_START,
 	KCON_OP_ACTIVATE,	/* management: raise that toplevel         */
 	KCON_OP_CLOSE_REQUEST,
+
+	/*
+	 * PUT THAT TOPLEVEL INTO A STATE: one KCON_TL_ bit and the value
+	 * wanted. Minimise, maximise and fullscreen are the same request with
+	 * a different bit, and three ops would be three chances for the two
+	 * ends to disagree about a payload they share.
+	 *
+	 * THE STATE ASKED FOR, NEVER A TOGGLE. A panel draws the list it was
+	 * sent and a person clicks the row they can see; a toggle acts on
+	 * whatever the session believed a round trip later, which on a busy
+	 * desktop is the opposite of what they clicked.
+	 */
+	KCON_OP_WIN_STATE,
 	KCON_OP_VIEW_SIZE,	/* a view: this is the grid I can show    */
 
 	/*
@@ -487,6 +500,20 @@ int kcon_surface_cols(const KconSurface *f);
 int kcon_surface_rows(const KconSurface *f);
 int kcon_surface_edge(const KconSurface *f);
 /*
+ * WHERE AN OVERLAY ASKED TO SIT, as `enum kdisp_corner`, with its margins from
+ * the two edges that corner names.
+ *
+ * The unit is a CELL on this transport and a pixel on Wayland, and the two are
+ * the same number in a caller: `kdisp_cell_w()` answers 1 here, so a surface
+ * computing "x cells from the left" in the toolkit's own units produces cells
+ * here and pixels there without branching. A corner is how layer-shell says
+ * "at x" — it has no coordinates — and carrying the same field means a menu
+ * asks once and lands beside its button on both desktops.
+ */
+int kcon_surface_corner(const KconSurface *f);
+int kcon_surface_margin_x(const KconSurface *f);
+int kcon_surface_margin_y(const KconSurface *f);
+/*
  * A PANEL'S THICKNESS ACROSS ITS EDGE, in cells, and zero from anything else.
  * It is the whole size a docked surface asks for: the extent along the edge is
  * the screen's, which the client cannot know, so the session answers with a
@@ -503,6 +530,8 @@ const KtuiCell *kcon_surface_cells(const KconSurface *f);
 
 void kcon_surface_configure(KconSurface *f, int cols, int rows);
 void kcon_surface_key(KconSurface *f, int key, int mods);
+/* The keyboard focus arrived (1) or left (0). See kcon_surface_focus(). */
+void kcon_surface_focus(KconSurface *f, int in);
 void kcon_surface_ptr(KconSurface *f, int x, int y, int btn, int press);
 /*
  * A DROP LANDED ON THIS SURFACE. The client receives it already; what has no
@@ -633,6 +662,8 @@ typedef struct {
 	 */
 	void (*activate)(KconSurface *f, unsigned id, void *user);
 	void (*close_request)(KconSurface *f, unsigned id, void *user);
+	void (*win_state)(KconSurface *f, unsigned id, unsigned flag, int on,
+			  void *user);
 
 	/*
 	 * TEXT ARRIVED AT A DISPLAY. `text` is borrowed and NUL-terminated;
@@ -690,6 +721,10 @@ unsigned kcon_workspace_occupied(void);
 /* Raise it, or ask it to close. Both are requests: the session decides. */
 void kcon_toplevel_activate(unsigned id);
 void kcon_toplevel_close(unsigned id);
+
+/* One KCON_TL_ bit, and the value wanted rather than a toggle. See
+ * KCON_OP_WIN_STATE. */
+void kcon_toplevel_state(unsigned id, unsigned flag, int on);
 
 /* Ask a session to release every view. Connects, asks and closes. */
 int kcon_detach_all(const char *sock);

@@ -52,11 +52,11 @@
 #include "shell.h"
 
 enum { CAT_APPEARANCE = 0, CAT_PANEL, CAT_DESKTOP, CAT_HARDWARE, CAT_SESSION,
-       CAT_INPUT, CAT_APPS, CAT_BOXES, NCAT };
+       CAT_INPUT, CAT_APPS, CAT_BOXES, CAT_SYSTEM, NCAT };
 
 static const char *const CAT_NAMES[NCAT] = {
 	"Appearance", "Panel", "Desktop", "Hardware", "Session", "Input",
-	"Apps", "Boxes"
+	"Apps", "Boxes", "System"
 };
 
 /*
@@ -92,6 +92,14 @@ static const struct {
 	{ "input-keyboard",    "keyboard and pointer" },
 	{ "preferences-other", "which app opens what" },
 	{ "package-x-generic",  "environments and packs" },
+	/*
+	 * SYSTEM is the machine itself — disks, printing, backup, the services
+	 * that run without being asked. Most of it is not written yet, and the
+	 * category ships anyway with a note saying so: a control centre whose
+	 * front door has no door for the machine teaches that the machine is
+	 * not reachable from here, and that is the harder thing to unteach.
+	 */
+	{ "computer-symbolic", "disks, jobs, services" },
 };
 
 /* Where the app starts and what Escape steps back to. */
@@ -106,7 +114,7 @@ static int home_sel;
  */
 static const char *const PAGE_NAMES[NCAT] = {
 	"appearance", "panel", "desktop", "hardware", "session", "input",
-	"apps", "boxes"
+	"apps", "boxes", "system"
 };
 
 /* Where a row's value is stored. ST_THEME is the accent, which is not a file
@@ -402,6 +410,32 @@ static struct row rows[] = {
 	  "rc.xml's <keyboard><repeatRate> and <repeatDelay>; kdos-comp reads "
 	  "them at startup and on the Reconfigure a SIGHUP is",
 	  "", "" },
+
+	/*
+	 * THE MACHINE. Every row here opens a whole program, for the reason
+	 * CAT_HARDWARE's rows do: a summary drawn in this window would be a
+	 * second thing to keep in agreement with the thing itself.
+	 *
+	 * THE CATEGORY SHIPS WITH WHAT EXISTS AND SAYS WHAT DOES NOT. Disks,
+	 * printing, backup and services are not written; a row that opened
+	 * nothing would be worse than no row, and no category at all would
+	 * teach that the machine is not reachable from here.
+	 */
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-res",
+	  "Resources…", NULL, 0, 0, 0, 0,
+	  "processes, memory, disks and the network, live — what `top` and "
+	  "`df` say, in one place",
+	  "", "" },
+	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-energy",
+	  "Power…", NULL, 0, 0, 0, 0,
+	  "the battery, what is draining it, and the governor",
+	  "", "" },
+	{ CAT_SYSTEM, FT_NOTE, ST_NONE, SC_NONE, NULL, "where the rest is",
+	  NULL, 0, 0, 0, 0,
+	  "disks, printing, backup and the service list are not written yet; "
+	  "`kdos disk`, `kdos pkg` and `kdos doctor` are the commands that do "
+	  "this work today",
+	  "", "" },
 };
 
 #define NROWS ((int)(sizeof(rows) / sizeof(rows[0])))
@@ -572,6 +606,62 @@ static int sel_follow = 1;
 static char note[192];
 static int editing, quit_armed;
 static char edit_buf[256];
+
+/*
+ * THREE RUNGS, INNERMOST LAST: the page under the grid, a box profile under
+ * the box list, the field editor under everything. Every predicate is guarded
+ * on `mode == SM_PAGE` because a right-click back to the grid leaves
+ * `box_mode` and `editing` where they were — an unguarded rung would then
+ * unwind stale state instead of arming the unsaved-changes question, which is
+ * exactly the defect a declared ladder exists to remove.
+ */
+static KtuiKeys keys;
+
+static int page_up(void *user)
+{
+	(void)user;
+	return mode == SM_PAGE;
+}
+
+static void page_close(void *user)
+{
+	(void)user;
+	/* Back to the grid, not out of the program. Edits are held in `rows[]`
+	 * and Apply is still one key away, so stepping back loses nothing —
+	 * and the unsaved-changes guard stays at the single exit, on the home
+	 * screen, rather than firing every time somebody backs out of a page
+	 * they only wanted to look at. */
+	mode = SM_HOME;
+	home_sel = cat;
+	quit_armed = 0;
+}
+
+static int boxprof_up(void *user)
+{
+	(void)user;
+	return mode == SM_PAGE && cat == CAT_BOXES && box_mode != BOX_LIST;
+}
+
+static void boxprof_close(void *user)
+{
+	(void)user;
+	box_mode = BOX_LIST;
+	box_cur[0] = '\0';
+	sel = top = 0;
+	note[0] = '\0';
+}
+
+static int edit_up(void *user)
+{
+	(void)user;
+	return mode == SM_PAGE && editing;
+}
+
+static void edit_cancel(void *user)
+{
+	(void)user;
+	editing = 0;
+}
 
 /* ── the files ─────────────────────────────────────────────────────────── */
 
@@ -1407,11 +1497,12 @@ static void draw_home(void)
 	ktui_draw_hline(1, h - 4, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
 	/* WORDS, not arrows. The ascii tier has no ← →, and the console font
 	 * has no left/right arrow either — which is why ktui_glyph carries
-	 * ◀ ▶ — so a literal `↑↓←→` here came out as `????` in the golden
-	 * frame and would come out as four blanks on tty1. */
-	ktui_draw_text(2, h - 3, w - 4,
-		       "Enter opens a page   arrows move   Esc closes", KT_MID,
-		       KT_SURFACE, KT_A_NONE);
+	 * ◀ ▶ — so a literal `↑↓←→` here would come out as `????` in a golden
+	 * frame and as four blanks on tty1. */
+	ktui_hint("Enter", "open");
+	ktui_hint("Arrows", "move");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 3, w - 4, 1), KT_SURFACE);
 	ktui_draw_text(2, h - 2, w - 4, CAT_TILE[home_sel].blurb, KT_MID,
 		       KT_SURFACE, KT_A_NONE);
 	ktui_draw_flush();
@@ -1642,27 +1733,49 @@ static void draw_page(void)
 	int pending = dirty_count(ST_COMP) + dirty_count(ST_THEME);
 	if (cat == CAT_BOXES)
 		pending = box_mode == BOX_LIST ? 0 : box_dirty();
-	/* The arrows come from the glyph table: the console font has ◀ ▶ and
-	 * has no ← →, which is why ktui_glyph carries that pair. */
-	char hint[96];
-	if (editing)
-		snprintf(hint, sizeof(hint), "Enter ok   Esc cancel");
-	else if (cat == CAT_APPS)
-		snprintf(hint, sizeof(hint),
-			 "Enter chooser   Tab panes   Esc close");
-	else if (cat == CAT_BOXES && box_mode == BOX_LIST)
-		snprintf(hint, sizeof(hint),
-			 "Enter open   Tab panes   Esc close");
-	else if (cat == CAT_BOXES)
-		snprintf(hint, sizeof(hint),
-			 "%s%s change   Enter edit   a %s   Esc back",
-			 ktui_glyph[KT_G_LEFT], ktui_glyph[KT_G_RIGHT],
-			 box_mode == BOX_NEW ? "create" : "write");
-	else
-		snprintf(hint, sizeof(hint),
-			 "%s%s change   Enter edit   a apply   Esc close",
-			 ktui_glyph[KT_G_LEFT], ktui_glyph[KT_G_RIGHT]);
-	ktui_draw_text(2, h - 2, w - 16, hint, KT_MID, KT_SURFACE, KT_A_NONE);
+	/*
+	 * THE ROW FOLLOWS THE PANE AND THE ROW TYPE, which the fixed string
+	 * could not: on the categories pane it said ◀▶ change over a list
+	 * that answers neither, and on an FT_TOOL row it said Enter edit over
+	 * a row that runs a program.
+	 *
+	 * The arrows come from the glyph table: the console font has ◀ ▶ and
+	 * no ← →, which is why ktui_glyph carries that pair. The key is copied
+	 * by ktui_hint, so a buffer on this stack is enough.
+	 */
+	char lr[8];
+	const struct row *hr = sel_row();
+	int fields = !editing && pane == 1;
+	int boxlist = cat == CAT_BOXES && box_mode == BOX_LIST;
+
+	snprintf(lr, sizeof(lr), "%s%s", ktui_glyph[KT_G_LEFT],
+		 ktui_glyph[KT_G_RIGHT]);
+
+	ktui_hint_if(editing, "Enter", "ok");
+	ktui_hint_if(!editing && pane == 0, "Up/Down", "category");
+	ktui_hint_if(!editing && pane == 0, "Enter", "fields");
+	ktui_hint_if(fields && cat == CAT_APPS && napps > 0, "Enter",
+		     "chooser");
+	ktui_hint_if(fields && cat == CAT_BOXES && boxlist, "Enter", "open");
+	ktui_hint_if(fields && cat != CAT_APPS && !boxlist && hr &&
+			     (hr->type == FT_CHOICE || hr->type == FT_INT),
+		     lr, "change");
+	ktui_hint_if(fields && cat != CAT_APPS && !boxlist && hr &&
+			     (hr->type == FT_TEXT || hr->type == FT_INT),
+		     "Enter", "edit");
+	ktui_hint_if(fields && cat != CAT_APPS && cat != CAT_BOXES && hr &&
+			     hr->type == FT_TOOL,
+		     "Enter", "open");
+	/* `a` is not gated on `pending`: apply() also writes panel and monitor
+	 * state that the counter does not count, so gating it would hide a
+	 * live key. */
+	ktui_hint_if(fields && cat != CAT_APPS && !boxlist, "a",
+		     cat == CAT_BOXES
+			     ? (box_mode == BOX_NEW ? "create" : "write")
+			     : "apply");
+	ktui_hint_if(!editing, "Tab", "panes");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 2, w - 16, 1), KT_SURFACE);
 
 	/* One button, and it is the one irreversible thing on the screen. */
 	char blabel[24];
@@ -1880,6 +1993,17 @@ int settings_main(int argc, char **argv)
 		}
 	}
 
+	/* BEFORE the dump branches: both draw, `--page` makes the page rung up
+	 * in a dump, and a frame that read the verb through an empty ladder
+	 * would disagree with the live surface. */
+	/* The page in /usr/share/kdos/doc that F1 opens. A name with no
+	 * file there is refused by testing/preflight.sh. */
+	keys.doc = "settings";
+	keys.help = sh_help;
+	ktui_keys_layer(&keys, "Back", page_up, page_close, NULL);
+	ktui_keys_layer(&keys, "Back", boxprof_up, boxprof_close, NULL);
+	ktui_keys_layer(&keys, "Cancel", edit_up, edit_cancel, NULL);
+
 	load_all();
 	/* A deep link lands ON the page, not on the grid: the panel's battery
 	 * readout opening Settings and making you pick Session again would be
@@ -1979,6 +2103,23 @@ int settings_main(int argc, char **argv)
 			continue;
 		}
 
+		/*
+		 * THE LADDER FIRST, above both screens. CLOSE reaches here
+		 * only with no rung up — which is the home grid — and runs the
+		 * same unsaved-changes question the removed arm did.
+		 */
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE) {
+				if (try_quit())
+					goto out;
+				continue;
+			}
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
+
 		/* ── the home grid owns its own input ── */
 		if (mode == SM_HOME) {
 			int cols = tile_cols(ktui_w);
@@ -2015,10 +2156,6 @@ int settings_main(int argc, char **argv)
 				}
 			} else if (ev.type == KT_EVT_KEY) {
 				switch (ev.key) {
-				case KT_K_ESC:
-					if (try_quit())
-						goto out;
-					continue;
 				case KT_K_LEFT:
 					if (home_sel > 0)
 						home_sel--;
@@ -2157,9 +2294,7 @@ int settings_main(int argc, char **argv)
 		if (editing) {
 			struct row *er = sel_row();
 			size_t len = strlen(edit_buf);
-			if (ev.key == KT_K_ESC) {
-				editing = 0;
-			} else if (ev.key == KT_K_ENTER) {
+			if (ev.key == KT_K_ENTER) {
 				if (er) {
 					if (er->type == FT_INT) {
 						int v = atoi(edit_buf);
@@ -2187,28 +2322,6 @@ int settings_main(int argc, char **argv)
 			continue;
 		}
 
-		if (ev.key == KT_K_ESC) {
-			/* On a box's profile, back one level to the box LIST.
-			 * Escape steps out of exactly one thing at a time,
-			 * which is what makes it usable without thinking. */
-			if (cat == CAT_BOXES && box_mode != BOX_LIST) {
-				box_mode = BOX_LIST;
-				box_cur[0] = '\0';
-				sel = top = 0;
-				note[0] = '\0';
-				continue;
-			}
-			/* Back to the grid, not out of the program. Edits are
-			 * held in `rows[]` and Apply is still one key away, so
-			 * stepping back loses nothing — and the unsaved-changes
-			 * guard stays at the single exit, on the home screen,
-			 * rather than firing every time somebody backs out of a
-			 * page they only wanted to look at. */
-			mode = SM_HOME;
-			home_sel = cat;
-			quit_armed = 0;
-			continue;
-		}
 		quit_armed = 0;
 
 		struct row *sr = sel_row();

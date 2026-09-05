@@ -19,8 +19,11 @@
  * opened on.
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "kwl.h"
 #include "res.h"
@@ -29,7 +32,40 @@ ResState R;
 
 static int g_page;
 static int g_focus_sidebar;
-static int g_modal;		/* the F1 page list, for the narrow band  */
+static int g_modal;		/* the F10 page list, for the narrow band */
+
+/*
+ * THREE RUNGS, INNERMOST LAST: the page list over the body, a detail view
+ * over its list, a question over everything. Each is declared rather than
+ * written into an Esc arm, so the hint row can name what Escape does HERE —
+ * and the question's rung answers it rather than clearing a flag, because a
+ * dialog left unanswered is one whose caller is still waiting.
+ */
+static KtuiKeys g_keys;
+
+static int modal_up(void *user)
+{
+	(void)user;
+	return g_modal;
+}
+
+static void modal_close(void *user)
+{
+	(void)user;
+	g_modal = 0;
+}
+
+static int detail_up(void *user)
+{
+	(void)user;
+	return res_detail_active();
+}
+
+static void detail_back(void *user)
+{
+	(void)user;
+	res_detail_close();
+}
 
 /*
  * THE ONE CONFIRM MODAL. Every verb that ends or renices somebody else's work
@@ -91,6 +127,62 @@ void res_confirm(const char *title, const char *msg, const char *yes,
 }
 
 int res_confirm_active(void) { return g_conf.active; }
+
+static void confirm_take(int yes);
+
+static int confirm_up(void *user)
+{
+	(void)user;
+	return g_conf.active;
+}
+
+static void confirm_refuse(void *user)
+{
+	(void)user;
+	/* ANSWERED, not cleared: something is waiting on the answer, and a
+	 * question dismissed without one leaves it waiting. */
+	confirm_take(0);
+}
+
+/*
+ * F1's page, in kdos-doc. DOUBLE-FORKED and never waited on: this window
+ * samples on a timer, and a child it waited for would freeze the charts for
+ * as long as somebody read the page. The intermediate exits at once, so init
+ * reaps the viewer and nothing here has a zombie.
+ */
+static void res_help(const char *doc, void *user)
+{
+	pid_t pid;
+
+	(void)user;
+	if (!doc || !*doc)
+		return;
+	pid = fork();
+	if (pid == 0) {
+		if (fork() == 0) {
+			char *const av[] = { (char *)"kdos-doc", (char *)doc,
+					     NULL };
+
+			setsid();
+			execvp(av[0], av);
+			_exit(127);
+		}
+		_exit(0);
+	} else if (pid > 0) {
+		while (waitpid(pid, NULL, 0) < 0 && errno == EINTR)
+			;
+	}
+}
+
+/* Registered once, from main, INNERMOST LAST. */
+void res_keys_init(void)
+{
+	g_keys.doc = "res";
+	g_keys.help = res_help;
+	ktui_keys_layer(&g_keys, "Pages", modal_up, modal_close, NULL);
+	ktui_keys_layer(&g_keys, "Back", detail_up, detail_back, NULL);
+	ktui_keys_layer(&g_keys, "Cancel", confirm_up, confirm_refuse, NULL);
+}
 
 static void confirm_take(int yes)
 {
@@ -280,6 +372,14 @@ static void draw_modal(int w, int h)
  * The box takes column 0, column w-1 and row h-1; the header band already
  * fits between them, and the body gives up its last row to the bottom edge.
  */
+/* The row is bought out of the body, and only where ktui_hint_row would draw
+ * one: below eight rows it refuses, and a row reserved there is a row spent
+ * on nothing. */
+static int res_hint_rows(void)
+{
+	return ktui_h >= 8 ? 1 : 0;
+}
+
 static void frame_inside(int w, int h, int *in_x, int *in_w, int *in_h)
 {
 	/* A window too small for a frame keeps the whole surface: a box drawn
@@ -301,13 +401,13 @@ static void frame_inside(int w, int h, int *in_x, int *in_w, int *in_h)
 	if (kdisp_decorated()) {
 		*in_x = 1;
 		*in_w = w - 2;
-		*in_h = h - 1;
+		*in_h = h - 1 - res_hint_rows();
 		return;
 	}
 	ktui_draw_box(krect(0, 0, w, h), " Resources ", KT_ACCENT, KT_BG, 1);
 	*in_x = 1;
 	*in_w = w - 2;
-	*in_h = h - 1;
+	*in_h = h - 1 - res_hint_rows();
 }
 
 void res_draw_frame(void)
@@ -344,6 +444,20 @@ void res_draw_frame(void)
 		g_body_w = in_w;
 		g_body_h = g_in_h - top;
 		res_detail_draw(g_body_x, g_body_y, g_body_w, g_body_h);
+
+	/*
+	 * THE ROW, ON EVERY PATH THROUGH THIS FUNCTION. It is what clears the
+	 * pool, so a return that skipped it would carry one frame's hints into
+	 * the next. The rect is the row frame_inside() gave up.
+	 */
+	ktui_hint_if(!res_detail_active() && !g_conf.active, "F10", "pages");
+	ktui_hint_if(!res_detail_active() && !g_conf.active && !g_modal, "[/]",
+		     "page");
+	ktui_hint_if(!res_detail_active() && !g_conf.active && !g_modal, "Tab",
+		     "panes");
+	ktui_hint("Esc", ktui_esc_verb(&g_keys));
+	ktui_hint_row(&g_keys, krect(g_in_x, h - 1 - res_hint_rows(),
+				     ktui_w - 2 * g_in_x, 1), KT_BG);
 		if (g_conf.active)
 			draw_confirm(w, h);
 		return;
@@ -376,6 +490,21 @@ void res_draw_frame(void)
 	if (RES_PAGES[g_page].draw)
 		RES_PAGES[g_page].draw(g_body_x, g_body_y, g_body_w, g_body_h);
 
+
+	/*
+	 * THE ROW, ON EVERY PATH THROUGH THIS FUNCTION. It is what clears the
+	 * pool, so a return that skipped it would carry one frame's hints into
+	 * the next. The rect is the row frame_inside() gave up.
+	 */
+	ktui_hint_if(!res_detail_active() && !g_conf.active, "F10", "pages");
+	ktui_hint_if(!res_detail_active() && !g_conf.active && !g_modal, "[/]",
+		     "page");
+	ktui_hint_if(!res_detail_active() && !g_conf.active && !g_modal, "Tab",
+		     "panes");
+	ktui_hint("Esc", ktui_esc_verb(&g_keys));
+	ktui_hint_row(&g_keys, krect(g_in_x, h - 1 - res_hint_rows(),
+				     ktui_w - 2 * g_in_x, 1), KT_BG);
+
 	if (g_modal)
 		draw_modal(w, h);
 	/* Last, and over everything: a dialog under the page it belongs to is
@@ -391,6 +520,23 @@ int res_frame_key(int k)
 	 * 1: `q` and Esc mean "not that" here, not "leave the program". A
 	 * dialog whose cancel key also quits is one that loses the answer.
 	 */
+	{
+		KtuiEvent ev = { 0 };
+
+		ev.type = KT_EVT_KEY;
+		ev.key = k;
+		/* THE CONTRACT FIRST: F1 opens this program's page and Escape
+		 * unwinds one rung, whichever is up. Everything it does not
+		 * own comes back PASS and the branches below are unchanged. */
+		int r = ktui_keys(&g_keys, &ev);
+
+		if (r == KTUI_KEY_TAKEN)
+			return 0;
+		/* CLOSE falls THROUGH. Nothing is up, so Escape is the page's
+		 * own back-out first and the program's exit only after it —
+		 * the toolkit does not own this program's lifetime. */
+	}
+
 	if (g_conf.active) {
 		switch (k) {
 		case KT_K_LEFT:
@@ -406,7 +552,6 @@ int res_frame_key(int k)
 		case 'Y':
 			confirm_take(1);
 			break;
-		case KT_K_ESC:
 		case 'n':
 		case 'N':
 		case 'q':
@@ -417,22 +562,15 @@ int res_frame_key(int k)
 	}
 
 	if (res_detail_active()) {
-		/* Esc steps back to the list rather than out of the program,
-		 * which is the rule the comment on the page-level Esc has
-		 * always described. */
 		if (res_detail_key(k))
 			return 0;
-		if (k == KT_K_ESC) {
-			res_detail_close();
-			return 0;
-		}
 		if (k == 'q')
 			return 1;
 		return 0;
 	}
 
 	if (g_modal) {
-		if (k == KT_K_ESC || k == KT_K_F1) {
+		if (k == KT_K_F10) {
 			g_modal = 0;
 			return 0;
 		}
@@ -446,7 +584,10 @@ int res_frame_key(int k)
 	}
 
 	switch (k) {
-	case KT_K_F1:
+	case KT_K_F10:
+		/* THE PAGE LIST IS THIS PROGRAM'S MENU, so it is on the menu
+		 * key. F1 is the page in /usr/share/kdos/doc, which is what
+		 * F1 means on every surface here. */
 		g_modal = 1;
 		return 0;
 	case '[':
@@ -460,9 +601,9 @@ int res_frame_key(int k)
 		return 0;
 	case KT_K_ESC:
 		/*
-		 * Steps BACK one level and only then closes: a page that
-		 * opened a detail view must not exit the program on the key
-		 * that means "go back" everywhere else.
+		 * Every rung above is down — the ladder answered them — so
+		 * what is left is the page's own back-out, and only then the
+		 * program.
 		 */
 		if (RES_PAGES[g_page].key && RES_PAGES[g_page].key(k))
 			return 0;

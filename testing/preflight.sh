@@ -930,6 +930,27 @@ done
 note "chroot ports path" "$((_kp)) steps read the ports tree through the shadowed path"
 
 echo
+echo "==> every consumer of a shared library generates the protocols it includes"
+# libkwl is COMPILED INTO each consumer rather than built once, and it includes
+# its protocol headers unconditionally. So a protocol added to the library is a
+# missing header in every build.sh that did not already generate it — a failure
+# that names the library and not the recipe that has to change, and that only
+# appears for the consumers a narrowed build happens to reach.
+_pg=0
+for _p in $(grep -ho '"[a-z0-9-]*-client-protocol\.h"' src/libs/libkwl/*.c 2>/dev/null |
+            tr -d '"' | sed 's/-client-protocol\.h$//' | sort -u); do
+    for _f in src/desktop/*/build.sh src/packages/*/build.sh; do
+        [ -f "$_f" ] || continue
+        grep -q 'libkwl/\*\.c\|libkwl/kwl\.c' "$_f" 2>/dev/null || continue
+        if ! grep -q -- "$_p" "$_f" 2>/dev/null; then
+            bad "$(basename "$(dirname "$_f")")" "compiles libkwl but never generates $_p"
+            _pg=$((_pg + 1))
+        fi
+    done
+done
+note "libkwl protocols" "$((_pg)) consumers are missing a protocol the library includes"
+
+echo
 echo "==> the catalogue's rows against the tree"
 # W8-0 and W9-6. Two lints over apps.plan.md's Part II tables, and both exist
 # because the same rows were written twice: nine of that document's "ground
@@ -991,6 +1012,62 @@ PYCAT
 else
     note "catalogue" "apps.plan.md is not here — nothing to lint"
 fi
+
+# ── every program the shipped mc rows name is on the image ──────────────
+#
+# `mc.ext.ini` and `menu` are TEXT FILES: a row in one cannot hide itself when
+# the program it names is missing, the way a surface's own table can. A verb
+# still being built therefore belongs in the surfaces and not in these files,
+# and this is what refuses one that slipped in.
+#
+# THE NAME LIST IS BUILT FIRST, and it has to cover the loop form: kdos-tools
+# links six names out of one `for t in ...`, so a check that only looked for
+# `bin/<name>"` would miss every one of them — and a check that matched the
+# loop line itself would match for EVERY name and never fail at all.
+echo
+echo "==> mc's shipped rows name programs that exist"
+_names="$SP/imagenames"
+{
+    sed -n 's|.*bin/\([a-z][a-z0-9-]*\)".*|\1|p' \
+        src/desktop/*/build.sh src/packages/*/build.sh 2>/dev/null
+    sed -n 's/^for t in \(.*\); do/\1/p; s/^for _t in \(.*\); do/\1/p' \
+        src/desktop/*/build.sh src/packages/*/build.sh 2>/dev/null | tr ' ' '\n'
+    cat script/04_phase4/packages.txt 2>/dev/null
+    ls ports/core 2>/dev/null
+} | sed 's/[^a-z0-9-]//g' | grep . | sort -u > "$_names"
+
+_mcp=0
+for _f in fs/etc/skel/.config/mc/mc.ext.ini fs/etc/skel/.config/mc/menu; do
+    [ -f "$_f" ] || continue
+    # The first word of a command line, minus a leading `(`; mc's own macros
+    # and the shell builtins a row may use are not programs.
+    for _p in $(sed -n 's/^Open=(*\([a-z][a-z0-9-]*\).*/\1/p; s/^        (*\([a-z][a-z0-9-]*\) .*/\1/p' \
+                "$_f" | sort -u); do
+        case "$_p" in cd|for|do|done|test|exit) continue ;; esac
+        _mcp=$((_mcp + 1))
+        grep -qx "$_p" "$_names" ||
+            bad "mc row $_p" "$_f names $_p, which is on no image"
+    done
+done
+note "mc rows" "$_mcp program(s) named, each on the image"
+
+# ── every claimed help page exists ──────────────────────────────────────
+#
+# `KtuiKeys.doc` names a document in /usr/share/kdos/doc and F1 opens it. A
+# name with no file there would open an index reading "no such document",
+# which teaches that help is broken — worse than a surface that never offered
+# it. The rule is enforced here rather than trusted, because the two live in
+# different trees and nothing else compares them.
+echo
+echo "==> help pages: every .doc names a document that ships"
+_doc=0
+for _d in $(grep -rho 'keys\.doc = "[a-z0-9_-]*"' src/desktop src/packages 2>/dev/null |
+            sed 's/.*"\(.*\)"/\1/' | sort -u); do
+    _doc=$((_doc + 1))
+    [ -f "fs/usr/share/kdos/doc/$_d.txt" ] ||
+        bad "help page $_d" "no fs/usr/share/kdos/doc/$_d.txt"
+done
+note "help pages" "$_doc claimed, each in fs/usr/share/kdos/doc"
 
 echo
 if [ "$fail" = 0 ]; then

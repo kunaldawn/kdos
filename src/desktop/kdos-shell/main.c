@@ -49,6 +49,9 @@ static const struct {
 	{ "kdos-keys", keys_main },
 	{ "kdos-teams", teams_main },
 	{ "kdos-saver", saver_main },
+	{ "kdos-about", about_main },
+	{ "kdos-calc", calc_main },
+	{ "kdos-note", note_main },
 	{ "kdos-slit", slit_main },
 	{ "kdos-doc", doc_main },
 	{ "kdos-settings", settings_main },
@@ -61,6 +64,7 @@ static const struct {
 	{ "kdos-status", status_main },
 	{ "kdos-tip", tip_main },
 	{ "kdos-ime", ime_main },
+	{ "kdos-trash", trash_main },
 };
 #define NTOOLS ((int)(sizeof(TOOLS) / sizeof(TOOLS[0])))
 

@@ -14,7 +14,7 @@ records what it was.
 2. [Installation](02-user-guide/installation.md) — put it on a disk
 3. [The desktop](02-user-guide/desktop.md) — live in it
 4. [Applications](02-user-guide/applications.md) — the software library on the medium
-5. [Theming](02-user-guide/theming.md) — the four accents and the CRT pass
+5. [Theming](02-user-guide/theming.md) — the seven accents and the CRT pass
 6. [Administration](02-user-guide/administration.md) — services, network, hardware, updates
 
 **I want to build KDOS**
@@ -58,7 +58,7 @@ Getting a system running and living in it.
 | [Installation](02-user-guide/installation.md) | The installer page by page: disks, filesystems, encryption, applications, unattended installs |
 | [The desktop](02-user-guide/desktop.md) | Panel, menus, windows, workspaces, keybindings, notifications, lock and power, devices |
 | [Applications](02-user-guide/applications.md) | Alien apps: installing from the medium, launching, file handling, updates, rollback |
-| [Theming](02-user-guide/theming.md) | The four accents, what retints live, the CRT knobs, wallpaper, fonts, boxed applications |
+| [Theming](02-user-guide/theming.md) | The seven accents, what retints live, the CRT knobs, wallpaper, fonts, boxed applications |
 | [Administration](02-user-guide/administration.md) | Services, networking, firewall, storage, users, hardware, codecs, updates, diagnosis |
 
 ### III — Architecture and core

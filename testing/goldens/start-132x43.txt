@@ -16,7 +16,7 @@
 |                               |  . Displays                                                                                      |
 |                               |  . Terminal                                                                                      |
 |                               |  . Help                                                                                          |
-|                               |                                                                                                  |
+|                               |  . About                                                                                         |
 |                               |                                                                                                  |
 |                               |                                                                                                  |
 |                               |                                                                                                  |

@@ -1,0 +1,24 @@
+KDOS DEVICES
+
+Cameras, microphones and removable media, in one list.
+
+  Enter     acts on the selected row, and what it does depends on the row:
+            a camera opens a preview, a removable volume mounts or opens,
+            an update row applies it. The bottom row always names which.
+  u         unmounts a mounted volume.
+  m         mutes every microphone, or unmutes them.
+  r         rescans.
+
+The camera preview is drawn in cells from the frames the device produces —
+it is a preview, not a viewfinder. Escape takes it down and returns to the
+list; Escape on the list closes the window.
+
+Removable media
+
+  Mounting is done by kdos-mountd, which runs as root and answers a fixed set
+  of verbs over a socket. It refuses to touch the medium this session booted
+  from — by the whole disk, not by the partition, because a live medium
+  carries a boot partition and an EFI partition and only the disk tells them
+  apart.
+
+  [[doc:index]]

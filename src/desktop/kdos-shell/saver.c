@@ -52,8 +52,9 @@
 #define SV_MAX_COLS	512
 #define SV_MAX_ROWS	256
 #define SV_LOGO_PATH	"/usr/share/kdos/logo.txt"
-#define SV_LOGO_LINES	48
-#define SV_LOGO_BYTES	512
+/* The artwork's own limits are shell.h's — see sh_logo_load(). */
+#define SV_LOGO_LINES	SH_LOGO_LINES
+#define SV_LOGO_BYTES	SH_LOGO_BYTES
 
 enum { SV_MODE_RAIN = 0, SV_MODE_LOGO, SV_MODE_OFF };
 
@@ -202,62 +203,10 @@ static void sv_rain_draw(int cols, int rows)
 static char sv_logo[SV_LOGO_LINES][SV_LOGO_BYTES];
 static int sv_logo_n, sv_logo_w;
 
-/*
- * logo.txt is COLOURED — kdos-banner reads it and replays it a raster line at a
- * time, so genlogo.py writes SGR sequences into it. Painting those into cells
- * puts `[1;32m` on the screen as text and makes every width measurement wrong
- * by the length of the escapes. The desktop's palette is libktui's eight slots
- * anyway, so the colour is dropped rather than translated: this is the same
- * strip_ansi kdos-banner does in pure bash, and for the same reason.
- */
-static void sv_strip_ansi(char *s)
-{
-	char *w = s;
-
-	for (const char *r = s; *r; ) {
-		if (*r != '\033') {
-			*w++ = *r++;
-			continue;
-		}
-		r++;
-		if (*r == '[') {
-			r++;
-			/* CSI runs until a final byte in 0x40..0x7e. */
-			while (*r && (unsigned char)*r < 0x40)
-				r++;
-			if (*r)
-				r++;
-		} else if (*r) {
-			r++;	/* a two-byte escape; nothing here emits one */
-		}
-	}
-	*w = '\0';
-}
-
 static int sv_logo_load(const char *path)
 {
-	FILE *f = fopen(path, "r");
-	char line[SV_LOGO_BYTES];
-
-	sv_logo_n = 0;
-	sv_logo_w = 0;
-	if (!f)
-		return -1;
-	while (sv_logo_n < SV_LOGO_LINES && fgets(line, sizeof(line), f)) {
-		line[strcspn(line, "\r\n")] = '\0';
-		sv_strip_ansi(line);
-		snprintf(sv_logo[sv_logo_n], SV_LOGO_BYTES, "%s", line);
-		int w = ktui_utf8_width(sv_logo[sv_logo_n]);
-		if (w > sv_logo_w)
-			sv_logo_w = w;
-		sv_logo_n++;
-	}
-	fclose(f);
-	/* Trailing blank lines would bounce off the bottom edge early, with a
-	 * gap under the penguin nobody can see the reason for. */
-	while (sv_logo_n > 0 && !sv_logo[sv_logo_n - 1][0])
-		sv_logo_n--;
-	return sv_logo_n > 0 ? 0 : -1;
+	return sh_logo_load(path, sv_logo, SV_LOGO_LINES, &sv_logo_n,
+			    &sv_logo_w);
 }
 
 /* Position and velocity in sixteenths again: a whole cell per frame at 10 fps

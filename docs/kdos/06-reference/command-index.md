@@ -24,6 +24,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-cal` | The calendar | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-checkpass` | Check the caller's own password. **setuid** | [The security model](../03-architecture/security-model.md#kdos-checkpass) |
 | `kdos-clip` | Clipboard history | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos-trash` | What was deleted, and the way back; the Trash icon opens it | [kdos-shell](../04-programs/kdos-shell.md#kdos-trash) |
 | `kdos-comp` | The compositor | [kdos-comp](../04-programs/kdos-comp.md) |
 | `kdos-desk` | The desktop and its icons | [kdos-shell](../04-programs/kdos-shell.md#kdos-desk) |
 | `kdos-desktop` | Start a session | [The session](../03-architecture/session.md#starting-a-session) |
@@ -67,9 +68,10 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-settings` | Settings | [kdos-shell](../04-programs/kdos-shell.md#kdos-settings) |
 | `kdos-sfx` | Sound effects | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
 | `kdos-shell` | The panel | [kdos-shell](../04-programs/kdos-shell.md#the-panel) |
-| `kdos-shot` | Screenshots. On the console, cells rather than an image | [The desktop](../02-user-guide/desktop.md) |
+| `kdos-shot` | Screenshots. On the console, through `kdos-view --shot` | [The desktop](../02-user-guide/desktop.md) |
 | `kdos-slit` | The dockapp column | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
-| `kdos-view` | A display for a console session: `--kms`, `--kms-only`, `--tty`, `--dump`, `--cast` | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
+| `kdos-view` | A display for a console session: `--kms`, `--kms-only`, `--tty`, `--dump`, `--shot`, `--cast` | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
+| `kdos-view --shot FILE.png` | One settled frame of the composited grid, rasterised through the painter a screen uses | [kdos-con](../04-programs/kdos-con.md) |
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
 | `kdos-start` | The Start menu | [kdos-shell](../04-programs/kdos-shell.md#kdos-start) |
 | `kdos-status` | The overflow popup | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
@@ -96,6 +98,7 @@ Plus **one shim per installed application**, named after the application and poi
 |---|---|
 | `kdos help` | Every command, grouped by which question it answers |
 | `kdos theme` | Switch accent, apply a style, audit the palette |
+| `kdos settings [page]` | The control centre, or one of its nine pages |
 | `kdos status` | What this machine is and what it is running |
 | `kdos doctor` | Check the things that actually break here |
 | `kdos app` | Applications: list, search, show, install, launch, remove, rollback, update, sources |
@@ -110,6 +113,8 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos clone` | Copy this medium to another device |
 | `kdos cve` | Which pins carry known vulnerabilities, offline |
 | `kdos trash` | The freedesktop trash |
+| `kdos places [add DIR]` | The places column the desktop shows, and the way to keep one from a prompt | [kdos-command](../04-programs/kdos-command.md#places) |
+| `kdos thumb <file>` | A thumbnail in the shared freedesktop cache — also `--path` and `--ppm` | [kdos-command](../04-programs/kdos-command.md#thumb) |
 | `kdos hey` | Ask the compositor about windows, outputs and boxes |
 | `kdos con` | Console sessions: `ls`, `new`, `attach`, `detach`, `kill` (asks the session to end, and it drains), `forward` |
 | `kdos oracle` | An aphorism |

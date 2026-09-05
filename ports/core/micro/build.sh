@@ -27,5 +27,6 @@ Icon=text-x-generic
 Terminal=true
 Categories=Utility;TextEditor;
 Keywords=editor;text;micro;
+MimeType=text/plain;text/markdown;text/x-csrc;text/x-chdr;text/x-c++src;text/x-python;text/x-shellscript;application/json;application/xml;application/x-yaml;text/x-makefile;
 EOF
 chmod 644 "$PKG/usr/share/applications/micro.desktop"

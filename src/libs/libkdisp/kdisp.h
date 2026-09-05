@@ -230,9 +230,50 @@ typedef struct {
 	 * than a multiplier on the surface.
 	 */
 	int opacity;
+
+	/*
+	 * THIS SURFACE MANAGES THE SESSION'S WINDOWS: a panel, a task
+	 * switcher, a window menu. It asks to be sent the window list and to
+	 * be allowed to raise, close and minimise what is on it.
+	 *
+	 * IT IS A PRIVILEGE AND IT IS ASKED FOR EXPLICITLY. A surface that
+	 * did not ask cannot act on another program's window, which is what
+	 * stops a launcher or a calculator from closing somebody's editor.
+	 * The console grants it because the surface socket never leaves the
+	 * machine; a Wayland compositor grants its own equivalent through
+	 * foreign-toplevel and ignores this.
+	 */
+	int manage;
 } KDispConfig;
 
 typedef void (*KDispBackdropFn)(pixman_image_t *dst, int w, int h, int scale);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Somebody else's windows
+ *
+ * What a panel, a window menu or a task switcher needs, and no more: enough
+ * to draw a row and enough to act on the one that was clicked. It is not a
+ * handle — a caller holds an id and asks again, because a window can go
+ * between the frame that drew it and the click that follows.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum {
+	KDISP_WIN_FOCUSED = 1u << 0,
+	KDISP_WIN_MINIMISED = 1u << 1,
+	KDISP_WIN_MAXIMISED = 1u << 2,
+	KDISP_WIN_FULLSCREEN = 1u << 3,
+};
+
+typedef struct {
+	unsigned id;
+	unsigned flags;
+	/* Which workspace it is on, or -1 where the server does not say.
+	 * wlr-foreign-toplevel has no workspace, so a Wayland row is -1 and a
+	 * caller that groups by workspace groups them all together. */
+	int workspace;
+	char app_id[64];
+	char title[128];
+} KDispWin;
 
 enum kdisp_cursor {
 	KDISP_CUR_DEFAULT = 0,	/* the arrow                               */
@@ -291,6 +332,60 @@ typedef struct {
 	int (*lock_engaged)(void);
 	int (*lock_finished)(void);
 	void (*unlock)(void);
+
+	/*
+	 * DOES THIS SURFACE HAVE THE KEYBOARD?
+	 *
+	 * A terminal has to tell its child when the focus moved (`CSI I` /
+	 * `CSI O`), because an editor that is not told does not reload a file
+	 * changed underneath it and its next write is over somebody else's
+	 * work. Both servers already know the answer — `wl_keyboard` enter and
+	 * leave on one, `KCON_OP_FOCUS` on the other — and neither told anybody.
+	 *
+	 * A backend that cannot answer returns 1: a surface that assumed it had
+	 * the focus is what every program did before this existed, so the
+	 * neutral answer is the old behaviour rather than a terminal that never
+	 * reports focus at all.
+	 */
+	int (*focused)(void);
+
+	/*
+	 * THE WINDOW LIST. A server that has no way to enumerate somebody
+	 * else's windows leaves these NULL, and a caller sees an empty list
+	 * rather than a crash — which is a panel with no task row, not a panel
+	 * that fails to start.
+	 *
+	 * `win_at` fills `out` and returns 1, or returns 0 when `i` is past
+	 * the end. Copying rather than returning a pointer is deliberate: the
+	 * list is rebuilt whenever the server says so, and a caller holding a
+	 * pointer across a pump is holding freed memory.
+	 *
+	 * A CALLER RE-READS THE LIST ON EACH TURN rather than being called
+	 * back. Both consumers already have a poll loop with a timeout, and a
+	 * callback fired from inside a pump would have to be delivered from
+	 * whichever of the two event paths happened to read the socket —
+	 * which on the console is the one that also delivers key events, so a
+	 * pump added for the callback would swallow them.
+	 *
+	 * Every verb is a REQUEST. The server owns the stack and the lifetime,
+	 * and nothing here reports what happened — the change arrives as a new
+	 * list, which is the only account of it either backend can give.
+	 */
+	/*
+	 * DOES THIS SERVER HAVE A WINDOW LIST AT ALL? A count of zero is a
+	 * desktop with nothing open, which is an ordinary state; a panel that
+	 * treated it as "no window list" would refuse to start on a freshly
+	 * booted session. Only the presence of the entries answers that, and
+	 * a caller that needs to say what is missing asks this.
+	 */
+	int (*win_count)(void);
+	int (*win_at)(int i, KDispWin *out);
+	void (*win_activate)(unsigned id);
+	void (*win_close)(unsigned id);
+	/* One KDISP_WIN_ bit, and the value wanted. Minimise, maximise and
+	 * fullscreen are one request with a different bit; the named callers
+	 * below are the forwarder's, so a backend implements this once. */
+	void (*win_set_state)(unsigned id, unsigned flag, int on);
 } KDispImpl;
 
 /*
@@ -328,7 +423,22 @@ void kdisp_set_backdrop(KDispBackdropFn fn);
 void kdisp_input_cells(const KRect *rects, int n);
 void kdisp_report_error(void);
 int kdisp_lock_engaged(void);
+/* Does this surface have the keyboard? See KDispImpl.focused. */
+int kdisp_focused(void);
 int kdisp_lock_finished(void);
 void kdisp_unlock(void);
+
+/* Somebody else's windows. See KDispImpl: an implementation that cannot
+ * enumerate them reports none, and the verbs do nothing. */
+/* Whether this display server can enumerate windows at all, as distinct from
+ * a desktop with none open. */
+int kdisp_win_supported(void);
+int kdisp_win_count(void);
+int kdisp_win_at(int i, KDispWin *out);
+void kdisp_win_activate(unsigned id);
+void kdisp_win_close(unsigned id);
+void kdisp_win_minimise(unsigned id, int on);
+void kdisp_win_maximise(unsigned id, int on);
+void kdisp_win_fullscreen(unsigned id, int on);
 
 #endif /* KDISP_H */

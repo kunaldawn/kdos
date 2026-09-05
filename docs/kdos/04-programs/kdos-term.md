@@ -34,6 +34,60 @@ there, and there is one implementation of them for both this terminal and `kdos-
 
 `TERM` is `xterm-256color`, because that is what the state machine implements and what ncurses
 already ships an entry for. A private `TERM` breaks the first time somebody types `ssh`.
+**`COLORTERM` is `truecolor` beside it**, which is the only way a program learns that the
+sixteen-colour entry `TERM` names is an understatement — `libktui`'s own capability probe reads it,
+so without it a KDOS surface running inside a KDOS terminal detected 256 colours and drew the theme
+approximately.
+
+**The modes a program probes are answered.** `DECRQM` (`CSI ? <mode> $ p`) reports whether a DEC
+private mode is on, for application cursor keys, auto wrap, the cursor, every mouse mode, focus
+reporting, the alternate screen, bracketed paste and synchronized output. **A mode nothing
+implements is answered `0`** — "not recognised", which is what a probing program is built to handle.
+Silence is what it is not built to handle: it waits, times out, and draws like a terminal from 1978.
+Answering is what makes every later mode safe to add.
+
+**Focus is reported when the child asks for it** (`DECSET 1004`, `CSI I` in and `CSI O` out). An
+editor that is not told it lost the focus does not reload a file changed underneath it, so its next
+write is over somebody else's work — nearer to data loss than to polish. It is silent until asked,
+because a terminal that wrote `CSI I` unasked would put two stray characters into every program that
+never requested them. Both desktops report it, from a diff against the previous turn of the loop
+rather than an event, because each display server already holds the answer and neither delivers it
+as one.
+
+**Synchronized output** (`DECSET 2026`) holds the frame while the child draws it, so a program that
+brackets its screen is never seen half-drawn — which on a slow link is the difference between a
+frame and a tear. **Under a watchdog of 150 ms**, because a child that sets the mode and dies would
+otherwise freeze its window forever and the terminal cannot tell that from a program taking its
+time. The rule lives in `libkvt` rather than in each renderer, because two copies of a timeout is
+two timeouts.
+
+**The primary device attributes report sixel.** `chafa`, `img2sixel`, `lsix`, `timg` and
+`mpv --vo=sixel` all send `CSI c` and read parameter `4` as sixel support, so a reply without it
+made every one of them fall back to half blocks on a terminal that decodes sixel, OSC 1337 *and* the
+kitty protocol. The conformance level stays 60: raising it would claim something this state machine
+has not been measured against, which is a different promise.
+
+**`CSI ? Pi ; Pa ; Pv S` reports how big a picture may be.** `Pi` is 1 for the colour registers and
+2 for the sixel geometry; a read is answered `CSI ? Pi ; 0 ; <values> S` and anything this terminal
+cannot do is answered with a failure code rather than with silence. **The geometry reported is the
+one actually enforced** — `image_cells` in each direction, never more than the grid has, multiplied
+by the cell size — and it is re-stated whenever the window is resized, because half that bound is
+the number of columns and rows.
+
+**A set is refused, not ignored.** The geometry is the configuration's and the register count is the
+decoder's, so a program that believed it had negotiated a larger picture would send one and have it
+clipped. `Pa` 3 is answered `Ps=3`.
+
+**`CSI Ps S` and `CSI ? … S` differ by the private marker alone**, and the first scrolls the screen.
+A terminal that misses the marker answers a capability probe by scrolling: the program learns
+nothing, and what it sees is its own output moving.
+
+**`APC G a=q` is answered.** A picture program sends a one-pixel transmission with `a=q` and waits —
+`OK` means it may use the protocol, an error code means it must fall back, and **nothing** means it
+waits for its own timeout and then draws as though this were a teletype. The id is echoed so a
+program with several in flight knows which it is hearing about, and a query stores no image.
+**A terminal with `images = no` answers the query too, with `ENOTSUP`**: silence there costs a person
+who turned pictures off exactly what not implementing the protocol would.
 
 Colours are reduced to the theme's eight slots by nearest distance — one rule for the ANSI sixteen,
 the 256 and truecolor alike — so `kdos theme` moves a terminal's colours with everything else.
@@ -44,6 +98,47 @@ greens lands them on the same slot — which draws every character in the colour
 it. "Default" means whatever this desktop calls text and background, so it is answered with
 `KT_TEXT` and `KT_BG` directly. A colour a program actually asked for is still reduced, including
 one that reduces to its own background, because a program writing black on black meant to.
+
+## A program saying it finished
+
+`make && notify-send done` does not work on this image: `libnotify` is not a port and
+`notify-send` is not here. **The escape sequences are**, and they cost a parse rather than a
+dependency — so a long job says so from inside the terminal it is running in, and the desktop's own
+notification daemon shows it like any other toast.
+
+| Sequence | Whose | Carries |
+|---|---|---|
+| `OSC 9 ; text` | iTerm2's, and the common one | a summary |
+| `OSC 777 ; notify ; summary ; body` | urxvt's, which `tmux` forwards | both |
+| `OSC 99 ; params ; text` | kitty's | a summary, past a parameter list |
+
+Three spellings because none of them won, and all three are what programs actually emit.
+
+**`libkvt` raises nothing itself.** A toast means a session bus, and that library links nothing and
+must not start; the terminal registers a handler and a terminal that sets none drops the escape,
+which is right for one with no desktop behind it. **The application name is the window's title**,
+so somebody with four builds running can tell which one spoke.
+
+**`OSC 99`'s parameter list is parsed and ignored.** This terminal has no notification identity, no
+replacement and no progress, so honouring `d=0` would be claiming a facility that is not here.
+
+## The paste guard
+
+**With bracketed paste on, the child sees a paste as text and decides for itself.** With it off the
+bytes go straight to the pty, so a newline in them **executes**: at a plain shell, at an `ssh`
+password prompt, inside `read`. That is the one place a terminal can be made to act as the user, and
+it stopped being a thought experiment the moment a clipboard could arrive from a forwarded view.
+
+A payload with a newline, a carriage return or any other control byte except tab is held back. A tab
+is not held: it is what a person pasting a table has, and it submits nothing.
+
+`kdos-term` asks with a dialog naming how many lines would run. **The console session cannot** — it
+does not own the toolkit of the window the paste is going into — so there the first attempt is
+refused, the taskbar says why, and pressing the chord again within five seconds means it. A
+confirmation nobody can see would be a refusal with no way past it.
+
+`paste_guard = no` in `term.conf` or `con.conf` turns it off, which is what somebody pasting all day
+into a program that never enables bracketing will want.
 
 ## Selection and the two clipboards
 
@@ -93,6 +188,7 @@ are bounded here; the moment a byte could be part of a picture it goes to `libki
 | `OSC 1337;File=…:<base64>` | `inline=1` only, with `width`/`height` in cells, `px` or `%` |
 | `APC G a=T/a=t/a=p/a=d` | Transmit, place, delete, the chunked form, `f=100` (any format `libkimg` reads), `f=24` and `f=32` |
 | `APC G a=f/a=a` | Animation: a frame with its delay, composed onto an earlier one, and the run, stop and loop-count controls |
+| `APC G a=q` | The capability query, answered `OK` with the id echoed — or `ENOTSUP` where pictures are off |
 
 A build without `libkimg` leaves the three protocols **off entirely** rather than parsing them and
 dropping the result: with no callback registered `libkvt` ignores a sixel dump exactly as it always

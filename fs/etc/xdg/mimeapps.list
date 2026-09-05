@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   What opens a file on EITHER desktop.
+#
+# Only the types where both desktops want the same program. Anything a
+# graphical session and a terminal session would answer differently belongs in
+# `kdos-mimeapps.list` or `kdos-console-mimeapps.list` beside this file, which
+# are searched first for the desktop that is actually running.
+#
+# A person's own choices live in their config directory and outrank every row
+# here, which is what makes this a default rather than a policy.
+# ---------------------------------
+
+[Default Applications]
+inode/directory=mc.desktop

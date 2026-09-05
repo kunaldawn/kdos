@@ -138,7 +138,7 @@ Per-daemon refusals:
 
 | Daemon | Refuses |
 |---|---|
-| `kdos-mountd` | Internal disks; filesystems the kernel cannot mount; anything in `fstab`; **the medium the system booted from** |
+| `kdos-mountd` | Internal disks; filesystems the kernel cannot mount; anything in `fstab`; **every partition of the disk the system booted from**; a verb carrying a token nobody named; an index that is not a number; a filesystem outside the four it will write; a `format` not confirmed with the device's own kernel name; a node whose device differs from the one the scan recorded |
 | `kdos-packd` | Paths as arguments; a pack whose hash or signature fails; removing a pack that is in use |
 | `kdos-oomd` | Any argument at all — killing is its own decision or it does not happen |
 | `kdos-energyd` | Republishing the raw counter; a client-chosen sampling interval |

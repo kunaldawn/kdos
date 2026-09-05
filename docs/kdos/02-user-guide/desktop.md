@@ -239,12 +239,20 @@ is the clipboard history, reachable from the overflow popup or by name.
 
 ## Files
 
-`kdos-desk` draws the desktop. Right-clicking the wallpaper opens New Folder, New File, Open
-Terminal Here, Sort Icons, Refresh, plus Applications, Change Wallpaper, Display Settings and
-Settings. `~/Desktop` is created if it is missing.
+`kdos-desk` draws the desktop. Right-clicking the wallpaper opens Open Terminal Here, Find Here,
+Add to Places and Git Status Here — the verbs that mean *here* — then New Folder, New File, Sort
+Icons, Refresh, Applications, Change Wallpaper, Display Settings and Settings. Right-clicking an
+**icon** offers the file verbs instead: Open, Peek, Edit, Terminal Here, Add to Places, Share, Git
+Status Here and Move to Trash, plus Rename and, on the Trash, Empty Trash. `~/Desktop` is created
+if it is missing.
+
+The file half is the same table `kdos-pick` and `mc`'s `F2` read, so a verb arrives on all three at
+once — and a verb whose program is not installed is not offered anywhere.
 
 `Delete` on a desktop icon moves the file to the freedesktop trash — the same implementation
-`kdos trash` uses from a prompt, so the two mean the same thing.
+`kdos trash` uses from a prompt, so the two mean the same thing. Opening the **Trash** icon opens
+`kdos-trash`: what was deleted, when, and where it came from, with `Enter` putting a row back where
+it was. A trash you cannot get anything out of is a slower delete.
 
 `kdos-pick --browse` is the file browser; the same program is the file dialog that boxed
 applications get through the portal, so Open and Save in Firefox or GIMP are drawn on this grid

@@ -207,6 +207,44 @@ int kb_mkdir_p(const char *path);
 /* flock() wrapper. Returns the held fd, or -1. Close to release. */
 int kb_lock_file(const char *path, int nonblock);
 
+/*
+ * IS A DESKTOP TOGGLE ON? `kdos toggle <name>` writes a flag file under
+ * `$XDG_STATE_HOME/kdos/toggles/` and its presence is the whole state.
+ *
+ * A FLAG FILE RATHER THAN A CONFIGURATION KEY, because the configuration is
+ * documented as read once when a session starts: a runtime writer would make
+ * half a program's answers come from before an edit and half from after.
+ *
+ * STAT'ED PER CALL, NEVER CACHED. Every toggle is set by a different process —
+ * a chord, a menu row, a script before a long build — so a program holding a
+ * copy is one that has to be told, and there is nothing to tell it with.
+ */
+int kb_toggle_on(const char *name);
+
+/*
+ * THE FIRST NAME IN $XDG_CURRENT_DESKTOP, which is the prefix a desktop's own
+ * `<desktop>-mimeapps.list` is spelled with — lowercased, because the variable
+ * is `KDOS-Console:KDOS` and the file the spec asks for is
+ * `kdos-console-mimeapps.list`.
+ *
+ * Returns 0 when the variable is unset or empty, and the caller then searches
+ * only the plain lists: a machine with no desktop declared has no per-desktop
+ * choices to honour, and inventing a prefix would look for a file nobody wrote.
+ */
+int kb_desktop_prefix(char *out, size_t n);
+
+/*
+ * WHICH TERMINAL A `Terminal=true` ENTRY IS RUN IN, and it follows the desktop:
+ * `kdos-term` inside a console session, `foot` under the compositor. Both take
+ * `-e`, so the name is the whole of the difference.
+ *
+ * IT IS NOT A PREFERENCE. `foot` is a Wayland client, so a console session that
+ * wrapped an entry in it would resolve the right program and then fail to open
+ * a window for it — which reads as the handler being wrong rather than the
+ * terminal being unreachable.
+ */
+const char *kb_terminal(void);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Processes
  *
@@ -251,6 +289,18 @@ int kb_run_tty(const KbArgv *a);
 /* Same, but copy up to n-1 bytes of stdout into buf, NUL terminated with any
  * trailing newline stripped. */
 int kb_run_capture(const KbArgv *a, char *buf, size_t n);
+
+/*
+ * A DESKTOP NOTIFICATION, over `gdbus`.
+ *
+ * Best effort and detached: a program that emitted OSC 9 has finished, and a
+ * terminal that blocked raising a toast about it would be a terminal that
+ * stopped drawing to say something had stopped. Nothing here links a bus
+ * library — `gdbus` is on every image for the portal — and a machine without
+ * it silently raises nothing, which is what a machine with no notification
+ * daemon should do.
+ */
+void kb_notify(const char *app, const char *summary, const char *body);
 /* Same, unbounded: stdout is appended to a growing buffer, NUL terminated,
  * with the trailing newline left alone. Use this whenever the output has no
  * natural ceiling — a `tar -tf` listing does not. */
@@ -299,6 +349,36 @@ void kb_sha256_final(KbSha256 *s, char out[65]);	/* lowercase hex */
 int kb_sha256_file(const char *path, char out[65]);
 /* 0 match, 1 mismatch, -1 unreadable. Comparison is case-insensitive. */
 int kb_sha256_check(const char *path, const char *want);
+
+/*
+ * MD5 — a FILE NAME, never a security claim.
+ *
+ * The thumbnail standard names its cache files by the MD5 of the source URI,
+ * and every other program on the machine that writes one does the same. A
+ * stronger hash here would produce a cache nothing else could read and would
+ * read nothing else's, in exchange for a property nothing here relies on:
+ * `kb_sha256_*` is what authenticates.
+ */
+typedef struct {
+	uint32_t h[4];
+	uint64_t len;
+	uint8_t buf[64];
+	size_t n;
+} KbMd5;
+
+void kb_md5_init(KbMd5 *s);
+void kb_md5_update(KbMd5 *s, const void *data, size_t n);
+void kb_md5_final(KbMd5 *s, char out[33]);	/* lowercase hex */
+void kb_md5_str(const char *s, char out[33]);
+
+/*
+ * A path as a `file://` URI. THE ESCAPE SET IS NOT A CHOICE: the thumbnail
+ * cache is named by the MD5 of this string and the cache is SHARED, so a
+ * character escaped differently is a thumbnail nothing else can find. The set
+ * is glib's `G_URI_RESERVED_CHARS_ALLOWED_IN_PATH` plus the unreserved ones,
+ * in uppercase hex, which is what `g_filename_to_uri()` writes.
+ */
+void kb_uri_file(const char *path, char *out, size_t n);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Landlock — unprivileged self-sandboxing. Three syscalls, no library.

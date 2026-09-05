@@ -109,6 +109,19 @@ static char status[128];
  * rather than in a terminal that has to be closed to get rid of it.
  */
 static int pane_on;
+
+/*
+ * The contract. ONE Esc layer here — the detail pane — declared rather than
+ * written into two switch arms, so the row can name what Esc means on the
+ * screen it is on: "Back" over the pane, "Close" over the list.
+ */
+static KtuiKeys keys;
+static void pane_close(void);
+static int pane_up(void *u) { (void)u; return pane_on; }
+/* A wrapper and not a cast: calling a `void(void)` through a `void(void*)` is
+ * undefined, and the one architecture where it happens to work is not the
+ * argument. */
+static void pane_close_cb(void *u) { (void)u; pane_close(); }
 static pid_t pane_pid = -1;
 static int pane_fd = -1;
 static int pane_done;
@@ -535,12 +548,24 @@ static void draw_list(int w, int h)
 	b[SB_CLOSE] = (struct kch_button){ "Close", 1 };
 	int bx = kch_buttons(w, h - 2, b, SB_N, -1);
 	int room = bx - 3;
-	static const char HINT[] = "Enter opens   Esc closes";
 
-	if (room > 0 &&
-	    (status[0] ? room >= 8 : room >= (int)ktui_utf8_width(HINT)))
-		ktui_draw_text(2, h - 2, room, status[0] ? status : HINT,
-			       status[0] ? KT_WARN : KT_MID, KT_BG, KT_A_NONE);
+	/*
+	 * A MESSAGE DISPLACES THE HINTS. A status line and a key row want the
+	 * same cells, and what went wrong is more urgent than what the keys
+	 * do — but the pool must be drained either way, or the hints pushed
+	 * this frame are still in it on the next one.
+	 */
+	if (status[0]) {
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_BG);
+		if (room >= 8)
+			ktui_draw_text(2, h - 2, room, status, KT_WARN, KT_BG,
+				       KT_A_NONE);
+		return;
+	}
+	ktui_hint_if(nrows > 0, "Enter", "open");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	if (room > 0)
+		ktui_hint_row(&keys, krect(2, h - 2, room, 1), KT_BG);
 }
 
 static void draw_pane(int w, int h)
@@ -711,6 +736,9 @@ int status_main(int argc, char **argv)
 	if (icons_on)
 		kicon_init(kdisp_cell_w(), kdisp_cell_h(), kdisp_scale());
 	ktui_draw_init();
+	/* Registered once, INNERMOST LAST. One rung here; the walk runs from
+	 * the end, so registration order is the order Esc unwinds. */
+	ktui_keys_layer(&keys, "Back", pane_up, pane_close_cb, NULL);
 	/* The bar's own body, so a popup over the taskbar is the
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_BG);
@@ -863,13 +891,20 @@ int status_main(int argc, char **argv)
 
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		/* FIRST, above both switches: Esc means one rung of the ladder
+		 * wherever it is pressed, and the ladder is declared once. */
+		{
+			int r = ktui_keys(&keys, &ev);
+
+			if (r == KTUI_KEY_CLOSE)
+				goto done;
+			if (r == KTUI_KEY_TAKEN)
+				continue;
+		}
 		if (pane_on) {
 			int pv = ktui_h - list_y0 - 2;
 
 			switch (ev.key) {
-			case KT_K_ESC:
-				pane_close();
-				break;
 			case KT_K_UP:
 				lfollow = 0;
 				if (ltop > 0)
@@ -897,8 +932,6 @@ int status_main(int argc, char **argv)
 		}
 		sel_follow = 1;
 		switch (ev.key) {
-		case KT_K_ESC:
-			goto done;
 		case KT_K_UP:
 			if (sel > 0)
 				sel--;

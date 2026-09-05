@@ -26,10 +26,18 @@
 # default: they are the same rows on the console desktop as under the
 # compositor, where `foot` is a Wayland client and the boxed three need a bake.
 
-mc
-btop
-lazygit
-foot
-firefox-esr
-org.xfce.mousepad
-gimp
+# A line is a desktop-entry id, optionally followed by `code=XX` — the
+# two-letter shorthand DESQview's Open Window menu had. Typing both letters in
+# the Start menu opens that row: no arrows, no Enter, and no waiting to see
+# whether the search narrowed to one. The code is drawn on the row, because a
+# code nobody can see is one nobody learns.
+#
+# `foot` and `kdos-term` both mean THE TERMINAL and resolve to whichever this
+# desktop runs, so one file serves the console and the compositor.
+mc code=FM
+btop code=MO
+lazygit code=GI
+foot code=TE
+firefox-esr code=WW
+org.xfce.mousepad code=ED
+gimp code=IM

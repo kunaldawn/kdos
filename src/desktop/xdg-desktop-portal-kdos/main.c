@@ -727,7 +727,7 @@ static int pending_read(struct pending *pend)
 /*
  * `org.freedesktop.appearance color-scheme` is the one setting worth answering
  * and the answer is always 1 — "prefer dark". KDOS has no light palette: all
- * four accents are phosphor on near-black, and a toolkit told "no preference"
+ * seven accents are phosphor on near-black, and a toolkit told "no preference"
  * picks its own light theme and stands out from everything around it.
  *
  * `accent-color` is a (ddd) of doubles in 0..1. It is read from the same

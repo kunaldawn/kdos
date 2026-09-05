@@ -165,6 +165,8 @@ void res_page_set(int idx);
 int  res_page_current(void);
 /* Route input at the frame level: the sidebar, the page cycle and F1 first,
  * then the page's own handler. Returns 1 when the program should exit. */
+/* Registered once, before the loop: the Esc ladder and the F1 page. */
+void res_keys_init(void);
 int  res_frame_key(int k);
 int  res_frame_click(int mx, int my, int btn);
 int  res_frame_wheel(int up);

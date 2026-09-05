@@ -27,6 +27,11 @@ int panel_rows(void)
  * nowhere. Whoever paints an element records the span it actually covered.
  */
 static PanelHit hits[PANEL_HITS];
+
+/* "HH:MM" and a column of air. Named because the function-key row measures
+ * against it and the clock draws into it; two figures for one width is how a
+ * row ends up overwriting the thing it was measured to avoid. */
+#define PANEL_CLOCK_W 6
 static int nhits;
 
 static void hit_add(int x0, int x1, int kind, int arg)
@@ -72,12 +77,44 @@ int panel_hit(int x, int y, int *arg)
  * The one surface that replaces this bar is the one that IS a bar, and it says
  * so with its app id.
  */
+/*
+ * IS THE BAR IN FUNCTION-KEY MODE? `taskbar = fkeys` in con.conf.
+ *
+ * Read once and kept: con.conf documents itself as read when the session
+ * starts, so a value re-read per frame would answer differently either side of
+ * an edit and the bar would change shape under somebody's hand.
+ */
+int panel_fkeys(void)
+{
+	static int mode = -1;
+
+	if (mode < 0)
+		mode = !strcmp(kcon_conf_str("taskbar", "windows"), "fkeys");
+	return mode;
+}
+
 int panel_have_shell(void)
 {
 	for (Win *w = S.wins; w; w = w->next)
 		if (w->panel && !strcmp(w->app_id, "kdos-shell"))
 			return 1;
 	return 0;
+}
+
+/*
+ * The left column of the first element of a kind, or -1.
+ *
+ * Read out of the hit map rather than recomputed, for the reason the map exists
+ * at all: a title is truncated and the clock is right-aligned, so a second
+ * calculation of where an element ended up is a second thing to get wrong — and
+ * this one decides where a menu opens, so being one column out is visible.
+ */
+int panel_span_x0(int kind)
+{
+	for (int i = 0; i < nhits; i++)
+		if (hits[i].kind == kind)
+			return hits[i].x0;
+	return -1;
 }
 
 void panel_draw(void)
@@ -92,6 +129,39 @@ void panel_draw(void)
 
 	nhits = 0;
 
+	/*
+	 * WHILE A WINDOW IS BEING MOVED FROM THE KEYBOARD, THE BAR SAYS SO.
+	 *
+	 * The mode takes every key, so a person who pressed the chord by
+	 * mistake has no way to find out what happened unless the desktop
+	 * tells them — and the one row that is always on screen is this one.
+	 * No hit map is recorded: nothing on this row is clickable while the
+	 * mode is on, and a hit map naming spans that do nothing would be a
+	 * map that lies.
+	 */
+	if (con_rearranging()) {
+		ktui_draw_text(0, y, S.cols,
+			       " arrows move   Shift+arrows size   "
+			       "Ctrl+arrows by eight   Return keep   "
+			       "Esc revert", KT_BG, KT_ACCENT, KT_A_NONE);
+		return;
+	}
+	if (con_paste_armed()) {
+		ktui_draw_text(0, y, S.cols,
+			       " that paste would RUN — press the chord again "
+			       "within five seconds to mean it", KT_BG,
+			       KT_WARN, KT_A_NONE);
+		return;
+	}
+	if (con_marking()) {
+		ktui_draw_text(0, y, S.cols,
+			       " arrows place the corner   "
+			       "Shift+arrows extend   Ctrl+arrows by eight   "
+			       "Return copy   Esc cancel", KT_BG, KT_ACCENT,
+			       KT_A_NONE);
+		return;
+	}
+
 	int x = 0;
 	int x0 = x;
 
@@ -100,6 +170,73 @@ void panel_draw(void)
 	hit_add(x0, x - 1, PANEL_HIT_START, 0);
 	x += ktui_draw_text(x, y, S.cols - x, " ", KT_MID, KT_SURFACE,
 			    KT_A_NONE);
+
+	/*
+	 * ── THE FUNCTION-KEY ROW ────────────────────────────────────────
+	 *
+	 * Norton Commander's bottom row named F1 to F10 and what each did, and
+	 * a person's hands learned it in a week. `taskbar = fkeys` puts that
+	 * row here instead of the window list.
+	 *
+	 * IT NAMES THE CHORD; IT DOES NOT BIND THE KEY. A bare F7 belongs to
+	 * whatever is in the focused window — that is the whole reason a
+	 * terminal desktop can carry a function-key row at all — so every cell
+	 * is a POINTER target that fires the `Super+F<n>` chord, and the label
+	 * carries the `Super` so nobody learns the wrong key from it.
+	 *
+	 * EVERY CELL NAMES A CHORD THAT EXISTS. The ten below are bound in
+	 * `keys.conf`, and eight of them in `rc.xml` too; tile and rearrange
+	 * are the console's alone because labwc has no equivalent action, and
+	 * the row says so by naming them anyway — this is the console's bar.
+	 */
+	if (panel_fkeys()) {
+		static const struct {
+			int n;
+			const char *label;
+		} fk[] = {
+			{ 1, "Keys" },	   { 2, "Wins" },  { 3, "Audio" },
+			{ 4, "Net" },	   { 5, "BT" },	   { 6, "Devs" },
+			{ 7, "Find" },	   { 8, "Tile" },  { 9, "Move" },
+			{ 10, "Menu" },
+		};
+		int nfk = (int)(sizeof(fk) / sizeof(fk[0]));
+		/* The clock's own width, kept clear. A cell drawn into it
+		 * would be a label the clock overwrites, which is a target a
+		 * person aims at and misses. */
+		int right = S.cols - PANEL_CLOCK_W;
+
+		/*
+		 * `Super` ONCE, not ten times. The row has to say which key it
+		 * means — the chord is `Super+F<n>` and a bare `F7` belongs to
+		 * the program in the window — and ten copies of the word do
+		 * not fit in eighty columns beside ten labels.
+		 */
+		x += ktui_draw_text(x, y, right - x, "Super+", KT_MID,
+				    KT_SURFACE, KT_A_NONE);
+
+		for (int i = 0; i < nfk; i++) {
+			char cell[24];
+			int cx0 = x;
+			int w = snprintf(cell, sizeof(cell), "%d%s ", fk[i].n,
+					 fk[i].label);
+
+			/* A CELL IS DRAWN WHOLE OR NOT AT ALL. Half a label is
+			 * a target that names the wrong chord, so a row too
+			 * narrow for the tenth ends at the ninth. */
+			if (x + w > right)
+				break;
+			/* The number in the accent and the verb beside it, so
+			 * the digit a hand is looking for is the part that
+			 * stands out of a row of ten. */
+			x += ktui_draw_text(x, y, right - x, cell, KT_BG,
+					    KT_ACCENT, KT_A_NONE);
+			/* The trailing space is the gap, and it is not part of
+			 * the target: a click landing between two cells should
+			 * do nothing rather than the wrong one. */
+			hit_add(cx0, x - 2, PANEL_HIT_FKEY, fk[i].n);
+		}
+		goto clock;
+	}
 
 	/*
 	 * The window list, in the order the windows were created rather than
@@ -153,8 +290,20 @@ void panel_draw(void)
 		 * screen, and the number is how they get to it without the
 		 * taskbar.
 		 */
+		/*
+		 * AND THE RING NUMBER, the same one the title bar draws, so
+		 * `Super+Alt+N` can be aimed from the bar as well as from the
+		 * frame. A guest on a terminal of its own is in no ring — it
+		 * is not on this screen — so it keeps its `[vtN]` mark and
+		 * gets no number.
+		 */
+		int idx = win_index(w);
+
 		if (w->kind == WIN_VT)
 			snprintf(label, sizeof(label), " [vt%d] %.13s ", w->vt,
+				 w->title);
+		else if (idx > 0 && idx < 10)
+			snprintf(label, sizeof(label), " %d:%.18s ", idx,
 				 w->title);
 		else
 			snprintf(label, sizeof(label), " %.20s ", w->title);
@@ -210,8 +359,10 @@ void panel_draw(void)
 		hit_add(cx0, px - 1, PANEL_HIT_WS, i);
 	}
 
+clock:
 	/* The clock, right-aligned. A fixed string when the session is being
 	 * dumped, because a golden with a time in it fails every minute. */
+	{
 	char clock[16];
 
 	if (getenv("KDOS_CON_DUMP"))
@@ -231,4 +382,5 @@ void panel_draw(void)
 	 * than from where the drawing happened to stop. */
 	hit_add(S.cols - 1 - (int)strlen(clock), S.cols - 1, PANEL_HIT_CLOCK,
 		0);
+	}
 }

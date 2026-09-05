@@ -173,11 +173,61 @@ no general-purpose disk service here, mounting is root's, and the desktop is not
 | `list` | The eligible devices, with an index each |
 | `mount` | Mount the device at an index |
 | `unmount` | Unmount it |
+| `eject` | Power the medium down. Optical media eject their own node; a stick ejects the **parent disk**, because a start-stop on one partition means nothing to the hardware |
+| `unlock` | Open a LUKS volume. The passphrase is a second frame, never a token |
+| `close` | Close the mapping `unlock` made |
+| `format` | Write a filesystem. **Off unless `format = yes`** |
 | `ping` | Liveness |
 
 **The client asks for an index out of a list the daemon published**, and the daemon decides the
 device, the mountpoint and the options. Every "just take a path and a mountpoint" design ends at
 mounting a stick over `/etc` from any shell in `wheel`.
+
+**A request is one line, and two frames where a secret is involved.** Frame one is a verb and up to
+three tokens; frame two is the exact byte count frame one declared. A passphrase is a **frame and
+not a token** because a tokeniser splits on spaces and a passphrase may contain them.
+
+**Every token is checked before it means anything, and the token COUNT is fixed per verb.** An
+index is one to three digits and inside the published list. A trailing token nobody named makes the
+request unknown rather than ignored — a dispatch that read an index and discarded the rest of the
+line accepted `mount 0 rm -rf /` as a well-formed mount.
+
+**The passphrase reaches `cryptsetup` on standard input**, through `--key-file=-`, and never in an
+argument vector: `/proc/<pid>/cmdline` is world-readable for the life of the process. One buffer
+holds it and every exit from the request wipes it.
+
+**The mapper name is the daemon's**: `kdos-<kname>`, derived from the row. A client cannot ask for a
+mapping named anything else, and `close` finds the same name from the same row without being told
+it. The unlocked volume is not yet enumerated by `list` — mounting it is `kdos-disks`' half.
+
+### What a destructive verb refuses
+
+**The boot medium is refused by the DISK, not by the partition.** A live USB carries an iso9660
+partition *and* a vfat ESP beside it. Every per-partition rule offers the ESP — it is removable, it
+probes as vfat, it is unmounted and no fstab claims it — so a format there destroys the running
+session, and a typed confirmation does not help because the person genuinely typed the name of the
+row they meant. Any disk carrying an iso9660 partition is the boot disk, whole, in a live session.
+
+**`format` demands the device's own kernel name, typed.** Not a flag, not a hash, not the word yes:
+the daemon compares what it was sent against the string it put in the list itself, by exact length
+and `memcmp`. A client cannot send a confirmation it was not shown.
+
+**`format` is opt-in**, `format = yes` in `/etc/kdos/mountd.conf`, the same argument `noexec` won.
+The filesystem is one of four — ext4, btrfs, vfat, exfat — checked against a table and nothing else.
+
+**The node is re-derived at the moment of use.** Between the scan that built the row and the syscall
+that acts on it, a path can become a symlink or a different device: the daemon opens it `O_NOFOLLOW`
+and requires a block device whose `st_rdev` matches the one `/sys` recorded.
+
+**This daemon spawns children now** — `eject`, `cryptsetup`, `mkfs` — which it never did before; it
+mounted with `mount(2)` and unmounted with `umount2()`. Every child is named by an **absolute path**,
+because `execvp` would otherwise resolve a program through an inherited `PATH` in a process running
+as root, and every one goes through a single function.
+
+**The path overrides are gated on fixture mode.** `KDOS_MOUNTD_SYS`, `_DEV`, `_MOUNTS`, `_FSTAB` and
+`_CONF` are read only when `--fixture` or `--fixture-serve` set it. A daemon started by the service
+script reads none of them — an environment variable that moved its idea of `/dev` would be a way to
+point a format at any node on the machine.
 
 **The list is rescanned on every request** rather than cached — a stick pulled out between two
 requests must not still be offered.
@@ -203,7 +253,10 @@ else's computer.
 superblock directly, for the handful of formats a stick is actually formatted with. A seventh
 format would be a library.
 
-`--fixture <sys> [dev]` prints what it **would** offer and mounts nothing. The committed fixture is
+`--fixture <sys> [dev]` prints what it **would** offer and mounts nothing. `--fixture-serve` runs
+the real dispatch over a real socket with the fixture's roots and **prints each argument vector
+instead of running it**, which is how a `format` aimed at the boot medium is proved to be refused
+without a disk to lose. The committed fixture is
 a recorded block-device tree plus two hand-built superblocks — a removable one that must be
 offered, and an **internal** one that must not. The internal disk carries a real superblock
 precisely so a broken removable check shows up as an extra row rather than as nothing.

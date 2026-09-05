@@ -49,10 +49,11 @@
 #define KEYS_ROWS 24
 #define KEYS_MAX  128
 
-enum { SEC_LAUNCH = 0, SEC_WINDOW, SEC_WS, SEC_MEDIA, SEC_SYSTEM, SEC_N };
+enum { SEC_LAUNCH = 0, SEC_WINDOW, SEC_WS, SEC_TOOLS, SEC_MEDIA,
+       SEC_SYSTEM, SEC_N };
 
 static const char *const sect_name[SEC_N] = {
-	"launch", "window", "workspace", "media", "system"
+	"launch", "window", "workspace", "tools", "media", "system"
 };
 
 struct kbind {
@@ -79,6 +80,9 @@ static int keyw = 16;		/* the key column, sized to what was parsed */
 /* Non-empty when the card is showing built-in defaults instead of the real
  * configuration — drawn where the user cannot miss it. */
 static char parse_note[80];
+
+/* No layers: the card closes on any key, and Esc is the one it names. */
+static KtuiKeys keys;
 
 /* ── the file ──────────────────────────────────────────────────────────── */
 
@@ -506,7 +510,9 @@ static int con_section(const char *act, const char **desc)
 	static const struct { const char *act, *desc; int sect; } tbl[] = {
 		{ "terminal",	NULL,			SEC_LAUNCH },
 		{ "launcher",	"kdos-launcher",	SEC_LAUNCH },
+		{ "launcher-fkey", "kdos-launcher",	SEC_LAUNCH },
 		{ "menu",	"the root menu",	SEC_LAUNCH },
+		{ "menu-fkey",	"the root menu",	SEC_LAUNCH },
 		{ "close",	"close the window",	SEC_WINDOW },
 		{ "maximise",	"maximise / restore",	SEC_WINDOW },
 		{ "fullscreen",	"fullscreen",		SEC_WINDOW },
@@ -530,6 +536,36 @@ static int con_section(const char *act, const char **desc)
 		{ "swap-down",	 "swap with the window below",	SEC_WINDOW },
 		{ "workspace-prev", "previous workspace in use",	SEC_WS },
 		{ "workspace-next", "next workspace in use",	SEC_WS },
+		{ "tile",	"tile this workspace",		SEC_WINDOW },
+		{ "tile-fkey",	"tile this workspace",		SEC_WINDOW },
+		{ "cascade",	"cascade this workspace",	SEC_WINDOW },
+		{ "rearrange",	"move and size from the keyboard",	SEC_WINDOW },
+		{ "rearrange-fkey", "move and size from the keyboard",	SEC_WINDOW },
+		{ "show-desktop", "hide every window, and bring them back",
+							SEC_WINDOW },
+		{ "windows",	"the window list",		SEC_WINDOW },
+		{ "mark",	"mark text anywhere on the screen",	SEC_WINDOW },
+		{ "paste",	"paste what was marked",	SEC_WINDOW },
+		/*
+		 * The surfaces. Eleven chords reaching eleven programs, and
+		 * the description is what the program IS rather than its name:
+		 * a card that read `kdos-bt` would be a card only somebody who
+		 * already knew the answer could use.
+		 */
+		{ "keys",	"this card",		SEC_TOOLS },
+		{ "audio",	"sound devices and volume",	SEC_TOOLS },
+		{ "net",	"networking",		SEC_TOOLS },
+		{ "bluetooth",	"Bluetooth",		SEC_TOOLS },
+		{ "devices",	"cameras, microphones, disks",	SEC_TOOLS },
+		{ "settings",	"settings",		SEC_TOOLS },
+		{ "calendar",	"the calendar",		SEC_TOOLS },
+		{ "docs",	"the documentation",	SEC_TOOLS },
+		{ "displays",	"screens",		SEC_TOOLS },
+		{ "power",	"power and battery",	SEC_TOOLS },
+		{ "monitor",	"processes, CPU, memory",	SEC_TOOLS },
+		{ "calculator",	"a calculator that reads units",	SEC_TOOLS },
+		{ "notes",	"the scratch pad",		SEC_TOOLS },
+		{ "clipboard",	"what has been copied",		SEC_TOOLS },
 		{ "lock",	"kdos-lock",		SEC_SYSTEM },
 		{ "saver",	"kdos-saver",		SEC_SYSTEM },
 		{ "quit",	"end the session",	SEC_SYSTEM },
@@ -650,6 +686,73 @@ static void build_rows(void)
 	}
 }
 
+/*
+ * THE CARD AS TEXT, for a printer and for a wall.
+ *
+ * The same rows the surface draws, so a printed sheet cannot disagree with the
+ * screen — which a second table written by hand eventually would. Two columns
+ * at 132 characters because that is the width every terminal printer and every
+ * wide terminal has, and because the table does not fit one page in one.
+ *
+ * NO DISPLAY SERVER IS TOUCHED. This runs before `kdisp_init`, so it works
+ * over ssh, from a script and on a machine whose session is not up — which is
+ * most of the times somebody wants the card on paper.
+ */
+#define PRINT_COLS 132
+#define PRINT_ROWS 66
+
+static void print_one(const struct drow *r, int w)
+{
+	if (!r) {
+		printf("%*s", w, "");
+		return;
+	}
+	if (r->hdr) {
+		int n = printf("%s", r->left);
+
+		/* A rule under the heading, to the column's own width: the
+		 * groups are what makes a page of eighty chords findable. */
+		while (n < w - 1 && n >= 0)
+			n += printf("-");
+		printf("%*s", n < w ? w - n : 0, "");
+		return;
+	}
+	printf("  %-*.*s%-*.*s", keyw - 2, keyw - 2, r->left,
+	       w - keyw, w - keyw, r->right ? r->right : "");
+}
+
+static int print_rows(void)
+{
+	int col = PRINT_COLS / 2;
+	int per = PRINT_ROWS - 3;
+	int pages = (nrows + per * 2 - 1) / (per * 2);
+
+	if (pages < 1)
+		pages = 1;
+	for (int p = 0; p < pages; p++) {
+		int base = p * per * 2;
+
+		printf("%-*s%s\n", col, "KDOS keyboard",
+		       parse_note[0] ? parse_note : "");
+		printf("\n");
+		for (int y = 0; y < per; y++) {
+			int l = base + y, r = base + per + y;
+
+			if (l >= nrows && r >= nrows)
+				break;
+			print_one(l < nrows ? &rows[l] : NULL, col);
+			if (r < nrows)
+				print_one(&rows[r], col);
+			printf("\n");
+		}
+		/* A form feed BETWEEN pages and not after the last: a trailing
+		 * one ejects a blank sheet on every printer that honours it. */
+		if (p + 1 < pages)
+			printf("\f");
+	}
+	return 0;
+}
+
 /* ── first run ─────────────────────────────────────────────────────────── */
 
 static int marker_path(char *buf, size_t n)
@@ -752,16 +855,13 @@ static void draw(int top, int welcome)
 			       KT_SURFACE, KT_A_NONE);
 	}
 
-	/* The hint row says how to get out and how to move, because this
-	 * surface takes the keyboard and a card you cannot dismiss is a card
-	 * that has taken the desktop. */
-	char hint[80];
-	if (nrows > rowsv - note)
-		snprintf(hint, sizeof(hint), "%s%s scroll   any key closes",
-			 ktui_glyph[KT_G_UP], ktui_glyph[KT_G_DOWN]);
-	else
-		snprintf(hint, sizeof(hint), "any key closes");
-	ktui_draw_text(2, h - 2, w - 4, hint, KT_MID, KT_SURFACE, KT_A_NONE);
+	/* The row says how to get out and how to move, because this surface
+	 * takes the keyboard and a card you cannot dismiss is a card that has
+	 * taken the desktop. Scrolling is named only where there is something
+	 * off the bottom to scroll to. */
+	ktui_hint_if(nrows > rowsv - note, "Up/Down", "scroll");
+	ktui_hint("Any key", "close");
+	ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -774,7 +874,7 @@ static int cap_w = KEYS_COLS, cap_h = KEYS_ROWS;
 int keys_main(int argc, char **argv)
 {
 	const char *font = NULL;
-	int dump = 0, dump_cells = 0, first_run = 0, welcome;
+	int dump = 0, dump_cells = 0, first_run = 0, print_card = 0, welcome;
 	char path[512];
 
 	for (int i = 1; i < argc; i++) {
@@ -801,8 +901,11 @@ int keys_main(int argc, char **argv)
 		 * spawns it every login still shows it exactly once. */
 		else if (!strcmp(argv[i], "--first-run"))
 			first_run = 1;
+		else if (!strcmp(argv[i], "--print"))
+			print_card = 1;
 		else {
 			fprintf(stderr, "usage: kdos-keys [--first-run] "
+					"[--print] "
 					"[--dump|--dump-cells] [--dump-size WxH] "
 					"[--font NAME]\n");
 			return 2;
@@ -831,6 +934,9 @@ int keys_main(int argc, char **argv)
 		}
 	}
 	build_rows();
+
+	if (print_card)
+		return print_rows();
 
 	/*
 	 * The welcome belongs to the login spawn and to nothing else. Deciding
@@ -923,6 +1029,12 @@ int keys_main(int argc, char **argv)
 		 * taller than the screen that dismissed itself on Down would
 		 * be a card whose second half nobody could read.
 		 */
+		/* FIRST, though every key here closes the card in the end: the
+		 * contract has to see Esc before `default` does, or a surface
+		 * that adopts it later answers Esc twice. */
+		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
+			goto done;
+
 		switch (ev.key) {
 		case KT_K_UP:
 			top--;

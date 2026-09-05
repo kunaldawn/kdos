@@ -73,6 +73,9 @@ static int sock_up;
 /* The result of the last action, one line under the list. */
 static char status[120];
 
+/* No layers: Esc closes the monitor. */
+static KtuiKeys keys;
+
 /* ── a read-only JSON scanner ──────────────────────────────────────────── */
 
 /*
@@ -558,8 +561,13 @@ static void draw(int sel, int top)
 		if (status[0])
 			ktui_draw_text(2, h - 3, w - 4, status, KT_WARN,
 				       KT_SURFACE, KT_A_NONE);
-		ktui_draw_text(2, h - 2, w - 4, "r retry   Esc close", KT_MID,
-			       KT_SURFACE, KT_A_NONE);
+		/* THE EMPTY LIST'S OWN ROW. Enter and `k` act on a selected
+		 * window and there is none, so neither is named here — a row
+		 * that promised them would be the failure this contract
+		 * exists to remove. */
+		ktui_hint("r", "retry");
+		ktui_hint("Esc", ktui_esc_verb(&keys));
+		ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
 		ktui_draw_flush();
 		return;
 	}
@@ -626,9 +634,15 @@ static void draw(int sel, int top)
 	if (status[0])
 		ktui_draw_text(2, h - 3, w - 4, status, KT_WARN, KT_SURFACE,
 			       KT_A_NONE);
-	ktui_draw_text(2, h - 2, w - 4,
-		       "Enter close   k SIGTERM   r refresh   Esc quit",
-		       KT_MID, KT_SURFACE, KT_A_NONE);
+	ktui_hint("Enter", "close window");
+	/* `k` is named on a row with a process to signal. kill_view() also
+	 * refuses this session's own chrome, and that test is a /proc read
+	 * this surface will not do once per drawn frame while somebody is
+	 * staring at a wedged screen; the refusal prints on the status row. */
+	ktui_hint_if(sel < nviews && views[sel].pid > 1, "k", "sigterm");
+	ktui_hint("r", "refresh");
+	ktui_hint("Esc", ktui_esc_verb(&keys));
+	ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
 	ktui_draw_flush();
 }
 
@@ -864,10 +878,12 @@ int teams_main(int argc, char **argv)
 		}
 		if (ev.type != KT_EVT_KEY)
 			continue;
+		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
+			goto done;
+
 		sel_follow = 1;	/* a key moves the cursor; the view follows */
 
 		switch (ev.key) {
-		case KT_K_ESC:
 		case 'q':
 			goto done;
 		case KT_K_ENTER:

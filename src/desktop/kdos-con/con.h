@@ -57,6 +57,27 @@ enum {
 	CON_ACT_NEXT, CON_ACT_PREV,
 	CON_ACT_SNAP, CON_ACT_WS, CON_ACT_SEND, CON_ACT_RESTORE,
 	CON_ACT_FOCUS_DIR, CON_ACT_SWAP_DIR, CON_ACT_WS_STEP,
+	/*
+	 * THE KEYBOARD'S OWN WINDOW MANAGEMENT, and the reason it is worth
+	 * having on a desktop that already has a pointer: every one of these
+	 * was a menu item on the text desks this one descends from, and a
+	 * person whose hands are on the keys should not have to reach for a
+	 * mouse to make five windows visible.
+	 */
+	CON_ACT_TILE,		/* fill the work area with the workspace   */
+	CON_ACT_CASCADE,	/* a staircase, each offset from the last  */
+	CON_ACT_REARRANGE,	/* arrows move, Shift+arrows size          */
+	CON_ACT_SHOW_DESKTOP,	/* hide every window; again brings them back */
+	CON_ACT_WIN_N,		/* raise window N of the ring, arg 1..9    */
+	CON_ACT_WINLIST,	/* the window list                         */
+	/*
+	 * MARK AND TRANSFER, which DESQview had in 1985 and which is cheaper
+	 * here than anywhere: the session holds the literal text of every cell
+	 * on the screen, so marking a rectangle is a read of a buffer that
+	 * already exists rather than a protocol between two programs.
+	 */
+	CON_ACT_MARK,		/* mark a rectangle of the screen          */
+	CON_ACT_PASTE,		/* the session clipboard into the window   */
 
 	/*
 	 * NOT AN ACTION — A PREFIX. The next key is looked up as though Super
@@ -73,11 +94,39 @@ enum {
  * that own them: which key runs the launcher is a keyboard question, and which
  * program IS the launcher is not.
  */
+/*
+ * The programs a chord starts, each a con.conf key with a default.
+ *
+ * The four at the top are the ones an image may replace — a different
+ * launcher, a different lock. The rest are this desktop's own surfaces, and
+ * they are here rather than as literals in the bind table for the same reason
+ * the four are: one place says which program a chord runs, and `kdos-con
+ * --keys` prints it, so the card cannot name a program the session does not
+ * start.
+ */
 enum { CON_CMD_MENU = 0, CON_CMD_LAUNCHER, CON_CMD_LOCK, CON_CMD_SAVER,
+       CON_CMD_KEYS, CON_CMD_AUDIO, CON_CMD_NET, CON_CMD_BT, CON_CMD_DEVICES,
+       CON_CMD_SETTINGS, CON_CMD_CAL, CON_CMD_DOC, CON_CMD_DISPLAY,
+       CON_CMD_ENERGY, CON_CMD_RES,
+       /* The accessories: summoned over whatever is on screen and dismissed
+        * leaving it untouched, which is what Sidekick sold a million copies
+        * of and what the overlay role already gives this desktop for free. */
+       CON_CMD_CALC, CON_CMD_NOTE, CON_CMD_CLIP,
        CON_CMD_N };
 
 const char *con_command(int which);
 void con_spawn(const char *cmd);
+/* True while a window is being moved or sized from the keyboard. The frame
+ * says so and the taskbar names the keys; see CON_ACT_REARRANGE. */
+int con_rearranging(void);
+/* True while a rectangle of the screen is being marked. The taskbar names the
+ * keys for the same reason; see CON_ACT_MARK. */
+int con_marking(void);
+/* True while a paste that would execute is waiting to be meant twice. */
+int con_paste_armed(void);
+/* Draw the mark over the composed grid. Called last, after every window. */
+void con_mark_draw(void);
+void con_spawn_at(const char *cmd, int x);
 
 /*
  * The frame is one cell on every side, and the title sits in the top one —
@@ -189,6 +238,8 @@ void win_raise(int id);
 void win_close(Win *w);				/* ask */
 void win_drop(Win *w);				/* and take it out */
 void win_place(Win *w, int want_w, int want_h);
+void win_place_corner(Win *w, int want_w, int want_h, int corner, int mx,
+		      int my);
 KwmRect win_frame(const Win *w);		/* the content rect, inflated */
 KwmRect win_workarea(void);
 Win *win_at(int x, int y);
@@ -209,13 +260,40 @@ unsigned long long con_now_ms(void);
  * sitting at and the visible half belongs to whoever owns the cells.
  */
 void con_bell(Win *w);
+/* Paste into a window, through the guard: an unbracketed payload carrying a
+ * newline is refused once and taken on the second try, because the session
+ * cannot raise a modal over a window whose toolkit it does not own. */
+void con_paste_win(Win *w, const char *text);
 /* The rectangle a tiled state asks for, maximise included. See windows.c. */
 KwmRect win_tile_rect(unsigned tiled);
 Win *win_dir(unsigned dir);
 void win_swap(Win *a, Win *b);
 void win_workspace_step(int reverse);
+/*
+ * ARRANGEMENTS, over the windows of the current workspace in ring order.
+ * Neither is a tile STATE: both clear `tiled`, so a Super+arrow afterwards
+ * snaps from the new rectangle rather than from a half nothing put it in.
+ */
+void win_tile_all(void);
+void win_cascade(void);
+/*
+ * HIDE EVERY WINDOW, and remember the set so the same chord brings back
+ * exactly those. A window opened while the desktop is showing is left alone —
+ * it was not hidden, so it is not something to restore.
+ */
+void win_show_desktop(void);
+/* The Nth reachable window of the current workspace in ring order, 1-based. */
+Win *win_nth(int n);
+/* Its position in that ring, 1-based, or 0 when it is not in it. */
+int win_index(const Win *w);
 void win_cycle(int dir);
 void win_draw_all(void);
+/* The window list: Turbo Vision's Alt+0, drawn by the session until Task
+ * 6.4 lets kdos-teams read the list over libkdisp. */
+void win_list_toggle(void);
+int win_list_active(void);
+void win_list_draw(void);
+int win_list_key(int key);
 void win_gc(void);
 void win_dock(Win *w);
 void win_lock_draw(void);
@@ -268,7 +346,8 @@ enum {
 	PANEL_HIT_START,	/* arg unused                              */
 	PANEL_HIT_WIN,		/* arg is the window id                    */
 	PANEL_HIT_CLOCK,	/* arg unused                              */
-	PANEL_HIT_WS		/* arg is the workspace index              */
+	PANEL_HIT_WS,		/* arg is the workspace index              */
+	PANEL_HIT_FKEY		/* arg is 1..10 — the Super+F<n> it names   */
 };
 
 #define PANEL_HITS 72
@@ -318,7 +397,11 @@ void mgmt_resend(void);
 
 void panel_draw(void);
 int panel_rows(void);
+int panel_span_x0(int kind);
 int panel_have_shell(void);
+/* True when con.conf asks for the function-key row instead of the window
+ * list. See panel.c. */
+int panel_fkeys(void);
 int panel_hit(int x, int y, int *arg);
 
 /* sessions.c */

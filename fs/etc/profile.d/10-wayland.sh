@@ -21,7 +21,12 @@ if [ ! -d "$XDG_RUNTIME_DIR" ]; then
 fi
 
 export XDG_SESSION_TYPE=wayland
-export XDG_CURRENT_DESKTOP=KDOS
+# NOT OVER A SESSION THAT ALREADY SAID WHICH ONE IT IS. The console session
+# exports `KDOS-Console:KDOS` before it starts anything, and that name is what
+# selects `kdos-console-mimeapps.list` — so a profile script overwriting it
+# would make every shell inside the console desktop resolve a file's handler as
+# though it were running under the compositor.
+[ -n "$XDG_CURRENT_DESKTOP" ] || export XDG_CURRENT_DESKTOP=KDOS
 
 # The per-user session bus lives at a fixed runtime path (started by
 # kdos-desktop; the same path is visible inside the appbox). Point shells

@@ -87,6 +87,34 @@ Available meters: `cpu`, `ram`, `disk`, `net`, `diskio`.
 parsing, because it runs again on reload and a reload that only ever *added* would leave a widget
 hidden after the line hiding it was deleted.
 
+## `~/.local/state/kdos/toggles/`
+
+The switches a desktop needs at hand. **A file's presence means on**; there is no format and nothing
+to parse, which is the smallest thing a shell script, a chord and a surface can all read without
+agreeing on a syntax first.
+
+| Toggle | Means | Read by |
+|---|---|---|
+| `stay-awake` | never save, lock or blank on idle | `kdos-con`'s idle tick |
+| `night-light` | warm the palette | `kdos-con` and `kdos-view` |
+| `dnd` | hold notifications back | `kdos-notifyd` |
+
+`kdos toggle` lists them, `kdos toggle <name>` flips one, `kdos toggle <name> on|off` sets it.
+
+**They are state rather than `con.conf` keys** because that file documents itself as read once when
+the session starts, so a runtime writer would make half its answers come from before an edit and
+half from after. The session stats them on the tick it already has rather than caching: a toggle is
+set by another process — a chord, a menu row, a script before a long build — and a session holding a
+copy is a session that has to be told.
+
+**`kb_toggle_on()` is the one reader in the tree**, and a program that spells the path itself is a
+program looking where nothing wrote. A held notification still reaches the history and the badge,
+so Do Not Disturb hides a toast rather than losing it; an urgent one is shown anyway.
+
+**`stay-awake` is consulted before all three idle steps, not the first only.** Somebody who
+suppressed the saver did not ask to be locked either, and a machine that locked during the
+presentation they turned the saver off for is the failure the toggle exists to prevent.
+
 ## `~/.config/kdos/favorites`
 
 One desktop-entry identifier per line — the file name under the applications directory, without
@@ -98,6 +126,21 @@ column. Two lists of favourites would be two things to keep in agreement, and on
 It **ships populated**. An empty list makes both surfaces look broken on a freshly booted machine;
 delete every line for an empty one. **An identifier with no matching entry is skipped in silence**,
 so an application this image's catalogue does not carry leaves no launcher that opens nothing.
+
+**A line may carry a two-letter code**: `mc code=FM`. The code is drawn right-aligned on the Start
+menu's row, and typing both letters with nothing else in the search field opens that row — no
+arrows, no `Enter`, and no waiting to see whether the search narrowed to one. It is DESQview's Open
+Window shorthand, and it is a property of the **pinned row** rather than of the program, because the
+codes are the person's own and this file is where they say so. Anything else after the id is
+ignored rather than refused: this file is edited by hand, and a line a later version understands
+must not stop this one launching it.
+
+**The terminal follows the desktop.** A line naming `foot` or `kdos-term` resolves to whichever of
+the two the session that is reading it runs — `kdos-term` on the console, `foot` on the compositor
+— exactly as every chord, menu row and `Terminal=true` entry does. `foot` is a Wayland client and
+the console has no compositor to run it on, so without this rule a pinned terminal on the console
+was a row that launched nothing; two favourites files would be two things to keep in agreement, and
+the one nobody is looking at is the one that goes stale.
 
 Written by the panel and the menus when you pin, unpin or reorder.
 
@@ -245,6 +288,7 @@ file takes the built-in default — a machine with no file at all boots a workin
 | `remote` | `no` | Whether a view may attach from another machine |
 | `font` | `monospace:size=12` | The console font `kdos-view` rasterises on a KMS device |
 | `sessions` | `4` | How many workspaces, 1 to 9 |
+| `taskbar` | `windows` | What the session's own bottom row shows. `fkeys` puts Norton Commander's `F1`–`F10` row there instead; each cell fires `Super+F<n>` and does not bind the bare key |
 | `scrollback` | `2000` | Lines a terminal window keeps, **per window** |
 | `idle_saver` | `300` | Seconds of no input before the saver covers the screen; `0` never |
 | `idle_lock` | `600` | Seconds of no input before the screen locks; `0` never |
@@ -254,7 +298,28 @@ file takes the built-in default — a machine with no file at all boots a workin
 | `launcher` | `kdos-launcher` | What `Super+d` starts |
 | `lock` | `kdos-lock` | What `Super+l` starts |
 | `saver` | `kdos-saver` | What `idle_saver` and `Super+Shift+l` start |
+| `keys` | `kdos-keys` | What `Super+F1` starts |
+| `audio` | `kdos-audio` | What `Super+F3` starts |
+| `net` | `kdos-net` | What `Super+F4` starts |
+| `bluetooth` | `kdos-bt` | What `Super+F5` starts |
+| `devices` | `kdos-devices` | What `Super+F6` starts |
+| `settings` | `kdos-settings` | What `Super+i` starts |
+| `calendar` | `kdos-cal` | What `Super+c` and a click on the clock start |
+| `docs` | `kdos-doc` | What `Super+/` starts |
+| `displays` | `kdos-display` | What `Super+p` starts |
+| `power` | `kdos-energy` | What `Super+Ctrl+p` starts |
+| `monitor` | `kdos-res` | What `Super+Ctrl+t` starts |
+| `calculator` | `kdos-calc` | What `Super+Ctrl+q` starts |
+| `notes` | `kdos-note` | What `Super+Ctrl+n` starts |
+| `clipboard` | `kdos-clip` | What `Super+Ctrl+v` starts |
+| `paste_guard` | `yes` | Refuse an unbracketed paste carrying a newline once, and take it on the second try |
 | `embed` | `yes` | Whether a graphical application becomes a window. `no` gives every one of them a terminal of its own |
+
+**The eleven surface keys exist so a chord and the program it runs are written in one place.**
+`kdos-con --keys` prints what this table binds, so the keybinding card cannot name a program the
+session does not start. `displays` reaches a surface that cannot configure a console screen —
+`libkkms` has no mode selection — so it says so and exits; the chord is bound because a stated
+limit is better than a missing key.
 
 **`remote = yes` opens no port.** There is no TCP listener anywhere in this desktop. It permits
 `kdos con attach` over an ssh channel that forwards the unix socket, which is why a remote desktop
@@ -302,9 +367,36 @@ Changing a default in one file changes it in the other.
 | `menu` | `Super+space` | `launcher` | `Super+d` |
 | `lock` | `Super+l` | `quit` | `Super+Shift+q` |
 | `saver` | `Super+Shift+l` | `leader` | `Ctrl+a` |
+| `keys` | `Super+F1` | `settings` | `Super+i` |
+| `audio` | `Super+F3` | `calendar` | `Super+c` |
+| `net` | `Super+F4` | `docs` | `Super+/` |
+| `bluetooth` | `Super+F5` | `displays` | `Super+p` |
+| `devices` | `Super+F6` | `power` | `Super+Ctrl+p` |
+| `monitor` | `Super+Ctrl+t` | `calculator` | `Super+Ctrl+q` |
+| `notes` | `Super+Ctrl+n` | `clipboard` | `Super+Ctrl+v` |
+| `tile` | `Super+Shift+t` | `tile-fkey` | `Super+F8` |
+| `cascade` | `Super+Alt+t` | `rearrange` | `Super+r` |
+| `rearrange-fkey` | `Super+F9` | `show-desktop` | `Super+Shift+d` |
+| `windows` | `Super+F2` | `mark` | `Super+Shift+m` |
+| `paste` | `Super+Shift+v` | | |
 
 Modifiers are `Super`, `Shift`, `Alt` and `Ctrl`, joined with `+`. An action no line names keeps
-its default, so rebinding one key does not mean restating the rest.
+its default, so rebinding one key does not mean restating the rest. Punctuation may be written as
+itself or by `rc.xml`'s name for it — `slash`, `comma`, `period`, `grave`, `minus`, `equal` — so a
+chord reads the same in both files and neither has to be translated by hand.
+
+**The eleven surface chords are the compositor's own.** `Super+F1` and `Super+F3` to `F6`,
+`Super+i`, `Super+c`, `Super+/` and `Super+p` are what `rc.xml` already binds; taking them rather
+than inventing new ones means one key card serves both desktops. `Super+Ctrl+p` and `Super+Ctrl+t`
+are new on both.
+
+**Windows by number are not in the file either.** `Super+Alt+1..9` raises the window whose number
+the title bar and the taskbar row draw, on the same reasoning: nine rows saying one thing is not a
+table, and a person who moves `Super` wants all nine to follow.
+
+**`tile`, `cascade` and `rearrange` are the console's alone.** labwc has no tile-all or cascade
+action and its `MoveResize` is a different interaction, so `rc.xml` binds none of the three rather
+than binding the nearest thing and making one chord mean two things.
 
 **Workspaces by number are not in the file.** `Super+1..9` switches and `Super+Shift+1..9` sends the
 focused window; eighteen lines saying one thing is not a configuration format. `workspace-prev` and
@@ -378,9 +470,16 @@ the compressed pages live in that same memory. Applies at **boot**.
 | Key | Default | Means |
 |---|---|---|
 | `exec` | `no` | Whether removable media are mounted executable |
+| `format` | `no` | Whether `kdos-mountd` will write a filesystem over a device at all |
 
 Everything removable is mounted without setuid and without device nodes regardless. `exec = yes`
 is how somebody says they meant it: a setuid binary on somebody else's stick is a local root hole.
+
+`format = yes` is the same argument. Writing a filesystem is not undoable, and a desktop that
+offers it by default on every machine it is installed on is one where a mis-click costs somebody
+their photographs. The daemon still refuses the boot medium and still demands the device's own
+kernel name typed, whatever this says — the key decides whether the verb exists, not whether it is
+careful.
 
 ## `/etc/kdos/keys/`
 
@@ -464,8 +563,15 @@ account gets a working setup rather than each program's own defaults. These are 
 | `~/.config/lf/lfrc`, `~/.config/lf/preview` | The terminal file manager | |
 | `~/.config/GIMP/3.0/gimprc` | The image editor | Selects the system theme, or it keeps its own |
 | `~/.config/gtk-3.0/settings.ini`, `~/.config/gtk-4.0/settings.ini` | Toolkit settings | Cursor theme and size |
+| `~/.config/<desktop>-mimeapps.list` | Default handlers for ONE desktop | Consulted before the plain list at the same level |
 | `~/.config/mimeapps.list` | Default handlers per file type | Consulted before the generated caches |
-| `~/.config/user-dirs.dirs` | The standard user directories | |
+| `/etc/xdg/kdos-console-mimeapps.list` | What the console desktop opens a file with | Below every choice in a home, above the plain system list |
+| `/etc/xdg/kdos-mimeapps.list` | What the compositor opens a file with | The same level, for the other desktop |
+| `/etc/xdg/mimeapps.list` | What both desktops open the same way | Last, and a type belongs in exactly one of these three |
+| `~/.config/user-dirs.dirs` | The standard user directories | Seeded from `/etc/skel`; there is no `xdg-user-dirs` here. `$HOME` is the only expansion read |
+| `~/.config/kdos/places` | Extra rows on the places column, `Name = /path` one per line | Merged over the user directories; a row whose path is already listed is dropped, and one pointing at nothing is never shown. Written by *Add to Places* on the desktop |
+| `~/.config/mc/mc.ext.ini` | What `Enter` does on a file in `mc` | Replaces the system file wholesale — mc does not merge them. The archive rows are carried; everything else falls to `[Default]`, which is `kdos-appbox open` |
+| `~/.config/mc/menu` | `mc`'s `F2` user menu | Six verbs, each naming a program on the image; `testing/preflight.sh` refuses one that is not |
 | `~/.config/xdg-desktop-portal-wlr/config` | The screen-capture backend | Uses an output picker; the alternative silently captures the first output, which is wrong the moment a second screen is plugged in |
 
 ## Generated files you should not edit

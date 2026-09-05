@@ -67,6 +67,7 @@
 #include <string.h>
 #include <sys/mount.h>
 #include <sys/socket.h>
+#include <sys/sysmacros.h>	/* major(), minor() — the device check */
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -77,6 +78,10 @@
 #define KM_SOCKET "/run/kdos-mountd.sock"
 #define KM_GROUP "wheel"
 #define KM_MAX 128
+/* The largest second frame: a passphrase, or a typed device name. Long enough
+ * for a real passphrase and short enough that a client cannot make this daemon
+ * hold anything. */
+#define KM_SECRET_MAX 512
 #define KM_DEVS 32
 #define KM_NAME 64
 
@@ -88,6 +93,12 @@ struct kmdev {
 	 * stick that was plainly there. */
 	char node[256];
 	char kname[32];		/* sdb1                                   */
+	/* The PARENT DISK this partition is on — `sdb` for `sdb1`, and its own
+	 * name for a whole disk. A destructive verb is refused by the disk and
+	 * not by the partition: a live medium's ESP is removable, probes as
+	 * vfat, is unmounted and is in nobody's fstab, so every per-partition
+	 * rule offers it and a format there destroys the running session. */
+	char disk[32];
 	char label[KM_NAME];
 	char fstype[32];
 	unsigned long long bytes;
@@ -99,6 +110,22 @@ struct kmdev {
 
 static struct kmdev devs[KM_DEVS];
 static int ndev;
+
+/*
+ * FIXTURE MODE, AND EVERY PATH OVERRIDE IS GATED ON IT.
+ *
+ * This daemon runs as root under `supervise`, and once it can spawn `mkfs` an
+ * environment variable that moves its idea of `/dev` is a way to point a
+ * format at any node on the machine. The overrides exist for the fixture and
+ * for nothing else, so they are read only when `--fixture` set this — a
+ * variable inherited from an init environment then names nothing.
+ *
+ * The SOCKET path is deliberately not gated: moving the socket is how the
+ * self-test drives the daemon unprivileged, it grants no access the caller did
+ * not already have to the directory it names, and the daemon refuses a
+ * non-root caller on the real socket regardless.
+ */
+static int km_fixture;
 
 static const char *sock_path(void)
 {
@@ -113,7 +140,7 @@ static const char *sock_path(void)
  * fixture says it should offer. */
 static const char *mounts_path(void)
 {
-	const char *p = getenv("KDOS_MOUNTD_MOUNTS");
+	const char *p = km_fixture ? getenv("KDOS_MOUNTD_MOUNTS") : NULL;
 	return p && *p ? p : "/proc/mounts";
 }
 
@@ -122,13 +149,22 @@ static const char *mounts_path(void)
  * eligibility rules get tested on a machine with no stick in it. */
 static const char *sysroot(void)
 {
-	const char *p = getenv("KDOS_MOUNTD_SYS");
+	const char *p = km_fixture ? getenv("KDOS_MOUNTD_SYS") : NULL;
 	return p && *p ? p : "/sys";
+}
+
+/* Overridable for the fixture, like the other roots: `format` is gated on a
+ * key in this file, and a gate that cannot be opened in a test is a gate whose
+ * refusal is the only half ever exercised. */
+static const char *conf_path(void)
+{
+	const char *p = km_fixture ? getenv("KDOS_MOUNTD_CONF") : NULL;
+	return p && *p ? p : "/etc/kdos/mountd.conf";
 }
 
 static const char *devroot(void)
 {
-	const char *p = getenv("KDOS_MOUNTD_DEV");
+	const char *p = km_fixture ? getenv("KDOS_MOUNTD_DEV") : NULL;
 	return p && *p ? p : "/dev";
 }
 
@@ -136,6 +172,15 @@ static const char *devroot(void)
 
 static bool uid_allowed(uid_t uid)
 {
+	/*
+	 * FIXTURE MODE ADMITS ANYBODY, and grants nothing: it is reachable
+	 * only from `--fixture-serve` on the command line, its paths are a
+	 * scratch directory, and every child it would spawn is printed instead
+	 * of run. The service script starts this daemon with no arguments, so
+	 * there is no path from a running system into here.
+	 */
+	if (km_fixture)
+		return true;
 	if (uid == 0)
 		return true;
 	struct passwd *pw = getpwuid(uid);
@@ -241,7 +286,7 @@ static void find_mount(const char *node, char *out, size_t n)
  * the developer's own /etc/fstab. */
 static const char *fstab_path(void)
 {
-	const char *p = getenv("KDOS_MOUNTD_FSTAB");
+	const char *p = km_fixture ? getenv("KDOS_MOUNTD_FSTAB") : NULL;
 	return p && *p ? p : "/etc/fstab";
 }
 
@@ -363,6 +408,26 @@ static void probe_fs(const char *node, char *label, size_t nlabel, char *type,
 	if (fd < 0)
 		return;
 
+	/*
+	 * LUKS FIRST, AND THAT ORDER IS THE POINT. A LUKS container holds
+	 * whatever bytes were on the device before it, so a header written
+	 * over an old ext4 still carries that superblock at 0x438 — probe for
+	 * a filesystem first and an encrypted volume reads as the plaintext it
+	 * used to be, which is a row offering to mount ciphertext.
+	 *
+	 * `LUKS\xba\xbe` at 0, the version big-endian at 6, and LUKS2 puts a
+	 * 48-byte label at 24. Version 1 has no label there and gets none.
+	 */
+	if (pread(fd, buf, 64, 0) == 64 && !memcmp(buf, "LUKS\xba\xbe", 6)) {
+		unsigned ver = ((unsigned)buf[6] << 8) | buf[7];
+
+		snprintf(type, ntype, "crypto_LUKS");
+		if (ver == 2)
+			snprintf(label, nlabel, "%.48s", (char *)buf + 24);
+		close(fd);
+		return;
+	}
+
 	/* ext2/3/4: magic 0xEF53 at 0x438, label at 0x478. */
 	if (pread(fd, buf, sizeof(buf), 1024) == (ssize_t)sizeof(buf)) {
 		if (buf[0x38] == 0x53 && buf[0x39] == 0xEF) {
@@ -410,6 +475,48 @@ static void probe_fs(const char *node, char *label, size_t nlabel, char *type,
 	}
 }
 
+/*
+ * IS THIS WHOLE DISK THE MEDIUM THE SESSION IS RUNNING FROM?
+ *
+ * `is_boot_medium()` answers for one node and cannot see a sibling. A live USB
+ * carries an iso9660 partition AND a vfat ESP, and only the first is refused
+ * by that rule — so the second is offered, and destroying it destroys the
+ * medium. Any disk with an iso9660 partition on it is the boot disk, whole.
+ *
+ * ONLY IN A LIVE SESSION. An installed system has a real root, and a data DVD
+ * in the drive is an ordinary thing to be handed.
+ */
+static bool km_disk_is_boot(const char *disk)
+{
+	char path[512];
+	int pn = 0;
+	bool boot = false;
+	char **parts;
+
+	if (!disk || !*disk || !root_is_overlay())
+		return false;
+	snprintf(path, sizeof(path), "%s/block/%s", sysroot(), disk);
+	parts = kb_listdir(path, &pn);
+	if (!parts)
+		return false;
+	for (int k = 0; k < pn && !boot; k++) {
+		char node[256], label[KM_NAME], fstype[32];
+
+		if (strncmp(parts[k], disk, strlen(disk)))
+			continue;
+		snprintf(path, sizeof(path), "%s/block/%s/%s/partition",
+			 sysroot(), disk, parts[k]);
+		if (access(path, F_OK) != 0)
+			continue;
+		snprintf(node, sizeof(node), "%s/%s", devroot(), parts[k]);
+		probe_fs(node, label, sizeof(label), fstype, sizeof(fstype));
+		if (!strcmp(fstype, "iso9660"))
+			boot = true;
+	}
+	kb_strv_free(parts);
+	return boot;
+}
+
 static void scan(void)
 {
 	char path[512];
@@ -452,6 +559,7 @@ static void scan(void)
 			struct kmdev *d = &devs[ndev];
 			memset(d, 0, sizeof(*d));
 			snprintf(d->kname, sizeof(d->kname), "%s", parts[k]);
+			snprintf(d->disk, sizeof(d->disk), "%s", disk);
 			snprintf(d->node, sizeof(d->node), "%s/%s", devroot(),
 				 parts[k]);
 			snprintf(path, sizeof(path), "%s/block/%s/%s/size",
@@ -474,6 +582,7 @@ static void scan(void)
 			struct kmdev *d = &devs[ndev];
 			memset(d, 0, sizeof(*d));
 			snprintf(d->kname, sizeof(d->kname), "%s", disk);
+			snprintf(d->disk, sizeof(d->disk), "%s", disk);
 			snprintf(d->node, sizeof(d->node), "%s/%s", devroot(),
 				 disk);
 			snprintf(path, sizeof(path), "%s/block/%s/size",
@@ -490,6 +599,114 @@ static void scan(void)
 		}
 	}
 	kb_strv_free(disks);
+}
+
+/* ── the allowlist ─────────────────────────────────────────────────────
+ *
+ * EVERY TOKEN IS CHECKED BEFORE IT MEANS ANYTHING, and the token COUNT is
+ * fixed per verb. The dispatch this replaces read an index with `atoi(buf + 6)`
+ * and threw the rest of the line away, so `mount 0 anything at all` was a
+ * well-formed mount — harmless while the daemon only called `mount(2)`, and
+ * not harmless at all now that a verb can reach `mkfs`.
+ * ────────────────────────────────────────────────────────────────────── */
+
+/* 1 to 3 digits and nothing else, and inside the list the daemon just built.
+ * `atoi` on a client's string cannot fail, which is the problem: it answers 0
+ * for every word that is not a number. */
+static int km_index(const char *tok)
+{
+	size_t len = tok ? strlen(tok) : 0;
+	int v = 0;
+
+	if (len < 1 || len > 3)
+		return -1;
+	for (size_t i = 0; i < len; i++) {
+		if (!isdigit((unsigned char)tok[i]))
+			return -1;
+		v = v * 10 + (tok[i] - '0');
+	}
+	return v < ndev ? v : -1;
+}
+
+/* The byte count of a second frame: 1 to KM_SECRET_MAX, decimal, nothing else. */
+static int km_count(const char *tok)
+{
+	size_t len = tok ? strlen(tok) : 0;
+	int v = 0;
+
+	if (len < 1 || len > 4)
+		return -1;
+	for (size_t i = 0; i < len; i++) {
+		if (!isdigit((unsigned char)tok[i]))
+			return -1;
+		v = v * 10 + (tok[i] - '0');
+	}
+	return (v >= 1 && v <= KM_SECRET_MAX) ? v : -1;
+}
+
+/*
+ * THE ONE PLACE THIS DAEMON SPAWNS A CHILD, and before J.1 there was none —
+ * it mounted with `mount(2)` and unmounted with `umount2()`. That is the real
+ * change here, larger than the three verbs.
+ *
+ * ABSOLUTE PATHS ONLY. `kb_run_feed` execs through `execvp`, and a root daemon
+ * that resolved a program name through an inherited PATH would run whatever
+ * came first on it.
+ *
+ * IN FIXTURE MODE NOTHING RUNS. The argv is printed instead, which is what
+ * lets the refusals be asserted without a disk to lose.
+ */
+static int km_exec(const KbArgv *a, const char *feed, size_t nfeed)
+{
+	if (km_fixture) {
+		for (int i = 0; i < a->n && a->v[i]; i++)
+			printf("%s%s", i ? " " : "exec ", a->v[i]);
+		printf("\n");
+		/* Flushed, because the harness reads this after killing the
+		 * daemon and a buffered line dies with it. */
+		fflush(stdout);
+		return 0;
+	}
+	return feed ? kb_run_feed(a, feed, nfeed) : kb_run(a);
+}
+
+/*
+ * THE DEVICE IS WHAT THE DAEMON SAYS IT IS, re-derived at the moment of use.
+ *
+ * Between the scan that built the row and the syscall that acts on it, the
+ * path can become a symlink or a different device. O_NOFOLLOW defeats the
+ * first; requiring a block device whose `st_rdev` matches the one `/sys`
+ * recorded defeats the second. Skipped under the fixture, whose "devices" are
+ * ordinary files.
+ */
+static bool km_node_is(const struct kmdev *d)
+{
+	char path[512], *txt;
+	struct stat st;
+	unsigned maj = 0, min = 0;
+	int fd, ok = 0;
+
+	if (km_fixture)
+		return true;
+	snprintf(path, sizeof(path), "%s/block/%s/%s/dev", sysroot(), d->disk,
+		 d->kname);
+	if (access(path, F_OK) != 0)
+		snprintf(path, sizeof(path), "%s/block/%s/dev", sysroot(),
+			 d->disk);
+	txt = read_trim(path);
+	if (!txt || sscanf(txt, "%u:%u", &maj, &min) != 2) {
+		free(txt);
+		return false;
+	}
+	free(txt);
+	fd = open(d->node, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+	if (fd < 0)
+		return false;
+	if (fstat(fd, &st) == 0 && S_ISBLK(st.st_mode) &&
+	    major(st.st_rdev) == maj && minor(st.st_rdev) == min)
+		ok = 1;
+	close(fd);
+	return ok != 0;
 }
 
 /* ── mounting ──────────────────────────────────────────────────────────── */
@@ -513,7 +730,7 @@ static void sanitise(const char *in, char *out, size_t n)
 
 static bool exec_allowed(void)
 {
-	char *s = kb_read_all("/etc/kdos/mountd.conf", NULL);
+	char *s = kb_read_all(conf_path(), NULL);
 	bool yes = false;
 
 	if (!s)
@@ -522,6 +739,56 @@ static bool exec_allowed(void)
 	      strstr(s, "exec=yes") != NULL;
 	free(s);
 	return yes;
+}
+
+/*
+ * A DESTRUCTIVE VERB IS OPT-IN ON A SHIPPED IMAGE, the same argument `noexec`
+ * already won. `format` writes a filesystem over whatever was there; a desktop
+ * that offers that by default on every machine it is installed on is one where
+ * a mis-click is unrecoverable.
+ */
+static bool format_allowed(void)
+{
+	char *s = kb_read_all(conf_path(), NULL);
+	bool yes = false;
+
+	if (!s)
+		return false;
+	yes = strstr(s, "format = yes") != NULL ||
+	      strstr(s, "format=yes") != NULL;
+	free(s);
+	return yes;
+}
+
+/*
+ * WHAT NO VERB MAY TOUCH. Checked once, here, so a verb added later cannot
+ * forget one of them: the medium the session booted from, whole; anything
+ * currently mounted; and anything whose node is no longer the device the scan
+ * recorded.
+ */
+static int km_writable(int idx, char *out, size_t nout)
+{
+	struct kmdev *d;
+
+	if (idx < 0 || idx >= ndev) {
+		snprintf(out, nout, "no such device");
+		return -1;
+	}
+	d = &devs[idx];
+	if (d->mnt[0]) {
+		snprintf(out, nout, "unmount it first");
+		return -1;
+	}
+	if (km_disk_is_boot(d->disk)) {
+		snprintf(out, nout, "that is the medium this session booted "
+				    "from");
+		return -1;
+	}
+	if (!km_node_is(d)) {
+		snprintf(out, nout, "%s is not the device it was", d->node);
+		return -1;
+	}
+	return 0;
 }
 
 static int do_mount(int idx, uid_t uid, char *out, size_t nout)
@@ -620,6 +887,191 @@ static int do_unmount(int idx, char *out, size_t nout)
 
 /* ── the protocol ──────────────────────────────────────────────────────── */
 
+/*
+ * ── THE PRIVILEGED VERBS ────────────────────────────────────────────────
+ *
+ * Every one of them goes through km_writable() first, so the medium the
+ * session booted from, anything mounted, and anything whose node has changed
+ * under the daemon are refused in ONE place rather than three.
+ */
+
+/* Eject. Optical media eject their own node; a stick ejects the PARENT DISK,
+ * because a start-stop on one partition of a stick means nothing to the
+ * hardware and leaves the device powered. */
+static int do_eject(int idx, char *out, size_t nout)
+{
+	struct kmdev *d;
+	char node[300];
+	KbArgv a = { 0 };
+
+	if (km_writable(idx, out, nout) != 0)
+		return -1;
+	d = &devs[idx];
+	if (!strcmp(d->fstype, "iso9660"))
+		snprintf(node, sizeof(node), "%s", d->node);
+	else
+		snprintf(node, sizeof(node), "%s/%s", devroot(), d->disk);
+
+	kb_argv_add(&a, "/usr/bin/eject");
+	/* `--` because the node is a path this daemon built from a kernel name,
+	 * and a leading dash in one would otherwise be read as an option. */
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, node);
+	kb_argv_end(&a);
+	if (km_exec(&a, NULL, 0) != 0) {
+		snprintf(out, nout, "eject refused by the device");
+		return -1;
+	}
+	snprintf(out, nout, "%s", d->kname);
+	return 0;
+}
+
+/*
+ * THE MAPPER NAME IS THE DAEMON'S, never the client's. `kdos-<kname>` is
+ * derived from the row, so a client cannot ask for a mapping named anything
+ * else — and `close` finds the same name from the same row without being told
+ * it.
+ */
+static void km_mapname(const struct kmdev *d, char *out, size_t n)
+{
+	snprintf(out, n, "kdos-%s", d->kname);
+}
+
+static int do_unlock(int idx, const char *pass, size_t npass, char *out,
+		     size_t nout)
+{
+	struct kmdev *d;
+	char map[64], mnode[300];
+	KbArgv a = { 0 };
+
+	if (km_writable(idx, out, nout) != 0)
+		return -1;
+	d = &devs[idx];
+	if (strcmp(d->fstype, "crypto_LUKS")) {
+		snprintf(out, nout, "not an encrypted volume");
+		return -1;
+	}
+	km_mapname(d, map, sizeof(map));
+	snprintf(mnode, sizeof(mnode), "%s/mapper/%s", devroot(), map);
+	/* Already open is not an error, the shape do_mount keeps: a person who
+	 * pressed it twice asked for the state it is now in. */
+	if (access(mnode, F_OK) == 0) {
+		snprintf(out, nout, "%s", map);
+		return 0;
+	}
+
+	kb_argv_add(&a, "/usr/sbin/cryptsetup");
+	kb_argv_add(&a, "open");
+	/* The passphrase arrives on the child's STDIN and never in argv:
+	 * /proc/<pid>/cmdline is world-readable for the life of the process. */
+	kb_argv_add(&a, "--key-file=-");
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, d->node);
+	kb_argv_add(&a, map);
+	kb_argv_end(&a);
+	if (km_exec(&a, pass, npass) != 0) {
+		/* One message for a wrong passphrase and for a header this
+		 * build of cryptsetup will not open: telling the two apart is
+		 * telling somebody which of their guesses was closer. */
+		snprintf(out, nout, "could not unlock");
+		return -1;
+	}
+	snprintf(out, nout, "%s", map);
+	return 0;
+}
+
+static int do_close(int idx, char *out, size_t nout)
+{
+	struct kmdev *d;
+	char map[64];
+	KbArgv a = { 0 };
+
+	if (idx < 0 || idx >= ndev) {
+		snprintf(out, nout, "no such device");
+		return -1;
+	}
+	d = &devs[idx];
+	km_mapname(d, map, sizeof(map));
+
+	kb_argv_add(&a, "/usr/sbin/cryptsetup");
+	kb_argv_add(&a, "close");
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, map);
+	kb_argv_end(&a);
+	if (km_exec(&a, NULL, 0) != 0) {
+		snprintf(out, nout, "could not close %s", map);
+		return -1;
+	}
+	snprintf(out, nout, "%s", map);
+	return 0;
+}
+
+/*
+ * FORMAT. The confirmation is the device's own kernel name, typed by the
+ * person and compared against the string THIS DAEMON put in the list — not a
+ * flag, not a hash, not the word yes. A client cannot send a confirmation it
+ * was not shown, and a surface cannot accidentally confirm on somebody's
+ * behalf, because the only way to produce the bytes is to have read the row.
+ */
+static int do_format(int idx, const char *fstype, const char *confirm,
+		     size_t nconfirm, char *out, size_t nout)
+{
+	static const struct {
+		const char *name, *prog, *flag, *labelopt;
+	} FS[] = {
+		{ "ext4",  "/usr/sbin/mkfs.ext4",  "-F", "-L" },
+		{ "btrfs", "/usr/bin/mkfs.btrfs",  "-f", "-L" },
+		{ "vfat",  "/usr/sbin/mkfs.vfat",  "-I", "-n" },
+		{ "exfat", "/usr/sbin/mkfs.exfat", NULL, "-n" },
+	};
+	struct kmdev *d;
+	KbArgv a = { 0 };
+	int f = -1;
+
+	if (!format_allowed()) {
+		snprintf(out, nout, "format is off; set `format = yes` in "
+				    "/etc/kdos/mountd.conf");
+		return -1;
+	}
+	for (int i = 0; i < (int)(sizeof(FS) / sizeof(FS[0])); i++)
+		if (!strcmp(fstype, FS[i].name))
+			f = i;
+	if (f < 0) {
+		snprintf(out, nout, "unknown filesystem");
+		return -1;
+	}
+	if (km_writable(idx, out, nout) != 0)
+		return -1;
+	d = &devs[idx];
+
+	/* An explicit length equality and memcmp, not a compare bounded by a
+	 * length the client chose: a confirmation of "sd" must not match the
+	 * row "sdb1". */
+	if (nconfirm != strlen(d->kname) ||
+	    memcmp(confirm, d->kname, nconfirm) != 0) {
+		/* The precision is the field's own width: without it the
+		 * compiler cannot bound the copy and warns, because the
+		 * length comparison above puts kname beyond its range
+		 * analysis. */
+		snprintf(out, nout, "type %.31s to confirm", d->kname);
+		return -1;
+	}
+
+	kb_argv_add(&a, FS[f].prog);
+	if (FS[f].flag)
+		kb_argv_add(&a, FS[f].flag);
+	kb_argv_add(&a, FS[f].labelopt);
+	kb_argv_add(&a, "KDOS");
+	kb_argv_add(&a, d->node);
+	kb_argv_end(&a);
+	if (km_exec(&a, NULL, 0) != 0) {
+		snprintf(out, nout, "mkfs failed");
+		return -1;
+	}
+	snprintf(out, nout, "%s", d->kname);
+	return 0;
+}
+
 static void reply_list(int c)
 {
 	char line[512];
@@ -686,14 +1138,48 @@ static int serve(void)
 			continue;
 		}
 
-		char buf[KM_MAX] = {0};
+		/*
+		 * ── TWO FRAMES ─────────────────────────────────────────
+		 *
+		 * Frame 1 is one line: a verb and up to three tokens.
+		 * Frame 2 exists only for `unlock` and `format` and is the
+		 * exact byte count frame 1 declared — a passphrase or a typed
+		 * device name. It is a SEPARATE FRAME so a secret is never a
+		 * token: a tokeniser splits on spaces, and a passphrase may
+		 * contain them.
+		 *
+		 * The first read may already hold some of frame 2, so what
+		 * follows the newline is kept rather than discarded.
+		 */
+		char buf[KM_MAX + KM_SECRET_MAX + 2] = {0};
 		ssize_t n = read(c, buf, sizeof(buf) - 1);
 		if (n <= 0) {
 			close(c);
 			continue;
 		}
 		buf[n] = '\0';
-		buf[strcspn(buf, "\r\n")] = '\0';
+
+		char *nl = memchr(buf, '\n', (size_t)n);
+		size_t linelen = nl ? (size_t)(nl - buf) : (size_t)n;
+		size_t have = nl ? (size_t)n - linelen - 1 : 0;
+		char line[KM_MAX] = {0};
+
+		if (linelen >= sizeof(line)) {
+			(void)!write(c, "err too long\n", 13);
+			close(c);
+			continue;
+		}
+		memcpy(line, buf, linelen);
+		line[strcspn(line, "\r")] = '\0';
+
+		/* At most four tokens, and the count is fixed per verb below.
+		 * A trailing token nobody named is a request this daemon does
+		 * not understand, not one it silently ignores. */
+		char *tok[5] = {0};
+		int ntok = 0;
+		for (char *sp = NULL, *t = strtok_r(line, " \t", &sp);
+		     t && ntok < 5; t = strtok_r(NULL, " \t", &sp))
+			tok[ntok++] = t;
 
 		/* The list is re-read on EVERY request, not cached: a stick
 		 * pulled out between two requests must not still be offered,
@@ -701,23 +1187,98 @@ static int serve(void)
 		scan();
 
 		char msg[512] = "";
-		if (!strcmp(buf, "ping")) {
+		const char *verb = ntok ? tok[0] : "";
+		int idx;
+
+		if (ntok == 1 && !strcmp(verb, "ping")) {
 			(void)!write(c, "ok\n", 3);
-		} else if (!strcmp(buf, "list")) {
+		} else if (ntok == 1 && !strcmp(verb, "list")) {
 			reply_list(c);
-		} else if (!strncmp(buf, "mount ", 6)) {
-			if (do_mount(atoi(buf + 6), cred.uid, msg,
-				     sizeof(msg)) == 0)
+		} else if (ntok == 2 && !strcmp(verb, "mount")) {
+			idx = km_index(tok[1]);
+			if (idx >= 0 && do_mount(idx, cred.uid, msg,
+						 sizeof(msg)) == 0)
 				dprintf(c, "ok %s\n", msg);
 			else
 				dprintf(c, "err %s\n",
 					msg[0] ? msg : "no such device");
-		} else if (!strncmp(buf, "unmount ", 8)) {
-			if (do_unmount(atoi(buf + 8), msg, sizeof(msg)) == 0)
+		} else if (ntok == 2 && !strcmp(verb, "unmount")) {
+			idx = km_index(tok[1]);
+			if (idx >= 0 && do_unmount(idx, msg, sizeof(msg)) == 0)
 				dprintf(c, "ok %s\n", msg);
 			else
 				dprintf(c, "err %s\n",
 					msg[0] ? msg : "no such device");
+		} else if (ntok == 2 && !strcmp(verb, "eject")) {
+			idx = km_index(tok[1]);
+			if (idx >= 0 && do_eject(idx, msg, sizeof(msg)) == 0)
+				dprintf(c, "ok %s\n", msg);
+			else
+				dprintf(c, "err %s\n",
+					msg[0] ? msg : "no such device");
+		} else if (ntok == 2 && !strcmp(verb, "close")) {
+			idx = km_index(tok[1]);
+			if (idx >= 0 && do_close(idx, msg, sizeof(msg)) == 0)
+				dprintf(c, "ok %s\n", msg);
+			else
+				dprintf(c, "err %s\n",
+					msg[0] ? msg : "no such device");
+		} else if ((ntok == 3 && !strcmp(verb, "unlock")) ||
+			   (ntok == 4 && !strcmp(verb, "format"))) {
+			int want = km_count(tok[ntok - 1]);
+
+			idx = km_index(tok[1]);
+			if (idx < 0 || want < 0) {
+				(void)!write(c, "err bad request\n", 16);
+				close(c);
+				continue;
+			}
+			/*
+			 * ONE BUFFER, AND EVERY EXIT WIPES IT. A passphrase
+			 * that outlived the request would sit in a root
+			 * daemon's heap for the life of the session.
+			 */
+			static char secret[KM_SECRET_MAX + 1];
+			size_t need = (size_t)want;
+			size_t got = have < need ? have : need;
+
+			memcpy(secret, buf + linelen + 1, got);
+			/* The room left is computed against the BUFFER as well
+			 * as against the frame. Both bounds hold — km_count()
+			 * already refused anything over KM_SECRET_MAX — but a
+			 * read bounded only by a value the compiler cannot
+			 * follow is one it must assume the worst about. */
+			while (got < need && got < sizeof(secret) - 1) {
+				size_t room = need - got;
+				ssize_t r;
+
+				if (room > sizeof(secret) - 1 - got)
+					room = sizeof(secret) - 1 - got;
+				r = read(c, secret + got, room);
+				if (r <= 0)
+					break;
+				got += (size_t)r;
+			}
+			if (got != need) {
+				explicit_bzero(secret, sizeof(secret));
+				(void)!write(c, "err short frame\n", 16);
+				close(c);
+				continue;
+			}
+			int rc;
+
+			if (ntok == 3)
+				rc = do_unlock(idx, secret, got, msg,
+					       sizeof(msg));
+			else
+				rc = do_format(idx, tok[2], secret, got, msg,
+					       sizeof(msg));
+			explicit_bzero(secret, sizeof(secret));
+			if (rc == 0)
+				dprintf(c, "ok %s\n", msg);
+			else
+				dprintf(c, "err %s\n",
+					msg[0] ? msg : "refused");
 		} else {
 			(void)!write(c, "err unknown command\n", 20);
 		}
@@ -782,6 +1343,7 @@ int main(int argc, char **argv)
 			 * tested — the seam `kdos stutter --fixture` and
 			 * `kdos-oomd --fixture` already use.
 			 */
+			km_fixture = 1;
 			setenv("KDOS_MOUNTD_SYS", argv[2], 1);
 			if (argc > 3)
 				setenv("KDOS_MOUNTD_DEV", argv[3], 1);
@@ -794,9 +1356,26 @@ int main(int argc, char **argv)
 			printf("%d eligible\n", ndev);
 			return 0;
 		}
+		/*
+		 * THE SAME FIXTURE, SERVING. `--fixture` prints the list and
+		 * returns, which cannot exercise a VERB — and the verbs are
+		 * the half where a refusal matters. This serves on
+		 * $KDOS_MOUNTD_SOCKET with the fixture's roots and with
+		 * km_exec printing instead of running, so `format` can be
+		 * driven at a device that must be refused without a disk to
+		 * lose. It is as safe as `--fixture` for the same reason:
+		 * nothing it decides to do is done.
+		 */
+		if (argc > 2 && !strcmp(argv[1], "--fixture-serve")) {
+			km_fixture = 1;
+			setenv("KDOS_MOUNTD_SYS", argv[2], 1);
+			if (argc > 3)
+				setenv("KDOS_MOUNTD_DEV", argv[3], 1);
+			return serve();
+		}
 		if (argc > 1) {
 			fprintf(stderr, "usage: kdos-mountd [--fixture SYS "
-					"[DEV]]\n");
+					"[DEV]] [--fixture-serve SYS [DEV]]\n");
 			return 2;
 		}
 		signal(SIGPIPE, SIG_IGN);

@@ -92,7 +92,12 @@ struct sh_tray_item {
 struct sh_tray;
 
 struct sh_task {
-	void *handle;			/* zwlr_foreign_toplevel_handle_v1 * */
+	/*
+	 * WHICH WINDOW, as libkdisp names it. Not a display-server handle and
+	 * not an index: the list is rebuilt whenever the server says it
+	 * changed, and a click acts a frame or more after the row was drawn.
+	 */
+	unsigned id;
 	char title[128];
 	char app_id[64];
 	/* The `Name` from the app's own desktop entry, resolved once when the
@@ -180,8 +185,9 @@ int sh_cmd_call(const char *req, char *out, size_t n, char *err, size_t errn);
 const KtuiBackend *sh_cells_backend(int w, int h);
 
 struct sh_state {
+	/* The workspace pager's alone: NULL on the console, where the session
+	 * draws its own. The task list is libkdisp's on both desktops. */
 	void *display;			/* the panel shares libkwl's connection */
-	void *ftl_mgr;
 	void *ws_mgr;
 
 	struct sh_task tasks[SH_MAX_TASKS];
@@ -291,6 +297,9 @@ int display_main(int argc, char **argv);	/* kdos-display  */
 int keys_main(int argc, char **argv);		/* kdos-keys     */
 int teams_main(int argc, char **argv);		/* kdos-teams    */
 int saver_main(int argc, char **argv);		/* kdos-saver    */
+int about_main(int argc, char **argv);		/* kdos-about    */
+int calc_main(int argc, char **argv);		/* kdos-calc     */
+int note_main(int argc, char **argv);		/* kdos-note     */
 int slit_main(int argc, char **argv);		/* kdos-slit     */
 int doc_main(int argc, char **argv);		/* kdos-doc      */
 int settings_main(int argc, char **argv);	/* kdos-settings */
@@ -300,6 +309,7 @@ int net_main(int argc, char **argv);		/* kdos-net      */
 int bt_main(int argc, char **argv);		/* kdos-bt       */
 int devices_main(int argc, char **argv);	/* kdos-devices  */
 int clip_main(int argc, char **argv);		/* kdos-clip     */
+int trash_main(int argc, char **argv);		/* kdos-trash    */
 /* What the notification area's chevron opens — the widgets that are hidden
  * behind it, and the two KDOS tools (`kdos stutter`, `kdos-energy`) that used
  * to be reachable only as a terminal nobody could get rid of. */
@@ -341,6 +351,9 @@ void sh_alsa_quiet(void);
 int sh_connect(struct sh_state *sh);
 void sh_disconnect(struct sh_state *sh);
 void sh_dispatch(struct sh_state *sh);
+/* Re-read the window list. Called by sh_dispatch; exposed for the dump path,
+ * which draws one frame and never dispatches. */
+void sh_tasks_refresh(struct sh_state *sh);
 void sh_activate_task(struct sh_state *sh, int i);
 /* Left click on a task entry: minimise the window you are in, restore the one
  * you are not — what every taskbar does, and what makes the entry worth
@@ -486,9 +499,30 @@ int sh_app_group_for(const char *categories);
  * shell anywhere in it. Every surface here spawns the same way. */
 void sh_spawn(const char *const argv[]);
 
+/* THE F1 HANDLER every surface with a page uses, as `KtuiKeys.help`. It opens
+ * the named document in kdos-doc. A surface with no page in
+ * /usr/share/kdos/doc leaves `doc` NULL and F1 is then neither advertised nor
+ * answered — a key that opens an index reading "no such document" teaches
+ * that help is broken. testing/preflight.sh refuses a `.doc` naming a file
+ * that is not in the corpus. */
+void sh_help(const char *doc, void *user);
+
 /* The terminal emulator on THIS desktop: kdos-term on the console, foot under
  * the compositor. Both take `-e CMD` and `-D DIR`. */
+/*
+ * The KDOS logo as cells, from /usr/share/kdos/logo.txt. The file carries SGR
+ * colour for the login banner; this strips it, because a surface paints slots.
+ * Returns 0 when at least one line was read. See logo.c.
+ */
+#define SH_LOGO_LINES 48
+#define SH_LOGO_BYTES 512
+int sh_logo_load(const char *path, char (*out)[SH_LOGO_BYTES], int max,
+		 int *nlines, int *width);
+
 const char *sh_term(void);
+/* The favourites file names the terminal; this says which one this desktop
+ * runs. See sh_fav_id() for why one file serves both. */
+const char *sh_fav_id(const char *id);
 
 /* The terminal, the identity it wears and the `-e` that ends it, appended to
  * argv from n; returns the new n. `id` is scratch that must outlive the exec. */

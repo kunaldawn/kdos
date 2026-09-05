@@ -112,6 +112,9 @@ static int au_icons_on = 1;
  */
 static int au_out_y = 3, au_out_rows, au_bt_y, au_bt_rows;
 
+/* No layers: nothing in this window is a raised state, so Esc closes it. */
+static KtuiKeys keys;
+
 /* ── ALSA ────────────────────────────────────────────────────────────────
  *
  * osd.c owns the mixer for the `default` PCM, which is the one the media keys
@@ -1147,13 +1150,41 @@ static void au_draw(struct au_ui *u)
 	 * pair in net.c. The hint row is the message row: an action's answer
 	 * belongs where the user's eyes already are, not in a toast they may
 	 * not have on. */
-	static const char HINT[] = "Tab pane   <> volume   Enter switch   Esc";
 	int bx = au_buttons(u, w, h - 2);
 	int room = bx - 3;
-	if (u->msg[0] ? room >= 8 : room >= (int)ktui_utf8_width(HINT))
-		ktui_draw_text(2, h - 2, room, u->msg[0] ? u->msg : HINT,
-			       u->msg[0] ? KT_WARN : KT_DIM, KT_SURFACE,
-			       KT_A_NONE);
+
+	/*
+	 * THE ROW IS NARROW HERE and that decides the hint set. Five buttons
+	 * leave about twenty cells at this window's own width, and a hint is
+	 * drawn whole or not at all — so anything long pushed before Esc costs
+	 * Esc entirely. The buttons already name Mute, Set Default, Scan and
+	 * Pair on the screen; what is pushed is what only the KEYBOARD does.
+	 */
+	const struct au_dev *sd = u->pane == AU_PANE_OUT &&
+				  u->sel[AU_PANE_OUT] < au_ndev
+					  ? &au_dev[u->sel[AU_PANE_OUT]]
+					  : NULL;
+	const struct au_bt *sb = u->pane == AU_PANE_BT &&
+				 u->sel[AU_PANE_BT] < au_nbt
+					 ? &au_bt[u->sel[AU_PANE_BT]]
+					 : NULL;
+
+	if (u->msg[0]) {
+		/* The message outranks the row and shares its cells; the row
+		 * is still called, with an empty rect, because it is what
+		 * clears the pool. */
+		ktui_hint_row(&keys, krect(0, h - 2, 0, 0), KT_SURFACE);
+		if (room >= 8)
+			ktui_draw_text(2, h - 2, room, u->msg, KT_WARN,
+				       KT_SURFACE, KT_A_NONE);
+	} else if (room > 0) {
+		ktui_hint("Tab", "pane");
+		ktui_hint_if(sb != NULL, "Enter",
+			     sb && sb->connected ? "disconnect" : "connect");
+		ktui_hint_if(sd && sd->vol >= 0, "Left/Right", "volume");
+		ktui_hint("Esc", ktui_esc_verb(&keys));
+		ktui_hint_row(&keys, krect(2, h - 2, room, 1), KT_SURFACE);
+	}
 	ktui_draw_flush();
 }
 
@@ -1436,9 +1467,10 @@ int audio_main(int argc, char **argv)
 		if (ev.type != KT_EVT_KEY)
 			continue;
 
-		switch (ev.key) {
-		case KT_K_ESC:
+		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			goto done;
+
+		switch (ev.key) {
 		case KT_K_TAB:
 			u.pane = u.pane == AU_PANE_OUT ? AU_PANE_BT
 						       : AU_PANE_OUT;

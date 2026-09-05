@@ -7,10 +7,17 @@
  * ---------------------------------
  *   apps.c — one index of what is installed
  *
- * `kdos-start`, `kdos-launcher`, `kdos-run` and `kdos-openwith` each used to
- * walk /usr/share/applications for themselves, which is four answers to "what
- * is installed on this machine" and four places for a rule about NoDisplay to
- * be slightly different. This is the one answer.
+ * `kdos-start`, `kdos-launcher`, `kdos-run` and `kdos-openwith` each walked
+ * /usr/share/applications for themselves, which is four answers to "what is
+ * installed on this machine" and four places for a rule about NoDisplay to be
+ * slightly different. This is the answer `kdos-start` uses.
+ *
+ * IT IS NOT YET THE ONLY ONE. `kdos-launcher` still keeps its own index —
+ * frecency and the alien mark ride on its entries — and `kdos-run` and
+ * `kdos-openwith` have their own reasons. What the launcher no longer keeps is
+ * its own idea of WHERE applications live: it reads the XDG data directories in
+ * this file's order, because ignoring `XDG_DATA_DIRS` made it the one surface
+ * that could not find what the others listed.
  *
  * WHAT IS HERE THAT WAS NOT ANYWHERE: a USAGE COUNT. A Start menu whose left
  * column is "the things you actually run" cannot be built without one, and

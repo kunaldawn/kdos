@@ -316,3 +316,58 @@ void kb_json_str(KbBuf *b, const char *s)
 	}
 	kb_buf_add(b, "\"", 1);
 }
+
+/*
+ * The one reader of a desktop toggle. See kbase.h.
+ *
+ * The path is rebuilt on each call rather than kept: the whole point of a flag
+ * file is that another process owns the answer, and a cached path would be the
+ * one place this could still go stale after $HOME changed under a program that
+ * re-execs.
+ */
+int kb_toggle_on(const char *name)
+{
+	const char *state = getenv("XDG_STATE_HOME");
+	const char *home = getenv("HOME");
+	char path[512];
+
+	if (!name || !*name)
+		return 0;
+	if (state && *state)
+		snprintf(path, sizeof(path), "%s/kdos/toggles/%s", state, name);
+	else if (home && *home)
+		snprintf(path, sizeof(path), "%s/.local/state/kdos/toggles/%s",
+			 home, name);
+	else
+		return 0;
+	return access(path, F_OK) == 0;
+}
+
+/* See kbase.h. The FIRST entry only: the variable is a preference order and
+ * the desktop actually running is the one at its head — honouring the rest
+ * would let a session inherit choices made for a desktop it merely resembles. */
+int kb_desktop_prefix(char *out, size_t n)
+{
+	const char *d = getenv("XDG_CURRENT_DESKTOP");
+	size_t i = 0;
+
+	if (!out || n == 0)
+		return 0;
+	out[0] = '\0';
+	if (!d || !*d)
+		return 0;
+	for (; d[i] && d[i] != ':' && i + 1 < n; i++)
+		out[i] = (char)((d[i] >= 'A' && d[i] <= 'Z') ? d[i] + 32 : d[i]);
+	out[i] = '\0';
+	return i > 0;
+}
+
+/* See kbase.h. `$KDOS_CON` is set by the console session and by nothing else,
+ * which is the same test every other program in the tree uses to tell the two
+ * desktops apart. */
+const char *kb_terminal(void)
+{
+	const char *con = getenv("KDOS_CON");
+
+	return con && *con ? "kdos-term" : "foot";
+}

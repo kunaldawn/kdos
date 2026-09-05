@@ -46,10 +46,27 @@
  *
  * A build without it says so when asked for --kms rather than pretending.
  */
-#ifdef KDOS_VIEW_KMS
+/*
+ * THE CELL RASTERISER IS SHARED BY TWO MODES. `--kms` puts cells on a screen
+ * and `--shot` puts the same cells in a file, and both go through libkcell —
+ * so the painter, the sprite table and the picture path are all behind this
+ * one name, and only the KMS driver itself is behind the narrower guard.
+ *
+ * A BUILD WITHOUT IT DRAWS PICTURES AS CHARACTERS, which is what a terminal
+ * view and a `--dump` do anyway. What it must not do is claim
+ * `KCON_VIEW_PIXELS` and then have nothing to put the pixels in.
+ */
+#if defined(KDOS_VIEW_KMS) || defined(KDOS_VIEW_SHOT)
+#define KDOS_VIEW_PIXELS 1
+#endif
+
+#ifdef KDOS_VIEW_PIXELS
 #include <pixman.h>
 
 #include "kcell.h"
+#endif
+#include "view.h"
+#ifdef KDOS_VIEW_KMS
 #include "kkms.h"
 #endif
 
@@ -83,7 +100,7 @@ static KconConn *conn;
 static KtuiCell *shadow;
 static int shadow_w, shadow_h;
 
-#ifdef KDOS_VIEW_KMS
+#ifdef KDOS_VIEW_PIXELS
 /* Defined below, once the substitutions it draws through exist. A build with no
  * pixel library is never sent a picture, so it has nothing to repaint. */
 static void redraw_slot(unsigned slot);
@@ -109,6 +126,7 @@ static void usage(FILE *f)
 "  --kms-only         --kms, and a failure to take the screen is an error\n"
 "                     rather than a fall back to this terminal\n"
 "  --tty              draw in this terminal\n"
+"  --shot FILE.png    take one frame and write it as a picture\n"
 "  --dump [COLSxROWS] take one frame and write it as cells; without a\n"
 "                     size it takes the session's own grid\n"
 "  --cast             rasterise into a PipeWire stream instead of onto a\n"
@@ -226,7 +244,10 @@ static int wait_for_grid(int *cols, int *rows)
  * draw their fallback codepoint — which is what a text backend does anyway,
  * and is why a picture over a plain terminal is characters rather than nothing.
  */
-#ifdef KDOS_VIEW_KMS
+/* The sprite table below is the RASTERISER'S, not the KMS driver's: a shot
+ * decodes the same pictures into the same table, so it is compiled in wherever
+ * libkcell is. */
+#if defined(KDOS_VIEW_KMS) || defined(KDOS_VIEW_SHOT)
 /* pixman hands the image back to its destroy function and free() does not take
  * one; a cast between the two signatures is undefined behaviour. */
 static void free_bits(pixman_image_t *img, void *data)
@@ -301,7 +322,7 @@ static void sprite_free(uint64_t key, const void *pix, void *user)
  */
 static int own_screen;
 
-#ifdef KDOS_VIEW_KMS
+#ifdef KDOS_VIEW_PIXELS
 typedef struct {
 	int cw, ch;		/* the picture's size in cells */
 	uint32_t *cp;		/* cw*ch matched codepoints */
@@ -449,7 +470,7 @@ static void take_sprite(const KconMsg *m)
 	if (r.err)
 		return;
 
-#ifdef KDOS_VIEW_KMS
+#ifdef KDOS_VIEW_PIXELS
 	if (!argb || !npx) {
 		(void)slot;
 		return;
@@ -537,7 +558,7 @@ static void take_sprite(const KconMsg *m)
 #endif
 }
 
-#ifdef KDOS_VIEW_KMS
+#ifdef KDOS_VIEW_PIXELS
 /* The session's slot in the cell, rewritten to this view's. A slot with no
  * picture behind it becomes one the table has never heard of, and the backend
  * draws the fallback mark. */
@@ -611,14 +632,14 @@ static void draw_one(int x, int y, const KtuiCell *c)
 	uint32_t cp = c->ch;
 	int fg = c->fg;
 
-#ifdef KDOS_VIEW_KMS
+#ifdef KDOS_VIEW_PIXELS
 	if (!ascii_cell(&cp, &fg))
 		cp = present(cp);
 #endif
 	ktui_draw_cell(x, y, cp, fg, c->bg, c->attr);
 }
 
-#ifdef KDOS_VIEW_KMS
+#ifdef KDOS_VIEW_PIXELS
 /*
  * A PICTURE ARRIVED FOR CELLS THAT ARE ALREADY DRAWN. Only those cells are
  * repainted, out of the copy of what the session sent — the alternative is a
@@ -860,6 +881,7 @@ int main(int argc, char **argv)
 	const char *font = getenv("KDOS_CON_FONT");
 	int cols = 0, rows = 0, tty = 0, kms = 0, dump = 0, cast = 0;
 	int kms_only = 0;
+	const char *shot = NULL;
 
 	signal(SIGHUP, on_hup);
 
@@ -891,6 +913,17 @@ int main(int argc, char **argv)
 		}
 		if (!strcmp(argv[i], "--font") && i + 1 < argc) {
 			font = argv[++i];
+			continue;
+		}
+		if (!strcmp(argv[i], "--shot") && i + 1 < argc) {
+			/*
+			 * A PICTURE OF THE SAME FRAME `--dump` PRINTS. It
+			 * settles the same way and takes the same one; the
+			 * only difference is that it rasterises rather than
+			 * writing codepoints, so a person can look at it.
+			 */
+			shot = argv[++i];
+			dump = 1;
 			continue;
 		}
 		if (!strcmp(argv[i], "--dump")) {
@@ -928,8 +961,36 @@ int main(int argc, char **argv)
 
 	if (!tty && !kms && !dump && !cast) {
 		fprintf(stderr,
-			"kdos-view: choose --kms, --tty, --dump or --cast\n");
+			"kdos-view: choose --kms, --tty, --shot, --dump or "
+			"--cast\n");
 		return 2;
+	}
+
+	/*
+	 * A SHOT HAS PIXELS AND A DUMP DOES NOT, which is the whole difference
+	 * between them on the wire: the session sends a view with pixels the
+	 * pictures a program drew, and a view that claimed none would take a
+	 * photograph with the pictures missing. The font is loaded for the same
+	 * reason the cast path loads one — there is nothing to rasterise with
+	 * otherwise.
+	 */
+	if (shot) {
+#ifndef KDOS_VIEW_SHOT
+		fprintf(stderr, "kdos-view: this build has no shot mode "
+				"(built without the cell rasteriser)\n");
+		return 1;
+#else
+		if (kcell_font_load(font) != 0) {
+			fprintf(stderr,
+				"kdos-view: no font to rasterise a shot with\n");
+			return 1;
+		}
+		ktui_sprite_evictor(sprite_free, NULL);
+		ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+		cap_cell_w = kcell_w();
+		cap_cell_h = kcell_h();
+		cap_flags = KCON_VIEW_PIXELS;
+#endif
 	}
 
 	if (cast) {
@@ -1046,7 +1107,7 @@ int main(int argc, char **argv)
 		ktui_draw_init();
 	}
 
-#ifdef KDOS_VIEW_KMS
+#ifdef KDOS_VIEW_PIXELS
 	view_slot_init();
 
 	/*
@@ -1210,6 +1271,14 @@ int main(int argc, char **argv)
 				break;
 			quiet = r ? 0 : quiet + 1;
 		}
+#ifdef KDOS_VIEW_SHOT
+		if (shot) {
+			int rc = view_shot_png(shot, 1);
+
+			kcon_conn_free(conn);
+			return rc == 0 ? 0 : 1;
+		}
+#endif
 		ktui_draw_dump();
 		kcon_conn_free(conn);
 		return 0;

@@ -1,6 +1,6 @@
 # kdos-shell
 
-One binary providing twenty-nine commands, dispatched on the name it was invoked as: the panel,
+One binary providing thirty-three commands, dispatched on the name it was invoked as: the panel,
 and every surface that pops up from it or is reached by a key. This is the largest program in
 KDOS and the one most of the desktop actually is.
 
@@ -17,7 +17,7 @@ half of the same mistake.
 | Name | Is | Section |
 |---|---|---|
 | `kdos-shell` | The panel | [The panel](#the-panel) |
-| `kdos-start` | The Start menu | [kdos-start](#kdos-start) |
+| `kdos-start` | The Start menu, with DESQview's two-letter codes | [kdos-start](#kdos-start) |
 | `kdos-launcher` | Full-screen application search | [kdos-launcher](#kdos-launcher) |
 | `kdos-menu` | Root, System and window menus | [kdos-menu](#kdos-menu) |
 | `kdos-desk` | The desktop and its icons | [kdos-desk](#kdos-desk) |
@@ -44,7 +44,73 @@ half of the same mistake.
 | `kdos-prompt` | Yes/no, answering by exit status | [The small surfaces](#the-small-surfaces) |
 | `kdos-slit` | The dockapp column | [The small surfaces](#the-small-surfaces) |
 | `kdos-saver` | Attract mode between idle and lock | [The small surfaces](#the-small-surfaces) |
+| `kdos-about` | What this machine is | [The small surfaces](#the-small-surfaces) |
+| `kdos-calc` | The calculator | [The small surfaces](#the-small-surfaces) |
+| `kdos-note` | The scratch pad | [The small surfaces](#the-small-surfaces) |
 | `kdos-ascii` | A picture, as characters | [The small surfaces](#the-small-surfaces) |
+| `kdos-trash` | What was deleted, and the way back | [kdos-trash](#kdos-trash) |
+
+## Places
+
+Home, the XDG user directories that exist, then whatever `~/.config/kdos/places` adds. **One
+reader**, `kxdg_places()`, so the desktop folder, the Places menu, the chooser and *Add to Places*
+cannot disagree — see [libkxdg](../05-developer/c-libraries.md#libkxdg) for what they used to
+disagree about.
+
+| Where | How |
+|---|---|
+| `kdos-menu --places` | The whole column, plus Trash and Computer |
+| `kdos-desk` | *Add to Places* on a folder's context menu, and on the wallpaper, where it keeps `~/Desktop`; never on a file, because a file is not a place |
+| `kdos-pick` | `Ctrl+P` opens the column over the file list, with a **Recent directories** group under it |
+
+**Recent** is the same shape: `kdos-appbox open` is the one function every open passes through, so
+it is the only place `recently-used.xbel` is written. `kdos-start`'s right column draws a RECENT
+group from `kxdg_recent_all()` — only when there is something in it, because a heading over nothing
+reads as a list that failed to load rather than as a machine nobody has opened anything on. A row
+opens through `kdos-appbox open` again, so a recent file opens with whatever its **type** is bound
+to rather than with whatever last touched it.
+
+**Recent directories come from `zoxide`**, which `bash.bashrc` already initialises, so the group is
+the tree a person has actually walked rather than one the chooser invented. It is read when the
+column is opened — one process, not one per frame — and is silent when zoxide or its database is
+absent, which is the same answer either way. It is a **separate call** from the places themselves:
+*Add to Places* decides whether a folder is already a place by asking for the column, and a
+frecency guess folded into that answer would make it refuse a folder somebody had merely visited.
+
+**The desktop's menu is the same table with its own rows under it.** `kdos-desk` draws libkxdg's
+file verbs, a rule, then what only a desktop can answer — New Folder, Sort Icons, Change Wallpaper
+and the rest. On bare wallpaper it offers only the verbs that mean *here*: Terminal, Find, Add to
+Places and Git. Open, Share and Move to Trash read as acting on **the thing**, and on the wallpaper
+there is none — a Move to Trash there would act on the desktop folder itself.
+
+**The chooser gets a list, not a sidebar, and that is the width talking.** It is sixty-four columns
+and already spends its right-hand column on a preview pane; a third column would leave a file's
+name about thirty cells, and a chooser that cannot show a name is not a chooser.
+
+## The keys every surface answers
+
+Twenty of these names answer the same contract, and the bottom row of each says what the rest of
+its keys do **right now**. `Esc` steps back one level and only then closes; `F1` opens the
+surface's page in `kdos-doc` where it has one. The full rule — the ladder, the pushed row, the
+`&`-marked accelerators — is in
+[the design language](../03-architecture/design-language.md#the-keys-every-surface-answers).
+
+Five surfaces claim an `F1` page today: `kdos-settings`, `kdos-display`, `kdos-net`, `kdos-bt`
+and `kdos-devices`, plus [`kdos-res`](kdos-res.md). The pages live in `/usr/share/kdos/doc` and
+`testing/preflight.sh` refuses a claim with no file behind it, so a surface that does not appear
+here neither advertises `F1` nor answers it.
+
+**Two menus take the ladder and not the row**: `kdos-menu`'s cascade and its `--windows` list. Both
+are overlays sized to their content, so a hint row has to be bought out of the height they ask for
+— and the System menu is 22 items against a 24-row cap, exactly full, so reserving one scrolls
+*Shut Down* off the bottom of the menu somebody opened to shut down with. The row would also be
+saying what a menu already says: Enter, the arrows and Escape are what a column of labels means.
+
+Nine names deliberately do **not** take the contract, and the reason is the same one each time:
+they take no keyboard. `kdos-osd`, `kdos-tip`, `kdos-slit`, `kdos-saver` and `kdos-ime` are
+transient chrome with no input at all; `kdos-notifyd` is a daemon; `kdos-ascii` is a filter;
+`kdos-prompt` and `kdos-run` are shorter than the eight rows below which a hint line would eat a
+third of the window.
 
 ## The panel
 
@@ -452,14 +518,30 @@ wallpaper reach the compositor's root menu — at the cost of the desktop having
 so creating a folder was reachable only by right-clicking an existing icon, and on a fresh login
 the only icons are two pinned places.
 
-So the desktop answers its own wallpaper: New Folder, New File, Open Terminal Here, Sort Icons,
-Refresh, plus Applications, Change Wallpaper, Display Settings and Settings — everything the
-compositor's root menu offered, because dropping the claim without replacing what it fed would
-have been the regression. `Super+Space` still opens the compositor's own menu.
+So the desktop answers its own wallpaper: New Folder, New File, Sort Icons, Refresh, plus
+Applications, Change Wallpaper, Display Settings and Settings — everything the compositor's root
+menu offered, because dropping the claim without replacing what it fed would have been the
+regression. `Super+Space` still opens the compositor's own menu.
+
+**The menu is two halves.** The file verbs come from `libkxdg`'s table — the same one `kdos-pick`
+and `mc`'s `F2` read, so a verb appears on all three at once — then a rule, then the rows above,
+which are the ones only a desktop can answer. The rule is drawn only when both halves have
+something.
+
+On bare wallpaper the shared half is masked to the verbs that mean *here*: Open Terminal Here, Find
+Here, Add to Places, Git Status Here. Open, Share and Move to Trash read as acting on **the thing**,
+and there is none — a Move to Trash on the wallpaper would act on `~/Desktop` itself.
+
+**Two shared rows keep a local action, and the row stays the table's.** *Open* goes through the
+desktop's own opener, because a `.desktop` icon is an application to run rather than a file to open
+and the Trash icon is a place; handing either to the MIME chain would make the menu row mean
+something different from `Enter` on the same icon. *Move to Trash* asks first and refuses the two
+pinned places — `kdos trash <file>` confirms nothing, which is right for a prompt and for `mc` and
+wrong for the row sitting beside `Delete` on this surface.
 
 The context menu is drawn **into its own grid**, since this surface owns the screen and a popup
-here is not a second surface. Its rows carry a **scope** — icon, wallpaper, or both — because two
-menus would be two places for New Folder to drift.
+here is not a second surface. Its local rows carry a **scope** — icon, wallpaper, or both — because
+two menus would be two places for New Folder to drift.
 
 `~/Desktop` is created if it is missing.
 
@@ -473,7 +555,54 @@ on the system that other people's software puts in front of you.
 As a browser, opening a file hands it to the system's open resolution, and **the dialog stays up**:
 a browser that closed after one file would be a chooser wearing the wrong name.
 
+**The preview pane parses P6 and nothing else**, and everything else becomes one: `kdos thumb --ppm`
+owns the decoders and the helper forks and hands back a small picture. That is what lets the chooser
+show a photograph, a PDF's first page or a frame of a video without linking an image library into a
+dialog that has to build on a bare host. The fork is synchronous and sits in the idle slot — where
+the twenty-megabyte read it replaced already was — so a slow helper stalls the dialog for as long as
+it runs.
+
+`Shift+F10` and the right button on a row open the **file verbs** — the same table `libkxdg` gives
+the desktop and `mc`'s `F2`, so the same file offers the same things wherever you meet it. A verb
+whose program is not on the machine is not offered, which is why the list is shorter than the table.
+On the empty space below the list the right button still means *up*, which is where a right click in
+a file list has gone since Norton Commander.
+
+The hint row does not name `Shift+F10`, and that is the width: this dialog's row is thirty-eight
+cells and a fourth hint would take the `Esc` one with it. The menu is the one verb here with a
+**pointer** path, and this is the dialog every boxed application's Open reaches — the person in
+front of it is usually holding a mouse.
+
 ![kdos-pick — the file dialog every boxed application reaches through the portal](../../screenshots/pick.png)
+
+
+## kdos-trash
+
+What was deleted, when, and where it came from — one row per item, newest first, with `Enter`
+putting a row back where it was. The Trash icon on the desktop opens it.
+
+**Put back is the point.** A trash without it is a slower delete: the desktop already moves a file
+in and `kdos trash` already lists what is there, but the way *back* was a command line and a name
+nobody had written down.
+
+**It calls `kb_trash_*` and nothing else.** The specification — the escaping, the `.trashinfo`
+record, the unique-name walk, the refusal to overwrite whatever is already at the origin — is one
+implementation in `libkbase`, and a surface reimplementing any of it would be a second answer to
+where a deleted file lives. The three failures the library distinguishes are said in its own words:
+a record that cannot be parsed and a file that is already back are different problems, and a person
+can act on the difference.
+
+**The Trash icon does not open a file manager.** Its path is a directory, and a browser on it shows
+the escaped names in `files/` with no origin and no deletion date; the record carrying both is in
+`info/` beside it.
+
+**A destructive row asks first, and the question is a declared `Esc` rung** rather than a flag — so
+`Escape` while it is up answers *no* and leaves the list exactly as it was, which is what `Escape`
+means on every other surface here.
+
+**A folder's size is named, not measured.** `bytes` in a record is the directory inode, not a
+recursive total, so the column reads `folder`: a number that is wrong is worse than one that is
+missing.
 
 
 ## Notifications
@@ -552,6 +681,18 @@ making you pick it again would be a link that does half its job.
 
 The tile icon names are checked against the **shipped icon set**, not taken from the naming
 specification, and the blurbs are cut to what a tile holds at eighty columns.
+
+**Nine categories:** Appearance, Panel, Desktop, Hardware, Session, Input, Apps, Boxes and
+**System** — the machine itself, where the resource monitor and the power page live. Most of what
+belongs in System is not written; the category ships with a row saying which commands do that work
+today, because a control centre whose front door has no door for the machine teaches that the
+machine is not reachable from here, and that is the harder thing to unteach. A row that opened
+nothing would be worse than no row.
+
+**`kdos settings [page]`** opens it from a prompt, and the page word is passed through without being
+checked here: `kdos-settings` owns the list of page names, and a second copy of it in the command
+would be a second list to keep in step — the failure being a page that exists and cannot be reached
+from the command line.
 
 ![kdos-settings, which opens on a grid of labelled pictures rather than a sidebar of words](../../screenshots/settings.png)
 
@@ -632,7 +773,7 @@ Per-manager:
 | `kdos-clip` | Clipboard history. The daemon owns the list; this draws it |
 | `kdos-teams` | The window list, and what the panel's overflow cell opens — previously that cell stepped the row by one per click, so reaching the third hidden window took three clicks and three reflows |
 | `kdos-display` | Screens. It grew a button bar, because a pointer could select a screen and then not switch it off or apply anything |
-| `kdos-keys` | The keybinding card. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that |
+| `kdos-keys` | The keybinding card, in six sections — launch, window, workspace, tools, media, system. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that, and it looks for the **row shape** rather than the action's name anywhere in the source: `net`, `power` and `settings` are ordinary words that appear there as other strings, and a bare name grep passed for eleven chords the card was in fact dropping. **`--print` writes the same rows to standard output**, two columns at 132 characters, form-fed between pages — for a printer and for a wall. It runs before any display server is opened, so it works over ssh, from a script and on a machine whose session is not up, which is most of the times somebody wants the card on paper. The same rows as the surface draws, because a printed sheet that disagreed with the screen is what a second hand-written table becomes |
 | `kdos-doc` | The documentation viewer |
 | `kdos-openwith` | Choose a handler, and optionally always use it |
 | `kdos-run` | The run box. It takes a click to place its caret, and grew a button bar because its one feature beyond a prompt was a **modifier** that nothing announced |
@@ -640,6 +781,9 @@ Per-manager:
 | `kdos-status` | The overflow popup; see below |
 | `kdos-slit` | The dockapp column. Off by default: a slit nobody configured is a column of marks |
 | `kdos-saver` | Attract mode, between idle and lock |
+| `kdos-about` | What this machine is: the KDOS logo beside the version, kernel, libc, userland, session, terminal, grid, CPU, memory, uptime and package count. **Every fact is read, never forked** — `uname`, `/proc`, `/etc/os-release` and the package database are files this process can open, and a screenfetch spawned to render them would draw a second program's colours and ANSI onto a surface that paints in slots, and would make this the one surface with no offscreen dump |
+| `kdos-calc` | The calculator, `Super+Ctrl+q`. **It does not do the arithmetic** — `qalc` does, and the tree already carries `libqalculate`, which parses what a person actually typed: units, hexadecimal, `to`, and precedence that matches a pocket calculator rather than a programming language. **Forked, not linked**: `libqalculate` is C++ and this binary is C and carries thirty-one other surfaces, so linking it would put libstdc++ on the panel package on every image for one accessory. **Once per pause, not once per keystroke** — the evaluation happens when the poll loop goes idle with the input changed, which is a debounce that costs no timer. `Enter` copies the answer, because the answer to "what is three inches in millimetres" is nearly always going somewhere else |
+| `kdos-note` | The scratch pad, `Super+Ctrl+n`: one buffer per user at `~/.local/share/kdos/scratch.txt`, saved on close and every thirty seconds. **It is not an editor and must not grow into one** — `micro` is the editor and `Ctrl+O` opens this same file in it, and every feature past "type a line and find it later" already exists there and is better done there |
 | `kdos-ascii` | A picture, as characters |
 
 **`kdos-status` has a second half worth knowing about.** The hidden-widget list is published **by
@@ -656,6 +800,11 @@ hundred columns wide and the half that gets clipped is the half naming the proce
 **A menu opens under the word that was clicked.** Layer-shell surfaces have no coordinates, so "at
 x" is an anchor plus a margin in pixels, which the panel passes. Without it every menu opened in the
 **centre** of the screen and read as a dialog.
+
+**The console session honours the same three fields**, in cells rather than pixels — and a caller's
+number is the same on both, because `kdisp_cell_w()` answers 1 there. `kdos-con` passes the column
+of the element that was clicked out of its own hit map, so `Start` and the clock open their menus
+above themselves exactly as the panel's applets do.
 
 **Which anchor depends on the bar's own edge**, because a popup belonging to a bar on the other edge
 has to grow the other way.

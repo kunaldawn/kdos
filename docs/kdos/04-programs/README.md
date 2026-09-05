@@ -100,7 +100,7 @@ These run on a build host and **never ship on the target**.
 Three binaries provide most of the commands on the system. If you find a command on your `PATH`
 and want its documentation, find it here.
 
-### `kdos-shell` — 29 names
+### `kdos-shell` — 33 names
 
 The panel plus every surface that pops up from it. One binary, dispatched on its own name; the
 authoritative list is the name table in its own `main.c`.
@@ -111,10 +111,11 @@ authoritative list is the name table in its own `main.c`.
 | `kdos-desk` | `kdos-pick` | `kdos-ascii` | `kdos-run` |
 | `kdos-prompt` | `kdos-notifyd` | `kdos-notify` | `kdos-osd` |
 | `kdos-cal` | `kdos-display` | `kdos-keys` | `kdos-teams` |
-| `kdos-saver` | `kdos-slit` | `kdos-doc` | `kdos-settings` |
-| `kdos-openwith` | `kdos-audio` | `kdos-net` | `kdos-bt` |
-| `kdos-devices` | `kdos-clip` | `kdos-status` | `kdos-tip` |
-| `kdos-ime` | | | |
+| `kdos-saver` | `kdos-about` | `kdos-calc` | `kdos-note` |
+| `kdos-slit` | `kdos-doc` | `kdos-settings` | `kdos-openwith` |
+| `kdos-audio` | `kdos-net` | `kdos-bt` | `kdos-devices` |
+| `kdos-clip` | `kdos-status` | `kdos-tip` | `kdos-ime` |
+| `kdos-trash` |  |  |  |
 
 All are documented in [kdos-shell](kdos-shell.md).
 

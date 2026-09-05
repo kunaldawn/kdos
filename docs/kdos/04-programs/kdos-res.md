@@ -29,6 +29,13 @@ implementations — `kcon_impl` for a console session and `kwl_impl` for the com
 desktop with no branch of its own. The console is offered first: a program started inside a console
 session must not find a Wayland display left over from elsewhere and attach to that instead.
 
+**Whether to open a window at all is this program's, and it asks about both sessions.** With
+neither `--tty` nor a forced window it looks for `$WAYLAND_DISPLAY` *or* `$KDOS_CON` — the console
+session's surface socket, which is in every child's environment there and is the same fact
+`sh_term()` and `kdos doctor` decide on. Asking about Wayland alone made a chord on the console
+start this program into the terminal it was launched from, which on `tty1` means the process table
+drawn over whatever was on that terminal and no window anywhere.
+
 That is why nothing below says "under Wayland" where it means "when decorated": the question a
 surface asks is whether its server draws chrome, not which server it is.
 
@@ -79,6 +86,28 @@ way to find that out was to already know.
 **The narrow sidebar carries three characters, not one.** A single initial made two different
 pages the same control — worse than a truncation, which at least reads as incomplete. Three is the
 shortest prefix keeping all ten distinct.
+
+**`F10` opens the page list over the body** where the window is too narrow to show the sidebar
+beside the page. The list is this program's menu, so it is on the menu key; `F1` is its page in
+`/usr/share/kdos/doc`, which is what `F1` means on every surface here. `[` and `]` step between
+pages without opening anything.
+
+## The keys
+
+The contract every surface answers, described in
+[the design language](../03-architecture/design-language.md#the-keys-every-surface-answers). Three
+raised states are declared here rather than written into an `Escape` arm, and `Escape` takes
+exactly one of them per press:
+
+| What is up | What `Escape` does | What the row reads |
+|---|---|---|
+| A question about ending a process | Refuses it — **answers**, rather than dismissing | `Esc Cancel` |
+| A detail page | Back to the list it came from | `Esc Back` |
+| The `F10` page list | Back to the page under it | `Esc Pages` |
+| Nothing | The page's own back-out, and only then the program | `Esc Close` |
+
+**The question's rung answers rather than clearing a flag.** Something is waiting on that answer,
+and a dialog dismissed without one leaves it waiting.
 
 ## The detail page
 

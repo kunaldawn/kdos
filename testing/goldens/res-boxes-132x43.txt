@@ -38,6 +38,6 @@
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
-|                  |                                                                                                               |
 |                  |Enter for one box: its profile, its processes and the verbs                                                    |
+|F1 help  F10 pages  [/] page  Tab panes  Esc Close                                                                                |
 +==================================================================================================================================+

@@ -247,6 +247,54 @@ neither — a leftover glyph otherwise shows through the gap.
 
 **A hint row is drawn whole or not at all.** A message takes whatever room there is.
 
+### The keys contract
+
+Two calls and one descriptor. A surface holds a file-scope `KtuiKeys`, calls `ktui_keys()` first
+in the dispatch it already has, and `ktui_hint_row()` last in the draw it already has.
+
+```c
+static KtuiKeys keys;
+
+static int pane_up(void *user)    { (void)user; return detail_open; }
+static void pane_close(void *user){ (void)user; detail_open = 0; }
+
+/* Once, before the loop AND before any --dump branch: a dumped frame reads
+ * the same Esc verb the live surface does. */
+keys.doc = "settings";                 /* fs/usr/share/kdos/doc/settings.txt */
+keys.help = sh_help;
+ktui_keys_layer(&keys, "Back", pane_up, pane_close, NULL);
+
+/* In the draw, last: */
+ktui_hint_if(nrows > 0, "Enter", "open");
+ktui_hint("Esc", ktui_esc_verb(&keys));
+ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
+
+/* In the dispatch, first: */
+int r = ktui_keys(&keys, &ev);
+if (r == KTUI_KEY_CLOSE) goto done;
+if (r == KTUI_KEY_TAKEN) continue;
+```
+
+`ktui_keys()` returns PASS for everything it does not own, so an unconverted surface behaves byte
+for byte as it did. It takes **every** event and not only a key, because a surface with a menu
+would otherwise need a second call site in its pointer path — and two call sites for one widget
+disagree about which of them saw the click.
+
+**`ktui_hint_row()` must run on every path that draws, including `--dump`.** It clears the pool as
+its first act, before it measures the rect, so a zero-width rect is the right way to drain a frame
+where a message owns the row. A frame that skips it carries its hints into the next one — and
+`kdos-shell` is one binary with thirty-odd front ends sharing that pool.
+
+**Push only what the surface answers right now.** `ktui_hint_if()` exists so a key that is inert
+in the current state does not appear; that is the entire value of the line over a fixed string.
+
+**`kch_buttons()` already pushes `Enter <label>` for its focused enabled button** — do not push a
+second one for it. A bar drawn with focus `-1` pushes nothing, and a surface using one that way
+must push its own Enter hint.
+
+**`F1` is not pushed.** It comes from `keys.doc` and is drawn first. A surface with no page in
+`fs/usr/share/kdos/doc` leaves it NULL; `testing/preflight.sh` refuses a name with no file.
+
 The list, wheel and scrollbar rule is `libkchrome`'s and has exactly one implementation. The
 selection-follow flag is set by everything that **moves the cursor** and by nothing that scrolls the
 page — otherwise the next frame undoes the scroll.
@@ -353,6 +401,8 @@ procedure:
 | 5 | Hit map recorded from the draw | Resize and click the top row |
 | 6 | Dump at two sizes, commit both | `testing/selftest.sh` |
 | 7 | Read it at the vt tier | `--dump` on a console |
+| 8 | One `KtuiKeys`; `ktui_keys()` first, `ktui_hint_row()` last, on every path | `grep -c ktui_hint_row` — the dump path counts |
+| 9 | Every raised state a declared layer, never an `Esc` arm | `grep KT_K_ESC` — a remaining case is one the ladder should own |
 
 ## See also
 
