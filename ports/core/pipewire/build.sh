@@ -9,6 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+# -Dgstreamer=enabled builds the `pipewiresrc` element, which is the only way
+# anything reads a PipeWire node from a pipeline: `kdos-record` drives the
+# ScreenCast portal for a node id and hands it to gst-launch. Without it the
+# element does not exist and the recorder has nothing to read the desktop with.
+# The cost is that pipewire — which every image with sound installs — now pulls
+# gstreamer and gst-plugins-base with it; this tree has no split packages, so
+# the element and the audio server arrive together or not at all.
+
 # Vendor media-session subproject for offline build (wrap-git → directory)
 ln -sf "$SRC_ROOT/media-session-master" subprojects/media-session
 
@@ -25,7 +33,7 @@ meson setup build \
 	-Dlibpulse=disabled \
 	-Dfftw=disabled \
 	-Dopus=disabled \
-	-Dgstreamer=disabled \
+	-Dgstreamer=enabled \
 	-Djack=disabled \
 	-Dpipewire-jack=disabled \
 	-Dpipewire-v4l2=disabled \

@@ -58,29 +58,7 @@
 #define PK_COLS 96
 #define PK_ROWS 32
 
-/*
- * A CELL'S PIXEL SIZE, WHERE THERE IS ONE. Under the compositor the backend
- * knows; as a console surface this program has no pixels at all — the display
- * it is eventually drawn on does, and it scales what arrives. So a console
- * client renders at a nominal size, which bounds what goes on the wire without
- * pretending to know the font somebody else is using. The terminal's inline
- * pictures take the same two numbers for the same reason.
- */
-#define PK_NOMINAL_CW 10
-#define PK_NOMINAL_CH 20
 
-/*
- * WHAT A PICTURE MAY COST, enforced by libkimg before it allocates anything.
- * A header is an allocation request from a file somebody sent you: 65535 by
- * 65535 is eight bytes on disk and sixteen gigabytes in memory.
- */
-#define PK_MAX_W    16384
-#define PK_MAX_H    16384
-#define PK_MAX_PIX  (256u << 20)	/* the decoded image */
-#define PK_MAX_FILE (256u << 20)	/* what is read off the disk */
-/* Sprite tiles for one page. A viewer holds one picture; the second put
- * replaces the first and the evictor frees it. */
-#define PK_SPRITE_BUDGET (64u << 20)
 /* An archive listing stops here. The entry count is the archive's choice. */
 #define PK_MAX_ENTRIES 4096
 
@@ -91,16 +69,10 @@ static const char *base;
 static int kind;
 static char note[192];
 
-/* The picture on the screen, and the tiles registered for it. */
-static pixman_image_t *pic;
-/* The picture's own identity, and the key its tiles are registered under —
- * which is that identity mixed with the SIZE, so a resize registers a second
- * grid rather than replacing the first under a name that no longer describes
- * it. Derived on every use rather than accumulated, or two resizes would fold
- * both sizes into one value. */
-static uint64_t pic_id, pic_key;
-static int pic_cw, pic_ch;
-static int pic_w, pic_h;	/* the decoded size, for the status line */
+/* The picture on the screen and the tiles registered for it — picture.c's,
+ * shared with kdos-pix. */
+static ShPic pic;
+static int have_pic;
 
 /* Documents. `npages` is 0 when `mutool info` said nothing usable, which draws
  * a page number without a total rather than a total that is a guess. */
@@ -145,20 +117,6 @@ static int is_doc(const char *p)
 	return 0;
 }
 
-/* The magic of the formats libkimg has decoders for. The sniff is here as well
- * as inside libkimg because the decision is taken BEFORE the file is read: a
- * two-gigabyte video must not be loaded to discover it is not a PNG. */
-static int looks_like_image(const unsigned char *b, size_t n)
-{
-	if (n >= 8 && !memcmp(b, "\x89PNG\r\n\x1a\n", 8))
-		return 1;
-	if (n >= 3 && b[0] == 0xff && b[1] == 0xd8 && b[2] == 0xff)
-		return 1;
-	if (n >= 12 && !memcmp(b, "RIFF", 4) && !memcmp(b + 8, "WEBP", 4))
-		return 1;
-	return 0;
-}
-
 /* Text is the ABSENCE of a NUL in what a reader would see first. Every other
  * test — a charset guess, a MIME lookup — is a second opinion about a question
  * `less` is about to answer for itself. */
@@ -172,140 +130,8 @@ static int looks_like_text(const unsigned char *b, size_t n)
 
 /* ── the picture ───────────────────────────────────────────────────────── */
 
-static int cell_w(void)
-{
-	int w = kdisp_cell_w();
-
-	return w > 1 ? w : PK_NOMINAL_CW;
-}
-
-static int cell_h(void)
-{
-	int h = kdisp_cell_h();
-
-	return h > 1 ? h : PK_NOMINAL_CH;
-}
-
-/*
- * WHERE A SPRITE'S PIXELS COME FROM when this is a console surface. libkcon
- * links no pixel library and must not; it asks for the bytes through this and
- * puts them on the wire, and the display on the other end scales them to
- * whatever a cell is there. Without it the picture crosses as METADATA only
- * and the pane draws blank — a surface whose whole content is the picture then
- * shows nothing at all.
- */
-static int sprite_bits(const void *pix, const uint32_t **argb, int *w, int *h,
-		       int *stride_px, void *user)
-{
-	pixman_image_t *img = (pixman_image_t *)pix;
-
-	(void)user;
-	if (!img)
-		return -1;
-	*argb = pixman_image_get_data(img);
-	*w = pixman_image_get_width(img);
-	*h = pixman_image_get_height(img);
-	*stride_px = pixman_image_get_stride(img) / 4;
-	return *argb && *w > 0 && *h > 0 ? 0 : -1;
-}
-
-static KimgBudget budget(void)
-{
-	KimgBudget b = { PK_MAX_W, PK_MAX_H, PK_MAX_PIX };
-
-	return b;
-}
-
-/* Something rather than nothing where there are no pixels — a tty, a dump, a
- * view with no pixel library. A picture that rendered as blank cells cannot be
- * told apart from one that failed to arrive. */
-static uint32_t fallback_cp(void)
-{
-	return (ktui_caps & KT_CAP_UTF8) ? 0x2593u : (uint32_t)'#';
-}
-
-static uint64_t hash_bytes(const void *p, size_t n, int cw, int ch)
-{
-	const unsigned char *b = p;
-	uint64_t h = 0xcbf29ce484222325ULL;
-
-	for (size_t i = 0; i < n; i++) {
-		h ^= b[i];
-		h *= 0x100000001b3ULL;
-	}
-	h ^= (uint64_t)cw << 32 | (uint64_t)ch;
-	h *= 0x100000001b3ULL;
-	return h;
-}
-
-/* The whole file, or NULL. Bounded, because the caller has already decided it
- * is a picture and a picture is read into memory entire. */
-static unsigned char *slurp(const char *p, size_t *len)
-{
-	struct stat st;
-	unsigned char *b;
-	FILE *f = fopen(p, "rb");
-
-	if (!f)
-		return NULL;
-	if (fstat(fileno(f), &st) != 0 || !S_ISREG(st.st_mode) ||
-	    (unsigned long long)st.st_size > PK_MAX_FILE) {
-		fclose(f);
-		return NULL;
-	}
-	b = malloc((size_t)st.st_size ? (size_t)st.st_size : 1);
-	if (!b) {
-		fclose(f);
-		return NULL;
-	}
-	*len = fread(b, 1, (size_t)st.st_size, f);
-	fclose(f);
-	return b;
-}
-
-/* Give the table back whatever grid is registered, if any. */
-static void tiles_drop(void)
-{
-	if (pic_cw > 0)
-		ktui_sprite_drop_tiled(pic_key, pic_cw, pic_ch);
-	pic_cw = pic_ch = 0;
-}
-
-static void pic_free(void)
-{
-	tiles_drop();
-	if (pic)
-		pixman_image_unref(pic);
-	pic = NULL;
-}
-
-/* Decode `n` bytes into the picture this surface shows. The key is over the
- * BYTES, so the same page rendered twice reuses its slots. */
-static int pic_set(const unsigned char *b, size_t n)
-{
-	KimgBudget bud = budget();
-
-	/*
-	 * THE SOURCE IS REPLACED HERE; THE TILES ARE NOT. They are given back
-	 * only once the next page's are registered — see tiles_for(). Each
-	 * tile is an image of its own that the table owns, so unreffing this
-	 * one takes none of them with it.
-	 */
-	if (pic)
-		pixman_image_unref(pic);
-	pic = kimg_decode(b, n, KIMG_AUTO, &bud);
-	if (!pic) {
-		tiles_drop();
-		return -1;
-	}
-	pic_w = pixman_image_get_width(pic);
-	pic_h = pixman_image_get_height(pic);
-	/* The WHOLE buffer: two pages of a scan can share their first
-	 * kilobytes, and a key that collided would draw the previous page. */
-	pic_id = hash_bytes(b, n, pic_w, pic_h);
-	pic_key = pic_id;
-	return 0;
-}
+/* The magic sniff, the decode, the crop, the tiles and the draw are picture.c's
+ * and shared with kdos-pix. What is left here is which of them to call. */
 
 /* ── documents, through mutool ─────────────────────────────────────────── */
 
@@ -371,12 +197,13 @@ static int doc_render(int pane_px_w, int pane_px_h)
 			 page);
 		return -1;
 	}
-	b = slurp(tmp, &n);
+	b = sh_pic_slurp(tmp, &n);
 	/* The temporary is this call's and nothing else reads it. */
 	unlink(tmp);
 	if (!b)
 		return -1;
-	rc = pic_set(b, n);
+	rc = sh_pic_set(&pic, b, n);
+	have_pic = rc == 0;
 	free(b);
 	if (rc != 0)
 		snprintf(note, sizeof(note), "page %d is not a picture", page);
@@ -465,121 +292,23 @@ static void pane_cells(int *x, int *y, int *w, int *h)
 		*h = 1;
 }
 
-/*
- * Fit the decoded picture to the pane in CELLS, never enlarging it: a 32-pixel
- * icon blown up to a window is a blur of what the file actually holds. A cell
- * is not square, so the two axes are converted through the cell's pixel size
- * rather than compared directly.
- */
-static void fit_cells(int pane_w, int pane_h, int *cw, int *ch)
-{
-	int cellw = cell_w();
-	int cellh = cell_h();
-	long long maxw = (long long)pane_w * cellw;
-	long long maxh = (long long)pane_h * cellh;
-	long long dw = pic_w, dh = pic_h;
-
-	if (dw <= 0 || dh <= 0) {
-		*cw = *ch = 0;
-		return;
-	}
-	if (dw > maxw) {
-		dh = dh * maxw / dw;
-		dw = maxw;
-	}
-	if (dh > maxh) {
-		dw = dw * maxh / dh;
-		dh = maxh;
-	}
-	*cw = (int)((dw + cellw - 1) / cellw);
-	*ch = (int)((dh + cellh - 1) / cellh);
-	if (*cw < 1)
-		*cw = 1;
-	if (*ch < 1)
-		*ch = 1;
-	if (*cw > pane_w)
-		*cw = pane_w;
-	if (*ch > pane_h)
-		*ch = pane_h;
-}
-
-/*
- * Register the tiles for the current picture at the current pane size, once
- * per size rather than once per frame: the slots are keyed by content and a
- * re-put of the same key would still rescale the picture every draw.
- */
-static void tiles_for(int cw, int ch)
-{
-	uint64_t key = pic_id ^ ((uint64_t)cw << 40) ^ ((uint64_t)ch << 24);
-	uint64_t okey = pic_key;
-	int ocw = pic_cw, och = pic_ch;
-
-	if (!pic || cw < 1 || ch < 1)
-		return;
-	if (pic_cw == cw && pic_ch == ch && pic_key == key)
-		return;
-
-	/*
-	 * THE NEW GRID IS REGISTERED BEFORE THE OLD ONE IS GIVEN BACK, and
-	 * both halves of that matter. The table hands a freed slot straight
-	 * out again, so dropping first lets the next page take the same slot
-	 * numbers — the cells then encode what they already encoded, the row
-	 * diff sees nothing, and the screen keeps the previous page. The
-	 * allocator does the same with the freed tiles' memory, so the picture
-	 * behind a slot comes back as a pointer the display has already been
-	 * sent and the pixels are never sent again either.
-	 */
-	if (kcell_tile_picture(pic, key, cw, ch, cell_w(), cell_h(),
-			       fallback_cp()) > 0) {
-		pic_key = key;
-		pic_cw = cw;
-		pic_ch = ch;
-		if (ocw > 0 && okey != key)
-			ktui_sprite_drop_tiled(okey, ocw, och);
-	} else {
-		/* Nothing rather than half a picture: the pane says so. */
-		tiles_drop();
-	}
-}
-
 static void draw_picture(void)
 {
 	int px, py, pw, ph, cw = 0, ch = 0;
 
 	pane_cells(&px, &py, &pw, &ph);
-	fit_cells(pw, ph, &cw, &ch);
-	tiles_for(cw, ch);
-	if (pic_cw < 1) {
+	sh_pic_fit(pic.w, pic.h, pw, ph, &cw, &ch);
+	/* The whole picture, so the source rectangle is all of it: zoom and
+	 * pan are kdos-pix's, and a quick look is the file as it is. */
+	sh_pic_view(&pic, 0, 0, pic.w, pic.h, cw, ch);
+	if (pic.cw < 1) {
 		const char *msg = "no pixels on this display";
 
 		ktui_draw_text(px + (pw - (int)strlen(msg)) / 2, py + ph / 2,
 			       pw, msg, KT_MID, KT_SURFACE, KT_A_NONE);
 		return;
 	}
-	{
-		int x0 = px + (pw - pic_cw) / 2;
-		int y0 = py + (ph - pic_ch) / 2;
-
-		/* Tile by tile, because the table registers a picture as a
-		 * GRID of sprites and each one is drawn at its own origin. */
-		for (int ty = 0; ty < pic_ch; ty += 16)
-			for (int tx = 0; tx < pic_cw; tx += 16) {
-				int slot = ktui_sprite_tile_at(pic_key, pic_cw,
-							      tx, ty, NULL,
-							      NULL);
-				int tw = pic_cw - tx, th = pic_ch - ty;
-
-				if (slot < 0)
-					continue;
-				if (tw > 16)
-					tw = 16;
-				if (th > 16)
-					th = 16;
-				ktui_draw_sprite(krect(x0 + tx, y0 + ty, tw,
-						       th),
-						 slot, KT_TEXT, KT_SURFACE);
-			}
-	}
+	sh_pic_draw(&pic, px + (pw - pic.cw) / 2, py + (ph - pic.ch) / 2);
 }
 
 static void draw_archive(void)
@@ -623,8 +352,8 @@ static void draw(void)
 		snprintf(title, sizeof(title), "%s — %d entr%s", base, nents,
 			 nents == 1 ? "y" : "ies");
 	else if (kind == PK_IMAGE)
-		snprintf(title, sizeof(title), "%s — %dx%d", base, pic_w,
-			 pic_h);
+		snprintf(title, sizeof(title), "%s — %dx%d", base, pic.w,
+			 pic.h);
 	else
 		snprintf(title, sizeof(title), "%s", base);
 
@@ -633,7 +362,7 @@ static void draw(void)
 
 	if (kind == PK_ARCHIVE)
 		draw_archive();
-	else if (pic)
+	else if (have_pic)
 		draw_picture();
 	else {
 		const char *msg = note[0]	 ? note
@@ -691,16 +420,18 @@ static int classify(void)
 		fclose(f);
 	}
 
-	if (looks_like_image(head, n)) {
+	if (sh_pic_is_image(head, n)) {
 		unsigned char *b;
 		size_t len = 0;
 
 		kind = PK_IMAGE;
-		b = slurp(path, &len);
+		b = sh_pic_slurp(path, &len);
 		if (b) {
-			if (pic_set(b, len) != 0)
+			if (sh_pic_set(&pic, b, len) != 0)
 				snprintf(note, sizeof(note),
 					 "this picture could not be decoded");
+			else
+				have_pic = 1;
 			free(b);
 		}
 		return 0;
@@ -773,22 +504,14 @@ int peek_main(int argc, char **argv)
 		return 1;
 	}
 	ktui_draw_init();
-	/* AFTER kdisp_init, never before: the console backend clears its whole
-	 * client state when it connects, so a callback registered earlier is
-	 * erased and every picture crosses as metadata the session maps to
-	 * nothing — which draws as blank cells, not as the fallback. */
-	kcon_set_sprite_bits(sprite_bits, NULL);
-	/* The evictor and the budget together: the table holds a borrowed
-	 * pointer, so without an evictor every page turn leaks a picture and
-	 * the table fills. */
-	ktui_sprite_evictor(kcell_tile_free, NULL);
-	ktui_sprite_budget(PK_SPRITE_BUDGET, cell_w(), cell_h());
+	/* AFTER kdisp_init, never before — see picture.c. */
+	sh_pic_backend();
 
 	if (kind == PK_DOC) {
 		int px, py, pw, ph;
 
 		pane_cells(&px, &py, &pw, &ph);
-		doc_render(pw * cell_w(), ph * cell_h());
+		doc_render(pw * sh_pic_cell_w(), ph * sh_pic_cell_h());
 	}
 
 	while (!kdisp_should_close()) {
@@ -808,8 +531,8 @@ int peek_main(int argc, char **argv)
 					int px, py, pw, ph;
 
 					pane_cells(&px, &py, &pw, &ph);
-					doc_render(pw * cell_w(),
-						   ph * cell_h());
+					doc_render(pw * sh_pic_cell_w(),
+						   ph * sh_pic_cell_h());
 				}
 			}
 			continue;
@@ -881,7 +604,7 @@ repage:
 			int px, py, pw, ph;
 
 			pane_cells(&px, &py, &pw, &ph);
-			if (doc_render(pw * cell_w(), ph * cell_h()) != 0 &&
+			if (doc_render(pw * sh_pic_cell_w(), ph * sh_pic_cell_h()) != 0 &&
 			    page > 1 &&
 			    npages <= 0)
 				/* Past the end of a document whose length is
@@ -890,7 +613,7 @@ repage:
 		}
 	}
 
-	pic_free();
+	sh_pic_free(&pic);
 	free(ents);
 	kdisp_shutdown();
 	return 0;

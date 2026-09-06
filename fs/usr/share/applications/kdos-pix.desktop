@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Pictures
+GenericName=Image Viewer
+Comment=One picture, and the folder it is in
+Exec=kdos-pix %f
+Icon=image-x-generic
+Terminal=false
+NoDisplay=true
+MimeType=image/png;image/jpeg;image/webp;
+Categories=Graphics;Viewer;
+StartupWMClass=kdos-pix

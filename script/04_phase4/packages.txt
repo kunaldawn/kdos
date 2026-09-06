@@ -131,6 +131,11 @@ powertop
 git
 nano
 less
+file
+lesspipe
+docx2txt
+doxx
+epy
 procps-ng
 psmisc
 pciutils

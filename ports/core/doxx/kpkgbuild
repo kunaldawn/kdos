@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = doxx
+version     = 0.1.4
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/bgreenwell/$name/archive/refs/tags/v$version.tar.gz
+sha256      = 72af676ca30b27adc7a13b17a48aac88589c940accba28453f3d94a861bed961  doxx-0.1.4.tar.gz
+sha256      = bea81f0c6705e49e7dade437514dceb234e45cdd3eff01b2cad17cb621f67978  doxx-vendor-0.1.4.tar.xz
+description = A .docx reader in the terminal
+homepage    = https://github.com/bgreenwell/doxx
+depends     = rust
+vendoring   = rust

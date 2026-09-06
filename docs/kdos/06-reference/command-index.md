@@ -28,6 +28,8 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-comp` | The compositor | [kdos-comp](../04-programs/kdos-comp.md) |
 | `kdos-desk` | The desktop and its icons | [kdos-shell](../04-programs/kdos-shell.md#kdos-desk) |
 | `kdos-peek` | What is in a file, without starting its application | [kdos-shell](../04-programs/kdos-shell.md#kdos-peek) |
+| `kdos-find` | Files by name or contents, applications and recents | [kdos-shell](../04-programs/kdos-shell.md#kdos-find) |
+| `kdos-pix` | One picture, and the folder it is in | [kdos-shell](../04-programs/kdos-shell.md#kdos-pix) |
 | `kdos-desktop` | Start a session | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-desktop-start` | Bring up services, then the compositor | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-devices` | Cameras, microphones, removable media | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
@@ -58,6 +60,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-con-login` | The tty1 login: greeter or autologin | [kdos-con](../04-programs/kdos-con.md#the-login) |
 | `kdos-con-start` | Bring up the console session | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-grid` | A console session and a view, in one command | [kdos-con](../04-programs/kdos-con.md#four-names-one-binary) |
+| `kdos-record` | Record the desktop to a file, through the ScreenCast portal | [The session](../03-architecture/session.md#the-kdos-backend) |
 | `kdos-res` | The resource monitor | [kdos-res](../04-programs/kdos-res.md) |
 | `kdos-term` | The terminal: `-e`, `--title`, `--font`, `-D DIR`, `--tty`, `--dump WxH` | [kdos-term](../04-programs/kdos-term.md) |
 | `kdos-cage` | One application full screen, or embedded: `-d`, `-D`, `-m extend\|last`, `-s`, `-v`, `--embed WxH` | [kdos-cage](../04-programs/kdos-cage.md) |
@@ -69,10 +72,10 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-settings` | Settings | [kdos-shell](../04-programs/kdos-shell.md#kdos-settings) |
 | `kdos-sfx` | Sound effects | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
 | `kdos-shell` | The panel | [kdos-shell](../04-programs/kdos-shell.md#the-panel) |
-| `kdos-shot` | Screenshots. On the console, through `kdos-view --shot` | [The desktop](../02-user-guide/desktop.md) |
+| `kdos-shot [region\|screen] [--geom X,Y,W,H]` | Screenshots. On the console, through `kdos-view --shot`; `--geom` is a rectangle in cells and only the console has one | [The desktop](../02-user-guide/desktop.md) |
 | `kdos-slit` | The dockapp column | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-view` | A display for a console session: `--kms`, `--kms-only`, `--tty`, `--dump`, `--shot`, `--cast` | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
-| `kdos-view --shot FILE.png` | One settled frame of the composited grid, rasterised through the painter a screen uses | [kdos-con](../04-programs/kdos-con.md) |
+| `kdos-view --shot FILE.png [--crop X,Y,W,H]` | One settled frame of the composited grid, rasterised through the painter a screen uses; the crop is in cells | [kdos-con](../04-programs/kdos-con.md) |
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
 | `kdos-start` | The Start menu | [kdos-shell](../04-programs/kdos-shell.md#kdos-start) |
 | `kdos-status` | The overflow popup | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |

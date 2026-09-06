@@ -19,4 +19,7 @@ sed -i 's/# CONFIG_STTY is not set/CONFIG_STTY=y/' .config
 sed -i 's/CONFIG_TAR=y/# CONFIG_TAR is not set/' .config
 sed -i 's/CONFIG_GETOPT=y/# CONFIG_GETOPT is not set/' .config
 sed -i 's/CONFIG_PATCH=y/# CONFIG_PATCH is not set/' .config
+sed -i 's/CONFIG_FILE=y/# CONFIG_FILE is not set/' .config
+sed -i 's/CONFIG_LOGIN=y/# CONFIG_LOGIN is not set/' .config
+sed -i 's/CONFIG_SU=y/# CONFIG_SU is not set/' .config
 make PREFIX=$PKG install -j1

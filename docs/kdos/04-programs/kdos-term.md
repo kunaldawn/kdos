@@ -177,6 +177,13 @@ decides how many **cells** the picture occupies, and writes sprite cells into th
 and the cut into tiles are `libkcell`'s, shared with `kdos-peek` — two implementations of it would
 be two answers to how a photograph is resampled.
 
+**An animated GIF arrives whole and takes the same frame machinery** the kitty protocol fills a
+frame at a time. `libkimg` returns every frame with the delay after it; the first is placed and the
+rest go into the store, so the timer, the eviction, the budget and the replace-the-pixels-under-the
+-same-key trick are all the ones that were already there. The frames are *taken*, not composed:
+`libnsgif` has already applied disposal and transparency, so each one is the complete canvas and
+compositing it over the first would show the first through anything transparent in a later one.
+
 **Into the SCREEN, not into an overlay beside it.** That is what makes a picture scroll with its
 output, disappear on `clear` and reach the scrollback — three behaviours an overlay would have to
 reimplement against a screen already doing all three.
@@ -207,6 +214,13 @@ the same part of a cell.
 A frame is a picture with a delay after it, which is how the protocol describes one and is all this
 holds. `a=f` transmits one — whole, or a rectangle composed onto an earlier frame at an offset —
 and `a=a` runs it, stops it, or sets how many times round.
+
+**A frame that changes no cell still has to reach the display.** Over the console protocol the
+client sends a sprite when the table's put counter for that slot moved — not when the pointer did,
+because the evictor frees the previous frame at the moment the next is registered and the allocator
+hands the same block straight back. On the display side the cells are byte-identical for the same
+reason, so the view forces that frame rather than letting its diff drop it. Both are the same fact
+seen from two ends: a sprite cell encodes the slot, not the picture.
 
 **A FRAME REPLACES THE PICTURE UNDER THE SAME SPRITE KEY**, so the screen is never rewritten. The
 cells naming those slots go on naming them and only the pixels behind them change. An animation

@@ -80,7 +80,7 @@ if pkg-config --exists pixman-1 2>/dev/null; then
     KIMG_FLAGS="-DHAVE_KIMG -Isrc/libs/libkimg $(pkg-config --cflags pixman-1)"
     KIMG_SRC="src/libs/libkimg/kimg.c"
     KIMG_LIBS="$(pkg-config --libs pixman-1)"
-    for f in PNG:libpng JPEG:libjpeg WEBP:libwebp SIXEL:libsixel; do
+    for f in PNG:libpng JPEG:libjpeg WEBP:libwebp SIXEL:libsixel GIF:libnsgif; do
         _d=${f%%:*}
         _p=${f#*:}
         pkg-config --exists "$_p" 2>/dev/null || continue
@@ -540,13 +540,14 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                     "$PROTO/$wp-client-protocol.h"
             done
             for f in src/desktop/kdos-shell/*.c; do
-                # kdos-peek is the one front end with a decoder and an archive
-                # reader behind it. Absent either, it is skipped BY NAME rather
-                # than the whole shell compile being gated on libraries the
-                # other forty files do not need.
+                # kdos-peek, kdos-pix and the picture unit they share are the
+                # files with a decoder and an archive reader behind them.
+                # Absent either library they are skipped BY NAME rather than
+                # the whole shell compile being gated on libraries the other
+                # forty files do not need.
                 _pk=""
                 case "$f" in
-                */peek.c)
+                */peek.c|*/pix.c|*/picture.c)
                     if pkg-config --exists libarchive libpng libjpeg libwebp \
                             2>/dev/null; then
                         _pk="-Isrc/libs/libkimg -DKIMG_HAVE_PNG"
@@ -554,7 +555,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                         _pk="$_pk $(pkg-config --cflags libarchive libpng \
                                                 libjpeg libwebp)"
                     else
-                        echo "  peek.c (skipped — no libarchive)"
+                        echo "  $(basename "$f") (skipped — no libarchive)"
                         continue
                     fi
                     ;;
@@ -2963,6 +2964,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     if pkg-config --exists libarchive libpng libjpeg libwebp 2>/dev/null; then
         DPEEK_PC="libarchive libpng libjpeg libwebp"
         DPEEK_SRC="src/libs/libkimg/kimg.c src/libs/libkcell/kcell_tile.c"
+        DPEEK_SRC="$DPEEK_SRC src/desktop/kdos-shell/picture.c"
         DPEEK_CF="-Isrc/libs/libkimg -DKIMG_HAVE_PNG -DKIMG_HAVE_JPEG -DKIMG_HAVE_WEBP"
         DEXTRA_PC="$DEXTRA_PC $DPEEK_PC"
     fi
@@ -2972,12 +2974,17 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     DNEW=""
     DBAD=""
     for s in keys teams saver slit doc settings openwith audio \
-             start net bt devices notify status tip panel trash peek; do
+             start net bt devices notify status tip panel trash peek \
+             find pix; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
-        [ "$s" = peek ] && [ -z "$DPEEK_PC" ] && {
-            DBAD="$DBAD peek(no libarchive)"
-            continue
-        }
+        case "$s" in
+        peek|pix)
+            [ -z "$DPEEK_PC" ] && {
+                DBAD="$DBAD $s(no libarchive)"
+                continue
+            }
+            ;;
+        esac
         if $CC $STD $SHWARN -fsyntax-only -I"$DPROTO" $DPEEK_CF \
                 -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
@@ -3024,12 +3031,13 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     # a harness that linked four decoders for a surface it does not carry
     # would fail on a host that has them and nothing that needs them.
     case " $DNEW " in
-    *peek.c*) DNEW="$DNEW $DPEEK_SRC" ;;
+    *peek.c*|*pix.c*) DNEW="$DNEW $DPEEK_SRC" ;;
     esac
     if [ -n "$DNEW" ] && dumpbuild $DNEW 2>"$OUT/dumpnew.err"; then
         DUMPCK="$OUT/dumpcheck"
         echo "  harness: cal menu launcher pick $(echo $DNEW | \
-            sed 's,src/libs/[^ ]*,,g; s,src/desktop/kdos-shell/,,g; s,\.c,,g')"
+            sed 's,src/libs/[^ ]*,,g; s,[^ ]*/picture\.c,,g; \
+                 s,src/desktop/kdos-shell/,,g; s,\.c,,g')"
     elif dumpbuild; then
         # Every candidate compiled on its own, so a failure here is a LINK
         # failure — a surface wanting a library this harness does not offer.
@@ -3273,6 +3281,31 @@ done
 # kdos-peek takes a FILE, so it cannot ride the loop above. The fixture is a
 # committed tar built with a fixed mtime and uid: the listing draws names and
 # sizes only, so the frame is the same on every machine.
+# kdos-pix on a fixture folder of two: the title carries the position in the
+# folder and the zoom, and a dump has no pixels — so what the frame asserts is
+# the chrome and the fallback the picture leaves in its top-left cell.
+if "$DUMPCK" --have pix; then
+    golden pix 80x24  pix pix/one.png --dump
+    golden pix 132x43 pix pix/one.png --dump
+elif [ -f "$GOLD/pix-80x24.txt" ]; then
+    echo "  pix: a golden is committed but the surface no longer links"
+    golden_fail=1
+else
+    echo "  pix (skipped — not linked into the harness)"
+fi
+
+# kdos-find with no question drawn: the empty state is the frame a person sees
+# first, and it is the one that says the field takes typing.
+if "$DUMPCK" --have find; then
+    golden find 80x24  find --dump /tmp
+    golden find 132x43 find --dump /tmp
+elif [ -f "$GOLD/find-80x24.txt" ]; then
+    echo "  find: a golden is committed but the surface no longer links"
+    golden_fail=1
+else
+    echo "  find (skipped — not linked into the harness)"
+fi
+
 if "$DUMPCK" --have peek; then
     golden peek-archive 80x24  peek peek.tar --dump
     golden peek-archive 132x43 peek peek.tar --dump

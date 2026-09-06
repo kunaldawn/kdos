@@ -395,6 +395,8 @@ const char *con_command(int which)
 		[CON_CMD_CALC]     = { "calculator", "kdos-calc" },
 		[CON_CMD_NOTE]     = { "notes",    "kdos-note" },
 		[CON_CMD_CLIP]     = { "clipboard", "kdos-clip" },
+		[CON_CMD_FIND]     = { "find",     "kdos-find" },
+		[CON_CMD_CAPTURE]  = { "capture",  "kdos-shot" },
 	};
 
 	if (which < 0 || which >= CON_CMD_N)
@@ -587,6 +589,8 @@ int con_rearranging(void)
  */
 static struct {
 	int on;
+	int capture;		/* also file the rectangle as a picture */
+	int dragging;		/* the button is down and drawing the box */
 	int ax, ay;		/* the anchor: where the mark started */
 	int cx, cy;		/* the caret */
 } mark;
@@ -596,7 +600,7 @@ int con_marking(void)
 	return mark.on;
 }
 
-static void mark_begin(void)
+static void mark_begin(int capture)
 {
 	Win *w = win_focused();
 
@@ -613,7 +617,19 @@ static void mark_begin(void)
 	mark.ax = mark.cx;
 	mark.ay = mark.cy;
 	mark.on = 1;
+	mark.capture = capture;
+	mark.dragging = 0;
 	ktui_draw_invalidate();
+}
+
+/* The rectangle, corners sorted. The anchor and the caret are either way
+ * round, and every reader of the mark wants x0 <= x1 and y0 <= y1. */
+static void mark_rect(int *x0, int *y0, int *x1, int *y1)
+{
+	*x0 = mark.ax < mark.cx ? mark.ax : mark.cx;
+	*x1 = mark.ax < mark.cx ? mark.cx : mark.ax;
+	*y0 = mark.ay < mark.cy ? mark.ay : mark.cy;
+	*y1 = mark.ay < mark.cy ? mark.cy : mark.ay;
 }
 
 /*
@@ -632,12 +648,11 @@ static void mark_copy(void)
 	 * rectangle of spaces.
 	 */
 	const KtuiCell *cells = ktui_draw_cells(&w, &h);
-	int x0 = mark.ax < mark.cx ? mark.ax : mark.cx;
-	int x1 = mark.ax < mark.cx ? mark.cx : mark.ax;
-	int y0 = mark.ay < mark.cy ? mark.ay : mark.cy;
-	int y1 = mark.ay < mark.cy ? mark.cy : mark.ay;
+	int x0, x1, y0, y1;
 	char *buf;
 	size_t cap, len = 0;
+
+	mark_rect(&x0, &y0, &x1, &y1);
 
 	if (!cells || w <= 0 || h <= 0)
 		return;
@@ -682,13 +697,11 @@ static void mark_copy(void)
 
 void con_mark_draw(void)
 {
+	int x0, x1, y0, y1;
+
 	if (!mark.on)
 		return;
-
-	int x0 = mark.ax < mark.cx ? mark.ax : mark.cx;
-	int x1 = mark.ax < mark.cx ? mark.cx : mark.ax;
-	int y0 = mark.ay < mark.cy ? mark.ay : mark.cy;
-	int y1 = mark.ay < mark.cy ? mark.cy : mark.ay;
+	mark_rect(&x0, &y0, &x1, &y1);
 
 	/*
 	 * REVERSED, NOT REPAINTED. The cells under the mark belong to whatever
@@ -697,6 +710,79 @@ void con_mark_draw(void)
 	 * the extent of.
 	 */
 	ktui_draw_reverse(krect(x0, y0, x1 - x0 + 1, y1 - y0 + 1));
+}
+
+/*
+ * THE END OF A MARK: the text always, the picture when this was a capture.
+ *
+ * THE MARK IS TAKEN DOWN BEFORE THE PICTURE IS ASKED FOR. `CON_CMD_CAPTURE`
+ * photographs the session by attaching a second view to it, so a rectangle
+ * still drawn in reverse video would be reverse video in the file.
+ *
+ * The geometry is CELLS, which is what the console has; the program it names
+ * hands the same four numbers to a view, and a view is the only thing in the
+ * tree that knows what a cell is in pixels.
+ */
+static void mark_finish(void)
+{
+	int x0, y0, x1, y1;
+	int capture = mark.capture;
+	char cmd[256];
+	const char *prog;
+
+	mark_rect(&x0, &y0, &x1, &y1);
+	mark_copy();
+	mark.on = 0;
+	mark.capture = 0;
+	mark.dragging = 0;
+	ktui_draw_invalidate();
+	if (!capture)
+		return;
+	prog = con_command(CON_CMD_CAPTURE);
+	if (!prog || !*prog)
+		return;
+	if (snprintf(cmd, sizeof(cmd), "%s region --geom %d,%d,%d,%d", prog,
+		     x0, y0, x1 - x0 + 1, y1 - y0 + 1) < (int)sizeof(cmd))
+		con_spawn(cmd);
+}
+
+/*
+ * THE POINTER DRAWS THE SAME RECTANGLE the arrows do. The mark owns the
+ * pointer while it is on, for the reason it owns the keyboard: a press that
+ * fell through would raise a window over the region being marked, and a
+ * capture would photograph that instead.
+ */
+static void mark_ptr(const KtuiEvent *ev)
+{
+	int x = ev->mx, y = ev->my;
+
+	if (x < 0)
+		x = 0;
+	if (y < 0)
+		y = 0;
+	if (x >= S.cols)
+		x = S.cols - 1;
+	if (y >= S.rows)
+		y = S.rows - 1;
+
+	if (ev->press == KT_MP_PRESS) {
+		mark.ax = mark.cx = x;
+		mark.ay = mark.cy = y;
+		mark.dragging = 1;
+	} else if (!mark.dragging) {
+		return;
+	} else if (ev->press == KT_MP_DRAG) {
+		mark.cx = x;
+		mark.cy = y;
+	} else if (ev->press == KT_MP_RELEASE) {
+		mark.cx = x;
+		mark.cy = y;
+		mark_finish();
+		return;
+	} else {
+		return;
+	}
+	ktui_draw_invalidate();
 }
 
 /* True when the key was the mark's. It owns the keyboard while it is on. */
@@ -709,12 +795,12 @@ static int mark_key(const KtuiEvent *ev)
 	switch (ev->key) {
 	case KT_K_ESC:
 		mark.on = 0;
+		mark.capture = 0;
+		mark.dragging = 0;
 		ktui_draw_invalidate();
 		return 1;
 	case KT_K_ENTER:
-		mark_copy();
-		mark.on = 0;
-		ktui_draw_invalidate();
+		mark_finish();
 		return 1;
 	case KT_K_LEFT:  dx = -step; break;
 	case KT_K_RIGHT: dx =  step; break;
@@ -854,7 +940,10 @@ static int session_key(const KtuiEvent *ev)
 		win_list_toggle();
 		return 1;
 	case CON_ACT_MARK:
-		mark_begin();
+		mark_begin(0);
+		return 1;
+	case CON_ACT_CAPTURE:
+		mark_begin(1);
 		return 1;
 	case CON_ACT_PASTE: {
 		/*
@@ -1058,6 +1147,12 @@ static void route_ptr(const KtuiEvent *ev)
 		if (S.lock && S.lock->surf)
 			kcon_surface_ptr(S.lock->surf, ev->mx, ev->my,
 					 ev->btn, ev->press);
+		return;
+	}
+
+	/* The mark owns the pointer while it is on — see mark_ptr(). */
+	if (mark.on) {
+		mark_ptr(ev);
 		return;
 	}
 

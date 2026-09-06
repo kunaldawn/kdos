@@ -64,14 +64,20 @@ static struct {
 	unsigned ws_occupied;
 
 	/*
-	 * WHICH PICTURE WAS LAST SENT FOR EACH SLOT, as the pointer the sprite
-	 * table holds. A flag saying "sent" would be wrong for an animation:
-	 * every frame registers new pixels under the SAME key and therefore in
-	 * the same slot, without touching a single cell — so the cells never
+	 * WHICH PICTURE WAS LAST SENT FOR EACH SLOT, as the sprite table's put
+	 * counter. A flag saying "sent" would be wrong for an animation: every
+	 * frame registers new pixels under the SAME key and therefore in the
+	 * same slot, without touching a single cell — so the cells never
 	 * change, the diff finds nothing, and a display would hold the first
 	 * frame for ever.
+	 *
+	 * THE COUNTER AND NOT THE POINTER, because the pointer is reused. The
+	 * evictor frees the previous frame at the moment the next one is
+	 * registered, and the allocator hands the same block straight back —
+	 * so a pointer comparison says "already sent" for every frame after
+	 * the first, and the animation plays everywhere except over the wire.
 	 */
-	const void *sent_pix[KTUI_MAX_SPRITES];
+	unsigned long sent_gen[KTUI_MAX_SPRITES];
 	KconSpriteBits bits_fn;
 	void *bits_user;
 
@@ -252,7 +258,7 @@ static void handle(const KconMsg *m)
 		 * sent is the whole of it: the next flush walks the table, sees
 		 * every picture as new, and sends them all before any cell.
 		 */
-		memset(C.sent_pix, 0, sizeof(C.sent_pix));
+		memset(C.sent_gen, 0, sizeof(C.sent_gen));
 		ktui_draw_invalidate();
 		break;
 	case KCON_OP_TOPLEVEL_ADD: {
@@ -448,13 +454,13 @@ static void cl_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		const KtuiSprite *sp = ktui_sprite_get(slot);
 
 		if (!sp) {
-			C.sent_pix[slot] = NULL;
+			C.sent_gen[slot] = 0;
 			continue;
 		}
-		if (!used[slot] || sp->pix == C.sent_pix[slot])
+		if (!used[slot] || sp->gen == C.sent_gen[slot])
 			continue;
 		send_sprite(slot, sp);
-		C.sent_pix[slot] = sp->pix;
+		C.sent_gen[slot] = sp->gen;
 	}
 
 	for (int y = 0; y < h; y++) {

@@ -127,6 +127,7 @@ static void usage(FILE *f)
 "                     rather than a fall back to this terminal\n"
 "  --tty              draw in this terminal\n"
 "  --shot FILE.png    take one frame and write it as a picture\n"
+"  --crop X,Y,W,H     the part of the grid a shot covers, in cells\n"
 "  --dump [COLSxROWS] take one frame and write it as cells; without a\n"
 "                     size it takes the session's own grid\n"
 "  --cast             rasterise into a PipeWire stream instead of onto a\n"
@@ -642,12 +643,20 @@ static void draw_one(int x, int y, const KtuiCell *c)
 #ifdef KDOS_VIEW_PIXELS
 /*
  * A PICTURE ARRIVED FOR CELLS THAT ARE ALREADY DRAWN. Only those cells are
- * repainted, out of the copy of what the session sent — the alternative is a
- * full repaint on every frame of an animation, which is the one thing a cell
- * grid is supposed to avoid.
+ * repainted, out of the copy of what the session sent.
+ *
+ * AND THE FRAME IS FORCED, which is the one case where that is right. A sprite
+ * cell encodes the SLOT, not the picture — so an animation's next frame writes
+ * byte-identical cells, the flush's diff finds nothing to send, and the screen
+ * holds the first frame for ever. This is the only place where the cells are
+ * unchanged and the pixels behind them are not, and a forced paint is what
+ * says so. It costs a full repaint per animation frame, and only while
+ * something is animating.
  */
 static void redraw_slot(unsigned slot)
 {
+	int hit = 0;
+
 	if (!shadow)
 		return;
 	for (int y = 0; y < shadow_h; y++)
@@ -658,7 +667,10 @@ static void redraw_slot(unsigned slot)
 			    KTUI_SPRITE_SLOT(c->ch) != slot)
 				continue;
 			draw_one(x, y, c);
+			hit = 1;
 		}
+	if (hit)
+		ktui_draw_invalidate();
 }
 #endif
 
@@ -882,6 +894,7 @@ int main(int argc, char **argv)
 	int cols = 0, rows = 0, tty = 0, kms = 0, dump = 0, cast = 0;
 	int kms_only = 0;
 	const char *shot = NULL;
+	int crop[4] = { 0, 0, 0, 0 };
 
 	signal(SIGHUP, on_hup);
 
@@ -924,6 +937,20 @@ int main(int argc, char **argv)
 			 */
 			shot = argv[++i];
 			dump = 1;
+			continue;
+		}
+		if (!strcmp(argv[i], "--crop") && i + 1 < argc) {
+			/*
+			 * CELLS, because the session that asks for a crop has
+			 * no other unit; the view turns them into pixels
+			 * because it is the end that knows the font.
+			 */
+			if (sscanf(argv[++i], "%d,%d,%d,%d", &crop[0],
+				   &crop[1], &crop[2], &crop[3]) != 4) {
+				fprintf(stderr,
+					"kdos-view: --crop wants X,Y,W,H in cells\n");
+				return 2;
+			}
 			continue;
 		}
 		if (!strcmp(argv[i], "--dump")) {
@@ -1273,7 +1300,8 @@ int main(int argc, char **argv)
 		}
 #ifdef KDOS_VIEW_SHOT
 		if (shot) {
-			int rc = view_shot_png(shot, 1);
+			int rc = view_shot_png(shot, 1, crop[0],
+					       crop[1], crop[2], crop[3]);
 
 			kcon_conn_free(conn);
 			return rc == 0 ? 0 : 1;

@@ -22,6 +22,12 @@
  * an untrusted peer: a decompression bomb is four lines of sixel, and a PNG
  * that says 65535x65535 is eight bytes on the wire and sixteen gigabytes in
  * memory. Refusing after decoding is not refusing.
+ *
+ * HEIF AND AVIF ARE OUT, and stay out. Both are containers around a video
+ * codec — libheif reaches libde265 or dav1d — so accepting them would put a
+ * video decoder on the path bytes from a pty travel down, which is the one
+ * thing the budget above cannot bound. A picture in either arrives as a file
+ * somebody chose to open, and `magick` converts it for the thumbnailer.
  * ---------------------------------
  */
 
@@ -57,7 +63,8 @@ enum {
 	KIMG_SIXEL,
 	KIMG_PNG,
 	KIMG_JPEG,
-	KIMG_WEBP
+	KIMG_WEBP,
+	KIMG_GIF
 };
 
 /*
@@ -71,6 +78,26 @@ enum {
  */
 pixman_image_t *kimg_decode(const void *bytes, size_t len, int type,
 			    const KimgBudget *budget);
+
+/*
+ * EVERY FRAME OF THE ONE FORMAT THAT HAS MORE THAN ONE.
+ *
+ * A still answers 1 and fills `out[0]`, so a caller that wants an animation and
+ * a caller that wants a picture take the same path. `kimg_decode` is this with
+ * a `max` of one, and returns the first frame of an animated GIF.
+ *
+ * `gap_ms` is the delay AFTER that frame; a still leaves it 0. Every image
+ * returned is the caller's to unref, and the budget is over the whole
+ * animation — a frame that would cross it ends the decode and the ones already
+ * returned still play.
+ */
+typedef struct {
+	pixman_image_t *img;
+	int gap_ms;
+} KimgFrame;
+
+int kimg_decode_all(const void *bytes, size_t len, int type,
+		    const KimgBudget *budget, KimgFrame *out, int max);
 
 /*
  * Which formats this build can actually decode, as a bitmask of 1 << KIMG_*.

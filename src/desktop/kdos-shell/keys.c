@@ -546,6 +546,7 @@ static int con_section(const char *act, const char **desc)
 		{ "windows",	"the window list",		SEC_WINDOW },
 		{ "mark",	"mark text anywhere on the screen",	SEC_WINDOW },
 		{ "paste",	"paste what was marked",	SEC_WINDOW },
+		{ "capture",	"mark a rectangle: text copied, picture filed",	SEC_WINDOW },
 		/*
 		 * The surfaces. Eleven chords reaching eleven programs, and
 		 * the description is what the program IS rather than its name:
@@ -559,6 +560,7 @@ static int con_section(const char *act, const char **desc)
 		{ "devices",	"cameras, microphones, disks",	SEC_TOOLS },
 		{ "settings",	"settings",		SEC_TOOLS },
 		{ "calendar",	"the calendar",		SEC_TOOLS },
+		{ "find",	"files by name or contents",	SEC_TOOLS },
 		{ "docs",	"the documentation",	SEC_TOOLS },
 		{ "displays",	"screens",		SEC_TOOLS },
 		{ "power",	"power and battery",	SEC_TOOLS },

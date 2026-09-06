@@ -50,6 +50,8 @@ half of the same mistake.
 | `kdos-ascii` | A picture, as characters | [The small surfaces](#the-small-surfaces) |
 | `kdos-trash` | What was deleted, and the way back | [kdos-trash](#kdos-trash) |
 | `kdos-peek` | What is in a file, without its application | [kdos-peek](#kdos-peek) |
+| `kdos-find` | Files by name or contents, applications, recents | [kdos-find](#kdos-find) |
+| `kdos-pix` | One picture, and the folder it is in | [kdos-pix](#kdos-pix) |
 
 ## Places
 
@@ -652,6 +654,76 @@ recursive total, so the column reads `folder`: a number that is wrong is worse t
 missing.
 
 
+## kdos-pix
+
+One picture, fit to the window, with the folder it is in as the album. `+` and `-` zoom, `0` is
+fit again, `Space` and `Backspace` step, the arrows pan.
+
+**The folder is the album.** Opening one picture opens the sorted list of every picture beside it,
+so `Space` is the next photograph rather than an error. `kdos-peek` deliberately does not do this:
+a quick look is about the file somebody named.
+
+**Zoom is a source rectangle, not a scaled sprite.** The window keeps a factor and a centre, and
+what is registered is the crop those describe scaled to the pane — so zooming in reads *more* of
+the original's pixels rather than enlarging the ones already on the screen. That is the difference
+between a viewer and a magnifying glass over a thumbnail. It stops at 800%, where a cell is a
+colour, and at 5%, where the picture is smaller than the border around it.
+
+**Fit never enlarges.** A 32-pixel icon opened here is 32 pixels; `+` is how a person asks for it
+bigger, and a viewer that guessed would show every icon on the machine as a blur.
+
+**A pan is a tenth of what is on the screen**, not a fixed number of pixels, so one press moves the
+same visible distance at every zoom.
+
+**The folder is listed by extension, not by magic.** It may hold thousands of files and opening
+each one to sniff it would be the slowest part of starting a viewer. A named file that is not in
+the list — an extension nothing here reads — still shows, as a list of one.
+
+**A new picture is shown whole.** Carrying the previous one's zoom would put somebody at 400% in
+the corner of a photograph they have not seen yet.
+
+**It is the console's handler for the three types `libkimg` decodes** — PNG, JPEG and WebP — and
+`timg` keeps GIF, BMP and TIFF, which it cannot open. A row for a type the viewer refuses would be
+a window that opens and says it cannot read the file. Under the compositor the boxed viewer keeps
+them: it has real pixels at the screen's own resolution.
+
+The decode, the crop, the scale, the tiles and the draw are `picture.c`'s, shared with `kdos-peek`.
+
+## kdos-find
+
+One question, and the four places an answer could be. `Super+Shift+F` on both desktops, *Find Here*
+in the file verbs, and `f` on `mc`'s `F2`.
+
+| Source | From | When |
+|---|---|---|
+| Applications | The launcher's own index, `sh_apps_match()` | Every keystroke |
+| Recent | `libkxdg`'s recently-used list | Every keystroke |
+| Names | `fd` | When the question stops changing |
+| Contents | `rga` | Only after `Ctrl+G` |
+
+**Each source is somebody else's answer.** A walker written here would disagree with `fd` about
+hidden files, ignore rules and symlinks, and a content search written here would be `rga` without
+the archive and document readers that are the point of it.
+
+**The two forks stream.** A search over a home directory is seconds, and a surface that waited for
+it would be a window that cannot be closed while doing the one thing it is for. The child writes
+into a pipe read in the poll loop; `Escape` kills it. The same shape `kdos-status` uses.
+
+**Contents are opt-in.** Names come back in milliseconds and are what somebody usually means; a
+content search reads every file under the directory, and starting one per keystroke is a machine
+that never stops working. Once asked for, it follows every later question.
+
+**Names are searched literally, not as a regex** — `--fixed-strings`. Somebody typing `report.c`
+means the dot, and a pattern that swallowed it would match `reportxc`.
+
+**A result opens through `kdos-appbox open`**, the one resolution the desktop, the chooser and `mc`
+all use. An application row is resolved to its entry again at the moment it is chosen and started
+from its `Exec` line, because a boxed app's `Exec` reads `kdos-appbox run <command>` and its id is
+not that command — handing the id to `run` starts nothing at all.
+
+**The root is the directory the verb named, else home.** A search with no root is a search of the
+filesystem, which is not what *Find Here* means and not what a chord with no context should start.
+
 ## kdos-peek
 
 What is in a file, without starting the application that owns it. *Peek* in the file verbs, `k` on
@@ -696,6 +768,10 @@ never before — the console backend clears its client state when it connects. A
 was never sent maps to −1 and its cells become spaces, so the failure is a blank pane rather than
 the fallback codepoint. The cell size there is nominal for the same reason `kdos-term`'s is: a console surface has no
 pixels of its own, and the display scales what arrives.
+
+**Peek is not the default handler for a book.** `epy` is: a reader keeps a position, a table of
+contents and a search, which is the difference between reading an epub and glancing at a page of
+one. The Peek verb still shows any of the five, because it asks no handler table at all.
 
 **A directory is refused.** A file manager inside a viewer that was opened from a file manager is a
 circle; `mc` shows directories and this shows files.

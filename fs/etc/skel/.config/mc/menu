@@ -15,7 +15,7 @@
 # refuses one that is not. A text file has no `show` callback: a row here
 # cannot hide itself when its program is missing, so a verb that is still being
 # built belongs in the surfaces' own table and not in this file until it ships.
-# `kdos-find` and `kdos share` are the two still waiting on that.
+# `kdos share` is the one still waiting on that.
 #
 # ONE LETTER, THEN THE TITLE, THEN TAB-INDENTED COMMAND LINES. mc runs the
 # block as `/bin/sh` and WAITS for it, so anything that opens a window of its
@@ -35,6 +35,9 @@ k       Peek at this file
 
 e       Edit here
         ${EDITOR-nano} %f
+
+f       Find in this folder
+        (kdos-find %d &)
 
 t       Terminal here
         (kdos-term -D %d &)

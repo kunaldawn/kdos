@@ -32,10 +32,19 @@ text/markdown=micro.desktop
 text/x-shellscript=micro.desktop
 application/json=micro.desktop
 application/xml=micro.desktop
-image/png=timg.desktop
-image/jpeg=timg.desktop
+# THE THREE `libkimg` DECODES GO TO THE VIEWER, and the rest to `timg`.
+# `kdos-pix` fits, zooms, pans and steps through the folder; `timg` prints a
+# picture once and exits, which is the right answer only for a format the
+# viewer cannot open. A row here for a type `kdos-pix` refuses would be a
+# viewer that opens and says it cannot read the file.
+image/png=kdos-pix.desktop
+image/jpeg=kdos-pix.desktop
+image/webp=kdos-pix.desktop
 image/gif=timg.desktop
-image/webp=timg.desktop
 image/bmp=timg.desktop
 image/tiff=timg.desktop
 text/csv=visidata.desktop
+# A .docx ON THE CONSOLE, where the office suite that would open it is a
+# Wayland application and cannot run. `doxx` renders it read-only in the
+# terminal; under the compositor the plain table's answer stands.
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=doxx.desktop

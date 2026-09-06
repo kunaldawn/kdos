@@ -311,6 +311,46 @@ int devices_main(int argc, char **argv);	/* kdos-devices  */
 int clip_main(int argc, char **argv);		/* kdos-clip     */
 int trash_main(int argc, char **argv);		/* kdos-trash    */
 int peek_main(int argc, char **argv);		/* kdos-peek     */
+int find_main(int argc, char **argv);		/* kdos-find     */
+
+/* ── a picture in the cell grid (picture.c) ──────────────────────────────
+ *
+ * What `kdos-peek` and `kdos-pix` share: the decode, the crop, the scale, the
+ * cut into sprite tiles and the draw. See the file for the four things that
+ * are easy to get wrong and were each found the hard way.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* A picture may cost this much, enforced by libkimg BEFORE it allocates: a
+ * header is an allocation request from a file somebody sent you. */
+#define SH_PIC_MAX_W    16384
+#define SH_PIC_MAX_H    16384
+#define SH_PIC_MAX_PIX  (256u << 20)	/* the decoded image */
+#define SH_PIC_MAX_FILE (256u << 20)	/* what is read off the disk */
+#define SH_PIC_BUDGET   (64u << 20)	/* the sprite table's tiles */
+
+typedef struct {
+	void *img;		/* pixman_image_t *, this struct's own      */
+	int w, h;		/* the decoded size                         */
+	uint64_t id;		/* content identity, over the whole file    */
+	uint64_t key;		/* what the registered tiles are under      */
+	int cw, ch;		/* their size in cells; 0 when none         */
+} ShPic;
+
+int sh_pic_cell_w(void);
+int sh_pic_cell_h(void);
+/* AFTER kdisp_init, never before — see picture.c. */
+void sh_pic_backend(void);
+int sh_pic_is_image(const unsigned char *b, size_t n);
+unsigned char *sh_pic_slurp(const char *path, size_t *len);
+int sh_pic_set(ShPic *p, const unsigned char *b, size_t n);
+int sh_pic_load(ShPic *p, const char *path);
+void sh_pic_fit(int sw, int sh, int pane_w, int pane_h, int *cw, int *ch);
+int sh_pic_view(ShPic *p, int sx, int sy, int sw, int sh, int cw, int ch);
+void sh_pic_tiles_drop(ShPic *p);
+void sh_pic_draw(const ShPic *p, int x, int y);
+void sh_pic_free(ShPic *p);
+
+int pix_main(int argc, char **argv);		/* kdos-pix      */
 /* What the notification area's chevron opens — the widgets that are hidden
  * behind it, and the two KDOS tools (`kdos stutter`, `kdos-energy`) that used
  * to be reachable only as a terminal nobody could get rid of. */

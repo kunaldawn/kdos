@@ -88,10 +88,10 @@ done
 # this tree has, and asks libarchive whether a file is an archive by opening it.
 # No libsixel — a file on disk is not an escape sequence, and kdos-term is where
 # sixel arrives.
-PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libarchive"
+PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libnsgif libarchive"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
-	-DKIMG_HAVE_PNG -DKIMG_HAVE_JPEG -DKIMG_HAVE_WEBP \
+	-DKIMG_HAVE_PNG -DKIMG_HAVE_JPEG -DKIMG_HAVE_WEBP -DKIMG_HAVE_GIF \
 	-I. -I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkwm" \
 	-I"$LIBS/libkxdg" -I"$LIBS/libkicon" -I"$LIBS/libkchrome" \
@@ -114,6 +114,8 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-menu"
 ln -s kdos-shell "$PKG/usr/bin/kdos-desk"
 ln -s kdos-shell "$PKG/usr/bin/kdos-pick"
 ln -s kdos-shell "$PKG/usr/bin/kdos-peek"
+ln -s kdos-shell "$PKG/usr/bin/kdos-find"
+ln -s kdos-shell "$PKG/usr/bin/kdos-pix"
 ln -s kdos-shell "$PKG/usr/bin/kdos-ascii"
 # What this machine is, read out of /proc and /etc rather than fetched by a
 # second program: an About window that shelled out to a screenfetch would

@@ -23,6 +23,10 @@
 # WITH_TURBOJPEG also requires libexif, which is REQUIRED rather than optional
 # in the same branch: it reads the orientation tag, and without it a photo
 # taken sideways is displayed sideways.
+#
+# WITH_VIDEO_DEVICE is the camera: it wants libavdevice, which the ffmpeg port
+# builds, and it is what makes `timg /dev/video0` a live preview rather than an
+# error. It is the only way to look at a camera from a console session.
 mkdir -p build && cd build
 cmake .. \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -36,7 +40,7 @@ cmake .. \
 	-DWITH_POPPLER=Off \
 	-DWITH_LIBSIXEL=On \
 	-DWITH_VIDEO_DECODING=On \
-	-DWITH_VIDEO_DEVICE=Off \
+	-DWITH_VIDEO_DEVICE=On \
 	-DWITH_OPENSLIDE_SUPPORT=Off
 make
 make DESTDIR=$PKG install

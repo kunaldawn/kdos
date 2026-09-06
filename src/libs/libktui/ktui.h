@@ -193,6 +193,17 @@ typedef struct {
 	const void *pix;	/* pixman_image_t *, owned by the caller    */
 	uint32_t fallback;	/* what a text backend puts there instead   */
 	int w, h;		/* size in cells, 1..16                     */
+	/*
+	 * BUMPED ON EVERY PUT, AND IT IS WHAT A FORWARDING BACKEND COMPARES.
+	 * An animation re-registers the same key so the cells go on naming the
+	 * same slot and only the pixels change — and the new picture is very
+	 * often the SAME POINTER, because the evictor freed the old one and
+	 * the allocator handed the memory straight back. A backend that keyed
+	 * its "already sent" cache on the pointer would then never send a
+	 * frame after the first, and the animation would run everywhere except
+	 * over the wire.
+	 */
+	unsigned long gen;
 } KtuiSprite;
 
 /* Register (or refresh) the picture for `key`. `pix` must already be scaled to

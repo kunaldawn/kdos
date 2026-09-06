@@ -118,6 +118,9 @@ static Bind binds[] = {
 	 */
 	{ "mark",	CON_ACT_MARK,	 0, 'm', KT_MOD_SUPER | KT_MOD_SHIFT },
 	{ "paste",	CON_ACT_PASTE,	 0, 'v', KT_MOD_SUPER | KT_MOD_SHIFT },
+	/* Beside the mark, because it is one: the same drag, with a picture
+	 * filed as well as the text copied. */
+	{ "capture",	CON_ACT_CAPTURE, 0, 'p', KT_MOD_SUPER | KT_MOD_SHIFT },
 
 	/*
 	 * THE SURFACES, ON THE CHORDS `rc.xml` ALREADY BINDS THEM TO.
@@ -157,6 +160,8 @@ static Bind binds[] = {
 	  KT_MOD_SUPER | KT_MOD_CTRL },
 	{ "clipboard",	CON_ACT_EXEC,	 CON_CMD_CLIP,	   'v',
 	  KT_MOD_SUPER | KT_MOD_CTRL },
+	{ "find",	CON_ACT_EXEC,	 CON_CMD_FIND,	   'f',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
 
 	/*
 	 * THE ONE CHORD THAT IS NOT ON SUPER, and it cannot be: it exists for

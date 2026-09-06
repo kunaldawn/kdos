@@ -66,6 +66,8 @@ static const struct {
 	{ "kdos-ime", ime_main },
 	{ "kdos-trash", trash_main },
 	{ "kdos-peek",  peek_main },
+	{ "kdos-find",  find_main },
+	{ "kdos-pix",   pix_main },
 };
 #define NTOOLS ((int)(sizeof(TOOLS) / sizeof(TOOLS[0])))
 
