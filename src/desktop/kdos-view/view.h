@@ -30,4 +30,28 @@
 int view_shot_png(const char *path, int scale, int cx, int cy, int cw, int ch);
 #endif
 
+/*
+ * PICTURES OUT OF A TERMINAL VIEW, when the terminal it runs in will draw them.
+ *
+ * `view_ttypix_probe()` asks, consuming every reply byte — one left behind is
+ * decoded as keystrokes and typed into the session being viewed. It returns
+ * non-zero when a protocol was found, and writes the terminal's cell size in
+ * pixels, which is what every picture is then scaled to.
+ *
+ * `view_ttypix_install()` must be given the backend that is installed NOW and
+ * its result handed to `ktui_backend_set()`: it wraps rather than replaces, and
+ * capturing the pointer afterwards captures itself.
+ *
+ * Present only where the encoders are (`KDOS_VIEW_TTYPIX`), the same rule the
+ * KMS, cast and shot modes keep.
+ */
+#ifdef KDOS_VIEW_TTYPIX
+int view_ttypix_probe(int *cell_w, int *cell_h);
+const KtuiBackend *view_ttypix_install(const KtuiBackend *base);
+void view_ttypix_pointer(int x, int y);
+void view_ttypix_caret(int x, int y);
+void view_ttypix_forget(int view_slot);
+void view_ttypix_shutdown(void);
+#endif
+
 #endif /* KDOS_VIEW_H */

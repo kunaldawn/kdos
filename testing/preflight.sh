@@ -549,6 +549,81 @@ done
 note "shell syntax" "ok"
 
 echo
+echo "==> a script shipped inside a recipe parses, and names only programs the image has"
+# A HEREDOC IS A SCRIPT NOTHING ELSE CAN SEE. `bash -n` on a build.sh reads the
+# heredoc as one word, so a script written inside one is unchecked — and a
+# recipe body is where such a script has to live, because the recipe hash
+# covers kpkgbuild, build.sh, postinstall.sh and *.patch only: a file beside
+# them ships stale after every later edit, with no error anywhere. The
+# delimiter KDOS_SH marks a heredoc whose body is a /bin/sh script, and both
+# checks below run on it.
+#
+# THE PROGRAMS ARE CHECKED AGAINST THE BUILD TREE, not against packages.txt,
+# because a port's name and its binaries' names are different things —
+# `mutool` comes from `mupdf` — and a name table mapping one to the other
+# would be a second place to keep right. Skipped when there is no build tree.
+#
+# ONLY WHERE A COMMAND IS THE FIRST WORD OF A LINE, after `if `, or after
+# `set -- `. A name inside a command substitution or a `trap` string is not
+# seen, so this is a check on the renderers a script dispatches to and not a
+# proof that every program it could ever run exists.
+#
+# `bash -n`, NOT `sh -n`: /bin/sh on the image is bash, and the host's is
+# whatever the developer's distribution ships — a `sh -n` verdict would then
+# change with the machine preflight runs on, which is the opposite of what
+# this is for.
+_hd=0
+_hdbad=0
+for f in ports/core/*/build.sh src/packages/*/build.sh src/desktop/*/build.sh; do
+    [ -f "$f" ] || continue
+    grep -q "<<'KDOS_SH'" "$f" || continue
+    _p=$(basename "$(dirname "$f")")
+    # ONE FILE PER HEREDOC. Two bodies concatenated parse as one script, so two
+    # halves that are each invalid can be valid joined — an unclosed `case` in
+    # the first closed by an `esac` in the second.
+    rm -f "$SP"/heredoc.*.sh
+    awk -v out="$SP/heredoc" '
+        /<<.KDOS_SH./ { k = 1; n++; next }
+        k && /^KDOS_SH$/ { k = 0; next }
+        k { print > (out "." n ".sh") }
+    ' "$f"
+    for _b in "$SP"/heredoc.*.sh; do
+        [ -f "$_b" ] || continue
+        _hd=$((_hd + 1))
+        bash -n "$_b" 2>"$SP/err" || {
+            bad "$_p" "KDOS_SH heredoc: $(head -1 "$SP/err")"
+            _hdbad=$((_hdbad + 1))
+        }
+        [ -d build/fs/usr/bin ] || continue
+        for _c in $(sed 's/^[[:space:]]*//; s/#.*//' "$_b" |
+                    sed -n 's/^if \([a-z][a-z0-9_.-]*\) .*/\1/p
+                            s/^set -- \([a-z][a-z0-9_.-]*\) .*/\1/p
+                            s/^\([a-z][a-z0-9_.-]*\)[[:space:]].*/\1/p' |
+                    sort -u); do
+            case "$_c" in
+                set|if|then|elif|else|fi|case|esac|until|while|for|do|done|\
+                trap|exit|return|break|continue|command|export|local|read|\
+                eval|cd|shift|unset|wait|getopts|source) continue ;;
+            esac
+            [ -e "build/fs/usr/bin/$_c" ] || [ -e "build/fs/bin/$_c" ] ||
+            [ -e "build/fs/usr/sbin/$_c" ] || [ -e "build/fs/sbin/$_c" ] || {
+                bad "$_p" "KDOS_SH heredoc runs '$_c', which is on no image"
+                _hdbad=$((_hdbad + 1))
+            }
+        done
+    done
+done
+if [ "$_hdbad" != 0 ]; then
+    :
+elif [ "$_hd" = 0 ]; then
+    note "recipe heredocs" "none"
+elif [ -d build/fs/usr/bin ]; then
+    note "recipe heredocs" "$_hd parse, every program on the image"
+else
+    note "recipe heredocs" "$_hd parse; programs unchecked — no build tree"
+fi
+
+echo
 echo "==> nothing still points at a file the rewrite removed"
 for gone in fs/usr/local/bin/kdos fs/usr/local/bin/kdos-banner \
             fs/usr/local/bin/kdos-shot fs/usr/local/bin/kdos-fetch-app \
@@ -616,6 +691,38 @@ else
         bad "orphaned packages" "installed with no recipe:$orphans"
     else
         note "orphaned packages" "none"
+    fi
+fi
+
+echo
+echo "==> the build tree's root carries nothing but a root filesystem"
+# A CHROOT INTO build/fs LEAVES ITS MOUNTPOINTS BEHIND, and the ISO is built
+# from build/fs, so they ship. `docker run -v inputs:/rootfs/in` creates
+# `build/fs/in`; a probe that writes to `/spool` or `$HOME` inside the chroot
+# leaves that too. None of it is owned by a package or by fs/, so the orphan
+# sweep and the fs-manifest guard both step over it and the only symptom is a
+# shipped image with somebody's scratch directory at `/`.
+#
+# `kdos` and `ports` ARE expected: the build's own chroot binds the repo and
+# the ports tree at those paths.
+#
+# Skipped, not failed, when there is no build tree.
+if [ ! -d build/fs ]; then
+    note "root filesystem" "skipped — no build tree"
+else
+    _stray=""
+    for _e in build/fs/* build/fs/.[!.]*; do
+        [ -e "$_e" ] || continue
+        case "$(basename "$_e")" in
+            bin|boot|dev|etc|home|kdos|lib|lib64|ports|proc|root|run|sbin|\
+            srv|sys|tmp|usr|var|opt|mnt|media) continue ;;
+        esac
+        _stray="$_stray $(basename "$_e")"
+    done
+    if [ -n "$_stray" ]; then
+        bad "root filesystem" "build/fs carries:$_stray"
+    else
+        note "root filesystem" "no stray entries at /"
     fi
 fi
 
@@ -1030,8 +1137,14 @@ _names="$SP/imagenames"
 {
     sed -n 's|.*bin/\([a-z][a-z0-9-]*\)".*|\1|p' \
         src/desktop/*/build.sh src/packages/*/build.sh 2>/dev/null
-    sed -n 's/^for t in \(.*\); do/\1/p; s/^for _t in \(.*\); do/\1/p' \
-        src/desktop/*/build.sh src/packages/*/build.sh 2>/dev/null | tr ' ' '\n'
+    # CONTINUATIONS ARE JOINED FIRST. The loop is matched by its `; do`, which
+    # a backslash-wrapped list puts on a later line — and the extraction then
+    # silently yields nothing rather than failing, so every name the loop links
+    # drops out of the list this guard compares against.
+    sed -e ':a' -e '/\\$/{N;s/\\\n/ /;ba' -e '}' \
+        src/desktop/*/build.sh src/packages/*/build.sh 2>/dev/null |
+        sed -n 's/^for t in \(.*\); do/\1/p; s/^for _t in \(.*\); do/\1/p' |
+        tr ' ' '\n'
     cat script/04_phase4/packages.txt 2>/dev/null
     ls ports/core 2>/dev/null
 } | sed 's/[^a-z0-9-]//g' | grep . | sort -u > "$_names"

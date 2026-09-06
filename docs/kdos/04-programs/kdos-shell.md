@@ -1,6 +1,6 @@
 # kdos-shell
 
-One binary providing thirty-three commands, dispatched on the name it was invoked as: the panel,
+One binary providing thirty-seven commands, dispatched on the name it was invoked as: the panel,
 and every surface that pops up from it or is reached by a key. This is the largest program in
 KDOS and the one most of the desktop actually is.
 
@@ -52,6 +52,7 @@ half of the same mistake.
 | `kdos-peek` | What is in a file, without its application | [kdos-peek](#kdos-peek) |
 | `kdos-find` | Files by name or contents, applications, recents | [kdos-find](#kdos-find) |
 | `kdos-pix` | One picture, and the folder it is in | [kdos-pix](#kdos-pix) |
+| `kdos-rec` | Record a microphone, and transcribe it | [kdos-rec](#kdos-rec) |
 
 ## Places
 
@@ -105,8 +106,8 @@ surface's page in `kdos-doc` where it has one. The full rule — the ladder, the
 `&`-marked accelerators — is in
 [the design language](../03-architecture/design-language.md#the-keys-every-surface-answers).
 
-Five surfaces claim an `F1` page today: `kdos-settings`, `kdos-display`, `kdos-net`, `kdos-bt`
-and `kdos-devices`, plus [`kdos-res`](kdos-res.md). The pages live in `/usr/share/kdos/doc` and
+Six surfaces claim an `F1` page today: `kdos-settings`, `kdos-display`, `kdos-net`, `kdos-bt`,
+`kdos-devices` and `kdos-rec`, plus [`kdos-res`](kdos-res.md). The pages live in `/usr/share/kdos/doc` and
 `testing/preflight.sh` refuses a claim with no file behind it, so a surface that does not appear
 here neither advertises `F1` nor answers it.
 
@@ -265,6 +266,15 @@ beside it.**
   pushed under the icon's left edge.
 - The **wide** applet is an icon with a headline and a detail line, for the two readouts carrying
   somebody's name: the media title, and the application holding the microphone.
+
+**The media title comes from whichever source can answer.** MPRIS over the session bus is the
+protocol a desktop player speaks, and a player that speaks it also answers the transport keys beside
+the cell. mpd speaks none — so `kdos-mpctl watch` writes the same answer to
+`$XDG_RUNTIME_DIR/kdos/nowplaying` and the widget falls back to that file, reading it at most once a
+second because the draw is not on a tick. The file's leading `>` or `||` is the play state and is
+stripped before the title is drawn. **One widget reading both**, because two cells disagreeing about
+what is playing is worse than one that is sometimes empty. The same file is
+[`kdos-con`'s own bar](kdos-con.md) when that one is drawn.
 
 **An applet tile is a fixed width whatever it says.** The wing is laid out right to left and
 everything to its left starts where that walk stopped — so a readout going from three characters
@@ -724,6 +734,62 @@ not that command — handing the id to `run` starts nothing at all.
 **The root is the directory the verb named, else home.** A search with no root is a search of the
 filesystem, which is not what *Find Here* means and not what a chord with no context should start.
 
+## kdos-rec
+
+Pick an input, record through `sox`, watch the level, keep the file. *Recorder* in the Start menu,
+*Recording…* under Settings' Hardware page, and `F1` opens `/usr/share/kdos/doc/rec.txt`.
+
+**A card is not a microphone.** The list is `kpr_sound_pcms()` — `/proc/asound/pcm`, one line per
+PCM — filtered to those carrying a capture stream. An HDMI codec is a card with four playback PCMs
+and no capture stream at all, so a picker built from `/proc/asound/cards` offers a monitor's audio
+output as an input, and the recorder that accepts it fails to open with a message about the device
+rather than about the choice.
+
+**`Default` is the first row and always present.** It is the one that works while the session's
+PipeWire holds the card, through `pipewire-alsa`; a `hw:C,D` row names one PCM directly, which is
+what answers on a console with no session running. A live session can therefore refuse a `hw:` row
+with `EBUSY` while `Default` records — the list is the kernel's PCMs, not PipeWire's graph, and the
+surface shows `sox`'s own message rather than an empty file.
+
+**The input is named on argv**, `-t alsa hw:C,D`, never left to `rec` or `-d`: sox's default-device
+probe opens a card for *playback*, so it skips a card that has no DAC.
+
+```
+sox -q --input-buffer 3200 -t alsa hw:1,0 -t raw -e signed -b 16 -c 1 -r 16000 -
+```
+
+`sox` does the part only `sox` can do — open the device at whatever rate, format and channel count
+it has, and resample. **16 kHz mono s16 is not a preference**: it is exactly what `whisper-cli`
+requires, so the file this writes is the file the transcriber reads with no second conversion.
+`kdos-rec` writes the 44-byte header itself and **rewrites both length fields every tenth of a
+second** — a header written only at the end leaves a file no player will open whenever the machine
+goes away mid-recording, which in the rig is every run. Files land in `~/Recordings`, made on
+demand.
+
+**The level is the recorder's own peak over the bytes it wrote**, not `sox --show-progress`, which
+is fourteen text steps two decibels apart on a throttled repaint. One entry per **tick**, never per
+read: a read's size is the pipe's, not time's, and a sparkline whose column spacing is the
+scheduler's is a chart of the scheduler. The ring holds `max|s| / 32768` — a fraction — and
+`ktui_sparkline` is given `vmax = 1.0`, **pinned, not fitted**: an autoscaled meter paints a
+microphone's noise floor as a solid bar, which is the one reading a level meter must never give.
+
+dBFS is a table of integer peak thresholds at half-decibel midpoints, so the printed number is the
+nearest decibel and nothing in this tree gains a maths library for one logarithm. **Clipping is the
+word `CLIP` and not a red chart**: `ktui_sparkline` takes no foreground slot, and adding one to a
+function `kdosbuild` and `kdos-res` also call is a wider change than this surface earns.
+
+**Recording refuses to start while the input is muted**, and says so on the row. A recorder that
+quietly records a muted input is the worst thing this surface can do.
+
+**Transcribe is enabled by the model gate alone.** Whether `whisper-cli` is on `$PATH` is asked
+only when a child is started: `$PATH` is not frozen in a reference frame, so a button that changed
+shade with the host's packages could not have one. The three model locations, `$KDOS_WHISPER_MODEL`'s
+exclusive semantics and the four-byte magic test are in
+[configuration](../06-reference/configuration.md#speech-to-text-models).
+
+**The words have never been read back on this tree.** No model ships and the desktop cannot fetch
+one, so what is proved about transcription is the gate, the argv, the spawn and the exit status.
+
 ## kdos-peek
 
 What is in a file, without starting the application that owns it. *Peek* in the file verbs, `k` on
@@ -935,7 +1001,10 @@ Per-manager:
 - **`kdos-devices`** enumerates cameras by device call rather than through a library, finds who is
   holding one by walking the process table, and previews a grabbed frame through the shape-matching
   character renderer. **Opening a camera to preview it is using it**, so the privacy lamp lights for
-  this program too and the descriptor is closed with the frame. It also fronts removable media.
+  this program too and the descriptor is closed with the frame. It also fronts removable media. Its
+  microphone list is `kpr_sound_pcms()` filtered to the PCMs that carry a **capture stream** —
+  `kdos-rec` reads the same function, because two surfaces must not give two answers to what a
+  microphone is, and a list built from `/proc/asound/cards` offers an HDMI codec as an input.
 
 ## The small surfaces
 

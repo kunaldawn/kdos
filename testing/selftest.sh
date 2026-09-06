@@ -2975,7 +2975,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     DBAD=""
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel trash peek \
-             find pix; do
+             find pix rec; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -3014,6 +3014,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
         # cache's first entry — are never exercised.
         $CC $STD $SHWARN -o "$OUT/dumpcheck" -I"$DPROTO" $DPEEK_CF \
             -DKXDG_MIME_GLOBS="\"$PWD/testing/fixtures/openwith/data/mime/globs\"" \
+            -DKDOS_WHISPER_DIR="\"/nonexistent-kdos-whisper\"" \
             -Isrc/desktop/kdos-shell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libktui \
             -Isrc/libs/libkcolor -Isrc/libs/libkxdg -Isrc/libs/libkbase \
             -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
@@ -3162,6 +3163,7 @@ golden() {			# <name> <WxH> <argv…>
           XDG_RUNTIME_DIR=/nonexistent-kdos-run \
           KDOS_PANEL_ROOT="$PWD/panelroot" KDOS_PANEL_NOW=1735689600 ${KDOS_PANEL_DEBUG:+KDOS_PANEL_DEBUG=$KDOS_PANEL_DEBUG} \
           ${KDOS_GOLDEN_CON:+KDOS_CON=$KDOS_GOLDEN_CON} \
+          ${KDOS_GOLDEN_MODEL:+KDOS_WHISPER_MODEL=$KDOS_GOLDEN_MODEL} \
           KDOS_DUMP_SIZE="$_g_size" "$DUMPCK" "$@" ) > "$_g_got"
     if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
         mkdir -p "$GOLD"
@@ -3304,6 +3306,68 @@ elif [ -f "$GOLD/find-80x24.txt" ]; then
     golden_fail=1
 else
     echo "  find (skipped — not linked into the harness)"
+fi
+
+# kdos-rec takes flags, so it cannot ride the loop above either.
+#
+# The first three frames differ in ONE ROW — Transcribe dim against live, and
+# the subtitle naming the model against the directory that was searched — which
+# is the whole proof of the greyed half. The fourth is the picture of a MOVING
+# meter with a real peak label, which is the one thing the rig cannot
+# photograph: --meter drains the committed tone into the ring before the single
+# draw, so the chart is the arithmetic and not a screenshot of silence.
+#
+# --fixture points /proc at the recorded pair of PCMs, one playback-only and
+# one with a capture stream, so the frame asserts the FILTER rather than the
+# list. Without it the input rows would be this host's sound card.
+if "$DUMPCK" --have rec; then
+    golden rec        80x24  rec --fixture rec --dump
+    golden rec        132x43 rec --fixture rec --dump
+    KDOS_GOLDEN_MODEL=rec/whisper/ggml-tiny.bin \
+        golden rec-model 80x24 rec --fixture rec --dump
+    golden rec-meter  80x24  rec --fixture rec --meter rec/tone.raw --dump
+
+    # The arithmetic, against committed bytes and through the same code the
+    # live meter runs. tone.raw is 8 ticks: four at half full scale, four of
+    # exact zeros, so the boundary falls between ticks and no reading straddles
+    # it.
+    echo "==> kdos-rec: the level, from a recorded tone"
+    ( cd testing/fixtures/shell &&
+      "$DUMPCK" rec --meter rec/tone.raw ) > "$OUT/rec-meter.txt"
+    _want="0 16384 -6 dBFS
+1 16384 -6 dBFS
+2 16384 -6 dBFS
+3 16384 -6 dBFS
+4 0 -inf dBFS
+5 0 -inf dBFS
+6 0 -inf dBFS
+7 0 -inf dBFS"
+    if [ "$(cat "$OUT/rec-meter.txt")" = "$_want" ]; then
+        echo "  peak and dBFS over 8 ticks"
+    else
+        echo "  rec --meter DRIFTED:"
+        diff -u <(printf '%s\n' "$_want") "$OUT/rec-meter.txt" | sed 's/^/    /'
+        golden_fail=1
+    fi
+
+    # The WAV writer, byte-exact against a committed file: the twelve header
+    # fields and both rewritten lengths are the one part of this surface a
+    # reference frame cannot see.
+    ( cd testing/fixtures/shell &&
+      "$DUMPCK" rec --meter rec/tone.raw --write "$OUT/rec-write.wav" ) \
+        > /dev/null
+    if cmp -s "$OUT/rec-write.wav" \
+              testing/fixtures/shell/Recordings/2026-01-01-000000.wav; then
+        echo "  the 44-byte header and both length fields"
+    else
+        echo "  rec --write does not match the committed WAV"
+        golden_fail=1
+    fi
+elif [ -f "$GOLD/rec-80x24.txt" ]; then
+    echo "  rec: a golden is committed but the surface no longer links"
+    golden_fail=1
+else
+    echo "  rec (skipped — not linked into the harness)"
 fi
 
 if "$DUMPCK" --have peek; then

@@ -33,6 +33,66 @@ int kb_read_file(const char *path, char *buf, size_t cap)
 	return (int)n;
 }
 
+/*
+ * THE WHOLE FILE, on the heap, however long it is.
+ *
+ * A fixed buffer is right for /sys and /proc, whose files the kernel bounds.
+ * It is wrong for anything a person edits: a configuration file grows, and a
+ * reader with a fixed buffer stops seeing the end of it — silently, because
+ * the keys it can no longer read fall back to their defaults and the defaults
+ * are usually what was there anyway. Nothing says the file stopped working.
+ *
+ * Grown as it reads rather than sized by `stat`, so it is also correct for a
+ * /proc file, which reports a size of zero.
+ */
+char *kb_read_whole(const char *path, size_t *len)
+{
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	size_t cap = 8192, n = 0;
+	char *buf;
+
+	if (len)
+		*len = 0;
+	if (fd < 0)
+		return NULL;
+	buf = malloc(cap);
+	if (!buf) {
+		close(fd);
+		return NULL;
+	}
+	for (;;) {
+		ssize_t r = read(fd, buf + n, cap - n - 1);
+
+		if (r < 0) {
+			free(buf);
+			close(fd);
+			return NULL;
+		}
+		if (r == 0)
+			break;
+		n += (size_t)r;
+		if (n + 1 >= cap) {
+			char *bigger;
+
+			if (cap > (size_t)64 << 20)
+				break;	/* a config file, not a disk image */
+			cap *= 2;
+			bigger = realloc(buf, cap);
+			if (!bigger) {
+				free(buf);
+				close(fd);
+				return NULL;
+			}
+			buf = bigger;
+		}
+	}
+	close(fd);
+	buf[n] = '\0';
+	if (len)
+		*len = n;
+	return buf;
+}
+
 int kb_read_line_file(const char *path, char *buf, size_t cap)
 {
 	if (kb_read_file(path, buf, cap) < 0)

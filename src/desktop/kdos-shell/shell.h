@@ -351,6 +351,7 @@ void sh_pic_draw(const ShPic *p, int x, int y);
 void sh_pic_free(ShPic *p);
 
 int pix_main(int argc, char **argv);		/* kdos-pix      */
+int rec_main(int argc, char **argv);		/* kdos-rec      */
 /* What the notification area's chevron opens — the widgets that are hidden
  * behind it, and the two KDOS tools (`kdos stutter`, `kdos-energy`) that used
  * to be reachable only as a terminal nobody could get rid of. */

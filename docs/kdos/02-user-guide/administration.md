@@ -102,6 +102,61 @@ sudo nft -c -f /etc/nftables.conf     # check
 sudo service nftables start           # apply
 ```
 
+## Mail
+
+Four programs, one directory. **`~/Mail` is the Maildir**, and everything that touches mail is
+pointed at it:
+
+| Program | Does |
+|---|---|
+| `mbsync` | Fetches. Makes an IMAP mailbox and `~/Mail` equal in both directions |
+| `notmuch` | Indexes what is there. It never fetches and never sends |
+| `aerc` | Reads and writes |
+| `msmtp` | Sends. `/usr/sbin/sendmail` and `/usr/bin/sendmail` are both links to it |
+
+**`notmuch new` is the only command you type.** A `pre-new` hook runs `mbsync -a` before the scan
+and a `post-new` hook tags what arrived, so one command fetches, files and indexes. Until a
+`Channel` is configured the hook steps over itself and `notmuch new` just indexes.
+
+Three files to fill in, all shipped commented-out:
+
+```
+~/.mbsyncrc                            the server, and mode 600
+~/.msmtprc                             the outgoing server, and mode 600
+~/.config/notmuch/default/config       your own address
+```
+
+The fourth, `~/.config/aerc/accounts.conf`, is **not** shipped: aerc refuses to start on one that
+anyone but you can read, and its own wizard writes it at mode 600 the first time you run `aerc`.
+Let the wizard do it.
+
+**Six kinds of part render as text, and nothing else does.** `~/.config/aerc/aerc.conf` names one
+script, `kdos-part`, for everything that is not already plain text; a type it does not list gets
+aerc's own *No filter configured* card and its `:open`, `:save` and `:pipe` hints. The script
+spools the part to a temporary file first, because `mutool` opens a document by path and has no
+form that reads a pipe:
+
+| Part | Shown as |
+|---|---|
+| HTML | `w3m -dump`, which lays tables out on the grid, so marketing mail is readable |
+| An invitation | aerc's calendar filter, run through `gawk`. It **reads** and never imports — a filter runs every time a message scrolls past, and one that accepted meetings by being looked at would accept them all |
+| PDF | `mutool draw -F txt` |
+| An image | `chafa`, as coloured symbols. This row is also what turns **off** aerc's own inline picture — with no filter matching, aerc draws a jpeg or png through the terminal's graphics protocol, which `kdos-term` has. The trade is the same picture in every terminal rather than a better one in some |
+| A `.docx` | `docx2txt` |
+
+**HTML is rendered inside a network namespace when the kernel allows one.** `kdos-part` tries
+`unshare --map-root-user --net` first, so a tracking pixel has nowhere to go; if the kernel refuses,
+w3m runs behind an unroutable proxy instead. The message is shown either way — aerc's own filter
+picks the namespace on whether the `unshare` binary exists, so on a kernel without unprivileged
+user namespaces it puts `unshare: Operation not permitted` where the message should be. A filter's
+error output *is* the message body here: aerc hands it the pager's own pipe.
+
+Keep passwords out of all of them — `pass` is on the image, and both `PassCmd "pass show …"` and
+`passwordeval "pass show …"` are in the shipped templates.
+
+**There is no XOAUTH2.** `mbsync` reaches it only through `cyrus-sasl`, which this image does not
+carry, so a provider that has withdrawn application passwords cannot be synchronised here at all.
+
 ## Storage
 
 **Swap.** `swapon -a` runs at boot after `mount -a`. The installer can create a swapfile; its

@@ -1827,6 +1827,59 @@ static int applet_lit(struct sh_state *sh, int id, int *right_x, int x_min,
  */
 #define AP_WIDE_TEXT 12
 
+/*
+ * WHAT IS PLAYING, WHEN NOTHING SPEAKS MPRIS.
+ *
+ * MPRIS is the protocol a desktop player answers on, and a player that speaks
+ * it also answers the transport keys beside this cell. mpd speaks none — so
+ * `kdos-mpctl watch` writes the same answer to a file, and one applet reads
+ * both rather than two cells disagreeing about what is playing.
+ *
+ * The line is `> Artist - Title` or `|| Artist - Title`; the marker is the
+ * play state and is stripped before the title is drawn. ASCII by the file's
+ * own contract, because the reader is a cell grid whose glyph tier the writer
+ * cannot see.
+ *
+ * READ AT MOST ONCE A SECOND. This runs on the draw, which is not on a tick,
+ * and an unthrottled read is fifty opens a second for a line that changes
+ * between tracks.
+ */
+static const char *now_file(int *playing)
+{
+	static char line[128];
+	static int64_t last;
+	static int play;
+	char path[256];
+	const char *rt;
+	int64_t now = panel_now_ms();
+
+	if (!last || now - last >= 1000) {
+		last = now ? now : 1;
+		line[0] = '\0';
+		rt = getenv("XDG_RUNTIME_DIR");
+		if (rt && *rt) {
+			snprintf(path, sizeof(path), "%s/kdos/nowplaying", rt);
+			if (kb_read_file(path, line, sizeof(line)) <= 0)
+				line[0] = '\0';
+		}
+		for (char *q = line; *q; q++)
+			if (*q == '\n' || *q == '\r') {
+				*q = '\0';
+				break;
+			}
+		play = line[0] == '>';
+	}
+	if (!line[0])
+		return NULL;
+	*playing = play;
+
+	const char *t = line;
+
+	while (*t == '>' || *t == '|' || *t == ' ')
+		t++;
+	return *t ? t : NULL;
+}
+
 static int applet2(struct sh_state *sh, int id, int *right_x, int x_min,
 		   const char *icon, const char *l1, const char *l2, int fg1,
 		   int fg2, int bg)
@@ -5577,12 +5630,19 @@ static void draw_taskbar(struct sh_state *sh)
 				       KT_A_NONE);
 				break;
 			case W_MPRIS: {
-				if (!sh_mpris_have(sh->mpris))
-					break;
-				int play = sh_mpris_playing(sh->mpris);
+				int play;
+				const char *title;
+
+				if (sh_mpris_have(sh->mpris)) {
+					play = sh_mpris_playing(sh->mpris);
+					title = sh_mpris_title(sh->mpris);
+				} else {
+					title = now_file(&play);
+					if (!title)
+						break;
+				}
 				char t[64];
-				sh_utf8_trunc(t, sizeof(t),
-					      sh_mpris_title(sh->mpris),
+				sh_utf8_trunc(t, sizeof(t), title,
 					      AP_WIDE_TEXT);
 				snprintf(label, sizeof(label), "%s", t);
 				applet2(sh, SH_AP_MPRIS, &right_x, floor_x,

@@ -10,6 +10,7 @@ The desktop
   [[doc:net]]          wireless and wired, through NetworkManager
   [[doc:bt]]           Bluetooth, through bluez
   [[doc:devices]]      cameras, microphones, removable media
+  [[doc:rec]]          recording, the level meter, and transcription
 
 The keys
 

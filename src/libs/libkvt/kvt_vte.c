@@ -222,6 +222,7 @@ struct kvt_vte {
 	 * program told a geometry that is not true sends a picture that is
 	 * clipped or refused, and neither failure names this. */
 	int img_max_w, img_max_h;
+	int cell_w, cell_h;
 	bool img_over;
 	bool img_active;
 
@@ -775,6 +776,22 @@ void kvt_vte_set_img_geom(struct kvt_vte *vte, int max_w_px, int max_h_px)
 		return;
 	vte->img_max_w = max_w_px > 0 ? max_w_px : 0;
 	vte->img_max_h = max_h_px > 0 ? max_h_px : 0;
+}
+
+/*
+ * WHAT ONE CELL IS IN PIXELS, which only the program drawing the glyphs knows.
+ * `CSI 16t` is the one question a client can ask about it, and a client that
+ * has to guess draws a picture at the wrong scale — which looks like a decoder
+ * fault rather than a missing answer. Zero means unknown and the report is
+ * refused rather than invented.
+ */
+KVT_SHL_EXPORT
+void kvt_vte_set_cell_px(struct kvt_vte *vte, int cw, int ch)
+{
+	if (!vte)
+		return;
+	vte->cell_w = cw > 0 ? cw : 0;
+	vte->cell_h = ch > 0 ? ch : 0;
 }
 
 KVT_SHL_EXPORT
@@ -2305,6 +2322,23 @@ static void csi_report_window_size(struct kvt_vte *vte)
 	vte_write(vte, buf, len);
 }
 
+/* `CSI 16t` — one cell in pixels, height first, the order xterm answers in.
+ * Silence when nobody has told this terminal what a cell is: a made-up answer
+ * is worse than none, because a client cannot tell it from a real one. */
+static void csi_report_cell_size(struct kvt_vte *vte)
+{
+	char buf[64];
+	unsigned int len;
+
+	if (vte->cell_w <= 0 || vte->cell_h <= 0)
+		return;
+	len = snprintf(buf, sizeof(buf), "\e[6;%d;%dt", vte->cell_h,
+		       vte->cell_w);
+	if (len >= sizeof(buf))
+		return;
+	vte_write(vte, buf, len);
+}
+
 static void do_csi(struct kvt_vte *vte, uint32_t data)
 {
 	int num, x, y, upper, lower;
@@ -2561,6 +2595,8 @@ static void do_csi(struct kvt_vte *vte, uint32_t data)
 	case 't': /* ST */
 		if (vte->csi_argv[0] == 18 || vte->csi_argv[0] == 19)
 			csi_report_window_size(vte);
+		else if (vte->csi_argv[0] == 16)
+			csi_report_cell_size(vte);
 		else
 			llog_debug(vte, "unhandled CSI t sequence %d", vte->csi_argv[0]);
 		break;

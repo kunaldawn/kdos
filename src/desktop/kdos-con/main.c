@@ -397,6 +397,13 @@ const char *con_command(int which)
 		[CON_CMD_CLIP]     = { "clipboard", "kdos-clip" },
 		[CON_CMD_FIND]     = { "find",     "kdos-find" },
 		[CON_CMD_CAPTURE]  = { "capture",  "kdos-shot" },
+		[CON_CMD_VOLUP]    = { "volume_up",   "kdos-osd volume +5" },
+		[CON_CMD_VOLDOWN]  = { "volume_down", "kdos-osd volume -5" },
+		[CON_CMD_MUTE]     = { "volume_mute", "kdos-osd volume mute" },
+		[CON_CMD_PLAY]     = { "media_play",  "kdos-mpctl toggle" },
+		[CON_CMD_STOP]     = { "media_stop",  "kdos-mpctl stop" },
+		[CON_CMD_NEXT]     = { "media_next",  "kdos-mpctl next" },
+		[CON_CMD_PREV]     = { "media_prev",  "kdos-mpctl prev" },
 	};
 
 	if (which < 0 || which >= CON_CMD_N)

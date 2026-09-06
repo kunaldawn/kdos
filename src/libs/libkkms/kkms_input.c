@@ -137,6 +137,19 @@ static int key_of(xkb_keysym_t sym)
 	case XKB_KEY_F10: return KT_K_F10;
 	case XKB_KEY_F11: return KT_K_F11;
 	case XKB_KEY_F12: return KT_K_F12;
+	/*
+	 * The media keys, which produce no character at all — the fall-through
+	 * below asks the layout for one and is answered zero, so without these
+	 * a volume key is a keypress the session never hears about.
+	 */
+	case XKB_KEY_XF86AudioRaiseVolume: return KT_K_VOLUP;
+	case XKB_KEY_XF86AudioLowerVolume: return KT_K_VOLDOWN;
+	case XKB_KEY_XF86AudioMute: return KT_K_MUTE;
+	case XKB_KEY_XF86AudioPlay:
+	case XKB_KEY_XF86AudioPause: return KT_K_PLAY;
+	case XKB_KEY_XF86AudioStop: return KT_K_STOP;
+	case XKB_KEY_XF86AudioNext: return KT_K_NEXT;
+	case XKB_KEY_XF86AudioPrev: return KT_K_PREV;
 	default:
 		break;
 	}

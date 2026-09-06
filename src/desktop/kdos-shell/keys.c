@@ -547,6 +547,13 @@ static int con_section(const char *act, const char **desc)
 		{ "mark",	"mark text anywhere on the screen",	SEC_WINDOW },
 		{ "paste",	"paste what was marked",	SEC_WINDOW },
 		{ "capture",	"mark a rectangle: text copied, picture filed",	SEC_WINDOW },
+		{ "volume-up",	"louder",		SEC_WINDOW },
+		{ "volume-down", "quieter",		SEC_WINDOW },
+		{ "volume-mute", "mute and unmute",	SEC_WINDOW },
+		{ "media-play",	"play or pause",	SEC_WINDOW },
+		{ "media-stop",	"stop playing",		SEC_WINDOW },
+		{ "media-next",	"the next track",	SEC_WINDOW },
+		{ "media-prev",	"the track before",	SEC_WINDOW },
 		/*
 		 * The surfaces. Eleven chords reaching eleven programs, and
 		 * the description is what the program IS rather than its name:

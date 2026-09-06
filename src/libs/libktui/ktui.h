@@ -462,7 +462,21 @@ enum {
 	KT_K_HOME, KT_K_END, KT_K_PGUP, KT_K_PGDN, KT_K_INS, KT_K_DEL,
 	KT_K_BTAB,
 	KT_K_F1, KT_K_F2, KT_K_F3, KT_K_F4, KT_K_F5, KT_K_F6,
-	KT_K_F7, KT_K_F8, KT_K_F9, KT_K_F10, KT_K_F11, KT_K_F12
+	KT_K_F7, KT_K_F8, KT_K_F9, KT_K_F10, KT_K_F11, KT_K_F12,
+	/*
+	 * THE KEYS A KEYBOARD HAS AND A TERMINAL DOES NOT. A media key
+	 * produces no character, so a backend reading a terminal never sees
+	 * one and never will: these reach a session through libkkms and
+	 * nowhere else.
+	 *
+	 * APPENDED, NEVER INSERTED. The enum is positional from
+	 * KT_K_SPECIAL and the NUMBER travels: a session writes it over the
+	 * socket to a surface, so a key added in the middle renumbers every
+	 * key after it and a client built before the change reads Home where
+	 * the session sent End.
+	 */
+	KT_K_VOLUP, KT_K_VOLDOWN, KT_K_MUTE,
+	KT_K_PLAY, KT_K_STOP, KT_K_NEXT, KT_K_PREV
 };
 
 /* KT_MOD_SUPER is the desktop's own modifier — the one every window-management

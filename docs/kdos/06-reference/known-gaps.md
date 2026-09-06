@@ -89,7 +89,19 @@ scancodes therefore sees US positions.
 **A picture needs `kdos-term`, not `kdos-con`'s own terminal windows.** The session links no pixel
 code by design, so a terminal window it opens itself shows the fallback shade where a picture is.
 `kdos-term` is the terminal that joins the parser to the decoder, and it is a surface like any
-other — so a picture on the console desktop means opening one of those.
+other — so a picture on the console desktop means opening one of those. A `--tty` view running
+inside one of the session's own terminal windows detects this and stays on characters: that window
+answers the device-attributes probe claiming sixel and then reports no picture geometry, and it is
+the second answer that decides.
+
+**A terminal view's cell size is a guess unless the terminal names one.** `kdos-view --tty` asks
+`CSI 16t`, which `kdos-term` answers and most terminals do not; without an answer it uses 8x16 and
+`KDOS_VIEW_CELL=WxH` is the override. A wrong cell is a correctly encoded picture at the wrong
+scale, which does not look like a probe failure.
+
+**The last grid row of a terminal view is never pixels.** A picture at the bottom margin scrolls the
+host terminal in every protocol, and a scroll invalidates the frame diff with nothing able to detect
+it, so those cells keep the fallback mark.
 
 **No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing in
 the catalogue emits either. The three raster protocols are what a modern program reaches for.
@@ -124,6 +136,15 @@ depend on that.
 stack is built without X11 platform support. Enabling it means rebuilding the graphics stack and
 adding several X libraries. Wayland-native applications are unaffected.
 
+**No process on the live medium can create a user namespace** — not even root with the full
+capability set. Measured on the booted ISO: `unshare` succeeds for the mount, UTS, IPC, PID and
+network namespaces and fails for `CLONE_NEWUSER` with `EPERM`, for uid 0 and for `kdos` alike,
+while the running kernel reports `CONFIG_USER_NS=y`, `user.max_user_namespaces` at 15440, no LSM,
+no seccomp filter and no lockdown. Rootless `podman` therefore cannot start there at all: it fails
+at `cannot clone: Operation not permitted / cannot re-exec process`, before it reaches any storage
+layer. The consequence anything else has to plan around is that a namespace is not available to a
+program on this medium — `aerc`'s HTML filter, for one, falls back to an unroutable proxy.
+
 **A live session cannot create a persistent box.** The home directory is on the boot overlay, and
 the kernel refuses to stack a container's writable layer on an overlay. `kdos doctor` reports this
 as a property of the session rather than as a failure.
@@ -131,6 +152,18 @@ as a property of the session rather than as a failure.
 **A box is not a security boundary against you.** It shares your home directory in full. It
 constrains what an application can do to the **desktop**, not to your data. See
 [The security model](../03-architecture/security-model.md#what-is-not-protected).
+
+**An invitation in a message can be read and nothing else.** `aerc`'s calendar filter prints the
+event — summary, times, location, who was asked — and writes nothing anywhere. There is no verb that
+accepts, declines or files one, because a filter runs every time a message scrolls past and one that
+imported would accept every meeting it was scrolled over. Nothing yet turns a read invitation into a
+calendar entry by hand either; that waits on a calendar store.
+
+**No XOAUTH2 for mail.** `isync` reaches XOAUTH2 and OAUTHBEARER only through `cyrus-sasl`, which
+this tree does not build — measured: the shipped `mbsync` links `libssl`, `libcrypto`, `libz` and
+`libc`, and carries no XOAUTH2 string at all. A provider that has withdrawn application passwords
+therefore cannot be synchronised on this image, and a token minter would not lift it, because
+`mbsync` has no mechanism to present one.
 
 ## Hardware and platform
 
@@ -149,6 +182,19 @@ covers a great deal — but nothing here is tested against a wide device matrix.
 
 **Much of `kdos doctor` cannot answer in a virtual machine**, which is why it has a *skip with a
 reason* level rather than reporting those as passing.
+
+**No speech model ships and the desktop cannot fetch one.** `kdos-rec`'s *Transcribe* is therefore
+permanently greyed on a fresh image, and the transcribed text has never been read back on this
+tree: the model gate, the `whisper-cli` argv, the spawn and the exit status are what is verified.
+The way in is upstream's `models/download-ggml-model.sh` writing to
+`~/.local/share/whisper.cpp/models`.
+
+**Transcription is batch over a closed file**, not live. The streaming example needs SDL2, which is
+not a port here.
+
+**The emulated HDA codec gives the guest no capture signal**, so the rig cannot photograph a
+deflecting meter from `--audio` alone. The recording evidence comes from `snd-aloop`, loaded by
+hand in a root script.
 
 ## Security
 

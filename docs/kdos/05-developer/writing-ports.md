@@ -220,6 +220,34 @@ Four rules, each with a consequence:
 - **`Keywords=` is what the menu searches.** A row nobody can find by the word they know it by is
   a row that is not there.
 
+## A script the port ships goes in `build.sh`, in a `KDOS_SH` heredoc
+
+**For a port that names a `source =`**, the recipe hash covers `kpkgbuild`, `build.sh`,
+`postinstall.sh` and `*.patch` and nothing else in the port's directory. A helper script kept in a
+file beside the recipe is therefore **invisible to the hash**: the port reports itself current
+after every later edit and the image keeps the copy it already had. Nothing fails; the machine just
+runs the old script. (A **source-less** port is the other case — its whole directory is hashed,
+because its own files *are* its recipe. See
+[the packaging architecture](../03-architecture/packaging.md).)
+
+Write it into `build.sh` instead, in a quoted heredoc whose delimiter is `KDOS_SH`:
+
+```bash
+install -d "$PKG/usr/libexec/aerc/filters"
+cat > "$PKG/usr/libexec/aerc/filters/kdos-part" <<'KDOS_SH'
+#!/bin/sh
+...
+KDOS_SH
+chmod 755 "$PKG/usr/libexec/aerc/filters/kdos-part"
+```
+
+The delimiter is what `testing/preflight.sh` looks for: it extracts each `KDOS_SH` body into a file
+of its own and parses it with `bash -n` — `bash -n` on the recipe reads a heredoc as one word and
+sees nothing — and, when there is a build tree, checks that every program the script names **as the
+first word of a line**, after `if `, or after `set -- ` is on the image. A name inside a command
+substitution or a `trap` string is not seen. Quote the delimiter, or `$1` and `$PATH` are expanded
+while the recipe runs rather than while the script does.
+
 ## postinstall.sh
 
 The install-time hook, becoming a marker inside the package. Six ports have one.

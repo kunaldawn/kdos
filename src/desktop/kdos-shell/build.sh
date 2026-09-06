@@ -116,6 +116,9 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-pick"
 ln -s kdos-shell "$PKG/usr/bin/kdos-peek"
 ln -s kdos-shell "$PKG/usr/bin/kdos-find"
 ln -s kdos-shell "$PKG/usr/bin/kdos-pix"
+# The recorder forks `sox` and `whisper-cli` by name, which is why neither is
+# a pkg-config entry above — the same shape kdos-calc uses for qalc.
+ln -s kdos-shell "$PKG/usr/bin/kdos-rec"
 ln -s kdos-shell "$PKG/usr/bin/kdos-ascii"
 # What this machine is, read out of /proc and /etc rather than fetched by a
 # second program: an About window that shelled out to a screenfetch would

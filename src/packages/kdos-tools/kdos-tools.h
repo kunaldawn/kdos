@@ -91,6 +91,10 @@ int hey_app_ids(char ***out);
 /* kdos-sfx (sfx.c): four synthesized noises. Its own basename, because the
  * things that play them are init scripts and keybinds, not `kdos` users. */
 int sfx_main(int argc, char **argv);
+/* A basename of its own rather than a `kdos` subcommand, for the reason
+ * kdos-sfx has one: a media key runs it out of con.conf and rc.xml, and those
+ * name a program. */
+int mpctl_main(int argc, char **argv);		/* kdos-mpctl               */
 
 /*
  * The reasons corpus, shared by `kdos why`, `kdos explain` and `kdos oracle`.

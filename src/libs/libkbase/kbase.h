@@ -61,8 +61,15 @@ const char *kb_human_size(unsigned long long bytes);
  * ──────────────────────────────────────────────────────────────────────── */
 
 /* Reads at most cap-1 bytes and NUL-terminates. Returns the byte count, or
- * -1. Short reads are not retried: every caller is a /sys or /proc file. */
+ * -1. Short reads are not retried: every caller is a /sys or /proc file, whose
+ * length the kernel bounds. A file a PERSON edits wants kb_read_whole. */
 int kb_read_file(const char *path, char *buf, size_t cap);
+
+/* The whole file, NUL-terminated, on the heap; the caller frees it. `len` may
+ * be NULL. Returns NULL if the file cannot be read. For anything whose length
+ * is not bounded — a configuration file grows, and a fixed buffer stops seeing
+ * the end of one without saying so. */
+char *kb_read_whole(const char *path, size_t *len);
 
 /* First line, newline stripped. Returns its length, or -1. */
 int kb_read_line_file(const char *path, char *buf, size_t cap);
