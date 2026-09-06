@@ -23,7 +23,7 @@ the distribution with it.
 
 ## preflight.sh
 
-Everything a full build would catch, minus the build. Twenty-eight checks, in seconds:
+Everything a full build would catch, minus the build. Thirty-four checks, in seconds:
 
 | Group | Checks |
 |---|---|
@@ -32,8 +32,8 @@ Everything a full build would catch, minus the build. Twenty-eight checks, in se
 | Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value types validated |
 | Sources | Every source file in one of **our** ports is compiled by its recipe; a first source whose members are prefixed is accounted for; a flat first source is unpacked by its own recipe |
 | Shipped configuration | The shipped compositor configuration keeps the default bindings; every command it and the menu name exists; every filesystem the installer offers, the initramfs can mount |
-| Shell | All shipped and build shell is syntactically valid; no build script **names a command inside double quotes and runs it**; every helper the makefile runs is on disk and none shadows its own output |
-| Consistency | Every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the rootfs carries no script whose interpreter is gone; nothing points at a removed file; every recipe carries the banner; no chroot step reads the ports tree through the wrong path; the catalogue's rows match the tree |
+| Shell | All shipped and build shell is syntactically valid; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script **names a command inside double quotes and runs it**; every helper the makefile runs is on disk and none shadows its own output |
+| Consistency | The build tree's root carries nothing but a root filesystem; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the rootfs carries no script whose interpreter is gone; nothing points at a removed file; every recipe carries the banner; no chroot step reads the ports tree through the wrong path; the catalogue's rows match the tree |
 
 Three of those deserve singling out, because each is a whole class of failure that never reaches a
 compiler:
@@ -162,7 +162,7 @@ elevated privileges.
 
 Committed reference frames: a surface rendered offscreen and compared byte for byte.
 
-**Seventy-six frames** across six sizes, covering the shell's front ends, all ten monitor pages plus
+**Ninety frames** across six sizes, covering the shell's front ends, all ten monitor pages plus
 its detail page, the console desktop, the terminal, the cell-level frames, and the six replayed
 terminal recordings.
 
@@ -296,11 +296,30 @@ a variable moves one walk.
 | `clone` | Hand-built image headers | The two-record length rule |
 | `tray` | A second **process** that behaves like a real tray item | The whole protocol conversation |
 | `shell` | The dump harness and its stubs | Every front end's layout |
+| `res/*/sys/class/net/*/device` | A `uevent` file, because the DIRECTORY is the reading | Whether an interface is real — the test is the presence of that directory, and **git stores no empty one**, so a bare marker directory is absent from every clone and the frames that depend on it cannot be reproduced |
+| `shell/rec` | Two PCM lines — one playback-only, one with a capture stream — and 25 600 bytes of raw signed 16-bit: four ticks at half full scale, then four of exact zeros | That the input list is **filtered** rather than merely listed, and that the level is arithmetic over samples. The recorder's `--meter` prints one line per tick and `--write` produces a WAV compared byte for byte against `shell/Recordings/2026-01-01-000000.wav`, which the same writer wrote |
 | `vt` | What `vim`, `htop`, `mc`, `less` and `tmux` wrote to an 80x24 pty, plus a hand-written malformed stream | That the libtsm fork's state machine still produces the same screen |
 | `pack`, `box`, `deco`, `openwith`, `recent`, `tone`, `cellclip`, `ascii` | | Their respective units |
 | `img` | Images, and `fuzz.c` beside them | `libkimg` — every fixture decoded, then mutated and truncated |
 | `cast` | A recorded PipeWire stream | `kdos-view --cast`, which rasterises through the same cell painter |
 | `embed` | A guest's frames | `kdos-cage --embed` cutting them into sprites |
+
+### Looking at a session from inside another one
+
+**A view of the session it is running in draws nothing**, so a terminal view cannot be photographed
+against its own desktop. The harness is a second session:
+
+```sh
+kdos-con --new -t t2 &                                   # SERVES in the foreground: background it
+# wait for $XDG_RUNTIME_DIR/kdos/t2.view to exist — do not sleep on faith
+KDOS_CON=$XDG_RUNTIME_DIR/kdos/t2.sock kdos-pix FILE &   # something that produces pixels
+# then, inside a kdos-term window on the FIRST session:
+kdos-view --tty --socket $XDG_RUNTIME_DIR/kdos/t2.view
+```
+
+`kdos-pix` takes its socket from `$KDOS_CON` and has no `--socket`. `kdos-con --attach -t t2` is the
+short form of the third line. `KDOS_VIEW_PIX=off|kitty|sixel` forces the tier and `KDOS_VIEW_CELL`
+the cell size, which is how all three are driven on one host.
 
 **Both traps a fixture guards were confirmed to bite** by building the daemon with each check
 disabled — which is the only way to know a test is testing something.
@@ -373,6 +392,37 @@ when reading a failure:
 **Build the unmodified tree first.** With a baseline binary in hand, every error after a change
 belongs to the change. What this proves is that a port is type-correct and links; it does not prove
 a window lands where a person expects, which is still the rig's job.
+
+## Running a shipped program without booting
+
+`build/fs` is a complete musl root, so a program that is already installed there can be run
+directly — no ISO, no emulator, seconds rather than minutes:
+
+```sh
+docker run --rm -v $PWD/build/fs:/rootfs -v /path/to/inputs:/rootfs/in:ro \
+    alpine chroot /rootfs /bin/sh -c 'w3m -dump /in/page.html'
+```
+
+This is how a filter chain, a converter or any other program that reads a file and writes text is
+checked against **the binaries that ship** rather than the host's. Three limits, each of which has
+changed a reading:
+
+- **There is no `/proc` and no `/sys`.** Anything that reads either behaves differently; w3m prints
+  a garbage-collector warning here that it does not print on the machine.
+- **`unshare` is refused inside the chroot,** so a program that probes for a namespace takes its
+  fallback path. That makes the fallback easy to exercise and the namespace path impossible to —
+  and loosening the container does not help: measured, `--privileged`, `seccomp=unconfined`,
+  `apparmor=unconfined` and `--cap-add SYS_ADMIN` all still answer `Operation not permitted` for a
+  `chroot`ed process, while the same command outside the chroot succeeds under any of them.
+- **Nothing is supervised and no session exists.** A program that wants `$XDG_RUNTIME_DIR`, a bus
+  or a terminal is the rig's job, not this one.
+
+**Everything it writes stays in `build/fs`, and the ISO is built from `build/fs`.** A bind mount
+creates its own mountpoint — `-v inputs:/rootfs/in` leaves `build/fs/in` behind — and a program run
+under the chroot writes to `/root`, `/tmp` and wherever else it likes. None of that is owned by a
+package or by `fs/`, so neither the orphan sweep nor the fs-manifest guard will remove it, and it
+ships. Bind inputs read-only under `/tmp`, clean up after a run, and let `testing/preflight.sh`
+check the root: it refuses a `build/fs` whose top level is not a root filesystem.
 
 ## The QEMU rig
 
@@ -518,7 +568,10 @@ Four of those answer questions a screenshot alone cannot:
 
 - **`--audio`** gives a real device as far as the guest is concerned, with the samples going
   nowhere. Without it the sound library fails to initialise and every audio path in the guest is
-  **untestable, which is not the same as untested**.
+  **untestable, which is not the same as untested**. It is `hda-output` — **playback only**, so it
+  gives the guest no capture device and no capture signal. Recording is tested through `snd-aloop`
+  instead, which needs no emulator flag at all; a duplex codec would buy only a non-empty input
+  list, and `-audiodev none`'s behaviour towards a capture reader has not been measured.
 - **`--console-cmd`** photographs a program at the console font and the low glyph tier it has to
   read in. A window under a compositor is a different renderer answering a different question.
 - **`--soak`** lets the session run between launch and measurement, because a monitor's own cost
@@ -538,6 +591,35 @@ Four of those answer questions a screenshot alone cannot:
   resolving the home directory to the filesystem root, and every call fails on a permission error.
 - **A plain virtual display puts the compositor on software rendering**, so the phosphor pass
   declines and **is not in the photograph**. What is photographed is the cell grid underneath it.
+
+### A real capture device, with no emulator flag
+
+The emulated codec has no ADC, so nothing `--audio` gives can produce a capture signal. `snd-aloop`
+is the answer and it is already on the image (`CONFIG_SND_ALOOP=m`, `snd-aloop.ko.zst` shipped): a
+root script loads it and the guest gains card `Loopback` with two PCMs, each carrying eight playback
+and eight capture subdevices, cross-wired — what is written to `hw:Loopback,0` is read from
+`hw:Loopback,1`.
+
+```sh
+modprobe snd-aloop
+sox -n -r 16000 -c 1 -t alsa hw:Loopback,0 synth 8 sine 200-2000 vol 0.5 &
+sleep 2
+sox -q -t alsa hw:Loopback,1 -t raw -e signed -b 16 -c 1 -r 16000 /tmp/cap.raw trim 0 3
+```
+
+Run it under **`--no-session`**: tty1 is the console desktop and PipeWire never starts, so the
+loopback's capture side is free.
+
+- **A swept tone is the only version of this test that can fail.** Silence and a flat baseline pass
+  identically whether a level is computed from the samples or hardcoded to zero. The three seconds
+  above come back as exactly 96 000 bytes peaking at 16382 — half of full scale, which is the `vol
+  0.5` that was played.
+- **The rates need not match.** The player above negotiates 48 kHz and the capture asks for 16 kHz
+  signed 16-bit; ALSA's plug layer converts, `sox` warns that it cannot encode the format natively,
+  and the bytes that arrive are correct. What must be true is that the **player opens first**, so
+  there is a stream for the capture side to read.
+- **`sync` before the harness kills the emulator**, or a file written in the guest comes back
+  zero-length.
 
 ### The transport for a large artefact
 
@@ -618,10 +700,9 @@ Stated so nobody assumes otherwise:
 - **The memory daemon has never fired for real.** Its victim selection is exercised against recorded
   state; a genuine pressure stall is the test that matters.
 - **Six shell surfaces have no dump and no reference frame.**
-- **`kdos-settings` has its `golden` calls and no committed goldens.** The first run in a container
-  that can reach the front-end dumps writes them. **A golden no `golden` call drives is worse than
-  none:** nothing compares it, so it agrees with the surface only until the surface changes, and it
-  reads to the next person as evidence that was checked.
+- **A golden no `golden` call drives is worse than none:** nothing compares it, so it agrees with
+  the surface only until the surface changes, and it reads to the next person as evidence that was
+  checked. Every committed frame is driven by a call.
 - **The compositor and the shell are not compiled by the self-test on a bare host.**
 - **Nothing here tests the build**, which takes hours and a container.
 

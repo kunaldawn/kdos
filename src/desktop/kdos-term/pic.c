@@ -1131,16 +1131,36 @@ static void on_image(struct kvt_vte *vte, enum kvt_img_kind kind,
 	switch (kind) {
 	case KVT_IMG_SIXEL: {
 		/*
-		 * The body, re-framed by libkimg — libsixel will not decode a
-		 * bare one. The introducer's parameters are aspect ratio and
-		 * background handling, which libsixel reads out of the frame
-		 * it is given rather than out of anything this file passes.
+		 * THE INTRODUCER IS PUT BACK HERE, because the delimiter ate
+		 * it. libkvt consumes the DCS final `q` as a state transition
+		 * and hands the parameters over separately, and libsixel's
+		 * parser leaves its DCS state on `q` and on nothing else — so
+		 * a body passed on alone is skipped to the terminator and
+		 * decodes as a one-pixel image with no error. The frame is
+		 * built here rather than in libkimg because the fixtures that
+		 * exercise libkimg carry their own introducer and would get
+		 * two.
 		 */
 		KimgBudget b = budget();
-		pixman_image_t *img = kimg_decode(payload, len, KIMG_SIXEL, &b);
+		size_t plen = params ? strlen(params) : 0;
+		size_t flen = plen + len + 5;
+		uint8_t *framed = malloc(flen + 1);
+		pixman_image_t *img;
 		int cw, ch;
 
-		(void)params;
+		if (!framed)
+			return;
+		framed[0] = 0x1b;
+		framed[1] = 'P';
+		memcpy(framed + 2, params, plen);
+		framed[2 + plen] = 'q';
+		memcpy(framed + 3 + plen, payload, len);
+		framed[3 + plen + len] = 0x1b;
+		framed[4 + plen + len] = '\\';
+		framed[flen] = 0;
+
+		img = kimg_decode(framed, flen, KIMG_SIXEL, &b);
+		free(framed);
 		if (!img)
 			return;
 		size_in_cells(img, 0, 0, &cw, &ch);
@@ -1173,6 +1193,7 @@ void term_pic_geom(void)
 	int cw = TC.image_cells < T.cols ? TC.image_cells : T.cols;
 	int ch = TC.image_cells < T.rows ? TC.image_cells : T.rows;
 
+	kvt_term_cell_px(T.t, cell_w(), cell_h());
 	if (!TC.images) {
 		/* A build or a session with pictures off answers the query
 		 * with a failure, which is what "no geometry" means. */
@@ -1184,7 +1205,18 @@ void term_pic_geom(void)
 
 void term_pic_init(void)
 {
+	/*
+	 * THE CALLBACK IS REGISTERED EVEN WITH PICTURES OFF, and it is what
+	 * makes the refusal above reachable: with none, libkvt routes the whole
+	 * APC to its ignore state and `a=q` gets silence — which is the one
+	 * answer a program cannot act on. The cap is small on that path because
+	 * nothing there is decoded; a body over it is dropped by libkvt before
+	 * it reaches the screen, which is what a body nobody will look at
+	 * deserves.
+	 */
+	kvt_term_cell_px(T.t, cell_w(), cell_h());
 	if (!TC.images) {
+		kvt_term_img_cb(T.t, on_image, 4096, NULL);
 		term_pic_geom();
 		return;
 	}

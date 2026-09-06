@@ -122,6 +122,17 @@ enum { CON_CMD_MENU = 0, CON_CMD_LAUNCHER, CON_CMD_LOCK, CON_CMD_SAVER,
         * of and what the overlay role already gives this desktop for free. */
        CON_CMD_CALC, CON_CMD_NOTE, CON_CMD_CLIP,
        CON_CMD_FIND, CON_CMD_CAPTURE,
+       /*
+        * THE MEDIA KEYS, and they run a program rather than doing anything
+        * themselves: what "louder" means is the mixer's and what "next" means
+        * is the player's, and neither is the window manager's business.
+        *
+        * A KMS VIEW ONLY. A media key produces no character, so no terminal
+        * reports one and a view that reads a terminal never sees one — the
+        * chord exists on tty1 and over ssh it does not.
+        */
+       CON_CMD_VOLUP, CON_CMD_VOLDOWN, CON_CMD_MUTE,
+       CON_CMD_PLAY, CON_CMD_STOP, CON_CMD_NEXT, CON_CMD_PREV,
        CON_CMD_N };
 
 const char *con_command(int which);

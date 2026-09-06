@@ -711,7 +711,12 @@ void kvt_term_img_cb(struct kvt_term *t, kvt_vte_img_cb cb, size_t max_bytes,
  * the terminal that lied about its size.
  */
 void kvt_vte_set_img_geom(struct kvt_vte *vte, int max_w_px, int max_h_px);
+void kvt_vte_set_cell_px(struct kvt_vte *vte, int cw, int ch);
 void kvt_term_img_geom(struct kvt_term *t, int max_w_px, int max_h_px);
+/* One cell in pixels, for `CSI 16t`. Only the program drawing the glyphs knows
+ * it; a client that is not told guesses, and a guessed scale looks like a
+ * broken decoder. Zero refuses the report rather than inventing one. */
+void kvt_term_cell_px(struct kvt_term *t, int cw, int ch);
 void kvt_vte_set_mouse_cb(struct kvt_vte *vte, kvt_vte_mouse_cb mouse_cb, void *mouse_data);
 void kvt_vte_set_bell_cb(struct kvt_vte *vte, kvt_vte_bell_cb bell_cb, void *bell_data);
 void kvt_vte_set_sync_cb(struct kvt_vte *vte, kvt_vte_sync_cb cb, void *data);

@@ -213,6 +213,25 @@ void kpr_block_free(KprDisk *d);
  * eight times wrong on a 4K disk. */
 #define KPR_SECTOR 512ULL
 
+/* ── sound ───────────────────────────────────────────────────────────────── */
+/*
+ * One PCM device. `capture` is the whole reason this exists: a card is not a
+ * microphone, and a picker built from /proc/asound/cards offers an HDMI codec
+ * as an input. `id` is the `hw:C,D` an ALSA client is handed.
+ */
+typedef struct {
+	int card, device;
+	int capture, playback;		/* which streams the PCM carries   */
+	char id[16];			/* hw:C,D                          */
+	char name[64];			/* the PCM's own name, not the card's */
+} KprSoundPcm;
+
+/* Every PCM the kernel lists, in file order. malloc'd; NULL and *n 0 when
+ * /proc/asound is absent, which is a machine with no sound card rather than an
+ * error. */
+KprSoundPcm *kpr_sound_pcms(int *n);
+void kpr_sound_free(KprSoundPcm *v);
+
 /* ── network ─────────────────────────────────────────────────────────────── */
 typedef struct {
 	char name[32], mac[24], driver[32];

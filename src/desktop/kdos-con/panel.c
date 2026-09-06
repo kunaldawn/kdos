@@ -10,6 +10,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "kbase.h"
 #include "con.h"
 
 int panel_rows(void)
@@ -91,6 +92,82 @@ int panel_fkeys(void)
 	if (mode < 0)
 		mode = !strcmp(kcon_conf_str("taskbar", "windows"), "fkeys");
 	return mode;
+}
+
+/*
+ * WHAT IS PLAYING, AND WHOSE JOB IT IS TO KNOW. `kdos-mpctl watch` asks the
+ * music daemon and writes one line; this reads that line. The session speaks no
+ * media protocol and holds no player state — a bar that connected to mpd would
+ * be a window manager with an opinion about music.
+ *
+ * READ AT MOST ONCE A SECOND. `panel_draw()` runs every iteration of a 20 ms
+ * poll, so an unthrottled read is fifty opens a second for a line that changes
+ * between tracks.
+ *
+ * FROZEN UNDER A DUMP, like the clock beside it and for the same reason: a
+ * golden that named whatever was playing on the machine that made it would
+ * fail everywhere else. What the dump asserts is the field's GEOMETRY.
+ */
+static const char *nowplaying(void)
+{
+	static char line[128];
+	static unsigned long long last;
+	static int on = -1;
+	char path[256];
+	const char *rt;
+	unsigned long long now;
+
+	if (on < 0)
+		on = kcon_conf_bool("nowplaying", 1);
+	if (!on)
+		return "";
+	if (getenv("KDOS_CON_DUMP"))
+		return "> Test Card - Frozen";
+
+	now = con_now_ms();
+	if (last && now - last < 1000)
+		return line;
+	last = now ? now : 1;
+
+	line[0] = '\0';
+	rt = getenv("XDG_RUNTIME_DIR");
+	if (!rt || !*rt)
+		return line;
+	snprintf(path, sizeof(path), "%s/kdos/nowplaying", rt);
+	if (kb_read_file(path, line, sizeof(line)) <= 0)
+		line[0] = '\0';
+	for (char *p = line; *p; p++)
+		if (*p == '\n' || *p == '\r') {
+			*p = '\0';
+			break;
+		}
+	return line;
+}
+
+/*
+ * How many columns the field takes, INCLUDING the space before it, or zero.
+ *
+ * A third of the bar and never less than sixteen: the window list is what the
+ * bar is for, and a long track title that pushed it off an eighty-column screen
+ * would be a music player eating a task switcher. Drawn whole or not at all —
+ * a title cut mid-word tells you less than no title does.
+ *
+ * NOT ON THE FUNCTION-KEY ROW. That row is ten labels and the word `Super` in
+ * eighty columns and it already ends two columns from the clock; there is no
+ * room to take.
+ */
+static int now_w(void)
+{
+	const char *s = nowplaying();
+	int w, budget;
+
+	if (panel_fkeys() || !*s)
+		return 0;
+	w = ktui_utf8_width(s);
+	budget = S.cols / 3;
+	if (budget < 16)
+		budget = 16;
+	return w > budget ? 0 : w + 1;
 }
 
 int panel_have_shell(void)
@@ -274,7 +351,7 @@ void panel_draw(void)
 	/* The window list stops where the pager and the clock begin: a title
 	 * that ran under them would be drawn over and the hit map would name a
 	 * span the eye cannot see. */
-	int reserved = 7 + S.nworkspace * 3;
+	int reserved = 7 + S.nworkspace * 3 + now_w();
 
 	for (int i = n - 1; i >= 0 && x < S.cols - reserved - 2; i--) {
 		Win *w = order[i];
@@ -378,6 +455,13 @@ clock:
 
 	ktui_draw_text_right(0, y, S.cols - 1, clock, KT_MID, KT_SURFACE,
 			     KT_A_NONE);
+
+	/* Left of the pager, in the clock's own slots: it is the same class of
+	 * ambient text and it follows the accent with everything else. */
+	if (now_w())
+		ktui_draw_text_right(0, y, S.cols - 1 - 6 - S.nworkspace * 3,
+				     nowplaying(), KT_MID, KT_SURFACE,
+				     KT_A_NONE);
 	/* Right-aligned, so its span is measured from the right edge rather
 	 * than from where the drawing happened to stop. */
 	hit_add(S.cols - 1 - (int)strlen(clock), S.cols - 1, PANEL_HIT_CLOCK,

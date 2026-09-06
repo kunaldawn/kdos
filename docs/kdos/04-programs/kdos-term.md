@@ -79,6 +79,12 @@ the number of columns and rows.
 decoder's, so a program that believed it had negotiated a larger picture would send one and have it
 clipped. `Pa` 3 is answered `Ps=3`.
 
+**`CSI 16t` reports what one cell is in pixels**, height first. Only the program drawing the glyphs
+knows it, and a client that is not told has to guess — a guessed cell is a correctly encoded picture
+at the wrong scale, which looks like a broken decoder rather than a missing answer. A terminal
+nobody has told answers nothing rather than inventing a number, because a client cannot tell an
+invented answer from a real one.
+
 **`CSI Ps S` and `CSI ? … S` differ by the private marker alone**, and the first scrolls the screen.
 A terminal that misses the marker answers a capability probe by scrolling: the program learns
 nothing, and what it sees is its own output moving.
@@ -188,6 +194,12 @@ compositing it over the first would show the first through anything transparent 
 output, disappear on `clear` and reach the scrollback — three behaviours an overlay would have to
 reimplement against a screen already doing all three.
 
+**A sixel is handed to the decoder with its introducer put back on.** `libkvt` consumes the DCS
+final `q` as a state transition and passes the parameters separately, and a sixel decoder leaves its
+own DCS state on `q` and on nothing else — so a body passed on alone is skipped to the terminator
+and decodes as a one-pixel image with no error anywhere. The frame is rebuilt here rather than in
+`libkimg`, whose fixtures carry their own introducer and would get two.
+
 Nothing here parses an image format. Base64 and the `key=value` control blocks are transport and
 are bounded here; the moment a byte could be part of a picture it goes to `libkimg`.
 
@@ -200,8 +212,10 @@ are bounded here; the moment a byte could be part of a picture it goes to `libki
 | `APC G a=q` | The capability query, answered `OK` with the id echoed — or `ENOTSUP` where pictures are off |
 
 A build without `libkimg` leaves the three protocols **off entirely** rather than parsing them and
-dropping the result: with no callback registered `libkvt` ignores a sixel dump exactly as it always
-did. Parsing bytes nobody can use is a buffer somebody can fill.
+dropping the result. `images = no` is not the same thing: there the delimiter still runs, under a
+4 KB cap, so that the kitty query can be *refused* — a refusal is instant and is what a program's
+fallback path is written for, where silence costs it a timeout. Nothing on that path is decoded, and
+a body over the cap is dropped before it reaches the screen.
 
 Where pixels cannot be drawn — a tty, a view with no pixel library, a `--dump` — every cell of a
 picture carries a fallback shade. Something rather than nothing: a photograph that rendered as blank

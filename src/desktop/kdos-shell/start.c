@@ -817,6 +817,12 @@ static void build_right(void)
 		r->icon = "audio-speakers";
 		r->argv[0] = "kdos-audio";
 	}
+	r = push(right, &nright, "Recorder");
+	if (r) {
+		r->keys = "record microphone voice memo dictate transcribe";
+		r->icon = "audio-input-microphone";
+		r->argv[0] = "kdos-rec";
+	}
 	r = push(right, &nright, "Notifications");
 	if (r) {
 		r->keys = "alerts toasts history missed notify";

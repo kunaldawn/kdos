@@ -390,6 +390,11 @@ static struct row rows[] = {
 	  "which cameras exist, what is holding one, and the key that mutes "
 	  "every microphone at once",
 	  "", "" },
+	{ CAT_HARDWARE, FT_TOOL, ST_NONE, SC_NONE, "kdos-rec",
+	  "Recording…", NULL, 0, 0, 0, 0,
+	  "record from a microphone, watch the level, and transcribe what came "
+	  "back when a speech model is present",
+	  "", "" },
 
 	/* ── Input ──────────────────────────────────────────────────────
 	 *

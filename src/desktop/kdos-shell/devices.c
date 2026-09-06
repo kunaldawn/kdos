@@ -12,7 +12,7 @@
  *   ║ ▶ /dev/video0  Integrated Camera   uvcvideo    free             ║
  *   ║   /dev/video2  USB Camera          uvcvideo    IN USE by firefox║
  *   ║ MICROPHONES                                              muted  ║
- *   ║   hw:0  HDA Intel PCH             capture 62%                   ║
+ *   ║   hw:1,0 ALC623 Analog            capture 62%                   ║
  *   ║ INPUT                                                           ║
  *   ║   AT Translated Set 2 keyboard                                  ║
  *   ╟─────────────────────────────────────────────────────────────────╢
@@ -66,6 +66,7 @@
 #include "kcell.h"
 #include "kwl.h"
 #include "shell.h"
+#include "kproc.h"
 
 #define DV_COLS 76
 #define DV_ROWS 26
@@ -469,30 +470,29 @@ out:
 /* ── microphones and input devices ─────────────────────────────────────── */
 
 /*
- * The capture cards, from /proc/asound/cards — the same file `aplay -l` reads
- * and one this program can read without linking ALSA a second time. osd.c owns
- * the mixer and this owns the LIST.
+ * The capture PCMs, through `kpr_sound_pcms()` — a file read that links no
+ * ALSA library. osd.c owns the mixer and this owns the LIST.
+ *
+ * A CARD IS NOT A MICROPHONE. An HDMI codec is a card with four playback PCMs
+ * and no capture stream, so a list built from /proc/asound/cards offers a
+ * monitor's audio output as an input. kdos-rec reads the same function: two
+ * surfaces must not give two answers to what a microphone is.
  */
 static void scan_mics(void)
 {
-	FILE *f = fopen("/proc/asound/cards", "r");
-	char line[256];
+	int n = 0;
+	KprSoundPcm *p = kpr_sound_pcms(&n);
 
 	nmic = 0;
-	if (!f)
-		return;
-	while (fgets(line, sizeof(line), f) && nmic < DV_MAX_MIC) {
-		int idx = -1;
-		char rest[200] = "";
-
-		/* ` 0 [PCH            ]: HDA-Intel - HDA Intel PCH` */
-		if (sscanf(line, " %d [%*[^]]]: %199[^\n]", &idx, rest) != 2)
+	for (int i = 0; i < n && nmic < DV_MAX_MIC; i++) {
+		if (!p[i].capture)
 			continue;
 		struct dv_mic *m = &mics[nmic++];
-		snprintf(m->id, sizeof(m->id), "hw:%d", idx);
-		snprintf(m->name, sizeof(m->name), "%s", rest);
+
+		snprintf(m->id, sizeof(m->id), "%s", p[i].id);
+		snprintf(m->name, sizeof(m->name), "%s", p[i].name);
 	}
-	fclose(f);
+	kpr_sound_free(p);
 }
 
 /*

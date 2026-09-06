@@ -69,6 +69,9 @@ Every key is documented in [Configuration](configuration.md).
 | `~/.cache/kdos/theme` | **One word**: the accent name. The entire theme state the desktop reads |
 | `~/.cache/kdos/wallpaper.png` | The retinted wallpaper the compositor prefers |
 | `~/.local/share/Trash/` | The freedesktop trash |
+| `~/Mail/` | The machine's Maildir. Named by `~/.mbsyncrc` and by notmuch's `mail_root`, and created by `script/06_packaging/00_user.sh` — both programs report an error on a directory that is not there rather than making one |
+| `~/Recordings/` | What `kdos-rec` wrote, `YYYY-MM-DD-HHMMSS.wav`, made on demand. **Not an XDG user directory** — `RECORDINGS` is not in the freedesktop set and `user-dirs.dirs` must not grow an invented key |
+| `~/.local/share/whisper.cpp/models/` | Speech models, `ggml-*.bin`. Searched, never written by the desktop |
 
 ### `$XDG_RUNTIME_DIR` — per session
 
@@ -336,6 +339,7 @@ constants are omitted.
 | `KDOS_CRT_DUMP=<prefix>` | Write the phosphor pass's input and output once |
 | `KDOS_CRT_DUMP_FRAME=<n>` | Wait until frame *n* before dumping |
 | `KDOS_PACKD_VERBOSE=1` | The pack daemon explains itself |
+| `KDOS_WHISPER_MODEL=<file>` | One speech model, named exactly. When set, no directory is searched behind it |
 
 ### Testing seams
 

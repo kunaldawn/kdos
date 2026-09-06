@@ -2195,6 +2195,7 @@ static void help_body(FILE *o)
 		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
+		{ "kdos-mpctl toggle", "the music: toggle, stop, next, prev, now, watch" },
 		{ "kdos-display [--list]", "the screens: mode, scale, rotation, order" },
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "kdos-power suspend", "suspend; also poweroff and reboot" },

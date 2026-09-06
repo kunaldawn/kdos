@@ -887,9 +887,18 @@ void ktui_draw_flush(void)
 		back[pt].attr ^= KT_A_REVERSE;
 	}
 
-	cur_backend()->flush(back, front, bw, bh, force_full);
+	/*
+	 * THE FLAG IS TAKEN AND CLEARED BEFORE THE BACKEND RUNS, so that a
+	 * backend which asks for a full repaint WHILE it is flushing gets one
+	 * on the next frame. Clearing afterwards discards it: the tty backend's
+	 * own recovery from a dropped write, and any wrapper that finds its
+	 * output cut in half, both set this from inside this call.
+	 */
+	int full = force_full;
+
+	force_full = 0;
+	cur_backend()->flush(back, front, bw, bh, full);
 
 	if (pt >= 0)
 		back[pt].attr ^= KT_A_REVERSE;
-	force_full = 0;
 }

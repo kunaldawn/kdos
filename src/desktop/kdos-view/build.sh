@@ -18,12 +18,14 @@
 # why PipeWire is here and not in the session.
 LIBS="$PORT_SRC/../../libs"
 # libpng is `--shot`'s: one frame of the composited grid, written as a picture
-# rather than as the text a `--dump` prints.
-PKGCFG="libdrm libinput libseat xkbcommon libudev fcft pixman-1 libpipewire-0.3 libpng"
+# rather than as the text a `--dump` prints. libsixel is the terminal emitter's
+# encoder — the one path where this program has to turn pixels back into bytes
+# a program on the other end of a pty will draw.
+PKGCFG="libdrm libinput libseat xkbcommon libudev fcft pixman-1 libpipewire-0.3 libpng libsixel"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKDOS_VIEW_VERSION="\"$version\"" -DKDOS_VIEW_KMS -DKDOS_VIEW_CAST \
-	-DKDOS_VIEW_SHOT \
+	-DKDOS_VIEW_SHOT -DKDOS_VIEW_TTYPIX \
 	-I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libkcolor" -I"$LIBS/libktui" \
 	-I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkcell" \

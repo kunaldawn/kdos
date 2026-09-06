@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rmpc
+version     = 0.11.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/mierak/rmpc/archive/refs/tags/v$version.tar.gz
+sha256      = 930019066228d18e9530a8c0d77f10e231ab5efbbbca73b331efcd6fbb47557d  rmpc-0.11.0.tar.gz
+sha256      = 06c23114a1bd8d587cbe68782050700168d1124e123ad7bdcbdf18c56b6476cd  rmpc-vendor-0.11.0.tar.xz
+description = An MPD client drawn in ratatui, with album art in the terminal
+homepage    = https://github.com/mierak/rmpc
+depends     = rust
+vendoring   = rust

@@ -349,6 +349,7 @@ FRONT_END(status_main);
 FRONT_END(tip_main);
 FRONT_END(panel_main);
 FRONT_END(trash_main);
+FRONT_END(rec_main);
 
 static const struct {
 	const char *name;
@@ -377,6 +378,7 @@ static const struct {
 	{ "notify",	notify_main },
 	{ "status",	status_main },
 	{ "tip",	tip_main },
+	{ "rec",	rec_main },
 	{ "shell",	panel_main },
 };
 

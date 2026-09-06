@@ -47,16 +47,18 @@
  * A build without it says so when asked for --kms rather than pretending.
  */
 /*
- * THE CELL RASTERISER IS SHARED BY TWO MODES. `--kms` puts cells on a screen
- * and `--shot` puts the same cells in a file, and both go through libkcell —
- * so the painter, the sprite table and the picture path are all behind this
- * one name, and only the KMS driver itself is behind the narrower guard.
+ * THE CELL RASTERISER IS SHARED BY EVERY SINK THAT HOLDS PIXELS. `--kms` puts
+ * cells on a screen, `--shot` puts the same cells in a file and a `--tty` view
+ * hands them to the terminal it is running in — all three keep a picture's
+ * pixels, and all three go through libkcell's sprite table to do it. Only the
+ * KMS driver itself is behind the narrower guard.
  *
- * A BUILD WITHOUT IT DRAWS PICTURES AS CHARACTERS, which is what a terminal
- * view and a `--dump` do anyway. What it must not do is claim
- * `KCON_VIEW_PIXELS` and then have nothing to put the pixels in.
+ * A BUILD WITHOUT IT DRAWS PICTURES AS CHARACTERS, which is what a `--dump`
+ * does anyway. What it must not do is claim `KCON_VIEW_PIXELS` and then have
+ * nothing to put the pixels in.
  */
-#if defined(KDOS_VIEW_KMS) || defined(KDOS_VIEW_SHOT)
+#if defined(KDOS_VIEW_KMS) || defined(KDOS_VIEW_SHOT) || \
+    defined(KDOS_VIEW_TTYPIX)
 #define KDOS_VIEW_PIXELS 1
 #endif
 
@@ -292,8 +294,14 @@ static void view_slot_init(void)
 static void sprite_free(uint64_t key, const void *pix, void *user)
 {
 	(void)user;
-	if (key < KCON_MAX_SPRITE_MAP)
+	if (key < KCON_MAX_SPRITE_MAP) {
+#if defined(KDOS_VIEW_TTYPIX)
+		/* A placement the terminal is still showing outlives the
+		 * table entry that named it; the emitter has to be told. */
+		view_ttypix_forget(view_slot[key]);
+#endif
 		view_slot[key] = -1;
+	}
 	pixman_image_unref((pixman_image_t *)pix);
 }
 #endif
@@ -331,8 +339,38 @@ typedef struct {
 } AsciiPic;
 
 static AsciiPic *ascii_pic[KCON_MAX_SPRITE_MAP];
-/* Set when the view has no pixels of its own: --tty, and --dump. */
-static int ascii_mode;
+
+/*
+ * WHERE THIS VIEW CAN PUT A PICTURE'S PIXELS, which is the one thing that
+ * decides whether a sprite is kept or matched to a shape.
+ *
+ *   RASTER  a screen, a cast or a file — libkcell paints the cells
+ *   TTYPIX  a host terminal that answered the probe — ttypix.c emits them
+ *   ASCII   nowhere; the shape matcher is all there is
+ *
+ * A sink that is not ASCII must reach `ktui_sprite_put()`, or the pixels exist
+ * only for the length of the call that delivered them.
+ */
+enum { SINK_ASCII = 0, SINK_RASTER, SINK_TTYPIX };
+static int sink;
+
+/* The sink's cell in pixels. A terminal's comes from its own answer to the
+ * probe; everything else is the font libkcell loaded. */
+static int pix_cw, pix_ch;
+
+static int sink_cell_w(void)
+{
+	return sink == SINK_TTYPIX ? pix_cw : kcell_w();
+}
+
+static int sink_cell_h(void)
+{
+	return sink == SINK_TTYPIX ? pix_ch : kcell_h();
+}
+
+/* What the SESSION said a picture should look like without pixels. Kept per
+ * session slot so a view that cannot draw one still draws its mark. */
+static uint32_t sess_fb[KCON_MAX_SPRITE_MAP];
 
 /* 0 untried, 1 measured, -1 refused. A machine with no font at all draws the
  * fallback mark, which is what a picture has always looked like here. */
@@ -422,7 +460,7 @@ static void ascii_take(int slot, int cw, int ch, const uint32_t *argb,
  */
 static int ascii_cell(uint32_t *ch, int *fg)
 {
-	if (!ascii_mode || !KTUI_IS_SPRITE(*ch))
+	if (sink == SINK_RASTER || !KTUI_IS_SPRITE(*ch))
 		return 0;
 
 	unsigned slot = KTUI_SPRITE_SLOT(*ch);
@@ -477,7 +515,10 @@ static void take_sprite(const KconMsg *m)
 		return;
 	}
 
-	if (ascii_mode) {
+	if (slot >= 0 && slot < KCON_MAX_SPRITE_MAP)
+		sess_fb[slot] = fallback;
+
+	if (sink == SINK_ASCII) {
 		ascii_take(slot, cw, ch, argb, pw, ph);
 		redraw_slot((unsigned)slot);
 		return;
@@ -491,8 +532,8 @@ static void take_sprite(const KconMsg *m)
 	 * answer — so scaling at the sender could only ever be right for one
 	 * of them.
 	 */
-	int dw = cw * kcell_w();
-	int dh = ch * kcell_h();
+	int dw = cw * sink_cell_w();
+	int dh = ch * sink_cell_h();
 
 	if (dw <= 0 || dh <= 0)
 		return;
@@ -560,9 +601,19 @@ static void take_sprite(const KconMsg *m)
 }
 
 #ifdef KDOS_VIEW_PIXELS
-/* The session's slot in the cell, rewritten to this view's. A slot with no
- * picture behind it becomes one the table has never heard of, and the backend
- * draws the fallback mark. */
+/*
+ * The session's slot in the cell, rewritten to this view's.
+ *
+ * A SLOT WITH NO PICTURE BEHIND IT BECOMES THE SESSION'S OWN MARK rather than
+ * a table entry nobody has. Naming a slot the table has never heard of makes
+ * the backend write a space — indistinguishable from a picture that never
+ * arrived — and a whole pane of them is what "nothing appeared" looks like.
+ * The mark goes in the top-left cell only, so a 2x2 icon does not become four
+ * identical blocks.
+ *
+ * Only where a picture was expected: a `--dump` writes what it has always
+ * written, because its output is a golden.
+ */
 static uint32_t present(uint32_t ch)
 {
 	if (!KTUI_IS_SPRITE(ch))
@@ -571,6 +622,13 @@ static uint32_t present(uint32_t ch)
 	unsigned slot = KTUI_SPRITE_SLOT(ch);
 	int vs = slot < KCON_MAX_SPRITE_MAP ? view_slot[slot] : -1;
 
+	if (vs < 0 && sink == SINK_TTYPIX) {
+		uint32_t fb = slot < KCON_MAX_SPRITE_MAP ? sess_fb[slot] : 0;
+
+		if (KTUI_SPRITE_SX(ch) || KTUI_SPRITE_SY(ch))
+			return ' ';
+		return fb ? fb : 0x2593u;
+	}
 	if (vs < 0)
 		vs = 0xffff;
 	return (ch & ~(0xffffu << 8)) | ((uint32_t)vs << 8);
@@ -645,13 +703,16 @@ static void draw_one(int x, int y, const KtuiCell *c)
  * A PICTURE ARRIVED FOR CELLS THAT ARE ALREADY DRAWN. Only those cells are
  * repainted, out of the copy of what the session sent.
  *
- * AND THE FRAME IS FORCED, which is the one case where that is right. A sprite
- * cell encodes the SLOT, not the picture — so an animation's next frame writes
+ * AND THE FRAME IS FORCED WHERE THE CELLS ARE THE PICTURE. A sprite cell
+ * encodes the SLOT, not the picture — so an animation's next frame writes
  * byte-identical cells, the flush's diff finds nothing to send, and the screen
- * holds the first frame for ever. This is the only place where the cells are
- * unchanged and the pixels behind them are not, and a forced paint is what
- * says so. It costs a full repaint per animation frame, and only while
- * something is animating.
+ * holds the first frame for ever. A forced paint is what says otherwise. It
+ * costs a full repaint per animation frame, and only while something is
+ * animating.
+ *
+ * NOT FOR A PIXEL EMITTER, which compares `KtuiSprite.gen` and needs no help:
+ * there, one arriving 16x16 tile would force a whole-screen repaint, and a
+ * window-sized guest is a tile per 256 cells per frame.
  */
 static void redraw_slot(unsigned slot)
 {
@@ -669,7 +730,7 @@ static void redraw_slot(unsigned slot)
 			draw_one(x, y, c);
 			hit = 1;
 		}
-	if (hit)
+	if (hit && sink != SINK_TTYPIX)
 		ktui_draw_invalidate();
 }
 #endif
@@ -719,8 +780,12 @@ static int take_frame(int timeout_ms)
 			int cx = (int)kcon_get_i32(&b);
 			int cy = (int)kcon_get_i32(&b);
 
-			if (!b.err && !own_screen)
+			if (!b.err && !own_screen) {
 				ktui_term_caret(cx, cy);
+#ifdef KDOS_VIEW_TTYPIX
+				view_ttypix_caret(cx, cy);
+#endif
+			}
 			continue;
 		}
 
@@ -893,6 +958,10 @@ int main(int argc, char **argv)
 	const char *font = getenv("KDOS_CON_FONT");
 	int cols = 0, rows = 0, tty = 0, kms = 0, dump = 0, cast = 0;
 	int kms_only = 0;
+#ifdef KDOS_VIEW_PIXELS
+	/* Only a build that can hold pixels can have a terminal sink. */
+	int tty_pix = 0;
+#endif
 	const char *shot = NULL;
 	int crop[4] = { 0, 0, 0, 0 };
 
@@ -1112,6 +1181,31 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		ktui_draw_init();
+#ifdef KDOS_VIEW_TTYPIX
+		/*
+		 * ASKED AFTER ktui_draw_init AND BEFORE THE FIRST FRAME.
+		 * After, because `ktui_caps` is the backend's answer and is
+		 * not set until then — a probe that ran first would not know
+		 * it was on a Linux console. Before, because the answer
+		 * decides whether this view keeps a picture's pixels at all,
+		 * and because the reply has to be read while nothing else is
+		 * reading the terminal.
+		 *
+		 * THE THROTTLE IS NOT LIFTED. A view that declared
+		 * KCON_VIEW_PIXELS would have the session stop rate-limiting
+		 * every embedded guest for every view, and this one writes to
+		 * a terminal that can block: while it is blocked it is not
+		 * reading its session socket, and a session drops a peer whose
+		 * queue overflows. The emitter rate-limits itself instead,
+		 * which is the end that knows what the link is.
+		 */
+		if (view_ttypix_probe(&pix_cw, &pix_ch) > 0) {
+			tty_pix = 1;
+			ktui_backend_set(view_ttypix_install(ktui_backend()));
+			ktui_sprite_evictor(sprite_free, NULL);
+			ktui_sprite_budget(16u << 20, pix_cw, pix_ch);
+		}
+#endif
 		cols = ktui_w;
 		rows = ktui_h;
 	} else if (kms) {
@@ -1138,11 +1232,14 @@ int main(int argc, char **argv)
 	view_slot_init();
 
 	/*
-	 * NO SCREEN OF ITS OWN MEANS PICTURES BECOME CHARACTERS. A terminal and
-	 * a dump both draw glyphs and nothing else, so a sprite that arrives
-	 * for either is matched to a shape rather than dropped.
+	 * WHICH SINK THIS VIEW HAS. A dump draws glyphs and nothing else, so a
+	 * sprite that arrives for it is matched to a shape; everything else
+	 * keeps the pixels, and a terminal keeps them only once its host has
+	 * said it will draw them.
 	 */
-	ascii_mode = !kms && !cast;
+	sink = (kms || cast || shot) ? SINK_RASTER
+	     : tty_pix		     ? SINK_TTYPIX
+				     : SINK_ASCII;
 #endif
 
 	/*
@@ -1417,6 +1514,9 @@ int main(int argc, char **argv)
 				 * terminal on the far end of ssh can show.
 				 */
 				ktui_draw_cursor(ev.mx, ev.my);
+#ifdef KDOS_VIEW_TTYPIX
+				view_ttypix_pointer(ev.mx, ev.my);
+#endif
 				send_ptr(&ev);
 			}
 			else if (ev.type == KT_EVT_RESIZE)
@@ -1430,6 +1530,10 @@ int main(int argc, char **argv)
 			break;
 	}
 
+#ifdef KDOS_VIEW_TTYPIX
+	if (tty_pix)
+		view_ttypix_shutdown();
+#endif
 	ktui_term_shutdown();
 	kcon_conn_free(conn);
 	return 0;

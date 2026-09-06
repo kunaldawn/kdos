@@ -10,6 +10,7 @@
 |                               |  . Network                                   |
 |                               |  . Bluetooth                                 |
 |                               |  . Sound                                     |
+|                               |  . Recorder                                  |
 |                               |  . Notifications                             |
 |                               |  . Devices                                   |
 |                               |  . Boxes                                     |
@@ -17,7 +18,6 @@
 |                               |  . Terminal                                  |
 |                               |  . Help                                      |
 |                               |  . About                                     |
-|                               |                                              |
 |                               |                                              |
 |------------------------------------------------------------------------------|
 | > Type to search                                         Lck Slp Rst Out Off |

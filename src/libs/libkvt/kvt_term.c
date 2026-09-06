@@ -405,6 +405,12 @@ void kvt_term_img_geom(struct kvt_term *t, int max_w_px, int max_h_px)
 		kvt_vte_set_img_geom(t->vte, max_w_px, max_h_px);
 }
 
+void kvt_term_cell_px(struct kvt_term *t, int cw, int ch)
+{
+	if (t)
+		kvt_vte_set_cell_px(t->vte, cw, ch);
+}
+
 /*
  * A REGISTERED PICTURE BECOMES CELLS IN THE SCREEN, at the cursor, and that is
  * the whole of how an image lives in a terminal here.

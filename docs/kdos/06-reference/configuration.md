@@ -281,6 +281,12 @@ generated block and win.
 The console desktop. `~/.config/kdos-con/con.conf` overrides it key by key, and a key in neither
 file takes the built-in default — a machine with no file at all boots a working desktop.
 
+**Both files are read whole**, and that is load-bearing rather than obvious. A key that cannot be
+read is not an error here: it falls back to its built-in default, and the default is usually what
+the file said anyway — so a reader that stopped at a fixed length would go on booting a working
+desktop while quietly ignoring every key past the cut, including the ones somebody had changed.
+The same rule holds for `keys.conf`.
+
 | Key | Default | Means |
 |---|---|---|
 | `greet` | `no` | Whether tty1 asks who you are. The installer writes `yes` |
@@ -314,6 +320,14 @@ file takes the built-in default — a machine with no file at all boots a workin
 | `clipboard` | `kdos-clip` | What `Super+Ctrl+v` starts |
 | `find` | `kdos-find` | What `Super+Shift+f` starts |
 | `capture` | `kdos-shot` | What `Super+Shift+p` hands the marked rectangle to |
+| `nowplaying` | `yes` | Whether `kdos-con`'s own bar shows what is playing, left of the pager. `kdos-shell`'s panel reads the same file through its `mpris` widget and this key does not reach it |
+| `volume_up` | `kdos-osd volume +5` | What the volume-up key runs |
+| `volume_down` | `kdos-osd volume -5` | What the volume-down key runs |
+| `volume_mute` | `kdos-osd volume mute` | What the mute key runs |
+| `media_play` | `kdos-mpctl toggle` | What the play/pause key runs |
+| `media_stop` | `kdos-mpctl stop` | What the stop key runs |
+| `media_next` | `kdos-mpctl next` | What the next-track key runs |
+| `media_prev` | `kdos-mpctl prev` | What the previous-track key runs |
 | `paste_guard` | `yes` | Refuse an unbracketed paste carrying a newline once, and take it on the second try |
 | `embed` | `yes` | Whether a graphical application becomes a window. `no` gives every one of them a terminal of its own |
 
@@ -382,6 +396,10 @@ Changing a default in one file changes it in the other.
 | `windows` | `Super+F2` | `mark` | `Super+Shift+m` |
 | `paste` | `Super+Shift+v` | `find` | `Super+Shift+f` |
 | `capture` | `Super+Shift+p` | | |
+| `volume-up` | `XF86AudioRaiseVolume` | `volume-down` | `XF86AudioLowerVolume` |
+| `volume-mute` | `XF86AudioMute` | `media-play` | `XF86AudioPlay` |
+| `media-stop` | `XF86AudioStop` | `media-next` | `XF86AudioNext` |
+| `media-prev` | `XF86AudioPrev` | | |
 
 Modifiers are `Super`, `Shift`, `Alt` and `Ctrl`, joined with `+`. An action no line names keeps
 its default, so rebinding one key does not mean restating the rest. Punctuation may be written as
@@ -549,6 +567,33 @@ sudo touch /etc/service.disabled/cups
 The console keymap, written by the installer, loaded on every terminal — and translated into a
 graphical keyboard layout when a session starts.
 
+## Speech-to-text models
+
+`kdos-rec` greys *Transcribe* until a whisper.cpp model is on the machine. There is no
+configuration key: three locations are looked at in order and **the first hit wins**.
+
+| Order | Location |
+|---|---|
+| 1 | `$KDOS_WHISPER_MODEL` — one file, named exactly |
+| 2 | `$XDG_DATA_HOME/whisper.cpp/models/`, default `~/.local/share/whisper.cpp/models/` |
+| 3 | `/usr/share/whisper.cpp/models/` |
+
+**`$KDOS_WHISPER_MODEL` is the whole answer when it is set.** No directory is searched behind it,
+and a file that is missing or fails the test below leaves transcription unavailable rather than
+falling through. Somebody who named a model and got a different one has been lied to.
+
+Inside a directory the pattern is `ggml-*.bin` and the winner is the **first in sorted name
+order** — not the newest, because an mtime is not reproducible and a name is.
+
+**The gate is the file's magic, not its name.** A candidate counts only if its first four bytes are
+`lmgg`, so a half-finished download reads as *no model* rather than as a crash behind an enabled
+button. The surface's header line names the model that was found, or the directory that was
+searched.
+
+Upstream's own directory name is used deliberately: the model is whisper's data, and naming where
+`models/download-ggml-model.sh` writes means a later change that packages one has a single answer
+rather than two. **Nothing ships a model and the desktop cannot fetch one.**
+
 ## Shipped configuration for software that is not ours
 
 `/etc/skel` also carries configuration for the third-party programs the system ships, so a new
@@ -576,6 +621,13 @@ account gets a working setup rather than each program's own defaults. These are 
 | `~/.config/mc/mc.ext.ini` | What `Enter` does on a file in `mc` | Replaces the system file wholesale — mc does not merge them. Only the archive rows whose VFS helper is on this image are carried; everything else falls to the catch-all, which is `kdos-appbox open` |
 | `~/.config/mc/menu` | `mc`'s `F2` user menu | Eight verbs, each naming a program on the image; `testing/preflight.sh` refuses one that is not |
 | `/etc/profile.d/20-lesspipe.sh` | What `less` shows for a file that is not text | Sets `LESSOPEN` to `lesspipe.sh` and `LESS=-R`, neither over a value you already set. The filter is driven by `file -L -s -b --mime` and nothing else, which is why `file` on this image is the one with a magic database |
+| `~/.mbsyncrc` | Fetching mail | **Mode 600** — it carries a password. Empty lines delimit sections, so a commented block must keep its blank lines or a `Channel` lands inside the `Store` above it. Ships with no accounts |
+| `~/.msmtprc` | Sending mail | **Mode 600**; msmtp refuses a file carrying a `password` line that others can read, and `passwordeval` avoids the question. `/usr/sbin/sendmail` and `/usr/bin/sendmail` are links to this program. Ships with no accounts |
+| `~/.config/notmuch/default/config` | The mail index | `mail_root` is **relative** and expands against `$HOME`, which is what makes one shipped file right for every account. It names `~/Mail`, and so do the other two |
+| `~/.config/notmuch/default/hooks/` | What `notmuch new` does around the scan | `pre-new` fetches with `mbsync -a`, `post-new` tags. A non-zero `pre-new` **aborts** `notmuch new` — deliberately, because indexing after a fetch that did not happen reports an empty inbox |
+| `~/.config/aerc/aerc.conf` | What a mail client shows and how it renders a part | Only the keys that differ from aerc's compiled-in defaults, plus `[filters]` — which is **not** a struct with defaults behind it and therefore replaces the whole set, so a type absent from it gets aerc's *No filter configured* card rather than a rendering. Every row but `colorize` goes through `kdos-part`, one script installed in aerc's own filter directory; its stderr is the message body, so a row naming a program that is not on the image shows the shell's `command not found` where the message should be |
+| `~/.config/aerc/accounts.conf` | Your mail accounts | **Not shipped, and must not be.** aerc refuses to start on one that group or other can read, and everything the build ships is 644; with no file, aerc's wizard writes it at 600 |
+| `~/.config/aerc/binds.conf` | aerc's keys | **Not shipped either.** aerc's compiled-in bindings are empty and the file is the only source, so a partial one would unbind every key it did not name. aerc installs its own beside `aerc.conf` on first run |
 | `~/.config/xdg-desktop-portal-wlr/config` | The screen-capture backend | Uses an output picker; the alternative silently captures the first output, which is wrong the moment a second screen is plugged in |
 
 ## Generated files you should not edit

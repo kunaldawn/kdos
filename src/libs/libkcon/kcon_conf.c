@@ -20,15 +20,38 @@
 
 #include "kbase.h"
 
-#define CONF_CAP  4096
-#define CONF_KEYS 32
-
+/*
+ * NOTHING HERE IS A FIXED SIZE, and that is the point. A configuration file
+ * grows; a reader that stopped at a constant would go on answering with the
+ * built-in defaults for every key past it, and because the defaults are
+ * usually what the file said anyway, nobody would notice until a key that had
+ * been changed stopped taking effect.
+ *
+ * The entries point INTO the two buffers, which are therefore kept for the
+ * life of the process rather than freed.
+ */
 static struct {
 	int loaded;
-	int n;
-	struct { char *k, *v; } e[CONF_KEYS];
-	char buf[2][CONF_CAP];
+	int n, cap;
+	struct { char *k, *v; } *e;
+	char *buf[2];
 } C;
+
+static void conf_add(char *k, char *v)
+{
+	if (C.n == C.cap) {
+		int cap = C.cap ? C.cap * 2 : 64;
+		void *bigger = realloc(C.e, (size_t)cap * sizeof(*C.e));
+
+		if (!bigger)
+			return;
+		C.e = bigger;
+		C.cap = cap;
+	}
+	C.e[C.n].k = k;
+	C.e[C.n].v = v;
+	C.n++;
+}
 
 static void conf_parse(char *buf)
 {
@@ -72,11 +95,7 @@ static void conf_parse(char *buf)
 				goto next;
 			}
 		}
-		if (C.n < CONF_KEYS) {
-			C.e[C.n].k = k;
-			C.e[C.n].v = v;
-			C.n++;
-		}
+		conf_add(k, v);
 next:		;
 	}
 }
@@ -90,9 +109,8 @@ static void conf_load(void)
 		return;
 	C.loaded = 1;
 
-	/* `> 0`, not `>= 0`: kb_read_file answers the byte count, and a
-	 * zero-byte file must leave every default standing. */
-	if (kb_read_file("/etc/kdos/con.conf", C.buf[0], sizeof(C.buf[0])) > 0)
+	C.buf[0] = kb_read_whole("/etc/kdos/con.conf", NULL);
+	if (C.buf[0])
 		conf_parse(C.buf[0]);
 
 	xdg = getenv("XDG_CONFIG_HOME");
@@ -103,7 +121,8 @@ static void conf_load(void)
 		snprintf(path, sizeof(path), "%s/.config/kdos-con/con.conf",
 			 home ? home : "/root");
 	}
-	if (kb_read_file(path, C.buf[1], sizeof(C.buf[1])) > 0)
+	C.buf[1] = kb_read_whole(path, NULL);
+	if (C.buf[1])
 		conf_parse(C.buf[1]);
 }
 

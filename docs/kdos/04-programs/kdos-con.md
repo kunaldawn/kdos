@@ -443,14 +443,60 @@ frame: at the session's own redraw rate when something can show pixels, and once
 nothing can, because a window of pixels at a compositor's frame rate down an `ssh` link is a link
 that does nothing else.
 
-**Every view is sent the same thing.** A view that cannot show pixels turns each cell of the picture
-into the character whose shape covers the same part of a cell — the matcher behind `kdos-ascii` —
-and colours it with the nearest palette slot to that cell's average. That happens **in the view**,
-which is the only end that knows whether this build has a font at all; the session holds no font and
-no pixel code and must not gain one.
+**Every view is sent the same thing**, and what becomes of a picture is decided at the far end. A
+view that cannot show pixels turns each cell of the picture into the character whose shape covers
+the same part of a cell — the matcher behind `kdos-ascii` — and colours it with the nearest palette
+slot to that cell's average. That happens **in the view**, which is the only end that knows whether
+this build has a font at all; the session holds no font and no pixel code and must not gain one.
 
-So an embedded application over `ssh` is characters, by shape, and it falls out of the negotiation
-rather than being a special case.
+**A terminal view asks the terminal it is running in.** `--tty` writes ANSI to its own stdout, so
+the only way a picture can be pixels there is for that terminal to draw them. Before the first
+frame it sends one burst — the kitty graphics query, `CSI ?2;1S` for a sixel geometry, `CSI 16t` for
+the cell size — and closes it with `CSI c`, which every terminal answers and which is therefore the
+fence that says the picture questions have been answered or never will be. **Every byte of every
+reply is consumed**: one left behind is not silence, it is decoded as keystrokes and typed into the
+session being viewed.
+
+The ladder is:
+
+| Answer | Tier |
+|---|---|
+| `\033_Gi=…;OK\033\` | kitty — it said it will draw one |
+| `\033_Gi=…;E…\033\` | none — it said no on purpose, and guessing past a "no" is how a terminal with pictures turned off gets pictures emitted into it |
+| DA1 parameter 4 **and** `CSI ?2;0;w;hS` | sixel |
+| nothing at all, not even DA1 | `$TERM` / `$KITTY_WINDOW_ID` |
+| anything else | none — characters |
+
+**DA1's sixel attribute is a claim about a parser, not about a decoder**, which is why it is never
+believed alone. This tree's own terminal answers it with pictures compiled out, and `kdos-con`'s
+terminal windows answer it while registering no decoder at all; `CSI ?2;3;S` — no geometry — is
+what those then say to the second question, and that is the answer that decides.
+
+**The picture is put back after the text, every frame the text painted over it.** The emitter is a
+backend wrapper rather than a step after the frame, because the one thing it has to know is which
+cells were just repainted — and that is knowable only while the previous frame is still around to
+diff against. The text layer is also the **eraser**: every sprite cell flushes as a space or as the
+fallback mark, so a picture whose window closed, moved or scrolled is removed by the same pass that
+would have redrawn it, and nothing has to track disappearance separately.
+
+**An animation is invisible in the cells**, which name a slot and not a picture, so the emitter
+compares the sprite's generation counter instead and rate-limits itself to one re-encode per
+picture per `KDOS_VIEW_PIX_MS` (50 ms). It does **not** declare `KCON_VIEW_PIXELS`: that would stop
+the session rate-limiting every guest for every view, and a terminal that blocks on a write is a
+view that is not reading its session socket — which a session ends. The throttle stays; the emitter
+bounds itself.
+
+**A failure falls back to characters, never to blank cells.** A picture too broken up by windows
+over it, one the sprite table refused, and one whose encode would exceed what the terminal will
+accept all keep the marks the text layer wrote. `KDOS_VIEW_PIX=off` turns the whole thing off and
+`KDOS_VIEW_CELL=WxH` overrides a cell size the terminal would not name.
+
+**The last grid row is never pixels.** A picture at the bottom margin scrolls the host terminal in
+every protocol, and a scroll invalidates the whole frame diff with nothing able to detect it. Those
+cells keep the fallback mark.
+
+So an embedded application over `ssh` is characters, by shape, where the terminal cannot draw and
+pixels where it can, and both fall out of the negotiation rather than being special cases.
 
 ### Recording it
 
@@ -674,6 +720,7 @@ over state the session already holds.
 | `Super+Shift+m` | mark a rectangle of the screen |
 | `Super+Shift+v` | paste what was marked into the focused window |
 | `Super+Shift+p` | capture a rectangle: its text to the clipboard, its picture to a file |
+| media keys | louder, quieter, mute, play, stop, next, previous — **on a KMS view only** |
 
 **A window's number is its position in the Alt-Tab ring**, drawn in its title bar and in its taskbar
 row. It is the ring's own index rather than an identity: it renumbers when a window closes, which is
@@ -727,6 +774,42 @@ the same rectangle as `kdos-shot region --geom X,Y,W,H`, in cells. It attaches a
 rasterise them, so the picture is what a screen would show rather than a second drawing of the same
 cells. **The mark is taken down before the picture is asked for**, or the rectangle would be
 reverse video in the file.
+
+## The media keys
+
+**They run a program, and that is the whole of them.** What "louder" means belongs to the mixer and
+what "next" means belongs to the player; a window manager that decided either would be a second
+answer to a question something else already owns. `con.conf` names the seven programs —
+`kdos-osd volume +5` and its peers — and the chord table names the seven keys.
+
+**A KMS VIEW ONLY, and this is a limit of the wire rather than of the code.** A media key produces
+no character. A backend reading a terminal is shown characters and modifiers and nothing else, so
+no terminal reports one and none ever will; the keys reach a session through `libkkms`, which reads
+the evdev keysym directly. On `tty1` they work and over `ssh` they are absent — and the chord table
+still carries them, because a stated limit is better than a missing key.
+
+**The key codes are appended to `libktui`'s enum, never inserted.** It is positional from
+`KT_K_SPECIAL` and **the number is on the wire** — a session writes it into `KCON_OP_KEY` — so a key
+added in the middle renumbers every key after it and a surface built before the change reads `Home`
+where the session sent `End`. `keys.conf` is safe either way: it stores names.
+
+**What is playing sits left of the pager**, and the session does not know what it means. `kdos-mpctl
+watch` asks mpd over its unix socket, writes one line to `$XDG_RUNTIME_DIR/kdos/nowplaying` and then
+sleeps inside mpd's own `idle` — polling a daemon for a title that changes every few minutes is a
+wakeup a battery pays for. The bar reads that line at most once a second, because `panel_draw()` runs
+on a 20 ms poll and an unthrottled read would be fifty opens a second.
+
+**This bar is the one drawn when `kdos-shell`'s panel is NOT up**, which on a booted machine it is —
+so the same line is read by [that panel's `mpris` widget](kdos-shell.md#the-notification-area),
+which falls back to the file when nothing on the bus speaks MPRIS. One line, two readers: two cells
+that disagreed about what is playing would be worse than one that is sometimes empty.
+
+**A stopped player writes an empty line and the field disappears**, rather than the bar saying
+"stopped": a row with nothing playing should look like a row with nothing playing. The field is
+drawn whole or not at all, inside a third of the bar, because the window list is what the bar is for
+and a long track title that pushed it off an eighty-column screen would be a music player eating a
+task switcher. It is not drawn on the function-key row at all — ten labels and the word `Super`
+already end two columns from the clock. `nowplaying = no` in `con.conf` turns it off.
 
 `Super+Shift+v` puts the session clipboard into the focused window — `kvt_term_paste` for a
 terminal, `KCON_OP_CLIP_DATA` for a surface. A view can already hand the session a paste, but a

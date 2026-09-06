@@ -68,6 +68,7 @@ static const struct {
 	{ "kdos-peek",  peek_main },
 	{ "kdos-find",  find_main },
 	{ "kdos-pix",   pix_main },
+	{ "kdos-rec",   rec_main },
 };
 #define NTOOLS ((int)(sizeof(TOOLS) / sizeof(TOOLS[0])))
 

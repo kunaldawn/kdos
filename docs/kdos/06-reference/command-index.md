@@ -30,6 +30,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-peek` | What is in a file, without starting its application | [kdos-shell](../04-programs/kdos-shell.md#kdos-peek) |
 | `kdos-find` | Files by name or contents, applications and recents | [kdos-shell](../04-programs/kdos-shell.md#kdos-find) |
 | `kdos-pix` | One picture, and the folder it is in | [kdos-shell](../04-programs/kdos-shell.md#kdos-pix) |
+| `kdos-rec` | Record a microphone, watch the level, transcribe it. `--input hw:C,D`, `--font`, `--dump`, and the test seams `--fixture DIR`, `--meter FILE`, `--write OUT` | [kdos-shell](../04-programs/kdos-shell.md#kdos-rec) |
 | `kdos-desktop` | Start a session | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-desktop-start` | Bring up services, then the compositor | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-devices` | Cameras, microphones, removable media | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
@@ -50,6 +51,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-oomd` | The memory-pressure daemon | [The daemons](../04-programs/daemons.md#kdos-oomd) |
 | `kdos-openwith` | Choose a handler for a file | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-osd` | Volume and brightness | [kdos-shell](../04-programs/kdos-shell.md#kdos-osd) |
+| `kdos-mpctl toggle\|stop\|next\|prev\|now\|watch` | The music, over mpd's unix socket. `watch` writes `$XDG_RUNTIME_DIR/kdos/nowplaying` and sleeps in mpd's `idle` | [kdos-con](../04-programs/kdos-con.md#the-media-keys) |
 | `kdos-pack` | Build, sign, index and diff packs | [Packs and boxes](../03-architecture/packs-and-boxes.md#building-a-pack) |
 | `kdos-packd` | The pack daemon | [The daemons](../04-programs/daemons.md#kdos-packd) |
 | `kdos-pick` | The file chooser and browser | [kdos-shell](../04-programs/kdos-shell.md#kdos-pick) |
@@ -74,7 +76,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-shell` | The panel | [kdos-shell](../04-programs/kdos-shell.md#the-panel) |
 | `kdos-shot [region\|screen] [--geom X,Y,W,H]` | Screenshots. On the console, through `kdos-view --shot`; `--geom` is a rectangle in cells and only the console has one | [The desktop](../02-user-guide/desktop.md) |
 | `kdos-slit` | The dockapp column | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
-| `kdos-view` | A display for a console session: `--kms`, `--kms-only`, `--tty`, `--dump`, `--shot`, `--cast` | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
+| `kdos-view` | A display for a console session: `--kms`, `--kms-only`, `--tty`, `--dump`, `--shot`, `--cast`. `--tty` probes its host terminal and hands it pictures as pixels where it can | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
 | `kdos-view --shot FILE.png [--crop X,Y,W,H]` | One settled frame of the composited grid, rasterised through the painter a screen uses; the crop is in cells | [kdos-con](../04-programs/kdos-con.md) |
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
 | `kdos-start` | The Start menu | [kdos-shell](../04-programs/kdos-shell.md#kdos-start) |

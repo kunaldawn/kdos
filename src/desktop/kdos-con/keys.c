@@ -172,6 +172,20 @@ static Bind binds[] = {
 	 * lifetime of `screen` has taught; press it twice to send the literal
 	 * to the window that has the focus.
 	 */
+	/*
+	 * THE MEDIA KEYS, on no modifier because that is where a keyboard puts
+	 * them. They reach a session from libkkms and from nothing else, so
+	 * these rows are dead on a view that reads a terminal — which is the
+	 * honest state of them rather than a gap to be filled.
+	 */
+	{ "volume-up",	 CON_ACT_EXEC, CON_CMD_VOLUP,   KT_K_VOLUP,   0 },
+	{ "volume-down", CON_ACT_EXEC, CON_CMD_VOLDOWN, KT_K_VOLDOWN, 0 },
+	{ "volume-mute", CON_ACT_EXEC, CON_CMD_MUTE,    KT_K_MUTE,    0 },
+	{ "media-play",	 CON_ACT_EXEC, CON_CMD_PLAY,    KT_K_PLAY,    0 },
+	{ "media-stop",	 CON_ACT_EXEC, CON_CMD_STOP,    KT_K_STOP,    0 },
+	{ "media-next",	 CON_ACT_EXEC, CON_CMD_NEXT,    KT_K_NEXT,    0 },
+	{ "media-prev",	 CON_ACT_EXEC, CON_CMD_PREV,    KT_K_PREV,    0 },
+
 	{ "leader",	CON_ACT_LEADER,	 0, 'a',	KT_MOD_CTRL },
 };
 
@@ -193,6 +207,14 @@ static int key_named(const char *s)
 		{ "F4", KT_K_F4 }, { "F5", KT_K_F5 }, { "F6", KT_K_F6 },
 		{ "F7", KT_K_F7 }, { "F8", KT_K_F8 }, { "F9", KT_K_F9 },
 		{ "F10", KT_K_F10 }, { "F11", KT_K_F11 }, { "F12", KT_K_F12 },
+		/* The media keys, by the names `rc.xml` uses for them. */
+		{ "XF86AudioRaiseVolume", KT_K_VOLUP },
+		{ "XF86AudioLowerVolume", KT_K_VOLDOWN },
+		{ "XF86AudioMute", KT_K_MUTE },
+		{ "XF86AudioPlay", KT_K_PLAY },
+		{ "XF86AudioStop", KT_K_STOP },
+		{ "XF86AudioNext", KT_K_NEXT },
+		{ "XF86AudioPrev", KT_K_PREV },
 		/* rc.xml's spelling for the punctuation it binds, so a chord
 		 * reads the same in both files and neither has to be
 		 * translated by hand. */
@@ -250,9 +272,9 @@ static int chord_parse(const char *s, int *key, int *mods)
 
 static void keys_load(void)
 {
-	char buf[4096], path[256];
+	char path[256];
 	const char *xdg = getenv("XDG_CONFIG_HOME"), *home;
-	char *line, *save;
+	char *buf, *line, *save;
 
 	if (loaded)
 		return;
@@ -265,7 +287,12 @@ static void keys_load(void)
 		snprintf(path, sizeof(path), "%s/.config/kdos-con/keys.conf",
 			 home ? home : "/root");
 	}
-	if (kb_read_file(path, buf, sizeof(buf)) <= 0)
+	/* THE WHOLE FILE. A fixed buffer would drop the tail of a keys.conf
+	 * that grew past it, and the chords it dropped would go on working
+	 * from their built-in defaults — so a rebinding somebody made would
+	 * simply not happen, with nothing to say why. */
+	buf = kb_read_whole(path, NULL);
+	if (!buf)
 		return;
 
 	for (line = strtok_r(buf, "\n", &save); line;
@@ -303,6 +330,8 @@ static void keys_load(void)
 			break;
 		}
 	}
+	/* The table keeps the numbers, not the text. */
+	free(buf);
 }
 
 /*
@@ -370,6 +399,10 @@ static void chord_name(int key, int mods, char *out, size_t n)
 		{ KT_K_F4, "F4" }, { KT_K_F5, "F5" }, { KT_K_F6, "F6" },
 		{ KT_K_F7, "F7" }, { KT_K_F8, "F8" }, { KT_K_F9, "F9" },
 		{ KT_K_F10, "F10" }, { KT_K_F11, "F11" }, { KT_K_F12, "F12" },
+		{ KT_K_VOLUP, "VolumeUp" }, { KT_K_VOLDOWN, "VolumeDown" },
+		{ KT_K_MUTE, "Mute" }, { KT_K_PLAY, "Play" },
+		{ KT_K_STOP, "Stop" }, { KT_K_NEXT, "Next" },
+		{ KT_K_PREV, "Previous" },
 	};
 	const char *kn = NULL;
 	char one[2] = { 0, 0 };
