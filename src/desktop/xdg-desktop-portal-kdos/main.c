@@ -1150,6 +1150,11 @@ static void cast_pending_finish(struct cast_pending *cp)
  * Start the recording: one `kdos-view --cast` on the session named by
  * $KDOS_CON, which this process inherited from the console session that
  * started it.
+ *
+ * A VIEW ATTACHES TO THE VIEW SOCKET, and $KDOS_CON names the surface one.
+ * They are a pair whose names differ only in the suffix, so the second is
+ * derived here rather than passed: a view given the surface socket is never
+ * told a size and gives up.
  */
 static int method_cast_start(sd_bus_message *m, void *userdata,
 			     sd_bus_error *err)
@@ -1172,12 +1177,21 @@ static int method_cast_start(sd_bus_message *m, void *userdata,
 		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
 
 	const char *con = getenv("KDOS_CON");
+	char view[256];
+	size_t conlen;
 
 	if (!con || !*con) {
 		fprintf(stderr, "xdg-desktop-portal-kdos: no console session "
 				"to record ($KDOS_CON unset)\n");
 		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
 	}
+	conlen = strlen(con);
+	if (conlen < 6 || strcmp(con + conlen - 5, ".sock")) {
+		fprintf(stderr, "xdg-desktop-portal-kdos: $KDOS_CON is not a "
+				"session socket\n");
+		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
+	}
+	snprintf(view, sizeof(view), "%.*s.view", (int)(conlen - 5), con);
 
 	if (pipe(fds) != 0)
 		return sd_bus_reply_method_return(m, "ua{sv}", (uint32_t)2, 0);
@@ -1193,7 +1207,7 @@ static int method_cast_start(sd_bus_message *m, void *userdata,
 		close(fds[0]);
 		dup2(fds[1], STDOUT_FILENO);
 		close(fds[1]);
-		execlp("kdos-view", "kdos-view", "--cast", "--socket", con,
+		execlp("kdos-view", "kdos-view", "--cast", "--socket", view,
 		       (char *)NULL);
 		_exit(127);
 	}

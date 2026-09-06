@@ -30,12 +30,18 @@ application/vnd.rar=kdos-openarchive.desktop
 application/x-cb7=kdos-openarchive.desktop
 application/vnd.comicbook-rar=kdos-openarchive.desktop
 
-# THE DOCUMENTS NOTHING ELSE ON THIS IMAGE OPENS. `kdos-peek` renders a page
-# through `mutool`, which reads exactly these five, and it is the same surface
-# on both desktops — a viewer that draws into a cell grid needs no compositor,
-# so this row belongs here rather than being written twice.
+# THE PAGES NOTHING ELSE ON THIS IMAGE RENDERS. `kdos-peek` draws one through
+# `mutool`, and it is the same surface on both desktops — a viewer that draws
+# into a cell grid needs no compositor, so these rows belong here rather than
+# being written twice.
 application/pdf=kdos-peek.desktop
-application/epub+zip=kdos-peek.desktop
 application/vnd.comicbook+zip=kdos-peek.desktop
 application/oxps=kdos-peek.desktop
-application/x-fictionbook+xml=kdos-peek.desktop
+
+# A BOOK IS READ, NOT LOOKED AT, so it goes to the reader and not to the page
+# viewer — `epy` keeps a position, a table of contents and a search, which is
+# the difference between reading one and glancing at a page of it. `kdos-peek`
+# still SHOWS any of them through the Peek verb, which asks no table at all.
+application/epub+zip=epy.desktop
+application/x-mobipocket-ebook=epy.desktop
+application/x-fictionbook+xml=epy.desktop

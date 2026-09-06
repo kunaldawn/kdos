@@ -63,12 +63,22 @@ static void row_rgb(const uint32_t *src, png_bytep dst, int w)
 	}
 }
 
-int view_shot_png(const char *path, int scale)
+/*
+ * A CROP IS A WINDOW ONTO THE FULL PAINT, not a smaller paint.
+ *
+ * `kcell_paint()` is given the whole grid and the rows that are wanted are
+ * the ones written: a glyph is drawn from its own cell's origin and can lean
+ * over the edge of it, so painting only the rectangle would cut the ascender
+ * of a letter on its first row and the tail of one on its last.
+ */
+int view_shot_png(const char *path, int scale, int cx, int cy, int ccols,
+		  int crows)
 {
 	int cols = 0, rows = 0;
 	const KtuiCell *cells = ktui_draw_cells(&cols, &rows);
 	int cw = kcell_w(), ch = kcell_h();
 	int w, h, stride;
+	int px0, py0, pw, ph;
 	uint32_t *buf = NULL;
 	pixman_image_t *img = NULL;
 	png_structp png = NULL;
@@ -85,6 +95,30 @@ int view_shot_png(const char *path, int scale)
 	w = cols * cw * scale;
 	h = rows * ch * scale;
 	stride = w * 4;
+
+	/* A rectangle with no width or no height is the whole grid, and one
+	 * that runs off the edge is clamped rather than refused: the session
+	 * marks in its own coordinates and the view may have been resized
+	 * between the mark and the shot. */
+	if (ccols < 1 || crows < 1) {
+		cx = cy = 0;
+		ccols = cols;
+		crows = rows;
+	}
+	if (cx < 0)
+		cx = 0;
+	if (cy < 0)
+		cy = 0;
+	if (cx >= cols || cy >= rows)
+		return -1;
+	if (cx + ccols > cols)
+		ccols = cols - cx;
+	if (cy + crows > rows)
+		crows = rows - cy;
+	px0 = cx * cw * scale;
+	py0 = cy * ch * scale;
+	pw = ccols * cw * scale;
+	ph = crows * ch * scale;
 
 	buf = calloc(1, (size_t)stride * (size_t)h);
 	if (!buf)
@@ -115,16 +149,17 @@ int view_shot_png(const char *path, int scale)
 		goto out;
 
 	png_init_io(png, f);
-	png_set_IHDR(png, info, (png_uint_32)w, (png_uint_32)h, 8,
+	png_set_IHDR(png, info, (png_uint_32)pw, (png_uint_32)ph, 8,
 		     PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
 		     PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 	png_write_info(png, info);
 
-	line = malloc((size_t)w * 3);
+	line = malloc((size_t)pw * 3);
 	if (!line)
 		goto out;
-	for (int y = 0; y < h; y++) {
-		row_rgb(buf + (size_t)y * (size_t)w, line, w);
+	for (int y = 0; y < ph; y++) {
+		row_rgb(buf + (size_t)(py0 + y) * (size_t)w + (size_t)px0,
+			line, pw);
 		png_write_row(png, line);
 	}
 	png_write_end(png, NULL);

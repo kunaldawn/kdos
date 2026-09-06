@@ -384,6 +384,14 @@ static int clamp_num(const char *v)
 	return n > 100000 ? 100000 : (int)n;
 }
 
+/* The kitty store, reached from the inline path as well: an animated GIF
+ * arrives whole and takes the same frame machinery. Defined with the rest of
+ * that protocol below, because that is where it belongs. */
+static uint32_t store_put(uint32_t id, pixman_image_t *img);
+static int store_slot(uint32_t id);
+static void gif_anim(int i, KimgFrame *fr, int n);
+static uint32_t gif_id(void);
+
 /* ── iTerm2: OSC 1337 ──────────────────────────────────────────────────── */
 
 /*
@@ -423,10 +431,20 @@ static void do_osc1337(const uint8_t *p, size_t len)
 
 	size_t n = b64_decode(b64, b64len, raw);
 	pixman_image_t *img = NULL;
+	KimgFrame fr[KITTY_FRAMES + 1];
+	int nfr = 0;
 	KimgBudget b = budget();
 
+	/*
+	 * EVERY FRAME, because this is the sequence an animated GIF arrives
+	 * in. A still answers one and `fr[0]` is the picture, so there is one
+	 * path rather than two.
+	 */
 	if (n)
-		img = kimg_decode(raw, n, KIMG_AUTO, &b);
+		nfr = kimg_decode_all(raw, n, KIMG_AUTO, &b, fr,
+				      KITTY_FRAMES + 1);
+	if (nfr > 0)
+		img = fr[0].img;
 	if (img) {
 		int want_w = 0, want_h = 0;
 
@@ -453,11 +471,41 @@ static void do_osc1337(const uint8_t *p, size_t len)
 		}
 
 		int cw, ch;
+		uint64_t key;
 
 		size_in_cells(img, want_w, want_h, &cw, &ch);
-		place(img, hash_bytes(raw, n, cw, ch), cw, ch);
-		pixman_image_unref(img);
+		key = hash_bytes(raw, n, cw, ch);
+		place(img, key, cw, ch);
+
+		/*
+		 * More than one frame is an animation, and it needs a store
+		 * entry: the timer replaces the pixels behind the cells that
+		 * were just placed, and only a stored picture has a key, a
+		 * size and a frame list to do that with.
+		 */
+		if (nfr > 1) {
+			uint32_t id = gif_id();
+			int i;
+
+			store_put(id, img);
+			/* The store owns the root from here, whatever happens
+			 * next: store_put evicts to make room and never
+			 * refuses. */
+			fr[0].img = NULL;
+			i = store_slot(id);
+			if (i >= 0) {
+				store[i].key = key;
+				store[i].cw = cw;
+				store[i].ch = ch;
+				gif_anim(i, fr, nfr);
+			}
+		}
 	}
+	/* Whatever the store did not take is this function's — the still it
+	 * just placed, and every frame past the animation budget. */
+	for (int f = 0; f < nfr; f++)
+		if (fr[f].img)
+			pixman_image_unref(fr[f].img);
 	free(raw);
 }
 
@@ -663,6 +711,63 @@ static void kitty_frame(int i, pixman_image_t *img, int base, int gap,
 	store[i].fr[store[i].nfr].gap_ms = gap > 0 ? gap : 100;
 	store[i].nfr++;
 	anim_bytes += cost;
+}
+
+/*
+ * AN ANIMATED GIF IS AN ANIMATION THAT ARRIVED WHOLE, so it takes the store
+ * the kitty protocol fills a frame at a time — the timer, the eviction, the
+ * budget and the "replace the pixels under the same key" trick are all already
+ * there, and a second animator would be a second answer to what a frame is.
+ *
+ * The frames are TAKEN, not composed. libnsgif has already applied disposal
+ * and transparency, so every frame it returns is the complete canvas as it
+ * should appear; running one through kitty_frame's base-then-over would show
+ * the first frame through anything transparent in a later one.
+ *
+ * Frames past the budget are left for the caller to free, and the ones already
+ * taken still play — the same trade kitty_frame makes.
+ */
+static void gif_anim(int i, KimgFrame *fr, int n)
+{
+	for (int f = 1; f < n && store[i].nfr < KITTY_FRAMES; f++) {
+		size_t cost;
+
+		if (!fr[f].img)
+			break;
+		cost = (size_t)pixman_image_get_width(fr[f].img) *
+		       (size_t)pixman_image_get_height(fr[f].img) * 4;
+		if (anim_bytes + cost > KITTY_ANIM_BYTES)
+			break;
+		store[i].fr[store[i].nfr].img = fr[f].img;
+		store[i].fr[store[i].nfr].gap_ms = fr[f].gap_ms > 0
+							   ? fr[f].gap_ms
+							   : 100;
+		store[i].nfr++;
+		anim_bytes += cost;
+		fr[f].img = NULL;	/* the store owns it now */
+	}
+	if (!store[i].nfr)
+		return;
+	/* A GIF loops forever unless it says otherwise, and libnsgif's
+	 * loop_count is the count of REPEATS — so zero is endless, which is
+	 * what -1 means here. */
+	store[i].loops = -1;
+	store[i].cur = 0;
+	store[i].running = 1;
+	store[i].due_ms = anim_now() + (unsigned long long)anim_gap(i);
+}
+
+/*
+ * A STORE ID FOR A PICTURE THAT HAS NONE. The kitty protocol's ids are the
+ * peer's; an inline GIF arrived without one, and these count down from the top
+ * so a peer using small numbers — which every implementation does — cannot
+ * place ours by accident.
+ */
+static uint32_t gif_id(void)
+{
+	static uint32_t next = 0xffffffffu;
+
+	return next--;
 }
 
 static void kitty_apply(const char *ctl, const uint8_t *payload, size_t len)

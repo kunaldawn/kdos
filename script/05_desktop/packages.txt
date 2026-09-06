@@ -149,3 +149,9 @@ xdg-desktop-portal-wlr
 # own toolkit's, which put a rounded antialiased GTK dialog in the middle of a
 # text-mode desktop. Settings comes with it and hands out the accent.
 xdg-desktop-portal-kdos
+
+# The screen recorder. It is a program rather than a shell script because
+# xdg-desktop-portal keys a session to the connection that created it and closes
+# it when that connection goes: three gdbus calls are three connections, and the
+# second is told `Invalid session`.
+kdos-record

@@ -327,6 +327,8 @@ int __wrap_ktui_offscreen_init(int w, int h)
 
 FRONT_END(cal_main);
 FRONT_END(peek_main);
+FRONT_END(find_main);
+FRONT_END(pix_main);
 FRONT_END(menu_main);
 FRONT_END(launcher_main);
 FRONT_END(pick_main);
@@ -355,6 +357,8 @@ static const struct {
 	{ "cal",	cal_main },
 	{ "trash",	trash_main },
 	{ "peek",	peek_main },
+	{ "find",	find_main },
+	{ "pix",	pix_main },
 	{ "menu",	menu_main },
 	{ "launcher",	launcher_main },
 	{ "pick",	pick_main },

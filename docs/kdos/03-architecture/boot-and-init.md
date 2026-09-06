@@ -191,6 +191,19 @@ data survives.
 command line already carries", which is what a single-root machine does anyway. A `try` pointing
 at a slot with no root, or at the active slot, is refused rather than recorded.
 
+## `file` must be the magic database's, not toybox's
+
+Toybox's `file` applet is switched off in the recipe and in phase 1, so `/usr/bin/file` is the
+`file` port's — the reference implementation, with `/usr/share/misc/magic.mgc` behind it.
+
+The applet reads a handful of headers and refuses `--mime` outright. `lesspipe` asks
+`file -L -s -b --mime` and **nothing else**: with no answer there it hands every file through
+unchanged, so `less` on a `.tar.gz` shows the compressed bytes and the filter looks like it was
+never installed. Two `file`s on one image would also be two answers to "what is this", which is the
+question the handler tables, the thumbnailer and the pager all ask.
+
+The cost is stated: `magic.mgc` is about ten megabytes.
+
 ## switch_root must be util-linux's
 
 The initramfs installs `/usr/sbin/switch_root` over toybox's applet, and it must stay that way.
@@ -289,7 +302,10 @@ login on demand.
 
 - **`greet = no`** — the live medium's answer — executes `agetty --autologin kdos`. Going through
   agetty keeps utmp, lastlog and the shell profile on the path they take everywhere else, and a
-  machine with one account and no password has nothing to ask.
+  machine with one account and no password has nothing to ask. **`/bin/login` must be shadow's**:
+  agetty's autologin calls `login -f -- USER`, and toybox's `login` reads the name as `-f`'s own
+  argument, takes `--` for the account and refuses it — so toybox is built with `login` and `su`
+  off and tty1 is left at a login prompt nobody can answer if they come back.
 - **`greet = yes`** — what the installer writes — draws the login surface on the tty. It uses the
   **tty backend**, not a modeset: `kdos-getty` has already loaded the console font and palette, and
   a greeter that opened a DRM device would make the session binary depend on the one thing the

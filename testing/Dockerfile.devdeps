@@ -18,8 +18,8 @@
 # phase build, and it carries exactly what the script probes for:
 #
 #     pkg-config: alsa basu fcft libarchive libdrm libinput libpipewire-0.3
-#                 libseat pixman-1 wayland-client xkbcommon — and the four
-#                 decoders
+#                 libseat pixman-1 wayland-client xkbcommon — and four of the
+#                 five decoders
 #     command -v: cpio dbus-daemon python3 xz zstd
 #
 # mesa, libxml2, cairo and pango are here for the compositor's graft block,
@@ -30,7 +30,7 @@
 # "kdos-term handles the catalogue" that a recorded stream cannot show, because
 # it is what the program does in response to us rather than what it once did.
 #
-# TWO THINGS STILL SKIP HERE, and they are named rather than left to be found:
+# THREE THINGS STILL SKIP HERE, and they are named rather than left to be found:
 #
 #   - wlroots. No distribution packages 0.20; the tree carries the tarball and
 #     building it is a second layer on top of this one — see "Compiling the
@@ -38,6 +38,9 @@
 #   - busctl, which gates the portal block. Alpine ships it in no package, so
 #     that one block stays skipped on this image even though its sd-bus and
 #     dbus-daemon halves are both here.
+#   - libnsgif, which gates libkimg's GIF cases. Alpine packages neither it nor
+#     netsurf's buildsystem; the port builds both, so the block runs inside the
+#     phase-4 chroot and skips here.
 
 FROM alpine:3.23
 

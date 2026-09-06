@@ -81,8 +81,12 @@ static int grim_works(void)
  * they are one session's pair, and deriving it is what keeps the caller from
  * having to know the layout. There is no clipboard step: the console's
  * clipboard is the session's, and wl-copy is a Wayland client.
+ *
+ * `geom` is `X,Y,W,H` in CELLS or NULL for the whole grid. It comes from the
+ * session, which drew the rubber band and already put the text of those cells
+ * on the clipboard; this program's half is the picture of the same rectangle.
  */
-static int shot_console(const char *sock, const char *dir)
+static int shot_console(const char *sock, const char *dir, const char *geom)
 {
 	char view[256];
 	size_t n = strlen(sock);
@@ -108,8 +112,12 @@ static int shot_console(const char *sock, const char *dir)
 	if (p == 0) {
 		/* The view writes the file itself, so there is no descriptor
 		 * to hand it and nothing on stdout to redirect. */
-		execlp("kdos-view", "kdos-view", "--shot", file, "--socket",
-		       view, (char *)NULL);
+		if (geom)
+			execlp("kdos-view", "kdos-view", "--shot", file,
+			       "--socket", view, "--crop", geom, (char *)NULL);
+		else
+			execlp("kdos-view", "kdos-view", "--shot", file,
+			       "--socket", view, (char *)NULL);
 		_exit(127);
 	}
 	if (p < 0) {
@@ -136,14 +144,33 @@ static int shot_console(const char *sock, const char *dir)
 
 int shot_main(int argc, char **argv)
 {
-	const char *mode = argc > 1 ? argv[1] : "region";
+	const char *mode = argc > 1 && argv[1][0] != '-' ? argv[1] : "region";
+	const char *geom = NULL;
+
 	if (!strcmp(mode, "window"))
 		mode = "region";	/* per-window needs the compositor's help */
 
 	if (strcmp(mode, "region") && strcmp(mode, "screen") &&
 	    strcmp(mode, "full")) {
-		fprintf(stderr, "usage: kdos-shot [region|screen|window]\n");
+		fprintf(stderr,
+			"usage: kdos-shot [region|screen|window] [--geom X,Y,W,H]\n");
 		return 1;
+	}
+
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--geom") || i + 1 >= argc)
+			continue;
+		geom = argv[++i];
+	}
+	if (geom) {
+		int g[4];
+
+		if (sscanf(geom, "%d,%d,%d,%d", &g[0], &g[1], &g[2], &g[3]) !=
+		    4) {
+			fprintf(stderr,
+				"kdos-shot: --geom wants X,Y,W,H\n");
+			return 1;
+		}
 	}
 
 	const char *pics = getenv("XDG_PICTURES_DIR");
@@ -164,8 +191,22 @@ int shot_main(int argc, char **argv)
 	 */
 	const char *con = getenv("KDOS_CON");
 
-	if (con && *con)
-		return shot_console(con, dir);
+	if (con && *con) {
+		/*
+		 * THE MODE DISPATCH. `screen` is the whole grid whatever else
+		 * was asked for, and `region` is the rectangle the session
+		 * marked — or, with no rectangle given, the whole grid again,
+		 * because the console's region selector is the session's mark
+		 * and it is what supplies `--geom`. There is no picker here to
+		 * fall back to.
+		 */
+		return shot_console(con, dir,
+				    strcmp(mode, "region") ? NULL : geom);
+	}
+
+	if (geom)
+		kb_die("--geom is the console's cell rectangle; the "
+		       "compositor selects with slurp");
 
 	if (!kb_have_prog("grim"))
 		kb_die("grim is not installed");
@@ -186,7 +227,7 @@ int shot_main(int argc, char **argv)
 	if (!strcmp(mode, "region")) {
 		if (!kb_have_prog("slurp"))
 			kb_die("slurp is not installed");
-		char geom[128] = {0};
+		char sel[128] = {0};
 		KbArgv s = {0};
 		kb_argv_add(&s, "slurp");
 		kb_argv_add(&s, "-b");
@@ -201,10 +242,10 @@ int shot_main(int argc, char **argv)
 		/* slurp writes nothing and exits non-zero when the selection is
 		 * cancelled with Escape — that is a user decision, not a
 		 * failure. */
-		if (kb_run_capture(&s, geom, sizeof(geom)) != 0 || !geom[0])
+		if (kb_run_capture(&s, sel, sizeof(sel)) != 0 || !sel[0])
 			return 0;
 		kb_argv_add(&g, "-g");
-		kb_argv_add(&g, geom);
+		kb_argv_add(&g, sel);
 	}
 
 	kb_argv_add(&g, file);

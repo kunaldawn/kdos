@@ -273,6 +273,10 @@
     <keybind key="W-C-q"><action name="Execute" command="kdos-calc"/></keybind>
     <keybind key="W-C-n"><action name="Execute" command="kdos-note"/></keybind>
     <keybind key="W-C-v"><action name="Execute" command="kdos-clip"/></keybind>
+    <!-- Find, and Shift because W-f is fullscreen on both desktops: a search
+         one slip from covering the screen is the wrong trade. The console
+         binds the same chord, so there is one key card rather than two. -->
+    <keybind key="W-S-f"><action name="Execute" command="kdos-find"/></keybind>
 
     <!-- Run-or-raise, for anyone who wants one key per app. ForEach runs its
          <then> on every view matching the <query> (identifier is the app_id,

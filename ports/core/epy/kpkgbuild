@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = epy
+version     = 2022.12.11
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/wustho/$name/archive/refs/tags/v$version.tar.gz
+sha256      = 2dd9df8703a51a6fd4d77fc5d2aa71c3db2c9d8d856f18d9a99725e6badbf3ed  epy-2022.12.11.tar.gz
+sha256      = 530e3a6af8f8956cee113d068822eb24e4f0891d5ff8e998a22a2afe6d4cddaa  epy-vendor-2022.12.11.tar.xz
+description = An ebook reader in the terminal — epub, mobi, azw3, fb2
+homepage    = https://github.com/wustho/epy
+depends     = python3 python3-pip
+vendoring   = python

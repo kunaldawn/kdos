@@ -175,6 +175,11 @@ stream. The backend opens no device, renders nothing and holds no frame; the vie
 and the stream's pixel size on one line, because the backend never rasterises and cannot work the
 size out.
 
+**The backend spawns the view on the VIEW socket**, which it derives from `$KDOS_CON` by changing
+the suffix. `$KDOS_CON` is the *surface* socket — what a client attaches to — and the two are one
+session's pair; a view handed the surface socket is never told a size and gives up before it has
+a node to name.
+
 **One source, the whole desktop.** There is one grid and no notion of a monitor inside it, and a
 "window" there is a rectangle of cells with nothing behind it to capture separately — so
 `AvailableSourceTypes` is MONITOR and nothing else. The cursor mode is EMBEDDED for the same kind of
@@ -189,6 +194,26 @@ Three rules it exists to keep:
   asked for it needs cross-process window referencing that is not wired up, so dialogs open
   centred.
 - **The chooser is executed with an argument vector, never a command string.**
+
+**`kdos-record` is the host's own caller of all this.** Three calls — `CreateSession`,
+`SelectSources`, `Start` — and the node the last one answers with goes to
+`gst-launch-1.0 pipewiresrc`, which is why `pipewire` is built `-Dgstreamer=enabled`: without it the
+`pipewiresrc` element does not exist and nothing can read a node from a pipeline. It goes through
+the portal rather than round it even though the backend is ours, because `Start` is what makes the
+view exist and the answer it gives is the one a boxed application would get.
+
+**A session belongs to a CONNECTION, and that is why `kdos-record` is a program.** The portal keys
+a session by the unique name that created it and closes the session when that name leaves the bus,
+so a shell script making three `gdbus call` invocations makes three connections: the second is
+answered `Invalid session` and the first session is already gone. One connection has to stay open
+for the whole recording, which is a program holding an `sd-bus` — the same basu the portal backend
+links.
+
+**A portal reply is a SIGNAL, not a return value.** Every call returns a Request object path and
+answers later with `Response` on it, so the match is installed *before* the call — a signal that
+arrives with no match is gone, and nothing replays it. The signal is *directed* at the caller, so
+it reaches the connection that asked and no other; a separate monitoring process is not an
+alternative to holding the connection, it is a different thing entirely.
 
 **And a cast completes on a LINE, not on end-of-file.** The chooser exits and its output ends; the
 cast view does not exit — it *is* the stream — so the reply is built when its first line arrives and

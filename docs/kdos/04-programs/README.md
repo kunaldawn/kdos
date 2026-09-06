@@ -14,7 +14,7 @@ bottom of this page.
 |---|---|---|
 | `kdos-comp` | The compositor: a frozen fork of labwc with KDOS additions | [kdos-comp](kdos-comp.md) |
 | `kdos-con` | The console desktop: the default session, and no Wayland on its path | [kdos-con](kdos-con.md) |
-| `kdos-shell` | The panel, and twenty-seven other surfaces under other names | [kdos-shell](kdos-shell.md) |
+| `kdos-shell` | The panel, and thirty-five other surfaces under other names | [kdos-shell](kdos-shell.md) |
 | `kdos-res` | The resource monitor | [kdos-res](kdos-res.md) |
 | `kdos-term` | The terminal: one binary, both desktops, and the three image protocols | [kdos-term](kdos-term.md) |
 | `kdos-cage` | One application, embedded in the cell desktop or full screen on a VT — a hard fork of cage | [kdos-cage](kdos-cage.md) |
@@ -100,7 +100,7 @@ These run on a build host and **never ship on the target**.
 Three binaries provide most of the commands on the system. If you find a command on your `PATH`
 and want its documentation, find it here.
 
-### `kdos-shell` — 33 names
+### `kdos-shell` — 36 names
 
 The panel plus every surface that pops up from it. One binary, dispatched on its own name; the
 authoritative list is the name table in its own `main.c`.
@@ -115,7 +115,7 @@ authoritative list is the name table in its own `main.c`.
 | `kdos-slit` | `kdos-doc` | `kdos-settings` | `kdos-openwith` |
 | `kdos-audio` | `kdos-net` | `kdos-bt` | `kdos-devices` |
 | `kdos-clip` | `kdos-status` | `kdos-tip` | `kdos-ime` |
-| `kdos-trash` |  |  |  |
+| `kdos-trash` | `kdos-peek` | `kdos-find` | `kdos-pix` |
 
 All are documented in [kdos-shell](kdos-shell.md).
 

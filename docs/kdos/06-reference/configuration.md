@@ -312,10 +312,12 @@ file takes the built-in default — a machine with no file at all boots a workin
 | `calculator` | `kdos-calc` | What `Super+Ctrl+q` starts |
 | `notes` | `kdos-note` | What `Super+Ctrl+n` starts |
 | `clipboard` | `kdos-clip` | What `Super+Ctrl+v` starts |
+| `find` | `kdos-find` | What `Super+Shift+f` starts |
+| `capture` | `kdos-shot` | What `Super+Shift+p` hands the marked rectangle to |
 | `paste_guard` | `yes` | Refuse an unbracketed paste carrying a newline once, and take it on the second try |
 | `embed` | `yes` | Whether a graphical application becomes a window. `no` gives every one of them a terminal of its own |
 
-**The eleven surface keys exist so a chord and the program it runs are written in one place.**
+**The twelve surface keys exist so a chord and the program it runs are written in one place.**
 `kdos-con --keys` prints what this table binds, so the keybinding card cannot name a program the
 session does not start. `displays` reaches a surface that cannot configure a console screen —
 `libkkms` has no mode selection — so it says so and exits; the chord is bound because a stated
@@ -378,7 +380,8 @@ Changing a default in one file changes it in the other.
 | `cascade` | `Super+Alt+t` | `rearrange` | `Super+r` |
 | `rearrange-fkey` | `Super+F9` | `show-desktop` | `Super+Shift+d` |
 | `windows` | `Super+F2` | `mark` | `Super+Shift+m` |
-| `paste` | `Super+Shift+v` | | |
+| `paste` | `Super+Shift+v` | `find` | `Super+Shift+f` |
+| `capture` | `Super+Shift+p` | | |
 
 Modifiers are `Super`, `Shift`, `Alt` and `Ctrl`, joined with `+`. An action no line names keeps
 its default, so rebinding one key does not mean restating the rest. Punctuation may be written as
@@ -571,7 +574,8 @@ account gets a working setup rather than each program's own defaults. These are 
 | `~/.config/user-dirs.dirs` | The standard user directories | Seeded from `/etc/skel`; there is no `xdg-user-dirs` here. `$HOME` is the only expansion read |
 | `~/.config/kdos/places` | Extra rows on the places column, `Name = /path` one per line | Merged over the user directories; a row whose path is already listed is dropped, and one pointing at nothing is never shown. Written by *Add to Places* on the desktop |
 | `~/.config/mc/mc.ext.ini` | What `Enter` does on a file in `mc` | Replaces the system file wholesale — mc does not merge them. Only the archive rows whose VFS helper is on this image are carried; everything else falls to the catch-all, which is `kdos-appbox open` |
-| `~/.config/mc/menu` | `mc`'s `F2` user menu | Seven verbs, each naming a program on the image; `testing/preflight.sh` refuses one that is not |
+| `~/.config/mc/menu` | `mc`'s `F2` user menu | Eight verbs, each naming a program on the image; `testing/preflight.sh` refuses one that is not |
+| `/etc/profile.d/20-lesspipe.sh` | What `less` shows for a file that is not text | Sets `LESSOPEN` to `lesspipe.sh` and `LESS=-R`, neither over a value you already set. The filter is driven by `file -L -s -b --mime` and nothing else, which is why `file` on this image is the one with a magic database |
 | `~/.config/xdg-desktop-portal-wlr/config` | The screen-capture backend | Uses an output picker; the alternative silently captures the first output, which is wrong the moment a second screen is plugged in |
 
 ## Generated files you should not edit

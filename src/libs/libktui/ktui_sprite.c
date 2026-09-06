@@ -43,6 +43,9 @@ static int nsprites;
 static unsigned long used[KTUI_MAX_SPRITES];
 static unsigned long clock_;
 
+/* Every put gets a number. See KtuiSprite.gen — a pointer is not enough. */
+static unsigned long put_gen;
+
 static KtuiSpriteFree evict_fn;
 static void *evict_user;
 static size_t byte_cap;
@@ -213,6 +216,7 @@ int ktui_sprite_put(uint64_t key, const void *pix, int cw, int ch,
 	sprites[slot].h = ch;
 	sprites[slot].fallback = fallback;
 	byte_used += want;
+	sprites[slot].gen = ++put_gen;
 	used[slot] = ++clock_;
 	return slot;
 }

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Ebook Reader
+GenericName=Ebook Reader
+Comment=Read an epub, mobi or fb2 in the terminal
+Exec=epy %f
+Icon=application-epub+zip
+Terminal=true
+NoDisplay=true
+MimeType=application/epub+zip;application/x-mobipocket-ebook;application/x-fictionbook+xml;
+Categories=Office;Viewer;

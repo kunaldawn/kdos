@@ -4615,6 +4615,8 @@ static void test_kimg(void)
 		  KIMG_WEBP, "WebP" },
 		{ "valid.six",  NULL,             NULL,        "zero.six",
 		  KIMG_SIXEL, "sixel" },
+		{ "valid.gif",  "truncated.gif",  "huge.gif",  "zero.gif",
+		  KIMG_GIF,  "GIF" },
 	};
 
 	int ran = 0;
@@ -4681,6 +4683,41 @@ static void test_kimg(void)
 	if (img_have(KIMG_PNG))
 		eq_int(img_decodes("valid.png", KIMG_AUTO), 1,
 		       "and with nothing declared, the magic is sniffed");
+
+	/*
+	 * AN ANIMATED GIF IS THE ONE THING HERE WITH MORE THAN ONE PICTURE IN
+	 * IT, and `kimg_decode_all` is the only way to reach the rest. A still
+	 * answers one through the same call, which is what lets a caller have
+	 * one path instead of two.
+	 */
+	if (img_have(KIMG_GIF)) {
+		size_t n = 0;
+		const unsigned char *b = img_slurp("anim.gif", &n);
+		KimgFrame fr[8];
+		int got = b ? kimg_decode_all(b, n, KIMG_GIF, &img_budget, fr,
+					      8)
+			    : -1;
+
+		eq_int(got, 3, "every frame of an animated GIF comes back");
+		for (int i = 0; i < got; i++) {
+			if (i == 0)
+				ok(fr[i].gap_ms > 0,
+				   "  each carries the delay after it");
+			pixman_image_unref(fr[i].img);
+		}
+
+		b = img_slurp("valid.gif", &n);
+		got = b ? kimg_decode_all(b, n, KIMG_GIF, &img_budget, fr, 8)
+			: -1;
+		eq_int(got, 1, "a still answers one through the same call");
+		for (int i = 0; i < got; i++)
+			pixman_image_unref(fr[i].img);
+
+		/* And `kimg_decode` is that call with a max of one: the first
+		 * frame, which is what a still viewer wants. */
+		eq_int(img_decodes("anim.gif", KIMG_GIF), 1,
+		       "kimg_decode answers an animation's first frame");
+	}
 
 	/* Nothing at all is still an answer. */
 	pixman_image_t *none = kimg_decode(NULL, 0, KIMG_AUTO, &img_budget);

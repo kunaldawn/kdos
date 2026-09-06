@@ -27,6 +27,10 @@
 #ifdef KIMG_HAVE_WEBP
 #include <webp/decode.h>
 #endif
+#ifdef KIMG_HAVE_GIF
+#include <libnsgif.h>
+#endif
+
 #ifdef KIMG_HAVE_SIXEL
 #include <sixel.h>
 #endif
@@ -104,6 +108,8 @@ static int sniff(const uint8_t *p, size_t n)
 		return KIMG_JPEG;
 	if (n >= 12 && !memcmp(p, "RIFF", 4) && !memcmp(p + 8, "WEBP", 4))
 		return KIMG_WEBP;
+	if (n >= 6 && (!memcmp(p, "GIF87a", 6) || !memcmp(p, "GIF89a", 6)))
+		return KIMG_GIF;
 	return 0;
 }
 
@@ -415,6 +421,155 @@ static pixman_image_t *decode_webp(const uint8_t *p, size_t n,
 }
 #endif
 
+/* ── GIF ─────────────────────────────────────────────────────────────────
+ *
+ * The logical screen descriptor is bytes 6..9 — two little-endian 16-bit
+ * dimensions, immediately after the magic — so the budget is checked before
+ * libnsgif is given anything, which is the rule every decoder here follows.
+ *
+ * A FRAME IS THE WHOLE CANVAS. libnsgif composes disposal and transparency
+ * into one bitmap per frame and hands back that bitmap, so nothing here has to
+ * know what a disposal method is; the budget is charged per frame because a
+ * two-hundred-frame animation of a modest canvas is not a modest allocation.
+ *
+ * ANIMATED GIF IS THE ONLY FORMAT HERE WITH MORE THAN ONE PICTURE IN IT, which
+ * is why `kimg_decode_all` exists at all: decoding frame N by starting over
+ * would be quadratic in the frame count, and a hundred-frame animation would
+ * cost five thousand frame decodes.
+ */
+#ifdef KIMG_HAVE_GIF
+/*
+ * libnsgif asks the caller for its bitmaps. They are plain RGBA buffers here —
+ * the library writes into `bitmap_get_buffer` and this file turns the finished
+ * one into a pixman image, so no allocator of libnsgif's is ever handed to
+ * pixman and the ownership stays on one side.
+ */
+struct gifbm {
+	int w, h;
+	unsigned char *px;
+};
+
+static void *gif_bm_create(int width, int height)
+{
+	struct gifbm *b;
+
+	if (width <= 0 || height <= 0)
+		return NULL;
+	/* The multiply is checked here as well as against the budget: this
+	 * callback is reached with the frame's own size, which need not be the
+	 * canvas's. */
+	if ((unsigned long)width > (unsigned long)-1 / 4 / (unsigned long)height)
+		return NULL;
+	b = calloc(1, sizeof(*b));
+	if (!b)
+		return NULL;
+	b->w = width;
+	b->h = height;
+	b->px = calloc((size_t)width * (size_t)height, 4);
+	if (!b->px) {
+		free(b);
+		return NULL;
+	}
+	return b;
+}
+
+static void gif_bm_destroy(void *bitmap)
+{
+	struct gifbm *b = bitmap;
+
+	if (!b)
+		return;
+	free(b->px);
+	free(b);
+}
+
+static unsigned char *gif_bm_buffer(void *bitmap)
+{
+	struct gifbm *b = bitmap;
+
+	return b ? b->px : NULL;
+}
+
+static void gif_bm_set_opaque(void *bitmap, bool opaque)
+{
+	(void)bitmap;
+	(void)opaque;
+}
+
+static bool gif_bm_test_opaque(void *bitmap)
+{
+	(void)bitmap;
+	return false;
+}
+
+static void gif_bm_modified(void *bitmap)
+{
+	(void)bitmap;
+}
+
+static int gif_all(const uint8_t *p, size_t n, const KimgBudget *b,
+		   KimgFrame *out, int max)
+{
+	gif_bitmap_callback_vt vt = {
+		gif_bm_create, gif_bm_destroy, gif_bm_buffer,
+		gif_bm_set_opaque, gif_bm_test_opaque, gif_bm_modified
+	};
+	gif_animation gif;
+	size_t charged = 0;
+	int got = 0;
+	long w, h;
+
+	if (n < 10 || max < 1)
+		return 0;
+	w = (long)p[6] | ((long)p[7] << 8);
+	h = (long)p[8] | ((long)p[9] << 8);
+	if (!within(b, w, h))
+		return 0;
+
+	gif_create(&gif, &vt);
+	/* libnsgif takes the buffer as non-const and does not write to it. */
+	if (gif_initialise(&gif, n, (unsigned char *)p) != GIF_OK) {
+		gif_finalise(&gif);
+		return 0;
+	}
+	if (!within(b, (long)gif.width, (long)gif.height)) {
+		gif_finalise(&gif);
+		return 0;
+	}
+
+	for (unsigned f = 0; f < gif.frame_count && got < max; f++) {
+		struct gifbm *bm;
+		size_t cost = (size_t)gif.width * (size_t)gif.height * 4;
+
+		/* THE BUDGET IS OVER THE WHOLE ANIMATION. A frame that would
+		 * cross it ends the decode and the frames already accepted
+		 * still play — half an animation is worth more than none, and
+		 * far more than a decoder that allocated until it was killed. */
+		if (charged > b->max_bytes - cost)
+			break;
+		if (gif_decode_frame(&gif, f) != GIF_OK)
+			break;
+		bm = gif.frame_image;
+		if (!bm || !bm->px)
+			break;
+		out[got].img = from_rgba(bm->px, (int)gif.width,
+					 (int)gif.height);
+		if (!out[got].img)
+			break;
+		/* Centiseconds on the wire. Zero means "as fast as you like",
+		 * which every browser reads as ten hundredths — a zero here
+		 * would be a busy loop. */
+		out[got].gap_ms = gif.frames[f].frame_delay > 0
+					  ? (int)gif.frames[f].frame_delay * 10
+					  : 100;
+		charged += cost;
+		got++;
+	}
+	gif_finalise(&gif);
+	return got;
+}
+#endif
+
 /* ── sixel ───────────────────────────────────────────────────────────────
  *
  * Sixel declares its size only if it feels like it — the raster attribute is
@@ -601,7 +756,39 @@ unsigned kimg_formats(void)
 #ifdef KIMG_HAVE_WEBP
 	f |= 1u << KIMG_WEBP;
 #endif
+#ifdef KIMG_HAVE_GIF
+	f |= 1u << KIMG_GIF;
+#endif
 	return f;
+}
+
+/*
+ * EVERY FRAME, for the one format that has more than one. A still answers 1
+ * and fills `out[0]`, so a caller that wants an animation and a caller that
+ * wants a picture take the same path; `kimg_decode` is this with `max` of one.
+ */
+int kimg_decode_all(const void *bytes, size_t len, int type,
+		    const KimgBudget *budget, KimgFrame *out, int max)
+{
+	const uint8_t *p = bytes;
+
+	if (!p || !budget || !out || max < 1 || len < 8)
+		return 0;
+	if (type == KIMG_AUTO)
+		type = sniff(p, len);
+	if (type != KIMG_SIXEL) {
+		int saw = sniff(p, len);
+
+		if (saw == 0 || saw != type)
+			return 0;
+	}
+#ifdef KIMG_HAVE_GIF
+	if (type == KIMG_GIF)
+		return gif_all(p, len, budget, out, max);
+#endif
+	out[0].img = kimg_decode(bytes, len, type, budget);
+	out[0].gap_ms = 0;
+	return out[0].img ? 1 : 0;
 }
 
 pixman_image_t *kimg_decode(const void *bytes, size_t len, int type,
@@ -645,6 +832,15 @@ pixman_image_t *kimg_decode(const void *bytes, size_t len, int type,
 #ifdef KIMG_HAVE_WEBP
 	case KIMG_WEBP:
 		return decode_webp(p, len, budget);
+#endif
+#ifdef KIMG_HAVE_GIF
+	case KIMG_GIF: {
+		/* The first frame, which is what a still viewer wants: an
+		 * animation's later frames are `kimg_decode_all`'s. */
+		KimgFrame f = { NULL, 0 };
+
+		return gif_all(p, len, budget, &f, 1) == 1 ? f.img : NULL;
+	}
 #endif
 	default:
 		break;

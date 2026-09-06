@@ -673,6 +673,7 @@ over state the session already holds.
 | `Super+Shift+d` | hide every window; the same chord brings them back |
 | `Super+Shift+m` | mark a rectangle of the screen |
 | `Super+Shift+v` | paste what was marked into the focused window |
+| `Super+Shift+p` | capture a rectangle: its text to the clipboard, its picture to a file |
 
 **A window's number is its position in the Alt-Tab ring**, drawn in its title bar and in its taskbar
 row. It is the ring's own index rather than an identity: it renumbers when a window closes, which is
@@ -707,6 +708,11 @@ desktop than it was there.
 `Shift+`arrows drag the other one out of it, `Ctrl+`arrows move by eight, `Home` and `End` reach the
 edges, `Return` copies and `Escape` leaves. The taskbar names those keys while the mode is up.
 
+**The mark owns the pointer as well as the keyboard.** A press anchors the rectangle, a drag draws
+it and the button coming up finishes it, the same as `Return`. Nothing under it is raised or
+clicked while the mode is on: a press that fell through would put a window over the region being
+marked, and a capture would then photograph that.
+
 **The rectangle is the screen's, not a window's.** Somebody marking a column of numbers out of two
 windows side by side means the column, and a mark that stopped at a frame would be a mark that knew
 better than they did.
@@ -714,6 +720,13 @@ better than they did.
 **The mark is drawn by reversing the cells under it, never by repainting them.** Those cells belong
 to whatever program drew them and are what is being copied; a mark in a colour of its own would hide
 the text a person is trying to see the extent of. A picture's cells mark as spaces.
+
+**`Super+Shift+p` is a mark that also files a picture.** The same rubber band, the text of the
+cells on the clipboard, and then `con.conf`'s `capture` program — `kdos-shot` by default — asked for
+the same rectangle as `kdos-shot region --geom X,Y,W,H`, in cells. It attaches a second view to
+rasterise them, so the picture is what a screen would show rather than a second drawing of the same
+cells. **The mark is taken down before the picture is asked for**, or the rectangle would be
+reverse video in the file.
 
 `Super+Shift+v` puts the session clipboard into the focused window — `kvt_term_paste` for a
 terminal, `KCON_OP_CLIP_DATA` for a surface. A view can already hand the session a paste, but a

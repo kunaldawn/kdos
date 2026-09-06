@@ -64,12 +64,12 @@ PROTO="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 	/usr/share/wlroots/protocols/wlr-foreign-toplevel-management-unstable-v1.xml \
 	wlr-foreign-toplevel-management-unstable-v1-protocol.c
 
-PKGCFG="fcft pixman-1 xkbcommon wayland-client libpng libjpeg libwebp libsixel"
+PKGCFG="fcft pixman-1 xkbcommon wayland-client libpng libjpeg libwebp libsixel libnsgif"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKDOS_TERM_VERSION="\"$version\"" \
 	-DHAVE_KIMG -DKIMG_HAVE_PNG -DKIMG_HAVE_JPEG -DKIMG_HAVE_WEBP \
-	-DKIMG_HAVE_SIXEL \
+	-DKIMG_HAVE_SIXEL -DKIMG_HAVE_GIF \
 	-I. -I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" \
 	-I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" \

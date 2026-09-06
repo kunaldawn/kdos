@@ -78,6 +78,15 @@ enum {
 	 */
 	CON_ACT_MARK,		/* mark a rectangle of the screen          */
 	CON_ACT_PASTE,		/* the session clipboard into the window   */
+	/*
+	 * THE SAME RECTANGLE, TWICE. A capture is a mark that also files a
+	 * picture: the cells it covers go on the clipboard as text, and their
+	 * coordinates go to CON_CMD_CAPTURE, which asks a second view to
+	 * rasterise them. Text and picture are the same region because they
+	 * come from the same drag, and a person who marked a paragraph gets
+	 * both without choosing between them first.
+	 */
+	CON_ACT_CAPTURE,	/* mark, copy, and file the picture        */
 
 	/*
 	 * NOT AN ACTION — A PREFIX. The next key is looked up as though Super
@@ -112,6 +121,7 @@ enum { CON_CMD_MENU = 0, CON_CMD_LAUNCHER, CON_CMD_LOCK, CON_CMD_SAVER,
         * leaving it untouched, which is what Sidekick sold a million copies
         * of and what the overlay role already gives this desktop for free. */
        CON_CMD_CALC, CON_CMD_NOTE, CON_CMD_CLIP,
+       CON_CMD_FIND, CON_CMD_CAPTURE,
        CON_CMD_N };
 
 const char *con_command(int which);
