@@ -1,0 +1,22 @@
+Periodic jobs, one per line, read by /etc/init.d/18_timers.sh at boot.
+
+    NAME  TIMESPEC...  --  COMMAND...
+
+NAME names the supervised service, so `service 18_timers status` and
+`ksvc check kdos-timer-NAME` can both find it. TIMESPEC is `snooze`'s own
+options and nothing else is invented here. `--` ends the timespec: without it
+nothing can tell where snooze's options stop and the command begins, because
+both are bare words.
+
+THE COMMAND IS AN ARGUMENT VECTOR AND NOT A SHELL LINE. No pipe, no
+redirection, no glob, no `&&` — a program that needs to write a file takes a
+flag that names it. That is the same rule every other configuration file in
+this tree keeps, and it is why this one can be parsed rather than sourced.
+
+A LINE THAT DOES NOT PARSE IS REPORTED AND SKIPPED, never guessed at: a timer
+that silently did not start is indistinguishable from one that has not fired
+yet, and the difference can be months.
+
+The per-user table is ~/.config/kdos/timers.d/ and has the same shape. It is
+started by the session at login and dies with it, which is what a job that
+writes into $HOME should do.

@@ -66,7 +66,8 @@ does not. After the shared bring-up it:
    that can lose them; the session holds every window and must outlive that. A view that exits
    cleanly is a detach and is not restarted; one that crashes is, three times in sixty seconds.
 4. Runs `kdos-con --serve` under the same crash harness `kdos-desktop-start` uses.
-5. Starts the shell's **layer** surfaces — `kdos-notifyd`, `kdos-desk` and `kdos-slit`. None needs a
+5. Starts the shell's **layer** surfaces — `kdos-notifyd`, `kdos-netagent`, `kdos-mediad`,
+   `kdos-desk` and `kdos-slit`. None needs a
    window list, and all three name the console display implementation first, so they run here
    exactly as they do under the compositor. They are **not** supervised: unlike a view they hold
    nothing a restart would recover, and a crash loop on a toast daemon is a desktop that spends its
@@ -229,7 +230,7 @@ happens on every launch, hangs until the dialog is dismissed.
 
 ## Supervised chrome
 
-The compositor starts and supervises the desktop's own programs from a table in its source. Five
+The compositor starts and supervises the desktop's own programs from a table in its source. Seven
 entries:
 
 | Program | Per output? | Gated on |
@@ -238,15 +239,20 @@ entries:
 | `kdos-desk` | yes | `desktop_icons` |
 | `kdos-slit` | yes | `slit`, off by default |
 | `kdos-notifyd` | **no** | always |
+| `kdos-netagent` | **no** | always |
+| `kdos-mediad` | **no** | always |
 | `kdos-clip` | **no** | `clipboard` |
 
 **Three are per output** because a layer surface is placed by the compositor on one screen, and
 our toolkit has a single cell buffer per process — so a second monitor cannot be a second surface,
 it has to be a second process. Each takes the output name as an argument.
 
-**Two are single-instance** because each owns something unique: the notification daemon owns a bus
-name that a second instance would simply fail to take, and the clipboard owns a socket and holds
-its history in memory, so a second instance would be a second history nobody could reach.
+**Four are single-instance** because each owns something unique: the notification daemon owns a bus
+name that a second instance would simply fail to take; the secret agent registers one agent with
+NetworkManager, and a second would be a second passphrase box for the same question; the media
+handler holds one subscription to the mount daemon, and a second would offer every stick twice; and
+the clipboard owns a socket and holds its history in memory, so a second instance would be a second
+history nobody could reach.
 
 Three properties of the supervision:
 

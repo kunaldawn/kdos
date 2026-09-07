@@ -11,8 +11,8 @@
 | Net  |                                                                       |
 | Bat  |                                                                       |
 | Ene  |                                                                       |
+| Sen  |                                                                       |
 | Box  |                                                                       |
-|      |                                                                       |
 |      |                                                                       |
 |      |eth0  received / sent                                              -  -|
 |      |                                                                       |

@@ -51,6 +51,7 @@ Suspend, poweroff and reboot for a desktop that is not root.
 | `reboot` | Reboot |
 | `timezone <Area/City>` | Point `/etc/localtime` and `TZ` at a zone |
 | `autologin <user>\|off` | Which account tty1 logs in without asking |
+| `firewall list\|<service> on\|off` | Which named services answer the network |
 | `ping` | Liveness |
 
 One line per connection. Four verbs are a bare word; `timezone` is **the only one that takes an
@@ -84,9 +85,21 @@ autologin at a name it would not list is a machine that boots to a login nobody 
 the rewrite buffer is refused rather than truncated — half a config is a machine whose login
 settings are whatever survived.
 
-**`--set-timezone` and `--set-autologin` exist for the same reason `--explain` does.** The gate is
+**`firewall` names SERVICES and never ports, and the table is the daemon's.** A client that could
+name a port could open any port; a client that can only name `ssh` opens exactly what the daemon's
+table says `ssh` is. `kdos-firewall` asks for the list rather than carrying a copy, so there is one
+answer to what a name means. The file is **rewritten whole** from the names that are on — merging
+would mean parsing nftables syntax to find what to remove, and a parser that got it wrong would
+leave a port open that the surface showed as closed. Anything hand-written belongs in another file
+under `/etc/nftables.d`, which the daemon never reads or touches.
+
+**The ruleset is checked before it is applied.** `/etc/nftables.conf` begins with `flush ruleset`,
+so a bad file half-applied is a machine with no firewall at all; `nft --check` first means a bad
+ruleset is refused and the previous one stays in the kernel.
+
+**`--set-timezone`, `--set-autologin` and `--firewall` exist for the same reason `--explain` does.** The gate is
 SO_PEERCRED on a connection and cannot be exercised without two uids, so each verb's own rules
-would otherwise be asserted by nothing. Neither flag grants anything: it is the binary writing to
+would otherwise be asserted by nothing. None of them grants anything: it is the binary writing to
 an `/etc` the caller could already write to, which on the real path is root's.
 
 Poweroff and reboot **signal process 1 first** and only then call the kernel directly, so the init

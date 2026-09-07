@@ -1,0 +1,10 @@
+A recorded `kdos-power firewall list`.
+
+The surface carries no table of services — kdos-powerd owns it, because a
+client that could name a port could open any port. That makes the picture
+depend on a running daemon, which a golden may not, so KDOS_FIREWALL_LIST
+points here instead.
+
+Two services are `on` on purpose: a golden of a machine with nothing open
+would not show what an open row looks like, and "open" is drawn in the warning
+slot rather than the accent precisely because it is the state worth noticing.

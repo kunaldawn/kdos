@@ -293,6 +293,7 @@ int prompt_main(int argc, char **argv);		/* kdos-prompt   */
 int notifyd_main(int argc, char **argv);	/* kdos-notifyd  */
 int notify_main(int argc, char **argv);		/* kdos-notify   */
 int mediad_main(int argc, char **argv);		/* kdos-mediad   */
+int netagent_main(int argc, char **argv);	/* kdos-netagent */
 int osd_main(int argc, char **argv);		/* kdos-osd      */
 int cal_main(int argc, char **argv);		/* kdos-cal      */
 int display_main(int argc, char **argv);	/* kdos-display  */
@@ -334,6 +335,7 @@ int print_main(int argc, char **argv);		/* kdos-print    */
 int timezone_main(int argc, char **argv);	/* kdos-time     */
 int users_main(int argc, char **argv);		/* kdos-users    */
 int update_main(int argc, char **argv);		/* kdos-update   */
+int firewall_main(int argc, char **argv);	/* kdos-firewall */
 int note_main(int argc, char **argv);		/* kdos-note     */
 int slit_main(int argc, char **argv);		/* kdos-slit     */
 int doc_main(int argc, char **argv);		/* kdos-doc      */

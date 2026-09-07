@@ -11,8 +11,8 @@
 | Net  | utilisation  46%                                                      |
 | Bat  | memory       1.2G of 8.0G                                             |
 | Ene  |                                                                       |
+| Sen  |                                                                       |
 | Box  |                                                                       |
-|      |                                                                       |
 |      |                                                                       |
 |      |                                                                       |
 |      |                                                                       |

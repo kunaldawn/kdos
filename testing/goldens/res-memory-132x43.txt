@@ -11,8 +11,8 @@
 | Network          |                                                                                                            ## |
 | Batteries        |                                                                                                            ## |
 | Energy           | swap                                                                                              94M of 3.9G |
+| Sensors          |                                                                                                               |
 | Boxes            |                                                                                                               |
-|                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |

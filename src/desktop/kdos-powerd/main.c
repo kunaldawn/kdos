@@ -174,6 +174,180 @@ static int do_reboot(int cmd)
 }
 
 /*
+ * THE FIREWALL, AS NAMED SERVICES AND NEVER AS PORTS.
+ *
+ * THE TABLE IS HERE, NOT IN THE SURFACE, AND THAT IS THE WHOLE POINT. A client
+ * that could name a port could open any port; a client that can only name
+ * `ssh` can open exactly what this table says `ssh` is. The surface asks for
+ * the list rather than carrying a copy, so there is one answer to what a name
+ * means.
+ *
+ * THE FILE IS REWRITTEN WHOLE from the names that are on. Merging into an
+ * existing file would mean parsing nftables syntax to find what to remove, and
+ * a parser that got it wrong would leave a port open that the surface showed
+ * as closed. What a person writes by hand goes in another file beside it,
+ * which this never reads or touches.
+ */
+static const struct {
+	const char *name;
+	const char *rule;
+	const char *what;
+} FW[] = {
+	{ "ssh",   "tcp dport 22 accept",   "incoming SSH (70_sshd.sh)" },
+	{ "http",  "tcp dport 80 accept",   "a web server on this machine" },
+	{ "https", "tcp dport 443 accept",  "a TLS web server on this machine" },
+	{ "ipp",   "tcp dport 631 accept",  "sharing a printer with CUPS" },
+	{ "smb",   "tcp dport 445 accept",  "sharing files over SMB" },
+	/* kiwix-serve's default, and the one offline-content port this desktop
+	 * ships a reason for. */
+	{ "kiwix", "tcp dport 8080 accept", "kiwix-serve" },
+	{ "mdns",  "udp dport 5353 accept", "mDNS beyond the default rule" },
+};
+#define FW_N ((int)(sizeof(FW) / sizeof(FW[0])))
+
+#define FW_FILE "nftables.d/50-kdos-services.nft"
+
+static const char *fw_etc(void)
+{
+	const char *e = getenv("KDOS_POWERD_ETC");
+
+	return e && *e ? e : "/etc";
+}
+
+/* Which names the file currently carries, by looking for each table entry's
+ * own rule text — the file is this program's output, so an exact match is the
+ * right test and a partial one would report a name that is not really on. */
+static void fw_state(int *on)
+{
+	char path[320], buf[8192];
+
+	for (int i = 0; i < FW_N; i++)
+		on[i] = 0;
+	snprintf(path, sizeof(path), "%s/%s", fw_etc(), FW_FILE);
+	if (kb_read_file(path, buf, sizeof(buf)) <= 0)
+		return;
+	for (int i = 0; i < FW_N; i++)
+		if (strstr(buf, FW[i].rule))
+			on[i] = 1;
+}
+
+static int fw_write(const int *on, char *out, size_t nout)
+{
+	char path[320], tmp[336];
+	FILE *f;
+
+	snprintf(path, sizeof(path), "%s/%s", fw_etc(), FW_FILE);
+	snprintf(tmp, sizeof(tmp), "%s.new", path);
+	f = fopen(tmp, "w");
+	if (!f) {
+		snprintf(out, nout, "err cannot write the rules\n");
+		return -1;
+	}
+	fprintf(f,
+		"# Written by `kdos-firewall` through kdos-powerd. Rewritten\n"
+		"# WHOLE on every change, so a rule it does not recognise is\n"
+		"# dropped — anything hand-made belongs in a file beside this\n"
+		"# one, which this never touches.\n"
+		"#\n"
+		"# No `type`/`hook` line: that is what re-opens the existing\n"
+		"# input chain rather than declaring a second one.\n"
+		"\n"
+		"table inet filter {\n"
+		"\tchain input {\n");
+	for (int i = 0; i < FW_N; i++)
+		if (on[i])
+			fprintf(f, "\t\t%s\n", FW[i].rule);
+	fprintf(f, "\t}\n}\n");
+	fflush(f);
+	fsync(fileno(f));
+	if (fclose(f) != 0 || rename(tmp, path) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write the rules\n");
+		return -1;
+	}
+
+	/*
+	 * APPLIED BY RELOADING THE WHOLE RULESET, because `/etc/nftables.conf`
+	 * begins with `flush ruleset` and the included files are only reached
+	 * from there. `nft --check` first: a bad ruleset refused is the
+	 * previous one still in the kernel, and a bad ruleset half-applied is
+	 * a machine with no firewall.
+	 */
+	if (!getenv("KDOS_POWERD_ETC")) {
+		KbArgv chk = { 0 }, app = { 0 };
+
+		kb_argv_add(&chk, "/usr/sbin/nft");
+		kb_argv_add(&chk, "--check");
+		kb_argv_add(&chk, "-f");
+		kb_argv_add(&chk, "/etc/nftables.conf");
+		kb_argv_end(&chk);
+		if (kb_run(&chk) != 0) {
+			snprintf(out, nout,
+				 "err the ruleset would not load; nothing changed\n");
+			return -1;
+		}
+		kb_argv_add(&app, "/usr/sbin/nft");
+		kb_argv_add(&app, "-f");
+		kb_argv_add(&app, "/etc/nftables.conf");
+		kb_argv_end(&app);
+		if (kb_run(&app) != 0) {
+			snprintf(out, nout, "err the ruleset did not apply\n");
+			return -1;
+		}
+	}
+	return 0;
+}
+
+static int fw_verb(const char *arg, char *out, size_t nout)
+{
+	int on[FW_N];
+	char name[64] = "", state[16] = "";
+
+	fw_state(on);
+
+	if (!strcmp(arg, "list")) {
+		/* One row per service: the surface draws this and carries no
+		 * table of its own. */
+		size_t used = 0;
+
+		for (int i = 0; i < FW_N; i++) {
+			int k = snprintf(out + used, nout - used,
+					 "%s\t%s\t%s\n", FW[i].name,
+					 on[i] ? "on" : "off", FW[i].what);
+
+			if (k < 0 || (size_t)k >= nout - used)
+				break;
+			used += (size_t)k;
+		}
+		snprintf(out + used, nout - used, "ok\n");
+		return 0;
+	}
+
+	if (sscanf(arg, "%63s %15s", name, state) != 2) {
+		snprintf(out, nout, "err usage: firewall list|<name> on|off\n");
+		return -1;
+	}
+	int want = !strcmp(state, "on");
+
+	if (!want && strcmp(state, "off")) {
+		snprintf(out, nout, "err a service is on or off\n");
+		return -1;
+	}
+	for (int i = 0; i < FW_N; i++) {
+		if (strcmp(FW[i].name, name))
+			continue;
+		on[i] = want;
+		if (fw_write(on, out, nout) != 0)
+			return -1;
+		snprintf(out, nout, "ok %s %s\n", name, want ? "on" : "off");
+		return 0;
+	}
+	/* A NAME THIS TABLE DOES NOT CARRY IS NOT A PORT TO OPEN. */
+	snprintf(out, nout, "err no service called that\n");
+	return -1;
+}
+
+/*
  * WHICH ACCOUNT tty1 LOGS IN WITHOUT ASKING, or none.
  *
  * `/etc/kdos/con.conf` is root's and the choice is an administrator's, which
@@ -463,6 +637,15 @@ static int serve(void)
 			close(c);
 			do_reboot(RB_POWER_OFF);
 			continue;
+		} else if (!strncmp(buf, "firewall ", 9)) {
+			/* The list reply is many rows, so it gets a buffer of
+			 * its own rather than the one-line one above. */
+			static char fwmsg[4096];
+
+			fw_verb(buf + 9, fwmsg, sizeof(fwmsg));
+			(void)!write(c, fwmsg, strlen(fwmsg));
+			close(c);
+			continue;
 		} else if (!strncmp(buf, "autologin ", 10)) {
 			char msg[128];
 
@@ -603,7 +786,8 @@ static int usage(void)
 	fprintf(stderr,
 		"usage: kdos-power [--no-lock] suspend|poweroff|reboot|ping\n"
 		"       kdos-power timezone <Area/City>\n"
-		"       kdos-power autologin <user>|off\n");
+		"       kdos-power autologin <user>|off\n"
+		"       kdos-power firewall list|<service> on|off\n");
 	return 2;
 }
 
@@ -678,7 +862,8 @@ static int client(int argc, char **argv)
 	 */
 	char line[KP_MAX];
 
-	if (!strcmp(cmd, "timezone") || !strcmp(cmd, "autologin")) {
+	if (!strcmp(cmd, "timezone") || !strcmp(cmd, "autologin") ||
+	    !strcmp(cmd, "firewall")) {
 		if (!arg)
 			return usage();
 		if (snprintf(line, sizeof(line), "%s %s", cmd, arg) >=
@@ -740,6 +925,22 @@ int main(int argc, char **argv)
 		 * the real path that is root's and this changes neither who
 		 * may connect nor what the daemon does for them.
 		 */
+		if (argc >= 3 && !strcmp(argv[1], "--firewall")) {
+			static char msg[4096];
+			char joined[128] = "";
+			int rc;
+
+			for (int i = 2; i < argc && i < 5; i++) {
+				if (joined[0])
+					strncat(joined, " ",
+						sizeof(joined) - strlen(joined) - 1);
+				strncat(joined, argv[i],
+					sizeof(joined) - strlen(joined) - 1);
+			}
+			rc = fw_verb(joined, msg, sizeof(msg));
+			fputs(msg, rc == 0 ? stdout : stderr);
+			return rc == 0 ? 0 : 1;
+		}
 		if (argc == 3 && !strcmp(argv[1], "--set-autologin")) {
 			char msg[128];
 			int rc = set_autologin(argv[2], msg, sizeof(msg));

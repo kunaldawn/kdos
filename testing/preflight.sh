@@ -724,6 +724,40 @@ echo "==> the build tree's root carries nothing but a root filesystem"
 # `kdos` and `ports` ARE expected: the build's own chroot binds the repo and
 # the ports tree at those paths.
 #
+# ── the modes git cannot record ───────────────────────────────────────────
+#
+# git stores one permission bit, so nothing under fs/ can carry a mode narrower
+# than 644 and the file-system step hands every non-executable file exactly
+# that. `/etc/shadow` at 644 is every password hash on the machine readable by
+# every account on it — and it makes `kdos-checkpass`, which is setuid root
+# precisely so the greeter never opens that file, into decoration.
+#
+# Checked on the BUILT tree, because the source tree cannot express the answer:
+# this asserts what will ship, not what was intended.
+if [ -f build/fs/etc/shadow ]; then
+    _sm=$(stat -c %a build/fs/etc/shadow)
+    case "$_sm" in
+        600|640) note "sensitive modes" "/etc/shadow is $_sm on the image" ;;
+        *) bad "sensitive modes" "/etc/shadow is $_sm on the image — every hash is readable" ;;
+    esac
+    grep -q "^etc/shadow " script/01_phase1/00_file_system.sh \
+        || bad "sensitive modes" "nothing in 00_file_system.sh narrows etc/shadow"
+fi
+
+# polkitd reads every rule it finds with no ownership check, so a rules
+# directory the desktop user can write is that user granting themselves
+# whatever they like — and the grant is the whole of this machine's network
+# authorisation, with no agent to fall back on.
+if [ -f build/fs/etc/polkit-1/rules.d/50-kdos.rules ]; then
+    _ro=$(stat -c %u build/fs/etc/polkit-1/rules.d)
+    _fo=$(stat -c %u build/fs/etc/polkit-1/rules.d/50-kdos.rules)
+    if [ "$_ro" = 0 ] && [ "$_fo" = 0 ]; then
+        note "polkit rules" "the rules and their directory are root's"
+    else
+        bad "polkit rules" "rules.d is uid $_ro and the file uid $_fo — the granted user can rewrite the grant"
+    fi
+fi
+
 # ── the groups a surface's authority comes from ───────────────────────────
 #
 # `kdos-print` runs as the user and administers printers directly, because CUPS

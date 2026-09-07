@@ -1,0 +1,78 @@
+/*
+ * KDOS: the actions this desktop calls, granted to wheel.
+ *
+ * WHY THERE IS NO AUTHENTICATION AGENT INSTEAD. polkit resolves a subject's
+ * session by asking org.freedesktop.ConsoleKit, which is not on this system
+ * and is not coming — logind is refused and ConsoleKit would be a session
+ * daemon bought for one consumer. So no subject is ever in an active session,
+ * allow_active and allow_inactive are never read, and every check lands on
+ * allow_any. NetworkManager's policy omits allow_any entirely for
+ * enable-disable-wifi, enable-disable-network and both wifi.share actions,
+ * and an omitted element is a flat refusal that raises no challenge — an
+ * agent is consulted only for a challenge, so no agent could ever be asked
+ * about the controls this file exists to make work.
+ *
+ * ONE MECHANISM, NEVER TWO. The decision is written in
+ * docs/kdos/03-architecture/security-model.md; if an agent is ever added this
+ * file is what has to go, and the reverse.
+ *
+ * NAMED ACTIONS, NOT AN INTERFACE. The alternative is a D-Bus policy granting
+ * wheel NetworkManager's write interfaces, which cannot scope a
+ * Properties.Set to one property and cannot leave out the hostname or the
+ * machine-wide resolver.
+ *
+ * WHAT THIS GRANTS. Anybody in wheel reconfigures networking with no prompt,
+ * and can read back any stored passphrase. That is the group whose shipped
+ * sudoers line is `%wheel ALL=(ALL) ALL`, so it is a shortcut to something
+ * they already have rather than a new capability: the passphrases are files
+ * under /etc/NetworkManager that `sudo cat` prints. The boundary this file
+ * moves is convenience, not privilege.
+ *
+ * A NAME NOT IN THIS LIST IS NOT GRANTED. Every id here is one a shipped
+ * surface calls; adding a row is a decision, and the list is short so that
+ * reading it is one.
+ */
+
+polkit.addRule(function (action, subject) {
+    if (!subject.isInGroup("wheel"))
+        return undefined;   /* not ours to answer — fall through */
+
+    switch (action.id) {
+    /* kdos-net: the list, joining, forgetting, and the wifi toggle. */
+    case "org.freedesktop.NetworkManager.network-control":
+    case "org.freedesktop.NetworkManager.wifi.scan":
+    case "org.freedesktop.NetworkManager.enable-disable-wifi":
+    case "org.freedesktop.NetworkManager.enable-disable-network":
+    case "org.freedesktop.NetworkManager.settings.modify.own":
+    /*
+     * SYSTEM CONNECTIONS ARE THE ONLY KIND THAT WORK HERE, so this is the
+     * permission that forgetting a network and reading its passphrase back
+     * actually land on. NetworkManager is built -Dsession_tracking=no —
+     * there is no logind and no ConsoleKit — so its session monitor answers
+     * FALSE for every user, a profile naming an owner in `permissions` is
+     * permanently invisible, and an invisible profile has autoconnect
+     * blocked. kdos-net therefore writes no owner, and modify.own is kept
+     * only for profiles some other tool created with one.
+     */
+    case "org.freedesktop.NetworkManager.settings.modify.system":
+    /* A hotspot is share.open or share.protected depending on the band and
+     * the security chosen; both are the same decision. */
+    case "org.freedesktop.NetworkManager.wifi.share.open":
+    case "org.freedesktop.NetworkManager.wifi.share.protected":
+        return polkit.Result.YES;
+    }
+
+    /*
+     * DELIBERATELY ABSENT, each for its own reason:
+     *   settings.modify.hostname   the hostname is the installer's and
+     *                              /etc/hostname's, not a running desktop's
+     *   settings.modify.global-dns a machine-wide resolver is not a per-user
+     *                              decision
+     *   checkpoint-rollback        nothing here creates a checkpoint, so a
+     *                              rollback could only undo somebody else's
+     *   sleep-wake                 kdos-powerd owns suspend, with its own gate
+     *   reload                     re-reading NetworkManager's own config is
+     *                              administration, and `sudo` is how it is done
+     */
+    return undefined;
+});

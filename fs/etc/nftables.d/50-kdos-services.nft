@@ -1,0 +1,16 @@
+# Written by `kdos-firewall` through kdos-powerd. Edit by hand if you like —
+# the surface rewrites the whole file from the rules it finds here, so a rule
+# it does not recognise is DROPPED on the next toggle. Put anything hand-made
+# in a file of your own beside this one; every *.nft here is included.
+#
+# NAMED SERVICES ONLY, and the names live in kdos-powerd rather than here: a
+# client that could name a port could open any port, and the point of the
+# surface is that it cannot. `kdos-power firewall list` prints the table.
+#
+# Rules are added to the existing input chain — no `type`/`hook` line, which
+# is what re-opens a chain rather than declaring a second one.
+
+table inet filter {
+	chain input {
+	}
+}

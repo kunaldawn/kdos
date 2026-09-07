@@ -46,6 +46,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-menu` | Root, System and window menus | [kdos-shell](../04-programs/kdos-shell.md#kdos-menu) |
 | `kdos-mountd` | The removable-media daemon | [The daemons](../04-programs/daemons.md#kdos-mountd) |
 | `kdos-net` | Networking | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
+| `kdos-netagent` | The NetworkManager secret agent: the passphrase box the service asks for | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
 | `kdos-notify` | The notification centre | [kdos-shell](../04-programs/kdos-shell.md#notifications) |
 | `kdos-notifyd` | The notification daemon | [kdos-shell](../04-programs/kdos-shell.md#notifications) |
 | `kdos-oomd` | The memory-pressure daemon | [The daemons](../04-programs/daemons.md#kdos-oomd) |

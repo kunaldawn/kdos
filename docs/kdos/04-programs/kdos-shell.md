@@ -1,6 +1,6 @@
 # kdos-shell
 
-One binary providing thirty-seven commands, dispatched on the name it was invoked as: the panel,
+One binary providing forty-six commands, dispatched on the name it was invoked as: the panel,
 and every surface that pops up from it or is reached by a key. This is the largest program in
 KDOS and the one most of the desktop actually is.
 
@@ -23,6 +23,7 @@ half of the same mistake.
 | `kdos-desk` | The desktop and its icons | [kdos-desk](#kdos-desk) |
 | `kdos-pick` | The file chooser and browser | [kdos-pick](#kdos-pick) |
 | `kdos-notifyd` | The notification daemon | [Notifications](#notifications) |
+| `kdos-netagent` | The passphrase NetworkManager asks for | [The device managers](#the-device-managers) |
 | `kdos-notify` | The notification centre | [Notifications](#notifications) |
 | `kdos-osd` | Volume and brightness | [kdos-osd](#kdos-osd) |
 | `kdos-cal` | The calendar | [The small surfaces](#the-small-surfaces) |
@@ -36,6 +37,7 @@ half of the same mistake.
 | `kdos-time` | The zone, the clock, and whether the clock is right | [The small surfaces](#the-small-surfaces) |
 | `kdos-users` | The accounts, and which one tty1 logs in | [The small surfaces](#the-small-surfaces) |
 | `kdos-update` | What is behind, what is vulnerable, which slot is live | [The small surfaces](#the-small-surfaces) |
+| `kdos-firewall` | Which services answer the network | [The small surfaces](#the-small-surfaces) |
 | `kdos-clip` | Clipboard history | [The small surfaces](#the-small-surfaces) |
 | `kdos-status` | The overflow popup | [The overflow chevron](#the-overflow-chevron) |
 | `kdos-tip` | Tooltips | [Tooltips](#tooltips) |
@@ -993,13 +995,21 @@ Per-manager:
 
 - **`kdos-net`** talks to the network service over the system bus. **The list does not reorder
   under the pointer**: signal strength moves on its own, so it is sorted once per refresh and the
-  selection follows the network name rather than the row index. **Known limit:** there is no secret
-  agent, so a passphrase is written into the connection at creation and the service cannot come back
-  and ask for another — enterprise authentication and one-time-password VPNs need the full text
-  tool.
+  selection follows the network name rather than the row index. The passphrase typed here is
+  written into the profile as it is created; **every later question belongs to `kdos-netagent`**,
+  because the service raises a secret request against its registered agents rather than against
+  whichever program started the activation.
 
   ![kdos-net: the header band says what the subject is doing now, and the buttons are enabled from the selection](../../screenshots/net.png)
 
+- **`kdos-netagent`** is not a window that opens from the panel: it is started with the session,
+  holds no display while idle, and raises one dialog when the network service asks it for a secret.
+  Without it the service fails such an activation **in silence** — it never prompts on its own. The
+  reply is **deferred** the way `kdos-bt`'s is; the box is a **toplevel** rather than a layer
+  surface, because the compositor focuses a toplevel when it maps and focuses an on-demand layer
+  surface only when it is pressed, and a passphrase field that swallowed the first keystrokes would
+  be worse than none. It stores nothing, so a request without the interaction flag — the service
+  polls its agents for saved secrets — is answered at once rather than with a dialog.
 - **`kdos-bt`** registers a pairing **agent**, without which a keyboard cannot be paired at all:
   the service asks the agent to confirm a passkey and refuses the pairing when nobody answers. The
   confirmation is a **deferred reply** — the handler retains the message and returns without
@@ -1066,6 +1076,7 @@ Per-manager:
 | `kdos-time` | The zone, the clock, and whether the clock is right. **The zone list is `zone1970.tab`, read** — tzdata ships here and carries the canonical list, and the hand-written table this replaced had already gone stale in the installer. **Setting it is a `kdos-powerd` verb**, because `/etc/localtime` and the profile's `TZ` are root's and the person setting a zone is the one administering the machine, which is what `wheel` already means; a setuid helper for one write would be a worse answer to a question that daemon already answers. `chronyc tracking` is **read and never driven** — whether to step the clock, how far and how fast is chrony's decision and a good one, and a "sync now" button would be `chronyc makestep`, the wrong thing to offer beside a clock already being disciplined. After a change the surface calls `tzset()` on itself, or its own clock keeps drawing the zone `TZ` named at the first call |
 | `kdos-users` | The accounts, and the one thing about them this can change. **Split by privilege and it says which side each row is on**: reading `/etc/passwd` and `/etc/group` is anybody's, and creating an account, changing a password and editing group membership are root's — this program does none of them. An `Add user` button that answered "permission denied" would be worse than no button: it would read as a fault in the machine rather than as the boundary it is. `passwd`, `adduser`, `deluser` and `usermod` are on the image and are what a person changing accounts uses; wrapping them would put a root-spawning argument builder in the panel binary to reproduce their prompts and failure modes for a job done once per machine. The one thing it does change is the **autologin**, through `kdos-powerd` — `/etc/kdos/con.conf` is a KDOS file and "is this person administering the machine" is the question that daemon already answers. The list is `kb_users()`, the same call the greeter makes |
 | `kdos-update` | What is behind, what is vulnerable and which slot is live. **It computes nothing**: `kdos update check --json`, `kdos cve --json` and `kdos-bootctl status` already answer these three, and a surface re-deriving any of them would be a second answer that drifts — the version comparison in particular is the packaging system's and is subtle. **It also applies nothing**: `kdos update apply` compiles packages, can take hours and on an A/B machine writes the OTHER slot, so a button behind a one-line status would be a progress bar over an unattended build with no way to see what it was doing; the surface says what to type and shows which slot it will land in. **The security table's age is on the screen beside the count** — a table three months stale reporting nothing to fix is worse than no answer. The JSON is read by a bounded key scan rather than a parser: both producers are in this tree, their shape is fixed, and a JSON library in the panel binary to read two documents it also writes would be a dependency bought for nothing |
+| `kdos-firewall` | Which of this machine's services answer the network. **It carries no table of ports** — `kdos-powerd` owns the names, because a client that could name a port could open any port, and a second copy would be a second answer to what `ssh` is. It edits `/etc/nftables.d/50-kdos-services.nft` and only that; the daemon rewrites it whole, so anything hand-written belongs in another file beside it — said on the surface as well as in the file, because somebody who edited the wrong one would lose it on the next click. **It is not a firewall editor**: the shipped policy is a workstation's, and the only question here is which of a short list may be reached from outside. **The default is drawn on the screen** under the list, because every row is an exception to it and a list of exceptions with the rule missing reads as the whole policy. `open` is drawn in the warning slot rather than the accent — a port answering the network is the state worth noticing |
 | `kdos-chars` | The character map, `Super+Ctrl+e` — Sidekick's ASCII table with a search box. **The name index is built at BUILD time by a program that links ICU; this binary does not and must not** — ICU is thirty megabytes of library and data, and every one of the thirty-one surfaces this binary is would carry it for one accessory. The index is `mmap`ped and searched in place rather than read: a megabyte of names copied into the heap on every summon is a megabyte of dirty pages per surface instead of one page cache all of them share. **The blob is stored upper case**, so a keystroke folds the query and not forty thousand names. `Enter` copies the CHARACTER — not its name and not its number, which is what a person who wanted `U+2192` would have typed |
 | `kdos-ascii` | A picture, as characters |
 

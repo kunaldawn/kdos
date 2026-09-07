@@ -121,6 +121,43 @@ cp -r $WORKSPACE/fs/* $SYSROOT/
     fi
 done
 
+# THE FILES 644 IS WRONG FOR, AND GIT CANNOT SAY SO.
+#
+# git records one permission bit — executable or not — so a file in fs/ has no
+# way to carry a mode narrower than 644, and the replay above hands every
+# non-executable file exactly that. For nearly everything under fs/ that is
+# correct. For a password database it is not: /etc/shadow at 644 is every
+# hash on the machine readable by every account on it.
+#
+# THIS IS WHAT `kdos-checkpass` EXISTS FOR. It is setuid root so that the
+# greeter never opens the shadow file itself; a world-readable shadow makes
+# that setuid bit decoration and hands the hashes out anyway.
+#
+# OWNERSHIP TOO, AND FOR THE SAME REASON. git records no owner at all, so a
+# file that must belong to root belongs to whoever ran the build until
+# something says otherwise. `/etc/polkit-1/rules.d` is the sharp case: polkitd
+# reads every rule it finds there with no ownership or mode check, so a
+# directory writable by the desktop user is that user granting themselves
+# whatever they like — and the whole point of the rules file is that it is a
+# short, reviewed list.
+#
+# A path here that fs/ does not carry is a mistake worth hearing about, not a
+# line to skip in silence — the whole point is that these modes cannot be
+# expressed where the file lives.
+while read -r rel mode owner; do
+    [ -n "$rel" ] || continue
+    if [ ! -e "$SYSROOT/$rel" ]; then
+        echo "fs modes: $rel is not on the image" >&2
+        continue
+    fi
+    chmod "$mode" "$SYSROOT/$rel"
+    [ -n "$owner" ] && chown "$owner" "$SYSROOT/$rel"
+done <<'FSMODES'
+etc/shadow 600 0:0
+etc/polkit-1/rules.d 755 0:0
+etc/polkit-1/rules.d/50-kdos.rules 644 0:0
+FSMODES
+
 mkdir -p "$(dirname "$MANIFEST")"
 # -printf is a GNU extension and the build image's find is busybox's, which
 # silently wrote an EMPTY manifest — and an empty manifest protects nothing.

@@ -64,6 +64,7 @@ enum res_page_id {
 	RP_NETWORK,
 	RP_BATTERIES,
 	RP_ENERGY,
+	RP_SENSORS,
 	RP_BOXES,
 	RP_NPAGES
 };
@@ -190,6 +191,9 @@ const char *res_counter(unsigned long long v);
 const char *res_none(void);
 const char *res_cpu_headline(void);
 const char *res_mem_headline(void);
+void res_sensor_prepare(void);
+const char *res_sensor_headline(void);
+void res_draw_sensors(int x, int y, int w, int h);
 const char *res_proc_headline(void);
 void res_draw_procs(int x, int y, int w, int h);
 int  res_procs_key(int k);

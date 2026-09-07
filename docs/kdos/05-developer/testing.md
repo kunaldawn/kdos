@@ -692,6 +692,15 @@ Each is a rule with its consequence:
   `lpstat`/`lpinfo` answers under `testing/fixtures/print`. A machine with CUPS set up and one
   without draw different frames and neither is wrong, which is what makes the recording the only
   honest reference.
+- **A D-Bus contract needs its own end of the wire, not a mock of ours.** `kdos-netagent` answers
+  NetworkManager, and none of what it must get right is photographable: the flag that has to be set
+  before anybody is asked, the exact `a{sa{sv}}` a secret comes back in, and error names that carry
+  no `.Error.` in them. `testing/fixtures/netagent/nmstub.c` is the other end — a bus name, an
+  AgentManager and one `GetSecrets` built from the argument order libnm sends — on a **private
+  system bus** started for the case, because an agent registered against the host's own
+  NetworkManager would be asked for the passphrases of the machine running the tests.
+  `agentcheck.c` links the real `netagent.c` against a scripted display, so the keystrokes are the
+  test's and everything else is the shipped code.
 - **A shared helper a front end calls belongs in the harness's base source list**, not in the
   candidate loop: `mountd.c` is the one `kdos-mountd` client `kdos-devices` and `kdos-disks` both
   use, and leaving it out reports "the new front ends do not link" — which reads as a defect in
@@ -721,6 +730,11 @@ Stated so nobody assumes otherwise:
 - **The memory daemon has never fired for real.** Its victim selection is exercised against recorded
   state; a genuine pressure stall is the test that matters.
 - **Six shell surfaces have no dump and no reference frame.**
+- **A list of goldened pages must not skip the ones with no golden yet.** `kdos-res`'s loop tested
+  for a committed golden and skipped past a page that had none — so a page ADDED to the list was
+  unreachable: no golden, therefore skipped, therefore never given one, and the suite reported a
+  clean run over a page nothing had ever looked at. Being named in that list is the claim that the
+  page should have a golden, so a missing one fails.
 - **A golden no `golden` call drives is worse than none:** nothing compares it, so it agrees with
   the surface only until the surface changes, and it reads to the next person as evidence that was
   checked. Every committed frame is driven by a call.

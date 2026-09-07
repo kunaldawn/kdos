@@ -1,0 +1,9 @@
+# What the ports tree pins that is not installed, for the panel's badge and
+# kdos-update. Nightly and NOT at midnight: every machine that runs a job at
+# 00:00 runs it at the same second, and this one reads the whole ports tree.
+#
+# -s 8h is the missed-run rule and it is snooze's, not ours: a machine that was
+# asleep at 04:17 runs the job ONCE when it wakes, if it wakes within eight
+# hours of the slot. Not once per missed occurrence — a laptop shut for a
+# fortnight would otherwise run fourteen of them at breakfast.
+update-check  -H 4 -M 17 -s 8h  --  kdos update check --json --out /var/lib/kdos/update.json

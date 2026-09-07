@@ -74,6 +74,14 @@ that order, because `setuid` first would drop the privilege the other two need �
 rule above covers the greeter without a second mechanism, and no crypt implementation is linked
 into a program that draws on a screen.
 
+**The shadow file is 0600, and the build has to be told so.** git records one permission bit, so
+nothing under `fs/` can carry a mode narrower than 644 and the file-system step hands every
+non-executable file exactly that. A password database at 644 is every hash on the machine readable
+by every account on it — and it makes the setuid bit above decoration, because the file this
+program exists to keep private is already open. `script/01_phase1/00_file_system.sh` carries an
+explicit table of the paths 644 is wrong for; `testing/preflight.sh` asserts the result on the
+**built** tree, because the source tree cannot express the answer.
+
 ## The console session's two sockets
 
 `$XDG_RUNTIME_DIR/kdos/<name>.sock` admits **surfaces** — programs that place windows.
@@ -142,7 +150,7 @@ Per-daemon refusals:
 | `kdos-packd` | Paths as arguments; a pack whose hash or signature fails; removing a pack that is in use |
 | `kdos-oomd` | Any argument at all — killing is its own decision or it does not happen |
 | `kdos-energyd` | Republishing the raw counter; a client-chosen sampling interval |
-| `kdos-powerd` | Anything but four fixed words |
+| `kdos-powerd` | Anything but four fixed words and two that take one validated argument |
 
 **`kdos-energyd` deserves its own note.** The CPU energy counter has been root-only since a
 side-channel attack showed that fine-grained unprivileged reads can recover cryptographic keys.
@@ -150,6 +158,81 @@ What leaves this daemon is a per-application percentage over minutes; the raw co
 interval are never republished, and **the interval is fixed by the daemon rather than requested by
 a client**, so it cannot be driven toward being one. There is no write path into the power
 interface at all.
+
+## polkit, and why the desktop does not have an authentication agent
+
+polkit is installed, `polkitd` is D-Bus activated, and **NetworkManager is the only thing on this
+system that asks it anything**. What follows is measured against the shipped image, not against
+how polkit behaves on a distribution that has a session manager.
+
+**polkit here can never see an ACTIVE session, so `allow_active` and `allow_inactive` are dead
+columns.** It resolves a subject's session by calling `org.freedesktop.ConsoleKit` on the system
+bus. ConsoleKit is not installed and elogind is not installed, and neither is coming — logind is
+refused by [principles](../01-philosophy/principles.md#no-systemd) and ConsoleKit would be a
+session daemon bought for one consumer. The lookup fails, the subject has no session, and every
+check falls to the **`allow_any`** column of the action's `.policy` file.
+
+**An action with no `<allow_any>` element is a flat refusal that no agent can be asked about.**
+polkit's parser initialises the implicit fields to *not authorised*, and a not-authorised result is
+returned without raising a challenge — an authentication agent is consulted **only** when the
+result is a challenge. NetworkManager's shipped policy omits `<allow_any>` for
+`enable-disable-wifi`, `enable-disable-network` and both `wifi.share` actions.
+
+**That is what decides the choice between an agent and a rules file, and it decides it on
+correctness rather than on taste.** An agent — ours, or the `pkttyagent` polkit already ships —
+cannot make the wifi toggle work, because polkit never asks anybody about a flat refusal. It would
+also have nothing to register as: with no session, an agent can only register a **unix-process**
+subject, and polkit finds that agent by an exact match on pid and start time, so a session-lifetime
+agent would never be found for a surface it did not itself spawn. And `polkit-agent-helper-1`, the
+component that would actually check the password, does not ship setuid, so it could authenticate
+nobody.
+
+**So the answer is a rules file, and there is no agent on this system.** `fs/etc/polkit-1/rules.d/
+50-kdos.rules` names the actions this desktop calls and grants them to `wheel`. The rules file is
+also the form that degrades gracefully: if a session provider is ever added, an explicit grant to
+`wheel` stays exactly as narrow as it was written, while a bus-policy grant would have to be
+unpicked.
+
+**It names actions rather than granting an interface.** The alternative — denying NetworkManager's
+write interfaces to `context="default"` in a D-Bus policy and allowing `wheel` — cannot scope a
+`Properties.Set` to one property and cannot leave out the hostname or the machine-wide resolver,
+both of which this file withholds.
+
+**`settings.modify.system` IS granted, because on this build it is the only permission a saved
+network can be under.** NetworkManager decides a profile is *visible* by asking its session monitor
+whether each user named in the profile's `permissions` list has a session. This build is compiled
+`-Dsession_tracking=no` — there is no logind and no ConsoleKit — so that call is a literal
+`return FALSE`: a profile naming an owner is permanently invisible, and an invisible profile has
+**autoconnect blocked**. A wifi network joined from `kdos-net` would never come back after a
+reboot. So `kdos-net` writes no owner, everything it creates is a system connection, and forgetting
+one or reading its passphrase back lands on `settings.modify.system`.
+
+That grant does let anybody in `wheel` read every stored passphrase. It is a shortcut rather than a
+new capability: the shipped sudoers line is `%wheel ALL=(ALL) ALL`, and the passphrases are files
+under `/etc/NetworkManager` that `sudo cat` prints. What the file still withholds is everything
+outside networking-as-a-user — the hostname, the machine-wide resolver, checkpoints, sleep and a
+daemon reload.
+
+**`polkitd` is started by `/etc/init.d/41_polkitd.sh` rather than left to D-Bus activation.**
+Activation would have dbus-daemon, running as `messagebus`, start a `User=root` service through
+`dbus-daemon-launch-helper` — which means the whole of this machine's network authorisation would
+hang off one setuid bit on a foreign binary. When that fails it fails silently: polkitd never
+starts, every check is refused, and the only symptom is a control that does nothing.
+
+**The rules file and its directory are owned by root, and the build has to say so**, because git
+records no owner either. polkitd reads every rule it finds with no ownership or mode check, so a
+rules directory writable by the desktop user is that user granting themselves whatever they like.
+
+**What this grants, honestly.** Anybody in `wheel` reconfigures networking with no prompt. That is
+the same group that may already power the machine off through `kdos-powerd` and write a filesystem
+through `kdos-mountd`, so it is not a new boundary — it is the existing one, applied to the third
+thing behind it. What it is *not* is a password prompt: this system cannot produce one, and a
+design that pretended otherwise would be a control that fails silently.
+
+**The list of action ids is the entire boundary, and the only record of its use is a log line.**
+NetworkManager is built `-Dlibaudit=no`, so an authorised change leaves no audit record beyond
+NetworkManager's own message to syslog. A rules grant is silent and permanent by construction;
+that line is the whole of the trail.
 
 ## Sandboxed clients
 
@@ -293,7 +376,12 @@ Stated plainly, because a reader who assumes otherwise is worse off than one who
 - **A box is not a jail.** It shares your home directory. A malicious application in a box can
   read and destroy your files exactly as a native one could. The sandbox constrains what it can do
   to the *desktop*, not to your data.
-- **`wheel` is effectively root.** `sudo` and polkit both grant it, and every root daemon answers
+- **`wheel` is effectively root.** `sudo` and polkit both grant it — polkit through
+  `/etc/polkit-1/rules.d/50-kdos.rules`, unconditionally, because this system cannot ask for a
+  password: with no session provider, `subject.active` and `subject.local` are always false, so a
+  rule granting `wheel` covers a member logged in over SSH and a background process running as
+  them exactly as it covers somebody at the console. Adding a session provider later would not
+  narrow it; the rule would have to be rewritten. And every root daemon answers
   it. There is no separation between "can change the theme" and "can reformat the disk".
 - **A base naming a container registry fetches unsigned content** from somebody else's server.
   This is an online operation, the strict-signature setting does not cover it, and the tool
