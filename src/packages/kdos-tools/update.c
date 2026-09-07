@@ -206,10 +206,74 @@ static int check_ports_or_explain(const KpConf *c)
 
 /* ── check ─────────────────────────────────────────────────────────────── */
 
-static int cmd_check(const KpConf *c)
+/*
+ * THE SAME SURVEY AS ONE LINE OF JSON, for a surface rather than a person.
+ *
+ * A panel badge and a settings page need a number and a list, and the
+ * alternative is parsing the human output — which is coloured, wrapped, and
+ * written to be read. A second command computing the same answer would be a
+ * second answer; this is the same `survey()` printed differently.
+ *
+ * ITS EXIT STATUS IS THE SAME AS THE HUMAN FORM'S: non-zero when something is
+ * behind, so a caller that only wants to know whether to draw a badge does not
+ * have to parse anything at all.
+ */
+static int check_json(const KpConf *c)
 {
-	if (!check_ports_or_explain(c))
+	Behind *v = NULL;
+	int orphans = 0;
+	int n = survey(c, &v, &orphans);
+	char *dir = binhost_dir();
+
+	if (n < 0) {
+		printf("{\"error\":\"no package database\"}\n");
+		free(dir);
 		return 2;
+	}
+	printf("{\"behind\":%d,\"orphans\":%d,\"binhost\":", n, orphans);
+	if (dir) {
+		char *idx = kb_path_join(dir, "PACKAGES");
+		char *sig = kb_path_join(dir, "PACKAGES.sig");
+
+		printf("\"%s\",\"signed\":%s", dir,
+		       kb_path_exists(idx) && kb_path_exists(sig) ? "true"
+								 : "false");
+		free(idx);
+		free(sig);
+	} else {
+		printf("null,\"signed\":false");
+	}
+	printf(",\"packages\":[");
+	for (int i = 0; i < n; i++)
+		printf("%s{\"name\":\"%s\",\"have\":\"%s\",\"want\":\"%s-%s\"}",
+		       i ? "," : "", v[i].name, v[i].have, v[i].want,
+		       v[i].want_rel[0] ? v[i].want_rel : "1");
+	printf("]}\n");
+	free(dir);
+	free(v);
+	return n ? 1 : 0;
+}
+
+static int cmd_check(const KpConf *c, int json)
+{
+	/*
+	 * THE JSON FORM ANSWERS IN JSON EVEN WHEN IT CANNOT ANSWER. The prose
+	 * explanation is right for a person and is prose; a caller that asked
+	 * for a document and got a paragraph has to decide whether the parse
+	 * failed or the machine did, and it cannot.
+	 */
+	if (!have_ports(c)) {
+		if (json) {
+			printf("{\"error\":\"no ports tree — build the stick "
+			       "with KDOS_ISO_SOURCES=1, or point PORT_REPO at "
+			       "a checkout\"}\n");
+			return 2;
+		}
+		check_ports_or_explain(c);
+		return 2;
+	}
+	if (json)
+		return check_json(c);
 
 	Behind *v = NULL;
 	int orphans = 0;
@@ -567,14 +631,20 @@ int kdt_update(int argc, char **argv, int (*theme)(int, char **))
 	KpConf c;
 	kp_conf_load(&c);
 
-	if (!strcmp(what, "check"))
-		return cmd_check(&c);
+	if (!strcmp(what, "check")) {
+		int json = 0;
+
+		for (int i = 0; i < rest; i++)
+			if (!strcmp(restv[i], "--json"))
+				json = 1;
+		return cmd_check(&c, json);
+	}
 	if (!strcmp(what, "apply"))
 		return cmd_apply(&c, rest, restv);
 
 	fprintf(stderr, "usage: kdos update {check|apply|theme}\n"
 			"  check   what the ports tree pins that is not "
-			"installed\n"
+			"installed; --json for a surface\n"
 			"  apply   take it — binhost first, source second; "
 			"A/B aware\n"
 			"  theme   re-run the theme generators for $HOME after "

@@ -1,0 +1,24 @@
++=  Settings  =========================================+
+| Appearance                 Panel                     |
+| accent, CRT, wallpaper     the taskbar and tray      |
+|                                                      |
+| Desktop                    Hardware                  |
+| icons and workspaces       screens, net, sound       |
+|                                                      |
+| Session                    Input                     |
+| idle, lock and power       keyboard and pointer      |
+|                                                      |
+| Apps                       Boxes                     |
+| which app opens what       environments and packs    |
+|                                                      |
+| System                                               |
+| disks, jobs, services                                |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|------------------------------------------------------|
+| F1 help  Enter open  Arrows move  Esc Close          |
+| accent, CRT, wallpaper                               |
++======================================================+

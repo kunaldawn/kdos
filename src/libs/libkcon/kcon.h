@@ -513,6 +513,16 @@ int kcon_surface_edge(const KconSurface *f);
 int kcon_surface_corner(const KconSurface *f);
 int kcon_surface_margin_x(const KconSurface *f);
 int kcon_surface_margin_y(const KconSurface *f);
+
+/*
+ * THE SMALLEST GRID THIS SURFACE CAN COMPOSE ON, in cells, or zero when it
+ * did not say. Reported at attach because the session is the only thing that
+ * can act on it: a window manager that hands a surface fewer cells than it
+ * needs gets a frame that was never composed, and the cells under it keep the
+ * last program's picture — a hole in the desktop rather than a clipped window.
+ */
+int kcon_surface_min_cols(const KconSurface *f);
+int kcon_surface_min_rows(const KconSurface *f);
 /*
  * A PANEL'S THICKNESS ACROSS ITS EDGE, in cells, and zero from anything else.
  * It is the whole size a docked surface asks for: the extent along the edge is

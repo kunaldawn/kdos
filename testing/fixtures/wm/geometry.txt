@@ -332,6 +332,17 @@ fit 0,0,80,24 10,5,100,10 -> 0,5,80,10
 fit 0,0,80,24 10,5,20,40 -> 10,0,20,24
 fit 0,0,80,24 10,5,100,40 -> 0,0,80,24
 
+# A MINIMUM WINS OVER THE WORK AREA, and the result hangs off the edge. A
+# program told fewer cells than it can compose on draws nothing at all and the
+# cells under it keep the last picture — a hole in the desktop that no repaint
+# fixes. Oversized and clipped is visibly a window.
+fit 0,0,40,12 0,0,20,10 min 56,24 -> 0,0,56,24
+fit 0,0,80,24 10,5,20,10 min 56,24 -> 10,0,56,24
+# A minimum smaller than the window changes nothing.
+fit 0,0,80,24 10,5,60,20 min 56,10 -> 10,4,60,20
+# And no minimum is the rule as it was.
+fit 0,0,40,12 0,0,20,10 min 0,0 -> 0,0,20,10
+
 # A work area that does not start at the origin — a panel above it.
 fit 0,2,80,22 0,0,20,10 -> 0,2,20,10
 fit 0,2,80,22 10,20,20,10 -> 10,14,20,10

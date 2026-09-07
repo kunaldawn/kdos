@@ -1,0 +1,24 @@
++= kdos ===============================================+
+| . All Programs              > | --PLACES-------------|
+|   No frequent apps yet        |  . Home              |
+|                               |  . Documents         |
+|                               |  . Downloads         |
+|                               |  . Pictures          |
+|                               |  . Files             |
+|                               | --SYSTEM-------------|
+|                               |  . Settings          |
+|                               |  . Network           |
+|                               |  . Bluetooth         |
+|                               |  . Sound             |
+|                               |  . Recorder          |
+|                               |  . Notifications     |
+|                               |  . Devices           |
+|                               |  . Boxes             |
+|                               |  . Displays          |
+|                               |  . Terminal          |
+|                               |  . Help              |
+|                               |  . About             |
+|                               |                      |
+|------------------------------------------------------|
+| > Type to search                 Lck Slp Rst Out Off |
++======================================================+

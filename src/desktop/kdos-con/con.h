@@ -120,7 +120,7 @@ enum { CON_CMD_MENU = 0, CON_CMD_LAUNCHER, CON_CMD_LOCK, CON_CMD_SAVER,
        /* The accessories: summoned over whatever is on screen and dismissed
         * leaving it untouched, which is what Sidekick sold a million copies
         * of and what the overlay role already gives this desktop for free. */
-       CON_CMD_CALC, CON_CMD_NOTE, CON_CMD_CLIP,
+       CON_CMD_CALC, CON_CMD_NOTE, CON_CMD_CLIP, CON_CMD_CHARS,
        CON_CMD_FIND, CON_CMD_CAPTURE,
        /*
         * THE MEDIA KEYS, and they run a program rather than doing anything
@@ -189,6 +189,14 @@ typedef struct Win {
 
 	char title[128];
 	char app_id[64];
+
+	/*
+	 * THE SMALLEST GRID THIS WINDOW CAN BE GIVEN, from the surface's
+	 * attach. Zero is no minimum, which is what a terminal reports — a
+	 * terminal reflows to any size, and the program inside it decides for
+	 * itself whether it can draw.
+	 */
+	int min_w, min_h;
 
 	struct kvt_term *term;	/* WIN_TERM */
 	KconSurface *surf;	/* WIN_SURFACE */

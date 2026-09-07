@@ -294,8 +294,14 @@ KwmRect kwm_place(KwmRect usable, int gap, KwmBorder margin,
  * should come back the same size, because the screen may grow again and a
  * window that was silently made smaller never grows back. Only one that cannot
  * fit at all is shrunk, and then to exactly the area.
+ *
+ * AND NEVER BELOW `min_w` x `min_h`, which wins over the work area: a program
+ * given fewer cells than it can compose on draws nothing at all, and the cells
+ * under it keep the last picture. Oversized and clipped is a window with a
+ * corner off the screen; too small is a hole in the desktop. Zero for either
+ * is "no minimum", which is what a terminal and an untitled rectangle pass.
  */
-KwmRect kwm_fit(KwmRect want, KwmRect work);
+KwmRect kwm_fit(KwmRect want, KwmRect work, int min_w, int min_h);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Rings

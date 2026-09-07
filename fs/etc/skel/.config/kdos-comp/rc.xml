@@ -273,6 +273,7 @@
     <keybind key="W-C-q"><action name="Execute" command="kdos-calc"/></keybind>
     <keybind key="W-C-n"><action name="Execute" command="kdos-note"/></keybind>
     <keybind key="W-C-v"><action name="Execute" command="kdos-clip"/></keybind>
+    <keybind key="W-C-e"><action name="Execute" command="kdos-chars"/></keybind>
     <!-- Find, and Shift because W-f is fullscreen on both desktops: a search
          one slip from covering the screen is the wrong trade. The console
          binds the same chord, so there is one key card rather than two. -->

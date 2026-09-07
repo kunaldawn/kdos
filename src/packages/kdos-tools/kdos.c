@@ -2184,7 +2184,7 @@ static void help_body(FILE *o)
 		{ "kdos restarts", "what is running code an upgrade replaced" },
 		{ "kdos stutter", "why the desktop hiccuped — with the app's name" },
 		{ "kdos hey list", "every window, from a prompt; run <action> <id>" },
-		{ "kdos update check", "what the ports tree pins that is not installed" },
+		{ "kdos update check", "what the ports tree pins that is not installed; --json for a surface" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
 		{ "kdos places", "the places column the desktop shows — also `add DIR`" },

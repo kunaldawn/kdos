@@ -289,46 +289,29 @@ static int sidebar_width(int w)
 	return 0;
 }
 
+/*
+ * ONE TAB TABLE, BUILT FROM THE PAGE REGISTRY. The sidebar and the F1 modal
+ * are the same strip drawn in two places, and a second copy of the names is a
+ * second answer to how many pages there are.
+ */
+static const KtuiTab *page_tabs(void)
+{
+	static KtuiTab t[RP_NPAGES];
+
+	if (!t[0].name)
+		for (int i = 0; i < RP_NPAGES; i++)
+			t[i].name = RES_PAGES[i].name;
+	return t;
+}
+
 static void draw_sidebar(int w, int top, int h)
 {
 	g_side_w = sidebar_width(w);
 	if (!g_side_w)
 		return;
 
-	ktui_draw_fill(krect(g_in_x, top, g_side_w, h - top), KT_SURFACE);
-
-	for (int i = 0; i < RP_NPAGES && top + i < h; i++) {
-		const ResPage *p = &RES_PAGES[i];
-		int sel = (i == g_page);
-		int hov = (i == g_hover);
-		/*
-		 * A FILL, never KT_A_REVERSE over the label: the attribute
-		 * inverts only the cells the glyphs cover, so a two-word name
-		 * comes out as one lit block per word.
-		 */
-		int bg = sel ? KT_ACCENT : hov ? KT_MID : KT_SURFACE;
-		int fg = sel ? KT_SURFACE : KT_TEXT;
-		ktui_draw_fill(krect(g_in_x, top + i, g_side_w, 1), bg);
-
-		if (g_side_w >= SIDE_WIDE) {
-			ktui_draw_text(g_in_x + 1, top + i, g_side_w - 2,
-				       p->name, fg, bg, 0);
-		} else {
-			/*
-			 * THREE CHARACTERS, NOT ONE, AND THE REASON IS
-			 * `Batteries` AND `Boxes`. A single initial makes two
-			 * different pages the same control — worse than a
-			 * truncation, which at least reads as incomplete.
-			 * Three is the shortest prefix that keeps all ten
-			 * distinct (App Pro CPU Mem GPU Dri Net Bat Ene Box)
-			 * and it fits: the column is SIDE_ICON wide with one
-			 * of padding either side.
-			 */
-			char ini[4] = { p->name[0], p->name[1], p->name[2], 0 };
-			ktui_draw_text(g_in_x + 1, top + i, SIDE_ICON - 2, ini,
-				       fg, bg, 0);
-		}
-	}
+	ktui_tabs_draw(krect(g_in_x, top, g_side_w, h - top), page_tabs(),
+		       RP_NPAGES, g_page, g_hover, 1);
 }
 
 /* The F1 modal: the page list, for the band with no sidebar. */
@@ -347,15 +330,8 @@ static void draw_modal(int w, int h)
 
 	ktui_draw_fill(krect(x, y, mw, mh), KT_SURFACE);
 	ktui_draw_box(krect(x, y, mw, mh), "Pages", KT_ACCENT, KT_SURFACE, 1);
-	for (int i = 0; i < RP_NPAGES && i + 1 < mh - 1; i++) {
-		int sel = (i == g_page);
-		if (sel)
-			ktui_draw_fill(krect(x + 1, y + 1 + i, mw - 2, 1),
-				       KT_ACCENT);
-		ktui_draw_text(x + 2, y + 1 + i, mw - 4, RES_PAGES[i].name,
-			       sel ? KT_SURFACE : KT_TEXT,
-			       sel ? KT_ACCENT : KT_SURFACE, 0);
-	}
+	ktui_tabs_draw(krect(x + 1, y + 1, mw - 2, mh - 2), page_tabs(),
+		       RP_NPAGES, g_page, -1, 1);
 }
 
 /*
@@ -574,11 +550,8 @@ int res_frame_key(int k)
 			g_modal = 0;
 			return 0;
 		}
-		if (k == KT_K_UP && g_page > 0)
-			g_page--;
-		else if (k == KT_K_DOWN && g_page < RP_NPAGES - 1)
-			g_page++;
-		else if (k == '\n' || k == '\r')
+		if (!ktui_tabs_key(&g_page, RP_NPAGES, 1, k) &&
+		    (k == '\n' || k == '\r'))
 			g_modal = 0;
 		return 0;
 	}
@@ -612,16 +585,11 @@ int res_frame_key(int k)
 		return 1;
 	}
 
-	if (g_focus_sidebar) {
-		if (k == KT_K_UP && g_page > 0) {
-			g_page--;
-			return 0;
-		}
-		if (k == KT_K_DOWN && g_page < RP_NPAGES - 1) {
-			g_page++;
-			return 0;
-		}
-	}
+	/* Home and End belong to the page, not to the strip: a process list is
+	 * what a person means by "the top". */
+	if (g_focus_sidebar && (k == KT_K_UP || k == KT_K_DOWN) &&
+	    ktui_tabs_key(&g_page, RP_NPAGES, 1, k))
+		return 0;
 
 	if (RES_PAGES[g_page].key)
 		RES_PAGES[g_page].key(k);
@@ -667,15 +635,19 @@ int res_frame_click(int mx, int my, int btn)
 		return res_detail_click(mx, my, btn);
 	if (g_modal) {
 		int mh = RP_NPAGES + 2, y = (ktui_h - mh) / 2;
-		int i = my - (y < 0 ? 0 : y) - 1;
-		if (i >= 0 && i < RP_NPAGES)
+		int i = ktui_tabs_hit(krect(0, (y < 0 ? 0 : y) + 1, ktui_w,
+					    mh - 2), page_tabs(), RP_NPAGES, 1,
+				      mx, my);
+		if (i >= 0)
 			g_page = i;
 		g_modal = 0;
 		return 0;
 	}
 	if (g_side_w && mx >= g_in_x && mx < g_in_x + g_side_w) {
-		int i = my - g_top;
-		if (i >= 0 && i < RP_NPAGES) {
+		int i = ktui_tabs_hit(krect(g_in_x, g_top, g_side_w,
+					    ktui_h - g_top),
+				      page_tabs(), RP_NPAGES, 1, mx, my);
+		if (i >= 0) {
 			g_page = i;
 			g_focus_sidebar = 1;
 		}

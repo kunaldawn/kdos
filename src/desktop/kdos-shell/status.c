@@ -455,6 +455,12 @@ static int act_key(const char *key, const struct srow *r)
 		sh_spawn(argv);
 		return 1;
 	}
+	if (!strcmp(key, "update")) {
+		const char *argv[] = { "kdos-update", NULL };
+
+		sh_spawn(argv);
+		return 1;
+	}
 	if (!strcmp(key, "media") || !strcmp(key, "camera")) {
 		const char *argv[] = { "kdos-devices", NULL };
 

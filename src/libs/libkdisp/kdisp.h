@@ -162,6 +162,24 @@ typedef struct {
 	 */
 	int cols, rows;
 	/*
+	 * THE SMALLEST GRID THIS SURFACE CAN DRAW ON, in cells. Zero is no
+	 * minimum, and it is the right answer for a surface that reflows to
+	 * anything it is given.
+	 *
+	 * It is reported at ATTACH because the session is the only thing that
+	 * can act on it: a tiling window manager divides a screen and hands
+	 * out what is left, and a surface handed forty columns when it needs
+	 * fifty-six composes nothing at all and leaves the cells under it
+	 * carrying the last program's picture. Told the minimum, the session
+	 * gives the window that size and CLIPS it, which is a window with a
+	 * corner off the screen rather than a hole in the desktop.
+	 *
+	 * It is not a promise the surface may skip its own too-small check.
+	 * A console session honours this; a Wayland compositor is told the
+	 * same numbers through xdg_toplevel's min size and may ignore them.
+	 */
+	int min_cols, min_rows;
+	/*
 	 * Overlay only: where it sits. Centre is right for a launcher, which is
 	 * what the user is looking at; it is wrong for a toast, which must not
 	 * cover the middle of the screen for as long as it is up. Anything

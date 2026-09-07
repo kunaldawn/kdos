@@ -157,7 +157,7 @@ _wait_con() {
 # device and a seat and is the half that can lose them; these hold nothing a
 # restart would recover, and a crash loop on a toast daemon would be a desktop
 # that spends its life restarting something nobody is looking at.
-for _svc in kdos-notifyd kdos-desk kdos-slit kdos-shell; do
+for _svc in kdos-notifyd kdos-mediad kdos-desk kdos-slit kdos-shell; do
 	if command -v "$_svc" >/dev/null 2>&1; then
 		(
 			_wait_con || exit 0

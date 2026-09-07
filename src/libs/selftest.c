@@ -2783,9 +2783,18 @@ static void test_wm(void)
 				ok(0, line);
 		} else if (!strncmp(line, "fit ", 4)) {
 			KwmRect work, wnt;
-			int rx, ry, rw, rh;
+			int rx, ry, rw, rh, mw = 0, mh = 0;
 
+			/* The minimum is OPTIONAL in the fixture: a row that
+			 * names none is the same rule with no floor, which is
+			 * what a terminal passes. */
 			if (sscanf(line,
+				   "fit %d,%d,%d,%d %d,%d,%d,%d min %d,%d"
+				   " -> %d,%d,%d,%d",
+				   &work.x, &work.y, &work.w, &work.h,
+				   &wnt.x, &wnt.y, &wnt.w, &wnt.h, &mw, &mh,
+				   &rx, &ry, &rw, &rh) != 14 &&
+			    sscanf(line,
 				   "fit %d,%d,%d,%d %d,%d,%d,%d"
 				   " -> %d,%d,%d,%d",
 				   &work.x, &work.y, &work.w, &work.h,
@@ -2793,7 +2802,7 @@ static void test_wm(void)
 				   &rx, &ry, &rw, &rh) != 12)
 				continue;
 
-			KwmRect g = kwm_fit(wnt, work);
+			KwmRect g = kwm_fit(wnt, work, mw, mh);
 
 			rows++;
 			ok(g.x == rx && g.y == ry && g.w == rw && g.h == rh,
@@ -4863,9 +4872,10 @@ static void srv_on_attached(KconSurface *f, void *user)
 	srv_attached = f;
 }
 
-static void srv_attach_at(KconConn *c, unsigned role, unsigned edge,
-			  unsigned cells, unsigned cols, unsigned rows,
-			  unsigned corner, unsigned mx, unsigned my)
+static void srv_attach_min(KconConn *c, unsigned role, unsigned edge,
+			   unsigned cells, unsigned cols, unsigned rows,
+			   unsigned corner, unsigned mx, unsigned my,
+			   unsigned min_c, unsigned min_r)
 {
 	KconBuf b = { 0 };
 
@@ -4881,9 +4891,18 @@ static void srv_attach_at(KconConn *c, unsigned role, unsigned edge,
 	kcon_put_u16(&b, (uint16_t)corner);
 	kcon_put_u16(&b, (uint16_t)mx);
 	kcon_put_u16(&b, (uint16_t)my);
+	kcon_put_u16(&b, (uint16_t)min_c);
+	kcon_put_u16(&b, (uint16_t)min_r);
 	kcon_send(c, KCON_OP_ATTACH, &b);
 	kcon_flush(c);
 	kcon_buf_free(&b);
+}
+
+static void srv_attach_at(KconConn *c, unsigned role, unsigned edge,
+			  unsigned cells, unsigned cols, unsigned rows,
+			  unsigned corner, unsigned mx, unsigned my)
+{
+	srv_attach_min(c, role, edge, cells, cols, rows, corner, mx, my, 0, 0);
 }
 
 static void srv_attach(KconConn *c, unsigned role, unsigned edge,
@@ -5521,6 +5540,37 @@ static void test_kcon_server(void)
 				       "and how far from the bottom");
 			}
 			kcon_conn_free(pop);
+		}
+
+		/*
+		 * ── AND THE SMALLEST GRID IT CAN DRAW ON ───────────────
+		 *
+		 * The session is the only thing that can act on a minimum: it
+		 * is what divides the screen. A surface handed fewer cells
+		 * than it needs composes nothing and the cells under it keep
+		 * the last picture — a hole in the desktop, and silent.
+		 */
+		KconConn *tiny = srv_client(path);
+
+		if (tiny) {
+			srv_attached = NULL;
+			srv_hello(tiny, KCON_VERSION, KCON_KIND_SURFACE);
+			kcon_server_pump(s);
+			srv_attach_min(tiny, KDISP_ROLE_TOPLEVEL, 0, 0, 80, 24,
+				       0, 0, 0, 56, 24);
+			for (int i = 0; i < 20 && !srv_attached; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_attached != NULL,
+			   "a surface attaches naming a minimum");
+			if (srv_attached) {
+				eq_int(kcon_surface_min_cols(srv_attached), 56,
+				       "and the session is told the columns");
+				eq_int(kcon_surface_min_rows(srv_attached), 24,
+				       "and the rows");
+			}
+			kcon_conn_free(tiny);
 		}
 
 		/*

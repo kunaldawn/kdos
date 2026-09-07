@@ -724,6 +724,26 @@ echo "==> the build tree's root carries nothing but a root filesystem"
 # `kdos` and `ports` ARE expected: the build's own chroot binds the repo and
 # the ports tree at those paths.
 #
+# ── the groups a surface's authority comes from ───────────────────────────
+#
+# `kdos-print` runs as the user and administers printers directly, because CUPS
+# defines `lpadmin` as exactly that authority and `fs/etc/group` grants it. The
+# installer carries it to the created account by RENAMING `kdos` in every
+# membership list — so the membership in skel is what the whole arrangement
+# rests on, and dropping it would leave printing silently unadministrable for
+# everyone but root, with no error anywhere to say why.
+if [ -f fs/etc/group ]; then
+    _gmiss=""
+    for _g in lpadmin video audio input wheel; do
+        grep -qE "^$_g:[^:]*:[^:]*:.*\bkdos\b" fs/etc/group || _gmiss="$_gmiss $_g"
+    done
+    if [ -n "$_gmiss" ]; then
+        bad "group membership" "kdos is not in:$_gmiss"
+    else
+        note "group membership" "kdos is in the five groups its surfaces need"
+    fi
+fi
+
 # Skipped, not failed, when there is no build tree.
 if [ ! -d build/fs ]; then
     note "root filesystem" "skipped — no build tree"

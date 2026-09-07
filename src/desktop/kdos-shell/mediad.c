@@ -54,15 +54,9 @@
 #define MD_MAX 32		/* rows kdos-mountd will ever publish */
 #define MD_NAME 64
 
-struct md_dev {
-	char kname[MD_NAME];
-	char label[MD_NAME];
-	char mnt[256];
-};
-
 /* What was attached last time `changed` arrived. The diff is what turns a
  * "something moved" into "this stick just went in". */
-static struct md_dev md_seen[MD_MAX];
+static ShMountRow md_seen[MD_MAX];
 static int md_nseen;
 
 /* The notifications this program raised and the device each was about, so a
@@ -83,71 +77,30 @@ static const char *md_sock(void)
 /* One short connection, one verb, the whole reply. Every request except
  * `subscribe` is answered and closed, which is what makes this safe to do from
  * a click handler. */
-static int md_ask(const char *verb, char *out, size_t n)
+/*
+ * `sh_mountd_list()` is the one parse of the daemon's format, shared with
+ * kdos-devices and kdos-disks.
+ *
+ * A VOLUME WITH NO LABEL IS NAMED BY ITS KERNEL NAME here and not in the
+ * client, because that substitution is a TOAST's need: a notification reading
+ * "is ready" with nothing in front of it says nothing, while a disks window
+ * showing `sdb1` twice in two columns says less than a dash.
+ */
+static const char *md_name(const ShMountRow *d)
 {
-	struct sockaddr_un addr = { .sun_family = AF_UNIX };
-	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	size_t got = 0;
-	ssize_t r;
-
-	if (out && n)
-		out[0] = '\0';
-	if (fd < 0)
-		return -1;
-	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", md_sock());
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		close(fd);
-		return -1;
-	}
-	dprintf(fd, "%s\n", verb);
-	shutdown(fd, SHUT_WR);
-	while (out && got + 1 < n &&
-	       (r = read(fd, out + got, n - got - 1)) > 0)
-		got += (size_t)r;
-	if (out && n)
-		out[got] = '\0';
-	close(fd);
-	return 0;
+	return d->label[0] ? d->label : d->kname;
 }
 
-/*
- * The list, parsed. `index<TAB>kname<TAB>label<TAB>fstype<TAB>size<TAB>mount`,
- * with `-` for a label or a mountpoint there is none of, then `ok`.
- */
-static int md_list(struct md_dev *v, int max)
+static int md_list(ShMountRow *v, int max)
 {
-	char buf[8192];
-	int n = 0;
-
-	if (md_ask("list", buf, sizeof(buf)) != 0)
-		return 0;
-	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp);
-	     ln && n < max; ln = strtok_r(NULL, "\n", &sp)) {
-		char *f[6] = {0};
-		int nf = 0;
-
-		if (!strcmp(ln, "ok"))
-			break;
-		for (char *s2 = NULL, *t = strtok_r(ln, "\t", &s2);
-		     t && nf < 6; t = strtok_r(NULL, "\t", &s2))
-			f[nf++] = t;
-		if (nf < 6)
-			continue;
-		snprintf(v[n].kname, sizeof(v[n].kname), "%s", f[1]);
-		snprintf(v[n].label, sizeof(v[n].label), "%s",
-			 strcmp(f[2], "-") ? f[2] : f[1]);
-		snprintf(v[n].mnt, sizeof(v[n].mnt), "%s",
-			 strcmp(f[5], "-") ? f[5] : "");
-		n++;
-	}
-	return n;
+	return sh_mountd_list(v, max, NULL, 0);
 }
 
 /* The row a kernel name is on RIGHT NOW, or -1. Every verb takes an index and
  * every index is a moment old; this is the only way to use one safely. */
 static int md_row(const char *kname)
 {
-	struct md_dev now[MD_MAX];
+	ShMountRow now[MD_MAX];
 	int n = md_list(now, MD_MAX);
 
 	for (int i = 0; i < n; i++)
@@ -172,14 +125,14 @@ static int md_was_seen(const char *kname)
  * double-forks gdbus and throws the id away — a click here can be told from
  * anybody else's.
  */
-static void md_offer(sd_bus *bus, const struct md_dev *d)
+static void md_offer(sd_bus *bus, const ShMountRow *d)
 {
 	sd_bus_error err = SD_BUS_ERROR_NULL;
 	sd_bus_message *rep = NULL;
 	char body[160];
 	uint32_t id = 0;
 
-	snprintf(body, sizeof(body), "%s is ready", d->label);
+	snprintf(body, sizeof(body), "%s is ready", md_name(d));
 	if (sd_bus_call_method(bus, "org.freedesktop.Notifications",
 			       "/org/freedesktop/Notifications",
 			       "org.freedesktop.Notifications", "Notify",
@@ -206,7 +159,7 @@ static void md_offer(sd_bus *bus, const struct md_dev *d)
  * about what a folder is. */
 static void md_open(const char *kname)
 {
-	struct md_dev now[MD_MAX];
+	ShMountRow now[MD_MAX];
 	int n, row = -1;
 
 	n = md_list(now, MD_MAX);
@@ -219,7 +172,7 @@ static void md_open(const char *kname)
 		char verb[32];
 
 		snprintf(verb, sizeof(verb), "mount %d", row);
-		md_ask(verb, NULL, 0);
+		sh_mountd_ask(verb, NULL, 0);
 		n = md_list(now, MD_MAX);
 		row = -1;
 		for (int i = 0; i < n; i++)
@@ -244,7 +197,7 @@ static void md_eject(const char *kname)
 	if (row < 0)
 		return;
 	snprintf(verb, sizeof(verb), "eject %d", row);
-	md_ask(verb, NULL, 0);
+	sh_mountd_ask(verb, NULL, 0);
 }
 
 static int md_action(sd_bus_message *m, void *user, sd_bus_error *err)
@@ -336,7 +289,7 @@ int mediad_main(int argc, char **argv)
 		if (!strstr(buf, "changed"))
 			continue;
 
-		struct md_dev now[MD_MAX];
+		ShMountRow now[MD_MAX];
 		int nn = md_list(now, MD_MAX);
 
 		for (int i = 0; i < nn; i++)

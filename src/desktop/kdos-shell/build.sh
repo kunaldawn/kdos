@@ -106,9 +106,16 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
 
+gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
+	-I"$PORT_SRC" -o mkcharidx "$PORT_SRC/tools/mkcharidx.c" \
+	$(pkg-config --cflags --libs icu-uc) $LDFLAGS
+./mkcharidx charnames.idx
+install -Dm644 charnames.idx "$PKG/usr/share/kdos/charnames.idx"
+
 install -Dm755 kdos-shell "$PKG/usr/bin/kdos-shell"
 # Dispatched on its own basename, so the launcher is a link rather than a
 # second binary. The skel rc.xml's W-d keybind Executes it by that name.
+ln -s kdos-shell "$PKG/usr/bin/kdos-mediad"
 ln -s kdos-shell "$PKG/usr/bin/kdos-launcher"
 ln -s kdos-shell "$PKG/usr/bin/kdos-menu"
 ln -s kdos-shell "$PKG/usr/bin/kdos-desk"
@@ -127,6 +134,32 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-about"
 # The desk accessory Sidekick had. It forks `qalc` rather than linking
 # libqalculate, which is C++ and would put libstdc++ on the panel package.
 ln -s kdos-shell "$PKG/usr/bin/kdos-calc"
+# The character map. The index it searches is built HERE, once, by a program
+# that links ICU — kdos-shell does not and must not: ICU is thirty megabytes
+# of library and data, and every one of the thirty surfaces this binary is
+# would carry it. The names do not change between builds of an image.
+ln -s kdos-shell "$PKG/usr/bin/kdos-chars"
+# The disks window. Every privileged operation on it is a kdos-mountd verb and
+# this binary opens no block device: what it does is draw a list the daemon
+# published and send back a row number. Partitioning is `cfdisk` in a terminal
+# and is not reimplemented.
+ln -s kdos-shell "$PKG/usr/bin/kdos-disks"
+# Printers, over `lpstat`, `lpinfo` and `lpadmin` rather than libcups: those
+# three are what the CUPS documentation tells a person to type and are the
+# interface upstream keeps stable. The `lpadmin` GROUP is the authority CUPS
+# itself defines, so this needs no daemon of ours in front of it.
+ln -s kdos-shell "$PKG/usr/bin/kdos-print"
+# The zone and the clock. The list is `zone1970.tab`, which tzdata ships;
+# setting it is a kdos-powerd verb, because /etc/localtime is root's.
+ln -s kdos-shell "$PKG/usr/bin/kdos-time"
+# The accounts. Reading /etc/passwd is anybody's and creating an account is
+# root's, so this reads and does not write — except the autologin, which is a
+# KDOS file and goes through the same wheel-gated daemon the power verbs do.
+ln -s kdos-shell "$PKG/usr/bin/kdos-users"
+# What is behind and what is vulnerable. It computes neither: `kdos update
+# check --json` and `kdos cve --json` already answer, and a surface that
+# re-derived a version comparison would be a second answer that drifts.
+ln -s kdos-shell "$PKG/usr/bin/kdos-update"
 ln -s kdos-shell "$PKG/usr/bin/kdos-note"
 ln -s kdos-shell "$PKG/usr/bin/kdos-run"
 # kdos-comp's <core><promptCommand> — the yes/no dialog labwc's If/prompt

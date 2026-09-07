@@ -350,6 +350,12 @@ FRONT_END(tip_main);
 FRONT_END(panel_main);
 FRONT_END(trash_main);
 FRONT_END(rec_main);
+FRONT_END(chars_main);
+FRONT_END(disks_main);
+FRONT_END(print_main);
+FRONT_END(timezone_main);
+FRONT_END(users_main);
+FRONT_END(update_main);
 
 static const struct {
 	const char *name;
@@ -379,6 +385,12 @@ static const struct {
 	{ "status",	status_main },
 	{ "tip",	tip_main },
 	{ "rec",	rec_main },
+	{ "chars",	chars_main },
+	{ "disks",	disks_main },
+	{ "print",	print_main },
+	{ "time",	timezone_main },
+	{ "users",	users_main },
+	{ "update",	update_main },
 	{ "shell",	panel_main },
 };
 

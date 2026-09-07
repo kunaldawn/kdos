@@ -673,10 +673,18 @@ static int method_notify(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	 * one: it stays until it is dismissed, which is what every other
 	 * daemon does and what the urgency is for. A five-second toast about a
 	 * battery at 3% is a toast that will be missed.
+	 *
+	 * AND DIFFERENTLY AGAIN FOR ONE THAT CAN BE ACTED ON. A toast with
+	 * buttons asks for a decision, and five seconds is not long enough to
+	 * read it, find the pointer and aim — a button that expires before it
+	 * can be pressed is a button that is not there. It still goes away on
+	 * its own, because a stick nobody wants to open should not leave a
+	 * card on the screen forever.
 	 */
 	t->expires_ms = timeout == 0	 ? 0
 			: timeout > 0	 ? now_ms() + timeout
 			: t->urgent	 ? 0
+			: t->nact	 ? now_ms() + 20000
 					 : now_ms() + 5000;
 
 	/*

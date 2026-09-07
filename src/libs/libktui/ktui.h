@@ -730,6 +730,114 @@ int ktui_pw_score(const char *p);
 void ktui_toosmall(const char *title, int min_w, int min_h);
 
 /* ────────────────────────────────────────────────────────────────────────
+ * The four views — a page strip, a column table, a choice, a text block
+ *
+ * DRAW AND KEY ARE SEPARATE CALLS, unlike ktui_list() and like the menu.
+ * The surfaces these serve run their own event loop and hold their own
+ * selection; an immediate-mode widget reading the frame's focus would need
+ * every one of them rebuilt around ktui_frame_begin() first.
+ *
+ * A HIT TEST TAKES THE RECT THE DRAW TOOK, so it measures what is on the
+ * screen rather than what the widget remembered from an earlier size.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	const char *name;
+	const char *abbr;	/* drawn where `name` will not fit; NULL     */
+				/* takes the first three characters          */
+} KtuiTab;
+
+/* The cells one tab occupies: the widest name plus its padding across a row,
+ * or the whole width down a column. Exposed because a caller sizing the strip
+ * and the caller drawing it must agree. */
+int ktui_tab_span(const KtuiTab *t, int n, int vertical, int w);
+
+void ktui_tabs_draw(KRect r, const KtuiTab *t, int n, int sel, int hover,
+		    int vertical);
+/* 1 when `*sel` moved. */
+int ktui_tabs_key(int *sel, int n, int vertical, int k);
+/* The tab under the pointer, or -1. */
+int ktui_tabs_hit(KRect r, const KtuiTab *t, int n, int vertical, int mx,
+		  int my);
+
+#define KT_TABLE_COLS 8
+
+typedef struct {
+	const char *title;	/* NULL in every column: no header row       */
+	int width;		/* cells; <= 0 asks for the remainder        */
+} KtuiCol;
+
+/* Paint one cell of one row. The table has filled the row and chosen the
+ * colours; `col` is -1 for a span row, where `w` is the whole table. */
+typedef void (*KtuiTableCell)(int idx, int col, int x, int y, int w, int fg,
+			      int bg, void *user);
+/* What kind of row this is: 0 a record, KT_TABLE_HEAD a heading drawn across
+ * the table and still selectable, KT_TABLE_SKIP a heading the selection steps
+ * over. Both readings are in the tree — a network device heading is the row
+ * Enter rescans from, and a device-section caption is furniture — so the
+ * callback says which rather than the widget deciding for both. */
+enum { KT_TABLE_HEAD = 1, KT_TABLE_SKIP = 2 };
+typedef int (*KtuiTableSpan)(int idx, void *user);
+
+typedef struct {
+	int sel;
+	int top;
+} KtuiTable;
+
+/* Column origins and widths for a table `w` cells wide; returns the cells
+ * used. The FIRST column asking for the remainder gets it and the rest keep
+ * what they asked for — two elastic columns would need a distribution rule,
+ * and every table here has exactly one field that should absorb a wider
+ * window. */
+int ktui_table_layout(const KtuiCol *col, int ncol, int w, int *x, int *cw);
+/* `hover` is the row under the pointer or -1; it is an ARGUMENT rather than a
+ * field of KtuiTable because a zeroed struct would then light row 0 on a
+ * surface that never tracks the pointer at all. */
+void ktui_table_draw(KRect r, KtuiTable *st, int count, const KtuiCol *col,
+		     int ncol, KtuiTableCell cell, KtuiTableSpan span,
+		     void *user, int hover);
+void ktui_table_clamp(KtuiTable *st, int count, int rows);
+int ktui_table_key(KtuiTable *st, int count, int rows, int k,
+		   KtuiTableSpan span, void *user);
+/* Move the selection to a clicked row; 0 when that row refuses it. */
+int ktui_table_pick(KtuiTable *st, int count, int idx, KtuiTableSpan span,
+		    void *user);
+/* The row under the pointer, or -1; a click on the header is not a row. */
+int ktui_table_hit(KRect r, const KtuiTable *st, int count, int ncol,
+		   const KtuiCol *col, int mx, int my);
+
+typedef struct {
+	int sel;
+	int open;
+	int hi;			/* the highlighted row while open            */
+} KtuiDrop;
+
+void ktui_dropdown_draw(KRect r, const KtuiDrop *d, const char *const *opt,
+			int n, int focus);
+/* The open list is a SECOND call because it is drawn over whatever is under
+ * it: a surface draws every closed control, then this, last. */
+void ktui_dropdown_draw_open(KRect r, const KtuiDrop *d,
+			     const char *const *opt, int n);
+/* 1 when the choice changed. */
+int ktui_dropdown_key(KtuiDrop *d, int n, int k);
+int ktui_dropdown_hit(KRect r, KtuiDrop *d, int n, int mx, int my);
+
+typedef struct {
+	int cy, cx;		/* the caret, in lines and columns           */
+	int top;		/* the first line drawn                      */
+} KtuiTextArea;
+
+/* FIXED-WIDTH LINES, NOT A ROPE: `text` is `maxlines` strings of `stride`
+ * bytes each, terminator included, which is what a caller writes to a file
+ * line by line. A rope would make the widget the owner of the storage and the
+ * caller a serialiser of it. */
+void ktui_textarea_draw(KRect r, KtuiTextArea *ta, const char *text,
+			int nlines, size_t stride, int fg, int bg);
+/* 1 when the text changed. */
+int ktui_textarea_key(KtuiTextArea *ta, char *text, int *nlines, int maxlines,
+		      size_t stride, int k);
+
+/* ────────────────────────────────────────────────────────────────────────
  * The contract every surface answers
  *
  * A hint row that names the keys that do something RIGHT NOW, and the keys

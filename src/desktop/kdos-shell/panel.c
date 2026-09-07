@@ -2133,6 +2133,51 @@ static int panel_media, panel_media_mounted;
  * to keep. */
 static void meters_sample(void);
 static int cpu_percent(void);
+/*
+ * HOW MANY PACKAGES ARE BEHIND, READ FROM A FILE AND NEVER COMPUTED HERE.
+ *
+ * `kdos update check` walks the ports tree against the package database, which
+ * is hundreds of file reads — nothing the panel may do on a tick, where the
+ * rule is that nothing blocks the frame. So the number comes from
+ * `$XDG_STATE_HOME/kdos/update.json`, which `kdos update check --json` writes
+ * and a scheduled runner refreshes; ABSENT IS ZERO and the badge simply is not
+ * there, which is the honest picture of a machine nobody has checked.
+ *
+ * Once a minute, by mtime: the file changes at most as often as the runner
+ * fires, and re-reading it per frame would be a stat per frame for a number
+ * that moves once a day.
+ */
+static int update_behind(void)
+{
+	static time_t asked;
+	static int cached;
+	time_t now = time(NULL);
+	const char *st = getenv("XDG_STATE_HOME");
+	const char *home = getenv("HOME");
+	char path[512], buf[4096];
+	const char *p;
+
+	if (asked && now - asked < 60)
+		return cached;
+	asked = now;
+	cached = 0;
+	if (st && *st)
+		snprintf(path, sizeof(path), "%s/kdos/update.json", st);
+	else if (home && *home)
+		snprintf(path, sizeof(path), "%s/.local/state/kdos/update.json",
+			 home);
+	else
+		return 0;
+	if (kb_read_file(path, buf, sizeof(buf)) <= 0)
+		return 0;
+	p = strstr(buf, "\"behind\":");
+	if (p)
+		cached = atoi(p + 9);
+	if (cached < 0)
+		cached = 0;
+	return cached;
+}
+
 static int clip_depth(void);
 static int media_count(int *mounted);
 static void disk_policy(struct sh_state *sh);
@@ -2211,13 +2256,13 @@ static void panel_tick(struct sh_state *sh)
 enum {
 	W_CLOCK = 0, W_BATTERY, W_VOLUME, W_NET, W_RESTART, W_PRIVACY,
 	W_TRAY, W_PAGER, W_MPRIS, W_CPU, W_CLIP, W_MEDIA, W_NOTIFY,
-	W_STUTTER, W_MORE, W_N
+	W_STUTTER, W_UPDATE, W_MORE, W_N
 };
 
 static const char *const WIDGET_NAMES[W_N] = {
 	"clock", "battery", "volume", "net", "restart", "privacy",
 	"tray", "pager", "mpris", "cpu", "clipboard", "media", "notify",
-	"stutter", "more"
+	"stutter", "update", "more"
 };
 
 /* Left to right as they appear on the bar. The clock is last because the
@@ -2234,11 +2279,13 @@ static const char *const WIDGET_NAMES[W_N] = {
  */
 static const int WIDGETS_SHIPPED[W_N] = { W_PAGER, W_TRAY, W_MORE, W_MEDIA,
 					  W_PRIVACY, W_MPRIS, W_CLIP, W_CPU,
-					  W_STUTTER, W_RESTART, W_NET, W_VOLUME,
-					  W_BATTERY, W_NOTIFY, W_CLOCK };
+					  W_STUTTER, W_UPDATE, W_RESTART,
+					  W_NET, W_VOLUME, W_BATTERY, W_NOTIFY,
+					  W_CLOCK };
 static int widgets[W_N] = { W_PAGER, W_TRAY, W_MORE, W_MEDIA, W_PRIVACY,
-			    W_MPRIS, W_CLIP, W_CPU, W_STUTTER, W_RESTART,
-			    W_NET, W_VOLUME, W_BATTERY, W_NOTIFY, W_CLOCK };
+			    W_MPRIS, W_CLIP, W_CPU, W_STUTTER, W_UPDATE,
+			    W_RESTART, W_NET, W_VOLUME, W_BATTERY, W_NOTIFY,
+			    W_CLOCK };
 static int nwidgets = W_N;
 
 /*
@@ -5077,6 +5124,17 @@ static void build_overflow(struct sh_state *sh)
 			 panel_stutter, panel_stutter == 1 ? "" : "s");
 		ov_push("stutter", "dialog-warning", "Stutter", buf, 1);
 	}
+	if (in_overflow[W_UPDATE]) {
+		int n = update_behind();
+
+		if (n > 0) {
+			snprintf(buf, sizeof(buf),
+				 "%d package%s the ports tree pins newer", n,
+				 n == 1 ? "" : "s");
+			ov_push("update", "system-software-update", "Updates",
+				buf, 0);
+		}
+	}
 	if (in_overflow[W_RESTART] && panel_restarts > 0) {
 		snprintf(buf, sizeof(buf),
 			 "%d program%s still using files an upgrade replaced",
@@ -5746,6 +5804,18 @@ static void draw_taskbar(struct sh_state *sh)
 					    floor_x, "dialog-warning", label,
 					    KT_WARN, KT_WARN);
 				break;
+			case W_UPDATE: {
+				int n = update_behind();
+
+				if (n <= 0)
+					break;
+				snprintf(label, sizeof(label), "%d",
+					 n > 999 ? 999 : n);
+				applet_tile(sh, SH_AP_UPDATE, &right_x,
+					    floor_x, "system-software-update",
+					    label, KT_ACCENT, KT_ACCENT);
+				break;
+			}
 			case W_MORE:
 				right_x = draw_more(sh, right_x, floor_x, h);
 				break;
@@ -6247,6 +6317,11 @@ static int tip_text(struct sh_state *sh, int kind, int idx, char *t1, size_t n1,
 					 "panel.conf decides what lives here");
 			}
 			return 1;
+		case SH_AP_UPDATE:
+			snprintf(t1, n1, "%d packages behind", update_behind());
+			snprintf(t2, n2, "%s",
+				 "click to see what, and what is vulnerable");
+			return 1;
 		case SH_AP_STUTTER:
 			snprintf(t1, n1, "%d dropped frames", panel_stutter);
 			snprintf(t2, n2, "%s",
@@ -6549,6 +6624,15 @@ static void handle_applet(struct sh_state *sh, int id, int btn)
 	case SH_AP_NOTIFY: {
 		const char *argv[] = { "kdos-notify", at, xs, ys, NULL };
 		popup_toggle(id, argv);
+		break;
+	}
+	case SH_AP_UPDATE: {
+		/* A WINDOW, not a popup: the list is as long as the machine is
+		 * behind, and a person reading it is deciding whether to run
+		 * an apply — which is not a glance. */
+		const char *argv[] = { "kdos-update", NULL };
+
+		sh_spawn(argv);
 		break;
 	}
 	case SH_AP_STUTTER: {

@@ -303,6 +303,21 @@ void win_snap(Win *w, unsigned edge, int combine)
  */
 void win_resized(Win *w)
 {
+	/*
+	 * THROUGH kwm_fit, so the surface's own minimum is applied in the one
+	 * place that knows it — every caller below sets `geom` and then calls
+	 * this, and a minimum enforced at each of them would be six copies of
+	 * one rule. The area is the WHOLE grid rather than the work area: a
+	 * fullscreen window is deliberately over the panel's exclusive zone,
+	 * and fitting to the work area here would take it back off.
+	 */
+	KwmRect all = { 0, 0, S.cols, S.rows };
+
+	/* A session that has not been given a size yet has no area to fit to,
+	 * and fitting to a zero one would set every window to zero cells. */
+	if (S.cols > 0 && S.rows > 0)
+		w->geom = kwm_fit(w->geom, all, w->min_w, w->min_h);
+
 	if (w->kind == WIN_TERM && w->term)
 		kvt_term_resize(w->term, w->geom.w, w->geom.h);
 	else if (w->kind == WIN_SURFACE && w->surf)
@@ -640,7 +655,7 @@ void win_tile_all(void)
 
 		set[i]->tiled = 0;
 		set[i]->restore = set[i]->geom;
-		set[i]->geom = kwm_fit(g, a);
+		set[i]->geom = kwm_fit(g, a, set[i]->min_w, set[i]->min_h);
 		win_resized(set[i]);
 	}
 }
@@ -674,7 +689,7 @@ void win_cascade(void)
 		g.h = ch;
 		set[i]->tiled = 0;
 		set[i]->restore = set[i]->geom;
-		set[i]->geom = kwm_fit(g, a);
+		set[i]->geom = kwm_fit(g, a, set[i]->min_w, set[i]->min_h);
 		win_resized(set[i]);
 		win_raise(set[i]->id);
 	}

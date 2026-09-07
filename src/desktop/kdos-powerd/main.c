@@ -30,10 +30,17 @@
  * same one polkit treats as admin, so "can poweroff" and "can administer this
  * machine" stay one answer.
  *
- * THE PROTOCOL IS ONE WORD PER CONNECTION. `suspend`, `poweroff`, `reboot`,
- * `ping`, then a one-line reply and the socket closes. No length prefixes, no
- * multiplexing, no state: a parser is an attack surface and this one is 30 bytes
- * of strcmp.
+ * THE PROTOCOL IS ONE LINE PER CONNECTION. `suspend`, `poweroff`, `reboot`,
+ * `ping` are a bare word; `timezone <zone>` is the one verb with an argument,
+ * then a one-line reply and the socket closes. No length prefixes, no
+ * multiplexing, no state: a parser is an attack surface and this one is a
+ * handful of strcmp.
+ *
+ * THE TIMEZONE IS HERE AND NOT IN A SECOND DAEMON because it is the same
+ * question: writing `/etc/localtime` and `/etc/profile.d/20-timezone.sh` is
+ * root's, the person doing it is the one administering the machine, and
+ * `wheel` is already the answer to who that is. A second socket with a second
+ * authorisation rule would be a second answer to one question.
  */
 
 #ifndef _GNU_SOURCE
@@ -166,6 +173,195 @@ static int do_reboot(int cmd)
 	return -1;		/* only reached if reboot(2) itself failed */
 }
 
+/*
+ * WHICH ACCOUNT tty1 LOGS IN WITHOUT ASKING, or none.
+ *
+ * `/etc/kdos/con.conf` is root's and the choice is an administrator's, which
+ * is the same question `wheel` already answers — so it is a verb here rather
+ * than a second daemon or a setuid writer for two lines.
+ *
+ * THE ACCOUNT MUST BE ONE A GREETER WOULD OFFER. `kb_users()` is the one place
+ * that decides who may log in, and pointing autologin at a name it would not
+ * list is a machine that boots to a login nobody can complete — a service
+ * account with `nologin`, or a name that is not there at all.
+ *
+ * BOTH KEYS ARE REWRITTEN TOGETHER. `greet` and `autologin` are one setting
+ * seen twice: `greet = no` with no `autologin` is a tty1 that logs in as
+ * whatever the default happens to be, and an `autologin` under `greet = yes`
+ * is a line that does nothing and reads as though it does.
+ */
+static int set_autologin(const char *who, char *out, size_t nout)
+{
+	const char *etc = getenv("KDOS_POWERD_ETC");
+	char path[320], tmp[336], buf[16384], next[16384];
+	int off = !strcmp(who, "off");
+	FILE *f;
+
+	if (!etc || !*etc)
+		etc = "/etc";
+	if (!off) {
+		KbUser u[64];
+		int n = kb_users(u, 64), i;
+
+		for (i = 0; i < n; i++)
+			if (!strcmp(u[i].name, who))
+				break;
+		if (i == n) {
+			snprintf(out, nout, "err no such account\n");
+			return -1;
+		}
+	}
+
+	snprintf(path, sizeof(path), "%s/kdos/con.conf", etc);
+	if (kb_read_file(path, buf, sizeof(buf)) <= 0) {
+		snprintf(out, nout, "err cannot read con.conf\n");
+		return -1;
+	}
+
+	next[0] = '\0';
+
+	size_t used = 0;
+
+	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp); ln;
+	     ln = strtok_r(NULL, "\n", &sp)) {
+		char row[512];
+
+		/* The KEY only, and leading space is not part of it: a comment
+		 * mentioning `greet` must not be rewritten into a setting. */
+		if (!strncmp(ln, "greet", 5) && strchr(ln, '='))
+			snprintf(row, sizeof(row), "greet = %s",
+				 off ? "yes" : "no");
+		else if (!strncmp(ln, "autologin", 9) && strchr(ln, '='))
+			snprintf(row, sizeof(row), "autologin = %s",
+				 off ? "kdos" : who);
+		else
+			snprintf(row, sizeof(row), "%s", ln);
+		int k = snprintf(next + used, sizeof(next) - used, "%s\n", row);
+
+		/* A file that would not fit is REFUSED rather than truncated:
+		 * writing half a config leaves a machine whose login settings
+		 * are whatever survived. */
+		if (k < 0 || (size_t)k >= sizeof(next) - used) {
+			snprintf(out, nout, "err con.conf is too large\n");
+			return -1;
+		}
+		used += (size_t)k;
+	}
+
+	snprintf(tmp, sizeof(tmp), "%s/kdos/con.conf.new", etc);
+	f = fopen(tmp, "w");
+	if (!f) {
+		snprintf(out, nout, "err cannot write con.conf\n");
+		return -1;
+	}
+	fputs(next, f);
+	fflush(f);
+	fsync(fileno(f));
+	fclose(f);
+	if (rename(tmp, path) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write con.conf\n");
+		return -1;
+	}
+	snprintf(out, nout, "ok %s\n", off ? "off" : who);
+	return 0;
+}
+
+/*
+ * SET THE MACHINE'S TIMEZONE, from a name in the shipped zoneinfo tree.
+ *
+ * THE NAME IS VALIDATED AS A PATH COMPONENT SET AND THEN AS A FILE, in that
+ * order. A zone is `Area/City` or `Area/Sub/City`, so a slash is legal — which
+ * makes `../../etc/shadow` legal-looking too, and the first check is what
+ * stops it: letters, digits, `+`, `-`, `_` and `/`, no dot at all, no leading
+ * or doubled slash. The second is that the file must exist under
+ * `/usr/share/zoneinfo`, so a name that passes the first and names nothing is
+ * refused rather than symlinked to.
+ *
+ * BOTH HALVES ARE WRITTEN OR NEITHER IS. `/etc/localtime` is what a program
+ * reading the zoneinfo tree follows; `TZ` in the profile is what musl reads
+ * when it is set, and it is set on every KDOS login — so writing only the
+ * symlink leaves `date` reporting the OLD zone for the life of every shell
+ * that had already sourced the profile, which reads as the setting having
+ * done nothing.
+ */
+static const char *KP_ZONEDIR = "/usr/share/zoneinfo";
+
+static bool zone_name_ok(const char *z)
+{
+	size_t n = strlen(z);
+
+	if (!n || n > 64 || z[0] == '/' || z[n - 1] == '/')
+		return false;
+	for (size_t i = 0; i < n; i++) {
+		char c = z[i];
+
+		if (c == '/' && z[i + 1] == '/')
+			return false;
+		if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		      (c >= '0' && c <= '9') || c == '+' || c == '-' ||
+		      c == '_' || c == '/'))
+			return false;
+	}
+	return true;
+}
+
+static int set_timezone(const char *zone, char *out, size_t nout)
+{
+	const char *dir = getenv("KDOS_POWERD_ZONEDIR");
+	const char *etc = getenv("KDOS_POWERD_ETC");
+	char zi[320], link[320], prof[320], tmp[336];
+	FILE *f;
+
+	if (!zone_name_ok(zone)) {
+		snprintf(out, nout, "err not a zone name\n");
+		return -1;
+	}
+	if (!dir || !*dir)
+		dir = KP_ZONEDIR;
+	if (!etc || !*etc)
+		etc = "/etc";
+	snprintf(zi, sizeof(zi), "%s/%s", dir, zone);
+	if (!kb_path_exists(zi)) {
+		snprintf(out, nout, "err no such zone\n");
+		return -1;
+	}
+
+	snprintf(link, sizeof(link), "%s/localtime", etc);
+	snprintf(tmp, sizeof(tmp), "%s/localtime.new", etc);
+	unlink(tmp);
+	if (symlink(zi, tmp) != 0 || rename(tmp, link) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write localtime\n");
+		return -1;
+	}
+
+	snprintf(prof, sizeof(prof), "%s/profile.d/20-timezone.sh", etc);
+	snprintf(tmp, sizeof(tmp), "%s/profile.d/20-timezone.sh.new", etc);
+	f = fopen(tmp, "w");
+	if (!f) {
+		snprintf(out, nout, "err cannot write the profile\n");
+		return -1;
+	}
+	fprintf(f,
+		"# Written by kdos-powerd.\n"
+		"# `/etc/localtime` is what a program reading the zoneinfo\n"
+		"# tree follows; this is what musl reads, and it wins where it\n"
+		"# is set. Both say the same zone or `date` and the desktop\n"
+		"# disagree.\n"
+		"export TZ=':/etc/localtime'\n");
+	fflush(f);
+	fsync(fileno(f));
+	fclose(f);
+	if (rename(tmp, prof) != 0) {
+		unlink(tmp);
+		snprintf(out, nout, "err cannot write the profile\n");
+		return -1;
+	}
+	snprintf(out, nout, "ok %s\n", zone);
+	return 0;
+}
+
 /* ── the daemon ────────────────────────────────────────────────────────── */
 
 static int serve(void)
@@ -266,6 +462,20 @@ static int serve(void)
 			(void)!write(c, "ok\n", 3);
 			close(c);
 			do_reboot(RB_POWER_OFF);
+			continue;
+		} else if (!strncmp(buf, "autologin ", 10)) {
+			char msg[128];
+
+			set_autologin(buf + 10, msg, sizeof(msg));
+			(void)!write(c, msg, strlen(msg));
+			close(c);
+			continue;
+		} else if (!strncmp(buf, "timezone ", 9)) {
+			char msg[128];
+
+			set_timezone(buf + 9, msg, sizeof(msg));
+			(void)!write(c, msg, strlen(msg));
+			close(c);
 			continue;
 		} else if (!strcmp(buf, "reboot")) {
 			(void)!write(c, "ok\n", 3);
@@ -391,7 +601,9 @@ static void lock_before_suspend(void)
 static int usage(void)
 {
 	fprintf(stderr,
-		"usage: kdos-power [--no-lock] suspend|poweroff|reboot|ping\n");
+		"usage: kdos-power [--no-lock] suspend|poweroff|reboot|ping\n"
+		"       kdos-power timezone <Area/City>\n"
+		"       kdos-power autologin <user>|off\n");
 	return 2;
 }
 
@@ -443,15 +655,40 @@ static int client(int argc, char **argv)
 	const char *cmd = NULL;
 	bool no_lock = false;
 
+	const char *arg = NULL;
+
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--no-lock"))
 			no_lock = true;
 		else if (!cmd)
 			cmd = argv[i];
+		else if (!arg)
+			arg = argv[i];
 		else
 			return usage();
 	}
 	if (!cmd)
+		return usage();
+
+	/*
+	 * `timezone` IS THE ONE VERB WITH AN ARGUMENT, and it is joined here
+	 * rather than in the daemon's parser: the request line is `timezone
+	 * <zone>` and a zone name carries no space, so one buffer and one
+	 * strncmp on the far side is the whole protocol change.
+	 */
+	char line[KP_MAX];
+
+	if (!strcmp(cmd, "timezone") || !strcmp(cmd, "autologin")) {
+		if (!arg)
+			return usage();
+		if (snprintf(line, sizeof(line), "%s %s", cmd, arg) >=
+		    (int)sizeof(line)) {
+			fprintf(stderr, "kdos-power: argument too long\n");
+			return 2;
+		}
+		return request(line);
+	}
+	if (arg)
 		return usage();
 	if (strcmp(cmd, "suspend") && strcmp(cmd, "poweroff") &&
 	    strcmp(cmd, "reboot") && strcmp(cmd, "ping"))
@@ -490,8 +727,39 @@ int main(int argc, char **argv)
 	if (!strcmp(me, "kdos-powerd")) {
 		if (argc == 3 && !strcmp(argv[1], "--explain"))
 			return explain(argv[2]);
+		/*
+		 * THE TIMEZONE WRITE WITHOUT THE SOCKET, which is the only way
+		 * it gets tested at all: the gate is SO_PEERCRED on a
+		 * connection and cannot be exercised without two uids, so the
+		 * verb's own rules — what a zone name may contain, that the
+		 * file must exist, that both halves are written — would
+		 * otherwise be asserted by nothing.
+		 *
+		 * IT GRANTS NOTHING. It is this binary run by whoever ran it,
+		 * writing to an `/etc` that user could already write to; on
+		 * the real path that is root's and this changes neither who
+		 * may connect nor what the daemon does for them.
+		 */
+		if (argc == 3 && !strcmp(argv[1], "--set-autologin")) {
+			char msg[128];
+			int rc = set_autologin(argv[2], msg, sizeof(msg));
+
+			fputs(msg, rc == 0 ? stdout : stderr);
+			return rc == 0 ? 0 : 1;
+		}
+		if (argc == 3 && !strcmp(argv[1], "--set-timezone")) {
+			char msg[128];
+			int rc = set_timezone(argv[2], msg, sizeof(msg));
+
+			fputs(msg, rc == 0 ? stdout : stderr);
+			return rc == 0 ? 0 : 1;
+		}
 		if (argc > 1) {
-			fprintf(stderr, "usage: kdos-powerd [--explain USER]\n");
+			fprintf(stderr, "usage: kdos-powerd [--explain USER]\n"
+					"       kdos-powerd --set-timezone "
+					"<Area/City>\n"
+					"       kdos-powerd --set-autologin "
+					"<user>|off\n");
 			return 2;
 		}
 		return serve();
