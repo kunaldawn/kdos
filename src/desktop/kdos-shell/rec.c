@@ -1194,6 +1194,12 @@ int rec_main(int argc, char **argv)
 		.cols = RC_COLS,
 		.rows = RC_ROWS,
 		.app_id = "kdos-rec",
+		/* The numbers this surface's own too-small check uses: one
+		 * answer to the smallest grid it can compose on, told to the
+		 * session that decides the size rather than only found out
+		 * after it has decided. */
+		.min_cols = 40,
+		.min_rows = 14,
 		.font = font,
 		.keyboard = 1,
 	};

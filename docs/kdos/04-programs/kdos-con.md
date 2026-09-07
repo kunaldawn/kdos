@@ -634,9 +634,18 @@ nearest window that starts past the focused one and shares rows or columns with 
 ends up at a size nothing asked for — with the focus following the window rather than the place.
 When nothing overlaps, the focus stays put: the ring is the way to a window the arrows cannot see.
 
-**Every dragged rectangle goes through `kwm_fit`**, exactly as a snap does. A dragged window and a
-snapped one obeying different work-area rules would be two answers to one question, and the panel's
-exclusive zone is in that answer.
+**Every dragged rectangle goes through `kwm_fit`**, exactly as a snap does — and so does every
+rectangle `win_resized()` is about to tell a window about, which is what makes it the one place
+that applies a surface's minimum. A dragged window and a snapped one obeying different work-area
+rules would be two answers to one question, and the panel's exclusive zone is in that answer.
+
+**A surface reports the smallest grid it can compose on at ATTACH, and the minimum wins over the
+work area.** A program given fewer cells than it needs draws nothing at all, and the cells under it
+keep whatever the last program left there — a hole in the desktop that no repaint fixes, because
+nothing owns those cells any more. Told the minimum, the session hands the window that size and
+lets it hang off the edge: a window with a corner off the screen is visibly a window. Zero is no
+minimum, and it is what a terminal reports — a terminal reflows to anything, and the program inside
+it decides for itself.
 
 **The panel is not draggable and neither is a fullscreen window.** The panel's rectangle *is* the
 exclusive zone, so moving it would move the work area out from under every other window.
@@ -668,6 +677,7 @@ card rather than two.
 | `Super+Ctrl+q` | the calculator | `calculator` |
 | `Super+Ctrl+n` | the scratch pad | `notes` |
 | `Super+Ctrl+v` | the clipboard history | `clipboard` |
+| `Super+Ctrl+e` | the character map | `characters` |
 
 The last two are new on both desktops: neither had a chord anywhere, and a power page and a system
 monitor are what a person reaches for while something is going wrong.

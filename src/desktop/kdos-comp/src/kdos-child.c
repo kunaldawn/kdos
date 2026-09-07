@@ -107,6 +107,13 @@ static const struct {
 	 */
 	{ "kdos-notifyd", NULL, NULL, false },
 	/*
+	 * A stick going in is announced by the SESSION, because kdos-mountd is
+	 * root and has no session bus to raise a toast on. Not per-output for
+	 * the same reason as the daemon above: one subscription to one daemon,
+	 * and a second instance would offer every stick twice.
+	 */
+	{ "kdos-mediad", NULL, NULL, false },
+	/*
 	 * The clipboard history. NOT per-output either: it owns one socket in
 	 * $XDG_RUNTIME_DIR and holds the history in memory, and a second
 	 * instance would be a second history nobody could reach.

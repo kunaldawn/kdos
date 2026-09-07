@@ -243,6 +243,24 @@ against stale dimensions and silently fail its own bounds checks.
 terminal at all. Every geometry defect this toolkit has shipped was invisible to the compiler and
 to a test suite that cannot draw; this is how they get looked at.
 
+**A widget is either an immediate-mode call or a draw-and-key pair, and which one is decided by
+its callers.** `ktui_list`, the buttons, the checks and the input field read the frame's focus and
+return what happened in one call, for a surface built around the frame. The page strip, the column
+table, the dropdown and the text block are a `_draw`, a `_key` and a `_hit` instead, because every
+surface that wanted them runs its own event loop and holds its own selection — an immediate-mode
+form would have meant rebuilding each of them around the frame before it drew anything at all. A
+hit test takes the same rect its draw took, so it measures what is on the screen rather than what
+the widget remembered from an earlier size.
+
+**No widget owns its selection.** The caller holds it, because the caller is what persists it,
+dumps it and restores it — and because a page strip and the body under it are one selection seen
+twice.
+
+**A table's heading row says whether the selection may land on it.** Both readings are in the tree:
+a network device heading is the row Enter rescans from, and a device-section caption is furniture.
+The row-kind callback answers per row rather than the widget choosing for both, and a row the
+selection steps over never lights.
+
 **A sprite table entry is a borrowed pointer, so eviction is what the owner told it to do.** The
 table does no pixel work and cannot free a picture; an owner registers an evictor and the table
 calls it whenever it stops naming a picture — a slot taken back under the byte budget, a slot

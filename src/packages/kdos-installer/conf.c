@@ -71,7 +71,10 @@ void conf_defaults(void)
 	memset(&cfg, 0, sizeof(cfg));
 	kb_strlcpy(cfg.keymap, "us", sizeof(cfg.keymap));
 	cfg.greet = 1;
-	kb_strlcpy(cfg.tz, "UTC0", sizeof(cfg.tz));
+	/* The colon form, not a rules string: musl reads the zone FILE when
+	 * `TZ` starts with a colon, so this cannot name different rules from
+	 * the `/etc/localtime` the same install writes. */
+	kb_strlcpy(cfg.tz, ":/etc/localtime", sizeof(cfg.tz));
 	kb_strlcpy(cfg.tz_label, "UTC", sizeof(cfg.tz_label));
 	kb_strlcpy(cfg.fstype, "ext4", sizeof(cfg.fstype));
 	kb_strlcpy(cfg.hostname, "kdos", sizeof(cfg.hostname));

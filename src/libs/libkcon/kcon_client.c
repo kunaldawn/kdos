@@ -37,6 +37,7 @@ static struct {
 	 * that corner names — kept for the same reason as the rest of the
 	 * attach: a resize repeats it. */
 	int corner, margin_x, margin_y;
+	int min_cols, min_rows;
 	/* Close when the keyboard focus goes elsewhere — an overlay's own
 	 * choice, kept here because the surface made it. */
 	int dismiss_on_unfocus;
@@ -589,6 +590,8 @@ static void put_attach(KconBuf *b, int cols, int rows)
 	kcon_put_u16(b, (uint16_t)C.corner);
 	kcon_put_u16(b, (uint16_t)(C.margin_x > 0 ? C.margin_x : 0));
 	kcon_put_u16(b, (uint16_t)(C.margin_y > 0 ? C.margin_y : 0));
+	kcon_put_u16(b, (uint16_t)(C.min_cols > 0 ? C.min_cols : 0));
+	kcon_put_u16(b, (uint16_t)(C.min_rows > 0 ? C.min_rows : 0));
 }
 
 static int kcon_init(const KDispConfig *cfg)
@@ -640,6 +643,8 @@ static int kcon_init(const KDispConfig *cfg)
 	C.dismiss_on_unfocus = cfg ? cfg->dismiss_on_unfocus : 0;
 	C.margin_x = cfg ? cfg->margin_x : 0;
 	C.margin_y = cfg ? cfg->margin_y : 0;
+	C.min_cols = cfg ? cfg->min_cols : 0;
+	C.min_rows = cfg ? cfg->min_rows : 0;
 	snprintf(C.app_id, sizeof(C.app_id), "%s", cfg && cfg->app_id ? cfg->app_id : "");
 	snprintf(C.title, sizeof(C.title), "%s", cfg && cfg->title ? cfg->title : "");
 	snprintf(C.output, sizeof(C.output), "%s", cfg && cfg->output ? cfg->output : "");

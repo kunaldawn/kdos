@@ -31,54 +31,17 @@
 #define MAX_USERS 32
 #define MAX_PASS  256
 
-typedef struct {
-	char name[64];
-	char gecos[64];
-	char home[128];
-	char shell[64];
-	uid_t uid;
-	gid_t gid;
-} Account;
+/* `KbUser` is the shared shape: this greeter and `kdos-users` must not give two
+ * answers to who may log in. */
+typedef KbUser Account;
 
 static Account users[MAX_USERS];
 static int nusers;
 
-/*
- * Who may log in. uid >= 1000 and a shell that is not a refusal — the same two
- * tests every login screen makes, and the reason `nobody` and the service
- * accounts are not offered.
- */
+/* Who may log in — `kb_users()` is the one place that decides. */
 static void users_load(void)
 {
-	struct passwd *pw;
-
-	setpwent();
-	while (nusers < MAX_USERS && (pw = getpwent()) != NULL) {
-		if (pw->pw_uid < 1000 || pw->pw_uid >= 65534)
-			continue;
-		if (!pw->pw_shell || strstr(pw->pw_shell, "nologin") ||
-		    strstr(pw->pw_shell, "/false"))
-			continue;
-
-		Account *a = &users[nusers++];
-
-		snprintf(a->name, sizeof(a->name), "%s", pw->pw_name);
-		snprintf(a->home, sizeof(a->home), "%s", pw->pw_dir);
-		snprintf(a->shell, sizeof(a->shell), "%s", pw->pw_shell);
-		a->uid = pw->pw_uid;
-		a->gid = pw->pw_gid;
-
-		/* The GECOS field is a comma-separated record and only its
-		 * first field is a name; printing the whole thing puts an
-		 * office number on the login screen. */
-		snprintf(a->gecos, sizeof(a->gecos), "%s",
-			 pw->pw_gecos ? pw->pw_gecos : "");
-		char *comma = strchr(a->gecos, ',');
-
-		if (comma)
-			*comma = '\0';
-	}
-	endpwent();
+	nusers = kb_users(users, MAX_USERS);
 }
 
 /*
@@ -144,9 +107,51 @@ static int check_password(const Account *a, const char *pass)
  * Become the account and start its session. Does not return: after the drop
  * there is no way back, which is the point.
  */
-static void become(const Account *a)
+/*
+ * THE SESSIONS THIS MACHINE HAS, and the console is first because it is the
+ * one that always works: it needs no GPU driver, no compositor and no seat,
+ * which is the whole argument for this desktop existing. A row is offered only
+ * if the program behind it is installed, so a machine built without kdos-comp
+ * shows no choice rather than a choice that fails.
+ *
+ * XDG_SESSION_TYPE IS PART OF THE CHOICE, NOT A CONSTANT. It is set to
+ * `wayland` on the graphical path by /etc/profile.d/10-wayland.sh — which a
+ * LOGIN SHELL reads and this greeter never does, because it clears the
+ * environment and execs the session directly. Hard-coding `tty` here and then
+ * starting a compositor would hand every bus-activated service a session type
+ * that is a lie, since kdos-desktop-start pushes this very variable into the
+ * activation environment.
+ */
+static const struct {
+	const char *name;
+	const char *prog;
+	const char *type;
+} SESSIONS[] = {
+	{ "Console", "/usr/local/bin/kdos-con-start", "tty" },
+	{ "Desktop", "/usr/local/bin/kdos-desktop", "wayland" },
+};
+#define NSESSIONS ((int)(sizeof(SESSIONS) / sizeof(SESSIONS[0])))
+
+static int sessions[NSESSIONS];		/* indices into SESSIONS, installed */
+static int nsessions;
+
+static void sessions_load(void)
 {
+	nsessions = 0;
+	for (int i = 0; i < NSESSIONS; i++)
+		if (access(SESSIONS[i].prog, X_OK) == 0)
+			sessions[nsessions++] = i;
+}
+
+static void become(const Account *a, int ses)
+{
+	const char *prog = SESSIONS[0].prog, *type = SESSIONS[0].type;
 	char run[64];
+
+	if (ses >= 0 && ses < nsessions) {
+		prog = SESSIONS[sessions[ses]].prog;
+		type = SESSIONS[sessions[ses]].type;
+	}
 
 	if (initgroups(a->name, a->gid) != 0 || setgid(a->gid) != 0 ||
 	    setuid(a->uid) != 0 || setuid(0) == 0) {
@@ -165,7 +170,7 @@ static void become(const Account *a)
 	setenv("SHELL", a->shell, 1);
 	setenv("PATH", "/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin", 1);
 	setenv("XDG_RUNTIME_DIR", run, 1);
-	setenv("XDG_SESSION_TYPE", "tty", 1);
+	setenv("XDG_SESSION_TYPE", type, 1);
 	setenv("XDG_CURRENT_DESKTOP", "KDOS", 1);
 	setenv("TERM", "xterm-256color", 1);
 	/* The same reason as the terminal's own child: libktui reads this to
@@ -179,8 +184,7 @@ static void become(const Account *a)
 	if (chdir(a->home) != 0 && chdir("/") != 0)
 		_exit(1);
 
-	execl("/usr/local/bin/kdos-con-start", "kdos-con-start",
-	      (char *)NULL);
+	execl(prog, prog, (char *)NULL);
 	fprintf(stderr, "kdos-con-login: cannot start the session\n");
 	_exit(127);
 }
@@ -189,7 +193,7 @@ static void become(const Account *a)
  * The login surface. One card, centred, and nothing else on the screen: the
  * only two answers it wants are which account and what the password is.
  */
-static void greet_draw(int sel, const char *pass, const char *msg)
+static void greet_draw(int sel, int ses, const char *pass, const char *msg)
 {
 	int w, h;
 
@@ -197,7 +201,7 @@ static void greet_draw(int sel, const char *pass, const char *msg)
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 
 	int cw = 46;
-	int ch = 8 + (nusers > 1 ? nusers : 0);
+	int ch = 8 + (nusers > 1 ? nusers : 0) + (nsessions > 1 ? 2 : 0);
 	int cx = (w - cw) / 2, cy = (h - ch) / 2;
 
 	if (cx < 0)
@@ -248,6 +252,16 @@ static void greet_draw(int sel, const char *pass, const char *msg)
 	ktui_draw_text(cx + 13, y, cw - 16, stars, KT_TEXT, KT_DIM, 0);
 	y += 2;
 
+	/* DRAWN ONLY WHEN THERE IS A CHOICE. One installed session is not a
+	 * question, and a row offering the only answer is a row that teaches
+	 * the arrows do nothing. */
+	if (nsessions > 1) {
+		ktui_draw_text(cx + 3, y, 10, "Session:", KT_MID, KT_SURFACE, 0);
+		ktui_draw_textf(cx + 13, y, cw - 16, KT_TEXT, KT_SURFACE, 0,
+				"< %s >", SESSIONS[sessions[ses]].name);
+		y += 2;
+	}
+
 	if (msg && *msg)
 		ktui_draw_text(cx + 3, y, cw - 6, msg, KT_WARN, KT_SURFACE, 0);
 
@@ -262,9 +276,10 @@ static int greeter(void)
 {
 	char pass[MAX_PASS] = "";
 	const char *msg = "";
-	int sel = 0;
+	int sel = 0, ses = 0;
 
 	users_load();
+	sessions_load();
 	if (!nusers) {
 		fprintf(stderr,
 			"kdos-con-login: no account with a uid of 1000 or\n"
@@ -281,7 +296,7 @@ static int greeter(void)
 	for (;;) {
 		KtuiEvent ev;
 
-		greet_draw(sel, pass, msg);
+		greet_draw(sel, ses, pass, msg);
 		if (ktui_backend()->poll_event(&ev, 1000) <= 0)
 			continue;
 		if (ev.type != KT_EVT_KEY)
@@ -301,6 +316,18 @@ static int greeter(void)
 				sel++;
 			pass[0] = '\0';
 			msg = "";
+			continue;
+		case KT_K_LEFT:
+			/* The password is NOT cleared: changing which session
+			 * to start is not changing who is starting it, and a
+			 * typed password thrown away by an arrow key is a
+			 * greeter that punishes a second thought. */
+			if (nsessions > 1)
+				ses = (ses + nsessions - 1) % nsessions;
+			continue;
+		case KT_K_RIGHT:
+			if (nsessions > 1)
+				ses = (ses + 1) % nsessions;
 			continue;
 		case KT_K_BACKSPACE:
 			if (n)
@@ -327,7 +354,7 @@ static int greeter(void)
 			 * screen would hand over one it does not own. */
 			ktui_draw_clear();
 			ktui_draw_flush();
-			become(&users[sel]);
+			become(&users[sel], ses);
 			return 1;	/* become() does not return */
 		case 1:
 			msg = "Wrong password.";

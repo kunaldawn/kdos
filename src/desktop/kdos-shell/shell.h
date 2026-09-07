@@ -53,7 +53,8 @@ enum { SH_PRIV_MIC = 0, SH_PRIV_CAM, SH_PRIV_SCR, SH_PRIV_NKIND };
  * MPRIS is the transport for whatever is playing. */
 enum { SH_AP_CLOCK = 0, SH_AP_BATT, SH_AP_VOL, SH_AP_NET, SH_AP_RESTART,
        SH_AP_MIC, SH_AP_CAM, SH_AP_MPRIS, SH_AP_CPU, SH_AP_LAYOUT,
-       SH_AP_CLIP, SH_AP_MEDIA, SH_AP_NOTIFY, SH_AP_STUTTER, SH_AP_MORE,
+       SH_AP_CLIP, SH_AP_MEDIA, SH_AP_NOTIFY, SH_AP_STUTTER,
+       SH_AP_UPDATE, SH_AP_MORE,
        SH_AP_N };
 
 /* One app holding one capture device. `pid` is set for the camera half, which
@@ -291,6 +292,7 @@ int prompt_main(int argc, char **argv);		/* kdos-prompt   */
 
 int notifyd_main(int argc, char **argv);	/* kdos-notifyd  */
 int notify_main(int argc, char **argv);		/* kdos-notify   */
+int mediad_main(int argc, char **argv);		/* kdos-mediad   */
 int osd_main(int argc, char **argv);		/* kdos-osd      */
 int cal_main(int argc, char **argv);		/* kdos-cal      */
 int display_main(int argc, char **argv);	/* kdos-display  */
@@ -298,7 +300,40 @@ int keys_main(int argc, char **argv);		/* kdos-keys     */
 int teams_main(int argc, char **argv);		/* kdos-teams    */
 int saver_main(int argc, char **argv);		/* kdos-saver    */
 int about_main(int argc, char **argv);		/* kdos-about    */
+/* ────────────────────────────────────────────────────────────────────────
+ * kdos-mountd, from the session side
+ *
+ * ONE CLIENT for the three surfaces that ask: the device manager, the media
+ * watcher and the disks window. Three parses of one tab-separated format is
+ * two of them being wrong the day a column is added.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+	/* The DAEMON'S OWN ROW NUMBER, and the only thing ever sent back. This
+	 * side never names a device or a mountpoint, because the protocol has
+	 * no way to say one — and an index is true only of the list it came
+	 * with, so acting on one means having just asked. */
+	int idx;
+	char kname[32];
+	char label[64];
+	char fstype[24];
+	char size[16];
+	char mnt[256];
+} ShMountRow;
+
+int sh_mountd_ask(const char *req, char *out, size_t n);
+int sh_mountd_list(ShMountRow *out, int max, char *why, size_t nwhy);
+/* A verb on one row. 0 when the daemon answered `ok`; `out` carries its
+ * message either way. */
+int sh_mountd_do(int idx, const char *verb, char *out, size_t nout);
+
 int calc_main(int argc, char **argv);		/* kdos-calc     */
+int chars_main(int argc, char **argv);		/* kdos-chars    */
+int disks_main(int argc, char **argv);		/* kdos-disks    */
+int print_main(int argc, char **argv);		/* kdos-print    */
+int timezone_main(int argc, char **argv);	/* kdos-time     */
+int users_main(int argc, char **argv);		/* kdos-users    */
+int update_main(int argc, char **argv);		/* kdos-update   */
 int note_main(int argc, char **argv);		/* kdos-note     */
 int slit_main(int argc, char **argv);		/* kdos-slit     */
 int doc_main(int argc, char **argv);		/* kdos-doc      */

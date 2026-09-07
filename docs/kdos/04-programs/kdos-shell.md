@@ -31,6 +31,11 @@ half of the same mistake.
 | `kdos-bt` | Bluetooth | [The device managers](#the-device-managers) |
 | `kdos-audio` | Audio devices | [The device managers](#the-device-managers) |
 | `kdos-devices` | Cameras, microphones, removable media | [The device managers](#the-device-managers) |
+| `kdos-disks` | Disks: mount, unlock, SMART, partition, erase | [The device managers](#the-device-managers) |
+| `kdos-print` | Printers: what is set up, what is on the network | [The device managers](#the-device-managers) |
+| `kdos-time` | The zone, the clock, and whether the clock is right | [The small surfaces](#the-small-surfaces) |
+| `kdos-users` | The accounts, and which one tty1 logs in | [The small surfaces](#the-small-surfaces) |
+| `kdos-update` | What is behind, what is vulnerable, which slot is live | [The small surfaces](#the-small-surfaces) |
 | `kdos-clip` | Clipboard history | [The small surfaces](#the-small-surfaces) |
 | `kdos-status` | The overflow popup | [The overflow chevron](#the-overflow-chevron) |
 | `kdos-tip` | Tooltips | [Tooltips](#tooltips) |
@@ -47,6 +52,7 @@ half of the same mistake.
 | `kdos-about` | What this machine is | [The small surfaces](#the-small-surfaces) |
 | `kdos-calc` | The calculator | [The small surfaces](#the-small-surfaces) |
 | `kdos-note` | The scratch pad | [The small surfaces](#the-small-surfaces) |
+| `kdos-chars` | The character map | [The small surfaces](#the-small-surfaces) |
 | `kdos-ascii` | A picture, as characters | [The small surfaces](#the-small-surfaces) |
 | `kdos-trash` | What was deleted, and the way back | [kdos-trash](#kdos-trash) |
 | `kdos-peek` | What is in a file, without its application | [kdos-peek](#kdos-peek) |
@@ -1004,7 +1010,39 @@ Per-manager:
   this program too and the descriptor is closed with the frame. It also fronts removable media. Its
   microphone list is `kpr_sound_pcms()` filtered to the PCMs that carry a **capture stream** —
   `kdos-rec` reads the same function, because two surfaces must not give two answers to what a
-  microphone is, and a list built from `/proc/asound/cards` offers an HDMI codec as an input.
+  microphone is, and a list built from `/proc/asound/cards` offers an HDMI codec as an input. Its
+  list **scrolls**, through `ktui_table`: the sections are as long as the machine's devices, so a
+  screen shorter than they are must still be able to reach the tail. The section captions are
+  furniture — every verb here acts on a device, so the selection steps over them rather than
+  landing where nothing would happen.
+- **`kdos-disks`** is the surface for the `kdos-mountd` verbs that were reachable from nothing:
+  `unlock`, `close`, `format` and `smart`. **Every privileged operation is a daemon verb and this
+  program runs as the user** — it opens no block device, forks no `mkfs` and holds no capability;
+  what it does is draw a list the daemon published and send back a row number. A disks window that
+  needed root would be a setuid binary with a text editor's attack surface. **Partitioning is
+  `cfdisk` in a terminal** and is not reimplemented: a partition editor is a program in its own
+  right, `cfdisk` is on the image and is what somebody who partitions disks already knows, and it
+  is pointed at the row's whole DISK — a partition editor aimed at `/dev/sdb1` opens the table
+  inside a filesystem, which it reads as an empty disk and offers to write. **There is no `fsck`**:
+  on a mounted volume it corrupts, on an unmounted one it takes minutes with no progress anybody
+  can read, and a button that started one and could not be stopped would be the most dangerous
+  control on this desktop — the honest place for it is a shell. Erase asks for the device's own
+  name typed, which is the daemon's rule and not this surface's decoration.
+- **`kdos-print`** is `lpstat`, `lpinfo` and `lpadmin`, **not libcups and not IPP**. Those three are
+  on the image, they are what the CUPS documentation tells a person to type, and they are the
+  interface upstream keeps stable; linking libcups would put a second client library and its config
+  parsing in the panel binary to re-derive answers three programs beside it already give. **It runs
+  as the user**, because `/etc/group` grants the desktop user `lpadmin` — the authority CUPS itself
+  defines. That is the difference between printing and mounting: CUPS shipped the privilege split
+  and the kernel did not, so printing needs no daemon of ours in front of it. **`-m everywhere` and
+  nothing else**: IPP Everywhere is what a driverless printer advertises and what CUPS resolves
+  without a PPD, and a driver picker would be a thousand `lpinfo -m` rows to choose from — the
+  dialog that made printing on Linux notorious. A printer needing more than that needs its vendor's
+  tooling, and the surface says so. The `file` and `serial` backends are **dropped from the
+  discovered list**: `lpinfo -v` names every backend CUPS has, and offering one that prints to a
+  file or one that names an empty serial port is offering a queue that will never produce a page.
+  The queue name is derived from the URI rather than asked for, because CUPS refuses a name
+  carrying a space, a slash or a `#` and a device URI is full of all three.
 
 ## The small surfaces
 
@@ -1013,7 +1051,7 @@ Per-manager:
 | `kdos-cal` | The calendar. It grew the two arrows and a Today button every calendar has had for decades — it had the wheel and no sign that it did anything. **It now shows what is on**: a day with an event carries a mark in the column the grid already leaves spare, and today's events are listed under the month. `khal` is asked when the popup opens and when the month changes, **never from the draw path** — a fork there would run once a frame and would put `$PATH`, which nothing fixes for a dump, inside the picture. The strip costs rows only when there is something to put in them, so a machine with no calendar draws the popup it always drew |
 | `kdos-clip` | Clipboard history. The daemon owns the list; this draws it |
 | `kdos-teams` | The window list, and what the panel's overflow cell opens — previously that cell stepped the row by one per click, so reaching the third hidden window took three clicks and three reflows |
-| `kdos-display` | Screens. It grew a button bar, because a pointer could select a screen and then not switch it off or apply anything |
+| `kdos-display` | Screens. It grew a button bar, because a pointer could select a screen and then not switch it off or apply anything. `m` and the Mode button open a **dropdown** of the modes the monitor published: a screen that cannot show the mode being tried is a black screen and a wait for the revert, so the list is read before it is chosen from, never stepped blindly through |
 | `kdos-keys` | The keybinding card, in six sections — launch, window, workspace, tools, media, system. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that, and it looks for the **row shape** rather than the action's name anywhere in the source: `net`, `power` and `settings` are ordinary words that appear there as other strings, and a bare name grep passed for eleven chords the card was in fact dropping. **`--print` writes the same rows to standard output**, two columns at 132 characters, form-fed between pages — for a printer and for a wall. It runs before any display server is opened, so it works over ssh, from a script and on a machine whose session is not up, which is most of the times somebody wants the card on paper. The same rows as the surface draws, because a printed sheet that disagreed with the screen is what a second hand-written table becomes |
 | `kdos-doc` | The documentation viewer |
 | `kdos-openwith` | Choose a handler, and optionally always use it |
@@ -1025,6 +1063,10 @@ Per-manager:
 | `kdos-about` | What this machine is: the KDOS logo beside the version, kernel, libc, userland, session, terminal, grid, CPU, memory, uptime and package count. **Every fact is read, never forked** — `uname`, `/proc`, `/etc/os-release` and the package database are files this process can open, and a screenfetch spawned to render them would draw a second program's colours and ANSI onto a surface that paints in slots, and would make this the one surface with no offscreen dump |
 | `kdos-calc` | The calculator, `Super+Ctrl+q`. **It does not do the arithmetic** — `qalc` does, and the tree already carries `libqalculate`, which parses what a person actually typed: units, hexadecimal, `to`, and precedence that matches a pocket calculator rather than a programming language. **Forked, not linked**: `libqalculate` is C++ and this binary is C and carries thirty-one other surfaces, so linking it would put libstdc++ on the panel package on every image for one accessory. **Once per pause, not once per keystroke** — the evaluation happens when the poll loop goes idle with the input changed, which is a debounce that costs no timer. `Enter` copies the answer, because the answer to "what is three inches in millimetres" is nearly always going somewhere else |
 | `kdos-note` | The scratch pad, `Super+Ctrl+n`: one buffer per user at `~/.local/share/kdos/scratch.txt`, saved on close and every thirty seconds. **It is not an editor and must not grow into one** — `micro` is the editor and `Ctrl+O` opens this same file in it, and every feature past "type a line and find it later" already exists there and is better done there |
+| `kdos-time` | The zone, the clock, and whether the clock is right. **The zone list is `zone1970.tab`, read** — tzdata ships here and carries the canonical list, and the hand-written table this replaced had already gone stale in the installer. **Setting it is a `kdos-powerd` verb**, because `/etc/localtime` and the profile's `TZ` are root's and the person setting a zone is the one administering the machine, which is what `wheel` already means; a setuid helper for one write would be a worse answer to a question that daemon already answers. `chronyc tracking` is **read and never driven** — whether to step the clock, how far and how fast is chrony's decision and a good one, and a "sync now" button would be `chronyc makestep`, the wrong thing to offer beside a clock already being disciplined. After a change the surface calls `tzset()` on itself, or its own clock keeps drawing the zone `TZ` named at the first call |
+| `kdos-users` | The accounts, and the one thing about them this can change. **Split by privilege and it says which side each row is on**: reading `/etc/passwd` and `/etc/group` is anybody's, and creating an account, changing a password and editing group membership are root's — this program does none of them. An `Add user` button that answered "permission denied" would be worse than no button: it would read as a fault in the machine rather than as the boundary it is. `passwd`, `adduser`, `deluser` and `usermod` are on the image and are what a person changing accounts uses; wrapping them would put a root-spawning argument builder in the panel binary to reproduce their prompts and failure modes for a job done once per machine. The one thing it does change is the **autologin**, through `kdos-powerd` — `/etc/kdos/con.conf` is a KDOS file and "is this person administering the machine" is the question that daemon already answers. The list is `kb_users()`, the same call the greeter makes |
+| `kdos-update` | What is behind, what is vulnerable and which slot is live. **It computes nothing**: `kdos update check --json`, `kdos cve --json` and `kdos-bootctl status` already answer these three, and a surface re-deriving any of them would be a second answer that drifts — the version comparison in particular is the packaging system's and is subtle. **It also applies nothing**: `kdos update apply` compiles packages, can take hours and on an A/B machine writes the OTHER slot, so a button behind a one-line status would be a progress bar over an unattended build with no way to see what it was doing; the surface says what to type and shows which slot it will land in. **The security table's age is on the screen beside the count** — a table three months stale reporting nothing to fix is worse than no answer. The JSON is read by a bounded key scan rather than a parser: both producers are in this tree, their shape is fixed, and a JSON library in the panel binary to read two documents it also writes would be a dependency bought for nothing |
+| `kdos-chars` | The character map, `Super+Ctrl+e` — Sidekick's ASCII table with a search box. **The name index is built at BUILD time by a program that links ICU; this binary does not and must not** — ICU is thirty megabytes of library and data, and every one of the thirty-one surfaces this binary is would carry it for one accessory. The index is `mmap`ped and searched in place rather than read: a megabyte of names copied into the heap on every summon is a megabyte of dirty pages per surface instead of one page cache all of them share. **The blob is stored upper case**, so a keystroke folds the query and not forty thousand names. `Enter` copies the CHARACTER — not its name and not its number, which is what a person who wanted `U+2192` would have typed |
 | `kdos-ascii` | A picture, as characters |
 
 **`kdos-status` has a second half worth knowing about.** The hidden-widget list is published **by

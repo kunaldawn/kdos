@@ -2203,6 +2203,109 @@ fi
 # The client says what to do when nothing is listening, rather than failing mute.
 KDOS_POWERD_SOCKET="$OUT/nothing.sock" "$OUT/kdos-power" ping 2>&1 \
     | grep -q "no kdos-powerd" || { echo "  no message for a dead daemon"; exit 1; }
+# ── THE TIMEZONE VERB, AND WHAT IT REFUSES ───────────────────────────────
+#
+# A zone name is `Area/City`, so a SLASH IS LEGAL — which makes
+# `../../etc/shadow` legal-looking, and the character rule is what stops it.
+#
+# Driven through `--set-timezone` rather than over the socket, for the same
+# reason `--explain` exists: the gate is SO_PEERCRED on a connection and cannot
+# be exercised without two uids, so the verb's own rules would otherwise be
+# asserted by nothing. The flag grants nothing — it is the binary writing to an
+# /etc the caller could already write to, and here that /etc is a fixture.
+TZW="$OUT/tzwork"
+rm -rf "$TZW"
+mkdir -p "$TZW/zi/Europe" "$TZW/etc/profile.d"
+: > "$TZW/zi/Europe/London"
+tzset_() {
+    KDOS_POWERD_ZONEDIR="$TZW/zi" KDOS_POWERD_ETC="$TZW/etc" \
+        "$OUT/kdos-powerd" --set-timezone "$1" 2>&1 || true
+}
+tzwant() {  # <zone> <expected substring> <what it proves>
+    _got=$(tzset_ "$1")
+    case "$_got" in
+    *"$2"*) echo "  ok    $3" ;;
+    *) echo "  FAIL  $3"; echo "        sent: $1"; echo "        got:  $_got"
+       tz_fail=1 ;;
+    esac
+}
+tz_fail=0
+tzwant "Europe/London" "ok" "a real zone is taken"
+[ -L "$TZW/etc/localtime" ] \
+    && echo "  ok    and /etc/localtime is a symlink into the zone tree" \
+    || { echo "  FAIL  /etc/localtime was not written"; tz_fail=1; }
+grep -q "TZ=':/etc/localtime'" "$TZW/etc/profile.d/20-timezone.sh" \
+    && echo "  ok    and TZ names the same file rather than a rules string" \
+    || { echo "  FAIL  the profile does not point TZ at /etc/localtime"
+         tz_fail=1; }
+tzwant "../../etc/shadow" "not a zone name" \
+    "a traversal is refused by the character rule, before any stat"
+tzwant "Europe/../../../etc/shadow" "not a zone name" \
+    "and so is one hidden after a legal-looking area"
+tzwant "/etc/shadow" "not a zone name" "an absolute path is not a zone"
+tzwant "Mars/Olympus" "no such zone" \
+    "a well-formed name that is not a zone is refused by the tree"
+# The symlink must still point where the first call put it: a refused verb that
+# had already unlinked it would leave the machine on UTC silently.
+readlink "$TZW/etc/localtime" | grep -q "Europe/London" \
+    && echo "  ok    and a refused verb left the working zone alone" \
+    || { echo "  FAIL  a refusal disturbed /etc/localtime"; tz_fail=1; }
+[ "$tz_fail" = 0 ] || exit 1
+
+# ── THE AUTOLOGIN VERB ────────────────────────────────────────────────────
+#
+# `greet` and `autologin` are ONE setting seen twice: `greet = no` with no
+# autologin logs in whatever the default happens to be, and an autologin under
+# `greet = yes` is a line that does nothing and reads as though it does. Both
+# move together or the machine's login behaviour is not what either line says.
+ALW="$OUT/alwork"
+rm -rf "$ALW"
+mkdir -p "$ALW/kdos"
+cp fs/etc/kdos/con.conf "$ALW/kdos/con.conf"
+alset() {
+    KDOS_POWERD_ETC="$ALW" "$OUT/kdos-powerd" --set-autologin "$1" 2>&1 || true
+}
+al_fail=0
+alwant() {  # <arg> <expected substring> <what it proves>
+    _got=$(alset "$1")
+    case "$_got" in
+    *"$2"*) echo "  ok    $3" ;;
+    *) echo "  FAIL  $3"; echo "        got: $_got"; al_fail=1 ;;
+    esac
+}
+alwant "definitely-not-an-account" "no such account" \
+    "an account no greeter would offer is refused"
+# An account `kb_users()` WOULD list, chosen the way it chooses — uid in
+# [1000, 65534) with a shell that is not a refusal. This picks the daemon's
+# INPUT, it does not re-decide the rule: if the two ever disagreed the daemon
+# would refuse and the assertion below would say so. The suite runs as root in
+# the build container, and root is not an account any greeter offers, so there
+# is frequently no eligible name at all — skipped loudly rather than passed.
+_me=$(awk -F: '$3>=1000 && $3<65534 && $7 !~ /nologin|\/false/ {print $1; exit}' \
+      /etc/passwd)
+if [ -n "$_me" ]; then
+    alwant "$_me" "ok" "a real account is taken"
+    grep -q "^greet = no" "$ALW/kdos/con.conf" \
+        && grep -q "^autologin = $_me" "$ALW/kdos/con.conf" \
+        && echo "  ok    and BOTH keys moved, not just the name" \
+        || { echo "  FAIL  greet and autologin disagree"
+             grep -E "^greet|^autologin" "$ALW/kdos/con.conf"; al_fail=1; }
+    alwant "off" "ok" "and it can be turned off again"
+    grep -q "^greet = yes" "$ALW/kdos/con.conf" \
+        && echo "  ok    which is greet = yes, not an autologin nobody named" \
+        || { echo "  FAIL  turning it off did not restore the greeter"
+             al_fail=1; }
+else
+    echo "  the accept half is skipped (no account this host would offer)"
+fi
+# 149 comment lines in the shipped file: a rewrite that dropped them would
+# leave a config nobody could read, and the loop that keeps them is the same
+# one that must not rewrite a comment MENTIONING greet into a setting.
+[ "$(grep -c '^#' "$ALW/kdos/con.conf")" = "$(grep -c '^#' fs/etc/kdos/con.conf)" ] \
+    && echo "  ok    and every comment in con.conf survived the rewrite" \
+    || { echo "  FAIL  the rewrite lost comments"; al_fail=1; }
+[ "$al_fail" = 0 ] || exit 1
+
 echo "  --explain, the non-root refusal, and the client's message"
 
 echo
@@ -2449,6 +2552,17 @@ sdd2' 'booted from' "and so does format, even with the right name typed"
 # The typed confirmation is the row's own kernel name.
 kmwant 'format 0 vfat 4
 sdc1' 'type sdb1 to confirm' "a format confirmed with another row's name is refused"
+
+# SMART IS THE DISK'S, NOT THE PARTITION'S. `smartctl` is pointed at the whole
+# drive because SMART is a property of the drive: a verb that ran it per
+# partition would print the same answer once per row and, worse, would point
+# a raw-device tool at an offset nothing owns.
+kmwant 'smart 0
+' 'ok' "smart answers for a row"
+grep -q 'exec /usr/sbin/smartctl -H -i -- .*/sdb$' "$OUT/km.exec" \
+    && echo "  ok    and it is aimed at the DISK sdb, not the partition sdb1" \
+    || { echo "  FAIL  smart was not aimed at the whole disk"
+         grep smartctl "$OUT/km.exec"; mountd_fail=1; }
 
 # ── THE ONE VERB THAT KEEPS ITS SOCKET ────────────────────────────────────
 #
@@ -3004,11 +3118,12 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     # dumpmain.c declares every entry point WEAK, so a file that is not on the
     # tree yet is a name it declines rather than a link error.
     # libkchrome is the header band, group headings and button bar the device
-    # surfaces share; fav.c is the favourites store several of them write.
-    # Neither is a front end, so both belong in the base set rather than in the
-    # candidate loop — a surface that uses them would otherwise fail to LINK,
-    # which the harness reports as "the new front ends do not link" and which
-    # reads as a defect in those files.
+    # surfaces share; fav.c is the favourites store several of them write;
+    # mountd.c is the one kdos-mountd client kdos-devices and kdos-disks both
+    # call. None is a front end, so all belong in the base set rather than in
+    # the candidate loop — a surface that uses one would otherwise fail to
+    # LINK, which the harness reports as "the new front ends do not link" and
+    # which reads as a defect in those files.
     # privacy.c is NOT here and must not be: dumpmain.c stubs the whole
     # sh_priv_* API, so compiling the real one in is a multiple definition.
     # A privacy symbol panel.c calls belongs in that stub set.
@@ -3017,6 +3132,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
              src/desktop/kdos-shell/shell.c src/desktop/kdos-shell/apps.c
              src/desktop/kdos-shell/fav.c src/desktop/kdos-shell/cells.c
              src/desktop/kdos-shell/logo.c
+             src/desktop/kdos-shell/mountd.c
              src/libs/libkchrome/kch_chrome.c
              src/libs/libkchrome/kch_tone.c"
     # A new surface may want alsa or an sd-bus; offer them when the host has
@@ -3053,7 +3169,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     DBAD=""
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel trash peek \
-             find pix rec; do
+             find pix rec chars disks print timezone users update; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -3231,6 +3347,11 @@ echo "==> golden frames — the committed cell grid, diffed"
 #   net bt     both need a system bus, and what is ON it — an access point
 #              list, a paired headset — is the machine's, not a fixture's
 #   devices    /dev/video* and /proc/asound are the host's
+#   time       draws a running CLOCK, which is a different frame every second
+#
+# Two more are goldened but need their own environment rather than the loop's,
+# and both are set up below: `disks` is pointed at a mountd socket that is not
+# there, and `print` at recorded `lpstat`/`lpinfo` answers.
 #
 # What is goldened reads its inputs from testing/fixtures/shell: `tree/` for
 # pick, `config/` for the surfaces that parse one (a frozen rc.xml for the
@@ -3270,6 +3391,7 @@ golden() {			# <name> <WxH> <argv…>
           KDOS_PANEL_ROOT="$PWD/panelroot" KDOS_PANEL_NOW=1735689600 ${KDOS_PANEL_DEBUG:+KDOS_PANEL_DEBUG=$KDOS_PANEL_DEBUG} \
           ${KDOS_GOLDEN_CON:+KDOS_CON=$KDOS_GOLDEN_CON} \
           ${KDOS_GOLDEN_MODEL:+KDOS_WHISPER_MODEL=$KDOS_GOLDEN_MODEL} \
+          ${KDOS_GOLDEN_CHARIDX:+KDOS_CHARIDX=$KDOS_GOLDEN_CHARIDX} \
           KDOS_DUMP_SIZE="$_g_size" "$DUMPCK" "$@" ) > "$_g_got"
     if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
         mkdir -p "$GOLD"
@@ -3290,6 +3412,49 @@ golden() {			# <name> <WxH> <argv…>
         golden_fail=1
     fi
 }
+# kdos-disks AND kdos-print EACH NEED THEIR OWN ENVIRONMENT, which is why
+# neither is in the loop above.
+#
+# The disks window draws what kdos-mountd published, and on a host that happens
+# to be running one it would draw that host's sticks. Pointed at a socket that
+# is not there it draws the refusal, which is a real state and the one every
+# machine without the daemon shows.
+#
+# The printers window runs `lpstat` and `lpinfo`, so a machine with CUPS set up
+# and one without draw different frames and neither is wrong. `--fixture` reads
+# recorded answers instead, the same seam kdos-mountd and kdos-energyd use.
+if "$DUMPCK" --have disks; then
+    KDOS_MOUNTD_SOCKET=/nonexistent-kdos-mountd \
+        golden disks 80x24  disks --dump
+    KDOS_MOUNTD_SOCKET=/nonexistent-kdos-mountd \
+        golden disks 56x24  disks --dump
+    KDOS_MOUNTD_SOCKET=/nonexistent-kdos-mountd \
+        golden disks 132x43 disks --dump
+fi
+# kdos-update computes none of its three answers — `kdos update check --json`,
+# `kdos cve --json` and `kdos-bootctl status` do — so its picture depends on
+# the host's ports tree, package database and boot state. All three are pointed
+# at recordings.
+if "$DUMPCK" --have update; then
+    _uf="$PWD/testing/fixtures/update"
+    KDOS_UPDATE_JSON="$_uf/update.json" KDOS_CVE_JSON="$_uf/cve.json" \
+    KDOS_SLOT_TEXT="$_uf/slot.txt" golden update 80x24  update --dump
+    KDOS_UPDATE_JSON="$_uf/update.json" KDOS_CVE_JSON="$_uf/cve.json" \
+    KDOS_SLOT_TEXT="$_uf/slot.txt" golden update 56x24  update --dump
+    KDOS_UPDATE_JSON="$_uf/update.json" KDOS_CVE_JSON="$_uf/cve.json" \
+    KDOS_SLOT_TEXT="$_uf/slot.txt" golden update 132x43 update --dump
+    KDOS_UPDATE_JSON="$_uf/update.json" KDOS_CVE_JSON="$_uf/cve.json" \
+    KDOS_SLOT_TEXT="$_uf/slot.txt" \
+        golden update-security 80x24 update --security --dump
+fi
+if "$DUMPCK" --have print; then
+    _pf="$PWD/testing/fixtures/print"
+    golden print       80x24  print --fixture "$_pf" --dump
+    golden print       56x24  print --fixture "$_pf" --dump
+    golden print       132x43 print --fixture "$_pf" --dump
+    golden print-found 80x24  print --fixture "$_pf" --found --dump
+fi
+
 # kdos-res is its own binary, not a kdos-shell front end, so it renders its
 # own goldens against testing/fixtures/res — a recorded machine, which is what
 # makes a monitor's output deterministic at all. It is built above only where
@@ -3356,10 +3521,13 @@ fi
 #
 KDOS_GOLDEN_CON=/nonexistent-kdos-con \
     golden start-console 80x24 start --dump
+    golden start-console 56x24 start --dump
 
 golden menu-system 80x24  menu system --dump
+golden menu-system 56x24  menu system --dump
 golden menu-system 132x43 menu system --dump
 golden pick        80x24  pick --dir tree --dump
+golden pick       56x24  pick --dir tree --dump
 golden pick        132x43 pick --dir tree --dump
 # THE CONTROL CENTRE'S FRONT DOOR. Two settings goldens were committed and
 # driven by nothing, so a category added to the grid left them describing a
@@ -3367,14 +3535,28 @@ golden pick        132x43 pick --dir tree --dump
 # with the tree only by accident.
 if "$DUMPCK" --have settings; then
     golden settings 80x24  settings --dump
+    golden settings   56x24  settings --dump
     golden settings 132x43 settings --dump
 fi
+# kdos-chars reads a MAPPED index, and the shipped one is six megabytes built
+# from ICU — not something a golden may depend on being present, and not
+# something whose frame anybody could read a diff of. This writes eight entries
+# through the same header the surface reads, so the file format has one
+# definition and a change to it fails here rather than goldening a surface
+# reading its own garbage.
+if $CC $STD $WARN -Isrc/desktop/kdos-shell -o "$OUT/mkfixidx" \
+        testing/fixtures/shell/mkfixidx.c 2>/dev/null &&
+   "$OUT/mkfixidx" "$OUT/charnames.idx"; then
+    KDOS_GOLDEN_CHARIDX="$OUT/charnames.idx"
+fi
+
 # The Phase B surfaces, each only if it linked in. `--have` is dumpmain.c
 # answering for its own weak symbols, so a surface that has not landed is a
 # skip with a name on it rather than a silent gap.
-for _s in keys teams doc settings start notify trash; do
+for _s in keys teams doc settings start notify trash chars; do
     if "$DUMPCK" --have "$_s"; then
         golden "$_s" 80x24  "$_s" --dump
+        golden "$_s" 56x24  "$_s" --dump
         golden "$_s" 132x43 "$_s" --dump
     elif [ -f "$GOLD/$_s-80x24.txt" ]; then
         # A COMMITTED golden that stops being asserted is a test weakening
@@ -3394,6 +3576,7 @@ done
 # the chrome and the fallback the picture leaves in its top-left cell.
 if "$DUMPCK" --have pix; then
     golden pix 80x24  pix pix/one.png --dump
+    golden pix        56x24  pix pix/one.png --dump
     golden pix 132x43 pix pix/one.png --dump
 elif [ -f "$GOLD/pix-80x24.txt" ]; then
     echo "  pix: a golden is committed but the surface no longer links"
@@ -3406,6 +3589,7 @@ fi
 # first, and it is the one that says the field takes typing.
 if "$DUMPCK" --have find; then
     golden find 80x24  find --dump /tmp
+    golden find       56x24  find --dump /tmp
     golden find 132x43 find --dump /tmp
 elif [ -f "$GOLD/find-80x24.txt" ]; then
     echo "  find: a golden is committed but the surface no longer links"
@@ -3428,10 +3612,13 @@ fi
 # list. Without it the input rows would be this host's sound card.
 if "$DUMPCK" --have rec; then
     golden rec        80x24  rec --fixture rec --dump
+    golden rec        56x24  rec --fixture rec --dump
     golden rec        132x43 rec --fixture rec --dump
     KDOS_GOLDEN_MODEL=rec/whisper/ggml-tiny.bin \
         golden rec-model 80x24 rec --fixture rec --dump
+        golden rec-model  56x24 rec --fixture rec --dump
     golden rec-meter  80x24  rec --fixture rec --meter rec/tone.raw --dump
+    golden rec-meter  56x24  rec --fixture rec --meter rec/tone.raw --dump
 
     # The arithmetic, against committed bytes and through the same code the
     # live meter runs. tone.raw is 8 ticks: four at half full scale, four of
@@ -3478,10 +3665,12 @@ fi
 
 if "$DUMPCK" --have peek; then
     golden peek-archive 80x24  peek peek.tar --dump
+    golden peek-archive 56x24  peek peek.tar --dump
     golden peek-archive 132x43 peek peek.tar --dump
     # Text is the OTHER half of the contract: a dump must not fork the pager,
     # so it draws what it would have done instead.
     golden peek-text 80x24 peek panelroot/0/proc/meminfo --dump
+    golden peek-text  56x24 peek panelroot/0/proc/meminfo --dump
 elif [ -f "$GOLD/peek-archive-80x24.txt" ]; then
     echo "  peek: a golden is committed but the surface no longer links"
     golden_fail=1
@@ -3510,10 +3699,12 @@ for _s in launcher tip; do
 done
 if "$DUMPCK" --have launcher; then
     golden launcher 80x24  launcher --dump
+    golden launcher   56x24  launcher --dump
     golden launcher 132x43 launcher --dump
 fi
 if "$DUMPCK" --have tip; then
     golden tip 80x24  tip --dump "Firefox" "left-click opens   middle-click a new window"
+    golden tip        56x24  tip --dump "Firefox" "left-click opens   middle-click a new window"
     golden tip 132x43 tip --dump "Firefox" "left-click opens   middle-click a new window"
 fi
 # The chooser is rendered with the SHELL fixture's XDG variables, which point
@@ -3524,6 +3715,7 @@ fi
 # out.
 if "$DUMPCK" --have openwith; then
     golden openwith 80x24  openwith --dump "$PWD/testing/fixtures/openwith/files/roll.tar.gz"
+    golden openwith   56x24  openwith --dump "$PWD/testing/fixtures/openwith/files/roll.tar.gz"
     golden openwith 132x43 openwith --dump "$PWD/testing/fixtures/openwith/files/roll.tar.gz"
 fi
 
@@ -3535,6 +3727,7 @@ fi
 # everything fits at once.
 if "$DUMPCK" --have shell; then
     golden shell 80x2  shell --dump
+    golden shell      56x2  shell --dump
     golden shell 132x2 shell --dump
 elif [ -f "$GOLD/shell-80x2.txt" ]; then
     echo "  shell: a golden is committed but the surface no longer links"
@@ -3549,6 +3742,7 @@ fi
 # tray item whose menu this desktop cannot draw.
 if "$DUMPCK" --have status; then
     golden status 80x24  status --from status.tbl --dump
+    golden status     56x24  status --from status.tbl --dump
     golden status 132x43 status --from status.tbl --dump
 elif [ -f "$GOLD/status-80x24.txt" ]; then
     echo "  status: a golden is committed but the surface no longer links"
@@ -3741,6 +3935,20 @@ else
     echo "  FAIL  --print does not return before kdisp_init"
     exit 1
 fi
+
+echo "==> the four views draw and step the way their callers rely on"
+#
+# `ktui_tabs`, `ktui_table`, `ktui_dropdown` and `ktui_textarea` are the widgets
+# the panel surfaces were each hand-rolling. A DUMP PROVES A CHARACTER AND
+# NEVER A COLOUR, so what is asserted here is what a cell grid can carry: the
+# abbreviation a narrow strip falls back to, which rows a scrolled table put on
+# the screen, that the selection steps OVER a heading rather than landing on
+# it, and what a text block holds after a split and a join.
+#
+$CC $STD $WARN -o "$OUT/viewcheck" testing/fixtures/view/viewcheck.c \
+    src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkbase/*.c \
+    -Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui
+"$OUT/viewcheck" || exit 1
 
 echo "==> the tone ladder gives the bar a legible middle in every accent"
 #

@@ -395,6 +395,7 @@ const char *con_command(int which)
 		[CON_CMD_CALC]     = { "calculator", "kdos-calc" },
 		[CON_CMD_NOTE]     = { "notes",    "kdos-note" },
 		[CON_CMD_CLIP]     = { "clipboard", "kdos-clip" },
+		[CON_CMD_CHARS]    = { "characters", "kdos-chars" },
 		[CON_CMD_FIND]     = { "find",     "kdos-find" },
 		[CON_CMD_CAPTURE]  = { "capture",  "kdos-shot" },
 		[CON_CMD_VOLUP]    = { "volume_up",   "kdos-osd volume +5" },
@@ -567,7 +568,7 @@ static int rearrange_key(const KtuiEvent *ev)
 		g.y += dy;
 	}
 	w->tiled = 0;
-	w->geom = kwm_fit(g, win_workarea());
+	w->geom = kwm_fit(g, win_workarea(), w->min_w, w->min_h);
 	win_resized(w);
 	ktui_draw_invalidate();
 	return 1;
@@ -1139,7 +1140,7 @@ static void grab_apply(const KtuiEvent *ev)
 	 * snapped one obeying different work-area rules is two answers to one
 	 * question, and the panel's exclusive zone is in that answer.
 	 */
-	w->geom = kwm_fit(g, win_workarea());
+	w->geom = kwm_fit(g, win_workarea(), w->min_w, w->min_h);
 	/* A dragged window is no longer where a tile put it. */
 	w->tiled = 0;
 	win_resized(w);
@@ -1344,6 +1345,12 @@ static void adopt_surfaces(void)
 				 * and a session that ignored it would clip
 				 * every frame after the first.
 				 */
+				/* THE MINIMUM IS RE-READ ON EVERY ATTACH: a
+				 * surface that grew reports the new floor in
+				 * the same message, and a session holding the
+				 * first one would clamp it back. */
+				w->min_w = kcon_surface_min_cols(f);
+				w->min_h = kcon_surface_min_rows(f);
 				if (!w->panel && !w->full &&
 				    (kcon_surface_cols(f) != w->geom.w ||
 				     kcon_surface_rows(f) != w->geom.h)) {
@@ -1402,6 +1409,8 @@ static void adopt_surfaces(void)
 		w->id = ++S.next_id;
 		w->workspace = S.workspace;
 		w->surf = f;
+		w->min_w = kcon_surface_min_cols(f);
+		w->min_h = kcon_surface_min_rows(f);
 		snprintf(w->title, sizeof(w->title), "%s",
 			 kcon_surface_title(f));
 		snprintf(w->app_id, sizeof(w->app_id), "%s",
@@ -2309,7 +2318,7 @@ static int serve(const char *sock, const char *view)
 				} else if (w->tiled) {
 					w->geom = win_tile_rect(w->tiled);
 				} else {
-					w->geom = kwm_fit(w->geom, area);
+					w->geom = kwm_fit(w->geom, area, w->min_w, w->min_h);
 				}
 
 				win_resized(w);

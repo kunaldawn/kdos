@@ -160,6 +160,8 @@ static Bind binds[] = {
 	  KT_MOD_SUPER | KT_MOD_CTRL },
 	{ "clipboard",	CON_ACT_EXEC,	 CON_CMD_CLIP,	   'v',
 	  KT_MOD_SUPER | KT_MOD_CTRL },
+	{ "characters",	CON_ACT_EXEC,	 CON_CMD_CHARS,	   'e',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
 	{ "find",	CON_ACT_EXEC,	 CON_CMD_FIND,	   'f',
 	  KT_MOD_SUPER | KT_MOD_SHIFT },
 

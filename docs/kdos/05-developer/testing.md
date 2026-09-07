@@ -670,19 +670,32 @@ Each is a rule with its consequence:
   keeps the pipe open.
 - **A static screen produces no frame events**, so anything about dropped frames needs something
   animating first.
-- **Surface goldens regenerate in `kdos-devdeps`, with the host's fonts bound in.** The image
-  carries the Wayland dependencies the front-end dumps need but no fonts at all, and `asciicheck`
-  aborts the run before it reaches them — so `fcft: monospace: failed to match font` reads as a
-  libkcell failure when it is a missing mount:
+- **Surface goldens regenerate in `kdos-devdeps`, which carries what they need.** The image has
+  the Wayland dependencies the front-end dumps want, a font, GNU `tar` and `fakeroot`:
 
   ```sh
-  docker run --rm -v /usr/share/fonts:/usr/share/fonts:ro -v "$PWD:/kdos" -w /kdos \
+  docker run --rm -v "$PWD:/kdos" -w /kdos \
       kdos-devdeps:latest sh -c 'fc-cache -f; KDOS_GOLDEN_UPDATE=1 testing/selftest.sh'
   ```
 
-  `os-dev` has the packaging toolchain and no `wayland-client`, so it skips the front-end dumps
-  entirely; neither image runs the whole suite, and `kdos-devdeps` still has no `fakeroot` for the
-  reproducible-build check.
+  **A font and GNU `tar` are not optional in that image, and neither absence looks like itself.**
+  `fcft` resolves `monospace` through fontconfig, so no font at all answers `failed to match font`
+  — which reads as a libkcell failure and stops the run at the first rasteriser block. Busybox's
+  `tar` makes the reproducible-build block answer "the synthetic port did not build", and every
+  front-end golden is gated behind that block, so all of them are skipped in silence. Both are in
+  the Dockerfile for that reason. `os-dev` has the packaging toolchain and no `wayland-client`, so
+  it skips the front-end dumps entirely.
+- **A golden may not depend on what the host happens to have.** Two surfaces would: `kdos-disks`
+  draws what `kdos-mountd` published, and `kdos-print` runs `lpstat` and `lpinfo`. Each is given a
+  fixed input instead — the disks window a socket path that is not there, so it draws the refusal
+  every machine without the daemon shows, and the printers window `--fixture` over recorded
+  `lpstat`/`lpinfo` answers under `testing/fixtures/print`. A machine with CUPS set up and one
+  without draw different frames and neither is wrong, which is what makes the recording the only
+  honest reference.
+- **A shared helper a front end calls belongs in the harness's base source list**, not in the
+  candidate loop: `mountd.c` is the one `kdos-mountd` client `kdos-devices` and `kdos-disks` both
+  use, and leaving it out reports "the new front ends do not link" — which reads as a defect in
+  those files and silently skips every surface golden.
 - **A `--root-cmd` or `--root-script` round trip outlives a five-second toast.** It runs over the
   serial console and waits for a prompt, which takes longer than the notification it raised stays
   on screen, so the shot that follows photographs an empty desktop and the notification path reads

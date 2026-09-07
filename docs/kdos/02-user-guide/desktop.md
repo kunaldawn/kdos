@@ -301,7 +301,9 @@ before acting.
 
 ## Displays
 
-`Super+P` opens `kdos-display`: the outputs, their modes, scale, and which is enabled.
+`Super+P` opens `kdos-display`: the outputs, their modes, scale, and which is enabled. `m` opens
+the list of modes the selected monitor published; Enter takes the highlighted one and Escape leaves
+the screen as it was.
 
 Screens are laid out edge to edge from the left in list order. A vertical arrangement, an overlap
 or a deliberate gap cannot be expressed — that is a deliberate narrowing, since what people

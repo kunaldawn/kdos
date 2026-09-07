@@ -41,8 +41,7 @@
 
 static char buf[NOTE_LINES][NOTE_COLS_MAX];
 static int nlines = 1;
-static int cy, cx;		/* the caret, in lines and columns */
-static int top;			/* the first line drawn */
+static KtuiTextArea ta;
 static int changed;
 
 /* No layers: Esc closes the pad, and the pool answers that with CLOSE. */
@@ -123,14 +122,8 @@ static void draw(void)
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 	ktui_draw_box(krect(0, 0, w, h), "Notes", KT_ACCENT, KT_SURFACE, 1);
 
-	if (cy < top)
-		top = cy;
-	if (cy >= top + rows)
-		top = cy - rows + 1;
-
-	for (int i = 0; i < rows && top + i < nlines; i++)
-		ktui_draw_text(2, 1 + i, w - 4, buf[top + i], KT_TEXT,
-			       KT_SURFACE, KT_A_NONE);
+	ktui_textarea_draw(krect(2, 1, w - 4, rows), &ta, buf[0], nlines,
+			   sizeof(buf[0]), KT_TEXT, KT_SURFACE);
 
 	char stat[32];
 	int sw;
@@ -140,14 +133,13 @@ static void draw(void)
 	 * half is the row's. The row FILLS its rect, so it starts to the right
 	 * of the counter rather than over it.
 	 */
-	snprintf(stat, sizeof(stat), "line %d/%d%s", cy + 1, nlines,
+	snprintf(stat, sizeof(stat), "line %d/%d%s", ta.cy + 1, nlines,
 		 changed ? " *" : "");
 	ktui_draw_text(2, h - 2, w - 4, stat, KT_MID, KT_SURFACE, KT_A_NONE);
 	sw = (int)strlen(stat) + 3;
 	ktui_hint("Ctrl+O", "edit");
 	ktui_hint("Esc", ktui_esc_verb(&keys));
 	ktui_hint_row(&keys, krect(2 + sw, h - 2, w - 4 - sw, 1), KT_SURFACE);
-	ktui_term_caret(2 + cx, 1 + (cy - top));
 }
 
 int note_main(int argc, char **argv)
@@ -222,18 +214,12 @@ int note_main(int argc, char **argv)
 		if (ktui_keys(&keys, &ev) == KTUI_KEY_CLOSE)
 			goto done;
 
-		int len = (int)strlen(buf[cy]);
-
-		if (cx > len)
-			cx = len;
-
-		switch (ev.key) {
-		case 0x0f:		/* Ctrl+O */
+		if (ev.key == 0x0f) {	/* Ctrl+O */
 			/*
-			 * THE EDITOR, ON THE SAME FILE. This surface is a
-			 * scratch pad and stops where an editor starts; the
-			 * pad is saved first so the editor opens what is on
-			 * the screen rather than what was there last time.
+			 * THE EDITOR, ON THE SAME FILE. This surface is a scratch
+			 * pad and stops where an editor starts; the pad is saved
+			 * first so the editor opens what is on the screen rather
+			 * than what was there last time.
 			 */
 			note_save();
 			{
@@ -245,8 +231,8 @@ int note_main(int argc, char **argv)
 				if (note_path(path, sizeof(path))) {
 					/* The terminal follows the desktop —
 					 * sh_term_argv() is the one place that
-					 * decides which one and what identity
-					 * it wears. */
+					 * decides which one and what identity it
+					 * wears. */
 					n = sh_term_argv(av, 0, 8, "micro", id,
 							 sizeof(id));
 					av[n++] = "micro";
@@ -256,79 +242,11 @@ int note_main(int argc, char **argv)
 				}
 			}
 			goto done;
-		case KT_K_ENTER:
-			if (nlines < NOTE_LINES) {
-				memmove(&buf[cy + 2], &buf[cy + 1],
-					sizeof(buf[0]) *
-					(size_t)(nlines - cy - 1));
-				snprintf(buf[cy + 1], NOTE_COLS_MAX, "%s",
-					 buf[cy] + cx);
-				buf[cy][cx] = '\0';
-				nlines++;
-				cy++;
-				cx = 0;
-				changed = 1;
-			}
-			break;
-		case KT_K_BACKSPACE:
-			if (cx > 0) {
-				memmove(buf[cy] + cx - 1, buf[cy] + cx,
-					(size_t)(len - cx) + 1);
-				cx--;
-				changed = 1;
-			} else if (cy > 0) {
-				int plen = (int)strlen(buf[cy - 1]);
-
-				if (plen + len < NOTE_COLS_MAX) {
-					strcat(buf[cy - 1], buf[cy]);
-					memmove(&buf[cy], &buf[cy + 1],
-						sizeof(buf[0]) *
-						(size_t)(nlines - cy - 1));
-					nlines--;
-					cy--;
-					cx = plen;
-					changed = 1;
-				}
-			}
-			break;
-		case KT_K_UP:
-			if (cy > 0)
-				cy--;
-			break;
-		case KT_K_DOWN:
-			if (cy + 1 < nlines)
-				cy++;
-			break;
-		case KT_K_LEFT:
-			if (cx > 0)
-				cx--;
-			else if (cy > 0)
-				cx = (int)strlen(buf[--cy]);
-			break;
-		case KT_K_RIGHT:
-			if (cx < len)
-				cx++;
-			else if (cy + 1 < nlines) {
-				cy++;
-				cx = 0;
-			}
-			break;
-		case KT_K_HOME:
-			cx = 0;
-			break;
-		case KT_K_END:
-			cx = len;
-			break;
-		default:
-			if (ev.key >= 0x20 && ev.key < 0x7f &&
-			    len + 1 < NOTE_COLS_MAX) {
-				memmove(buf[cy] + cx + 1, buf[cy] + cx,
-					(size_t)(len - cx) + 1);
-				buf[cy][cx++] = (char)ev.key;
-				changed = 1;
-			}
-			break;
 		}
+
+		if (ktui_textarea_key(&ta, buf[0], &nlines, NOTE_LINES,
+				      sizeof(buf[0]), ev.key))
+			changed = 1;
 	}
 done:
 	note_save();

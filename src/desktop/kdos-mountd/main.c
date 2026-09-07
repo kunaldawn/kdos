@@ -537,6 +537,70 @@ static bool km_disk_is_boot(const char *disk)
 	return boot;
 }
 
+/*
+ * THE MAPPER NAME IS THE DAEMON'S, never the client's. `kdos-<kname>` is
+ * derived from the row, so a client cannot ask for a mapping named anything
+ * else — and `close` finds the same name from the same row without being told
+ * it.
+ */
+static void km_mapname(const struct kmdev *d, char *out, size_t n)
+{
+	snprintf(out, n, "kdos-%s", d->kname);
+}
+
+/*
+ * THE MAPPER AN `unlock` OPENED, listed beside the container it came from.
+ *
+ * WITHOUT THIS AN UNLOCK IS A DEAD END: the container's row goes on saying
+ * `crypto_LUKS`, nothing on the list can be mounted, and the filesystem inside
+ * — the only reason anybody unlocked it — is reachable from no verb at all.
+ *
+ * FOUND BY THE NAME THIS DAEMON ITSELF CHOSE, not by walking `/sys/block/dm-*`
+ * and its slaves. `km_mapname()` is the one place the name is decided, so a
+ * mapper this daemon did not open is not this daemon's to offer — which is
+ * exactly the right answer for somebody's own `cryptsetup open` of a root
+ * volume.
+ *
+ * IT CARRIES THE CONTAINER'S `disk`, so every destructive verb is still
+ * refused by the physical drive: a format aimed at a mapper on the boot medium
+ * must fail for the same reason as one aimed at its ESP.
+ */
+static void add_mapper(const struct kmdev *src)
+{
+	char map[64], node[512];
+
+	if (ndev >= KM_DEVS || strcmp(src->fstype, "crypto_LUKS"))
+		return;
+	km_mapname(src, map, sizeof(map));
+	snprintf(node, sizeof(node), "%s/mapper/%s", devroot(), map);
+
+	/*
+	 * A NAME THAT WOULD NOT FIT IS NOT OFFERED AT ALL. Every verb
+	 * re-derives its device from these two fields, so a truncated one
+	 * addresses something that is not the row it is written on — and a
+	 * truncation a copy cannot report is exactly the shape of the bug
+	 * that dropped a stick with no error anywhere.
+	 */
+	if (strlen(map) >= sizeof(devs[0].kname) ||
+	    strlen(node) >= sizeof(devs[0].node))
+		return;
+	if (access(node, F_OK) != 0)
+		return;		/* locked, which is the usual state */
+
+	struct kmdev *d = &devs[ndev];
+
+	memset(d, 0, sizeof(*d));
+	memcpy(d->kname, map, strlen(map) + 1);
+	memcpy(d->node, node, strlen(node) + 1);
+	snprintf(d->disk, sizeof(d->disk), "%s", src->disk);
+	d->bytes = src->bytes;
+	probe_fs(d->node, d->label, sizeof(d->label), d->fstype,
+		 sizeof(d->fstype));
+	find_mount(d->node, d->mnt, sizeof(d->mnt));
+	if (d->fstype[0])
+		ndev++;
+}
+
 static void scan(void)
 {
 	char path[512];
@@ -594,6 +658,7 @@ static void scan(void)
 			    !in_fstab(d->node, d->label)) {
 				ndev++;
 				added++;
+				add_mapper(&devs[ndev - 1]);
 			}
 		}
 		kb_strv_free(parts);
@@ -614,8 +679,10 @@ static void scan(void)
 				 sizeof(d->fstype));
 			find_mount(d->node, d->mnt, sizeof(d->mnt));
 			if (d->fstype[0] && !is_boot_medium(d->node, d->fstype) &&
-			    !in_fstab(d->node, d->label))
+			    !in_fstab(d->node, d->label)) {
 				ndev++;
+				add_mapper(&devs[ndev - 1]);
+			}
 		}
 	}
 	kb_strv_free(disks);
@@ -946,16 +1013,6 @@ static int do_eject(int idx, char *out, size_t nout)
 	return 0;
 }
 
-/*
- * THE MAPPER NAME IS THE DAEMON'S, never the client's. `kdos-<kname>` is
- * derived from the row, so a client cannot ask for a mapping named anything
- * else — and `close` finds the same name from the same row without being told
- * it.
- */
-static void km_mapname(const struct kmdev *d, char *out, size_t n)
-{
-	snprintf(out, n, "kdos-%s", d->kname);
-}
 
 static int do_unlock(int idx, const char *pass, size_t npass, char *out,
 		     size_t nout)
@@ -1023,6 +1080,87 @@ static int do_close(int idx, char *out, size_t nout)
 		return -1;
 	}
 	snprintf(out, nout, "%s", map);
+	return 0;
+}
+
+/*
+ * SMART, WHICH IS A READ AND STILL BELONGS HERE.
+ *
+ * `smartctl` needs the raw block device, which nothing in a session may open —
+ * so the alternative to a verb is a setuid binary or a sudo rule, and both are
+ * a wider hole than one privileged daemon answering one question. It reports
+ * the DISK's health rather than the partition's: SMART is a property of the
+ * drive, and a row per partition would print the same answer four times.
+ *
+ * ITS OUTPUT IS CAPTURED AND FILTERED, never forwarded whole. `smartctl -a` is
+ * two hundred lines of vendor attributes; what a person opening a disks window
+ * wants is whether the drive says it is failing, and the model and serial that
+ * say WHICH drive that is.
+ */
+static int do_smart(int idx, char *out, size_t nout)
+{
+	struct kmdev *d;
+	char node[256], cap[4096];
+	KbArgv a = { 0 };
+
+	if (idx < 0 || idx >= ndev) {
+		snprintf(out, nout, "no such device");
+		return -1;
+	}
+	d = &devs[idx];
+	snprintf(node, sizeof(node), "%s/%s", devroot(), d->disk);
+
+	kb_argv_add(&a, "/usr/sbin/smartctl");
+	kb_argv_add(&a, "-H");
+	kb_argv_add(&a, "-i");
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, node);
+	kb_argv_end(&a);
+
+	if (km_fixture) {
+		/* The fixture proves the argv, like every other verb: there is
+		 * no drive behind it to answer. */
+		km_exec(&a, NULL, 0);
+		snprintf(out, nout, "PASSED");
+		return 0;
+	}
+	/*
+	 * THE EXIT STATUS IS A BITFIELD AND NOT A FAILURE. `smartctl` sets
+	 * bit 0 for a command-line error, bit 1 for a device it could not open
+	 * and bits 3-7 for a drive that is unwell — so a non-zero status is
+	 * frequently the answer rather than the absence of one. Only an empty
+	 * capture means nothing was learnt.
+	 */
+	kb_run_capture(&a, cap, sizeof(cap));
+	if (!cap[0]) {
+		snprintf(out, nout, "smartctl said nothing about %s", d->disk);
+		return -1;
+	}
+
+	/* Model, serial and the health line, in that order, tab-separated —
+	 * three fields a surface draws rather than a page it must parse. */
+	char model[96] = "-", serial[64] = "-", health[64] = "-";
+	char *save = NULL;
+
+	for (char *ln = strtok_r(cap, "\n", &save); ln;
+	     ln = strtok_r(NULL, "\n", &save)) {
+		const char *v = strchr(ln, ':');
+
+		if (!v)
+			continue;
+		v++;
+		while (*v == ' ' || *v == '\t')
+			v++;
+		if (!strncmp(ln, "Device Model", 12) ||
+		    !strncmp(ln, "Model Number", 12))
+			snprintf(model, sizeof(model), "%s", v);
+		else if (!strncmp(ln, "Serial Number", 13))
+			snprintf(serial, sizeof(serial), "%s", v);
+		else if (strstr(ln, "overall-health") ||
+			 strstr(ln, "SMART Health Status"))
+			snprintf(health, sizeof(health), "%s", v);
+	}
+	snprintf(out, nout, "%s\t%s\t%s", model, serial, health);
 	return 0;
 }
 
@@ -1400,6 +1538,13 @@ static int serve(void)
 			else
 				dprintf(c, "err %s\n",
 					msg[0] ? msg : "no such device");
+		} else if (ntok == 2 && !strcmp(verb, "smart")) {
+			idx = km_index(tok[1]);
+			if (idx >= 0 && do_smart(idx, msg, sizeof(msg)) == 0)
+				dprintf(c, "ok %s\n", msg);
+			else
+				dprintf(c, "err %s\n",
+					msg[0] ? msg : "no such device");
 		} else if (ntok == 2 && !strcmp(verb, "close")) {
 			idx = km_index(tok[1]);
 			if (idx >= 0 && do_close(idx, msg, sizeof(msg)) == 0)
@@ -1512,6 +1657,7 @@ static int usage(void)
 		"usage: kdos-mount list\n"
 		"       kdos-mount mount <index>\n"
 		"       kdos-mount unmount <index>\n"
+		"       kdos-mount smart <index>\n"
 		"       kdos-mount ping\n"
 		"       kdos-mount subscribe\n"
 		"\nThe index is a row from `list`. There is no form that takes\n"
@@ -1581,8 +1727,8 @@ int main(int argc, char **argv)
 	if (!strcmp(argv[1], "list") || !strcmp(argv[1], "ping") ||
 	    !strcmp(argv[1], "subscribe"))
 		return ask(argv[1]);
-	if ((!strcmp(argv[1], "mount") || !strcmp(argv[1], "unmount")) &&
-	    argc > 2) {
+	if ((!strcmp(argv[1], "mount") || !strcmp(argv[1], "unmount") ||
+	     !strcmp(argv[1], "smart")) && argc > 2) {
 		char word[64];
 		/* The index is re-rendered as a NUMBER rather than passed
 		 * through: whatever argv holds, what reaches the daemon is an

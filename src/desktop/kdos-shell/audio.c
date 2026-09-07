@@ -1291,6 +1291,12 @@ int audio_main(int argc, char **argv)
 		 * empty titlebar, which is a frame that says nothing. */
 		.title = "Sound",
 		.app_id = "kdos-audio",
+		/* The numbers this surface's own too-small check uses: one
+		 * answer to the smallest grid it can compose on, told to the
+		 * session that decides the size rather than only found out
+		 * after it has decided. */
+		.min_cols = 40,
+		.min_rows = 12,
 		.font = font,
 		.keyboard = 1,
 		/* The window stays: people click back to whatever is playing

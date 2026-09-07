@@ -117,6 +117,14 @@ and has no decoration to negotiate.
 **Ask for a size that leaves the frame somewhere to go**, and treat it as a default rather than a
 demand — the compositor's first configure carries the size it wants, and that wins.
 
+**And say the smallest grid you can compose on, in `.min_cols`/`.min_rows`.** It travels with the
+attach and the console session honours it: a window given fewer cells than it needs is one that
+draws nothing at all, leaving the cells under it carrying the last program's picture. Told the
+minimum, the session hands the window that size and lets it hang off the edge. Zero is no minimum,
+which is right for anything that reflows to whatever it is given. It is not a licence to drop the
+surface's own `ktui_toosmall` check — a Wayland compositor is told the same numbers and may ignore
+them.
+
 ### Bind the layer shell at the right version
 
 **On-demand keyboard interactivity is a later-version request.** An older resource answers it with

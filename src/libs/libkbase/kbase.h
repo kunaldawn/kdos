@@ -325,6 +325,29 @@ void kb_run_detach(const KbArgv *a);
  * one place: two copies of a security decision eventually disagree. */
 int kb_user_in_group(const char *user, gid_t primary, const char *group);
 
+/*
+ * THE HUMAN ACCOUNTS ON THIS MACHINE, in /etc/passwd order.
+ *
+ * uid >= 1000 and a shell that is not a refusal — the two tests every login
+ * screen makes, and why `nobody` and the service accounts are not offered.
+ * One answer, because two would disagree and the disagreement would be
+ * invisible: a greeter offering an account the user manager does not list
+ * looks like a bug in whichever one was opened second.
+ *
+ * `gecos` is the FIRST field of the GECOS record only. The rest of it is an
+ * office number and a phone extension, and neither belongs on a login screen.
+ */
+typedef struct {
+	char name[64];
+	char gecos[64];
+	char home[128];
+	char shell[64];
+	uid_t uid;
+	gid_t gid;
+} KbUser;
+
+int kb_users(KbUser *out, int max);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Time
  * ──────────────────────────────────────────────────────────────────────── */

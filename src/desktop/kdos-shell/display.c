@@ -813,6 +813,59 @@ static void mode_label(const struct head *h, char *out, size_t n)
 		 m->preferred ? "*" : "");
 }
 
+static int preferred_mode(const struct head *h)
+{
+	for (int i = 0; i < h->nmodes; i++)
+		if (h->modes[i].preferred)
+			return i;
+	return 0;
+}
+
+/*
+ * THE MODE LIST IS A DROPDOWN, not a cycle. A screen's modes are a list the
+ * monitor published and a person has to READ to choose from — stepping
+ * blindly through it means pressing a key until the picture looks right, and
+ * on a screen that cannot show the mode being tried that is a black screen
+ * and a wait for the revert.
+ */
+static KtuiDrop mode_drop;
+static char mode_opt[MAX_MODES][40];
+static const char *mode_optv[MAX_MODES];
+
+static int mode_options(const struct head *h)
+{
+	int n = 0;
+
+	if (!h)
+		return 0;
+	for (; n < h->nmodes && n < MAX_MODES; n++) {
+		const struct mode *m = &h->modes[n];
+
+		snprintf(mode_opt[n], sizeof(mode_opt[n]), "%dx%d@%d%s", m->w,
+			 m->h, (m->refresh + 500) / 1000,
+			 m->preferred ? "  (preferred)" : "");
+		mode_optv[n] = mode_opt[n];
+	}
+	return n;
+}
+
+/* The row the open list hangs under: the selected screen's, at the mode
+ * field, so the list appears where the value it replaces is written. */
+static KRect mode_rect(void)
+{
+	return krect(14, 1 + sel, 24, 1);
+}
+
+static void mode_open(struct head *h)
+{
+	if (!h || h->nmodes < 1)
+		return;
+	mode_options(h);
+	mode_drop.sel = h->cur_mode >= 0 ? h->cur_mode : preferred_mode(h);
+	mode_drop.hi = mode_drop.sel;
+	mode_drop.open = 1;
+}
+
 static void draw(void)
 {
 	int w = ktui_w, h = ktui_h;
@@ -900,31 +953,16 @@ static void draw(void)
 	ktui_hint_if(confirm_deadline == 0.0 && nheads > 1, "[/]", "order");
 	ktui_hint("Esc", ktui_esc_verb(&keys));
 	ktui_hint_row(&keys, krect(2, h - 3, w - 4, 1), KT_SURFACE);
+
+	/* LAST, over everything: the list is drawn on top of the rows it
+	 * covers, so anything drawn after it would paint through it. */
+	if (mode_drop.open && sel >= 0 && sel < nheads)
+		ktui_dropdown_draw_open(mode_rect(), &mode_drop, mode_optv,
+					mode_options(&heads[order[sel]]));
 	ktui_draw_flush();
 }
 
 /* ── the plan, as keys ─────────────────────────────────────────────────── */
-
-static int preferred_mode(const struct head *h)
-{
-	for (int i = 0; i < h->nmodes; i++)
-		if (h->modes[i].preferred)
-			return i;
-	return 0;
-}
-
-static void cycle_mode(struct head *h, int dir)
-{
-	if (h->nmodes < 1)
-		return;
-	/* From `auto`, the first press lands on the preferred mode — the one
-	 * the monitor itself advertises — not on whatever slot came first. */
-	if (h->cur_mode < 0) {
-		h->cur_mode = preferred_mode(h);
-		return;
-	}
-	h->cur_mode = (h->cur_mode + dir + h->nmodes) % h->nmodes;
-}
 
 static void cycle_scale(struct head *h)
 {
@@ -1147,6 +1185,31 @@ int display_main(int argc, char **argv)
 			continue;
 		}
 
+		/*
+		 * THE OPEN LIST TAKES EVERY EVENT, above the surface's own
+		 * keys and above the button bar. A list drawn over the rows
+		 * that a key underneath still answered would move the
+		 * selection out from under the list a person is reading.
+		 */
+		if (mode_drop.open) {
+			struct head *dh = (sel >= 0 && sel < nheads)
+						  ? &heads[order[sel]]
+						  : NULL;
+			int n = mode_options(dh);
+
+			if (ev.type == KT_EVT_KEY) {
+				if (ktui_dropdown_key(&mode_drop, n, ev.key) &&
+				    dh)
+					dh->cur_mode = mode_drop.sel;
+			} else if (ev.type == KT_EVT_MOUSE &&
+				   ev.press == KT_MP_PRESS) {
+				if (ktui_dropdown_hit(mode_rect(), &mode_drop,
+						      n, ev.mx, ev.my) && dh)
+					dh->cur_mode = mode_drop.sel;
+			}
+			continue;
+		}
+
 		if (ev.type == KT_EVT_MOUSE) {
 			if (ev.press == KT_MP_DRAG) {
 				/* The button bar lights under the pointer. The
@@ -1194,8 +1257,7 @@ int display_main(int argc, char **argv)
 					toggle_enabled(hh);
 					break;
 				case DB_MODE:
-					if (hh)
-						cycle_mode(hh, 1);
+					mode_open(hh);
 					break;
 				case DB_SCALE:
 					if (hh)
@@ -1236,12 +1298,8 @@ int display_main(int argc, char **argv)
 			toggle_enabled(h);
 			break;
 		case 'm':
-			if (h)
-				cycle_mode(h, 1);
-			break;
 		case 'M':
-			if (h)
-				cycle_mode(h, -1);
+			mode_open(h);
 			break;
 		case 's':
 			if (h)

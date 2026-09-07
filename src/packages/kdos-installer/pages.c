@@ -354,83 +354,63 @@ static Page page_keyboard = {
  * 3 · TIME
  * ════════════════════════════════════════════════════════════════════════ */
 
-/* KDOS ships no tzdata — there is no /usr/share/zoneinfo to walk. musl reads
- * a POSIX TZ string straight out of the environment, DST rules and all, so
- * that is what the installer writes. Each row carries both: the label is what
- * a person recognises, the string is what libc actually needs. */
-static const struct {
-	const char *label;
-	const char *tz;
-} zones[] = {
-	{ "UTC", "UTC0" },
-	{ "Atlantic/Reykjavik", "GMT0" },
-	{ "Europe/London", "GMT0BST,M3.5.0/1,M10.5.0" },
-	{ "Europe/Dublin", "GMT0IST,M3.5.0/1,M10.5.0" },
-	{ "Europe/Lisbon", "WET0WEST,M3.5.0/1,M10.5.0" },
-	{ "Europe/Paris", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Berlin", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Madrid", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Rome", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Amsterdam", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Brussels", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Vienna", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Zurich", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Prague", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Warsaw", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Budapest", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Stockholm", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Oslo", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Copenhagen", "CET-1CEST,M3.5.0,M10.5.0/3" },
-	{ "Europe/Athens", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-	{ "Europe/Helsinki", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-	{ "Europe/Bucharest", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-	{ "Europe/Kyiv", "EET-2EEST,M3.5.0/3,M10.5.0/4" },
-	{ "Europe/Istanbul", "<+03>-3" },
-	{ "Europe/Moscow", "MSK-3" },
-	{ "Africa/Lagos", "WAT-1" },
-	{ "Africa/Cairo", "EET-2EEST,M4.5.5/0,M10.5.4/24" },
-	{ "Africa/Johannesburg", "SAST-2" },
-	{ "Africa/Nairobi", "EAT-3" },
-	{ "Asia/Jerusalem", "IST-2IDT,M3.4.4/26,M10.5.0" },
-	{ "Asia/Dubai", "<+04>-4" },
-	{ "Asia/Karachi", "PKT-5" },
-	{ "Asia/Tashkent", "<+05>-5" },
-	{ "Asia/Kolkata", "IST-5:30" },
-	{ "Asia/Kathmandu", "<+0545>-5:45" },
-	{ "Asia/Dhaka", "<+06>-6" },
-	{ "Asia/Bangkok", "<+07>-7" },
-	{ "Asia/Jakarta", "WIB-7" },
-	{ "Asia/Shanghai", "CST-8" },
-	{ "Asia/Hong_Kong", "HKT-8" },
-	{ "Asia/Singapore", "<+08>-8" },
-	{ "Asia/Taipei", "CST-8" },
-	{ "Asia/Seoul", "KST-9" },
-	{ "Asia/Tokyo", "JST-9" },
-	{ "Australia/Perth", "AWST-8" },
-	{ "Australia/Adelaide", "ACST-9:30ACDT,M10.1.0,M4.1.0/3" },
-	{ "Australia/Brisbane", "AEST-10" },
-	{ "Australia/Sydney", "AEST-10AEDT,M10.1.0,M4.1.0/3" },
-	{ "Pacific/Auckland", "NZST-12NZDT,M9.5.0,M4.1.0/3" },
-	{ "Pacific/Honolulu", "HST10" },
-	{ "America/Anchorage", "AKST9AKDT,M3.2.0,M11.1.0" },
-	{ "America/Los_Angeles", "PST8PDT,M3.2.0,M11.1.0" },
-	{ "America/Phoenix", "MST7" },
-	{ "America/Denver", "MST7MDT,M3.2.0,M11.1.0" },
-	{ "America/Chicago", "CST6CDT,M3.2.0,M11.1.0" },
-	{ "America/Mexico_City", "CST6" },
-	{ "America/New_York", "EST5EDT,M3.2.0,M11.1.0" },
-	{ "America/Toronto", "EST5EDT,M3.2.0,M11.1.0" },
-	{ "America/Halifax", "AST4ADT,M3.2.0,M11.1.0" },
-	{ "America/St_Johns", "NST3:30NDT,M3.2.0,M11.1.0" },
-	{ "America/Bogota", "<-05>5" },
-	{ "America/Lima", "<-05>5" },
-	{ "America/Santiago", "<-04>4<-03>,M9.1.6/24,M4.1.6/24" },
-	{ "America/Sao_Paulo", "<-03>3" },
-	{ "America/Argentina/Buenos_Aires", "<-03>3" },
-};
+/*
+ * THE ZONE LIST IS READ FROM `zone1970.tab`, which tzdata ships here.
+ *
+ * A hand-written table of labels and POSIX TZ strings went stale the first
+ * time a country changed its rules, and it cannot be right for long: the
+ * canonical list is maintained upstream and is on the image already. `TZ` is
+ * written as `:/etc/localtime` rather than as a rules string, because musl
+ * reads a zone FILE when the value starts with a colon — so the two halves of
+ * the setting, the symlink and the environment, cannot disagree about the
+ * rules for a zone.
+ */
+#define TZ_MAX_ZONES 800
 
-static const int nzones = (int)(sizeof(zones) / sizeof(zones[0]));
-static int tzidx[128], ntzidx;
+static struct {
+	char label[64];
+	char cc[40];		/* the country-code column, as it stands */
+} zones[TZ_MAX_ZONES];
+static int nzones;
+
+static const char *tz_dir(void)
+{
+	const char *d = getenv("KDOS_ZONEINFO");
+
+	return d && *d ? d : "/usr/share/zoneinfo";
+}
+
+static void tz_load(void)
+{
+	char path[512], line[512];
+	FILE *f;
+
+	nzones = 0;
+	snprintf(path, sizeof(path), "%s/zone1970.tab", tz_dir());
+	f = fopen(path, "r");
+	if (f) {
+		while (nzones < TZ_MAX_ZONES && fgets(line, sizeof(line), f)) {
+			if (line[0] == '#')
+				continue;
+			/* `codes<TAB>coords<TAB>name[<TAB>comment]` */
+			if (sscanf(line, "%39[^\t]\t%*[^\t]\t%63[^\t\n]",
+				   zones[nzones].cc,
+				   zones[nzones].label) != 2)
+				continue;
+			nzones++;
+		}
+		fclose(f);
+	}
+	/* An image with no zoneinfo tree still has to offer something, and UTC
+	 * is the one zone that needs no data to be right. */
+	if (!nzones) {
+		kb_strlcpy(zones[0].label, "UTC", sizeof(zones[0].label));
+		kb_strlcpy(zones[0].cc, "--", sizeof(zones[0].cc));
+		nzones = 1;
+	}
+}
+
+static int tzidx[TZ_MAX_ZONES], ntzidx;
 static char tzfilter[32];
 static KtuiList tzlist;
 
@@ -467,6 +447,8 @@ static void tz_row(int idx, int x, int y, int w, int selected, int focus, void *
 
 static void time_enter(void)
 {
+	if (!nzones)
+		tz_load();
 	tz_filter();
 	for (int i = 0; i < ntzidx; i++)
 		if (!strcmp(zones[tzidx[i]].label, cfg.tz_label))
@@ -501,8 +483,9 @@ static void time_draw(KRect b)
 	if (tzlist.sel < ntzidx) {
 		int z = tzidx[tzlist.sel];
 		if (ktui_focused(lid)) {
-			kb_strlcpy(cfg.tz_label, zones[z].label, sizeof(cfg.tz_label));
-			kb_strlcpy(cfg.tz, zones[z].tz, sizeof(cfg.tz));
+			kb_strlcpy(cfg.tz_label, zones[z].label,
+				   sizeof(cfg.tz_label));
+			kb_strlcpy(cfg.tz, ":/etc/localtime", sizeof(cfg.tz));
 		}
 	}
 
@@ -517,7 +500,13 @@ static void time_draw(KRect b)
 		ktui_kv(rx, ry++, rw, "TZ string", cfg.tz, KT_TEXT);
 		ry++;
 
-		setenv("TZ", cfg.tz, 1);
+		/* The PREVIEW reads the zone file directly: `cfg.tz` names
+		 * `/etc/localtime` on the target, which does not exist yet and
+		 * would preview this machine's own zone for every row. */
+		char pv[320];
+
+		snprintf(pv, sizeof(pv), ":%s/%s", tz_dir(), cfg.tz_label);
+		setenv("TZ", pv, 1);
 		tzset();
 		time_t t = time(NULL);
 		struct tm tm;

@@ -575,6 +575,7 @@ static int con_section(const char *act, const char **desc)
 		{ "calculator",	"a calculator that reads units",	SEC_TOOLS },
 		{ "notes",	"the scratch pad",		SEC_TOOLS },
 		{ "clipboard",	"what has been copied",		SEC_TOOLS },
+		{ "characters",	"any character, by its name",	SEC_TOOLS },
 		{ "lock",	"kdos-lock",		SEC_SYSTEM },
 		{ "saver",	"kdos-saver",		SEC_SYSTEM },
 		{ "quit",	"end the session",	SEC_SYSTEM },

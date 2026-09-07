@@ -38,6 +38,9 @@ struct KconSurface {
 	/* An overlay's requested corner and its margins from the two edges
 	 * that corner names, in cells. See kcon_surface_corner(). */
 	int corner, margin_x, margin_y;
+	/* The smallest grid this surface can compose on. See
+	 * kcon_surface_min_cols(). */
+	int min_cols, min_rows;
 	int hidden;
 
 	char app_id[128];
@@ -336,6 +339,8 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		f->corner = (int)kcon_get_u16(&r);
 		f->margin_x = (int)kcon_get_u16(&r);
 		f->margin_y = (int)kcon_get_u16(&r);
+		f->min_cols = (int)kcon_get_u16(&r);
+		f->min_rows = (int)kcon_get_u16(&r);
 
 		/*
 		 * A SIZE OF ZERO IS A QUESTION, AND ONLY WHERE THE SESSION
@@ -1177,6 +1182,8 @@ int kcon_surface_exclusive(const KconSurface *f) { return f ? f->exclusive : 0; 
 int kcon_surface_corner(const KconSurface *f) { return f ? f->corner : 0; }
 int kcon_surface_margin_x(const KconSurface *f) { return f ? f->margin_x : 0; }
 int kcon_surface_margin_y(const KconSurface *f) { return f ? f->margin_y : 0; }
+int kcon_surface_min_cols(const KconSurface *f) { return f ? f->min_cols : 0; }
+int kcon_surface_min_rows(const KconSurface *f) { return f ? f->min_rows : 0; }
 const KtuiCell *kcon_surface_cells(const KconSurface *f) { return f ? f->cells : NULL; }
 
 void kcon_surface_configure(KconSurface *f, int cols, int rows)

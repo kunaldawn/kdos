@@ -73,7 +73,7 @@ Read by the panel, and re-read on the same signal a theme change sends — so th
 
 | Key | Default | Means |
 |---|---|---|
-| `right` | `pager tray more media privacy mpris clipboard cpu stutter restart net volume battery notify clock` | The notification-area widgets, **in order** |
+| `right` | `pager tray more media privacy mpris clipboard cpu stutter update restart net volume battery notify clock` | The notification-area widgets, **in order** |
 | `overflow` | `stutter restart clipboard` | Which of them live behind the chevron |
 | `meters` | `cpu ram net` | Which meters, **in order of importance** — a narrow bar drops them from the right |
 | `task_labels` | `auto` | `auto`, `yes` or `no`: the ladder, always, or never |
@@ -82,6 +82,13 @@ Read by the panel, and re-read on the same signal a theme change sends — so th
 | `icons` | `yes` | Whether pictures are drawn |
 
 Available meters: `cpu`, `ram`, `disk`, `net`, `diskio`.
+
+**The `update` widget reads a FILE and never computes.** `kdos update check` walks the ports tree
+against the package database — hundreds of file reads, and nothing the panel may do on a tick,
+where the rule is that nothing blocks the frame. The count comes from
+`$XDG_STATE_HOME/kdos/update.json`, which `kdos update check --json` writes; **absent is zero** and
+the badge is simply not there, which is the honest picture of a machine nobody has checked. It is
+re-read at most once a minute, because it changes at most as often as whatever refreshes it.
 
 **An unknown widget name is reported, not ignored.** The loader restores every default before
 parsing, because it runs again on reload and a reload that only ever *added* would leave a widget
@@ -318,6 +325,7 @@ The same rule holds for `keys.conf`.
 | `calculator` | `kdos-calc` | What `Super+Ctrl+q` starts |
 | `notes` | `kdos-note` | What `Super+Ctrl+n` starts |
 | `clipboard` | `kdos-clip` | What `Super+Ctrl+v` starts |
+| `characters` | `kdos-chars` | What `Super+Ctrl+e` starts |
 | `find` | `kdos-find` | What `Super+Shift+f` starts |
 | `capture` | `kdos-shot` | What `Super+Shift+p` hands the marked rectangle to |
 | `nowplaying` | `yes` | Whether `kdos-con`'s own bar shows what is playing, left of the pager. `kdos-shell`'s panel reads the same file through its `mpris` widget and this key does not reach it |
@@ -390,12 +398,12 @@ Changing a default in one file changes it in the other.
 | `devices` | `Super+F6` | `power` | `Super+Ctrl+p` |
 | `monitor` | `Super+Ctrl+t` | `calculator` | `Super+Ctrl+q` |
 | `notes` | `Super+Ctrl+n` | `clipboard` | `Super+Ctrl+v` |
-| `tile` | `Super+Shift+t` | `tile-fkey` | `Super+F8` |
-| `cascade` | `Super+Alt+t` | `rearrange` | `Super+r` |
-| `rearrange-fkey` | `Super+F9` | `show-desktop` | `Super+Shift+d` |
-| `windows` | `Super+F2` | `mark` | `Super+Shift+m` |
-| `paste` | `Super+Shift+v` | `find` | `Super+Shift+f` |
-| `capture` | `Super+Shift+p` | | |
+| `characters` | `Super+Ctrl+e` | `tile` | `Super+Shift+t` |
+| `tile-fkey` | `Super+F8` | `cascade` | `Super+Alt+t` |
+| `rearrange` | `Super+r` | `rearrange-fkey` | `Super+F9` |
+| `show-desktop` | `Super+Shift+d` | `windows` | `Super+F2` |
+| `mark` | `Super+Shift+m` | `paste` | `Super+Shift+v` |
+| `find` | `Super+Shift+f` | `capture` | `Super+Shift+p` |
 | `volume-up` | `XF86AudioRaiseVolume` | `volume-down` | `XF86AudioLowerVolume` |
 | `volume-mute` | `XF86AudioMute` | `media-play` | `XF86AudioPlay` |
 | `media-stop` | `XF86AudioStop` | `media-next` | `XF86AudioNext` |

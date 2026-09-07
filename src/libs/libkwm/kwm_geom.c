@@ -135,7 +135,7 @@ kwm_edge_sweeps(KwmEdge cur, KwmEdge tgt, KwmEdge obstacle)
 }
 
 KwmRect
-kwm_fit(KwmRect want, KwmRect work)
+kwm_fit(KwmRect want, KwmRect work, int min_w, int min_h)
 {
 	KwmRect r = want;
 
@@ -149,6 +149,19 @@ kwm_fit(KwmRect want, KwmRect work)
 		r.h = work.h;
 		r.y = work.y;
 	}
+
+	/*
+	 * THE MINIMUM WINS OVER THE WORK AREA, and the result is a window that
+	 * hangs off the edge. A program told fewer cells than it can compose
+	 * on draws NOTHING, and the cells under it keep whatever was there —
+	 * a hole in the desktop that no repaint fixes, because nothing owns
+	 * those cells any more. Oversized and clipped is a window with a
+	 * corner off the screen, which is visibly a window.
+	 */
+	if (min_w > 0 && r.w < min_w)
+		r.w = min_w;
+	if (min_h > 0 && r.h < min_h)
+		r.h = min_h;
 
 	/*
 	 * Then move. The far edge is clamped BEFORE the near one, so a window
