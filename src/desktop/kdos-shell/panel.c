@@ -710,7 +710,7 @@ static int start_label = 1;
  * long before any of them are sampled, and a table that had to be hoisted with
  * its enum would drag the sampling half up with it.
  */
-enum { MT_CPU = 0, MT_RAM, MT_DISK, MT_NET, MT_DIO, MT_N };
+enum { MT_CPU = 0, MT_RAM, MT_DISK, MT_NET, MT_DIO, MT_TEMP, MT_N };
 static int meters_sel[MT_N] = { MT_CPU, MT_RAM, MT_NET };
 static int nmeters_sel = 3;
 static int meter_by_key(const char *name);
@@ -2138,14 +2138,21 @@ static int cpu_percent(void);
  *
  * `kdos update check` walks the ports tree against the package database, which
  * is hundreds of file reads — nothing the panel may do on a tick, where the
- * rule is that nothing blocks the frame. So the number comes from
- * `$XDG_STATE_HOME/kdos/update.json`, which `kdos update check --json` writes
- * and a scheduled runner refreshes; ABSENT IS ZERO and the badge simply is not
- * there, which is the honest picture of a machine nobody has checked.
+ * rule is that nothing blocks the frame. So the number comes from a document
+ * `kdos update check --json --out` wrote, and a timer refreshes; ABSENT IS
+ * ZERO and the badge is simply not there, which is the honest picture of a
+ * machine nobody has checked.
  *
- * Once a minute, by mtime: the file changes at most as often as the runner
- * fires, and re-reading it per frame would be a stat per frame for a number
- * that moves once a day.
+ * THE MACHINE'S ANSWER FIRST, THEN THE USER'S. What the ports tree pins
+ * against what is installed is a fact about the MACHINE — it is the same for
+ * everyone logged into it — so the system timer computes it once into
+ * /var/lib/kdos and every session reads that. A per-user copy would be one
+ * walk of the whole ports tree per user for one answer. The home path is the
+ * fallback for somebody who ran the check themselves on a machine whose timer
+ * is off.
+ *
+ * Once a minute: the file changes at most as often as the timer fires, and a
+ * read per frame would be a read per frame for a number that moves once a day.
  */
 static int update_behind(void)
 {
@@ -2161,15 +2168,18 @@ static int update_behind(void)
 		return cached;
 	asked = now;
 	cached = 0;
-	if (st && *st)
-		snprintf(path, sizeof(path), "%s/kdos/update.json", st);
-	else if (home && *home)
-		snprintf(path, sizeof(path), "%s/.local/state/kdos/update.json",
-			 home);
-	else
-		return 0;
-	if (kb_read_file(path, buf, sizeof(buf)) <= 0)
-		return 0;
+
+	if (kb_read_file("/var/lib/kdos/update.json", buf, sizeof(buf)) <= 0) {
+		if (st && *st)
+			snprintf(path, sizeof(path), "%s/kdos/update.json", st);
+		else if (home && *home)
+			snprintf(path, sizeof(path),
+				 "%s/.local/state/kdos/update.json", home);
+		else
+			return 0;
+		if (kb_read_file(path, buf, sizeof(buf)) <= 0)
+			return 0;
+	}
 	p = strstr(buf, "\"behind\":");
 	if (p)
 		cached = atoi(p + 9);
@@ -3007,7 +3017,7 @@ struct meter {
  * series about a midline, because a rate has a direction and the sum of the
  * two answers neither question anybody opens a network meter to ask.
  */
-static struct meter met_cpu, met_ram, met_disk;
+static struct meter met_cpu, met_ram, met_disk, met_temp;
 static struct meter met_rx, met_tx;		/* network, received / sent  */
 static struct meter met_rd, met_wr;		/* disk, read / written      */
 
@@ -3565,6 +3575,26 @@ static void meters_sample(void)
 	if (have_cpu) {
 		last_total = total;
 		last_idle = idle;
+	}
+
+	/*
+	 * THE HOTTEST SENSOR, AND ONLY EVERY FOURTH SAMPLE. Reading it walks
+	 * `/sys/class/hwmon` — sixty-odd `open`/`read` pairs — and a die's
+	 * temperature does not move meaningfully in half a second. The meter
+	 * HOLDS between reads rather than dropping out, so the chart is a line
+	 * rather than a comb.
+	 */
+	static int temp_tick;
+
+	if (temp_tick++ % 4 == 0) {
+		double hot = kpr_sensors_hottest();
+
+		if (hot >= 0)
+			meter_push(&met_temp, hot > 100 ? 100 : hot, 0.3);
+		else
+			meter_hold(&met_temp);
+	} else {
+		meter_hold(&met_temp);
 	}
 
 	double mem;
@@ -4355,6 +4385,14 @@ static const struct mdesc {
 	{ "disk",   "SSD", 5, 1, &met_disk, NULL,     NULL, NULL },
 	{ "net",    "NET", 6, 0, &met_rx,   &met_tx,  "\xe2\x86\x93", "\xe2\x86\x91" },
 	{ "diskio", "I/O", 6, 0, &met_rd,   &met_wr,  "\xe2\x86\x93", "\xe2\x86\x91" },
+	/*
+	 * `pct` IS 1 FOR A TEMPERATURE, and that is not a category error: the
+	 * band is a fixed 0-100 scale, and 0-100 °C is the range a machine
+	 * actually lives in. An auto-scaled temperature axis would redraw
+	 * itself every time the fan came on, which is the one moment a person
+	 * is looking at it.
+	 */
+	{ "temp",   "TMP", 5, 1, &met_temp, NULL,     NULL, NULL },
 };
 
 static int meter_by_key(const char *name)

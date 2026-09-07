@@ -107,6 +107,12 @@ static const struct {
 	 */
 	{ "kdos-notifyd", NULL, NULL, false },
 	/*
+	 * The NetworkManager secret agent. Not per-output: it registers ONE
+	 * agent with NetworkManager on the system bus, and a second instance
+	 * would be a second passphrase box raised for the same question.
+	 */
+	{ "kdos-netagent", NULL, NULL, false },
+	/*
 	 * A stick going in is announced by the SESSION, because kdos-mountd is
 	 * root and has no session bus to raise a toast on. Not per-output for
 	 * the same reason as the daemon above: one subscription to one daemon,

@@ -160,12 +160,21 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-users"
 # check --json` and `kdos cve --json` already answer, and a surface that
 # re-derived a version comparison would be a second answer that drifts.
 ln -s kdos-shell "$PKG/usr/bin/kdos-update"
+# Which services answer the network. It carries no table of ports: a client
+# that could name a port could open any port, so kdos-powerd owns the names
+# and this asks for them.
+ln -s kdos-shell "$PKG/usr/bin/kdos-firewall"
 ln -s kdos-shell "$PKG/usr/bin/kdos-note"
 ln -s kdos-shell "$PKG/usr/bin/kdos-run"
 # kdos-comp's <core><promptCommand> — the yes/no dialog labwc's If/prompt
 # action needs. Upstream's labnag is not built (-Dlabnag=disabled).
 ln -s kdos-shell "$PKG/usr/bin/kdos-prompt"
 ln -s kdos-shell "$PKG/usr/bin/kdos-notifyd"
+# The NetworkManager secret agent. NetworkManager never prompts: without an
+# agent registered on the SYSTEM bus the only passphrase this desktop can use
+# is one written into the profile when it was created, and a changed key,
+# 802.1X and a VPN one-time code are all a silent activation failure.
+ln -s kdos-shell "$PKG/usr/bin/kdos-netagent"
 # The notification CENTRE: the daemon keeps a history and this draws it. A
 # notification that expired is not a notification that was read, and on a
 # desktop whose fat applications all live in containers a boxed app's toast is

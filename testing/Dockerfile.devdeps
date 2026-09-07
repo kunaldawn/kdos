@@ -50,6 +50,12 @@
 # NOR IS GNU tar. Alpine's default is busybox's, and the reproducible-build
 # block answers "the synthetic port did not build" with it — which gates every
 # front-end golden behind it, so they are skipped in silence.
+#
+# NOR IS duktape. It is the engine polkitd runs a .rules file in, and the
+# shipped rules are the whole of this desktop's authorisation for networking —
+# there is no authentication agent to fall back on. Without `duk` the block
+# that evaluates them skips with a message, and a check that never runs is
+# worse than no check: it reads as covered.
 
 FROM alpine:3.23
 
@@ -62,7 +68,7 @@ RUN apk add --no-cache \
         mesa-dev libxml2-dev cairo-dev pango-dev \
         basu-dev pipewire-dev alsa-lib-dev \
         dbus cpio tar xz zstd fakeroot \
-        font-dejavu fontconfig \
+        font-dejavu fontconfig duktape \
         vim htop mc tmux less ncurses
 
 WORKDIR /kdos

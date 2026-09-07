@@ -72,3 +72,24 @@ a script would be a second place for the traps to live. Edit the files.
                              value in the wrong one renders as 1450000000 MHz,
                              which is the shape of every unit bug: a number
                              that is right and a unit that is not.
+
+## Sensors
+
+`sys/class/hwmon/hwmon{0,1,2}` and `sys/class/thermal/thermal_zone{0,1}` carry a set chosen to
+exercise every branch of the Sensors page rather than to describe one machine:
+
+- `coretemp` has three LABELLED channels with a critical point, so the page's grouping, its labels
+  and its bar all have something to draw.
+- `thinkpad` has a fan, whose RPM is the one reading that is NOT scaled — a bug in the scaling
+  would show up here as `2.4 rpm`.
+- `nvme` has a temperature well under its critical point, so the warning colour is only reached by
+  a reading that deserves it.
+- `thermal_zone0` DUPLICATES `coretemp` on purpose and `thermal_zone1` does not. The page must
+  show `acpitz` and must not show `coretemp` twice: the two trees overlap on most real boards, and
+  a page reporting the same die under two names looks like it found twice as many sensors as the
+  machine has.
+
+`next/sys` carries the same sensors with DIFFERENT readings, because that snapshot is the one a
+`--dump` renders: a fixture whose second sample is identical to the first cannot show that a
+reading is live rather than a constant. Miss it and the page renders the first snapshot's sensors,
+which is one chip where the fixture describes three.

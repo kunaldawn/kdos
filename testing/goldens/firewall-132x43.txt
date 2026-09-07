@@ -1,0 +1,43 @@
++= Firewall =======================================================================================================================+
+| Firewall                                                                                                                         |
+| which of this machine's services answer the network                                                                              |
+|----------------------------------------------------------------------------------------------------------------------------------|
+| SERVICE      STATE      WHAT                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------- |
+| ssh          open       incoming SSH (70_sshd.sh)                                                                                |
+| http         closed     a web server on this machine                                                                             |
+| https        closed     a TLS web server on this machine                                                                         |
+| ipp          open       sharing a printer with CUPS                                                                              |
+| smb          closed     sharing files over SMB                                                                                   |
+| kiwix        closed     kiwix-serve                                                                                              |
+| mdns         closed     mDNS beyond the default rule                                                                             |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|                                                                                                                                  |
+|----------------------------------------------------------------------------------------------------------------------------------|
+| otherwise: replies and ping get in, nothing else                                                                                 |
+| Enter close  r refresh  Esc Close                                                                                                |
+|                                                                                                  [ Close ] [ Refresh ] [ Done ]  |
++==================================================================================================================================+

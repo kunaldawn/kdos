@@ -11,8 +11,8 @@
 | Network          |                                                                                                               |
 | Batteries        |                                                                                                               |
 | Energy           |                                                                                                               |
+| Sensors          |                                                                                                               |
 | Boxes            |                                                                                                               |
-|                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |
 |                  |                                                                                                               |

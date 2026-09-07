@@ -100,7 +100,7 @@ These run on a build host and **never ship on the target**.
 Three binaries provide most of the commands on the system. If you find a command on your `PATH`
 and want its documentation, find it here.
 
-### `kdos-shell` — 44 names
+### `kdos-shell` — 45 names
 
 The panel plus every surface that pops up from it. One binary, dispatched on its own name; the
 authoritative list is the name table in its own `main.c`.
@@ -118,6 +118,7 @@ authoritative list is the name table in its own `main.c`.
 | `kdos-ime` | `kdos-trash` | `kdos-peek` | `kdos-find` |
 | `kdos-pix` | `kdos-rec` | `kdos-mediad` | `kdos-disks` |
 | `kdos-print` | `kdos-time` | `kdos-users` | `kdos-update` |
+| `kdos-firewall` | | | |
 
 All are documented in [kdos-shell](kdos-shell.md).
 

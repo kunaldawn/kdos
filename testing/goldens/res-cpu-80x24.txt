@@ -11,10 +11,10 @@
 | Net  |                                                                     # |
 | Bat  |                                                                     # |
 | Ene  | pressure  some 1.25% (10s)  0.80% (60s)                               |
-| Box  |                                                                       |
-|      | KDOS Fixture CPU                                                      |
+| Sen  |                                                                       |
+| Box  | KDOS Fixture CPU                                                      |
 |      | 2 logical . 2 cores . 1 package                                       |
-|      | 2.50 GHz of 3.60 GHz . 52oC . schedutil                               |
+|      | 2.50 GHz of 3.60 GHz . 55oC . schedutil                               |
 |      | running on QEMU                                                       |
 |      |                                                                       |
 |      | per core ------------------------------------------------------------ |

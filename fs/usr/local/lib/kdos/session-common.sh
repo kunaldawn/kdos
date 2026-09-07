@@ -193,6 +193,50 @@ kdos_session_once() {
 		# memory rather than this list. Staggered, because six
 		# `kdos-appbox run` at once contend for the same box the login
 		# warmup is still building.
+		# THE PER-USER TIMERS, and they die with the session.
+		#
+		# `ksvc supervise` writes its pidfile into /run, which an
+		# ordinary user cannot, so the system table's supervisor is not
+		# available here — and it should not be: a job that writes into
+		# $HOME has no business outliving the login that started it,
+		# and a supervised one would go on firing on a machine the
+		# person has walked away from. `snooze` is backgrounded from
+		# this subshell instead, so it is reaped with the session.
+		#
+		# The table is parsed the same way /etc/kdos/timers.d is —
+		# `NAME TIMESPEC... -- COMMAND...`, an argument vector and not
+		# a shell line — because two parses of one format is one of
+		# them being wrong the day a field is added.
+		_td="$_cfg/kdos/timers.d"
+		if [ -d "$_td" ] && command -v snooze >/dev/null 2>&1; then
+			for _tf in "$_td"/*.timer; do
+				[ -e "$_tf" ] || continue
+				while IFS= read -r _row || [ -n "$_row" ]; do
+					case "$_row" in
+						''|'#'*) continue ;;
+					esac
+					set -- $_row
+					shift	# the name; nothing supervises
+						# these, so it labels only
+					_spec=""
+					_seen=0
+					while [ $# -gt 0 ]; do
+						if [ "$1" = "--" ]; then
+							_seen=1
+							shift
+							break
+						fi
+						_spec="$_spec $1"
+						shift
+					done
+					[ "$_seen" = 1 ] && [ $# -gt 0 ] || continue
+					command -v "$1" >/dev/null 2>&1 || continue
+					# shellcheck disable=SC2086
+					snooze $_spec "$@" >/dev/null 2>&1 &
+				done < "$_tf"
+			done
+		fi
+
 		_sess="${XDG_STATE_HOME:-$HOME/.local/state}/kdos/session"
 		if [ -e "$_cfg/kdos/session-restore" ] && [ -r "$_sess" ] && \
 		   command -v kdos-appbox >/dev/null 2>&1; then

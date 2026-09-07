@@ -2178,6 +2178,190 @@ else
 fi
 
 echo
+echo "==> the polkit rules grant what the surfaces call and nothing else"
+#
+# A .rules file is JavaScript that duktape runs inside polkitd. Nothing
+# compiles it, so a syntax error or a wrong action id is networking that
+# quietly does not work — and this desktop has NO authentication agent by
+# decision (docs/kdos/03-architecture/security-model.md), which means a rule
+# that fails to grant is a control that can never succeed rather than one that
+# asks for a password.
+#
+# THE SHIPPED FILE IS WHAT IS EVALUATED, concatenated between a stub of
+# polkit's own object and the assertions — not a copy, which would agree with
+# the rules only until somebody edited them.
+if command -v duk >/dev/null 2>&1; then
+    cat testing/fixtures/polkit/stub.js \
+        fs/etc/polkit-1/rules.d/50-kdos.rules \
+        testing/fixtures/polkit/assert.js > "$OUT/rulescheck.js"
+    duk "$OUT/rulescheck.js" > "$OUT/rulescheck.txt" 2>&1
+    cat "$OUT/rulescheck.txt"
+    grep -q "FAIL" "$OUT/rulescheck.txt" && exit 1
+else
+    echo "  the polkit rules are skipped (no duk on this host)"
+fi
+
+echo
+echo "==> kdos-netagent answers NetworkManager the way libnm expects"
+#
+# NetworkManager never prompts, so an agent that gets any part of this contract
+# wrong is a passphrase box that never appears or an activation abandoned
+# instead of retried — and neither shows in a photograph. What is asserted here
+# is the WIRE: the flag that must be set before anybody is asked, the exact
+# `a{sa{sv}}` a secret comes back in, and the error names.
+#
+# THE NAMES HAVE NO `.Error.` IN THEM. libnm builds every D-Bus error name as
+# the interface, a dot and the enum nick, so a cancel is
+# `...SecretAgent.UserCanceled`. Most agent examples on the web spell it with
+# `.Error.`, which NetworkManager reports as an unclassified failure.
+#
+# nmstub.c is the other end: a bus name, an AgentManager and one GetSecrets
+# built from the argument order libnm sends. agentcheck.c links the REAL
+# netagent.c against a scripted display, so the keystrokes are the test's and
+# everything else is the shipped code.
+if [ -n "$TRAY_SDBUS" ] && command -v dbus-daemon >/dev/null 2>&1; then
+    NAO="$OUT/netagent"
+    GOLDNA="$PWD/testing/goldens"
+    mkdir -p "$NAO"
+    $CC $STD $WARN -o "$NAO/agentcheck" \
+        -Isrc/desktop/kdos-shell -Isrc/libs/libktui -Isrc/libs/libkcolor \
+        -Isrc/libs/libkbase -Isrc/libs/libkdisp -Isrc/libs/libkwl \
+        -Isrc/libs/libkcell -Isrc/libs/libkchrome -Isrc/libs/libkxdg \
+        -Isrc/libs/libkicon -Isrc/libs/libkproc -Isrc/libs/libkcon \
+        -Isrc/libs/libkwm \
+        testing/fixtures/netagent/agentcheck.c \
+        src/desktop/kdos-shell/netagent.c \
+        src/libs/libktui/*.c src/libs/libkcolor/*.c src/libs/libkbase/*.c \
+        $(pkg-config --cflags --libs "$TRAY_SDBUS") \
+        || { echo "  FAIL  the agent fixture does not build"; exit 1; }
+    $CC $STD $WARN -o "$NAO/nmstub" testing/fixtures/netagent/nmstub.c \
+        $(pkg-config --cflags --libs "$TRAY_SDBUS") \
+        || { echo "  FAIL  the NetworkManager stub does not build"; exit 1; }
+    # A bus of its own. The agent registers on the SYSTEM bus and the host's
+    # own NetworkManager must never see this: an agent registered against it
+    # would be asked for the passphrases of the machine running the tests.
+    cat > "$NAO/bus.conf" <<'NABUS'
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>system</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+NABUS
+    na_case() {
+        _n="$1"; shift
+        dbus-daemon --config-file="$NAO/bus.conf" --print-address=3 --fork \
+            --print-pid=4 3>"$NAO/addr" 4>"$NAO/pid"
+        DBUS_SYSTEM_BUS_ADDRESS="$(cat "$NAO/addr")"
+        export DBUS_SYSTEM_BUS_ADDRESS
+        "$NAO/nmstub" "$@" > "$NAO/$_n.txt" 2>&1 &
+        _sp=$!
+        sleep 0.4
+        timeout 25 "$NAO/agentcheck" > "$NAO/$_n.agent" 2>&1 &
+        _ap=$!
+        wait "$_sp" 2>/dev/null || true
+        kill "$_ap" 2>/dev/null || true
+        wait "$_ap" 2>/dev/null || true
+        kill "$(cat "$NAO/pid")" 2>/dev/null || true
+        unset DBUS_SYSTEM_BUS_ADDRESS
+    }
+    na_want() {   # case, expected line
+        grep -qxF "$2" "$NAO/$1.txt" && return 0
+        echo "  FAIL  $1: expected"
+        echo "          $2"
+        echo "        got"
+        sed 's/^/          /' "$NAO/$1.txt"
+        na_fail=1
+    }
+    na_fail=0
+
+    # Registered at all, and with an identifier NetworkManager accepts:
+    # three to 255 characters of alphanumerics, `_`, `-` and `.`.
+    na_case a 0x0 802-11-wireless-security psk "Home Wifi"
+    na_want a "REGISTER org.kdos.netagent"
+    # NetworkManager polls its agents for STORED secrets on paths nobody is
+    # watching. Without ALLOW_INTERACTION this answers at once and raises no
+    # window: a prompt from one of those is a dialog with no question behind
+    # it, and it would block the poll for two minutes.
+    na_want a "ERROR org.freedesktop.NetworkManager.SecretAgent.NoSecrets this agent stores nothing"
+
+    # ANSI-C quoting, not a command substitution: `$(printf 'x\n')` strips the
+    # trailing newline, and the newline IS the Enter that answers the box.
+    KDOS_NETAGENT_KEYS=$'hunter2\n' \
+        na_case b 0x1 802-11-wireless-security psk "Home Wifi"
+    # ONE setting, the one that was asked about, and the hint's key inside it.
+    # A reply that echoed the whole profile would overwrite properties the
+    # agent never looked at.
+    na_want b "SECRET 802-11-wireless-security.psk=hunter2"
+
+    KDOS_NETAGENT_KEYS=$'\033' \
+        na_case c 0x1 802-11-wireless-security psk "Home Wifi"
+    na_want c "ERROR org.freedesktop.NetworkManager.SecretAgent.UserCanceled cancelled"
+
+    # A session with no compositor. NoSecrets, not a hang: the activation
+    # fails now instead of after NetworkManager's two-minute wait.
+    KDOS_NETAGENT_NOWIN=1 na_case d 0x1 802-11-wireless-security psk "Home Wifi"
+    na_want d "ERROR org.freedesktop.NetworkManager.SecretAgent.NoSecrets no compositor"
+
+    # CancelGetSecrets while the box is up. The prompt has to come down: a
+    # passphrase field left on screen is one collecting an answer nothing is
+    # waiting for.
+    na_case e 0x1 802-11-wireless-security psk "Home Wifi" 800
+    na_want e "ERROR org.freedesktop.NetworkManager.SecretAgent.AgentCanceled NetworkManager withdrew the question"
+
+    # A VPN secret is the exception in SHAPE: the `vpn` setting keeps its
+    # secrets in one `a{ss}` under the key `secrets`, and libnm's need_secrets
+    # names no key at all for one, so there is no hint to go on.
+    KDOS_NETAGENT_KEYS=$'s3cret\n' na_case f 0x5 vpn "" "Work VPN"
+    na_want f "SECRET vpn.secrets.password=s3cret"
+
+    # A SETTING THAT NAMED NOTHING IS NOT GUESSED AT. libnm hints every
+    # wireless and 802.1X secret and hints nothing for a VPN, so a setting
+    # outside those three with no hint is a request this agent cannot answer —
+    # and a passphrase written into the wrong property is a join that fails as
+    # "wrong password" for as long as the profile exists.
+    KDOS_NETAGENT_KEYS=$'x\n' na_case g 0x1 some-other-setting "" "Odd One"
+    na_want g "ERROR org.freedesktop.NetworkManager.SecretAgent.NoSecrets nothing usable was named"
+
+    # THE BOX ITSELF. Nothing else looks at the layout, and a label over the
+    # border or a button bar off the right edge is invisible both to the
+    # compiler and to a test that only reads the bus.
+    na_golden() {   # <case> <name>
+        _ng="$GOLDNA/$2.txt"
+        if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
+            cp "$NAO/$1.agent" "$_ng"
+            echo "  wrote $2"
+        elif [ ! -f "$_ng" ]; then
+            echo "  FAIL  $2: no golden committed"
+            na_fail=1
+        elif diff -u "$_ng" "$NAO/$1.agent" > "$NAO/$1.diff"; then
+            echo "  $2"
+        else
+            echo "  $2 DRIFTED:"
+            head -30 "$NAO/$1.diff" | sed 's/^/    /'
+            na_fail=1
+        fi
+    }
+    KDOS_NETAGENT_DUMP=1 na_case h 0x1 802-11-wireless-security psk "Home Wifi" 900
+    na_golden h netagent-ask-62x8
+    # REQUEST_NEW, which is the agent's ORDINARY case rather than an unusual
+    # one: net.c writes the psk into the profile, so a first join completes
+    # without an agent and it is the supplicant's mismatch retry that asks.
+    KDOS_NETAGENT_DUMP=1 na_case i 0x3 802-11-wireless-security psk "Home Wifi" 900
+    na_golden i netagent-retry-62x8
+
+    [ "$na_fail" = 0 ] || exit 1
+    echo "  the agent registers, gates on the flag, and answers in libnm's own shapes"
+else
+    echo "  kdos-netagent is skipped (no sd-bus or no dbus-daemon on this host)"
+fi
+
+echo
 echo "==> kdos-powerd only lets root and wheel near the power"
 # The gate is SO_PEERCRED on the connection, which cannot be tested without two
 # uids. `--explain` reads exactly the same two files the gate does and is the
@@ -3169,7 +3353,8 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     DBAD=""
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel trash peek \
-             find pix rec chars disks print timezone users update; do
+             find pix rec chars disks print timezone users update firewall \
+             netagent; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -3447,6 +3632,14 @@ if "$DUMPCK" --have update; then
     KDOS_SLOT_TEXT="$_uf/slot.txt" \
         golden update-security 80x24 update --security --dump
 fi
+# kdos-firewall asks kdos-powerd for the service table, so its picture depends
+# on a running daemon. Recorded instead.
+if "$DUMPCK" --have firewall; then
+    _ff="$PWD/testing/fixtures/firewall/list.txt"
+    KDOS_FIREWALL_LIST="$_ff" golden firewall 80x24  firewall --dump
+    KDOS_FIREWALL_LIST="$_ff" golden firewall 56x24  firewall --dump
+    KDOS_FIREWALL_LIST="$_ff" golden firewall 132x43 firewall --dump
+fi
 if "$DUMPCK" --have print; then
     _pf="$PWD/testing/fixtures/print"
     golden print       80x24  print --fixture "$_pf" --dump
@@ -3491,8 +3684,13 @@ if [ -n "${RESBIN:-}" ] && [ -x "$RESBIN" ]; then
     # showed itself. The height is held at 24 across 56 and 80 so that a diff
     # between them is a response to WIDTH and nothing else.
     for _p in applications processes cpu memory gpu drives network \
-              batteries energy boxes; do
-        [ -f "$GOLD/res-$_p-80x24.txt" ] || continue
+              batteries energy sensors boxes; do
+        # NO "SKIP IF THERE IS NO GOLDEN" HERE. That test made a page ADDED
+        # to this list unreachable: it has no golden yet, so it is skipped, so
+        # it never gets one, and the suite reports a clean run over a page
+        # nothing has ever looked at. `res_golden` already says "no golden
+        # committed" and fails, which is the right answer for a page named
+        # here — being in this list IS the claim that it should have one.
         res_golden "$_p" 56x24  --page "$_p"
         res_golden "$_p" 80x24  --page "$_p"
         res_golden "$_p" 132x43 --page "$_p"

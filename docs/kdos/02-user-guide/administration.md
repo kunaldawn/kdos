@@ -28,11 +28,13 @@ The shipped set, in boot order:
 | `10_sysctl` | Kernel parameters |
 | `12_zram` | Compressed swap in RAM |
 | `15_userdirs` | `/run/user/<uid>`, and a cgroup subtree per user |
+| `18_timers` | Periodic jobs, one supervised `snooze` per line of `/etc/kdos/timers.d` |
 | `20_dmesg`, `22_syslog` | Kernel and system logging |
 | `25_nftables` | The firewall — **before** the network comes up |
 | `30_network` | Basic networking |
 | `35_chrony` | Time synchronisation |
 | `40_dbus` | The system message bus |
+| `41_polkitd` | polkit — **before** NetworkManager, which asks it on its first privileged call |
 | `42_networkmanager` | NetworkManager |
 | `45_avahi` | mDNS |
 | `45_seatd` | Seat management — the desktop needs this |
@@ -56,6 +58,38 @@ happens *before* supervision begins.
 Two scripts are deliberately **not** supervised — `25_nftables` and `12_zram` — because in both
 cases the kernel holds the result and the program is supposed to exit.
 
+### Periodic jobs
+
+There is no cron daemon. A job is a line in `/etc/kdos/timers.d/*.timer`:
+
+```
+NAME  TIMESPEC...  --  COMMAND...
+```
+
+`18_timers` starts one supervised `snooze` per line. `snooze` sleeps until its next matching time,
+runs the command once, and exits; the supervisor starts it again, so it sleeps again. What a cron
+daemon would add over that is a scheduler, and this machine already has a supervisor — one process
+per timer, and no shared state to corrupt.
+
+**The timespec is `snooze`'s own** — `-H 4 -M 17` for 04:17, `-d /2` for every second day — and
+nothing is invented here. **`-s` is the missed-run rule**, also `snooze`'s: a machine asleep at the
+slot runs the job **once** when it wakes, if it wakes within the slack, rather than once per missed
+occurrence. A laptop shut for a fortnight would otherwise run fourteen catch-up jobs at breakfast.
+
+**The command is an argument vector, not a shell line.** No pipe, no redirection, no `&&`: a
+program that must write a file takes a flag naming it, which is why `kdos update check` grew
+`--out`. That is what lets the table be parsed rather than sourced, and it is why a line here
+cannot run something nobody wrote.
+
+**A line that does not parse is reported and skipped**, never guessed at — a timer that silently
+did not start is indistinguishable from one that has not fired yet, and the difference can be
+months.
+
+Your own jobs go in `~/.config/kdos/timers.d/`, in the same shape. Those are started by the session
+at login and **die with it**: a job writing into your home has no business outliving the login that
+started it, and `ksvc` could not supervise them anyway — its pidfiles are in `/run`, which is
+root's.
+
 ## Networking
 
 NetworkManager is the manager, with `wpa_supplicant` for wireless, `dnsmasq` for DNS, and polkit
@@ -64,13 +98,20 @@ granting `wheel` the right to change things without a password.
 | Tool | For |
 |---|---|
 | `kdos-net` (`Super+F4`) | The desktop network manager |
-| `nmtui` | The full text interface, including 802.1X and OTP VPNs |
+| `kdos-netagent` | The passphrase box NetworkManager raises; started with the session |
+| `nmtui` | The full text interface |
 | `nmcli` | Scripting |
 
-`kdos-net` covers ordinary wired and wireless networks. It has **no secret agent**, so a
-passphrase is written into the connection when it is created and NetworkManager cannot come back
-and ask for another one — enterprise authentication and one-time-password VPNs still need
-`nmtui`.
+`kdos-net` joins a network you can see, and the passphrase you type there is written into the
+profile. **Every later question is `kdos-netagent`'s.** NetworkManager never prompts on its own:
+when it is activating a profile whose secret is missing or refused it asks the agents registered
+with it, and fails the activation in silence if none answers. So a key that has changed since,
+802.1X enterprise wireless and a VPN one-time code all arrive as a box from the agent rather than
+from the window you started in.
+
+The agent stores nothing. NetworkManager also polls its agents for saved secrets on paths nobody
+is watching, and those requests are answered at once rather than with a dialog; only a request
+that carries the interaction flag raises the box.
 
 OpenVPN is available through NetworkManager, with certificate and password authentication.
 Hardware tokens are not built.

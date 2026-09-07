@@ -81,7 +81,12 @@ Read by the panel, and re-read on the same signal a theme change sends — so th
 | `start_label` | `yes` | Whether the Start button carries its word |
 | `icons` | `yes` | Whether pictures are drawn |
 
-Available meters: `cpu`, `ram`, `disk`, `net`, `diskio`.
+Available meters: `cpu`, `ram`, `disk`, `net`, `diskio`, `temp`.
+
+**`temp` is the hottest sensor on the machine**, on a fixed 0–100 °C band. It is read every fourth
+sample rather than every one: the read walks `/sys/class/hwmon`, and a die's temperature does not
+move meaningfully in half a second. Where nothing answers, the meter holds rather than drawing
+zero — a machine with no sensor is not one running cold.
 
 **The `update` widget reads a FILE and never computes.** `kdos update check` walks the ports tree
 against the package database — hundreds of file reads, and nothing the panel may do on a tick,

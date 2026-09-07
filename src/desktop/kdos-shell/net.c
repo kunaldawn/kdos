@@ -18,11 +18,17 @@
  *   ║ Enter join  f forget  c copy  a wifi off  Esc Close             ║
  *   ╚═════════════════════════════════════════════════════════════════╝
  *
- * WHAT WAS HERE BEFORE: `foot -e nmtui`. NetworkManager has been running on
- * this distro since it was a distro, with polkit configured and `wheel` given
- * admin rights, and the only way to reach it from the desktop was a terminal
- * with a curses program in it. That is the single largest daily-use gap on
- * this machine and it is not a missing dependency — it is a missing surface.
+ * A SURFACE, NOT A TERMINAL WITH `nmtui` IN IT. NetworkManager runs on this
+ * machine and answers D-Bus; what it lacked was somewhere to be seen from.
+ *
+ * EVERY WRITE HERE IS AUTHORISED BY polkit, AND ONLY BY THE SHIPPED RULES.
+ * There is no authentication agent on this system and there cannot be one —
+ * polkit has no way to see a session here, so a refusal is flat and raises no
+ * challenge for an agent to answer. `/etc/polkit-1/rules.d/50-kdos.rules`
+ * names the actions this file calls and grants them to `wheel`; without
+ * it, joining, forgetting, scanning and the wifi toggle are all refused and
+ * the status line is the only thing that says so. The reasoning is in
+ * `docs/kdos/03-architecture/security-model.md`.
  *
  * D-BUS, NEVER `nmcli`. Shelling out to a CLI to parse its output is how an
  * SSID with a space in it becomes two networks, and this program has no shell
@@ -40,12 +46,13 @@
  * per REFRESH, by (connected, saved, strength), and the selection is followed
  * by SSID rather than by index across a refresh.
  *
- * KNOWN LIMIT, STATED: there is no org.freedesktop.NetworkManager.SecretAgent
- * here, so the passphrase is written into the connection when it is created
- * and NetworkManager cannot come back and ASK for another one. A wrong
- * password fails the activation and is retried by joining again; 802.1X
- * enterprise wifi and a VPN with a one-time code still need `nmtui`. The agent
- * is the correct answer and it is a piece of work, not an oversight.
+ * THE PASSPHRASE TYPED HERE IS WRITTEN INTO THE PROFILE, AND EVERY LATER ONE
+ * IS ASKED FOR BY kdos-netagent. This surface joins a network it can see and
+ * has no way to be asked anything: NetworkManager raises a secret request
+ * against the registered agents, not against whichever program started the
+ * activation. So a key that has changed since, 802.1X enterprise wifi and a
+ * VPN one-time code are the agent's questions and never this window's, and a
+ * session running without kdos-netagent fails those activations in silence.
  * ---------------------------------
  */
 
@@ -732,6 +739,24 @@ static void join_new(const struct net_ap *a, const char *psk)
 	sd_bus_message_open_container(m, 'a', "{sv}");
 	append_sv_str(m, "id", a->ssid);
 	append_sv_str(m, "type", "802-11-wireless");
+	/*
+	 * NO `permissions` KEY, SO THIS IS A SYSTEM CONNECTION — and on this
+	 * build that is not a preference, it is the only kind that works.
+	 *
+	 * NetworkManager decides a profile is VISIBLE by asking its session
+	 * monitor whether each user named in `permissions` has a session. This
+	 * build has none: it is compiled `-Dsession_tracking=no` because there
+	 * is no logind and no ConsoleKit here, so that call is a literal
+	 * `return FALSE`. A profile carrying `user:NAME:` is therefore
+	 * permanently invisible, and an invisible profile has autoconnect
+	 * blocked — the wifi joined here would never come back after a reboot.
+	 *
+	 * The cost is that `forget` and reading the passphrase back are gated
+	 * on `settings.modify.system` rather than `settings.modify.own`, which
+	 * is why 50-kdos.rules grants it. That grant hands `wheel` nothing it
+	 * did not have: `%wheel ALL=(ALL) ALL` is in the shipped sudoers, and
+	 * the passphrases are files under /etc/NetworkManager.
+	 */
 	sd_bus_message_close_container(m);
 	sd_bus_message_close_container(m);
 
