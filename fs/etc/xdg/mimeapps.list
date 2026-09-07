@@ -45,3 +45,8 @@ application/oxps=kdos-peek.desktop
 application/epub+zip=epy.desktop
 application/x-mobipocket-ebook=epy.desktop
 application/x-fictionbook+xml=epy.desktop
+
+# A MAIL ADDRESS, ON EITHER DESKTOP. `aerc` is the only mail client on this
+# image and it is a terminal program on both, so the opener wraps it in
+# whichever emulator the desktop uses and the answer is the same one twice.
+x-scheme-handler/mailto=aerc.desktop

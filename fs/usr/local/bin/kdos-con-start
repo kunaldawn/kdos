@@ -15,6 +15,7 @@ if [ ! -x /usr/bin/kdos-con ]; then
 	exit 1
 fi
 
+kdos_session_open
 kdos_session_runtime
 kdos_session_keymap
 kdos_session_boxes
@@ -61,7 +62,7 @@ _wait_con() {
 (
 	_wait_con || exit 0
 	dbus-update-activation-environment KDOS_CON XDG_CURRENT_DESKTOP \
-		XDG_SESSION_TYPE >/dev/null 2>&1
+		XDG_SESSION_TYPE BROWSER >/dev/null 2>&1
 	[ -x /usr/lib/xdg-desktop-portal-kdos ] && \
 		/usr/lib/xdg-desktop-portal-kdos >/dev/null 2>&1 &
 	for _ in $(seq 1 100); do

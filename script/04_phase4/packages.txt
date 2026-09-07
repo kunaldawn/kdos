@@ -264,6 +264,28 @@ kiwix-tools
 # over each, readable with `gpg -d` if pass itself vanished. `tree` is a hard
 # dependency — `pass` with no argument lists the store by running it.
 pass
+# A ONE-TIME PASSWORD OUT OF THE SAME STORE. `pass otp` is a file in the
+# extension directory pass already reads with no opt-in, and it shells out to
+# `oathtool` — which is all that is kept of oath-toolkit: the PAM module is a
+# second way to log in that nobody asked for, and PSKC is an XML container for
+# provisioning tokens in bulk.
+oath-toolkit
+pass-otp
+# THE TOKEN A PROVIDER WANTS INSTEAD OF A PASSWORD. aerc and msmtp can both
+# present one; mbsync cannot, and no minter changes that — see
+# ports/core/isync/build.sh. Rust, and its HTTP client is rustls, so nothing
+# links openssl for it.
+pizauth
+# MATRIX, WITH vim'S KEYS. SQLite is bundled because every rust port here is a
+# static-pie binary and none of them can reach the shared libsqlite3 the image
+# carries; TLS is rustls for the same reason pizauth's is.
+iamb
+# SLIDES FROM A MARKDOWN FILE, drawn in the terminal — the pictures go through
+# the sixel and kitty protocols kdos-term speaks.
+presenterm
+# WHAT visidata OPENS AN xlsx WITH. sc-im reads the format in C and needs none
+# of this; visidata asks for openpyxl by name and refuses without it.
+python3-openpyxl
 # A container format is one enormous file that changes on every write, so
 # syncing it resends the whole thing and two writers corrupt it. gocryptfs
 # keeps a ciphertext file per plaintext file, which is why it is the one that
@@ -576,6 +598,18 @@ newsboat
 # generated configure as a literal word. calcurse needs AX_WITH_CURSES.
 autoconf-archive
 calcurse
+# A CALENDAR AND AN ADDRESS BOOK OVER A vdir — one directory of .ics or .vcf
+# files, which is greppable, diffable and backed up by copying it, and which
+# `kdos-cal` reads without asking khal anything at draw time. Each vendors its
+# own runtime closure: `pypackages` names it and ports/fetch crawls the build
+# backends from there, so two bundles carry what nineteen recipes would.
+khal
+khard
+# WHAT MAKES A REMOTE COLLECTION AND THE LOCAL vdir EQUAL, the way mbsync does
+# it for mail. Six of its dependencies carry C and three build through a PEP
+# 517 backend that lives inside their own sdists, which is why it is a port of
+# its own rather than another bundle inside khal's.
+vdirsyncer
 # The ledger IS a text file and the program only reads it. The data survives
 # the tool, which is not true of any accounting app with a database.
 ledger

@@ -538,15 +538,33 @@ note "recipe fields" "checked $(ls -d ports/core/*/ src/packages/*/ 2>/dev/null 
 
 echo
 echo "==> shell that ships or builds is syntactically valid"
+_sh=0
 for f in script/*.sh script/*/*.sh fs/etc/init.d/* fs/usr/share/kdos/init \
          ports/appbox/fetch ports/fetch testing/*.sh \
          ports/core/*/build.sh src/packages/*/build.sh \
-         ports/core/*/postinstall.sh src/packages/*/postinstall.sh; do
+         ports/core/*/postinstall.sh src/packages/*/postinstall.sh \
+         fs/etc/profile fs/etc/profile.d/* fs/usr/local/bin/* \
+         fs/usr/local/lib/kdos/* fs/etc/skel/.config/notmuch/default/hooks/*; do
+    # A SYMLINK IS NOT A SCRIPT. /usr/local/bin is almost entirely links to
+    # kdos-appbox, and `bash -n` on one would read a binary that is not even
+    # in this tree. Regular files whose first line names a shell, and nothing
+    # else — which is also what keeps a config file out of the loop.
     [ -f "$f" ] || continue
+    [ -L "$f" ] && continue
     case "$f" in *packages.txt) continue ;; esac
+    head -1 "$f" | grep -qE '^#!.*(^|/)(sh|bash|dash)( |$)' ||
+        case "$f" in
+            # A profile fragment is SOURCED and carries no shebang; so does
+            # /etc/profile itself. Everything else in the list without one is
+            # not a script.
+            script/*|testing/*|ports/*|src/*|\
+            fs/etc/profile|fs/etc/profile.d/*) ;;
+            *) continue ;;
+        esac
+    _sh=$((_sh + 1))
     bash -n "$f" 2>"$SP/err" || bad "$f" "$(head -1 "$SP/err")"
 done
-note "shell syntax" "ok"
+note "shell syntax" "$_sh file(s) parse"
 
 echo
 echo "==> a script shipped inside a recipe parses, and names only programs the image has"
@@ -1186,6 +1204,44 @@ for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
     done
 done
 note "mimeapps handlers" "$_mh kdos-* row(s), each with an entry"
+
+# ── AND EVERY OTHER ID, against the build tree ──────────────────────────
+#
+# The rows above are ours to ship; a row naming a PORT's entry is the port's,
+# and no name table in this repo lists the entries a port installs. The build
+# tree has them, so that is what is compared against — and the symptom being
+# guarded is the same one either way: a row whose id nothing provides falls
+# through to the next candidate in silence, so a type the image claims to
+# handle simply opens something else.
+#
+# Skipped, not failed, when there is no build tree.
+if [ ! -d build/fs/usr/share/applications ]; then
+    note "mimeapps entries" "skipped — no build tree"
+else
+    _me=0
+    _mebad=0
+    for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
+              fs/etc/xdg/kdos-console-mimeapps.list \
+              fs/etc/skel/.config/mimeapps.list; do
+        [ -f "$_f" ] || continue
+        for _id in $(sed -n 's/^[^#=][^=]*=//p' "$_f" | tr ';' '\n' |
+                     grep '\.desktop$' | sort -u); do
+            _me=$((_me + 1))
+            # EVERY DIRECTORY THE OPENER SEARCHES, not just the system one:
+            # a box's own entry is generated into $XDG_DATA_HOME and exists
+            # nowhere else, so checking /usr/share alone would fail a row the
+            # opener resolves perfectly well.
+            [ -e "build/fs/usr/share/applications/$_id" ] ||
+            [ -e "build/fs/usr/local/share/applications/$_id" ] ||
+            [ -e "build/fs/etc/skel/.local/share/applications/$_id" ] || {
+                bad "mimeapps $_id" "$_f names $_id, which is on no image"
+                _mebad=$((_mebad + 1))
+            }
+        done
+    done
+    [ "$_mebad" = 0 ] &&
+        note "mimeapps entries" "$_me row(s), each naming an installed entry"
+fi
 
 # ── every claimed help page exists ──────────────────────────────────────
 #

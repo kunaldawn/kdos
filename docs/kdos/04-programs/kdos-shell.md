@@ -1010,7 +1010,7 @@ Per-manager:
 
 | Name | Notes |
 |---|---|
-| `kdos-cal` | The calendar. It grew the two arrows and a Today button every calendar has had for decades — it had the wheel and no sign that it did anything |
+| `kdos-cal` | The calendar. It grew the two arrows and a Today button every calendar has had for decades — it had the wheel and no sign that it did anything. **It now shows what is on**: a day with an event carries a mark in the column the grid already leaves spare, and today's events are listed under the month. `khal` is asked when the popup opens and when the month changes, **never from the draw path** — a fork there would run once a frame and would put `$PATH`, which nothing fixes for a dump, inside the picture. The strip costs rows only when there is something to put in them, so a machine with no calendar draws the popup it always drew |
 | `kdos-clip` | Clipboard history. The daemon owns the list; this draws it |
 | `kdos-teams` | The window list, and what the panel's overflow cell opens — previously that cell stepped the row by one per click, so reaching the third hidden window took three clicks and three reflows |
 | `kdos-display` | Screens. It grew a button bar, because a pointer could select a screen and then not switch it off or apply anything |

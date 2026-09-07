@@ -351,7 +351,8 @@ stdin and left it redirected takes every later block that reads a terminal with 
 `selftest.sh` runs everywhere and skips what it cannot build, saying so each time. What it skips on
 a bare host is most of the interesting half — `libkimg`'s four decoders, the sd-bus blocks, `fcft`,
 the Wayland consumers, `libkkms` — and a block that is skipped on every machine is a block nobody
-runs.
+runs. **In this image it runs: 61 sections against a bare host's 24**, including every front-end
+dump and the surface goldens behind them.
 
 ```sh
 testing/devdeps-image.sh                    # builds the image, then runs the suite in it
@@ -364,6 +365,13 @@ target is musl and a feature-test difference is worth meeting here rather than i
 which no distribution packages and which the next section builds, and `busctl`, which Alpine ships
 in no package — so the portal block stays skipped there even though both its other halves are
 present.
+
+**Two of its packages are there for what they unblock rather than for what they are.** Alpine ships
+no font at all, and `fcft` resolves `monospace` through fontconfig — with none, the first rasteriser
+block answers `failed to match font` and the run stops there. Its `tar` is busybox's, and the
+reproducible-build block answers `the synthetic port did not build` with it. Each failure gates
+everything after it, so between them they were hiding two thirds of the suite while reporting
+nothing but their own one-line error.
 
 ## Compiling the compositor without a full build
 

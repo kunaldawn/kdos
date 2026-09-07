@@ -261,6 +261,22 @@ rather than by their own toolkit.
 Double-clicking a file opens it with the handler for its type. `kdos-openwith` chooses a
 different one.
 
+**A spreadsheet and a data file open in different programs, on purpose.** A `.csv` goes to
+`visidata`, which is built for exploring columns; an `.xlsx` goes to `sc-im`, which is a spreadsheet
+and reads the format in C with nothing in between. `visidata` can open an `.xlsx` too if you ask it
+to — that is what `openpyxl` is on the image for — and it is the one of the two that can write one
+back.
+
+**A link opens the same way a file does.** `mailto:` reaches `aerc` on either desktop; `http`,
+`https` and a saved page reach `w3m` on the console, and the browser you installed as a box under
+the compositor.
+A link clicked on the desktop or in a terminal program goes through `xdg-open`, which here **is**
+the same resolver a double-click uses; a link clicked inside a boxed application goes to the portal
+instead, which resolves it itself — but out of the same tables, so both end at the same handler.
+**On the console a handler that wants a terminal is preferred**, since a windowed one there would
+open nothing you could see, and a handler that wants a terminal is given one wherever it is
+launched from.
+
 ## Lock, idle and power
 
 `Super+L` locks. The lock screen asks the **session** to hold every output, and the session — not

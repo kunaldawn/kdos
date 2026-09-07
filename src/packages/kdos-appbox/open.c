@@ -11,14 +11,18 @@
  *     $ kdos-appbox open report.odt        -> libreoffice, in the box
  *     $ kdos-appbox open ~/Pictures        -> mc, in the desktop's terminal
  *
- * WHY THIS IS HERE AND NOT xdg-open. kdos-appbox owns the alien-app table and
- * every launcher in /usr/local/bin is a symlink to it, so it is already the
- * program that knows what "open with GIMP" means on this machine. xdg-open is
- * still installed and is still the right answer for a URL; this is the answer
- * for a PATH, and kdos-desk called it for a release before it existed.
+ * THIS IS xdg-open ON THIS MACHINE. /usr/local/bin/xdg-open is a name on this
+ * binary and /usr/local/bin comes first on the shipped $PATH, so everything
+ * that opens a link or a file by that word arrives here. kdos-appbox owns the
+ * alien-app table and every launcher in /usr/local/bin is a symlink to it, so
+ * it is already the program that knows what "open with GIMP" means. xdg-utils'
+ * own script stays installed and is the last resort, reached BY ABSOLUTE PATH
+ * because naming it otherwise would find this binary again.
  *
  * The resolution is the freedesktop one and nothing clever:
  *
+ *   argument -> MIME kxdg_mime_for_arg: a scheme is x-scheme-handler/<scheme>,
+ *                    `file:` names a path, anything else IS a path
  *   path -> MIME     /usr/share/mime/globs (shared-mime-info is a host port)
  *   MIME -> entry    mimeapps.list [Default Applications], then
  *                    [Added Associations], then each applications/
@@ -43,6 +47,14 @@
 #define MIME_MAX 128
 #define CAND_MAX 32
 
+/*
+ * THE LAST RESORT, BY ABSOLUTE PATH. `/usr/local/bin/xdg-open` is a second
+ * name on THIS binary and `/usr/local/bin` comes first on the shipped $PATH,
+ * so naming it here without a path would re-enter this function until the
+ * process died.
+ */
+#define XDG_OPEN_PROG "/usr/bin/xdg-open"
+
 /* A handler for a type: the desktop id somebody wrote in a list, and the
  * entry it resolved to. Both, because the chooser is addressed by id and the
  * Exec line is read out of the file. */
@@ -57,75 +69,15 @@ typedef struct {
 
 /* ── path -> MIME ──────────────────────────────────────────────────────── */
 
+/* ── what an argument is ───────────────────────────────────────────────── */
+
 /*
- * shared-mime-info's `globs`, which is one `type:glob` per line and is the
- * whole of what a launcher needs from that package. The full `globs2` adds
- * weights and case-sensitivity flags; nothing here would use either.
- *
- * The LONGEST matching suffix wins, so `.tar.gz` beats `.gz` — get that
- * backwards and every compressed tarball opens in a decompressor.
+ * libkxdg ANSWERS THIS, and this binary already compiles it. A second copy
+ * here resolved a path the same way and a URL not at all: `mailto:a@b.c` has a
+ * basename that matches the `*.c` glob, so a mail address was offered to an
+ * editor. kxdg_mime_for_arg also hands back the path a `file:` URL names,
+ * which is what the handler must be given.
  */
-static int mime_from_globs(const char *base, char *out, size_t n)
-{
-	size_t len = 0;
-	char *data = kb_read_all("/usr/share/mime/globs", &len);
-	size_t best = 0;
-	int found = 0;
-
-	if (!data)
-		return 0;
-
-	for (char *p = data; *p;) {
-		char *nl = strchr(p, '\n');
-		if (nl)
-			*nl = '\0';
-		if (*p == '#' || !*p)
-			goto next;
-
-		char *colon = strchr(p, ':');
-		if (!colon)
-			goto next;
-		*colon = '\0';
-		const char *type = p, *glob = colon + 1;
-
-		if (glob[0] == '*' && glob[1] == '.') {
-			const char *suffix = glob + 1;	/* ".odt" */
-			size_t sl = strlen(suffix), bl = strlen(base);
-			if (bl > sl && !strcasecmp(base + bl - sl, suffix) &&
-			    sl > best) {
-				best = sl;
-				snprintf(out, n, "%s", type);
-				found = 1;
-			}
-		} else if (!strchr(glob, '*') && !strchr(glob, '?') &&
-			   !strcasecmp(glob, base) && best == 0) {
-			/* An exact name — `Makefile`, `.bashrc`. Only when no
-			 * suffix matched, because a suffix is the more specific
-			 * statement of the two. */
-			snprintf(out, n, "%s", type);
-			found = 1;
-		}
-next:
-		if (!nl)
-			break;
-		p = nl + 1;
-	}
-	free(data);
-	return found;
-}
-
-static void mime_for_path(const char *path, char *out, size_t n)
-{
-	if (kb_is_dir(path)) {
-		snprintf(out, n, "inode/directory");
-		return;
-	}
-	if (mime_from_globs(kb_basename(path), out, n))
-		return;
-	/* Not a failure: it is what every desktop calls a file it cannot
-	 * name, and a handler may still claim it. */
-	snprintf(out, n, "application/octet-stream");
-}
 
 /* ── the search path ───────────────────────────────────────────────────── */
 
@@ -405,6 +357,48 @@ static int run_openwith(int argc, char **argv)
 	return 127;
 }
 
+/*
+ * ON THE CONSOLE, A HANDLER THAT WANTS A TERMINAL COMES FIRST. There is no
+ * compositor there, so a windowed handler at the head of the chain opens
+ * nothing anybody can see, while a terminal one is what this desktop is made
+ * of. `$KDOS_CON` is the same discriminator kb_terminal() uses, so the choice
+ * and the emulator it is wrapped in agree.
+ *
+ * ONLY WHERE NOBODY HAS DECIDED. A `[Default Applications]` row is somebody's
+ * answer and must not be overruled, so the call site passes `defaulted` —
+ * which handlers_for_mime sets for a row at ANY level, not only the two in a
+ * config directory where it returns early. Within each kind the order is
+ * unchanged, so a row that named a handler keeps its place relative to the
+ * others of its kind. kdos-openwith gates on the same fact, and has to: its
+ * first row is the handler this function would pick.
+ */
+static void terminal_first(OpenCand *c, int n)
+{
+	OpenCand out[CAND_MAX];
+	char term[CAND_MAX];
+	int k = 0;
+	const char *con = getenv("KDOS_CON");
+
+	if (!con || !*con || n < 2)
+		return;
+	for (int i = 0; i < n; i++) {
+		KxdgEntry e;
+
+		term[i] = 0;
+		if (kxdg_load(&e, c[i].path, "Desktop Entry") == 0) {
+			term[i] = (char)kxdg_bool(&e, "Terminal", 0);
+			kxdg_free(&e);
+		}
+	}
+	for (int i = 0; i < n; i++)
+		if (term[i])
+			out[k++] = c[i];
+	for (int i = 0; i < n; i++)
+		if (!term[i])
+			out[k++] = c[i];
+	memcpy(c, out, (size_t)n * sizeof(*c));
+}
+
 int cmd_open(int argc, char **argv)
 {
 	OpenCand cand[CAND_MAX];
@@ -437,12 +431,21 @@ int cmd_open(int argc, char **argv)
 	/* One MIME type for the set, taken from the first: a handler is chosen
 	 * once and handed every file, which is what %F means. Mixed types are
 	 * the caller's business. */
-	mime_for_path(argv[0], mime, sizeof(mime));
+	/*
+	 * TYPED HERE, UNWRAPPED LATER. The arguments are left alone until a
+	 * handler has been chosen, because the xdg-open fallback below must
+	 * receive what the caller typed: that script decodes the percent
+	 * escapes in a `file:///` URL itself, and handing it the raw path
+	 * instead loses every name with a space in it.
+	 */
+	kxdg_mime_for_arg(argv[0], mime, sizeof(mime));
 
 	if (print)
 		printf("mime\t%s\n", mime);
 
 	ncand = handlers_for_mime(mime, cand, CAND_MAX, &defaulted);
+	if (!defaulted)
+		terminal_first(cand, ncand);
 
 	if (print && ncand) {
 		printf("candidates");
@@ -477,7 +480,7 @@ int cmd_open(int argc, char **argv)
 
 	if (!ncand) {
 		if (print) {
-			printf("entry\t-\nexec\txdg-open\n");
+			printf("entry\t-\nexec\t%s\n", XDG_OPEN_PROG);
 			return 0;
 		}
 		/*
@@ -487,10 +490,10 @@ int cmd_open(int argc, char **argv)
 		 */
 		tracef("open: no handler for %s, falling back to xdg-open",
 		       mime);
-		if (!kb_have_prog("xdg-open"))
+		if (access(XDG_OPEN_PROG, X_OK) != 0)
 			kb_die("nothing on this machine opens %s", mime);
 		KbArgv a = {0};
-		kb_argv_add(&a, "xdg-open");
+		kb_argv_add(&a, XDG_OPEN_PROG);
 		for (int i = 0; i < argc; i++)
 			kb_argv_add(&a, argv[i]);
 		kb_argv_end(&a);
@@ -498,6 +501,19 @@ int cmd_open(int argc, char **argv)
 	}
 
 	entry = cand[0].path;
+
+	/*
+	 * NOW the arguments are unwrapped, and in place. kxdg_mime_for_arg
+	 * returns the path a `file:` URL names, or the argument itself — a
+	 * pointer that outlives this call and is never written through, so the
+	 * handler is given what the argument meant with nothing copied and
+	 * nothing truncated on the way.
+	 */
+	for (int i = 0; i < argc; i++) {
+		char m[MIME_MAX];
+
+		argv[i] = (char *)kxdg_mime_for_arg(argv[i], m, sizeof(m));
+	}
 
 	KxdgEntry e;
 	if (kxdg_load(&e, entry, "Desktop Entry") != 0)

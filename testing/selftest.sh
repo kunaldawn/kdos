@@ -2418,8 +2418,9 @@ sys.stdout.write(b.decode(errors='replace'))
 KMASKEOF
 printf 'format = yes\n' > "$OUT/mountd.conf"
 rm -f "$KMSOCK"
+rm -f "$OUT/km.uevent"; mkfifo "$OUT/km.uevent"
 KDOS_MOUNTD_SOCKET="$KMSOCK" KDOS_MOUNTD_MOUNTS="$MF/mounts-live" \
-KDOS_MOUNTD_CONF="$OUT/mountd.conf" \
+KDOS_MOUNTD_CONF="$OUT/mountd.conf" KDOS_MOUNTD_UEVENT="$OUT/km.uevent" \
     "$OUT/kdos-mountd" --fixture-serve "$MF/sys" "$MF/dev" > "$OUT/km.exec" 2>&1 &
 KMPID=$!
 for _i in $(seq 1 50); do [ -S "$KMSOCK" ] && break; sleep 0.1; done
@@ -2448,6 +2449,62 @@ sdd2' 'booted from' "and so does format, even with the right name typed"
 # The typed confirmation is the row's own kernel name.
 kmwant 'format 0 vfat 4
 sdc1' 'type sdb1 to confirm' "a format confirmed with another row's name is refused"
+
+# ── THE ONE VERB THAT KEEPS ITS SOCKET ────────────────────────────────────
+#
+# `subscribe` is the only long-lived connection this daemon has, and the whole
+# reason its accept loop became a poll is that a bare blocking accept() would
+# have left every OTHER client waiting behind the subscriber forever. So the
+# assertion that matters is not that the event arrives — it is that a `list`
+# is still answered WHILE a subscriber is attached.
+#
+# A netlink socket cannot be bound without CAP_NET_ADMIN and cannot be written
+# to by a test at all, so --fixture points the daemon at a FIFO carrying the
+# same NUL-separated key=value blob the kernel sends.
+cat > "$OUT/kmsub.py" <<'KMSUBEOF'
+import os, socket, sys, time
+sock, fifo = sys.argv[1], sys.argv[2]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sock)
+s.sendall(b"subscribe\n")
+s.settimeout(5)
+if s.recv(64) != b"ok\n":
+    print("NOACK"); sys.exit(1)
+# A second client, while the first is still attached and idle.
+t = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+t.connect(sock)
+t.sendall(b"list\n")
+t.settimeout(5)
+served = b""
+try:
+    while True:
+        d = t.recv(4096)
+        if not d:
+            break
+        served += d
+except socket.timeout:
+    print("LISTHUNG"); sys.exit(1)
+print("SERVED" if b"sdb1" in served else "LISTEMPTY")
+# Now the event.
+fd = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK)
+os.write(fd, b"add@/devices/x\0ACTION=add\0SUBSYSTEM=block\0DEVNAME=sdz1\0")
+os.close(fd)
+try:
+    print("EVENT" if b"changed" in s.recv(64) else "WRONGEVENT")
+except socket.timeout:
+    print("NOEVENT")
+KMSUBEOF
+_sub=$(python3 "$OUT/kmsub.py" "$KMSOCK" "$OUT/km.uevent" 2>&1)
+case "$_sub" in
+*SERVED*) echo "  ok    a list is answered while a subscriber holds its socket" ;;
+*) echo "  FAIL  a subscriber blocked every other client"; echo "        $_sub"
+   mountd_fail=1 ;;
+esac
+case "$_sub" in
+*EVENT*) echo "  ok    and a block uevent reaches the subscriber as \`changed\`" ;;
+*) echo "  FAIL  the uevent did not reach the subscriber"; echo "        $_sub"
+   mountd_fail=1 ;;
+esac
 kmwant 'format 0 ext4 4
 sdb1' 'ok sdb1' "and the row's own name confirms it"
 kmwant 'format 0 reiserfs 4
@@ -2688,10 +2745,31 @@ else
     echo "$out" | grep -q "^mime	inode/directory$" \
         || { echo "  a directory was not recognised: $out"; exit 1; }
     # Nothing in this scratch tree claims a directory, so it must fall through
-    # to xdg-open rather than inventing a handler.
-    echo "$out" | grep -q "^exec	xdg-open$" \
+    # to xdg-open — BY ABSOLUTE PATH, because /usr/local/bin/xdg-open is this
+    # same binary under another name and /usr/local/bin comes first on $PATH.
+    # Naming it without a path here would re-enter cmd_open until the process
+    # died.
+    echo "$out" | grep -q "^exec	/usr/bin/xdg-open$" \
         || { echo "  no fallback for an unclaimed type: $out"; exit 1; }
-    echo "  mime by longest glob, mimeapps and the cache, field codes, xdg-open last"
+
+    # A URL IS NOT A FILE NAME. Before kxdg_mime_for_arg the basename decided,
+    # so `mailto:a@b.c` matched the `*.c` glob and a mail address resolved to
+    # C++ source — offered to a text editor. Nothing in this scratch tree
+    # claims the scheme, so the answer is the fallback; the point is the TYPE.
+    out=$(open_print "mailto:a@b.c")
+    echo "$out" | grep -q "^mime	x-scheme-handler/mailto$" \
+        || { echo "  a mail address was not read as a scheme: $out"; exit 1; }
+    out=$(open_print "https://example.com/page.html")
+    echo "$out" | grep -q "^mime	x-scheme-handler/https$" \
+        || { echo "  a URL was typed by its suffix: $out"; exit 1; }
+    # file: names a path and the handler must be handed the PATH.
+    out=$(open_print "file://$OPENH/files/shot.png")
+    echo "$out" | grep -q "^mime	image/png$" \
+        || { echo "  file:// was not unwrapped: $out"; exit 1; }
+    echo "$out" | grep -q "^exec	kdos-appbox	run	gimp	$OPENH/files/shot.png$" \
+        || { echo "  file:// reached the handler unwrapped: $out"; exit 1; }
+    echo "  mime by longest glob, mimeapps and the cache, field codes,"
+    echo "  a URL by its scheme, file:// unwrapped, xdg-open last"
 fi
 
 echo
@@ -3079,6 +3157,34 @@ if [ -n "$DUMPCK" ]; then
 check_box cal < "$OUT/dump-cal.txt"
 grep -q "Mo Tu We Th Fr Sa Su" "$OUT/dump-cal.txt" || {
     echo "  the calendar lost its weekday header"; exit 1; }
+# WITH NOTHING ON, THE POPUP IS THE ONE IT ALWAYS WAS. The strip costs rows
+# only when there is something to put in them, so a machine with no calendar
+# draws exactly what it drew before khal existed.
+_calrows=$(wc -l < "$OUT/dump-cal.txt")
+[ "$_calrows" = 12 ] || {
+    echo "  an empty calendar is $_calrows rows, not 12"; exit 1; }
+
+# AND WITH SOMETHING ON IT. khal is not forked here — $PATH is not fixed for a
+# dump and neither is a calendar store — so KDOS_CAL_LIST stands in with
+# exactly the lines khal is asked to print. The dates are TODAY's because cal
+# reads the clock and honours no override: the strip is today's by definition.
+_today=$(date +%Y-%m-%d)
+printf '%s\t09:30\tStandup\n%s\t\tRelease day\n' "$_today" "$_today" \
+    > "$OUT/cal-list.txt"
+KDOS_CAL_LIST="$OUT/cal-list.txt" "$DUMPCK" cal --dump > "$OUT/dump-cal2.txt"
+check_box cal < "$OUT/dump-cal2.txt"
+grep -q "09:30 Standup" "$OUT/dump-cal2.txt" || {
+    echo "  the agenda strip did not draw a timed event"; exit 1; }
+grep -q "Release day" "$OUT/dump-cal2.txt" || {
+    echo "  the agenda strip did not draw an all-day event"; exit 1; }
+# The day that has something carries a mark, in the column the grid leaves
+# spare — a character, because a dump proves a character and never a colour.
+grep -qE '\*' "$OUT/dump-cal2.txt" || {
+    echo "  the day with events was not marked"; exit 1; }
+_calrows2=$(wc -l < "$OUT/dump-cal2.txt")
+[ "$_calrows2" = 14 ] || {
+    echo "  two events should add two rows, got $_calrows2"; exit 1; }
+echo "  the calendar: empty is 12 rows, two events add two and a day mark"
 
 "$DUMPCK" menu system --dump > "$OUT/dump-menu.txt"
 check_box menu < "$OUT/dump-menu.txt"

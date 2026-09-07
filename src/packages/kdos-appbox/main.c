@@ -751,6 +751,17 @@ int main(int argc, char **argv)
 	 * ksvc/service already are — not a second program. */
 	if (!strcmp(self, "kdos-box"))
 		return box_main(argc - 1, argv + 1);
+	/*
+	 * AND xdg-open IS A THIRD, because everything that opens a link says
+	 * that word and means "whatever this machine opens it with": a mail
+	 * client's :open-link, a portal, anything reading $BROWSER.
+	 * /usr/local/bin comes first on the shipped $PATH, so this answers
+	 * before xdg-utils' script — which stays installed and is still what
+	 * cmd_open falls back to, by absolute path, when nothing here claims
+	 * the type.
+	 */
+	if (!strcmp(self, "xdg-open"))
+		return cmd_open(argc - 1, argv + 1);
 	if (strcmp(self, "kdos-appbox"))
 		return run_as_shim(self, argc - 1, argv + 1);
 

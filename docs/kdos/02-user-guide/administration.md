@@ -144,18 +144,80 @@ form that reads a pipe:
 | An image | `chafa`, as coloured symbols. This row is also what turns **off** aerc's own inline picture — with no filter matching, aerc draws a jpeg or png through the terminal's graphics protocol, which `kdos-term` has. The trade is the same picture in every terminal rather than a better one in some |
 | A `.docx` | `docx2txt` |
 
-**HTML is rendered inside a network namespace when the kernel allows one.** `kdos-part` tries
-`unshare --map-root-user --net` first, so a tracking pixel has nowhere to go; if the kernel refuses,
-w3m runs behind an unroutable proxy instead. The message is shown either way — aerc's own filter
-picks the namespace on whether the `unshare` binary exists, so on a kernel without unprivileged
-user namespaces it puts `unshare: Operation not permitted` where the message should be. A filter's
-error output *is* the message body here: aerc hands it the pager's own pipe.
+**HTML is rendered behind something that cannot reach the network.** `kdos-part` tries
+`unshare --map-root-user --net` first and runs w3m behind an unroutable proxy when that is refused;
+either way a tracking pixel has nowhere to go. **On the live medium it is always the proxy** — no
+process there can create a user namespace, root included (see
+[what is missing](../06-reference/known-gaps.md)) — which is exactly why the filter probes instead
+of assuming. aerc's own HTML filter assumes, by testing whether the `unshare` *binary* exists, and
+so puts `unshare: Operation not permitted` where the message should be: a filter's error output
+**is** the message body here, because aerc hands it the pager's own pipe.
 
 Keep passwords out of all of them — `pass` is on the image, and both `PassCmd "pass show …"` and
 `passwordeval "pass show …"` are in the shipped templates.
 
-**There is no XOAUTH2.** `mbsync` reaches it only through `cyrus-sasl`, which this image does not
-carry, so a provider that has withdrawn application passwords cannot be synchronised here at all.
+**XOAUTH2 works everywhere except `mbsync`.** `aerc` speaks it itself and `msmtp` has it built in,
+so an account whose provider has withdrawn application passwords can be read and sent from here —
+`pizauth` mints and refreshes the token, and a `*-cred-cmd` hands it over. What that account cannot
+have is a local Maildir: `mbsync` reaches XOAUTH2 only through `cyrus-sasl`, which this image does
+not carry, so nothing mirrors it offline and `notmuch` has nothing to index.
+
+## Passwords and one-time codes
+
+**`pass` is the store**: a file per entry in a git repository with `gpg` over each. No database and
+no format to migrate — if `pass` itself vanished, `gpg -d` still reads every entry.
+
+**A site that wants a six-digit code is `pass otp`.** Save the `otpauth://` URI the site's QR code
+encodes and ask for a code when you need one:
+
+```sh
+pass otp insert site/example        # paste the otpauth:// URI
+pass otp site/example               # the code for right now
+pass otp -c site/example            # and onto the clipboard
+```
+
+Nothing has to be enabled: `pass` reads its system extensions with no opt-in, so the command exists
+as soon as the package is installed. It generates the code with `oathtool`, which is also usable on
+its own — `oathtool --totp -b <secret>`.
+
+**There is no one-time password for logging in to this machine.** `oath-toolkit`'s PAM module is
+deliberately not built: a wrong line in a PAM stack is a machine nobody can log into, including the
+person trying to fix it. The codes here are for other people's websites.
+
+## Calendar and contacts
+
+**One directory of files, the same shape as the mail.** `~/.local/share/calendars` holds calendars,
+`~/.local/share/contacts` holds address books, and each is a *vdir*: a directory per collection, one
+`.ics` or `.vcf` file per item. That is greppable, diffable, and backed up by copying it — and a
+file with two events in it is not a vdir, which is why `khal import` exists rather than a text
+editor.
+
+| Program | Does |
+|---|---|
+| `khal` | Prints what is on. `khal list today 7d`, `khal import invite.ics` |
+| `ikhal` | The same calendar to move around in, full screen. This is the *Calendar* menu row |
+| `khard` | The address book. `khard list`, `khard show`, `khard new` |
+| `vdirsyncer` | Makes a server's collection and the local vdir equal — the same job `mbsync` does for mail. Nothing is configured, so `vdirsyncer sync` does nothing and exits 0 |
+
+**Both are configured and both are empty**, which is not the same as unconfigured: `khal` with no
+`[calendars]` section and `khard` with no address book both refuse to start, so the shipped files
+name a store that has nothing in it. Put a calendar in by making a directory under
+`~/.local/share/calendars` and dropping `.ics` files in it — nothing needs to be registered.
+
+**The panel's calendar reads the same store.** A day with something on it is marked, and today's
+events are listed under the month; that popup asks `khal` when it opens and when you change month,
+so it costs nothing while it is on screen.
+
+**Syncing with a server is `vdirsyncer`**, and it is set up in
+`~/.config/vdirsyncer/config`: a *pair* is two storages plus the rule for reconciling them. There is
+no safe default for that rule — `a wins` silently discards the server's edit and `b wins` discards
+yours — so the shipped example makes you choose. Run `vdirsyncer discover` once, then
+`vdirsyncer sync` whenever you want; keep the password out of the file with
+`password.fetch = ["command", "pass", "show", "…"]`.
+
+**`khard list` exits 1 on an empty address book.** It prints `Found no contacts` and means it —
+that is khard's answer for "nothing matched", not a failure, and anything scripting it has to read
+a non-zero exit as an empty result.
 
 ## Storage
 

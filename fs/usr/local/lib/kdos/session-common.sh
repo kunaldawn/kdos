@@ -7,12 +7,25 @@
 # trap that cost a debugging session to find. A second copy is a second place
 # to lose one.
 #
+#   kdos_session_open      $BROWSER, which the login shell may not have set
 #   kdos_session_runtime   XDG_RUNTIME_DIR, before anything uses it
 #   kdos_session_keymap    the console keymap as XKB variables
 #   kdos_session_boxes     the appbox warmup, and giving idle ones back
 #   kdos_session_bus       one session bus per user, at a fixed path
 #   kdos_session_audio     pipewire, once per user rather than per session
 #   kdos_session_once      the login sound, the first-run card, the restore
+
+# ONE ROAD TO A LINK, ON A PATH THAT READS NO PROFILE. /etc/profile.d sets
+# $BROWSER for a login shell, and the `greet = yes` console session is exec'd
+# from a program that clears the environment and runs this script directly — so
+# the variable would exist on one supported login path and not the other, and
+# `dbus-update-activation-environment BROWSER` pushes NOTHING for an unset name
+# rather than failing. Only fills a gap: a person who exported their own has
+# said what they want.
+kdos_session_open() {
+	BROWSER="${BROWSER:-xdg-open}"
+	export BROWSER
+}
 
 kdos_session_runtime() {
 	XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

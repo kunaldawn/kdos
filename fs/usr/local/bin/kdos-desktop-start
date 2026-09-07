@@ -28,6 +28,7 @@ _wait_wayland() {
 	export WAYLAND_DISPLAY="$WD"
 }
 
+kdos_session_open
 kdos_session_audio
 
 # The D-Bus activation environment is frozen from BEFORE the compositor
@@ -39,7 +40,7 @@ kdos_session_audio
 (
 	_wait_wayland || exit 0
 	dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP \
-		XDG_SESSION_TYPE XCURSOR_THEME XCURSOR_SIZE >/dev/null 2>&1
+		XDG_SESSION_TYPE XCURSOR_THEME XCURSOR_SIZE BROWSER >/dev/null 2>&1
 	[ -x /usr/lib/xdg-desktop-portal-wlr ] && \
 		/usr/lib/xdg-desktop-portal-wlr >/dev/null 2>&1 &
 	# The main portal snapshots its backends at startup — it must not come

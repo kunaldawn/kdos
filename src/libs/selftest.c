@@ -359,6 +359,70 @@ static void test_colour(void)
 		}
 
 		/*
+		 * WHAT AN ARGUMENT IS. Two openers ask this one function, so
+		 * what it answers for a URL is what the whole desktop does
+		 * with a link. The glob half is the host's own table and is
+		 * not asserted here; the scheme half depends on nothing.
+		 */
+		{
+			char m[128];
+			const char *p;
+
+			p = kxdg_mime_for_arg("mailto:ada@example.com", m,
+					      sizeof(m));
+			eq_str(m, "x-scheme-handler/mailto",
+			       "arg: a mail address is a scheme, not a file");
+			ok(!strcmp(p, "mailto:ada@example.com"),
+			   "arg: and it is passed on unchanged");
+
+			/* The one that made this function necessary: the
+			 * basename `a@b.c` matches the `*.c` glob, so a mail
+			 * address used to resolve to C++ source. */
+			kxdg_mime_for_arg("mailto:a@b.c", m, sizeof(m));
+			eq_str(m, "x-scheme-handler/mailto",
+			       "arg: even when the basename matches a glob");
+
+			kxdg_mime_for_arg("https://example.com", m, sizeof(m));
+			eq_str(m, "x-scheme-handler/https",
+			       "arg: a bare host is still a scheme");
+			kxdg_mime_for_arg("HTTPS://EXAMPLE.COM", m, sizeof(m));
+			eq_str(m, "x-scheme-handler/https",
+			       "arg: a scheme is case-insensitive");
+			kxdg_mime_for_arg("webcal://x/y.ics", m, sizeof(m));
+			eq_str(m, "x-scheme-handler/webcal",
+			       "arg: and the suffix does not win over it");
+
+			/* file: names a path, and the caller must be handed
+			 * the path rather than the URL. */
+			p = kxdg_mime_for_arg("file:///etc/hostname", m,
+					      sizeof(m));
+			eq_str(p, "/etc/hostname",
+			       "arg: file:// is unwrapped to its path");
+			p = kxdg_mime_for_arg("file://localhost/etc/hostname",
+					      m, sizeof(m));
+			eq_str(p, "/etc/hostname",
+			       "arg: and so is one carrying an authority");
+			p = kxdg_mime_for_arg("file:/etc/hostname", m,
+					      sizeof(m));
+			eq_str(p, "/etc/hostname",
+			       "arg: and one carrying none");
+
+			/* A NAME THAT EXISTS IS A PATH. /etc/hostname has no
+			 * colon, so the case that matters is that a plain
+			 * path is never read as a scheme. */
+			p = kxdg_mime_for_arg("/etc/hostname", m, sizeof(m));
+			ok(!strcmp(p, "/etc/hostname") &&
+			   strncmp(m, "x-scheme-handler/", 17) != 0,
+			   "arg: a path is a path");
+			kxdg_mime_for_arg("notes.txt", m, sizeof(m));
+			ok(strncmp(m, "x-scheme-handler/", 17) != 0,
+			   "arg: a relative name with a dot is not a scheme");
+			kxdg_mime_for_arg("", m, sizeof(m));
+			eq_str(m, "application/octet-stream",
+			       "arg: nothing is not a scheme either");
+		}
+
+		/*
 		 * THE VERB TABLE, which three surfaces read. The two things
 		 * worth asserting are the two that make a shared table worth
 		 * having: a verb whose program is absent is not offered, and a

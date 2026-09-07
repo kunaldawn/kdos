@@ -60,6 +60,8 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <pwd.h>
+#include <linux/netlink.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -83,6 +85,10 @@
  * hold anything. */
 #define KM_SECRET_MAX 512
 #define KM_DEVS 32
+/* One subscriber per session, and a machine with four logged-in desktops is
+ * not a thing this daemon has to be good at. The cap exists so a client that
+ * reconnects in a loop cannot make the daemon hold file descriptors forever. */
+#define KM_SUBS 4
 #define KM_NAME 64
 
 struct kmdev {
@@ -166,6 +172,20 @@ static const char *devroot(void)
 {
 	const char *p = km_fixture ? getenv("KDOS_MOUNTD_DEV") : NULL;
 	return p && *p ? p : "/dev";
+}
+
+/*
+ * WHERE HOTPLUG COMES FROM, and the fixture's version of it. A kernel uevent
+ * arrives on a netlink socket that needs CAP_NET_ADMIN to bind and that a test
+ * cannot write to at all — so under `--fixture` the seam names a FIFO instead,
+ * carrying the same NUL-separated key=value blob the kernel sends. Gated like
+ * every other root here: a variable inherited from an init environment names
+ * nothing.
+ */
+static const char *uevent_path(void)
+{
+	const char *p = km_fixture ? getenv("KDOS_MOUNTD_UEVENT") : NULL;
+	return p && *p ? p : NULL;
 }
 
 /* ── the allowed set ───────────────────────────────────────────────────── */
@@ -1087,6 +1107,66 @@ static void reply_list(int c)
 	(void)!write(c, "ok\n", 3);
 }
 
+/* ── hotplug ───────────────────────────────────────────────────────────── */
+
+/*
+ * THE KERNEL'S OWN BROADCAST, not udev's. `NETLINK_KOBJECT_UEVENT` is what
+ * udev itself listens to; taking it directly means this daemon learns about a
+ * stick with no dependency on a rule file, on udev running, or on the two
+ * agreeing about what a block device is. It needs no capability beyond the
+ * root this daemon already has, and binding group 1 is a subscribe, not a
+ * privilege — nothing can be sent from here.
+ */
+static int uevent_open(void)
+{
+	const char *fx = uevent_path();
+	struct sockaddr_nl sa = { .nl_family = AF_NETLINK, .nl_groups = 1 };
+	int fd;
+
+	if (fx) {
+		/* O_RDWR AND NOT O_RDONLY. A reader-only open of a FIFO blocks
+		 * until a writer arrives, which would hang the daemon before
+		 * it ever reached poll(); holding a writer of our own also
+		 * stops the poll from spinning on EOF between test writes. */
+		return open(fx, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+	}
+	fd = socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK,
+		    NETLINK_KOBJECT_UEVENT);
+	if (fd < 0)
+		return -1;
+	if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+		close(fd);
+		return -1;
+	}
+	return fd;
+}
+
+/*
+ * IS THIS EVENT ONE THE LIST WOULD MOVE FOR? A uevent is a NUL-separated run
+ * of `key=value`, and the daemon cares about exactly one subsystem. `change`
+ * is in the set because that is what a drive reports when a disc is inserted
+ * into a tray that was already there — dropping it would make optical media
+ * the one case hotplug missed.
+ */
+static bool uevent_block(const char *buf, size_t n)
+{
+	bool block = false, act = false;
+
+	for (size_t i = 0; i < n;) {
+		const char *k = buf + i;
+		size_t len = strnlen(k, n - i);
+
+		if (!strcmp(k, "SUBSYSTEM=block"))
+			block = true;
+		else if (!strcmp(k, "ACTION=add") ||
+			 !strcmp(k, "ACTION=remove") ||
+			 !strcmp(k, "ACTION=change"))
+			act = true;
+		i += len + 1;
+	}
+	return block && act;
+}
+
 static int serve(void)
 {
 	const char *path = sock_path();
@@ -1119,7 +1199,87 @@ static int serve(void)
 		return 1;
 	}
 
+	/*
+	 * THE ONE LONG-LIVED CONNECTION. Every other verb is answered and the
+	 * socket closed, which is what lets a bare blocking accept() serve the
+	 * whole daemon; `subscribe` holds its connection open, so a bare
+	 * accept() would leave every other client waiting behind it forever.
+	 * The shape is kdos-oomd's: one poll over the listener, the event
+	 * source and each subscriber.
+	 */
+	int uev = uevent_open();
+	int subs[KM_SUBS];
+	int nsubs = 0;
+
+	if (uev < 0)
+		fprintf(stderr, "kdos-mountd: no uevent source; "
+				"`subscribe` will report nothing\n");
+
 	for (;;) {
+		struct pollfd fds[2 + KM_SUBS];
+		int nfds = 0, li, ui = -1, sbase;
+
+		li = nfds;
+		fds[nfds].fd = srv;
+		fds[nfds].events = POLLIN;
+		nfds++;
+		if (uev >= 0) {
+			ui = nfds;
+			fds[nfds].fd = uev;
+			fds[nfds].events = POLLIN;
+			nfds++;
+		}
+		sbase = nfds;
+		for (int i = 0; i < nsubs; i++) {
+			/* Nothing is expected FROM a subscriber; this watches
+			 * for the hangup that says the session went away. */
+			fds[nfds].fd = subs[i];
+			fds[nfds].events = 0;
+			nfds++;
+		}
+
+		if (poll(fds, (nfds_t)nfds, -1) < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+
+		/* A subscriber that went away is dropped before anything is
+		 * written to it, so a hung-up session cannot cost a SIGPIPE. */
+		for (int i = nsubs - 1; i >= 0; i--) {
+			if (!(fds[sbase + i].revents &
+			      (POLLHUP | POLLERR | POLLNVAL)))
+				continue;
+			close(subs[i]);
+			subs[i] = subs[--nsubs];
+		}
+
+		if (ui >= 0 && (fds[ui].revents & POLLIN)) {
+			char ev[2048];
+			ssize_t n = read(uev, ev, sizeof(ev));
+
+			/*
+			 * `changed` AND NOT A DEVICE NAME. An index is only
+			 * meaningful against the list the daemon published a
+			 * moment ago, and scan() rebuilds that on every
+			 * request — so the event says the list moved and the
+			 * client asks again. That keeps the rule the whole
+			 * protocol is built on: the client never names a
+			 * device, it names a row.
+			 */
+			if (n > 0 && uevent_block(ev, (size_t)n)) {
+				for (int i = nsubs - 1; i >= 0; i--) {
+					if (write(subs[i], "changed\n", 8) == 8)
+						continue;
+					close(subs[i]);
+					subs[i] = subs[--nsubs];
+				}
+			}
+		}
+
+		if (!(fds[li].revents & POLLIN))
+			continue;
+
 		int c = accept(srv, NULL, NULL);
 		if (c < 0) {
 			if (errno == EINTR)
@@ -1190,7 +1350,31 @@ static int serve(void)
 		const char *verb = ntok ? tok[0] : "";
 		int idx;
 
-		if (ntok == 1 && !strcmp(verb, "ping")) {
+		if (ntok == 1 && !strcmp(verb, "subscribe")) {
+			/*
+			 * THE ONE VERB THAT KEEPS ITS SOCKET. Every other
+			 * request is answered and closed; this one is handed
+			 * to the poll set above and written to whenever the
+			 * device list moves. It carries no state — the daemon
+			 * remembers nothing about a subscriber except the file
+			 * descriptor — so the rule that a connection holds no
+			 * session survives; what changes is that one of them
+			 * outlives its answer.
+			 *
+			 * `ok` FIRST, so a client can tell a subscription that
+			 * was accepted from one that was refused for the cap
+			 * without waiting for an event that may be hours away.
+			 */
+			if (nsubs >= KM_SUBS) {
+				(void)!write(c, "err too many subscribers\n",
+					     25);
+				close(c);
+				continue;
+			}
+			(void)!write(c, "ok\n", 3);
+			subs[nsubs++] = c;
+			continue;	/* NOT closed */
+		} else if (ntok == 1 && !strcmp(verb, "ping")) {
 			(void)!write(c, "ok\n", 3);
 		} else if (ntok == 1 && !strcmp(verb, "list")) {
 			reply_list(c);
@@ -1311,6 +1495,12 @@ static int ask(const char *word)
 	while ((n = read(fd, buf, sizeof(buf) - 1)) > 0) {
 		buf[n] = '\0';
 		fputs(buf, stdout);
+		/* FLUSHED PER READ, because `subscribe` never ends. stdout to
+		 * a pipe is block-buffered, so without this a subscriber
+		 * reading this command's output would see nothing until four
+		 * kilobytes of events had accumulated — which for a stick
+		 * being plugged in is never. */
+		fflush(stdout);
 	}
 	close(fd);
 	return 0;
@@ -1323,8 +1513,12 @@ static int usage(void)
 		"       kdos-mount mount <index>\n"
 		"       kdos-mount unmount <index>\n"
 		"       kdos-mount ping\n"
+		"       kdos-mount subscribe\n"
 		"\nThe index is a row from `list`. There is no form that takes\n"
-		"a device or a mountpoint: the daemon decides both.\n");
+		"a device or a mountpoint: the daemon decides both.\n"
+		"\n`subscribe` writes `changed` whenever the list moves and\n"
+		"never exits; it names no device, because a row number is only\n"
+		"true of the list it came with. Ask again with `list`.\n");
 	return 2;
 }
 
@@ -1384,7 +1578,8 @@ int main(int argc, char **argv)
 
 	if (argc < 2)
 		return usage();
-	if (!strcmp(argv[1], "list") || !strcmp(argv[1], "ping"))
+	if (!strcmp(argv[1], "list") || !strcmp(argv[1], "ping") ||
+	    !strcmp(argv[1], "subscribe"))
 		return ask(argv[1]);
 	if ((!strcmp(argv[1], "mount") || !strcmp(argv[1], "unmount")) &&
 	    argc > 2) {
