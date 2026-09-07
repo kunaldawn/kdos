@@ -108,6 +108,32 @@ int kxdg_mime_from_globs(const char *base, char *out, size_t n);
 /* A path's type, with `inode/directory` for a directory and
  * `application/octet-stream` when nothing matched. Never fails. */
 void kxdg_mime_for_path(const char *path, char *out, size_t n);
+
+/*
+ * WHAT A COMMAND-LINE ARGUMENT IS. One place decides, because the chooser and
+ * the opener must not disagree about the same word.
+ *
+ * A scheme makes it a URL, typed `x-scheme-handler/<scheme>`. That is the only
+ * thing that can be true of `mailto:a@b.c`, whose basename otherwise matches
+ * the `*.C` glob — case-insensitively — and resolves to C++ source, a mail
+ * address handed to an editor. `file:` is the exception: it names a path, so
+ * the path is unwrapped and typed like any other. A name that `stat()`s is a
+ * path whatever it looks like, so a real `notes:2026.txt` is not read as a
+ * scheme; `stat` follows symlinks, so a dangling one is not a name that is
+ * there.
+ *
+ * THE RETURN VALUE IS WHAT THE CALLER MUST PASS ON — the unwrapped path for
+ * `file:`, the argument itself otherwise — and it is READ-ONLY. It points into
+ * `arg`, except for a `file:` URL naming no path at all, where it is a static
+ * `/`; either way it outlives the call. Re-resolving the raw argument
+ * afterwards would open something other than the thing that was typed.
+ *
+ * PERCENT-ESCAPES ARE NOT DECODED, and a user sees it:
+ * `file:///home/kdos/My%20Report.pdf`, which is what a conforming caller emits
+ * for a name with a space, resolves to a path that does not exist and opens
+ * nothing.
+ */
+const char *kxdg_mime_for_arg(const char *arg, char *out, size_t n);
 /* The icon names a type may be drawn with, most specific first. Returns how
  * many were written. */
 int kxdg_mime_icon_names(const char *mime, char out[][64], int n);

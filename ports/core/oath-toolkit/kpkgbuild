@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = oath-toolkit
+version     = 2.6.14
+release     = 1
+source      = https://download-mirror.savannah.gnu.org/releases/oath-toolkit/$name-$version.tar.gz
+sha256      = 8b1da365759f1249be57a82aec6e107f7b57dc77d813f96dc0aaf81624f28971  oath-toolkit-2.6.14.tar.gz
+description = One-time passwords from the command line — HOTP and TOTP
+homepage    = https://www.nongnu.org/oath-toolkit/

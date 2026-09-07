@@ -153,17 +153,64 @@ as a property of the session rather than as a failure.
 constrains what an application can do to the **desktop**, not to your data. See
 [The security model](../03-architecture/security-model.md#what-is-not-protected).
 
-**An invitation in a message can be read and nothing else.** `aerc`'s calendar filter prints the
-event — summary, times, location, who was asked — and writes nothing anywhere. There is no verb that
-accepts, declines or files one, because a filter runs every time a message scrolls past and one that
-imported would accept every meeting it was scrolled over. Nothing yet turns a read invitation into a
-calendar entry by hand either; that waits on a calendar store.
+**An invitation in a message is read, never answered.** `aerc`'s calendar filter prints the event —
+summary, times, location, who was asked — and writes nothing anywhere. There is no verb that accepts
+or declines one, because a filter runs every time a message scrolls past and one that imported would
+accept every meeting it was scrolled over, and nothing on this image sends a reply to an organiser.
+**Filing one is now manual and it works**: `:save` the part out of the message and `khal import` it,
+and the day carries a mark in the panel's calendar. No `text/calendar` handler is registered for the
+same reason the filter writes nothing — opening a file would file it.
 
-**No XOAUTH2 for mail.** `isync` reaches XOAUTH2 and OAUTHBEARER only through `cyrus-sasl`, which
-this tree does not build — measured: the shipped `mbsync` links `libssl`, `libcrypto`, `libz` and
-`libc`, and carries no XOAUTH2 string at all. A provider that has withdrawn application passwords
-therefore cannot be synchronised on this image, and a token minter would not lift it, because
-`mbsync` has no mechanism to present one.
+**On a bare virtual terminal, a link resolves to a graphical handler.** `Ctrl+Alt+F2` gives a login
+shell whose `XDG_CURRENT_DESKTOP` is `KDOS` and which has neither the console session's socket nor a
+compositor, so `http` and `https` resolve the way they do under the compositor — to the browser box,
+a Wayland client with nothing to connect to. The console's own rows are keyed to the console
+session's desktop name, which that shell does not have.
+
+**With no browser pack installed, the compositor has nothing that opens `http`.** The console
+answers with `w3m` in a terminal, and a browser installed as a box claims the scheme through the
+launcher table the generator writes — but a graphical session with neither falls through to
+xdg-utils' own script, whose last resort is to start a **text** browser with no terminal around it,
+which means nothing visible happens. The console rows are not copied to the compositor on purpose:
+they would outrank the browser box's entry the moment one was installed.
+
+**Nothing on this image has a clipboard a Rust program can reach.** `iamb` and `atuin` both offer
+one through `arboard`, which speaks the X11 protocol in pure Rust — it links no C library, so it
+costs nothing to carry — but there is no X server here and the Wayland path is not compiled into it,
+so a yank inside such a program has nowhere to go. The desktop's own clipboard is `kdos-clip`, and
+`kdos-term` puts a selection there.
+
+**A spreadsheet can be read and not written back.** `sc-im` opens an `.xlsx` natively — it links
+`libzip` and `libxml2` and carries the reader in C — but its **export** is gated on
+`libxlsxwriter`, which is not a port here, so it answers `XLSX export support not compiled in.` and
+saves back out as `.sc`, `.csv` or `.ods`. You can open a file somebody sent you and cannot hand it
+back in the format they sent. `visidata` reaches the same file only through `openpyxl` and can
+write one, so the round trip exists — through the other program.
+
+**A call is voice only, and out of the box it is G.711.** `baresip` is the SIP phone here and its
+interface is a terminal menu. The codecs are all built — `opus.so`, `vp8.so`, `vp9.so` and
+`avcodec.so` are among the 55 modules installed — but baresip's own generated `config` leaves every
+one of them commented out, so a first run reports `Populated 0 video codecs` and negotiates G.711
+alone. Uncommenting the module lines in `~/.baresip/config` turns them on.
+
+**Video calling has nowhere to put the picture.** The capture half is there — the built `avformat`
+module registers a video source and the shipped ffmpeg carries `video4linux2` — and the codecs
+build. What is missing is a **display**: of baresip's video outputs only `fakevideo` (a null sink)
+and `vidbridge` (a loopback) were built, because `x11` needs the X headers this image refuses by
+rule and `sdl` needs an SDL port that does not exist. A call can send your camera and cannot show
+you theirs.
+
+**`mbsync` cannot use XOAUTH2, so mail from such a provider cannot be mirrored locally.** `isync`
+reaches XOAUTH2 and OAUTHBEARER only through `cyrus-sasl`, which this tree does not build —
+measured: the shipped `mbsync` links `libssl`, `libcrypto`, `libz` and `libc` and carries no XOAUTH2
+string at all, and `pizauth` does not lift it because there is nothing to present a token to.
+
+**The rest of the lane does.** Measured on the image: `msmtp --version` reports
+`Authentication library: built-in` and lists `oauthbearer` and `xoauth2`, and `aerc` carries
+`imaps+oauthbearer`, `smtps+oauthbearer` and its own `xoauth2Client`. So an account whose provider
+has withdrawn application passwords is **read in `aerc` directly and sent through `msmtp`** — what
+it does not get is a local Maildir kept in step by `mbsync`, and with it `notmuch`'s index and
+offline search.
 
 ## Hardware and platform
 

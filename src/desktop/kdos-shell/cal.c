@@ -40,6 +40,11 @@
 #define CAL_COLS 26
 #define CAL_ROWS 12
 
+/* How many of today's events the strip will show. Four is what fits under a
+ * month without the popup becoming a window; a fifth is what `ikhal` is for,
+ * and the last row says so when there are more. */
+#define CAL_AGENDA 4
+
 static const char *const MONTHS[] = {
 	"January", "February", "March", "April", "May", "June", "July",
 	"August", "September", "October", "November", "December"
@@ -50,6 +55,117 @@ static const char *const MONTHS[] = {
 static int mon_first(int tm_wday)
 {
 	return (tm_wday + 6) % 7;
+}
+
+/* ── what is on ─────────────────────────────────────────────────────────── */
+
+static char marks[32];			/* marks[d]: day d of the shown month */
+static char agenda[CAL_AGENDA][64];	/* today's, already formatted         */
+static int nagenda, more_today;
+
+/*
+ * ASKED ONCE PER MONTH, NEVER FROM draw(). A fork inside the draw path would
+ * run once a frame and would put $PATH — which nothing freezes for a dump —
+ * inside the picture; every other capture on this desktop is on a load, a
+ * click or an idle slot, and this is one too.
+ *
+ * ISO IN AND ISO OUT, AND THAT IS A CONTRACT WITH THE SHIPPED CONFIG. khal
+ * parses the dates on its command line with the `dateformat` from its own
+ * configuration and prints them with the same one, so /etc/skel's khal config
+ * pins both to %Y-%m-%d. Point it at anything else and these dates stop
+ * matching. `--day-format ""` drops the heading khal prints above each day;
+ * `--format` alone does not. An all-day event has an EMPTY start time, which
+ * is why the time column is padded rather than skipped.
+ *
+ * A STORE WITH NOTHING IN IT IS SILENT AND EXITS 0, and khal's warnings go to
+ * stderr, so what arrives here is events or nothing at all.
+ */
+static void cal_scan(int year, int mon, int today_y, int today_m, int today_d)
+{
+	KbArgv a = { 0 };
+	KbBuf out = { 0 };
+	char from[16], *text;
+	const char *fixture = getenv("KDOS_CAL_LIST");
+	int mine = year == today_y && mon == today_m;
+
+	memset(marks, 0, sizeof(marks));
+	if (mine) {
+		nagenda = 0;
+		more_today = 0;
+	}
+
+	/*
+	 * THE HARNESS'S SEAM. A dump cannot fork khal: neither $PATH nor a
+	 * calendar store is fixed for one, so a file stands in, in exactly the
+	 * format khal is asked to print. Never set on a login.
+	 */
+	if (fixture && *fixture) {
+		text = kb_read_all(fixture, NULL);
+		if (!text)
+			return;
+	} else {
+		if (!kb_have_prog("khal"))
+			return;
+		snprintf(from, sizeof(from), "%04d-%02d-01", year, mon + 1);
+		kb_argv_add(&a, "khal");
+		kb_argv_add(&a, "list");
+		kb_argv_add(&a, "--day-format");
+		kb_argv_add(&a, "");
+		kb_argv_add(&a, "--format");
+		kb_argv_add(&a, "{start-date}\t{start-time}\t{title}");
+		kb_argv_add(&a, from);
+		kb_argv_add(&a, "31d");
+		kb_argv_end(&a);
+		if (kb_run_capture_buf(&a, &out) != 0) {
+			kb_buf_free(&out);
+			return;
+		}
+		text = out.p;
+	}
+
+	for (char *p = text; p && *p;) {
+		char *nl = strchr(p, '\n');
+		char *t1, *t2;
+		int y, m, d;
+
+		if (nl)
+			*nl = '\0';
+		if (sscanf(p, "%4d-%2d-%2d", &y, &m, &d) != 3)
+			goto next;
+		if (y == year && m == mon + 1 && d >= 1 && d <= 31)
+			marks[d] = 1;
+
+		/* The strip is TODAY's, whichever month is being looked at:
+		 * the grid answers "which days have something", the strip
+		 * answers "what is on now". */
+		if (!mine || y != today_y || m != today_m + 1 || d != today_d)
+			goto next;
+		t1 = strchr(p, '\t');
+		t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+		if (!t2)
+			goto next;
+		*t1 = *t2 = '\0';
+		if (nagenda < CAL_AGENDA)
+			snprintf(agenda[nagenda++], sizeof(agenda[0]),
+				 "%-5.5s %s", t1 + 1, t2 + 1);
+		else
+			more_today++;
+next:
+		if (!nl)
+			break;
+		p = nl + 1;
+	}
+	if (fixture && *fixture)
+		free(text);
+	else
+		kb_buf_free(&out);
+}
+
+/* The rows the strip asks the surface for: none at all when nothing is on, so
+ * a machine with no calendar draws exactly the popup it drew before. */
+static int agenda_rows(void)
+{
+	return nagenda ? nagenda + (more_today ? 1 : 0) : 0;
 }
 
 /*
@@ -125,15 +241,49 @@ static void draw(int year, int mon, int today_y, int today_m, int today_d)
 			break;
 		snprintf(num, sizeof(num), "%2d", d);
 		int on = year == today_y && mon == today_m && d == today_d;
-		/* The cell under the pointer lifts. There is nothing to click
-		 * — this calendar has no events to open — and a day that
-		 * answers the hand is still what makes the grid readable as a
-		 * grid rather than as a block of numbers. */
+		/* The cell under the pointer lifts. A day still opens nothing
+		 * — what is on is read, not edited, and `ikhal` is the program
+		 * that edits it — and a day that answers the hand is what
+		 * makes the grid readable as a grid rather than as a block of
+		 * numbers. */
 		int hot = !on && hov_y == y && cal_in(hov_x, x, x + 2);
 		ktui_draw_text(x, y, 2, num, on ? KT_SURFACE : KT_TEXT,
 			       on    ? KT_ACCENT
 			       : hot ? KT_DIM
 				     : KT_SURFACE,
+			       KT_A_NONE);
+		/*
+		 * A DAY WITH SOMETHING ON IT IS MARKED IN THE GAP the grid
+		 * already leaves: every day owns three columns and the number
+		 * uses two. A CHARACTER and not a colour, because a dump
+		 * proves a character and never a colour — a mark nothing can
+		 * assert is a mark that quietly stops appearing.
+		 *
+		 * THE GAP KEEPS THE SURFACE UNDER IT, today's cell included.
+		 * The highlight belongs to the two columns the number is drawn
+		 * in; painting the mark's cell with it too put an accent glyph
+		 * on an accent ground, which is a mark that is THERE and
+		 * cannot be seen — and no dump can tell, because a dump has no
+		 * colour in it.
+		 */
+		if (marks[d])
+			ktui_draw_text(x + 2, y, 1, "*", KT_ACCENT, KT_SURFACE,
+				       KT_A_NONE);
+	}
+
+	/*
+	 * TODAY'S STRIP, on the rows the surface asked for when it opened. It
+	 * is today's whichever month is being looked at: the grid answers
+	 * "which days have something", this answers "what is on now".
+	 */
+	for (int i = 0; i < nagenda && 8 + i < h - 4; i++)
+		ktui_draw_text(2, 8 + i, w - 4, agenda[i], KT_TEXT, KT_SURFACE,
+			       KT_A_NONE);
+	if (more_today && nagenda && 8 + nagenda < h - 4) {
+		char tail[32];
+
+		snprintf(tail, sizeof(tail), "%d more in ikhal", more_today);
+		ktui_draw_text(2, 8 + nagenda, w - 4, tail, KT_MID, KT_SURFACE,
 			       KT_A_NONE);
 	}
 
@@ -239,9 +389,11 @@ int cal_main(int argc, char **argv)
 	    today_d = nt.tm_mday;
 	int year = today_y, mon = today_m;
 
+	cal_scan(year, mon, today_y, today_m, today_d);
+
 	if (dump) {
 		sh_theme_from_cache();
-		ktui_offscreen_init(CAL_COLS, CAL_ROWS);
+		ktui_offscreen_init(CAL_COLS, CAL_ROWS + agenda_rows());
 		draw(year, mon, today_y, today_m, today_d);
 		ktui_draw_dump();
 		return 0;
@@ -250,7 +402,10 @@ int cal_main(int argc, char **argv)
 	KDispConfig cfg = {
 		.role = KDISP_ROLE_OVERLAY,
 		.cols = CAL_COLS,
-		.rows = CAL_ROWS,
+		/* The strip is sized ONCE, here: a layer surface cannot be
+		 * resized under itself, so what today has on it decides the
+		 * height and browsing another month never moves it. */
+		.rows = CAL_ROWS + agenda_rows(),
 		.corner = at_x < 0	? KDISP_CORNER_CENTER
 			  : at_bottom	? KDISP_CORNER_BOTTOM_LEFT
 					: KDISP_CORNER_TOP_LEFT,
@@ -273,9 +428,20 @@ int cal_main(int argc, char **argv)
 	 * same surface the taskbar is — see kch_px_popup(). */
 	kch_px_popup(KT_SURFACE);
 
+	/* Already scanned for the month this opened on. */
+	int shown_y = year, shown_m = mon;
+
 	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
 		sh_theme_poll();
+		/* ONE PLACE RE-READS, and it is a month CHANGE that triggers
+		 * it rather than a frame: eight call sites move the month and
+		 * every one of them would have to remember. */
+		if (year != shown_y || mon != shown_m) {
+			cal_scan(year, mon, today_y, today_m, today_d);
+			shown_y = year;
+			shown_m = mon;
+		}
 		draw(year, mon, today_y, today_m, today_d);
 
 		KtuiEvent ev;

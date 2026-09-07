@@ -1,0 +1,27 @@
+#!/bin/sh
+# xdg-terminal-exec — run a command in this desktop's terminal.
+#
+# THE NAME GLib LOOKS FOR FIRST. A `Terminal=true` desktop entry launched
+# through GIO — which is how xdg-desktop-portal opens a link for a boxed
+# application — is wrapped by prepending the first name GLib finds from
+# `xdg-terminal-exec, gnome-terminal, mate-terminal, xfce4-terminal, …`. Not
+# one of the others is on this image, so without this file every terminal
+# handler fails with "Unable to find terminal required for application" and a
+# link from a box goes nowhere.
+#
+# THE SAME RULE AS kb_terminal(). `foot` is a Wayland client and cannot run on
+# the console; `kdos-term` needs the console session's socket. The two must
+# agree, or a handler resolved correctly is wrapped in a terminal that cannot
+# open and reads as the handler being wrong.
+#
+# A SEPARATOR IS ACCEPTED AND DROPPED. Callers differ: some pass the command
+# directly, some pass `-e` or `--` first, and a terminal handed `-e` twice
+# tries to run it.
+case "$1" in
+-e|--) shift ;;
+esac
+
+if [ -n "$KDOS_CON" ]; then
+	exec kdos-term -e "$@"
+fi
+exec foot -e "$@"

@@ -41,6 +41,15 @@
 #   - libnsgif, which gates libkimg's GIF cases. Alpine packages neither it nor
 #     netsurf's buildsystem; the port builds both, so the block runs inside the
 #     phase-4 chroot and skips here.
+#
+# A FONT IS NOT OPTIONAL HERE. fcft resolves `monospace` through fontconfig, and
+# an image with no font at all answers `failed to match font` — which stops the
+# suite at the first rasteriser block and takes every front-end dump with it,
+# so the half this image exists to run would not run.
+#
+# NOR IS GNU tar. Alpine's default is busybox's, and the reproducible-build
+# block answers "the synthetic port did not build" with it — which gates every
+# front-end golden behind it, so they are skipped in silence.
 
 FROM alpine:3.23
 
@@ -52,7 +61,8 @@ RUN apk add --no-cache \
         libxkbcommon-dev libinput-dev libseat-dev \
         mesa-dev libxml2-dev cairo-dev pango-dev \
         basu-dev pipewire-dev alsa-lib-dev \
-        dbus cpio xz zstd \
+        dbus cpio tar xz zstd fakeroot \
+        font-dejavu fontconfig \
         vim htop mc tmux less ncurses
 
 WORKDIR /kdos

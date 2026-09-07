@@ -71,7 +71,7 @@ static int ncands;
  * scroll on the very next frame. */
 static int sel, top, sel_follow = 1;
 
-static char ow_path[1024];	/* the file, or "" for --mime               */
+static char ow_path[1024];	/* the file or URL, "" for --mime           */
 static char ow_mime[OW_MIME_MAX];
 static int set_default;		/* the "always use this" checkbox           */
 static char note[160];
@@ -108,11 +108,11 @@ static void ow_edit_close(void *user)
  * disagree about what a file is — and the glob table's path is a compile-time
  * define there, which is what lets a fixture stand in for the compiled
  * database that exists only on a booted target.
+ *
+ * kxdg_mime_for_arg is the same function the opener asks, so a URL means the
+ * same thing on both sides: `x-scheme-handler/<scheme>`, and the path a
+ * `file:` URL names.
  */
-static void mime_for_path(const char *path, char *out, size_t n)
-{
-	kxdg_mime_for_path(path, out, n);
-}
 
 /* ── the search path ───────────────────────────────────────────────────── */
 
@@ -318,10 +318,54 @@ static void scan_for_mime(const char *dir, const char *mime)
 	closedir(d);
 }
 
+/*
+ * ON THE CONSOLE, A HANDLER THAT WANTS A TERMINAL COMES FIRST. There is no
+ * compositor on this desktop, so a windowed handler at the head of the list
+ * opens nothing anybody can see. `kdos-appbox open` applies the same rule to
+ * its own candidates, and it must: the first row here is the handler the
+ * opener would use, and a chooser whose first row is not that is a chooser
+ * that lies.
+ *
+ * ONLY WHERE NOBODY HAS DECIDED — a `[Default Applications]` row is somebody's
+ * answer and keeps its place. THE TEST IS THE OPENER'S, not the `is_default`
+ * marker beside it: that marker means "the row in force" and is set only for
+ * the first candidate, so once an Added Association had contributed anything
+ * the chooser would reorder where `kdos-appbox open` does not — and the first
+ * row here would stop being the handler that would actually run. Within each
+ * kind the order is unchanged.
+ */
+static void terminal_first(int any_default)
+{
+	static struct ow_cand out[OW_MAX_CANDS];
+	const char *con = getenv("KDOS_CON");
+	int k = 0;
+
+	if (!con || !*con || ncands < 2 || any_default)
+		return;
+	for (int i = 0; i < ncands; i++)
+		if (cands[i].terminal)
+			out[k++] = cands[i];
+	for (int i = 0; i < ncands; i++)
+		if (!cands[i].terminal)
+			out[k++] = cands[i];
+	memcpy(cands, out, (size_t)ncands * sizeof(*cands));
+}
+
+/* Did a `[Default Applications]` section name an installed entry? The opener's
+ * `defaulted`, computed the same way — by whether the section contributed. */
+static int add_defaults(const char *path, const char *mime, int mark)
+{
+	int n0 = ncands;
+
+	add_from_section(path, "Default Applications", mime, mark);
+	return ncands > n0;
+}
+
 static void gather(const char *mime)
 {
 	char dirs[16][512], path[700];
 	int nd = ow_data_dirs(dirs, 16);
+	int any_default = 0;
 
 	/* In the order `kdos-appbox open` consults them, so the first row is
 	 * the handler that would open the file right now. The two must not
@@ -332,10 +376,10 @@ static void gather(const char *mime)
 
 	if (have_pre) {
 		mimeapps_path(path, sizeof(path), pre);
-		add_from_section(path, "Default Applications", mime, 1);
+		any_default |= add_defaults(path, mime, 1);
 	}
 	mimeapps_path(path, sizeof(path), NULL);
-	add_from_section(path, "Default Applications", mime, ncands == 0);
+	any_default |= add_defaults(path, mime, ncands == 0);
 	if (have_pre) {
 		mimeapps_path(path, sizeof(path), pre);
 		add_from_section(path, "Added Associations", mime, 0);
@@ -345,11 +389,10 @@ static void gather(const char *mime)
 	if (have_pre) {
 		snprintf(path, sizeof(path), "/etc/xdg/%.40s-mimeapps.list",
 			 pre);
-		add_from_section(path, "Default Applications", mime,
-				 ncands == 0);
+		any_default |= add_defaults(path, mime, ncands == 0);
 	}
-	add_from_section("/etc/xdg/mimeapps.list", "Default Applications", mime,
-			 ncands == 0);
+	any_default |= add_defaults("/etc/xdg/mimeapps.list", mime,
+				    ncands == 0);
 	for (int i = 0; i < nd; i++) {
 		snprintf(path, sizeof(path), "%.500s/applications/mimeinfo.cache",
 			 dirs[i]);
@@ -359,6 +402,7 @@ static void gather(const char *mime)
 		snprintf(path, sizeof(path), "%.500s/applications", dirs[i]);
 		scan_for_mime(path, mime);
 	}
+	terminal_first(any_default);
 	for (int i = 0; i < ncands; i++)
 		if (cands[i].is_default)
 			sel = i;
@@ -838,20 +882,28 @@ int openwith_main(int argc, char **argv)
 	}
 
 	if (file_arg) {
-		/* Absolute, because the handler is spawned with setsid() from a
-		 * process that is about to exit and nothing guarantees it keeps
-		 * this working directory. */
-		if (file_arg[0] == '/') {
-			snprintf(ow_path, sizeof(ow_path), "%s", file_arg);
+		const char *p = kxdg_mime_for_arg(file_arg, ow_mime,
+						  sizeof(ow_mime));
+
+		/*
+		 * A RELATIVE FILE NAME IS MADE ABSOLUTE, because the handler is
+		 * spawned with setsid() from a process about to exit and
+		 * nothing guarantees it keeps this working directory. A URL IS
+		 * NOT A FILE NAME: prefixing one with the working directory
+		 * made `https://example.com/page.html` into
+		 * `/tmp/https://example.com/page.html`, a path nobody has.
+		 */
+		if (p[0] == '/' || !strncmp(ow_mime, "x-scheme-handler/", 17)) {
+			snprintf(ow_path, sizeof(ow_path), "%s", p);
 		} else {
 			char cwd[512];
+
 			if (getcwd(cwd, sizeof(cwd)))
 				snprintf(ow_path, sizeof(ow_path), "%s/%s", cwd,
-					 file_arg);
+					 p);
 			else
-				snprintf(ow_path, sizeof(ow_path), "%s", file_arg);
+				snprintf(ow_path, sizeof(ow_path), "%s", p);
 		}
-		mime_for_path(ow_path, ow_mime, sizeof(ow_mime));
 	} else if (mime_arg) {
 		snprintf(ow_mime, sizeof(ow_mime), "%s", mime_arg);
 	} else {

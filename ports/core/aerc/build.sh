@@ -77,12 +77,14 @@ image)
 docx)
 	docx2txt "$t" -
 	;;
-# THE ISOLATION IS PROBED, NOT ASSUMED. aerc's own html filter picks the
-# namespace path on `command -v unshare`; the binary is on this image, so on a
-# kernel without unprivileged user namespaces that filter runs a command which
-# cannot start, and the reader gets `unshare: Operation not permitted` where
-# the message should be. Probing means the worst case is a message shown
-# without isolation rather than no message.
+# THE ISOLATION IS PROBED, NOT ASSUMED, AND ON THE LIVE MEDIUM THE PROBE FAILS:
+# no process there can create a user namespace, root included, though every
+# other namespace works and the kernel carries CONFIG_USER_NS=y. aerc's own
+# html filter picks the namespace path on `command -v unshare` — and the binary
+# IS on this image — so it runs a command that cannot start and the reader gets
+# `unshare: Operation not permitted` where the message should be. Probing means
+# the worst case is a message behind an unroutable proxy rather than no
+# message.
 #
 # ONE PROCESS EITHER WAY. The argument vector is built in the positional
 # parameters and unshare prefixes it. Re-entering this script under unshare
@@ -133,11 +135,12 @@ chmod 755 "$PKG/usr/libexec/aerc/filters/kdos-part"
 # nothing when an entry has none (`exec_to_argv`, open.c), so a bare
 # `Exec=aerc` opens an empty client for a link that named a person.
 #
-# NO `MimeType=x-scheme-handler/mailto;` HERE UNTIL AN OPENER HONOURS
-# `Terminal=`. /usr/bin/xdg-open reads that key, and it runs the entry's Exec
-# directly with no terminal: aerc then dies on `open /dev/tty: no such device`.
-# A row that names a mail client belongs in /etc/xdg/mimeapps.list, beside an
-# opener that knows this entry needs a terminal.
+# NO `MimeType=x-scheme-handler/mailto;` HERE. That key is what lets
+# /usr/bin/xdg-open find an entry by scheme, and that script runs the entry's
+# Exec directly — the word `Terminal` does not occur anywhere in it — so aerc
+# would be started without a terminal and die on `open /dev/tty: no such
+# device`. The row that names this client is in /etc/xdg/mimeapps.list, read by
+# openers that do honour `Terminal=`.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/aerc.desktop" <<'EOF'
 [Desktop Entry]

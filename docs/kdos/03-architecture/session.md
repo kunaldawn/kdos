@@ -18,6 +18,7 @@ typing a command; the graphical one is started by hand with `kdos-desktop`. What
 
 | Function | Does |
 |---|---|
+| `kdos_session_open` | `$BROWSER`, for the login path that reads no profile |
 | `kdos_session_runtime` | `XDG_RUNTIME_DIR`, before anything uses it |
 | `kdos_session_keymap` | The console keymap as XKB variables |
 | `kdos_session_boxes` | The appbox warmup, and giving idle ones back |

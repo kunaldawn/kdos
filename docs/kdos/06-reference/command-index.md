@@ -94,6 +94,8 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `ksvc` | The service supervisor | [Administration](../02-user-guide/administration.md#services) |
 | `service` | The same supervisor, conventional name | [Administration](../02-user-guide/administration.md#services) |
 | `xdg-desktop-portal-kdos` | The portal backend | [The session](../03-architecture/session.md#the-kdos-backend) |
+| `xdg-open` | Open a file or a link with its handler — a name on `kdos-appbox` | [kdos-appbox](../04-programs/kdos-appbox.md#the-open-path) |
+| `xdg-terminal-exec` | Run a command in this desktop's terminal, for a caller that only knows the standard name | [kdos-appbox](../04-programs/kdos-appbox.md#the-open-path) |
 
 Plus **one shim per installed application**, named after the application and pointing at
 `kdos-appbox`.

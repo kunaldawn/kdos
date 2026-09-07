@@ -156,12 +156,13 @@ The supervisor, and the tools that ride on the same binary.
 | `kpkgdel` | Remove a package |
 | `kpkgdepends` | Print the resolved install order |
 
-### `kdos-appbox` — 2 names
+### `kdos-appbox` — 3 names
 
 | Name | Is |
 |---|---|
 | `kdos-appbox` | Launching boxed applications, and generating their launchers |
 | `kdos-box` | The box manager |
+| `xdg-open` | Opening a file or a link with whatever this machine opens it with. `/usr/local/bin` comes first on `PATH`, so this answers before xdg-utils' script — which is still installed and is still where an unclaimed type ends up |
 
 It is also invoked through a **shim named after each installed application**, so `gimp` on your
 `PATH` is this binary dispatching on that name.

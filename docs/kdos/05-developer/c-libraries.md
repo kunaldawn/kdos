@@ -360,6 +360,20 @@ than running one. Its inverse re-quotes, so a generator's output round-trips.
 Every launch path in the system goes through it. See
 [kdos-appbox](../04-programs/kdos-appbox.md#exec-lines).
 
+**`kxdg_mime_for_arg()` says what a command-line argument is**, and it exists because the two
+openers were answering that question separately and getting a URL wrong in two different ways. An
+argument carrying a scheme is typed `x-scheme-handler/<scheme>`; `file:` names a path, so the path
+is unwrapped and typed like any other; a name that **`stat()`s** is a path whatever it looks like.
+Without it the basename decided, and `mailto:a@b.c` matched the `*.C` glob — case-insensitively —
+and resolved to C++ source.
+
+It returns **the argument the caller must pass on**, read-only and never a copy, so a long path
+cannot be silently truncated on the way to the handler. The pointer is into the argument, except
+for a `file:` URL naming no path at all, where it is a static `/`. Percent-escapes are
+**not** decoded, and a reader sees that: `file:///home/kdos/My%20Report.pdf`, which is what a
+conforming caller emits for a name with a space, resolves to a path that does not exist and opens
+nothing.
+
 **`kxdg_places()` is one reader for the whole desktop**, and it replaced two. `kdos-desk` read
 `~/.config/user-dirs.dirs` for the desktop folder while `kdos-menu`'s Places list assumed six names
 under `$HOME`, so on a machine where somebody had renamed one the icons were in the folder the file

@@ -86,9 +86,16 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # itself. Mail is here for the same reason from the other direction:
     # notmuch's mail_root and mbsync's MaildirStore both name ~/Mail, and both
     # report an error on a directory that is not there rather than making one.
+    # The calendar and contact stores are here for the same reason Mail is:
+    # khal's shipped config globs `.local/share/calendars/*` and khard's names
+    # `.local/share/contacts/personal`, and a store that is a plain directory
+    # of files is a store `cp -r` backs up. khal's `discover` type does NOT
+    # create what it is pointed at — deliberately, so a login grows nothing —
+    # which is exactly why they are made here.
     for _d in Desktop Downloads Documents Mail Music Pictures \
               Pictures/Screenshots Videos Public Templates .local/bin \
-              .local/share/applications; do
+              .local/share/applications .local/share/calendars \
+              .local/share/contacts/personal; do
         mkdir -p "$home/$_d"
     done
 
