@@ -68,6 +68,7 @@
 
 #include "kcell.h"
 #endif
+#include "record.h"
 #include "view.h"
 #ifdef KDOS_VIEW_KMS
 #include "kkms.h"
@@ -135,6 +136,11 @@ static void usage(FILE *f)
 "                     size it takes the session's own grid\n"
 "  --cast             rasterise into a PipeWire stream instead of onto a\n"
 "                     screen — a view nobody looks at. Prints its node id\n"
+"  --observe          watch and do not type: no key and no pointer is sent,\n"
+"                     and the session refuses both from this view\n"
+"  --record FILE      write everything the session sends to FILE while it\n"
+"                     draws. KDOS's own format, not an asciicast\n"
+"  --replay FILE      draw a recording instead of attaching to a session\n"
 "  --help\n");
 }
 
@@ -148,6 +154,16 @@ static void usage(FILE *f)
  * an ssh link is a link that does nothing else.
  */
 static int cap_cell_w, cap_cell_h;
+
+/*
+ * A VIEW THAT WATCHES AND DOES NOT TYPE.
+ *
+ * It sends no key and no pointer, and the session refuses both from it anyway:
+ * over a forwarded socket this is the difference between showing somebody a
+ * problem and handing them the machine, and a promise the client keeps by
+ * itself is decorative.
+ */
+static int observe;
 static unsigned cap_flags;
 
 #ifdef KDOS_VIEW_KMS
@@ -190,6 +206,11 @@ static int attach(const char *path, int cols, int rows)
 	kcon_put_u16(&b, (uint16_t)cap_cell_w);
 	kcon_put_u16(&b, (uint16_t)cap_cell_h);
 	kcon_put_u16(&b, (uint16_t)cap_flags);
+	/* AND WHAT THIS VIEW MAY DO. A driver says so by saying nothing —
+	 * every view was one before an observer existed — and an observer
+	 * says it here, where the server can hold it to it. */
+	kcon_put_u16(&b, (uint16_t)(observe ? KCON_RIGHTS_OBSERVE
+					    : KCON_RIGHTS_DRIVE));
 	kcon_send(conn, KCON_OP_HELLO, &b);
 
 	/* THE VIEW DECIDES THE GRID. The session composites to whatever the
@@ -491,14 +512,14 @@ static int ascii_cell(uint32_t *ch, int *fg)
 }
 #endif
 
-static void take_sprite(const KconMsg *m)
+static void take_sprite(const unsigned char *payload, size_t len)
 {
 	KconRd r;
 	int slot, cw, ch, pw, ph;
 	uint32_t fallback;
 	const void *argb;
 
-	kcon_rd_init(&r, m->payload, m->len);
+	kcon_rd_init(&r, payload, len);
 	slot = (int)kcon_get_u16(&r);
 	cw = (int)kcon_get_u16(&r);
 	ch = (int)kcon_get_u16(&r);
@@ -752,6 +773,273 @@ static void redraw_slot(unsigned slot)
 }
 #endif
 
+/*
+ * ONE MESSAGE FROM THE SESSION, DRAWN.
+ *
+ * Split out of the receive loop because a REPLAY feeds the same handler from a
+ * file: a recording is this protocol's own messages with timestamps, so the
+ * drawing has to be reachable from something that is not a socket. Returns 1
+ * when the screen changed, 0 when nothing did, -1 when the session said
+ * goodbye.
+ */
+static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
+{
+	int got = 0;
+
+	if (op == KCON_OP_BYE)
+		return -1;
+
+	/*
+	 * WHAT THE SESSION COPIED, onto the clipboard of the desktop
+	 * this view is running on. `ktui_clip_copy` writes OSC 52 and
+	 * is a deliberate no-op on a Linux console, so this does
+	 * nothing on tty1 and everything in `foot` or over ssh — which
+	 * is where a person has another desktop to paste into.
+	 */
+	if (op == KCON_OP_VIEW_CLIP) {
+		KconRd b;
+
+		kcon_rd_init(&b, payload, len);
+
+		const char *text = kcon_get_str(&b);
+
+		if (!b.err && *text)
+			ktui_clip_copy(text);
+		return got;
+	}
+
+	/*
+	 * WHERE THE CARET IS. A view holds no window state, so it is
+	 * told; a terminal view puts its own cursor there, which is
+	 * the one thing the person's own terminal can draw better
+	 * than this desktop can paint. A view with a screen of its own
+	 * ignores it — the caret is already a cell in the frame it was
+	 * sent.
+	 */
+	if (op == KCON_OP_CURSOR) {
+		KconRd b;
+
+		kcon_rd_init(&b, payload, len);
+
+		int cx = (int)kcon_get_i32(&b);
+		int cy = (int)kcon_get_i32(&b);
+
+		if (!b.err && !own_screen) {
+			ktui_term_caret(cx, cy);
+#ifdef KDOS_VIEW_TTYPIX
+			view_ttypix_caret(cx, cy);
+#endif
+		}
+		return got;
+	}
+
+	/*
+	 * A BELL RINGS WHERE THE PERSON IS. A view in somebody's
+	 * terminal writes BEL and lets that terminal do whatever it is
+	 * configured to do — a sound, a flash, or nothing; a view with
+	 * a screen of its own has no sound to make, and the session
+	 * has already inverted the window that rang.
+	 */
+	if (op == KCON_OP_BELL) {
+		if (!own_screen) {
+			ssize_t r = write(1, "\a", 1);
+
+			(void)r;
+		}
+		return got;
+	}
+
+	if (op == KCON_OP_BLANK) {
+		KconRd b;
+
+		kcon_rd_init(&b, payload, len);
+
+		int on = (int)kcon_get_u16(&b);
+
+		/*
+		 * THE SESSION DECIDES, THE DISPLAY ACTS. A view that
+		 * cannot power its screen down ignores this and stays
+		 * lit — a screensaver that saves no power, rather than
+		 * a session that fails because its display is a
+		 * terminal.
+		 */
+#ifdef KDOS_VIEW_KMS
+		kkms_blank(on);
+#else
+		(void)on;
+#endif
+		return got;
+	}
+
+	/*
+	 * A FONT STEP, and only a view with a screen of its own is
+	 * sent one — the session checks KCON_VIEW_FONT before it
+	 * asks, so there is nothing to refuse here.
+	 *
+	 * The grid goes back as an ordinary KCON_OP_VIEW_SIZE: a cell
+	 * of a different size is a different number of columns, which
+	 * is the same event as a screen being resized and is already
+	 * the one the session knows how to handle.
+	 */
+	if (op == KCON_OP_VIEW_FONT) {
+#ifdef KDOS_VIEW_KMS
+		KconRd b;
+
+		kcon_rd_init(&b, payload, len);
+
+		int step = (int)(int16_t)kcon_get_u16(&b);
+		char want[192], path[512];
+
+		if (b.err || !own_screen)
+			return got;
+		if (step == 0)
+			snprintf(want, sizeof(want), "%s", font_base);
+		else if (!view_font_stepped(kkms_font(), step, want,
+					    sizeof(want)))
+			return got;
+		if (kkms_set_font(want[0] ? want : NULL) != 0)
+			return got;
+
+		ktui_draw_resize();
+		/* Every picture in the table was cut for the old
+		 * cell. They are dropped rather than scaled, and the
+		 * session sends them again when it sees the grid
+		 * move — a view that stretched what it had would show
+		 * one sharp desktop and one blurred one on a machine
+		 * with two screens. */
+		ktui_sprite_clear();
+		ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+		ktui_draw_invalidate();
+
+		cap_cell_w = kcell_w();
+		cap_cell_h = kcell_h();
+
+		KconBuf sz = { 0 };
+
+		kcon_put_u16(&sz, (uint16_t)ktui_w);
+		kcon_put_u16(&sz, (uint16_t)ktui_h);
+		kcon_put_u16(&sz, (uint16_t)cap_cell_w);
+		kcon_put_u16(&sz, (uint16_t)cap_cell_h);
+		kcon_send(conn, KCON_OP_VIEW_SIZE, &sz);
+		kcon_flush(conn);
+		kcon_buf_free(&sz);
+
+		/* WRITTEN AFTER THE FONT LOADED, never before: a name
+		 * that fcft refuses would otherwise be the name the
+		 * next login starts with, and the session would come
+		 * up on a screen nobody can read. */
+		if (view_font_state_path(path, sizeof(path))) {
+			if (step == 0) {
+				unlink(path);
+			} else {
+				char line[200], *slash;
+
+				slash = strrchr(path, '/');
+				if (slash) {
+					*slash = '\0';
+					kb_mkdir_p(path);
+					*slash = '/';
+				}
+				snprintf(line, sizeof(line), "%s\n",
+					 kkms_font());
+				kb_write_file_atomic(path, line);
+			}
+		}
+#endif
+		return got;
+	}
+
+	if (op == KCON_OP_SPRITE) {
+		take_sprite(payload, len);
+		return got;
+	}
+
+	/*
+	 * THE LITERALS OF THE RUN THAT CAME BEFORE. The shadow already
+	 * holds those cells, so this patches them there and redraws
+	 * exactly them — which is why the session may send it as a
+	 * second message without a frame ever being shown half
+	 * coloured.
+	 */
+	if (op == KCON_OP_COLOR) {
+		KconRd cr;
+		KtuiCell patch[4096];
+		uint16_t cx, cy;
+
+		kcon_rd_init(&cr, payload, len);
+		while (cr.pos < cr.len && !cr.err) {
+			int n = kcon_get_color_run(&cr, &cx, &cy,
+						   patch, 4096);
+
+			if (n < 0)
+				break;
+			shadow_fit(ktui_w, ktui_h);
+			for (int i = 0; i < n; i++) {
+				int px = (int)cx + i, py = (int)cy;
+
+				if (!shadow || px >= shadow_w ||
+				    py >= shadow_h)
+					return got;
+
+				KtuiCell *sc =
+					&shadow[py * shadow_w + px];
+
+				/* The low byte is the commit's and
+				 * stays the commit's; this message
+				 * owns the bits above it and the
+				 * three colours they describe. */
+				sc->attr = (uint16_t)
+					((sc->attr & 0xffu) |
+					 (patch[i].attr & ~0xffu));
+				sc->fgc = patch[i].fgc;
+				sc->bgc = patch[i].bgc;
+				sc->ulc = patch[i].ulc;
+				draw_one(px, py, sc);
+			}
+			got = 1;
+		}
+		return got;
+	}
+
+	if (op != KCON_OP_COMMIT)
+		return got;
+
+	KconRd rd;
+	KtuiCell run[4096];
+	uint16_t x, y;
+
+	kcon_rd_init(&rd, payload, len);
+	while (rd.pos < rd.len && !rd.err) {
+		int n = kcon_get_run(&rd, &x, &y, run, 4096);
+
+		if (n < 0)
+			break;
+		shadow_fit(ktui_w, ktui_h);
+		for (int i = 0; i < n; i++) {
+			int cx = (int)x + i, cy = (int)y;
+
+			if (shadow && cx < shadow_w && cy < shadow_h)
+				shadow[cy * shadow_w + cx] = run[i];
+			draw_one(cx, cy, &run[i]);
+		}
+		got = 1;
+	}
+	return got;
+}
+
+/*
+ * A RECORDED MESSAGE, DRAWN. The same handler the socket path uses, which is
+ * the whole point of splitting it out: a replay that had its own drawing code
+ * would drift from the desktop it claims to be replaying.
+ */
+static int on_replay(unsigned op, const char *payload, size_t len, void *user)
+{
+	(void)user;
+	if (handle_msg(op, (const unsigned char *)payload, len) > 0)
+		ktui_draw_flush();
+	return 0;
+}
+
 static int take_frame(int timeout_ms)
 {
 	KconMsg m;
@@ -759,244 +1047,19 @@ static int take_frame(int timeout_ms)
 	int r;
 
 	while ((r = kcon_recv(conn, &m)) == 1) {
-		if (m.op == KCON_OP_BYE)
+		int h = handle_msg(m.op, m.payload, m.len);
+
+		/*
+		 * RECORDED BEFORE IT IS ACTED ON, and recorded whatever it
+		 * was: a recording that only kept the ops this build knows
+		 * would lose an op added later, and the version in its header
+		 * is what says which protocol these bytes are.
+		 */
+		krec_msg(m.op, (const char *)m.payload, m.len);
+		if (h < 0)
 			return -1;
-
-		/*
-		 * WHAT THE SESSION COPIED, onto the clipboard of the desktop
-		 * this view is running on. `ktui_clip_copy` writes OSC 52 and
-		 * is a deliberate no-op on a Linux console, so this does
-		 * nothing on tty1 and everything in `foot` or over ssh — which
-		 * is where a person has another desktop to paste into.
-		 */
-		if (m.op == KCON_OP_VIEW_CLIP) {
-			KconRd b;
-
-			kcon_rd_init(&b, m.payload, m.len);
-
-			const char *text = kcon_get_str(&b);
-
-			if (!b.err && *text)
-				ktui_clip_copy(text);
-			continue;
-		}
-
-		/*
-		 * WHERE THE CARET IS. A view holds no window state, so it is
-		 * told; a terminal view puts its own cursor there, which is
-		 * the one thing the person's own terminal can draw better
-		 * than this desktop can paint. A view with a screen of its own
-		 * ignores it — the caret is already a cell in the frame it was
-		 * sent.
-		 */
-		if (m.op == KCON_OP_CURSOR) {
-			KconRd b;
-
-			kcon_rd_init(&b, m.payload, m.len);
-
-			int cx = (int)kcon_get_i32(&b);
-			int cy = (int)kcon_get_i32(&b);
-
-			if (!b.err && !own_screen) {
-				ktui_term_caret(cx, cy);
-#ifdef KDOS_VIEW_TTYPIX
-				view_ttypix_caret(cx, cy);
-#endif
-			}
-			continue;
-		}
-
-		/*
-		 * A BELL RINGS WHERE THE PERSON IS. A view in somebody's
-		 * terminal writes BEL and lets that terminal do whatever it is
-		 * configured to do — a sound, a flash, or nothing; a view with
-		 * a screen of its own has no sound to make, and the session
-		 * has already inverted the window that rang.
-		 */
-		if (m.op == KCON_OP_BELL) {
-			if (!own_screen) {
-				ssize_t r = write(1, "\a", 1);
-
-				(void)r;
-			}
-			continue;
-		}
-
-		if (m.op == KCON_OP_BLANK) {
-			KconRd b;
-
-			kcon_rd_init(&b, m.payload, m.len);
-
-			int on = (int)kcon_get_u16(&b);
-
-			/*
-			 * THE SESSION DECIDES, THE DISPLAY ACTS. A view that
-			 * cannot power its screen down ignores this and stays
-			 * lit — a screensaver that saves no power, rather than
-			 * a session that fails because its display is a
-			 * terminal.
-			 */
-#ifdef KDOS_VIEW_KMS
-			kkms_blank(on);
-#else
-			(void)on;
-#endif
-			continue;
-		}
-
-		/*
-		 * A FONT STEP, and only a view with a screen of its own is
-		 * sent one — the session checks KCON_VIEW_FONT before it
-		 * asks, so there is nothing to refuse here.
-		 *
-		 * The grid goes back as an ordinary KCON_OP_VIEW_SIZE: a cell
-		 * of a different size is a different number of columns, which
-		 * is the same event as a screen being resized and is already
-		 * the one the session knows how to handle.
-		 */
-		if (m.op == KCON_OP_VIEW_FONT) {
-#ifdef KDOS_VIEW_KMS
-			KconRd b;
-
-			kcon_rd_init(&b, m.payload, m.len);
-
-			int step = (int)(int16_t)kcon_get_u16(&b);
-			char want[192], path[512];
-
-			if (b.err || !own_screen)
-				continue;
-			if (step == 0)
-				snprintf(want, sizeof(want), "%s", font_base);
-			else if (!view_font_stepped(kkms_font(), step, want,
-						    sizeof(want)))
-				continue;
-			if (kkms_set_font(want[0] ? want : NULL) != 0)
-				continue;
-
-			ktui_draw_resize();
-			/* Every picture in the table was cut for the old
-			 * cell. They are dropped rather than scaled, and the
-			 * session sends them again when it sees the grid
-			 * move — a view that stretched what it had would show
-			 * one sharp desktop and one blurred one on a machine
-			 * with two screens. */
-			ktui_sprite_clear();
-			ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
-			ktui_draw_invalidate();
-
-			cap_cell_w = kcell_w();
-			cap_cell_h = kcell_h();
-
-			KconBuf sz = { 0 };
-
-			kcon_put_u16(&sz, (uint16_t)ktui_w);
-			kcon_put_u16(&sz, (uint16_t)ktui_h);
-			kcon_put_u16(&sz, (uint16_t)cap_cell_w);
-			kcon_put_u16(&sz, (uint16_t)cap_cell_h);
-			kcon_send(conn, KCON_OP_VIEW_SIZE, &sz);
-			kcon_flush(conn);
-			kcon_buf_free(&sz);
-
-			/* WRITTEN AFTER THE FONT LOADED, never before: a name
-			 * that fcft refuses would otherwise be the name the
-			 * next login starts with, and the session would come
-			 * up on a screen nobody can read. */
-			if (view_font_state_path(path, sizeof(path))) {
-				if (step == 0) {
-					unlink(path);
-				} else {
-					char line[200], *slash;
-
-					slash = strrchr(path, '/');
-					if (slash) {
-						*slash = '\0';
-						kb_mkdir_p(path);
-						*slash = '/';
-					}
-					snprintf(line, sizeof(line), "%s\n",
-						 kkms_font());
-					kb_write_file_atomic(path, line);
-				}
-			}
-#endif
-			continue;
-		}
-
-		if (m.op == KCON_OP_SPRITE) {
-			take_sprite(&m);
-			continue;
-		}
-
-		/*
-		 * THE LITERALS OF THE RUN THAT CAME BEFORE. The shadow already
-		 * holds those cells, so this patches them there and redraws
-		 * exactly them — which is why the session may send it as a
-		 * second message without a frame ever being shown half
-		 * coloured.
-		 */
-		if (m.op == KCON_OP_COLOR) {
-			KconRd cr;
-			KtuiCell patch[4096];
-			uint16_t cx, cy;
-
-			kcon_rd_init(&cr, m.payload, m.len);
-			while (cr.pos < cr.len && !cr.err) {
-				int n = kcon_get_color_run(&cr, &cx, &cy,
-							   patch, 4096);
-
-				if (n < 0)
-					break;
-				shadow_fit(ktui_w, ktui_h);
-				for (int i = 0; i < n; i++) {
-					int px = (int)cx + i, py = (int)cy;
-
-					if (!shadow || px >= shadow_w ||
-					    py >= shadow_h)
-						continue;
-
-					KtuiCell *sc =
-						&shadow[py * shadow_w + px];
-
-					/* The low byte is the commit's and
-					 * stays the commit's; this message
-					 * owns the bits above it and the
-					 * three colours they describe. */
-					sc->attr = (uint16_t)
-						((sc->attr & 0xffu) |
-						 (patch[i].attr & ~0xffu));
-					sc->fgc = patch[i].fgc;
-					sc->bgc = patch[i].bgc;
-					sc->ulc = patch[i].ulc;
-					draw_one(px, py, sc);
-				}
-				got = 1;
-			}
-			continue;
-		}
-
-		if (m.op != KCON_OP_COMMIT)
-			continue;
-
-		KconRd rd;
-		KtuiCell run[4096];
-		uint16_t x, y;
-
-		kcon_rd_init(&rd, m.payload, m.len);
-		while (rd.pos < rd.len && !rd.err) {
-			int n = kcon_get_run(&rd, &x, &y, run, 4096);
-
-			if (n < 0)
-				break;
-			shadow_fit(ktui_w, ktui_h);
-			for (int i = 0; i < n; i++) {
-				int cx = (int)x + i, cy = (int)y;
-
-				if (shadow && cx < shadow_w && cy < shadow_h)
-					shadow[cy * shadow_w + cx] = run[i];
-				draw_one(cx, cy, &run[i]);
-			}
+		if (h > 0)
 			got = 1;
-		}
 	}
 
 	if (r < 0)
@@ -1015,6 +1078,12 @@ static int take_frame(int timeout_ms)
 static void send_key(const KtuiEvent *ev)
 {
 	KconBuf b = { 0 };
+
+	/* AN OBSERVER SENDS NOTHING, here as well as at the server. Two
+	 * places, because the local one is what makes the view honest and the
+	 * remote one is what makes it safe. */
+	if (observe)
+		return;
 
 	kcon_put_i32(&b, ev->key);
 	kcon_put_u8(&b, (uint8_t)ev->mods);
@@ -1050,6 +1119,9 @@ static void send_paste(void)
 
 static void send_ptr(const KtuiEvent *ev)
 {
+	if (observe)
+		return;
+
 	KconBuf b = { 0 };
 
 	kcon_put_i32(&b, ev->mx);
@@ -1114,6 +1186,7 @@ int main(int argc, char **argv)
 	int tty_pix = 0;
 #endif
 	const char *shot = NULL;
+	const char *record = NULL, *replay = NULL;
 	int crop[4] = { 0, 0, 0, 0 };
 
 	signal(SIGHUP, on_hup);
@@ -1142,6 +1215,18 @@ int main(int argc, char **argv)
 		}
 		if (!strcmp(argv[i], "--cast")) {
 			cast = 1;
+			continue;
+		}
+		if (!strcmp(argv[i], "--observe")) {
+			observe = 1;
+			continue;
+		}
+		if (!strcmp(argv[i], "--record") && i + 1 < argc) {
+			record = argv[++i];
+			continue;
+		}
+		if (!strcmp(argv[i], "--replay") && i + 1 < argc) {
+			replay = argv[++i];
 			continue;
 		}
 		if (!strcmp(argv[i], "--font") && i + 1 < argc) {
@@ -1196,7 +1281,10 @@ int main(int argc, char **argv)
 		return 2;
 	}
 
-	if (!sock) {
+	/* A REPLAY NEEDS NO SESSION, so it is not asked for one: the messages
+	 * come from a file and connecting would put a second view on somebody
+	 * else's desktop. */
+	if (!sock && !replay) {
 		fprintf(stderr,
 			"kdos-view: no session. Set $KDOS_CON or pass --socket.\n");
 		return 2;
@@ -1206,7 +1294,10 @@ int main(int argc, char **argv)
 	 * so a script need not know which build it is talking to. */
 	(void)font;
 
-	if (!tty && !kms && !dump && !cast) {
+	/* `--record` is not a mode: it rides whichever one is drawing, because
+	 * a recording is what a view was sent and the view still has to be
+	 * looking at something. `--replay` IS one — it draws a file. */
+	if (!tty && !kms && !dump && !cast && !replay) {
 		fprintf(stderr,
 			"kdos-view: choose --kms, --tty, --shot, --dump or "
 			"--cast\n");
@@ -1435,10 +1526,39 @@ int main(int argc, char **argv)
 	 * positive and keeps the grid its primary view decided, which is what
 	 * makes a screenshot a screenshot rather than a resize.
 	 */
+	/*
+	 * A REPLAY ATTACHES TO NOTHING. Its messages come from a file, so it
+	 * neither needs a session nor may take one: a player that connected
+	 * would be a second view on somebody's desktop, resizing it to
+	 * whatever the recording was made at.
+	 */
+	if (replay) {
+		int rc, rw = 0, rh = 0, rcw = 0, rch = 0;
+
+		if (krec_replay(replay, &rw, &rh, &rcw, &rch, NULL, NULL) != 0)
+			return 1;
+		if (rw > 0 && rh > 0 && !tty && !kms) {
+			if (ktui_offscreen_init(rw, rh) != 0) {
+				fprintf(stderr,
+					"kdos-view: cannot render offscreen\n");
+				return 1;
+			}
+			ktui_draw_init();
+		}
+		rc = krec_replay(replay, NULL, NULL, NULL, NULL, on_replay,
+				 NULL);
+		if (dump)
+			ktui_draw_dump();
+		if (tty)
+			ktui_term_shutdown();
+		return rc == 0 ? 0 : 1;
+	}
+
 	if (attach(sock, cols, rows) != 0) {
 		fprintf(stderr, "kdos-view: cannot attach to %s\n", sock);
 		return 1;
 	}
+
 
 	if (!tty && !kms && !cast && cols <= 0) {
 		if (wait_for_grid(&cols, &rows) != 0) {
@@ -1561,6 +1681,28 @@ int main(int argc, char **argv)
 #endif
 
 	/*
+	 * RECORDING STARTS ONCE A MODE IS UP AND THE GRID IS KNOWN, because
+	 * the header names the grid: a player sizes a screen from it before
+	 * the first message is drawn on one. Started here rather than at the
+	 * attach for that reason — at the attach the size is still whatever
+	 * the defaults are.
+	 */
+	if (record) {
+		if (krec_open(record, ktui_w, ktui_h, cap_cell_w,
+			      cap_cell_h) != 0)
+			return 1;
+		/*
+		 * CLOSED ON EVERY WAY OUT, and there are four: the cast
+		 * branch, the dump branch, the loop and an error. A zstd
+		 * stream is not a file with the data already in it — the tail
+		 * is what makes it readable — so a mode that returned without
+		 * closing wrote a recording of nothing at all. That is what
+		 * `--dump --record` did.
+		 */
+		atexit(krec_close);
+	}
+
+	/*
 	 * DUMP, AND ONLY DUMP. The four modes are exclusive and every one of
 	 * the other three has its own loop below, so this has to name its own
 	 * rather than test for the absence of one of them: `--kms` is also
@@ -1658,7 +1800,16 @@ int main(int argc, char **argv)
 					 * same picture wherever the desktop is
 					 * looked at.
 					 */
-					ktui_draw_cursor(ev.mx, ev.my);
+					/* AN OBSERVER DRAWS NO POINTER. The
+					 * cell is a promise that clicking
+					 * there will do something, and for a
+					 * view that may not click it is a
+					 * lie. This is the one caller of the
+					 * hide in the tree. */
+					if (observe)
+						ktui_draw_hide_cursor();
+					else
+						ktui_draw_cursor(ev.mx, ev.my);
 					send_ptr(&ev);
 				}
 			}
@@ -1701,10 +1852,17 @@ int main(int argc, char **argv)
 				 * mode has ever drawn, and the only one a
 				 * terminal on the far end of ssh can show.
 				 */
-				ktui_draw_cursor(ev.mx, ev.my);
+				/* An observer draws none, for the reason the
+				 * screen path gives: a pointer that cannot
+				 * click is a lie about what this view is. */
+				if (observe) {
+					ktui_draw_hide_cursor();
+				} else {
+					ktui_draw_cursor(ev.mx, ev.my);
 #ifdef KDOS_VIEW_TTYPIX
-				view_ttypix_pointer(ev.mx, ev.my);
+					view_ttypix_pointer(ev.mx, ev.my);
 #endif
+				}
 				send_ptr(&ev);
 			}
 			else if (ev.type == KT_EVT_RESIZE)

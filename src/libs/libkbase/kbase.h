@@ -90,6 +90,15 @@ int kb_read_line_file(const char *path, char *buf, size_t cap);
 	"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" \
 	"/usr/games:/usr/local/games"
 
+/*
+ * THE SHIPPED CONSOLE BACKGROUNDS, one `<name>.txt` per piece. Here rather
+ * than in either consumer's own header because two of them need it and neither
+ * owns it: `kdos background` writes the name a person chose and `kdos-desk`
+ * turns that name into this path. Two spellings of one directory is a desktop
+ * that offers a piece it cannot then draw.
+ */
+#define KB_BACKGROUND_DIR "/usr/share/kdos/backgrounds"
+
 int kb_write_file(const char *path, const char *data);
 /* Replace a state file atomically: temp, fsync the file, rename, fsync the
  * directory. Use this wherever an empty file is a LOSS rather than a retry. */
@@ -213,6 +222,18 @@ int kb_mkdir_p(const char *path);
 
 /* flock() wrapper. Returns the held fd, or -1. Close to release. */
 int kb_lock_file(const char *path, int nonblock);
+
+/*
+ * A PATH UNDER THE STATE DIRECTORY, and the one place either spelling of it
+ * appears. `$XDG_STATE_HOME` when the session set one, `~/.local/state`
+ * otherwise; `rel` is the part below it, without a leading slash.
+ *
+ * Rebuilt on every call rather than cached, because a program that re-execs
+ * after `$HOME` changed under it would otherwise keep writing where nobody is
+ * reading. Returns 0 when there is no home to put it in — which a caller must
+ * treat as "no state", never as a relative path it can use anyway.
+ */
+int kb_state_path(const char *rel, char *out, size_t n);
 
 /*
  * IS A DESKTOP TOGGLE ON? `kdos toggle <name>` writes a flag file under
@@ -460,11 +481,18 @@ int kb_landlock_enforce(KbLandlock *ll);
 void kb_landlock_free(KbLandlock *ll);
 
 /*
- * Base64, decode only. Returns the byte count, or -1 when the input is not
+ * Base64. The decoder returns the byte count, or -1 when the input is not
  * base64 or would not fit — refused whole rather than partially decoded, so a
- * caller never pastes half a selection.
+ * caller never pastes half a selection. The encoder returns the string length
+ * it wrote, or -1 when it would not fit; `out` needs (n + 2) / 3 * 4 + 1
+ * bytes.
+ *
+ * `libktui` has an encoder of its own and keeps it: that library links nothing
+ * but libc, and pulling this one in for a single OSC 52 write would break the
+ * property every other file there depends on.
  */
 int kb_b64_decode(const char *in, size_t inlen, char *out, size_t outsz,
 		  size_t *outlen);
+int kb_b64_encode(const void *in, size_t n, char *out, size_t outsz);
 
 #endif /* KBASE_H */

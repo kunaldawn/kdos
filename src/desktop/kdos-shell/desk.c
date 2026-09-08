@@ -59,7 +59,8 @@ struct entry {
 	bool is_trash;
 	bool pinned;		/* Home and Trash: places, not files */
 	bool is_app;		/* a .desktop file: launch it, do not open it */
-	bool terminal;		/* ...inside foot */
+	bool terminal;		/* ...inside a terminal emulator */
+	char term[24];		/* X-KDOS-Term, or empty for this session's */
 	char icon[96];		/* a .desktop's Icon=, for the picture layer */
 	long mtime;		/* for Sort Icons ▸ date */
 };
@@ -318,6 +319,8 @@ static int load_desktop_entry(struct entry *it)
 	snprintf(it->name, sizeof(it->name), "%s", name);
 	snprintf(it->exec, sizeof(it->exec), "%s", exec);
 	it->terminal = kxdg_bool(&e, "Terminal", 0);
+	snprintf(it->term, sizeof(it->term), "%s",
+		 kxdg_get(&e, "X-KDOS-Term", ""));
 	it->is_app = true;
 	snprintf(it->icon, sizeof(it->icon), "%s", kxdg_get(&e, "Icon", ""));
 	kxdg_free(&e);
@@ -473,8 +476,8 @@ static void open_entry(const struct entry *it)
 		const char *argv[34];
 		int n = 0;
 		if (it->terminal)
-			n = sh_term_argv(argv, n, 34, it->exec, id,
-					 sizeof(id));
+			n = sh_term_argv_in(it->term, argv, n, 34, it->exec,
+					    id, sizeof(id));
 		snprintf(buf, sizeof(buf), "%s", it->exec);
 		char *save = NULL;
 		for (char *tok = strtok_r(buf, " \t", &save);
@@ -771,6 +774,64 @@ static int ctx_at(int *x, int *y, void *user)
 	return 1;
 }
 
+/*
+ * THE CONSOLE'S BACKGROUND, AND ONLY THE CONSOLE'S.
+ *
+ * Under the compositor the wallpaper is a PNG the compositor draws and this
+ * surface is transparent over it, so art painted here would be a rectangle of
+ * opaque cells sitting on top of somebody's photograph. On the console there
+ * is no wallpaper and no compositor: the ground is the theme's fill, and a
+ * picture made of characters is what a screen of characters can have.
+ *
+ * Reloaded on the same signal the accent is, because it is drawn in slots and
+ * a retint changes what those slots are.
+ */
+static KtuiCell *bg;
+static int bg_w, bg_h;
+
+static void bg_reload(void)
+{
+	char path[600];
+	const char *con = getenv("KDOS_CON");
+
+	free(bg);
+	bg = NULL;
+	bg_w = bg_h = 0;
+	if (!con || !*con)
+		return;
+	if (sh_bg_path(path, sizeof(path)))
+		bg = sh_bg_load(path, &bg_w, &bg_h);
+}
+
+/*
+ * CENTRED, and clipped rather than scaled. A BBS screen was eighty by
+ * twenty-five and a display is not, so a piece anchored to a corner sits in one
+ * on every screen larger than the one it was drawn for; a piece larger than the
+ * screen loses its edges, which is what a picture too big for a frame does.
+ *
+ * A BLANK CELL OF THE ART IS NOT DRAWN. The art is behind the icons and their
+ * labels, and painting its spaces would put the art's background over the
+ * desktop's — every gap in the picture would become a rectangle in a slightly
+ * different colour.
+ */
+static void bg_draw(int w, int h)
+{
+	int ox, oy;
+
+	if (!bg || bg_w < 1 || bg_h < 1)
+		return;
+	ox = (w - bg_w) / 2;
+	oy = (h - bg_h) / 2;
+	for (int y = 0; y < bg_h; y++)
+		for (int x = 0; x < bg_w; x++) {
+			const KtuiCell *c = &bg[y * bg_w + x];
+
+			if (!c->ch || c->ch == ' ')
+				continue;
+			ktui_draw_put(ox + x, oy + y, c);
+		}
+}
+
 static void draw(const char *status)
 {
 	int w = ktui_w, h = ktui_h;
@@ -793,6 +854,7 @@ static void draw(const char *status)
 	 * painted normally.
 	 */
 	ktui_draw_clear();
+	bg_draw(w, h);
 
 	int drawn = drawn_count();
 	for (int i = 0; i < drawn; i++) {
@@ -1220,6 +1282,7 @@ int desk_main(int argc, char **argv)
 	ktui_keys_layer(&keys, "Cancel", edit_up, edit_cancel, NULL);
 
 	sh_theme_from_cache();
+	bg_reload();
 	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 		fprintf(stderr, "kdos-desk: no compositor or no layer-shell\n");
 		return 1;
@@ -1252,6 +1315,11 @@ int desk_main(int argc, char **argv)
 		if (sh_theme_dirty) {
 			sh_theme_dirty = 0;
 			sh_theme_from_cache();
+			/* The art is drawn in slots and reduced to them when
+			 * it is loaded, so a retint has to re-reduce it — and
+			 * the same signal is what `kdos background` sends when
+			 * the piece itself changes. */
+			bg_reload();
 			/* The pictures carry the accent too — tinted at load
 			 * through kcol_remap — so a retint drops them, or the
 			 * desktop comes up in the new palette wearing the old

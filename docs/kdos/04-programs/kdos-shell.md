@@ -53,6 +53,7 @@ half of the same mistake.
 | `kdos-slit` | The dockapp column | [The small surfaces](#the-small-surfaces) |
 | `kdos-saver` | Attract mode between idle and lock | [The small surfaces](#the-small-surfaces) |
 | `kdos-about` | What this machine is | [The small surfaces](#the-small-surfaces) |
+| `kdos-theme` | The accent, with a live preview | [The small surfaces](#the-small-surfaces) |
 | `kdos-calc` | The calculator | [The small surfaces](#the-small-surfaces) |
 | `kdos-note` | The scratch pad | [The small surfaces](#the-small-surfaces) |
 | `kdos-chars` | The character map | [The small surfaces](#the-small-surfaces) |
@@ -74,6 +75,16 @@ disagree about.
 |---|---|
 | `kdos-menu --places` | The whole column, plus Trash and Computer |
 | `kdos-desk` | *Add to Places* on a folder's context menu, and on the wallpaper, where it keeps `~/Desktop`; never on a file, because a file is not a place |
+
+**`kdos-desk` draws the console's ground and never the compositor's.** Under the compositor the
+wallpaper is a PNG the compositor draws and this surface is transparent over it, so art painted here
+would be a rectangle of opaque cells on somebody's photograph. On the console there is no wallpaper
+and no compositor: `background.c` turns the chosen piece into cells through `libkvt`'s parser and
+its render boundary — the parser that reads a terminal, because the file is exactly what a program
+writes to one — and the colours reduce to the theme's eight slots, so `kdos theme` moves the art.
+It is reloaded on the same signal the accent is, which is also what `kdos background` sends. The
+piece is **centred and clipped**, never scaled, and its blank cells are not painted: the art is
+behind the icons, and drawing its spaces would put a second ground over the desktop's.
 | `kdos-pick` | `Ctrl+P` opens the column over the file list, with a **Recent directories** group under it |
 
 **Recent** is the same shape: `kdos-appbox open` is the one function every open passes through, so
@@ -82,6 +93,13 @@ group from `kxdg_recent_all()` — only when there is something in it, because a
 reads as a list that failed to load rather than as a machine nobody has opened anything on. A row
 opens through `kdos-appbox open` again, so a recent file opens with whatever its **type** is bound
 to rather than with whatever last touched it.
+
+**The Files row is not the same program on both desktops.** On the console it opens `mc` in a
+terminal — two panels, ten function keys and an `F2` user menu, which is what a text desk is for and
+what works on `tty1` with nothing else running; under the compositor it opens `kdos-pick` on `$HOME`,
+which is the chooser every other surface already reaches. The branch is `sh_session_prog()`'s, so
+which desktop this is is decided in one place. The places rows above it open `kdos-pick` on both,
+because a place is a jump to a directory rather than a file manager.
 
 **Recent directories come from `zoxide`**, which `bash.bashrc` already initialises, so the group is
 the tree a person has actually walked rather than one the chooser invented. It is read when the
@@ -550,9 +568,11 @@ a Wayland client to be under.
 
 **A terminal running somebody else's program is given that program's name.** The compositor matches
 a window to its desktop entry by app-id, so a `Terminal=true` entry started as a bare `foot -e btop`
-is a taskbar row called foot, wearing foot's icon, however many are open. `sh_term_argv()` writes
+is a taskbar row called foot, wearing foot's icon, however many are open. `sh_term_argv_in()` writes
 the emulator, the identity and the `-e` together: `--app-id` for foot, `--title` for `kdos-term`,
-taken from the first word of the entry's `Exec`. The two rows that open a terminal *as itself* —
+taken from the first word of the entry's `Exec`. **The flag belongs to the emulator, not to the
+desktop** — an entry may ask for `kdos-term` with `X-KDOS-Term` while the compositor is up, and
+choosing the flag by which session is running would hand it a `--app-id` it does not know. The two rows that open a terminal *as itself* —
 the menu's Terminal, Open Terminal Here — pass no identity, because there the emulator is the
 application.
 
@@ -829,6 +849,12 @@ What is in a file, without starting the application that owns it. *Peek* in the 
 
 Anything left is refused **by name**, in the middle of the window, rather than shown as mojibake.
 
+**A directory is refused, and that is a decision rather than a gap.** A file manager drawn inside a
+viewer that a file manager opened is the circularity this desktop refused for tabs; `mc` shows
+directories and this shows files. The refusal is taken from `stat` before any display is opened, so
+a directory named over `ssh` fails on the argument rather than on the display, and the message names
+where to open one — a program that exits silently reads as a broken one.
+
 **Nothing here decodes a picture.** `libkimg` is the one place in KDOS that turns untrusted image
 bytes into pixels, under a budget checked before any allocation, and a page from `mutool` arrives as
 a PNG and goes through the same call. The scale and the cut into sprite tiles are `libkcell`'s one
@@ -957,6 +983,10 @@ making you pick it again would be a link that does half its job.
 
 The tile icon names are checked against the **shipped icon set**, not taken from the naming
 specification, and the blurbs are cut to what a tile holds at eighty columns.
+
+**The Appearance page does not list the accents.** Its `Accent…` row opens `kdos-theme`, which
+draws every scheme in its own colours and previews it live; a row of names beside it would be a
+second way to choose one and the worse of the two.
 
 **Nine categories:** Appearance, Panel, Desktop, Hardware, Session, Input, Apps, Boxes and
 **System** — the machine itself, where the resource monitor and the power page live. Most of what
@@ -1111,7 +1141,13 @@ Per-manager:
 | `kdos-clip` | Clipboard history. The daemon owns the list; this draws it |
 | `kdos-teams` | The window list, and what the panel's overflow cell opens — previously that cell stepped the row by one per click, so reaching the third hidden window took three clicks and three reflows |
 | `kdos-display` | Screens. It grew a button bar, because a pointer could select a screen and then not switch it off or apply anything. `m` and the Mode button open a **dropdown** of the modes the monitor published: a screen that cannot show the mode being tried is a black screen and a wait for the revert, so the list is read before it is chosen from, never stepped blindly through |
-| `kdos-keys` | The keybinding card, in six sections — launch, window, workspace, tools, media, system. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that, and it looks for the **row shape** rather than the action's name anywhere in the source: `net`, `power` and `settings` are ordinary words that appear there as other strings, and a bare name grep passed for eleven chords the card was in fact dropping. **`--print` writes the same rows to standard output**, two columns at 132 characters, form-fed between pages — for a printer and for a wall. It runs before any display server is opened, so it works over ssh, from a script and on a machine whose session is not up, which is most of the times somebody wants the card on paper. The same rows as the surface draws, because a printed sheet that disagreed with the screen is what a second hand-written table becomes. **`--first-run` is the login spawn's flag** and puts a four-row tour above the list — open a terminal, reach the menu, switch workspaces, reach another terminal — with each row's chord looked up in the same parse the list came from, so a rebound terminal moves the tour in the same edit and a step nothing binds is absent from the tour rather than wrong in it. The hint row names the chord that brings the card back, which is the one frame whose reader has not already used it. The tour is dropped below twelve rows, where what it pushes off the bottom is the card itself. **This program decides whether the welcome is due**, from `~/.config/kdos/first-run`, so a session that asks at every login still shows it once |
+| `kdos-keys` | The keybinding card, in six sections — launch, window, workspace, tools, media, system. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that, and it looks for the **row shape** rather than the action's name anywhere in the source: `net`, `power` and `settings` are ordinary words that appear there as other strings, and a bare name grep passed for eleven chords the card was in fact dropping. **`--print` writes the same rows to standard output**, two columns at 132 characters, form-fed between pages — for a printer and for a wall. It runs before any display server is opened, so it works over ssh, from a script and on a machine whose session is not up, which is most of the times somebody wants the card on paper. The same rows as the surface draws, because a printed sheet that disagreed with the screen is what a second hand-written table becomes. **`--first-run` is the login spawn's flag** and puts a four-row tour above the list — open a terminal, reach the menu, switch workspaces, reach another terminal — with each row's chord looked up in the same parse the list came from, so a rebound terminal moves the tour in the same edit and a step nothing binds is absent from the tour rather than wrong in it. The hint row names the chord that brings the card back, which is the one frame whose reader has not already used it. The tour is dropped below twelve rows, where what it pushes off the bottom is the card itself. **On the console it also lists the recorded scripts**: a row per letter under
+`~/.config/kdos-con/scripts/`, showing the first ten keys of each and a count of the rest, so
+`Super+Alt+r` has somewhere to look up which letters are taken. Read out of the directory by this
+program running as the same person — the session grew no verb that could be asked, which is what
+keeps a client on the surface socket from learning what somebody has recorded. **This program
+decides whether the welcome is due**, from `~/.config/kdos/first-run`, so a session that asks at every login still shows it once |
+| `kdos-theme` | The accent picker, `Super+Ctrl+Shift+Space`. One row per scheme, **each drawn in its own colours**, the desktop repainting live as the highlight moves; `Enter` keeps and `Esc` puts back the one it opened on. **The swatches are the only literal colours on this desktop** — everything else draws in named slots so one word repaints all of it, and a swatch that took the accent in force would show seven identical rows; `preflight.sh` names this file as the exception rather than dropping the check. The blocks come from the glyph table like every other picture-character here, so the swatch is still a swatch on a terminal with no UTF-8. **A preview is half a theme**: `kdos theme --preview` writes the accent state file and signals the session, and generates none of the GTK, icon, cursor or foreign-configuration artefacts, which take seconds and are read by programs that are not running — so the desktop moves and a boxed application does not, and `Enter` runs the real switch. Leaving any other way, including a `SIGTERM`, puts the original back, because a picker killed halfway would otherwise leave the desktop wearing an accent nothing else had been regenerated for. **The window sizes itself from the scheme table**, so an accent added to `kcolor.h` needs no edit here |
 | `kdos-doc` | The documentation viewer |
 | `kdos-openwith` | Choose a handler, and optionally always use it |
 | `kdos-run` | The run box. It takes a click to place its caret, and grew a button bar because its one feature beyond a prompt was a **modifier** that nothing announced |

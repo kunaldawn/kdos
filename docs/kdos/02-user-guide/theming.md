@@ -18,8 +18,10 @@ the result appears without restarting anything.
 
 **Every accent is dark, and that is the chrome rather than a preference.** The focused plate is
 solved along one axis and carries one label colour, so on a light ground the plate darkens away
-from its own label and no mix clears both the separation floor and the legibility one. A light
-accent needs the plate ladder to choose its label per plate first.
+from its own label and no mix clears both the separation floor and the legibility one: the best
+light candidate reaches 7.63:1 on the label where it stands off the bar at 1.94:1, and 2.25:1 off
+the bar where the label reads at 6.58:1. A light accent needs the plate ladder to choose its label
+per plate first; until then the self-test refuses a scheme whose ground is the light end.
 
 An accent is not a colour, it is a small palette: a primary, a dim variant of it, a secondary, an
 urgent colour, a background, a text colour, a surface, and two more derived shades. Everything
@@ -29,11 +31,34 @@ values, which is why one word repaints the entire desktop. See
 
 ## Switching
 
+`Super+Ctrl+Shift+Space` opens **`kdos-theme`**, the picker: one row per accent, each drawn in its
+own colours, the desktop repainting live as the highlight moves. `Enter` keeps the highlighted one
+and `Esc` puts back the one you opened on. Settings' Appearance page and the `style.theme` route
+open the same window — the accent is chosen there and nowhere else, because a list of names is the
+worse of two ways to pick a colour.
+
+**A preview is half a theme, and it says so by what it leaves alone.** Moving the highlight writes
+the accent's state file and signals the session, so every KDOS surface repaints at once; it
+regenerates nothing, because the GTK stylesheet, the icon theme, the cursors and the eight foreign
+configuration files take seconds and are read by programs that are not running. So the desktop
+moves under the highlight and a boxed application does not, and `Enter` — which runs the real
+switch — is what makes the rest agree. Leaving any other way puts the original back, including on
+a kill: a picker that died halfway through would otherwise leave the desktop wearing an accent
+nothing else on the machine had been regenerated for.
+
+**The swatches are the one place on this desktop a cell carries a literal colour.** Everything else
+draws in named slots so that one word repaints all of it; a swatch that took the accent in force
+would show seven identical rows, which is the one thing that window exists not to do.
+`preflight.sh` names the file as the exception rather than dropping the check.
+
+From a prompt:
+
 ```sh
 kdos theme amber        # switch
-kdos theme list         # the four names
+kdos theme list         # the seven names
 kdos theme next         # cycle forward
 kdos theme prev         # cycle back
+kdos theme --preview X  # the state file and the signal only — what the picker's arrows do
 ```
 
 **The desktop retints live.** The panel, the desktop icons, any notification on screen, the window

@@ -250,9 +250,15 @@ art would bounce off an edge nobody can see.
 **Ships absent.** Its existence — an empty file is enough — opts boxed applications into the
 accessibility stack. `KDOS_A11Y=1` does the same for one launch.
 
-The host runs no accessibility registry, so the default avoids a startup probe that always times
-out. A screen reader running **inside** a box can reach that box's own registry, which is what this
-enables.
+The host runs no accessibility **registry**, so the default avoids a startup probe that always
+times out, and a screen reader running **inside** a box reaches that box's own registry — which is
+what this enables.
+
+**The console desktop is read a different way, and it is read today.** It holds the literal text of
+every cell and every widget announces what it is, so a reader is a client on the session's third
+socket rather than a tree of objects reconstructed from pixels: `speak = yes` in `con.conf` starts
+one, and `a11y = yes` brings the desktop up on a view that leaves the kernel's text plane for
+`brltty`. See [Accessibility](../02-user-guide/accessibility.md).
 
 ## `~/.config/kdos/boxes/<name>.conf`
 
@@ -369,6 +375,11 @@ The same rule holds for `keys.conf`.
 | `sessions` | `4` | How many workspaces, 1 to 9 |
 | `taskbar` | `windows` | What the session's own bottom row shows. `fkeys` puts Norton Commander's `F1`–`F10` row there instead; each cell fires `Super+F<n>` and does not bind the bare key |
 | `scrollback` | `2000` | Lines a terminal window keeps, **per window** |
+| `a11y` | `no` | Bring the desktop up on a `--tty` view, which leaves the kernel's text plane intact so `brltty` reads it over `/dev/vcsa`. Costs the pixel half: no pictures and no font chords |
+| `speak` | `no` | Start `kdos-a11y` with the session. It says what each widget announces, through `espeak-ng` |
+| `views` | `0` | How many displays may be attached at once; `0` is no limit. A view that is refused is told why rather than finding a closed socket |
+| `restore` | `no` | Reopen what a session of this name had open. The **list** comes back — kind, size, place, workspace — never a command: a terminal runs `terminal` below and an application starts through its desktop entry by app id. Saved when the session ends, including on the signal a logout sends |
+| `restore_scrollback` | `no` | Put the last session's output back on a restored terminal, above the fresh prompt and under a line saying whose it is. Separate from `restore` because unmarked old output reads as live |
 | `idle_saver` | `300` | Seconds of no input before the saver covers the screen; `0` never |
 | `idle_lock` | `600` | Seconds of no input before the screen locks; `0` never |
 | `idle_off` | `900` | Seconds before the screen powers down; `0` never |
@@ -394,6 +405,8 @@ The same rule holds for `keys.conf`.
 | `characters` | `kdos-chars` | What `Super+Ctrl+e` starts |
 | `find` | `kdos-find` | What `Super+Shift+f` starts |
 | `capture` | `kdos-shot` | What `Super+Shift+p` hands the marked rectangle to |
+| `theme` | `kdos-theme` | The accent picker `Super+Ctrl+Shift+space` opens |
+| `background` | `kdos background next` | What `Super+Ctrl+space` cycles the console's ground with |
 | `nowplaying` | `yes` | Whether `kdos-con`'s own bar shows what is playing, left of the pager. `kdos-shell`'s panel reads the same file through its `mpris` widget and this key does not reach it |
 | `volume_up` | `kdos-osd volume +5` | What the volume-up key runs |
 | `volume_down` | `kdos-osd volume -5` | What the volume-down key runs |
@@ -476,6 +489,8 @@ Changing a default in one file changes it in the other.
 | `media-prev` | `XF86AudioPrev` | | |
 | `font-up` | `Super+equal` | `font-down` | `Super+minus` |
 | `font-reset` | `Super+Ctrl+0` | | |
+| `learn` | `Super+Shift+r` | `play` | `Super+Alt+r` |
+| `theme` | `Super+Ctrl+Shift+space` | `background` | `Super+Ctrl+space` |
 
 Modifiers are `Super`, `Shift`, `Alt` and `Ctrl`, joined with `+`. An action no line names keeps
 its default, so rebinding one key does not mean restating the rest. Punctuation may be written as
@@ -489,6 +504,12 @@ names so a chord reads the same in both files; plus is not bound and cannot be, 
 character a chord is split on and it is a shifted equals in any case. The
 stepped size is remembered in `~/.local/state/kdos/con-font`, and `font-reset` removes that file
 rather than writing a size, so the answer goes back to being the configuration's.
+
+**`learn` and `play` are the console desktop's alone.** They record the keys reaching the focused
+window and type them back; `rc.xml` binds nothing to either, because the compositor has no session
+holding every key event to record. Scripts are files at `~/.config/kdos-con/scripts/<letter>`,
+directory 0700 and files 0600, and hold keys and never a command — see
+[`kdos-con`](../04-programs/kdos-con.md).
 
 **The eleven surface chords are the compositor's own.** `Super+F1` and `Super+F3` to `F6`,
 `Super+i`, `Super+c`, `Super+/` and `Super+p` are what `rc.xml` already binds; taking them rather
@@ -702,6 +723,10 @@ account gets a working setup rather than each program's own defaults. These are 
 | `/etc/xdg/mimeapps.list` | What both desktops open the same way | Last, and a type belongs in exactly one of these three |
 | `~/.config/user-dirs.dirs` | The standard user directories | Seeded from `/etc/skel`; there is no `xdg-user-dirs` here. `$HOME` is the only expansion read |
 | `~/.config/kdos/places` | Extra rows on the places column, `Name = /path` one per line | Merged over the user directories; a row whose path is already listed is dropped, and one pointing at nothing is never shown. Written by *Add to Places* on the desktop |
+| `~/.config/kdos/background.txt` | Your own console background: UTF-8 text with SGR colour, read by `libkvt`'s parser like anything a program writes to a terminal | **Ships absent**, and outranks every shipped piece. Colours reduce to the theme's eight slots, so the art follows `kdos theme`. Glyphs outside `ter-kdos32n`'s 512 draw blank on `tty1` and correctly in a terminal — see `/usr/share/kdos/backgrounds/README`. No cursor motion: the piece is measured by counting cells and lines |
+| `~/.local/state/kdos/background` | Which shipped piece is in force, or `none` | Written by `kdos background`, which is what the chord and the `style.background` route run. **A name and never a path**: a chord that cycles pictures must not become a way to point the desktop at any file |
+| `~/.config/yazi/theme.toml` | `yazi` in the active accent | **Generated by `kdos theme`; edits are overwritten.** Partial on purpose: yazi deserializes it OVER its own `theme-dark.toml` preset key by key, so only what the palette decides is written and the preset's icons, separators and file-type rules stand. `[flavor]` is not written — it is the one part the preset splits by dark and light mode |
+| `~/.config/mc/ini` | How `mc` behaves: the KDOS skin, `F3` internal and `F4` to `$EDITOR`, no exit confirmation, the panel's directory in the window title | **The section a key is in is part of the key** — mc reads its behaviour flags out of `[Midnight-Commander]` and its screen layout out of `[Layout]`, and a key under the wrong header is silently never read. `kdos theme` merges `skin` into this file rather than replacing it, and generates the skin itself into `~/.local/share/mc/skins/kdos.ini`: mc looks for skins under `<data>/mc/skins`, `/etc/mc/skins` and `/usr/share/mc/skins` and nowhere else |
 | `~/.config/mc/mc.ext.ini` | What `Enter` does on a file in `mc` | Replaces the system file wholesale — mc does not merge them. Only the archive rows whose VFS helper is on this image are carried; everything else falls to the catch-all, which is `kdos-appbox open` |
 | `~/.config/mc/menu` | `mc`'s `F2` user menu | Eight verbs, each naming a program on the image; `testing/preflight.sh` refuses one that is not |
 | `/etc/profile.d/30-open.sh` | What `$BROWSER` is | `xdg-open`, which on this image is `kdos-appbox open` — so the variable and the mimeapps table are one road rather than two that drift. Never set over a value you already exported. A login shell reads this; the console session on the `greet = yes` path reads no profile, so `session-common.sh` fills the same gap there |

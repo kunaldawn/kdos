@@ -46,7 +46,7 @@
  * would not fail, which is the dangerous outcome: it would act on the wrong
  * verb.
  */
-#define KCON_VERSION 9
+#define KCON_VERSION 10
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -289,6 +289,30 @@ enum {
 	 */
 	KCON_OP_COLOR,
 
+	/*
+	 * WHAT IS ON THE SCREEN, AS TEXT — asked by a shell surface and
+	 * answered on the same op.
+	 *
+	 * A shell only, like every other management verb: a view is trusted
+	 * with the cells it was handed and the events it reports, and reading
+	 * back a whole session is neither. The request carries a window's ring
+	 * number, or 0 for the screen; the answer is one string, because a
+	 * capture is something a person reads or pipes and a cell run would
+	 * make every consumer of it re-implement the renderer.
+	 */
+	KCON_OP_CAPTURE,
+
+	/*
+	 * WHAT A WIDGET SAYS IT IS, out to the readers. Role, position in its
+	 * set, the focused window's rectangle where the record is a window,
+	 * then the label and the value.
+	 *
+	 * It goes only to a11y clients: every view is sent the cells, and a
+	 * display that draws them has no use for a second description of what
+	 * it is already showing.
+	 */
+	KCON_OP_ANNOUNCE,
+
 	KCON_OP_BYE,		/* with a reason, so a log says why        */
 
 	KCON_OP_N
@@ -340,6 +364,20 @@ enum {
  * link slow enough to make that hurt is exactly the link a remote view is on.
  */
 #define KCON_VIEW_COLOR 0x4u
+
+/*
+ * WHAT A VIEW MAY DO, sent after its capabilities and separate from them: a
+ * capability is what a display can show and this is what it is allowed to
+ * send. A view that says nothing is a driver, which is what every view was
+ * before an observer existed.
+ *
+ * A CLIENT CAN ONLY ASK FOR LESS. Saying "observe" is a client holding itself
+ * to something, and the server holds it there — the refusal is on the server's
+ * side of the socket, so a view that changed its mind after the hello gets
+ * nothing through.
+ */
+enum { KCON_RIGHTS_DRIVE = 0, KCON_RIGHTS_OBSERVE = 1 };
+
 
 /*
  * libkcon as a libkdisp implementation. A consumer hands the ADDRESS of this
@@ -503,7 +541,16 @@ typedef struct KconSurface KconSurface;
  * forwarded: a forwarded surface socket would let the far end place windows in
  * your session, which is a different thing entirely from showing you yours.
  */
-enum { KCON_LISTEN_ANY = 0, KCON_LISTEN_SURFACE, KCON_LISTEN_VIEW };
+enum { KCON_LISTEN_ANY = 0, KCON_LISTEN_SURFACE, KCON_LISTEN_VIEW,
+       /*
+	* A READER'S SOCKET. Its clients are views that may not drive — the
+	* rights field is not theirs to choose here, it is what this socket
+	* means — and they are the only ones sent KCON_OP_ANNOUNCE. A reader
+	* is handed the composed cells like any display, so reading the screen
+	* is a loop over a buffer that already exists rather than a tree of
+	* objects somebody hopes matches what was drawn.
+	*/
+       KCON_LISTEN_A11Y };
 
 #define KCON_MAX_LISTEN 4
 
@@ -660,6 +707,30 @@ int kcon_view_rows(const KconSurface *v);
 int kcon_view_cell_w(const KconSurface *v);
 int kcon_view_cell_h(const KconSurface *v);
 unsigned kcon_view_caps(const KconSurface *v);
+/* True for a view that asked to observe. Input from one is dropped by the
+ * server, so a view that changed its mind after the hello gets nothing
+ * through. */
+int kcon_view_observing(const KconSurface *v);
+/*
+ * How many views this session admits at once; 0 is no limit. The NUMBER is the
+ * caller's — a desktop's configuration, not a library's opinion — and the
+ * enforcement is the server's, because it is the end that sees a view arrive.
+ */
+void kcon_server_view_max(KconServer *s, int n);
+
+/*
+ * One announcement, to every reader attached. The role and the counts are
+ * libktui's `KtuiA11y`; the rectangle is the focused window's and is zero for
+ * a record that is not one.
+ *
+ * Nothing is sent when no reader is listening, which is the usual case: a
+ * desktop nobody is reading pays a comparison per frame.
+ */
+void kcon_a11y_announce(KconServer *s, int role, const char *label,
+			const char *value, int index, int count, int x, int y,
+			int w, int h);
+/* How many readers are attached. */
+int kcon_server_a11y_count(const KconServer *s);
 
 /* Diff against this view's own last frame and send what changed. */
 void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h);
@@ -768,6 +839,15 @@ typedef struct {
 	 * which window has the focus.
 	 */
 	void (*paste)(KconSurface *v, const char *text, void *user);
+
+	/*
+	 * WHAT IS ON THE SCREEN RIGHT NOW, as text. `window` is 0 for the
+	 * whole grid or a window's ring number; the session composes it,
+	 * because it owns the frame and the rectangles, and returns a
+	 * malloc'd string THE SERVER FREES. NULL is "there is nothing to
+	 * show", which is what a number naming no window means.
+	 */
+	char *(*capture)(KconSurface *f, int window, void *user);
 } KconServerHooks;
 
 void kcon_server_hooks(KconServer *s, const KconServerHooks *h, void *user);
@@ -825,6 +905,16 @@ void kcon_toplevel_state(unsigned id, unsigned flag, int on);
 
 /* Ask a session to release every view. Connects, asks and closes. */
 int kcon_detach_all(const char *sock);
+
+/*
+ * Ask a session what is on its screen. Connects as a shell, asks, waits for
+ * the answer and closes; `*out` is a malloc'd string the caller frees.
+ *
+ * `window` is 0 for the whole grid or a window's ring number — the same number
+ * the title bar and `Super+Alt+N` use, because a person capturing "window 2"
+ * means the one labelled 2.
+ */
+int kcon_capture(const char *sock, int window, char **out);
 
 /* Ask a session to end. Connects, asks and closes; the session drains its own
  * clients. Returns -1 when nothing is listening on `sock`. */

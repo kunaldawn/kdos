@@ -17,21 +17,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "kbase.h"
 #include "view.h"
 
 int view_font_state_path(char *out, size_t n)
 {
-	const char *state = getenv("XDG_STATE_HOME");
-	const char *home = getenv("HOME");
-
-	if (!out || !n)
-		return 0;
-	if (state && *state)
-		return snprintf(out, n, "%s/kdos/con-font", state) < (int)n;
-	if (home && *home)
-		return snprintf(out, n, "%s/.local/state/kdos/con-font", home)
-		       < (int)n;
-	return 0;
+	/* THROUGH libkbase, because the state directory has two spellings and
+	 * a program that keeps its own copy of the second one writes where
+	 * nothing reads after `$XDG_STATE_HOME` appears. */
+	return kb_state_path("kdos/con-font", out, n);
 }
 
 int view_font_stepped(const char *base, int step, char *out, size_t n)

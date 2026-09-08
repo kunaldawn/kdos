@@ -21,11 +21,19 @@ a KDOS surface and a boxed application. See [Status](status.md) for what that re
 reachable — a second session with a second view — and nothing implements it, so
 the claim is not made.
 
-**A console session ends with the login that started it.** `kdos con new` makes a session the
-service supervisor owns for the length of that login, so logging out takes every session with it
-and there is nothing to attach to on the next one. Sessions that outlive a logout need a lingering
-policy, a per-user enable and an answer for what the greeter does when you log back in; none of
-the three is decided, so the mechanism is not built.
+**A console session's PROCESSES end with the login that started it; its window list can come
+back.** `kdos con new` makes a session the service supervisor owns for the length of that login, so
+logging out takes every running program with it. Sessions that outlive a logout need a lingering
+policy, a per-user enable and an answer for what the greeter does when you log back in; none of the
+three is decided, so that mechanism is not built.
+
+What is built is the list. With `restore = yes` a session started under the same name reopens the
+windows it had — kind, size, place and workspace — with terminals running `con.conf`'s own
+`terminal` and applications started through their desktop entry by app id. **Nothing in the state
+file is ever run as a command**: it is written by a program and read by a program, and a file that
+named an argv would be a file that chooses what somebody's session starts. `restore_scrollback`
+puts the last session's output back above the fresh prompt, marked in the terminal as the previous
+session's, and is off by default because old output that is not marked reads as live.
 
 **No fractional scaling.** The toolkit adopts an output's **integer** scale and renders glyphs at
 that scale, so a high-density display gets a sharp grid rather than a stretched one. Fractional
@@ -102,6 +110,21 @@ height match — and fontconfig never fails a match, so an italic Terminus comes
 family at a different size and is refused. The attribute still travels: the cell carries it, a
 terminal view emits `SGR 3` and the host terminal draws it. It is the KMS and Wayland painters,
 drawing with the console's own bitmap face, that show the words upright.
+
+**Nothing reads the GRAPHICAL desktop.** The console session is read by `kdos-a11y` over its third
+socket, because it holds the literal text of every cell and every widget announces itself.
+`kdos-comp` draws pixels and has no such buffer, so a reader there would need the tree of accessible
+objects this project does not build. What exists for a boxed application is that box's own registry,
+opted into with `~/.config/kdos/a11y`.
+
+**Braille is the `brltty` route and not a library this tree links.** `a11y = yes` keeps the kernel's
+text plane so `brltty` reads it over `/dev/vcsa`; BrlAPI is not linked by anything here, and a
+display driven that way is driven by `brltty` rather than by the desktop.
+
+**A recording is not an asciicast, and there is no player port.** `kdos con record` writes the
+session's own messages — cell frames, sprites, window chrome — so no asciinema player will open one,
+and a view that draws cells is already the player. An `asciinema` port to replay a format this tree
+writes would be weight with no user on it.
 
 **A window in the console session is never held while the program in it draws.** Synchronized
 output (`DECSET 2026`) is answered by `libkvt`, so both terminals report the mode and a program's

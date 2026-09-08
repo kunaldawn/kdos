@@ -249,6 +249,32 @@ if it is missing.
 The file half is the same table `kdos-pick` and `mc`'s `F2` read, so a verb arrives on all three at
 once — and a verb whose program is not installed is not offered anywhere.
 
+### The console desktop's ground is a picture made of characters
+
+Under the compositor the wallpaper is a PNG, set on Settings' Appearance page. **On the console
+there is no wallpaper and no compositor**, so the ground is character art: `Super+Ctrl+Space` cycles
+the shipped pieces and `none`, `kdos background list` names them, and
+`~/.config/kdos/background.txt` is your own and outranks all of them. The chord and the `kdos`
+verb are the same thing, and `style.background` is the route.
+
+**A piece is what a program would have written to a terminal** — UTF-8 text with SGR colour — and
+it is read by the parser that reads a terminal, through the same render boundary. So there is one
+answer to what an escape means, and the colours **reduce to the theme's eight slots**: art written
+in cyan is drawn in this accent's cyan-most slot, and `kdos theme` moves the picture with
+everything else. Art carrying literal colours would be the one rectangle of the desktop a retint
+could not reach.
+
+**The glyphs are the ones `tty1` has, which is a hard limit and not a style.** The kernel's text
+plane carries 512 of them; a character outside that set draws *blank* on the console and correctly
+in `kdos-term` or over `ssh`, so the shipped pieces use only the single box set, `═ ║ ╔ ╗ ╚ ╝ ╬`,
+the three shades `█ ▒ ░`, and ASCII. There are no half blocks, no `▓` and no double tees in that
+font. `/usr/share/kdos/backgrounds/README` says so at length, and `selftest.sh` reads the font's own
+charset out of the port and fails a piece that leaves it.
+
+**The state file holds a name and never a path.** A chord that cycles pictures must not become a way
+to point the desktop at any file on the machine; a person's own art is a file they wrote, in a
+place they already own.
+
 `Delete` on a desktop icon moves the file to the freedesktop trash — the same implementation
 `kdos trash` uses from a prompt, so the two mean the same thing. Opening the **Trash** icon opens
 `kdos-trash`: what was deleted, when, and where it came from, with `Enter` putting a row back where

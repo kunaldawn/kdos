@@ -48,6 +48,16 @@ kdos-con
 # four times.
 kdos-view
 
+# The screen reader, and the reason this desktop can have one at all. A pixel
+# desktop reconstructs a tree of accessible objects and hopes it matches what
+# was drawn; the session here holds the literal text of every cell, knows which
+# window is focused and — because every widget says so — which control within
+# it. So this is a client that listens on the reader's socket and speaks.
+#
+# espeak-ng is a SUBPROCESS and is never linked: it is GPL-3.0 and this program
+# is not.
+kdos-a11y
+
 # The terminal. ONE BINARY, TWO DESKTOPS: libkdisp picks between libkwl and
 # libkcon at startup, so the same source is an xdg-toplevel under kdos-comp and
 # a cell surface under kdos-con. libkvt is the state machine — kmscon's, forked

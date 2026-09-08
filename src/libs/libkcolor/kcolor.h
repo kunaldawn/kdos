@@ -40,8 +40,10 @@
  * preference. `libkchrome` solves the focused plate along `dim`-to-`pdark` and
  * writes `text` on it — one label colour for every plate — so on a light ground
  * the plate darkens away from a dark label and no mix clears both the
- * separation floor and the legibility one. A light scheme needs the ladder to
- * choose its label per plate first.
+ * separation floor and the legibility one: the best light candidate reaches
+ * 7.63:1 on the label where it stands off the bar at 1.94:1, and 2.25:1 off the
+ * bar where the label reads at 6.58:1. A light scheme needs the ladder to
+ * choose its label per plate first, and `selftest.c` refuses one until then.
  * ──────────────────────────────────────────────────────────────────────── */
 
 #define KCOL_SCHEMES(X)                                                       \

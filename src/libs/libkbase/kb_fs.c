@@ -325,20 +325,31 @@ void kb_json_str(KbBuf *b, const char *s)
  * one place this could still go stale after $HOME changed under a program that
  * re-execs.
  */
-static int toggle_path(const char *name, char *out, size_t n)
+int kb_state_path(const char *rel, char *out, size_t n)
 {
 	const char *state = getenv("XDG_STATE_HOME");
 	const char *home = getenv("HOME");
 
-	if (!name || !*name)
+	if (!rel || !*rel || !out || !n)
 		return 0;
 	if (state && *state)
-		return snprintf(out, n, "%s/kdos/toggles/%s", state, name)
-		       < (int)n;
+		return snprintf(out, n, "%s/%s", state, rel) < (int)n;
 	if (home && *home)
-		return snprintf(out, n, "%s/.local/state/kdos/toggles/%s",
-				home, name) < (int)n;
+		return snprintf(out, n, "%s/.local/state/%s", home, rel)
+		       < (int)n;
 	return 0;
+}
+
+static int toggle_path(const char *name, char *out, size_t n)
+{
+	char rel[256];
+
+	if (!name || !*name)
+		return 0;
+	if (snprintf(rel, sizeof(rel), "kdos/toggles/%s", name) >=
+	    (int)sizeof(rel))
+		return 0;
+	return kb_state_path(rel, out, n);
 }
 
 int kb_toggle_on(const char *name)

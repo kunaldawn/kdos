@@ -990,6 +990,10 @@ const KDispImpl kcon_impl = {
  * is a launcher somebody can still close.
  */
 #define KCON_RUN_WAIT_MS 3000
+/* A session settling a terminal answers a capture in milliseconds; one that
+ * has wedged answers never, and a capture that hung would be one nobody could
+ * interrupt from a script. */
+#define KCON_CAPTURE_WAIT_MS 2000
 
 static int64_t now_ms(void)
 {
@@ -1113,6 +1117,81 @@ int kcon_quit_session(const char *sock)
 	kcon_buf_free(&b);
 
 	int rc = kcon_flush(c) < 0 ? -1 : 0;
+
+	kcon_conn_free(c);
+	return rc;
+}
+
+/*
+ * WHAT IS ON A SESSION'S SCREEN, over the surface socket.
+ *
+ * Connect, say what we are, ask, wait. The wait is BOUNDED: a session busy
+ * settling a terminal answers in milliseconds and one that has wedged answers
+ * never, and a capture that hung would be a capture nobody could interrupt
+ * from a script.
+ */
+int kcon_capture(const char *sock, int window, char **out)
+{
+	int fd = connect_to(sock);
+
+	if (!out)
+		return -1;
+	*out = NULL;
+	if (fd < 0)
+		return -1;
+
+	KconConn *c = kcon_conn_new(fd);
+
+	if (!c) {
+		close(fd);
+		return -1;
+	}
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_SHELL);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+	kcon_put_u16(&b, (uint16_t)(int16_t)window);
+	kcon_send(c, KCON_OP_CAPTURE, &b);
+	kcon_buf_free(&b);
+
+	int rc = -1;
+
+	if (kcon_flush(c) >= 0) {
+		int64_t deadline = now_ms() + KCON_CAPTURE_WAIT_MS;
+
+		while (now_ms() < deadline) {
+			KconMsg m;
+			int r = kcon_recv(c, &m);
+
+			if (r < 0)
+				break;
+			if (r == 1) {
+				if (m.op == KCON_OP_BYE)
+					break;
+				if (m.op != KCON_OP_CAPTURE)
+					continue;
+
+				KconRd rd;
+
+				kcon_rd_init(&rd, m.payload, m.len);
+
+				const char *t = kcon_get_str(&rd);
+
+				if (!rd.err && t) {
+					*out = strdup(t);
+					rc = *out ? 0 : -1;
+				}
+				break;
+			}
+
+			struct pollfd p = { kcon_conn_fd(c), POLLIN, 0 };
+
+			poll(&p, 1, 50);
+		}
+	}
 
 	kcon_conn_free(c);
 	return rc;

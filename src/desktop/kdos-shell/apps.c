@@ -265,6 +265,15 @@ static void add_desktop_file(const char *path)
 	a->group = sh_app_group_for(kxdg_get(&e, "Categories", NULL));
 	a->terminal = kxdg_bool(&e, "Terminal", 0);
 	/*
+	 * WHICH TERMINAL, for the few entries that need one in particular.
+	 * A program drawing pictures in the grid needs the emulator that links
+	 * the decoders; everything else gets the session's own, which is
+	 * lighter. Validated in sh_term_named(), so the key names one of two
+	 * emulators and never a program.
+	 */
+	snprintf(a->term, sizeof(a->term), "%s",
+		 kxdg_get(&e, "X-KDOS-Term", ""));
+	/*
 	 * WHICH ENTRIES COST A CONTAINER START, which is a question only this
 	 * distro's menus can answer and only this distro's users need asked.
 	 * An entry whose Exec IS the box launcher is a boxed app whatever the
@@ -552,13 +561,15 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 	 * WHICH DESKTOP THIS IS. $KDOS_CON is the console session's surface
 	 * socket, set by the session for everything started inside it, and it
 	 * decides how a NON-terminal entry is started below. A terminal entry
-	 * needs no branch: sh_term() already names the right emulator.
+	 * needs no branch here: sh_term_argv_in() names the emulator, from the
+	 * entry's own X-KDOS-Term when it asked for one.
 	 */
 	const char *con = getenv("KDOS_CON");
 
 	if (a->terminal)
-		n = sh_term_argv(argv, n, (int)(sizeof(argv) / sizeof(*argv)),
-				 a->exec, id, sizeof(id));
+		n = sh_term_argv_in(a->term, argv, n,
+				    (int)(sizeof(argv) / sizeof(*argv)),
+				    a->exec, id, sizeof(id));
 	int got = kxdg_exec_split(a->exec, files, nfiles, store, sizeof(store),
 				  argv + n, (int)(sizeof(argv) / sizeof(*argv))
 						    - n - 1 - nfiles);

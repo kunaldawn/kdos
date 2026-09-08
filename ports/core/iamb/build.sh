@@ -46,8 +46,11 @@ cargo build --release --frozen --offline
 install -Dm755 target/release/iamb $PKG/usr/bin/iamb
 
 # Terminal=true and a bare Exec: the launcher supplies the emulator, which is
-# the only way one entry serves both desktops. No X-KDOS-Term — nothing in this
-# tree reads that key.
+# the only way one entry serves both desktops. No X-KDOS-Term: that key names
+# the emulator an entry needs, and it is for the programs that draw pictures in
+# the cell grid. iamb's image preview is `image_preview` in its own config and
+# is absent unless somebody sets it, so this entry takes the session's terminal,
+# which is lighter.
 install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/iamb.desktop" <<'EOF'
 [Desktop Entry]

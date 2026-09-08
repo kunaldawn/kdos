@@ -710,6 +710,64 @@ void ktui_hit_chrome(KRect r, int id);	/* id is caller-local, 0..N        */
 int ktui_chrome_clicked(int id);
 int ktui_focused(int id);
 int ktui_activated(int id, KRect r);	/* Enter on focus, or a click      */
+
+/* ────────────────────────────────────────────────────────────────────────
+ * What a widget is, said out loud
+ *
+ * A WIDGET ALREADY KNOWS WHICH ITEM HAS FOCUS. It computes that every frame
+ * from the same id the hit test uses, so a reader that worked it out again
+ * from a grid of cells would be guessing at what the surface has in hand — and
+ * it guesses wrong first on the controls that matter most: which cell of a
+ * table, which tab of a strip, which item of how many in a menu.
+ *
+ * SO THE WIDGET SAYS IT, AND IT SAYS IT HERE. A record composed in `kdos-con`
+ * would reach the console and give the graphical desktop nothing; one set in
+ * this library is set once and both desktops read it.
+ *
+ * THE QUEUE IS PER FRAME AND FIXED. Nothing on the draw path allocates — a
+ * widget that allocated to say its own name would drop frames on the link this
+ * desktop is sold on — and it is cleared at the start of every frame, so a
+ * widget that says nothing announces nothing. SILENCE IS THE FAILURE MODE,
+ * NEVER A STALE NAME: a reader told the wrong control is worse off than one
+ * told nothing, and last frame's record is the wrong control by default.
+ * A frame with more to say than the queue holds drops the rest.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum {
+	KT_A11Y_NONE = 0,
+	KT_A11Y_BUTTON,
+	KT_A11Y_CHECK,
+	KT_A11Y_RADIO,
+	KT_A11Y_INPUT,
+	KT_A11Y_LIST,
+	KT_A11Y_TABLE,
+	KT_A11Y_TAB,
+	KT_A11Y_CHOICE,
+	KT_A11Y_TEXT,
+	/* Not a widget: the window a session has just focused. The toolkit
+	 * never sets it — a surface does not know it is in a window — and it
+	 * is here so that a reader has one vocabulary rather than two. */
+	KT_A11Y_WINDOW
+};
+
+/*
+ * `index` and `count` are one-based and are 0 when the control is not one of a
+ * set — so "3 of 9" is a fact the widget states rather than a count a reader
+ * has to make from what it can see.
+ */
+typedef struct {
+	int role;
+	char label[64];
+	char value[64];
+	int index, count;
+} KtuiA11y;
+
+#define KTUI_A11Y_MAX 16
+
+void ktui_announce(int role, const char *label, const char *value, int index,
+		   int count);
+int ktui_announce_count(void);
+const KtuiA11y *ktui_announce_at(int i);
 int ktui_key(int k);		/* consume a key press this frame          */
 void ktui_focus_next(int dir);
 void ktui_focus_set(int id);

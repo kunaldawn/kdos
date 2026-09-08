@@ -636,6 +636,21 @@ const char *kvt_term_link_uri(struct kvt_term *t, unsigned int id)
 	return t ? kvt_vte_link_uri(t->vte, id) : NULL;
 }
 
+char *kvt_term_text(struct kvt_term *t, size_t *len_out)
+{
+	return t ? kvt_screen_text(t->screen, len_out) : NULL;
+}
+
+void kvt_term_show(struct kvt_term *t, const char *u8, size_t len)
+{
+	/* Into the state machine, which is where the child's own bytes go —
+	 * so the text lands on the screen and scrolls into the scrollback
+	 * exactly as it did the first time. `kvt_term_write` is the other
+	 * direction and would type this at the shell. */
+	if (t && u8 && len)
+		kvt_vte_input(t->vte, u8, len);
+}
+
 int kvt_term_mark_at(struct kvt_term *t, unsigned int y, int *status)
 {
 	if (status)

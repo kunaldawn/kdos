@@ -80,6 +80,16 @@ void ktui_tabs_draw(KRect r, const KtuiTab *t, int n, int sel, int hover,
 {
 	int span = ktui_tab_span(t, n, vertical, r.w);
 
+	/*
+	 * THE STRIP SAYS WHICH TAB IT IS SHOWING, and it says it here because
+	 * here is where it has the names: the key handler moves a number and
+	 * this has the table. A caller reading it repeats nothing — an
+	 * identical record two frames running is the same tab, and dropping
+	 * the repeat is the reader's job, not the widget's.
+	 */
+	if (n > 0 && sel >= 0 && sel < n)
+		ktui_announce(KT_A11Y_TAB, t[sel].name, NULL, sel + 1, n);
+
 	ktui_draw_fill(r, KT_SURFACE);
 	for (int i = 0; i < n; i++) {
 		KRect c = vertical ? krect(r.x, r.y + i, r.w, 1)
@@ -106,6 +116,8 @@ void ktui_tabs_draw(KRect r, const KtuiTab *t, int n, int sel, int hover,
 int ktui_tabs_key(int *sel, int n, int vertical, int k)
 {
 	int prev = *sel;
+	/* The name is the DRAW's — it has the table — so a strip whose
+	 * selection moved says the position here and its name there. */
 	int back = vertical ? KT_K_UP : KT_K_LEFT;
 	int fwd = vertical ? KT_K_DOWN : KT_K_RIGHT;
 
@@ -119,6 +131,8 @@ int ktui_tabs_key(int *sel, int n, int vertical, int k)
 		*sel = n - 1;
 	else
 		return 0;
+	if (*sel != prev)
+		ktui_announce(KT_A11Y_TAB, NULL, NULL, *sel + 1, n);
 	return *sel != prev;
 }
 
@@ -301,6 +315,14 @@ int ktui_table_key(KtuiTable *st, int count, int rows, int k,
 		st->sel = count ? count - 1 : 0;
 	st->sel = table_step(st, count, st->sel, dir, span, user);
 	ktui_table_clamp(st, count, rows);
+	/*
+	 * THE POSITION AND NOTHING ELSE. A table's cells come from the
+	 * caller's own draw callback, so this knows which row is selected and
+	 * not a word of what is in it — and "row 3 of 9" it can state is
+	 * better than a name it would have to invent.
+	 */
+	if (st->sel != prev)
+		ktui_announce(KT_A11Y_TABLE, NULL, NULL, st->sel + 1, count);
 	return st->sel != prev;
 }
 
@@ -410,8 +432,18 @@ int ktui_dropdown_key(KtuiDrop *d, int n, int k)
 		int changed = d->hi != d->sel;
 		d->sel = d->hi;
 		d->open = 0;
+		if (changed)
+			ktui_announce(KT_A11Y_CHOICE, NULL, NULL, d->sel + 1,
+				      n);
 		return changed;
+	} else {
+		return 0;
 	}
+
+	/* THE HIGHLIGHT MOVED, WHICH IS WHAT AN OPEN LIST IS DOING. The
+	 * options are the caller's array and this function is not given it,
+	 * so the position is what there is to say. */
+	ktui_announce(KT_A11Y_CHOICE, NULL, NULL, d->hi + 1, n);
 	return 0;
 }
 
@@ -473,8 +505,8 @@ void ktui_textarea_draw(KRect r, KtuiTextArea *ta, const char *text,
 	ktui_term_caret(r.x + ta->cx, r.y + (ta->cy - ta->top));
 }
 
-int ktui_textarea_key(KtuiTextArea *ta, char *text, int *nlines, int maxlines,
-		      size_t stride, int k)
+static int textarea_key(KtuiTextArea *ta, char *text, int *nlines,
+			int maxlines, size_t stride, int k)
 {
 	char *cur = TA_LINE(text, stride, ta->cy);
 	int len = (int)strlen(cur);
@@ -566,4 +598,22 @@ int ktui_textarea_key(KtuiTextArea *ta, char *text, int *nlines, int maxlines,
 		}
 		return 0;
 	}
+}
+
+/*
+ * WHICH LINE, OF HOW MANY. A block of text has no items to be third of, so the
+ * caret's line is the position there is — and it is said HERE rather than at
+ * each of the branches above, because a body that returns from nine places is
+ * nine chances to forget one.
+ */
+int ktui_textarea_key(KtuiTextArea *ta, char *text, int *nlines, int maxlines,
+		      size_t stride, int k)
+{
+	int was = ta->cy;
+	int r = textarea_key(ta, text, nlines, maxlines, stride, k);
+
+	if (ta->cy != was)
+		ktui_announce(KT_A11Y_TEXT, NULL, NULL, ta->cy + 1,
+			      nlines ? *nlines : 0);
+	return r;
 }

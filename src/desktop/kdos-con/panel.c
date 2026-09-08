@@ -240,6 +240,21 @@ void panel_draw(void)
 	}
 
 	/*
+	 * A RECORDING, ITS LETTER PROMPT, AND A REPLAY all say so here for the
+	 * same reason: a recorder a person has forgotten is running is a
+	 * recorder collecting whatever they type next, and a prompt waiting
+	 * for a letter is a keyboard that has stopped answering.
+	 */
+	const char *scr = scr_status();
+
+	if (scr) {
+		ktui_draw_text(0, y, S.cols, scr, KT_BG,
+			       scr_learning() ? KT_WARN : KT_ACCENT,
+			       KT_A_NONE);
+		return;
+	}
+
+	/*
 	 * AFTER THE MODES AND NOT BEFORE. A mode takes every key and this row
 	 * is the only thing telling the person how to leave it, so a notice
 	 * that covered it would be a message hiding the way out. The chords

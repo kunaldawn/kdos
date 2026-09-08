@@ -1504,23 +1504,27 @@ fi
 
 echo "==> a literal colour is set at the render boundary and nowhere else"
 # CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following
-# `kdos theme`, so the bits that say it has one may be SET in exactly three
+# `kdos theme`, so the bits that say it has one may be SET in exactly four
 # places: the render boundary where a terminal's own colour arrives
 # (kvt_grid.c), the wire that carries it to a view that asked (kcon_wire.c),
-# and the header that defines them. A surface that set one would be a piece of
-# chrome wearing a colour a retint cannot move — and it would look right on the
+# the header that defines them, and the accent picker — whose swatches ARE the
+# schemes it is offering, so drawing them in slots would show one palette seven
+# times. A surface that set one anywhere else would be a piece of chrome
+# wearing a colour a retint cannot move — and it would look right on the
 # machine it was written on.
 _lit=0
-for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(' \
+for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(|attr *= *KT_A_(FGRGB|BGRGB|ULCOLOR)' \
         src/ 2>/dev/null); do
     case "$_f" in
     src/libs/libkvt/kvt_grid.c|src/libs/libkcon/kcon_wire.c) continue ;;
     src/libs/libktui/ktui.h|src/libs/selftest.c) continue ;;
+    src/desktop/kdos-shell/theme.c) continue ;;
     esac
     bad "$_f" "sets a literal colour bit — chrome draws in slots"
     _lit=$((_lit + 1))
 done
-[ "$_lit" = 0 ] && note "colour" "the literals are set at the boundary and on the wire"
+[ "$_lit" = 0 ] &&
+    note "colour" "at the boundary, on the wire, and in the picker's swatches"
 
 echo
 if [ "$fail" = 0 ]; then

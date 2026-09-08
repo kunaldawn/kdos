@@ -16,6 +16,7 @@ records what it was.
 4. [Applications](02-user-guide/applications.md) — the software library on the medium
 5. [Theming](02-user-guide/theming.md) — the seven accents and the CRT pass
 6. [Administration](02-user-guide/administration.md) — services, network, hardware, updates
+7. [Accessibility](02-user-guide/accessibility.md) — the braille route, the voice, and what a reader may do
 
 **I want to build KDOS**
 
@@ -60,6 +61,7 @@ Getting a system running and living in it.
 | [Applications](02-user-guide/applications.md) | Alien apps: installing from the medium, launching, file handling, updates, rollback |
 | [Theming](02-user-guide/theming.md) | The seven accents, what retints live, the CRT knobs, wallpaper, fonts, boxed applications |
 | [Administration](02-user-guide/administration.md) | Services, networking, firewall, storage, users, hardware, codecs, updates, diagnosis |
+| [Accessibility](02-user-guide/accessibility.md) | Reading the console desktop: the braille route, the voice, what a widget announces, what a reader may do |
 
 ### III — Architecture and core
 

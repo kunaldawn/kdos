@@ -26,10 +26,18 @@ kdos theme <phosphor|amber|ice|bone|norton|borland|perfect>
 kdos theme list | next | prev
 kdos theme style <file>
 kdos theme --audit [accent]
+kdos theme --preview <accent>
+kdos background [<name>|list|next|prev|none]
 ```
 
 Regenerates every themed artefact and commits the change in one ordered operation. Covered in
 [Theming](../02-user-guide/theming.md).
+
+**`--preview` is the state file and the signal and nothing else** — no GTK stylesheet, no icon
+theme, no cursors, none of the eight foreign configuration files. Those take seconds and are read
+by programs that are not running, so a preview repaints every KDOS surface at once and leaves a
+boxed application wearing the old accent. It is what `kdos-theme`'s arrow keys run, and it is why
+that picker restores the accent it opened on unless it is told to keep one.
 
 **The commit order is load-bearing.** The wallpaper cache and the accent state file are both
 *inputs* to the signal that repaints the session, so both are written before it is sent — the state
@@ -456,13 +464,18 @@ whose failure is a page that exists and cannot be reached from a prompt.
 ```sh
 kdos con ls
 kdos con {new|attach|detach|kill} [session]
+kdos con attach --observe [session]
+kdos con capture [--window N] [session]
+kdos con record FILE
+kdos con replay FILE
 kdos con forward <host> [session]
 kdos con run [--] CMD [ARG...]
 ```
 
 **The session is a bare name, not a flag.** `kdos con new work` — not `-t work`, which names a
 session `-t`. This front end execs `kdos-con` and supplies the `-t` itself; it is five verbs and a
-name, deliberately not an argument tunnel.
+name, deliberately not an argument tunnel. `capture` sits beside that table rather than in it,
+because it is the one verb with a flag of its own to pass.
 
 The console desktop's sessions — the verb that reaches the **default** session, since `tty1` runs
 `kdos-con-login` and everything else is started from there.
@@ -471,10 +484,24 @@ The console desktop's sessions — the verb that reaches the **default** session
 |---|---|
 | `ls` | The sessions that exist, by name |
 | `new [session]` | Start one. **It holds the session and does not return** — nothing is displayed until a view attaches |
-| `attach [session]` | Put a display on one |
+| `attach [--observe] [session]` | Put a display on one. `--observe` watches without typing: the session drops that view's keys and pointer |
 | `detach [session]` | Take every display off one, leaving it and its windows running |
 | `kill [session]` | Ask one to end. It stops its listeners and drains its clients |
+| `capture [--window N] [session]` | Print what is on a **running** session's screen as text; `--window N` narrows it to one window by its ring number |
+| `record FILE` | Draw the session in this terminal and write everything it sends to `FILE` — KDOS's own format, not an asciicast |
+| `replay FILE` | Draw a recording in this terminal. It attaches to no session |
 | `forward` | Carry a session's view socket to another machine over `ssh` |
+
+**A capture asks the session that is running; it is not `kdos-con --dump`.** The dump composites a
+session of its own and **settles** it — runs every terminal until its child has exited — which is
+right for one-shot commands and wrong for a live session, whose shell never exits: a capture that
+settled would hold the session for the length of its own spin and answer nothing. It pumps once
+instead, so what comes back is what the children have already written.
+
+**Only a shell surface may ask**, like every other management verb. Reading back a whole session is
+not something a program with a window in it, or a display that was handed cells, has any business
+doing — and a window number naming nothing returns nothing rather than widening silently to the
+whole screen.
 
 **A session and a display are separate processes, and that is the whole design.** The session holds
 every window and draws nothing; the view holds a screen and no window state. So a view that crashes

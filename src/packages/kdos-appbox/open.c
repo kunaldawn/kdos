@@ -287,8 +287,23 @@ static int handlers_for_mime(const char *mime, OpenCand *c, int max,
  * icon, a name and the entry's own path, none of which this has to supply.
  * `%%` is a literal percent.
  */
+/*
+ * A NAME, NOT A PROGRAM. `X-KDOS-Term` chooses between the two emulators this
+ * image ships and can name nothing else: an entry is a file anything can
+ * write, and a key that named an arbitrary program would be a second Exec line
+ * with none of the field-code rules. An unknown value is the session's own
+ * terminal rather than a refusal, because an entry written for another desktop
+ * must still start.
+ */
+static const char *term_named(const char *want)
+{
+	if (want && (!strcmp(want, "kdos-term") || !strcmp(want, "foot")))
+		return want;
+	return kb_terminal();
+}
+
 static void exec_to_argv(const char *exec, char *const *files, int nfiles,
-			 int terminal, KbArgv *a)
+			 int terminal, const char *want, KbArgv *a)
 {
 	/*
 	 * STATIC, and that is not laziness: kb_argv_add stores the POINTER it
@@ -304,8 +319,10 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 	if (terminal) {
 		/* THE TERMINAL FOLLOWS THE DESKTOP. `foot` needs a compositor,
 		 * so a console session that wrapped an entry in it would pick
-		 * the right program and then fail to open a window for it. */
-		kb_argv_add(a, kb_terminal());
+		 * the right program and then fail to open a window for it —
+		 * unless the entry asked for one by name, which is what a
+		 * program drawing pictures in the grid does. */
+		kb_argv_add(a, term_named(want));
 		kb_argv_add(a, "-e");
 	}
 
@@ -523,7 +540,8 @@ int cmd_open(int argc, char **argv)
 		kb_die("%s has no Exec line", entry);
 
 	KbArgv a = {0};
-	exec_to_argv(exec, argv, argc, kxdg_bool(&e, "Terminal", 0), &a);
+	exec_to_argv(exec, argv, argc, kxdg_bool(&e, "Terminal", 0),
+		     kxdg_get(&e, "X-KDOS-Term", NULL), &a);
 	kb_argv_end(&a);
 	if (!a.v[0])
 		kb_die("%s has an empty Exec line", entry);
