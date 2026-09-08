@@ -360,6 +360,52 @@ would be added.
 **A build without the decoders turns the three protocols off in the parser**, rather than parsing
 them and dropping the result. Parsing bytes nobody can use is a buffer somebody can fill.
 
+## A view that watches, and a view that drives
+
+A session and its displays are separate processes and the view socket can be forwarded over `ssh`,
+so "who is attached" is a privilege question rather than a feature. **A view says in its hello what
+it may do** — drive or observe — and a view that says nothing is a driver, which is what every view
+was before an observer existed.
+
+- **A client can only ask for LESS.** Saying "observe" is a client holding itself to something; it
+  cannot grant itself rights it did not have, so the field is safe to take at its word in one
+  direction only.
+- **The refusal is the server's.** An observer's `KCON_OP_KEY` and `KCON_OP_PTR` are dropped where
+  they arrive, not where they are sent. A view that promised to observe and then typed is exactly
+  the case the field exists for, and a promise the client keeps by itself is decorative.
+- **`kdos con attach --observe`** is the whole interface. Over a forwarded socket it is the
+  difference between showing somebody a problem and handing them the machine.
+- **An observer draws no pointer**, because a pointer that cannot click is a lie about what the
+  view is. Each view draws its own locally over the shared frame — the frame carries none — so two
+  people looking at one session each see their own and neither sees the other's.
+- **`views` in `con.conf` caps how many displays may attach at once**, and a view that is refused is
+  told why rather than finding a closed socket.
+
+## A recorded script
+
+A script is what `Super+Shift+r` recorded and `Super+Alt+r` types back: a file of keys under
+`~/.config/kdos-con/scripts/<letter>`. It is the one thing on this desktop that stores keystrokes,
+so the refusals are the feature.
+
+- **A script is keys into a window and never a command.** Each line is a chord's name, its
+  modifiers, its key number and the gap before it. There is no field that could name a program, so
+  a file planted in that directory types into a window and cannot start anything.
+- **Nothing is recorded and nothing is played while the screen is locked.** A lock is typed into
+  with a password. The refusal is checked when a recording starts, again for every key, when a
+  replay starts and again on every turn of it — a screen can lock on its own timer in the middle of
+  either, and a recorder that only checked at the start would write the password that followed.
+- **The greeter needs no rule of its own.** `kdos-con-login` is a separate process; no session, and
+  so no recorder, exists while it is up.
+- **A replayed key goes into the focused window, never through the chord table.** A replay routed
+  through the session's own keys would fire whatever a file happened to contain — a workspace
+  switch, a quit — from a file.
+- **The directory is 0700 and the files 0600**, created with the mode rather than chmod'd
+  afterwards: between the two there is a file somebody else can read, holding whatever was typed.
+- **Neither `kdos con` nor the protocol grew a `script` verb.** A recording starts and a script
+  plays from the chord table and nowhere else, so a client on the surface socket can neither type
+  into the session this way nor read back what somebody recorded. An observing view is refused every
+  key it sends, so it cannot press the chord either.
+
 ## A URI a terminal was told about
 
 `OSC 8` marks a run of text as a hyperlink, and following one is **the one place a terminal hands a

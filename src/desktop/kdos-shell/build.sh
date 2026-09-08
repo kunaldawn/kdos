@@ -88,6 +88,12 @@ done
 # this tree has, and asks libarchive whether a file is an archive by opening it.
 # No libsixel — a file on disk is not an escape sequence, and kdos-term is where
 # sixel arrives.
+#
+# libkvt is linked for ONE reason and brings no dependency: it links musl and
+# nothing else. kdos-desk's console background is a text file with SGR colour in
+# it, which is exactly what a program writes to a terminal, so the parser that
+# reads it is the parser that reads a terminal — a private SGR reader in this
+# binary would be a second answer to what an escape means.
 PKGCFG="fcft pixman-1 xkbcommon wayland-client basu alsa libpipewire-0.3 libpng libjpeg libwebp libnsgif libarchive"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
@@ -96,6 +102,7 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I"$LIBS/libkbase" -I"$LIBS/libktui" -I"$LIBS/libkcolor" -I"$LIBS/libkcell" -I"$LIBS/libkwl" -I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkwm" \
 	-I"$LIBS/libkxdg" -I"$LIBS/libkicon" -I"$LIBS/libkchrome" \
 	-I"$LIBS/libkimg" \
+	-I"$LIBS/libkvt" \
 	-I"$LIBS/libkproc" \
 	$(pkg-config --cflags $PKGCFG) \
 	-o kdos-shell \
@@ -103,6 +110,7 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	"$LIBS"/libkwl/*.c "$LIBS"/libkdisp/*.c "$LIBS"/libkcon/*.c "$LIBS"/libkwm/*.c "$LIBS"/libkcell/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkbase/*.c "$LIBS"/libkxdg/*.c "$LIBS"/libkicon/*.c \
 	"$LIBS"/libkchrome/*.c "$LIBS"/libkproc/*.c "$LIBS"/libkimg/*.c \
+	"$LIBS"/libkvt/*.c \
 	./*-protocol.c \
 	$(pkg-config --libs $PKGCFG) $LDFLAGS
 
@@ -131,6 +139,10 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-ascii"
 # second program: an About window that shelled out to a screenfetch would
 # draw somebody else's colours on a surface that paints in slots.
 ln -s kdos-shell "$PKG/usr/bin/kdos-about"
+# The accent picker. Each row is drawn in the scheme it names, which is the one
+# place on this desktop where a cell may carry a literal colour: a swatch taken
+# from the palette in force would show seven identical rows.
+ln -s kdos-shell "$PKG/usr/bin/kdos-theme"
 # The desk accessory Sidekick had. It forks `qalc` rather than linking
 # libqalculate, which is C++ and would put libstdc++ on the panel package.
 ln -s kdos-shell "$PKG/usr/bin/kdos-calc"

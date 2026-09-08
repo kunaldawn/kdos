@@ -139,6 +139,40 @@ static void test_colour(void)
 		ok(accent_bad < 0, accent_bad < 0
 		   ? "and 4.5:1 or better, accent on the same ground"
 		   : kcol_schemes[accent_bad < 0 ? 0 : accent_bad].name);
+
+		/*
+		 * AND EVERY GROUND IS THE DARK END, which is a limit of the
+		 * chrome rather than a preference. `libkchrome` solves the
+		 * focused plate along one axis and writes one label colour on
+		 * every plate, so on a light ground the plate darkens away
+		 * from its own label: the best light candidate reaches 7.63:1
+		 * on the label where it stands off the bar at 1.94:1, and
+		 * 2.25:1 off the bar where the label reads at 6.58:1. Nothing
+		 * in the range clears both.
+		 *
+		 * Asserted rather than written down, because the two floors
+		 * above would PASS for a light scheme — they measure the text
+		 * against the ground and say nothing about the plates. A light
+		 * scheme lands when the ladder chooses a label per plate, and
+		 * this line is what has to be removed to add one.
+		 *
+		 * White against the ground beating black against it is the
+		 * whole test: it needs no luminance accessor libkcolor does
+		 * not already export.
+		 */
+		int light = -1;
+
+		for (int i = 0; i < kcol_nscheme; i++) {
+			const KcolScheme *sc = &kcol_schemes[i];
+
+			if (light < 0 &&
+			    kcol_contrast(0xffffff, sc->deep) <=
+				    kcol_contrast(0x000000, sc->deep))
+				light = i;
+		}
+		ok(light < 0, light < 0
+		   ? "and every ground is the dark end, which the plate ladder requires"
+		   : kcol_schemes[light < 0 ? 0 : light].name);
 	}
 	eq_int(kcol_nscheme, 7, "and there are seven of them");
 
@@ -4149,6 +4183,142 @@ static uint8_t vt_attr_of(const char *bytes)
 	return cells[0].attr;
 }
 
+/*
+ * ── WHAT A WIDGET SAYS IT IS ────────────────────────────────────────────
+ *
+ * A widget already knows which item has focus — it computes that every frame
+ * from the same id the hit test uses — so a reader that worked it out again
+ * from a grid of cells would be guessing at what the surface has in hand.
+ * These assertions are that each widget states it, and states the position
+ * facts a reader would otherwise have to count.
+ *
+ * SILENCE IS THE FAILURE MODE. The queue is cleared at the start of every
+ * frame, so a frame in which nothing is focused announces nothing — a reader
+ * told the wrong control is worse off than one told nothing.
+ */
+/* A row callback that draws the index and nothing else: the list needs one,
+ * and what it paints is not what this block is about. */
+static void a11y_row(int idx, int x, int y, int w, int sel, int focus,
+		     void *user)
+{
+	char buf[16];
+
+	(void)user;
+	snprintf(buf, sizeof(buf), "row %d", idx);
+	ktui_draw_text(x, y, w, buf, sel && focus ? KT_BG : KT_TEXT,
+		       sel ? KT_ACCENT : KT_BG, 0);
+}
+
+static const KtuiA11y *a11y_find(int role)
+{
+	for (int i = 0; i < ktui_announce_count(); i++)
+		if (ktui_announce_at(i)->role == role)
+			return ktui_announce_at(i);
+	return NULL;
+}
+
+static void test_ktui_announce(void)
+{
+	KtuiEvent ev = { 0 };
+	const KtuiA11y *a;
+
+	printf("\n==> a widget says what it is, and where in its set\n");
+
+	if (ktui_offscreen_init(60, 20) != 0) {
+		ok(0, "an offscreen surface for the announce test");
+		return;
+	}
+
+	/* A BUTTON, FOCUSED. The frame is driven the way a program drives it:
+	 * begin, draw, end — the focus lands on the first control claimed. */
+	ktui_frame_begin(&ev);
+	ktui_button(krect(1, 1, 12, 1), "Install", 1, 1);
+	a = a11y_find(KT_A11Y_BUTTON);
+	ok(a && !strcmp(a->label, "Install"),
+	   "a focused button says its label");
+	ktui_frame_end();
+
+	/* AND THE QUEUE IS THIS FRAME'S. Nothing drawn, nothing said. */
+	ktui_frame_begin(&ev);
+	eq_int(ktui_announce_count(), 0,
+	       "a frame that draws nothing announces nothing");
+	ktui_frame_end();
+
+	/* A CHECK SAYS ITS VALUE, because "on" and "off" is what the box is
+	 * for and a label alone leaves a reader guessing. */
+	int on = 1;
+
+	ktui_frame_begin(&ev);
+	ktui_check(1, 1, 20, "Night light", &on);
+	a = a11y_find(KT_A11Y_CHECK);
+	ok(a && !strcmp(a->label, "Night light") && !strcmp(a->value, "on"),
+	   "a focused check says its label and its state");
+	ktui_frame_end();
+
+	/* A SECRET FIELD SAYS IT IS ONE AND NEVER WHAT IS IN IT. */
+	char pw[64] = "hunter2";
+
+	ktui_frame_begin(&ev);
+	ktui_input(krect(1, 1, 20, 1), pw, sizeof(pw), 1, "Password");
+	a = a11y_find(KT_A11Y_INPUT);
+	ok(a && !strcmp(a->value, "hidden"),
+	   "a secret field never announces its contents");
+	ok(a && !strstr(a->value, "hunter2"), "and really never");
+	ktui_frame_end();
+
+	/* A LIST SAYS WHICH ITEM OF HOW MANY. The rows come from the caller's
+	 * callback, so the position is what the widget can state. */
+	KtuiList st = { 0 };
+
+	st.sel = 2;
+	ktui_frame_begin(&ev);
+	ktui_list(krect(1, 1, 20, 5), &st, 9, a11y_row, NULL, 0);
+	a = a11y_find(KT_A11Y_LIST);
+	ok(a && a->index == 3 && a->count == 9, "a list says 3 of 9");
+	ktui_frame_end();
+
+	/* A TAB STRIP HAS ITS NAMES, so it says the name as well. */
+	static const KtuiTab tabs[] = { { "General", NULL }, { "Keys", NULL },
+					{ "Network", NULL } };
+
+	ktui_frame_begin(&ev);
+	ktui_tabs_draw(krect(0, 0, 40, 1), tabs, 3, 1, -1, 0);
+	a = a11y_find(KT_A11Y_TAB);
+	ok(a && !strcmp(a->label, "Keys") && a->index == 2 && a->count == 3,
+	   "a tab strip says which tab, by name");
+	ktui_frame_end();
+
+	/* AND A MOVE SAYS THE NEW POSITION, from the key handler that made it. */
+	int sel = 0;
+
+	ktui_frame_begin(&ev);
+	ktui_tabs_key(&sel, 3, 0, KT_K_RIGHT);
+	a = a11y_find(KT_A11Y_TAB);
+	ok(a && a->index == 2, "moving to the next tab says so");
+	ktui_frame_end();
+
+	/* A TEXT BLOCK SAYS WHICH LINE OF HOW MANY. */
+	static char lines[4][256] = { "one", "two", "three", "" };
+	KtuiTextArea ta = { 0 };
+	int n = 3;
+
+	ktui_frame_begin(&ev);
+	ktui_textarea_key(&ta, lines[0], &n, 4, sizeof(lines[0]), KT_K_DOWN);
+	a = a11y_find(KT_A11Y_TEXT);
+	ok(a && a->index == 2 && a->count == 3, "a text block says line 2 of 3");
+	ktui_frame_end();
+
+	/* THE QUEUE IS FIXED AND DROPS THE REST: nothing on the draw path
+	 * allocates, and a frame with more to say than it holds says what
+	 * fits. */
+	ktui_frame_begin(&ev);
+	for (int i = 0; i < KTUI_A11Y_MAX + 8; i++)
+		ktui_announce(KT_A11Y_BUTTON, "x", NULL, 0, 0);
+	eq_int(ktui_announce_count(), KTUI_A11Y_MAX,
+	       "the queue is capped rather than grown");
+	ktui_frame_end();
+}
+
 static void test_vt_styles(void)
 {
 	printf("\n==> libkvt carries italic, strikethrough and overline\n");
@@ -4805,7 +4975,7 @@ static void test_kcon(void)
 	/* ── the caps are what they claim ──────────────────────────────── */
 	eq_int((long long)KCON_MAX_PAYLOAD, 1ll << 20,
 	       "a payload is refused above a megabyte");
-	eq_int(KCON_VERSION, 9, "and the version the two ends agree on");
+	eq_int(KCON_VERSION, 10, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -5227,6 +5397,19 @@ static void srv_on_win_state(KconSurface *f, unsigned id, unsigned flag,
 	srv_min_on = on;
 }
 
+/* What a view's key reached the session as, for the observer test. */
+static int srv_keys;
+static int srv_last_key;
+
+static void srv_on_view_key(KconSurface *v, int key, int mods, void *user)
+{
+	(void)v;
+	(void)mods;
+	(void)user;
+	srv_keys++;
+	srv_last_key = key;
+}
+
 static void srv_on_paste(KconSurface *v, const char *text, void *user)
 {
 	(void)v;
@@ -5286,6 +5469,27 @@ static void srv_hello(KconConn *c, unsigned ver, unsigned kind)
 	kcon_put_u16(&b, (uint16_t)ver);
 	kcon_put_u16(&b, (uint16_t)kind);
 	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_flush(c);
+	kcon_buf_free(&b);
+}
+
+/* The same again, with what a view is ALLOWED to do — the field after the
+ * capabilities. */
+static void srv_hello_rights(KconConn *c, unsigned rights)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_VIEW);
+	kcon_put_u16(&b, 8);
+	kcon_put_u16(&b, 16);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, (uint16_t)rights);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_send(c, KCON_OP_VIEW_SIZE, &b);
 	kcon_flush(c);
 	kcon_buf_free(&b);
 }
@@ -6093,6 +6297,76 @@ static void test_kcon_server(void)
 		if (win1)
 			kcon_conn_free(win1);
 		kcon_server_hooks(s, NULL, NULL);
+	}
+
+	/* ── two views, two rights ────────────────────────────────────────
+	 *
+	 * A VIEW THAT MAY WATCH AND NOT TYPE. Over a forwarded socket that is
+	 * the difference between showing somebody a problem and handing them
+	 * the machine — so the refusal is on the SERVER's side: the observer
+	 * below sends a key exactly as the driver does, and only one of them
+	 * arrives.
+	 *
+	 * A client cannot ask for more by saying nothing, either: a hello that
+	 * stops at the capabilities is a driver, which is what every view was
+	 * before this field existed.
+	 */
+	{
+		KconServerHooks h = { 0 };
+
+		h.view_key = srv_on_view_key;
+		kcon_server_hooks(s, &h, NULL);
+
+		KconConn *drv = srv_client(path);
+		KconConn *obs = srv_client(path);
+
+		if (drv && obs) {
+			srv_hello_rights(drv, KCON_RIGHTS_DRIVE);
+			srv_hello_rights(obs, KCON_RIGHTS_OBSERVE);
+			for (int i = 0;
+			     i < 50 && kcon_server_view_count(s) < 2; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(kcon_server_view_count(s) >= 2,
+			   "a driver and an observer are both attached");
+
+			KconBuf b = { 0 };
+
+			srv_keys = 0;
+			srv_last_key = 0;
+			kcon_put_i32(&b, 'd');
+			kcon_put_u8(&b, 0);
+			kcon_send(drv, KCON_OP_KEY, &b);
+			kcon_flush(drv);
+			for (int i = 0; i < 50 && !srv_keys; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_keys == 1 && srv_last_key == 'd',
+			   "the driver's key reaches the session");
+
+			kcon_buf_reset(&b);
+			kcon_put_i32(&b, 'o');
+			kcon_put_u8(&b, 0);
+			kcon_send(obs, KCON_OP_KEY, &b);
+			kcon_flush(obs);
+			/* Read to the end of the spin rather than stopping at
+			 * the first pump: a test that gave up early would pass
+			 * against a session that simply answered slowly. */
+			for (int i = 0; i < 50; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+			ok(srv_keys == 1 && srv_last_key == 'd',
+			   "and the observer's key reaches nothing");
+		}
+		if (drv)
+			kcon_conn_free(drv);
+		if (obs)
+			kcon_conn_free(obs);
+		kcon_server_hooks(s, NULL, NULL);
+		kcon_server_pump(s);
 	}
 
 	/* ── the literals, and only for the view that asked ───────────────
@@ -7063,6 +7337,7 @@ int main(void)
 	test_menu();
 	test_vt_graphics();
 	test_vt_modes();
+	test_ktui_announce();
 	test_vt_styles();
 	test_vt_links();
 	test_vt_marks();

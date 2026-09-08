@@ -117,30 +117,10 @@ static const char *const PAGE_NAMES[NCAT] = {
 	"apps", "boxes", "system"
 };
 
-/* Where a row's value is stored. ST_THEME is the accent, which is not a file
- * this program writes at all: `kdos theme` owns the whole palette pipeline
- * (icons, cursors, gtk.css, foot, btop, starship) and a second writer of the
- * accent would be a second thing to keep in agreement with it. */
-/*
- * ST_PANEL is `~/.config/kdos/panel.conf`, which is a SECOND file in exactly
- * the same `key = value` shape — so write_kv already knows how to rewrite it
- * and the only new thing is which signal to send afterwards. It matters
- * because everything in it is a decision about the bar somebody is looking at
- * (which widgets, which charts, what is hidden behind the chevron), and until
- * now the only way to change any of it was to know the file existed.
- */
-/*
- * ST_RES is `~/.config/kdos/res.conf`, a THIRD file in the same `key = value`
- * shape. kdos-res re-reads it on the SIGHUP this program already sends for the
- * panel, so a changed interval or column set reaches the monitor that is on
- * the screen rather than the next one started.
- */
-/*
- * ST_BOX is `~/.config/kdos/boxes/<name>.conf` and is the ONE store this
- * program does not write itself: `kdos-box` is the writer, so a box configured
- * here and a box configured at a prompt cannot come out different.
- */
-enum { ST_NONE = 0, ST_COMP, ST_THEME, ST_PANEL, ST_RES, ST_BOX };
+/* Where a row's value is stored. Every one of these is a configuration file
+ * this program reads and writes; a row that runs a program instead stores
+ * nothing and is ST_NONE. */
+enum { ST_NONE = 0, ST_COMP, ST_PANEL, ST_RES, ST_BOX };
 
 /* When a change takes effect. */
 enum { SC_NONE = 0, SC_LIVE, SC_LOGIN };
@@ -178,17 +158,20 @@ static const char *const CPUPCT[] = { "core", "machine" };
 static const char *const UNITS[] = { "1024", "1000" };
 static const char *const TEMPU[] = { "c", "f" };
 
-/* The accent names, filled from libktui's own table at startup — the palette
- * lives in libkcolor and every consumer expands the same one. */
-static const char *accents[8];
-static int naccents;
 
 static struct row rows[] = {
 	/* ── Appearance ─────────────────────────────────────────────── */
-	{ CAT_APPEARANCE, FT_CHOICE, ST_THEME, SC_LIVE, "accent", "accent",
-	  NULL, 0, 0, 0, 0,
-	  "runs `kdos theme <accent>`: host, box and window frames together",
-	  "phosphor", "phosphor" },
+	/*
+	 * THE ACCENT IS PICKED IN THE PICKER AND NOWHERE ELSE. A list of names
+	 * here would be a second way to choose one, and the worse of the two:
+	 * `kdos-theme` draws every scheme in its own colours and repaints the
+	 * desktop live as the highlight moves, which a row of words cannot.
+	 * This row is the way in, and the key is the program it opens.
+	 */
+	{ CAT_APPEARANCE, FT_TOOL, ST_NONE, SC_NONE, "kdos-theme",
+	  "Accent…", NULL, 0, 0, 0, 0,
+	  "every scheme in its own colours, previewed live; Enter keeps one",
+	  "", "" },
 	{ CAT_APPEARANCE, FT_INT, ST_COMP, SC_LIVE, "crt", "crt",
 	  NULL, 0, 0, 100, 5,
 	  "the phosphor shader's strength; 0 is an honest off and gives the "
@@ -210,7 +193,9 @@ static struct row rows[] = {
 	  "on", "on" },
 	{ CAT_APPEARANCE, FT_TEXT, ST_COMP, SC_LIVE, "wallpaper", "wallpaper",
 	  NULL, 0, 0, 0, 0,
-	  "a PNG, scaled to cover and centred; the word `none` is an honest off",
+	  "the COMPOSITOR's: a PNG, scaled to cover and centred, `none` is an "
+	  "honest off. The console's ground is `kdos background`, which is "
+	  "character art",
 	  "/usr/share/backgrounds/kdos/default-wallpaper.png",
 	  "/usr/share/backgrounds/kdos/default-wallpaper.png" },
 	{ CAT_APPEARANCE, FT_TEXT, ST_COMP, SC_LOGIN, "chrome_font",
@@ -1032,32 +1017,6 @@ static void load_all(void)
 {
 	char path[700];
 
-	for (int i = 0; i < ktui_ntheme && naccents < 8; i++)
-		accents[naccents++] = ktui_themes[i].name;
-	for (int i = 0; i < NROWS; i++)
-		if (rows[i].store == ST_THEME) {
-			rows[i].choices = accents;
-			rows[i].nchoices = naccents;
-		}
-
-	/* The accent in force is the one-word state file every other surface
-	 * reads, not a comp.conf key. */
-	char accent[64] = "";
-	const char *cache = getenv("XDG_CACHE_HOME");
-	if (cache && *cache)
-		snprintf(path, sizeof(path), "%.500s/kdos/theme", cache);
-	else
-		snprintf(path, sizeof(path), "%.500s/.cache/kdos/theme",
-			 kb_home_dir());
-	if (kb_read_line_file(path, accent, sizeof(accent)) > 0 && accent[0])
-		for (int i = 0; i < NROWS; i++)
-			if (rows[i].store == ST_THEME) {
-				kb_strlcpy(rows[i].val, accent,
-					   sizeof(rows[i].val));
-				kb_strlcpy(rows[i].orig, accent,
-					   sizeof(rows[i].orig));
-			}
-
 	cfg_path("comp.conf", path, sizeof(path));
 	load_kv(path, ST_COMP);
 	cfg_path("panel.conf", path, sizeof(path));
@@ -1204,7 +1163,7 @@ static int dirty_count(int store)
 static void apply(void)
 {
 	char path[700];
-	int comp = dirty_count(ST_COMP), theme = dirty_count(ST_THEME);
+	int comp = dirty_count(ST_COMP);
 	int panel = dirty_count(ST_PANEL), res = dirty_count(ST_RES);
 	int live = 0, login = 0, failed = 0;
 	/* `pkill -x` is EXACT and that is load-bearing: `kdos-comp` is a
@@ -1251,27 +1210,6 @@ static void apply(void)
 		else
 			sighup("kdos-res");
 	}
-	if (theme) {
-		for (int i = 0; i < NROWS; i++) {
-			if (rows[i].store != ST_THEME ||
-			    !strcmp(rows[i].val, rows[i].orig))
-				continue;
-			/*
-			 * Detached, not waited for: `kdos theme` regenerates
-			 * ~10 000 icons and every cursor, which is seconds of
-			 * work, and it sends its own SIGHUP to the whole
-			 * desktop when it is done. A settings window frozen for
-			 * the duration would look like the crash it is not.
-			 */
-			KbArgv a = {0};
-			kb_argv_add(&a, "kdos");
-			kb_argv_add(&a, "theme");
-			kb_argv_add(&a, rows[i].val);
-			kb_argv_end(&a);
-			kb_run_detach(&a);
-		}
-	}
-
 	if (failed) {
 		snprintf(note, sizeof(note),
 			 "could not write %d file(s) — nothing else changed",
@@ -1281,14 +1219,13 @@ static void apply(void)
 	for (int i = 0; i < NROWS; i++)
 		kb_strlcpy(rows[i].orig, rows[i].val, sizeof(rows[i].orig));
 
-	if (!live && !login && !theme)
+	if (!live && !login)
 		snprintf(note, sizeof(note), "nothing to apply");
 	else if (login)
 		snprintf(note, sizeof(note),
-			 "applied: %d now, %d at the next login", live + theme,
-			 login);
+			 "applied: %d now, %d at the next login", live, login);
 	else
-		snprintf(note, sizeof(note), "applied: %d now", live + theme);
+		snprintf(note, sizeof(note), "applied: %d now", live);
 	quit_armed = 0;
 }
 
@@ -1300,7 +1237,7 @@ static void apply(void)
  */
 static int try_quit(void)
 {
-	if (!dirty_count(ST_COMP) && !dirty_count(ST_THEME))
+	if (!dirty_count(ST_COMP))
 		return 1;
 	if (quit_armed)
 		return 1;
@@ -1735,7 +1672,7 @@ static void draw_page(void)
 			       KT_MID, KT_SURFACE, KT_A_NONE);
 	}
 
-	int pending = dirty_count(ST_COMP) + dirty_count(ST_THEME);
+	int pending = dirty_count(ST_COMP);
 	if (cat == CAT_BOXES)
 		pending = box_mode == BOX_LIST ? 0 : box_dirty();
 	/*

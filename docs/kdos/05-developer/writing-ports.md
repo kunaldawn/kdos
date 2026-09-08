@@ -210,6 +210,13 @@ Four rules, each with a consequence:
 - **`Terminal=true` and a bare `Exec`.** Naming an emulator in `Exec` pins the entry to one
   desktop: `foot` is a Wayland client and cannot run on the console. The launcher picks the
   emulator and supplies the identity — see [`kdos-shell`](../04-programs/kdos-shell.md).
+- **`X-KDOS-Term=kdos-term` only where the program draws pictures.** It names the emulator the
+  entry needs rather than the one the session runs, and the launcher honours it on either desktop:
+  `kdos-term` links the decoders and speaks sixel and the kitty protocol, so `yazi`'s previews are
+  pictures rather than a filename. **A name and never a program** — only an emulator this image
+  ships is accepted, and an unknown value falls back to the session's own, because an entry is a
+  file anything can write and a key that named a program would be a second `Exec` line with none of
+  the field-code rules. Without the key the session's terminal is used, which is lighter.
 - **Check `Icon=` against the shipped atlas**, `src/packages/kdos-icons/art`. The set is
   Papirus-derived and does not carry the freedesktop names you would guess: there is `file-manager`
   but no `system-file-manager`, `help-contents` but no `help-browser`. A name that misses still

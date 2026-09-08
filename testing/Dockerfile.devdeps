@@ -18,8 +18,8 @@
 # phase build, and it carries exactly what the script probes for:
 #
 #     pkg-config: alsa basu fcft libarchive libdrm libinput libpipewire-0.3
-#                 libseat pixman-1 wayland-client xkbcommon — and four of the
-#                 five decoders
+#                 libseat libzstd pixman-1 wayland-client xkbcommon — and four
+#                 of the five decoders
 #     command -v: cpio dbus-daemon python3 xz zstd
 #
 # mesa, libxml2, cairo and pango are here for the compositor's graft block,
@@ -67,7 +67,7 @@ RUN apk add --no-cache \
         libxkbcommon-dev libinput-dev libseat-dev \
         mesa-dev libxml2-dev cairo-dev pango-dev \
         basu-dev pipewire-dev alsa-lib-dev \
-        dbus cpio tar xz zstd fakeroot \
+        dbus cpio tar xz zstd zstd-dev fakeroot \
         font-dejavu fontconfig duktape \
         vim htop mc tmux less ncurses
 

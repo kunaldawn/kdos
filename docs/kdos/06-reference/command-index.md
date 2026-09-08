@@ -128,7 +128,7 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos thumb <file>` | A thumbnail in the shared freedesktop cache — also `--path` and `--ppm` | [kdos-command](../04-programs/kdos-command.md#thumb) |
 | `kdos-openarchive ARCHIVE` | Extract an archive `mc` cannot browse as a directory, beside itself | [kdos-shell](../04-programs/kdos-shell.md) |
 | `kdos hey` | Ask the compositor about windows, outputs and boxes |
-| `kdos con` | Console sessions: `ls`, `new`, `attach`, `detach`, `kill` (asks the session to end, and it drains), `forward` |
+| `kdos con` | Console sessions: `ls`, `new`, `attach` (`--observe` to watch without typing), `detach`, `kill` (asks the session to end, and it drains), `capture`, `record`, `replay`, `forward` |
 | `kdos oracle` | An aphorism |
 | `kdos update` | Orchestrate a system update |
 

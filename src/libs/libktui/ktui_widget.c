@@ -62,8 +62,41 @@ static int last_click_id = -1;
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * The frame's announcements. Fixed, cleared below, and never allocated: see
+ * ktui.h for why silence rather than a stale name is the failure mode.
+ */
+static KtuiA11y a11y[KTUI_A11Y_MAX];
+static int na11y;
+
+void ktui_announce(int role, const char *label, const char *value, int index,
+		   int count)
+{
+	KtuiA11y *a;
+
+	if (na11y >= KTUI_A11Y_MAX || role == KT_A11Y_NONE)
+		return;
+	a = &a11y[na11y++];
+	a->role = role;
+	a->index = index;
+	a->count = count;
+	kb_strlcpy(a->label, label ? label : "", sizeof(a->label));
+	kb_strlcpy(a->value, value ? value : "", sizeof(a->value));
+}
+
+int ktui_announce_count(void)
+{
+	return na11y;
+}
+
+const KtuiA11y *ktui_announce_at(int i)
+{
+	return i >= 0 && i < na11y ? &a11y[i] : NULL;
+}
+
 void ktui_frame_begin(KtuiEvent *ev)
 {
+	na11y = 0;
 	ui.ev = *ev;
 	ui.consumed = 0;
 	ui.clicked = -1;
@@ -301,6 +334,12 @@ int ktui_button(KRect r, const char *label, int enabled, int primary)
 	int cy = r.y + r.h / 2;
 	ktui_draw_text(x, cy, r.w, label, fg, bg, 0);
 
+	/* SAID WHERE FOCUS IS COMPUTED, not where it is drawn: a second place
+	 * that worked out which control has focus is a second place to get it
+	 * wrong. */
+	if (focus)
+		ktui_announce(KT_A11Y_BUTTON, label, NULL, 0, 0);
+
 	/* The focused button carries brackets rather than only a colour — on a
 	 * washed-out laptop panel colour alone is not a focus indicator. */
 	if (focus && r.w > 4) {
@@ -326,6 +365,11 @@ int ktui_check(int x, int y, int w, const char *label, int *val)
 	ktui_draw_text(x + 2, y, 1, "]", focus ? KT_BG : KT_MID, bg, 0);
 	ktui_draw_text(x + 4, y, w - 4, label, fg, bg, 0);
 
+	/* The VALUE as well as the name: "on" and "off" is what the box says,
+	 * and a reader given only the label has to guess which. */
+	if (focus)
+		ktui_announce(KT_A11Y_CHECK, label, *val ? "on" : "off", 0, 0);
+
 	if (ktui_activated(id, r)) {
 		*val = !*val;
 		return 1;
@@ -348,6 +392,10 @@ int ktui_radio(int x, int y, int w, const char *label, int *val, int on)
 		  focus ? KT_BG : KT_ACCENT, bg, 0);
 	ktui_draw_text(x + 2, y, 1, ")", focus ? KT_BG : KT_MID, bg, 0);
 	ktui_draw_text(x + 4, y, w - 4, label, fg, bg, 0);
+
+	if (focus)
+		ktui_announce(KT_A11Y_RADIO, label,
+			      sel ? "selected" : "not selected", 0, 0);
 
 	if (ktui_activated(id, r)) {
 		*val = on;
@@ -628,6 +676,17 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placehold
 			col = 0;
 		*cur = in_byte_at(buf, col, secret);
 	}
+
+	/*
+	 * A SECRET FIELD ANNOUNCES THAT IT IS ONE AND NEVER ITS CONTENTS. The
+	 * whole point of the field is that what is typed into it is not on the
+	 * screen; a reader that said it aloud would put it in the room.
+	 */
+	if (focus)
+		ktui_announce(KT_A11Y_INPUT,
+			      placeholder && *placeholder ? placeholder
+							  : "text",
+			      secret ? "hidden" : buf, 0, 0);
 	return changed;
 }
 
@@ -854,6 +913,12 @@ int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user, int
 	}
 	if (count > vis)
 		ktui_scrollbar(krect(r.x + r.w - 1, r.y, 1, r.h), count, vis, st->off);
+
+	/* THE POSITION, because the rows are the caller's callback and this
+	 * knows which one is selected rather than what is in it. A surface
+	 * that has the text may say the name itself. */
+	if (focus && count > 0)
+		ktui_announce(KT_A11Y_LIST, NULL, NULL, st->sel + 1, count);
 
 	ktui_hit(r, id);
 	return chosen;

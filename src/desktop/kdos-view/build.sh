@@ -8,10 +8,10 @@
 # rather than in the session is what lets kdos-con link none of it and come up
 # on a machine whose driver does not.
 #
-# KDOS_VIEW_KMS is what compiles that mode in, and KDOS_VIEW_CAST the recording
-# one. A build without either still has the tty and dump modes, which is how the
-# self-test checks the console's goldens on a machine with none of these
-# libraries.
+# KDOS_VIEW_KMS is what compiles that mode in, KDOS_VIEW_CAST the PipeWire
+# stream and KDOS_VIEW_RECORD the file one. A build without any of them still
+# has the tty and dump modes, which is how the self-test checks the console's
+# goldens on a machine with none of these libraries.
 #
 # A RECORDING IS A VIEW NOBODY LOOKS AT: it rasterises through the same cell
 # painter and writes into a PipeWire stream instead of onto a screen, which is
@@ -21,11 +21,14 @@ LIBS="$PORT_SRC/../../libs"
 # rather than as the text a `--dump` prints. libsixel is the terminal emitter's
 # encoder — the one path where this program has to turn pixels back into bytes
 # a program on the other end of a pty will draw.
-PKGCFG="libdrm libinput libseat xkbcommon libudev fcft pixman-1 libpipewire-0.3 libpng libsixel"
+# libzstd is `--record`'s: a recording is one line per message and a desktop
+# writes a great many of them, so the stream is compressed as it is written
+# rather than left for somebody to remember to compress afterwards.
+PKGCFG="libdrm libinput libseat xkbcommon libudev fcft pixman-1 libpipewire-0.3 libpng libsixel libzstd"
 
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-DKDOS_VIEW_VERSION="\"$version\"" -DKDOS_VIEW_KMS -DKDOS_VIEW_CAST \
-	-DKDOS_VIEW_SHOT -DKDOS_VIEW_TTYPIX \
+	-DKDOS_VIEW_SHOT -DKDOS_VIEW_TTYPIX -DKDOS_VIEW_RECORD \
 	-I"$PORT_SRC" \
 	-I"$LIBS/libkbase" -I"$LIBS/libkcolor" -I"$LIBS/libktui" \
 	-I"$LIBS/libkdisp" -I"$LIBS/libkcon" -I"$LIBS/libkcell" \

@@ -317,6 +317,50 @@ on the terminal's own cell, hover underlines the whole run and `Ctrl`+click open
 on which desktop a person is sitting at. Four schemes and printable ASCII only; the refusals are in
 [the security model](../03-architecture/security-model.md#a-uri-a-terminal-was-told-about).
 
+**A view can write what it is sent to a file, and a view can draw one back.**
+`kdos-view --record FILE` records while it draws; `--replay FILE` draws a recording and attaches to
+no session at all — a player that connected would be a second view on somebody's desktop, resizing
+it to whatever the recording was made at. `kdos con record FILE` and `kdos con replay FILE` are the
+same two through the `kdos` command.
+
+**What is recorded is the session's own messages**, one ndjson line each with a timestamp and the
+payload, the whole stream under `zstd`. Not the cells and not the pixels: a recorder that re-encoded
+cells would be a second definition of a frame, and it would lose an op added to the protocol after
+it was written. The header names the protocol version and **a replay refuses a version it does not
+speak** rather than reading the bytes as something else. The self-test records a live view and
+replays it with no session anywhere: the frame that comes out must be the frame that went in.
+
+**It is KDOS's format and it is not an asciicast.** An asciicast is a terminal's byte stream; this
+is a desktop's cell frames, its sprites and its window chrome, so no asciinema player will open it
+and calling it asciicast would buy a broken expectation. Nothing needs a player port either — a view
+that draws cells is already the player.
+
+**A session can be started again with what it had open.** With `restore = yes`, a session started
+under the same name reads `$XDG_STATE_HOME/kdos/con/<name>.session` and reopens the windows it
+records — kind, size, place and workspace. **The list comes back; the processes do not.** A terminal
+is reopened running `con.conf`'s own `terminal` and an application is started through its desktop
+entry by app id, so **nothing in the file is ever run as a command**: it is written by a program and
+read by a program, and a file that named an argv would be a file that decides what somebody's
+session starts.
+
+**It is saved when the session ends, and a signal is how a session ends.** A login ending sends
+`TERM`; with the default disposition the process would die where it stands, so `TERM` and `INT` set
+the same flag the quit verb does and the session leaves through the same door — closing its guests,
+releasing their terminals and writing the list. A session killed outright keeps the list it had.
+
+**`restore_scrollback` puts the last session's output back**, above the fresh prompt and under a
+line saying whose it is. Off by default and a separate key, because this is the half that can
+mislead: unmarked old output reads as live, and somebody scrolling up finds a build that never ran
+here. An application's window is placed when it attaches — a restored client's window does not exist
+until then — and only the first window of each app id takes a remembered place.
+
+**A running session can be photographed as text**, with `kdos con capture` — the whole grid, or one
+window's content with `--window N`. It goes to the **surface** socket and only a shell surface is
+answered: reading a session back is a management right, and a display is trusted with the cells it
+was handed and the events it reports, not with what every other window is showing. The session
+pumps its terminals once and composes before answering, so the text is what has already been
+written rather than a frame from before the last command's output arrived.
+
 **The prompt marks work the same way**, from the same `libkvt`: `Ctrl+Shift+Up` and
 `Ctrl+Shift+Down` jump between the prompts a shell marked with `OSC 133`, and the dot goes on the
 window frame's left border — the one column the window manager owns, since every column inside
@@ -461,6 +505,21 @@ that is the display the person is looking at — and the second to decide how of
 frame: at the session's own redraw rate when something can show pixels, and once every 250 ms when
 nothing can, because a window of pixels at a compositor's frame rate down an `ssh` link is a link
 that does nothing else.
+
+**A third socket is the reader's**, beside the surface socket and the view socket in the same
+private directory. Its clients are displays that **cannot drive** — the socket decides that, not the
+client — and they are the only ones sent `KCON_OP_ANNOUNCE`: the role, name, value and position of
+whatever the focused widget just said, plus the focused window when it changes. A reader that
+attaches late is told the window again, for the same reason a view that attaches is sent the whole
+frame. `speak = yes` starts `kdos-a11y` with the session; see
+[Accessibility](../02-user-guide/accessibility.md).
+
+**A view may watch without typing.** `kdos con attach --observe` says so in its hello, and the
+session drops that view's keys and pointer where they arrive — the refusal is on the server's side,
+because a promise a client keeps by itself is decorative. It sends none either, which is what makes
+it honest rather than merely safe, and it **draws no pointer**: each view draws its own locally over
+the shared frame, so a pointer on a view that cannot click would be a lie about what it is. `views`
+in `con.conf` caps how many displays may attach at once.
 
 **A colour a program named exactly is sent only to a view that asked for it**, in a run of its own
 beside the cells. A view in somebody's sixteen-colour terminal would have to reduce every literal
@@ -756,6 +815,10 @@ over state the session already holds.
 | `Super+Shift+m` | mark a rectangle of the screen |
 | `Super+Shift+v` | paste what was marked into the focused window |
 | `Super+Shift+p` | capture a rectangle: its text to the clipboard, its picture to a file |
+| `Super+Shift+r` | record the keys you type; the same chord stops and asks for a letter |
+| `Super+Alt+r` then a letter | type that script back into the focused window |
+| `Super+Ctrl+Shift+Space` | the accent picker, previewing live as the highlight moves |
+| `Super+Ctrl+Space` | the next character-art background, and `none` is in the ring |
 | `Super+=`, `Super+-` | bigger and smaller text on the screen — **on a KMS view only** |
 | `Super+Ctrl+0` | the text size back to what the configuration names |
 | media keys | louder, quieter, mute, play, stop, next, previous — **on a KMS view only** |
@@ -834,6 +897,55 @@ the same rectangle as `kdos-shot region --geom X,Y,W,H`, in cells. It attaches a
 rasterise them, so the picture is what a screen would show rather than a second drawing of the same
 cells. **The mark is taken down before the picture is asked for**, or the rectangle would be
 reverse video in the file.
+
+## Scripts
+
+**A script is the keys somebody typed, played back.** `Super+Shift+r` starts recording every key
+the session routes to the focused window and the same chord stops it, asking on the taskbar for a
+letter to keep it under; `Super+Alt+r` then that letter types it into whatever has the focus now.
+Files live at `~/.config/kdos-con/scripts/<letter>`, one line per key.
+
+**A script is keys into a window and never a command.** The file holds a chord's name, its
+modifiers, its key number and the gap before it, and there is no field that could name a program —
+so a file somebody plants in that directory types into a window and cannot start anything. This is
+the whole of the format, and it is deliberately too small to hold a command.
+
+**The name column is for the eye and the numbers are what is replayed.** The name is the chord
+spelled the way `keys.conf` spells it, written through the same table the session binds chords with,
+so a person can read a script without decoding key numbers. It is not parsed back; a file whose name
+and numbers disagree replays the numbers.
+
+**Nothing is recorded and nothing is played while the screen is locked.** A lock is typed into with
+a password, so a recorder underneath one would write it to a file and a replay into one would be a
+guess at it. The refusal is checked when a recording starts, again for every key, when a replay
+starts and again on every turn of it — a screen can lock on its own timer in the middle of either.
+The greeter needs no rule of its own: `kdos-con-login` is a separate process and no session, and so
+no recorder, exists while it is up.
+
+**A replay leaves on the session's tick, one key at a time.** The gap between two keys is the gap
+they were typed with, capped at twenty milliseconds, and the keys are delivered from the same loop
+that polls everything else. A replay that slept between keys instead would hold the whole desktop:
+nothing would repaint, and a person would watch a frozen screen produce a finished paragraph.
+`Escape` stops one.
+
+**A replayed key goes into the window and never through the chord table.** What was recorded reached
+a window, and that is where it goes back — a replay routed through the session's own keys would fire
+whatever a file happened to contain, a workspace switch or a quit, from a file.
+
+**The directory is 0700 and the files 0600**, created with the mode rather than chmod'd afterwards:
+between the two there is a file somebody else can read, and what is in it is whatever was typed.
+
+**`kdos con` gained no `script` verb, and neither did the protocol.** A recording starts and a
+script plays from the chord table and from nowhere else, so a client on the surface socket can do
+neither: a verb that could would be a way to type into the session, and to read back what somebody
+had typed, for anything that can reach the socket. The only client that reaches this at all is a
+driving view, which is the keyboard by definition — and an observing view is refused every key it
+sends, so it cannot press the chord either.
+
+**The key card lists the letters that have a script and the first ten keys of each**, read out of
+the directory by a program running as the same person rather than asked for over the socket. A
+letter with no script is a chord that does nothing and a letter with the wrong script types into the
+wrong window, so which letters are taken has to be visible somewhere.
 
 ## The media keys
 

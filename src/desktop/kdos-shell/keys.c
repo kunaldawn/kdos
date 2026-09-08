@@ -610,11 +610,15 @@ static int con_section(const char *act, const char **desc)
 		{ "mark",	"mark text anywhere on the screen",	SEC_WINDOW },
 		{ "paste",	"paste what was marked",	SEC_WINDOW },
 		{ "capture",	"mark a rectangle: text copied, picture filed",	SEC_WINDOW },
+		{ "learn",	"record the keys you type, and stop",	SEC_WINDOW },
+		{ "play",	"type a recorded script back",	SEC_WINDOW },
 		/* The screen's own font, which is the view's and not a
 		 * window's — filed under system for that reason. */
 		{ "font-up",	"bigger text on the screen",	SEC_SYSTEM },
 		{ "font-down",	"smaller text on the screen",	SEC_SYSTEM },
 		{ "font-reset",	"the text size back",		SEC_SYSTEM },
+		{ "theme",	"the accent, with a live preview",	SEC_SYSTEM },
+		{ "background",	"the console's character-art ground",	SEC_SYSTEM },
 		{ "volume-up",	"louder",		SEC_WINDOW },
 		{ "volume-down", "quieter",		SEC_WINDOW },
 		{ "volume-mute", "mute and unmute",	SEC_WINDOW },
@@ -659,6 +663,84 @@ static int con_section(const char *act, const char **desc)
 			return tbl[i].sect;
 		}
 	return -1;
+}
+
+/*
+ * THE SCRIPTS THAT EXIST, AND THE FIRST TEN KEYS OF EACH.
+ *
+ * A script is a letter and nothing else on the screen says which letters are
+ * taken: `Super+Alt+r` then a letter with no script is a chord that does
+ * nothing, and a letter with the wrong script types a paragraph into the wrong
+ * window. The card is where a person looks, so the card reads the directory.
+ *
+ * READ HERE AND NOT ASKED FOR OVER THE SOCKET. A script is a file in the
+ * person's own configuration, this program runs as that person, and the
+ * session grew no verb that could be asked — which is the refusal that keeps a
+ * client on the surface socket from learning what somebody has recorded.
+ */
+static void scripts_rows(void)
+{
+	const char *cfg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+	char dir[256];
+
+	if (cfg && *cfg)
+		snprintf(dir, sizeof(dir), "%s/kdos-con/scripts", cfg);
+	else if (home && *home)
+		snprintf(dir, sizeof(dir), "%s/.config/kdos-con/scripts", home);
+	else
+		return;
+
+	for (int c = 'a'; c <= 'z' && nbinds < KEYS_MAX; c++) {
+		char path[300], *text, *line, *nl;
+		size_t used = 0;
+		int shown = 0, total = 0;
+
+		snprintf(path, sizeof(path), "%s/%c", dir, c);
+		text = kb_read_whole(path, NULL);
+		if (!text)
+			continue;
+
+		binds[nbinds].desc[0] = '\0';
+		for (line = text; line && *line; line = nl) {
+			char *tab;
+
+			nl = strchr(line, '\n');
+			if (nl)
+				*nl++ = '\0';
+			if (*line == '#' || !*line)
+				continue;
+			total++;
+			/* The name column, which is the chord spelled the way
+			 * keys.conf spells it. Ten of them and then a count:
+			 * the row is one line on a card, not the script. */
+			tab = strchr(line, '\t');
+			if (tab)
+				*tab = '\0';
+			if (shown < 10) {
+				used += (size_t)snprintf(
+					binds[nbinds].desc + used,
+					sizeof(binds[0].desc) - used, "%s%s",
+					shown ? " " : "", line);
+				shown++;
+				if (used >= sizeof(binds[0].desc) - 8) {
+					shown = 10;
+					used = sizeof(binds[0].desc) - 8;
+				}
+			}
+		}
+		free(text);
+		if (!total)
+			continue;
+		if (total > shown)
+			snprintf(binds[nbinds].desc + used,
+				 sizeof(binds[0].desc) - used, " +%d",
+				 total - shown);
+		snprintf(binds[nbinds].key, sizeof(binds[0].key),
+			 "Super+Alt+r %c", c);
+		binds[nbinds].sect = SEC_WINDOW;
+		binds[nbinds].role = WEL_NONE;
+		nbinds++;
+	}
 }
 
 static int parse_con_keys(void)
@@ -714,6 +796,8 @@ static int parse_con_keys(void)
 		binds[nbinds].role = WEL_NONE;
 		nbinds++;
 	}
+
+	scripts_rows();
 
 	return nbinds ? 0 : -1;
 }

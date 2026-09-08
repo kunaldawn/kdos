@@ -116,6 +116,8 @@ static Bind binds[] = {
 	 * Ctrl+Shift+C inside the window and mark mode is the session's, and a
 	 * third copy chord would be a third thing to explain.
 	 */
+	{ "learn",	CON_ACT_LEARN,	 0, 'r', KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "play",	CON_ACT_PLAY,	 0, 'r', KT_MOD_SUPER | KT_MOD_ALT },
 	{ "mark",	CON_ACT_MARK,	 0, 'm', KT_MOD_SUPER | KT_MOD_SHIFT },
 	{ "paste",	CON_ACT_PASTE,	 0, 'v', KT_MOD_SUPER | KT_MOD_SHIFT },
 	/* Beside the mark, because it is one: the same drag, with a picture
@@ -177,6 +179,17 @@ static Bind binds[] = {
 	  KT_MOD_SUPER | KT_MOD_CTRL },
 	{ "find",	CON_ACT_EXEC,	 CON_CMD_FIND,	   'f',
 	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	/* SPACE AND NOT A LETTER, and with three modifiers, because the accent
+	 * is the one setting somebody changes to look at rather than to use:
+	 * the chord is meant to be hard to press by accident while a preview
+	 * is repainting the whole desktop under the hand. */
+	{ "theme",	CON_ACT_EXEC,	 CON_CMD_THEME,	   ' ',
+	  KT_MOD_SUPER | KT_MOD_CTRL | KT_MOD_SHIFT },
+	/* Beside it, and one modifier lighter: the background is the same
+	 * question asked about the ground rather than the accent, and it
+	 * cycles in place rather than opening a window. */
+	{ "background",	CON_ACT_EXEC,	 CON_CMD_BACKGROUND, ' ',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
 
 	/*
 	 * THE ONE CHORD THAT IS NOT ON SUPER, and it cannot be: it exists for
@@ -392,14 +405,15 @@ static int digit_of(int key, int *shifted)
  */
 /*
  * A CHORD AS A PERSON READS IT — the inverse of chord_parse, and the reason
- * the key card can be right.
+ * the key card and a script file can be right.
  *
  * The card is a different program and must not carry a second copy of this
  * table: a copy is a copy that goes stale, and a card that names a chord the
  * session does not bind is worse than no card. So the table that binds the
- * chords is the table that prints them.
+ * chords is the table that prints them, and a recorded script names its keys
+ * through the same one.
  */
-static void chord_name(int key, int mods, char *out, size_t n)
+void keys_chord_name(int key, int mods, char *out, size_t n)
 {
 	static const struct { int k; const char *n; } named[] = {
 		{ KT_K_ENTER, "Return" }, { ' ', "Space" },
@@ -457,7 +471,8 @@ void keys_print(void)
 
 	keys_load();
 	for (int i = 0; i < NBINDS; i++) {
-		chord_name(binds[i].key, binds[i].mods, chord, sizeof(chord));
+		keys_chord_name(binds[i].key, binds[i].mods, chord,
+				sizeof(chord));
 		printf("%s\t%s\n", binds[i].name, chord);
 	}
 }

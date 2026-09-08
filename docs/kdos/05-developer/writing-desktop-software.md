@@ -236,6 +236,13 @@ global diff; only the paint is per buffer.**
 **The scale and the resized buffer must land in one commit.** Split them and the compositor sees a
 buffer whose size disagrees with its declared scale for a frame.
 
+**A widget you use already announces itself.** Every toolkit widget states its role, its label where
+it has one, and its position in its set at the point it computes focus — so a surface built out of
+them needs no accessibility code of its own. What a widget cannot know it does not invent: a list
+and a table take their rows from **your** callback, so they state "3 of 9" and leave the name to
+you. If your rows have text a reader should hear, call `ktui_announce()` from the row callback for
+the selected row; the queue is cleared every frame, so what you say is only ever about this one.
+
 ## Chrome
 
 Use `libkchrome`. Two implementations of a button bar are two button bars.

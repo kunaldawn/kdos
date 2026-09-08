@@ -914,11 +914,31 @@ static void build_right(void)
 		static char id[160];
 		int k;
 
-		r->keys = "manager mc browse";
+		r->keys = "manager files browse";
 		r->icon = "folder-open";
-		k = sh_term_argv(r->argv, 0, 8, "mc", id, sizeof(id));
-		r->argv[k++] = "mc";
-		r->argv[k] = NULL;
+		/*
+		 * THE FILE MANAGER THIS DESKTOP HAS, WHICH IS NOT THE SAME
+		 * PROGRAM ON BOTH. The console's is `mc`: two panels, ten
+		 * function keys and a user menu, which is what a text desk is
+		 * for and what works on `tty1` with nothing else running. The
+		 * compositor's is `kdos-pick`, which is the chooser every
+		 * other surface already opens — a second file manager there
+		 * would be a second answer to a question the desktop answers.
+		 *
+		 * The branch is `sh_session_prog()`'s, so which desktop this
+		 * is is decided in one place.
+		 */
+		if (!strcmp(sh_session_prog(), "kdos-con")) {
+			k = sh_term_argv(r->argv, 0, 8, "mc", id,
+					 sizeof(id));
+			r->argv[k++] = "mc";
+			r->argv[k] = NULL;
+		} else {
+			r->argv[0] = "kdos-pick";
+			r->argv[1] = "--browse";
+			r->argv[2] = kb_home_dir();
+			r->argv[3] = NULL;
+		}
 	}
 
 	rule_named(right, &nright, "SYSTEM");

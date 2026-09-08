@@ -948,10 +948,31 @@ const char *sh_term(void)
  * everything that ships one. foot takes it as `--app-id`; kdos-term as the
  * `--title` the panel shows until the program sets one.
  */
+/*
+ * A NAME, NOT A PROGRAM. `X-KDOS-Term` chooses between the two emulators this
+ * image ships and can name nothing else: an entry is a file anything can
+ * write, and a key that named an arbitrary program would be a second Exec line
+ * with none of the field-code rules. An unknown value is the session's own
+ * terminal rather than a refusal, because an entry written for another desktop
+ * must still start.
+ */
+const char *sh_term_named(const char *want)
+{
+	if (want && (!strcmp(want, "kdos-term") || !strcmp(want, "foot")))
+		return want;
+	return sh_term();
+}
+
 int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
 		 char *id, size_t idsz)
 {
-	const char *con = getenv("KDOS_CON");
+	return sh_term_argv_in(NULL, argv, n, max, cmd, id, idsz);
+}
+
+int sh_term_argv_in(const char *want, const char *argv[], int n, int max,
+		    const char *cmd, char *id, size_t idsz)
+{
+	const char *prog = sh_term_named(want);
 	char word[128];
 	size_t i = 0;
 
@@ -966,17 +987,21 @@ int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
 	const char *base = strrchr(word, '/');
 
 	base = base ? base + 1 : word;
-	if (con && *con) {
-		argv[n++] = kb_terminal();
-		if (*base) {
+	argv[n++] = prog;
+	/*
+	 * THE FLAG BELONGS TO THE EMULATOR AND NOT TO THE DESKTOP. `foot`
+	 * takes `--app-id`, `kdos-term` takes `--title`, and either can be the
+	 * one running here now that an entry may ask for the other: keying
+	 * this off which session is up would hand `kdos-term` a `--app-id` it
+	 * does not know the moment an entry asked for it under the compositor.
+	 */
+	if (*base) {
+		if (!strcmp(prog, "foot")) {
+			snprintf(id, idsz, "--app-id=%s", base);
+			argv[n++] = id;
+		} else {
 			snprintf(id, idsz, "%s", base);
 			argv[n++] = "--title";
-			argv[n++] = id;
-		}
-	} else {
-		argv[n++] = kb_terminal();
-		if (*base) {
-			snprintf(id, idsz, "--app-id=%s", base);
 			argv[n++] = id;
 		}
 	}

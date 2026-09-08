@@ -564,6 +564,7 @@ if pkg-config --exists fcft pixman-1 xkbcommon wayland-client 2>/dev/null &&
                     -Isrc/libs/libkbase -Isrc/libs/libktui -Isrc/libs/libkcolor \
                     -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkwm -Isrc/libs/libkxdg \
                     -Isrc/libs/libkicon -Isrc/libs/libkchrome -Isrc/libs/libkproc \
+                    -Isrc/libs/libkvt \
                     $(pkg-config --cflags fcft pixman-1 xkbcommon wayland-client \
                                  "$TRAY_SDBUS" alsa libpipewire-0.3) \
                     -o "$OUT/shell-$(basename "$f" .c).o" "$f"
@@ -879,6 +880,393 @@ XDG_CONFIG_HOME="$OUT/fkeys-home" \
     con_golden con-fkeys-80x24 --dump 80x24 --term "/bin/echo hello"
 
 #
+# THE DESKTOP SAYS WHAT IT IS SHOWING, AND A READER HEARS IT.
+#
+# A pixel desktop reconstructs a tree of accessible objects and hopes it
+# matches what was drawn. This one holds the literal text of every cell and —
+# because every widget announces itself — knows which control is focused, so a
+# reader is a client that listens. What is asserted here is the whole path: the
+# third socket exists, a reader may attach to it, and what it says is what the
+# session is showing.
+#
+# `--print` rather than speech: the assertion is what a reader WOULD say, and a
+# suite that needed a synthesiser installed would be a suite that skipped this
+# everywhere.
+#
+$CC $STD $SHWARN $INC -Isrc/desktop/kdos-a11y -o "$OUT/kdos-a11y" \
+    src/desktop/kdos-a11y/*.c \
+    src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libktui/*.c \
+    src/libs/libkdisp/*.c src/libs/libkcon/*.c
+echo "  kdos-a11y"
+
+_asock="$OUT/rd.sock"
+rm -f "$_asock" "$OUT/rd.a11y"
+"$OUT/kdos-con" --serve --socket "$_asock" \
+    --term 'sh -c "echo READER; sleep 30"' > "$OUT/rd-serve.log" 2>&1 &
+_apid=$!
+_await=0
+while [ ! -S "$OUT/rd.a11y" ] && [ "$_await" -lt 50 ]; do
+    sleep 0.1
+    _await=$((_await + 1))
+done
+
+_afail=0
+if [ ! -S "$OUT/rd.a11y" ]; then
+    echo "  THE SESSION OPENED NO READER SOCKET"
+    _afail=1
+else
+    # The reader is given a second and then stopped: it follows a session for
+    # as long as one is running, so a test that waited for it to finish would
+    # wait for the session.
+    ( "$OUT/kdos-a11y" --socket "$OUT/rd.a11y" --print > "$OUT/rd.txt" 2>&1 ) &
+    _rpid=$!
+    sleep 1
+    kill "$_rpid" 2>/dev/null || true
+    wait "$_rpid" 2>/dev/null || true
+    case "$(cat "$OUT/rd.txt" 2>/dev/null)" in
+    *window*) ;;
+    *)
+        echo "  THE READER HEARD NOTHING: $(cat "$OUT/rd.txt" 2>/dev/null)"
+        _afail=1
+        ;;
+    esac
+fi
+
+# AND A READER MAY NOT TYPE. It arrives on a socket whose clients are views
+# that cannot drive — the socket's decision and not the client's — so a key
+# from one reaches nothing. The driver types into a terminal window: if the
+# key landed, the shell would echo it and the screen would change.
+cat > "$OUT/keydrv.c" <<'KEYEOF'
+/*
+ * A CLIENT ON THE READER'S SOCKET, TYPING. It claims to drive, which that
+ * socket refuses on the client's behalf, and sends a printable key. Exit 0
+ * means the key went out; whether it ARRIVED is what the screen says.
+ */
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include "kcon.h"
+
+int main(int argc, char **argv)
+{
+	struct sockaddr_un a;
+	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+
+	if (argc != 2)
+		return 2;
+	memset(&a, 0, sizeof(a));
+	a.sun_family = AF_UNIX;
+	snprintf(a.sun_path, sizeof(a.sun_path), "%s", argv[1]);
+	if (fd < 0 || connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0)
+		return 2;
+
+	KconConn *c = kcon_conn_new(fd);
+	KconBuf b = { 0 };
+
+	if (!c)
+		return 2;
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_VIEW);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, KCON_RIGHTS_DRIVE);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_send(c, KCON_OP_VIEW_SIZE, &b);
+	kcon_buf_reset(&b);
+	kcon_put_i32(&b, 'Z');
+	kcon_put_u8(&b, 0);
+	kcon_send(c, KCON_OP_KEY, &b);
+	kcon_buf_free(&b);
+	kcon_flush(c);
+	usleep(200000);
+	kcon_conn_free(c);
+	return 0;
+}
+KEYEOF
+$CC $STD $SHWARN $INC -o "$OUT/keydrv" "$OUT/keydrv.c" \
+    src/libs/libkcon/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
+    src/libs/libktui/*.c src/libs/libkdisp/*.c
+if [ -S "$OUT/rd.a11y" ]; then
+    _abefore=$("$OUT/kdos-con" --capture --socket "$_asock" 2>/dev/null)
+    "$OUT/keydrv" "$OUT/rd.a11y" > /dev/null 2>&1 || true
+    sleep 0.3
+    _aafter=$("$OUT/kdos-con" --capture --socket "$_asock" 2>/dev/null)
+    if [ "$_abefore" != "$_aafter" ]; then
+        echo "  A KEY FROM THE READER'S SOCKET REACHED THE SESSION"
+        _afail=1
+    fi
+fi
+
+kill "$_apid" 2>/dev/null || true
+wait "$_apid" 2>/dev/null || true
+
+if [ "$_afail" = 0 ]; then
+    echo "  a reader hears what the desktop is showing, and cannot type"
+else
+    exit 1
+fi
+
+#
+# A RUNNING SESSION CAN BE PHOTOGRAPHED, AND ONLY BY A SHELL.
+#
+# `kdos con capture` is not `--dump`: the dump composites a session of its own
+# and settles it, and this asks the one that is already running. The difference
+# is what a live session's terminal is doing — its shell never exits, so a
+# capture that settled would hold the whole session until it gave up and then
+# answer nothing. Measured, not reasoned: settling here answered NOTHING inside
+# the client's timeout.
+#
+# THE SOCKET SPLIT IS THE OTHER HALF. A capture reads back a whole session, so
+# it is a management verb: a shell surface may ask and nothing else may, and
+# the driver below is a client on the same socket that is not a shell.
+#
+# EVERY COMMAND HERE IS GUARDED, because the suite runs under `set -e` and a
+# capture that failed inside a command substitution would end the run with no
+# message at all — which is exactly what it did the first time.
+#
+_capsock="$OUT/cap.sock"
+rm -f "$_capsock"
+# NO `setsid`: it forks when its caller is already a process group leader, so
+# `$!` would be the wrapper that has already exited and the kill below would
+# find nothing — leaving a session running for the rest of the suite.
+"$OUT/kdos-con" --serve --socket "$_capsock" \
+    --term 'sh -c "echo CAPTURE-ME; sleep 30"' > "$OUT/cap-serve.log" 2>&1 &
+_cappid=$!
+_capwait=0
+while [ ! -S "$_capsock" ] && [ "$_capwait" -lt 50 ]; do
+    sleep 0.1
+    _capwait=$((_capwait + 1))
+done
+
+if [ ! -S "$_capsock" ]; then
+    echo "  A SESSION WOULD NOT START FOR THE CAPTURE TEST"
+    head -3 "$OUT/cap-serve.log" | sed 's/^/    /'
+    exit 1
+fi
+
+_cap=$("$OUT/kdos-con" --capture --socket "$_capsock" 2>&1) || _cap="FAILED: $_cap"
+_capw=$("$OUT/kdos-con" --capture --socket "$_capsock" -w 1 2>&1) || _capw="FAILED: $_capw"
+_capbad=$("$OUT/kdos-con" --capture --socket "$_capsock" -w 9 2>&1) || _capbad=""
+
+cat > "$OUT/capdrv.c" <<'CAPEOF'
+/*
+ * A CLIENT ON THE SURFACE SOCKET THAT IS NOT A SHELL, asking for a capture.
+ *
+ * It claims to be a view, which that socket refuses outright — a display is
+ * handed cells and reports events, and reading a session back is neither — so
+ * it stays an ordinary surface, and an ordinary surface may not ask either.
+ * Silence is the whole assertion: exit 0 means nothing came back.
+ */
+#include <poll.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include "kcon.h"
+
+int main(int argc, char **argv)
+{
+	if (argc != 2)
+		return 2;
+
+	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	struct sockaddr_un a;
+
+	memset(&a, 0, sizeof(a));
+	a.sun_family = AF_UNIX;
+	snprintf(a.sun_path, sizeof(a.sun_path), "%s", argv[1]);
+	if (fd < 0 || connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
+		printf("no session\n");
+		return 2;
+	}
+
+	KconConn *c = kcon_conn_new(fd);
+	KconBuf b = { 0 };
+
+	if (!c)
+		return 2;
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_VIEW);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+	kcon_put_u16(&b, 0);
+	kcon_send(c, KCON_OP_CAPTURE, &b);
+	kcon_buf_free(&b);
+	kcon_flush(c);
+
+	for (int i = 0; i < 20; i++) {
+		KconMsg m;
+
+		if (kcon_recv(c, &m) == 1 && m.op == KCON_OP_CAPTURE) {
+			printf("answered\n");
+			return 1;
+		}
+		struct pollfd p = { kcon_conn_fd(c), POLLIN, 0 };
+
+		poll(&p, 1, 25);
+	}
+	kcon_conn_free(c);
+	return 0;
+}
+CAPEOF
+$CC $STD $SHWARN $INC -o "$OUT/capdrv" "$OUT/capdrv.c" \
+    src/libs/libkcon/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
+    src/libs/libktui/*.c src/libs/libkdisp/*.c
+_capdrv_rc=0
+_capdrv=$("$OUT/capdrv" "$_capsock" 2>&1) || _capdrv_rc=$?
+
+# BY PID, never by name: `--kill -t con` would end the session a developer is
+# sitting in, and a pattern kill would match this script's own command line.
+kill "$_cappid" 2>/dev/null || true
+wait "$_cappid" 2>/dev/null || true
+
+_capfail=0
+case "$_cap" in
+*CAPTURE-ME*) ;;
+*) echo "  THE CAPTURE DID NOT COME BACK: $_cap"; _capfail=1 ;;
+esac
+case "$_capw" in
+*CAPTURE-ME*) ;;
+*) echo "  A WINDOW CAPTURE DID NOT COME BACK: $_capw"; _capfail=1 ;;
+esac
+# The window form is the CONTENT, so the frame the whole-screen form has must
+# not be in it — otherwise --window is a flag that changes nothing.
+case "$_capw" in
+*"1:sh"*) echo "  A WINDOW CAPTURE CARRIED THE FRAME TOO"; _capfail=1 ;;
+esac
+case "$_cap" in
+*"1:sh"*) ;;
+*) echo "  THE SCREEN CAPTURE HAS NO WINDOW FRAME IN IT"; _capfail=1 ;;
+esac
+# A number naming no window is nothing, never the whole screen: silently
+# widening a request is how a script publishes what it did not mean to.
+case "$_capbad" in
+*CAPTURE-ME*) echo "  A BOGUS WINDOW NUMBER RETURNED THE SCREEN"; _capfail=1 ;;
+esac
+if [ "$_capdrv_rc" != 0 ]; then
+    echo "  A NON-SHELL CLIENT WAS ANSWERED: $_capdrv"
+    _capfail=1
+fi
+if [ "$_capfail" = 0 ]; then
+    echo "  a live session is captured whole, by window, and only by a shell"
+else
+    exit 1
+fi
+
+#
+# A SESSION COMES BACK, AND ITS STATE FILE CANNOT RUN A COMMAND.
+#
+# Two properties, and the second is the one with teeth. The file is written by
+# a program and read by a program, so a file that named an argv would be a file
+# that chooses what somebody's session starts — anything that can write a
+# person's state directory could then wait for their next login. So a terminal
+# comes back through `con.conf`'s own `terminal` key and an application through
+# its desktop entry by app id, and the shim below records what was actually
+# executed to prove the field never becomes a command line.
+#
+_stdir="$OUT/state-home"
+_stcfg="$OUT/state-cfg"
+rm -rf "$_stdir" "$_stcfg" "$OUT/shimbin"
+mkdir -p "$_stcfg/kdos-con" "$OUT/shimbin"
+printf 'restore = yes\nrestore_scrollback = yes\nterminal = /bin/sh\n' \
+    > "$_stcfg/kdos-con/con.conf"
+
+# The shim stands where `kdos-appbox` would be and writes down its arguments,
+# one per line, so a field that had been split into words shows up as several.
+cat > "$OUT/shimbin/kdos-appbox" <<'SHIMEOF'
+#!/bin/sh
+for a in "$@"; do printf '%s\n' "$a"; done >> "$KDOS_SHIM_LOG"
+SHIMEOF
+chmod +x "$OUT/shimbin/kdos-appbox"
+
+rm -f "$OUT/st1.sock" "$OUT/st2.sock" "$OUT/shim.log"
+: > "$OUT/shim.log"
+XDG_CONFIG_HOME="$_stcfg" XDG_STATE_HOME="$_stdir" \
+    "$OUT/kdos-con" --serve --socket "$OUT/st1.sock" -t rst \
+    --term 'sh -c "echo REMEMBER-THIS; sleep 300"' > "$OUT/st1.log" 2>&1 &
+_stpid=$!
+_stwait=0
+while [ ! -S "$OUT/st1.sock" ] && [ "$_stwait" -lt 50 ]; do
+    sleep 0.1
+    _stwait=$((_stwait + 1))
+done
+sleep 0.5
+# TERM, not the quit verb: a login ending is a signal, and a session that only
+# saved on the tidy path would never save on the path people actually take.
+kill "$_stpid" 2>/dev/null || true
+wait "$_stpid" 2>/dev/null || true
+
+_stfile="$_stdir/kdos/con/rst.session"
+_stfail=0
+if [ ! -f "$_stfile" ]; then
+    # A killed session keeps the list it had; this one was killed with a plain
+    # TERM after its own exit path ran, so the file must be there.
+    echo "  NO SESSION STATE WAS WRITTEN"
+    _stfail=1
+fi
+
+# A ROW THAT NAMES A COMMAND. `app` is the field a restore acts on, so this is
+# where an injection would go in.
+printf 'app\t0\t2\t2\t20\t5\t/bin/touch %s/pwned\t-\n' "$OUT" >> "$_stfile"
+
+XDG_CONFIG_HOME="$_stcfg" XDG_STATE_HOME="$_stdir" KDOS_SHIM_LOG="$OUT/shim.log" \
+    PATH="$OUT/shimbin:$PATH" \
+    "$OUT/kdos-con" --serve --socket "$OUT/st2.sock" -t rst \
+    > "$OUT/st2.log" 2>&1 &
+_stpid2=$!
+_stwait=0
+while [ ! -S "$OUT/st2.sock" ] && [ "$_stwait" -lt 50 ]; do
+    sleep 0.1
+    _stwait=$((_stwait + 1))
+done
+sleep 0.5
+_strestored=$("$OUT/kdos-con" --capture --socket "$OUT/st2.sock" -w 1 2>&1) || \
+    _strestored="FAILED: $_strestored"
+kill "$_stpid2" 2>/dev/null || true
+wait "$_stpid2" 2>/dev/null || true
+
+case "$_strestored" in
+*REMEMBER-THIS*) ;;
+*) echo "  THE TERMINAL DID NOT COME BACK: $_strestored"; _stfail=1 ;;
+esac
+case "$_strestored" in
+*"previous session"*) ;;
+*) echo "  THE RESTORED OUTPUT IS NOT MARKED AS THE LAST SESSION'S"; _stfail=1 ;;
+esac
+if [ -e "$OUT/pwned" ]; then
+    echo "  A STATE FILE RAN A COMMAND"
+    _stfail=1
+fi
+# What the shim was handed: the whole field as ONE argument, after `run`. A
+# field split into words would be several lines here.
+if ! grep -qx '/bin/touch '"$OUT"'/pwned' "$OUT/shim.log" 2>/dev/null; then
+    echo "  THE APP FIELD DID NOT REACH kdos-appbox AS ONE ARGUMENT:"
+    sed 's/^/    /' "$OUT/shim.log" 2>/dev/null | head -5
+    _stfail=1
+fi
+if grep -qx 'run' "$OUT/shim.log" 2>/dev/null; then
+    :
+else
+    echo "  THE RESTORE DID NOT GO THROUGH kdos-appbox run"
+    _stfail=1
+fi
+
+if [ "$_stfail" = 0 ]; then
+    echo "  a session's windows come back, and its file cannot run a command"
+else
+    exit 1
+fi
+
+#
 # ONE WRITER FOR THE ATTACH PAYLOAD.
 #
 # `libkcon`'s client sends KCON_OP_ATTACH twice: once on init and once as the
@@ -932,7 +1320,13 @@ int main(void)
 		/* Shift is still a MODIFIER: only the character is normalised,
 		 * so these two remain different chords. */
 		{ 'T', KT_MOD_SUPER, CON_ACT_NONE, 0 },
-		{ 'R', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_NONE, 0 },
+		{ 'Z', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_NONE, 0 },
+		/* And the same letter under three modifier sets is three
+		 * actions: a script recorder that answered the rearrange
+		 * chord, or the other way round, is the failure this pins. */
+		{ 'r', KT_MOD_SUPER, CON_ACT_REARRANGE, 0 },
+		{ 'R', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_LEARN, 0 },
+		{ 'r', KT_MOD_SUPER | KT_MOD_ALT, CON_ACT_PLAY, 0 },
 		/* A window by number, which rides the digit branch. */
 		{ '3', KT_MOD_SUPER | KT_MOD_ALT, CON_ACT_WIN_N, 3 },
 		{ '3', KT_MOD_SUPER, CON_ACT_WS, 2 },
@@ -982,6 +1376,198 @@ if HOME=/nonexistent-kdos "$OUT/chorddrv"; then
     echo "  and every cell of the function-key row names a bound chord"
 else
     echo "  A CHORD A KEYBOARD SENDS DOES NOT REACH ITS ACTION"
+    exit 1
+fi
+
+#
+# A SCRIPT IS THE KEYS SOMEBODY TYPED, AND THIS DRIVES THE WHOLE ROUND TRIP —
+# record, save, load, replay — without a screen, because none of it needs one.
+#
+# The four things asserted are the four that can silently stop being true:
+#
+#   THE KEYS COME BACK IN ORDER AND WITH THEIR MODIFIERS. A recorder that
+#   dropped the modifier replays a different chord into the window.
+#
+#   NOTHING IS RECORDED OR PLAYED WHILE THE SCREEN IS LOCKED. This is the whole
+#   security claim of the feature: a recording underneath a lock is a password
+#   in a file, and a replay into one is a guess at a password.
+#
+#   THE FILE IS 0600 AND ITS DIRECTORY 0700, for the same reason.
+#
+#   A REPLAY LEAVES ON THE TICK AND NOT IN scr_play(). The keys arrive from
+#   scr_pump(); a version that delivered them inside scr_play() would hold the
+#   session for as long as the script is, and nothing would repaint.
+#
+cat > "$OUT/scrdrv.c" <<'SCREOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include "con.h"
+
+Session S;
+
+static int bad;
+static int got[64], gotm[64], ngot;
+static char said[256];
+
+void con_notice(const char *text)
+{
+	snprintf(said, sizeof(said), "%s", text ? text : "");
+}
+
+void con_key_to_window(const KtuiEvent *ev)
+{
+	if (ngot < 64) {
+		got[ngot] = ev->key;
+		gotm[ngot] = ev->mods;
+		ngot++;
+	}
+}
+
+static void type(int key, int mods)
+{
+	KtuiEvent ev = { 0 };
+
+	ev.type = KT_EVT_KEY;
+	ev.key = key;
+	ev.mods = mods;
+	scr_note(&ev);
+}
+
+static void answer(int key)
+{
+	KtuiEvent ev = { 0 };
+
+	ev.type = KT_EVT_KEY;
+	ev.key = key;
+	ev.mods = 0;
+	scr_prompt_key(&ev);
+}
+
+/* The replay leaves on the session's tick, so the driver has to be the tick.
+ * Bounded: a pump that never finished would hang the suite rather than fail
+ * it. */
+static void run_out(void)
+{
+	for (int i = 0; i < 4000 && scr_playing(); i++) {
+		scr_pump();
+		usleep(1000);
+	}
+}
+
+int main(void)
+{
+	char path[512];
+	struct stat st;
+	const char *home = getenv("HOME");
+
+	/* RECORD three keys, one of them a chord. */
+	scr_learn_toggle();
+	if (!scr_learning()) {
+		printf("    a recording did not start\n");
+		return 1;
+	}
+	type('h', 0);
+	type('i', 0);
+	type(KT_K_ENTER, KT_MOD_CTRL);
+	scr_learn_toggle();
+	if (scr_learning() || !scr_prompt_active()) {
+		printf("    the second press did not stop and ask\n");
+		bad = 1;
+	}
+	answer('q');
+
+	/* THE FILE, AND ITS MODE. */
+	snprintf(path, sizeof(path), "%s/.config/kdos-con/scripts/q", home);
+	if (stat(path, &st) != 0) {
+		printf("    no script was written to %s\n", path);
+		return 1;
+	}
+	if ((st.st_mode & 07777) != 0600) {
+		printf("    the script is mode %04o, not 0600\n",
+		       st.st_mode & 07777);
+		bad = 1;
+	}
+	snprintf(path, sizeof(path), "%s/.config/kdos-con/scripts", home);
+	if (stat(path, &st) == 0 && (st.st_mode & 07777) != 0700) {
+		printf("    the script directory is mode %04o, not 0700\n",
+		       st.st_mode & 07777);
+		bad = 1;
+	}
+
+	/* REPLAY, and nothing before the pump. */
+	ngot = 0;
+	if (!scr_play('q')) {
+		printf("    the script did not load back\n");
+		return 1;
+	}
+	if (ngot != 0) {
+		printf("    %d keys left inside scr_play(); a replay must "
+		       "leave on the tick\n", ngot);
+		bad = 1;
+	}
+	run_out();
+	if (ngot != 3 || got[0] != 'h' || got[1] != 'i' ||
+	    got[2] != KT_K_ENTER || gotm[2] != KT_MOD_CTRL) {
+		printf("    replayed %d keys: %d/%d %d/%d %d/%d\n", ngot,
+		       got[0], gotm[0], got[1], gotm[1], got[2], gotm[2]);
+		bad = 1;
+	}
+
+	/* A LETTER WITH NO SCRIPT IS NOT A REPLAY. */
+	if (scr_play('z')) {
+		printf("    a letter with no script started a replay\n");
+		bad = 1;
+	}
+
+	/* LOCKED: neither half runs. */
+	S.locked = 1;
+	said[0] = '\0';
+	scr_learn_toggle();
+	if (scr_learning()) {
+		printf("    a recording started underneath a lock\n");
+		bad = 1;
+	}
+	if (!strstr(said, "locked")) {
+		printf("    the refusal said \"%s\"\n", said);
+		bad = 1;
+	}
+	ngot = 0;
+	scr_play('q');
+	run_out();
+	if (ngot != 0) {
+		printf("    %d keys were played into a locked screen\n", ngot);
+		bad = 1;
+	}
+
+	/* AND A LOCK THAT APPEARS MID-RECORDING ENDS IT. */
+	S.locked = 0;
+	scr_learn_toggle();
+	type('a', 0);
+	S.locked = 1;
+	type('b', 0);
+	if (scr_learning()) {
+		printf("    a lock during a recording did not end it\n");
+		bad = 1;
+	}
+	S.locked = 0;
+
+	return bad;
+}
+SCREOF
+$CC $STD $SHWARN $INC -Isrc/desktop/kdos-con -o "$OUT/scrdrv" \
+    "$OUT/scrdrv.c" src/desktop/kdos-con/scripts.c \
+    src/desktop/kdos-con/keys.c src/libs/libkbase/*.c
+_scrhome="$OUT/scrhome"
+rm -rf "$_scrhome"
+mkdir -p "$_scrhome"
+if HOME="$_scrhome" XDG_CONFIG_HOME= "$OUT/scrdrv"; then
+    echo "  a script records, saves 0600, loads and replays on the tick"
+    echo "  and neither half of it runs underneath a lock"
+else
+    echo "  A SCRIPT DOES NOT RECORD AND REPLAY WHAT WAS TYPED"
     exit 1
 fi
 
@@ -1048,8 +1634,11 @@ int main(void)
 	return bad;
 }
 FONTEOF
-$CC $STD $SHWARN -D_GNU_SOURCE -Isrc/desktop/kdos-view -o "$OUT/fontdrv" \
-    "$OUT/fontdrv.c" src/desktop/kdos-view/font.c
+# libkbase comes with it: the state path is that library's to spell, and the
+# driver asserts the path this program actually writes to.
+$CC $STD $SHWARN -D_GNU_SOURCE -Isrc/desktop/kdos-view -Isrc/libs/libkbase \
+    -o "$OUT/fontdrv" "$OUT/fontdrv.c" src/desktop/kdos-view/font.c \
+    src/libs/libkbase/*.c
 if "$OUT/fontdrv"; then
     echo "  a font step keeps the name and clamps the size"
 else
@@ -1553,6 +2142,92 @@ else
     echo "  a view that imposed no size got a DIFFERENT frame:"
     head -20 "$OUT/con-view-auto.diff" | sed 's/^/    /'
     exit 1
+fi
+
+#
+# A RECORDING IS THIS PROTOCOL'S OWN MESSAGES, AND A REPLAY REDRAWS THEM.
+#
+# The round trip is the assertion: record a live view, replay the file with no
+# session anywhere, and the frame that comes out must be the frame that went
+# in. Anything less — a format that dropped an op, a player with drawing code
+# of its own — shows up as a diff between two frames this suite made itself.
+#
+# Only where zstd is, like every other block with a real dependency. The
+# recording is compressed as it is written, so a build without the library has
+# no record mode and says so by name.
+#
+if pkg-config --exists libzstd 2>/dev/null; then
+    $CC $STD $SHWARN $INC -DKDOS_VIEW_RECORD $(pkg-config --cflags libzstd) \
+        -Isrc/desktop/kdos-view -o "$OUT/kdos-view-rec" \
+        src/desktop/kdos-view/*.c \
+        src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libktui/*.c \
+        src/libs/libkdisp/*.c src/libs/libkcon/*.c $(pkg-config --libs libzstd)
+
+    RSOCK=$(mktemp -d /tmp/kdos-rec.XXXXXX)
+    KDOS_CON_DUMP=1 "$OUT/kdos-con" --serve --socket "$RSOCK/s" \
+        --term "/bin/echo hello" &
+    RPID=$!
+    for _ in $(seq 1 100); do [ -S "$RSOCK/s" ] && break; sleep 0.05; done
+    "$OUT/kdos-view-rec" --dump 80x24 --socket "$RSOCK/s" \
+        --record "$OUT/rec.kdos" > "$OUT/rec-live.txt" 2>/dev/null
+    kill $RPID 2>/dev/null || true
+    wait $RPID 2>/dev/null || true
+    rm -rf "$RSOCK"
+
+    _recfail=0
+    [ -s "$OUT/rec.kdos" ] || { echo "  NOTHING WAS RECORDED"; _recfail=1; }
+    # zstd's own magic, so the file is what the page says it is rather than
+    # ndjson somebody forgot to compress.
+    _recmagic=$(head -c 4 "$OUT/rec.kdos" | od -An -tx1 | tr -d ' \n')
+    if [ "$_recmagic" != "28b52ffd" ]; then
+        echo "  THE RECORDING IS NOT A ZSTD STREAM: $_recmagic"
+        _recfail=1
+    fi
+
+    # AND NO SESSION FOR THE REPLAY: the socket is gone by now, so a player
+    # that tried to attach would fail here rather than quietly showing a live
+    # desktop instead of the recording.
+    "$OUT/kdos-view-rec" --replay "$OUT/rec.kdos" --dump \
+        > "$OUT/rec-replay.txt" 2>"$OUT/rec-replay.err" || _recfail=1
+
+    if ! diff -u "$OUT/rec-live.txt" "$OUT/rec-replay.txt" \
+            > "$OUT/rec.diff"; then
+        echo "  A REPLAY DREW A DIFFERENT FRAME THAN THE RECORDING:"
+        head -20 "$OUT/rec.diff" | sed 's/^/    /'
+        _recfail=1
+    fi
+
+    # A RECORDING CARRIES ITS PROTOCOL VERSION, and a build that speaks
+    # another one refuses it rather than reading the bytes as something else.
+    if command -v zstd >/dev/null 2>&1; then
+        zstd -dc "$OUT/rec.kdos" 2>/dev/null | head -1 > "$OUT/rec-head.txt"
+        grep -q 'kdos-view-record' "$OUT/rec-head.txt" || {
+            echo "  THE RECORDING HAS NO HEADER"
+            _recfail=1
+        }
+        grep -q 'proto' "$OUT/rec-head.txt" || {
+            echo "  THE RECORDING DOES NOT NAME ITS PROTOCOL VERSION"
+            _recfail=1
+        }
+        sed 's/"proto":[0-9]*/"proto":999/' "$OUT/rec-head.txt" \
+            > "$OUT/rec-bad.ndjson"
+        zstd -dc "$OUT/rec.kdos" 2>/dev/null | tail -n +2 \
+            >> "$OUT/rec-bad.ndjson"
+        zstd -q -f "$OUT/rec-bad.ndjson" -o "$OUT/rec-bad.kdos" 2>/dev/null
+        if "$OUT/kdos-view-rec" --replay "$OUT/rec-bad.kdos" --dump \
+                > /dev/null 2>&1; then
+            echo "  A RECORDING FROM ANOTHER PROTOCOL WAS PLAYED ANYWAY"
+            _recfail=1
+        fi
+    fi
+
+    if [ "$_recfail" = 0 ]; then
+        echo "  a recording replays to the same frame, and names its protocol"
+    else
+        exit 1
+    fi
+else
+    echo "  record/replay (skipped — no libzstd on this host)"
 fi
 
 echo
@@ -3442,6 +4117,63 @@ else
 fi
 
 echo
+echo "==> a desktop entry can ask for the terminal it needs, and only for one"
+#
+# X-KDOS-Term names the emulator an entry needs rather than the one the session
+# runs, and the three cases below are the whole of it:
+#
+#   THE KEY IS HONOURED ON EITHER DESKTOP. `yazi`'s previews are drawn by the
+#   terminal, not by yazi, so an entry asking for `kdos-term` must get it with
+#   no console session in sight — which is exactly where the old rule would
+#   have handed it `foot`.
+#
+#   THE OPENER WRAPS AND NAMES NOTHING ELSE. `kdos-appbox open` puts the
+#   emulator and `-e` in front of the Exec and stops there; the identity flag
+#   — `--title` for kdos-term, `--app-id` for foot — is the launcher's, because
+#   only a launcher knows which entry a window should answer to.
+#
+#   A NAME AND NEVER A PROGRAM. An entry is a file anything can write, so a key
+#   naming something that is not an emulator this image ships falls back to the
+#   session's own rather than being executed.
+#
+XTH="$OUT/xtermhome"
+rm -rf "$XTH"
+mkdir -p "$XTH/.config" "$XTH/.local/share/applications" "$XTH/files"
+: > "$XTH/files/a.png"
+for _e in pics:kdos-term plain: liar:/bin/sh; do
+    _n=${_e%%:*}; _w=${_e#*:}
+    {
+        printf '[Desktop Entry]\nType=Application\nName=%s\n' "$_n"
+        printf 'Exec=yazi %%f\nTerminal=true\n'
+        [ -n "$_w" ] && printf 'X-KDOS-Term=%s\n' "$_w"
+    } > "$XTH/.local/share/applications/$_n.desktop"
+done
+xterm_print() {			# <entry stem>
+    printf '[Default Applications]\nimage/png=%s.desktop\n' "$1" \
+        > "$XTH/.config/mimeapps.list"
+    env -u KDOS_CON HOME="$XTH" XDG_CONFIG_HOME="$XTH/.config" \
+        XDG_DATA_HOME="$XTH/.local/share" \
+        XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
+        "$OUT/kdos-appbox" open --print "$XTH/files/a.png"
+}
+if [ ! -f /usr/share/mime/globs ]; then
+    echo "  X-KDOS-Term (skipped — no shared-mime-info on this host)"
+else
+    out=$(xterm_print pics)
+    echo "$out" | grep -q "^exec	kdos-term	-e	yazi	" \
+        || { echo "  the entry's terminal was not used: $out"; exit 1; }
+    out=$(xterm_print plain)
+    echo "$out" | grep -q "^exec	foot	-e	yazi	" \
+        || { echo "  an entry with no key did not get the session's: $out"
+             exit 1; }
+    out=$(xterm_print liar)
+    echo "$out" | grep -q "^exec	foot	-e	yazi	" \
+        || { echo "  a key naming a program was honoured: $out"; exit 1; }
+    echo "  the named emulator wins with no console session in sight,"
+    echo "  and a key naming anything else falls back"
+fi
+
+echo
 echo "==> kdos stutter names the process, not just the pressure"
 # A real stutter cannot be summoned on demand, so the fixture IS the test:
 # testing/fixtures/stutter is two /proc snapshots 500 ms apart and the two miss
@@ -3725,7 +4457,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel trash peek \
              find pix rec chars disks print timezone users update firewall \
-             netagent backup; do
+             netagent backup theme; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -4260,6 +4992,20 @@ if "$DUMPCK" --have settings; then
     golden settings   56x24  settings --dump
     golden settings 132x43 settings --dump
 fi
+# THE ACCENT PICKER. A dump carries characters and no colour, so what this
+# asserts is the LAYOUT — a row per scheme, the two name columns lined up, and
+# a swatch that is eight block glyphs rather than eight blanks. The colours are
+# the one thing here a golden cannot hold, which is exactly why the swatch is
+# drawn as blocks: a swatch of coloured spaces would be an empty rectangle in
+# this file and in every terminal that cannot do colour.
+#
+# It also pins the width to the longest scheme name, so an accent added to
+# `kcolor.h` moves this golden — which is the reminder that the window sizes
+# itself from the table rather than from a constant.
+if "$DUMPCK" --have theme; then
+    golden theme 80x24  theme --dump
+    golden theme 132x43 theme --dump
+fi
 # kdos-chars reads a MAPPED index, and the shipped one is six megabytes built
 # from ICU — not something a golden may depend on being present, and not
 # something whose frame anybody could read a diff of. This writes eight entries
@@ -4336,6 +5082,26 @@ if "$DUMPCK" --have keys; then
         echo "  THE TOUR ON THE SHIPPED rc.xml WOULD DROP:$_notour"
         golden_fail=1
     fi
+fi
+
+# A DIRECTORY IS REFUSED BY THE VIEWER, and this is a refusal rather than a
+# gap: a file manager inside a viewer that a file manager opened is a
+# circularity, and `mc` already shows directories. The refusal has to come
+# BEFORE any display is opened, or a viewer asked for a directory over ssh
+# would fail on the display instead of on the argument. It names the way out,
+# because a program that exits silently reads as a broken one.
+if "$DUMPCK" --have peek; then
+    _pkerr=$("$DUMPCK" peek testing/fixtures/shell 2>&1 >/dev/null) && _pkrc=0 ||
+        _pkrc=$?
+    if [ "${_pkrc:-0}" != 0 ] &&
+       printf '%s' "$_pkerr" | grep -q 'is a directory'; then
+        echo "  kdos-peek refuses a directory, and says where to open one"
+    else
+        echo "  kdos-peek did not refuse a directory: rc=${_pkrc:-0} $_pkerr"
+        golden_fail=1
+    fi
+else
+    echo "  peek (skipped — not linked into the harness)"
 fi
 
 # kdos-peek takes a FILE, so it cannot ride the loop above. The fixture is a
@@ -4777,6 +5543,12 @@ AH="$OUT/audit-home"
 rm -rf "$AH"
 mkdir -p "$AH/.config"
 cp fs/etc/skel/.config/starship.toml "$AH/.config/" 2>/dev/null || true
+# THE SHIPPED mc CONFIGURATION IS MERGED INTO, NOT REPLACED. `kdos theme`
+# writes one key into this file — mc keeps real user state in it — and a
+# generator that rewrote it would silently drop every behaviour the image
+# ships, in a file nobody re-reads.
+mkdir -p "$AH/.config/mc"
+cp fs/etc/skel/.config/mc/ini "$AH/.config/mc/ini"
 export KDOS_GTK_SRC="$PWD/src/packages/kdos-gtk-theme/theme"
 export KDOS_ICON_ART="$PWD/src/packages/kdos-icons/art"
 export KDOS_ICON_MARKS="$PWD/src/packages/kdos-icons/marks"
@@ -4788,6 +5560,177 @@ audit() {
 audit phosphor >/dev/null 2>&1 || { echo "  the generators did not run"; exit 1; }
 audit --audit >/dev/null || { echo "  a freshly generated \$HOME did not audit clean"; exit 1; }
 echo "  a generated \$HOME audits clean"
+
+_mcini="$AH/.config/mc/ini"
+[ "$(grep -c '^skin=kdos$' "$_mcini")" = 1 ] || {
+    echo "  kdos theme did not leave exactly one skin=kdos in mc/ini"; exit 1; }
+for _k in 'use_internal_view=1' 'use_internal_edit=0' 'confirm_exit=0' \
+          '\[Layout\]' 'xterm_title=1'; do
+    grep -q "^$_k\$" "$_mcini" || {
+        echo "  kdos theme dropped $_k from the shipped mc/ini"; exit 1; }
+done
+echo "  and the shipped mc/ini keeps its keys through a theme run"
+
+# A PREVIEW IS THE STATE FILE AND THE SIGNAL AND NOTHING ELSE. It is what the
+# accent picker's arrow keys run, once per keystroke, so a generator reached
+# from here would put ten thousand icons and every cursor behind a cursor key.
+# The check is what is NOT written: a preview into a fresh $HOME leaves the one
+# state file and no configuration directory at all.
+PVH="$OUT/preview-home"
+rm -rf "$PVH"
+mkdir -p "$PVH"
+env -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u XDG_DATA_HOME HOME="$PVH" \
+    "$OUT/kdos" theme --preview amber >/dev/null 2>&1 || {
+    echo "  kdos theme --preview refused a real accent"; exit 1; }
+[ "$(cat "$PVH/.cache/kdos/theme" 2>/dev/null)" = "amber" ] || {
+    echo "  a preview did not write the accent state file"; exit 1; }
+[ ! -d "$PVH/.config" ] && [ ! -d "$PVH/.local" ] && [ ! -d "$PVH/.icons" ] || {
+    echo "  a preview generated artefacts; it must write the state file only"
+    exit 1; }
+env -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u XDG_DATA_HOME HOME="$PVH" \
+    "$OUT/kdos" theme --preview nosuch >/dev/null 2>&1 && {
+    echo "  a preview accepted an accent that does not exist"; exit 1; }
+echo "  a preview writes the accent state file and generates nothing"
+
+echo
+echo "==> the console's character art reads as slots, and stays inside the font"
+#
+# TWO CLAIMS, AND NEITHER IS CHECKABLE BY EYE.
+#
+#   A PIECE THAT USES A GLYPH THE CONSOLE FONT LACKS IS BLANK ON tty1 and
+#   correct everywhere else, so the machine it was drawn on is the machine it
+#   looks right on. The allowed set is not written down here: it is
+#   `uni/xos4-2.uni` out of the terminus-font tarball with the port's own six
+#   substitutions applied, so this cannot disagree with the font that ships.
+#
+#   THE ART FOLLOWS THE THEME because its colours reduce to the eight slots at
+#   the render boundary. A cell that came back carrying a literal would be the
+#   one rectangle of the desktop a retint cannot reach.
+#
+BGDIR="fs/usr/share/kdos/backgrounds"
+_bgsrc=$(ls ports/core/terminus-font/terminus-font-*.tar.gz 2>/dev/null | head -1)
+if [ -n "$_bgsrc" ] && command -v python3 >/dev/null 2>&1; then
+    tar -xzf "$_bgsrc" -C "$OUT" --wildcards '*/uni/xos4-2.uni' 2>/dev/null || true
+    _uni=$(find "$OUT" -name xos4-2.uni | head -1)
+fi
+if [ -z "${_uni:-}" ] || [ ! -f "$_uni" ]; then
+    echo "  background glyphs (skipped — no terminus-font source or no python3)"
+else
+    python3 - "$_uni" ports/core/terminus-font/build.sh "$BGDIR" <<'BGEOF'
+import re, sys, glob, os
+
+uni, recipe, bgdir = sys.argv[1], sys.argv[2], sys.argv[3]
+
+have = set()
+for line in open(uni, encoding="utf-8", errors="replace"):
+    line = line.split('#', 1)[0]
+    for tok in line.split():
+        if re.fullmatch(r'[0-9A-Fa-f]{4,6}', tok):
+            have.add(int(tok, 16))
+
+# The port swaps six codepoints for the double box glyphs the block logo
+# needs. Read the substitutions out of the recipe rather than repeating them:
+# a seventh added there must not need this file edited.
+src = open(recipe, encoding="utf-8").read()
+for a, b in re.findall(r"s/\^([0-9A-Fa-f]{4})\$/([0-9A-Fa-f]{4})/", src):
+    have.discard(int(a, 16))
+    have.add(int(b, 16))
+
+bad = 0
+pieces = sorted(glob.glob(os.path.join(bgdir, "*.txt")))
+if not pieces:
+    print("    no background pieces are shipped")
+    raise SystemExit(1)
+for p in pieces:
+    text = open(p, encoding="utf-8").read()
+    # SGR is not a glyph.
+    text = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', text)
+    missing = sorted({c for c in text if c not in '\n\r' and ord(c) not in have})
+    if missing:
+        bad = 1
+        show = ' '.join(f"U+{ord(c):04X} {c}" for c in missing[:8])
+        print(f"    {os.path.basename(p)} uses glyphs the console font lacks: {show}")
+raise SystemExit(bad)
+BGEOF
+    if [ $? -ne 0 ]; then
+        echo "  A SHIPPED BACKGROUND WOULD DRAW BLANK ON tty1"
+        exit 1
+    fi
+    echo "  every shipped piece stays inside ter-kdos32n's 512 glyphs"
+fi
+
+# The loader, driven directly: it is a file of its own precisely so that the
+# parse and the reduction can be checked without a compositor.
+cat > "$OUT/bgdrv.c" <<'BGDRVEOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "background.h"
+
+int main(int argc, char **argv)
+{
+	KtuiCell *c;
+	int w = 0, h = 0, bad = 0, lit = 0, slots = 0;
+
+	if (argc < 2)
+		return 2;
+	c = sh_bg_load(argv[1], &w, &h);
+	if (!c) {
+		printf("    the loader returned nothing\n");
+		return 1;
+	}
+	/* The art's own size, counted in CELLS: the fixture is three lines of
+	 * four box characters, which is twelve bytes a line and four columns. */
+	if (w != 4 || h != 3) {
+		printf("    measured %dx%d, want 4x3\n", w, h);
+		bad = 1;
+	}
+	for (int i = 0; i < w * h; i++) {
+		if (c[i].attr & (KT_A_FGRGB | KT_A_BGRGB))
+			lit++;
+		if (c[i].fg < KT_NCOLOR)
+			slots++;
+	}
+	/* EVERY CELL IS A SLOT AND NONE CARRIES A LITERAL. This is the whole
+	 * claim that `kdos theme` moves the art with everything else. */
+	if (lit) {
+		printf("    %d cell(s) came back with a literal colour\n", lit);
+		bad = 1;
+	}
+	if (slots != w * h) {
+		printf("    %d of %d cells are not in a slot\n", slots, w * h);
+		bad = 1;
+	}
+	/* And the characters survived the parse, SGR and all. */
+	if (c[0].ch != 0x250C || c[w * h - 1].ch != 0x2518) {
+		printf("    corners are U+%04X and U+%04X\n",
+		       (unsigned)c[0].ch, (unsigned)c[w * h - 1].ch);
+		bad = 1;
+	}
+	/* The two colours in the fixture must not reduce to the same slot, or
+	 * the reduction is discarding the art rather than following the
+	 * theme. */
+	if (c[0].fg == c[w].fg) {
+		printf("    two different SGR colours reduced to one slot\n");
+		bad = 1;
+	}
+	free(c);
+	return bad;
+}
+BGDRVEOF
+printf '\033[36m\342\224\214\342\224\200\342\224\200\342\224\220\033[0m\n' > "$OUT/bg-fixture.txt"
+printf '\033[1;31m\342\224\202\033[0m\033[36m  \033[0m\033[1;31m\342\224\202\033[0m\n' >> "$OUT/bg-fixture.txt"
+printf '\033[36m\342\224\224\342\224\200\342\224\200\342\224\230\033[0m\n' >> "$OUT/bg-fixture.txt"
+$CC $STD $WARN $INC -Isrc/desktop/kdos-shell -o "$OUT/bgdrv" \
+    "$OUT/bgdrv.c" src/desktop/kdos-shell/background.c \
+    src/libs/libkvt/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c \
+    src/libs/libkbase/*.c
+if "$OUT/bgdrv" "$OUT/bg-fixture.txt"; then
+    echo "  a piece parses through libkvt and comes back in slots, never literals"
+else
+    echo "  THE CONSOLE BACKGROUND DOES NOT LOAD AS THE THEME'S COLOURS"
+    exit 1
+fi
 
 sed -i 's/#39ff14/#ff00ff/' "$AH/.config/gtk-3.0/gtk.css"
 rm -f "$AH/.icons/KDOS/16x16/places/folder.svg"

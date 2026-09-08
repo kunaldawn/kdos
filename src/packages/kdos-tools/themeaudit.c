@@ -171,6 +171,7 @@ static const struct {
 	{ A_CONFIG, "kdeglobals",               "KDE palette"        },
 	{ A_CONFIG, "mc/ini",                   "mc skin selection"  },
 	{ A_DATA,   "mc/skins/kdos.ini",        "mc skin"            },
+	{ A_CONFIG, "yazi/theme.toml",          "yazi"               },
 	{ A_DATA,   "color-schemes/KDOS.colors", "KDE colour scheme" },
 };
 #define NARTEFACTS ((int)(sizeof(ARTEFACTS) / sizeof(ARTEFACTS[0])))

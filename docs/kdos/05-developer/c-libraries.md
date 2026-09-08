@@ -305,6 +305,27 @@ rather than undoing the arithmetic. **The caller reads the toggle**, because thi
 opinion about where a desktop keeps its state, and it returns whether the palette actually moved so
 a caller can skip a repaint it does not owe.
 
+**A widget says what it is, because it already knows.** Every widget computes which item has focus
+each frame from the same id the hit test uses, so a reader working that out again from a grid of
+cells would be guessing at what the surface has in hand — and it guesses wrong first on the controls
+that matter most: which cell of a table, which tab of a strip, which item of how many. `ktui_announce()`
+takes a role, a label, a value and the item's **position in its set**, so "3 of 9" is a fact the
+widget states rather than a count somebody has to make.
+
+- **It lives here, not in a session.** A record composed in `kdos-con` would reach the console and
+  give the graphical desktop nothing; one set in this library is set once and both desktops read it.
+- **The queue is per frame, fixed, and cleared at the start of every frame.** Nothing on the draw
+  path allocates — a widget that allocated to say its own name would drop frames on the link this
+  desktop is sold on — and a frame with more to say than the queue holds drops the rest.
+- **Silence is the failure mode, never a stale name.** A widget that says nothing announces nothing;
+  a reader told the wrong control is worse off than one told nothing, and last frame's record is the
+  wrong control by default.
+- **A widget says what it knows and no more.** A tab strip has its names and says them; a list and a
+  table take their rows from the caller's own callback, so they state the position and leave the
+  name to a surface that has it. **A secret field announces that it is one and never its contents.**
+- **A repeated record is the same control.** Dropping the repeat is the reader's job; the widget's
+  job is to be right every frame.
+
 **A cell's attribute byte carries five styles and the wire stays eight bytes wide.** Bold, reverse
 and underline were the first three; italic, strikethrough and overline are three of the five free
 bits, so a terminal's own text reaches a KDOS surface without the per-cell run growing for it. **All
@@ -361,6 +382,14 @@ terminal's buffer, not of every surface the toolkit draws. `kvt_ui_mouse()`'s co
 **terminal's own grid** for the same reason a link lookup's are — a caller whose terminal is a
 window subtracts its origin, or both the selection and the link land as far from the pointer as the
 window is from the corner.
+
+**A screen can be read out as text and written back in.** `kvt_screen_text()` gives the scrollback
+and then the screen, oldest first, characters only — colour, attributes and pictures are not what a
+saved session puts back, and a picture cannot be put back at all because the tiles it named belong
+to a program that has exited. **The screen's empty tail is padding, not output**, so it is trimmed:
+a terminal showing two lines would otherwise end with a dozen blank ones, and a caller feeding that
+back scrolls the two lines it cared about off the top. `kvt_term_show()` is the other direction —
+text the terminal SHOWS, into the state machine where the child's own bytes go, never to the child.
 
 **A prompt mark is on the LINE, and the exit status is walked back to.** `OSC 133` says where a
 prompt starts and what the command typed at it exited with; the mark rides the line so it survives

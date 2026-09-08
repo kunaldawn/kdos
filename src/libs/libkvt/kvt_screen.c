@@ -149,6 +149,97 @@ struct line *screen_line_at(struct kvt_screen *con, unsigned int y)
 }
 
 /*
+ * EVERY LINE THIS SCREEN STILL HOLDS, oldest first, as text.
+ *
+ * The scrollback and then the screen, which is the order a person read them
+ * in. Trailing blanks go: a terminal's lines are padded to the width and a
+ * saved session made of eighty-column padding is a file nothing can diff.
+ *
+ * A CELL'S CHARACTER AND NOTHING ELSE — no colour, no attribute, no sprite.
+ * What this is for is putting the last session's output back on a screen, and
+ * a picture cannot be put back: the tiles it named belong to a program that
+ * has exited.
+ */
+KVT_SHL_EXPORT
+char *kvt_screen_text(struct kvt_screen *con, size_t *len_out)
+{
+	struct line *line;
+	size_t cap, n = 0;
+	char *out;
+
+	if (len_out)
+		*len_out = 0;
+	if (!con)
+		return NULL;
+
+	/* Four bytes a cell is the widest UTF-8 one can hold, and a newline
+	 * for each line. */
+	cap = (size_t)(con->sb.count + con->size_y) *
+	      ((size_t)con->size_x * 4 + 1) + 1;
+	out = malloc(cap);
+	if (!out)
+		return NULL;
+
+	line = kvt_shl_dlist_empty(&con->sb.list)
+		       ? NULL
+		       : kvt_shl_dlist_first(&con->sb.list, struct line, list);
+	for (unsigned int i = 0; i < con->sb.count + con->size_y; i++) {
+		struct line *l;
+		size_t eol;
+
+		if (i < con->sb.count) {
+			l = line;
+			if (line)
+				line = kvt_shl_dlist_next(line, &con->sb.list,
+							  list);
+		} else {
+			l = con->lines[i - con->sb.count];
+		}
+		if (!l)
+			continue;
+
+		eol = n;
+		for (unsigned int x = 0; x < l->size && x < con->size_x; x++) {
+			uint32_t ch = l->cells[x].ch;
+
+			if (!ch)
+				ch = ' ';
+			if (n + 4 >= cap)
+				break;
+			n += kvt_ucs4_to_utf8(ch, out + n);
+			if (ch != ' ')
+				eol = n;
+		}
+		n = eol;
+		if (n + 1 < cap)
+			out[n++] = '\n';
+	}
+	/*
+	 * AND THE SCREEN'S EMPTY TAIL IS PADDING, NOT OUTPUT. A screen is
+	 * always its full height, so a terminal showing two lines ends this
+	 * with a dozen blank ones — and a caller putting the text back would
+	 * feed those dozen newlines and scroll the two lines it cared about
+	 * off the top before anybody saw them.
+	 */
+	while (n && out[n - 1] == '\n') {
+		size_t k = n - 1;
+
+		while (k && out[k - 1] != '\n')
+			k--;
+		if (k != n - 1)
+			break;		/* a real line ends here */
+		n = k;
+	}
+	if (n && out[n - 1] != '\n' && n + 1 < cap)
+		out[n++] = '\n';
+
+	out[n] = '\0';
+	if (len_out)
+		*len_out = n;
+	return out;
+}
+
+/*
  * ── OSC 133, the prompt marks ────────────────────────────────────────────
  *
  * A shell says where its prompt starts and what the last command exited with.

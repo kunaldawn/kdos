@@ -64,6 +64,8 @@ struct KconSurface {
 	 */
 	int cell_w, cell_h;
 	unsigned caps;
+	int observe;		/* a view that may watch and not type */
+	int a11y;		/* a reader: the one kind sent announcements */
 
 	/*
 	 * A SURFACE'S SLOT NUMBERS ARE ITS OWN, and two surfaces both using
@@ -103,6 +105,9 @@ struct KconServer {
 	int n;
 	KconServerHooks hooks;
 	void *user;
+	/* How many views this session admits at once; 0 is no limit. Set by
+	 * the caller from its own configuration. */
+	int view_max;
 };
 
 /* ── surfaces ────────────────────────────────────────────────────────── */
@@ -217,6 +222,13 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 				f->cell_h = chh;
 				f->caps = caps;
 			}
+			/* AND WHAT IT MAY DO, if it said. A hello that stops
+			 * at the capabilities is a driver: that is what every
+			 * view was before an observer existed, and a client
+			 * cannot gain rights by saying nothing. */
+			if (kcon_rd_left(&r) >= 2 &&
+			    kcon_get_u16(&r) == KCON_RIGHTS_OBSERVE && !r.err)
+				f->observe = 1;
 		}
 		break;
 	}
@@ -250,6 +262,30 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		 * raise or close another one. */
 		if (!r.err && f->kind == KCON_KIND_SHELL && s->hooks.activate)
 			s->hooks.activate(f, id, s->user);
+		break;
+	}
+	case KCON_OP_CAPTURE: {
+		int win = (int)(int16_t)kcon_get_u16(&r);
+		char *txt = NULL;
+
+		/* A SHELL SURFACE ONLY. Reading back a whole session is the
+		 * management right this socket exists to gate: a program with
+		 * a window in it must not be able to photograph another's. */
+		if (r.err || f->kind != KCON_KIND_SHELL)
+			break;
+		if (s->hooks.capture)
+			txt = s->hooks.capture(f, win, s->user);
+
+		KconBuf cb = { 0 };
+
+		/* ANSWERED EVEN WHEN THERE IS NOTHING, because a caller that
+		 * asked and heard nothing cannot tell a session with an empty
+		 * screen from one that is not listening, and would wait out
+		 * its timeout to find out. */
+		kcon_put_str(&cb, txt ? txt : "");
+		kcon_send(f->conn, KCON_OP_CAPTURE, &cb);
+		kcon_buf_free(&cb);
+		free(txt);
 		break;
 	}
 	case KCON_OP_CLOSE_REQUEST: {
@@ -301,6 +337,24 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 
 		if (r.err || f->kind != KCON_KIND_VIEW)
 			return;
+
+		/*
+		 * THE CAP IS COUNTED AT THE ATTACH, not at the connection: a
+		 * view is a display only once it has said what it can show,
+		 * and a connection that never got that far is not one of the
+		 * displays a person is looking at. Told why, so a view that
+		 * was refused says so instead of reporting a closed socket.
+		 */
+		if (!f->attached && s->view_max > 0 &&
+		    kcon_server_view_count(s) >= s->view_max) {
+			KconBuf b = { 0 };
+
+			kcon_put_u16(&b, 0);
+			kcon_send(f->conn, KCON_OP_BYE, &b);
+			kcon_buf_free(&b);
+			f->gone = 1;
+			return;
+		}
 		if (cols < 0 || rows < 0 || cols > 4096 || rows > 4096)
 			return;
 
@@ -423,8 +477,16 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 	}
 	case KCON_OP_KEY:
 		/* Only a view sends input. A surface doing so is talking the
-		 * wrong direction and is ignored rather than trusted. */
-		if (f->kind == KCON_KIND_VIEW && s->hooks.view_key) {
+		 * wrong direction and is ignored rather than trusted.
+		 *
+		 * AND NOT AN OBSERVER. Over a forwarded socket that is the
+		 * difference between showing somebody a problem and handing
+		 * them the machine, so it is refused HERE — a view that asked
+		 * to observe and then sent a key is exactly the case the field
+		 * exists for, and trusting the client to keep its own promise
+		 * would make the promise decorative. */
+		if (f->kind == KCON_KIND_VIEW && !f->observe &&
+		    s->hooks.view_key) {
 			int key = kcon_get_i32(&r);
 			int mods = (int)kcon_get_u8(&r);
 
@@ -433,7 +495,8 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		}
 		break;
 	case KCON_OP_PTR:
-		if (f->kind == KCON_KIND_VIEW && s->hooks.view_ptr) {
+		if (f->kind == KCON_KIND_VIEW && !f->observe &&
+		    s->hooks.view_ptr) {
 			int x = kcon_get_i32(&r);
 			int y = kcon_get_i32(&r);
 			int btn = (int)kcon_get_u8(&r);
@@ -646,7 +709,7 @@ int kcon_server_listen(KconServer *s, const char *path, int kind)
 	 * reach the surface socket and be whatever it claimed, which is the
 	 * separation this pair of sockets exists to make.
 	 */
-	if (kind == KCON_LISTEN_VIEW)
+	if (kind == KCON_LISTEN_VIEW || kind == KCON_LISTEN_A11Y)
 		for (int i = 0; i < s->nl; i++)
 			if (s->l[i].kind == KCON_LISTEN_ANY)
 				s->l[i].kind = KCON_LISTEN_SURFACE;
@@ -820,6 +883,20 @@ int kcon_server_pump(KconServer *s)
 			if (s->l[li].kind == KCON_LISTEN_VIEW) {
 				f->kind = KCON_KIND_VIEW;
 				f->kind_fixed = 1;
+			} else if (s->l[li].kind == KCON_LISTEN_A11Y) {
+				/*
+				 * A READER IS A VIEW THAT MAY NOT DRIVE, and
+				 * that is the socket's decision rather than
+				 * the client's: rights it could choose would
+				 * make this socket the same as the view one
+				 * with a flag, and the whole point of a third
+				 * path is that reaching it grants less.
+				 */
+				f->kind = KCON_KIND_VIEW;
+				f->kind_fixed = 1;
+				f->observe = 1;
+				f->a11y = 1;
+
 			} else if (s->l[li].kind == KCON_LISTEN_SURFACE) {
 				f->kind = KCON_KIND_SURFACE;
 				f->no_view = 1;
@@ -897,6 +974,61 @@ int kcon_view_cell_w(const KconSurface *v)
 int kcon_view_cell_h(const KconSurface *v)
 {
 	return v && v->kind == KCON_KIND_VIEW ? v->cell_h : 0;
+}
+
+int kcon_server_a11y_count(const KconServer *s)
+{
+	int n = 0;
+
+	for (int i = 0; s && i < s->n; i++)
+		if (s->s[i]->a11y && s->s[i]->attached)
+			n++;
+	return n;
+}
+
+void kcon_a11y_announce(KconServer *s, int role, const char *label,
+			const char *value, int index, int count, int x, int y,
+			int w, int h)
+{
+	KconBuf b = { 0 };
+	int any = 0;
+
+	if (!s)
+		return;
+	for (int i = 0; i < s->n; i++)
+		if (s->s[i]->a11y && s->s[i]->attached)
+			any = 1;
+	/* NOTHING IS BUILT WHEN NOBODY IS READING. A desktop with no reader
+	 * attached — which is nearly every desktop — pays this comparison and
+	 * not a message. */
+	if (!any)
+		return;
+
+	kcon_put_u16(&b, (uint16_t)role);
+	kcon_put_u16(&b, (uint16_t)(index < 0 ? 0 : index));
+	kcon_put_u16(&b, (uint16_t)(count < 0 ? 0 : count));
+	kcon_put_u16(&b, (uint16_t)(int16_t)x);
+	kcon_put_u16(&b, (uint16_t)(int16_t)y);
+	kcon_put_u16(&b, (uint16_t)(int16_t)w);
+	kcon_put_u16(&b, (uint16_t)(int16_t)h);
+	kcon_put_str(&b, label ? label : "");
+	kcon_put_str(&b, value ? value : "");
+
+	for (int i = 0; i < s->n; i++)
+		if (s->s[i]->a11y && s->s[i]->attached)
+			kcon_send(s->s[i]->conn, KCON_OP_ANNOUNCE, &b);
+	kcon_buf_free(&b);
+}
+
+int kcon_view_observing(const KconSurface *v)
+{
+	return v && v->kind == KCON_KIND_VIEW && v->observe;
+}
+
+void kcon_server_view_max(KconServer *s, int n)
+{
+	if (s)
+		s->view_max = n > 0 ? n : 0;
 }
 
 unsigned kcon_view_caps(const KconSurface *v)

@@ -278,6 +278,16 @@
          one slip from covering the screen is the wrong trade. The console
          binds the same chord, so there is one key card rather than two. -->
     <keybind key="W-S-f"><action name="Execute" command="kdos-find"/></keybind>
+    <!-- The accent picker, and Space with three modifiers on purpose: it
+         repaints the whole desktop live under the hand as the highlight
+         moves, so it must be hard to press by accident. The console binds
+         the same chord, so there is one key card rather than two. -->
+    <keybind key="W-C-S-space"><action name="Execute" command="kdos-theme"/></keybind>
+    <!-- The console desktop's character-art ground. Bound here so one key card
+         serves both desktops and the chord means the same thing on each; under
+         the compositor the wallpaper is a PNG and this changes nothing that is
+         on the screen. -->
+    <keybind key="W-C-space"><action name="Execute" command="kdos background next"/></keybind>
 
     <!-- Run-or-raise, for anyone who wants one key per app. ForEach runs its
          <then> on every view matching the <query> (identifier is the app_id,

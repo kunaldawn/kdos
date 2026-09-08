@@ -241,6 +241,12 @@ what it shows as current is what the opener would actually run.
 handler correctly and then wrapping it in a Wayland client would look like the handler being wrong
 rather than the terminal being unreachable.
 
+**Unless the entry asked for one by name.** `X-KDOS-Term` names the emulator a program needs — the
+one that draws pictures in the cell grid — and is honoured on either desktop. It is **a name and
+never a program**: only an emulator this image ships is accepted and anything else is the session's
+own, because an entry is a file anything can write and a key naming a program would be a second
+`Exec` line with none of the field-code rules.
+
 **And inside a console session it is preferred.** There is no compositor there, so a windowed
 handler at the head of the chain opens nothing anybody can see. The reordering is stable and it
 happens **only where nobody has decided**: a `[Default Applications]` row is somebody's answer and

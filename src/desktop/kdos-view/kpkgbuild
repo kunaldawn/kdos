@@ -13,4 +13,4 @@ version     = 0.1.0
 release     = 1
 description = A display for a kdos-con session — cells in, input out, no window state
 homepage    = https://github.com/kunaldawn/kdos
-depends     = ncurses libdrm libinput seatd libxkbcommon eudev fcft pixman pipewire libpng libsixel
+depends     = ncurses libdrm libinput seatd libxkbcommon eudev fcft pixman pipewire libpng libsixel zstd

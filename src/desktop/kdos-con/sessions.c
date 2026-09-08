@@ -91,6 +91,21 @@ int con_session_paths(const char *name, char *sock, size_t scap,
 }
 
 /*
+ * The reader's socket, beside the other two and in the same 0700 directory.
+ * Derived from the view's rather than resolved again: three spellings of one
+ * name is three chances for a session to listen where nothing connects.
+ */
+int con_a11y_path(const char *view, char *out, size_t n)
+{
+	size_t len = view ? strlen(view) : 0;
+
+	if (len < 6 || strcmp(view + len - 5, ".view"))
+		return -1;
+	return snprintf(out, n, "%.*s.a11y", (int)(len - 5), view) < (int)n
+		       ? 0 : -1;
+}
+
+/*
  * Is anything listening? A socket file outlives the process that made it if
  * that process was killed, so the file's existence proves nothing and a
  * connect does. Non-destructive: the connection is closed without a hello, and

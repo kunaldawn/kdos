@@ -1,0 +1,58 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   How Midnight Commander behaves on this desktop.
+#
+# THE SECTION A KEY IS IN IS PART OF THE KEY. mc reads each of its option
+# tables out of one named group and nowhere else: `[Midnight-Commander]` for
+# the behaviour flags, `[Layout]` for what is on the screen. A key written
+# under the wrong header is not an error — it is silently never read, which is
+# the failure this file is most likely to grow.
+#
+# `skin` IS ALSO WRITTEN BY `kdos theme`, which merges this one key rather than
+# replacing the file, and which generates the skin itself into
+# ~/.local/share/mc/skins/kdos.ini. mc looks for skins under <data>/mc/skins,
+# /etc/mc/skins and /usr/share/mc/skins and nowhere else, so a skin beside this
+# file would never be found and mc would fall back to its stock blue with no
+# message.
+#
+# WHAT OPENS A FILE IS NOT HERE. That is mc.ext.ini beside this file, which
+# hands everything to `kdos-appbox open` — the same resolution the icons, the
+# chooser and `xdg-open` use.
+#
+# THE MOUSE NEEDS NO KEY. mc turns it on by itself when the terminal reports
+# it, and both terminals on this image do; the two keys here are its
+# behaviour, not its existence.
+# ---------------------------------
+
+[Midnight-Commander]
+skin=kdos
+
+# F3 is mc's own viewer and F4 is the desktop's editor. The viewer is internal
+# because it reads inside an archive and over a VFS path, which nothing
+# launched with a filename can do. The editor is NOT: a person who has chosen
+# an editor has chosen it everywhere, and mcedit's key map is its own.
+# `$EDITOR` is exported by /etc/bash.bashrc, which /etc/profile sources, so a
+# session started from a login shell carries it.
+use_internal_view=1
+use_internal_edit=0
+
+# `Esc` twice leaves. A confirmation on the way out of a file manager is a
+# dialog answered by reflex, and there is nothing here to lose by leaving.
+confirm_exit=0
+
+# A click outside a dialog closes it, and a held button repeats ten times a
+# second — slow enough that a scrollbar dragged past the end does not run the
+# panel to the bottom of a large directory.
+mouse_close_dialog=1
+mouse_repeat_rate=100
+
+[Layout]
+# The panel's directory in the window title, which is what the console
+# desktop's taskbar and the compositor's title bar both draw. Without it every
+# `mc` window is called `mc`.
+xterm_title=1

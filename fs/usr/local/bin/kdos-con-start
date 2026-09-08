@@ -88,6 +88,12 @@ _wait_con() {
 # must outlive that. Restarted with the same cap the session gets, because a
 # view that cannot open the device fails in milliseconds and would otherwise
 # spin for as long as the machine is on.
+# WHAT THE SESSION SAYS ABOUT ITSELF, asked of the session's own parser rather
+# than read again here: a second reader written in shell would answer
+# differently the first time a value was quoted or a comment moved.
+_a11y=$(kdos-con --conf a11y 2>/dev/null)
+_speak=$(kdos-con --conf speak 2>/dev/null)
+
 (
 	_wait_con || exit 0
 	# THE VIEW'S STDERR IS KEPT. stdout is not: with --kms the view draws
@@ -107,7 +113,17 @@ _wait_con() {
 		# in milliseconds. The check below reads a fast exit 0 as a
 		# failure for that reason, and --kms-only makes it a non-zero
 		# exit carrying the step that failed.
-		kdos-view --kms-only --socket "$_view" >/dev/null 2>>"$_vlog"
+		# A READABLE DESKTOP IS A --tty VIEW ON THIS TERMINAL. `--kms`
+		# takes the VT into graphics mode and the kernel's text plane
+		# with it, which is the plane `brltty` reads over /dev/vcsa —
+		# so `a11y = yes` gives up the pixel half to keep a route that
+		# needs nothing else installed. Its stdout is the terminal's,
+		# because that IS the screen on this path.
+		if [ "$_a11y" = "yes" ]; then
+			kdos-view --tty --socket "$_view" 2>>"$_vlog"
+		else
+			kdos-view --kms-only --socket "$_view" >/dev/null 2>>"$_vlog"
+		fi
 		_rc=$?
 		_now=$(date +%s)
 		# A DETACH IS SOMETHING A PERSON DOES, and nobody does it in
@@ -165,6 +181,19 @@ for _svc in kdos-notifyd kdos-netagent kdos-mediad kdos-desk kdos-slit kdos-shel
 		) &
 	fi
 done
+
+#
+# THE SCREEN READER, when the session was told to speak. It connects to the
+# reader's socket — the third one, whose clients may not type — and says what
+# each widget announces. Not supervised, for the reason the row above gives:
+# a reader that cannot start says nothing, and a reader restarted in a loop
+# says the same first word for ever.
+if [ "$_speak" = "yes" ] && command -v kdos-a11y >/dev/null 2>&1; then
+	(
+		_wait_con || exit 0
+		kdos-a11y >/dev/null 2>&1
+	) &
+fi
 
 #
 # THE CANDIDATE WINDOW, on this desktop too. kdos-ime is a cell surface here and

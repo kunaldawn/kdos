@@ -296,6 +296,26 @@ void win_snap(Win *w, unsigned edge, int combine)
 }
 
 /*
+ * A WINDOW AT A REMEMBERED RECTANGLE.
+ *
+ * `win_place` searches for somewhere to put a new window; this puts one
+ * exactly where it was, which is what a restored session means. The fit is
+ * still applied — a session saved on a bigger screen would otherwise place a
+ * window where nothing can reach it, and the screen a session comes back on is
+ * whatever is attached now.
+ */
+void win_place_at(Win *w, int x, int y, int cw, int ch)
+{
+	if (!w || cw < 1 || ch < 1)
+		return;
+	w->geom.x = x;
+	w->geom.y = y;
+	w->geom.w = cw;
+	w->geom.h = ch;
+	win_resized(w);
+}
+
+/*
  * Tell the window it changed size. A terminal reflows its grid and a surface
  * is configured; both are the same event to the window and neither may be
  * skipped, because a program that was not told draws the old size into the new
@@ -978,6 +998,7 @@ static void draw_content(const Win *w)
 	static KtuiCell buf[512 * 256];
 
 	if (w->kind == WIN_TERM && w->term) {
+
 		sw = w->geom.w;
 		sh = w->geom.h;
 		if (sw * sh > (int)(sizeof(buf) / sizeof(buf[0])))

@@ -358,6 +358,7 @@ FRONT_END(users_main);
 FRONT_END(update_main);
 FRONT_END(firewall_main);
 FRONT_END(backup_main);
+FRONT_END(theme_main);
 
 static const struct {
 	const char *name;
@@ -395,6 +396,7 @@ static const struct {
 	{ "update",	update_main },
 	{ "firewall",	firewall_main },
 	{ "backup",	backup_main },
+	{ "theme",	theme_main },
 	{ "shell",	panel_main },
 };
 

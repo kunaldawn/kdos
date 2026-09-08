@@ -45,9 +45,15 @@ static void usage(FILE *f)
 "\n"
 "  --serve            hold the session and wait for a view to attach\n"
 "  --new  [-t NAME]   start a session; --ls lists them\n"
-"  --attach [-t NAME] put a view on one\n"
+"  --attach [-t NAME] [--observe]\n"
+"                     put a view on one; --observe watches without typing\n"
 "  --detach [-t NAME] take every view off one, leaving it running\n"
 "  --kill   [-t NAME] end one\n"
+"  --conf KEY         print one con.conf value, for a script that must\n"
+"                     agree with the session about what it says\n"
+"  --capture [-t NAME|--socket PATH] [-w N]\n"
+"                     print what is on a RUNNING session's screen as text;\n"
+"                     -w N narrows it to one window by its ring number\n"
 "  --greet            the login surface, as kdos-con-login\n"
 "  --keys             the chord table after keys.conf, one action and chord\n"
 "                     per line — what the key card reads on this desktop\n"
@@ -329,6 +335,60 @@ static void publish_caret(void)
 		kcon_view_cursor(kcon_server_view_at(S.server, i), x, y);
 }
 
+/*
+ * WHAT THE FRAME JUST SAID, out to the readers.
+ *
+ * The toolkit's queue is this frame's and is cleared at the start of the next
+ * one, so it is drained HERE — after the frame is composed and before anything
+ * clears it. A record left for later is last frame's control, which is the
+ * wrong one by default.
+ *
+ * The focused window goes first and only when it CHANGES: a reader that was
+ * told the window every frame would say its title over the control a person
+ * just moved to.
+ */
+static void publish_announce(void)
+{
+	static int last_win;
+	static char last_title[128];
+	static int last_readers;
+	Win *w = win_focused();
+	int readers = S.server ? kcon_server_a11y_count(S.server) : 0;
+
+	if (!S.server || !readers)
+		return;
+
+	/*
+	 * A READER THAT HAS JUST ATTACHED HAS BEEN TOLD NOTHING. The window is
+	 * said again when one arrives, for the same reason a view that
+	 * attaches is sent the whole frame: the desktop's state is not a
+	 * stream somebody joins half way through. The widget records cannot be
+	 * replayed — the queue is this frame's — and the next frame a person
+	 * touches produces them again.
+	 */
+	if (readers > last_readers)
+		last_win = 0;
+	last_readers = readers;
+
+	if (w && (w->id != last_win || strcmp(w->title, last_title))) {
+		last_win = w->id;
+		kb_strlcpy(last_title, w->title, sizeof(last_title));
+		kcon_a11y_announce(S.server, KT_A11Y_WINDOW, w->title, NULL,
+				   0, 0, w->geom.x, w->geom.y, w->geom.w,
+				   w->geom.h);
+	} else if (!w && last_win) {
+		last_win = 0;
+		last_title[0] = '\0';
+	}
+
+	for (int i = 0; i < ktui_announce_count(); i++) {
+		const KtuiA11y *a = ktui_announce_at(i);
+
+		kcon_a11y_announce(S.server, a->role, a->label, a->value,
+				   a->index, a->count, 0, 0, 0, 0);
+	}
+}
+
 static void con_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		      int force_full)
 {
@@ -398,6 +458,9 @@ const char *con_command(int which)
 		[CON_CMD_CHARS]    = { "characters", "kdos-chars" },
 		[CON_CMD_FIND]     = { "find",     "kdos-find" },
 		[CON_CMD_CAPTURE]  = { "capture",  "kdos-shot" },
+		[CON_CMD_THEME]    = { "theme",    "kdos-theme" },
+		[CON_CMD_BACKGROUND] = { "background",
+					 "kdos background next" },
 		[CON_CMD_VOLUP]    = { "volume_up",   "kdos-osd volume +5" },
 		[CON_CMD_VOLDOWN]  = { "volume_down", "kdos-osd volume -5" },
 		[CON_CMD_MUTE]     = { "volume_mute", "kdos-osd volume mute" },
@@ -1005,6 +1068,12 @@ static int session_key(const KtuiEvent *ev)
 	case CON_ACT_CAPTURE:
 		mark_begin(1);
 		return 1;
+	case CON_ACT_LEARN:
+		scr_learn_toggle();
+		return 1;
+	case CON_ACT_PLAY:
+		scr_play_arm();
+		return 1;
 	case CON_ACT_FONT_UP:
 		return font_step(1);
 	case CON_ACT_FONT_DOWN:
@@ -1044,6 +1113,25 @@ static void route_key(const KtuiEvent *ev)
 	if (S.locked) {
 		if (S.lock && S.lock->surf)
 			kcon_surface_key(S.lock->surf, ev->key, ev->mods);
+		return;
+	}
+
+	/*
+	 * A SCRIPT'S LETTER PROMPT OWNS THE KEYBOARD WHILE IT IS UP, ahead of
+	 * everything: the answer is one letter, and a letter that fell through
+	 * to the chord table would bind the script and fire an action with the
+	 * same press.
+	 */
+	if ((scr_prompt_active() || scr_play_armed()) && scr_prompt_key(ev))
+		return;
+
+	/*
+	 * AND ESCAPE STOPS A REPLAY. A script types into a window at its own
+	 * rate, so the only way out of one that is typing the wrong thing is a
+	 * key the session takes before the window does.
+	 */
+	if (scr_playing() && ev->key == KT_K_ESC && !ev->mods) {
+		scr_stop();
 		return;
 	}
 
@@ -1101,6 +1189,17 @@ static void route_key(const KtuiEvent *ev)
 		return;
 	}
 
+	/*
+	 * RECORDED WHERE IT IS ROUTED, not where it arrives: a chord that the
+	 * session consumed above never reached a window, so a recording that
+	 * held one would replay an action nobody typed into anything.
+	 */
+	scr_note(ev);
+	con_key_to_window(ev);
+}
+
+void con_key_to_window(const KtuiEvent *ev)
+{
 	Win *w = win_focused();
 
 	if (!w)
@@ -1650,7 +1749,20 @@ static void adopt_surfaces(void)
 			continue;
 		}
 
-		win_place(w, kcon_surface_cols(f), kcon_surface_rows(f));
+		/*
+		 * A RESTORED APPLICATION GOES BACK WHERE IT WAS. The row was
+		 * read at startup and is taken the first time that app_id
+		 * attaches; everything else is placed the ordinary way.
+		 */
+		int rw, rh, rx, ry, rws;
+
+		if (con_state_take(w->app_id, &rws, &rx, &ry, &rw, &rh)) {
+			w->workspace = rws;
+			win_place_at(w, rx, ry, rw, rh);
+		} else {
+			win_place(w, kcon_surface_cols(f),
+				  kcon_surface_rows(f));
+		}
 		S.focus = w->id;
 	}
 }
@@ -1676,6 +1788,27 @@ static void on_hup(int sig)
 {
 	(void)sig;
 	g_retint = 1;
+}
+
+/*
+ * A SIGNAL IS HOW A SESSION USUALLY ENDS, so it has to be a clean end.
+ *
+ * The quit verb is the tidy path and almost nobody takes it: a login ending
+ * sends TERM, and with the default disposition the process dies where it
+ * stands — every terminal's child is orphaned, a guest keeps the VT it was
+ * given, and the state file is whatever it was last time. So the signal sets
+ * the same flag the verb does and the loop leaves through the same door.
+ *
+ * A FLAG AND NOT THE WORK: closing guests and writing files inside a handler
+ * is allocation and file IO inside a signal, and the loop is one tick away
+ * from noticing.
+ */
+static volatile sig_atomic_t g_stop;
+
+static void on_term(int sig)
+{
+	(void)sig;
+	g_stop = 1;
 }
 
 static void retint(void)
@@ -1769,6 +1902,104 @@ void con_paste_win(Win *w, const char *text)
 int con_paste_armed(void)
 {
 	return paste_arm.win && con_now_ms() <= paste_arm.until;
+}
+
+/*
+ * ── WHAT IS ON THE SCREEN, AS TEXT ──────────────────────────────────────
+ *
+ * `kdos con capture`. The frame is composed FIRST rather than read as it
+ * stands: the loop draws when something happened, so the last composed frame
+ * can be older than the terminal's own output.
+ *
+ * WHAT IS ALREADY WRITTEN, NOT WHAT IS STILL COMING. `--dump` settles — it
+ * runs every terminal until its child has EXITED — because there the children
+ * are one-shot commands. A live session's shell never exits, so settling here
+ * would hold the whole session for the length of the settle's own spin and
+ * answer nothing until it gave up. One pump takes what the children have
+ * already written, which is what "what is on the screen" means.
+ *
+ * A WINDOW'S RECTANGLE WHEN ASKED, by its ring number — the one on the title
+ * bar and behind `Super+Alt+N`, because a person capturing "window 2" means
+ * the one labelled 2. A number naming no window is nothing, not the screen:
+ * silently widening a request to everything is how a script ends up publishing
+ * what it did not mean to.
+ */
+static char *on_capture(KconSurface *f, int window, void *user)
+{
+	(void)f;
+	(void)user;
+
+	KRect r;
+	int w = 0, h = 0;
+
+	term_pump_all();
+	composite();
+
+	const KtuiCell *cells = ktui_draw_cells(&w, &h);
+
+	if (!cells || w <= 0 || h <= 0)
+		return NULL;
+
+	if (window <= 0) {
+		r = krect(0, 0, w, h);
+	} else {
+		Win *win = win_nth(window);
+
+		if (!win)
+			return NULL;
+		/* The window manager's rectangle and the toolkit's are the
+		 * same four numbers in two types; the conversion is here and
+		 * not a cast, because a cast would compile after somebody
+		 * reorders one of them. */
+		r = krect(win->geom.x, win->geom.y, win->geom.w, win->geom.h);
+	}
+	if (r.x < 0)
+		r.x = 0;
+	if (r.y < 0)
+		r.y = 0;
+	if (r.x + r.w > w)
+		r.w = w - r.x;
+	if (r.y + r.h > h)
+		r.h = h - r.y;
+	if (r.w <= 0 || r.h <= 0)
+		return NULL;
+
+	/* Four bytes a cell is the widest UTF-8 this grid can hold, plus a
+	 * newline a row and the terminator. */
+	size_t cap = (size_t)r.w * (size_t)r.h * 4 + (size_t)r.h + 1;
+	char *out = malloc(cap);
+	size_t n = 0;
+
+	if (!out)
+		return NULL;
+	for (int y = r.y; y < r.y + r.h; y++) {
+		size_t eol = n;
+
+		for (int x = r.x; x < r.x + r.w; x++) {
+			const KtuiCell *c = &cells[y * w + x];
+			uint32_t ch = c->ch;
+
+			/* A continuation cell is the right half of a glyph
+			 * already written, and a sprite is a picture: neither
+			 * is a character, and printing either would put a
+			 * control byte or a duplicate into text somebody is
+			 * about to pipe somewhere. */
+			if (ch == KTUI_WIDE_CONT)
+				continue;
+			if (!ch || KTUI_IS_SPRITE(ch))
+				ch = ' ';
+			n += (size_t)ktui_utf8_encode(ch, out + n);
+			if (ch != ' ')
+				eol = n;
+		}
+		/* Trailing blanks are dropped: a screen is mostly empty on the
+		 * right, and a capture full of padding is a capture nothing
+		 * can diff. */
+		n = eol;
+		out[n++] = '\n';
+	}
+	out[n] = '\0';
+	return out;
 }
 
 static void on_paste(KconSurface *v, const char *text, void *user)
@@ -2152,6 +2383,14 @@ static int on_run(KconSurface *f, const char *const argv[], const char *title,
 	return w ? w->vt : -1;
 }
 
+/*
+ * The session's own name, for the state file. A session started with an
+ * explicit socket and no name is `con`, the same default every verb resolves
+ * to — a state file named after the socket path would move whenever the
+ * runtime directory did.
+ */
+static const char *S_name = "con";
+
 static int serve(const char *sock, const char *view)
 {
 	S.server = kcon_server_new(sock);
@@ -2171,6 +2410,34 @@ static int serve(const char *sock, const char *view)
 		kcon_server_free(S.server);
 		S.server = NULL;
 		return 1;
+	}
+
+	/*
+	 * AND THE READER'S SOCKET. A third listener whose clients are views
+	 * that may not drive: this desktop holds the literal text of every
+	 * cell, so reading the screen is a loop over a buffer that already
+	 * exists rather than a tree of objects somebody hopes matches what
+	 * was drawn. A session that cannot open it still runs — a reader is
+	 * something a person adds, not something the desktop needs.
+	 */
+	{
+		/*
+		 * FROM THE VIEW SOCKET WHERE THERE IS ONE, and from the
+		 * surface socket where there is not: a session started with
+		 * `--socket` alone still has a reader's socket, because being
+		 * readable must not depend on somebody having asked for a
+		 * display as well.
+		 */
+		char a11y[192];
+		const char *from = view && *view ? view : sock;
+		size_t len = strlen(from);
+		char base[192];
+
+		kb_strlcpy(base, from, sizeof(base));
+		if (len > 5 && !strcmp(base + len - 5, ".sock"))
+			kb_strlcpy(base + len - 5, ".view", sizeof(base) - len + 5);
+		if (con_a11y_path(base, a11y, sizeof(a11y)) == 0)
+			kcon_server_listen(S.server, a11y, KCON_LISTEN_A11Y);
 	}
 
 	snprintf(S.sock, sizeof(S.sock), "%s", sock);
@@ -2194,14 +2461,38 @@ static int serve(const char *sock, const char *view)
 	h.activate = on_activate;
 	h.close_request = on_close_request;
 	h.win_state = on_win_state;
+	h.capture = on_capture;
 	kcon_server_hooks(S.server, &h, NULL);
+	/* HOW MANY DISPLAYS AT ONCE. The number is this desktop's and the
+	 * refusal is the server's, because it is the end that sees a view
+	 * arrive; 0 is no limit, which is what a session that never set the
+	 * key has always had. */
+	kcon_server_view_max(S.server, kcon_conf_int("views", 0));
 
 	ktui_backend_set(&con_backend);
 	ktui_draw_init();
+
+	/*
+	 * WHAT WAS OPEN LAST TIME, when `restore` says so. After the backend
+	 * and the draw layer, because a restored window is placed against a
+	 * screen size — and before the loop, so the first frame a view sees is
+	 * the desktop as it was rather than an empty one that fills in.
+	 */
+	if (kcon_conf_bool("restore", 0))
+		con_state_restore(S_name);
 	signal(SIGHUP, on_hup);
+	signal(SIGTERM, on_term);
+	signal(SIGINT, on_term);
 	idle_init();
 
 	while (!quit) {
+		/* The signal's half of con_quit(), out of the handler: a
+		 * session asked to stop closes its guests and its embedded
+		 * compositors like any other quit. */
+		if (g_stop) {
+			con_quit();
+			break;
+		}
 		/*
 		 * SIZED FROM WHAT THERE IS, not from a constant.
 		 *
@@ -2251,9 +2542,10 @@ static int serve(const char *sock, const char *view)
 
 		/*
 		 * EVERY CLIENT'S DESCRIPTOR, so a commit wakes the session
-		 * instead of waiting for the next tick. It used to push -1,
-		 * which poll ignores — so the loop consumed the budget and
-		 * woke on nothing.
+		 * instead of waiting for the next tick. A descriptor that is
+		 * not one — a client with no socket yet — is SKIPPED rather
+		 * than pushed as -1: poll ignores those, so they would spend
+		 * the budget below and the loop would wake on nothing.
 		 */
 		for (int i = 0; i < kcon_server_count(S.server) && n < pcap;
 		     i++) {
@@ -2313,6 +2605,7 @@ static int serve(const char *sock, const char *view)
 			retint();
 		}
 		idle_tick();
+		scr_pump();
 
 		kcon_server_pump(S.server);
 		term_pump_all();
@@ -2323,6 +2616,7 @@ static int serve(const char *sock, const char *view)
 		publish_windows();
 		mgmt_publish(0);
 		publish_caret();
+		publish_announce();
 
 		/*
 		 * A VIEW THAT JUST ATTACHED HAS BEEN SENT NO PICTURES. Its
@@ -2459,6 +2753,16 @@ static int serve(const char *sock, const char *view)
 	if (view && *view)
 		kcon_server_unlisten(S.server, view);
 
+	/*
+	 * SAVED ON THE WAY OUT, and only on this path: reaching here means the
+	 * loop ended because the session was asked to quit. A session that was
+	 * killed keeps the state file it had, which is the one from the last
+	 * time it left cleanly — better than the empty list a crash would
+	 * otherwise write over it.
+	 */
+	if (kcon_conf_bool("restore", 0))
+		con_state_save(S_name);
+
 	teardown();
 	kcon_server_free(S.server);
 	return 0;
@@ -2530,6 +2834,8 @@ int main(int argc, char **argv)
 	const char *sock = NULL;
 	int do_serve = 0, do_greet = 0, do_new = 0, do_ls = 0;
 	int do_attach = 0, do_kill = 0, do_detach = 0, do_run = 0;
+	int do_capture = 0, cap_win = 0, do_observe = 0;
+	const char *conf_key = NULL;
 	const char *tname = NULL;
 	const char *login_tty = NULL;
 	const char *terms[8];
@@ -2578,6 +2884,22 @@ int main(int argc, char **argv)
 		}
 		if (!strcmp(argv[i], "--kill")) {
 			do_kill = 1;
+			continue;
+		}
+		if (!strcmp(argv[i], "--capture")) {
+			do_capture = 1;
+			continue;
+		}
+		if (!strcmp(argv[i], "--observe")) {
+			do_observe = 1;
+			continue;
+		}
+		if (!strcmp(argv[i], "--conf") && i + 1 < argc) {
+			conf_key = argv[++i];
+			continue;
+		}
+		if (!strcmp(argv[i], "-w") && i + 1 < argc) {
+			cap_win = atoi(argv[++i]);
 			continue;
 		}
 		if (!strcmp(argv[i], "--detach")) {
@@ -2681,6 +3003,59 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
+	/*
+	 * ONE READER FOR `con.conf`, AND THE SHELL ASKS IT.
+	 *
+	 * `kdos-con-start` needs two of these keys to decide how to bring the
+	 * desktop up, and a second parser written in shell would answer
+	 * differently the first time a value was quoted or a comment moved.
+	 * Printed raw with a newline: a script takes it with a command
+	 * substitution and gets an empty line when the key is unset.
+	 */
+	if (conf_key) {
+		printf("%s\n", kcon_conf_str(conf_key, ""));
+		return 0;
+	}
+
+	/*
+	 * THE SURFACE SOCKET, and this program is the client. A capture is a
+	 * management verb: it asks the session that is already running rather
+	 * than compositing a second one, which is what `--dump` does and why
+	 * the two are different flags.
+	 *
+	 * BEFORE THE NAME IS RESOLVED, because `--socket` says exactly where
+	 * to connect and resolving a name needs a runtime directory. A script
+	 * capturing over a socket it was handed has no session of its own and
+	 * must not need one — which is precisely how this failed in the build
+	 * container, where there is no XDG_RUNTIME_DIR at all.
+	 */
+	if (do_capture) {
+		char ssock[192], sview[192];
+		const char *at = sock;
+		char *txt = NULL;
+
+		if (!at) {
+			if (con_session_paths(tname ? tname : "con", ssock,
+					      sizeof(ssock), sview,
+					      sizeof(sview)) != 0)
+				return 2;
+			at = ssock;
+		}
+		if (kcon_capture(at, cap_win, &txt) != 0) {
+			fprintf(stderr, "kdos-con: no session '%s'\n",
+				tname ? tname : "con");
+			return 1;
+		}
+		if (!txt || !*txt) {
+			fprintf(stderr, "kdos-con: nothing to capture\n");
+			free(txt);
+			return 1;
+		}
+		fputs(txt, stdout);
+		free(txt);
+		return 0;
+	}
+
 	if (do_new || do_attach || do_kill || do_detach ||
 	    (do_serve && !sock)) {
 		char ssock[192], sview[192];
@@ -2689,6 +3064,7 @@ int main(int argc, char **argv)
 				      sizeof(ssock), sview,
 				      sizeof(sview)) != 0)
 			return 2;
+
 
 		if (do_kill)
 			return con_session_kill(tname ? tname : "con");
@@ -2706,6 +3082,10 @@ int main(int argc, char **argv)
 			/* THE VIEW SOCKET. A display is handed cells and
 			 * reports events; it is never given the surface
 			 * socket, which is the right to place a window. */
+			if (do_observe)
+				execlp("kdos-view", "kdos-view", "--tty",
+				       "--observe", "--socket", sview,
+				       (char *)NULL);
 			execlp("kdos-view", "kdos-view", "--tty", "--socket",
 			       sview, (char *)NULL);
 			fprintf(stderr, "kdos-con: cannot start a view\n");
@@ -2724,6 +3104,7 @@ int main(int argc, char **argv)
 			av[n] = NULL;
 			term_open(av);
 		}
+		S_name = tname ? tname : "con";
 		return serve(ssock, sview);
 	}
 
@@ -2739,6 +3120,7 @@ int main(int argc, char **argv)
 				name);
 			return 2;
 		}
+		S_name = tname ? tname : "con";
 		session_init(cols > 0 ? cols : 80, rows > 0 ? rows : 24);
 		for (int i = 0; i < nterms; i++) {
 			char store[1024];

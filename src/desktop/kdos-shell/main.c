@@ -52,6 +52,7 @@ static const struct {
 	{ "kdos-teams", teams_main },
 	{ "kdos-saver", saver_main },
 	{ "kdos-about", about_main },
+	{ "kdos-theme", theme_main },
 	{ "kdos-calc", calc_main },
 	{ "kdos-chars", chars_main },
 	{ "kdos-disks", disks_main },

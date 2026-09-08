@@ -71,6 +71,9 @@ Every key is documented in [Configuration](configuration.md).
 | `~/.local/state/kdos/appusage` | Launch counts, which order the Start menu's frequent column |
 | `~/.local/state/kdos/con-font` | The console screen's font name, once a font chord has stepped it. An **override**: written by `kdos-view` only after the font has loaded, removed by `font-reset`, and beaten by `--font` and `$KDOS_CON_FONT` |
 | `~/.local/state/kdos/toggles/` | One empty file per switch that is on — `stay-awake`, `night-light`, `dnd` |
+| `~/.local/state/kdos/con/<name>.session` | What a console session had open: one readable row per window — kind, workspace, rectangle, app id, title. Written when the session ends and read when one of that name starts, with `restore = yes`. **Never a command line**: a terminal comes back through `con.conf`'s `terminal` and an application through its desktop entry |
+| `~/.local/state/kdos/con/<name>.<n>.text` | That session's terminal output, one file per restored terminal, with `restore_scrollback = yes`. Put back above the fresh prompt under a line saying whose it is |
+| `~/.config/kdos-con/scripts/<letter>` | A recorded script: one line per key — the chord's name, its modifiers, its key number and the gap in milliseconds before it. Directory 0700, files 0600. **Keys into a window and never a command**: there is no field that could name a program |
 | `~/.local/state/kdos/diskwarn` | `<step> <mountpoint>` per line: which disk-full step the panel has already warned about |
 | `~/.cache/kdos/theme` | **One word**: the accent name. The entire theme state the desktop reads |
 | `~/.cache/kdos/wallpaper.png` | The retinted wallpaper the compositor prefers |
@@ -279,6 +282,11 @@ The directory is created `0700` by the session server, and one that already exis
 mode or owner is **a refusal to start, not a `chmod`** — if it is not ours, quietly taking it over
 puts the socket in a path another account chose, after which the peer-credential check is guarding
 the wrong door.
+
+**A third socket, `<name>.a11y`, is the reader's.** Same directory, same mode, same
+peer-credential check; what differs is what reaching it grants. Its clients are views that may not
+drive, and they alone are sent the announcements a widget makes — so a screen reader is a client
+with the text of the screen and what the desktop says about it, and nothing else.
 
 **One descriptor crosses one channel, and it is neither of these.** An embedded application's
 compositor is a child of the session, and the frames come back over a `socketpair` created before

@@ -301,6 +301,11 @@ int keys_main(int argc, char **argv);		/* kdos-keys     */
 int teams_main(int argc, char **argv);		/* kdos-teams    */
 int saver_main(int argc, char **argv);		/* kdos-saver    */
 int about_main(int argc, char **argv);		/* kdos-about    */
+int theme_main(int argc, char **argv);		/* kdos-theme    */
+
+/* The console desktop's character-art background. Its own header, because the
+ * loader needs no compositor and this one pulls in Wayland. */
+#include "background.h"
 /* ────────────────────────────────────────────────────────────────────────
  * kdos-mountd, from the session side
  *
@@ -544,7 +549,9 @@ struct sh_app {
 	char comment[128];
 	char keywords[192];		/* Keywords + GenericName, for search */
 	int group;			/* index into the category table     */
-	int terminal;			/* Terminal=true — run it in foot    */
+	int terminal;			/* Terminal=true — run it in one     */
+	char term[24];			/* X-KDOS-Term: the emulator it asked
+					   for, or empty for this session's */
 	int alien;			/* lives in the appbox — see apps.c  */
 	int uses;			/* launch count, from appusage       */
 	long last;			/* when it was last launched         */
@@ -608,6 +615,16 @@ const char *sh_fav_id(const char *id);
  * argv from n; returns the new n. `id` is scratch that must outlive the exec. */
 int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
 		 char *id, size_t idsz);
+
+/* The same, in the terminal a desktop entry ASKED for with `X-KDOS-Term`.
+ * `want` is that key, or NULL for the session's own. */
+int sh_term_argv_in(const char *want, const char *argv[], int n, int max,
+		    const char *cmd, char *id, size_t idsz);
+
+/* Which emulator `X-KDOS-Term` names. A NAME AND NOT A PROGRAM: only the two
+ * this image ships are accepted, and anything else falls back to sh_term(),
+ * so an entry cannot turn the key into a way to run something. */
+const char *sh_term_named(const char *want);
 
 /* The same as one command string, for the callers that re-split one. The
  * buffer must be the command's length plus SH_TERM_PREFIX_MAX: what goes in

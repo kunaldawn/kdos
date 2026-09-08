@@ -109,7 +109,18 @@ enum {
 	 * a view whose terminal never reports Super. Pressing it twice sends
 	 * the literal on to the window, so the key it occupies is not lost.
 	 */
-	CON_ACT_LEADER
+	CON_ACT_LEADER,
+
+	/*
+	 * A SCRIPT IS KEYS, NOT A COMMAND. `learn` records what reaches the
+	 * focused window until it is pressed again and binds the lot to a
+	 * letter; `play` types one back into whatever has the focus now. That
+	 * is the whole of what a script can be here — a file that named a
+	 * program would be a file that runs one, and it is written by
+	 * something a person typed into.
+	 */
+	CON_ACT_LEARN,
+	CON_ACT_PLAY
 };
 
 /*
@@ -136,7 +147,7 @@ enum { CON_CMD_MENU = 0, CON_CMD_LAUNCHER, CON_CMD_LOCK, CON_CMD_SAVER,
         * leaving it untouched, which is what Sidekick sold a million copies
         * of and what the overlay role already gives this desktop for free. */
        CON_CMD_CALC, CON_CMD_NOTE, CON_CMD_CLIP, CON_CMD_CHARS,
-       CON_CMD_FIND, CON_CMD_CAPTURE,
+       CON_CMD_FIND, CON_CMD_CAPTURE, CON_CMD_THEME, CON_CMD_BACKGROUND,
        /*
         * THE MEDIA KEYS, and they run a program rather than doing anything
         * themselves: what "louder" means is the mixer's and what "next" means
@@ -305,6 +316,9 @@ KwmRect win_workarea(void);
 Win *win_at(int x, int y);
 void win_snap(Win *w, unsigned edge, int combine);
 void win_resized(Win *w);
+/* A window exactly where it was, clamped to the screen it comes back on. What
+ * a restored session uses; `win_place` is for a window that has no place yet. */
+void win_place_at(Win *w, int x, int y, int cw, int ch);
 void win_maximise(Win *w);
 void win_fullscreen(Win *w);
 void win_minimise(Win *w);
@@ -390,6 +404,34 @@ void vt_close_all(void);
 
 /* term.c */
 Win *term_open(const char *const argv[]);
+
+/* ── state.c ───────────────────────────────────────────────────────────── */
+
+/* How many windows one saved session may carry. A list longer than this is a
+ * session nobody arranged, and the file is a person's state directory rather
+ * than an archive. */
+#define CON_STATE_MAX 64
+
+/* `$XDG_STATE_HOME/kdos/con/<name>.session`. 0 when there is nowhere to put
+ * it, or the name could not be a file name. */
+int con_state_path(const char *name, char *out, size_t n);
+/* What is open, as text. Returns the row count, or -1. */
+int con_state_save(const char *name);
+/*
+ * Open what was. Terminals come back through `con.conf`'s own `terminal` key
+ * and applications through their desktop entry by `app_id` — NEVER a command
+ * line replayed from the file, which is written by a program and read by a
+ * program. Returns how many rows it acted on.
+ */
+int con_state_restore(const char *name);
+/*
+ * The saved rectangle for an app_id, taken once. A restored application's
+ * window does not exist until it attaches, so this is what carries the place
+ * across that gap; a second window of the same application is placed the
+ * ordinary way.
+ */
+int con_state_take(const char *app_id, int *ws, int *x, int *y, int *w,
+		   int *h);
 void term_mouse(Win *w, const KtuiEvent *ev);
 void term_paste(Win *w, int primary);
 void term_pump_all(void);
@@ -466,6 +508,33 @@ int panel_hit(int x, int y, int *arg);
 
 /* sessions.c */
 int con_rundir(char *out, size_t cap);
+/* The reader's socket, from the view's. See sessions.c. */
+int con_a11y_path(const char *view, char *out, size_t n);
+/* ── scripts.c ─────────────────────────────────────────────────────────── */
+
+/* True while keys are being recorded, and while the letter prompt is up. */
+int scr_learning(void);
+int scr_prompt_active(void);
+/* Start, or stop and ask for a letter. Refused, with the reason said, while
+ * the screen is locked. */
+void scr_learn_toggle(void);
+/* One key the session is about to route to a window. */
+void scr_note(const KtuiEvent *ev);
+/* The letter, or Escape. 1 when the prompt consumed the key. */
+int scr_prompt_key(const KtuiEvent *ev);
+/* What the taskbar draws while a recording or a prompt is up, or NULL. */
+const char *scr_status(void);
+/* Arm `play`: the next key is the letter. */
+void scr_play_arm(void);
+int scr_play_armed(void);
+/* Queue a script to be typed into the focused window. 0 when there is no such
+ * script. The keys leave on the session's tick, not in this call. */
+int scr_play(int letter);
+int scr_playing(void);
+void scr_stop(void);
+/* Every turn of the session loop: whatever of a replay is due. */
+void scr_pump(void);
+
 int con_session_paths(const char *name, char *sock, size_t scap,
 		      char *view, size_t vcap);
 int con_sessions_list(void);
@@ -477,8 +546,14 @@ int con_login(const char *tty);
 /* keys.c */
 int keys_action(int key, int mods, int *arg);
 void keys_print(void);
+/* "Super+Shift+Tab" for a key and its modifiers. The table that binds the
+ * chords is the one that prints them: a second table goes stale. */
+void keys_chord_name(int key, int mods, char *out, size_t n);
 
 /* main.c */
 void con_quit(void);
+/* One key into whatever holds the focus, past the chord table. A replay uses
+ * it so a recorded chord cannot fire the session's own actions. */
+void con_key_to_window(const KtuiEvent *ev);
 
 #endif /* CON_H */
