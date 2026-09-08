@@ -13,6 +13,8 @@
  *   ║   /dev/video2  USB Camera          uvcvideo    IN USE by firefox║
  *   ║ MICROPHONES                                              muted  ║
  *   ║   hw:1,0 ALC623 Analog            capture 62%                   ║
+ *   ║ SCANNERS                                                        ║
+ *   ║   Canon TR8500 series           airscan:e0:Canon TR8500         ║
  *   ║ INPUT                                                           ║
  *   ║   AT Translated Set 2 keyboard                                  ║
  *   ╟─────────────────────────────────────────────────────────────────╢
@@ -36,6 +38,13 @@
  * the camera as characters on a phosphor desktop is the most in-character
  * thing in this program and it costs about forty lines, because the renderer
  * was already here.
+ *
+ * THE SCANNERS COME FROM `scanimage -L`, NOT FROM libsane. Linking the library
+ * would put every backend's shared object and its configuration into this
+ * process to ask a question `scanimage` already answers — and the scanning
+ * itself is `scanimage` too, so there is nothing left for the link to buy. The
+ * probe walks a USB bus and the network and takes seconds, so it runs once per
+ * refresh and never on a keystroke.
  *
  * OPENING A CAMERA TO PREVIEW IT *IS* USING IT. The privacy lamp lights for
  * this program exactly as it would for anything else, the fd is closed the
@@ -71,6 +80,7 @@
 #define DV_MAX_CAM 8
 #define DV_MAX_MIC 8
 #define DV_MAX_INPUT 16
+#define DV_MAX_SCAN 8
 #define DV_MAX_MEDIA 16
 #define DV_NAME 64
 /*
@@ -102,12 +112,46 @@ struct dv_input {
 	char kind[16];
 };
 
+/*
+ * A scanner, as SANE names one. `dev` is the backend device string —
+ * `airscan:e0:Canon TR8500`, `genesys:libusb:001:004` — which is what every
+ * scanimage invocation takes and is not a path; `name` is the vendor and model
+ * SANE reports beside it.
+ */
+struct dv_scan {
+	char dev[128];
+	char name[DV_NAME];
+};
+
+/*
+ * A RECORDED ANSWER INSTEAD OF THE PROGRAM'S, for the one thing on this
+ * surface that comes from another command. Everything else here reads /dev,
+ * /proc and /sys, which the harness already points elsewhere; a scanner list
+ * is whatever is plugged into the machine running the test.
+ */
+static const char *fixture;
+
+static int recorded(const char *name, char *out, size_t n)
+{
+	char path[512];
+
+	if (!fixture)
+		return 0;
+	snprintf(path, sizeof(path), "%s/%s", fixture, name);
+	out[0] = '\0';
+	kb_read_file(path, out, n);
+	return 1;
+}
+
 static struct dv_cam cams[DV_MAX_CAM];
 static int ncam;
 static struct dv_mic mics[DV_MAX_MIC];
 static int nmic;
 static struct dv_input inputs[DV_MAX_INPUT];
 static int ninput;
+static struct dv_scan scans[DV_MAX_SCAN];
+static int nscan;
+static char scan_why[96];
 static ShMountRow media[DV_MAX_MEDIA];
 static int nmedia;
 static char media_why[96];
@@ -542,6 +586,68 @@ static void media_action(int i, const char *verb)
 }
 
 /*
+ * THE SCANNERS, OVER `scanimage -L` AND NOT libsane.
+ *
+ * Linking the library would put every backend's shared object and its
+ * configuration in this process, and the answer to "what scanners are there"
+ * would still be SANE's — `sane_get_devices()` is what `scanimage -L` calls.
+ * The list is what this surface needs; the scanning is `scanimage` too, and a
+ * program that already has to exec it for the work has nothing to gain by
+ * linking it for the enumeration.
+ *
+ * ONE CALL, AND IT IS SLOW. Probing a USB bus and the network for scanners
+ * takes seconds, so it runs once per refresh like the update check and never
+ * on a keystroke.
+ *
+ * `-f` RATHER THAN THE DEFAULT LISTING, because the default is prose — "device
+ * `x' is a Y Z flatbed scanner" — with the device string in backquotes that a
+ * parser has to find. The format string asks for exactly two fields and a
+ * separator no SANE name contains.
+ */
+static void scan_scanners(void)
+{
+	char buf[4096];
+	KbArgv a = { 0 };
+
+	nscan = 0;
+	scan_why[0] = '\0';
+	if (!recorded("scanimage-L", buf, sizeof(buf))) {
+		kb_argv_add(&a, "scanimage");
+		kb_argv_add(&a, "-f");
+		kb_argv_add(&a, "%d\t%v %m\n");
+		kb_argv_end(&a);
+		if (kb_run_capture(&a, buf, sizeof(buf)) < 0) {
+			snprintf(scan_why, sizeof(scan_why),
+				 "scanimage is not installed");
+			return;
+		}
+	}
+	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp);
+	     ln && nscan < DV_MAX_SCAN; ln = strtok_r(NULL, "\n", &sp)) {
+		char *tab = strchr(ln, '\t');
+
+		if (!tab)
+			continue;
+		*tab = '\0';
+		if (!ln[0])
+			continue;
+		snprintf(scans[nscan].dev, sizeof(scans[nscan].dev), "%s", ln);
+		snprintf(scans[nscan].name, sizeof(scans[nscan].name), "%s",
+			 tab + 1);
+		nscan++;
+	}
+	/*
+	 * A SCANNER THE USER CANNOT OPEN LOOKS EXACTLY LIKE NO SCANNER, and
+	 * that is the failure worth naming: 70-kdos-scanner.rules grants the
+	 * device to `dialout`, and without that membership SANE enumerates
+	 * nothing and reports no error at all.
+	 */
+	if (!nscan && !scan_why[0])
+		snprintf(scan_why, sizeof(scan_why),
+			 "none found — `id` should list dialout");
+}
+
+/*
  * A STICK THAT IS NEWER THAN THE DISK. `kdos app update --check` answers in
  * one line and an exit status; it reads the medium's own index and costs one
  * daemon round trip, which is fine for a program that is already waiting for a
@@ -570,7 +676,7 @@ static void scan_updates(void)
 
 /* ── the row list ──────────────────────────────────────────────────────── */
 
-enum { R_HEAD = 0, R_CAM, R_MIC, R_INPUT, R_MEDIA, R_UPDATE };
+enum { R_HEAD = 0, R_CAM, R_MIC, R_INPUT, R_MEDIA, R_UPDATE, R_SCAN };
 
 struct drow {
 	int kind;
@@ -579,7 +685,7 @@ struct drow {
 };
 
 static struct drow rows[2 + DV_MAX_CAM + DV_MAX_MIC + DV_MAX_INPUT +
-			DV_MAX_MEDIA + 6];
+			DV_MAX_MEDIA + DV_MAX_SCAN + 8];
 static int nrows;
 
 static void build_rows(void)
@@ -608,6 +714,12 @@ static void build_rows(void)
 	if (updates_n > 0) {
 		rows[nrows].kind = R_UPDATE;
 		rows[nrows++].idx = 0;
+	}
+	rows[nrows].kind = R_HEAD;
+	rows[nrows++].head = "SCANNERS";
+	for (int i = 0; i < nscan; i++) {
+		rows[nrows].kind = R_SCAN;
+		rows[nrows++].idx = i;
 	}
 	rows[nrows].kind = R_HEAD;
 	rows[nrows++].head = "INPUT";
@@ -665,6 +777,8 @@ static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 			empty = media_why[0] ? media_why : "nothing plugged in";
 		else if (!strcmp(r->head, "UPDATES ON THE MEDIUM") && !updates_n)
 			empty = "up to date";
+		else if (!strcmp(r->head, "SCANNERS") && !nscan)
+			empty = scan_why;
 		else if (!strcmp(r->head, "INPUT") && !ninput)
 			empty = "none";
 		if (empty)
@@ -723,6 +837,15 @@ static void dv_cell(int idx, int col, int x, int y, int w, int fg, int bg,
 	} else if (r->kind == R_UPDATE) {
 		ktui_draw_text(3, y, list_w - 5, updates_line,
 			       on ? KT_SURFACE : KT_ACCENT, bg, KT_A_NONE);
+	} else if (r->kind == R_SCAN) {
+		const struct dv_scan *sc = &scans[r->idx];
+
+		/* The MODEL first and the backend string after it: the model
+		 * is what a person recognises, and the device string is what
+		 * they would have to type at scanimage. */
+		ktui_draw_text(3, y, 30, sc->name, fg, bg, KT_A_NONE);
+		ktui_draw_text(34, y, list_w - 36, sc->dev,
+			       on ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
 	} else {
 		const struct dv_input *d = &inputs[r->idx];
 
@@ -817,6 +940,7 @@ static void rescan(void)
 	scan_inputs();
 	scan_media();
 	scan_updates();
+	scan_scanners();
 	build_rows();
 }
 
@@ -839,9 +963,14 @@ int devices_main(int argc, char **argv)
 			dump = 1;
 		else if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* Recorded `scanimage -L` output, so a golden does not depend
+		 * on what is plugged into the machine running it. */
+		else if (!strcmp(argv[i], "--fixture") && i + 1 < argc)
+			fixture = argv[++i];
 		else {
 			fprintf(stderr,
-				"usage: kdos-devices [--font NAME] [--dump]\n");
+				"usage: kdos-devices [--font NAME] "
+				"[--fixture DIR] [--dump]\n");
 			return 2;
 		}
 	}

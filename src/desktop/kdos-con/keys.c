@@ -123,6 +123,19 @@ static Bind binds[] = {
 	{ "capture",	CON_ACT_CAPTURE, 0, 'p', KT_MOD_SUPER | KT_MOD_SHIFT },
 
 	/*
+	 * THE SCREEN'S FONT. Equals and not plus: `+` is the character a chord
+	 * is split on, so plus cannot be written in `keys.conf` at all — and
+	 * it is a shifted equals on every layout this desktop ships, which
+	 * would make a two-key chord a three-key one. Reset carries Ctrl
+	 * because it is the one of the three that throws away where the
+	 * person had got to.
+	 */
+	{ "font-up",	CON_ACT_FONT_UP,    0, '=', KT_MOD_SUPER },
+	{ "font-down",	CON_ACT_FONT_DOWN,  0, '-', KT_MOD_SUPER },
+	{ "font-reset",	CON_ACT_FONT_RESET, 0, '0',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+
+	/*
 	 * THE SURFACES, ON THE CHORDS `rc.xml` ALREADY BINDS THEM TO.
 	 *
 	 * Every one of these programs runs on this desktop today and none of

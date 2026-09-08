@@ -48,6 +48,25 @@ format — with no extended attribute anywhere in the chain.
 `kdos doctor` checks all four of the critical ones, because losing a setuid bit is the worst
 *silent* failure in the system. An archive copy without the right flag is all it takes.
 
+### And no setgid ones, which is why `plocate`'s index is per user
+
+`plocate` upstream ships **setgid** to a `plocate` group with a shared `/var/lib` database at mode
+0640: the index names every path on the machine, an ordinary user cannot read it, and the binary
+reads it on their behalf. What stops that being a full disclosure is a visibility check — for every
+candidate path `plocate` walks the parent directories and calls `access(dir, R_OK|X_OK)` **as the
+calling user's real uid**, and drops what they could not have reached. `--ignore-visibility`,
+`--debug` and `--flush-cache` all `setresgid` away the group first, because upstream's own comment
+says keeping it "would subvert the entire security model".
+
+**KDOS ships it with none of that**: no setgid bit, no `plocate` group, no shared database. The
+index is built **per user**, into that user's own cache, by that user's own timer — so it can only
+ever contain paths that user could already list, and the visibility check has nothing left to
+guard. `updatedb -o` and `$LOCATE_PATH` are upstream's own flags for it; nothing is patched.
+
+That is the same reasoning the rest of this page uses: a mechanism is not made safe here, it is
+made unnecessary. The alternative would have been a third privileged binary and a group to keep in
+`fs/etc/group`, bought to share one index between users this machine does not have.
+
 ## kdos-checkpass
 
 The program that locks you out if it is wrong, so it is worth stating in full what it does not

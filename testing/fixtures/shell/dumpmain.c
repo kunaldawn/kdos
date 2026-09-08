@@ -357,6 +357,7 @@ FRONT_END(timezone_main);
 FRONT_END(users_main);
 FRONT_END(update_main);
 FRONT_END(firewall_main);
+FRONT_END(backup_main);
 
 static const struct {
 	const char *name;
@@ -393,6 +394,7 @@ static const struct {
 	{ "users",	users_main },
 	{ "update",	update_main },
 	{ "firewall",	firewall_main },
+	{ "backup",	backup_main },
 	{ "shell",	panel_main },
 };
 

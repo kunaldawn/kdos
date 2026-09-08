@@ -32,7 +32,9 @@ that scale, so a high-density display gets a sharp grid rather than a stretched 
 scale is not negotiated.
 
 **One font size for every output.** The font every KDOS surface draws with is a single setting, so
-it is right on a machine with one screen and wrong on two of different densities.
+it is right on a machine with one screen and wrong on two of different densities. The console's
+font chords step every view that has a screen of its own, which keeps the two screens agreeing
+rather than letting each be right: a per-output size is a different design, not a missing call.
 
 **A per-output panel shows every window, not that output's.** The window-management protocol
 reports which output a window is on and the panel ignores it, so on two screens both taskbars list

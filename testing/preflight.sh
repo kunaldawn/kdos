@@ -248,7 +248,15 @@ for d in ports/core/*/ src/packages/*/ src/desktop/*/; do
     defined=""
     deftypes=""
     for t in "$@"; do
-        flat=$(tar -xOf "$t" --wildcards '*/meson_options.txt' '*/meson.options' \
+        # BOTH LAYOUTS, because a first source is not always wrapped in a
+        # directory. `*/meson_options.txt` alone misses a FLAT tarball's
+        # top-level copy — plocate's is one — and the check then reads no
+        # options at all and reports every -D the recipe passes as undefined.
+        # A check that fails loudest on the ports it understands least is
+        # worse than no check.
+        flat=$(tar -xOf "$t" --wildcards \
+                   '*/meson_options.txt' '*/meson.options' \
+                   'meson_options.txt' 'meson.options' \
                2>/dev/null | tr '\n' ' ' || true)
         defined="$defined
 $(printf '%s' "$flat" | grep -oE "option\([[:space:]]*'[a-zA-Z0-9_-]+" \
@@ -306,6 +314,30 @@ $(printf '%s' "$flat" \
     meson_checked=$((meson_checked + 1))
 done
 note "meson options" "$meson_checked meson ports checked against their own option files"
+
+#
+# WHAT AN ARCHIVE IS, READ OUT OF THE FILE RATHER THAN ASKED OF `file`.
+#
+# file(1)'s answer depends on which magic database the machine has, and the
+# suite is meant to pass inside kdos-devdeps: the SAME file-5.46 calls the
+# 95 MB Noto CJK zip "Zip archive data" on a development host and "data" in
+# that container, so the check below reported a good archive as broken in the
+# one place it has to be right. A signature is six bytes and no database.
+#
+# Every suffix the caller matches is covered. A plain uncompressed tar carries
+# no leading signature at all — `ustar` sits at offset 257 of the first header
+# block — which is why that arm is a seek rather than a prefix.
+archive_magic() {
+    case "$(od -An -N6 -tx1 "$1" 2>/dev/null | tr -d ' \n')" in
+    1f8b*)                          return 0 ;;   # gzip, and .tgz
+    425a68*)                        return 0 ;;   # bzip2
+    fd377a585a00*)                  return 0 ;;   # xz
+    28b52ffd*)                      return 0 ;;   # zstd
+    4c5a4950*)                      return 0 ;;   # lzip
+    504b0304*|504b0506*|504b0708*)  return 0 ;;   # zip: normal, empty, spanned
+    esac
+    [ "$(dd if="$1" bs=1 skip=257 count=5 2>/dev/null)" = "ustar" ]
+}
 
 echo
 echo "==> every source a port ships is named by a sha256 in its recipe"
@@ -374,8 +406,8 @@ for d in ports/core/* src/packages/* src/desktop/*; do
             # reported as broken ones.
             case "$base" in
             *.tar.*|*.tgz|*.tbz2|*.txz|*.zip)
-                if ! file -b "$d/$base" | grep -qiE 'compress|archive|Zip'; then
-                    bad "$p" "ships $base, which is $(file -b "$d/$base" | cut -c1-40), not an archive"
+                if ! archive_magic "$d/$base"; then
+                    bad "$p" "ships $base, whose first bytes are none of gzip, bzip2, xz, zstd, lzip, zip or tar"
                     unhashed=$((unhashed + 1))
                 fi
                 ;;
@@ -653,8 +685,18 @@ for gone in fs/usr/local/bin/kdos fs/usr/local/bin/kdos-banner \
 done
 # Only things that would INVOKE the removed tools count. A C file naming one in
 # a comment is documenting what it replaced, which is the point.
-hits=$(grep -rln 'python3 .*genlaunchers\|python3 .*pack \|python3 .*assemble\|python3 .*gengtk\|python3 .*genicons\|python3 .*gencursors' \
-        script ports fs Makefile 2>/dev/null || true)
+# THE ARCHIVES ARE EXCLUDED BY NAME, NOT BY A grep FLAG. `ports` holds the
+# fetched tarballs beside the recipes and the baked packs beside their build
+# scripts — 31 GB of them — and grep reads a compressed file whole before it
+# can decide the file is binary. The suite's own container has BusyBox grep,
+# which has no --include, no --exclude and no -I, so the list is built with
+# find instead: a recipe or a script is what can INVOKE a removed tool, and a
+# tarball never can.
+hits=$(find script ports fs Makefile -type f \
+        ! -name '*.kpack' ! -name '*.tar.*' ! -name '*.tgz' ! -name '*.tbz2' \
+        ! -name '*.txz' ! -name '*.zip' ! -name '*.lz' 2>/dev/null |
+       xargs grep -l 'python3 .*genlaunchers\|python3 .*pack \|python3 .*assemble\|python3 .*gengtk\|python3 .*genicons\|python3 .*gencursors' \
+        2>/dev/null || true)
 [ -z "$hits" ] && note "no stale invocations" "ok" || bad "stale invocations" "$hits"
 
 echo
@@ -755,6 +797,88 @@ if [ -f build/fs/etc/polkit-1/rules.d/50-kdos.rules ]; then
         note "polkit rules" "the rules and their directory are root's"
     else
         bad "polkit rules" "rules.d is uid $_ro and the file uid $_fo — the granted user can rewrite the grant"
+    fi
+fi
+
+# udevd runs every RUN+= as root and reads every file it finds in rules.d with
+# no ownership check, so a rules directory the desktop user can write is that
+# user running arbitrary code as root on the next uevent — strictly worse than
+# the polkit hole above, because it needs no service to be up.
+if [ -d build/fs/etc/udev/rules.d ]; then
+    _uo=$(stat -c %u build/fs/etc/udev/rules.d)
+    _ubad=""
+    for _f in build/fs/etc/udev/rules.d/*.rules; do
+        [ -f "$_f" ] || continue
+        [ "$(stat -c %u "$_f")" = 0 ] || _ubad="$_ubad $(basename "$_f")"
+    done
+    if [ "$_uo" = 0 ] && [ -z "$_ubad" ]; then
+        note "udev rules" "the rules and their directory are root's"
+    else
+        bad "udev rules" "rules.d is uid $_uo and these are not root's:$_ubad — RUN+= is root code"
+    fi
+fi
+
+# ── what a udev rule can and cannot grant ─────────────────────────────────
+#
+# TWO TRAPS, BOTH SILENT, BOTH ALREADY PAID FOR ONCE.
+#
+# GROUP=/MODE= APPLY TO A DEVICE NODE. A class device with no node in /dev —
+# backlight, leds, thermal, power_supply, hwmon — gets neither, and eudev goes
+# further: GROUP= sets the rule's `can_set_name`, and a rule with that set is
+# SKIPPED ENTIRELY for a nodeless device. So a GROUP= on such a line silently
+# kills every other key on it, RUN+= included.
+#
+# AND A GROUP THE RULE NAMES HAS TO EXIST AND HAVE kdos IN IT. eudev logs
+# "specified group '<x>' unknown" and carries on with gid 0, so the rule loads,
+# matches, applies a mode, and grants nothing.
+if [ -d fs/etc/udev/rules.d ]; then
+    _rbad=""
+    _gbad=""
+    for _f in fs/etc/udev/rules.d/*.rules; do
+        [ -f "$_f" ] || continue
+        while IFS= read -r _line; do
+            case "$_line" in \#*|"") continue ;; esac
+            case "$_line" in
+            *SUBSYSTEM==\"backlight\"*|*SUBSYSTEM==\"leds\"*|\
+            *SUBSYSTEM==\"thermal\"*|*SUBSYSTEM==\"power_supply\"*|\
+            *SUBSYSTEM==\"hwmon\"*)
+                case "$_line" in
+                *GROUP=*|*MODE=*|*OWNER=*)
+                    _rbad="$_rbad $(basename "$_f")" ;;
+                esac ;;
+            esac
+            _g=$(printf '%s' "$_line" | sed -n 's/.*GROUP="\([^"]*\)".*/\1/p')
+            [ -n "$_g" ] || continue
+            grep -qE "^$_g:[^:]*:[^:]*:.*\bkdos\b" fs/etc/group ||
+                _gbad="$_gbad $(basename "$_f"):$_g"
+        done < "$_f"
+    done
+    [ -n "$_rbad" ] && bad "udev rules" \
+        "GROUP=/MODE=/OWNER= on a nodeless class device, which skips the whole line:$_rbad"
+    [ -n "$_gbad" ] && bad "udev rules" \
+        "grants to a group kdos is not in:$_gbad"
+    [ -z "$_rbad$_gbad" ] &&
+        note "udev grants" "every GROUP= names a group kdos is in, and none is on a nodeless class"
+fi
+
+# ── an account a shipped daemon drops to has to exist ─────────────────────
+#
+# A daemon that setuids to an account the image does not carry does not warn
+# and does not degrade: it exits at once, and a supervisor respawns it for
+# ever. dnsmasq is the measured case — its compiled-in default is `nobody`
+# (CHUSER in src/config.h), NetworkManager passes no --user when it starts one
+# for a shared connection, and dnsmasq dies "unknown user or group: nobody".
+# The `nobody` GROUP is in fs/etc/group, which is what made the absence of the
+# USER look fine.
+if [ -f fs/etc/passwd ]; then
+    _amiss=""
+    for _a in nobody; do
+        grep -q "^$_a:" fs/etc/passwd || _amiss="$_amiss $_a"
+    done
+    if [ -n "$_amiss" ]; then
+        bad "daemon accounts" "no account for:$_amiss — the daemon that drops to it exits at once"
+    else
+        note "daemon accounts" "every account a shipped daemon drops to is in fs/etc/passwd"
     fi
 fi
 
@@ -916,7 +1040,8 @@ fi
 # some build.sh installs or links it into a bin directory, or when fs/ ships
 # it. That is the same question the ISO asks, minus the two hours.
 echo
-echo "==> every command in the shipped rc.xml and menu.xml exists"
+echo "==> every command in the shipped rc.xml, menu.xml and menu.conf exists"
+{
 for f in fs/etc/skel/.config/kdos-comp/rc.xml \
          fs/etc/skel/.config/kdos-comp/menu.xml; do
     [ -f "$f" ] || continue
@@ -930,7 +1055,17 @@ for f in fs/etc/skel/.config/kdos-comp/rc.xml \
         echo "$1"
         [ "$1" = foot ] && [ "$2" = "-e" ] && echo "$3"
     done
-done | sort -u | while read -r cmd; do
+done
+# AND THE ROUTES. `menu.conf` is `route = argv`, so the first word of the
+# value is the program — a route naming a command the image does not carry is
+# a name a script can hold and nothing can open, which is the one failure a
+# route exists to prevent.
+sed -e 's/#.*//' -e 's/^[^=]*=//' fs/etc/kdos/menu.conf 2>/dev/null |
+    while read -r line; do
+        set -- $line
+        [ -n "$1" ] && echo "$1"
+    done
+} | sort -u | while read -r cmd; do
     [ -n "$cmd" ] || continue
     if [ -d "ports/core/$cmd" ] || [ -d "src/packages/$cmd" ] ||
        [ -d "src/desktop/$cmd" ] ||
@@ -1314,6 +1449,35 @@ for _d in $(grep -rho 'keys\.doc = "[a-z0-9_-]*"' src/desktop src/packages 2>/de
         bad "help page $_d" "no fs/usr/share/kdos/doc/$_d.txt"
 done
 note "help pages" "$_doc claimed, each in fs/usr/share/kdos/doc"
+
+echo
+echo "==> a desktop toggle has exactly one flag, and libkbase spells the path"
+# TWO PLACES ONLY. `kb_toggle_on()` reads and `kb_toggle_set()` writes, and a
+# program that builds `kdos/toggles/...` itself is a program looking where
+# nothing wrote — the failure is silent in both directions and reads as a
+# switch that does nothing.
+#
+# The daemon keeping a SECOND flag is the same fault a level up: a private
+# `dnd` OR'd with the toggle is a state the notification centre's own button
+# cannot clear, so Allow Toasts left the toasts silenced and said it had not.
+#
+# A FORMAT STRING, not the words: every page and header names the directory in
+# prose, and only a `%s` beside it is a path being BUILT. libkbase is the two
+# places that may, and the library self-test is the third — it spells the
+# documented path by hand precisely to prove the library uses it.
+_tog=0
+for _f in $(grep -rlE 'kdos/toggles.*%s|%s.*kdos/toggles' src/ 2>/dev/null); do
+    case "$_f" in
+    src/libs/libkbase/*|src/libs/selftest.c) continue ;;
+    esac
+    bad "$_f" "builds the toggle path itself — use kb_toggle_on/kb_toggle_set"
+    _tog=$((_tog + 1))
+done
+if grep -qE '^static int dnd;' src/desktop/kdos-shell/notifyd.c 2>/dev/null; then
+    bad "kdos-notifyd" "keeps a second Do Not Disturb flag beside the toggle"
+    _tog=$((_tog + 1))
+fi
+[ "$_tog" = 0 ] && note "toggles" "one reader, one writer, and no second flag"
 
 echo
 if [ "$fail" = 0 ]; then

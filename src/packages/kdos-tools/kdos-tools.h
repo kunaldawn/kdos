@@ -73,7 +73,13 @@ int cmd_toggle(int argc, char **argv);
 /* A toast is `kb_notify()` in libkbase — one sender for the whole tree, so a
  * terminal's OSC 9 and `kdos notify` cannot drift apart. `kdos-notify` is the
  * notification CENTRE, a viewer, and is not the sender. */
-int kdt_toggle_on(const char *name);
+/*
+ * SIGHUP to every long-lived surface: the live retint. `kdos theme` sends it
+ * after writing the accent, and a toggle whose consumer reads it on that
+ * signal rather than on a tick has to send it too — otherwise the flag file is
+ * written and nothing on screen changes until the next one.
+ */
+void kdt_reload_session(void);
 
 int why_main(int argc, char **argv);		/* kdos why                 */
 int explain_main(int argc, char **argv);		/* kdos explain             */

@@ -1,0 +1,47 @@
+ddcutil 2.2.7 does not compile anywhere: four assignments to a flag its own
+header says was removed survived the removal.
+
+src/base/displays.h:182 reads "elminated DREF_SLEEP_SUSPEND_STANDBY_OFF, never
+set", and every reader of DREF_DPMS_SUSPEND_STANDBY_OFF in the tree is already
+commented out. Only these four writes were missed, and no header declares the
+name, so the build stops at ddc_displays.c. The flag has no definition and no
+reader; the writes are commented out the same way the reads were.
+
+--- a/src/ddc/ddc_displays.c
++++ b/src/ddc/ddc_displays.c
+@@ -358,7 +358,7 @@
+ 
+       bool asleep = dpms_check_drm_asleep(businfo);
+       if (asleep) {
+-         dref->flags |= DREF_DPMS_SUSPEND_STANDBY_OFF;
++         // DREF_DPMS_SUSPEND_STANDBY_OFF was eliminated; nothing reads it.
+       }
+       else {
+          all_displays_asleep = false;
+@@ -437,7 +437,7 @@
+ #else
+          if (dpms_check_drm_asleep_by_dref(dref)) {
+             dpms_state |= DPMS_SOME_DRM_ASLEEP;
+-            dref->flags |= DREF_DPMS_SUSPEND_STANDBY_OFF;
++            // DREF_DPMS_SUSPEND_STANDBY_OFF was eliminated; nothing reads it.
+           }
+           else {
+              all_displays_asleep = false;
+@@ -495,7 +495,7 @@
+              }
+          }
+          if (asleep) {
+-            dref->flags |= DREF_DPMS_SUSPEND_STANDBY_OFF;
++            // DREF_DPMS_SUSPEND_STANDBY_OFF was eliminated; nothing reads it.
+          }
+ #endif
+ #ifdef USE_X11
+@@ -511,7 +511,7 @@
+ #else
+          if (dpms_check_drm_asleep_by_dref(dref)) {
+             dpms_state |= DPMS_SOME_DRM_ASLEEP;
+-            dref->flags |= DREF_DPMS_SUSPEND_STANDBY_OFF;
++            // DREF_DPMS_SUSPEND_STANDBY_OFF was eliminated; nothing reads it.
+           }
+           else {
+              all_displays_asleep = false;

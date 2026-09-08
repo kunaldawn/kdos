@@ -33,6 +33,7 @@
 
 #include <signal.h>
 
+#include "kbase.h"
 #include "kcolor.h"
 #include "kcon.h"
 #include "ktui.h"
@@ -149,6 +150,14 @@ static void usage(FILE *f)
 static int cap_cell_w, cap_cell_h;
 static unsigned cap_flags;
 
+#ifdef KDOS_VIEW_KMS
+/* The font this view was STARTED with — its flag, its environment, or the
+ * built-in default as an empty string. A reset goes back to this rather than
+ * to a size this file believes in, so `con.conf` stays the answer to what the
+ * console's font is. */
+static char font_base[192];
+#endif
+
 static int attach(const char *path, int cols, int rows)
 {
 	struct sockaddr_un sa;
@@ -188,6 +197,8 @@ static int attach(const char *path, int cols, int rows)
 	kcon_buf_reset(&b);
 	kcon_put_u16(&b, (uint16_t)cols);
 	kcon_put_u16(&b, (uint16_t)rows);
+	kcon_put_u16(&b, (uint16_t)cap_cell_w);
+	kcon_put_u16(&b, (uint16_t)cap_cell_h);
 	kcon_send(conn, KCON_OP_VIEW_SIZE, &b);
 	kcon_flush(conn);
 	kcon_buf_free(&b);
@@ -827,6 +838,84 @@ static int take_frame(int timeout_ms)
 			continue;
 		}
 
+		/*
+		 * A FONT STEP, and only a view with a screen of its own is
+		 * sent one — the session checks KCON_VIEW_FONT before it
+		 * asks, so there is nothing to refuse here.
+		 *
+		 * The grid goes back as an ordinary KCON_OP_VIEW_SIZE: a cell
+		 * of a different size is a different number of columns, which
+		 * is the same event as a screen being resized and is already
+		 * the one the session knows how to handle.
+		 */
+		if (m.op == KCON_OP_VIEW_FONT) {
+#ifdef KDOS_VIEW_KMS
+			KconRd b;
+
+			kcon_rd_init(&b, m.payload, m.len);
+
+			int step = (int)(int16_t)kcon_get_u16(&b);
+			char want[192], path[512];
+
+			if (b.err || !own_screen)
+				continue;
+			if (step == 0)
+				snprintf(want, sizeof(want), "%s", font_base);
+			else if (!view_font_stepped(kkms_font(), step, want,
+						    sizeof(want)))
+				continue;
+			if (kkms_set_font(want[0] ? want : NULL) != 0)
+				continue;
+
+			ktui_draw_resize();
+			/* Every picture in the table was cut for the old
+			 * cell. They are dropped rather than scaled, and the
+			 * session sends them again when it sees the grid
+			 * move — a view that stretched what it had would show
+			 * one sharp desktop and one blurred one on a machine
+			 * with two screens. */
+			ktui_sprite_clear();
+			ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+			ktui_draw_invalidate();
+
+			cap_cell_w = kcell_w();
+			cap_cell_h = kcell_h();
+
+			KconBuf sz = { 0 };
+
+			kcon_put_u16(&sz, (uint16_t)ktui_w);
+			kcon_put_u16(&sz, (uint16_t)ktui_h);
+			kcon_put_u16(&sz, (uint16_t)cap_cell_w);
+			kcon_put_u16(&sz, (uint16_t)cap_cell_h);
+			kcon_send(conn, KCON_OP_VIEW_SIZE, &sz);
+			kcon_flush(conn);
+			kcon_buf_free(&sz);
+
+			/* WRITTEN AFTER THE FONT LOADED, never before: a name
+			 * that fcft refuses would otherwise be the name the
+			 * next login starts with, and the session would come
+			 * up on a screen nobody can read. */
+			if (view_font_state_path(path, sizeof(path))) {
+				if (step == 0) {
+					unlink(path);
+				} else {
+					char line[200], *slash;
+
+					slash = strrchr(path, '/');
+					if (slash) {
+						*slash = '\0';
+						kb_mkdir_p(path);
+						*slash = '/';
+					}
+					snprintf(line, sizeof(line), "%s\n",
+						 kkms_font());
+					kb_write_file_atomic(path, line);
+				}
+			}
+#endif
+			continue;
+		}
+
 		if (m.op == KCON_OP_SPRITE) {
 			take_sprite(&m);
 			continue;
@@ -933,8 +1022,13 @@ static void send_ptr(const KtuiEvent *ev)
  * The default disposition for SIGHUP is DEATH: a program on
  * reload_session()'s list that does not handle it is one `kdos theme amber`
  * kills, after which the supervisor restarts it and it looks retinted.
+ *
+ * SET AT STARTUP, so the first turn of whichever loop this view runs applies
+ * the accent and the night-light toggle. There is no second place that reads
+ * them: a view that only ever retinted on the signal painted in the table's
+ * first scheme until somebody ran `kdos theme` again.
  */
-static volatile sig_atomic_t g_retint;
+static volatile sig_atomic_t g_retint = 1;
 
 static void on_hup(int sig)
 {
@@ -948,6 +1042,10 @@ static void retint(void)
 
 	if (kcol_theme_name(name, sizeof(name)) && *name)
 		ktui_theme_set(name);
+	/* AFTER the scheme, because it transforms whatever the scheme just
+	 * became — and unconditionally, because turning the toggle off is a
+	 * retint too. */
+	ktui_theme_night(kb_toggle_on("night-light"));
 	ktui_term_repalette();
 	ktui_draw_invalidate();
 }
@@ -1115,6 +1213,30 @@ int main(int argc, char **argv)
 
 	if (kms) {
 #ifdef KDOS_VIEW_KMS
+		/*
+		 * THE STEPPED FONT IS AN OVERRIDE AND ONLY THAT. It is read
+		 * here, after the flag and the environment have had their
+		 * say, so `kdos-view --font` and `$KDOS_CON_FONT` still name
+		 * the font — a state file that beat them would be a chord
+		 * that quietly disabled the configuration.
+		 *
+		 * `font_base` is what a reset returns to, which is why it is
+		 * taken before the file is read.
+		 */
+		char fs_path[512];
+		char *fs_name = NULL;
+		size_t fs_len = 0;
+
+		snprintf(font_base, sizeof(font_base), "%s", font ? font : "");
+		if (!font && view_font_state_path(fs_path, sizeof(fs_path)) &&
+		    (fs_name = kb_read_whole(fs_path, &fs_len)) != NULL) {
+			/* Held for the life of the process: `font` points into
+			 * it and the screen is opened from it. */
+			fs_name[strcspn(fs_name, "\r\n")] = '\0';
+			if (fs_name[0])
+				font = fs_name;
+		}
+
 		if (kkms_init(NULL, font) == 0) {
 			ktui_draw_init();
 
@@ -1129,7 +1251,9 @@ int main(int argc, char **argv)
 			ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
 			cap_cell_w = kcell_w();
 			cap_cell_h = kcell_h();
-			cap_flags = KCON_VIEW_PIXELS;
+			/* THIS VIEW RASTERISES ITS OWN GLYPHS, so it is the
+			 * one kind that can be asked to change their size. */
+			cap_flags = KCON_VIEW_PIXELS | KCON_VIEW_FONT;
 			cols = ktui_w;
 			rows = ktui_h;
 			own_screen = 1;

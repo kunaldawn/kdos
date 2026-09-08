@@ -183,7 +183,7 @@ void kdt_mkparent(const char *path)
  *
  * Everything under this point exists for software that is NOT ours and cannot
  * be told: GTK and Qt apps in the appbox, foot, btop, starship. */
-static void reload_session(void)
+void kdt_reload_session(void)
 {
 	if (!kb_have_prog("pkill"))
 		return;
@@ -1883,7 +1883,7 @@ static void theme_commit(const KcolScheme *sc)
 	kb_write_file_atomic(state, line);
 	free(state);
 
-	reload_session();
+	kdt_reload_session();
 
 	/* A regenerated file does not repaint a running process. kdos-shell and
 	 * kdos-comp retint on the SIGHUP above; starship on the next prompt;
@@ -2192,6 +2192,7 @@ static void help_body(FILE *o)
 		{ "kdos notify <text>", "raise a toast: `make && kdos notify done`" },
 		{ "kdos con ls", "console sessions: new, attach, detach, kill, forward, run" },
 		{ "kdos settings [page]", "the control centre — appearance, panel, hardware, system…" },
+		{ "kdos menu summon <route>", "open the menu on a named place: `setup.network`" },
 		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
 		{ "kdos-shot [region]", "screenshot to clipboard and ~/Pictures" },
 		{ "kdos-sfx notify", "the machine's four noises: login/notify/error/degauss" },
@@ -3860,6 +3861,140 @@ static int cmd_settings(int argc, char **argv)
 	return 127;
 }
 
+/*
+ * ONE KEY OUT OF con.conf, the user's copy over the system's — the same order
+ * every other configuration here is read in. A twenty-line scan rather than
+ * libkcon: this program is not a session client and linking the whole console
+ * protocol to answer "which program is the menu" would be a dependency for one
+ * string.
+ */
+static const char *con_conf_str(const char *key, const char *def, char *out,
+				size_t n)
+{
+	const char *home = getenv("HOME");
+	char path[512];
+	char conf[8192];
+	const char *files[2];
+	int nf = 0;
+
+	if (home && *home) {
+		snprintf(path, sizeof(path),
+			 "%s/.config/kdos-con/con.conf", home);
+		files[nf++] = path;
+	}
+	files[nf++] = "/etc/kdos/con.conf";
+
+	for (int f = 0; f < nf; f++) {
+		if (kb_read_file(files[f], conf, sizeof(conf)) <= 0)
+			continue;
+
+		char *line, *save;
+
+		for (line = strtok_r(conf, "\n", &save); line;
+		     line = strtok_r(NULL, "\n", &save)) {
+			char *hash = strchr(line, '#'), *eq, *v, *end;
+
+			if (hash)
+				*hash = '\0';
+			eq = strchr(line, '=');
+			if (!eq)
+				continue;
+			*eq = '\0';
+			end = line + strlen(line);
+			while (end > line && (end[-1] == ' ' || end[-1] == '\t'))
+				*--end = '\0';
+			while (*line == ' ' || *line == '\t')
+				line++;
+			if (strcmp(line, key))
+				continue;
+			v = eq + 1;
+			while (*v == ' ' || *v == '\t')
+				v++;
+			end = v + strlen(v);
+			while (end > v && (end[-1] == ' ' || end[-1] == '\t'))
+				*--end = '\0';
+			if (!*v)
+				continue;
+			snprintf(out, n, "%s", v);
+			return out;
+		}
+	}
+	return def;
+}
+
+/*
+ * `kdos menu summon <route>` and `kdos menu toggle [<route>]`.
+ *
+ * A ROUTE IS A NAME FOR A PLACE IN THE SYSTEM, from `/etc/kdos/menu.conf` and
+ * the user's copy of it, and this is what a script holds instead of a chord: a
+ * chord is rebindable and a menu row moves, and neither is a thing another
+ * program can refer to.
+ *
+ * The menu is whatever `con.conf` names, because which key opens a thing is
+ * `keys.conf`'s and which program is the thing is `con.conf`'s — and a command
+ * that hardcoded `kdos-start` would be a third answer to that question.
+ *
+ * TOGGLE CLOSES BY SIGNAL AND OPENS BY SPAWN, in that order: `pkill` reports
+ * whether it signalled anything, so one call answers "was it open" and closes
+ * it, with no pidfile and no round trip. An exact match, because the menu's
+ * name is a prefix of nothing here but the rule is what keeps it that way.
+ */
+static int cmd_menu(int argc, char **argv)
+{
+	const char *verb = argc > 0 ? argv[0] : NULL;
+	const char *route = argc > 1 ? argv[1] : NULL;
+	char prog[128];
+	const char *av[8];
+	int n = 0;
+
+	if (!verb || (strcmp(verb, "summon") && strcmp(verb, "toggle"))) {
+		fprintf(stderr, "usage: kdos menu summon <route>\n"
+				"       kdos menu toggle [<route>]\n");
+		return 2;
+	}
+	con_conf_str("menu", "kdos-start", prog, sizeof(prog));
+
+	/* The key may carry arguments — the session runs it through an argument
+	 * builder too — so it is split here rather than taken as one name. The
+	 * FIRST word is the process to signal: `pkill -x` matches a comm, which
+	 * is a program's name and never its command line. */
+	char *p = prog;
+
+	while (*p && n < (int)(sizeof(av) / sizeof(av[0])) - 3) {
+		while (*p == ' ' || *p == '\t')
+			*p++ = '\0';
+		if (!*p)
+			break;
+		av[n++] = p;
+		while (*p && *p != ' ' && *p != '\t')
+			p++;
+	}
+	if (!n) {
+		fprintf(stderr, "kdos menu: con.conf names no menu\n");
+		return 1;
+	}
+
+	if (!strcmp(verb, "toggle")) {
+		KbArgv a = { 0 };
+
+		kb_argv_add(&a, "pkill");
+		kb_argv_add(&a, "-x");
+		kb_argv_add(&a, av[0]);
+		kb_argv_end(&a);
+		if (kb_run(&a) == 0)
+			return 0;	/* it was open; that closed it */
+	}
+
+	if (route && *route) {
+		av[n++] = "--route";
+		av[n++] = route;
+	}
+	av[n] = NULL;
+	execvp(av[0], (char *const *)av);
+	fprintf(stderr, "kdos menu: %s is not installed\n", prog);
+	return 127;
+}
+
 static int cmd_con(int argc, char **argv)
 {
 	static const struct { const char *verb, *flag; } V[] = {
@@ -3937,9 +4072,17 @@ static int cmd_con(int argc, char **argv)
  * job had no way to say it was done.
  *
  * `kdos-notify` IS NOT THE SENDER — it is the notification centre, a viewer of
- * what has already arrived. A toast comes from the bus, which is what
- * `kb_notify()` speaks, and that is the one sender in the whole tree: the same
- * call a terminal makes for a child's OSC 9, so the two cannot drift apart.
+ * what has already arrived. A toast is a `Notify` on the session bus, and this
+ * makes it through `kb_notify()`, the same call a terminal makes for a child's
+ * OSC 9 so the two cannot drift apart.
+ *
+ * ONE INTERFACE, THREE CALLERS, AND THE DIFFERENCE IS WHAT CONNECTION EACH
+ * ALREADY HAS. `kb_notify()` is for a program with no bus of its own: it
+ * double-forks `gdbus` and is gone. The panel sends on the connection its tray
+ * already holds (`sh_tray_notify`), because opening a second one to say one
+ * sentence is a second thing to keep alive. The compositor spawns `gdbus`
+ * itself, because it links neither libkbase nor sd-bus. A fourth route would
+ * be one too many; these three are the three kinds of caller there are.
  */
 static int cmd_notify(int argc, char **argv)
 {
@@ -4011,6 +4154,8 @@ int kdos_main(int argc, char **argv)
 		return cmd_con(argc - 2, argv + 2);
 	if (!strcmp(cmd, "settings"))
 		return cmd_settings(argc - 2, argv + 2);
+	if (!strcmp(cmd, "menu"))
+		return cmd_menu(argc - 2, argv + 2);
 
 	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
 		C_0, cmd);

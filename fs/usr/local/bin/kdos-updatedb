@@ -1,0 +1,36 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   Rebuild this user's own plocate index.
+#
+# THE TIMER TABLE IS AN ARGUMENT VECTOR, PARSED AND NEVER SOURCED, so a `$HOME`
+# written there is four literal characters. This exists to resolve the two
+# paths — and to be the one place the scoping rule is written down, rather than
+# a line in a table that a person editing their timers would have to
+# understand.
+#
+# -U "$HOME" IS WHAT MAKES THE INDEX SAFE TO KEEP UNGUARDED. Without it
+# updatedb walks from / and builds an index of the whole machine; this user
+# could not read most of it, and plocate would then spend its time filtering
+# out paths that should never have been indexed. Scoped to $HOME the index can
+# only hold what this user could already list, which is why there is no shared
+# database, no `plocate` group and no setgid bit — see
+# docs/kdos/03-architecture/security-model.md.
+#
+# --prune-bind-mounts keeps a bind-mounted tree from being indexed twice under
+# two names; a box's graft into $HOME is exactly that shape.
+set -eu
+
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/kdos"
+mkdir -p "$cache"
+
+exec updatedb \
+	--prune-bind-mounts yes \
+	--database-root "$HOME" \
+	--output "$cache/plocate.db" \
+	"$@"

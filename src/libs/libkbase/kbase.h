@@ -229,6 +229,17 @@ int kb_lock_file(const char *path, int nonblock);
 int kb_toggle_on(const char *name);
 
 /*
+ * SET ONE. Creating or removing the flag file, with the directory made on the
+ * way; 0 on success, -1 if the state directory is not reachable. There is no
+ * temp-and-rename because there is nothing to tear: an empty file either
+ * exists or it does not, and a half-written nothing is still nothing.
+ *
+ * THIS AND kb_toggle_on() ARE THE ONLY TWO PLACES THE PATH IS SPELLED. A
+ * program that builds it itself is a program writing where nothing reads.
+ */
+int kb_toggle_set(const char *name, int on);
+
+/*
  * THE FIRST NAME IN $XDG_CURRENT_DESKTOP, which is the prefix a desktop's own
  * `<desktop>-mimeapps.list` is spelled with — lowercased, because the variable
  * is `KDOS-Console:KDOS` and the file the spec asks for is

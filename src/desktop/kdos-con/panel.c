@@ -239,6 +239,19 @@ void panel_draw(void)
 		return;
 	}
 
+	/*
+	 * AFTER THE MODES AND NOT BEFORE. A mode takes every key and this row
+	 * is the only thing telling the person how to leave it, so a notice
+	 * that covered it would be a message hiding the way out. The chords
+	 * that raise one are unreachable while a mode is on.
+	 */
+	const char *say = con_notice_text();
+
+	if (say) {
+		ktui_draw_text(0, y, S.cols, say, KT_BG, KT_WARN, KT_A_NONE);
+		return;
+	}
+
 	int x = 0;
 	int x0 = x;
 

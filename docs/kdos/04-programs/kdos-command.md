@@ -36,11 +36,12 @@ Regenerates every themed artefact and commits the change in one ordered operatio
 file because a signal arriving first makes the desktop re-read the accent it already had, and the
 wallpaper because the compositor re-decodes on that same signal.
 
-**The signal goes to four names, and an exact match is required.** The panel, the desktop and the
-notification daemon are three names of one binary, so signalling only one retints the panel and
-leaves the desktop icons and any live toast in the old accent. And the match must be exact: one of
-those names is a **substring** of the two shell scripts that own the session, and an unhandled
-signal kills a shell.
+**The signal goes to every long-lived surface by name, and an exact match is required.** The panel,
+the desktop and the notification daemon are three names of one binary, so signalling only one
+retints the panel and leaves the desktop icons and any live toast in the old accent; both halves of
+the console desktop are on the list because `kdos-con` holds the cells and `kdos-view` holds the
+palette they are painted with. And the match must be exact: one of those names is a **substring**
+of the two shell scripts that own the session, and an unhandled signal kills a shell.
 
 **`--audit` is the palette claim, checked.** It does not try to recognise "palette colours" in the
 installed files — that test would have to know which mixes are legal and would drift from the
@@ -51,6 +52,48 @@ from what this machine's palette produces right now.
 It writes nothing outside its scratch directory and signals nothing: an audit that repaired what it
 found would be a `kdos theme` with a misleading name. Exit 0 clean, 1 on drift, 2 if it could not
 run.
+
+## toggle
+
+```sh
+kdos toggle                  # list them and their state
+kdos toggle <name>           # flip it
+kdos toggle <name> on|off    # set it
+```
+
+The switches a desktop needs at hand, as **flag files** under `~/.local/state/kdos/toggles/` where
+a file's presence means on. What exists and who reads each one is in
+[configuration](../06-reference/configuration.md#localstatekdostoggles); an unknown name is
+refused with the list rather than written.
+
+**A toggle whose consumer reads it on the retint signal sends that signal** — the same one `kdos
+theme` sends — after writing the file and never before: the surfaces re-read their state the
+moment it lands, so a signal sent first is one they answer with the state it replaced.
+`night-light` is that toggle. The other two are stat'd on a tick their reader already runs and
+need nothing.
+
+## menu
+
+```sh
+kdos menu summon <route>     # open the menu on a named place
+kdos menu toggle [<route>]   # close it if it is open, else open it
+```
+
+**A route is a name for a place in the system**, from `/etc/kdos/menu.conf` and the user's copy of
+it — see [configuration](../06-reference/configuration.md#etckdosmenuconf). This is what a script
+holds instead of a chord: a chord is rebindable and a menu row moves, and neither is something
+another program can refer to. Summoning opens the menu with the route in its search field, which is
+the one code path that finds a route.
+
+**The menu is whatever `con.conf` names.** Which key opens a thing is `keys.conf`'s and which
+program is the thing is `con.conf`'s; a command that hardcoded `kdos-start` would be a third answer
+to that question. The key may carry arguments and is split into an argument vector here, as the
+session splits it — the first word is the program, which is what `pkill -x` matches, because that
+match is against a name and never against a command line.
+
+**Toggle closes by signal and opens by spawn, in that order.** `pkill` reports whether it signalled
+anything, so one call answers "was it open" and closes it — no pidfile, no round trip. The match is
+exact, for the same reason the retint signal's is.
 
 ## status
 

@@ -84,6 +84,22 @@ extern const KtuiTheme *ktui_theme;
 int ktui_theme_set(const char *name);
 
 /*
+ * NIGHT LIGHT — a warm transform over the eight slots, not a scheme of its own.
+ *
+ * Seven accents times a warm copy is fourteen palettes to keep in step, and
+ * the cast belongs to the screen rather than to the theme: the scheme stays
+ * the one the user chose and `ktui_theme` points at a warmed copy of it while
+ * this is on. Blue loses the most and red nothing, which is what a colour
+ * temperature is and why a warmed accent still reads as itself.
+ *
+ * Returns non-zero when the palette actually changed, so a caller can skip a
+ * repaint it does not owe. THE CALLER READS THE TOGGLE: this library holds no
+ * opinion about where a desktop keeps its state, and both consumers already
+ * have the state directory in hand.
+ */
+int ktui_theme_night(int on);
+
+/*
  * THE NEAREST SLOT TO AN ARBITRARY COLOUR, by squared distance.
  *
  * The one rule for reducing a colour that came from outside the palette — a

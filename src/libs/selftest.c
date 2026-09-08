@@ -894,7 +894,54 @@ static void test_trash(void)
 		unlink(tp);
 		ok(!kb_toggle_on("dnd"), "and removing it turns it off again");
 		ok(!kb_toggle_on(""), "an empty name is off, not a directory");
+
+		/* THE WRITER IS THE READER'S OWN, so a surface that sets a
+		 * toggle and a command that lists it cannot disagree about
+		 * where it lives. Both spell the path in one place. */
+		ok(kb_toggle_set("dnd", 1) == 0 && kb_toggle_on("dnd"),
+		   "kb_toggle_set writes where kb_toggle_on looks");
+		ok(kb_toggle_set("dnd", 0) == 0 && !kb_toggle_on("dnd"),
+		   "and clearing it turns it off");
+		ok(kb_toggle_set("dnd", 0) == 0,
+		   "clearing one that is already off is not a failure");
+		snprintf(dir, sizeof(dir), "%s/state-fresh", work);
+		setenv("XDG_STATE_HOME", dir, 1);
+		ok(kb_toggle_set("dnd", 1) == 0 && kb_toggle_on("dnd"),
+		   "and the state directory is made on the way");
+
 		unsetenv("XDG_STATE_HOME");
+	}
+
+	/*
+	 * NIGHT LIGHT IS A TRANSFORM, and the scheme has to survive it. Eight
+	 * bits do not divide back: a blue scaled down and up again is not the
+	 * blue it started as, so turning the toggle off must return to the
+	 * table rather than undo the arithmetic — which is the whole reason
+	 * the chosen scheme is kept beside the warmed copy.
+	 */
+	{
+		KtuiTheme cold;
+
+		ktui_theme_set(ktui_themes[0].name);
+		cold = *ktui_theme;
+
+		ok(ktui_theme_night(1) == 1, "night light says it changed");
+		ok(ktui_theme_night(1) == 0, "and setting it again does not");
+
+		int warmer = 0, cooler = 0;
+
+		for (int i = 0; i < KT_NCOLOR; i++) {
+			if (ktui_theme->slot[i].r != cold.slot[i].r)
+				cooler = 1;	/* red must not move at all */
+			if (ktui_theme->slot[i].b < cold.slot[i].b)
+				warmer = 1;
+		}
+		ok(!cooler, "red is untouched, so the accent still reads");
+		ok(warmer, "and blue comes down");
+
+		ok(ktui_theme_night(0) == 1, "turning it off changes it back");
+		ok(!memcmp(ktui_theme->slot, cold.slot, sizeof(cold.slot)),
+		   "back to the scheme's own bytes, not the arithmetic undone");
 	}
 
 	/*
@@ -4437,7 +4484,7 @@ static void test_kcon(void)
 	/* ── the caps are what they claim ──────────────────────────────── */
 	eq_int((long long)KCON_MAX_PAYLOAD, 1ll << 20,
 	       "a payload is refused above a megabyte");
-	eq_int(KCON_VERSION, 7, "and the version the two ends agree on");
+	eq_int(KCON_VERSION, 8, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */

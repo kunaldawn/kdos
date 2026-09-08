@@ -51,6 +51,15 @@ struct entry {
 	char id[96];		/* desktop file id       */
 	int alien;		/* lives in a box        */
 	/*
+	 * A FILE FROM THE INDEX RATHER THAN AN APPLICATION. It has no desktop
+	 * entry, so it carries no id and no frecency — the history is keyed by
+	 * id and a path is not one — and it is opened by handler rather than
+	 * executed. The two kinds share this struct because they share the
+	 * list, the scroll and the hit test; they differ in exactly two
+	 * places, and both are marked.
+	 */
+	int file;
+	/*
 	 * `Terminal=true`: the entry is a program that draws in a terminal and
 	 * has none of its own. kdos-menu has always honoured it; this did not,
 	 * so every console application on the machine — mc, nvim, btop, htop,
@@ -64,6 +73,19 @@ struct entry {
 
 static struct entry entries[MAX_ENTRIES];
 static int nentries;
+/*
+ * WHERE THE APPLICATIONS STOP. Everything below this index came from the file
+ * index and is rebuilt on a keystroke; everything above it was gathered once.
+ * Truncating to it is how the previous query's files are dropped.
+ */
+static int napp;
+/* `files = yes` in ~/.config/kdos/launcher.conf. OFF by default: a launcher
+ * that searched the disk without being asked would put a person's filenames on
+ * screen in front of whoever is standing behind them. */
+static int files_on;
+/* The query the index was last asked about, so a keystroke that does not
+ * change it — a cursor key, a repeat — does not re-run the search. */
+static char files_query[128];
 static int order[MAX_ENTRIES];	/* filtered, in match order */
 static int nmatch;
 
@@ -268,6 +290,9 @@ static int cmp_name(const void *a, const void *b)
 			  ((const struct entry *)b)->name);
 }
 
+static void refilter(const char *query);
+static void read_conf(void);
+
 static void gather(void)
 {
 	char path[1024];
@@ -312,6 +337,7 @@ static void gather(void)
 		dirs = c + 1;
 	}
 
+	read_conf();
 	mark_alien("/usr/share/kdos/alien-apps");
 	if (home && *home) {
 		snprintf(path, sizeof(path), "%s/.local/share/kdos/alien-apps",
@@ -325,6 +351,111 @@ static void gather(void)
 	hist_load();
 	for (int i = 0; i < nentries; i++)
 		entries[i].launches = hist_count(entries[i].id);
+	/* Everything above this is an application and is gathered once;
+	 * everything the file index adds sits after it and is rebuilt on a
+	 * keystroke. */
+	napp = nentries;
+}
+
+/* ── the file index ────────────────────────────────────────────────────── */
+
+/*
+ * `files = yes` in ~/.config/kdos/launcher.conf, `key = value`, parsed and
+ * never sourced. One key, and it is off by default for a reason worth stating:
+ * a launcher that searched the disk unasked would put a person's filenames on
+ * screen the moment they pressed a key, in front of whoever is behind them.
+ */
+static void read_conf(void)
+{
+	const char *cfg = getenv("XDG_CONFIG_HOME");
+	const char *home = getenv("HOME");
+	char path[512];
+	char *buf;
+
+	if (cfg && *cfg)
+		snprintf(path, sizeof(path), "%s/kdos/launcher.conf", cfg);
+	else
+		snprintf(path, sizeof(path), "%s/.config/kdos/launcher.conf",
+			 home ? home : "");
+	if (!(buf = kb_read_whole(path, NULL)))
+		return;
+	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp); ln;
+	     ln = strtok_r(NULL, "\n", &sp)) {
+		char *hash = strchr(ln, '#');
+		char *eq;
+
+		if (hash)
+			*hash = '\0';
+		if (!(eq = strchr(ln, '=')))
+			continue;
+		*eq = '\0';
+
+		char *k = ln, *v = eq + 1;
+
+		while (*k == ' ' || *k == '\t')
+			k++;
+		for (char *e = k + strlen(k); e > k && (e[-1] == ' ' || e[-1] == '\t');)
+			*--e = '\0';
+		while (*v == ' ' || *v == '\t')
+			v++;
+		if (!strcmp(k, "files"))
+			files_on = *v == 'y' || *v == 'Y' || *v == '1' ||
+				   *v == 't' || *v == 'T';
+	}
+	free(buf);
+}
+
+/*
+ * Ask the index for the query, and put what it answers below the applications.
+ *
+ * THREE CHARACTERS BEFORE IT ASKS ANYTHING. `a` matches most of a home
+ * directory, and a list of two hundred paths under one letter is not a search
+ * result — it is the index read aloud. The cap is the other half: `-l` bounds
+ * what plocate returns rather than this bounding what it printed, so the work
+ * stops at the index rather than after it.
+ *
+ * THE INDEX IS THIS USER'S OWN, built by kdos-updatedb into their cache and
+ * scoped to their home directory — so nothing can come back that they could
+ * not already list. That is what makes it safe to show without a permission
+ * check of our own; the decision is in
+ * docs/kdos/03-architecture/security-model.md.
+ */
+static void gather_files(const char *query)
+{
+	static char buf[16384];
+	KbArgv a = { 0 };
+
+	nentries = napp;
+	files_query[0] = '\0';
+	if (!files_on || strlen(query) < 3)
+		return;
+	snprintf(files_query, sizeof(files_query), "%s", query);
+	if (!kb_have_prog("plocate"))
+		return;
+	kb_argv_add(&a, "plocate");
+	kb_argv_add(&a, "--ignore-case");
+	kb_argv_add(&a, "--limit");
+	kb_argv_add(&a, "24");
+	/* `--` so a query beginning with a dash is a query and not a flag. */
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, query);
+	kb_argv_end(&a);
+	buf[0] = '\0';
+	if (kb_run_capture(&a, buf, sizeof(buf)) < 0 || !buf[0])
+		return;
+	for (char *sp = NULL, *ln = strtok_r(buf, "\n", &sp);
+	     ln && nentries < MAX_ENTRIES; ln = strtok_r(NULL, "\n", &sp)) {
+		struct entry *e = &entries[nentries];
+		const char *base = strrchr(ln, '/');
+
+		if (!*ln)
+			continue;
+		memset(e, 0, sizeof(*e));
+		e->file = 1;
+		snprintf(e->name, sizeof(e->name), "%s", base ? base + 1 : ln);
+		snprintf(e->exec, sizeof(e->exec), "%s", ln);
+		nentries++;
+	}
 }
 
 /* ── matching ──────────────────────────────────────────────────────────── */
@@ -365,8 +496,10 @@ static int score(const char *hay, const char *needle)
 static void filter(const char *query)
 {
 	int scores[MAX_ENTRIES];
+	int napp_matched;
+
 	nmatch = 0;
-	for (int i = 0; i < nentries; i++) {
+	for (int i = 0; i < napp; i++) {
 		int s = score(entries[i].name, query);
 		if (s < 0)
 			s = score(entries[i].id, query);
@@ -375,6 +508,7 @@ static void filter(const char *query)
 		scores[nmatch] = s;
 		order[nmatch++] = i;
 	}
+	napp_matched = nmatch;
 	/* Insertion sort: nmatch is a few hundred at worst and this runs on a
 	 * keystroke, where the constant factor matters more than the order.
 	 * Ties go to the launch count; equal counts keep the alphabetical
@@ -392,6 +526,31 @@ static void filter(const char *query)
 		scores[j + 1] = si;
 		order[j + 1] = oi;
 	}
+
+	/*
+	 * THE FILES GO AFTER, UNSORTED AND UNSCORED. The index already decided
+	 * they match — scoring a path by the same subsequence rule would rank
+	 * a query that appears in a directory name above one that IS the file
+	 * name, and re-sorting would throw away the order plocate returned,
+	 * which is the index's own. Applications first because Super+d is a
+	 * launcher: a person typing `fir` wants Firefox, not a file called
+	 * `firmware.bin`.
+	 */
+	(void)napp_matched;
+	for (int i = napp; i < nentries && nmatch < MAX_ENTRIES; i++)
+		order[nmatch++] = i;
+}
+
+/*
+ * The index is asked only when the query actually changed. A cursor key, a
+ * repeat and a redraw all reach the filter, and an exec per one of those would
+ * be a search a person never asked for, three times a second.
+ */
+static void refilter(const char *query)
+{
+	if (files_on && strcmp(query, files_query))
+		gather_files(query);
+	filter(query);
 }
 
 /* ── launching ─────────────────────────────────────────────────────────── */
@@ -402,6 +561,39 @@ static void launch(const struct entry *e)
 	char id[160];			/* argv points into it until the exec */
 	const char *argv[32];
 	int n = 0;
+
+	/*
+	 * A FILE IS OPENED BY ITS HANDLER, NOT EXECUTED. `kdos open` is the one
+	 * resolver on this system — the same call the file chooser, the desktop
+	 * and a terminal's OSC 8 all make — so a launcher that spawned the path
+	 * directly would be a second answer to "what opens a .pdf", and the
+	 * wrong one for everything that is not a program.
+	 */
+	if (e->file) {
+		const char *fv[4];
+		int fn = 0;
+
+		fv[fn++] = "kdos";
+		fv[fn++] = "open";
+		fv[fn++] = e->exec;
+		fv[fn] = NULL;
+		pid_t fp = fork();
+
+		if (fp == 0) {
+			if (fork() == 0) {
+				setsid();
+				execvp(fv[0], (char *const *)fv);
+				_exit(127);
+			}
+			_exit(0);
+		}
+		if (fp > 0) {
+			int st;
+
+			waitpid(fp, &st, 0);
+		}
+		return;
+	}
 
 	hist_bump(e->id);
 
@@ -496,6 +688,24 @@ static void draw(const char *query, int sel, int top)
 			ktui_draw_text_right(0, y, w - 2, "[box]",
 					     is_sel ? fg : KT_DIM, bg,
 					     KT_A_NONE);
+		/*
+		 * A FILE SAYS SO, AND SAYS WHERE. Two rows can carry the same
+		 * name — an application called `notes` and a file called
+		 * `notes` — and Enter does an entirely different thing on
+		 * each, so the row has to be able to be told apart before it
+		 * is chosen. The directory is what distinguishes one file from
+		 * another of the same name, so that is what the tail carries.
+		 */
+		else if (e->file) {
+			const char *slash = strrchr(e->exec, '/');
+			char dir[80];
+			int n = slash ? (int)(slash - e->exec) : 0;
+
+			snprintf(dir, sizeof(dir), "%.*s", n, e->exec);
+			ktui_draw_text_right(0, y, w - 2, dir[0] ? dir : "/",
+					     is_sel ? fg : KT_DIM, bg,
+					     KT_A_NONE);
+		}
 	}
 
 	if (nmatch == 0)
@@ -523,10 +733,16 @@ static void draw(const char *query, int sel, int top)
 int launcher_main(int argc, char **argv)
 {
 	const char *font = NULL;
+	const char *preset = "";
 	int dump = 0;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
 			font = argv[++i];
+		/* The query a dump renders, which is the only way a frame with
+		 * results in it can be committed — kdos-find has the same flag
+		 * and for the same reason. */
+		else if (!strcmp(argv[i], "--query") && i + 1 < argc)
+			preset = argv[++i];
 		/*
 		 * One frame, offscreen, as text — the same seam `kdos-shell
 		 * --dump` and `kdosbuild --preview` have. Every geometry defect
@@ -538,7 +754,8 @@ int launcher_main(int argc, char **argv)
 			dump = 1;
 		else {
 			fprintf(stderr,
-				"usage: kdos-launcher [--dump] [--font NAME]\n");
+				"usage: kdos-launcher [--dump] [--query TEXT] "
+				"[--font NAME]\n");
 			return 2;
 		}
 	}
@@ -546,9 +763,9 @@ int launcher_main(int argc, char **argv)
 	if (dump) {
 		sh_theme_from_cache();
 		gather();
-		filter("");
+		refilter(preset);
 		ktui_offscreen_init(64, 18);
-		draw("", 0, 0);
+		draw(preset, 0, 0);
 		ktui_draw_dump();
 		return 0;
 	}
@@ -578,12 +795,16 @@ int launcher_main(int argc, char **argv)
 	gather();
 
 	char query[128] = {0};
-	int qlen = 0, sel = 0, top = 0;
+	int qlen = snprintf(query, sizeof(query), "%s", preset);
+	int sel = 0, top = 0;
+
+	if (qlen < 0 || qlen >= (int)sizeof(query))
+		qlen = (int)strlen(query);
 	/* The viewport follows the SELECTION only when the selection is what
 	 * moved — see kch_list_wheel. Without the flag the clamp below would
 	 * undo a page scroll on the very next frame. */
 	int sel_follow = 1;
-	filter(query);
+	refilter(query);
 
 	while (!kdisp_should_close()) {
 		/* Follow a live `kdos theme <accent>`; see sh_theme_poll(). */
@@ -728,7 +949,7 @@ int launcher_main(int argc, char **argv)
 		case KT_K_BACKSPACE:
 			if (qlen > 0)
 				query[--qlen] = '\0';
-			filter(query);
+			refilter(query);
 			sel = 0;
 			top = 0;
 			break;
@@ -740,7 +961,7 @@ int launcher_main(int argc, char **argv)
 			    qlen < (int)sizeof(query) - 1) {
 				query[qlen++] = (char)ev.key;
 				query[qlen] = '\0';
-				filter(query);
+				refilter(query);
 				sel = 0;
 				top = 0;
 			}

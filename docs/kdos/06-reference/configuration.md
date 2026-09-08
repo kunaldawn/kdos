@@ -27,6 +27,23 @@ accounts created afterwards.
 
 ---
 
+## `~/.config/kdos/launcher.conf`
+
+`Super+d`'s own key, and only one.
+
+| Key | Default | Means |
+|---|---|---|
+| `files` | `no` | Also list files whose name matches, from this user's index |
+
+**Off by default, and not for speed.** A launcher that searched the disk unasked puts a person's
+filenames on screen the moment they press a key — in front of whoever is standing behind them, on
+a machine they may have opened to start a browser. Turning it on is a decision about who can see
+the screen.
+
+With it on, a query of three characters or more is also put to `~/.cache/kdos/plocate.db`, which
+`kdos-updatedb` rebuilds nightly from `$HOME` only. Files are listed under the applications with
+their directory on the right, and Enter opens one by its handler rather than executing it.
+
 ## `~/.config/kdos/comp.conf`
 
 The compositor's KDOS keys. **Only** these — bindings, mouse behaviour, workspaces and window
@@ -108,19 +125,28 @@ agreeing on a syntax first.
 | Toggle | Means | Read by |
 |---|---|---|
 | `stay-awake` | never save, lock or blank on idle | `kdos-con`'s idle tick |
-| `night-light` | warm the palette | `kdos-con` and `kdos-view` |
+| `night-light` | warm the palette | `kdos-con` and `kdos-view`, on the retint signal |
 | `dnd` | hold notifications back | `kdos-notifyd` |
 
 `kdos toggle` lists them, `kdos toggle <name>` flips one, `kdos toggle <name> on|off` sets it.
 
 **They are state rather than `con.conf` keys** because that file documents itself as read once when
 the session starts, so a runtime writer would make half its answers come from before an edit and
-half from after. The session stats them on the tick it already has rather than caching: a toggle is
-set by another process — a chord, a menu row, a script before a long build — and a session holding a
-copy is a session that has to be told.
+half from after. A toggle is set by another process — a chord, a menu row, a script before a long
+build — so its reader must not hold a copy: `stay-awake` and `dnd` are stat'd on a tick their
+reader already runs, and `night-light` is read on the retint signal, which `kdos toggle` sends
+after writing the file because a palette is applied once and not consulted per frame.
 
-**`kb_toggle_on()` is the one reader in the tree**, and a program that spells the path itself is a
-program looking where nothing wrote. A held notification still reaches the history and the badge,
+**Night light is a transform over the eight slots, not a scheme of its own.** Seven accents times a
+warm copy would be fourteen palettes to keep in step. `ktui_theme_night()` warms whatever scheme is
+loaded — green to 93%, blue to 77%, red untouched, so the accent still reads as itself — and
+turning it off returns to the table rather than undoing the arithmetic, which eight bits cannot do.
+
+**`kb_toggle_on()` and `kb_toggle_set()` are the one reader and the one writer in the tree**, and a
+program that spells the path itself is a program looking where nothing wrote. The notification
+centre's Do Not Disturb button writes this file through the daemon rather than keeping a flag of
+its own: a second flag OR'd with this one is a state that button cannot clear, so it would silence
+the toasts and say it had not. A held notification still reaches the history and the badge,
 so Do Not Disturb hides a toast rather than losing it; an urgent one is shown anyway.
 
 **`stay-awake` is consulted before all three idle steps, not the first only.** Somebody who
@@ -183,6 +209,41 @@ maximised window stops short of it rather than covering it.
 **Ships absent.** Its existence is the setting: with it, the windows open when the session ended
 are reopened. The list itself is written before the confirmation dialog, because after the answer
 there is no session left to ask.
+
+## `/etc/kdos/menu.conf`, merged under `~/.config/kdos/menu.conf`
+
+**A route is a name a script can hold.** One `route = argv` per line. A chord opens a surface and
+a person clicks a row; neither is something a shell script, a documentation page or another program
+can refer to. `kdos menu summon setup.network` is, and it keeps resolving when the chord is rebound
+or the row moves.
+
+The name is `verb.noun` and the verb is the shape of what is being done rather than the program
+that does it: somebody looking for the wifi is looking to **set something up**, and does not know
+which of eleven surfaces owns it.
+
+**The value is an argument vector, split on spaces and run without a shell.** There is no quoting
+and there will not be: a route that needed a shell would be a route a menu file could run anything
+with, and this file merges a copy the user owns over the system's.
+
+**The system file is read first and the user's second.** A route named in both is the user's; one
+named only in theirs is added. **There is no delete**, which is the point — a name a script may
+hold has to keep resolving.
+
+`kdos-start` searches the routes beside its fixed rows, so the names are not a second vocabulary:
+`network` finds the row and `setup.network` finds the same thing. `preflight.sh` fails on a route
+whose first word is a command the image does not carry.
+
+## `~/.config/kdos/screensaver.txt`
+
+**Ships absent, and `/usr/share/kdos/screensaver.txt` is what is drawn without it.** A UTF-8 grid
+of characters, one line per row; SGR colour in it is stripped, because a surface paints slots and
+the effect picks one. The screensaver's art mode is a transform over this grid, so replacing the
+file replaces the picture without touching the program.
+
+**It is not `logo.txt`.** That file is the login banner's, generated from the mascot, and a person
+replacing their screensaver must not be replacing the picture the machine boots with. A grid wider
+or taller than the screen is pinned rather than bounced; trailing blank lines are dropped, or the
+art would bounce off an edge nobody can see.
 
 ## `~/.config/kdos/a11y`
 
@@ -413,11 +474,21 @@ Changing a default in one file changes it in the other.
 | `volume-mute` | `XF86AudioMute` | `media-play` | `XF86AudioPlay` |
 | `media-stop` | `XF86AudioStop` | `media-next` | `XF86AudioNext` |
 | `media-prev` | `XF86AudioPrev` | | |
+| `font-up` | `Super+equal` | `font-down` | `Super+minus` |
+| `font-reset` | `Super+Ctrl+0` | | |
 
 Modifiers are `Super`, `Shift`, `Alt` and `Ctrl`, joined with `+`. An action no line names keeps
 its default, so rebinding one key does not mean restating the rest. Punctuation may be written as
 itself or by `rc.xml`'s name for it — `slash`, `comma`, `period`, `grave`, `minus`, `equal` — so a
 chord reads the same in both files and neither has to be translated by hand.
+
+**The three font chords reach a screen and nothing else.** They step the font of every view that
+rasterises its own glyphs; a view running inside somebody else's terminal says so when it attaches
+and the session answers on the bar that the terminal owns the font. They are written by `rc.xml`'s
+names so a chord reads the same in both files; plus is not bound and cannot be, because `+` is the
+character a chord is split on and it is a shifted equals in any case. The
+stepped size is remembered in `~/.local/state/kdos/con-font`, and `font-reset` removes that file
+rather than writing a size, so the answer goes back to being the configuration's.
 
 **The eleven surface chords are the compositor's own.** `Super+F1` and `Super+F3` to `F6`,
 `Super+i`, `Super+c`, `Super+/` and `Super+p` are what `rc.xml` already binds; taking them rather

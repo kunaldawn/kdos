@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = caligula
+version     = 0.5.0
+release     = 1
+source      = https://github.com/ifd3f/caligula/archive/refs/tags/v$version.tar.gz
+sha256      = f4118f0f4a4c90432ba3b1637dd66b8d7f4abd797d63b527baaa6c2595f1552f  caligula-0.5.0.tar.gz
+sha256      = 0a76a3dbe8de237523758fa8dda977c1ff9c003ef0799f7f699c295ecdfb99fd  caligula-vendor-0.5.0.tar.xz
+description = Writes an image to a removable disk, with a progress display and a verify pass
+homepage    = https://github.com/ifd3f/caligula
+depends     = rust clang
+vendoring   = rust

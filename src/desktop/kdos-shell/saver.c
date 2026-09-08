@@ -45,18 +45,19 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "kbase.h"
 #include "shell.h"
 
 #define SV_FPS_MAX	15
 #define SV_FPS_DEF	10
 #define SV_MAX_COLS	512
 #define SV_MAX_ROWS	256
-#define SV_LOGO_PATH	"/usr/share/kdos/logo.txt"
+#define SV_ART_PATH	"/usr/share/kdos/screensaver.txt"
 /* The artwork's own limits are shell.h's — see sh_logo_load(). */
-#define SV_LOGO_LINES	SH_LOGO_LINES
-#define SV_LOGO_BYTES	SH_LOGO_BYTES
+#define SV_ART_LINES	SH_LOGO_LINES
+#define SV_ART_BYTES	SH_LOGO_BYTES
 
-enum { SV_MODE_RAIN = 0, SV_MODE_LOGO, SV_MODE_OFF };
+enum { SV_MODE_RAIN = 0, SV_MODE_ART, SV_MODE_OFF };
 
 /* ── the ramp ────────────────────────────────────────────────────────────
  *
@@ -194,19 +195,44 @@ static void sv_rain_draw(int cols, int rows)
 	}
 }
 
-/* ── the drifting mascot ─────────────────────────────────────────────────
+/* ── the drifting art ────────────────────────────────────────────────────
  *
- * /usr/share/kdos/logo.txt is the one the login banner draws, generated from
- * the same quantised crop of kdos.png the boot splash uses — so the saver
- * cannot drift away from the mascot the rest of the system shows.
+ * EVERY EFFECT THAT IS NOT WEATHER IS A TRANSFORM OVER ONE LOADED GRID, and
+ * the grid is a file rather than a table in this source: art belongs to
+ * whoever is looking at it, and an effect that carried its own picture would
+ * be an effect nobody could change without a compiler.
+ *
+ * `~/.config/kdos/screensaver.txt` wins over `/usr/share/kdos/screensaver.txt`
+ * — the same rule every other overridable file here keeps. Not `logo.txt`:
+ * that one is the login banner's, generated from the same quantised crop of
+ * kdos.png the boot splash uses, and a person who wanted their own screensaver
+ * would otherwise be changing the picture the machine boots with.
+ *
+ * SGR is stripped by the loader, because a surface paints slots.
  */
-static char sv_logo[SV_LOGO_LINES][SV_LOGO_BYTES];
-static int sv_logo_n, sv_logo_w;
+static char sv_art[SV_ART_LINES][SV_ART_BYTES];
+static int sv_art_n, sv_art_w;
 
-static int sv_logo_load(const char *path)
+static const char *sv_art_path(char *buf, size_t n)
 {
-	return sh_logo_load(path, sv_logo, SV_LOGO_LINES, &sv_logo_n,
-			    &sv_logo_w);
+	const char *cfg = getenv("XDG_CONFIG_HOME");
+	const char *home = getenv("HOME");
+
+	if (cfg && *cfg)
+		snprintf(buf, n, "%s/kdos/screensaver.txt", cfg);
+	else if (home && *home)
+		snprintf(buf, n, "%s/.config/kdos/screensaver.txt", home);
+	else
+		return SV_ART_PATH;
+	return kb_path_exists(buf) ? buf : SV_ART_PATH;
+}
+
+static int sv_art_load(void)
+{
+	char buf[512];
+
+	return sh_logo_load(sv_art_path(buf, sizeof(buf)), sv_art,
+			    SV_ART_LINES, &sv_art_n, &sv_art_w);
 }
 
 /* Position and velocity in sixteenths again: a whole cell per frame at 10 fps
@@ -214,11 +240,11 @@ static int sv_logo_load(const char *path)
  * a drift. */
 static int sv_lx, sv_ly, sv_lvx, sv_lvy, sv_lcolor;
 
-static const int SV_LOGO_COLORS[] = { KT_ACCENT, KT_WARN, KT_MID, KT_TEXT };
+static const int SV_ART_COLORS[] = { KT_ACCENT, KT_WARN, KT_MID, KT_TEXT };
 
-static void sv_logo_init(int cols, int rows)
+static void sv_art_init(int cols, int rows)
 {
-	int mx = cols - sv_logo_w, my = rows - sv_logo_n;
+	int mx = cols - sv_art_w, my = rows - sv_art_n;
 
 	sv_lx = mx > 0 ? sv_range(0, mx) * 16 : 0;
 	sv_ly = my > 0 ? sv_range(0, my) * 16 : 0;
@@ -227,12 +253,12 @@ static void sv_logo_init(int cols, int rows)
 	sv_lcolor = 0;
 }
 
-static void sv_logo_step(int cols, int rows)
+static void sv_art_step(int cols, int rows)
 {
-	int mx = (cols - sv_logo_w) * 16, my = (rows - sv_logo_n) * 16;
+	int mx = (cols - sv_art_w) * 16, my = (rows - sv_art_n) * 16;
 	int bounced = 0;
 
-	/* A logo wider or taller than the screen has nowhere to go: pinning it
+	/* Art wider or taller than the screen has nowhere to go: pinning it
 	 * is right, and reversing a velocity against a negative bound would
 	 * make it shudder in place. */
 	if (mx <= 0) {
@@ -258,20 +284,20 @@ static void sv_logo_step(int cols, int rows)
 	}
 	if (bounced)
 		sv_lcolor = (sv_lcolor + 1) %
-			    (int)(sizeof(SV_LOGO_COLORS) / sizeof(SV_LOGO_COLORS[0]));
+			    (int)(sizeof(SV_ART_COLORS) / sizeof(SV_ART_COLORS[0]));
 }
 
-static void sv_logo_draw(int cols, int rows)
+static void sv_art_draw(int cols, int rows)
 {
-	int fg = SV_LOGO_COLORS[sv_lcolor];
+	int fg = SV_ART_COLORS[sv_lcolor];
 	int x = sv_lx / 16, y = sv_ly / 16;
 
 	ktui_draw_fill(krect(0, 0, cols, rows), KT_BG);
-	for (int i = 0; i < sv_logo_n; i++) {
+	for (int i = 0; i < sv_art_n; i++) {
 		int ly = y + i;
 		if (ly < 0 || ly >= rows)
 			continue;
-		ktui_draw_text(x, ly, cols - x, sv_logo[i], fg, KT_BG,
+		ktui_draw_text(x, ly, cols - x, sv_art[i], fg, KT_BG,
 			       KT_A_NONE);
 	}
 }
@@ -282,7 +308,7 @@ static void sv_logo_draw(int cols, int rows)
 static int sv_usage(void)
 {
 	fprintf(stderr,
-		"usage: kdos-saver [--mode rain|logo|off] [--fps N] "
+		"usage: kdos-saver [--mode rain|art|off] [--fps N] "
 		"[--output NAME]\n"
 		"                  [--font NAME] [--dump]\n");
 	return 2;
@@ -304,8 +330,8 @@ int saver_main(int argc, char **argv)
 			const char *m = argv[++i];
 			if (!strcmp(m, "rain"))
 				mode = SV_MODE_RAIN;
-			else if (!strcmp(m, "logo"))
-				mode = SV_MODE_LOGO;
+			else if (!strcmp(m, "art"))
+				mode = SV_MODE_ART;
 			else if (!strcmp(m, "off"))
 				mode = SV_MODE_OFF;
 			else
@@ -339,9 +365,9 @@ int saver_main(int argc, char **argv)
 		sv_seed = 20260814u;
 		ktui_offscreen_init(cols, rows);
 		sv_ramp_init();
-		if (mode == SV_MODE_LOGO && sv_logo_load(SV_LOGO_PATH) == 0) {
-			sv_logo_init(cols, rows);
-			sv_logo_draw(cols, rows);
+		if (mode == SV_MODE_ART && sv_art_load() == 0) {
+			sv_art_init(cols, rows);
+			sv_art_draw(cols, rows);
 		} else {
 			sv_rain_init(cols, rows);
 			sv_rain_draw(cols, rows);
@@ -382,25 +408,25 @@ int saver_main(int argc, char **argv)
 	ktui_draw_init();
 	sv_ramp_init();
 
-	if (mode == SV_MODE_LOGO && sv_logo_load(SV_LOGO_PATH) != 0) {
-		/* No mascot on this machine is not a reason to show nothing:
-		 * the rain needs no data file. */
+	if (mode == SV_MODE_ART && sv_art_load() != 0) {
+		/* No art on this machine is not a reason to show nothing: the
+		 * rain needs no data file. */
 		fprintf(stderr, "kdos-saver: no %s; falling back to rain\n",
-			SV_LOGO_PATH);
+			SV_ART_PATH);
 		mode = SV_MODE_RAIN;
 	}
 
 	int cw = ktui_w, ch = ktui_h;
-	if (mode == SV_MODE_LOGO)
-		sv_logo_init(cw, ch);
+	if (mode == SV_MODE_ART)
+		sv_art_init(cw, ch);
 	else
 		sv_rain_init(cw, ch);
 
 	const int frame_ms = 1000 / fps;
 
 	while (!kdisp_should_close()) {
-		if (mode == SV_MODE_LOGO)
-			sv_logo_draw(cw, ch);
+		if (mode == SV_MODE_ART)
+			sv_art_draw(cw, ch);
 		else
 			sv_rain_draw(cw, ch);
 		/*
@@ -420,13 +446,13 @@ int saver_main(int argc, char **argv)
 			ktui_draw_invalidate();
 			cw = ktui_w;
 			ch = ktui_h;
-			if (mode == SV_MODE_LOGO)
-				sv_logo_init(cw, ch);
+			if (mode == SV_MODE_ART)
+				sv_art_init(cw, ch);
 			else
 				sv_rain_init(cw, ch);
 		}
-		if (mode == SV_MODE_LOGO)
-			sv_logo_step(cw, ch);
+		if (mode == SV_MODE_ART)
+			sv_art_step(cw, ch);
 		else
 			sv_rain_step(ch);
 	}

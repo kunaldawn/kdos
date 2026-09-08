@@ -116,6 +116,22 @@ that carries the interaction flag raises the box.
 OpenVPN is available through NetworkManager, with certificate and password authentication.
 Hardware tokens are not built.
 
+## Finding a file by name
+
+`plocate` searches an index instead of the disk, which is what makes a whole-home "where is that
+file called…" instant where `fd` has to walk the tree.
+
+**The index is yours, not the machine's.** It is rebuilt nightly at 03:05 by a timer in
+`~/.config/kdos/timers.d/`, scoped to `$HOME`, and written into `~/.cache/kdos/plocate.db`, so it
+can only ever contain paths you could already list. `$LOCATE_PATH` in `/etc/profile.d` is what
+points `plocate` at it.
+
+Upstream ships a setgid binary reading one shared database for the whole machine, with a
+permission check per result; KDOS ships neither the bit nor the shared file. The reasoning is in
+[the security model](../03-architecture/security-model.md#and-no-setgid-ones-which-is-why-plocates-index-is-per-user).
+
+`kdos-updatedb` rebuilds it now rather than waiting for the timer.
+
 ## The firewall
 
 `/etc/nftables.conf` ships a default workstation policy and `25_nftables` loads it before the
@@ -367,21 +383,38 @@ the processor simply keeps whatever the firmware loaded.
 
 ### The device groups and the udev rules
 
-The console user can open hardware because of two halves that are both required: membership of
-`dialout`, and rules granting that group the device classes this system ships tools for. The group
-alone grants nothing; the rules alone have no group to grant to.
+The console user can open hardware because of two halves that are both required: membership of a
+group, and a rule granting that group the device class. The group alone grants nothing; the rule
+alone has no group to grant to. Most of these are `dialout`; the two display ones are `video`.
 
-| Rules file | Devices |
-|---|---|
-| `70-kdos-serial.rules` | USB serial adapters — FTDI, CP210x, CH341, CDC-ACM |
-| `70-kdos-debug.rules` | In-circuit debuggers and programmers |
-| `70-kdos-sdr.rules` | Software-defined radio front ends |
-| `70-kdos-usbtmc.rules` | USB Test & Measurement: scopes, meters, function generators |
-| `70-kdos-camera.rules` | PTP/MTP cameras, for gphoto2 |
-| `70-kdos-scanner.rules` | Flatbed and sheet-fed scanners, for SANE |
+| Rules file | Devices | Group |
+|---|---|---|
+| `70-kdos-serial.rules` | USB serial adapters — FTDI, CP210x, CH341, CDC-ACM | `dialout` |
+| `70-kdos-debug.rules` | In-circuit debuggers and programmers | `dialout` |
+| `70-kdos-sdr.rules` | Software-defined radio front ends | `dialout` |
+| `70-kdos-usbtmc.rules` | USB Test & Measurement: scopes, meters, function generators | `dialout` |
+| `70-kdos-camera.rules` | PTP/MTP cameras, for gphoto2 | `dialout` |
+| `70-kdos-scanner.rules` | Flatbed and sheet-fed scanners, for SANE | `dialout` |
+| `70-kdos-i2c.rules` | The DDC/CI line of a display controller, for `ddcutil` | `video` |
+| `70-kdos-backlight.rules` | The panel's brightness, for `kdos-osd` | `video` |
 
-All are `MODE="0660"` rather than world-readable: these are devices other users on a multi-user
+All grant `MODE="0660"` rather than world-readable: these are devices other users on a multi-user
 machine have no business reading.
+
+**The i2c rule is scoped, and the scoping is the point.** `/dev/i2c-*` covers the graphics cards'
+DDC lines and the chipset SMBus alike, and every DIMM's SPD EEPROM hangs off the SMBus — a stray
+write there is a machine that will not boot. The rule matches only adapters whose PCI parent is a
+display controller (`ATTRS{class}=="0x03*"`), so the SMBus is never in it. `ddcutil` ships an
+unscoped rule of its own and the recipe deletes it.
+
+**The backlight rule grants no group, and cannot.** A backlight is a class device with no node in
+`/dev`, and udev's `GROUP=`/`MODE=` apply to a node — worse, a rule carrying either is discarded
+whole for such a device, taking its `RUN+=` with it. So that file runs `chgrp` and `chmod` on the
+`brightness` attribute instead, on the `add` event that `01_udev.sh`'s coldplug replays at boot.
+
+**`/dev/i2c-*` needs a module nothing autoloads.** `i2c-dev` declares no modalias, so udev can
+never name it; `/etc/modules-load.d/kdos-i2c.conf` is what loads it, and without that the rule has
+nothing to grant.
 
 **One blacklist is load-bearing.** `/etc/modprobe.d/kdos-sdr.conf` blacklists `dvb_usb_rtl28xxu`,
 because the kernel otherwise claims an RTL2832U dongle as a DVB-T tuner on plug-in and the SDR

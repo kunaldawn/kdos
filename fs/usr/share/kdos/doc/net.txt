@@ -8,16 +8,46 @@ first and the access points under them, strongest first.
             you see that you are on it.
   f         forgets a saved network, so the next join asks again.
   c         copies the network's name.
+  r         rescans, without moving off the network you are on.
   a         turns wireless off, or back on.
+  h         shares this machine's network over its own radio, and turns the
+            share off again. Only where the radio can be an access point.
 
 A network that needs a passphrase asks for one on the bottom row. Escape there
 abandons the join and leaves the list as it was; Escape on the list closes the
 window.
 
+The passphrase typed here is written into the profile. Every later question is
+kdos-netagent's: NetworkManager never prompts on its own, so a key that has
+changed since, enterprise wireless and a VPN one-time code all arrive as a box
+from the agent rather than from this window.
+
+Tunnels
+
+  Saved VPN and WireGuard profiles are listed under the radios, at the left
+  margin, because they belong to no radio. Enter connects one and disconnects
+  it again; f forgets it. A VPN asks for its password through kdos-netagent,
+  the same box a wireless network uses.
+
+  This window does not CREATE one. Import a VPN with
+  `nmcli connection import type openvpn file X.ovpn`, or write a WireGuard
+  profile into /etc/NetworkManager/system-connections; both appear here once
+  NetworkManager has re-read them.
+
+The hotspot
+
+  h starts an access point called KDOS on this machine's own radio and shares
+  whatever it is connected through. It asks for a passphrase of at least eight
+  characters, which is what WPA accepts.
+
+  The radio can only do one thing at a time, so turning the hotspot on takes it
+  off the network it was on and the list of networks goes empty until the
+  hotspot is turned off again.
+
 What this window does not do
 
-  Static addresses, VPNs and per-connection routing are NetworkManager's and
-  are edited with `nmcli`. This window is the two things a person does at a
-  desk: join something, and stop being on something.
+  Static addresses and per-connection routing are NetworkManager's and are
+  edited with `nmcli`. This window is what a person does at a desk: join
+  something, stop being on something, and share what they have.
 
   [[doc:index]]

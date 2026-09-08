@@ -57,6 +57,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "kbase.h"
 #include "kicon.h"
 #include "kcell.h"
 #include "kwl.h"
@@ -128,6 +129,37 @@ static struct row left[ST_MAX_ROWS];
 static int nleft;
 static struct row right[ST_MAX_ROWS];
 static int nright;
+
+/*
+ * ── the routes ──────────────────────────────────────────────────────────
+ *
+ * A ROUTE IS A NAME A SCRIPT CAN HOLD. A chord opens a surface and a person
+ * clicks a row; neither is something a shell script, a documentation page or
+ * another program can refer to. `kdos menu summon setup.network` is, and it
+ * keeps resolving when the chord is rebound or the row moves.
+ *
+ * They are searched BESIDE the fixed rows rather than in a list of their own,
+ * so the names are not a second vocabulary to learn: `network` finds the row
+ * and `setup.network` finds the same thing.
+ *
+ * `/etc/kdos/menu.conf` then `~/.config/kdos/menu.conf`. A route named in both
+ * is the user's; one named only in theirs is added. There is no delete, and
+ * that is the point: a name a script may hold has to keep resolving.
+ */
+#define ST_MAX_ROUTES 64
+#define ST_ROUTE_BYTES 192
+
+static struct row routes[ST_MAX_ROUTES];
+static int nroutes;
+/*
+ * Two copies of every value, and both are needed. `route_argv` is split into
+ * words IN PLACE, so its NULs stop a substring search at the first one;
+ * `route_keys` is the line as written, which is what makes the command a
+ * synonym for the route — `dnd` finds `toggle.quiet`, which is the whole
+ * reason the fixed rows carry synonyms too.
+ */
+static char route_argv[ST_MAX_ROUTES][ST_ROUTE_BYTES];
+static char route_keys[ST_MAX_ROUTES][ST_ROUTE_BYTES];
 
 static int mode = ST_MAIN;
 /* The next draw should pull the selection into view: set by everything that
@@ -544,13 +576,15 @@ static void build_left(void)
 		 * fixed row carries its own synonyms; see build_right.
 		 */
 		int extra = 0;
-		struct row *fixed[2] = { right, power_row };
-		int nfixed[2] = { nright, npower };
+		struct row *fixed[3] = { right, power_row, routes };
+		int nfixed[3] = { nright, npower, nroutes };
 
 		/* The power verbs are in the footer rather than the column, so
 		 * a search that walked only `right` would have taken Lock,
-		 * Suspend and Restart off the keyboard entirely. */
-		for (int t = 0; t < 2; t++)
+		 * Suspend and Restart off the keyboard entirely. And the
+		 * routes, which have no column at all: their whole existence
+		 * is a name to search for. */
+		for (int t = 0; t < 3; t++)
 			for (int i = 0; i < nfixed[t] &&
 					nleft < ST_MAX_ROWS; i++) {
 				if (fixed[t][i].rule ||
@@ -697,6 +731,111 @@ static void build_left(void)
  * a Recent list longer than this pushes SYSTEM off the bottom, and the rows
  * that end a session are the ones that must always be reachable. */
 #define START_RECENT 6
+
+/* One route, replacing a route of the same name rather than repeating it: the
+ * user's file is read second, and a name that resolved twice would resolve to
+ * whichever copy a search reached first. */
+static void route_put(const char *name, char *value)
+{
+	struct row *r = NULL;
+	int slot = nroutes;
+
+	for (int i = 0; i < nroutes; i++)
+		if (!strcmp(routes[i].label, name)) {
+			slot = i;
+			break;
+		}
+	if (slot >= ST_MAX_ROUTES)
+		return;
+	r = &routes[slot];
+	memset(r, 0, sizeof(*r));
+	snprintf(r->label, sizeof(r->label), "%s", name);
+	snprintf(route_argv[slot], ST_ROUTE_BYTES, "%s", value);
+	snprintf(route_keys[slot], ST_ROUTE_BYTES, "%s", value);
+
+	/* Split on runs of blanks, in place. No quoting: a route that needed a
+	 * shell would be a route a menu file could run anything with, and this
+	 * file merges a copy the user owns over the system's. */
+	int n = 0;
+	char *p = route_argv[slot];
+
+	while (*p && n < (int)(sizeof(r->argv) / sizeof(r->argv[0])) - 1) {
+		while (*p == ' ' || *p == '\t')
+			*p++ = '\0';
+		if (!*p)
+			break;
+		r->argv[n++] = p;
+		while (*p && *p != ' ' && *p != '\t')
+			p++;
+	}
+	if (!n) {			/* a route naming no command at all */
+		memset(r, 0, sizeof(*r));
+		return;
+	}
+	r->argv[n] = NULL;
+	/* The route answers to the command it runs as well as to its name. The
+	 * name needs no synonym of its own: a search is a substring both ways,
+	 * so `network` already reaches `setup.network`. */
+	r->keys = route_keys[slot];
+	r->icon = "application-x-executable";
+	if (slot == nroutes)
+		nroutes++;
+}
+
+static void route_file(const char *path)
+{
+	size_t len = 0;
+	char *buf = kb_read_whole(path, &len);
+
+	if (!buf)
+		return;
+	for (char *line = strtok(buf, "\r\n"); line;
+	     line = strtok(NULL, "\r\n")) {
+		char *hash = strchr(line, '#');
+		char *eq;
+
+		if (hash)
+			*hash = '\0';
+		eq = strchr(line, '=');
+		if (!eq)
+			continue;
+		*eq = '\0';
+
+		char *name = line, *value = eq + 1;
+		char *end;
+
+		while (*name == ' ' || *name == '\t')
+			name++;
+		end = name + strlen(name);
+		while (end > name && (end[-1] == ' ' || end[-1] == '\t'))
+			*--end = '\0';
+		while (*value == ' ' || *value == '\t')
+			value++;
+		end = value + strlen(value);
+		while (end > value && (end[-1] == ' ' || end[-1] == '\t'))
+			*--end = '\0';
+		if (*name && *value)
+			route_put(name, value);
+	}
+	free(buf);
+}
+
+static void st_routes_load(void)
+{
+	const char *cfg = getenv("XDG_CONFIG_HOME");
+	const char *home = getenv("HOME");
+	char path[512];
+
+	nroutes = 0;
+	route_file("/etc/kdos/menu.conf");
+	if (cfg && *cfg)
+		snprintf(path, sizeof(path), "%s/kdos/menu.conf", cfg);
+	else if (home && *home)
+		snprintf(path, sizeof(path), "%s/.config/kdos/menu.conf", home);
+	else
+		return;
+	route_file(path);
+}
 
 static void build_right(void)
 {
@@ -1711,7 +1850,7 @@ int start_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	int at_x = -1, at_y = 0, dump = 0, dump_cells = 0;
-	const char *dump_view = NULL;
+	const char *dump_view = NULL, *route_open = NULL;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--at-bottom") && i + 2 < argc) {
@@ -1731,17 +1870,25 @@ int start_main(int argc, char **argv)
 			 * view alone would never see them. */
 			dump_view = argv[++i];
 			dump = 1;
+		} else if (!strcmp(argv[i], "--route") && i + 1 < argc) {
+			/* OPENED ON A ROUTE, which is the search field with
+			 * the name already in it — the route is a row like any
+			 * other and this is the one code path that finds one.
+			 * `kdos menu summon` is what passes this. */
+			route_open = argv[++i];
 		} else if (!strcmp(argv[i], "--dump")) {
 			dump = 1;
 		} else {
 			fprintf(stderr, "usage: kdos-start [--at-bottom X Y] "
-					"[--font NAME] [--no-icons] [--dump]\n");
+					"[--font NAME] [--no-icons] "
+					"[--route NAME] [--dump]\n");
 			return 2;
 		}
 	}
 
 	sh_apps_load();
 	st_medium_load();
+	st_routes_load();
 	/* The fixed rows first: a search reads them, and the one at startup
 	 * would otherwise run against an empty right column. */
 	build_right();
@@ -1756,6 +1903,10 @@ int start_main(int argc, char **argv)
 	} else if (dump_view && !strncmp(dump_view, "search:", 7)) {
 		mode = ST_SEARCH;
 		snprintf(query, sizeof(query), "%s", dump_view + 7);
+	}
+	if (route_open) {
+		mode = ST_SEARCH;
+		snprintf(query, sizeof(query), "%s", route_open);
 	}
 	build_left();
 

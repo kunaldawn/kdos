@@ -1,0 +1,9 @@
+Recorded `scanimage -f "%d\t%v %m\n"` output for kdos-devices' Scanners
+section, so a golden does not depend on what is plugged into the machine
+running the suite.
+
+TWO ROWS BECAUSE THEY ARE DIFFERENT SHAPES. `airscan:e0:Canon TR8500 series`
+carries colons inside the device string and a model name with spaces in it; the
+genesys one is the USB shape. A parser that split on the first colon, or on
+whitespace, gets one of the two wrong — which is why the format string asks for
+a tab and the parser splits on that alone.

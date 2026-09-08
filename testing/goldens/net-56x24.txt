@@ -1,0 +1,24 @@
++= Network ============================================+
+| Network                                              |
+| connected to Home Wifi                               |
+|------------------------------------------------------|
+| eth0                                       connected |
+| wlan0                 wifi on              connected |
+|   Home Wifi                       ###.     connected |
+|   Cafe                            ##..  WPA2         |
+| wlan1                 wifi on           disconnected |
+|   Airport Free                    #...  open         |
+| Work VPN                                   connected |
+| wg0                                            saved |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|                                                      |
+|------------------------------------------------------|
+|     [ Connect ] [ Forget ] [ Rescan ] [ Wi-Fi Off ]  |
++======================================================+

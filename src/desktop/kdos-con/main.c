@@ -574,6 +574,31 @@ static int rearrange_key(const KtuiEvent *ev)
 	return 1;
 }
 
+/*
+ * A LINE ON THE BAR FOR A MOMENT.
+ *
+ * The console has one row that is always on screen and no notification of its
+ * own — kdos-notifyd draws into a window, and a chord that could not do what
+ * was asked has to answer before any window exists. It expires by itself: a
+ * message that stayed would be a bar that had stopped being a taskbar.
+ */
+#define NOTICE_MS 4000
+
+static char notice[160];
+static unsigned long long notice_until;
+
+void con_notice(const char *text)
+{
+	snprintf(notice, sizeof(notice), "%s", text ? text : "");
+	notice_until = notice[0] ? con_now_ms() + NOTICE_MS : 0;
+	ktui_draw_invalidate();
+}
+
+const char *con_notice_text(void)
+{
+	return notice_until && notice_until > con_now_ms() ? notice : NULL;
+}
+
 int con_rearranging(void)
 {
 	return rear.id != 0;
@@ -842,6 +867,33 @@ moved:
 	return 1;
 }
 
+/*
+ * THE SCREEN'S FONT, ONE STEP. Every view that rasterises its own glyphs, not
+ * the primary alone: two screens showing one session must not end up at two
+ * cell sizes because the chord reached whichever attached first.
+ *
+ * A view inside somebody else's terminal said so in its hello and is sent
+ * nothing — that terminal owns the font, no message from here can change it,
+ * and the honest answer is the one on the bar.
+ */
+static int font_step(int step)
+{
+	int sent = 0;
+
+	for (int i = 0; i < kcon_server_view_count(S.server); i++) {
+		KconSurface *v = kcon_server_view_at(S.server, i);
+
+		if (!(kcon_view_caps(v) & KCON_VIEW_FONT))
+			continue;
+		kcon_view_font(v, step);
+		sent = 1;
+	}
+	if (!sent)
+		con_notice("the terminal this view runs in owns the font — "
+			   "change it there");
+	return 1;
+}
+
 static int session_key(const KtuiEvent *ev)
 {
 	Win *w = win_focused();
@@ -953,6 +1005,12 @@ static int session_key(const KtuiEvent *ev)
 	case CON_ACT_CAPTURE:
 		mark_begin(1);
 		return 1;
+	case CON_ACT_FONT_UP:
+		return font_step(1);
+	case CON_ACT_FONT_DOWN:
+		return font_step(-1);
+	case CON_ACT_FONT_RESET:
+		return font_step(0);
 	case CON_ACT_PASTE: {
 		/*
 		 * THE SESSION'S CLIPBOARD INTO THE FOCUSED WINDOW, which is
@@ -1591,8 +1649,13 @@ static void adopt_surfaces(void)
  * The default disposition for SIGHUP is DEATH, so a program on
  * reload_session()'s list that does not handle it is one that gets killed by
  * `kdos theme amber` and comes back looking retinted by accident.
+ *
+ * SET AT STARTUP, so the first turn of the loop applies the accent and the
+ * night-light toggle. There is no second place that reads them: a session that
+ * only ever retinted on the signal came up in the table's first scheme and
+ * stayed there until somebody ran `kdos theme` again.
  */
-static volatile sig_atomic_t g_retint;
+static volatile sig_atomic_t g_retint = 1;
 
 static void on_hup(int sig)
 {
@@ -1606,6 +1669,10 @@ static void retint(void)
 
 	if (kcol_theme_name(name, sizeof(name)) && *name)
 		ktui_theme_set(name);
+	/* AFTER the scheme, because it transforms whatever the scheme just
+	 * became — and unconditionally, because turning the toggle off is a
+	 * retint too. */
+	ktui_theme_night(kb_toggle_on("night-light"));
 
 	/* The palette the terminal itself was given, then a full repaint: the
 	 * diff against the previous frame would otherwise leave every cell
@@ -2219,6 +2286,13 @@ static int serve(const char *sock, const char *view)
 				ktui_draw_invalidate();
 			}
 
+		/* And a notice ends on a frame for the same reason: nothing
+		 * else changes when its deadline passes. */
+		if (notice_until && notice_until <= mono_ms()) {
+			notice_until = 0;
+			ktui_draw_invalidate();
+		}
+
 		if (g_retint) {
 			g_retint = 0;
 			retint();
@@ -2280,6 +2354,18 @@ static int serve(const char *sock, const char *view)
 		if (vw != S.cols || vh != S.rows) {
 			S.cols = vw;
 			S.rows = vh;
+
+			/*
+			 * A GRID THAT MOVED MAY BE A CELL THAT MOVED. A font
+			 * step is announced as a resize — that is what it is,
+			 * once the mode is divided by the new cell — and every
+			 * picture on the far side was cut for the old one, so
+			 * the view dropped them and is waiting to be sent them
+			 * again. Blocks are re-cut here for the same reason:
+			 * an embedded guest is sized in pixels from the cell.
+			 */
+			embed_view_attached();
+			kcon_server_resend_sprites(S.server);
 
 			/*
 			 * PANELS ARE RE-DOCKED BEFORE THE WORK AREA IS TAKEN.

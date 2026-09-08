@@ -32,6 +32,12 @@
  * When the parse yields nothing it SAYS SO and shows a built-in table: a help
  * surface that silently comes up empty is worse than one that admits it could
  * not read its own configuration.
+ *
+ * `--first-run` puts a four-row tour above the list — a terminal, the menu,
+ * another workspace, the window left behind — and every row is one of the
+ * parsed bindings rather than a sentence about it, for the same reason the
+ * list is. It is the login spawn's flag and this program decides whether the
+ * welcome is due, so a session that asks at every login still shows it once.
  */
 
 #include <stdio.h>
@@ -56,10 +62,21 @@ static const char *const sect_name[SEC_N] = {
 	"launch", "window", "workspace", "tools", "media", "system"
 };
 
+/*
+ * THE FIRST-RUN TOUR IS FOUR OF THE BINDINGS, not four sentences beside them.
+ * Every source of chords stamps these roles onto the rows it produces, so the
+ * tour names the chord this session binds — a rebound terminal changes the
+ * welcome in the same edit, which is the whole reason this file generates
+ * rather than remembers. WEL_CARD is not a step: it is the chord the hint row
+ * names so the card can be brought back.
+ */
+enum { WEL_NONE = 0, WEL_TERM, WEL_MENU, WEL_WS, WEL_NEXT, WEL_CARD };
+
 struct kbind {
 	char key[40];		/* as a person reads it: Super+Shift+d     */
 	char desc[80];		/* what it does                            */
 	int sect;
+	int role;		/* WEL_* where this row is a step of the tour */
 };
 
 static struct kbind binds[KEYS_MAX];
@@ -337,6 +354,31 @@ static void describe(const char *act, const char *cmd, const char *to,
 	snprintf(out, n, "%s", act);
 }
 
+/* The tour's steps, read off the compositor's own actions. The terminal is
+ * matched against the leading word retermize() has already rewritten, so the
+ * row names the emulator that will actually open. */
+static int rc_role(const char *act, const char *cmd, const char *to,
+		   const char *menu)
+{
+	const char *t = sh_term();
+	size_t tn = strlen(t);
+
+	if (!strcmp(act, "Execute")) {
+		if (!strncmp(cmd, t, tn) && (cmd[tn] == '\0' || cmd[tn] == ' '))
+			return WEL_TERM;
+		if (!strncmp(cmd, "kdos-keys", 9))
+			return WEL_CARD;
+		return WEL_NONE;
+	}
+	if (!strcmp(act, "ShowMenu"))
+		return strstr(menu, "root") ? WEL_MENU : WEL_NONE;
+	if (!strcmp(act, "GoToDesktop"))
+		return !strcmp(to, "right") ? WEL_WS : WEL_NONE;
+	if (!strcmp(act, "NextWindow"))
+		return WEL_NEXT;
+	return WEL_NONE;
+}
+
 static int classify(const char *key, const char *act, const char *cmd,
 		    const char *menu)
 {
@@ -444,6 +486,7 @@ static int parse_rc(const char *path)
 		retermize(cmd, sizeof(cmd));
 		describe(act, cmd, to, dir, menu, b->desc, sizeof(b->desc));
 		b->sect = classify(key, act, cmd, menu);
+		b->role = rc_role(act, cmd, to, menu);
 		nbinds++;
 		p = close;
 	}
@@ -456,25 +499,25 @@ static int parse_rc(const char *path)
  * itself go stale. */
 static void builtin_table(void)
 {
-	static const struct { const char *k, *d; int s; } tbl[] = {
-		{ "Super+d", "kdos-launcher", SEC_LAUNCH },
+	static const struct { const char *k, *d; int s, r; } tbl[] = {
+		{ "Super+d", "kdos-launcher", SEC_LAUNCH, WEL_NONE },
 		/* NULL: the terminal is not the same program on the two
 		 * desktops, and the card names the one that will open. */
-		{ "Super+Enter", NULL, SEC_LAUNCH },
-		{ "Alt+F2", "kdos-run", SEC_LAUNCH },
-		{ "Super+Space", "the root menu", SEC_LAUNCH },
-		{ "Super+q", "close the window", SEC_WINDOW },
-		{ "Super+Tab", "next window", SEC_WINDOW },
-		{ "Super+m", "maximise / restore", SEC_WINDOW },
-		{ "Super+f", "fullscreen", SEC_WINDOW },
-		{ "Super+n", "minimise", SEC_WINDOW },
-		{ "Super+1..4", "workspace 1 to 4", SEC_WS },
-		{ "Super+l", "kdos-lock", SEC_SYSTEM },
-		{ "Super+F1", "this card", SEC_SYSTEM },
+		{ "Super+Enter", NULL, SEC_LAUNCH, WEL_TERM },
+		{ "Alt+F2", "kdos-run", SEC_LAUNCH, WEL_NONE },
+		{ "Super+Space", "the root menu", SEC_LAUNCH, WEL_MENU },
+		{ "Super+q", "close the window", SEC_WINDOW, WEL_NONE },
+		{ "Super+Tab", "next window", SEC_WINDOW, WEL_NEXT },
+		{ "Super+m", "maximise / restore", SEC_WINDOW, WEL_NONE },
+		{ "Super+f", "fullscreen", SEC_WINDOW, WEL_NONE },
+		{ "Super+n", "minimise", SEC_WINDOW, WEL_NONE },
+		{ "Super+1..4", "workspace 1 to 4", SEC_WS, WEL_WS },
+		{ "Super+l", "kdos-lock", SEC_SYSTEM, WEL_NONE },
+		{ "Super+F1", "this card", SEC_SYSTEM, WEL_CARD },
 		/* The one default the two desktops do not share: the console
 		 * puts Shift on it, so the chord that closes a window and the
 		 * chord that ends the desktop are not one slip apart. */
-		{ NULL, "end the session", SEC_SYSTEM },
+		{ NULL, "end the session", SEC_SYSTEM, WEL_NONE },
 	};
 
 	const char *con = getenv("KDOS_CON");
@@ -488,6 +531,7 @@ static void builtin_table(void)
 		snprintf(binds[nbinds].desc, sizeof(binds[0].desc), "%s",
 			 tbl[i].d ? tbl[i].d : sh_term());
 		binds[nbinds].sect = tbl[i].s;
+		binds[nbinds].role = tbl[i].r;
 		nbinds++;
 	}
 }
@@ -505,6 +549,25 @@ static void builtin_table(void)
  * prints them. This side owns only how they are described and grouped, which
  * is presentation and belongs to the card.
  */
+/* The tour's steps on the console, by the action that performs them. A table
+ * of its own rather than a fifth column on the one below: four rows of forty
+ * would be buried there, and the roles are read by one caller. */
+static int con_role(const char *act)
+{
+	static const struct { const char *act; int role; } tbl[] = {
+		{ "terminal",		WEL_TERM },
+		{ "menu",		WEL_MENU },
+		{ "workspace-next",	WEL_WS },
+		{ "next",		WEL_NEXT },
+		{ "keys",		WEL_CARD },
+	};
+
+	for (size_t i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++)
+		if (!strcmp(tbl[i].act, act))
+			return tbl[i].role;
+	return WEL_NONE;
+}
+
 static int con_section(const char *act, const char **desc)
 {
 	static const struct { const char *act, *desc; int sect; } tbl[] = {
@@ -547,6 +610,11 @@ static int con_section(const char *act, const char **desc)
 		{ "mark",	"mark text anywhere on the screen",	SEC_WINDOW },
 		{ "paste",	"paste what was marked",	SEC_WINDOW },
 		{ "capture",	"mark a rectangle: text copied, picture filed",	SEC_WINDOW },
+		/* The screen's own font, which is the view's and not a
+		 * window's — filed under system for that reason. */
+		{ "font-up",	"bigger text on the screen",	SEC_SYSTEM },
+		{ "font-down",	"smaller text on the screen",	SEC_SYSTEM },
+		{ "font-reset",	"the text size back",		SEC_SYSTEM },
 		{ "volume-up",	"louder",		SEC_WINDOW },
 		{ "volume-down", "quieter",		SEC_WINDOW },
 		{ "volume-mute", "mute and unmute",	SEC_WINDOW },
@@ -621,6 +689,7 @@ static int parse_con_keys(void)
 			 tab + 1);
 		snprintf(binds[nbinds].desc, sizeof(binds[0].desc), "%s", desc);
 		binds[nbinds].sect = sect;
+		binds[nbinds].role = con_role(line);
 		nbinds++;
 	}
 
@@ -635,12 +704,14 @@ static int parse_con_keys(void)
 		snprintf(binds[nbinds].desc, sizeof(binds[0].desc),
 			 "switch workspace");
 		binds[nbinds].sect = SEC_WS;
+		binds[nbinds].role = WEL_NONE;
 		nbinds++;
 		snprintf(binds[nbinds].key, sizeof(binds[0].key),
 			 "Super+Shift+1..9");
 		snprintf(binds[nbinds].desc, sizeof(binds[0].desc),
 			 "send the window there");
 		binds[nbinds].sect = SEC_WS;
+		binds[nbinds].role = WEL_NONE;
 		nbinds++;
 	}
 
@@ -811,11 +882,64 @@ static void marker_write(void)
 		close(fd);
 }
 
+/* ── the first-run tour ────────────────────────────────────────────────── */
+
+struct welstep {
+	const char *key;
+	const char *what;
+};
+
+static struct welstep wel[4];
+static int nwel;
+
+static const char *role_key(int role)
+{
+	for (int i = 0; i < nbinds; i++)
+		if (binds[i].role == role)
+			return binds[i].key;
+	return NULL;
+}
+
+/*
+ * Four things to do, in the order somebody sitting down does them: a terminal,
+ * the menu, another workspace, the window they left behind. A step whose chord
+ * this session does not bind is DROPPED rather than guessed — the tour is the
+ * one frame whose reader has no way to tell a live chord from a dead one.
+ */
+static void build_welcome(void)
+{
+	static const struct { int role; const char *what; } step[] = {
+		{ WEL_TERM, "open a terminal" },
+		{ WEL_MENU, "reach the menu" },
+		{ WEL_WS,   "switch workspaces" },
+		{ WEL_NEXT, "reach another terminal" },
+	};
+
+	nwel = 0;
+	for (size_t i = 0; i < sizeof(step) / sizeof(step[0]); i++) {
+		const char *k = role_key(step[i].role);
+
+		if (!k)
+			continue;
+		wel[nwel].key = k;
+		wel[nwel].what = step[i].what;
+		nwel++;
+	}
+}
+
 /* ── drawing ───────────────────────────────────────────────────────────── */
+
+/* The tour costs a greeting, its rows and a rule. Under twelve rows it is not
+ * drawn at all: what it pushes off the bottom is the card, and a welcome that
+ * leaves three bindings showing has taken more than it taught. */
+static int welcome_on(int welcome)
+{
+	return welcome && ktui_h >= 12;
+}
 
 static int list_top_y(int welcome)
 {
-	return welcome ? 4 : 1;
+	return welcome_on(welcome) ? nwel + 3 : 1;
 }
 
 static int list_rows(int welcome)
@@ -836,13 +960,19 @@ static void draw(int top, int welcome)
 	ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
 	ktui_draw_box(krect(0, 0, w, h), " keys ", KT_ACCENT, KT_SURFACE, 1);
 
-	if (welcome) {
+	/* The tour reuses the list's two columns, so the four things to do and
+	 * the bindings under them read as one table. */
+	if (welcome_on(welcome)) {
 		ktui_draw_text(2, 1, w - 4, "Welcome to KDOS. I use KDOS btw.",
 			       KT_ACCENT, KT_SURFACE, KT_A_NONE);
-		ktui_draw_text(2, 2, w - 4,
-			       "These are the keys. Super+F1 brings this back.",
-			       KT_TEXT, KT_SURFACE, KT_A_NONE);
-		ktui_draw_hline(1, 3, w - 2, KT_G_HL, KT_DIM, KT_SURFACE);
+		for (int i = 0; i < nwel; i++) {
+			ktui_draw_text(4, 2 + i, keyw - 4, wel[i].key, KT_TEXT,
+				       KT_SURFACE, KT_A_NONE);
+			ktui_draw_text(keyw, 2 + i, w - keyw - 2, wel[i].what,
+				       KT_MID, KT_SURFACE, KT_A_NONE);
+		}
+		ktui_draw_hline(1, nwel + 2, w - 2, KT_G_HL, KT_DIM,
+				KT_SURFACE);
 	}
 
 	if (parse_note[0])
@@ -871,6 +1001,10 @@ static void draw(int top, int welcome)
 	 * off the bottom to scroll to. */
 	ktui_hint_if(nrows > rowsv - note, "Up/Down", "scroll");
 	ktui_hint("Any key", "close");
+	/* Named on the welcome and nowhere else: every other frame was asked
+	 * for by the chord this would print. */
+	if (welcome_on(welcome) && role_key(WEL_CARD))
+		ktui_hint(role_key(WEL_CARD), "this card again");
 	ktui_hint_row(&keys, krect(2, h - 2, w - 4, 1), KT_SURFACE);
 	ktui_draw_flush();
 }
@@ -944,6 +1078,7 @@ int keys_main(int argc, char **argv)
 		}
 	}
 	build_rows();
+	build_welcome();
 
 	if (print_card)
 		return print_rows();
