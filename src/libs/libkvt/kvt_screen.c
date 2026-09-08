@@ -124,6 +124,158 @@ static void screen_cell_init_generic(struct kvt_screen *con, struct cell *cell, 
 void screen_cell_init(struct kvt_screen *con, struct cell *cell)
 {
 	screen_cell_init_generic(con, cell, &con->def_attr);
+	/* AN ERASED CELL CARRIES NO TEXT, SO IT CARRIES NO LINK. Every blank
+	 * this screen makes comes through here — an erase, a resize's fill, a
+	 * scroll's new line — and a default attribute copied while a link was
+	 * open would otherwise leave a clickable hole in empty space. */
+	cell->attr.link = 0;
+}
+
+struct line *screen_line_at(struct kvt_screen *con, unsigned int y)
+{
+	struct line *line;
+
+	if (!con || y >= con->size_y)
+		return NULL;
+	if (!con->sb.pos)
+		return con->lines[y];
+	if (con->sb.pos_num + y >= con->sb.count)
+		return con->lines[y - (con->sb.count - con->sb.pos_num)];
+
+	line = con->sb.pos;
+	while (y--)
+		line = kvt_shl_dlist_next(line, &con->sb.list, list);
+	return line;
+}
+
+/*
+ * ── OSC 133, the prompt marks ────────────────────────────────────────────
+ *
+ * A shell says where its prompt starts and what the last command exited with.
+ * The mark is what makes "jump to the previous prompt" possible at all: the
+ * lines are the terminal's and the shell cannot reach them.
+ */
+KVT_SHL_EXPORT
+void kvt_screen_mark_prompt(struct kvt_screen *con)
+{
+	struct line *line;
+
+	if (!con || con->cursor_y >= con->size_y)
+		return;
+	line = con->lines[con->cursor_y];
+	if (!line)
+		return;
+	line->mark = 1;
+	/* A NEW PROMPT HAS NO STATUS YET. The same line reached a second time
+	 * — a shell redrawing its prompt after a resize — must not keep the
+	 * previous command's exit code, or the mark says the next command
+	 * failed before it has run. */
+	line->status = -1;
+	line->age = con->age_cnt;
+}
+
+struct line *screen_mark_last(struct kvt_screen *con)
+{
+	struct line *line;
+
+	if (!con)
+		return NULL;
+	for (int y = (int)con->cursor_y; y >= 0; y--)
+		if (con->lines[y] && con->lines[y]->mark)
+			return con->lines[y];
+	if (kvt_shl_dlist_empty(&con->sb.list))
+		return NULL;
+	for (line = kvt_shl_dlist_last(&con->sb.list, struct line, list);
+	     line && &line->list != &con->sb.list;
+	     line = kvt_shl_dlist_prev(line, &con->sb.list, list))
+		if (line->mark)
+			return line;
+	return NULL;
+}
+
+/*
+ * The exit status belongs to the PROMPT the command was typed at, which is
+ * where a person looks for it — so it is walked back to rather than written
+ * where the cursor happens to be when the shell reports it.
+ */
+KVT_SHL_EXPORT
+void kvt_screen_mark_status(struct kvt_screen *con, int status)
+{
+	struct line *line = screen_mark_last(con);
+
+	if (!line)
+		return;
+	line->status = status;
+	line->age = con->age_cnt;
+}
+
+/* The mark on a VISIBLE row: 1 for a prompt, and `status` set to what the
+ * command run there exited with, or -1 while it has not finished. */
+KVT_SHL_EXPORT
+int kvt_screen_mark_at(struct kvt_screen *con, unsigned int y, int *status)
+{
+	struct line *line = screen_line_at(con, y);
+
+	if (status)
+		*status = -1;
+	if (!line || !line->mark)
+		return 0;
+	if (status)
+		*status = line->status;
+	return 1;
+}
+
+/*
+ * THE VIEW MOVES TO THE NEXT MARK, one line at a time through the same
+ * scrolling the wheel uses.
+ *
+ * Stepping rather than computing an offset: the scrollback is a list whose
+ * position the screen owns, and a second implementation of "where am I" is a
+ * second thing to get wrong when a line is added under the view. It stops when
+ * a step changes nothing, which is what the end of the history is.
+ */
+KVT_SHL_EXPORT
+int kvt_screen_scroll_to_mark(struct kvt_screen *con, int dir)
+{
+	unsigned int steps;
+
+	if (!con || !dir)
+		return 0;
+	steps = con->sb.count + con->size_y;
+	while (steps--) {
+		struct line *was = screen_line_at(con, 0);
+
+		if (dir < 0)
+			kvt_screen_sb_up(con, 1);
+		else
+			kvt_screen_sb_down(con, 1);
+
+		struct line *now = screen_line_at(con, 0);
+
+		if (now == was)
+			return 0;
+		if (now && now->mark)
+			return 1;
+	}
+	return 0;
+}
+
+/*
+ * THE LINK A CELL CARRIES, as an id into the vte's table. 0 is none.
+ *
+ * The lookup goes through the same row-to-line map the selection uses, so a
+ * pointer over a scrolled-back line names the link that text actually has
+ * rather than the one at the same coordinate on the live screen.
+ */
+KVT_SHL_EXPORT
+unsigned int kvt_screen_link_at(struct kvt_screen *con, unsigned int x,
+				unsigned int y)
+{
+	struct line *line = screen_line_at(con, y);
+
+	if (!con || !line || x >= con->size_x || x >= line->size)
+		return 0;
+	return line->cells[x].attr.link;
 }
 
 static int line_new(struct kvt_screen *con, struct line **out,
@@ -143,6 +295,8 @@ static int line_new(struct kvt_screen *con, struct line **out,
 	line->sb_id = 0;
 	line->size = width;
 	line->age = con->age_cnt;
+	line->mark = 0;
+	line->status = -1;
 
 	line->cells = malloc(sizeof(struct cell) * width);
 	if (!line->cells) {

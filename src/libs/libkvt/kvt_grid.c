@@ -153,6 +153,43 @@ static int draw_cb(struct kvt_screen *con, uint64_t id, const uint32_t *ch,
 	c.fg = attr_fg(attr);
 	c.bg = attr_bg(attr);
 	c.attr = KT_A_NONE;
+	c.fgc = c.bgc = c.ulc = 0;
+
+	/*
+	 * THE LITERAL BESIDE THE SLOT, AND ONLY FOR A COLOUR OUTSIDE THE
+	 * SIXTEEN.
+	 *
+	 * The sixteen named colours are what a palette NAMES: they are the
+	 * theme's on a real VT, where the kernel is drawing them out of the
+	 * colour map this desktop installed, and a terminal whose red stopped
+	 * following `kdos theme` would be the one window on the screen wearing
+	 * somebody else's scheme. Everything else — the 216-colour cube, the
+	 * greys, a 24-bit SGR — is a colour the program chose exactly, and
+	 * reducing it to eight slots is what loses the picture. `fccode < 0`
+	 * is precisely that boundary: the vte resolves an index of 16 or more
+	 * to RGB and clears the code.
+	 *
+	 * The slot stays either way, so a consumer that was never sent the
+	 * literals — a view that declined them, a golden, a sixteen-colour
+	 * terminal — draws exactly what it drew before.
+	 */
+	if (attr->fccode < 0) {
+		c.fgc = ((uint32_t)attr->fr << 16) |
+			((uint32_t)attr->fg << 8) | (uint32_t)attr->fb;
+		c.attr |= KT_A_FGRGB;
+	}
+	if (attr->bccode < 0) {
+		c.bgc = ((uint32_t)attr->br << 16) |
+			((uint32_t)attr->bg << 8) | (uint32_t)attr->bb;
+		c.attr |= KT_A_BGRGB;
+	}
+	if (attr->ul_rgb) {
+		c.ulc = ((uint32_t)attr->ulr << 16) |
+			((uint32_t)attr->ulg << 8) | (uint32_t)attr->ulb;
+		c.attr |= KT_A_ULCOLOR;
+	}
+	if (attr->ul_style)
+		c.attr |= KT_UL_SET(attr->ul_style);
 
 	if (attr->bold)
 		c.attr |= KT_A_BOLD;
@@ -160,6 +197,16 @@ static int draw_cb(struct kvt_screen *con, uint64_t id, const uint32_t *ch,
 		c.attr |= KT_A_UNDERLINE;
 	if (attr->inverse)
 		c.attr |= KT_A_REVERSE;
+	/* The three styles a KtuiCell has room for. `blink` and `dim` have no
+	 * bit and are dropped here rather than approximated: a blink drawn as
+	 * bold and a dim drawn as normal are both a lie about the text, and
+	 * the cell is the one place that can say so. */
+	if (attr->italic)
+		c.attr |= KT_A_ITALIC;
+	if (attr->strike)
+		c.attr |= KT_A_STRIKE;
+	if (attr->overline)
+		c.attr |= KT_A_OVERLINE;
 
 	g->cells[posy * g->w + posx] = c;
 

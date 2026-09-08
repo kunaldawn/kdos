@@ -622,6 +622,32 @@ kvt_term_mouse_mode(struct kvt_term *t)
 	return t ? (int)kvt_vte_get_mouse_mode(t->vte) : 0;
 }
 
+/* The screen holds the id and the vte holds the address, so this is the one
+ * object that can answer both — which is why the pair is here and not on
+ * either half. */
+unsigned int kvt_term_link_at(struct kvt_term *t, unsigned int x,
+			      unsigned int y)
+{
+	return t ? kvt_screen_link_at(t->screen, x, y) : 0;
+}
+
+const char *kvt_term_link_uri(struct kvt_term *t, unsigned int id)
+{
+	return t ? kvt_vte_link_uri(t->vte, id) : NULL;
+}
+
+int kvt_term_mark_at(struct kvt_term *t, unsigned int y, int *status)
+{
+	if (status)
+		*status = -1;
+	return t ? kvt_screen_mark_at(t->screen, y, status) : 0;
+}
+
+int kvt_term_scroll_to_mark(struct kvt_term *t, int dir)
+{
+	return t ? kvt_screen_scroll_to_mark(t->screen, dir) : 0;
+}
+
 /*
  * The selection, onto the clipboard the rest of the desktop uses. One
  * implementation of "what is on the clipboard", so a copy out of a terminal

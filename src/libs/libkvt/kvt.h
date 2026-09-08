@@ -224,6 +224,24 @@ struct kvt_screen_attr {
 	unsigned int protect : 1;	/* cannot be erased */
 	unsigned int blink : 1;		/* blinking character */
 	unsigned int dim:1;		/* dim color */
+	unsigned int strike : 1;	/* struck through (SGR 9) */
+	unsigned int overline : 1;	/* overlined (SGR 53) */
+	/* SGR 4:0-4:5. 0 is the plain line SGR 4 alone asks for; a renderer
+	 * with one shape draws that and is right, which is why the shape is
+	 * beside the underline bit rather than replacing it. */
+	unsigned int ul_style : 3;
+	unsigned int ul_rgb : 1;	/* ulr/ulg/ulb are SGR 58's colour */
+	uint8_t ulr, ulg, ulb;		/* the underline's own colour      */
+	/*
+	 * OSC 8's hyperlink, as an id into the vte's table — 0 is no link.
+	 *
+	 * It rides the cell's attributes because that is what already travels
+	 * into the scrollback with the text: a link a person scrolled past is
+	 * still the link that text carries. `KtuiCell` is deliberately NOT
+	 * widened for it — a link is a property of a TERMINAL's buffer, not of
+	 * every surface the toolkit draws.
+	 */
+	uint16_t link;
 };
 
 /* Attributes that alter the glyph shape */
@@ -420,6 +438,39 @@ int kvt_term_key(struct kvt_term *t, int key, int mods);
 int kvt_term_mouse(struct kvt_term *t, int cell_x, int cell_y, int btn,
 		   int mods, int event);
 int kvt_term_mouse_mode(struct kvt_term *t);
+
+/*
+ * ── OSC 8 hyperlinks ────────────────────────────────────────────────────
+ *
+ * `kvt_term_link_at` gives the id a VISIBLE cell carries (0 for none) and
+ * `kvt_term_link_uri` the address behind an id. Two calls rather than one
+ * because a renderer needs the id — every cell of the same link shares it, and
+ * that is what says which run to underline — while only the click needs the
+ * address.
+ *
+ * THE URI IS THE TERMINAL'S AND IS VALID UNTIL IT CLOSES. It is not freed on
+ * a reset, so an id in the scrollback can always be resolved; the table is
+ * capped instead.
+ */
+unsigned int kvt_term_link_at(struct kvt_term *t, unsigned int x,
+			      unsigned int y);
+const char *kvt_term_link_uri(struct kvt_term *t, unsigned int id);
+
+/*
+ * ── OSC 133 ─────────────────────────────────────────────────────────────
+ *
+ * `kvt_term_mark_at` answers whether a VISIBLE row is where a prompt started,
+ * and what the command typed at it exited with (-1 while it is running or was
+ * never reported). `kvt_term_scroll_to_mark` moves the view to the previous
+ * (-1) or next (+1) marked line and answers whether it moved.
+ *
+ * WHERE THE STATUS IS DRAWN IS THE CALLER'S. A terminal has no gutter — every
+ * column belongs to the child — so a program with a frame draws it on the
+ * frame and one without draws nothing rather than overwriting a character the
+ * shell put there.
+ */
+int kvt_term_mark_at(struct kvt_term *t, unsigned int y, int *status);
+int kvt_term_scroll_to_mark(struct kvt_term *t, int dir);
 
 kvt_age_t kvt_screen_draw(struct kvt_screen *con, kvt_screen_draw_cb draw_cb,
 			  void *data);
@@ -680,6 +731,21 @@ void kvt_term_sync_cb(struct kvt_term *t, kvt_vte_sync_cb cb, void *user);
 void kvt_term_notify_cb(struct kvt_term *t, kvt_vte_notify_cb cb, void *user);
 /* The focus moved. Sends CSI I / CSI O only while the child asked for them. */
 void kvt_term_focus(struct kvt_term *t, int in);
+/* OSC 133's prompt marks. `kvt_screen_mark_at` answers for a VISIBLE row and
+ * fills `status` with the exit code of the command run at that prompt, or -1
+ * while it has not finished; `kvt_screen_scroll_to_mark` moves the view to the
+ * next marked line and answers whether it moved. */
+void kvt_screen_mark_prompt(struct kvt_screen *con);
+void kvt_screen_mark_status(struct kvt_screen *con, int status);
+int kvt_screen_mark_at(struct kvt_screen *con, unsigned int y, int *status);
+int kvt_screen_scroll_to_mark(struct kvt_screen *con, int dir);
+
+/* The link a cell carries, and the address behind an id. See kvt_term_link_at
+ * for what a caller does with the pair. */
+unsigned int kvt_screen_link_at(struct kvt_screen *con, unsigned int x,
+				unsigned int y);
+const char *kvt_vte_link_uri(struct kvt_vte *vte, unsigned int id);
+
 /* True while the child has synchronized output on. */
 int kvt_term_sync_output(struct kvt_term *t);
 /* True while this frame should be held back — synchronized output is on and
@@ -870,6 +936,13 @@ typedef struct {
 } KvtUi;
 
 /*
+ * THE EVENT'S COORDINATES ARE THE TERMINAL'S OWN GRID, not the screen's. A
+ * caller whose terminal is a window subtracts the window's origin first: cell
+ * (0,0) here is the terminal's top-left wherever it is drawn. Handing screen
+ * coordinates to a terminal that is not at the origin selects text as far from
+ * the pointer as the window is from the corner, and follows a hyperlink that
+ * is not the one under it.
+ *
  * Returns 1 when a selection was completed, and then `*copied` is a
  * malloc'd string the caller owns and must free. 0 otherwise, `*copied`
  * untouched. `now` is a monotonic seconds value — passed in rather than read

@@ -46,7 +46,7 @@
  * would not fail, which is the dangerous outcome: it would act on the wrong
  * verb.
  */
-#define KCON_VERSION 8
+#define KCON_VERSION 9
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -276,6 +276,19 @@ enum {
 	 */
 	KCON_OP_VIEW_FONT,
 
+	/*
+	 * THE COLOURS A RUN'S CELLS NAMED THEMSELVES, sent only to a view that
+	 * said KCON_VIEW_COLOR and only for a run that has any.
+	 *
+	 * It follows the KCON_OP_COMMIT of the SAME run and repeats its
+	 * position and count, so the view patches cells it already has rather
+	 * than holding a frame back waiting for a second message that may
+	 * never come. A view that declined never sees it and draws the slots,
+	 * which is the whole point of the split: eight bytes a cell down a
+	 * terminal link, and the literals only where somebody can show them.
+	 */
+	KCON_OP_COLOR,
+
 	KCON_OP_BYE,		/* with a reason, so a log says why        */
 
 	KCON_OP_N
@@ -316,6 +329,17 @@ enum {
  * arrives before the chord is ever pressed.
  */
 #define KCON_VIEW_FONT 0x2u
+
+/*
+ * KCON_VIEW_COLOR says the view can draw a colour outside the theme's eight
+ * slots, so the session may send the literals a terminal's own cells carry.
+ *
+ * It is asked for rather than assumed because the answer is not the session's
+ * to guess: a view inside somebody's sixteen-colour terminal would have to
+ * reduce every literal back to a slot after paying for it on the wire, and a
+ * link slow enough to make that hurt is exactly the link a remote view is on.
+ */
+#define KCON_VIEW_COLOR 0x4u
 
 /*
  * libkcon as a libkdisp implementation. A consumer hands the ADDRESS of this
@@ -395,6 +419,33 @@ int kcon_put_run(KconBuf *b, uint16_t x, uint16_t y,
  * count, or -1. */
 int kcon_get_run(KconRd *r, uint16_t *x, uint16_t *y, KtuiCell *out,
 		 uint16_t max);
+
+/*
+ * The literals of the same run: three bytes each for the foreground, the
+ * background and the underline, then one byte of the attribute bits that say
+ * which of them mean anything and what shape the underline is.
+ *
+ * TEN BYTES A CELL, PAID ONLY BY A VIEW THAT ASKED. The record is separate
+ * from the cell's rather than an eight-byte record grown to eighteen, because
+ * the cell record is what every commit costs and most cells on a desktop are
+ * chrome in slots.
+ */
+#define KCON_COLOR_BYTES 10
+
+/* Whether any cell in the run carries a literal at all — a run of none is not
+ * sent. */
+int kcon_run_has_color(const KtuiCell *cells, uint16_t n);
+int kcon_put_color_run(KconBuf *b, uint16_t x, uint16_t y,
+		       const KtuiCell *cells, uint16_t n);
+/*
+ * Reads a colour run into `out`: the three colours, and in `attr` ONLY the
+ * bits above the wire's byte. The caller merges them into the cells it already
+ * has, because the low byte is the commit's and this message must not be able
+ * to change it — a run that could rewrite an attribute would be a second
+ * sender for the same field. Returns the count, or -1.
+ */
+int kcon_get_color_run(KconRd *r, uint16_t *x, uint16_t *y, KtuiCell *out,
+		       uint16_t max);
 
 /* ── connections ─────────────────────────────────────────────────────────
  *

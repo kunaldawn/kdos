@@ -101,6 +101,62 @@ static inline pixman_color_t to_pixman(KRgb c)
 	return p;
 }
 
+/* One horizontal rule: what underline, strike and overline all are, differing
+ * only in the row they land on. */
+static void rule(pixman_image_t *dst, int x, int y, int w, int t,
+		 pixman_color_t c)
+{
+	pixman_image_fill_rectangles(PIXMAN_OP_OVER, dst, &c, 1,
+				     &(pixman_rectangle16_t){
+					     (int16_t)x, (int16_t)y,
+					     (uint16_t)w, (uint16_t)t });
+}
+
+/*
+ * THE UNDERLINE'S SHAPE.
+ *
+ * A wave is drawn as a column at a time from a fixed eight-step table rather
+ * than from `sin()`: this library links no maths library, the period is a
+ * handful of pixels where a real sine is a straight line anyway, and a table
+ * cannot drift between one scale and the next. It rides ABOVE the plain line's
+ * row so the crest stays inside the cell — a curl that left the cell would be
+ * clipped by the row below repainting, and would flicker.
+ *
+ * Every unknown style falls to the plain line. A shape nobody drew is worse
+ * than the wrong shape: the attribute means "this word is marked".
+ */
+static void underline(pixman_image_t *dst, int x, int y, int cw, int ch,
+		      int scale, unsigned style, pixman_color_t c)
+{
+	static const int wave[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
+	int base = y + ch - 2 * scale;
+
+	switch (style) {
+	case KT_UL_DOUBLE:
+		rule(dst, x, base - 2 * scale, cw, scale, c);
+		rule(dst, x, base, cw, scale, c);
+		return;
+	case KT_UL_CURLY:
+		for (int i = 0; i < cw; i++) {
+			int off = wave[(i / scale) % 8] * scale / 2;
+
+			rule(dst, x + i, base - scale - off, 1, scale, c);
+		}
+		return;
+	case KT_UL_DOTTED:
+		for (int i = 0; i < cw; i += 2 * scale)
+			rule(dst, x + i, base, scale, scale, c);
+		return;
+	case KT_UL_DASHED:
+		for (int i = 0; i < cw; i += 6 * scale)
+			rule(dst, x + i, base, 3 * scale, scale, c);
+		return;
+	default:
+		rule(dst, x, base, cw, scale, c);
+		return;
+	}
+}
+
 pixman_color_t kcell_slot_color(int slot)
 {
 	return to_pixman(ktui_theme->slot[slot & 7]);
@@ -137,6 +193,26 @@ static pixman_color_t bg_color(uint8_t slot)
 	};
 }
 
+/* A literal a terminal asked for, as pixman wants it. Opaque, always: the
+ * per-slot alpha is what makes a THEME background translucent, and a colour a
+ * program named is not the theme's to fade. */
+static pixman_color_t rgb_color(uint32_t rgb)
+{
+	KRgb c = { (uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb };
+
+	return to_pixman(c);
+}
+
+/* Two cells share a background run only if they share the SAME background —
+ * two literals that differ, or a literal and a slot, are two runs however
+ * close the colours look. */
+static int same_bg(const KtuiCell *a, const KtuiCell *b)
+{
+	if ((a->attr & KT_A_BGRGB) != (b->attr & KT_A_BGRGB))
+		return 0;
+	return (a->attr & KT_A_BGRGB) ? a->bgc == b->bgc : a->bg == b->bg;
+}
+
 /*
  * Paint one row of cells.
  *
@@ -153,18 +229,19 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 
 	for (int x = 0; x < w;) {
 		uint8_t bg = row[x].bg;
+		int lit = (row[x].attr & KT_A_BGRGB) != 0;
 		int run = 1;
-		while (x + run < w && row[x + run].bg == bg)
+		while (x + run < w && same_bg(&row[x], &row[x + run]))
 			run++;
 
 		/* Still an OP_SRC fill, so the run is CLEARED to zero rather
 		 * than skipped — the buffer is reused between frames and a skip
 		 * would leave the last frame's pixels behind. */
-		if (bg_owned(bg)) {
+		if (!lit && bg_owned(bg)) {
 			x += run;	/* the backdrop painted it */
 			continue;
 		}
-		pixman_color_t c = bg_color(bg);
+		pixman_color_t c = lit ? rgb_color(row[x].bgc) : bg_color(bg);
 		pixman_image_fill_rectangles(
 			PIXMAN_OP_SRC, dst, &c, 1,
 			&(pixman_rectangle16_t){ (int16_t)(x * cw), (int16_t)y,
@@ -197,9 +274,13 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		 * comes out with one un-lit cell per wide character.
 		 */
 		if (cp == ' ' || cp < 0x20) {
-			if (!was_covered && (row[x].attr & KT_A_REVERSE)
-					&& !bg_owned(row[x].fg)) {
-				pixman_color_t c = bg_color(row[x].fg);
+			if (!was_covered && (row[x].attr & KT_A_REVERSE) &&
+			    ((row[x].attr & KT_A_FGRGB) ||
+			     !bg_owned(row[x].fg))) {
+				pixman_color_t c =
+					(row[x].attr & KT_A_FGRGB)
+						? rgb_color(row[x].fgc)
+						: bg_color(row[x].fg);
 				pixman_image_fill_rectangles(
 					PIXMAN_OP_SRC, dst, &c, 1,
 					&(pixman_rectangle16_t){
@@ -210,6 +291,30 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		}
 
 		uint8_t fg = row[x].fg, bg = row[x].bg;
+		/*
+		 * A LITERAL TRAVELS WITH ITS SLOT THROUGH THE SWAP. Reverse is
+		 * an exchange of what is drawn and what is behind it, so a
+		 * terminal's own colour has to change places with the same
+		 * move — a swap that carried only the slots would draw a
+		 * reversed cell in a colour neither half of it named.
+		 */
+		unsigned at = row[x].attr;
+		uint32_t fgl = row[x].fgc, bgl = row[x].bgc;
+		int fg_lit = (at & KT_A_FGRGB) != 0;
+		int bg_lit = (at & KT_A_BGRGB) != 0;
+
+		if (at & KT_A_REVERSE) {
+			uint8_t ts = fg;
+			uint32_t tl = fgl;
+			int tb = fg_lit;
+
+			fg = bg;
+			bg = ts;
+			fgl = bgl;
+			bgl = tl;
+			fg_lit = bg_lit;
+			bg_lit = tb;
+		}
 
 		/*
 		 * A SPRITE cell: composite the matching sub-rectangle of the
@@ -230,8 +335,9 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 			/* Reverse under a sprite is a swap like everywhere
 			 * else: the fill that the icon then sits on becomes
 			 * the foreground slot. */
-			if ((row[x].attr & KT_A_REVERSE) && !bg_owned(fg)) {
-				pixman_color_t rc = bg_color(fg);
+			if ((at & KT_A_REVERSE) && (bg_lit || !bg_owned(bg))) {
+				pixman_color_t rc = bg_lit ? rgb_color(bgl)
+							   : bg_color(bg);
 				pixman_image_fill_rectangles(
 					PIXMAN_OP_SRC, dst, &rc, 1,
 					&(pixman_rectangle16_t){
@@ -249,7 +355,8 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		}
 
 		KCellGlyph g;
-		bool have = kcell_glyph_scaled(cp, scale, &g);
+		bool have = kcell_glyph_styled(cp, scale,
+					       row[x].attr & KT_A_ITALIC, &g);
 
 		/*
 		 * A glyph wider than its cell may spill into the next one ONLY
@@ -268,13 +375,11 @@ static void paint_row(pixman_image_t *dst, const KtuiCell *row, int w,
 		 * terminal does with the same attribute. Covers the reserved
 		 * continuation cell too: painting it on its own turn would
 		 * overwrite the right half of the glyph already composited. */
-		if (row[x].attr & KT_A_REVERSE) {
-			uint8_t t = fg;
-			fg = bg;
-			bg = t;
-			if (bg_owned(bg))
+		if (at & KT_A_REVERSE) {
+			if (!bg_lit && bg_owned(bg))
 				goto glyph;
-			pixman_color_t c = bg_color(bg);
+			pixman_color_t c = bg_lit ? rgb_color(bgl)
+						  : bg_color(bg);
 			pixman_image_fill_rectangles(
 				PIXMAN_OP_SRC, dst, &c, 1,
 				&(pixman_rectangle16_t){
@@ -287,7 +392,8 @@ glyph:
 		if (!have)
 			continue;
 
-		pixman_color_t c = to_pixman(ktui_theme->slot[fg]);
+		pixman_color_t c = fg_lit ? rgb_color(fgl)
+					  : to_pixman(ktui_theme->slot[fg]);
 		pixman_image_t *src = pixman_image_create_solid_fill(&c);
 		if (!src)
 			continue;
@@ -320,16 +426,28 @@ glyph:
 		}
 		pixman_image_unref(src);
 
-		if (row[x].attr & KT_A_UNDERLINE) {
-			pixman_color_t u = to_pixman(ktui_theme->slot[fg]);
-			pixman_image_fill_rectangles(
-				PIXMAN_OP_OVER, dst, &u, 1,
-				&(pixman_rectangle16_t){
-					(int16_t)(x * cw),
-					(int16_t)(y + ch - 2 * scale),
-					(uint16_t)(cells * cw),
-					(uint16_t)scale });
+		/*
+		 * The rules go on AFTER the glyph, each at the height its
+		 * name means: under the baseline, through the middle, and
+		 * along the top of the cell. A strike a descender crossed
+		 * would otherwise be the one a person could not see, which is
+		 * the one case the attribute exists for.
+		 */
+		if (at & KT_A_UNDERLINE) {
+			/* SGR 58's colour if the program named one, and the
+			 * text's otherwise — an underline in a colour nobody
+			 * asked for is a mark on the wrong word. */
+			pixman_color_t uc = (at & KT_A_ULCOLOR)
+						    ? rgb_color(row[x].ulc)
+						    : c;
+
+			underline(dst, x * cw, y, cells * cw, ch, scale,
+				  KT_UL_STYLE(at), uc);
 		}
+		if (at & KT_A_STRIKE)
+			rule(dst, x * cw, y + ch / 2, cells * cw, scale, c);
+		if (at & KT_A_OVERLINE)
+			rule(dst, x * cw, y, cells * cw, scale, c);
 	}
 }
 

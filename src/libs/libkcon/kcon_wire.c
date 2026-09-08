@@ -239,7 +239,7 @@ int kcon_put_run(KconBuf *b, uint16_t x, uint16_t y, const KtuiCell *cells,
 		if (kcon_put_u32(b, cells[i].ch) ||
 		    kcon_put_u8(b, cells[i].fg) ||
 		    kcon_put_u8(b, cells[i].bg) ||
-		    kcon_put_u8(b, cells[i].attr) ||
+		    kcon_put_u8(b, (uint8_t)(cells[i].attr & 0xffu)) ||
 		    kcon_put_u8(b, 0))		/* reserved, keeps it 8 bytes */
 			return -1;
 	}
@@ -268,8 +268,108 @@ int kcon_get_run(KconRd *r, uint16_t *x, uint16_t *y, KtuiCell *out,
 		out[i].ch = kcon_get_u32(r);
 		out[i].fg = kcon_get_u8(r);
 		out[i].bg = kcon_get_u8(r);
+		/* THE WIRE'S BYTE IS THE LOW BYTE AND NOTHING ELSE. The bits
+		 * above it name colours that travel in their own run, so a
+		 * cell arriving here can never claim a literal that was not
+		 * sent — the reader cannot be talked into drawing one. */
 		out[i].attr = kcon_get_u8(r);
+		out[i].fgc = out[i].bgc = out[i].ulc = 0;
 		(void)kcon_get_u8(r);
+	}
+
+	return r->err ? -1 : (int)n;
+}
+
+/* ── the colours a cell named itself ─────────────────────────────────── */
+
+/* The bits that travel in the colour run's own byte, packed down from the
+ * cell's attribute so the record stays one byte wide. */
+#define COL_FG 0x1u
+#define COL_BG 0x2u
+#define COL_UL 0x4u
+#define COL_STYLE_SHIFT 3
+
+int kcon_run_has_color(const KtuiCell *cells, uint16_t n)
+{
+	for (uint16_t i = 0; i < n; i++)
+		if (cells[i].attr & (KT_A_FGRGB | KT_A_BGRGB | KT_A_ULCOLOR |
+				     KT_A_ULSTYLE))
+			return 1;
+	return 0;
+}
+
+static int put_rgb(KconBuf *b, uint32_t c)
+{
+	return kcon_put_u8(b, (uint8_t)(c >> 16)) ||
+	       kcon_put_u8(b, (uint8_t)(c >> 8)) ||
+	       kcon_put_u8(b, (uint8_t)c);
+}
+
+static uint32_t get_rgb(KconRd *r)
+{
+	uint32_t v = (uint32_t)kcon_get_u8(r) << 16;
+
+	v |= (uint32_t)kcon_get_u8(r) << 8;
+	return v | kcon_get_u8(r);
+}
+
+int kcon_put_color_run(KconBuf *b, uint16_t x, uint16_t y,
+		       const KtuiCell *cells, uint16_t n)
+{
+	if (kcon_put_u16(b, x) || kcon_put_u16(b, y) || kcon_put_u16(b, n))
+		return -1;
+
+	for (uint16_t i = 0; i < n; i++) {
+		unsigned a = cells[i].attr;
+		unsigned f = 0;
+
+		if (a & KT_A_FGRGB)
+			f |= COL_FG;
+		if (a & KT_A_BGRGB)
+			f |= COL_BG;
+		if (a & KT_A_ULCOLOR)
+			f |= COL_UL;
+		f |= KT_UL_STYLE(a) << COL_STYLE_SHIFT;
+
+		if (put_rgb(b, cells[i].fgc) || put_rgb(b, cells[i].bgc) ||
+		    put_rgb(b, cells[i].ulc) || kcon_put_u8(b, (uint8_t)f))
+			return -1;
+	}
+
+	return 0;
+}
+
+int kcon_get_color_run(KconRd *r, uint16_t *x, uint16_t *y, KtuiCell *out,
+		       uint16_t max)
+{
+	*x = kcon_get_u16(r);
+	*y = kcon_get_u16(r);
+
+	uint16_t n = kcon_get_u16(r);
+
+	if (r->err)
+		return -1;
+	if (n > max || (size_t)n * KCON_COLOR_BYTES > r->len - r->pos) {
+		r->err = -EBADMSG;
+		return -1;
+	}
+
+	for (uint16_t i = 0; i < n; i++) {
+		uint32_t fgc = get_rgb(r), bgc = get_rgb(r), ulc = get_rgb(r);
+		unsigned f = kcon_get_u8(r);
+		unsigned a = 0;
+
+		if (f & COL_FG)
+			a |= KT_A_FGRGB;
+		if (f & COL_BG)
+			a |= KT_A_BGRGB;
+		if (f & COL_UL)
+			a |= KT_A_ULCOLOR;
+		a |= KT_UL_SET(f >> COL_STYLE_SHIFT);
+		out[i].attr = (uint16_t)a;
+		out[i].fgc = fgc;
+		out[i].bgc = bgc;
+		out[i].ulc = ulc;
 	}
 
 	return r->err ? -1 : (int)n;

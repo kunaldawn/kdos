@@ -141,6 +141,30 @@ else
     PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\] λ '
 fi
 
+# ── Prompt marks (OSC 133) ───────────────────────────────────────────
+# Where the prompt starts and what the last command exited with, so a terminal
+# can jump between prompts (Ctrl+Shift+Up/Down) and mark the ones that failed.
+#
+# OUTSIDE THE starship BRANCH ON PURPOSE. starship is a port and is installed,
+# so a version embedded in PS1 would be dead on every real login here; a
+# PROMPT_COMMAND survives whoever owns the prompt.
+#
+# A AND D ONLY. `B` and `C` mark where the typed line ends and where output
+# begins, and getting them right needs a DEBUG trap that also fires for the
+# prompt's own commands — which emits "output started" while the shell is still
+# waiting for a key. A mark at the wrong moment is worse than no mark, and
+# nothing in this tree reads either of them.
+#
+# The status is read FIRST, before anything else in the function can overwrite
+# `$?`. No tty test: this whole file has already returned for anything that is
+# not an interactive shell, and a second guard would only make the function
+# invisible to the check that asserts it emits the right status.
+__kdos_mark_prompt() {
+    __kdos_status=$?
+    printf '\033]133;D;%s\033\\\033]133;A\033\\' "$__kdos_status"
+}
+PROMPT_COMMAND="__kdos_mark_prompt${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+
 # ── Banner ───────────────────────────────────────────────────────────
 # Once per terminal, not once per shell: SHLVL is 1 for the shell a tty or foot
 # starts and higher for anything nested, so `bash` inside a session stays quiet.

@@ -1357,13 +1357,28 @@ static void route_ptr(const KtuiEvent *ev)
 	if (!w)
 		return;
 	if (w->kind == WIN_TERM) {
+		/*
+		 * THE TERMINAL'S OWN GRID, like every other consumer here. A
+		 * window's cell (0,0) is at its origin, and the hit test that
+		 * found this window used the FRAME rect — so a press on the
+		 * border is outside the content and is dropped rather than
+		 * clamped onto the first row.
+		 */
+		KtuiEvent in = *ev;
+
+		in.mx -= w->geom.x;
+		in.my -= w->geom.y;
+		if (in.mx < 0 || in.my < 0 || in.mx >= w->geom.w ||
+		    in.my >= w->geom.h)
+			return;
+
 		/* Middle-click pastes the primary before the terminal sees the
 		 * button, the same order libkwl keeps: the click is still
 		 * offered below, so a program tracking the mouse still gets
 		 * it. */
 		if (ev->btn == KT_MB_MIDDLE && ev->press == KT_MP_PRESS)
 			term_paste(w, 1);
-		term_mouse(w, ev);
+		term_mouse(w, &in);
 		return;
 	}
 	if (w->kind == WIN_EMBED) {

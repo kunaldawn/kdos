@@ -334,32 +334,46 @@ static void emit(const char *s)
 static int kkbd_pushed;
 
 /*
- * ASK FIRST, AND PUSH ONLY WHAT ANSWERS.
+ * ASK FIRST, AND USE ONLY WHAT ANSWERS.
  *
- * `CSI ? u` asks a terminal which flags it has set. A terminal that
- * implements the protocol replies `CSI ? <flags> u`; one that does not replies
- * nothing at all, and the xterm modifier encoding stays as the fallback. There
- * is no capability database entry for this and no TERM value that implies it,
- * so asking is the only way to know.
+ * Two facts about a terminal follow from no `TERM` value and no capability
+ * database entry, so both are asked for, and asked for together:
  *
- * THE REPLY IS CONSUMED HERE OR IT IS TYPED INTO THE DESKTOP. It arrives on
- * standard input like any other key, and the decoder has no case for it, so a
- * reply left in the buffer reaches the session as stray characters.
+ *   `CSI ? u`         which kitty keyboard flags it has set. A terminal that
+ *                     implements the protocol replies `CSI ? <flags> u`; one
+ *                     that does not replies nothing at all and the xterm
+ *                     modifier encoding stays as the fallback. It is what
+ *                     makes Super arrive at all.
+ *   `CSI ? 2026 $ p`  DECRQM for synchronized output. The reply carries the
+ *                     mode and its state: 0 is "not recognised" and 4 is
+ *                     "permanently reset", so only 1, 2 and 3 mean a frame
+ *                     can be bracketed.
+ *
+ * ONE WRITE AND ONE WAIT. Asking in turn would pay the timeout twice on a
+ * terminal that answers neither, and the second wait would swallow a slow
+ * reply to the first query as if it were its own. The answers come back in
+ * the order the queries went out, so they are told apart by scanning the
+ * buffer rather than by turn-taking.
+ *
+ * THE REPLIES ARE CONSUMED HERE OR THEY ARE TYPED INTO THE DESKTOP. They
+ * arrive on standard input like any other key, and the decoder has no case for
+ * them, so a reply left in the buffer reaches the session as stray characters.
  *
  * The Linux VT answers nothing and is skipped outright rather than waited on:
  * it is what a `--tty` view on tty1 runs in, so this timeout would be paid on
  * the most common console of all.
  */
-static void kkbd_push(void)
+static void probe_terminal(void)
 {
-	char buf[64];
+	char buf[96];
 	size_t n = 0;
 
 	kkbd_pushed = 0;
+	ktui_caps &= ~KT_CAP_SYNC;
 	if (ktui_caps & KT_CAP_LINUXVT)
 		return;
 
-	emit("\033[?u");
+	emit("\033[?u\033[?2026$p");
 	ktui_term_flush();
 
 	while (n < sizeof(buf) - 1) {
@@ -372,19 +386,43 @@ static void kkbd_push(void)
 			break;
 		if (read(0, buf + n, 1) != 1)
 			break;
-		if (buf[n++] == 'u')
+		/* DECRQM went out second, so its terminator ends the wait for
+		 * both. A terminal that answers only the first still waits out
+		 * the one timeout, and one that answers neither still waits
+		 * out exactly one. */
+		if (buf[n++] == 'y')
 			break;
 	}
+	buf[n] = 0;
 
-	if (n >= 4 && buf[0] == 0x1b && buf[1] == '[' && buf[2] == '?' &&
-	    buf[n - 1] == 'u') {
-		/* Flag 1: disambiguate escape codes. It is the one this
-		 * desktop needs — it is what makes Super arrive at all — and
-		 * asking for more would be asking for reports nothing reads. */
-		emit("\033[>1u");
-		ktui_term_flush();
-		kkbd_pushed = 1;
+	for (size_t i = 0; i + 3 < n; i++) {
+		if (buf[i] != 0x1b || buf[i + 1] != '[' || buf[i + 2] != '?')
+			continue;
+
+		size_t j = i + 3;
+		while (j < n && ((buf[j] >= '0' && buf[j] <= '9') ||
+				 buf[j] == ';' || buf[j] == '$'))
+			j++;
+		if (j >= n)
+			break;
+
+		if (buf[j] == 'u') {
+			/* Flag 1: disambiguate escape codes. It is the one this
+			 * desktop needs — it is what makes Super arrive at all
+			 * — and asking for more would be asking for reports
+			 * nothing reads. */
+			emit("\033[>1u");
+			kkbd_pushed = 1;
+		} else if (buf[j] == 'y') {
+			const char *semi = memchr(buf + i, ';', j - i);
+			int val = semi ? atoi(semi + 1) : 0;
+
+			if (atoi(buf + i + 3) == 2026 && val >= 1 && val <= 3)
+				ktui_caps |= KT_CAP_SYNC;
+		}
 	}
+
+	ktui_term_flush();
 }
 
 static void enter_screen(void)
@@ -403,7 +441,7 @@ static void enter_screen(void)
 	if (ktui_caps & KT_CAP_MOUSE)
 		emit("\033[?1000h\033[?1002h\033[?1006h");
 	ktui_term_flush();
-	kkbd_push();
+	probe_terminal();
 }
 
 /*
@@ -442,6 +480,12 @@ static void leave_screen(void)
 	}
 	if (ktui_caps & KT_CAP_MOUSE)
 		emit("\033[?1006l\033[?1002l\033[?1000l");
+	/* A frame whose close was dropped left the mode on, and a terminal
+	 * handed back inside a synchronized block shows nothing the shell
+	 * writes into it. Closing here costs one sequence and is the only
+	 * place that runs whether or not another frame ever follows. */
+	if (ktui_caps & KT_CAP_SYNC)
+		emit("\033[?2026l");
 	emit("\033[?2004l");
 	emit("\033[0m\033[?25h\033[2J\033[H\033[?1049l");
 	ktui_term_flush();

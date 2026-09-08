@@ -57,6 +57,47 @@ void term_mouse(const KtuiEvent *ev)
 	if (!T.t)
 		return;
 
+	/*
+	 * WHAT THE POINTER IS OVER, taken on every mouse event including plain
+	 * motion — a display server reports that as a move with no button, and
+	 * it is the only thing that can tell this program the pointer left a
+	 * link. The lookup is the screen's, so a link scrolled back to is the
+	 * one that text carries rather than the one at the same coordinate on
+	 * the live screen.
+	 */
+	T.hover = ev->mx >= 0 && ev->my >= 0
+			  ? kvt_term_link_at(T.t, (unsigned int)ev->mx,
+					     (unsigned int)ev->my)
+			  : 0;
+
+	/*
+	 * CTRL+CLICK FOLLOWS IT, and a plain click does not. A link sitting in
+	 * a screenful of text must not be a trap for somebody selecting a
+	 * word, and Ctrl is the chord every terminal with links already uses.
+	 *
+	 * `kdos-appbox open` is what "open this on this machine" means here —
+	 * the MIME route the portal's OpenURI takes, with a scheme resolving
+	 * to `x-scheme-handler/<scheme>` — and it is handed an argument
+	 * VECTOR, never a command line. The URI was refused at the parser
+	 * unless it is one of four schemes in printable ASCII, so what reaches
+	 * here cannot be an argument to anything else.
+	 */
+	if (T.hover && ev->btn == KT_MB_LEFT && ev->press == KT_MP_PRESS &&
+	    (ev->mods & KT_MOD_CTRL)) {
+		const char *uri = kvt_term_link_uri(T.t, T.hover);
+
+		if (uri) {
+			KbArgv a = { 0 };
+
+			kb_argv_add(&a, "kdos-appbox");
+			kb_argv_add(&a, "open");
+			kb_argv_add(&a, uri);
+			kb_argv_end(&a);
+			kb_run_detach(&a);
+		}
+		return;
+	}
+
 	if (!kvt_ui_mouse(T.t, &T.ui, ev, kb_now_s(), &text))
 		return;
 

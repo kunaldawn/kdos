@@ -23,7 +23,7 @@ the distribution with it.
 
 ## preflight.sh
 
-Everything a full build would catch, minus the build. Thirty-five checks, in seconds:
+Everything a full build would catch, minus the build. Thirty-six checks, in seconds:
 
 | Group | Checks |
 |---|---|
@@ -33,7 +33,7 @@ Everything a full build would catch, minus the build. Thirty-five checks, in sec
 | Sources | Every source file in one of **our** ports is compiled by its recipe; a first source whose members are prefixed is accounted for; a flat first source is unpacked by its own recipe |
 | Shipped configuration | The shipped compositor configuration keeps the default bindings; every command it, the menu and `menu.conf`'s routes name exists; every filesystem the installer offers, the initramfs can mount |
 | Shell | All shipped and build shell is syntactically valid; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script **names a command inside double quotes and runs it**; every helper the makefile runs is on disk and none shadows its own output |
-| Consistency | The build tree's root carries nothing but a root filesystem; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the rootfs carries no script whose interpreter is gone; nothing points at a removed file; every recipe carries the banner; no chroot step reads the ports tree through the wrong path; the catalogue's rows match the tree; a desktop toggle has one flag and only libkbase builds its path |
+| Consistency | The build tree's root carries nothing but a root filesystem; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the rootfs carries no script whose interpreter is gone; nothing points at a removed file; every recipe carries the banner; no chroot step reads the ports tree through the wrong path; the catalogue's rows match the tree; a desktop toggle has one flag and only libkbase builds its path; a frame that opens the synchronized bracket closes it on the dropped write and on the way out |
 
 Three of those deserve singling out, because each is a whole class of failure that never reaches a
 compiler:
@@ -175,7 +175,7 @@ console-only entries nothing checks.
 |---|---|---|
 | Text frames (`--dump`) | Geometry: overflow, misalignment, a control drawn past its rectangle | Most |
 | Cell frames (`--dump-cells`) | **Colour** and attribute drift as well | Four |
-| Replayed streams (`vt-*`) | A change in the state machine, against bytes real programs wrote | Six |
+| Replayed streams (`vt-*`) | A change in the state machine, against bytes real programs wrote — the characters, the attributes, the cells that named a colour of their own, the hyperlinks and the prompt marks | Nine |
 
 **A terminal's frame is taken by running a command to completion.** `kdos-term --dump` settles the
 child and consumes everything it wrote before drawing — a frame taken while a program is still
@@ -336,7 +336,15 @@ stream ending with the alternate screen being restored renders to an empty grid,
 parser that gave up on the first byte, so the self-test refuses an empty grid outright.
 `vtrender.c` replays one in **small uneven chunks**, because a pty splits escape sequences across
 reads and a parser that only works on a whole sequence passes a single-write test and corrupts a
-real terminal.
+real terminal. Its output is five blocks: the characters, the attributes one letter per cell — a style has no
+character to show, so a golden holding only the text could not tell an italic comment from an
+upright one, and an underline's shape is its own digit — which cells carry **a colour of their
+own**, which cells are **a hyperlink**, as the id itself so that one run reads as one link and the
+same address twice reads as the same digit, and one character per **row** for the prompt marks:
+where a prompt is, and whether the command typed at it succeeded, failed or has not finished. **No colour VALUE is ever in a golden**: a value moves with the theme, and a palette
+change reading as "vim drifted" would be a test that changed its own question. What the third block
+holds is the *decision* — the sixteen named colours reduce to slots and follow `kdos theme`, and
+everything above them is a literal the program chose — so it drifts only when that rule does.
 
 **The same rule applies to the terminal's own input.** `ktui_input_next` reads descriptor 0, so the
 bracketed-paste block stands a pipe there and writes the sequence in pieces on purpose: a

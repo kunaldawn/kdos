@@ -47,6 +47,7 @@
 struct glyph_slot {
 	struct glyph_slot *next;
 	uint32_t cp;
+	uint8_t italic;			/* which face this was rasterized from */
 	const struct fcft_glyph *g;	/* NULL = known-missing, cached too */
 	/*
 	 * Upscaled masks, indexed by scale. [0] and [1] are never allocated:
@@ -57,6 +58,17 @@ struct glyph_slot {
 };
 
 static struct fcft_font *font;
+/*
+ * THE ITALIC FACE IS OPTIONAL AND IS ONLY TAKEN IF IT FITS THE CELL.
+ *
+ * A cell grid's geometry comes from the upright face, and a companion whose
+ * advance or height differs would draw a row out of step with the one above
+ * it. fontconfig never fails a match, so asking for an italic
+ * Terminus returns SOMETHING — and on this image that something is a different
+ * family at a different size. Where no italic face agrees, italic text is drawn
+ * upright, which is a style lost rather than a grid broken.
+ */
+static struct fcft_font *font_it;
 static struct glyph_slot *cache[CACHE_BUCKETS];
 static unsigned cache_count;
 static size_t cache_bytes;	/* the upscaled masks only; fcft owns the rest */
@@ -177,6 +189,17 @@ int kcell_font_load(const char *name)
 		font = NULL;
 		return -1;
 	}
+
+	char it[192];
+	snprintf(it, sizeof(it), "%s:slant=italic", names[0]);
+	const char *itnames[1] = { it };
+
+	font_it = fcft_from_name(1, itnames, NULL);
+	if (font_it && (font_it->max_advance.x != cell_w ||
+			font_it->height != cell_h)) {
+		fcft_destroy(font_it);
+		font_it = NULL;
+	}
 	return 0;
 }
 
@@ -198,6 +221,10 @@ void kcell_font_free(void)
 		fcft_destroy(font);
 		font = NULL;
 	}
+	if (font_it) {
+		fcft_destroy(font_it);
+		font_it = NULL;
+	}
 	fcft_fini();
 }
 
@@ -205,14 +232,20 @@ int kcell_w(void) { return cell_w; }
 int kcell_h(void) { return cell_h; }
 int kcell_ascent(void) { return ascent; }
 
-static struct glyph_slot *slot_for(uint32_t cp)
+static struct glyph_slot *slot_for(uint32_t cp, int italic)
 {
 	if (!font)
 		return NULL;
+	if (!font_it)
+		italic = 0;
 
-	unsigned h = (cp * 2654435761u) % CACHE_BUCKETS;
+	/* The face is part of the KEY, not of the answer: the same codepoint
+	 * rasterized from two faces is two glyphs, and a cache that held only
+	 * one of them would draw whichever a frame asked for first. */
+	unsigned h = ((cp + (italic ? 0x9e3779b9u : 0)) * 2654435761u) %
+		     CACHE_BUCKETS;
 	for (struct glyph_slot *s = cache[h]; s; s = s->next)
-		if (s->cp == cp)
+		if (s->cp == cp && s->italic == (uint8_t)!!italic)
 			return s;
 
 	/* Here and nowhere else: the slot about to be inserted is not in the
@@ -223,7 +256,8 @@ static struct glyph_slot *slot_for(uint32_t cp)
 		cache_evict_one();
 
 	const struct fcft_glyph *g =
-		fcft_rasterize_char_utf32(font, cp, FCFT_SUBPIXEL_NONE);
+		fcft_rasterize_char_utf32(italic ? font_it : font, cp,
+					  FCFT_SUBPIXEL_NONE);
 
 	/*
 	 * A miss is cached as NULL. Without that, every frame re-runs the whole
@@ -235,6 +269,7 @@ static struct glyph_slot *slot_for(uint32_t cp)
 	if (!s)
 		return NULL;
 	s->cp = cp;
+	s->italic = (uint8_t)!!italic;
 	s->g = g;
 	s->next = cache[h];
 	cache[h] = s;
@@ -244,7 +279,7 @@ static struct glyph_slot *slot_for(uint32_t cp)
 
 const struct fcft_glyph *kcell_glyph(uint32_t cp)
 {
-	struct glyph_slot *s = slot_for(cp);
+	struct glyph_slot *s = slot_for(cp, 0);
 	return s ? s->g : NULL;
 }
 
@@ -335,12 +370,17 @@ static pixman_image_t *upscale(pixman_image_t *src, int scale)
 
 bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out)
 {
+	return kcell_glyph_styled(cp, scale, 0, out);
+}
+
+bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out)
+{
 	if (scale < 1)
 		scale = 1;
 	if (scale > KCELL_MAX_SCALE)
 		scale = KCELL_MAX_SCALE;
 
-	struct glyph_slot *s = slot_for(cp);
+	struct glyph_slot *s = slot_for(cp, italic);
 	if (!s || !s->g || !s->g->pix)
 		return false;
 

@@ -138,6 +138,11 @@ enum parser_action {
  * checked against the length rather than against the allocation.
  */
 #define OSC_MAX_LEN (256u * 1024u)
+
+/* How many distinct URIs one terminal keeps, and the longest one it will
+ * take. Past either, the text is still text and simply is not a link. */
+#define KVT_LINK_MAX 128u
+#define KVT_LINK_LEN 2048u
 #define OSC_INIT_LEN 128u
 
 /* terminal flags */
@@ -187,6 +192,14 @@ struct kvt_vte {
 	unsigned int state;
 	unsigned int csi_argc;
 	int csi_argv[CSI_ARG_MAX];
+	/*
+	 * WHICH ARGUMENTS ARRIVED AFTER A COLON. `CSI 4 : 3 m` is one
+	 * parameter with a sub-parameter and means a curly underline; read as
+	 * two parameters it is SGR 4 and SGR 3, and read with the colon
+	 * dropped altogether it is SGR 43 — a green background where a program
+	 * asked for a wavy line. The separator has to survive to the handler.
+	 */
+	uint8_t csi_sub[CSI_ARG_MAX];
 	unsigned int csi_flags;
 
 	kvt_vte_osc_cb osc_cb;
@@ -194,6 +207,19 @@ struct kvt_vte {
 	unsigned int osc_len;
 	unsigned int osc_cap;
 	char *osc_arg;
+	/*
+	 * OSC 8's URIs, interned. A cell carries a 16-bit id into this table
+	 * and never a pointer, so the text can outlive the sequence that named
+	 * it and can be scrolled back to.
+	 *
+	 * The table is never freed short of the terminal closing, which is
+	 * what makes an id in the scrollback safe to look up for ever. That is
+	 * only affordable because it is CAPPED: a child emitting a fresh URI
+	 * per cell would otherwise grow it for the life of the terminal, and
+	 * a URI is attacker-controlled input by definition.
+	 */
+	char *links[KVT_LINK_MAX];
+	unsigned int nlinks;
 
 	kvt_vte_clip_cb clip_cb;
 	void *clip_data;
@@ -638,6 +664,8 @@ void kvt_vte_unref(struct kvt_vte *vte)
 	free(vte->custom_palette_storage);
 	free(vte->img_buf);
 	free(vte->osc_arg);
+	for (unsigned int i = 0; i < vte->nlinks; i++)
+		free(vte->links[i]);
 	free(vte);
 }
 
@@ -1061,6 +1089,10 @@ static void reset_state(struct kvt_vte *vte)
 	vte->saved_state.cattr.protect = 0;
 	vte->saved_state.cattr.blink = 0;
 	vte->saved_state.cattr.dim = 0;
+	vte->saved_state.cattr.strike = 0;
+	vte->saved_state.cattr.overline = 0;
+	vte->saved_state.cattr.ul_style = 0;
+	vte->saved_state.cattr.ul_rgb = 0;
 }
 
 static void save_state(struct kvt_vte *vte)
@@ -1310,8 +1342,10 @@ static void do_clear(struct kvt_vte *vte)
 	int i;
 
 	vte->csi_argc = 0;
-	for (i = 0; i < CSI_ARG_MAX; ++i)
+	for (i = 0; i < CSI_ARG_MAX; ++i) {
 		vte->csi_argv[i] = -1;
+		vte->csi_sub[i] = 0;
+	}
 	vte->csi_flags = 0;
 
 	vte->osc_len = 0;
@@ -1362,12 +1396,17 @@ static void do_param(struct kvt_vte *vte, uint32_t data)
 {
 	int new;
 
-	if (data == ';') {
+	if (data == ';' || data == ':') {
 		if (vte->csi_argc < CSI_ARG_MAX) {
-			// default parameter value is 0 if omitted
-			if (vte->csi_argv[vte->csi_argc] == -1)
+			/* An omitted parameter is 0; an omitted SUB-parameter
+			 * stays -1, because `58 : 2 : : R : G : B` uses the
+			 * empty slot to mean "no colour space given" and a 0
+			 * there is a colour space that was. */
+			if (data == ';' && vte->csi_argv[vte->csi_argc] == -1)
 				vte->csi_argv[vte->csi_argc] = 0;
 			vte->csi_argc++;
+			if (vte->csi_argc < CSI_ARG_MAX)
+				vte->csi_sub[vte->csi_argc] = data == ':';
 		}
 		return;
 	}
@@ -1646,6 +1685,10 @@ static void csi_attribute(struct kvt_vte *vte)
 			vte->cattr.inverse = 0;
 			vte->cattr.blink = 0;
 			vte->cattr.dim = 0;
+			vte->cattr.strike = 0;
+			vte->cattr.overline = 0;
+			vte->cattr.ul_style = 0;
+			vte->cattr.ul_rgb = 0;
 			break;
 		case 1:
 			vte->cattr.bold = 1;
@@ -1657,13 +1700,35 @@ static void csi_attribute(struct kvt_vte *vte)
 			vte->cattr.italic = 1;
 			break;
 		case 4:
+			/*
+			 * `4 : n` names the shape: 0 none, 1 single, 2 double,
+			 * 3 curly, 4 dotted, 5 dashed. `4 : 0` is an OFF, and
+			 * a renderer that draws one shape draws the plain line
+			 * for every other value rather than nothing.
+			 */
+			if (i + 1 < vte->csi_argc && vte->csi_sub[i + 1]) {
+				int st = vte->csi_argv[++i];
+
+				if (st <= 0) {
+					vte->cattr.underline = 0;
+					vte->cattr.ul_style = 0;
+					break;
+				}
+				vte->cattr.underline = 1;
+				vte->cattr.ul_style = (unsigned)st & 7u;
+				break;
+			}
 			vte->cattr.underline = 1;
+			vte->cattr.ul_style = 0;
 			break;
 		case 5:
 			vte->cattr.blink = 1;
 			break;
 		case 7:
 			vte->cattr.inverse = 1;
+			break;
+		case 9:
+			vte->cattr.strike = 1;
 			break;
 		case 22:
 			vte->cattr.bold = 0;
@@ -1674,12 +1739,16 @@ static void csi_attribute(struct kvt_vte *vte)
 			break;
 		case 24:
 			vte->cattr.underline = 0;
+			vte->cattr.ul_style = 0;
 			break;
 		case 25:
 			vte->cattr.blink = 0;
 			break;
 		case 27:
 			vte->cattr.inverse = 0;
+			break;
+		case 29:
+			vte->cattr.strike = 0;
 			break;
 		case 30:
 			vte->cattr.fccode = KVT_COLOR_BLACK;
@@ -1735,6 +1804,12 @@ static void csi_attribute(struct kvt_vte *vte)
 		case 49:
 			copy_bcolor(&vte->cattr, &vte->def_attr);
 			break;
+		case 53:
+			vte->cattr.overline = 1;
+			break;
+		case 55:
+			vte->cattr.overline = 0;
+			break;
 		case 90:
 			vte->cattr.fccode = KVT_COLOR_DARK_GREY;
 			break;
@@ -1783,6 +1858,53 @@ static void csi_attribute(struct kvt_vte *vte)
 		case 107:
 			vte->cattr.bccode = KVT_COLOR_WHITE;
 			break;
+		case 58:
+			/*
+			 * THE UNDERLINE'S OWN COLOUR, spelled like 38 and 48
+			 * and with one wrinkle they do not have: `58 : 2 : :
+			 * R : G : B` leaves the colour-space slot EMPTY, which
+			 * is a -1 here, and skipping it is what makes the
+			 * colon spelling every modern terminal emits parse at
+			 * all.
+			 */
+			{
+				unsigned j = i + 1;
+
+				if (j >= vte->csi_argc)
+					break;
+				if (vte->csi_argv[j] == 5) {
+					if (j + 1 >= vte->csi_argc ||
+					    vte->csi_argv[j + 1] < 0)
+						break;
+					lookup_color(vte, vte->csi_argv[j + 1],
+						     &cr, &cg, &cb);
+					vte->cattr.ul_rgb = 1;
+					vte->cattr.ulr = (uint8_t)cr;
+					vte->cattr.ulg = (uint8_t)cg;
+					vte->cattr.ulb = (uint8_t)cb;
+					i = j + 1;
+					break;
+				}
+				if (vte->csi_argv[j] != 2)
+					break;
+				j++;
+				if (j < vte->csi_argc && vte->csi_argv[j] < 0)
+					j++;	/* the empty colour space */
+				if (j + 2 >= vte->csi_argc ||
+				    vte->csi_argv[j] < 0 ||
+				    vte->csi_argv[j + 1] < 0 ||
+				    vte->csi_argv[j + 2] < 0)
+					break;
+				vte->cattr.ul_rgb = 1;
+				vte->cattr.ulr = (uint8_t)vte->csi_argv[j];
+				vte->cattr.ulg = (uint8_t)vte->csi_argv[j + 1];
+				vte->cattr.ulb = (uint8_t)vte->csi_argv[j + 2];
+				i = j + 2;
+			}
+			break;
+		case 59:
+			vte->cattr.ul_rgb = 0;
+			break;
 		case 38:
 			/* fallthrough */
 		case 48:
@@ -1807,18 +1929,25 @@ static void csi_attribute(struct kvt_vte *vte)
 				}
 				i += 2;
 			} else if (vte->csi_argv[i + 1] == 2) {  // true color mode
-				if (i + 4 >= vte->csi_argc ||
-					vte->csi_argv[i + 2] < 0 ||
-					vte->csi_argv[i + 3] < 0 ||
-					vte->csi_argv[i + 4] < 0) {
+				/* `38 : 2 : : R : G : B` leaves the colour
+				 * space empty, which parses as -1; the
+				 * semicolon spelling has no such slot. */
+				unsigned j = i + 2;
+
+				if (j < vte->csi_argc && vte->csi_argv[j] < 0)
+					j++;
+				if (j + 2 >= vte->csi_argc ||
+					vte->csi_argv[j] < 0 ||
+					vte->csi_argv[j + 1] < 0 ||
+					vte->csi_argv[j + 2] < 0) {
 						llog_debug(vte, "invalid true color SGR");
 						break;
 					}
-				cr = vte->csi_argv[i + 2];
-				cg = vte->csi_argv[i + 3];
-				cb = vte->csi_argv[i + 4];
+				cr = vte->csi_argv[j];
+				cg = vte->csi_argv[j + 1];
+				cb = vte->csi_argv[j + 2];
 				code = -1;
-				i += 4;
+				i = j + 2;
 			} else {
 				llog_debug(vte, "invalid SGR");
 				break;
@@ -2470,10 +2599,17 @@ static void do_csi(struct kvt_vte *vte, uint32_t data)
 		kvt_screen_erase_chars(vte->con, num);
 		break;
 	case 'm':
-		/* CSI_GT ('>' prefix) marks a private/DEC sequence such as
-		 * XTMODKEYS \033[>4;1m — not an SGR attribute. Guard against
-		 * misinterpreting it as e.g. SGR 4 (underline). */
-		if (!(vte->csi_flags & CSI_GT))
+		/*
+		 * AN SGR CARRIES NO PRIVATE MARKER. `CSI > 4 ; 1 m` is
+		 * XTMODKEYS and `CSI ? 4 m` is a private sequence a terminfo
+		 * entry emits; read as an SGR both are "underline", and the
+		 * attribute then rides every cell the program draws after it —
+		 * a whole screen underlined by a sequence that asked for
+		 * nothing of the sort. The colon of `CSI 4 : 3 m` is a
+		 * parameter separator and sets no flag, so an underline style
+		 * still arrives here.
+		 */
+		if (!vte->csi_flags)
 			csi_attribute(vte);
 		break;
 	case 'p':
@@ -2761,6 +2897,79 @@ static void do_osc_4(struct kvt_vte *vte, const char *data, const char *end_seq)
 	}
 }
 
+/* Case-insensitive prefix, because a scheme is case-insensitive and this
+ * library links nothing that would give it strncasecmp for free. */
+static int pfx_ci(const char *s, const char *p)
+{
+	for (; *p; s++, p++) {
+		int a = *s, b = *p;
+
+		if (a >= 'A' && a <= 'Z')
+			a += 32;
+		if (a != b)
+			return 0;
+	}
+	return 1;
+}
+
+/*
+ * A URI FROM A CHILD PROCESS IS UNTRUSTED INPUT, and this is the one place a
+ * terminal hands one to a program that opens things.
+ *
+ * Four schemes and nothing else: anything that can write to a terminal can
+ * write an OSC, so the set has to be the ones whose worst case is a window
+ * opening. Every byte must be printable ASCII — a control byte would reach an
+ * argument vector, and a byte above 126 makes the same URI read two ways
+ * depending on who decodes it, which is how a whitelist gets walked around.
+ */
+static int uri_ok(const char *u)
+{
+	size_t n = 0;
+
+	while (u[n]) {
+		unsigned char c = (unsigned char)u[n];
+
+		if (c < 32 || c > 126)
+			return 0;
+		if (++n >= KVT_LINK_LEN)
+			return 0;
+	}
+	if (!n)
+		return 0;
+	return pfx_ci(u, "http://") || pfx_ci(u, "https://") ||
+	       pfx_ci(u, "file://") || pfx_ci(u, "mailto:");
+}
+
+/* The id for a URI, interning it if it is new. 0 means "not a link", which is
+ * every refusal: a bad scheme, a bad byte, a full table, no memory. The text
+ * is drawn either way — a link that is not offered is a link nobody can be
+ * made to follow. */
+static unsigned int link_intern(struct kvt_vte *vte, const char *uri)
+{
+	char *dup;
+
+	if (!uri_ok(uri))
+		return 0;
+	for (unsigned int i = 0; i < vte->nlinks; i++)
+		if (!strcmp(vte->links[i], uri))
+			return i + 1;
+	if (vte->nlinks >= KVT_LINK_MAX)
+		return 0;
+	dup = strdup(uri);
+	if (!dup)
+		return 0;
+	vte->links[vte->nlinks++] = dup;
+	return vte->nlinks;
+}
+
+KVT_SHL_EXPORT
+const char *kvt_vte_link_uri(struct kvt_vte *vte, unsigned int id)
+{
+	if (!vte || !id || id > vte->nlinks)
+		return NULL;
+	return vte->links[id - 1];
+}
+
 static bool do_osc_internal(struct kvt_vte *vte, const char *end_seq)
 {
 	// OSC 4, 10, and 11 query or change the RGB values of color numbers in
@@ -2866,6 +3075,47 @@ static bool do_osc_internal(struct kvt_vte *vte, const char *end_seq)
 			vte->notify_cb(vte, sum, body, vte->notify_data);
 			return true;
 		}
+	}
+
+	/*
+	 * OSC 8 — A HYPERLINK, opened and closed.
+	 *
+	 * `8 ; params ; URI` opens one and `8 ; ;` closes it. The parameters
+	 * are ignored, `id=` included: this terminal keys a link by its URI,
+	 * so two runs of the same address are one link whether or not the
+	 * program said so, and a program that reuses an id for a different
+	 * address cannot make one run of text point at another's.
+	 */
+	if (!strncmp(vte->osc_arg, "8;", 2)) {
+		const char *uri = strchr(vte->osc_arg + 2, ';');
+
+		vte->cattr.link = 0;
+		if (uri && *++uri)
+			vte->cattr.link = (uint16_t)link_intern(vte, uri);
+		return true;
+	}
+
+	/*
+	 * OSC 133 — WHERE THE PROMPT IS AND WHAT THE LAST COMMAND DID.
+	 *
+	 * `A` starts a prompt, `B` ends it, `C` starts the output and
+	 * `D[;<status>]` says the command finished. Only A and D are kept: B
+	 * and C describe a region this terminal has no use for, and a mark
+	 * nothing reads is a mark that drifts out of step with the screen
+	 * without anybody noticing.
+	 *
+	 * A `D` with no status is a command that finished with none reported;
+	 * it is not a zero, because "it worked" and "nobody said" are
+	 * different things to draw.
+	 */
+	if (!strncmp(vte->osc_arg, "133;", 4)) {
+		const char *p = vte->osc_arg + 4;
+
+		if (*p == 'A')
+			kvt_screen_mark_prompt(vte->con);
+		else if (*p == 'D' && p[1] == ';')
+			kvt_screen_mark_status(vte->con, atoi(p + 2));
+		return true;
 	}
 
 	if (!strncmp(vte->osc_arg, "4;", 2)) {
@@ -3226,14 +3476,27 @@ static void parse_data(struct kvt_vte *vte, uint32_t raw)
 		case 0x1c ... 0x1f:
 			do_trans(vte, raw, STATE_NONE, ACTION_EXECUTE);
 			return;
+		/*
+		 * A COLON IS A SUB-PARAMETER SEPARATOR, NOT AN ERROR.
+		 *
+		 * The classic table sends it to the ignore state, which drops
+		 * the WHOLE sequence — and `4 : 3` (a curly underline),
+		 * `58 : 2 : : R : G : B` (the underline's colour) and
+		 * `38 : 2 : : R : G : B` (a foreground, the spelling several
+		 * terminals emit by default) all carry one. Dropping them
+		 * silently is a program's emphasis and colour vanishing with
+		 * no error anywhere. do_param() keeps which separator it was,
+		 * because that is what tells a parameter from its
+		 * sub-parameter.
+		 */
 		case 0x30 ... 0x39:
+		case 0x3a:
 		case 0x3b:
 			do_trans(vte, raw, STATE_NONE, ACTION_PARAM);
 			return;
 		case 0x7f:
 			do_trans(vte, raw, STATE_NONE, ACTION_IGNORE);
 			return;
-		case 0x3a:
 		case 0x3c ... 0x3f:
 			do_trans(vte, raw, STATE_CSI_IGNORE, ACTION_NONE);
 			return;

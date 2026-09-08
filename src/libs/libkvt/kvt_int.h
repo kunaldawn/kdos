@@ -93,6 +93,18 @@ struct line {
 	struct cell *cells;		/* actuall cells */
 	uint64_t sb_id;			/* sb ID, 0 if not in sb */
 	kvt_age_t age;			/* age of the whole line */
+	/*
+	 * OSC 133: this line is where a prompt started, and what the command
+	 * run at it exited with (-1 until it finishes).
+	 *
+	 * On the LINE and not on a cell, because that is what survives into
+	 * the scrollback as one thing — a mark per cell would be eighty copies
+	 * of one fact, and a mark kept beside the screen would be lost the
+	 * moment the line scrolled off, which is exactly when it is worth
+	 * having.
+	 */
+	uint8_t mark;
+	int status;
 };
 
 struct selection_pos {
@@ -165,6 +177,15 @@ struct kvt_screen {
 };
 
 void screen_cell_init(struct kvt_screen *con, struct cell *cell);
+/* The line a VISIBLE row is showing, scrollback included. One implementation,
+ * because a second one drifts the moment the scrollback moves under it — and
+ * the selection and a hyperlink lookup have to agree about which line the
+ * pointer is over or a click lands on the wrong text. */
+struct line *screen_line_at(struct kvt_screen *con, unsigned int y);
+/* The most recent prompt-marked line at or above the cursor, scrollback
+ * included, or NULL. Walked rather than remembered: a pointer to a line kept
+ * across a scroll is a pointer to a line the screen may have recycled. */
+struct line *screen_mark_last(struct kvt_screen *con);
 
 void kvt_screen_set_opts(struct kvt_screen *scr, unsigned int opts);
 void kvt_screen_reset_opts(struct kvt_screen *scr, unsigned int opts);

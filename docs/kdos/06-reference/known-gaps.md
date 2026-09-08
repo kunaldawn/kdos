@@ -96,6 +96,22 @@ inside one of the session's own terminal windows detects this and stays on chara
 answers the device-attributes probe claiming sixel and then reports no picture geometry, and it is
 the second answer that decides.
 
+**Italic is upright wherever the loaded font has no italic companion at the same cell size.** The
+painter asks fontconfig for the face with `:slant=italic` and keeps it only if its advance and
+height match — and fontconfig never fails a match, so an italic Terminus comes back as a different
+family at a different size and is refused. The attribute still travels: the cell carries it, a
+terminal view emits `SGR 3` and the host terminal draws it. It is the KMS and Wayland painters,
+drawing with the console's own bitmap face, that show the words upright.
+
+**A window in the console session is never held while the program in it draws.** Synchronized
+output (`DECSET 2026`) is answered by `libkvt`, so both terminals report the mode and a program's
+brackets are parsed rather than misread — but only `kdos-term` acts on them, because it owns one
+grid per window. The session composes **one** grid for every window it shows, so holding a frame
+for one window would either freeze the whole desktop or need a per-window cache of the last render.
+A KDOS surface running in a session window brackets its frames like any other terminal and gets
+nothing for it; the frames are shown as they arrive, which is what every terminal did before the
+mode existed.
+
 **A terminal view's cell size is a guess unless the terminal names one.** `kdos-view --tty` asks
 `CSI 16t`, which `kdos-term` answers and most terminals do not; without an answer it uses 8x16 and
 `KDOS_VIEW_CELL=WxH` is the override. A wrong cell is a correctly encoded picture at the wrong

@@ -62,6 +62,12 @@ otherwise freeze its window forever and the terminal cannot tell that from a pro
 time. The rule lives in `libkvt` rather than in each renderer, because two copies of a timeout is
 two timeouts.
 
+**Every KDOS surface brackets its own frames the same way**, when the terminal it is running in
+answers the probe — `libktui` asks with DECRQM and emits nothing where the answer is "not
+recognised". Inside this terminal the answer is yes, so a surface's frame is held here by the path
+above; a surface in a window of the console session is bracketed and shown as it arrives, because
+that session composes one grid for every window and cannot hold one of them.
+
 **The primary device attributes report sixel.** `chafa`, `img2sixel`, `lsix`, `timg` and
 `mpv --vo=sixel` all send `CSI c` and read parameter `4` as sixel support, so a reply without it
 made every one of them fall back to half blocks on a terminal that decodes sixel, OSC 1337 *and* the
@@ -96,8 +102,29 @@ program with several in flight knows which it is hearing about, and a query stor
 **A terminal with `images = no` answers the query too, with `ENOTSUP`**: silence there costs a person
 who turned pictures off exactly what not implementing the protocol would.
 
-Colours are reduced to the theme's eight slots by nearest distance — one rule for the ANSI sixteen,
-the 256 and truecolor alike — so `kdos theme` moves a terminal's colours with everything else.
+**The sixteen named colours are reduced to the theme's eight slots by nearest distance**, so
+`kdos theme` moves a terminal's red with everything else — on `tty1` the kernel is drawing them out
+of the colour map this desktop installed, and a terminal whose red stopped following the theme would
+be the one window on the screen wearing somebody else's scheme.
+
+**Everything above them is a literal the program chose exactly**: the 216-colour cube, the greys and
+a 24-bit `SGR 38;2`. Reducing those to eight slots is what loses a picture, and no palette names
+them, so nothing is lost by keeping them. The cell carries the reduction as well, so a display that
+was never sent the literals — a view over a slow link that declined them — draws what it always
+drew.
+
+**The underline's shape and colour travel with it.** `SGR 4:0`–`4:5` select none, single, double,
+curly, dotted and dashed; `SGR 58` gives the line its own colour and `59` takes it back. A renderer
+with one shape draws the plain line, because the attribute means "this word is marked" and a shape
+nobody drew is worse than the wrong shape. **They are emitted onward only where 24-bit colour is**:
+`4:3` is a sub-parameter, and a terminal old enough to want indexed colour is old enough to drop the
+colon and read the pair as `SGR 43` — a green background where a program asked for a wavy line.
+
+**Five styles are drawn and two are dropped.** Bold, underline, inverse, italic (`SGR 3`),
+strikethrough (`SGR 9`) and overline (`SGR 53`) each ride a bit of the cell's attribute byte, so
+they cost nothing on the wire between a session and a view. `blink` and `dim` are parsed and reach
+no bit at all — a blink drawn as bold is a lie about the text, and a terminal that lies about which
+words are emphasised is worse than one that shows them plainly.
 
 **The two DEFAULT colours are not reduced; they are slots.** A terminal's default foreground is a
 light grey and its default background is black, and reducing both by distance against eight phosphor
@@ -157,6 +184,7 @@ into a program that never enables bracketing will want.
 | `Ctrl+Shift+C` | Copies the selection to the **clipboard** |
 | `Ctrl+Shift+V` | Pastes the clipboard |
 | `Shift+PgUp` / `Shift+PgDn` | Half a screen of scrollback |
+| `Ctrl+Shift+Up` / `Ctrl+Shift+Down` | Jumps to the previous or next **prompt** |
 | Wheel | Scrollback, or the child's own scrolling when it has asked for the mouse |
 
 A press and a release in the same cell is a **click, and a click selects nothing** — without that
@@ -172,8 +200,68 @@ A paste arrives with **newlines already turned into spaces**, by the same filter
 pressing Enter in a text field. In a shell that is the same protection, and it is why a multi-line
 paste runs as one line rather than as a sequence of commands.
 
-Four chords are claimed and no more, all of them behind `Ctrl+Shift`. Every chord a terminal eats
-is a chord no program running inside it can use.
+Six chords are claimed and no more, all of them behind `Shift` or `Ctrl+Shift`. Every chord a
+terminal eats is a chord no program running inside it can use.
+
+## Hyperlinks
+
+A program marks a run of text with `OSC 8 ; params ; URI` and ends it with the empty form. **The
+address is interned and the cell keeps a 16-bit id**, so the text can be scrolled back to and still
+be the link it was; `KtuiCell` is not widened for it, because a link is a property of a terminal's
+buffer and not of every surface the toolkit draws. Two runs of the same address are **one** link
+whether or not the program said so — the `id=` parameter is ignored, so a program reusing an id for
+a different address cannot make one run of text point at another's.
+
+**Hover underlines the whole run and `Ctrl`+click follows it.** The run rather than the character:
+an address is one thing, and underlining the letter somebody happens to be over says nothing about
+where it ends. `Ctrl` rather than a plain click, because a link sitting in a screenful of text must
+not be a trap for somebody selecting a word. It opens through `kdos-appbox open`, the MIME route the
+portal's `OpenURI` takes, as an argument vector and never a command line.
+
+**Four schemes and nothing else** — `http`, `https`, `file`, `mailto` — and **every byte must be
+printable ASCII**. Anything that can write to a terminal can write an OSC: a `cat` of a hostile
+file, a program on the other end of an `ssh`. A control byte would reach an argument vector, and a
+byte above 126 makes the same address read two ways depending on who decodes it, which is how a
+whitelist gets walked around. A refused link is **text**: the characters are drawn and no link is
+offered, so there is nothing to be made to follow.
+
+**The table is capped at 128 addresses and is never freed while the terminal lives.** Both halves of
+that are the same decision: an id in the scrollback can always be resolved, which is only affordable
+because a child emitting a fresh URI per cell cannot grow the table for ever. Past the cap the text
+is still text.
+
+The session's own terminal windows do the same thing, through the same library, so a link works in
+whichever terminal a person has. What a link **resolves to** on a bare virtual terminal is a
+separate question, and it is in [known gaps](../06-reference/known-gaps.md).
+
+## Prompt marks
+
+A shell says where its prompt starts with `OSC 133 ; A` and what the last command exited with using
+`OSC 133 ; D ; <status>`. The shipped `/etc/bash.bashrc` emits both from `PROMPT_COMMAND`, **outside
+the `starship` branch**: `starship` is a port and is installed, so a version embedded in `PS1` would
+be dead on every real login here.
+
+**`Ctrl+Shift+Up` and `Ctrl+Shift+Down` jump between them.** A screen of build output has one prompt
+at each end of it, and scrolling by lines to find the last one is what this replaces. The mark is
+kept **on the line**, so it survives into the scrollback — which is exactly when it is worth having,
+because the interesting prompt has already gone off the top.
+
+**The status lands on the prompt the command was typed at**, not on the line the shell reported it
+from; those are several lines apart in any command with output. A prompt with nothing finished yet
+carries no status, and that is not the same as zero — "it worked" and "nobody said" are different
+things to draw.
+
+**It is drawn on the frame's left border, where there is one.** A terminal has no gutter: every
+column belongs to the child, so the only column this program owns is its own border. An undecorated
+window and every window in the console session have one; a window the compositor decorates does
+not, and gets no dot — the chords still jump. The colour carries the meaning, a bullet in the error
+slot for a command that failed and in the accent for one that did not, with a dot where nothing has
+finished.
+
+`B` and `C` — the end of the typed line and the start of output — are parsed and **not** kept.
+Getting them right needs a `DEBUG` trap that also fires for the prompt's own commands, which emits
+"output started" while the shell is still waiting for a key; a mark at the wrong moment is worse
+than no mark, and nothing here reads them.
 
 ## Pictures
 

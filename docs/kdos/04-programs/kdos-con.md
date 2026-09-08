@@ -311,6 +311,24 @@ is why the two live in different files.
 it is for. Scrollback is set by the caller — a library that read a program's configuration file
 would answer differently in every consumer.
 
+**A hyperlink works the same in a session terminal as in `kdos-term`.** `OSC 8` interns the address
+on the terminal's own cell, hover underlines the whole run and `Ctrl`+click opens it through
+`kdos-appbox open` — one implementation in `libkvt`, so a link cannot behave differently depending
+on which desktop a person is sitting at. Four schemes and printable ASCII only; the refusals are in
+[the security model](../03-architecture/security-model.md#a-uri-a-terminal-was-told-about).
+
+**The prompt marks work the same way**, from the same `libkvt`: `Ctrl+Shift+Up` and
+`Ctrl+Shift+Down` jump between the prompts a shell marked with `OSC 133`, and the dot goes on the
+window frame's left border — the one column the window manager owns, since every column inside
+belongs to the child. The chord is claimed whether or not it moves, so a shell that emits no marks
+does not send the arrow to the child on some screens and not on others.
+
+**A pointer event reaches a terminal window in that window's own grid**, with the window's origin
+already subtracted, because the hit test that found the window used the frame rect. A press on the
+border is therefore outside the content and is dropped rather than clamped onto the first row —
+and a terminal handed screen coordinates would select text, and follow a link, as far from the
+pointer as the window is from the corner.
+
 **A bell is two halves, because a bell is two things.** `BEL` from a child flashes that window's
 frame and title in the accent slot for 120 ms — the chrome and not the content, so the line that
 rang is still readable — and the session sends the `bell` verb to every attached view. A view in
@@ -436,14 +454,22 @@ a defect in the taskbar; it is what "on a terminal of its own" means.
 
 ### What a view is told, and what it does with pixels
 
-A view says in its hello how many pixels one of its cells is and whether it can put a sprite's bytes
-on a screen. The session uses the first for sizing an embedded guest — the primary view's, because
+A view says in its hello how many pixels one of its cells is, whether it can put a sprite's bytes on
+a screen, whether it rasterises its own glyphs, and **whether it can draw a colour outside the
+theme's eight slots**. The session uses the first for sizing an embedded guest — the primary view's, because
 that is the display the person is looking at — and the second to decide how often it may send a
 frame: at the session's own redraw rate when something can show pixels, and once every 250 ms when
 nothing can, because a window of pixels at a compositor's frame rate down an `ssh` link is a link
 that does nothing else.
 
-**Every view is sent the same thing**, and what becomes of a picture is decided at the far end. A
+**A colour a program named exactly is sent only to a view that asked for it**, in a run of its own
+beside the cells. A view in somebody's sixteen-colour terminal would have to reduce every literal
+back to the slot it was already sent, having paid for it on the link — and a link slow enough for
+that to matter is the link a remote view is on. Every cell carries the slot either way, so a view
+that declined draws exactly what it drew before.
+
+**Every view is sent the same thing otherwise**, and what becomes of a picture is decided at the far
+end. A
 view that cannot show pixels turns each cell of the picture into the character whose shape covers
 the same part of a cell — the matcher behind `kdos-ascii` — and colours it with the nearest palette
 slot to that cell's average. That happens **in the view**, which is the only end that knows whether
