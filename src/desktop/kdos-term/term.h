@@ -70,6 +70,15 @@ typedef struct {
 	 * program only says where a finished selection goes.
 	 */
 	KvtUi ui;
+
+	/*
+	 * The OSC 8 link the pointer is over, 0 for none. Every cell sharing
+	 * the id is underlined while it is set — the whole run, so a person
+	 * can see where the address ends — and nothing is underlined when the
+	 * pointer is elsewhere, so a screen of links does not become a screen
+	 * of underlines.
+	 */
+	unsigned int hover;
 } Term;
 
 extern Term T;

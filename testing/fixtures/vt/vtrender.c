@@ -119,6 +119,147 @@ int main(int argc, char **argv)
 		printf("%s\n", row);
 	}
 
+	/*
+	 * THEN THE ATTRIBUTES, one letter per cell.
+	 *
+	 * A style has no character to show, so a golden holding only the text
+	 * cannot tell an italic comment from an upright one — and the whole
+	 * point of carrying italic, strike and overline is that a person sees
+	 * them. Colour stays out: it moves with the theme, and a palette
+	 * change reading as "vim drifted" is a test that changed its own
+	 * question. An attribute is the program's own and moves with nothing.
+	 *
+	 * The first style set wins the cell, in this order, so a diff names
+	 * one thing rather than a combination.
+	 */
+	printf("--\n");
+	for (int y = 0; y < H; y++) {
+		char row[W + 1];
+		size_t o = 0;
+
+		for (int x = 0; x < W; x++) {
+			/* The WHOLE attribute: the underline's shape lives
+			 * above the wire's byte, and a uint8_t here would
+			 * print every shape as a plain line. */
+			unsigned a = cells[y * W + x].attr;
+			char c = '.';
+
+			if (a & KT_A_ITALIC)
+				c = 'i';
+			else if (a & KT_A_STRIKE)
+				c = 's';
+			else if (a & KT_A_OVERLINE)
+				c = 'o';
+			else if (a & KT_A_UNDERLINE)
+				/* The shape as its own digit, because a curly
+				 * and a straight line are the same attribute
+				 * and different pictures. */
+				c = KT_UL_STYLE(a) ? (char)('0' + KT_UL_STYLE(a))
+						   : 'u';
+			else if (a & KT_A_BOLD)
+				c = 'b';
+			else if (a & KT_A_REVERSE)
+				c = 'r';
+			row[o++] = c;
+		}
+		while (o && row[o - 1] == '.')
+			o--;
+		row[o] = '\0';
+		printf("%s\n", row);
+	}
+
+	/*
+	 * AND WHICH CELLS CARRY A COLOUR OF THEIR OWN — never WHICH colour.
+	 *
+	 * The boundary is the thing worth pinning: the sixteen named colours
+	 * reduce to the theme's slots and follow `kdos theme`, and everything
+	 * above them is a literal the program chose. A golden holding the
+	 * values would drift on a palette change and say "vim drifted"; one
+	 * holding the DECISION drifts only when the rule does.
+	 *
+	 * `f` foreground, `b` background, `B` both, `u` the underline's own.
+	 */
+	printf("--\n");
+	for (int y = 0; y < H; y++) {
+		char row[W + 1];
+		size_t o = 0;
+
+		for (int x = 0; x < W; x++) {
+			unsigned a = cells[y * W + x].attr;
+			char c = '.';
+
+			if ((a & (KT_A_FGRGB | KT_A_BGRGB)) ==
+			    (KT_A_FGRGB | KT_A_BGRGB))
+				c = 'B';
+			else if (a & KT_A_FGRGB)
+				c = 'f';
+			else if (a & KT_A_BGRGB)
+				c = 'b';
+			else if (a & KT_A_ULCOLOR)
+				c = 'u';
+			row[o++] = c;
+		}
+		while (o && row[o - 1] == '.')
+			o--;
+		row[o] = '\0';
+		printf("%s\n", row);
+	}
+
+	/*
+	 * AND WHICH CELLS ARE A HYPERLINK, as the id itself — `1` for the
+	 * first address this stream named, `2` for the second, `+` past nine.
+	 *
+	 * The id rather than a flag, because the two things worth pinning are
+	 * that one run is one link and that the SAME address twice is the same
+	 * link: a table that stopped interning would show two digits where the
+	 * golden has one, and a link that leaked past its close would show a
+	 * digit under text that is not a link at all.
+	 *
+	 * A link lives on the screen's own cell and never on a KtuiCell, so
+	 * this block is read from the screen rather than from the grid above.
+	 */
+	printf("--\n");
+	for (int y = 0; y < H; y++) {
+		char row[W + 1];
+		size_t o = 0;
+
+		for (int x = 0; x < W; x++) {
+			unsigned int id = kvt_screen_link_at(scr,
+							     (unsigned int)x,
+							     (unsigned int)y);
+
+			row[o++] = !id ? '.'
+				 : id <= 9 ? (char)('0' + id)
+					   : '+';
+		}
+		while (o && row[o - 1] == '.')
+			o--;
+		row[o] = '\0';
+		printf("%s\n", row);
+	}
+
+	/*
+	 * AND THE PROMPT MARKS, one character per ROW because that is what a
+	 * mark is — a property of the line, not of a cell. `?` is a prompt
+	 * whose command has not finished, `0` one that succeeded and `!` one
+	 * that failed; `.` is a line no shell marked.
+	 *
+	 * The status is what makes this worth a block: the mark lands on the
+	 * PROMPT the command was typed at rather than on the line the shell
+	 * reported it from, and those are several lines apart in any stream
+	 * with output in it.
+	 */
+	printf("--\n");
+	for (int y = 0; y < H; y++) {
+		int status = -1;
+		int mark = kvt_screen_mark_at(scr, (unsigned int)y, &status);
+
+		printf("%c", !mark ? '.'
+			   : status < 0 ? '?'
+			   : status ? '!' : '0');
+	}
+	printf("\n");
+
 	kvt_vte_unref(vte);
 	kvt_screen_unref(scr);
 	free(buf);

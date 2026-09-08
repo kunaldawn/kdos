@@ -109,7 +109,7 @@ struct KconServer {
 
 static void blank(KtuiCell *c, int n)
 {
-	KtuiCell b = { ' ', KT_TEXT, KT_BG, KT_A_NONE };
+	KtuiCell b = { ' ', KT_TEXT, KT_BG, KT_A_NONE, 0, 0, 0 };
 
 	for (int i = 0; i < n; i++)
 		c[i] = b;
@@ -1066,6 +1066,27 @@ void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 			if (kcon_send(v->conn, KCON_OP_COMMIT, &b) != 0) {
 				kcon_buf_free(&b);
 				return;
+			}
+
+			/*
+			 * AND THE LITERALS, ONLY IF THIS VIEW ASKED AND ONLY
+			 * IF THIS RUN HAS ANY. It follows the run it belongs
+			 * to and repeats its position, so the view patches
+			 * cells it has already drawn; a view that declined has
+			 * the slots and is a frame behind nothing.
+			 */
+			if ((v->caps & KCON_VIEW_COLOR) &&
+			    kcon_run_has_color(&cells[y * w + start],
+					       (uint16_t)(x - start))) {
+				kcon_buf_reset(&b);
+				kcon_put_color_run(&b, (uint16_t)start,
+						   (uint16_t)y,
+						   &cells[y * w + start],
+						   (uint16_t)(x - start));
+				if (kcon_send(v->conn, KCON_OP_COLOR, &b) != 0) {
+					kcon_buf_free(&b);
+					return;
+				}
 			}
 		}
 	}

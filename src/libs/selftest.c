@@ -4115,6 +4115,327 @@ static void test_vt_modes(void)
 	kvt_screen_unref(scr);
 }
 
+/*
+ * ── THE THREE STYLES A CELL HAS ROOM FOR ────────────────────────────────
+ *
+ * `KtuiCell.attr` is one byte and the wire carries it as one byte, so italic,
+ * strikethrough and overline cost nothing to add and nothing to send. What
+ * they cost is a mapping that has to be complete at BOTH ends: an SGR the vte
+ * drops is a style the terminal silently loses, and an attribute the grid does
+ * not carry is one every renderer downstream cannot see. Both halves are here.
+ *
+ * `blink` and `dim` are parsed and deliberately NOT carried: there is no bit
+ * for them, and a blink drawn as bold is a lie about the text.
+ */
+static uint8_t vt_attr_of(const char *bytes)
+{
+	struct kvt_screen *scr;
+	struct kvt_vte *vte;
+	KtuiCell cells[40 * 4];
+
+	if (kvt_screen_new(&scr, NULL, NULL) != 0)
+		return 0xff;
+	kvt_screen_resize(scr, 40, 4);
+	if (kvt_vte_new(&vte, scr, vt_on_write, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(scr);
+		return 0xff;
+	}
+	for (size_t i = 0; bytes[i]; i++)
+		kvt_vte_input(vte, bytes + i, 1);
+	memset(cells, 0, sizeof(cells));
+	kvt_grid_render(scr, cells, 40, 4);
+	kvt_vte_unref(vte);
+	kvt_screen_unref(scr);
+	return cells[0].attr;
+}
+
+static void test_vt_styles(void)
+{
+	printf("\n==> libkvt carries italic, strikethrough and overline\n");
+
+	eq_int(vt_attr_of("\033[3mX"), KT_A_ITALIC, "SGR 3 is italic");
+	eq_int(vt_attr_of("\033[9mX"), KT_A_STRIKE, "SGR 9 is a strike");
+	eq_int(vt_attr_of("\033[53mX"), KT_A_OVERLINE, "SGR 53 is an overline");
+	eq_int(vt_attr_of("\033[3;9;53;4;1mX"),
+	       KT_A_ITALIC | KT_A_STRIKE | KT_A_OVERLINE | KT_A_UNDERLINE |
+	       KT_A_BOLD,
+	       "and all five ride the same cell");
+
+	/* Each has its own off, and turning one off leaves the others. */
+	eq_int(vt_attr_of("\033[3;9;53m\033[23mX"),
+	       KT_A_STRIKE | KT_A_OVERLINE, "SGR 23 ends italic and nothing else");
+	eq_int(vt_attr_of("\033[3;9;53m\033[29mX"),
+	       KT_A_ITALIC | KT_A_OVERLINE, "SGR 29 ends the strike");
+	eq_int(vt_attr_of("\033[3;9;53m\033[55mX"),
+	       KT_A_ITALIC | KT_A_STRIKE, "SGR 55 ends the overline");
+	eq_int(vt_attr_of("\033[3;9;53m\033[0mX"), KT_A_NONE,
+	       "and SGR 0 ends all three");
+
+	/* Parsed, and deliberately dropped at the cell. */
+	eq_int(vt_attr_of("\033[5;2mX"), KT_A_NONE,
+	       "blink and dim reach no bit rather than a wrong one");
+
+	/*
+	 * AND A PRIVATE MARKER IS NOT AN SGR AT ALL. `CSI ? 4 m` and
+	 * `CSI > 4 ; 1 m` are a private sequence and XTMODKEYS; read as SGR 4
+	 * either one underlines every cell drawn after it, which is a whole
+	 * screen wearing an attribute nothing asked for.
+	 */
+	eq_int(vt_attr_of("\033[?4mX"), KT_A_NONE,
+	       "a private marker is not an SGR");
+	eq_int(vt_attr_of("\033[>4;1mX"), KT_A_NONE, "and neither is XTMODKEYS");
+}
+
+/*
+ * ── OSC 8, AND EVERYTHING IT REFUSES ────────────────────────────────────
+ *
+ * A URI from a child process is untrusted input, and this is the one place a
+ * terminal hands one to a program that opens things. Anything that can write
+ * to a terminal can write an OSC — a `cat` of a hostile file, a compromised
+ * program on the other end of an `ssh` — so the interesting assertions here
+ * are the refusals: a scheme that is not one of four, a byte outside printable
+ * ASCII, a URI longer than the cap, and a table that has been filled.
+ *
+ * A refused link is TEXT, not an error. The characters are still drawn; what
+ * does not happen is a link being offered, and nothing can be made to follow
+ * one that was never there.
+ */
+static struct kvt_screen *lk_scr;
+static struct kvt_vte *lk_vte;
+
+static void lk_open(void)
+{
+	lk_scr = NULL;
+	lk_vte = NULL;
+	if (kvt_screen_new(&lk_scr, NULL, NULL) != 0)
+		return;
+	kvt_screen_resize(lk_scr, 40, 4);
+	if (kvt_vte_new(&lk_vte, lk_scr, vt_on_write, NULL, NULL, NULL) != 0) {
+		kvt_screen_unref(lk_scr);
+		lk_scr = NULL;
+	}
+}
+
+static void lk_close(void)
+{
+	if (lk_vte)
+		kvt_vte_unref(lk_vte);
+	if (lk_scr)
+		kvt_screen_unref(lk_scr);
+	lk_vte = NULL;
+	lk_scr = NULL;
+}
+
+static void lk_feed(const char *bytes)
+{
+	for (size_t i = 0; bytes[i]; i++)
+		kvt_vte_input(lk_vte, bytes + i, 1);
+}
+
+/* `8 ; params ; URI` around one word, then the empty form that closes it. */
+static void lk_link(const char *uri, const char *word)
+{
+	char buf[4096];
+
+	snprintf(buf, sizeof(buf), "\033]8;;%s\033\\%s\033]8;;\033\\.",
+		 uri, word);
+	lk_feed(buf);
+}
+
+static void test_vt_links(void)
+{
+	printf("\n==> libkvt interns an OSC 8 link and refuses the rest\n");
+
+	lk_open();
+	if (!lk_vte) {
+		ok(0, "a terminal for the link tests");
+		return;
+	}
+
+	lk_link("https://kdos.example/a", "abc");
+
+	unsigned id = kvt_screen_link_at(lk_scr, 0, 0);
+
+	ok(id != 0, "a link is stamped on the cells it covers");
+	eq_int(kvt_screen_link_at(lk_scr, 2, 0), id,
+	       "every cell of the run carries the same id");
+	eq_int(kvt_screen_link_at(lk_scr, 3, 0), 0,
+	       "and the cell after the close carries none");
+	eq_str(kvt_vte_link_uri(lk_vte, id), "https://kdos.example/a",
+	       "the id resolves to the address");
+	ok(kvt_vte_link_uri(lk_vte, id + 1000) == NULL,
+	   "an id nothing issued resolves to nothing");
+
+	/* THE SAME ADDRESS IS ONE LINK. A program that reuses an `id=` for a
+	 * different URI cannot make one run point at another's. */
+	lk_feed("\r\n");
+	lk_link("https://kdos.example/a", "again");
+	eq_int(kvt_screen_link_at(lk_scr, 0, 1), id, "the same URI interns once");
+	lk_feed("\r\n");
+	lk_link("https://kdos.example/b", "other");
+	ok(kvt_screen_link_at(lk_scr, 0, 2) != id &&
+	   kvt_screen_link_at(lk_scr, 0, 2) != 0,
+	   "a different URI is a different link");
+
+	/*
+	 * AN ERASED CELL CARRIES NO TEXT, SO IT CARRIES NO LINK — and the way
+	 * one would is not obvious. Background-colour-erase copies the CURRENT
+	 * attribute into the screen's default so that an erase paints in the
+	 * colour a program set; an SGR emitted while a link is open therefore
+	 * puts the link into that default, and every blank the screen makes
+	 * afterwards would be clickable empty space. The SGR below is what
+	 * makes this a test of the rule rather than of a zero that was already
+	 * zero.
+	 */
+	lk_feed("\033]8;;https://kdos.example/c\033\\\033[31mabc");
+	lk_feed("\033]8;;\033\\\033[2J");
+	eq_int(kvt_screen_link_at(lk_scr, 0, 0), 0,
+	       "an erase takes the link with the text");
+	eq_int(kvt_screen_link_at(lk_scr, 20, 3), 0,
+	       "and empty space a link was never on is not clickable");
+	lk_close();
+
+	/* ── the refusals ──────────────────────────────────────────────── */
+	static const struct { const char *uri, *what; } bad[] = {
+		{ "javascript:alert(1)", "a script scheme" },
+		{ "data:text/html,<script>", "a data URI" },
+		{ "vscode://file/etc/shadow", "an unknown scheme" },
+		{ "https://kdos.example/\xc3\xa9", "a byte above 126" },
+		{ "", "an empty address" },
+	};
+
+	for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+		lk_open();
+		if (!lk_vte)
+			continue;
+		lk_link(bad[i].uri, "xy");
+		eq_int(kvt_screen_link_at(lk_scr, 0, 0), 0, bad[i].what);
+		lk_close();
+	}
+
+	/* A URI longer than the cap: the text still lands, the link does not. */
+	{
+		char big[4096];
+
+		memset(big, 'a', sizeof(big) - 1);
+		big[sizeof(big) - 1] = 0;
+		memcpy(big, "https://", 8);
+		lk_open();
+		if (lk_vte) {
+			lk_link(big, "xy");
+			eq_int(kvt_screen_link_at(lk_scr, 0, 0), 0,
+			       "a URI past the length cap");
+			lk_close();
+		}
+	}
+
+	/*
+	 * AND A TABLE THAT HAS BEEN FILLED. A child emitting a fresh URI per
+	 * cell is the shape of the attack; past the cap the text is still text
+	 * and the link is simply not offered.
+	 */
+	lk_open();
+	if (lk_vte) {
+		char uri[64];
+		unsigned last = 1;
+
+		for (unsigned i = 0; i < 200; i++) {
+			snprintf(uri, sizeof(uri), "https://kdos.example/%u", i);
+			lk_feed("\033[H");
+			lk_link(uri, "x");
+			last = kvt_screen_link_at(lk_scr, 0, 0);
+		}
+		eq_int(last, 0, "past the table's cap, nothing more is interned");
+		lk_close();
+	}
+}
+
+/*
+ * ── OSC 133, THE PROMPT MARKS ───────────────────────────────────────────
+ *
+ * A shell says where its prompt starts and what the last command exited with.
+ * The mark is on the LINE, so it survives into the scrollback — which is
+ * exactly when it is worth having, because a screen of build output has one
+ * prompt at each end of it and the interesting one has already scrolled away.
+ *
+ * The status is walked back to rather than written where the cursor is: a
+ * shell reports `D` after the output, and the place a person looks for "did
+ * that work" is the prompt they typed at.
+ */
+static void test_vt_marks(void)
+{
+	printf("\n==> libkvt keeps OSC 133's marks, and jumps between them\n");
+
+	lk_open();
+	if (!lk_vte) {
+		ok(0, "a terminal for the mark tests");
+		return;
+	}
+	kvt_screen_set_max_sb(lk_scr, 200);
+
+	int st = 0;
+
+	/* A prompt, a command, its output, and a failure reported after it. */
+	lk_feed("\033]133;A\033\\$ make\r\n");
+	ok(kvt_screen_mark_at(lk_scr, 0, &st) == 1, "the prompt line is marked");
+	eq_int(st, -1, "and carries no status until the command finishes");
+	eq_int(kvt_screen_mark_at(lk_scr, 1, &st), 0,
+	       "the line under it is not a prompt");
+
+	lk_feed("error: no rule\r\n\033]133;D;2\033\\");
+	ok(kvt_screen_mark_at(lk_scr, 0, &st) == 1 && st == 2,
+	   "the status lands on the PROMPT, not where the shell reported it");
+
+	/* A second prompt on the same screen keeps its own status. */
+	lk_feed("\033]133;A\033\\$ true\r\n\033]133;D;0\033\\");
+	ok(kvt_screen_mark_at(lk_scr, 2, &st) == 1 && st == 0,
+	   "a second prompt carries its own status");
+	ok(kvt_screen_mark_at(lk_scr, 0, &st) == 1 && st == 2,
+	   "and the first one keeps the one it had");
+
+	/* A `D` with nothing marked above it is a report about nothing, and
+	 * must not invent a mark to hang it on. */
+	lk_close();
+	lk_open();
+	if (lk_vte) {
+		lk_feed("\033]133;D;1\033\\x");
+		eq_int(kvt_screen_mark_at(lk_scr, 0, &st), 0,
+		       "a status with no prompt marks nothing");
+		lk_close();
+	}
+
+	/*
+	 * ── THE JUMP ───────────────────────────────────────────────────
+	 *
+	 * Twelve prompts through a four-row screen: everything but the last is
+	 * in the scrollback, which is the case the mark exists for.
+	 */
+	lk_open();
+	if (!lk_vte) {
+		ok(0, "a terminal for the jump test");
+		return;
+	}
+	kvt_screen_set_max_sb(lk_scr, 200);
+	for (int i = 0; i < 12; i++)
+		lk_feed("\033]133;A\033\\$ cmd\r\nout\r\n\033]133;D;0\033\\");
+
+	ok(kvt_screen_scroll_to_mark(lk_scr, -1) == 1,
+	   "the view jumps back to a prompt");
+	ok(kvt_screen_mark_at(lk_scr, 0, &st) == 1,
+	   "and the marked line is the one at the top");
+
+	int hops = 0;
+
+	while (kvt_screen_scroll_to_mark(lk_scr, -1))
+		hops++;
+	ok(hops >= 8, "every prompt in the scrollback can be reached");
+	ok(kvt_screen_scroll_to_mark(lk_scr, -1) == 0,
+	   "and the top of the history is where it stops");
+	ok(kvt_screen_scroll_to_mark(lk_scr, 1) == 1,
+	   "the jump works downwards too");
+	lk_close();
+}
+
 /* What the three notification escapes carried, for the test below. */
 static struct { int calls; char sum[128], body[128]; } vt_note;
 
@@ -4484,7 +4805,7 @@ static void test_kcon(void)
 	/* ── the caps are what they claim ──────────────────────────────── */
 	eq_int((long long)KCON_MAX_PAYLOAD, 1ll << 20,
 	       "a payload is refused above a megabyte");
-	eq_int(KCON_VERSION, 8, "and the version the two ends agree on");
+	eq_int(KCON_VERSION, 9, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -4965,6 +5286,30 @@ static void srv_hello(KconConn *c, unsigned ver, unsigned kind)
 	kcon_put_u16(&b, (uint16_t)ver);
 	kcon_put_u16(&b, (uint16_t)kind);
 	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_flush(c);
+	kcon_buf_free(&b);
+}
+
+/* The same, with what a view says it can do. Four numbers rather than two:
+ * the cell's pixels and the capability word. */
+static void srv_hello_caps(KconConn *c, unsigned caps)
+{
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_VIEW);
+	kcon_put_u16(&b, 8);
+	kcon_put_u16(&b, 16);
+	kcon_put_u16(&b, (uint16_t)caps);
+	kcon_send(c, KCON_OP_HELLO, &b);
+
+	/* AND THE SIZE, which is what attaches a view: a display that never
+	 * said what it can show is a display the session has nothing to send
+	 * to. Zero is "I impose nothing", the answer a screenshot gives. */
+	kcon_buf_reset(&b);
+	kcon_put_u16(&b, 0);
+	kcon_put_u16(&b, 0);
+	kcon_send(c, KCON_OP_VIEW_SIZE, &b);
 	kcon_flush(c);
 	kcon_buf_free(&b);
 }
@@ -5748,6 +6093,144 @@ static void test_kcon_server(void)
 		if (win1)
 			kcon_conn_free(win1);
 		kcon_server_hooks(s, NULL, NULL);
+	}
+
+	/* ── the literals, and only for the view that asked ───────────────
+	 *
+	 * TWO VIEWS ON ONE SESSION, one of which said KCON_VIEW_COLOR. Both
+	 * are sent the same frame. The one that asked gets the cells and then
+	 * their colours; the one that did not gets the cells and NOTHING
+	 * ELSE — not a shorter colour run, not a run of zeros, no second
+	 * message at all — because the cost this negotiation exists to avoid
+	 * is bytes on a slow link, and a run of zeros costs exactly as much as
+	 * a run of colours.
+	 *
+	 * The declining view's cells still carry their slots, so it draws the
+	 * same frame it drew before this op existed. That is the property the
+	 * whole design rests on and it is asserted here rather than assumed.
+	 */
+	{
+		KconConn *rich = srv_client(path);
+		KconConn *plain = srv_client(path);
+
+		if (rich && plain) {
+			srv_hello_caps(rich, KCON_VIEW_COLOR);
+			srv_hello_caps(plain, 0);
+			/* An accept and a hello are not the same pump: the
+			 * connection exists one turn before what it said
+			 * about itself has been read. */
+			for (int i = 0;
+			     i < 50 && kcon_server_view_count(s) < 2; i++) {
+				kcon_server_pump(s);
+				usleep(1000);
+			}
+
+			KtuiCell frame[4];
+			int nviews = kcon_server_view_count(s);
+
+			ok(nviews >= 2, "both views are on the session");
+
+			memset(frame, 0, sizeof(frame));
+			for (int i = 0; i < 4; i++) {
+				frame[i].ch = 'a' + i;
+				frame[i].fg = KT_TEXT;
+				frame[i].bg = KT_BG;
+			}
+			/* One cell a program coloured itself, curly and
+			 * underlined in a colour of its own. */
+			frame[1].attr = KT_A_UNDERLINE | KT_A_FGRGB |
+					KT_A_ULCOLOR | KT_UL_SET(KT_UL_CURLY);
+			frame[1].fgc = 0x123456;
+			frame[1].ulc = 0xfedcba;
+
+			for (int i = 0; i < nviews; i++)
+				kcon_view_send(kcon_server_view_at(s, i),
+					       frame, 4, 1);
+
+			struct { KconConn *c; int cells, colors; } got[2] = {
+				{ rich, 0, 0 }, { plain, 0, 0 }
+			};
+
+			for (unsigned k = 0; k < 2; k++) {
+				KconMsg m;
+				KtuiCell out[8];
+				uint16_t x, y;
+
+				for (int spin = 0; spin < 60; spin++) {
+					int r = kcon_recv(got[k].c, &m);
+
+					if (r != 1) {
+						kcon_server_pump(s);
+						usleep(1000);
+						continue;
+					}
+					if (m.op == KCON_OP_COMMIT) {
+						KconRd rd;
+
+						kcon_rd_init(&rd, m.payload,
+							     m.len);
+						memset(out, 0, sizeof(out));
+						if (kcon_get_run(&rd, &x, &y,
+								 out, 8) == 4) {
+							got[k].cells = 1;
+							/* THE WIRE BYTE IS THE
+							 * LOW BYTE: a bit
+							 * above it would be a
+							 * colour claimed
+							 * without one sent. */
+							ok(!(out[1].attr &
+							     ~0xffu),
+							   k == 0 ?
+							   "a commit carries no bit above the wire's byte" :
+							   "and none to a view that declined either");
+							ok(out[1].fg == KT_TEXT,
+							   k == 0 ?
+							   "the slot is on the cell for both views" :
+							   "including the one with no colours");
+						}
+					} else if (m.op == KCON_OP_COLOR) {
+						KconRd rd;
+
+						kcon_rd_init(&rd, m.payload,
+							     m.len);
+						memset(out, 0, sizeof(out));
+						if (kcon_get_color_run(&rd, &x,
+								       &y, out,
+								       8) == 4) {
+							got[k].colors = 1;
+							eq_int(out[1].fgc,
+							       0x123456,
+							       "the colour the program named arrives");
+							eq_int(out[1].ulc,
+							       0xfedcba,
+							       "and the underline's own");
+							eq_int(KT_UL_STYLE(out[1].attr),
+							       KT_UL_CURLY,
+							       "and the shape of it");
+						}
+					}
+					/*
+					 * THE DECLINING VIEW IS READ TO THE
+					 * END OF THE SPIN, not stopped at its
+					 * cells: a test that stopped as soon
+					 * as the commit arrived would pass
+					 * just as well against a session that
+					 * sends the colours to everybody.
+					 */
+					if (got[k].cells && got[k].colors)
+						break;
+				}
+			}
+			ok(got[0].cells && got[0].colors,
+			   "the view that asked is sent the literals");
+			ok(got[1].cells && !got[1].colors,
+			   "and the view that did not is sent nothing extra");
+		}
+		if (rich)
+			kcon_conn_free(rich);
+		if (plain)
+			kcon_conn_free(plain);
+		kcon_server_pump(s);
 	}
 
 	/* ── the quit verb: a shell surface ends the session, a window does
@@ -6580,6 +7063,9 @@ int main(void)
 	test_menu();
 	test_vt_graphics();
 	test_vt_modes();
+	test_vt_styles();
+	test_vt_links();
+	test_vt_marks();
 	test_vt_notify();
 	test_vt_img();
 	test_kvt_term();

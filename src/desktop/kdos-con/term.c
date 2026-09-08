@@ -144,6 +144,42 @@ void term_mouse(Win *w, const KtuiEvent *ev)
 	if (!w || w->kind != WIN_TERM || !w->term)
 		return;
 
+	/*
+	 * THE LINK UNDER THE POINTER, and Ctrl+click to follow it. The same
+	 * two rules `kdos-term` keeps, because a link that worked in one
+	 * terminal and not in the other would be a link that depends on which
+	 * desktop a person is sitting at.
+	 *
+	 * The URI was refused at the parser unless it is one of four schemes
+	 * in printable ASCII, and it is handed to `kdos-appbox open` as an
+	 * argument VECTOR. What that resolves to on a bare virtual terminal is
+	 * its own question and is in known-gaps.
+	 */
+	unsigned int was = w->hover;
+
+	w->hover = ev->mx >= 0 && ev->my >= 0
+			   ? kvt_term_link_at(w->term, (unsigned int)ev->mx,
+					      (unsigned int)ev->my)
+			   : 0;
+	if (w->hover != was)
+		ktui_draw_invalidate();
+
+	if (w->hover && ev->btn == KT_MB_LEFT && ev->press == KT_MP_PRESS &&
+	    (ev->mods & KT_MOD_CTRL)) {
+		const char *uri = kvt_term_link_uri(w->term, w->hover);
+
+		if (uri) {
+			KbArgv a = { 0 };
+
+			kb_argv_add(&a, "kdos-appbox");
+			kb_argv_add(&a, "open");
+			kb_argv_add(&a, uri);
+			kb_argv_end(&a);
+			kb_run_detach(&a);
+		}
+		return;
+	}
+
 	if (!kvt_ui_mouse(w->term, &w->ui, ev, kb_now_s(), &text))
 		return;
 
@@ -197,6 +233,22 @@ int term_key(Win *w, const KtuiEvent *ev)
 	    (ev->key == KT_K_PGUP || ev->key == KT_K_PGDN)) {
 		kvt_term_scroll(w->term, ev->key == KT_K_PGUP ? -10 : 10);
 		ktui_draw_invalidate();
+		return 1;
+	}
+
+	/*
+	 * AND CTRL+SHIFT+UP/DOWN JUMPS BY PROMPT, where the shell marked them
+	 * with OSC 133. The same chord `kdos-term` uses, because a person
+	 * moving between the two should not have to learn it twice. It is
+	 * claimed whether or not it moves: a shell that emits no marks would
+	 * otherwise send the arrow to the child on some screens and not on
+	 * others depending on what had scrolled past.
+	 */
+	if ((ev->mods & KT_MOD_SHIFT) && (ev->mods & KT_MOD_CTRL) &&
+	    (ev->key == KT_K_UP || ev->key == KT_K_DOWN)) {
+		if (kvt_term_scroll_to_mark(w->term,
+					    ev->key == KT_K_UP ? -1 : 1))
+			ktui_draw_invalidate();
 		return 1;
 	}
 

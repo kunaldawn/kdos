@@ -1023,8 +1023,21 @@ static void draw_content(const Win *w)
 					     ((uint32_t)gs << 8);
 			}
 
-			ktui_draw_cell(w->geom.x + x, w->geom.y + y,
-				       ch, c->fg, c->bg, c->attr);
+			/* The cell is copied WHOLE and only its codepoint is
+			 * ever rewritten: a window's own colour — a literal a
+			 * program named, an underline's colour — has no slot
+			 * to be reduced into and must reach the frame with
+			 * the cell it belongs to. */
+			KtuiCell out = *c;
+
+			out.ch = ch;
+			/* The hovered link's whole run, the id being what says
+			 * where the address ends. */
+			if (w->kind == WIN_TERM && w->hover &&
+			    kvt_term_link_at(w->term, (unsigned int)x,
+					     (unsigned int)y) == w->hover)
+				out.attr |= KT_A_UNDERLINE;
+			ktui_draw_put(w->geom.x + x, w->geom.y + y, &out);
 		}
 }
 
@@ -1083,6 +1096,35 @@ int win_button_at(int x, int y, int *id)
  * goldens that have nothing to do with this desktop. Buttons are a property of
  * a managed window, so the window manager draws them.
  */
+/*
+ * OSC 133'S PROMPT MARKS, ON THE FRAME'S LEFT BORDER.
+ *
+ * A terminal has no gutter — every column belongs to the child — so this is
+ * drawn on the one column that is the window manager's. A window with no frame
+ * gets nothing rather than a character of the shell's overwritten.
+ *
+ * The colour carries the meaning: a bullet in the error slot is a command that
+ * failed, in the accent one that did not, and a dot where nothing has finished
+ * at that prompt yet.
+ */
+static void draw_marks(Win *w, KRect r)
+{
+	if (w->kind != WIN_TERM || !w->term)
+		return;
+	for (int i = 0; i < w->geom.h; i++) {
+		int status = -1;
+
+		if (!kvt_term_mark_at(w->term, (unsigned int)i, &status))
+			continue;
+		ktui_draw_text(r.x, w->geom.y + i, 1,
+			       status < 0 ? ktui_glyph[KT_G_DOT]
+					  : ktui_glyph[KT_G_BULLET],
+			       status < 0 ? KT_DIM
+					  : status ? KT_ERR : KT_ACCENT,
+			       KT_SURFACE, KT_A_NONE);
+	}
+}
+
 static void draw_buttons(Win *w, KRect r, int focused)
 {
 	/*
@@ -1254,6 +1296,7 @@ void win_draw_all(void)
 				      rung ? KT_ACCENT : KT_SURFACE,
 				      /* dbl */ focused || rung);
 			draw_buttons(w, r, focused);
+			draw_marks(w, r);
 			draw_content(w);
 		}
 	}

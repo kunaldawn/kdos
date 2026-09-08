@@ -193,6 +193,36 @@ static void inner(int *x, int *y, int *w, int *h)
 }
 
 /*
+ * THE PROMPT MARKS, ON THE FRAME'S LEFT BORDER.
+ *
+ * A terminal has no gutter — every column belongs to the child — so this is
+ * drawn on the one column that is this program's, and a DECORATED window has
+ * no such column and gets nothing. The chords still jump; what is lost is the
+ * dot, not the facility.
+ *
+ * The colour carries the meaning and the glyph is the same either way: a
+ * bullet in the error slot is a command that failed, in the accent one that
+ * did not, and a dot where nothing has finished yet.
+ */
+static void draw_marks(int y, int h)
+{
+	if (kdisp_decorated())
+		return;
+	for (int r = 0; r < h; r++) {
+		int status = -1;
+
+		if (!kvt_term_mark_at(T.t, (unsigned int)r, &status))
+			continue;
+		ktui_draw_text(0, y + r, 1,
+			       status < 0 ? ktui_glyph[KT_G_DOT]
+					  : ktui_glyph[KT_G_BULLET],
+			       status < 0 ? KT_DIM
+					  : status ? KT_ERR : KT_ACCENT,
+			       KT_BG, 0);
+	}
+}
+
+/*
  * A PROGRAM IN THIS TERMINAL SAYS IT FINISHED — OSC 9, 777 or 99. `make &&
  * notify-send done` does not work on this image, and this is what does.
  */
@@ -226,12 +256,21 @@ static void draw(void)
 
 	kvt_term_render(T.t, buf, w, h);
 
+	/* Copied WHOLE, because a terminal's cell may carry a colour it named
+	 * exactly and the slot-and-attribute form has nowhere to put it. */
 	for (int r = 0; r < h; r++)
 		for (int c = 0; c < w; c++) {
-			const KtuiCell *cl = &buf[r * w + c];
+			KtuiCell cell = buf[r * w + c];
 
-			ktui_draw_cell(x + c, y + r, cl->ch, cl->fg, cl->bg,
-				       cl->attr);
+			/* THE HOVERED LINK'S WHOLE RUN, not the cell under the
+			 * pointer: an address is one thing and underlining the
+			 * character somebody happens to be over says nothing
+			 * about where it ends. The id is the run. */
+			if (T.hover &&
+			    kvt_term_link_at(T.t, (unsigned int)c,
+					     (unsigned int)r) == T.hover)
+				cell.attr |= KT_A_UNDERLINE;
+			ktui_draw_put(x + c, y + r, &cell);
 		}
 
 	/*
@@ -239,6 +278,8 @@ static void draw(void)
 	 * the child is alive: a block sitting under the exit message reads as
 	 * a prompt waiting for input that nothing will ever receive.
 	 */
+	draw_marks(y, h);
+
 	if (kvt_term_alive(T.t)) {
 		struct kvt_screen *sc = kvt_term_screen(T.t);
 		unsigned cx = kvt_screen_get_cursor_x(sc);
@@ -292,6 +333,19 @@ static int scroll_chord(const KtuiEvent *ev)
 {
 	if (!(ev->mods & KT_MOD_SHIFT))
 		return 0;
+	/*
+	 * CTRL+SHIFT+UP/DOWN JUMPS BY PROMPT, where the shell marked them.
+	 * A screen of build output has one prompt at each end of it, and
+	 * scrolling by lines to find the last one is what this replaces. It
+	 * moves nothing when nothing is marked, which is what a shell that
+	 * emits no marks should feel like.
+	 */
+	if ((ev->mods & KT_MOD_CTRL) &&
+	    (ev->key == KT_K_UP || ev->key == KT_K_DOWN)) {
+		if (kvt_term_scroll_to_mark(T.t, ev->key == KT_K_UP ? -1 : 1))
+			ktui_draw_invalidate();
+		return 1;
+	}
 	if (ev->key == KT_K_PGUP) {
 		kvt_term_scroll(T.t, -(T.rows / 2));
 		return 1;

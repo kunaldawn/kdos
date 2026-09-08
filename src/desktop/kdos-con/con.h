@@ -198,6 +198,10 @@ typedef struct Win {
 	 * per-window state it keeps for the caller.
 	 */
 	KvtUi ui;
+	/* The OSC 8 link the pointer is over in THIS terminal, 0 for none. Per
+	 * window, because the pointer is over one of them and the others must
+	 * not light up. */
+	unsigned int hover;
 	int full;
 	int workspace;
 

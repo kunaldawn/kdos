@@ -148,6 +148,11 @@ typedef struct {
 } KCellGlyph;
 
 bool kcell_glyph_scaled(uint32_t cp, int scale, KCellGlyph *out);
+/* The same, from the italic face where the loaded font has a companion whose
+ * cell is the same size. Where it has none the upright glyph comes back, so a
+ * caller never has to ask whether italic exists — the style is lost, the
+ * layout is not. */
+bool kcell_glyph_styled(uint32_t cp, int scale, int italic, KCellGlyph *out);
 
 /*
  * Paint the grid.

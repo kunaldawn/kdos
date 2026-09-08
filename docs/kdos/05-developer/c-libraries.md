@@ -231,6 +231,23 @@ The toolkit. Terminal ownership, the cell buffer, the diff, input decoding, widg
 glyphs and a character it lacks renders as a **blank**. The table is in
 [the design language](../03-architecture/design-language.md#the-glyph-tiers).
 
+**What a terminal can do is asked for once, in one write, on entering the screen.** Two facts
+follow from no `TERM` value and no capability database entry: the kitty keyboard flags (`CSI ? u`),
+which is what makes `Super` arrive at all, and synchronized output (`CSI ? 2026 $ p`), which is what
+lets a frame be bracketed. Both queries go out together and their replies are told apart by scanning
+the buffer — asking in turn pays the timeout twice on a terminal that answers neither, and the
+second wait would swallow a slow answer to the first as if it were its own. A DECRQM value of `0`
+means "not recognised" and `4` means "can never be set", so only `1`, `2` and `3` set `KT_CAP_SYNC`.
+**The replies are consumed there or they are typed into the desktop**, and the Linux VT, which
+answers neither, is skipped rather than waited on.
+
+**A frame is bracketed where that bit is set** — `CSI ?2026h` before the diff and `CSI ?2026l`
+after it — because a diff frame is a scatter of cursor moves and single cells, and a terminal
+drawing as they arrive shows a menu before the one under it is erased. The close is written again
+when a bounded flush dropped the frame, and once more when the terminal is handed back:
+**a terminal left inside the block draws nothing further**, so an unclosed bracket is a frozen
+screen rather than a tear.
+
 **The progress bar is a wrapper whose pixels must not move.** The installer links it and only it,
 pinning a solid two-state bar. Change the general form freely; leave that branch alone.
 
@@ -288,6 +305,26 @@ rather than undoing the arithmetic. **The caller reads the toggle**, because thi
 opinion about where a desktop keeps its state, and it returns whether the palette actually moved so
 a caller can skip a repaint it does not owe.
 
+**A cell's attribute byte carries five styles and the wire stays eight bytes wide.** Bold, reverse
+and underline were the first three; italic, strikethrough and overline are three of the five free
+bits, so a terminal's own text reaches a KDOS surface without the per-cell run growing for it. **All
+of them but reverse are dropped on a real VT**, where an attribute bit selects a font page or a
+colour the palette does not own rather than a style — the same guard, for the same reason, as bold's.
+
+**Above the eighth bit nothing travels in that byte.** The attribute is sixteen bits wide in memory
+and eight on the wire; the high half says which of the cell's three literal colours — foreground,
+background, underline — mean anything, and what shape the underline is. They are set **only** by a
+[negotiated colour run](#libkcon), so a consumer that was never sent a literal cannot receive a cell
+claiming to have one and draw the black it never got. **One bit per colour, not one for the pair**:
+a program that sets a foreground and leaves the background alone is the common case, and a single
+bit would freeze the theme's background into the cell as a literal, after which a retint leaves a
+rectangle of the old scheme behind.
+
+**A literal reaches a frame only through `ktui_draw_put()`.** Every other draw call takes slots and
+clears the literals, because chrome that stopped following `kdos theme` would be a second palette
+nobody can change. Terminal content is what uses it: the two places that copy a terminal's grid into
+a frame copy whole cells.
+
 **A pointer event carries where in the cell it landed**, as an offset from the cell's centre in
 1/256ths, and zero — what a backend with no pixel geometry leaves behind — means the centre.
 Nothing drawn in cells reads it. It exists for the one thing on this desktop that is not cells: a
@@ -315,6 +352,28 @@ state machine state. A caller hands over a libktui key and modifier set; `kvt_te
 into a keysym and lets the machine answer. Both terminals in this tree go through it, so there is
 one implementation rather than two that drift.
 
+**A hyperlink is a 16-bit id on the screen's own cell, and the address is interned.** `OSC 8` names
+an address for a run of text; the cell keeps an id into a per-terminal table, so the text scrolls
+into the scrollback still knowing what it points at, and two runs of the same address are one link.
+The table is capped and is **not** freed on a reset, which is what makes an id in the scrollback
+safe to resolve for ever. `KtuiCell` is deliberately not widened for it: a link is a property of a
+terminal's buffer, not of every surface the toolkit draws. `kvt_ui_mouse()`'s coordinates are the
+**terminal's own grid** for the same reason a link lookup's are — a caller whose terminal is a
+window subtracts its origin, or both the selection and the link land as far from the pointer as the
+window is from the corner.
+
+**A prompt mark is on the LINE, and the exit status is walked back to.** `OSC 133` says where a
+prompt starts and what the command typed at it exited with; the mark rides the line so it survives
+into the scrollback as one thing, where a mark per cell would be eighty copies of one fact and a
+mark kept beside the screen would be lost the moment the line scrolled off. The status is walked
+back to the nearest marked line at or above the cursor rather than remembered in a pointer — a
+pointer to a line kept across a scroll is a pointer to a line the screen may have recycled.
+
+**The render boundary is where an attribute becomes a cell, and what it cannot carry it drops.**
+Bold, underline, inverse, italic, strikethrough and overline each have a bit; `blink` and `dim` are
+parsed and reach none. That is deliberate: a blink drawn as bold and a dim drawn as normal are both
+a lie about the text, and the cell is the one place that can say so rather than approximate.
+
 **A picture is written into the SCREEN as sprite cells.** `kvt_term_place` names tiles the caller
 already registered in libktui's table and writes their codepoints at the cursor. In the screen
 rather than in an overlay beside it, because that is what makes a picture scroll with its output,
@@ -337,6 +396,15 @@ near this design goes over a different channel — a `socketpair` between the se
 
 **A field at a time, little-endian.** A struct written whole is a struct whose padding and alignment
 become protocol, and the two ends of a forwarded socket are not always the same build.
+
+**A cell run is eight bytes a cell and stays eight bytes a cell.** The colours a terminal named
+itself ride a **separate run**, sent only to a view that asked for it in its hello and only for a
+run that carries any: three bytes each for the foreground, the background and the underline, then
+one byte saying which of them mean anything. It repeats the position and count of the commit it
+follows, so a view patches cells it already has rather than holding a frame back for a message that
+may never come — and a view that declined draws the slots every cell still carries. Widening the
+cell record instead would have doubled what every commit costs across the `ssh` link this desktop is
+sold on, to carry colour most cells on a desktop do not have.
 
 **Two ways to put bytes, and the difference is what a reader has to know.** `kcon_put_blob` writes a
 length first, for a payload whose size the message does not otherwise give. `kcon_put_bytes` writes
@@ -512,6 +580,15 @@ The test harness stubs it to exactly that, so a committed reference frame is the
 
 The glyph cache and the cell painter: a grid of cells into a pixel buffer, the character ramp built
 from it, and the pixel canvas a block of cells can be drawn as.
+
+**A cell's style is drawn here, and italic is the one that needs a second face.** Underline, strike
+and overline are one horizontal rule each, differing only in the row they land on and drawn after
+the glyph so a descender crossing a strike is cut by it. Italic asks fontconfig for the loaded name
+with `:slant=italic` and **keeps the answer only if its advance and height match the upright
+face** — fontconfig never fails a match, so asking an italic Terminus returns a different family at
+a different size, and a companion that disagrees would draw a row out of step with the one above
+it. Where none agrees, italic text is upright: a style lost, not a grid broken. The face
+is part of the glyph cache's key, because the same codepoint from two faces is two glyphs.
 
 **The canvas is what makes a pixel tile possible** without a second renderer — a pixel image exactly
 some number of cells across, with fills and text at an arbitrary pixel size, handed to the toolkit

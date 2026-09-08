@@ -777,13 +777,44 @@ vt_golden() {
         vt_fail=1
     fi
 }
-for _v in vim htop mc less tmux malformed; do vt_golden "$_v"; done
+for _v in vim htop mc less tmux malformed attrs links prompts; do vt_golden "$_v"; done
 if [ "$vt_fail" != 0 ]; then
     echo
     echo "  A recorded stream renders differently than it did. The fixture did"
     echo "  not change — it is bytes — so the state machine did."
     echo "      KDOS_GOLDEN_UPDATE=1 testing/selftest.sh"
     echo "  then read the diff in git before committing it."
+    exit 1
+fi
+
+#
+# THE SHIPPED SHELL SAYS WHERE ITS PROMPT IS, AND WHAT THE LAST COMMAND DID.
+#
+# The marks are useless without an emitter, and the emitter is one line of
+# `/etc/bash.bashrc` that is easy to lose to a prompt rewrite — which is
+# exactly the edit that would look harmless. It is checked here rather than
+# read, because the two things worth knowing are that PROMPT_COMMAND still
+# carries it and that the status it reports is the PREVIOUS command's: `$?` is
+# overwritten by anything the function does before it looks.
+#
+# `-i` because the file returns immediately for a non-interactive shell, which
+# is the first thing in it.
+#
+_pm=$(bash --rcfile fs/etc/bash.bashrc -i -c 'false; __kdos_mark_prompt' \
+      </dev/null 2>/dev/null | tr -d '\033')
+# AND THAT IT IS INSTALLED, which calling it cannot show: a function defined
+# and never put on PROMPT_COMMAND emits exactly the right bytes and never runs.
+_pc=$(bash --rcfile fs/etc/bash.bashrc -i -c 'printf %s "$PROMPT_COMMAND"' \
+      </dev/null 2>/dev/null)
+case "$_pc" in
+*__kdos_mark_prompt*) _pc_ok=1 ;;
+*) _pc_ok=0 ;;
+esac
+if [ "$_pm" = ']133;D;1\]133;A\' ] && [ "$_pc_ok" = 1 ]; then
+    echo "  the shipped bashrc marks its prompt and reports the exit status"
+else
+    echo "  THE SHIPPED BASHRC EMITS NO PROMPT MARKS: [$_pm] [$_pc]"
+    echo "  fs/etc/bash.bashrc must keep __kdos_mark_prompt on PROMPT_COMMAND"
     exit 1
 fi
 
@@ -1023,6 +1054,244 @@ if "$OUT/fontdrv"; then
     echo "  a font step keeps the name and clamps the size"
 else
     echo "  A FONT STEP WOULD WRITE A NAME NOBODY ASKED FOR"
+    exit 1
+fi
+
+#
+# A FRAME IS BRACKETED WHERE THE TERMINAL SAID IT UNDERSTANDS THE BRACKET.
+#
+# Synchronized output is asked for with DECRQM and never assumed, and both
+# halves of that are failure modes rather than tidiness. Assuming it on would
+# put `CSI ?2026h` in front of every frame a terminal that does not know the
+# mode receives — harmless there, but the SAME assumption on a terminal that
+# does know it and never gets the close leaves a screen frozen. Taking any
+# reply for a yes is the other half: `0` is the answer meaning "I do not know
+# this mode", and it arrives from exactly the terminals that must not be
+# bracketed.
+#
+# The two queries go out in ONE write and their replies are told apart by
+# scanning, which the kitty case below is the proof of: the keyboard push and
+# the sync capability both come out of a single read.
+#
+# stdin is a pipe carrying what the terminal "answered" and stdout is a file,
+# so this is the real ktui_term_init/enter_screen path with no tty anywhere.
+#
+cat > "$OUT/syncdrv.c" <<'SYNCEOF'
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "ktui.h"
+
+static int bad;
+static char out[65536];
+
+/* One frame of "hi" in `attr`, drawn under `term`, with `reply` as everything
+ * the terminal ever says back. Returns what the library wrote to its terminal,
+ * NUL terminated. */
+static const char *frame(const char *reply, const char *term, int attr,
+			 const KtuiCell *put)
+{
+	int in[2], s0 = dup(0), s1 = dup(1);
+	int f = open("syncdrv.out", O_RDWR | O_CREAT | O_TRUNC, 0600);
+
+	if (pipe(in) || f < 0 || s0 < 0 || s1 < 0)
+		return "";
+	if (write(in[1], reply, strlen(reply)) < 0)
+		bad = 1;
+	close(in[1]);
+	dup2(in[0], 0);
+	close(in[0]);
+	dup2(f, 1);
+
+	setenv("TERM", term, 1);
+	/* Named, not inherited: `COLORTERM` is what decides between 24-bit and
+	 * indexed SGR, so a suite that let the surrounding terminal supply it
+	 * would assert a different sequence on a developer's machine than in
+	 * the build container. */
+	setenv("COLORTERM", "truecolor", 1);
+	setenv("COLUMNS", "20", 1);
+	setenv("LINES", "4", 1);
+	ktui_term_init(0);
+	ktui_draw_init();
+	/* Five frames in one process: the cell buffers survive between them
+	 * and a diff against the last one would emit nothing. A program has
+	 * this for free on its first frame. */
+	ktui_draw_invalidate();
+	ktui_draw_clear();
+	ktui_draw_text(0, 0, 20, "hi", KT_TEXT, KT_BG, attr);
+	/* A whole cell, which is the only way a literal colour reaches a
+	 * frame — every other draw call takes slots and clears them. */
+	if (put)
+		ktui_draw_put(0, 0, put);
+	ktui_draw_flush();
+	ktui_term_shutdown();
+
+	dup2(s1, 1);
+	dup2(s0, 0);
+	close(s0);
+	close(s1);
+
+	lseek(f, 0, SEEK_SET);
+	ssize_t n = read(f, out, sizeof(out) - 1);
+	close(f);
+	unlink("syncdrv.out");
+	out[n > 0 ? n : 0] = 0;
+	return out;
+}
+
+/* Is `param` one of the parameters of the frame's first SGR? A TOKEN match:
+ * ";3" is a substring of ";38;2;" and of ";37", and both are things this
+ * emitter writes. */
+static int sgr_has(const char *s, const char *param)
+{
+	const char *p = strstr(s, "\033[1;1H");
+
+	if (!p || !(p = strstr(p, "\033[0")))
+		return 0;
+	for (p += 2; *p && *p != 'm';) {
+		const char *tok = p;
+
+		while (*p && *p != ';' && *p != 'm')
+			p++;
+		if ((size_t)(p - tok) == strlen(param) &&
+		    !strncmp(tok, param, (size_t)(p - tok)))
+			return 1;
+		if (*p == ';')
+			p++;
+	}
+	return 0;
+}
+
+static void want(int cond, const char *what)
+{
+	if (!cond) {
+		printf("    %s\n", what);
+		bad = 1;
+	}
+}
+
+#define RICH "xterm-256color"
+
+int main(void)
+{
+	/* Answered "reset", which is a terminal that knows the mode. */
+	const char *s = frame("\033[?2026;2$y", RICH, KT_A_NONE, NULL);
+	const char *h = strstr(s, "\033[?2026h");
+	const char *l = h ? strstr(h, "\033[?2026l") : NULL;
+	const char *txt = strstr(s, "hi");
+
+	want(ktui_caps & KT_CAP_SYNC, "a terminal that answered 2 is not held");
+	want(h && l && txt, "the frame is not bracketed at all");
+	want(h && l && txt && txt > h && txt < l,
+	     "the frame's cells are outside the bracket");
+
+	/* Answered "not recognised". */
+	s = frame("\033[?2026;0$y", RICH, KT_A_NONE, NULL);
+	want(!(ktui_caps & KT_CAP_SYNC), "a 0 answer was taken for a yes");
+	/* The QUERY is in this output whatever the answer was; what must not
+	 * be is either half of the bracket. */
+	want(!strstr(s, "\033[?2026h") && !strstr(s, "\033[?2026l"),
+	     "a 0 answer still got the bracket");
+
+	/* Said nothing at all, which is most terminals. */
+	s = frame("", RICH, KT_A_NONE, NULL);
+	want(!(ktui_caps & KT_CAP_SYNC), "silence was taken for a yes");
+	want(!strstr(s, "\033[?2026h"), "silence still got the bracket");
+	want(strstr(s, "hi") != NULL, "the frame itself went missing");
+
+	/* Both replies, in the order the queries went out, out of one read. */
+	s = frame("\033[?0u\033[?2026;2$y", RICH, KT_A_NONE, NULL);
+	want(ktui_caps & KT_CAP_SYNC, "the second reply was not read");
+	want(strstr(s, "\033[>1u") != NULL, "the first reply was not read");
+	want(strstr(s, "\033[<1u") != NULL, "the keyboard push was not popped");
+
+	/* The kitty reply alone, which is what the probe did before it asked
+	 * about anything else. */
+	s = frame("\033[?0u", RICH, KT_A_NONE, NULL);
+	want(!(ktui_caps & KT_CAP_SYNC), "no DECRQM answer was taken for one");
+	want(strstr(s, "\033[>1u") != NULL, "the keyboard push was lost");
+
+	/*
+	 * THE STYLES, ON THE WIRE AND OFF IT.
+	 *
+	 * The exact prefix, because the ORDER is part of what a terminal
+	 * parses and a reordering here is a change worth being told about.
+	 * Bold, underline, italic, strike and overline, then the colour.
+	 */
+	static const char *pfx = "\033[0;4;1;3;9;53;38;2;";
+	int all = KT_A_BOLD | KT_A_UNDERLINE | KT_A_ITALIC | KT_A_STRIKE |
+		  KT_A_OVERLINE;
+
+	s = frame("", RICH, all, NULL);
+	const char *sgr = strstr(s, "\033[1;1H");
+
+	sgr = sgr ? strstr(sgr, "\033[0") : NULL;
+	if (!sgr || strncmp(sgr, pfx, strlen(pfx))) {
+		printf("    the styled cell's SGR is not \"%s...\"\n", pfx + 2);
+		bad = 1;
+	}
+
+	/*
+	 * AND NONE OF THEM ON A REAL VT, for bold's reason: there an attribute
+	 * bit is a font page or a colour the palette does not own, so an
+	 * italic row would come out as line noise or as a shade nothing else
+	 * on the screen uses.
+	 */
+	s = frame("", "linux", all, NULL);
+	want(!sgr_has(s, "3"), "italic reached a VT");
+	want(!sgr_has(s, "9"), "a strike reached a VT");
+	want(!sgr_has(s, "53"), "an overline reached a VT");
+	want(!sgr_has(s, "1") && !sgr_has(s, "4"),
+	     "bold or underline reached a VT");
+
+	/*
+	 * A COLOUR THE CELL NAMED ITSELF, AND THE SHAPE OF ITS UNDERLINE.
+	 *
+	 * The literal is what goes on the wire, not the slot beside it — a
+	 * terminal that reduced a program's own colour back to the palette
+	 * would have paid for it and thrown it away. The sub-parameter forms
+	 * go only where 24-bit colour does, for the reason the VT case below
+	 * makes concrete.
+	 */
+	KtuiCell lit = { 'q', KT_TEXT, KT_BG,
+			 (uint16_t)(KT_A_UNDERLINE | KT_A_FGRGB | KT_A_BGRGB |
+				    KT_A_ULCOLOR | KT_UL_SET(KT_UL_CURLY)),
+			 0x123456, 0x654321, 0xfedcba };
+
+	s = frame("", RICH, KT_A_NONE, &lit);
+	want(strstr(s, "38;2;18;52;86") != NULL,
+	     "the cell's own foreground did not reach the wire");
+	want(strstr(s, "48;2;101;67;33") != NULL,
+	     "the cell's own background did not reach the wire");
+	want(strstr(s, ";4:3") != NULL, "the underline's shape was flattened");
+	want(strstr(s, ";58:2::254:220:186") != NULL,
+	     "the underline's colour was dropped");
+
+	/*
+	 * AND NONE OF IT ON A VT, where eight colours are all there are: a
+	 * literal has nowhere to go and the slot is the honest one of the two,
+	 * and `4:3` read by a terminal that drops the colon is SGR 43 — a
+	 * green background where a program asked for a wavy line.
+	 */
+	s = frame("", "linux", KT_A_NONE, &lit);
+	want(!strstr(s, "38;2;"), "a literal reached a VT");
+	want(!strstr(s, ":"), "a sub-parameter reached a VT");
+	want(sgr_has(s, "37") || sgr_has(s, "30") || sgr_has(s, "31") ||
+	     sgr_has(s, "32") || sgr_has(s, "33") || sgr_has(s, "34") ||
+	     sgr_has(s, "35") || sgr_has(s, "36"),
+	     "the VT was left with no colour at all");
+	return bad;
+}
+SYNCEOF
+$CC $STD $SHWARN $INC -o "$OUT/syncdrv" "$OUT/syncdrv.c" \
+    src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libktui/*.c
+if (cd "$OUT" && ./syncdrv); then
+    echo "  a frame is held only where the terminal answered DECRQM"
+else
+    echo "  A FRAME IS BRACKETED ON A TERMINAL THAT NEVER SAID IT COULD"
     exit 1
 fi
 

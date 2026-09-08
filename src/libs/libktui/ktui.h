@@ -120,7 +120,13 @@ enum {
 	KT_CAP_LINUXVT = 1 << 2,	/* real VT: PIO_CMAP palette, no     */
 					/* bold, no xterm mouse -> evdev     */
 	KT_CAP_UTF8 = 1 << 3,
-	KT_CAP_MOUSE = 1 << 4
+	KT_CAP_MOUSE = 1 << 4,
+	/* DECSET 2026 is understood, so a frame may be bracketed and is shown
+	 * whole or not at all. Probed with DECRQM and never assumed: a
+	 * terminal that does not know the mode ignores the brackets, but one
+	 * that knows it and is left INSIDE a block shows nothing further, so
+	 * the bit also says who is owed the closing sequence. */
+	KT_CAP_SYNC = 1 << 5
 };
 
 extern int ktui_caps;
@@ -157,12 +163,69 @@ enum {
 	KT_A_NONE = 0,
 	KT_A_BOLD = 1 << 0,	/* suppressed on a VT: the bit is the font page */
 	KT_A_REVERSE = 1 << 1,
-	KT_A_UNDERLINE = 1 << 2
+	KT_A_UNDERLINE = 1 << 2,
+	/* The three a terminal's SGR carries and this desktop draws. They are
+	 * bits in the byte a cell already had, so nothing on the wire is wider
+	 * for them; a real VT is where they are dropped, because there an
+	 * attribute bit selects a FONT PAGE rather than a style. */
+	KT_A_ITALIC = 1 << 3,
+	KT_A_STRIKE = 1 << 4,
+	KT_A_OVERLINE = 1 << 5,
+
+	/*
+	 * ABOVE THE EIGHTH BIT NOTHING TRAVELS IN THE WIRE'S ATTRIBUTE BYTE.
+	 *
+	 * The per-cell run is eight bytes and stays eight bytes; a literal
+	 * colour arrives in a SEPARATE run that a view has to have asked for.
+	 * Putting these bits in the low byte would send a view that declined
+	 * the colours a cell claiming to have them, and it would draw the
+	 * black it was never sent.
+	 *
+	 * ONE BIT PER COLOUR, not one for the pair. A program that sets a
+	 * foreground and leaves the background alone is the common case, and a
+	 * single bit would have to freeze the theme's background into the cell
+	 * as a literal — after which that cell stops following `kdos theme`
+	 * and a retint leaves a rectangle of the old scheme behind.
+	 */
+	KT_A_FGRGB = 1 << 8,		/* fgc is the glyph's colour         */
+	KT_A_BGRGB = 1 << 9,		/* bgc is the colour behind it       */
+	KT_A_ULCOLOR = 1 << 10		/* ulc is the underline's own colour */
 };
+
+/*
+ * THE UNDERLINE'S SHAPE, in three bits above those.
+ *
+ * `KT_A_UNDERLINE` says there is one and is what every consumer already
+ * honours; the style refines it, so a view that never hears the colour run
+ * draws a straight line rather than nothing. SGR `4:0`-`4:5` in order, and 0
+ * means the plain line the attribute alone asks for.
+ */
+enum {
+	KT_UL_PLAIN = 0,
+	KT_UL_SINGLE,
+	KT_UL_DOUBLE,
+	KT_UL_CURLY,
+	KT_UL_DOTTED,
+	KT_UL_DASHED
+};
+
+#define KT_UL_SHIFT 11
+#define KT_A_ULSTYLE (7u << KT_UL_SHIFT)
+#define KT_UL_STYLE(a) (((unsigned)(a) >> KT_UL_SHIFT) & 7u)
+#define KT_UL_SET(n) (((unsigned)(n) & 7u) << KT_UL_SHIFT)
 
 typedef struct {
 	uint32_t ch;
-	uint8_t fg, bg, attr;
+	uint8_t fg, bg;
+	uint16_t attr;
+	/*
+	 * The literal a terminal asked for, kept BESIDE the slot the same
+	 * colour reduced to rather than instead of it. Every consumer that has
+	 * only slots — a view that declined the colour run, a golden, a tty
+	 * with sixteen colours — reads `fg`/`bg` and is unaffected by whatever
+	 * is here. Meaningful only with KT_A_TRUECOLOR and KT_A_ULCOLOR.
+	 */
+	uint32_t fgc, bgc, ulc;
 } KtuiCell;
 
 /* A double-width codepoint occupies TWO cells: the glyph in cell i and this
@@ -377,6 +440,14 @@ void ktui_draw_flush(void);
 void ktui_draw_invalidate(void);	/* force a full repaint next flush */
 
 void ktui_draw_cell(int x, int y, uint32_t ch, int fg, int bg, int attr);
+/*
+ * A CELL COPIED WHOLE, which is the only way a literal colour reaches a frame.
+ *
+ * Terminal content and nothing else uses it: chrome is slots, always, because
+ * a chrome colour that stopped following `kdos theme` would be a second
+ * palette nobody can change. It clips like any other draw.
+ */
+void ktui_draw_put(int x, int y, const KtuiCell *c);
 /* XOR the reverse attribute over a rectangle of the frame being composed —
  * a selection, which leaves the content and changes only how it reads. Not
  * expressible through ktui_cells(), which hands out the flushed frame. */

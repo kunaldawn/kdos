@@ -699,6 +699,7 @@ static const KtuiBackend cast_backend = {
 
 static void draw_one(int x, int y, const KtuiCell *c)
 {
+	KtuiCell out = *c;
 	uint32_t cp = c->ch;
 	int fg = c->fg;
 
@@ -706,7 +707,12 @@ static void draw_one(int x, int y, const KtuiCell *c)
 	if (!ascii_cell(&cp, &fg))
 		cp = present(cp);
 #endif
-	ktui_draw_cell(x, y, cp, fg, c->bg, c->attr);
+	/* The cell goes on whole: the fallback path may rewrite the codepoint
+	 * and the slot, and everything else — the attributes, and a literal
+	 * colour where the session sent one — is the session's to decide. */
+	out.ch = cp;
+	out.fg = (uint8_t)fg;
+	ktui_draw_put(x, y, &out);
 }
 
 #ifdef KDOS_VIEW_PIXELS
@@ -918,6 +924,53 @@ static int take_frame(int timeout_ms)
 
 		if (m.op == KCON_OP_SPRITE) {
 			take_sprite(&m);
+			continue;
+		}
+
+		/*
+		 * THE LITERALS OF THE RUN THAT CAME BEFORE. The shadow already
+		 * holds those cells, so this patches them there and redraws
+		 * exactly them — which is why the session may send it as a
+		 * second message without a frame ever being shown half
+		 * coloured.
+		 */
+		if (m.op == KCON_OP_COLOR) {
+			KconRd cr;
+			KtuiCell patch[4096];
+			uint16_t cx, cy;
+
+			kcon_rd_init(&cr, m.payload, m.len);
+			while (cr.pos < cr.len && !cr.err) {
+				int n = kcon_get_color_run(&cr, &cx, &cy,
+							   patch, 4096);
+
+				if (n < 0)
+					break;
+				shadow_fit(ktui_w, ktui_h);
+				for (int i = 0; i < n; i++) {
+					int px = (int)cx + i, py = (int)cy;
+
+					if (!shadow || px >= shadow_w ||
+					    py >= shadow_h)
+						continue;
+
+					KtuiCell *sc =
+						&shadow[py * shadow_w + px];
+
+					/* The low byte is the commit's and
+					 * stays the commit's; this message
+					 * owns the bits above it and the
+					 * three colours they describe. */
+					sc->attr = (uint16_t)
+						((sc->attr & 0xffu) |
+						 (patch[i].attr & ~0xffu));
+					sc->fgc = patch[i].fgc;
+					sc->bgc = patch[i].bgc;
+					sc->ulc = patch[i].ulc;
+					draw_one(px, py, sc);
+				}
+				got = 1;
+			}
 			continue;
 		}
 
@@ -1183,7 +1236,7 @@ int main(int argc, char **argv)
 		ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
 		cap_cell_w = kcell_w();
 		cap_cell_h = kcell_h();
-		cap_flags = KCON_VIEW_PIXELS;
+		cap_flags = KCON_VIEW_PIXELS | KCON_VIEW_COLOR;
 #endif
 	}
 
@@ -1203,7 +1256,7 @@ int main(int argc, char **argv)
 		ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
 		cap_cell_w = kcell_w();
 		cap_cell_h = kcell_h();
-		cap_flags = KCON_VIEW_PIXELS;
+		cap_flags = KCON_VIEW_PIXELS | KCON_VIEW_COLOR;
 #else
 		fprintf(stderr, "kdos-view: this build has no cast mode "
 				"(built without PipeWire)\n");
@@ -1253,7 +1306,8 @@ int main(int argc, char **argv)
 			cap_cell_h = kcell_h();
 			/* THIS VIEW RASTERISES ITS OWN GLYPHS, so it is the
 			 * one kind that can be asked to change their size. */
-			cap_flags = KCON_VIEW_PIXELS | KCON_VIEW_FONT;
+			cap_flags = KCON_VIEW_PIXELS | KCON_VIEW_FONT |
+				    KCON_VIEW_COLOR;
 			cols = ktui_w;
 			rows = ktui_h;
 			own_screen = 1;
@@ -1305,6 +1359,16 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		ktui_draw_init();
+		/*
+		 * ASKED FOR ONLY WHERE THE TERMINAL CAN SHOW IT, and asked
+		 * after ktui_draw_init because `ktui_caps` is the backend's
+		 * answer and is not set until then. A view on a sixteen-colour
+		 * terminal that took the literals would pay for them on the
+		 * link and then reduce every one of them back to the slot it
+		 * was already sent.
+		 */
+		if (ktui_caps & KT_CAP_TRUECOLOR)
+			cap_flags |= KCON_VIEW_COLOR;
 #ifdef KDOS_VIEW_TTYPIX
 		/*
 		 * ASKED AFTER ktui_draw_init AND BEFORE THE FIRST FRAME.

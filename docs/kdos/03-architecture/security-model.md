@@ -360,6 +360,28 @@ would be added.
 **A build without the decoders turns the three protocols off in the parser**, rather than parsing
 them and dropping the result. Parsing bytes nobody can use is a buffer somebody can fill.
 
+## A URI a terminal was told about
+
+`OSC 8` marks a run of text as a hyperlink, and following one is **the one place a terminal hands a
+program that opens things an address it was given by a child process**. The same reach as an image
+payload: a shell script, a program inside a box, `cat` on a file somebody sent you.
+
+- **Four schemes and nothing else** — `http`, `https`, `file`, `mailto`. The set is not "everything
+  a desktop can open"; it is the ones whose worst case is a window appearing. A scheme handler is
+  chosen by MIME type from `x-scheme-handler/<scheme>`, so an unlisted scheme is a program of the
+  attacker's choosing being asked to start.
+- **Every byte must be printable ASCII.** A control byte would reach an argument vector, and a byte
+  above 126 makes the same address read two ways depending on who decodes it — which is how a
+  whitelist gets walked around rather than broken.
+- **The address is refused at the parser**, not at the click. What is not in the table cannot be
+  followed by any path, including one written later.
+- **It is executed as an argument vector**, never a command line: `kdos-appbox open <uri>` with the
+  URI as one element. There is no shell anywhere on the path.
+- **The table is capped at 128 addresses per terminal.** A child emitting a fresh URI per cell is
+  the shape of the attack, and past the cap the text is text with no link offered.
+- **A refused link is silent.** The characters draw normally; nothing says "refused", because a
+  message naming the address would put the attacker's string on the screen.
+
 ## The one descriptor, and the two protocols that carry none
 
 **The surface protocol and the view protocol carry no file descriptors, ever.** That is not a

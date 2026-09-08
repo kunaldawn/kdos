@@ -149,6 +149,14 @@ The values behind those slots are one table in `libkcolor`, expanded at compile 
 that draws. Nobody keeps a second copy of the numbers, which is why one word repaints the whole
 desktop.
 
+**The one exception is a colour that is not ours to name.** A program running in a terminal may ask
+for a 24-bit colour, or one of the 216-colour cube: no palette names those, nothing about them
+follows an accent, and reducing them to eight slots is what loses a photograph. Such a cell carries
+the literal **beside** the slot it reduces to, and only terminal content ever does. **Chrome is
+slots, always** — a piece of chrome holding a literal is a piece of chrome that stops following
+`kdos theme`, and the ANSI sixteen stay slots for the same reason: they are colours this desktop's
+palette names.
+
 Two rules on top of that, both of which have shipped as defects:
 
 ### `KT_DIM` is a fill, not a label colour

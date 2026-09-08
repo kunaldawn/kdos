@@ -65,23 +65,8 @@
 static void selection_set(struct kvt_screen *con, struct selection_pos *sel,
 			  unsigned int x, unsigned int y)
 {
-	struct line *line;
-
 	sel->x = x;
-
-	if (!con->sb.pos) {
-		sel->line = con->lines[y];
-		return;
-	}
-	if (con->sb.pos_num + y >= con->sb.count) {
-		y -= con->sb.count - con->sb.pos_num;
-		sel->line = con->lines[y];
-		return;
-	}
-	line = con->sb.pos;
-	while (y--)
-		line = kvt_shl_dlist_next(line, &con->sb.list, list);
-	sel->line = line;
+	sel->line = screen_line_at(con, y);
 }
 
 static void word_select(struct kvt_screen *con,

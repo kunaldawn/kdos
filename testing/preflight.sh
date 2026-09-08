@@ -1479,6 +1479,49 @@ if grep -qE '^static int dnd;' src/desktop/kdos-shell/notifyd.c 2>/dev/null; the
 fi
 [ "$_tog" = 0 ] && note "toggles" "one reader, one writer, and no second flag"
 
+echo "==> a frame that opens the synchronized bracket closes it on every path"
+# A terminal left inside `CSI ?2026h` DRAWS NOTHING FURTHER. That is the whole
+# risk of the mode: an unclosed block is not a cosmetic tear, it is a screen
+# frozen on the last frame with the program still running behind it. So every
+# path out of a bracketed flush writes the close — the frame's own end, the
+# dropped-write recovery, and the shutdown that hands the terminal back.
+#
+# The self-test drives the first; a dropped write needs a terminal that has
+# stopped reading, which no test process can hold open, so the other two are
+# checked HERE, where the shape of the code is the evidence.
+_sync=0
+if ! awk '/if \(ktui_term_flush_dropped\(\)\) \{/,/^\t\}$/' \
+        src/libs/libktui/ktui_draw.c | grep -q '2026l'; then
+    bad "libktui" "a dropped frame leaves the synchronized bracket open"
+    _sync=$((_sync + 1))
+fi
+if ! awk '/^static void leave_screen/,/^\}$/' src/libs/libktui/ktui_term.c |
+        grep -q '2026l'; then
+    bad "libktui" "the terminal is handed back inside a synchronized bracket"
+    _sync=$((_sync + 1))
+fi
+[ "$_sync" = 0 ] && note "libktui" "the bracket closes on the drop and on the way out"
+
+echo "==> a literal colour is set at the render boundary and nowhere else"
+# CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following
+# `kdos theme`, so the bits that say it has one may be SET in exactly three
+# places: the render boundary where a terminal's own colour arrives
+# (kvt_grid.c), the wire that carries it to a view that asked (kcon_wire.c),
+# and the header that defines them. A surface that set one would be a piece of
+# chrome wearing a colour a retint cannot move — and it would look right on the
+# machine it was written on.
+_lit=0
+for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(' \
+        src/ 2>/dev/null); do
+    case "$_f" in
+    src/libs/libkvt/kvt_grid.c|src/libs/libkcon/kcon_wire.c) continue ;;
+    src/libs/libktui/ktui.h|src/libs/selftest.c) continue ;;
+    esac
+    bad "$_f" "sets a literal colour bit — chrome draws in slots"
+    _lit=$((_lit + 1))
+done
+[ "$_lit" = 0 ] && note "colour" "the literals are set at the boundary and on the wire"
+
 echo
 if [ "$fail" = 0 ]; then
     echo "preflight clean — the wiring is consistent"
