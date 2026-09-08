@@ -60,6 +60,7 @@ static const struct {
 	{ "kdos-users", users_main },
 	{ "kdos-update", update_main },
 	{ "kdos-firewall", firewall_main },
+	{ "kdos-backup", backup_main },
 	{ "kdos-note", note_main },
 	{ "kdos-slit", slit_main },
 	{ "kdos-doc", doc_main },

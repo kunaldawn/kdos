@@ -168,6 +168,12 @@ noto-cjk
 # ---------------------------------
 ripgrep
 fd
+# The same question `fd` answers, asked of an INDEX instead of the disk: `fd`
+# walks the tree every time and is right where the tree is small, and a
+# whole-disk "where is that file called…" is the case it is slow at. The index
+# is built PER USER and the binary carries no setgid bit — the decision, and
+# what upstream does instead, is in docs/kdos/03-architecture/security-model.md.
+plocate
 fzf
 bat
 eza
@@ -231,6 +237,13 @@ ddrescue
 partclone
 testdisk
 pv
+# Writing an image OUT to a stick, which is the other direction and the one a
+# person does with a mistyped `dd` and a lost disk. caligula picks the target
+# from the removable devices only, shows a progress bar and verifies what it
+# wrote. Its privilege path is `sudo`, `doas`, `run0` or `su` in that order —
+# never pkexec, which matters here because this system has no authentication
+# agent and a pkexec path would be a control that could never succeed.
+caligula
 # unzip has been a port since the beginning and zip had not, so this system
 # could open an archive it could not make.
 zip
@@ -379,9 +392,17 @@ lrzsz
 # ---------------------------------
 # Buses — I2C, CAN and MQTT
 # ---------------------------------
-# The dialout group and the 70-kdos-*.rules grant these device classes; without
-# the tools the permission opens nothing.
+# i2cdetect and i2cget on a bus a person is deliberately poking at. The I2C
+# permission is `video` and 70-kdos-i2c.rules, NOT dialout: the rule is scoped
+# to the adapters that hang off a display controller, because the same /dev
+# node class also carries the chipset SMBus and every DIMM's SPD EEPROM.
 i2c-tools
+# The monitor on the other end of that DDC/CI line: brightness, contrast and
+# input source on a desktop screen, which has no /sys/class/backlight at all.
+# Built --disable-x11 — the switch defaults ON and its pkg-config check has no
+# fallback, so configure terminates on a tree with no xrandr.pc, which this one
+# is. --enable-drm reads the same EDID off the connector instead.
+ddcutil
 # SocketCAN is in the kernel and these are the commands that use it. A vehicle
 # or a machine bus is otherwise a device node with nothing to point at it.
 can-utils

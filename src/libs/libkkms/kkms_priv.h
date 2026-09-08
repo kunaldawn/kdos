@@ -33,6 +33,12 @@ struct kkms {
 	pixman_image_t *image;
 	int force_full;
 
+	/* The font this screen is drawing with, kept so kkms_set_font() can
+	 * put it back when a new one will not load — a chord that made the
+	 * screen unreadable and could not be undone is worse than one that
+	 * did nothing. Empty means the built-in default. */
+	char font[192];
+
 	struct libinput *li;
 	struct xkb_context *xkb;
 	struct xkb_keymap *keymap;

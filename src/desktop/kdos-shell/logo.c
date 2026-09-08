@@ -17,9 +17,14 @@
  * escapes, so the colour is stripped rather than translated — this desktop's
  * palette is libktui's eight slots and the caller picks one.
  *
- * TWO SURFACES DRAW IT and there is one loader: the screensaver bounces it and
- * the About surface stands it in a column. A second copy is a second answer to
- * how wide the artwork is, and the width is what both of them centre on.
+ * TWO SURFACES LOAD ART THROUGH THIS and they read different files: the About
+ * surface stands `logo.txt` in a column, and the screensaver bounces
+ * `screensaver.txt`, which a person may replace. One loader because a second
+ * copy is a second answer to how wide the artwork is, and the width is what
+ * both of them centre on.
+ *
+ * The path is the CALLER'S for the same reason — this file knows what art is,
+ * not which piece a surface wants.
  * ---------------------------------
  */
 

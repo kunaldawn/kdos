@@ -141,21 +141,41 @@ done
 # whatever they like — and the whole point of the rules file is that it is a
 # short, reviewed list.
 #
+# udevd IS THE SHARPER CASE OF THE SAME THING, because it needs no service to
+# be up: it reads every file in /etc/udev/rules.d with no ownership check and
+# runs every RUN+= as root, so a rules directory the desktop user can write is
+# that user executing arbitrary code as root on the next uevent.
+#
+# A PATH ENDING IN `/` MEANS THE DIRECTORY AND EVERYTHING UNDER IT, which is
+# what rules.d needs and a file list cannot give: ports install rules there in
+# phase 4, long after this runs, and naming them here would be a list that goes
+# stale the next time a port is added.
+#
 # A path here that fs/ does not carry is a mistake worth hearing about, not a
 # line to skip in silence — the whole point is that these modes cannot be
 # expressed where the file lives.
 while read -r rel mode owner; do
     [ -n "$rel" ] || continue
-    if [ ! -e "$SYSROOT/$rel" ]; then
+    if [ ! -e "$SYSROOT/${rel%/}" ]; then
         echo "fs modes: $rel is not on the image" >&2
         continue
     fi
-    chmod "$mode" "$SYSROOT/$rel"
-    [ -n "$owner" ] && chown "$owner" "$SYSROOT/$rel"
+    case "$rel" in
+    */)
+        find "$SYSROOT/${rel%/}" -type d -exec chmod 755 {} +
+        find "$SYSROOT/${rel%/}" -type f -exec chmod "$mode" {} +
+        [ -n "$owner" ] && chown -R "$owner" "$SYSROOT/${rel%/}"
+        ;;
+    *)
+        chmod "$mode" "$SYSROOT/$rel"
+        [ -n "$owner" ] && chown "$owner" "$SYSROOT/$rel"
+        ;;
+    esac
 done <<'FSMODES'
 etc/shadow 600 0:0
 etc/polkit-1/rules.d 755 0:0
 etc/polkit-1/rules.d/50-kdos.rules 644 0:0
+etc/udev/rules.d/ 644 0:0
 FSMODES
 
 mkdir -p "$(dirname "$MANIFEST")"

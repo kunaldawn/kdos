@@ -1,6 +1,6 @@
 KDOS DEVICES
 
-Cameras, microphones and removable media, in one list.
+Cameras, microphones, scanners and removable media, in one list.
 
   Enter     acts on the selected row, and what it does depends on the row:
             a camera opens a preview, a removable volume mounts or opens,
@@ -12,6 +12,17 @@ Cameras, microphones and removable media, in one list.
 The camera preview is drawn in cells from the frames the device produces —
 it is a preview, not a viewfinder. Escape takes it down and returns to the
 list; Escape on the list closes the window.
+
+Scanners
+
+  The list is SANE's own, through `scanimage -L`, and it is the same list
+  `scanimage` will scan from. A scanner that is plugged in and does not appear
+  is almost always a permission: 70-kdos-scanner.rules grants the device to
+  `dialout`, and without that membership SANE enumerates nothing and reports no
+  error at all. `id` answers it.
+
+  This window lists them; it does not scan. `scanimage -d <device> >out.pnm`
+  is the command, and the device string is the one shown beside the model.
 
 Removable media
 

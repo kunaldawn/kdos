@@ -164,6 +164,10 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-update"
 # that could name a port could open any port, so kdos-powerd owns the names
 # and this asks for them.
 ln -s kdos-shell "$PKG/usr/bin/kdos-firewall"
+# What is in the restic repository, and one key to add to it. It restores
+# nothing: `restic restore` is the operation you do once under pressure and it
+# wants the full command rather than a button whose defaults you cannot see.
+ln -s kdos-shell "$PKG/usr/bin/kdos-backup"
 ln -s kdos-shell "$PKG/usr/bin/kdos-note"
 ln -s kdos-shell "$PKG/usr/bin/kdos-run"
 # kdos-comp's <core><promptCommand> — the yes/no dialog labwc's If/prompt

@@ -41,6 +41,19 @@ int kkms_init(const char *seat, const char *font);
 void kkms_shutdown(void);
 
 /*
+ * LOAD A DIFFERENT FONT ON THE SCREEN THIS ALREADY HAS. 0 and the cell is the
+ * new font's; -1 and the old font is still drawing.
+ *
+ * The grid is derived from the mode and the cell, so the caller must call
+ * ktui_draw_resize() afterwards and tell whoever is composing for it — this
+ * library knows the pixels and nothing about the session on top of them.
+ *
+ * kkms_font() is the name currently loaded, empty for the built-in default.
+ */
+int kkms_set_font(const char *font);
+const char *kkms_font(void);
+
+/*
  * WHICH STEP FAILED, valid after kkms_init() returns -1 and until the next
  * call to it. Eight steps share one return value — a missing driver, a seat
  * that never went active, a monitor that is not plugged in, a font that would

@@ -23,7 +23,7 @@ the distribution with it.
 
 ## preflight.sh
 
-Everything a full build would catch, minus the build. Thirty-four checks, in seconds:
+Everything a full build would catch, minus the build. Thirty-five checks, in seconds:
 
 | Group | Checks |
 |---|---|
@@ -31,9 +31,9 @@ Everything a full build would catch, minus the build. Thirty-four checks, in sec
 | Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every source a port ships is named by a checksum; every port of ours is built by something |
 | Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value types validated |
 | Sources | Every source file in one of **our** ports is compiled by its recipe; a first source whose members are prefixed is accounted for; a flat first source is unpacked by its own recipe |
-| Shipped configuration | The shipped compositor configuration keeps the default bindings; every command it and the menu name exists; every filesystem the installer offers, the initramfs can mount |
+| Shipped configuration | The shipped compositor configuration keeps the default bindings; every command it, the menu and `menu.conf`'s routes name exists; every filesystem the installer offers, the initramfs can mount |
 | Shell | All shipped and build shell is syntactically valid; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script **names a command inside double quotes and runs it**; every helper the makefile runs is on disk and none shadows its own output |
-| Consistency | The build tree's root carries nothing but a root filesystem; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the rootfs carries no script whose interpreter is gone; nothing points at a removed file; every recipe carries the banner; no chroot step reads the ports tree through the wrong path; the catalogue's rows match the tree |
+| Consistency | The build tree's root carries nothing but a root filesystem; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; the rootfs carries no script whose interpreter is gone; nothing points at a removed file; every recipe carries the banner; no chroot step reads the ports tree through the wrong path; the catalogue's rows match the tree; a desktop toggle has one flag and only libkbase builds its path |
 
 Three of those deserve singling out, because each is a whole class of failure that never reaches a
 compiler:
@@ -692,6 +692,17 @@ Each is a rule with its consequence:
   `lpstat`/`lpinfo` answers under `testing/fixtures/print`. A machine with CUPS set up and one
   without draw different frames and neither is wrong, which is what makes the recording the only
   honest reference.
+- **A surface that "cannot be goldened because it needs a system bus" can be, once the test starts
+  the bus.** That was `kdos-net`'s recorded reason for having no golden, and it hid a defect that
+  made the surface useless: an AccessPoint is exported under
+  `/org/freedesktop/NetworkManager/AccessPoint/<n>` and a device under `.../Devices/<n>`, so the
+  path-prefix test that associated them matched nothing and every network was dropped from a list
+  that still drew its radios. `testing/fixtures/net/nmobjstub.c` serves the one
+  `GetManagedObjects` the surface makes, on a private system bus the block starts and kills. It is
+  an sd-bus **filter** rather than an object vtable: sd-bus owns
+  `org.freedesktop.DBus.ObjectManager` and refuses a manual vtable for it with `EINVAL`. The
+  recording gives the second radio a network the first cannot see, so a guess at the association
+  fails the golden instead of passing by luck.
 - **A D-Bus contract needs its own end of the wire, not a mock of ours.** `kdos-netagent` answers
   NetworkManager, and none of what it must get right is photographable: the flag that has to be set
   before anybody is asked, the exact `a{sa{sv}}` a secret comes back in, and error names that carry

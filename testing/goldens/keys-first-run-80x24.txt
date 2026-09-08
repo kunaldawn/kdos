@@ -1,0 +1,24 @@
++=  keys  =====================================================================+
+| Welcome to KDOS. I use KDOS btw.                                             |
+|   Super+Enter    open a terminal                                             |
+|   Alt+Tab        reach another terminal                                      |
+|------------------------------------------------------------------------------|
+| launch                                                                       |
+|   Super+Enter    foot                                                        |
+|   Super+d        kdos-launcher                                               |
+|   Super+Shift+q  sh -c "a && b"                                              |
+| window                                                                       |
+|   Super+q        close the window                                            |
+|   Alt+Tab        next window                                                 |
+| workspace                                                                    |
+|   Super+1        workspace 1                                                 |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+| Any key close                                                                |
++==============================================================================+

@@ -280,6 +280,14 @@ one function here. A second implementation would drift, and a table saying "red 
 slot" would be a second set of colour decisions beside the palette — one that would stop following
 the accent, so `kdos theme amber` would move some colours and not others.
 
+**Night light is a transform over the slots, not a scheme.** `ktui_theme_night()` warms whatever
+`ktui_theme_set()` last loaded — green to 93%, blue to 77%, red untouched, the shape of a colour
+temperature and the reason a warmed accent still reads as itself — and hands out a copy, keeping
+the chosen scheme beside it: eight bits do not divide back, so turning it off returns to the table
+rather than undoing the arithmetic. **The caller reads the toggle**, because this library holds no
+opinion about where a desktop keeps its state, and it returns whether the palette actually moved so
+a caller can skip a repaint it does not owe.
+
 **A pointer event carries where in the cell it landed**, as an offset from the cell's centre in
 1/256ths, and zero — what a backend with no pixel geometry leaves behind — means the centre.
 Nothing drawn in cells reads it. It exists for the one thing on this desktop that is not cells: a
@@ -508,6 +516,18 @@ from it, and the pixel canvas a block of cells can be drawn as.
 **The canvas is what makes a pixel tile possible** without a second renderer — a pixel image exactly
 some number of cells across, with fills and text at an arbitrary pixel size, handed to the toolkit
 as a sprite. See [kdos-shell](../04-programs/kdos-shell.md#the-start-button).
+
+## libkkms
+
+The cell grid on a screen: seat, connector, mode, a dumb buffer, libinput and xkb. The one library
+here that opens a GPU device, which is why only the view links it.
+
+**The grid is derived, never stored.** The backend answers its size by dividing the mode by the
+cell, so `kkms_set_font()` is the whole of a font change on a screen that is already up: reload,
+and every consumer of `ktui_w`/`ktui_h` sees a different answer the next time it asks. The caller
+calls `ktui_draw_resize()` and tells whoever is composing for it — this library knows the pixels and
+nothing about the session on top of them. **The old font comes back if the new one will not load**,
+because a screen is the one thing a person cannot work around from somewhere else.
 
 ## libkwl
 

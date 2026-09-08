@@ -325,22 +325,53 @@ void kb_json_str(KbBuf *b, const char *s)
  * one place this could still go stale after $HOME changed under a program that
  * re-execs.
  */
-int kb_toggle_on(const char *name)
+static int toggle_path(const char *name, char *out, size_t n)
 {
 	const char *state = getenv("XDG_STATE_HOME");
 	const char *home = getenv("HOME");
-	char path[512];
 
 	if (!name || !*name)
 		return 0;
 	if (state && *state)
-		snprintf(path, sizeof(path), "%s/kdos/toggles/%s", state, name);
-	else if (home && *home)
-		snprintf(path, sizeof(path), "%s/.local/state/kdos/toggles/%s",
-			 home, name);
-	else
+		return snprintf(out, n, "%s/kdos/toggles/%s", state, name)
+		       < (int)n;
+	if (home && *home)
+		return snprintf(out, n, "%s/.local/state/kdos/toggles/%s",
+				home, name) < (int)n;
+	return 0;
+}
+
+int kb_toggle_on(const char *name)
+{
+	char path[512];
+
+	if (!toggle_path(name, path, sizeof(path)))
 		return 0;
 	return access(path, F_OK) == 0;
+}
+
+int kb_toggle_set(const char *name, int on)
+{
+	char path[512];
+	char *slash;
+	int fd;
+
+	if (!toggle_path(name, path, sizeof(path)))
+		return -1;
+	if (!on)
+		return unlink(path) == 0 || errno == ENOENT ? 0 : -1;
+
+	slash = strrchr(path, '/');
+	if (slash) {
+		*slash = '\0';
+		kb_mkdir_p(path);
+		*slash = '/';
+	}
+	fd = open(path, O_WRONLY | O_CREAT, 0644);
+	if (fd < 0)
+		return -1;
+	close(fd);
+	return 0;
 }
 
 /* See kbase.h. The FIRST entry only: the variable is a preference order and

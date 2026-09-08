@@ -161,20 +161,19 @@ static int unseen;
  * With the history in place it is honest — the toast is not drawn, the entry
  * is kept, and the badge says how many are waiting.
  */
-static int dnd;
-
 /*
- * IS DO NOT DISTURB ON? Either the socket flag above, which the notification
- * centre sets for the session it is in, or the `dnd` toggle, which is what
- * `kdos toggle dnd` writes and what a chord or a script sets.
+ * IS DO NOT DISTURB ON? ONE FLAG, and it is the `dnd` toggle file — what
+ * `kdos toggle dnd` writes and what a chord or a script sets. This daemon
+ * keeps no copy of its own: a second flag OR'd with this one is a state the
+ * notification centre's own button cannot clear, so Allow Toasts left the
+ * toasts silenced and said it had not.
  *
- * BOTH, because they answer different questions and neither can see the other:
- * the socket flag dies with this daemon and the toggle outlives it. Reading
- * only the flag is what made `kdos toggle dnd` silence nothing at all.
+ * The file also outlives the daemon, which is the behaviour a person expects
+ * from a switch they left on.
  */
 static int dnd_on(void)
 {
-	return dnd || kb_toggle_on("dnd");
+	return kb_toggle_on("dnd");
 }
 
 static void hist_push(const struct toast *t)
@@ -272,12 +271,16 @@ static void serve_client(int c)
 		while (*a == ' ')
 			a++;
 		if (!strcmp(a, "on"))
-			dnd = 1;
+			kb_toggle_set("dnd", 1);
 		else if (!strcmp(a, "off"))
-			dnd = 0;
+			kb_toggle_set("dnd", 0);
 		else if (!strcmp(a, "toggle") || !*a)
-			dnd = !dnd;
-		dprintf(c, "%d\n", dnd);
+			kb_toggle_set("dnd", !dnd_on());
+		/* The state as it now READS, not as it was asked for: a state
+		 * directory that cannot be written leaves the switch where it
+		 * was, and a centre told otherwise would draw the wrong
+		 * button. */
+		dprintf(c, "%d\n", dnd_on());
 	} else {
 		(void)!write(c, "err unknown command\n", 20);
 	}

@@ -13,6 +13,9 @@ to each other.
 | `packd.conf` | The pack daemon's retention | no |
 | `pack-sources` | Where application updates are looked for | no |
 | `zram.conf` | Compressed-swap size and algorithm | no |
+| `con.conf` | The console session: which program is each thing, and the idle steps | no |
+| `menu.conf` | The routes — a name a script can hold for every place in the system | no |
+| `timers.d/` | The per-user timers the session arms | no |
 | `mountd.conf` | Removable-media options. **Not shipped** — create it | no |
 | `keys/` | Trusted keys for **host packages** | no |
 | `keys/packs/` | Trusted keys for **application packs** | no |
@@ -43,6 +46,7 @@ Every key is documented in [Configuration](configuration.md).
 | `reasons` | The explanations `kdos why` prints |
 | `doc/` | Shipped documentation |
 | `logo.txt` | The banner logo, generated from the mascot |
+| `screensaver.txt` | The grid the screensaver's art mode moves. **A person's to replace**, at `~/.config/kdos/screensaver.txt`; separate from `logo.txt` so changing the screensaver does not change the picture the machine boots with |
 | `splash.psf` | The splash font |
 | `boot/` | Boot artwork |
 | `memtest86plus/` | The memory tester on the medium |
@@ -65,6 +69,8 @@ Every key is documented in [Configuration](configuration.md).
 | `~/.local/share/applications/` | Launchers for applications you installed |
 | `~/.local/bin/` | Shims for applications you installed |
 | `~/.local/state/kdos/appusage` | Launch counts, which order the Start menu's frequent column |
+| `~/.local/state/kdos/con-font` | The console screen's font name, once a font chord has stepped it. An **override**: written by `kdos-view` only after the font has loaded, removed by `font-reset`, and beaten by `--font` and `$KDOS_CON_FONT` |
+| `~/.local/state/kdos/toggles/` | One empty file per switch that is on — `stay-awake`, `night-light`, `dnd` |
 | `~/.local/state/kdos/diskwarn` | `<step> <mountpoint>` per line: which disk-full step the panel has already warned about |
 | `~/.cache/kdos/theme` | **One word**: the accent name. The entire theme state the desktop reads |
 | `~/.cache/kdos/wallpaper.png` | The retinted wallpaper the compositor prefers |
@@ -146,10 +152,25 @@ Root and `wheel`.
 | `list` | — | The eligible devices, **with an index each** |
 | `mount` | An index | The mountpoint |
 | `unmount` | An index | |
+| `eject` | An index | |
+| `close` | An index | Closes a mapper an `unlock` opened |
+| `smart` | An index | The drive's own health line |
+| `unlock` | An index and a byte count | The mapper's name; the passphrase is a second frame |
+| `format` | An index, a filesystem and a byte count | The device's own name typed back, as a second frame |
+| `subscribe` | — | Keeps the socket and writes a line per block uevent |
 | `ping` | — | Liveness |
 
 **The client asks for an index out of a list the daemon published**, and the daemon decides the
 device, the mountpoint and the options. The list is rescanned on every request.
+
+**A secret is a FRAME and never a token.** `unlock` and `format` declare a byte count on the
+request line and send exactly that many bytes after the newline, because the request line is
+tokenised on whitespace and a passphrase may contain some. The daemon holds one buffer for it and
+wipes it on every path out of the request.
+
+**The token count is fixed per verb, and a longer line is refused rather than truncated.** The
+argument allowlist is what makes an index mean an index: `mount 0 rm -rf /` is not a well-formed
+`mount 0`, it is an unknown command.
 
 ### `/run/kdos-packd.sock`
 

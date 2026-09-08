@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ddcutil
+version     = 2.2.7
+release     = 1
+source      = https://github.com/rockowitz/ddcutil/archive/refs/tags/v$version.tar.gz
+sha256      = 7b5cb9824c23974241146f4a696abc65f8e9d1e950198c8dc00e4a5c6a2f41ee  ddcutil-2.2.7.tar.gz
+description = Brightness, contrast and input source of an external monitor over DDC/CI
+homepage    = https://www.ddcutil.com/
+depends     = glib jansson acl libdrm eudev zlib

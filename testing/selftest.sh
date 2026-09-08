@@ -955,6 +955,78 @@ else
 fi
 
 #
+# A FONT STEP IS ARITHMETIC OVER A FONTCONFIG NAME, and it is the only part of
+# the font chords that runs without a screen — the rest is a DRM device and a
+# glyph cache. It is a file of its own for exactly that reason, so this drives
+# it directly.
+#
+# The clamp is what the test is really for: fontconfig answers a two-pixel
+# request with a two-pixel face, and a screen of unreadable specks is not a
+# step a chord can undo — the grid it leaves behind is six hundred columns of
+# nothing, with the chord that would put it back somewhere in them.
+#
+cat > "$OUT/fontdrv.c" <<'FONTEOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "view.h"
+
+static int bad;
+
+static void eq(const char *base, int step, const char *want)
+{
+	char got[192];
+
+	if (!view_font_stepped(base, step, got, sizeof(got))) {
+		printf("    view_font_stepped(\"%s\", %d) refused\n", base, step);
+		bad = 1;
+		return;
+	}
+	if (strcmp(got, want)) {
+		printf("    \"%s\" %+d -> \"%s\", want \"%s\"\n", base, step,
+		       got, want);
+		bad = 1;
+	}
+}
+
+int main(void)
+{
+	eq("monospace:size=11", 1, "monospace:size=12");
+	eq("monospace:size=11", -1, "monospace:size=10");
+	/* A name with no size at all gains the default's. */
+	eq("monospace", 1, "monospace:size=12");
+	eq("", -1, "monospace:size=10");
+	/* Pixels are a different key and a different range. */
+	eq("Terminus:pixelsize=32", 1, "Terminus:pixelsize=33");
+	/* Whatever follows the size is the person's and is kept. */
+	eq("monospace:size=11:weight=bold", 1, "monospace:size=12:weight=bold");
+	/* THE CLAMP, from both ends. */
+	eq("monospace:size=5", -1, "monospace:size=5");
+	eq("monospace:size=48", 1, "monospace:size=48");
+	eq("mono:pixelsize=8", -1, "mono:pixelsize=8");
+	eq("mono:pixelsize=72", 1, "mono:pixelsize=72");
+
+	char path[512];
+
+	setenv("XDG_STATE_HOME", "/x", 1);
+	if (!view_font_state_path(path, sizeof(path)) ||
+	    strcmp(path, "/x/kdos/con-font")) {
+		printf("    the state path is not where kdos-view writes it\n");
+		bad = 1;
+	}
+	return bad;
+}
+FONTEOF
+$CC $STD $SHWARN -D_GNU_SOURCE -Isrc/desktop/kdos-view -o "$OUT/fontdrv" \
+    "$OUT/fontdrv.c" src/desktop/kdos-view/font.c
+if "$OUT/fontdrv"; then
+    echo "  a font step keeps the name and clamps the size"
+else
+    echo "  A FONT STEP WOULD WRITE A NAME NOBODY ASKED FOR"
+    exit 1
+fi
+
+#
 # EVERY CHORD THE SHIPPED FILE NAMES IS AN ACTION THE SESSION HAS.
 #
 # keys.conf's overlay keeps the default for an action no line names, which is
@@ -998,6 +1070,30 @@ if [ -z "$_nocard" ]; then
 else
     echo "  CHORDS THE KEY CARD WOULD DROP:$_nocard"
     echo "  add a row to con_section() in src/desktop/kdos-shell/keys.c"
+    exit 1
+fi
+
+#
+# AND THE FIRST-RUN TOUR'S FOUR STEPS ARE AMONG THEM.
+#
+# `kdos-keys --first-run` draws four rows above the list — a terminal, the
+# menu, another workspace, the window left behind — and DROPS a step whose
+# chord this session does not bind rather than naming one it believes in. That
+# is the right answer for a rebound desktop and the wrong thing to ship: a
+# first login with a hole in the tour teaches three things and leaves the
+# fourth unreachable. `keys` is the fifth name here because the hint row uses
+# it to say how the card comes back.
+#
+_notour=""
+for _act in terminal menu workspace-next next keys; do
+    grep -qx "$_act" "$OUT/con-actions.txt" || _notour="$_notour $_act"
+done
+if [ -z "$_notour" ]; then
+    echo "  the first-run tour's four steps are bound on the console"
+else
+    echo "  THE FIRST-RUN TOUR WOULD DROP:$_notour"
+    echo "  bind it in src/desktop/kdos-con/keys.c, or drop the step from"
+    echo "  build_welcome() in src/desktop/kdos-shell/keys.c"
     exit 1
 fi
 
@@ -2812,6 +2908,12 @@ sdb1' 'unknown filesystem' "a filesystem outside the allowlist is refused"
 # the rest of the line away, so `mount 0 rm -rf /` was a well-formed mount.
 kmwant 'mount 0 rm -rf /
 ' 'unknown command' "a verb with a token nobody named is not a verb"
+# AND A LINE LONGER THAN THE TOKENISER'S ARRAY IS REFUSED, NOT TRUNCATED. The
+# array stops at five and the longest verb takes four, so a longer line used to
+# be dispatched with its tail silently dropped — which is the same defect one
+# array size away, waiting for the next verb to be added.
+kmwant 'mount 0 a b c d e
+' 'too many arguments' "a line past the tokeniser is refused rather than cut short"
 kmwant 'mount 0zzz
 ' 'no such device' "an index that is not a number is not index zero"
 kmwant 'mount 99
@@ -3354,7 +3456,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel trash peek \
              find pix rec chars disks print timezone users update firewall \
-             netagent; do
+             netagent backup; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -3523,14 +3625,17 @@ echo "==> golden frames — the committed cell grid, diffed"
 #   launcher   scans /usr/share/applications, which is the host's
 #   menu apps  likewise
 #   menu places reads /proc/mounts and the $HOME xdg dirs
-#   saver      seeds from time() ^ getpid(); phosphor rain is never twice the
-#              same picture, which is the point of it
+#   saver rain seeds from time() ^ getpid(); phosphor rain is never twice the
+#              same picture, which is the point of it. The ART mode IS
+#              goldened, below: its dump takes a fixed seed and its picture is
+#              a file, so the fixture supplies one and the frame is the same
+#              everywhere
 #   slit       renders the OUTPUT of forked gadget commands, arriving
 #              asynchronously — a dump catches whatever had answered by then
 #   openwith   its header carries the file's absolute path. Its resolution is
 #              checked below instead, which is the part that can be wrong
-#   net bt     both need a system bus, and what is ON it — an access point
-#              list, a paired headset — is the machine's, not a fixture's
+#   bt         needs a system bus, and what is ON it — a paired headset — is
+#              the machine's, not a fixture's
 #   devices    /dev/video* and /proc/asound are the host's
 #   time       draws a running CLOCK, which is a different frame every second
 #
@@ -3648,6 +3753,141 @@ if "$DUMPCK" --have print; then
     golden print-found 80x24  print --fixture "$_pf" --found --dump
 fi
 
+# kdos-backup IS GOLDENED AGAINST A RECORDED RESTIC REPOSITORY. The window is
+# a list of what `restic snapshots --json` returned, so pointing it at a
+# recording is the whole of what it needs — and the recording came from a real
+# repository this tree's own restic created, not from a hand-written document
+# that would agree with the parser by luck.
+#
+# THE PASSWORD PATH IS NOT EXERCISED HERE and that is deliberate: with
+# --fixture the surface never reads the password file at all, so the golden
+# cannot accidentally depend on one existing. The mode refusal is asserted
+# separately below, where it can be given a file with the wrong mode.
+if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have backup; then
+    # golden() runs from testing/fixtures/shell, so the recording is named from
+    # the repository root before that cd rather than relative to it.
+    _bkf="$PWD/testing/fixtures/backup"
+    # The config comes from testing/fixtures/shell/config, which golden() already
+    # points XDG_CONFIG_HOME at — the same place the keybind card's frozen
+    # rc.xml and the settings window's comp.conf live.
+    for _bs in 80x24 56x24 132x43; do
+        golden backup "$_bs" backup --fixture "$_bkf" --dump
+    done
+
+    # THE MODE REFUSAL, WHICH IS THE SECURITY LINE OF THIS SURFACE. A password
+    # file the group or the world can read hands the key to every backup on the
+    # machine to every account on it, and 0644 is what an editor leaves. The
+    # refusal has to come BEFORE the password is used, so it is asserted on the
+    # `--once` path, which is the one a timer runs unattended.
+    _bkc="$OUT/backup-conf"
+    mkdir -p "$_bkc/kdos"
+    cp testing/fixtures/shell/config/kdos/backup.conf "$_bkc/kdos/"
+    printf 'hunter2\n' > "$_bkc/kdos/backup.pass"
+    chmod 644 "$_bkc/kdos/backup.pass"
+    _bko="$OUT/backup-mode.txt"
+    # The command is the CONDITION, because it is meant to fail and `set -e`
+    # would take the script down before the status could be looked at.
+    if XDG_CONFIG_HOME="$_bkc" "$DUMPCK" backup --once > "$_bko" 2>&1; then
+        echo "  FAIL  a 0644 password file was accepted"
+        sed 's/^/    /' "$_bko"
+        exit 1
+    fi
+    grep -q "0644" "$_bko" || {
+        echo "  FAIL  the refusal does not name the mode:"
+        sed 's/^/    /' "$_bko"
+        exit 1
+    }
+    echo "  a group-readable password file is refused before it is used"
+else
+    echo "  the kdos-backup goldens are skipped (it did not link)"
+fi
+
+# kdos-devices' SCANNER SECTION, WITHOUT A GOLDEN FOR THE SURFACE. The rest of
+# that window is /dev/video*, /proc/asound and the host's input devices, so the
+# frame cannot be committed — but the scanner list comes from one command, and
+# that one is recordable. What is asserted is the PARSE, which is the part that
+# can be wrong: `scanimage` names a device with colons inside it and a model
+# with spaces in it, so splitting on either loses one of the two shapes.
+if [ -n "${DUMPCK:-}" ] && "$DUMPCK" --have devices; then
+    _dvo="$OUT/devices-scan.txt"
+    ( cd testing/fixtures/shell && env LC_ALL=C TZ=UTC HOME="$PWD" \
+        XDG_CACHE_HOME=/nonexistent-kdos-cache \
+        XDG_CONFIG_HOME="$PWD/config" \
+        XDG_DATA_HOME=/nonexistent-kdos-data \
+        XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
+        XDG_RUNTIME_DIR=/nonexistent-kdos-run \
+        KDOS_MOUNTD_SOCKET=/nonexistent-kdos-mountd \
+        KDOS_DUMP_SIZE=132x43 "$DUMPCK" devices \
+        --fixture "$PWD/../devices" --dump ) > "$_dvo" 2>&1 || true
+    _dvfail=0
+    for _w in "SCANNERS" "CANON Canon TR8500 series" \
+              "airscan:e0:Canon TR8500 series" "Plustek OpticBook 3800" \
+              "genesys:libusb:001:004"; do
+        grep -qF "$_w" "$_dvo" || {
+            echo "  FAIL  the scanner section has no '$_w'"
+            _dvfail=1
+        }
+    done
+    [ "$_dvfail" = 0 ] || { sed 's/^/    /' "$_dvo" | head -20; exit 1; }
+    echo "  the scanner section lists both device shapes with their models"
+else
+    echo "  the scanner section is skipped (kdos-devices did not link)"
+fi
+
+# kdos-net GETS A GOLDEN AT LAST, because the reason it had none stopped being
+# true: it needs a system bus, and a test can start one. testing/fixtures/net/
+# serves the single GetManagedObjects the surface makes, with the object paths
+# and property types read off the interface XML this image ships.
+#
+# WHAT THE RECORDING IS FOR. An AccessPoint is exported under
+# /org/freedesktop/NetworkManager/AccessPoint/<n> and a device under
+# .../Devices/<n>; they share a prefix and nothing else, so a surface that
+# associated the two by path drew its radios over an EMPTY list and no test
+# could see it. The fixture gives the second radio a network the first cannot
+# see, so a guess at the association is a wrong frame rather than a lucky one.
+if [ -n "${DUMPCK:-}" ] && [ -n "$TRAY_SDBUS" ] &&
+   command -v dbus-daemon >/dev/null 2>&1 && "$DUMPCK" --have net; then
+    NETO="$OUT/net"
+    mkdir -p "$NETO"
+    if $CC $STD $WARN -o "$NETO/nmobjstub" testing/fixtures/net/nmobjstub.c \
+            $(pkg-config --cflags --libs "$TRAY_SDBUS"); then
+        cat > "$NETO/bus.conf" <<'NETBUS'
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>system</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+NETBUS
+        # A bus of its own. The surface opens the SYSTEM bus, and the host's
+        # own NetworkManager must never be what answers: the frame would then
+        # be this machine's networks and would drift on every run.
+        dbus-daemon --config-file="$NETO/bus.conf" --print-address=3 --fork \
+            --print-pid=4 3>"$NETO/addr" 4>"$NETO/pid"
+        DBUS_SYSTEM_BUS_ADDRESS="$(cat "$NETO/addr")"
+        export DBUS_SYSTEM_BUS_ADDRESS
+        "$NETO/nmobjstub" > "$NETO/stub.log" 2>&1 &
+        _nsp=$!
+        sleep 0.4
+        for _ns in 80x24 56x24 132x43; do
+            golden net "$_ns" net --dump
+        done
+        kill "$_nsp" 2>/dev/null || true
+        wait "$_nsp" 2>/dev/null || true
+        kill "$(cat "$NETO/pid")" 2>/dev/null || true
+        unset DBUS_SYSTEM_BUS_ADDRESS
+    else
+        echo "  the kdos-net goldens are skipped (the fixture does not build)"
+    fi
+else
+    echo "  the kdos-net goldens are skipped (no sd-bus, no dbus-daemon or net did not link)"
+fi
+
 # kdos-res is its own binary, not a kdos-shell front end, so it renders its
 # own goldens against testing/fixtures/res — a recorded machine, which is what
 # makes a monitor's output deterministic at all. It is built above only where
@@ -3727,6 +3967,21 @@ golden menu-system 132x43 menu system --dump
 golden pick        80x24  pick --dir tree --dump
 golden pick       56x24  pick --dir tree --dump
 golden pick        132x43 pick --dir tree --dump
+# THE PLACES RUNG, which is the half of this dialog the frame underneath cannot
+# show. It is a LIST rather than a fourth column because the dialog is
+# sixty-four columns and already spends its right-hand one on a preview: a
+# third column leaves a file's name about thirty cells, and a chooser that
+# cannot show a name is not a chooser. What the golden is FOR is that the names
+# fit. The frecency half — `zoxide query -l`, whose answer is the host's own
+# shell history — is skipped in a dump, so the frame is the fixture HOME's own
+# directories and nothing else.
+#
+# AND THERE IS NO FIXTURE `places` FILE, deliberately: kdos-start reads the same
+# list, so one added here to make this frame richer moved six of that surface's
+# committed goldens. A fixture for one surface that changes another's frames is
+# a fixture that will be blamed for the wrong thing.
+golden pick-places 80x24  pick --dir tree --places --dump
+golden pick-places 56x24  pick --dir tree --places --dump
 # THE CONTROL CENTRE'S FRONT DOOR. Two settings goldens were committed and
 # driven by nothing, so a category added to the grid left them describing a
 # surface that no longer existed. A golden nothing runs is a file that agrees
@@ -3766,6 +4021,54 @@ for _s in keys teams doc settings start notify trash chars; do
         echo "  $_s (skipped — not linked into the harness)"
     fi
 done
+# THE ROUTES, which have no column of their own: their whole existence is a
+# name to search for, so the only frame that can show one is a search. The
+# fixture's `menu.conf` is a USER copy — the system file is `/etc/kdos` and no
+# test host has one — so this proves the half of the merge that adds.
+if "$DUMPCK" --have start; then
+    golden start-route 80x24 start --dump-view search:setup --dump
+fi
+
+# THE SAVER'S ART MODE, at the one size its dump computes a position for: the
+# bounce is placed against 80x24 whatever the buffer turns out to be, so a
+# second size would golden a picture placed for a screen it is not on.
+#
+# The art is the FIXTURE'S — `config/kdos/screensaver.txt`, which is the file a
+# person overrides — so this frame proves the override as well as the effect. A
+# machine with no art at all falls back to the rain, which is the one thing
+# here that cannot be goldened.
+if "$DUMPCK" --have saver; then
+    golden saver 80x24 saver --mode art --dump
+fi
+
+# THE FIRST-RUN TOUR is a flag rather than a size, so it cannot ride the loop
+# above. Its four rows are generated from the same parse the list below them
+# is: a chord rebound in rc.xml moves the tour in the same edit, and a step
+# nothing binds is absent from the tour rather than wrong in it.
+if "$DUMPCK" --have keys; then
+    golden keys-first-run 80x24 keys --first-run --dump
+    golden keys-first-run 56x24 keys --first-run --dump
+
+    # AND THE SHIPPED rc.xml BINDS ALL FOUR. The fixture the goldens above
+    # draw is deliberately small — it exists to catch the comment trap — so
+    # its tour is two rows and proves only the drop. The file the image ships
+    # is the one a first login actually reads, and the console half of this
+    # is asserted against `kdos-con --keys` further up.
+    XDG_CONFIG_HOME=fs/etc/skel/.config KDOS_DUMP_SIZE=80x24 \
+        "$DUMPCK" keys --first-run --dump > "$OUT/tour-rc.txt"
+    _notour=""
+    for _w in "open a terminal" "reach the menu" "switch workspaces" \
+              "reach another terminal"; do
+        grep -q "$_w" "$OUT/tour-rc.txt" || _notour="$_notour [$_w]"
+    done
+    if [ -z "$_notour" ]; then
+        echo "  the shipped rc.xml binds all four of the tour's steps"
+    else
+        echo "  THE TOUR ON THE SHIPPED rc.xml WOULD DROP:$_notour"
+        golden_fail=1
+    fi
+fi
+
 # kdos-peek takes a FILE, so it cannot ride the loop above. The fixture is a
 # committed tar built with a fixed mtime and uid: the listing draws names and
 # sizes only, so the frame is the same on every machine.
@@ -3899,6 +4202,33 @@ if "$DUMPCK" --have launcher; then
     golden launcher 80x24  launcher --dump
     golden launcher   56x24  launcher --dump
     golden launcher 132x43 launcher --dump
+
+    # THE FILE SECTION IS OFF UNLESS ASKED FOR, and that is the assertion —
+    # not that it works, which needs an index, but that a launcher with no
+    # launcher.conf never reaches for one. A search a person did not ask for
+    # puts their filenames on screen in front of whoever is behind them, so
+    # "off by default" is the security property and it is worth a check that
+    # fails if the default ever flips.
+    # A `plocate` on PATH that announces itself, so "was it run" is answerable
+    # without an index and without the real binary.
+    mkdir -p "$OUT/nolocate"
+    printf '#!/bin/sh\necho PLOCATE-WAS-RUN\n' > "$OUT/nolocate/plocate"
+    chmod +x "$OUT/nolocate/plocate"
+    _lqo="$OUT/launcher-files.txt"
+    ( cd testing/fixtures/shell && env LC_ALL=C TZ=UTC HOME="$PWD" \
+        XDG_CACHE_HOME=/nonexistent-kdos-cache \
+        XDG_CONFIG_HOME="$PWD/config" \
+        XDG_DATA_HOME=/nonexistent-kdos-data \
+        XDG_DATA_DIRS=/nonexistent-kdos-datadirs \
+        XDG_RUNTIME_DIR=/nonexistent-kdos-run \
+        PATH="$OUT/nolocate:$PATH" \
+        KDOS_DUMP_SIZE=80x24 "$DUMPCK" launcher --query zzq --dump ) \
+        > "$_lqo" 2>&1 || true
+    if grep -q "PLOCATE-WAS-RUN" "$_lqo"; then
+        echo "  FAIL  the launcher searched the file index with no config asking it to"
+        exit 1
+    fi
+    echo "  the launcher does not reach for the file index unless asked"
 fi
 if "$DUMPCK" --have tip; then
     golden tip 80x24  tip --dump "Firefox" "left-click opens   middle-click a new window"

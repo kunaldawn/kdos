@@ -12,6 +12,8 @@
 #ifndef KDOS_VIEW_H
 #define KDOS_VIEW_H
 
+#include <stddef.h>
+
 /*
  * Rasterise the frame libktui is holding and write it as a PNG.
  *
@@ -26,6 +28,24 @@
  * Present only where the rasteriser is (`KDOS_VIEW_SHOT`), the same rule the
  * KMS and cast modes keep.
  */
+/*
+ * THE FONT CHORDS' ARITHMETIC, and the only part of them that runs without a
+ * screen.
+ *
+ * `view_font_state_path()` writes `~/.local/state/kdos/con-font`, the stepped
+ * size's override; non-zero when it fits.
+ *
+ * `view_font_stepped()` writes `base` with its size moved by `step`. The size
+ * rides in a fontconfig name as `:size=N` points or `:pixelsize=N`; a name
+ * carrying neither is treated as the default's `size=11` and gains it, and
+ * whatever follows the size is kept because it is what the person wrote.
+ * CLAMPED, because fontconfig will happily return a two-pixel face and a
+ * screen of unreadable specks is not a step a chord can undo. Non-zero when
+ * the result fits.
+ */
+int view_font_state_path(char *out, size_t n);
+int view_font_stepped(const char *base, int step, char *out, size_t n);
+
 #ifdef KDOS_VIEW_SHOT
 int view_shot_png(const char *path, int scale, int cx, int cy, int cw, int ch);
 #endif

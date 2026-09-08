@@ -730,7 +730,31 @@ over state the session already holds.
 | `Super+Shift+m` | mark a rectangle of the screen |
 | `Super+Shift+v` | paste what was marked into the focused window |
 | `Super+Shift+p` | capture a rectangle: its text to the clipboard, its picture to a file |
+| `Super+=`, `Super+-` | bigger and smaller text on the screen — **on a KMS view only** |
+| `Super+Ctrl+0` | the text size back to what the configuration names |
 | media keys | louder, quieter, mute, play, stop, next, previous — **on a KMS view only** |
+
+**The font belongs to the view and the chord to the session**, which is the split every other
+device verb here keeps: the view is the half holding a rasteriser, the session the half holding a
+keyboard table. `KCON_OP_VIEW_FONT` carries a signed step and never a font name — a session naming
+fontconfig syntax would be a session deciding what a display it has never seen can render — and the
+new grid comes back as an ordinary `KCON_OP_VIEW_SIZE` with the new cell beside it, because a screen
+divided by a different cell is a resize and the session already knows how to handle one.
+
+**A view inside somebody else's terminal is not sent a step.** It says so in its hello, and the
+session answers on the bar instead: that terminal owns the font, and no message from here can change
+it. Every view with a screen of its own is stepped, not the primary alone — two screens showing one
+session must not end up at two cell sizes because the chord reached whichever attached first.
+
+**The stepped size is an override under `~/.local/state/kdos/con-font`**, written only after the
+font has loaded and removed by the reset. A name fcft would refuse is therefore never the name the
+next login starts with, and `--font` and `$KDOS_CON_FONT` still win: a state file that beat them
+would be a chord that had quietly switched the configuration off.
+
+Every picture the view is holding was cut for the old cell, so it drops them and the session sends
+them again when it sees the grid move — an embedded guest is sized in pixels from that cell, so its
+blocks are re-cut in the same breath. A view that stretched what it had would draw one sharp screen
+and one blurred one on a machine with two.
 
 **A window's number is its position in the Alt-Tab ring**, drawn in its title bar and in its taskbar
 row. It is the ring's own index rather than an identity: it renumbers when a window closes, which is

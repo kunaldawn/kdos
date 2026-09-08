@@ -55,8 +55,13 @@ polkit.addRule(function (action, subject) {
      * only for profiles some other tool created with one.
      */
     case "org.freedesktop.NetworkManager.settings.modify.system":
-    /* A hotspot is share.open or share.protected depending on the band and
-     * the security chosen; both are the same decision. */
+    /*
+     * A hotspot is share.open or share.protected, and the choice is made by
+     * whether the profile carries an 802-11-wireless-security setting AT ALL —
+     * not by the band, and not by what key-mgmt says: even key-mgmt=none picks
+     * `protected`. Neither is reached unless ipv4.method is "shared". Both are
+     * the same decision here.
+     */
     case "org.freedesktop.NetworkManager.wifi.share.open":
     case "org.freedesktop.NetworkManager.wifi.share.protected":
         return polkit.Result.YES;

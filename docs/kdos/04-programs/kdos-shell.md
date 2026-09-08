@@ -1,6 +1,6 @@
 # kdos-shell
 
-One binary providing forty-six commands, dispatched on the name it was invoked as: the panel,
+One binary providing forty-seven commands, dispatched on the name it was invoked as: the panel,
 and every surface that pops up from it or is reached by a key. This is the largest program in
 KDOS and the one most of the desktop actually is.
 
@@ -18,7 +18,7 @@ half of the same mistake.
 |---|---|---|
 | `kdos-shell` | The panel | [The panel](#the-panel) |
 | `kdos-start` | The Start menu, with DESQview's two-letter codes | [kdos-start](#kdos-start) |
-| `kdos-launcher` | Full-screen application search | [kdos-launcher](#kdos-launcher) |
+| `kdos-launcher` | Full-screen application search, and files behind a key | [kdos-launcher](#kdos-launcher) |
 | `kdos-menu` | Root, System and window menus | [kdos-menu](#kdos-menu) |
 | `kdos-desk` | The desktop and its icons | [kdos-desk](#kdos-desk) |
 | `kdos-pick` | The file chooser and browser | [kdos-pick](#kdos-pick) |
@@ -38,6 +38,7 @@ half of the same mistake.
 | `kdos-users` | The accounts, and which one tty1 logs in | [The small surfaces](#the-small-surfaces) |
 | `kdos-update` | What is behind, what is vulnerable, which slot is live | [The small surfaces](#the-small-surfaces) |
 | `kdos-firewall` | Which services answer the network | [The small surfaces](#the-small-surfaces) |
+| `kdos-backup` | What is in the restic repository, and adding to it | [The small surfaces](#the-small-surfaces) |
 | `kdos-clip` | Clipboard history | [The small surfaces](#the-small-surfaces) |
 | `kdos-status` | The overflow popup | [The overflow chevron](#the-overflow-chevron) |
 | `kdos-tip` | Tooltips | [Tooltips](#tooltips) |
@@ -503,6 +504,12 @@ this menu was throwing it away.
 network manager; the hits are appended under a rule. A search over the application index alone
 answered `wifi` with an empty list on a machine whose network tool is three rows up the same menu.
 
+**The routes are searched beside them.** `/etc/kdos/menu.conf`, merged under the user's copy, is
+`route = argv` — a name a script can hold, which a chord and a menu row are not. They have no column
+of their own: their whole existence is a name to search for, so a search is where they appear.
+`--route NAME` opens the menu with the name already in the field, which is what `kdos menu summon`
+passes and the one code path that finds a route.
+
 **Applications on the medium are listed** under their category with a medium icon, and under
 `INSTALL FROM THE MEDIUM` in a search. A row is *open this*: the pack is installed if it is not,
 and the application opens. Read from the medium's own index rather than over a socket, because the
@@ -634,6 +641,14 @@ the desktop and `mc`'s `F2`, so the same file offers the same things wherever yo
 whose program is not on the machine is not offered, which is why the list is shorter than the table.
 On the empty space below the list the right button still means *up*, which is where a right click in
 a file list has gone since Norton Commander.
+
+**Places is a LIST on `Ctrl+P`, not a fourth column, and the width is the reason.** The dialog is
+sixty-four columns and already spends its right-hand one on the preview; a third column leaves a
+file's name about thirty cells, and a chooser that cannot show a name is not a chooser. The list
+opens over the file list as the outer of the dialog's two Esc rungs, with the line editor over it.
+It carries Home, the user directories that exist and `~/.config/kdos/places`, then the directories
+a shell has actually been in from `zoxide` — read when the list is asked for rather than on every
+frame, because that last part is a fork.
 
 The hint row does not name `Shift+F10`, and that is the width: this dialog's row is thirty-eight
 cells and a fourth hint would take the `Esc` one with it. The menu is the one verb here with a
@@ -856,6 +871,14 @@ circle; `mc` shows directories and this shows files.
 `kdos-notifyd` owns the bus name; `kdos-notify` is the centre. The daemon owns the list and the
 front end draws it — the same split the clipboard uses.
 
+**Sending one is `Notify` on the session bus, and this tree has three callers of it — one per kind
+of caller there is.** `kb_notify()` double-forks `gdbus` and is for a program with no bus
+connection of its own, which is `kdos notify`, `kdos-term` and the console's terminal. The panel
+sends on the connection its tray already holds, because opening a second one to say one sentence is
+a second thing to keep alive. The compositor spawns `gdbus` itself, because it links neither
+libkbase nor sd-bus. `kdos-notify` sends nothing at all: it is a viewer of what has already
+arrived.
+
 **A notification that expired is not a notification that was read.** Every toast joins the history
 on the way out, whatever took it out — expiry, a click, or the sending application closing it —
 because the ones nobody saw are exactly the ones the centre exists to answer for. That lands harder
@@ -871,7 +894,7 @@ A ring of recent entries, and a short connection per request on a socket:
 | `seen` | Clear the unseen count |
 | `open` | Activate an entry |
 | `clear` | Empty the history |
-| `dnd` | Toggle do not disturb |
+| `dnd [on\|off\|toggle]` | Set do not disturb, and answer with the state as it then reads |
 
 **Unseen is what the badge counts**, cleared by the centre being opened and by nothing else. A
 count that cleared itself on a timer is a count nobody trusts.
@@ -881,6 +904,13 @@ them to go would mean losing them; with the ring in place the notification is ke
 counts it, and the sending application cannot tell — the identifier is returned and the close
 signal is still emitted, so nothing hangs waiting. **An urgent notification is shown anyway**: a do
 not disturb that hid a battery-critical warning would be a switch nobody dares leave on.
+
+**It is one flag, and it is the `dnd` toggle file.** The daemon keeps no copy of its own: a second
+flag OR'd with the toggle is a state the centre's own button cannot clear, so Allow Toasts would
+leave the toasts silenced and say it had not. The `dnd` verb writes the file and replies with what
+the file then reads rather than with what it was asked for, so a state directory that cannot be
+written leaves the button drawn the way things actually are. `kdos toggle dnd`, a chord and a
+script all set the same switch, and it outlives the daemon.
 
 **Hovering a toast holds its countdown.** A toast that disappears while it is being read has to be
 read twice, and it cannot be. The remaining time is banked and restored on leave with a floor, so a
@@ -995,10 +1025,25 @@ Per-manager:
 
 - **`kdos-net`** talks to the network service over the system bus. **The list does not reorder
   under the pointer**: signal strength moves on its own, so it is sorted once per refresh and the
-  selection follows the network name rather than the row index. The passphrase typed here is
-  written into the profile as it is created; **every later question belongs to `kdos-netagent`**,
-  because the service raises a secret request against its registered agents rather than against
-  whichever program started the activation.
+  selection follows a **kind-qualified key** rather than the row index — an SSID for an access
+  point and an object path for a saved profile, because a VPN may be named the same as a network.
+  The passphrase typed here is written into the profile as it is created; **every later question
+  belongs to `kdos-netagent`**, because the service raises a secret request against its registered
+  agents rather than against whichever program started the activation.
+
+  **Saved VPN and WireGuard profiles are rows too**, at the left margin under the radios because
+  they belong to no radio. Enter is a toggle rather than a join: the service refuses to re-activate
+  something already active. A profile's TYPE is not a property of its connection object — only
+  Unsaved, Flags and Filename are — so it comes from one `GetSettings` per path, cached, and a row
+  appears the moment that answer lands. The window lists and toggles them; it does not create one.
+
+  **`h` shares the machine's network over its own radio**, where the radio reports the access-point
+  capability. That is `ipv4.method = shared`, which starts a DHCP and DNS server on the access
+  point's interface and installs a NAT table of its own — so `/etc/nftables.conf` has to leave
+  forwarding and those two ports open for the shared subnet, and it does. **A change made through
+  `kdos-firewall` while a hotspot is up takes its NAT down**: applying a rule change re-runs the
+  whole file, which begins by flushing the ruleset, and the service installs its table only at
+  activation. The hotspot keeps its clients and stops routing.
 
   ![kdos-net: the header band says what the subject is doing now, and the buttons are enabled from the selection](../../screenshots/net.png)
 
@@ -1016,7 +1061,11 @@ Per-manager:
   replying — because a handler that sat in its own loop would stop answering the service.
 - **`kdos-devices`** enumerates cameras by device call rather than through a library, finds who is
   holding one by walking the process table, and previews a grabbed frame through the shape-matching
-  character renderer. **Opening a camera to preview it is using it**, so the privacy lamp lights for
+  character renderer. **Its scanner section is `scanimage -L` and not `libsane`**: linking the
+  library would pull every backend's shared object and its configuration into the process to ask a
+  question `scanimage` already answers, and the scanning is `scanimage` too, so the link buys
+  nothing. The probe walks a USB bus and the network, so it runs once per refresh and never on a
+  keystroke. **Opening a camera to preview it is using it**, so the privacy lamp lights for
   this program too and the descriptor is closed with the frame. It also fronts removable media. Its
   microphone list is `kpr_sound_pcms()` filtered to the PCMs that carry a **capture stream** —
   `kdos-rec` reads the same function, because two surfaces must not give two answers to what a
@@ -1062,14 +1111,14 @@ Per-manager:
 | `kdos-clip` | Clipboard history. The daemon owns the list; this draws it |
 | `kdos-teams` | The window list, and what the panel's overflow cell opens — previously that cell stepped the row by one per click, so reaching the third hidden window took three clicks and three reflows |
 | `kdos-display` | Screens. It grew a button bar, because a pointer could select a screen and then not switch it off or apply anything. `m` and the Mode button open a **dropdown** of the modes the monitor published: a screen that cannot show the mode being tried is a black screen and a wait for the revert, so the list is read before it is chosen from, never stepped blindly through |
-| `kdos-keys` | The keybinding card, in six sections — launch, window, workspace, tools, media, system. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that, and it looks for the **row shape** rather than the action's name anywhere in the source: `net`, `power` and `settings` are ordinary words that appear there as other strings, and a bare name grep passed for eleven chords the card was in fact dropping. **`--print` writes the same rows to standard output**, two columns at 132 characters, form-fed between pages — for a printer and for a wall. It runs before any display server is opened, so it works over ssh, from a script and on a machine whose session is not up, which is most of the times somebody wants the card on paper. The same rows as the surface draws, because a printed sheet that disagreed with the screen is what a second hand-written table becomes |
+| `kdos-keys` | The keybinding card, in six sections — launch, window, workspace, tools, media, system. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that, and it looks for the **row shape** rather than the action's name anywhere in the source: `net`, `power` and `settings` are ordinary words that appear there as other strings, and a bare name grep passed for eleven chords the card was in fact dropping. **`--print` writes the same rows to standard output**, two columns at 132 characters, form-fed between pages — for a printer and for a wall. It runs before any display server is opened, so it works over ssh, from a script and on a machine whose session is not up, which is most of the times somebody wants the card on paper. The same rows as the surface draws, because a printed sheet that disagreed with the screen is what a second hand-written table becomes. **`--first-run` is the login spawn's flag** and puts a four-row tour above the list — open a terminal, reach the menu, switch workspaces, reach another terminal — with each row's chord looked up in the same parse the list came from, so a rebound terminal moves the tour in the same edit and a step nothing binds is absent from the tour rather than wrong in it. The hint row names the chord that brings the card back, which is the one frame whose reader has not already used it. The tour is dropped below twelve rows, where what it pushes off the bottom is the card itself. **This program decides whether the welcome is due**, from `~/.config/kdos/first-run`, so a session that asks at every login still shows it once |
 | `kdos-doc` | The documentation viewer |
 | `kdos-openwith` | Choose a handler, and optionally always use it |
 | `kdos-run` | The run box. It takes a click to place its caret, and grew a button bar because its one feature beyond a prompt was a **modifier** that nothing announced |
 | `kdos-prompt` | Yes or no, answering by **exit status** — which is what the compositor reads |
 | `kdos-status` | The overflow popup; see below |
 | `kdos-slit` | The dockapp column. Off by default: a slit nobody configured is a column of marks |
-| `kdos-saver` | Attract mode, between idle and lock |
+| `kdos-saver` | Attract mode, between idle and lock. `--mode rain` is the default and `--mode art` moves a picture; `off` is an honest off, drawing nothing and connecting to nothing, so an idle policy can start it unconditionally. **Every effect that is not weather is a transform over one loaded grid**, and the grid is a file: `~/.config/kdos/screensaver.txt` over `/usr/share/kdos/screensaver.txt`, so art belongs to whoever is looking at it rather than to a table in the source. Not `logo.txt` — that is the login banner's, generated from the mascot, and a person replacing their screensaver must not be changing what the machine boots with. **The rain needs no file**, which is what a machine with no art at all falls back to. It never watches input and claims no pointer region: a screensaver that decided for itself when to go away could decide wrong, and one that took the keyboard would be a lock screen with no password |
 | `kdos-about` | What this machine is: the KDOS logo beside the version, kernel, libc, userland, session, terminal, grid, CPU, memory, uptime and package count. **Every fact is read, never forked** — `uname`, `/proc`, `/etc/os-release` and the package database are files this process can open, and a screenfetch spawned to render them would draw a second program's colours and ANSI onto a surface that paints in slots, and would make this the one surface with no offscreen dump |
 | `kdos-calc` | The calculator, `Super+Ctrl+q`. **It does not do the arithmetic** — `qalc` does, and the tree already carries `libqalculate`, which parses what a person actually typed: units, hexadecimal, `to`, and precedence that matches a pocket calculator rather than a programming language. **Forked, not linked**: `libqalculate` is C++ and this binary is C and carries thirty-one other surfaces, so linking it would put libstdc++ on the panel package on every image for one accessory. **Once per pause, not once per keystroke** — the evaluation happens when the poll loop goes idle with the input changed, which is a debounce that costs no timer. `Enter` copies the answer, because the answer to "what is three inches in millimetres" is nearly always going somewhere else |
 | `kdos-note` | The scratch pad, `Super+Ctrl+n`: one buffer per user at `~/.local/share/kdos/scratch.txt`, saved on close and every thirty seconds. **It is not an editor and must not grow into one** — `micro` is the editor and `Ctrl+O` opens this same file in it, and every feature past "type a line and find it later" already exists there and is better done there |

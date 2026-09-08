@@ -17,6 +17,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md#the-login-banner) |
 | `kdos-bb` | The ASCII-art demo | [kdos-bb](../04-programs/kdos-bb.md) |
 | `kdos-bootctl` | A/B slot selection and confirmation | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
+| `kdos-backup` | What is in the restic repository, and one key to add to it | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-box` | Manage boxes | [kdos-appbox](../04-programs/kdos-appbox.md) |
 | `kdos-boxinit` | Process 1 inside a box | [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box) |
 | `kdos-boxsock` | One tagged compositor socket per box | [The daemons](../04-programs/daemons.md#kdos-boxsock) |
@@ -108,6 +109,7 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos help` | Every command, grouped by which question it answers |
 | `kdos theme` | Switch accent, apply a style, audit the palette |
 | `kdos settings [page]` | The control centre, or one of its nine pages |
+| `kdos menu summon\|toggle [route]` | Open the menu on a named place; a route is what a script holds instead of a chord |
 | `kdos status` | What this machine is and what it is running |
 | `kdos doctor` | Check the things that actually break here |
 | `kdos app` | Applications: list, search, show, install, launch, remove, rollback, update, sources |

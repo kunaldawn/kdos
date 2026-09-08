@@ -374,6 +374,7 @@ int kkms_init(const char *seat_name, const char *font)
 		fail_with("kcell_font_load", font ? font : "the default console font");
 		goto fail;
 	}
+	snprintf(K.font, sizeof(K.font), "%s", font ? font : "");
 	if (make_fb() != 0)
 		goto fail;
 
@@ -412,6 +413,42 @@ int kkms_init(const char *seat_name, const char *font)
 fail:
 	kkms_shutdown();
 	return -1;
+}
+
+/*
+ * A DIFFERENT FONT ON THE SAME SCREEN.
+ *
+ * The grid is derived and not stored — kkms_size() divides the mode by the
+ * cell — so a font with a different cell is a different number of columns and
+ * rows, and everything that reads ktui_w/ktui_h has to be told. This reloads
+ * and reports; the CALLER calls ktui_draw_resize() and announces the grid,
+ * because only the caller knows who is listening.
+ *
+ * THE OLD FONT COMES BACK IF THE NEW ONE WILL NOT LOAD. A screen is the one
+ * thing a person cannot work around from somewhere else.
+ */
+int kkms_set_font(const char *font)
+{
+	char prev[sizeof(K.font)];
+
+	if (!K.image)
+		return -1;
+	snprintf(prev, sizeof(prev), "%s", K.font);
+
+	kcell_font_free();
+	if (kcell_font_load(font && *font ? font : NULL) != 0) {
+		if (kcell_font_load(prev[0] ? prev : NULL) != 0)
+			return -1;	/* nothing draws now; the caller exits */
+		return -1;
+	}
+	snprintf(K.font, sizeof(K.font), "%s", font ? font : "");
+	K.force_full = 1;
+	return 0;
+}
+
+const char *kkms_font(void)
+{
+	return K.font;
 }
 
 void kkms_shutdown(void)

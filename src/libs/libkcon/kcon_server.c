@@ -312,6 +312,25 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		 * frame, and would then report that the session never said how
 		 * big it is.
 		 */
+		/*
+		 * THE CELL, OPTIONALLY AND ONLY AFTER THE GRID. A font step
+		 * changes how big a cell is as well as how many fit, and the
+		 * cell is what an embedded guest is sized in — so it rides the
+		 * message that announces the new grid rather than waiting for
+		 * a second hello. A view that sends only the grid keeps the
+		 * cell it declared when it arrived.
+		 */
+		if (kcon_rd_left(&r) >= 4) {
+			int cw = (int)kcon_get_u16(&r);
+			int chh = (int)kcon_get_u16(&r);
+
+			if (!r.err && cw >= 0 && cw <= 256 && chh >= 0 &&
+			    chh <= 256) {
+				f->cell_w = cw;
+				f->cell_h = chh;
+			}
+		}
+
 		f->view_cols = cols;
 		f->view_rows = rows;
 		f->cols = cols;
@@ -962,6 +981,18 @@ void kcon_view_blank(KconSurface *v, int on)
 
 	kcon_put_u16(&b, (uint16_t)(on ? 1 : 0));
 	kcon_send(v->conn, KCON_OP_BLANK, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_view_font(KconSurface *v, int step)
+{
+	if (!v || v->kind != KCON_KIND_VIEW || !(v->caps & KCON_VIEW_FONT))
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)(int16_t)(step > 0 ? 1 : step < 0 ? -1 : 0));
+	kcon_send(v->conn, KCON_OP_VIEW_FONT, &b);
 	kcon_buf_free(&b);
 }
 

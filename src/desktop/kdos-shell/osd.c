@@ -23,9 +23,19 @@
  * TTY (see `bb`, and the `audio` group). Going through pipewire would make the
  * media keys a desktop-only feature for no benefit.
  *
- * Brightness is /sys/class/backlight. Writing it needs permission the user may
- * not have, and that is reported rather than silently swallowed — "my
- * brightness keys do nothing" is otherwise unattributable.
+ * BRIGHTNESS IS /sys/class/backlight, WHICH A DESKTOP DOES NOT HAVE. That tree
+ * is the panel a display controller drives directly — a laptop, an all-in-one,
+ * a tablet — and an external monitor on HDMI or DisplayPort appears in it not
+ * at all. Its brightness is a DDC/CI write down the same wire that carries the
+ * EDID, which is `ddcutil` and a /dev/i2c node, and that is a bounded I2C round
+ * trip rather than a write to a file. This program does not make it: the OSD is
+ * on a media key and must be on screen before the key repeats.
+ *
+ * WRITING THE PANEL'S BRIGHTNESS NEEDS A GROUP THE USER MAY NOT BE IN, and
+ * every failure here names which of the two it was. "My brightness keys do
+ * nothing" is otherwise unattributable, and the two causes have different
+ * fixes: no panel at all is a desktop, and a panel that refuses the write is
+ * 70-kdos-backlight.rules not having run.
  */
 
 #include <alsa/asoundlib.h>
@@ -394,7 +404,11 @@ static int backlight_path(char *buf, size_t len, const char *leaf)
 			continue;
 		snprintf(buf, len, "/sys/class/backlight/%s/%s", e->d_name, leaf);
 		found = 1;
-		break;		/* the first one; a laptop has exactly one */
+		/* The FIRST one. A machine with a panel has exactly one; a
+		 * machine with none has an empty directory and this returns
+		 * -1, which is a desktop rather than a fault. An external
+		 * monitor is never in here — see the header. */
+		break;
 	}
 	closedir(d);
 	return found ? 0 : -1;
@@ -938,15 +952,34 @@ int osd_main(int argc, char **argv)
 	} else if (!strcmp(what, "brightness")) {
 		pct = backlight_get();
 		if (pct < 0) {
-			fprintf(stderr, "kdos-osd: no backlight device\n");
+			/*
+			 * NAME THE CAUSE, NOT THE SYMPTOM. An empty
+			 * /sys/class/backlight is what a desktop looks like,
+			 * and the answer there is a DDC/CI write to the
+			 * monitor rather than a permission to chase.
+			 */
+			fprintf(stderr,
+				"kdos-osd: no panel in /sys/class/backlight\n"
+				"          an external monitor is `ddcutil "
+				"setvcp 10 <0-100>`\n");
 			return 1;
 		}
 		if (arg && (arg[0] == '+' || arg[0] == '-')) {
 			if (backlight_set(pct + atoi(arg)) != 0) {
+				/*
+				 * The panel is there and the write was
+				 * refused, which is one thing: the group.
+				 * 70-kdos-backlight.rules hands the attribute
+				 * to `video` at boot, so either the rule did
+				 * not run or this user is not in the group —
+				 * and `id` answers the second in one command.
+				 */
 				fprintf(stderr,
-					"kdos-osd: cannot write brightness — "
-					"the user needs write access to "
-					"/sys/class/backlight/*/brightness\n");
+					"kdos-osd: brightness refused the "
+					"write\n"
+					"          it belongs to group video; "
+					"check `id` and "
+					"70-kdos-backlight.rules\n");
 				return 1;
 			}
 			pct = backlight_get();

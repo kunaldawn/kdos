@@ -1084,7 +1084,7 @@ int pick_main(int argc, char **argv)
 	const char *font = NULL;
 	const char *title = "Open File";
 	const char *start = NULL;
-	int dump = 0;
+	int dump = 0, dump_places = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--font") && i + 1 < argc)
@@ -1095,6 +1095,11 @@ int pick_main(int argc, char **argv)
 		 * compositor to hand. */
 		else if (!strcmp(argv[i], "--dump"))
 			dump = 1;
+		/* The places rung, for a dump. The layout that matters about it
+		 * is whether a name fits, and that cannot be seen in the frame
+		 * underneath it. */
+		else if (!strcmp(argv[i], "--places"))
+			dump_places = 1;
 		else if (!strcmp(argv[i], "--title") && i + 1 < argc)
 			title = argv[++i];
 		else if (!strcmp(argv[i], "--save"))
@@ -1187,6 +1192,21 @@ int pick_main(int argc, char **argv)
 
 	ktui_keys_layer(&keys, "Back", places_up, places_close, NULL);
 	ktui_keys_layer(&keys, "Cancel", pk_edit_up, pk_edit_close, NULL);
+
+	if (dump && dump_places) {
+		/*
+		 * THE FIXED PLACES ONLY, AND NO FRECENCY. The rest of the list
+		 * is `zoxide query -l` — a fork whose answer is the host's
+		 * shell history — so a dump that included it would draw a
+		 * different frame on every machine. What is committed is the
+		 * part that comes from this user's own directories and their
+		 * own places file.
+		 */
+		nplaces = kxdg_places(places, KXDG_PLACES_MAX);
+		nfixed = nplaces;
+		place_sel = 0;
+		places_open = nplaces > 0;
+	}
 
 	if (dump) {
 		sh_theme_from_cache();

@@ -9,7 +9,8 @@ The desktop
   [[doc:display]]      screens, modes, order, and the fifteen seconds
   [[doc:net]]          wireless and wired, through NetworkManager
   [[doc:bt]]           Bluetooth, through bluez
-  [[doc:devices]]      cameras, microphones, removable media
+  [[doc:devices]]      cameras, microphones, scanners, removable media
+  [[doc:backup]]       what is in the restic repository, and adding to it
   [[doc:rec]]          recording, the level meter, and transcription
 
 The keys

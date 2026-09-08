@@ -1,0 +1,30 @@
+# KDOS — the DDC/CI lines of a display controller, for ddcutil.
+#
+# THE SCOPING IS THE WHOLE RULE. /dev/i2c-* covers the graphics cards' DDC
+# lines AND the chipset SMBus, and every DIMM's SPD EEPROM hangs off the SMBus:
+# a stray write there is a machine that will not boot, not a lost setting. So
+# the match walks up to the PCI function that owns the adapter and requires a
+# display controller. Do not widen it to `KERNEL=="i2c-[0-9]*"` alone.
+#
+# 0x03* AND NOT 0x030000. PCI base class 0x03 is display controllers and
+# nothing else — 0x0300 VGA-compatible, 0x0301 XGA, 0x0302 3D, 0x0380 other —
+# and a discrete GPU with no legacy VGA decode reports 0x030200. Matching the
+# full 0x030000 leaves those machines with no rule and ddcutil root-only, with
+# no error to read. SMBus is base class 0x0c, subclass 0x05, so 0x03* cannot
+# reach it.
+#
+# ONE ATTRS RUN, ONE DEVICE. Every ATTRS/KERNELS/DRIVERS/SUBSYSTEMS key in a
+# contiguous run must be satisfied by the SAME ancestor: eudev tests the whole
+# run against one device and restarts it a level up on any failure. So
+# `ATTRS{name}=="*DDC*", ATTRS{class}=="0x03*"` matches nothing anywhere —
+# `name` is on the i2c adapter and `class` is on the PCI function.
+#
+# Here GROUP= and MODE= DO work, unlike 70-kdos-backlight.rules: /dev/i2c-N is
+# a real character device with a devnum.
+#
+# ddcutil ships its own 60-ddcutil-i2c.rules whose first rule is this one
+# UNSCOPED, at GROUP="i2c"; its recipe deletes that file. Its second rule is
+# `TAG+="uaccess"`, which grants nothing here — eudev has no uaccess builtin
+# and there is no logind to consume the tag.
+
+SUBSYSTEM=="i2c-dev", KERNEL=="i2c-[0-9]*", ATTRS{class}=="0x03*", GROUP="video", MODE="0660"

@@ -84,6 +84,14 @@
  * for a real passphrase and short enough that a client cannot make this daemon
  * hold anything. */
 #define KM_SECRET_MAX 512
+/*
+ * The tokeniser's array. `format` is the longest verb at four tokens, and this
+ * leaves headroom on purpose: a request of five still reaches the dispatch and
+ * is refused there as an unknown command — which is the answer `mount 0 rm -rf
+ * /` has always got and the one the suite asserts. A request that FILLS the
+ * array is refused by count instead. Neither path truncates.
+ */
+#define KM_TOK 6
 #define KM_DEVS 32
 /* One subscriber per session, and a machine with four logged-in desktops is
  * not a thing this daemon has to be good at. The cap exists so a client that
@@ -1473,11 +1481,27 @@ static int serve(void)
 		/* At most four tokens, and the count is fixed per verb below.
 		 * A trailing token nobody named is a request this daemon does
 		 * not understand, not one it silently ignores. */
-		char *tok[5] = {0};
+		/*
+		 * A LINE THAT FILLS THE ARRAY IS REFUSED RATHER THAN
+		 * TRUNCATED.
+		 *
+		 * Stopping the tokeniser at the array's size and dispatching
+		 * anyway is exactly the defect the allowlist was built to
+		 * kill — `mount 0 rm -rf /` parsed as `mount 0`, because the
+		 * tail was thrown away rather than objected to. It was dormant
+		 * only because no verb reached the array's size, and the next
+		 * verb added is what would have woken it.
+		 */
+		char *tok[KM_TOK] = {0};
 		int ntok = 0;
 		for (char *sp = NULL, *t = strtok_r(line, " \t", &sp);
-		     t && ntok < 5; t = strtok_r(NULL, " \t", &sp))
+		     t && ntok < KM_TOK; t = strtok_r(NULL, " \t", &sp))
 			tok[ntok++] = t;
+		if (ntok >= KM_TOK) {
+			(void)!write(c, "err too many arguments\n", 23);
+			close(c);
+			continue;
+		}
 
 		/* The list is re-read on EVERY request, not cached: a stick
 		 * pulled out between two requests must not still be offered,

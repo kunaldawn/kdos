@@ -1,0 +1,22 @@
+# The nightly backup, and it is COMMENTED OUT on a shipped image.
+#
+# A backup nobody asked for is a surprise, and the first run over a home
+# directory can be hours. Uncomment this line once ~/.config/kdos/backup.conf
+# names a repository and ~/.config/kdos/backup.pass holds its password at mode
+# 0600 — `kdos-backup --once` refuses to run without both, so an enabled timer
+# with no configuration writes a message and stops rather than half-running.
+#
+# NOT AT MIDNIGHT, and not at 04:17 either: 04:17 is the update check's slot
+# and two jobs at the same second on a laptop that has just woken is two jobs
+# competing for the same disk.
+#
+# -s 8h is snooze's missed-run rule, written down rather than reimplemented: a
+# machine asleep at the slot runs the job ONCE when it wakes, if it wakes
+# within eight hours. Not once per missed occurrence.
+#
+# THIS IS THE USER'S TABLE, NOT THE SYSTEM'S. It is started from the session
+# and reaped with it — a job writing into $HOME has no business outliving the
+# login that started it, and a supervised one would go on firing on a machine
+# the person walked away from.
+
+# backup  -H 3 -M 40 -s 8h  --  kdos-backup --once

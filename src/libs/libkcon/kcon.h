@@ -46,7 +46,7 @@
  * would not fail, which is the dangerous outcome: it would act on the wrong
  * verb.
  */
-#define KCON_VERSION 7
+#define KCON_VERSION 8
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -89,7 +89,13 @@ enum {
 	 * desktop is the opposite of what they clicked.
 	 */
 	KCON_OP_WIN_STATE,
-	KCON_OP_VIEW_SIZE,	/* a view: this is the grid I can show    */
+	/*
+	 * A VIEW: THIS IS THE GRID I CAN SHOW, and optionally the pixel size
+	 * of one cell after it. Sent when it attaches and again whenever
+	 * either changes — a font step is a resize, because that is what
+	 * dividing the same screen by a different cell is.
+	 */
+	KCON_OP_VIEW_SIZE,
 
 	/*
 	 * THERE IS NOTHING TO SHOW RIGHT NOW. An overlay — a candidate window,
@@ -256,6 +262,20 @@ enum {
 	 */
 	KCON_OP_PASTE,
 
+	/*
+	 * MAKE YOUR FONT BIGGER, SMALLER, OR WHAT IT WAS. One signed step,
+	 * and never a font name: the font is the VIEW'S — it was given one on
+	 * its command line or by its environment, and a session that named
+	 * fontconfig syntax would be a session deciding what a display it has
+	 * never seen can render.
+	 *
+	 * Sent only to a view that said KCON_VIEW_FONT. The grid comes back
+	 * as an ordinary KCON_OP_VIEW_SIZE, because a font that changes the
+	 * cell changes how many cells fit and that is the same event as a
+	 * screen being resized.
+	 */
+	KCON_OP_VIEW_FONT,
+
 	KCON_OP_BYE,		/* with a reason, so a log says why        */
 
 	KCON_OP_N
@@ -287,6 +307,15 @@ enum {
  * a link that does nothing else.
  */
 #define KCON_VIEW_PIXELS 0x1u
+
+/*
+ * KCON_VIEW_FONT says the view rasterises its own glyphs and can be asked to
+ * change their size. A view inside somebody's terminal cannot: that terminal
+ * owns the font, the session is a guest in it, and the only honest answer to
+ * the chord is to say so — which the session can only do because this flag
+ * arrives before the chord is ever pressed.
+ */
+#define KCON_VIEW_FONT 0x2u
 
 /*
  * libkcon as a libkdisp implementation. A consumer hands the ADDRESS of this
@@ -587,6 +616,13 @@ void kcon_view_cursor(KconSurface *v, int x, int y);
 
 /* Ask a view to power its screen down (1) or back up (0). */
 void kcon_view_blank(KconSurface *v, int on);
+
+/*
+ * Ask a view to step its font: +1 bigger, -1 smaller, 0 back to the one it
+ * started with. Silently nothing on a view that did not claim KCON_VIEW_FONT,
+ * so a caller that checked the flag and one that did not behave alike.
+ */
+void kcon_view_font(KconSurface *v, int step);
 
 /*
  * Ring every attached view. A bell is not addressed to one display: the person

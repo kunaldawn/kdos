@@ -1,0 +1,48 @@
+KDOS BACKUP
+
+What is in the restic repository, newest first, and one key to add to it.
+
+  b         backs up now. It does not wait: a first run over a home directory
+            is minutes to hours, and the snapshot appears in the list when it
+            finishes.
+  r         re-reads the repository.
+
+This window does not restore. `restic restore <snapshot> --target <dir>` is the
+command, and it is deliberately a command: restoring is what you do once, under
+pressure, and it wants the options in front of you rather than a button whose
+defaults you cannot see. `restic help restore` lists them.
+
+Configuration
+
+  ~/.config/kdos/backup.conf, one `key = value` per line:
+
+    repo    = /var/backup/kdos       where the repository is
+    include = /home/kdos             what goes in it; may repeat
+    exclude = /home/kdos/.cache      what does not; may repeat
+
+  The repository is made once with `restic -r <repo> init`, which asks for the
+  password twice and writes nothing down.
+
+The password
+
+  ~/.config/kdos/backup.pass, mode 0600, holding the repository password and
+  nothing else. `password-file =` in backup.conf points somewhere else if you
+  keep it somewhere else.
+
+  This window refuses to run when that file is group or world readable, before
+  it uses it. A password file at 0644 hands the key to every backup on this
+  machine to every account on it, and 0644 is what a text editor leaves.
+
+  It is a file and not a keyring because there is no keyring here: libsecret is
+  a library with no daemon on this system, and `pass` wants a GnuPG key the
+  installer does not make.
+
+Running it every night
+
+  /etc/kdos/timers.d/ and ~/.config/kdos/timers.d/ hold one line per job:
+
+    backup 03:17 -- kdos-backup --once
+
+  See [[doc:index]] for the timer format.
+
+  [[doc:index]]

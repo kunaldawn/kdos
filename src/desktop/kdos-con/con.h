@@ -89,6 +89,21 @@ enum {
 	CON_ACT_CAPTURE,	/* mark, copy, and file the picture        */
 
 	/*
+	 * THE SCREEN'S FONT, ONE STEP AT A TIME.
+	 *
+	 * The session decides and the display acts, the same split every other
+	 * device verb here keeps: the font belongs to the view, which is the
+	 * half holding a rasteriser, and the chord belongs to the session,
+	 * which is the half holding a keyboard table. A view inside somebody
+	 * else's terminal says so in its hello and is told nothing — the
+	 * session answers the person instead, because that terminal owns the
+	 * font and no message from here can change it.
+	 */
+	CON_ACT_FONT_UP,
+	CON_ACT_FONT_DOWN,
+	CON_ACT_FONT_RESET,
+
+	/*
 	 * NOT AN ACTION — A PREFIX. The next key is looked up as though Super
 	 * were held, which is the only way the chord table can be reached from
 	 * a view whose terminal never reports Super. Pressing it twice sends
@@ -145,6 +160,18 @@ int con_rearranging(void);
 int con_marking(void);
 /* True while a paste that would execute is waiting to be meant twice. */
 int con_paste_armed(void);
+
+/*
+ * A LINE THE BAR SHOWS FOR A MOMENT, and the text it is showing or NULL.
+ *
+ * The console has one row that is always on screen and nothing else that can
+ * answer a person immediately — a notification is a window, and a chord that
+ * could not do what was asked has to say so before any window exists. It
+ * expires on its own; a message that stayed would be a bar that had stopped
+ * being a taskbar.
+ */
+void con_notice(const char *text);
+const char *con_notice_text(void);
 /* Draw the mark over the composed grid. Called last, after every window. */
 void con_mark_draw(void);
 void con_spawn_at(const char *cmd, int x);
