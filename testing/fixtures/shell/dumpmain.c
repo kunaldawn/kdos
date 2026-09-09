@@ -330,7 +330,6 @@ FRONT_END(peek_main);
 FRONT_END(find_main);
 FRONT_END(pix_main);
 FRONT_END(menu_main);
-FRONT_END(launcher_main);
 FRONT_END(pick_main);
 FRONT_END(keys_main);
 FRONT_END(teams_main);
@@ -359,6 +358,7 @@ FRONT_END(update_main);
 FRONT_END(firewall_main);
 FRONT_END(backup_main);
 FRONT_END(theme_main);
+FRONT_END(palette_main);
 
 static const struct {
 	const char *name;
@@ -370,7 +370,7 @@ static const struct {
 	{ "find",	find_main },
 	{ "pix",	pix_main },
 	{ "menu",	menu_main },
-	{ "launcher",	launcher_main },
+	{ "launcher",	palette_main },
 	{ "pick",	pick_main },
 	{ "keys",	keys_main },
 	{ "teams",	teams_main },
@@ -397,6 +397,7 @@ static const struct {
 	{ "firewall",	firewall_main },
 	{ "backup",	backup_main },
 	{ "theme",	theme_main },
+	{ "palette",	palette_main },
 	{ "shell",	panel_main },
 };
 

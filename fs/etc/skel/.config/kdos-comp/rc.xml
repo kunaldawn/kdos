@@ -126,9 +126,13 @@
          otherwise, and the desktop is not always reachable — a maximised
          window covers all of it. atCursor="no" puts it where the pointer is
          NOT, which is the right answer for a menu opened by a key. -->
-    <keybind key="W-space">
-      <action name="ShowMenu" menu="root-menu" atCursor="no"/>
-    </keybind>
+<!-- One search over everything the desktop can reach, on the chord a
+         keyboard reaches for. This was labwc's own root menu, which is what
+         the RIGHT BUTTON on the desktop opens and what the Start button
+         opens — a pointer wants rows and a keyboard wants a search, so the
+         two are not the same thing on the same key. The console binds the
+         same chord, so there is one key card rather than two. -->
+    <keybind key="W-space"><action name="Execute" command="kdos-palette"/></keybind>
 
     <!-- The notification CENTRE. A toast that expired used to be gone; the
          daemon keeps a history now and this is the way back to it, which
@@ -139,7 +143,71 @@
 
     <!-- the three shell front ends that had no way in until now -->
     <keybind key="A-F2"><action name="Execute" command="kdos-run"/></keybind>
-    <keybind key="W-e"><action name="Execute" command="foot -e mc"/></keybind>
+
+    <!-- ONE KEY PER PROGRAM: raise the window running it, or start it.
+         ForEach runs its <then> on every view matching the <query> and its
+         <none> when nothing matched, so the key does both halves — it is
+         fluxbox's ClientPattern language and labwc already has it compiled in.
+         The <query identifier> is the app_id, which for a terminal program is
+         what `foot --app-id` was given: the program's own name, not `foot`.
+         The console session binds the same seven chords to the same seven
+         roles; con.conf names the programs there and this file names them
+         here, and a person who learns Super+e on one desktop must not have to
+         unlearn it on the other.
+
+         A ROW WHOSE PROGRAM IS NOT INSTALLED IS DROPPED FROM THE KEY CARD,
+         which reads the identifier out of the query. The key stays bound and
+         opens nothing, which is what a key naming a program you removed
+         should do. -->
+    <keybind key="W-e">
+      <action name="ForEach">
+        <query identifier="mc"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e mc"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-e">
+      <action name="ForEach">
+        <query identifier="aerc"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e aerc"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-b">
+      <action name="ForEach">
+        <query identifier="lynx"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e lynx"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-u">
+      <action name="ForEach">
+        <query identifier="rmpc"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e rmpc"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-c">
+      <action name="ForEach">
+        <query identifier="ikhal"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e ikhal"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-g">
+      <action name="ForEach">
+        <query identifier="iamb"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e iamb"/></none>
+      </action>
+    </keybind>
+    <keybind key="W-S-w">
+      <action name="ForEach">
+        <query identifier="micro"/>
+        <then><action name="Focus"/><action name="Raise"/></then>
+        <none><action name="Execute" command="foot -e micro"/></none>
+      </action>
+    </keybind>
     <!-- The screens. labwc takes its output configuration over
          wlr-output-management-v1 and KDOS had no client for it, so a mode, a
          scale or a second monitor's place could not be set at all. Both keys,
@@ -288,20 +356,6 @@
          the compositor the wallpaper is a PNG and this changes nothing that is
          on the screen. -->
     <keybind key="W-C-space"><action name="Execute" command="kdos background next"/></keybind>
-
-    <!-- Run-or-raise, for anyone who wants one key per app. ForEach runs its
-         <then> on every view matching the <query> (identifier is the app_id,
-         globs allowed) and <none> when nothing matched — fluxbox's
-         ClientPattern language, already compiled in. One key, one terminal:
-
-    <keybind key="W-grave">
-      <action name="ForEach">
-        <query identifier="foot"/>
-        <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot"/></none>
-      </action>
-    </keybind>
-    -->
 
 
     <!-- media keys: keysyms that exist only on those keys, safe unmodified.

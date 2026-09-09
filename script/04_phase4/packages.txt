@@ -1267,6 +1267,36 @@ printrun
 # On a keyboard-driven desktop typing speed is throughput. ttyper rather than
 # gtypist, whose last release was 2011.
 ttyper
+
+# ── Something to play ────────────────────────────────────────────────────
+#
+# A machine with nothing to play on it is a machine nobody stays at, and text
+# games are this desktop's own medium: they are cells already, so they cost a
+# terminal window and no toolkit at all. Four ports against one boxed game.
+#
+# THEY LAND AFTER coreutils ON PURPOSE. Every one of these installs with GNU
+# `install`, and toybox as this image configures it has no install applet — a
+# game listed before coreutils dies on "install: not found" at the very last
+# step of its build, hours in.
+
+# The dungeon of Doom, 3.6.7. No setgid playground and no shared score file:
+# the wrapper points $NETHACKDIR at the player's own data directory, which is
+# the only way a compile-time HACKDIR can become per-player.
+nethack
+
+# Interactive fiction, with one MIT-licensed story shipped beside it so the
+# program opens something. It also installs the z-machine MIME type, which
+# shared-mime-info does not define — without it a story file resolves to
+# nothing and the entry's MimeType line is decoration.
+frotz
+
+# Three of the BSD games — Colossal Cave, tetris and worm. Not hangman: it
+# calls err(1) when it cannot open /usr/share/dict/words, and no wordlist
+# exists anywhere on this image.
+bsd-games
+
+# The arcade end of it. A 2006 program that needs -std=gnu17 and no patch.
+moon-buggy
 # The one manufacturer-independent engine diagnostic there is, over a serial
 # adapter the dialout group and the CH341/CP210x udev rules already reach.
 python3-obd

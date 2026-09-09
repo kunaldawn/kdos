@@ -138,6 +138,11 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-ascii"
 # What this machine is, read out of /proc and /etc rather than fetched by a
 # second program: an About window that shelled out to a screenfetch would
 # draw somebody else's colours on a surface that paints in slots.
+# One search over everything the desktop can reach: windows, applications,
+# routes, settings pages, files and chords, ranked by the one matcher in
+# libkbase. `--apps` is the launcher, which is why that is a flag and not a
+# second program with a second idea of ranking.
+ln -s kdos-shell "$PKG/usr/bin/kdos-palette"
 ln -s kdos-shell "$PKG/usr/bin/kdos-about"
 # The accent picker. Each row is drawn in the scheme it names, which is the one
 # place on this desktop where a cell may carry a literal colour: a swatch taken

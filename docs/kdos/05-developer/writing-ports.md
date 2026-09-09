@@ -224,6 +224,16 @@ Four rules, each with a consequence:
 - **`MimeType=` only where nothing else claims the type.** Two entries claiming one type is how a
   machine opens folders in whichever of them sorted first, which is not a decision anybody made.
   `mimeapps.list` is where a default is chosen.
+- **And only where the type EXISTS.** `MimeType=` names a type in the shared MIME database, and a
+  name with nothing behind it resolves to nothing and reports that nowhere: the opener chain keys
+  off `/usr/share/mime/globs`, which is generated from `/usr/share/mime/packages`. A port
+  introducing a type installs its own XML there **and** carries a `postinstall.sh` running
+  `update-mime-database /usr/share/mime` — the database is compiled on the target, so `build.sh`
+  cannot do it. `frotz` is the worked example: `shared-mime-info` 1.10 defines no z-machine type,
+  so the port defines it.
+- **`selftest.sh` reads these entries out of the heredoc**, so a missing `Terminal=true`, a
+  `Categories=` with no `Game` token, or an `Exec=` naming a path rather than a command fails at
+  the recipe rather than after a packaging run.
 - **`Keywords=` is what the menu searches.** A row nobody can find by the word they know it by is
   a row that is not there.
 

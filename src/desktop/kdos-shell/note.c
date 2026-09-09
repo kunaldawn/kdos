@@ -233,7 +233,10 @@ int note_main(int argc, char **argv)
 					 * sh_term_argv() is the one place that
 					 * decides which one and what identity it
 					 * wears. */
-					n = sh_term_argv(av, 0, 8, "micro", id,
+					n = sh_term_argv(av, 0,
+							 (int)(sizeof(av) /
+							       sizeof(*av)),
+							 "micro", id,
 							 sizeof(id));
 					av[n++] = "micro";
 					av[n++] = path;

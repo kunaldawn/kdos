@@ -53,6 +53,7 @@ half of the same mistake.
 | `kdos-slit` | The dockapp column | [The small surfaces](#the-small-surfaces) |
 | `kdos-saver` | Attract mode between idle and lock | [The small surfaces](#the-small-surfaces) |
 | `kdos-about` | What this machine is | [The small surfaces](#the-small-surfaces) |
+| `kdos-palette` | One search over everything the desktop can reach | [kdos-palette](#kdos-palette) |
 | `kdos-theme` | The accent, with a live preview | [The small surfaces](#the-small-surfaces) |
 | `kdos-calc` | The calculator | [The small surfaces](#the-small-surfaces) |
 | `kdos-note` | The scratch pad | [The small surfaces](#the-small-surfaces) |
@@ -506,6 +507,18 @@ which needed a **usage count**, kept in the state directory and written atomical
 **All Programs opens the category list in place.** A cascade needs a surface per level and buys
 nothing on a grid.
 
+**Three columns from a hundred columns wide, two below it** — favourites and applications, then
+places and files, then the system group. Under a hundred the system group folds behind one
+`Settings ▸` row and becomes a page of its own with a `Back` at the top: fourteen system rows
+scrolling inside a sixteen-row body is a list whose end nobody finds. **The menu asks for the wide
+size and lays out from the width it was given.** A surface size is a request — the console session
+clamps it to the work area — so asking for the narrow size and branching on the request would be a
+three-column menu that exists only in a dump. **The fold moves the right column and nothing else**;
+the two application submenus rebuild the left one, and the search walks the whole array whether a
+row is folded away or not, so typing `bluetooth` finds it from either page. **Which system rows
+stay outside the fold is `@toplevel` in `menu.conf`**, and nowhere in `start.c`: promoting
+Bluetooth is a line in a file.
+
 **The way back is a row**, because Escape and the right button are not discoverable and a
 pointer-only user is exactly the first-time user of a Start menu. It is the first row of the left
 column, and it never closes the menu. A search gets the same row as "clear search".
@@ -833,6 +846,47 @@ exclusive semantics and the four-byte magic test are in
 **The words have never been read back on this tree.** No model ships and the desktop cannot fetch
 one, so what is proved about transcription is the gate, the argv, the spawn and the exit status.
 
+## kdos-palette
+
+`Super+Space`. One input row, one result list, and six sources searched at once: **windows,
+applications, routes, settings pages, files and chords.** `kdos-launcher` is this program showing
+applications only — one binary and one flag, because two search programs meant two matchers and two
+ideas of ranking.
+
+**The heading order is fixed and is not the ranking.** Windows first, because the cheapest thing to
+want is the window you already had; then applications, routes, settings, files, chords. The score
+orders the rows *inside* a heading, so a very good file match never climbs above the window you were
+just looking at. **A heading with no hits is not drawn** — a column of empty category names is a list
+that looks broken — and each kind is capped, so one source cannot crowd out the rest.
+
+**Files only after three characters.** Every other source is a table already in memory; the file
+source forks `fd`, and doing that per keystroke is a directory walk per keystroke. Its lines arrive
+over several frames and are merged into the list as they come.
+
+**A chord row shows the chord and does not press it.** Enter runs a chord's program where the chord
+runs one, and otherwise says which keys to press. **A client cannot fire the session's own actions
+and must not be able to**: synthesised input over the surface socket is a way to drive somebody's
+desktop for anything that can reach it, which is the rule the protocol is shaped around. The row is
+still worth having — "what was the chord for tiling" is asked far more often than a chord is
+rebound.
+
+**A row is named by what it does, and on the two desktops that is two different fields.** The
+console's chord action *is* the verb — `tile`, `launcher` — while the compositor's is labwc's, so
+nearly every row there would be the word `Execute`; those are named by the command they run instead.
+A list of forty rows all called Execute is a list nobody can search.
+
+**`Super+Space` was the Start menu on the console and labwc's root menu under the compositor.** Both
+now open this. A pointer wants rows and a keyboard wants a search, so the taskbar's Start button and
+the right button still open the menu, and `Super+F10` still reaches it from the keyboard. The
+first-run tour's second step moved with the chord — the tour names the action, and `selftest.sh`
+fails the build when a step names something nothing binds, which is how the move was caught on both
+desktops.
+
+**Two of the six sources cannot appear in a golden**, and that is stated rather than left to be
+noticed: the dump harness stubs the window list to zero, and the file source forks `fd`, which a
+dump stops before drawing — a golden of somebody's home directory is a golden of whoever ran the
+suite.
+
 ## kdos-peek
 
 What is in a file, without starting the application that owns it. *Peek* in the file verbs, `k` on
@@ -1141,7 +1195,36 @@ Per-manager:
 | `kdos-clip` | Clipboard history. The daemon owns the list; this draws it |
 | `kdos-teams` | The window list, and what the panel's overflow cell opens — previously that cell stepped the row by one per click, so reaching the third hidden window took three clicks and three reflows |
 | `kdos-display` | Screens. It grew a button bar, because a pointer could select a screen and then not switch it off or apply anything. `m` and the Mode button open a **dropdown** of the modes the monitor published: a screen that cannot show the mode being tried is a black screen and a wait for the revert, so the list is read before it is chosen from, never stepped blindly through |
-| `kdos-keys` | The keybinding card, in six sections — launch, window, workspace, tools, media, system. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that, and it looks for the **row shape** rather than the action's name anywhere in the source: `net`, `power` and `settings` are ordinary words that appear there as other strings, and a bare name grep passed for eleven chords the card was in fact dropping. **`--print` writes the same rows to standard output**, two columns at 132 characters, form-fed between pages — for a printer and for a wall. It runs before any display server is opened, so it works over ssh, from a script and on a machine whose session is not up, which is most of the times somebody wants the card on paper. The same rows as the surface draws, because a printed sheet that disagreed with the screen is what a second hand-written table becomes. **`--first-run` is the login spawn's flag** and puts a four-row tour above the list — open a terminal, reach the menu, switch workspaces, reach another terminal — with each row's chord looked up in the same parse the list came from, so a rebound terminal moves the tour in the same edit and a step nothing binds is absent from the tour rather than wrong in it. The hint row names the chord that brings the card back, which is the one frame whose reader has not already used it. The tour is dropped below twelve rows, where what it pushes off the bottom is the card itself. **On the console it also lists the recorded scripts**: a row per letter under
+| `kdos-keys` | The keybinding card, in six sections — launch, window, workspace, tools, media, system. **It reads whichever desktop it is opened on**: `rc.xml` under the compositor, and `kdos-con --keys` on the console, which prints the chord table after the `keys.conf` overlay. One reader and one writer — a second copy of the table is a copy that goes stale, and a card that is confidently wrong is worse than no card. **The card owns only the wording and the grouping**, in `con_section()`; an action it has no row for is dropped, so a chord added to the session and not here works and appears nowhere a person would look for it. `selftest.sh` fails the build on that, and it looks for the **row shape** rather than the action's name anywhere in the source: `net`, `power` and `settings` are ordinary words that appear there as other strings, and a bare name grep passed for eleven chords the card was in fact dropping. **`--print` writes the same rows to standard output**, two columns at 132 characters, form-fed between pages — for a printer and for a wall. It runs before any display server is opened, so it works over ssh, from a script and on a machine whose session is not up, which is most of the times somebody wants the card on paper. The same rows as the surface draws, because a printed sheet that disagreed with the screen is what a second hand-written table becomes. **`--first-run` is the login spawn's flag** and puts a four-row tour above the list — open a terminal, reach the menu, switch workspaces, reach another terminal — with each row's chord looked up in the same parse the list came from, so a rebound terminal moves the tour in the same edit and a step nothing binds is absent from the tour rather than wrong in it. The hint row names the chord that brings the card back, which is the one frame whose reader has not already used it. The tour is dropped below twelve rows, where what it pushes off the bottom is the card itself. **It is searchable.** An input row filters the rows through `kb_fuzzy()` — the same matcher the
+palette and the launcher use, so three surfaces cannot rank one query three ways — and **both
+columns are searched**, because somebody after the tiling chord may type `tile` or may type `Super`.
+A section whose rows all fail the filter draws no heading. The field is always drawn rather than
+appearing once typing starts: the card is what people open when they do not know what to press, and
+the one thing it must say is that it can be asked. `Esc` clears a query before it closes the card,
+through the same layer contract every other surface uses, so the hint row says which of the two the
+next press does.
+
+**`Tab` shows the focused program's own keys**, for the three that publish them, and is offered only
+where a reader exists — a Tab that leads to an empty screen teaches that the feature is broken
+rather than that the program does not publish its keys. The three are not alike, and the page says
+which it is by naming the program in its title:
+
+| Program | Read from | What it does not show |
+|---|---|---|
+| `tmux` | `tmux list-keys -N -T prefix`, live, plus `show-options -gv prefix` so a row reads `C-b c` and not `c` | The `root` and two `copy-mode` tables — 161 of the 267 default bindings, none reachable from the prompt the card is drawn over. `-N` lists only bindings carrying a note, because a row nobody wrote a description for has none |
+| `mc` | `/etc/mc/mc.keymap`, with the user's copy preferred | The `Ctrl-x` second table, the editor and the viewer. And it shows the keymap FILE, not mc's live bindings: an action mc has a built-in key for that the file does not mention is absent |
+| `micro` | `bindings.json` — **the overrides only** | Everything else, which is nearly everything: micro's defaults are compiled in, no flag prints them, and this image ships no micro configuration. On a fresh install the reader answers nothing and the page does not appear. Those rows are the diff, not the list |
+
+**`helix` is named by the plan and is not here**, measured: the port exists and is in no
+`packages.txt` at all, so it has never been built or shipped — a reader for it could not run and
+could not be checked. It goes in when the port does.
+
+**`--print` prints the page that is showing**, and a print run has no screen to read that off:
+`--print` returns before any display is opened, which is the whole reason it works over `ssh`, so
+there is no focused window to ask. `--program NAME` is how a print run says which page it wants, and
+without it the card prints this desktop's chords.
+
+**On the console it also lists the recorded scripts**: a row per letter under
 `~/.config/kdos-con/scripts/`, showing the first ten keys of each and a count of the rest, so
 `Super+Alt+r` has somewhere to look up which letters are taken. Read out of the directory by this
 program running as the same person — the session grew no verb that could be asked, which is what
@@ -1154,7 +1237,7 @@ decides whether the welcome is due**, from `~/.config/kdos/first-run`, so a sess
 | `kdos-prompt` | Yes or no, answering by **exit status** — which is what the compositor reads |
 | `kdos-status` | The overflow popup; see below |
 | `kdos-slit` | The dockapp column. Off by default: a slit nobody configured is a column of marks |
-| `kdos-saver` | Attract mode, between idle and lock. `--mode rain` is the default and `--mode art` moves a picture; `off` is an honest off, drawing nothing and connecting to nothing, so an idle policy can start it unconditionally. **Every effect that is not weather is a transform over one loaded grid**, and the grid is a file: `~/.config/kdos/screensaver.txt` over `/usr/share/kdos/screensaver.txt`, so art belongs to whoever is looking at it rather than to a table in the source. Not `logo.txt` — that is the login banner's, generated from the mascot, and a person replacing their screensaver must not be changing what the machine boots with. **The rain needs no file**, which is what a machine with no art at all falls back to. It never watches input and claims no pointer region: a screensaver that decided for itself when to go away could decide wrong, and one that took the keyboard would be a lock screen with no password |
+| `kdos-saver` | Attract mode, between idle and lock. **Eight effects, one row of a table each**: `art` drifts the picture and bounces it, `bounce` is that same effect under the name it is known by, `rain` falls as columns of shade, `matrix` falls as the same columns in characters, `pipes` grows and turns and clears when the screen fills, `starfield` flies stars past, `fire` climbs the palette from dim through urgent to text, and `clock` is the art with the time in block digits as its grid. `random` picks one per start and `off` is an honest off, drawing nothing and connecting to nothing, so an idle policy can start it unconditionally. `con.conf`'s `saver_mode` chooses; **`--mode` beats it**, which is load-bearing rather than conventional — `kcon_conf` reads `/etc/kdos/con.conf` before any XDG path and nothing can shadow it, so a golden would otherwise draw whatever the developer's own machine says. **`art` and `bounce` are a transform over one loaded grid** and the grid is a file — `~/.config/kdos/screensaver.txt` over `/usr/share/kdos/screensaver.txt` — so the picture belongs to whoever is looking at it; not `logo.txt`, which is the login banner's and must not change when a screensaver does. The other six need no file, which is what a machine with no art falls back to. **The vocabulary is the console font's 512 glyphs**: the density effects take the same three-level ramp the rain does, `pipes` has its own ASCII tier, and `matrix` and `starfield` are ASCII outright — an effect drawn out of what `ter-kdos32n` lacks is blank on `tty1` and correct in a terminal, which is the worst way to fail. It never watches input and claims no pointer region: a screensaver that decided for itself when to go away could decide wrong, and one that took the keyboard would be a lock screen with no password |
 | `kdos-about` | What this machine is: the KDOS logo beside the version, kernel, libc, userland, session, terminal, grid, CPU, memory, uptime and package count. **Every fact is read, never forked** — `uname`, `/proc`, `/etc/os-release` and the package database are files this process can open, and a screenfetch spawned to render them would draw a second program's colours and ANSI onto a surface that paints in slots, and would make this the one surface with no offscreen dump |
 | `kdos-calc` | The calculator, `Super+Ctrl+q`. **It does not do the arithmetic** — `qalc` does, and the tree already carries `libqalculate`, which parses what a person actually typed: units, hexadecimal, `to`, and precedence that matches a pocket calculator rather than a programming language. **Forked, not linked**: `libqalculate` is C++ and this binary is C and carries thirty-one other surfaces, so linking it would put libstdc++ on the panel package on every image for one accessory. **Once per pause, not once per keystroke** — the evaluation happens when the poll loop goes idle with the input changed, which is a debounce that costs no timer. `Enter` copies the answer, because the answer to "what is three inches in millimetres" is nearly always going somewhere else |
 | `kdos-note` | The scratch pad, `Super+Ctrl+n`: one buffer per user at `~/.local/share/kdos/scratch.txt`, saved on close and every thirty seconds. **It is not an editor and must not grow into one** — `micro` is the editor and `Ctrl+O` opens this same file in it, and every feature past "type a line and find it later" already exists there and is better done there |

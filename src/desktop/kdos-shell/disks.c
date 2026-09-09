@@ -198,7 +198,8 @@ static void do_partition(void)
 		k--;
 	snprintf(node, sizeof(node), "/dev/%.*s", (int)k, r->kname);
 
-	n = sh_term_argv(av, 0, 8, "cfdisk", id, sizeof(id));
+	n = sh_term_argv(av, 0, (int)(sizeof(av) / sizeof(*av)), "cfdisk", id,
+			 sizeof(id));
 	av[n++] = "sudo";
 	av[n++] = "cfdisk";
 	av[n++] = node;

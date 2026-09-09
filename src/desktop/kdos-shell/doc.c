@@ -658,7 +658,7 @@ static void go_back(void)
 static void follow(const struct doc_link *L)
 {
 	struct doc_page next = { 0, "" };
-	const char *argv[8];
+	const char *argv[12];
 	char id[160];			/* argv points into it until the exec */
 
 	note[0] = '\0';
@@ -671,7 +671,9 @@ static void follow(const struct doc_link *L)
 		}
 		/* The one link kind that leaves the grid: a manual page is
 		 * somebody else's formatter and belongs in a terminal. */
-		int k = sh_term_argv(argv, 0, 8, "man", id, sizeof(id));
+		int k = sh_term_argv(argv, 0,
+				     (int)(sizeof(argv) / sizeof(*argv)),
+				     "man", id, sizeof(id));
 
 		argv[k++] = "man";
 		argv[k++] = L->target;

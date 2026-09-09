@@ -63,6 +63,8 @@ static const char USAGE[] =
 "  -e, --exec CMD     run CMD instead of the shell; everything after it is\n"
 "                     its argument vector\n"
 "      --title TEXT   the window title before the program sets one\n"
+"      --app-id NAME  the identity the desktop files this window under;\n"
+"                     defaults to kdos-term\n"
 "  -D, --working-directory DIR\n"
 "                     start the program in DIR\n"
 "      --font NAME    fontconfig name; overrides term.conf\n"
@@ -400,6 +402,14 @@ static void settle(void)
 int main(int argc, char **argv)
 {
 	const char *title = NULL, *font = NULL, *cwd = NULL;
+	/*
+	 * THE IDENTITY, WHICH IS NOT THE TITLE. A title is the guest's to
+	 * rewrite the moment it emits an OSC; the app id is the desktop's, and
+	 * it is what a taskbar row, a window rule and a run-or-raise chord all
+	 * key on. A terminal running somebody else's program is given that
+	 * program's name here, the same way `foot --app-id` is given it.
+	 */
+	const char *app_id = "kdos-term";
 	int tty = 0, dump_w = 0, dump_h = 0;
 	const char *av[64];
 	int nav = 0;
@@ -422,6 +432,8 @@ int main(int argc, char **argv)
 			break;
 		} else if (!strcmp(a, "--title") && i + 1 < argc) {
 			title = argv[++i];
+		} else if (!strcmp(a, "--app-id") && i + 1 < argc) {
+			app_id = argv[++i];
 		} else if ((!strcmp(a, "-D") ||
 			    !strcmp(a, "--working-directory")) && i + 1 < argc) {
 			cwd = argv[++i];
@@ -488,7 +500,7 @@ int main(int argc, char **argv)
 		KDispConfig cfg = {
 			.role = KDISP_ROLE_TOPLEVEL,
 			.title = g_title,
-			.app_id = "kdos-term",
+			.app_id = app_id,
 			.font = font,
 			.keyboard = 1,
 			.cols = TC.cols,

@@ -6,18 +6,18 @@
 |                               |  . Pictures                                  |
 |                               |  . Files                                     |
 |                               | --SYSTEM-------------------------------------|
-|                               |  . Settings                                  |
 |                               |  . Network                                   |
-|                               |  . Bluetooth                                 |
-|                               |  . Sound                                     |
-|                               |  . Recorder                                  |
-|                               |  . Notifications                             |
-|                               |  . Devices                                   |
-|                               |  . Boxes                                     |
-|                               |  . Displays                                  |
-|                               |  . Terminal                                  |
 |                               |  . Help                                      |
-|                               |  . About                                     |
+|                               |  . Settings                                > |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
 |                               |                                              |
 |------------------------------------------------------------------------------|
 | > setup#                                     x           Lck Slp Rst Out Off |

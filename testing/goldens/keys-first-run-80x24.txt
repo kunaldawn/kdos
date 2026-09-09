@@ -3,10 +3,12 @@
 |   Super+Enter    open a terminal                                             |
 |   Alt+Tab        reach another terminal                                      |
 |------------------------------------------------------------------------------|
+| # type to filter                                                             |
 | launch                                                                       |
 |   Super+Enter    foot                                                        |
 |   Super+d        kdos-launcher                                               |
 |   Super+Shift+q  sh -c "a && b"                                              |
+|   Super+e        sh, or raise it                                             |
 | window                                                                       |
 |   Super+q        close the window                                            |
 |   Alt+Tab        next window                                                 |
@@ -18,7 +20,5 @@
 |                                                                              |
 |                                                                              |
 |                                                                              |
-|                                                                              |
-|                                                                              |
-| Any key close                                                                |
+| Esc Close                                                                    |
 +==============================================================================+

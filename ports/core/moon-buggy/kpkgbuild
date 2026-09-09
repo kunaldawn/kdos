@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = moon-buggy
+version     = 1.0.51
+release     = 1
+source      = https://www.seehuhn.de/media/programs/$name-$version.tar.gz
+sha256      = 352dc16ccae4c66f1e87ab071e6a4ebeb94ff4e4f744ce1b12a769d02fe5d23f  moon-buggy-1.0.51.tar.gz
+description = Drive a buggy across the moon, jumping craters and shooting meteors
+homepage    = https://www.seehuhn.de/pages/moon-buggy
+depends     = ncurses texinfo

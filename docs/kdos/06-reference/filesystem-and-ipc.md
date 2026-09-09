@@ -46,7 +46,7 @@ Every key is documented in [Configuration](configuration.md).
 | `reasons` | The explanations `kdos why` prints |
 | `doc/` | Shipped documentation |
 | `logo.txt` | The banner logo, generated from the mascot |
-| `screensaver.txt` | The grid the screensaver's art mode moves. **A person's to replace**, at `~/.config/kdos/screensaver.txt`; separate from `logo.txt` so changing the screensaver does not change the picture the machine boots with |
+| `screensaver.txt` | The grid the screensaver's `art` and `bounce` effects move; the other six draw without a file. **A person's to replace**, at `~/.config/kdos/screensaver.txt`; separate from `logo.txt` so changing the screensaver does not change the picture the machine boots with |
 | `splash.psf` | The splash font |
 | `boot/` | Boot artwork |
 | `memtest86plus/` | The memory tester on the medium |

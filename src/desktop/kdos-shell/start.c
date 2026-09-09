@@ -63,10 +63,27 @@
 #include "kwl.h"
 #include "kcon.h"
 #include "shell.h"
+#include "routes.h"
 
 /* 56, not 66. At the chrome cell that is 896 pixels — seventy per cent of a
  * 1280 screen rather than eighty-two, which is a menu and not a takeover. */
-#define ST_COLS 56
+/*
+ * THE MENU ASKS WIDE AND LAYS OUT FROM WHAT IT WAS GIVEN.
+ *
+ * This is a surface size, and a surface size here is a REQUEST: the console
+ * session clamps it to the work area, so on tty1 at eighty columns the menu is
+ * eighty and the two-column shape is what draws. Asking for the narrow size
+ * and branching on it would have been a three-column menu that only ever
+ * existed in a dump — the offscreen harness overrides this size and the real
+ * surface never gets one, so the golden goes green while nobody can see the
+ * feature.
+ */
+#define ST_COLS 104
+/* Three columns from here up. Below it the system rows collapse under one row
+ * rather than being listed, which is the shape the narrow menu needs: the
+ * complaint this answers is a SYSTEM column scrolling at row nine of
+ * fourteen. */
+#define ST_WIDE_AT 100
 #define ST_ROWS 20
 /*
  * THE TWO COLUMNS SHARE THE WIDTH, so narrowing the menu has to narrow this
@@ -99,9 +116,22 @@ struct row {
 	const struct sh_app *app;	/* set for an application         */
 	/* NUL-terminated for sh_spawn, so the last slot is never filled: the
 	 * longest row here is `foot -e kdos app install <id>`, six words. */
-	const char *argv[8];		/* set for a fixed entry          */
+	/* AS WIDE AS A ROUTE, so a route always fits exactly. Narrower and a
+	 * long route loses its tail: the split that fills this NUL-terminates
+	 * properly, so words past the end are dropped rather than arriving
+	 * glued into the last slot as one argument full of spaces. */
+	const char *argv[SH_ROUTE_ARGV];	/* set for a fixed entry  */
 	int rule;			/* a separator, not a row         */
 	int submenu;			/* opens the categories, or a cat */
+	/*
+	 * The RIGHT column's own submenu, which is a different thing from
+	 * `submenu`: that one is an application-group index and rebuilds the
+	 * LEFT column. 1 opens the system group, -1 comes back out.
+	 */
+	int rsub;
+	/* `menu.conf` named this system row TOP-LEVEL, so the narrow menu
+	 * lists it beside the group opener instead of only inside the group. */
+	int promoted;
 	int back;			/* returns to the level above     */
 	int pinned;			/* on the quick-launch row        */
 	/*
@@ -142,24 +172,12 @@ static int nright;
  * so the names are not a second vocabulary to learn: `network` finds the row
  * and `setup.network` finds the same thing.
  *
- * `/etc/kdos/menu.conf` then `~/.config/kdos/menu.conf`. A route named in both
- * is the user's; one named only in theirs is added. There is no delete, and
- * that is the point: a name a script may hold has to keep resolving.
+ * The file, the merge and the split are routes.c — every surface that searches
+ * the system reads the same table, and a menu with a parse of its own would
+ * resolve a name differently from the one `kdos menu` resolved.
  */
-#define ST_MAX_ROUTES 64
-#define ST_ROUTE_BYTES 192
-
-static struct row routes[ST_MAX_ROUTES];
+static struct row routes[SH_ROUTE_MAX];
 static int nroutes;
-/*
- * Two copies of every value, and both are needed. `route_argv` is split into
- * words IN PLACE, so its NULs stop a substring search at the first one;
- * `route_keys` is the line as written, which is what makes the command a
- * synonym for the route — `dnd` finds `toggle.quiet`, which is the whole
- * reason the fixed rows carry synonyms too.
- */
-static char route_argv[ST_MAX_ROUTES][ST_ROUTE_BYTES];
-static char route_keys[ST_MAX_ROUTES][ST_ROUTE_BYTES];
 
 static int mode = ST_MAIN;
 /* The next draw should pull the selection into view: set by everything that
@@ -170,6 +188,36 @@ static int sel;			/* selected row in the focused column */
 static int top;			/* first visible row, left column     */
 static int focus_right;		/* which column has the selection     */
 static int rsel, rtop;
+/*
+ * The right column is ONE array drawn as one or two columns — never two
+ * arrays. Rows moved into a second array would silently leave the search,
+ * which walks the arrays by name: typing `wifi` would stop finding Network
+ * with no error and no empty list, just fewer rows.
+ *
+ * `right_split` is where the SYSTEM group starts, `rtop2` is the second
+ * drawn column's own scroll, and `right_mode` says the narrow shape has been
+ * opened into that group.
+ */
+static int right_split;		/* where the SYSTEM group starts       */
+static int rtop2;		/* the third column's own scroll       */
+static int right_mode;		/* the narrow menu is inside the group */
+static int right_shape = -1;	/* the shape `rview` was built for     */
+
+/*
+ * WHICH OF `right[]` IS ON SCREEN, in drawn order. `rsel` and `rtop` index
+ * THIS, never the array: the narrow menu shows two of its pages and the wide
+ * one shows neither of the two navigation rows, so a selection held as an
+ * array index would land on a row that is not drawn.
+ */
+static int rview[ST_MAX_ROWS];
+static int nrview;
+static int vsplit;		/* where the third column starts in rview */
+
+/* THE SHAPE COMES FROM THE WIDTH THE DISPLAY GAVE, never from ST_COLS. */
+static int wide(void)
+{
+	return ktui_w >= ST_WIDE_AT;
+}
 static char query[64];
 static int icons_on = 1;
 
@@ -198,9 +246,56 @@ static int search_x, search_end, clear_x, clear_end, search_lit;
  * scrollbar is there, which moves the pin with it. */
 static int left_row_w;
 
+/*
+ * WHERE THE COLUMNS WERE DRAWN.
+ *
+ * Filled by draw_frame() and read by the pointer, which runs after it in the
+ * same loop. The hit test derived its own copy of this arithmetic and that is
+ * exactly what must not happen again: two derivations of one geometry drift,
+ * and the one that drifts is the one nobody photographs.
+ *
+ * `c3w` is zero when there is no third column, and that IS the shape test
+ * everywhere below — `wide()` says what the width allows, `c3w` says what was
+ * drawn.
+ */
+static struct {
+	int lw;			/* left column width; its divider is at lw */
+	int mid;		/* the second divider, or 0                */
+	int c2x, c2w, c2bar;	/* the places column                       */
+	int c3x, c3w, c3bar;	/* the system column                       */
+	int body;
+} G;
+
 static int in_span(int v, int a, int b)
 {
 	return b > a && v >= a && v < b;
+}
+
+/*
+ * Is `word` one of the whitespace- or comma-separated entries in `list`?
+ *
+ * WHOLE ENTRIES, not substrings: `Sound` must not be matched by a list that
+ * says `Soundcard`, and a configuration key whose entries match each other's
+ * prefixes is one where adding a row changes what an existing line means.
+ */
+static int word_listed(const char *list, const char *word)
+{
+	size_t n = strlen(word);
+
+	if (!list || !n)
+		return 0;
+	for (const char *p = list; *p;) {
+		size_t k = 0;
+
+		while (*p == ' ' || *p == '\t' || *p == ',')
+			p++;
+		while (p[k] && p[k] != ' ' && p[k] != '\t' && p[k] != ',')
+			k++;
+		if (k == n && !strncasecmp(p, word, n))
+			return 1;
+		p += k;
+	}
+	return 0;
 }
 
 /* ── building the columns ──────────────────────────────────────────────── */
@@ -218,12 +313,13 @@ static struct row *push(struct row *v, int *n, const char *label)
 /*
  * A separator, optionally CAPTIONED.
  *
- * The right column was fifteen ungrouped rows mixing three kinds of thing —
- * places, settings and power. A caption on the rule that already sits between
- * them groups the list for NO extra row, which matters here: the menu's body
- * is exactly as tall as its content, so a heading drawn as its own row would
- * push the last entry below the fold, and growing the menu to fit fights the
- * whole point of shrinking it.
+ * A caption on the rule that already sits between two groups names them for NO
+ * extra row, which matters here: the menu's body is exactly as tall as its
+ * content, so a heading drawn as its own row pushes the last entry below the
+ * fold, and growing the menu to fit fights the point of a menu that fits.
+ *
+ * The captioned rule at the head of the system group is also the SPLIT — see
+ * build_right() — so it is the one caption this file names in code.
  */
 static void rule_named(struct row *v, int *n, const char *caption)
 {
@@ -587,7 +683,11 @@ static void build_left(void)
 		for (int t = 0; t < 3; t++)
 			for (int i = 0; i < nfixed[t] &&
 					nleft < ST_MAX_ROWS; i++) {
-				if (fixed[t][i].rule ||
+				/* The fold's own two rows are controls for a
+				 * column, not things to run: copied into
+				 * the results they would be a `Settings`
+				 * that answers Enter with nothing. */
+				if (fixed[t][i].rule || fixed[t][i].rsub ||
 				    !fixed_match(&fixed[t][i], query))
 					continue;
 				if (!extra++)
@@ -722,6 +822,40 @@ static void build_left(void)
 }
 
 /*
+ * The routes as rows of this menu. They have no column at all — their whole
+ * existence is a name to search for — so a row carries the name as its label,
+ * the command as the synonym a search reads, and one picture.
+ *
+ * A row's argv is as wide as a route's, so every word of a route reaches the
+ * child. The clamp stays because the vector is handed to sh_spawn as it stands
+ * and one that was only partially copied must still end in NULL.
+ */
+static void build_routes(void)
+{
+	int n = sh_routes_load();
+
+	nroutes = 0;
+	for (int i = 0; i < n && nroutes < SH_ROUTE_MAX; i++) {
+		const struct sh_route *rt = sh_route_at(i);
+		struct row *r = &routes[nroutes++];
+		int max = (int)(sizeof(r->argv) / sizeof(r->argv[0])) - 1;
+		int nargv = rt->nargv < max ? rt->nargv : max;
+
+		memset(r, 0, sizeof(*r));
+		snprintf(r->label, sizeof(r->label), "%s", rt->name);
+		for (int a = 0; a < nargv; a++)
+			r->argv[a] = rt->argv[a];
+		r->argv[nargv] = NULL;
+		/* The route answers to the command it runs as well as to its
+		 * name. The name needs no synonym of its own: a search is a
+		 * substring both ways, so `network` already reaches
+		 * `setup.network`. */
+		r->keys = rt->cmd;
+		r->icon = "application-x-executable";
+	}
+}
+
+/*
  * The right column: Places, then System. Every row is an argv and there is no
  * shell anywhere in it — these are the entries that end a session or a
  * machine, and a string that got interpolated into a command line here would
@@ -731,111 +865,6 @@ static void build_left(void)
  * a Recent list longer than this pushes SYSTEM off the bottom, and the rows
  * that end a session are the ones that must always be reachable. */
 #define START_RECENT 6
-
-/* One route, replacing a route of the same name rather than repeating it: the
- * user's file is read second, and a name that resolved twice would resolve to
- * whichever copy a search reached first. */
-static void route_put(const char *name, char *value)
-{
-	struct row *r = NULL;
-	int slot = nroutes;
-
-	for (int i = 0; i < nroutes; i++)
-		if (!strcmp(routes[i].label, name)) {
-			slot = i;
-			break;
-		}
-	if (slot >= ST_MAX_ROUTES)
-		return;
-	r = &routes[slot];
-	memset(r, 0, sizeof(*r));
-	snprintf(r->label, sizeof(r->label), "%s", name);
-	snprintf(route_argv[slot], ST_ROUTE_BYTES, "%s", value);
-	snprintf(route_keys[slot], ST_ROUTE_BYTES, "%s", value);
-
-	/* Split on runs of blanks, in place. No quoting: a route that needed a
-	 * shell would be a route a menu file could run anything with, and this
-	 * file merges a copy the user owns over the system's. */
-	int n = 0;
-	char *p = route_argv[slot];
-
-	while (*p && n < (int)(sizeof(r->argv) / sizeof(r->argv[0])) - 1) {
-		while (*p == ' ' || *p == '\t')
-			*p++ = '\0';
-		if (!*p)
-			break;
-		r->argv[n++] = p;
-		while (*p && *p != ' ' && *p != '\t')
-			p++;
-	}
-	if (!n) {			/* a route naming no command at all */
-		memset(r, 0, sizeof(*r));
-		return;
-	}
-	r->argv[n] = NULL;
-	/* The route answers to the command it runs as well as to its name. The
-	 * name needs no synonym of its own: a search is a substring both ways,
-	 * so `network` already reaches `setup.network`. */
-	r->keys = route_keys[slot];
-	r->icon = "application-x-executable";
-	if (slot == nroutes)
-		nroutes++;
-}
-
-static void route_file(const char *path)
-{
-	size_t len = 0;
-	char *buf = kb_read_whole(path, &len);
-
-	if (!buf)
-		return;
-	for (char *line = strtok(buf, "\r\n"); line;
-	     line = strtok(NULL, "\r\n")) {
-		char *hash = strchr(line, '#');
-		char *eq;
-
-		if (hash)
-			*hash = '\0';
-		eq = strchr(line, '=');
-		if (!eq)
-			continue;
-		*eq = '\0';
-
-		char *name = line, *value = eq + 1;
-		char *end;
-
-		while (*name == ' ' || *name == '\t')
-			name++;
-		end = name + strlen(name);
-		while (end > name && (end[-1] == ' ' || end[-1] == '\t'))
-			*--end = '\0';
-		while (*value == ' ' || *value == '\t')
-			value++;
-		end = value + strlen(value);
-		while (end > value && (end[-1] == ' ' || end[-1] == '\t'))
-			*--end = '\0';
-		if (*name && *value)
-			route_put(name, value);
-	}
-	free(buf);
-}
-
-static void st_routes_load(void)
-{
-	const char *cfg = getenv("XDG_CONFIG_HOME");
-	const char *home = getenv("HOME");
-	char path[512];
-
-	nroutes = 0;
-	route_file("/etc/kdos/menu.conf");
-	if (cfg && *cfg)
-		snprintf(path, sizeof(path), "%s/kdos/menu.conf", cfg);
-	else if (home && *home)
-		snprintf(path, sizeof(path), "%s/.config/kdos/menu.conf", home);
-	else
-		return;
-	route_file(path);
-}
 
 static void build_right(void)
 {
@@ -929,7 +958,7 @@ static void build_right(void)
 		 * is is decided in one place.
 		 */
 		if (!strcmp(sh_session_prog(), "kdos-con")) {
-			k = sh_term_argv(r->argv, 0, 8, "mc", id,
+			k = sh_term_argv(r->argv, 0, SH_ROUTE_ARGV, "mc", id,
 					 sizeof(id));
 			r->argv[k++] = "mc";
 			r->argv[k] = NULL;
@@ -941,7 +970,24 @@ static void build_right(void)
 		}
 	}
 
+	/*
+	 * THE SPLIT. Everything above this rule is places and files, and
+	 * everything from it down is the system group: three columns draw the
+	 * two halves side by side, two columns fold the second one away. The
+	 * rule itself belongs to the group, so it is the heading on both
+	 * pages of the narrow menu and the head of the third column on the
+	 * wide one.
+	 */
 	rule_named(right, &nright, "SYSTEM");
+	right_split = nright - 1;
+
+	/* The way back out of the folded group. Drawn only while it is open —
+	 * see row_on_page(). */
+	r = push(right, &nright, "Back");
+	if (r) {
+		r->rsub = -1;
+		r->icon = "go-previous";
+	}
 
 	/*
 	 * The names below are the ones the SHIPPED ATLAS carries, checked
@@ -1049,6 +1095,108 @@ static void build_right(void)
 		r->icon = "help-about";
 		r->argv[0] = "kdos-about";
 	}
+
+	/*
+	 * WHICH SYSTEM ROWS THE NARROW MENU STILL LISTS, from `menu.conf` and
+	 * from nowhere in this file: a person who wants Bluetooth one click
+	 * away edits a line rather than a program. A label that names no row
+	 * promotes nothing and says nothing — the file is a preference, not a
+	 * wiring diagram, and a typo in one must not be an error a menu
+	 * reports.
+	 */
+	const char *tl = sh_route_setting("toplevel");
+
+	if (tl)
+		for (int i = right_split + 1; i < nright; i++)
+			if (!right[i].rsub && !right[i].rule)
+				right[i].promoted =
+					word_listed(tl, right[i].label);
+
+	/*
+	 * AND THE ROW THAT OPENS THE GROUP, last so that it sits under the
+	 * rows it stands in for. Two columns only: three list the group
+	 * outright, and an opener for a fold that is not there is a row that
+	 * does nothing.
+	 */
+	r = push(right, &nright, "Settings");
+	if (r) {
+		r->rsub = 1;
+		r->keys = "system preferences control panel more";
+		r->icon = "preferences-system";
+	}
+}
+
+/*
+ * IS ROW `i` ON THE RIGHT COLUMN'S CURRENT PAGE?
+ *
+ * Three columns draw the whole array in two halves, so the two navigation
+ * rows are dropped there. Two columns draw the places and the promoted system
+ * rows first and the whole system group second; a promoted row is on both,
+ * which is what promoting it means.
+ *
+ * The SEARCH does not come through here. It walks `right[]` itself, so a row
+ * folded out of sight is still found by typing its name — a fold that hid
+ * rows from the search would be a fold that deletes them.
+ */
+static int row_on_page(int i)
+{
+	const struct row *r = &right[i];
+
+	if (wide())
+		return r->rsub == 0;
+	if (r->rsub)
+		return right_mode ? r->rsub < 0 : r->rsub > 0;
+	if (i < right_split)
+		return !right_mode;
+	if (i == right_split)
+		return 1;
+	return right_mode || r->promoted;
+}
+
+/*
+ * Rebuild the drawn view of the right column, and pull the selection back
+ * inside it.
+ *
+ * A WIDTH CHANGE RESETS THE FOLD. The surface is asked for one size and given
+ * whatever the work area allows, so a menu can be opened wide on one screen
+ * and narrow on the next; leaving `right_mode` set across that would put the
+ * three-column menu's third column on a page nobody asked for.
+ */
+static void rview_build(void)
+{
+	if (right_shape != wide()) {
+		right_shape = wide();
+		right_mode = 0;
+		rtop = rtop2 = 0;
+	}
+	nrview = vsplit = 0;
+	for (int i = 0; i < nright; i++) {
+		if (!row_on_page(i))
+			continue;
+		if (i < right_split)
+			vsplit++;
+		rview[nrview++] = i;
+	}
+	if (rsel >= nrview)
+		rsel = nrview ? nrview - 1 : 0;
+	if (rsel < 0)
+		rsel = 0;
+}
+
+/* The row the right column's `k`th drawn line stands for. */
+static struct row *rrow(int k)
+{
+	return &right[rview[k]];
+}
+
+/* The first row of `[lo,hi)` that is not a rule — the head of a column, for
+ * an arrow or a fold that has just moved the selection into it. */
+static int first_right(int lo, int hi)
+{
+	for (int i = lo; i < hi; i++)
+		if (!rrow(i)->rule)
+			return i;
+	return lo;
 }
 
 /*
@@ -1261,7 +1409,8 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 		ktui_draw_sprite(krect(x, y, 2, 1), icon, fg, bg);
 	} else {
 		ktui_draw_text(x + 1, y, 1,
-			       r->back  ? ktui_glyph[KT_G_LEFT]
+			       r->back || r->rsub < 0
+					  ? ktui_glyph[KT_G_LEFT]
 			       : r->app ? ktui_glyph[KT_G_SQUARE]
 					: ktui_glyph[KT_G_DOT],
 			       selected ? KT_SURFACE : KT_DIM, bg, KT_A_NONE);
@@ -1301,7 +1450,7 @@ static void draw_row(const struct row *r, int x, int y, int w, int selected)
 		ktui_draw_text(pin_col(x, w) - tagw - codew, y, codew - 1,
 			       r->code, selected ? fg : KT_MID, bg,
 			       KT_A_BOLD);
-	if (r->submenu)
+	if (r->submenu || r->rsub > 0)
 		ktui_draw_text(x + w - 2, y, 1, ktui_glyph[KT_G_RIGHT], fg, bg,
 			       KT_A_NONE);
 	else if (r->app && (r->pinned || selected)) {
@@ -1425,6 +1574,39 @@ static void draw_frame(void)
 		return;
 
 	/*
+	 * ── the shape ──
+	 *
+	 * THREE COLUMNS FROM ST_WIDE_AT UP: favourites, then places and files,
+	 * then the system group. Below it the group folds behind one row and
+	 * the menu is two columns, which is the shape a fourteen-row system
+	 * list needs when the body is sixteen.
+	 *
+	 * The right half is split down the middle rather than at the widest
+	 * label: the two lists grow independently — places come from the user
+	 * directories and the system group from this file — so a split sized
+	 * to today's contents is one that moves when either changes.
+	 */
+	rview_build();
+	G.lw = lw;
+	G.body = body;
+	G.c2x = lw + 2;
+	G.mid = wide() ? lw + 1 + (w - 2 - lw) / 2 : 0;
+	G.c3x = G.mid ? G.mid + 2 : 0;
+	G.c3bar = G.mid ? w - 2 : 0;
+	G.c3w = G.mid ? w - 1 - G.c3x - (nrview - vsplit > body ? 1 : 0) : 0;
+	/* Too narrow to hold a label is the same as absent — and `c3w` is what
+	 * every hit test below asks, so it is the one place that decides. */
+	if (G.c3w < 8) {
+		G.c3w = 0;
+		G.mid = 0;
+	}
+
+	int n2 = G.c3w > 0 ? vsplit : nrview;
+
+	G.c2bar = G.c3w > 0 ? G.mid - 1 : w - 2;
+	G.c2w = (G.c3w > 0 ? G.mid : w - 1) - G.c2x - (n2 > body ? 1 : 0);
+
+	/*
 	 * A SLOT THE BACKDROP OWNS STILL HAS TO BE FILLED.
 	 *
 	 * The alpha decides whether the PAINTER puts pixels down; the fill is
@@ -1447,6 +1629,8 @@ static void draw_frame(void)
 	 * in KT_MID: `dim` is a fill at 1.63:1 against the body, and these two
 	 * lines are what the whole layout rests on. */
 	ktui_draw_vline(lw, 1, body, KT_G_VL, KT_MID, KT_BG);
+	if (G.c3w > 0)
+		ktui_draw_vline(G.mid, 1, body, KT_G_VL, KT_MID, KT_BG);
 	ktui_draw_hline(1, h - 3, w - 2, KT_G_HL, KT_MID, KT_BG);
 
 	/*
@@ -1478,19 +1662,39 @@ static void draw_frame(void)
 	kch_scrollbar(0, lw - 1, 1, body, nleft, top, KT_BG);
 
 	/*
-	 * ── the right column ──
+	 * ── the right column, drawn as one or two ──
 	 *
-	 * It scrolls too, and it did not: seventeen fixed rows against a body
-	 * of eighteen fitted by one, so the next entry anybody adds would have
-	 * been silently invisible — and the wheel already moved a selection
-	 * that the draw could not follow. Same clamp, same bar, same rule.
+	 * EACH SCROLLS ON ITS OWN. Both are longer than the body on a short
+	 * screen, and a single scroll shared between two side-by-side lists
+	 * moves the one the pointer is not on.
+	 *
+	 * `rsel` is one selection across both, so which column holds it is
+	 * read from its value rather than kept as a third piece of state that
+	 * can disagree with it.
 	 */
-	kch_list_clamp(&rtop, rsel, nright, body, follow && focus_right);
-	int rw = nright > body ? w - lw - 4 : w - lw - 3;
-	for (int i = 0; i < body && rtop + i < nright; i++)
-		draw_row(&right[rtop + i], lw + 2, 1 + i, rw,
+	kch_list_clamp(&rtop, rsel, n2, body,
+		       follow && focus_right && rsel < n2);
+	for (int i = 0; i < body && rtop + i < n2; i++)
+		draw_row(rrow(rtop + i), G.c2x, 1 + i, G.c2w,
 			 focus_right && rtop + i == rsel);
-	kch_scrollbar(1, w - 2, 1, body, nright, rtop, KT_BG);
+	kch_scrollbar(1, G.c2bar, 1, body, n2, rtop, KT_BG);
+
+	if (G.c3w > 0) {
+		int n3 = nrview - vsplit;
+
+		kch_list_clamp(&rtop2, rsel >= vsplit ? rsel - vsplit : 0, n3,
+			       body, follow && focus_right && rsel >= vsplit);
+		for (int i = 0; i < body && rtop2 + i < n3; i++)
+			draw_row(rrow(vsplit + rtop2 + i), G.c3x, 1 + i,
+				 G.c3w,
+				 focus_right && vsplit + rtop2 + i == rsel);
+		kch_scrollbar(2, G.c3bar, 1, body, n3, rtop2, KT_BG);
+	} else {
+		/* A BAR THAT IS NOT DRAWN MUST STOP ANSWERING. The shared
+		 * chrome records every call, including the ones that draw
+		 * nothing, so this is how id 2 is retired. */
+		kch_scrollbar(2, -1, 1, body, 0, 0, KT_BG);
+	}
 
 	/*
 	 * ── the footer: a search FIELD and the five power verbs ──
@@ -1610,8 +1814,8 @@ static void draw_frame(void)
 			 * so the field never stops saying what it is for.
 			 */
 			const struct row *cur = focus_right
-							? (rsel < nright
-								   ? &right[rsel]
+							? (rsel < nrview
+								   ? rrow(rsel)
 								   : NULL)
 							: (sel < nleft ? &left[sel]
 								       : NULL);
@@ -1704,6 +1908,21 @@ static int activate(struct row *r)
 		back();
 		return 0;
 	}
+	/*
+	 * THE FOLD, which moves the RIGHT column and nothing else — the two
+	 * application submenus above rebuild the left one. Never closes the
+	 * menu: it is a page turn.
+	 */
+	if (r->rsub) {
+		right_mode = r->rsub > 0;
+		rtop = rtop2 = 0;
+		rsel = 0;
+		rview_build();
+		rsel = first_right(0, nrview);
+		focus_right = 1;
+		sel_follow = 1;
+		return 0;
+	}
 	if (r->submenu == -1) {
 		mode = ST_CATS;
 		sel = top = 0;
@@ -1757,6 +1976,18 @@ static int activate(struct row *r)
  * every other surface in this shell keeps. */
 static int back(void)
 {
+	/* The folded system group is a LEVEL, so it is the first one Escape
+	 * leaves — and only while the right column is the one being used, or
+	 * Escape in a category would close a fold the eye is not on. */
+	if (focus_right && right_mode) {
+		right_mode = 0;
+		rtop = rtop2 = 0;
+		rsel = 0;
+		rview_build();
+		rsel = first_right(0, nrview);
+		sel_follow = 1;
+		return 0;
+	}
 	if (query[0]) {
 		query[0] = '\0';
 		mode = ST_MAIN;
@@ -1782,24 +2013,40 @@ static int back(void)
 	return 1;
 }
 
+/*
+ * WITHIN THE COLUMN THE SELECTION IS IN, and wrapping inside it.
+ *
+ * Three columns are three lists. An arrow that ran off the bottom of the
+ * places column into the top of the system one would be a list whose end is
+ * somewhere else on the screen, and the wrap is what tells a hand it has
+ * reached the end at all.
+ */
 static void step(int d)
 {
-	int n = focus_right ? nright : nleft;
+	int lo = 0, hi = focus_right ? nrview : nleft;
 	int *s = focus_right ? &rsel : &sel;
 
-	if (n <= 0)
+	if (focus_right && G.c3w > 0) {
+		if (*s < vsplit)
+			hi = vsplit;
+		else
+			lo = vsplit;
+	}
+	if (hi <= lo)
 		return;
+	if (*s < lo || *s >= hi)
+		*s = lo;
 	/* The CURSOR moved, so the viewport follows it. A wheel that scrolled
 	 * the viewport instead deliberately does not set this — see
 	 * kch_list_wheel and draw_frame. */
 	sel_follow = 1;
-	for (int i = 0; i < n; i++) {
+	for (int i = lo; i < hi; i++) {
 		*s += d;
-		if (*s < 0)
-			*s = n - 1;
-		if (*s >= n)
-			*s = 0;
-		if (!(focus_right ? right[*s] : left[*s]).rule)
+		if (*s < lo)
+			*s = hi - 1;
+		if (*s >= hi)
+			*s = lo;
+		if (!(focus_right ? *rrow(*s) : left[*s]).rule)
 			return;
 	}
 }
@@ -1901,14 +2148,15 @@ int start_main(int argc, char **argv)
 		} else {
 			fprintf(stderr, "usage: kdos-start [--at-bottom X Y] "
 					"[--font NAME] [--no-icons] "
-					"[--route NAME] [--dump]\n");
+					"[--route NAME] "
+					"[--dump-view VIEW] [--dump]\n");
 			return 2;
 		}
 	}
 
 	sh_apps_load();
 	st_medium_load();
-	st_routes_load();
+	build_routes();
 	/* The fixed rows first: a search reads them, and the one at startup
 	 * would otherwise run against an empty right column. */
 	build_right();
@@ -1923,6 +2171,22 @@ int start_main(int argc, char **argv)
 	} else if (dump_view && !strncmp(dump_view, "search:", 7)) {
 		mode = ST_SEARCH;
 		snprintf(query, sizeof(query), "%s", dump_view + 7);
+	} else if (dump_view && !strcmp(dump_view, "system")) {
+		/*
+		 * THE FOLDED SYSTEM GROUP, OPENED. The narrow menu's second
+		 * page; nothing else reaches it, so without this the only
+		 * evidence for what `@toplevel` left inside the fold is the
+		 * rows that are missing from the first page.
+		 *
+		 * Twice: the first call settles the shape — `right_shape`
+		 * starts unset and a shape change RESETS the fold — and the
+		 * second builds the opened page.
+		 */
+		rview_build();
+		right_mode = 1;
+		focus_right = 1;
+		rview_build();
+		rsel = first_right(0, nrview);
 	}
 	if (route_open) {
 		mode = ST_SEARCH;
@@ -2005,21 +2269,55 @@ int start_main(int argc, char **argv)
 		}
 
 		if (ev.type == KT_EVT_MOUSE) {
-			int lw = ST_LEFT_W < ktui_w - 12 ? ST_LEFT_W
-							 : ktui_w / 2;
-			int body = ktui_h - 4;	/* see draw_frame */
-			int on_left = ev.mx >= 1 && ev.mx < lw;
+			/*
+			 * THE GEOMETRY IS THE ONE THAT WAS DRAWN. draw_frame()
+			 * runs at the top of this loop and records it; deriving
+			 * it a second time here is how a hit test comes to
+			 * disagree with the picture.
+			 */
+			int lw = G.lw;
+			int body = G.body;
 			int idx = ev.my - 1;
+			/* 0 the left column, 1 places, 2 system, -1 a divider,
+			 * the border or the margin — which is not a column and
+			 * must act like one no more than the frame does. */
+			int col = ev.mx >= 1 && ev.mx < lw	 ? 0
+				  : G.c3w > 0 && ev.mx > G.mid	 ? 2
+				  : ev.mx > lw &&
+					    (!G.mid || ev.mx < G.mid) ? 1
+								      : -1;
+			/* Which drawn row of the right column, or -1. Each
+			 * column carries its own scroll, so the index is not
+			 * `rtop + idx` in both. */
+			int rk = -1;
+
+			if (ev.my >= 1 && idx < body && idx >= 0) {
+				int n2 = G.c3w > 0 ? vsplit : nrview;
+
+				if (col == 1 && rtop + idx < n2)
+					rk = rtop + idx;
+				else if (col == 2 &&
+					 vsplit + rtop2 + idx < nrview)
+					rk = vsplit + rtop2 + idx;
+			}
 
 			if (ev.press == KT_MP_DRAG) {
 				/* THE BAR IS A CONTROL — see kch_scrollbar. */
 				int bt = kch_scrollbar_drag(ev.my);
 
 				if (bt >= 0) {
-					if (kch_scrollbar_grabbed() == 0)
+					int id = kch_scrollbar_grabbed();
+
+					/* THE BAR THAT WAS GRABBED. Every
+					 * id but the left one shared `rtop`
+					 * once, which dragged the wrong
+					 * column's list. */
+					if (id == 0)
 						top = bt;
-					else
+					else if (id == 1)
 						rtop = bt;
+					else
+						rtop2 = bt;
 					sel_follow = 0;
 					continue;
 				}
@@ -2052,16 +2350,14 @@ int start_main(int argc, char **argv)
 							< POW_W && k < npower)
 						hover_power = k;
 				}
-				if (ev.my >= 1 && ev.my - 1 < body) {
-					if (on_left && top + idx < nleft &&
+				if (ev.my >= 1 && idx < body) {
+					if (col == 0 && top + idx < nleft &&
 					    !left[top + idx].rule) {
 						focus_right = 0;
 						sel = top + idx;
-					} else if (!on_left && ev.mx > lw &&
-						   rtop + idx < nright &&
-						   !right[rtop + idx].rule) {
+					} else if (rk >= 0 && !rrow(rk)->rule) {
 						focus_right = 1;
-						rsel = rtop + idx;
+						rsel = rk;
 						sel_follow = 1;
 					}
 				}
@@ -2088,6 +2384,12 @@ int start_main(int argc, char **argv)
 					sel_follow = 0;
 					continue;
 				}
+				bt = kch_scrollbar_press(2, ev.mx, ev.my);
+				if (bt >= 0) {
+					rtop2 = bt;
+					sel_follow = 0;
+					continue;
+				}
 			}
 			if (ev.btn == KT_MB_WHEEL_UP ||
 			    ev.btn == KT_MB_WHEEL_DOWN) {
@@ -2096,15 +2398,21 @@ int start_main(int argc, char **argv)
 				 * THE COLUMN UNDER THE POINTER, not the one
 				 * with the keyboard focus — and the focus
 				 * follows, or the highlight would move in a
-				 * column the eye is not on. Only the left
-				 * column can be longer than the window; the
-				 * right one is a fixed list of places.
+				 * column the eye is not on. All three can be
+				 * longer than the window and each carries its
+				 * own scroll.
 				 */
-				focus_right = !on_left && ev.mx > lw;
-				if (!kch_list_wheel(up,
-						   focus_right ? &rtop : &top,
-						   focus_right ? nright : nleft,
-						   body))
+				int *wtop = col == 2   ? &rtop2
+					    : col == 1 ? &rtop
+						       : &top;
+				int wn = col == 2 ? nrview - vsplit
+					 : col == 1
+						 ? (G.c3w > 0 ? vsplit
+							      : nrview)
+						 : nleft;
+
+				focus_right = col > 0;
+				if (!kch_list_wheel(up, wtop, wn, body))
 					step(up ? -1 : 1);
 				continue;
 			}
@@ -2137,8 +2445,8 @@ int start_main(int argc, char **argv)
 			/* A click anywhere else takes the highlight off the
 			 * field, the way every other text field behaves. */
 			search_lit = 0;
-			if (ev.my >= 1 && ev.my - 1 < body) {
-				if (on_left && top + idx < nleft) {
+			if (ev.my >= 1 && idx < body) {
+				if (col == 0 && top + idx < nleft) {
 					struct row *rr = &left[top + idx];
 
 					/* THE PIN IS ITS OWN TARGET, checked before
@@ -2164,9 +2472,8 @@ int start_main(int argc, char **argv)
 					}
 					if (activate(rr))
 						break;
-				} else if (!on_left && ev.mx > lw &&
-					   rtop + idx < nright) {
-					if (activate(&right[rtop + idx]))
+				} else if (rk >= 0) {
+					if (activate(rrow(rk)))
 						break;
 				}
 			}
@@ -2187,17 +2494,30 @@ int start_main(int argc, char **argv)
 			step(1);
 			break;
 		case KT_K_LEFT:
-			if (focus_right)
+			/* Out of the system column into the places one before
+			 * out of the right half altogether: three columns are
+			 * three steps left, the way they are three on screen. */
+			if (focus_right && G.c3w > 0 && rsel >= vsplit) {
+				rsel = first_right(0, vsplit);
+				sel_follow = 1;
+			} else if (focus_right) {
 				focus_right = 0;
-			else if (back())
+			} else if (back()) {
 				goto done;
+			}
 			break;
 		case KT_K_RIGHT:
 			if (!focus_right && sel < nleft && left[sel].submenu) {
 				if (activate(&left[sel]))
 					goto done;
-			} else {
+			} else if (!focus_right) {
 				focus_right = 1;
+				if (G.c3w > 0 && rsel >= vsplit)
+					rsel = first_right(0, vsplit);
+				sel_follow = 1;
+			} else if (G.c3w > 0 && rsel < vsplit) {
+				rsel = first_right(vsplit, nrview);
+				sel_follow = 1;
 			}
 			break;
 		case KT_K_TAB:
@@ -2205,7 +2525,7 @@ int start_main(int argc, char **argv)
 			break;
 		case KT_K_ENTER:
 			if (focus_right) {
-				if (rsel < nright && activate(&right[rsel]))
+				if (rsel < nrview && activate(rrow(rsel)))
 					goto done;
 			} else if (sel < nleft && activate(&left[sel])) {
 				goto done;

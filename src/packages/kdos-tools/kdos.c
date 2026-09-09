@@ -4260,7 +4260,17 @@ static int cmd_menu(int argc, char **argv)
 				"       kdos menu toggle [<route>]\n");
 		return 2;
 	}
-	con_conf_str("menu", "kdos-start", prog, sizeof(prog));
+	/*
+	 * THE PALETTE IS WHAT A ROUTE OPENS INTO, and the `menu` key is the
+	 * fallback rather than the answer. `kdos menu summon setup.network`
+	 * means "take me there", and taking somebody there is a search with
+	 * the name already typed — which is the palette. A `palette` key that
+	 * was read and then ignored would leave every route opening the menu,
+	 * silently and with nothing failing.
+	 */
+	con_conf_str("palette", "", prog, sizeof(prog));
+	if (!prog[0])
+		con_conf_str("menu", "kdos-start", prog, sizeof(prog));
 
 	/* The key may carry arguments — the session runs it through an argument
 	 * builder too — so it is split here rather than taken as one name. The

@@ -34,7 +34,11 @@ static const struct {
 } TOOLS[] = {
 	{ "kdos-shell", panel_main },
 	{ "kdos-start", start_main },
-	{ "kdos-launcher", launcher_main },
+	/* THE LAUNCHER IS THE PALETTE WITH ONE SOURCE. Two search programs
+	 * meant two matchers and two ideas of ranking; palette_main reads the
+	 * name it was reached by and shows applications only under this one. */
+	{ "kdos-launcher", palette_main },
+	{ "kdos-palette", palette_main },
 	{ "kdos-menu", menu_main },
 	{ "kdos-desk", desk_main },
 	{ "kdos-pick", pick_main },

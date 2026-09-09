@@ -423,9 +423,11 @@ static int act_key(const char *key, const struct srow *r)
 		return 0;
 	}
 	if (!strcmp(key, "cpu")) {
-		const char *argv[8];
+		const char *argv[10];
 		char id[160];
-		int n = sh_term_argv(argv, 0, 8, "btop", id, sizeof(id));
+		int n = sh_term_argv(argv, 0,
+				     (int)(sizeof(argv) / sizeof(*argv)),
+				     "btop", id, sizeof(id));
 
 		argv[n++] = "btop";
 		argv[n] = NULL;
