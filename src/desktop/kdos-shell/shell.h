@@ -281,7 +281,9 @@ struct sh_state {
  * chain from a keybinding to a running program. */
 int panel_main(int argc, char **argv);		/* kdos-shell    */
 int start_main(int argc, char **argv);		/* kdos-start    */
-int launcher_main(int argc, char **argv);	/* kdos-launcher */
+/* kdos-launcher and kdos-palette are one front end: the launcher is the
+ * palette showing applications only, chosen by the name it was reached by. */
+int palette_main(int argc, char **argv);	/* kdos-palette  */
 int menu_main(int argc, char **argv);		/* kdos-menu     */
 int desk_main(int argc, char **argv);		/* kdos-desk     */
 int pick_main(int argc, char **argv);		/* kdos-pick     */
@@ -606,6 +608,10 @@ void sh_help(const char *doc, void *user);
 int sh_logo_load(const char *path, char (*out)[SH_LOGO_BYTES], int max,
 		 int *nlines, int *width);
 
+/* The wall clock every surface that shows one reads, frozen by
+ * $KDOS_PANEL_NOW so a frame with a time in it can be goldened. */
+time_t sh_wall(void);
+
 const char *sh_term(void);
 /* The favourites file names the terminal; this says which one this desktop
  * runs. See sh_fav_id() for why one file serves both. */
@@ -659,6 +665,9 @@ extern const int kdos_disp_n;
  * ──────────────────────────────────────────────────────────────────────── */
 int sh_fav_path(char *out, size_t n);
 int sh_fav_has(const char *id);
+/* The two-letter launch code a line carries, or NULL. One reader, so the menu
+ * and the palette cannot disagree about what a code is. */
+const char *sh_fav_code(const char *id);
 int sh_fav_set(const char *id, int pinned);
 /* Move one pinned id to a position in the row — what a drag on the taskbar's
  * quick-launch strip writes. */

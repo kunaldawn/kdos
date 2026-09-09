@@ -461,6 +461,7 @@ const char *con_command(int which)
 		[CON_CMD_THEME]    = { "theme",    "kdos-theme" },
 		[CON_CMD_BACKGROUND] = { "background",
 					 "kdos background next" },
+		[CON_CMD_PALETTE]  = { "palette",  "kdos-palette" },
 		[CON_CMD_VOLUP]    = { "volume_up",   "kdos-osd volume +5" },
 		[CON_CMD_VOLDOWN]  = { "volume_down", "kdos-osd volume -5" },
 		[CON_CMD_MUTE]     = { "volume_mute", "kdos-osd volume mute" },
@@ -473,6 +474,33 @@ const char *con_command(int which)
 	if (which < 0 || which >= CON_CMD_N)
 		return NULL;
 	return kcon_conf_str(cmd[which].key, cmd[which].def);
+}
+
+/*
+ * The programs a run-or-raise chord reaches, each a con.conf key with a
+ * default — the same split con_command() keeps, and for the same reason:
+ * which key opens the mail is a keyboard question and which program IS the
+ * mail is not.
+ *
+ * THE DEFAULTS ARE WHAT THIS IMAGE CARRIES. A key pointed at a program that
+ * is not installed is not an error here — the chord starts nothing and the key
+ * card drops its row, which is the same rule a route with no command keeps.
+ */
+const char *con_app(int which)
+{
+	static const struct { const char *key, *def; } app[CON_APP_N] = {
+		[CON_APP_FILES]   = { "files",   "mc" },
+		[CON_APP_MAIL]    = { "mail",    "aerc" },
+		[CON_APP_BROWSER] = { "browser", "lynx" },
+		[CON_APP_MUSIC]   = { "music",   "rmpc" },
+		[CON_APP_AGENDA]  = { "agenda",  "ikhal" },
+		[CON_APP_CHAT]    = { "chat",    "iamb" },
+		[CON_APP_WRITE]   = { "writing", "micro" },
+	};
+
+	if (which < 0 || which >= CON_APP_N)
+		return NULL;
+	return kcon_conf_str(app[which].key, app[which].def);
 }
 
 /*
@@ -1002,6 +1030,52 @@ static int session_key(const KtuiEvent *ev)
 	case CON_ACT_EXEC:
 		con_spawn(con_command(arg));
 		return 1;
+	case CON_ACT_FOCUS_OR_LAUNCH: {
+		const char *prog = con_app(arg);
+		char store[512];
+		const char *av[16];
+		int n;
+
+		if (!prog || !*prog)
+			return 1;
+		/*
+		 * FROM THE FOCUSED WINDOW WHEN IT IS ALREADY THIS PROGRAM,
+		 * which is what turns a second press into a cycle: three
+		 * terminals under one chord are reachable, and a first press
+		 * from anywhere else still lands on the front one.
+		 */
+		Win *t = win_find_prog(prog,
+				       w && !strcmp(w->prog, prog) ? w->id : 0);
+
+		if (t) {
+			/*
+			 * THE WORKSPACE FIRST AND THE RAISE AFTER, never the
+			 * other way round: win_workspace() clears the focus and
+			 * cycles to whatever the ring lands on, so a raise
+			 * before it is undone. And a minimised window is
+			 * un-minimised WHERE IT IS — win_restore() moves the
+			 * window to the current workspace, which is the
+			 * opposite of going to it.
+			 */
+			if (t->workspace != S.workspace)
+				win_workspace(t->workspace);
+			t->minimised = 0;
+			win_raise(t->id);
+			S.focus = t->id;
+			ktui_draw_invalidate();
+			return 1;
+		}
+
+		/* NO SHELL. The con.conf value is an argument vector, split
+		 * the way every other command in this file is. */
+		n = kxdg_exec_split(prog, NULL, 0, store, sizeof(store), av,
+				    16);
+		if (n > 0) {
+			av[n] = NULL;
+			term_open(av);
+		}
+		return 1;
+	}
 	case CON_ACT_NEXT:
 		win_cycle(1);
 		return 1;
@@ -1586,6 +1660,12 @@ static void adopt_surfaces(void)
 		snprintf(w->title, sizeof(w->title), "%s",
 			 kcon_surface_title(f));
 		snprintf(w->app_id, sizeof(w->app_id), "%s",
+			 kcon_surface_app_id(f));
+		/* A CELL CLIENT'S APP ID IS ITS PROGRAM. It is the one window
+		 * kind whose identity comes from the client itself, and
+		 * `kdos-term --app-id` is what makes a terminal entry declare
+		 * the program it is running rather than the emulator. */
+		snprintf(w->prog, sizeof(w->prog), "%s",
 			 kcon_surface_app_id(f));
 		w->next = S.wins;
 		S.wins = w;

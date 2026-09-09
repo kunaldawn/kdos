@@ -47,6 +47,7 @@
 #include <unistd.h>
 
 #include "con.h"
+#include "kbase.h"
 
 /*
  * A console fd for the ioctls, opened once and kept. Three candidates in the
@@ -208,6 +209,10 @@ Win *vt_open(const char *const argv[], const char *title, int cage)
 	snprintf(w->title, sizeof(w->title), "%s",
 		 title && *title ? title : argv[0]);
 	snprintf(w->app_id, sizeof(w->app_id), "kdos-cage");
+	/* The GUEST's program, not the cage's: `argv` here is what was asked
+	 * for, before the cage flags are put in front of it. */
+	snprintf(w->prog, sizeof(w->prog), "%s",
+		 argv[0] ? kb_basename(argv[0]) : "");
 
 	/* The switch is asked for HERE and waited for in the child: a session
 	 * that blocked on VT_WAITACTIVE would stop drawing until the view had

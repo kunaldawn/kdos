@@ -481,6 +481,10 @@ Win *embed_open(const char *const argv[], const char *title)
 	snprintf(w->title, sizeof(w->title), "%s",
 		 title && *title ? title : argv[0]);
 	snprintf(w->app_id, sizeof(w->app_id), "%s", argv[0]);
+	/* THE ENTRY ID FOR A GENERATED LAUNCHER, which `argv[0]` is not: it is
+	 * `kdos-appbox` for every boxed application, so run-or-raise keyed on
+	 * it would answer one chord with somebody else's window. */
+	snprintf(w->prog, sizeof(w->prog), "%s", guest_name(argv));
 
 	/* Half the workarea, placed by the window model like anything else —
 	 * an embedded application is a window and is given a window's size. */

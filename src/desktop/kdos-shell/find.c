@@ -27,11 +27,13 @@
  * from `rga` — none of them re-implemented here, because a second walker would
  * disagree with the first about hidden files, ignore rules and symlinks.
  *
- * THE TWO FORKS STREAM. A search over a home directory is seconds, and a
- * surface that waited for it would be a window that cannot be closed while it
- * is doing the one thing it is for. The child writes into a pipe, the pipe is
- * read in the poll loop, and Escape kills it — the same shape `kdos-status`
- * uses for the tools it runs inside its popup.
+ * THE TWO FORKS STREAM, and the fork itself is `filesearch.c`'s, so that this
+ * surface and every other one that asks for a file run the same two programs
+ * the same way. A search over a home directory is seconds, and a surface that
+ * waited for it would be a window that cannot be closed while it is doing the
+ * one thing it is for. The child writes into a pipe, the pipe is read in the
+ * poll loop, and Escape kills it — the same shape `kdos-status` uses for the
+ * tools it runs inside its popup.
  *
  * CONTENTS ARE OPT-IN, on `Ctrl+G`. Names come back in milliseconds and are
  * what somebody usually means; a content search reads every file under the
@@ -44,21 +46,18 @@
  * ---------------------------------
  */
 
-#include <errno.h>
-#include <fcntl.h>
 #include <limits.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include "kbase.h"
 #include "kwl.h"
 #include "kxdg.h"
 #include "shell.h"
+
+#include "filesearch.h"
 
 #define FI_COLS 88
 #define FI_ROWS 28
@@ -68,9 +67,6 @@
 #define FI_MAX_ROWS 400
 #define FI_MAX_APPS 8
 #define FI_MAX_RECENT 8
-/* Handed to `fd` and `rga` as well, so the child stops rather than being
- * killed with a full pipe. */
-#define FI_MAX_HITS "200"
 
 enum { G_APPS = 0, G_RECENT, G_NAMES, G_CONTENT, G_N };
 
@@ -93,12 +89,8 @@ static int qlen;
 static char dir[PATH_MAX];
 static char note[192];
 
-/* The running child, if any, and which group its lines belong to. */
-static pid_t kid = -1;
-static int kid_fd = -1;
+/* Which group the running child's lines belong to. */
 static int kid_group;
-static char partial[1024];
-static size_t npartial;
 static int content_wanted;
 
 static KtuiKeys keys;
@@ -133,89 +125,27 @@ static const char *pretty(const char *p, char *buf, size_t n)
 	return p;
 }
 
-/* ── the streaming half ────────────────────────────────────────────────── */
-
-static void kid_stop(void)
-{
-	if (kid > 0) {
-		kill(kid, SIGTERM);
-		waitpid(kid, NULL, 0);
-	}
-	if (kid_fd >= 0)
-		close(kid_fd);
-	kid = -1;
-	kid_fd = -1;
-	npartial = 0;
-}
-
-/*
- * Start `argv` with its output on a nonblocking pipe. Its own session, so the
- * signal that stops it reaches nothing else.
- */
-static int kid_start(const char *const argv[], int group)
-{
-	int fds[2];
-	pid_t pid;
-
-	kid_stop();
-	if (!kb_have_prog(argv[0])) {
-		snprintf(note, sizeof(note), "%s is not on this machine",
-			 argv[0]);
-		return -1;
-	}
-	if (pipe(fds) != 0)
-		return -1;
-	pid = fork();
-	if (pid < 0) {
-		close(fds[0]);
-		close(fds[1]);
-		return -1;
-	}
-	if (pid == 0) {
-		close(fds[0]);
-		dup2(fds[1], STDOUT_FILENO);
-		/* Its errors are not results: a permission denied on one
-		 * directory would otherwise arrive as a row somebody can
-		 * select. */
-		int null = open("/dev/null", O_WRONLY);
-
-		if (null >= 0) {
-			dup2(null, STDERR_FILENO);
-			close(null);
-		}
-		if (fds[1] > STDERR_FILENO)
-			close(fds[1]);
-		setsid();
-		execvp(argv[0], (char *const *)argv);
-		_exit(127);
-	}
-	close(fds[1]);
-	fcntl(fds[0], F_SETFL, O_NONBLOCK);
-	kid_fd = fds[0];
-	kid = pid;
-	kid_group = group;
-	npartial = 0;
-	return 0;
-}
+/* ── what the child sends back ─────────────────────────────────────────── */
 
 /*
  * `fd` prints a path per line; `rga` prints `path:line:text`. Both become a row
  * whose path is the part before the first colon that is a real separator — for
  * `fd` that is the whole line.
  */
-static void line_take(char *line)
+static void line_take(const char *line, int tag, void *user)
 {
 	char buf[PATH_MAX];
 
+	(void)user;
 	if (!*line)
 		return;
-	if (kid_group == G_NAMES) {
+	if (tag == G_NAMES) {
 		row_add(G_NAMES, 0, pretty(line, buf, sizeof(buf)), line);
 		return;
 	}
 	{
 		char path[PATH_MAX];
-		char *colon = strchr(line, ':');
+		const char *colon = strchr(line, ':');
 		char shown[512];
 
 		if (!colon)
@@ -232,97 +162,28 @@ static void line_take(char *line)
 	}
 }
 
-static void search_contents(void);
-
-/* Whatever has arrived, split into lines. Never blocks. */
-static void kid_pump(void)
+/* Nothing is running and the question is not the reason: a surface that drew
+ * "nothing" for a machine without the program would blame what was typed. */
+static void prog_note(const char *prog)
 {
-	char buf[4096];
-	ssize_t n;
-
-	if (kid_fd < 0)
-		return;
-	while ((n = read(kid_fd, buf, sizeof(buf))) > 0) {
-		for (ssize_t i = 0; i < n; i++) {
-			if (buf[i] == '\n' || npartial + 1 >= sizeof(partial)) {
-				partial[npartial] = '\0';
-				line_take(partial);
-				npartial = 0;
-				if (buf[i] != '\n')
-					partial[npartial++] = buf[i];
-				continue;
-			}
-			if (buf[i] >= 0x20 || buf[i] < 0)
-				partial[npartial++] = buf[i];
-		}
-	}
-	if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
-		if (npartial) {
-			partial[npartial] = '\0';
-			line_take(partial);
-			npartial = 0;
-		}
-		close(kid_fd);
-		kid_fd = -1;
-		if (kid > 0) {
-			waitpid(kid, NULL, 0);
-			kid = -1;
-		}
-		/* Names first, then contents if they were asked for: two
-		 * children at once would interleave their lines into one
-		 * list. */
-		if (kid_group == G_NAMES && content_wanted)
-			search_contents();
-	}
+	if (!kb_have_prog(prog))
+		snprintf(note, sizeof(note), "%s is not on this machine", prog);
 }
 
 /* ── the four searches ─────────────────────────────────────────────────── */
 
 static void search_names(void)
 {
-	const char *argv[16];
-	int n = 0;
-
-	argv[n++] = "fd";
-	/* Hidden files are included and VCS ignores are honoured: somebody
-	 * looking for `.bashrc` means it, and nobody means `.git/objects`. */
-	argv[n++] = "--hidden";
-	argv[n++] = "--exclude";
-	argv[n++] = ".git";
-	argv[n++] = "--color";
-	argv[n++] = "never";
-	argv[n++] = "--max-results";
-	argv[n++] = FI_MAX_HITS;
-	/* A literal string, not a regex: a person typing `report.c` means the
-	 * dot, and a pattern that swallowed it would match `reportxc`. */
-	argv[n++] = "--fixed-strings";
-	argv[n++] = "--";
-	argv[n++] = query;
-	argv[n++] = dir;
-	argv[n] = NULL;
-	kid_start(argv, G_NAMES);
+	kid_group = G_NAMES;
+	sh_fsearch_names(dir, query, G_NAMES, line_take, NULL);
+	prog_note("fd");
 }
 
 static void search_contents(void)
 {
-	const char *argv[20];
-	int n = 0;
-
-	argv[n++] = "rga";
-	argv[n++] = "--line-number";
-	argv[n++] = "--no-heading";
-	argv[n++] = "--color";
-	argv[n++] = "never";
-	argv[n++] = "--fixed-strings";
-	argv[n++] = "--max-count";
-	argv[n++] = "3";
-	argv[n++] = "--max-columns";
-	argv[n++] = "200";
-	argv[n++] = "--";
-	argv[n++] = query;
-	argv[n++] = dir;
-	argv[n] = NULL;
-	kid_start(argv, G_CONTENT);
+	kid_group = G_CONTENT;
+	sh_fsearch_contents(dir, query, G_CONTENT, line_take, NULL);
+	prog_note("rga");
 }
 
 /*
@@ -490,7 +351,8 @@ static void draw(void)
 		top = sel - list_rows + 1;
 
 	if (!nrows) {
-		const char *msg = qlen ? (kid > 0 ? "searching…" : "nothing")
+		const char *msg = qlen ? (sh_fsearch_fd() >= 0 ? "searching…"
+							      : "nothing")
 				       : "Type what you are looking for";
 
 		ktui_draw_text((w - (int)strlen(msg)) / 2, h / 2, w - 2, msg,
@@ -532,7 +394,7 @@ static void draw(void)
 static void search_files(void)
 {
 	if (!qlen) {
-		kid_stop();
+		sh_fsearch_stop();
 		return;
 	}
 	note[0] = '\0';
@@ -600,7 +462,12 @@ int find_main(int argc, char **argv)
 		search_files();
 
 	while (!kdisp_should_close()) {
-		kid_pump();
+		/* Names first, then contents if they were asked for: two
+		 * children at once would interleave their lines into one
+		 * list. */
+		if (sh_fsearch_fd() >= 0 && !sh_fsearch_poll() &&
+		    kid_group == G_NAMES && content_wanted)
+			search_contents();
 		headings_fix();
 		sel_fix();
 		draw();
@@ -609,7 +476,9 @@ int find_main(int argc, char **argv)
 
 		/* A short wait while a child is running, so its lines arrive
 		 * as it finds them rather than a second at a time. */
-		if (!ktui_backend()->poll_event(&ev, kid > 0 ? 100 : 1000)) {
+		if (!ktui_backend()->poll_event(&ev,
+						sh_fsearch_fd() >= 0 ? 100
+								     : 1000)) {
 			if (ktui_resized) {
 				ktui_resized = 0;
 				ktui_draw_resize();
@@ -672,7 +541,7 @@ int find_main(int argc, char **argv)
 				 * later question: somebody who wants contents
 				 * wants them for the next word too. */
 				content_wanted = 1;
-				if (qlen && kid < 0)
+				if (qlen && sh_fsearch_fd() < 0)
 					search_contents();
 				break;
 			}
@@ -689,7 +558,7 @@ int find_main(int argc, char **argv)
 		}
 	}
 
-	kid_stop();
+	sh_fsearch_stop();
 	kdisp_shutdown();
 	return 0;
 }

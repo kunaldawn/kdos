@@ -427,29 +427,27 @@ int sh_apps_in_group(int group, const struct sh_app **out, int max)
 }
 
 /*
- * A substring match over the name, the id, the keywords and the command,
- * case-insensitively — and RANKED, because "fi" matching forty entries in
- * alphabetical order is a list nobody reads to the end of.
+ * A FUZZY match over the name, the id, the keywords and the command — and
+ * RANKED, because "fi" matching forty entries in alphabetical order is a list
+ * nobody reads to the end of.
  *
- * The rank is a prefix of the name first, then a word start inside it, then
- * anywhere at all, and the usage count breaks ties inside each band. That is
- * the order a person means when they type two letters.
+ * `kb_fuzzy()` AND NOT A MATCHER OF OUR OWN. This used to be a
+ * case-insensitive SUBSTRING in six bands, which meant `sm` found nothing at
+ * all where a person plainly meant System Monitor — and it meant the launcher,
+ * which had a subsequence matcher of its own, answered the same query
+ * differently. One function in libkbase is what stops three surfaces ranking
+ * one query three ways; see kbase.h for the ladder it scores by.
+ *
+ * HIGHER IS BETTER HERE, which is the opposite of what the launcher's private
+ * matcher meant by a score. The comparison below sorts descending, and a sort
+ * left the other way round would rank a correct list backwards.
+ *
+ * The usage count still breaks ties, and the name breaks those: that is the
+ * order a person means when two rows are equally good matches.
  */
-static const char *ci_str(const char *hay, const char *needle)
-{
-	size_t n = strlen(needle);
-
-	if (!n)
-		return hay;
-	for (const char *p = hay; *p; p++)
-		if (!strncasecmp(p, needle, n))
-			return p;
-	return NULL;
-}
-
 struct hit {
 	const struct sh_app *app;
-	int band;
+	int fuzz;
 };
 
 static int cmp_hit(const void *pa, const void *pb)
@@ -457,8 +455,8 @@ static int cmp_hit(const void *pa, const void *pb)
 	const struct hit *a = pa, *b = pb;
 	long now = time(NULL);
 
-	if (a->band != b->band)
-		return a->band - b->band;
+	if (a->fuzz != b->fuzz)
+		return a->fuzz < b->fuzz ? 1 : -1;	/* DESCENDING */
 	long sa = score(a->app, now), sb = score(b->app, now);
 	if (sa != sb)
 		return sa < sb ? 1 : -1;
@@ -481,25 +479,37 @@ int sh_apps_match(const char *needle, const struct sh_app **out, int max)
 
 	for (int i = 0; i < napps; i++) {
 		const struct sh_app *a = &apps[i];
-		const char *p = ci_str(a->name, needle);
-		int band = -1;
+		/*
+		 * THE NAME IS WORTH MORE THAN THE COMMAND. All four fields are
+		 * searched, because somebody typing `gimp` may mean any of
+		 * them, but a hit in the name is what they almost always mean
+		 * — so the weaker fields are scored and then discounted rather
+		 * than being a separate band that outranks a good name match.
+		 */
+		static const int DISCOUNT[4] = { 0, 4, 8, 8 };
+		const char *field[4];
+		int best = 0;
 
-		if (p == a->name)
-			band = 0;
-		else if (p && p[-1] == ' ')
-			band = 1;
-		else if (p)
-			band = 2;
-		else if (ci_str(a->id, needle))
-			band = 3;
-		else if (ci_str(a->keywords, needle))
-			band = 4;
-		else if (ci_str(a->exec, needle))
-			band = 5;
-		if (band < 0)
+		field[0] = a->name;
+		field[1] = a->id;
+		field[2] = a->keywords;
+		field[3] = a->exec;
+		for (int k = 0; k < 4; k++) {
+			int sc = kb_fuzzy(field[k], needle);
+
+			/* Discounted, never floored to nothing: a hit in the
+			 * keywords is a weaker reason than a hit in the name
+			 * and is still a reason. */
+			if (!sc)
+				continue;
+			sc = sc > DISCOUNT[k] ? sc - DISCOUNT[k] : 1;
+			if (sc > best)
+				best = sc;
+		}
+		if (!best)
 			continue;
 		hits[n].app = a;
-		hits[n].band = band;
+		hits[n].fuzz = best;
 		n++;
 	}
 	qsort(hits, (size_t)n, sizeof(hits[0]), cmp_hit);

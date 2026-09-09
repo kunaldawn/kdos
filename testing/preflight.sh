@@ -1060,7 +1060,11 @@ done
 # value is the program — a route naming a command the image does not carry is
 # a name a script can hold and nothing can open, which is the one failure a
 # route exists to prevent.
-sed -e 's/#.*//' -e 's/^[^=]*=//' fs/etc/kdos/menu.conf 2>/dev/null |
+# A key beginning `@` is a SETTING rather than a route: its value is a list
+# of menu row labels, not an argument vector, and reading one as a command
+# reports the first label as a missing program.
+sed -e 's/#.*//' -e '/^[[:space:]]*@/d' -e 's/^[^=]*=//' \
+    fs/etc/kdos/menu.conf 2>/dev/null |
     while read -r line; do
         set -- $line
         [ -n "$1" ] && echo "$1"
@@ -1080,7 +1084,15 @@ sed -e 's/#.*//' -e 's/^[^=]*=//' fs/etc/kdos/menu.conf 2>/dev/null |
        # a desktop that does not work (`-Dlabnag=disabled` matched `labnag`).
        grep -rhE '^[[:space:]]*for [A-Za-z_]+ in ' src/packages/*/build.sh \
             src/desktop/*/build.sh 2>/dev/null |
-            grep -qE "(^|[[:space:]])$cmd([[:space:]]|;|\$)"; then
+            grep -qE "(^|[[:space:]])$cmd([[:space:]]|;|\$)" ||
+       # ...or as the `Exec=` of a desktop entry a recipe WRITES. A Python
+       # console script is installed by pip from an entry point and appears in
+       # no path this can grep: `khal` ships `ikhal` that way. The recipe
+       # writing an entry for it is the assertion that it exists, and it is a
+       # file in this tree rather than a guess about one.
+       grep -rhE "^Exec=$cmd([[:space:]]|\$)" ports/core/*/build.sh \
+            src/packages/*/build.sh src/desktop/*/build.sh 2>/dev/null |
+            grep -q .; then
         continue
     fi
     echo "MISSING $cmd"

@@ -6,19 +6,19 @@
 |                               |  . Pictures                                  |
 |                               |  . Files                                     |
 |                               | --SYSTEM-------------------------------------|
-|                               |  . Settings                                  |
 |                               |  . Network                                   |
-|                               |  . Bluetooth                                 |
-|                               |  . Sound                                     |
-|                               |  . Recorder                                  |
-|                               |  . Notifications                             |
-|                               |  . Devices                                   |
-|                               |  . Boxes                                     |
-|                               |  . Displays                                  |
-|                               |  . Terminal                                  |
-|                               |  . Desktop                                   |
 |                               |  . Help                                      |
-|                               |  . About                                     |
+|                               |  . Settings                                > |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
+|                               |                                              |
 |------------------------------------------------------------------------------|
 | > Type to search                                         Lck Slp Rst Out Off |
 +==============================================================================+

@@ -233,9 +233,23 @@ hold has to keep resolving.
 `network` finds the row and `setup.network` finds the same thing. `preflight.sh` fails on a route
 whose first word is a command the image does not carry.
 
+**A key beginning `@` is a setting about the menu, not a route.** Its value is read by whichever
+surface asks for it and is never run; `@` cannot begin a route name, so that is the whole of the
+distinction. A setting that fell through to the route table would be a launchable row running the
+first word of its own value, and `preflight.sh` skips `@` lines for exactly that reason.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `@toplevel` | `Network Sound Displays Terminal` | Which system rows `kdos-start` keeps outside the fold when it is too narrow for three columns. Labels as the menu draws them, separated by spaces or commas, whole entries and case-insensitive. |
+
+Below a hundred columns the Start menu's system group folds behind one `Settings ▸` row; the labels
+named here stay listed beside it. A label that names no row promotes nothing and reports nothing —
+a preference file is not a wiring diagram — so `selftest.sh` is what fails on the typo.
+
 ## `~/.config/kdos/screensaver.txt`
 
-**Ships absent, and `/usr/share/kdos/screensaver.txt` is what is drawn without it.** A UTF-8 grid
+**Read by the `art` and `bounce` effects; the other six need no file at all.** Ships absent, and
+`/usr/share/kdos/screensaver.txt` is what is drawn without it. A UTF-8 grid
 of characters, one line per row; SGR colour in it is stripped, because a surface paints slots and
 the effect picks one. The screensaver's art mode is a transform over this grid, so replacing the
 file replaces the picture without touching the program.
@@ -384,10 +398,19 @@ The same rule holds for `keys.conf`.
 | `idle_lock` | `600` | Seconds of no input before the screen locks; `0` never |
 | `idle_off` | `900` | Seconds before the screen powers down; `0` never |
 | `terminal` | `sh` | What `Super+Return` opens |
-| `menu` | `kdos-start` | What `Super+space` starts |
+| `files` | `mc` | What `Super+e` raises, or starts |
+| `mail` | `aerc` | What `Super+Shift+e` raises, or starts |
+| `browser` | `lynx` | What `Super+Shift+b` raises, or starts |
+| `music` | `rmpc` | What `Super+Shift+u` raises, or starts |
+| `agenda` | `ikhal` | What `Super+Shift+c` raises, or starts |
+| `chat` | `iamb` | What `Super+Shift+g` raises, or starts |
+| `writing` | `micro` | What `Super+Shift+w` raises, or starts |
+| `menu` | `kdos-start` | What the taskbar's Start button and `Super+F10` open. `Super+space` opens the `palette` above |
 | `launcher` | `kdos-launcher` | What `Super+d` starts |
 | `lock` | `kdos-lock` | What `Super+l` starts |
+| `palette` | `kdos-palette` | One search over windows, applications, routes, settings pages, files and chords, on `Super+space`. **Beside `menu`, not instead of it**: a keyboard wants to type a name and a pointer wants to read rows, so the taskbar's Start button still opens the menu. `kdos menu summon <route>` opens this with the route already typed, falling back to `menu` when this names nothing |
 | `saver` | `kdos-saver` | What `idle_saver` and `Super+Shift+l` start |
+| `saver_mode` | `art` | Which effect it draws: `art`, `bounce` (the same effect under the name it is known by), `rain`, `matrix`, `pipes`, `starfield`, `fire`, `clock`, or `random` for one of them per start. **`--mode NAME` on the `saver` line beats this key**, which is what lets a frame be dumped for a golden on a machine whose own `/etc/kdos/con.conf` says otherwise. A name it does not know falls back to `art` rather than refusing to start |
 | `keys` | `kdos-keys` | What `Super+F1` starts |
 | `audio` | `kdos-audio` | What `Super+F3` starts |
 | `net` | `kdos-net` | What `Super+F4` starts |
@@ -418,9 +441,12 @@ The same rule holds for `keys.conf`.
 | `paste_guard` | `yes` | Refuse an unbracketed paste carrying a newline once, and take it on the second try |
 | `embed` | `yes` | Whether a graphical application becomes a window. `no` gives every one of them a terminal of its own |
 
-**The twelve surface keys exist so a chord and the program it runs are written in one place.**
+**The surface keys exist so a chord and the program it runs are written in one place.**
 `kdos-con --keys` prints what this table binds, so the keybinding card cannot name a program the
-session does not start. `displays` reaches a surface that cannot configure a console screen —
+session does not start. It prints `action<TAB>chord`, and `action<TAB>chord<TAB>program` for the
+seven run-or-raise rows — the third field is what the card drops a row on when the program is not
+installed. Every row the session binds is printed, including one whose program is missing: the
+table must not disagree with the chords, and what a person is shown is the card's decision. `displays` reaches a surface that cannot configure a console screen —
 `libkkms` has no mode selection — so it says so and exits; the chord is bound because a stated
 limit is better than a missing key.
 
@@ -467,7 +493,7 @@ Changing a default in one file changes it in the other.
 | `restore` | `Super+Shift+n` | `focus-left` … `focus-down` | `Super+Shift+`arrow |
 | `workspace-prev` | `Super+PageUp` | `swap-left` … `swap-down` | `Super+Alt+`arrow |
 | `workspace-next` | `Super+PageDown` | | |
-| `menu` | `Super+space` | `launcher` | `Super+d` |
+| `menu-fkey` | `Super+F10` | `launcher` | `Super+d` |
 | `lock` | `Super+l` | `quit` | `Super+Shift+q` |
 | `saver` | `Super+Shift+l` | `leader` | `Ctrl+a` |
 | `keys` | `Super+F1` | `settings` | `Super+i` |
@@ -491,6 +517,22 @@ Changing a default in one file changes it in the other.
 | `font-reset` | `Super+Ctrl+0` | | |
 | `learn` | `Super+Shift+r` | `play` | `Super+Alt+r` |
 | `theme` | `Super+Ctrl+Shift+space` | `background` | `Super+Ctrl+space` |
+| `palette` | `Super+space` | `menu-fkey` | `Super+F10` |
+| `files` | `Super+e` | `mail` | `Super+Shift+e` |
+| `browser` | `Super+Shift+b` | `music` | `Super+Shift+u` |
+| `agenda` | `Super+Shift+c` | `chat` | `Super+Shift+g` |
+| `writing` | `Super+Shift+w` | | |
+
+**The last seven are one key per program: raise the window running it, or start it.** A second
+press while that window has the focus **cycles** to the next window of the same program, so three
+terminals under one chord are all reachable. The chord names a **role** and `con.conf` names the
+program that fills it — which key opens the mail belongs here and which program *is* the mail does
+not. A role whose program is not installed keeps its chord and opens nothing; the key card drops
+the row rather than teaching a key that does nothing. The diary is `agenda` because `calendar`,
+`find` and `notes` already name surfaces of this desktop's own.
+
+The compositor binds the same seven to the same seven programs, as `rc.xml` `ForEach` blocks whose
+`<query identifier>` is the program's `app_id`.
 
 Modifiers are `Super`, `Shift`, `Alt` and `Ctrl`, joined with `+`. An action no line names keeps
 its default, so rebinding one key does not mean restating the rest. Punctuation may be written as

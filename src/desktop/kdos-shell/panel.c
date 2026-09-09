@@ -173,19 +173,6 @@ static FILE *panel_fopen(const char *path)
 }
 
 /*
- * The clock, frozen by KDOS_PANEL_NOW for the same reason. A dump of a bar
- * whose right-hand end says 19:12 is a golden that fails a minute later.
- */
-static time_t panel_wall(void)
-{
-	const char *e = getenv("KDOS_PANEL_NOW");
-
-	if (e && *e)
-		return (time_t)strtoll(e, NULL, 10);
-	return time(NULL);
-}
-
-/*
  * WHICH EDGE THE BAR IS ON, because a popup belonging to it has to grow the
  * other way. Layer-shell has no coordinates: `--at-bottom` is an anchor to the
  * BOTTOM edge plus a margin, which is the only way a client can say "just
@@ -5440,7 +5427,7 @@ static void draw_taskbar(struct sh_state *sh)
 	build_overflow(sh);
 
 	/* ── measurements, once per frame, before any layout pass ── */
-	time_t now = panel_wall();
+	time_t now = sh_wall();
 	struct tm tm;
 	localtime_r(&now, &tm);
 
@@ -6859,9 +6846,11 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 					       panel_at_flag(), mx, my, NULL };
 			panel_spawn(argv);
 		} else {
-			const char *argv[8];
+			const char *argv[10];
 			char id[160];
-			int k = sh_term_argv(argv, 0, 8, "btop", id,
+			int k = sh_term_argv(argv, 0,
+					     (int)(sizeof(argv) /
+						   sizeof(*argv)), "btop", id,
 					     sizeof(id));
 
 			argv[k++] = "btop";

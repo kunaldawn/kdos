@@ -90,6 +90,11 @@ Win *term_open(const char *const argv[])
 	w->workspace = S.workspace;
 	snprintf(w->title, sizeof(w->title), "%s", argv[0] ? argv[0] : "?");
 	snprintf(w->app_id, sizeof(w->app_id), "terminal");
+	/* The program, kept where the guest cannot rewrite it: `title` follows
+	 * whatever the program emits and `app_id` says only that this is a
+	 * terminal, so run-or-raise has nothing else to match on. */
+	snprintf(w->prog, sizeof(w->prog), "%s",
+		 argv[0] ? kb_basename(argv[0]) : "");
 
 	KwmRect area = win_workarea();
 	int want_w = area.w * 2 / 3;

@@ -684,6 +684,35 @@ static void test_base(void)
 	eq_str(kb_human_size(1024), "1.0K", "human_size exact K");
 	eq_str(kb_human_size(1536), "1.5K", "human_size fractional");
 
+	/*
+	 * ONE MATCHER FOR THREE SURFACES, so the palette, the launcher and the
+	 * Start menu cannot rank one query three ways. What is asserted is the
+	 * LADDER rather than any particular number: the constants may be tuned,
+	 * and these orderings may not change without somebody meaning it.
+	 */
+	ok(kb_fuzzy("System Monitor", "xyz") == 0, "fuzzy: no match is zero");
+	ok(kb_fuzzy("System Monitor", "") > 0,
+	   "fuzzy: an empty query matches, or a list empties before the first key");
+	/* The whole reason this is a subsequence and not a substring. */
+	ok(kb_fuzzy("System Monitor", "sm") > 0, "fuzzy: an acronym matches at all");
+	ok(kb_fuzzy("System Monitor", "sm") > kb_fuzzy("Assembler", "sm"),
+	   "fuzzy: an acronym beats the same letters scattered mid-word");
+	ok(kb_fuzzy("Terminal", "term") > kb_fuzzy("KDOS Terminal", "term"),
+	   "fuzzy: a prefix beats the same word further in");
+	ok(kb_fuzzy("abcdef", "abc") > kb_fuzzy("axbxcx", "abc"),
+	   "fuzzy: a run beats a scatter");
+	ok(kb_fuzzy("System Monitor", "SM") == kb_fuzzy("System Monitor", "sm"),
+	   "fuzzy: case-insensitive");
+	/* camelCase is a word boundary, or every application id is one word. */
+	ok(kb_fuzzy("SystemMonitor", "sm") > kb_fuzzy("Assembler", "sm"),
+	   "fuzzy: a capital inside a word starts one");
+	{
+		const char *f[3] = { "Files", "org.kdos.pick", "browse files" };
+		ok(kb_fuzzy_best(f, 3, "pick") > 0,
+		   "fuzzy_best takes the best field, not the first");
+		ok(kb_fuzzy_best(f, 3, "zzz") == 0, "fuzzy_best: no field matches");
+	}
+
 	/* kb_buf_printf must never truncate: a fixed stack buffer here once cut
 	 * a generated btop theme in half, and the half-file looked plausible. */
 	KbBuf b = {0};

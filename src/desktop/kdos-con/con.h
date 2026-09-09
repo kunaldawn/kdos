@@ -120,8 +120,40 @@ enum {
 	 * something a person typed into.
 	 */
 	CON_ACT_LEARN,
-	CON_ACT_PLAY
+	CON_ACT_PLAY,
+
+	/*
+	 * ONE KEY PER PROGRAM: raise the one that is running, or start it.
+	 *
+	 * `arg` is a CON_APP_* index, so the chord names a ROLE — mail, music,
+	 * writing — and `con.conf` names the program that fills it. A bind
+	 * table carrying program names would be a keyboard file deciding which
+	 * mail reader this machine has.
+	 *
+	 * A SECOND PRESS WHILE THAT WINDOW IS FOCUSED CYCLES to the next
+	 * window of the same program, which is what makes one chord enough for
+	 * three terminals.
+	 */
+	CON_ACT_FOCUS_OR_LAUNCH
 };
+
+/*
+ * The roles CON_ACT_FOCUS_OR_LAUNCH's `arg` names.
+ *
+ * EVERY ONE OF THESE RUNS IN A TERMINAL, and that is what makes a single
+ * action enough: the window is `term_open()`'s, on this grid, and there is no
+ * display-mode decision to make. A graphical program would need the one
+ * `on_run()` makes for a launch that arrives over the socket, and none of
+ * these is graphical — the browser here is a text browser.
+ *
+ * APPENDED, NEVER INSERTED, for the reason CON_CMD_* states below: main.c's
+ * table is a designated-initialiser array indexed by this enum.
+ */
+enum { CON_APP_FILES = 0, CON_APP_MAIL, CON_APP_BROWSER, CON_APP_MUSIC,
+       CON_APP_AGENDA, CON_APP_CHAT, CON_APP_WRITE,
+       CON_APP_N };
+
+const char *con_app(int which);
 
 /*
  * What CON_ACT_EXEC's `arg` names. The command itself is a con.conf key, so a
@@ -159,6 +191,13 @@ enum { CON_CMD_MENU = 0, CON_CMD_LAUNCHER, CON_CMD_LOCK, CON_CMD_SAVER,
         */
        CON_CMD_VOLUP, CON_CMD_VOLDOWN, CON_CMD_MUTE,
        CON_CMD_PLAY, CON_CMD_STOP, CON_CMD_NEXT, CON_CMD_PREV,
+       /*
+        * APPENDED, NEVER INSERTED. main.c's table is a designated-initialiser
+        * array indexed by this enum, so a value added in the middle repoints
+        * every command below it at a different program — and it compiles
+        * clean, because every index still has an initialiser.
+        */
+       CON_CMD_PALETTE,
        CON_CMD_N };
 
 const char *con_command(int which);
@@ -233,6 +272,17 @@ typedef struct Win {
 	char app_id[64];
 
 	/*
+	 * THE PROGRAM THIS WINDOW WAS OPENED FOR, written once and never
+	 * again. Neither field above can answer that question: `title` is the
+	 * guest's to rewrite the moment it emits an OSC, and `app_id` says
+	 * what KIND of window this is — every WIN_TERM is "terminal" and every
+	 * caged guest is "kdos-cage" — so a run-or-raise matching on either
+	 * would find the wrong window or none. Empty when nothing named a
+	 * program, and an empty `prog` matches nothing.
+	 */
+	char prog[64];
+
+	/*
 	 * THE SMALLEST GRID THIS WINDOW CAN BE GIVEN, from the surface's
 	 * attach. Zero is no minimum, which is what a terminal reports — a
 	 * terminal reflows to any size, and the program inside it decides for
@@ -304,6 +354,12 @@ extern Session S;
 
 /* windows.c */
 Win *win_find(int id);
+/*
+ * The next window running `prog`, starting after window id `after` (0 for the
+ * first). Minimised windows and other workspaces ARE included: a run-or-raise
+ * that skipped them would start a second copy of a program already open.
+ */
+Win *win_find_prog(const char *prog, int after);
 Win *win_focused(void);
 void win_raise(int id);
 void win_close(Win *w);				/* ask */

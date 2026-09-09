@@ -189,6 +189,17 @@ Two members worth knowing about specifically:
   so anything whose *failure* is diagnosed by the child's own message has to turn that on.
 - **The freedesktop trash lives here**, so a prompt and the desktop's delete key are one
   implementation. See [The kdos command](../04-programs/kdos-command.md#trash).
+- **`kb_fuzzy` is the desktop's only answer to "does this row match what was typed".** A
+  subsequence rather than a substring — so `sm` finds `System Monitor`, which no substring search
+  can — scored so a prefix beats an acronym, an acronym beats a run, and a run beats a scatter.
+  **Higher is better and zero is no match.** It is here rather than in a surface because three of
+  them search the same applications: the palette, the launcher and the Start menu. Before it they
+  ranked one query three ways — the launcher scored a subsequence and *lower* was better, the
+  application index did a case-insensitive substring in six bands and higher was better — and a
+  person who finds something in one surface and nothing in another has learned that the desktop's
+  search cannot be relied on. **A caller that sorts on it must sort descending**; the matcher it
+  replaced in the launcher was lower-is-better, and a sort left as it was ranks a correct list
+  backwards, which reads as bad ranking rather than as a bug.
 
 **One trap the argument-vector builder carries, and it has bitten several callers:** it **stores
 the pointer and does not copy**. Several arguments built one after another in a single reused

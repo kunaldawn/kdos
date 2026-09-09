@@ -362,12 +362,20 @@ something `foot` cannot do at all.
 ## Options
 
 ```
-kdos-term [--title TEXT] [--font NAME] [-D DIR] [--tty] [--dump WxH] [-e CMD [args...]]
+kdos-term [--title TEXT] [--app-id NAME] [--font NAME] [-D DIR] [--tty]
+          [--dump WxH] [-e CMD [args...]]
 ```
 
 `-e` takes everything after it as the child's argument vector, as it does in every terminal there
 has ever been. There is **no shell**: the vector is built by `libkxdg` and executed directly,
 because `$SHELL` and `term.conf` are both strings somebody else wrote.
+
+**`--app-id` is the identity, and it is not the title.** A title is the guest's to rewrite the
+moment it emits an OSC; the app id is the desktop's, and it is what a taskbar row, a window rule
+and a run-or-launch chord all key on. It defaults to `kdos-term`, which is right when the terminal
+*is* the application; a terminal running somebody else's program is given that program's name, the
+same way `foot --app-id` is. `sh_term_argv_in()` passes both to whichever emulator it named, so a
+`Terminal=true` entry opens a window that says what is running in it on either desktop.
 
 `-D`/`--working-directory` enters `DIR` before the fork, so the child and everything it starts
 begin there. It is spelled as `foot` spells it on purpose: every caller in `kdos-shell` names the

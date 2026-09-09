@@ -56,6 +56,28 @@ const char *kb_basename(const char *p);
  * buffers, so several calls can appear in the same printf. */
 const char *kb_human_size(unsigned long long bytes);
 
+/*
+ * DOES THIS ROW MATCH WHAT WAS TYPED, and how well. A subsequence — so `sm`
+ * finds `System Monitor`, which no substring search can do — scored so that a
+ * prefix beats an acronym, an acronym beats a run, and a run beats a scatter.
+ *
+ * HIGHER IS BETTER; ZERO IS NO MATCH. An empty needle matches everything with
+ * the same small score, because a caller filtering as somebody types starts
+ * with nothing typed.
+ *
+ * THERE IS ONE OF THESE ON PURPOSE. The palette, the launcher and the Start
+ * menu search the same applications, and three private matchers meant three
+ * answers to one query — which teaches a person that the search cannot be
+ * relied on. A caller that sorts on this must sort DESCENDING; the matcher
+ * this replaced in `launcher.c` was lower-is-better, and a sort left ascending
+ * ranks a correct list backwards.
+ */
+int kb_fuzzy(const char *hay, const char *needle);
+
+/* The best score over several fields — a name, an id, keywords, a command —
+ * so the field that happens to be checked first cannot decide the ranking. */
+int kb_fuzzy_best(const char *const *fields, int n, const char *needle);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Files
  * ──────────────────────────────────────────────────────────────────────── */

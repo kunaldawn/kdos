@@ -41,7 +41,15 @@ static Bind binds[] = {
 	/* The way back. A minimise with no restore is a one-way door, and the
 	 * shifted form of the chord that closed it is where a hand looks. */
 	{ "restore",	CON_ACT_RESTORE, 0, 'n',	KT_MOD_SUPER | KT_MOD_SHIFT },
-	{ "menu",	CON_ACT_EXEC,	 CON_CMD_MENU,	  ' ', KT_MOD_SUPER },
+	/*
+	 * SUPER+SPACE IS THE PALETTE AND NOT THE MENU. A keyboard wants a
+	 * search and a pointer wants rows, and this chord is the keyboard's:
+	 * the taskbar's Start button still opens the menu, which is where the
+	 * rows are, and `menu-fkey` below still reaches it from the keyboard.
+	 * No new chord is invented for the menu — Super+Shift+space is spoken
+	 * for and the F-key is already in the table.
+	 */
+	{ "palette",	CON_ACT_EXEC,	 CON_CMD_PALETTE, ' ', KT_MOD_SUPER },
 	{ "menu-fkey",	CON_ACT_EXEC,	 CON_CMD_MENU,	  KT_K_F10, KT_MOD_SUPER },
 	{ "launcher",	CON_ACT_EXEC,	 CON_CMD_LAUNCHER, 'd', KT_MOD_SUPER },
 	{ "launcher-fkey", CON_ACT_EXEC, CON_CMD_LAUNCHER, KT_K_F7, KT_MOD_SUPER },
@@ -213,6 +221,32 @@ static Bind binds[] = {
 	{ "media-stop",	 CON_ACT_EXEC, CON_CMD_STOP,    KT_K_STOP,    0 },
 	{ "media-next",	 CON_ACT_EXEC, CON_CMD_NEXT,    KT_K_NEXT,    0 },
 	{ "media-prev",	 CON_ACT_EXEC, CON_CMD_PREV,    KT_K_PREV,    0 },
+
+	/*
+	 * ONE KEY PER PROGRAM — raise the one that is running, or start it.
+	 *
+	 * The row names a ROLE and con.conf names the program: see con_app().
+	 * `files` is on Super+e because that is the chord rc.xml already gives
+	 * a file manager; the other six are its shifted neighbours, so the
+	 * whole set is one hand position.
+	 *
+	 * `calendar`, `find` and `notes` are taken by surfaces of this
+	 * desktop's own, which is why the diary role is `agenda`.
+	 */
+	{ "files",	CON_ACT_FOCUS_OR_LAUNCH, CON_APP_FILES,	  'e',
+	  KT_MOD_SUPER },
+	{ "mail",	CON_ACT_FOCUS_OR_LAUNCH, CON_APP_MAIL,	  'e',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "browser",	CON_ACT_FOCUS_OR_LAUNCH, CON_APP_BROWSER, 'b',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "music",	CON_ACT_FOCUS_OR_LAUNCH, CON_APP_MUSIC,	  'u',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "agenda",	CON_ACT_FOCUS_OR_LAUNCH, CON_APP_AGENDA,  'c',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "chat",	CON_ACT_FOCUS_OR_LAUNCH, CON_APP_CHAT,	  'g',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "writing",	CON_ACT_FOCUS_OR_LAUNCH, CON_APP_WRITE,	  'w',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
 
 	{ "leader",	CON_ACT_LEADER,	 0, 'a',	KT_MOD_CTRL },
 };
@@ -463,7 +497,14 @@ void keys_chord_name(int key, int mods, char *out, size_t n)
 
 /*
  * `kdos-con --keys` — the bindings, after the keys.conf overlay, one per line
- * as `action<TAB>chord`. It is what the key card reads on this desktop.
+ * as `action<TAB>chord`, and `action<TAB>chord<TAB>program` for a row that
+ * cannot work without a particular program. It is what the key card reads on
+ * this desktop.
+ *
+ * EVERY ROW IS PRINTED, including one whose program is not installed. This is
+ * the table, and hiding a row here would make the session disagree with itself
+ * — the chord is still bound. Deciding what a person is shown belongs to the
+ * reader; see sh_chords_load().
  */
 void keys_print(void)
 {
@@ -473,6 +514,13 @@ void keys_print(void)
 	for (int i = 0; i < NBINDS; i++) {
 		keys_chord_name(binds[i].key, binds[i].mods, chord,
 				sizeof(chord));
+		if (binds[i].action == CON_ACT_FOCUS_OR_LAUNCH) {
+			const char *prog = con_app(binds[i].arg);
+
+			printf("%s\t%s\t%s\n", binds[i].name, chord,
+			       prog ? prog : "");
+			continue;
+		}
 		printf("%s\t%s\n", binds[i].name, chord);
 	}
 }

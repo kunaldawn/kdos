@@ -49,6 +49,7 @@
 #include "kbase.h"
 #include "kicon.h"
 #include "kwl.h"
+#include "pages.h"
 #include "shell.h"
 
 enum { CAT_APPEARANCE = 0, CAT_PANEL, CAT_DESKTOP, CAT_HARDWARE, CAT_SESSION,
@@ -116,6 +117,19 @@ static const char *const PAGE_NAMES[NCAT] = {
 	"appearance", "panel", "desktop", "hardware", "session", "input",
 	"apps", "boxes", "system"
 };
+
+/*
+ * ASKED FOR RATHER THAN REPEATED. The palette searches the control centre's
+ * pages, and a second copy of this list there would be a page that exists and
+ * cannot be found, or a row that opens nothing — the same failure `kdos
+ * settings <page>` avoids by passing its word through unchecked.
+ */
+int sh_settings_pages(const char *const **labels, const char *const **names)
+{
+	*labels = CAT_NAMES;
+	*names = PAGE_NAMES;
+	return NCAT;
+}
 
 /* Where a row's value is stored. Every one of these is a configuration file
  * this program reads and writes; a row that runs a program instead stores

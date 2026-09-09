@@ -767,6 +767,51 @@ card rather than two.
 The last two are new on both desktops: neither had a chord anywhere, and a power page and a system
 monitor are what a person reaches for while something is going wrong.
 
+### One key per program
+
+Seven more chords **raise the window running a program, or start it** — and a second press while
+that window has the focus **cycles** to the next window of the same program, so three terminals
+under one chord are all reachable.
+
+| Chord | Role | `con.conf` key | Default |
+|---|---|---|---|
+| `Super+e` | files | `files` | `mc` |
+| `Super+Shift+e` | mail | `mail` | `aerc` |
+| `Super+Shift+b` | the web | `browser` | `lynx` |
+| `Super+Shift+u` | music | `music` | `rmpc` |
+| `Super+Shift+c` | the diary | `agenda` | `ikhal` |
+| `Super+Shift+g` | chat | `chat` | `iamb` |
+| `Super+Shift+w` | writing | `writing` | `micro` |
+
+**The chord names a role and `con.conf` names the program.** Which key opens the mail is a keyboard
+question and which program *is* the mail is not, which is the same split every chord above keeps.
+The diary is `agenda` because `calendar`, `find` and `notes` already name surfaces of this
+desktop's own.
+
+**Every one of them runs in a terminal, and that is what makes one action enough.** The window is
+the session's own — `term_open()`, on this grid — with no display-mode decision to make; a
+graphical program named in one of these keys would open in a terminal and draw nothing. The browser
+here is a text browser for the same reason.
+
+**A role whose program is not installed keeps its chord and opens nothing**, and the key card drops
+its row rather than teaching a key that does nothing. `kdos-con --keys` prints a third field for
+these rows — the program — and that is what the card reads; the session prints every row it binds,
+because hiding one there would make the table disagree with the chords.
+
+**Matching is on a field the guest cannot rewrite.** A window's `title` follows whatever the program
+emits, and its `app_id` says what *kind* of window it is — every terminal window is `terminal` and
+every caged guest is `kdos-cage` — so the session records the program a window was opened for once,
+at open, and matches on that. A terminal entry started from the menu declares it through
+`kdos-term --app-id`.
+
+**The workspace switch comes before the raise, never after.** Going to a workspace clears the focus
+and cycles to whatever the ring lands on, so a raise before it is undone; and a minimised match is
+un-minimised where it is rather than through the restore path, which *moves* a window to the
+current workspace — the opposite of going to it.
+
+The compositor binds the same seven, as `rc.xml` `ForEach` blocks whose `<query identifier>` is the
+program's `app_id`. `W-grave` is unbound on both.
+
 **`Super+p` reaches a surface that cannot configure a console screen.** `libkkms` takes the first
 connected output at its preferred mode and has no mode selection, so `kdos-display` says so and
 exits. The chord is bound because a stated limit is better than a missing key.

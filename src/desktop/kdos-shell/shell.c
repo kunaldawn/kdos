@@ -928,6 +928,25 @@ void sh_spawn(const char *const argv[])
  * Both accept `-e CMD` and `-D DIR` with the same meaning, so a call site
  * picks the name here and needs no other branch.
  */
+/*
+ * THE WALL CLOCK, AND THE ONE PLACE $KDOS_PANEL_NOW IS READ.
+ *
+ * A surface that draws the time draws a different picture every minute, so a
+ * dump of one is a golden that fails an hour after it is written. The harness
+ * exports a fixed second and every surface that shows a clock takes its time
+ * from here — the panel's bar and the saver's clock face both — because two
+ * readers of one variable is one of them being forgotten the next time a
+ * surface learns to tell the time.
+ */
+time_t sh_wall(void)
+{
+	const char *e = getenv("KDOS_PANEL_NOW");
+
+	if (e && *e)
+		return (time_t)strtoll(e, NULL, 10);
+	return time(NULL);
+}
+
 const char *sh_term(void)
 {
 	const char *con = getenv("KDOS_CON");
@@ -976,7 +995,7 @@ int sh_term_argv_in(const char *want, const char *argv[], int n, int max,
 	char word[128];
 	size_t i = 0;
 
-	if (n + 3 >= max)
+	if (n + 5 >= max)
 		return n;
 	while (cmd && cmd[i] && cmd[i] != ' ' && cmd[i] != '\t' &&
 	       i < sizeof(word) - 1) {
@@ -1000,8 +1019,19 @@ int sh_term_argv_in(const char *want, const char *argv[], int n, int max,
 			snprintf(id, idsz, "--app-id=%s", base);
 			argv[n++] = id;
 		} else {
+			/*
+			 * BOTH, AND THEY ARE DIFFERENT THINGS. The title is
+			 * what a person reads until the program sets its own;
+			 * the app id is what the desktop files the window
+			 * under, and it is what a run-or-raise chord matches —
+			 * so a terminal entry given only a title is a window
+			 * whose identity is `kdos-term`, the same as every
+			 * other terminal on the screen.
+			 */
 			snprintf(id, idsz, "%s", base);
 			argv[n++] = "--title";
+			argv[n++] = id;
+			argv[n++] = "--app-id";
 			argv[n++] = id;
 		}
 	}

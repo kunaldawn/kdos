@@ -23,6 +23,45 @@ Win *win_focused(void)
 }
 
 /*
+ * Run-or-raise's search: the next window running `prog` after window `after`.
+ *
+ * THE LIST ORDER IS THE STACK, so "next" here is the next one further down —
+ * pressing a chord repeatedly walks a program's windows front to back and then
+ * round, which is the order the eye already has for them.
+ *
+ * MINIMISED WINDOWS AND OTHER WORKSPACES COUNT. `reachable()` below is the
+ * CYCLE's rule and would be wrong here: a run-or-raise that skipped a
+ * minimised editor would start a second one, and the whole point of the chord
+ * is that there is one.
+ *
+ * Panels, the background layer and the saver never do: they are chrome, they
+ * carry no `prog`, and an empty `prog` matches nothing — which is also what
+ * stops a surface that named no app id from answering for every chord.
+ */
+Win *win_find_prog(const char *prog, int after)
+{
+	Win *first = NULL;
+	int seen = after == 0;
+
+	if (!prog || !*prog)
+		return NULL;
+	for (Win *w = S.wins; w; w = w->next) {
+		if (w->panel || w->background || w->overlay ||
+		    strcmp(w->prog, prog))
+			continue;
+		if (!first)
+			first = w;
+		if (seen)
+			return w;
+		if (w->id == after)
+			seen = 1;
+	}
+	/* Past the end is back to the top — and when `after` named a window
+	 * that is gone, the first match is still the right answer. */
+	return first;
+}
+
+/*
  * The list IS the stack, front first. Raising is a move to the front rather
  * than a z-index, so there is one answer to what is on top and no way for two
  * windows to claim the same depth.
