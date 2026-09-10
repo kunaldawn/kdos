@@ -7,10 +7,10 @@
 |   Super+e        sh, or raise it                     |
 | window                                               |
 |   Super+q        close the window                    |
+|   Super+`        the drop-down terminal, over every  |
 |   Alt+Tab        next window                         |
 | workspace                                            |
 |   Super+1        workspace 1                         |
-|                                                      |
 |                                                      |
 |                                                      |
 |                                                      |

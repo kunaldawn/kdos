@@ -147,7 +147,7 @@ else.
 | Key | Action |
 |---|---|
 | `Super+Return` | Terminal (`foot`; on the console desktop, whatever `con.conf`'s `terminal` names — `sh` by default, in a window the session runs itself) |
-| `Super+grave` | Focus the terminal, or start one |
+| `Super+grave` | The scratchpad: one window kept over the others on whatever workspace you are on, shown and hidden by the same key. The first press opens a terminal and gives it the role; `Super+Alt+grave` hands the role to the focused window |
 | `Super+A` | Start menu |
 | `Super+D` | Launcher |
 | `Alt+F2` | Run box |

@@ -66,6 +66,24 @@ static void usage(FILE *f)
 "  --term CMD         open a terminal window running CMD; repeatable. The\n"
 "                     command is split the way a desktop entry is, so\n"
 "                     quoting works and no shell is involved\n"
+"  --press CHORD      press one of the session's own chords before the dump,\n"
+"                     spelled the way keys.conf spells it; repeatable, and\n"
+"                     only with --dump\n"
+"  --layout NAME      open a saved arrangement before the dump; only with\n"
+"                     --dump, because a dump composites a session of its own\n"
+"  --clip-text        put stdin on this session's clipboard. Stdin rather\n"
+"                     than an argument: what is copied is a password as\n"
+"                     often as a URL, and argv is visible to every process\n"
+"  --clip-take        print this session's clipboard on stdout, with no\n"
+"                     trailing newline added\n"
+"  --pick-colour      ask the session already running for the colour under\n"
+"                     the pointer: it prompts, waits for a click and puts\n"
+"                     the slot name and hex on its own clipboard. What\n"
+"                     `kdos-shot colour` runs\n"
+"  --layout-save NAME, --layout-load NAME\n"
+"                     ask the session already running to write what is open\n"
+"                     under NAME, or to open that arrangement. What\n"
+"                     `kdos con layout save|load NAME` runs\n"
 "  --socket PATH      where surfaces attach\n"
 "  --help\n");
 }
@@ -462,6 +480,11 @@ const char *con_command(int which)
 		[CON_CMD_BACKGROUND] = { "background",
 					 "kdos background next" },
 		[CON_CMD_PALETTE]  = { "palette",  "kdos-palette" },
+		[CON_CMD_CAPTMENU] = { "capture_menu",
+				       "kdos-palette --route capture" },
+		[CON_CMD_CAPTSCREEN] = { "capture_screen",
+					 "kdos-shot screen" },
+		[CON_CMD_RECORD]   = { "record",   "kdos-record" },
 		[CON_CMD_VOLUP]    = { "volume_up",   "kdos-osd volume +5" },
 		[CON_CMD_VOLDOWN]  = { "volume_down", "kdos-osd volume -5" },
 		[CON_CMD_MUTE]     = { "volume_mute", "kdos-osd volume mute" },
@@ -474,6 +497,43 @@ const char *con_command(int which)
 	if (which < 0 || which >= CON_CMD_N)
 		return NULL;
 	return kcon_conf_str(cmd[which].key, cmd[which].def);
+}
+
+/*
+ * THE KEY ITSELF, not what it resolves to. A layout row names a role rather
+ * than a program, so something has to be able to ask this table "is `monitor`
+ * one of yours" — and the answer must come from the table that binds the key,
+ * or a second list of names goes stale the day a key is renamed.
+ */
+const char *con_command_name(int which)
+{
+	static const char *const key[CON_CMD_N] = {
+		[CON_CMD_MENU] = "menu", [CON_CMD_LAUNCHER] = "launcher",
+		[CON_CMD_LOCK] = "lock", [CON_CMD_SAVER] = "saver",
+		[CON_CMD_KEYS] = "keys", [CON_CMD_AUDIO] = "audio",
+		[CON_CMD_NET] = "net", [CON_CMD_BT] = "bluetooth",
+		[CON_CMD_DEVICES] = "devices", [CON_CMD_SETTINGS] = "settings",
+		[CON_CMD_CAL] = "calendar", [CON_CMD_DOC] = "docs",
+		[CON_CMD_DISPLAY] = "displays", [CON_CMD_ENERGY] = "power",
+		[CON_CMD_RES] = "monitor", [CON_CMD_CALC] = "calculator",
+		[CON_CMD_NOTE] = "notes", [CON_CMD_CLIP] = "clipboard",
+		[CON_CMD_CHARS] = "characters", [CON_CMD_FIND] = "find",
+		[CON_CMD_CAPTURE] = "capture", [CON_CMD_THEME] = "theme",
+		[CON_CMD_BACKGROUND] = "background",
+		[CON_CMD_PALETTE] = "palette",
+		[CON_CMD_CAPTMENU] = "capture_menu",
+		[CON_CMD_CAPTSCREEN] = "capture_screen",
+		[CON_CMD_RECORD] = "record",
+		[CON_CMD_VOLUP] = "volume_up",
+		[CON_CMD_VOLDOWN] = "volume_down",
+		[CON_CMD_MUTE] = "volume_mute", [CON_CMD_PLAY] = "media_play",
+		[CON_CMD_STOP] = "media_stop", [CON_CMD_NEXT] = "media_next",
+		[CON_CMD_PREV] = "media_prev",
+	};
+
+	if (which < 0 || which >= CON_CMD_N)
+		return NULL;
+	return key[which];
 }
 
 /*
@@ -501,6 +561,21 @@ const char *con_app(int which)
 	if (which < 0 || which >= CON_APP_N)
 		return NULL;
 	return kcon_conf_str(app[which].key, app[which].def);
+}
+
+/* The role's own name, for the same reason con_command_name() exists. */
+const char *con_app_name(int which)
+{
+	static const char *const key[CON_APP_N] = {
+		[CON_APP_FILES] = "files", [CON_APP_MAIL] = "mail",
+		[CON_APP_BROWSER] = "browser", [CON_APP_MUSIC] = "music",
+		[CON_APP_AGENDA] = "agenda", [CON_APP_CHAT] = "chat",
+		[CON_APP_WRITE] = "writing",
+	};
+
+	if (which < 0 || which >= CON_APP_N)
+		return NULL;
+	return key[which];
 }
 
 /*
@@ -871,6 +946,84 @@ static void mark_finish(void)
 }
 
 /*
+ * ── THE COLOUR PICKER ────────────────────────────────────────────────────
+ *
+ * A LOOKUP, NOT A PROBE. Every cell on this desktop carries the slot it was
+ * drawn in, so the colour under the pointer is already known — reading it back
+ * is a read of the composed frame, the same buffer a mark is copied out of.
+ * There is nothing to sample and no screen to grab.
+ *
+ * THE INK, AND THE GROUND WHERE THERE IS NO INK. A cell holding a character is
+ * that character's colour; an empty cell is its background. A picker that
+ * always answered the foreground would answer with the colour of a glyph
+ * nobody can see.
+ *
+ * A TERMINAL'S OWN COLOUR IS ANSWERED AS ITSELF. A cell a program painted in
+ * truecolor carries the literal beside the slot it reduced to; the literal is
+ * what that program chose, so it is what a person asking is told, with no slot
+ * name in front of it.
+ */
+static int picking;
+
+int con_picking(void)
+{
+	return picking;
+}
+
+static void pick_begin(void)
+{
+	picking = 1;
+	ktui_draw_invalidate();
+}
+
+/* The colour of one cell, as `accent #39ff14` or a bare `#rrggbb`. */
+static void pick_at(int x, int y)
+{
+	int w, h;
+	const KtuiCell *cells = ktui_draw_cells(&w, &h);
+	char out[64];
+
+	picking = 0;
+	ktui_draw_invalidate();
+	if (!cells || x < 0 || y < 0 || x >= w || y >= h)
+		return;
+
+	const KtuiCell *c = &cells[y * w + x];
+	uint32_t ch = c->ch ? c->ch : ' ';
+	int ink = !KTUI_IS_SPRITE(ch) && ch != ' ';
+	int slot = ink ? c->fg : c->bg;
+	int lit = c->attr & (ink ? KT_A_FGRGB : KT_A_BGRGB);
+	uint32_t rgb;
+
+	if (lit) {
+		rgb = ink ? c->fgc : c->bgc;
+		snprintf(out, sizeof(out), "#%06x", rgb & 0xffffffu);
+	} else {
+		const char *nm = ktui_slot_name(slot);
+		KRgb v;
+
+		if (!nm)
+			return;
+		v = ktui_theme->slot[slot];
+		snprintf(out, sizeof(out), "%s #%02x%02x%02x", nm, v.r, v.g,
+			 v.b);
+	}
+	clip_put(out, strlen(out), 0);
+	con_notice(out);
+}
+
+/* True when the key was the picker's: it owns the keyboard while it is on, for
+ * the reason the mark does. */
+static int pick_key(const KtuiEvent *ev)
+{
+	if (ev->key == KT_K_ESC) {
+		picking = 0;
+		ktui_draw_invalidate();
+	}
+	return 1;
+}
+
+/*
  * THE POINTER DRAWS THE SAME RECTANGLE the arrows do. The mark owns the
  * pointer while it is on, for the reason it owns the keyboard: a press that
  * fell through would raise a window over the region being marked, and a
@@ -1056,10 +1209,19 @@ static int session_key(const KtuiEvent *ev)
 			 * un-minimised WHERE IT IS — win_restore() moves the
 			 * window to the current workspace, which is the
 			 * opposite of going to it.
+			 *
+			 * A STICKY WINDOW IS ALREADY HERE, so its `workspace`
+			 * is not asked: the scratchpad can be running the very
+			 * program this chord names, and switching to the
+			 * workspace it last recorded would move the screen for
+			 * a window that never left it. Hidden is cleared for
+			 * the same reason minimised is — a raise onto a window
+			 * drawn nowhere is a focus a person cannot see.
 			 */
-			if (t->workspace != S.workspace)
+			if (!t->sticky && t->workspace != S.workspace)
 				win_workspace(t->workspace);
 			t->minimised = 0;
+			t->hidden = 0;
 			win_raise(t->id);
 			S.focus = t->id;
 			ktui_draw_invalidate();
@@ -1076,6 +1238,47 @@ static int session_key(const KtuiEvent *ev)
 		}
 		return 1;
 	}
+	case CON_ACT_SCRATCH: {
+		Win *t = win_scratch();
+		char store[512];
+		const char *av[16];
+		int n;
+
+		if (t) {
+			/*
+			 * BOTH WAYS OF BEING AWAY ANSWER THE SHOW. A person can
+			 * minimise the scratchpad from its own frame like any
+			 * other window, and a chord that only understood
+			 * `hidden` would hide an already invisible window and
+			 * need a second press to undo it.
+			 */
+			if (t->hidden || t->minimised)
+				win_scratch_show(t);
+			else
+				win_scratch_hide(t);
+			return 1;
+		}
+
+		/*
+		 * NONE YET, SO THE FIRST PRESS OPENS ONE — the session's own
+		 * terminal, the same `con.conf` key `Super+Return` reads. No
+		 * shell and no system(): the value is an argument vector.
+		 */
+		n = kxdg_exec_split(kcon_conf_str("terminal", "sh"), NULL, 0,
+				    store, sizeof(store), av, 16);
+		if (n > 0) {
+			av[n] = NULL;
+			t = term_open(av);
+		}
+		if (t) {
+			win_scratch_mark(t);
+			win_scratch_show(t);
+		}
+		return 1;
+	}
+	case CON_ACT_SCRATCH_MARK:
+		win_scratch_mark(w);
+		return 1;
 	case CON_ACT_NEXT:
 		win_cycle(1);
 		return 1;
@@ -1223,6 +1426,8 @@ static void route_key(const KtuiEvent *ev)
 	 * underneath would snap a window while somebody was selecting out of
 	 * it.
 	 */
+	if (picking && pick_key(ev))
+		return;
 	if (con_marking() && mark_key(ev))
 		return;
 
@@ -1386,6 +1591,14 @@ static void route_ptr(const KtuiEvent *ev)
 		if (S.lock && S.lock->surf)
 			kcon_surface_ptr(S.lock->surf, ev->mx, ev->my,
 					 ev->btn, ev->press);
+		return;
+	}
+
+	/* And so does the picker, for the reason the mark does: a press that
+	 * fell through would raise a window over the cell being read. */
+	if (picking) {
+		if (ev->press == KT_MP_PRESS)
+			pick_at(ev->mx, ev->my);
 		return;
 	}
 
@@ -1835,10 +2048,13 @@ static void adopt_surfaces(void)
 		 * attaches; everything else is placed the ordinary way.
 		 */
 		int rw, rh, rx, ry, rws;
+		char rfl[8];
 
-		if (con_state_take(w->app_id, &rws, &rx, &ry, &rw, &rh)) {
+		if (con_state_take(w->app_id, &rws, &rx, &ry, &rw, &rh, rfl,
+				   sizeof(rfl))) {
 			w->workspace = rws;
 			win_place_at(w, rx, ry, rw, rh);
+			con_state_apply_flags(w, rfl);
 		} else {
 			win_place(w, kcon_surface_cols(f),
 				  kcon_surface_rows(f));
@@ -2354,7 +2570,10 @@ static void publish_windows(void)
 	static char last[4096];
 
 	for (Win *w = S.wins; w; w = w->next) {
-		if (w->panel || w->minimised || !w->app_id[0])
+		/* Hidden counts as away for the same reason minimised does:
+		 * this list is what a box is kept warm for, and a scratchpad
+		 * nobody can see is not a window on the screen. */
+		if (w->panel || w->minimised || w->hidden || !w->app_id[0])
 			continue;
 		/* The saver is not something a box has on screen: it covers
 		 * every window without being one, and `kdos-box gc` reading it
@@ -2413,6 +2632,30 @@ static void on_sprite(KconSurface *f, int slot, int w, int h,
  * the requester is the only thing in the chain with a person in front of it,
  * which is why anything comes back.
  */
+/*
+ * A LAYOUT, ASKED FOR OVER THE SOCKET. The session is the half that holds the
+ * windows, so it is the half that can write what is open or put it back; the
+ * client is only a name and a direction.
+ */
+static int on_layout(KconSurface *f, const char *name, int save, void *user)
+{
+	(void)f;
+	(void)user;
+	return save ? con_layout_save(name) : con_layout_load(name);
+}
+
+/*
+ * THE COLOUR PICK, ASKED FOR OVER THE SOCKET. The session finishes it: it has
+ * the composed frame, the pointer and the clipboard, and the caller has none
+ * of the three.
+ */
+static void on_pick(KconSurface *f, void *user)
+{
+	(void)f;
+	(void)user;
+	pick_begin();
+}
+
 static int on_run(KconSurface *f, const char *const argv[], const char *title,
 		  unsigned flags, void *user)
 {
@@ -2542,6 +2785,8 @@ static int serve(const char *sock, const char *view)
 	h.close_request = on_close_request;
 	h.win_state = on_win_state;
 	h.capture = on_capture;
+	h.layout = on_layout;
+	h.pick = on_pick;
 	kcon_server_hooks(S.server, &h, NULL);
 	/* HOW MANY DISPLAYS AT ONCE. The number is this desktop's and the
 	 * refusal is the server's, because it is the end that sees a view
@@ -2913,6 +3158,9 @@ int main(int argc, char **argv)
 	int cols = 0, rows = 0;
 	const char *sock = NULL;
 	int do_serve = 0, do_greet = 0, do_new = 0, do_ls = 0;
+	const char *lay_name = NULL;
+	int lay_save = 0;
+	int do_cliptext = 0, do_pick = 0, do_cliptake = 0;
 	int do_attach = 0, do_kill = 0, do_detach = 0, do_run = 0;
 	int do_capture = 0, cap_win = 0, do_observe = 0;
 	const char *conf_key = NULL;
@@ -2920,6 +3168,20 @@ int main(int argc, char **argv)
 	const char *login_tty = NULL;
 	const char *terms[8];
 	int nterms = 0;
+	/*
+	 * CHORDS TO PRESS BEFORE THE FRAME IS COMPOSITED, so a golden can be
+	 * taken of what a key DOES rather than only of what a window looks
+	 * like. The alternative is a flag per behaviour — one that opens a
+	 * scratchpad, one that tiles — and every one of those is a second path
+	 * into the code the chord already reaches.
+	 */
+	const char *presses[8];
+	int npress = 0;
+	/* A named arrangement, applied to the frame a dump composites. What it
+	 * proves is the file and the placement, not the socket verb — a dump
+	 * is a second session of its own, which is the whole difference
+	 * between it and `--capture`. */
+	const char *layout = NULL;
 	int run_at = 0;
 	unsigned run_flags = 0;
 
@@ -2947,6 +3209,55 @@ int main(int argc, char **argv)
 		}
 		if (!strcmp(argv[i], "--ls")) {
 			do_ls = 1;
+			continue;
+		}
+		/*
+		 * A CLIENT OF THE SESSION THAT IS ALREADY RUNNING, not a
+		 * session of its own — which is the whole difference between
+		 * these two and `--layout` below. `kdos con layout save|load`
+		 * is spelled this way for the reason every other `kdos con`
+		 * verb is: the session binary is the one thing that already
+		 * speaks the protocol.
+		 */
+		/*
+		 * TEXT ONTO THE SESSION CLIPBOARD, READ FROM STDIN.
+		 *
+		 * NOT AN ARGUMENT. What a program copies is a password as often
+		 * as it is a URL — a decoded QR most of all — and an argument
+		 * vector is visible to every process on the machine for as long
+		 * as this one runs. The pipe is the whole reason this is a flag
+		 * rather than `kdos-con --clip-text <text>`.
+		 */
+		if (!strcmp(argv[i], "--clip-text")) {
+			do_cliptext = 1;
+			continue;
+		}
+		/*
+		 * AND THE OTHER HALF. `wl-paste` is a Wayland client and this
+		 * desktop has no Wayland, so a program that wants what was
+		 * copied has nothing else to ask. Stdout rather than a toast
+		 * or a file for the same reason `--clip-text` reads stdin: a
+		 * clipboard is a password as often as it is a URL, and a pipe
+		 * is the only one of the three nothing else can read.
+		 */
+		if (!strcmp(argv[i], "--clip-take")) {
+			do_cliptake = 1;
+			continue;
+		}
+		/*
+		 * THE COLOUR UNDER THE POINTER, ONTO THE CLIPBOARD. It asks
+		 * and returns: the answer arrives when a person clicks, and
+		 * the session is what has the frame, the pointer and the
+		 * clipboard. `kdos-shot colour` is what runs this.
+		 */
+		if (!strcmp(argv[i], "--pick-colour")) {
+			do_pick = 1;
+			continue;
+		}
+		if ((!strcmp(argv[i], "--layout-save") ||
+		     !strcmp(argv[i], "--layout-load")) && i + 1 < argc) {
+			lay_save = argv[i][9] == 's';
+			lay_name = argv[++i];
 			continue;
 		}
 		/*
@@ -3021,6 +3332,17 @@ int main(int argc, char **argv)
 			sock = argv[++i];
 			continue;
 		}
+		if (!strcmp(argv[i], "--layout") && i + 1 < argc) {
+			layout = argv[++i];
+			continue;
+		}
+		if (!strcmp(argv[i], "--press") && i + 1 < argc) {
+			if (npress < (int)(sizeof(presses) / sizeof(presses[0])))
+				presses[npress++] = argv[++i];
+			else
+				i++;
+			continue;
+		}
 		if (!strcmp(argv[i], "--term") && i + 1 < argc) {
 			if (nterms < (int)(sizeof(terms) / sizeof(terms[0])))
 				terms[nterms++] = argv[++i];
@@ -3042,6 +3364,81 @@ int main(int argc, char **argv)
 
 	if (do_ls)
 		return con_sessions_list();
+
+	if (do_cliptext) {
+		const char *sock = getenv("KDOS_CON");
+		char buf[65536];
+		size_t n = 0;
+		ssize_t r;
+
+		if (!sock || !*sock) {
+			fprintf(stderr, "%s: no console session here — "
+				"$KDOS_CON is unset\n", name);
+			return 1;
+		}
+		while (n < sizeof(buf) - 1 &&
+		       (r = read(STDIN_FILENO, buf + n, sizeof(buf) - 1 - n)) > 0)
+			n += (size_t)r;
+		buf[n] = '\0';
+		/* A trailing newline would paste an Enter into whatever has the
+		 * focus, which at a shell prompt runs the line. */
+		while (n && (buf[n - 1] == '\n' || buf[n - 1] == '\r'))
+			buf[--n] = '\0';
+		if (!n)
+			return 1;
+		return kcon_clip_offer(sock, buf, n) == 0 ? 0 : 1;
+	}
+
+	if (do_cliptake) {
+		const char *sock = getenv("KDOS_CON");
+		char *text = NULL;
+
+		if (!sock || !*sock) {
+			fprintf(stderr, "%s: no console session here — "
+				"$KDOS_CON is unset\n", name);
+			return 1;
+		}
+		if (kcon_clip_take(sock, &text) != 0)
+			return 1;
+		/* NO TRAILING NEWLINE. What comes back is the clipboard's
+		 * bytes, and one added here is one every caller would have to
+		 * know to take off again. */
+		fputs(text, stdout);
+		free(text);
+		return 0;
+	}
+
+	if (do_pick) {
+		const char *sock = getenv("KDOS_CON");
+
+		if (!sock || !*sock) {
+			fprintf(stderr, "%s: no console session here — "
+				"$KDOS_CON is unset\n", name);
+			return 1;
+		}
+		return kcon_pick_colour(sock) == 0 ? 0 : 1;
+	}
+
+	if (lay_name) {
+		const char *sock = getenv("KDOS_CON");
+
+		if (!sock || !*sock) {
+			fprintf(stderr, "%s: no console session here — "
+				"$KDOS_CON is unset\n", name);
+			return 1;
+		}
+
+		int done = kcon_layout(sock, lay_name, lay_save);
+
+		if (done < 0) {
+			fprintf(stderr, "%s: no layout called '%s'\n", name,
+				lay_name);
+			return 1;
+		}
+		printf("%s %d window%s\n", lay_save ? "saved" : "opened",
+		       done, done == 1 ? "" : "s");
+		return 0;
+	}
 
 	/* EVERY OTHER SESSION VERB NEEDS A NAME, and the default is the one
 	 * `kdos-con-start` opens: a person with one session should never have
@@ -3270,6 +3667,33 @@ int main(int argc, char **argv)
 	}
 
 	setenv("KDOS_CON_DUMP", "1", 1);
+
+	if (layout && con_layout_load(layout) < 0) {
+		fprintf(stderr, "%s: no layout called '%s'\n", name, layout);
+		return 1;
+	}
+	/*
+	 * THROUGH THE CHORD TABLE, which is what makes this evidence: a press
+	 * reaches the same handler a keyboard does, so a golden taken after one
+	 * is a golden of the action rather than of a second implementation of
+	 * it. A chord this session does not bind is a silent no-op for the same
+	 * reason a typo in `keys.conf` is one.
+	 */
+	for (int i = 0; i < npress; i++) {
+		KtuiEvent ev = { 0 };
+		int key, mods;
+
+		if (!keys_chord_parse(presses[i], &key, &mods)) {
+			fprintf(stderr, "%s: cannot read the chord '%s'\n",
+				name, presses[i]);
+			return 2;
+		}
+		ev.type = KT_EVT_KEY;
+		ev.key = key;
+		ev.mods = mods;
+		session_key(&ev);
+	}
+
 	settle();
 	if (S.server)
 		kcon_server_pump(S.server);

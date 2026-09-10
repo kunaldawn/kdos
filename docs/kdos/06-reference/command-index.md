@@ -60,23 +60,25 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-power` | Client for the power daemon | [The daemons](../04-programs/daemons.md#kdos-powerd) |
 | `kdos-powerd` | Suspend, poweroff, reboot | [The daemons](../04-programs/daemons.md#kdos-powerd) |
 | `kdos-prompt` | Yes or no, by exit status | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
-| `kdos-con` | The console session server | [kdos-con](../04-programs/kdos-con.md) |
+| `kdos-con` | The console session server. Its client flags ask a session already running: `--capture`, `--keys`, `--clip-text` (stdin, never argv), `--clip-take`, `--layout-save NAME`, `--layout-load NAME`, `--pick-colour` | [kdos-con](../04-programs/kdos-con.md) |
 | `kdos-con-login` | The tty1 login: greeter or autologin | [kdos-con](../04-programs/kdos-con.md#the-login) |
 | `kdos-con-start` | Bring up the console session | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-grid` | A console session and a view, in one command | [kdos-con](../04-programs/kdos-con.md#four-names-one-binary) |
-| `kdos-record` | Record the desktop to a file, through the ScreenCast portal | [The session](../03-architecture/session.md#the-kdos-backend) |
+| `kdos-record [FILE.mkv]` | Record the desktop to a file, through the ScreenCast portal. **Run it again to stop**; while it runs, its pid is in `$XDG_RUNTIME_DIR/kdos/screencast.pid` and the console bar draws a `•REC` lamp | [The session](../03-architecture/session.md#the-kdos-backend) |
 | `kdos-res` | The resource monitor | [kdos-res](../04-programs/kdos-res.md) |
 | `kdos-term` | The terminal: `-e`, `--title`, `--font`, `-D DIR`, `--tty`, `--dump WxH` | [kdos-term](../04-programs/kdos-term.md) |
 | `kdos-cage` | One application full screen, or embedded: `-d`, `-D`, `-m extend\|last`, `-s`, `-v`, `--embed WxH` | [kdos-cage](../04-programs/kdos-cage.md) |
 | `kdos con run` | Run a graphical program on the console desktop. Prints the terminal it was given, or `0` for a window | [kdos-con](../04-programs/kdos-con.md#reaching-it) |
+| `kdos con layout save\|load <name>` | Write what the running session has open under a name, or open that arrangement. A load closes nothing | [The kdos command](../04-programs/kdos-command.md#con) |
 | `kdos-view --cast` | Rasterise the console session into a PipeWire stream. Prints the node id and the stream's pixel size | [kdos-con](../04-programs/kdos-con.md#recording-it) |
 | `kdos-resctl` | Signal or renice a process. **setuid** | [The security model](../03-architecture/security-model.md#kdos-resctl) |
 | `kdos-run` | The run box | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-saver` | Attract mode between idle and lock | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-settings` | Settings | [kdos-shell](../04-programs/kdos-shell.md#kdos-settings) |
+| `kdos-share [--clipboard] [FILE\|file://URI]...` | A file to another machine over `croc`: one code word, **this network only**, no account. With nothing named, `kdos-pick` asks. What the Share verb resolves | [The kdos command](../04-programs/kdos-command.md#share) |
 | `kdos-sfx` | Sound effects | [The kdos command](../04-programs/kdos-command.md#the-other-names-on-this-binary) |
 | `kdos-shell` | The panel | [kdos-shell](../04-programs/kdos-shell.md#the-panel) |
-| `kdos-shot [region\|screen] [--geom X,Y,W,H]` | Screenshots. On the console, through `kdos-view --shot`; `--geom` is a rectangle in cells and only the console has one | [The desktop](../02-user-guide/desktop.md) |
+| `kdos-shot [region\|screen\|qr\|colour] [--geom X,Y,W,H]` | Screenshots. On the console, through `kdos-view --shot`; `--geom` is a rectangle in cells and only the console has one. `qr` decodes a QR code in the picture through `zbarimg` onto the clipboard and removes the picture, so a pairing token never reaches the disk. `colour` is the slot name and hex of the cell under the pointer, **on the console only** — the compositor tells no client where the pointer is | [The desktop](../02-user-guide/desktop.md) |
 | `kdos-slit` | The dockapp column | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-view` | A display for a console session: `--kms`, `--kms-only`, `--tty`, `--dump`, `--shot`, `--cast`. `--tty` probes its host terminal and hands it pictures as pixels where it can | [kdos-con](../04-programs/kdos-con.md#the-split-that-everything-else-falls-out-of) |
 | `kdos-view --shot FILE.png [--crop X,Y,W,H]` | One settled frame of the composited grid, rasterised through the painter a screen uses; the crop is in cells | [kdos-con](../04-programs/kdos-con.md) |
@@ -126,6 +128,7 @@ Plus **one shim per installed application**, named after the application and poi
 | `kdos trash` | The freedesktop trash |
 | `kdos places [add DIR]` | The places column the desktop shows, and the way to keep one from a prompt | [kdos-command](../04-programs/kdos-command.md#places) |
 | `kdos thumb <file>` | A thumbnail in the shared freedesktop cache — also `--path` and `--ppm` | [kdos-command](../04-programs/kdos-command.md#thumb) |
+| `kdos share [--clipboard] [FILE…]` | The same program as `kdos-share`, under the spelling a person types | [kdos-command](../04-programs/kdos-command.md#share) |
 | `kdos-openarchive ARCHIVE` | Extract an archive `mc` cannot browse as a directory, beside itself | [kdos-shell](../04-programs/kdos-shell.md) |
 | `kdos hey` | Ask the compositor about windows, outputs and boxes |
 | `kdos con` | Console sessions: `ls`, `new`, `attach` (`--observe` to watch without typing), `detach`, `kill` (asks the session to end, and it drains), `capture`, `record`, `replay`, `forward` |

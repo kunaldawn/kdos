@@ -31,6 +31,8 @@
 #include "kvt_keysyms.h"
 #include "kvt_pty.h"
 
+#include <stdio.h>
+
 struct kvt_term {
 	struct kvt_screen *screen;
 	struct kvt_vte *vte;
@@ -234,6 +236,133 @@ void kvt_term_scrollback(struct kvt_term *t, unsigned int lines)
 {
 	if (t && t->screen)
 		kvt_screen_set_max_sb(t->screen, lines);
+}
+
+/*
+ * ONE GENERATED FILE, READ BY BOTH TERMINALS.
+ *
+ * `kdos theme` writes `~/.config/kdos/term-colors.conf` — eighteen
+ * `name = #rrggbb` lines — and this turns it into the array the vte wants.
+ * It lives here rather than in either terminal because BOTH read it: the
+ * window `kdos-term` opens and the one the console session opens are the same
+ * terminal, and a colour that differed between them would be the same program
+ * looking different depending on which desktop started it.
+ *
+ * A MISSING FILE IS NOT AN ERROR. It is what a fresh account has before
+ * anybody has chosen an accent, and the answer there is the built-in palette.
+ *
+ * Returns HOW MANY of the eighteen were read, because the caller has to know
+ * the difference between all of them and some: the array it hands over starts
+ * empty, so a half-read file applied would be a terminal drawing most of its
+ * text in black.
+ */
+int kvt_palette_read(const char *path, uint8_t (*pal)[3])
+{
+	static const char *const name[KVT_COLOR_NUM] = {
+		[KVT_COLOR_BLACK] = "black",
+		[KVT_COLOR_RED] = "red",
+		[KVT_COLOR_GREEN] = "green",
+		[KVT_COLOR_YELLOW] = "yellow",
+		[KVT_COLOR_BLUE] = "blue",
+		[KVT_COLOR_MAGENTA] = "magenta",
+		[KVT_COLOR_CYAN] = "cyan",
+		[KVT_COLOR_LIGHT_GREY] = "light-grey",
+		[KVT_COLOR_DARK_GREY] = "dark-grey",
+		[KVT_COLOR_LIGHT_RED] = "light-red",
+		[KVT_COLOR_LIGHT_GREEN] = "light-green",
+		[KVT_COLOR_LIGHT_YELLOW] = "light-yellow",
+		[KVT_COLOR_LIGHT_BLUE] = "light-blue",
+		[KVT_COLOR_LIGHT_MAGENTA] = "light-magenta",
+		[KVT_COLOR_LIGHT_CYAN] = "light-cyan",
+		[KVT_COLOR_WHITE] = "white",
+		[KVT_COLOR_FOREGROUND] = "foreground",
+		[KVT_COLOR_BACKGROUND] = "background",
+	};
+	char line[256];
+	FILE *f;
+	int seen[KVT_COLOR_NUM] = { 0 };
+	int got = 0;
+
+	if (!path || !pal)
+		return 0;
+	f = fopen(path, "r");
+	if (!f)
+		return 0;
+
+	while (fgets(line, sizeof(line), f)) {
+		char key[32];
+		unsigned r, g, b;
+
+		if (sscanf(line, " %31[a-z-] = #%2x%2x%2x", key, &r, &g, &b) != 4)
+			continue;
+		for (int i = 0; i < KVT_COLOR_NUM; i++) {
+			if (!name[i] || strcmp(name[i], key))
+				continue;
+			pal[i][0] = (uint8_t)r;
+			pal[i][1] = (uint8_t)g;
+			pal[i][2] = (uint8_t)b;
+			/* Counted once: a file naming a colour twice has
+			 * named seventeen, not eighteen. */
+			if (!seen[i]) {
+				seen[i] = 1;
+				got++;
+			}
+			break;
+		}
+	}
+	fclose(f);
+	return got;
+}
+
+/*
+ * WHAT `kdos theme` LAST WROTE, ONTO THIS TERMINAL. The path is spelled once,
+ * here, because both terminals want it and a second spelling is a second thing
+ * to get wrong the day the file moves.
+ */
+void kvt_term_theme(struct kvt_term *t)
+{
+	const char *xdg = getenv("XDG_CONFIG_HOME");
+	const char *home = getenv("HOME");
+	uint8_t pal[KVT_COLOR_NUM][3] = { { 0 } };
+	char path[512];
+
+	if (xdg && *xdg)
+		snprintf(path, sizeof(path), "%s/kdos/term-colors.conf", xdg);
+	else if (home && *home)
+		snprintf(path, sizeof(path),
+			 "%s/.config/kdos/term-colors.conf", home);
+	else
+		return;
+
+	/* ALL EIGHTEEN OR NONE. Half a palette over an empty array is a
+	 * terminal drawing most of its text in black, which is worse than the
+	 * built-in colours this leaves in place. */
+	if (kvt_palette_read(path, pal) == KVT_COLOR_NUM)
+		kvt_term_palette(t, pal);
+}
+
+/*
+ * THE SIXTEEN A PROGRAM ASKS FOR, from the desktop's own scheme.
+ *
+ * A TENTH PALETTE RATHER THAN A REPLACEMENT OF THE NINE. The named ones —
+ * `nord`, `solarized`, `base16-dark` — are upstream's and are a thing a person
+ * can ask for by name; a desktop that overwrote them would be a desktop that
+ * took away the choice while claiming to add one. This is the `custom` entry
+ * the vte already understands, filled from a generated file, and it is what a
+ * KDOS terminal is given at start.
+ *
+ * The array is COPIED, so the caller may build it on the stack.
+ */
+void kvt_term_palette(struct kvt_term *t, uint8_t (*pal)[3])
+{
+	if (!t || !t->vte)
+		return;
+	if (!pal) {
+		kvt_vte_set_palette(t->vte, NULL);
+		return;
+	}
+	if (kvt_vte_set_custom_palette(t->vte, pal) == 0)
+		kvt_vte_set_palette(t->vte, "custom");
 }
 
 void

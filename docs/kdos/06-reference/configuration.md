@@ -65,6 +65,7 @@ Every key ships commented out at its default.
 | `icons` | `yes` | immediate | Whether chrome draws pictures at all |
 | `panel_opacity` | `80` | immediate | Panel opacity, per cent |
 | `panel_margin` | `0` | immediate | Panel margin |
+| `window_memory` | `yes` | immediate | Whether an application opens where its window last was, per `app_id`, from `~/.local/state/kdos/winpos`. The console session keeps the same idea in its own file — see `con.conf`'s `remember` |
 | `panel` | `bottom` | **next login** | `bottom`, `top` or `off` |
 | `panel_cells` | `2` | **next login** | Panel height in cells |
 | `panel_font` | `Terminus:pixelsize=20` | **next login** | The panel's font pattern |
@@ -74,7 +75,6 @@ Every key ships commented out at its default.
 | `clipboard` | | **next login** | The clipboard history daemon |
 | `chrome_font` | `Terminus:pixelsize=32` | **next login** | The font every KDOS surface draws with |
 | `clock_format` | `%H:%M` | **next login** | |
-| `window_memory` | | **next login** | Remember window positions |
 
 **The three idle timers default to zero in a virtual machine** unless any `idle_*` key is set,
 because a blanked screen over a remote display is indistinguishable from a crashed compositor.
@@ -397,7 +397,7 @@ The same rule holds for `keys.conf`.
 | `idle_saver` | `300` | Seconds of no input before the saver covers the screen; `0` never |
 | `idle_lock` | `600` | Seconds of no input before the screen locks; `0` never |
 | `idle_off` | `900` | Seconds before the screen powers down; `0` never |
-| `terminal` | `sh` | What `Super+Return` opens |
+| `terminal` | `sh` | What `Super+Return` opens, and what the first `Super+grave` opens as the scratchpad |
 | `files` | `mc` | What `Super+e` raises, or starts |
 | `mail` | `aerc` | What `Super+Shift+e` raises, or starts |
 | `browser` | `lynx` | What `Super+Shift+b` raises, or starts |
@@ -428,6 +428,9 @@ The same rule holds for `keys.conf`.
 | `characters` | `kdos-chars` | What `Super+Ctrl+e` starts |
 | `find` | `kdos-find` | What `Super+Shift+f` starts |
 | `capture` | `kdos-shot` | What `Super+Shift+p` hands the marked rectangle to |
+| `capture_menu` | `kdos-palette --route capture` | What `Super+Ctrl+c` opens: the capture group, for the verbs that have no chord of their own |
+| `capture_screen` | `kdos-shot screen` | What `Print` runs — the whole screen, with no rectangle to draw |
+| `record` | `kdos-record` | What `Alt+Print` runs, and runs again to stop |
 | `theme` | `kdos-theme` | The accent picker `Super+Ctrl+Shift+space` opens |
 | `background` | `kdos background next` | What `Super+Ctrl+space` cycles the console's ground with |
 | `nowplaying` | `yes` | Whether `kdos-con`'s own bar shows what is playing, left of the pager. `kdos-shell`'s panel reads the same file through its `mpris` widget and this key does not reach it |
@@ -440,6 +443,7 @@ The same rule holds for `keys.conf`.
 | `media_prev` | `kdos-mpctl prev` | What the previous-track key runs |
 | `paste_guard` | `yes` | Refuse an unbracketed paste carrying a newline once, and take it on the second try |
 | `embed` | `yes` | Whether a graphical application becomes a window. `no` gives every one of them a terminal of its own |
+| `remember` | `yes` | Whether a window opens where that program's window last was. The rectangle is kept per program **and per workspace** in `~/.local/state/kdos/con/geometry` and written when a window goes. Chrome is never remembered — a menu, a toast, the icon layer, a docked panel, the lock, the saver and the scratchpad are placed by their role — and a restored session wins, because where the last session had a window is a stronger statement than where its program usually sits. `no` turns off the reading and the writing. The graphical desktop keeps the same idea in `comp.conf`'s `window_memory`, in its own file: those rectangles are pixels and these are cells |
 
 **The surface keys exist so a chord and the program it runs are written in one place.**
 `kdos-con --keys` prints what this table binds, so the keybinding card cannot name a program the
@@ -491,6 +495,7 @@ Changing a default in one file changes it in the other.
 | `fullscreen` | `Super+f` | `prev-alt` | `Alt+Shift+Tab` |
 | `minimise` | `Super+n` | `snap-left` … `snap-down` | `Super+`arrow |
 | `restore` | `Super+Shift+n` | `focus-left` … `focus-down` | `Super+Shift+`arrow |
+| `scratchpad` | `Super+grave` | `scratchpad-mark` | `Super+Alt+grave` |
 | `workspace-prev` | `Super+PageUp` | `swap-left` … `swap-down` | `Super+Alt+`arrow |
 | `workspace-next` | `Super+PageDown` | | |
 | `menu-fkey` | `Super+F10` | `launcher` | `Super+d` |
@@ -509,6 +514,8 @@ Changing a default in one file changes it in the other.
 | `show-desktop` | `Super+Shift+d` | `windows` | `Super+F2` |
 | `mark` | `Super+Shift+m` | `paste` | `Super+Shift+v` |
 | `find` | `Super+Shift+f` | `capture` | `Super+Shift+p` |
+| `capture-menu` | `Super+Ctrl+c` | `capture-screen` | `Print` |
+| `capture-print` | `Shift+Print` | `capture-record` | `Alt+Print` |
 | `volume-up` | `XF86AudioRaiseVolume` | `volume-down` | `XF86AudioLowerVolume` |
 | `volume-mute` | `XF86AudioMute` | `media-play` | `XF86AudioPlay` |
 | `media-stop` | `XF86AudioStop` | `media-next` | `XF86AudioNext` |
@@ -533,6 +540,14 @@ the row rather than teaching a key that does nothing. The diary is `agenda` beca
 
 The compositor binds the same seven to the same seven programs, as `rc.xml` `ForEach` blocks whose
 `<query identifier>` is the program's `app_id`.
+
+**`scratchpad` shows and hides one window over everything**, on whatever workspace is being looked
+at, in the drop-down shape. The first press opens `terminal` above and gives it the role;
+`scratchpad-mark` hands the role to the focused window and returns the previous holder to the
+current workspace. The compositor's `W-grave` is a `ForEach` over the `kdos-scratchpad` app id
+running `ToggleOmnipresent`, which is labwc's word for the same flag — so the identifier there
+names a **marker** rather than a program, and the key card gates a `<query identifier>` on the
+program being installed only when the container begins with `Focus`.
 
 Modifiers are `Super`, `Shift`, `Alt` and `Ctrl`, joined with `+`. An action no line names keeps
 its default, so rebinding one key does not mean restating the rest. Punctuation may be written as
@@ -752,6 +767,15 @@ account gets a working setup rather than each program's own defaults. These are 
 | `~/.config/foot/themes/kdos` | The terminal's colours | **Generated** |
 | `~/.config/btop/btop.conf` | The system monitor | |
 | `~/.config/btop/themes/kdos.theme` | Its colours | **Generated** |
+| `~/.config/kdos/term-colors.conf` | The sixteen colours a program asks for, in this desktop's terminals | **Generated** |
+| `~/.config/kdos/fzf-colors` | fzf's `--color` flags, sourced by `/etc/profile.d/30-kdos-colors.sh` | **Generated** |
+| `~/.config/bat/themes/kdos.tmTheme` | bat's theme, selected by file stem | **Generated** |
+| `~/.config/micro/colorschemes/kdos.micro` | micro's colorscheme | **Generated** |
+| `~/.config/helix/themes/kdos.toml` | helix's theme | **Generated** |
+| `~/.config/nvim/colors/kdos.vim` | neovim's colorscheme | **Generated** |
+| `~/.config/git/kdos-delta` | delta's colours, `[include]`d from the shipped gitconfig | **Generated** |
+| `~/.config/newsboat/kdos-colors` | newsboat's colours, as 256 indices | **Generated** |
+| `~/.config/aerc/stylesets/kdos` | aerc's styleset | **Generated** |
 | `~/.config/tmux/tmux.conf` | The terminal multiplexer | |
 | `~/.config/starship.toml` | The shell prompt | Only the palette block between its markers is generated |
 | `~/.config/fastfetch/config.jsonc` | The system-information tool | The login banner runs it with its own logo disabled |

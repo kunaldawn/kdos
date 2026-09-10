@@ -138,7 +138,8 @@ Colour comes from a **slot**, never from a literal value:
 | Slot | Role |
 |---|---|
 | `KT_ACCENT` | The accent |
-| `KT_WARN` | Urgent |
+| `KT_ERR` | Urgent |
+| `KT_WARN` | Secondary — a caution, not a failure |
 | `KT_TEXT` | Body text |
 | `KT_MID` | Labels, secondary text, borders |
 | `KT_DIM` | **A fill** — see below |

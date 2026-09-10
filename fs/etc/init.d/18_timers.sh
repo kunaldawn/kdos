@@ -41,7 +41,15 @@ timers_each() {   # <dir> <callback>
                 ''|'#'*) continue ;;
             esac
             # The name is the first word; everything up to `--` is snooze's.
+            #
+            # NOGLOB AROUND THE SPLIT. The row is split by leaving the
+            # expansion unquoted, which is the point — but that also
+            # PATHNAME-EXPANDS it, and `*` is snooze's own syntax for "every".
+            # `-M *` in a directory holding two files becomes `-M a b`: a timer
+            # that runs at times nobody asked for, silently.
+            set -f
             set -- $_row
+            set +f
             _name=$1
             shift
             _spec=""

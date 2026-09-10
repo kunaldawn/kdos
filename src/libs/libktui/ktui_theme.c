@@ -32,6 +32,21 @@ const KtuiTheme ktui_themes[] = { KCOL_SCHEMES(KT_SCHEME) };
 #undef KT_SCHEME
 #undef RGB
 
+/* One row per slot, indexed by the enum: a lookup that fell out of step with
+ * the enum would name the wrong colour, so it is an array and not a switch. */
+const char *ktui_slot_name(int slot)
+{
+	static const char *const name[KT_NCOLOR] = {
+		[KT_BG] = "bg",	[KT_ERR] = "err", [KT_ACCENT] = "accent",
+		[KT_WARN] = "warn", [KT_DIM] = "dim", [KT_MID] = "mid",
+		[KT_SURFACE] = "surface", [KT_TEXT] = "text",
+	};
+
+	if (slot < 0 || slot >= KT_NCOLOR)
+		return NULL;
+	return name[slot];
+}
+
 int ktui_ntheme = (int)(sizeof(ktui_themes) / sizeof(ktui_themes[0]));
 const KtuiTheme *ktui_theme = &ktui_themes[0];
 

@@ -219,6 +219,71 @@ static int is_element(const char *name)
 }
 
 /*
+ * THE ONE MARKER THAT SAYS A RECORDING IS RUNNING.
+ *
+ * `$XDG_RUNTIME_DIR/kdos/screencast.pid`, the directory the now-playing line
+ * already lives in and for the same reason: it is tmpfs, so a marker left
+ * behind by a crash cannot outlive the boot it lied about. Two readers — the
+ * next invocation, which stops the recording this one names, and the console
+ * bar, which draws its lamp.
+ *
+ * `screencast` AND NOT `recording`: `kdos-rec` records a microphone and the
+ * console bar already says RECORDING about a keystroke macro, so the word is
+ * three things and the path may only be one.
+ */
+static int marker_path(char *buf, size_t n)
+{
+	const char *rt = getenv("XDG_RUNTIME_DIR");
+
+	if (!rt || !*rt)
+		return 0;
+	return snprintf(buf, n, "%s/kdos/screencast.pid", rt) < (int)n;
+}
+
+/*
+ * The pid a marker names, or 0 — including when the process it names is gone.
+ * A stale marker is a crash and not a recording; taking it for one would mean
+ * a stop that stops nothing and a lamp that never goes out.
+ */
+static pid_t marker_read(const char *path)
+{
+	char buf[32];
+	FILE *f = fopen(path, "re");
+	long v = 0;
+
+	if (!f)
+		return 0;
+	if (!fgets(buf, sizeof(buf), f))
+		buf[0] = '\0';
+	fclose(f);
+	v = strtol(buf, NULL, 10);
+	if (v <= 0 || kill((pid_t)v, 0) != 0)
+		return 0;
+	return (pid_t)v;
+}
+
+static int marker_write(const char *path)
+{
+	char dir[4096];
+	char *slash;
+	FILE *f;
+
+	snprintf(dir, sizeof(dir), "%s", path);
+	slash = strrchr(dir, '/');
+	if (slash && slash != dir) {
+		*slash = '\0';
+		if (mkdir(dir, 0700) != 0 && errno != EEXIST)
+			return 0;
+	}
+	f = fopen(path, "we");
+	if (!f)
+		return 0;
+	fprintf(f, "%d\n", (int)getpid());
+	fclose(f);
+	return 1;
+}
+
+/*
  * The parent directory, made if it is not there. One level only: a path whose
  * grandparent is missing is a typo, and creating a tree from one would hide it.
  */
@@ -310,13 +375,38 @@ int main(int argc, char **argv)
 	char session[256];
 	uint32_t node;
 	pid_t gst;
+	char marker[4096];
+	int have_marker, marked = 0;
 	int st = 0, rc = 1, r;
 
 	if (argc > 1 && (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help"))) {
 		printf("usage: kdos-record [FILE.mkv]\n");
-		printf("Records this session's screen until interrupted.\n");
+		printf("Records this session's screen. Run it again to stop.\n");
 		return 0;
 	}
+
+	/*
+	 * AGAIN TO STOP, WHATEVER THE ARGUMENTS. One screen and one portal
+	 * session, so a second recording is not a second thing a person could
+	 * want — and a chord that started a recording has to be able to end
+	 * one, which means the stop cannot need a flag nobody can press.
+	 *
+	 * SIGINT AND NOT SIGTERM. The running process forwards what it is sent
+	 * to the pipeline, and `gst-launch-1.0 -e` turns an INT into an
+	 * end-of-stream so the muxer writes its index; a TERM would leave a
+	 * file without one.
+	 */
+	have_marker = marker_path(marker, sizeof(marker));
+	if (have_marker) {
+		pid_t running = marker_read(marker);
+
+		if (running) {
+			kill(running, SIGINT);
+			printf("kdos-record: stopping the recording\n");
+			return 0;
+		}
+	}
+
 	if (argc > 1)
 		snprintf(out, sizeof(out), "%s", argv[1]);
 	else
@@ -461,17 +551,35 @@ int main(int argc, char **argv)
 	}
 	node = rp.node;
 
-	signal(SIGINT, on_signal);
-	signal(SIGTERM, on_signal);
+	/*
+	 * `sigaction` WITHOUT SA_RESTART, which is what `signal()` would have
+	 * set. The wait below has to come back with EINTR for the forward to
+	 * happen at all: a restarted wait is a stop that never reaches the
+	 * pipeline and a process holding the portal session for ever.
+	 */
+	{
+		struct sigaction sa;
 
-	printf("kdos-record: recording node %u to %s — Ctrl+C to stop\n", node,
-	       out);
+		memset(&sa, 0, sizeof(sa));
+		sa.sa_handler = on_signal;
+		sigemptyset(&sa.sa_mask);
+		sigaction(SIGINT, &sa, NULL);
+		sigaction(SIGTERM, &sa, NULL);
+	}
+
+	printf("kdos-record: recording node %u to %s — run kdos-record again "
+	       "to stop\n", node, out);
 	fflush(stdout);
 	gst = start_gst(node, out);
 	if (gst < 0) {
 		fprintf(stderr, "kdos-record: cannot start gst-launch-1.0\n");
 		goto out;
 	}
+	/* WITH THE PIPELINE AND NOT BEFORE IT: the marker is what the bar's
+	 * lamp and the next invocation both read, and one written for a
+	 * recording that failed to start is a lamp nothing can put out. */
+	if (have_marker)
+		marked = marker_write(marker);
 
 	/*
 	 * THE CONNECTION STAYS OPEN until the pipeline is done: the portal
@@ -480,8 +588,9 @@ int main(int argc, char **argv)
 	 *
 	 * `gst-launch-1.0 -e` turns an INT into an end-of-stream, so the muxer
 	 * writes its index; a TERM would leave a file without one. A Ctrl+C
-	 * reaches the whole process group and the pipeline already has it,
-	 * which is why the forward is only for the signal that does not.
+	 * reaches the whole process group and the pipeline already has it; the
+	 * forward is for the stop that arrives from outside the group, which
+	 * is what a second `kdos-record` sends.
 	 */
 	for (;;) {
 		pid_t w = waitpid(gst, &st, 0);
@@ -501,6 +610,10 @@ int main(int argc, char **argv)
 	if (rc)
 		fprintf(stderr, "kdos-record: the pipeline failed\n");
 out:
+	/* Only a marker this process wrote. Removing one it merely found would
+	 * be this process putting out somebody else's lamp. */
+	if (marked)
+		unlink(marker);
 	sd_bus_error_free(&err);
 	sd_bus_message_unref(m);
 	sd_bus_message_unref(reply);

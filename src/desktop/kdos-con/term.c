@@ -116,6 +116,9 @@ Win *term_open(const char *const argv[])
 	if (w->term) {
 		kvt_term_scrollback(w->term,
 				    (unsigned)kcon_conf_int("scrollback", 2000));
+		/* The accent's sixteen — the same file `kdos-term` reads, so a
+		 * program looks the same whichever desktop opened it. */
+		kvt_term_theme(w->term);
 		kvt_term_osc_cb(w->term, term_osc, w);
 		kvt_term_clip_cb(w->term, term_clip, w);
 		kvt_term_bell_cb(w->term, term_bell, w);

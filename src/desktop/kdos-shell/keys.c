@@ -153,6 +153,14 @@ static void describe(const char *act, const char *detail, char *out, size_t n)
 			 detail[0] ? detail : "a program");
 		return;
 	}
+	/* A FLAG TOGGLED AGAINST AN APP ID IS THE SCRATCHPAD and not a plain
+	 * omnipresence toggle: the key finds the one window started under that
+	 * marker, puts it over every window on whatever workspace is up, and the
+	 * same press takes it away again. */
+	if (!strcmp(act, "ToggleOmnipresent") && detail[0]) {
+		snprintf(out, n, "the drop-down terminal, over every window");
+		return;
+	}
 	if (!strcmp(act, "GoToDesktop")) {
 		snprintf(out, n, "workspace %s", detail[0] ? detail : "?");
 		return;
@@ -345,6 +353,13 @@ static int con_section(const char *act, const char **desc)
 		{ "fullscreen",	"fullscreen",		SEC_WINDOW },
 		{ "minimise",	"minimise",		SEC_WINDOW },
 		{ "restore",	"bring back the last minimised",	SEC_WINDOW },
+		/* THE SAME WORDS THE COMPOSITOR'S ROW USES. One key, two
+		 * desktops: a card that called it a scratchpad here and a
+		 * drop-down there would read as two features. */
+		{ "scratchpad",	"the drop-down terminal, over every window",
+							SEC_WINDOW },
+		{ "scratchpad-mark", "make this window the drop-down",
+							SEC_WINDOW },
 		{ "next",	"next window",		SEC_WINDOW },
 		{ "prev",	"previous window",	SEC_WINDOW },
 		{ "next-alt",	"next window",		SEC_WINDOW },
@@ -380,6 +395,13 @@ static int con_section(const char *act, const char **desc)
 		{ "mark",	"mark text anywhere on the screen",	SEC_WINDOW },
 		{ "paste",	"paste what was marked",	SEC_WINDOW },
 		{ "capture",	"mark a rectangle: text copied, picture filed",	SEC_WINDOW },
+		{ "capture-menu", "capture: a region, a recording, a QR code",
+							SEC_TOOLS },
+		{ "capture-screen", "the whole screen to a file",	SEC_TOOLS },
+		{ "capture-print", "mark a rectangle: text copied, picture filed",
+							SEC_TOOLS },
+		{ "capture-record", "record the screen to a file, and stop",
+							SEC_TOOLS },
 		{ "learn",	"record the keys you type, and stop",	SEC_WINDOW },
 		{ "play",	"type a recorded script back",	SEC_WINDOW },
 		/* The screen's own font, which is the view's and not a

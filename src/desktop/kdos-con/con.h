@@ -134,7 +134,20 @@ enum {
 	 * window of the same program, which is what makes one chord enough for
 	 * three terminals.
 	 */
-	CON_ACT_FOCUS_OR_LAUNCH
+	CON_ACT_FOCUS_OR_LAUNCH,
+
+	/*
+	 * THE SCRATCHPAD. One window a session keeps over everything, on the
+	 * key the drop-down terminals have used since Quake.
+	 *
+	 * SHOW AND HIDE ARE ONE CHORD because there is only ever one of them:
+	 * a second key to put it away is a key a person has to remember for a
+	 * window they are looking at. The toggle SHOWS a scratchpad that is
+	 * hidden or minimised and hides one that is neither, so the two states
+	 * a window can be invisible in both answer the same press.
+	 */
+	CON_ACT_SCRATCH,
+	CON_ACT_SCRATCH_MARK
 };
 
 /*
@@ -154,6 +167,10 @@ enum { CON_APP_FILES = 0, CON_APP_MAIL, CON_APP_BROWSER, CON_APP_MUSIC,
        CON_APP_N };
 
 const char *con_app(int which);
+/* The role's own name — `files`, `writing` — rather than the program it
+ * resolves to. A layout row names a role, so something has to be able to ask
+ * the table that binds the key whether a name is one of its own. */
+const char *con_app_name(int which);
 
 /*
  * What CON_ACT_EXEC's `arg` names. The command itself is a con.conf key, so a
@@ -198,9 +215,19 @@ enum { CON_CMD_MENU = 0, CON_CMD_LAUNCHER, CON_CMD_LOCK, CON_CMD_SAVER,
         * clean, because every index still has an initialiser.
         */
        CON_CMD_PALETTE,
+       /* The palette opened at the capture group. APPENDED, like every id
+        * here: main.c's tables are designated-initialiser arrays indexed by
+        * this enum. */
+       CON_CMD_CAPTMENU,
+       /* The whole screen with no rectangle to draw, and the screen into a
+        * file. APPENDED, like every id here. */
+       CON_CMD_CAPTSCREEN, CON_CMD_RECORD,
        CON_CMD_N };
 
 const char *con_command(int which);
+/* The con.conf key itself — `monitor`, `notes` — rather than the command it
+ * resolves to; see con_app_name(). */
+const char *con_command_name(int which);
 void con_spawn(const char *cmd);
 /* True while a window is being moved or sized from the keyboard. The frame
  * says so and the taskbar names the keys; see CON_ACT_REARRANGE. */
@@ -208,6 +235,9 @@ int con_rearranging(void);
 /* True while a rectangle of the screen is being marked. The taskbar names the
  * keys for the same reason; see CON_ACT_MARK. */
 int con_marking(void);
+/* True while the colour picker is waiting for a click. The taskbar says so and
+ * names the way out, for the reason the mark does. */
+int con_picking(void);
 /* True while a paste that would execute is waiting to be meant twice. */
 int con_paste_armed(void);
 
@@ -241,6 +271,23 @@ typedef struct Win {
 	KwmRect restore;	/* what an untile returns to */
 	unsigned tiled;
 	int minimised;
+
+	/*
+	 * THE SCRATCHPAD'S TWO FLAGS, and neither is a shade of `minimised`.
+	 *
+	 * `sticky` means the window is on NO workspace and therefore on every
+	 * one: `workspace` is not consulted for it anywhere, and it is counted
+	 * in no workspace's occupancy — a dot under every number would say the
+	 * desk is full when only the scratchpad is open.
+	 *
+	 * `hidden` means drawn nowhere, listed nowhere and hit-testable
+	 * nowhere. That is what separates it from a minimise, whose entire
+	 * point is that the taskbar row IS the way back: a hidden window has
+	 * no row, and the chord that hid it is the only thing that brings it
+	 * back.
+	 */
+	int sticky;
+	int hidden;
 
 	/*
 	 * THE SELECTION IN THIS TERMINAL, for WIN_TERM only. libkvt decides
@@ -348,6 +395,14 @@ typedef struct {
 	 * state to outlive the surface — the window itself is the whole of it.
 	 */
 	Win *saver;
+
+	/*
+	 * THE SCRATCHPAD'S WINDOW ID, or 0. An id rather than a pointer for
+	 * the reason every other window is named by one here: the window can
+	 * be closed by its own client between two presses, and a stale pointer
+	 * is a crash where a stale id is a lookup that returns NULL.
+	 */
+	int scratch;
 } Session;
 
 extern Session S;
@@ -382,6 +437,22 @@ void win_restore(Win *w);
 Win *win_last_minimised(void);
 void win_send(Win *w, int ws);
 void win_workspace(int ws);
+/*
+ * THE SCRATCHPAD, or NULL when the session has none. Asked rather than read:
+ * `S.scratch` outlives the window it names when a client goes away, and this
+ * clears it in the one place that looks.
+ */
+Win *win_scratch(void);
+/* Over everything, on the workspace being looked at, in the drop-down shape.
+ * The shape is applied on every show rather than remembered, so a scratchpad
+ * survives a resize of the grid instead of coming back off the screen. */
+void win_scratch_show(Win *w);
+void win_scratch_hide(Win *w);
+/* Make this window the scratchpad. The previous one — there is at most one —
+ * returns to the workspace being looked at as an ordinary window, because a
+ * window left sticky and hidden with no chord naming it is a window nothing
+ * can reach. */
+void win_scratch_mark(Win *w);
 /* The session's monotonic clock, in milliseconds. */
 unsigned long long con_now_ms(void);
 /*
@@ -461,6 +532,26 @@ void vt_close_all(void);
 /* term.c */
 Win *term_open(const char *const argv[]);
 
+/* ── geom.c ────────────────────────────────────────────────────────────── */
+
+/*
+ * WINDOWS REOPEN WHERE YOU LEFT THEM. A rectangle per program per workspace,
+ * in `~/.local/state/kdos/con/geometry`, written when a window goes and used
+ * when one running the same program next appears.
+ *
+ * `geo_recall` is called from `win_place()` and nowhere else, which is what
+ * decides the roles: an overlay is placed by `win_place_corner()` and a
+ * restored session by `win_place_at()`, so neither can inherit a terminal's
+ * rectangle and the session record still wins over this one. It answers 1 when
+ * it has set `geom`, and the placement search runs when it answers 0.
+ *
+ * The file is NOT the compositor's `winpos` — those rectangles are pixels and
+ * these are cells, so one file with both writers would restore every window at
+ * a size taken from the other desktop's units.
+ */
+int geo_recall(Win *w);
+void geo_record(const Win *w);
+
 /* ── state.c ───────────────────────────────────────────────────────────── */
 
 /* How many windows one saved session may carry. A list longer than this is a
@@ -473,6 +564,42 @@ Win *term_open(const char *const argv[]);
 int con_state_path(const char *name, char *out, size_t n);
 /* What is open, as text. Returns the row count, or -1. */
 int con_state_save(const char *name);
+/* The rows a save would write, rendered into `buf`. A layout is the same rows
+ * under a different name, and one renderer is what stops the two files from
+ * becoming two formats. */
+int con_state_rows(char *buf, size_t cap, const char *name, int text);
+
+/* ── layout.c ──────────────────────────────────────────────────────────── */
+
+/*
+ * AN ARRANGEMENT OF WINDOWS, WITH A NAME. `save` writes what is open to
+ * `~/.config/kdos-con/layouts/<name>`; `load` opens every entry of that file
+ * — or of `/usr/share/kdos/layouts/<name>` — that is not already open, and
+ * closes nothing. Both answer how many rows they wrote or opened, or -1.
+ *
+ * A ROW NAMES A ROLE AND `con.conf` NAMES THE PROGRAM, which is what lets a
+ * layout hold a file manager at all: every terminal window's app id is the
+ * literal `terminal`, so the record cannot say which program a terminal was
+ * running, and a file that named the program would be naming an argv.
+ */
+int con_layout_save(const char *name);
+int con_layout_load(const char *name);
+
+/*
+ * WHAT ONE ROW NAMES, and the one place that decides. A row is resolved by
+ * asking the tables that already exist, most specific first: `term` is
+ * con.conf's terminal, a role name is con.conf's key for that role opened in a
+ * terminal, a con.conf command key is one of this desktop's own surfaces, and
+ * anything else is an app id for `kdos-appbox run`. The session record reads
+ * its rows through this too, so a restored session and a loaded layout cannot
+ * disagree about what a row means.
+ */
+enum { CON_ROW_NONE = 0, CON_ROW_TERM, CON_ROW_ROLE, CON_ROW_SURFACE,
+       CON_ROW_APP };
+int con_layout_resolve(const char *kind, const char *app, const char **cmd);
+/* The role a program fills, or NULL — what the writer puts in a row for a
+ * terminal, since a terminal's app id says only that it is one. */
+const char *con_layout_role_of(const char *prog);
 /*
  * Open what was. Terminals come back through `con.conf`'s own `terminal` key
  * and applications through their desktop entry by `app_id` — NEVER a command
@@ -486,8 +613,14 @@ int con_state_restore(const char *name);
  * across that gap; a second window of the same application is placed the
  * ordinary way.
  */
+/* The flags column of one row — the eighth field, or "-" when the row was
+ * written before the column existed. */
+void con_state_flags(const char *line, char *out, size_t n);
+/* What a rectangle cannot say, put back. After the placement, because both
+ * flags REPLACE the rectangle rather than adjust it. */
+void con_state_apply_flags(Win *w, const char *flags);
 int con_state_take(const char *app_id, int *ws, int *x, int *y, int *w,
-		   int *h);
+		   int *h, char *flags, size_t nflags);
 void term_mouse(Win *w, const KtuiEvent *ev);
 void term_paste(Win *w, int primary);
 void term_pump_all(void);
@@ -605,6 +738,10 @@ void keys_print(void);
 /* "Super+Shift+Tab" for a key and its modifiers. The table that binds the
  * chords is the one that prints them: a second table goes stale. */
 void keys_chord_name(int key, int mods, char *out, size_t n);
+/* The other direction, and the same spelling `keys.conf` uses. Zero on a chord
+ * naming no key, which is how a typo in that file leaves the default standing
+ * rather than unbinding the action. */
+int keys_chord_parse(const char *s, int *key, int *mods);
 
 /* main.c */
 void con_quit(void);

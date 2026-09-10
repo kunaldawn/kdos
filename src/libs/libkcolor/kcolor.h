@@ -193,6 +193,22 @@ enum {
 	KCOL_FAM_URGENT		/* red                                     */
 };
 
+/*
+ * THE NEAREST OF THE 256, for a program that cannot be told a colour.
+ *
+ * Some terminal programs take an INDEX and nothing else — newsboat is the one
+ * this exists for: a `#rrggbb` there is not ignored, it truncates the line at
+ * the `#` and the whole entry is refused. So a scheme reaches those programs
+ * approximated or not at all, and this is where the approximation is made,
+ * once, rather than in each writer.
+ *
+ * Indices 16-231 are the 6x6x6 cube and 232-255 the grey ramp; 0-15 are the
+ * terminal's own sixteen and are NOT searched, because those are exactly the
+ * colours a scheme has already replaced — matching one would hand back the
+ * value we were trying to move away from.
+ */
+int kcol_xterm256(uint32_t rgb);
+
 int kcol_family(uint32_t rgb);
 
 /* Remap one source colour into `sc`, keeping its own lightness and

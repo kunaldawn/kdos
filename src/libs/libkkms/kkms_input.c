@@ -150,6 +150,7 @@ static int key_of(xkb_keysym_t sym)
 	case XKB_KEY_XF86AudioStop: return KT_K_STOP;
 	case XKB_KEY_XF86AudioNext: return KT_K_NEXT;
 	case XKB_KEY_XF86AudioPrev: return KT_K_PREV;
+	case XKB_KEY_Print: return KT_K_PRINT;
 	default:
 		break;
 	}

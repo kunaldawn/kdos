@@ -400,6 +400,26 @@ int kvt_term_fd(struct kvt_term *t);
 int kvt_term_pump(struct kvt_term *t);		/* read the child, reap it */
 void kvt_term_write(struct kvt_term *t, const char *u8, size_t len);
 void kvt_term_scrollback(struct kvt_term *t, unsigned int lines);
+/*
+ * The sixteen colours a program asks for, as `uint8_t[KVT_COLOR_NUM][3]`.
+ * NULL puts the built-in default back. It is the `custom` palette the vte
+ * already understands — the named ones stay reachable through
+ * kvt_vte_set_palette(), because a scheme is one more choice and not the
+ * removal of nine.
+ */
+void kvt_term_palette(struct kvt_term *t, uint8_t (*pal)[3]);
+/*
+ * `kdos theme`'s generated `term-colors.conf` into that array — eighteen
+ * `name = #rrggbb` lines, the names being this enum's in lower case with
+ * hyphens. Answers HOW MANY were read, so a caller can tell all from some: the
+ * array starts empty and a half-read file applied is black text. A missing
+ * file is what a fresh account has and answers zero. Here rather than in a
+ * terminal because BOTH terminals read it.
+ */
+int kvt_palette_read(const char *path, uint8_t (*pal)[3]);
+/* The same file, found and applied — what a terminal calls at start. The path
+ * is spelled once, in here, because both of this desktop's terminals want it. */
+void kvt_term_theme(struct kvt_term *t);
 void kvt_term_resize(struct kvt_term *t, int cols, int rows);
 kvt_age_t kvt_term_render(struct kvt_term *t, KtuiCell *cells, int w, int h);
 

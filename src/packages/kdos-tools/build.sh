@@ -41,8 +41,8 @@ install -d "$PKG/usr/local/sbin"
 ln -s /usr/sbin/ksvc "$PKG/usr/local/sbin/kdos-getty"
 
 install -d "$PKG/usr/local/bin"
-for t in kdos kdos-banner kdos-shot kdos-fetch-app kdos-fetch-static kdos-sfx \
-	 kdos-mpctl; do
+for t in kdos kdos-banner kdos-shot kdos-share kdos-fetch-app \
+	 kdos-fetch-static kdos-sfx kdos-mpctl; do
 	ln -s /usr/sbin/ksvc "$PKG/usr/local/bin/$t"
 done
 

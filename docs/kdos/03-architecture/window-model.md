@@ -150,6 +150,20 @@ Wayland client may ignore the size it is configured with, and remembering what
 was asked for is a Wayland problem; a terminal window on the console always
 accepts the size it is given.
 
+**Where a window was last time is not in the model either.** The library places a rectangle from
+the space available and the obstacles present; remembering one across a close and an open is a
+question about a *program*, which is a thing the library has no word for. Both desktops answer it
+themselves — `comp.conf`'s `window_memory` and `con.conf`'s `remember` — and each keeps its own
+file, because one is in pixels and the other in cells. `kwm_fit()` is the shared half: whatever
+either of them remembers is fitted back into the area that exists now.
+
+**Which workspace a window is on is not in the model.** The library places and
+fits rectangles; a workspace is a set the session keeps, and "on every one of
+them" is a flag on a window rather than a number it holds. The console's
+[scratchpad](../04-programs/kdos-con.md#the-scratchpad) is that flag and the
+compositor's omnipresence is the same statement, which is why neither desktop
+asks `libkwm` about it.
+
 ## See also
 
 - [The C libraries](../05-developer/c-libraries.md#libkwm) — the constraint it is built under

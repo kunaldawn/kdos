@@ -71,7 +71,11 @@ Every key is documented in [Configuration](configuration.md).
 | `~/.local/state/kdos/appusage` | Launch counts, which order the Start menu's frequent column |
 | `~/.local/state/kdos/con-font` | The console screen's font name, once a font chord has stepped it. An **override**: written by `kdos-view` only after the font has loaded, removed by `font-reset`, and beaten by `--font` and `$KDOS_CON_FONT` |
 | `~/.local/state/kdos/toggles/` | One empty file per switch that is on — `stay-awake`, `night-light`, `dnd` |
-| `~/.local/state/kdos/con/<name>.session` | What a console session had open: one readable row per window — kind, workspace, rectangle, app id, title. Written when the session ends and read when one of that name starts, with `restore = yes`. **Never a command line**: a terminal comes back through `con.conf`'s `terminal` and an application through its desktop entry |
+| `~/.local/state/kdos/con/<name>.session` | What a console session had open: one readable row per window — kind, workspace, rectangle, the **name** to reopen it by, a flag column and the title. Written when the session ends and read when one of that name starts, with `restore = yes`. **Never a command line**: a row names `con.conf`'s `terminal`, a role key such as `files`, one of this desktop's own surface keys, or an app id for the pack store, and something else resolves it |
+| `~/.config/kdos-con/layouts/<name>` | An arrangement with a name: the same rows as the file above, written by `kdos con layout save` and opened by `kdos con layout load`. A load opens what is not already open and closes nothing |
+| `/usr/share/kdos/layouts/<name>` | The three shipped arrangements — `work`, `write`, `talk` — read when the user has no file of that name. A person's own copy replaces one rather than merging with it |
+| `~/.local/state/kdos/winpos` | Where the **compositor** last saw each application: `app_id x y w h workspace shaded`, in **pixels**, most recent first and capped at 200. Read at map and written at unmap, with `comp.conf`'s `window_memory` |
+| `~/.local/state/kdos/con/geometry` | The same idea for the **console**: `prog<TAB>workspace<TAB>x y w h<TAB>tiled`, in **cells**, one line per program and workspace. A separate file from the one above and it has to be — those rectangles are pixels and these are cells, so a shared row would put every window back at a size taken from the other desktop's units. With `con.conf`'s `remember` |
 | `~/.local/state/kdos/con/<name>.<n>.text` | That session's terminal output, one file per restored terminal, with `restore_scrollback = yes`. Put back above the fresh prompt under a line saying whose it is |
 | `~/.config/kdos-con/scripts/<letter>` | A recorded script: one line per key — the chord's name, its modifiers, its key number and the gap in milliseconds before it. Directory 0700, files 0600. **Keys into a window and never a command**: there is no field that could name a program |
 | `~/.local/state/kdos/diskwarn` | `<step> <mountpoint>` per line: which disk-full step the panel has already warned about |
@@ -100,6 +104,8 @@ Every key is documented in [Configuration](configuration.md).
 | `kdos/<name>.sock` | A console session's **surface** socket |
 | `kdos/<name>.view` | The same session's **view** socket |
 | `kdos/<name>.windows` | What has a window there, one app id per line |
+| `kdos/nowplaying` | One line naming what is playing, written by `kdos-mpctl watch` |
+| `kdos/screencast.pid` | The pid of the running `kdos-record`, while one is running |
 | `kdos-con.log` | The console session's output |
 
 ## Sockets
@@ -336,6 +342,7 @@ Not configuration, and not storage: these are how one program tells another some
 | `~/.local/share/kdos/observed-app-ids` | The compositor, once per window | `kdos appid` |
 | `/var/lib/kdos/pack-manifest` | The pack daemon | Itself, so ungrafting removes exactly what was added |
 | `$XDG_RUNTIME_DIR/kdos-appbox.trace` | The launcher | You |
+| `$XDG_RUNTIME_DIR/kdos/screencast.pid` | `kdos-record`, while its pipeline runs | The next `kdos-record`, which stops that one, and the console bar, which draws its lamp. **Both check the pid is alive** — a marker left by a crash is not a recording |
 
 ## Protocol conventions
 

@@ -305,6 +305,45 @@ double kcol_luma(uint32_t rgb)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+int kcol_xterm256(uint32_t rgb)
+{
+	/* The cube's six levels are not evenly spaced: the first step is 95
+	 * and the rest are 40 apart, which is what xterm has always used. A
+	 * uniform guess puts dark colours a whole level out. */
+	static const int level[6] = { 0, 95, 135, 175, 215, 255 };
+	int r = (int)((rgb >> 16) & 0xff);
+	int g = (int)((rgb >> 8) & 0xff);
+	int b = (int)(rgb & 0xff);
+	int best = 16, bestd = 1 << 30;
+
+	for (int i = 16; i < 256; i++) {
+		int cr, cg, cb;
+
+		if (i < 232) {
+			int n = i - 16;
+
+			cr = level[n / 36];
+			cg = level[(n / 6) % 6];
+			cb = level[n % 6];
+		} else {
+			/* The grey ramp: 8 to 238 in steps of ten. */
+			cr = cg = cb = 8 + (i - 232) * 10;
+		}
+
+		int dr = r - cr, dg = g - cg, db = b - cb;
+		/* Weighted the way the eye is: green carries most of the
+		 * luminance, so an unweighted distance swaps a grey for a
+		 * green of the same magnitude. */
+		int d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+
+		if (d < bestd) {
+			bestd = d;
+			best = i;
+		}
+	}
+	return best;
+}
+
 int kcol_family(uint32_t rgb)
 {
 	double h, l, s;

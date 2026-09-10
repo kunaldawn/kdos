@@ -24,6 +24,21 @@ STD="-O2 -std=gnu11 -D_GNU_SOURCE"
 INC="-Isrc/libs/libkbase -Isrc/libs/libkwm -Isrc/libs/libkvt -Isrc/libs/libkcon -Isrc/libs/libkdisp -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/tools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
 OUT=$(mktemp -d)
 
+#
+# THE SUITE KEEPS ITS OWN STATE DIRECTORY, and every program under test that
+# writes one lands here rather than in the home directory of whoever ran it.
+#
+# kdos-con remembers where each program's window was and reads it back the next
+# time one opens, so without this the console's reference frames would depend
+# on what a PREVIOUS run of this suite happened to leave behind — a golden that
+# passes on a clean machine and drifts on the developer's, which is the worst
+# shape a reference frame can have. It also means the suite cannot damage a
+# real desktop's state by being run.
+#
+XDG_STATE_HOME="$OUT/state"
+export XDG_STATE_HOME
+mkdir -p "$XDG_STATE_HOME"
+
 # WHICH sd-bus THIS HOST HAS, decided ONCE and up here because two blocks a
 # thousand lines apart both ask. KDOS ships basu; nearly every development host
 # has libsystemd, and the API is the same one. Deciding it late meant the
@@ -853,7 +868,22 @@ golden_fail=0
 # the one that says every chord is on the key card.
 con_golden() {
     _name=$1; shift
-    "$OUT/kdos-con" "$@" > "$OUT/$_name.txt"
+    # A STATE DIRECTORY OF ITS OWN, PER FRAME. kdos-con remembers where each
+    # program's window was and reads it back when one opens, so a frame taken
+    # after another frame of the same program would be placed from the first
+    # one's teardown — which made con-two-132x43 a function of
+    # con-desktop-80x24 and both of them a function of whatever the last run
+    # left behind.
+    rm -rf "$OUT/constate"
+    mkdir -p "$OUT/constate"
+    XDG_STATE_HOME="$OUT/constate" \
+        XDG_CONFIG_HOME="${_conhome:-$OUT/constate}" \
+        "$OUT/kdos-con" "$@" > "$OUT/$_name.txt"
+    # AND `_conhome` IS SPENT HERE. An assignment written before a shell
+    # FUNCTION persists after that function returns, so a frame that wanted
+    # its own configuration would silently hand it to every frame after it —
+    # which is invisible while the frame that wants one happens to be last.
+    _conhome=""
     if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
         cp "$OUT/$_name.txt" "testing/goldens/$_name.txt"
         echo "  wrote $_name"
@@ -870,14 +900,77 @@ con_golden() {
 con_golden con-desktop-80x24 --dump 80x24 --term "/bin/echo hello"
 con_golden con-two-132x43 --dump 132x43 --term "/bin/echo first" --term "/bin/echo second"
 
+#
+# THE SCRATCHPAD, BOTH WAYS ROUND, AND THROUGH THE CHORDS THEMSELVES.
+#
+# `--press` reaches the same handler a keyboard does, so what these two frames
+# show is what the keys do rather than a second implementation of them.
+#
+#   HIDDEN IS NOWHERE. The frame is bare: no window, and — this is the half
+#   that is easy to get wrong — NO TASKBAR ROW. A minimised window keeps its
+#   row because the row is the way back; the scratchpad's chord is its way
+#   back, and a row as well would be a second one, drawn on every workspace
+#   since it is on none.
+#
+#   SHOWN IS THE DROP-DOWN SHAPE: the frame spans the work area's full width
+#   and the top half of its height, and the row comes back with it. The shape
+#   is applied on every show, so this frame is also what proves it is not
+#   simply wherever the window happened to be.
+#
+con_golden con-scratch-hidden-80x24 --dump 80x24 --term "/bin/echo hello" \
+    --press Super+Alt+grave --press Super+grave
+con_golden con-scratch-80x24 --dump 80x24 --term "/bin/echo hello" \
+    --press Super+Alt+grave --press Super+grave --press Super+grave
+
 # THE FUNCTION-KEY ROW, which is a con.conf mode rather than a flag — so the
 # golden is driven by pointing XDG_CONFIG_HOME at a config that asks for it.
 # The row names ten chords and every one must be bound, or the bar teaches a
 # key that does nothing; the golden is what notices when a chord is renamed.
 mkdir -p "$OUT/fkeys-home/kdos-con"
 printf 'taskbar = fkeys\n' > "$OUT/fkeys-home/kdos-con/con.conf"
-XDG_CONFIG_HOME="$OUT/fkeys-home" \
+_conhome="$OUT/fkeys-home" \
     con_golden con-fkeys-80x24 --dump 80x24 --term "/bin/echo hello"
+
+#
+# A NAMED ARRANGEMENT, OPENED — AND ONE FRAME PINS EVERY RULE IT HAS.
+#
+# The fixture layout has FIVE rows and the frame has THREE windows, and which
+# two are missing is the whole test:
+#
+#   A ROW NAMES A ROLE AND `con.conf` NAMES THE PROGRAM. The `writing` row
+#   opens what that key says, which is what lets a layout hold an editor at
+#   all — every terminal window's app id is the literal `terminal`, so a row
+#   carrying an app id could not say which program was in one, and a row
+#   carrying the program would be a row carrying a command line.
+#
+#   A ROW WHOSE PROGRAM IS NOT INSTALLED OPENS NOTHING, and is not an error: no
+#   image carries all seven roles, and a layout that refused to load at all
+#   would be one nobody could use.
+#
+#   A ROW THAT IS ALREADY OPEN OPENS NOTHING EITHER. The second `writing` row
+#   is the same program as the first, so asking for an arrangement twice does
+#   not give you two editors.
+#
+#   AND A `term` ROW ALWAYS OPENS. There is no name that separates one plain
+#   shell from another, so two terminals in a layout mean two terminals.
+#
+# The programs are `con.conf`'s to name, which is what makes this frame
+# deterministic: `/bin/echo` and `/bin/true` are on every host, and the title
+# bars are where the resolution shows.
+#
+mkdir -p "$OUT/layout-home/kdos-con/layouts"
+printf 'terminal = /bin/echo hello\nwriting = /bin/true\nchat = kdos-no-such-program\n' \
+    > "$OUT/layout-home/kdos-con/con.conf"
+{
+    printf '# kind\tworkspace\tx\ty\tw\th\tapp\tflags\ttitle\n'
+    printf 'term\t0\t1\t1\t36\t9\tterminal\t-\tone\n'
+    printf 'app\t0\t1\t12\t36\t9\twriting\t-\ttwo\n'
+    printf 'app\t0\t40\t1\t38\t20\tchat\t-\tnot installed\n'
+    printf 'app\t0\t20\t5\t20\t5\twriting\t-\talready open\n'
+    printf 'term\t0\t40\t1\t38\t20\tterminal\t-\tthree\n'
+} > "$OUT/layout-home/kdos-con/layouts/five"
+_conhome="$OUT/layout-home" \
+    con_golden con-layout-80x24 --dump 80x24 --layout five
 
 #
 # THE DESKTOP SAYS WHAT IT IS SHOWING, AND A READER HEARS IT.
@@ -1363,6 +1456,21 @@ int main(void)
 		/* And the surface chord one modifier away from the diary,
 		 * which is what `agenda` exists to avoid colliding with. */
 		{ 'c', KT_MOD_SUPER, CON_ACT_EXEC, CON_CMD_CAL },
+		/*
+		 * THE SCRATCHPAD IS ON A PUNCTUATION KEY, and that is the one
+		 * shape this table had never held. The bind is the character
+		 * '`' and `keys.conf` names it `grave`; the two are joined
+		 * only by keys.c's own name table, so a rename on either side
+		 * leaves a chord that is bound, printed, carded — and reached
+		 * by nothing a keyboard sends.
+		 *
+		 * Shift is NOT normalised onto it: the shifted grave is a
+		 * tilde and a different character entirely, which is why the
+		 * second chord takes Alt.
+		 */
+		{ '`', KT_MOD_SUPER, CON_ACT_SCRATCH, 0 },
+		{ '`', KT_MOD_SUPER | KT_MOD_ALT, CON_ACT_SCRATCH_MARK, 0 },
+		{ '~', KT_MOD_SUPER | KT_MOD_SHIFT, CON_ACT_NONE, 0 },
 	};
 	int bad = 0;
 
@@ -1396,6 +1504,65 @@ int main(void)
 		if (act == CON_ACT_NONE) {
 			printf("    the function-key row names Super+F%d "
 			       "and nothing is bound to it\n", n);
+			bad = 1;
+		}
+	}
+
+	/*
+	 * A CHORD SPELLED IN `keys.conf` REACHES THE ACTION THE TABLE BOUND.
+	 *
+	 * The two directions are separate code — a name table for reading a
+	 * chord and another for printing one — and a punctuation key is where
+	 * they part company silently: the bind is a character and the file
+	 * says `grave`, so a name that stopped resolving would leave the
+	 * DEFAULT standing and the chord would go on working, right up until
+	 * somebody rebound it and their line did nothing.
+	 */
+	static const struct { const char *spelt; int want; } sp[] = {
+		{ "Super+grave", CON_ACT_SCRATCH },
+		{ "Super+Alt+grave", CON_ACT_SCRATCH_MARK },
+		{ "Super+Return", CON_ACT_TERM },
+		{ "Super+Shift+d", CON_ACT_SHOW_DESKTOP },
+		/* The one bind with NO Super on it that is not the leader: a
+		 * modifier mask that gained a bit by accident would leave the
+		 * bare key unreachable and nothing else would say so. */
+		{ "Print", CON_ACT_EXEC },
+		{ "Shift+Print", CON_ACT_CAPTURE },
+		{ "Alt+Print", CON_ACT_EXEC },
+	};
+
+	for (unsigned i = 0; i < sizeof(sp) / sizeof(sp[0]); i++) {
+		int key = 0, mods = 0, arg = 0;
+
+		if (!keys_chord_parse(sp[i].spelt, &key, &mods)) {
+			printf("    keys.conf cannot spell %s\n", sp[i].spelt);
+			bad = 1;
+			continue;
+		}
+		if (keys_action(key, mods, &arg) != sp[i].want) {
+			printf("    %s parses to key %d mods %d, which is not "
+			       "the action it is bound to\n", sp[i].spelt, key,
+			       mods);
+			bad = 1;
+		}
+	}
+
+	/*
+	 * AND THE TWO `Print` EXEC ROWS RUN DIFFERENT PROGRAMS. The action is
+	 * the same for both, so the check above cannot tell them apart: a
+	 * command id copied from the row above would put the recording on the
+	 * bare key and nothing would fail.
+	 */
+	{
+		int key = 0, mods = 0, plain = 0, alt = 0;
+
+		keys_chord_parse("Print", &key, &mods);
+		keys_action(key, mods, &plain);
+		keys_chord_parse("Alt+Print", &key, &mods);
+		keys_action(key, mods, &alt);
+		if (plain != CON_CMD_CAPTSCREEN || alt != CON_CMD_RECORD) {
+			printf("    Print and Alt+Print do not run the "
+			       "screenshot and the recorder\n");
 			bad = 1;
 		}
 	}
@@ -1458,6 +1625,11 @@ int vt_show(Win *w) { (void)w; return 0; }
 void vt_close(Win *w) { (void)w; }
 int panel_rows(void) { return 0; }
 int panel_have_shell(void) { return 0; }
+/* Remembered geometry is geom.c's and reads a file; the search under test is
+ * windows.c's alone, so the recall is stubbed out rather than pointed at a
+ * home directory this driver does not have. */
+int geo_recall(Win *w) { (void)w; return 0; }
+void geo_record(const Win *w) { (void)w; }
 
 static int bad;
 
@@ -1543,6 +1715,669 @@ RORLEOF
     fi
 else
     echo "  run-or-raise search (skipped — no fcft or Wayland on this host)"
+fi
+
+#
+# THE SCRATCHPAD IS TWO FLAGS, AND THE WHOLE OF IT IS WHERE THEY ARE ASKED
+# ABOUT. Every sentence below is one a person notices immediately and no
+# compiler ever will:
+#
+#   STICKY MEANS ON EVERY WORKSPACE, so the ring reaches the scratchpad from
+#   whichever one is up. A ring that asked which workspace it was on would put
+#   a window on the screen the keyboard could not then get to.
+#
+#   HIDDEN MEANS NOWHERE — not in the ring, not under the pointer, not in a
+#   taskbar row. It is NOT a minimise: a minimised window keeps its row
+#   because the row is the way back, and a hidden one has only its chord.
+#
+#   THE SHAPE IS APPLIED ON EVERY SHOW, full work-area width and the top half
+#   of it, so a grid resized while the scratchpad was away cannot bring it
+#   back off the screen.
+#
+#   AND THE ROLE MOVES. Marking a second window hands the previous one back to
+#   the workspace being looked at as an ordinary window — a window left sticky
+#   and hidden with no chord naming it is one nothing can reach.
+#
+if pkg-config --exists pixman-1 fcft wayland-client 2>/dev/null; then
+    cat > "$OUT/scratchdrv.c" <<'SCREOF'
+/*
+ * The scratchpad's flags, driven without a session. windows.c is the whole of
+ * the rule and the rest of the desktop is stubbed.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "con.h"
+
+void con_mark_draw(void) { }
+unsigned long long con_now_ms(void) { return 0; }
+void embed_resized(Win *w) { (void)w; }
+void embed_close(Win *w) { (void)w; }
+void embed_free(Win *w) { (void)w; }
+int embed_alive(const Win *w) { (void)w; return 0; }
+void embed_draw(const Win *w) { (void)w; }
+int vt_show(Win *w) { (void)w; return 0; }
+void vt_close(Win *w) { (void)w; }
+int panel_rows(void) { return 0; }
+int panel_have_shell(void) { return 1; }
+int geo_recall(Win *w) { (void)w; return 0; }
+void geo_record(const Win *w) { (void)w; }
+
+static int bad;
+
+static Win *mk(int id, int ws)
+{
+	Win *w = calloc(1, sizeof(*w));
+
+	w->id = id;
+	w->kind = WIN_TERM;
+	w->workspace = ws;
+	w->geom.x = 1;
+	w->geom.y = 1;
+	w->geom.w = 10;
+	w->geom.h = 4;
+	w->next = S.wins;
+	S.wins = w;
+	return w;
+}
+
+static void want(const char *what, int got, int expect)
+{
+	if (got == expect)
+		return;
+	printf("    %s -> %d, want %d\n", what, got, expect);
+	bad = 1;
+}
+
+int main(void)
+{
+	Win *a, *b, *c, *panel;
+
+	S.cols = 80;
+	S.rows = 24;
+	S.nworkspace = 4;
+	S.workspace = 0;
+
+	a = mk(1, 0);
+	b = mk(2, 1);
+	c = mk(3, 0);
+	panel = mk(4, 0);
+	panel->panel = 1;
+
+	/* Nothing is the scratchpad until something is marked, and an id
+	 * naming a window that has gone answers NULL rather than a pointer
+	 * into freed memory. */
+	want("no scratchpad yet", win_scratch() != NULL, 0);
+	S.scratch = 999;
+	want("a stale id is no scratchpad", win_scratch() != NULL, 0);
+	want("and it is cleared", S.scratch, 0);
+
+	/* Chrome cannot be handed the role: a panel is docked rather than
+	 * placed, and a person does not switch to one. */
+	win_scratch_mark(panel);
+	want("a panel refuses the mark", S.scratch, 0);
+
+	win_scratch_mark(c);
+	want("marked", S.scratch, c->id);
+	want("and sticky", c->sticky, 1);
+	want("and not hidden", c->hidden, 0);
+
+	win_scratch_show(c);
+
+	/* THE DROP-DOWN SHAPE. The FRAME spans the work area's full width and
+	 * the top half of its height; `geom` is the content inside it. */
+	KwmRect area = win_workarea();
+	KwmRect f = win_frame(c);
+
+	want("drop-down x", f.x, area.x);
+	want("drop-down y", f.y, area.y);
+	want("drop-down width", f.w, area.w);
+	want("drop-down height", f.h, area.h / 2);
+
+	/* ON EVERY WORKSPACE. The ring reaches it from the one it was shown on
+	 * and from one it has never been near; `b` is on workspace 1 and `a`
+	 * on workspace 0, so each proves the other's filter still works. */
+	want("shown, in the ring here", win_index(c) != 0, 1);
+	want("and so is a with it", win_index(a) != 0, 1);
+	want("but not b, which is elsewhere", win_index(b), 0);
+	S.workspace = 1;
+	want("still in the ring there", win_index(c) != 0, 1);
+	want("and now b is", win_index(b) != 0, 1);
+	want("and a is not", win_index(a), 0);
+
+	/* Under the pointer where it is drawn, on either workspace. */
+	want("hit-tested", win_at(f.x, f.y) == c, 1);
+
+	/* HIDDEN IS NOWHERE. */
+	win_scratch_hide(c);
+	want("hidden", c->hidden, 1);
+	want("out of the ring there", win_index(c), 0);
+	S.workspace = 0;
+	want("and out of it here", win_index(c), 0);
+	want("and under nothing", win_at(f.x, f.y) == c, 0);
+	want("and it does not hold the focus", S.focus == c->id, 0);
+
+	/* A hidden scratchpad is NOT a minimised window: the taskbar's rule
+	 * for a minimise is that the row stays, so the two flags must not be
+	 * the same flag. */
+	want("hidden is not minimised", c->minimised, 0);
+
+	/* THE ROLE MOVES, and the window that had it comes back onto the
+	 * workspace being looked at rather than the one it recorded before it
+	 * was ever sticky. */
+	S.workspace = 1;
+	win_scratch_mark(b);
+	want("handed over", S.scratch, b->id);
+	want("the old one is no longer sticky", c->sticky, 0);
+	want("nor hidden", c->hidden, 0);
+	want("and is on the workspace being looked at", c->workspace, 1);
+	want("the new one is sticky", b->sticky, 1);
+
+	/* Marking the scratchpad again is not a hand-over to itself. */
+	win_scratch_mark(b);
+	want("marked twice is still marked", S.scratch, b->id);
+	want("and still sticky", b->sticky, 1);
+
+	/* THE WINDOW CAN GO AT ANY TIME. A client that disconnects takes the
+	 * scratchpad with it, and the id must not outlive it — the next press
+	 * would raise freed memory. */
+	win_drop(b);
+	want("closing it clears the role", S.scratch, 0);
+	want("and the next press finds none", win_scratch() != NULL, 0);
+	return bad;
+}
+SCREOF
+    if $CC $STD $SHWARN -o "$OUT/scratchdrv" -Isrc/desktop/kdos-con \
+            -Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui \
+            -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkvt \
+            -Isrc/libs/libkwm -Isrc/libs/libkxdg -Isrc/desktop/kdos-cage \
+            $(pkg-config --cflags pixman-1 fcft wayland-client) \
+            "$OUT/scratchdrv.c" src/desktop/kdos-con/windows.c \
+            src/libs/libkbase/*.c src/libs/libkwm/*.c src/libs/libktui/*.c \
+            src/libs/libkcon/*.c src/libs/libkvt/*.c src/libs/libkcolor/*.c \
+            $(pkg-config --libs pixman-1 fcft wayland-client) \
+            2>"$OUT/scratchdrv.err" && "$OUT/scratchdrv"; then
+        echo "  the scratchpad: sticky is everywhere, hidden is nowhere"
+    else
+        echo "  THE SCRATCHPAD IS ON THE WRONG WORKSPACE OR IN THE WRONG PLACE"
+        sed 's/^/    /' "$OUT/scratchdrv.err" 2>/dev/null | tail -20
+        exit 1
+    fi
+else
+    echo "  the scratchpad (skipped — no fcft or Wayland on this host)"
+fi
+
+#
+# WINDOWS REOPEN WHERE YOU LEFT THEM, AND THE FILE IS WHAT PROVES IT.
+#
+# The driver is run TWICE against one state directory — once to close windows
+# and once to open them — because an in-memory list would pass every assertion
+# below while writing a file nothing could read back. What is under test is the
+# round trip, which is the only part a person ever sees.
+#
+# Each sentence is one somebody notices immediately and no compiler ever will:
+#
+#   THE KEY IS `prog` AND THE WORKSPACE. Every terminal's app id is `terminal`,
+#   so a table keyed on that would give the whole desk one shared rectangle;
+#   and the same editor on two workspaces is two windows a person arranged
+#   separately.
+#
+#   CHROME IS NEVER REMEMBERED. A menu, the icon layer, a docked panel, the
+#   lock, the saver, a guest on another terminal and the scratchpad are all
+#   placed by their role, and a rectangle for any of them is a rectangle
+#   somebody else's window would inherit.
+#
+#   A SECOND WINDOW OF ONE PROGRAM DOES NOT LAND ON THE FIRST. One record per
+#   program means every instance takes the same corner unless the origin is
+#   checked, and the placement search exists precisely to avoid that.
+#
+#   A REMEMBERED RECTANGLE IS FITTED, NOT TRUSTED. One kept from a wide screen
+#   must come back onto a narrow one.
+#
+#   AND `remember = no` TURNS OFF BOTH DIRECTIONS. A key that stopped reading
+#   but went on writing would be a file somebody asked not to have.
+#
+if pkg-config --exists pixman-1 fcft wayland-client 2>/dev/null; then
+    cat > "$OUT/geomdrv.c" <<'GEOEOF'
+/*
+ * Remembered geometry, driven without a session: `write` closes windows and
+ * `read` opens them, in two processes over one state directory.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "con.h"
+
+void con_mark_draw(void) { }
+unsigned long long con_now_ms(void) { return 0; }
+void embed_resized(Win *w) { (void)w; }
+void embed_close(Win *w) { (void)w; }
+void embed_free(Win *w) { (void)w; }
+int embed_alive(const Win *w) { (void)w; return 0; }
+void embed_draw(const Win *w) { (void)w; }
+int vt_show(Win *w) { (void)w; return 0; }
+void vt_close(Win *w) { (void)w; }
+int panel_rows(void) { return 0; }
+int panel_have_shell(void) { return 1; }
+
+static int bad;
+
+static Win *mk(const char *prog, int ws, int x, int y, int w, int h)
+{
+	Win *n = calloc(1, sizeof(*n));
+
+	n->id = ++S.next_id;
+	n->kind = WIN_TERM;
+	n->workspace = ws;
+	n->geom.x = x;
+	n->geom.y = y;
+	n->geom.w = w;
+	n->geom.h = h;
+	snprintf(n->prog, sizeof(n->prog), "%s", prog);
+	n->next = S.wins;
+	S.wins = n;
+	return n;
+}
+
+static void want(const char *what, int got, int expect)
+{
+	if (got == expect)
+		return;
+	printf("    %s -> %d, want %d\n", what, got, expect);
+	bad = 1;
+}
+
+int main(int argc, char **argv)
+{
+	int writing = argc > 1 && !strcmp(argv[1], "write");
+
+	S.cols = 80;
+	S.rows = 24;
+	S.nworkspace = 4;
+	S.workspace = 0;
+
+	if (writing) {
+		/*
+		 * THROUGH win_drop(), NOT geo_record() — that call site is the
+		 * feature. A driver that recorded by hand would pass every
+		 * assertion below with the two lines in windows.c deleted.
+		 *
+		 * `kdos-res` arrives as a native surface, which is the kind
+		 * the task's own verification names.
+		 */
+		Win *res = mk("kdos-res", 0, 40, 10, 30, 8);
+
+		res->kind = WIN_SURFACE;
+		win_drop(res);
+		win_drop(mk("kdos-res", 2, 1, 1, 20, 5));
+		win_drop(mk("kdos-huge", 0, 0, 0, 200, 200));
+
+		/* A tiled window is remembered by what an UNTILE returns to,
+		 * never by the half of the screen it is filling: the tile
+		 * itself comes back from the last field. */
+		Win *t = mk("kdos-tiled", 0, 0, 0, 78, 22);
+
+		t->tiled = KWM_EDGE_LEFT;
+		t->restore = (KwmRect){ 5, 3, 24, 9 };
+		win_drop(t);
+
+		/* Chrome, none of which may leave a rectangle behind. */
+		Win *c;
+
+		c = mk("kdos-panel", 0, 0, 0, 80, 1); c->panel = 1;
+		win_drop(c);
+		c = mk("kdos-menu", 0, 4, 4, 20, 6); c->overlay = 1;
+		win_drop(c);
+		c = mk("kdos-icons", 0, 0, 0, 80, 23); c->background = 1;
+		win_drop(c);
+		c = mk("kdos-scratch", 0, 1, 1, 78, 10); c->sticky = 1;
+		win_drop(c);
+		c = mk("kdos-guest", 0, 0, 0, 80, 24); c->kind = WIN_VT;
+		win_drop(c);
+		c = mk("kdos-lock", 0, 0, 0, 80, 24); S.lock = c;
+		win_drop(c);
+		c = mk("", 0, 2, 2, 10, 4);	/* named no program */
+		win_drop(c);
+		return bad;
+	}
+
+	/* ── the next login ──────────────────────────────────────────── */
+
+	/*
+	 * AND THROUGH win_place(), for the same reason: that is where the
+	 * lookup lives, and it is what decides the roles — an overlay goes
+	 * through win_place_corner() and a restored session through
+	 * win_place_at(), so neither can reach this table at all.
+	 */
+	Win *w = mk("kdos-res", 0, 0, 0, 10, 3);
+
+	w->kind = WIN_SURFACE;
+	win_place(w, 10, 3);
+	want("x", w->geom.x, 40);
+	want("y", w->geom.y, 10);
+	want("w", w->geom.w, 30);
+	want("h", w->geom.h, 8);
+
+	/* PER WORKSPACE. The same program on workspace 2 has its own line, and
+	 * on a workspace neither line names there is nothing to recall. */
+	Win *w2 = mk("kdos-res", 2, 0, 0, 10, 3);
+
+	want("the other workspace is its own row", geo_recall(w2), 1);
+	want("and its own x", w2->geom.x, 1);
+
+	Win *w3 = mk("kdos-res", 1, 0, 0, 10, 3);
+
+	want("an unremembered workspace places normally", geo_recall(w3), 0);
+
+	/* A SECOND WINDOW OF THE SAME PROGRAM. `w` is already at that origin,
+	 * so the record must be declined and the placement search left to do
+	 * its job. */
+	Win *dup = mk("kdos-res", 0, 0, 0, 10, 3);
+
+	want("a second instance is not stacked on the first", geo_recall(dup),
+	     0);
+
+	/* FITTED INTO THE WORK AREA. 200x200 cells were remembered on a screen
+	 * this one is not, and what comes back has to be on it. */
+	Win *big = mk("kdos-huge", 0, 0, 0, 10, 3);
+
+	want("an oversized record is still used", geo_recall(big), 1);
+	want("clamped in width", big->geom.w <= 80, 1);
+	want("clamped in height", big->geom.h <= 24, 1);
+
+	/* THE TILE COMES BACK, AND SO DOES WHAT AN UNTILE RETURNS TO. */
+	Win *tw = mk("kdos-tiled", 0, 0, 0, 10, 3);
+
+	want("a tiled window is remembered", geo_recall(tw), 1);
+	want("as tiled", (int)tw->tiled, KWM_EDGE_LEFT);
+	want("with the chosen rectangle to untile to", tw->restore.x, 5);
+	want("and drawn as the tile", tw->geom.x, win_tile_rect(KWM_EDGE_LEFT).x);
+
+	/* CHROME LEFT NOTHING BEHIND. Each is asked for by a window that is
+	 * NOT chrome, so a leaked record would be found here — which is the
+	 * failure that matters: a menu's rectangle inherited by a terminal. */
+	static const char *const chrome[] = {
+		"kdos-panel", "kdos-menu", "kdos-icons", "kdos-scratch",
+		"kdos-guest", "kdos-lock", NULL
+	};
+
+	for (int i = 0; chrome[i]; i++) {
+		Win *n = mk(chrome[i], 3, 0, 0, 10, 3);
+
+		if (geo_recall(n)) {
+			printf("    %s left a rectangle behind\n", chrome[i]);
+			bad = 1;
+		}
+	}
+
+	/* A window that named no program matches nothing, which is also what
+	 * stops one empty name answering for every other. */
+	Win *anon = mk("", 0, 0, 0, 10, 3);
+
+	want("no program, no memory", geo_recall(anon), 0);
+	return bad;
+}
+GEOEOF
+    _geoinc="-Isrc/desktop/kdos-con -Isrc/libs/libkbase -Isrc/libs/libkcolor \
+        -Isrc/libs/libktui -Isrc/libs/libkdisp -Isrc/libs/libkcon \
+        -Isrc/libs/libkvt -Isrc/libs/libkwm -Isrc/libs/libkxdg \
+        -Isrc/desktop/kdos-cage"
+    if $CC $STD $SHWARN -o "$OUT/geomdrv" $_geoinc \
+            $(pkg-config --cflags pixman-1 fcft wayland-client) \
+            "$OUT/geomdrv.c" src/desktop/kdos-con/geom.c \
+            src/desktop/kdos-con/windows.c \
+            src/libs/libkbase/*.c src/libs/libkwm/*.c src/libs/libktui/*.c \
+            src/libs/libkcon/*.c src/libs/libkvt/*.c src/libs/libkcolor/*.c \
+            $(pkg-config --libs pixman-1 fcft wayland-client) \
+            2>"$OUT/geomdrv.err"; then
+        rm -rf "$OUT/geohome"
+        mkdir -p "$OUT/geohome"
+        if XDG_STATE_HOME="$OUT/geohome" "$OUT/geomdrv" write &&
+           XDG_STATE_HOME="$OUT/geohome" "$OUT/geomdrv" read; then
+            echo "  a window opens where that program's window was, per workspace"
+        else
+            echo "  A WINDOW DOES NOT COME BACK WHERE IT WAS"
+            exit 1
+        fi
+
+        # AND THE FILE IS A FILE, at the path the book names, holding a line
+        # per program and workspace. A driver that agreed with itself while
+        # writing somewhere nobody reads would pass everything above.
+        _geof="$OUT/geohome/kdos/con/geometry"
+        if [ -f "$_geof" ] &&
+           grep -q "^kdos-res	0	40 10 30 8	0$" "$_geof" &&
+           grep -q "^kdos-res	2	1 1 20 5	0$" "$_geof" &&
+           grep -q "^kdos-tiled	0	5 3 24 9	" "$_geof" &&
+           ! grep -q "kdos-menu\|kdos-panel\|kdos-icons\|kdos-scratch\|kdos-guest\|kdos-lock" "$_geof"; then
+            echo "  and the file holds one line per program and workspace"
+        else
+            echo "  THE GEOMETRY FILE IS NOT WHAT THE BOOK DESCRIBES:"
+            sed 's/^/    /' "$_geof" 2>/dev/null | head -20
+            exit 1
+        fi
+
+        # `remember = no` TURNS OFF BOTH DIRECTIONS. Proved against a state
+        # directory that ALREADY holds the records: reading is refused with
+        # the answers sitting right there, which a check on an empty
+        # directory could not tell apart from a driver that found nothing.
+        rm -rf "$OUT/geoconf"
+        mkdir -p "$OUT/geoconf/kdos-con"
+        printf 'remember = no\n' > "$OUT/geoconf/kdos-con/con.conf"
+        if XDG_STATE_HOME="$OUT/geohome" XDG_CONFIG_HOME="$OUT/geoconf" \
+                "$OUT/geomdrv" read >/dev/null 2>&1; then
+            echo "  REMEMBER = NO STILL PUT A WINDOW BACK"
+            exit 1
+        fi
+        rm -rf "$OUT/geohome2"
+        mkdir -p "$OUT/geohome2"
+        XDG_STATE_HOME="$OUT/geohome2" XDG_CONFIG_HOME="$OUT/geoconf" \
+            "$OUT/geomdrv" write >/dev/null 2>&1
+        if [ -e "$OUT/geohome2/kdos/con/geometry" ]; then
+            echo "  REMEMBER = NO STILL WROTE THE FILE"
+            exit 1
+        fi
+        echo "  and remember = no turns off the reading and the writing"
+    else
+        echo "  REMEMBERED GEOMETRY DOES NOT BUILD"
+        sed 's/^/    /' "$OUT/geomdrv.err" 2>/dev/null | tail -20
+        exit 1
+    fi
+else
+    echo "  remembered geometry (skipped — no fcft or Wayland on this host)"
+fi
+
+#
+# AN ARRANGEMENT, WRITTEN DOWN — the half a golden cannot reach.
+#
+# The frame above proves a layout LOADS; this proves what SAVE puts in the
+# file, which is where the one rule that makes layouts work at all lives:
+#
+#   A TERMINAL'S ROW NAMES THE ROLE IT WAS FILLING. Every terminal window's
+#   app id is the literal `terminal`, so a row carrying that says only that a
+#   window was a terminal — and a saved arrangement restored from one comes
+#   back as a screen of bare shells, with the file manager somebody arranged
+#   silently gone. The row says `files` and con.conf says what fills it, which
+#   is the same indirection the chord that opened it used and is NOT a command
+#   line, which the file must never carry.
+#
+#   A TERMINAL FILLING NO ROLE IS STILL A `term` ROW, so a plain shell comes
+#   back as this session's terminal rather than as a program named in a file.
+#
+#   AND THE STATE A RECTANGLE CANNOT SAY IS A COLUMN. A fullscreen window's
+#   rectangle is the whole grid and a scratchpad's is its drop-down shape, so
+#   both come back as ordinary windows without it.
+#
+if pkg-config --exists pixman-1 fcft wayland-client 2>/dev/null; then
+    cat > "$OUT/laydrv.c" <<'LAYEOF'
+/*
+ * What `kdos con layout save` writes, driven without a session.
+ *
+ * The role tables are main.c's and are stubbed here with a table of their own
+ * shape, so what is under test is the resolution and the row rather than which
+ * programs this host happens to have.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "con.h"
+
+void con_mark_draw(void) { }
+unsigned long long con_now_ms(void) { return 0; }
+void embed_resized(Win *w) { (void)w; }
+void embed_close(Win *w) { (void)w; }
+void embed_free(Win *w) { (void)w; }
+int embed_alive(const Win *w) { (void)w; return 0; }
+void embed_draw(const Win *w) { (void)w; }
+int vt_show(Win *w) { (void)w; return 0; }
+void vt_close(Win *w) { (void)w; }
+int panel_rows(void) { return 0; }
+int panel_have_shell(void) { return 1; }
+int geo_recall(Win *w) { (void)w; return 0; }
+void geo_record(const Win *w) { (void)w; }
+Win *term_open(const char *const argv[]) { (void)argv; return NULL; }
+void con_spawn_at(const char *cmd, int x) { (void)cmd; (void)x; }
+
+static const char *const role_key[CON_APP_N] = {
+	"files", "mail", "browser", "music", "agenda", "chat", "writing"
+};
+static const char *const role_cmd[CON_APP_N] = {
+	"mc", "aerc", "lynx", "rmpc", "ikhal", "iamb", "micro"
+};
+
+const char *con_app(int i)
+{
+	return i >= 0 && i < CON_APP_N ? role_cmd[i] : NULL;
+}
+
+const char *con_app_name(int i)
+{
+	return i >= 0 && i < CON_APP_N ? role_key[i] : NULL;
+}
+
+/* One surface is enough to prove the branch: `monitor` is a con.conf key and
+ * kdos-res has no desktop entry, which is why it cannot be an app row. */
+const char *con_command(int i)
+{
+	return i == CON_CMD_RES ? "kdos-res" : "";
+}
+
+const char *con_command_name(int i)
+{
+	return i == CON_CMD_RES ? "monitor" : "";
+}
+
+static int bad;
+
+static Win *mk(int kind, const char *prog, const char *app_id)
+{
+	Win *w = calloc(1, sizeof(*w));
+
+	w->id = ++S.next_id;
+	w->kind = kind;
+	w->geom.x = 1;
+	w->geom.y = 1;
+	w->geom.w = 20;
+	w->geom.h = 6;
+	snprintf(w->prog, sizeof(w->prog), "%s", prog);
+	snprintf(w->app_id, sizeof(w->app_id), "%s", app_id);
+	w->next = S.wins;
+	S.wins = w;
+	return w;
+}
+
+static void want(const char *what, int got, int expect)
+{
+	if (got == expect)
+		return;
+	printf("    %s -> %d, want %d\n", what, got, expect);
+	bad = 1;
+}
+
+int main(void)
+{
+	const char *cmd;
+
+	S.cols = 80;
+	S.rows = 24;
+	S.nworkspace = 4;
+
+	/* ── the resolver, which both readers share ─────────────────── */
+	want("a term row is the terminal",
+	     con_layout_resolve("term", "terminal", &cmd), CON_ROW_TERM);
+	want("a role row is a role",
+	     con_layout_resolve("app", "files", &cmd), CON_ROW_ROLE);
+	want("and resolves through the role table", strcmp(cmd, "mc"), 0);
+	want("a con.conf command key is a surface",
+	     con_layout_resolve("app", "monitor", &cmd), CON_ROW_SURFACE);
+	want("and resolves through that table", strcmp(cmd, "kdos-res"), 0);
+	want("anything else is an app id",
+	     con_layout_resolve("app", "org.example.Thing", &cmd),
+	     CON_ROW_APP);
+	want("a row naming nothing is no row",
+	     con_layout_resolve("app", "-", &cmd), CON_ROW_NONE);
+
+	/* THE INVERSE, which is what the writer needs. */
+	want("mc fills the files role",
+	     strcmp(con_layout_role_of("mc"), "files"), 0);
+	want("a shell fills none", con_layout_role_of("sh") != NULL, 0);
+
+	/* ── the rows a save writes ─────────────────────────────────── */
+	mk(WIN_TERM, "sh", "terminal");
+	mk(WIN_TERM, "mc", "terminal");
+	mk(WIN_SURFACE, "kdos-res", "kdos-res")->full = 1;
+	mk(WIN_TERM, "micro", "terminal")->sticky = 1;
+
+	want("a name with a slash is refused", con_layout_save("../out"), -1);
+	want("four windows, four rows", con_layout_save("t"), 4);
+	return bad;
+}
+LAYEOF
+    if $CC $STD $SHWARN -o "$OUT/laydrv" -Isrc/desktop/kdos-con \
+            -Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui \
+            -Isrc/libs/libkdisp -Isrc/libs/libkcon -Isrc/libs/libkvt \
+            -Isrc/libs/libkwm -Isrc/libs/libkxdg -Isrc/desktop/kdos-cage \
+            $(pkg-config --cflags pixman-1 fcft wayland-client) \
+            "$OUT/laydrv.c" src/desktop/kdos-con/layout.c \
+            src/desktop/kdos-con/state.c src/desktop/kdos-con/windows.c \
+            src/libs/libkbase/*.c src/libs/libkwm/*.c src/libs/libktui/*.c \
+            src/libs/libkcon/*.c src/libs/libkvt/*.c src/libs/libkcolor/*.c \
+            src/libs/libkxdg/*.c \
+            $(pkg-config --libs pixman-1 fcft wayland-client) \
+            2>"$OUT/laydrv.err"; then
+        rm -rf "$OUT/layhome"
+        mkdir -p "$OUT/layhome"
+        if XDG_CONFIG_HOME="$OUT/layhome" XDG_STATE_HOME="$OUT/layhome/s" \
+                "$OUT/laydrv"; then
+            echo "  a layout row names a role, and con.conf names the program"
+        else
+            echo "  A SAVED ARRANGEMENT WOULD NOT COME BACK"
+            exit 1
+        fi
+
+        # AND THE FILE SAYS SO. The driver agreeing with itself proves the
+        # resolver; this proves what a person's file actually holds — which
+        # is the half a restore reads and the half that must never be a
+        # command line.
+        _layf="$OUT/layhome/kdos-con/layouts/t"
+        if [ -f "$_layf" ] &&
+           grep -q "^term	.*	terminal	-	" "$_layf" &&
+           grep -q "^app	.*	files	-	" "$_layf" &&
+           grep -q "^app	.*	kdos-res	f	" "$_layf" &&
+           grep -q "^app	.*	writing	s	" "$_layf" &&
+           ! grep -q "	mc	\|/bin/\|	sh	" "$_layf"; then
+            echo "  and the file holds names it resolves, never a command"
+        else
+            echo "  THE LAYOUT FILE IS NOT WHAT THE BOOK DESCRIBES:"
+            sed 's/^/    /' "$_layf" 2>/dev/null | head -20
+            exit 1
+        fi
+    else
+        echo "  LAYOUTS DO NOT BUILD"
+        sed 's/^/    /' "$OUT/laydrv.err" 2>/dev/null | tail -20
+        exit 1
+    fi
+else
+    echo "  layouts (skipped — no fcft or Wayland on this host)"
 fi
 
 #
@@ -2947,6 +3782,116 @@ _want=$(printf 'file://%s' "$_thumbdir/me.png" | md5sum | cut -d' ' -f1)
     || { echo "  cache name $_leaf is not md5(file://$_thumbdir/me.png)"; exit 1; }
 rm -rf "$_thumbdir"
 echo "  the name is md5(file://<path>), which is what every reader computes"
+
+#
+# THE TIMER TABLE'S SPLIT, WHICH IS THE ONE THING IN IT THAT CAN GO QUIETLY
+# WRONG. A row is split by leaving an expansion unquoted — that is how a line
+# becomes an argument vector without a shell — but it also PATHNAME-EXPANDS it,
+# and `*` is `snooze`'s own syntax for "every". Unguarded, `-M *` in a
+# directory holding two files becomes `-M a b`: a timer that runs at times
+# nobody asked for, and nothing says so.
+#
+# The SHIPPED parser is extracted and run, not copied here: a copy is a copy
+# that goes stale, and this file already has that rule about the key card.
+#
+echo "==> a timer row splits into an argument vector without globbing"
+_tw=$(mktemp -d)
+mkdir -p "$_tw/d"
+touch "$_tw/aaa" "$_tw/bbb"
+sed -n '/^timers_each()/,/^}$/p' fs/etc/init.d/18_timers.sh > "$_tw/parse.sh"
+cat > "$_tw/d/x.timer" <<'TMREOF'
+# a comment, and the blank line under it
+
+daily  -H 3 -M 5 -s 8h  --  true
+starry  -H * -M /5  --  true
+broken  -H 3  true
+TMREOF
+( cd "$_tw" && sh -c '. ./parse.sh
+show() { printf "%s|%s|" "$1" "$2"; shift 2; printf "%s " "$@"; echo; }
+timers_each ./d show' > "$_tw/out" 2>&1 )
+grep -q '^daily| -H 3 -M 5 -s 8h|true $' "$_tw/out" \
+    || { echo "  a plain row did not split into name, spec and command"
+         cat "$_tw/out"; exit 1; }
+grep -q '^starry| -H \* -M /5|true $' "$_tw/out" \
+    || { echo "  a star spec did not survive the split"; cat "$_tw/out"; exit 1; }
+if grep -q 'aaa' "$_tw/out"; then
+    echo "  a star spec was expanded against the directory"; exit 1
+fi
+if grep -q '^broken' "$_tw/out"; then
+    echo "  a row with no -- was passed on instead of being skipped"; exit 1
+fi
+grep -q "no '--' or no command" "$_tw/out" \
+    || { echo "  a row with no -- was skipped silently"; exit 1; }
+rm -rf "$_tw"
+echo "  a star stays a star, and a row with no -- is reported and skipped"
+
+#
+# THE CODE WORD OUT OF WHAT croc PRINTS, which is the one thing in `kdos share`
+# that can go quietly wrong: croc writes the block to STDERR beside its own
+# progress, so a parser that took the wrong line would hand somebody a URL to a
+# relay this image cannot reach and a QR of it. Both programs are stubbed —
+# what is under test is this program's half.
+#
+echo "==> kdos-share reads the code out of what croc prints"
+ln -sf kdos-tools "$OUT/kdos-share"
+mkdir -p "$OUT/sharebin"
+cat > "$OUT/sharebin/croc" <<'CROCEOF'
+#!/bin/sh
+# `--ignore-stdin` IS GLOBAL AND COMES FIRST. The real croc reads stdin for a
+# piped payload, so `croc send` with it anywhere else prints neither a code nor
+# an error and blocks — which is the failure this line refuses on its behalf.
+[ "$1" = "--ignore-stdin" ] || { echo "argv: $*" >&2; exit 2; }
+[ "$2" = "send" ] || { echo "argv: $*" >&2; exit 2; }
+# THE TWO LINES CARRY DIFFERENT WORDS ON PURPOSE. The real croc puts the same
+# code in both, which makes them indistinguishable to a test — and the line
+# that must be read is the one a person types, because the other names a public
+# relay this image's `--local` croc cannot reach.
+cat >&2 <<'CROCOUT'
+On the other computer, run:
+  croc test-code-here
+
+Or open:
+  https://getcroc.com/?code=relay-url-not-this
+CROCOUT
+printf 'Sending 0 files\rSending %s\n' "$3" >&2
+CROCEOF
+cat > "$OUT/sharebin/qrencode" <<'QRENCEOF'
+#!/bin/sh
+# The payload arrives on STDIN and never in argv: the code is the transfer's
+# whole secret and /proc/<pid>/cmdline is world-readable. Recording it here is
+# how the test sees which line was parsed.
+cat > "$SHARE_QR_SEEN"
+echo '##'
+QRENCEOF
+chmod +x "$OUT/sharebin/croc" "$OUT/sharebin/qrencode"
+echo hi > "$OUT/sharefile.txt"
+SHARE_QR_SEEN="$OUT/qr-payload" PATH="$OUT/sharebin:$PATH" \
+    "$OUT/kdos-share" --here "$OUT/sharefile.txt" \
+    > "$OUT/share.out" 2> "$OUT/share.err" < /dev/null
+grep -q "On the other computer" "$OUT/share.err" \
+    || { echo "  croc's own block was not relayed"; exit 1; }
+grep -q "sharefile.txt" "$OUT/share.err" \
+    || { echo "  the file never reached croc's argv"; exit 1; }
+[ -s "$OUT/share.out" ] \
+    && { echo "  something was written to stdout, which croc leaves empty"; exit 1; }
+[ "$(cat "$OUT/qr-payload")" = "test-code-here" ] \
+    || { echo "  the QR was drawn for '$(cat "$OUT/qr-payload")'"; exit 1; }
+echo "  the code word, not the relay URL, and it reaches qrencode on stdin"
+
+# And the guard on the flag order, which is the failure with no output at all:
+# a stub that sees the wrong argv exits 2 and prints no code, so nothing is
+# parsed and nothing is drawn.
+rm -f "$OUT/qr-payload"
+cat > "$OUT/sharebin/croc" <<'CROCBAD'
+#!/bin/sh
+echo "argv: $*" >&2
+CROCBAD
+chmod +x "$OUT/sharebin/croc"
+SHARE_QR_SEEN="$OUT/qr-payload" PATH="$OUT/sharebin:$PATH" \
+    "$OUT/kdos-share" --here "$OUT/sharefile.txt" >/dev/null 2>&1 </dev/null
+[ -e "$OUT/qr-payload" ] \
+    && { echo "  a QR was drawn for output carrying no code"; exit 1; }
+echo "  and output with no code in it draws nothing"
 
 echo "==> -march is kept only where the win beat the noise"
 # N14's whole claim is the DECISION, and it is testable without building
@@ -5953,6 +6898,23 @@ fi
 if "$DUMPCK" --have keys; then
     grep -q "never-bound" "$OUT/golden-keys-80x24.txt" \
         && { echo "  the keybind card advertised a commented-out binding"
+             exit 1; }
+    #
+    # A CONTAINER THAT QUERIES A MARKER IS NOT A RUN-OR-RAISE ROW.
+    #
+    # A <query identifier> is gated on `kb_have_prog` only when the container
+    # begins with `Focus`, which is the run-or-raise shape. The scratchpad's
+    # begins with ToggleOmnipresent and looks for an app id NO program is
+    # called, so a gate that asked the same question of both would drop a key
+    # that works. The fixture carries one of each and the card must show the
+    # marker row and drop the program row — either half failing alone is a
+    # rule that has stopped discriminating.
+    #
+    grep -q "the drop-down terminal, over every window" "$OUT/golden-keys-80x24.txt" \
+        || { echo "  the key card dropped the scratchpad's marker row"
+             exit 1; }
+    grep -q "kdos-no-such-program" "$OUT/golden-keys-80x24.txt" \
+        && { echo "  the key card kept a row for a program no host carries"
              exit 1; }
 fi
 if [ "$golden_fail" != 0 ]; then

@@ -147,10 +147,6 @@ it, so those cells keep the fallback mark.
 **No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing in
 the catalogue emits either. The three raster protocols are what a modern program reaches for.
 
-**The console screenshot is cells, not an image.** `kdos-shot` writes the grid as text. Rendering
-cells to a picture is `libkcell`'s, which needs fcft and pixman, and `kdos-tools` is on every image
-and links neither.
-
 **One output on the console.** `libkkms` takes the first card with a connected output and its
 preferred mode. A second screen is not composited onto.
 

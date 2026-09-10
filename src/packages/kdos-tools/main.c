@@ -33,6 +33,7 @@ static const struct {
 	{ "kdos-fetch-static", fetch_static_main },
 	{ "kdos-sfx", sfx_main },
 	{ "kdos-mpctl", mpctl_main },
+	{ "kdos-share", share_main },
 };
 #define NTOOLS ((int)(sizeof(TOOLS) / sizeof(TOOLS[0])))
 

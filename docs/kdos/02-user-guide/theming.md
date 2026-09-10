@@ -82,6 +82,15 @@ repaint. The timing differs by target, and this is the table worth knowing:
 | The starship palette block | starship | On the next shell prompt |
 | `~/.config/foot/themes/kdos` | foot | On the next terminal — foot cannot reload its configuration at all |
 | `~/.config/btop/themes/kdos.theme` | btop | On the next start |
+| `~/.config/kdos/term-colors.conf` | `kdos-term` and the console session | On the next terminal |
+| `~/.config/kdos/fzf-colors` | fzf, through `$FZF_DEFAULT_OPTS` | On the next login shell |
+| `~/.config/bat/themes/kdos.tmTheme` | bat | On the next start, once the cache is built |
+| `~/.config/micro/colorschemes/kdos.micro` | micro | On the next start |
+| `~/.config/helix/themes/kdos.toml` | helix | On the next start |
+| `~/.config/nvim/colors/kdos.vim` | neovim | On the next start |
+| `~/.config/git/kdos-delta` | delta, included from the shipped gitconfig | On the next diff |
+| `~/.config/newsboat/kdos-colors` | newsboat, `include`d from its config | On the next start |
+| `~/.config/aerc/stylesets/kdos` | aerc | On the next start |
 | The `mc` skin and `LS_COLORS` | mc, ls | On the next start |
 | `~/.themes/KDOS/` | GTK3 applications in boxes | On the application's next launch |
 | `~/.config/gtk-3.0/gtk.css`, `gtk-4.0/gtk.css` | libadwaita applications | On the application's next launch |
@@ -91,6 +100,20 @@ repaint. The timing differs by target, and this is the table worth knowing:
 
 GTK re-reads neither its theme nor its icons when the files change, so boxed applications pick up
 an accent switch when you next start them. There is no way around that from outside the toolkit.
+
+**A generated file is never a file you edit.** Each of the above is written whole on every accent
+switch, and each is *selected* by something that ships once and is then yours: `settings.json` for
+micro, `config.toml` for helix, `init.vim` for neovim, an `[include]` for delta, an `include` line
+for newsboat, `styleset-name` for aerc, `--theme` for bat. Change those freely; they are not
+rewritten. Your own micro scheme may `include "kdos"` and your own helix theme may
+`inherits = "kdos"`, so you can keep the accent and override a colour.
+
+**Two programs cannot take a colour, and the table says how each is answered.** **newsboat** reads
+`#` as a comment, so a hex value truncates the line and the entry is refused outright — its colours
+are therefore the nearest of the 256 terminal indices rather than the scheme's exact values.
+**lazygit** has no include, no import and no separate theme file: its colours live inside the one
+`config.yml` you edit, so `kdos theme` does not write them at all. Writing them would mean owning
+that file and discarding whatever else you had put in it.
 
 ## The CRT pass
 

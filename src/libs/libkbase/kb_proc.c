@@ -123,7 +123,8 @@ int kb_run_to_file(const KbArgv *a, const char *path)
  * kill the CALLER, which for a lock screen means the lock client dying and the
  * session staying locked forever.
  */
-static int feed(const KbArgv *a, const char *in, size_t n, bool keep_stdout)
+static int feed(const KbArgv *a, const char *in, size_t n, int outfd,
+		bool keep_stdout)
 {
 	int fd[2];
 	pid_t pid;
@@ -143,12 +144,17 @@ static int feed(const KbArgv *a, const char *in, size_t n, bool keep_stdout)
 		if (!keep_stdout) {
 			int null = open("/dev/null", O_RDWR);
 			if (null >= 0) {
-				dup2(null, STDOUT_FILENO);
+				if (outfd < 0)
+					dup2(null, STDOUT_FILENO);
 				if (!kb_proc_verbose)
 					dup2(null, STDERR_FILENO);
 				if (null > STDERR_FILENO)
 					close(null);
 			}
+		}
+		if (outfd >= 0) {
+			dup2(outfd, STDOUT_FILENO);
+			close(outfd);
 		}
 		execvp(a->v[0], (char *const *)a->v);
 		_exit(127);
@@ -173,7 +179,49 @@ static int feed(const KbArgv *a, const char *in, size_t n, bool keep_stdout)
 
 int kb_run_feed(const KbArgv *a, const char *in, size_t n)
 {
-	return feed(a, in, n, false);
+	return feed(a, in, n, -1, false);
+}
+
+/*
+ * Fed on stdin AND captured from stdout — the shape a FILTER needs, which
+ * neither of the other two serve: one throws the output away and the other
+ * hands it to the terminal.
+ *
+ * THE INPUT MUST FIT IN ONE PIPE BUFFER. Nothing reads the child's stdout
+ * until the whole of `in` has been written, so a child that fills its output
+ * pipe before it has drained its input deadlocks both ends. Every caller here
+ * feeds a word and reads a picture of it, which is the case this is for; a
+ * filter over a document needs a loop over both fds and is not this function.
+ */
+int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
+			size_t cap)
+{
+	int fd[2];
+	int rc;
+	size_t o = 0;
+
+	if (!buf || cap < 2)
+		return -1;
+	buf[0] = '\0';
+	if (pipe(fd) < 0)
+		kb_die("pipe: %s", strerror(errno));
+
+	rc = feed(a, in, n, fd[1], false);
+	close(fd[1]);
+	for (;;) {
+		ssize_t r = read(fd[0], buf + o, cap - 1 - o);
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		o += (size_t)r;
+		if (o >= cap - 1)
+			break;
+	}
+	buf[o] = '\0';
+	close(fd[0]);
+	return rc;
 }
 
 /* A pager is the case kb_run_feed cannot serve: it has to be fed on stdin AND
@@ -182,7 +230,7 @@ int kb_run_feed(const KbArgv *a, const char *in, size_t n)
  * document. */
 int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n)
 {
-	return feed(a, in, n, true);
+	return feed(a, in, n, -1, true);
 }
 
 int kb_run_tty(const KbArgv *a)

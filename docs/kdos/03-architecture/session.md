@@ -204,6 +204,16 @@ Three rules it exists to keep:
 the portal rather than round it even though the backend is ours, because `Start` is what makes the
 view exist and the answer it gives is the one a boxed application would get.
 
+**`kdos-record` AGAIN STOPS IT.** There is one screen and one portal session, so a second
+recording is not something to want, and a chord or a menu row that started one has to be able to
+end it from where it was started. While the pipeline runs, the program's pid is in
+`$XDG_RUNTIME_DIR/kdos/screencast.pid`; a second invocation reads it, checks the process is still
+there — a marker left by a crash is not a recording — and sends **`SIGINT`**, which the running
+process forwards to the pipeline. `gst-launch-1.0 -e` turns an INT into an end-of-stream so the
+muxer writes its index; a `SIGTERM` straight at the pipeline would leave a file without one. The
+handlers are installed with `sigaction` and **no `SA_RESTART`**, because the `waitpid` holding the
+recording open has to come back with `EINTR` for that forward to happen at all.
+
 **A session belongs to a CONNECTION, and that is why `kdos-record` is a program.** The portal keys
 a session by the unique name that created it and closes the session when that name leaves the bus,
 so a shell script making three `gdbus call` invocations makes three connections: the second is

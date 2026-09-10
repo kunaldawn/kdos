@@ -86,6 +86,7 @@ this.
 | `lid_close` | `suspend` | `suspend`, `off`, or ignore |
 | `icons` | `yes` | Whether chrome draws pictures at all |
 | `panel_opacity`, `panel_margin` | | Panel appearance |
+| `window_memory` | `yes` | Whether an application opens where its window last was |
 
 ### Startup-only keys
 
@@ -105,7 +106,6 @@ with the running chrome is how a later reader concludes the setting works.
 | `clipboard` | | The clipboard history daemon |
 | `chrome_font` | `Terminus:pixelsize=32` | The font every KDOS surface draws with |
 | `clock_format` | `%H:%M` | |
-| `window_memory` | | Remember window positions |
 
 ### Files whose existence is the setting
 

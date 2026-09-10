@@ -235,10 +235,17 @@ static void handle(const KconMsg *m)
 			push(&ev);
 		break;
 	case KCON_OP_CLIP_DATA: {
-		const char *t = kcon_get_str(&r);
+		/*
+		 * READ AS A BLOB AND NOT THROUGH kcon_get_str, which copies
+		 * into a 1023-byte scratch buffer: a clipboard is a document as
+		 * often as it is a word, and a paste silently missing its tail
+		 * is worse than one that fails.
+		 */
+		uint32_t n = kcon_get_u32(&r);
+		const char *t = kcon_get_blob(&r, n);
 
-		if (!r.err && *t)
-			ktui_paste_push(t, strlen(t));
+		if (!r.err && t && n)
+			ktui_paste_push(t, n);
 		break;
 	}
 	case KCON_OP_DRAG_DROP: {
@@ -1091,6 +1098,257 @@ int kcon_run(const char *sock, const char *const argv[], const char *title,
 
 	kcon_conn_free(c);
 	return vt;
+}
+
+/*
+ * A LAYOUT, SAVED OR PUT BACK. The same shape kcon_run has and for the same
+ * reason: the answer — how many windows, or none by that name — is the whole
+ * of what the person asked, and only the session can say it.
+ */
+int kcon_layout(const char *sock, const char *name, int save)
+{
+	if (!name || !*name)
+		return -1;
+
+	int fd = connect_to(sock);
+
+	if (fd < 0)
+		return -1;
+
+	KconConn *c = kcon_conn_new(fd);
+
+	if (!c) {
+		close(fd);
+		return -1;
+	}
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_SHELL);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+
+	kcon_put_str(&b, name);
+	kcon_put_u16(&b, (uint16_t)(save ? 1 : 0));
+	kcon_send(c, KCON_OP_LAYOUT, &b);
+	kcon_buf_free(&b);
+
+	int done = -1;
+
+	if (kcon_flush(c) >= 0) {
+		int64_t deadline = now_ms() + KCON_RUN_WAIT_MS;
+
+		for (;;) {
+			KconMsg m;
+			int r = kcon_recv(c, &m);
+
+			if (r < 0)
+				break;
+			if (r == 1) {
+				/* The answer rides KCON_OP_RUN_REPLY: it is
+				 * already "did it work, and what came of it",
+				 * which is the same two questions. A second
+				 * reply op would be a second thing to keep in
+				 * step with this one. */
+				if (m.op != KCON_OP_RUN_REPLY)
+					continue;
+
+				KconRd rd;
+
+				kcon_rd_init(&rd, m.payload, m.len);
+				int ok = (int)kcon_get_u16(&rd);
+				int got = (int)kcon_get_u16(&rd);
+
+				done = (!rd.err && ok) ? got : -1;
+				break;
+			}
+
+			int left = (int)(deadline - now_ms());
+
+			if (left <= 0)
+				break;
+
+			struct pollfd p = { kcon_conn_fd(c), POLLIN, 0 };
+
+			if (poll(&p, 1, left) <= 0)
+				break;
+		}
+	}
+
+	kcon_conn_free(c);
+	return done;
+}
+
+/*
+ * PUT TEXT ON THE SESSION'S CLIPBOARD, from a program that is not a surface.
+ *
+ * The console has no `wl-copy`: its clipboard is the session's own, and the
+ * only way in is the offer a surface makes for its selection. This is that
+ * message sent by a one-shot — `kcon_run`'s shape — so a command-line tool can
+ * copy without becoming a window first.
+ *
+ * NOT WAITED ON. An offer has no answer: the session either has the text or
+ * the connection failed, and there is nothing it could tell us that we could
+ * do anything about.
+ */
+int kcon_clip_offer(const char *sock, const char *text, size_t len)
+{
+	if (!text)
+		return -1;
+
+	int fd = connect_to(sock);
+
+	if (fd < 0)
+		return -1;
+
+	KconConn *c = kcon_conn_new(fd);
+
+	if (!c) {
+		close(fd);
+		return -1;
+	}
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_SHELL);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+
+	/* 0: the CLIPBOARD, not the primary selection. A copy somebody asked
+	 * for is not a selection they happened to drag over. */
+	kcon_put_u8(&b, 0);
+	kcon_put_u32(&b, (uint32_t)len);
+	kcon_put_blob(&b, text, len);
+	kcon_send(c, KCON_OP_CLIP_OFFER, &b);
+	kcon_buf_free(&b);
+
+	int ok = kcon_flush(c) >= 0 ? 0 : -1;
+
+	kcon_conn_free(c);
+	return ok;
+}
+
+/*
+ * THE SELECTION, TAKEN. The ask-and-wait shape kcon_capture has, over the ops
+ * a surface already uses for a paste: the session answers KCON_OP_CLIP_REQUEST
+ * with KCON_OP_CLIP_DATA whoever asked, so no op is added for this.
+ *
+ * 0: THE CLIPBOARD, not the primary selection — the half kcon_clip_offer
+ * writes, and the one a person means by "the clipboard".
+ */
+int kcon_clip_take(const char *sock, char **out)
+{
+	int fd = connect_to(sock);
+
+	if (!out)
+		return -1;
+	*out = NULL;
+	if (fd < 0)
+		return -1;
+
+	KconConn *c = kcon_conn_new(fd);
+
+	if (!c) {
+		close(fd);
+		return -1;
+	}
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_SHELL);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+	kcon_put_u8(&b, 0);
+	kcon_send(c, KCON_OP_CLIP_REQUEST, &b);
+	kcon_buf_free(&b);
+
+	int rc = -1;
+
+	if (kcon_flush(c) >= 0) {
+		int64_t deadline = now_ms() + KCON_RUN_WAIT_MS;
+
+		while (now_ms() < deadline) {
+			KconMsg m;
+			int r = kcon_recv(c, &m);
+
+			if (r < 0)
+				break;
+			if (r == 1) {
+				if (m.op == KCON_OP_BYE)
+					break;
+				if (m.op != KCON_OP_CLIP_DATA)
+					continue;
+
+				KconRd rd;
+
+				kcon_rd_init(&rd, m.payload, m.len);
+
+				/* THE BLOB, not kcon_get_str: that helper
+				 * copies into a 1023-byte scratch buffer, and
+				 * a clipboard cut short at a thousand bytes is
+				 * a file sent with its tail missing. */
+				uint32_t len = kcon_get_u32(&rd);
+				const char *t = kcon_get_blob(&rd, len);
+
+				if (!rd.err && (t || !len)) {
+					*out = malloc((size_t)len + 1);
+					if (*out) {
+						if (len)
+							memcpy(*out, t, len);
+						(*out)[len] = '\0';
+					}
+					rc = *out ? 0 : -1;
+				}
+				break;
+			}
+
+			struct pollfd p = { kcon_conn_fd(c), POLLIN, 0 };
+
+			poll(&p, 1, 50);
+		}
+	}
+
+	kcon_conn_free(c);
+	return rc;
+}
+
+/*
+ * THE COLOUR UNDER THE POINTER. Asked and not waited for: the answer arrives
+ * when a person clicks, and the session puts it on its own clipboard rather
+ * than sending it back — so this returns whether the ASK landed and nothing
+ * more.
+ */
+int kcon_pick_colour(const char *sock)
+{
+	int fd = connect_to(sock);
+
+	if (fd < 0)
+		return -1;
+
+	KconConn *c = kcon_conn_new(fd);
+
+	if (!c) {
+		close(fd);
+		return -1;
+	}
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, KCON_VERSION);
+	kcon_put_u16(&b, KCON_KIND_SHELL);
+	kcon_send(c, KCON_OP_HELLO, &b);
+	kcon_buf_reset(&b);
+
+	kcon_send(c, KCON_OP_PICK, &b);
+	kcon_buf_free(&b);
+
+	int ok = kcon_flush(c) >= 0 ? 0 : -1;
+
+	kcon_conn_free(c);
+	return ok;
 }
 
 int kcon_quit_session(const char *sock)

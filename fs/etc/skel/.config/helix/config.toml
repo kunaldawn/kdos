@@ -1,0 +1,3 @@
+# The accent `kdos theme` generates. Your own theme may
+# `inherits = "kdos"`; helix has no include directive.
+theme = "kdos"

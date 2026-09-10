@@ -42,6 +42,16 @@ static Bind binds[] = {
 	 * shifted form of the chord that closed it is where a hand looks. */
 	{ "restore",	CON_ACT_RESTORE, 0, 'n',	KT_MOD_SUPER | KT_MOD_SHIFT },
 	/*
+	 * THE SCRATCHPAD, ON THE KEY THE DROP-DOWN TERMINALS HAVE ALWAYS USED.
+	 * The grave key is the one key above the keyboard that no program
+	 * wants, which is why Quake put a console there and why every terminal
+	 * that drops down has used it since. The shifted form is spoken for by
+	 * a tilde, so the second chord takes Alt.
+	 */
+	{ "scratchpad",	CON_ACT_SCRATCH, 0, '`',	KT_MOD_SUPER },
+	{ "scratchpad-mark", CON_ACT_SCRATCH_MARK, 0, '`',
+	  KT_MOD_SUPER | KT_MOD_ALT },
+	/*
 	 * SUPER+SPACE IS THE PALETTE AND NOT THE MENU. A keyboard wants a
 	 * search and a pointer wants rows, and this chord is the keyboard's:
 	 * the taskbar's Start button still opens the menu, which is where the
@@ -131,6 +141,27 @@ static Bind binds[] = {
 	/* Beside the mark, because it is one: the same drag, with a picture
 	 * filed as well as the text copied. */
 	{ "capture",	CON_ACT_CAPTURE, 0, 'p', KT_MOD_SUPER | KT_MOD_SHIFT },
+	/* THE WHOLE CAPTURE GROUP, ON ONE KEY. The palette opened at a prefix
+	 * is how a person finds the verbs they do not have a chord for —
+	 * a region, a recording, a QR — without five more chords to learn. */
+	{ "capture-menu", CON_ACT_EXEC, CON_CMD_CAPTMENU, 'c',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	/*
+	 * AND THE KEY THE KEYBOARD ALREADY HAS FOR IT. Print takes the whole
+	 * screen, its shifted form is the same rectangle drag `capture` is,
+	 * and its Alt form starts and stops the recording — three verbs on the
+	 * one key nobody has to be told about.
+	 *
+	 * A KMS VIEW ONLY, for the reason the media keys are: Print produces
+	 * no character, so no terminal reports one and a view reading a
+	 * terminal never sees it. The Super chords above are the way to the
+	 * same three verbs everywhere else.
+	 */
+	{ "capture-screen", CON_ACT_EXEC, CON_CMD_CAPTSCREEN,
+	  KT_K_PRINT, 0 },
+	{ "capture-print", CON_ACT_CAPTURE, 0, KT_K_PRINT, KT_MOD_SHIFT },
+	{ "capture-record", CON_ACT_EXEC, CON_CMD_RECORD,
+	  KT_K_PRINT, KT_MOD_ALT },
 
 	/*
 	 * THE SCREEN'S FONT. Equals and not plus: `+` is the character a chord
@@ -277,6 +308,8 @@ static int key_named(const char *s)
 		{ "XF86AudioStop", KT_K_STOP },
 		{ "XF86AudioNext", KT_K_NEXT },
 		{ "XF86AudioPrev", KT_K_PREV },
+		/* rc.xml's spelling, which is xkb's. */
+		{ "Print", KT_K_PRINT },
 		/* rc.xml's spelling for the punctuation it binds, so a chord
 		 * reads the same in both files and neither has to be
 		 * translated by hand. */
@@ -299,7 +332,7 @@ static int key_named(const char *s)
  * "Super+Shift+Tab" -> key and mods. Zero on a chord naming no key, which is
  * how a typo leaves the default standing rather than unbinding the action.
  */
-static int chord_parse(const char *s, int *key, int *mods)
+int keys_chord_parse(const char *s, int *key, int *mods)
 {
 	char buf[64], *tok, *save;
 
@@ -382,7 +415,7 @@ static void keys_load(void)
 		while (e > chord && (e[-1] == ' ' || e[-1] == '\t'))
 			*--e = '\0';
 
-		if (!chord_parse(chord, &key, &mods))
+		if (!keys_chord_parse(chord, &key, &mods))
 			continue;
 		for (int i = 0; i < NBINDS; i++) {
 			if (strcmp(binds[i].name, act))
@@ -438,7 +471,7 @@ static int digit_of(int key, int *shifted)
  * moved together, which a table cannot express and this can.
  */
 /*
- * A CHORD AS A PERSON READS IT — the inverse of chord_parse, and the reason
+ * A CHORD AS A PERSON READS IT — the inverse of keys_chord_parse, and the reason
  * the key card and a script file can be right.
  *
  * The card is a different program and must not carry a second copy of this
@@ -465,7 +498,7 @@ void keys_chord_name(int key, int mods, char *out, size_t n)
 		{ KT_K_VOLUP, "VolumeUp" }, { KT_K_VOLDOWN, "VolumeDown" },
 		{ KT_K_MUTE, "Mute" }, { KT_K_PLAY, "Play" },
 		{ KT_K_STOP, "Stop" }, { KT_K_NEXT, "Next" },
-		{ KT_K_PREV, "Previous" },
+		{ KT_K_PREV, "Previous" }, { KT_K_PRINT, "Print" },
 	};
 	const char *kn = NULL;
 	char one[2] = { 0, 0 };
