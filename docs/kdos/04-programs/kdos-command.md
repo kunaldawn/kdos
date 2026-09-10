@@ -1,8 +1,9 @@
 # The kdos command
 
-`kdos` is the front door: nineteen subcommands covering the things this distribution can answer
-that a general-purpose system cannot. This page documents each one — what it does, what it
-measures, and what it refuses to claim.
+`kdos` is the front door: one subcommand for each thing this distribution can answer that a
+general-purpose system cannot. This page documents each one — what it does, what it measures, and
+what it refuses to claim. No count is given here on purpose; a number in a sentence is a number
+that goes wrong the next time a verb lands.
 
 The dispatch table in the source is the authoritative list; this page follows it.
 
@@ -390,6 +391,56 @@ fourth answer to where a person's directories are.
 of the column is that it holds the places somebody said rather than the ones a program guessed. The
 path is made absolute, because the row is read back by a program standing somewhere else.
 
+## share
+
+A file to another machine, over one code word. `kdos share FILE…`, `kdos share --clipboard`, or
+`kdos share` with nothing named — which asks `kdos-pick` for a file.
+
+**`croc` is the transfer and this is the desktop around it.** No account, no server of ours and no
+protocol written here: the code word is the whole of the pairing and the two ends derive a key from
+it. The receiving half is `croc <code>` typed in a terminal, and the sending window says so — there
+is no receive surface, because receiving is that one command and a surface around it would be a
+surface that only retypes it.
+
+**IT IS `--local` ON THIS IMAGE, AND THAT IS NOT A TUNING KNOB.** `/usr/bin/croc` is a wrapper that
+pins the flag, so a transfer stays on this network and reaches no relay of anybody's. `croc-relay`
+is the same binary with upstream's default for when reaching the public relay is the intent. It is
+also why the sending window offers the code word and not the `getcroc.com` link croc prints beside
+it: that page is the public relay's, and on this image there is no public relay to reach.
+
+**The transfer stays in front of the person.** croc runs in the foreground of a terminal window and
+prints its own progress, and this program relays every byte of it untouched rather than
+summarising — what a transfer is doing is croc's to say. Reading croc's output and running croc
+where somebody can watch it are the same process or they are two, so the window is opened by
+`kdos-share` re-entering itself, and it is held open at the end because `kdos-term` has no
+`--hold` and a window that closed with the command would take the result with it. Typed at a prompt
+it runs where it was typed and waits for nothing.
+
+**`--ignore-stdin` is not optional.** croc reads stdin for a piped payload, so a `croc send` whose
+stdin is anything but a closed file blocks before printing anything at all — no code, no error, on
+either stream. It is a global flag and the wrapper's own arguments come first, so it goes before
+`send`.
+
+**The code word becomes a QR in the window, in full blocks.** `qrencode -t ASCIIi`, with `#`
+replaced by `█`: `-t UTF8` draws with half blocks and the console font is 512 glyphs and carries
+none of them, so that rendering is not a worse QR on `tty1`, it is no QR. `ASCIIi`'s `#` is a
+*light* module, so the substitution puts the light of the code on a dark screen — the printed
+convention in emitted light rather than an inverted code. **Drawn whole or not at all**: a QR
+wider or taller than the window is a picture no camera can read, and half of one is worse than the
+words. The code goes into `qrencode` on **stdin**, because it is the transfer's whole secret and
+`/proc/<pid>/cmdline` is readable by every process on the machine for as long as the child lives.
+
+**`--clipboard` sends the clipboard as `clipboard.txt`.** croc sends files and a clipboard is not
+one, so it is written into the runtime directory — 0700 and this person's own — rather than beside
+somebody's documents, where it would be a copy nobody knows they have. The name is what arrives at
+the other end. It is read **once, before the window opens**: re-reading it inside would send
+whatever had been copied by the time the window appeared.
+
+**`kdos-share` is the name, and the verb table is why.** libkxdg offers the Share row on the
+desktop's icons, the chooser's `Shift+F10` and `mc`'s `F2` only when a program called `kdos-share`
+is on `PATH` — a filesystem test, not a dispatch one — so the link on this binary is what turns the
+row on, and `kdos share` is the same program under the spelling a person types.
+
 ## trash
 
 The freedesktop trash, from a prompt.
@@ -469,6 +520,7 @@ kdos con capture [--window N] [session]
 kdos con record FILE
 kdos con replay FILE
 kdos con forward <host> [session]
+kdos con layout {save|load} <name>
 kdos con run [--] CMD [ARG...]
 ```
 
@@ -491,6 +543,38 @@ The console desktop's sessions — the verb that reaches the **default** session
 | `record FILE` | Draw the session in this terminal and write everything it sends to `FILE` — KDOS's own format, not an asciicast |
 | `replay FILE` | Draw a recording in this terminal. It attaches to no session |
 | `forward` | Carry a session's view socket to another machine over `ssh` |
+| `layout save <name>` | Write what the **running** session has open to `~/.config/kdos-con/layouts/<name>` |
+| `layout load <name>` | Open every entry of that layout that is not already open. It closes nothing |
+
+**A layout is the session record with a name.** Same rows, same columns, same reader as the file a
+session leaves behind on a clean exit — so what a person arranged is what comes back, and there is
+one format rather than two to keep in step. `save` and `load` both reach the session that is
+running, for the reason a capture does: it is the half that holds the windows, and nothing on the
+wire can move one.
+
+**A row names what to open and never how.** `term` is `con.conf`'s `terminal`; a **role** — `files`,
+`mail`, `writing` — is the `con.conf` key for that role, opened in a terminal; a `con.conf` command
+key such as `monitor` or `notes` is one of this desktop's own surfaces; anything else is an app id
+for the pack store. A file that named a command line would be a file that executes one, and it is
+written by a program into a directory anything running as this person can write.
+
+**Which is why a terminal's row names a role.** Every terminal window's app id is the literal
+`terminal`, so a row carrying that says a window *was* a terminal and not which program was in it —
+saved and reloaded, an arrangement would come back as a screen of bare shells. A window running the
+file manager is written as `files`, and `con.conf` says what fills that.
+
+**A load adds; it never takes away.** A row whose program this image does not carry opens nothing
+and is not an error — no image carries all seven roles, and a layout that refused to load at all
+would be one nobody could use. A row already open opens nothing either, so a layout route is safe
+to press twice. A `term` row always opens: there is no name that separates one plain shell from
+another, so two terminals in a layout mean two terminals.
+
+**Three ship** under `/usr/share/kdos/layouts/`, and a person's own copy of a name replaces it
+rather than merging with it: `work` is a terminal with the file manager and the monitor beside it,
+`write` the editor full-screen with the note pad as the scratchpad, `talk` mail, the diary and chat
+side by side. Each has a `layout.<name>` route in the palette. Routes are read from `menu.conf`
+rather than found in a directory, so a layout somebody saves of their own gets its row in their own
+copy of that file.
 
 **A capture asks the session that is running; it is not `kdos-con --dump`.** The dump composites a
 session of its own and **settles** it — runs every terminal until its child has exited — which is
@@ -542,6 +626,7 @@ The same binary answers to several other names, dispatched on its own name:
 | `kdos-bootctl` | `select`, `mark-good`, `status` for the A/B slots — also copied into the initramfs |
 | `kdos-banner` | The login banner |
 | `kdos-shot` | Screenshots |
+| `kdos-share` | A file to another machine, over `croc` — what the Share verb resolves |
 | `kdos-sfx` | Sound effects |
 | `kdos-fetch-app`, `kdos-fetch-static` | Fetch helpers |
 

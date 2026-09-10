@@ -110,6 +110,15 @@ int ktui_theme_night(int on);
  */
 int ktui_theme_nearest(uint32_t rgb);
 
+/*
+ * THE NAME OF A SLOT, for the one place a colour is shown to a person rather
+ * than drawn: the desktop's colour picker, which answers with a slot and its
+ * hex. The names are the ones the enum uses, lowercased, so what a person is
+ * handed is what they would write in a configuration file. NULL for a value
+ * that is not a slot.
+ */
+const char *ktui_slot_name(int slot);
+
 /* ────────────────────────────────────────────────────────────────────────
  * Terminal
  * ──────────────────────────────────────────────────────────────────────── */
@@ -223,7 +232,8 @@ typedef struct {
 	 * colour reduced to rather than instead of it. Every consumer that has
 	 * only slots — a view that declined the colour run, a golden, a tty
 	 * with sixteen colours — reads `fg`/`bg` and is unaffected by whatever
-	 * is here. Meaningful only with KT_A_TRUECOLOR and KT_A_ULCOLOR.
+	 * is here. Meaningful only with KT_A_FGRGB, KT_A_BGRGB and
+	 * KT_A_ULCOLOR.
 	 */
 	uint32_t fgc, bgc, ulc;
 } KtuiCell;
@@ -563,7 +573,11 @@ enum {
 	 * the session sent End.
 	 */
 	KT_K_VOLUP, KT_K_VOLDOWN, KT_K_MUTE,
-	KT_K_PLAY, KT_K_STOP, KT_K_NEXT, KT_K_PREV
+	KT_K_PLAY, KT_K_STOP, KT_K_NEXT, KT_K_PREV,
+	/* Print is one of them: it produces no character either, so a terminal
+	 * reports nothing for it and the capture chords on it reach a KMS view
+	 * and nowhere else. */
+	KT_K_PRINT
 };
 
 /* KT_MOD_SUPER is the desktop's own modifier — the one every window-management

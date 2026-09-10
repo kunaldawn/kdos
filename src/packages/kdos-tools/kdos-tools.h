@@ -160,6 +160,19 @@ int kdt_thumb(int argc, char **argv);
 /* $XDG_CACHE_HOME/<rest>, and the parent of a path. Shared because `kdos
  * theme` and `kdos thumb` write into the same cache root, and two answers to
  * where that is would put one program's files where nothing else looks. */
+/*
+ * THE CLIPBOARD, on whichever desktop this is (clip.c). The console is asked
+ * first, because a console session running inside a graphical one has both and
+ * the near one is right. Neither direction puts the text in an argument
+ * vector. `kdt_clip_take` answers 0 for an empty clipboard as well as for no
+ * clipboard at all: a caller with nothing to send cannot use the difference.
+ */
+int kdt_clip_put(const char *text);
+int kdt_clip_take(char *buf, size_t n);
+
+/* `kdos share` / `kdos-share` (share.c). */
+int share_main(int argc, char **argv);
+
 char *kdt_cache_home(const char *rest);
 void kdt_mkparent(const char *path);
 

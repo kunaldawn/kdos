@@ -1,0 +1,9 @@
+# kdos-con layout: write — the editor, with the notes to hand.
+#
+# The editor takes the whole screen and the note pad is the scratchpad, which
+# is what the `s` flag says: `Super+grave` shows and hides it over everything
+# without it taking a place in the arrangement.
+#
+# kind	workspace	x	y	w	h	app	flags	title
+app	0	1	1	78	21	writing	f	writing
+app	0	1	1	78	10	notes	s	notes

@@ -12,11 +12,11 @@
  * three tables meant a verb landed on one surface and not the others — which
  * reads as the surface being incomplete rather than as three lists.
  *
- * A VERB NAMES A PROGRAM, AND THE PROGRAM IS RESOLVED. `kdos-peek`,
- * `kdos-find` and `kdos share` are named here and are not built yet; a row
- * whose program is absent is not offered, so those turn on when they ship
- * with no edit to any caller. That is the whole reason the availability lives
- * in the table rather than in each surface's `show` callback.
+ * A VERB NAMES A PROGRAM, AND THE PROGRAM IS RESOLVED. `kdos-peek` and
+ * `kdos-find` are named here and are not built yet; a row whose program is
+ * absent is not offered, so those turn on when they ship with no edit to any
+ * caller. That is the whole reason the availability lives in the table rather
+ * than in each surface's `show` callback.
  *
  * THE TABLE BUILDS AN ARGUMENT VECTOR, never a command line. libkxdg already
  * owns the one correct way to turn a desktop entry's Exec into an argv, and a

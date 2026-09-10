@@ -134,6 +134,13 @@
          same chord, so there is one key card rather than two. -->
     <keybind key="W-space"><action name="Execute" command="kdos-palette"/></keybind>
 
+    <!-- The capture group, opened at its own routes, for the verbs that have
+         no chord of their own — a QR on the screen decoded to the clipboard,
+         a sound recording. The palette is seeded with the group name rather
+         than a second menu being written for it. The console binds the same
+         chord, so there is one key card rather than two. -->
+    <keybind key="W-C-c"><action name="Execute" command="kdos-palette --route capture"/></keybind>
+
     <!-- The notification CENTRE. A toast that expired used to be gone; the
          daemon keeps a history now and this is the way back to it, which
          matters most for the notifications nobody was there to see. Shift,
@@ -208,14 +215,48 @@
         <none><action name="Execute" command="foot -e micro"/></none>
       </action>
     </keybind>
+    <!-- THE SCRATCHPAD, and it is one flag on two desktops. The console
+         session keeps one window sticky and hidden and shows it with
+         Super+grave; here the flag is omnipresence, which is the same
+         statement — the view belongs to no workspace, so it is on the one you
+         are looking at. Pressing the key again takes the flag off, and the
+         view goes back to the workspace it was opened on.
+
+         THE QUERY NAMES A MARKER AND NOT A PROGRAM. `kdos-scratchpad` is the
+         app id `foot` is started under, which is what makes exactly one window
+         the scratchpad and no other terminal one. The key card reads a
+         <query identifier> as a program only when the container begins with
+         Focus, which is the run-or-raise shape above; this one begins with
+         ToggleOmnipresent and is kept whatever is installed. -->
+    <keybind key="W-grave">
+      <action name="ForEach">
+        <query identifier="kdos-scratchpad"/>
+        <then>
+          <action name="ToggleOmnipresent"/>
+          <action name="Raise"/>
+          <action name="Focus"/>
+        </then>
+        <none>
+          <action name="Execute" command="foot --app-id kdos-scratchpad"/>
+        </none>
+      </action>
+    </keybind>
     <!-- The screens. labwc takes its output configuration over
          wlr-output-management-v1 and KDOS had no client for it, so a mode, a
          scale or a second monitor's place could not be set at all. Both keys,
          because a laptop's own display key is the one people press. -->
     <keybind key="W-p"><action name="Execute" command="kdos-display"/></keybind>
     <keybind key="XF86Display"><action name="Execute" command="kdos-display"/></keybind>
-    <keybind key="Print"><action name="Execute" command="kdos-shot region"/></keybind>
-    <keybind key="S-Print"><action name="Execute" command="kdos-shot screen"/></keybind>
+    <!-- Print is the WHOLE SCREEN and its shifted form is the rectangle. The
+         console binds the same three, and there the bare key cannot be the
+         rectangle: a region is drawn with the session's own rubber band and a
+         bare Print has nothing to draw with. One key card serves both
+         desktops, so the graphical side follows. Alt starts the recording and
+         stops it — one screen, one portal session, so a second recording is
+         not something to want. -->
+    <keybind key="Print"><action name="Execute" command="kdos-shot screen"/></keybind>
+    <keybind key="S-Print"><action name="Execute" command="kdos-shot region"/></keybind>
+    <keybind key="A-Print"><action name="Execute" command="kdos-record"/></keybind>
 
     <keybind key="W-1"><action name="GoToDesktop" to="1"/></keybind>
     <keybind key="W-2"><action name="GoToDesktop" to="2"/></keybind>

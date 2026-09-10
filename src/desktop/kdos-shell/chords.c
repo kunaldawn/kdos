@@ -370,13 +370,21 @@ static int parse_rc(const char *path)
 		}
 
 		/*
-		 * A ForEach's <query identifier> IS the program a run-or-raise
-		 * row needs, and the compositor writes the same rule the
-		 * session's third `--keys` field carries. A row whose program
-		 * is not installed is not added — a card offering a key that
-		 * opens nothing teaches the wrong thing.
+		 * A RUN-OR-RAISE ROW IS THE ONE WHOSE CONTAINER BEGINS WITH
+		 * `Focus`, and its <query identifier> is the program it
+		 * reaches — the same rule the session's third `--keys` field
+		 * carries. A row whose program is not installed is not added,
+		 * because a card offering a key that opens nothing teaches the
+		 * wrong thing.
+		 *
+		 * A CONTAINER BEGINNING WITH ANYTHING ELSE QUERIES A MARKER.
+		 * The scratchpad's `W-grave` looks for an app id that no
+		 * program is called, so gating it on `kb_have_prog` would drop
+		 * a key that works.
 		 */
-		if (need[0] && !kb_have_prog(need)) {
+		int runraise = need[0] && !strcmp(act, "Focus");
+
+		if (runraise && !kb_have_prog(need)) {
 			p = close;
 			continue;
 		}
@@ -386,15 +394,15 @@ static int parse_rc(const char *path)
 		if (!c)
 			break;
 		pretty_key(key, c->chord, sizeof(c->chord));
-		snprintf(c->needs, sizeof(c->needs), "%s", need);
-		if (need[0]) {
+		if (runraise) {
 			/*
-			 * A RUN-OR-RAISE ROW IS NAMED BY THE PROGRAM IT
-			 * REACHES. The first action inside the container is
-			 * `Focus`, which describes the mechanism rather than
-			 * the key — a card row reading `focus` under a chord
-			 * that opens the file manager teaches nothing.
+			 * NAMED BY THE PROGRAM IT REACHES. The first action
+			 * inside the container is `Focus`, which describes the
+			 * mechanism rather than the key — a card row reading
+			 * `focus` under a chord that opens the file manager
+			 * teaches nothing.
 			 */
+			snprintf(c->needs, sizeof(c->needs), "%s", need);
 			snprintf(c->action, sizeof(c->action), "ForEach");
 			snprintf(c->detail, sizeof(c->detail), "%s", need);
 			p = close;
@@ -403,6 +411,12 @@ static int parse_rc(const char *path)
 		snprintf(c->action, sizeof(c->action), "%s", act);
 		retermize(cmd, sizeof(cmd));
 		act_detail(act, cmd, to, dir, menu, c->detail, sizeof(c->detail));
+		/* A container that queried a MARKER carries the identifier as
+		 * its detail: the app id is the only thing that separates the
+		 * scratchpad's key from a plain flag toggle, and an action
+		 * name alone would file the two under one description. */
+		if (!c->detail[0] && need[0])
+			snprintf(c->detail, sizeof(c->detail), "%s", need);
 		p = close;
 	}
 	free(buf);

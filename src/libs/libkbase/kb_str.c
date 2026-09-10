@@ -202,3 +202,66 @@ void kb_uri_file(const char *path, char *out, size_t n)
 	}
 	out[o] = '\0';
 }
+
+static int hexval(unsigned char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+/* See kbase.h. */
+int kb_uri_path(const char *uri, char *out, size_t n)
+{
+	const char *p;
+	size_t o = 0;
+
+	if (!uri || !out || n < 2)
+		return 0;
+	if (strncmp(uri, "file://", 7) != 0) {
+		if (strlen(uri) >= n)
+			return 0;
+		snprintf(out, n, "%s", uri);
+		return 1;
+	}
+
+	p = uri + 7;
+	if (!strncmp(p, "localhost/", 10))
+		p += 9;
+	/* Whatever is left must be the path itself. Anything else between the
+	 * slashes is a host, and this machine is not it. */
+	if (*p != '/')
+		return 0;
+
+	for (; *p; p++) {
+		int hi, lo;
+
+		if (o + 1 >= n)
+			return 0;
+		if (*p != '%') {
+			out[o++] = *p;
+			continue;
+		}
+		hi = hexval((unsigned char)p[1]);
+		lo = hi < 0 ? -1 : hexval((unsigned char)p[2]);
+		/* A stray `%` is a literal one. A URI this program wrote never
+		 * has one, and a file whose name does is not a reason to
+		 * refuse to open it. */
+		if (lo < 0) {
+			out[o++] = *p;
+			continue;
+		}
+		/* A NUL would end the path early and hand the caller a
+		 * different file from the one named. */
+		if (!(hi * 16 + lo))
+			return 0;
+		out[o++] = (char)(hi * 16 + lo);
+		p += 2;
+	}
+	out[o] = '\0';
+	return 1;
+}

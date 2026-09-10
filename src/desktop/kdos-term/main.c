@@ -534,6 +534,8 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	kvt_term_scrollback(T.t, (unsigned)TC.scrollback);
+	/* The accent's sixteen, if an accent has been chosen. */
+	kvt_term_theme(T.t);
 	kvt_term_osc_cb(T.t, on_osc, NULL);
 	kvt_term_notify_cb(T.t, on_notify, NULL);
 	kvt_term_clip_cb(T.t, on_clip, NULL);

@@ -1082,8 +1082,13 @@ sed -e 's/#.*//' -e '/^[[:space:]]*@/d' -e 's/^[^=]*=//' \
        # ON PURPOSE — a bare word search over the whole recipe passes on a
        # COMMENT, which is exactly how a check like this ends up green against
        # a desktop that does not work (`-Dlabnag=disabled` matched `labnag`).
-       grep -rhE '^[[:space:]]*for [A-Za-z_]+ in ' src/packages/*/build.sh \
-            src/desktop/*/build.sh 2>/dev/null |
+       # CONTINUATIONS ARE JOINED FIRST, the way the mc guard below does it:
+       # a backslash-wrapped list puts most of its names on a later line that
+       # does not begin with `for`, so every one of them drops out of the
+       # match and the guard reports a program that is installed as missing.
+       sed -e ':a' -e '/\\$/{N;s/\\\n/ /;ba' -e '}' \
+            src/packages/*/build.sh src/desktop/*/build.sh 2>/dev/null |
+            grep -E '^[[:space:]]*for [A-Za-z_]+ in ' |
             grep -qE "(^|[[:space:]])$cmd([[:space:]]|;|\$)" ||
        # ...or as the `Exec=` of a desktop entry a recipe WRITES. A Python
        # console script is installed by pip from an entry point and appears in

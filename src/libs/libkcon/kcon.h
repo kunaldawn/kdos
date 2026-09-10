@@ -45,8 +45,15 @@
  * end renumbers every one after it — and a peer built before the insertion
  * would not fail, which is the dangerous outcome: it would act on the wrong
  * verb.
+ *
+ * A RECORDING OUTLIVES THE REBUILD. `kdos-view --record` writes the op NUMBER
+ * into its file and the replay hands it straight back to the message reader,
+ * so an entry added anywhere but the end also turns every recording ever made
+ * into a different session — and that one no version check can catch, because
+ * the file carries no version at all. Append, whatever group the new op
+ * belongs to by meaning.
  */
-#define KCON_VERSION 10
+#define KCON_VERSION 12
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -314,6 +321,37 @@ enum {
 	KCON_OP_ANNOUNCE,
 
 	KCON_OP_BYE,		/* with a reason, so a log says why        */
+
+	/*
+	 * SAVE OR LOAD A LAYOUT — the windows a session has open, by name.
+	 * Client to session, despite sitting among the answers: an op is
+	 * appended wherever it belongs by meaning, for the reason KCON_VERSION
+	 * gives above.
+	 *
+	 * FROM A SHELL SURFACE ONLY, which is KCON_OP_RUN's rule and is kept
+	 * for KCON_OP_RUN's reason: not a privilege boundary, but so the op
+	 * has one caller and one meaning.
+	 *
+	 * IT CARRIES A NAME AND NEVER A COMMAND. A layout names roles the
+	 * session resolves through `con.conf` — the indirection the chords
+	 * keep — so nothing that reaches this socket can choose what a session
+	 * starts, only which of the person's own arrangements to put back.
+	 */
+	KCON_OP_LAYOUT,
+
+	/*
+	 * ASK THE SESSION FOR THE COLOUR UNDER THE POINTER.
+	 *
+	 * Nothing on the wire in either direction. The session takes the whole
+	 * interaction — it draws the prompt, it reads the click, and it puts
+	 * the answer on its own clipboard — because the answer arrives when a
+	 * person clicks and a socket a caller blocked on for that is a caller
+	 * hung for as long as somebody hesitates.
+	 *
+	 * FROM A SHELL SURFACE ONLY, the rule KCON_OP_RUN keeps and for the
+	 * same reason: one caller and one meaning.
+	 */
+	KCON_OP_PICK,
 
 	KCON_OP_N
 };
@@ -816,6 +854,18 @@ typedef struct {
 		   unsigned flags, void *user);
 
 	/*
+	 * Save or load a layout by name. `save` is non-zero to write what is
+	 * open and zero to put a saved arrangement back. Returns how many
+	 * windows were written or opened, or -1 when the name could not be
+	 * used at all — the session decides both, because it is the half that
+	 * holds the windows.
+	 */
+	int (*layout)(KconSurface *f, const char *name, int save, void *user);
+	/* Enter the colour pick. Nothing is answered: the session finishes the
+	 * interaction itself. */
+	void (*pick)(KconSurface *f, void *user);
+
+	/*
 	 * END THE SESSION. The server does not decide this: it holds the
 	 * listeners and the surfaces, and what a quit means — draining, saying
 	 * goodbye, leaving the run directory clean — belongs to whoever runs
@@ -930,6 +980,43 @@ int kcon_quit_session(const char *sock);
  * is the whole reason this returns anything at all. The wait is bounded: a
  * session that has stopped answering must not hang a launcher.
  */
+/*
+ * Ask a session to save what is open under `name`, or to put that arrangement
+ * back. Returns how many windows were written or opened, or -1. `sock` is the
+ * session's surface socket — $KDOS_CON.
+ *
+ * It waits for the same reason kcon_run does: "there is no layout by that
+ * name" is the whole of what a person needs told, and only the session knows.
+ */
+int kcon_layout(const char *sock, const char *name, int save);
+
+/*
+ * Ask a session to pick the colour under the pointer. Connects, asks and
+ * closes; nothing is answered, because the answer arrives when a person clicks
+ * and the session puts it on its own clipboard. Returns -1 when nothing is
+ * listening on `sock`.
+ */
+int kcon_pick_colour(const char *sock);
+
+/*
+ * Take a session's clipboard from a program that is not a surface. The console
+ * has no `wl-paste` — its clipboard is the session's — so this is the other
+ * half of kcon_clip_offer(). `*out` is a malloc'd string the caller frees.
+ *
+ * It waits, bounded, because the answer is the whole of what was asked. An
+ * EMPTY clipboard is an answer and comes back as an empty string; only a
+ * session that never replied is -1.
+ */
+int kcon_clip_take(const char *sock, char **out);
+
+/*
+ * Put text on a session's clipboard from a program that is not a surface. The
+ * console has no `wl-copy` — its clipboard is the session's — so this is the
+ * one way a command-line tool copies. Answers 0 when the offer was sent; there
+ * is nothing to wait for, because an offer has no reply.
+ */
+int kcon_clip_offer(const char *sock, const char *text, size_t len);
+
 int kcon_run(const char *sock, const char *const argv[], const char *title,
 	     unsigned flags);
 

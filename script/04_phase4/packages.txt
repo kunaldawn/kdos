@@ -1137,6 +1137,8 @@ zsh
 # or a WiFi credential leaves through a phone camera. qrencode -t ANSI draws it
 # in block characters on the cell grid.
 qrencode
+# The other direction: zbarimg reads a QR out of a screenshot, so a code
+# on the screen becomes text on the clipboard without a phone.
 zbar
 
 # ---------------------------------

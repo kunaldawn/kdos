@@ -466,7 +466,7 @@ static void test_colour(void)
 			KxdgVerb v;
 			const char *av[12];
 			char store[512];
-			int n, found_place = 0, found_share = 0;
+			int n, found_place = 0, unbuilt = 0, share = 0;
 
 			ok(kxdg_verb_count() > 0, "verbs: the table is not empty");
 			for (int i = 0; i < kxdg_verb_count(); i++) {
@@ -474,19 +474,31 @@ static void test_colour(void)
 					break;
 				if (v.id == KXDG_VERB_PLACE)
 					found_place = v.present;
+				/* Peek is the row whose program is still not
+				 * built; Share's is, so it can no longer carry
+				 * the "absent stays hidden" half. */
+				if (v.id == KXDG_VERB_PEEK)
+					unbuilt = v.present;
 				if (v.id == KXDG_VERB_SHARE)
-					found_share = v.present;
+					share = v.present;
 			}
 			ok(found_place,
 			   "verbs: one needing no program of its own is always "
 			   "offered");
-			ok(!found_share,
+			ok(!unbuilt,
 			   "verbs: and one whose program is not built yet is "
 			   "not offered at all");
+			/* `kdos-share` is a link on the kdos-tools binary, so
+			 * the row turns on exactly when that link is on PATH —
+			 * which is the whole mechanism, and it is a filesystem
+			 * test rather than anything the table decides. */
+			ok(share == kb_have_prog("kdos-share"),
+			   "verbs: Share follows whether kdos-share is on PATH");
 
 			/* Add to Places is a directory's verb and not a file's,
-			 * because a file is not a place. */
-			kxdg_verb_at(KXDG_VERB_PLACE, &v);
+			 * because a file is not a place. THE ID, NOT THE INDEX:
+			 * kxdg_verb_at takes a position and the two agree only
+			 * for as long as nobody reorders the table. */
 			for (int i = 0; i < kxdg_verb_count(); i++) {
 				kxdg_verb_at(i, &v);
 				if (v.id == KXDG_VERB_PLACE)
@@ -3715,6 +3727,82 @@ static void on_help(const char *doc, void *u)
 	snprintf(help_opened, sizeof(help_opened), "%s", doc ? doc : "");
 }
 
+/*
+ * THE SLOT NAMES, which are what the colour picker hands a person.
+ *
+ * An array indexed by the enum: a slot added to `KT_NCOLOR` without a row here
+ * would answer NULL and the picker would say nothing at all, and a row that
+ * drifted would name the wrong colour — which is worse, because it reads
+ * right.
+ */
+/*
+ * A `file://` URI BACK TO A PATH. One surface hands a program a path and
+ * another hands it a URI, so the decoder is what lets a caller take either —
+ * and the host is the field that must be refused rather than dropped: ignoring
+ * it opens THIS machine's copy of a file that names another machine's.
+ */
+static void test_uri_path(void)
+{
+	printf("\n==> a file:// URI comes back as the path it names\n");
+
+	char out[256];
+
+	ok(kb_uri_path("file:///home/kdos/My%20Report.pdf", out, sizeof(out)),
+	   "a URI with an escape decodes");
+	eq_str(out, "/home/kdos/My Report.pdf", "and the space comes back");
+
+	ok(kb_uri_path("file://localhost/etc/hosts", out, sizeof(out)),
+	   "localhost is this machine");
+	eq_str(out, "/etc/hosts", "and drops out of the path");
+
+	ok(!kb_uri_path("file://otherbox/etc/passwd", out, sizeof(out)),
+	   "a URI naming another machine is refused, not silently localised");
+
+	ok(kb_uri_path("/plain/path", out, sizeof(out)),
+	   "a plain path is not a URI and is carried through");
+	eq_str(out, "/plain/path", "unchanged");
+
+	/* A NUL in the middle would end the path early and open a different
+	 * file from the one named. */
+	ok(!kb_uri_path("file:///etc/passwd%00.png", out, sizeof(out)),
+	   "an escaped NUL is refused");
+
+	/* Uppercase and lowercase hex are the same URI. */
+	ok(kb_uri_path("file:///a%2fb", out, sizeof(out)), "lowercase hex");
+	eq_str(out, "/a/b", "decodes the same as uppercase");
+
+	ok(!kb_uri_path("file:///0123456789abcdef", out, 8),
+	   "and a result that does not fit is refused rather than cut");
+}
+
+static void test_slot_names(void)
+{
+	printf("\n==> every colour slot has a name the picker can hand over\n");
+
+	int named = 1, unique = 1;
+
+	for (int i = 0; i < KT_NCOLOR; i++) {
+		const char *a = ktui_slot_name(i);
+
+		if (!a || !*a) {
+			named = 0;
+			continue;
+		}
+		for (int j = i + 1; j < KT_NCOLOR; j++) {
+			const char *b = ktui_slot_name(j);
+
+			if (b && !strcmp(a, b))
+				unique = 0;
+		}
+	}
+	ok(named, "all eight slots are named");
+	ok(unique, "and no two share a name");
+	ok(!ktui_slot_name(-1) && !ktui_slot_name(KT_NCOLOR),
+	   "a value that is not a slot is not named");
+	eq_str(ktui_slot_name(KT_ACCENT), "accent",
+	       "and the name is the one a person would write");
+}
+
 static void test_keys(void)
 {
 	printf("\n==> the hint row follows the focus, and Esc unwinds one rung\n");
@@ -4848,6 +4936,35 @@ static void test_kcon(void)
 	ok(r.err != 0, "and sets the error flag");
 
 	/*
+	 * A STRING LONGER THAN THE SCRATCH BUFFER GOES OUT WHOLE, and comes
+	 * back whole only through the BLOB. kcon_get_str copies into one
+	 * shared 1023-byte buffer, so a reader that used it for a clipboard or
+	 * a paste would hand its caller a document with the tail quietly gone
+	 * — which is why both of those read the length and the bytes instead.
+	 */
+	{
+		static char big[4096];
+		uint32_t got;
+		const char *blob;
+
+		memset(big, 'x', sizeof(big) - 1);
+		big[sizeof(big) - 1] = '\0';
+		kcon_buf_reset(&b);
+		kcon_put_str(&b, big);
+		kcon_rd_init(&r, b.b, b.len);
+		got = kcon_get_u32(&r);
+		blob = kcon_get_blob(&r, got);
+		eq_int((long long)got, (long long)sizeof(big) - 1,
+		       "a long string goes out at its full length");
+		ok(blob && !memcmp(blob, big, got),
+		   "and the blob read gives every byte of it back");
+
+		kcon_rd_init(&r, b.b, b.len);
+		eq_int((long long)strlen(kcon_get_str(&r)), 1023,
+		       "while kcon_get_str stops at its scratch buffer");
+	}
+
+	/*
 	 * OPTIONAL TRAILING FIELDS. A peer that predates a field sends a
 	 * shorter message, and kcon_rd_left is how a reader tells that from a
 	 * truncated one rather than refusing both.
@@ -5004,7 +5121,11 @@ static void test_kcon(void)
 	/* ── the caps are what they claim ──────────────────────────────── */
 	eq_int((long long)KCON_MAX_PAYLOAD, 1ll << 20,
 	       "a payload is refused above a megabyte");
-	eq_int(KCON_VERSION, 10, "and the version the two ends agree on");
+	/* PINNED, so a bump is a decision rather than a side effect. Every
+	 * client of the session is rebuilt from this tree, so the number costs
+	 * nothing to raise — and the enum it guards is positional, which is
+	 * what makes raising it the cheap half of an op that moved. */
+	eq_int(KCON_VERSION, 12, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -5962,6 +6083,16 @@ static int clip_asked = -1;
 
 /* What a shell asked the session to do, for the management block below. */
 static unsigned srv_activated, srv_closed;
+
+/* How many times a colour pick was asked for. */
+static unsigned srv_picked;
+
+static void srv_on_pick(KconSurface *f, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_picked++;
+}
 
 static void srv_on_activate(KconSurface *f, unsigned id, void *user)
 {
@@ -6953,6 +7084,65 @@ static void test_kcon_server(void)
 			}
 		}
 
+		/*
+		 * ── the colour pick: who may ask ────────────────────────
+		 *
+		 * It carries nothing and answers nothing, so the ONLY thing
+		 * the wire can get wrong is who is allowed to send it. A
+		 * window that could put the session into a mode owning the
+		 * pointer could take every click on the screen.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.pick = srv_on_pick;
+			kcon_server_hooks(s, &h, NULL);
+			srv_picked = 0;
+
+			KconConn *shell = srv_client(path);
+			KconConn *plain = srv_client(path);
+
+			if (shell && plain) {
+				KconBuf b = { 0 };
+
+				srv_hello(shell, KCON_VERSION,
+					  KCON_KIND_SHELL);
+				srv_hello(plain, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				kcon_send(plain, KCON_OP_PICK, &b);
+				kcon_flush(plain);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int((int)srv_picked, 0,
+				   "a window cannot put the session into the colour pick");
+
+				kcon_send(shell, KCON_OP_PICK, &b);
+				kcon_flush(shell);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int((int)srv_picked, 1,
+				   "and a shell can");
+				kcon_buf_free(&b);
+			}
+			if (shell)
+				kcon_conn_free(shell);
+			if (plain)
+				kcon_conn_free(plain);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
 		/* ── the window list: who is told, and who may ask ──────── */
 		{
 			KconServerHooks h = { 0 };
@@ -7362,6 +7552,8 @@ int main(void)
 	test_wm();
 	test_gesture();
 	test_vt_da();
+	test_uri_path();
+	test_slot_names();
 	test_keys();
 	test_menu();
 	test_vt_graphics();

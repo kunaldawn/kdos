@@ -15,7 +15,7 @@
 # refuses one that is not. A text file has no `show` callback: a row here
 # cannot hide itself when its program is missing, so a verb that is still being
 # built belongs in the surfaces' own table and not in this file until it ships.
-# `kdos share` is the one still waiting on that.
+# `kdos-peek` is the one still waiting on that.
 #
 # ONE LETTER, THEN THE TITLE, THEN TAB-INDENTED COMMAND LINES. mc runs the
 # block as `/bin/sh` and WAITS for it, so anything that opens a window of its
@@ -44,6 +44,9 @@ t       Terminal here
 
 p       Add this folder to Places
         kdos places add %d
+
+s       Share this file to another machine
+        kdos-share %f
 
 r       Move to trash
         kdos trash %f

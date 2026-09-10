@@ -810,7 +810,8 @@ un-minimised where it is rather than through the restore path, which *moves* a w
 current workspace — the opposite of going to it.
 
 The compositor binds the same seven, as `rc.xml` `ForEach` blocks whose `<query identifier>` is the
-program's `app_id`. `W-grave` is unbound on both.
+program's `app_id`. `W-grave` carries the [scratchpad](#the-scratchpad) on both, which is a
+`ForEach` of the same shape over a marker rather than a program.
 
 **`Super+p` reaches a surface that cannot configure a console screen.** `libkkms` takes the first
 connected output at its preferred mode and has no mode selection, so `kdos-display` says so and
@@ -851,6 +852,8 @@ over state the session already holds.
 
 | Chord | Does |
 |---|---|
+| `Super+grave` | show the scratchpad over everything; the same key hides it |
+| `Super+Alt+grave` | make the focused window the scratchpad |
 | `Super+Alt+1`…`9` | raise the window that number names |
 | `Super+F2` | the window list |
 | `Super+Shift+t`, `Super+F8` | tile this workspace |
@@ -860,6 +863,10 @@ over state the session already holds.
 | `Super+Shift+m` | mark a rectangle of the screen |
 | `Super+Shift+v` | paste what was marked into the focused window |
 | `Super+Shift+p` | capture a rectangle: its text to the clipboard, its picture to a file |
+| `Super+Ctrl+c` | the capture group, for the verbs that have no chord of their own |
+| `Print` | the whole screen to a file — **on a KMS view only** |
+| `Shift+Print` | the same rectangle `Super+Shift+p` marks — **on a KMS view only** |
+| `Alt+Print` | start the screen recording, and stop it — **on a KMS view only** |
 | `Super+Shift+r` | record the keys you type; the same chord stops and asks for a letter |
 | `Super+Alt+r` then a letter | type that script back into the focused window |
 | `Super+Ctrl+Shift+Space` | the accent picker, previewing live as the highlight moves |
@@ -910,6 +917,117 @@ nobody could get out of. **Pointer resistance is not applied**: a drag has resis
 because a hand is imprecise, and a key that moved a window by one cell except near an edge would be
 a key that lies. Every intermediate rectangle still goes through `kwm_fit`.
 
+### The scratchpad
+
+**One window a session may keep over every other window.** `Super+grave` shows it on whatever
+workspace is being looked at, focused, spanning the work area's full width across the top half of
+its height —
+the drop-down shape every terminal on that key has had since Quake put a console there. The same
+key hides it again. When no window has the role, the first press opens the terminal `con.conf`'s
+`terminal` key names and gives it the role.
+
+**It is two flags on an ordinary window and not a fourth kind of one.** `sticky` says the window is
+on no workspace and therefore on every one — `workspace` is not asked about it anywhere, and it is
+counted in no workspace's occupancy, because a pager dot under every number would say the desk was
+full when one window was open. `hidden` says it is drawn nowhere, listed nowhere and under the
+pointer nowhere. Because they are ordinary fields, `Super+Alt+grave` can hand the role to something
+already running: the window that had it comes back onto the workspace being looked at as an
+ordinary window, since one left sticky and hidden with no chord naming it is one nothing can reach.
+
+**Hidden is not minimised, and the difference is the taskbar row.** A minimised window keeps its
+row because the row is the way back — it is drawn nowhere else and cycled past, so dropping the row
+would leave the chord as its only route. The scratchpad already has a chord, so a row as well would
+be a second way back, drawn on every workspace since it is on none. Both states answer the show:
+minimise the scratchpad from its own frame and `Super+grave` still brings it back, rather than
+hiding an already invisible window and needing a second press.
+
+**The shape is applied on every show rather than remembered.** The grid can be resized while the
+scratchpad is away, and a remembered rectangle would bring it back partly off the screen — or, on a
+screen that had shrunk, not onto it at all. While it is *shown* it is an ordinary window and a grid
+resize refits it like one; the shape comes back on the next show.
+
+**A saved session remembers the role.** The record's flag column carries what a rectangle cannot
+say, so a scratchpad comes back as the scratchpad and a fullscreen window as fullscreen — both are
+states that *replace* a rectangle, and a row of four numbers restores neither. A minimise is not in
+the column: that is where one window was put for a minute, not part of how a screen was arranged.
+
+**It is left out of tile and cascade, as a fullscreen window is.** Both were put where they are on
+purpose, and folding either into a grid would undo a request nobody withdrew. It is also not sent
+anywhere by `Super+Shift+`*N*: a window on no workspace cannot be moved to one.
+
+**On the compositor it is the same flag and the same key.** `W-grave` runs a `ForEach` over the
+`kdos-scratchpad` app id: `ToggleOmnipresent` on the view it finds, and `foot --app-id
+kdos-scratchpad` when it finds none. Omnipresence is labwc's word for what `sticky` says here — the
+view belongs to no workspace, so it is on the one you are looking at — and pressing the key again
+takes it off, which puts the view back on the workspace it was opened on. The compositor has no
+state for a window that is drawn nowhere without a taskbar row, so that half of the console's rule
+has no equivalent there and the flag is where the two desktops meet.
+
+### Where a window opens
+
+**A window opens where that program's window last was.** The rectangle is written when the window
+goes and used when one running the same program next appears, so an application stops opening in
+the middle of the screen at the size its author picked. `con.conf`'s `remember` turns it off, in
+both directions: a person who does not want the behaviour does not want the file written either.
+
+**The key is the program, not the app id.** Every terminal's app id is `terminal` and every caged
+guest's is `kdos-cage` — an app id says what *kind* of window this is — so a table keyed on one
+would give the whole desk a single shared rectangle. `prog` is what the window was opened for,
+written once and never rewritten by the guest, and for a native surface it is the client's own
+name. A window that named no program is remembered for nothing.
+
+**A record is per program *and* per workspace.** The same editor on workspace 1 and on workspace 3
+is two windows a person arranged separately, and one line for both would make each opening move
+the other.
+
+**Which windows are remembered is decided by the function a caller reaches for**, not by a flag.
+The lookup happens inside `win_place()` — the placement every ordinary window goes through — so an
+overlay, which is placed by `win_place_corner()`, cannot inherit a terminal's rectangle, and a
+restored session, which is placed by `win_place_at()`, still wins. Chrome is excluded by role on
+top of that: a docked panel, a layer, the lock, the saver, a guest on another terminal and the
+scratchpad are all put where they are by something other than a person.
+
+**A tiled window is remembered by what an untile returns to**, never by the half of the screen it
+is currently filling, and the tile itself comes back from the last field. **A remembered rectangle
+is fitted, not trusted**: it goes through `kwm_fit()` into the work area, so one kept on a wide
+screen still comes back onto a narrow one. And **a second window of the same program does not land
+on the first** — one record per program means every instance would take the same corner, so a
+record whose origin is already occupied is declined and the placement search does its job.
+
+**It is not the compositor's file, and it cannot be.** `kdos-comp` keeps the same idea in
+`~/.local/state/kdos/winpos` under `comp.conf`'s `window_memory`, but its rectangles are **pixels**
+and these are **cells**: one file with both writers would restore every window at a size taken from
+the other desktop's units, an eighty-column terminal coming back eighty pixels wide. What the two
+desktops share is the rule, not the row.
+
+### Arrangements, with a name
+
+**A layout is the session record with a name.** `kdos con layout save <name>` writes what is open to
+`~/.config/kdos-con/layouts/<name>`; `kdos con layout load <name>` opens every entry that is not
+already open and closes nothing. Same rows and same reader as the file a clean exit leaves behind,
+because two formats for one idea are two things to keep in step.
+
+**A row names what to open and never how.** `term` is `con.conf`'s `terminal`; a role — `files`,
+`mail`, `writing` — is that `con.conf` key opened in a terminal; a command key such as `monitor` or
+`notes` is one of this desktop's own surfaces; anything else is an app id for the pack store. One
+resolver answers for both files, so a restored session and a loaded layout cannot disagree about
+what a row means.
+
+**A terminal's row names the role it was filling.** Every terminal window's app id is the literal
+`terminal`, so a row carrying that says a window *was* a terminal and not which program was in it —
+and an arrangement saved and reloaded would come back as a screen of bare shells. The row says
+`files` and `con.conf` says what fills it, which is the indirection the chord that opened it used
+and is not a command line, which the file must never hold.
+
+**A load adds and never takes away.** A row whose program is not installed opens nothing and is not
+an error; a row already open opens nothing either, so a layout is safe to ask for twice; and a
+`term` row always opens, because no name separates one plain shell from another.
+
+**Three ship** — `work`, `write`, `talk` — under `/usr/share/kdos/layouts/`, each with a
+`layout.<name>` route in the palette. A person's own file of the same name replaces the shipped one
+rather than merging with it: an arrangement is a whole statement about a screen, and half of one is
+not an arrangement.
+
 ## Mark and transfer
 
 **The session composes every window into one grid, so the text on the screen is text.** Marking a
@@ -942,6 +1060,37 @@ the same rectangle as `kdos-shot region --geom X,Y,W,H`, in cells. It attaches a
 rasterise them, so the picture is what a screen would show rather than a second drawing of the same
 cells. **The mark is taken down before the picture is asked for**, or the rectangle would be
 reverse video in the file.
+
+**The colour picker is a LOOKUP, not a probe.** Every cell the session composed carries the slot it
+was drawn in, so `kdos-shot colour` — the `capture.colour` route — asks the session with
+`kdos-con --pick-colour`, the bar says *click a cell for its colour*, and the click is answered from
+the frame that is already in memory. There is no screen to grab and nothing to sample. The answer
+is the **ink** where the cell holds a character and the **ground** where it does not, because a
+picker that always read the foreground would answer with the colour of a glyph nobody can see; it
+goes on the clipboard as `accent #39ff14`, or as a bare `#rrggbb` for a cell a program painted in
+truecolor — that literal is what the program chose, so it is what the person is told, with no slot
+name in front of it. **The picker owns the pointer while it is on**, for the reason the mark does: a
+press that fell through would raise a window over the cell being read. `Esc` leaves.
+
+**It is the console's alone.** Under the compositor no protocol says where the pointer is — a client
+is told when one enters its own surface and nothing more — so a picker there would have to *be* the
+compositor. `kdos-shot colour` says so rather than doing nothing.
+
+**The three `Print` chords reach a KMS view and nothing else**, for the reason the media keys do:
+`Print` produces no character, so no terminal reports one and a view reading a terminal never sees
+it. `Print` is the whole screen, `Shift+Print` is the rectangle — the bare key cannot be the
+rectangle here, because a region is drawn with the session's own rubber band and a bare `Print` has
+nothing to draw with — and `Alt+Print` starts the screen recording and stops it. `rc.xml` binds the
+same three the same way round, so there is one key card. The `Super` chords are the way to the same
+verbs over ssh and in a `--tty` view.
+
+**`Super+Ctrl+c` opens the palette at the capture group** — `con.conf`'s `capture_menu`, which is
+`kdos-palette --route capture` — because the group has more verbs than a keyboard has chords worth
+spending. `capture.qr` photographs a region, reads a QR code out of it with `zbarimg`, puts the
+text on the clipboard and **removes the picture before it returns**: a QR on a screen is a wifi
+password or a pairing token more often than it is a URL, and one left in `~/Pictures` is that
+secret kept where nobody meant to keep it. Nothing is written under `~/Pictures` on that path at
+all — the picture goes to the runtime directory, which is the session's own and mode 0700.
 
 ## Scripts
 
@@ -1027,6 +1176,20 @@ drawn whole or not at all, inside a third of the bar, because the window list is
 and a long track title that pushed it off an eighty-column screen would be a music player eating a
 task switcher. It is not drawn on the function-key row at all — ten labels and the word `Super`
 already end two columns from the clock. `nowplaying = no` in `con.conf` turns it off.
+
+**A screen recording lights a `•REC` lamp between the pager and the clock**, in `KT_ERR` — the
+urgent slot, because a recording somebody has forgotten is running is a recording of whatever they
+do next. `kdos-record` writes its pid to `$XDG_RUNTIME_DIR/kdos/screencast.pid` while its pipeline
+runs; the bar reads it once a second and **checks the process is still there**, so a marker left by
+a crash is not a lamp nothing can put out. The bullet comes from the glyph table rather than being
+written into the source: the console font is 512 glyphs and carries no `●`, so `KT_G_BULLET` is `•`
+where UTF-8 reaches and `*` where it does not, and the lamp is four columns on every view. It is
+**frozen off under `KDOS_CON_DUMP`**, like the clock and the now-playing line — a golden made on a
+machine that happened to be recording would fail everywhere else.
+
+**That lamp is not the row-wide `RECORDING` banner.** The banner is the keystroke recorder
+(`Super+Shift+r`) and it takes the whole bar, so the two are never on screen at once and cannot be
+read as one thing.
 
 `Super+Shift+v` puts the session clipboard into the focused window — `kvt_term_paste` for a
 terminal, `KCON_OP_CLIP_DATA` for a surface. A view can already hand the session a paste, but a

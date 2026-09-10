@@ -645,6 +645,50 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		break;
 	}
 
+	case KCON_OP_LAYOUT: {
+		/*
+		 * A NAME AND A DIRECTION, and nothing else on the wire. The
+		 * session resolves the name to a file and the file's rows to
+		 * roles con.conf names, so what a peer can ask for here is
+		 * "put back one of this person's own arrangements" and never
+		 * "start this".
+		 */
+		char nbuf[64];
+		int save;
+
+		snprintf(nbuf, sizeof(nbuf), "%s", kcon_get_str(&r));
+		save = (int)kcon_get_u16(&r) != 0;
+		if (r.err || !nbuf[0])
+			break;
+
+		int done = -1;
+
+		/* A SHELL SURFACE ONLY, the rule KCON_OP_RUN keeps. */
+		if (f->kind == KCON_KIND_SHELL && s->hooks.layout)
+			done = s->hooks.layout(f, nbuf, save, s->user);
+
+		KconBuf b = { 0 };
+
+		kcon_put_u16(&b, done >= 0 ? 1 : 0);
+		kcon_put_u16(&b, (uint16_t)(done > 0 ? done : 0));
+		kcon_send(f->conn, KCON_OP_RUN_REPLY, &b);
+		kcon_buf_free(&b);
+		break;
+	}
+
+	case KCON_OP_PICK:
+		/*
+		 * NOTHING ON THE WIRE AND NOTHING BACK. The session draws the
+		 * prompt, reads the click and puts the answer on its own
+		 * clipboard; a reply would mean holding this connection open
+		 * for as long as somebody hesitates.
+		 *
+		 * A SHELL SURFACE ONLY, the rule KCON_OP_RUN keeps.
+		 */
+		if (f->kind == KCON_KIND_SHELL && s->hooks.pick)
+			s->hooks.pick(f, s->user);
+		break;
+
 	case KCON_OP_UNLOCK:
 		/*
 		 * THE ONE MESSAGE THAT UNLOCKS ANYTHING, and only from a

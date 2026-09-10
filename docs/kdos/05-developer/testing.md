@@ -162,9 +162,9 @@ elevated privileges.
 
 Committed reference frames: a surface rendered offscreen and compared byte for byte.
 
-**Ninety frames** across six sizes, covering the shell's front ends, all ten monitor pages plus
-its detail page, the console desktop, the terminal, the cell-level frames, and the six replayed
-terminal recordings.
+**A hundred and sixty-four frames** across six sizes, covering the shell's front ends, all ten
+monitor pages plus its detail page, the console desktop, the terminal, the cell-level frames, and
+the nine replayed terminal recordings.
 
 **One of them is the same surface on the other desktop.** `start-console` is the Start menu with
 `$KDOS_CON` set, which is what a program started inside a console session inherits — and two rows
@@ -183,6 +183,13 @@ writing is a different frame every time it is taken. One of the three holds a **
 has no pixels, so a sprite renders as its fallback in the picture's top-left cell and as blanks
 under the rest, which is exactly what a tty and a view with no pixel library show. What the frame
 asserts is the shape — how many rows the picture took, and where the cursor was left afterwards.
+
+**A chord's effect is goldened by pressing it, not by a flag that imitates it.** `kdos-con --dump`
+takes `--press CHORD`, repeatable, spelled the way `keys.conf` spells it, and each press goes
+through the session's own key handler before the frame is composited. That is what makes the frame
+evidence about the chord: a flag per behaviour would be a second path into the code the key already
+reaches, and it could pass while the key did nothing. A chord this session does not bind is a
+silent no-op, for the same reason a typo in `keys.conf` is one.
 
 **Two sizes minimum for anything with a layout**, because a geometry defect is usually a defect at
 one width. The monitor's pages carry three, including a narrow one that forces its sidebar to

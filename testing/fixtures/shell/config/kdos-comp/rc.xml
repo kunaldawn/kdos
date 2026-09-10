@@ -39,6 +39,17 @@
         <none><action name="Execute" command="foot -e kdos-no-such-program" /></none>
       </action>
     </keybind>
+    <keybind key="W-grave">
+      <action name="ForEach">
+        <query identifier="kdos-scratchpad" />
+        <then>
+          <action name="ToggleOmnipresent" />
+          <action name="Raise" />
+          <action name="Focus" />
+        </then>
+        <none><action name="Execute" command="foot --app-id kdos-scratchpad" /></none>
+      </action>
+    </keybind>
     <keybind key="A-Tab">
       <action name="NextWindow" />
     </keybind>

@@ -215,9 +215,16 @@ kdos_session_once() {
 					case "$_row" in
 						''|'#'*) continue ;;
 					esac
+					# NOGLOB AROUND THE SPLIT, for the
+					# reason /etc/init.d/18_timers.sh gives:
+					# `*` is snooze's own syntax for
+					# "every", and an unguarded split
+					# expands it against the current
+					# directory.
+					set -f
 					set -- $_row
-					shift	# the name; nothing supervises
-						# these, so it labels only
+					set +f
+					shift	# the name; it labels only
 					_spec=""
 					_seen=0
 					while [ $# -gt 0 ]; do
@@ -231,6 +238,28 @@ kdos_session_once() {
 					done
 					[ "$_seen" = 1 ] && [ $# -gt 0 ] || continue
 					command -v "$1" >/dev/null 2>&1 || continue
+					# THE SPEC IS CHECKED FIRST. `snooze -n`
+					# prints the next five times and exits
+					# non-zero on a pattern it will not
+					# accept, so a row it would refuse is
+					# reported by nothing otherwise.
+					# shellcheck disable=SC2086
+					snooze -n $_spec >/dev/null 2>&1 ||
+						continue
+					#
+					# ONE RUN PER LOGIN, AND THAT IS NOT
+					# THE SAME AS THE SYSTEM TABLE. `snooze`
+					# waits for its slot, runs the command
+					# ONCE and exits; the system table's
+					# repetition comes from `supervise`
+					# restarting it, and nothing here may
+					# write a pidfile into /run. A loop
+					# around this would repeat — and would
+					# also outlive the session it belongs
+					# to, because the start scripts re-exec
+					# themselves and there is nothing here
+					# that could find the loop again to
+					# stop it.
 					# shellcheck disable=SC2086
 					snooze $_spec "$@" >/dev/null 2>&1 &
 				done < "$_tf"

@@ -343,6 +343,13 @@ int kb_run_feed(const KbArgv *a, const char *in, size_t n);
  * is right for kdos-checkpass and would make `kdos help --pager` render the
  * help text into nothing. Same reason kb_run_tty exists beside kb_run. */
 int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n);
+/* Fed on stdin AND captured from stdout — a FILTER, which neither of the other
+ * two serve. THE INPUT MUST FIT IN ONE PIPE BUFFER: nothing reads the output
+ * until the whole input is written, so a child that fills its output pipe
+ * before draining its input deadlocks. Feeding a word and reading a picture of
+ * it is the case this is for. */
+int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
+			size_t cap);
 /* Same, but the child INHERITS stdin/stdout/stderr. A package build writes
  * straight to the build log, unbuffered and interleaved, and that is what the
  * per-port logs are. */
@@ -463,6 +470,24 @@ void kb_md5_str(const char *s, char out[33]);
  * in uppercase hex, which is what `g_filename_to_uri()` writes.
  */
 void kb_uri_file(const char *path, char *out, size_t n);
+
+/*
+ * THE OTHER DIRECTION: a `file://` URI back to a path, percent-decoded.
+ *
+ * A STRING THAT IS NOT A URI IS COPIED THROUGH. One surface hands a program a
+ * path and another hands it a URI — `kdos-pick` prints one, a command line
+ * carries the other — and a caller that had to know which it was given is a
+ * caller that will one day be given the other.
+ *
+ * A HOST IS REFUSED, NOT DROPPED. `file://otherbox/etc/passwd` names a file on
+ * another machine; ignoring the host would silently open THIS machine's copy,
+ * which is a different file and not a failure anybody would see. Only an empty
+ * host and `localhost` are here.
+ *
+ * Returns 0 when the URI names another host, decodes to something that is not
+ * an absolute path, or does not fit.
+ */
+int kb_uri_path(const char *uri, char *out, size_t n);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Landlock — unprivileged self-sandboxing. Three syscalls, no library.

@@ -12,13 +12,18 @@
  * on which workspace, and what each one was. What cannot come back is a
  * process — so nothing here replays a command line.
  *
- * A TERMINAL IS REOPENED THROUGH `con.conf`'s OWN `terminal` KEY, and an
- * application through its DESKTOP ENTRY by `app_id`. A state file that named
- * an argv would be a state file that executes one: it is written by a program
- * and read by a program, and anything that can write a person's state
- * directory could then choose what their session starts. Everything in this
- * tree runs through the argument-vector builder for that reason, and a restore
- * is not the place to make an exception.
+ * NO ROW NAMES A COMMAND. A state file that named an argv would be a state
+ * file that executes one: it is written by a program into a directory anything
+ * running as this person can write, so what a row carries is a NAME something
+ * else resolves — `con.conf` for a role or one of this desktop's own surfaces,
+ * the pack store for an application. See `con_layout_resolve()`, which is the
+ * one place that decides, and which a layout reads its rows through too.
+ *
+ * WHICH IS WHY A TERMINAL'S ROW NAMES A ROLE. Every terminal window's app id
+ * is the literal `terminal`, so a row carrying that says a window WAS a
+ * terminal and not which program was in it — and a session restored from one
+ * would come back as a screen of bare shells. A window running the file
+ * manager is written as `files`, and `con.conf` says what fills that.
  * ---------------------------------
  */
 
@@ -110,31 +115,24 @@ static void save_text(const char *name, int row, Win *w)
 	free(txt);
 }
 
-int con_state_save(const char *name)
+/*
+ * THE ROWS, RENDERED. Split out from the save below because a LAYOUT is the
+ * same rows under a different name: one renderer means the two files cannot
+ * drift into two formats, and it is the reason `kdos con layout save` does not
+ * have to reach for the session file at all.
+ *
+ * `name` and `text` are for the per-terminal output files, which only a
+ * session save writes — a layout is an arrangement and not a transcript.
+ */
+int con_state_rows(char *buf, size_t cap, const char *name, int text)
 {
-	char path[512], buf[8192], t[160], a[80];
-	int text = kcon_conf_bool("restore_scrollback", 0);
+	char t[160], a[80];
 	size_t n = 0;
 	int rows = 0;
 
-	if (!con_state_path(name, path, sizeof(path)))
-		return -1;
-
-	/* THE DIRECTORY FIRST, because the per-terminal text files are written
-	 * inside the loop below and the session file only after it — made at
-	 * the end, the first save would write its rows and lose every one of
-	 * those. */
-	char *slash = strrchr(path, '/');
-
-	if (slash) {
-		*slash = '\0';
-		kb_mkdir_p(path);
-		*slash = '/';
-	}
-
-	n += (size_t)snprintf(buf + n, sizeof(buf) - n,
+	n += (size_t)snprintf(buf + n, cap - n,
 			      "# kdos-con session state\n"
-			      "# kind\tworkspace\tx\ty\tw\th\tapp\ttitle\n");
+			      "# kind\tworkspace\tx\ty\tw\th\tapp\tflags\ttitle\n");
 
 	/* THE LIST IS THE STACK, newest first, so it is collected and walked
 	 * back: a restore that opened them in stacking order would leave the
@@ -160,15 +158,47 @@ int con_state_save(const char *name)
 	while (nord--) {
 		Win *w = ord[nord];
 
-		field(a, sizeof(a), w->app_id);
+		/*
+		 * A TERMINAL'S ROW NAMES THE ROLE IT WAS FILLING, when it was
+		 * filling one. Its app id says only that it is a terminal, so
+		 * a row carrying that reopens a bare shell and loses the file
+		 * manager somebody had arranged — and the one thing the row
+		 * must not carry instead is the command line. `files` is a
+		 * name con.conf resolves, which is the same indirection the
+		 * chord that opened it used.
+		 */
+		const char *role = w->kind == WIN_TERM
+			? con_layout_role_of(w->prog) : NULL;
+
+		field(a, sizeof(a), role ? role : w->app_id);
 		field(t, sizeof(t), w->title);
-		if (n + 256 >= sizeof(buf))
+		if (n + 256 >= cap)
 			break;
-		n += (size_t)snprintf(buf + n, sizeof(buf) - n,
-				      "%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\n",
-				      w->kind == WIN_TERM ? "term" : "app",
+		/*
+		 * THE STATE A RECTANGLE CANNOT SAY. A fullscreen window's
+		 * rectangle is the whole grid and a scratchpad's is its
+		 * drop-down shape, so a row carrying only x y w h brings both
+		 * back as ordinary windows the size they happened to be.
+		 * A dash is the empty set, so the column is never empty and
+		 * the one after it is never mistaken for it.
+		 */
+		char fl[8];
+		int nf = 0;
+
+		if (w->full)
+			fl[nf++] = 'f';
+		if (w->sticky)
+			fl[nf++] = 's';
+		if (!nf)
+			fl[nf++] = '-';
+		fl[nf] = '\0';
+
+		n += (size_t)snprintf(buf + n, cap - n,
+				      "%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n",
+				      w->kind == WIN_TERM && !role
+					      ? "term" : "app",
 				      w->workspace, w->geom.x, w->geom.y,
-				      w->geom.w, w->geom.h, a, t);
+				      w->geom.w, w->geom.h, a, fl, t);
 
 		/*
 		 * AND WHAT IT PRINTED, when the key says so. A separate file
@@ -182,6 +212,33 @@ int con_state_save(const char *name)
 		rows++;
 	}
 	buf[n] = '\0';
+	return rows;
+}
+
+int con_state_save(const char *name)
+{
+	char path[512], buf[8192];
+	int rows;
+
+	if (!con_state_path(name, path, sizeof(path)))
+		return -1;
+
+	/* THE DIRECTORY FIRST, because the per-terminal text files are written
+	 * while the rows are rendered and the session file only after — made
+	 * at the end, the first save would write its rows and lose every one
+	 * of those. */
+	char *slash = strrchr(path, '/');
+
+	if (slash) {
+		*slash = '\0';
+		kb_mkdir_p(path);
+		*slash = '/';
+	}
+
+	rows = con_state_rows(buf, sizeof(buf), name,
+			      kcon_conf_bool("restore_scrollback", 0));
+	if (rows < 0)
+		return -1;
 
 	/* ATOMIC, because a session that was killed part-way through writing
 	 * this would be restored from half a file — and the half that survived
@@ -205,6 +262,7 @@ int con_state_save(const char *name)
  */
 static struct {
 	char app[64];
+	char flags[8];
 	int ws, x, y, w, h;
 	int used;
 } pend[CON_STATE_MAX];
@@ -213,7 +271,8 @@ static int npend;
 /* The saved place for an app_id, taken the FIRST time it attaches. A second
  * window of the same application is placed the ordinary way: two rows for one
  * app_id would otherwise both claim the first window. */
-int con_state_take(const char *app_id, int *ws, int *x, int *y, int *w, int *h)
+int con_state_take(const char *app_id, int *ws, int *x, int *y, int *w, int *h,
+		   char *flags, size_t nflags)
 {
 	if (!app_id || !*app_id)
 		return 0;
@@ -221,6 +280,8 @@ int con_state_take(const char *app_id, int *ws, int *x, int *y, int *w, int *h)
 		if (pend[i].used || strcmp(pend[i].app, app_id))
 			continue;
 		pend[i].used = 1;
+		if (flags && nflags)
+			snprintf(flags, nflags, "%s", pend[i].flags);
 		if (ws)
 			*ws = pend[i].ws;
 		if (x)
@@ -236,17 +297,64 @@ int con_state_take(const char *app_id, int *ws, int *x, int *y, int *w, int *h)
 	return 0;
 }
 
-/* A terminal, at the geometry it had. Through `con.conf`'s own `terminal`
- * key: the file says a window WAS a terminal and never which program it ran,
- * so what comes back is this session's terminal and not a command somebody
- * wrote into the state directory. */
+/*
+ * THE FLAGS COLUMN OF A ROW, or "-". Eighth field, after the app id: read by
+ * hand rather than in the scan above so that a row written before the column
+ * existed still parses as a row with no flags rather than as no row at all.
+ */
+void con_state_flags(const char *line, char *out, size_t n)
+{
+	const char *p = line;
+
+	snprintf(out, n, "-");
+	for (int i = 0; i < 7; i++) {
+		p = strchr(p, '\t');
+		if (!p)
+			return;
+		p++;
+	}
+
+	const char *e = strchr(p, '\t');
+	size_t len = e ? (size_t)(e - p) : strlen(p);
+
+	if (!len || len >= n)
+		return;
+	memcpy(out, p, len);
+	out[len] = '\0';
+}
+
+/*
+ * WHAT A RECTANGLE CANNOT SAY, put back. Applied AFTER the placement, because
+ * both of these replace the rectangle rather than adjust it: a fullscreen
+ * window is the whole grid and a scratchpad is its own drop-down shape.
+ */
+void con_state_apply_flags(Win *w, const char *flags)
+{
+	if (!w || !flags)
+		return;
+	for (const char *p = flags; *p; p++) {
+		if (*p == 'f')
+			win_fullscreen(w);
+		else if (*p == 's')
+			win_scratch_mark(w);
+	}
+}
+
+/*
+ * A TERMINAL, AT THE GEOMETRY IT HAD, RUNNING WHAT ITS ROW NAMES.
+ *
+ * `cmd` came out of the one row resolver, so it is either `con.conf`'s own
+ * `terminal` key or the key for the role the row names — never a command line
+ * out of the file. A state file that named an argv would be a state file that
+ * executes one, and it is written by a program into a directory anything
+ * running as this person can write.
+ */
 static void restore_term(const char *name, int row, int ws, int x, int y,
-			 int w, int h)
+			 int w, int h, const char *flags, const char *cmd)
 {
 	char store[512], tp[512];
 	const char *av[16];
-	int n = kxdg_exec_split(kcon_conf_str("terminal", "sh"), NULL, 0,
-				store, sizeof(store), av, 16);
+	int n = kxdg_exec_split(cmd, NULL, 0, store, sizeof(store), av, 16);
 	Win *win;
 
 	if (n <= 0)
@@ -257,6 +365,7 @@ static void restore_term(const char *name, int row, int ws, int x, int y,
 		return;
 	win->workspace = ws;
 	win_place_at(win, x, y, w, h);
+	con_state_apply_flags(win, flags);
 
 	if (!kcon_conf_bool("restore_scrollback", 0))
 		return;
@@ -303,7 +412,7 @@ int con_state_restore(const char *name)
 		return 0;
 
 	for (char *line = text, *nl; line && *line; line = nl) {
-		char kind[16], app[64];
+		char kind[16], app[64], fl[8] = "-";
 		int ws, x, y, w, h;
 
 		nl = strchr(line, '\n');
@@ -316,13 +425,27 @@ int con_state_restore(const char *name)
 			continue;
 		if (w < 1 || h < 1 || ws < 0)
 			continue;
+		/* THE FLAGS COLUMN IS OPTIONAL, read separately rather than
+		 * added to the scan above: a file written before it existed
+		 * still restores, as no flags at all. */
+		con_state_flags(line, fl, sizeof(fl));
 
-		if (!strcmp(kind, "term")) {
-			restore_term(name, opened, ws, x, y, w, h);
+		/* THROUGH THE ONE ROW RESOLVER, so a restored session and a
+		 * loaded layout cannot disagree about what a row means. */
+		const char *cmd = NULL;
+		int what = con_layout_resolve(kind, app, &cmd);
+
+		if (what == CON_ROW_TERM || what == CON_ROW_ROLE) {
+			restore_term(name, opened, ws, x, y, w, h, fl, cmd);
 			opened++;
 			continue;
 		}
-		if (strcmp(kind, "app") || !strcmp(app, "-"))
+		if (what == CON_ROW_SURFACE) {
+			con_spawn_at(cmd, -1);
+			opened++;
+			continue;
+		}
+		if (what != CON_ROW_APP)
 			continue;
 
 		/* THE ENTRY, NOT A COMMAND. `kdos-appbox run` is what "start
@@ -331,6 +454,8 @@ int con_state_restore(const char *name)
 		if (npend < CON_STATE_MAX) {
 			snprintf(pend[npend].app, sizeof(pend[npend].app),
 				 "%s", app);
+			snprintf(pend[npend].flags, sizeof(pend[npend].flags),
+				 "%s", fl);
 			pend[npend].ws = ws;
 			pend[npend].x = x;
 			pend[npend].y = y;

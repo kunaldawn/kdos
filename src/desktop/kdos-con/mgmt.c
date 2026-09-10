@@ -42,6 +42,12 @@ static int listed(const Win *w)
 		return 0;
 	if (w == S.saver || w == S.lock)
 		return 0;
+	/* A HIDDEN WINDOW IS NOT LISTED, which is what makes the scratchpad's
+	 * row absent from the shell's taskbar as well as this session's own.
+	 * A MINIMISED one still is: its row is the way back and a hidden
+	 * window's chord is. */
+	if (w->hidden)
+		return 0;
 	if (w->kind == WIN_SURFACE && w->surf &&
 	    kcon_surface_hidden(w->surf))
 		return 0;
@@ -73,7 +79,13 @@ void mgmt_publish(int force)
 			continue;
 		cur[n].id = w->id;
 		cur[n].flags = flags_of(w);
-		cur[n].workspace = w->workspace;
+		/* A STICKY WINDOW IS PUBLISHED AS BEING WHEREVER THE SCREEN IS.
+		 * The protocol carries one workspace per window and a shell
+		 * files a row under it, so publishing the number this window
+		 * happens to hold would put the scratchpad's row on one
+		 * workspace in the panel a person actually sees and on all of
+		 * them in the session's own bar. */
+		cur[n].workspace = w->sticky ? S.workspace : w->workspace;
 		snprintf(cur[n].title, sizeof(cur[n].title), "%s", w->title);
 		n++;
 	}
@@ -133,9 +145,12 @@ void mgmt_publish(int force)
 
 	unsigned occ = 0;
 
+	/* A sticky window is on no workspace, so it occupies none: a bit set
+	 * for the scratchpad would tell every pager on every panel that the
+	 * workspace it sits on is in use. */
 	for (Win *w = S.wins; w; w = w->next)
-		if (listed(w) && !w->minimised && w->workspace >= 0 &&
-		    w->workspace < 32)
+		if (listed(w) && !w->minimised && !w->sticky &&
+		    w->workspace >= 0 && w->workspace < 32)
 			occ |= 1u << w->workspace;
 
 	if (force || prev_ws != S.workspace || prev_nws != S.nworkspace ||

@@ -5,6 +5,7 @@
  * with no shell installed is still usable rather than a bare grid.
  */
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -170,6 +171,65 @@ static int now_w(void)
 	return w > budget ? 0 : w + 1;
 }
 
+/*
+ * A SCREEN RECORDING IS RUNNING, and the bar is where that is said.
+ *
+ * `kdos-record` writes its pid to `$XDG_RUNTIME_DIR/kdos/screencast.pid` while
+ * its pipeline runs and removes it after; the pid is checked because a marker
+ * left behind by a crash is not a recording, and a lamp nothing can put out is
+ * worse than no lamp. The session speaks no portal and holds no recorder
+ * state — a bar that made those D-Bus calls would be a window manager with an
+ * opinion about screencasts.
+ *
+ * READ AT MOST ONCE A SECOND, like the now-playing line beside it and for the
+ * same reason: `panel_draw()` runs every iteration of a 20 ms poll.
+ *
+ * FROZEN OFF UNDER A DUMP. A golden made on a machine that happened to be
+ * recording would fail everywhere else.
+ */
+static int recording(void)
+{
+	static unsigned long long last;
+	static int on;
+	char path[256], buf[32];
+	const char *rt;
+	unsigned long long now;
+	long v;
+
+	if (getenv("KDOS_CON_DUMP"))
+		return 0;
+
+	now = con_now_ms();
+	if (last && now - last < 1000)
+		return on;
+	last = now ? now : 1;
+
+	on = 0;
+	rt = getenv("XDG_RUNTIME_DIR");
+	if (!rt || !*rt)
+		return 0;
+	snprintf(path, sizeof(path), "%s/kdos/screencast.pid", rt);
+	if (kb_read_file(path, buf, sizeof(buf)) <= 0)
+		return 0;
+	v = strtol(buf, NULL, 10);
+	if (v > 0 && kill((pid_t)v, 0) == 0)
+		on = 1;
+	return on;
+}
+
+/*
+ * How many columns the lamp takes, INCLUDING the space before it, or zero.
+ *
+ * THE BULLET COMES FROM THE GLYPH TABLE. The console font is 512 glyphs and
+ * carries no `\u25cf`; `ktui_glyph[KT_G_BULLET]` is `\u2022` where UTF-8 reaches
+ * and `*` where it does not, so the lamp is one column on every view this
+ * desktop has.
+ */
+static int rec_w(void)
+{
+	return recording() ? 5 : 0;
+}
+
 int panel_have_shell(void)
 {
 	for (Win *w = S.wins; w; w = w->next)
@@ -228,6 +288,12 @@ void panel_draw(void)
 			       " that paste would RUN — press the chord again "
 			       "within five seconds to mean it", KT_BG,
 			       KT_WARN, KT_A_NONE);
+		return;
+	}
+	if (con_picking()) {
+		ktui_draw_text(0, y, S.cols,
+			       " click a cell for its colour   Esc cancel",
+			       KT_BG, KT_ACCENT, KT_A_NONE);
 		return;
 	}
 	if (con_marking()) {
@@ -308,7 +374,7 @@ void panel_draw(void)
 		/* The clock's own width, kept clear. A cell drawn into it
 		 * would be a label the clock overwrites, which is a target a
 		 * person aims at and misses. */
-		int right = S.cols - PANEL_CLOCK_W;
+		int right = S.cols - PANEL_CLOCK_W - rec_w();
 
 		/*
 		 * `Super` ONCE, not ten times. The row has to say which key it
@@ -371,15 +437,22 @@ void panel_draw(void)
 		 * it is drawn nowhere else, cycled past and not hit-testable
 		 * on the desktop, so dropping it from the bar as well would
 		 * leave the chord as the only route to it.
+		 *
+		 * A HIDDEN ONE DOES NOT, and that is the difference between
+		 * the two states: the scratchpad's chord is its way back, so a
+		 * row while it is away would be a second one — and a row on
+		 * every workspace, since it is on none.
 		 */
-		if (w->workspace == S.workspace)
+		if (w->hidden)
+			continue;
+		if (w->sticky || w->workspace == S.workspace)
 			order[n++] = w;
 	}
 
 	/* The window list stops where the pager and the clock begin: a title
 	 * that ran under them would be drawn over and the hit map would name a
 	 * span the eye cannot see. */
-	int reserved = 7 + S.nworkspace * 3 + now_w();
+	int reserved = 7 + S.nworkspace * 3 + now_w() + rec_w();
 
 	for (int i = n - 1; i >= 0 && x < S.cols - reserved - 2; i--) {
 		Win *w = order[i];
@@ -436,14 +509,18 @@ void panel_draw(void)
 	 * wrong for the other.
 	 */
 	int pager_w = S.nworkspace * 3;
-	int px = S.cols - 1 - 6 - pager_w;
+	int px = S.cols - 1 - PANEL_CLOCK_W - rec_w() - pager_w;
 
 	for (int i = 0; i < S.nworkspace && px >= x; i++) {
 		int occupied = 0;
 		char cell[8];
 
 		for (Win *o = S.wins; o; o = o->next)
-			if (o->workspace == i && !o->minimised && !o->panel) {
+			/* A sticky window occupies NO workspace. Counting the
+			 * scratchpad would light every cell in the row and say
+			 * the desk is full when one window is open. */
+			if (o->workspace == i && !o->minimised && !o->panel &&
+			    !o->sticky && !o->hidden) {
 				occupied = 1;
 				break;
 			}
@@ -484,10 +561,29 @@ clock:
 	ktui_draw_text_right(0, y, S.cols - 1, clock, KT_MID, KT_SURFACE,
 			     KT_A_NONE);
 
+	/*
+	 * THE RECORDING LAMP, between the pager and the clock, in KT_ERR. It is
+	 * the urgent slot and this is what it is for: a recording somebody has
+	 * forgotten is running is a recording of whatever they do next.
+	 *
+	 * It is NOT the same thing as the row-wide RECORDING banner above,
+	 * which is the keystroke recorder — that one takes the whole bar, so
+	 * the two are never on screen together and cannot be read as one.
+	 */
+	if (rec_w()) {
+		char lamp[16];
+
+		snprintf(lamp, sizeof(lamp), "%sREC", ktui_glyph[KT_G_BULLET]);
+		ktui_draw_text_right(0, y, S.cols - 1 - PANEL_CLOCK_W, lamp,
+				     KT_ERR, KT_SURFACE, KT_A_NONE);
+	}
+
 	/* Left of the pager, in the clock's own slots: it is the same class of
 	 * ambient text and it follows the accent with everything else. */
 	if (now_w())
-		ktui_draw_text_right(0, y, S.cols - 1 - 6 - S.nworkspace * 3,
+		ktui_draw_text_right(0, y,
+				     S.cols - 1 - PANEL_CLOCK_W - rec_w() -
+					     S.nworkspace * 3,
 				     nowplaying(), KT_MID, KT_SURFACE,
 				     KT_A_NONE);
 	/* Right-aligned, so its span is measured from the right edge rather

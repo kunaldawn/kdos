@@ -188,8 +188,25 @@ void win_place(Win *w, int want_w, int want_h)
 	KwmBox ex[64];
 	int n = 0;
 
+	/*
+	 * WHERE THIS PROGRAM'S WINDOW WAS, IF IT IS REMEMBERED. Here and not at
+	 * the call sites: this is the placement every ORDINARY window goes
+	 * through, while an overlay is placed by win_place_corner() and a
+	 * restored session by win_place_at(), so a menu cannot inherit a
+	 * terminal's rectangle and the session record still wins over the
+	 * memory. Roles, decided by which function a caller reaches for.
+	 */
+	if (geo_recall(w))
+		return;
+
 	for (Win *o = S.wins; o && n < 64; o = o->next) {
-		if (o == w || o->minimised || o->workspace != w->workspace)
+		if (o == w || o->minimised || o->hidden)
+			continue;
+		/* A STICKY WINDOW IS AN OBSTACLE ON EVERY WORKSPACE, because it
+		 * is drawn on every one: asking which workspace it recorded
+		 * would place a new window underneath the scratchpad on all of
+		 * them but the one it happens to name. */
+		if (!o->sticky && o->workspace != w->workspace)
 			continue;
 
 		KwmRect f = win_frame(o);
@@ -475,7 +492,8 @@ Win *win_last_minimised(void)
 	for (Win *w = S.wins; w; w = w->next) {
 		if (!w->minimised || w->panel)
 			continue;
-		if (w->workspace == S.workspace)
+		/* A sticky window is here whichever workspace this is. */
+		if (w->sticky || w->workspace == S.workspace)
 			return w;
 		if (!any)
 			any = w;
@@ -509,11 +527,127 @@ void win_workspace(int ws)
  */
 void win_send(Win *w, int ws)
 {
-	if (!w || w->panel || ws < 0 || ws >= S.nworkspace)
+	/* A WINDOW ON NO WORKSPACE CANNOT BE SENT TO ONE. The scratchpad is on
+	 * all of them, so the chord would record a number nothing reads and
+	 * drop the focus from a window still on the screen. */
+	if (!w || w->panel || w->sticky || ws < 0 || ws >= S.nworkspace)
 		return;
 	w->workspace = ws;
 	if (S.focus == w->id)
 		S.focus = 0;
+}
+
+/*
+ * ── THE SCRATCHPAD ──────────────────────────────────────────────────────
+ *
+ * One window a session may keep over everything, shown and hidden by one
+ * chord, on whatever workspace is being looked at.
+ *
+ * TWO FLAGS AND NOT A FOURTH WINDOW KIND. `sticky` and `hidden` are ordinary
+ * fields any window may carry, so the scratchpad is a window that has been
+ * MARKED rather than a window that was opened differently — which is what
+ * lets the second chord hand the role to something already running, and what
+ * keeps every other rule in this file working on it unchanged.
+ *
+ * HIDDEN IS NOT MINIMISED. A minimise leaves a taskbar row, because the row is
+ * the way back; the scratchpad has no row while it is away and the chord is
+ * the way back. Both states answer the show, so a scratchpad somebody
+ * minimised by hand is not a window that needs two different keys.
+ */
+Win *win_scratch(void)
+{
+	Win *w = S.scratch ? win_find(S.scratch) : NULL;
+
+	if (!w)
+		S.scratch = 0;
+	return w;
+}
+
+/*
+ * THE DROP-DOWN SHAPE: the full width of the work area, the top half of its
+ * height. Applied on every show rather than remembered, because the grid can
+ * be resized while the scratchpad is away and a remembered rectangle would
+ * bring it back partly off the screen — or, on a screen that had shrunk, not
+ * onto it at all.
+ */
+static void scratch_shape(Win *w)
+{
+	KwmRect a = win_workarea();
+	int h = a.h / 2;
+
+	/* A work area too short to halve gives the whole of it: half of three
+	 * rows is a window with no content row at all once the frame is
+	 * taken. */
+	if (h < 2 * CON_FRAME + 1)
+		h = a.h;
+	/* A SHOW ALWAYS PRODUCES A SHAPE. win_place_at refuses a content
+	 * rectangle under one cell, which on a work area three cells across
+	 * would leave the scratchpad wherever it happened to be — visible, and
+	 * in the one place the chord did not put it. */
+	if (a.w < 2 * CON_FRAME + 1 || h < 2 * CON_FRAME + 1) {
+		w->geom = a;
+		win_resized(w);
+		return;
+	}
+	w->tiled = KWM_EDGE_NONE;
+	w->full = 0;
+	/* `geom` is the CONTENT and the frame is one cell on every side, so
+	 * the frame is what spans the width. */
+	win_place_at(w, a.x + CON_FRAME, a.y + CON_FRAME,
+		     a.w - 2 * CON_FRAME, h - 2 * CON_FRAME);
+	w->restore = w->geom;
+}
+
+void win_scratch_show(Win *w)
+{
+	if (!w)
+		return;
+	w->hidden = 0;
+	w->minimised = 0;
+	w->sticky = 1;
+	scratch_shape(w);
+	win_raise(w->id);
+	S.focus = w->id;
+	ktui_draw_invalidate();
+}
+
+void win_scratch_hide(Win *w)
+{
+	if (!w)
+		return;
+	w->hidden = 1;
+	/* The focus cannot stay on a window that is drawn nowhere: the next
+	 * keystroke would go somewhere invisible. The cycle picks whatever is
+	 * on the workspace being looked at, and nothing when it is empty. */
+	if (S.focus == w->id)
+		S.focus = 0;
+	win_cycle(1);
+	ktui_draw_invalidate();
+}
+
+void win_scratch_mark(Win *w)
+{
+	Win *old = win_scratch();
+
+	/* Chrome is not something a person switches to, so it is not something
+	 * they can hand this role to either. */
+	if (!w || w->panel || w->overlay || w->background || w == S.lock ||
+	    w == S.saver)
+		return;
+	if (old && old != w) {
+		/* BACK ONTO THE WORKSPACE BEING LOOKED AT, not the one it was
+		 * on when it was marked: a window that had been sticky was on
+		 * no workspace at all, and one handed back to a workspace
+		 * nobody is looking at has been taken away rather than
+		 * returned. */
+		old->sticky = 0;
+		old->hidden = 0;
+		old->workspace = S.workspace;
+	}
+	S.scratch = w->id;
+	w->sticky = 1;
+	w->hidden = 0;
+	ktui_draw_invalidate();
 }
 
 Win *win_at(int x, int y)
@@ -544,7 +678,12 @@ Win *win_at(int x, int y)
 		if (w->kind == WIN_SURFACE && w->surf &&
 		    kcon_surface_hidden(w->surf))
 			continue;
-		if (w->minimised || w->workspace != S.workspace)
+		/* A hidden window claims no cells either — it is drawn nowhere,
+		 * and a rectangle that swallowed clicks without drawing would
+		 * be a hole in the desktop where the scratchpad last was. */
+		if (w->minimised || w->hidden)
+			continue;
+		if (!w->sticky && w->workspace != S.workspace)
 			continue;
 
 		KwmRect f = win_frame(w);
@@ -567,7 +706,14 @@ Win *win_at(int x, int y)
  */
 static int reachable(const Win *w)
 {
-	if (!w || w->minimised || w->workspace != S.workspace)
+	if (!w || w->minimised || w->hidden)
+		return 0;
+	/* A STICKY WINDOW IS ON NO WORKSPACE AND SO ON EVERY ONE. Asking which
+	 * workspace it is on is the one question that must not be put to it:
+	 * the scratchpad is reached from whichever one a person is looking at,
+	 * and a ring that skipped it there would leave the key as the only way
+	 * to the window it just put on the screen. */
+	if (!w->sticky && w->workspace != S.workspace)
 		return 0;
 	if (w == S.saver || w->overlay || w->background || w->panel)
 		return 0;
@@ -657,16 +803,17 @@ int win_index(const Win *w)
  * window is not in — an arrangement is where the windows are put, and a snap
  * state is a claim about which edges they hold.
  *
- * A FULLSCREEN WINDOW IS LEFT ALONE by both. It was put there on purpose and
- * covers the grid; folding it into a grid of five would be undoing a request
- * nobody withdrew.
+ * A FULLSCREEN WINDOW IS LEFT ALONE by both, and so is the scratchpad. Each
+ * was put there on purpose and holds a shape of its own; folding either into a
+ * grid of five would be undoing a request nobody withdrew, and the drop-down
+ * shape in particular is the whole of what its chord promises.
  */
 static int arrange_set(Win **out, int max)
 {
 	int n = 0;
 
 	for (Win *w = S.wins; w && n < max; w = w->next)
-		if (reachable(w) && !w->full)
+		if (reachable(w) && !w->full && !w->sticky)
 			out[n++] = w;
 	return n;
 }
@@ -910,6 +1057,11 @@ void win_workspace_step(int reverse)
 	for (Win *w = S.wins; w; w = w->next) {
 		if (w->panel || w->overlay || w->background || w == S.saver)
 			continue;
+		/* A sticky window occupies no workspace, so it makes none of
+		 * them a stop: an arrow that landed on an empty workspace
+		 * because the scratchpad was open would step nowhere useful. */
+		if (w->sticky || w->hidden)
+			continue;
 		if (w->workspace >= 0 && w->workspace < n)
 			occupied[w->workspace] = 1;
 	}
@@ -936,10 +1088,32 @@ void win_drop(Win *w)
 	if (!w)
 		return;
 
+	/*
+	 * THE RECTANGLE IS KEPT FIRST, BEFORE THE ROLES BELOW ARE CLEARED.
+	 *
+	 * A window leaves through six paths — a chord, its own client, a
+	 * reaped guest, the garbage collector, the end of the session — and
+	 * this is the one they all funnel into, which is why the record is
+	 * written here and not in win_close(): for three of the four window
+	 * kinds that only ASKS the client to go, and a record written there
+	 * would be written again when the window actually left.
+	 *
+	 * THE ORDER IS THE WHOLE OF IT. What may be remembered is decided by
+	 * role, and the lock and the saver are named by S.lock and S.saver —
+	 * so clearing those first would offer a lock screen's rectangle to the
+	 * next window of the same program.
+	 */
+	geo_record(w);
+
 	if (S.lock == w)
 		S.lock = NULL;
 	if (S.saver == w)
 		S.saver = NULL;
+	/* The scratchpad went with it. Cleared HERE rather than where the
+	 * chord looks, because a window is dropped from six places and only
+	 * one of them is a person asking for it. */
+	if (S.scratch == w->id)
+		S.scratch = 0;
 
 	embed_free(w);
 
@@ -1298,10 +1472,13 @@ void win_draw_all(void)
 			/* A panel is on a workspace of its own — every one of
 			 * them, and so is a layer: a toast that belonged to the
 			 * workspace it was raised on would be invisible to
-			 * somebody who had just switched away from it. */
-			if (w->minimised ||
+			 * somebody who had just switched away from it. A sticky
+			 * window is on every one for the same reason and by the
+			 * same test, and a hidden one on none: it is drawn
+			 * here or it is drawn nowhere. */
+			if (w->minimised || w->hidden ||
 			    (!w->panel && !w->overlay && !w->background &&
-			     w->workspace != S.workspace))
+			     !w->sticky && w->workspace != S.workspace))
 				continue;
 
 			/*
