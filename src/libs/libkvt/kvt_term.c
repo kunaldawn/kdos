@@ -474,6 +474,15 @@ int kvt_term_sync_output(struct kvt_term *t)
 	return t ? kvt_vte_sync_output(t->vte) : 0;
 }
 
+/* See kvt.h. The screen and its scrollback are not touched — what a child left
+ * behind is the modes, and a reset that cleared the window would take the
+ * output somebody is about to read with it. */
+void kvt_term_reset_modes(struct kvt_term *t)
+{
+	if (t)
+		kvt_vte_reset_modes(t->vte);
+}
+
 static unsigned long long kvt_mono_ms(void)
 {
 	struct timespec ts;

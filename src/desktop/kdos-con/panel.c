@@ -14,9 +14,21 @@
 #include "kbase.h"
 #include "con.h"
 
+static int bar_hidden;
+
+int con_bar_hidden(void)
+{
+	return bar_hidden;
+}
+
+/*
+ * ZERO ROWS WHEN IT IS AWAY, and that is the whole of the layout change: the
+ * work area is taken from this, so every window is fitted against a grid a row
+ * taller the moment it answers 0.
+ */
 int panel_rows(void)
 {
-	return 1;
+	return bar_hidden ? 0 : 1;
 }
 
 /*
@@ -52,9 +64,38 @@ static void hit_add(int x0, int x1, int kind, int arg)
  * not a window, so `win_at()` cannot answer this and the caller asks here
  * first whenever the pointer is on it.
  */
+/*
+ * BOTH BARS, OR NEITHER. A session can have this one and a `kdos-shell` panel
+ * docked over it, and a chord that hid one and left the other would mean two
+ * different things on two machines.
+ *
+ * SESSION STATE AND NOT A `kdos toggle` FILE. Nothing outside this process can
+ * act on it, and a bar hidden on a machine somebody walked away from should
+ * come back with the next session rather than stay away for good.
+ */
+void con_bar_toggle(void)
+{
+	bar_hidden = !bar_hidden;
+	for (Win *w = S.wins; w; w = w->next)
+		if (w->panel)
+			w->hidden = bar_hidden;
+	win_refit();
+	ktui_draw_invalidate();
+	/* A CHORD THAT CHANGES THE LAYOUT SAYS SO. The bar going is visible;
+	 * the chord that brings it back is not, and a person who pressed this
+	 * by accident has nothing on the screen to read. */
+	kb_notify("kdos", bar_hidden ? "Taskbar hidden" : "Taskbar back",
+		  bar_hidden ? "the same chord brings it back" : "");
+}
+
 int panel_hit(int x, int y, int *arg)
 {
 	*arg = 0;
+	/* A HIDDEN BAR ANSWERS NOTHING. The hit map is whatever was recorded
+	 * on the last frame that drew, and a map naming spans nobody can see
+	 * is a map that lies. */
+	if (bar_hidden)
+		return PANEL_HIT_NONE;
 	if (y != S.rows - 1)
 		return PANEL_HIT_NONE;
 	for (int i = 0; i < nhits; i++)
@@ -256,7 +297,7 @@ int panel_span_x0(int kind)
 
 void panel_draw(void)
 {
-	if (panel_have_shell())
+	if (bar_hidden || panel_have_shell())
 		return;
 
 	int y = S.rows - 1;
@@ -288,6 +329,12 @@ void panel_draw(void)
 			       " that paste would RUN — press the chord again "
 			       "within five seconds to mean it", KT_BG,
 			       KT_WARN, KT_A_NONE);
+		return;
+	}
+	if (con_dragging()) {
+		ktui_draw_text(0, y, S.cols,
+			       " carrying — let go over a window to drop it   "
+			       "Esc cancel", KT_BG, KT_ACCENT, KT_A_NONE);
 		return;
 	}
 	if (con_picking()) {

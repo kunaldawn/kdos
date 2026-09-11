@@ -76,6 +76,12 @@ nothing is invented here. **`-s` is the missed-run rule**, also `snooze`'s: a ma
 slot runs the job **once** when it wakes, if it wakes within the slack, rather than once per missed
 occurrence. A laptop shut for a fortnight would otherwise run fourteen catch-up jobs at breakfast.
 
+**`-s` covers a machine that was ASLEEP, not one that was OFF.** A `snooze` that has just started
+begins looking one second from now, so a slot that passed before it started is simply the same slot
+next time round, whatever the slack says. `-t FILE` is what reaches back: it starts looking from
+that file's modification time, and the slack then covers the gap. A job that must survive a reboot
+across its slot needs both.
+
 **The command is an argument vector, not a shell line.** No pipe, no redirection, no `&&`: a
 program that must write a file takes a flag naming it, which is why `kdos update check` grew
 `--out`. That is what lets the table be parsed rather than sourced, and it is why a line here
@@ -89,6 +95,15 @@ Your own jobs go in `~/.config/kdos/timers.d/`, in the same shape. Those are sta
 at login and **die with it**: a job writing into your home has no business outliving the login that
 started it, and `ksvc` could not supervise them anyway — its pidfiles are in `/run`, which is
 root's.
+
+**Which means one run per login, and not a schedule.** `snooze` runs its command once and exits;
+the system table repeats only because its supervisor starts it again. A per-user line therefore
+fires at most once a session, which is right for a reminder and is not a nightly job — put that in
+the system table.
+
+**And a command here cannot take an argument with a space in it.** The row is split into words and
+never quoted, so `-- kdos notify "Good morning"` arrives as `"Good` and `morning"`. A program that
+needs a sentence reads it from a file of its own, which is what `kdos remind` does.
 
 ## Networking
 

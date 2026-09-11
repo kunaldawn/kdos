@@ -147,7 +147,11 @@ enum {
 	 * a window can be invisible in both answer the same press.
 	 */
 	CON_ACT_SCRATCH,
-	CON_ACT_SCRATCH_MARK
+	CON_ACT_SCRATCH_MARK,
+	/* Put the bar away, and bring it back. An ACTION and not a command:
+	 * it is this session's own layout and nothing outside the process can
+	 * do it. APPENDED, like every value here. */
+	CON_ACT_BAR
 };
 
 /*
@@ -222,6 +226,25 @@ enum { CON_CMD_MENU = 0, CON_CMD_LAUNCHER, CON_CMD_LOCK, CON_CMD_SAVER,
        /* The whole screen with no rectangle to draw, and the screen into a
         * file. APPENDED, like every id here. */
        CON_CMD_CAPTSCREEN, CON_CMD_RECORD,
+       /*
+        * The two notices and the three reminder verbs. A chord runs ONE
+        * command and cannot compute a string, so what the time is and what the
+        * battery says are `kdos` verbs rather than an argument somebody would
+        * have to write into two configuration files in two syntaxes.
+        * APPENDED, like every id here.
+        */
+       CON_CMD_TIME, CON_CMD_BATTERY,
+       CON_CMD_REMIND, CON_CMD_REMINDLS, CON_CMD_REMINDCLR,
+       /* The notices already on the screen, and the one switch a keyboard
+        * reaches for. APPENDED, like every id here. */
+       CON_CMD_DISMISS, CON_CMD_DISMISSALL, CON_CMD_DND, CON_CMD_UNDISMISS,
+       CON_CMD_AWAKE, CON_CMD_NIGHT,
+       /* The palette opened at the setup group, the way CON_CMD_CAPTMENU
+        * opens it at the capture one. APPENDED, like every id here. */
+       CON_CMD_SETUPMENU,
+       /* The address book, the fifth desk accessory. APPENDED, like every id
+        * here. */
+       CON_CMD_CONTACTS,
        CON_CMD_N };
 
 const char *con_command(int which);
@@ -238,6 +261,20 @@ int con_marking(void);
 /* True while the colour picker is waiting for a click. The taskbar says so and
  * names the way out, for the reason the mark does. */
 int con_picking(void);
+/* True while something is being carried across the session. The taskbar says
+ * so and names the way out, for the reason the mark does. */
+int con_dragging(void);
+
+/*
+ * THE BAR IS AWAY. One switch for both bars this session can have — its own,
+ * and a `kdos-shell` panel docked over it — because a chord that hid one of
+ * them and left the other is a chord whose meaning depends on what is
+ * installed. It is session state and not a `kdos toggle` file: nothing outside
+ * this process can act on it, and a bar hidden on a machine somebody walked
+ * away from should come back with the next session.
+ */
+int con_bar_hidden(void);
+void con_bar_toggle(void);
 /* True while a paste that would execute is waiting to be meant twice. */
 int con_paste_armed(void);
 
@@ -288,6 +325,20 @@ typedef struct Win {
 	 */
 	int sticky;
 	int hidden;
+	/*
+	 * IT ASKED TO OPEN WHERE THE EYE IS, at the size it attached with. A
+	 * terminal application with a fixed shape — a monitor, a mixer — is
+	 * asking to be looked at and dismissed rather than to be one pane
+	 * among others. It is a window like any other once it is open: the
+	 * tiling chord takes it with the rest, and only where it OPENS and
+	 * whether that is remembered differ.
+	 */
+	int floating;
+	/* Its child has gone and the modes it set have been put back. A
+	 * terminal window OUTLIVES its program here — it stays showing how the
+	 * program finished — so the reset happens once, when the death is
+	 * first seen, and not on every pump after it. */
+	int term_reset;
 
 	/*
 	 * THE SELECTION IN THIS TERMINAL, for WIN_TERM only. libkvt decides
@@ -403,6 +454,25 @@ typedef struct {
 	 * is a crash where a stale id is a lookup that returns NULL.
 	 */
 	int scratch;
+
+	/*
+	 * THE FACES AN ATTACHED DISPLAY OFFERED, and which is in force.
+	 *
+	 * THE LIST IS THE DISPLAY'S AND NOT THE SESSION'S. A view is the only
+	 * end with a font stack and it may be at the far end of an ssh link,
+	 * so what a session gathered would be this machine's fonts offered to
+	 * that screen. These are held to hand to a picker and to bound the
+	 * index it sends back; nothing here parses one.
+	 *
+	 * Empty where no attached view rasterises its own glyphs, which is a
+	 * `--tty` view inside somebody else's terminal — the honest answer to
+	 * a picker, and the same one `font_step()` puts on the bar.
+	 */
+	char fonts[KCON_MAX_FONTS][KCON_FONT_NAME];
+	int nfonts, font_cur;
+	/* The shell waiting for a list a view has not answered with yet, or
+	 * NULL. One slot: a person opens one picker. */
+	KconSurface *fonts_for;
 } Session;
 
 extern Session S;
@@ -467,6 +537,9 @@ void con_bell(Win *w);
 void con_paste_win(Win *w, const char *text);
 /* The rectangle a tiled state asks for, maximise included. See windows.c. */
 KwmRect win_tile_rect(unsigned tiled);
+/* Fit every window to the work area as it now is — what a change to the area
+ * itself owes, as against a change to the grid. */
+void win_refit(void);
 Win *win_dir(unsigned dir);
 void win_swap(Win *a, Win *b);
 void win_workspace_step(int reverse);

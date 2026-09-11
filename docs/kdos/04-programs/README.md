@@ -78,7 +78,7 @@ Both are setuid root, and both are deliberately tiny. See
 | `kdos-splash` | The boot splash | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-shot` | Screenshots | [The desktop](../02-user-guide/desktop.md) |
-| `kdos-theme` | Generates the GTK, icon and cursor themes | [Theming](../02-user-guide/theming.md) |
+| `kdos-theme` | Generates the GTK, icon and cursor themes — the tool, not the picker, which is `kdos-style` | [Theming](../02-user-guide/theming.md) |
 | `kdos-sfx`, `kdos-fetch-app`, `kdos-fetch-static` | Small helpers | [The kdos command](kdos-command.md) |
 
 ## Build and development tools
@@ -113,6 +113,7 @@ authoritative list is the name table in its own `main.c`.
 | `kdos-cal` | `kdos-display` | `kdos-keys` | `kdos-teams` |
 | `kdos-saver` | `kdos-about` | `kdos-calc` | `kdos-note` |
 | `kdos-chars` | `kdos-slit` | `kdos-doc` | `kdos-settings` |
+| `kdos-contacts` | | | |
 | `kdos-openwith` | `kdos-audio` | `kdos-net` | `kdos-bt` |
 | `kdos-devices` | `kdos-clip` | `kdos-status` | `kdos-tip` |
 | `kdos-ime` | `kdos-trash` | `kdos-peek` | `kdos-find` |

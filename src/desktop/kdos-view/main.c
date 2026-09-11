@@ -129,6 +129,9 @@ static void usage(FILE *f)
 "  --kms              take a screen: modeset, seat and input of its own\n"
 "  --kms-only         --kms, and a failure to take the screen is an error\n"
 "                     rather than a fall back to this terminal\n"
+"  --card PATH        which DRM device to take, for a machine with more\n"
+"                     than one; without it the first with a connected\n"
+"                     output wins\n"
 "  --tty              draw in this terminal\n"
 "  --shot FILE.png    take one frame and write it as a picture\n"
 "  --crop X,Y,W,H     the part of the grid a shot covers, in cells\n"
@@ -362,6 +365,87 @@ static void sprite_free(uint64_t key, const void *pix, void *user)
  * already a cell in the frame the session sent.
  */
 static int own_screen;
+
+#ifdef KDOS_VIEW_KMS
+/*
+ * THE FACES THIS VIEW LAST OFFERED, and how many. The session sends back an
+ * INDEX into exactly this table, so it is what an index is checked against —
+ * a list rebuilt shorter between the ask and the answer would otherwise be an
+ * index off the end of it.
+ */
+static char font_names[VIEW_FONT_MAX][VIEW_FONT_NAME];
+static int font_nnames;
+
+/*
+ * WEAR THIS FACE AND SAY WHAT THE GRID BECAME.
+ *
+ * The grid is DERIVED — the backend divides the mode by the cell — so a font
+ * with a different cell is a different number of columns and rows, and the
+ * announcement is an ordinary KCON_OP_VIEW_SIZE because that is the same event
+ * as a screen being resized.
+ *
+ * EVERY PICTURE WAS CUT FOR THE OLD CELL and is dropped rather than stretched:
+ * the session resends when it sees the grid move, and a view that scaled what
+ * it held would show one sharp desktop and one blurred one on a machine with
+ * two screens.
+ *
+ * `how` says what becomes of it. FONT_RESET is "back to what this view was
+ * started with", and it REMOVES the state file rather than writing the same
+ * name into it: a person who put the font back has asked for the default, not
+ * for a pin on today's default. FONT_PREVIEW writes nothing at all — a
+ * picker's arrows walk a list and every step is a real font on a real screen,
+ * and a step that persisted would make the last face the highlight passed
+ * over the one the next login comes up in.
+ */
+enum { FONT_PREVIEW = 0, FONT_KEEP, FONT_RESET };
+
+static void font_apply(KconConn *conn, const char *want, int how)
+{
+	char path[512];
+
+	if (kkms_set_font(want && *want ? want : NULL) != 0)
+		return;
+
+	ktui_draw_resize();
+	ktui_sprite_clear();
+	ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+	ktui_draw_invalidate();
+
+	cap_cell_w = kcell_w();
+	cap_cell_h = kcell_h();
+
+	KconBuf sz = { 0 };
+
+	kcon_put_u16(&sz, (uint16_t)ktui_w);
+	kcon_put_u16(&sz, (uint16_t)ktui_h);
+	kcon_put_u16(&sz, (uint16_t)cap_cell_w);
+	kcon_put_u16(&sz, (uint16_t)cap_cell_h);
+	kcon_send(conn, KCON_OP_VIEW_SIZE, &sz);
+	kcon_flush(conn);
+	kcon_buf_free(&sz);
+
+	/* WRITTEN AFTER THE FONT LOADED, never before: a name that fcft
+	 * refuses would otherwise be the name the next login starts with, and
+	 * the session would come up on a screen nobody can read. */
+	if (how == FONT_PREVIEW || !view_font_state_path(path, sizeof(path)))
+		return;
+	if (how == FONT_RESET) {
+		unlink(path);
+		return;
+	}
+
+	char line[VIEW_FONT_NAME + 2], *slash;
+
+	slash = strrchr(path, '/');
+	if (slash) {
+		*slash = '\0';
+		kb_mkdir_p(path);
+		*slash = '/';
+	}
+	snprintf(line, sizeof(line), "%s\n", kkms_font());
+	kb_write_file_atomic(path, line);
+}
+#endif
 
 #ifdef KDOS_VIEW_PIXELS
 typedef struct {
@@ -888,7 +972,7 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 		kcon_rd_init(&b, payload, len);
 
 		int step = (int)(int16_t)kcon_get_u16(&b);
-		char want[192], path[512];
+		char want[192];
 
 		if (b.err || !own_screen)
 			return got;
@@ -897,57 +981,74 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 		else if (!view_font_stepped(kkms_font(), step, want,
 					    sizeof(want)))
 			return got;
-		if (kkms_set_font(want[0] ? want : NULL) != 0)
-			return got;
-
-		ktui_draw_resize();
-		/* Every picture in the table was cut for the old
-		 * cell. They are dropped rather than scaled, and the
-		 * session sends them again when it sees the grid
-		 * move — a view that stretched what it had would show
-		 * one sharp desktop and one blurred one on a machine
-		 * with two screens. */
-		ktui_sprite_clear();
-		ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
-		ktui_draw_invalidate();
-
-		cap_cell_w = kcell_w();
-		cap_cell_h = kcell_h();
-
-		KconBuf sz = { 0 };
-
-		kcon_put_u16(&sz, (uint16_t)ktui_w);
-		kcon_put_u16(&sz, (uint16_t)ktui_h);
-		kcon_put_u16(&sz, (uint16_t)cap_cell_w);
-		kcon_put_u16(&sz, (uint16_t)cap_cell_h);
-		kcon_send(conn, KCON_OP_VIEW_SIZE, &sz);
-		kcon_flush(conn);
-		kcon_buf_free(&sz);
-
-		/* WRITTEN AFTER THE FONT LOADED, never before: a name
-		 * that fcft refuses would otherwise be the name the
-		 * next login starts with, and the session would come
-		 * up on a screen nobody can read. */
-		if (view_font_state_path(path, sizeof(path))) {
-			if (step == 0) {
-				unlink(path);
-			} else {
-				char line[200], *slash;
-
-				slash = strrchr(path, '/');
-				if (slash) {
-					*slash = '\0';
-					kb_mkdir_p(path);
-					*slash = '/';
-				}
-				snprintf(line, sizeof(line), "%s\n",
-					 kkms_font());
-				kb_write_file_atomic(path, line);
-			}
-		}
+		font_apply(conn, want, step == 0 ? FONT_RESET : FONT_KEEP);
 #endif
 		return got;
 	}
+
+	if (op == KCON_OP_VIEW_FONTS) {
+#ifdef KDOS_VIEW_KMS
+		/*
+		 * WHAT THIS DISPLAY CAN RENDER, gathered HERE because this is
+		 * the end with the font stack — and the end that may be on
+		 * another machine, whose fonts are its own.
+		 *
+		 * The list is rebuilt on every ask rather than cached: a font
+		 * installed while the session ran is a font the next opening
+		 * of the picker should offer, and the ask happens when a
+		 * person opens a window, not per frame.
+		 */
+		if (!own_screen)
+			return got;
+
+		int n = view_font_list(kkms_font(), font_names,
+				       VIEW_FONT_MAX);
+		int cur = -1;
+
+		for (int i = 0; i < n; i++)
+			if (!strcmp(font_names[i], kkms_font()))
+				cur = i;
+
+		KconBuf out = { 0 };
+
+		kcon_put_u16(&out, (uint16_t)n);
+		kcon_put_u16(&out, (uint16_t)(int16_t)cur);
+		for (int i = 0; i < n; i++)
+			kcon_put_str(&out, font_names[i]);
+		kcon_send(conn, KCON_OP_VIEW_FONTS, &out);
+		kcon_flush(conn);
+		kcon_buf_free(&out);
+		font_nnames = n;
+#endif
+		return got;
+	}
+
+	if (op == KCON_OP_VIEW_SETFONT) {
+#ifdef KDOS_VIEW_KMS
+		KconRd b;
+
+		kcon_rd_init(&b, payload, len);
+
+		unsigned idx = kcon_get_u16(&b);
+		int keep = (int)kcon_get_u8(&b);
+
+		if (b.err || !own_screen)
+			return got;
+		/*
+		 * 0xffff IS THE ONE IT STARTED WITH, which is what leaving the
+		 * picker asks for. Any other index past the list this view
+		 * sent is refused HERE: the session counts rows it was given
+		 * and cannot know that a rebuild shortened them.
+		 */
+		if (idx == 0xffffu)
+			font_apply(conn, font_base, FONT_RESET);
+		else if ((int)idx < font_nnames)
+			font_apply(conn, font_names[idx],
+				   keep ? FONT_KEEP : FONT_PREVIEW);
+#endif
+		return got;
+	}
+
 
 	if (op == KCON_OP_SPRITE) {
 		take_sprite(payload, len);
@@ -1137,6 +1238,37 @@ static void send_ptr(const KtuiEvent *ev)
 	kcon_buf_free(&b);
 }
 
+#ifdef KDOS_VIEW_KMS
+/*
+ * A FINGER, AND WHAT THIS VIEW'S RECOGNISER MADE OF IT.
+ *
+ * THE GESTURE IS DECIDED HERE AND NOT AT THE SESSION. There is one recogniser
+ * and it lives where the touch device is; a second one at the far end would be
+ * fed a message rather than a device and would disagree the first time a link
+ * was slow. The session is told the verdict.
+ *
+ * The mouse event the recogniser synthesises beside it goes as an ordinary
+ * KCON_OP_PTR, so every surface that has never heard of touch still gets a
+ * click.
+ */
+static void send_touch(const KtuiEvent *ev)
+{
+	if (observe)
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_i32(&b, ev->mx);
+	kcon_put_i32(&b, ev->my);
+	kcon_put_u8(&b, (uint8_t)ev->slot);
+	kcon_put_u8(&b, (uint8_t)ev->phase);
+	kcon_put_u32(&b, ev->ms);
+	kcon_put_u8(&b, (uint8_t)ev->gesture);
+	kcon_send(conn, KCON_OP_TOUCH, &b);
+	kcon_buf_free(&b);
+}
+#endif	/* a view with no screen has no touch device to hear from */
+
 /*
  * SIGHUP is the live retint, the same signal `kdos theme` sends to every
  * long-lived surface. A view holds no window state, but it does hold the
@@ -1181,6 +1313,7 @@ int main(int argc, char **argv)
 	const char *font = getenv("KDOS_CON_FONT");
 	int cols = 0, rows = 0, tty = 0, kms = 0, dump = 0, cast = 0;
 	int kms_only = 0;
+	const char *card = NULL;
 #ifdef KDOS_VIEW_PIXELS
 	/* Only a build that can hold pixels can have a terminal sink. */
 	int tty_pix = 0;
@@ -1202,6 +1335,16 @@ int main(int argc, char **argv)
 		}
 		if (!strcmp(argv[i], "--tty")) {
 			tty = 1;
+			continue;
+		}
+		if (!strcmp(argv[i], "--card") && i + 1 < argc) {
+			/* WHICH DRM DEVICE, for a machine with more than one.
+			 * Without it the sweep takes the first card with a
+			 * connected output, which on a machine with an
+			 * emulated display beside a virtual one is the
+			 * emulated one every time — and that is what made a
+			 * second screen impossible to test. */
+			card = argv[++i];
 			continue;
 		}
 		if (!strcmp(argv[i], "--kms")) {
@@ -1381,7 +1524,7 @@ int main(int argc, char **argv)
 				font = fs_name;
 		}
 
-		if (kkms_init(NULL, font) == 0) {
+		if (kkms_init(NULL, card, font) == 0) {
 			ktui_draw_init();
 
 			/*
@@ -1428,9 +1571,17 @@ int main(int argc, char **argv)
 				kkms_reason());
 			kms = 0;
 			tty = 1;
+			/* WHICH MODE WAS CHOSEN, said on both paths. The KMS
+			 * path names the outputs it took; without this line a
+			 * probe that fell back said only what it could NOT
+			 * do, and a person reading a log could not tell a
+			 * terminal view from a view that never started. */
+			fprintf(stderr,
+				"kdos-view: mode terminal (this terminal's own cells)\n");
 		}
 #else
 		(void)kms_only;
+		(void)card;
 		fprintf(stderr,
 			"kdos-view: this build has no KMS mode (built without libkkms)\n");
 		return 1;
@@ -1742,7 +1893,7 @@ int main(int argc, char **argv)
 #ifdef KDOS_VIEW_KMS
 	if (kms) {
 		for (;;) {
-			struct pollfd p[3];
+			struct pollfd p[4];
 			int n = 0;
 
 			if (g_retint) {
@@ -1762,6 +1913,12 @@ int main(int argc, char **argv)
 			p[n].events = POLLIN;
 			p[n].revents = 0;
 			n++;
+			/* A SCREEN PLUGGED IN IS A DESCRIPTOR LIKE ANY OTHER.
+			 * -1 where there is no monitor, which poll ignores. */
+			p[n].fd = kkms_hotplug_fd();
+			p[n].events = POLLIN;
+			p[n].revents = 0;
+			n++;
 
 			/* A bounded wait even with nothing readable: a seat
 			 * event can arrive with no input, and a VT switch must
@@ -1769,6 +1926,36 @@ int main(int argc, char **argv)
 			 * session is inactive. */
 			poll(p, (nfds_t)n, 20);
 			kkms_pump();
+
+			/*
+			 * A SCREEN ARRIVED OR WENT, and the grid moved with
+			 * it. Announced as an ordinary KCON_OP_VIEW_SIZE for
+			 * the reason a font step is: a different number of
+			 * cells is the same event as a screen being resized,
+			 * and the session already knows how to handle one.
+			 * The pictures go with it — every one was cut for a
+			 * grid that has changed shape.
+			 */
+			if (kkms_hotplug_pump()) {
+				ktui_draw_resize();
+				ktui_sprite_clear();
+				ktui_sprite_budget(16u << 20, kcell_w(),
+						   kcell_h());
+				ktui_draw_invalidate();
+
+				cap_cell_w = kcell_w();
+				cap_cell_h = kcell_h();
+
+				KconBuf sz = { 0 };
+
+				kcon_put_u16(&sz, (uint16_t)ktui_w);
+				kcon_put_u16(&sz, (uint16_t)ktui_h);
+				kcon_put_u16(&sz, (uint16_t)cap_cell_w);
+				kcon_put_u16(&sz, (uint16_t)cap_cell_h);
+				kcon_send(conn, KCON_OP_VIEW_SIZE, &sz);
+				kcon_flush(conn);
+				kcon_buf_free(&sz);
+			}
 
 			if (take_frame(0) < 0)
 				break;
@@ -1811,6 +1998,15 @@ int main(int argc, char **argv)
 					else
 						ktui_draw_cursor(ev.mx, ev.my);
 					send_ptr(&ev);
+				} else if (ev.type == KT_EVT_TOUCH) {
+					/* THE POINTER CELL IS NOT DRAWN HERE.
+					 * The recogniser synthesises a mouse
+					 * event beside the touch and the arm
+					 * above draws it; drawing from both
+					 * would put the cursor at the finger
+					 * and then at the pointer in one
+					 * frame. */
+					send_touch(&ev);
 				}
 			}
 
@@ -1873,6 +2069,21 @@ int main(int argc, char **argv)
 		send_paste();
 
 		if (kcon_conn_dead(conn))
+			break;
+		/*
+		 * AND THE OTHER END OF THE LINK. The socket dying is a session
+		 * that ended; the TERMINAL dying is an `ssh` connection that
+		 * dropped, and the session is still there. Both leave through
+		 * here, so both put the host back — a view that noticed only
+		 * the socket would paint frames into a hung-up pty for as long
+		 * as the session ran.
+		 *
+		 * NOT ON SIGHUP. `kdos theme` sends that signal to every view
+		 * to retint it, so tearing down on it would make an accent
+		 * change end every `--tty` view on the machine. The write
+		 * failing is the fact; the signal is ambiguous.
+		 */
+		if (ktui_term_hungup())
 			break;
 	}
 

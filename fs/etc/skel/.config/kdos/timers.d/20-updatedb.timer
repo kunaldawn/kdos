@@ -14,6 +14,7 @@
 # 03:05, which is neither the update check's 04:17 nor the backup's 03:40: two
 # jobs at the same second on a laptop that has just woken are two jobs
 # competing for one disk. -s 8h is snooze's missed-run rule — once when the
-# machine wakes, not once per missed occurrence.
+# machine WAKES, not once per missed occurrence, and not at all for a machine
+# that was off across the slot; see the README beside this file.
 
 updatedb  -H 3 -M 5 -s 8h  --  kdos-updatedb

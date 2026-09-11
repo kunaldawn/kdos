@@ -897,7 +897,38 @@ con_golden() {
         golden_fail=1
     fi
 }
-con_golden con-desktop-80x24 --dump 80x24 --term "/bin/echo hello"
+#
+# THREE STATES, AT BOTH SIZES. A desktop with nothing on it, a window, and a
+# pair snapped either side — the three shapes every other frame in this file is
+# a variation of, and the ones a change to placement, to the work area or to
+# the bar moves first.
+#
+# BOTH SIZES, because almost every geometry defect this session has shipped was
+# a value that happened to be right at eighty columns: a work area computed
+# from a constant, a title cut to a fixed width, a taskbar that ran out of room
+# for its clock. A frame at one size cannot see any of them.
+#
+# THE EMPTY ONE IS NOT AN EMPTY FILE. It is the bar with no task rows, the
+# clock, the workspace digits and a ground of spaces — which is what says the
+# session composites a desktop rather than merely failing to draw one.
+#
+con_golden con-desktop-80x24 --dump 80x24
+con_golden con-desktop-132x43 --dump 132x43
+con_golden con-window-80x24 --dump 80x24 --term "/bin/echo hello"
+con_golden con-window-132x43 --dump 132x43 --term "/bin/echo hello"
+#
+# THE SNAP IS DRIVEN THROUGH THE CHORDS, so what the frame shows is what the
+# keys do. `Super+Tab` between the two snaps is the assertion that the second
+# window is snapped rather than the first one snapped twice — without it both
+# presses reach whichever window has the focus, and the frame looks almost
+# right.
+#
+con_golden con-snap-80x24 --dump 80x24 \
+    --term "/bin/echo left" --term "/bin/echo right" \
+    --press Super+Left --press Super+Tab --press Super+Right
+con_golden con-snap-132x43 --dump 132x43 \
+    --term "/bin/echo left" --term "/bin/echo right" \
+    --press Super+Left --press Super+Tab --press Super+Right
 con_golden con-two-132x43 --dump 132x43 --term "/bin/echo first" --term "/bin/echo second"
 
 #
@@ -921,6 +952,19 @@ con_golden con-scratch-hidden-80x24 --dump 80x24 --term "/bin/echo hello" \
     --press Super+Alt+grave --press Super+grave
 con_golden con-scratch-80x24 --dump 80x24 --term "/bin/echo hello" \
     --press Super+Alt+grave --press Super+grave --press Super+grave
+
+#
+# THE BAR PUT AWAY, AND WHAT MOVES WITH IT.
+#
+# One frame pins the whole of it: the taskbar row is not drawn, and the window
+# — MAXIMISED, so that it is measured against the work area rather than merely
+# clamped into it — reaches the bottom of the grid. `kwm_fit` fits and does not
+# grow, which is right for a floating window and would prove nothing here: a
+# hide that only stopped drawing leaves a maximised window a row short and a
+# strip of desktop under it.
+#
+con_golden con-nobar-80x24 --dump 80x24 --term "/bin/echo hello" \
+    --press Super+m --press Super+Shift+space
 
 # THE FUNCTION-KEY ROW, which is a con.conf mode rather than a flag — so the
 # golden is driven by pointing XDG_CONFIG_HOME at a config that asks for it.
@@ -2639,12 +2683,85 @@ int main(void)
 		printf("    the state path is not where kdos-view writes it\n");
 		bad = 1;
 	}
+
+	/*
+	 * A FAMILY IS FONTCONFIG'S NAME SYNTAX AND NOT TEXT. Three characters
+	 * mean something in a name — `-` opens a size, `:` opens a property,
+	 * `,` opens an alternate family — and several shipped families carry
+	 * one. A name pasted in verbatim resolves to a DIFFERENT face and the
+	 * screen silently wears something else.
+	 */
+	char esc[192];
+
+	if (!view_font_escape("Lato,Lato Black", esc, sizeof(esc)) ||
+	    strcmp(esc, "Lato\\,Lato Black")) {
+		printf("    a comma was not escaped: \"%s\"\n", esc);
+		bad = 1;
+	}
+	if (!view_font_escape("Go-Mono:x", esc, sizeof(esc)) ||
+	    strcmp(esc, "Go\\-Mono\\:x")) {
+		printf("    a hyphen or a colon was not escaped: \"%s\"\n", esc);
+		bad = 1;
+	}
+
+	/*
+	 * AND THE LIST, against a fixture rather than the host's own fonts: a
+	 * real enumeration differs on every machine, which is the worst shape
+	 * a check can have. What it asserts is the four rules — the first
+	 * alternate is the family, the name is escaped, the size in force is
+	 * carried, and one face is offered once.
+	 */
+	char names[VIEW_FONT_MAX][VIEW_FONT_NAME];
+	FILE *fp = fopen("/tmp/kdos-fontlist-test.txt", "w");
+
+	if (fp) {
+		fputs("DejaVu Sans Mono\n", fp);
+		fputs("Terminus (TTF)\n", fp);
+		fputs("DejaVu Sans Mono\n", fp);	/* the same face twice */
+		fputs("Lato,Lato Black\n", fp);
+		fputs("Go-Mono\n", fp);		/* a hyphen opens a size */
+		fputs("\n", fp);			/* a blank line */
+		fclose(fp);
+		setenv("KDOS_FONT_LIST", "/tmp/kdos-fontlist-test.txt", 1);
+
+		int n = view_font_list("Terminus:pixelsize=32", names,
+				       VIEW_FONT_MAX);
+
+		if (n != 4) {
+			printf("    the list held %d faces, want 4\n", n);
+			bad = 1;
+		} else {
+			if (strcmp(names[0], "DejaVu Sans Mono:pixelsize=32")) {
+				printf("    row 0 is \"%s\"\n", names[0]);
+				bad = 1;
+			}
+			/* THE FIRST ALTERNATE IS THE FAMILY, so the comma and
+			 * everything after it is dropped rather than escaped:
+			 * the rest are aliases of the same file, and listing
+			 * them would offer one face several times. */
+			if (strcmp(names[2], "Lato:pixelsize=32")) {
+				printf("    row 2 is \"%s\"\n", names[2]);
+				bad = 1;
+			}
+			/* A hyphen SURVIVES, escaped: it is part of the family
+			 * and unescaped it would open a size. */
+			if (strcmp(names[3], "Go\\-Mono:pixelsize=32")) {
+				printf("    row 3 is \"%s\"\n", names[3]);
+				bad = 1;
+			}
+		}
+		unsetenv("KDOS_FONT_LIST");
+		remove("/tmp/kdos-fontlist-test.txt");
+	}
 	return bad;
 }
 FONTEOF
 # libkbase comes with it: the state path is that library's to spell, and the
-# driver asserts the path this program actually writes to.
+# driver asserts the path this program actually writes to. libktui is a header
+# path and no source: `view.h` names KtuiBackend in its ttypix block, and
+# nothing in font.c calls the toolkit.
 $CC $STD $SHWARN -D_GNU_SOURCE -Isrc/desktop/kdos-view -Isrc/libs/libkbase \
+    -Isrc/libs/libktui -Isrc/libs/libkcolor \
     -o "$OUT/fontdrv" "$OUT/fontdrv.c" src/desktop/kdos-view/font.c \
     src/libs/libkbase/*.c
 if "$OUT/fontdrv"; then
@@ -2914,6 +3031,189 @@ else
     exit 1
 fi
 
+
+#
+# EVERY CHORD ON ONE DESKTOP HAS ITS TWIN ON THE OTHER, OR A REASON.
+#
+# The two desktops are configured in two syntaxes and the defaults are written
+# twice — `Super+Shift+t` here, `W-S-t` there — because a person who learns a
+# key on one must not have to unlearn it on the other. Nothing enforced that,
+# so a chord added to one file and forgotten in the other was a key that
+# worked on one machine and did nothing on the next, and neither file could
+# say so.
+#
+# Three things this has to get right, each of which alone makes it useless:
+#
+#   - XML COMMENTS COME OUT FIRST. `rc.xml` documents itself with
+#     commented-out bindings, and every one of them would otherwise count as
+#     bound.
+#   - `<default />` IS A BINDING TABLE. It is the first child of <keyboard>,
+#     so labwc's own sixteen binds load beside the file's — reading only the
+#     explicit <keybind> tags reports `Alt+Tab` as console-only, which is
+#     false, and misses `Alt+F4`, which is real.
+#   - THE ONE-SIDED TABLE MUST STILL BE ONE-SIDED. A row whose twin has since
+#     been bound FAILS, so the table cannot rot into an allowlist that passes
+#     by naming everything.
+#
+# The workspace digits are a rule rather than eighteen lines: the console
+# answers a digit directly instead of binding nine actions, so it has no line
+# to print.
+#
+echo "==> a chord means the same thing on both desktops"
+# A SUBSHELL, so the collation this needs is not left set for everything after
+# it: `comm` refuses input its own locale did not sort, and the sorts below are
+# byte order by definition.
+(
+export LC_ALL=C
+KEYSCONF=fs/etc/skel/.config/kdos-con/keys.conf
+DEFB=src/desktop/kdos-comp/include/config/default-bindings.h
+
+cat > "$OUT/chord.awk" <<'AWKEOF'
+function canonkey(k) {
+	if (k == "Page_Up")   return "PageUp"
+	if (k == "Page_Down") return "PageDown"
+	if (k == "Space")     return "space"
+	return k
+}
+function norm(s, sep,   n, i, p, t, mods, key, out) {
+	n = split(s, p, sep); mods = ""; key = ""
+	for (i = 1; i <= n; i++) {
+		t = p[i]
+		if (i < n && (t == "W" || t == "Super")) { mods = mods "W"; continue }
+		if (i < n && (t == "C" || t == "Ctrl"))  { mods = mods "C"; continue }
+		if (i < n && (t == "A" || t == "Alt"))   { mods = mods "A"; continue }
+		if (i < n && (t == "S" || t == "Shift")) { mods = mods "S"; continue }
+		key = t
+	}
+	out = ""
+	if (index(mods, "W")) out = out "Super+"
+	if (index(mods, "C")) out = out "Ctrl+"
+	if (index(mods, "A")) out = out "Alt+"
+	if (index(mods, "S")) out = out "Shift+"
+	return out canonkey(key)
+}
+AWKEOF
+
+# keys.conf: `chord = action`, comments stripped.
+cat "$OUT/chord.awk" > "$OUT/kc.awk"
+cat >> "$OUT/kc.awk" <<'AWKEOF'
+/^[ \t]*#/ { next }
+/=/ {
+	line = $0; sub(/#.*/, "", line)
+	i = index(line, "="); c = substr(line, 1, i - 1)
+	gsub(/^[ \t]+|[ \t]+$/, "", c)
+	if (c != "") print norm(c, "[+]")
+}
+AWKEOF
+awk -f "$OUT/kc.awk" "$KEYSCONF" | sort -u > "$OUT/chords-con.txt"
+
+# rc.xml: <keybind key="…">, XML COMMENTS STRIPPED FIRST — the file documents
+# itself with commented-out bindings and every one would otherwise count.
+cat "$OUT/chord.awk" > "$OUT/rc.awk"
+echo '{ print norm($0, "[-]") }' >> "$OUT/rc.awk"
+awk 'BEGIN { RS = "\0" } { gsub(/<!--([^-]|-[^-]|--[^>])*-->/, ""); print }' fs/etc/skel/.config/kdos-comp/rc.xml \
+    > "$OUT/rc-nocomment.xml"
+{
+    grep -o 'keybind key="[^"]*"' "$OUT/rc-nocomment.xml" | sed 's/.*key="//; s/"//'
+    # <default/> IS THE FIRST CHILD OF <keyboard>, so labwc's built-in table is
+    # loaded BESIDE this file's. Reading only the explicit binds would report
+    # Alt+Tab as bound on one desktop when it is bound on both.
+    grep -q '<default */>' "$OUT/rc-nocomment.xml" &&
+        sed -n 's/^[ \t]*\.binding = "\([^"]*\)".*/\1/p' "$DEFB"
+} | awk -f "$OUT/rc.awk" | sort -u > "$OUT/chords-comp.txt"
+
+# THE CHORDS THAT ARE THE SAME KEY UNDER TWO SPELLINGS. Not exceptions: the
+# desktops bind the same verb and only the key differs, and the reason is on
+# the line.
+cat > "$OUT/chord-pairs.txt" <<'EOF'
+Super+Shift+q	Super+Escape	quit: the console puts Shift on it so close and end-the-desktop are not one slip apart
+EOF
+
+# ONE-SIDED ON PURPOSE, EACH WITH THE ACTION IT IS AND WHY THE OTHER DESKTOP
+# CANNOT HAVE IT. A line here must STILL be one-sided: one that has grown its
+# twin fails below, so the table cannot rot into an allowlist.
+cat > "$OUT/chord-only.txt" <<'EOF'
+con	Ctrl+a	leader: the one chord not on Super, for the views where Super never arrives
+con	Super+Alt+grave	scratchpad-mark: the compositor's scratchpad is an omnipresence flag with no second role to hand over
+con	Super+Shift+m	mark: the session holds the text of every cell; the compositor holds pixels
+con	Super+Shift+v	paste: the other half of mark
+con	Super+Shift+Left	focus-left: labwc has no directional-focus action
+con	Super+Shift+Right	focus-right: labwc has no directional-focus action
+con	Super+Shift+Up	focus-up: labwc has no directional-focus action
+con	Super+Shift+Down	focus-down: labwc has no directional-focus action
+con	Super+Shift+t	tile: labwc has no tile-all action and MoveResize is not the same interaction
+con	Super+F8	tile-fkey: the F-key twin of tile
+con	Super+Alt+t	cascade: labwc has no cascade action
+con	Super+r	rearrange: keyboard move/size, which labwc's MoveResize is not
+con	Super+F9	rearrange-fkey: the F-key twin of rearrange
+con	Super+equal	font-up: the screen font is the console's; under the compositor the font is the client's
+con	Super+minus	font-down: the screen font is the console's
+con	Super+Ctrl+0	font-reset: the screen font is the console's
+con	Super+Shift+r	learn: a script is keys into a window, which only the session sees
+con	Super+Alt+r	play: the other half of learn
+comp	Super+Ctrl+Left	GrowToEdge: the console has no grow action, and nothing there may take this family
+comp	Super+Ctrl+Right	GrowToEdge
+comp	Super+Ctrl+Up	GrowToEdge
+comp	Super+Ctrl+Down	GrowToEdge
+comp	Super+t	ToggleAlwaysOnTop: the console has no always-on-top state
+comp	Super+s	ToggleShade: the console has no shaded state
+comp	Super+o	ToggleOmnipresent: the console's sticky window is the scratchpad and has its own chord
+comp	Alt+space	the client menu: the console draws no per-window menu
+comp	Alt+F2	kdos-run: the console's run box is the palette, on Super+space
+comp	Alt+F4	Close: labwc's own default, kept for the hands that know it; the console has Super+q and one close chord is enough there
+comp	Ctrl+Shift+Escape	kdos-res: the console has Super+Ctrl+t and the three-finger form is a Windows habit a cell desktop does not inherit
+comp	Super+a	kdos-start: labwc's own default; the console's Start is Super+F10 and the palette is Super+space
+comp	Super+comma	GoToDesktop left: the console's workspaces move on Super+PageUp and by digit
+comp	Super+period	GoToDesktop right: the console's workspaces move on Super+PageDown and by digit
+comp	Super+Shift+comma	SendToDesktop left: the console sends with Super+Shift+digit
+comp	Super+Shift+period	SendToDesktop right: the console sends with Super+Shift+digit
+comp	XF86AudioMicMute	libkkms translates nine media keysyms and this is not one of them, and con.h has no mic verb to reach
+comp	XF86Display	libkkms translates no display key, and the console has one screen to switch between
+comp	XF86MonBrightnessUp	libkkms translates no brightness keysym and con.h has no brightness verb
+comp	XF86MonBrightnessDown	libkkms translates no brightness keysym and con.h has no brightness verb
+con	Super+Shift+space	taskbar: the compositor's panel hides only from comp.conf's panel_autohide at start, and kdos-shell has no signal that toggles it while it runs — see known-gaps
+EOF
+
+# THE WORKSPACE DIGITS ARE A RULE, NOT EIGHTEEN LINES. The console answers a
+# digit directly rather than binding nine actions, so it has no line to print
+# and the card says so for itself (chords.c, parse_con_keys).
+DIGITS='^Super[+](Shift[+])?[1-9]$'
+
+comm -23 "$OUT/chords-con.txt" "$OUT/chords-comp.txt" | sed 's/^/con	/'  > "$OUT/chord-oneside.txt"
+comm -13 "$OUT/chords-con.txt" "$OUT/chords-comp.txt" | sed 's/^/comp	/' >> "$OUT/chord-oneside.txt"
+
+# Drop the pairs and the digit rule.
+cut -f1,2 "$OUT/chord-pairs.txt" | tr '\t' '\n' | sort -u > "$OUT/chord-paired.txt"
+awk -F'\t' -v d="$DIGITS" 'BEGIN { while ((getline l < ARGV[1]) > 0) paired[l] = 1; ARGV[1] = "" }
+     $2 in paired { next }
+     $2 ~ d { next }
+     { print }' "$OUT/chord-paired.txt" "$OUT/chord-oneside.txt" > "$OUT/chord-open.txt"
+
+cut -f1,2 "$OUT/chord-only.txt" | sort > "$OUT/chord-only-keys.txt"
+sort "$OUT/chord-open.txt" > "$OUT/chord-open-s.txt"
+
+_gap=$(comm -23 "$OUT/chord-open-s.txt" "$OUT/chord-only-keys.txt")
+_stale=$(comm -13 "$OUT/chord-open-s.txt" "$OUT/chord-only-keys.txt")
+
+if [ -z "$_gap" ] && [ -z "$_stale" ]; then
+    echo "  every chord keys.conf binds has its rc.xml twin, and back"
+    _chordbad=0
+else
+    _chordbad=1
+fi
+[ -n "$_gap" ] && {
+    echo "  CHORDS BOUND ON ONE DESKTOP ONLY:"
+    echo "$_gap" | awk -F'\t' '{ printf "    %-24s bound on the %s and nowhere on the other\n", $2, ($1 == "con" ? "console" : "compositor") }'
+    echo "    bind the twin, or add it to the one-sided table with the reason"
+}
+[ -n "$_stale" ] && {
+    echo "  ONE-SIDED TABLE ROWS THAT ARE NO LONGER ONE-SIDED:"
+    echo "$_stale" | sed 's/^/    /'
+    echo "    the twin exists now — delete the line"
+}
+exit "$_chordbad"
+) || exit 1
+
 #
 # A RUN-OR-RAISE ROW SAYS WHICH PROGRAM IT NEEDS, AND ONLY THOSE ROWS DO.
 #
@@ -3072,6 +3372,13 @@ term_golden() {
     XDG_CONFIG_HOME=/nonexistent-kdos-config \
     XDG_CACHE_HOME=/nonexistent-kdos-cache \
         "$OUT/kdos-term" --dump "$_size" "$@" > "$OUT/$_name.txt" 2>/dev/null
+    # The same flag every other golden here honours, and for the same reason:
+    # a frame that changed on purpose is regenerated and read in the diff.
+    if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
+        cp "$OUT/$_name.txt" "testing/goldens/$_name.txt"
+        echo "  wrote $_name"
+        return 0
+    fi
     if diff -u "testing/goldens/$_name.txt" "$OUT/$_name.txt" \
             > "$OUT/$_name.diff"; then
         echo "  $_name"
@@ -3098,6 +3405,31 @@ case "$KIMG_FLAGS" in
     ;;
 *)
     echo "  term-sixel-44x10 (skipped — no sixel decoder on this host)"
+    ;;
+esac
+
+#
+# THE UNICODE PLACEHOLDERS, which is how a picture reaches a terminal through
+# `tmux`. The image is TRANSMITTED and not placed (`a=t`), and then U+10EEEE
+# cells say where it goes, carrying its id in their foreground colour. Without
+# the substitution those cells are a codepoint no font has and the picture is
+# never drawn at all — so what the golden holds is the same shape a placed
+# picture leaves: the fallback in the top-left cell and blanks under the rest.
+#
+case "$KIMG_FLAGS" in
+*-DKIMG_HAVE_PNG*)
+    term_golden term-kitty-uniph-44x10 44x10 -e /bin/sh -c \
+        'printf "\033_Ga=t,f=100,i=42,q=2;%s\033\\\\" \
+             "$(base64 -w0 testing/fixtures/img/valid.png)"
+         printf "\033[38;2;0;0;42m"
+         for r in 1 2; do
+             for c in 1 2 3 4; do printf "\364\216\273\256"; done
+             printf "\n"
+         done
+         printf "\033[0mafter\n"'
+    ;;
+*)
+    echo "  term-kitty-uniph-44x10 (skipped — no PNG decoder on this host)"
     ;;
 esac
 
@@ -3784,6 +4116,72 @@ rm -rf "$_thumbdir"
 echo "  the name is md5(file://<path>), which is what every reader computes"
 
 #
+# A HOST TERMINAL THAT WENT AWAY, AND THE ONE THING THAT NOTICES.
+#
+# An `ssh` drop hangs up the pty while the session it was showing carries on.
+# Nothing else says so: a write to a hung-up descriptor fails and a read comes
+# back empty, and a loop that checked neither paints frames nobody receives
+# until the session ends — never reaching the exit that puts the terminal back.
+#
+# In a process of ITS OWN, and that is not tidiness: the check has to hand
+# libktui a broken descriptor as its output, and doing that in the harness
+# would take the harness's own stdout with it.
+#
+echo "==> a view notices when its host terminal hangs up"
+cat > "$OUT/hupdrv.c" <<'HUPEOF'
+#include <stdio.h>
+#include <unistd.h>
+#include "ktui.h"
+
+int main(void)
+{
+	int pipefd[2];
+
+	if (pipe(pipefd) != 0)
+		return 2;
+	if (dup2(pipefd[1], 1) < 0)
+		return 2;
+
+	/* THE READER IS STILL THERE FOR THE SET-UP, which writes a palette and
+	 * enters the alternate screen: a terminal that was broken before it was
+	 * entered would say nothing about the case this is for, which is a
+	 * terminal that goes away while it is being drawn on. */
+	ktui_term_init(0);
+	if (ktui_term_hungup()) {
+		fprintf(stderr, "hung up while the reader was still there\n");
+		return 1;
+	}
+
+	/* AND NOW IT IS GONE. A write to a pipe with no reader is EPIPE, the
+	 * same class of failure a hung-up pty gives — the far end has gone and
+	 * no amount of waiting brings it back. SIGPIPE is ignored by
+	 * ktui_term_init(), so the write returns rather than killing this. */
+	close(pipefd[0]);
+	ktui_term_write("hello", 5);
+	ktui_term_flush();
+	if (!ktui_term_hungup()) {
+		fprintf(stderr, "a write to a gone descriptor was not noticed\n");
+		return 1;
+	}
+	/* STICKY. A terminal that has hung up does not come back, and a
+	 * consumer may not look until its next turn round the loop. */
+	if (!ktui_term_hungup()) {
+		fprintf(stderr, "the flag did not stay set\n");
+		return 1;
+	}
+	return 0;
+}
+HUPEOF
+$CC $STD $SHWARN $INC -o "$OUT/hupdrv" "$OUT/hupdrv.c" \
+    src/libs/libktui/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c
+if "$OUT/hupdrv" >/dev/null; then
+    echo "  a write to a descriptor with nothing behind it is a hangup, and it sticks"
+else
+    echo "  the hangup was not noticed"
+    exit 1
+fi
+
+#
 # THE TIMER TABLE'S SPLIT, WHICH IS THE ONE THING IN IT THAT CAN GO QUIETLY
 # WRONG. A row is split by leaving an expansion unquoted — that is how a line
 # becomes an argument vector without a shell — but it also PATHNAME-EXPANDS it,
@@ -3824,6 +4222,209 @@ grep -q "no '--' or no command" "$_tw/out" \
     || { echo "  a row with no -- was skipped silently"; exit 1; }
 rm -rf "$_tw"
 echo "  a star stays a star, and a row with no -- is reported and skipped"
+
+#
+# AND A PER-USER TIMER REPEATS, which for a release it did not.
+#
+# `snooze` waits for its slot, runs the command ONCE and exits. The system
+# table repeats because `ksvc supervise` restarts it; a user cannot write a
+# pidfile into /run, so the per-user table backgrounded a bare `snooze` and a
+# job set for every Monday fired on the Monday somebody happened to log in.
+#
+# Three things this pins, each of which alone would put it back:
+#   - the runner is a LOOP, not a bare background job;
+#   - the loop's pid is written where the NEXT login can find it, or a start
+#     script that re-execs itself adds a second set on top of the first;
+#   - the previous set is stopped CHILD FIRST, because killing the loop alone
+#     leaves the `snooze` it is waiting on running and reparented.
+#
+#
+# THE LONG PRESS HAS TO BE POLLED, and libkkms is where the recogniser is fed.
+#
+# A long press has no event of its own to arrive on: the finger is down and
+# nothing is moving, so the deadline is checked from the idle wait. libkwl does
+# it and libkkms did not, so KT_GEST_LONG — assigned in exactly one place,
+# inside that tick — was unreachable on the console and no amount of holding a
+# finger down produced one.
+#
+# libkkms links drm, input and seat and is not built here, so this is a source
+# check: the call is present, and it is present in the PUMP rather than in the
+# initialiser, which would tick once and never again.
+#
+echo "==> the console's touch recogniser is polled for the long press"
+_ki=src/libs/libkkms/kkms_input.c
+if awk '/^void kkms_input_pump/{p=1} p && /ktui_gesture_tick/{f=1} p && /^}/{if(p==1&&f)exit 0; p=0}
+        END{exit !f}' "$_ki"; then
+    echo "  ktui_gesture_tick is called from the pump"
+else
+    echo "  THE KMS LOOP NEVER TICKS THE RECOGNISER: no long press on the console"
+    exit 1
+fi
+# AND THE CLOCK IS THE ONE THE RECOGNISER WAS FED. libinput's timestamps are
+# CLOCK_MONOTONIC milliseconds; a deadline compared against a different base
+# never expires, and nothing says so.
+grep -q 'CLOCK_MONOTONIC' "$_ki" \
+    || { echo "  the tick is asked with a clock the recogniser was not fed"
+         exit 1; }
+
+echo "==> a per-user timer repeats, and the last login's loops are stopped first"
+_sc=fs/usr/local/lib/kdos/session-common.sh
+_tfail=""
+grep -q 'while :; do' "$_sc" || _tfail="$_tfail no-loop"
+grep -q 'snooze \$_spec "\$@"' "$_sc" || _tfail="$_tfail no-snooze-in-loop"
+grep -q 'echo \$! >> "\$_tpid"' "$_sc" || _tfail="$_tfail no-pidfile"
+grep -q 'pkill -P "\$_p"' "$_sc" || _tfail="$_tfail no-child-kill"
+# THE ORDER IS THE ASSERTION for the last one: the child is killed before the
+# loop, and a file that does them the other way round leaves a snooze behind.
+awk '/pkill -P "\$_p"/{p=NR} /^[[:space:]]*kill "\$_p"/{k=NR}
+     END{exit !(p && k && p < k)}' "$_sc" \
+    || _tfail="$_tfail kill-order"
+if [ -z "$_tfail" ]; then
+    echo "  the runner loops, records its pid, and stops the child first"
+else
+    echo "  THE PER-USER TIMER RUNNER IS BACK TO ONE RUN PER LOGIN:$_tfail"
+    exit 1
+fi
+
+#
+# A TERMINAL PROGRAM BECOMES AN APPLICATION, and the marker is what makes `rm`
+# safe. A slug is a person's word and the same word can name an entry the image
+# shipped, so without `X-KDOS-TUI` this verb would be a way to delete somebody
+# else's application — and the file it writes is in the directory that SHADOWS
+# /usr/share, so a bare slug could take a shipped entry off the menu instead of
+# adding a row beside it.
+#
+echo "==> kdos app tui writes an entry, lists only its own, and removes only its own"
+_tw=$(mktemp -d)
+ln -sf kdos-tools "$OUT/kdos"
+_tapps="$_tw/.local/share/applications"
+# XDG_DATA_HOME AS WELL AS HOME. The writer prefers $XDG_DATA_HOME and a
+# developer's session sets it — a test that pinned only HOME would write into
+# the real one and pass while doing it.
+_tenv="HOME=$_tw XDG_DATA_HOME=$_tw/.local/share"
+env $_tenv "$OUT/kdos" app tui add "Disk usage" ncdu --float --size 90x30 \
+    > "$_tw/add.out" 2>&1
+grep -q '^kdos-tui-disk-usage$' "$_tw/add.out" \
+    || { echo "  add answered: $(cat "$_tw/add.out")"; exit 1; }
+_te="$_tapps/kdos-tui-disk-usage.desktop"
+[ -f "$_te" ] || { echo "  no entry was written"; ls -R "$_tw"; exit 1; }
+grep -qx 'Terminal=true' "$_te" || { echo "  the entry is not a terminal one"; exit 1; }
+grep -qx 'X-KDOS-TUI=true' "$_te" || { echo "  no marker key"; exit 1; }
+grep -qx 'X-KDOS-Float=true' "$_te" || { echo "  --float was not written"; exit 1; }
+grep -qx 'X-KDOS-Size=90x30' "$_te" || { echo "  --size was not written"; exit 1; }
+# THE EXEC IS QUOTED PER FIELD. A quoted path with a space in it comes back
+# quoted, because it goes out through the writer that the reader is the inverse
+# of — concatenation would hand the launcher two words.
+env $_tenv "$OUT/kdos" app tui add "Odd one" '"/opt/my dir/run" -x' >/dev/null 2>&1
+grep -qx 'Exec="/opt/my dir/run" -x' "$_tapps/kdos-tui-odd-one.desktop" \
+    || { echo "  a quoted path was not written back quoted:"
+         grep '^Exec=' "$_tapps/kdos-tui-odd-one.desktop"; exit 1; }
+# AND A PERCENT IS A PERCENT. The command is an argument vector, not an Exec
+# line, so `%` is a literal — doubled, because a single one begins a field code
+# in the file this is written into.
+env $_tenv "$OUT/kdos" app tui add "Percent" 'x 50%' >/dev/null 2>&1
+grep -qx 'Exec=x 50%%' "$_tapps/kdos-tui-percent.desktop" \
+    || { echo "  a literal percent was not doubled:"
+         grep '^Exec=' "$_tapps/kdos-tui-percent.desktop"; exit 1; }
+# A REFUSED SHAPE IS REFUSED. --size is cells and a terminal smaller than 4x2
+# is not one.
+env $_tenv "$OUT/kdos" app tui add "Too small" x --size 2x1 >/dev/null 2>&1 \
+    && { echo "  a 2x1 terminal was accepted"; exit 1; }
+# ONLY ITS OWN, both ways.
+printf '[Desktop Entry]\nType=Application\nName=Foreign\nExec=x\n' \
+    > "$_tapps/kdos-tui-foreign.desktop"
+env $_tenv "$OUT/kdos" app tui ls 2>/dev/null | grep -q 'Foreign' \
+    && { echo "  ls listed an entry it did not write"; exit 1; }
+env $_tenv "$OUT/kdos" app tui rm foreign >/dev/null 2>&1 \
+    && { echo "  rm deleted an entry it did not write"; exit 1; }
+[ -f "$_tapps/kdos-tui-foreign.desktop" ] \
+    || { echo "  the foreign entry was removed anyway"; exit 1; }
+env $_tenv "$OUT/kdos" app tui rm disk-usage >/dev/null 2>&1 \
+    || { echo "  rm refused an entry it did write"; exit 1; }
+[ -f "$_te" ] && { echo "  the entry survived its own rm"; exit 1; }
+rm -rf "$_tw"
+echo "  the marker gates rm, and the Exec is quoted a field at a time"
+
+#
+# A REMINDER IS DELIVERED ONCE, and that is the whole of what can go quietly
+# wrong here. It is armed twice on purpose — once by `kdos remind` because
+# nothing re-reads the per-user table between logins, and again by the next
+# login from the file — so "once" is not a property of the schedule. It is a
+# property of `fire` removing the file before it returns, and of everything
+# else refusing to deliver a reminder that is not there.
+#
+# Two more things this pins: the text is a COMMENT LINE, because a timer row is
+# split into words with no quoting and a sentence cannot survive it; and a
+# reminder with nowhere to appear is NOT spent, or a machine that happened to
+# have no session at the wrong minute eats it.
+#
+echo "==> a reminder is written as a timer row and delivered exactly once"
+_rw=$(mktemp -d)
+mkdir -p "$_rw/bin"
+ln -sf kdos-tools "$OUT/kdos"
+# `snooze` and `gdbus` are stubbed: what is under test is this program's half.
+# The snooze stub records that an arming happened and returns at once — the
+# real one would wait for the slot.
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$REMIND_ARMED"\n' \
+    > "$_rw/bin/snooze"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$REMIND_TOAST"\n' \
+    > "$_rw/bin/gdbus"
+chmod +x "$_rw/bin/snooze" "$_rw/bin/gdbus"
+: > "$_rw/armed"
+: > "$_rw/toast"
+_rt="$_rw/home/.config/kdos/timers.d"
+_renv="HOME=$_rw/home XDG_CONFIG_HOME=$_rw/home/.config REMIND_ARMED=$_rw/armed REMIND_TOAST=$_rw/toast PATH=$_rw/bin:$PATH"
+# shellcheck disable=SC2086
+env $_renv "$OUT/kdos" remind in 90m tea and biscuits > "$_rw/set.out" 2>&1
+grep -q 'tea and biscuits at ' "$_rw/set.out" \
+    || { echo "  setting a reminder said: $(cat "$_rw/set.out")"; exit 1; }
+_rf=$(ls "$_rt" 2>/dev/null | head -1)
+[ -n "$_rf" ] || { echo "  no timer row was written"; exit 1; }
+case "$_rf" in
+*.timer) ;;
+*) echo "  the row is $_rf, which neither timer table globs"; exit 1 ;;
+esac
+# THE TEXT IS THE COMMENT AND THE ROW IS THE JOB.
+head -1 "$_rt/$_rf" | grep -q '^# tea and biscuits$' \
+    || { echo "  the text is not the first comment line"; cat "$_rt/$_rf"; exit 1; }
+grep -q -- '-t .*\.timer' "$_rt/$_rf" \
+    || { echo "  no -t timefile, so a missed slot would never fire"; exit 1; }
+grep -q -- '-- kdos remind fire ' "$_rt/$_rf" \
+    || { echo "  the row does not run the once-only deliverer"; exit 1; }
+# AND IT WAS ARMED NOW, not left for the next login.
+grep -q 'remind fire' "$_rw/armed" \
+    || { echo "  nothing was armed, so it would wait for a re-login"; exit 1; }
+
+_rid=$(printf '%s' "$_rf" | sed 's/^remind-//; s/\.timer$//')
+# NOWHERE TO APPEAR IS NOT DELIVERED.
+# shellcheck disable=SC2086
+( unset DBUS_SESSION_BUS_ADDRESS KDOS_CON; env $_renv "$OUT/kdos" remind fire "$_rid" ) >/dev/null 2>&1
+[ -e "$_rt/$_rf" ] \
+    || { echo "  a reminder with no session to show it in was consumed"; exit 1; }
+[ -s "$_rw/toast" ] \
+    && { echo "  something was raised with no session"; exit 1; }
+# WITH A SESSION: delivered, and the row is gone.
+# shellcheck disable=SC2086
+env $_renv KDOS_CON=/nonexistent "$OUT/kdos" remind fire "$_rid" >/dev/null 2>&1
+grep -q 'tea and biscuits' "$_rw/toast" \
+    || { echo "  the reminder was not raised"; cat "$_rw/toast"; exit 1; }
+[ -e "$_rt/$_rf" ] \
+    && { echo "  the row survived delivery, so it would fire again"; exit 1; }
+# AND THE SECOND ARMING FINDS NOTHING.
+: > "$_rw/toast"
+# shellcheck disable=SC2086
+env $_renv KDOS_CON=/nonexistent "$OUT/kdos" remind fire "$_rid" >/dev/null 2>&1
+[ -s "$_rw/toast" ] \
+    && { echo "  a delivered reminder was delivered again"; exit 1; }
+# A TIME THAT HAS GONE ROLLS FORWARD, and a shape nobody wrote is refused.
+# shellcheck disable=SC2086
+env $_renv "$OUT/kdos" remind in 5x nope >/dev/null 2>&1 \
+    && { echo "  a unit that does not exist was accepted"; exit 1; }
+# shellcheck disable=SC2086
+env $_renv "$OUT/kdos" remind at 99:00 nope >/dev/null 2>&1 \
+    && { echo "  an hour that does not exist was accepted"; exit 1; }
+rm -rf "$_rw"
+echo "  the text is the comment, the row carries -t, and it fires once"
 
 #
 # THE CODE WORD OUT OF WHAT croc PRINTS, which is the one thing in `kdos share`
@@ -5701,7 +6302,7 @@ if pkg-config --exists wayland-client 2>/dev/null && [ -n "$DSCAN" ] &&
     for s in keys teams saver slit doc settings openwith audio \
              start net bt devices notify status tip panel trash peek \
              find pix rec chars disks print timezone users update firewall \
-             netagent backup theme palette; do
+             netagent backup theme palette contacts; do
         [ -f "src/desktop/kdos-shell/$s.c" ] || continue
         case "$s" in
         peek|pix)
@@ -5946,9 +6547,11 @@ int main(void)
 /* Stubs: see above. */
 void sh_strip_field_codes(char *s) { (void)s; }
 void sh_spawn(const char *const argv[]) { (void)argv; }
-int sh_term_argv_in(const char *w, const char *argv[], int n, int max,
+int sh_term_argv_in(const char *w, int flt, const char *size,
+		    const char *argv[], int n, int max,
 		    const char *cmd, char *id, size_t idsz)
-{ (void)w; (void)argv; (void)max; (void)cmd; (void)id; (void)idsz; return n; }
+{ (void)w; (void)flt; (void)size; (void)argv; (void)max; (void)cmd; (void)id;
+  (void)idsz; return n; }
 int kcon_run(const char *sock, const char *const argv[], int at, unsigned f)
 { (void)sock; (void)argv; (void)at; (void)f; return -1; }
 RANKEOF
@@ -5995,6 +6598,74 @@ check_box() {
 
 # Body deliberately unindented: it is a long stretch of assertions that used to
 # be top-level, and reindenting all of it would bury the one thing that changed.
+#
+# EVERY SURFACE ANSWERS THE CONTRACT, AND SAYS SO ON ITS BOTTOM ROW.
+#
+# Wave K's contract is four keys and a line that names them: `F1` where there
+# is a page, `F10` and `Shift+F10` where there is a menu, `Esc` always — and a
+# surface with none of the first three neither advertises nor swallows them,
+# which is the half that makes the row honest rather than decorative.
+#
+# WHAT IS OBSERVABLE IN A FRAME IS THE ROW. The keys themselves are proved
+# against the widget in src/libs/selftest.c, where a KtuiKeys can be driven
+# without a surface; what a golden can say is that the surface DREW the row,
+# and a surface that stopped drawing it is a surface whose keys nobody can
+# find.
+#
+# FURNITURE IS NOT A SURFACE. The taskbar, the tooltip, the savers and the two
+# menus are drawn ON the desktop rather than in a window: a saver closes on any
+# key and a tooltip answers none, so a row naming Esc on either would be a row
+# teaching a key that does nothing. They are named here with that reason rather
+# than skipped by a pattern that would also hide a real surface.
+#
+echo "==> every surface draws the row that names its keys"
+_furniture=" start start-console start-route start-system menu-system tip saver saver-clock saver-fire saver-matrix saver-pipes saver-starfield "
+_norow=""
+for _g in testing/goldens/*-80x24.txt; do
+    _n=$(basename "$_g" -80x24.txt)
+    case "$_n" in con-*|cells-*|res-*|term-*|vt-*|shell*) continue ;; esac
+    case "$_furniture" in *" $_n "*) continue ;; esac
+    # THE ROW ABOVE THE BOTTOM BORDER. A hint is `Key verb`, so the row must
+    # hold at least two words between the frame's own columns — a blank row
+    # there is a surface whose keys nobody can find.
+    _row=$(awk 'NR>1{print p} {p=$0}' "$_g" | tail -1 | sed 's/^.//; s/.$//')
+    case "$_row" in
+    *[A-Za-z]*[[:space:]]*[A-Za-z]*) ;;
+    *) _norow="$_norow $_n" ;;
+    esac
+done
+if [ -z "$_norow" ]; then
+    echo "  every surface's frame carries a row naming its keys"
+else
+    echo "  SURFACES WHOSE BOTTOM ROW NAMES NO KEY:$_norow"
+    golden_fail=1
+fi
+
+#
+# AND THE ROW IS PUSHED THROUGH THE CONTRACT, not written by hand. A surface
+# that drew its own bottom line would be a surface whose Esc verb stopped
+# following the layer it is on — `ktui_esc_verb` says Back where a rung is
+# open and Close where none is, and a hand-written row says one of them for
+# ever.
+#
+# menu.c IS THE ONE FILE THAT HOLDS A KtuiKeys AND DRAWS NO ROW, and its own
+# header says why: a menu answers the keys its shape implies — arrows, Enter,
+# Esc — and "a row is worth a row where a surface answers keys its shape does
+# not imply, which is every other surface here and not this one". Named with
+# that reason rather than skipped by a pattern that would also hide a real one.
+_nokeys=""
+for _f in src/desktop/kdos-shell/*.c; do
+    case "$(basename "$_f")" in menu.c) continue ;; esac
+    grep -q 'KtuiKeys' "$_f" || continue
+    grep -q 'ktui_hint_row(' "$_f" || _nokeys="$_nokeys $(basename "$_f")"
+done
+if [ -z "$_nokeys" ]; then
+    echo "  and every surface holding a KtuiKeys draws it through ktui_hint_row"
+else
+    echo "  SURFACES WITH A KtuiKeys AND NO HINT ROW:$_nokeys"
+    golden_fail=1
+fi
+
 if [ -n "$DUMPCK" ]; then
 "$DUMPCK" cal --dump > "$OUT/dump-cal.txt"
 check_box cal < "$OUT/dump-cal.txt"
@@ -6397,9 +7068,14 @@ fi
 # The socket path is a name and nothing connects to it: a dump draws a menu, it
 # does not launch out of one.
 #
-KDOS_GOLDEN_CON=/nonexistent-kdos-con \
-    golden start-console 80x24 start --dump
-    golden start-console 56x24 start --dump
+# AND AN ENVIRONMENT PREFIX IS SPENT ON ONE COMMAND. `VAR=x cmd` sets it for
+# that command and nothing after it, so a second frame written on the line
+# below is the frame WITHOUT it — the compositor's menu, committed under the
+# console's name. The loop is what makes every size the same frame.
+for _sz in 80x24 56x24 132x43; do
+    KDOS_GOLDEN_CON=/nonexistent-kdos-con \
+        golden start-console "$_sz" start --dump
+done
 
 golden menu-system 80x24  menu system --dump
 golden menu-system 56x24  menu system --dump
@@ -6441,9 +7117,84 @@ fi
 # It also pins the width to the longest scheme name, so an accent added to
 # `kcolor.h` moves this golden — which is the reminder that the window sizes
 # itself from the table rather than from a constant.
+#
+# THE ADDRESS BOOK, AGAINST A LIST BUILT HERE. A dump cannot fork `khard`:
+# neither $PATH nor an address book is fixed for one, and a frame of whoever
+# ran the suite's own contacts is a frame that differs on every machine.
+# `$KDOS_CONTACT_LIST` is the seam every other host-dependent surface uses, and
+# the file is built in $OUT rather than under testing/fixtures/shell — a
+# fixture added there to enrich one surface moves another surface's committed
+# goldens.
+#
+# The rows carry what khard's `--parsable` carries: value, name, type, tab
+# separated. One is longer than its column so the frame proves the name is CUT
+# and the value is not.
+#
+if "$DUMPCK" --have contacts; then
+    printf '%s\t%s\t%s\n' \
+        'ada@example.org'     'Ada Lovelace'                 'home' \
+        '+44 7700 900123'     'Ada Lovelace'                 'cell' \
+        'g.hopper@example.mil' 'Grace Brewster Murray Hopper' 'work' \
+        > "$OUT/contacts.txt"
+    KDOS_CONTACT_LIST="$OUT/contacts.txt" \
+        golden contacts 80x24 contacts --dump
+    # AND THE EMPTY BOOK, which is what a machine that has never run `khard
+    # new` shows. A window that said only "0" would read as a window that
+    # failed to load rather than as an address book nobody has filled.
+    : > "$OUT/contacts-empty.txt"
+    KDOS_CONTACT_LIST="$OUT/contacts-empty.txt" \
+        golden contacts-empty 80x24 contacts --dump
+    if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ] ||
+       grep -q 'khard new' "$GOLD/contacts-empty-80x24.txt" 2>/dev/null; then
+        echo "  an empty book says which program adds a contact"
+    else
+        echo "  THE EMPTY ADDRESS BOOK NAMES NO WAY TO FILL IT"
+        golden_fail=1
+    fi
+fi
+
 if "$DUMPCK" --have theme; then
     golden theme 80x24  theme --dump
     golden theme 132x43 theme --dump
+    #
+    # THE FONT PAGE, AGAINST A LIST BUILT HERE.
+    #
+    # A REAL ENUMERATION IS THE HOST'S FONTS and would differ on every machine
+    # — the image carries one family and a developer's box carries hundreds —
+    # which is the worst shape a reference frame can have. `$KDOS_FONT_LIST` is
+    # the seam every other host-dependent surface already uses, and the file is
+    # built in $OUT rather than under testing/fixtures/shell: a fixture added
+    # there to enrich one surface moves another surface's committed goldens.
+    #
+    # The names carry what a real fontconfig name carries — a family with a
+    # space, one with the escaped punctuation that would otherwise open a size,
+    # and the size key — so the frame proves the column is CUT and the sample
+    # is not.
+    #
+    printf '%s\n' \
+        'Terminus (TTF):size=11' \
+        'DejaVu Sans Mono:size=11' \
+        'Noto Sans Mono CJK JP:size=11' \
+        'Liberation Mono:size=11' \
+        'A Family Whose Name Is Far Too Long To Fit:size=11' \
+        > "$OUT/fontlist.txt"
+    KDOS_FONT_LIST="$OUT/fontlist.txt" \
+        golden theme-font 80x24 theme --page font --dump
+    #
+    # AND THE ANSWER WHERE THERE IS NOTHING TO OFFER, which is a `--tty` view
+    # inside somebody else's terminal: the list is empty and the page says who
+    # owns the font instead of drawing an empty box. The sentence is the one
+    # the CHORD puts on the bar, and a person who pressed `Super+equal` first
+    # must not be told two different things.
+    #
+    golden theme-font-none 80x24 theme --page font --dump
+    if grep -q "owns the font" "$GOLD/theme-font-none-80x24.txt" 2>/dev/null ||
+       [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
+        echo "  the font page names who owns the font when it cannot offer one"
+    else
+        echo "  THE EMPTY FONT PAGE SAYS NOTHING ABOUT WHO OWNS THE FONT"
+        golden_fail=1
+    fi
 fi
 
 # THE PALETTE, WITH A FIXED QUERY. An empty one is a list of nothing in this
@@ -7016,6 +7767,24 @@ else
 fi
 else
     echo "  the front-end dumps and their goldens are skipped with the harness"
+fi
+
+#
+# AND THE VERDICT AGAIN, OUTSIDE THE HARNESS'S OWN BLOCK.
+#
+# The two gates above are inside `if [ -n "$DUMPCK" ]`, because they read the
+# frames that harness produced. Every OTHER golden here is produced whether or
+# not the harness could be built — the session's own `con-*` frames, the
+# terminal's, libkvt's, the resource monitor's — so on a host without Wayland
+# their drift was recorded and never read, and the run said `all good`. A
+# comparison whose answer nothing acts on is a comparison that cannot fail.
+#
+if [ "$golden_fail" != 0 ]; then
+    echo
+    echo "  A golden frame changed. If the change is intended:"
+    echo "      KDOS_GOLDEN_UPDATE=1 testing/selftest.sh"
+    echo "  then read the diff in git before committing it."
+    exit 1
 fi
 
 echo

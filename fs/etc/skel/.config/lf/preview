@@ -14,7 +14,8 @@ case "$(file --mime-type -Lb "$f")" in
         ;;
     inode/directory)
         if command -v eza >/dev/null 2>&1; then
-            eza -l --color=always --group-directories-first -- "$f"
+            eza --icons=never -l --color=always \
+                --group-directories-first -- "$f"
         else
             ls -la --color=always -- "$f"
         fi

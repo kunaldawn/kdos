@@ -321,9 +321,18 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 		 * so a console session that wrapped an entry in it would pick
 		 * the right program and then fail to open a window for it —
 		 * unless the entry asked for one by name, which is what a
-		 * program drawing pictures in the grid does. */
-		kb_argv_add(a, term_named(want));
-		kb_argv_add(a, "-e");
+		 * program drawing pictures in the grid does.
+		 *
+		 * AND A BARE VIRTUAL TERMINAL HAS NEITHER, so the entry runs
+		 * where this process already is: `Ctrl+Alt+F2` is a terminal,
+		 * and wrapping a terminal program in an emulator that cannot
+		 * start is the one outcome worse than not wrapping it. */
+		const char *term = term_named(want);
+
+		if (term) {
+			kb_argv_add(a, term);
+			kb_argv_add(a, "-e");
+		}
 	}
 
 	for (char *w = strtok(buf, " \t"); w; w = strtok(NULL, " \t")) {

@@ -36,7 +36,11 @@
 #include <sys/utsname.h>
 
 #include <stdbool.h>
+#include <time.h>
 
+/* The battery is a file under /sys and libkproc is what reads it — the same
+ * reader the resource monitor uses, so there is one answer and not two. */
+#include "kproc.h"
 #include "kdos-tools.h"
 
 /* Where kdos-cursors installs its artwork. kdos-theme's own CURSOR_ART_DEFAULT
@@ -1800,8 +1804,16 @@ static void write_yazi(const KcolScheme *sc)
 	 * PARTIAL, AND THAT IS THE FORMAT. yazi deserializes `theme.toml`
 	 * OVER its own `theme-dark.toml` preset, key by key, so a file naming
 	 * only what this palette decides leaves the rest of the preset intact
-	 * — the icons, the separators, the file-type rules. A full copy would
-	 * be a copy that goes stale on the next yazi release.
+	 * — the separators and the file-type rules. A full copy would be a
+	 * copy that goes stale on the next yazi release.
+	 *
+	 * THE ICONS ARE THE ONE PART THAT IS EMPTIED RATHER THAN LEFT. The
+	 * preset's `[icon]` is nine hundred Nerd Font codepoints, which are
+	 * private-use and are exactly what the 512-glyph console font cannot
+	 * carry: on `tty1` every one is a blank cell, so a name arrives with a
+	 * hole punched in front of it. Five empty arrays replace five full
+	 * ones, because deserializing OVER means an empty array is an answer
+	 * and an absent key is not.
 	 *
 	 * `#rrggbb`, which is what a flavour writes; a colour NAME here would
 	 * be one of the terminal's sixteen and not this scheme's.
@@ -1913,7 +1925,17 @@ static void write_yazi(const KcolScheme *sc)
 		"active = { fg = \"%s\", bold = true }\n"
 		"\n"
 		"[input]\n"
-		"border = { fg = \"%s\" }\n",
+		"border = { fg = \"%s\" }\n"
+		"\n"
+		"# Nerd Font codepoints the console font cannot carry: five\n"
+		"# empty arrays for five full ones. A person who wants them\n"
+		"# installs a Nerd Font and puts the preset's [icon] back.\n"
+		"[icon]\n"
+		"globs = []\n"
+		"dirs = []\n"
+		"files = []\n"
+		"exts = []\n"
+		"conds = []\n",
 		p, sec, sec,
 		/* FOUR MARKERS AND FOUR COLOURS. The bars say which of copy,
 		 * cut, mark and select a row is in, so two of them sharing a
@@ -5068,10 +5090,137 @@ static int cmd_con(int argc, char **argv)
  * itself, because it links neither libkbase nor sd-bus. A fourth route would
  * be one too many; these three are the three kinds of caller there are.
  */
+/*
+ * WHAT TIME IS IT, AS A TOAST.
+ *
+ * A CHORD CANNOT COMPUTE A STRING. `rc.xml` binds a static command and
+ * `con.conf` names one, so a chord that wanted the time could not be a chord
+ * that formatted it — which is why these are verbs rather than an argument
+ * somebody has to write into two configuration files in two syntaxes.
+ */
+static int notify_time(void)
+{
+	time_t now = time(NULL);
+	struct tm tm;
+	char hhmm[16], date[64];
+
+	localtime_r(&now, &tm);
+	strftime(hhmm, sizeof(hhmm), "%H:%M", &tm);
+	strftime(date, sizeof(date), "%A %e %B %Y", &tm);
+	kb_notify("kdos", hhmm, date);
+	return 0;
+}
+
+/*
+ * AND HOW MUCH CHARGE IS LEFT.
+ *
+ * READ FROM THE KERNEL, NOT FROM `kdos-energyd`. That daemon estimates what a
+ * program is COSTING; it holds no battery state and its socket answers
+ * `ping`, `report` and `report-json` about nothing else. The charge is a file
+ * under /sys, which is what libkproc already reads for the resource monitor —
+ * and one reader means one answer.
+ */
+static int notify_battery(void)
+{
+	KprBattery *b = NULL;
+	int n = kpr_power_list(&b);
+	char sum[64], body[128];
+	int mains = 0, found = 0;
+
+	for (int i = 0; i < n; i++)
+		if (!b[i].is_battery && b[i].online)
+			mains = 1;
+
+	for (int i = 0; i < n; i++) {
+		if (!b[i].is_battery)
+			continue;
+		found = 1;
+		snprintf(sum, sizeof(sum), "Battery %d%%", b[i].capacity);
+		/* HEALTH IS WEAR AND IS A DIFFERENT NUMBER FROM CHARGE: a
+		 * battery reporting 90% can hold 70% of what it held new, and
+		 * a person deciding whether to unplug wants both. */
+		if (b[i].health > 0)
+			snprintf(body, sizeof(body), "%s, %d%% of its "
+				 "original capacity",
+				 b[i].state[0] ? b[i].state : "unknown",
+				 (int)(b[i].health * 100.0 + 0.5));
+		else
+			snprintf(body, sizeof(body), "%s",
+				 b[i].state[0] ? b[i].state : "unknown");
+		break;
+	}
+	if (!found)
+		snprintf(sum, sizeof(sum), "%s",
+			 mains ? "On mains" : "No battery");
+	if (!found)
+		snprintf(body, sizeof(body),
+			 "this machine reports no battery");
+	kpr_power_free(b);
+	kb_notify("kdos", sum, body);
+	return 0;
+}
+
+/*
+ * ONE LINE TO THE CENTRE'S SOCKET, and no second daemon.
+ *
+ * `kdos-notifyd` already holds the toasts, the history and the Do Not Disturb
+ * flag, and already answers a socket in `$XDG_RUNTIME_DIR`. A chord needs a
+ * COMMAND, and this is it: the verb goes down the same socket the centre uses,
+ * so there is one owner of what is on the screen.
+ *
+ * SILENT WHEN NOTHING IS LISTENING. A chord pressed on a machine with no
+ * notification daemon should do nothing, not print an error into a session
+ * that has nowhere to show it.
+ */
+static int notify_say(const char *verb)
+{
+	const char *run = getenv("XDG_RUNTIME_DIR");
+	struct sockaddr_un a = { 0 };
+	char reply[64];
+	int fd;
+
+	if (!run || !*run)
+		return 1;
+	fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (fd < 0)
+		return 1;
+	a.sun_family = AF_UNIX;
+	snprintf(a.sun_path, sizeof(a.sun_path), "%s/kdos-notify.sock", run);
+	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) {
+		close(fd);
+		return 1;
+	}
+	if (write(fd, verb, strlen(verb)) < 0 || write(fd, "\n", 1) < 0) {
+		close(fd);
+		return 1;
+	}
+	/* Read the answer before closing: the daemon writes `ok` and a peer
+	 * that hung up first would leave it writing into a closed pipe. */
+	(void)!read(fd, reply, sizeof(reply));
+	close(fd);
+	return 0;
+}
+
 static int cmd_notify(int argc, char **argv)
 {
+	if (argc >= 1 && !strcmp(argv[0], "--time"))
+		return notify_time();
+	if (argc >= 1 && !strcmp(argv[0], "--battery"))
+		return notify_battery();
+	if (argc >= 1 && !strcmp(argv[0], "--dismiss"))
+		return notify_say("dismiss");
+	if (argc >= 1 && !strcmp(argv[0], "--dismiss-all"))
+		return notify_say("dismiss all");
+	if (argc >= 1 && !strcmp(argv[0], "--raise"))
+		return notify_say("raise");
+	if (argc >= 1 && !strcmp(argv[0], "--dnd"))
+		return notify_say("dnd toggle");
 	if (argc < 1) {
-		fprintf(stderr, "usage: kdos notify <summary> [body]\n");
+		fprintf(stderr,
+			"usage: kdos notify <summary> [body]\n"
+			"       kdos notify --time | --battery\n"
+			"       kdos notify --dismiss | --dismiss-all | "
+			"--raise | --dnd\n");
 		return 2;
 	}
 	kb_notify("kdos", argv[0], argc > 1 ? argv[1] : "");
@@ -5150,6 +5299,8 @@ int kdos_main(int argc, char **argv)
 	 */
 	if (!strcmp(cmd, "share"))
 		return share_main(argc - 1, argv + 1);
+	if (!strcmp(cmd, "remind"))
+		return remind_main(argc - 1, argv + 1);
 
 	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
 		C_0, cmd);

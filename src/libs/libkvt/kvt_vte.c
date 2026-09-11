@@ -1180,6 +1180,48 @@ void kvt_vte_reset(struct kvt_vte *vte)
 	reset_state(vte);
 }
 
+/*
+ * THE MODES A CHILD SET, AND NOTHING ELSE.
+ *
+ * A program killed before it could tidy up leaves its modes behind, and the
+ * next thing in the same window inherits them: bracketed paste turns a paste
+ * into two escape sequences and the text between them, mouse reporting turns
+ * every click into bytes on the shell's line, and a terminal left on the
+ * alternate screen shows a shell nobody can scroll back from.
+ *
+ * NOT `kvt_vte_reset`. That one resets the SCREEN too — the character sets,
+ * the attributes, the whole state — and calling it here would throw away the
+ * scrollback a person is about to want, which is the opposite of tidying up.
+ *
+ * THE ALTERNATE SCREEN IS LEFT THE WAY DECRST 1049 LEAVES IT: flag off, cursor
+ * back where it was saved. A terminal put back to the primary buffer without
+ * its cursor is a shell drawing over whatever was on the screen before.
+ *
+ * THERE IS NO KITTY KEYBOARD MODE HERE TO RESET. This terminal does not
+ * implement that protocol — `CSI > u` is not answered — so a child cannot have
+ * pushed a keyboard mode onto a stack it has no way to reach.
+ */
+KVT_SHL_EXPORT
+void kvt_vte_reset_modes(struct kvt_vte *vte)
+{
+	if (!vte)
+		return;
+
+	vte->bracketed_paste = false;
+	vte->focus_events = false;
+	vte->sync_output = false;
+	vte->mouse_mode = 0;
+	vte->mouse_event = 0;
+	vte->mouse_last_col = 0;
+	vte->mouse_last_row = 0;
+
+	if (kvt_screen_get_flags(vte->con) & KVT_SCREEN_ALTERNATE) {
+		kvt_screen_reset_flags(vte->con, KVT_SCREEN_ALTERNATE);
+		kvt_screen_move_to(vte->con, vte->alt_cursor_x,
+				   vte->alt_cursor_y);
+	}
+}
+
 KVT_SHL_EXPORT
 void kvt_vte_hard_reset(struct kvt_vte *vte)
 {

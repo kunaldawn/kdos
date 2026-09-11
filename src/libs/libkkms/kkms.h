@@ -37,7 +37,13 @@
  * blind. There is no partial success: a device that opened but has no
  * connected output is a failure here, because there is nothing to look at.
  */
-int kkms_init(const char *seat, const char *font);
+/*
+ * `card` NAMES A DRM DEVICE, or NULL to sweep /dev/dri/card0..7 and take the
+ * first with a connected output. The sweep is right on a machine with one
+ * screen and wrong on one with a card that has none — and it is what makes a
+ * virtual device untestable, because the rig's emulated card is always card0.
+ */
+int kkms_init(const char *seat, const char *card, const char *font);
 void kkms_shutdown(void);
 
 /*
@@ -52,6 +58,41 @@ void kkms_shutdown(void);
  */
 int kkms_set_font(const char *font);
 const char *kkms_font(void);
+
+/*
+ * ── more than one screen ────────────────────────────────────────────────
+ *
+ * EVERY CONNECTED CONNECTOR IS LIT, and the grid libktui is told about is all
+ * of them laid edge to edge from the left in connector order. A window dragged
+ * past the right edge of one screen is on the next because there was never a
+ * boundary in the grid to stop at — the cut into screens happens at the paint,
+ * below everything that knows what a window is.
+ *
+ * `kkms_outputs()` is how many; `kkms_output()` fills `out` for one and
+ * returns 1, or returns 0 past the end. The columns are that output's slice of
+ * the shared grid, which is what a surface listing screens shows a person.
+ */
+typedef struct {
+	int width, height;	/* this output's mode, in pixels           */
+	int col, cols, rows;	/* its slice of the shared grid, in cells  */
+	unsigned connector;	/* the DRM connector id, for a name        */
+} KkmsOutput;
+
+int kkms_outputs(void);
+int kkms_output(int i, KkmsOutput *out);
+
+/*
+ * A SCREEN PLUGGED IN OR PULLED OUT, on a monitor of this library's own —
+ * libinput's udev context watches `input` and nothing else, so nothing here
+ * would otherwise ever hear about `drm`.
+ *
+ * `kkms_hotplug_fd()` is a descriptor a caller adds to its poll, or -1 where
+ * there is no monitor. `kkms_hotplug_pump()` drains it and returns 1 when the
+ * GRID MOVED, which the caller announces exactly as it announces a resize —
+ * because that is the same event to everything above this line.
+ */
+int kkms_hotplug_fd(void);
+int kkms_hotplug_pump(void);
 
 /*
  * WHICH STEP FAILED, valid after kkms_init() returns -1 and until the next

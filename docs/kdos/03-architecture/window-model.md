@@ -140,6 +140,17 @@ from the left in list order; a vertical arrangement, an overlap or a deliberate
 gap cannot be said. That is a deliberate narrowing — what people usually want is
 an order — and it is recorded in [Known gaps](../06-reference/known-gaps.md).
 
+**The console means it literally.** `libkkms` takes every connected connector in
+DRM connector order — the kernel's own, stable across a boot, so a layout does
+not rearrange itself depending on which monitor woke up first — and lays their
+modes end to end into one virtual box. The grid the session is told about is
+that box divided by the cell, so **a window dragged past the right edge of one
+screen is on the next** because there was never a boundary in the grid to stop
+at: the cut into screens happens at the paint, below everything that knows what
+a window is. A screen showing fewer rows than the grid has shows the **top** of
+it and is padded, never scaled — every cell is the same size on every screen,
+which is what lets a window keep its shape across the seam.
+
 **Pointer resistance is not in the model.** How a drag feels as it crosses an
 edge — the resist and attract zones — is interaction, and it stays in the
 compositor with its own validator. The two desktops share where an edge *is*,

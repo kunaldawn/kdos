@@ -1,0 +1,24 @@
++= Style ======================================================================+
+|  Accent  Font                                                                |
+| > Terminus (TTF):size=11        AaBbGg 0O1lI {}[]()                          |
+|   DejaVu Sans Mono:size=11      AaBbGg 0O1lI {}[]()                          |
+|   Noto Sans Mono CJK JP:size=1  AaBbGg 0O1lI {}[]()                          |
+|   Liberation Mono:size=11       AaBbGg 0O1lI {}[]()                          |
+|   A Family Whose Name Is Far T  AaBbGg 0O1lI {}[]()                          |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+|                                                                              |
+| ^v preview  Enter keep  Esc back  <> page                                    |
++==============================================================================+

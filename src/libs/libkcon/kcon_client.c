@@ -38,6 +38,27 @@ static struct {
 	 * attach: a resize repeats it. */
 	int corner, margin_x, margin_y;
 	int min_cols, min_rows;
+	/* Asked to open unanchored, where the eye is — kept for the same
+	 * reason as the rest of the attach: a resize repeats it, and an
+	 * attach that contradicted the first would be two answers. */
+	int floating;
+	/* Where a drag is over this surface, and what it is carrying. Kept
+	 * rather than delivered, the way libkwl keeps the compositor's. */
+	int drag_in, drag_x, drag_y;
+	char drag_mime[64];
+
+	/*
+	 * THE FACES THE DISPLAY OFFERED, and which is in force. Gathered by
+	 * the VIEW and relayed by the session, so these are the display's own
+	 * names: they are drawn and indexed into, never parsed here.
+	 *
+	 * Zero until the list is asked for AND the answer has arrived, which
+	 * is some pumps later — a caller re-reads rather than believing the
+	 * first count, the rule the window list keeps for the same reason.
+	 */
+	char fonts[KCON_MAX_FONTS][KCON_FONT_NAME];
+	int nfonts, font_cur;
+
 	/* Close when the keyboard focus goes elsewhere — an overlay's own
 	 * choice, kept here because the surface made it. */
 	int dismiss_on_unfocus;
@@ -234,6 +255,35 @@ static void handle(const KconMsg *m)
 		if (!r.err)
 			push(&ev);
 		break;
+	case KCON_OP_VIEW_FONTS: {
+		/*
+		 * THE LIST THE DISPLAY OFFERED. Stored and not announced: a
+		 * caller re-reads it on its own turn, because an event
+		 * delivered from inside a pump would arrive from whichever of
+		 * the two read paths happened to read the socket.
+		 */
+		int n = (int)kcon_get_u16(&r);
+		int cur = (int)(int16_t)kcon_get_u16(&r);
+
+		if (r.err)
+			break;
+		if (n < 0)
+			n = 0;
+		if (n > KCON_MAX_FONTS)
+			n = KCON_MAX_FONTS;
+		C.nfonts = 0;
+		for (int i = 0; i < n; i++) {
+			const char *one = kcon_get_str(&r);
+
+			if (r.err)
+				break;
+			snprintf(C.fonts[C.nfonts], KCON_FONT_NAME, "%s", one);
+			C.nfonts++;
+		}
+		C.font_cur = cur >= 0 && cur < C.nfonts ? cur : -1;
+		break;
+	}
+
 	case KCON_OP_CLIP_DATA: {
 		/*
 		 * READ AS A BLOB AND NOT THROUGH kcon_get_str, which copies
@@ -248,6 +298,28 @@ static void handle(const KconMsg *m)
 			ktui_paste_push(t, n);
 		break;
 	}
+	/*
+	 * WHERE A DRAG IS, TRACKED AND NOT ANNOUNCED — which is exactly what
+	 * `libkwl` does with the same three on the compositor: `dd_enter`,
+	 * `dd_motion` and `dd_leave` keep the position and accept the offer,
+	 * and only the DROP becomes a KtuiEvent. One event contract on both
+	 * desktops, so a surface written against one works on the other.
+	 */
+	case KCON_OP_DRAG_ENTER:
+		C.drag_x = (int)kcon_get_i32(&r);
+		C.drag_y = (int)kcon_get_i32(&r);
+		snprintf(C.drag_mime, sizeof(C.drag_mime), "%s",
+			 kcon_get_str(&r));
+		C.drag_in = !r.err;
+		break;
+	case KCON_OP_DRAG_MOTION:
+		C.drag_x = (int)kcon_get_i32(&r);
+		C.drag_y = (int)kcon_get_i32(&r);
+		break;
+	case KCON_OP_DRAG_LEAVE:
+		C.drag_in = 0;
+		C.drag_mime[0] = '\0';
+		break;
 	case KCON_OP_DRAG_DROP: {
 		ev.type = KT_EVT_DROP;
 		ev.mx = (int)kcon_get_i32(&r);
@@ -558,12 +630,34 @@ static int cl_caps(void)
 	return KT_CAP_TRUECOLOR | KT_CAP_UTF8 | KT_CAP_MOUSE;
 }
 
+/*
+ * WHERE THIS SURFACE'S CARET IS, out to the session.
+ *
+ * In our OWN cells: the session places it, because only the session knows
+ * where this window sits. Nothing is written to the terminal — this surface's
+ * stdout is not the screen it is drawn on, and an escape sent down it would
+ * move the cursor of whatever is reading that instead.
+ */
+static void cl_caret(int x, int y)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn)
+		return;
+	kcon_put_u16(&b, (uint16_t)(int16_t)x);
+	kcon_put_u16(&b, (uint16_t)(int16_t)y);
+	kcon_send(C.conn, KCON_OP_CARET, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
+}
+
 static const KtuiBackend kcon_backend = {
 	.name = "console",
 	.flush = cl_flush,
 	.poll_event = cl_poll,
 	.size = cl_size,
 	.caps = cl_caps,
+	.caret = cl_caret,
 };
 
 /* ── the display implementation ──────────────────────────────────────── */
@@ -599,6 +693,10 @@ static void put_attach(KconBuf *b, int cols, int rows)
 	kcon_put_u16(b, (uint16_t)(C.margin_y > 0 ? C.margin_y : 0));
 	kcon_put_u16(b, (uint16_t)(C.min_cols > 0 ? C.min_cols : 0));
 	kcon_put_u16(b, (uint16_t)(C.min_rows > 0 ? C.min_rows : 0));
+	/* APPENDED, and read behind kcon_rd_left: a peer that predates it
+	 * sends a shorter message, which is the shape every optional field
+	 * here already has. */
+	kcon_put_u8(b, (uint8_t)(C.floating ? 1 : 0));
 }
 
 static int kcon_init(const KDispConfig *cfg)
@@ -650,6 +748,7 @@ static int kcon_init(const KDispConfig *cfg)
 	C.dismiss_on_unfocus = cfg ? cfg->dismiss_on_unfocus : 0;
 	C.margin_x = cfg ? cfg->margin_x : 0;
 	C.margin_y = cfg ? cfg->margin_y : 0;
+	C.floating = cfg ? cfg->floating : 0;
 	C.min_cols = cfg ? cfg->min_cols : 0;
 	C.min_rows = cfg ? cfg->min_rows : 0;
 	snprintf(C.app_id, sizeof(C.app_id), "%s", cfg && cfg->app_id ? cfg->app_id : "");
@@ -955,6 +1054,56 @@ static void kcon_win_set_state(unsigned id, unsigned flag, int on)
 	kcon_toplevel_state(id, flag, on);
 }
 
+/*
+ * THE SCREEN'S FONT, AS libkdisp ASKS FOR IT.
+ *
+ * The list is the DISPLAY'S: the view gathers it, the session relays it, and
+ * what goes back is an index into it. A surface never sees a fontconfig name
+ * it could act on, which is the point — the display may be on another machine
+ * whose fonts are its own.
+ */
+static void kcon_font_ask(void)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn)
+		return;
+	kcon_send(C.conn, KCON_OP_VIEW_FONTS, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
+}
+
+static int kcon_font_count(void)
+{
+	return C.nfonts;
+}
+
+static int kcon_font_at(int i, char *out, int cap)
+{
+	if (i < 0 || i >= C.nfonts)
+		return 0;
+	snprintf(out, (size_t)cap, "%s", C.fonts[i]);
+	return 1;
+}
+
+static int kcon_font_current(void)
+{
+	return C.font_cur;
+}
+
+static void kcon_font_set(int index, int keep)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn)
+		return;
+	kcon_put_u16(&b, (uint16_t)(int16_t)index);
+	kcon_put_u8(&b, (uint8_t)(keep ? 1 : 0));
+	kcon_send(C.conn, KCON_OP_VIEW_SETFONT, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
+}
+
 const KDispImpl kcon_impl = {
 	.name = "console",
 	.probe = kcon_probe,
@@ -981,6 +1130,11 @@ const KDispImpl kcon_impl = {
 	.win_activate = kcon_win_activate,
 	.win_close = kcon_win_close,
 	.win_set_state = kcon_win_set_state,
+	.font_ask = kcon_font_ask,
+	.font_count = kcon_font_count,
+	.font_at = kcon_font_at,
+	.font_current = kcon_font_current,
+	.font_set = kcon_font_set,
 };
 
 /*

@@ -33,5 +33,7 @@ Icon=audio-x-generic
 Terminal=true
 Categories=AudioVideo;Mixer;Settings;
 Keywords=audio;volume;mixer;pipewire;route;wiremix;
+X-KDOS-Float=true
+X-KDOS-Size=80x20
 ENTRY
 chmod 644 "$PKG/usr/share/applications/wiremix.desktop"

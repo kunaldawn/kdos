@@ -109,5 +109,21 @@ void term_pic_shutdown(void);
  * descriptors and an animating one wake on its clock.
  */
 int term_pic_tick(void);
+/*
+ * THE UNICODE PLACEHOLDERS IN A RENDERED FRAME, TURNED INTO THE PICTURES THEY
+ * NAME.
+ *
+ * `tmux` cannot pass the kitty graphics protocol through, so `yazi` and `timg`
+ * inside one transmit the image and then draw `U+10EEEE` cells where it should
+ * appear, with the image's id in each cell's FOREGROUND COLOUR. Without this
+ * the picture is transmitted, never placed, and every one of those cells is a
+ * codepoint no font has.
+ *
+ * AFTER THE RENDER AND NOT INSIDE IT. libkvt holds no sprites and no store —
+ * it decodes nothing, by rule — so the id is meaningless to it; the map from
+ * an id to the tiles it registered is this program's, and this is where the
+ * two meet.
+ */
+void term_pic_placeholders(KtuiCell *buf, int w, int h);
 
 #endif /* KDOS_TERM_H */

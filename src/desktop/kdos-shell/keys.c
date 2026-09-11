@@ -402,6 +402,21 @@ static int con_section(const char *act, const char **desc)
 							SEC_TOOLS },
 		{ "capture-record", "record the screen to a file, and stop",
 							SEC_TOOLS },
+		{ "time",	"the time and date, as a notice",	SEC_TOOLS },
+		{ "battery",	"what the battery says, as a notice",	SEC_TOOLS },
+		{ "remind",	"remind me — `in 20m tea`",	SEC_TOOLS },
+		{ "remind-ls",	"the reminders still waiting",	SEC_TOOLS },
+		{ "remind-clear", "forget every reminder",	SEC_TOOLS },
+		{ "dismiss",	"put the newest notice away",	SEC_TOOLS },
+		{ "dismiss-all", "put every notice away",	SEC_TOOLS },
+		{ "dnd",	"hold notices back, and let them through",
+							SEC_TOOLS },
+		{ "undismiss",	"bring the last one back",	SEC_TOOLS },
+		{ "stay-awake",	"never lock or blank on idle, or do",
+							SEC_SYSTEM },
+		{ "taskbar",	"put the bar away, and bring it back",
+							SEC_WINDOW },
+		{ "night-light", "warm the palette, and cool it",	SEC_SYSTEM },
 		{ "learn",	"record the keys you type, and stop",	SEC_WINDOW },
 		{ "play",	"type a recorded script back",	SEC_WINDOW },
 		/* The screen's own font, which is the view's and not a
@@ -424,6 +439,7 @@ static int con_section(const char *act, const char **desc)
 		 * a card that read `kdos-bt` would be a card only somebody who
 		 * already knew the answer could use.
 		 */
+		{ "setup-menu",	"every one of them, in one list",	SEC_TOOLS },
 		{ "keys",	"this card",		SEC_TOOLS },
 		{ "audio",	"sound devices and volume",	SEC_TOOLS },
 		{ "net",	"networking",		SEC_TOOLS },
@@ -440,6 +456,7 @@ static int con_section(const char *act, const char **desc)
 		{ "notes",	"the scratch pad",		SEC_TOOLS },
 		{ "clipboard",	"what has been copied",		SEC_TOOLS },
 		{ "characters",	"any character, by its name",	SEC_TOOLS },
+		{ "contacts",	"names, numbers and addresses",	SEC_TOOLS },
 		{ "lock",	"kdos-lock",		SEC_SYSTEM },
 		{ "saver",	"kdos-saver",		SEC_SYSTEM },
 		{ "quit",	"end the session",	SEC_SYSTEM },

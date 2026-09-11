@@ -337,6 +337,7 @@ int sh_mountd_do(int idx, const char *verb, char *out, size_t nout);
 
 int calc_main(int argc, char **argv);		/* kdos-calc     */
 int chars_main(int argc, char **argv);		/* kdos-chars    */
+int contacts_main(int argc, char **argv);	/* kdos-contacts */
 int disks_main(int argc, char **argv);		/* kdos-disks    */
 int print_main(int argc, char **argv);		/* kdos-print    */
 int timezone_main(int argc, char **argv);	/* kdos-time     */
@@ -554,6 +555,8 @@ struct sh_app {
 	int terminal;			/* Terminal=true — run it in one     */
 	char term[24];			/* X-KDOS-Term: the emulator it asked
 					   for, or empty for this session's */
+	int floating;			/* X-KDOS-Float: open unanchored     */
+	char size[16];			/* X-KDOS-Size: COLSxROWS, or empty  */
 	int alien;			/* lives in the appbox — see apps.c  */
 	int uses;			/* launch count, from appusage       */
 	long last;			/* when it was last launched         */
@@ -622,9 +625,17 @@ const char *sh_fav_id(const char *id);
 int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
 		 char *id, size_t idsz);
 
-/* The same, in the terminal a desktop entry ASKED for with `X-KDOS-Term`.
- * `want` is that key, or NULL for the session's own. */
-int sh_term_argv_in(const char *want, const char *argv[], int n, int max,
+/*
+ * The same, in the terminal a desktop entry ASKED for with `X-KDOS-Term`.
+ * `want` is that key, or NULL for the session's own.
+ *
+ * `floating` and `size` are `X-KDOS-Float` and `X-KDOS-Size`, and they are
+ * emitted ONLY WHERE THERE IS ROOM in the caller's argv: a hint dropped is a
+ * window that opens the ordinary way, which is better than a terminal that
+ * does not open because its wrapper would not fit.
+ */
+int sh_term_argv_in(const char *want, int floating, const char *size,
+		    const char *argv[], int n, int max,
 		    const char *cmd, char *id, size_t idsz);
 
 /* Which emulator `X-KDOS-Term` names. A NAME AND NOT A PROGRAM: only the two

@@ -230,7 +230,22 @@ Middle-clicking the badge toggles **do not disturb**, which silences toasts with
 the notification is still recorded and still counted, and the sending application cannot tell the
 difference. An **urgent** notification is shown anyway.
 
-Clicking a toast dismisses it.
+Clicking a toast dismisses it, and so does `Super+x` — the cheapest chord on the keyboard, because a
+toast interrupts. `Super+Shift+x` puts every one away, `Super+Ctrl+x` is do not disturb, and
+`Super+Alt+x` brings the last one back for the press that came a moment too early. **It comes back
+without its buttons**: the notification it came from is closed and its actions belong to the program
+that sent it.
+
+`Super+Ctrl+i` stops the screen locking or blanking on idle, and again lets it.
+`Super+Ctrl+Shift+n` warms the palette — not `Super+Ctrl+n`, which is the scratch pad's and has been
+since this desktop had accessories. `Super+Shift+Space` puts the taskbar away and brings it back;
+every window re-fits against the row it frees, and a docked panel goes with it. That last one is
+**the console desktop's alone** — labwc has no equivalent action, so binding it under the compositor
+would make one chord mean two different things.
+
+Each of the three switches raises a one-line notice saying where it now stands, because two of them
+change nothing you can see and a keystroke answered by nothing is one you cannot tell from a broken
+key.
 
 ## The clipboard
 

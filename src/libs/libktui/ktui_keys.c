@@ -221,6 +221,29 @@ int ktui_keys(KtuiKeys *k, const KtuiEvent *ev)
 			return KTUI_KEY_TAKEN;
 	}
 
+	/*
+	 * A LONG PRESS IS Shift+F10 WITH A FINGER, and it is answered here so
+	 * that every surface with a context pane inherits it rather than each
+	 * of thirty growing a touch path of its own.
+	 *
+	 * AT THE FINGER AND NOT AT THE FOCUS. `ctx_at` answers where the
+	 * KEYBOARD's focus is drawn, which is the right place for a key and
+	 * the wrong one for a finger: a person holding a row expects the menu
+	 * on that row. The finger's own cell is what is used, and `ctx_at` is
+	 * still asked, because a surface that refuses — nothing focused,
+	 * nothing under this — must refuse a finger too.
+	 */
+	if (ev->type == KT_EVT_TOUCH && ev->gesture == KT_GEST_LONG &&
+	    k->menu) {
+		int x = 0, y = 0;
+
+		if (k->ctx_at && k->ctx_at(&x, &y, k->user)) {
+			ktui_menu_open(k->menu, k->ctx_pane, ev->mx, ev->my);
+			return KTUI_KEY_TAKEN;
+		}
+		return KTUI_KEY_PASS;
+	}
+
 	if (ev->type != KT_EVT_KEY)
 		return KTUI_KEY_PASS;
 

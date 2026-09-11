@@ -214,6 +214,13 @@ static int notify_sock_path(char *out, size_t n)
 }
 
 static void open_href(const char *href);
+/* The socket's verbs reach into the stack, which is defined below it: the
+ * commands are answered where the socket is read and the stack is kept where
+ * it is drawn. */
+static void drop_at(int i, uint32_t reason);
+static int wrap_ranges(const char *s, int w, int starts[BODY_LINES],
+		       int lens[BODY_LINES]);
+static int64_t now_ms(void);
 
 static void serve_client(int c)
 {
@@ -256,6 +263,59 @@ static void serve_client(int c)
 		if (i >= 0 && i < nhist) {
 			memmove(&hist[i], &hist[i + 1],
 				(size_t)(nhist - i - 1) * sizeof(hist[0]));
+			nhist--;
+			if (unseen > nhist)
+				unseen = nhist;
+		}
+		(void)!write(c, "ok\n", 3);
+	} else if (!strcmp(buf, "dismiss")) {
+		/* THE NEWEST, which is the one a chord means: the stack is
+		 * newest-last and the newest is the one that just interrupted
+		 * whatever was being done. Reason 2 — dismissed by the user —
+		 * so a client waiting on NotificationClosed is told the truth
+		 * about why. */
+		if (ntoasts)
+			drop_at(ntoasts - 1, 2);
+		(void)!write(c, "ok\n", 3);
+	} else if (!strcmp(buf, "dismiss all")) {
+		while (ntoasts)
+			drop_at(ntoasts - 1, 2);
+		(void)!write(c, "ok\n", 3);
+	} else if (!strcmp(buf, "raise")) {
+		/*
+		 * THE LAST ONE DISMISSED, BACK ON THE SCREEN — the undo for a
+		 * chord pressed a moment too early.
+		 *
+		 * TAKEN OUT OF THE HISTORY, not copied from it: a notification
+		 * is on the screen or it is in the centre and never both, or
+		 * dismissing it again would file a second copy of one thing.
+		 *
+		 * AND IT COMES BACK WITHOUT ITS BUTTONS. The notification it
+		 * came from is closed and its actions are the client's — a
+		 * button pressed here would fire a verb nothing is waiting
+		 * for. The markup styling is gone for the same reason it was
+		 * never kept: the centre stores what a notification SAID.
+		 */
+		if (nhist) {
+			struct hentry *h = &hist[nhist - 1];
+			struct toast *t;
+			int st_[BODY_LINES], ln_[BODY_LINES];
+
+			if (ntoasts == MAX_TOASTS)
+				drop_at(0, 1);
+			t = &toasts[ntoasts++];
+			memset(t, 0, sizeof(*t));
+			t->id = next_id++;
+			snprintf(t->app, sizeof(t->app), "%s", h->app);
+			snprintf(t->summary, sizeof(t->summary), "%s",
+				 h->summary);
+			snprintf(t->body, sizeof(t->body), "%s", h->body);
+			snprintf(t->href, sizeof(t->href), "%s", h->href);
+			t->nlinks = h->href[0] ? 1 : 0;
+			t->body_rows = t->body[0]
+				? wrap_ranges(t->body, BODY_W, st_, ln_) : 0;
+			t->urgent = h->urgent;
+			t->expires_ms = t->urgent ? 0 : now_ms() + 5000;
 			nhist--;
 			if (unseen > nhist)
 				unseen = nhist;

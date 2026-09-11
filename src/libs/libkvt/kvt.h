@@ -782,6 +782,22 @@ const char *kvt_vte_link_uri(struct kvt_vte *vte, unsigned int id);
 
 /* True while the child has synchronized output on. */
 int kvt_term_sync_output(struct kvt_term *t);
+
+/*
+ * PUT BACK THE MODES A CHILD SET, when it has gone.
+ *
+ * A program killed before it could tidy up leaves them behind and the next
+ * thing in the same window inherits them: bracketed paste turns a paste into
+ * two escape sequences with the text between them, mouse reporting turns every
+ * click into bytes on the shell's line, and a terminal left on the alternate
+ * screen shows a shell with nothing to scroll back to.
+ *
+ * THE SCREEN AND THE SCROLLBACK ARE NOT TOUCHED. What the child left behind is
+ * the modes; a reset that cleared the window would take the output somebody is
+ * about to read with it. Call it when a child exits, before the next one
+ * starts in the same window.
+ */
+void kvt_term_reset_modes(struct kvt_term *t);
 /* True while this frame should be held back — synchronized output is on and
  * the child has not held it past the watchdog. */
 int kvt_term_sync_hold(struct kvt_term *t);
@@ -826,6 +842,9 @@ void kvt_vte_focus(struct kvt_vte *vte, bool in);
 /* True while the child has synchronized output on. The renderer skips a frame
  * while it is, under a watchdog of its own. */
 bool kvt_vte_sync_output(struct kvt_vte *vte);
+/* The modes a child set, put back — see kvt_term_reset_modes(), which is the
+ * one every consumer calls. The screen is not touched. */
+void kvt_vte_reset_modes(struct kvt_vte *vte);
 void kvt_vte_set_led_cb(struct kvt_vte *vte, kvt_vte_led_cb led_cb, void *led_data);
 
 /**

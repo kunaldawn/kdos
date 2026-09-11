@@ -143,6 +143,23 @@ and attach to that instead.
 Each program states that list once, and it is the single line that changes when
 a third server is added.
 
+**The screen's font is here for the reason the window list is.** A surface never
+loads a font — it draws cells and something else turns them into pixels — so
+`kdisp_font_count` / `_at` / `_current` / `_set` is the only way a picker can
+ask what faces exist, and the list is the **display's**: on the console the view
+gathers it, and that view may be at the far end of an `ssh` link with its own
+machine's fonts. `font_set` takes an **index into that list and never a name**,
+so no fontconfig syntax crosses from a surface to a display that has never seen
+it. A backend leaves the entries NULL where the font is not the desktop's to
+change — the compositor, where every program carries its own — and a count of
+zero is then the honest answer rather than an empty list. `keep` is whether the
+choice survives the logout, so a picker's arrows pass 0 and only its `Enter`
+passes 1.
+
+**A caller re-reads the list on each turn**, the rule the window list keeps: the
+answer arrives over a socket some pumps after `kdisp_font_ask()`, and a caller
+that believed the first count would draw an empty list for ever.
+
 **A server that cannot answer an entry leaves it NULL** and the forwarder
 returns the neutral answer rather than crashing — a console has no server-side
 decoration to report and no Wayland handle to hand out. `kwl_display` and
@@ -266,6 +283,13 @@ pinning a solid two-state bar. Change the general form freely; leave that branch
 size follows only when the loop calls the resize and invalidate functions. Any loop that owns a
 surface owns this — a surface that was always a fixed size and then starts being resized will draw
 against stale dimensions and silently fail its own bounds checks.
+
+**The caret goes to the backend when the backend has one.** `ktui_term_caret()` is the one call a
+surface makes to say where it is typing, and it writes the terminal escape only when nothing else
+claims the answer. The console client claims it: a surface drawn through a display server is not on
+a terminal, its stdout is not the screen it appears on, and the position it knows is in its own
+cells — which only the server can place on a screen. A backend that leaves the entry NULL keeps the
+escape, which is what the Wayland one does, because a compositor's surfaces draw their own.
 
 **Offscreen rendering** takes a fixed size and writes the cell buffer out as plain text, with no
 terminal at all. Every geometry defect this toolkit has shipped was invisible to the compiler and

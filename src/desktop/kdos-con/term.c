@@ -213,11 +213,28 @@ void term_paste(Win *w, int primary)
 		con_paste_win(w, text);
 }
 
+/*
+ * A CHILD THAT DIED LEAVES A CLEAN TERMINAL.
+ *
+ * The window stays here, showing how the program finished — so a `vim` killed
+ * with `-9` would leave its own buffer on the screen for ever, on an alternate
+ * screen nobody can scroll back from, with mouse reporting still on and every
+ * click still going to a pipe with nothing on the other end. The modes are put
+ * back the first time the death is seen; the screen and the scrollback are
+ * not touched, because the last thing the program printed is the whole reason
+ * the window is still there.
+ */
 void term_pump_all(void)
 {
-	for (Win *w = S.wins; w; w = w->next)
-		if (w->kind == WIN_TERM && w->term)
-			kvt_term_pump(w->term);
+	for (Win *w = S.wins; w; w = w->next) {
+		if (w->kind != WIN_TERM || !w->term)
+			continue;
+		kvt_term_pump(w->term);
+		if (!w->term_reset && !kvt_term_alive(w->term)) {
+			w->term_reset = 1;
+			kvt_term_reset_modes(w->term);
+		}
+	}
 }
 
 /*

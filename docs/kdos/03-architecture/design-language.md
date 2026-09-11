@@ -265,7 +265,17 @@ Two rules that are each a defect if missed:
   the two flip back and forth mid-gesture, which is unusable.
 
 Long press has no event to arrive on — the finger is down and nothing is moving — so it is polled
-with `ktui_gesture_tick` from the backend's idle wait, and reported **once**.
+with `ktui_gesture_tick` from the backend's idle wait, and reported **once**. **Both backends poll
+it**: `libkwl` from the Wayland loop and `libkkms` from the KMS one, with the same
+`CLOCK_MONOTONIC` milliseconds the recogniser was fed — a deadline compared against a different
+clock never expires, and nothing says so.
+
+**A long press is `Shift+F10` with a finger, and the contract answers it.** `ktui_keys()` opens the
+surface's context pane on `KT_GEST_LONG`, so a surface that declared one inherits touch without a
+touch path of its own — and it opens **at the finger**, not where `ctx_at` says the keyboard's focus
+is drawn, because a person holding a row expects the menu on that row. A surface that refuses a
+context menu refuses a finger too, and a **tap** opens nothing: a tap is a click, every widget
+already handles one, and a tap that opened a menu would put a pane under every finger.
 
 ## Drops
 

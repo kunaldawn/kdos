@@ -758,6 +758,130 @@ static void gif_anim(int i, KimgFrame *fr, int n)
 }
 
 /*
+ * ── THE UNICODE PLACEHOLDERS ────────────────────────────────────────────
+ *
+ * `tmux` cannot pass an APC through, so a program inside one transmits the
+ * image with `a=t` and then writes `U+10EEEE` cells where it wants it drawn,
+ * carrying the image's id in each cell's FOREGROUND COLOUR — the low 24 bits
+ * as a truecolor value, or the palette index when the program used one.
+ *
+ * THE ROW AND COLUMN ARE INFERRED FROM THE RUN. The protocol also allows
+ * combining diacritics after the placeholder to state them outright; this
+ * reads the position instead, which is what the specification says a terminal
+ * does when they are absent and is what both programs emit. A picture drawn
+ * out of order, or one split across two places on the screen, is not what
+ * either does and would need the diacritic table — three hundred codepoints
+ * for a case nothing here produces.
+ */
+#define KITTY_PLACEHOLDER 0x10eeeeu
+
+/* The store row an id names, or NULL. A picture that was never placed has no
+ * tiles registered and no size, so it cannot answer for a cell. */
+static int placeholder_store(uint32_t id)
+{
+	for (int i = 0; i < KITTY_STORE; i++)
+		if (store[i].id == id && store[i].key && store[i].cw > 0 &&
+		    store[i].ch > 0)
+			return i;
+	return -1;
+}
+
+/*
+ * The sprite cell for one tile of a placed picture, or 0 when the table has
+ * since dropped it.
+ *
+ * The tiling is `place()`'s: 16x16 cells to a tile, row-major, each keyed by
+ * the picture's key mixed with the tile's index. A cell pointing at an evicted
+ * slot would draw whatever took that slot next, which is why a miss is a blank
+ * rather than a guess.
+ */
+static uint32_t placeholder_cell(int si, int row, int col)
+{
+	int cols = (store[si].cw + 15) / 16;
+	int tile = (row / 16) * cols + (col / 16);
+	int slot = ktui_sprite_find(store[si].key ^
+				    ((uint64_t)tile * KTUI_TILE_STRIDE));
+
+	if (slot < 0)
+		return 0;
+	return KTUI_SPRITE_BASE | ((uint32_t)slot << 8) |
+	       ((uint32_t)(row % 16) << 4) | (uint32_t)(col % 16);
+}
+
+/* See term.h. */
+void term_pic_placeholders(KtuiCell *buf, int w, int h)
+{
+	/* One counter per store row: how many rows of this picture's run have
+	 * been seen so far, and which screen row the current one is. A picture
+	 * is written top to bottom, so the screen order IS the image order. */
+	int nrow[KITTY_STORE], atrow[KITTY_STORE];
+
+	for (int i = 0; i < KITTY_STORE; i++) {
+		nrow[i] = 0;
+		atrow[i] = -1;
+	}
+
+	for (int y = 0; y < h; y++) {
+		int col[KITTY_STORE];
+
+		for (int i = 0; i < KITTY_STORE; i++)
+			col[i] = 0;
+
+		for (int x = 0; x < w; x++) {
+			KtuiCell *c = &buf[y * w + x];
+			uint32_t id;
+			int si;
+
+			if (c->ch != KITTY_PLACEHOLDER)
+				continue;
+			/*
+			 * THE COLOUR IS THE ID, AND ONLY A TRUECOLOR ONE IS.
+			 *
+			 * `38;2;r;g;b` reaches here intact. A `38;5;<n>` does
+			 * not: the state machine resolves an indexed colour to
+			 * the xterm cube's RGB and throws the index away, and
+			 * what survives into a cell's slot is one of the
+			 * theme's eight — which would collide with the small
+			 * ids a client actually uses and answer a
+			 * default-coloured placeholder with somebody else's
+			 * picture. A cell with no literal colour names no id.
+			 */
+			if (!(c->attr & KT_A_FGRGB)) {
+				c->ch = ' ';
+				continue;
+			}
+			id = c->fgc & 0xffffffu;
+			si = placeholder_store(id);
+			if (si < 0) {
+				/* Transmitted but never placed, or evicted: a
+				 * codepoint no font has is worse than a
+				 * space. */
+				c->ch = ' ';
+				continue;
+			}
+			if (atrow[si] != y) {
+				atrow[si] = y;
+				nrow[si]++;
+			}
+			/* A RUN BIGGER THAN THE PICTURE IS NOT A BIGGER
+			 * PICTURE. The tiles were cut to the size the transmit
+			 * asked for; a cell past that edge would index a tile
+			 * of some other picture, so it is a blank. */
+			if (nrow[si] > store[si].ch ||
+			    col[si] >= store[si].cw) {
+				c->ch = ' ';
+				col[si]++;
+				continue;
+			}
+			c->ch = placeholder_cell(si, nrow[si] - 1, col[si]);
+			if (!c->ch)
+				c->ch = ' ';
+			col[si]++;
+		}
+	}
+}
+
+/*
  * A STORE ID FOR A PICTURE THAT HAS NONE. The kitty protocol's ids are the
  * peer's; an inline GIF arrived without one, and these count down from the top
  * so a peer using small numbers — which every implementation does — cannot
@@ -780,8 +904,20 @@ static void kitty_apply(const char *ctl, const uint8_t *payload, size_t len)
 	int gap = 0, at_x = 0, at_y = 0, base = 0, anim_state = 0, loops = 0;
 	int have_loops = 0;
 
+	int unicode = 0;
+
 	if (ctl_get(ctl, "a", ',', v, sizeof(v)) > 0)
 		action = v[0];
+	/*
+	 * `U=1` SAYS THE CLIENT WILL PLACE IT ITSELF, with a run of U+10EEEE
+	 * cells wherever it wants the picture — which is what a program inside
+	 * `tmux` does, because `tmux` will not pass an APC through. Without
+	 * reading it, `a=T,U=1` both stamps the picture at the cursor AND
+	 * answers the client's own run: the picture is drawn twice and the
+	 * cursor copy scrolls on its own.
+	 */
+	if (ctl_get(ctl, "U", ',', v, sizeof(v)) > 0)
+		unicode = atoi(v) != 0;
 	if (ctl_get(ctl, "i", ',', v, sizeof(v)) > 0)
 		id = (uint32_t)strtoul(v, NULL, 10);
 	if (ctl_get(ctl, "f", ',', v, sizeof(v)) > 0)
@@ -947,18 +1083,33 @@ static void kitty_apply(const char *ctl, const uint8_t *payload, size_t len)
 	 * id. */
 	uint32_t gen = store_put(id, img);
 
-	if (action == 'T') {
+	/*
+	 * THE TILES ARE REGISTERED ON A TRANSMIT AND NOT ONLY ON A PLACEMENT.
+	 *
+	 * A program inside `tmux` sends `a=t` — transmit, do not display — and
+	 * then stamps a run of U+10EEEE cells naming the id. If the tiles were
+	 * cut only when something was placed at the cursor, that id would name
+	 * a picture with no tiles and every cell of the run would be a blank:
+	 * the whole protocol would be a picture transmitted and never drawn.
+	 */
+	if (action == 'T' || action == 't') {
 		int cw, ch;
 
 		size_in_cells(img, cols, rows, &cw, &ch);
 
 		uint64_t key = hash_bytes((const uint8_t *)&gen, sizeof(gen),
 					  cw, ch);
+		int i;
 
-		place(img, key, cw, ch);
+		/* AT THE CURSOR ONLY WHEN THE CLIENT ASKED FOR THAT. `a=t` is
+		 * transmit alone, and `U=1` says the client will stamp its own
+		 * cells — placing here as well would draw the picture twice. */
+		if (action == 'T' && !unicode)
+			place(img, key, cw, ch);
+		else if (register_tiles(img, key, cw, ch) <= 0)
+			return;
 
-		int i = store_slot(id);
-
+		i = store_slot(id);
 		if (i >= 0) {
 			store[i].key = key;
 			store[i].cw = cw;
@@ -1257,6 +1408,21 @@ void term_pic_shutdown(void)
 int term_pic_tick(void)
 {
 	return -1;
+}
+
+/*
+ * A PLACEHOLDER STILL HAS TO BE ANSWERED, even here — with a space.
+ *
+ * Nothing was decoded, so nothing can be drawn; but a build with no decoder
+ * silently drops the transmit and would then draw the client's run as a
+ * codepoint no font has, which is a screen of tofu where a terminal without
+ * pictures should show a gap.
+ */
+void term_pic_placeholders(KtuiCell *buf, int w, int h)
+{
+	for (int i = 0; i < w * h; i++)
+		if (buf[i].ch == 0x10eeeeu)
+			buf[i].ch = ' ';
 }
 
 #endif

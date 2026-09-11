@@ -9,3 +9,4 @@ Terminal=true
 NoDisplay=true
 MimeType=application/epub+zip;application/x-mobipocket-ebook;application/x-fictionbook+xml;
 Categories=Office;Viewer;
+X-KDOS-Term=kdos-term

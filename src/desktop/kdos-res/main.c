@@ -287,6 +287,16 @@ int main(int argc, char **argv)
 			 */
 			.cols = 104,
 			.rows = 26,
+			/*
+			 * AND IT OPENS WHERE THE EYE IS. A monitor is looked
+			 * at and dismissed rather than kept as one pane among
+			 * others, which is the same request `btop`'s entry
+			 * makes with `X-KDOS-Float`. Set here rather than in
+			 * an entry key because this surface attaches for
+			 * itself — a key on a `Terminal=false` row is a key
+			 * nothing would read.
+			 */
+			.floating = 1,
 		};
 		if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
 			fprintf(stderr, "kdos-res: no display server reachable "

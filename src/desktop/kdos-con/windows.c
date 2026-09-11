@@ -97,12 +97,50 @@ void win_raise(int id)
  * is the whole difference between a panel and a window that happens to be at
  * the bottom.
  */
+/*
+ * FIT EVERY WINDOW TO THE WORK AREA AS IT NOW IS.
+ *
+ * The rules the resize path applies, for the same reasons: a full window is
+ * the whole grid rather than the area a bar left over, a tiled one keeps its
+ * slot, and everything else goes through `kwm_fit` so a surface's own minimum
+ * is honoured in one place.
+ *
+ * PANELS ARE LEFT ALONE. A panel is placed against an EDGE and the work area
+ * is what it carved out — fitting one into that area would push it off its own
+ * edge. The resize path re-docks them first, which is a different job from
+ * this one: here the grid has not moved and only the area has.
+ */
+void win_refit(void)
+{
+	KwmRect area = win_workarea();
+
+	for (Win *w = S.wins; w; w = w->next) {
+		if (w->panel)
+			continue;
+		if (w->full) {
+			w->geom.x = 0;
+			w->geom.y = 0;
+			w->geom.w = S.cols;
+			w->geom.h = S.rows;
+		} else if (w->tiled) {
+			w->geom = win_tile_rect(w->tiled);
+		} else {
+			w->geom = kwm_fit(w->geom, area, w->min_w, w->min_h);
+		}
+		win_resized(w);
+	}
+}
+
 KwmRect win_workarea(void)
 {
 	int top = 0, bottom = S.rows, left = 0, right = S.cols;
 
 	for (Win *w = S.wins; w; w = w->next) {
-		if (!w->panel || !w->exclusive)
+		/* A HIDDEN PANEL RESERVES NOTHING. It is out of the draw loop
+		 * and out of the hit test already; a zone it went on holding
+		 * would be a strip of desktop no window could reach and
+		 * nothing occupies. */
+		if (!w->panel || !w->exclusive || w->hidden)
 			continue;
 
 		switch (w->panel_edge) {
@@ -196,6 +234,29 @@ void win_place(Win *w, int want_w, int want_h)
 	 * terminal's rectangle and the session record still wins over the
 	 * memory. Roles, decided by which function a caller reaches for.
 	 */
+	/*
+	 * A FLOAT OPENS WHERE THE EYE IS AND IS NOT LOOKED UP. Being placed in
+	 * the middle at a size it asked for is the whole of what the entry
+	 * requested; a remembered rectangle from a previous run would answer a
+	 * different question, and answer it first.
+	 */
+	if (w->floating) {
+		KwmRect a = win_workarea();
+		int cw = want_w > 0 ? want_w : a.w;
+		int ch = want_h > 0 ? want_h : a.h;
+
+		if (cw > a.w)
+			cw = a.w;
+		if (ch > a.h)
+			ch = a.h;
+		w->geom.x = a.x + (a.w - cw) / 2;
+		w->geom.y = a.y + (a.h - ch) / 2;
+		w->geom.w = cw;
+		w->geom.h = ch;
+		win_resized(w);
+		return;
+	}
+
 	if (geo_recall(w))
 		return;
 

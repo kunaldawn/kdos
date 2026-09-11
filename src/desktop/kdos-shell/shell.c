@@ -985,10 +985,11 @@ const char *sh_term_named(const char *want)
 int sh_term_argv(const char *argv[], int n, int max, const char *cmd,
 		 char *id, size_t idsz)
 {
-	return sh_term_argv_in(NULL, argv, n, max, cmd, id, idsz);
+	return sh_term_argv_in(NULL, 0, NULL, argv, n, max, cmd, id, idsz);
 }
 
-int sh_term_argv_in(const char *want, const char *argv[], int n, int max,
+int sh_term_argv_in(const char *want, int floating, const char *size,
+		    const char *argv[], int n, int max,
 		    const char *cmd, char *id, size_t idsz)
 {
 	const char *prog = sh_term_named(want);
@@ -1034,6 +1035,24 @@ int sh_term_argv_in(const char *want, const char *argv[], int n, int max,
 			argv[n++] = "--app-id";
 			argv[n++] = id;
 		}
+	}
+	/*
+	 * WHAT THE ENTRY ASKED FOR ABOUT THE WINDOW, and only to the emulator
+	 * that knows the flags. `foot` has neither, and a window under the
+	 * compositor is the compositor's to place.
+	 *
+	 * ONLY WHERE THERE IS ROOM. Thirteen callers size their own argv, and
+	 * a hint dropped is a window that opens the ordinary way — which is
+	 * better than a terminal that does not open at all because its wrapper
+	 * would not fit.
+	 */
+	if (strcmp(prog, "foot")) {
+		if (size && *size && n + 3 <= max) {
+			argv[n++] = "--size";
+			argv[n++] = size;
+		}
+		if (floating && n + 2 <= max)
+			argv[n++] = "--float";
 	}
 	argv[n++] = "-e";
 	return n;

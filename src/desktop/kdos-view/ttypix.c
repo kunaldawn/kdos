@@ -781,6 +781,9 @@ const KtuiBackend *view_ttypix_install(const KtuiBackend *b)
 	wrap.poll_event = b->poll_event;
 	wrap.size = b->size;
 	wrap.caps = b->caps;
+	/* EVERY ENTRY THE WRAPPED BACKEND HAS, or a surface loses whatever
+	 * this wrapper did not think to carry. */
+	wrap.caret = b->caret;
 	full_next = 1;
 	return &wrap;
 }

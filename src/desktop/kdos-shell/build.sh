@@ -144,10 +144,18 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-ascii"
 # second program with a second idea of ranking.
 ln -s kdos-shell "$PKG/usr/bin/kdos-palette"
 ln -s kdos-shell "$PKG/usr/bin/kdos-about"
-# The accent picker. Each row is drawn in the scheme it names, which is the one
-# place on this desktop where a cell may carry a literal colour: a swatch taken
-# from the palette in force would show seven identical rows.
-ln -s kdos-shell "$PKG/usr/bin/kdos-theme"
+# HOW THE SCREEN LOOKS: the accent on one page and the screen's font on the
+# other. Each accent row is drawn in the scheme it names, which is the one place
+# on this desktop where a cell may carry a literal colour — a swatch taken from
+# the palette in force would show seven identical rows.
+#
+# `kdos-style` AND NOT `kdos-theme`. `kdos-theme` is the artwork GENERATOR, a
+# port of its own that `kdos theme` runs as `kdos-theme gtk|icons|cursors`, and
+# two packages installing one path means one of the two programs is whichever
+# was written last — which for a whole release was this one, so the chord, the
+# route and the settings row all opened a command-line generator and printed a
+# usage line. One name, one program.
+ln -s kdos-shell "$PKG/usr/bin/kdos-style"
 # The desk accessory Sidekick had. It forks `qalc` rather than linking
 # libqalculate, which is C++ and would put libstdc++ on the panel package.
 ln -s kdos-shell "$PKG/usr/bin/kdos-calc"
@@ -156,6 +164,11 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-calc"
 # of library and data, and every one of the thirty surfaces this binary is
 # would carry it. The names do not change between builds of an image.
 ln -s kdos-shell "$PKG/usr/bin/kdos-chars"
+# Sidekick's fifth accessory dialed a modem; its descendant is a lookup. The
+# store is `khard` and this holds none — a second vCard parser would be a
+# second answer to what a contact is, and the one that is not the store's is
+# the one that goes stale.
+ln -s kdos-shell "$PKG/usr/bin/kdos-contacts"
 # The disks window. Every privileged operation on it is a kdos-mountd verb and
 # this binary opens no block device: what it does is draw a list the daemon
 # published and send back a row number. Partitioning is `cfdisk` in a terminal

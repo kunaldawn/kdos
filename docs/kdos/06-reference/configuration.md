@@ -175,7 +175,8 @@ must not stop this one launching it.
 
 **The terminal follows the desktop.** A line naming `foot` or `kdos-term` resolves to whichever of
 the two the session that is reading it runs — `kdos-term` on the console, `foot` on the compositor
-— exactly as every chord, menu row and `Terminal=true` entry does. `foot` is a Wayland client and
+— exactly as every chord, menu row and `Terminal=true` entry does. A shell no session started has
+neither, and the entry runs where it already is. `foot` is a Wayland client and
 the console has no compositor to run it on, so without this rule a pinned terminal on the console
 was a row that launched nothing; two favourites files would be two things to keep in agreement, and
 the one nobody is looking at is the one that goes stale.
@@ -385,7 +386,7 @@ The same rule holds for `keys.conf`.
 | `greet` | `no` | Whether tty1 asks who you are. The installer writes `yes` |
 | `autologin` | `kdos` | Which account `greet = no` logs in |
 | `remote` | `no` | Whether a view may attach from another machine |
-| `font` | `monospace:size=12` | The console font `kdos-view` rasterises on a KMS device |
+| `font` | `monospace:size=12` | The console font `kdos-view` rasterises on a KMS device. Passed by `kdos-con-start` to the view, which is the half that rasterises; a `--tty` view is given nothing, because the terminal it runs in owns its font. The font chords step it and `kdos-style --page font` swaps the face, both writing `~/.local/state/kdos/con-font`, which wins over this |
 | `sessions` | `4` | How many workspaces, 1 to 9 |
 | `taskbar` | `windows` | What the session's own bottom row shows. `fkeys` puts Norton Commander's `F1`–`F10` row there instead; each cell fires `Super+F<n>` and does not bind the bare key |
 | `scrollback` | `2000` | Lines a terminal window keeps, **per window** |
@@ -426,12 +427,25 @@ The same rule holds for `keys.conf`.
 | `notes` | `kdos-note` | What `Super+Ctrl+n` starts |
 | `clipboard` | `kdos-clip` | What `Super+Ctrl+v` starts |
 | `characters` | `kdos-chars` | What `Super+Ctrl+e` starts |
+| `contacts` | `kdos-contacts` | What `Super+Ctrl+b` starts: the address book over `khard` |
 | `find` | `kdos-find` | What `Super+Shift+f` starts |
 | `capture` | `kdos-shot` | What `Super+Shift+p` hands the marked rectangle to |
 | `capture_menu` | `kdos-palette --route capture` | What `Super+Ctrl+c` opens: the capture group, for the verbs that have no chord of their own |
+| `setup_menu` | `kdos-palette --route setup` | What `Super+Ctrl+h` opens: the setting-up group, which every panel is filed under and which the eleven surface chords reach one at a time |
 | `capture_screen` | `kdos-shot screen` | What `Print` runs — the whole screen, with no rectangle to draw |
 | `record` | `kdos-record` | What `Alt+Print` runs, and runs again to stop |
-| `theme` | `kdos-theme` | The accent picker `Super+Ctrl+Shift+space` opens |
+| `time` | `kdos notify --time` | What `Super+Ctrl+Alt+t` raises |
+| `battery` | `kdos notify --battery` | What `Super+Ctrl+Alt+b` raises |
+| `remind` | `kdos remind --ask` | What `Super+Ctrl+r` opens: a one-row prompt whose line is `in 20m tea` |
+| `remind_ls` | `kdos remind ls` | What `Super+Ctrl+Alt+r` answers with |
+| `remind_clear` | `kdos remind clear` | What `Super+Ctrl+Shift+r` runs |
+| `dismiss` | `kdos notify --dismiss` | What `Super+x` runs |
+| `dismiss_all` | `kdos notify --dismiss-all` | What `Super+Shift+x` runs |
+| `dnd` | `kdos notify --dnd` | What `Super+Ctrl+x` runs |
+| `undismiss` | `kdos notify --raise` | What `Super+Alt+x` runs |
+| `stay_awake` | `kdos toggle stay-awake` | What `Super+Ctrl+i` runs |
+| `night_light` | `kdos toggle night-light` | What `Super+Ctrl+Shift+n` runs |
+| `theme` | `kdos-style` | The style picker `Super+Ctrl+Shift+space` opens: the accent on one page and the screen's font on the other |
 | `background` | `kdos background next` | What `Super+Ctrl+space` cycles the console's ground with |
 | `nowplaying` | `yes` | Whether `kdos-con`'s own bar shows what is playing, left of the pager. `kdos-shell`'s panel reads the same file through its `mpris` widget and this key does not reach it |
 | `volume_up` | `kdos-osd volume +5` | What the volume-up key runs |
@@ -508,14 +522,21 @@ Changing a default in one file changes it in the other.
 | `devices` | `Super+F6` | `power` | `Super+Ctrl+p` |
 | `monitor` | `Super+Ctrl+t` | `calculator` | `Super+Ctrl+q` |
 | `notes` | `Super+Ctrl+n` | `clipboard` | `Super+Ctrl+v` |
-| `characters` | `Super+Ctrl+e` | `tile` | `Super+Shift+t` |
-| `tile-fkey` | `Super+F8` | `cascade` | `Super+Alt+t` |
+| `characters` | `Super+Ctrl+e` | `contacts` | `Super+Ctrl+b` |
+| `tile` | `Super+Shift+t` | `tile-fkey` | `Super+F8` |
+| `cascade` | `Super+Alt+t` | | |
 | `rearrange` | `Super+r` | `rearrange-fkey` | `Super+F9` |
 | `show-desktop` | `Super+Shift+d` | `windows` | `Super+F2` |
 | `mark` | `Super+Shift+m` | `paste` | `Super+Shift+v` |
 | `find` | `Super+Shift+f` | `capture` | `Super+Shift+p` |
 | `capture-menu` | `Super+Ctrl+c` | `capture-screen` | `Print` |
 | `capture-print` | `Shift+Print` | `capture-record` | `Alt+Print` |
+| `time` | `Super+Ctrl+Alt+t` | `battery` | `Super+Ctrl+Alt+b` |
+| `remind` | `Super+Ctrl+r` | `remind-ls` | `Super+Ctrl+Alt+r` |
+| `remind-clear` | `Super+Ctrl+Shift+r` | `dismiss` | `Super+x` |
+| `dismiss-all` | `Super+Shift+x` | `dnd` | `Super+Ctrl+x` |
+| `undismiss` | `Super+Alt+x` | `stay-awake` | `Super+Ctrl+i` |
+| `night-light` | `Super+Ctrl+Shift+n` | `taskbar` | `Super+Shift+Space` |
 | `volume-up` | `XF86AudioRaiseVolume` | `volume-down` | `XF86AudioLowerVolume` |
 | `volume-mute` | `XF86AudioMute` | `media-play` | `XF86AudioPlay` |
 | `media-stop` | `XF86AudioStop` | `media-next` | `XF86AudioNext` |
@@ -525,6 +546,7 @@ Changing a default in one file changes it in the other.
 | `learn` | `Super+Shift+r` | `play` | `Super+Alt+r` |
 | `theme` | `Super+Ctrl+Shift+space` | `background` | `Super+Ctrl+space` |
 | `palette` | `Super+space` | `menu-fkey` | `Super+F10` |
+| `setup-menu` | `Super+Ctrl+h` | | |
 | `files` | `Super+e` | `mail` | `Super+Shift+e` |
 | `browser` | `Super+Shift+b` | `music` | `Super+Shift+u` |
 | `agenda` | `Super+Shift+c` | `chat` | `Super+Shift+g` |

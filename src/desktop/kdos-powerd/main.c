@@ -367,7 +367,9 @@ static int fw_verb(const char *arg, char *out, size_t nout)
 static int set_autologin(const char *who, char *out, size_t nout)
 {
 	const char *etc = getenv("KDOS_POWERD_ETC");
-	char path[320], tmp[336], buf[16384], next[16384];
+	char path[320], tmp[336];
+	char *buf, *next;
+	size_t cap;
 	int off = !strcmp(who, "off");
 	FILE *f;
 
@@ -386,12 +388,33 @@ static int set_autologin(const char *who, char *out, size_t nout)
 		}
 	}
 
+	/*
+	 * ON THE HEAP, BECAUSE A CONFIGURATION FILE GROWS. `kb_read_file`
+	 * fills a fixed buffer and NUL-terminates whatever fitted, so a
+	 * con.conf past that size was read as its own first N bytes and this
+	 * rewrote the machine's login settings out of a truncated file —
+	 * silently, and the last comment came out cut in half. libkbase says
+	 * so in its own header: a file a PERSON edits wants kb_read_whole.
+	 */
+	size_t len = 0;
+
 	snprintf(path, sizeof(path), "%s/kdos/con.conf", etc);
-	if (kb_read_file(path, buf, sizeof(buf)) <= 0) {
+	buf = kb_read_whole(path, &len);
+	if (!buf || !len) {
+		free(buf);
 		snprintf(out, nout, "err cannot read con.conf\n");
 		return -1;
 	}
 
+	/* Two keys may each grow by a name, and every line gains nothing else;
+	 * the slack is a name's worth per line, which no rewrite can exceed. */
+	cap = len + 1024;
+	next = malloc(cap);
+	if (!next) {
+		free(buf);
+		snprintf(out, nout, "err cannot read con.conf\n");
+		return -1;
+	}
 	next[0] = '\0';
 
 	size_t used = 0;
@@ -410,12 +433,14 @@ static int set_autologin(const char *who, char *out, size_t nout)
 				 off ? "kdos" : who);
 		else
 			snprintf(row, sizeof(row), "%s", ln);
-		int k = snprintf(next + used, sizeof(next) - used, "%s\n", row);
+		int k = snprintf(next + used, cap - used, "%s\n", row);
 
 		/* A file that would not fit is REFUSED rather than truncated:
 		 * writing half a config leaves a machine whose login settings
 		 * are whatever survived. */
-		if (k < 0 || (size_t)k >= sizeof(next) - used) {
+		if (k < 0 || (size_t)k >= cap - used) {
+			free(buf);
+			free(next);
 			snprintf(out, nout, "err con.conf is too large\n");
 			return -1;
 		}
@@ -425,6 +450,8 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	snprintf(tmp, sizeof(tmp), "%s/kdos/con.conf.new", etc);
 	f = fopen(tmp, "w");
 	if (!f) {
+		free(buf);
+		free(next);
 		snprintf(out, nout, "err cannot write con.conf\n");
 		return -1;
 	}
@@ -432,6 +459,8 @@ static int set_autologin(const char *who, char *out, size_t nout)
 	fflush(f);
 	fsync(fileno(f));
 	fclose(f);
+	free(buf);
+	free(next);
 	if (rename(tmp, path) != 0) {
 		unlink(tmp);
 		snprintf(out, nout, "err cannot write con.conf\n");

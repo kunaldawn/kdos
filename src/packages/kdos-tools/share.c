@@ -346,7 +346,14 @@ static int in_terminal(const char *const *paths, int n)
 {
 	KbArgv a = { 0 };
 
-	kb_argv_add(&a, kb_terminal());
+	const char *term = kb_terminal();
+
+	/* NOWHERE TO OPEN A WINDOW is not nowhere to run: a bare virtual
+	 * terminal has neither emulator, and the transfer belongs on the
+	 * screen the caller already has. */
+	if (!term)
+		return send_files(paths, n);
+	kb_argv_add(&a, term);
 	kb_argv_add(&a, "--title");
 	kb_argv_add(&a, "Share");
 	kb_argv_add(&a, "-e");

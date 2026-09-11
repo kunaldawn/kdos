@@ -146,6 +146,12 @@ static Bind binds[] = {
 	 * a region, a recording, a QR — without five more chords to learn. */
 	{ "capture-menu", CON_ACT_EXEC, CON_CMD_CAPTMENU, 'c',
 	  KT_MOD_SUPER | KT_MOD_CTRL },
+	/* AND THE SETTING-UP GROUP, on the same shape. Eleven surfaces have a
+	 * chord of their own and the group is how the rest are reached, so the
+	 * key that opens it is the capture group's neighbour rather than a
+	 * twelfth surface key. */
+	{ "setup-menu", CON_ACT_EXEC, CON_CMD_SETUPMENU, 'h',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
 	/*
 	 * AND THE KEY THE KEYBOARD ALREADY HAS FOR IT. Print takes the whole
 	 * screen, its shifted form is the same rectangle drag `capture` is,
@@ -162,6 +168,68 @@ static Bind binds[] = {
 	{ "capture-print", CON_ACT_CAPTURE, 0, KT_K_PRINT, KT_MOD_SHIFT },
 	{ "capture-record", CON_ACT_EXEC, CON_CMD_RECORD,
 	  KT_K_PRINT, KT_MOD_ALT },
+	/*
+	 * THE TWO NOTICES. What time it is and how much charge is left are the
+	 * two questions a bar answers by being on the screen, and this desktop
+	 * puts the bar away — `Super+Shift+d` hides it and a fullscreen window
+	 * covers it. Three modifiers because neither is pressed often enough
+	 * to earn a shorter chord.
+	 */
+	{ "time",	CON_ACT_EXEC, CON_CMD_TIME, 't',
+	  KT_MOD_SUPER | KT_MOD_CTRL | KT_MOD_ALT },
+	{ "battery",	CON_ACT_EXEC, CON_CMD_BATTERY, 'b',
+	  KT_MOD_SUPER | KT_MOD_CTRL | KT_MOD_ALT },
+	/*
+	 * REMINDERS: ask, list, clear. The plain chord opens the one-row
+	 * prompt; the two that read and undo take a modifier more, so a hand
+	 * reaching for the prompt cannot clear the lot.
+	 */
+	{ "remind",	CON_ACT_EXEC, CON_CMD_REMIND, 'r',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	{ "remind-ls",	CON_ACT_EXEC, CON_CMD_REMINDLS, 'r',
+	  KT_MOD_SUPER | KT_MOD_CTRL | KT_MOD_ALT },
+	{ "remind-clear", CON_ACT_EXEC, CON_CMD_REMINDCLR, 'r',
+	  KT_MOD_SUPER | KT_MOD_CTRL | KT_MOD_SHIFT },
+	/*
+	 * THE NOTICES ON THE SCREEN, ON ONE LETTER. A toast interrupts, so the
+	 * chord that puts one away has to be the cheapest on the keyboard —
+	 * and the three that do more to them are its modified forms, which is
+	 * one thing to learn rather than four.
+	 *
+	 * `undismiss` IS THE UNDO for the chord above it, pressed a moment too
+	 * early. It comes back without its buttons: the notification it came
+	 * from is closed and its actions belong to the program that sent it.
+	 */
+	{ "dismiss",	CON_ACT_EXEC, CON_CMD_DISMISS, 'x', KT_MOD_SUPER },
+	{ "dismiss-all", CON_ACT_EXEC, CON_CMD_DISMISSALL, 'x',
+	  KT_MOD_SUPER | KT_MOD_SHIFT },
+	{ "dnd",	CON_ACT_EXEC, CON_CMD_DND, 'x',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	{ "undismiss",	CON_ACT_EXEC, CON_CMD_UNDISMISS, 'x',
+	  KT_MOD_SUPER | KT_MOD_ALT },
+	/*
+	 * THE SWITCH NAMED FOR THE FILE IT SETS. `stay-awake` is one toggle in
+	 * one place; a chord called after its inverse would be a chord nobody
+	 * could be sure of the direction of, and the toast it raises names the
+	 * state it left the switch in.
+	 */
+	{ "stay-awake",	CON_ACT_EXEC, CON_CMD_AWAKE, 'i',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	/*
+	 * THE BAR, AWAY AND BACK. The work area is taken from the row it
+	 * occupies, so every window re-fits the moment it goes — and a docked
+	 * shell panel goes with it, because a chord that hid one bar and left
+	 * the other would mean two different things on two machines.
+	 */
+	{ "taskbar",	CON_ACT_BAR, 0, ' ', KT_MOD_SUPER | KT_MOD_SHIFT },
+	/*
+	 * NOT ON `Super+Ctrl+n`. That is the scratch pad's, and has been since
+	 * this desktop had accessories: a chord a person already knows here is
+	 * worth more than one that matches another desktop's defaults. The
+	 * shifted form is beside it and free.
+	 */
+	{ "night-light", CON_ACT_EXEC, CON_CMD_NIGHT, 'n',
+	  KT_MOD_SUPER | KT_MOD_CTRL | KT_MOD_SHIFT },
 
 	/*
 	 * THE SCREEN'S FONT. Equals and not plus: `+` is the character a chord
@@ -215,6 +283,11 @@ static Bind binds[] = {
 	{ "clipboard",	CON_ACT_EXEC,	 CON_CMD_CLIP,	   'v',
 	  KT_MOD_SUPER | KT_MOD_CTRL },
 	{ "characters",	CON_ACT_EXEC,	 CON_CMD_CHARS,	   'e',
+	  KT_MOD_SUPER | KT_MOD_CTRL },
+	/* `b` for the address BOOK. Not `a`: `Ctrl+a` is the leader, and
+	 * leader-then-Ctrl+a is the literal pass-through, so `Super+Ctrl+a`
+	 * would be the one chord in this family the leader cannot reach. */
+	{ "contacts",	CON_ACT_EXEC,	 CON_CMD_CONTACTS, 'b',
 	  KT_MOD_SUPER | KT_MOD_CTRL },
 	{ "find",	CON_ACT_EXEC,	 CON_CMD_FIND,	   'f',
 	  KT_MOD_SUPER | KT_MOD_SHIFT },

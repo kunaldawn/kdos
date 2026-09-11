@@ -8,6 +8,7 @@
  *   kdos-con-login  read con.conf and either autologin or greet
  */
 
+#include <fcntl.h>
 #include <errno.h>
 #include <libgen.h>
 #include <signal.h>
@@ -295,6 +296,37 @@ static void on_view_ptr(KconSurface *v, int x, int y, int subx, int suby,
 }
 
 /*
+ * A FINGER, WITH THE VERDICT THE VIEW'S RECOGNISER ALREADY REACHED.
+ *
+ * PUT ON THE SAME QUEUE THE POINTER USES, so it reaches whatever is under it
+ * by the same hit test — the session has one route from a coordinate to a
+ * window and a second one would be a second answer to where a click lands.
+ *
+ * THE MOUSE EVENT ARRIVES SEPARATELY and is what every widget already handles:
+ * the recogniser synthesises one beside the touch at the view, so a tap is a
+ * click on a surface that has never heard of touch. What this adds is the
+ * gesture, for the two things a click cannot say — a long press, which is what
+ * `Shift+F10` is with a finger, and the direction of an edge swipe.
+ */
+static void on_view_touch(KconSurface *v, int x, int y, int slot, int phase,
+			  unsigned ms, int gesture, void *user)
+{
+	KtuiEvent e;
+
+	(void)v;
+	(void)user;
+	memset(&e, 0, sizeof(e));
+	e.type = KT_EVT_TOUCH;
+	e.mx = x;
+	e.my = y;
+	e.slot = slot;
+	e.phase = phase;
+	e.ms = ms;
+	e.gesture = gesture;
+	ev_push(&e);
+}
+
+/*
  * THE SESSION GRID IS THE PRIMARY VIEW'S — the first one to attach. A second
  * view of a different size letterboxes rather than resizing every window out
  * from under whoever is using them.
@@ -323,11 +355,11 @@ static void con_size(int *w, int *h)
  * typing, drawn by the terminal they are sitting at rather than by a cell this
  * desktop painted.
  *
- * ONLY THE SESSION'S OWN TERMINALS REPORT ONE so far. A `libkcon` surface
- * knows its caret and has no message to say so, which is the other half of
- * this and is not pretended at here: a surface with the focus reports nothing
- * and the caret stays where the last terminal put it rather than moving to a
- * position nobody sent.
+ * A TERMINAL AND A SURFACE BOTH REPORT ONE, and both report it in their own
+ * cells: a window knows where its caret is and nothing else knows where the
+ * window is, so the offset is added here and only here. A surface that has no
+ * text field says so with a negative x and the cursor goes away, which is the
+ * same answer as no focused window at all.
  */
 static void publish_caret(void)
 {
@@ -335,12 +367,19 @@ static void publish_caret(void)
 	Win *w = win_focused();
 	int x = -1, y = -1;
 
-	if (w && w->kind == WIN_TERM && w->term && !S.locked && !S.saver) {
-		struct kvt_screen *sc = kvt_term_screen(w->term);
+	if (w && !S.locked && !S.saver) {
+		int cx, cy;
 
-		if (sc) {
-			x = w->geom.x + (int)kvt_screen_get_cursor_x(sc);
-			y = w->geom.y + (int)kvt_screen_get_cursor_y(sc);
+		if (w->kind == WIN_TERM && w->term) {
+			struct kvt_screen *sc = kvt_term_screen(w->term);
+
+			if (sc) {
+				x = w->geom.x + (int)kvt_screen_get_cursor_x(sc);
+				y = w->geom.y + (int)kvt_screen_get_cursor_y(sc);
+			}
+		} else if (w->surf && kcon_surface_caret(w->surf, &cx, &cy)) {
+			x = w->geom.x + cx;
+			y = w->geom.y + cy;
 		}
 	}
 
@@ -474,17 +513,34 @@ const char *con_command(int which)
 		[CON_CMD_NOTE]     = { "notes",    "kdos-note" },
 		[CON_CMD_CLIP]     = { "clipboard", "kdos-clip" },
 		[CON_CMD_CHARS]    = { "characters", "kdos-chars" },
+		[CON_CMD_CONTACTS] = { "contacts", "kdos-contacts" },
 		[CON_CMD_FIND]     = { "find",     "kdos-find" },
 		[CON_CMD_CAPTURE]  = { "capture",  "kdos-shot" },
-		[CON_CMD_THEME]    = { "theme",    "kdos-theme" },
+		[CON_CMD_THEME]    = { "theme",    "kdos-style" },
 		[CON_CMD_BACKGROUND] = { "background",
 					 "kdos background next" },
 		[CON_CMD_PALETTE]  = { "palette",  "kdos-palette" },
 		[CON_CMD_CAPTMENU] = { "capture_menu",
 				       "kdos-palette --route capture" },
+		[CON_CMD_SETUPMENU] = { "setup_menu",
+					"kdos-palette --route setup" },
 		[CON_CMD_CAPTSCREEN] = { "capture_screen",
 					 "kdos-shot screen" },
 		[CON_CMD_RECORD]   = { "record",   "kdos-record" },
+		[CON_CMD_TIME]     = { "time",     "kdos notify --time" },
+		[CON_CMD_BATTERY]  = { "battery",  "kdos notify --battery" },
+		[CON_CMD_REMIND]   = { "remind",   "kdos remind --ask" },
+		[CON_CMD_REMINDLS] = { "remind_ls", "kdos remind ls" },
+		[CON_CMD_REMINDCLR] = { "remind_clear", "kdos remind clear" },
+		[CON_CMD_DISMISS]  = { "dismiss", "kdos notify --dismiss" },
+		[CON_CMD_DISMISSALL] = { "dismiss_all",
+					 "kdos notify --dismiss-all" },
+		[CON_CMD_DND]      = { "dnd",     "kdos notify --dnd" },
+		[CON_CMD_UNDISMISS] = { "undismiss", "kdos notify --raise" },
+		[CON_CMD_AWAKE]    = { "stay_awake",
+				       "kdos toggle stay-awake" },
+		[CON_CMD_NIGHT]    = { "night_light",
+				       "kdos toggle night-light" },
 		[CON_CMD_VOLUP]    = { "volume_up",   "kdos-osd volume +5" },
 		[CON_CMD_VOLDOWN]  = { "volume_down", "kdos-osd volume -5" },
 		[CON_CMD_MUTE]     = { "volume_mute", "kdos-osd volume mute" },
@@ -518,12 +574,23 @@ const char *con_command_name(int which)
 		[CON_CMD_RES] = "monitor", [CON_CMD_CALC] = "calculator",
 		[CON_CMD_NOTE] = "notes", [CON_CMD_CLIP] = "clipboard",
 		[CON_CMD_CHARS] = "characters", [CON_CMD_FIND] = "find",
+		[CON_CMD_CONTACTS] = "contacts",
 		[CON_CMD_CAPTURE] = "capture", [CON_CMD_THEME] = "theme",
 		[CON_CMD_BACKGROUND] = "background",
 		[CON_CMD_PALETTE] = "palette",
 		[CON_CMD_CAPTMENU] = "capture_menu",
+		[CON_CMD_SETUPMENU] = "setup_menu",
 		[CON_CMD_CAPTSCREEN] = "capture_screen",
 		[CON_CMD_RECORD] = "record",
+		[CON_CMD_TIME] = "time", [CON_CMD_BATTERY] = "battery",
+		[CON_CMD_REMIND] = "remind",
+		[CON_CMD_REMINDLS] = "remind_ls",
+		[CON_CMD_REMINDCLR] = "remind_clear",
+		[CON_CMD_DISMISS] = "dismiss",
+		[CON_CMD_DISMISSALL] = "dismiss_all",
+		[CON_CMD_DND] = "dnd", [CON_CMD_UNDISMISS] = "undismiss",
+		[CON_CMD_AWAKE] = "stay_awake",
+		[CON_CMD_NIGHT] = "night_light",
 		[CON_CMD_VOLUP] = "volume_up",
 		[CON_CMD_VOLDOWN] = "volume_down",
 		[CON_CMD_MUTE] = "volume_mute", [CON_CMD_PLAY] = "media_play",
@@ -586,6 +653,13 @@ const char *con_app_name(int which)
  *
  * NO SHELL. The command is split into an argument vector, which is the only
  * way anything is executed in this tree.
+ *
+ * AND IT GETS NO CONSOLE. This session's own stdout is the tty the composited
+ * grid is drawn on, so a child that inherited it would write over the desktop
+ * — and a program deciding whether it has somewhere to print would be told
+ * yes, on a terminal nobody can read. `/dev/null` in and out; stderr is left
+ * alone, because the session's is already the log and that is where a
+ * diagnostic belongs.
  */
 void con_spawn(const char *cmd)
 {
@@ -604,6 +678,14 @@ void con_spawn(const char *cmd)
 
 	if (p == 0) {
 		if (fork() == 0) {
+			int null = open("/dev/null", O_RDWR);
+
+			if (null >= 0) {
+				dup2(null, STDIN_FILENO);
+				dup2(null, STDOUT_FILENO);
+				if (null > STDERR_FILENO)
+					close(null);
+			}
 			execvp(av[0], (char *const *)av);
 			_exit(127);
 		}
@@ -798,6 +880,14 @@ int con_marking(void)
 {
 	return mark.on;
 }
+
+/* The drag machinery is defined with the surface hooks, below the pointer
+ * routing and the key routing that consult it. */
+static int drag_ptr(const KtuiEvent *ev);
+static void drag_end(void);
+/* THE ICON LAYER LAST. `win_at()` skips the background on purpose — the layer
+ * covers the whole grid — so a finger and a drop both ask this instead. */
+static Win *drag_target(int x, int y);
 
 static void mark_begin(int capture)
 {
@@ -1120,6 +1210,93 @@ moved:
  * nothing — that terminal owns the font, no message from here can change it,
  * and the honest answer is the one on the bar.
  */
+/*
+ * THE FACES A DISPLAY OFFERED, and the picker that asked for them.
+ *
+ * THE SESSION GATHERS NOTHING. A view is the only end with a font stack and it
+ * may be on another machine, so the list is asked of the displays and relayed;
+ * what goes back is an index into what a display itself produced, which is the
+ * same rule the font STEP keeps said about a list.
+ *
+ * The first view to answer wins. Two screens showing one session are already
+ * held to one font by font_step(), so two lists would be one question with two
+ * answers and no way to ask which screen a person meant.
+ */
+static void fonts_ask_views(void)
+{
+	for (int i = 0; i < kcon_server_view_count(S.server); i++) {
+		KconSurface *v = kcon_server_view_at(S.server, i);
+
+		if (kcon_view_caps(v) & KCON_VIEW_FONT)
+			kcon_view_fonts_ask(v);
+	}
+}
+
+static void on_view_fonts(KconSurface *v, const char *const *names, int n,
+			  int cur, void *user)
+{
+	const char *ptr[KCON_MAX_FONTS];
+
+	(void)v;
+	(void)user;
+	if (n < 0)
+		n = 0;
+	if (n > KCON_MAX_FONTS)
+		n = KCON_MAX_FONTS;
+	for (int i = 0; i < n; i++)
+		snprintf(S.fonts[i], KCON_FONT_NAME, "%s",
+			 names && names[i] ? names[i] : "");
+	S.nfonts = n;
+	S.font_cur = cur >= 0 && cur < n ? cur : -1;
+
+	if (!S.fonts_for)
+		return;
+	for (int i = 0; i < S.nfonts; i++)
+		ptr[i] = S.fonts[i];
+	kcon_surface_fonts(S.fonts_for, ptr, S.nfonts, S.font_cur);
+	S.fonts_for = NULL;
+}
+
+/*
+ * A PICKER ASKED. It is answered from what is held AND the displays are asked
+ * again, so a second opening is instant and a font installed since the last
+ * one is still offered. A session with no display that rasterises its own
+ * glyphs answers an empty list, which is the honest answer and not an error.
+ */
+static void on_fonts_ask(KconSurface *f, void *user)
+{
+	const char *ptr[KCON_MAX_FONTS];
+
+	(void)user;
+	for (int i = 0; i < S.nfonts; i++)
+		ptr[i] = S.fonts[i];
+	kcon_surface_fonts(f, ptr, S.nfonts, S.font_cur);
+	S.fonts_for = S.nfonts ? NULL : f;
+	fonts_ask_views();
+}
+
+/*
+ * WEAR THE NTH OF THEM. The index is checked against the list this session
+ * relayed, and the display checks it again against the list IT sent — a
+ * display that rebuilt a shorter list between the two is a display the session
+ * cannot know about.
+ */
+static void on_font_set(KconSurface *f, int index, int keep, void *user)
+{
+	(void)f;
+	(void)user;
+	if (index >= 0 && index >= S.nfonts)
+		return;
+	for (int i = 0; i < kcon_server_view_count(S.server); i++) {
+		KconSurface *v = kcon_server_view_at(S.server, i);
+
+		if (kcon_view_caps(v) & KCON_VIEW_FONT)
+			kcon_view_set_font(v, index, keep);
+	}
+	if (index >= 0)
+		S.font_cur = index;
+}
+
 static int font_step(int step)
 {
 	int sent = 0;
@@ -1276,6 +1453,9 @@ static int session_key(const KtuiEvent *ev)
 		}
 		return 1;
 	}
+	case CON_ACT_BAR:
+		con_bar_toggle();
+		return 1;
 	case CON_ACT_SCRATCH_MARK:
 		win_scratch_mark(w);
 		return 1;
@@ -1426,6 +1606,14 @@ static void route_key(const KtuiEvent *ev)
 	 * underneath would snap a window while somebody was selecting out of
 	 * it.
 	 */
+	/* ESC GIVES IT BACK. A drag with no way out is a pointer that has
+	 * stopped answering — and the one that started it is another program,
+	 * which cannot be asked to stop. */
+	if (con_dragging() && ev->key == KT_K_ESC) {
+		drag_end();
+		ktui_draw_invalidate();
+		return;
+	}
 	if (picking && pick_key(ev))
 		return;
 	if (con_marking() && mark_key(ev))
@@ -1588,11 +1776,23 @@ static void route_ptr(const KtuiEvent *ev)
 	/* While locked the pointer reaches the lock surface and nothing else,
 	 * for the same reason the keyboard does. */
 	if (S.locked) {
+		/* A LOCK ENDS A DRAG. The release that would have finished it
+		 * goes to the lock surface, so a drag left on would be one
+		 * waiting for an event that is never coming — and holding
+		 * somebody's payload while the screen is locked. */
+		if (con_dragging())
+			drag_end();
 		if (S.lock && S.lock->surf)
 			kcon_surface_ptr(S.lock->surf, ev->mx, ev->my,
 					 ev->btn, ev->press);
 		return;
 	}
+
+	/* A DRAG OWNS THE POINTER FIRST OF ALL. It is the only mode a program
+	 * outside this process started, so it is the one this process must not
+	 * quietly take the pointer away from. */
+	if (drag_ptr(ev))
+		return;
 
 	/* And so does the picker, for the reason the mark does: a press that
 	 * fell through would raise a window over the cell being read. */
@@ -1776,6 +1976,32 @@ static void route_ptr(const KtuiEvent *ev)
 
 	kcon_surface_ptr(w->surf, ev->mx - w->geom.x, ev->my - w->geom.y,
 			 ev->btn, ev->press);
+}
+
+/*
+ * A FINGER, TO WHATEVER IT IS ON.
+ *
+ * THE SAME HIT TEST THE POINTER USES, and the icon layer last, for the reason
+ * a drop keeps: `win_at()` skips the background on purpose — the icon layer
+ * covers the whole grid — so a finger on the desktop would otherwise find
+ * nothing and a long press there could never open the icon's menu.
+ *
+ * THE MOUSE THE RECOGNISER SYNTHESISED HAS ALREADY BEEN ROUTED as an ordinary
+ * pointer event, which is what selects the row under the finger. This carries
+ * only what a click cannot say — the gesture — and it is why a surface that
+ * has never heard of touch still works under one.
+ */
+static void route_touch(const KtuiEvent *ev)
+{
+	Win *w;
+
+	if (S.locked || S.saver)
+		return;
+	w = drag_target(ev->mx, ev->my);
+	if (!w || !w->surf)
+		return;
+	kcon_surface_touch(w->surf, ev->mx - w->geom.x, ev->my - w->geom.y,
+			   ev->slot, ev->phase, ev->ms, ev->gesture);
 }
 
 /* A libkcon surface that attached but has no window yet gets one. */
@@ -2056,6 +2282,9 @@ static void adopt_surfaces(void)
 			win_place_at(w, rx, ry, rw, rh);
 			con_state_apply_flags(w, rfl);
 		} else {
+			/* Before the placement, because it is what decides
+			 * which placement this is. */
+			w->floating = kcon_surface_floating(f);
 			win_place(w, kcon_surface_cols(f),
 				  kcon_surface_rows(f));
 		}
@@ -2645,6 +2874,174 @@ static int on_layout(KconSurface *f, const char *name, int save, void *user)
 }
 
 /*
+ * ── A DRAG ACROSS THE SESSION ────────────────────────────────────────────
+ *
+ * A surface picked something up — `kdos-desk` handing over an icon's URI — and
+ * from here it is the session's, because only the session knows what is under
+ * the pointer. The payload is held HERE and not passed on until the release:
+ * a drag crossing six windows would otherwise hand its bytes to all six, and
+ * five of those are windows somebody was only passing over.
+ *
+ * THE SOURCE IS NOT A TARGET OF ITS OWN DRAG in any special way — it is asked
+ * like every other window. A file manager that highlights its own drop zones
+ * while dragging out of them is a file manager behaving correctly.
+ */
+static struct {
+	int on;
+	char mime[64];
+	char *data;
+	size_t len;
+	unsigned src;		/* the window that picked it up          */
+	unsigned over;		/* the window id under the pointer, or 0 */
+} drag;
+
+/* True while something is being carried across the session. The bar says so,
+ * and Esc gives it back — a drag with no way out is a pointer that has stopped
+ * answering. */
+int con_dragging(void)
+{
+	return drag.on;
+}
+
+static void drag_end(void)
+{
+	free(drag.data);
+	drag.data = NULL;
+	drag.len = 0;
+	drag.on = 0;
+	drag.src = 0;
+	drag.over = 0;
+	drag.mime[0] = '\0';
+}
+
+static void on_drag_start(KconSurface *f, const char *mime, const char *data,
+			  size_t len, void *user)
+{
+	(void)f;
+	(void)user;
+	drag_end();
+	/* TWO TYPES AND NO OTHERS. A drag is a filename or a line of text on
+	 * this desktop; anything else is a payload nothing here can act on,
+	 * and accepting it would mean a highlight over targets that would
+	 * refuse the drop. */
+	if (!mime || (strcmp(mime, "text/plain") &&
+		      strcmp(mime, "text/uri-list")))
+		return;
+	if (!data || !len || len > (1u << 20))
+		return;
+	drag.data = malloc(len + 1);
+	if (!drag.data)
+		return;
+	memcpy(drag.data, data, len);
+	drag.data[len] = '\0';
+	drag.len = len;
+	snprintf(drag.mime, sizeof(drag.mime), "%s", mime);
+	for (Win *w = S.wins; w; w = w->next)
+		if (w->surf == f)
+			drag.src = w->id;
+	drag.on = 1;
+	ktui_draw_invalidate();
+}
+
+/*
+ * True when the pointer event was the drag's. It owns the pointer while it is
+ * on, for the reason the mark does: a press that fell through would raise a
+ * window under the thing being carried.
+ */
+/*
+ * WHAT A DRAG IS OVER, WHICH IS NOT WHAT A CLICK IS OVER.
+ *
+ * `win_at()` skips the background deliberately: the icon layer covers the whole
+ * grid, so hit-testing it before the windows would take every click on the
+ * desktop. A DROP is the one case where that layer is a target — it is where
+ * the trash is — so it is asked last, after every window has declined.
+ *
+ * Without this the console's whole drag path is dead where it matters: a
+ * release over the desktop finds nothing, is treated as a cancel, and
+ * `drop_to_trash()` is never reached.
+ */
+static Win *drag_target(int x, int y)
+{
+	Win *t = win_at(x, y);
+
+	if (t)
+		return t;
+	for (Win *w = S.wins; w; w = w->next)
+		if (w->background && !w->hidden && w->surf)
+			return w;
+	return NULL;
+}
+
+/* The drag's own coordinates, clamped into the window they are for. `win_at()`
+ * hit-tests the frame, which is a cell wider than the content on every side, so
+ * a release on a border would otherwise hand a surface a negative position. */
+static void drag_local(const Win *w, int x, int y, int *lx, int *ly)
+{
+	*lx = x - w->geom.x;
+	*ly = y - w->geom.y;
+	if (*lx < 0)
+		*lx = 0;
+	if (*ly < 0)
+		*ly = 0;
+	if (*lx >= w->geom.w)
+		*lx = w->geom.w - 1;
+	if (*ly >= w->geom.h)
+		*ly = w->geom.h - 1;
+}
+
+static int drag_ptr(const KtuiEvent *ev)
+{
+	Win *t;
+	unsigned id;
+	int lx, ly;
+
+	if (!drag.on)
+		return 0;
+
+	/*
+	 * THE SOURCE WENT AWAY. A client that died mid-drag leaves a payload
+	 * nobody is carrying, and a drag left on would swallow every pointer
+	 * event until some later release dropped a dead program's bytes onto
+	 * whatever happened to be under the pointer.
+	 */
+	if (drag.src && !win_find((int)drag.src)) {
+		drag_end();
+		return 0;
+	}
+
+	t = drag_target(ev->mx, ev->my);
+	id = t ? t->id : 0;
+
+	if (id != drag.over) {
+		Win *prev = drag.over ? win_find((int)drag.over) : NULL;
+
+		if (prev && prev->surf)
+			kcon_surface_drag_leave(prev->surf);
+		drag.over = id;
+		if (t && t->surf) {
+			drag_local(t, ev->mx, ev->my, &lx, &ly);
+			kcon_surface_drag_enter(t->surf, lx, ly, drag.mime);
+		}
+	} else if (t && t->surf && ev->press == KT_MP_DRAG) {
+		drag_local(t, ev->mx, ev->my, &lx, &ly);
+		kcon_surface_drag_motion(t->surf, lx, ly);
+	}
+
+	if (ev->press == KT_MP_RELEASE) {
+		/* THE PAYLOAD, ONCE, TO WHATEVER IT WAS LET GO OVER. A release
+		 * over nothing is a drag cancelled, which is what every desktop
+		 * has meant by it. */
+		if (t && t->surf) {
+			drag_local(t, ev->mx, ev->my, &lx, &ly);
+			kcon_surface_drop(t->surf, lx, ly, drag.data);
+		}
+		drag_end();
+		ktui_draw_invalidate();
+	}
+	return 1;
+}
+
+/*
  * THE COLOUR PICK, ASKED FOR OVER THE SOCKET. The session finishes it: it has
  * the composed frame, the pointer and the clipboard, and the caller has none
  * of the three.
@@ -2787,6 +3184,11 @@ static int serve(const char *sock, const char *view)
 	h.capture = on_capture;
 	h.layout = on_layout;
 	h.pick = on_pick;
+	h.drag_start = on_drag_start;
+	h.view_touch = on_view_touch;
+	h.view_fonts = on_view_fonts;
+	h.fonts_ask = on_fonts_ask;
+	h.font_set = on_font_set;
 	kcon_server_hooks(S.server, &h, NULL);
 	/* HOW MANY DISPLAYS AT ONCE. The number is this desktop's and the
 	 * refusal is the server's, because it is the end that sees a view
@@ -3053,6 +3455,8 @@ static int serve(const char *sock, const char *view)
 				route_key(&ev);
 			else if (ev.type == KT_EVT_MOUSE)
 				route_ptr(&ev);
+			else if (ev.type == KT_EVT_TOUCH)
+				route_touch(&ev);
 		}
 
 		/* THE PICTURES BEFORE THE CELLS THAT NAME THEM. A commit
@@ -3136,7 +3540,12 @@ static int grid(const char *const *terms, int nterms)
 				break;
 			usleep(5000);
 		}
-		execlp("kdos-view", "kdos-view", "--tty", "--socket", view,
+		/* `--kms` AND NOT `--tty`: the view PROBES for a DRM device
+		 * and a seat, takes the screen when it can, and says on
+		 * stderr which of the two it chose. A grid that always took
+		 * the terminal was a grid that could not use the screen it
+		 * was started from, and nothing said so. */
+		execlp("kdos-view", "kdos-view", "--kms", "--socket", view,
 		       (char *)NULL);
 		_exit(127);
 	}
@@ -3559,11 +3968,15 @@ int main(int argc, char **argv)
 			/* THE VIEW SOCKET. A display is handed cells and
 			 * reports events; it is never given the surface
 			 * socket, which is the right to place a window. */
+			/* `--kms` FOR THE SAME REASON kdos-grid uses it: the
+			 * view probes and says which mode it took. An attach
+			 * from a terminal on a machine with a free screen was
+			 * pinned to that terminal by this argument alone. */
 			if (do_observe)
-				execlp("kdos-view", "kdos-view", "--tty",
+				execlp("kdos-view", "kdos-view", "--kms",
 				       "--observe", "--socket", sview,
 				       (char *)NULL);
-			execlp("kdos-view", "kdos-view", "--tty", "--socket",
+			execlp("kdos-view", "kdos-view", "--kms", "--socket",
 			       sview, (char *)NULL);
 			fprintf(stderr, "kdos-con: cannot start a view\n");
 			return 127;

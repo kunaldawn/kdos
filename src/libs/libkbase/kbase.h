@@ -303,6 +303,12 @@ int kb_desktop_prefix(char *out, size_t n);
  * wrapped an entry in it would resolve the right program and then fail to open
  * a window for it — which reads as the handler being wrong rather than the
  * terminal being unreachable.
+ *
+ * NULL WHERE THERE IS NEITHER SESSION, which is a bare virtual terminal, a
+ * serial console or an ssh login. There is no emulator to open and nothing to
+ * open it in, so the caller runs the program where it already is — which on
+ * every one of those is a terminal. A caller that cannot is a caller with
+ * nowhere to draw, and it must say so rather than name a window nobody gets.
  */
 const char *kb_terminal(void);
 

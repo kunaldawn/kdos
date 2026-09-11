@@ -93,6 +93,11 @@ _wait_con() {
 # differently the first time a value was quoted or a comment moved.
 _a11y=$(kdos-con --conf a11y 2>/dev/null)
 _speak=$(kdos-con --conf speak 2>/dev/null)
+# AND THE FACE THE SCREEN DRAWS IN. Passed to the view because the view is what
+# rasterises, and read from con.conf through the session's own parser for the
+# reason above. Empty is the rasteriser's own default; a `--tty` view is given
+# nothing, because the terminal it runs in owns its font.
+_font=$(kdos-con --conf font 2>/dev/null)
 
 (
 	_wait_con || exit 0
@@ -121,6 +126,9 @@ _speak=$(kdos-con --conf speak 2>/dev/null)
 		# because that IS the screen on this path.
 		if [ "$_a11y" = "yes" ]; then
 			kdos-view --tty --socket "$_view" 2>>"$_vlog"
+		elif [ -n "$_font" ]; then
+			kdos-view --kms-only --font "$_font" \
+				--socket "$_view" >/dev/null 2>>"$_vlog"
 		else
 			kdos-view --kms-only --socket "$_view" >/dev/null 2>>"$_vlog"
 		fi

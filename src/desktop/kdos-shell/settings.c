@@ -178,11 +178,11 @@ static struct row rows[] = {
 	/*
 	 * THE ACCENT IS PICKED IN THE PICKER AND NOWHERE ELSE. A list of names
 	 * here would be a second way to choose one, and the worse of the two:
-	 * `kdos-theme` draws every scheme in its own colours and repaints the
+	 * `kdos-style` draws every scheme in its own colours and repaints the
 	 * desktop live as the highlight moves, which a row of words cannot.
 	 * This row is the way in, and the key is the program it opens.
 	 */
-	{ CAT_APPEARANCE, FT_TOOL, ST_NONE, SC_NONE, "kdos-theme",
+	{ CAT_APPEARANCE, FT_TOOL, ST_NONE, SC_NONE, "kdos-style",
 	  "Accent…", NULL, 0, 0, 0, 0,
 	  "every scheme in its own colours, previewed live; Enter keeps one",
 	  "", "" },
@@ -1814,7 +1814,11 @@ static int cap_caps(void)
 }
 
 static const KtuiBackend cap_backend = {
-	"dump-cells", cap_flush, cap_poll, cap_size, cap_caps
+	.name = "dump-cells",
+	.flush = cap_flush,
+	.poll_event = cap_poll,
+	.size = cap_size,
+	.caps = cap_caps,
 };
 
 /* ── main ──────────────────────────────────────────────────────────────── */

@@ -243,6 +243,9 @@ that. The frame loop is what this must never slow.
 | `forget` | Drops one entry |
 | `clear` | Empties the history |
 | `dnd` | Toggles do not disturb |
+| `dismiss` | Puts the newest toast away — **reason 2**, dismissed by the user, so a client waiting on `NotificationClosed` is told the truth |
+| `dismiss all` | The same for every toast on the screen |
+| `raise` | The last one dismissed, back on the screen — **taken out of the history**, so a notification is on screen or in the centre and never both. It comes back without its buttons: the notification it came from is closed and its actions belong to the program that sent it |
 
 ### `$XDG_RUNTIME_DIR/kdos/<name>.sock` and `.view` — a console session
 

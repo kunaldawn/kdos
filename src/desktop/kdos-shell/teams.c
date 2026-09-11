@@ -687,7 +687,11 @@ static int cap_caps(void)
 }
 
 static const KtuiBackend cap_backend = {
-	"dump-cells", cap_flush, cap_poll, cap_size, cap_caps
+	.name = "dump-cells",
+	.flush = cap_flush,
+	.poll_event = cap_poll,
+	.size = cap_size,
+	.caps = cap_caps,
 };
 
 /* ── main ──────────────────────────────────────────────────────────────── */

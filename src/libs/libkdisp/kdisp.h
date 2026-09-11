@@ -188,6 +188,15 @@ typedef struct {
 	 */
 	int corner;
 	/*
+	 * A WINDOW THAT OPENS WHERE THE EYE IS, AT THE SIZE IT ASKED FOR.
+	 *
+	 * A terminal application that wants a fixed shape — a monitor, a
+	 * mixer — is not asking to be one pane among others; it is asking to
+	 * be looked at and dismissed. Toplevel only: an overlay is already
+	 * unanchored and a panel is anchored on purpose.
+	 */
+	int floating;
+	/*
 	 * Overlay only, PIXELS, and only meaningful with a corner: the gap
 	 * from the two edges the corner anchors to. Zero means the library's
 	 * own margin, which is what a toast wants.
@@ -404,6 +413,39 @@ typedef struct {
 	 * fullscreen are one request with a different bit; the named callers
 	 * below are the forwarder's, so a backend implements this once. */
 	void (*win_set_state)(unsigned id, unsigned flag, int on);
+
+	/*
+	 * THE SCREEN'S FONT, WHERE THERE IS A SCREEN.
+	 *
+	 * A surface never loads one — it draws cells and something else turns
+	 * them into pixels — so this is the only way a picker can ask what
+	 * faces exist, and the list is the DISPLAY'S: on the console it is
+	 * gathered by the view, which may be at the far end of an ssh link
+	 * with its own machine's fonts.
+	 *
+	 * `font_count` is 0 where the font is not this desktop's to change,
+	 * which is a `--tty` view inside somebody else's terminal and the
+	 * compositor, where every program carries its own. `font_at` fills
+	 * `out` with a display name and returns 1, or 0 past the end.
+	 * `font_current` is the index in force or -1.
+	 *
+	 * `font_set` takes an INDEX into that list and never a name, because
+	 * the names belong to the display and mean nothing here. A negative
+	 * index puts back the one the display started with. `keep` is whether
+	 * it survives the logout: a picker's arrows pass 0, because every step
+	 * is a real font on a real screen and a step that persisted would make
+	 * the last face a highlight passed over the one the next login wears.
+	 *
+	 * A CALLER RE-READS THE LIST ON EACH TURN, the rule the window list
+	 * keeps: the answer arrives over a socket some pumps later, and a
+	 * caller that asked once and believed the first answer would draw an
+	 * empty list for ever.
+	 */
+	void (*font_ask)(void);
+	int (*font_count)(void);
+	int (*font_at)(int i, char *out, int cap);
+	int (*font_current)(void);
+	void (*font_set)(int index, int keep);
 } KDispImpl;
 
 /*
@@ -451,6 +493,14 @@ void kdisp_unlock(void);
 /* Whether this display server can enumerate windows at all, as distinct from
  * a desktop with none open. */
 int kdisp_win_supported(void);
+/* See the vtable: 0 where the font is not this desktop's to change. */
+int kdisp_font_count(void);
+int kdisp_font_at(int i, char *out, int cap);
+int kdisp_font_current(void);
+void kdisp_font_set(int index, int keep);
+/* Ask the display to send its list. Cheap, answered later, and a caller that
+ * never asks sees a count of zero for ever. */
+void kdisp_font_ask(void);
 int kdisp_win_count(void);
 int kdisp_win_at(int i, KDispWin *out);
 void kdisp_win_activate(unsigned id);

@@ -968,6 +968,11 @@ const KtuiBackend *ktui_backend(void)
 	return cur_backend();
 }
 
+int ktui_offscreen(void)
+{
+	return offscreen;
+}
+
 void ktui_draw_flush(void)
 {
 	/* Offscreen there is nothing to present to, and stdout is where the

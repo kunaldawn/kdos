@@ -173,6 +173,39 @@ kdisp_win_at(int i, KDispWin *out)
 }
 
 void
+kdisp_font_ask(void)
+{
+	if (cur && cur->font_ask)
+		cur->font_ask();
+}
+
+int
+kdisp_font_count(void)
+{
+	return cur && cur->font_count ? cur->font_count() : 0;
+}
+
+int
+kdisp_font_at(int i, char *out, int cap)
+{
+	return cur && cur->font_at && out && cap > 0 ?
+	       cur->font_at(i, out, cap) : 0;
+}
+
+int
+kdisp_font_current(void)
+{
+	return cur && cur->font_current ? cur->font_current() : -1;
+}
+
+void
+kdisp_font_set(int index, int keep)
+{
+	if (cur && cur->font_set)
+		cur->font_set(index, keep);
+}
+
+void
 kdisp_win_activate(unsigned id)
 {
 	if (cur && cur->win_activate)

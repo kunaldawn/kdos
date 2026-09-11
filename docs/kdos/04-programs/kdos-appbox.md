@@ -241,6 +241,13 @@ what it shows as current is what the opener would actually run.
 handler correctly and then wrapping it in a Wayland client would look like the handler being wrong
 rather than the terminal being unreachable.
 
+**And on a bare virtual terminal it is not wrapped at all.** `Ctrl+Alt+F2`, a serial console and an
+ssh login are shells no session started: neither emulator can open there, and the caller is already
+sitting at a terminal. `kb_terminal()` answers NULL and the entry runs in place. The desktop name
+follows the same fact — a login with no display of any kind is given the **console's**, so a link
+resolves through `kdos-console-mimeapps.list` to `w3m` rather than through the compositor's list to
+a Wayland client with nothing to connect to.
+
 **Unless the entry asked for one by name.** `X-KDOS-Term` names the emulator a program needs — the
 one that draws pictures in the cell grid — and is honoured on either desktop. It is **a name and
 never a program**: only an emulator this image ships is accepted and anything else is the session's
