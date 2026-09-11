@@ -6976,6 +6976,22 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 static int autohide;		/* --autohide was given                    */
 static int ah_hidden;		/* the panel is collapsed right now        */
 static int64_t ah_hide_at;	/* when to collapse it, or 0 for "not armed" */
+/*
+ * PUT AWAY BY THE CHORD, which is not the same as autohidden.
+ *
+ * Autohide is the POINTER's: an enter shows the bar and a leave arms the
+ * deadline. This is a person's answer to "I do not want the bar", so the
+ * pointer must not undo it — `ah_show()` refuses while it is set, and the
+ * chord is the only thing that clears it. Without that the bar came back the
+ * first time the mouse crossed the bottom row, which reads as a chord that
+ * did not work.
+ *
+ * It is also what makes the chord mean the same thing on both desktops: the
+ * console's own bar goes away on `Super+Shift+space` and takes its row out of
+ * the work area, and a chord that hid one bar and left the other would mean
+ * two different things on two machines.
+ */
+static int bar_away;
 
 /* The meters block's clock, shared rather than a second copy of it. */
 static int64_t ah_now_ms(void)
@@ -6986,7 +7002,8 @@ static int64_t ah_now_ms(void)
 static void ah_show(void)
 {
 	ah_hide_at = 0;
-	if (!ah_hidden)
+	/* THE CHORD OUTRANKS THE POINTER. See bar_away. */
+	if (bar_away || !ah_hidden)
 		return;
 	ah_hidden = 0;
 	kdisp_layer_autohide(false);
@@ -7283,12 +7300,42 @@ int panel_main(int argc, char **argv)
 	ktui_draw_init();
 	/* `kdos theme <accent>` SIGHUPs us; see sh_theme_watch(). */
 	sh_theme_watch();
+	/* `kdos panel toggle` SIGUSR1s us, which is what Super+Shift+space
+	 * runs on this desktop; see sh_bar_watch(). */
+	sh_bar_watch();
 	/* Start hidden: a panel that came up shown and then collapsed a
 	 * moment later would read as a redraw fault at every login. */
 	if (autohide)
 		ah_hide();
 
 	while (!kdisp_should_close()) {
+		if (sh_bar_dirty) {
+			sh_bar_dirty = 0;
+			/*
+			 * THE BAR, AWAY AND BACK. Hiding drops the exclusive
+			 * zone, so the strip the panel was holding goes back
+			 * to the windows and every one of them re-fits — which
+			 * is the half that makes this the same verb as the
+			 * console's, where the row is taken out of the work
+			 * area.
+			 */
+			bar_away = !bar_away;
+			if (bar_away)
+				ah_hide();
+			else
+				ah_show();	/* bar_away is clear: it acts */
+			/*
+			 * A CHORD THAT CHANGES THE LAYOUT SAYS SO, in the
+			 * console's words. What is left is one row of shade,
+			 * and the chord that undoes it is not written anywhere
+			 * on the screen — a person who pressed this by
+			 * accident would have nothing to read.
+			 */
+			kb_notify("kdos",
+				  bar_away ? "Taskbar hidden" : "Taskbar back",
+				  bar_away ? "the same chord brings it back"
+					   : "");
+		}
 		if (sh_theme_dirty) {
 			sh_theme_dirty = 0;
 			sh_theme_from_cache();
@@ -7320,7 +7367,11 @@ int panel_main(int argc, char **argv)
 		 * and the auto-suspend must not be a side effect of whether
 		 * the pointer happens to be on the bar. */
 		panel_tick(&sh);
-		if (autohide && ah_hidden)
+		/* `ah_hidden` ALONE, never `autohide && ah_hidden`: the chord
+		 * collapses this surface to the strip whether autohide is on
+		 * or not, and a two-row taskbar painted into one cell is the
+		 * bar the chord was asked to take away, drawn wrong. */
+		if (ah_hidden)
 			ah_draw_edge();
 		else
 			draw_taskbar(&sh);
@@ -7389,7 +7440,8 @@ int panel_main(int argc, char **argv)
 			/* Nothing on the strip is a control: it is one row of
 			 * shade, and the frame that drew it recorded no hit
 			 * map. Clicks and the wheel wait for the panel. */
-			if (autohide && ah_hidden) {
+			/* `ah_hidden` alone, for the reason the draw gives. */
+			if (ah_hidden) {
 				/* the edge answers hover and nothing else */
 			} else if (ev.press == KT_MP_DRAG) {
 				handle_motion(&sh, ev.mx, ev.my);

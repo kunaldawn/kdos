@@ -593,32 +593,67 @@ static void draw(void)
 
 /* ── the two-letter codes ──────────────────────────────────────────────── */
 
+/* Append one typed character to the query and refilter. */
+static void query_add(char c)
+{
+	if (qlen < (int)sizeof(query) - 1) {
+		query[qlen++] = c;
+		query[qlen] = '\0';
+		refilter();
+	}
+}
+
+/* Whether any row's code begins with this letter. */
+static int code_starts(char c)
+{
+	for (int i = 0; i < nrows; i++)
+		if (!rows[i].heading && rows[i].code[0] == c)
+			return 1;
+	return 0;
+}
+
 /*
- * M.7's codes, and the same rule the menu keeps: BOTH letters with nothing
- * else in the field. A code that fired while somebody was in the middle of
- * typing a search would open a program at the second keystroke of a word.
+ * M.7's codes: BOTH letters with nothing else in the field. A code that fired
+ * while somebody was in the middle of typing a search would open a program at
+ * the second keystroke of a word.
+ *
+ * A LETTER IS A CODE ONLY WHILE A CODE COULD STILL MATCH IT, and that is the
+ * whole of what makes the feature safe to have on by default. A code is opt-in
+ * — `code=` on a favourite — so most palettes have none, and a rule that ate
+ * two letters whatever the rows say is a search box that silently drops the
+ * first two characters of every query. When the second letter names no row,
+ * both letters go into the field they were always going to be part of.
  */
 static int code_fire(int ch)
 {
-	static char typed[3];
+	/* The character AS TYPED, because it is what goes in the field when no
+	 * code claims it: upper-casing it for the comparison and then typing
+	 * that would rewrite what somebody wrote. */
+	static char held;
 
-	if (qlen)
+	if (qlen || !isalpha(ch)) {
+		held = 0;
 		return 0;
-	if (!isalpha(ch))
-		return typed[0] = 0;
-	typed[typed[0] ? 1 : 0] = (char)toupper(ch);
-	if (!typed[1])
+	}
+	if (!held) {
+		if (!code_starts((char)toupper(ch)))
+			return 0;
+		held = (char)ch;
 		return 1;	/* the first letter: eaten, waiting for the second */
+	}
 
-	char want[3] = { typed[0], typed[1], 0 };
+	char want[3] = { (char)toupper(held), (char)toupper(ch), 0 };
+	char first = held;
 
-	typed[0] = typed[1] = 0;
+	held = 0;
 	for (int i = 0; i < nrows; i++)
 		if (!rows[i].heading && rows[i].code[0] &&
 		    !strcmp(rows[i].code, want)) {
 			fire(i);
 			return 1;
 		}
+	query_add(first);
+	query_add((char)ch);
 	return 1;
 }
 

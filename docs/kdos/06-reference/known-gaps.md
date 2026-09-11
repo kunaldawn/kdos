@@ -61,12 +61,6 @@ picker lists what fontconfig offers. The shipped PCF bitmap faces are also invis
 `70-no-bitmaps-except-emoji` rule rejects them and the rescue rule names `Terminus` where the files
 report `xos4 Terminus` — so what is listed is the scalable monospaced families.
 
-**`Super+Shift+space` puts the bar away on the console and does nothing under the compositor.** The
-console's session owns its own bar and re-fits every window when it goes; `kdos-shell`'s panel hides
-only from `comp.conf`'s `panel_autohide`, read once at start, and there is no signal that toggles it
-while it runs. It is the one chord the two desktops do not share that a person would notice, and the
-suite's chord cross-check names it with that reason rather than passing over it.
-
 **A per-output panel shows every window, not that output's.** The window-management protocol
 reports which output a window is on and the panel ignores it, so on two screens both taskbars list
 the same windows. That is a well-established behaviour rather than obviously wrong; filtering is a
@@ -95,10 +89,34 @@ wired up.
 **No input-method configuration tool.** The one upstream ships is built on a toolkit this host does
 not have. Configuration is text files.
 
+**Screen recording works on the live medium and is refused on an installed disk.** `kdos-record`
+on a graphical session booted from the ISO gets its node and the pipeline goes live; the same
+program on a graphical session booted from a disk installed from that ISO answers `the cast was
+refused (2)` — the portal's `Start` returning 2 in under 20 ms, so no chooser ever runs. Measured
+with nothing else running and again with a boxed OBS asking first, which logs `Failed to start
+screencast, denied or cancelled by user`. The wlr backend, `slurp`, the one output and
+`~/.config/xdg-desktop-portal-wlr/config` are identical on both machines. **A box only exists on an
+installed system**, so this is what stands between the box lane and a recorder inside one.
+
 **No input method in the console session.** fcitx5 is a Wayland client and speaks
 `input-method-v2` to the compositor; there is no compositor on that path. The candidate *window* is
 drawn there — `kdos-ime` is a cell surface on both desktops — but the engine that would fill it is
 not running.
+
+**AND NO KEYSTROKE REACHES IT UNDER THE COMPOSITOR EITHER.** Everything either side of the relay is
+in place and was traced: fcitx5 loads `waylandim`, binds `zwp_input_method_manager_v2` and
+`zwp_virtual_keyboard_manager_v1`, is sent `activate()` and answers with `grab_keyboard()`; `foot`
+binds `zwp_text_input_manager_v3`, enables a text input and commits it; `fcitx5-remote` reports
+state 2 with `pinyin` selected. A key typed after all of that still arrives at the terminal as
+Latin, and no `key` event ever reaches the grab — so the candidate window stays empty on **both**
+desktops. What has not been isolated is why `get_keyboard_grab()` in the compositor's relay answers
+with nothing while the input method holds a grab.
+
+**A graphical application launched from the console's Start menu ends the session.** Measured twice
+with `cups.desktop` (*Manage Printing*): `kdos-cage` starts on the headless backend with the pixman
+renderer, its log lands in the session's, an empty guest window appears — and the console desktop
+exits, leaving the login banner. Every *console* surface the same menu offers is unaffected, and
+`kdos-print` — the printer page this desktop has of its own — opens and lists its queues.
 
 **No VT has ever been allocated.** Embedding is what a graphical application gets and it has been
 run end to end; `--vt` is the exception for something that needs acceleration, and that path — the
@@ -170,12 +188,18 @@ it, so those cells keep the fallback mark.
 **No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing in
 the catalogue emits either. The three raster protocols are what a modern program reaches for.
 
-**Windows do not snap to the seam between two screens on the console.** `libkkms` lights every
-connected connector and the grid is all of them laid edge to edge, so a window dragged past the
-right edge of one screen is on the next — but the keyboard nudge clamps to the whole work area and
-`kwm_edge_output` still has no call site. Snapping to an output's own edge needs the session to know
-where the seams are, which is the `libkdisp` output enumeration that is also unwritten: `kdos-display`
-on the console still says it has one screen and no output management.
+**A console screen can be given a mode but not turned off, scaled or rotated.** The session lights
+every connected connector into one grid, and `kdos-display` lists them and sets a mode on one; the
+other three verbs are Wayland's, because a text grid has no scale factor, a rotation would give the
+cells a different shape on one screen than on the next, and a dark connector would leave a hole in
+the middle of a grid that windows are already placed across. The buttons for them are drawn
+disabled on the console rather than hidden, so the surface is the same surface in both sessions.
+
+**A mode chosen on the console does not survive the session.** `kdos-display`'s keep sends the
+mode with its `keep` flag set and the view acts on the mode and drops the flag: there is nowhere on
+this desktop a mode is written down, so the next login comes up at the preferred mode again. The
+flag is on the wire because the countdown is the only thing that distinguishes an applied mode from
+a kept one, and a keep that could not be expressed would make the countdown a lie.
 
 **Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off.** They are
 private-use codepoints and the console font is 512 glyphs, which is a kernel limit: a glyph the font
@@ -212,18 +236,22 @@ depend on that.
 stack is built without X11 platform support. Enabling it means rebuilding the graphics stack and
 adding several X libraries. Wayland-native applications are unaffected.
 
-**No process on the live medium can create a user namespace** — not even root with the full
-capability set. Measured on the booted ISO: `unshare` succeeds for the mount, UTS, IPC, PID and
-network namespaces and fails for `CLONE_NEWUSER` with `EPERM`, for uid 0 and for `kdos` alike,
-while the running kernel reports `CONFIG_USER_NS=y`, `user.max_user_namespaces` at 15440, no LSM,
-no seccomp filter and no lockdown. Rootless `podman` therefore cannot start there at all: it fails
-at `cannot clone: Operation not permitted / cannot re-exec process`, before it reaches any storage
-layer. The consequence anything else has to plan around is that a namespace is not available to a
-program on this medium — `aerc`'s HTML filter, for one, falls back to an unroutable proxy.
+**The initramfs must carry util-linux's `switch_root` and not toybox's, and the difference is
+every container on the machine.** toybox's applet chroot()s into the new root and never moves that
+root onto the root of the mount namespace, so every process on the booted system is chrooted for
+ever — and `create_user_ns()` refuses a chrooted caller outright. The symptom is `EPERM` from
+`CLONE_NEWUSER` for uid 0 with the full capability set as readily as for anybody, on a kernel
+reporting `CONFIG_USER_NS=y`, 15440 namespaces available, no LSM, no seccomp filter, no lockdown
+and nothing on the command line; `/proc/self/mountinfo` gives it away, with the root mount present
+on the right device and a **parent id that is not in the table**. toybox owns the name
+`/usr/sbin/switch_root` on the finished image and is installed after util-linux, so the copy has to
+name util-linux's own file, and the packaging step refuses to build an initramfs whose
+`switch_root` is toybox's.
 
 **A live session cannot create a persistent box.** The home directory is on the boot overlay, and
-the kernel refuses to stack a container's writable layer on an overlay. `kdos doctor` reports this
-as a property of the session rather than as a failure.
+the kernel refuses to stack a container's writable layer on an overlay. A pack is mounted from the
+medium and is gone when the session ends; `kdos doctor` reports this as a property of the session
+rather than as a failure.
 
 **A box is not a security boundary against you.** It shares your home directory in full. It
 constrains what an application can do to the **desktop**, not to your data. See
@@ -281,6 +309,24 @@ string at all, and `pizauth` does not lift it because there is nothing to presen
 has withdrawn application passwords is **read in `aerc` directly and sent through `msmtp`** — what
 it does not get is a local Maildir kept in step by `mbsync`, and with it `notmuch`'s index and
 offline search.
+
+**A network share is reached by an address or a DNS name, never by a workgroup name.** musl
+resolves through `/etc/hosts` and `/etc/resolv.conf`; `nsswitch.conf` is inert on this C library,
+there is no winbind and there is no mDNS responder, so a name only a NetBIOS or a Bonjour
+broadcast could answer fails inside `mount.cifs` with a message nobody can act on.
+`kdos-mountd`'s `cifs` verb refuses such a name up front rather than passing it on, and there is
+no browse list: a server has to be named.
+
+**Kerberos is not reachable from this image, and `CONFIG_CIFS_UPCALL=y` is not evidence that it
+is.** `cifs.upcall` is disabled in the `cifs-utils` recipe and is absent from the image, and there
+is no krb5 port, so `sec=krb5` has nothing to call out to. A server that will accept only a ticket
+cannot be mounted from here; the verb offers username, domain and password and nothing else.
+
+**Neither synchroniser in the mail and calendar lanes has ever run against a server.** The rig has
+no account, no network and no IMAP or CalDAV server on the image, so what is measured of `mbsync`
+and `vdirsyncer` is that each runs, reports its version, and does nothing and exits cleanly with
+nothing configured. That a password account synchronises is unproven here and can only be proven
+against a real account.
 
 ## Hardware and platform
 

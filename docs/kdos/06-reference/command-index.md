@@ -35,6 +35,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-desktop` | Start a session | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-desktop-start` | Bring up services, then the compositor | [The session](../03-architecture/session.md#starting-a-session) |
 | `kdos-devices` | Cameras, microphones, removable media | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
+| `kdos-connect` | A folder on another machine, over SMB. Five fields to `kdos-mountd`'s `cifs` verb; the password never in an argument | [kdos-shell](../04-programs/kdos-shell.md#the-device-managers) |
 | `kdos-display` | Screen configuration | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-doc` | The documentation viewer | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-energy` | Per-application energy report | [The daemons](../04-programs/daemons.md#kdos-energyd) |
@@ -86,6 +87,7 @@ see [the program map](../04-programs/README.md#multi-name-binaries).
 | `kdos-start` | The Start menu | [kdos-shell](../04-programs/kdos-shell.md#kdos-start) |
 | `kdos-status` | The overflow popup | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-teams` | The window list | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
+| `kdos panel toggle` | Put the compositor's panel away and bring it back — what `Super+Shift+space` runs there, beside the session action of the same name on the console | [kdos-shell](../04-programs/kdos-shell.md#autohide) |
 | `kdos-contacts` | The address book, `Super+Ctrl+b`. Type a name, `Enter` copies the address or the number | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-style` | How the screen looks: the accent on one page, the screen's font on the other. `--page accent\|font` opens either | [kdos-shell](../04-programs/kdos-shell.md#the-small-surfaces) |
 | `kdos-theme` | Generate the GTK, icon and cursor themes | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |

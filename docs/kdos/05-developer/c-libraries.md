@@ -204,6 +204,13 @@ Two members worth knowing about specifically:
   a file whole to write it whole asks for its size in anonymous memory for no reason.
 - **The process helpers send a child's error output to nothing unless verbose output is enabled**,
   so anything whose *failure* is diagnosed by the child's own message has to turn that on.
+- **A secret reaches a child on a descriptor and never in argv.** `kb_run_feed` writes to the
+  child's stdin; `kb_run_feed_env` does the same and additionally sets names in the child's
+  environment and captures its stderr, which is what a mount helper needs — `mount.cifs` reads a
+  password from the descriptor `$PASSWD_FD` names and reports its refusal on stderr, and a caller
+  without both would either put the secret in an argument list or report a status with no reason.
+  **The input must fit in one pipe buffer** in the feeding-and-reading forms: nothing is read back
+  until the whole input has been written.
 - **The freedesktop trash lives here**, so a prompt and the desktop's delete key are one
   implementation. See [The kdos command](../04-programs/kdos-command.md#trash).
 - **`kb_fuzzy` is the desktop's only answer to "does this row match what was typed".** A

@@ -470,6 +470,18 @@ typedef struct {
 	 */
 	char fonts[KCON_MAX_FONTS][KCON_FONT_NAME];
 	int nfonts, font_cur;
+
+	/*
+	 * THE SCREENS AN ATTACHED DISPLAY IS DRIVING, and what each can show.
+	 *
+	 * Relayed, never gathered: the display is the end with the modes and
+	 * it may be somewhere else. Held so a picker can be answered at once
+	 * and so an index it sends back can be bounded before it goes out.
+	 */
+	KconOut outs[KCON_MAX_OUTS];
+	int nouts;
+	/* The shell waiting for a list a view has not answered with yet. */
+	KconSurface *outs_for;
 	/* The shell waiting for a list a view has not answered with yet, or
 	 * NULL. One slot: a person opens one picker. */
 	KconSurface *fonts_for;
@@ -804,6 +816,11 @@ int con_session_kill(const char *name);
 
 /* greet.c */
 int con_login(const char *tty);
+/* ONE FRAME OF THE GREETER, OFFSCREEN, from a fixture file naming the accounts
+ * and the sessions — the machine's own /etc/passwd would make the golden
+ * change whenever somebody adds an account. Composites and returns: this path
+ * never asks for a password and never starts a session. */
+int con_greet_dump(int cols, int rows, const char *fixture, const char *msg);
 
 /* keys.c */
 int keys_action(int key, int mods, int *arg);

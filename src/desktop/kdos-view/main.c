@@ -1023,6 +1023,98 @@ static int handle_msg(unsigned op, const unsigned char *payload, size_t len)
 		return got;
 	}
 
+	if (op == KCON_OP_VIEW_OUTPUTS) {
+#ifdef KDOS_VIEW_KMS
+		/*
+		 * THE SCREENS THIS VIEW IS DRIVING, gathered where the modes
+		 * are. A session composes one grid and has no idea there are
+		 * screens under it.
+		 */
+		if (!own_screen)
+			return got;
+
+		KconBuf out = { 0 };
+		int n = kkms_outputs();
+
+		if (n > KCON_MAX_OUTS)
+			n = KCON_MAX_OUTS;
+		kcon_put_u16(&out, (uint16_t)n);
+		for (int i = 0; i < n; i++) {
+			KkmsOutput o;
+
+			if (!kkms_output(i, &o))
+				break;
+
+			int nm = kkms_modes(i);
+
+			if (nm > KCON_MAX_MODES)
+				nm = KCON_MAX_MODES;
+			kcon_put_str(&out, o.name);
+			kcon_put_u16(&out, (uint16_t)o.col);
+			kcon_put_u16(&out, (uint16_t)o.cols);
+			kcon_put_u16(&out, (uint16_t)o.width);
+			kcon_put_u16(&out, (uint16_t)o.height);
+			kcon_put_u16(&out,
+				     (uint16_t)(int16_t)kkms_mode_current(i));
+			kcon_put_u16(&out, (uint16_t)nm);
+			for (int m = 0; m < nm; m++) {
+				KkmsMode md;
+
+				if (!kkms_mode(i, m, &md))
+					break;
+				kcon_put_u16(&out, (uint16_t)md.width);
+				kcon_put_u16(&out, (uint16_t)md.height);
+				kcon_put_u32(&out, (uint32_t)md.refresh);
+			}
+		}
+		kcon_send(conn, KCON_OP_VIEW_OUTPUTS, &out);
+		kcon_flush(conn);
+		kcon_buf_free(&out);
+#endif
+		return got;
+	}
+
+	if (op == KCON_OP_VIEW_SETMODE) {
+#ifdef KDOS_VIEW_KMS
+		KconRd b;
+
+		kcon_rd_init(&b, payload, len);
+
+		int oi = (int)(int16_t)kcon_get_u16(&b);
+		int mi = (int)(int16_t)kcon_get_u16(&b);
+
+		(void)kcon_get_u8(&b);	/* `keep` is the picker's countdown;
+					 * a mode is not persisted anywhere on
+					 * this desktop, so nothing here reads
+					 * it — see known-gaps. */
+		if (b.err || !own_screen)
+			return got;
+		if (kkms_set_mode(oi, mi) != 0)
+			return got;
+
+		/* THE GRID IS DERIVED, so the announcement is the same one a
+		 * font step and a hotplug make. */
+		ktui_draw_resize();
+		ktui_sprite_clear();
+		ktui_sprite_budget(16u << 20, kcell_w(), kcell_h());
+		ktui_draw_invalidate();
+
+		cap_cell_w = kcell_w();
+		cap_cell_h = kcell_h();
+
+		KconBuf sz = { 0 };
+
+		kcon_put_u16(&sz, (uint16_t)ktui_w);
+		kcon_put_u16(&sz, (uint16_t)ktui_h);
+		kcon_put_u16(&sz, (uint16_t)cap_cell_w);
+		kcon_put_u16(&sz, (uint16_t)cap_cell_h);
+		kcon_send(conn, KCON_OP_VIEW_SIZE, &sz);
+		kcon_flush(conn);
+		kcon_buf_free(&sz);
+#endif
+		return got;
+	}
+
 	if (op == KCON_OP_VIEW_SETFONT) {
 #ifdef KDOS_VIEW_KMS
 		KconRd b;

@@ -137,6 +137,13 @@ Overrides go **after** it, because the later of a duplicate pair wins.
 
 `testing/preflight.sh` fails a shipped `rc.xml` that gets this wrong.
 
+**And `--` may not appear inside an XML comment.** This file documents itself in prose, and prose
+about a desktop names command arguments: one `--app-id` inside a `<!-- -->` makes the whole
+document ill-formed, and a compositor that cannot parse its configuration loads **none** of the
+bindings in it. Nothing about the running system says so — the chords are simply not there, one
+by one, in whatever order a person happens to try them. `testing/preflight.sh` parses the shipped
+file with a real XML parser for exactly this.
+
 The shipped bindings are listed in [The desktop](../02-user-guide/desktop.md).
 
 ## Decorations

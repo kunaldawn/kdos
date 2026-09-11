@@ -224,6 +224,122 @@ int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
 	return rc;
 }
 
+/*
+ * Fed on stdin, with NAMES ADDED TO THE CHILD'S ENVIRONMENT, and its stderr
+ * captured — the shape a MOUNT HELPER needs and the only one that keeps a
+ * network password out of every process table on the machine.
+ *
+ * THE ENVIRONMENT IS WHY THIS EXISTS. `mount.cifs` takes a password from the
+ * descriptor `$PASSWD_FD` names and from nowhere else that is not a file or an
+ * argument; a helper run without it either reads a world-readable file or
+ * takes the secret in argv, where `/proc/<pid>/cmdline` publishes it.
+ *
+ * THE STDERR IS THE OTHER HALF. A mount helper says why it refused on stderr
+ * and nothing else — a caller that dropped it could report a status and no
+ * reason, which for a wrong password and an unreachable server is the same
+ * message twice.
+ *
+ * THE INPUT MUST FIT IN ONE PIPE BUFFER, exactly as in kb_run_feed_capture:
+ * nothing drains stderr until the whole input is written. A password does.
+ */
+int kb_run_feed_env(const KbArgv *a, const char *const *env, int nenv,
+		    const char *in, size_t n, char *err, size_t cap)
+{
+	int fd[2], ep[2];
+	pid_t pid;
+	size_t o = 0;
+
+	if (err && cap)
+		err[0] = '\0';
+	if (pipe(fd) < 0 || pipe(ep) < 0)
+		kb_die("pipe: %s", strerror(errno));
+	fcntl(fd[1], F_SETFD, FD_CLOEXEC);
+	fcntl(ep[0], F_SETFD, FD_CLOEXEC);
+
+	pid = fork();
+	if (pid < 0)
+		kb_die("fork: %s", strerror(errno));
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDWR);
+
+		dup2(fd[0], STDIN_FILENO);
+		close(fd[0]);
+		if (null >= 0) {
+			dup2(null, STDOUT_FILENO);
+			if (null > STDERR_FILENO)
+				close(null);
+		}
+		dup2(ep[1], STDERR_FILENO);
+		close(ep[1]);
+		/*
+		 * setenv AFTER the fork and before the exec, so nothing the
+		 * caller holds is changed: a daemon that put a descriptor
+		 * number in its own environment would hand it to every later
+		 * child as well.
+		 */
+		for (int i = 0; i < nenv && env && env[i]; i++) {
+			const char *eq = strchr(env[i], '=');
+			char name[64];
+			size_t len;
+
+			if (!eq)
+				continue;
+			len = (size_t)(eq - env[i]);
+			if (len == 0 || len >= sizeof(name))
+				continue;
+			memcpy(name, env[i], len);
+			name[len] = '\0';
+			setenv(name, eq + 1, 1);
+		}
+		execvp(a->v[0], (char *const *)a->v);
+		_exit(127);
+	}
+	close(fd[0]);
+	close(ep[1]);
+
+	void (*old)(int) = signal(SIGPIPE, SIG_IGN);
+	size_t off = 0;
+
+	while (off < n) {
+		ssize_t w = write(fd[1], in + off, n - off);
+
+		if (w < 0) {
+			if (errno == EINTR)
+				continue;
+			break;		/* the child is gone; reap tells us */
+		}
+		off += (size_t)w;
+	}
+	close(fd[1]);
+	signal(SIGPIPE, old);
+
+	while (err && cap && o + 1 < cap) {
+		ssize_t r = read(ep[0], err + o, cap - 1 - o);
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		o += (size_t)r;
+	}
+	if (err && cap)
+		err[o] = '\0';
+	/* The pipe is drained to EOF whatever the caller asked for: a child
+	 * blocked writing to a full stderr pipe never exits, and reap would
+	 * wait for it forever. */
+	for (;;) {
+		char sink[256];
+		ssize_t r = read(ep[0], sink, sizeof(sink));
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+	}
+	close(ep[0]);
+	return reap(pid);
+}
+
 /* A pager is the case kb_run_feed cannot serve: it has to be fed on stdin AND
  * keep the terminal it draws on. Writing to /dev/null is right for a checker
  * and silent for a pager, which is a failure that looks like an empty

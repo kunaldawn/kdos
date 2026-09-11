@@ -168,6 +168,7 @@ ln -s kdos-shell "$PKG/usr/bin/kdos-chars"
 # store is `khard` and this holds none — a second vCard parser would be a
 # second answer to what a contact is, and the one that is not the store's is
 # the one that goes stale.
+ln -s kdos-shell "$PKG/usr/bin/kdos-connect"
 ln -s kdos-shell "$PKG/usr/bin/kdos-contacts"
 # The disks window. Every privileged operation on it is a kdos-mountd verb and
 # this binary opens no block device: what it does is draw a list the daemon

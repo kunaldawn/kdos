@@ -273,6 +273,22 @@ typedef struct {
 	int manage;
 } KDispConfig;
 
+/*
+ * ONE SCREEN AND ITS MODES. A mode list without the screen it belongs to is a
+ * picker that cannot say which monitor a choice is for.
+ */
+typedef struct {
+	char name[32];		/* `HDMI-A-1`, `eDP-1`                     */
+	int col, cols;		/* its slice of the shared grid, in cells  */
+	int width, height;	/* its mode, in pixels                     */
+	int cur_mode, nmodes;
+} KDispOut;
+
+typedef struct {
+	int width, height;
+	int refresh;		/* millihertz, so 59.94 Hz is not 59       */
+} KDispMode;
+
 typedef void (*KDispBackdropFn)(pixman_image_t *dst, int w, int h, int scale);
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -441,6 +457,31 @@ typedef struct {
 	 * caller that asked once and believed the first answer would draw an
 	 * empty list for ever.
 	 */
+	/*
+	 * THE SCREENS, AND THEIR MODES.
+	 *
+	 * The same shape the font list keeps and for the same reason: a
+	 * surface never drives a screen, so the list is the DISPLAY'S — on the
+	 * console the view gathers it, and that view may be at the far end of
+	 * an ssh link driving somebody else's monitors.
+	 *
+	 * `out_count` is 0 where the screens are not this desktop's to change:
+	 * a `--tty` view inside somebody's terminal, and the compositor, which
+	 * takes its output configuration on `wlr-output-management` — a
+	 * protocol carrying scale, transform and position that this vtable
+	 * deliberately does not model.
+	 *
+	 * `out_set_mode` takes two INDICES and never a resolution, because the
+	 * modes belong to the display and mean nothing here. `keep` is whether
+	 * the choice survives the logout, so a picker's countdown passes 0
+	 * until a person says the screen is readable.
+	 */
+	void (*out_ask)(void);
+	int (*out_count)(void);
+	int (*out_at)(int i, KDispOut *out);
+	int (*out_mode_at)(int i, int m, KDispMode *mode);
+	void (*out_set_mode)(int i, int m, int keep);
+
 	void (*font_ask)(void);
 	int (*font_count)(void);
 	int (*font_at)(int i, char *out, int cap);
@@ -501,6 +542,12 @@ void kdisp_font_set(int index, int keep);
 /* Ask the display to send its list. Cheap, answered later, and a caller that
  * never asks sees a count of zero for ever. */
 void kdisp_font_ask(void);
+/* See the vtable: 0 where the screens are not this desktop's to change. */
+void kdisp_out_ask(void);
+int kdisp_out_count(void);
+int kdisp_out_at(int i, KDispOut *out);
+int kdisp_out_mode_at(int i, int m, KDispMode *mode);
+void kdisp_out_set_mode(int i, int m, int keep);
 int kdisp_win_count(void);
 int kdisp_win_at(int i, KDispWin *out);
 void kdisp_win_activate(unsigned id);

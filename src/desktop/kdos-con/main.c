@@ -771,6 +771,62 @@ static void rearrange_end(int keep)
 
 /* True when the key was the mode's. The mode owns every key while it is on:
  * a window being moved must not also be typed into. */
+/*
+ * A WINDOW NUDGED ACROSS THE SEAM STOPS AT IT.
+ *
+ * With one screen this does nothing: the only edges are the work area's, which
+ * `kwm_fit` already clamps to. With two, the boundary between them is a real
+ * edge a person is aiming at — the window they want wholly on the second
+ * monitor starts exactly where that monitor does — and nothing in the grid
+ * marks it, because the grid deliberately has no seam in it.
+ *
+ * THE SCREENS ARE THE DISPLAY'S AND THE SESSION IS TOLD THEM. `S.outs` is what
+ * an attached view reported; a session with no view, or one whose view draws in
+ * somebody's terminal, has none and this is a no-op.
+ *
+ * The search is `kwm_edge_output`'s, with `kwm_edge_check` as its validator —
+ * the snapping answer rather than the pointer-resistance one, which wants
+ * resist and attract zones this does not.
+ */
+static KwmRect snap_to_screen(KwmRect from, KwmRect to)
+{
+	KwmBox best, cur, tgt;
+
+	if (S.nouts < 2)
+		return to;
+
+	kwm_edge_init(&best);
+	cur.left = from.x;
+	cur.right = from.x + from.w;
+	cur.top = from.y;
+	cur.bottom = from.y + from.h;
+	tgt.left = to.x;
+	tgt.right = to.x + to.w;
+	tgt.top = to.y;
+	tgt.bottom = to.y + to.h;
+
+	for (int i = 0; i < S.nouts; i++) {
+		KwmRect usable;
+
+		usable.x = S.outs[i].col;
+		usable.y = 0;
+		usable.w = S.outs[i].cols;
+		usable.h = S.rows;
+		kwm_edge_output(&best, cur, tgt, usable, kwm_edge_check, NULL);
+	}
+
+	/* ONE AXIS AT A TIME, and only the edge that was moving. A nudge is
+	 * one direction; snapping the other axis as well would move the window
+	 * somewhere the arrow was not pointing. */
+	if (to.x != from.x) {
+		if (KWM_BOUNDED(best.left) && to.x < from.x)
+			to.x = best.left;
+		else if (KWM_BOUNDED(best.right) && to.x > from.x)
+			to.x = best.right - to.w;
+	}
+	return to;
+}
+
 static int rearrange_key(const KtuiEvent *ev)
 {
 	Win *w = win_find(rear.id);
@@ -816,6 +872,8 @@ static int rearrange_key(const KtuiEvent *ev)
 		g.y += dy;
 	}
 	w->tiled = 0;
+	if (!size)
+		g = snap_to_screen(w->geom, g);
 	w->geom = kwm_fit(g, win_workarea(), w->min_w, w->min_h);
 	win_resized(w);
 	ktui_draw_invalidate();
@@ -1263,6 +1321,96 @@ static void on_view_fonts(KconSurface *v, const char *const *names, int n,
  * one is still offered. A session with no display that rasterises its own
  * glyphs answers an empty list, which is the honest answer and not an error.
  */
+/* ── the screens, relayed ─────────────────────────────────────────────── */
+
+static int outs_ask_views(void)
+{
+	int asked = 0;
+
+	for (int i = 0; i < kcon_server_view_count(S.server); i++) {
+		KconSurface *v = kcon_server_view_at(S.server, i);
+
+		if (kcon_view_caps(v) & KCON_VIEW_FONT) {
+			kcon_view_outputs_ask(v);
+			asked++;
+		}
+	}
+	return asked;
+}
+
+static void on_view_outputs(KconSurface *v, const KconOut *outs, int n,
+			    void *user)
+{
+	(void)v;
+	(void)user;
+	if (n < 0)
+		n = 0;
+	if (n > KCON_MAX_OUTS)
+		n = KCON_MAX_OUTS;
+	for (int i = 0; i < n; i++)
+		S.outs[i] = outs[i];
+	S.nouts = n;
+
+	if (!S.outs_for)
+		return;
+	kcon_surface_outputs(S.outs_for, S.outs, S.nouts);
+	S.outs_for = NULL;
+}
+
+static void on_outputs_ask(KconSurface *f, void *user)
+{
+	(void)user;
+	/*
+	 * ASKED OF THE DISPLAY, EVERY TIME, and the cached list is never the
+	 * answer on its own.
+	 *
+	 * The font list may be answered from the cache because faces do not
+	 * change under a running session. SCREENS DO: a view detaches and
+	 * another attaches with different monitors on it, and a picker handed
+	 * the old view's screens would offer modes for hardware that is not
+	 * there — which is what it did, listing one 1280x800 output while the
+	 * display that had just attached was driving two.
+	 *
+	 * The cache still goes out first where a display WILL answer, so a
+	 * slow one does not leave the picker blank; the live answer replaces
+	 * it when it lands, because a list is REPLACED and never merged.
+	 */
+	S.outs_for = f;
+
+	/*
+	 * NO DISPLAY IS AN EMPTY LIST, AND NOT THE LAST ONE. A view that
+	 * detached took its screens with it, and a session that answered out
+	 * of the cache would offer modes for a monitor nobody is driving —
+	 * which is exactly what a view moved to another session leaves behind.
+	 */
+	if (outs_ask_views() == 0) {
+		S.nouts = 0;
+		S.outs_for = NULL;
+		kcon_surface_outputs(f, NULL, 0);
+		return;
+	}
+	if (S.nouts)
+		kcon_surface_outputs(f, S.outs, S.nouts);
+}
+
+static void on_mode_set(KconSurface *f, int out, int mode, int keep,
+			void *user)
+{
+	(void)f;
+	(void)user;
+	if (out < 0 || out >= S.nouts)
+		return;
+	if (mode < 0 || mode >= S.outs[out].nmodes)
+		return;
+	for (int i = 0; i < kcon_server_view_count(S.server); i++) {
+		KconSurface *v = kcon_server_view_at(S.server, i);
+
+		if (kcon_view_caps(v) & KCON_VIEW_FONT)
+			kcon_view_set_mode(v, out, mode, keep);
+	}
+	S.outs[out].cur_mode = mode;
+}
+
 static void on_fonts_ask(KconSurface *f, void *user)
 {
 	const char *ptr[KCON_MAX_FONTS];
@@ -1771,6 +1919,22 @@ static void grab_apply(const KtuiEvent *ev)
 	ktui_draw_invalidate();
 }
 
+/*
+ * THE ICON LAYER, WHICH EVERY HIT TEST ASKS LAST.
+ *
+ * `win_at()` skips it on purpose: it covers the whole grid, so hit-testing it
+ * before the windows would take every click on the desktop. Asked last, after
+ * every window has declined, it is the surface a press on bare desktop belongs
+ * to — and the only one that can begin a drag.
+ */
+static Win *bg_win(void)
+{
+	for (Win *w = S.wins; w; w = w->next)
+		if (w->background && !w->hidden && w->surf)
+			return w;
+	return NULL;
+}
+
 static void route_ptr(const KtuiEvent *ev)
 {
 	/* While locked the pointer reaches the lock surface and nothing else,
@@ -1908,9 +2072,18 @@ static void route_ptr(const KtuiEvent *ev)
 
 	Win *w = win_at(ev->mx, ev->my);
 
+	/* A press no window claimed belongs to the layer under all of them.
+	 * Without this the desktop's icons are keyboard-only: nothing can
+	 * select one with the pointer, open one, or begin the drag the session
+	 * already carries as far as the trash. */
+	if (!w)
+		w = bg_win();
+
 	/* A press raises and focuses; motion is delivered where it landed
-	 * without changing which window has the keyboard. */
-	if (w && ev->press == KT_MP_PRESS)
+	 * without changing which window has the keyboard. A background is
+	 * neither raised nor focused — it is under everything by definition,
+	 * and raising it would put the icons over the work. */
+	if (w && !w->background && ev->press == KT_MP_PRESS)
 		win_raise(w->id);
 
 	/*
@@ -1924,7 +2097,8 @@ static void route_ptr(const KtuiEvent *ev)
 	 * zone, and dragging it would move the work area out from under every
 	 * other window.
 	 */
-	if (w && !w->panel && !w->full && ev->press == KT_MP_PRESS) {
+	if (w && !w->panel && !w->full && !w->background &&
+	    ev->press == KT_MP_PRESS) {
 		int on_title = ev->my == w->geom.y;
 		int super = (ev->mods & KT_MOD_SUPER) != 0;
 		int right = ev->btn == KT_MB_RIGHT;
@@ -2964,12 +3138,7 @@ static Win *drag_target(int x, int y)
 {
 	Win *t = win_at(x, y);
 
-	if (t)
-		return t;
-	for (Win *w = S.wins; w; w = w->next)
-		if (w->background && !w->hidden && w->surf)
-			return w;
-	return NULL;
+	return t ? t : bg_win();
 }
 
 /* The drag's own coordinates, clamped into the window they are for. `win_at()`
@@ -3186,6 +3355,9 @@ static int serve(const char *sock, const char *view)
 	h.pick = on_pick;
 	h.drag_start = on_drag_start;
 	h.view_touch = on_view_touch;
+	h.view_outputs = on_view_outputs;
+	h.outputs_ask = on_outputs_ask;
+	h.mode_set = on_mode_set;
 	h.view_fonts = on_view_fonts;
 	h.fonts_ask = on_fonts_ask;
 	h.font_set = on_font_set;
@@ -4001,8 +4173,17 @@ int main(int argc, char **argv)
 	/* kdos-con-login is reached from /etc/inittab through kdos-getty, so
 	 * its tty is an argument rather than something to discover: the getty
 	 * knows which one it opened and nothing else here does. */
-	if (!strcmp(name, "kdos-con-login") || do_greet)
+	if (!strcmp(name, "kdos-con-login") || do_greet) {
+		/* `--greet --dump COLSxROWS` composites the login surface and
+		 * returns. The accounts and the sessions come from
+		 * $KDOS_GREET_FIXTURE, because the machine's own would make
+		 * the golden change whenever somebody adds an account. */
+		if (do_greet && cols > 0 && rows > 0)
+			return con_greet_dump(cols, rows,
+					      getenv("KDOS_GREET_FIXTURE"),
+					      getenv("KDOS_GREET_MESSAGE"));
 		return con_login(login_tty ? login_tty : "tty1");
+	}
 
 	if (do_serve) {
 		if (!sock) {

@@ -5254,7 +5254,7 @@ static void test_kcon(void)
 	 * client of the session is rebuilt from this tree, so the number costs
 	 * nothing to raise — and the enum it guards is positional, which is
 	 * what makes raising it the cheap half of an op that moved. */
-	eq_int(KCON_VERSION, 15, "and the version the two ends agree on");
+	eq_int(KCON_VERSION, 16, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -8026,7 +8026,7 @@ static void test_kvt_drive(void)
 
 	static const struct {
 		const char *name;
-		const char *argv[5];
+		const char *argv[8];
 		int key;		/* what to press */
 		const char *want;	/* what pressing it must put on screen */
 	} progs[] = {
@@ -8034,17 +8034,42 @@ static void test_kvt_drive(void)
 		{ "less",  { "less", "-X", "/tmp/kdos-selftest-pager.txt", NULL },
 		  'j', "line 002" },
 		/*
-		 * vi: `i` is insert mode and it says so on the last row — but
-		 * ONLY with -N. `-u NONE` alone implies 'compatible', which
-		 * turns showmode off, and then the keystroke lands and changes
-		 * nothing anybody can see. Measured, not assumed.
+		 * THE EDITOR THIS SYSTEM SHIPS IS `nvim`, and the name matters
+		 * more than it looks: a row naming `vim` exits 127 on every
+		 * KDOS machine and is skipped, so the strongest assertion in
+		 * this block would run only on a developer host that happens
+		 * to have one. `i` is insert mode and says so on the last row
+		 * because nvim is always nocompatible and 'showmode' is on;
+		 * `-u NONE` keeps a user's configuration out of the frame.
 		 */
-		{ "vim",   { "vim", "-N", "-u", "NONE", NULL }, 'i', "INSERT" },
+		{ "nvim",  { "nvim", "-u", "NONE", NULL }, 'i', "INSERT" },
 		/* A process monitor redraws on any key; `h` opens its help. */
 		{ "htop",  { "htop", NULL }, 'h', NULL },
 		{ "top",   { "top", NULL }, 'h', NULL },
 		/* A file manager: Tab moves to the other panel. */
 		{ "mc",    { "mc", "-d", NULL }, KT_K_TAB, NULL },
+		/*
+		 * The other file manager, which moves a HIGHLIGHT and redraws
+		 * no glyph — `j` on a list of files repaints two rows in
+		 * different colours and leaves every character where it was.
+		 * That is what `drv_sig` hashes the whole cell for; a check
+		 * comparing rendered text would call this "nothing happened".
+		 */
+		{ "lf",    { "lf", NULL }, 'j', NULL },
+		/*
+		 * A task list. BOTH paths are given: `--taskrc` names a file
+		 * that exists, so `task` does not stop to ask whether it may
+		 * create one and wait for an answer nothing will type, and
+		 * `--taskdata` keeps the scratch tasks out of the caller's own.
+		 * `]` IS THE NEXT TAB AND NOT `j`: the scratch list is empty,
+		 * so a selection has nothing to move to and the screen after a
+		 * `j` is the screen before it — a program behaving correctly
+		 * failing the assertion.
+		 */
+		{ "taskwarrior-tui",
+		  { "taskwarrior-tui", "--taskrc",
+		    "/tmp/kdos-selftest-drive/task/taskrc", "--taskdata",
+		    "/tmp/kdos-selftest-drive/task", NULL }, ']', NULL },
 		/* A multiplexer draws a status bar and passes keys to a shell. */
 		{ "tmux",  { "tmux", "-f", "/dev/null", NULL }, 'e', NULL },
 		{ "nano",  { "nano", NULL }, 'Z', "Z" },
@@ -8064,6 +8089,31 @@ static void test_kvt_drive(void)
 	if (chdir("/tmp/kdos-selftest-drive") < 0) {
 		puts("  (no scratch directory to drive them from — skipped)");
 		return;
+	}
+	/*
+	 * A file manager needs FILES: `j` on an empty directory moves a
+	 * selection that has nothing to move to, the screen is identical
+	 * afterwards, and the assertion fails on a program that behaved
+	 * correctly.
+	 */
+	mkdir("task", 0700);
+	{
+		FILE *rc = fopen("task/taskrc", "w");
+
+		if (rc) {
+			fprintf(rc, "data.location=/tmp/kdos-selftest-drive/task\n"
+				    "confirmation=no\nverbose=nothing\n");
+			fclose(rc);
+		}
+	}
+	for (int i = 1; i <= 6; i++) {
+		char nm[64];
+		snprintf(nm, sizeof(nm), "file-%02d.txt", i);
+		FILE *f = fopen(nm, "w");
+		if (f) {
+			fprintf(f, "row %d\n", i);
+			fclose(f);
+		}
 	}
 
 	for (size_t i = 0; i < sizeof(progs) / sizeof(progs[0]); i++) {

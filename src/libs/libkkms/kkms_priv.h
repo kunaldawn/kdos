@@ -20,6 +20,11 @@
 
 #include "ktui.h"
 
+/* How many modes one connector may publish. A monitor lists a few dozen; a
+ * list longer than this is truncated, which is a shorter picker and not a
+ * broken one. */
+#define KKMS_MAX_MODES 64
+
 /*
  * ONE SCREEN. Everything here is per-connector and nothing is shared: a second
  * monitor is a second dumb buffer, a second CRTC and a second row diff, and the
@@ -45,6 +50,19 @@ struct kkms_out {
 	 * showing fewer rows than the grid has is CENTRED, never scaled: a
 	 * character grid stretched to fit is a grid of the wrong shape. */
 	int px, py;
+
+	/*
+	 * WHAT THIS SCREEN PUBLISHED, gathered at the probe and HELD. The
+	 * connector is already open there; re-opening one asks the kernel to
+	 * probe the monitor again, so a picker that fetched its list on demand
+	 * would pay a modeset-shaped stall every time somebody opened it.
+	 */
+	drmModeModeInfo modes[KKMS_MAX_MODES];
+	int nmodes, cur_mode;
+	/* What a PERSON calls this screen — `HDMI-A-1`, `eDP-1`. A connector
+	 * id is a kernel object number and means nothing to somebody choosing
+	 * between two monitors. */
+	char name[32];
 
 	void *pixels;
 	pixman_image_t *image;

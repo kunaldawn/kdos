@@ -254,9 +254,10 @@ static Bind binds[] = {
 	 * because a chord a person already knows is worth more than a chord
 	 * that is locally tidy, and the key card is then one card.
 	 *
-	 * `displays` reaches a surface that cannot configure a console screen
-	 * yet — libkkms has no mode selection — so it says so and exits. That
-	 * is a stated limit, and it is better than a chord that is missing.
+	 * `displays` lists the screens the attached view is driving and sets a
+	 * mode on one. Off, scale and rotate stay the compositor's: a text
+	 * grid has no scale factor, and a rotated screen would give its cells
+	 * a different shape from the one beside it.
 	 */
 	{ "keys",	CON_ACT_EXEC,	 CON_CMD_KEYS,	   KT_K_F1, KT_MOD_SUPER },
 	{ "audio",	CON_ACT_EXEC,	 CON_CMD_AUDIO,	   KT_K_F3, KT_MOD_SUPER },

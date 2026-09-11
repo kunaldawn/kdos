@@ -118,6 +118,41 @@ int sh_mountd_list(ShMountRow *out, int max, char *why, size_t nwhy)
 	return n;
 }
 
+int sh_mountd_shares(ShShareRow *out, int max, char *why, size_t nwhy)
+{
+	char buf[8192];
+	int n = 0;
+
+	if (why && nwhy)
+		why[0] = '\0';
+	if (sh_mountd_ask("shares", buf, sizeof(buf)) != 0) {
+		if (why && nwhy)
+			snprintf(why, nwhy, "kdos-mountd is not running "
+					    "(service start 58_mountd)");
+		return 0;
+	}
+	for (char *p = buf; *p && n < max;) {
+		char *nl = strchr(p, '\n');
+
+		if (nl)
+			*nl = '\0';
+
+		ShShareRow *r = &out[n];
+
+		memset(r, 0, sizeof(*r));
+		/* `index\tunc\tmountpoint`, and the `ok` the daemon ends with
+		 * has neither tab, so it falls out here rather than needing a
+		 * test of its own. */
+		if (sscanf(p, "%d\t%351[^\t]\t%255[^\n]", &r->idx, r->unc,
+			   r->mnt) == 3)
+			n++;
+		if (!nl)
+			break;
+		p = nl + 1;
+	}
+	return n;
+}
+
 int sh_mountd_do(int idx, const char *verb, char *out, size_t nout)
 {
 	char req[64], buf[512];

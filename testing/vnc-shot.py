@@ -122,8 +122,13 @@ class Monitor:
         time.sleep(0.4)
         self.drain()
 
-    def type(self, text):
+    def type(self, text, ret=True):
         """Type on the VT, one `sendkey` per character.
+
+        `ret` sends Return at the end, which is what a command line wants and
+        what a FIELD does not: a search box, a rename or a filter is answered
+        while it is being typed, and a Return there has already moved on to
+        whatever the first match does.
 
         The session is started the way a person starts it — by typing
         `kdos-desktop` at the autologin prompt on tty1 — rather than from the
@@ -156,7 +161,8 @@ class Monitor:
                 key = names.get(ch, ch)
             self.cmd("sendkey " + key)
             time.sleep(0.08)
-        self.cmd("sendkey ret")
+        if ret:
+            self.cmd("sendkey ret")
 
 
 def rfb_pointer(host, port, moves):
@@ -181,6 +187,59 @@ def rfb_pointer(host, port, moves):
     # The server processes what it has been sent before the socket closes, and
     # a close with the last event still in flight loses it.
     time.sleep(0.5)
+    s.close()
+
+
+# The keysyms a chord can name. X11's numbering, which is what RFB carries.
+CHORD_KEYS = {
+    "super": 0xffeb, "shift": 0xffe1, "ctrl": 0xffe3, "alt": 0xffe9,
+    "space": 0x0020, "tab": 0xff09, "ret": 0xff0d, "esc": 0xff1b,
+    "up": 0xff52, "down": 0xff54, "left": 0xff51, "right": 0xff53,
+    "home": 0xff50, "end": 0xff57, "backspace": 0xff08, "delete": 0xffff,
+}
+for _i in range(1, 13):
+    CHORD_KEYS["f%d" % _i] = 0xffbd + _i
+
+
+def rfb_chord(host, port, spec):
+    """Hold the modifiers, tap the key, let go — over RFB.
+
+    WHY NOT `sendkey`. qemu's monitor presses and releases a whole combination
+    in one command, and a chord with TWO modifiers in it does not arrive:
+    `W-Return` opens a terminal and `W-S-space` and `W-C-h` reach the
+    compositor as nothing at all. RFB's KeyEvent is one key and one direction,
+    so the modifiers are genuinely DOWN while the key is tapped — which is what
+    a keyboard does and what xkb's modifier state is built to see.
+    """
+    names = [n.strip().lower() for n in spec.split("+") if n.strip()]
+    if not names:
+        return
+    shifted = "shift" in names
+    syms = []
+    for n in names:
+        if n in CHORD_KEYS:
+            syms.append(CHORD_KEYS[n])
+        elif len(n) == 1:
+            # THE SHIFTED KEYSYM WHERE SHIFT IS HELD. qemu's VNC input
+            # produces the keysym it was asked for and adjusts the shift state
+            # to do it — so asking for a lowercase letter with Shift down makes
+            # it RELEASE Shift, and the chord arrives as the bare letter typed
+            # into whatever had the focus.
+            syms.append(ord(n.upper() if shifted else n))
+        else:
+            raise SystemExit("--chord: no keysym named %r" % n)
+    s, _w, _h, _pf = rfb_handshake(host, port)
+    for sym in syms:
+        s.sendall(struct.pack(">BBHI", 4, 1, 0, sym))
+        time.sleep(0.05)
+    for sym in reversed(syms):
+        s.sendall(struct.pack(">BBHI", 4, 0, 0, sym))
+        time.sleep(0.05)
+    # A FRAMEBUFFER REQUEST AFTER THE RELEASE, for rfb_pointer's reason: the
+    # server processes a client's messages in order, and closing the socket
+    # before it has read them throws the chord away.
+    s.sendall(struct.pack(">BBHHHH", 3, 1, 0, 0, 1, 1))
+    time.sleep(0.2)
     s.close()
 
 
@@ -359,10 +418,20 @@ def main():
                     help="wait this many seconds before the next step")
     ap.add_argument("--keys", action=Step,
                     help="monitor sendkey, e.g. meta_l-a")
+    ap.add_argument("--chord", action=Step,
+                    help="hold the modifiers and tap the key, over RFB — "
+                         "`super+shift+space`. Use this for anything with two "
+                         "modifiers in it: qemu's sendkey presses and releases "
+                         "the whole combination at once and such a chord never "
+                         "arrives")
     ap.add_argument("--type", action=Step,
                     help="type this into whatever has the focus, then Return "
                          "— unlike --console-cmd this is a step, so it can "
                          "follow a --keys that opened a window")
+    ap.add_argument("--text", action=Step,
+                    help="type this and stop — no Return. A search field, a "
+                         "filter or a rename is answered as it is typed, and "
+                         "a Return has already acted on the first match")
     ap.add_argument("--mouse", action=Step,
                     help="move the pointer to X,Y (absolute pixels)")
     ap.add_argument("--click", action=Step,
@@ -631,6 +700,9 @@ def main():
             elif kind == "keys":
                 mon.cmd("sendkey " + value)
                 time.sleep(3)
+            elif kind == "chord":
+                rfb_chord("127.0.0.1", args.vnc_port, value)
+                time.sleep(3)
             elif kind == "type":
                 # TYPED AS A STEP, so it reaches whatever has the focus AT
                 # THIS POINT of the run. `--console-cmd` types during
@@ -639,6 +711,9 @@ def main():
                 # the run had just opened, which is what every check on the
                 # cell desktop's own terminals needs.
                 mon.type(value)
+                time.sleep(2)
+            elif kind == "text":
+                mon.type(value, ret=False)
                 time.sleep(2)
             elif kind == "mouse":
                 mx, my = (int(v) for v in value.split(","))

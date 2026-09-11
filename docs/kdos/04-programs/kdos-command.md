@@ -117,6 +117,29 @@ nothing is a keystroke a person cannot tell from a broken one. **`Super+Ctrl+i` 
 `Super+Ctrl+Shift+n` is `night-light`** — not `Super+Ctrl+n`, which is the scratch pad's on both
 desktops and has been since either had accessories.
 
+## panel
+
+```sh
+kdos panel toggle            # put the compositor's bar away, and bring it back
+```
+
+**One verb for a chord both desktops bind.** `Super+Shift+space` is a session action on the console
+— the bar's row leaves the work area and every window re-fits — and there is no process there to
+signal. Under the compositor the bar is `kdos-shell`, so this signals it: `SIGUSR1`, **by exact
+`comm`**, which reaches the panel and not the desktop icons or the notification daemon, the other
+`argv[0]`s of the same binary. `rc.xml` runs a command and cannot send a signal, which is why the
+verb exists rather than the binding doing it.
+
+**It walks `/proc` itself instead of running `pkill`, and this is the one signal in `kdos` that
+has to.** This image's `pkill` is toybox's, whose `-U` takes a user id — so `-USR1` is parsed as
+`-U SR1` and refused, while `-HUP` survives only because there is no `-H`. A signal spelled so
+that it depends on which options a `pkill` happens to have stops being sent the day one is
+swapped, and it stops silently, because the refusal goes to a stderr nobody reads.
+
+**It outranks autohide.** While the bar is put away the pointer will not bring it back; without that
+rule it returned the first time the mouse crossed the bottom row. Nothing is reported when no panel
+is running — a desktop with no bar has already granted the request.
+
 ## menu
 
 ```sh

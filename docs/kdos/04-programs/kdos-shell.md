@@ -33,6 +33,7 @@ half of the same mistake.
 | `kdos-audio` | Audio devices | [The device managers](#the-device-managers) |
 | `kdos-devices` | Cameras, microphones, removable media | [The device managers](#the-device-managers) |
 | `kdos-disks` | Disks: mount, unlock, SMART, partition, erase | [The device managers](#the-device-managers) |
+| `kdos-connect` | A folder on another machine, over SMB | [The device managers](#the-device-managers) |
 | `kdos-print` | Printers: what is set up, what is on the network | [The device managers](#the-device-managers) |
 | `kdos-time` | The zone, the clock, and whether the clock is right | [The small surfaces](#the-small-surfaces) |
 | `kdos-users` | The accounts, and which one tty1 logs in | [The small surfaces](#the-small-surfaces) |
@@ -135,8 +136,8 @@ surface's page in `kdos-doc` where it has one. The full rule — the ladder, the
 `&`-marked accelerators — is in
 [the design language](../03-architecture/design-language.md#the-keys-every-surface-answers).
 
-Six surfaces claim an `F1` page today: `kdos-settings`, `kdos-display`, `kdos-net`, `kdos-bt`,
-`kdos-devices` and `kdos-rec`, plus [`kdos-res`](kdos-res.md). The pages live in `/usr/share/kdos/doc` and
+Seven surfaces claim an `F1` page today: `kdos-settings`, `kdos-display`, `kdos-net`, `kdos-bt`,
+`kdos-devices`, `kdos-connect` and `kdos-rec`, plus [`kdos-res`](kdos-res.md). The pages live in `/usr/share/kdos/doc` and
 `testing/preflight.sh` refuses a claim with no file behind it, so a surface that does not appear
 here neither advertises `F1` nor answers it.
 
@@ -156,6 +157,20 @@ third of the window.
 
 Two rows, on the bottom edge by default. The **second row is not padding**: it carries the
 clock's date, a window button's own title under its application name, and the meters strip.
+
+### Autohide
+
+**`panel_autohide` in `comp.conf` is the pointer's.** Hidden, the panel drops its exclusive zone, so
+the strip it was holding goes back to the windows; what stays on screen is one row of accent shade,
+because a panel that vanished completely is a panel nobody finds again. An enter over that strip
+shows it at once and a leave arms a deadline rather than hiding under the hand.
+
+**`Super+Shift+space` is a person's, and it outranks the pointer.** `kdos panel toggle` signals the
+running panel — `SIGUSR1`, by name, which reaches the panel and not the desktop icons or the
+notification daemon, the other `argv[0]`s of the same binary — and while the bar is put away the
+pointer will not bring it back. Without that it returned the first time the mouse crossed the bottom
+row, which reads as a chord that did not work. The console's half of the chord is a session action
+with no process to signal; one name for both is what keeps the key card one card.
 
 ### Layout and degradation
 
@@ -1188,6 +1203,16 @@ Per-manager:
   can read, and a button that started one and could not be stopped would be the most dangerous
   control on this desktop — the honest place for it is a shell. Erase asks for the device's own
   name typed, which is the daemon's rule and not this surface's decoration.
+- **`kdos-connect`** is the same shape for a folder on another machine: five fields — server,
+  share, user, domain, password — handed to `kdos-mountd`'s `cifs` verb, and a list of what is
+  mounted underneath. **The password is a second frame and never a token**, for the reason the
+  passphrase in `kdos-disks` is: the request line is split on spaces. **The four names are not
+  checked here, they are checked there** — `mount.cifs` builds its option string by concatenation
+  and escapes nothing but the password, so the allowlist that refuses a comma has to be the
+  daemon's, because a check in a surface is a check nothing else talking to the socket gets.
+  **The form takes every key before the rung pool**, Escape excepted: a surface whose text field
+  sat under the pool would close the window the first time somebody typed a letter the pool had a
+  meaning for.
 - **`kdos-print`** is `lpstat`, `lpinfo` and `lpadmin`, **not libcups and not IPP**. Those three are
   on the image, they are what the CUPS documentation tells a person to type, and they are the
   interface upstream keeps stable; linking libcups would put a second client library and its config
@@ -1360,6 +1385,5 @@ starting `kdos-ime` is the whole of the configuration. Nothing is written to a c
 refuses to start and names the program that owns it, rather than taking the name and leaving
 whatever was drawing the candidates believing it is still the panel.
 
-**On the console the window is drawn and the engine is not running.** fcitx5 speaks
-`input-method-v2` to a compositor and there is none on that path, which is why
-[known-gaps](../06-reference/known-gaps.md) still records no input method there.
+**On the console the window is drawn and the engine is not running** — the limit and its reason are
+in [known-gaps](../06-reference/known-gaps.md), which is the one page that states it.

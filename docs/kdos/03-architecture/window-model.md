@@ -151,6 +151,14 @@ a window is. A screen showing fewer rows than the grid has shows the **top** of
 it and is padded, never scaled — every cell is the same size on every screen,
 which is what lets a window keep its shape across the seam.
 
+**A moved window stops at the seam once.** With two or more screens lit, a move
+runs `kwm_edge_output` over each output's columns before it is fitted to the
+work area: the edge that was moving lands on the nearest screen boundary ahead
+of it, and the other axis is left alone — a nudge is one direction, and snapping
+both would put the window somewhere the arrow was not pointing. A second nudge
+crosses. One screen has no seam, so the search is skipped entirely and a move is
+the plain one.
+
 **Pointer resistance is not in the model.** How a drag feels as it crosses an
 edge — the resist and attract zones — is interaction, and it stays in the
 compositor with its own validator. The two desktops share where an edge *is*,

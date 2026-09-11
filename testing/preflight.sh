@@ -993,6 +993,18 @@ RC=fs/etc/skel/.config/kdos-comp/rc.xml
 if [ ! -f "$RC" ]; then
     bad "rc.xml defaults" "$RC is missing"
 else
+    # AND IT HAS TO BE XML A PARSER WILL TAKE. `--` may not appear inside an
+    # XML comment, and this file documents itself in prose that names command
+    # arguments: one `--app-id` in a comment makes the whole document
+    # ill-formed, and a compositor that cannot parse its configuration loads
+    # none of the bindings in it. Nothing else here would notice — every grep
+    # below reads the file as text.
+    if python3 -c "import sys,xml.dom.minidom;xml.dom.minidom.parse(sys.argv[1])" \
+            "$RC" >/dev/null 2>&1; then
+        note "rc.xml XML" "well-formed, so labwc reads every binding in it"
+    else
+        bad "rc.xml XML" "$RC is not well-formed XML — a \`--\` inside a comment is the usual cause"
+    fi
     # COMMENTS ARE STRIPPED FIRST, and that is not fussiness: this file's own
     # header explains the trap in prose, so it contains the words <mouse> and
     # <keyboard> and <default /> as TEXT. A grep over the raw file finds them
@@ -1542,6 +1554,23 @@ for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(|
 done
 [ "$_lit" = 0 ] &&
     note "colour" "at the boundary, on the wire, and in the picker's swatches"
+
+echo "==> the generated aerc styleset is one aerc will load"
+# A KEY IS object[.selected].attribute, and aerc refuses the WHOLE FILE on one
+# it cannot parse — so a single wrong key is a mail client that will not start,
+# on a machine where nothing else reads this file and nothing else would say so.
+_akeys=$(sed -n '/^static void write_aerc/,/^}/p' src/packages/kdos-tools/kdos.c 2>/dev/null |
+         grep -oE '"[A-Za-z_*][A-Za-z0-9_*.]*=' | tr -d '"=')
+_aerc=0
+for _k in $_akeys; do
+    printf '%s\n' "$_k" | grep -qE \
+        '^[A-Za-z_*][A-Za-z0-9_*]*(\.selected)?\.(fg|bg|bold|italic|underline|reverse|blink|dim)$' &&
+        continue
+    bad "aerc styleset" "$_k is not object[.selected].attribute"
+    _aerc=$((_aerc + 1))
+done
+[ "$_aerc" = 0 ] &&
+    note "aerc styleset" "$(printf '%s\n' $_akeys | grep -c .) key(s), each one aerc's grammar"
 
 echo
 if [ "$fail" = 0 ]; then

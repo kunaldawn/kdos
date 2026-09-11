@@ -353,6 +353,12 @@ usually want is an order.
 Each output gets its own panel and its own desktop icons. Both panels list every window rather
 than only that output's; see [Known gaps](../06-reference/known-gaps.md).
 
+**On the console the same surface configures the same screens, with one verb of the four.** It
+lists every connector the attached view lit and `m` picks a mode; off, scale and rotate are drawn
+disabled because a text grid has no scale factor and a rotated screen would give its cells a
+different shape from the one beside it. A mode taken there starts a fifteen-second countdown —
+there is no second screen to fix an unreadable one from, so `K` keeps it and anything else reverts.
+
 ## Removable media and devices
 
 `Super+F6` opens `kdos-devices`: removable media, cameras and the rest. A stick is offered by
@@ -387,6 +393,47 @@ desktop stops missing frames.
 
 For everything else, the meters strip is the way in: left click for
 [`kdos-res`](../04-programs/kdos-res.md), middle for `kdos stutter`, right for `kdos-energy`.
+
+## A day at `tty1`
+
+The console session is not a fallback, and the shortest way to say so is a whole day in it. Every
+step below is a chord or a row somebody reaches for, in the order the day happens; nothing here
+needs the compositor, a browser, or a second machine. The photographs are `build/shots/day-NN.png`.
+
+1. **The welcome card is open on the first login.** `Esc` puts it away. `Super+F1` brings the key
+   card back whenever you want it, and typing into it **searches**: `work` narrows sixty chords to
+   the workspace ones.
+2. **`Super+space` is the search over everything** — applications, routes, settings pages, files.
+   Type `ma`, press `Enter`, and mail opens: `aerc` in a terminal window, reading `~/Mail`. An HTML
+   message is rendered by `w3m` in place, the inline photograph is a picture in the terminal, and
+   the PDF attachment opens in the viewer the table names. `rr` replies.
+3. **`Super+e` is the file manager.** A `.docx` opens read-only in `doxx`, in a terminal, because
+   the office suite that would open it is a Wayland application and there is none here.
+   `Shift+F10` on a desktop icon offers **Share**, and the toast carries the code word the other
+   end needs.
+4. **`Super+grave` is the scratchpad** — one terminal, on every workspace, that comes and goes with
+   the chord. Start a build in it, press the chord again, and the build's own `OSC 9` arrives as a
+   toast while you are somewhere else.
+5. **`Super+Shift+m` marks a rectangle of the screen.** Arrows place one corner, `Shift+`arrows drag
+   the other, `Enter` copies. `Super+Ctrl+n` opens Notes, `Ctrl+D` edits, `Super+Shift+v` pastes.
+6. **`Super+Ctrl+q` is a calculator that reads units.** `3 in to mm` answers `76.2 mm`; `Enter`
+   copies the answer, and `Super+Shift+v` puts it in the spreadsheet.
+7. **A photograph on the desktop opens in `kdos-pix`** as pixels rather than as blocks, if the
+   terminal has a picture path. `Print` takes a screenshot, which is a picture like any other and
+   opens in the same viewer.
+8. **`Super+F3` is the sound panel**; `Super+Shift+u` raises the music player, and what is playing
+   is in the taskbar.
+9. **`Super+Shift+t` tiles the workspace**, `Super+r` rearranges from the keyboard, `Super+F2` lists
+   every window — `Enter` raises, `Del` closes, `m` minimises — and `Super+Shift+d` shows the
+   desktop and brings everything back.
+10. **`Super+Ctrl+Shift+space` changes the accent** with a live preview, and every program follows:
+    the panel, the terminal, the editor, the pager, the file manager.
+11. **`Super+Ctrl+r` sets a reminder**, and it fires once, whatever the machine did in between.
+12. **The Start menu's search finds the printer page**, and `kdos-keys --print` prints the key card
+    onto the terminal, which is where a paper copy comes from.
+13. **`Super+l` locks.** `Ctrl+Alt+F2` is another terminal with its own login; `Ctrl+Alt+F1` comes
+    back to the session with every window where it was.
+14. **`Super+Shift+q` ends the session** and `exit` logs out. The next login puts the layout back.
 
 ## See also
 

@@ -409,6 +409,77 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		break;
 	}
 
+	case KCON_OP_VIEW_OUTPUTS: {
+		/*
+		 * ONE VERB, ASKED IN TWO DIRECTIONS, the shape the font list
+		 * uses. A SHELL sending it asks for the screens; a VIEW
+		 * sending it answers with them.
+		 */
+		if (f->kind == KCON_KIND_SHELL) {
+			if (s->hooks.outputs_ask)
+				s->hooks.outputs_ask(f, s->user);
+			break;
+		}
+
+		int n = (int)kcon_get_u16(&r);
+
+		if (r.err || f->kind != KCON_KIND_VIEW)
+			return;
+		if (n < 0 || n > KCON_MAX_OUTS)
+			n = n < 0 ? 0 : KCON_MAX_OUTS;
+
+		/* STATIC, because a KconOut is a kilobyte and this runs on the
+		 * session's own stack inside its frame loop. One buffer: the
+		 * hook is called before the next message is read. */
+		static KconOut outs[KCON_MAX_OUTS];
+		int got = 0;
+
+		for (int i = 0; i < n; i++) {
+			KconOut *o = &outs[got];
+
+			snprintf(o->name, sizeof(o->name), "%s",
+				 kcon_get_str(&r));
+			o->col = (int)kcon_get_u16(&r);
+			o->cols = (int)kcon_get_u16(&r);
+			o->width = (int)kcon_get_u16(&r);
+			o->height = (int)kcon_get_u16(&r);
+			o->cur_mode = (int)(int16_t)kcon_get_u16(&r);
+			o->nmodes = (int)kcon_get_u16(&r);
+			if (r.err)
+				break;
+			if (o->nmodes < 0 || o->nmodes > KCON_MAX_MODES)
+				o->nmodes = o->nmodes < 0 ? 0
+							  : KCON_MAX_MODES;
+			for (int m = 0; m < o->nmodes; m++) {
+				o->mode[m].width = (int)kcon_get_u16(&r);
+				o->mode[m].height = (int)kcon_get_u16(&r);
+				o->mode[m].refresh = (int)kcon_get_u32(&r);
+			}
+			if (r.err)
+				break;
+			got++;
+		}
+		if (s->hooks.view_outputs)
+			s->hooks.view_outputs(f, outs, got, s->user);
+		break;
+	}
+
+	case KCON_OP_VIEW_SETMODE: {
+		/*
+		 * A SHELL ONLY, the rule the font set keeps: a mode change
+		 * re-cuts the grid under every window on the desktop.
+		 */
+		int out = (int)(int16_t)kcon_get_u16(&r);
+		int mode = (int)(int16_t)kcon_get_u16(&r);
+		int keep = (int)kcon_get_u8(&r);
+
+		if (r.err || f->kind != KCON_KIND_SHELL)
+			return;
+		if (s->hooks.mode_set)
+			s->hooks.mode_set(f, out, mode, keep, s->user);
+		break;
+	}
+
 	case KCON_OP_VIEW_SIZE: {
 		int cols = (int)kcon_get_u16(&r);
 		int rows = (int)kcon_get_u16(&r);
@@ -1317,6 +1388,66 @@ void kcon_surface_fonts(KconSurface *f, const char *const *names, int n,
 	for (int i = 0; i < n; i++)
 		kcon_put_str(&b, names && names[i] ? names[i] : "");
 	kcon_send(f->conn, KCON_OP_VIEW_FONTS, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_view_outputs_ask(KconSurface *v)
+{
+	if (!v || v->kind != KCON_KIND_VIEW || !(v->caps & KCON_VIEW_FONT))
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_send(v->conn, KCON_OP_VIEW_OUTPUTS, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_view_set_mode(KconSurface *v, int out, int mode, int keep)
+{
+	if (!v || v->kind != KCON_KIND_VIEW || !(v->caps & KCON_VIEW_FONT))
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)(int16_t)out);
+	kcon_put_u16(&b, (uint16_t)(int16_t)mode);
+	kcon_put_u8(&b, (uint8_t)(keep ? 1 : 0));
+	kcon_send(v->conn, KCON_OP_VIEW_SETMODE, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_surface_outputs(KconSurface *f, const KconOut *outs, int n)
+{
+	if (!f)
+		return;
+	if (n < 0)
+		n = 0;
+	if (n > KCON_MAX_OUTS)
+		n = KCON_MAX_OUTS;
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)n);
+	for (int i = 0; i < n; i++) {
+		const KconOut *o = &outs[i];
+		int nm = o->nmodes < 0 ? 0
+		       : o->nmodes > KCON_MAX_MODES ? KCON_MAX_MODES
+						    : o->nmodes;
+
+		kcon_put_str(&b, o->name);
+		kcon_put_u16(&b, (uint16_t)o->col);
+		kcon_put_u16(&b, (uint16_t)o->cols);
+		kcon_put_u16(&b, (uint16_t)o->width);
+		kcon_put_u16(&b, (uint16_t)o->height);
+		kcon_put_u16(&b, (uint16_t)(int16_t)o->cur_mode);
+		kcon_put_u16(&b, (uint16_t)nm);
+		for (int m = 0; m < nm; m++) {
+			kcon_put_u16(&b, (uint16_t)o->mode[m].width);
+			kcon_put_u16(&b, (uint16_t)o->mode[m].height);
+			kcon_put_u32(&b, (uint32_t)o->mode[m].refresh);
+		}
+	}
+	kcon_send(f->conn, KCON_OP_VIEW_OUTPUTS, &b);
 	kcon_buf_free(&b);
 }
 

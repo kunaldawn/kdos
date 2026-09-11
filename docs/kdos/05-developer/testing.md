@@ -239,6 +239,12 @@ any host, which is the point of that build.
 the notification daemon, the on-screen display and the desktop. That is a stated gap, not an
 oversight in this page.
 
+**The greeter has one, and it is drawn from a fixture.** `kdos-con --greet --dump COLSxROWS` reads
+the accounts and the sessions out of `$KDOS_GREET_FIXTURE` rather than out of `/etc/passwd` and the
+installed programs: a frame taken from the machine is a picture of that machine, and the golden
+would move the day an account was added. Two accounts and two sessions, because one of either
+draws no chooser at all and the chooser is half of what there is to see.
+
 **Every frame that exists carries the row that names its keys**, and the suite checks it against
 the committed goldens rather than against a fresh dump — a blank bottom row is a surface whose keys
 nobody can find, whatever it drew the day the golden was written. **Furniture is exempt and is
@@ -336,6 +342,13 @@ kdos-view --tty --socket $XDG_RUNTIME_DIR/kdos/t2.view
 `kdos-pix` takes its socket from `$KDOS_CON` and has no `--socket`. `kdos-con --attach -t t2` is the
 short form of the third line. `KDOS_VIEW_PIX=off|kitty|sixel` forces the tier and `KDOS_VIEW_CELL`
 the cell size, which is how all three are driven on one host.
+
+**A recorded stream is not a running program.** Beside the `vt` fixtures the suite opens real
+programs on a real pty and presses one key each: `less`, `nvim`, `htop`, `top`, `mc`, `lf`, `tmux`,
+`nano` and `taskwarrior-tui`. **The names are the ones this system installs** — a row naming `vim`
+exits 127 on every KDOS machine and is skipped, which is a green tick for a test that never ran. A
+program the host has not got is skipped by that same 127, so the block asserts where the programs
+are and stays silent where they are not.
 
 **Both traps a fixture guards were confirmed to bite** by building the daemon with each check
 disabled — which is the only way to know a test is testing something.
@@ -587,7 +600,8 @@ is the Start-menu row that allocates a free terminal and switches to it.
 | `--no-cdrom` | Leave the ISO off, so the **disk** is what boots |
 | `--no-session` | Do not start a compositor |
 | `--shot <file>` | Capture the framebuffer |
-| `--keys`, `--click x,y`, `--mouse x,y` | Drive it |
+| `--keys`, `--chord`, `--click x,y`, `--mouse x,y`, `--drag x1,y1,x2,y2` | Drive it |
+| `--type`, `--text` | Type into whatever has the focus — `--type` ends with Return, `--text` does not |
 | `--sleep`, `--wait`, `--soak <s>` | Timing |
 | `--cmd`, `--root-cmd` | Run something in the guest |
 | `--root-script <file>` | Send a **local** script in and run it as root |

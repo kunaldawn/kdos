@@ -59,6 +59,11 @@ static struct {
 	char fonts[KCON_MAX_FONTS][KCON_FONT_NAME];
 	int nfonts, font_cur;
 
+	/* The screens the display is driving, and their modes. The display's
+	 * own, relayed by the session — read and drawn, never parsed. */
+	KconOut outs[KCON_MAX_OUTS];
+	int nouts;
+
 	/* Close when the keyboard focus goes elsewhere — an overlay's own
 	 * choice, kept here because the surface made it. */
 	int dismiss_on_unfocus;
@@ -281,6 +286,47 @@ static void handle(const KconMsg *m)
 			C.nfonts++;
 		}
 		C.font_cur = cur >= 0 && cur < C.nfonts ? cur : -1;
+		break;
+	}
+
+	case KCON_OP_VIEW_OUTPUTS: {
+		/* THE SCREENS THE DISPLAY OFFERED. Stored and not announced,
+		 * the rule the font list keeps: a caller re-reads on its own
+		 * turn rather than being called back from inside a pump. */
+		int n = (int)kcon_get_u16(&r);
+
+		if (r.err)
+			break;
+		if (n < 0)
+			n = 0;
+		if (n > KCON_MAX_OUTS)
+			n = KCON_MAX_OUTS;
+		C.nouts = 0;
+		for (int i = 0; i < n; i++) {
+			KconOut *o = &C.outs[C.nouts];
+
+			snprintf(o->name, sizeof(o->name), "%s",
+				 kcon_get_str(&r));
+			o->col = (int)kcon_get_u16(&r);
+			o->cols = (int)kcon_get_u16(&r);
+			o->width = (int)kcon_get_u16(&r);
+			o->height = (int)kcon_get_u16(&r);
+			o->cur_mode = (int)(int16_t)kcon_get_u16(&r);
+			o->nmodes = (int)kcon_get_u16(&r);
+			if (r.err)
+				break;
+			if (o->nmodes < 0 || o->nmodes > KCON_MAX_MODES)
+				o->nmodes = o->nmodes < 0 ? 0
+							  : KCON_MAX_MODES;
+			for (int m = 0; m < o->nmodes; m++) {
+				o->mode[m].width = (int)kcon_get_u16(&r);
+				o->mode[m].height = (int)kcon_get_u16(&r);
+				o->mode[m].refresh = (int)kcon_get_u32(&r);
+			}
+			if (r.err)
+				break;
+			C.nouts++;
+		}
 		break;
 	}
 
@@ -647,6 +693,62 @@ static void cl_caret(int x, int y)
 	kcon_put_u16(&b, (uint16_t)(int16_t)x);
 	kcon_put_u16(&b, (uint16_t)(int16_t)y);
 	kcon_send(C.conn, KCON_OP_CARET, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
+}
+
+/* ── the screens, as libkdisp asks for them ──────────────────────────── */
+
+static void kcon_out_ask(void)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn)
+		return;
+	kcon_send(C.conn, KCON_OP_VIEW_OUTPUTS, &b);
+	kcon_buf_free(&b);
+	kcon_flush(C.conn);
+}
+
+static int kcon_out_count(void)
+{
+	return C.nouts;
+}
+
+static int kcon_out_at(int i, KDispOut *out)
+{
+	if (i < 0 || i >= C.nouts)
+		return 0;
+	snprintf(out->name, sizeof(out->name), "%s", C.outs[i].name);
+	out->col = C.outs[i].col;
+	out->cols = C.outs[i].cols;
+	out->width = C.outs[i].width;
+	out->height = C.outs[i].height;
+	out->cur_mode = C.outs[i].cur_mode;
+	out->nmodes = C.outs[i].nmodes;
+	return 1;
+}
+
+static int kcon_out_mode_at(int i, int m, KDispMode *mode)
+{
+	if (i < 0 || i >= C.nouts || m < 0 || m >= C.outs[i].nmodes)
+		return 0;
+	mode->width = C.outs[i].mode[m].width;
+	mode->height = C.outs[i].mode[m].height;
+	mode->refresh = C.outs[i].mode[m].refresh;
+	return 1;
+}
+
+static void kcon_out_set_mode(int i, int m, int keep)
+{
+	KconBuf b = { 0 };
+
+	if (!C.conn)
+		return;
+	kcon_put_u16(&b, (uint16_t)(int16_t)i);
+	kcon_put_u16(&b, (uint16_t)(int16_t)m);
+	kcon_put_u8(&b, (uint8_t)(keep ? 1 : 0));
+	kcon_send(C.conn, KCON_OP_VIEW_SETMODE, &b);
 	kcon_buf_free(&b);
 	kcon_flush(C.conn);
 }
@@ -1130,6 +1232,11 @@ const KDispImpl kcon_impl = {
 	.win_activate = kcon_win_activate,
 	.win_close = kcon_win_close,
 	.win_set_state = kcon_win_set_state,
+	.out_ask = kcon_out_ask,
+	.out_count = kcon_out_count,
+	.out_at = kcon_out_at,
+	.out_mode_at = kcon_out_mode_at,
+	.out_set_mode = kcon_out_set_mode,
 	.font_ask = kcon_font_ask,
 	.font_count = kcon_font_count,
 	.font_at = kcon_font_at,

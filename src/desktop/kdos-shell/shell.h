@@ -329,14 +329,27 @@ typedef struct {
 	char mnt[256];
 } ShMountRow;
 
+/* A NETWORK SHARE IS NOT A DEVICE ROW. It has no kernel name, no size and no
+ * filesystem to probe: what there is to say is where it came from and where
+ * it landed, and its index counts a list of its own. */
+typedef struct {
+	int idx;
+	char unc[352];		/* //server/share                          */
+	char mnt[256];
+} ShShareRow;
+
 int sh_mountd_ask(const char *req, char *out, size_t n);
 int sh_mountd_list(ShMountRow *out, int max, char *why, size_t nwhy);
 /* A verb on one row. 0 when the daemon answered `ok`; `out` carries its
  * message either way. */
 int sh_mountd_do(int idx, const char *verb, char *out, size_t nout);
+/* What is connected now, rebuilt from the daemon on every call for the reason
+ * an index exists: a row number is true only of the list it came with. */
+int sh_mountd_shares(ShShareRow *out, int max, char *why, size_t nwhy);
 
 int calc_main(int argc, char **argv);		/* kdos-calc     */
 int chars_main(int argc, char **argv);		/* kdos-chars    */
+int connect_main(int argc, char **argv);	/* kdos-connect  */
 int contacts_main(int argc, char **argv);	/* kdos-contacts */
 int disks_main(int argc, char **argv);		/* kdos-disks    */
 int print_main(int argc, char **argv);		/* kdos-print    */
@@ -741,6 +754,10 @@ void sh_theme_from_cache(void);
  * gets changed, and it was left wearing the old one.
  */
 extern volatile sig_atomic_t sh_theme_dirty;
+/* Raised by SIGUSR1: the bar was asked to go away or come back. Read and
+ * cleared by the panel's loop; see sh_bar_watch(). */
+extern volatile sig_atomic_t sh_bar_dirty;
+void sh_bar_watch(void);
 void sh_theme_watch(void);
 void sh_theme_poll(void);
 

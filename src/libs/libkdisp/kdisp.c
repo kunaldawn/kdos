@@ -179,6 +179,39 @@ kdisp_font_ask(void)
 		cur->font_ask();
 }
 
+void
+kdisp_out_ask(void)
+{
+	if (cur && cur->out_ask)
+		cur->out_ask();
+}
+
+int
+kdisp_out_count(void)
+{
+	return cur && cur->out_count ? cur->out_count() : 0;
+}
+
+int
+kdisp_out_at(int i, KDispOut *out)
+{
+	return cur && cur->out_at && out ? cur->out_at(i, out) : 0;
+}
+
+int
+kdisp_out_mode_at(int i, int m, KDispMode *mode)
+{
+	return cur && cur->out_mode_at && mode ? cur->out_mode_at(i, m, mode)
+					       : 0;
+}
+
+void
+kdisp_out_set_mode(int i, int m, int keep)
+{
+	if (cur && cur->out_set_mode)
+		cur->out_set_mode(i, m, keep);
+}
+
 int
 kdisp_font_count(void)
 {

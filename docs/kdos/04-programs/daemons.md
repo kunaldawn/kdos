@@ -230,6 +230,9 @@ no general-purpose disk service here, mounting is root's, and the desktop is not
 | `close` | Close the mapping `unlock` made |
 | `format` | Write a filesystem. **Off unless `format = yes`** |
 | `smart` | The drive's model, serial and health, tab-separated |
+| `cifs` | Mount an SMB share. The password is a second frame, never a token |
+| `shares` | The network shares that are mounted, with an index each |
+| `disconnect` | Unmount the share at a share index |
 | `ping` | Liveness |
 
 **The client asks for an index out of a list the daemon published**, and the daemon decides the
@@ -237,8 +240,10 @@ device, the mountpoint and the options. Every "just take a path and a mountpoint
 mounting a stick over `/etc` from any shell in `wheel`.
 
 **A request is one line, and two frames where a secret is involved.** Frame one is a verb and up to
-three tokens; frame two is the exact byte count frame one declared. A passphrase is a **frame and
-not a token** because a tokeniser splits on spaces and a passphrase may contain them.
+five tokens; frame two is the exact byte count frame one declared. A passphrase is a **frame and
+not a token** because a tokeniser splits on spaces and a passphrase may contain them. The line's
+ceiling is `cifs`'s and nothing else's: a DNS name may be 253 bytes, a share 80, a username 104 and
+an NT domain 255, so a legal corporate share spells a request of about seven hundred.
 
 **Every token is checked before it means anything, and the token COUNT is fixed per verb.** An
 index is one to three digits and inside the published list. A trailing token nobody named makes the
@@ -271,6 +276,38 @@ whether the drive says it is failing and which drive that is. Its **exit status 
 not a failure** — bits 3 to 7 mean the drive is unwell, which is frequently the answer rather than
 the absence of one — so only an empty capture is treated as nothing learnt.
 
+### A share on another machine
+
+**`mount(2)` cannot raise a cifs session**, so `cifs` is the second verb that spawns a child: the
+dialect negotiation, the authentication and the tree connect all happen inside `mount.cifs` before
+the syscall it eventually makes.
+
+**Each of the four names is checked against a character allowlist of its own.** `mount.cifs`
+assembles its option string by concatenation and escapes nothing but the password, so a comma in
+the server, the share, the username or the domain is a **new mount option** handed to the kernel's
+cifs parser, and a `/` or a `\` in a server silently re-aims the mount — the helper's own
+`parse_unc()` splits on exactly those. What is not on the list is refused rather than quoted:
+quoting is a second implementation of that parser.
+
+**The password reaches the helper on a descriptor.** `PASSWD_FD=0`, with the bytes on the child's
+stdin. `mount.cifs` will also take one from `$PASSWD`, from a file named by `$PASSWD_FILE` or from
+`pass=` in the option string — an option string is argv, an environment value is
+`/proc/<pid>/environ`, and a file is a file somebody has to delete.
+
+**The module is loaded before the question is asked.** `cifs` is a module here and nothing else on
+the image loads it, and `/proc/filesystems` lists only what is already in the kernel — a support
+check in front of `modprobe` would refuse every first connection on a machine that can do this
+perfectly well.
+
+**The mount is the caller's.** `uid=`, `gid=`, `file_mode=` and `dir_mode=` are always given,
+because a server that speaks no unix extensions reports every file as owned by root and a share
+only root can read has not mounted as far as the person who asked is concerned. `nosuid` and
+`nodev` always, and `noexec` unless `exec = yes` — the same argument the removable rules keep.
+
+**What is connected is what `/proc/mounts` says is connected.** No list is held between requests:
+a server that went away, or a share a second session mounted, must not be answered for out of this
+daemon's memory.
+
 ### What a destructive verb refuses
 
 **The boot medium is refused by the DISK, not by the partition.** A live USB carries an iso9660
@@ -290,13 +327,13 @@ The filesystem is one of four — ext4, btrfs, vfat, exfat — checked against a
 that acts on it, a path can become a symlink or a different device: the daemon opens it `O_NOFOLLOW`
 and requires a block device whose `st_rdev` matches the one `/sys` recorded.
 
-**This daemon spawns children now** — `eject`, `cryptsetup`, `mkfs` — which it never did before; it
-mounted with `mount(2)` and unmounted with `umount2()`. Every child is named by an **absolute path**,
+**Every child this daemon spawns** — `eject`, `cryptsetup`, `mkfs`, `modprobe`, `mount.cifs` — is
+named by an **absolute path**,
 because `execvp` would otherwise resolve a program through an inherited `PATH` in a process running
 as root, and every one goes through a single function.
 
-**The path overrides are gated on fixture mode.** `KDOS_MOUNTD_SYS`, `_DEV`, `_MOUNTS`, `_FSTAB` and
-`_CONF` are read only when `--fixture` or `--fixture-serve` set it. A daemon started by the service
+**The path overrides are gated on fixture mode.** `KDOS_MOUNTD_SYS`, `_DEV`, `_MOUNTS`, `_FSTAB`,
+`_MEDIA` and `_CONF` are read only when `--fixture` or `--fixture-serve` set it. A daemon started by the service
 script reads none of them — an environment variable that moved its idea of `/dev` would be a way to
 point a format at any node on the machine.
 
