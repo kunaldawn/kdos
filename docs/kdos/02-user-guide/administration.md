@@ -218,10 +218,10 @@ form that reads a pipe:
 
 **HTML is rendered behind something that cannot reach the network.** `kdos-part` tries
 `unshare --map-root-user --net` first and runs w3m behind an unroutable proxy when that is refused;
-either way a tracking pixel has nowhere to go. **On the live medium it is always the proxy** — no
-process there can create a user namespace, root included (see
-[what is missing](../06-reference/known-gaps.md)) — which is exactly why the filter probes instead
-of assuming. aerc's own HTML filter assumes, by testing whether the `unshare` *binary* exists, and
+either way a tracking pixel has nowhere to go. **Which one it gets is the boot's**: an initramfs
+whose `switch_root` chroot()s leaves every process on the machine unable to make a user namespace
+at all (see [what is missing](../06-reference/known-gaps.md)), and the filter probes rather than
+assumes for exactly that reason. aerc's own HTML filter assumes, by testing whether the `unshare` *binary* exists, and
 so puts `unshare: Operation not permitted` where the message should be: a filter's error output
 **is** the message body here, because aerc hands it the pager's own pipe.
 

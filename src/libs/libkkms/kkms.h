@@ -75,11 +75,53 @@ const char *kkms_font(void);
 typedef struct {
 	int width, height;	/* this output's mode, in pixels           */
 	int col, cols, rows;	/* its slice of the shared grid, in cells  */
-	unsigned connector;	/* the DRM connector id, for a name        */
+	unsigned connector;	/* the DRM connector id                    */
+	/* WHAT A PERSON CALLS THIS SCREEN — `HDMI-A-1`, `eDP-1`. A connector
+	 * id is a kernel object number and means nothing to somebody choosing
+	 * between two monitors. */
+	char name[32];
+	int nmodes, cur_mode;
 } KkmsOutput;
+
+/*
+ * THE MODES A SCREEN PUBLISHED, and which of them it is wearing.
+ *
+ * `kkms_modes()` is how many the nth output has; `kkms_mode()` fills `m` and
+ * returns 1, or 0 past either end; `kkms_mode_current()` is the index in
+ * force, which is the monitor's PREFERRED one until somebody chooses.
+ *
+ * The refresh is in millihertz, so 59.94 Hz is not reported as 59.
+ */
+typedef struct {
+	int width, height;
+	int refresh;		/* mHz                                     */
+	int preferred;		/* the monitor's own choice                */
+} KkmsMode;
 
 int kkms_outputs(void);
 int kkms_output(int i, KkmsOutput *out);
+int kkms_modes(int out);
+int kkms_mode(int out, int i, KkmsMode *m);
+int kkms_mode_current(int out);
+
+/*
+ * WEAR THE NTH MODE ON THE NTH SCREEN. 0 and it is lit; -1 and the old mode is
+ * still on the screen.
+ *
+ * ONE OUTPUT AND THE MODE ALONE. Everything else a display tool offers has a
+ * home already here: the scale is the FONT, the position is connector ORDER,
+ * and off is kkms_blank(). What is left is the mode.
+ *
+ * EVERY OUTPUT IS RECUT, not only this one: screens are laid edge to edge, so
+ * a wider mode moves every column after it and the slices behind it are the
+ * wrong width.
+ *
+ * The grid is derived from the mode and the cell, so the caller calls
+ * ktui_draw_resize() and announces the new grid — the rule kkms_set_font()
+ * already keeps. THE OLD MODE COMES BACK IF THE NEW ONE WILL NOT SET: a screen
+ * is the one thing a person cannot work around from somewhere else.
+ */
+int kkms_set_mode(int out, int i);
 
 /*
  * A SCREEN PLUGGED IN OR PULLED OUT, on a monitor of this library's own —

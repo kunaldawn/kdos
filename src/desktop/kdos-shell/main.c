@@ -59,6 +59,7 @@ static const struct {
 	{ "kdos-style", theme_main },
 	{ "kdos-calc", calc_main },
 	{ "kdos-chars", chars_main },
+	{ "kdos-connect", connect_main },
 	{ "kdos-contacts", contacts_main },
 	{ "kdos-disks", disks_main },
 	{ "kdos-print", print_main },

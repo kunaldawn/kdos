@@ -147,6 +147,14 @@
          binds the same chord, so there is one key card rather than two. -->
     <keybind key="W-C-h"><action name="Execute" command="kdos-palette --route setup"/></keybind>
 
+    <!-- THE BAR, AWAY AND BACK. The console's session owns its own bar and
+         takes its row out of the work area; here the panel drops its exclusive
+         zone, which gives the strip back to the windows and re-fits every one
+         of them. The same chord and the same verb on both desktops, because a
+         chord that hid one bar and left the other would mean two different
+         things on two machines. -->
+    <keybind key="W-S-space"><action name="Execute" command="kdos panel toggle"/></keybind>
+
     <!-- The notification CENTRE. A toast that expired used to be gone; the
          daemon keeps a history now and this is the way back to it, which
          matters most for the notifications nobody was there to see. Shift,
@@ -162,7 +170,8 @@
          <none> when nothing matched, so the key does both halves — it is
          fluxbox's ClientPattern language and labwc already has it compiled in.
          The <query identifier> is the app_id, which for a terminal program is
-         what `foot --app-id` was given: the program's own name, not `foot`.
+         what `foot`'s app-id argument was given: the program's own name,
+         not `foot`.
          The console session binds the same seven chords to the same seven
          roles; con.conf names the programs there and this file names them
          here, and a person who learns Super+e on one desktop must not have to
@@ -265,7 +274,7 @@
     <keybind key="A-Print"><action name="Execute" command="kdos-record"/></keybind>
 
     <!-- AND THE Super FORM OF THE RECTANGLE, because Print reaches a keyboard
-         and nothing else: over ssh and in a `--tty` view there is no Print key
+         and nothing else: over ssh and in a terminal view there is no Print key
          to press, and the console binds this chord for exactly that reason. One
          key card serves both desktops, so the chord that works everywhere is
          bound on both. -->

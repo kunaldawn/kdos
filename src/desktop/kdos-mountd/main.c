@@ -79,19 +79,26 @@
 
 #define KM_SOCKET "/run/kdos-mountd.sock"
 #define KM_GROUP "wheel"
-#define KM_MAX 128
+/*
+ * THE LONGEST REQUEST LINE. A block-device verb is a word and three short
+ * tokens; `cifs` is what sets this number. A DNS name may be 253 bytes, a
+ * share 80, a username 104 and an NT domain 255, so a legal corporate share
+ * spells a line of about seven hundred — at 128 the daemon would have refused
+ * as malformed the exact requests it exists to serve.
+ */
+#define KM_MAX 1024
 /* The largest second frame: a passphrase, or a typed device name. Long enough
  * for a real passphrase and short enough that a client cannot make this daemon
  * hold anything. */
 #define KM_SECRET_MAX 512
 /*
- * The tokeniser's array. `format` is the longest verb at four tokens, and this
+ * The tokeniser's array. `cifs` is the longest verb at six tokens, and this
  * leaves headroom on purpose: a request of five still reaches the dispatch and
  * is refused there as an unknown command — which is the answer `mount 0 rm -rf
  * /` has always got and the one the suite asserts. A request that FILLS the
  * array is refused by count instead. Neither path truncates.
  */
-#define KM_TOK 6
+#define KM_TOK 8
 #define KM_DEVS 32
 /* One subscriber per session, and a machine with four logged-in desktops is
  * not a thing this daemon has to be good at. The cap exists so a client that
@@ -180,6 +187,16 @@ static const char *devroot(void)
 {
 	const char *p = km_fixture ? getenv("KDOS_MOUNTD_DEV") : NULL;
 	return p && *p ? p : "/dev";
+}
+
+/* Where a mount is made, overridable for the fixture like every other root.
+ * Hardcoding `/media` made the mountpoint the one thing about a mount that
+ * could not be asserted: a test would have had to write into the running
+ * machine's own tree to see where a share had landed. */
+static const char *mediaroot(void)
+{
+	const char *p = km_fixture ? getenv("KDOS_MOUNTD_MEDIA") : NULL;
+	return p && *p ? p : "/media";
 }
 
 /*
@@ -708,7 +725,7 @@ static void scan(void)
 /* 1 to 3 digits and nothing else, and inside the list the daemon just built.
  * `atoi` on a client's string cannot fail, which is the problem: it answers 0
  * for every word that is not a number. */
-static int km_index(const char *tok)
+static int km_row(const char *tok, int n)
 {
 	size_t len = tok ? strlen(tok) : 0;
 	int v = 0;
@@ -720,7 +737,14 @@ static int km_index(const char *tok)
 			return -1;
 		v = v * 10 + (tok[i] - '0');
 	}
-	return v < ndev ? v : -1;
+	return v < n ? v : -1;
+}
+
+/* The device list's rows. A share's rows are a different list and are checked
+ * against that one — an index is only ever true of the list it came with. */
+static int km_index(const char *tok)
+{
+	return km_row(tok, ndev);
 }
 
 /* The byte count of a second frame: 1 to KM_SECRET_MAX, decimal, nothing else. */
@@ -737,6 +761,121 @@ static int km_count(const char *tok)
 		v = v * 10 + (tok[i] - '0');
 	}
 	return (v >= 1 && v <= KM_SECRET_MAX) ? v : -1;
+}
+
+/*
+ * ── the four fields of a share ─────────────────────────────────────────
+ *
+ * `mount.cifs` ASSEMBLES ITS OPTION STRING WITH BARE CONCATENATION AND
+ * ESCAPES NOTHING BUT THE PASSWORD. It builds the UNC and `user=<username>`
+ * by appending, and only the password has its commas doubled. So a comma
+ * anywhere in the server, the share, the username or the domain is a NEW
+ * MOUNT OPTION injected into the kernel's cifs parser, and a `/` or a `\` in
+ * a server silently re-aims the mount, because the helper's own
+ * `parse_unc()` splits on exactly those.
+ *
+ * The escaping therefore cannot live in the option string. Each field is
+ * checked against a character allowlist of its own before it means anything,
+ * and what is not on the list is a refusal rather than a quoted character:
+ * quoting is a second implementation of the helper's parser, and two parsers
+ * of one string eventually disagree.
+ */
+static bool km_chars(const char *s, const char *extra, size_t lo, size_t hi)
+{
+	size_t len = s ? strlen(s) : 0;
+
+	if (len < lo || len > hi)
+		return false;
+	for (size_t i = 0; i < len; i++) {
+		unsigned char ch = (unsigned char)s[i];
+
+		if (isalnum(ch) || strchr(extra, ch))
+			continue;
+		return false;
+	}
+	return true;
+}
+
+/*
+ * A DNS NAME OR AN IP ADDRESS, and nothing else this image can resolve.
+ * musl reads `/etc/hosts` and `/etc/resolv.conf`; `nsswitch.conf` is inert and
+ * there is no winbind and no mDNS, so a workgroup name would reach the helper
+ * and fail inside it with a message nobody can act on. An IPv6 literal is
+ * refused with everything else: it cannot be spelled in a UNC, and the `ip=`
+ * option that would carry one is a second way to say where a share is.
+ */
+static bool km_host(const char *s)
+{
+	size_t len = s ? strlen(s) : 0;
+
+	if (!km_chars(s, ".-", 1, 253))
+		return false;
+	/* A label may not begin or end a name with a separator, and `..` is a
+	 * name with an empty label in it. */
+	if (s[0] == '.' || s[0] == '-' || s[len - 1] == '.' ||
+	    s[len - 1] == '-' || strstr(s, ".."))
+		return false;
+	return true;
+}
+
+static bool km_share(const char *s)
+{
+	return km_chars(s, "._-$", 1, 80);
+}
+
+static bool km_user(const char *s)
+{
+	return km_chars(s, "._@-", 1, 104);
+}
+
+/* `-` is the whole of "no domain": a token cannot be empty, because the
+ * request line is split on spaces. */
+static bool km_domain(const char *s)
+{
+	if (s && !strcmp(s, "-"))
+		return true;
+	return km_chars(s, ".-", 1, 255);
+}
+
+/*
+ * THE SECOND FRAME, READ BY BYTE COUNT ALONE.
+ *
+ * A frame read needs the count, the socket and the bytes the first read
+ * already pulled in past the newline — and nothing about the verb. `cifs`
+ * names a server rather than a device row, so a reader that took an index
+ * with the count could not serve it at all.
+ *
+ * Every exit wipes the buffer: a passphrase that outlived its request would
+ * sit in a root daemon's heap for the life of the session.
+ */
+static int km_frame(int c, const char *buf, size_t linelen, size_t have,
+		    int want, char *secret, size_t cap)
+{
+	size_t need = (size_t)want;
+	size_t got = have < need ? have : need;
+
+	if (want < 0 || need >= cap)
+		return -1;
+	memcpy(secret, buf + linelen + 1, got);
+	/* The room left is computed against the BUFFER as well as against the
+	 * frame. Both bounds hold — km_count() already refused anything over
+	 * KM_SECRET_MAX — but a read bounded only by a value the compiler
+	 * cannot follow is one it must assume the worst about. */
+	while (got < need && got < cap - 1) {
+		size_t room = need - got;
+		ssize_t r;
+
+		if (room > cap - 1 - got)
+			room = cap - 1 - got;
+		r = read(c, secret + got, room);
+		if (r <= 0)
+			break;
+		got += (size_t)r;
+	}
+	if (got != need)
+		return -1;
+	secret[got] = '\0';
+	return (int)got;
 }
 
 /*
@@ -763,6 +902,41 @@ static int km_exec(const KbArgv *a, const char *feed, size_t nfeed)
 		return 0;
 	}
 	return feed ? kb_run_feed(a, feed, nfeed) : kb_run(a);
+}
+
+/*
+ * THE SAME CHILD, WITH AN ENVIRONMENT AND A REASON.
+ *
+ * A mount helper needs both: `$PASSWD_FD` is the only way to hand it a
+ * password that is neither in argv nor in a file, and its refusal is on
+ * stderr, which `km_exec` sends to /dev/null. A surface that reported a status
+ * and no reason would say the same thing for a wrong password as for a server
+ * that is not there.
+ *
+ * IN FIXTURE MODE THE ENVIRONMENT IS PRINTED WITH THE ARGV. Printing only the
+ * argv would make the secure route indistinguishable from the insecure one:
+ * the check that matters about this verb is that the password travels on a
+ * descriptor, and an argv-only dump cannot tell a `PASSWD_FD` run from a
+ * `pass=` one.
+ */
+static int km_exec_env(const KbArgv *a, const char *const *env, int nenv,
+		       const char *feed, size_t nfeed, char *err, size_t ncap)
+{
+	if (err && ncap)
+		err[0] = '\0';
+	if (km_fixture) {
+		for (int i = 0; i < nenv && env && env[i]; i++)
+			printf("env %s\n", env[i]);
+		for (int i = 0; i < a->n && a->v[i]; i++)
+			printf("%s%s", i ? " " : "exec ", a->v[i]);
+		printf("\n");
+		/* The byte count and never the bytes: a fixture that echoed a
+		 * password would put one in a test log. */
+		printf("stdin %zu bytes\n", nfeed);
+		fflush(stdout);
+		return 0;
+	}
+	return kb_run_feed_env(a, env, nenv, feed, nfeed, err, ncap);
 }
 
 /*
@@ -891,7 +1065,7 @@ static int do_mount(int idx, uid_t uid, char *out, size_t nout)
 	struct passwd *pw = getpwuid(uid);
 	/* `dir` is `parent` plus a separator plus a sanitised label, so it has
 	 * to be able to hold both without gcc having to guess. */
-	char base[KM_NAME], parent[128], dir[192];
+	char base[KM_NAME], parent[192], dir[256];
 
 	if (idx < 0 || idx >= ndev)
 		return -1;
@@ -909,10 +1083,18 @@ static int do_mount(int idx, uid_t uid, char *out, size_t nout)
 	if (!base[0])
 		snprintf(base, sizeof(base), "disk");
 
-	snprintf(parent, sizeof(parent), "/media/%s",
-		 pw && pw->pw_name ? pw->pw_name : "user");
-	snprintf(dir, sizeof(dir), "%s/%s", parent, base);
-	if (mkdir("/media", 0755) != 0 && errno != EEXIST)
+	/* A TRUNCATED MOUNTPOINT IS A MOUNT SOMEWHERE ELSE, so a path that
+	 * does not fit is a refusal rather than a shortened name. */
+	if (snprintf(parent, sizeof(parent), "%s/%s", mediaroot(),
+		     pw && pw->pw_name ? pw->pw_name : "user") >=
+		    (int)sizeof(parent) ||
+	    snprintf(dir, sizeof(dir), "%s/%s", parent, base) >=
+		    (int)sizeof(dir)) {
+		snprintf(out, nout, "that name makes a path longer than a "
+				    "mountpoint can be");
+		return -1;
+	}
+	if (mkdir(mediaroot(), 0755) != 0 && errno != EEXIST)
 		return -1;
 	if (mkdir(parent, 0755) != 0 && errno != EEXIST)
 		return -1;
@@ -949,6 +1131,216 @@ static int do_mount(int idx, uid_t uid, char *out, size_t nout)
 
 	snprintf(d->mnt, sizeof(d->mnt), "%s", dir);
 	snprintf(out, nout, "%s", dir);
+	return 0;
+}
+
+/*
+ * ── a share on another machine ─────────────────────────────────────────
+ *
+ * THE HELPER RUNS, THE DAEMON DOES NOT MOUNT. `mount(2)` cannot raise a cifs
+ * session on its own: the SMB dialect, the authentication and the tree connect
+ * all happen in `mount.cifs` before the syscall it eventually makes. So this
+ * is the second verb that spawns a child, and it goes through `km_exec`'s
+ * successor for the same reason `unlock` does — the secret must not be in
+ * argv.
+ *
+ * `PASSWD_FD=0` AND THE PASSWORD ON STDIN. `mount.cifs` will take a password
+ * from `$PASSWD`, from a file named by `$PASSWD_FILE`, from a descriptor named
+ * by `$PASSWD_FD`, or from `pass=` in the option string. Only the descriptor
+ * keeps it out of both the process table and the filesystem: an option string
+ * is argv, an environment value is `/proc/<pid>/environ`, and a file is a file
+ * somebody has to delete.
+ *
+ * THE MOUNT IS THE CALLER'S. `uid=`, `gid=`, `file_mode=` and `dir_mode=` are
+ * given because a cifs server that speaks no unix extensions reports every
+ * file as owned by root, and a share nobody but root can read is a share that
+ * did not mount as far as the person who asked is concerned.
+ */
+static int do_cifs(const char *server, const char *share, const char *user,
+		   const char *domain, const char *pass, size_t npass,
+		   uid_t uid, char *out, size_t nout)
+{
+	struct passwd *pw = getpwuid(uid);
+	char parent[192], dir[352], unc[352], opts[512];
+	char err[512] = "";
+	const char *env[1] = { "PASSWD_FD=0" };
+	KbArgv a = { 0 };
+	int rc;
+
+	if (!km_host(server) || !km_share(share) || !km_user(user) ||
+	    !km_domain(domain)) {
+		snprintf(out, nout, "a field carries a character a share name "
+				    "cannot");
+		return -1;
+	}
+	/*
+	 * THE MODULE IS LOADED BEFORE THE QUESTION IS ASKED. `cifs` is a
+	 * module on this image and nothing else here loads it, and
+	 * /proc/filesystems lists only what is already in the kernel — so the
+	 * support check would refuse every first connection on a machine that
+	 * can do this perfectly well. Under the fixture nothing is loaded and
+	 * nothing is checked: the assertion is about the request this daemon
+	 * makes, and gating it on the kernel the suite happens to run under
+	 * would make it a different test on every machine.
+	 */
+	if (!km_fixture) {
+		if (!fs_supported("cifs")) {
+			KbArgv m = { 0 };
+
+			kb_argv_add(&m, "/sbin/modprobe");
+			kb_argv_add(&m, "cifs");
+			kb_argv_end(&m);
+			km_exec(&m, NULL, 0);
+		}
+		if (!fs_supported("cifs")) {
+			snprintf(out, nout, "this kernel cannot mount cifs");
+			return -1;
+		}
+	}
+
+	snprintf(unc, sizeof(unc), "//%s/%s", server, share);
+	/* A TRUNCATED MOUNTPOINT IS A MOUNT SOMEWHERE ELSE. */
+	if (snprintf(parent, sizeof(parent), "%s/%s", mediaroot(),
+		     pw && pw->pw_name ? pw->pw_name : "user") >=
+		    (int)sizeof(parent) ||
+	    snprintf(dir, sizeof(dir), "%s/%s-%s", parent, server, share) >=
+		    (int)sizeof(dir)) {
+		snprintf(out, nout, "that share's name makes a path longer "
+				    "than a mountpoint can be");
+		return -1;
+	}
+
+	/* ALREADY THERE IS NOT AN ERROR, the same answer `mount` gives for a
+	 * stick that is already mounted: the caller wanted the share
+	 * available and it is. */
+	{
+		char at[256];
+
+		find_mount(unc, at, sizeof(at));
+		if (at[0]) {
+			snprintf(out, nout, "%s", at);
+			return 0;
+		}
+	}
+
+	if (mkdir(mediaroot(), 0755) != 0 && errno != EEXIST)
+		return -1;
+	if (mkdir(parent, 0755) != 0 && errno != EEXIST)
+		return -1;
+	if (mkdir(dir, 0700) != 0 && errno != EEXIST) {
+		snprintf(out, nout, "cannot create %s: %s", dir,
+			 strerror(errno));
+		return -1;
+	}
+
+	snprintf(opts, sizeof(opts),
+		 "user=%s%s%s,uid=%u,gid=%u,file_mode=0600,dir_mode=0700,"
+		 "nosuid,nodev%s",
+		 user, strcmp(domain, "-") ? ",domain=" : "",
+		 strcmp(domain, "-") ? domain : "",
+		 (unsigned)uid, pw ? (unsigned)pw->pw_gid : 0u,
+		 exec_allowed() ? "" : ",noexec");
+
+	kb_argv_add(&a, "/sbin/mount.cifs");
+	kb_argv_add(&a, unc);
+	kb_argv_add(&a, dir);
+	kb_argv_add(&a, "-o");
+	kb_argv_add(&a, opts);
+	kb_argv_end(&a);
+
+	rc = km_exec_env(&a, env, 1, pass, npass, err, sizeof(err));
+	if (rc != 0) {
+		/* The helper's own words, first line only: it prints a usage
+		 * block after some failures and a surface has one row. */
+		err[strcspn(err, "\r\n")] = '\0';
+		snprintf(out, nout, "%s", err[0] ? err : "the share refused");
+		rmdir(dir);
+		return -1;
+	}
+	snprintf(out, nout, "%s", dir);
+	return 0;
+}
+
+/*
+ * WHAT IS CONNECTED IS WHAT /proc/mounts SAYS IS CONNECTED. No list is held
+ * between requests, for the reason the device list is not: a server that went
+ * away, or a share a second session mounted, must not be answered for out of
+ * this daemon's memory.
+ */
+static int shares(char unc[][352], char at[][256], int max)
+{
+	char *data = kb_read_all(mounts_path(), NULL);
+	int n = 0;
+
+	if (!data)
+		return 0;
+	for (char *p = data; *p && n < max;) {
+		char *nl = strchr(p, '\n');
+		char dev[352] = "", mnt[256] = "", type[32] = "";
+
+		if (nl)
+			*nl = '\0';
+		if (sscanf(p, "%351s %255s %31s", dev, mnt, type) == 3 &&
+		    (!strcmp(type, "cifs") || !strcmp(type, "smb3"))) {
+			snprintf(unc[n], 352, "%s", dev);
+			snprintf(at[n], 256, "%s", mnt);
+			n++;
+		}
+		if (!nl)
+			break;
+		p = nl + 1;
+	}
+	free(data);
+	return n;
+}
+
+static void reply_shares(int c)
+{
+	char unc[KM_DEVS][352], at[KM_DEVS][256];
+	int n = shares(unc, at, KM_DEVS);
+	char line[640];
+
+	for (int i = 0; i < n; i++) {
+		int len = snprintf(line, sizeof(line), "%d\t%s\t%s\n", i,
+				   unc[i], at[i]);
+
+		(void)!write(c, line, (size_t)len);
+	}
+	(void)!write(c, "ok\n", 3);
+}
+
+/*
+ * THE ROW NUMBER IS ONLY TRUE OF THE LIST IT CAME WITH, which is why the list
+ * is rebuilt here rather than remembered: between the `shares` that drew a row
+ * and the `disconnect` that acts on it, a share may have gone and the row
+ * below it moved up.
+ */
+static int do_disconnect(int idx, char *out, size_t nout)
+{
+	char unc[KM_DEVS][352], at[KM_DEVS][256];
+	int n = shares(unc, at, KM_DEVS);
+
+	if (idx < 0 || idx >= n) {
+		snprintf(out, nout, "no such share");
+		return -1;
+	}
+	/* IN FIXTURE MODE NOTHING IS UNMOUNTED, for km_exec's reason: the
+	 * mountpoints in a recorded /proc/mounts belong to the machine the
+	 * suite happens to run on. */
+	if (km_fixture) {
+		printf("umount %s\n", at[idx]);
+		fflush(stdout);
+		snprintf(out, nout, "%s", unc[idx]);
+		return 0;
+	}
+	if (umount2(at[idx], 0) != 0) {
+		snprintf(out, nout, "%s: %s", at[idx], strerror(errno));
+		return -1;
+	}
+	/* The mountpoint this daemon made goes with it; one it did not make
+	 * is not empty and rmdir refuses, which is the answer wanted. */
+	rmdir(at[idx]);
+	snprintf(out, nout, "%s", unc[idx]);
 	return 0;
 }
 
@@ -1576,11 +1968,32 @@ static int serve(void)
 			else
 				dprintf(c, "err %s\n",
 					msg[0] ? msg : "no such device");
+		} else if (ntok == 1 && !strcmp(verb, "shares")) {
+			reply_shares(c);
+		} else if (ntok == 2 && !strcmp(verb, "disconnect")) {
+			char unc[KM_DEVS][352], at[KM_DEVS][256];
+			int n = shares(unc, at, KM_DEVS);
+
+			/* NOT km_index: that one is bounded by the DEVICE
+			 * list, and a share is not a device. */
+			idx = km_row(tok[1], n);
+			if (idx >= 0 &&
+			    do_disconnect(idx, msg, sizeof(msg)) == 0)
+				dprintf(c, "ok %s\n", msg);
+			else
+				dprintf(c, "err %s\n",
+					msg[0] ? msg : "no such share");
 		} else if ((ntok == 3 && !strcmp(verb, "unlock")) ||
-			   (ntok == 4 && !strcmp(verb, "format"))) {
+			   (ntok == 4 && !strcmp(verb, "format")) ||
+			   (ntok == 6 && !strcmp(verb, "cifs"))) {
 			int want = km_count(tok[ntok - 1]);
 
-			idx = km_index(tok[1]);
+			/*
+			 * THE INDEX IS THE BLOCK-DEVICE VERBS' ALONE. `cifs`
+			 * names a server rather than a row, so what the two
+			 * kinds share is the second frame and nothing else.
+			 */
+			idx = strcmp(verb, "cifs") ? km_index(tok[1]) : 0;
 			if (idx < 0 || want < 0) {
 				(void)!write(c, "err bad request\n", 16);
 				close(c);
@@ -1592,27 +2005,10 @@ static int serve(void)
 			 * daemon's heap for the life of the session.
 			 */
 			static char secret[KM_SECRET_MAX + 1];
-			size_t need = (size_t)want;
-			size_t got = have < need ? have : need;
+			int got = km_frame(c, buf, linelen, have, want, secret,
+					   sizeof(secret));
 
-			memcpy(secret, buf + linelen + 1, got);
-			/* The room left is computed against the BUFFER as well
-			 * as against the frame. Both bounds hold — km_count()
-			 * already refused anything over KM_SECRET_MAX — but a
-			 * read bounded only by a value the compiler cannot
-			 * follow is one it must assume the worst about. */
-			while (got < need && got < sizeof(secret) - 1) {
-				size_t room = need - got;
-				ssize_t r;
-
-				if (room > sizeof(secret) - 1 - got)
-					room = sizeof(secret) - 1 - got;
-				r = read(c, secret + got, room);
-				if (r <= 0)
-					break;
-				got += (size_t)r;
-			}
-			if (got != need) {
+			if (got < 0) {
 				explicit_bzero(secret, sizeof(secret));
 				(void)!write(c, "err short frame\n", 16);
 				close(c);
@@ -1621,11 +2017,15 @@ static int serve(void)
 			int rc;
 
 			if (ntok == 3)
-				rc = do_unlock(idx, secret, got, msg,
+				rc = do_unlock(idx, secret, (size_t)got, msg,
 					       sizeof(msg));
+			else if (ntok == 4)
+				rc = do_format(idx, tok[2], secret,
+					       (size_t)got, msg, sizeof(msg));
 			else
-				rc = do_format(idx, tok[2], secret, got, msg,
-					       sizeof(msg));
+				rc = do_cifs(tok[1], tok[2], tok[3], tok[4],
+					     secret, (size_t)got, cred.uid,
+					     msg, sizeof(msg));
 			explicit_bzero(secret, sizeof(secret));
 			if (rc == 0)
 				dprintf(c, "ok %s\n", msg);

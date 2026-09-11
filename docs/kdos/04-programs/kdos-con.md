@@ -295,6 +295,13 @@ nothing on this path can be aimed at root. Its three exit codes stay apart all t
 message: reporting "wrong password" for an unreadable `/etc/shadow` locks a user out of a working
 account while looking in the wrong place.
 
+**`kdos-con --greet --dump COLSxROWS` composites the login surface and returns.** It asks for no
+password and starts no session, and the accounts and sessions come from the file
+`$KDOS_GREET_FIXTURE` names rather than from `/etc/passwd` and the installed programs — a golden
+drawn from the machine would change the day somebody added an account. The frame is the **ascii
+tier**, like every other golden in `testing/goldens/`; on the real tty the same layout is drawn in
+the vt tier, because `kdos-getty` has loaded the 512-glyph console font before the greeter runs.
+
 ## Configuration
 
 `/etc/kdos/con.conf`, overridden by `~/.config/kdos-con/con.conf`; chords in
@@ -746,6 +753,13 @@ thing to get wrong, and a click that lands one entry off is worse than one that 
 | A title row | left drag | moves the window |
 | Anywhere in a window | Super + left drag | moves it, so a window that is all content is still movable |
 | Anywhere in a window | right drag | resizes it from the **nearest** edge or corner |
+| A desktop icon | left | selects it; a second press opens it |
+| A desktop icon | left drag | carries it — onto the trash, or into a window that takes a drop |
+
+**The icon layer is asked LAST and never first.** It covers the whole grid, so hit-testing it before
+the windows would take every click on the desktop; a press no window claimed is the one that belongs
+to it. That order is what a drop keeps too, and the background is neither raised nor focused by a
+press — it is under everything by definition.
 
 **A minimised window keeps its taskbar row**, because the row is how it comes back: it is drawn
 nowhere, cycled past and not hit-testable on the desktop, so a bar that dropped it would leave
@@ -868,9 +882,12 @@ The compositor binds the same seven, as `rc.xml` `ForEach` blocks whose `<query 
 program's `app_id`. `W-grave` carries the [scratchpad](#the-scratchpad) on both, which is a
 `ForEach` of the same shape over a marker rather than a program.
 
-**`Super+p` reaches a surface that cannot configure a console screen.** `libkkms` takes the first
-connected output at its preferred mode and has no mode selection, so `kdos-display` says so and
-exits. The chord is bound because a stated limit is better than a missing key.
+**`Super+p` configures a console screen.** `kdos-display` asks the session for its outputs, the
+session asks the view that is driving them, and the answer is every connected connector with the
+modes it published and which one is in force. Choosing one sends it back down the same path and the
+fifteen-second countdown starts: the console has no second screen to fix an unreadable mode from,
+so the mode reverts unless a person says to keep it. Off, scale and rotate are drawn disabled —
+they are Wayland's verbs, and [Known gaps](../06-reference/known-gaps.md) says why.
 
 **Which program each chord runs is `con.conf`'s, and the table above is the whole list.** They are
 keys rather than literals in the chord table for the same reason `menu` and `lock` are: one place
@@ -1387,7 +1404,8 @@ repaints in full.
 - **No VT has ever been allocated.** The `--vt` path compiles and links and has never been run: it
   needs an ISO with `kdos-cage` in it and a machine with real terminals. Embedding, which is the
   default, has been run end to end.
-- **No input method.** fcitx5 is a Wayland client.
+- **No input method** — the candidate window is drawn and the engine is not running. Stated once,
+  in [known-gaps](../06-reference/known-gaps.md).
 - **Single output.** `libkkms` takes the first card with a connected output and its preferred mode.
 
 ## See also

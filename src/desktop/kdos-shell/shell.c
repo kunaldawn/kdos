@@ -284,6 +284,38 @@ void sh_theme_watch(void)
 	sigaction(SIGHUP, &sa, NULL);
 }
 
+/*
+ * PUT THE BAR AWAY, AND BRING IT BACK.
+ *
+ * A SECOND SIGNAL AND NOT A SECOND MEANING FOR THE FIRST. SIGHUP is "re-read
+ * what changed on disk" and every surface answers it; this is an instruction
+ * with no file behind it, and folding it into SIGHUP would make every other
+ * surface's reload a toggle of something.
+ *
+ * SIGUSR1, delivered by exact `comm`: `kdos-shell` is basename-dispatched, so
+ * matching the name reaches the panel and not the desktop icons or the
+ * notification daemon, which are other argv[0]s of the same binary.
+ *
+ * A caught signal rather than the default, which for SIGUSR1 is death — a
+ * panel that died on the chord would be respawned by the supervisor and come
+ * back shown, which reads as a chord that does nothing.
+ */
+volatile sig_atomic_t sh_bar_dirty;
+
+static void on_sigusr1(int sig)
+{
+	(void)sig;
+	sh_bar_dirty = 1;
+}
+
+void sh_bar_watch(void)
+{
+	struct sigaction sa = { 0 };
+	sa.sa_handler = on_sigusr1;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGUSR1, &sa, NULL);
+}
+
 /* ── the window list ───────────────────────────────────────────────────── */
 
 /*

@@ -35,14 +35,33 @@ for cmd in $(./bin/toybox); do
     [ "$cmd" != "toybox" ] && ln -sf toybox bin/$cmd
 done
 
-# Install util-linux switch_root, replacing toybox's.
+# Install util-linux switch_root, and NOT the name toybox claims.
+#
 # toybox switch_root only wipes the initramfs and chroot()s -- it never does
-# mount(newroot, "/", MS_MOVE). That leaves the mount-namespace root as the
-# (now empty) initramfs rootfs with the real root parked at /newroot, so any
-# process that JOINS a mount namespace via setns() -- podman exec, distrobox
-# enter, nsenter -m -- gets the empty rootfs as "/" and every path is ENOENT.
+# mount(newroot, "/", MS_MOVE). Two things follow and both are fatal to the
+# container lane. A process that JOINS a mount namespace via setns() -- podman
+# exec, distrobox enter, nsenter -m -- gets the empty initramfs rootfs as "/"
+# and every path is ENOENT. And every process on the machine is CHROOTED for
+# ever, because the task root is not the root of the mount namespace: the
+# kernel refuses CLONE_NEWUSER to a chrooted caller, so no user namespace can
+# be created by anybody, root included, and no box can start at all.
+#
+# /usr/sbin/switch_root IS TOYBOX ON THE FINISHED IMAGE -- toybox's symlink
+# farm is laid down after util-linux -- so the copy has to name util-linux's
+# own file, and the check below is here because following the wrong symlink
+# failed silently and booted perfectly.
 rm -f bin/switch_root
-cp /usr/sbin/switch_root bin/switch_root
+cp /usr/sbin/switch_root.real bin/switch_root
+# util-linux's binary is translated, so it carries libintl. Nothing else in
+# here needs that library and an initramfs missing one is an init that cannot
+# exec: the kernel panics with "Attempted to kill init".
+cp /usr/lib/libintl.so.8 lib/libintl.so.8
+if grep -qa 'Toybox .* multicall' bin/switch_root; then
+    echo "FATAL: the initramfs switch_root is toybox's applet." >&2
+    echo "       It chroot()s instead of moving the new root, which leaves" >&2
+    echo "       every process chrooted and every user namespace refused." >&2
+    exit 1
+fi
 
 # Install the boot splash. Static, so it needs nothing else here, and it keeps
 # running across switch_root: its FIFO lives in /dev (devtmpfs is moved into the

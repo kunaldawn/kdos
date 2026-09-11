@@ -161,6 +161,33 @@ static int open_drm(const char *card)
  * would otherwise be given it twice, and the second modeset takes the screen
  * away from the first — a two-monitor machine that lights one.
  */
+/*
+ * THE KIND OF SOCKET A CONNECTOR IS, as a word.
+ *
+ * libdrm publishes the numbers and not the names, and every tool that shows a
+ * screen builds the same string from them: the type plus the per-type index is
+ * what a monitor is labelled with everywhere a person has seen one.
+ */
+static const char *conn_type_name(uint32_t t)
+{
+	switch (t) {
+	case DRM_MODE_CONNECTOR_HDMIA:		return "HDMI-A";
+	case DRM_MODE_CONNECTOR_HDMIB:		return "HDMI-B";
+	case DRM_MODE_CONNECTOR_DisplayPort:	return "DP";
+	case DRM_MODE_CONNECTOR_eDP:		return "eDP";
+	case DRM_MODE_CONNECTOR_LVDS:		return "LVDS";
+	case DRM_MODE_CONNECTOR_VGA:		return "VGA";
+	case DRM_MODE_CONNECTOR_DVII:		return "DVI-I";
+	case DRM_MODE_CONNECTOR_DVID:		return "DVI-D";
+	case DRM_MODE_CONNECTOR_DVIA:		return "DVI-A";
+	case DRM_MODE_CONNECTOR_VIRTUAL:	return "Virtual";
+	case DRM_MODE_CONNECTOR_Composite:	return "Composite";
+	case DRM_MODE_CONNECTOR_TV:		return "TV";
+	case DRM_MODE_CONNECTOR_WRITEBACK:	return "Writeback";
+	default:				return "Unknown";
+	}
+}
+
 static int pick_outputs(void)
 {
 	uint32_t taken[KKMS_MAX_OUT];
@@ -236,6 +263,28 @@ static int pick_outputs(void)
 		o->mode = *chosen;
 		o->width = chosen->hdisplay;
 		o->height = chosen->vdisplay;
+
+		/*
+		 * THE LIST, TAKEN WHILE THE CONNECTOR IS OPEN. Re-opening one
+		 * later asks the kernel to probe the monitor again, which is a
+		 * modeset-shaped stall a picker must not pay every time
+		 * somebody looks at it.
+		 */
+		o->nmodes = c->count_modes < KKMS_MAX_MODES
+			    ? (int)c->count_modes : KKMS_MAX_MODES;
+		o->cur_mode = 0;
+		for (int m = 0; m < o->nmodes; m++) {
+			o->modes[m] = c->modes[m];
+			if (&c->modes[m] == chosen)
+				o->cur_mode = m;
+		}
+
+		/* THE NAME A PERSON READS. libdrm has no connector-name call;
+		 * the type string and the type id are what every tool builds
+		 * one from, and they are what a monitor is labelled with in
+		 * every other desktop. */
+		snprintf(o->name, sizeof(o->name), "%s-%u",
+			 conn_type_name(c->connector_type), c->connector_type_id);
 		drmModeFreeConnector(c);
 	}
 
@@ -446,6 +495,30 @@ static void out_free(struct kkms_out *o)
 }
 
 /*
+ * LAY THE SCREENS OUT AND LIGHT THEM, from whatever the modes now say.
+ *
+ * The one place buffers are made and CRTCs are programmed, so a hotplug and a
+ * mode change take the same path — two of them would be two answers to what a
+ * screen is, and the second one would be wrong the first time a field was
+ * added. Returns 0, or -1 having left as many outputs lit as it managed.
+ */
+static int relight(void)
+{
+	lay_out();
+	for (int i = 0; i < K.nout; i++) {
+		if (make_fb(&K.out[i]) != 0 || make_slice(&K.out[i]) != 0) {
+			K.nout = i;
+			return -1;
+		}
+		if (drmModeSetCrtc(K.drm_fd, K.out[i].crtc, K.out[i].fb, 0, 0,
+				   &K.out[i].connector, 1,
+				   &K.out[i].mode) != 0)
+			return -1;
+	}
+	return 0;
+}
+
+/*
  * THE OUTPUTS, AGAIN, AFTER SOMETHING CHANGED.
  *
  * Returns 1 when the grid moved, which is what the caller announces — a screen
@@ -470,15 +543,8 @@ static int reprobe(void)
 		return 0;
 	}
 
-	lay_out();
-	for (int i = 0; i < K.nout; i++) {
-		if (make_fb(&K.out[i]) != 0 || make_slice(&K.out[i]) != 0) {
-			K.nout = i;
-			break;
-		}
-		drmModeSetCrtc(K.drm_fd, K.out[i].crtc, K.out[i].fb, 0, 0,
-			       &K.out[i].connector, 1, &K.out[i].mode);
-	}
+	if (relight() != 0)
+		return 0;
 	return K.nout != on || K.vw != ow || K.vh != oh;
 }
 
@@ -497,7 +563,79 @@ int kkms_output(int i, KkmsOutput *out)
 	out->cols = K.out[i].cols;
 	out->rows = K.out[i].rows;
 	out->connector = K.out[i].connector;
+	snprintf(out->name, sizeof(out->name), "%s", K.out[i].name);
+	out->nmodes = K.out[i].nmodes;
+	out->cur_mode = K.out[i].cur_mode;
 	return 1;
+}
+
+int kkms_modes(int out)
+{
+	return out >= 0 && out < K.nout ? K.out[out].nmodes : 0;
+}
+
+int kkms_mode(int out, int i, KkmsMode *m)
+{
+	if (out < 0 || out >= K.nout || !m)
+		return 0;
+	if (i < 0 || i >= K.out[out].nmodes)
+		return 0;
+
+	const drmModeModeInfo *d = &K.out[out].modes[i];
+
+	m->width = d->hdisplay;
+	m->height = d->vdisplay;
+	/*
+	 * MILLIHERTZ, AND COMPUTED RATHER THAN READ. `vrefresh` is a rounded
+	 * integer the kernel fills in for convenience; the clock and the
+	 * totals are the mode, and 59.94 Hz reported as 59 is two modes a
+	 * picker cannot tell apart.
+	 */
+	m->refresh = d->htotal && d->vtotal
+		     ? (int)(((uint64_t)d->clock * 1000000ull) /
+			     ((uint64_t)d->htotal * d->vtotal))
+		     : (int)(d->vrefresh * 1000);
+	m->preferred = (d->type & DRM_MODE_TYPE_PREFERRED) != 0;
+	return 1;
+}
+
+int kkms_mode_current(int out)
+{
+	return out >= 0 && out < K.nout ? K.out[out].cur_mode : -1;
+}
+
+int kkms_set_mode(int out, int i)
+{
+	if (out < 0 || out >= K.nout || i < 0 || i >= K.out[out].nmodes)
+		return -1;
+
+	struct kkms_out *o = &K.out[out];
+	drmModeModeInfo was = o->mode;
+	int was_i = o->cur_mode;
+
+	o->mode = o->modes[i];
+	o->width = o->mode.hdisplay;
+	o->height = o->mode.vdisplay;
+	o->cur_mode = i;
+
+	/*
+	 * EVERY OUTPUT, not this one. Screens are laid edge to edge, so a
+	 * wider mode moves every column after it and every slice behind it is
+	 * the wrong width — re-cutting one would leave the rest painting into
+	 * buffers that no longer match the grid they are given.
+	 */
+	if (relight() == 0)
+		return 0;
+
+	/* THE OLD MODE COMES BACK. A screen is the one thing a person cannot
+	 * work around from somewhere else, so a mode the driver refused must
+	 * not leave the desktop on a screen nobody can read. */
+	o->mode = was;
+	o->width = was.hdisplay;
+	o->height = was.vdisplay;
+	o->cur_mode = was_i;
+	relight();
+	return -1;
 }
 
 int kkms_hotplug_fd(void)

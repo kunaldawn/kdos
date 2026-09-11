@@ -356,6 +356,15 @@ int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n);
  * it is the case this is for. */
 int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
 			size_t cap);
+/* Fed on stdin, with `nenv` `NAME=VALUE` strings ADDED to the child's
+ * environment, and the child's stderr captured into `err`. A mount helper is
+ * the case: `mount.cifs` takes a password from the descriptor `$PASSWD_FD`
+ * names, so the secret reaches it on stdin and never through argv, where
+ * /proc/<pid>/cmdline would publish it; and its refusal is on stderr, so a
+ * caller that dropped it could report a status and no reason. THE INPUT MUST
+ * FIT IN ONE PIPE BUFFER, for kb_run_feed_capture's reason. */
+int kb_run_feed_env(const KbArgv *a, const char *const *env, int nenv,
+		    const char *in, size_t n, char *err, size_t cap);
 /* Same, but the child INHERITS stdin/stdout/stderr. A package build writes
  * straight to the build log, unbuffered and interleaved, and that is what the
  * per-port logs are. */

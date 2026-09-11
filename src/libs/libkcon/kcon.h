@@ -53,7 +53,7 @@
  * the file carries no version at all. Append, whatever group the new op
  * belongs to by meaning.
  */
-#define KCON_VERSION 15
+#define KCON_VERSION 16
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -412,6 +412,36 @@ enum {
 	 */
 	KCON_OP_VIEW_SETFONT,
 
+	/*
+	 * THE SCREENS THIS VIEW IS DRIVING, asked and answered on one op —
+	 * the shape KCON_OP_VIEW_FONTS uses, and for the same reason: a
+	 * request and its answer are one verb asked in two directions.
+	 *
+	 * THE VIEW ENUMERATES, as it does for faces. A session composes one
+	 * grid and has no idea there are screens under it; the display is the
+	 * end that knows, and it may be somewhere else entirely.
+	 *
+	 * Request (session to view): nothing.
+	 * Answer (view to session): u16 count, then per screen — a name, the
+	 * columns it shows as two u16s, its pixel size as two u16s, the index
+	 * of the mode it is wearing, and then its modes as width, height and
+	 * millihertz.
+	 */
+	KCON_OP_VIEW_OUTPUTS,
+
+	/*
+	 * WEAR THE NTH MODE ON THE NTH SCREEN. Two u16 INDICES into the list
+	 * this view last sent, and a u8 saying whether to keep it.
+	 *
+	 * INDICES AND NEVER A MODE, for the reason a face is never a name: the
+	 * only modes on this wire are the ones the view itself published,
+	 * travelling outward. A session that sent a resolution back would be
+	 * deciding what a display it has never seen can show.
+	 *
+	 * The grid comes back as an ordinary KCON_OP_VIEW_SIZE.
+	 */
+	KCON_OP_VIEW_SETMODE,
+
 	KCON_OP_N
 };
 
@@ -671,6 +701,31 @@ enum { KCON_LISTEN_ANY = 0, KCON_LISTEN_SURFACE, KCON_LISTEN_VIEW,
 #define KCON_FONT_NAME 192
 
 /*
+ * HOW MANY SCREENS ONE SESSION LIGHTS, and how many modes one of them may
+ * offer. The first matches libkkms's own cap; the second is a monitor's list
+ * with room to spare, and a longer one is truncated — a shorter picker, not a
+ * broken one. The name is a connector's, `HDMI-A-1` and the like.
+ */
+#define KCON_MAX_OUTS 8
+#define KCON_MAX_MODES 64
+#define KCON_OUT_NAME 32
+
+/*
+ * ONE SCREEN AND ITS MODES TOGETHER. A mode list without the screen it belongs
+ * to is a picker that can draw a list it cannot say which monitor is for.
+ */
+typedef struct {
+	char name[KCON_OUT_NAME];
+	int col, cols;		/* its slice of the shared grid, in cells  */
+	int width, height;	/* its mode, in pixels                     */
+	int cur_mode, nmodes;
+	struct {
+		int width, height;
+		int refresh;	/* millihertz                              */
+	} mode[KCON_MAX_MODES];
+} KconOut;
+
+/*
  * The longest argument vector KCON_OP_RUN carries. A desktop entry's Exec with
  * its file arguments is a handful of words; the cap is here because the count
  * on the wire is an allocation request from a peer.
@@ -896,6 +951,15 @@ void kcon_view_font(KconSurface *v, int step);
 void kcon_view_fonts_ask(KconSurface *v);
 void kcon_view_set_font(KconSurface *v, int index, int keep);
 
+/* The same pair for screens. Silently nothing on a view that did not claim
+ * KCON_VIEW_FONT — a display that does not rasterise its own glyphs is a
+ * display inside somebody's terminal, which has no modes to offer. */
+void kcon_view_outputs_ask(KconSurface *v);
+void kcon_view_set_mode(KconSurface *v, int out, int mode, int keep);
+/* The list, back to the shell that asked. Empty is the honest answer where no
+ * attached display drives a screen. */
+void kcon_surface_outputs(KconSurface *f, const KconOut *outs, int n);
+
 /*
  * THE LIST, BACK TO THE SHELL THAT ASKED. `cur` is which of them is in force
  * or -1, and an empty list is the honest answer where no attached display
@@ -1050,6 +1114,21 @@ typedef struct {
 	 * to the display, and a session with no view attached has no list to
 	 * give, which is an empty one and not an error.
 	 */
+	/*
+	 * A VIEW LISTED THE SCREENS IT IS DRIVING. `outs` is borrowed and is
+	 * `n` records; the session stores them to show and sends back INDICES,
+	 * never a mode.
+	 */
+	void (*view_outputs)(KconSurface *v, const KconOut *outs, int n,
+			     void *user);
+	/* A shell asked for that list, on the same op. */
+	void (*outputs_ask)(KconSurface *f, void *user);
+	/* And wear the nth mode on the nth screen; `keep` is whether it
+	 * survives the logout, so a picker's countdown passes 0 until a person
+	 * says it is readable. */
+	void (*mode_set)(KconSurface *f, int out, int mode, int keep,
+			 void *user);
+
 	void (*fonts_ask)(KconSurface *f, void *user);
 	/* And wear the nth of them. -1 is back to the one the view started
 	 * with; `keep` is whether it survives the logout, so a picker's

@@ -113,7 +113,7 @@ authoritative list is the name table in its own `main.c`.
 | `kdos-cal` | `kdos-display` | `kdos-keys` | `kdos-teams` |
 | `kdos-saver` | `kdos-about` | `kdos-calc` | `kdos-note` |
 | `kdos-chars` | `kdos-slit` | `kdos-doc` | `kdos-settings` |
-| `kdos-contacts` | | | |
+| `kdos-contacts` | `kdos-connect` | | |
 | `kdos-openwith` | `kdos-audio` | `kdos-net` | `kdos-bt` |
 | `kdos-devices` | `kdos-clip` | `kdos-status` | `kdos-tip` |
 | `kdos-ime` | `kdos-trash` | `kdos-peek` | `kdos-find` |

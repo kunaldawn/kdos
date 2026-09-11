@@ -165,11 +165,14 @@ It **ships populated**. An empty list makes both surfaces look broken on a fresh
 delete every line for an empty one. **An identifier with no matching entry is skipped in silence**,
 so an application this image's catalogue does not carry leaves no launcher that opens nothing.
 
-**A line may carry a two-letter code**: `mc code=FM`. The code is drawn right-aligned on the Start
-menu's row, and typing both letters with nothing else in the search field opens that row — no
-arrows, no `Enter`, and no waiting to see whether the search narrowed to one. It is DESQview's Open
-Window shorthand, and it is a property of the **pinned row** rather than of the program, because the
-codes are the person's own and this file is where they say so. Anything else after the id is
+**A line may carry a two-letter code**: `mc code=FM`. The code is drawn right-aligned on the row in
+both the Start menu and the palette, and typing both letters with nothing else in the search field
+opens that row — no arrows, no `Enter`, and no waiting to see whether the search narrowed to one. It
+is DESQview's Open Window shorthand, and it is a property of the **pinned row** rather than of the
+program, because the codes are the person's own and this file is where they say so. **A letter is
+part of a code only while a code could still match it**: with no coded line in this file, or a first
+letter no code begins with, the letters are a search like any other — a rule that ate two letters
+whatever the file said would be a search box that lost the first two characters of every query. Anything else after the id is
 ignored rather than refused: this file is edited by hand, and a line a later version understands
 must not stop this one launching it.
 
@@ -464,9 +467,8 @@ The same rule holds for `keys.conf`.
 session does not start. It prints `action<TAB>chord`, and `action<TAB>chord<TAB>program` for the
 seven run-or-raise rows — the third field is what the card drops a row on when the program is not
 installed. Every row the session binds is printed, including one whose program is missing: the
-table must not disagree with the chords, and what a person is shown is the card's decision. `displays` reaches a surface that cannot configure a console screen —
-`libkkms` has no mode selection — so it says so and exits; the chord is bound because a stated
-limit is better than a missing key.
+table must not disagree with the chords, and what a person is shown is the card's decision. `displays` reaches `kdos-display`, which
+on the console lists the screens the attached view is driving and sets a mode on one.
 
 **`remote = yes` opens no port.** There is no TCP listener anywhere in this desktop. It permits
 `kdos con attach` over an ssh channel that forwards the unix socket, which is why a remote desktop

@@ -878,12 +878,14 @@ con_golden() {
     mkdir -p "$OUT/constate"
     XDG_STATE_HOME="$OUT/constate" \
         XDG_CONFIG_HOME="${_conhome:-$OUT/constate}" \
+        KDOS_GREET_FIXTURE="${_greetfix:-/nonexistent-kdos-greet}" \
         "$OUT/kdos-con" "$@" > "$OUT/$_name.txt"
     # AND `_conhome` IS SPENT HERE. An assignment written before a shell
     # FUNCTION persists after that function returns, so a frame that wanted
     # its own configuration would silently hand it to every frame after it —
     # which is invisible while the frame that wants one happens to be last.
     _conhome=""
+    _greetfix=""
     if [ "${KDOS_GOLDEN_UPDATE:-0}" = 1 ]; then
         cp "$OUT/$_name.txt" "testing/goldens/$_name.txt"
         echo "  wrote $_name"
@@ -1015,6 +1017,22 @@ printf 'terminal = /bin/echo hello\nwriting = /bin/true\nchat = kdos-no-such-pro
 } > "$OUT/layout-home/kdos-con/layouts/five"
 _conhome="$OUT/layout-home" \
     con_golden con-layout-80x24 --dump 80x24 --layout five
+
+#
+# THE LOGIN SURFACE, WHICH IS THE ONE FRAME NOBODY ELSE DRAWS.
+#
+# `greet = yes` puts this in front of every login on an installed machine, and
+# until now nothing rendered it at all: it reads /etc/passwd and stats the
+# session programs, so a dump of the real thing is a picture of whatever host
+# it ran on. The fixture names two accounts and two sessions — one of either
+# draws no chooser, and the chooser is half of what there is to see.
+#
+# THE ASCII TIER, like every other golden here. On the real tty the same
+# layout is drawn in the vt tier, because kdos-getty has loaded the 512-glyph
+# console font before the greeter runs; the tier a DUMP renders in is the
+# harness's and not the screen's.
+_greetfix="$PWD/testing/fixtures/greet/accounts" \
+    con_golden greet-80x24 --greet --dump 80x24
 
 #
 # THE DESKTOP SAYS WHAT IT IS SHOWING, AND A READER HEARS IT.
@@ -3171,7 +3189,6 @@ comp	XF86AudioMicMute	libkkms translates nine media keysyms and this is not one 
 comp	XF86Display	libkkms translates no display key, and the console has one screen to switch between
 comp	XF86MonBrightnessUp	libkkms translates no brightness keysym and con.h has no brightness verb
 comp	XF86MonBrightnessDown	libkkms translates no brightness keysym and con.h has no brightness verb
-con	Super+Shift+space	taskbar: the compositor's panel hides only from comp.conf's panel_autohide at start, and kdos-shell has no signal that toggles it while it runs — see known-gaps
 EOF
 
 # THE WORKSPACE DIGITS ARE A RULE, NOT EIGHTEEN LINES. The console answers a
@@ -5583,8 +5600,10 @@ KMASKEOF
 printf 'format = yes\n' > "$OUT/mountd.conf"
 rm -f "$KMSOCK"
 rm -f "$OUT/km.uevent"; mkfifo "$OUT/km.uevent"
+mkdir -p "$OUT/media"
 KDOS_MOUNTD_SOCKET="$KMSOCK" KDOS_MOUNTD_MOUNTS="$MF/mounts-live" \
 KDOS_MOUNTD_CONF="$OUT/mountd.conf" KDOS_MOUNTD_UEVENT="$OUT/km.uevent" \
+KDOS_MOUNTD_MEDIA="$OUT/media" \
     "$OUT/kdos-mountd" --fixture-serve "$MF/sys" "$MF/dev" > "$OUT/km.exec" 2>&1 &
 KMPID=$!
 for _i in $(seq 1 50); do [ -S "$KMSOCK" ] && break; sleep 0.1; done
@@ -5690,10 +5709,11 @@ sdb1' 'unknown filesystem' "a filesystem outside the allowlist is refused"
 kmwant 'mount 0 rm -rf /
 ' 'unknown command' "a verb with a token nobody named is not a verb"
 # AND A LINE LONGER THAN THE TOKENISER'S ARRAY IS REFUSED, NOT TRUNCATED. The
-# array stops at five and the longest verb takes four, so a longer line used to
-# be dispatched with its tail silently dropped — which is the same defect one
-# array size away, waiting for the next verb to be added.
-kmwant 'mount 0 a b c d e
+# array has headroom over the longest verb on purpose: a line one token past it
+# reaches the dispatch and is refused there as an unknown command, and a line
+# that FILLS it is refused by count. Neither path drops a tail — dropping one
+# is how `mount 0 rm -rf /` parsed as a well-formed `mount 0`.
+kmwant 'mount 0 a b c d e f g
 ' 'too many arguments' "a line past the tokeniser is refused rather than cut short"
 kmwant 'mount 0zzz
 ' 'no such device' "an index that is not a number is not index zero"
@@ -5723,6 +5743,74 @@ if grep -q 'correct horse' "$OUT/km.exec" 2>/dev/null; then
 else
     echo "  ok    and it appears in no argument vector"
 fi
+# ── A SHARE ON ANOTHER MACHINE ────────────────────────────────────────────
+#
+# `mount.cifs` builds its option string by concatenation and escapes nothing
+# but the password, so a comma in the server, the share, the username or the
+# domain is a NEW MOUNT OPTION handed to the kernel's cifs parser, and a slash
+# or a backslash in a server re-aims the mount — the helper's own parse_unc()
+# splits on exactly those. Every refusal below is one of those characters.
+# ALREADY THERE IS NOT AN ERROR and it is not a second mount: the fixture's
+# /proc/mounts already carries //files.example/team, so this is the answer
+# `mount` gives for a stick that is already mounted.
+kmwant 'cifs files.example team ada - 8
+passw0rd' 'ok /media/kdos/files.example-team' \
+    "a share that is already mounted answers with where it is"
+grep -q 'mount.cifs' "$OUT/km.exec" \
+    && { echo "  FAIL  a mounted share was mounted again"; mountd_fail=1; } \
+    || echo "  ok    and no helper was run for it"
+
+kmwant 'cifs files.example archive ada - 8
+passw0rd' 'ok ' "a share names a server, a share, a user and a domain"
+grep -q 'exec /sbin/mount.cifs //files.example/archive ' "$OUT/km.exec" \
+    && echo "  ok    and the helper is given the UNC it asked for" \
+    || { echo "  FAIL  mount.cifs was not aimed at //files.example/archive"
+         grep mount.cifs "$OUT/km.exec"; mountd_fail=1; }
+# THE PASSWORD TRAVELS ON A DESCRIPTOR. An option string is argv, an
+# environment VALUE is /proc/<pid>/environ and a file is a file somebody has to
+# delete; the descriptor is the only route that is none of those. The fixture
+# prints the environment with the argv for exactly this assertion — an
+# argv-only dump cannot tell a PASSWD_FD run from a `pass=` one.
+grep -q '^env PASSWD_FD=0$' "$OUT/km.exec" \
+    && echo "  ok    the password is handed over on stdin, through PASSWD_FD" \
+    || { echo "  FAIL  mount.cifs was not told to read a descriptor"
+         mountd_fail=1; }
+grep -q 'pass=' "$OUT/km.exec" \
+    && { echo "  FAIL  a password option reached the option string"
+         mountd_fail=1; } \
+    || echo "  ok    and no pass= option was assembled"
+grep -q 'passw0rd' "$OUT/km.exec" \
+    && { echo "  FAIL  the password appeared in an argument vector"
+         mountd_fail=1; } \
+    || echo "  ok    and the password itself appears nowhere in the request"
+grep -q 'domain=' "$OUT/km.exec" \
+    && { echo "  FAIL  a dash domain became a domain= option"; mountd_fail=1; } \
+    || echo "  ok    a \`-\` domain is no domain rather than a domain named -"
+
+kmwant 'cifs files.example,uid=0 team ada - 8
+passw0rd' 'cannot' "a comma in the server is refused, not quoted"
+kmwant 'cifs files.example team,uid=0 ada - 8
+passw0rd' 'cannot' "a comma in the share is refused"
+kmwant 'cifs files.example team ada,uid=0 - 8
+passw0rd' 'cannot' "a comma in the username is refused"
+kmwant 'cifs files.example/other team ada - 8
+passw0rd' 'cannot' "a slash in the server cannot re-aim the mount"
+kmwant 'cifs ../../etc team ada - 8
+passw0rd' 'cannot' "and neither can a traversal"
+# THE REQUEST LINE HAS TO HOLD A LEGAL CORPORATE SHARE. A DNS name may be 253
+# bytes and a username 104; at the old 128-byte ceiling this exact request was
+# refused as malformed, which is the one shape the verb exists to serve.
+_long="fileserver-04.corp.subsidiary.example.co.uk"
+kmwant "cifs $_long department-share-archive administrator.services CORPORATE 8
+passw0rd" 'ok ' "a full corporate name, share, user and domain all fit"
+
+kmwant 'shares
+' '//files.example/team' "a connected share is listed from /proc/mounts"
+kmwant 'disconnect 9
+' 'no such share' "a share index past the list is refused"
+kmwant 'cifs a b c d e
+' 'bad request' "a byte count that is not a number is not a request"
+
 kill $KMPID 2>/dev/null || true
 wait $KMPID 2>/dev/null || true
 [ "$mountd_fail" = 0 ] || exit 1

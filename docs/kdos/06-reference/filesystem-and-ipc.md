@@ -166,16 +166,34 @@ Root and `wheel`.
 | `smart` | An index | The drive's own health line |
 | `unlock` | An index and a byte count | The mapper's name; the passphrase is a second frame |
 | `format` | An index, a filesystem and a byte count | The device's own name typed back, as a second frame |
+| `cifs` | A server, a share, a username, a domain and a byte count | The mountpoint; the password is a second frame |
+| `shares` | — | The network shares that are mounted, **with an index each** |
+| `disconnect` | A share index | Unmounts one |
 | `subscribe` | — | Keeps the socket and writes a line per block uevent |
 | `ping` | — | Liveness |
 
 **The client asks for an index out of a list the daemon published**, and the daemon decides the
 device, the mountpoint and the options. The list is rescanned on every request.
 
-**A secret is a FRAME and never a token.** `unlock` and `format` declare a byte count on the
+**A share's index counts a different list.** `shares` is built from `/proc/mounts` on every
+request and a `disconnect` index is checked against that list, never against the device list — an
+index is true only of the list it came with, and the two lists have nothing to do with each other.
+
+**A secret is a FRAME and never a token.** `unlock`, `format` and `cifs` declare a byte count on the
 request line and send exactly that many bytes after the newline, because the request line is
 tokenised on whitespace and a passphrase may contain some. The daemon holds one buffer for it and
 wipes it on every path out of the request.
+
+**`cifs`'s four names are checked against a character allowlist each, and what is not on the list
+is refused rather than quoted.** `mount.cifs` assembles its option string by concatenation and
+escapes nothing but the password, so a comma in the server, the share, the username or the domain
+is a new mount option handed to the kernel's cifs parser; a `/` or a `\` in a server re-aims the
+mount, because the helper's own `parse_unc()` splits on exactly those. Quoting them would be a
+second implementation of that parser, and two parsers of one string eventually disagree.
+
+**The password reaches `mount.cifs` on a file descriptor.** `PASSWD_FD=0` and the bytes on the
+child's stdin: an option string is argv, an environment value is `/proc/<pid>/environ`, and a
+password file is a file somebody has to delete.
 
 **The token count is fixed per verb, and a longer line is refused rather than truncated.** The
 argument allowlist is what makes an index mean an index: `mount 0 rm -rf /` is not a well-formed

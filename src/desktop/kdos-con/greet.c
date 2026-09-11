@@ -193,6 +193,15 @@ static void become(const Account *a, int ses)
  * The login surface. One card, centred, and nothing else on the screen: the
  * only two answers it wants are which account and what the password is.
  */
+/*
+ * THE ROW IS PUSHED THROUGH THE CONTRACT, never written by hand — a surface
+ * that drew its own bottom line would be one whose verbs stopped following the
+ * widget. Nothing is dispatched through it: this surface's Esc clears the
+ * password rather than closing anything, and there is no page and no menu
+ * behind a login screen.
+ */
+static KtuiKeys gkeys;
+
 static void greet_draw(int sel, int ses, const char *pass, const char *msg)
 {
 	int w, h;
@@ -201,7 +210,11 @@ static void greet_draw(int sel, int ses, const char *pass, const char *msg)
 	ktui_draw_fill(krect(0, 0, w, h), KT_BG);
 
 	int cw = 46;
-	int ch = 8 + (nusers > 1 ? nusers : 0) + (nsessions > 1 ? 2 : 0);
+	/* A ROW FOR THE MESSAGE, ALWAYS. It is transient and the card is not:
+	 * a height that grew when something went wrong would move the card
+	 * under the hand, and one that did not reserve the row wrote "Wrong
+	 * password." across the bottom border. */
+	int ch = 9 + (nusers > 1 ? nusers : 0) + (nsessions > 1 ? 2 : 0);
 	int cx = (w - cw) / 2, cy = (h - ch) / 2;
 
 	if (cx < 0)
@@ -263,7 +276,26 @@ static void greet_draw(int sel, int ses, const char *pass, const char *msg)
 	}
 
 	if (msg && *msg)
-		ktui_draw_text(cx + 3, y, cw - 6, msg, KT_WARN, KT_SURFACE, 0);
+		ktui_draw_text(cx + 3, cy + ch - 2, cw - 6, msg, KT_WARN,
+			       KT_SURFACE, 0);
+
+	/*
+	 * THE ROW THAT NAMES THE KEYS, on the login surface as on every other.
+	 * The arrows are the half nobody would guess: which account and which
+	 * session are both arrow keys, and a card that showed two names and
+	 * no way to move between them teaches that they are a label.
+	 *
+	 * Esc says `clear` and not `close`: there is nothing behind this
+	 * surface to go back to, and the verb has to be the one it does.
+	 */
+	/* ACROSS THE SCREEN AND NOT INSIDE THE CARD. Four hints need sixty
+	 * columns and the card is forty-six: a row that had to fit inside it
+	 * would drop the two nobody would guess. */
+	ktui_hint_if(nusers > 1, "Up/Down", "account");
+	ktui_hint_if(nsessions > 1, "Left/Right", "session");
+	ktui_hint("Enter", "log in");
+	ktui_hint("Esc", "clear");
+	ktui_hint_row(&gkeys, krect(2, h - 2, w - 4, 1), KT_BG);
 
 	ktui_draw_flush();
 }
@@ -368,6 +400,83 @@ static int greeter(void)
 		}
 		memset(pass, 0, sizeof(pass));
 	}
+}
+
+/*
+ * ONE FRAME OF THE GREETER, OFFSCREEN, FROM A FIXTURE.
+ *
+ * WHY A FIXTURE AND NOT THE MACHINE. `kb_users()` reads /etc/passwd and
+ * `sessions_load()` stats two programs, so a dump of the real thing says
+ * whatever the machine it ran on happens to hold — which is a golden that
+ * changes when somebody adds an account. The file names the accounts and the
+ * sessions, so the frame is the same everywhere.
+ *
+ * IT IS READ ONLY HERE. This path composites and returns; it never reaches
+ * `become()` and never asks for a password, so a variable naming accounts
+ * cannot move a login. Every other entry into this file ignores it.
+ *
+ * THE ASCII TIER, like every other golden in `testing/goldens/`. A dump is a
+ * comparison of text and the tier a dump renders in is the harness's, not the
+ * screen's: on the real tty the same layout is drawn in the vt tier, because
+ * kdos-getty has already loaded the 512-glyph console font by the time the
+ * greeter runs.
+ */
+static void greet_fixture(const char *path)
+{
+	char *text = kb_read_all(path, NULL);
+
+	nusers = 0;
+	nsessions = 0;
+	if (!text)
+		return;
+	for (char *p = text; *p;) {
+		char *nl = strchr(p, '\n');
+		char line[256];
+		size_t len = nl ? (size_t)(nl - p) : strlen(p);
+
+		if (len >= sizeof(line))
+			len = sizeof(line) - 1;
+		memcpy(line, p, len);
+		line[len] = '\0';
+		p = nl ? nl + 1 : p + strlen(p);
+
+		if (!strncmp(line, "user ", 5) && nusers < MAX_USERS) {
+			Account *a = &users[nusers++];
+			char *sp = strchr(line + 5, ' ');
+
+			memset(a, 0, sizeof(*a));
+			if (sp)
+				*sp++ = '\0';
+			kb_strlcpy(a->name, line + 5, sizeof(a->name));
+			kb_strlcpy(a->gecos, sp ? sp : "", sizeof(a->gecos));
+			a->uid = 1000 + (uid_t)nusers;
+			a->gid = a->uid;
+		} else if (!strncmp(line, "session ", 8) &&
+			   nsessions < NSESSIONS) {
+			/* The INDEX into SESSIONS[], by name, because the row
+			 * draws that table's label and not the file's. */
+			for (int i = 0; i < NSESSIONS; i++)
+				if (!strcmp(SESSIONS[i].name, line + 8))
+					sessions[nsessions++] = i;
+		}
+	}
+	free(text);
+}
+
+int con_greet_dump(int cols, int rows, const char *fixture, const char *msg)
+{
+	greet_fixture(fixture);
+	if (!nusers) {
+		fprintf(stderr, "kdos-con: %s named no accounts\n",
+			fixture ? fixture : "(no fixture)");
+		return 2;
+	}
+	if (ktui_offscreen_init(cols, rows) != 0)
+		return 1;
+	ktui_draw_init();
+	greet_draw(0, 0, "hunter2", msg ? msg : "");
+	ktui_draw_dump();
+	return 0;
 }
 
 /*
