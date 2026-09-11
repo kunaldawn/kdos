@@ -6,7 +6,7 @@ _kdos() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=($(compgen -W "help theme status doctor version app share" -- "$cur"))
+        COMPREPLY=($(compgen -W "help theme status doctor version app share remind notify toggle" -- "$cur"))
         return
     fi
 
@@ -14,6 +14,8 @@ _kdos() {
         theme)  COMPREPLY=($(compgen -W "phosphor amber ice bone next prev list current" -- "$cur")) ;;
         status) COMPREPLY=($(compgen -W "--bar" -- "$cur")) ;;
         help)   COMPREPLY=($(compgen -W "--pager" -- "$cur")) ;;
+        remind) COMPREPLY=($(compgen -W "in at tomorrow ls clear" -- "$cur")) ;;
+        notify) COMPREPLY=($(compgen -W "--time --battery" -- "$cur")) ;;
         *)      COMPREPLY=() ;;
     esac
 }

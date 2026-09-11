@@ -54,5 +54,6 @@ Icon=folder-music
 Terminal=true
 Categories=AudioVideo;Player;
 Keywords=music;audio;player;mpd;rmpc;
+X-KDOS-Term=kdos-term
 DESK
 chmod 644 "$PKG/usr/share/applications/rmpc.desktop"

@@ -239,6 +239,15 @@ any host, which is the point of that build.
 the notification daemon, the on-screen display and the desktop. That is a stated gap, not an
 oversight in this page.
 
+**Every frame that exists carries the row that names its keys**, and the suite checks it against
+the committed goldens rather than against a fresh dump — a blank bottom row is a surface whose keys
+nobody can find, whatever it drew the day the golden was written. **Furniture is exempt and is
+named, not patterned**: the taskbar, the tooltip, the savers and the two menus are drawn on the
+desktop rather than in a window, a saver closes on any key and a tooltip answers none, so a row
+naming `Esc` on either would teach a key that does nothing. `menu.c` is the one file that holds a
+`KtuiKeys` and draws no row, for the reason its own header gives. A pattern broad enough to skip
+these would also skip a real surface, which is why each is a name with a reason beside it.
+
 ### embedcheck
 
 The parent half of `kdos-cage --embed`, as a test — and a **second process** for the reason

@@ -292,7 +292,8 @@ static void open_sel(void)
 		if (!a)
 			return;
 		if (a->terminal)
-			n = sh_term_argv_in(a->term, argv, n, 32, a->exec, id,
+			n = sh_term_argv_in(a->term, a->floating, a->size,
+					    argv, n, 32, a->exec, id,
 					    sizeof(id));
 		snprintf(buf, sizeof(buf), "%s", a->exec);
 		for (char *tok = strtok_r(buf, " \t", &save);

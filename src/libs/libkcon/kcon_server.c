@@ -41,7 +41,16 @@ struct KconSurface {
 	/* The smallest grid this surface can compose on. See
 	 * kcon_surface_min_cols(). */
 	int min_cols, min_rows;
+	/* Asked to open unanchored, where the eye is. See
+	 * kcon_surface_floating(). */
+	int floating;
 	int hidden;
+
+	/* Where this surface says its caret is, in its own cells. A negative
+	 * x is none, which is what a surface with no text field reports and
+	 * what every surface reports before it has said anything. See
+	 * kcon_surface_caret(). */
+	int caret_x, caret_y;
 
 	char app_id[128];
 	char title[256];
@@ -331,6 +340,75 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		break;
 	}
 
+	case KCON_OP_VIEW_FONTS: {
+		/*
+		 * ONE VERB, ASKED IN TWO DIRECTIONS — the shape
+		 * KCON_OP_CAPTURE already uses. A SHELL sending it is asking
+		 * for the list; a VIEW sending it is answering with one.
+		 *
+		 * The names mean nothing on this side: they are shown and
+		 * indexed into, never parsed and never sent back.
+		 */
+		if (f->kind == KCON_KIND_SHELL) {
+			if (s->hooks.fonts_ask)
+				s->hooks.fonts_ask(f, s->user);
+			break;
+		}
+
+		int n = (int)kcon_get_u16(&r);
+		int cur = (int)(int16_t)kcon_get_u16(&r);
+
+		if (r.err || f->kind != KCON_KIND_VIEW)
+			return;
+		if (n < 0 || n > KCON_MAX_FONTS)
+			n = n < 0 ? 0 : KCON_MAX_FONTS;
+
+		const char *names[KCON_MAX_FONTS];
+		/*
+		 * COPIED OUT OF THE READER, because kcon_get_str() answers
+		 * into ONE static scratch buffer: an array of its return value
+		 * is an array of the same pointer, holding the last name n
+		 * times.
+		 */
+		static char store[KCON_MAX_FONTS][KCON_FONT_NAME];
+		int got = 0;
+
+		for (int i = 0; i < n; i++) {
+			const char *one = kcon_get_str(&r);
+
+			if (r.err)
+				break;
+			snprintf(store[got], sizeof(store[0]), "%s", one);
+			names[got] = store[got];
+			got++;
+		}
+		if (s->hooks.view_fonts)
+			s->hooks.view_fonts(f, names, got,
+					    cur >= 0 && cur < got ? cur : -1,
+					    s->user);
+		break;
+	}
+
+	case KCON_OP_VIEW_SETFONT: {
+		/*
+		 * A SHELL ONLY, the rule KCON_OP_RUN keeps: changing the
+		 * screen's font is a management verb, and a window that could
+		 * send one could resize every other window on the desktop by
+		 * changing the cell under them.
+		 */
+		int idx = (int)(int16_t)kcon_get_u16(&r);
+		int keep = (int)kcon_get_u8(&r);
+
+		if (r.err || f->kind != KCON_KIND_SHELL)
+			return;
+		/* A NEGATIVE INDEX IS "PUT IT BACK", which is what leaving
+		 * the picker asks for — the signed read above is what carries
+		 * it, so the sentinel is a value and not a magic number. */
+		if (s->hooks.font_set)
+			s->hooks.font_set(f, idx, keep, s->user);
+		break;
+	}
+
 	case KCON_OP_VIEW_SIZE: {
 		int cols = (int)kcon_get_u16(&r);
 		int rows = (int)kcon_get_u16(&r);
@@ -414,6 +492,10 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		f->margin_y = (int)kcon_get_u16(&r);
 		f->min_cols = (int)kcon_get_u16(&r);
 		f->min_rows = (int)kcon_get_u16(&r);
+		/* OPTIONALLY AND ONLY AT THE END, the way every other field
+		 * that arrived after its message did. */
+		f->floating = kcon_rd_left(&r) >= 1 ?
+			(int)kcon_get_u8(&r) : 0;
 
 		/*
 		 * A SIZE OF ZERO IS A QUESTION, AND ONLY WHERE THE SESSION
@@ -514,6 +596,31 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 			if (!r.err)
 				s->hooks.view_ptr(f, x, y, subx, suby, btn,
 						  press, s->user);
+		}
+		break;
+	case KCON_OP_TOUCH:
+		/*
+		 * A FINGER, AND WHAT THE RECOGNISER MADE OF IT. The gesture is
+		 * decided at the VIEW — one recogniser, fed by whichever
+		 * backend has the touch device — so what crosses is its
+		 * verdict and not the raw geometry a second recogniser here
+		 * would disagree with.
+		 *
+		 * The same guard KCON_OP_PTR keeps: a display only, and never
+		 * one that attached to watch.
+		 */
+		if (f->kind == KCON_KIND_VIEW && !f->observe &&
+		    s->hooks.view_touch) {
+			int x = kcon_get_i32(&r);
+			int y = kcon_get_i32(&r);
+			int slot = (int)kcon_get_u8(&r);
+			int phase = (int)kcon_get_u8(&r);
+			unsigned ms = kcon_get_u32(&r);
+			int gest = (int)kcon_get_u8(&r);
+
+			if (!r.err)
+				s->hooks.view_touch(f, x, y, slot, phase, ms,
+						    gest, s->user);
 		}
 		break;
 	case KCON_OP_TITLE:
@@ -688,6 +795,23 @@ static void on_msg(KconSurface *f, const KconMsg *m)
 		if (f->kind == KCON_KIND_SHELL && s->hooks.pick)
 			s->hooks.pick(f, s->user);
 		break;
+
+	case KCON_OP_CARET: {
+		/*
+		 * WHERE THE CARET IS, in this surface's own cells. Stored and
+		 * never forwarded from here: the session publishes the FOCUSED
+		 * window's, and it is the only thing that knows which that is
+		 * or where the window sits.
+		 */
+		int cx = (int)(int16_t)kcon_get_u16(&r);
+		int cy = (int)(int16_t)kcon_get_u16(&r);
+
+		if (r.err)
+			break;
+		f->caret_x = cx;
+		f->caret_y = cy;
+		break;
+	}
 
 	case KCON_OP_UNLOCK:
 		/*
@@ -900,6 +1024,10 @@ int kcon_server_pump(KconServer *s)
 			}
 
 			f->server = s;
+			/* NO CARET UNTIL ONE IS SENT. Zero is a cell, and a
+			 * surface that never says would otherwise park the
+			 * screen's cursor in its top-left corner. */
+			f->caret_x = f->caret_y = -1;
 			for (int k = 0; k < KCON_MAX_SPRITE_MAP; k++)
 				f->slotmap[k] = -1;
 			/*
@@ -1172,6 +1300,53 @@ void kcon_view_font(KconSurface *v, int step)
 	kcon_buf_free(&b);
 }
 
+void kcon_surface_fonts(KconSurface *f, const char *const *names, int n,
+			int cur)
+{
+	if (!f)
+		return;
+	if (n < 0)
+		n = 0;
+	if (n > KCON_MAX_FONTS)
+		n = KCON_MAX_FONTS;
+
+	KconBuf b = { 0 };
+
+	kcon_put_u16(&b, (uint16_t)n);
+	kcon_put_u16(&b, (uint16_t)(int16_t)(cur >= 0 && cur < n ? cur : -1));
+	for (int i = 0; i < n; i++)
+		kcon_put_str(&b, names && names[i] ? names[i] : "");
+	kcon_send(f->conn, KCON_OP_VIEW_FONTS, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_view_fonts_ask(KconSurface *v)
+{
+	if (!v || v->kind != KCON_KIND_VIEW || !(v->caps & KCON_VIEW_FONT))
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_send(v->conn, KCON_OP_VIEW_FONTS, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_view_set_font(KconSurface *v, int index, int keep)
+{
+	if (!v || v->kind != KCON_KIND_VIEW || !(v->caps & KCON_VIEW_FONT))
+		return;
+
+	KconBuf b = { 0 };
+
+	/* 0xffff IS "THE ONE YOU STARTED WITH", which is what leaving the
+	 * picker asks for. Any other out-of-range index is the view's to
+	 * refuse, because only the view knows how long its own list is. */
+	kcon_put_u16(&b, (uint16_t)(index < 0 ? 0xffff : index));
+	kcon_put_u8(&b, (uint8_t)(keep ? 1 : 0));
+	kcon_send(v->conn, KCON_OP_VIEW_SETFONT, &b);
+	kcon_buf_free(&b);
+}
+
 void kcon_view_send(KconSurface *v, const KtuiCell *cells, int w, int h)
 {
 	if (!v || v->kind != KCON_KIND_VIEW || !cells || w <= 0 || h <= 0)
@@ -1408,6 +1583,18 @@ int kcon_surface_hidden(const KconSurface *f)
 
 int kcon_surface_exclusive(const KconSurface *f) { return f ? f->exclusive : 0; }
 int kcon_surface_corner(const KconSurface *f) { return f ? f->corner : 0; }
+int kcon_surface_floating(const KconSurface *f) { return f ? f->floating : 0; }
+
+int kcon_surface_caret(const KconSurface *f, int *x, int *y)
+{
+	if (!f || f->caret_x < 0 || f->caret_y < 0)
+		return 0;
+	if (x)
+		*x = f->caret_x;
+	if (y)
+		*y = f->caret_y;
+	return 1;
+}
 int kcon_surface_margin_x(const KconSurface *f) { return f ? f->margin_x : 0; }
 int kcon_surface_margin_y(const KconSurface *f) { return f ? f->margin_y : 0; }
 int kcon_surface_min_cols(const KconSurface *f) { return f ? f->min_cols : 0; }
@@ -1476,6 +1663,80 @@ void kcon_surface_ptr(KconSurface *f, int x, int y, int btn, int press)
 	kcon_put_u8(&b, (uint8_t)btn);
 	kcon_put_u8(&b, (uint8_t)press);
 	kcon_send(f->conn, KCON_OP_PTR, &b);
+	kcon_buf_free(&b);
+}
+
+/*
+ * A FINGER ON THIS SURFACE, in its own cells, with the gesture the recogniser
+ * named. The order and the widths are the client's decoder's, and a field added
+ * to one without the other is a message read three ways.
+ */
+void kcon_surface_touch(KconSurface *f, int x, int y, int slot, int phase,
+			unsigned ms, int gesture)
+{
+	if (!f)
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_i32(&b, x);
+	kcon_put_i32(&b, y);
+	kcon_put_u8(&b, (uint8_t)slot);
+	kcon_put_u8(&b, (uint8_t)phase);
+	kcon_put_u32(&b, ms);
+	kcon_put_u8(&b, (uint8_t)gesture);
+	kcon_send(f->conn, KCON_OP_TOUCH, &b);
+	kcon_buf_free(&b);
+}
+
+/*
+ * A DRAG IS OVER THIS SURFACE, IS MOVING, OR HAS GONE.
+ *
+ * The three that say where a drag is, so a target can light up before anything
+ * is dropped on it. They carry the MIME type on the way in, because that is
+ * what a target refuses on: a folder that takes `text/uri-list` and not
+ * `text/plain` has to know before the release, or the highlight is a promise
+ * it cannot keep.
+ *
+ * THE PAYLOAD IS NOT SENT UNTIL THE DROP. A drag that crossed six windows
+ * would otherwise hand its bytes to all six, and one of them is a window the
+ * person was only passing over.
+ */
+void kcon_surface_drag_enter(KconSurface *f, int x, int y, const char *mime)
+{
+	if (!f)
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_i32(&b, x);
+	kcon_put_i32(&b, y);
+	kcon_put_str(&b, mime);
+	kcon_send(f->conn, KCON_OP_DRAG_ENTER, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_surface_drag_motion(KconSurface *f, int x, int y)
+{
+	if (!f)
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_put_i32(&b, x);
+	kcon_put_i32(&b, y);
+	kcon_send(f->conn, KCON_OP_DRAG_MOTION, &b);
+	kcon_buf_free(&b);
+}
+
+void kcon_surface_drag_leave(KconSurface *f)
+{
+	if (!f)
+		return;
+
+	KconBuf b = { 0 };
+
+	kcon_send(f->conn, KCON_OP_DRAG_LEAVE, &b);
 	kcon_buf_free(&b);
 }
 

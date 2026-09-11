@@ -219,6 +219,56 @@ void kdisp_win_minimise(unsigned id, int on) { (void)id; (void)on; }
 void kdisp_win_maximise(unsigned id, int on) { (void)id; (void)on; }
 void kdisp_win_fullscreen(unsigned id, int on) { (void)id; (void)on; }
 
+/*
+ * AND THE SCREEN'S FONT LIST IS EMPTY, for the reason the window list is: a
+ * dump has no display, and a display is the only thing that knows what faces
+ * it can render. `$KDOS_FONT_LIST` is what puts rows in front of a golden —
+ * one name per line, read here rather than gathered, because a real
+ * enumeration is the HOST'S fonts and would differ on every machine.
+ */
+int kdisp_font_count(void)
+{
+	const char *f = getenv("KDOS_FONT_LIST");
+	FILE *fp = f && *f ? fopen(f, "r") : NULL;
+	char line[256];
+	int n = 0;
+
+	if (!fp)
+		return 0;
+	while (n < 64 && fgets(line, sizeof(line), fp))
+		if (line[0] != '\n')
+			n++;
+	fclose(fp);
+	return n;
+}
+
+int kdisp_font_at(int i, char *out, int cap)
+{
+	const char *f = getenv("KDOS_FONT_LIST");
+	FILE *fp = f && *f ? fopen(f, "r") : NULL;
+	char line[256];
+	int n = 0;
+
+	if (!fp || i < 0 || !out || cap <= 0)
+		return 0;
+	while (fgets(line, sizeof(line), fp)) {
+		if (line[0] == '\n')
+			continue;
+		line[strcspn(line, "\r\n")] = '\0';
+		if (n++ == i) {
+			snprintf(out, (size_t)cap, "%s", line);
+			fclose(fp);
+			return 1;
+		}
+	}
+	fclose(fp);
+	return 0;
+}
+
+int kdisp_font_current(void) { return kdisp_font_count() > 0 ? 0 : -1; }
+void kdisp_font_set(int index, int keep) { (void)index; (void)keep; }
+void kdisp_font_ask(void) { }
+
 int kicon_slot_pad(const char *n, int cw, int ch, int pad)
 { (void)n; (void)cw; (void)ch; (void)pad; return -1; }
 pixman_image_t *kicon_pixmap(const char *n, int w, int h)
@@ -350,6 +400,7 @@ FRONT_END(panel_main);
 FRONT_END(trash_main);
 FRONT_END(rec_main);
 FRONT_END(chars_main);
+FRONT_END(contacts_main);
 FRONT_END(disks_main);
 FRONT_END(print_main);
 FRONT_END(timezone_main);
@@ -389,6 +440,7 @@ static const struct {
 	{ "tip",	tip_main },
 	{ "rec",	rec_main },
 	{ "chars",	chars_main },
+	{ "contacts",	contacts_main },
 	{ "disks",	disks_main },
 	{ "print",	print_main },
 	{ "time",	timezone_main },

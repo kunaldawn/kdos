@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libinput.h>
@@ -250,10 +251,15 @@ static void moved(void)
 		K.ptr_px = 0;
 	if (K.ptr_py < 0)
 		K.ptr_py = 0;
-	if (K.ptr_px > K.width - 1)
-		K.ptr_px = K.width - 1;
-	if (K.ptr_py > K.height - 1)
-		K.ptr_py = K.height - 1;
+	/* THE WHOLE DESKTOP, not one screen. The pointer crosses the seam
+	 * because there is no seam in the virtual box — the cut into screens
+	 * happens at the paint, below anything that knows where the arrow is.
+	 * Clamped against K.vw and K.vh for that reason and not against a
+	 * mode. */
+	if (K.ptr_px > K.vw - 1)
+		K.ptr_px = K.vw - 1;
+	if (K.ptr_py > K.vh - 1)
+		K.ptr_py = K.vh - 1;
 
 	int x = (int)K.ptr_px / cw;
 	int y = (int)K.ptr_py / ch;
@@ -285,9 +291,9 @@ static void on_motion(struct libinput_event *ev, int absolute)
 
 	if (absolute) {
 		K.ptr_px = libinput_event_pointer_get_absolute_x_transformed(
-			p, K.width);
+			p, K.vw);
 		K.ptr_py = libinput_event_pointer_get_absolute_y_transformed(
-			p, K.height);
+			p, K.vh);
 	} else {
 		K.ptr_px += libinput_event_pointer_get_dx(p);
 		K.ptr_py += libinput_event_pointer_get_dy(p);
@@ -381,8 +387,8 @@ static void on_touch(struct libinput_event *ev, int phase)
 	e.ms = (unsigned)(libinput_event_touch_get_time(t));
 
 	if (phase != KT_TOUCH_UP && phase != KT_TOUCH_CANCEL) {
-		e.mx = (int)libinput_event_touch_get_x_transformed(t, K.width) / cw;
-		e.my = (int)libinput_event_touch_get_y_transformed(t, K.height) / ch;
+		e.mx = (int)libinput_event_touch_get_x_transformed(t, K.vw) / cw;
+		e.my = (int)libinput_event_touch_get_y_transformed(t, K.vh) / ch;
 	}
 
 	KtuiGesture g;
@@ -434,8 +440,8 @@ int kkms_input_init(void)
 	if (!K.state)
 		return -1;
 
-	K.ptr_px = K.width / 2.0;
-	K.ptr_py = K.height / 2.0;
+	K.ptr_px = K.vw / 2.0;
+	K.ptr_py = K.vh / 2.0;
 	K.ptr_x = K.ptr_y = -1;
 	return 0;
 }
@@ -523,6 +529,35 @@ void kkms_input_pump(void)
 		}
 
 		libinput_event_destroy(ev);
+	}
+
+	/*
+	 * LONG PRESS HAS NO EVENT TO ARRIVE ON. The finger is down and nothing
+	 * is moving, so the deadline is checked from the idle wait instead —
+	 * the same shape the Wayland backend uses, because there is one
+	 * recogniser and it must be polled the same way from both.
+	 *
+	 * libinput's timestamps are CLOCK_MONOTONIC milliseconds and that is
+	 * what the recogniser was fed, so that is what it is asked with: a
+	 * clock of a different base makes a deadline that never expires.
+	 */
+	if (K.active) {
+		KtuiGesture g;
+		struct timespec ts;
+
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		if (ktui_gesture_tick((unsigned)(ts.tv_sec * 1000 +
+						 ts.tv_nsec / 1000000), &g)) {
+			KtuiEvent e;
+
+			memset(&e, 0, sizeof(e));
+			e.type = KT_EVT_TOUCH;
+			e.phase = KT_TOUCH_MOVE;
+			e.mx = g.x;
+			e.my = g.y;
+			e.gesture = g.type;
+			push(&e);
+		}
 	}
 }
 

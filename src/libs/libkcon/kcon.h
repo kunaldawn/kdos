@@ -53,7 +53,7 @@
  * the file carries no version at all. Append, whatever group the new op
  * belongs to by meaning.
  */
-#define KCON_VERSION 12
+#define KCON_VERSION 15
 
 /*
  * A length field is an allocation request from an untrusted peer, so it is
@@ -353,6 +353,65 @@ enum {
 	 */
 	KCON_OP_PICK,
 
+	/*
+	 * WHERE THIS SURFACE'S CARET IS, in its own cells — one signed pair,
+	 * and a negative x means it has none.
+	 *
+	 * A view holds no window state and cannot know where the text cursor
+	 * of the focused window is, so the session tells it; and the session
+	 * knows only its own terminals, because a surface knew its caret and
+	 * had no message to say so. This is that message. The position is
+	 * SURFACE-LOCAL: only the session knows where the window sits, and a
+	 * surface that sent screen coordinates would be a surface guessing.
+	 *
+	 * Sent whenever it moves and once when it goes away. The session
+	 * forwards the focused window's, so a surface without the focus is
+	 * stored and not published.
+	 */
+	KCON_OP_CARET,
+
+	/*
+	 * THE FACES THIS VIEW CAN RENDER, asked and answered on one op.
+	 *
+	 * THE VIEW ENUMERATES AND NOTHING ELSE MAY. A view is the only end
+	 * with a font stack, and it is the end that may be somewhere else
+	 * entirely — a forwarded display has its own machine's fonts, and a
+	 * list gathered here would be this machine's, offered to a screen
+	 * that has never had one of them. That is the same rule
+	 * KCON_OP_VIEW_FONT states about a step, said about a list.
+	 *
+	 * Empty from a view that did not claim KCON_VIEW_FONT, and never
+	 * asked of one: the terminal it runs in owns the font.
+	 *
+	 * Request (session to view): nothing.
+	 * Answer (view to session): u16 count, u16 the one in force, then
+	 * that many strings — each a name the VIEW produced and only it has
+	 * to understand.
+	 */
+	KCON_OP_VIEW_FONTS,
+
+	/*
+	 * WEAR THE NTH OF THEM. A u16 INDEX into the list this view last
+	 * sent — 0xffff for the one it started with — and a u8 saying whether
+	 * to KEEP it.
+	 *
+	 * A PREVIEW WRITES NO STATE FILE. Arrows in a picker walk a list and
+	 * every step is a real font on a real screen; a step that persisted
+	 * would make the last face the highlight passed over the one the next
+	 * login comes up in, whether or not anybody chose it. Only `keep`
+	 * writes, and putting it back removes.
+	 *
+	 * AN INDEX AND NEVER A NAME, for the reason above: the only names on
+	 * this wire are the view's own, travelling outward. A session that
+	 * sent fontconfig syntax back would be a session deciding what a
+	 * display it has never seen can render, which is what the step op
+	 * exists not to do.
+	 *
+	 * The grid comes back as an ordinary KCON_OP_VIEW_SIZE, because a
+	 * font that changes the cell changes how many cells fit.
+	 */
+	KCON_OP_VIEW_SETFONT,
+
 	KCON_OP_N
 };
 
@@ -597,6 +656,21 @@ enum { KCON_LISTEN_ANY = 0, KCON_LISTEN_SURFACE, KCON_LISTEN_VIEW,
 #define KCON_MAX_SPRITE_MAP 4096
 
 /*
+ * HOW MANY FACES A VIEW MAY LIST, and how long one name may be.
+ *
+ * A person picks from a list they can read, and a screen shows a few dozen
+ * rows; the cap is here because the count on the wire is an allocation request
+ * from a peer, and because the picker's own row store is a fixed table. A view
+ * with more faces than this sends the first of them, which is a shorter list
+ * and not a broken one.
+ *
+ * The name length is fontconfig's own worst case with room to spare: a family
+ * plus a size plus a style is far inside it.
+ */
+#define KCON_MAX_FONTS 64
+#define KCON_FONT_NAME 192
+
+/*
  * The longest argument vector KCON_OP_RUN carries. A desktop entry's Exec with
  * its file arguments is a handful of words; the cap is here because the count
  * on the wire is an allocation request from a peer.
@@ -676,6 +750,16 @@ int kcon_surface_edge(const KconSurface *f);
  * asks once and lands beside its button on both desktops.
  */
 int kcon_surface_corner(const KconSurface *f);
+/* True when this surface asked to open unanchored, at the size it attached
+ * with, where the eye is. Toplevel only — an overlay is already unanchored. */
+int kcon_surface_floating(const KconSurface *f);
+/*
+ * WHERE THIS SURFACE SAYS ITS CARET IS, in its own cells. Returns 0 and
+ * touches nothing when it has none — which is every surface until it sends
+ * one, so a session that forwards this without checking would park a cursor
+ * at a corner nobody is typing in.
+ */
+int kcon_surface_caret(const KconSurface *f, int *x, int *y);
 int kcon_surface_margin_x(const KconSurface *f);
 int kcon_surface_margin_y(const KconSurface *f);
 
@@ -709,11 +793,27 @@ void kcon_surface_key(KconSurface *f, int key, int mods);
 void kcon_surface_focus(KconSurface *f, int in);
 void kcon_surface_ptr(KconSurface *f, int x, int y, int btn, int press);
 /*
- * A DROP LANDED ON THIS SURFACE. The client receives it already; what has no
- * caller is this, because nothing on the console starts a drag yet. It stays
- * because the receiving half is real and the two must be written together —
- * a wire with one end is a wire nobody can test.
+ * A FINGER ON THIS SURFACE, in its cells, carrying the gesture the VIEW'S
+ * recogniser named — `phase` is KT_TOUCH_*, `gesture` is KT_GEST_*. A surface
+ * that wants only a pointer needs none of it: the view synthesises the mouse
+ * event beside the touch, so every widget already handles a tap.
  */
+void kcon_surface_touch(KconSurface *f, int x, int y, int slot, int phase,
+			unsigned ms, int gesture);
+/*
+ * A DRAG ACROSS THE SESSION, in four verbs.
+ *
+ * The session is the only half that knows what is under the pointer, so it is
+ * the half that sends all four: a surface says it has picked something up with
+ * KCON_OP_DRAG_START and hears nothing more until the drag is over it.
+ *
+ * Where a drag is, before it is dropped. `enter` carries the MIME type because
+ * that is what a target refuses on; the payload waits for the drop, so a drag
+ * crossing six windows does not hand its bytes to all six.
+ */
+void kcon_surface_drag_enter(KconSurface *f, int x, int y, const char *mime);
+void kcon_surface_drag_motion(KconSurface *f, int x, int y);
+void kcon_surface_drag_leave(KconSurface *f);
 void kcon_surface_drop(KconSurface *f, int x, int y, const char *text);
 void kcon_surface_clip_data(KconSurface *f, const char *text);
 /* Ask the surface to go away. It closes itself; a display that killed the
@@ -783,6 +883,26 @@ void kcon_view_blank(KconSurface *v, int on);
  * so a caller that checked the flag and one that did not behave alike.
  */
 void kcon_view_font(KconSurface *v, int step);
+
+/*
+ * ASK A VIEW WHAT FACES IT HAS, and tell one to wear the nth of them.
+ *
+ * Silently nothing on a view that did not claim KCON_VIEW_FONT, the rule
+ * kcon_view_font() keeps. The answer arrives on the `view_fonts` hook, once,
+ * whenever the view feels like sending it — a caller that blocked for it would
+ * be a session stopped on a display that may be at the far end of an ssh
+ * link.
+ */
+void kcon_view_fonts_ask(KconSurface *v);
+void kcon_view_set_font(KconSurface *v, int index, int keep);
+
+/*
+ * THE LIST, BACK TO THE SHELL THAT ASKED. `cur` is which of them is in force
+ * or -1, and an empty list is the honest answer where no attached display
+ * rasterises its own glyphs — the terminal it runs in owns the font.
+ */
+void kcon_surface_fonts(KconSurface *f, const char *const *names, int n,
+			int cur);
 
 /*
  * Ring every attached view. A bell is not addressed to one display: the person
@@ -898,6 +1018,43 @@ typedef struct {
 	 * show", which is what a number naming no window means.
 	 */
 	char *(*capture)(KconSurface *f, int window, void *user);
+
+	/*
+	 * A VIEW LISTED THE FACES IT CAN RENDER. `names` is borrowed and is
+	 * `n` NUL-terminated strings; `cur` is which of them is in force, or
+	 * -1 when the view could not say.
+	 *
+	 * The names are the VIEW'S and mean nothing here — the session stores
+	 * them to show and sends back an INDEX, never one of them, because a
+	 * forwarded display's fonts are its own machine's.
+	 */
+	/*
+	 * A FINGER ARRIVED AT A DISPLAY, with the gesture ITS recogniser
+	 * named. There is one recogniser and it lives where the touch device
+	 * is, so what reaches here is a verdict rather than geometry a second
+	 * one would disagree with. `phase` is KT_TOUCH_*, `gesture` KT_GEST_*.
+	 */
+	void (*view_touch)(KconSurface *v, int x, int y, int slot, int phase,
+			   unsigned ms, int gesture, void *user);
+
+	void (*view_fonts)(KconSurface *v, const char *const *names, int n,
+			   int cur, void *user);
+
+	/*
+	 * A SHELL ASKED FOR THE SAME LIST, on the same op — the shape
+	 * KCON_OP_CAPTURE already uses, because a request and its answer are
+	 * one verb asked in two directions.
+	 *
+	 * The session answers with kcon_surface_fonts() out of what a view
+	 * last told it. It does NOT gather anything itself: the list belongs
+	 * to the display, and a session with no view attached has no list to
+	 * give, which is an empty one and not an error.
+	 */
+	void (*fonts_ask)(KconSurface *f, void *user);
+	/* And wear the nth of them. -1 is back to the one the view started
+	 * with; `keep` is whether it survives the logout, so a picker's
+	 * arrows pass 0 and only its Enter passes 1. */
+	void (*font_set)(KconSurface *f, int index, int keep, void *user);
 } KconServerHooks;
 
 void kcon_server_hooks(KconServer *s, const KconServerHooks *h, void *user);

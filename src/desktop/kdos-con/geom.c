@@ -215,6 +215,12 @@ static int geo_worth(const Win *w)
 {
 	if (!w || w->panel || w->overlay || w->background || w->sticky)
 		return 0;
+	/* A FLOAT ASKED TO OPEN IN THE MIDDLE AT A SIZE OF ITS OWN, and
+	 * remembering where it happened to be moved to would answer a
+	 * different question the next time it is opened — and answer it
+	 * first, because a recalled rectangle wins over a placement. */
+	if (w->floating)
+		return 0;
 	if (w == S.lock || w == S.saver || w->kind == WIN_VT)
 		return 0;
 	return geo_usable(w->prog);

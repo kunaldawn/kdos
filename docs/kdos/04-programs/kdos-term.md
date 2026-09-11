@@ -298,6 +298,31 @@ are bounded here; the moment a byte could be part of a picture it goes to `libki
 | `APC G a=T/a=t/a=p/a=d` | Transmit, place, delete, the chunked form, `f=100` (any format `libkimg` reads), `f=24` and `f=32` |
 | `APC G a=f/a=a` | Animation: a frame with its delay, composed onto an earlier one, and the run, stop and loop-count controls |
 | `APC G a=q` | The capability query, answered `OK` with the id echoed — or `ENOTSUP` where pictures are off |
+| `U+10EEEE` cells | The Unicode placeholders, which is how a picture reaches this terminal **through `tmux`** |
+
+**`tmux` will not pass an APC through, and the placeholders are the way round it.** A program inside
+one transmits the picture with `a=t` — or `a=T,U=1` — and then writes a run of `U+10EEEE` cells
+where it wants it drawn, carrying the picture's id in each cell's foreground colour. Those cells are
+resolved to the picture's tiles after the frame is rendered and before it is drawn, so the picture
+scrolls, clears and lands in the scrollback with the text around it, exactly as a placed one does.
+
+**The tiles are cut on the transmit, not only on a placement.** An id whose picture had never been
+placed at a cursor would otherwise name a picture with no tiles, and every cell of the run would be
+a blank — the protocol would be a picture transmitted and never drawn. **`U=1` also stops the
+placement at the cursor**: without reading it, `a=T,U=1` would stamp the picture where the cursor
+was *and* answer the client's own run, drawing it twice.
+
+**The row and column are read from the run.** The protocol also allows combining diacritics after
+each placeholder to state them outright; this reads the position instead, which is what the
+specification says a terminal does when they are absent and is what the programs that use this
+emit. A picture drawn out of order, or split across two places on one screen, would need the
+diacritic table — three hundred codepoints for a case nothing here produces.
+
+**Only a truecolor foreground names an id.** `38;2;r;g;b` reaches a cell intact; `38;5;<n>` does
+not, because the state machine resolves an indexed colour to the xterm cube's RGB and throws the
+index away — and what survives into a cell's slot is one of the theme's eight, which would collide
+with the small ids clients actually use and answer a default-coloured placeholder with somebody
+else's picture. A placeholder with no literal colour is drawn as a space.
 
 A build without `libkimg` leaves the three protocols **off entirely** rather than parsing them and
 dropping the result. `images = no` is not the same thing: there the delimiter still runs, under a
@@ -385,6 +410,21 @@ terminal through one helper and passes the same flags to whichever of the two it
 the whole terminal short of a display, which is why the self-test's goldens are taken through it.
 
 The exit status is the **child's**: a terminal opened to run one command is a wrapper round it.
+
+**A child that dies leaves a clean terminal.** A program killed before it could tidy up leaves its
+modes set, and the window outlives it on both desktops — the console keeps a terminal window showing
+how its program finished, and this one draws one more frame before it goes. So `kvt_term_reset_modes()`
+runs the moment the death is seen: bracketed paste off, mouse reporting off, focus reporting off,
+synchronized output off, and **the primary screen back with its cursor where DECRST 1049 would have
+put it**. A `vim` killed with `-9` would otherwise leave its own buffer on the screen, on an
+alternate screen nothing can scroll back from, with every click still going to a pipe that has
+nothing on the other end.
+
+**The screen and the scrollback are not touched.** The last thing the program printed is the whole
+reason the window is still there, so this is not `kvt_vte_reset()` — that one resets the screen as
+well, and calling it here would take away what the frame exists to show. **There is no kitty
+keyboard mode to put back**: this terminal does not implement that protocol, so a child cannot have
+pushed one.
 
 ## What it has been run against
 

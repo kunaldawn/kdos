@@ -3,7 +3,12 @@
 # 00:00 runs it at the same second, and this one reads the whole ports tree.
 #
 # -s 8h is the missed-run rule and it is snooze's, not ours: a machine that was
-# asleep at 04:17 runs the job ONCE when it wakes, if it wakes within eight
+# ASLEEP at 04:17 runs the job ONCE when it wakes, if it wakes within eight
 # hours of the slot. Not once per missed occurrence — a laptop shut for a
 # fortnight would otherwise run fourteen of them at breakfast.
+#
+# A machine that was OFF is a different case and this line does not cover it: a
+# snooze started at boot begins looking one second from now, so the slot it
+# slept through is simply tomorrow's. Reaching back needs `-t FILE`, and a
+# timefile only the job itself may touch.
 update-check  -H 4 -M 17 -s 8h  --  kdos update check --json --out /var/lib/kdos/update.json

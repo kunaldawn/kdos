@@ -41,6 +41,10 @@ static char *obuf;
 static size_t obuf_len, obuf_cap;
 static int write_ms = -1;	/* -1 blocks; >=0 bounds one flush         */
 static int dropped;
+/* The host terminal hung up: every write since has failed. Sticky, because a
+ * terminal that has gone does not come back and the consumer may not look
+ * until its next turn round the loop. */
+static int hungup;
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
@@ -110,8 +114,17 @@ void ktui_term_flush(void)
 		if (w < 0) {
 			if (errno == EINTR)
 				continue;
-			if (errno != EAGAIN && errno != EWOULDBLOCK)
+			if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				/* THE HOST TERMINAL WENT AWAY. An `ssh` drop
+				 * hangs up the pty and every write after it
+				 * fails; without a record of that, a
+				 * full-screen program spins at its poll
+				 * timeout writing frames into a descriptor
+				 * with nothing on the other end, and never
+				 * decides to leave. */
+				hungup = 1;
 				break;
+			}
 			if (write_ms < 0) {
 				/* Someone else made this fd non-blocking; the
 				 * rest of the frame has nowhere to go. */
@@ -140,6 +153,11 @@ void ktui_term_flush(void)
 void ktui_term_set_write_timeout(int ms)
 {
 	write_ms = ms;
+}
+
+int ktui_term_hungup(void)
+{
+	return hungup;
 }
 
 int ktui_term_flush_dropped(void)
@@ -452,12 +470,30 @@ static void enter_screen(void)
 void ktui_term_caret(int x, int y)
 {
 	static int last_x = -2, last_y = -2;
+	const KtuiBackend *b = ktui_backend();
 	char seq[48];
 
 	if (x == last_x && y == last_y)
 		return;
 	last_x = x;
 	last_y = y;
+
+	/* A display server places it, and the escape is never written: this
+	 * surface's stdout is not the screen it is drawn on. */
+	if (b && b->caret) {
+		b->caret(x, y);
+		return;
+	}
+
+	/*
+	 * AND OFFSCREEN THERE IS NO TERMINAL TO PLACE ONE ON. stdout is where
+	 * the dump goes, so the escape lands INSIDE the frame — which is how
+	 * a committed reference frame came to begin with a cursor move, and
+	 * how a frame taken with no size imposed came to differ from the same
+	 * frame taken with one depending on which message arrived first.
+	 */
+	if (ktui_offscreen())
+		return;
 
 	if (x < 0 || y < 0) {
 		emit("\033[?25l");

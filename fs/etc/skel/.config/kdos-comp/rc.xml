@@ -141,6 +141,12 @@
          chord, so there is one key card rather than two. -->
     <keybind key="W-C-c"><action name="Execute" command="kdos-palette --route capture"/></keybind>
 
+    <!-- And the setting-up group, on the same shape. Eleven panels have a
+         chord of their own; the printers, the users and the clock do not, and
+         this is how they are reached without eleven more keys. The console
+         binds the same chord, so there is one key card rather than two. -->
+    <keybind key="W-C-h"><action name="Execute" command="kdos-palette --route setup"/></keybind>
+
     <!-- The notification CENTRE. A toast that expired used to be gone; the
          daemon keeps a history now and this is the way back to it, which
          matters most for the notifications nobody was there to see. Shift,
@@ -257,6 +263,63 @@
     <keybind key="Print"><action name="Execute" command="kdos-shot screen"/></keybind>
     <keybind key="S-Print"><action name="Execute" command="kdos-shot region"/></keybind>
     <keybind key="A-Print"><action name="Execute" command="kdos-record"/></keybind>
+
+    <!-- AND THE Super FORM OF THE RECTANGLE, because Print reaches a keyboard
+         and nothing else: over ssh and in a `--tty` view there is no Print key
+         to press, and the console binds this chord for exactly that reason. One
+         key card serves both desktops, so the chord that works everywhere is
+         bound on both. -->
+    <keybind key="W-S-p"><action name="Execute" command="kdos-shot region"/></keybind>
+
+    <!-- THE TRANSPORT KEYS. A keyboard that has them expects them to work on
+         either desktop, and `kdos-mpctl` is the one caller of MPRIS here — the
+         same four commands `con.conf` names, so a key does the same thing on
+         both machines. Volume and brightness are labwc's own defaults and are
+         not restated. -->
+    <keybind key="XF86AudioPlay"><action name="Execute" command="kdos-mpctl toggle"/></keybind>
+    <keybind key="XF86AudioStop"><action name="Execute" command="kdos-mpctl stop"/></keybind>
+    <keybind key="XF86AudioNext"><action name="Execute" command="kdos-mpctl next"/></keybind>
+    <keybind key="XF86AudioPrev"><action name="Execute" command="kdos-mpctl prev"/></keybind>
+
+    <!-- The time and the battery, as notices. The panel shows both while it is
+         up; these are for when it is not, and for the console beside this,
+         which puts its bar away on Super+Shift+d. Three modifiers because
+         neither is pressed often enough to earn a shorter chord. The console
+         binds the same two, so there is one key card. -->
+    <keybind key="W-C-A-t"><action name="Execute" command="kdos notify --time"/></keybind>
+    <keybind key="W-C-A-b"><action name="Execute" command="kdos notify --battery"/></keybind>
+
+    <!-- Remind me. The plain chord opens a one-row prompt whose line is what a
+         person would have typed at a shell; the reminder is a job in
+         ~/.config/kdos/timers.d, so it survives a logout, and it is delivered
+         once. Listing and clearing take a modifier more, so a hand reaching
+         for the prompt cannot forget the lot. -->
+    <keybind key="W-C-r"><action name="Execute" command="kdos remind --ask"/></keybind>
+    <keybind key="W-C-A-r"><action name="Execute" command="kdos remind ls"/></keybind>
+    <keybind key="W-C-S-r"><action name="Execute" command="kdos remind clear"/></keybind>
+
+    <!-- The notices already on the screen, on one letter: a toast interrupts,
+         so the chord that puts one away is the cheapest on the keyboard and the
+         three that do more to them are its modified forms. W-A-x is the undo
+         for W-x pressed a moment too early, and it comes back without its
+         buttons — the notification it came from is closed and its actions
+         belong to the program that sent it. Each is one line down the
+         notification daemon's own socket. The console binds the same four, so
+         there is one key card. -->
+    <keybind key="W-x"><action name="Execute" command="kdos notify --dismiss"/></keybind>
+    <keybind key="W-S-x"><action name="Execute" command="kdos notify --dismiss-all"/></keybind>
+    <keybind key="W-C-x"><action name="Execute" command="kdos notify --dnd"/></keybind>
+    <keybind key="W-A-x"><action name="Execute" command="kdos notify --raise"/></keybind>
+
+    <!-- Never lock or blank on idle, and again to let it. Named for the file it
+         sets: one switch in one place. -->
+    <keybind key="W-C-i"><action name="Execute" command="kdos toggle stay-awake"/></keybind>
+
+    <!-- Warm the palette, and again to cool it. NOT on W-C-n, which is the
+         scratch pad's on both desktops and has been since either had
+         accessories: a chord a person already knows here is worth more than one
+         that matches another desktop's defaults. -->
+    <keybind key="W-C-S-n"><action name="Execute" command="kdos toggle night-light"/></keybind>
 
     <keybind key="W-1"><action name="GoToDesktop" to="1"/></keybind>
     <keybind key="W-2"><action name="GoToDesktop" to="2"/></keybind>
@@ -383,6 +446,7 @@
     <keybind key="W-C-n"><action name="Execute" command="kdos-note"/></keybind>
     <keybind key="W-C-v"><action name="Execute" command="kdos-clip"/></keybind>
     <keybind key="W-C-e"><action name="Execute" command="kdos-chars"/></keybind>
+    <keybind key="W-C-b"><action name="Execute" command="kdos-contacts"/></keybind>
     <!-- Find, and Shift because W-f is fullscreen on both desktops: a search
          one slip from covering the screen is the wrong trade. The console
          binds the same chord, so there is one key card rather than two. -->
@@ -391,7 +455,7 @@
          repaints the whole desktop live under the hand as the highlight
          moves, so it must be hard to press by accident. The console binds
          the same chord, so there is one key card rather than two. -->
-    <keybind key="W-C-S-space"><action name="Execute" command="kdos-theme"/></keybind>
+    <keybind key="W-C-S-space"><action name="Execute" command="kdos-style"/></keybind>
     <!-- The console desktop's character-art ground. Bound here so one key card
          serves both desktops and the chord means the same thing on each; under
          the compositor the wallpaper is a PNG and this changes nothing that is

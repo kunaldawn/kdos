@@ -46,6 +46,31 @@
 int view_font_state_path(char *out, size_t n);
 int view_font_stepped(const char *base, int step, char *out, size_t n);
 
+/*
+ * THE FACES THIS DISPLAY CAN RENDER, and it is the display that decides.
+ *
+ * A view is the only end with a font stack and it may be on another machine
+ * entirely, so a list gathered anywhere else would be that machine's fonts
+ * offered to this screen. The session asks, this answers, and what goes back
+ * the other way is an INDEX into the answer.
+ *
+ * MONOSPACED ONLY, because a cell grid divided by a proportional face is a
+ * grid of the wrong shape and nothing downstream notices — the same failure
+ * `kcell_font_load()` already guards with its own advance test.
+ *
+ * `$KDOS_FONT_LIST` names a file of `fc-list` output to read instead of
+ * running it, which is what makes this testable without a font stack.
+ *
+ * `view_font_escape()` writes a family as fontconfig's own name SYNTAX rather
+ * than as text: `-` opens a size there, `:` opens a property and `,` opens an
+ * alternate, so a family carrying one — and several shipped ones do — names a
+ * different face than the one it reads as. Non-zero when it fits.
+ */
+#define VIEW_FONT_MAX  64
+#define VIEW_FONT_NAME 192
+int view_font_escape(const char *family, char *out, size_t n);
+int view_font_list(const char *cur, char names[][VIEW_FONT_NAME], int max);
+
 #ifdef KDOS_VIEW_SHOT
 int view_shot_png(const char *path, int scale, int cx, int cy, int cw, int ch);
 #endif

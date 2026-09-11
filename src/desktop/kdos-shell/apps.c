@@ -274,6 +274,16 @@ static void add_desktop_file(const char *path)
 	snprintf(a->term, sizeof(a->term), "%s",
 		 kxdg_get(&e, "X-KDOS-Term", ""));
 	/*
+	 * HOW THE WINDOW SHOULD OPEN, for the entries that have a shape rather
+	 * than a size somebody drags. Read here and in `desk.c`, which parses
+	 * an entry of its own — a key read in one and not the other is a
+	 * desktop icon that behaves differently from the same row in the Start
+	 * menu.
+	 */
+	a->floating = kxdg_bool(&e, "X-KDOS-Float", 0);
+	snprintf(a->size, sizeof(a->size), "%s",
+		 kxdg_get(&e, "X-KDOS-Size", ""));
+	/*
 	 * WHICH ENTRIES COST A CONTAINER START, which is a question only this
 	 * distro's menus can answer and only this distro's users need asked.
 	 * An entry whose Exec IS the box launcher is a boxed app whatever the
@@ -577,7 +587,7 @@ void sh_apps_launch_with(const struct sh_app *a, const char *const *files,
 	const char *con = getenv("KDOS_CON");
 
 	if (a->terminal)
-		n = sh_term_argv_in(a->term, argv, n,
+		n = sh_term_argv_in(a->term, a->floating, a->size, argv, n,
 				    (int)(sizeof(argv) / sizeof(*argv)),
 				    a->exec, id, sizeof(id));
 	int got = kxdg_exec_split(a->exec, files, nfiles, store, sizeof(store),

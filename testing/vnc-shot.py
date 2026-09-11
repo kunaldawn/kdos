@@ -367,6 +367,12 @@ def main():
                     help="move the pointer to X,Y (absolute pixels)")
     ap.add_argument("--click", action=Step,
                     help="X,Y[,BTN] — move there and click; BTN 1/2/3")
+    ap.add_argument("--drag", action=Step,
+                    help="X1,Y1,X2,Y2[,BTN] — press at the first point, move "
+                         "to the second with the button held, release. A "
+                         "--click cannot express this: its three events share "
+                         "one coordinate, so no motion ever arrives with the "
+                         "button down, and a drag begins on motion")
     ap.add_argument("--cmd", action=Step,
                     help="run in the kdos session")
     ap.add_argument("--root-cmd", action=Step,
@@ -647,6 +653,24 @@ def main():
                 mask = 1 << (btn - 1)
                 rfb_pointer("127.0.0.1", args.vnc_port,
                             [(mx, my, 0), (mx, my, mask), (mx, my, 0)])
+                time.sleep(2.5)
+            elif kind == "drag":
+                # TWELVE INTERPOLATED POINTS AND NOT ONE. A drag is a press,
+                # then MOTION with the button held, then a release: the window
+                # manager fires on any non-zero delta, but the session needs an
+                # enter before a motion before a release, and each RFB event is
+                # its own tick. A jump straight to the far point is a press and
+                # a release at two places with nothing in between, which is not
+                # a drag anywhere in this tree.
+                p = value.split(",")
+                x0, y0, x1, y1 = (int(v) for v in p[:4])
+                mask = 1 << ((int(p[4]) if len(p) > 4 else 1) - 1)
+                mv = [(x0, y0, 0), (x0, y0, mask)]
+                for i in range(1, 13):
+                    mv.append((x0 + (x1 - x0) * i // 12,
+                               y0 + (y1 - y0) * i // 12, mask))
+                mv.append((x1, y1, 0))
+                rfb_pointer("127.0.0.1", args.vnc_port, mv)
                 time.sleep(2.5)
             elif kind == "sleep":
                 # Pumped, not slept through: the serial console fills and

@@ -210,6 +210,14 @@ Four rules, each with a consequence:
 - **`Terminal=true` and a bare `Exec`.** Naming an emulator in `Exec` pins the entry to one
   desktop: `foot` is a Wayland client and cannot run on the console. The launcher picks the
   emulator and supplies the identity — see [`kdos-shell`](../04-programs/kdos-shell.md).
+- **`X-KDOS-Float=true` and `X-KDOS-Size=COLSxROWS` say how the window should open.** A float is an
+  unanchored window at the size the entry asks for rather than one the session places among the
+  rest; the size is **cells**, and a terminal smaller than 4x2 is refused. `kdos app tui` writes
+  both, and a recipe writes them for the same reason it writes any other key — see
+  [the kdos command](../04-programs/kdos-command.md#app).
+- **`X-KDOS-TUI=true` is `kdos app tui`'s own marker and a recipe must not write it.** It says "this
+  command wrote this file", which is what makes `kdos app tui rm` safe; a recipe's entry carrying it
+  would be a shipped application that verb could delete.
 - **`X-KDOS-Term=kdos-term` only where the program draws pictures.** It names the emulator the
   entry needs rather than the one the session runs, and the launcher honours it on either desktop:
   `kdos-term` links the decoders and speaks sixel and the kitty protocol, so `yazi`'s previews are
@@ -345,6 +353,13 @@ later. The only reliable test is compiling.
 - **Nothing may reach the network.** A subproject fallback, a download call, or a build backend
   resolving a system tool from a package index are all the same bug. See
   [Build troubleshooting](build-troubleshooting.md).
+- **A port's shipped configuration draws nothing outside the console font's set.** The font is
+  512 glyphs — a kernel limit, not a choice — and a Nerd Font icon is a private-use codepoint it
+  cannot carry, so on `tty1` it is a **blank cell**: a name arrives with a hole punched in front of
+  it and the listing reads as broken. Turn them off where the program has a switch (`yazi`'s
+  `[icon]`, `starship`'s `format`, `eza --icons=never`), check the default before writing anything
+  (`lazygit` 0.61's is already off), and if a program draws them with no way to be told, name it in
+  [known gaps](../06-reference/known-gaps.md). The answer is never a patched console font.
 
 ## Adding a port end to end
 

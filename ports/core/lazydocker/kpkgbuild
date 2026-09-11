@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lazydocker
+version     = 0.25.2
+release     = 1
+source      = https://github.com/jesseduffield/lazydocker/archive/v$version.tar.gz
+sha256      = 405071220e5be9aa061c65d290e0347143b73ae0a3cc01df164f0105de2b53c4  lazydocker-0.25.2.tar.gz
+sha256      = 5d1f51ff77adc06dcc465cd88a2a57086af2d4765ab9669a25053b732a7aa4a7  lazydocker-vendor-0.25.2.tar.xz
+description = lazydocker — containers, images and logs on one screen
+homepage    = https://github.com/jesseduffield/lazydocker
+depends     = go
+vendoring   = go

@@ -173,6 +173,9 @@ int kdt_clip_take(char *buf, size_t n);
 /* `kdos share` / `kdos-share` (share.c). */
 int share_main(int argc, char **argv);
 
+/* `kdos remind` (remind.c) — a toast, later, over J.13's per-user table. */
+int remind_main(int argc, char **argv);
+
 char *kdt_cache_home(const char *rest);
 void kdt_mkparent(const char *path);
 

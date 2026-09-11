@@ -64,12 +64,17 @@ alias ....='cd ../../..'
 
 # ── Modern replacements, when they exist ─────────────────────────────
 # KDOS ships all of these; a distrobox usually ships none. Probe, never assume.
+# `--icons=never` IS SAID RATHER THAN ASSUMED. eza draws none without being
+# asked today, and a default that changed would put a Nerd Font codepoint in
+# front of every name — private-use, and exactly what the 512-glyph console
+# font cannot carry, so on tty1 it is a blank column the eye reads as a broken
+# listing.
 if command -v eza >/dev/null 2>&1; then
-    alias ls='eza --group-directories-first'
-    alias ll='eza -l --group-directories-first --git --time-style=long-iso'
-    alias la='eza -la --group-directories-first --git --time-style=long-iso'
-    alias lt='eza --tree --level=2 --group-directories-first'
-    alias l='eza -1'
+    alias ls='eza --icons=never --group-directories-first'
+    alias ll='eza --icons=never -l --group-directories-first --git --time-style=long-iso'
+    alias la='eza --icons=never -la --group-directories-first --git --time-style=long-iso'
+    alias lt='eza --icons=never --tree --level=2 --group-directories-first'
+    alias l='eza --icons=never -1'
 else
     alias ls='ls --color=auto'
     alias ll='ls -alF'

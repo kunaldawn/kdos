@@ -64,10 +64,16 @@ static void on_enable(struct libseat *seat, void *data)
 
 	/* The mode has to be set again: the VT we came back to was somebody
 	 * else's and its CRTC is theirs. */
-	if (K.drm_fd >= 0 && K.crtc && K.fb)
-		drmModeSetCrtc(K.drm_fd, K.crtc, K.fb, 0, 0, &K.connector, 1,
-			       &K.mode);
-	K.force_full = 1;
+	/* EVERY screen, not the primary alone: the VT we came back to had all
+	 * of them and left every CRTC in an unknown state. */
+	for (int i = 0; i < K.nout; i++) {
+		struct kkms_out *o = &K.out[i];
+
+		if (K.drm_fd >= 0 && o->crtc && o->fb)
+			drmModeSetCrtc(K.drm_fd, o->crtc, o->fb, 0, 0,
+				       &o->connector, 1, &o->mode);
+		o->force_full = 1;
+	}
 }
 
 static void on_disable(struct libseat *seat, void *data)
@@ -86,7 +92,7 @@ static struct libseat_seat_listener seat_listener = {
 
 /* ── the device ──────────────────────────────────────────────────────── */
 
-static int open_drm(void)
+static int open_drm(const char *card)
 {
 	/*
 	 * The first card with a connected output wins. Enumerated rather than
@@ -96,10 +102,20 @@ static int open_drm(void)
 	 */
 	int opened = 0;
 
-	for (int i = 0; i < 8; i++) {
+	/*
+	 * A NAMED DEVICE IS TRIED AND NOTHING ELSE IS. A caller that said
+	 * which card it meant wants that card's failure, not a quiet fallback
+	 * onto whichever other one happens to have a screen — which on a
+	 * machine with an emulated display and a virtual one is the emulated
+	 * one every time.
+	 */
+	for (int i = 0; i < (card ? 1 : 8); i++) {
 		char path[64];
 
-		snprintf(path, sizeof(path), "/dev/dri/card%d", i);
+		if (card)
+			snprintf(path, sizeof(path), "%s", card);
+		else
+			snprintf(path, sizeof(path), "/dev/dri/card%d", i);
 
 		int fd = -1;
 		int id = libseat_open_device(K.seat, path, &fd);
@@ -123,14 +139,36 @@ static int open_drm(void)
 		libseat_close_device(K.seat, id);
 	}
 
+	if (card)
+		return fail_with("open_drm",
+				 opened ? "the named card reports no connectors"
+					: "the seat would not open the named card");
 	return fail_with("open_drm",
 			 opened ? "a DRM device opened and reports no connectors"
 				: "the seat opened no /dev/dri/card0..7");
 }
 
-static int pick_mode(void)
+/*
+ * EVERY CONNECTED CONNECTOR, IN CONNECTOR ORDER.
+ *
+ * The order is the DRM resource list's, which is the kernel's own and is
+ * stable across a boot — a layout that depended on which screen answered first
+ * would rearrange the desktop depending on how fast a monitor woke up. Screens
+ * are then placed edge to edge from the left in that order: an ORDER and not a
+ * geometry, exactly as the window model already says.
+ *
+ * A CRTC IS TAKEN ONCE. Two connectors whose encoders both offer the same CRTC
+ * would otherwise be given it twice, and the second modeset takes the screen
+ * away from the first — a two-monitor machine that lights one.
+ */
+static int pick_outputs(void)
 {
-	for (int i = 0; i < K.res->count_connectors; i++) {
+	uint32_t taken[KKMS_MAX_OUT];
+	int ntaken = 0;
+
+	K.nout = 0;
+	for (int i = 0; i < K.res->count_connectors &&
+			K.nout < KKMS_MAX_OUT; i++) {
 		drmModeConnector *c =
 			drmModeGetConnector(K.drm_fd, K.res->connectors[i]);
 
@@ -181,22 +219,86 @@ static int pick_mode(void)
 			drmModeFreeEncoder(enc);
 		}
 
+		for (int t = 0; crtc && t < ntaken; t++)
+			if (taken[t] == crtc)
+				crtc = 0;
+
 		if (!crtc) {
 			drmModeFreeConnector(c);
 			continue;
 		}
 
-		K.connector = c->connector_id;
-		K.crtc = crtc;
-		K.mode = *chosen;
-		K.width = chosen->hdisplay;
-		K.height = chosen->vdisplay;
+		struct kkms_out *o = &K.out[K.nout++];
+
+		taken[ntaken++] = crtc;
+		o->connector = c->connector_id;
+		o->crtc = crtc;
+		o->mode = *chosen;
+		o->width = chosen->hdisplay;
+		o->height = chosen->vdisplay;
 		drmModeFreeConnector(c);
-		return 0;
 	}
 
-	return fail_with("pick_mode",
-			 "no connector is connected with a mode and a CRTC that can drive it");
+	if (!K.nout)
+		return fail_with("pick_outputs",
+				 "no connector is connected with a mode and a CRTC that can drive it");
+	return 0;
+}
+
+/*
+ * THE DESKTOP'S SHAPE, FROM THE OUTPUTS' MODES.
+ *
+ * The grid is DERIVED and never stored, here as everywhere else: the virtual
+ * box is the outputs laid end to end, and the number of cells is that box
+ * divided by the cell. Recomputed whenever the font changes or a screen is
+ * plugged in, because both change the answer.
+ */
+static void lay_out(void)
+{
+	int cw = kcell_w(), ch = kcell_h();
+	int col = 0, rows = 0;
+
+	if (cw < 1)
+		cw = 1;
+	if (ch < 1)
+		ch = 1;
+
+	K.vw = K.vh = 0;
+	for (int i = 0; i < K.nout; i++) {
+		struct kkms_out *o = &K.out[i];
+
+		o->cols = o->width / cw;
+		o->rows = o->height / ch;
+		if (o->cols < 1)
+			o->cols = 1;
+		if (o->rows < 1)
+			o->rows = 1;
+		o->col = col;
+		col += o->cols;
+		if (o->rows > rows)
+			rows = o->rows;
+		K.vw += o->width;
+		if (o->height > K.vh)
+			K.vh = o->height;
+	}
+
+	/*
+	 * THE SHARED GRID IS THE TALLEST SCREEN'S. A shorter one shows the
+	 * top of it and is PADDED at the bottom rather than scaled — every
+	 * cell is the same size on every screen, which is the whole reason a
+	 * window dragged across the seam keeps its shape.
+	 *
+	 * The slice is CENTRED horizontally in whatever pixels are left over
+	 * when the mode is not a whole number of cells wide; a grid pinned to
+	 * the left edge leaves a bright strip down the right of every screen.
+	 */
+	for (int i = 0; i < K.nout; i++) {
+		struct kkms_out *o = &K.out[i];
+
+		o->px = (o->width - o->cols * cw) / 2;
+		o->py = (o->height - o->rows * ch) / 2;
+	}
+	(void)rows;
 }
 
 /*
@@ -208,45 +310,218 @@ static int pick_mode(void)
  * is tear-free scrolling of full-screen video, which is not what this backend
  * is for. Say so here rather than let somebody assume it was an oversight.
  */
-static int make_fb(void)
+static int make_fb(struct kkms_out *o)
 {
 	struct drm_mode_create_dumb create = { 0 };
 	struct drm_mode_map_dumb map = { 0 };
 
-	create.width = K.width;
-	create.height = K.height;
+	create.width = o->width;
+	create.height = o->height;
 	create.bpp = 32;
 
 	if (drmIoctl(K.drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) != 0)
 		return fail_with("create dumb buffer", strerror(errno));
 
-	K.handle = create.handle;
-	K.stride = create.pitch;
-	K.size = create.size;
+	o->handle = create.handle;
+	o->stride = create.pitch;
+	o->size = create.size;
 
-	if (drmModeAddFB(K.drm_fd, K.width, K.height, 24, 32, K.stride,
-			 K.handle, &K.fb) != 0)
+	if (drmModeAddFB(K.drm_fd, o->width, o->height, 24, 32, o->stride,
+			 o->handle, &o->fb) != 0)
 		return fail_with("drmModeAddFB", strerror(errno));
 
-	map.handle = K.handle;
+	map.handle = o->handle;
 	if (drmIoctl(K.drm_fd, DRM_IOCTL_MODE_MAP_DUMB, &map) != 0)
 		return fail_with("map dumb buffer", strerror(errno));
 
-	K.pixels = mmap(NULL, K.size, PROT_READ | PROT_WRITE, MAP_SHARED,
-			K.drm_fd, (off_t)map.offset);
-	if (K.pixels == MAP_FAILED) {
-		K.pixels = NULL;
+	o->pixels = mmap(NULL, o->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+			 K.drm_fd, (off_t)map.offset);
+	if (o->pixels == MAP_FAILED) {
+		o->pixels = NULL;
 		return fail_with("mmap the framebuffer", strerror(errno));
 	}
 
-	memset(K.pixels, 0, K.size);
+	memset(o->pixels, 0, o->size);
 
-	K.image = pixman_image_create_bits(PIXMAN_x8r8g8b8, K.width, K.height,
-					   K.pixels, (int)K.stride);
-	if (!K.image)
+	o->image = pixman_image_create_bits(PIXMAN_x8r8g8b8, o->width,
+					    o->height, o->pixels,
+					    (int)o->stride);
+	if (!o->image)
 		return fail_with("pixman_image_create_bits", "out of memory");
 
 	return 0;
+}
+
+/*
+ * THIS OUTPUT'S SLICE OF THE SHARED GRID, and the frame it last painted.
+ *
+ * Allocated per output and never shared: `kcell_paint` decides which rows to
+ * repaint by comparing `cur` against `prev`, so two screens sharing one `prev`
+ * would each find the other's paint already done and neither would redraw.
+ */
+static int make_slice(struct kkms_out *o)
+{
+	int n = o->cols * o->rows;
+
+	if (n <= 0)
+		return fail_with("the output's grid", "no cells");
+	if (o->ncell != n) {
+		free(o->cur);
+		free(o->prev);
+		o->cur = calloc((size_t)n, sizeof(*o->cur));
+		o->prev = calloc((size_t)n, sizeof(*o->prev));
+		o->ncell = o->cur && o->prev ? n : 0;
+		if (!o->ncell)
+			return fail_with("the output's grid", "out of memory");
+	}
+	o->force_full = 1;
+	return 0;
+}
+
+/*
+ * ── a screen plugged in after login ──────────────────────────────────────
+ *
+ * A MONITOR OF OUR OWN, because there was none. libinput's udev context
+ * watches the `input` subsystem and nothing else, so nothing in this library
+ * ever heard about `drm` — and `K.res` is a snapshot taken once at open, so a
+ * re-probe against it would see the connector set as it was at startup however
+ * often it ran.
+ *
+ * THE EVENT IS A HINT AND NOTHING MORE. `HOTPLUG=1` on a `drm` device says
+ * something about the outputs changed; which connector, and whether it went or
+ * arrived, is what a fresh probe answers. So the handler throws the resources
+ * away and asks again, which is also what makes an unplug work — a connector
+ * that is no longer connected simply does not come back in the list.
+ */
+static void hotplug_init(void)
+{
+	K.hotplug_fd = -1;
+	K.hotplug_udev = udev_new();
+	if (!K.hotplug_udev)
+		return;
+	K.hotplug = udev_monitor_new_from_netlink(K.hotplug_udev, "udev");
+	if (!K.hotplug) {
+		udev_unref(K.hotplug_udev);
+		K.hotplug_udev = NULL;
+		return;
+	}
+	udev_monitor_filter_add_match_subsystem_devtype(K.hotplug, "drm",
+							NULL);
+	if (udev_monitor_enable_receiving(K.hotplug) < 0) {
+		udev_monitor_unref(K.hotplug);
+		K.hotplug = NULL;
+		udev_unref(K.hotplug_udev);
+		K.hotplug_udev = NULL;
+		return;
+	}
+	K.hotplug_fd = udev_monitor_get_fd(K.hotplug);
+}
+
+/* Everything an output owns, given back. Called per output on a re-probe and
+ * by the shutdown, so the teardown is written once. */
+static void out_free(struct kkms_out *o)
+{
+	if (o->image) {
+		pixman_image_unref(o->image);
+		o->image = NULL;
+	}
+	if (o->pixels) {
+		munmap(o->pixels, o->size);
+		o->pixels = NULL;
+	}
+	if (o->fb) {
+		drmModeRmFB(K.drm_fd, o->fb);
+		o->fb = 0;
+	}
+	if (o->handle) {
+		struct drm_mode_destroy_dumb d = { .handle = o->handle };
+
+		drmIoctl(K.drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &d);
+		o->handle = 0;
+	}
+	free(o->cur);
+	free(o->prev);
+	o->cur = o->prev = NULL;
+	o->ncell = 0;
+}
+
+/*
+ * THE OUTPUTS, AGAIN, AFTER SOMETHING CHANGED.
+ *
+ * Returns 1 when the grid moved, which is what the caller announces — a screen
+ * plugged in is the same event as a screen resized, and the session already
+ * knows how to handle that. Returns 0 when nothing came of it, including the
+ * case where the probe failed: a machine that has just lost its only monitor
+ * keeps the buffers it has rather than tearing the desktop down, because the
+ * monitor may come back and the session is still running either way.
+ */
+static int reprobe(void)
+{
+	int ow = K.vw, oh = K.vh, on = K.nout;
+
+	for (int i = 0; i < K.nout; i++)
+		out_free(&K.out[i]);
+
+	if (K.res)
+		drmModeFreeResources(K.res);
+	K.res = drmModeGetResources(K.drm_fd);
+	if (!K.res || pick_outputs() != 0) {
+		K.nout = 0;
+		return 0;
+	}
+
+	lay_out();
+	for (int i = 0; i < K.nout; i++) {
+		if (make_fb(&K.out[i]) != 0 || make_slice(&K.out[i]) != 0) {
+			K.nout = i;
+			break;
+		}
+		drmModeSetCrtc(K.drm_fd, K.out[i].crtc, K.out[i].fb, 0, 0,
+			       &K.out[i].connector, 1, &K.out[i].mode);
+	}
+	return K.nout != on || K.vw != ow || K.vh != oh;
+}
+
+int kkms_outputs(void)
+{
+	return K.nout;
+}
+
+int kkms_output(int i, KkmsOutput *out)
+{
+	if (i < 0 || i >= K.nout || !out)
+		return 0;
+	out->width = K.out[i].width;
+	out->height = K.out[i].height;
+	out->col = K.out[i].col;
+	out->cols = K.out[i].cols;
+	out->rows = K.out[i].rows;
+	out->connector = K.out[i].connector;
+	return 1;
+}
+
+int kkms_hotplug_fd(void)
+{
+	return K.hotplug_fd;
+}
+
+int kkms_hotplug_pump(void)
+{
+	struct udev_device *d;
+	int changed = 0;
+
+	if (!K.hotplug)
+		return 0;
+	/* DRAINED, not read once: several events arrive for one plug and a
+	 * descriptor left readable spins the caller's poll. */
+	while ((d = udev_monitor_receive_device(K.hotplug))) {
+		const char *hot = udev_device_get_property_value(d, "HOTPLUG");
+
+		if (hot && *hot == '1')
+			changed = 1;
+		udev_device_unref(d);
+	}
+	return changed && K.active ? reprobe() : 0;
 }
 
 /* ── the backend ─────────────────────────────────────────────────────── */
@@ -262,46 +537,93 @@ static int make_fb(void)
  * A driver with no dirty hook answers EINVAL, which is not a failure here —
  * it is a card that already showed the pixels.
  */
-static void kkms_dirty(void)
+static void kkms_dirty(const struct kkms_out *o)
 {
 	drmModeClip clip = {
 		.x1 = 0, .y1 = 0,
-		.x2 = (unsigned short)K.width,
-		.y2 = (unsigned short)K.height,
+		.x2 = (unsigned short)o->width,
+		.y2 = (unsigned short)o->height,
 	};
 
-	drmModeDirtyFB(K.drm_fd, K.fb, &clip, 1);
+	drmModeDirtyFB(K.drm_fd, o->fb, &clip, 1);
 }
 
+/*
+ * ONE FRAME, CUT INTO AS MANY SCREENS AS THERE ARE.
+ *
+ * The session composes ONE grid and knows nothing about screens — it is told
+ * how many cells there are and that is all — so the cut is here, where the
+ * modes are. Each output copies its own columns out of the shared frame into
+ * its own slice and paints that: the copy is what lets each keep its own row
+ * diff, which is what makes a clock ticking on one screen not repaint the
+ * other.
+ *
+ * A SCREEN SHORTER THAN THE GRID SHOWS THE TOP OF IT. The rows past its own
+ * are not drawn and the pixels below the slice stay black — padded, never
+ * scaled, because a character grid stretched to fit is a grid whose cells are
+ * the wrong shape and nothing downstream would notice.
+ */
 static void kkms_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 		       int force_full)
 {
-	if (!K.active || !K.image)
+	(void)prev;
+	if (!K.active)
 		return;
 
-	int full = force_full || K.force_full;
-	/*
-	 * Asked BEFORE the paint, because the paint is what makes prev equal
-	 * to cur. A flush is called for every turn of the view's loop and most
-	 * of them change nothing; marking the whole screen dirty regardless
-	 * would hand the host a full frame fifty times a second for a desktop
-	 * that redraws when a clock ticks.
-	 */
-	int changed = full || !prev ||
-		      memcmp(cur, prev, (size_t)w * (size_t)h * sizeof(*cur));
+	for (int i = 0; i < K.nout; i++) {
+		struct kkms_out *o = &K.out[i];
+		int full = force_full || o->force_full;
 
-	K.force_full = 0;
-	kcell_paint(K.image, cur, prev, w, h, full, 1, K.width, K.height);
-	if (changed)
-		kkms_dirty();
+		if (!o->image || !o->cur || !o->prev)
+			continue;
+
+		/* THE COLUMNS THIS SCREEN SHOWS, row by row. A row past the
+		 * shared frame's height leaves the slice's own row as it was,
+		 * which is the black it was allocated as. */
+		for (int y = 0; y < o->rows; y++) {
+			KtuiCell *dst = o->cur + (size_t)y * o->cols;
+
+			if (y >= h) {
+				memset(dst, 0,
+				       (size_t)o->cols * sizeof(*dst));
+				continue;
+			}
+			for (int x = 0; x < o->cols; x++) {
+				int sx = o->col + x;
+
+				if (sx < w)
+					dst[x] = cur[(size_t)y * w + sx];
+				else
+					memset(&dst[x], 0, sizeof(dst[x]));
+			}
+		}
+
+		/*
+		 * Asked BEFORE the paint, because the paint is what makes prev
+		 * equal to cur. A flush is called for every turn of the view's
+		 * loop and most of them change nothing; marking the whole
+		 * screen dirty regardless would hand the host a full frame
+		 * fifty times a second for a desktop that redraws when a clock
+		 * ticks.
+		 */
+		int changed = full ||
+			      memcmp(o->cur, o->prev,
+				     (size_t)o->ncell * sizeof(*o->cur));
+
+		o->force_full = 0;
+		kcell_paint(o->image, o->cur, o->prev, o->cols, o->rows, full,
+			    1, o->width, o->height);
+		if (changed)
+			kkms_dirty(o);
+	}
 }
 
 static void kkms_size(int *w, int *h)
 {
 	int cw = kcell_w(), ch = kcell_h();
 
-	*w = cw > 0 ? K.width / cw : 80;
-	*h = ch > 0 ? K.height / ch : 24;
+	*w = cw > 0 ? K.vw / cw : 80;
+	*h = ch > 0 ? K.vh / ch : 24;
 	if (*w < 1)
 		*w = 1;
 	if (*h < 1)
@@ -341,7 +663,7 @@ void kkms_pump(void)
 	kkms_input_pump();
 }
 
-int kkms_init(const char *seat_name, const char *font)
+int kkms_init(const char *seat_name, const char *card, const char *font)
 {
 	memset(&K, 0, sizeof(K));
 	K.drm_fd = -1;
@@ -366,22 +688,31 @@ int kkms_init(const char *seat_name, const char *font)
 		goto fail;
 	}
 
-	if (open_drm() != 0)
+	if (open_drm(card && *card ? card : NULL) != 0)
 		goto fail;
-	if (pick_mode() != 0)
+	if (pick_outputs() != 0)
 		goto fail;
 	if (kcell_font_load(font) != 0) {
 		fail_with("kcell_font_load", font ? font : "the default console font");
 		goto fail;
 	}
 	snprintf(K.font, sizeof(K.font), "%s", font ? font : "");
-	if (make_fb() != 0)
-		goto fail;
+	lay_out();
+	for (int i = 0; i < K.nout; i++) {
+		if (make_fb(&K.out[i]) != 0)
+			goto fail;
+		if (make_slice(&K.out[i]) != 0)
+			goto fail;
+	}
 
-	if (drmModeSetCrtc(K.drm_fd, K.crtc, K.fb, 0, 0, &K.connector, 1,
-			   &K.mode) != 0) {
-		fail_with("drmModeSetCrtc", strerror(errno));
-		goto fail;
+	for (int i = 0; i < K.nout; i++) {
+		struct kkms_out *o = &K.out[i];
+
+		if (drmModeSetCrtc(K.drm_fd, o->crtc, o->fb, 0, 0,
+				   &o->connector, 1, &o->mode) != 0) {
+			fail_with("drmModeSetCrtc", strerror(errno));
+			goto fail;
+		}
 	}
 
 	if (kkms_input_init() != 0) {
@@ -390,7 +721,7 @@ int kkms_init(const char *seat_name, const char *font)
 		goto fail;
 	}
 
-	K.force_full = 1;
+	hotplug_init();
 	ktui_backend_set(&kkms_backend);
 
 	/*
@@ -400,14 +731,24 @@ int kkms_init(const char *seat_name, const char *font)
 	 * a seat that never went active and therefore never draws — is a black
 	 * rectangle with no way to tell those apart.
 	 */
+	int gw = 0, gh = 0;
+
+	kkms_size(&gw, &gh);
 	fprintf(stderr,
-		"kdos-view: kms %ux%u, crtc %u, connector %u, seat %s, "
+		"kdos-view: mode kms — %d output(s), %dx%u virtual, seat %s, "
 		"cell %dx%d, grid %dx%d\n",
-		K.width, K.height, K.crtc, K.connector,
+		K.nout, K.vw, (unsigned)K.vh,
 		K.active ? "active" : "INACTIVE",
-		kcell_w(), kcell_h(),
-		kcell_w() > 0 ? (int)(K.width / (unsigned)kcell_w()) : 0,
-		kcell_h() > 0 ? (int)(K.height / (unsigned)kcell_h()) : 0);
+		kcell_w(), kcell_h(), gw, gh);
+	for (int i = 0; i < K.nout; i++) {
+		const struct kkms_out *o = &K.out[i];
+
+		fprintf(stderr,
+			"kdos-view:   output %d: %ux%u, crtc %u, "
+			"connector %u, columns %d..%d\n",
+			i, o->mode.hdisplay, o->mode.vdisplay, o->crtc,
+			o->connector, o->col, o->col + o->cols - 1);
+	}
 	return 0;
 
 fail:
@@ -431,7 +772,7 @@ int kkms_set_font(const char *font)
 {
 	char prev[sizeof(K.font)];
 
-	if (!K.image)
+	if (!K.nout)
 		return -1;
 	snprintf(prev, sizeof(prev), "%s", K.font);
 
@@ -439,10 +780,18 @@ int kkms_set_font(const char *font)
 	if (kcell_font_load(font && *font ? font : NULL) != 0) {
 		if (kcell_font_load(prev[0] ? prev : NULL) != 0)
 			return -1;	/* nothing draws now; the caller exits */
+		lay_out();
+		for (int i = 0; i < K.nout; i++)
+			make_slice(&K.out[i]);
 		return -1;
 	}
 	snprintf(K.font, sizeof(K.font), "%s", font ? font : "");
-	K.force_full = 1;
+	/* A DIFFERENT CELL IS A DIFFERENT NUMBER OF CELLS PER SCREEN, so the
+	 * layout and every slice are recut before anything draws again. */
+	lay_out();
+	for (int i = 0; i < K.nout; i++)
+		if (make_slice(&K.out[i]) != 0)
+			return -1;
 	return 0;
 }
 
@@ -455,23 +804,17 @@ void kkms_shutdown(void)
 {
 	kkms_input_shutdown();
 
-	if (K.image) {
-		pixman_image_unref(K.image);
-		K.image = NULL;
+	for (int i = 0; i < K.nout; i++)
+		out_free(&K.out[i]);
+	K.nout = 0;
+	if (K.hotplug) {
+		udev_monitor_unref(K.hotplug);
+		K.hotplug = NULL;
+		K.hotplug_fd = -1;
 	}
-	if (K.pixels) {
-		munmap(K.pixels, K.size);
-		K.pixels = NULL;
-	}
-	if (K.fb) {
-		drmModeRmFB(K.drm_fd, K.fb);
-		K.fb = 0;
-	}
-	if (K.handle) {
-		struct drm_mode_destroy_dumb d = { .handle = K.handle };
-
-		drmIoctl(K.drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &d);
-		K.handle = 0;
+	if (K.hotplug_udev) {
+		udev_unref(K.hotplug_udev);
+		K.hotplug_udev = NULL;
 	}
 	if (K.res) {
 		drmModeFreeResources(K.res);
@@ -512,13 +855,19 @@ int kkms_switch_vt(int n)
 
 void kkms_blank(int on)
 {
-	if (K.drm_fd < 0 || !K.crtc || !kkms_active())
+	if (K.drm_fd < 0 || !K.nout || !kkms_active())
 		return;
 
-	if (on) {
-		drmModeSetCrtc(K.drm_fd, K.crtc, 0, 0, 0, NULL, 0, NULL);
-		return;
+	/* EVERY screen: one left lit while the rest went dark would be a
+	 * machine that looks half asleep. */
+	for (int i = 0; i < K.nout; i++) {
+		struct kkms_out *o = &K.out[i];
+
+		if (on)
+			drmModeSetCrtc(K.drm_fd, o->crtc, 0, 0, 0, NULL, 0,
+				       NULL);
+		else
+			drmModeSetCrtc(K.drm_fd, o->crtc, o->fb, 0, 0,
+				       &o->connector, 1, &o->mode);
 	}
-
-	drmModeSetCrtc(K.drm_fd, K.crtc, K.fb, 0, 0, &K.connector, 1, &K.mode);
 }

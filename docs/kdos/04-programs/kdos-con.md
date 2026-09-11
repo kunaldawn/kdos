@@ -514,6 +514,44 @@ attaches late is told the window again, for the same reason a view that attaches
 frame. `speak = yes` starts `kdos-a11y` with the session; see
 [Accessibility](../02-user-guide/accessibility.md).
 
+**A finger crosses as `KCON_OP_TOUCH`, carrying the verdict and not the geometry.** There is one
+gesture recogniser and it lives where the touch device is — `libinput` under a KMS view — so what
+the session is told is what that recogniser made of the finger. A second one here would be fed a
+message rather than a device and would disagree the first time a link was slow. It is a **display
+only**, the rule the pointer keeps: a window that could report a finger could put a long press on
+somebody else's surface. The mouse event the recogniser synthesises beside the touch travels as an
+ordinary `KCON_OP_PTR`, so a surface that has never heard of touch still gets its click, and the
+session draws the pointer cell from that arm alone — drawing from both would put the cursor at the
+finger and then at the pointer within one frame.
+
+**The view is told where the caret is, because it cannot work it out.** A display holds no window
+state, so it cannot know where the text cursor of the focused window sits — and a display that does
+not know cannot put a real cursor there. On a `--tty` view that costs a person the one thing their
+own terminal could have shown them: a blinking cursor at the place they are typing, drawn by the
+terminal they are sitting at rather than by a cell this desktop painted.
+
+**A terminal and a surface both report one, and both report it in their own cells.** A window knows
+where its caret is and nothing else knows where the window is, so the session adds the offset and is
+the only thing that does. A surface's half is `KCON_OP_CARET`, sent whenever the caret moves and
+once with a negative x when the field it belonged to has gone — which the session reads as *no
+caret* rather than as a position off the left edge, and which is also the answer when nothing has
+the focus. The toolkit routes it: `ktui_term_caret()` writes the terminal escape only when the
+backend has no `caret` entry of its own, so every surface that already placed a caret reports one
+here without being changed.
+
+**Every connected screen is lit, and the grid is all of them.** A KMS view takes every connector
+that reports itself connected with a mode and a CRTC it can have, in DRM connector order, and lays
+their modes end to end into one virtual box — one dumb buffer per screen, each with its own row
+diff, because two screens comparing against one previous frame would each find the other's paint
+already done and neither would redraw. `--card PATH` names a device for a machine with more than
+one; without it the first card with a connected output wins.
+
+**A screen plugged in after login is a resize.** The view holds a `udev` monitor of its own for the
+`drm` subsystem — libinput's context watches `input` and nothing else — and a hotplug re-probes the
+connectors, re-cuts the buffers and announces the new grid as an ordinary `KCON_OP_VIEW_SIZE`,
+which is the same event the session already handles for a font step. Every picture goes with it:
+each was cut for a grid that has changed shape.
+
 **A view may watch without typing.** `kdos con attach --observe` says so in its hello, and the
 session drops that view's keys and pointer where they arrive — the refusal is on the server's side,
 because a promise a client keeps by itself is decorative. It sends none either, which is what makes
@@ -740,6 +778,23 @@ exclusive zone, so moving it would move the work area out from under every other
 Every window-management chord is on Super, so none of them can collide with what a program inside a
 window wants. A view with a screen of its own reads Super from `libinput` and they all work.
 
+**A chord means the same thing on both desktops, and the suite is what keeps it true.** The defaults
+are written twice in two syntaxes — `Super+Shift+t` in `keys.conf`, `W-S-t` in `rc.xml` — so a chord
+added to one file and forgotten in the other was a key that worked on one machine and did nothing on
+the next, with neither file able to say so. `selftest.sh` normalises both into one spelling and
+fails on any chord bound on one desktop only. **`rc.xml` is not one table but two**: `<default />`
+is the first child of `<keyboard>`, so labwc's own sixteen binds load beside the file's, and a check
+that read only the `<keybind>` tags would call `Alt+Tab` console-only and miss `Alt+F4` entirely.
+
+**Twenty-six chords are one-sided on purpose**, each with the reason in the check's own table: the
+leader, because it is the one chord not on Super and exists for the views where Super never arrives;
+the mark and the paste, because the session holds the text of every cell and a compositor holds
+pixels; the font steps, because the screen's font is the console's and under the compositor the font
+is each client's; and labwc's grow, shade and always-on-top, because the console has no such state.
+**The key card prints the table of the desktop it is on and not both** — `rc.xml` is the
+compositor's file and is never parsed on the console — so the cross-check is what makes the two
+tables one table rather than the card showing them side by side.
+
 **Eleven of them start a surface, and nine are the chords `rc.xml` already binds.** The panel that
 hangs these off its applets is the graphical desktop's and does not run here, so without a chord
 they were reachable only from the Start menu. Taking the compositor's own chords rather than
@@ -867,6 +922,18 @@ over state the session already holds.
 | `Print` | the whole screen to a file — **on a KMS view only** |
 | `Shift+Print` | the same rectangle `Super+Shift+p` marks — **on a KMS view only** |
 | `Alt+Print` | start the screen recording, and stop it — **on a KMS view only** |
+| `Super+Ctrl+Alt+t` | the time and date, as a notice |
+| `Super+Ctrl+Alt+b` | what the battery says, as a notice |
+| `Super+Ctrl+r` | remind me — one row, and the line is `in 20m tea` |
+| `Super+Ctrl+Alt+r` | the reminders still waiting |
+| `Super+Ctrl+Shift+r` | forget every reminder |
+| `Super+x` | put the newest notice away |
+| `Super+Shift+x` | put every notice away |
+| `Super+Ctrl+x` | hold notices back, and let them through |
+| `Super+Alt+x` | bring the last one back, without its buttons |
+| `Super+Ctrl+i` | never lock or blank on idle, and again to let it |
+| `Super+Ctrl+Shift+n` | warm the palette, and cool it |
+| `Super+Shift+Space` | put the bar away, and bring it back — **this desktop's alone** |
 | `Super+Shift+r` | record the keys you type; the same chord stops and asks for a letter |
 | `Super+Alt+r` then a letter | type that script back into the focused window |
 | `Super+Ctrl+Shift+Space` | the accent picker, previewing live as the highlight moves |
@@ -891,6 +958,23 @@ session must not end up at two cell sizes because the chord reached whichever at
 font has loaded and removed by the reset. A name fcft would refuse is therefore never the name the
 next login starts with, and `--font` and `$KDOS_CON_FONT` still win: a state file that beat them
 would be a chord that had quietly switched the configuration off.
+
+**The FACE is picked the same way round, and by the same rule.** `kdos-style --page font` — the
+`style.font` route — lists what the display offers, and the display is what gathered it: a view is
+the only end with a font stack, and a view forwarded over `ssh` has its own machine's fonts. The
+list crosses on `KCON_OP_VIEW_FONTS`, asked by the session and answered by the view; what goes back
+on `KCON_OP_VIEW_SETFONT` is an **index into that answer** and never a name, which is the rule the
+step keeps said about a list. A `--tty` view claims no font capability, so the list is empty and the
+picker draws the sentence the chord puts on the bar.
+
+**An arrow is a real font on a real screen and writes nothing.** Only `Enter` writes
+`~/.local/state/kdos/con-font`; leaving any other way puts back the face the window opened on. A
+preview that persisted would make the last face a highlight passed over the one the next login comes
+up in, whether or not anybody chose it.
+
+**`con.conf`'s `font` is what the screen starts at.** `kdos-con-start` passes it to the view, which
+is the half that rasterises; a `--tty` view is given nothing, because the terminal it runs in owns
+its font.
 
 Every picture the view is holding was cut for the old cell, so it drops them and the session sends
 them again when it sees the grid move — an embedded guest is sized in pixels from that cell, so its
@@ -1076,6 +1160,56 @@ press that fell through would raise a window over the cell being read. `Esc` lea
 is told when one enters its own surface and nothing more — so a picker there would have to *be* the
 compositor. `kdos-shot colour` says so rather than doing nothing.
 
+**A drag crosses the session, and the session is the only half that can carry it.** A surface says
+it has picked something up with `KCON_OP_DRAG_START` — `kdos-desk` handing over an icon's URI — and
+hears nothing more until the drag is over it. The session then sends all four verbs: `ENTER` with
+the MIME type when the pointer arrives over a window, `MOTION` while it stays, `LEAVE` when it goes,
+and `DROP` with the payload on release. Only two types are accepted, `text/plain` and
+`text/uri-list`: anything else is a payload nothing here can act on, and taking it would mean
+highlighting targets that would refuse the drop.
+
+**The payload waits for the release.** A drag crossing six windows would otherwise hand its bytes to
+all six, and five of those are windows somebody was only passing over.
+
+**A drop reaches the icon layer, which a click does not.** `win_at()` skips the background
+deliberately — it covers the whole grid, so hit-testing it before the windows would take every click
+on the desktop — so a drag asks it **last**, after every window has declined. Without that the whole
+path is dead where it matters: a release over the desktop would find nothing, be treated as a
+cancel, and the trash would never see it.
+
+**Three ways out, because the drag was started by another program and cannot be asked to stop.**
+`Esc` gives it back; a source that dies mid-drag ends it, or a dead program's payload would land on
+whatever was under the pointer at the next release; and locking the screen ends it, because the
+release that would have finished it goes to the lock surface instead. The bar says what is being
+carried and names the way out, as it does for the mark.
+
+**A dropped session leaves you at a working prompt, and `kdos con attach` is the one thing to
+type.** A `--tty` view leaves through one exit whatever ended it, and that exit puts the host
+terminal back: the alternate screen closed, the palette restored, the modes off, the cursor
+visible. Two things end it. The **socket** dying is a session that has gone — `kcon_conn_dead()`,
+which a write returning `EPIPE` sets as surely as a read returning end of file. The **terminal**
+dying is an `ssh` connection that dropped while the session carried on, and that one is a write to
+the pty failing: `ktui_term_hungup()`. A view that watched only the socket would paint frames into
+a hung-up descriptor for as long as the session ran, and the terminal it was given would never be
+handed back.
+
+**Not on `SIGHUP`.** `kdos theme` sends that signal to every view to retint it, so tearing down on
+it would make an accent change end every `--tty` view on the machine — and a kernel hangup is the
+same signal, so the two cannot be told apart. The write failing is the fact; the signal is
+ambiguous.
+
+**A terminal window outlives its program, and the modes go with the program.** The window stays
+showing how the command finished until somebody dismisses it — so the first time the death is seen
+the terminal's modes are put back: bracketed paste, mouse reporting, focus reporting, synchronized
+output, and the alternate screen. Once, not on every pump. What was printed stays; see
+[kdos-term](kdos-term.md#what-it-has-been-run-against).
+
+**A program a chord starts gets no console.** This session's own stdout is the tty the composited
+grid is drawn on, so a child that inherited it would write over the desktop — and a program deciding
+whether it has somewhere to print would be told yes, on a terminal nobody can read. `/dev/null` in
+and out; stderr is left alone, because the session's is already the log and that is where a
+diagnostic belongs. It is what lets `kdos toggle` and `kdos remind ls` tell a chord from a prompt.
+
 **The three `Print` chords reach a KMS view and nothing else**, for the reason the media keys do:
 `Print` produces no character, so no terminal reports one and a view reading a terminal never sees
 it. `Print` is the whole screen, `Shift+Print` is the rectangle — the bare key cannot be the
@@ -1091,6 +1225,13 @@ text on the clipboard and **removes the picture before it returns**: a QR on a s
 password or a pairing token more often than it is a URL, and one left in `~/Pictures` is that
 secret kept where nobody meant to keep it. Nothing is written under `~/Pictures` on that path at
 all — the picture goes to the runtime directory, which is the session's own and mode 0700.
+
+**`Super+Ctrl+h` opens the palette at the setting-up group** — `con.conf`'s `setup_menu`, which is
+`kdos-palette --route setup`. Eleven panels have a chord of their own and the printers, the users
+and the clock do not; a chord each would be eleven more keys to learn, and a person looking for the
+printers is looking to **set something up** rather than for a program name. It is the capture
+group's neighbour on the keyboard because it is the same shape of answer: a group reached by its
+route rather than a second menu written for it.
 
 ## Scripts
 

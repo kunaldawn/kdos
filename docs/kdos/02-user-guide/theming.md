@@ -31,11 +31,16 @@ values, which is why one word repaints the entire desktop. See
 
 ## Switching
 
-`Super+Ctrl+Shift+Space` opens **`kdos-theme`**, the picker: one row per accent, each drawn in its
+`Super+Ctrl+Shift+Space` opens **`kdos-style`**, the picker: one row per accent, each drawn in its
 own colours, the desktop repainting live as the highlight moves. `Enter` keeps the highlighted one
 and `Esc` puts back the one you opened on. Settings' Appearance page and the `style.theme` route
 open the same window — the accent is chosen there and nowhere else, because a list of names is the
 worse of two ways to pick a colour.
+
+**`kdos-style` is the picker and `kdos-theme` is the generator**, and they are two programs. One
+name for both meant one of them was whichever package installed last, and for a release that was
+the generator: the chord, the route and the settings row all reached a command-line tool that
+printed a usage line.
 
 **A preview is half a theme, and it says so by what it leaves alone.** Moving the highlight writes
 the accent's state file and signals the session, so every KDOS surface repaints at once; it

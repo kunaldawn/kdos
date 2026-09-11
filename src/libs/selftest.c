@@ -1052,11 +1052,25 @@ static void test_trash(void)
 	 */
 	{
 		unsetenv("KDOS_CON");
+		setenv("WAYLAND_DISPLAY", "wayland-0", 1);
 		eq_str(kb_terminal(), "foot",
 		       "a compositor session runs a terminal entry in foot");
 		setenv("KDOS_CON", "/run/user/1000/kdos/con.sock", 1);
 		eq_str(kb_terminal(), "kdos-term",
 		       "and a console session in the one that draws in cells");
+		/*
+		 * AND A BARE VIRTUAL TERMINAL HAS NEITHER. `Ctrl+Alt+F2` is a
+		 * login with no session of either kind, so there is no
+		 * emulator to open — and a name answered here would wrap a
+		 * terminal program in a window that cannot start.
+		 */
+		unsetenv("KDOS_CON");
+		unsetenv("WAYLAND_DISPLAY");
+		ok(kb_terminal() == NULL,
+		   "and a login no session started has no terminal to open");
+		setenv("KDOS_CON", "/run/user/1000/kdos/con.sock", 1);
+		eq_str(kb_terminal(), "kdos-term",
+		       "the console's own answer needs no display to give it");
 		unsetenv("KDOS_CON");
 	}
 
@@ -3319,7 +3333,11 @@ static int spr_poll(KtuiEvent *ev, int timeout_ms)
 }
 
 static const KtuiBackend spr_backend = {
-	"selftest", spr_flush, spr_poll, spr_size, spr_caps
+	.name = "selftest",
+	.flush = spr_flush,
+	.poll_event = spr_poll,
+	.size = spr_size,
+	.caps = spr_caps,
 };
 
 static void spr_reset(void)
@@ -3953,6 +3971,25 @@ static int menu_show(int i, void *user)
 	return i != 1;
 }
 
+/*
+ * WHERE THIS SURFACE WOULD PUT A CONTEXT PANE, and whether it has one at all.
+ * A real `ctx_at` answers where the KEYBOARD'S focus is drawn; the pair below
+ * is a place a finger is not, so a menu opened at the finger can be told from
+ * one opened at the focus.
+ */
+enum { ST_CTX_X = 30, ST_CTX_Y = 9 };
+static int st_ctx_refuse;
+
+static int st_ctx_at(int *x, int *y, void *user)
+{
+	(void)user;
+	if (st_ctx_refuse)
+		return 0;
+	*x = ST_CTX_X;
+	*y = ST_CTX_Y;
+	return 1;
+}
+
 static void test_menu(void)
 {
 	printf("\n==> the menu: one widget, a bar and a popup\n");
@@ -4072,6 +4109,50 @@ static void test_menu(void)
 		eq_int(ktui_keys(&k, &kev), KTUI_KEY_PASS,
 		       "a surface with no bar neither opens nor swallows F10");
 		m.has_bar = 1;
+
+		/*
+		 * ── A LONG PRESS IS Shift+F10 WITH A FINGER ───────────
+		 *
+		 * Answered in the contract so every surface with a context
+		 * pane inherits it, rather than thirty of them growing a
+		 * touch path each — and AT THE FINGER, not at the keyboard's
+		 * focus: a person holding a row expects the menu on that row.
+		 * `ctx_at` is still asked, because a surface that refuses one
+		 * must refuse the other.
+		 */
+		KtuiEvent tev = { 0 };
+
+		tev.type = KT_EVT_TOUCH;
+		tev.gesture = KT_GEST_LONG;
+		tev.mx = 7;
+		tev.my = 5;
+		k.ctx_pane = 1;
+		k.ctx_at = NULL;
+		eq_int(ktui_keys(&k, &tev), KTUI_KEY_PASS,
+		       "a long press on a surface that names no context is passed on");
+		k.ctx_at = st_ctx_at;
+		st_ctx_refuse = 1;
+		eq_int(ktui_keys(&k, &tev), KTUI_KEY_PASS,
+		       "and one that refuses refuses a finger too");
+		st_ctx_refuse = 0;
+		eq_int(ktui_keys(&k, &tev), KTUI_KEY_TAKEN,
+		       "a long press opens the context pane");
+		eq_int(m.open, 2, "the pane the surface named");
+		/* `x` and `y` are the popup as DRAWN and are clamped on
+		 * screen, which is why the assertion is that they are the
+		 * finger's and not the focus's rather than an exact pair. */
+		ok(m.x != ST_CTX_X || m.y != ST_CTX_Y,
+		   "at the FINGER and not where the keyboard's focus is");
+		kev.key = KT_K_ESC;
+		eq_int(ktui_keys(&k, &kev), KTUI_KEY_TAKEN,
+		       "and Esc takes it down again");
+
+		/* AND ONLY A LONG PRESS. A tap is a click and every widget
+		 * already handles one; a tap that opened a menu would put a
+		 * pane under every finger. */
+		tev.gesture = KT_GEST_TAP;
+		eq_int(ktui_keys(&k, &tev), KTUI_KEY_PASS,
+		       "a tap is a click and opens nothing");
 	}
 }
 
@@ -4233,6 +4314,54 @@ static void test_vt_modes(void)
 
 	kvt_vte_input(vte, sync_off, sizeof(sync_off) - 1);
 	ok(!kvt_vte_sync_output(vte), "and unbracketed");
+
+	/*
+	 * ── WHAT A DEAD CHILD LEAVES BEHIND ────────────────────────────
+	 *
+	 * A program killed before it could tidy up leaves its modes set, and
+	 * the window OUTLIVES it on both desktops: the console keeps a
+	 * terminal window showing how its program finished, and kdos-term
+	 * draws one more frame before it goes. Every mode below is one the
+	 * next thing in that window would inherit.
+	 *
+	 * THE SCREEN AND THE SCROLLBACK MUST SURVIVE IT. The last thing the
+	 * program printed is the whole reason the window is still there, so a
+	 * reset that cleared them would take away what it exists to show.
+	 */
+	{
+		static const char all_on[] =
+			"\033[?2004h"	/* bracketed paste          */
+			"\033[?1004h"	/* focus reporting          */
+			"\033[?2026h"	/* synchronized output      */
+			"\033[?1006h\033[?1002h"	/* mouse reporting  */
+			"\033[?1049h";	/* the alternate screen     */
+
+		kvt_vte_input(vte, all_on, sizeof(all_on) - 1);
+		kvt_vte_input(vte, "gone", 4);
+		ok(kvt_vte_sync_output(vte), "a dying child had synchronized output on");
+		ok(kvt_vte_get_mouse_mode(vte) != 0, "and mouse reporting");
+		ok(kvt_screen_get_flags(scr) & KVT_SCREEN_ALTERNATE,
+		   "and the alternate screen");
+
+		kvt_vte_reset_modes(vte);
+
+		ok(!kvt_vte_sync_output(vte), "reset_modes puts synchronized output back");
+		eq_int((long long)kvt_vte_get_mouse_mode(vte), 0,
+		       "and mouse reporting");
+		ok(!(kvt_screen_get_flags(scr) & KVT_SCREEN_ALTERNATE),
+		   "and leaves the primary screen showing");
+
+		vt_reply_n = 0;
+		vt_reply[0] = '\0';
+		kvt_vte_input(vte, "\033[?2004$p", 10);
+		ok(strstr(vt_reply, "\033[?2004;2$y") != NULL,
+		   "and bracketed paste, which a paste would otherwise wrap");
+		vt_reply_n = 0;
+		vt_reply[0] = '\0';
+		kvt_vte_input(vte, "\033[?1004$p", 10);
+		ok(strstr(vt_reply, "\033[?1004;2$y") != NULL,
+		   "and focus reporting, which would put CSI I in a shell");
+	}
 
 	/*
 	 * ── THE PASTE GUARD ────────────────────────────────────────────
@@ -5125,7 +5254,7 @@ static void test_kcon(void)
 	 * client of the session is rebuilt from this tree, so the number costs
 	 * nothing to raise — and the enum it guards is positional, which is
 	 * what makes raising it the cheap half of an op that moved. */
-	eq_int(KCON_VERSION, 12, "and the version the two ends agree on");
+	eq_int(KCON_VERSION, 15, "and the version the two ends agree on");
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -6087,6 +6216,67 @@ static unsigned srv_activated, srv_closed;
 /* How many times a colour pick was asked for. */
 static unsigned srv_picked;
 
+/* What a view reported as a finger, for the touch block below. */
+static int srv_touch_n, srv_touch_x, srv_touch_y, srv_touch_gest;
+static int srv_touch_phase;
+
+static void srv_on_view_touch(KconSurface *v, int x, int y, int slot,
+			      int phase, unsigned ms, int gesture, void *user)
+{
+	(void)v;
+	(void)slot;
+	(void)ms;
+	(void)user;
+	srv_touch_n++;
+	srv_touch_x = x;
+	srv_touch_y = y;
+	srv_touch_phase = phase;
+	srv_touch_gest = gesture;
+}
+
+/* What a shell asked about the screen's font, for the font block below. */
+static int srv_font_asked;
+static int srv_font_idx = -99;
+static int srv_font_keep = -1;
+
+static KconSurface *srv_font_who;
+
+static void srv_on_fonts_ask(KconSurface *f, void *user)
+{
+	(void)user;
+	srv_font_asked++;
+	/* THE SURFACE THAT ASKED, kept: the answer goes back to that one and
+	 * not to whichever the server happens to list last, which on this
+	 * socketpair is an ordinary window. */
+	srv_font_who = f;
+}
+
+static void srv_on_font_set(KconSurface *f, int index, int keep, void *user)
+{
+	(void)f;
+	(void)user;
+	srv_font_idx = index;
+	srv_font_keep = keep;
+}
+
+/* What a surface said it had picked up, for the drag block below. */
+static char srv_drag_mime[64];
+static char srv_drag_data[256];
+static size_t srv_drag_len;
+
+static void srv_on_drag_start(KconSurface *f, const char *mime,
+			      const char *data, size_t len, void *user)
+{
+	(void)f;
+	(void)user;
+	snprintf(srv_drag_mime, sizeof(srv_drag_mime), "%s", mime ? mime : "");
+	srv_drag_len = len < sizeof(srv_drag_data) - 1
+		? len : sizeof(srv_drag_data) - 1;
+	if (data)
+		memcpy(srv_drag_data, data, srv_drag_len);
+	srv_drag_data[srv_drag_len] = '\0';
+}
+
 static void srv_on_pick(KconSurface *f, void *user)
 {
 	(void)f;
@@ -6520,6 +6710,7 @@ static void test_kcon_server(void)
 			}
 			ok(srv_keys == 1 && srv_last_key == 'd',
 			   "and the observer's key reaches nothing");
+			kcon_buf_free(&b);
 		}
 		if (drv)
 			kcon_conn_free(drv);
@@ -7135,6 +7326,438 @@ static void test_kcon_server(void)
 			}
 			if (shell)
 				kcon_conn_free(shell);
+			if (plain)
+				kcon_conn_free(plain);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/*
+		 * ── a drag, in four verbs and in order ──────────────────
+		 *
+		 * The session is the only half that knows what is under the
+		 * pointer, so it sends all four and a surface hears nothing
+		 * between picking something up and the drag arriving over it.
+		 *
+		 * THE ORDER IS THE ASSERTION. `enter` before `motion` before
+		 * `leave`, and the payload only on the `drop` — a drag that
+		 * handed its bytes to every window it crossed would give six
+		 * programs a filename the person was carrying past them.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.drag_start = srv_on_drag_start;
+			kcon_server_hooks(s, &h, NULL);
+			srv_drag_mime[0] = srv_drag_data[0] = '\0';
+			srv_drag_len = 0;
+
+			KconConn *src = srv_client(path);
+
+			if (src) {
+				KconBuf b = { 0 };
+				static const char uri[] =
+					"file:///home/kdos/x.txt\r\n";
+
+				srv_hello(src, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				kcon_put_str(&b, "text/uri-list");
+				kcon_put_blob(&b, uri, sizeof(uri) - 1);
+				kcon_send(src, KCON_OP_DRAG_START, &b);
+				kcon_flush(src);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_str(srv_drag_mime, "text/uri-list",
+				   "a surface says what it picked up");
+				eq_str(srv_drag_data, uri,
+				   "and hands the payload over once");
+
+				/* And the four verbs, back to a surface the
+				 * drag is over. The session picks the target;
+				 * here the test is the wire. */
+				KconSurface *tgt = NULL;
+
+				for (int i = 0; i < kcon_server_count(s); i++)
+					if (kcon_server_at(s, i) != NULL)
+						tgt = kcon_server_at(s, i);
+				if (tgt) {
+					int ops[8], nops = 0;
+
+					kcon_surface_drag_enter(tgt, 3, 4,
+							"text/uri-list");
+					kcon_surface_drag_motion(tgt, 5, 6);
+					kcon_surface_drag_leave(tgt);
+					kcon_surface_drop(tgt, 7, 8, uri);
+					/* The pump is what writes: every
+					 * sender above queues. */
+					kcon_server_pump(s);
+					for (int i = 0; i < 60 && nops < 4;
+					     i++) {
+						KconMsg m;
+						int r = kcon_recv(src, &m);
+
+						if (r == 1) {
+							if (m.op == KCON_OP_DRAG_ENTER ||
+							    m.op == KCON_OP_DRAG_MOTION ||
+							    m.op == KCON_OP_DRAG_LEAVE ||
+							    m.op == KCON_OP_DRAG_DROP)
+								ops[nops++] = m.op;
+							continue;
+						}
+						if (r < 0)
+							break;
+						usleep(500);
+					}
+					eq_int(nops, 4,
+					   "all four drag verbs arrive");
+					if (nops == 4) {
+						ok(ops[0] == KCON_OP_DRAG_ENTER &&
+						   ops[1] == KCON_OP_DRAG_MOTION &&
+						   ops[2] == KCON_OP_DRAG_LEAVE &&
+						   ops[3] == KCON_OP_DRAG_DROP,
+						   "and in the order they were sent");
+					}
+				}
+				kcon_conn_free(src);
+			}
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/*
+		 * ── a surface says where its caret is ───────────────────
+		 *
+		 * IN ITS OWN CELLS, and the session adds the window's
+		 * position — a surface that sent screen coordinates would be
+		 * a surface guessing where it had been put. Until it says
+		 * anything it has NO caret, which is not the same as one at
+		 * the origin: the difference is a cursor parked in a corner
+		 * nobody is typing in.
+		 */
+		{
+			KconConn *typer = srv_client(path);
+
+			if (typer) {
+				srv_hello(typer, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				KconSurface *f = NULL;
+
+				for (int i = 0; i < kcon_server_count(s); i++)
+					if (kcon_server_at(s, i) != NULL)
+						f = kcon_server_at(s, i);
+
+				int cx = 0, cy = 0;
+
+				ok(f && !kcon_surface_caret(f, &cx, &cy),
+				   "a surface that has not said has no caret");
+
+				KconBuf b = { 0 };
+
+				kcon_put_u16(&b, (uint16_t)(int16_t)9);
+				kcon_put_u16(&b, (uint16_t)(int16_t)3);
+				kcon_send(typer, KCON_OP_CARET, &b);
+				kcon_flush(typer);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				cx = cy = -1;
+				ok(f && kcon_surface_caret(f, &cx, &cy) &&
+				   cx == 9 && cy == 3,
+				   "and the one it sent arrives in its own cells");
+
+				/* AND IT CAN TAKE IT AWAY. A field that closed
+				 * reports a negative x, and the session must
+				 * read that as no caret rather than as a
+				 * position off the left edge. */
+				KconBuf gone = { 0 };
+
+				kcon_put_u16(&gone, (uint16_t)(int16_t)-1);
+				kcon_put_u16(&gone, (uint16_t)(int16_t)-1);
+				kcon_send(typer, KCON_OP_CARET, &gone);
+				kcon_flush(typer);
+				kcon_buf_free(&gone);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				ok(f && !kcon_surface_caret(f, &cx, &cy),
+				   "and a negative one takes it away again");
+				kcon_conn_free(typer);
+			}
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/*
+		 * ── a finger, and the verdict that travels with it ──────
+		 *
+		 * THE GESTURE IS DECIDED AT THE VIEW. There is one recogniser
+		 * and it lives where the touch device is; a second one here
+		 * would be fed a message rather than a device and would
+		 * disagree the first time a link was slow. What crosses is the
+		 * verdict.
+		 *
+		 * AND A DISPLAY ONLY, the rule the pointer keeps: a window
+		 * that could report a finger could put a long press on
+		 * somebody else's surface.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.view_touch = srv_on_view_touch;
+			kcon_server_hooks(s, &h, NULL);
+			srv_touch_n = 0;
+
+			/* A VIEW SOCKET OF ITS OWN. The listener decides what
+			 * a client may be — that is the whole point of the
+			 * split — so a finger from a display has to arrive on
+			 * the display's socket. */
+			char tvp[256];
+
+			snprintf(tvp, sizeof(tvp), "%s/touch.view", dir);
+			eq_int(kcon_server_listen(s, tvp, KCON_LISTEN_VIEW), 0,
+			       "a view socket for the touch block");
+
+			KconConn *v = srv_client(tvp);
+			KconConn *win = srv_client(path);
+
+			if (v && win) {
+				srv_hello(v, KCON_VERSION, KCON_KIND_VIEW);
+				srv_hello(win, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				KconBuf b = { 0 };
+
+				kcon_put_i32(&b, 11);
+				kcon_put_i32(&b, 4);
+				kcon_put_u8(&b, 0);
+				kcon_put_u8(&b, (uint8_t)KT_TOUCH_MOVE);
+				kcon_put_u32(&b, 1234);
+				kcon_put_u8(&b, (uint8_t)KT_GEST_LONG);
+				kcon_send(v, KCON_OP_TOUCH, &b);
+				kcon_flush(v);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				ok(srv_touch_n == 1 && srv_touch_x == 11 &&
+				   srv_touch_y == 4 &&
+				   srv_touch_gest == KT_GEST_LONG &&
+				   srv_touch_phase == KT_TOUCH_MOVE,
+				   "a view's finger arrives with its gesture");
+
+				KconBuf w = { 0 };
+
+				kcon_put_i32(&w, 1);
+				kcon_put_i32(&w, 1);
+				kcon_put_u8(&w, 0);
+				kcon_put_u8(&w, (uint8_t)KT_TOUCH_DOWN);
+				kcon_put_u32(&w, 2345);
+				kcon_put_u8(&w, (uint8_t)KT_GEST_TAP);
+				kcon_send(win, KCON_OP_TOUCH, &w);
+				kcon_flush(win);
+				kcon_buf_free(&w);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int(srv_touch_n, 1,
+				   "and a window that is not a display reports none");
+			}
+			if (v)
+				kcon_conn_free(v);
+			if (win)
+				kcon_conn_free(win);
+			for (int i = 0; i < 20; i++) {
+				kcon_server_pump(s);
+				usleep(500);
+			}
+		}
+
+		/*
+		 * ── the screen's font: the display lists, the shell picks ──
+		 *
+		 * THE LIST TRAVELS ONE WAY AND AN INDEX THE OTHER. A view is
+		 * the only end with a font stack and it may be on another
+		 * machine, so a name going back would be a session deciding
+		 * what a display it has never seen can render — the rule the
+		 * font STEP already keeps, said about a list.
+		 */
+		{
+			KconServerHooks h = { 0 };
+
+			h.fonts_ask = srv_on_fonts_ask;
+			h.font_set = srv_on_font_set;
+			kcon_server_hooks(s, &h, NULL);
+			srv_font_asked = 0;
+			srv_font_idx = -99;
+			srv_font_keep = -1;
+
+			KconConn *sh = srv_client(path);
+			KconConn *plain = srv_client(path);
+
+			if (sh && plain) {
+				srv_hello(sh, KCON_VERSION, KCON_KIND_SHELL);
+				srv_hello(plain, KCON_VERSION,
+					  KCON_KIND_SURFACE);
+				for (int i = 0; i < 20; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+
+				KconBuf b = { 0 };
+
+				kcon_send(sh, KCON_OP_VIEW_FONTS, &b);
+				kcon_flush(sh);
+				kcon_buf_free(&b);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int(srv_font_asked, 1,
+				   "a shell may ask what faces the display has");
+
+				/*
+				 * AND AN ORDINARY WINDOW MAY NOT. Changing the
+				 * cell re-cuts the grid under every window on
+				 * the desktop, so it is a management verb like
+				 * raising somebody else's window.
+				 */
+				KconBuf pb = { 0 };
+
+				kcon_put_u16(&pb, 3);
+				kcon_put_u8(&pb, 1);
+				kcon_send(plain, KCON_OP_VIEW_SETFONT, &pb);
+				kcon_flush(plain);
+				kcon_buf_free(&pb);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				eq_int(srv_font_idx, -99,
+				   "and a window that is not a shell may not set one");
+
+				/* THE INDEX AND THE KEEP BOTH ARRIVE. A picker's
+				 * arrows pass keep=0 and only its Enter passes
+				 * 1: a preview that persisted would make the
+				 * last face a highlight passed over the one the
+				 * next login wears. */
+				KconBuf sb = { 0 };
+
+				kcon_put_u16(&sb, (uint16_t)(int16_t)2);
+				kcon_put_u8(&sb, 0);
+				kcon_send(sh, KCON_OP_VIEW_SETFONT, &sb);
+				kcon_flush(sh);
+				kcon_buf_free(&sb);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				ok(srv_font_idx == 2 && srv_font_keep == 0,
+				   "a preview carries its index and does not keep");
+
+				KconBuf kb = { 0 };
+
+				kcon_put_u16(&kb, (uint16_t)(int16_t)-1);
+				kcon_put_u8(&kb, 1);
+				kcon_send(sh, KCON_OP_VIEW_SETFONT, &kb);
+				kcon_flush(sh);
+				kcon_buf_free(&kb);
+				for (int i = 0; i < 30; i++) {
+					kcon_server_pump(s);
+					usleep(500);
+				}
+				ok(srv_font_idx == -1 && srv_font_keep == 1,
+				   "and putting it back is a negative index, kept");
+
+				/*
+				 * THE LIST GOES OUT AS THE DISPLAY GAVE IT.
+				 * Read back off the wire rather than trusted:
+				 * the reader answers into ONE static buffer, so
+				 * an array of its return value would hold the
+				 * last name over and over.
+				 */
+				static const char *const faces[3] = {
+					"Terminus (TTF):size=11",
+					"DejaVu Sans Mono:size=11",
+					"A Family, With A Comma:size=11",
+				};
+				KconSurface *shf = srv_font_who;
+
+				if (shf) {
+					kcon_surface_fonts(shf, faces, 3, 1);
+					for (int i = 0; i < 10; i++) {
+						kcon_server_pump(s);
+						usleep(500);
+					}
+
+					int seen = 0;
+					char first[64] = "", last[64] = "";
+					int cur = -99, cnt = -1;
+
+					for (int i = 0; i < 80 && !seen; i++) {
+						KconMsg m;
+						int rr = kcon_recv(sh, &m);
+
+						if (rr == 1) {
+							if (m.op != KCON_OP_VIEW_FONTS)
+								continue;
+
+							KconRd rd;
+
+							kcon_rd_init(&rd,
+								     m.payload,
+								     m.len);
+							cnt = (int)kcon_get_u16(&rd);
+							cur = (int)(int16_t)
+							      kcon_get_u16(&rd);
+							snprintf(first,
+								 sizeof(first),
+								 "%s",
+								 kcon_get_str(&rd));
+							kcon_get_str(&rd);
+							snprintf(last,
+								 sizeof(last),
+								 "%s",
+								 kcon_get_str(&rd));
+							seen = 1;
+							continue;
+						}
+						if (rr < 0)
+							break;
+						usleep(500);
+					}
+					ok(seen && cnt == 3 && cur == 1,
+					   "the list carries its count and which is in force");
+					eq_str(first, faces[0],
+					   "the first face arrives as the display spelt it");
+					eq_str(last, faces[2],
+					   "and so does one whose name holds a comma");
+				}
+			}
+			if (sh)
+				kcon_conn_free(sh);
 			if (plain)
 				kcon_conn_free(plain);
 			for (int i = 0; i < 20; i++) {

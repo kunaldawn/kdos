@@ -3,21 +3,34 @@ Your own periodic jobs, one per line, started at login and reaped with it.
     NAME  TIMESPEC...  --  COMMAND...
 
 The shape is /etc/kdos/timers.d's, and TIMESPEC is `snooze`'s own options —
-`-H 9 -M 0` for nine in the morning, `-d /2` for every second day, `-s 4h` for
-"run it once on the next login if the machine was off". `snooze --help` is the
-whole reference; nothing is invented here.
+`-H 9 -M 0` for nine in the morning, `-d /2` for every second day. `snooze(1)`
+is the whole reference; nothing is invented here. There is no `--help`.
+
+`-s SLACK` IS NOT ENOUGH ON ITS OWN. A snooze that has just started begins
+looking one second from now, so a slot already past is simply the same slot
+next time round, whatever the slack says. `-t FILE` is what changes that: it
+starts looking from that file's modification time, and the slack then covers
+the gap. `-s 4h -t ~/.config/kdos/timers.d/mine.timer` means "if the machine
+was off at the slot, run it once when I log in, up to four hours late".
 
 THE COMMAND IS AN ARGUMENT VECTOR. No pipe, no redirection, no `&&`: a program
 that writes a file takes a flag naming it. That is what lets this file be
 parsed instead of sourced, and it is why a line here cannot run something you
 did not write.
 
-THESE DIE WITH THE SESSION, on purpose. A job that writes into your home has no
-business outliving the login that started it, and one that carried on would go
-on firing on a machine you had walked away from. The system table at
-/etc/kdos/timers.d is the place for a job that must run whether or not anybody
-is logged in.
+ONE RUN PER LOGIN. `snooze` waits for its slot, runs the command once and
+exits; the system table repeats because its supervisor starts it again, and
+nothing here may write the pidfile that supervisor needs. So a job in this file
+fires at most once per session — which is right for a reminder and is not a
+nightly job. Use /etc/kdos/timers.d for something that must run every night
+whether or not anybody is logged in.
+
+A COMMAND HERE CANNOT TAKE AN ARGUMENT WITH A SPACE IN IT. The row is split
+into words and never quoted, so `-- kdos notify "Good morning"` reaches the
+command as `"Good` and `morning"`. A program that needs a sentence reads it
+from a file of its own; `kdos remind` writes its text as this file's first
+comment line for exactly that reason.
 
 An example, commented out because a table with a job in it is a decision:
 
-  # weather  -H 7 -M 30 -s 2h  --  kdos-notify --send "Good morning"
+  # weather  -H 7 -M 30 -s 2h  --  kdos notify --time

@@ -62,6 +62,35 @@ It writes nothing outside its scratch directory and signals nothing: an audit th
 found would be a `kdos theme` with a misleading name. Exit 0 clean, 1 on drift, 2 if it could not
 run.
 
+## notify
+
+`kdos notify <summary> [body]` raises a toast, through `kb_notify()` — the same call a terminal
+makes for a child's OSC 9, so the two cannot drift apart.
+
+**`--time` and `--battery` compute their own text, and that is why they are verbs.** A chord runs a
+static command: `rc.xml` binds a string and `con.conf` names one, so a chord that wanted the time
+could not be a chord that formatted it. `Super+Ctrl+Alt+t` and `Super+Ctrl+Alt+b` are the two
+questions a bar answers by being on the screen — and this desktop puts its bar away.
+
+**`--dismiss`, `--dismiss-all`, `--raise` and `--dnd` are one line down the daemon's own socket.**
+`kdos-notifyd` already holds the toasts, the history and the Do Not Disturb flag and already answers
+a socket in `$XDG_RUNTIME_DIR`; a chord needs a **command**, and this is it. There is no second
+daemon and no second owner of what is on the screen. It is silent when nothing is listening — a
+chord pressed on a machine with no notification daemon should do nothing, not print an error into a
+session with nowhere to show it.
+
+**`--raise` takes the entry OUT of the history**, rather than copying it: a notification is on the
+screen or it is in the centre and never both, or dismissing it twice would file two copies of one
+thing. **And it comes back without its buttons.** The notification it came from is closed and its
+actions belong to the program that sent it — a button pressed here would fire a verb nothing is
+waiting for.
+
+**The charge is read from the kernel and not from `kdos-energyd`.** That daemon estimates what a
+program is *costing*; it holds no battery state at all and its socket answers `ping`, `report` and
+`report-json` about nothing else. `libkproc` reads `/sys` for the resource monitor, and one reader
+means one answer. The body names wear as well as charge: a battery reporting 90% can hold 70% of
+what it held new, and a person deciding whether to unplug wants both.
+
 ## toggle
 
 ```sh
@@ -80,6 +109,13 @@ theme` sends — after writing the file and never before: the surfaces re-read t
 moment it lands, so a signal sent first is one they answer with the state it replaced.
 `night-light` is that toggle. The other two are stat'd on a tick their reader already runs and
 need nothing.
+
+**A chord has nowhere to print, so it gets a toast.** Typed at a prompt the state goes to stdout;
+spawned by a keystroke it is a one-line notification naming the switch and where it now stands. Two
+of the three change nothing that is visible, and a switch flipped by a keystroke and answered by
+nothing is a keystroke a person cannot tell from a broken one. **`Super+Ctrl+i` is `stay-awake` and
+`Super+Ctrl+Shift+n` is `night-light`** — not `Super+Ctrl+n`, which is the scratch pad's on both
+desktops and has been since either had accessories.
 
 ## menu
 
@@ -143,9 +179,33 @@ at rather than the one the image happens to ship.
 
 ```sh
 kdos app list | search | show | install | launch | remove | rollback | update | sources
+kdos app tui add <name> <command> [--float] [--size COLSxROWS] [--icon N] [--category X]
+kdos app tui rm <slug> | ls
 ```
 
 The application front end, covered in [Applications](../02-user-guide/applications.md).
+
+**`tui` makes a terminal program an application**, without anybody editing a file by hand:
+`~/.local/share/applications/kdos-tui-<slug>.desktop` with `Terminal=true`, the two KDOS keys that
+say how the window should open, and an `Exec` **quoted a field at a time** by the library that reads
+one — never concatenated, so a quoted path with a space in it survives the round trip through a
+file two other programs parse.
+
+**`X-KDOS-TUI=true` is what `rm` checks**, and it is the whole safety of the verb. A slug is a
+person's word and the same word can name an entry the image shipped, so without the marker this
+would be a way to delete somebody else's application. **The slug is prefixed** for the other half of
+that: a file in this directory *shadows* the one in `/usr/share`, so a name that happened to collide
+would take a shipped entry off the menu rather than adding a row beside it.
+
+**The command is an argument vector, not an `Exec` line.** Every `%` in it is a literal and is
+written doubled, because a single one begins a field code in the file. An entry added this way opens
+its program; it is not a file handler, and one that needs to be is a recipe's entry rather than
+this.
+
+**It answers before the pack daemon is asked.** `tui` writes a file in this person's own data
+directory and needs `kdos-packd` for nothing — a verb refused because the daemon is down, or because
+the caller is not in `wheel`, would be a verb refused for a reason that has nothing to do with
+adding a menu row for `ncdu`.
 
 **There is deliberately no application store.** On a distribution whose medium *is* the software
 library, "where do I get this" is not a question anyone has; what remains is disposal, and that
@@ -390,6 +450,53 @@ fourth answer to where a person's directories are.
 `mc` could not, so `F2` in the file manager had no way to say *keep this one* — and the whole point
 of the column is that it holds the places somebody said rather than the ones a program guessed. The
 path is made absolute, because the row is read back by a program standing somewhere else.
+
+## remind
+
+A toast, later. `kdos remind in 20m tea`, `kdos remind at 15:30 call back`,
+`kdos remind tomorrow 9 stand-up`, then `kdos remind ls` and `kdos remind clear`.
+
+**The job is a row in J.13's per-user table** — `~/.config/kdos/timers.d/remind-<id>.timer` — so a
+reminder survives a logout and comes back with the session, and `snooze` is what waits. Nothing
+here is a scheduler.
+
+**It is armed twice and delivered once, and both halves are needed.** The per-user table is read
+**once, at login**: nothing watches the directory, so a file written now would wait for the next
+login before anything looked at it, and `kdos remind in 1m tea` would never fire. So `kdos remind`
+starts its own `snooze` as well. The next login starts a second one from the same file. They cannot
+both deliver, because **`kdos remind fire` removes the reminder before it returns** and the other
+one then finds nothing: the file's presence *is* the reminder, and its absence is the record that
+it has been given.
+
+**A reminder with nowhere to appear is not spent.** If there is no session and no `gdbus` when the
+slot comes, nothing is delivered and the file stays — a machine that happened to have no session at
+the wrong minute must not silently eat it.
+
+**The text is a comment line and not an argument.** Both timer parsers split a row into words with
+no quoting and no `eval`, so `-- kdos notify "make tea"` reaches the command as `"make` and `tea"`.
+A comment is the one field a parser that skips comments cannot mangle, so it is where the text
+goes — and `kdos remind ls` reads it back from there.
+
+**`-t` is what makes a missed one fire, not `-s`.** A `snooze` that has just started begins looking
+one second from now, so a slot already past is the same slot next time round whatever the slack
+says. `-t` makes it start looking from a file's modification time instead — for a reminder that is
+the moment it was asked for — and the slack, a day, then covers the gap. The timefile is the
+reminder's own file, so there is nothing else to keep in step.
+
+**`in` is capped at ten months** because a `snooze` pattern carries a month and a day and no year:
+past twelve months the same pattern is a different reminder. `at` and `tomorrow` roll forward — `at
+09:00` typed at ten in the morning means tomorrow, because a time that has gone is not a time
+anybody is asking to be reminded at.
+
+**`kdos remind --ask` is the chord's form**, and it exists because a chord runs one command and
+there is no shell on that path: `kdos-prompt --input | kdos remind` cannot be a keybinding, so the
+pipe lives inside the program that would have been on the right of it. The line a person types is
+the whole argument — `in 20m tea` — because a dialog with a field for the time and a field for the
+text would be two boxes for one sentence.
+
+**With no terminal, `ls` and `clear` answer with a toast.** The chords that reach them have nowhere
+to print, and a command that wrote to a stdout nobody is reading is a chord that appears to do
+nothing.
 
 ## share
 

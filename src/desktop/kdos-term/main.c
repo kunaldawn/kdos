@@ -67,6 +67,10 @@ static const char USAGE[] =
 "                     defaults to kdos-term\n"
 "  -D, --working-directory DIR\n"
 "                     start the program in DIR\n"
+"      --size WxH     open at this many columns and rows, rather than at\n"
+"                     the size term.conf asks for\n"
+"      --float        open unanchored, where the eye is, at that size —\n"
+"                     what a desktop entry's X-KDOS-Float asks for\n"
 "      --font NAME    fontconfig name; overrides term.conf\n"
 "      --tty          draw on the terminal this was started from\n"
 "      --dump WxH     run to completion offscreen and write the cells\n"
@@ -257,6 +261,9 @@ static void draw(void)
 	}
 
 	kvt_term_render(T.t, buf, w, h);
+	/* A picture a program inside `tmux` asked for by id rather than by
+	 * placing it — see term_pic_placeholders(). */
+	term_pic_placeholders(buf, w, h);
 
 	/* Copied WHOLE, because a terminal's cell may carry a colour it named
 	 * exactly and the slot-and-attribute form has nowhere to put it. */
@@ -410,6 +417,8 @@ int main(int argc, char **argv)
 	 * program's name here, the same way `foot --app-id` is given it.
 	 */
 	const char *app_id = "kdos-term";
+	/* What a desktop entry asked for, or zero for what term.conf says. */
+	int want_cols = 0, want_rows = 0, floating = 0;
 	int tty = 0, dump_w = 0, dump_h = 0;
 	const char *av[64];
 	int nav = 0;
@@ -432,6 +441,19 @@ int main(int argc, char **argv)
 			break;
 		} else if (!strcmp(a, "--title") && i + 1 < argc) {
 			title = argv[++i];
+		} else if (!strcmp(a, "--float")) {
+			floating = 1;
+		} else if (!strcmp(a, "--size") && i + 1 < argc) {
+			int sc = 0, sr = 0;
+
+			/* THE SAME FLOOR `--dump` KEEPS. A grid smaller than
+			 * this has nowhere to put a frame, and the number came
+			 * off a desktop entry somebody else wrote. */
+			if (sscanf(argv[++i], "%dx%d", &sc, &sr) == 2 &&
+			    sc >= 4 && sr >= 2) {
+				want_cols = sc;
+				want_rows = sr;
+			}
 		} else if (!strcmp(a, "--app-id") && i + 1 < argc) {
 			app_id = argv[++i];
 		} else if ((!strcmp(a, "-D") ||
@@ -503,8 +525,9 @@ int main(int argc, char **argv)
 			.app_id = app_id,
 			.font = font,
 			.keyboard = 1,
-			.cols = TC.cols,
-			.rows = TC.rows,
+			.cols = want_cols > 0 ? want_cols : TC.cols,
+			.rows = want_rows > 0 ? want_rows : TC.rows,
+			.floating = floating,
 		};
 
 		if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
@@ -601,6 +624,12 @@ int main(int argc, char **argv)
 		 */
 		if (!kvt_term_alive(T.t)) {
 			status = kvt_term_status(T.t);
+			/* BEFORE THE LAST DRAW. A program killed before it
+			 * could tidy up leaves the alternate screen up, and
+			 * the frame this window closes on would be its buffer
+			 * rather than the shell's — with the scrollback behind
+			 * it and nothing able to reach either. */
+			kvt_term_reset_modes(T.t);
 			draw();
 			ktui_draw_flush();
 			break;

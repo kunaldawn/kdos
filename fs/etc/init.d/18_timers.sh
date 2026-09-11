@@ -15,9 +15,14 @@
 # fortnight would otherwise run fourteen catch-up jobs at breakfast.
 #
 # THIS STARTS EARLY BECAUSE A TIMER ONLY SLEEPS. Nothing it runs happens at
-# boot unless the slack says a slot was missed, and a job that needs a daemon
-# waits for its next slot like any other. Starting it late would mean a machine
-# rebooted at 04:20 silently skipping a 04:17 job it was up for.
+# boot, and a job that needs a daemon waits for its next slot like any other.
+#
+# AND A REBOOT ACROSS A SLOT IS MISSED UNLESS THE LINE SAYS `-t`. A snooze that
+# has just started begins looking one second from now, so `-s` alone covers a
+# machine that was ASLEEP and not one that was OFF: `-t FILE` is what makes it
+# start looking from that file's modification time instead, with the slack
+# covering the gap. Starting this step early is still right — it is what makes
+# the window a machine can miss as small as the boot is.
 
 NAME="kdos-timers"
 SYSDIR="/etc/kdos/timers.d"

@@ -1133,6 +1133,14 @@ lnav
 # zsh is here for Completion/ — embedded knowledge of a thousand commands'
 # arguments, worth more offline than on. bash remains the system shell.
 zsh
+# The container layer is podman and distrobox, and nothing on the console shows
+# a container. lazydocker speaks the Docker API, which `podman system service`
+# serves over a socket — that service has to be running and $DOCKER_HOST has to
+# name it, and neither is the entry's job.
+lazydocker
+# Nothing here reaches the Fediverse: iamb is Matrix and profanity is XMPP.
+# `toot tui` is the screen and `toot post` is the command, in one port.
+toot
 # A QR code is a data path off this machine that needs no network: a device id
 # or a WiFi credential leaves through a phone camera. qrencode -t ANSI draws it
 # in block characters on the cell grid.

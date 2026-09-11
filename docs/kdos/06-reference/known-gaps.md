@@ -15,7 +15,14 @@ Where something is deliberately absent rather than merely missing, the reason is
 offered and accepted; there is no MIME negotiation, no deferred transfer and no image payload.
 Only the trash accepts a drop on the desktop — dropping onto a folder would be a move, and a move
 that half-succeeds across filesystems is worse than not offering it. Both directions work between
-a KDOS surface and a boxed application. See [Status](status.md) for what that rests on.
+a KDOS surface and a boxed application, and on the console the session carries the drag itself.
+See [Status](status.md) for what that rests on.
+
+**A drag on the console has no picture under the pointer.** The pointer is a reversed cell, which is
+the whole of what it is on every tier this desktop draws on, so there is nothing to hang a carried
+icon from — the bar says what is being carried instead. A target does not highlight either: the
+session sends `ENTER` and `LEAVE`, and `kdos-desk` keeps them rather than drawing on them, which is
+what `libkwl` does with the compositor's own.
 
 **No multi-seat.** `seat0` only. The session and view split makes a second seat
 reachable — a second session with a second view — and nothing implements it, so
@@ -39,10 +46,26 @@ session's, and is off by default because old output that is not marked reads as 
 that scale, so a high-density display gets a sharp grid rather than a stretched one. Fractional
 scale is not negotiated.
 
-**One font size for every output.** The font every KDOS surface draws with is a single setting, so
-it is right on a machine with one screen and wrong on two of different densities. The console's
-font chords step every view that has a screen of its own, which keeps the two screens agreeing
-rather than letting each be right: a per-output size is a different design, not a missing call.
+**One font for every output, size and face alike.** The font every KDOS surface draws with is a
+single setting, so it is right on a machine with one screen and wrong on two of different densities.
+The console's font chords step every view that has a screen of its own and the font picker sets the
+face on all of them, which keeps the two screens agreeing rather than letting each be right: a
+per-output font is a different design, not a missing call. The picker also shows one list where two
+displays are attached — the FIRST to answer — because two lists would be one question with two
+answers and nothing to say which screen a person meant.
+
+**No console font is loadable from `/usr/share/consolefonts`.** Every one of those is a PSF, and
+the cell painter loads a face through fontconfig, which cannot scan a PSF at all: FreeType has no
+driver for the format. The console draws in a fontconfig face like every other surface, and the
+picker lists what fontconfig offers. The shipped PCF bitmap faces are also invisible to it — the
+`70-no-bitmaps-except-emoji` rule rejects them and the rescue rule names `Terminus` where the files
+report `xos4 Terminus` — so what is listed is the scalable monospaced families.
+
+**`Super+Shift+space` puts the bar away on the console and does nothing under the compositor.** The
+console's session owns its own bar and re-fits every window when it goes; `kdos-shell`'s panel hides
+only from `comp.conf`'s `panel_autohide`, read once at start, and there is no signal that toggles it
+while it runs. It is the one chord the two desktops do not share that a person would notice, and the
+suite's chord cross-check names it with that reason rather than passing over it.
 
 **A per-output panel shows every window, not that output's.** The window-management protocol
 reports which output a window is on and the panel ignores it, so on two screens both taskbars list
@@ -147,8 +170,24 @@ it, so those cells keep the fallback mark.
 **No ReGIS and no Tektronix.** They are vector graphics protocols from DEC hardware, and nothing in
 the catalogue emits either. The three raster protocols are what a modern program reaches for.
 
-**One output on the console.** `libkkms` takes the first card with a connected output and its
-preferred mode. A second screen is not composited onto.
+**Windows do not snap to the seam between two screens on the console.** `libkkms` lights every
+connected connector and the grid is all of them laid edge to edge, so a window dragged past the
+right edge of one screen is on the next — but the keyboard nudge clamps to the whole work area and
+`kwm_edge_output` still has no call site. Snapping to an output's own edge needs the session to know
+where the seams are, which is the `libkdisp` output enumeration that is also unwritten: `kdos-display`
+on the console still says it has one screen and no output management.
+
+**Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off.** They are
+private-use codepoints and the console font is 512 glyphs, which is a kernel limit: a glyph the font
+does not carry renders as a blank cell, so an icon in front of a filename is a hole rather than a
+picture. `yazi`'s generated theme empties all five `[icon]` tables, `starship`'s format uses box
+drawing only, the `eza` aliases say `--icons=never` rather than relying on a default, and `lazygit`
+0.61 already ships `showIcons: false`. **No shipped program has been found that draws them with no
+way to be told** — and a scan of the built binaries is not evidence either way, because a
+private-use codepoint in compiled data is a coincidence far more often than it is a glyph. The
+answer for a person who wants icons is a Nerd Font in `~/.local/share/fonts` and a `kdos-term`
+window at the TTF, which draws what fontconfig can find; there is no Nerd Font port and no
+console-font patching.
 
 ## Applications and boxes
 
@@ -197,12 +236,6 @@ accept every meeting it was scrolled over, and nothing on this image sends a rep
 **Filing one is now manual and it works**: `:save` the part out of the message and `khal import` it,
 and the day carries a mark in the panel's calendar. No `text/calendar` handler is registered for the
 same reason the filter writes nothing — opening a file would file it.
-
-**On a bare virtual terminal, a link resolves to a graphical handler.** `Ctrl+Alt+F2` gives a login
-shell whose `XDG_CURRENT_DESKTOP` is `KDOS` and which has neither the console session's socket nor a
-compositor, so `http` and `https` resolve the way they do under the compositor — to the browser box,
-a Wayland client with nothing to connect to. The console's own rows are keyed to the console
-session's desktop name, which that shell does not have.
 
 **With no browser pack installed, the compositor has nothing that opens `http`.** The console
 answers with `w3m` in a terminal, and a browser installed as a box claims the scheme through the

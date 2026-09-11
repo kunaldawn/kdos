@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = toot
+version     = 0.52.1
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/t/toot/toot-$version.tar.gz
+sha256      = b737173be5587522077c18c4024eb1741a4a30e59d3165e72fd6ce4519d2fecb  toot-0.52.1.tar.gz
+sha256      = 31827c57ca723c18c7f49821beb03c67dd24d20ca389123b61b53cffb42d17bc  toot-vendor-0.52.1.tar.xz
+description = toot — the Fediverse from a terminal, as a TUI and as a command
+homepage    = https://github.com/ihabunek/toot
+depends     = python3 python3-setuptools python3-pip
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = beautifulsoup4 click python-dateutil requests pysocks tomlkit urwid wcwidth soupsieve certifi charset-normalizer idna urllib3 six setuptools flit-core poetry-core hatchling hatch-vcs setuptools-scm vcs-versioning packaging

@@ -58,5 +58,6 @@ Terminal=true
 Categories=Graphics;Viewer;
 MimeType=image/png;image/jpeg;image/gif;image/webp;image/bmp;image/tiff;
 Keywords=image;picture;photo;view;sixel;kitty;timg;
+X-KDOS-Term=kdos-term
 EOF
 chmod 644 "$PKG/usr/share/applications/timg.desktop"

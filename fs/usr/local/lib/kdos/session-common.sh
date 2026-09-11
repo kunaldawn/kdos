@@ -200,13 +200,42 @@ kdos_session_once() {
 		# available here — and it should not be: a job that writes into
 		# $HOME has no business outliving the login that started it,
 		# and a supervised one would go on firing on a machine the
-		# person has walked away from. `snooze` is backgrounded from
-		# this subshell instead, so it is reaped with the session.
+		# person has walked away from. The loops below are this
+		# session's own children and die with it, and their pids are
+		# in the session's runtime directory rather than in /run.
 		#
 		# The table is parsed the same way /etc/kdos/timers.d is —
 		# `NAME TIMESPEC... -- COMMAND...`, an argument vector and not
 		# a shell line — because two parses of one format is one of
 		# them being wrong the day a field is added.
+		#
+		# AND THEY REPEAT, WHICH TOOK A PIDFILE TO MAKE POSSIBLE.
+		# `snooze` waits for its slot, runs the command ONCE and exits,
+		# so a bare background job is one run per login and not a
+		# schedule — a reminder set for every Monday fired on the
+		# Monday somebody happened to log in. The loop that repeats it
+		# has to be FINDABLE, or a start script that re-execs itself
+		# adds a second set of loops on top of the first: the pid of
+		# each goes in the session's own runtime directory, which is
+		# cleared when the login ends, and the next start stops what
+		# the last one left before it starts anything.
+		#
+		_tpid="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kdos/timers.pid"
+		mkdir -p "${_tpid%/*}" 2>/dev/null
+		if [ -r "$_tpid" ]; then
+			while read -r _p; do
+				case "$_p" in
+					''|*[!0-9]*) continue ;;
+				esac
+				# THE CHILD FIRST. Killing the loop alone
+				# leaves the `snooze` it is waiting on
+				# running, reparented and unfindable.
+				pkill -P "$_p" 2>/dev/null
+				kill "$_p" 2>/dev/null
+			done < "$_tpid"
+		fi
+		: > "$_tpid" 2>/dev/null
+
 		_td="$_cfg/kdos/timers.d"
 		if [ -d "$_td" ] && command -v snooze >/dev/null 2>&1; then
 			for _tf in "$_td"/*.timer; do
@@ -247,21 +276,29 @@ kdos_session_once() {
 					snooze -n $_spec >/dev/null 2>&1 ||
 						continue
 					#
-					# ONE RUN PER LOGIN, AND THAT IS NOT
-					# THE SAME AS THE SYSTEM TABLE. `snooze`
-					# waits for its slot, runs the command
-					# ONCE and exits; the system table's
-					# repetition comes from `supervise`
-					# restarting it, and nothing here may
-					# write a pidfile into /run. A loop
-					# around this would repeat — and would
-					# also outlive the session it belongs
-					# to, because the start scripts re-exec
-					# themselves and there is nothing here
-					# that could find the loop again to
-					# stop it.
+					# THE LOOP IS WHAT REPEATS IT, and it
+					# is the same shape `supervise` gives
+					# the system table: `snooze` waits for
+					# its slot, runs the command once and
+					# exits, so something has to start it
+					# again. The floor under the loop is
+					# what stops a command that fails
+					# instantly from spinning it at the
+					# speed of `fork` — one second is far
+					# below any schedule and far above a
+					# spin.
 					# shellcheck disable=SC2086
-					snooze $_spec "$@" >/dev/null 2>&1 &
+					(
+						while :; do
+							_t0=$(date +%s)
+							snooze $_spec "$@" \
+								>/dev/null 2>&1
+							[ $(( $(date +%s) - \
+							      _t0 )) -ge 1 ] ||
+								sleep 1
+						done
+					) >/dev/null 2>&1 &
+					echo $! >> "$_tpid" 2>/dev/null
 				done < "$_tf"
 			done
 		fi

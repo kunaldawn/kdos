@@ -108,6 +108,19 @@ int cmd_toggle(int argc, char **argv)
 	 * state. */
 	if (TOGGLES[which].retint)
 		kdt_reload_session();
-	printf("%s %s\n", name, on ? "on" : "off");
+	/*
+	 * A CHORD HAS NOWHERE TO PRINT, so it gets a toast instead. A switch
+	 * flipped by a keystroke and answered by nothing is a keystroke a
+	 * person cannot tell from a broken one — and two of these three change
+	 * nothing that is visible.
+	 */
+	if (isatty(STDOUT_FILENO)) {
+		printf("%s %s\n", name, on ? "on" : "off");
+	} else {
+		char sum[64];
+
+		snprintf(sum, sizeof(sum), "%s %s", name, on ? "on" : "off");
+		kb_notify("kdos", sum, TOGGLES[which].what);
+	}
 	return 0;
 }

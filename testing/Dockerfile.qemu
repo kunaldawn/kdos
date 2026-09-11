@@ -21,12 +21,21 @@ FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         qemu-system-x86 \
+        qemu-utils \
         ovmf \
         python3 \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# vnc-shot.py looks for OVMF.fd under three spellings; Debian ships
-# OVMF_CODE.fd and OVMF.fd under /usr/share/OVMF, which is one of them.
+# vnc-shot.py looks for OVMF.fd under three spellings. Debian's `ovmf` package
+# puts the split firmware — OVMF_CODE_4M.fd and its VARS — under
+# /usr/share/OVMF, and the single combined image under /usr/share/**ovmf**,
+# lowercase, which is the first of the three the probe tries. The uppercase
+# directory holds no plain OVMF.fd at all.
+#
+# `qemu-utils` IS `qemu-img`, and it is here because the Makefile creates the
+# qcow2 that testing/install-to-disk.sh writes into. `qemu-system-x86` does not
+# carry it, so without this the rig can boot the ISO and can never install
+# from it — which is the whole of the Wave 10 gate.
 WORKDIR /kdos
 CMD ["python3", "testing/vnc-shot.py", "--help"]

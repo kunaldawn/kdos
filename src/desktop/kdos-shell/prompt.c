@@ -109,15 +109,113 @@ static int wrap(const char *s, int w, char out[MAX_LINES][MAX_MSG])
 	return n ? n : 1;
 }
 
+/*
+ * ── ONE ROW WITH AN INPUT ────────────────────────────────────────────────
+ *
+ * The same dialog, asking for a line instead of a yes. `--input` is a MODE and
+ * not a third button: the yes/no shape answers with its exit status, which is
+ * kdos-comp's contract and must not gain a second meaning, so the typed line
+ * goes to STDOUT and the status says only whether there is one.
+ *
+ * 0 with a line on stdout is an answer; 254 is Escape, and nothing on stdout.
+ * An empty line is a cancel too — a caller handed "" would have to invent what
+ * an empty reminder means.
+ *
+ * A LOOP OF ITS OWN, because the widget is immediate-mode: it wants the event
+ * inside ktui_frame_begin() and consumes what it uses, which is the opposite
+ * of the yes/no loop's hand-written key switch. One surface, two shapes, and
+ * neither is the other with a flag threaded through it.
+ */
+static int prompt_input(const char *msg, const char *font,
+			const char *placeholder)
+{
+	char buf[512] = { 0 };
+	int cols = ktui_utf8_width(msg) + 6;
+
+	if (cols < 44)
+		cols = 44;
+	if (cols > 64)
+		cols = 64;
+
+	KDispConfig cfg = {
+		.role = KDISP_ROLE_OVERLAY,
+		.cols = cols,
+		.rows = 5,
+		.app_id = "kdos-prompt",
+		.font = font,
+		.keyboard = 1,
+	};
+
+	sh_theme_from_cache();
+	if (kdisp_init(&cfg, kdos_disp, kdos_disp_n) != 0) {
+		fprintf(stderr, "kdos-prompt: no compositor or no layer-shell\n");
+		return EXIT_CANCELLED;
+	}
+	ktui_draw_init();
+	kch_px_popup(KT_SURFACE);
+
+	int rc = EXIT_CANCELLED;
+
+	while (!kdisp_should_close()) {
+		KtuiEvent ev;
+
+		if (!ktui_backend()->poll_event(&ev, 1000)) {
+			if (ktui_resized) {
+				ktui_resized = 0;
+				ktui_draw_resize();
+				ktui_draw_invalidate();
+			}
+			ev.type = KT_EVT_NONE;
+		}
+		if (ev.type == KT_EVT_KEY && ev.key == KT_K_ESC)
+			break;
+
+		int w = ktui_w, h = ktui_h;
+
+		ktui_draw_fill(krect(0, 0, w, h), KT_SURFACE);
+		ktui_draw_box(krect(0, 0, w, h), "KDOS", KT_ACCENT, KT_SURFACE,
+			      1);
+		ktui_frame_begin(&ev);
+		ktui_draw_text(2, 1, w - 4, msg, KT_TEXT, KT_SURFACE,
+			       KT_A_NONE);
+		if (ktui_input(krect(2, 2, w - 4, 1), buf, sizeof(buf), 0,
+			       placeholder)) {
+			/* The widget answers non-zero on Enter as well as on an
+			 * edit, so the text is what says whether there is an
+			 * answer — an empty box is a cancel. */
+			if (buf[0]) {
+				rc = EXIT_YES;
+				ktui_frame_end();
+				break;
+			}
+		}
+		ktui_draw_text(2, h - 2, w - 4, "Enter keep   Esc cancel",
+			       KT_MID, KT_SURFACE, KT_A_NONE);
+		ktui_frame_end();
+		ktui_draw_flush();
+	}
+
+	kdisp_shutdown();
+	if (rc == EXIT_YES)
+		printf("%s\n", buf);
+	return rc;
+}
+
 int prompt_main(int argc, char **argv)
 {
 	const char *font = NULL;
 	const char *msg = "Are you sure?";
 	const char *yes = "Yes", *no = "No";
+	const char *placeholder = "";
+	int input = 0;
 	char lines[MAX_LINES][MAX_MSG];
 
 	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--message") && i + 1 < argc)
+		if (!strcmp(argv[i], "--input"))
+			input = 1;
+		else if (!strcmp(argv[i], "--placeholder") && i + 1 < argc)
+			placeholder = argv[++i];
+		else if (!strcmp(argv[i], "--message") && i + 1 < argc)
 			msg = argv[++i];
 		else if (!strcmp(argv[i], "--yes") && i + 1 < argc)
 			yes = argv[++i];
@@ -129,10 +227,17 @@ int prompt_main(int argc, char **argv)
 			fprintf(stderr,
 				"usage: kdos-prompt --message TEXT "
 				"[--yes LABEL] [--no LABEL] [--font NAME]\n"
-				"exit: 0 yes, 1 no, 254 cancelled\n");
+				"       kdos-prompt --input --message TEXT "
+				"[--placeholder TEXT]\n"
+				"exit: 0 yes, 1 no, 254 cancelled\n"
+				"--input prints the typed line on stdout and "
+				"exits 0, or 254 with nothing\n");
 			return EXIT_CANCELLED;
 		}
 	}
+
+	if (input)
+		return prompt_input(msg, font, placeholder);
 
 	/* Sized to the question. Wide enough for the two buttons whatever the
 	 * message is, capped so a pasted paragraph cannot become a dialog

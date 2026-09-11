@@ -316,6 +316,29 @@ model, its own widget set and its own protocol, and taking it would mean two win
 tree. `libkwm` exists so that a window lands in the same place on both desktops, and a second model
 would make that false by construction.
 
+## One file chooser at one width, not a wider one for the portal
+
+The chooser a boxed application reaches through the FileChooser portal and the chooser this
+desktop's own programs open are **one program at one size** — 64 columns by 22 rows — and the
+portal does not get a wider one to hold a sidebar column.
+
+**The width is not a free parameter.** The smallest screen this desktop is drawn for is 80 columns
+by 24 rows, which is what the console's reference frames are cut at. A 64-column dialog leaves eight
+cells of ground either side of it and one row of taskbar under it. A sidebar wide enough to read a
+place name is about sixteen more, and a chooser that needed 80 columns would be a chooser with no
+frame, no ground and nowhere for the bar — on the one screen every machine has.
+
+**And the third column is what it would cost.** The chooser already spends its right-hand column on
+a preview pane, so a sidebar takes its width from the names: about thirty cells for a filename, in
+the window whose entire purpose is showing filenames.
+
+**So the places are a rung and not a column.** `Ctrl+P` opens them over the file list as a declared
+`Esc` rung, reaching the same list `kxdg_places()` gives the Start menu — every place, at full
+width, and nothing taken from the names while it is closed. A boxed application's Open and Save get
+exactly what a native one gets, which is the other half of the decision: two dialogs of two widths
+would be two layouts to keep, two sets of reference frames, and two answers to how wide a chooser
+is.
+
 ## See also
 
 - [Why KDOS](why-kdos.md) — the properties these decisions serve

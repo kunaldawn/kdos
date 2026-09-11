@@ -155,6 +155,17 @@ void ktui_term_flush(void);
  * and asks ktui_term_flush_dropped() whether the last frame survived. */
 void ktui_term_set_write_timeout(int ms);
 int ktui_term_flush_dropped(void);
+
+/*
+ * THE HOST TERMINAL WENT AWAY — an `ssh` drop, a closed window, a pty whose
+ * far end is gone. Sticky: a terminal that has hung up does not come back.
+ *
+ * A CONSUMER THAT DRAWS FOR EVER HAS TO ASK. Nothing else says so: a write to
+ * a hung-up descriptor fails and a read returns end of file, and a loop that
+ * checked neither spins at its poll timeout painting frames nobody receives —
+ * and never reaches the exit that would have put the terminal back.
+ */
+int ktui_term_hungup(void);
 void ktui_term_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void ktui_term_repalette(void);	/* after a live accent switch              */
 /* OSC 52 clipboard write, base64 encoded by hand (this library links nothing
@@ -428,6 +439,15 @@ typedef struct {
 	int (*poll_event)(KtuiEvent *ev, int timeout_ms);
 	void (*size)(int *w, int *h);
 	int (*caps)(void);
+	/*
+	 * WHERE THIS SURFACE'S CARET IS, in its own cells, or a negative x for
+	 * none. A backend drawing on somebody else's screen has no terminal
+	 * cursor to place and something else that does: the console client
+	 * sends it to the session, which is the only thing that knows where
+	 * this surface sits on the screen. NULL is a backend that places its
+	 * own cursor, and ktui_term_caret() then writes the escape.
+	 */
+	void (*caret)(int x, int y);
 } KtuiBackend;
 
 /* NULL selects the built-in tty backend. A backend must outlive the library's
@@ -443,6 +463,10 @@ int ktui_draw_init(void);
  * strip past its rect, a column out from under its own header) was invisible
  * to the compiler and to a test suite that cannot draw. */
 int ktui_offscreen_init(int w, int h);
+/* Whether this process is drawing offscreen. Asked by the few places that
+ * would otherwise write to a terminal that is not there — the caret is one,
+ * and the escape it wrote landed inside a committed reference frame. */
+int ktui_offscreen(void);
 void ktui_draw_dump(void);
 void ktui_draw_resize(void);
 void ktui_draw_clear(void);
@@ -823,13 +847,17 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret,
  * clipboard receive completes; the tty backend has no paste channel and
  * simply never calls it. */
 /*
- * PUT THE TERMINAL'S OWN CURSOR AT A CELL, or hide it with a negative x.
+ * WHERE THE CARET IS, said once by every surface that has one.
  *
- * Only a terminal backend has one to place; a screen this library paints
- * itself draws its caret as a cell like everything else. It is what lets a
- * `--tty` view show a person their caret in the cursor their own terminal
- * draws — and what a screen reader following a terminal reads to know where
- * the focus is.
+ * On a terminal it places that terminal's own cursor, or hides it with a
+ * negative x — a screen this library paints itself draws its caret as a cell
+ * like everything else. It is what lets a `--tty` view show a person their
+ * caret in the cursor their own terminal draws, and what a screen reader
+ * following a terminal reads to know where the focus is.
+ *
+ * A BACKEND WITH A `caret` ENTRY TAKES IT INSTEAD, and no escape is written:
+ * a surface drawing through a display server is not on a terminal, and the
+ * position it knows is in its own cells, which only the server can place.
  */
 void ktui_term_caret(int x, int y);
 
